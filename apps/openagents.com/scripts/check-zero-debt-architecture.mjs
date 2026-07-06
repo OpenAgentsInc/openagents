@@ -517,7 +517,21 @@ const budgetChecks = [
     // index.ts route-table handler added by a concurrent lane in the same
     // parallel dispatch. Neither mints spend/settlement/payout/public-claim
     // authority. Ratchet back down when route mappers are extracted.
-    budget: 132,
+    // +1 (132 -> 133) on 2026-07-06 (CFG-6, #8521) for
+    // inference/durable-inference-stream-backend.ts: the Postgres-backed
+    // durable inference stream shim's `fetch(Request): Promise<Response>` —
+    // it IMPLEMENTS the existing `DurableStreamNamespace` transport port (the
+    // wire contract the deleted DurableInferenceStreamObject DO served), not
+    // a new route handler. Mints no spend/settlement/payout/public-claim
+    // authority. Ratchet back down when the transport port becomes an Effect
+    // program (CFG-9 monolith cutover).
+    // +2 (133 -> 135) on 2026-07-06 for mdk-service-endpoints.ts (CFG-14
+    // first half, #8530): the OA_SIGNING_KEY Secret Manager move added a
+    // `Promise<Response>`-typed injectable-fetch seam + one handler factory.
+    // That lane never bumped this ratchet, leaving check:deploy red on main;
+    // this records the actual count (same recovery shape as the Mutalisk
+    // note above). Mints no spend/settlement/payout/public-claim authority.
+    budget: 135,
     description:
       'Worker domain and route modules may not grow Response-returning surfaces while route mappers are extracted.',
     details: countByFile(
@@ -707,6 +721,14 @@ const runPromiseAllowlist = new Map([
   // shape as the billing/operator routes above. Named bridge; ratchet down
   // if the admin-credits route handlers move to an Effect program.
   ['workers/api/src/admin-credits-routes.ts', 2],
+  // Added 2026-07-06 (CFG-6, #8521): the Postgres-backed durable inference
+  // stream shim implements the Promise-shaped `DurableStreamNamespace` port
+  // (`stub.fetch(Request): Promise<Response>` — the wire contract the deleted
+  // DurableInferenceStreamObject served) over the Effect-returning oa-infra
+  // DurableStream, via ONE shared named helper (`runStreamEffect`). Named
+  // bridge; ratchet down if the transport port becomes an Effect program
+  // end-to-end (the CFG-9 monolith cutover is the natural moment).
+  ['workers/api/src/inference/durable-inference-stream-backend.ts', 1],
 ])
 
 const runPromiseDetails = countByFile(sourceFiles, /Effect\.runPromise\(/g)

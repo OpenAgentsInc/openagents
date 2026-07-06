@@ -533,13 +533,10 @@
         "name": "MDK_TIPS_BUFFER",
         "class_name": "MdkTipsBufferContainer",
       },
-      // Durable-stream Rank-1 resumable inference (#6058). One SQLite-class DO
-      // per request id holds that completion's durable offset log. INERT unless
-      // INFERENCE_DURABLE_STREAM_ENABLED is on AND the producer is wired.
-      {
-        "name": "INFERENCE_DURABLE_STREAM",
-        "class_name": "DurableInferenceStreamObject",
-      },
+      // NOTE (CFG-6, #8521): the former INFERENCE_DURABLE_STREAM binding
+      // (DurableInferenceStreamObject, #6058) was deleted — durable inference
+      // streams are Postgres-backed through the KHALA_SYNC_DB Hyperdrive
+      // binding (khala-sync migration 0040_oa_infra_durable_stream.sql).
       // Background-agent cron scheduler (BA-B2). The Worker scheduled() hook wakes
       // exactly this named DO, which serializes due-trigger ticks across isolates.
       {
@@ -600,6 +597,12 @@
     {
       "tag": "v10",
       "deleted_classes": ["GlmStressSchedulerDurableObject"],
+    },
+    // CFG-6 (#8521): DurableInferenceStreamObject replaced by the Postgres
+    // DurableStream (oa-infra) over the KHALA_SYNC_DB Hyperdrive binding.
+    {
+      "tag": "v11",
+      "deleted_classes": ["DurableInferenceStreamObject"],
     },
   ],
   "env": {
@@ -784,13 +787,10 @@
             "name": "SYNC_ROOM",
             "class_name": "SyncRoomDurableObject",
           },
-          // Durable-stream Rank-1 resumable inference (#6058). One SQLite-class DO
-          // per request id holds that completion's durable offset log. LIVE on
-          // staging (INFERENCE_DURABLE_STREAM_ENABLED above).
-          {
-            "name": "INFERENCE_DURABLE_STREAM",
-            "class_name": "DurableInferenceStreamObject",
-          },
+          // NOTE (CFG-6, #8521): the former INFERENCE_DURABLE_STREAM binding
+          // (DurableInferenceStreamObject, #6058) was deleted — durable
+          // inference streams are Postgres-backed through the staging
+          // KHALA_SYNC_DB Hyperdrive binding.
           {
             "name": "AGENT_DEFINITION_SCHEDULER",
             "class_name": "AgentDefinitionSchedulerDurableObject",
@@ -835,6 +835,12 @@
         {
           "tag": "v7",
           "deleted_classes": ["GlmStressSchedulerDurableObject"],
+        },
+        // CFG-6 (#8521): DurableInferenceStreamObject replaced by the
+        // Postgres DurableStream (oa-infra) over KHALA_SYNC_DB.
+        {
+          "tag": "v8",
+          "deleted_classes": ["DurableInferenceStreamObject"],
         },
       ],
     },

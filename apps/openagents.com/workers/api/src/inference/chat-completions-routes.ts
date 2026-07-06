@@ -752,13 +752,14 @@ export type ChatCompletionsDeps = Readonly<{
   // resume/replay read (the resume route has no metering hook).
   durableStreamEnabled?: boolean | undefined
   durableStream?: DurableInferenceStreamStore | undefined
-  // PRODUCTION DURABLE SUBSTRATE (#6058). When present AND `durableStreamEnabled`
-  // is true, the streaming completion is teed into the per-request Durable Object
-  // (`DurableInferenceStreamObject`, keyed `getByName(responseId)`) over the
-  // `/v1/stream/{id}` HTTP contract — the DO is the single authoritative durable
-  // log a LATER GET resume reads. This is the live wiring; `durableStream` (the
-  // synchronous `StreamStore` factory) is the in-memory test/contract substrate.
-  // When both are present the DO namespace wins. Absent (e.g. the binding is
+  // PRODUCTION DURABLE SUBSTRATE (#6058; Postgres-backed since CFG-6 #8521).
+  // When present AND `durableStreamEnabled` is true, the streaming completion
+  // is teed into the per-request Postgres durable stream (the oa-infra
+  // DurableStream namespace shim, keyed `getByName(responseId)`) over the
+  // `/v1/stream/{id}` HTTP contract — the durable log a LATER GET resume
+  // reads. This is the live wiring; `durableStream` (the synchronous
+  // `StreamStore` factory) is the in-memory test/contract substrate. When
+  // both are present the namespace wins. Absent (e.g. KHALA_SYNC_DB is
   // unbound on an env) => fail-safe non-durable pass-through.
   durableStreamNamespace?: DurableStreamNamespace | undefined
   // TYPED COMPONENT CHANNEL SEAM (EPIC #6123, issue #6127). The ADDITIVE,

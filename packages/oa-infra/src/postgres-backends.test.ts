@@ -11,6 +11,7 @@
 import { SQL } from "bun"
 import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test"
 import { Effect, Layer } from "effect"
+import postgres from "postgres"
 import {
   hasLocalPostgres,
   startLocalPostgres,
@@ -21,6 +22,7 @@ import { runDurableStreamConformance } from "./conformance/durable-stream.ts"
 import { runJobQueueConformance } from "./conformance/job-queue.ts"
 import { runKvStoreConformance } from "./conformance/kv-store.ts"
 import { runMutexConformance } from "./conformance/mutex.ts"
+import { DurableStream } from "./durable-stream.ts"
 import * as DurableStreamPostgres from "./durable-stream-postgres.ts"
 import * as JobQueuePostgres from "./job-queue-postgres.ts"
 import { KvStore } from "./kv-store.ts"
@@ -36,6 +38,7 @@ const pgAvailable = hasLocalPostgres()
 
 let pg: LocalPostgres
 let sql: SQL
+let pgJsSql: ReturnType<typeof postgres>
 
 if (pgAvailable) {
   beforeAll(async () => {
@@ -49,10 +52,16 @@ if (pgAvailable) {
     expect(result.applied).toContain("0002_oa_infra_job_queue.sql")
     expect(result.applied).toContain("0003_oa_infra_durable_stream.sql")
     sql = new SQL({ url, max: 10 })
+    // postgres.js client with the openagents.com Worker's Hyperdrive
+    // transaction-mode discipline (`prepare: false`; see the KHALA_SYNC_DB
+    // comment in that app's wrangler.jsonc) — proves the driver seam the
+    // Worker uses for the DurableStream backend (CFG-6 #8521).
+    pgJsSql = postgres(url, { max: 5, prepare: false })
   })
 
   afterAll(async () => {
     await sql?.end()
+    await pgJsSql?.end({ timeout: 5 })
     await pg?.stop()
   })
 }
@@ -73,6 +82,19 @@ runDurableStreamConformance({
   label: "postgres",
   skip: !pgAvailable,
   makeLayer: () => Layer.provide(DurableStreamPostgres.layerPostgres, sqlLayer()),
+})
+// Same backend, postgres.js driver — the workerd-compatible client the
+// openagents.com Worker uses through Hyperdrive (CFG-6 #8521). Both drivers
+// must pass the identical suite for the driver seam to be a config-time swap.
+runDurableStreamConformance({
+  label: "postgres.js",
+  skip: !pgAvailable,
+  makeLayer: () =>
+    Layer.sync(DurableStream, () =>
+      DurableStreamPostgres.makePostgresDurableStream(
+        pgJsSql as unknown as DurableStreamPostgres.DurableStreamSqlClient,
+      ),
+    ),
 })
 runMutexConformance({
   label: "postgres",

@@ -19,6 +19,7 @@
     "./durable-stream": "./src/durable-stream.ts",
     "./durable-stream-memory": "./src/durable-stream-memory.ts",
     "./durable-stream-postgres": "./src/durable-stream-postgres.ts",
+    "./durable-stream-postgres-core": "./src/durable-stream-postgres-core.ts",
     "./mutex": "./src/mutex.ts",
     "./mutex-memory": "./src/mutex-memory.ts",
     "./mutex-postgres": "./src/mutex-postgres.ts",
@@ -50,6 +51,7 @@
   "devDependencies": {
     "@openagentsinc/khala-sync-server": "workspace:*",
     "bun-types": "^1.0.0",
+    "postgres": "3.4.9",
     "typescript": "catalog:"
   }
 }

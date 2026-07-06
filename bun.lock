@@ -920,6 +920,7 @@
       "devDependencies": {
         "@openagentsinc/khala-sync-server": "workspace:*",
         "bun-types": "^1.0.0",
+        "postgres": "3.4.9",
         "typescript": "catalog:",
       },
     },

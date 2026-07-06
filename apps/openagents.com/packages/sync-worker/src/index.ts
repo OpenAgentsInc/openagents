@@ -23,11 +23,9 @@ export type WorkerBindings = Readonly<{
   SYNC_ROOM: DurableObjectNamespace
   MDK_SIDECAR: DurableObjectNamespace
   MDK_TREASURY?: DurableObjectNamespace
-  // Durable-stream Rank-1 resumable inference (#6058). Optional SQLite-class DO
-  // namespace; one DO instance per request id holds that completion's durable
-  // offset log. Absent (or the INFERENCE_DURABLE_STREAM_ENABLED flag off) => the
-  // streaming path is today's non-durable pass-through (fail-safe).
-  INFERENCE_DURABLE_STREAM?: DurableObjectNamespace
+  // NOTE: the former INFERENCE_DURABLE_STREAM DO binding (#6058) was deleted
+  // in CFG-6 (#8521): durable inference streams are Postgres-backed via the
+  // KHALA_SYNC_DB Hyperdrive binding below.
   // GLM internal-stress scheduler (#6318). Optional SQLite-class DO namespace;
   // one named DO coordinates short-lived `internal_stress` leases so external
   // demand can preempt stress across Worker isolates. Absent => same-isolate

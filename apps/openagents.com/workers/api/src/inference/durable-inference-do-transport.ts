@@ -1,19 +1,21 @@
-// DO-fetch transport for the durable inference stream (durable-stream Rank-1,
-// #6058, EPIC #6056). This is the PRODUCTION wiring of the durable proxy: it
-// speaks the EXACT `/v1/stream/{id}` HTTP contract the
-// `@openagentsinc/durable-stream` Durable Object (`DurableInferenceStreamObject`)
-// serves (`handleDurableStreamFetch`), so the per-request DO is the single
-// authoritative durable log.
+// Namespace-fetch transport for the durable inference stream (durable-stream
+// Rank-1, #6058, EPIC #6056). This is the PRODUCTION wiring of the durable
+// proxy: it speaks the `/v1/stream/{id}` HTTP contract the
+// `@openagentsinc/durable-stream` Durable Object used to serve. Since CFG-6
+// (#8521) the production `DurableStreamNamespace` is the Postgres-backed shim
+// in durable-inference-stream-backend.ts (the DO class + binding were
+// deleted); this transport and its wire contract are UNCHANGED, which is what
+// keeps the public resume surface byte-compatible across the swap.
 //
 // WHY A SEPARATE ASYNC TRANSPORT (not the sync `StreamStore` proxy):
 // `durable-inference-proxy.ts` drives a SYNCHRONOUS `StreamStore` — which models
-// the inside of ONE stream's DO running its SQLite synchronously. A remote DO is
-// reached over an ASYNC `stub.fetch()`, so the sync port cannot back it. This
-// module rebuilds the SAME wire requests (PUT create, POST append with the
+// the inside of ONE stream's durable log running synchronously. The production
+// backend is reached over an ASYNC `stub.fetch()`, so the sync port cannot back
+// it. This module builds the wire requests (PUT create, POST append with the
 // `(producer-id, epoch, seq)` idempotency tuple + optional `stream-closed`, GET
-// replay with `?offset=`) and sends them via `fetch()` to the DO stub. The DO
-// then runs the package's sync core internally, so the offset/idempotency/EOF
-// guarantees are byte-identical to the unit-tested in-memory path.
+// replay with `?offset=`) and sends them via `fetch()` to the namespace stub,
+// so the offset/EOF guarantees stay byte-identical to the unit-tested
+// in-memory path.
 //
 // ┌─────────────────── METERING EXACTLY-ONCE (the money path) ────────────────┐
 // │ Metering lives ENTIRELY in the route's `onEof` callback (the producer      │

@@ -1,10 +1,5 @@
 import { Container, getContainer } from '@cloudflare/containers'
 import {
-  type DurableObjectStateLike as DurableStreamObjectStateLike,
-  handleDurableStreamAlarm,
-  handleDurableStreamFetch,
-} from '@openagentsinc/durable-stream'
-import {
   type WorkerBindings,
   badRequest,
   cursorGap,
@@ -583,7 +578,7 @@ import {
   type DiscoverySurfacePath,
   renderDiscoverySurface,
 } from './inference/discovery-surfaces'
-import { type DurableStreamNamespace } from './inference/durable-inference-do-transport'
+import { durableInferenceStreamNamespaceForEnv } from './inference/durable-inference-stream-backend'
 import {
   matchDurableReadRequest,
   routeDurableInferenceReadRequest,
@@ -8589,20 +8584,21 @@ const autopilotOnboardingRoutes = makeAutopilotOnboardingRoutes<WorkerBindings>(
   {
     makeInferenceClient: env => makeOnboardingInferenceClient(env),
     makeStreamClient: env => makeOnboardingStreamClient(env),
-    // DURABLE ONBOARDING STREAM (#6154 item 4). The per-request Durable Object
-    // namespace, resolved only when the durable-stream flag is on AND the binding
-    // is wired; absent => the onboarding stream stays the non-durable SSE
-    // (fail-safe). Keyed by the stable id `onboarding:{sessionId}:{turnIndex}` so
-    // an unauthenticated browser can resume a dropped turn by offset.
+    // DURABLE ONBOARDING STREAM (#6154 item 4; Postgres-backed since CFG-6
+    // #8521). The per-request durable stream namespace, resolved only when
+    // the durable-stream flag is on AND the KHALA_SYNC_DB binding is wired;
+    // absent => the onboarding stream stays the non-durable SSE (fail-safe).
+    // Keyed by the stable id `onboarding:{sessionId}:{turnIndex}` so an
+    // unauthenticated browser can resume a dropped turn by offset.
     resolveDurableStream: env => {
       // `env` is the full Worker `Env` at call time; the route's generic narrows it
       // to `WorkerBindings`, so read the config flag through the broader Env shape.
       const fullEnv = env as Env
-      return isInferenceDurableStreamEnabled(
-        fullEnv.INFERENCE_DURABLE_STREAM_ENABLED,
-      ) && fullEnv.INFERENCE_DURABLE_STREAM !== undefined
-        ? (fullEnv.INFERENCE_DURABLE_STREAM as unknown as DurableStreamNamespace)
-        : undefined
+      return durableInferenceStreamNamespaceForEnv(fullEnv, {
+        enabled: isInferenceDurableStreamEnabled(
+          fullEnv.INFERENCE_DURABLE_STREAM_ENABLED,
+        ),
+      })
     },
   },
 )
@@ -13846,12 +13842,14 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         handleAgentDefinitionWebhookRequest(request, {
           definitionStore: makeAgentDefinitionStoreForEnv(env),
           dispatchDependencies: {
-            durableStreamNamespace:
-              isInferenceDurableStreamEnabled(
-                env.INFERENCE_DURABLE_STREAM_ENABLED,
-              ) && env.INFERENCE_DURABLE_STREAM !== undefined
-                ? (env.INFERENCE_DURABLE_STREAM as unknown as DurableStreamNamespace)
-                : undefined,
+            durableStreamNamespace: durableInferenceStreamNamespaceForEnv(
+              env,
+              {
+                enabled: isInferenceDurableStreamEnabled(
+                  env.INFERENCE_DURABLE_STREAM_ENABLED,
+                ),
+              },
+            ),
             forgeGitAuthStore: makeForgeTenantGitAuthStoreForEnv(env),
             forgeStore: makeForgeCoordinationStoreForEnv(env),
             pylonStore: makePylonApiStoreForEnv(env),
@@ -13907,12 +13905,14 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         handleAgentDefinitionSlackWebhookRequest(request, {
           definitionStore: makeAgentDefinitionStoreForEnv(env),
           dispatchDependencies: {
-            durableStreamNamespace:
-              isInferenceDurableStreamEnabled(
-                env.INFERENCE_DURABLE_STREAM_ENABLED,
-              ) && env.INFERENCE_DURABLE_STREAM !== undefined
-                ? (env.INFERENCE_DURABLE_STREAM as unknown as DurableStreamNamespace)
-                : undefined,
+            durableStreamNamespace: durableInferenceStreamNamespaceForEnv(
+              env,
+              {
+                enabled: isInferenceDurableStreamEnabled(
+                  env.INFERENCE_DURABLE_STREAM_ENABLED,
+                ),
+              },
+            ),
             forgeGitAuthStore: makeForgeTenantGitAuthStoreForEnv(env),
             forgeStore: makeForgeCoordinationStoreForEnv(env),
             pylonStore: makePylonApiStoreForEnv(env),
@@ -13941,12 +13941,11 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       return handleAgentDefinitionForumWebhookRequest(request, {
         definitionStore: makeAgentDefinitionStoreForEnv(env),
         dispatchDependencies: {
-          durableStreamNamespace:
-            isInferenceDurableStreamEnabled(
+          durableStreamNamespace: durableInferenceStreamNamespaceForEnv(env, {
+            enabled: isInferenceDurableStreamEnabled(
               env.INFERENCE_DURABLE_STREAM_ENABLED,
-            ) && env.INFERENCE_DURABLE_STREAM !== undefined
-              ? (env.INFERENCE_DURABLE_STREAM as unknown as DurableStreamNamespace)
-              : undefined,
+            ),
+          }),
           forgeGitAuthStore: makeForgeTenantGitAuthStoreForEnv(env, { db }),
           forgeStore: makeForgeCoordinationStoreForEnv(env, { db }),
           pylonStore: makePylonApiStoreForEnv(env),
@@ -14566,25 +14565,27 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
           // here once a runner host exists. Until then the seam is inert.
           queue: undefined,
         },
-        // DURABLE-STREAM RANK-1 (#6058, EPIC #6056). LIVE when
-        // INFERENCE_DURABLE_STREAM_ENABLED is on AND the DO binding is wired:
-        // every streamed completion is teed into the per-request Durable Object
-        // (`DurableInferenceStreamObject`, keyed `getByName(responseId)`) over the
-        // `/v1/stream/{id}` HTTP contract, so a client disconnect mid-generation
-        // can be resumed by offset via the durable read route. The in-memory
-        // `durableStream` (synchronous `StreamStore`) factory stays undefined here
-        // — it is the test/contract substrate; production uses the DO namespace.
-        // Metering settles EXACTLY ONCE on the real upstream EOF and NEVER on a
-        // replay (the resume route has no metering hook). FAIL-SAFE: with the flag
-        // off OR the binding absent, `durableStreamNamespace` is undefined and the
+        // DURABLE-STREAM RANK-1 (#6058, EPIC #6056; Postgres-backed since
+        // CFG-6 #8521). LIVE when INFERENCE_DURABLE_STREAM_ENABLED is on AND
+        // the KHALA_SYNC_DB Hyperdrive binding is wired: every streamed
+        // completion is teed into the per-request Postgres durable stream
+        // (oa-infra DurableStream keyed by `responseId`) over the SAME
+        // `/v1/stream/{id}` transport contract the old
+        // `DurableInferenceStreamObject` served, so a client disconnect
+        // mid-generation can be resumed by offset via the durable read route.
+        // The in-memory `durableStream` (synchronous `StreamStore`) factory
+        // stays undefined here — it is the test/contract substrate;
+        // production uses the Postgres namespace. Metering settles EXACTLY
+        // ONCE on the real upstream EOF and NEVER on a replay (the resume
+        // route has no metering hook). FAIL-SAFE: with the flag off OR the
+        // binding absent, `durableStreamNamespace` is undefined and the
         // streaming path is byte-for-byte today's pure pass-through.
         durableStream: undefined,
-        durableStreamNamespace:
-          isInferenceDurableStreamEnabled(
+        durableStreamNamespace: durableInferenceStreamNamespaceForEnv(env, {
+          enabled: isInferenceDurableStreamEnabled(
             env.INFERENCE_DURABLE_STREAM_ENABLED,
-          ) && env.INFERENCE_DURABLE_STREAM !== undefined
-            ? (env.INFERENCE_DURABLE_STREAM as unknown as DurableStreamNamespace)
-            : undefined,
+          ),
+        }),
         durableStreamEnabled: isInferenceDurableStreamEnabled(
           env.INFERENCE_DURABLE_STREAM_ENABLED,
         ),
@@ -15042,12 +15043,14 @@ const routeRequest = makeWorkerRouteRequest({
             ? await handleAgentDefinitionRunRequest(request, {
                 agentStore: makeAgentRegistrationStoreForEnv(env),
                 definitionStore: makeAgentDefinitionStoreForEnv(env),
-                durableStreamNamespace:
-                  isInferenceDurableStreamEnabled(
-                    env.INFERENCE_DURABLE_STREAM_ENABLED,
-                  ) && env.INFERENCE_DURABLE_STREAM !== undefined
-                    ? (env.INFERENCE_DURABLE_STREAM as unknown as DurableStreamNamespace)
-                    : undefined,
+                durableStreamNamespace: durableInferenceStreamNamespaceForEnv(
+                  env,
+                  {
+                    enabled: isInferenceDurableStreamEnabled(
+                      env.INFERENCE_DURABLE_STREAM_ENABLED,
+                    ),
+                  },
+                ),
                 forgeGitAuthStore: makeForgeTenantGitAuthStoreForEnv(env, { db }),
                 forgeStore: makeForgeCoordinationStoreForEnv(env, { db }),
                 pylonStore: makePylonApiStoreForEnv(env),
@@ -15251,10 +15254,7 @@ const routeRequest = makeWorkerRouteRequest({
     const enabled =
       isInferenceGatewayEnabled(env.INFERENCE_GATEWAY_ENABLED) &&
       isInferenceDurableStreamEnabled(env.INFERENCE_DURABLE_STREAM_ENABLED)
-    const namespace =
-      enabled && env.INFERENCE_DURABLE_STREAM !== undefined
-        ? (env.INFERENCE_DURABLE_STREAM as unknown as DurableStreamNamespace)
-        : undefined
+    const namespace = durableInferenceStreamNamespaceForEnv(env, { enabled })
     const authorizeKhalaAssignmentRead = async (): Promise<
       Response | undefined
     > => {
@@ -15668,35 +15668,13 @@ const syncScopeFromRequest = (request: Request, url: URL): string | undefined =>
   url.searchParams.get('scope') ??
   undefined
 
-// Durable-stream Rank-1 resumable inference DO (#6058, EPIC #6056). One DO
-// instance per request id (`idFromName(requestId)`) holds that completion's
-// durable offset log in SQLite (the `@openagentsinc/durable-stream`
-// `SqliteStreamStore`). The gateway tees the upstream token stream in as the
-// producer; a dropped client resumes by reading `/v1/stream/{requestId}?offset=`.
-// TTL/expiry is driven by DO alarms (storage bounded). LIVE in production and
-// staging for Khala MCP coding-assignment resume/status when
-// INFERENCE_DURABLE_STREAM_ENABLED is on AND this binding is wired; envs that
-// omit either stay fail-safe non-durable.
-export class DurableInferenceStreamObject {
-  // The durable offset log is entirely self-contained in this DO's SQLite
-  // storage, so the DO needs no `Env` — it does not read bindings/secrets. The
-  // constructor takes only the DO state (Cloudflare passes `(state, env)`; the
-  // unused `env` is intentionally not bound).
-  constructor(private readonly state: DurableObjectState) {}
-
-  async fetch(request: Request): Promise<Response> {
-    return handleDurableStreamFetch(
-      this.state as unknown as DurableStreamObjectStateLike,
-      request,
-    )
-  }
-
-  async alarm(): Promise<void> {
-    handleDurableStreamAlarm(
-      this.state as unknown as DurableStreamObjectStateLike,
-    )
-  }
-}
+// The former `DurableInferenceStreamObject` Durable Object (#6058) was
+// REPLACED by the Postgres-backed durable stream (CFG-6 #8521, epic #8515):
+// per-request durable offset logs now live in `oa_infra_streams` /
+// `oa_infra_stream_chunks` behind the oa-infra DurableStream interface,
+// reached through the KHALA_SYNC_DB Hyperdrive binding
+// (src/inference/durable-inference-stream-backend.ts). The wrangler DO
+// binding + class were deleted (`deleted_sqlite_classes` migration).
 
 export class SyncRoomDurableObject {
   constructor(
@@ -15869,11 +15847,14 @@ export class AgentDefinitionSchedulerDurableObject {
     }
 
     const scheduledAt = await readAgentDefinitionSchedulerScheduledAt(request)
-    const durableStreamNamespace =
-      isInferenceDurableStreamEnabled(this.env.INFERENCE_DURABLE_STREAM_ENABLED) &&
-      this.env.INFERENCE_DURABLE_STREAM !== undefined
-        ? (this.env.INFERENCE_DURABLE_STREAM as unknown as DurableStreamNamespace)
-        : undefined
+    const durableStreamNamespace = durableInferenceStreamNamespaceForEnv(
+      this.env,
+      {
+        enabled: isInferenceDurableStreamEnabled(
+          this.env.INFERENCE_DURABLE_STREAM_ENABLED,
+        ),
+      },
+    )
     const result = await runAgentDefinitionSchedulerTick(
       makeAgentDefinitionSchedulerDependencies({
         db: openAgentsDatabase(this.env),

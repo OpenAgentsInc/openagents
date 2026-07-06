@@ -156,9 +156,10 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   // 2026-07-05 because Khala MCP coding assignments (`khala.request`,
   // `khala.spawn`, `khala.resume`, `khala.status`) depend on the durable read
   // URL for caller-owned Pylon/Codex resume/status. If unset, the gateway remains
-  // fail-safe non-durable pass-through. When set "true"/"1"/"on", the DO binding
-  // `INFERENCE_DURABLE_STREAM` must also be wired; metering still settles
-  // EXACTLY ONCE on the real upstream EOF and NEVER on a resume/replay read.
+  // fail-safe non-durable pass-through. When set "true"/"1"/"on", the
+  // `KHALA_SYNC_DB` Hyperdrive binding must also be wired (the durable log is
+  // Postgres-backed since CFG-6 #8521); metering still settles EXACTLY ONCE on
+  // the real upstream EOF and NEVER on a resume/replay read.
   INFERENCE_DURABLE_STREAM_ENABLED?: string | undefined
   // Typed component-channel feature flag (Khala, EPIC #6123, issue #6127).
   // Default OFF: the `/v1/chat/completions` `oa.component` SSE channel is inert,
