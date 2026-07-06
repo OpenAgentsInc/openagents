@@ -110,6 +110,10 @@ const approvedExactRoutePaths = [
   // D1 agent_balances/pay_ins ledger.
   '/api/mobile/credits/balance',
   '/api/mobile/credits/transactions',
+  // Khala Mobile account deletion (MM-I2b, #8502). (Approved here as a
+  // rebase-hygiene fix alongside the credits routes above: this route landed
+  // in the manifest without its approved-list entry.)
+  '/api/mobile/account',
   '/api/mobile/push-tokens',
   '/api/mobile/notifications/preferences',
   '/api/internal/push/notify-events',
