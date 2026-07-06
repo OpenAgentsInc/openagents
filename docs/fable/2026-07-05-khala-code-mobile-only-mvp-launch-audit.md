@@ -124,7 +124,12 @@ notifications** (zero APNs/FCM/Expo-push code anywhere, client or server).
   prebuild/build (`BUILD SUCCESSFUL` with Homebrew OpenJDK 17 and the installed
   Android command-line SDK), repo `check:deploy`, and an iPhone 17 simulator
   fresh-install smoke showing the GitHub-only signed-out screen with no Tailnet
-  or manual-token controls.
+  or manual-token controls. The native-module runtime bump was followed by a
+  signed iOS OTA baseline publish from pushed `main`: runtime
+  `d72044f835d38b35da4a3559784593b45fce2ad8`, Cloud Run revision
+  `oa-updates-00054-w5t`, and public manifest verification returned HTTP 200
+  multipart with an `expo-signature` manifest part, the matching runtime, 20
+  assets, and the `Khala Code` public Expo config.
 - There is **no GitHub App** (no installation tokens, no fine-grained
   per-repo permissions) — all repo access rides the user OAuth token.
 

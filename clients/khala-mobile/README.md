@@ -184,8 +184,8 @@ existing `{ ownerUserId, token }` SecureStore credential shape. Fresh installs
 must render exactly one primary signed-out action: `Sign in with GitHub`.
 Because `expo-web-browser` adds native config, `app.json` now carries iOS
 build number `8` and Android versionCode `2`; run local prebuild/build again
-and publish a fresh self-hosted OTA baseline for this runtime fingerprint after
-installing the native build.
+and publish a fresh self-hosted OTA baseline for this runtime fingerprint before
+shipping the native build.
 
 2026-07-05 #8470 verification receipt: iOS `bun run --cwd
 clients/khala-mobile prebuild:ios` then `bun run --cwd clients/khala-mobile
@@ -198,7 +198,13 @@ Runtime smoke on the iPhone 17 iOS 26.5 simulator used a fresh uninstall +
 install of the local Debug build, then plain `expo start`/Metro on
 `localhost:8081`; the rendered signed-out screen showed `Khala Code`, one
 `Sign in with GitHub` primary button, and the no-desktop/no-Tailnet/no-manual
-token note.
+token note. The signed iOS OTA baseline for this native fingerprint was
+published from clean pushed `main` with
+`bash apps/oa-updates/scripts/publish-ota.sh`: runtime
+`d72044f835d38b35da4a3559784593b45fce2ad8`, Cloud Run revision
+`oa-updates-00054-w5t`, and the live `updates.openagents.com` manifest returned
+HTTP 200 multipart with an `expo-signature` manifest part, the matching runtime,
+20 assets, and `Khala Code` in `extra.expoClient`.
 
 Real STT/Apple FM capture parity remains unproven, but not because of
 simulator/device access — it is unproven because **neither platform's native
@@ -322,25 +328,21 @@ intentionally disabled for now: thread route params can include private refs or
 titles, so a future persistence pass must introduce a route-name-only safe
 snapshot before writing anything locally.
 
-## Owner-Gated Proof Still Needed
+## Remaining Proof Still Needed
 
-Source-level scaffold, policy tests, local typecheck, and both local
-prebuild+build receipts are agent-verifiable and green (see above and
-`docs/fable/2026-07-04-ts-8-expo-mobile-scaffold.md`). Two TestFlight uploads
-(build 1 and build 2, both `processingState: VALID`) are also independently
-confirmed via the App Store Connect API. What's left needs owner/device
-action:
+Source-level scaffold, policy tests, local typecheck, both local prebuild+build
+receipts, simulator launch smoke, and the #8470 signed iOS OTA publish receipt
+are agent-verifiable and green (see above and
+`docs/fable/2026-07-04-ts-8-expo-mobile-scaffold.md`). Two earlier TestFlight
+uploads (build 1 and build 2, both `processingState: VALID`) are also
+independently confirmed via the App Store Connect API. What's left needs
+owner/device action:
 
-- Produce one signed OTA round-trip receipt against a dev build — the
-  manifest-serving path (`updates.openagents.com/khala-mobile/manifest`) is
-  live and correct, but `publish-ota.sh`'s `gcloud run deploy` step needs an
-  interactive `gcloud auth login` re-auth on this machine first (see
-  `NEEDS_OWNER.md`). Re-checked 2026-07-05: still blocked — both
-  `gcloud auth application-default print-access-token` and
-  `gcloud run services list --account=<sa>` for the two locally-available
-  service-account keys (`oa-vertex-inference@...`, `nexus-mainnet@...`) fail
-  (reauth required / no Cloud Run permission on either SA), so there is
-  currently no non-interactive path around this.
+- Produce the device-level OTA apply receipt from an installed build: launch
+  once to download, terminate, relaunch to apply, then inspect `expo-v11.db`
+  for the new update row with `successful_launch_count >= 1` and
+  `failed_launch_count = 0`. The signed server-side manifest publish is live,
+  but the apply proof requires a real installed app lifecycle.
 - Implement real native capture — `startRecognitionAsync` on both platforms
   and the Apple FM bridge's availability probe are still hardcoded to fail
   closed (see the 2026-07-05 simulator-launch note above); this needs actual

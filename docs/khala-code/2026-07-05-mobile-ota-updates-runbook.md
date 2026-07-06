@@ -145,6 +145,13 @@ understanding them matters if OTA breaks again after a future change:
 5. **`deploy-cloudrun.sh` didn't forward the new env var.** Once
    `publish-ota.sh` started producing `OA_SEED_EXPO_CLIENT_PATH`, the
    deploy wrapper needed to actually pass it through to Cloud Run — fixed.
+6. **Optional release seed directories must exist in the build context.**
+   `apps/oa-updates/Dockerfile` copies `pylon-dist/` and `desktop-ota/` so
+   the same service can also serve Pylon and desktop artifacts. A fresh
+   mobile-only worktree did not have those ignored directories, so Cloud Build
+   failed at `COPY pylon-dist ./pylon-dist`. Fixed by tracking `.gitignore`
+   keep-files in both optional directories while continuing to ignore generated
+   release payloads.
 
 The lesson: OTA correctness needs both server-side (manifest shape, asset
 serving) and client-runtime (expo-updates' own launch/rollback behavior)
@@ -174,15 +181,17 @@ verification. A green `publish-ota.sh` run only proves the server side.
 2026-07-05 #8470 note: Khala Mobile GitHub sign-in added
 `expo-auth-session`, `expo-crypto`, and the `expo-web-browser` config plugin.
 That is native-affecting. The native build metadata was bumped to iOS build
-`8` and Android versionCode `2`; after the local prebuild/build/install pass,
-publish a fresh self-hosted OTA seed for the new fingerprint through this
-runbook, never through EAS Update. The local build pass is complete for this
+`8` and Android versionCode `2`. The local build pass is complete for this
 change: iOS prebuild/build finished with `** BUILD SUCCEEDED **`; Android
 prebuild/build finished with `BUILD SUCCESSFUL` when run with
 `JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home` and
-`ANDROID_HOME=/opt/homebrew/share/android-commandlinetools`. The Cloud Run OTA
-publish still belongs after the #8470 commit is on clean `origin/main`, per the
-deployment rule above.
+`ANDROID_HOME=/opt/homebrew/share/android-commandlinetools`. The signed iOS OTA
+baseline was then published from clean pushed `main` by
+`bash apps/oa-updates/scripts/publish-ota.sh`: runtime fingerprint
+`d72044f835d38b35da4a3559784593b45fce2ad8`, Cloud Run revision
+`oa-updates-00054-w5t`, and public manifest verification returned HTTP 200
+multipart with an `expo-signature` manifest part, the same runtime, 20 assets,
+and `extra.expoClient.name = "Khala Code"`.
 
 ## Where the OTA server itself lives
 
