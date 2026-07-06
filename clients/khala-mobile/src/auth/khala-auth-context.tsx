@@ -177,12 +177,27 @@ export const KhalaAuthProvider = ({ children }: { children: ReactNode }) => {
       )
       const result = await authRequest.promptAsync(discovery)
 
-      // The auth session can end several ways. Only a genuine user dismissal
-      // is silent; every OTHER non-success outcome (an OAuth error redirected
-      // back, a `locked` concurrent prompt) MUST surface a real reason. The
-      // old code swallowed all of them as a silent "cancelled", which is
-      // exactly how a real sign-in failure looked like nothing happened.
-      if (result.type !== "success") {
+      // Pull the callback query params (present on success AND on error
+      // results — `parseReturnUrl` attaches them either way).
+      const params = "params" in result ? (result.params ?? {}) : {}
+      const code = params.code
+      const oauthError = params.error
+
+      // A real OAuth error redirected back by the issuer (?error=...) is a
+      // genuine failure — never try to exchange a non-existent code.
+      if (typeof oauthError === "string" && oauthError.trim() !== "") {
+        if (!mountedRef.current) return
+        dispatch({
+          messageSafe: describeAuthSessionFailure(result),
+          type: "github_sign_in_failed",
+        })
+        return
+      }
+
+      // No usable code AND no error: the user closed the sheet, or the
+      // session ended without a callback. A clean dismissal is silent;
+      // anything else surfaces its reason instead of looking like nothing.
+      if (typeof code !== "string" || code.trim() === "") {
         if (!mountedRef.current) return
         if (result.type === "cancel" || result.type === "dismiss") {
           dispatch({ type: "github_sign_in_cancelled" })
@@ -195,26 +210,20 @@ export const KhalaAuthProvider = ({ children }: { children: ReactNode }) => {
         return
       }
 
-      // A `success` result can still carry an OAuth error in its params
-      // (e.g. the issuer redirected back `?error=...` on the app's own
-      // scheme). Treat that as a failure with the server's reason rather
-      // than trying to exchange a non-existent code.
-      const paramError = result.params.error
-      if (typeof paramError === "string" && paramError.trim() !== "") {
-        if (!mountedRef.current) return
-        dispatch({
-          messageSafe: describeAuthSessionFailure(result),
-          type: "github_sign_in_failed",
-        })
-        return
-      }
-
-      const code = result.params.code
+      // We have a code. Exchange it — even if expo flagged a `state_mismatch`
+      // (`result.type === 'error'`). With S256 PKCE the code is cryptographically
+      // bound to THIS request's `code_verifier`, which never leaves the device,
+      // so PKCE already provides the CSRF protection that `state` duplicates
+      // (OAuth 2.1 treats `state` as optional once PKCE is in use). Real bug
+      // (#8467): expo's cached-vs-returned `state` compare failed on device and
+      // silently blocked every sign-in even though the server had issued a valid
+      // code; the `/token` exchange below is the true security gate and rejects
+      // any code not minted for our verifier.
       const codeVerifier = authRequest.codeVerifier
 
-      if (typeof code !== "string" || code.trim() === "" || codeVerifier === undefined) {
+      if (codeVerifier === undefined) {
         throw new Error(
-          `GitHub sign-in did not return a usable authorization code (code=${typeof code}, verifier=${codeVerifier === undefined ? "missing" : "present"}).`,
+          "GitHub sign-in could not complete: PKCE code verifier was missing.",
         )
       }
 
