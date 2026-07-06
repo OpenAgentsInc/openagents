@@ -13,8 +13,14 @@ set -euo pipefail
 # Optional:
 #   export OA_SEED_PLATFORM=ios
 #   export OA_SEED_EXPO_CLIENT_PATH=/app/dist/expo-client.json
-#   export OA_SIGNING_KEY="$(cat private-key.pem)"
 #   export OA_DESKTOP_RELEASES_DIST=/app/desktop-dist
+#
+# Code signing (#8530 / CFG-14): the OTA manifest signing key reaches the
+# service as the OA_SIGNING_KEY env var mounted from GCP Secret Manager
+# (secret `oa-updates-codesign-key`, project openagentsgemini) via
+# --set-secrets. It is never passed as inline env. To point at a different
+# secret/version, export OA_SIGNING_SECRET=<secret-name>:<version>; set it
+# to the empty string to deploy without code signing (dev projects only).
 #
 # This script is intentionally not run by tests or setup. Run it manually when
 # the target Google Cloud project and seed export are ready.
@@ -48,8 +54,12 @@ args=(
   --set-env-vars "$env_csv"
 )
 
-if [[ -n "${OA_SIGNING_KEY:-}" ]]; then
-  args+=(--set-env-vars "OA_SIGNING_KEY=${OA_SIGNING_KEY}")
+# OA_SIGNING_KEY is mounted from Secret Manager, never inline (#8530).
+# --set-env-vars above replaces the full inline env list, so any previously
+# inline OA_SIGNING_KEY is dropped by the same deploy that mounts the secret.
+signing_secret="${OA_SIGNING_SECRET-oa-updates-codesign-key:latest}"
+if [[ -n "$signing_secret" ]]; then
+  args+=(--set-secrets "OA_SIGNING_KEY=${signing_secret}")
 fi
 
 gcloud "${args[@]}"

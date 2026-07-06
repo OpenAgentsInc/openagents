@@ -139,6 +139,28 @@ module "oa_cloud_run_bridge" {
 }
 
 # ---------------------------------------------------------------------------
+# Secret Manager (containers only; versions are added out-of-band)
+# ---------------------------------------------------------------------------
+
+# OTA manifest code-signing private key for oa-updates (#8530 / CFG-14).
+# Mounted into the Cloud Run service as the OA_SIGNING_KEY env var via
+# `--set-secrets` (see apps/oa-updates/scripts/deploy-cloudrun.sh). The key
+# bytes live only in Secret Manager versions (added out-of-band) and the
+# local operator backup; never in HCL or state.
+module "oa_updates_codesign_key" {
+  source = "../modules/secret-manager-secret"
+
+  project   = var.project_id
+  secret_id = "oa-updates-codesign-key"
+
+  # Default compute SA — the runtime service account of the oa-updates
+  # Cloud Run service.
+  accessor_members = [
+    "serviceAccount:157437760789-compute@developer.gserviceaccount.com",
+  ]
+}
+
+# ---------------------------------------------------------------------------
 # GCS buckets
 # ---------------------------------------------------------------------------
 

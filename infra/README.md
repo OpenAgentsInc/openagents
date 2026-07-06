@@ -30,6 +30,7 @@ infra/
     scheduler-job/       HTTP-target Cloud Scheduler job (not yet instantiated)
     service-account/     SA + non-authoritative role grants (not yet instantiated)
     monitoring-alerts/   CPU / connections / 5xx / budget policies (not yet instantiated)
+    secret-manager-secret/  secret CONTAINER + accessor grants — versions stay out-of-band
 ```
 
 Note: `backend.tf` and `providers.tf` live inside `prod/` (not at `infra/`)
@@ -48,9 +49,10 @@ its own copies with a different state prefix.
 | Cloud Run `oa-cloud-run-bridge` (shell) | `module.oa_cloud_run_bridge` |
 | GCS `openagentsgemini-oa-updates` | `module.oa_updates_bucket` |
 | GCS `openagentsgemini-terraform-state` | `module.terraform_state_bucket` |
+| Secret Manager `oa-updates-codesign-key` + accessor grant (#8530) | `module.oa_updates_codesign_key` |
 
-19 resources total. `tofu plan` is a **no-op** against live as of import day;
-there are no accepted diffs.
+19 resources on import day, +2 imported for #8530. `tofu plan` was a
+**no-op** against live as of import day; there are no accepted diffs.
 
 ## Deliberate design decisions
 
@@ -60,10 +62,14 @@ there are no accepted diffs.
   never show up as drift and runtime env values never need to live in HCL.
 - **No credentials in HCL.** SQL users are tracked for existence only;
   passwords are set/rotated with `gcloud sql users set-password` and ignored
-  by the provider config. Caveat: imported Cloud Run services carry their
-  live env in **state** (including the `oa-updates` `OA_SIGNING_KEY`); the
-  state bucket is private + uniform-access, but that key should move to
-  Secret Manager (follow-up under epic #8515).
+  by the provider config. Secret Manager secrets are tracked as **containers
+  only** (`modules/secret-manager-secret`): versions/payloads are added
+  out-of-band with `gcloud secrets versions add`, never through Terraform.
+  The `oa-updates` `OA_SIGNING_KEY` moved from inline Cloud Run env to the
+  `oa-updates-codesign-key` secret on 2026-07-06 (#8530 / CFG-14); state was
+  refreshed to the secret-ref shape and all superseded GCS state versions
+  containing the inline key were purged (they linger in the bucket's 7-day
+  soft-delete window until ~2026-07-13, admin-restore only, then are gone).
 - **Destroy guards.** `deletion_protection = true` (Terraform-side) on every
   SQL instance and Cloud Run service, so a bad refactor cannot plan a
   destroy/replace of live data.

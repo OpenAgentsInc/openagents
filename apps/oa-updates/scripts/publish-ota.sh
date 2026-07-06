@@ -38,13 +38,17 @@ export OA_SEED_DIST="/app/dist"
 export OA_SEED_RUNTIME="$RUNTIME"
 export OA_SEED_PLATFORM="$PLATFORM"
 export OA_SEED_EXPO_CLIENT_PATH="/app/dist/expo-client.json"
-# #4949 code signing: sign every manifest with our private key (keyid "main",
-# rsa-v1_5-sha256) so the client's embedded codeSigningCertificate verifies it.
-SIGN_KEY="$REPO/.secrets/oa-updates-codesign-private.pem"
-if [[ -z "${OA_SIGNING_KEY:-}" && -f "$SIGN_KEY" ]]; then
-  export OA_SIGNING_KEY="$(cat "$SIGN_KEY")"
-  echo "    code signing: enabled (keyid main)"
-fi
+# #4949 code signing: the server signs every manifest with our private key
+# (keyid "main", rsa-v1_5-sha256) so the client's embedded
+# codeSigningCertificate verifies it. Since #8530 (CFG-14) the key reaches
+# Cloud Run from GCP Secret Manager (secret `oa-updates-codesign-key`,
+# mounted as OA_SIGNING_KEY by deploy-cloudrun.sh via --set-secrets) — it is
+# no longer read from the local .pem here or passed as inline env. The local
+# backup stays at .secrets/oa-updates-codesign-private.pem; to rotate, add a
+# new secret version (newline-stripped to match the historical inline value):
+#   printf '%s' "$(cat .secrets/oa-updates-codesign-private.pem)" \
+#     | gcloud secrets versions add oa-updates-codesign-key --data-file=-
+echo "    code signing: enabled (keyid main, key via Secret Manager)"
 bash "$REPO/apps/oa-updates/scripts/deploy-cloudrun.sh"
 
 echo "==> published. Verify:"
