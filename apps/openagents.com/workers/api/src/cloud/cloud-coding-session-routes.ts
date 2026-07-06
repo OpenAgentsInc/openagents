@@ -36,9 +36,11 @@
 
 import { Effect, Schema as S } from 'effect'
 
+import { AgentRateLimitPolicy } from '../agent-rate-limit-policy'
 import { noStoreJsonResponse } from '../http/responses'
 import { parseJsonRecord } from '../json-boundary'
 import { workerLogEntry } from '../observability'
+import { readAgentBalance } from '../payments-ledger'
 import {
   compactRandomId,
   currentEpochMillis,
@@ -117,6 +119,22 @@ const CloudCodingSessionRequestBody = S.Struct({
 // cloud VM indefinitely.
 export const DEFAULT_CLOUD_CODING_TIMEOUT_SECONDS = 1800
 export const MAX_CLOUD_CODING_TIMEOUT_SECONDS = 14400
+
+const USER_CAPACITY_OPTION_KEYS = new Set([
+  'pylonRef',
+  'pylon_ref',
+  'userPylonRef',
+  'user_pylon_ref',
+  'runnerId',
+  'runner_id',
+  'capacityRef',
+  'capacity_ref',
+])
+
+const hasUserCapacityOption = (
+  raw: Readonly<Record<string, unknown>>,
+): boolean =>
+  Object.keys(raw).some(key => USER_CAPACITY_OPTION_KEYS.has(key))
 
 export type CloudCodingSessionRequest = Readonly<{
   repoRef: string
@@ -224,6 +242,358 @@ export const decidePlacement = (
     requestedLane: input.lane,
     tier: input.tier,
   }
+}
+
+// ADMISSION POLICY ---------------------------------------------------------
+// Credit-gated org-cloud admission for Khala Code mobile. This is additive to
+// the owner-self/user-Pylon dispatch lane: it admits ONLY to OpenAgents-owned
+// Agent Computer capacity, never to another user's Pylon or caller-supplied
+// capacity selectors.
+export const CloudCodingAdmissionRefusalReason = S.Literals([
+  'insufficient_credit',
+  'rate_limited',
+  'org_capacity_unavailable',
+])
+export type CloudCodingAdmissionRefusalReason =
+  typeof CloudCodingAdmissionRefusalReason.Type
+
+export type CloudCodingAdmissionLimits = Readonly<{
+  maxConcurrentSessions: number
+  maxRequests: number
+  windowSeconds: number
+}>
+
+export const DEFAULT_CLOUD_CODING_ADMISSION_LIMITS: CloudCodingAdmissionLimits =
+  {
+    maxConcurrentSessions: 1,
+    maxRequests: AgentRateLimitPolicy.limit,
+    windowSeconds: AgentRateLimitPolicy.windowSeconds,
+  }
+
+export type CloudCodingAdmissionSnapshot = Readonly<{
+  accountRef: string
+  activeSessions: number
+  agentComputerCapacityAvailable: boolean
+  availableBalanceMsat: number
+  capacityRef: string
+  requestsInWindow: number
+}>
+
+export type CloudCodingAdmissionAllowed = Readonly<{
+  allowed: true
+  availableBalanceMsat: number
+  capacityRef: string
+  limit: number
+  remainingConcurrentSessions: number
+  remainingRequests: number
+  windowSeconds: number
+}>
+
+export type CloudCodingAdmissionRefused = Readonly<{
+  allowed: false
+  availableBalanceMsat: number
+  capacityRef: string
+  reason: CloudCodingAdmissionRefusalReason
+  reasonRef: string
+  statusCode: 402 | 429 | 503
+  limit: number
+  remainingConcurrentSessions: number
+  remainingRequests: number
+  windowSeconds: number
+}>
+
+export type CloudCodingAdmissionDecision =
+  | CloudCodingAdmissionAllowed
+  | CloudCodingAdmissionRefused
+
+export const decideCloudCodingAdmission = (
+  input: Readonly<{
+    limits?: CloudCodingAdmissionLimits
+    snapshot: CloudCodingAdmissionSnapshot
+  }>,
+): CloudCodingAdmissionDecision => {
+  const limits = input.limits ?? DEFAULT_CLOUD_CODING_ADMISSION_LIMITS
+  const availableBalanceMsat = Math.max(
+    0,
+    Math.trunc(input.snapshot.availableBalanceMsat),
+  )
+  const activeSessions = Math.max(0, Math.trunc(input.snapshot.activeSessions))
+  const requestsInWindow = Math.max(
+    0,
+    Math.trunc(input.snapshot.requestsInWindow),
+  )
+  const remainingConcurrentSessions = Math.max(
+    0,
+    limits.maxConcurrentSessions - activeSessions,
+  )
+  const remainingRequests = Math.max(0, limits.maxRequests - requestsInWindow)
+  const base = {
+    availableBalanceMsat,
+    capacityRef: input.snapshot.capacityRef,
+    limit: limits.maxRequests,
+    remainingConcurrentSessions,
+    remainingRequests,
+    windowSeconds: limits.windowSeconds,
+  }
+
+  if (availableBalanceMsat <= 0) {
+    return {
+      ...base,
+      allowed: false,
+      reason: 'insufficient_credit',
+      reasonRef: 'reason.agent_computer_admission.insufficient_credit',
+      statusCode: 402,
+    }
+  }
+
+  if (
+    activeSessions >= limits.maxConcurrentSessions ||
+    requestsInWindow >= limits.maxRequests
+  ) {
+    return {
+      ...base,
+      allowed: false,
+      reason: 'rate_limited',
+      reasonRef: 'reason.agent_computer_admission.rate_limited',
+      statusCode: 429,
+    }
+  }
+
+  if (!input.snapshot.agentComputerCapacityAvailable) {
+    return {
+      ...base,
+      allowed: false,
+      reason: 'org_capacity_unavailable',
+      reasonRef: 'reason.agent_computer_admission.org_capacity_unavailable',
+      statusCode: 503,
+    }
+  }
+
+  return {
+    ...base,
+    allowed: true,
+  }
+}
+
+export type CloudCodingAdmissionContext = Readonly<{
+  accountRef: string
+  lane: CloudCodingLane
+  request: CloudCodingSessionRequest
+  sessionId: string
+  workContextRef: string
+}>
+
+export type CloudCodingAdmissionGate = (
+  context: CloudCodingAdmissionContext,
+) => Effect.Effect<CloudCodingAdmissionDecision>
+
+export const allowCloudCodingAdmissionGate: CloudCodingAdmissionGate = () =>
+  Effect.succeed({
+    allowed: true,
+    availableBalanceMsat: 1,
+    capacityRef: 'capacity.agent_computer.test.available',
+    limit: DEFAULT_CLOUD_CODING_ADMISSION_LIMITS.maxRequests,
+    remainingConcurrentSessions: 1,
+    remainingRequests: DEFAULT_CLOUD_CODING_ADMISSION_LIMITS.maxRequests,
+    windowSeconds: DEFAULT_CLOUD_CODING_ADMISSION_LIMITS.windowSeconds,
+  })
+
+const unconfiguredCloudCodingAdmissionGate: CloudCodingAdmissionGate = () =>
+  Effect.succeed(
+    decideCloudCodingAdmission({
+      snapshot: {
+        accountRef: 'agent:unknown',
+        activeSessions: 0,
+        agentComputerCapacityAvailable: false,
+        availableBalanceMsat: 1,
+        capacityRef: 'capacity.agent_computer.unconfigured',
+        requestsInWindow: 0,
+      },
+    }),
+  )
+
+export type AgentComputerCapacitySnapshot = Readonly<{
+  available: boolean
+  availableSlots: number
+  capacityRef: string
+}>
+
+export const configuredAgentComputerCapacitySnapshot = (
+  input: Readonly<{
+    baseUrl: string | undefined
+    bearerToken: string | undefined
+    gceProvisioningArmed: boolean
+  }>,
+): AgentComputerCapacitySnapshot => {
+  const available =
+    input.gceProvisioningArmed &&
+    isNonEmptyString(input.baseUrl) &&
+    isNonEmptyString(input.bearerToken)
+  return {
+    available,
+    availableSlots: available ? 1 : 0,
+    capacityRef: available
+      ? 'capacity.agent_computer.control_plane.armed'
+      : 'capacity.agent_computer.control_plane.unavailable',
+  }
+}
+
+export type CloudCodingAdmissionLedgerDeps = Readonly<{
+  capacity: () => Promise<AgentComputerCapacitySnapshot>
+  db: D1Database
+  limits?: CloudCodingAdmissionLimits
+  nowMs?: () => number
+}>
+
+type AdmissionCountRow = Readonly<{
+  active_sessions: unknown
+  requests_in_window: unknown
+}>
+
+const readAdmissionCounts = async (
+  db: D1Database,
+  input: Readonly<{
+    accountRef: string
+    nowMs: number
+    windowStartMs: number
+  }>,
+): Promise<Readonly<{ activeSessions: number; requestsInWindow: number }>> => {
+  const row = (await db
+    .prepare(
+      `SELECT
+         (SELECT COUNT(*) FROM cloud_coding_admission_reservations
+          WHERE account_ref = ? AND expires_at_ms > ?) AS active_sessions,
+         (SELECT COUNT(*) FROM cloud_coding_admission_events
+          WHERE account_ref = ? AND created_at_ms >= ?) AS requests_in_window`,
+    )
+    .bind(
+      input.accountRef,
+      input.nowMs,
+      input.accountRef,
+      input.windowStartMs,
+    )
+    .first()) as AdmissionCountRow | null
+
+  return {
+    activeSessions: Math.max(0, Number(row?.active_sessions ?? 0)),
+    requestsInWindow: Math.max(0, Number(row?.requests_in_window ?? 0)),
+  }
+}
+
+const recordAdmissionReservation = async (
+  db: D1Database,
+  input: Readonly<{
+    accountRef: string
+    capacityRef: string
+    eventId: string
+    expiresAtMs: number
+    lane: CloudCodingLane
+    nowMs: number
+    sessionId: string
+    workContextRef: string
+  }>,
+): Promise<void> => {
+  await db.batch([
+    db
+      .prepare(
+        `INSERT INTO cloud_coding_admission_events
+           (id, session_id, account_ref, work_context_ref, lane, event_kind,
+            capacity_ref, created_at_ms)
+         VALUES (?, ?, ?, ?, ?, 'admitted', ?, ?)`,
+      )
+      .bind(
+        input.eventId,
+        input.sessionId,
+        input.accountRef,
+        input.workContextRef,
+        input.lane,
+        input.capacityRef,
+        input.nowMs,
+      ),
+    db
+      .prepare(
+        `INSERT INTO cloud_coding_admission_reservations
+           (session_id, account_ref, work_context_ref, lane, state,
+            capacity_ref, created_at_ms, expires_at_ms)
+         VALUES (?, ?, ?, ?, 'admitted', ?, ?, ?)
+         ON CONFLICT(session_id) DO UPDATE SET
+           account_ref = excluded.account_ref,
+           work_context_ref = excluded.work_context_ref,
+           lane = excluded.lane,
+           state = excluded.state,
+           capacity_ref = excluded.capacity_ref,
+           expires_at_ms = excluded.expires_at_ms`,
+      )
+      .bind(
+        input.sessionId,
+        input.accountRef,
+        input.workContextRef,
+        input.lane,
+        input.capacityRef,
+        input.nowMs,
+        input.expiresAtMs,
+      ),
+  ])
+}
+
+export const makeD1CloudCodingAdmissionGate = (
+  deps: CloudCodingAdmissionLedgerDeps,
+): CloudCodingAdmissionGate => {
+  const limits = deps.limits ?? DEFAULT_CLOUD_CODING_ADMISSION_LIMITS
+  return context =>
+    Effect.promise(async () => {
+      try {
+        const nowMs = deps.nowMs?.() ?? currentEpochMillis()
+        const [balance, capacity, counts] = await Promise.all([
+          readAgentBalance(deps.db, context.accountRef),
+          deps.capacity(),
+          readAdmissionCounts(deps.db, {
+            accountRef: context.accountRef,
+            nowMs,
+            windowStartMs: nowMs - limits.windowSeconds * 1000,
+          }),
+        ])
+        const decision = decideCloudCodingAdmission({
+          limits,
+          snapshot: {
+            accountRef: context.accountRef,
+            activeSessions: counts.activeSessions,
+            agentComputerCapacityAvailable:
+              capacity.available && capacity.availableSlots > 0,
+            availableBalanceMsat: balance?.availableMsat ?? 0,
+            capacityRef: capacity.capacityRef,
+            requestsInWindow: counts.requestsInWindow,
+          },
+        })
+
+        if (decision.allowed) {
+          await recordAdmissionReservation(deps.db, {
+            accountRef: context.accountRef,
+            capacityRef: decision.capacityRef,
+            eventId: `admission.${refPart(context.sessionId)}.${nowMs}`,
+            expiresAtMs: nowMs + context.request.timeoutSeconds * 1000,
+            lane: context.lane,
+            nowMs,
+            sessionId: context.sessionId,
+            workContextRef: context.workContextRef,
+          })
+        }
+
+        return decision
+      } catch {
+        return decideCloudCodingAdmission({
+          limits,
+          snapshot: {
+            accountRef: context.accountRef,
+            activeSessions: limits.maxConcurrentSessions,
+            agentComputerCapacityAvailable: false,
+            availableBalanceMsat: 0,
+            capacityRef: 'capacity.agent_computer.admission_store_unavailable',
+            requestsInWindow: limits.maxRequests,
+          },
+        })
+      }
+    })
 }
 
 // MANAGED-RUNTIME ADAPTER SEAM ---------------------------------------------
@@ -855,6 +1225,9 @@ export type CloudCodingSessionServiceDeps = Readonly<{
   // OFF).
   enabled: boolean
   authenticate: CloudCodingAuth
+  // Credit/concurrency/capacity admission. Production wires this to the mobile
+  // bearer session's agent balance plus Agent Computer control-plane readiness.
+  admissionGate?: CloudCodingAdmissionGate
   // Runtime adapter. Defaults to a fail-closed adapter; tests may inject the
   // stub explicitly, but production must never silently fake success.
   adapter?: CloudCodingRuntimeAdapter
@@ -936,6 +1309,41 @@ const projectSession = (session: CloudCodingSession) => ({
   created_at: session.createdAt,
 })
 
+const admissionRefusalHeaders = (
+  decision: CloudCodingAdmissionRefused,
+): Headers => {
+  const headers = new Headers()
+  if (decision.reason === 'rate_limited') {
+    headers.set('ratelimit-limit', String(decision.limit))
+    headers.set(
+      'ratelimit-policy',
+      `${decision.limit};w=${decision.windowSeconds}`,
+    )
+    headers.set('ratelimit-reset', String(decision.windowSeconds))
+  }
+  return headers
+}
+
+const admissionRefusalResponse = (
+  decision: CloudCodingAdmissionRefused,
+): Response =>
+  noStoreJsonResponse(
+    {
+      error: decision.reason,
+      available_balance_msat: decision.availableBalanceMsat,
+      capacity_ref: decision.capacityRef,
+      reason: decision.reason,
+      reason_ref: decision.reasonRef,
+      remaining_concurrent_sessions: decision.remainingConcurrentSessions,
+      remaining_requests: decision.remainingRequests,
+      window_seconds: decision.windowSeconds,
+    },
+    {
+      headers: admissionRefusalHeaders(decision),
+      status: decision.statusCode,
+    },
+  )
+
 // ROUTE: POST /v1/cloud-coding-sessions (launch a managed cloud coding session).
 // INERT (404) by default until the EPIC lands.
 export const handleCloudCodingSessionLaunch = (
@@ -973,6 +1381,12 @@ export const handleCloudCodingSessionLaunch = (
     })
     if (rawBody === undefined) {
       return noStoreJsonResponse({ error: 'invalid_json' }, { status: 400 })
+    }
+    if (hasUserCapacityOption(rawBody)) {
+      return noStoreJsonResponse(
+        { error: 'user_pylon_capacity_not_admissible' },
+        { status: 400 },
+      )
     }
 
     const body = decodeBody(rawBody)
@@ -1020,6 +1434,22 @@ export const handleCloudCodingSessionLaunch = (
       )
     }
 
+    const newId = deps.newId ?? (() => compactRandomId('ccs'))
+    const sessionId = newId()
+    const workContextRef = workContextRefForSession(sessionRequest, sessionId)
+    const admissionGate =
+      deps.admissionGate ?? unconfiguredCloudCodingAdmissionGate
+    const admission = yield* admissionGate({
+      accountRef: session.accountRef,
+      lane: placement.lane,
+      request: sessionRequest,
+      sessionId,
+      workContextRef,
+    })
+    if (!admission.allowed) {
+      return admissionRefusalResponse(admission)
+    }
+
     const adapter =
       deps.adapter ??
       makeCloudControlCloudCodingAdapter({
@@ -1028,8 +1458,6 @@ export const handleCloudCodingSessionLaunch = (
         gceProvisioningArmed: false,
       })
     const meteringHook = deps.meteringHook ?? stubCloudCodingMeteringHook
-    const newId = deps.newId ?? (() => compactRandomId('ccs'))
-    const sessionId = newId()
 
     const launched = yield* adapter
       .launch({

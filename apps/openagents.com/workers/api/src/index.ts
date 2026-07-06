@@ -354,9 +354,11 @@ import { makeCheckoutPageRoutes } from './checkout-page-routes'
 // OA_CLOUD_CONTROL_URL/TOKEN are configured. The promise STAYS red until a real
 // desktop-originated GCE run produces artifact + receipt evidence.
 import {
+  configuredAgentComputerCapacitySnapshot,
   isCloudGceProvisioningArmed,
   isCloudCodingSessionsEnabled,
   makeCloudControlCloudCodingAdapter,
+  makeD1CloudCodingAdmissionGate,
   routeCloudCodingSessionRequest as routeCloudCodingSessionRequestImpl,
 } from './cloud/cloud-coding-session-routes'
 import { makeD1CloudPrimitiveReceiptStore } from './cloud/cloud-primitive-receipts'
@@ -626,6 +628,7 @@ import {
   withFreeTierKhala,
 } from './inference/inference-free-tier-key'
 import { grantGithubSignupCredit } from './inference/github-signup-credit-grant'
+import { agentRefForUser } from './inference/usd-credit-bridge'
 import { parseInternalAccountRefs } from './inference/inference-internal-account'
 import {
   isOperatorExemptionEnabled,
@@ -15018,21 +15021,26 @@ const routeRequest = makeWorkerRouteRequest({
   // tries the real cloud placement/GCE/Firecracker path and fails closed with
   // typed not-armed errors until OA_CODEX_GCE_PROVISIONER=live plus cloud
   // control endpoint/token are configured.
-  routeCloudCodingSessionRequest: (request, env) =>
+  routeCloudCodingSessionRequest: (request, env, ctx) =>
     routeCloudCodingSessionRequestImpl(request, {
       authenticate: async authRequest => {
-        const token = readBearerToken(authRequest)
-        if (token === undefined) {
+        const session = await requireUserBearerSession(authRequest, env, ctx)
+        if (session === undefined) {
           return undefined
         }
-        const session = await authenticateProgrammaticAgent(
-          makeAgentRegistrationStoreForEnv(env),
-          token,
-        )
-        return session === undefined
-          ? undefined
-          : { accountRef: `agent:${session.user.id}` }
+        return { accountRef: agentRefForUser(session.user.userId) }
       },
+      admissionGate: makeD1CloudCodingAdmissionGate({
+        capacity: async () =>
+          configuredAgentComputerCapacitySnapshot({
+            baseUrl: env.OA_CLOUD_CONTROL_URL,
+            bearerToken: env.OA_CLOUD_CONTROL_TOKEN,
+            gceProvisioningArmed: isCloudGceProvisioningArmed(
+              env.OA_CODEX_GCE_PROVISIONER,
+            ),
+          }),
+        db: openAgentsDatabase(env),
+      }),
       adapter: makeCloudControlCloudCodingAdapter({
         baseUrl: env.OA_CLOUD_CONTROL_URL ?? '',
         bearerToken: env.OA_CLOUD_CONTROL_TOKEN ?? '',

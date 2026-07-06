@@ -3,6 +3,7 @@ import { describe, expect, test } from 'vitest'
 
 import {
   type CloudCodingAuth,
+  type CloudCodingAdmissionGate,
   type CloudCodingMeteringHook,
   type CloudCodingRuntimeAdapter,
   type CloudCodingSession,
@@ -10,7 +11,10 @@ import {
   CloudCodingAdapterError,
   MAX_CLOUD_CODING_TIMEOUT_SECONDS,
   admissibleLanesForTrustTier,
+  allowCloudCodingAdmissionGate,
   cloudCodingSessionReceiptRef,
+  configuredAgentComputerCapacitySnapshot,
+  decideCloudCodingAdmission,
   decidePlacement,
   handleCloudCodingSessionGet,
   handleCloudCodingSessionLaunch,
@@ -32,6 +36,7 @@ const baseDeps = (
   overrides: Partial<CloudCodingSessionServiceDeps> = {},
 ): CloudCodingSessionServiceDeps => ({
   authenticate: authOk,
+  admissionGate: allowCloudCodingAdmissionGate,
   adapter: stubCloudCodingAdapter,
   enabled: true,
   newId: () => 'ccs_fixed',
@@ -110,6 +115,94 @@ describe('placement policy (authority boundary)', () => {
   })
 })
 
+describe('agent computer admission policy', () => {
+  const snapshot = {
+    accountRef: 'agent:test-user',
+    activeSessions: 0,
+    agentComputerCapacityAvailable: true,
+    availableBalanceMsat: 10_000,
+    capacityRef: 'capacity.agent_computer.control_plane.armed',
+    requestsInWindow: 0,
+  }
+
+  test('allows only when balance, per-user limits, and org capacity are all healthy', () => {
+    const decision = decideCloudCodingAdmission({ snapshot })
+    expect(decision.allowed).toBe(true)
+    if (decision.allowed) {
+      expect(decision.availableBalanceMsat).toBe(10_000)
+      expect(decision.capacityRef).toBe(
+        'capacity.agent_computer.control_plane.armed',
+      )
+    }
+  })
+
+  test('positive-credit gate refuses zero-balance users before capacity is consumed', () => {
+    const decision = decideCloudCodingAdmission({
+      snapshot: { ...snapshot, availableBalanceMsat: 0 },
+    })
+    expect(decision.allowed).toBe(false)
+    if (!decision.allowed) {
+      expect(decision.reason).toBe('insufficient_credit')
+      expect(decision.statusCode).toBe(402)
+    }
+  })
+
+  test('per-user concurrency and request-window caps produce typed rate_limited refusals', () => {
+    const concurrent = decideCloudCodingAdmission({
+      limits: { maxConcurrentSessions: 1, maxRequests: 10, windowSeconds: 60 },
+      snapshot: { ...snapshot, activeSessions: 1 },
+    })
+    const requestWindow = decideCloudCodingAdmission({
+      limits: { maxConcurrentSessions: 2, maxRequests: 1, windowSeconds: 60 },
+      snapshot: { ...snapshot, requestsInWindow: 1 },
+    })
+    expect(concurrent.allowed).toBe(false)
+    expect(requestWindow.allowed).toBe(false)
+    if (!concurrent.allowed && !requestWindow.allowed) {
+      expect(concurrent.reason).toBe('rate_limited')
+      expect(requestWindow.reason).toBe('rate_limited')
+      expect(concurrent.statusCode).toBe(429)
+      expect(requestWindow.statusCode).toBe(429)
+    }
+  })
+
+  test('org capacity unavailable is distinct from credit and rate refusals', () => {
+    const decision = decideCloudCodingAdmission({
+      snapshot: { ...snapshot, agentComputerCapacityAvailable: false },
+    })
+    expect(decision.allowed).toBe(false)
+    if (!decision.allowed) {
+      expect(decision.reason).toBe('org_capacity_unavailable')
+      expect(decision.statusCode).toBe(503)
+    }
+  })
+
+  test('configured control-plane readiness is public-safe and fail-closed', () => {
+    expect(
+      configuredAgentComputerCapacitySnapshot({
+        baseUrl: 'https://cloud.openagents.test',
+        bearerToken: 'token',
+        gceProvisioningArmed: true,
+      }),
+    ).toEqual({
+      available: true,
+      availableSlots: 1,
+      capacityRef: 'capacity.agent_computer.control_plane.armed',
+    })
+    expect(
+      configuredAgentComputerCapacitySnapshot({
+        baseUrl: 'https://cloud.openagents.test',
+        bearerToken: '',
+        gceProvisioningArmed: true,
+      }),
+    ).toEqual({
+      available: false,
+      availableSlots: 0,
+      capacityRef: 'capacity.agent_computer.control_plane.unavailable',
+    })
+  })
+})
+
 describe('POST /v1/cloud-coding-sessions', () => {
   test('is inert (404) when the flag is disabled', async () => {
     const response = await run(
@@ -126,6 +219,7 @@ describe('POST /v1/cloud-coding-sessions', () => {
   test('fails closed with a typed not-armed error when no live GCE adapter is armed', async () => {
     const response = await run(
       handleCloudCodingSessionLaunch(launchRequest(validBody), {
+        admissionGate: allowCloudCodingAdmissionGate,
         authenticate: authOk,
         enabled: true,
         newId: () => 'ccs_fixed',
@@ -236,6 +330,152 @@ describe('POST /v1/cloud-coding-sessions', () => {
     }
     expect(body.error).toBe('lane_not_admissible_for_trust_tier')
     expect(body.admissibleLanes).toEqual(['cloud-shc'])
+    expect(launched).toBe(false)
+  })
+
+  test('rejects caller-supplied user Pylon selectors before admission or placement', async () => {
+    let admitted = false
+    let launched = false
+    const admissionGate: CloudCodingAdmissionGate = context => {
+      admitted = true
+      return allowCloudCodingAdmissionGate(context)
+    }
+    const adapter: CloudCodingRuntimeAdapter = {
+      ...stubCloudCodingAdapter,
+      launch: input => {
+        launched = true
+        return stubCloudCodingAdapter.launch(input)
+      },
+    }
+    const response = await run(
+      handleCloudCodingSessionLaunch(
+        launchRequest({
+          ...validBody,
+          pylonRef: 'pylon.user.somebody-else',
+        }),
+        baseDeps({ adapter, admissionGate }),
+      ),
+    )
+    expect(response.status).toBe(400)
+    expect(((await response.json()) as { error: string }).error).toBe(
+      'user_pylon_capacity_not_admissible',
+    )
+    expect(admitted).toBe(false)
+    expect(launched).toBe(false)
+  })
+
+  test('refuses insufficient_credit before cloud placement', async () => {
+    let launched = false
+    const admissionGate: CloudCodingAdmissionGate = () =>
+      Effect.succeed(
+        decideCloudCodingAdmission({
+          snapshot: {
+            accountRef: 'agent:test-user',
+            activeSessions: 0,
+            agentComputerCapacityAvailable: true,
+            availableBalanceMsat: 0,
+            capacityRef: 'capacity.agent_computer.control_plane.armed',
+            requestsInWindow: 0,
+          },
+        }),
+      )
+    const adapter: CloudCodingRuntimeAdapter = {
+      ...stubCloudCodingAdapter,
+      launch: input => {
+        launched = true
+        return stubCloudCodingAdapter.launch(input)
+      },
+    }
+    const response = await run(
+      handleCloudCodingSessionLaunch(
+        launchRequest(validBody),
+        baseDeps({ adapter, admissionGate }),
+      ),
+    )
+    expect(response.status).toBe(402)
+    const body = (await response.json()) as { error: string; reason: string }
+    expect(body.error).toBe('insufficient_credit')
+    expect(body.reason).toBe('insufficient_credit')
+    expect(launched).toBe(false)
+  })
+
+  test('refuses rate_limited with rate headers before cloud placement', async () => {
+    let launched = false
+    const admissionGate: CloudCodingAdmissionGate = () =>
+      Effect.succeed(
+        decideCloudCodingAdmission({
+          limits: { maxConcurrentSessions: 1, maxRequests: 1, windowSeconds: 60 },
+          snapshot: {
+            accountRef: 'agent:test-user',
+            activeSessions: 1,
+            agentComputerCapacityAvailable: true,
+            availableBalanceMsat: 10_000,
+            capacityRef: 'capacity.agent_computer.control_plane.armed',
+            requestsInWindow: 0,
+          },
+        }),
+      )
+    const adapter: CloudCodingRuntimeAdapter = {
+      ...stubCloudCodingAdapter,
+      launch: input => {
+        launched = true
+        return stubCloudCodingAdapter.launch(input)
+      },
+    }
+    const response = await run(
+      handleCloudCodingSessionLaunch(
+        launchRequest(validBody),
+        baseDeps({ adapter, admissionGate }),
+      ),
+    )
+    expect(response.status).toBe(429)
+    expect(response.headers.get('ratelimit-limit')).toBe('1')
+    expect(response.headers.get('ratelimit-policy')).toBe('1;w=60')
+    const body = (await response.json()) as { error: string; reason: string }
+    expect(body.error).toBe('rate_limited')
+    expect(body.reason).toBe('rate_limited')
+    expect(launched).toBe(false)
+  })
+
+  test('refuses org_capacity_unavailable before cloud placement', async () => {
+    let launched = false
+    const admissionGate: CloudCodingAdmissionGate = () =>
+      Effect.succeed(
+        decideCloudCodingAdmission({
+          snapshot: {
+            accountRef: 'agent:test-user',
+            activeSessions: 0,
+            agentComputerCapacityAvailable: false,
+            availableBalanceMsat: 10_000,
+            capacityRef: 'capacity.agent_computer.control_plane.unavailable',
+            requestsInWindow: 0,
+          },
+        }),
+      )
+    const adapter: CloudCodingRuntimeAdapter = {
+      ...stubCloudCodingAdapter,
+      launch: input => {
+        launched = true
+        return stubCloudCodingAdapter.launch(input)
+      },
+    }
+    const response = await run(
+      handleCloudCodingSessionLaunch(
+        launchRequest(validBody),
+        baseDeps({ adapter, admissionGate }),
+      ),
+    )
+    expect(response.status).toBe(503)
+    const body = (await response.json()) as {
+      capacity_ref: string
+      error: string
+      reason: string
+    }
+    expect(body.error).toBe('org_capacity_unavailable')
+    expect(body.reason).toBe('org_capacity_unavailable')
+    expect(body.capacity_ref).toBe(
+      'capacity.agent_computer.control_plane.unavailable',
+    )
     expect(launched).toBe(false)
   })
 

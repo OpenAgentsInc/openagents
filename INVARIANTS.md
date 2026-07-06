@@ -107,6 +107,13 @@ More specific invariant ledgers apply inside imported apps and packages.
   keys, wallet material, raw GCE topology, guest IPs, prompts, repo content,
   and private traces must not enter public projections, docs, issue comments,
   tests, fixtures, or logs.
+- Agent Computer admission is an additive mobile org-cloud gate. It must require
+  a mobile user bearer session, positive user credit balance, per-user
+  rate/concurrency allowance, and OpenAgents-owned Agent Computer capacity
+  before placement. It must refuse with typed `insufficient_credit`,
+  `rate_limited`, or `org_capacity_unavailable` outcomes, and it must never use
+  caller-supplied Pylon/user-capacity selectors to route through another user's
+  machine.
 - Secrets, wallet material, raw prompts, private repo content, provider
   payloads, and private customer data must not be committed or written into
   docs, tests, fixtures, logs, or public projections.

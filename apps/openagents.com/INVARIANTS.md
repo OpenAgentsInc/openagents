@@ -484,6 +484,17 @@ This is the invariant ledger for `openagents`.
   (`user + thread + repo binding`). The Pylon runtime and coding agents are
   implementation details inside the image, not the public product or metering
   unit.
+- Agent Computer launch admission is mobile-bearer and credit-gated. The Worker
+  must require a valid Khala mobile user bearer session, read the caller's
+  `agent:<userId>` credit balance from the existing Pool B ledger, enforce
+  per-user request/concurrency limits through the
+  `cloud_coding_admission_*` D1 ledger, and refuse with exactly
+  `insufficient_credit`, `rate_limited`, or `org_capacity_unavailable` before
+  any placement request reaches the private control plane.
+- The Agent Computer lane is additive and must never resolve caller-supplied
+  Pylon, runner, or user-capacity selectors. User-owned Pylon dispatch remains
+  on the owner-self path; org-cloud admission may route only to OpenAgents-owned
+  Agent Computer capacity.
 - Public Worker projections may expose only refs: placement refs, Agent
   Computer refs, work-context refs, lifecycle receipt refs, resource usage
   receipt refs, and content-addressed artifact refs. They must never expose raw

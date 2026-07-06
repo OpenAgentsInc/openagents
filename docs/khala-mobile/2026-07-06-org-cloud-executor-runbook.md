@@ -3,8 +3,9 @@
 Date: 2026-07-06
 Issues: #8473, #8503, #8474-#8477, #8479
 Status: #8473 executor spine landed; #8503 arms the Firecracker/GCE Agent
-Computer path; #8474 owns admission, #8475 owns SCM credentials, #8476 owns
-isolation enforcement, #8477 owns writeback, and #8479 owns charging.
+Computer path and is live-proof-gated; #8474 admission landed in the public
+Worker; #8475 owns SCM credentials, #8476 owns isolation enforcement, #8477
+owns writeback, and #8479 owns charging.
 
 ## Purpose
 
@@ -52,8 +53,10 @@ public docs, issue comments, tests, logs, or Worker projections.
 ## Launch Flow
 
 1. Mobile dispatch creates or resumes a thread with a repo binding.
-2. Admission (#8474) checks mobile session, positive credit balance,
-   concurrency, and capacity before any Agent Computer assignment.
+2. Admission (#8474) checks the mobile bearer session, positive Pool B credit
+   balance, per-user request/concurrency allowance, and Agent Computer capacity
+   before any placement or Agent Computer assignment. Refusals are exactly
+   `insufficient_credit`, `rate_limited`, or `org_capacity_unavailable`.
 3. The Worker posts a refs-only `openagents.codex_placement_assignment.v1`
    payload to the private control plane.
 4. The control plane provisions or reuses the work-context Agent Computer.
@@ -142,8 +145,8 @@ credit charging. Do not charge from estimates or client-supplied amounts.
 
 - #8503: live nested-virt host, signed/digest-pinned image, Worker arming, and
   one real mobile-dispatched Firecracker turn receipt.
-- #8474: mobile-session + positive-credit admission, rate/concurrency limits,
-  typed refusals, and INVARIANTS update.
+- #8474: public Worker admission gate landed; live turn admission still depends
+  on #8503 arming real Agent Computer capacity.
 - #8475: private GitHub checkout through the SCM auth broker only.
 - #8476: isolation enforcement and retention policy from the Agent Computers
   strategy.

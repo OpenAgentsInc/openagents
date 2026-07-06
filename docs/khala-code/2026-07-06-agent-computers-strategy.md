@@ -234,9 +234,14 @@ executor overhead amortized into token margin" never will be.
   the public GCE host script enforces nested virtualization and `/dev/kvm`
   verification. The issue remains open until the owner-gated live host/image
   receipts and first real mobile-dispatched microVM turn are recorded.
-- **#8474** (admission) — unchanged in substance; capacity now means
-  agent-computer capacity from the control-plane ledger. exe.dev pool
-  framing dropped.
+- **#8474** (admission) — public Worker gate landed: `/v1/cloud-coding-sessions`
+  now requires a mobile bearer session, positive Pool B credit balance,
+  per-user admission rate/concurrency allowance, and OpenAgents-owned Agent
+  Computer capacity before placement. It refuses with typed
+  `insufficient_credit`, `rate_limited`, or `org_capacity_unavailable` outcomes
+  and rejects caller-supplied Pylon/user-capacity selectors. Capacity now means
+  Agent Computer capacity from the control-plane readiness/ledger path; exe.dev
+  pool framing is dropped.
 - **#8475** (repo checkout) — unchanged in substance; the SCM-broker
   credential is delivered into the agent computer. exe.dev GitHub
   Integration option dropped — our broker is the only path.

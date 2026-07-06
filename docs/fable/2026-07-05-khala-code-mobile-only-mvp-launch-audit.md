@@ -562,7 +562,7 @@ this section is the operative plan. Two new owner decisions are folded in:
    alongside exact token usage. Product authority is unchanged: OpenAgents
    owns admission, accounting, sync, and owner-scope invariants.
 
-### 12.1 What landed (17 of 27 original workstream issues closed + shipped)
+### 12.1 What landed (18 of 27 original workstream issues closed + shipped)
 
 All merged to `main`, each closed with evidence on its issue:
 
@@ -580,10 +580,13 @@ All merged to `main`, each closed with evidence on its issue:
   into Pool B via the usd-credit-bridge, double-idempotent, race-verified,
   RL-3-compliant, account-age + per-IP anti-abuse floors), #8480 (balance +
   transaction history UI; also wired the real model picker).
-- **WS-C cloud execution (1 of 5)**: #8473 (org-cloud hosted executor
-  spine, hosted Khala/Gemini lane, exact runtime usage receipts, and the
+- **WS-C cloud execution (2 of 5)**: #8473 (org-cloud executor
+  spine, Khala/Gemini runtime lane, exact runtime usage receipts, and the
   operator runbook; core implementation commit `961d2f94ed` after rebasing
-  the stranded `decbe52666` work onto `6552e38c08`).
+  the stranded `decbe52666` work onto `6552e38c08`), #8474 (mobile bearer +
+  positive Pool B credit + per-user admission rate/concurrency +
+  Agent Computer capacity gate before placement, with typed refusals and
+  user-Pylon selector rejection).
 - **WS-E IAP (2 of 3)**: #8482 (server `iap_revenuecat` rail: webhook
   auth, SKU catalog, idempotent Pool B fulfillment, refund clawback —
   **dormant by owner decision**), #8483 (store-compliance checklist; found
@@ -617,7 +620,8 @@ All merged to `main`, each closed with evidence on its issue:
 | Issue | State | Why it's open |
 |---|---|---|
 | #8503 (AC-1 Agent Computers) | **In progress, public seam landed; live proof owner-gated** | Arms the existing Firecracker/GCE provisioning path (`cloud-coding-session-routes.ts` + the private `cloud/` provisioner) and proves the first real mobile turn inside a microVM, with lifecycle receipts. Public repo now projects Agent Computer work-context/lifecycle/resource receipt refs from `cloud.gce.*` events and documents/tests the nested-virt GCE host bootstrap under `apps/pylon/deploy/agent-computer/`. Remaining proof requires owner-gated live host/image/control-plane receipts. Strategy: `docs/khala-code/2026-07-06-agent-computers-strategy.md`. |
-| #8474–#8477 (C2–C5) | Not started | Were serialized behind C1; now build against the Agent Computers strategy (redirect comments on each issue): #8474 admits against agent-computer capacity from the control-plane ledger, #8475 delivers scoped credentials into the microVM via OUR SCM broker only, #8476 documents/enforces the strategy §4 Firecracker posture, #8477 unchanged. All exe.dev framing withdrawn. |
+| #8474 (C2 admission) | **Public Worker gate landed** | `/v1/cloud-coding-sessions` now admits only a valid mobile bearer user with positive Pool B credit balance, per-user admission rate/concurrency allowance, and OpenAgents-owned Agent Computer capacity before placement. Typed refusals are `insufficient_credit`, `rate_limited`, and `org_capacity_unavailable`; caller-supplied Pylon/user-capacity selectors are rejected before admission. Live turn admission still depends on #8503 arming real Firecracker capacity. |
+| #8475–#8477 (C3–C5) | Not started | Continue against the Agent Computers strategy (redirect comments on each issue): #8475 delivers scoped credentials into the microVM via OUR SCM broker only, #8476 documents/enforces the strategy §4 Firecracker posture, #8477 unchanged. All exe.dev framing withdrawn. |
 | #8479 (D2 metering) | Not started | Expanded: charges BOTH meters — exact token receipts (landed) and agent-computer compute-time from lifecycle receipts (`resource_usage_receipt.v1`). Owns the mid-run exhaustion policy + pre-dispatch cost line. Compute rate is NEEDS_OWNER. Host/VM metrics are ops telemetry only, never billing truth. |
 | #8490 (I1 Android/Play) | **Closed 2026-07-06** (Lane S3) | Agent-doable half shipped: real Android SDK/emulator bring-up, real Gradle debug build, launch+interaction Maestro pass (both a reused iOS flow AND a new sign-in-tap flow), Android build+upload runbook. Play Console app record/signing/upload remains owner-gated (`~/work/NEEDS_OWNER.md`). |
 | #8491 (I2 App Store pack) | **Closed 2026-07-06** (Lane S3) | Agent-doable submission-readiness doc shipped (listing copy, screenshot shot-list, privacy nutrition label, required-reason API notes, age rating, App Review notes, TestFlight staging plan). Found a real, previously-undocumented-as-launch-blocking gap: account deletion (Apple 5.1.1(v)) is unbuilt — filed #8502 as a tracked follow-up. ASC account actions remain owner-gated. |
