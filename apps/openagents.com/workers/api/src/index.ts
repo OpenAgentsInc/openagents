@@ -683,6 +683,14 @@ import {
   resolveSupplyLaneArming,
 } from './inference/model-serving-policy'
 import {
+  isModelIdAvailable,
+  normalizeModelPreferenceId,
+  readUserModelPreference,
+  resolveAvailableModelIds,
+  resolveModelPreference,
+  writeUserModelPreference,
+} from './inference/model-preference-store'
+import {
   handleModelsList,
   routeModelRetrieveRequest,
 } from './inference/models-routes'
@@ -5092,6 +5100,78 @@ const handleMobileSessionApi = async (
   return noStoreJsonResponse({
     ownerUserId: session.user.userId,
     syncToken: accessToken,
+  })
+}
+
+// MM-F1 (#8484): per-user model configuration. GET reads the caller's stored
+// preference (or the compiled default) resolved against this deployment's
+// actually-armed supply lanes; PUT sets it, rejecting a model id this
+// deployment cannot currently serve rather than silently accepting an
+// unservable choice. Both mobile-bearer-authorized (no cookies). See
+// `inference/model-preference-store.ts` for the pure resolution logic and its
+// header note on why this does NOT relax the public `/v1/chat/completions`
+// gateway's collapse-to-Khala model policy — the coding-executor lane
+// selection (#8473) is the intended consumer of the read side for coding
+// turns.
+const handleMobileModelPreferenceApi = async (
+  request: Request,
+  env: MobileAuthSessionBindings,
+  ctx: ExecutionContext,
+): Promise<Response> => {
+  if (request.method !== 'GET' && request.method !== 'PUT') {
+    return methodNotAllowed(['GET', 'PUT'])
+  }
+
+  const session = await requireUserBearerSession(request, env, ctx)
+
+  if (session === undefined) {
+    return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
+  }
+
+  const db = openAgentsDatabase(env)
+  const availableModelIds = resolveAvailableModelIds(resolveSupplyLaneArming(env))
+
+  if (request.method === 'PUT') {
+    const rawBody = await request.json().catch(() => undefined)
+    const modelId =
+      typeof (rawBody as { modelId?: unknown } | undefined)?.modelId === 'string'
+        ? ((rawBody as { modelId: string }).modelId.trim())
+        : ''
+
+    if (modelId === '') {
+      return noStoreJsonResponse(
+        { error: 'bad_request', reason: 'modelId is required' },
+        { status: 400 },
+      )
+    }
+
+    if (!isModelIdAvailable(modelId, availableModelIds)) {
+      return noStoreJsonResponse(
+        { availableModelIds, error: 'model_unavailable', modelId },
+        { status: 409 },
+      )
+    }
+
+    await writeUserModelPreference(db, {
+      modelId: normalizeModelPreferenceId(modelId),
+      nowIso: currentIsoTimestamp(),
+      userId: session.user.userId,
+    })
+  }
+
+  const stored = await readUserModelPreference(db, session.user.userId)
+  const resolution = resolveModelPreference({
+    availableModelIds,
+    storedModelId: stored?.modelId ?? null,
+  })
+
+  return noStoreJsonResponse({
+    availableModelIds,
+    effectiveModelId: resolution.effectiveModelId,
+    fallback: resolution.fallback,
+    preferredModelId: resolution.preferredModelId,
+    updatedAt: stored?.updatedAt ?? null,
+    usedPreference: resolution.usedPreference,
   })
 }
 
@@ -12526,6 +12606,11 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     path: '/api/mobile/session',
     handler: (request, env, ctx) =>
       Effect.promise(() => handleMobileSessionApi(request, env, ctx)),
+  },
+  {
+    path: '/api/mobile/model-preference',
+    handler: (request, env, ctx) =>
+      Effect.promise(() => handleMobileModelPreferenceApi(request, env, ctx)),
   },
   {
     // MM-G1 (#8485): mobile-bearer-authorized push device-token

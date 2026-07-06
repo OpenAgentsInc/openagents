@@ -104,6 +104,7 @@ const approvedExactRoutePaths = [
   '/api/auth/session',
   '/api/mobile/auth/session',
   '/api/mobile/session',
+  '/api/mobile/model-preference',
   '/api/mobile/push-tokens',
   '/api/mobile/notifications/preferences',
   '/api/internal/push/notify-events',

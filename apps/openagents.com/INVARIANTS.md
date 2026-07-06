@@ -439,6 +439,39 @@ This is the invariant ledger for `openagents`.
   fallback tier, that requires a separate routing change and tests rather than
   flipping `KHALA_BACKING_MODEL` back to `deepseek-v4-flash`.
 
+## Per-User Model Configuration (MM-F1, #8484) Does Not Relax The Public Gateway
+
+- `workers/api/src/inference/model-preference-store.ts` is the server-side
+  store + pure resolution for the mobile-only MVP's "configure what models you
+  use" promise: `GET`/`PUT /api/mobile/model-preference` (mobile-bearer-only,
+  no cookies) reads/writes one row per user in `user_model_preferences`
+  (migration 0306), defaulting to the `gemini` alias, validated against
+  `resolveAvailableModelIds` (the pricing table filtered to lanes actually
+  armed by `resolveSupplyLaneArming(env)` in THIS deployment — never a static
+  list a deployment cannot actually serve).
+- This module is DELIBERATELY separate from, and must not be used to relax,
+  `chat-completions-routes.ts`'s existing "public model selection intentionally
+  collapses to [the single Khala virtual model id]... must not be exposed as
+  public choices" enforcement (`DEFAULT_CHAT_MODEL`/`isKhalaModel` gate on
+  `/v1/chat/completions`). That gate protects the general OpenAI-compatible
+  gateway from arbitrary API callers picking arbitrary backing models/pricing;
+  it stays untouched. Per-user model choice among Gemini/Claude/etc. is a
+  NEW, intentionally more expansive mobile capability that must be threaded
+  through a privileged, mobile/coding-turn-specific dispatch path (the
+  org-cloud coding executor, #8473/#8474), which is the intended consumer of
+  the READ side. If a future change wires per-user preference into the public
+  gateway's model resolution directly, that is itself an invariant relaxation
+  requiring its own explicit owner sign-off and INVARIANTS.md update — do not
+  fold it into this store silently.
+- The resolution (`resolveModelPreference`) is typed and never silently
+  substitutes: it reports `none` / `no_preference_set` /
+  `preference_unavailable` / `default_unavailable` alongside both the
+  preferred and effective model ids, so a consumer (executor lane selection,
+  Settings UI) can always tell whether it is running the user's real choice, a
+  default, or nothing at all (`effectiveModelId: null` only when neither the
+  preference nor the default is currently servable). Regression coverage:
+  `workers/api/src/inference/model-preference-store.test.ts`.
+
 ## Khala Response Discipline And Reasoning Channel
 
 - Khala prose completions must carry the generic Blueprint response-discipline

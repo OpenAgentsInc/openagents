@@ -2867,6 +2867,62 @@ const schemaComponents = (): JsonSchema => ({
       },
     },
   },
+  ModelPreference: {
+    type: 'object',
+    additionalProperties: false,
+    required: [
+      'availableModelIds',
+      'effectiveModelId',
+      'fallback',
+      'preferredModelId',
+      'updatedAt',
+      'usedPreference',
+    ],
+    properties: {
+      preferredModelId: {
+        type: ['string', 'null'],
+        description: 'The caller’s raw stored preference, or null if never set.',
+      },
+      effectiveModelId: {
+        type: ['string', 'null'],
+        description:
+          'The model id that should actually be used. Only null in the extreme case where neither the stored preference nor the compiled default (`gemini`) is currently servable by this deployment.',
+      },
+      usedPreference: {
+        type: 'boolean',
+        description: 'True only when effectiveModelId is actually the caller’s own stored preference.',
+      },
+      fallback: {
+        type: 'string',
+        enum: ['none', 'no_preference_set', 'preference_unavailable', 'default_unavailable'],
+        description:
+          'Always reports which case applied — never a silent substitution. `preference_unavailable` means the stored choice is no longer servable by this deployment (its supply lane is unarmed); `default_unavailable` means even the compiled default (gemini) is currently unservable.',
+      },
+      availableModelIds: {
+        type: 'array',
+        items: { type: 'string' },
+        description: 'Model ids this deployment can actually serve right now (supply lane armed), for the Settings picker.',
+      },
+      updatedAt: {
+        type: ['string', 'null'],
+        description: 'ISO timestamp the preference was last set, or null if never set.',
+      },
+    },
+    description:
+      'Per-user model configuration (MM-F1, #8484): the caller’s stored model preference resolved against this deployment’s actually-armed supply lanes, with a typed, never-silent fallback.',
+  },
+  SetModelPreferenceRequest: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['modelId'],
+    properties: {
+      modelId: {
+        type: 'string',
+        description:
+          'A model id from the current GET response’s availableModelIds (e.g. "gemini"). A model this deployment cannot currently serve is rejected with 409 model_unavailable, never silently substituted.',
+      },
+    },
+  },
   OnboardingStatus: objectSummary(
     'Signed-in customer onboarding state projection.',
   ),
@@ -10773,6 +10829,41 @@ const paths = (): JsonSchema => ({
           'Push notify-event dispatch result.',
           '#/components/schemas/PushNotifyEventResponse',
         ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/mobile/model-preference': {
+    get: operation({
+      operationId: 'getMobileModelPreference',
+      summary: 'Read per-user model configuration',
+      description:
+        'Reads the signed-in mobile user’s stored model preference (MM-F1, #8484), resolved against this deployment’s actually-armed supply lanes. Defaults to `gemini` when unset. Never silently substitutes: `fallback` always reports whether the response is the caller’s real preference, the default, or an honest "nothing servable" (`effectiveModelId: null`).',
+      tags: ['Agents'],
+      security: mobileUserBearer,
+      responses: {
+        '200': okJson('Model preference.', '#/components/schemas/ModelPreference'),
+        ...errorResponses(),
+      },
+    }),
+    put: operation({
+      operationId: 'setMobileModelPreference',
+      summary: 'Set per-user model configuration',
+      description:
+        'Sets the signed-in mobile user’s model preference (MM-F1, #8484). Rejects a model id this deployment cannot currently serve with 409 model_unavailable (and the current availableModelIds) rather than silently accepting an unservable choice.',
+      tags: ['Agents'],
+      security: mobileUserBearer,
+      requestBody: jsonContent('#/components/schemas/SetModelPreferenceRequest'),
+      responses: {
+        '200': okJson('Updated model preference.', '#/components/schemas/ModelPreference'),
+        '400': {
+          description: 'modelId missing or invalid JSON body.',
+          ...jsonContent('#/components/schemas/ErrorResponse'),
+        },
+        '409': {
+          description: 'The requested modelId is not currently servable by this deployment.',
+          ...jsonContent('#/components/schemas/ErrorResponse'),
+        },
         ...errorResponses(),
       },
     }),
