@@ -16,6 +16,7 @@ import { KhalaListItem } from "../components/khala-list-item"
 import { KhalaScreen } from "../components/khala-screen"
 import { KhalaText } from "../components/khala-text"
 import type { AppDrawerScreenProps, AppStackParamList } from "../navigators/navigationTypes"
+import { OnboardingFlow } from "./onboarding-flow"
 import { formatRelativeTime } from "../sync/relative-time-core"
 import { sortByKeyDesc } from "../sync/khala-sync-entities-core"
 import { useKhalaMobileSyncPrimitives } from "../sync/khala-mobile-sync-runtime-context"
@@ -191,6 +192,14 @@ export const ThreadListScreen = ({ navigation }: ThreadListScreenProps) => {
         <ThreadListNotice detail={state.error ?? "Could not read local threads."} title="Threads unavailable" tone="danger" />
       ) : state.status === "loading" && threads.length === 0 ? (
         <ThreadListNotice loading title="Loading threads" tone="accent" />
+      ) : state.status === "ready" && threads.length === 0 ? (
+        // MM-H2 (#8488): a confirmed-empty thread list (never "still
+        // loading") IS the onboarding entry point — no separate route to get
+        // stuck on, and it naturally never shows again once the user has any
+        // thread at all.
+        <OnboardingFlow
+          onThreadCreated={({ threadId, title }) => stackNavigation?.replace("ThreadMessages", { threadId, title })}
+        />
       ) : (
         <FlatList
           ItemSeparatorComponent={renderThreadListSeparator}

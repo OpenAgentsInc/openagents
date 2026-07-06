@@ -86,7 +86,7 @@ top follow-up item for whoever picks this up next.
 
 ## Registry
 
-Registry version: `2026-07-05.7` (schema `openagents.behavior_contracts.v1`)
+Registry version: `2026-07-05.8` (schema `openagents.behavior_contracts.v1`)
 
 ### `khala_mobile.auth.tailnet_auto_discovery_before_manual_login.v1` — RETIRED
 
@@ -255,3 +255,13 @@ Registry version: `2026-07-05.7` (schema `openagents.behavior_contracts.v1`)
 - **Oracle** `push_device_id_and_prompt_flag_persistence.unit` (bun-test, unit): The device id persisted for push registration is generated exactly once and reused thereafter, and the has-ever-prompted flag survives sign-out (clearPushDeviceId) since OS permission is a device-level fact, not an account-level one. — `clients/khala-mobile/tests/push-device-store.test.ts`
 - **Verification:** bun test tests/push-registration-core.test.ts tests/push-device-store.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.
 - **Authority boundary:** Binds only WHEN the OS permission prompt is allowed to fire and how many times the app may trigger it automatically. It does not cover push delivery, payload content (see the server-side `push_payload_safety` oracle in apps/openagents.com/workers/api), or notification preference UI (owned by the mobile Settings lane, #8487).
+
+### `khala_mobile.onboarding.first_task_straight_line.v1` — ENFORCED
+
+- **Surface:** khala-mobile (onboarding)
+- **Stated by:** owner via khala-code-session on 2026-07-05
+- **Statement:** A new user reaches a running first task in under a minute of active interaction, with honest states at every fork: sign in with GitHub, land with the $10 grant visible, guided repo pick (or skip), a suggested first task (or a custom one), then watch the turn stream — never blocked by a fork the app can't honestly resolve.
+- **Enforcement tier:** test-sweep
+- **Oracle** `onboarding_never_blocks_on_undetermined_balance.unit` (bun-test, unit): The onboarding first-task 'Start' action is blocked only when the balance is CONFIRMED zero or negative; when the balance cannot be determined at all (endpoint unavailable, network error), Start is never blocked — the straight line never stalls on missing billing data. — `clients/khala-mobile/tests/onboarding-core.test.ts`
+- **Verification:** bun test tests/onboarding-core.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.
+- **Authority boundary:** Binds only the balance-gate decision function (never block on undetermined/unavailable data, only on a confirmed non-positive balance) and the suggested-task/title-derivation content. It does not prove the full onboarding screen mounts correctly end to end on a device — that stays under khala_mobile.platform.launched_app_interaction_smoke.v1, which remains pending. It also does not claim a live balance check is exercisable today: the balance endpoint itself is still proposed, not built (#8480), so this gate is currently always permissive in practice until that lands.
