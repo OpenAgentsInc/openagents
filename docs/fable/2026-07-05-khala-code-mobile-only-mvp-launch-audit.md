@@ -619,11 +619,12 @@ All merged to `main`, each closed with evidence on its issue:
 | #8503 (AC-1 Agent Computers) | **In progress, public seam landed; live proof owner-gated** | Arms the existing Firecracker/GCE provisioning path (`cloud-coding-session-routes.ts` + the private `cloud/` provisioner) and proves the first real mobile turn inside a microVM, with lifecycle receipts. Public repo now projects Agent Computer work-context/lifecycle/resource receipt refs from `cloud.gce.*` events and documents/tests the nested-virt GCE host bootstrap under `apps/pylon/deploy/agent-computer/`. Remaining proof requires owner-gated live host/image/control-plane receipts. Strategy: `docs/khala-code/2026-07-06-agent-computers-strategy.md`. |
 | #8474–#8477 (C2–C5) | Not started | Were serialized behind C1; now build against the Agent Computers strategy (redirect comments on each issue): #8474 admits against agent-computer capacity from the control-plane ledger, #8475 delivers scoped credentials into the microVM via OUR SCM broker only, #8476 documents/enforces the strategy §4 Firecracker posture, #8477 unchanged. All exe.dev framing withdrawn. |
 | #8479 (D2 metering) | Not started | Expanded: charges BOTH meters — exact token receipts (landed) and agent-computer compute-time from lifecycle receipts (`resource_usage_receipt.v1`). Owns the mid-run exhaustion policy + pre-dispatch cost line. Compute rate is NEEDS_OWNER. Host/VM metrics are ops telemetry only, never billing truth. |
-| #8490 (I1 Android/Play) | Not started | Convergence tier; emulator-smoke half is agent-doable now, Play Console half owner-gated. |
-| #8491 (I2 App Store pack) | Not started | Convergence tier; metadata/labels prep agent-doable, ASC actions owner-gated. |
-| #8492 (I3 E2E QA) | Not started | Convergence tier; sign-in→repo-pick flows testable now, full straight line needs C-lane. |
-| #8493 (I4 promise gates) | Not started | Accrues as everything lands; final pass at launch. |
-| #8499–#8501 (Aiur) | **New** | Owner-directed 2026-07-06; #8500 is MVP-critical (manual credits). |
+| #8490 (I1 Android/Play) | **Closed 2026-07-06** (Lane S3) | Agent-doable half shipped: real Android SDK/emulator bring-up, real Gradle debug build, launch+interaction Maestro pass (both a reused iOS flow AND a new sign-in-tap flow), Android build+upload runbook. Play Console app record/signing/upload remains owner-gated (`~/work/NEEDS_OWNER.md`). |
+| #8491 (I2 App Store pack) | **Closed 2026-07-06** (Lane S3) | Agent-doable submission-readiness doc shipped (listing copy, screenshot shot-list, privacy nutrition label, required-reason API notes, age rating, App Review notes, TestFlight staging plan). Found a real, previously-undocumented-as-launch-blocking gap: account deletion (Apple 5.1.1(v)) is unbuilt — filed #8502 as a tracked follow-up. ASC account actions remain owner-gated. |
+| #8492 (I3 E2E QA) | **Closed 2026-07-06** (Lane S3) | Confirmed both platforms' Maestro flows (from #8490) run the SAME `.yaml` unmodified; added real RN component-mount coverage for RepoPickerScreen (new enforced contract, extends the ChatComposer harness with a FlatList leaf stub). Full straight-line E2E (through a completed cloud-executed turn) stays honestly deferred — needs a seeded test GitHub account (`~/work/NEEDS_OWNER.md`) AND the remaining C-lane issues below. |
+| #8493 (I4 promise gates) | In progress (Lane S3) | This pass's own evidence-accrual + copy-audit work — see §12.4. |
+| #8502 (account deletion, App Review 5.1.1(v)) | **New**, open | Filed by Lane S3 from #8491's audit; Worker/API + mobile scope, blocks a real external-facing App Store/external-TestFlight submission (internal TestFlight is not blocked by it). |
+| #8499–#8501 (Aiur) | #8499 closed, #8500/#8501 open | Owner-directed 2026-07-06; #8500 is MVP-critical (manual credits). |
 | #8481 (E1 RevenueCat) | **Closed postponed** | Owner decision: no IAP in first MVP; server rail stays dormant. |
 | #8494 (J1 post-to-earn) | Open, post-MVP-gated | Unchanged. |
 | #8498 (raw-Env cleanup) | Open, background | Structural debt tracker; not launch-critical, not in any lane below. |
@@ -661,3 +662,47 @@ E2E and #8493's final pass converge on S1's completion. Nothing waits on
 IAP anymore. The owner-gated residue at launch time: Play Console + App
 Store Connect actions, promise green sign-offs, and (post-MVP) the
 RevenueCat account when #8481 reopens.
+
+### 12.4 Lane S3 complete (2026-07-06)
+
+All four Lane S3 issues (#8490-#8493) are closed. Summary, in order:
+
+- **#8490 (I1)**: real Android SDK/emulator bring-up from scratch (Homebrew
+  `android-commandlinetools`, `emulator` + `system-images;android-35;
+  google_apis;arm64-v8a`), a real local Gradle debug build, install, launch,
+  and a passing Maestro flow — both the existing iOS `LaunchFallback.yaml`
+  reused unmodified AND a new `LaunchGitHubSignInInteraction.yaml` (tap ->
+  real external-browser handoff). Android build+upload runbook written.
+  Play Console app record/signing/upload stays owner-gated.
+- **#8491 (I2)**: App Store submission-pack doc (listing copy bounded by
+  `khala_code.mobile_mvp.v1`'s `safeCopy`, screenshot shot-list, privacy
+  nutrition label grounded in a real grep pass — no third-party analytics/
+  crash SDK exists, IAP doesn't apply since postponed — required-reason API
+  notes, age rating, App Review notes, TestFlight staging plan). Found and
+  filed a real gap: account deletion (Apple 5.1.1(v)) is unbuilt — **#8502**,
+  new tracked follow-up (Worker/API + mobile scope).
+- **#8492 (I3)**: confirmed cross-platform Maestro flow reuse; added real RN
+  component-mount coverage for `RepoPickerScreen` (new enforced contract
+  `khala_mobile.repo_picker.rn_component_mount_coverage.v1`, extends the
+  shared `bun test` harness with a `FlatList` leaf stub). Found and fixed two
+  real `bun:test` cross-file `mock.module` leakage bugs in the process
+  (documented in the new test file's header for future authors). Also found
+  a genuine signed-in dogfood session on a dev Mac's iOS simulator, used
+  carefully for read-only bonus evidence without extracting its credential
+  or spending real credits through it. Full straight-line E2E (through a
+  completed cloud-executed turn + push) stays honestly deferred pending a
+  seeded test GitHub account and the remaining C-lane issues.
+- **#8493 (I4)**: this pass's own evidence-accrual on `khala_code.
+  mobile_mvp.v1` and launch-copy audit (see the registry note landing with
+  this same change for the exact evidence/blocker updates). No green flip;
+  none of the mobile app's own copy (`clients/khala-mobile/src/i18n/copy.ts`)
+  was found to overclaim.
+
+Two new NEEDS_OWNER items from this lane (Play Console setup, a seeded
+public-safe test GitHub account) join the existing owner-gated residue above.
+Nothing in Lane S3's scope required touching `apps/pylon`, `apps/aiur`, or
+the Worker's dispatch/admin route seams — the in-flight sign-in redesign
+(commit `83ad352bd3`) was left untouched except for one small, unrelated,
+already-necessary fix: `LaunchFallback.yaml` and its policy test asserted a
+"No desktop, Tailnet..." string that redesign correctly dropped, repointed at
+the new stable tagline (commit `4c805e56b1`).
