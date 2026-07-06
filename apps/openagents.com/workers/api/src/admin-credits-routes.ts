@@ -61,6 +61,14 @@ export type AdminCreditsRouteDependencies<Bindings> = Readonly<{
     env: Bindings,
     ctx: ExecutionContext,
   ) => Promise<AdminCaller | undefined>
+  // Issue #8505 (Part 2): fail-soft, best-effort per-user credit-balance
+  // projection into Khala Sync (`scope.user.<userId>`) — threaded through to
+  // `grantAdminCredit`/`clawbackAdminCredit`'s own `recordCreditBalanceProjection`
+  // seam. Optional; absent in tests and any deployment without the Khala
+  // Sync binding, which grant/claw back exactly as before.
+  recordCreditBalanceProjection?: (
+    env: Bindings,
+  ) => AdminCreditGrantDeps['recordCreditBalanceProjection']
 }>
 
 const requireAdmin = async <Bindings>(
@@ -423,6 +431,9 @@ const routeGrant = async <Bindings>(
   const deps: AdminCreditGrantDeps = {
     db,
     ...(dependencies.nowIso === undefined ? {} : { nowIso: dependencies.nowIso }),
+    ...(dependencies.recordCreditBalanceProjection === undefined
+      ? {}
+      : { recordCreditBalanceProjection: dependencies.recordCreditBalanceProjection(env) }),
   }
 
   const outcome = await Effect.runPromise(
@@ -510,6 +521,9 @@ const routeClawback = async <Bindings>(
   const deps: AdminCreditClawbackDeps = {
     db,
     ...(dependencies.nowIso === undefined ? {} : { nowIso: dependencies.nowIso }),
+    ...(dependencies.recordCreditBalanceProjection === undefined
+      ? {}
+      : { recordCreditBalanceProjection: dependencies.recordCreditBalanceProjection(env) }),
   }
 
   const outcome = await Effect.runPromise(

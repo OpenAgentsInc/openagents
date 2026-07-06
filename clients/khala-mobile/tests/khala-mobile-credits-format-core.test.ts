@@ -4,6 +4,7 @@ import {
   formatUsdCents,
   isLowBalance,
   LOW_BALANCE_THRESHOLD_CENTS,
+  selectDisplayedBalanceUsdCents,
   signedAmountLabel,
   transactionKindLabel,
 } from "../src/sync/khala-mobile-credits-format-core"
@@ -56,5 +57,31 @@ describe("signedAmountLabel", () => {
   test("charges show a minus sign regardless of the stored sign", () => {
     expect(signedAmountLabel("charge", 25)).toBe("-$0.25")
     expect(signedAmountLabel("charge", -25)).toBe("-$0.25")
+  })
+})
+
+describe("selectDisplayedBalanceUsdCents (#8505 Part 2)", () => {
+  test("prefers the live-synced value when present, even when the REST value also exists", () => {
+    expect(
+      selectDisplayedBalanceUsdCents({ restBalanceUsdCents: 100, syncedBalanceUsdCents: 500 }),
+    ).toBe(500)
+  })
+
+  test("prefers the synced value even when it is zero (a real, live zero balance)", () => {
+    expect(
+      selectDisplayedBalanceUsdCents({ restBalanceUsdCents: 1000, syncedBalanceUsdCents: 0 }),
+    ).toBe(0)
+  })
+
+  test("falls back to the REST value before the synced entity exists (cold start / not yet backfilled)", () => {
+    expect(
+      selectDisplayedBalanceUsdCents({ restBalanceUsdCents: 250, syncedBalanceUsdCents: null }),
+    ).toBe(250)
+  })
+
+  test("is null (renders nothing) when neither source has a value yet", () => {
+    expect(
+      selectDisplayedBalanceUsdCents({ restBalanceUsdCents: null, syncedBalanceUsdCents: null }),
+    ).toBeNull()
   })
 })

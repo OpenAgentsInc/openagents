@@ -105,6 +105,11 @@ const approvedExactRoutePaths = [
   '/api/mobile/auth/session',
   '/api/mobile/session',
   '/api/mobile/model-preference',
+  // #8505 Part 1: mobile-bearer credit balance/transaction-history reads,
+  // fixing #8480's shipped-but-dead REST routes. Backed by the authoritative
+  // D1 agent_balances/pay_ins ledger.
+  '/api/mobile/credits/balance',
+  '/api/mobile/credits/transactions',
   '/api/mobile/push-tokens',
   '/api/mobile/notifications/preferences',
   '/api/internal/push/notify-events',
@@ -126,6 +131,11 @@ const approvedExactRoutePaths = [
   // admin bearer only; proves projection == SUM(exact token_usage_events
   // rows) (invariant 8) and hosts the explicit audited repair/backfill.
   '/api/internal/khala-sync/public-counters/tokens-served/reconcile',
+  // Per-user credit-balance backfill/reconcile (issue #8505, Part 2): admin
+  // bearer only; pages through every human user and seeds/realigns their
+  // scope.user.<userId> credit_balance projection against the exact current
+  // D1 agent_balances balance.
+  '/api/internal/khala-sync/user-credit-balances/backfill',
   // Khala Sync fleet-intent consumption (KS-3.2, #8292): admin bearer only;
   // bounded oldest-first pages of durable operator fleet intents for the
   // Pylon supervisor enforcement loop. (Approved here as a rebase-hygiene

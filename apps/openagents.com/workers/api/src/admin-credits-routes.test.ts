@@ -392,4 +392,50 @@ describe('Aiur admin credits routes — auth matrix (fail closed)', () => {
     }
     expect(balanceBody.balance.balanceUsdCents).toBe(600)
   })
+
+  test('recordCreditBalanceProjection (#8505 Part 2) is threaded through to the grant and clawback', async () => {
+    const db = makeDb()
+    const env: Env = { OPENAGENTS_DB: db }
+    const calls: Array<{ accountRef: string; deltaUsdCents: number }> = []
+    const routes = makeAdminCreditsRoutes<Env>({
+      db: e => e.OPENAGENTS_DB,
+      nowIso: () => NOW,
+      recordCreditBalanceProjection: () => async event => {
+        calls.push({ accountRef: event.accountRef, deltaUsdCents: event.deltaUsdCents })
+      },
+      requireAdminCaller: async (): Promise<AdminCaller | undefined> => ({ userId: 'user_owner' }),
+    })
+
+    await routes.handleAdminCreditsGrantApi(
+      new Request(`https://openagents.com${ADMIN_CREDITS_GRANT_PATH}`, {
+        method: 'POST',
+        body: JSON.stringify({
+          amountUsdCents: 500,
+          userId: 'user_1',
+          grantRef: 'grant-projection-wiring',
+          reason: 'Wiring test',
+        }),
+      }),
+      env,
+      fakeCtx,
+    )
+    await routes.handleAdminCreditsClawbackApi(
+      new Request(`https://openagents.com${ADMIN_CREDITS_CLAWBACK_PATH}`, {
+        method: 'POST',
+        body: JSON.stringify({
+          amountUsdCents: 200,
+          userId: 'user_1',
+          clawbackRef: 'clawback-projection-wiring',
+          reason: 'Wiring test',
+        }),
+      }),
+      env,
+      fakeCtx,
+    )
+
+    expect(calls).toEqual([
+      { accountRef: 'agent:user_1', deltaUsdCents: 500 },
+      { accountRef: 'agent:user_1', deltaUsdCents: -200 },
+    ])
+  })
 })

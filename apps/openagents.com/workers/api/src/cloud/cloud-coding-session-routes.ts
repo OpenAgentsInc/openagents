@@ -1258,6 +1258,20 @@ export const stubCloudCodingMeteringHook: CloudCodingMeteringHook = context =>
 // INJECTED pure pricing function. No default pricing — a live hook MUST supply
 // the real price basis. The promise STAYS red; this is the seam, not a live
 // billed product, and the scaffold defaults to the no-op stub above.
+//
+// KHALA SYNC PROJECTION SEAM (issue #8505, Part 2): `settleCloudPrimitiveCharge`
+// (`cloud-metering.ts`) already accepts an optional fail-soft
+// `recordCreditBalanceProjection` callback and this hook already forwards
+// `deps.recordCreditBalanceProjection` through to it below. HONEST GAP: as of
+// this change, `makeLedgerCloudCodingMeteringHook` itself is not yet wired into
+// any live `index.ts` route (see this file's header — the whole Agent Computer
+// launch surface is still the flag-gated INERT scaffold), so no live per-user
+// credit_balance delta flows from this specific path today. The moment a future
+// change wires this hook into a real route (the way `makeLedgerFineTuningMeteringHook`
+// and `makeLedgerSandboxMeteringHook` already are in `index.ts`), passing
+// `recordCreditBalanceProjection: creditBalanceProjectionRecorderForEnv(env)`
+// at that call site is the ONLY remaining step — the plumbing here is already
+// complete and needs no further change.
 export type CloudCodingLedgerMeteringDeps = Readonly<
   CloudMeteringDeps & {
     // Pure pricing: REAL runtime usage -> USD charge. No default.
@@ -1291,6 +1305,9 @@ export const makeLedgerCloudCodingMeteringHook = (
           db: deps.db,
           ...(deps.nowIso === undefined ? {} : { nowIso: deps.nowIso }),
           ...(deps.mirror === undefined ? {} : { mirror: deps.mirror }),
+          ...(deps.recordCreditBalanceProjection === undefined
+            ? {}
+            : { recordCreditBalanceProjection: deps.recordCreditBalanceProjection }),
         },
         {
           accountRef: context.accountRef,

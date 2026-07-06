@@ -36,6 +36,7 @@ import {
   runLedgerStatements,
 } from '../payments-ledger'
 import { currentIsoTimestamp } from '../runtime-primitives'
+import { msatToUsdCentsRound } from '../inference/usd-msat-conversion'
 
 class CloudMeteringPersistenceError extends Error {
   readonly _tag = 'CloudMeteringPersistenceError'
@@ -132,6 +133,20 @@ export type CloudMeteringDeps = Readonly<{
    * converges them.
    */
   mirror?: BillingDomainMirror | undefined
+  // Issue #8505 (Part 2): fail-soft, best-effort per-user credit-balance
+  // projection into Khala Sync (`scope.user.<userId>`) — same seam as
+  // `inference/metering-hook.ts`'s `recordCreditBalanceProjection`. Called
+  // AFTER a FRESH D1 charge commits, with the SAME idempotency key the D1
+  // charge used. Optional; a deployment without the Khala Sync binding (or a
+  // test) charges exactly as before.
+  recordCreditBalanceProjection?: (
+    event: Readonly<{
+      accountRef: string
+      idempotencyKey: string
+      deltaUsdCents: number
+      observedAt: string
+    }>,
+  ) => Promise<void>
 }>
 
 // Settle a single cloud-primitive charge against the credit ledger. Receipt-
@@ -198,6 +213,22 @@ export const settleCloudPrimitiveCharge = (
           costMsat: charge.chargeMsat,
         }),
       )
+      // Issue #8505 (Part 2): best-effort live projection of the FRESH charge
+      // into scope.user.<userId>, reusing the SAME idempotency key the D1
+      // charge just used. Fail-soft by contract and never blocks/reverses
+      // the D1 charge above, which already committed.
+      if (deps.recordCreditBalanceProjection !== undefined) {
+        yield* Effect.promise(() =>
+          deps
+            .recordCreditBalanceProjection!({
+              accountRef: charge.accountRef,
+              deltaUsdCents: -msatToUsdCentsRound(charge.chargeMsat),
+              idempotencyKey: cloudChargeIdempotencyKey(charge.primitive, charge.chargeId),
+              observedAt: settledAt,
+            })
+            .catch(() => undefined),
+        )
+      }
       return { metered: true, receiptRef } satisfies CloudMeteringOutcome
     }
 

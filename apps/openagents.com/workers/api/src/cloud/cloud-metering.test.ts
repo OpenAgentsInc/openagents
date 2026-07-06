@@ -182,6 +182,66 @@ describe('settleCloudPrimitiveCharge against real SQL', () => {
     expect(balance?.availableMsat).toBe(3000)
   })
 
+  // Issue #8505 (Part 2): the fail-soft Khala Sync credit-balance projection
+  // seam, shared with the inference metering hook.
+  describe('recordCreditBalanceProjection seam (#8505)', () => {
+    const makeRecorder = () => {
+      const calls: Array<{
+        accountRef: string
+        idempotencyKey: string
+        deltaUsdCents: number
+        observedAt: string
+      }> = []
+      return {
+        calls,
+        recorder: async (event: (typeof calls)[number]) => {
+          calls.push(event)
+        },
+      }
+    }
+
+    test('fires once for a fresh charge, with a negative delta and the D1 charge idempotency key', async () => {
+      const db = makeDb()
+      await seedBalance(db, 10_000)
+      const { calls, recorder } = makeRecorder()
+      const outcome = await run(
+        settleCloudPrimitiveCharge(
+          { db, nowIso: () => NOW, recordCreditBalanceProjection: recorder },
+          charge(7000),
+        ),
+      )
+      expect(outcome.metered).toBe(true)
+      expect(calls).toHaveLength(1)
+      expect(calls[0]?.accountRef).toBe(ACCOUNT)
+      expect(calls[0]?.idempotencyKey).toBe(cloudChargeIdempotencyKey(PRIMITIVE, 'job1'))
+      expect(calls[0]?.observedAt).toBe(NOW)
+      expect(calls[0]?.deltaUsdCents).toBeLessThan(0)
+    })
+
+    test('never fires on an idempotent replay of the same charge id', async () => {
+      const db = makeDb()
+      await seedBalance(db, 10_000)
+      const { calls, recorder } = makeRecorder()
+      const deps = { db, nowIso: () => NOW, recordCreditBalanceProjection: recorder }
+      await run(settleCloudPrimitiveCharge(deps, charge(4000)))
+      await run(settleCloudPrimitiveCharge(deps, charge(4000)))
+      expect(calls).toHaveLength(1)
+    })
+
+    test('never fires for a zero charge', async () => {
+      const db = makeDb()
+      await seedBalance(db, 10_000)
+      const { calls, recorder } = makeRecorder()
+      await run(
+        settleCloudPrimitiveCharge(
+          { db, nowIso: () => NOW, recordCreditBalanceProjection: recorder },
+          charge(0),
+        ),
+      )
+      expect(calls).toHaveLength(0)
+    })
+  })
+
   test('never goes negative: an over-charge fails the debit and reports not metered', async () => {
     const db = makeDb()
     await seedBalance(db, 1000)

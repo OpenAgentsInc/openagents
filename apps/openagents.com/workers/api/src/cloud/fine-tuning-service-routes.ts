@@ -449,6 +449,9 @@ export const makeLedgerFineTuningMeteringHook = (
           db: deps.db,
           ...(deps.nowIso === undefined ? {} : { nowIso: deps.nowIso }),
           ...(deps.mirror === undefined ? {} : { mirror: deps.mirror }),
+          ...(deps.recordCreditBalanceProjection === undefined
+            ? {}
+            : { recordCreditBalanceProjection: deps.recordCreditBalanceProjection }),
         },
         {
           accountRef: context.accountRef,

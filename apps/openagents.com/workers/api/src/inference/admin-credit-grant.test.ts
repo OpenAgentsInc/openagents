@@ -5,7 +5,12 @@ import { describe, expect, test } from 'vitest'
 
 import { validateAssetBoundary } from '../asset-bitcoin-boundary'
 import { readAgentBalance } from '../payments-ledger'
-import { agentRefForUser, usdCreditGrantReceiptRef } from './usd-credit-bridge'
+import {
+  agentRefForUser,
+  usdCreditGrantIdempotencyKey,
+  usdCreditGrantReceiptRef,
+} from './usd-credit-bridge'
+import { inferenceClawbackIdempotencyKey } from './inference-abuse-controls'
 import { usdCentsToMsatFloor } from './usd-msat-conversion'
 import {
   adminCreditClawbackSourceRef,
@@ -156,6 +161,23 @@ const makeDb = (): D1Database => {
 
 const deps = (db: D1Database) => ({ db, nowIso: () => NOW })
 
+// Issue #8505 (Part 2): a spy for the fail-soft Khala Sync credit-balance
+// projection seam.
+const makeRecorder = () => {
+  const calls: Array<{
+    accountRef: string
+    idempotencyKey: string
+    deltaUsdCents: number
+    observedAt: string
+  }> = []
+  return {
+    calls,
+    recorder: async (event: (typeof calls)[number]) => {
+      calls.push(event)
+    },
+  }
+}
+
 describe('grantAdminCredit (AIUR-2, #8500)', () => {
   test('grants exactly the requested USD-origin, inference-spendable credit', async () => {
     const db = makeDb()
@@ -305,6 +327,48 @@ describe('grantAdminCredit (AIUR-2, #8500)', () => {
       true,
     )
   })
+
+  describe('recordCreditBalanceProjection seam (#8505)', () => {
+    test('fires once for a fresh grant, with a positive delta and the D1 grant idempotency key', async () => {
+      const db = makeDb()
+      const { calls, recorder } = makeRecorder()
+      const grantRef = adminCreditGrantRef('grant-projected')
+      const outcome = await run(
+        grantAdminCredit(
+          {
+            amountUsdCents: 500,
+            grantedByUserId: ADMIN,
+            grantRef,
+            reason: 'Projection test',
+            userId: USER,
+          },
+          { db, nowIso: () => NOW, recordCreditBalanceProjection: recorder },
+        ),
+      )
+      expect(outcome.ok).toBe(true)
+      expect(calls).toHaveLength(1)
+      expect(calls[0]?.accountRef).toBe(ACCOUNT)
+      expect(calls[0]?.idempotencyKey).toBe(usdCreditGrantIdempotencyKey(grantRef))
+      expect(calls[0]?.deltaUsdCents).toBe(500)
+    })
+
+    test('never fires on a replay (already granted)', async () => {
+      const db = makeDb()
+      const { calls, recorder } = makeRecorder()
+      const grantRef = adminCreditGrantRef('grant-projected-replay')
+      const input = {
+        amountUsdCents: 500,
+        grantedByUserId: ADMIN,
+        grantRef,
+        reason: 'Projection replay test',
+        userId: USER,
+      }
+      const withRecorder = { db, nowIso: () => NOW, recordCreditBalanceProjection: recorder }
+      await run(grantAdminCredit(input, withRecorder))
+      await run(grantAdminCredit(input, withRecorder))
+      expect(calls).toHaveLength(1)
+    })
+  })
 })
 
 describe('clawbackAdminCredit (AIUR-2, #8500)', () => {
@@ -411,5 +475,69 @@ describe('clawbackAdminCredit (AIUR-2, #8500)', () => {
   test('adminCreditClawbackSourceRef namespaces the clawback ref distinctly from a grant ref', () => {
     expect(adminCreditClawbackSourceRef('x')).toBe('admin:credit-clawback:x')
     expect(adminCreditGrantRef('x')).toBe('admin:credit-grant:x')
+  })
+
+  describe('recordCreditBalanceProjection seam (#8505)', () => {
+    test('fires once for a successful clawback, with a negative delta and the D1 clawback idempotency key', async () => {
+      const db = makeDb()
+      await run(
+        grantAdminCredit(
+          {
+            amountUsdCents: 1000,
+            grantedByUserId: ADMIN,
+            grantRef: adminCreditGrantRef('grant-before-projected-clawback'),
+            reason: 'Grant before clawback',
+            userId: USER,
+          },
+          deps(db),
+        ),
+      )
+      const { calls, recorder } = makeRecorder()
+      const clawbackRef = 'clawback-projected'
+      const outcome = await run(
+        clawbackAdminCredit(
+          { amountUsdCents: 400, clawbackRef, reason: 'Refund adjustment', userId: USER },
+          { db, nowIso: () => NOW, recordCreditBalanceProjection: recorder },
+        ),
+      )
+      expect(outcome.clawedBack).toBe(true)
+      expect(calls).toHaveLength(1)
+      expect(calls[0]?.accountRef).toBe(ACCOUNT)
+      expect(calls[0]?.idempotencyKey).toBe(
+        inferenceClawbackIdempotencyKey(adminCreditClawbackSourceRef(clawbackRef)),
+      )
+      expect(calls[0]?.deltaUsdCents).toBe(-400)
+    })
+
+    test('never fires when the balance CHECK aborts the clawback (insufficientBalance)', async () => {
+      const db = makeDb()
+      await run(
+        grantAdminCredit(
+          {
+            amountUsdCents: 100,
+            grantedByUserId: ADMIN,
+            grantRef: adminCreditGrantRef('grant-small-projected'),
+            reason: 'Small grant',
+            userId: USER,
+          },
+          deps(db),
+        ),
+      )
+      const { calls, recorder } = makeRecorder()
+      const outcome = await run(
+        clawbackAdminCredit(
+          {
+            amountUsdCents: 10_000,
+            clawbackRef: 'clawback-too-much-projected',
+            reason: 'Over-clawback attempt',
+            userId: USER,
+          },
+          { db, nowIso: () => NOW, recordCreditBalanceProjection: recorder },
+        ),
+      )
+      expect(outcome.clawedBack).toBe(false)
+      expect(outcome.insufficientBalance).toBe(true)
+      expect(calls).toHaveLength(0)
+    })
   })
 })

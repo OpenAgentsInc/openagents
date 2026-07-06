@@ -52,6 +52,7 @@ export * from "./sql.js"
 export * from "./supervision-longtail-domain-tables.js"
 export * from "./tokens-served-mix-projection.js"
 export * from "./training-domain-tables.js"
+export * from "./user-credit-balance-projection.js"
 
 /**
  * @openagentsinc/khala-sync-server — server substrate for Khala Sync:

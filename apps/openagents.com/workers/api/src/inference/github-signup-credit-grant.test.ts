@@ -6,7 +6,11 @@ import { describe, expect, test } from 'vitest'
 import { validateAssetBoundary } from '../asset-bitcoin-boundary'
 import { readAgentBalance } from '../payments-ledger'
 import { selectSweepCandidates } from '../tips-sweep'
-import { agentRefForUser, usdCreditGrantReceiptRef } from './usd-credit-bridge'
+import {
+  agentRefForUser,
+  usdCreditGrantIdempotencyKey,
+  usdCreditGrantReceiptRef,
+} from './usd-credit-bridge'
 import { usdCentsToMsatFloor } from './usd-msat-conversion'
 import {
   GITHUB_SIGNUP_CREDIT_GRANT_CENTS,
@@ -265,6 +269,62 @@ describe('grantGithubSignupCredit (MM-D1, #8478)', () => {
     expect(history).toHaveLength(1)
     expect(history[0]?.githubUserId).toBe(GITHUB_USER_ID)
     expect(history[0]?.amountUsdCents).toBe(GITHUB_SIGNUP_CREDIT_GRANT_CENTS)
+  })
+
+  // Issue #8505 (Part 2): the fail-soft Khala Sync credit-balance projection
+  // seam.
+  describe('recordCreditBalanceProjection seam (#8505)', () => {
+    const makeRecorder = () => {
+      const calls: Array<{
+        accountRef: string
+        idempotencyKey: string
+        deltaUsdCents: number
+        observedAt: string
+      }> = []
+      return {
+        calls,
+        recorder: async (event: (typeof calls)[number]) => {
+          calls.push(event)
+        },
+      }
+    }
+
+    test('fires once for a fresh grant, with a positive delta and the D1 grant idempotency key', async () => {
+      const db = makeDb()
+      const { calls, recorder } = makeRecorder()
+      const outcome = await run(
+        grantGithubSignupCredit(
+          { githubAccountCreatedAtIso: OLD_GITHUB_ACCOUNT_CREATED_AT, githubUserId: GITHUB_USER_ID, userId: USER },
+          { db, nowIso: () => NOW, recordCreditBalanceProjection: recorder },
+        ),
+      )
+      expect(outcome.ok).toBe(true)
+      expect(calls).toHaveLength(1)
+      expect(calls[0]?.accountRef).toBe(ACCOUNT)
+      expect(calls[0]?.idempotencyKey).toBe(
+        usdCreditGrantIdempotencyKey(githubSignupCreditGrantRef(GITHUB_USER_ID)),
+      )
+      expect(calls[0]?.deltaUsdCents).toBe(GITHUB_SIGNUP_CREDIT_GRANT_CENTS)
+    })
+
+    test('never fires on a replay (already granted)', async () => {
+      const db = makeDb()
+      const { calls, recorder } = makeRecorder()
+      const withRecorder = { db, nowIso: () => NOW, recordCreditBalanceProjection: recorder }
+      await run(
+        grantGithubSignupCredit(
+          { githubAccountCreatedAtIso: OLD_GITHUB_ACCOUNT_CREATED_AT, githubUserId: GITHUB_USER_ID, userId: USER },
+          withRecorder,
+        ),
+      )
+      await run(
+        grantGithubSignupCredit(
+          { githubAccountCreatedAtIso: OLD_GITHUB_ACCOUNT_CREATED_AT, githubUserId: GITHUB_USER_ID, userId: USER },
+          withRecorder,
+        ),
+      )
+      expect(calls).toHaveLength(1)
+    })
   })
 
   test('is idempotent on the GitHub account id: replaying (even across processes) never double-grants', async () => {

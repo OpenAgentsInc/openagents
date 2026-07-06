@@ -286,6 +286,79 @@ describe('makeLedgerMeteringHook (#5477, real SQL)', () => {
     expect(payInRefs).toContainEqual({ id: 'inference:payin:req-1' })
   })
 
+  // Issue #8505 (Part 2): the fail-soft Khala Sync credit-balance projection
+  // seam. Fires exactly once per FRESH charge with a negative delta and the
+  // SAME idempotency key the D1 charge used; never fires on a replay.
+  describe('recordCreditBalanceProjection seam (#8505)', () => {
+    const makeRecorder = () => {
+      const calls: Array<{
+        accountRef: string
+        idempotencyKey: string
+        deltaUsdCents: number
+        observedAt: string
+      }> = []
+      return {
+        calls,
+        recorder: async (event: (typeof calls)[number]) => {
+          calls.push(event)
+        },
+      }
+    }
+
+    test('fires once for a fresh charge, with a negative delta and the D1 charge idempotency key', async () => {
+      const db = makeDb()
+      await seedBalance(db, FUNDED)
+      const { calls, recorder } = makeRecorder()
+      const hook = makeLedgerMeteringHook({
+        db,
+        nowIso: () => NOW,
+        recordCreditBalanceProjection: recorder,
+      })
+
+      const outcome = await run(hook(context()))
+      expect(outcome.metered).toBe(true)
+
+      expect(calls).toHaveLength(1)
+      expect(calls[0]?.accountRef).toBe(ACCOUNT)
+      expect(calls[0]?.idempotencyKey).toBe(inferenceChargeIdempotencyKey('req-1'))
+      expect(calls[0]?.observedAt).toBe(NOW)
+      expect(calls[0]?.deltaUsdCents).toBeLessThan(0)
+    })
+
+    test('never fires on an idempotent replay of the same request', async () => {
+      const db = makeDb()
+      await seedBalance(db, FUNDED)
+      const { calls, recorder } = makeRecorder()
+      const hook = makeLedgerMeteringHook({
+        db,
+        nowIso: () => NOW,
+        recordCreditBalanceProjection: recorder,
+      })
+
+      await run(hook(context()))
+      await run(hook(context()))
+
+      expect(calls).toHaveLength(1)
+    })
+
+    test('a failure inside the recorder never fails or affects the charge', async () => {
+      const db = makeDb()
+      await seedBalance(db, FUNDED)
+      const hook = makeLedgerMeteringHook({
+        db,
+        nowIso: () => NOW,
+        recordCreditBalanceProjection: async () => {
+          throw new Error('simulated Khala Sync projection failure')
+        },
+      })
+
+      const outcome = await run(hook(context()))
+      expect(outcome.metered).toBe(true)
+      const balance = await readAgentBalance(db, ACCOUNT)
+      expect(balance?.balanceMsat).toBeLessThan(FUNDED)
+    })
+  })
+
   test('is idempotent per request: a replayed settle never double-charges', async () => {
     const db = makeDb()
     await seedBalance(db, FUNDED)

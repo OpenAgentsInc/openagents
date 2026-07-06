@@ -42,6 +42,7 @@ import {
 } from '../asset-bitcoin-boundary'
 import {
   clawbackInferenceCredits,
+  inferenceClawbackIdempotencyKey,
   type ClawbackOutcome,
 } from './inference-abuse-controls'
 import { workerLogEntry } from '../observability'
@@ -49,10 +50,26 @@ import { type LedgerStatement, runLedgerStatements } from '../payments-ledger'
 import { currentIsoTimestamp } from '../runtime-primitives'
 import {
   agentRefForUser,
+  usdCreditGrantIdempotencyKey,
   usdCreditGrantReceiptRef,
   usdCreditGrantStatements,
 } from './usd-credit-bridge'
 import { usdCentsToMsatFloor } from './usd-msat-conversion'
+
+// Issue #8505 (Part 2): fail-soft, best-effort per-user credit-balance
+// projection into Khala Sync (`scope.user.<userId>`) — same seam as the
+// inference/cloud metering hooks and the signup-grant path. Called AFTER a
+// FRESH grant/clawback commits, with the SAME idempotency key the D1 write
+// used. Optional; a deployment without the Khala Sync binding (or a test)
+// grants/claws back exactly as before.
+export type CreditBalanceProjectionRecorder = (
+  event: Readonly<{
+    accountRef: string
+    idempotencyKey: string
+    deltaUsdCents: number
+    observedAt: string
+  }>,
+) => Promise<void>
 
 // ----------------------------------------------------------------------------
 // Stable refs
@@ -248,6 +265,7 @@ export type AdminCreditGrantDeps = Readonly<{
   db: D1Database
   nowIso?: (() => string) | undefined
   mirror?: BillingDomainMirror | undefined
+  recordCreditBalanceProjection?: CreditBalanceProjectionRecorder | undefined
 }>
 
 // Grant credit to a user, idempotent forever on the caller-supplied
@@ -375,6 +393,23 @@ export const grantAdminCredit = (
       }),
     )
 
+    // Issue #8505 (Part 2): best-effort live projection of the FRESH admin
+    // grant into scope.user.<userId>, reusing the SAME idempotency key the
+    // D1 grant just used. Fail-soft by contract and never blocks/reverses
+    // the D1 grant above, which already committed.
+    if (deps.recordCreditBalanceProjection !== undefined) {
+      yield* Effect.promise(() =>
+        deps
+          .recordCreditBalanceProjection!({
+            accountRef,
+            deltaUsdCents: Math.trunc(input.amountUsdCents),
+            idempotencyKey: usdCreditGrantIdempotencyKey(input.grantRef),
+            observedAt: nowIso,
+          })
+          .catch(() => undefined),
+      )
+    }
+
     return {
       alreadyGranted: false,
       grantedCents: input.amountUsdCents,
@@ -396,6 +431,7 @@ export type AdminCreditClawbackDeps = Readonly<{
   db: D1Database
   nowIso?: () => string
   mirror?: BillingDomainMirror | undefined
+  recordCreditBalanceProjection?: CreditBalanceProjectionRecorder | undefined
 }>
 
 // Claw back credit from a user, idempotent on the caller-supplied
@@ -412,12 +448,40 @@ export const clawbackAdminCredit = (
   }>,
   deps: AdminCreditClawbackDeps,
 ): Effect.Effect<ClawbackOutcome> =>
-  clawbackInferenceCredits(
-    {
-      accountRef: agentRefForUser(input.userId),
-      clawbackMsat: usdCentsToMsatFloor(input.amountUsdCents),
-      contextRef: `admin-credit-clawback:${input.userId}:${input.reason.trim().slice(0, 200)}`,
-      sourceRef: adminCreditClawbackSourceRef(input.clawbackRef),
-    },
-    { db: deps.db, mirror: deps.mirror, ...(deps.nowIso === undefined ? {} : { nowIso: deps.nowIso }) },
-  )
+  Effect.gen(function* () {
+    const accountRef = agentRefForUser(input.userId)
+    const sourceRef = adminCreditClawbackSourceRef(input.clawbackRef)
+    const outcome = yield* clawbackInferenceCredits(
+      {
+        accountRef,
+        clawbackMsat: usdCentsToMsatFloor(input.amountUsdCents),
+        contextRef: `admin-credit-clawback:${input.userId}:${input.reason.trim().slice(0, 200)}`,
+        sourceRef,
+      },
+      { db: deps.db, mirror: deps.mirror, ...(deps.nowIso === undefined ? {} : { nowIso: deps.nowIso }) },
+    )
+
+    // Issue #8505 (Part 2): best-effort live projection of the clawback into
+    // scope.user.<userId>, reusing the SAME idempotency key the D1 clawback
+    // used (`inferenceClawbackIdempotencyKey`). `clawedBack` covers BOTH a
+    // fresh clawback AND an idempotent replay — safe either way, since the
+    // projection's own exact-once guard (keyed on the SAME idempotency key)
+    // makes a replayed call here a no-op too. Never called when the balance
+    // CHECK aborted the decrement (`insufficientBalance`) — nothing to
+    // project for a clawback that did not happen.
+    if (outcome.clawedBack && deps.recordCreditBalanceProjection !== undefined) {
+      const nowIso = (deps.nowIso ?? currentIsoTimestamp)()
+      yield* Effect.promise(() =>
+        deps
+          .recordCreditBalanceProjection!({
+            accountRef,
+            deltaUsdCents: -Math.trunc(input.amountUsdCents),
+            idempotencyKey: inferenceClawbackIdempotencyKey(sourceRef),
+            observedAt: nowIso,
+          })
+          .catch(() => undefined),
+      )
+    }
+
+    return outcome
+  })

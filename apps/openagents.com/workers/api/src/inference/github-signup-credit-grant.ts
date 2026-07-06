@@ -80,6 +80,7 @@ import { type LedgerStatement, runLedgerStatements } from '../payments-ledger'
 import type { BillingDomainMirror } from '../billing'
 import {
   agentRefForUser,
+  usdCreditGrantIdempotencyKey,
   usdCreditGrantReceiptRef,
   usdCreditGrantStatements,
 } from './usd-credit-bridge'
@@ -426,6 +427,21 @@ export type GithubSignupCreditGrantDeps = Readonly<{
   minAccountAgeSeconds?: number | undefined
   maxMintsPerIpPerDay?: number | undefined
   mirror?: BillingDomainMirror | undefined
+  // Issue #8505 (Part 2): fail-soft, best-effort per-user credit-balance
+  // projection into Khala Sync (`scope.user.<userId>`) — same seam as the
+  // inference/cloud metering hooks' `recordCreditBalanceProjection`. Called
+  // AFTER a FRESH grant commits (never for an idempotent-duplicate replay),
+  // with the SAME idempotency key the D1 grant used
+  // (`usdCreditGrantIdempotencyKey`). Optional; a deployment without the
+  // Khala Sync binding (or a test) grants exactly as before.
+  recordCreditBalanceProjection?: (
+    event: Readonly<{
+      accountRef: string
+      idempotencyKey: string
+      deltaUsdCents: number
+      observedAt: string
+    }>,
+  ) => Promise<void>
 }>
 
 // Grant the $10 signup credit for a GitHub account, idempotent forever on the
@@ -580,6 +596,23 @@ export const grantGithubSignupCredit = (
         userId: input.userId,
       }),
     )
+
+    // Issue #8505 (Part 2): best-effort live projection of the FRESH signup
+    // grant into scope.user.<userId>, reusing the SAME idempotency key the
+    // D1 grant just used. Fail-soft by contract and never blocks/reverses
+    // the D1 grant above, which already committed.
+    if (deps.recordCreditBalanceProjection !== undefined) {
+      yield* Effect.promise(() =>
+        deps
+          .recordCreditBalanceProjection!({
+            accountRef,
+            deltaUsdCents: GITHUB_SIGNUP_CREDIT_GRANT_CENTS,
+            idempotencyKey: usdCreditGrantIdempotencyKey(grantRef),
+            observedAt: nowIso,
+          })
+          .catch(() => undefined),
+      )
+    }
 
     return {
       alreadyGranted: false,

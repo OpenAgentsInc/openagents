@@ -43,3 +43,20 @@ export const signedAmountLabel = (kind: KhalaMobileCreditsTransactionKind, amoun
   const sign = kind === "charge" ? "-" : "+"
   return `${sign}${formatUsdCents(magnitude)}`
 }
+
+/**
+ * #8505 Part 2: which balance the chip should display, given the Part-1 REST
+ * poll's value and the live-synced `scope.user.<id>` `credit_balance`
+ * entity's value (`credits-balance-chip.tsx`). The synced value wins the
+ * moment it exists — it updates live as charges/grants land, while the REST
+ * value only refreshes on screen mount — but the REST value is kept as the
+ * fallback for cold start (before the sync connection has produced a
+ * snapshot) and for any user whose projection hasn't been backfilled
+ * server-side yet. `null` means "nothing to show yet" (chip renders
+ * nothing), never a fabricated balance.
+ */
+export const selectDisplayedBalanceUsdCents = (input: {
+  restBalanceUsdCents: number | null
+  syncedBalanceUsdCents: number | null
+}): number | null =>
+  input.syncedBalanceUsdCents !== null ? input.syncedBalanceUsdCents : input.restBalanceUsdCents

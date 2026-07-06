@@ -907,6 +907,15 @@ import {
   reconcileTokensServedProjection,
   recordTokensServedProjectionBestEffort,
 } from './khala-sync-public-tokens-served'
+import {
+  handleKhalaSyncUserCreditBalanceBackfill,
+  KHALA_SYNC_USER_CREDIT_BALANCE_BACKFILL_PATH,
+} from './khala-sync-user-credit-balance-backfill-routes'
+import {
+  recordUserCreditBalanceDeltaBestEffort,
+  userIdFromAgentRef,
+  type UserCreditBalanceProjectionDeps,
+} from './khala-sync-user-credit-balance'
 import { refreshTokensServedAggregatesBestEffort } from './khala-sync-public-tokens-served-mix'
 import { refreshActivityTimelineSnapshotBestEffort } from './khala-sync-public-activity-timeline'
 import {
@@ -3846,7 +3855,10 @@ const makeAuthIssuer = (env: OpenAgentsWorkerEnv) => {
                 ? {}
                 : { ipHash: await sha256Hex(clientIp) }),
             },
-            { db: openAgentsDatabase(env) },
+            {
+              db: openAgentsDatabase(env),
+              recordCreditBalanceProjection: creditBalanceProjectionRecorderForEnv(env),
+            },
           ),
         )
       } catch (error) {
@@ -4019,6 +4031,7 @@ const { requireUserBearerSession } =
 // its own.
 const adminCreditsRoutes = makeAdminCreditsRoutes<Env>({
   db: openAgentsDatabase,
+  recordCreditBalanceProjection: env => creditBalanceProjectionRecorderForEnv(env),
   requireAdminCaller: async (request, env, ctx) => {
     const session = await requireUserBearerSession(request, env, ctx)
     if (session === undefined) return undefined
@@ -8105,6 +8118,48 @@ const makeTokensServedReconcileDeps = (
     readPublicTokensServedExactTotal(openAgentsDatabase(env)),
 })
 
+// Issue #8505 (Part 2): shared fail-soft producer deps for the per-user
+// credit-balance projection (scope.user.<userId>). Reused at every D1 ledger
+// write site that charges/grants/claws back credit — see
+// khala-sync-user-credit-balance.ts's header for the full design.
+const userCreditBalanceProjectionDepsForEnv = (
+  env: Readonly<{ KHALA_SYNC_DB?: Readonly<{ connectionString: string }> }>,
+): UserCreditBalanceProjectionDeps => ({
+  binding: env.KHALA_SYNC_DB,
+  log: (event, fields) => logWorkerRouteWarning(event, fields),
+})
+
+// Issue #8505 (Part 2): the shared `recordCreditBalanceProjection` callback
+// shape every D1 ledger write site (`metering-hook.ts`, `cloud-metering.ts`)
+// injects. Parses the stable OpenAgents user id back out of the ledger's
+// `agent:<userId>` account ref (`userIdFromAgentRef` — a ref that doesn't
+// match this shape is intentionally skipped, never guessed) and forwards to
+// the fail-soft producer. Always resolves (never throws): the caller's real
+// D1 charge/grant already committed and must never be blocked or reversed by
+// this best-effort projection.
+const creditBalanceProjectionRecorderForEnv =
+  (env: Readonly<{ KHALA_SYNC_DB?: Readonly<{ connectionString: string }> }>) =>
+  async (
+    event: Readonly<{
+      accountRef: string
+      idempotencyKey: string
+      deltaUsdCents: number
+      observedAt: string
+    }>,
+  ): Promise<void> => {
+    const userId = userIdFromAgentRef(event.accountRef)
+    if (userId === undefined) return
+    await recordUserCreditBalanceDeltaBestEffort(
+      userCreditBalanceProjectionDepsForEnv(env),
+      {
+        deltaUsdCents: event.deltaUsdCents,
+        idempotencyKey: event.idempotencyKey,
+        observedAt: event.observedAt,
+        userId,
+      },
+    )
+  }
+
 type PylonCodexRawEventQueueProducerEnv = Readonly<{
   PYLON_CODEX_RAW_EVENT_METADATA_QUEUE?: Queue | undefined
 }>
@@ -8167,6 +8222,7 @@ const khalaCloudRuntimeUsageRoutes = makeKhalaCloudRuntimeUsageRoutes<Env>({
     makeLedgerMeteringHook({
       db: openAgentsDatabase(env),
       mirror: billingDomainMirrorFromEnv(env),
+      recordCreditBalanceProjection: creditBalanceProjectionRecorderForEnv(env),
     }),
   publishInsufficientCreditEvent: (env, input) =>
     publishKhalaCloudRuntimeInsufficientCreditEvent(
@@ -12964,6 +13020,25 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       }),
   },
   {
+    // Per-user credit-balance backfill/reconcile (issue #8505, Part 2).
+    // Admin bearer only. POST { limit?, cursor? } pages through every human
+    // user and seeds/realigns their scope.user.<userId> credit_balance
+    // projection against the exact current D1 agent_balances balance —
+    // required before any client can read the entity (same
+    // refuse-until-backfilled discipline as the public tokens-served
+    // counter). Repeat with the returned nextCursor until it is null.
+    path: KHALA_SYNC_USER_CREDIT_BALANCE_BACKFILL_PATH,
+    handler: (request, env) =>
+      handleKhalaSyncUserCreditBalanceBackfill(request, {
+        backfillDeps: {
+          binding: env.KHALA_SYNC_DB,
+          db: openAgentsDatabase(env),
+          log: (event, fields) => logWorkerRouteWarning(event, fields),
+        },
+        requireOperator: () => requireAdminApiToken(request, env),
+      }),
+  },
+  {
     // Khala Sync fleet-intent consumption seam (KS-3.2, #8292). Admin bearer
     // only — the Pylon supervisor polls this with its admin token to observe
     // the durable operator intents recorded by the fleet mutators
@@ -14549,6 +14624,8 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
                 makeLedgerMeteringHook({
                   db: openAgentsDatabase(env),
                   mirror: billingDomainMirrorFromEnv(env),
+                  recordCreditBalanceProjection:
+                    creditBalanceProjectionRecorderForEnv(env),
                 }),
                 {
                   db: openAgentsDatabase(env),
@@ -15152,6 +15229,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
           db: openAgentsDatabase(env),
           mirror: billingDomainMirrorFromEnv(env),
           priceUsd: () => 0,
+          recordCreditBalanceProjection: creditBalanceProjectionRecorderForEnv(env),
           usdToMsat: usd => Math.ceil(usd * 1000),
         }),
       }),
@@ -15190,6 +15268,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
           db: openAgentsDatabase(env),
           mirror: billingDomainMirrorFromEnv(env),
           priceUsd: () => 0,
+          recordCreditBalanceProjection: creditBalanceProjectionRecorderForEnv(env),
           usdToMsat: usd => Math.ceil(usd * 1000),
         }),
       }),

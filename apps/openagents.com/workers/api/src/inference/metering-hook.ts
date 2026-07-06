@@ -43,6 +43,7 @@ import { type ServingReceipt } from './openagents-network-adapter'
 import { inferenceChargeContextRef } from './inference-charge-context'
 import { type FundingKind, priceRequest } from './pricing'
 import { type InferenceUsage } from './provider-adapter'
+import { msatToUsdCentsRound } from './usd-msat-conversion'
 import {
   type ServingNodePayoutDecision,
   type ServingRevenueAsset,
@@ -206,6 +207,24 @@ export type LedgerMeteringDeps = Readonly<{
   // Resolved from how the account funds (bitcoin funding => bitcoin revenue).
   // Defaults to mapping `fundingKind` (bitcoin -> 'bitcoin', card -> 'usd').
   servingRevenueAsset?: (fundingKind: FundingKind) => ServingRevenueAsset
+  // Issue #8505 (Part 2): fail-soft, best-effort per-user credit-balance
+  // projection into Khala Sync (`scope.user.<userId>`), so the mobile balance
+  // chip can update live instead of polling. Called AFTER a FRESH D1 charge
+  // commits (never for an idempotent-duplicate replay), with the SAME
+  // idempotency key the D1 charge used. This function itself must never
+  // throw (the injected implementation, `khala-sync-user-credit-balance.ts`'s
+  // `recordUserCreditBalanceDeltaBestEffort`, is already fail-soft); optional
+  // so tests and any deployment without the Khala Sync binding are unaffected
+  // — the charge completes normally either way. See
+  // docs/khala-code/2026-07-06-credits-ledger-vs-khala-sync-architecture-audit.md.
+  recordCreditBalanceProjection?: (
+    event: Readonly<{
+      accountRef: string
+      idempotencyKey: string
+      deltaUsdCents: number
+      observedAt: string
+    }>,
+  ) => Promise<void>
 }>
 
 // Stable, public-safe idempotency key for an inference charge. One key per served
@@ -425,6 +444,23 @@ export const makeLedgerMeteringHook = (
         // split now that the customer charge has settled. Inert unless the fabric
         // served this request AND the owner has armed live payout.
         yield* settleServingPayout(context, priced)
+        // Issue #8505 (Part 2): best-effort live projection of the FRESH charge
+        // into scope.user.<userId>. Reuses the SAME idempotency key the D1
+        // charge just used — never a new key scheme. Fail-soft by contract
+        // (never throws) and never blocks/reverses the D1 charge above, which
+        // already committed.
+        if (deps.recordCreditBalanceProjection !== undefined) {
+          yield* Effect.promise(() =>
+            deps
+              .recordCreditBalanceProjection!({
+                accountRef: context.accountRef,
+                deltaUsdCents: -msatToUsdCentsRound(costMsat),
+                idempotencyKey: inferenceChargeIdempotencyKey(context.requestId),
+                observedAt: settledAt,
+              })
+              .catch(() => undefined),
+          )
+        }
         return { metered: true, receiptRef } satisfies MeteringOutcome
       }
 

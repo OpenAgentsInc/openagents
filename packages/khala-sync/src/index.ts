@@ -33,6 +33,12 @@ export * from "./chat.js"
 // Self-contained module (no cycle).
 export * from "./public-counter.js"
 
+// Per-user credit-balance entity contract (issue #8505, Part 2): post-image
+// shape for scope.user.<userId> credit-balance projections, mirroring the
+// public-counter shape but keyed by user id and appended into the owner's
+// personal scope. Self-contained module (no cycle).
+export * from "./credit-balance.js"
+
 // Public settled-feed entity contracts (KS-6.4, #8414): post-image shapes
 // for the scope.public.settled-feed event/summary projection.
 // Self-contained module (no cycle).
