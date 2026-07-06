@@ -349,7 +349,185 @@ Scale comes from the factory (§4.6), not from headcount:
 
 ---
 
-## 7. Summary: the bottle
+## 7. Roadmap: Khala Code Cloud → Company Brain → AI Employees
+
+The specific extension path. Current Khala Code Cloud state (per
+`docs/fable/2026-07-05-khala-code-mobile-only-mvp-launch-audit.md` and
+`docs/fable/ROADMAP_BACKGROUND_AGENTS.md`): cloud execution is **Agent
+Computers** — per-run Firecracker microVMs on our own GCE (#8503), fronted by
+the Worker control plane with credit-gated admission (#8474), scoped SCM
+broker (#8475), isolation policy (#8476), branch/PR writeback (#8477), and
+exact token metering (#8479); the mobile-only MVP (epic #8467) drives those
+sessions from a phone with a $10 GitHub-keyed credit grant; and background
+agents (epic #8187) already define the harness-agnostic
+`openagents.agent_definition.v1` record with typed `toolset`
+(allow/deny/ask), `triggers` (cron / webhook / inboxMatch), `budget`
+(maxRunsPerDay / maxRunSeconds / maxCreditsPerDay), `escalation`
+(forum/push/email), and a `lane` enum of `own_pylon | cloud_workroom |
+worker_only` — with the cloud lane deliberately parked.
+
+The key observation: **the AI-employee product is mostly a recombination of
+these landed seams.** An "employee" is an `agent_definition.v1` given a
+standing identity, a brain slice, and a promotion ladder; the "company
+brain" is Khala Sync collections plus the event ledger's ingestion path;
+the "office" is an Agent Computer. The roadmap below unparks the cloud lane
+for definitions and layers the two product objects on top. Proposed
+workstream prefix **AE** (AI Employees) / **CB** (Company Brain), extending
+the existing lane style (S1/S2, LG-x, BF-x, RX-x).
+
+### Phase 0 — Finish the substrate (current lanes, no new scope)
+Prerequisites already in flight; this roadmap adds no work here, only a
+dependency edge:
+- **S1 cloud spine complete**: #8503 live Firecracker proof → #8474 →
+  #8475 → #8476 → #8477 → #8479. Exit: a mobile-initiated cloud coding
+  session with receipts, on our metal, credit-metered.
+- **Background agents M1–M3**: definition spine, background-for-real
+  (scheduler DO, webhook ingress, budgets), harness-swap proof — all on
+  `lane=own_pylon`.
+
+### Phase 1 — AE-1: Standing employees on Agent Computers (unpark the cloud lane)
+Today a definition run on `own_pylon` needs the user's machine; the
+mastermind's core complaint is exactly that ("when the laptop's off, the
+agent's off"). Unpark `lane=cloud_workroom`:
+- **AE-1.1** Dispatch `agent_definition.v1` runs onto Agent Computers: the
+  scheduler DO and trigger tables are lane-agnostic; add the cloud dispatch
+  branch through the same admission gate (#8474) and metering rail (#8479)
+  the mobile MVP uses. Per-run microVM + scratch-wipe receipts (the #8476
+  isolation policy) is already the right shape for scheduled employees —
+  the employee is durable *state*, not a durable *process*.
+- **AE-1.2** Warm-trigger latency budget: cron and inbox triggers tolerate
+  cold boots; webhook/approval round-trips need a warm-pool knob on the
+  provisioner. Measure first; only build the pool if receipts show it.
+- **AE-1.3** Employee credit budgets = payroll: `maxCreditsPerDay` enforced
+  at admission, surfaced per-employee in the balance UI (#8480 lineage) and
+  Aiur credits console (#8500). Compute time and tokens both draw credits
+  (Agent Computers are separately billable already).
+- **Exit criterion**: one cron-triggered definition running nightly on an
+  Agent Computer for 7 consecutive days, zero desktop involvement, exact
+  `token_usage_events` + `resource_usage_receipt.v1` rows each night, and
+  auto-pause proven on budget exhaustion. This is the "$8 VPS killer"
+  (§4.1) as a receipt, not a claim.
+
+### Phase 2 — AE-2: The employee object (identity, persona, promotion)
+Wrap the definition in the product object the market already understands:
+- **AE-2.1** `ai_employee.v1` record: references an `agent_definition.v1`
+  and adds persona (name, role title, soul/tone doc), **authority state**
+  (`observe | draft | act_with_approval | act_within_policy`), and identity
+  bindings. Authority states compile down to the existing toolset
+  allow/deny/ask + escalation `askPolicy` — promotion is a typed transition
+  with an audit receipt, never a prompt edit.
+- **AE-2.2** Identity bindings via the broker pattern: the SCM broker
+  (#8475) generalizes from `github_user_oauth` scoped to one repo → mailbox
+  and calendar grants (Gmail/M365) scoped to the employee's own address —
+  the "Ali has her own email, never the CEO's" invariant as infrastructure.
+  Read-only grants precede send grants, matching the authority ladder.
+- **AE-2.3** Employee card + manager view: Khala Code desktop panel (the
+  #8211 Agents panel lineage) and, critically, **mobile as the manager's
+  surface** — the escalation channel is already `push` (#8485/#8486), so
+  draft-approval from the phone is the mobile app's second product loop
+  after coding sessions: *your employee drafted 3 emails; approve, edit, or
+  reject*. The event ledger inbox (`event_ledger.v1`, handled-states
+  `open|handled|responded|ignored`) is the employee's inbox rendered as a
+  manager queue.
+- **Exit criterion**: one employee promoted observe → draft →
+  act_with_approval through the UI, each transition receipted, with at
+  least one push-approved outbound action executed from mobile.
+
+### Phase 3 — CB-1: Company Brain as a first-class object
+- **CB-1.1** `company_brain.v1`: a named, owner-scoped set of Khala Sync
+  collections (docs, facts, voice/brand, offerings, contacts-lite, SOPs)
+  with per-collection provenance rows — every entry knows its source
+  (ingested, stated by owner, derived-by-agent) and shows it. Khala Sync
+  gives the cross-device property (desktop, web, mobile) for free.
+- **CB-1.2** Ingestion: the event ledger already lands GitHub and Slack;
+  add read-only connectors in trust-cost order (site scrape + public data
+  first — the blitz prefill path — then Drive/mailbox summaries, then
+  systems of record like QuickBooks). Ingest is `observe`-authority work,
+  runnable by an employee from day one.
+- **CB-1.3** Role-scoped brain views: a definition binds to *named brain
+  slices*, not the whole brain ("each agent a genius in its own lane") —
+  compiled into the toolset policy the same way tool grants are. Owner sees
+  a matrix: employees × slices.
+- **CB-1.4** The prefill pipeline productized: intake form → public-data
+  research run → seeded `company_brain.v1` + one starter employee in
+  `observe` → intro receipt listing every source. This is the blitz
+  prefilled-workspace play (#5156 lineage) rebuilt on the brain object, and
+  it must run as a fleet lane (one prospect = one automated run) to hit
+  campaign scale (§5.2).
+- **Exit criterion**: a prospect-shaped workspace created end-to-end by the
+  pipeline with zero hand-editing, intro receipt included; and one existing
+  customer's brain serving two employees with disjoint slices.
+
+### Phase 4 — AE-3: The template catalog (bottled employees)
+- **AE-3.1** Template = preset bundle: `agent_definition` preset + persona +
+  required brain slices + trigger schedule + verification rubric + the
+  authority floor it ships at (always `observe` or `draft`). Ship order:
+  **Leadgen Engine / Outreach Rep first** (furthest along —
+  `agent_definition.autopilot.lead_gen.v1` exists with send authority
+  denied until approval), then Controller Agent (connector-fed reporting),
+  Content Engine, Ops Triage, Knowledge Concierge. QA Swarm stays a service
+  with its own lane.
+- **AE-3.2** Catalog gate, promise-registry style: no template is listed
+  until it has at least one receipted external outcome; each template page
+  carries its live outcome ledger (§5.4's proof grammar).
+- **AE-3.3** Hiring flow: "hire" = instantiate template → bind brain
+  slices → confirm identity bindings → set payroll budget → employee starts
+  in observe/draft. Time-to-first-receipt is the activation metric.
+- **Exit criterion**: three templates listed, each with an external
+  receipted outcome; one customer running two employees off one brain.
+
+### Phase 5 — AE-4/CB-2: Trust layer (skills provenance + input-path security)
+- **AE-4.1** Provenance-receipted skill registry (§4.3): content hash,
+  source, automated injection audit receipt, capability manifest, and
+  regenerate-under-audit. Skills attach to definitions through the same
+  toolset compiler, so an unaudited skill physically can't ride into an
+  `act_within_policy` employee.
+- **AE-4.2** Head-of-Security as a built-in template: reviews every skill,
+  connector, and authority promotion; its findings are receipts in the
+  owner's inbox. (The mastermind's `/security` role, productized.)
+- **CB-2.1** Input-path defaults: any employee whose triggers include
+  untrusted input (webhook, inboxMatch, scraped content) gets a hard
+  ceiling of `act_with_approval` for outbound/spend tools unless the owner
+  signs an explicit waiver receipt. This encodes §4.4 as policy rather than
+  advice, and it is the honest answer to the blind spot the room hasn't hit
+  yet.
+- **Exit criterion**: registry live with our own templates' skills as the
+  first audited entries; the untrusted-input ceiling enforced in the
+  toolset compiler with a test in the behavior-contract sweep.
+
+### Phase 6 — Scale wiring (campaign + network graduation)
+- Assessment funnel (§5.2) writes directly into the CB-1.4 prefill lane;
+  Aiur ops views (#8501 lineage) grow fleet-of-employees monitoring for
+  support; per-template cohort dashboards track the agency-trap tripwire
+  (operator-minutes per engagement, falling).
+- Network graduation: employee outcome ledgers feed public (consented)
+  outcome stories → forum identity → tips → routed work — the
+  come-for-the-tool funnel with employees, not just coding sessions, as
+  the tool.
+- Candidate promises to register when phases land (names indicative):
+  `autopilot.ai_employee.standing_cloud_run.v1` (Phase 1),
+  `autopilot.ai_employee.promotion_ladder.v1` (Phase 2),
+  `autopilot.company_brain.prefill_receipt.v1` (Phase 3),
+  `autopilot.employee_catalog.receipted_outcomes.v1` (Phase 4),
+  `autopilot.skills.provenance_registry.v1` (Phase 5).
+
+### Sequencing and dependency summary
+
+```
+S1 cloud spine (#8503→#8479)  ──┐
+Background agents M1–M3 (#8187) ─┼─→ AE-1 standing employees (cloud lane)
+Mobile MVP push/credits (#8467) ─┘        │
+                                          ├─→ AE-2 employee object ──→ AE-3 templates ──→ Phase 6 scale
+Khala Sync + event ledger ───────────────→ CB-1 company brain ───┘
+                                          AE-4/CB-2 trust layer (parallel from AE-2 on)
+```
+
+Phase 1 is deliberately thin — it is the smallest change that converts the
+mobile MVP's per-run cloud sessions into the always-on capability every
+level-2 operator in that room is currently solving with a VPS. Everything
+after it is product packaging over seams that already exist.
+
+## 8. Summary: the bottle
 
 The mastermind room is what the agentic economy looks like at artisanal
 scale: every operator hand-blowing their own glass. The magic worth bottling
