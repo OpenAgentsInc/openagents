@@ -90,7 +90,15 @@ import { readFileSync } from "node:fs"
  * `require()`-ing the other ~90 properties is actively unsafe, not just
  * unnecessary). Extend this list only when a new real (non-mocked)
  * `react-native` named import is needed by a component under test. */
-const RN_EAGER_EXPORT_ALLOWLIST = new Set(["ActivityIndicator", "Platform", "Pressable", "Text", "TextInput", "View"])
+const RN_EAGER_EXPORT_ALLOWLIST = new Set([
+  "ActivityIndicator",
+  "FlatList",
+  "Platform",
+  "Pressable",
+  "Text",
+  "TextInput",
+  "View"
+])
 
 /** Rewrites the one non-standard idiom in this package that ISN'T already
  * real ESM: `module.exports = ({ get X() { ... }, Y(...) {...} }: SomeType)`,
@@ -304,6 +312,57 @@ const RN_LEAF_STUBS: ReadonlyArray<{ readonly test: RegExp; readonly contents: s
     // into itself and throws `Cannot access 'Platform' before
     // initialization`). All three names resolve here identically.
     test: /\/Libraries\/Utilities\/Platform(\.ios|\.android)?\.js$/
+  },
+  {
+    // Real `FlatList.js` composes `VirtualizedList`, which needs a real
+    // `ScrollView` (native scroll-event bridging — same dead-bridge class of
+    // problem as the other leaves above) plus viewability tracking that has
+    // no meaning without a real scroll host. `repo-picker-screen.tsx` (added
+    // for MM-I3, #8492) only needs `data`/`renderItem`/`keyExtractor`/
+    // `ItemSeparatorComponent`/`ListFooterComponent`/`ListHeaderComponent` to
+    // behave normally for a mount test — this stand-in renders every row
+    // eagerly (no virtualization/windowing, which has no meaningful
+    // non-native equivalent) inside a plain `View`, dropping scroll physics
+    // that a real device/simulator test (Maestro) still owns.
+    contents: `
+      import * as React from "react"
+      const FlatList = React.forwardRef((props, ref) => {
+        const {
+          data,
+          ItemSeparatorComponent,
+          keyExtractor,
+          ListFooterComponent,
+          ListHeaderComponent,
+          renderItem,
+          ...rest
+        } = props
+        const items = (data ?? []).flatMap((item, index) => {
+          const key = keyExtractor ? keyExtractor(item, index) : String(index)
+          const rendered = renderItem ? renderItem({ index, item }) : null
+          const withSeparator =
+            index > 0 && ItemSeparatorComponent
+              ? [React.createElement(ItemSeparatorComponent, { key: key + "-sep" }), React.cloneElement(rendered, { key })]
+              : [React.cloneElement(rendered, { key })]
+          return withSeparator
+        })
+        // Real FlatList accepts \`ListHeaderComponent\`/\`ListFooterComponent\` as
+        // EITHER a component reference (\`() => <View/>\`) or an already-built
+        // element (\`<View/>\`) — this repo's repo-picker-screen.tsx uses the
+        // latter for its footer.
+        const renderEdge = (edge) =>
+          edge == null ? null : typeof edge === "function" ? React.createElement(edge) : edge
+        return React.createElement(
+          "View",
+          { ...rest, ref },
+          renderEdge(ListHeaderComponent),
+          ...items,
+          renderEdge(ListFooterComponent)
+        )
+      })
+      FlatList.displayName = "FlatList"
+      export default FlatList
+    `,
+    test: /\/Libraries\/Lists\/FlatList\.js$/
   }
 ]
 

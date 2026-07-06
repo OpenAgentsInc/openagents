@@ -86,7 +86,7 @@ top follow-up item for whoever picks this up next.
 
 ## Registry
 
-Registry version: `2026-07-05.9` (schema `openagents.behavior_contracts.v1`)
+Registry version: `2026-07-06.1` (schema `openagents.behavior_contracts.v1`)
 
 ### `khala_mobile.auth.tailnet_auto_discovery_before_manual_login.v1` — RETIRED
 
@@ -233,6 +233,19 @@ Registry version: `2026-07-05.9` (schema `openagents.behavior_contracts.v1`)
 - **Oracle** `composer_turn_status_labels_render_per_status.unit` (bun-test, unit): For each real turn-status value (queued, running, waiting_for_input), the mounted component renders the correct human status label and still shows a reachable Stop button. — `clients/khala-mobile/tests/chat-composer.test.tsx`
 - **Verification:** bun test tests/chat-composer.test.tsx inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main. Real component mounting is enabled by the bun test React Native harness in tests/support/rn-test-environment.ts (see that file's header for how react-native itself becomes importable, and which native-bridge-touching leaves are stubbed).
 - **Authority boundary:** Binds ChatComposer's own React state/render/effect wiring (button swap, lane-picker visibility, controlled-input value, push() call shape) as proven by a REAL mounted component tree via `tests/support/rn-test-environment.ts`. It does not cover real native rendering, gesture/touch physics, Skia drawing, or Reanimated worklet execution on an actual device/simulator — those stay under khala_mobile.platform.launched_app_interaction_smoke.v1, which remains pending. The Skia-drawn ArwesButton/BackgroundGradient/ActivityIndicator leaves and react-native-reanimated are test-doubled (documented in tests/chat-composer.test.tsx's header comment) because they have no meaningful non-native equivalent; everything else in the real import graph (react-native core primitives, push-to-talk-core, khala-runtime-compose-core, khala-sync-push-core, swipe-quote-core, theme/tokens) is the real, unmocked module.
+
+### `khala_mobile.repo_picker.rn_component_mount_coverage.v1` — ENFORCED
+
+- **Surface:** khala-mobile (repo picker)
+- **Stated by:** operator-agent via khala-code-session on 2026-07-06
+- **Statement:** RepoPickerScreen's loading, search-filter, repo-select, and error states actually render and respond correctly when mounted as a live React Native component tree — extending the same real-component-mount coverage ChatComposer proved out to the mobile-only MVP straight line's repo-pick step.
+- **Enforcement tier:** test-sweep
+- **Oracle** `repo_picker_mounts_loads_renders_repos.unit` (bun-test, unit): The real RepoPickerScreen mounts, calls through the REAL (unmocked) khala-mobile-repos-api client against a scripted globalThis.fetch, and renders both scripted repos via the REAL KhalaListItem. — `clients/khala-mobile/tests/repo-picker-screen.test.tsx`
+- **Oracle** `repo_picker_search_filters_real_repo_list.unit` (bun-test, unit): Typing in the real search TextInput filters the rendered rows through the real (unmocked) khala-mobile-repo-search-core functions. — `clients/khala-mobile/tests/repo-picker-screen.test.tsx`
+- **Oracle** `repo_picker_select_calls_bind_thread_repo.unit` (bun-test, unit): Pressing a real repo row's onPress calls the sync runtime's real bindThreadRepo() exactly once with the picked repo's owner/name/defaultBranch and the screen's threadId. — `clients/khala-mobile/tests/repo-picker-screen.test.tsx`
+- **Oracle** `repo_picker_failed_fetch_renders_error_branch.unit` (bun-test, unit): A failed fetch renders the real client's error-mapped empty state ("Repositories unavailable"), not a silent blank screen. — `clients/khala-mobile/tests/repo-picker-screen.test.tsx`
+- **Verification:** bun test tests/repo-picker-screen.test.tsx inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main. Extends tests/support/rn-test-environment.ts with a FlatList leaf stub (data.map(renderItem) inside a plain View, no virtualization) — the first contract to need it beyond ChatComposer's original primitives.
+- **Authority boundary:** Binds RepoPickerScreen's own load/search/select state wiring — including the REAL (unmocked) KhalaListItem and khala-mobile-repos-api client — as proven by a mounted component tree. It does not cover real native scroll/list virtualization (FlatList's real windowing behavior is test-doubled — see tests/support/rn-test-environment.ts's FlatList leaf stub, added for this contract), real touch/gesture physics, or a live GitHub-token-backed server response; those stay under khala_mobile.platform.launched_app_interaction_smoke.v1, which remains pending.
 
 ### `khala_mobile.platform.launched_app_interaction_smoke.v1` — PENDING
 

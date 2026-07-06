@@ -559,6 +559,65 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
     },
     {
       authorityBoundary:
+        "Binds RepoPickerScreen's own load/search/select state wiring — including the REAL (unmocked) KhalaListItem and khala-mobile-repos-api client — as proven by a mounted component tree. It does not cover real native scroll/list virtualization (FlatList's real windowing behavior is test-doubled — see tests/support/rn-test-environment.ts's FlatList leaf stub, added for this contract), real touch/gesture physics, or a live GitHub-token-backed server response; those stay under khala_mobile.platform.launched_app_interaction_smoke.v1, which remains pending.",
+      blockerRefs: [],
+      contractId: "khala_mobile.repo_picker.rn_component_mount_coverage.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "clients/khala-mobile/src/screens/repo-picker-screen.tsx",
+        "clients/khala-mobile/tests/repo-picker-screen.test.tsx",
+        "clients/khala-mobile/tests/support/rn-test-environment.ts",
+        "docs/khala-mobile/khala-mobile-ux-contract.md",
+      ],
+      oracles: [
+        {
+          description:
+            "The real RepoPickerScreen mounts, calls through the REAL (unmocked) khala-mobile-repos-api client against a scripted globalThis.fetch, and renders both scripted repos via the REAL KhalaListItem.",
+          id: "repo_picker_mounts_loads_renders_repos.unit",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "clients/khala-mobile/tests/repo-picker-screen.test.tsx",
+        },
+        {
+          description:
+            "Typing in the real search TextInput filters the rendered rows through the real (unmocked) khala-mobile-repo-search-core functions.",
+          id: "repo_picker_search_filters_real_repo_list.unit",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "clients/khala-mobile/tests/repo-picker-screen.test.tsx",
+        },
+        {
+          description:
+            "Pressing a real repo row's onPress calls the sync runtime's real bindThreadRepo() exactly once with the picked repo's owner/name/defaultBranch and the screen's threadId.",
+          id: "repo_picker_select_calls_bind_thread_repo.unit",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "clients/khala-mobile/tests/repo-picker-screen.test.tsx",
+        },
+        {
+          description:
+            "A failed fetch renders the real client's error-mapped empty state (\"Repositories unavailable\"), not a silent blank screen.",
+          id: "repo_picker_failed_fetch_renders_error_branch.unit",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "clients/khala-mobile/tests/repo-picker-screen.test.tsx",
+        },
+      ],
+      productArea: "repo picker",
+      source: {
+        channel: "khala-code-session",
+        statedBy: "operator-agent",
+        statedOn: "2026-07-06",
+      },
+      state: "enforced",
+      statement:
+        "RepoPickerScreen's loading, search-filter, repo-select, and error states actually render and respond correctly when mounted as a live React Native component tree — extending the same real-component-mount coverage ChatComposer proved out to the mobile-only MVP straight line's repo-pick step.",
+      surface: "khala-mobile",
+      verification:
+        "bun test tests/repo-picker-screen.test.tsx inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main. Extends tests/support/rn-test-environment.ts with a FlatList leaf stub (data.map(renderItem) inside a plain View, no virtualization) — the first contract to need it beyond ChatComposer's original primitives.",
+    },
+    {
+      authorityBoundary:
         "As of 2026-07-06 both platforms have a real launched-app receipt (iOS: two independently-confirmed VALID TestFlight uploads plus a simulator Maestro pass; Android: a real emulator boot, install, launch, and Maestro pass). Neither platform yet has a signed-in thread-open/message-send receipt — that remains the shared gap, not an iOS/Android asymmetry.",
       blockerRefs: [
         "blocker.khala_mobile.needs_seeded_public_safe_test_github_account",
@@ -780,5 +839,5 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
     },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-05.9",
+  version: "2026-07-06.1",
 }
