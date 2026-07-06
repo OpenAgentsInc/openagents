@@ -148,6 +148,7 @@ import {
   makeArtanisDatabaseForEnv,
   type ArtanisDatabase,
 } from './artanis-domain-store'
+import { artifactsBucketForEnv } from './artifacts-binding'
 // KS-8.11 (#8322): CRM/email write entry points ride the dual-write seam.
 import { makeCrmEmailDatabaseForEnv } from './crm-email-domain-store'
 import { makeTreasuryDatabaseForEnv } from './treasury-domain-store'
@@ -8005,7 +8006,7 @@ const agentSiteRoutes = makeAgentSiteRoutes({
   agentStoreForEnv: env =>
     makeAgentRegistrationStoreForEnv(env),
   appendRefreshedSessionCookies,
-  artifactsForEnv: env => env.ARTIFACTS,
+  artifactsForEnv: env => artifactsBucketForEnv(env),
   // KS-8.12 (#8323): agent site routes (builder sessions, site library,
   // saved versions) ride the sites dual-write mirror seam.
   dbForEnv: env => sitesContentDatabaseForEnv(env),
@@ -8031,11 +8032,12 @@ const traceStoreRoutes = makeTraceStoreRoutes({
   // Large-trajectory R2 offload (#6221): a multi-MB real agent session exceeds
   // D1's ~1MB value cap, so the public-safe trajectory JSON is stored in the
   // shared ARTIFACTS bucket with only a pointer kept in D1.
-  trajectoryBlobStore: env => makeR2TraceTrajectoryBlobStore(env.ARTIFACTS),
+  trajectoryBlobStore: env =>
+    makeR2TraceTrajectoryBlobStore(artifactsBucketForEnv(env)),
   // Media blobs (#6223): the trace's playable recording + screenshots live in
   // the same ARTIFACTS bucket under `trace-blobs/{uuid}/{r2Key}` so the
   // `/trace/{uuid}` page serves its own media (never a GitHub attachment).
-  mediaBlobStore: env => makeR2TraceMediaBlobStore(env.ARTIFACTS),
+  mediaBlobStore: env => makeR2TraceMediaBlobStore(artifactsBucketForEnv(env)),
   requireBrowserSession,
 })
 
@@ -8165,27 +8167,26 @@ type PylonCodexRawEventProducerEnv = Parameters<
   typeof openAgentsDatabase
 >[0] &
   PylonCodexRawEventQueueProducerEnv &
-  Readonly<{ ARTIFACTS: R2Bucket }>
+  Readonly<{ ARTIFACTS?: R2Bucket | undefined }>
 
 const makePylonCodexRawEventStoreForEnv = (
   env: PylonCodexRawEventProducerEnv,
 ) => {
   const queue = env.PYLON_CODEX_RAW_EVENT_METADATA_QUEUE
+  const artifacts = artifactsBucketForEnv(env)
   return queue === undefined
-    ? makeD1R2PylonCodexRawEventStore(openAgentsDatabase(env), env.ARTIFACTS)
-    : makeQueuedR2PylonCodexRawEventStore(env.ARTIFACTS, queue)
+    ? makeD1R2PylonCodexRawEventStore(openAgentsDatabase(env), artifacts)
+    : makeQueuedR2PylonCodexRawEventStore(artifacts, queue)
 }
 
 const makePylonCodexRawEventChunkStoreForEnv = (
   env: PylonCodexRawEventProducerEnv,
 ) => {
   const queue = env.PYLON_CODEX_RAW_EVENT_METADATA_QUEUE
+  const artifacts = artifactsBucketForEnv(env)
   return queue === undefined
-    ? makeD1R2PylonCodexRawEventChunkStore(
-        openAgentsDatabase(env),
-        env.ARTIFACTS,
-      )
-    : makeQueuedR2PylonCodexRawEventChunkStore(env.ARTIFACTS, queue)
+    ? makeD1R2PylonCodexRawEventChunkStore(openAgentsDatabase(env), artifacts)
+    : makeQueuedR2PylonCodexRawEventChunkStore(artifacts, queue)
 }
 
 const pylonCodexTurnIngestRoutes = makePylonCodexTurnIngestRoutes<Env>({
@@ -12528,7 +12529,10 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       handleOperatorHarborFullTraceArchivesApi(request, {
         requireAdminApiToken: adminRequest =>
           requireAdminApiToken(adminRequest, env),
-        store: makeHarborFullTraceArchiveStoreForEnv(env, env.ARTIFACTS),
+        store: makeHarborFullTraceArchiveStoreForEnv(
+          env,
+          artifactsBucketForEnv(env),
+        ),
       }),
   },
   {
@@ -15831,7 +15835,10 @@ const routeRequest = makeWorkerRouteRequest({
   routeForgeGitIntakeRequest: (request, env) =>
     makeForgeGitIntakeRoutes<Env>({
       makeArchiveStore: storeEnv =>
-        makeForgeGitPackfileArchiveStoreForEnv(storeEnv, storeEnv.ARTIFACTS),
+        makeForgeGitPackfileArchiveStoreForEnv(
+          storeEnv,
+          artifactsBucketForEnv(storeEnv),
+        ),
       makeCanonicalStore: storeEnv =>
         makeForgeGitCanonicalStoreForEnv(storeEnv),
       makeCoordinationStore: storeEnv =>

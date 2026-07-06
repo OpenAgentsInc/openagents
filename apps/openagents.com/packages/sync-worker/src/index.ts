@@ -72,7 +72,13 @@ export type WorkerBindings = Readonly<{
   // until the wrangler binding + migration are deployed.
   KHALA_SYNC_HUB?: DurableObjectNamespace
   MARKET_RELAY_SERVICE?: Fetcher
-  ARTIFACTS: R2Bucket
+  // Optional since #8516: the account-level Cloudflare R2 feature was
+  // disabled (Cloudflare→GCP consolidation, #8515), so the `r2_buckets`
+  // wrangler binding was removed to unfreeze deploys (API error 10136).
+  // Consumers resolve through `artifactsBucketForEnv` (workers/api
+  // `src/artifacts-binding.ts`), which degrades to typed per-call
+  // rejections when absent. Replacement is the GCS BlobStore (#8523).
+  ARTIFACTS?: R2Bucket
   RUNNER_EVENTS: Queue
   ADJUTANT_ENRICHMENT_QUEUE: Queue
   ASSETS: Fetcher

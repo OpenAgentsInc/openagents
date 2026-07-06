@@ -13,7 +13,9 @@ import {
 } from './tenant-custom-hostnames'
 
 type SiteRuntimeRouteEnv = Readonly<{
-  ARTIFACTS: R2Bucket
+  // Optional since #8516 (account-level R2 disabled); site-runtime resolves
+  // the bucket through `artifactsBucketForEnv`.
+  ARTIFACTS?: R2Bucket | undefined
   OPENAGENTS_DB: D1Database
   SITES_DISPATCH: DispatchNamespace
 }>

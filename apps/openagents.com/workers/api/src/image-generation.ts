@@ -1,11 +1,14 @@
 import { Effect, Layer, Schema as S } from 'effect'
 import * as Context from 'effect/Context'
 
+import { artifactsBucketForEnv } from './artifacts-binding'
 import { decodeUnknownWithSchema } from './json-boundary'
 import { compactRandomId, currentIsoTimestamp } from './runtime-primitives'
 
 type ImageGenerationEnv = Readonly<{
-  ARTIFACTS: R2Bucket
+  // Optional since #8516 (account-level R2 disabled); resolved through
+  // `artifactsBucketForEnv`, which rejects per-call when absent.
+  ARTIFACTS?: R2Bucket | undefined
   GEMINI_API_KEY?: string
   appUrl?: string
 }>
@@ -487,7 +490,7 @@ const storeImage = (
     yield* Effect.tryPromise({
       catch: error => new StorageFailed({ error }),
       try: () =>
-        env.ARTIFACTS.put(key, bytes, {
+        artifactsBucketForEnv(env).put(key, bytes, {
           httpMetadata: {
             contentType: image.mimeType,
           },

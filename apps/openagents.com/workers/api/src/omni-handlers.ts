@@ -1,6 +1,7 @@
 import { Effect, Layer } from 'effect'
 
 import { applyAdjutantRunLifecycleEvents } from './adjutant-run-lifecycle'
+import { artifactsBucketForEnv } from './artifacts-binding'
 import {
   AgentGoalAccountingService,
   AgentGoalAccountingServiceLive,
@@ -2952,7 +2953,7 @@ export const makeOmniHandlers = (dependencies: OmniHandlerDependencies) => {
             {
               actorUserId: 'openagents:runner-ingest',
               appOrigin: dependencies.getAppOrigin(env),
-              artifacts: env.ARTIFACTS,
+              artifacts: artifactsBucketForEnv(env),
               emailConfig: dependencies.getResendEmailConfig(env),
               events: ingestResult.value.records,
               runId,

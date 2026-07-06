@@ -1,5 +1,6 @@
 import { Effect, Match as M } from 'effect'
 
+import { artifactsBucketForEnv } from './artifacts-binding'
 import {
   forbidden,
   methodNotAllowed,
@@ -21,7 +22,9 @@ type ImageGenerationRouteSession = Readonly<{
 }>
 
 type ImageGenerationRouteEnv = Readonly<{
-  ARTIFACTS: R2Bucket
+  // Optional since #8516 (account-level R2 disabled); resolved through
+  // `artifactsBucketForEnv`, which rejects per-call when absent.
+  ARTIFACTS?: R2Bucket | undefined
   GEMINI_API_KEY?: string
 }>
 
@@ -354,7 +357,9 @@ export const makeImageGenerationRoutes = <
       }
 
       const object = yield* Effect.promise(() =>
-        env.ARTIFACTS.get(imageKey).catch(() => undefined),
+        artifactsBucketForEnv(env)
+          .get(imageKey)
+          .catch(() => undefined),
       )
 
       if (object === undefined) {

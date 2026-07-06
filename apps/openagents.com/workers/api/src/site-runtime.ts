@@ -1,11 +1,14 @@
 import { Effect, Layer, Option, Schema as S } from 'effect'
 import * as Context from 'effect/Context'
 
+import { artifactsBucketForEnv } from './artifacts-binding'
 import { optionalString, parseJsonRecord } from './json-boundary'
 import { openAgentsDatabase } from './runtime'
 
 type SiteRuntimeEnv = Readonly<{
-  ARTIFACTS: R2Bucket
+  // Optional since #8516 (account-level R2 disabled); resolved through
+  // `artifactsBucketForEnv`, which rejects per-call when absent.
+  ARTIFACTS?: R2Bucket | undefined
   OPENAGENTS_DB: D1Database
 }>
 
@@ -492,7 +495,7 @@ export class SiteRuntimeService extends Context.Service<
   static readonly layer = (env: SiteRuntimeEnv) =>
     Layer.succeed(SiteRuntimeService, {
       readArtifactObject: Effect.fn('SiteRuntimeService.readArtifactObject')(
-        asset => readArtifactObject(env.ARTIFACTS, asset),
+        asset => readArtifactObject(artifactsBucketForEnv(env), asset),
       ),
       resolveStaticAsset: Effect.fn('SiteRuntimeService.resolveStaticAsset')(
         (slug, candidatePaths) =>

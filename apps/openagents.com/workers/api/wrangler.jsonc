@@ -468,12 +468,13 @@
   // (including asset serving) with the Worker — a site-wide latency risk.
   // Revisit when the Khala Sync request paths justify a placement decision
   // scoped to a dedicated Worker.
-  "r2_buckets": [
-    {
-      "binding": "ARTIFACTS",
-      "bucket_name": "openagents-autopilot-artifacts",
-    },
-  ],
+  // NOTE (#8516): the former `r2_buckets` binding (`ARTIFACTS` →
+  // `openagents-autopilot-artifacts`) was removed after the account-level
+  // R2 feature was disabled (Cloudflare→GCP consolidation, #8515) — leaving
+  // it in config made every `wrangler deploy` fail with API error 10136,
+  // the same deploy-freeze class as the Analytics Engine binding. Consumers
+  // degrade per-call via `src/artifacts-binding.ts`; the replacement is the
+  // GCS-backed BlobStore (#8517/#8523). Do not re-add an R2 binding here.
   "queues": {
     "producers": [
       {
@@ -731,12 +732,6 @@
         {
           "binding": "KHALA_SYNC_DB",
           "id": "63a375a24d6f475db60d9490f55c9102",
-        },
-      ],
-      "r2_buckets": [
-        {
-          "binding": "ARTIFACTS",
-          "bucket_name": "openagents-autopilot-artifacts-staging",
         },
       ],
       "queues": {
