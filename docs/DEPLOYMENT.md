@@ -43,6 +43,23 @@ change, update its linked runbook **and** fix the pointer here.
 | **Nostr relay** | `relay.openagents.com` Cloudflare Worker + Durable Object (market rails + gated general coordination) | `apps/nostr-relay/README.md` | `bun run --cwd apps/nostr-relay typecheck && bun run --cwd apps/nostr-relay test` → `bun run --cwd apps/nostr-relay deploy` (= `wrangler deploy`). Set general-kind authorized pubkeys via `OPENAGENTS_RELAY_AUTHORIZED_PUBKEYS` (#5537). | — |
 | **Verse world service** | Cloudflare Worker + Region Durable Objects + D1 for live Verse presence, local interaction, interest-scoped fanout, and world WebSockets | `apps/openagents-world/README.md` + `docs/game/2026-06-22-effect-typescript-world-backend-replacement-audit.md` | preflight world contract/client/service tests → `cd apps/openagents-world && bunx wrangler d1 migrations apply openagents-world --remote` → `bun run deploy` | — |
 
+## Cloud SQL security posture (CFG-14 #8530 — Postgres ingress hardening)
+
+Project `openagentsgemini`, region `us-central1`. Verify live with
+`gcloud sql instances describe <inst> --format="value(settings.ipConfiguration.authorizedNetworks[].value,settings.ipConfiguration.sslMode)"`.
+
+| Instance | Consumers & connection path | Posture (2026-07-07) | Remaining lockdown |
+|---|---|---|---|
+| **`khala-sync-pg`** (POSTGRES_17, primary Khala DB, public IP `34.70.178.7`) | `openagents-monolith`, `khala-live-hub`, `oa-queue-worker` (+ their `-staging` peers) connect over the **direct public IP** in their `*-database-url*` Secret Manager secrets, with `sslmode=require` in the URL. **No** Cloud SQL connector / VPC path is wired. | **SSL enforced** (`sslMode=ENCRYPTED_ONLY` — rejects any unencrypted connection). `ipv4Enabled=true`, `authorizedNetworks=[0.0.0.0/0]` still present. | **Public ingress (`0.0.0.0/0`) stays open, gated on CFG-9 (#8524).** It cannot be safely removed while the app connects by direct public IP: Cloud Run default egress is Google's broad dynamic IP ranges (no static-egress / VPC connector to allow-list), so dropping `0.0.0.0/0` would sever live serving. Closing it needs EITHER the Cloud SQL Auth Proxy connector (`--add-cloudsql-instances` + repoint every `*-database-url*` secret to the `/cloudsql/…` unix socket) OR the CFG-9 in-VPC Cloud Run move (private IP + connector) — do it there, then remove `0.0.0.0/0` and verify each service. Do **not** delete `0.0.0.0/0` on this instance without one of those in place first. |
+| **`l402-aperture-db`** (POSTGRES_15, aperture LSAT store, public IP `34.46.174.166`) | Only consumer is Cloud Run `l402-aperture`, which connects via the **Cloud SQL connector** (`run.googleapis.com/cloudsql-instances=openagentsgemini:us-central1:l402-aperture-db`, private Google-internal socket — independent of `authorizedNetworks`). | **Locked down 2026-07-07:** `authorizedNetworks` cleared (public ingress closed) and `sslMode` raised to `ENCRYPTED_ONLY` (was `ALLOW_UNENCRYPTED_AND_ENCRYPTED`). Verified: `l402-aperture` reconnected to Postgres via the connector post-patch ("Using postgres as database backend", clean startup, no DB errors). | None — public ingress is closed; the connector path is unaffected. |
+
+Rollback for either instance if serving breaks: re-add the network with
+`gcloud sql instances patch <inst> --authorized-networks=0.0.0.0/0` (and, if needed,
+`--ssl-mode=ALLOW_UNENCRYPTED_AND_ENCRYPTED`). After any change, verify
+`curl -fsS https://openagents-monolith-ezxz4mgdsq-uc.a.run.app/internal/healthz`,
+the Postgres-served counter `curl -fsS https://openagents.com/api/public/khala-tokens-served`,
+and khala-live-hub `…/health`.
+
 ## openagents.com Worker deploy safety gate (AAR 2026-06-25 — read before deploying)
 
 **The ONLY sanctioned way to deploy the `openagents.com` Worker is
