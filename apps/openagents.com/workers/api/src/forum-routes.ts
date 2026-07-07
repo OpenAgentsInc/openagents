@@ -5823,7 +5823,7 @@ export const makeForumRoutes = (dependencies: ForumRouteDependencies = {}) => ({
       }
 
       return request.method === 'GET'
-        ? readForumWorkRequestStatusResponse(db, requireForumLedgerDb(dependencies), workRequestId)
+        ? readForumWorkRequestStatusResponse(db, requireForumLedgerDb(requestDependencies), workRequestId)
         : Effect.succeed(methodNotAllowed(['GET']))
     }
 
@@ -6289,7 +6289,7 @@ export const makeForumRoutes = (dependencies: ForumRouteDependencies = {}) => ({
       ).pipe(
         Effect.flatMap(() =>
           publicListResponse(
-            readForumPostList(db, requireForumLedgerDb(dependencies), {
+            readForumPostList(db, requireForumLedgerDb(requestDependencies), {
               cursor,
               cursorRef,
               forumRef,
@@ -6407,7 +6407,7 @@ export const makeForumRoutes = (dependencies: ForumRouteDependencies = {}) => ({
       }
 
       return request.method === 'GET'
-        ? receiptLookupResponse(db, requireForumLedgerDb(dependencies), receiptRef)
+        ? receiptLookupResponse(db, requireForumLedgerDb(requestDependencies), receiptRef)
         : Effect.succeed(methodNotAllowed(['GET']))
     }
 
@@ -6423,7 +6423,7 @@ export const makeForumRoutes = (dependencies: ForumRouteDependencies = {}) => ({
       }
 
       return request.method === 'GET'
-        ? directTipStatusResponse(db, requireForumLedgerDb(dependencies), attemptId)
+        ? directTipStatusResponse(db, requireForumLedgerDb(requestDependencies), attemptId)
         : Effect.succeed(methodNotAllowed(['GET']))
     }
 
@@ -6706,7 +6706,7 @@ export const makeForumRoutes = (dependencies: ForumRouteDependencies = {}) => ({
         return Effect.succeed(methodNotAllowed(['POST']))
       }
 
-      return readForumTopicDetail(db, requireForumLedgerDb(dependencies), topicId).pipe(
+      return readForumTopicDetail(db, requireForumLedgerDb(requestDependencies), topicId).pipe(
         Effect.flatMap(detail =>
           detail === null
             ? Effect.succeed(notFound())
@@ -6739,7 +6739,7 @@ export const makeForumRoutes = (dependencies: ForumRouteDependencies = {}) => ({
         return Effect.succeed(methodNotAllowed(['POST']))
       }
 
-      return readForumTopicDetail(db, requireForumLedgerDb(dependencies), topicId).pipe(
+      return readForumTopicDetail(db, requireForumLedgerDb(requestDependencies), topicId).pipe(
         Effect.flatMap(detail =>
           detail === null
             ? Effect.succeed(notFound())
@@ -6774,7 +6774,7 @@ export const makeForumRoutes = (dependencies: ForumRouteDependencies = {}) => ({
         return Effect.succeed(methodNotAllowed(['POST']))
       }
 
-      return readForumTopicDetail(db, requireForumLedgerDb(dependencies), topicId).pipe(
+      return readForumTopicDetail(db, requireForumLedgerDb(requestDependencies), topicId).pipe(
         Effect.flatMap(detail => {
           if (detail === null) {
             return Effect.succeed(notFound())
@@ -6826,7 +6826,7 @@ export const makeForumRoutes = (dependencies: ForumRouteDependencies = {}) => ({
       return postSortDirection instanceof Response
         ? Effect.succeed(postSortDirection)
         : publicReadResponse(
-            readForumTopicDetail(db, requireForumLedgerDb(dependencies), topicId, { postSortDirection }),
+            readForumTopicDetail(db, requireForumLedgerDb(requestDependencies), topicId, { postSortDirection }),
           )
     }
 
@@ -6861,7 +6861,7 @@ export const makeForumRoutes = (dependencies: ForumRouteDependencies = {}) => ({
         return Effect.succeed(methodNotAllowed(['POST']))
       }
 
-      return readForumPostDetail(db, requireForumLedgerDb(dependencies), postId).pipe(
+      return readForumPostDetail(db, requireForumLedgerDb(requestDependencies), postId).pipe(
         Effect.flatMap(detail =>
           detail === null
             ? Effect.succeed(notFound())
@@ -6902,7 +6902,7 @@ export const makeForumRoutes = (dependencies: ForumRouteDependencies = {}) => ({
         return Effect.succeed(methodNotAllowed(['POST']))
       }
 
-      return readPostControlTarget(db, requireForumLedgerDb(dependencies), postId).pipe(
+      return readPostControlTarget(db, requireForumLedgerDb(requestDependencies), postId).pipe(
         Effect.flatMap(target =>
           target === null || target.postDetail.post.state === 'tombstoned'
             ? Effect.succeed(notFound())
@@ -6933,7 +6933,7 @@ export const makeForumRoutes = (dependencies: ForumRouteDependencies = {}) => ({
 
       return request.method === 'GET'
         ? publicReadResponse(
-            readForumPostDetail(db, requireForumLedgerDb(dependencies), postId).pipe(
+            readForumPostDetail(db, requireForumLedgerDb(requestDependencies), postId).pipe(
               Effect.flatMap(detail =>
                 detail === null
                   ? Effect.succeed(null)

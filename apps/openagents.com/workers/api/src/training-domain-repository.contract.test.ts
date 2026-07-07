@@ -601,6 +601,10 @@ describe('training domain seam', () => {
         log: event => logged.push(event),
         postgres: {
           listClaimableWindowRows: () => Promise.resolve([]),
+          listVerificationChallengeRecordsForRun: () => Promise.resolve([]),
+          listWindowLeaseRecordsForRun: () => Promise.resolve([]),
+          listWindowRecordsForRun: () => Promise.resolve([]),
+          readRunRecord: () => Promise.resolve(undefined),
           upsertRows: async (_table, rows) => {
             mirroredRows.push(...rows)
             return rows.length
@@ -619,6 +623,10 @@ describe('training domain seam', () => {
         log: event => logged.push(event),
         postgres: {
           listClaimableWindowRows: () => Promise.resolve([]),
+          listVerificationChallengeRecordsForRun: () => Promise.resolve([]),
+          listWindowLeaseRecordsForRun: () => Promise.resolve([]),
+          listWindowRecordsForRun: () => Promise.resolve([]),
+          readRunRecord: () => Promise.resolve(undefined),
           upsertRows: () => Promise.reject(new Error('down')),
         },
       })

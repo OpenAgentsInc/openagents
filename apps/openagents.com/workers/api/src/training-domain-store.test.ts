@@ -394,6 +394,111 @@ describe('makeTrainingAuthorityStoreForEnv', () => {
       }
     })
   })
+
+  // CFG D1 evacuation (#8515): the public run-detail READ set behind
+  // `GET /api/training/runs/:id` (readRun + listWindowsForRun +
+  // listWindowLeasesForRun + listVerificationChallengesForRun). On the dead
+  // D1 bridge these still-live D1 reads 500 the route; under reads=postgres
+  // they must serve from Postgres, coerce int8 columns back to numbers, and
+  // fall back to D1 (never 500) on Postgres exhaustion.
+  test('reads=postgres serves run-detail reads from Postgres (int8-coerced) and falls back to D1 on exhaustion', async () => {
+    await withSqlite(async db => {
+      const runRef = nextRef('run')
+      const windowRef = nextRef('window')
+
+      // Serve readRun from Postgres — max_allowed_stale arrives as a STRING
+      // (postgres.js int8 shape) and must coerce to the number the mapper +
+      // route decoder expect.
+      {
+        const runPgRow = {
+          archived_at: null,
+          created_at: '2026-07-04T12:00:00.000Z',
+          id: `id:${runRef}`,
+          manifest_json: null,
+          max_allowed_stale: '7',
+          promise_ref: 'promise.decentralized-training-launch',
+          public_projection_json: '{"state":"planned"}',
+          receipt_refs_json: '["receipt.plan.1"]',
+          seal_in_flight_at: null,
+          seal_publication_cadence_windows: '2',
+          source_refs_json: '["issue.unit"]',
+          state: 'planned',
+          training_run_ref: runRef,
+          updated_at: '2026-07-04T12:00:00.000Z',
+        }
+        const scripted = makeScriptedSqlClient({
+          templateResults: [[runPgRow]],
+        })
+        const store = makeTrainingAuthorityStoreForEnv(
+          makeEnv(db, {
+            KHALA_SYNC_TRAINING_DUAL_WRITE: 'off',
+            KHALA_SYNC_TRAINING_READS: 'postgres',
+          }),
+          {
+            makeSqlClient: scripted.makeSqlClient,
+            wait: () => Promise.resolve(),
+          },
+        )
+        const served = await store.readRun(runRef)
+        expect(served?.trainingRunRef).toBe(runRef)
+        expect(served?.maxAllowedStale).toBe(7)
+        expect(served?.sealPublicationCadenceWindows).toBe(2)
+      }
+
+      // Serve listWindowsForRun from Postgres — priority coerces to a number.
+      {
+        const scripted = makeScriptedSqlClient({
+          templateResults: [[claimableWindowPgRow(windowRef, runRef)]],
+        })
+        const store = makeTrainingAuthorityStoreForEnv(
+          makeEnv(db, {
+            KHALA_SYNC_TRAINING_DUAL_WRITE: 'off',
+            KHALA_SYNC_TRAINING_READS: 'postgres',
+          }),
+          {
+            makeSqlClient: scripted.makeSqlClient,
+            wait: () => Promise.resolve(),
+          },
+        )
+        const served = await store.listWindowsForRun(runRef, 100)
+        expect(served.map(record => record.windowRef)).toEqual([windowRef])
+        expect(served[0]?.priority).toBe(1)
+      }
+
+      // Exhaustion: readRun retries then falls back to the D1 authority (which
+      // holds the row) rather than 500-ing, and logs the fallback.
+      {
+        const seedScripted = makeScriptedSqlClient()
+        const seedStore = makeTrainingAuthorityStoreForEnv(makeEnv(db), {
+          makeSqlClient: seedScripted.makeSqlClient,
+        })
+        await seedStore.planRun(runRecord(runRef))
+
+        const scripted = makeScriptedSqlClient({ throwOnEveryCall: true })
+        const recorder = makeLogRecorder()
+        const store = makeTrainingAuthorityStoreForEnv(
+          makeEnv(db, {
+            KHALA_SYNC_TRAINING_DUAL_WRITE: 'off',
+            KHALA_SYNC_TRAINING_READS: 'postgres',
+          }),
+          {
+            log: recorder.log,
+            makeSqlClient: scripted.makeSqlClient,
+            wait: () => Promise.resolve(),
+          },
+        )
+        const served = await store.readRun(runRef)
+        expect(served?.trainingRunRef).toBe(runRef)
+        expect(
+          recorder.entries.some(
+            entry =>
+              entry.event === 'khala_sync_training_postgres_read_fallback' &&
+              entry.fields.op === 'readRun',
+          ),
+        ).toBe(true)
+      }
+    })
+  })
 })
 
 // ---------------------------------------------------------------------------

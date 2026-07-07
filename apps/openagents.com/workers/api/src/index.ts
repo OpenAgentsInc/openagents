@@ -1402,6 +1402,7 @@ import {
   makeTrainingAuthorityStoreForEnv,
   makeTrainingTraceContributionStoreForEnv,
   makeTrainingVerificationStoreForEnv,
+  type TrainingStoreEnv,
 } from './training-domain-store'
 import {
   buildTrainingWindowRecord,
@@ -11731,7 +11732,14 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     path: '/api/public/tassadar-run-summary',
     handler: (request, env) =>
       Effect.promise(() =>
-        buildPublicTassadarRunSummaryEnvelopeForRequest(request, env),
+        // CFG D1 evacuation (#8515): route the run-detail reads through the
+        // Postgres-serving training authority store (readRun + list reads) so
+        // this public summary no longer 500s on the dead D1 `d1-http` bridge.
+        // Without this it defaults to a raw D1 store and throws.
+        buildPublicTassadarRunSummaryEnvelopeForRequest(request, env, {
+          makeStore: storeEnv =>
+            makeTrainingAuthorityStoreForEnv(storeEnv as TrainingStoreEnv),
+        }),
       ).pipe(Effect.map(envelope => noStoreJsonResponse(envelope))),
   },
   {

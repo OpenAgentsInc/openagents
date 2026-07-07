@@ -298,7 +298,17 @@ export const makePremiumAccessGate = (
     if (!isPremiumModel(model)) {
       return decidePremiumModelAccess({ model, ownerAllowlisted: false })
     }
-    const identity = await deps.resolveOwnerIdentity(accountRef)
+    // CFG D1 evacuation (#8515): owner-identity resolution reads the owner-claim
+    // surface (`agent_owner_x_claim_challenges`), still a live D1 read. On the
+    // dead `d1-http` bridge that read THROWS and used to 500 EVERY premium-model
+    // `POST /api/v1/chat/completions` request. Fail-CLOSED: an identity read
+    // error resolves to `undefined` (unclaimed) — the SAME safe direction the
+    // routed allowlist read below already takes — so the request is denied
+    // premium (403), never 500. An unclaimed account is never premium, so this
+    // never grants access it could not verify.
+    const identity = await deps
+      .resolveOwnerIdentity(accountRef)
+      .catch(() => undefined)
     const ownerKey = resolveOwnerKey(accountRef, identity)
     // Routed read stays FAIL-CLOSED like readOwnerAllowlisted: any error
     // resolves to not-allowlisted (deny premium).

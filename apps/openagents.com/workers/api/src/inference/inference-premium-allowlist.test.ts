@@ -214,4 +214,35 @@ describe('makePremiumAccessGate (route seam, real D1)', () => {
     expect((await gate('agent:any', 'gemini-3.5-flash')).allowed).toBe(true)
     expect((await gate('agent:any', 'gpt-oss-20b')).allowed).toBe(true)
   })
+
+  // CFG D1 evacuation (#8515): the owner-identity resolution reads the live D1
+  // owner-claim surface. On the dead d1-http bridge that read THROWS; the gate
+  // must FAIL-CLOSED to a premium denial, never let the throw 500 the
+  // chat-completions request.
+  test('FAIL-CLOSED: an owner-identity read error denies premium (never throws)', async () => {
+    const db = makeDb()
+    const throwingResolver: VerifiedOwnerIdentityResolver = async () => {
+      throw new Error('d1-http bridge query failed (401): 10000 Authentication error')
+    }
+    const gate = makePremiumAccessGate({
+      db,
+      resolveOwnerIdentity: throwingResolver,
+    })
+    const decision = await gate('agent:any', 'claude-sonnet')
+    expect(decision.allowed).toBe(false)
+    expect(decision.reasonRef).toBe(PREMIUM_REASON_DENIED_NOT_ALLOWLISTED)
+  })
+
+  test('FAIL-CLOSED: a non-premium model still passes when the identity read errors', async () => {
+    const db = makeDb()
+    const throwingResolver: VerifiedOwnerIdentityResolver = async () => {
+      throw new Error('d1-http bridge query failed (401)')
+    }
+    const gate = makePremiumAccessGate({
+      db,
+      resolveOwnerIdentity: throwingResolver,
+    })
+    // Non-premium models short-circuit BEFORE the owner-identity read.
+    expect((await gate('agent:any', 'gemini-3.5-flash')).allowed).toBe(true)
+  })
 })

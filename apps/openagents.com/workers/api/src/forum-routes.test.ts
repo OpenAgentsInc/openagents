@@ -8095,6 +8095,52 @@ describe('Forum routes', () => {
     })
   })
 
+  test('CFG #8515: topic detail reads the PER-REQUEST ledgerDb, not the empty makeForumRoutes() closure', async () => {
+    // Production wiring (index.ts): `makeForumRoutes()` is constructed with an
+    // EMPTY `dependencies` closure; the real per-request deps — including the
+    // Postgres credits `ledgerDb` — arrive as the THIRD `requestDependencies`
+    // argument to `routeForumRequest`. The read routes must resolve the ledger
+    // from `requestDependencies`, NOT the empty closure default, or
+    // `requireForumLedgerDb` throws `PaymentsLedgerUnavailableError` and 500s
+    // every thread/post-detail read on the dead-D1 monolith.
+    const store = new ForumRouteStore()
+    const created = await route(store, '/api/forum/forums/void/topics', {
+      body: {
+        bodyText: 'Per-request ledger wiring regression.',
+        title: 'Ledger wiring',
+      },
+      headers: {
+        authorization: 'Bearer oa_agent_route_test',
+        'idempotency-key': 'ledger-wiring-topic',
+      },
+      method: 'POST',
+    })
+    const topicId = (
+      (await created.json()) as Readonly<{
+        topic: Readonly<{ topicId: string }>
+      }>
+    ).topic.topicId
+
+    const request = new Request(
+      `https://openagents.com/api/forum/topics/${topicId}`,
+    )
+    // Empty closure (mirrors `const forumRoutes = makeForumRoutes()` in
+    // production); the ledger is supplied ONLY through requestDependencies.
+    const effect = makeForumRoutes().routeForumRequest(
+      request,
+      forumRouteDb(store),
+      { ledgerDb: makeForumLedgerDb() },
+    )
+    if (effect === undefined) {
+      throw new Error('Forum topic-detail route was not matched.')
+    }
+    const response = await Effect.runPromise(effect)
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toMatchObject({
+      topic: { title: 'Ledger wiring' },
+    })
+  })
+
   test('topic detail resolves by slug as well as topicId', async () => {
     const store = new ForumRouteStore()
     const createResponse = await route(

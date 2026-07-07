@@ -98,13 +98,22 @@ import { logWorkerRouteWarning } from './observability'
 import { openAgentsDatabase } from './runtime'
 import {
   makeD1TrainingAuthorityStore,
+  rowToTrainingRun,
   rowToTrainingWindow,
+  rowToTrainingWindowLease,
   type TrainingAuthorityStore,
+  type TrainingRunRecord,
+  type TrainingRunRow,
+  type TrainingWindowLeaseRecord,
+  type TrainingWindowLeaseRow,
   type TrainingWindowRecord,
   type TrainingWindowRow,
 } from './training-run-window-authority'
 import {
   makeD1TrainingVerificationStore,
+  rowToTrainingVerificationChallenge,
+  type TrainingVerificationChallengeRecord,
+  type TrainingVerificationRow,
   type TrainingVerificationStore,
 } from './training-verification'
 import {
@@ -229,6 +238,30 @@ export type PostgresTrainingDomainStore = TrainingDomainWriteStore &
       nowIso: string,
       limit: number,
     ) => Promise<ReadonlyArray<TrainingWindowRow>>
+    /**
+     * CFG D1 evacuation (#8515): the public run-detail READ set behind
+     * `GET /api/training/runs/:id` (and the Tassadar public run-summary
+     * envelope) — `readRun` + the three per-run list reads. The Cloudflare D1
+     * `d1-http` bridge 401s account-wide, so these still-live D1 reads throw
+     * and 500 the run-detail route; served from Postgres they are safe.
+     * Records are mapped through the SAME row mappers the D1 store uses, so a
+     * served record is byte-identical to a D1-read record.
+     */
+    readRunRecord: (
+      trainingRunRef: string,
+    ) => Promise<TrainingRunRecord | undefined>
+    listWindowRecordsForRun: (
+      trainingRunRef: string,
+      limit: number,
+    ) => Promise<ReadonlyArray<TrainingWindowRecord>>
+    listWindowLeaseRecordsForRun: (
+      trainingRunRef: string,
+      limit: number,
+    ) => Promise<ReadonlyArray<TrainingWindowLeaseRecord>>
+    listVerificationChallengeRecordsForRun: (
+      trainingRunRef: string,
+      limit: number,
+    ) => Promise<ReadonlyArray<TrainingVerificationChallengeRecord>>
   }>
 
 export type MakePostgresTrainingDomainStoreDependencies = Readonly<{
@@ -239,6 +272,20 @@ export type MakePostgresTrainingDomainStoreDependencies = Readonly<{
    */
   acquireSql: () => Promise<KhalaSyncPushSqlClient>
 }>
+
+/**
+ * Normalize one Postgres int8/bigint column back to the D1 number shape the
+ * row mappers expect, PRESERVING null (so a mapper's `?? Default` still
+ * fires). postgres.js hands int8 back as a string; `Number(...)` restores the
+ * SQLite INTEGER shape. All training bigint columns are small counters — no
+ * 2^53 precision risk.
+ */
+const bigintFieldOrNull = (value: unknown): number | null =>
+  value === null || value === undefined ? null : Number(value)
+
+/** Clamp a caller limit to the same bounds the D1 reads use (1..1000). */
+const boundedLimit = (limit: number): number =>
+  Math.max(1, Math.min(Math.trunc(limit), 1000))
 
 export const makePostgresTrainingDomainStore = (
   deps: MakePostgresTrainingDomainStoreDependencies,
@@ -287,6 +334,75 @@ export const makePostgresTrainingDomainStore = (
           // bigint columns come back driver-typed; normalize to D1 numbers.
           priority: Number(row.priority ?? 0),
         }))
+      }),
+
+    // CFG D1 evacuation (#8515): run-detail READ serving. postgres.js returns
+    // int8/bigint columns as STRINGS while the row mappers (and the strict
+    // `S.Number` route decoders behind them) expect numbers, so each read
+    // normalizes exactly the bigint columns its mapper touches back to D1
+    // number shape — null-preserving, so the mapper's `?? Default` still fires.
+    readRunRecord: trainingRunRef =>
+      withSql(async sql => {
+        const rows = (await sql`
+          SELECT * FROM training_runs
+           WHERE training_run_ref = ${trainingRunRef}
+             AND archived_at IS NULL
+           LIMIT 1`) as Array<Record<string, unknown>>
+        const row = rows[0]
+        return row === undefined
+          ? undefined
+          : rowToTrainingRun({
+              ...row,
+              max_allowed_stale: bigintFieldOrNull(row['max_allowed_stale']),
+              seal_publication_cadence_windows: bigintFieldOrNull(
+                row['seal_publication_cadence_windows'],
+              ),
+            } as unknown as TrainingRunRow)
+      }),
+
+    listWindowRecordsForRun: (trainingRunRef, limit) =>
+      withSql(async sql => {
+        const rows = (await sql`
+          SELECT * FROM training_windows
+           WHERE training_run_ref = ${trainingRunRef}
+             AND archived_at IS NULL
+           ORDER BY planned_at DESC
+           LIMIT ${boundedLimit(limit)}`) as Array<Record<string, unknown>>
+        return rows.map(row =>
+          rowToTrainingWindow({
+            ...row,
+            priority: Number(row['priority'] ?? 0),
+          } as unknown as TrainingWindowRow),
+        )
+      }),
+
+    listWindowLeaseRecordsForRun: (trainingRunRef, limit) =>
+      withSql(async sql => {
+        const rows = (await sql`
+          SELECT * FROM training_window_leases
+           WHERE training_run_ref = ${trainingRunRef}
+             AND archived_at IS NULL
+           ORDER BY claimed_at DESC
+           LIMIT ${boundedLimit(limit)}`) as Array<Record<string, unknown>>
+        return rows.map(row =>
+          rowToTrainingWindowLease(row as unknown as TrainingWindowLeaseRow),
+        )
+      }),
+
+    listVerificationChallengeRecordsForRun: (trainingRunRef, limit) =>
+      withSql(async sql => {
+        const rows = (await sql`
+          SELECT * FROM training_verification_challenges
+           WHERE training_run_ref = ${trainingRunRef}
+             AND archived_at IS NULL
+           ORDER BY updated_at DESC
+           LIMIT ${boundedLimit(limit)}`) as Array<Record<string, unknown>>
+        return rows.map(row =>
+          rowToTrainingVerificationChallenge({
+            ...row,
+            max_attempts: bigintFieldOrNull(row['max_attempts']),
+          } as unknown as TrainingVerificationRow),
+        )
       }),
 
     upsertRows: async (table, rows) => {
@@ -604,55 +720,111 @@ export const makeTrainingAuthorityStoreForEnv = (
     return rows.map(rowToTrainingWindow)
   }
 
+  /**
+   * Route one flag-controlled read: `compare` serves D1 and logs a
+   * fingerprint mismatch against Postgres; `postgres` serves Postgres with
+   * bounded retry and D1 fallback (fail-soft — a run-detail read must never
+   * 500 just because the Postgres serve hiccuped). Same shape as the
+   * `listClaimableWindows` router above, generalized over the run-detail
+   * reads (#8515).
+   */
+  const routePostgresRead = async <A>(
+    op: string,
+    fingerprint: (value: A) => string,
+    servePostgres: () => Promise<A>,
+    serveD1: () => Promise<A>,
+  ): Promise<A> => {
+    if (flags.reads === 'compare') {
+      const d1Result = await serveD1()
+      try {
+        const postgresResult = await servePostgres()
+        if (fingerprint(postgresResult) !== fingerprint(d1Result)) {
+          log('khala_sync_training_read_compare_mismatch', {
+            messageSafe: `fingerprint mismatch`,
+            op,
+            refs: [],
+          })
+        }
+      } catch (error) {
+        log('khala_sync_training_postgres_read_failed', {
+          messageSafe: safeMessage(error),
+          op: `${op}:compare`,
+          refs: [],
+        })
+      }
+      return d1Result
+    }
+
+    // reads === 'postgres': bounded retry, then D1 fallback.
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        return await servePostgres()
+      } catch (error) {
+        const delay = READ_RETRY_DELAYS_MS[attempt]
+        if (delay === undefined) {
+          log('khala_sync_training_postgres_read_fallback', {
+            messageSafe: safeMessage(error),
+            op,
+            refs: [],
+          })
+          return serveD1()
+        }
+        log('khala_sync_training_postgres_read_failed', {
+          messageSafe: safeMessage(error),
+          op: `${op}:attempt${String(attempt)}`,
+          refs: [],
+        })
+        await wait(delay)
+      }
+    }
+  }
+
+  const refsFingerprint = (
+    records: ReadonlyArray<{ readonly [k: string]: unknown }>,
+    key: string,
+  ): string => records.map(record => String(record[key] ?? '')).join(',')
+
   return {
     ...mirrored,
-    listClaimableWindows: async (nowIso, limit) => {
-      if (flags.reads === 'compare') {
-        const d1Records = await mirrored.listClaimableWindows(nowIso, limit)
-        try {
-          const postgresRecords = await postgresClaimableWindows(nowIso, limit)
-          if (
-            windowRecordRefs(postgresRecords) !== windowRecordRefs(d1Records)
-          ) {
-            log('khala_sync_training_read_compare_mismatch', {
-              messageSafe: `d1=${String(d1Records.length)} postgres=${String(postgresRecords.length)}`,
-              op: 'listClaimableWindows',
-              refs: d1Records.slice(0, 10).map(record => record.windowRef),
-            })
-          }
-        } catch (error) {
-          log('khala_sync_training_postgres_read_failed', {
-            messageSafe: safeMessage(error),
-            op: 'listClaimableWindows:compare',
-            refs: [],
-          })
-        }
-        return d1Records
-      }
-
-      // reads === 'postgres': bounded retry, then D1 fallback.
-      for (let attempt = 0; ; attempt += 1) {
-        try {
-          return await postgresClaimableWindows(nowIso, limit)
-        } catch (error) {
-          const delay = READ_RETRY_DELAYS_MS[attempt]
-          if (delay === undefined) {
-            log('khala_sync_training_postgres_read_fallback', {
-              messageSafe: safeMessage(error),
-              op: 'listClaimableWindows',
-              refs: [],
-            })
-            return mirrored.listClaimableWindows(nowIso, limit)
-          }
-          log('khala_sync_training_postgres_read_failed', {
-            messageSafe: safeMessage(error),
-            op: `listClaimableWindows:attempt${String(attempt)}`,
-            refs: [],
-          })
-          await wait(delay)
-        }
-      }
-    },
+    listClaimableWindows: (nowIso, limit) =>
+      routePostgresRead(
+        'listClaimableWindows',
+        records => windowRecordRefs(records),
+        () => postgresClaimableWindows(nowIso, limit),
+        () => mirrored.listClaimableWindows(nowIso, limit),
+      ),
+    // CFG D1 evacuation (#8515): the public run-detail READ set —
+    // `GET /api/training/runs/:id` and the Tassadar run-summary envelope —
+    // now serves from Postgres so a dead D1 `d1-http` bridge no longer 500s it.
+    readRun: trainingRunRef =>
+      routePostgresRead(
+        'readRun',
+        run => (run === undefined ? 'none' : run.trainingRunRef),
+        () => postgres.readRunRecord(trainingRunRef),
+        () => mirrored.readRun(trainingRunRef),
+      ),
+    listWindowsForRun: (trainingRunRef, limit) =>
+      routePostgresRead(
+        'listWindowsForRun',
+        records => refsFingerprint(records, 'windowRef'),
+        () => postgres.listWindowRecordsForRun(trainingRunRef, limit),
+        () => mirrored.listWindowsForRun(trainingRunRef, limit),
+      ),
+    listWindowLeasesForRun: (trainingRunRef, limit) =>
+      routePostgresRead(
+        'listWindowLeasesForRun',
+        records => refsFingerprint(records, 'leaseRef'),
+        () => postgres.listWindowLeaseRecordsForRun(trainingRunRef, limit),
+        () => mirrored.listWindowLeasesForRun(trainingRunRef, limit),
+      ),
+    listVerificationChallengesForRun: (trainingRunRef, limit) =>
+      routePostgresRead(
+        'listVerificationChallengesForRun',
+        records => refsFingerprint(records, 'challengeRef'),
+        () =>
+          postgres.listVerificationChallengeRecordsForRun(trainingRunRef, limit),
+        () => mirrored.listVerificationChallengesForRun(trainingRunRef, limit),
+      ),
   }
 }
 
