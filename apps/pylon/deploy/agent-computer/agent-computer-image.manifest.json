@@ -70,7 +70,13 @@
     "pylonRuntime": "apps/pylon",
     "executor": "agent-computer-executor-from-issue-8473",
     "agents": ["codex", "claude_agent", "hosted_khala"],
-    "scmCredentialPath": "openagents-scm-broker-only"
+    "scmCredentialPath": "openagents-scm-broker-only",
+    "modelTurnRuntime": {
+      "status": "source_landed_bake_pending",
+      "source": "apps/pylon/deploy/agent-computer/turn-runner.ts",
+      "note": "turn-runner.ts now has a phase-2 model turn: when the work-context carries an `inference` block (agent bearer + gateway baseUrl + model + ownerUserId), it makes ONE POST /v1/chat/completions call (mirroring runWithHostedKhalaGateway) and posts the EXACT model-token receipt to POST /api/khala/cloud/runtime-turn-usage (mirroring recordRuntimeTurnUsageReceipt + KhalaCloudRuntimeUsageIngestBody). Unit-tested (apps/pylon/tests/agent-computer-turn-runner.test.ts, 9 pass) + bundles clean (0.29 MB, no server/Effect deps). The agent bearer is never serialized into events/result. The baked rootfsDigest sha256:78861d5a... PREDATES this change: rebuild the turn-runner bundle and re-bake /opt/agent/turn-runner before this digest carries the model turn, then re-pin.",
+      "liveProof": "PENDING owner unblock — the DoD's exact-model-token receipt from inside the microVM needs a valid STAGING programmatic agent token. As of 2026-07-07 POST /api/agents/register 500s on openagents-monolith-staging (prod register works — staging-specific store/migration bug) AND gcloud requires interactive reauth (blocks Cloud Run deploy + Cloud SQL proxy). See NEEDS_OWNER.md."
+    }
   },
   "isolation": {
     "policySchema": "openagents.agent_computer_isolation_policy.v1",
