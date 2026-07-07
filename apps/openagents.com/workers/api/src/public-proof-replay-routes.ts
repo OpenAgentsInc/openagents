@@ -22,6 +22,7 @@ import {
   type PublicTassadarSettlementRow,
 } from './public-tassadar-run-summary-routes'
 import { liveAtReadStaleness } from './public-projection-staleness'
+import { trainingWritesDatabaseForEnv } from './training-domain-store'
 import { openAgentsDatabase } from './runtime'
 import { currentIsoTimestamp } from './runtime-primitives'
 import type { NexusTreasuryPayoutLedgerStore } from './nexus-treasury-payout-ledger'
@@ -1652,11 +1653,18 @@ export const buildPublicProofReplayBundleForRequest = async (
     })
   }
 
+  // #8515 D1 evacuation: the first-real-settlement replay reads the same
+  // Tassadar run summary; default its training + payout-ledger reads off the
+  // 401-dead D1 bridge onto the Postgres-backed D1 adapter (payout ledger is
+  // reused READ-ONLY via the unchanged money factory), D1 fallback only when
+  // the KHALA_SYNC_DB binding is absent.
   const makeStore =
-    deps.makeStore ?? (e => makeD1TrainingAuthorityStore(openAgentsDatabase(e)))
+    deps.makeStore ??
+    (e => makeD1TrainingAuthorityStore(trainingWritesDatabaseForEnv(e)))
   const makePayoutLedgerStore =
     deps.makePayoutLedgerStore ??
-    (e => makeD1NexusTreasuryPayoutLedgerStore(openAgentsDatabase(e)))
+    (e =>
+      makeD1NexusTreasuryPayoutLedgerStore(trainingWritesDatabaseForEnv(e)))
   const runRef = requestedRunRefFor(request)
   const appUrl = new URL(request.url).origin
   const summary = await buildPublicTassadarRunSummaryEnvelope(

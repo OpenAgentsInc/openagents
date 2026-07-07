@@ -101,6 +101,11 @@ const makeEnv = (
 ): TrainingStoreEnv =>
   ({
     OPENAGENTS_DB: db,
+    // These fixtures assert the D1-authority + best-effort mirror path — now
+    // the KHALA_SYNC_TRAINING_WRITES='d1' rollback mode. The #8515 default
+    // (Postgres authority via the D1 adapter, mirror disabled) is covered
+    // separately below. `vars` may override this back to 'postgres'.
+    KHALA_SYNC_TRAINING_WRITES: 'd1',
     ...(withBinding
       ? { KHALA_SYNC_DB: { connectionString: 'postgres://scripted/test' } }
       : {}),
@@ -214,11 +219,76 @@ const withSqlite = async (
   }
 }
 
+/**
+ * A recording fake of the Postgres-backed D1 adapter client (#8515 WRITE
+ * cutover). Captures every `unsafe(text, params)` the adapter runs and echoes
+ * an affected-row `count` so `meta.changes` reflects a real write; SELECTs pop
+ * scripted rows. The tagged-template + `begin` transaction surface both route
+ * through the same `unsafe` recorder.
+ */
+const makePostgresAdapterRecorder = () => {
+  const statements: Array<string> = []
+  const readResults: Array<Array<Record<string, unknown>>> = []
+  const unsafe = (text: string, _params: Array<unknown>) => {
+    const normalized = text.replaceAll(/\s+/g, ' ').trim()
+    statements.push(normalized)
+    const rows: Array<Record<string, unknown>> = /^select/i.test(normalized)
+      ? (readResults.shift() ?? [])
+      : []
+    return Promise.resolve(Object.assign(rows, { count: rows.length || 1 }))
+  }
+  const client = {
+    end: () => Promise.resolve(),
+    sql: {
+      begin: <A>(fn: (tx: { unsafe: typeof unsafe }) => Promise<A>) =>
+        fn({ unsafe }),
+      unsafe,
+    },
+  }
+  return {
+    makeD1Client: async (_connectionString: string) => client,
+    readResults,
+    statements,
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Authority store ForEnv
 // ---------------------------------------------------------------------------
 
 describe('makeTrainingAuthorityStoreForEnv', () => {
+  test('KHALA_SYNC_TRAINING_WRITES=postgres routes authority through the Postgres D1 adapter and disables the D1 mirror', async () => {
+    await withSqlite(async db => {
+      // The mirror client must stay UNTOUCHED (mirror disabled on the Postgres
+      // write path); the adapter recorder receives the authoritative write.
+      const scripted = makeScriptedSqlClient()
+      const pg = makePostgresAdapterRecorder()
+      const store = makeTrainingAuthorityStoreForEnv(
+        makeEnv(db, { KHALA_SYNC_TRAINING_WRITES: 'postgres' }),
+        { makeD1Client: pg.makeD1Client, makeSqlClient: scripted.makeSqlClient },
+      )
+
+      const runRef = nextRef('run')
+      await store.planRun(runRecord(runRef))
+
+      // Authority write went to Postgres via the adapter ...
+      expect(
+        pg.statements.some(text =>
+          text.startsWith('INSERT INTO training_runs'),
+        ),
+      ).toBe(true)
+      // ... the D1 -> Postgres read-back mirror is disabled (no mirror
+      // client calls) ...
+      expect(scripted.executed).toEqual([])
+      // ... and the dead D1 authority was NOT written (Postgres is the sole
+      // authority on this path).
+      const d1Rows = await db
+        .prepare('SELECT training_run_ref FROM training_runs')
+        .all<{ training_run_ref: string }>()
+      expect(d1Rows.results).toEqual([])
+    })
+  })
+
   test('without KHALA_SYNC_DB the plain D1 store round-trips and no Postgres statement runs', async () => {
     await withSqlite(async db => {
       const scripted = makeScriptedSqlClient()

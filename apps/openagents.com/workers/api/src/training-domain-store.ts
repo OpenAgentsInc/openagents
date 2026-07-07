@@ -94,6 +94,12 @@ import {
   type KhalaSyncPushSqlClient,
   type MakeKhalaSyncPushSqlClient,
 } from './khala-sync-push-routes'
+import {
+  makeKhalaSyncWritesDatabase,
+  parseKhalaSyncWritesMode,
+  type KhalaSyncWritesMode,
+  type MakeKhalaSyncWritesDatabaseOptions,
+} from './khala-sync-domain-writes-database'
 import { logWorkerRouteWarning } from './observability'
 import { openAgentsDatabase } from './runtime'
 import {
@@ -132,11 +138,19 @@ export type TrainingReadsMode = 'd1' | 'postgres' | 'compare'
 export type TrainingFlags = Readonly<{
   dualWrite: boolean
   reads: TrainingReadsMode
+  /**
+   * #8515 WRITE cutover: `postgres` (default) makes the Postgres-backed D1
+   * adapter the authoritative training store — reads AND writes leave the
+   * 401-dead D1 bridge. `d1` restores the pre-cutover D1-authority +
+   * best-effort mirror path.
+   */
+  writes: KhalaSyncWritesMode
 }>
 
 export type TrainingFlagEnv = Readonly<{
   KHALA_SYNC_TRAINING_DUAL_WRITE?: string | undefined
   KHALA_SYNC_TRAINING_READS?: string | undefined
+  KHALA_SYNC_TRAINING_WRITES?: string | undefined
 }>
 
 const FLAG_OFF_VALUES = new Set(['0', 'off', 'false', 'disabled', 'no'])
@@ -147,6 +161,10 @@ const FLAG_OFF_VALUES = new Set(['0', 'off', 'false', 'disabled', 'no'])
  * exists); reads default to D1 authority until the runbook's cutover
  * sequence flips them. Unknown read values fall back to 'd1' — never
  * fail open into an unproven read path on a typo.
+ *
+ * `writes` defaults to 'postgres' (#8515): D1 is dead account-wide, so the
+ * authoritative training reads AND writes ride the Postgres-backed D1
+ * adapter. Only an explicit 'd1' restores D1 authority.
  */
 export const trainingFlagsFromEnv = (env: TrainingFlagEnv): TrainingFlags => {
   const dualWriteRaw = env.KHALA_SYNC_TRAINING_DUAL_WRITE?.trim().toLowerCase()
@@ -157,6 +175,7 @@ export const trainingFlagsFromEnv = (env: TrainingFlagEnv): TrainingFlags => {
       dualWriteRaw === undefined || !FLAG_OFF_VALUES.has(dualWriteRaw),
     reads:
       readsRaw === 'postgres' || readsRaw === 'compare' ? readsRaw : 'd1',
+    writes: parseKhalaSyncWritesMode(env.KHALA_SYNC_TRAINING_WRITES),
   }
 }
 
@@ -577,10 +596,39 @@ export type TrainingStoreEnv = TrainingFlagEnv &
 export type MakeTrainingStoreOptions = Readonly<{
   /** Injectable client factory (tests). Default: postgres.js/Hyperdrive. */
   makeSqlClient?: MakeKhalaSyncPushSqlClient | undefined
+  /**
+   * Injectable adapter client factory for the #8515 Postgres write authority
+   * (tests). Default: the int8 postgres.js client in
+   * `khala-sync-domain-writes-database`.
+   */
+  makeD1Client?: MakeKhalaSyncWritesDatabaseOptions['makeD1Client']
   log?: TrainingLog | undefined
   /** Bounded-retry backoff hook for routed reads (tests inject a no-op). */
   wait?: ((ms: number) => Promise<void>) | undefined
 }>
+
+/**
+ * #8515 WRITE cutover: the authoritative training `D1Database` handle. When
+ * `KHALA_SYNC_TRAINING_WRITES=postgres` (default) AND the KHALA_SYNC_DB
+ * binding exists, this is the Postgres-backed D1 adapter — reads AND writes
+ * leave the 401-dead D1 bridge. Otherwise (explicit `d1`, or no binding) it is
+ * plain D1, preserving the pre-cutover dual-write behavior.
+ */
+export const trainingWritesDatabaseForEnv = (
+  env: TrainingStoreEnv,
+  options: MakeTrainingStoreOptions = {},
+): D1Database => {
+  const flags = trainingFlagsFromEnv(env)
+  if (flags.writes === 'postgres') {
+    const postgresDb = makeKhalaSyncWritesDatabase(env, {
+      makeD1Client: options.makeD1Client,
+    })
+    if (postgresDb !== undefined) {
+      return postgresDb
+    }
+  }
+  return openAgentsDatabase(env as { OPENAGENTS_DB: D1Database })
+}
 
 const defaultLog: TrainingLog = (event, fields) => {
   logWorkerRouteWarning(event, {
@@ -610,6 +658,12 @@ const mirrorForEnv = (
 ): TrainingDomainMirror | undefined => {
   const flags = trainingFlagsFromEnv(env)
   if (!flags.dualWrite) {
+    return undefined
+  }
+  // #8515: when writes go straight to Postgres via the D1 adapter, the
+  // D1 -> Postgres read-back mirror is redundant AND would read the dead D1
+  // bridge. Disable it — the adapter `base` is the single Postgres authority.
+  if (flags.writes === 'postgres') {
     return undefined
   }
   const postgres = postgresStoreForEnv(env, options)
@@ -646,7 +700,7 @@ export const makeTrainingAuthorityStoreForEnv = (
   options: MakeTrainingStoreOptions = {},
 ): TrainingAuthorityStore => {
   const base = makeD1TrainingAuthorityStore(
-    openAgentsDatabase(env as { OPENAGENTS_DB: D1Database }),
+    trainingWritesDatabaseForEnv(env, options),
   )
   const flags = trainingFlagsFromEnv(env)
   const postgres = postgresStoreForEnv(env, options)
@@ -834,7 +888,7 @@ export const makeTrainingVerificationStoreForEnv = (
   options: MakeTrainingStoreOptions = {},
 ): TrainingVerificationStore => {
   const base = makeD1TrainingVerificationStore(
-    openAgentsDatabase(env as { OPENAGENTS_DB: D1Database }),
+    trainingWritesDatabaseForEnv(env, options),
   )
   const mirror = mirrorForEnv(env, options)
   if (mirror === undefined) {
@@ -877,7 +931,7 @@ export const makeTrainingTraceContributionStoreForEnv = (
   options: MakeTrainingStoreOptions = {},
 ): TrainingTraceContributionStore => {
   const base = makeD1TrainingTraceContributionStore(
-    openAgentsDatabase(env as { OPENAGENTS_DB: D1Database }),
+    trainingWritesDatabaseForEnv(env, options),
   )
   const mirror = mirrorForEnv(env, options)
   if (mirror === undefined) {

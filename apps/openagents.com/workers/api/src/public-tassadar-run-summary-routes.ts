@@ -9,6 +9,7 @@
 // a run that is not found or has no data returns an honest idle envelope (zeroed,
 // `planned`), never a faked value.
 import { parseJsonRecord } from './json-boundary'
+import { trainingWritesDatabaseForEnv } from './training-domain-store'
 import {
   makeD1NexusTreasuryPayoutLedgerStore,
   type NexusTreasuryPayoutLedgerStore,
@@ -474,11 +475,19 @@ export const buildPublicTassadarRunSummaryEnvelopeForRequest = async (
     readonly now?: () => string
   } = {},
 ): Promise<Record<string, unknown>> => {
+  // #8515 D1 evacuation: default BOTH reads off the 401-dead D1 bridge onto
+  // the Postgres-backed D1 adapter (this is the route that was live-500ing).
+  // The training store rides its own KHALA_SYNC_TRAINING_WRITES gate; the
+  // payout-ledger read reuses the money factory UNCHANGED, just handed the
+  // same Postgres handle (READ-ONLY here — no money-domain logic is touched),
+  // falling back to plain D1 only when the KHALA_SYNC_DB binding is absent.
   const makeStore =
-    deps.makeStore ?? (e => makeD1TrainingAuthorityStore(openAgentsDatabase(e)))
+    deps.makeStore ??
+    (e => makeD1TrainingAuthorityStore(trainingWritesDatabaseForEnv(e)))
   const makePayoutLedgerStore =
     deps.makePayoutLedgerStore ??
-    (e => makeD1NexusTreasuryPayoutLedgerStore(openAgentsDatabase(e)))
+    (e =>
+      makeD1NexusTreasuryPayoutLedgerStore(trainingWritesDatabaseForEnv(e)))
   const generatedAt = (deps.now ?? currentIsoTimestamp)()
   const runRef =
     new URL(request.url).searchParams.get('run')?.trim() ||

@@ -159,6 +159,56 @@ describe.skipIf(!hasLocalPostgres())(
       expect(rows.results.map(r => r.id)).toEqual([live])
     })
 
+    // #8515 D1 evacuation: the training domain (`attachRunEvidence`,
+    // `beginRunSealBarrier`, `transitionWindow`) treats an UPDATE that affects
+    // zero rows as `not_found` via `(result.meta?.changes ?? 0) === 0`. That
+    // signal is load-bearing, so prove the adapter surfaces the REAL affected
+    // row count from postgres.js — not a constant, not the returned-row count
+    // (an UPDATE without RETURNING returns no rows).
+    test('UPDATE meta.changes reports the affected-row count (the not_found signal)', async () => {
+      const id = await seedTeam(5, false)
+
+      // Matches exactly one row -> changes === 1.
+      const hit = await db
+        .prepare(
+          `UPDATE teams SET credits = ? WHERE id = ? AND archived_at IS NULL`,
+        )
+        .bind(9, id)
+        .run()
+      expect(hit.meta.changes).toBe(1)
+      const after = await db
+        .prepare(`SELECT credits FROM teams WHERE id = ?`)
+        .bind(id)
+        .first<{ credits: number }>()
+      expect(after?.credits).toBe(9)
+
+      // Matches no rows -> changes === 0 (this is what surfaces as not_found).
+      const miss = await db
+        .prepare(
+          `UPDATE teams SET credits = ? WHERE id = ? AND archived_at IS NULL`,
+        )
+        .bind(1, `${id}_absent`)
+        .run()
+      expect(miss.meta.changes).toBe(0)
+
+      // Matches multiple rows -> changes === N.
+      const sharedName = nextId('shared')
+      for (let i = 0; i < 2; i += 1) {
+        await db
+          .prepare(
+            `INSERT INTO teams (id, name, slug, kind, credits, status, created_at, updated_at, archived_at)
+             VALUES (?, ?, ?, 'organization', 0, 'active', ?, ?, NULL)`,
+          )
+          .bind(nextId('team'), sharedName, nextId('slug'), NOW, NOW)
+          .run()
+      }
+      const multi = await db
+        .prepare(`UPDATE teams SET credits = ? WHERE name = ?`)
+        .bind(3, sharedName)
+        .run()
+      expect(multi.meta.changes).toBe(2)
+    })
+
     test('the thread/turn content path: insert + read-back through real SQL', async () => {
       const teamId = await seedTeam(0, false)
       const message = await insertTeamChatMessage(

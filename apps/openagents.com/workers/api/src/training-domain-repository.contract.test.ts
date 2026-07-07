@@ -505,8 +505,19 @@ describe.skipIf(!hasLocalPostgres())(
 // ---------------------------------------------------------------------------
 
 describe('training domain seam', () => {
-  test('flags: dual-write defaults ON, reads default d1, typos never fail open', () => {
-    expect(trainingFlagsFromEnv({})).toEqual({ dualWrite: true, reads: 'd1' })
+  test('flags: dual-write defaults ON, reads default d1, writes default postgres, typos never fail open', () => {
+    expect(trainingFlagsFromEnv({})).toEqual({
+      dualWrite: true,
+      reads: 'd1',
+      writes: 'postgres',
+    })
+    // #8515 WRITE cutover: default postgres; only an explicit 'd1' opts out.
+    expect(
+      trainingFlagsFromEnv({ KHALA_SYNC_TRAINING_WRITES: 'd1' }).writes,
+    ).toBe('d1')
+    expect(
+      trainingFlagsFromEnv({ KHALA_SYNC_TRAINING_WRITES: 'postgrse' }).writes,
+    ).toBe('postgres')
     expect(
       trainingFlagsFromEnv({ KHALA_SYNC_TRAINING_DUAL_WRITE: 'off' }).dualWrite,
     ).toBe(false)
@@ -542,7 +553,7 @@ describe('training domain seam', () => {
     }
     const store = makeDualWriteTrainingDomainWriteStore({
       d1,
-      flags: { dualWrite: true, reads: 'd1' },
+      flags: { dualWrite: true, reads: 'd1', writes: 'd1' },
       log: (event, fields) => logged.push({ event, fields }),
       postgres: failing,
     })
@@ -568,7 +579,7 @@ describe('training domain seam', () => {
     }
     const offStore = makeDualWriteTrainingDomainWriteStore({
       d1,
-      flags: { dualWrite: false, reads: 'd1' },
+      flags: { dualWrite: false, reads: 'd1', writes: 'd1' },
       postgres: neverCalled,
     })
     expect(
@@ -576,7 +587,7 @@ describe('training domain seam', () => {
     ).toBe(1)
     const unboundStore = makeDualWriteTrainingDomainWriteStore({
       d1,
-      flags: { dualWrite: true, reads: 'd1' },
+      flags: { dualWrite: true, reads: 'd1', writes: 'd1' },
       postgres: undefined,
     })
     expect(

@@ -98,6 +98,12 @@
     "KHALA_SYNC_CRM_READS": "postgres",
     "KHALA_SYNC_LEDGER_READS": "postgres",
     "KHALA_SYNC_TRAINING_READS": "postgres",
+    // CFG D1 evacuation (#8515): the training authority WRITES (planRun,
+    // transitionRun/Window, claimLease, verification + trace-contribution
+    // upserts) now ride the Postgres-backed D1 adapter — the 401-dead D1
+    // bridge is no longer written. Also re-homes the public tassadar-run-summary
+    // + proof-replay READ path off dead D1. Set to "d1" to roll back.
+    "KHALA_SYNC_TRAINING_WRITES": "postgres",
     "KHALA_SYNC_TREASURY_READS": "postgres",
     // CFG D1 evacuation (#8515): the Cloudflare D1 bridge is 401-dead, so the
     // forum read/write surface (topic lists, threads, new posts) must serve
