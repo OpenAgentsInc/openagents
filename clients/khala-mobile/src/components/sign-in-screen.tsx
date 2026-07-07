@@ -39,10 +39,9 @@ export const SignInScreen = () => {
         source={require("../../assets/images/home-hero.jpg")}
         style={StyleSheet.absoluteFill}
       />
-      {/* StarCraft/Protoss-blue color grade over the hero (owner request): a
-        * blue tint layer so the whole image reads as uniformly blue-cast, then
-        * a darkening scrim under the content for text contrast. */}
-      <View pointerEvents="none" style={styles.tint} />
+      {/* The hero art is now a baked blue duotone (Protoss-blue monochrome),
+        * so no translucent blue tint layer is needed. Keep only a light
+        * darkening scrim so the title + CTA stay legible over the artwork. */}
       <View pointerEvents="none" style={styles.scrim} />
 
       <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
@@ -52,22 +51,31 @@ export const SignInScreen = () => {
           <Text preset="heading" style={[styles.title, themed($titleGlow)]} text={tx("app.title")} />
 
           <View style={themed($ctaColumn)}>
-            {/* Raw Pressable, NOT the Ignite Button: the ported Button was not
-              * applying the `style` background override (it rendered as bare
-              * dark text with no fill over the hero art). A plain Pressable +
-              * RN Text with inline styles guarantees a real, filled CTA. */}
+            {/* The fill lives on an INNER plain `View`, not on the `Pressable`
+              * itself: under the New Architecture (Fabric) a `Pressable` with a
+              * function `style` did not paint its own `backgroundColor` (it
+              * rendered as bare dark text with no cyan fill over the hero art —
+              * owner report + sim-confirmed 2026-07-07). A plain `View` always
+              * paints its `backgroundColor`, so the pill is guaranteed; the
+              * `Pressable` only owns the touch target and press feedback. */}
             <Pressable
               accessibilityRole="button"
               accessibilityState={{ disabled: !githubSignInReady || signingIn }}
               disabled={!githubSignInReady || signingIn}
               onPress={signInWithGitHub}
-              style={({ pressed }) => [
-                styles.loginButton,
-                pressed && styles.loginButtonPressed,
-                (!githubSignInReady || signingIn) && styles.loginButtonDisabled,
-              ]}
+              style={styles.loginPressable}
             >
-              <RNText style={styles.loginButtonText}>{tx("signIn.github.primary")}</RNText>
+              {({ pressed }) => (
+                <View
+                  style={[
+                    styles.loginButton,
+                    pressed && styles.loginButtonPressed,
+                    (!githubSignInReady || signingIn) && styles.loginButtonDisabled,
+                  ]}
+                >
+                  <RNText style={styles.loginButtonText}>{tx("signIn.github.primary")}</RNText>
+                </View>
+              )}
             </Pressable>
 
             {signInErrorMessage === null ? null : (
@@ -117,6 +125,7 @@ const styles = StyleSheet.create({
   },
   loginButtonDisabled: { opacity: 0.5 },
   loginButtonPressed: { backgroundColor: "#3bb8e6" },
+  loginPressable: { width: "100%" },
   loginButtonText: {
     color: "#02060d",
     fontSize: 17,
@@ -126,12 +135,9 @@ const styles = StyleSheet.create({
   safe: { flex: 1 },
   scrim: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: "rgba(2, 10, 22, 0.5)",
-  },
-  tint: {
-    ...StyleSheet.absoluteFill,
-    // StarCraft/Protoss blue cast over the whole hero image.
-    backgroundColor: "rgba(20, 92, 150, 0.45)",
+    // Light darkening scrim for text contrast only — the blue look comes from
+    // the baked duotone hero image, not a colored overlay.
+    backgroundColor: "rgba(2, 10, 22, 0.35)",
   },
   title: {
     color: "white",

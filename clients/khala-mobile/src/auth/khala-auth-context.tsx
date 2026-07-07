@@ -142,7 +142,27 @@ export const KhalaAuthProvider = ({ children }: { children: ReactNode }) => {
 
   const applyCredentials = useCallback(
     async (credentials: { ownerUserId: string; token: string }, persist: boolean) => {
-      if (persist) await saveStoredCredentials(credentials)
+      if (persist) {
+        // A Keychain/SecureStore write hiccup must NEVER bounce a user who
+        // already holds a valid mobile session back to an error screen. A
+        // throw here surfaced as the generic "GitHub sign-in: request failed"
+        // (a plain Error → `unknown` kind) even though the server had returned
+        // a valid session. Log in for this session regardless; the next launch
+        // re-persists via the resume/validate path. Beacon the failure so a
+        // real persist problem is still visible.
+        try {
+          await saveStoredCredentials(credentials)
+        } catch (error) {
+          void beaconSignInDebug(
+            JSON.stringify({
+              errorMessage: (error instanceof Error ? error.message : String(error)).slice(0, 200),
+              errorName: error instanceof Error ? error.name : typeof error,
+              marker: SIGNIN_DEBUG_BUILD_MARKER,
+              stage: "persist",
+            }),
+          )
+        }
+      }
       if (!mountedRef.current) return
       dispatch({ credentials, type: "github_sign_in_succeeded" })
     },
@@ -217,6 +237,12 @@ export const KhalaAuthProvider = ({ children }: { children: ReactNode }) => {
     // message (incl. the token-exchange catch below) so we always see the
     // exact outcome on-screen.
     let debugLine = `[${SIGNIN_DEBUG_BUILD_MARKER}] (no auth-session result)`
+    // Tracks the exact post-callback step in flight so a thrown failure names
+    // the stage (owner report, new-account 2026-07-07: the server returned
+    // all 200s — /token, /api/mobile/session, /api/sync/bootstrap — yet the app
+    // showed "GitHub sign-in: request failed"; without a stage label a plain
+    // Error is indistinguishable across the exchange / session / apply steps).
+    let stage: "prompt" | "token-exchange" | "mobile-session" | "apply" = "prompt"
     try {
       // Build ONE AuthRequest here, imperatively, and use that exact instance
       // to open the browser AND parse the callback. This is the fix for the
@@ -301,6 +327,7 @@ export const KhalaAuthProvider = ({ children }: { children: ReactNode }) => {
         )
       }
 
+      stage = "token-exchange"
       const tokenResponse = await exchangeCodeAsync(
         mobileOpenAuthTokenExchangeConfig({
           code,
@@ -309,25 +336,28 @@ export const KhalaAuthProvider = ({ children }: { children: ReactNode }) => {
         }),
         discovery,
       )
+
+      stage = "mobile-session"
       const mobileSession = await fetchMobileSyncSession({
         accessToken: tokenResponse.accessToken,
         apiBaseUrl: KHALA_OPENAGENTS_API_BASE_URL,
       })
-      const validation = await validateKhalaCredentials({
-        baseUrl: KHALA_SYNC_DEMO_BASE_URL,
-        ownerUserId: mobileSession.ownerUserId,
-        token: mobileSession.syncToken,
-      })
 
-      if (!validation.ok) {
-        if (!mountedRef.current) return
-        dispatch({
-          messageSafe: `${validation.messageSafe}\n${debugLine}`,
-          type: "github_sign_in_failed",
-        })
-        return
-      }
-
+      // We now hold a VALID mobile session: `fetchMobileSyncSession` only
+      // returns on a 200 from /api/mobile/session with a non-empty ownerUserId
+      // AND syncToken (it throws otherwise). THAT is the true sign-in gate. A
+      // user who reaches here MUST be let in. Previously a second network call
+      // — `validateKhalaCredentials` (a /api/sync/bootstrap probe) — gated the
+      // login and any hiccup there (or in the SecureStore write) bounced a user
+      // who already held a valid session back to an error screen. The server
+      // returned all 200s for the new-account attempt yet the app still failed,
+      // because a post-session step threw. The bootstrap probe is demoted to an
+      // ADVISORY, fire-and-forget check that can never block or revert sign-in;
+      // the launch-time re-validation (`resolveVerifiedStoredCredentials`)
+      // still clears a genuinely-dead token on the next launch, so
+      // defense-in-depth is preserved. Applying credentials no longer throws on
+      // a persist failure (see `applyCredentials`).
+      stage = "apply"
       await applyCredentials(
         {
           ownerUserId: mobileSession.ownerUserId,
@@ -335,10 +365,44 @@ export const KhalaAuthProvider = ({ children }: { children: ReactNode }) => {
         },
         true,
       )
+
+      // Advisory only — never blocks or reverts the sign-in above. Beacons a
+      // real bootstrap/token mismatch for telemetry without failing the user.
+      void (async () => {
+        try {
+          const validation = await validateKhalaCredentials({
+            baseUrl: KHALA_SYNC_DEMO_BASE_URL,
+            ownerUserId: mobileSession.ownerUserId,
+            token: mobileSession.syncToken,
+          })
+          if (!validation.ok) {
+            void beaconSignInDebug(
+              JSON.stringify({
+                advisoryValidateFailed: validation.messageSafe.slice(0, 200),
+                marker: SIGNIN_DEBUG_BUILD_MARKER,
+                stage: "advisory-validate",
+              }),
+            )
+          }
+        } catch {
+          // advisory only
+        }
+      })()
     } catch (error) {
       if (!mountedRef.current) return
+      // Beacon the EXACT stage + error so a genuine pre-session failure
+      // (exchange or session) is pinned on the next attempt. Server evidence
+      // (all 200s) points at post-session throws, now hardened above.
+      void beaconSignInDebug(
+        JSON.stringify({
+          errorMessage: (error instanceof Error ? error.message : String(error)).slice(0, 300),
+          errorName: error instanceof Error ? error.name : typeof error,
+          marker: SIGNIN_DEBUG_BUILD_MARKER,
+          stage,
+        }),
+      )
       dispatch({
-        messageSafe: `${mobileProblemMessageSafe(error, "GitHub sign-in")}\n${debugLine}`,
+        messageSafe: `${mobileProblemMessageSafe(error, "GitHub sign-in")}\n${debugLine} stage=${stage}`,
         type: "github_sign_in_failed",
       })
     }

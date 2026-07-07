@@ -104,12 +104,16 @@ describe("Khala mobile provider spine and primitives", () => {
     expect(threadList).not.toContain("usePowerOnVisible")
   })
 
-  test("uses Ignite button primitives on the GitHub-only sign-in fallback", async () => {
+  test("uses a raw filled Pressable CTA on the GitHub-only sign-in fallback", async () => {
     const signIn = await readSource("src/components/sign-in-screen.tsx")
 
-    // MM-H1 follow-up (Ignite port): the sign-in CTA is now the ported Ignite
-    // `Button` (`../ignite`), replacing the shared `KhalaButton`.
-    expect(signIn).toContain("<Button")
+    // Owner report (2026-07-07): the ported Ignite `Button` ignored the `style`
+    // background override and rendered as bare dark text with no fill over the
+    // hero art. The CTA is now a raw `Pressable` + `RNText` with an explicit
+    // `backgroundColor`, guaranteeing a real filled cyan button. `Text` is
+    // still the Ignite primitive (title + error copy).
+    expect(signIn).toContain("<Pressable")
+    expect(signIn).toContain("backgroundColor")
     expect(signIn).toContain('from "../ignite"')
     expect(signIn).toContain("signInWithGitHub")
     expect(signIn).toContain("signIn.github.primary")
@@ -118,7 +122,6 @@ describe("Khala mobile provider spine and primitives", () => {
     expect(signIn).not.toContain("KhalaTextField")
     expect(signIn).not.toContain("KhalaEmptyState")
     expect(signIn).not.toContain("<TextInput")
-    expect(signIn).not.toContain("<Pressable")
     expect(signIn).not.toContain("retryDiscovery")
   })
 
@@ -131,8 +134,9 @@ describe("Khala mobile provider spine and primitives", () => {
     // the user hasn't even signed into yet. The owner asked for the simple,
     // owned `OpenAgentsInc/arcade` `HomeScreen` look instead: one full-bleed
     // background image, one glowing title, one CTA — never fabricated
-    // metrics as decoration.
-    expect(signIn).toContain("city-cyan.png")
+    // metrics as decoration. The full-bleed art is now the baked Protoss-blue
+    // duotone hero (`home-hero.jpg`), replacing the old `city-cyan.png`.
+    expect(signIn).toContain("home-hero.jpg")
     expect(signIn).not.toContain("LandingGlassConsole")
     expect(signIn).not.toContain("NexusBeamBackdrop")
     expect(signIn).not.toContain("WarpAperture")
