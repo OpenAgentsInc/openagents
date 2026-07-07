@@ -1,12 +1,11 @@
+import { useNavigation } from "@react-navigation/native"
 import { useEffect, useState } from "react"
-import { FlatList, View } from "react-native"
+import { FlatList, View, type TextStyle, type ViewStyle } from "react-native"
 import Animated, { FadeIn } from "react-native-reanimated"
 
 import { useKhalaAuth } from "../auth/khala-auth-context"
-import { AppHeader } from "../components/app-header"
-import { KhalaEmptyState } from "../components/khala-empty-state"
-import { KhalaListItem } from "../components/khala-list-item"
-import { KhalaScreen } from "../components/khala-screen"
+import { EmptyState, Header, ListItem, Screen, Text, useAppTheme } from "../ignite"
+import type { ThemedStyle } from "../ignite"
 import { MOTION_MEDIUM, MOTION_STAGGER_MS } from "../theme/motion"
 import {
   fetchKhalaMobileCreditsTransactions,
@@ -31,24 +30,36 @@ const formatOccurredAt = (iso: string): string => {
   return Number.isNaN(parsed.getTime()) ? iso : parsed.toLocaleString()
 }
 
-const TransactionRow = ({ transaction }: { transaction: KhalaMobileCreditsTransaction }) => (
-  <KhalaListItem
-    accessibilityLabel={`${transactionKindLabel(transaction.kind)} ${signedAmountLabel(transaction.kind, transaction.amountUsdCents)}`}
-    detail={formatOccurredAt(transaction.occurredAt)}
-    meta={signedAmountLabel(transaction.kind, transaction.amountUsdCents)}
-    title={transaction.description.trim().length > 0 ? transaction.description : transactionKindLabel(transaction.kind)}
-  />
-)
+const TransactionRow = ({ transaction }: { transaction: KhalaMobileCreditsTransaction }) => {
+  const { themed } = useAppTheme()
+  const meta = signedAmountLabel(transaction.kind, transaction.amountUsdCents)
+  const title =
+    transaction.description.trim().length > 0 ? transaction.description : transactionKindLabel(transaction.kind)
+  return (
+    <ListItem
+      accessibilityLabel={`${transactionKindLabel(transaction.kind)} ${meta}`}
+      TextProps={{ weight: "medium", size: "sm" }}
+      RightComponent={<Text size="xs" style={themed($meta)} text={meta} />}
+    >
+      {title}
+      {"\n"}
+      <Text size="xs" style={themed($dim)} text={formatOccurredAt(transaction.occurredAt)} />
+    </ListItem>
+  )
+}
 
 /**
- * MM-D3 (#8480): transaction history for the mobile credits balance. Reads
- * against the endpoint contract in `khala-mobile-credits-api.ts`'s header
- * comment, now live server-side (#8505 Part 1) — a 404/network failure still
- * degrades to an honest "not yet available" screen rather than an empty or
- * fabricated list, as defense in depth.
+ * MM-D3 (#8480): transaction history for the mobile credits balance, rebuilt on
+ * the ported Infinite Red Ignite component kit (`../ignite`) so it shows the
+ * real Ignite look. Behavior is unchanged: it reads against the endpoint
+ * contract in `khala-mobile-credits-api.ts`'s header comment, and a
+ * 404/network failure still degrades to an honest "not yet available" screen
+ * rather than an empty or fabricated list, as defense in depth.
  */
 export const CreditsHistoryScreen = () => {
   const { baseUrl, token } = useKhalaAuth()
+  const { themed } = useAppTheme()
+  const navigation = useNavigation()
   const [state, setState] = useState<LoadState>({ status: "loading" })
 
   const loadPage = async (cursor: string | undefined, append: boolean) => {
@@ -77,38 +88,44 @@ export const CreditsHistoryScreen = () => {
   }, [])
 
   return (
-    <KhalaScreen preset="fixed">
-      <AppHeader showBack title="Credit history" />
+    <Screen preset="fixed" contentContainerStyle={themed($fill)}>
+      <Header
+        title="Credit history"
+        leftIcon="‹"
+        onLeftPress={() => {
+          if (navigation.canGoBack()) navigation.goBack()
+        }}
+      />
       {state.status === "loading" ? (
-        <View className="flex-1 justify-center px-4">
-          <KhalaEmptyState loading title="Loading history" tone="accent" />
+        <View style={themed($centered)}>
+          <EmptyState loading heading="Loading history" />
         </View>
       ) : state.status === "unavailable" ? (
-        <View className="flex-1 justify-center px-4">
-          <KhalaEmptyState
-            detail="Transaction history isn't available yet — it's coming soon."
-            title="History not yet available"
+        <View style={themed($centered)}>
+          <EmptyState
+            heading="History not yet available"
+            content="Transaction history isn't available yet — it's coming soon."
           />
         </View>
       ) : state.status === "error" ? (
-        <View className="flex-1 justify-center px-4">
-          <KhalaEmptyState detail="Could not load your credit history right now." title="History unavailable" tone="danger" />
+        <View style={themed($centered)}>
+          <EmptyState status="error" heading="History unavailable" content="Could not load your credit history right now." />
         </View>
       ) : state.transactions.length === 0 ? (
-        <View className="flex-1 justify-center px-4">
-          <KhalaEmptyState title="No transactions yet" />
+        <View style={themed($centered)}>
+          <EmptyState heading="No transactions yet" />
         </View>
       ) : (
         <FlatList
-          ItemSeparatorComponent={() => <View className="mx-4 h-px bg-borderMuted" />}
+          ItemSeparatorComponent={() => <View style={themed($separator)} />}
           ListFooterComponent={
             state.nextCursor === null ? (
-              <View className="h-8" />
+              <View style={themed($footerSpacer)} />
             ) : (
-              <KhalaListItem
+              <ListItem
                 accessibilityLabel="Load more transactions"
+                text="Load more"
                 onPress={() => void loadPage(state.nextCursor ?? undefined, true)}
-                title="Load more"
               />
             )
           }
@@ -121,6 +138,25 @@ export const CreditsHistoryScreen = () => {
           )}
         />
       )}
-    </KhalaScreen>
+    </Screen>
   )
 }
+
+const $fill: ThemedStyle<ViewStyle> = () => ({ flex: 1 })
+
+const $centered: ThemedStyle<ViewStyle> = ({ spacing }) => ({
+  flex: 1,
+  justifyContent: "center",
+  paddingHorizontal: spacing.md,
+})
+
+const $separator: ThemedStyle<ViewStyle> = ({ colors, spacing }) => ({
+  height: 1,
+  marginHorizontal: spacing.md,
+  backgroundColor: colors.separator,
+})
+
+const $footerSpacer: ThemedStyle<ViewStyle> = ({ spacing }) => ({ height: spacing.xl })
+
+const $dim: ThemedStyle<TextStyle> = ({ colors }) => ({ color: colors.textDim })
+const $meta: ThemedStyle<TextStyle> = ({ colors }) => ({ color: colors.textDim, paddingTop: 2 })

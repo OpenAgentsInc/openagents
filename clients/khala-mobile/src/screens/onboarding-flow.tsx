@@ -1,16 +1,12 @@
 import { useEffect, useState } from "react"
-import { ScrollView, View } from "react-native"
+import { ScrollView, View, type TextStyle, type ViewStyle } from "react-native"
 
 import { useKhalaAuth } from "../auth/khala-auth-context"
 import { CreditsBalanceChip } from "../components/credits-balance-chip"
-import { KhalaButton } from "../components/khala-button"
-import { KhalaEmptyState } from "../components/khala-empty-state"
-import { KhalaListItem } from "../components/khala-list-item"
-import { KhalaText } from "../components/khala-text"
-import { KhalaTextField } from "../components/khala-text-field"
+import { Button, EmptyState, ListItem, Text, TextField, useAppTheme } from "../ignite"
+import type { ThemedStyle } from "../ignite"
 import { registerForPushNotificationsAsync } from "../push/push-notifications-client"
 import { fetchKhalaMobileCreditsBalance } from "../sync/khala-mobile-credits-api"
-import { formatUsdCents } from "../sync/khala-mobile-credits-format-core"
 import {
   dedupeKhalaMobileRepositoriesById,
   filterKhalaMobileRepositories,
@@ -37,6 +33,10 @@ export type OnboardingFlowProps = Readonly<{
  * state (see that file), so there is no separate onboarding navigation
  * route to get stuck on — the SAME screen a returning user's thread list
  * lives on is where a brand-new user starts.
+ *
+ * Rebuilt on the ported Infinite Red Ignite component kit (`../ignite`) so the
+ * onboarding straight line shows the real Ignite look; product behavior and
+ * copy are unchanged.
  */
 export const OnboardingFlow = ({ onThreadCreated }: OnboardingFlowProps) => {
   const [step, setStep] = useState<OnboardingStep>("welcome")
@@ -67,23 +67,24 @@ export const OnboardingFlow = ({ onThreadCreated }: OnboardingFlowProps) => {
   )
 }
 
-const WelcomeStep = ({ onContinue }: { onContinue: () => void }) => (
-  <ScrollView className="flex-1" contentContainerClassName="flex-1 justify-center gap-6 px-6 py-8">
-    <View className="gap-2">
-      <KhalaText className="text-center" variant="heading">
-        Welcome to Khala Code
-      </KhalaText>
-      <KhalaText className="text-center" variant="muted">
-        Pick a repo, ask the agent to do something, and watch it work — right
-        from your phone.
-      </KhalaText>
-    </View>
-    <View className="items-center">
-      <CreditsBalanceChip />
-    </View>
-    <KhalaButton onPress={onContinue} text="Get started" variant="primary" />
-  </ScrollView>
-)
+const WelcomeStep = ({ onContinue }: { onContinue: () => void }) => {
+  const { themed } = useAppTheme()
+  return (
+    <ScrollView style={themed($flex)} contentContainerStyle={themed($welcomeContent)}>
+      <View style={themed($gapSm)}>
+        <Text preset="heading" style={themed($center)} text="Welcome to Khala Code" />
+        <Text
+          style={themed($centerDim)}
+          text="Pick a repo, ask the agent to do something, and watch it work — right from your phone."
+        />
+      </View>
+      <View style={themed($centerRow)}>
+        <CreditsBalanceChip />
+      </View>
+      <Button preset="reversed" onPress={onContinue} text="Get started" />
+    </ScrollView>
+  )
+}
 
 const REPO_STEP_PER_PAGE = 100
 
@@ -102,6 +103,7 @@ const RepoStep = ({
   onSkip: () => void
 }) => {
   const { baseUrl, token } = useKhalaAuth()
+  const { themed } = useAppTheme()
   const [state, setState] = useState<RepoStepLoadState>({ status: "loading" })
   const [searchTerm, setSearchTerm] = useState("")
 
@@ -126,43 +128,45 @@ const RepoStep = ({
       : []
 
   return (
-    <View className="flex-1 gap-4 px-6 py-8">
-      <View className="gap-1">
-        <KhalaText variant="heading">Pick a repo</KhalaText>
-        <KhalaText variant="muted">You can change this later, or skip for a repo-less chat.</KhalaText>
+    <View style={themed($stepContainer)}>
+      <View style={themed($gapXs)}>
+        <Text preset="subheading" text="Pick a repo" />
+        <Text style={themed($dim)} text="You can change this later, or skip for a repo-less chat." />
       </View>
-      <KhalaTextField
+      <TextField
         autoCapitalize="none"
         autoCorrect={false}
         label="Search"
-        mono={false}
         onChangeText={setSearchTerm}
         placeholder="owner/repo"
         value={searchTerm}
       />
       {state.status === "loading" ? (
-        <KhalaEmptyState loading title="Loading your repositories" tone="accent" />
+        <EmptyState loading heading="Loading your repositories" />
       ) : state.status === "error" ? (
-        <KhalaEmptyState detail={state.messageSafe} title="Repositories unavailable" tone="danger" />
+        <EmptyState status="error" heading="Repositories unavailable" content={state.messageSafe} />
       ) : visibleRepos.length === 0 ? (
-        <KhalaEmptyState title={searchTerm.trim().length === 0 ? "No repositories found" : "No matching repositories"} />
+        <EmptyState heading={searchTerm.trim().length === 0 ? "No repositories found" : "No matching repositories"} />
       ) : (
-        <ScrollView className="flex-1">
+        <ScrollView style={themed($flex)}>
           {visibleRepos.slice(0, 50).map(repo => (
-            <KhalaListItem
+            <ListItem
               accessibilityLabel={repo.fullName}
-              detail={repo.description ?? undefined}
               key={repo.id}
-              meta={repo.private ? "private" : "public"}
               onPress={() => onSelect({ defaultBranch: repo.defaultBranch, name: repo.name, owner: repo.owner })}
-              title={repo.fullName}
-            />
+              TextProps={{ weight: "medium", size: "sm" }}
+              RightComponent={<Text size="xs" style={themed($meta)} text={repo.private ? "private" : "public"} />}
+            >
+              {repo.fullName}
+              {repo.description ? "\n" : ""}
+              {repo.description ? <Text size="xs" style={themed($dim)} text={repo.description} /> : null}
+            </ListItem>
           ))}
         </ScrollView>
       )}
-      <View className="gap-2">
-        <KhalaButton onPress={onSkip} text="Skip — start without a repo" variant="secondary" />
-        <KhalaButton onPress={onBack} text="Back" variant="ghost" />
+      <View style={themed($gapXs)}>
+        <Button preset="filled" onPress={onSkip} text="Skip — start without a repo" />
+        <Button preset="default" onPress={onBack} text="Back" />
       </View>
     </View>
   )
@@ -178,6 +182,7 @@ const TaskStep = ({
   selectedRepo: OnboardingRepoBinding | null
 }) => {
   const { baseUrl, token } = useKhalaAuth()
+  const { themed } = useAppTheme()
   const runtimeState = useKhalaMobileSyncRuntime()
   const push = useKhalaSyncPush()
   const [taskText, setTaskText] = useState("")
@@ -231,31 +236,33 @@ const TaskStep = ({
   }
 
   return (
-    <ScrollView className="flex-1" contentContainerClassName="gap-4 px-6 py-8">
-      <View className="gap-1">
-        <KhalaText variant="heading">What should Khala Code do?</KhalaText>
-        <KhalaText variant="muted">
-          {selectedRepo === null
-            ? "No repo selected — this will be a plain chat."
-            : `Working in ${selectedRepo.owner}/${selectedRepo.name}.`}
-        </KhalaText>
+    <ScrollView style={themed($flex)} contentContainerStyle={themed($taskContent)}>
+      <View style={themed($gapXs)}>
+        <Text preset="subheading" text="What should Khala Code do?" />
+        <Text
+          style={themed($dim)}
+          text={
+            selectedRepo === null
+              ? "No repo selected — this will be a plain chat."
+              : `Working in ${selectedRepo.owner}/${selectedRepo.name}.`
+          }
+        />
       </View>
 
-      <View className="gap-2">
+      <View style={themed($gapXs)}>
         {ONBOARDING_SUGGESTED_TASKS.map(task => (
-          <KhalaButton
+          <Button
             disabled={creating}
             key={task.id}
             onPress={() => setTaskText(task.prompt)}
+            preset={taskText === task.prompt ? "reversed" : "filled"}
             text={task.label}
-            variant={taskText === task.prompt ? "primary" : "secondary"}
           />
         ))}
       </View>
 
-      <KhalaTextField
+      <TextField
         label="Or describe your own task"
-        mono={false}
         multiline
         onChangeText={setTaskText}
         placeholder="What do you want done?"
@@ -263,18 +270,50 @@ const TaskStep = ({
       />
 
       {zeroBalanceBlock ? (
-        <KhalaText variant="danger">You're out of credits. Add more in Settings to start a task.</KhalaText>
+        <Text style={themed($danger)} text="You're out of credits. Add more in Settings to start a task." />
       ) : null}
-      {errorMessage === null ? null : <KhalaText variant="danger">{errorMessage}</KhalaText>}
+      {errorMessage === null ? null : <Text style={themed($danger)} text={errorMessage} />}
 
-      <KhalaButton
+      <Button
         disabled={taskText.trim().length === 0 || creating || zeroBalanceBlock}
-        loading={creating}
+        preset="reversed"
         onPress={() => void startTask(taskText)}
         text="Start"
-        variant="primary"
       />
-      <KhalaButton disabled={creating} onPress={onBack} text="Back" variant="ghost" />
+      <Button preset="default" disabled={creating} onPress={onBack} text="Back" />
     </ScrollView>
   )
 }
+
+const $flex: ThemedStyle<ViewStyle> = () => ({ flex: 1 })
+
+const $welcomeContent: ThemedStyle<ViewStyle> = ({ spacing }) => ({
+  flexGrow: 1,
+  justifyContent: "center",
+  gap: spacing.lg,
+  paddingHorizontal: spacing.lg,
+  paddingVertical: spacing.xl,
+})
+
+const $taskContent: ThemedStyle<ViewStyle> = ({ spacing }) => ({
+  gap: spacing.md,
+  paddingHorizontal: spacing.lg,
+  paddingVertical: spacing.xl,
+})
+
+const $stepContainer: ThemedStyle<ViewStyle> = ({ spacing }) => ({
+  flex: 1,
+  gap: spacing.md,
+  paddingHorizontal: spacing.lg,
+  paddingVertical: spacing.xl,
+})
+
+const $gapSm: ThemedStyle<ViewStyle> = ({ spacing }) => ({ gap: spacing.xs })
+const $gapXs: ThemedStyle<ViewStyle> = ({ spacing }) => ({ gap: spacing.xs })
+const $centerRow: ThemedStyle<ViewStyle> = () => ({ alignItems: "center" })
+
+const $center: ThemedStyle<TextStyle> = () => ({ textAlign: "center" })
+const $centerDim: ThemedStyle<TextStyle> = ({ colors }) => ({ textAlign: "center", color: colors.textDim })
+const $dim: ThemedStyle<TextStyle> = ({ colors }) => ({ color: colors.textDim })
+const $meta: ThemedStyle<TextStyle> = ({ colors }) => ({ color: colors.textDim, paddingTop: 2 })
+const $danger: ThemedStyle<TextStyle> = ({ colors }) => ({ color: colors.error })

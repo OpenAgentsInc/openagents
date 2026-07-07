@@ -5,17 +5,12 @@ import {
   type ChatThreadEntity,
 } from "@openagentsinc/khala-sync"
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack"
-import { FlatList, StyleSheet, View } from "react-native"
+import { ActivityIndicator, FlatList, View, type TextStyle, type ViewStyle } from "react-native"
 import Animated, { FadeIn } from "react-native-reanimated"
 
 import { useKhalaAuth } from "../auth/khala-auth-context"
-import { ActivityIndicator } from "../components/activity-indicator"
-import { AppHeader } from "../components/app-header"
-import { BackgroundGradient } from "../components/background-gradient"
-import { KhalaEmptyState } from "../components/khala-empty-state"
-import { KhalaListItem } from "../components/khala-list-item"
-import { KhalaScreen } from "../components/khala-screen"
-import { KhalaText } from "../components/khala-text"
+import { Card, EmptyState, Header, ListItem, Screen, Text, useAppTheme } from "../ignite"
+import type { ThemedStyle } from "../ignite"
 import type { AppDrawerScreenProps, AppStackParamList } from "../navigators/navigationTypes"
 import { OnboardingFlow } from "./onboarding-flow"
 import { formatRelativeTime } from "../sync/relative-time-core"
@@ -23,7 +18,6 @@ import { sortByKeyDesc } from "../sync/khala-sync-entities-core"
 import { useKhalaMobileSyncPrimitives } from "../sync/khala-mobile-sync-runtime-context"
 import { useKhalaSyncScopeEntities } from "../sync/use-khala-sync-scope-entities"
 import { MOTION_MEDIUM, MOTION_STAGGER_MS } from "../theme/motion"
-import { khalaMobileTheme } from "../theme/tokens"
 
 // Matches thread-messages-screen.tsx's transcript stagger — arcade-fidelity
 // audit (2026-07-06) §4: the app's staggered-entrance technique was wired
@@ -66,9 +60,15 @@ const ThreadListNotice = ({
   title,
   tone = "muted",
 }: ThreadListNoticeProps) => {
+  const { themed } = useAppTheme()
   return (
-    <View className="flex-1 justify-center px-4">
-      <KhalaEmptyState detail={detail} loading={loading} title={title} tone={tone} />
+    <View style={themed($noticeContainer)}>
+      <EmptyState
+        loading={loading}
+        status={tone === "danger" ? "error" : undefined}
+        heading={title}
+        content={detail}
+      />
     </View>
   )
 }
@@ -88,43 +88,38 @@ const ThreadListOverview = ({
   runtimeStatus,
   threads,
 }: ThreadListOverviewProps) => {
+  const { theme, themed } = useAppTheme()
   const busy = runtimeStatus === "loading" || collectionStatus === "loading"
   const label = syncLabel({ collectionStatus, runtimeStatus })
   const latest = latestRecency === undefined ? "none" : formatRelativeTime(latestRecency, now)
   const summary = `${threads.length} threads | ${messageCountLabel(totalMessageCount(threads))} | latest ${latest}`
 
   return (
-    <View className="px-4 pb-3 pt-2">
-      <BackgroundGradient
-        colors={[
-          "rgba(79,208,255,0.16)",
-          "rgba(58,123,255,0.08)",
-          "rgba(10,17,29,0.04)",
-          "rgba(79,208,255,0.12)",
-        ]}
-        cornerRadius={8}
-        maxBlur={busy ? 8 : 2}
-        style={styles.overviewGradient}
-      >
-        <View className="border border-borderMuted bg-surface/95 px-4 py-3">
-          <View className="flex-row items-center justify-between gap-4">
-            <View className="min-w-0 flex-1 gap-1">
-              <KhalaText className="text-2xl" variant="heading">
-                Threads
-              </KhalaText>
-              <KhalaText className="shrink" numberOfLines={1} variant="muted">
-                {summary}
-              </KhalaText>
+    <View style={themed($overviewWrap)}>
+      <Card
+        style={themed($overviewCard)}
+        verticalAlignment="center"
+        ContentComponent={
+          <View style={themed($overviewRow)}>
+            <View style={themed($overviewText)}>
+              <Text preset="subheading" text="Threads" />
+              <Text size="xs" numberOfLines={1} style={themed($dim)} text={summary} />
             </View>
-            <View className="flex-row items-center gap-2">
-              {busy ? <ActivityIndicator size={22} /> : <View className="h-2 w-2 bg-accent" />}
-              <KhalaText className={label === "attention" ? "text-danger" : "text-accent"} variant="faint">
-                {label}
-              </KhalaText>
+            <View style={themed($statusRow)}>
+              {busy ? (
+                <ActivityIndicator color={theme.colors.tint} size="small" />
+              ) : (
+                <View style={themed($statusDot)} />
+              )}
+              <Text
+                size="xxs"
+                style={label === "attention" ? themed($danger) : themed($accent)}
+                text={label}
+              />
             </View>
           </View>
-        </View>
-      </BackgroundGradient>
+        }
+      />
     </View>
   )
 }
@@ -136,30 +131,42 @@ type ThreadRowProps = Readonly<{
 }>
 
 const ThreadRow = ({ now, onPress, thread }: ThreadRowProps) => {
+  const { themed } = useAppTheme()
   const messageLabel = messageCountLabel(thread.messageCount)
   const title = thread.title.trim() || "Untitled chat"
 
   return (
-    <KhalaListItem
+    <ListItem
       accessibilityLabel={title}
-      detail={messageLabel}
-      meta={formatRelativeTime(recencyOf(thread), now)}
       onPress={onPress}
-      title={title}
-      titleNumberOfLines={2}
-    />
+      TextProps={{ weight: "medium", size: "sm", numberOfLines: 3 }}
+      RightComponent={<Text size="xxs" style={themed($meta)} text={formatRelativeTime(recencyOf(thread), now)} />}
+    >
+      {title}
+      {"\n"}
+      <Text size="xs" style={themed($dim)} text={messageLabel} />
+    </ListItem>
   )
 }
 
-const ThreadListSeparator = () => <View className="mx-4 h-px bg-borderMuted" />
+const ThreadListSeparator = () => {
+  const { themed } = useAppTheme()
+  return <View style={themed($separator)} />
+}
 
-const ThreadListFooter = () => <View className="h-8" />
+const ThreadListFooter = () => {
+  const { themed } = useAppTheme()
+  return <View style={themed($footerSpacer)} />
+}
 
-const ThreadListEmpty = () => (
-  <View className="px-4 py-16">
-    <KhalaEmptyState title="No threads yet" />
-  </View>
-)
+const ThreadListEmpty = () => {
+  const { themed } = useAppTheme()
+  return (
+    <View style={themed($emptyPad)}>
+      <EmptyState heading="No threads yet" />
+    </View>
+  )
+}
 
 const renderThreadListSeparator = () => <ThreadListSeparator />
 
@@ -169,6 +176,7 @@ const renderThreadListEmpty = () => <ThreadListEmpty />
 
 export const ThreadListScreen = ({ navigation }: ThreadListScreenProps) => {
   const { ownerUserId } = useKhalaAuth()
+  const { themed } = useAppTheme()
   // Local-first, delta-synced: same fix as the thread message view. Reads
   // whatever thread rows are already on-device immediately, then catches up
   // via the shared session's durable cursor.
@@ -189,8 +197,8 @@ export const ThreadListScreen = ({ navigation }: ThreadListScreenProps) => {
   const latestRecency = firstThread === undefined ? undefined : recencyOf(firstThread)
 
   return (
-    <KhalaScreen preset="fixed">
-      <AppHeader showMenu title="Khala" />
+    <Screen preset="fixed" contentContainerStyle={themed($fill)}>
+      <Header title="Khala" leftIcon="☰" onLeftPress={() => navigation.openDrawer()} />
       {syncRuntimeStatus === "missing_token" ? (
         <ThreadListNotice
           detail="Restart the app to sign in again."
@@ -242,14 +250,68 @@ export const ThreadListScreen = ({ navigation }: ThreadListScreenProps) => {
           )}
         />
       )}
-    </KhalaScreen>
+    </Screen>
   )
 }
 
-const styles = StyleSheet.create({
-  overviewGradient: {
-    backgroundColor: khalaMobileTheme.surface,
-    borderRadius: 8,
-    overflow: "hidden",
-  },
+const $fill: ThemedStyle<ViewStyle> = () => ({ flex: 1 })
+
+const $noticeContainer: ThemedStyle<ViewStyle> = ({ spacing }) => ({
+  flex: 1,
+  justifyContent: "center",
+  paddingHorizontal: spacing.md,
 })
+
+const $overviewWrap: ThemedStyle<ViewStyle> = ({ spacing }) => ({
+  paddingHorizontal: spacing.md,
+  paddingTop: spacing.xs,
+  paddingBottom: spacing.sm,
+})
+
+const $overviewCard: ThemedStyle<ViewStyle> = ({ colors }) => ({
+  backgroundColor: colors.palette.neutral200,
+  borderColor: colors.palette.neutral400,
+})
+
+const $overviewRow: ThemedStyle<ViewStyle> = ({ spacing }) => ({
+  flexDirection: "row",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: spacing.md,
+})
+
+const $overviewText: ThemedStyle<ViewStyle> = ({ spacing }) => ({
+  flex: 1,
+  gap: spacing.xxxs,
+})
+
+const $statusRow: ThemedStyle<ViewStyle> = ({ spacing }) => ({
+  flexDirection: "row",
+  alignItems: "center",
+  gap: spacing.xs,
+})
+
+const $statusDot: ThemedStyle<ViewStyle> = ({ colors }) => ({
+  height: 8,
+  width: 8,
+  borderRadius: 4,
+  backgroundColor: colors.tint,
+})
+
+const $separator: ThemedStyle<ViewStyle> = ({ colors, spacing }) => ({
+  height: 1,
+  marginHorizontal: spacing.md,
+  backgroundColor: colors.separator,
+})
+
+const $footerSpacer: ThemedStyle<ViewStyle> = ({ spacing }) => ({ height: spacing.xl })
+
+const $emptyPad: ThemedStyle<ViewStyle> = ({ spacing }) => ({
+  paddingHorizontal: spacing.md,
+  paddingVertical: spacing.xxxl,
+})
+
+const $dim: ThemedStyle<TextStyle> = ({ colors }) => ({ color: colors.textDim })
+const $meta: ThemedStyle<TextStyle> = ({ colors }) => ({ color: colors.textDim, paddingTop: 2 })
+const $accent: ThemedStyle<TextStyle> = ({ colors }) => ({ color: colors.tint })
+const $danger: ThemedStyle<TextStyle> = ({ colors }) => ({ color: colors.error })

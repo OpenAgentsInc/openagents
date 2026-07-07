@@ -1,14 +1,10 @@
 import { useEffect, useState } from "react"
-import { FlatList, View } from "react-native"
+import { FlatList, View, type TextStyle, type ViewStyle } from "react-native"
 import Animated, { FadeIn } from "react-native-reanimated"
 
 import { useKhalaAuth } from "../auth/khala-auth-context"
-import { AppHeader } from "../components/app-header"
-import { KhalaEmptyState } from "../components/khala-empty-state"
-import { KhalaListItem } from "../components/khala-list-item"
-import { KhalaScreen } from "../components/khala-screen"
-import { KhalaText } from "../components/khala-text"
-import { KhalaTextField } from "../components/khala-text-field"
+import { EmptyState, Header, ListItem, Screen, Text, TextField, useAppTheme } from "../ignite"
+import type { ThemedStyle } from "../ignite"
 import type { AppStackScreenProps } from "../navigators/navigationTypes"
 import { useKhalaMobileSyncRuntime } from "../sync/khala-mobile-sync-runtime-context"
 import { MOTION_MEDIUM, MOTION_STAGGER_MS } from "../theme/motion"
@@ -42,20 +38,32 @@ const RepoRow = ({
   binding: "pending" | null
   onPress: () => void
   repo: KhalaMobileRepository
-}) => (
-  <KhalaListItem
-    accessibilityLabel={repo.fullName}
-    detail={repo.description ?? undefined}
-    disabled={binding === "pending"}
-    meta={repo.private ? "private" : "public"}
-    onPress={onPress}
-    title={repo.fullName}
-  />
-)
+}) => {
+  const { themed } = useAppTheme()
+  return (
+    <ListItem
+      accessibilityLabel={repo.fullName}
+      disabled={binding === "pending"}
+      onPress={onPress}
+      TextProps={{ weight: "medium", size: "sm" }}
+      RightComponent={<Text size="xs" style={themed($meta)} text={repo.private ? "private" : "public"} />}
+    >
+      {repo.fullName}
+      {repo.description ? "\n" : ""}
+      {repo.description ? <Text size="xs" style={themed($dim)} text={repo.description} /> : null}
+    </ListItem>
+  )
+}
 
+/**
+ * MM-I3 (#8492): the "pick a repo" step of the mobile-only MVP straight line,
+ * rebuilt on the ported Infinite Red Ignite component kit (`../ignite`) for the
+ * real Ignite look. Behavior — load/search/select/error — is unchanged.
+ */
 export const RepoPickerScreen = ({ navigation, route }: RepoPickerScreenProps) => {
   const { threadId } = route.params
   const { baseUrl, token } = useKhalaAuth()
+  const { themed } = useAppTheme()
   const runtimeState = useKhalaMobileSyncRuntime()
   const [state, setState] = useState<LoadState>({ status: "loading" })
   const [searchTerm, setSearchTerm] = useState("")
@@ -113,50 +121,53 @@ export const RepoPickerScreen = ({ navigation, route }: RepoPickerScreenProps) =
       : []
 
   return (
-    <KhalaScreen preset="fixed">
-      <AppHeader showBack title="Pick a repo" />
-      <View className="px-4 pb-2 pt-3">
-        <KhalaTextField
+    <Screen preset="fixed" contentContainerStyle={themed($fill)}>
+      <Header
+        title="Pick a repo"
+        leftIcon="‹"
+        onLeftPress={() => {
+          if (navigation.canGoBack()) navigation.goBack()
+        }}
+      />
+      <View style={themed($searchRow)}>
+        <TextField
           autoCapitalize="none"
           autoCorrect={false}
           label="Search"
-          mono={false}
           onChangeText={setSearchTerm}
           placeholder="owner/repo"
           value={searchTerm}
         />
       </View>
       {bindError === null ? null : (
-        <View className="px-4 pb-2">
-          <KhalaText variant="danger">{bindError}</KhalaText>
+        <View style={themed($errorRow)}>
+          <Text size="xs" style={themed($danger)} text={bindError} />
         </View>
       )}
       {state.status === "loading" ? (
-        <View className="flex-1 justify-center px-4">
-          <KhalaEmptyState loading title="Loading repositories" tone="accent" />
+        <View style={themed($centered)}>
+          <EmptyState loading heading="Loading repositories" />
         </View>
       ) : state.status === "error" ? (
-        <View className="flex-1 justify-center px-4">
-          <KhalaEmptyState detail={state.messageSafe} title="Repositories unavailable" tone="danger" />
+        <View style={themed($centered)}>
+          <EmptyState status="error" heading="Repositories unavailable" content={state.messageSafe} />
         </View>
       ) : visibleRepos.length === 0 ? (
-        <View className="flex-1 justify-center px-4">
-          <KhalaEmptyState
-            title={searchTerm.trim().length === 0 ? "No repositories found" : "No matching repositories"}
-          />
+        <View style={themed($centered)}>
+          <EmptyState heading={searchTerm.trim().length === 0 ? "No repositories found" : "No matching repositories"} />
         </View>
       ) : (
         <FlatList
-          ItemSeparatorComponent={() => <View className="mx-4 h-px bg-borderMuted" />}
+          ItemSeparatorComponent={() => <View style={themed($separator)} />}
           ListFooterComponent={
             state.hasNextPage && searchTerm.trim().length === 0 ? (
-              <KhalaListItem
+              <ListItem
                 accessibilityLabel="Load more repositories"
+                text="Load more"
                 onPress={() => void loadPage(state.page + 1, true)}
-                title="Load more"
               />
             ) : (
-              <View className="h-8" />
+              <View style={themed($footerSpacer)} />
             )
           }
           data={visibleRepos}
@@ -172,6 +183,37 @@ export const RepoPickerScreen = ({ navigation, route }: RepoPickerScreenProps) =
           )}
         />
       )}
-    </KhalaScreen>
+    </Screen>
   )
 }
+
+const $fill: ThemedStyle<ViewStyle> = () => ({ flex: 1 })
+
+const $searchRow: ThemedStyle<ViewStyle> = ({ spacing }) => ({
+  paddingHorizontal: spacing.md,
+  paddingTop: spacing.sm,
+  paddingBottom: spacing.xs,
+})
+
+const $errorRow: ThemedStyle<ViewStyle> = ({ spacing }) => ({
+  paddingHorizontal: spacing.md,
+  paddingBottom: spacing.xs,
+})
+
+const $centered: ThemedStyle<ViewStyle> = ({ spacing }) => ({
+  flex: 1,
+  justifyContent: "center",
+  paddingHorizontal: spacing.md,
+})
+
+const $separator: ThemedStyle<ViewStyle> = ({ colors, spacing }) => ({
+  height: 1,
+  marginHorizontal: spacing.md,
+  backgroundColor: colors.separator,
+})
+
+const $footerSpacer: ThemedStyle<ViewStyle> = ({ spacing }) => ({ height: spacing.xl })
+
+const $dim: ThemedStyle<TextStyle> = ({ colors }) => ({ color: colors.textDim })
+const $meta: ThemedStyle<TextStyle> = ({ colors }) => ({ color: colors.textDim, paddingTop: 2 })
+const $danger: ThemedStyle<TextStyle> = ({ colors }) => ({ color: colors.error })

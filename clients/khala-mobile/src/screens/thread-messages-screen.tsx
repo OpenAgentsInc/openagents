@@ -19,6 +19,8 @@ import {
   Pressable,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
+  type TextStyle,
+  type ViewStyle,
   View,
 } from "react-native"
 import Animated, { FadeIn } from "react-native-reanimated"
@@ -27,12 +29,12 @@ import { SafeAreaView } from "react-native-safe-area-context"
 import { type PopupOptionType, TouchablePopupHandler } from "../components/blurred-popup"
 import { ChatComposer, chatComposerKeyboardVerticalOffset } from "../components/chat-composer"
 import { CreditsBalanceChip } from "../components/credits-balance-chip"
-import { KhalaEmptyState } from "../components/khala-empty-state"
 import { KhalaScrollToLatestButton } from "../components/khala-scroll-to-latest-button"
-import { KhalaText } from "../components/khala-text"
 import { KhalaThreadHeader } from "../components/khala-thread-header"
 import { SwipeableItem } from "../components/swipeable-item"
 import { TranscriptPartRow } from "../components/transcript-part-row"
+import { EmptyState, Text, useAppTheme } from "../ignite"
+import type { ThemedStyle } from "../ignite"
 import type { AppStackScreenProps } from "../navigators/navigationTypes"
 import { buildCopyMarkdown, buildCopyText } from "../sync/blurred-popup-menu-core"
 import { buildHandoffPromptBody, summarizeTurnEventsForHandoff } from "../sync/khala-cross-agent-handoff-core"
@@ -98,8 +100,15 @@ const atBottomFromScroll = (event: NativeSyntheticEvent<NativeScrollEvent>): boo
   return distanceFromBottom < 120
 }
 
+/**
+ * Thread view, rebuilt on the ported Infinite Red Ignite `Text`/`EmptyState`
+ * primitives + theme tokens (`../ignite`). Product behavior — local-first
+ * delta sync, turn dispatch, steer/queue/stop, cross-agent handoff, swipe-
+ * quote, new-thread escape hatch — is unchanged.
+ */
 export const ThreadMessagesScreen = ({ navigation, route }: ThreadMessagesScreenProps) => {
   const { threadId, title } = route.params
+  const { theme, themed } = useAppTheme()
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- shared scroll ref across two independently-typed FlatLists (chat vs. transcript)
   const listRef = useRef<FlatList<any>>(null)
   const scope = String(threadScope(threadId))
@@ -245,8 +254,10 @@ export const ThreadMessagesScreen = ({ navigation, route }: ThreadMessagesScreen
   const status = hasRichTranscript ? runtimeState.status : chatState.status
   const loading = status === "loading" && messages.length === 0 && transcriptParts.length === 0
 
+  const repoBound = boundRepo !== undefined && boundRepo !== null
+
   return (
-    <SafeAreaView className="flex-1 bg-bg" edges={["top", "bottom", "left", "right"]}>
+    <SafeAreaView style={themed($safeArea)} edges={["top", "bottom", "left", "right"]}>
       <KhalaThreadHeader
         onBack={() => {
           if (navigation.canGoBack()) navigation.goBack()
@@ -256,61 +267,44 @@ export const ThreadMessagesScreen = ({ navigation, route }: ThreadMessagesScreen
         title={title ?? "Thread"}
       />
       {newThreadError === null ? null : (
-        <KhalaText className="mx-4 mb-1 text-danger" numberOfLines={2} variant="faint">
-          {newThreadError}
-        </KhalaText>
+        <Text size="xxs" numberOfLines={2} style={themed($errorLineWide)} text={newThreadError} />
       )}
       <Pressable
         accessibilityLabel={
-          boundRepo === undefined || boundRepo === null
-            ? "No repo bound — tap to pick a repo"
-            : `Repo bound: ${boundRepo.owner}/${boundRepo.name}`
+          repoBound ? `Repo bound: ${boundRepo.owner}/${boundRepo.name}` : "No repo bound — tap to pick a repo"
         }
         accessibilityRole="button"
-        className="mx-4 mb-2 flex-row items-center justify-between rounded-lg border border-borderMuted bg-surfaceRaised px-3 py-2"
+        style={themed($repoChip)}
         onPress={() => navigation.navigate("RepoPicker", { threadId })}
       >
-        <KhalaText numberOfLines={1} variant="muted">
-          {boundRepo === undefined || boundRepo === null
-            ? "No repo — tap to pick one"
-            : `Repo: ${boundRepo.owner}/${boundRepo.name}`}
-        </KhalaText>
-        <KhalaText variant="faint">›</KhalaText>
+        <Text numberOfLines={1} style={themed($dim)} text={repoBound ? `Repo: ${boundRepo.owner}/${boundRepo.name}` : "No repo — tap to pick one"} />
+        <Text style={themed($faint)} text="›" />
       </Pressable>
-      <View className="mx-4 mb-2">
+      <View style={themed($chipRowWrap)}>
         <CreditsBalanceChip />
       </View>
       <KeyboardAvoidingView
         behavior={chatComposerKeyboardVerticalOffset === 0 ? "height" : "padding"}
-        className="flex-1"
+        style={$flex1}
         keyboardVerticalOffset={chatComposerKeyboardVerticalOffset}
       >
-        <View className="flex-1">
+        <View style={$flex1}>
           {syncRuntimeStatus === "missing_token" ? (
-            <KhalaEmptyState
-              className="flex-1"
-              detail="Restart the app to sign in again."
-              title="Not signed in"
-            />
+            <EmptyState style={$flex1Center} heading="Not signed in" content="Restart the app to sign in again." />
           ) : syncRuntimeStatus === "error" ? (
-            <KhalaEmptyState
-              className="flex-1"
-              detail={syncRuntimeError ?? undefined}
-              title="Sync unavailable"
-              tone="danger"
-            />
+            <EmptyState style={$flex1Center} status="error" heading="Sync unavailable" content={syncRuntimeError ?? undefined} />
           ) : status === "error" ? (
-            <KhalaEmptyState
-              className="flex-1"
-              detail={chatState.error ?? runtimeState.error ?? undefined}
-              title="Thread unavailable"
-              tone="danger"
+            <EmptyState
+              style={$flex1Center}
+              status="error"
+              heading="Thread unavailable"
+              content={chatState.error ?? runtimeState.error ?? undefined}
             />
           ) : loading ? (
-            <KhalaEmptyState className="flex-1" loading title="Loading messages" />
+            <EmptyState style={$flex1Center} loading heading="Loading messages" />
           ) : hasRichTranscript ? (
             <FlatList
-              contentContainerClassName="gap-4 px-8 pb-8 pt-1"
+              contentContainerStyle={themed($transcriptContent)}
               data={transcriptParts}
               keyExtractor={part => part.id}
               onScroll={event => setShowScrollToLatest(!atBottomFromScroll(event))}
@@ -338,7 +332,7 @@ export const ThreadMessagesScreen = ({ navigation, route }: ThreadMessagesScreen
               scrollEventThrottle={120}
             />
           ) : messages.length === 0 ? (
-            <KhalaEmptyState className="flex-1" title="No messages yet" />
+            <EmptyState style={$flex1Center} heading="No messages yet" />
           ) : (
             <FlatList
               // `grow justify-end` anchors a short conversation to the bottom,
@@ -346,28 +340,24 @@ export const ThreadMessagesScreen = ({ navigation, route }: ThreadMessagesScreen
               // at the top with a large empty gap below it (owner report,
               // 2026-07-06: "just the one message ... the big empty gap"). Has
               // no effect once the transcript overflows the viewport.
-              contentContainerClassName="grow justify-end gap-3 px-4 pb-4 pt-6"
+              contentContainerStyle={themed($messagesContent)}
               data={messages}
               keyExtractor={message => message.messageId}
               onScroll={event => setShowScrollToLatest(!atBottomFromScroll(event))}
               ref={listRef}
               renderItem={({ item: message }) => (
-                <View className="items-end">
-                  <View className="max-w-[86%] rounded-2xl rounded-br-md border border-accent/40 bg-surfaceRaised px-4 py-3">
-                    <KhalaText className="text-[17px] leading-6 text-text" variant="body">
-                      {message.body}
-                    </KhalaText>
+                <View style={$messageRow}>
+                  <View style={themed($bubble)}>
+                    <Text style={[$bubbleText, { color: theme.colors.text }]}>{message.body}</Text>
                   </View>
-                  <KhalaText className="mt-1 px-1" variant="faint">
-                    {formatClockTime(message.createdAt)}
-                  </KhalaText>
+                  <Text size="xxs" style={themed($timestamp)} text={formatClockTime(message.createdAt)} />
                 </View>
               )}
               scrollEventThrottle={120}
             />
           )}
           {showScrollToLatest ? (
-            <View className="absolute bottom-4 left-0 right-0 items-center">
+            <View style={$scrollButtonWrap}>
               <KhalaScrollToLatestButton
                 onPress={() => {
                   listRef.current?.scrollToEnd({ animated: true })
@@ -378,9 +368,7 @@ export const ThreadMessagesScreen = ({ navigation, route }: ThreadMessagesScreen
           ) : null}
         </View>
         {handoffError === null ? null : (
-          <KhalaText className="px-4 pb-1 text-danger" numberOfLines={2} variant="faint">
-            {handoffError}
-          </KhalaText>
+          <Text size="xxs" numberOfLines={2} style={themed($errorLine)} text={handoffError} />
         )}
         {syncRuntimeStatus === "missing_token" ? null : (
           <ChatComposer
@@ -396,3 +384,81 @@ export const ThreadMessagesScreen = ({ navigation, route }: ThreadMessagesScreen
     </SafeAreaView>
   )
 }
+
+const $flex1: ViewStyle = { flex: 1 }
+const $flex1Center: ViewStyle = { flex: 1, justifyContent: "center" }
+const $messageRow: ViewStyle = { alignItems: "flex-end" }
+const $scrollButtonWrap: ViewStyle = { position: "absolute", bottom: 16, left: 0, right: 0, alignItems: "center" }
+const $bubbleText: TextStyle = { fontSize: 17, lineHeight: 24 }
+
+const $safeArea: ThemedStyle<ViewStyle> = ({ colors }) => ({
+  flex: 1,
+  backgroundColor: colors.background,
+})
+
+const $repoChip: ThemedStyle<ViewStyle> = ({ colors, spacing }) => ({
+  marginHorizontal: spacing.md,
+  marginBottom: spacing.xs,
+  flexDirection: "row",
+  alignItems: "center",
+  justifyContent: "space-between",
+  borderRadius: 8,
+  borderWidth: 1,
+  borderColor: colors.palette.neutral400,
+  backgroundColor: colors.palette.neutral300,
+  paddingHorizontal: spacing.sm,
+  paddingVertical: spacing.xs,
+})
+
+const $chipRowWrap: ThemedStyle<ViewStyle> = ({ spacing }) => ({
+  marginHorizontal: spacing.md,
+  marginBottom: spacing.xs,
+})
+
+const $transcriptContent: ThemedStyle<ViewStyle> = ({ spacing }) => ({
+  gap: spacing.md,
+  paddingHorizontal: spacing.xl,
+  paddingBottom: spacing.xl,
+  paddingTop: spacing.xxxs,
+})
+
+const $messagesContent: ThemedStyle<ViewStyle> = ({ spacing }) => ({
+  flexGrow: 1,
+  justifyContent: "flex-end",
+  gap: spacing.sm,
+  paddingHorizontal: spacing.md,
+  paddingBottom: spacing.md,
+  paddingTop: spacing.lg,
+})
+
+const $bubble: ThemedStyle<ViewStyle> = ({ colors, spacing }) => ({
+  maxWidth: "86%",
+  borderRadius: 16,
+  borderBottomRightRadius: 4,
+  borderWidth: 1,
+  borderColor: colors.tint,
+  backgroundColor: colors.palette.neutral300,
+  paddingHorizontal: spacing.md,
+  paddingVertical: spacing.sm,
+})
+
+const $timestamp: ThemedStyle<TextStyle> = ({ colors, spacing }) => ({
+  color: colors.textDim,
+  marginTop: spacing.xxs,
+  paddingHorizontal: spacing.xxs,
+})
+
+const $errorLine: ThemedStyle<TextStyle> = ({ colors, spacing }) => ({
+  color: colors.error,
+  paddingHorizontal: spacing.md,
+  paddingBottom: spacing.xxs,
+})
+
+const $errorLineWide: ThemedStyle<TextStyle> = ({ colors, spacing }) => ({
+  color: colors.error,
+  marginHorizontal: spacing.md,
+  marginBottom: spacing.xxs,
+})
+
+const $dim: ThemedStyle<TextStyle> = ({ colors }) => ({ color: colors.textDim })
+const $faint: ThemedStyle<TextStyle> = ({ colors }) => ({ color: colors.palette.neutral500 })
