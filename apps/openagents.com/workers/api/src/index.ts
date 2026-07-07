@@ -1140,6 +1140,10 @@ import {
   publishKhalaCloudRuntimeInsufficientCreditEvent,
 } from './khala-cloud-runtime-usage-routes'
 import {
+  KHALA_AGENT_COMPUTER_WRITEBACK_INGEST_PATH,
+  makeKhalaAgentComputerWritebackRoutes,
+} from './cloud/khala-agent-computer-writeback-routes'
+import {
   PYLON_CLAUDE_TURN_INGEST_PATH,
   PYLON_CODEX_ASSIGNMENT_PROOF_PATH,
   PYLON_CODEX_ASSIGNMENT_TRACE_STATUS_PATH,
@@ -8716,6 +8720,20 @@ const inferenceReferralRoutes = makeInferenceReferralRoutes({
 // system-test mutator sync.debugEcho; KS-3.2 adds the fleet mutators.
 const khalaSyncMutatorRegistry = makeKhalaSyncWorkerMutatorRegistry()
 
+// Agent Computer branch/PR writeback ingest (#8477 / #8503). The registered
+// executor running inside the Firecracker microVM reports its public-safe
+// writeback OUTCOME here; the route runs the user-GitHub-authorization gate and
+// records the thread-scoped `writeback.recorded` runtime event via
+// `publishKhalaAgentComputerWriteback`. Fails closed (503) until KHALA_SYNC_DB
+// is configured; never fabricates a success.
+const khalaAgentComputerWritebackRoutes =
+  makeKhalaAgentComputerWritebackRoutes<Env>({
+    agentStore: env => makeAgentRegistrationStoreForEnv(env),
+    binding: env => env.KHALA_SYNC_DB,
+    githubWriteRepository: env => makeGitHubWriteRepositoryForEnv(env),
+    registry: khalaSyncMutatorRegistry,
+  })
+
 // ST-3 (#8509): the Khala Sync route family's dependency wiring (connect,
 // log, bootstrap, push, cvr-pull), extracted into importable factories so
 // wiring-level tests can drive the REAL `authenticateRequestActor` closures
@@ -13273,6 +13291,14 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     path: KHALA_CLOUD_RUNTIME_USAGE_INGEST_PATH,
     handler: (request, env) =>
       khalaCloudRuntimeUsageRoutes.handleKhalaCloudRuntimeUsageIngestApi(
+        request,
+        env,
+      ),
+  },
+  {
+    path: KHALA_AGENT_COMPUTER_WRITEBACK_INGEST_PATH,
+    handler: (request, env) =>
+      khalaAgentComputerWritebackRoutes.handleKhalaAgentComputerWritebackIngestApi(
         request,
         env,
       ),
