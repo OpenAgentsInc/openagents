@@ -1503,7 +1503,7 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
     },
     {
       authorityBoundary:
-        "Binds the QAM-5 nightly mobile row definition, launchd-owned runner posture, QA Swarm projection node, required named perf budgets, required seam probes, strict auto-filed issue body, and seven-receipt exit evaluator. It does not prove any real nightly has run, does not claim the seven-consecutive-night exit is satisfied, and keeps QAM-4 Storybook V1 visual capture blocked until #8539 has a proven device-walk receipt.",
+        "Binds the QAM-5 nightly mobile row definition, launchd-owned runner posture, QA Swarm projection node, required named perf budgets, required seam probes, owner-scoped local failure digest, explicit no-auto-GitHub-issue policy, and seven-receipt exit evaluator. It does not prove any real nightly has run, does not claim the seven-consecutive-night exit is satisfied, and keeps QAM-4 Storybook V1 visual capture blocked until #8539 has a proven device-walk receipt.",
       blockerRefs: [],
       contractId: "khala_mobile.qa.nightly_mobile_row_owned_runner_discipline.v1",
       enforcementTier: "test-sweep",
@@ -1516,7 +1516,7 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
       oracles: [
         {
           description:
-            "The QAM-5 row definition schedules only owned Tailnet Mac launchd work for iOS Maestro, seeded device monkey, visual capture, named perf budgets, and seam probes; excludes hosted CI/EAS; carries the required perf IDs and khala-sync live-classification seam probe; emits a public-safe strict issue body; and refuses to satisfy exit before seven consecutive passed nightly receipts.",
+            "The QAM-5 row definition schedules only owned Tailnet Mac launchd work for iOS Maestro, seeded device monkey, visual capture, named perf budgets, and seam probes; excludes hosted CI/EAS; carries the required perf IDs and khala-sync live-classification seam probe; emits a public-safe local failure digest instead of auto-filing GitHub issues; and refuses to satisfy exit before seven consecutive passed nightly receipts.",
           id: "nightly_mobile_row_owned_runner_discipline.unit",
           kind: "bun-test",
           mode: "unit",

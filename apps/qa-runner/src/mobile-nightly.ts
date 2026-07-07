@@ -56,9 +56,10 @@ export type KhalaMobileNightlyReport = Readonly<{
     status: "scheduled";
   }>;
   steps: readonly KhalaMobileNightlyStep[];
-  strictIssueDiscipline: {
-    autoFileFailurePath: "required";
-    issueTemplate: "openagents.khala_mobile.qa_nightly_strict_issue.v1";
+  localFailureDiscipline: {
+    digestSchema: "openagents.khala_mobile.qa_nightly_failure_digest.v1";
+    githubIssueCreation: "disabled_by_owner_scope";
+    manualEscalation: "operator_triage_only";
   };
   verdict: KhalaMobileNightlyVerdict;
   visualTier: {
@@ -193,9 +194,10 @@ export const buildKhalaMobileNightlyReport = (input: Readonly<{
       },
     ],
     steps,
-    strictIssueDiscipline: {
-      autoFileFailurePath: "required",
-      issueTemplate: "openagents.khala_mobile.qa_nightly_strict_issue.v1",
+    localFailureDiscipline: {
+      digestSchema: "openagents.khala_mobile.qa_nightly_failure_digest.v1",
+      githubIssueCreation: "disabled_by_owner_scope",
+      manualEscalation: "operator_triage_only",
     },
     verdict,
     visualTier: {
@@ -235,7 +237,7 @@ export const renderKhalaMobileNightlyLaunchdPlist = (input: Readonly<{
 </plist>
 `;
 
-export const buildKhalaMobileNightlyStrictIssueBody = (input: Readonly<{
+export const buildKhalaMobileNightlyFailureDigest = (input: Readonly<{
   failedStepId: KhalaMobileNightlyStepId;
   reportRef: string;
   seedRef: string;
@@ -252,9 +254,9 @@ Khala Mobile nightly row
 - Report: \`${input.reportRef}\`
 - Seed/log/artifact ref: \`${input.seedRef}\`
 
-### Required discipline
+### Owner-scoped failure discipline
 
-Distill the failure into a committed regression test or keep the nightly row blocked with a named issue reference.
+No GitHub issue is filed by this nightly row. Keep the failure in the local owned-runner digest, distill it into a committed regression test when reproducible, and escalate manually only when the operator chooses to.
 `;
 
 export const evaluateKhalaMobileConsecutiveNightlyReceipts = (

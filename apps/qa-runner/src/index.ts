@@ -88,9 +88,9 @@ export {
 export {
   KHALA_MOBILE_NIGHTLY_ROW_SCHEMA,
   assertKhalaMobileNightlyPublicSafe,
+  buildKhalaMobileNightlyFailureDigest,
   buildKhalaMobileNightlyReport,
   buildKhalaMobileNightlySteps,
-  buildKhalaMobileNightlyStrictIssueBody,
   evaluateKhalaMobileConsecutiveNightlyReceipts,
   khalaMobileNightlyPerfBudgetIds,
   renderKhalaMobileNightlyLaunchdPlist,

@@ -19,12 +19,16 @@ capture remains blocked by #8539.
   `projection.qa_swarm.mobile.khala_code_nightly`.
 - Added scheduled row steps for:
   - iOS simulator Maestro flows.
+  - Android emulator Maestro launch/sign-in flows.
+  - Android adb screencap visual capture.
   - Seeded device monkey with screenshot-on-crash, memory/zombie oracle, and
     coverage ledger artifact refs.
   - QAM-4 visual capture.
   - Named mobile perf budgets.
   - Seam probes.
-- Added strict failure-issue body generation for the mobile nightly row.
+- Added owner-scoped local failure digest generation for the mobile nightly row.
+- Explicitly disabled nightly GitHub issue creation per owner scope; failures
+  stay in owned-runner receipts/digests unless an operator manually escalates.
 - Added the seven-consecutive-passed-receipts evaluator so the exit gate cannot
   pass early.
 - Added behavior contract:
@@ -46,6 +50,12 @@ capture remains blocked by #8539.
 
 - #8539: Storybook V1 full visual baseline set is not proven on a simulator yet.
 - #8540: Seven consecutive passed nightly mobile receipts do not exist yet.
+
+## Owner Rescope
+
+On 2026-07-07 the owner rescoped QAM-5 to avoid nightly auto-filed issues.
+The nightly row now records `githubIssueCreation: disabled_by_owner_scope` and
+emits a local public-safe failure digest instead of a GitHub issue body.
 
 ## Verification
 

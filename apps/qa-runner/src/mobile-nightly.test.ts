@@ -2,8 +2,8 @@ import { describe, expect, test } from "bun:test";
 
 import {
   buildKhalaMobileNightlyReport,
+  buildKhalaMobileNightlyFailureDigest,
   buildKhalaMobileNightlySteps,
-  buildKhalaMobileNightlyStrictIssueBody,
   evaluateKhalaMobileConsecutiveNightlyReceipts,
   khalaMobileNightlyPerfBudgetIds,
   renderKhalaMobileNightlyLaunchdPlist,
@@ -32,7 +32,10 @@ describe("contract khala_mobile.qa.nightly_mobile_row_owned_runner_discipline.v1
     expect(report.steps.every(step => step.ownedRunner === "tailnet-macos-launchd")).toBe(true);
     expect(report.visualTier.storybookV1).toBe("blocked_until_qam4_storybook_device_walk_proven");
     expect(report.qaSwarmProjectionNode.nodeRef).toBe("projection.qa_swarm.mobile.khala_code_nightly");
-    expect(report.strictIssueDiscipline.autoFileFailurePath).toBe("required");
+    expect(report.localFailureDiscipline.githubIssueCreation).toBe("disabled_by_owner_scope");
+    expect(report.localFailureDiscipline.digestSchema).toBe(
+      "openagents.khala_mobile.qa_nightly_failure_digest.v1",
+    );
   });
 
   test("QAM-5 carries the required mobile perf budgets and seam probe classifications", () => {
@@ -67,8 +70,8 @@ describe("contract khala_mobile.qa.nightly_mobile_row_owned_runner_discipline.v1
     expect(plist).not.toContain("github.com");
   });
 
-  test("QAM-5 strict issue body records failure evidence without private material", () => {
-    const body = buildKhalaMobileNightlyStrictIssueBody({
+  test("QAM-5 local failure digest records failure evidence without private material", () => {
+    const body = buildKhalaMobileNightlyFailureDigest({
       failedStepId: "seam-probes",
       reportRef: "artifact.khala_mobile.nightly.report.2026-07-07",
       seedRef: "trace.khala_mobile.seam.khala_sync_transport_live",
@@ -77,8 +80,10 @@ describe("contract khala_mobile.qa.nightly_mobile_row_owned_runner_discipline.v1
     expect(body).toContain("### Affected surface");
     expect(body).toContain("seam-probes");
     expect(body).toContain("trace.khala_mobile.seam.khala_sync_transport_live");
+    expect(body).toContain("No GitHub issue is filed by this nightly row");
     expect(body).not.toContain("/Users/");
     expect(body).not.toContain("bearer");
+    expect(body).not.toContain("gh issue");
   });
 
   test("QAM-5 exit stays false until seven consecutive passed receipts exist", () => {
