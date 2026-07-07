@@ -44,17 +44,19 @@ export const SignInScreen = () => {
               preset="reversed"
               disabled={!githubSignInReady || signingIn}
               onPress={signInWithGitHub}
+              // Explicit solid CTA styling: the hero is a busy dark image, so
+              // the button needs an unmistakable filled surface + high-contrast
+              // label rather than relying on the theme preset (which rendered
+              // as near-invisible dark text over the artwork).
+              style={styles.loginButton}
+              pressedStyle={styles.loginButtonPressed}
+              textStyle={styles.loginButtonText}
               text={tx("signIn.github.primary")}
             />
 
             {signInErrorMessage === null ? null : (
               <Text style={[styles.center, themed($danger)]} text={signInErrorMessage} />
             )}
-
-            {/* TEMP-DIAG-8467: visible build marker so we both know the debug
-             * build is actually running before testing sign-in. Remove with
-             * the sign-in diagnostics. */}
-            <Text size="xs" style={[styles.center, themed($faint)]} text="build dbg3" />
           </View>
         </View>
       </SafeAreaView>
@@ -85,10 +87,24 @@ const $titleGlow: ThemedStyle<TextStyle> = ({ colors }) => ({
 })
 
 const $danger: ThemedStyle<TextStyle> = ({ colors }) => ({ color: colors.error })
-const $faint: ThemedStyle<TextStyle> = ({ colors }) => ({ color: colors.textDim })
 
 const styles = StyleSheet.create({
   center: { textAlign: "center" },
+  loginButton: {
+    alignItems: "center",
+    backgroundColor: "#4fd0ff",
+    borderRadius: 12,
+    justifyContent: "center",
+    minHeight: 54,
+    paddingHorizontal: 20,
+    width: "100%",
+  },
+  loginButtonPressed: { backgroundColor: "#3bb8e6" },
+  loginButtonText: {
+    color: "#02060d",
+    fontSize: 17,
+    fontWeight: "700",
+  },
   safe: { flex: 1 },
   scrim: {
     ...StyleSheet.absoluteFill,
