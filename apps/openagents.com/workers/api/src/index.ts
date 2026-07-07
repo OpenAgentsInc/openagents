@@ -14594,6 +14594,19 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
             ...tokenLedgerWriteStoreOptionForEnv(env),
           },
         ),
+        // SINGLE-CHARGE / NO-METER (#8503). When an agent-computer microVM's
+        // internal `/v1/chat/completions` call presents this secret, the gateway
+        // suppresses its OWN metering hook + served-token recorder for that
+        // org-capacity request, so the ONE customer-billable `token_usage_events`
+        // row per dispatched turn is the downstream runtime-turn-usage receipt
+        // (attributed to the mobile ownerUserId). Undefined (prod default) =>
+        // suppression can never fire; the gateway meters byte-for-byte as today.
+        ...(env.OA_CLOUD_RUNTIME_NO_METER_SECRET === undefined
+          ? {}
+          : {
+              orgCloudRuntimeNoMeterSecret:
+                env.OA_CLOUD_RUNTIME_NO_METER_SECRET,
+            }),
         // INTERNAL/OPS ACCOUNT DEMAND ALLOWLIST (#6298 follow-up). Parsed once
         // from the worker var; traffic from a listed account is auto-classified
         // `demand_kind=internal` (header-independent), keeping our own dogfood

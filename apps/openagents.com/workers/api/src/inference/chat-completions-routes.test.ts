@@ -20,6 +20,7 @@ import {
   INFERENCE_CLIENT_HEADER,
   INFERENCE_DEMAND_KIND_HEADER,
   INFERENCE_DEMAND_SOURCE_HEADER,
+  INFERENCE_ORG_CLOUD_RUNTIME_NO_METER_HEADER,
   KHALA_BYOK_ACK_HEADER,
   KHALA_BYOK_PROVIDER_HEADER,
   KHALA_BYOK_PROVIDER_KEY_HEADER,
@@ -1464,6 +1465,103 @@ describe('POST /v1/chat/completions', () => {
     expect(context?.fundingKind).toBe('card')
     expect(typeof context?.requestId).toBe('string')
     expect((context?.requestId ?? '').length).toBeGreaterThan(0)
+  })
+
+  test('SINGLE-CHARGE (#8503): the no-meter secret header suppresses BOTH the metering hook and the served-tokens recorder', async () => {
+    const metered: Array<MeteringContext> = []
+    const served: Array<unknown> = []
+    const meteringHook: MeteringHook = context =>
+      Effect.sync(() => {
+        metered.push(context)
+        return { metered: true, receiptRef: 'receipt.should-not-fire' }
+      })
+
+    const response = await run(
+      handleChatCompletions(
+        chatRequest(helloBody, {
+          headers: {
+            [INFERENCE_ORG_CLOUD_RUNTIME_NO_METER_HEADER]: 'org-cloud-secret',
+          },
+        }),
+        baseDeps({
+          meteringHook,
+          recordTokensServed: input =>
+            Effect.sync(() => {
+              served.push(input)
+            }),
+          orgCloudRuntimeNoMeterSecret: 'org-cloud-secret',
+        }),
+      ),
+    )
+
+    // The completion still succeeds; only the billing side is suppressed.
+    expect(response.status).toBe(200)
+    // Exactly ZERO billable rows from the gateway: the runtime-turn-usage
+    // receipt is the single authoritative customer debit + served-token row.
+    expect(metered).toHaveLength(0)
+    expect(served).toHaveLength(0)
+  })
+
+  test('SINGLE-CHARGE (#8503): a WRONG no-meter secret does NOT suppress metering (fail-closed)', async () => {
+    const metered: Array<MeteringContext> = []
+    const served: Array<unknown> = []
+    const meteringHook: MeteringHook = context =>
+      Effect.sync(() => {
+        metered.push(context)
+        return { metered: false, receiptRef: null }
+      })
+
+    await run(
+      handleChatCompletions(
+        chatRequest(helloBody, {
+          headers: {
+            [INFERENCE_ORG_CLOUD_RUNTIME_NO_METER_HEADER]: 'wrong-secret',
+          },
+        }),
+        baseDeps({
+          meteringHook,
+          recordTokensServed: input =>
+            Effect.sync(() => {
+              served.push(input)
+            }),
+          orgCloudRuntimeNoMeterSecret: 'org-cloud-secret',
+        }),
+      ),
+    )
+
+    expect(metered).toHaveLength(1)
+    expect(served).toHaveLength(1)
+  })
+
+  test('SINGLE-CHARGE (#8503): with NO secret configured the header is inert (prod default, fail-closed)', async () => {
+    const metered: Array<MeteringContext> = []
+    const served: Array<unknown> = []
+    const meteringHook: MeteringHook = context =>
+      Effect.sync(() => {
+        metered.push(context)
+        return { metered: false, receiptRef: null }
+      })
+
+    await run(
+      handleChatCompletions(
+        chatRequest(helloBody, {
+          headers: {
+            [INFERENCE_ORG_CLOUD_RUNTIME_NO_METER_HEADER]: 'anything',
+          },
+        }),
+        // No orgCloudRuntimeNoMeterSecret dep => suppression can never fire.
+        baseDeps({
+          meteringHook,
+          recordTokensServed: input =>
+            Effect.sync(() => {
+              served.push(input)
+            }),
+        }),
+      ),
+    )
+
+    expect(metered).toHaveLength(1)
+    expect(served).toHaveLength(1)
   })
 
   test('threads the resolved bitcoin funding kind into the metering hook', async () => {

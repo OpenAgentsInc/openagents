@@ -3,6 +3,7 @@ import { describe, expect, test } from 'bun:test'
 import {
   AGENT_COMPUTER_DEFAULT_PROVIDER,
   AGENT_COMPUTER_RECEIPT_LANE,
+  INFERENCE_ORG_CLOUD_RUNTIME_NO_METER_HEADER,
   KHALA_CLOUD_RUNTIME_USAGE_INGEST_PATH,
   KHALA_CLOUD_RUNTIME_USAGE_SCHEMA_VERSION,
   chatCompletionUsage,
@@ -27,7 +28,13 @@ describe('agent-computer turn-runner: usage + text parsing', () => {
     const usage = chatCompletionUsage({
       usage: { prompt_tokens: 41, completion_tokens: 17, total_tokens: 58 },
     })
-    expect(usage).toEqual({ inputTokens: 41, outputTokens: 17, totalTokens: 58 })
+    expect(usage).toEqual({
+      inputTokens: 41,
+      outputTokens: 17,
+      totalTokens: 58,
+      reasoningTokens: 0,
+      cacheReadTokens: 0,
+    })
   })
 
   test('falls back to input_tokens/output_tokens and clamps total to the sum', () => {
@@ -35,7 +42,67 @@ describe('agent-computer turn-runner: usage + text parsing', () => {
       usage: { input_tokens: 10, output_tokens: 5, total_tokens: 3 },
     })
     // total can never be below the exact input+output sum.
-    expect(usage).toEqual({ inputTokens: 10, outputTokens: 5, totalTokens: 15 })
+    expect(usage).toEqual({
+      inputTokens: 10,
+      outputTokens: 5,
+      totalTokens: 15,
+      reasoningTokens: 0,
+      cacheReadTokens: 0,
+    })
+  })
+
+  test('EXACT thinking model: folds reasoning out of completion so billable total is unchanged (#8503)', () => {
+    // OpenAI convention: reasoning_tokens ⊆ completion_tokens. completion=17
+    // includes reasoning=12; we split so output=5, reasoning=12, and the ingest
+    // route re-sums output+reasoning = 17 (billable completion unchanged).
+    const usage = chatCompletionUsage({
+      usage: {
+        prompt_tokens: 41,
+        completion_tokens: 17,
+        completion_tokens_details: { reasoning_tokens: 12 },
+        prompt_tokens_details: { cached_tokens: 8 },
+        total_tokens: 58,
+      },
+    })
+    expect(usage).toEqual({
+      inputTokens: 41,
+      outputTokens: 5,
+      reasoningTokens: 12,
+      cacheReadTokens: 8,
+      totalTokens: 58,
+    })
+    // Billable output the ingest route computes: output + reasoning === 17.
+    expect(usage.outputTokens + usage.reasoningTokens).toBe(17)
+  })
+
+  test('unfolded reasoning (reasoning > completion) is carried additively, never lost', () => {
+    const usage = chatCompletionUsage({
+      usage: {
+        prompt_tokens: 10,
+        completion_tokens: 4,
+        completion_tokens_details: { reasoning_tokens: 9 },
+      },
+    })
+    // completion does NOT include reasoning here: output=4, reasoning=9, and the
+    // route bills 4+9=13, total = 10+13 = 23. No tokens dropped.
+    expect(usage).toEqual({
+      inputTokens: 10,
+      outputTokens: 4,
+      reasoningTokens: 9,
+      cacheReadTokens: 0,
+      totalTokens: 23,
+    })
+  })
+
+  test('caps cached_tokens at input tokens (cached ⊆ prompt)', () => {
+    const usage = chatCompletionUsage({
+      usage: {
+        prompt_tokens: 6,
+        completion_tokens: 3,
+        prompt_tokens_details: { cached_tokens: 999 },
+      },
+    })
+    expect(usage.cacheReadTokens).toBe(6)
   })
 
   test('extracts assistant text from choices[0].message.content', () => {
@@ -62,6 +129,22 @@ describe('agent-computer turn-runner: request contracts', () => {
       model: inference.model,
       stream: false,
     })
+    // No secret configured => the single-charge header is NOT sent (fail-closed).
+    expect(
+      req.headers[INFERENCE_ORG_CLOUD_RUNTIME_NO_METER_HEADER],
+    ).toBeUndefined()
+  })
+
+  test('single-charge: sends the no-meter header only when a secret is configured (#8503)', () => {
+    const req = chatCompletionsRequest(
+      { ...inference, noMeterSecret: 's3cr3t-org-cloud' },
+      'x',
+    )
+    expect(req.headers[INFERENCE_ORG_CLOUD_RUNTIME_NO_METER_HEADER]).toBe(
+      's3cr3t-org-cloud',
+    )
+    // The secret is a header value only; the request body never carries it.
+    expect(req.body).not.toContain('s3cr3t-org-cloud')
   })
 
   test('usage ingest body matches the KhalaCloudRuntimeUsageIngestBody schema', () => {
@@ -70,7 +153,13 @@ describe('agent-computer turn-runner: request contracts', () => {
       threadId: 'scope.thread.proof',
       turnId: 'turn-microvm-1',
       observedAt: '2026-07-07T00:00:00.000Z',
-      usage: { inputTokens: 41, outputTokens: 17, totalTokens: 58 },
+      usage: {
+        inputTokens: 41,
+        outputTokens: 17,
+        totalTokens: 58,
+        reasoningTokens: 0,
+        cacheReadTokens: 0,
+      },
       usageRef: 'usage.hosted_khala.abc',
       runtimeEventId: 'evt-1',
     })
@@ -100,6 +189,34 @@ describe('agent-computer turn-runner: request contracts', () => {
     expect(['codex_app_server', 'claude_pylon', 'hosted_khala']).toContain(
       body.lane,
     )
+  })
+
+  test('ingest body carries EXACT reasoning + cache-read tokens (#8503)', () => {
+    const body = usageIngestBody({
+      inference,
+      threadId: 'scope.thread.proof',
+      turnId: 'turn-microvm-2',
+      observedAt: '2026-07-07T00:00:00.000Z',
+      usage: chatCompletionUsage({
+        usage: {
+          prompt_tokens: 41,
+          completion_tokens: 17,
+          completion_tokens_details: { reasoning_tokens: 12 },
+          prompt_tokens_details: { cached_tokens: 8 },
+          total_tokens: 58,
+        },
+      }),
+      usageRef: 'usage.hosted_khala.def',
+    })
+    expect(body.usage).toEqual({
+      usageRef: 'usage.hosted_khala.def',
+      inputTokens: 41,
+      outputTokens: 5,
+      reasoningTokens: 12,
+      cacheReadInputTokens: 8,
+      cacheWriteInputTokens: 0,
+      totalTokens: 58,
+    })
   })
 })
 
@@ -144,7 +261,13 @@ describe('agent-computer turn-runner: runModelTurnReceipt (mock fetch)', () => {
 
     expect(result.ok).toBe(true)
     if (result.ok) {
-      expect(result.usage).toEqual({ inputTokens: 41, outputTokens: 17, totalTokens: 58 })
+      expect(result.usage).toEqual({
+        inputTokens: 41,
+        outputTokens: 17,
+        totalTokens: 58,
+        reasoningTokens: 0,
+        cacheReadTokens: 0,
+      })
       expect(result.insertedTokenUsage).toBe(true)
       expect(result.tokenUsageEventRef).toContain('served-tokens.khala-cloud-runtime')
       expect(result.tokensServedDelta).toBe(58)

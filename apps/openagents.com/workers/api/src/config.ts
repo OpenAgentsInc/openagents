@@ -257,6 +257,16 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   OA_CODEX_GCE_PROVISIONER?: string | undefined
   OA_CLOUD_CONTROL_URL?: string | undefined
   OA_CLOUD_CONTROL_TOKEN?: string | undefined
+  // SINGLE-CHARGE / NO-METER SECRET (#8503). Shared secret an agent-computer
+  // microVM presents (as `x-openagents-org-cloud-runtime-no-meter`) on its
+  // internal `/v1/chat/completions` call so the gateway suppresses its own
+  // metering + served-token recorder for that org-capacity request; the ONE
+  // customer-billable `token_usage_events` row is the downstream
+  // `/api/khala/cloud/runtime-turn-usage` receipt. A Worker secret, NEVER
+  // committed/logged. Absent (prod default) => suppression can never fire and
+  // the gateway meters normally. The Seam-A dispatcher injects the SAME value
+  // into the work-context `inference` block it hands the microVM.
+  OA_CLOUD_RUNTIME_NO_METER_SECRET?: string | undefined
   // Partner passthrough adapter secrets (EPIC #5474, #5481). Worker secrets,
   // never committed/logged. Each enables the corresponding passthrough adapter
   // when the gateway flag is on; absent => that partner adapter stays inert.

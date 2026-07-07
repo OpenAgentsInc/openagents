@@ -75,6 +75,21 @@ export const AGENT_COMPUTER_DEFAULT_PROVIDER = 'vertex-gemini'
 /** The ingest route only accepts these lanes; the hosted-Khala model turn is `hosted_khala`. */
 export const AGENT_COMPUTER_RECEIPT_LANE = 'hosted_khala'
 
+/**
+ * SINGLE-CHARGE HEADER (#8503 owner decision). The microVM's internal
+ * `/v1/chat/completions` call is org capacity, NOT a customer-billable request:
+ * the SINGLE authoritative customer debit + public served-token row for a
+ * dispatched turn is the `/api/khala/cloud/runtime-turn-usage` receipt
+ * (attributed to the mobile ownerUserId). Presenting this header with the value
+ * that matches the gateway's `OA_CLOUD_RUNTIME_NO_METER_SECRET` suppresses the
+ * gateway's OWN metering hook + served-token recorder for THAT request, so
+ * exactly ONE `token_usage_events` row results per turn (the receipt's).
+ * Fail-closed: with no secret configured on the gateway (prod default) the
+ * header is ignored and the gateway meters normally.
+ */
+export const INFERENCE_ORG_CLOUD_RUNTIME_NO_METER_HEADER =
+  'x-openagents-org-cloud-runtime-no-meter'
+
 export type InferenceConfig = {
   baseUrl: string
   agentToken: string
@@ -84,6 +99,12 @@ export type InferenceConfig = {
   provider?: string
   backendProfile?: string
   pylonRef?: string
+  /**
+   * Shared secret that suppresses the gateway's own metering for THIS internal
+   * org-capacity call (single-charge invariant). Sent as
+   * `INFERENCE_ORG_CLOUD_RUNTIME_NO_METER_HEADER`; never serialized elsewhere.
+   */
+  noMeterSecret?: string
 }
 
 type WorkContext = {
@@ -103,20 +124,66 @@ const integerOrZero = (value: unknown): number =>
     ? Math.max(0, Math.trunc(value))
     : 0
 
-/** OpenAI-shaped usage extraction, mirroring `openAiChatCompletionUsage`. */
-export const chatCompletionUsage = (
-  body: unknown,
-): { inputTokens: number; outputTokens: number; totalTokens: number } => {
+export type ChatCompletionUsage = {
+  inputTokens: number
+  outputTokens: number
+  totalTokens: number
+  reasoningTokens: number
+  cacheReadTokens: number
+}
+
+/**
+ * OpenAI-shaped usage extraction, mirroring the org-cloud supervisor's
+ * `openAiChatCompletionUsage`, now EXACT for thinking + cached models (#8503
+ * money gate). Extracts `completion_tokens_details.reasoning_tokens` and
+ * `prompt_tokens_details.cached_tokens` instead of the prior hardcoded zeros
+ * (which stamped `usage_truth=exact` while dropping reasoning attribution).
+ *
+ * Reasoning handling — the ingest route bills `outputTokens + reasoningTokens`
+ * (`khalaCloudRuntimeUsageTokenCounts`). OpenAI's contract is that
+ * `reasoning_tokens` is a SUBSET of `completion_tokens` (folded), so to keep the
+ * BILLABLE total exact (= completion_tokens) we return the NON-reasoning
+ * remainder as `outputTokens` and carry `reasoning_tokens` separately; the route
+ * re-sums them to `completion_tokens`. If a provider ever reports reasoning
+ * OUTSIDE `completion_tokens` (reasoning > completion), we carry it additively
+ * instead of clamping, so no tokens are lost.
+ *
+ * Cache handling — `cached_tokens` is a SUBSET of `prompt_tokens` (input); the
+ * ledger records it as a separate `cache_read_tokens` column and does NOT
+ * subtract it from input, so we simply carry it (clamped to input).
+ */
+export const chatCompletionUsage = (body: unknown): ChatCompletionUsage => {
   const usage = (body as { usage?: Record<string, unknown> } | undefined)?.usage
   const inputTokens = integerOrZero(usage?.prompt_tokens ?? usage?.input_tokens)
-  const outputTokens = integerOrZero(
+  const completionTokens = integerOrZero(
     usage?.completion_tokens ?? usage?.output_tokens,
   )
+  const completionDetails = usage?.completion_tokens_details as
+    | Record<string, unknown>
+    | undefined
+  const promptDetails = usage?.prompt_tokens_details as
+    | Record<string, unknown>
+    | undefined
+  const reasoningTokens = integerOrZero(completionDetails?.reasoning_tokens)
+  const cacheReadTokens = Math.min(
+    inputTokens,
+    integerOrZero(promptDetails?.cached_tokens),
+  )
+  // Folded (OpenAI invariant): reasoning ⊆ completion. Split it out so the
+  // route's `output + reasoning` re-sums to completion_tokens (billable
+  // unchanged). Unfolded (spec-violating): carry reasoning additively.
+  const folded = reasoningTokens <= completionTokens
+  const outputTokens = folded
+    ? completionTokens - reasoningTokens
+    : completionTokens
+  const billableOutput = outputTokens + reasoningTokens
   return {
     inputTokens,
     outputTokens,
+    reasoningTokens,
+    cacheReadTokens,
     totalTokens: Math.max(
-      inputTokens + outputTokens,
+      inputTokens + billableOutput,
       integerOrZero(usage?.total_tokens),
     ),
   }
@@ -147,6 +214,12 @@ export const chatCompletionsRequest = (
     'x-openagents-client': 'khala-code-mobile',
     'x-openagents-demand-kind': 'external',
     'x-openagents-demand-source': 'khala_mobile_org_cloud_runtime',
+    // SINGLE-CHARGE (#8503): suppress the gateway's own metering for this
+    // internal org-capacity call so only the receipt records the one billable
+    // row. Omitted when unset => gateway meters normally (fail-closed).
+    ...(inference.noMeterSecret === undefined
+      ? {}
+      : { [INFERENCE_ORG_CLOUD_RUNTIME_NO_METER_HEADER]: inference.noMeterSecret }),
   },
   body: JSON.stringify({
     messages: [{ content: instructions, role: 'user' }],
@@ -164,7 +237,7 @@ export const usageIngestBody = (input: {
   threadId: string
   turnId: string
   observedAt: string
-  usage: { inputTokens: number; outputTokens: number; totalTokens: number }
+  usage: ChatCompletionUsage
   usageRef: string
   runtimeEventId?: string
 }): Record<string, unknown> => ({
@@ -188,9 +261,12 @@ export const usageIngestBody = (input: {
   usage: {
     usageRef: input.usageRef,
     inputTokens: integerOrZero(input.usage.inputTokens),
+    // EXACT reasoning/cache (#8503): `outputTokens` is the non-reasoning
+    // remainder and `reasoningTokens` is carried separately, because the ingest
+    // route bills `output + reasoning`. See `chatCompletionUsage`.
     outputTokens: integerOrZero(input.usage.outputTokens),
-    reasoningTokens: 0,
-    cacheReadInputTokens: 0,
+    reasoningTokens: integerOrZero(input.usage.reasoningTokens),
+    cacheReadInputTokens: integerOrZero(input.usage.cacheReadTokens),
     cacheWriteInputTokens: 0,
     totalTokens: integerOrZero(input.usage.totalTokens),
   },
@@ -200,7 +276,7 @@ export type ModelTurnReceipt =
   | {
       ok: true
       text: string
-      usage: { inputTokens: number; outputTokens: number; totalTokens: number }
+      usage: ChatCompletionUsage
       usageRef: string
       tokenUsageEventRef: string | null
       insertedTokenUsage: boolean

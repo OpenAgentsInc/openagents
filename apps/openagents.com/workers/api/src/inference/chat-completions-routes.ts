@@ -208,6 +208,35 @@ export const INFERENCE_CLIENT_HEADER = 'x-openagents-client'
 export const KHALA_BYOK_PROVIDER_HEADER = 'x-openagents-provider'
 export const KHALA_BYOK_PROVIDER_KEY_HEADER = 'x-openagents-provider-key'
 export const KHALA_BYOK_ACK_HEADER = 'x-openagents-byok'
+// SINGLE-CHARGE / NO-METER (#8503). An internal org-capacity call from an
+// OpenAgents agent-computer microVM presents this header carrying the shared
+// secret configured as `deps.orgCloudRuntimeNoMeterSecret`
+// (`OA_CLOUD_RUNTIME_NO_METER_SECRET`). When it matches, the gateway suppresses
+// its OWN metering hook AND served-token recorder for THAT request, because the
+// SINGLE authoritative customer debit + public served-token row for a dispatched
+// org-cloud turn is the downstream `/api/khala/cloud/runtime-turn-usage` receipt
+// (attributed to the mobile ownerUserId). So exactly ONE `token_usage_events`
+// row results per turn. Fail-closed: with no secret configured (prod default)
+// the header is ignored and metering runs normally, byte-for-byte as today.
+export const INFERENCE_ORG_CLOUD_RUNTIME_NO_METER_HEADER =
+  'x-openagents-org-cloud-runtime-no-meter'
+
+// Constant-time string compare so the no-meter secret check does not leak length
+// or content through timing. Returns false for any nullish/length-mismatched
+// input (fail-closed).
+const constantTimeSecretEquals = (
+  provided: string | null,
+  expected: string,
+): boolean => {
+  if (provided === null || provided.length !== expected.length) {
+    return false
+  }
+  let mismatch = 0
+  for (let i = 0; i < expected.length; i += 1) {
+    mismatch |= provided.charCodeAt(i) ^ expected.charCodeAt(i)
+  }
+  return mismatch === 0
+}
 
 type KhalaByokState =
   | Readonly<{ _tag: 'absent' }>
@@ -617,6 +646,14 @@ export type ChatCompletionsDeps = Readonly<{
   // path is byte-for-byte unchanged). The recorder never throws and never fails
   // the customer's already-delivered completion.
   recordTokensServed?: ServedTokensRecorder | undefined
+  // SINGLE-CHARGE / NO-METER SECRET (#8503). When set (non-empty), a request
+  // whose `INFERENCE_ORG_CLOUD_RUNTIME_NO_METER_HEADER` matches this secret has
+  // its metering hook AND served-token recorder suppressed for that request, so
+  // the ONE billable `token_usage_events` row for an org-cloud microVM turn is
+  // the downstream `/api/khala/cloud/runtime-turn-usage` receipt (attributed to
+  // the mobile ownerUserId), never a second row here. Default undefined =>
+  // suppression can NEVER fire (fail-closed; prod is byte-for-byte unchanged).
+  orgCloudRuntimeNoMeterSecret?: string | undefined
   // INTERNAL/OPS ACCOUNT DEMAND ALLOWLIST (#6298 follow-up). The set of account
   // refs (parsed once from `INFERENCE_INTERNAL_ACCOUNT_REFS`) whose traffic is
   // auto-classified `demand_kind=internal` REGARDLESS of request headers, so our
@@ -2522,6 +2559,20 @@ export const handleChatCompletions = (
       deps.internalAccountRefs ?? new Set<string>(),
     )
 
+    // SINGLE-CHARGE / NO-METER (#8503). Detect an internal org-capacity call
+    // from an agent-computer microVM (its no-meter header matches the configured
+    // secret). When true, this request's metering hook AND served-token recorder
+    // are suppressed below, so the ONE billable `token_usage_events` row for the
+    // dispatched turn is the downstream runtime-turn-usage receipt, never a
+    // second row here. Fail-closed: no secret configured => never suppress.
+    const orgCloudRuntimeNoMeter =
+      deps.orgCloudRuntimeNoMeterSecret !== undefined &&
+      deps.orgCloudRuntimeNoMeterSecret !== '' &&
+      constantTimeSecretEquals(
+        request.headers.get(INFERENCE_ORG_CLOUD_RUNTIME_NO_METER_HEADER),
+        deps.orgCloudRuntimeNoMeterSecret,
+      )
+
     // FAIR-SHARE GATE (#5486). Keyed to the authenticated account so one customer
     // cannot starve the shared Vertex quota / Fireworks limits. Open (no-op) when
     // unwired. Rejected requests carry RateLimit-* headers from the bounded
@@ -2963,7 +3014,21 @@ export const handleChatCompletions = (
             metered: false,
             receiptRef: null,
           } satisfies MeteringOutcome)
-      : baseMeteringHook
+      : orgCloudRuntimeNoMeter
+        ? // SINGLE-CHARGE (#8503): internal org-capacity microVM call — no debit
+          // here; the runtime-turn-usage receipt is the one customer debit.
+          () =>
+            Effect.succeed({
+              metered: false,
+              receiptRef: null,
+            } satisfies MeteringOutcome)
+        : baseMeteringHook
+    // SINGLE-CHARGE (#8503): suppress the served-token recorder for the same
+    // internal call so no second `token_usage_events` row is written here; the
+    // receipt path records the one public served-token row.
+    const effectiveRecordTokensServed = orgCloudRuntimeNoMeter
+      ? undefined
+      : deps.recordTokensServed
     const resolveFundingKind =
       deps.resolveFundingKind ?? defaultCardFundingResolver
     const fundingKind = yield* Effect.promise(() =>
@@ -3284,9 +3349,9 @@ export const handleChatCompletions = (
           ...(durableNamespace === undefined ? {} : { durableNamespace }),
           fundingKind,
           meteringHook,
-          ...(deps.recordTokensServed === undefined
+          ...(effectiveRecordTokensServed === undefined
             ? {}
-            : { recordTokensServed: deps.recordTokensServed }),
+            : { recordTokensServed: effectiveRecordTokensServed }),
           ...(requestAttribution === undefined ? {} : { requestAttribution }),
           // TELEMETRY CLOCK (book P0-1): the TRUE pass-through path is where TTFT
           // and generation wall-clock are genuinely observable (first delta + EOF).
@@ -3372,8 +3437,8 @@ export const handleChatCompletions = (
         // SERVED-TOKENS COUNTER (issue #6227): buffered-stream fallback path.
         // Record the served completion in the canonical token ledger so the public
         // counter reflects it. Only on a real terminal usage frame; never throws.
-        if (deps.recordTokensServed !== undefined) {
-          yield* deps.recordTokensServed({
+        if (effectiveRecordTokensServed !== undefined) {
+          yield* effectiveRecordTokensServed({
             accountRef: session.accountRef,
             adapterId: chunks.served.value.adapterId,
             requestId: responseId,
@@ -3669,8 +3734,8 @@ export const handleChatCompletions = (
     // completion in the canonical token ledger so the public "Khala Tokens Served"
     // counter reflects it. This is a SUCCESSFUL completion (a provider failure
     // returned the 502 above), so the served tokens count; never throws.
-    if (deps.recordTokensServed !== undefined) {
-      yield* deps.recordTokensServed({
+    if (effectiveRecordTokensServed !== undefined) {
+      yield* effectiveRecordTokensServed({
         accountRef: session.accountRef,
         adapterId: servedAdapterId,
         requestId: responseId,
