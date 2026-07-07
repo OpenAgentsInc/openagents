@@ -1,44 +1,15 @@
-import { DatabaseSync } from 'node:sqlite'
 import { describe, expect, test } from 'vitest'
 
 import {
   readPushNotificationPreference,
   writePushNotificationPreference,
+  type PushNotificationPreferenceDb,
 } from './push-notification-preferences'
+import { makeLedgerSqliteDb } from '../test/payments-ledger-sqlite'
 
-type Row = Record<string, unknown>
-
-class SqliteD1Statement {
-  private bound: ReadonlyArray<unknown> = []
-  constructor(
-    private readonly db: DatabaseSync,
-    private readonly sql: string,
-  ) {}
-  bind(...values: ReadonlyArray<unknown>): SqliteD1Statement {
-    this.bound = values.map(value => (value === undefined ? null : value))
-    return this
-  }
-  async first<T = Row>(): Promise<T | null> {
-    const row = this.db.prepare(this.sql).get(...(this.bound as never[]))
-    return (row ?? null) as T | null
-  }
-  async all<T = Row>(): Promise<{ results: Array<T> }> {
-    return { results: this.db.prepare(this.sql).all(...(this.bound as never[])) as Array<T> }
-  }
-  async run(): Promise<{ meta: { changes: number }; success: true }> {
-    const result = this.db.prepare(this.sql).run(...(this.bound as never[]))
-    return { meta: { changes: Number(result.changes) }, success: true }
-  }
-}
-
-class SqliteD1 {
-  constructor(private readonly db: DatabaseSync) {}
-  prepare(sql: string): SqliteD1Statement {
-    return new SqliteD1Statement(this.db, sql)
-  }
-}
-
-const schema = `
+// CFG-4 Domain 4 (#8519): Postgres-authoritative behind the `PaymentsLedgerDb`
+// seam; tests back it with the SQLite ledger adapter.
+export const PUSH_NOTIFICATION_PREFERENCES_SQLITE_SCHEMA = `
 CREATE TABLE push_notification_preferences (
   user_id TEXT PRIMARY KEY,
   push_enabled INTEGER NOT NULL DEFAULT 1 CHECK (push_enabled IN (0, 1)),
@@ -47,11 +18,8 @@ CREATE TABLE push_notification_preferences (
 );
 `
 
-const makeDb = (): D1Database => {
-  const raw = new DatabaseSync(':memory:')
-  raw.exec(schema)
-  return new SqliteD1(raw) as unknown as D1Database
-}
+const makeDb = (): PushNotificationPreferenceDb =>
+  makeLedgerSqliteDb(PUSH_NOTIFICATION_PREFERENCES_SQLITE_SCHEMA)
 
 describe('readPushNotificationPreference', () => {
   test('defaults to enabled when no row exists (opt-out, not opt-in)', async () => {

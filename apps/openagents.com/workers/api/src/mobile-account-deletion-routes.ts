@@ -123,10 +123,11 @@ export const deleteMobileAccountD1Data = async (
   const forfeitedBalanceMsat = balance?.balanceMsat ?? 0
 
   // CFG-4 (#8519) NON-ATOMIC SEAM: the credits forfeiture (`agent_balances`,
-  // Postgres), the push/GitHub anonymization (D1), and — since the Domain 2
-  // hard cut — the `users`/`auth_identities` disable (Postgres identity
-  // handle) can no longer share one atomic batch. Every side is an
-  // idempotent zero-out/UPDATE, and the mobile deletion receipt (the thing
+  // Postgres), the push-token removal (`push_device_tokens`, Postgres since
+  // the Domain 4 hard cut), the GitHub anonymization (D1), and — since the
+  // Domain 2 hard cut — the `users`/`auth_identities` disable (Postgres
+  // identity handle) can no longer share one atomic batch. Every side is an
+  // idempotent zero-out/UPDATE/DELETE, and the mobile deletion receipt (the thing
   // that makes a retry a no-op) is only recorded by the route AFTER all
   // sides succeed, so a crash in between heals on retry: the caller re-runs
   // the whole deletion with the same bearer. The credits zeroing runs
@@ -144,10 +145,15 @@ export const deleteMobileAccountD1Data = async (
     },
   ])
 
+  // CFG-4 Domain 4 (#8519): the push registry moved to Postgres, so this
+  // DELETE runs on the ledger handle (same khala_sync database as the
+  // credits/identity handles). RETURNING gives the removed-row count.
+  const pushRows = await ledgerDb.query(
+    `DELETE FROM push_device_tokens WHERE user_id = ? RETURNING user_id`,
+    [input.userId],
+  )
+
   const results = await db.batch([
-    db
-      .prepare(`DELETE FROM push_device_tokens WHERE user_id = ?`)
-      .bind(input.userId),
     db
       .prepare(
         `UPDATE github_write_auth_grants
@@ -193,9 +199,9 @@ export const deleteMobileAccountD1Data = async (
 
   return {
     forfeitedBalanceMsat,
-    githubConnectionsDisconnected: resultChanges(results[2]!),
-    githubWriteGrantsRevoked: resultChanges(results[1]!),
-    pushDeviceTokensRemoved: resultChanges(results[0]!),
+    githubConnectionsDisconnected: resultChanges(results[1]!),
+    githubWriteGrantsRevoked: resultChanges(results[0]!),
+    pushDeviceTokensRemoved: pushRows.length,
     userRowsMarkedDeleted: identityRows.length + userRows.length,
   }
 }

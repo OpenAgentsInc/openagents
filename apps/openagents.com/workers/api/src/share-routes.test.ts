@@ -274,6 +274,10 @@ const routeRequest = async (
           : undefined,
       ),
     isAdminEmail: email => email === 'chris@openagents.com',
+    // CFG-4 (#8519) Domain 3: product state is Postgres-authoritative in
+    // production; this route test injects its SQLite shim directly, exercising
+    // route/auth logic without a Postgres backend.
+    productStateDatabase: () => input.db,
     readSelectedOperatorTargetUser: (_db, selector) => {
       targetSelectors.push(selector)
 

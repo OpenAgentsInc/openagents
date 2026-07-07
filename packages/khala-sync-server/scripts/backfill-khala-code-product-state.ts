@@ -48,6 +48,7 @@ type Options = {
   restart: boolean
   stateFile: string
   table: KhalaCodeProductStateTable | undefined
+  allowPostCutoverConverge: boolean
   verify: boolean
   verifyNewest: number
   wranglerCwd: string
@@ -62,6 +63,7 @@ const parseArgs = (argv: ReadonlyArray<string>): Options | undefined => {
     restart: false,
     stateFile: ".khala-code-product-state-backfill-state.json",
     table: undefined,
+    allowPostCutoverConverge: false,
     verify: false,
     verifyNewest: 50,
     wranglerCwd: path.resolve(
@@ -95,6 +97,8 @@ const parseArgs = (argv: ReadonlyArray<string>): Options | undefined => {
       options.table = table as KhalaCodeProductStateTable
     } else if (arg === "--restart") options.restart = true
     else if (arg === "--local") options.local = true
+    else if (arg === "--allow-post-cutover-converge")
+      options.allowPostCutoverConverge = true
     else if (arg === "--verify") options.verify = true
     else if (arg === "--verify-newest") options.verifyNewest = Number(next())
     else if (arg === "--help" || arg === "-h") {
@@ -342,6 +346,23 @@ const main = async (): Promise<void> => {
       return
     }
 
+    // CFG-4 (#8519) Domain 3 HARD-CUTOVER GUARD: the 25 product-state tables
+    // are Postgres-AUTHORITATIVE once the cutover deploy is live. This
+    // converge sweep copies D1 -> Postgres and would CLOBBER newer Postgres
+    // rows with stale D1 state. It is refused unless the operator explicitly
+    // opts in with --allow-post-cutover-converge, which is ONLY valid as the
+    // final pre-deploy catch-up sweep while the old D1-writing Worker still
+    // serves. --verify (read-only) is always allowed and returns above.
+    if (!options.allowPostCutoverConverge) {
+      console.error(
+        "refused: converging D1 -> Postgres for the product-state tables is a\n" +
+          "pre-cutover-only operation (CFG-4 #8519 made Postgres authoritative).\n" +
+          "Re-run with --allow-post-cutover-converge ONLY as the final catch-up\n" +
+          "sweep before the cutover deploy. Use --verify for read-only checks.",
+      )
+      process.exitCode = 1
+      return
+    }
     const state = loadState(options)
     for (const table of tables) {
       if (KHALA_CODE_PRODUCT_STATE_TABLE_SPECS[table] === undefined) {

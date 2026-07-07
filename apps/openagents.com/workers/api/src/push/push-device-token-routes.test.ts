@@ -1,4 +1,3 @@
-import { DatabaseSync } from 'node:sqlite'
 import { Effect } from 'effect'
 import { describe, expect, test } from 'vitest'
 
@@ -7,49 +6,15 @@ import {
   PUSH_DEVICE_TOKENS_PATH,
   type PushDeviceTokenRouteDependencies,
 } from './push-device-token-routes'
-import { listPushDeviceTokensForUser } from './push-device-tokens'
+import { listPushDeviceTokensForUser, type PushDeviceTokenDb } from './push-device-tokens'
+import { makeLedgerSqliteDb } from '../test/payments-ledger-sqlite'
 
-type Row = Record<string, unknown>
-type FakeEnv = Readonly<{ db: D1Database }>
+type FakeEnv = Readonly<{ db: PushDeviceTokenDb }>
 type FakeUser = Readonly<{ userId: string }>
 
-class SqliteD1Statement {
-  private bound: ReadonlyArray<unknown> = []
-
-  constructor(
-    private readonly db: DatabaseSync,
-    private readonly sql: string,
-  ) {}
-
-  bind(...values: ReadonlyArray<unknown>): SqliteD1Statement {
-    this.bound = values.map(value => (value === undefined ? null : value))
-    return this
-  }
-
-  async first<T = Row>(): Promise<T | null> {
-    const row = this.db.prepare(this.sql).get(...(this.bound as never[]))
-    return (row ?? null) as T | null
-  }
-
-  async all<T = Row>(): Promise<{ results: Array<T> }> {
-    return { results: this.db.prepare(this.sql).all(...(this.bound as never[])) as Array<T> }
-  }
-
-  async run(): Promise<{ meta: { changes: number }; success: true }> {
-    const result = this.db.prepare(this.sql).run(...(this.bound as never[]))
-    return { meta: { changes: Number(result.changes) }, success: true }
-  }
-}
-
-class SqliteD1 {
-  constructor(private readonly db: DatabaseSync) {}
-
-  prepare(sql: string): SqliteD1Statement {
-    return new SqliteD1Statement(this.db, sql)
-  }
-}
-
-const schema = `
+// CFG-4 Domain 4 (#8519): Postgres-authoritative behind the `PaymentsLedgerDb`
+// seam; tests back it with the SQLite ledger adapter.
+const PUSH_DEVICE_TOKENS_SQLITE_SCHEMA = `
 CREATE TABLE push_device_tokens (
   user_id TEXT NOT NULL,
   device_id TEXT NOT NULL,
@@ -62,11 +27,7 @@ CREATE TABLE push_device_tokens (
 );
 `
 
-const makeEnv = (): FakeEnv => {
-  const raw = new DatabaseSync(':memory:')
-  raw.exec(schema)
-  return { db: new SqliteD1(raw) as unknown as D1Database }
-}
+const makeEnv = (): FakeEnv => ({ db: makeLedgerSqliteDb(PUSH_DEVICE_TOKENS_SQLITE_SCHEMA) })
 
 const makeDependencies = (
   sessionUserId: string | undefined,

@@ -15,6 +15,7 @@ import type { VerifiedSession } from '../auth/session'
 import {
   registerPushDeviceToken,
   unregisterPushDeviceToken,
+  type PushDeviceTokenDb,
   type PushPlatform,
 } from './push-device-tokens'
 
@@ -24,7 +25,9 @@ export const PUSH_DEVICE_TOKENS_PATH = '/api/mobile/push-tokens'
 export const PUSH_DEVICE_TOKENS_ROUTE_REF = 'route.khala_mobile.push_device_tokens.v0_1'
 
 export type PushDeviceTokenRouteDependencies<Bindings, User = unknown> = Readonly<{
-  db: (env: Bindings) => D1Database
+  /** CFG-4 Domain 4 (#8519): the Postgres-authoritative push registry handle
+   * (`paymentsLedgerDbForEnv`), never a raw D1 handle. */
+  db: (env: Bindings) => PushDeviceTokenDb
   nowIso?: () => string
   requireUserBearerSession: (
     request: Request,

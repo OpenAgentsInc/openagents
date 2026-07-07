@@ -27,6 +27,7 @@
 import { methodNotAllowed, noStoreJsonResponse, unauthorized } from './http/responses'
 import { optionalInteger } from './json-boundary'
 import { currentIsoTimestamp } from './runtime-primitives'
+import type { PaymentsLedgerDb } from './payments-ledger-db'
 
 type HttpResponse = globalThis.Response
 
@@ -37,6 +38,10 @@ export type AdminCaller = Readonly<{ userId: string }>
 
 export type AdminOpsRouteDependencies<Bindings> = Readonly<{
   db: (env: Bindings) => D1Database
+  /** CFG-4 Domain 4 (#8519): `push_device_tokens` is Postgres-authoritative
+   * now, so the readiness count reads through the Postgres ledger handle
+   * (`paymentsLedgerDbForEnv`), never the D1 `db` above. */
+  pushDb: (env: Bindings) => PaymentsLedgerDb
   nowIso?: () => string
   /** Self-fetch used for the live Khala public-stats reachability check —
    * injectable so tests never make a real network call. */
@@ -160,13 +165,12 @@ const readLastOrgCloudTurnCompletedAt = async (
 }
 
 const readPushDeviceTokenCount = async (
-  db: D1Database,
+  pushDb: PaymentsLedgerDb,
   nowIso: () => string,
 ): Promise<HealthCheckResult> => {
-  const row = await db
-    .prepare(`SELECT COUNT(*) AS token_count FROM push_device_tokens`)
-    .first<{ token_count: number }>()
-  const count = row?.token_count ?? 0
+  const rows = await pushDb.query(`SELECT COUNT(*) AS token_count FROM push_device_tokens`)
+  // Postgres COUNT(*) decodes as an int8 string; Number() normalizes it.
+  const count = Number(rows[0]?.token_count ?? 0)
 
   return { checkedAt: nowIso(), status: 'ok', value: String(count) }
 }
@@ -218,7 +222,7 @@ const routeHealth = async <Bindings>(
   const nowIso = dependencies.nowIso ?? currentIsoTimestamp
   const [lastOrgCloudTurn, pushDeviceTokens, khalaPublicStats] = await Promise.all([
     readLastOrgCloudTurnCompletedAt(db),
-    readPushDeviceTokenCount(db, nowIso),
+    readPushDeviceTokenCount(dependencies.pushDb(env), nowIso),
     checkKhalaPublicStatsReachable(dependencies, env, origin),
   ])
 

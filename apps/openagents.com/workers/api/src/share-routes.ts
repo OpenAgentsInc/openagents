@@ -69,6 +69,10 @@ type ShareRouteDependencies<Session extends ShareSession> = Readonly<{
     env: ShareRouteEnv,
     ctx: ExecutionContext,
   ) => Promise<Session | undefined>
+  /** CFG-4 (#8519) Domain 3: injectable product-state handle (tests back it
+   * with a SQLite shim). Default: the Postgres-authoritative
+   * `khalaCodeProductStateDatabaseForEnv`. */
+  productStateDatabase?: (env: ShareRouteEnv) => D1Database
 }>
 
 type ShareAuthenticatedActor =
@@ -425,9 +429,9 @@ const resolveCreateActor = <Session extends ShareSession>(
       }),
   })
 
-const shareLayer = (env: ShareRouteEnv, origin: string) =>
+const shareLayer = (db: D1Database, origin: string) =>
   Layer.mergeAll(
-    ShareProjectionRepository.layer(khalaCodeProductStateDatabaseForEnv(env)),
+    ShareProjectionRepository.layer(db),
     ShareUrlService.layer(origin),
     ShareReceiptService.layer,
     ShareAccessService.layer,
@@ -605,7 +609,14 @@ const handleCreateShare = <Session extends ShareSession>(
 
     return appendActorCookies(response, actor, dependencies)
   }).pipe(
-    Effect.provide(shareLayer(env, dependencies.appOrigin(env))),
+    Effect.provide(
+      shareLayer(
+        (dependencies.productStateDatabase ?? khalaCodeProductStateDatabaseForEnv)(
+          env,
+        ),
+        dependencies.appOrigin(env),
+      ),
+    ),
     Effect.catch(error => Effect.succeed(errorResponse(error))),
   )
 }
@@ -660,7 +671,14 @@ const handleReadShare = <Session extends ShareSession>(
       ? response
       : appendActorCookies(response, actor, dependencies)
   }).pipe(
-    Effect.provide(shareLayer(env, dependencies.appOrigin(env))),
+    Effect.provide(
+      shareLayer(
+        (dependencies.productStateDatabase ?? khalaCodeProductStateDatabaseForEnv)(
+          env,
+        ),
+        dependencies.appOrigin(env),
+      ),
+    ),
     Effect.catch(error => Effect.succeed(errorResponse(error))),
   )
 }
@@ -754,7 +772,14 @@ const handlePatchShare = <Session extends ShareSession>(
       dependencies,
     )
   }).pipe(
-    Effect.provide(shareLayer(env, dependencies.appOrigin(env))),
+    Effect.provide(
+      shareLayer(
+        (dependencies.productStateDatabase ?? khalaCodeProductStateDatabaseForEnv)(
+          env,
+        ),
+        dependencies.appOrigin(env),
+      ),
+    ),
     Effect.catch(error => Effect.succeed(errorResponse(error))),
   )
 }
@@ -813,7 +838,14 @@ const handleDeleteShare = <Session extends ShareSession>(
       dependencies,
     )
   }).pipe(
-    Effect.provide(shareLayer(env, dependencies.appOrigin(env))),
+    Effect.provide(
+      shareLayer(
+        (dependencies.productStateDatabase ?? khalaCodeProductStateDatabaseForEnv)(
+          env,
+        ),
+        dependencies.appOrigin(env),
+      ),
+    ),
     Effect.catch(error => Effect.succeed(errorResponse(error))),
   )
 }

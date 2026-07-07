@@ -1844,6 +1844,55 @@ Rollback at ANY step: set `KHALA_SYNC_CRM_READS=d1` (reads) and/or
 
 ## Khala Code product-state domain cutover (KS-8.13, #8324)
 
+### CFG-4 HARD CUTOVER (#8519 Domain 3): Postgres-only, no D1, no dual-write
+
+**2026-07-06:** the 25 Khala Code product-state tables (threads/turns/
+teams/workspaces per #8324/#8330) are now Cloud SQL Postgres-AUTHORITATIVE
+with the D1 code path deleted. This supersedes the "D1 stays authoritative
+until the runbook shadow window" posture described in the rest of this
+section for these tables.
+
+- **Adapter, not a rewrite.** `khalaCodeProductStateDatabaseForEnv`
+  (`workers/api/src/khala-code-product-state-store.ts`) now returns a
+  D1Database-SHAPED handle backed by Postgres
+  (`workers/api/src/postgres-d1-adapter.ts`), so the ~19 existing store
+  factories that speak the D1 API (`prepare/bind/first/all/run`, `batch`)
+  run UNCHANGED against the Postgres twins (khala-sync migration `0017`).
+  FAIL-HARD without the `KHALA_SYNC_DB` binding — no D1 fallback.
+- **Dialect translation** (the product-state SQL is otherwise portable —
+  no `datetime()`/`json_extract`, `||`/`COALESCE`/`ON CONFLICT`/`RETURNING`
+  are native): `?`→`$n`, `col IS ?`→`IS NOT DISTINCT FROM`, `INSERT OR
+  IGNORE`→`ON CONFLICT DO NOTHING`. int8 twin columns parse back as JS
+  numbers so a row is field-shape-identical to what D1 returned.
+- **Scope changelog projection unchanged.** The typed public-safe
+  `scope.team.*`/`scope.thread.*` changelog append still rides on top of
+  each write (best-effort; a projection failure never fails the
+  authoritative Postgres write).
+- **No new schema, no backfill.** Migration `0017` already carried every
+  `ON CONFLICT` target (`teams.slug`, `team_projects(team_id, slug)`,
+  `team_memberships(team_id, user_id)`, `workroom_kind_templates.kind`,
+  the `thread_file_message_refs` uniques) and the needed indexes. The
+  production twins verified EXACT at cutover (zero count / newest-hash /
+  message-chain mismatches via `backfill-khala-code-product-state.ts
+  --verify`), so no converge sweep was required.
+- **Proof.** `workers/api/src/postgres-d1-adapter.contract.test.ts` drives
+  the REAL consumer factories (the `insertTeamChatMessage` content path +
+  read-back, int8-as-number, `IS ?`, `INSERT OR IGNORE … SELECT`
+  idempotent-in-batch, `ON CONFLICT DO UPDATE`) against real local
+  Postgres + migration 0017. The existing consumer unit suites keep
+  injecting their SQLite shims directly into the factories, so they are
+  unaffected.
+- **Clobber guard.** `backfill-khala-code-product-state.ts` refuses its
+  converge sweep without `--allow-post-cutover-converge` (pre-cutover
+  catch-up only); `--verify` stays read-only and always allowed.
+- **Deploys frozen.** Worker deploys are blocked (free-plan size cap);
+  this ships LIVE with the CFG-9 Cloud Run monolith cutover, which fixes
+  the last MVP route that 503'd because the product-state path had no D1
+  binding off Workers. Any final pre-cutover catch-up sweep (if D1 has
+  taken writes since the last verify) runs with
+  `--allow-post-cutover-converge` as part of the CFG-9 runbook.
+
+
 The KS-8.13 domain migration is the product-state lane where migration
 also means Khala Sync adoption. Same-named Postgres twins are introduced
 by khala-sync migration `0017_khala_code_product_state.sql` for
@@ -3224,6 +3273,53 @@ Pre-cutover sequence for these two tables: 0042 applied → final
 `--table users` + `--table auth_identities` catch-up sweep + `--verify`
 while the old Worker serves → cutover deploy → NEVER run the explicit
 table backfill again.
+
+### Mobile push tables HARD cutover (CFG-4 Domain 4, #8519): push_device_tokens + push_notification_preferences
+
+The last two mobile-session-support tables (Worker D1 migrations
+`0304_push_device_tokens.sql` / `0305_push_notification_preferences.sql`)
+become Cloud SQL Postgres-AUTHORITATIVE. The D1 code path is DELETED — every
+read/write runs through the generic `PaymentsLedgerDb` Hyperdrive executor
+Domain 1 proved (`payments-ledger-db.ts`; `paymentsLedgerDbForEnv` for the
+route/cron wiring), never a raw D1 handle. CFG-3 (commit 40ae3aa6d5) already
+hard-cut the rest of mobile session support (AUTH_STORAGE KV +
+openauth_storage) onto the Postgres KvStore; the "push-token prune keys" in
+that KV are UNAFFECTED — only the two D1 tables move.
+
+Unlike the other CFG-4 domains these tables had NO Postgres twin and NO
+dual-write mirror beforehand: the mobile push MVP shipped D1-only rows and
+**both production D1 tables are empty at cutover time** (verified by
+`wrangler d1 export` dump: zero rows / zero INSERTs). So there is no
+backfill/reconcile machinery and no data to copy.
+
+Mechanics:
+
+- Migration `packages/khala-sync-server/migrations/0044_push_tables_hard_cut.sql`
+  (APPLY BEFORE the cutover deploy): creates the two twins fresh as the sole
+  authority — `push_device_tokens` PK `(user_id, device_id)` with the
+  `(user_id, updated_at DESC)` and `(expo_push_token)` read accelerators;
+  `push_notification_preferences` PK `user_id`, `push_enabled` smallint 0/1
+  with CHECK. Every D1 UNIQUE/PK/CHECK ported byte-for-byte so the Worker's
+  `ON CONFLICT` upserts have the arbiters they need.
+- Consumers moved onto the Postgres handle: `push/push-device-tokens.ts`,
+  `push/push-notification-preferences.ts`, `push/push-sender.ts`,
+  `push/push-notify-routes.ts`, `push/push-device-token-routes.ts` (route
+  `db:` deps), plus the two cross-store readers — `admin-ops-routes.ts` (a
+  new `pushDb` dep reads the readiness COUNT off Postgres; `token_usage_events`
+  stays D1) and `mobile-account-deletion-routes.ts` (the push DELETE left the
+  D1 batch and runs on the ledger handle as `DELETE … RETURNING`, so its
+  non-atomic-seam heal-on-retry note now also covers push).
+- Dialect: `?` placeholders kept (auto-translated to `$n`); no
+  `INSERT OR IGNORE`/`REPLACE` (all upserts use `ON CONFLICT`); row-count
+  outcomes come from `DELETE … RETURNING` instead of `meta.changes`.
+
+One-time coordinator copy: **NONE — both source tables are empty.** The
+coordinator only applies 0044 (creating the empty twins). If a non-empty
+source is ever re-confirmed, the D1-read-quota-safe path is a
+`wrangler d1 export --table push_device_tokens --table push_notification_preferences`
+dump (bypasses the read-quota freeze) piped into the twins; a targeted
+per-table `wrangler d1 execute … "SELECT …"` export also works because the
+tables are tiny.
 
 ### 2026-07-05 follow-up (#8362): post-deploy re-verify + read-site classification
 

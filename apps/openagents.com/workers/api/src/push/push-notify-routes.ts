@@ -23,6 +23,7 @@ import { currentIsoTimestamp } from '../runtime-primitives'
 import type { VerifiedSession } from '../auth/session'
 import {
   listActivePushDeviceTokensForUser,
+  type PushDeviceTokenDb,
   type PushDeviceTokenRow,
 } from './push-device-tokens'
 import {
@@ -80,7 +81,9 @@ const notifyEventFromBody = (
 }
 
 export type PushNotifyRouteDependencies<Bindings, User = unknown> = Readonly<{
-  db: (env: Bindings) => D1Database
+  /** CFG-4 Domain 4 (#8519): the Postgres-authoritative push registry +
+   * preferences handle (`paymentsLedgerDbForEnv`), never a raw D1 handle. */
+  db: (env: Bindings) => PushDeviceTokenDb
   authStorage: (env: Bindings) => MobileAccessRevocationStore
   requireAdminApiToken: (request: Request, env: Bindings) => Promise<boolean>
   requireUserBearerSession: (
@@ -105,7 +108,7 @@ export type NotifyEventOutcome = Readonly<{
  * standalone so a future direct in-process caller (once #8473 lands) can
  * skip the HTTP hop entirely. */
 export const dispatchNotifyEvent = async (
-  db: D1Database,
+  db: PushDeviceTokenDb,
   input: Readonly<{
     event: RuntimeNotifyEvent
     devices: ReadonlyArray<PushDeviceTokenRow>

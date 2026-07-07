@@ -11,7 +11,7 @@
 // token invalidation from the immediate ticket response IS handled (see
 // `pruneInvalidatedTokens` below).
 
-import { removePushDeviceTokensByExpoToken } from './push-device-tokens'
+import { removePushDeviceTokensByExpoToken, type PushDeviceTokenDb } from './push-device-tokens'
 import type { PushNotificationPayload } from './push-notify-events'
 
 export const EXPO_PUSH_SEND_URL = 'https://exp.host/--/api/v2/push/send'
@@ -108,7 +108,7 @@ const sendOneBatch = async (
  * an honest per-recipient summary.
  */
 export const sendExpoPushMessages = async (
-  db: D1Database,
+  db: PushDeviceTokenDb,
   messages: ReadonlyArray<ExpoPushMessage>,
   fetchImpl: FetchLike = fetch,
 ): Promise<SendExpoPushMessagesResult> => {

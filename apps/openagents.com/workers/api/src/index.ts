@@ -4104,6 +4104,8 @@ const adminCreditsRoutes = makeAdminCreditsRoutes<Env>({
 // function) for the same raw-Env-parameter-annotation reason.
 const adminOpsRoutes = makeAdminOpsRoutes<Env>({
   db: openAgentsDatabase,
+  // CFG-4 Domain 4 (#8519): push readiness count reads Postgres.
+  pushDb: paymentsLedgerDbForEnv,
   requireAdminCaller: async (request, env, ctx) => {
     const session = await requireUserBearerSession(request, env, ctx)
     if (session === undefined) return undefined
@@ -12691,7 +12693,8 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     handler: (request, env, ctx) =>
       handlePushDeviceTokensRequest(
         {
-          db: openAgentsDatabase,
+          // CFG-4 Domain 4 (#8519): push registry is Postgres-authoritative.
+          db: paymentsLedgerDbForEnv,
           readBearerToken,
           requireUserBearerSession,
           userIdFromSession: session => session.user.userId,
@@ -12709,7 +12712,8 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       handlePushNotificationPreferencesRequest(
         {
           authStorage: e => authKvStoreForEnv(e),
-          db: openAgentsDatabase,
+          // CFG-4 Domain 4 (#8519): push tables are Postgres-authoritative.
+          db: paymentsLedgerDbForEnv,
           requireAdminApiToken,
           requireUserBearerSession,
           userIdFromSession: session => session.user.userId,
@@ -12729,7 +12733,8 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       handlePushNotifyEventsRequest(
         {
           authStorage: e => authKvStoreForEnv(e),
-          db: openAgentsDatabase,
+          // CFG-4 Domain 4 (#8519): push tables are Postgres-authoritative.
+          db: paymentsLedgerDbForEnv,
           requireAdminApiToken,
           requireUserBearerSession,
           userIdFromSession: session => session.user.userId,

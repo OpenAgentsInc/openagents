@@ -29,7 +29,11 @@ import {
   type MakeKhalaSyncPushSqlClient,
 } from './khala-sync-push-routes'
 import { logWorkerRouteWarning } from './observability'
-import { openAgentsDatabase } from './runtime'
+import {
+  makePostgresD1Database,
+  PostgresD1AdapterError,
+  type PostgresD1Client,
+} from './postgres-d1-adapter'
 
 export type KhalaCodeProductStateFlags = Readonly<{
   dualWrite: boolean
@@ -794,7 +798,11 @@ export type KhalaCodeProductStateStoreEnv = KhalaCodeProductStateFlagEnv &
   }>
 
 export type MakeKhalaCodeProductStateStoreOptions = Readonly<{
+  /** Changelog-mirror client factory (the scope-projection layer). */
   makeSqlClient?: MakeKhalaSyncPushSqlClient | undefined
+  /** CFG-4 Domain 3 (#8519): the D1-adapter's Postgres client factory
+   * (business reads/writes). Tests inject a local-Postgres client. */
+  makeD1Client?: ((connectionString: string) => Promise<PostgresD1Client>) | undefined
   log?: KhalaCodeProductStateLog | undefined
   /** CFG-4 Domain 2 (#8519): identity-handle override (tests). */
   identityDb?: IdentityDb | undefined
@@ -830,19 +838,79 @@ const postgresMirrorForEnv = (
   })
 }
 
+/**
+ * CFG-4 (#8519) Domain 3: the int8-parsing Postgres client the D1 adapter
+ * runs on. Reuses the transaction-mode-safe postgres.js discipline
+ * (`prepare: false`, `max: 1`) and adds an int8 -> JS number parser so the 11
+ * `bigint` product-state twin columns (credits msat, counts — all < 2^53)
+ * read back as numbers, matching the shape D1 returned. Tests inject their
+ * own client via `options.makeSqlClient`.
+ */
+export const defaultMakeKhalaCodeProductStateD1Client = async (
+  connectionString: string,
+): Promise<PostgresD1Client> => {
+  const mod = (await import('postgres')) as unknown as {
+    default: (
+      connectionString: string,
+      options: Record<string, unknown>,
+    ) => {
+      unsafe: (text: string, params: Array<unknown>) => Promise<Array<Record<string, unknown>>>
+      begin: <A>(fn: (tx: unknown) => Promise<A>) => Promise<A>
+      end: (options?: { timeout?: number }) => Promise<void>
+    }
+  }
+  const sql = mod.default(connectionString, {
+    connect_timeout: 10,
+    max: 1,
+    prepare: false,
+    types: {
+      // Parse int8 (oid 20) as a JS number instead of postgres.js's default
+      // string, so bigint twin columns match the D1 numeric shape.
+      bigint: {
+        from: [20],
+        parse: (value: string) => Number(value),
+        serialize: (value: number | bigint) => value.toString(),
+        to: 20,
+      },
+    },
+  })
+  return {
+    end: () => sql.end({ timeout: 5 }),
+    sql: sql as unknown as PostgresD1Client['sql'],
+  }
+}
+
 export const khalaCodeProductStateDatabaseForEnv = (
   env: KhalaCodeProductStateStoreEnv,
   options: MakeKhalaCodeProductStateStoreOptions = {},
 ): D1Database => {
-  const db = openAgentsDatabase(env as { OPENAGENTS_DB: D1Database })
-  const flags = khalaCodeProductStateFlagsFromEnv(env)
-  if (!flags.dualWrite) {
-    return db
-  }
+  // CFG-4 (#8519) Domain 3: Postgres is the SOLE authority. Reads AND writes
+  // of the 25 product-state tables run on the Postgres twins (khala-sync
+  // migration 0017) through a D1-shaped adapter, so every existing D1-API
+  // store factory works unchanged. FAIL-HARD AT USE when the KHALA_SYNC_DB
+  // binding is absent — there is no D1 store to fall back to for this domain
+  // anymore. Construction itself never throws (route composition builds this
+  // handle eagerly for many routes; only the paths that actually touch
+  // product state must fail).
+  const connectionString = env.KHALA_SYNC_DB?.connectionString
+  const makeD1Client =
+    options.makeD1Client ?? defaultMakeKhalaCodeProductStateD1Client
+  const db = makePostgresD1Database({
+    acquireSql: () => {
+      if (connectionString === undefined || connectionString.length === 0) {
+        throw new PostgresD1AdapterError(
+          'KHALA_SYNC_DB binding is required for Khala Code product state (CFG-4 hard cutover)',
+        )
+      }
+      return makeD1Client(connectionString)
+    },
+  })
+  // The scope-changelog projection still rides on top: after each classified
+  // Postgres write, append the typed public-safe scope changes for live sync
+  // fanout (best-effort; a failure never fails the authoritative write). The
+  // business-row converge inside the mirror is now an idempotent no-op against
+  // the same Postgres row the adapter already wrote.
   const mirror = postgresMirrorForEnv(env, options)
-  if (mirror === undefined) {
-    return db
-  }
   return makeKhalaCodeProductStateMirroringDatabase({
     db,
     identityDb: options.identityDb ?? identityDbForEnv(env),

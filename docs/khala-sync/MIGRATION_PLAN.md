@@ -1905,6 +1905,15 @@ D1 untouched, no flag flipped. **Safe to cite on KS-8.19 (#8330).**
 
 ### 3.10 KS-8.13 — Khala Code product state (threads, teams, workspaces)
 
+- **CFG-4 HARD CUTOVER (2026-07-06, #8519 Domain 3):** the 25 product-state
+  tables are Postgres-AUTHORITATIVE with the D1 path deleted —
+  `khalaCodeProductStateDatabaseForEnv` returns a D1-shaped Postgres adapter
+  (`workers/api/src/postgres-d1-adapter.ts`) so the existing store factories
+  run unchanged on the `0017` twins; the scope-changelog projection rides on
+  top best-effort. No new schema (0017 already had every ON CONFLICT target),
+  no backfill (twins verified exact). See the RUNBOOK "CFG-4 HARD CUTOVER"
+  subsection. Ships live with CFG-9.
+
 **KS-8.13 source status (2026-07-04):** source machinery LANDED —
 Postgres schema (`khala-sync-server` migration
 `0017_khala_code_product_state.sql`) covers the product-state tables
@@ -2477,6 +2486,23 @@ evidence:
   from the default sweep (explicit `--table` = pre-deploy catch-up ONLY).
   The other fifteen tables in this section keep the staged plan above
   unchanged.
+
+- **CFG-4 Domain 4 HARD CUTOVER (2026-07-06, #8519):** the mobile push
+  tables `push_device_tokens` and `push_notification_preferences` (Worker D1
+  migrations 0304/0305) are Cloud SQL Postgres-AUTHORITATIVE with the D1
+  code path DELETED — the last of mobile session support to leave D1 after
+  CFG-3 moved AUTH_STORAGE KV + `openauth_storage` to the Postgres KvStore.
+  These two tables had NO Postgres twin and NO dual-write mirror before this
+  cutover and were EMPTY in production, so there is NO backfill/reconcile
+  lane and NO one-time data copy: khala-sync migration
+  `0044_push_tables_hard_cut.sql` creates the twins fresh as the sole
+  authority (D1 UNIQUE/PK/CHECK ported byte-for-byte; `(user_id, updated_at
+  DESC)` + `(expo_push_token)` read accelerators). Store: the same
+  `PaymentsLedgerDb` executor over `KHALA_SYNC_DB` (`workers/api/src/push/*`,
+  wired via `paymentsLedgerDbForEnv`); the cross-store readers
+  `admin-ops-routes.ts` (push readiness COUNT) and
+  `mobile-account-deletion-routes.ts` (push DELETE, now `DELETE … RETURNING`
+  off the D1 batch) moved onto the Postgres handle too.
 
 ### 3.16 Explicit non-migrations
 

@@ -8,6 +8,7 @@ import {
   type AdminCaller,
   makeAdminOpsRoutes,
 } from './admin-ops-routes'
+import { paymentsLedgerDbFromD1 } from './test/payments-ledger-sqlite'
 
 type Row = Record<string, unknown>
 
@@ -94,6 +95,9 @@ const makeRoutes = (
 ) =>
   makeAdminOpsRoutes<Env>({
     db: env => env.OPENAGENTS_DB,
+    // CFG-4 Domain 4 (#8519): the push count reads through the ledger seam;
+    // the same in-memory SQLite holds push_device_tokens here.
+    pushDb: env => paymentsLedgerDbFromD1(env.OPENAGENTS_DB as never),
     ...(fetchImpl === undefined ? {} : { fetch: fetchImpl }),
     nowIso: () => '2026-07-06T12:00:00.000Z',
     requireAdminCaller: async (): Promise<AdminCaller | undefined> =>

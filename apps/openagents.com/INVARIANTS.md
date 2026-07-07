@@ -1374,18 +1374,58 @@ This is the invariant ledger for `openagents`.
 
 ## CFG-4 Hard-Cut Storage Authority (#8519)
 
-- TWO table sets are Cloud SQL Postgres-AUTHORITATIVE with the D1 code path
+- FOUR table sets are Cloud SQL Postgres-AUTHORITATIVE with the D1 code path
   deleted:
   - the CREDITS set — `pay_ins`, `pay_in_legs`, `agent_balances`,
     `labor_escrows`, and `labor_escrow_receipts` — behind `PaymentsLedgerDb`
     (`workers/api/src/payments-ledger-db.ts`);
   - the IDENTITY CORE set — `users` and `auth_identities` — behind
     `IdentityDb` (`workers/api/src/identity-db.ts`, structurally the same
-    executor).
+    executor);
+  - the MOBILE PUSH set — `push_device_tokens` and
+    `push_notification_preferences` — behind the same `PaymentsLedgerDb`
+    executor (`workers/api/src/push/*`, wired via `paymentsLedgerDbForEnv`);
+  - the KHALA CODE PRODUCT-STATE set — the 25 thread/team/workspace tables
+    in `packages/khala-sync-server/src/khala-code-product-state-tables.ts`
+    (`teams`, `team_memberships`, `team_projects`, `thread_messages`,
+    `team_chat_messages`, `thread_files`, `thread_file_message_refs`,
+    `team_workspace_invites`, the `prefilled_workspace*`/`workroom_*`/
+    `cloud_*`/`khala_*`/`share_projection*` families) — served through a
+    D1-shaped Postgres adapter (`workers/api/src/postgres-d1-adapter.ts`)
+    so the existing D1-API store factories run unchanged on Postgres.
   There is no D1 code path, no dual-write mirror, and no `KHALA_SYNC_*`
-  read flag for any of these seven tables; both handles wire from the
+  read flag for any of these 34 tables; all handles wire from the
   `KHALA_SYNC_DB` Hyperdrive binding into the SAME khala_sync Postgres
   database (a statement may JOIN `users` × `agent_balances`).
+- The KHALA CODE PRODUCT-STATE set is the thread/turn CONTENT path.
+  `khalaCodeProductStateDatabaseForEnv` returns the Postgres-backed
+  D1-shaped adapter (int8 twin columns parsed back as JS numbers; `?`→`$n`,
+  `col IS ?`→`IS NOT DISTINCT FROM`, `INSERT OR IGNORE`→`ON CONFLICT DO
+  NOTHING`) wrapped by the existing scope-changelog projection (still
+  best-effort for live sync fanout, never failing the authoritative write).
+  It is FAIL-HARD without the `KHALA_SYNC_DB` binding — there is no D1
+  fallback. The adapter is proven on real Postgres against the actual
+  consumer SQL by `workers/api/src/postgres-d1-adapter.contract.test.ts`.
+  The twins (khala-sync migration `0017`) already carried every `ON
+  CONFLICT` target and index, so no new schema was needed; the production
+  twins verified exact (zero count / newest-hash / message-chain
+  mismatches) at cutover, so there was no backfill.
+- The MOBILE PUSH set is the last of mobile session support to leave D1
+  (CFG-3, commit 40ae3aa6d5, already hard-cut AUTH_STORAGE KV +
+  `openauth_storage` onto the Postgres KvStore; the AUTH KV "push-token prune
+  keys" are unaffected). Both tables had NO Postgres twin and NO dual-write
+  before CFG-4 and were EMPTY in production at cutover, so their twins
+  (khala-sync migration `0044_push_tables_hard_cut.sql`) are created fresh as
+  the sole authority with no backfill/reconcile lane and no one-time data
+  copy. Every D1 UNIQUE/PK/CHECK is ported byte-for-byte
+  (`push_device_tokens` PK `(user_id, device_id)`;
+  `push_notification_preferences` PK `user_id`, `push_enabled` smallint 0/1
+  CHECK). Push writes/removals are FAIL-HARD through the same handle; the
+  `mobile-account-deletion-routes.ts` push DELETE left the D1 batch and runs
+  on the ledger handle as `DELETE … RETURNING`, keeping the idempotent
+  heal-on-retry seam. `admin-ops-routes.ts` reads the push readiness COUNT
+  through a dedicated `pushDb` dep (Postgres), while `token_usage_events`
+  stays D1.
 - Identity core includes the auth-GATE reads: the agent bearer-token gate
   (`agent-registration.ts` `findAgentByTokenHash`) and the session-subject
   upserts (`index.ts` `upsertGitHubUser`/`upsertEmailUser`) serve from
@@ -1421,13 +1461,15 @@ This is the invariant ledger for `openagents`.
   rows are split into one Postgres transaction plus one D1 batch; each such
   seam must keep an idempotency key that heals a crash between the two and
   an in-code comment naming the seam.
-- The D1 twins of these seven tables (both the credits set and the
-  identity-core set) are frozen legacy data pending the KS-8.19 (#8330)
-  drop; no new code may read or write them, and the khala-sync-server
-  converge/backfill sweeps must never copy them D1 → Postgres after the
-  cutover deploy (`backfill-billing.ts` excludes the credits pay-in pair,
-  `backfill-identity-auth.ts` excludes `users`/`auth_identities` from
-  their default sweeps for exactly this reason).
+- The D1 originals of these 34 tables (the credits set, the identity-core
+  set, the mobile-push set, and the Khala Code product-state set) are frozen
+  legacy data pending the KS-8.19 (#8330) drop; no new code may read or write
+  them, and the khala-sync-server converge/backfill sweeps must never copy
+  them D1 → Postgres after the cutover deploy (`backfill-billing.ts` excludes
+  the credits pay-in pair, `backfill-identity-auth.ts` excludes
+  `users`/`auth_identities`, and `backfill-khala-code-product-state.ts`
+  refuses its converge sweep without `--allow-post-cutover-converge` for
+  exactly this reason; the mobile-push pair has no backfill lane at all).
 - Old D1 JOINs against `users`/`auth_identities` split into a D1 read plus
   ONE identity IN-list enrichment (`readIdentityUserProfiles`) — never an
   N+1 loop and never a quiet fallback to the stale D1 twin.
