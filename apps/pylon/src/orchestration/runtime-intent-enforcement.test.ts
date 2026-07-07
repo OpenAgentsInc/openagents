@@ -13,6 +13,7 @@ import {
   claudeRawMessageToRuntimeEvents,
   codexRawEventToRuntimeEvents,
   enforcePendingRuntimeIntents,
+  runWithHostedKhalaGateway,
   type ActiveRuntimeTurns,
   type CandidateAccount,
   type ClaudeRawMessage,
@@ -1612,5 +1613,79 @@ describe("thread-resume account affinity (#8410 follow-up)", () => {
     } finally {
       await cleanup()
     }
+  })
+})
+
+describe("runWithHostedKhalaGateway usage extraction (#8503)", () => {
+  const source = {
+    adapterKind: "openagents_native" as const,
+    lane: "hosted_khala" as const,
+    modelRef: "gemini-2.5-flash",
+    providerRef: "vertex-gemini",
+    surface: "server" as const,
+  }
+
+  const runGateway = async (usage: Record<string, unknown>) => {
+    let seq = 0
+    const fetchImpl = (async () =>
+      new Response(
+        JSON.stringify({
+          choices: [{ message: { content: "ok" } }],
+          usage,
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      )) as unknown as typeof globalThis.fetch
+    const { events } = await runWithHostedKhalaGateway({
+      agentToken: "agent-token-never-serialized",
+      allocateSequence: () => (seq += 1),
+      baseUrl: "https://gateway.example",
+      fetchImpl,
+      instructions: "describe the change",
+      model: "gemini-2.5-flash",
+      nowIso: () => "2026-07-07T00:00:00.000Z",
+      signal: new AbortController().signal,
+      source,
+      threadId: "thread-1",
+      turnId: "turn-1",
+    })
+    const collected: Array<KhalaRuntimeEvent> = []
+    for await (const event of events) collected.push(event)
+    return collected.find((event) => event.kind === "usage.recorded") as
+      | Extract<KhalaRuntimeEvent, { kind: "usage.recorded" }>
+      | undefined
+  }
+
+  test("folds reasoning out of completion so the billable total is unchanged", async () => {
+    const usageEvent = await runGateway({
+      prompt_tokens: 41,
+      completion_tokens: 17,
+      completion_tokens_details: { reasoning_tokens: 12 },
+      prompt_tokens_details: { cached_tokens: 8 },
+      total_tokens: 58,
+    })
+    expect(usageEvent).toBeDefined()
+    // Non-reasoning remainder as output; reasoning carried separately. The
+    // receipt route re-sums output+reasoning = 17 (billable completion).
+    expect(usageEvent!.usage.inputTokens).toBe(41)
+    expect(usageEvent!.usage.outputTokens).toBe(5)
+    expect((usageEvent!.usage as { reasoningTokens?: number }).reasoningTokens).toBe(12)
+    expect(
+      (usageEvent!.usage as { cacheReadInputTokens?: number }).cacheReadInputTokens,
+    ).toBe(8)
+    expect(usageEvent!.usage.totalTokens).toBe(58)
+  })
+
+  test("flat usage (no reasoning/cache) reports zeros, not a false-exact", async () => {
+    const usageEvent = await runGateway({
+      prompt_tokens: 10,
+      completion_tokens: 5,
+      total_tokens: 15,
+    })
+    expect(usageEvent).toBeDefined()
+    expect(usageEvent!.usage.outputTokens).toBe(5)
+    expect((usageEvent!.usage as { reasoningTokens?: number }).reasoningTokens).toBe(0)
+    expect(
+      (usageEvent!.usage as { cacheReadInputTokens?: number }).cacheReadInputTokens,
+    ).toBe(0)
   })
 })

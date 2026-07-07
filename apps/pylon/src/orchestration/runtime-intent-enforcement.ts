@@ -794,12 +794,27 @@ const openAiChatCompletionText = (body: unknown): string => {
   return typeof first?.text === "string" ? first.text : ""
 }
 
+/**
+ * OpenAI-shaped usage extraction for the hosted-Khala gateway lane. EXACT for
+ * thinking + cached models (#8503): mirrors the agent-computer turn-runner's
+ * `chatCompletionUsage`. The `/api/khala/cloud/runtime-turn-usage` route bills
+ * `output + reasoning` (`khalaCloudRuntimeUsageTokenCounts`) and OpenAI's
+ * contract folds `reasoning_tokens` INTO `completion_tokens`, so we return the
+ * NON-reasoning remainder as `outputTokens` and carry `reasoning_tokens`
+ * separately — the route re-sums them to `completion_tokens`, keeping the
+ * billable total unchanged while replacing the prior hardcoded-zero false-exact.
+ * A provider that reports reasoning OUTSIDE completion is carried additively
+ * (never lost). `cached_tokens` (a subset of prompt) is carried, clamped to
+ * input.
+ */
 const openAiChatCompletionUsage = (
   body: unknown,
 ): Readonly<{
   inputTokens: number
   outputTokens: number
   totalTokens: number
+  reasoningTokens: number
+  cacheReadTokens: number
 }> => {
   const usage = (body as { usage?: unknown } | undefined)?.usage as
     | Record<string, unknown>
@@ -808,13 +823,33 @@ const openAiChatCompletionUsage = (
     typeof value === "number" && Number.isFinite(value)
       ? Math.max(0, Math.trunc(value))
       : 0
+  const completionDetails = usage?.completion_tokens_details as
+    | Record<string, unknown>
+    | undefined
+  const promptDetails = usage?.prompt_tokens_details as
+    | Record<string, unknown>
+    | undefined
   const inputTokens = integer(usage?.prompt_tokens ?? usage?.input_tokens)
-  const outputTokens = integer(usage?.completion_tokens ?? usage?.output_tokens)
+  const completionTokens = integer(
+    usage?.completion_tokens ?? usage?.output_tokens,
+  )
+  const reasoningTokens = integer(completionDetails?.reasoning_tokens)
+  const cacheReadTokens = Math.min(
+    inputTokens,
+    integer(promptDetails?.cached_tokens),
+  )
+  const folded = reasoningTokens <= completionTokens
+  const outputTokens = folded
+    ? completionTokens - reasoningTokens
+    : completionTokens
+  const billableOutput = outputTokens + reasoningTokens
   return {
     inputTokens,
     outputTokens,
+    reasoningTokens,
+    cacheReadTokens,
     totalTokens: Math.max(
-      inputTokens + outputTokens,
+      inputTokens + billableOutput,
       integer(usage?.total_tokens),
     ),
   }
@@ -896,6 +931,11 @@ export const runWithHostedKhalaGateway: RuntimeHostedKhalaThreadRunner = async (
         usage: {
           inputTokens: usage.inputTokens,
           outputTokens: usage.outputTokens,
+          // EXACT reasoning/cache (#8503): the receipt route bills
+          // output+reasoning, so these carry the split extracted above (no more
+          // hardcoded-zero false-exact for thinking/cached hosted turns).
+          reasoningTokens: usage.reasoningTokens,
+          cacheReadInputTokens: usage.cacheReadTokens,
           totalTokens: usage.totalTokens,
           usageRef: `usage.hosted_khala.${randomUUID()}`,
         },
