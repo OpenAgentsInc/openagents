@@ -524,6 +524,22 @@ This is the invariant ledger for `openagents`.
   user-controlled preference (default `pull_request`; `branch_only` pushes the
   branch and opens no PR) — both modes hold the no-force-push and no-base-branch
   rules and surface the same thread-scoped `writeback.recorded` runtime event.
+- The server-side recorder for that thread-scoped `writeback.recorded` event on
+  the hosted/Agent Computer lane is
+  `workers/api/src/cloud/khala-agent-computer-writeback.ts`
+  (`publishKhalaAgentComputerWriteback`). It gates a success outcome behind the
+  user's OWN GitHub write authorization (`resolveKhalaWritebackAuthorization`:
+  a connected, healthy GitHub write connection carrying the required
+  `repo`/`workflow` scopes — never a bot account, never a raw token read). A
+  missing/insufficient authorization never surfaces as a success: it records a
+  typed `failed` writeback event carrying a public-safe
+  `writeback.permission.<reason>` ref so the mobile thread shows an honest
+  "authorize GitHub" state. A `failed` executor outcome skips the gate and is
+  recorded verbatim; an unknown turn, owner mismatch, or inconsistent outcome
+  shape is a typed refusal that records nothing. The event is appended AS THE
+  TURN OWNER through the sanctioned `runtime.recordEvent` push engine and is
+  projected only into `scope.thread.<threadId>`; nothing here writes a public
+  scope.
 - Agent Computer compute charging is receipt-first and exact-only. Charges draw
   from the same user credit balance as token charges, but the nonzero compute
   rate remains owner-gated until the owner sets it from real GCE host cost,
