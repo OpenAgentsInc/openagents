@@ -658,6 +658,44 @@ describe('handleKhalaSyncLog', () => {
     expect(seen).toEqual([USER_ID])
   })
 
+  // ---------------------------------------------------------------------
+  // CFG D1 evacuation (#8515): the actor-auth path can throw when its
+  // D1-backed lookup is 401-dead. A public scope must degrade to anonymous
+  // and still serve; a non-public scope must fail CLOSED with a typed 503.
+  // ---------------------------------------------------------------------
+
+  test('CFG #8515: a THROWING auth path on a PUBLIC scope degrades to anonymous and still serves 200', async () => {
+    const served = page({ nextCursor: 1, scope: PUBLIC_SCOPE, upToDate: true })
+    const response = await Effect.runPromise(
+      handleKhalaSyncLog(get({ scope: PUBLIC_SCOPE }), {
+        authenticate: async () => {
+          throw new Error('d1-http bridge query failed (401)')
+        },
+        binding: { connectionString: FAKE_CONNECTION_STRING },
+        hubNamespace: hubServing(served).namespace,
+        resolveScopeRead: defaultResolveScopeRead,
+      }),
+    )
+    expect(response.status).toBe(200)
+  })
+
+  test('CFG #8515: a THROWING auth path on a NON-public scope is a typed 503 (fail closed, retryable)', async () => {
+    const response = await Effect.runPromise(
+      handleKhalaSyncLog(get({ scope: OWN_SCOPE }), {
+        authenticate: async () => {
+          throw new Error('d1-http bridge query failed (401)')
+        },
+        binding: { connectionString: FAKE_CONNECTION_STRING },
+        hubNamespace: undefined,
+        resolveScopeRead: defaultResolveScopeRead,
+      }),
+    )
+    expect(response.status).toBe(503)
+    const body = await syncErrorBody(response)
+    expect(body.code).toBe('storage_unavailable')
+    expect(body.retryable).toBe(true)
+  })
+
   test('an anonymous read that fails the rate limiter is 429 rate_limited', async () => {
     const response = await run({
       anonymousRateLimit: () => false,

@@ -700,7 +700,11 @@ describe('forumContentDatabaseForEnv', () => {
     sqlite.close()
   })
 
-  test('reads=postgres defers: compare behavior plus one loud diagnostic', () => {
+  test('reads=postgres returns the serving wrapper (CFG #8515), no deferral', () => {
+    // CFG D1 evacuation: `postgres` mode is no longer inert — it returns the
+    // forum Postgres serving wrapper (reads served / writes executed on
+    // Postgres). The old `khala_sync_forum_postgres_reads_deferred` diagnostic
+    // is gone; construction alone never opens a Postgres connection.
     const sqlite = makeSqliteD1()
     const capture = makeLogCapture()
     const db = forumContentDatabaseForEnv(
@@ -719,7 +723,7 @@ describe('forumContentDatabaseForEnv', () => {
       capture.events.filter(
         entry => entry.event === 'khala_sync_forum_postgres_reads_deferred',
       ),
-    ).toHaveLength(1)
+    ).toHaveLength(0)
     sqlite.close()
   })
 })

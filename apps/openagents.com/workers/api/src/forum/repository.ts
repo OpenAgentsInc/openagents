@@ -1620,6 +1620,19 @@ const readForumPostTipStats = (
 
       return new Map(entries)
     }),
+    // CFG D1 evacuation (#8515): the receipt-backed money-table aggregate
+    // uses SQLite `json_extract`, which the Postgres forum serving path cannot
+    // evaluate. Degrade the receipt-backed stats to empty on ANY read failure
+    // so a dead-D1 / unservable overlay read never 500s a public thread; the
+    // Postgres-authoritative ledger-credited totals below still merge in.
+    Effect.catch(() =>
+      Effect.succeed(
+        new Map<string, ForumPostTipStats>() as ReadonlyMap<
+          string,
+          ForumPostTipStats
+        >,
+      ),
+    ),
     Effect.flatMap(stats =>
       readCreditedPostTipTotals(ledgerDb, uniquePostIds).pipe(
         Effect.map(creditedTotals => {

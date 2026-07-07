@@ -73,6 +73,16 @@
     "KHALA_SYNC_LEDGER_READS": "postgres",
     "KHALA_SYNC_TRAINING_READS": "postgres",
     "KHALA_SYNC_TREASURY_READS": "postgres",
+    // CFG D1 evacuation (#8515): the Cloudflare D1 bridge is 401-dead, so the
+    // forum read/write surface (topic lists, threads, new posts) must serve
+    // and write from/to Postgres. `postgres` mode SERVES every forum-domain
+    // SELECT from the Postgres mirror (content + remainder + the five forum
+    // treasury-money tables) and EXECUTES every forum-domain write on
+    // Postgres (authoritative, `INSERT OR IGNORE` → `ON CONFLICT DO NOTHING`),
+    // fail-soft to D1 only for a Postgres read error — see
+    // `src/forum/forum-postgres-serving.ts`. Set here (top-level production
+    // vars) so it PERSISTS across deploys: an unset flag renders back to `d1`.
+    "KHALA_SYNC_FORUM_READS": "postgres",
     // KS-8.16 follow-up Forge READ cutover (#8358): `postgres` SERVES the
     // canonical `listRefs` ref advertisement (the §3.13 git-ls-remote-twin
     // surface) from the Postgres twin, and is FAIL-SOFT — any Postgres

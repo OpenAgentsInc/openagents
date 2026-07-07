@@ -277,8 +277,28 @@ export const handleKhalaSyncBootstrap = (
     // because the scope lives inside the body — see the module doc.
     // `authenticate()` is still attempted so a signed-in caller's userId
     // reaches `resolveScopeRead` even on a public scope.
+    // CFG D1 evacuation (#8515): a bearer-token actor lookup can hit the
+    // 401-dead D1 agent-registration store and THROW. For an anonymous-
+    // readable `scope.public.*` bootstrap that throw must not crash the read
+    // (no actor is needed) — degrade to anonymous; every non-public scope
+    // keeps a fatal typed 503 on an auth-store failure.
     const anonymousAllowed = isAnonymousReadableScope(bootstrapRequest.scope)
-    const actor = await deps.authenticate()
+    let actor: { readonly userId: string } | undefined
+    try {
+      actor = await deps.authenticate()
+    } catch (error) {
+      if (!anonymousAllowed) {
+        return syncErrorResponse(
+          503,
+          'storage_unavailable',
+          `Khala Sync actor authentication is unavailable (${
+            error instanceof Error ? error.name : 'error'
+          }); retry the bootstrap.`,
+          true,
+        )
+      }
+      actor = undefined
+    }
     if (actor === undefined) {
       if (!anonymousAllowed) {
         return syncErrorResponse(

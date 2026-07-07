@@ -328,8 +328,33 @@ export const handleKhalaSyncLog = (
     // Auth: `scope.public.*` is the ONLY kind readable without an actor.
     // `authenticate()` is still attempted so a signed-in caller's userId
     // reaches `resolveScopeRead` even on a public scope.
+    //
+    // CFG D1 evacuation (#8515): the actor-auth path can consult the D1-backed
+    // agent-registration store when a bearer token is present; with the
+    // Cloudflare D1 bridge 401-dead that lookup THROWS. For an
+    // anonymous-readable `scope.public.*` read (e.g. the public
+    // activity-timeline the Trigger verifier polls) that throw must NOT crash
+    // the read — the scope needs no actor — so a failed auth degrades to
+    // anonymous and the read proceeds from Postgres. For every non-public
+    // scope an auth-store failure stays fatal (typed 503, retryable) rather
+    // than a false grant.
     const anonymousAllowed = isAnonymousReadableScope(query.scope)
-    const actor = await deps.authenticate()
+    let actor: { readonly userId: string } | undefined
+    try {
+      actor = await deps.authenticate()
+    } catch (error) {
+      if (!anonymousAllowed) {
+        return syncErrorResponse(
+          503,
+          'storage_unavailable',
+          `Khala Sync actor authentication is unavailable (${
+            error instanceof Error ? error.name : 'error'
+          }); retry the read.`,
+          true,
+        )
+      }
+      actor = undefined
+    }
     if (actor === undefined) {
       if (!anonymousAllowed) {
         return syncErrorResponse(

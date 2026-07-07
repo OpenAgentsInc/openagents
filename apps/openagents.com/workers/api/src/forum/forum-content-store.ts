@@ -60,11 +60,14 @@
 //     `compare` shadow-runs scoped-table SELECTs against Postgres, SERVES
 //     D1, and logs `khala_sync_forum_read_compare_mismatch` — the
 //     "public thread pages shadow-compared" cutover evidence. `postgres`
-//     read serving is DEFERRED to the cutover follow-up (the forum read
-//     surface is domain-wide, not one bounded scan): in this lane the
-//     flag behaves as `compare` and logs
-//     `khala_sync_forum_postgres_reads_deferred` once, so a premature
-//     flag flip can never serve an unproven read path.
+//     read serving is now BUILT (CFG D1 evacuation, #8515): the Cloudflare
+//     D1 bridge is 401-dead, so `postgres` mode returns the forum Postgres
+//     serving wrapper (`forum-postgres-serving.ts`) — every forum-domain
+//     SELECT is served from Postgres and every forum-domain write is
+//     executed on Postgres (authoritative), fail-soft to D1 only for a
+//     Postgres read error. (The legacy `khala_sync_forum_postgres_reads_
+//     deferred` diagnostic is retired — the read surface is served, not
+//     deferred.)
 //
 // PUBLIC-SAFETY: forum content is a public projection surface, but
 // diagnostics still reference row KEYS and statement heads only — never
@@ -96,6 +99,10 @@ import {
 } from '../khala-sync-push-routes'
 import { logWorkerRouteWarning } from '../observability'
 import { openAgentsDatabase } from '../runtime'
+import {
+  forumServingStoreForEnv,
+  makeForumPostgresServingDatabase,
+} from './forum-postgres-serving'
 import { wrapForumRemainderMirroring } from './forum-remainder-store'
 
 export type { ForumContentRow, ForumContentTable }
@@ -941,16 +948,25 @@ export const forumContentDatabaseForEnv = (
   }
 
   if (flags.reads === 'postgres') {
-    // Serving forum reads from Postgres is the cutover follow-up (the
-    // read surface is domain-wide). Never fail open into an unproven
-    // path: behave as compare and say so once. The remainder wrapper
-    // stays silent on this so the deferral logs exactly once lane-wide.
-    log('khala_sync_forum_postgres_reads_deferred', {
-      messageSafe:
-        'KHALA_SYNC_FORUM_READS=postgres is deferred to the read-cutover follow-up; serving d1 with compare shadow reads',
-      op: 'forumContentDatabaseForEnv',
-      refs: [],
-    })
+    // CFG D1 evacuation (#8515): the Cloudflare D1 bridge is 401-dead, so the
+    // whole forum read/write surface must move OFF D1. `postgres` mode serves
+    // every forum-domain SELECT from Postgres and executes every forum-domain
+    // write on Postgres (authoritative) — see `forum-postgres-serving.ts`.
+    // The serving wrapper sits at the same `db` boundary the repository reads
+    // and writes through, so no repository call site changes. When the
+    // KHALA_SYNC_DB binding is present (guaranteed here — `postgres` above is
+    // defined), this replaces the compare/dual-write chain entirely: Postgres
+    // is the authority, D1 is only the fail-soft fallback for a Postgres read
+    // error (never reached for writes).
+    const servingStore = forumServingStoreForEnv(env, options.makeSqlClient)
+    if (servingStore !== undefined) {
+      return makeForumPostgresServingDatabase({
+        db,
+        queryRows: servingStore.queryRows,
+      })
+    }
+    // No serving store (should not happen when `postgres` is defined) —
+    // fall through to the compare chain below rather than fail open.
   }
 
   return wrapRemainder(
