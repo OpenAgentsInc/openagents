@@ -63,7 +63,7 @@ export type BlurredPopupProviderProps = Readonly<{
 const DEFAULT_LIST_ITEM_HEIGHT = 50
 
 type PopupParams = Readonly<{
-  image: SkImage
+  image?: SkImage
   node: ReactNode
   layout: MeasuredDimensions
   options: ReadonlyArray<PopupOptionType>
@@ -93,9 +93,8 @@ export const BlurredPopupProvider = ({ children, maxBlur = 10, menuLayout }: Blu
       node: ReactNode
       options: ReadonlyArray<PopupOptionType>
     }) => {
-      const skImage = await makeImageFromView(mainView)
-      if (skImage === null) return
-      setParams({ image: skImage, layout, node, options: popupOptions })
+      const skImage = await makeImageFromView(mainView).catch(() => null)
+      setParams({ image: skImage ?? undefined, layout, node, options: popupOptions })
       menuVisible.value = true
     },
     [menuVisible]
@@ -198,7 +197,7 @@ export const BlurredPopupProvider = ({ children, maxBlur = 10, menuLayout }: Blu
           className="overflow-hidden rounded-lg border border-border bg-surfaceRaised"
           style={[popupStyle, styles.popup, rMenuPopupStyle]}
         >
-          {image === undefined || options.length === 0
+          {params === undefined || options.length === 0
             ? null
             : options.map((option, index) => (
                 <TouchableOpacity
@@ -221,7 +220,7 @@ export const BlurredPopupProvider = ({ children, maxBlur = 10, menuLayout }: Blu
               ))}
         </Animated.View>
         <View onTouchEnd={close} style={styles.popupBackground} />
-        <View style={[nodeStyle, styles.nodeZ]}>{Boolean(image) && params?.node}</View>
+        <View style={[nodeStyle, styles.nodeZ]}>{hasParams ? params?.node : null}</View>
       </Animated.View>
       <Canvas onSize={canvasSize} onTouchEnd={close} style={canvasStyle}>
         {image === undefined ? null : (
@@ -235,7 +234,7 @@ export const BlurredPopupProvider = ({ children, maxBlur = 10, menuLayout }: Blu
           </>
         )}
       </Canvas>
-      <View className="flex-1" ref={mainView}>
+      <View className="flex-1" collapsable={false} ref={mainView}>
         {children}
       </View>
     </BlurredPopupContext.Provider>

@@ -1,10 +1,21 @@
 import type { Preview } from "@storybook/react"
+import { useFonts } from "expo-font"
+import type { ReactNode } from "react"
 import { View } from "react-native"
 import { GestureHandlerRootView } from "react-native-gesture-handler"
 import { SafeAreaProvider } from "react-native-safe-area-context"
 
 import "../global.css"
+import { khalaMobileFontsToLoad } from "../src/theme/typography"
 import { KhalaThemeProvider } from "../src/theme/khala-theme-provider"
+
+const FontGate = ({ children }: { children: ReactNode }) => {
+  const [fontsLoaded, fontError] = useFonts(khalaMobileFontsToLoad)
+
+  if (!fontsLoaded && fontError === null) return <View className="flex-1 bg-bg" />
+
+  return <>{children}</>
+}
 
 const preview: Preview = {
   decorators: [
@@ -12,9 +23,11 @@ const preview: Preview = {
       <GestureHandlerRootView className="flex-1 bg-bg">
         <SafeAreaProvider>
           <KhalaThemeProvider>
-            <View className="flex-1 bg-bg p-5">
-              <Story />
-            </View>
+            <FontGate>
+              <View className="flex-1 bg-bg">
+                <Story />
+              </View>
+            </FontGate>
           </KhalaThemeProvider>
         </SafeAreaProvider>
       </GestureHandlerRootView>

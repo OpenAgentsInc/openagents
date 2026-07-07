@@ -78,7 +78,7 @@ export const TouchablePopupHandler = ({ children, highlightedChildren, onPress, 
 
   return (
     <GestureDetector gesture={gesture}>
-      <Animated.View ref={viewRef} style={style}>
+      <Animated.View collapsable={false} ref={viewRef} style={style}>
         {children}
       </Animated.View>
     </GestureDetector>

@@ -39,9 +39,8 @@ export const SignInScreen = () => {
         source={require("../../assets/images/home-hero.jpg")}
         style={StyleSheet.absoluteFill}
       />
-      {/* The hero art is now a baked blue duotone (Protoss-blue monochrome),
-        * so no translucent blue tint layer is needed. Keep only a light
-        * darkening scrim so the title + CTA stay legible over the artwork. */}
+      {/* The hero art is a baked blue duotone; the scrim keeps the title and
+        * CTA readable while preserving the full-bleed image. */}
       <View pointerEvents="none" style={styles.scrim} />
 
       <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
@@ -135,9 +134,7 @@ const styles = StyleSheet.create({
   safe: { flex: 1 },
   scrim: {
     ...StyleSheet.absoluteFill,
-    // Light darkening scrim for text contrast only — the blue look comes from
-    // the baked duotone hero image, not a colored overlay.
-    backgroundColor: "rgba(2, 10, 22, 0.35)",
+    backgroundColor: "rgba(2, 10, 22, 0.78)",
   },
   title: {
     color: "white",
