@@ -1564,6 +1564,73 @@ describe('POST /v1/chat/completions', () => {
     expect(served).toHaveLength(1)
   })
 
+  test('SINGLE-CHARGE (#8503): the no-meter secret header bypasses the 402 balance gate for the internal org-capacity call', async () => {
+    // An org-capacity agent-computer microVM call carries the no-meter secret.
+    // The org agent account has a zero balance, but the request is NOT
+    // customer-credit-gated: the customer debit is the downstream
+    // runtime-turn-usage receipt, so a 402 here would wrongly block our own org
+    // capacity. It must reach dispatch (200), not 402.
+    const response = await run(
+      handleChatCompletions(
+        chatRequest(helloBody, {
+          headers: {
+            [INFERENCE_ORG_CLOUD_RUNTIME_NO_METER_HEADER]: 'org-cloud-secret',
+          },
+        }),
+        baseDeps({
+          readAvailableMsat: emptyBalance,
+          orgCloudRuntimeNoMeterSecret: 'org-cloud-secret',
+        }),
+      ),
+    )
+    expect(response.status).toBe(200)
+  })
+
+  test('SINGLE-CHARGE (#8503): a WRONG no-meter secret still 402s on zero balance (fail-closed)', async () => {
+    const response = await run(
+      handleChatCompletions(
+        chatRequest(helloBody, {
+          headers: {
+            [INFERENCE_ORG_CLOUD_RUNTIME_NO_METER_HEADER]: 'wrong-secret',
+          },
+        }),
+        baseDeps({
+          readAvailableMsat: emptyBalance,
+          orgCloudRuntimeNoMeterSecret: 'org-cloud-secret',
+        }),
+      ),
+    )
+    expect(response.status).toBe(402)
+    const body = (await response.json()) as { error: string }
+    expect(body.error).toBe('insufficient_credits')
+  })
+
+  test('SINGLE-CHARGE (#8503): the no-meter secret header bypasses the spend-cap gate for the internal org-capacity call', async () => {
+    let spendCapChecked = false
+    const response = await run(
+      handleChatCompletions(
+        chatRequest(helloBody, {
+          headers: {
+            [INFERENCE_ORG_CLOUD_RUNTIME_NO_METER_HEADER]: 'org-cloud-secret',
+          },
+        }),
+        baseDeps({
+          orgCloudRuntimeNoMeterSecret: 'org-cloud-secret',
+          checkSpendCap: async () => {
+            spendCapChecked = true
+            return decideSpendCap({
+              cap: { maxSpendMsatPerWindow: 1, windowSeconds: 60 },
+              spentMsatInWindow: 1_000,
+            })
+          },
+        }),
+      ),
+    )
+    // The spend-cap seam is not even consulted for the internal no-meter call.
+    expect(spendCapChecked).toBe(false)
+    expect(response.status).toBe(200)
+  })
+
   test('threads the resolved bitcoin funding kind into the metering hook', async () => {
     const captured: Array<MeteringContext> = []
     const meteringHook: MeteringHook = context =>

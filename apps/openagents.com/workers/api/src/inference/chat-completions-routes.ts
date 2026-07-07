@@ -2931,7 +2931,17 @@ export const handleChatCompletions = (
     const availableMsat = callerPaidByok
       ? minimum
       : yield* Effect.promise(() => deps.readAvailableMsat(session.accountRef))
-    if (!callerPaidByok && availableMsat < minimum) {
+    if (!callerPaidByok && !orgCloudRuntimeNoMeter && availableMsat < minimum) {
+      // SINGLE-CHARGE / NO-METER BYPASS (#8503). An internal org-capacity
+      // agent-computer microVM call (its no-meter header matches the configured
+      // secret) is NOT customer-credit-gated: the ONE customer debit for the
+      // dispatched turn is the downstream `/api/khala/cloud/runtime-turn-usage`
+      // receipt attributed to the mobile ownerUserId, never this gateway call.
+      // Since the metering hook + served-token recorder are already suppressed
+      // for this request, gating it on the org agent account's own balance would
+      // wrongly 402 our own org capacity. Fail-closed: with no secret configured
+      // (prod default) `orgCloudRuntimeNoMeter` is always false and the balance
+      // gate runs byte-for-byte as today.
       // FREE-ALLOWANCE BYPASS (EPIC #5474 §1). A zero/insufficient-balance
       // account is NOT rejected when the request is free-eligible AND the
       // resolving owner still has remaining free allowance — that request would
@@ -2988,7 +2998,15 @@ export const handleChatCompletions = (
     // can be flush with credits yet still be capped at a configurable per-window
     // spend ceiling so a compromised key cannot drain the whole balance. Open
     // (no-op) when unwired or when no cap is configured for the account.
-    if (!callerPaidByok && deps.checkSpendCap !== undefined) {
+    if (
+      !callerPaidByok &&
+      !orgCloudRuntimeNoMeter &&
+      deps.checkSpendCap !== undefined
+    ) {
+      // SINGLE-CHARGE / NO-METER BYPASS (#8503). Same rationale as the balance
+      // gate above: the internal org-capacity no-meter call is not a customer
+      // debit, so it is not subject to the per-account spend cap. Fail-closed via
+      // `orgCloudRuntimeNoMeter` (never true without the configured secret).
       const spendCap = yield* Effect.promise(() =>
         deps.checkSpendCap!(session.accountRef),
       )
