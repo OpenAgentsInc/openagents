@@ -283,6 +283,14 @@ Boundary discipline carries over from RX-6 verbatim: internal dogfood
 receipts clear internal blockers only — no external-pilot, compliance,
 availability, or pricing claim flips without their own gates.
 
+> **Update (later 2026-07-07):** Palantir's *Institutional Sovereignty in
+> the Age of AI* report independently validates this section's
+> architecture (their Fig 8 on-prem stack is the Reactor diagram with an
+> Ontology layer) and supplies the category language. Analysis and
+> roadmap deltas — including "assurance levels" as the ladder's selling
+> vocabulary and Reactor Zero as the Tier-1 proof asset — in
+> `docs/fable/2026-07-07-palantir-institutional-sovereignty-smb-analysis.md`.
+
 ## 7. Cross-surface journeys (the suite working as one)
 
 - **The indie developer:** App Store → mobile coding on the $10 grant →
