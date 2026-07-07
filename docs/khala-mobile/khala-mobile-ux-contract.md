@@ -93,7 +93,7 @@ top follow-up item for whoever picks this up next.
 
 ## Registry
 
-Registry version: `2026-07-07.2` (schema `openagents.behavior_contracts.v1`)
+Registry version: `2026-07-07.3` (schema `openagents.behavior_contracts.v1`)
 
 ### `khala_mobile.auth.tailnet_auto_discovery_before_manual_login.v1` — RETIRED
 
@@ -472,3 +472,24 @@ Registry version: `2026-07-07.2` (schema `openagents.behavior_contracts.v1`)
 - **Oracle** `get_started_cta_fill_on_inner_view.unit` (bun-test, unit): The mounted WelcomeStep renders a single cyan (#4fd0ff) filled inner View — button-sized (minHeight 54, borderRadius 12) — wrapping the dark bold `Get started` label, while the Pressable owns only the touch target (accessibilityRole button, onPress) and carries NO backgroundColor of its own. This is the Fabric no-paint fix: a Pressable with a function style does not paint its own background, so the fill must live on a plain View. — `clients/khala-mobile/tests/onboarding-welcome-cta.test.tsx`
 - **Verification:** bun test tests/onboarding-welcome-cta.test.tsx inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main. Real component mounting uses the bun test React Native harness in tests/support/rn-test-environment.ts (extended here with a ScrollView leaf stub).
 - **Authority boundary:** Binds the onboarding 'Get started' CTA's fill placement (fill on an inner plain View, not on the Pressable's function style) and its high-contrast appearance, as proven by a real mounted component tree. It does not cover real native touch/gesture physics on a device — that stays under khala_mobile.platform.launched_app_interaction_smoke.v1, which remains pending.
+
+### `khala_mobile.settings.sign_out_button_fill_on_inner_view.v1` — ENFORCED
+
+- **Surface:** khala-mobile (settings)
+- **Stated by:** owner via khala-code-session on 2026-07-07
+- **Statement:** The Settings 'Sign out' button is a real, clearly-visible tappable control (a neutral outlined pill with a legible label on the dark-navy background), never invisible near-dark text — the fill lives on an inner View so it paints under the New Architecture (Fabric), matching the login and 'Get started' button fixes. It is styled as a secondary/neutral action, not as loud as a primary CTA.
+- **Enforcement tier:** test-sweep
+- **Oracle** `sign_out_button_fill_on_inner_view.unit` (bun-test, unit): The mounted AccountSection renders a single filled inner View (backgroundColor #141d33, minHeight 48, borderRadius 10, borderWidth 1) wrapping the light bold `Sign out` label, while the Pressable owns only the touch target (accessibilityRole button, onPress) and carries NO backgroundColor of its own. This is the Fabric no-paint fix: a Pressable with a function style does not paint its own background/border, so the fill must live on a plain View. — `clients/khala-mobile/tests/settings-sign-out-button.test.tsx`
+- **Oracle** `sign_out_uses_fabric_safe_inner_view_fill.source` (bun-test, unit): The Settings source builds Sign out with the Pressable+inner-View fill pattern (styles.signOutButton/signOutPressable, an RNText label) inside AccountSection, and no longer uses the invisible Ignite `Button preset="reversed" text="Sign out"`. — `clients/khala-mobile/tests/settings-screen-composition.test.ts`
+- **Verification:** bun test tests/settings-sign-out-button.test.tsx tests/settings-screen-composition.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main. Real component mounting uses the bun test React Native harness in tests/support/rn-test-environment.ts.
+- **Authority boundary:** Binds the Settings 'Sign out' control's fill placement (fill/border on an inner plain View, not on the Pressable's function style) and its visible-but-secondary appearance, as proven by a real mounted component tree. It does not cover real native touch/gesture physics on a device — that stays under khala_mobile.platform.launched_app_interaction_smoke.v1, which remains pending.
+
+### `khala_mobile.settings.delete_account_isolated_at_bottom.v1` — ENFORCED
+
+- **Surface:** khala-mobile (settings)
+- **Stated by:** owner via khala-code-session on 2026-07-07
+- **Statement:** Delete account is a destructive action isolated in its own section at the very bottom of Settings (below About & diagnostics), never placed directly under Sign out, so a mistap near Sign out cannot land on irreversible account deletion. It stays clearly marked destructive (red), just out of the way.
+- **Enforcement tier:** test-sweep
+- **Oracle** `delete_account_isolated_at_bottom.source` (bun-test, unit): The Delete account trigger (and its deleteAccount() call) is no longer inside AccountSection; it lives in a dedicated DeleteAccountSection (red outlined pill + red-bordered $dangerCard) that is rendered as the LAST section in the Settings body, after About & diagnostics — never adjacent to Sign out. — `clients/khala-mobile/tests/settings-screen-composition.test.ts`
+- **Verification:** bun test tests/settings-screen-composition.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.
+- **Authority boundary:** Source-composition assertion (explicitly labeled stopgap, same allowance as khala_mobile.settings.no_desktop_dependent_sections.v1): proves WHICH section the Delete account trigger is declared and rendered in, and its render order relative to the other sections. It cannot prove on-device layout pixels; the confirmation modal + KHALA_ACCOUNT_DELETION_POLICY_COPY + deleteAccount() behavior it relocates are unchanged and covered where they already were. A real RN-mount oracle for Settings is future work under khala_mobile.platform.launched_app_interaction_smoke.v1 (a full Settings mount needs a Modal harness stub not yet in tests/support/rn-test-environment.ts).

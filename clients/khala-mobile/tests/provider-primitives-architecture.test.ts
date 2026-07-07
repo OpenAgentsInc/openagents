@@ -67,20 +67,35 @@ describe("Khala mobile provider spine and primitives", () => {
   test("rebuilds Settings entirely on the ported Ignite component kit", async () => {
     const settings = await readSource("src/screens/settings-screen.tsx")
 
-    // Composed from the ported Ignite kit only.
+    // Composed from the ported Ignite kit: Screen/Header/Card/Button remain the
+    // structural spine (Button still drives Credits/Models/Notifications and the
+    // delete-confirmation modal).
     expect(settings).toContain('from "../ignite"')
     expect(settings).toContain("<Screen")
     expect(settings).toContain("<Header")
     expect(settings).toContain("<Card")
     expect(settings).toContain("<Button")
-    expect(settings).toContain('text="Sign out"')
 
-    // No bespoke Khala UI wrappers and no raw Pressable in the screen.
+    // No bespoke Khala UI wrappers.
     expect(settings).not.toContain("KhalaScreen")
     expect(settings).not.toContain("KhalaText")
     expect(settings).not.toContain("KhalaButton")
     expect(settings).not.toContain("AppHeader")
-    expect(settings).not.toContain("<Pressable")
+
+    // Sign out and Delete account are the ONLY deliberate exception to the
+    // Ignite-Button rule: under the New Architecture (Fabric) an Ignite
+    // `Button`/`Pressable` with a function `style` does not paint its own
+    // background, so these two visible-fill controls use the same Fabric-safe
+    // `Pressable` + inner plain `View` fill pattern as the login button and the
+    // onboarding "Get started" CTA (see sign-in-screen.tsx / onboarding-flow.tsx,
+    // and contract khala_mobile.settings.sign_out_button_fill_on_inner_view.v1).
+    // That is why a raw `<Pressable` is expected here — not a regression to a
+    // bespoke wrapper. The old invisible `Button preset="reversed" text="Sign
+    // out"` must be gone.
+    expect(settings).not.toContain('text="Sign out"')
+    expect(settings).toContain("<Pressable")
+    expect(settings).toContain("styles.signOutButton")
+    expect(settings).toContain("styles.deleteButton")
   })
 
   // MM-H1 follow-up (Ignite port): the signed-in thread list was rebuilt on

@@ -1411,7 +1411,86 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
       verification:
         "bun test tests/onboarding-welcome-cta.test.tsx inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main. Real component mounting uses the bun test React Native harness in tests/support/rn-test-environment.ts (extended here with a ScrollView leaf stub).",
     },
+    {
+      authorityBoundary:
+        "Binds the Settings 'Sign out' control's fill placement (fill/border on an inner plain View, not on the Pressable's function style) and its visible-but-secondary appearance, as proven by a real mounted component tree. It does not cover real native touch/gesture physics on a device — that stays under khala_mobile.platform.launched_app_interaction_smoke.v1, which remains pending.",
+      blockerRefs: [],
+      contractId: "khala_mobile.settings.sign_out_button_fill_on_inner_view.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "clients/khala-mobile/src/screens/settings-screen.tsx",
+        "clients/khala-mobile/src/components/sign-in-screen.tsx",
+        "clients/khala-mobile/tests/settings-sign-out-button.test.tsx",
+        "clients/khala-mobile/tests/settings-screen-composition.test.ts",
+        "clients/khala-mobile/tests/support/rn-test-environment.ts",
+        "docs/khala-mobile/khala-mobile-ux-contract.md",
+      ],
+      oracles: [
+        {
+          description:
+            "The mounted AccountSection renders a single filled inner View (backgroundColor #141d33, minHeight 48, borderRadius 10, borderWidth 1) wrapping the light bold `Sign out` label, while the Pressable owns only the touch target (accessibilityRole button, onPress) and carries NO backgroundColor of its own. This is the Fabric no-paint fix: a Pressable with a function style does not paint its own background/border, so the fill must live on a plain View.",
+          id: "sign_out_button_fill_on_inner_view.unit",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "clients/khala-mobile/tests/settings-sign-out-button.test.tsx",
+        },
+        {
+          description:
+            "The Settings source builds Sign out with the Pressable+inner-View fill pattern (styles.signOutButton/signOutPressable, an RNText label) inside AccountSection, and no longer uses the invisible Ignite `Button preset=\"reversed\" text=\"Sign out\"`.",
+          id: "sign_out_uses_fabric_safe_inner_view_fill.source",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "clients/khala-mobile/tests/settings-screen-composition.test.ts",
+        },
+      ],
+      productArea: "settings",
+      source: {
+        channel: "khala-code-session",
+        statedBy: "owner",
+        statedOn: "2026-07-07",
+      },
+      state: "enforced",
+      statement:
+        "The Settings 'Sign out' button is a real, clearly-visible tappable control (a neutral outlined pill with a legible label on the dark-navy background), never invisible near-dark text — the fill lives on an inner View so it paints under the New Architecture (Fabric), matching the login and 'Get started' button fixes. It is styled as a secondary/neutral action, not as loud as a primary CTA.",
+      surface: "khala-mobile",
+      verification:
+        "bun test tests/settings-sign-out-button.test.tsx tests/settings-screen-composition.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main. Real component mounting uses the bun test React Native harness in tests/support/rn-test-environment.ts.",
+    },
+    {
+      authorityBoundary:
+        "Source-composition assertion (explicitly labeled stopgap, same allowance as khala_mobile.settings.no_desktop_dependent_sections.v1): proves WHICH section the Delete account trigger is declared and rendered in, and its render order relative to the other sections. It cannot prove on-device layout pixels; the confirmation modal + KHALA_ACCOUNT_DELETION_POLICY_COPY + deleteAccount() behavior it relocates are unchanged and covered where they already were. A real RN-mount oracle for Settings is future work under khala_mobile.platform.launched_app_interaction_smoke.v1 (a full Settings mount needs a Modal harness stub not yet in tests/support/rn-test-environment.ts).",
+      blockerRefs: [],
+      contractId: "khala_mobile.settings.delete_account_isolated_at_bottom.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "clients/khala-mobile/src/screens/settings-screen.tsx",
+        "clients/khala-mobile/tests/settings-screen-composition.test.ts",
+        "docs/khala-mobile/khala-mobile-ux-contract.md",
+      ],
+      oracles: [
+        {
+          description:
+            "The Delete account trigger (and its deleteAccount() call) is no longer inside AccountSection; it lives in a dedicated DeleteAccountSection (red outlined pill + red-bordered $dangerCard) that is rendered as the LAST section in the Settings body, after About & diagnostics — never adjacent to Sign out.",
+          id: "delete_account_isolated_at_bottom.source",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "clients/khala-mobile/tests/settings-screen-composition.test.ts",
+        },
+      ],
+      productArea: "settings",
+      source: {
+        channel: "khala-code-session",
+        statedBy: "owner",
+        statedOn: "2026-07-07",
+      },
+      state: "enforced",
+      statement:
+        "Delete account is a destructive action isolated in its own section at the very bottom of Settings (below About & diagnostics), never placed directly under Sign out, so a mistap near Sign out cannot land on irreversible account deletion. It stays clearly marked destructive (red), just out of the way.",
+      surface: "khala-mobile",
+      verification:
+        "bun test tests/settings-screen-composition.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.",
+    },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-07.2",
+  version: "2026-07-07.3",
 }

@@ -1,7 +1,15 @@
 import Constants from "expo-constants"
 import { useEffect, useState } from "react"
 import * as Notifications from "expo-notifications"
-import { Linking, Modal, View, type TextStyle, type ViewStyle } from "react-native"
+import {
+  Linking,
+  Modal,
+  Pressable,
+  Text as RNText,
+  View,
+  type TextStyle,
+  type ViewStyle,
+} from "react-native"
 
 import { useKhalaAuth } from "../auth/khala-auth-context"
 import { KHALA_ACCOUNT_DELETION_POLICY_COPY } from "../auth/mobile-openauth"
@@ -45,8 +53,51 @@ const SectionCard = ({ heading, children }: { heading: string; children: React.R
   )
 }
 
-const AccountSection = () => {
-  const { deleteAccount, ownerUserId, signOut } = useKhalaAuth()
+export const AccountSection = () => {
+  const { ownerUserId, signOut } = useKhalaAuth()
+  const { themed } = useAppTheme()
+
+  return (
+    <SectionCard heading="Account">
+      <Text size="xs" numberOfLines={1} style={themed($dim)} text={ownerUserId} />
+      <Text size="xs" style={themed($dim)} text="Signed in with GitHub." />
+      {/* Sign out is a secondary/neutral action, styled as a clearly-visible
+        * outlined pill (not as loud as a primary CTA). It uses the
+        * Pressable-wraps-inner-plain-View pattern — fill/border on the inner
+        * `View`, touch target + onPress on the `Pressable` — because under the
+        * New Architecture (Fabric) a `Pressable` with a function `style` does
+        * NOT paint its own `backgroundColor`/`borderColor`. That is the exact
+        * bug the login button and onboarding "Get started" CTA already fixed
+        * (see sign-in-screen.tsx / onboarding-flow.tsx). The Ignite
+        * `Button preset="reversed"` this replaced hit it directly: its dark
+        * label sat on the unpainted dark-navy card and rendered invisible. */}
+      <Pressable
+        accessibilityRole="button"
+        onPress={() => void signOut()}
+        style={styles.signOutPressable}
+      >
+        {({ pressed }) => (
+          <View style={[styles.signOutButton, pressed && styles.signOutButtonPressed]}>
+            <RNText style={styles.signOutButtonText}>Sign out</RNText>
+          </View>
+        )}
+      </Pressable>
+    </SectionCard>
+  )
+}
+
+/**
+ * Delete account is a destructive action, deliberately isolated in its OWN
+ * section ("Danger zone") at the very bottom of Settings — below About &
+ * diagnostics and never adjacent to Sign out — so a mistap near Sign out can
+ * never land on irreversible account deletion. Only the trigger moved: the
+ * confirmation modal, `KHALA_ACCOUNT_DELETION_POLICY_COPY`, and
+ * `deleteAccount()` behavior are unchanged. The trigger is a red outlined pill
+ * (visible destructive marking) built with the same Fabric-safe
+ * Pressable+inner-View fill pattern as Sign out.
+ */
+export const DeleteAccountSection = () => {
+  const { deleteAccount } = useKhalaAuth()
   const { theme, themed } = useAppTheme()
   const [confirmingDeletion, setConfirmingDeletion] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -73,52 +124,67 @@ const AccountSection = () => {
   }
 
   return (
-    <SectionCard heading="Account">
-      <Text size="xs" numberOfLines={1} style={themed($dim)} text={ownerUserId} />
-      <Text size="xs" style={themed($dim)} text="Signed in with GitHub." />
-      <Button preset="reversed" text="Sign out" onPress={() => void signOut()} />
-      <Button
-        preset="default"
-        text="Delete account"
-        textStyle={{ color: theme.colors.error }}
-        onPress={() => setConfirmingDeletion(true)}
-      />
-      <Modal
-        animationType="fade"
-        onRequestClose={closeConfirmation}
-        transparent
-        visible={confirmingDeletion}
-      >
-        <View style={themed($modalScrim)}>
-          <Card
-            style={themed($modalCard)}
-            verticalAlignment="top"
-            HeadingComponent={<Text preset="subheading" text="Delete account" />}
-            ContentComponent={
-              <View style={themed($sectionBody)}>
-                <Text size="xs" style={themed($dim)} text={KHALA_ACCOUNT_DELETION_POLICY_COPY} />
-                {deleteError === null ? null : (
-                  <Text size="xs" style={{ color: theme.colors.error }} text={deleteError} />
-                )}
-                <Button
-                  preset="default"
-                  text="Delete account"
-                  textStyle={{ color: theme.colors.error }}
-                  disabled={deleting}
-                  onPress={() => void handleDeleteAccount()}
-                />
-                <Button
-                  preset="filled"
-                  text="Cancel"
-                  disabled={deleting}
-                  onPress={closeConfirmation}
-                />
-              </View>
-            }
+    <Card
+      style={themed($dangerCard)}
+      verticalAlignment="top"
+      heading="Danger zone"
+      HeadingTextProps={{ preset: "subheading" }}
+      ContentComponent={
+        <View style={themed($sectionBody)}>
+          <Text
+            size="xs"
+            style={themed($dim)}
+            text="Permanently delete your Khala Code account. This cannot be undone."
           />
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => setConfirmingDeletion(true)}
+            style={styles.deletePressable}
+          >
+            {({ pressed }) => (
+              <View style={[styles.deleteButton, pressed && styles.deleteButtonPressed]}>
+                <RNText style={styles.deleteButtonText}>Delete account</RNText>
+              </View>
+            )}
+          </Pressable>
+          <Modal
+            animationType="fade"
+            onRequestClose={closeConfirmation}
+            transparent
+            visible={confirmingDeletion}
+          >
+            <View style={themed($modalScrim)}>
+              <Card
+                style={themed($modalCard)}
+                verticalAlignment="top"
+                HeadingComponent={<Text preset="subheading" text="Delete account" />}
+                ContentComponent={
+                  <View style={themed($sectionBody)}>
+                    <Text size="xs" style={themed($dim)} text={KHALA_ACCOUNT_DELETION_POLICY_COPY} />
+                    {deleteError === null ? null : (
+                      <Text size="xs" style={{ color: theme.colors.error }} text={deleteError} />
+                    )}
+                    <Button
+                      preset="default"
+                      text="Delete account"
+                      textStyle={{ color: theme.colors.error }}
+                      disabled={deleting}
+                      onPress={() => void handleDeleteAccount()}
+                    />
+                    <Button
+                      preset="filled"
+                      text="Cancel"
+                      disabled={deleting}
+                      onPress={closeConfirmation}
+                    />
+                  </View>
+                }
+              />
+            </View>
+          </Modal>
         </View>
-      </Modal>
-    </SectionCard>
+      }
+    />
   )
 }
 
@@ -378,6 +444,10 @@ export const SettingsScreen = ({ navigation }: SettingsScreenProps) => {
         <ModelsSection />
         <NotificationsSection />
         <AboutSection />
+        {/* Destructive action isolated at the very bottom, in its own
+          * red-bordered section, well away from Sign out (see
+          * DeleteAccountSection). */}
+        <DeleteAccountSection />
       </View>
     </Screen>
   )
@@ -396,6 +466,14 @@ const $body: ThemedStyle<ViewStyle> = ({ spacing }) => ({
 const $sectionCard: ThemedStyle<ViewStyle> = ({ colors }) => ({
   backgroundColor: colors.palette.neutral200,
   borderColor: colors.palette.neutral400,
+})
+
+// The "Danger zone" card carries a red border so the destructive Delete
+// account section reads as visually separated from the ordinary settings
+// cards above it.
+const $dangerCard: ThemedStyle<ViewStyle> = ({ colors }) => ({
+  backgroundColor: colors.palette.neutral200,
+  borderColor: colors.error,
 })
 
 const $sectionBody: ThemedStyle<ViewStyle> = ({ spacing }) => ({
@@ -425,3 +503,59 @@ const $dim: ThemedStyle<TextStyle> = ({ colors }) => ({ color: colors.textDim })
 const $faint: ThemedStyle<TextStyle> = ({ colors }) => ({ color: colors.palette.neutral500 })
 const $warning: ThemedStyle<TextStyle> = ({ colors }) => ({ color: colors.palette.accent200 })
 const $danger: ThemedStyle<TextStyle> = ({ colors }) => ({ color: colors.error })
+
+/* Button fills for Sign out and Delete account. Plain style objects (hardcoded
+ * hex, matching onboarding-flow.tsx's convention) rather than themed function
+ * styles ON THE PRESSABLE — under Fabric a Pressable's function style does not
+ * paint its own background/border, so the fill must live on the inner plain
+ * View. Sign out is a neutral outlined pill; Delete account is a red outlined
+ * destructive pill. */
+const styles: {
+  deleteButton: ViewStyle
+  deleteButtonPressed: ViewStyle
+  deleteButtonText: TextStyle
+  deletePressable: ViewStyle
+  signOutButton: ViewStyle
+  signOutButtonPressed: ViewStyle
+  signOutButtonText: TextStyle
+  signOutPressable: ViewStyle
+} = {
+  deleteButton: {
+    alignItems: "center",
+    backgroundColor: "transparent",
+    borderColor: "#7a2a1c",
+    borderRadius: 10,
+    borderWidth: 1,
+    justifyContent: "center",
+    minHeight: 48,
+    paddingHorizontal: 20,
+    width: "100%",
+  },
+  deleteButtonPressed: { backgroundColor: "rgba(192, 52, 3, 0.14)" },
+  deleteButtonText: {
+    color: "#ff6b52",
+    fontSize: 15,
+    fontWeight: "600",
+    textAlign: "center",
+  },
+  deletePressable: { width: "100%" },
+  signOutButton: {
+    alignItems: "center",
+    backgroundColor: "#141d33",
+    borderColor: "#33405c",
+    borderRadius: 10,
+    borderWidth: 1,
+    justifyContent: "center",
+    minHeight: 48,
+    paddingHorizontal: 20,
+    width: "100%",
+  },
+  signOutButtonPressed: { backgroundColor: "#1d294a" },
+  signOutButtonText: {
+    color: "#e6e9f2",
+    fontSize: 15,
+    fontWeight: "600",
+    textAlign: "center",
+  },
+  signOutPressable: { marginTop: 4, width: "100%" },
+}
