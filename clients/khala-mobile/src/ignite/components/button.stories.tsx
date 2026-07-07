@@ -36,7 +36,11 @@ export const StylePresets: Story = {
         <Button
           text="Styled"
           onPress={() => undefined}
-          style={[{ paddingVertical: 28 }, { borderRadius: 0 }]}
+          style={[
+            { paddingVertical: 28 },
+            { borderRadius: 0 },
+            { backgroundColor: "#0b4156", borderColor: "#4fd0ff", borderWidth: 2 },
+          ]}
           textStyle={[{ fontSize: 20 }, { color: "#4fd0ff" }]}
         />
       </IgniteUseCase>

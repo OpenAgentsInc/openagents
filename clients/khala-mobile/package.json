@@ -16,9 +16,9 @@
     "publish:ota": "bash ../../apps/oa-updates/scripts/publish-ota.sh",
     "assets:generate": "bash scripts/generate-assets.sh",
     "architecture:check": "depcruise index.tsx src tests --config .dependency-cruiser.cjs",
-    "storybook": "STORYBOOK_ENABLED=true expo start",
-    "storybook:ios": "STORYBOOK_ENABLED=true expo start --ios",
-    "storybook:android": "STORYBOOK_ENABLED=true expo start --android",
+    "storybook": "STORYBOOK_ENABLED=true EXPO_PUBLIC_STORYBOOK_ENABLED=true expo start",
+    "storybook:ios": "STORYBOOK_ENABLED=true EXPO_PUBLIC_STORYBOOK_ENABLED=true expo start --ios",
+    "storybook:android": "STORYBOOK_ENABLED=true EXPO_PUBLIC_STORYBOOK_ENABLED=true expo start --android",
     "storybook-generate": "sb-rn-get-stories",
     "test": "bun test",
     "typecheck": "tsc -p tsconfig.json --noEmit"

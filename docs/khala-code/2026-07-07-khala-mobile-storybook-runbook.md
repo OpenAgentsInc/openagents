@@ -35,63 +35,35 @@ xcrun simctl boot <SIMULATOR_UUID> || true
 xcrun simctl bootstatus <SIMULATOR_UUID> -b
 ```
 
-Build and install the local iOS app:
+Build and install the local iOS app with the Storybook app-root flag enabled:
 
 ```sh
-bun run prebuild:ios
-xcodebuild \
-  -workspace ios/KhalaCode.xcworkspace \
-  -scheme KhalaCode \
-  -configuration Debug \
-  -destination 'id=<SIMULATOR_UUID>' \
-  build
+STORYBOOK_ENABLED=true EXPO_PUBLIC_STORYBOOK_ENABLED=true EXPO_NO_TELEMETRY=1 \
+  bunx expo run:ios --device <SIMULATOR_UUID> --port 8082
 ```
 
-Locate the built simulator app:
+That command builds the simulator app, installs it on the selected device,
+starts Metro, and opens the development-client URL. `STORYBOOK_ENABLED=true`
+enables the Metro/Storybook resolver path. `EXPO_PUBLIC_STORYBOOK_ENABLED=true`
+is the app-root flag for Expo's client bundle.
+
+If the app is already installed and you only need to restart Metro on a
+non-default port, use:
 
 ```sh
-KHALA_APP="$(
-  find "$HOME/Library/Developer/Xcode/DerivedData" \
-    -path '*KhalaCode.app' \
-    -type d \
-    | tail -1
-)"
-```
-
-Install it:
-
-```sh
-xcrun simctl install \
-  <SIMULATOR_UUID> \
-  "$KHALA_APP"
-```
-
-Start Storybook Metro on a non-default port when another agent may be using
-`8081`:
-
-```sh
-STORYBOOK_ENABLED=true EXPO_NO_INTERACTIVE=1 \
+STORYBOOK_ENABLED=true EXPO_PUBLIC_STORYBOOK_ENABLED=true EXPO_NO_INTERACTIVE=1 \
   bunx expo start --localhost --port 8082 --clear
 ```
 
-In another shell, point this app on this simulator at the Storybook Metro port:
+Then open the development-client URL:
 
 ```sh
-xcrun simctl spawn <SIMULATOR_UUID> \
-  defaults write com.openagents.khala.mobile RCT_jsLocation localhost:8082
-```
-
-Launch the app:
-
-```sh
-xcrun simctl launch \
-  --terminate-running-process \
-  <SIMULATOR_UUID> \
-  com.openagents.khala.mobile
+xcrun simctl openurl <SIMULATOR_UUID> \
+  'com.openagents.khala.mobile://expo-development-client/?url=http%3A%2F%2Flocalhost%3A8082'
 ```
 
 The simulator should show Storybook with the bottom on-device toolbar and the
-initial story, usually `Khala/Primitives/Button/Basic`.
+initial story.
 
 ## Verify
 
@@ -113,34 +85,31 @@ xcrun simctl io <SIMULATOR_UUID> screenshot \
 ## Troubleshooting
 
 If the app shows the normal Khala sign-in screen, it is probably loading the
-normal app bundle or the wrong Metro port. Confirm the app log requests `8082`:
+normal app root or the wrong Metro port. Stop Metro and rebuild/reopen with
+both Storybook env vars:
 
 ```sh
-xcrun simctl launch \
-  --terminate-running-process \
-  --console-pty \
-  <SIMULATOR_UUID> \
-  com.openagents.khala.mobile
+STORYBOOK_ENABLED=true EXPO_PUBLIC_STORYBOOK_ENABLED=true EXPO_NO_TELEMETRY=1 \
+  bunx expo run:ios --device <SIMULATOR_UUID> --port 8082
 ```
 
-Look for:
+Confirm Metro serves the Storybook bundle:
 
 ```text
-GET http://localhost:8082/.expo/.virtual-metro-entry.bundle
+iOS Bundled ... clients/khala-mobile/.rnstorybook/index.ts
 ```
 
-If it still requests `8081`, set the simulator app preference again:
+If the command opens the app shell anyway, confirm `clients/khala-mobile/index.tsx`
+still imports `./src/app`; Storybook should be selected by Metro's
+`STORYBOOK_ENABLED=true` resolver in `clients/khala-mobile/metro.config.cjs`,
+which aliases that import to `.rnstorybook/app-root.ts`.
 
-```sh
-xcrun simctl spawn <SIMULATOR_UUID> \
-  defaults write com.openagents.khala.mobile RCT_jsLocation localhost:8082
-```
+If Storybook shows an unreadable warning notification, verify the Storybook
+LogBox color override is present:
 
-If Storybook shows an unreadable white warning bar, verify these are present:
-
-- `@storybook/react-native-ui` in `clients/khala-mobile/package.json`
-- `LogBox.ignoreLogs` for the known Storybook gesture-handler warning in
-  `clients/khala-mobile/.rnstorybook/index.ts`
+- `clients/khala-mobile/.rnstorybook/logbox/LogBoxStyle.js`
+- `clients/khala-mobile/metro.config.cjs` aliases LogBox's `LogBoxStyle`
+  only when `STORYBOOK_ENABLED=true`
 
 If Metro reports duplicate native view registration errors after changing
 Storybook dependencies, stop Metro and restart with `--clear`.

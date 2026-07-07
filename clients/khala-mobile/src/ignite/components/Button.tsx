@@ -5,10 +5,10 @@ import {
   PressableStateCallbackType,
   StyleProp,
   TextStyle,
+  View,
   ViewStyle,
 } from "react-native"
 
-import { $styles } from "../theme/styles"
 import { useAppTheme } from "../theme/context"
 import type { ThemedStyle, ThemedStyleArray } from "../theme/types"
 
@@ -113,7 +113,7 @@ export function Button(props: ButtonProps) {
       themed($viewPresets[preset]),
       $viewStyleOverride,
       !!pressed && themed([$pressedViewPresets[preset], $pressedViewStyleOverride]),
-      !!disabled && $disabledViewStyleOverride,
+      !!disabled && themed([$disabledViewPresets[preset], $disabledViewStyleOverride]),
     ]
   }
   function $textStyle({ pressed }: PressableStateCallbackType): StyleProp<TextStyle> {
@@ -121,7 +121,14 @@ export function Button(props: ButtonProps) {
       themed($textPresets[preset]),
       $textStyleOverride,
       !!pressed && themed([$pressedTextPresets[preset], $pressedTextStyleOverride]),
-      !!disabled && $disabledTextStyleOverride,
+      !!disabled && themed([$disabledTextPresets[preset], $disabledTextStyleOverride]),
+    ]
+  }
+  function $contentStyle({ pressed }: PressableStateCallbackType): StyleProp<ViewStyle> {
+    return [
+      themed($contentPresets[preset]),
+      !!pressed && themed($pressedViewPresets[preset]),
+      !!disabled && themed($disabledViewPresets[preset]),
     ]
   }
 
@@ -134,7 +141,7 @@ export function Button(props: ButtonProps) {
       disabled={disabled}
     >
       {(state) => (
-        <>
+        <View pointerEvents="none" style={$contentStyle(state)}>
           {!!LeftAccessory && (
             <LeftAccessory style={$leftAccessoryStyle} pressableState={state} disabled={disabled} />
           )}
@@ -150,7 +157,7 @@ export function Button(props: ButtonProps) {
               disabled={disabled}
             />
           )}
-        </>
+        </View>
       )}
     </Pressable>
   )
@@ -158,12 +165,20 @@ export function Button(props: ButtonProps) {
 
 const $baseViewStyle: ThemedStyle<ViewStyle> = ({ spacing }) => ({
   minHeight: 56,
+  minWidth: 180,
+  paddingVertical: spacing.xxs,
+  paddingHorizontal: spacing.xxs,
+})
+
+const $baseContentStyle: ThemedStyle<ViewStyle> = ({ spacing }) => ({
+  minHeight: 52,
+  minWidth: 176,
   borderRadius: 4,
   justifyContent: "center",
   alignItems: "center",
+  flexDirection: "row",
   paddingVertical: spacing.sm,
-  paddingHorizontal: spacing.sm,
-  overflow: "hidden",
+  paddingHorizontal: spacing.lg,
 })
 
 const $baseTextStyle: ThemedStyle<TextStyle> = ({ typography }) => ({
@@ -186,41 +201,73 @@ const $leftAccessoryStyle: ThemedStyle<ViewStyle> = ({ spacing }) => ({
 })
 
 const $viewPresets: Record<Presets, ThemedStyleArray<ViewStyle>> = {
+  default: [$baseViewStyle],
+  filled: [$baseViewStyle],
+  reversed: [$baseViewStyle],
+}
+
+const $contentPresets: Record<Presets, ThemedStyleArray<ViewStyle>> = {
   default: [
-    $styles.row,
-    $baseViewStyle,
-    ({ colors }) => ({
-      borderWidth: 1,
-      borderColor: colors.palette.neutral400,
-      backgroundColor: colors.palette.neutral100,
+    $baseContentStyle,
+    () => ({
+      borderWidth: 2,
+      borderColor: "#49d7ff",
+      backgroundColor: "#113242",
     }),
   ],
   filled: [
-    $styles.row,
-    $baseViewStyle,
-    ({ colors }) => ({ backgroundColor: colors.palette.neutral300 }),
+    $baseContentStyle,
+    () => ({
+      borderWidth: 2,
+      borderColor: "#62e1ff",
+      backgroundColor: "#087ea4",
+    }),
   ],
   reversed: [
-    $styles.row,
-    $baseViewStyle,
-    ({ colors }) => ({ backgroundColor: colors.palette.neutral800 }),
+    $baseContentStyle,
+    () => ({
+      borderWidth: 2,
+      borderColor: "#f4f2f1",
+      backgroundColor: "#f7f3ef",
+    }),
   ],
 }
 
 const $textPresets: Record<Presets, ThemedStyleArray<TextStyle>> = {
-  default: [$baseTextStyle],
-  filled: [$baseTextStyle],
-  reversed: [$baseTextStyle, ({ colors }) => ({ color: colors.palette.neutral100 })],
+  default: [$baseTextStyle, () => ({ color: "#e8f7ff" })],
+  filled: [$baseTextStyle, () => ({ color: "#f8fdff" })],
+  reversed: [$baseTextStyle, () => ({ color: "#02060d" })],
 }
 
 const $pressedViewPresets: Record<Presets, ThemedStyle<ViewStyle>> = {
-  default: ({ colors }) => ({ backgroundColor: colors.palette.neutral200 }),
-  filled: ({ colors }) => ({ backgroundColor: colors.palette.neutral400 }),
-  reversed: ({ colors }) => ({ backgroundColor: colors.palette.neutral700 }),
+  default: () => ({ backgroundColor: "#17495f" }),
+  filled: () => ({ backgroundColor: "#0aa1d1" }),
+  reversed: () => ({ backgroundColor: "#d7cec9" }),
 }
 
 const $pressedTextPresets: Record<Presets, ThemedStyle<TextStyle>> = {
   default: () => ({ opacity: 0.9 }),
   filled: () => ({ opacity: 0.9 }),
   reversed: () => ({ opacity: 0.9 }),
+}
+
+const $disabledViewPresets: Record<Presets, ThemedStyle<ViewStyle>> = {
+  default: () => ({
+    borderColor: "rgba(151, 168, 184, 0.5)",
+    backgroundColor: "rgba(151, 168, 184, 0.18)",
+  }),
+  filled: () => ({
+    borderColor: "rgba(151, 168, 184, 0.55)",
+    backgroundColor: "rgba(151, 168, 184, 0.28)",
+  }),
+  reversed: () => ({
+    borderColor: "rgba(244, 242, 241, 0.28)",
+    backgroundColor: "rgba(244, 242, 241, 0.28)",
+  }),
+}
+
+const $disabledTextPresets: Record<Presets, ThemedStyle<TextStyle>> = {
+  default: () => ({ color: "rgba(232, 247, 255, 0.48)" }),
+  filled: () => ({ color: "rgba(248, 253, 255, 0.52)" }),
+  reversed: () => ({ color: "rgba(2, 6, 13, 0.55)" }),
 }

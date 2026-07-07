@@ -4,7 +4,6 @@ import type { AccessibilityRole, LayoutChangeEvent } from "react-native"
 import { Pressable, Text, View } from "react-native"
 import Animated, { useAnimatedStyle, withTiming } from "react-native-reanimated"
 
-import { toggleKnobTargetPosition } from "../../sync/toggle-position-core"
 import { MOTION_FAST } from "../../theme/motion"
 
 /** Ported from Arcade's `Toggle.tsx` (see
@@ -12,9 +11,9 @@ import { MOTION_FAST } from "../../theme/motion"
  * Three variants — `checkbox`/`radio`/`switch` — recolored to the
  * `accent`/`surface*` token set. The `switch` variant is the interesting
  * one: its knob slides between two percentage anchors (`0%`/`100%`) offset by
- * its own measured width (via `onLayout`), computed by the pure
- * `toggleKnobTargetPosition` (`../../sync/toggle-position-core.ts`) rather
- * than hardcoding pixel positions against an assumed track width.
+ * its own measured width (via `onLayout`). The knob position math is inlined
+ * inside the worklet so React Native Worklets never synchronously calls a JS
+ * helper from the UI runtime.
  *
  * Deviation from Arcade: dropped `TouchableOpacity`/i18n (`tx`)/helper-text
  * plumbing that has no current call site in this app — this is the scoped,
@@ -106,16 +105,13 @@ const Switch = ({ disabled, on }: ToggleInputProps) => {
   }), [on])
 
   const knobStyle = useAnimatedStyle(() => {
-    const target = toggleKnobTargetPosition({
-      knobWidth,
-      offsetLeft: SWITCH_TRACK_PADDING,
-      offsetRight: SWITCH_TRACK_PADDING,
-      on
-    })
+    const safeKnobWidth = Number.isFinite(knobWidth) ? Math.max(0, knobWidth) : 0
+    const marginStart = on ? -safeKnobWidth - SWITCH_TRACK_PADDING || 0 : SWITCH_TRACK_PADDING
+    const start = on ? "100%" : "0%"
 
     return {
-      marginStart: withTiming(target.marginStart, { duration: MOTION_FAST }),
-      start: withTiming(target.start, { duration: MOTION_FAST })
+      marginStart: withTiming(marginStart, { duration: MOTION_FAST }),
+      start: withTiming(start, { duration: MOTION_FAST })
     }
   }, [on, knobWidth])
 

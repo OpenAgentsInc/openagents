@@ -7,9 +7,15 @@ const read = (path: string) => Bun.file(new URL(path, mobileRoot)).text()
 
 describe("Khala mobile Storybook setup", () => {
   test("exposes local-only Storybook scripts and aligned on-device dependencies", () => {
-    expect(packageJson.scripts.storybook).toBe("STORYBOOK_ENABLED=true expo start")
-    expect(packageJson.scripts["storybook:ios"]).toBe("STORYBOOK_ENABLED=true expo start --ios")
-    expect(packageJson.scripts["storybook:android"]).toBe("STORYBOOK_ENABLED=true expo start --android")
+    expect(packageJson.scripts.storybook).toBe(
+      "STORYBOOK_ENABLED=true EXPO_PUBLIC_STORYBOOK_ENABLED=true expo start",
+    )
+    expect(packageJson.scripts["storybook:ios"]).toBe(
+      "STORYBOOK_ENABLED=true EXPO_PUBLIC_STORYBOOK_ENABLED=true expo start --ios",
+    )
+    expect(packageJson.scripts["storybook:android"]).toBe(
+      "STORYBOOK_ENABLED=true EXPO_PUBLIC_STORYBOOK_ENABLED=true expo start --android",
+    )
     expect(packageJson.scripts["storybook-generate"]).toBe("sb-rn-get-stories")
 
     for (const dependencyName of [
