@@ -74,6 +74,22 @@ import type { SyncSql, SyncTransactionSql } from "./sql.js"
  * mid-version, the rest of that version's rows would be skipped forever.
  * A page therefore contains at most `limit` versions (each version's row
  * count is bounded by the entities one transaction touched).
+ *
+ * A page is ALSO bounded by a cumulative **payload byte budget**
+ * ({@link DEFAULT_LOG_PAGE_MAX_BYTES}). The distinct-version count limit alone
+ * is unsafe for scopes whose changelog rows carry large post-images: a
+ * rebuild-on-cron public projection like `scope.public.activity-timeline`
+ * re-writes its whole ~600 KB snapshot as a new changelog version every
+ * cron tick, so `limit` versions is a multi-hundred-MB page that overruns the
+ * Worker isolate's CPU/memory/response budget and returns a bare 500 with no
+ * body (issue #8535). The byte budget caps the summed stored size
+ * (`pg_column_size(post_image_json)`) of the versions in a page: versions are
+ * admitted in ascending order until the running total would exceed the
+ * budget, and the FIRST version is always admitted whole so an over-budget
+ * single version still makes forward progress (never a stuck poller, never a
+ * split version). A byte-bounded page is simply not `upToDate`, so the client
+ * resumes from `nextCursor` exactly as it does for a count-bounded page — the
+ * seam is unchanged, only the page is smaller.
  */
 
 // ---------------------------------------------------------------------------
@@ -83,6 +99,20 @@ import type { SyncSql, SyncTransactionSql } from "./sql.js"
 /** Default / max distinct versions per log page. */
 export const DEFAULT_LOG_PAGE_LIMIT = 500
 export const MAX_LOG_PAGE_LIMIT = 1_000
+
+/**
+ * Default / max cumulative payload byte budget per log page, measured as the
+ * summed stored size (`pg_column_size(post_image_json)`) of the versions in a
+ * page. Bounds pages for scopes with large per-version post-images (e.g. the
+ * `scope.public.activity-timeline` rebuild-on-cron snapshot) so a page can
+ * never overrun the Worker isolate and 500 (issue #8535). Compressed/stored
+ * bytes typically expand ~an order of magnitude when decoded/serialized, so
+ * 512 KiB stored keeps the decoded response comfortably in the low single-digit
+ * MB range. The first version of a page is always admitted regardless of this
+ * budget, so a single over-budget version still makes forward progress.
+ */
+export const DEFAULT_LOG_PAGE_MAX_BYTES = 512 * 1_024
+export const MAX_LOG_PAGE_MAX_BYTES = 4 * 1_024 * 1_024
 
 /** Default / max entities scanned per bootstrap page. */
 export const DEFAULT_BOOTSTRAP_PAGE_SIZE = 500
@@ -168,6 +198,14 @@ export interface LogPageInput {
   readonly afterVersion: number | null
   /** Max distinct versions in the page; clamped to {@link MAX_LOG_PAGE_LIMIT}. */
   readonly limit?: number | undefined
+  /**
+   * Cumulative payload byte budget for the page (summed
+   * `pg_column_size(post_image_json)` of admitted versions); clamped to
+   * {@link MAX_LOG_PAGE_MAX_BYTES}, defaults to
+   * {@link DEFAULT_LOG_PAGE_MAX_BYTES}. The first version is always admitted
+   * so an over-budget single version still makes progress.
+   */
+  readonly maxBytes?: number | undefined
 }
 
 /**
@@ -180,6 +218,10 @@ export interface LogPageInput {
  * - Pages never split a version: the LIMIT bounds distinct versions, so
  *   resuming from `nextCursor` can never skip rows of a half-delivered
  *   version.
+ * - Pages are additionally byte-bounded ({@link DEFAULT_LOG_PAGE_MAX_BYTES}):
+ *   versions are admitted in ascending order until the summed stored payload
+ *   size would exceed the budget, always admitting the first version so an
+ *   over-budget single version still makes progress (issue #8535).
  */
 export const logPage = async (sql: SyncSql, input: LogPageInput): Promise<LogPage> => {
   const after = input.afterVersion ?? 0
@@ -190,6 +232,11 @@ export const logPage = async (sql: SyncSql, input: LogPageInput): Promise<LogPag
     )
   }
   const limit = clampPositive(input.limit, DEFAULT_LOG_PAGE_LIMIT, MAX_LOG_PAGE_LIMIT)
+  const maxBytes = clampPositive(
+    input.maxBytes,
+    DEFAULT_LOG_PAGE_MAX_BYTES,
+    MAX_LOG_PAGE_MAX_BYTES,
+  )
 
   try {
     return await sql.begin("isolation level repeatable read", async (tx) => {
@@ -199,20 +246,41 @@ export const logPage = async (sql: SyncSql, input: LogPageInput): Promise<LogPag
       )
       assertInsideRetainedWindow(input.scope, after, retainedFromVersion)
 
+      // Bound the page by BOTH distinct-version count (`limit`) and cumulative
+      // stored payload bytes (`maxBytes`). `candidate_versions` sizes each
+      // distinct version cheaply from `pg_column_size` (stored/compressed size,
+      // no full detoast); `bounded_versions` runs an ascending cumulative sum
+      // and the page cutoff is the greatest version whose running total is
+      // within budget — OR the very first version (rn = 1), always admitted so
+      // an over-budget single version still delivers whole and the poller never
+      // stalls. The cutoff is a single `max(version)`, so a page is always a
+      // contiguous version range and never splits one version's rows.
       const rows: Array<ChangelogRow> = await tx`
+        WITH candidate_versions AS (
+          SELECT version,
+                 sum(pg_column_size(post_image_json))::bigint AS version_bytes
+            FROM khala_sync_changelog
+           WHERE scope = ${input.scope} AND version > ${after}
+           GROUP BY version
+           ORDER BY version
+           LIMIT ${limit}
+        ),
+        bounded_versions AS (
+          SELECT version,
+                 row_number() OVER (ORDER BY version) AS rn,
+                 sum(version_bytes) OVER (
+                   ORDER BY version ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+                 ) AS cumulative_bytes
+            FROM candidate_versions
+        )
         SELECT scope, version, entity_type, entity_id, op,
                post_image_json, mutation_ref, committed_at
           FROM khala_sync_changelog
          WHERE scope = ${input.scope}
            AND version > ${after}
            AND version <= COALESCE(
-             (SELECT max(pv.version) FROM (
-                SELECT DISTINCT version
-                  FROM khala_sync_changelog
-                 WHERE scope = ${input.scope} AND version > ${after}
-                 ORDER BY version
-                 LIMIT ${limit}
-              ) AS pv),
+             (SELECT max(version) FROM bounded_versions
+               WHERE rn = 1 OR cumulative_bytes <= ${maxBytes}),
              ${after})
          ORDER BY version, entity_type, entity_id
       `
