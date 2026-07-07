@@ -63,6 +63,22 @@ if ! ( cd "$root" && OPENAGENTS_PRE_PUSH_LOCAL_SHA="$main_local_sha" OPENAGENTS_
   exit 1
 fi
 
+if [ -n "$main_local_sha" ] && [ "$main_remote_sha" != "$zero_sha" ]; then
+  mobile_changed="$(cd "$root" && git diff --name-only "$main_remote_sha..$main_local_sha" -- clients/khala-mobile packages/khala-qa-harness apps/qa-runner docs/khala-code | sed -n '1p')"
+else
+  mobile_changed=""
+fi
+
+if [ -n "$mobile_changed" ]; then
+  echo "[pre-push guard] Khala mobile/testing changes detected -> running qa:mobile:gate..." >&2
+  if ! ( cd "$root/clients/khala-mobile" && bun run qa:mobile:gate ) >&2; then
+    echo "[pre-push guard] BLOCKED: qa:mobile:gate failed." >&2
+    exit 1
+  fi
+else
+  echo "[pre-push guard] qa:mobile:gate skipped; no Khala mobile/testing changes in pushed range." >&2
+fi
+
 if is_enabled "${OPENAGENTS_PRE_PUSH_FULL_GATE:-}" || is_enabled "${OPENAGENTS_PRE_PUSH_CHECK_DEPLOY:-}"; then
   echo "[pre-push guard] OPENAGENTS_PRE_PUSH_FULL_GATE enabled -> running check:deploy..." >&2
   if ! ( cd "$root/apps/openagents.com" && bun run check:deploy ) >&2; then

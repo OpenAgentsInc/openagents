@@ -96,6 +96,7 @@ const RN_EAGER_EXPORT_ALLOWLIST = new Set([
   "Platform",
   "Pressable",
   "ScrollView",
+  "StyleSheet",
   "Text",
   "TextInput",
   "TouchableOpacity",
@@ -345,6 +346,28 @@ const RN_LEAF_STUBS: ReadonlyArray<{ readonly test: RegExp; readonly contents: s
     // into itself and throws `Cannot access 'Platform' before
     // initialization`). All three names resolve here identically.
     test: /\/Libraries\/Utilities\/Platform(\.ios|\.android)?\.js$/
+  },
+  {
+    // Real `StyleSheet` pulls in several renderer/devtools internals that are
+    // irrelevant to react-test-renderer structural mounts. Components under
+    // test need only the public object helpers, especially `create`, so keep
+    // this leaf as a pure identity helper in the Bun RN harness.
+    contents: `
+      const flatten = (style) => {
+        if (Array.isArray(style)) return Object.assign({}, ...style.map(flatten).filter(Boolean))
+        return style ?? {}
+      }
+      const StyleSheet = {
+        absoluteFill: { bottom: 0, left: 0, position: "absolute", right: 0, top: 0 },
+        absoluteFillObject: { bottom: 0, left: 0, position: "absolute", right: 0, top: 0 },
+        compose: (style1, style2) => style1 == null ? style2 : style2 == null ? style1 : [style1, style2],
+        create: (styles) => styles,
+        flatten,
+        hairlineWidth: 1
+      }
+      export default StyleSheet
+    `,
+    test: /\/Libraries\/StyleSheet\/StyleSheet\.js$/
   },
   {
     // Real `FlatList.js` composes `VirtualizedList`, which needs a real

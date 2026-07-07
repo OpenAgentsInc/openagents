@@ -20,6 +20,7 @@
     "storybook:ios": "STORYBOOK_ENABLED=true EXPO_PUBLIC_STORYBOOK_ENABLED=true expo start --ios",
     "storybook:android": "STORYBOOK_ENABLED=true EXPO_PUBLIC_STORYBOOK_ENABLED=true expo start --android",
     "storybook-generate": "sb-rn-get-stories",
+    "qa:mobile:gate": "bun run scripts/qa-mobile-gate.ts",
     "test": "bun test",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
