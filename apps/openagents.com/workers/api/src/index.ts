@@ -15864,9 +15864,25 @@ const routeRequest = makeWorkerRouteRequest({
               makeAgentRegistrationStoreForEnv(env),
               token,
             )
-            return session === undefined
-              ? undefined
-              : { userId: session.user.id }
+            if (session === undefined) {
+              return undefined
+            }
+            // MM-C5 (#8477): the GitHub authorization the broker vends belongs
+            // to the credential's OWNER, not the (possibly shared) agent-kind
+            // `user_id`. For the Agent Computer lane the execution credential's
+            // `user_id` is the stable service agent `agent.openagents-agent-
+            // computer` while `openauth_user_id` is the mobile owner (`github:…`)
+            // whose `github-identity:token:<owner>` the in-guest push must
+            // broker. Prefer the linked owner so the broker is owner-scoped (an
+            // agent can only broker for ITS OWN linked owner); fall back to the
+            // agent user id for an unclaimed bare agent.
+            const linkedOwner = session.credential.openauthUserId?.trim()
+            return {
+              userId:
+                linkedOwner !== undefined && linkedOwner !== ''
+                  ? linkedOwner
+                  : session.user.id,
+            }
           },
           catch: () =>
             new GitHubScmAuthBrokerDependencyFailed({
