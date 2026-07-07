@@ -70,9 +70,19 @@ export const KHALA_WRITEBACK_ADAPTER_KIND = 'hosted_container' as const
 /** Provider ref stamped on the event source (public-safe). */
 export const KHALA_WRITEBACK_PROVIDER_REF = 'openagents-agent-computer'
 
-/** Stable synthetic client group for this recorder's mutation-ledger rows. */
+/** Base synthetic client group for this recorder's mutation-ledger rows. */
 export const KHALA_WRITEBACK_DISPATCH_CLIENT_GROUP_ID =
   'server.agent-computer-writeback'
+
+/**
+ * Per-OWNER client group. A Khala Sync client group never migrates between
+ * users (the mutation ledger rejects a cross-user reuse), so a single constant
+ * group would bind to the FIRST owner and reject every other owner's writeback.
+ * Scoping the group by owner keeps each owner's server-side recorder its own
+ * stable client group.
+ */
+export const writebackClientGroupIdForOwner = (ownerUserId: string): string =>
+  `${KHALA_WRITEBACK_DISPATCH_CLIENT_GROUP_ID}.${ownerUserId}`
 
 // AUTHORIZATION ------------------------------------------------------------
 
@@ -439,12 +449,13 @@ export const recordKhalaWritebackRuntimeEvent = async (
 ): Promise<KhalaWritebackRecordResult> => {
   const resolved = resolveRecordingDeps(deps)
   const event = buildWritebackRuntimeEvent(resolved, turn, outcome)
-  const clientId = `${KHALA_WRITEBACK_DISPATCH_CLIENT_GROUP_ID}.${turn.turnId}.${resolved.uuid()}`
+  const clientGroupId = writebackClientGroupIdForOwner(turn.ownerUserId)
+  const clientId = `${clientGroupId}.${turn.turnId}.${resolved.uuid()}`
 
   const response = await resolved.executePush({
     registry: resolved.registry,
     request: decodePushRequest({
-      clientGroupId: KHALA_WRITEBACK_DISPATCH_CLIENT_GROUP_ID,
+      clientGroupId,
       clientId,
       mutations: [
         {

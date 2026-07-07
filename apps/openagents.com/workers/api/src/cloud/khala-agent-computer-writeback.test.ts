@@ -9,6 +9,7 @@ import type {
 } from '../github-write-connections'
 import {
   KHALA_WRITEBACK_DISPATCH_CLIENT_GROUP_ID,
+  writebackClientGroupIdForOwner,
   KHALA_WRITEBACK_LANE,
   buildWritebackRuntimeEvent,
   decodeKhalaAgentComputerWritebackOutcome,
@@ -405,10 +406,23 @@ describe('recordKhalaWritebackRuntimeEvent', () => {
     expect(push.recorded).toHaveLength(1)
     const rec = push.recorded[0]!
     expect(rec.userId).toBe('github:14167547')
-    expect(rec.clientGroupId).toBe(KHALA_WRITEBACK_DISPATCH_CLIENT_GROUP_ID)
+    // Owner-scoped client group so different owners never collide on one group.
+    expect(rec.clientGroupId).toBe(
+      writebackClientGroupIdForOwner('github:14167547'),
+    )
+    expect(rec.clientGroupId).toBe('server.agent-computer-writeback.github:14167547')
     expect(rec.clientId).toContain(KHALA_WRITEBACK_DISPATCH_CLIENT_GROUP_ID)
     expect(rec.event.kind).toBe('writeback.recorded')
     expect(rec.event.status).toBe('pull_request_opened')
+  })
+
+  test('two different owners get DISTINCT client groups (no cross-user collision)', () => {
+    expect(writebackClientGroupIdForOwner('github:300914913')).not.toBe(
+      writebackClientGroupIdForOwner('user_b02c2298'),
+    )
+    expect(writebackClientGroupIdForOwner('github:300914913')).toBe(
+      'server.agent-computer-writeback.github:300914913',
+    )
   })
 
   test('a rejected record surfaces a typed record_rejected failure', async () => {

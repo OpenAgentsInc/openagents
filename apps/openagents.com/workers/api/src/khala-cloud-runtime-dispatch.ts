@@ -80,9 +80,18 @@ export const CLOUD_GCP_RUNTIME_EVENT_LANE: KhalaRuntimeLane = 'hosted_khala'
 /** Provider ref stamped on the streamed events' source. */
 export const CLOUD_GCP_RUNTIME_PROVIDER_REF = 'openagents-agent-computer'
 
-/** Stable synthetic client group for this consumer's mutation ledger rows. */
+/** Base synthetic client group for this consumer's mutation ledger rows. */
 export const CLOUD_GCP_RUNTIME_DISPATCH_CLIENT_GROUP_ID =
   'server.cloud-runtime-dispatch'
+
+/**
+ * Per-OWNER client group. A Khala Sync client group never migrates between
+ * users, so a single constant group binds to the first owner and rejects every
+ * other owner's dispatched turn. Scope it by owner.
+ */
+export const cloudGcpDispatchClientGroupIdForOwner = (
+  ownerUserId: string,
+): string => `${CLOUD_GCP_RUNTIME_DISPATCH_CLIENT_GROUP_ID}.${ownerUserId}`
 
 /** Default per-tick turn budget. */
 export const DEFAULT_CLOUD_GCP_RUNTIME_DISPATCH_LIMIT = 4
@@ -287,8 +296,9 @@ export const dispatchCloudGcpRuntimeTurn = async (
   turn: CloudGcpAdmittedWorkContext,
 ): Promise<CloudGcpDispatchOutcome> => {
   const resolved = resolveDeps(deps)
-  const clientId = `${CLOUD_GCP_RUNTIME_DISPATCH_CLIENT_GROUP_ID}.${turn.turnId}.${resolved.uuid()}`
   const ownerId = turn.ownerUserId
+  const clientGroupId = cloudGcpDispatchClientGroupIdForOwner(ownerId)
+  const clientId = `${clientGroupId}.${turn.turnId}.${resolved.uuid()}`
   let seq = turn.eventCount
 
   const record = (mutationId: number, event: KhalaRuntimeEvent): Promise<MutationResult> =>
@@ -296,7 +306,7 @@ export const dispatchCloudGcpRuntimeTurn = async (
       .executePush({
         registry: resolved.registry,
         request: decodePushRequest({
-          clientGroupId: CLOUD_GCP_RUNTIME_DISPATCH_CLIENT_GROUP_ID,
+          clientGroupId,
           clientId,
           mutations: [
             {
