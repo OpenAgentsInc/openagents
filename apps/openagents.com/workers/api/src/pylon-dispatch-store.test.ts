@@ -255,6 +255,12 @@ const makeFakePostgres = (
     mirrorQuarantine: track('mirrorQuarantine', undefined),
     mirrorRegistration: track('mirrorRegistration', undefined),
     mirrorSparkPayoutTarget: track('mirrorSparkPayoutTarget', undefined),
+    upsertSparkPayoutTarget: track('upsertSparkPayoutTarget', sparkTarget('pylon.dual.1')),
+    readSparkPayoutTarget: track('readSparkPayoutTarget', sparkTarget('pylon.dual.1')),
+    readSparkPayoutTargetByOwner: track(
+      'readSparkPayoutTargetByOwner',
+      sparkTarget('pylon.dual.1'),
+    ),
     mirrorStaleSweep: track('mirrorStaleSweep', undefined),
     readAssignment: track('readAssignment', assignment('a1')),
     readAssignmentByIdempotencyKeyHash: track(
@@ -751,16 +757,25 @@ describe('Spark payout target dual-write', () => {
     const pgCalls: Array<Call> = []
     const postgres: Pick<
       PostgresPylonDispatchStore,
-      'mirrorSparkPayoutTarget'
+      | 'mirrorSparkPayoutTarget'
+      | 'upsertSparkPayoutTarget'
+      | 'readSparkPayoutTarget'
+      | 'readSparkPayoutTargetByOwner'
     > = {
       mirrorSparkPayoutTarget: async record => {
         pgCalls.push({ args: [record], method: 'mirrorSparkPayoutTarget' })
       },
+      upsertSparkPayoutTarget: async record => {
+        pgCalls.push({ args: [record], method: 'upsertSparkPayoutTarget' })
+        return record
+      },
+      readSparkPayoutTarget: async () => undefined,
+      readSparkPayoutTargetByOwner: async () => undefined,
     }
 
     const store = makeDualWritePylonSparkPayoutTargetStore({
       d1,
-      flags: { dualWrite: true },
+      flags: { dualWrite: true, writes: 'd1' },
       postgres,
     })
 
@@ -786,10 +801,13 @@ describe('Spark payout target dual-write', () => {
     const sink = makeLogSink()
     const store = makeDualWritePylonSparkPayoutTargetStore({
       d1,
-      flags: { dualWrite: true },
+      flags: { dualWrite: true, writes: 'd1' },
       log: sink.log,
       postgres: {
         mirrorSparkPayoutTarget: () => Promise.reject(new Error('pg down')),
+        upsertSparkPayoutTarget: async record => record,
+        readSparkPayoutTarget: async () => undefined,
+        readSparkPayoutTargetByOwner: async () => undefined,
       },
     })
 
@@ -801,5 +819,73 @@ describe('Spark payout target dual-write', () => {
       target.payoutTargetRef,
     ])
     expect(sink.events[0]?.fields.refs).not.toContain(target.rawSparkAddress)
+  })
+
+  test('writes=postgres: Spark targets are Postgres-authoritative (no D1 touch)', async () => {
+    // #8515 WRITE cutover: with the D1 bridge 401-dead, the Spark payout
+    // target store must upsert AND read from Postgres only — a single D1 call
+    // would hit the dead bridge.
+    const target = sparkTarget('pylon.pg.1')
+    const d1Calls: Array<Call> = []
+    const d1: PylonSparkPayoutTargetStore = {
+      read: async pylonRef => {
+        d1Calls.push({ args: [pylonRef], method: 'd1.read' })
+        return undefined
+      },
+      readByOwner: async ownerAgentUserId => {
+        d1Calls.push({ args: [ownerAgentUserId], method: 'd1.readByOwner' })
+        return undefined
+      },
+      upsert: async record => {
+        d1Calls.push({ args: [record], method: 'd1.upsert' })
+        return record
+      },
+    }
+    const pgCalls: Array<Call> = []
+    const postgres: Pick<
+      PostgresPylonDispatchStore,
+      | 'mirrorSparkPayoutTarget'
+      | 'upsertSparkPayoutTarget'
+      | 'readSparkPayoutTarget'
+      | 'readSparkPayoutTargetByOwner'
+    > = {
+      mirrorSparkPayoutTarget: async () => {
+        pgCalls.push({ args: [], method: 'mirrorSparkPayoutTarget' })
+      },
+      upsertSparkPayoutTarget: async record => {
+        pgCalls.push({ args: [record], method: 'upsertSparkPayoutTarget' })
+        return record
+      },
+      readSparkPayoutTarget: async pylonRef => {
+        pgCalls.push({ args: [pylonRef], method: 'readSparkPayoutTarget' })
+        return target
+      },
+      readSparkPayoutTargetByOwner: async ownerAgentUserId => {
+        pgCalls.push({
+          args: [ownerAgentUserId],
+          method: 'readSparkPayoutTargetByOwner',
+        })
+        return target
+      },
+    }
+
+    const store = makeDualWritePylonSparkPayoutTargetStore({
+      d1,
+      flags: { dualWrite: true, writes: 'postgres' },
+      postgres,
+    })
+
+    await expect(store.upsert(target)).resolves.toEqual(target)
+    await expect(store.read(target.pylonRef)).resolves.toEqual(target)
+    await expect(
+      store.readByOwner(target.ownerAgentUserId),
+    ).resolves.toEqual(target)
+
+    expect(d1Calls).toEqual([])
+    expect(pgCalls.map(c => c.method)).toEqual([
+      'upsertSparkPayoutTarget',
+      'readSparkPayoutTarget',
+      'readSparkPayoutTargetByOwner',
+    ])
   })
 })

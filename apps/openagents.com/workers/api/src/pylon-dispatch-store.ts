@@ -225,6 +225,22 @@ export type PostgresPylonDispatchStore = Readonly<{
   mirrorSparkPayoutTarget: (
     record: PylonSparkPayoutTargetRecord,
   ) => Promise<void>
+  /**
+   * #8515 WRITE cutover: Postgres-authoritative Spark payout target
+   * operations (dead D1 is no longer the authority). `upsertSparkPayoutTarget`
+   * is the idempotent-by-pylon_ref upsert; the two reads back the settlement
+   * resolver directly off Postgres. Raw Spark addresses are copied
+   * byte-exactly and NEVER enter a projection or diagnostic.
+   */
+  upsertSparkPayoutTarget: (
+    record: PylonSparkPayoutTargetRecord,
+  ) => Promise<PylonSparkPayoutTargetRecord>
+  readSparkPayoutTarget: (
+    pylonRef: string,
+  ) => Promise<PylonSparkPayoutTargetRecord | undefined>
+  readSparkPayoutTargetByOwner: (
+    ownerAgentUserId: string,
+  ) => Promise<PylonSparkPayoutTargetRecord | undefined>
   mirrorStaleSweep: (
     assignmentRefs: ReadonlyArray<string>,
     nowIso: string,
@@ -243,6 +259,29 @@ export type MakePostgresPylonDispatchStoreDependencies = Readonly<{
 const uniqueRefsInOrder = (
   refs: ReadonlyArray<string>,
 ): ReadonlyArray<string> => Array.from(new Set(refs))
+
+type SparkPayoutTargetRow = Readonly<{
+  pylon_ref: string
+  owner_agent_user_id: string
+  payout_target_ref: string
+  raw_spark_address: string
+  created_at: string
+  updated_at: string
+}>
+
+const rowToSparkPayoutTarget = (
+  row: SparkPayoutTargetRow | undefined,
+): PylonSparkPayoutTargetRecord | undefined =>
+  row === undefined
+    ? undefined
+    : {
+        pylonRef: row.pylon_ref,
+        ownerAgentUserId: row.owner_agent_user_id,
+        payoutTargetRef: row.payout_target_ref,
+        rawSparkAddress: row.raw_spark_address,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      }
 
 export const makePostgresPylonDispatchStore = (
   deps: MakePostgresPylonDispatchStoreDependencies,
@@ -989,6 +1028,36 @@ export const makePostgresPylonDispatchStore = (
         await insertSparkPayoutTarget(sql, record)
       }),
 
+    // #8515 WRITE cutover: Postgres-authoritative Spark payout target ops.
+    upsertSparkPayoutTarget: record =>
+      withSql(async sql => {
+        await insertSparkPayoutTarget(sql, record)
+        return record
+      }),
+
+    readSparkPayoutTarget: pylonRef =>
+      withSql(async sql => {
+        const rows: Array<SparkPayoutTargetRow> = await sql`
+          SELECT pylon_ref, owner_agent_user_id, payout_target_ref,
+                 raw_spark_address, created_at, updated_at
+            FROM pylon_spark_payout_targets
+           WHERE pylon_ref = ${pylonRef}
+           LIMIT 1`
+        return rowToSparkPayoutTarget(rows[0])
+      }),
+
+    readSparkPayoutTargetByOwner: ownerAgentUserId =>
+      withSql(async sql => {
+        const rows: Array<SparkPayoutTargetRow> = await sql`
+          SELECT pylon_ref, owner_agent_user_id, payout_target_ref,
+                 raw_spark_address, created_at, updated_at
+            FROM pylon_spark_payout_targets
+           WHERE owner_agent_user_id = ${ownerAgentUserId}
+           ORDER BY updated_at DESC
+           LIMIT 1`
+        return rowToSparkPayoutTarget(rows[0])
+      }),
+
     mirrorStaleSweep: (assignmentRefs, nowIso) =>
       assignmentRefs.length === 0
         ? Promise.resolve()
@@ -1025,9 +1094,15 @@ export type MakeDualWritePylonApiStoreDependencies = Readonly<{
 export type MakeDualWritePylonSparkPayoutTargetStoreDependencies = Readonly<{
   d1: PylonSparkPayoutTargetStore
   postgres:
-    | Pick<PostgresPylonDispatchStore, 'mirrorSparkPayoutTarget'>
+    | Pick<
+        PostgresPylonDispatchStore,
+        | 'mirrorSparkPayoutTarget'
+        | 'upsertSparkPayoutTarget'
+        | 'readSparkPayoutTarget'
+        | 'readSparkPayoutTargetByOwner'
+      >
     | undefined
-  flags: Pick<PylonDispatchFlags, 'dualWrite'>
+  flags: Pick<PylonDispatchFlags, 'dualWrite' | 'writes'>
   log?: PylonDispatchLog | undefined
 }>
 
@@ -1367,6 +1442,20 @@ export const makeDualWritePylonSparkPayoutTargetStore = (
     return d1
   }
 
+  // #8515 WRITE cutover: with writes='postgres' (the default after the
+  // Cloudflare exit) Postgres is the SOLE authority for Spark payout targets —
+  // dead D1 is neither written nor read. There is deliberately NO D1 fallback
+  // (a Postgres outage must fail the request loud, not silently diverge onto a
+  // 401-dead bridge). Reads serve Postgres too, since the D1 authority is gone.
+  if (flags.writes === 'postgres') {
+    return {
+      read: pylonRef => postgres.readSparkPayoutTarget(pylonRef),
+      readByOwner: ownerAgentUserId =>
+        postgres.readSparkPayoutTargetByOwner(ownerAgentUserId),
+      upsert: record => postgres.upsertSparkPayoutTarget(record),
+    }
+  }
+
   const mirror = (
     refs: ReadonlyArray<string>,
     run: () => Promise<void>,
@@ -1464,10 +1553,14 @@ export const makePylonSparkPayoutTargetStoreForEnv = (
   const connectionString = env.KHALA_SYNC_DB?.connectionString
   const flags = pylonDispatchFlagsFromEnv(env)
 
+  // Degrade to plain D1 only when there is no Postgres binding, or when every
+  // Postgres lever is off (no dual-write mirror AND D1 write authority). With
+  // writes='postgres' (the #8515 default) build the Postgres-authoritative
+  // store even if dual-write happens to be off.
   if (
     connectionString === undefined ||
     connectionString.length === 0 ||
-    !flags.dualWrite
+    (!flags.dualWrite && flags.writes === 'd1')
   ) {
     return d1
   }
