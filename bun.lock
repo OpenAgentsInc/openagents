@@ -579,6 +579,7 @@
         "react-native-reanimated": "4.5.1",
         "react-native-safe-area-context": "5.8.0",
         "react-native-screens": "4.25.2",
+        "react-native-svg": "15.15.5",
         "react-native-worklets": "0.10.1",
       },
       "devDependencies": {

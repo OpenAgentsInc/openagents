@@ -198,7 +198,7 @@ export const ToolRowsAndCards: Story = {
     <View className="gap-3 p-4">
       <KhalaToolCard detail="rg --files clients/khala-mobile" status="completed" title="Search files" type="search" />
       <KhalaToolCard output={toolOutput} status="running" title="Run typecheck" type="command" />
-      <KhalaToolCard detail="Could not find native module in stale simulator build" status="failed" title="Launch Storybook" type="tool" />
+      <KhalaToolCard detail="Demo fixture only: pretend sandbox denied a dry-run mutation" status="failed" title="Synthetic Tool Failure" type="tool" />
       <KhalaFileChangeRow added={42} removed={8} path="clients/khala-mobile/src/components/transcript-part-row.tsx" />
     </View>
   ),
