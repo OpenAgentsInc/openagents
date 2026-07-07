@@ -87,6 +87,13 @@ SET_SECRETS=(
   "ARTIFACTS_GCS_HMAC_SECRET=oa-artifacts-gcs-hmac-secret:latest"
   "AGENT_REGISTRATION_SECRET=openagents-agent-registration-secret:latest"
   "ARTANIS_AGENT_TOKEN=openagents-artanis-agent-token:latest"
+  # CFG-14 (2026-07-07): khala_app password for the Cloud SQL Auth Connector
+  # socket path (PGHOST/PGUSER are non-secret wrangler vars; the db name rides
+  # the authority-less KHALA_SYNC_DATABASE_URL secret). khala_app is
+  # instance-wide, so the same secret serves prod + staging. WITHOUT this the
+  # deploy drops PGPASSWORD and the socket connection fails — and with public
+  # ingress closed the DB is unreachable.
+  "PGPASSWORD=openagents-monolith-pgpassword:latest"
 )
 
 if [[ "$TARGET" == "production" ]]; then
@@ -151,7 +158,8 @@ gcloud run deploy "$SERVICE" \
   --timeout 3600 \
   --concurrency 80 \
   --env-vars-file "dist-cloudrun/env-${TARGET}.yaml" \
-  --set-secrets "$SECRET_FLAG"
+  --set-secrets "$SECRET_FLAG" \
+  --add-cloudsql-instances "openagentsgemini:us-central1:khala-sync-pg"
 
 SERVICE_URL="$(gcloud run services describe "$SERVICE" --project "$PROJECT" --region "$REGION" --format='value(status.url)')"
 echo "==> Deployed: $SERVICE_URL"

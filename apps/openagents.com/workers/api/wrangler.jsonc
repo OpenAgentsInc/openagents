@@ -83,6 +83,16 @@
     // `src/forum/forum-postgres-serving.ts`. Set here (top-level production
     // vars) so it PERSISTS across deploys: an unset flag renders back to `d1`.
     "KHALA_SYNC_FORUM_READS": "postgres",
+    // CFG-14 (2026-07-07): the monolith reaches khala-sync-pg over the Cloud
+    // SQL Auth Connector (unix socket, no public IP — instance ingress is
+    // closed). postgres.js takes the socket dir + user from libpq PG* env and
+    // the db name from the authority-less KHALA_SYNC_DATABASE_URL secret
+    // (`postgres:///khala_sync_prod`); PGPASSWORD rides --set-secrets. These
+    // MUST be rendered into the deploy env or a source deploy drops them and
+    // the DB becomes unreachable. The deploy also passes
+    // --add-cloudsql-instances openagentsgemini:us-central1:khala-sync-pg.
+    "PGHOST": "/cloudsql/openagentsgemini:us-central1:khala-sync-pg",
+    "PGUSER": "khala_app",
     // KS-8.16 follow-up Forge READ cutover (#8358): `postgres` SERVES the
     // canonical `listRefs` ref advertisement (the §3.13 git-ls-remote-twin
     // surface) from the Postgres twin, and is FAIL-SOFT — any Postgres
@@ -632,6 +642,12 @@
         // this before setting the production var. Roll back by removing
         // this var (the DO binding takes over again while it exists).
         "KHALA_SYNC_LIVE_HUB_URL": "https://khala-live-hub-staging-ezxz4mgdsq-uc.a.run.app",
+        // CFG-14 (2026-07-07): staging-monolith reaches khala-sync-pg over the
+        // Cloud SQL Auth Connector too (same instance hosts prod+staging DBs;
+        // the db name rides the staging KHALA_SYNC_DATABASE_URL secret
+        // `postgres:///khala_sync_staging`). Same socket dir + user as prod.
+        "PGHOST": "/cloudsql/openagentsgemini:us-central1:khala-sync-pg",
+        "PGUSER": "khala_app",
         // KS-8 Pylon read cutover (#8315), staging parity for the production
         // Cloud SQL read path. Roll back by setting this to `d1`.
         "KHALA_SYNC_PYLON_READS": "postgres",
