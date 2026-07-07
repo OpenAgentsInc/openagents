@@ -60,7 +60,9 @@ Rollback for either instance if serving breaks: re-add the network with
 the Postgres-served counter `curl -fsS https://openagents.com/api/public/khala-tokens-served`,
 and khala-live-hub `…/health`.
 
-### CFG-14 prod cutover runbook — close `khala-sync-pg` public ingress (staging-proven 2026-07-07)
+### CFG-14 prod cutover runbook — close `khala-sync-pg` public ingress ✅ EXECUTED 2026-07-07
+
+> **DONE:** all 3 prod services (`openagents-monolith` rev 00018-p2k, `khala-live-hub` 00004-zd8, `oa-queue-worker` 00002-2n6) are on the Cloud SQL Auth Connector (unix socket, no public IP); `khala-sync-pg` `authorizedNetworks` **cleared** — public ingress closed, SSL `ENCRYPTED_ONLY`. Verified: monolith db-smoke `{ok:true, khalaSyncTables:20}`, live-hub `/health` 200, openagents.com 200, token counter live, zero DB-connection errors across all services. **NOTE:** direct-IP DB access (e.g. running khala-sync-server migrations from a laptop against 34.70.178.7) no longer works — use `cloud-sql-proxy openagentsgemini:us-central1:khala-sync-pg` or temporarily re-add an authorized network. The steps below are retained as the reference/rollback procedure.
 
 Goal: move the 3 prod consumers of `khala-sync-pg` off the direct public IP and
 onto the **Cloud SQL Auth Connector** (unix socket at
