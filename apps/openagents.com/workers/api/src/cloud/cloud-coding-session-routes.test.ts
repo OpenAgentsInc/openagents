@@ -637,6 +637,60 @@ describe('POST /v1/cloud-coding-sessions', () => {
     expect(placementBody?.work_context_b64).toBe('eyJhIjoxfQ==')
   })
 
+  test('Seam A: accepts the real daemon shape (workContextRef only in the cloud.gce.provisioning event, none on binding)', async () => {
+    // The live oa-codex-control RunnerBinding carries NO work_context_ref
+    // field; it reports the bound ref only inside the cloud.gce.provisioning
+    // event data. The adapter must still validate the placement (not refuse
+    // with agent_computer_work_context_binding_missing).
+    const adapter = makeCloudControlCloudCodingAdapter({
+      baseUrl: 'https://cloud.openagents.test',
+      bearerToken: 'secret-test-token',
+      fetch: async () =>
+        Response.json({
+          binding: {
+            externalRunId: 'run_gce_daemon',
+            lane: 'cloud-gcp',
+            providerLane: 'gcp',
+            runnerId: 'runner_gce_daemon',
+            // NOTE: no workContextRef here — exactly like the real daemon.
+          },
+          events: [
+            {
+              dataJson: JSON.stringify({
+                externalRunId: 'run_gce_daemon',
+                lane: 'cloud-gcp',
+                workContextRef: 'work-context.agent-computer.ccs_daemon',
+              }),
+              kind: 'cloud.gce.provisioning',
+            },
+          ],
+          externalRunId: 'run_gce_daemon',
+          status: 'provisioning',
+        }),
+      gceProvisioningArmed: true,
+    })
+    const session = await Effect.runPromise(
+      adapter.launch({
+        accountRef: 'agent:test-user',
+        lane: 'cloud-gcp',
+        request: {
+          adapter: 'codex',
+          lane: 'cloud-gcp',
+          objective: 'seam-a',
+          options: { workContextB64: 'eyJhIjoxfQ==' },
+          repoRef: 'repo:openagents/openagents',
+          repoTrustTier: 'private',
+          timeoutSeconds: 1800,
+          verify: [],
+          workContextRef: 'work-context.agent-computer.ccs_daemon',
+        },
+        sessionId: 'ccs_daemon',
+      }),
+    )
+    expect(session.workContextRef).toBe('work-context.agent-computer.ccs_daemon')
+    expect(session.agentComputerState).toBeDefined()
+  })
+
   test('Seam A: does NOT forward work_context_b64 on the cloud-shc lane', async () => {
     let placementBody: Record<string, unknown> | undefined
     const adapter = makeCloudControlCloudCodingAdapter({

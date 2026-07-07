@@ -972,18 +972,31 @@ const normalizeCloudPlacementResponse = (
     rawBinding.caps !== null && typeof rawBinding.caps === 'object'
       ? (rawBinding.caps as Record<string, unknown>)
       : undefined
-  const workContextRef =
-    publicRefFromUnknown(rawBinding.workContextRef) ??
-    publicRefFromUnknown(rawBinding.work_context_ref) ??
-    publicRefFromUnknown(record.workContextRef) ??
-    publicRefFromUnknown(record.work_context_ref) ??
-    null
   const events = Array.isArray(record.events)
     ? record.events.flatMap(event => {
         const normalized = normalizeCloudPlacementEvent(event)
         return normalized === undefined ? [] : [normalized]
       })
     : []
+  // Seam A (#8503, AC-1): the real cloud daemon's `RunnerBinding` carries NO
+  // `work_context_ref` field — it reports the bound work-context ref only in
+  // the `cloud.gce.provisioning` (and `placement.bound`) event data. So fall
+  // back to the events when the binding/top-level don't carry it, matching the
+  // live `oa-codex-control` placement contract (cloud@f87a60c).
+  const workContextRefFromEvents = events.reduce<string | undefined>(
+    (found, event) =>
+      found ??
+      publicRefFromEventData(event, 'workContextRef') ??
+      publicRefFromEventData(event, 'work_context_ref'),
+    undefined,
+  )
+  const workContextRef =
+    publicRefFromUnknown(rawBinding.workContextRef) ??
+    publicRefFromUnknown(rawBinding.work_context_ref) ??
+    publicRefFromUnknown(record.workContextRef) ??
+    publicRefFromUnknown(record.work_context_ref) ??
+    workContextRefFromEvents ??
+    null
   return {
     binding: {
       capacityClassId: publicRefFromUnknown(rawBinding.capacityClassId) ?? null,
