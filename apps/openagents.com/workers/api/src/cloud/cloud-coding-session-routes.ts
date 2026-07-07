@@ -1077,6 +1077,16 @@ export const makeCloudControlCloudCodingAdapter = (
             }),
           try: async () => {
             const workContextRef = workContextRefForSession(request, sessionId)
+            // Seam A (#8503, AC-1): forward the opaque base64 work-context blob
+            // (repo/commit + inference block, incl. a short-lived owner-linked
+            // agent bearer) so the daemon runs the turn INSIDE a Firecracker
+            // microVM instead of the Codex runner. Only meaningful on the
+            // GCE microVM lane; the daemon decodes it into /tmp/wc.json and the
+            // baked turn-runner consumes it. Omitted when absent (Codex path).
+            const workContextB64 =
+              lane === 'cloud-gcp'
+                ? stringOption(request.options, 'workContextB64')
+                : undefined
             const response = await fetchImpl(`${baseUrl}/v1/placement`, {
               body: JSON.stringify({
                 auth_grant_ref:
@@ -1104,6 +1114,9 @@ export const makeCloudControlCloudCodingAdapter = (
                 timeout_seconds: request.timeoutSeconds,
                 wallet_authority: false,
                 work_context_ref: workContextRef,
+                ...(workContextB64 === undefined
+                  ? {}
+                  : { work_context_b64: workContextB64 }),
               }),
               headers: {
                 Authorization: `Bearer ${config.bearerToken}`,

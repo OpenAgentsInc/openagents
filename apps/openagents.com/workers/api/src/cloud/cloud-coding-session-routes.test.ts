@@ -595,6 +595,132 @@ describe('POST /v1/cloud-coding-sessions', () => {
     expect(body.agent_computer_ref).toBe('agent-computer.run_gce_1')
   })
 
+  test('Seam A: forwards work_context_b64 on cloud-gcp when the option is present', async () => {
+    let placementBody: Record<string, unknown> | undefined
+    const adapter = makeCloudControlCloudCodingAdapter({
+      baseUrl: 'https://cloud.openagents.test',
+      bearerToken: 'secret-test-token',
+      fetch: async (_url, init) => {
+        placementBody = JSON.parse(String(init?.body)) as Record<string, unknown>
+        return Response.json({
+          binding: {
+            externalRunId: 'run_gce_1',
+            lane: 'cloud-gcp',
+            providerLane: 'gcp',
+            runnerId: 'runner_gce_1',
+            workContextRef: 'work-context.agent-computer.wc1',
+          },
+          externalRunId: 'run_gce_1',
+          status: 'running',
+        })
+      },
+      gceProvisioningArmed: true,
+    })
+    await Effect.runPromise(
+      adapter.launch({
+        accountRef: 'agent:test-user',
+        lane: 'cloud-gcp',
+        request: {
+          adapter: 'codex',
+          lane: 'cloud-gcp',
+          objective: 'seam-a',
+          options: { workContextB64: 'eyJhIjoxfQ==' },
+          repoRef: 'repo:openagents/openagents',
+          repoTrustTier: 'private',
+          timeoutSeconds: 1800,
+          verify: [],
+          workContextRef: 'work-context.agent-computer.wc1',
+        },
+        sessionId: 'ccs_fixed',
+      }),
+    )
+    expect(placementBody?.work_context_b64).toBe('eyJhIjoxfQ==')
+  })
+
+  test('Seam A: does NOT forward work_context_b64 on the cloud-shc lane', async () => {
+    let placementBody: Record<string, unknown> | undefined
+    const adapter = makeCloudControlCloudCodingAdapter({
+      baseUrl: 'https://cloud.openagents.test',
+      bearerToken: 'secret-test-token',
+      fetch: async (_url, init) => {
+        placementBody = JSON.parse(String(init?.body)) as Record<string, unknown>
+        return Response.json({
+          binding: {
+            externalRunId: 'run_shc_1',
+            lane: 'cloud-shc',
+            providerLane: 'shc',
+            runnerId: 'runner_shc_1',
+            workContextRef: 'work-context.agent-computer.wc1',
+          },
+          externalRunId: 'run_shc_1',
+          status: 'running',
+        })
+      },
+      gceProvisioningArmed: true,
+    })
+    await Effect.runPromise(
+      adapter.launch({
+        accountRef: 'agent:test-user',
+        lane: 'cloud-shc',
+        request: {
+          adapter: 'codex',
+          lane: 'cloud-shc',
+          objective: 'seam-a',
+          options: { workContextB64: 'eyJhIjoxfQ==' },
+          repoRef: 'repo:openagents/openagents',
+          repoTrustTier: 'private',
+          timeoutSeconds: 1800,
+          verify: [],
+          workContextRef: 'work-context.agent-computer.wc1',
+        },
+        sessionId: 'ccs_fixed',
+      }),
+    )
+    expect('work_context_b64' in (placementBody ?? {})).toBe(false)
+  })
+
+  test('Seam A: omits work_context_b64 when no option is supplied (Codex path)', async () => {
+    let placementBody: Record<string, unknown> | undefined
+    const adapter = makeCloudControlCloudCodingAdapter({
+      baseUrl: 'https://cloud.openagents.test',
+      bearerToken: 'secret-test-token',
+      fetch: async (_url, init) => {
+        placementBody = JSON.parse(String(init?.body)) as Record<string, unknown>
+        return Response.json({
+          binding: {
+            externalRunId: 'run_gce_1',
+            lane: 'cloud-gcp',
+            providerLane: 'gcp',
+            runnerId: 'runner_gce_1',
+            workContextRef: 'work-context.agent-computer.wc1',
+          },
+          externalRunId: 'run_gce_1',
+          status: 'running',
+        })
+      },
+      gceProvisioningArmed: true,
+    })
+    await Effect.runPromise(
+      adapter.launch({
+        accountRef: 'agent:test-user',
+        lane: 'cloud-gcp',
+        request: {
+          adapter: 'codex',
+          lane: 'cloud-gcp',
+          objective: 'seam-a',
+          options: {},
+          repoRef: 'repo:openagents/openagents',
+          repoTrustTier: 'private',
+          timeoutSeconds: 1800,
+          verify: [],
+          workContextRef: 'work-context.agent-computer.wc1',
+        },
+        sessionId: 'ccs_fixed',
+      }),
+    )
+    expect('work_context_b64' in (placementBody ?? {})).toBe(false)
+  })
+
   test('fails closed when the control plane binds a placement to another work context', async () => {
     const adapter = makeCloudControlCloudCodingAdapter({
       baseUrl: 'https://cloud.openagents.test',
