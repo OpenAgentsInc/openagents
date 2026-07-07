@@ -41,6 +41,35 @@ The default monkey settings produce 1024 deterministic fixture actions, meeting
 the Q1.1 >=1000 action floor. Override with `OA_QA_NIGHTLY_MONKEY_RUNS` and
 `OA_QA_NIGHTLY_MONKEY_STEPS` only on the owned runner.
 
+## Mobile (opt-in, macOS runner only)
+
+With `OA_QA_NIGHTLY_INCLUDE_MOBILE=1`, the matrix appends one more step after the
+ten above:
+
+11. `bash clients/khala-mobile/scripts/signed-in-thread-smoke-run.sh` — the Khala
+    Mobile `mobile-signed-in-thread-smoke` step (step id
+    `mobile-signed-in-thread-smoke`).
+
+This is the launched-app-smoke tier oracle for the behavior contract
+`khala_mobile.platform.launched_app_interaction_smoke.v1`. It drives the
+`clients/khala-mobile/.maestro/flows/SignedInThreadSmoke.yaml` flow on a booted
+iOS **Release**-configuration simulator: the runner first resets the seeded
+thread's turn state (so the composer renders its lane picker deterministically),
+then auto-signs-in as the seeded public-safe account, opens the seeded thread,
+asserts the lane picker (`Send with Claude`), and sends a message that renders in
+the transcript. Green receipt:
+`docs/khala-mobile/2026-07-07-signed-in-thread-smoke-receipt.md`.
+
+**Preconditions (why it is opt-in, not default):** a booted iOS simulator with an
+installed Release `KhalaCode.app`, `maestro` + a JDK 17 on `PATH`, and the seeded
+public-safe Maestro creds at `~/work/.secrets/khala-maestro.env` (gitignored,
+never committed). The headless Linux owned runner has none of these, so the step
+is only appended when the flag is set on a macOS runner. The paired
+receipt-asserting bun-test
+(`clients/khala-mobile/tests/signed-in-thread-smoke-receipt.test.ts`) still runs
+in the normal `test:khala-mobile` sweep on every platform and keeps the contract
+covered even where the simulator step cannot run.
+
 The status surface emitted by the run includes the Q2 latency budget catalog
 from `qaMetrics`. The harness scenario `perf` oracle evaluates budgeted samples;
 sampleless catalog rows remain inconclusive, while `latencyBudgets.trends`
@@ -152,6 +181,7 @@ Key environment switches:
 | `OA_QA_NIGHTLY_ARTIFACT_DIR` | `var/qa-nightly` | Artifact root scanned for prior ledgers and frontiers. |
 | `OA_QA_NIGHTLY_MONKEY_RUNS` | `16` | Number of monkey runs. |
 | `OA_QA_NIGHTLY_MONKEY_STEPS` | `64` | Steps per monkey run. |
+| `OA_QA_NIGHTLY_INCLUDE_MOBILE` | unset | Append the opt-in Khala Mobile SignedInThreadSmoke step (macOS runner with a booted iOS simulator + installed Release build only). |
 | `OA_QA_NIGHTLY_STEP_TIMEOUT_MS` | `1800000` | Per-step timeout. |
 | `OA_QA_NIGHTLY_FILE_ISSUE` | unset | File a strict-form issue on matrix failure. |
 | `OA_QA_NIGHTLY_FILE_COVERAGE_ISSUE` | unset | File a strict-form issue when a frontier class stays zero for seven consecutive coverage days. |

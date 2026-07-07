@@ -55,6 +55,7 @@ export type QaNightlyStepId =
   | "monkey-night"
   | "model-based"
   | "property-tier"
+  | "mobile-signed-in-thread-smoke"
 
 export type QaNightlyStep = Readonly<{
   id: QaNightlyStepId
@@ -460,6 +461,7 @@ const QA_NIGHTLY_STEP_IDS = new Set<QaNightlyStepId>([
   "monkey-night",
   "model-based",
   "property-tier",
+  "mobile-signed-in-thread-smoke",
 ])
 
 const isQaNightlyStepId = (value: unknown): value is QaNightlyStepId =>
@@ -1049,13 +1051,14 @@ export const emitQaNightlyCoverageArtifacts = async (input: Readonly<{
 
 export const buildQaNightlySteps = (input: Readonly<{
   artifactDir: string
+  includeMobile?: boolean | undefined
   monkeyRuns?: number | undefined
   monkeySteps?: number | undefined
 }>): readonly QaNightlyStep[] => {
   const monkeyRuns = input.monkeyRuns ?? QA_NIGHTLY_DEFAULT_RUNS
   const monkeySteps = input.monkeySteps ?? QA_NIGHTLY_DEFAULT_STEPS
   const monkeyArtifactDir = join(input.artifactDir, "monkey-night")
-  return [
+  const steps: QaNightlyStep[] = [
     {
       command: ["bun", "run", "--cwd", "packages/khala-qa-harness", "test"],
       cwd: ".",
@@ -1136,7 +1139,23 @@ export const buildQaNightlySteps = (input: Readonly<{
       id: "property-tier",
       label: "Property tier",
     },
-  ] as const
+  ]
+  // Opt-in mobile step (macOS runner only). The Khala Mobile SignedInThreadSmoke
+  // Maestro flow needs a booted iOS simulator with an installed Release build,
+  // which the headless Linux owned runner does not have — so it is appended only
+  // when OA_QA_NIGHTLY_INCLUDE_MOBILE=1. It is the launched-app-smoke tier oracle
+  // for khala_mobile.platform.launched_app_interaction_smoke.v1
+  // (docs/qa/khala-code-nightly-matrix.md; runner resets the seeded thread's turn
+  // state, then runs the flow against the seeded public-safe account).
+  if (input.includeMobile === true) {
+    steps.push({
+      command: ["bash", "clients/khala-mobile/scripts/signed-in-thread-smoke-run.sh"],
+      cwd: ".",
+      id: "mobile-signed-in-thread-smoke",
+      label: "Khala Mobile SignedInThreadSmoke (iOS Release simulator)",
+    })
+  }
+  return steps
 }
 
 export const runSpawnedQaNightlyCommand: QaNightlyCommandRunner = async (
@@ -1747,7 +1766,8 @@ export const runQaNightlyMatrix = async (input: Readonly<{
     input.stepTimeoutMs ?? positiveInt(env.OA_QA_NIGHTLY_STEP_TIMEOUT_MS, QA_NIGHTLY_DEFAULT_STEP_TIMEOUT_MS)
   const monkeyRuns = positiveInt(env.OA_QA_NIGHTLY_MONKEY_RUNS, QA_NIGHTLY_DEFAULT_RUNS)
   const monkeySteps = positiveInt(env.OA_QA_NIGHTLY_MONKEY_STEPS, QA_NIGHTLY_DEFAULT_STEPS)
-  const steps = buildQaNightlySteps({ artifactDir, monkeyRuns, monkeySteps })
+  const includeMobile = env.OA_QA_NIGHTLY_INCLUDE_MOBILE === "1"
+  const steps = buildQaNightlySteps({ artifactDir, includeMobile, monkeyRuns, monkeySteps })
   const results: QaNightlyStepResult[] = []
   const quarantineEntries: QaNightlyFlakeQuarantineEntry[] = []
 

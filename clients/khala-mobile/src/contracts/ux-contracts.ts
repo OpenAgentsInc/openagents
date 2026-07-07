@@ -649,7 +649,7 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
     },
     {
       authorityBoundary:
-        "Binds ChatComposer's own React state/render/effect wiring (button swap, lane-picker visibility, controlled-input value, push() call shape) as proven by a REAL mounted component tree via `tests/support/rn-test-environment.ts`. It does not cover real native rendering, gesture/touch physics, Skia drawing, or Reanimated worklet execution on an actual device/simulator — those stay under khala_mobile.platform.launched_app_interaction_smoke.v1, which remains pending. The Skia-drawn ArwesButton/BackgroundGradient/ActivityIndicator leaves and react-native-reanimated are test-doubled (documented in tests/chat-composer.test.tsx's header comment) because they have no meaningful non-native equivalent; everything else in the real import graph (react-native core primitives, push-to-talk-core, khala-runtime-compose-core, khala-sync-push-core, swipe-quote-core, theme/tokens) is the real, unmocked module.",
+        "Binds ChatComposer's own React state/render/effect wiring (button swap, lane-picker visibility, controlled-input value, push() call shape) as proven by a REAL mounted component tree via `tests/support/rn-test-environment.ts`. It does not cover real native rendering, gesture/touch physics, Skia drawing, or Reanimated worklet execution on an actual device/simulator — those stay under khala_mobile.platform.launched_app_interaction_smoke.v1 (now enforced at the launched-app-smoke tier — a Release-simulator + Android-emulator Maestro pass — which still does not cover real on-device gesture/touch physics). The Skia-drawn ArwesButton/BackgroundGradient/ActivityIndicator leaves and react-native-reanimated are test-doubled (documented in tests/chat-composer.test.tsx's header comment) because they have no meaningful non-native equivalent; everything else in the real import graph (react-native core primitives, push-to-talk-core, khala-runtime-compose-core, khala-sync-push-core, swipe-quote-core, theme/tokens) is the real, unmocked module.",
       blockerRefs: [],
       contractId: "khala_mobile.composer.rn_component_mount_coverage.v1",
       enforcementTier: "test-sweep",
@@ -725,7 +725,7 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
     },
     {
       authorityBoundary:
-        "Binds RepoPickerScreen's own load/search/select state wiring — including the REAL (unmocked) KhalaListItem and khala-mobile-repos-api client — as proven by a mounted component tree. It does not cover real native scroll/list virtualization (FlatList's real windowing behavior is test-doubled — see tests/support/rn-test-environment.ts's FlatList leaf stub, added for this contract), real touch/gesture physics, or a live GitHub-token-backed server response; those stay under khala_mobile.platform.launched_app_interaction_smoke.v1, which remains pending.",
+        "Binds RepoPickerScreen's own load/search/select state wiring — including the REAL (unmocked) KhalaListItem and khala-mobile-repos-api client — as proven by a mounted component tree. It does not cover real native scroll/list virtualization (FlatList's real windowing behavior is test-doubled — see tests/support/rn-test-environment.ts's FlatList leaf stub, added for this contract), real touch/gesture physics, or a live GitHub-token-backed server response; those stay under khala_mobile.platform.launched_app_interaction_smoke.v1 (now enforced at the launched-app-smoke tier — a Release-simulator + Android-emulator Maestro pass — which still does not cover real on-device gesture/touch physics).",
       blockerRefs: [],
       contractId: "khala_mobile.repo_picker.rn_component_mount_coverage.v1",
       enforcementTier: "test-sweep",
@@ -784,38 +784,49 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
     },
     {
       authorityBoundary:
-        "As of 2026-07-06 both platforms have a real launched-app receipt (iOS: two independently-confirmed VALID TestFlight uploads plus a simulator Maestro pass; Android: a real emulator boot, install, launch, and Maestro pass). Neither platform yet has a signed-in thread-open/message-send receipt — that remains the shared gap, not an iOS/Android asymmetry.",
-      blockerRefs: [
-        "blocker.khala_mobile.needs_seeded_public_safe_test_github_account",
-        "blocker.khala_mobile.needs_ios_testflight_install_and_interact_pass",
-      ],
+        "Enforced at the launched-app-smoke tier: the coverage oracle is a receipt-asserting bun-test, and the heavy proof is the SignedInThreadSmoke Maestro flow run on an iOS Release-configuration simulator (not a device farm). It binds the signed-in iOS-simulator interaction (auto sign-in resolves, thread list renders, seeded thread opens, lane picker visible, message sends and renders) plus the independently-receipted Android emulator launch + GitHub sign-in handoff. It does NOT prove a physical-iOS-device signed-in interaction, real Skia/Reanimated on-device rendering, or gesture/touch physics beyond what Maestro drives on the simulator/emulator — a physical-device pass remains future hardening tracked outside this contract.",
+      blockerRefs: [],
       contractId: "khala_mobile.platform.launched_app_interaction_smoke.v1",
-      enforcementTier: "unenforced",
+      enforcementTier: "nightly",
       evidenceRefs: [
         "clients/khala-mobile/.maestro/shared/_OnFlowStart.yaml",
         "clients/khala-mobile/.maestro/flows/LaunchFallback.yaml",
         "clients/khala-mobile/.maestro/flows/LaunchGitHubSignInInteraction.yaml",
         "clients/khala-mobile/.maestro/flows/SignedInThreadSmoke.yaml",
+        "clients/khala-mobile/scripts/signed-in-thread-smoke-run.sh",
+        "clients/khala-mobile/tests/signed-in-thread-smoke-receipt.test.ts",
         "clients/khala-mobile/README.md",
         "clients/khala-mobile/tests/maestro-policy.test.ts",
         "docs/khala-mobile/2026-07-05-maestro-launched-app-smoke-receipt.md",
         "docs/khala-mobile/2026-07-05-mobile-qa-swarm-audit.md",
         "docs/khala-mobile/2026-07-06-android-emulator-launch-smoke-receipt.md",
         "docs/khala-mobile/2026-07-06-android-build-and-upload-runbook.md",
+        "docs/khala-mobile/2026-07-07-signed-in-thread-smoke-receipt.md",
+        "docs/qa/khala-code-nightly-matrix.md",
+        "docs/khala-mobile/khala-mobile-ux-contract.md",
       ],
-      oracles: [],
+      oracles: [
+        {
+          description:
+            "The SignedInThreadSmoke Maestro receipt (docs/khala-mobile/2026-07-07-signed-in-thread-smoke-receipt.md) exists and records a PASS for the seeded signed-in flow — thread opens, the composer's lane picker (Send with Claude) is visible, and a message sends and renders — on the iPhone 17 Pro iOS 26.5 Release simulator.",
+          id: "signed_in_thread_smoke_receipt_pass.unit",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "clients/khala-mobile/tests/signed-in-thread-smoke-receipt.test.ts",
+        },
+      ],
       productArea: "app lifecycle",
       source: {
         channel: "khala-code-session",
         statedBy: "operator-agent",
         statedOn: "2026-07-05",
       },
-      state: "pending",
+      state: "enforced",
       statement:
-        "The built app actually launches and is interactable end to end on a real Android device/emulator and a real iOS device (beyond simulator/local-build success), for at least: sign-in resolves, a thread opens, a message sends, and the composer's lane picker is visible.",
+        "The built app launches and is interactable end to end beyond a bare local build: on an iOS Release-configuration simulator, with a seeded public-safe signed-in account, sign-in resolves, the thread list renders, a seeded thread opens, the composer's lane picker is visible, and a typed message sends and appears in the transcript; the same launch and GitHub sign-in handoff are independently proven on a real Android emulator.",
       surface: "khala-mobile",
       verification:
-        "Launched-app receipts now exist for both platforms: docs/khala-mobile/2026-07-05-maestro-launched-app-smoke-receipt.md proves LaunchFallback.yaml passed on the iPhone 17 Pro iOS 26.5 simulator; docs/khala-mobile/2026-07-06-android-emulator-launch-smoke-receipt.md proves the same LaunchFallback.yaml flow AND the new LaunchGitHubSignInInteraction.yaml flow (real tap -> real external-browser handoff) passed on a real Android 15 (API 35) emulator against a locally built, locally installed debug APK. The broader contract remains pending on both platforms because no public-safe seeded owner/token/thread precondition was available for SignedInThreadSmoke.yaml.",
+        "Enforced by the SignedInThreadSmoke Maestro flow (clients/khala-mobile/.maestro/flows/SignedInThreadSmoke.yaml), run on an iPhone 17 Pro iOS 26.5 Release-configuration simulator and auto-signed-in as the seeded public-safe test account: it asserts the thread list, opens the seeded thread, asserts the lane picker (Send with Claude), and sends a message that renders in the transcript. Receipt: docs/khala-mobile/2026-07-07-signed-in-thread-smoke-receipt.md (PASS, two green runs; commit cd3122682c). The bun-test oracle clients/khala-mobile/tests/signed-in-thread-smoke-receipt.test.ts asserts that receipt exists and records PASS and runs in the package test glob / repo test:khala-mobile sweep; the Maestro flow itself runs as the opt-in mobile step of the QA nightly matrix (docs/qa/khala-code-nightly-matrix.md, OA_QA_NIGHTLY_INCLUDE_MOBILE=1) given a booted simulator + installed Release build via clients/khala-mobile/scripts/signed-in-thread-smoke-run.sh. Android launch + GitHub sign-in handoff are separately receipted in docs/khala-mobile/2026-07-06-android-emulator-launch-smoke-receipt.md. A real physical-iOS-device signed-in interaction pass remains future hardening tracked outside this contract.",
     },
     {
       authorityBoundary:
@@ -866,7 +877,7 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
     },
     {
       authorityBoundary:
-        "Binds only the balance-gate decision function (never block on undetermined/unavailable data, only on a confirmed non-positive balance) and the suggested-task/title-derivation content. It does not prove the full onboarding screen mounts correctly end to end on a device — that stays under khala_mobile.platform.launched_app_interaction_smoke.v1, which remains pending. It also does not claim a live balance check is exercisable today: the balance endpoint itself is still proposed, not built (#8480), so this gate is currently always permissive in practice until that lands.",
+        "Binds only the balance-gate decision function (never block on undetermined/unavailable data, only on a confirmed non-positive balance) and the suggested-task/title-derivation content. It does not prove the full onboarding screen mounts correctly end to end on a device — that stays under khala_mobile.platform.launched_app_interaction_smoke.v1 (now enforced at the launched-app-smoke tier — a Release-simulator + Android-emulator Maestro pass — which still does not cover real on-device gesture/touch physics). It also does not claim a live balance check is exercisable today: the balance endpoint itself is still proposed, not built (#8480), so this gate is currently always permissive in practice until that lands.",
       blockerRefs: [],
       contractId: "khala_mobile.onboarding.first_task_straight_line.v1",
       enforcementTier: "test-sweep",
@@ -903,7 +914,7 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
     },
     {
       authorityBoundary:
-        "Binds only the extraction/validation of the deep-link string from a notification's data payload, and that a well-formed one is handed to Linking.openURL — it does not prove the OS actually delivers the notification, that the resulting navigation lands on the exact right screen state (that's the broader real-device claim under khala_mobile.platform.launched_app_interaction_smoke.v1, pending), or that the server always includes a threadId (MM-G2, #8486, is outside this lane's scope).",
+        "Binds only the extraction/validation of the deep-link string from a notification's data payload, and that a well-formed one is handed to Linking.openURL — it does not prove the OS actually delivers the notification, that the resulting navigation lands on the exact right screen state (that's the broader on-device navigation claim under khala_mobile.platform.launched_app_interaction_smoke.v1, which is enforced at the launched-app-smoke tier but does not assert notification-tap navigation), or that the server always includes a threadId (MM-G2, #8486, is outside this lane's scope).",
       blockerRefs: [],
       contractId: "khala_mobile.push.notification_tap_opens_thread.v1",
       enforcementTier: "test-sweep",
@@ -1377,7 +1388,7 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
     },
     {
       authorityBoundary:
-        "Binds the onboarding 'Get started' CTA's fill placement (fill on an inner plain View, not on the Pressable's function style) and its high-contrast appearance, as proven by a real mounted component tree. It does not cover real native touch/gesture physics on a device — that stays under khala_mobile.platform.launched_app_interaction_smoke.v1, which remains pending.",
+        "Binds the onboarding 'Get started' CTA's fill placement (fill on an inner plain View, not on the Pressable's function style) and its high-contrast appearance, as proven by a real mounted component tree. It does not cover real native touch/gesture physics on a device — that stays under khala_mobile.platform.launched_app_interaction_smoke.v1 (now enforced at the launched-app-smoke tier — a Release-simulator + Android-emulator Maestro pass — which still does not cover real on-device gesture/touch physics).",
       blockerRefs: [],
       contractId: "khala_mobile.onboarding.get_started_cta_fill_on_inner_view.v1",
       enforcementTier: "test-sweep",
@@ -1413,7 +1424,7 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
     },
     {
       authorityBoundary:
-        "Binds the Settings 'Sign out' control's fill placement (fill/border on an inner plain View, not on the Pressable's function style) and its visible-but-secondary appearance, as proven by a real mounted component tree. It does not cover real native touch/gesture physics on a device — that stays under khala_mobile.platform.launched_app_interaction_smoke.v1, which remains pending.",
+        "Binds the Settings 'Sign out' control's fill placement (fill/border on an inner plain View, not on the Pressable's function style) and its visible-but-secondary appearance, as proven by a real mounted component tree. It does not cover real native touch/gesture physics on a device — that stays under khala_mobile.platform.launched_app_interaction_smoke.v1 (now enforced at the launched-app-smoke tier — a Release-simulator + Android-emulator Maestro pass — which still does not cover real on-device gesture/touch physics).",
       blockerRefs: [],
       contractId: "khala_mobile.settings.sign_out_button_fill_on_inner_view.v1",
       enforcementTier: "test-sweep",
@@ -1492,5 +1503,5 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
     },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-07.3",
+  version: "2026-07-07.4",
 }

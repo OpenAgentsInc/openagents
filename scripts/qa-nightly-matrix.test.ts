@@ -35,6 +35,22 @@ describe("qa nightly matrix plan", () => {
       join("monkey-night", "monkey-night-memory-oracle.json"),
     )
   })
+
+  test("omits the opt-in mobile step unless includeMobile is set", () => {
+    const steps = buildQaNightlySteps({ artifactDir: "var/qa-nightly/run" })
+    expect(steps.some(step => step.id === "mobile-signed-in-thread-smoke")).toBe(false)
+  })
+
+  test("appends the opt-in Khala Mobile SignedInThreadSmoke step as the last step when includeMobile is set", () => {
+    const steps = buildQaNightlySteps({ artifactDir: "var/qa-nightly/run", includeMobile: true })
+    const mobile = steps.find(step => step.id === "mobile-signed-in-thread-smoke")
+    expect(steps.at(-1)?.id).toBe("mobile-signed-in-thread-smoke")
+    expect(mobile?.command).toEqual([
+      "bash",
+      "clients/khala-mobile/scripts/signed-in-thread-smoke-run.sh",
+    ])
+    expect(mobile?.cwd).toBe(".")
+  })
 })
 
 describe("qa nightly matrix report", () => {
