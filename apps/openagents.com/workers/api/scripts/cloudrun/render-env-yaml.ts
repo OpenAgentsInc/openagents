@@ -127,7 +127,21 @@ Object.assign(vars, {
   // in deploy-cloudrun.sh so the zero-balance OpenRouter primary can't shadow
   // it). Durable across redeploys — do not rely on live-revision arming.
   ...(target === 'staging'
-    ? { KHALA_BACKING_MODEL: 'deepseek-v4-flash' }
+    ? {
+        KHALA_BACKING_MODEL: 'deepseek-v4-flash',
+        // AC-1 (#8503) Seam A: ARM the cloud-gcp microVM lane on STAGING ONLY.
+        // `live` flips isCloudGceProvisioningArmed(...)=true so the admin
+        // dispatch trigger (/api/admin/khala/cloud/runtime-dispatch) actually
+        // mints a token + POSTs a placement instead of failing closed 409.
+        // PROD deliberately omits this (fail-closed default-off).
+        OA_CODEX_GCE_PROVISIONER: 'live',
+        // The microVM's ONE /v1/chat/completions turn must hit the SAME
+        // monolith that minted the short-lived owner-linked execution token
+        // (same khala_sync DB + matching no-meter secret) — the staging
+        // Cloud Run URL, not the prod app origin.
+        OA_CLOUD_RUNTIME_INFERENCE_BASE_URL:
+          'https://openagents-monolith-staging-ezxz4mgdsq-uc.a.run.app',
+      }
     : {}),
 })
 
