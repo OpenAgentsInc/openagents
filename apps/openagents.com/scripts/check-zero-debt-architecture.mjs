@@ -35,6 +35,17 @@ const workerFiles = sourceFiles.filter(path =>
   path.startsWith('workers/api/src/'),
 )
 
+// The `workers/api/src/cloudrun/` modules are the Cloud Run process
+// entrypoint (CFG-9, #8524): a `Bun.serve` HTTP boundary that wraps the same
+// Worker handler and runs OUT of the workerd runtime. Like the already-exempt
+// standalone `*/cli.ts` entrypoints, they are process/HTTP-boundary code, not
+// Worker request-handling domain modules — so the Worker-internal zero-debt
+// rules do not apply: stdout `console.log(JSON.stringify(...))` IS Cloud Run's
+// structured-logging bridge, startup config asserts are boundary-fatal by
+// design, and constructing HTTP `Response`s is precisely this layer's job
+// (the same reason `/http/` and route modules are exempt from those rules).
+const isCloudRunEntry = path => path.includes('/cloudrun/')
+
 const routeFiles = workerFiles.filter(
   path =>
     path.endsWith('-routes.ts') ||
@@ -92,7 +103,7 @@ const jsonBoundaryFiles = new Set([
 ])
 
 const deterministicBusinessLogicFiles = sourceFiles.filter(
-  path => !runtimePrimitiveBoundaryFiles.has(path),
+  path => !runtimePrimitiveBoundaryFiles.has(path) && !isCloudRunEntry(path),
 )
 
 const proofReplayVisualRendererFiles = sourceFiles.filter(
@@ -142,7 +153,7 @@ const budgetChecks = [
     budget: 0,
     description:
       'Production Worker modules may not add generic thrown expected errors while typed errors are introduced.',
-    details: countByFile(workerFiles, /throw\s+new\s+Error\(/g),
+    details: countByFile(workerFiles.filter(path => !isCloudRunEntry(path)), /throw\s+new\s+Error\(/g),
     name: 'Worker throw new Error calls',
   },
   {
@@ -250,7 +261,8 @@ const budgetChecks = [
       workerFiles.filter(
         path =>
           !path.endsWith('workers/api/src/bindings.ts') &&
-          !path.endsWith('workers/api/src/config.ts'),
+          !path.endsWith('workers/api/src/config.ts') &&
+          !isCloudRunEntry(path),
       ),
       /\benv\s*:\s*Env\b/g,
     ),
@@ -285,7 +297,7 @@ const budgetChecks = [
     // result to stdout/stderr directly; they are not Worker request-handling
     // modules, so the redacted-observability rule does not apply to them.
     details: countByFile(
-      workerFiles.filter(path => !path.endsWith('/cli.ts')),
+      workerFiles.filter(path => !path.endsWith('/cli.ts') && !isCloudRunEntry(path)),
       /console\.(error|warn|log)\(/g,
     ),
     name: 'raw Worker console logging',
@@ -535,7 +547,7 @@ const budgetChecks = [
     description:
       'Worker domain and route modules may not grow Response-returning surfaces while route mappers are extracted.',
     details: countByFile(
-      workerFiles.filter(path => !path.includes('/http/')),
+      workerFiles.filter(path => !path.includes('/http/') && !isCloudRunEntry(path)),
       /Promise<Response>|:\s*Response\b|Effect\.Effect<Response/g,
     ),
     name: 'Worker Response return surfaces',
