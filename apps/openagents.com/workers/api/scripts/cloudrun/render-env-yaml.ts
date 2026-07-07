@@ -120,6 +120,15 @@ Object.assign(vars, {
   // is a public service address; the bearer rides Secret Manager.
   CLOUD_CODING_SESSIONS_ENABLED: 'true',
   OA_CLOUD_CONTROL_URL: 'https://oa-cloud-run-bridge-ezxz4mgdsq-uc.a.run.app',
+  // AC-1 (#8503): staging serves Khala on the Fireworks lane so the org-cloud
+  // microVM inference path has a working 200 supply. Prod keeps its
+  // wrangler.jsonc KHALA_BACKING_MODEL (the Hydralisk GLM fleet); staging pins
+  // deepseek-v4-flash here (paired with dropping the staging OpenRouter secret
+  // in deploy-cloudrun.sh so the zero-balance OpenRouter primary can't shadow
+  // it). Durable across redeploys — do not rely on live-revision arming.
+  ...(target === 'staging'
+    ? { KHALA_BACKING_MODEL: 'deepseek-v4-flash' }
+    : {}),
 })
 
 // wrangler staging pins KHALA_SYNC_LIVE_HUB_URL too; the assign above wins

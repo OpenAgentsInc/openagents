@@ -74,7 +74,10 @@ SET_SECRETS=(
   "OPENAGENTS_ADMIN_API_TOKEN=openagents-monolith-admin-token-${ENV_SUFFIX}:latest"
   "KHALA_SYNC_LIVE_HUB_TOKEN=khala-live-hub-token:latest"
   "GEMINI_API_KEY=openagents-gemini-api-key:latest"
-  "OPENROUTER_API_KEY=openagents-openrouter-api-key:latest"
+  # OPENROUTER_API_KEY is PROD-ONLY (added in the production block below).
+  # AC-1 (#8503): staging deliberately omits it so the Khala plan's OpenRouter
+  # primary (valid key, zero OpenRouter balance -> non-retryable 402) cannot
+  # shadow the working Fireworks lane; staging Khala serves on deepseek-v4-flash.
   "FIREWORKS_API_KEY=openagents-fireworks-api-key:latest"
   "EXA_API_KEY=openagents-exa-api-key:latest"
   "RESEND_API_KEY=openagents-resend-api-key:latest"
@@ -98,6 +101,9 @@ SET_SECRETS=(
 
 if [[ "$TARGET" == "production" ]]; then
   SET_SECRETS+=(
+    # Prod-only: OpenRouter (a general provider lane + the prod Khala plan's
+    # fallback). Deliberately absent on staging (see the common block above).
+    "OPENROUTER_API_KEY=openagents-openrouter-api-key:latest"
     # CFG-15: service tokens the monolith presents to the Cloud Run MDK
     # money-path daemons (x-treasury-service-token / x-tips-buffer-service-token).
     # The matching run.app URLs are committed wrangler vars. Sidecar token is
@@ -140,6 +146,17 @@ if [[ "$TARGET" == "production" ]]; then
       "HYDRALISK_GLM_52_REAP_504B_${suffix}_BEARER_TOKEN=hydralisk-glm-${replica}-bearer:latest"
     )
   done
+else
+  # Staging-only secrets.
+  SET_SECRETS+=(
+    # AC-1 (#8503): the org-cloud runtime no-meter shared secret. A request
+    # carrying x-openagents-org-cloud-runtime-no-meter matching this value
+    # bypasses metering + the customer balance(402)/spend-cap gates so the
+    # in-microVM gateway inference call is org-capacity (no_debit). PROD stays
+    # fail-closed by NOT mounting this secret (bypass inert without it). Durable
+    # across redeploys — do not rely on live-revision arming.
+    "OA_CLOUD_RUNTIME_NO_METER_SECRET=oa-cloud-runtime-no-meter-secret-staging:latest"
+  )
 fi
 
 SECRET_FLAG="$(IFS=,; echo "${SET_SECRETS[*]}")"
