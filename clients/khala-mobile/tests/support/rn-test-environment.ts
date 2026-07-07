@@ -97,6 +97,7 @@ const RN_EAGER_EXPORT_ALLOWLIST = new Set([
   "Pressable",
   "Text",
   "TextInput",
+  "TouchableOpacity",
   "View"
 ])
 
@@ -279,6 +280,37 @@ const RN_LEAF_STUBS: ReadonlyArray<{ readonly test: RegExp; readonly contents: s
     test: /\/Libraries\/Text\/Text\.js$/
   },
   {
+    // Real `TouchableOpacity.js` composes `Animated` + `Pressability` (the same
+    // dead-native-bridge class of problem as `Pressable` above). The ported
+    // Infinite Red Ignite `ListItem`/`TextField` (`src/ignite/components/`) use
+    // it as their touchable wrapper, so a mount test of any Ignite-composed
+    // screen needs a plain host stand-in. Forwards exactly the props a mount
+    // test reads (`onPress`/`disabled`/`accessibilityLabel`/children), dropping
+    // opacity-animation/gesture-responder behavior that has no meaning without
+    // a real touch host.
+    contents: `
+      import * as React from "react"
+      const TouchableOpacity = React.forwardRef((props, ref) => {
+        const { children, disabled, onPress, onPressIn, onPressOut, onLongPress, ...rest } = props
+        return React.createElement(
+          "TouchableOpacity",
+          {
+            ...rest,
+            ref,
+            onPress: disabled ? undefined : onPress,
+            onPressIn: disabled ? undefined : onPressIn,
+            onPressOut: disabled ? undefined : onPressOut,
+            onLongPress: disabled ? undefined : onLongPress
+          },
+          children
+        )
+      })
+      TouchableOpacity.displayName = "TouchableOpacity"
+      export default TouchableOpacity
+    `,
+    test: /\/Libraries\/Components\/Touchable\/TouchableOpacity\.js$/
+  },
+  {
     contents: `
       import * as React from "react"
       const TextInput = React.forwardRef((props, ref) => React.createElement("TextInput", { ...props, ref }))
@@ -366,10 +398,58 @@ const RN_LEAF_STUBS: ReadonlyArray<{ readonly test: RegExp; readonly contents: s
   }
 ]
 
+/**
+ * The ported Infinite Red Ignite `Screen`/`Header` (`src/ignite/components/`)
+ * — re-exported from the `../ignite` barrel any Ignite-composed screen/
+ * component imports — pull in three native UI packages
+ * (`react-native-edge-to-edge`, `react-native-safe-area-context`,
+ * `react-native-keyboard-controller`) at MODULE-EVALUATION time. Under
+ * `bun test` those have no native host (they trip the same dead-bridge /
+ * reentrant-`require("react-native")` failures as the RN leaves above the
+ * moment the barrel is imported), so every mount test of an Ignite-composed
+ * component would fail just importing the barrel. These plain host-string
+ * stand-ins keep the barrel importable process-wide; no test in this package
+ * imports any of these three packages for their real native behavior (verified
+ * by grep), and production builds go through Metro untouched.
+ */
+const PACKAGE_STUBS: ReadonlyArray<{ readonly test: RegExp; readonly contents: string }> = [
+  {
+    contents: `
+      import * as React from "react"
+      export const useSafeAreaInsets = () => ({ top: 0, bottom: 0, left: 0, right: 0 })
+      export const useSafeAreaFrame = () => ({ x: 0, y: 0, width: 0, height: 0 })
+      export const SafeAreaProvider = ({ children }) => React.createElement("SafeAreaProvider", null, children)
+      export const SafeAreaView = React.forwardRef((props, ref) => React.createElement("SafeAreaView", { ...props, ref }, props.children))
+      export const SafeAreaInsetsContext = React.createContext(null)
+      export const initialWindowMetrics = null
+    `,
+    test: /react-native-safe-area-context\/lib\/commonjs\/index\.js$/
+  },
+  {
+    contents: `
+      import * as React from "react"
+      export const SystemBars = () => null
+      export const SystemBarStyle = null
+    `,
+    test: /react-native-edge-to-edge\/dist\/commonjs\/index\.js$/
+  },
+  {
+    contents: `
+      import * as React from "react"
+      export const KeyboardAwareScrollView = React.forwardRef((props, ref) =>
+        React.createElement("KeyboardAwareScrollView", { ...props, ref }, props.children))
+      export const KeyboardProvider = ({ children }) => React.createElement("KeyboardProvider", null, children)
+      export const KeyboardController = {}
+      export const useKeyboardController = () => ({ setEnabled: () => undefined })
+    `,
+    test: /react-native-keyboard-controller\/lib\/commonjs\/index\.js$/
+  }
+]
+
 plugin({
   name: "rn-flow-strip",
   setup(build) {
-    for (const stub of RN_LEAF_STUBS) {
+    for (const stub of [...RN_LEAF_STUBS, ...PACKAGE_STUBS]) {
       build.onLoad({ filter: stub.test }, () => ({ contents: stub.contents, loader: "js" }))
     }
 
