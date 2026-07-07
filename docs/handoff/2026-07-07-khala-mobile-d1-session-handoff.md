@@ -64,16 +64,54 @@ BINDING-REMOVAL PLAN (do ONLY after logs show zero live D1 traffic):
 ## Open issues
 - **#8515** (Cloudflare→GCP): in progress — money writes + sites/crm redaction + binding drop remain (above).
 - **#8467** (mobile MVP): login ✅, credits ✅, greeting ✅. Needs one real end-to-end coding task verified on device.
-- **#8510 / #8506** (Maestro smoke): task `abe969e44a01f56c0` was minting AgentFlampy's token + running the Maestro flow.
-  READ ITS HANDOFF for AgentFlampy's `user_id`, how the `oa_agent_` token was minted/verified, the seeded thread title,
-  the `.secrets/` file path, and the Maestro result. Close #8510 (then #8506, its last child) on a green Maestro run.
-- **#8503 / #8477** (Agent Computers): the Firecracker-on-GCE substrate is **PROVEN** (real microVM boots + runs code +
-  egress + copy-out + reclaim on host `agent-computer-gce-1`). Task `a18ae8e967c0a28e9` was building the 3 remaining
-  increments: (a) baked agent rootfs (Ubuntu+git+bun+#8473 executor+guest agent), (b) `guest_exec`/`guest_copy_out`
-  transport in `cloud/crates/oa-codex-control/src/cloud_vm.rs` over the proven ssh-on-tap bridge, (c) `/v1/placement`
-  path that boots the microVM (today it boots a full GCE VM). READ ITS HANDOFF for artifact paths on the host + next command.
-  DoD = one real coding turn inside a microVM with the receipt bundle. #8477 (branch/PR writeback) code is done; it closes
-  when #8503's executor calls it from a real run.
+- **#8510 / #8506** (Maestro smoke): **NOT closed yet — Maestro is GREEN, 3 code steps remain to honestly close.**
+  Task `abe969e44a01f56c0` (DONE) proved `SignedInThreadSmoke` GREEN on a **Release** iPhone-17-Pro sim, auto-signed-in
+  as AgentFlampy (two passing runs). Committed+pushed `cd3122682c` (fixed flow + runner
+  `clients/khala-mobile/scripts/signed-in-thread-smoke-run.sh` + receipt `docs/khala-mobile/2026-07-07-signed-in-thread-smoke-receipt.md`).
+  Facts: AgentFlampy user id **`github:300914913`** (id format is `github:<id>`, NOT `user_…`); token minted via
+  `POST /api/agents/register` then linked with `UPDATE agent_credentials SET openauth_user_id='github:300914913' …`
+  (the app's owner-claim/`linkOpenAuthAgent` route writes D1 not Postgres, so the direct Postgres update is the correct
+  path under the #8515 split); creds in `~/work/.secrets/khala-maestro.env` (gitignored, never committed). Seeded thread
+  `Maestro smoke thread` (`scope.thread.maestro-smoke-thread-20260707`).
+  **The 3 steps to close** (from the agent's report — do these then close #8510, then #8506 its last child):
+  1. Promote `khala_mobile.platform.launched_app_interaction_smoke.v1` in
+     `clients/khala-mobile/src/contracts/ux-contracts.ts` to `state:"enforced"`, `enforcementTier:"nightly"` + ONE oracle.
+     Constraint: `tests/ux-contracts.test.ts` requires an enforced oracle to be `kind:"bun-test"`/`"qa-scenario"` that
+     resolves AND contains the contractId string (a `visual-smoke` oracle → `skipped_kind` → fails). So add a new bun-test
+     (e.g. `clients/khala-mobile/tests/signed-in-thread-smoke-receipt.test.ts`) referencing the contractId + asserting the
+     receipt doc records PASS; point the oracle `ref` at it; add receipt to `evidenceRefs`; drop
+     `blocker.khala_mobile.needs_seeded_public_safe_test_github_account`. Run `bun test clients/khala-mobile/tests/ux-contracts.test.ts`.
+     Keep the statement honest: this is a Release **simulator** run (Android already has a real-emulator receipt).
+  2. Add a first mobile row to `docs/qa/khala-code-nightly-matrix.md` + a `scripts/qa-nightly-matrix.ts` step invoking
+     `clients/khala-mobile/scripts/signed-in-thread-smoke-run.sh` (precondition: booted sim + installed Release build).
+  3. Commit to main (clean worktree), close #8510 citing the receipt + `cd3122682c`, close #8506 cross-referencing #8510.
+  Real-behavior finding: sending starts a `runtime_turn` on `hosted_khala`; no Pylon services this test account so it stays
+  `queued` → composer flips to Steer/Queue and the message's optimistic overlay clears (the "shows briefly then reverts to
+  No messages yet" the owner saw — the message DOES persist and renders on re-open). The runner closes active turns first.
+- **#8503 / #8477** (Agent Computers): the Firecracker-on-GCE substrate is **PROVEN**, and task `a18ae8e967c0a28e9` (DONE)
+  got materially further: **the microVM boots from a baked image, the vsock guest agent comes up, and the real #8475-based
+  turn-runner executes inside the microVM.** ONE blocker remains before a green in-guest checkout: **in-guest egress**
+  (image enables `systemd-networkd` with no config, clearing the kernel `ip=` on eth0 → git fetch `fetch_failed`).
+  Commits pushed: openagents `e79571071a` (`apps/pylon/deploy/agent-computer/turn-runner.ts` + manifest w/ real digests),
+  cloud `3a8b5bd` (CND-056 progress). Baked image `/srv/openagents/cloud-vm/agent-computer-rootfs.ext4` (577M, sha256
+  `3e612f6f…a63cf0b`; git+bun+python3+vsock guest-agent `agent-guest.service`+turn-runner), kernel `/srv/openagents/cloud-vm/vmlinux`.
+  **EXACT next commands** (from the agent's report):
+  1. Fix egress: mount the ext4 loopback, `systemctl disable`+`mask systemd-networkd` in chroot, write `/etc/resolv.conf`
+     `nameserver 8.8.8.8`, `umount`, `e2fsck -fy`. (Full one-liner in the agent's task output.)
+  2. Re-run `sudo python3 /tmp/vsock-turn-proof.py` — success = `TURN-PROOF-RESULT: PASS` with `baseCommit` = the pinned
+     commit + `result.json` extracted microVM→host (a real coding turn: checkout + staged diff + events + reclaim). Re-pin the new image sha into the manifest.
+  3. Increment 2: port the vsock protocol (`/tmp/vsock-turn-proof.py`, local copy in scratchpad) into
+     `cloud/crates/oa-codex-control/src/cloud_vm.rs` `guest_exec`/`guest_copy_out`/`wait_guest_ready` (run firecracker
+     directly, not jailer, for a predictable UDS path); then `cargo test -p oa-codex-control live_cloud_vm_session… -- --ignored`.
+  4. Increment 3: add the agent-computer placement path to `/v1/placement` (today it binds a full-GCE Codex runner lane) + arm staging.
+  DoD gaps: turn-runner does a deterministic coding step, NOT an LLM turn — a real model-token receipt
+  (`/api/khala/cloud/runtime-turn-usage`) needs a Codex/Claude login baked in or the hosted Khala gateway. #8477
+  (branch/PR writeback) code is done; it closes when #8503's executor calls it from a real run.
+  **⚠️ POSTURE REGRESSION TO REVERT** (the agent added this to escape flaky IAP): host `agent-computer-gce-1` has a
+  temporary external IP + firewall rule `agent-computer-tmp-ssh` (tcp:22 from a single `/32`). It's narrow (one owner IP,
+  one port) so it's left in place ONLY so the next microVM agent keeps SSH; **revert the moment #8503 lands**:
+  `gcloud compute firewall-rules delete agent-computer-tmp-ssh --project openagentsgemini` and
+  `gcloud compute instances delete-access-config agent-computer-gce-1 --zone us-central1-a --project openagentsgemini`.
 
 ## Infra / access
 - Cloud SQL: `khala-sync-pg` (us-central1-a), public ingress CLOSED (connector only). Proxy with `--token`.
