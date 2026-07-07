@@ -18,7 +18,6 @@
 
 import worker from '../index'
 import { assertAssetsDirExists } from './assets'
-import { holdingPageInterception } from './holding-page'
 import {
   isBindingUnavailableError,
   responseForBindingUnavailable,
@@ -101,16 +100,6 @@ const main = async (): Promise<void> => {
 
       if (url.pathname === '/internal/healthz') {
         return Response.json({ ok: true, service: 'openagents-monolith' })
-      }
-
-      // Temporary public-site holding page (owner request, 2026-07-06):
-      // openagents.com shows "be right back" and other public page routes
-      // redirect to it. API/assets/well-known/machine files and the auth
-      // host pass straight through. Remove `holding-page.ts` + this block to
-      // restore the full site.
-      const holding = holdingPageInterception(url)
-      if (holding !== undefined) {
-        return holding
       }
 
       // CFG-5 LiveHub WS bridge: Bun fetch cannot carry a WebSocket upgrade,
