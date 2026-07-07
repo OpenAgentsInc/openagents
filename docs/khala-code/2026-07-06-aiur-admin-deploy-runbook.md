@@ -20,11 +20,15 @@ the main `openagents.com` Worker — separate deploy, separate session
 cookies (`aiur_access`/`aiur_refresh`, never confused with the main site's
 `oa_access`/`oa_refresh`).
 
-The legacy Cloudflare Worker deploy path (`wrangler.jsonc`,
-`bun run --cwd apps/aiur deploy`) remains ONLY until the
-`aiur.openagents.com` DNS cutover to the Cloud Run domain mapping is done
-(owner-gated Cloudflare dashboard step — see `NEEDS_OWNER.md`); after the
-domain serves from Cloud Run, delete the Worker.
+CFG-11 cutover COMPLETE (2026-07-06): `aiur.openagents.com` now serves
+entirely from Cloud Run. DNS is a DNS-only (grey-cloud) CNAME →
+`ghs.googlehosted.com.` in the Cloudflare `openagents.com` zone, the Cloud
+Run domain mapping cert is provisioned, and the legacy Cloudflare Worker
+`openagents-aiur` (account `arcadecd@gmail.com`) has been **deleted**. The
+old `wrangler.jsonc` Worker deploy path is retired — do not run
+`bun run --cwd apps/aiur deploy` (wrangler) for production; the sole
+production path is `deploy:cloudrun` below. The `wrangler.jsonc` and the
+legacy Worker sections in this doc are kept only as historical reference.
 
 ### Cloud Run deploy
 

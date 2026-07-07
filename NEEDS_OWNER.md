@@ -282,37 +282,45 @@ route, review a concrete production bundle and the backing payment/delivery
 evidence, confirm the label is truly external, and explicitly approve the
 public copy boundary.
 
-## Aiur Admin Panel — Owner Allowlist and DNS
+## Aiur Admin Panel — Owner Allowlist and DNS — RESOLVED 2026-07-06
 
-Source issue: OpenAgentsInc/openagents#8499 (epic #8467, Khala Code
-mobile-only MVP)
+Source issues: OpenAgentsInc/openagents#8499 (epic #8467, Khala Code
+mobile-only MVP) and #8526 (CFG-11, Cloudflare → Google consolidation
+epic #8515).
 
-Aiur (`apps/aiur/`) is the new owner-only admin panel for manually granting
+Aiur (`apps/aiur/`) is the owner-only admin panel for manually granting
 mobile-app credits (replacing IAP for the first MVP build) and viewing
-ops/health data. It is a separate Cloudflare Worker deployed at
-`aiur.openagents.com`, gated by a hard, fail-closed allowlist
+ops/health data. It is now served entirely from **Google Cloud Run**
+(service `openagents-aiur`, project `openagentsgemini`, region
+`us-central1`), gated by a hard, fail-closed allowlist
 (`AIUR_OWNER_USER_IDS`) checked on every request — unset or empty denies
 everyone, including a legitimately signed-in GitHub user. See
 `docs/khala-code/2026-07-06-aiur-admin-deploy-runbook.md` for the full
 deploy/verify steps.
 
-NEEDS-OWNER:
+STATUS — no owner action remains. The full CFG-11 cutover is done:
 
-1. Sign in to `https://aiur.openagents.com/` once with GitHub (this will
-   correctly show "Access denied" the first time — the allowlist starts
-   empty). Note the verified OpenAuth user id shown in the denied state
-   (or read it from the `access_route` response / D1 `users` table by
-   GitHub login) and set it as `AIUR_OWNER_USER_IDS` in
-   `apps/aiur/wrangler.jsonc` (or via `wrangler secret put` for
-   production), then redeploy.
-2. Confirm `aiur.openagents.com` resolves and is proxied on the same
-   Cloudflare zone as `openagents.com`. `wrangler deploy` normally
-   provisions the custom-domain route automatically the first time it
-   runs against an authenticated account with zone access; if the domain
-   does not resolve after deploying, check the Cloudflare dashboard's
-   Workers Routes / Custom Domains page for the zone and add the route
-   manually.
+1. Owner allowlist is set. Secret Manager secret `aiur-owner-user-ids`
+   (`openagentsgemini`) = `github:14167547`, mounted into the Cloud Run
+   service as `AIUR_OWNER_USER_IDS` via `secretKeyRef`. Fail-closed is
+   verified: an unauthenticated request to
+   `https://aiur.openagents.com/api/aiur/access` returns 200
+   `{"kind":"signed_out"}` and no dashboard data loads.
+2. DNS cutover is done. `aiur.openagents.com` resolves via a DNS-only
+   (grey-cloud) CNAME → `ghs.googlehosted.com.` in the Cloudflare
+   `openagents.com` zone, and the Cloud Run domain mapping cert is
+   provisioned (`Ready`/`CertificateProvisioned` = True). The live
+   hostname serves from Cloud Run (`server: Google Frontend`,
+   `x-cloud-trace-context` present, no `cf-ray`).
+3. The legacy Cloudflare Worker `openagents-aiur` (account
+   `arcadecd@gmail.com`) has been deleted, freeing the hostname and
+   removing the stale custom-domain binding. The live hostname was
+   re-verified serving 200 from Cloud Run AFTER the delete.
 
-Until step 1 is complete, Aiur is deployed but denies every identity by
-design — this is the intended fail-closed default, not a launch blocker to
-"fix" by relaxing the gate.
+Optional owner smoke (not a blocker): sign in at
+`https://aiur.openagents.com/` with GitHub and confirm you land signed in
+(not denied) and the "Khala Tokens Served" panel shows a live number —
+this confirms `github:14167547` is your verified OpenAuth user id. If you
+are instead denied, the allowlist value needs to be updated to your actual
+verified OpenAuth `userId` (update the `aiur-owner-user-ids` secret and the
+Cloud Run service picks up `latest` on the next revision).
