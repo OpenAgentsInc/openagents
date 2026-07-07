@@ -113,6 +113,29 @@ const parseAdmittedBody = (raw: unknown): ParsedBody => {
   const repoBindingRef = asString(body['repoBindingRef'])
   const runtimeLane = asString(body['runtimeLane'])
 
+  // MM-C5 (#8477) optional writeback block. Present => the microVM pushes a
+  // scoped branch / opens a PR under the user GitHub authorization and records
+  // the thread-scoped writeback.recorded event. `mode` must be a known literal.
+  const writebackRaw = body['writeback']
+  let writeback: CloudGcpAdmittedWorkContext['writeback'] | undefined
+  if (writebackRaw !== undefined) {
+    if (writebackRaw === null || typeof writebackRaw !== 'object') {
+      return { error: 'writeback_must_be_object', ok: false }
+    }
+    const wb = writebackRaw as Record<string, unknown>
+    const mode = wb['mode']
+    if (mode !== undefined && mode !== 'branch_only' && mode !== 'pull_request') {
+      return { error: 'writeback_mode_invalid', ok: false }
+    }
+    const wbBranch = asString(wb['branch'])
+    const wbBaseBranch = asString(wb['baseBranch'])
+    writeback = {
+      ...(mode === undefined ? {} : { mode: mode as 'branch_only' | 'pull_request' }),
+      ...(wbBranch === undefined ? {} : { branch: wbBranch }),
+      ...(wbBaseBranch === undefined ? {} : { baseBranch: wbBaseBranch }),
+    }
+  }
+
   return {
     ok: true,
     value: {
@@ -129,6 +152,7 @@ const parseAdmittedBody = (raw: unknown): ParsedBody => {
       ...(runtimeLane === undefined
         ? {}
         : { runtimeLane: runtimeLane as CloudGcpAdmittedWorkContext['runtimeLane'] }),
+      ...(writeback === undefined ? {} : { writeback }),
     },
   }
 }

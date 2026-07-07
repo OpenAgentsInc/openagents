@@ -49,7 +49,7 @@
  * /qa/artifacts/result.json (copied out by the host provisioner).
  */
 import { mkdir, writeFile, readdir } from 'node:fs/promises'
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
@@ -107,6 +107,26 @@ export type InferenceConfig = {
   noMeterSecret?: string
 }
 
+/**
+ * MM-C5 (#8477) writeback config. PUBLIC-SAFE ONLY: it carries NO credential.
+ * The microVM brokers a short-lived GitHub credential at push time via the
+ * OpenAgents SCM auth broker (`scmCredentialPath: openagents-scm-broker-only`
+ * in the image manifest; `noRawUserOAuthTokens: true`). The branch is a scoped
+ * `pylon/…` ref (never the base branch); the push is never force.
+ */
+export type WritebackConfig = {
+  /** The Worker ingest route path (default `/api/khala/cloud/runtime-turn-writeback`). */
+  ingestPath?: string
+  /** `owner/name`. */
+  repositoryFullName: string
+  /** The base branch a PR targets (never pushed to). */
+  baseBranch: string
+  /** The scoped `pylon/…` branch to push (never the base). */
+  branch: string
+  /** User-controlled: `branch_only` pushes the branch; `pull_request` also opens a PR. */
+  mode: 'branch_only' | 'pull_request'
+}
+
 type WorkContext = {
   workContextRef: string
   threadRef?: string
@@ -116,6 +136,7 @@ type WorkContext = {
   branch?: string
   objective?: string
   inference?: InferenceConfig
+  writeback?: WritebackConfig
 }
 
 const nowIso = () => new Date().toISOString()
@@ -422,6 +443,415 @@ const git = (cwd: string, args: string[]): string => {
   }
 }
 
+// ---------------------------------------------------------------------------
+// MM-C5 (#8477): branch/PR writeback under the user's OWN GitHub authorization.
+//
+// After staging a real diff, the microVM (1) brokers a short-lived GitHub
+// credential from the OpenAgents SCM auth broker under its agent bearer, (2)
+// commits + pushes a scoped `pylon/…` branch (NEVER force, NEVER the base), (3)
+// optionally opens a PR (user-controlled), then (4) POSTs the public-safe
+// OUTCOME to the Worker writeback route so the live recorder appends a
+// thread-scoped `writeback.recorded` runtime event carrying the tappable link.
+//
+// SECRET DISCIPLINE. The brokered credential is fetched at runtime, used only
+// in the git remote URL / GitHub API Authorization header, and NEVER serialized
+// into events, the result bundle, or logs. Raw git stderr is never emitted (it
+// can echo the tokenized remote URL); only mapped public-safe reason refs are.
+// ---------------------------------------------------------------------------
+
+/** The Worker writeback ingest route. Source of truth: `khala-agent-computer-writeback-routes.ts`. */
+export const KHALA_AGENT_COMPUTER_WRITEBACK_INGEST_PATH =
+  '/api/khala/cloud/runtime-turn-writeback'
+export const KHALA_AGENT_COMPUTER_WRITEBACK_SCHEMA_VERSION =
+  'openagents.khala_agent_computer_writeback.v1'
+
+/** The OpenAgents SCM auth broker (#8475). Source of truth: `github-scm-auth-broker-routes.ts`. */
+export const GITHUB_SCM_AUTH_BROKER_PATH = '/api/pylon/github/git-credentials'
+export const GITHUB_SCM_AUTH_BROKER_REQUEST_SCHEMA =
+  'openagents.pylon.git_credential_broker_request.v1'
+export const GITHUB_SCM_AUTH_BROKER_HELPER_REF =
+  'helper.pylon.scm_auth_broker.git_credential.v1'
+
+/** Writeback outcome reported to the Worker. Refs only — no credentials/paths. */
+export type WritebackStatus =
+  | 'branch_pushed'
+  | 'pull_request_opened'
+  | 'pull_request_reused'
+  | 'failed'
+
+export type WritebackOutcome = {
+  repositoryFullName: string
+  branch: string
+  branchUrl: string
+  status: WritebackStatus
+  changedFileCount?: number
+  pullRequestUrl?: string
+  pullRequestNumber?: number
+  reasonRef?: string
+}
+
+type BrokerCredential =
+  | { ok: true; username: string; password: string }
+  | { ok: false; reasonRef: string; status: number | null }
+
+const githubBranchUrl = (fullName: string, branch: string): string =>
+  `https://github.com/${fullName}/tree/${branch
+    .split('/')
+    .map(encodeURIComponent)
+    .join('/')}`
+
+/** Split `owner/name` into parts, or `null` when malformed. */
+export const parseRepoFullName = (
+  fullName: string,
+): { owner: string; name: string } | null => {
+  const match = /^([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)$/.exec(fullName)
+  if (match === null) return null
+  return { name: match[2]!, owner: match[1]! }
+}
+
+/** The exact `/api/pylon/github/git-credentials` request the broker validates. */
+export const gitCredentialBrokerRequest = (
+  inference: InferenceConfig,
+  repositoryFullName: string,
+): { url: string; headers: Record<string, string>; body: string } | null => {
+  const parsed = parseRepoFullName(repositoryFullName)
+  if (parsed === null) return null
+  return {
+    body: JSON.stringify({
+      authRefs: [`github-identity:token:${inference.ownerUserId}`],
+      helperRef: GITHUB_SCM_AUTH_BROKER_HELPER_REF,
+      host: 'github.com',
+      path: `/${parsed.owner}/${parsed.name}`,
+      protocol: 'https',
+      repositoryRef: `repo.github/${parsed.owner}/${parsed.name}`,
+      schema: GITHUB_SCM_AUTH_BROKER_REQUEST_SCHEMA,
+    }),
+    headers: {
+      Authorization: `Bearer ${inference.agentToken}`,
+      'content-type': 'application/json',
+    },
+    url: new URL(GITHUB_SCM_AUTH_BROKER_PATH, inference.baseUrl).toString(),
+  }
+}
+
+/** Map a broker HTTP status to a public-safe writeback reason ref. */
+const brokerReasonRef = (status: number): string => {
+  if (status === 401) return 'writeback.permission.github_write_connection_unusable'
+  if (status === 403) return 'writeback.permission.github_write_permission_missing'
+  if (status === 409) return 'writeback.permission.github_write_connection_required'
+  return 'writeback.broker_unavailable'
+}
+
+/** Broker a short-lived `x-access-token` credential for the repo. Never throws. */
+export const brokerGitCredential = async (
+  inference: InferenceConfig,
+  repositoryFullName: string,
+  fetchImpl: typeof globalThis.fetch = globalThis.fetch,
+): Promise<BrokerCredential> => {
+  const req = gitCredentialBrokerRequest(inference, repositoryFullName)
+  if (req === null) {
+    return { ok: false, reasonRef: 'writeback.repository_ref_invalid', status: null }
+  }
+  let response: Response
+  try {
+    response = await fetchImpl(req.url, { body: req.body, headers: req.headers, method: 'POST' })
+  } catch {
+    return { ok: false, reasonRef: 'writeback.broker_unavailable', status: null }
+  }
+  if (!response.ok) {
+    return { ok: false, reasonRef: brokerReasonRef(response.status), status: response.status }
+  }
+  const json = (await response.json().catch(() => ({}))) as {
+    username?: unknown
+    password?: unknown
+  }
+  if (typeof json.password !== 'string' || json.password.length === 0) {
+    return { ok: false, reasonRef: 'writeback.broker_unavailable', status: response.status }
+  }
+  return {
+    ok: true,
+    password: json.password,
+    username: typeof json.username === 'string' && json.username.length > 0
+      ? json.username
+      : 'x-access-token',
+  }
+}
+
+/** A git runner that exposes the exit code (unlike the fail-soft `git()` above). */
+export type GitRun = (
+  cwd: string,
+  args: string[],
+) => { code: number; stdout: string; stderr: string }
+
+const defaultGitRun: GitRun = (cwd, args) => {
+  const result = spawnSync('git', args, {
+    cwd,
+    encoding: 'utf8',
+    maxBuffer: 32 * 1024 * 1024,
+  })
+  return {
+    code: result.status ?? 1,
+    stderr: result.stderr ?? '',
+    stdout: result.stdout ?? '',
+  }
+}
+
+const permissionFailurePattern =
+  /\b(?:permission to .* denied|403|forbidden|not authorized|authentication failed|could not read Username|repository not found)\b/i
+const nonFastForwardPattern =
+  /\b(?:non-fast-forward|fetch first|stale info|tip of your current branch is behind|updates were rejected)\b/i
+
+/** Classify a git push failure to a public-safe reason ref (never raw stderr). */
+export const classifyPushFailure = (stderr: string): string => {
+  if (permissionFailurePattern.test(stderr))
+    return 'writeback.permission.github_write_permission_missing'
+  if (nonFastForwardPattern.test(stderr)) return 'writeback.branch_update_rejected'
+  return 'writeback.push_failed'
+}
+
+/** The exact `/api/khala/cloud/runtime-turn-writeback` ingest body. */
+export const writebackIngestBody = (input: {
+  inference: InferenceConfig
+  turnId: string
+  outcome: WritebackOutcome
+}): Record<string, unknown> => ({
+  ownerUserId: input.inference.ownerUserId,
+  outcome: input.outcome,
+  schemaVersion: KHALA_AGENT_COMPUTER_WRITEBACK_SCHEMA_VERSION,
+  turnId: input.turnId,
+})
+
+export type WritebackTurnResult = {
+  outcome: WritebackOutcome
+  /** True when the Worker recorded the thread-scoped `writeback.recorded` event. */
+  recorded: boolean
+  recordDecision?: string
+  recordEventId?: string | null
+  recordStatus?: number
+}
+
+/**
+ * Run the branch/PR writeback for one turn: broker credential -> commit -> push
+ * scoped branch (never force / never base) -> optional PR -> POST the outcome to
+ * the Worker recorder. Fail-soft and token-safe: every failure produces a typed
+ * `failed` outcome (still POSTed, so the thread shows an honest state) and the
+ * brokered credential never appears in the outcome, result, or a raw error.
+ */
+export const runWritebackForTurn = async (
+  args: {
+    inference: InferenceConfig
+    writeback: WritebackConfig
+    turnId: string
+    workingDirectory: string
+    changedFileCount: number
+    commitMessage: string
+    prTitle: string
+    prBody: string
+  },
+  deps: {
+    fetchImpl?: typeof globalThis.fetch
+    gitRun?: GitRun
+  } = {},
+): Promise<WritebackTurnResult> => {
+  const fetchImpl = deps.fetchImpl ?? globalThis.fetch
+  const gitRun = deps.gitRun ?? defaultGitRun
+  const wb = args.writeback
+  const branchUrl = githubBranchUrl(wb.repositoryFullName, wb.branch)
+
+  const post = async (outcome: WritebackOutcome): Promise<WritebackTurnResult> => {
+    let response: Response | null = null
+    try {
+      response = await fetchImpl(
+        new URL(wb.ingestPath ?? KHALA_AGENT_COMPUTER_WRITEBACK_INGEST_PATH, args.inference.baseUrl).toString(),
+        {
+          body: JSON.stringify(writebackIngestBody({ inference: args.inference, outcome, turnId: args.turnId })),
+          headers: {
+            Authorization: `Bearer ${args.inference.agentToken}`,
+            'content-type': 'application/json',
+          },
+          method: 'POST',
+        },
+      )
+    } catch {
+      return { outcome, recorded: false }
+    }
+    const json = (await response.json().catch(() => ({}))) as {
+      ok?: unknown
+      decision?: unknown
+      eventId?: unknown
+      recordedEventId?: unknown
+    }
+    return {
+      outcome,
+      recordDecision: typeof json.decision === 'string' ? json.decision : undefined,
+      recordEventId:
+        typeof json.eventId === 'string'
+          ? json.eventId
+          : typeof json.recordedEventId === 'string'
+            ? json.recordedEventId
+            : null,
+      recorded: response.ok && json.ok === true,
+      recordStatus: response.status,
+    }
+  }
+
+  const failed = (reasonRef: string): WritebackOutcome => ({
+    branch: wb.branch,
+    branchUrl,
+    reasonRef,
+    repositoryFullName: wb.repositoryFullName,
+    status: 'failed',
+  })
+
+  // Guard: only a scoped branch, never the base branch.
+  if (!wb.branch.startsWith('pylon/') || wb.branch === wb.baseBranch) {
+    return post(failed('writeback.branch_refspec_rejected'))
+  }
+
+  // 1. Broker the short-lived GitHub credential.
+  const credential = await brokerGitCredential(args.inference, wb.repositoryFullName, fetchImpl)
+  if (!credential.ok) {
+    return post(failed(credential.reasonRef))
+  }
+
+  // 2. Commit the staged change under a neutral agent identity.
+  const commit = gitRun(args.workingDirectory, [
+    '-c',
+    'user.email=agent-computer@openagents.com',
+    '-c',
+    'user.name=OpenAgents Agent Computer',
+    'commit',
+    '-m',
+    args.commitMessage,
+  ])
+  if (commit.code !== 0) {
+    return post(failed('writeback.commit_failed'))
+  }
+
+  // 3. Push the scoped branch. NEVER --force; the tokenized remote URL is passed
+  //    inline (kept out of .git/config) and its stderr is never emitted.
+  const remote = `https://${encodeURIComponent(credential.username)}:${credential.password}@github.com/${wb.repositoryFullName}.git`
+  const push = gitRun(args.workingDirectory, [
+    'push',
+    remote,
+    `HEAD:refs/heads/${wb.branch}`,
+  ])
+  if (push.code !== 0) {
+    return post(failed(classifyPushFailure(push.stderr)))
+  }
+
+  // 4. Optionally open a PR (user-controlled). A PR failure after a successful
+  //    push degrades honestly to `branch_pushed` (the branch really is there).
+  if (wb.mode === 'pull_request') {
+    const pr = await openPullRequest(
+      { baseBranch: wb.baseBranch, body: args.prBody, branch: wb.branch, credential, repositoryFullName: wb.repositoryFullName, title: args.prTitle },
+      fetchImpl,
+    )
+    if (pr.ok) {
+      return post({
+        branch: wb.branch,
+        branchUrl,
+        changedFileCount: args.changedFileCount,
+        pullRequestNumber: pr.number,
+        pullRequestUrl: pr.url,
+        repositoryFullName: wb.repositoryFullName,
+        status: pr.reused ? 'pull_request_reused' : 'pull_request_opened',
+      })
+    }
+    // Fall through to branch_pushed.
+  }
+
+  return post({
+    branch: wb.branch,
+    branchUrl,
+    changedFileCount: args.changedFileCount,
+    repositoryFullName: wb.repositoryFullName,
+    status: 'branch_pushed',
+  })
+}
+
+type OpenPrResult =
+  | { ok: true; url: string; number: number; reused: boolean }
+  | { ok: false }
+
+/** Open (or reuse) a PR via the GitHub REST API under the brokered credential. */
+const openPullRequest = async (
+  input: {
+    repositoryFullName: string
+    branch: string
+    baseBranch: string
+    title: string
+    body: string
+    credential: Extract<BrokerCredential, { ok: true }>
+  },
+  fetchImpl: typeof globalThis.fetch,
+): Promise<OpenPrResult> => {
+  const parsed = parseRepoFullName(input.repositoryFullName)
+  if (parsed === null) return { ok: false }
+  const headers = {
+    accept: 'application/vnd.github+json',
+    authorization: `Bearer ${input.credential.password}`,
+    'content-type': 'application/json',
+    'user-agent': 'OpenAgents-Agent-Computer',
+    'x-github-api-version': '2022-11-28',
+  }
+  let response: Response
+  try {
+    response = await fetchImpl(
+      `https://api.github.com/repos/${input.repositoryFullName}/pulls`,
+      {
+        body: JSON.stringify({
+          base: input.baseBranch,
+          body: input.body,
+          head: input.branch,
+          title: input.title,
+        }),
+        headers,
+        method: 'POST',
+      },
+    )
+  } catch {
+    return { ok: false }
+  }
+  if (response.status === 201) {
+    const json = (await response.json().catch(() => ({}))) as {
+      html_url?: unknown
+      number?: unknown
+    }
+    if (typeof json.html_url === 'string' && typeof json.number === 'number') {
+      return { number: json.number, ok: true, reused: false, url: json.html_url }
+    }
+    return { ok: false }
+  }
+  // 422 => a PR for this head already exists; reuse it.
+  if (response.status === 422) {
+    try {
+      const listed = await fetchImpl(
+        `https://api.github.com/repos/${input.repositoryFullName}/pulls?state=open&head=${encodeURIComponent(`${parsed.owner}:${input.branch}`)}`,
+        { headers },
+      )
+      const rows = (await listed.json().catch(() => [])) as Array<{
+        html_url?: unknown
+        number?: unknown
+      }>
+      const existing = rows.find(
+        row => typeof row.html_url === 'string' && typeof row.number === 'number',
+      )
+      if (existing !== undefined) {
+        return {
+          number: existing.number as number,
+          ok: true,
+          reused: true,
+          url: existing.html_url as string,
+        }
+      }
+    } catch {
+      // fall through
+    }
+  }
+  return { ok: false }
+}
+
 async function main() {
   const events: unknown[] = []
   const emit = (event: Record<string, unknown>) => {
@@ -496,6 +926,9 @@ async function main() {
   git(ws.workingDirectory, ['add', 'AGENT_COMPUTER_TURN.md'])
   const diff = git(ws.workingDirectory, ['diff', '--cached', '--stat'])
   const diffFull = git(ws.workingDirectory, ['diff', '--cached'])
+  const changedFiles = git(ws.workingDirectory, ['diff', '--cached', '--name-only'])
+    .split('\n')
+    .filter(line => line.trim().length > 0)
   emit({ kind: 'text.completed', turnId, text: `Checked out ${wc.repo}@${head.slice(0, 12)} and staged a 1-file change.\n${diff}` })
 
   // 3. Phase-2 model turn + exact usage receipt (only when configured).
@@ -539,6 +972,58 @@ async function main() {
     }
   }
 
+  // 3b. MM-C5 (#8477) branch/PR writeback under the user's GitHub authorization.
+  //     Only when the work-context carries a `writeback` block AND there is a
+  //     real staged change to publish. Fail-soft + token-safe.
+  let writebackResult: WritebackTurnResult | null = null
+  if (wc.writeback && wc.inference && changedFiles.length > 0) {
+    emit({
+      kind: 'tool.call',
+      turnId,
+      tool: 'writeback.publish',
+      repositoryFullName: wc.writeback.repositoryFullName,
+      branch: wc.writeback.branch,
+      mode: wc.writeback.mode,
+    })
+    writebackResult = await runWritebackForTurn({
+      changedFileCount: changedFiles.length,
+      commitMessage:
+        `chore(agent-computer): ${wc.objective ?? `staged change for ${wc.repo}`}\n\n` +
+        `OpenAgents Agent Computer turn ${turnId} (${wc.workContextRef}).`,
+      inference: wc.inference,
+      prBody:
+        `Automated change from an OpenAgents Agent Computer coding turn.\n\n` +
+        `- Objective: ${wc.objective ?? 'agent-computer turn'}\n` +
+        `- Base commit: ${head}\n` +
+        `- Files changed: ${changedFiles.length}\n`,
+      prTitle: `Agent Computer: ${wc.objective ?? `update ${wc.repo}`}`.slice(0, 120),
+      turnId,
+      workingDirectory: ws.workingDirectory,
+      writeback: wc.writeback,
+    })
+    emit({
+      kind: 'writeback.recorded',
+      turnId,
+      status: writebackResult.outcome.status,
+      repositoryFullName: writebackResult.outcome.repositoryFullName,
+      branch: writebackResult.outcome.branch,
+      branchUrl: writebackResult.outcome.branchUrl,
+      ...(writebackResult.outcome.pullRequestUrl === undefined
+        ? {}
+        : { pullRequestUrl: writebackResult.outcome.pullRequestUrl }),
+      ...(writebackResult.outcome.pullRequestNumber === undefined
+        ? {}
+        : { pullRequestNumber: writebackResult.outcome.pullRequestNumber }),
+      ...(writebackResult.outcome.reasonRef === undefined
+        ? {}
+        : { reasonRef: writebackResult.outcome.reasonRef }),
+      recorded: writebackResult.recorded,
+      ...(writebackResult.recordEventId === undefined || writebackResult.recordEventId === null
+        ? {}
+        : { recordedEventId: writebackResult.recordEventId }),
+    })
+  }
+
   // 4. Result bundle (copied out by the host provisioner). Token-safe: the
   //    agent bearer is never serialized here.
   await mkdir(ARTIFACT_DIR, { recursive: true })
@@ -575,6 +1060,23 @@ async function main() {
       wc.inference === undefined
         ? 'no hosted model invoked in this proof; supply a work-context `inference` block (agent token + gateway base url + model) to mint an exact model-token receipt from inside the microVM'
         : 'hosted model invoked under the agent bearer; see modelTokenReceipt for the exact token_usage_events outcome',
+    writeback:
+      writebackResult === null
+        ? null
+        : {
+            outcome: writebackResult.outcome,
+            recorded: writebackResult.recorded,
+            ...(writebackResult.recordDecision === undefined
+              ? {}
+              : { recordDecision: writebackResult.recordDecision }),
+            ...(writebackResult.recordEventId === undefined
+              ? {}
+              : { recordedEventId: writebackResult.recordEventId }),
+          },
+    writebackNote:
+      wc.writeback === undefined
+        ? 'no writeback requested; supply a work-context `writeback` block (repositoryFullName + baseBranch + scoped branch + mode) to push a branch/PR under the user GitHub authorization and record the thread-scoped writeback.recorded event'
+        : 'branch/PR writeback attempted under the user GitHub authorization (SCM-broker credential); see writeback for the public-safe outcome and whether the Worker recorded the thread-scoped writeback.recorded event',
     ranAt: nowIso(),
     events,
   }

@@ -60,6 +60,7 @@ import type {
 import {
   buildCloudRuntimeInferenceConfig,
   buildCloudRuntimeWorkContext,
+  buildCloudRuntimeWritebackConfig,
   encodeWorkContextB64,
 } from './khala-cloud-runtime-inference-block'
 import {
@@ -106,6 +107,20 @@ export type CloudGcpAdmittedWorkContext = Readonly<{
   eventCount: number
   /** Valid runtime lane to stamp on the streamed events (default hosted_khala). */
   runtimeLane?: KhalaRuntimeLane | undefined
+  /**
+   * MM-C5 (#8477) branch/PR writeback. When present, the microVM pushes a
+   * scoped branch (and optionally opens a PR) under the user's own GitHub
+   * authorization after staging its change, then POSTs the outcome to the
+   * Worker writeback route. Absent = no writeback (the proven money-path turn).
+   * The block threaded into the work-context carries NO credential.
+   */
+  writeback?:
+    | Readonly<{
+        mode?: 'branch_only' | 'pull_request' | undefined
+        branch?: string | undefined
+        baseBranch?: string | undefined
+      }>
+    | undefined
 }>
 
 /** Placement launch result the injected launch seam resolves to. */
@@ -348,6 +363,23 @@ export const dispatchCloudGcpRuntimeTurn = async (
         ? {}
         : { noMeterSecret: resolved.inference.noMeterSecret }),
     })
+    const writebackConfig =
+      turn.writeback === undefined
+        ? undefined
+        : buildCloudRuntimeWritebackConfig({
+            repositoryFullName: turn.repo,
+            turnId: turn.turnId,
+            baseBranch: turn.branch ?? undefined,
+            ...(turn.writeback.branch === undefined
+              ? {}
+              : { branch: turn.writeback.branch }),
+            ...(turn.writeback.baseBranch === undefined
+              ? {}
+              : { baseBranch: turn.writeback.baseBranch }),
+            ...(turn.writeback.mode === undefined
+              ? {}
+              : { mode: turn.writeback.mode }),
+          })
     const workContext = buildCloudRuntimeWorkContext({
       commit: turn.commit,
       inference: inferenceConfig,
@@ -357,6 +389,7 @@ export const dispatchCloudGcpRuntimeTurn = async (
       workContextRef: turn.workContextRef,
       ...(turn.branch === undefined ? {} : { branch: turn.branch }),
       ...(turn.objective === undefined ? {} : { objective: turn.objective }),
+      ...(writebackConfig === undefined ? {} : { writeback: writebackConfig }),
     })
     const workContextB64 = encodeWorkContextB64(workContext)
 

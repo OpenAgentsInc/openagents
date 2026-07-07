@@ -3,8 +3,12 @@ import { describe, expect, test } from 'vitest'
 import {
   CLOUD_RUNTIME_DEFAULT_BRANCH,
   CLOUD_RUNTIME_INFERENCE_DEFAULT_LANE,
+  CLOUD_RUNTIME_WRITEBACK_BRANCH_PREFIX,
+  CLOUD_RUNTIME_WRITEBACK_DEFAULT_INGEST_PATH,
+  CLOUD_RUNTIME_WRITEBACK_DEFAULT_MODE,
   buildCloudRuntimeInferenceConfig,
   buildCloudRuntimeWorkContext,
+  buildCloudRuntimeWritebackConfig,
   decodeWorkContextB64,
   encodeWorkContextB64,
 } from './khala-cloud-runtime-inference-block'
@@ -79,6 +83,102 @@ describe('buildCloudRuntimeWorkContext', () => {
     expect(wc.inference).toBe(inference)
     expect(wc.threadRef).toBe('thread.t1')
     expect(wc.repo).toBe('octocat/Hello-World')
+  })
+})
+
+describe('buildCloudRuntimeWritebackConfig (MM-C5 #8477)', () => {
+  test('defaults: deterministic scoped branch, pull_request mode, default ingest path', () => {
+    const wb = buildCloudRuntimeWritebackConfig({
+      repositoryFullName: 'AgentFlampy/agent-computer-proof',
+      turnId: 'turn.seam-a.abc-123',
+    })
+    expect(wb.repositoryFullName).toBe('AgentFlampy/agent-computer-proof')
+    expect(wb.baseBranch).toBe(CLOUD_RUNTIME_DEFAULT_BRANCH)
+    expect(wb.mode).toBe(CLOUD_RUNTIME_WRITEBACK_DEFAULT_MODE)
+    expect(wb.ingestPath).toBe(CLOUD_RUNTIME_WRITEBACK_DEFAULT_INGEST_PATH)
+    expect(wb.branch.startsWith(CLOUD_RUNTIME_WRITEBACK_BRANCH_PREFIX)).toBe(true)
+    // deterministic from the turn id (same turn => same branch => same PR).
+    expect(wb.branch).toBe(
+      buildCloudRuntimeWritebackConfig({
+        repositoryFullName: 'AgentFlampy/agent-computer-proof',
+        turnId: 'turn.seam-a.abc-123',
+      }).branch,
+    )
+    // the scoped branch is never the base branch.
+    expect(wb.branch).not.toBe(wb.baseBranch)
+  })
+
+  test('scoped branch sanitizes unsafe turn-id characters', () => {
+    const wb = buildCloudRuntimeWritebackConfig({
+      repositoryFullName: 'o/n',
+      turnId: 'turn/with spaces & weird:chars',
+    })
+    expect(/^pylon\/agent-computer-[A-Za-z0-9._-]+$/.test(wb.branch)).toBe(true)
+    expect(wb.branch).not.toContain(' ')
+  })
+
+  test('honors branch_only + a caller-pinned scoped branch and base branch', () => {
+    const wb = buildCloudRuntimeWritebackConfig({
+      baseBranch: 'develop',
+      branch: 'pylon/agent-computer-custom',
+      mode: 'branch_only',
+      repositoryFullName: 'o/n',
+      turnId: 'turn.1',
+    })
+    expect(wb.mode).toBe('branch_only')
+    expect(wb.branch).toBe('pylon/agent-computer-custom')
+    expect(wb.baseBranch).toBe('develop')
+  })
+
+  test('rejects a caller-pinned branch that is not scoped or equals the base', () => {
+    const notScoped = buildCloudRuntimeWritebackConfig({
+      branch: 'main',
+      repositoryFullName: 'o/n',
+      turnId: 'turn.1',
+    })
+    expect(notScoped.branch.startsWith(CLOUD_RUNTIME_WRITEBACK_BRANCH_PREFIX)).toBe(true)
+    const equalsBase = buildCloudRuntimeWritebackConfig({
+      baseBranch: 'pylon/x',
+      branch: 'pylon/x',
+      repositoryFullName: 'o/n',
+      turnId: 'turn.1',
+    })
+    expect(equalsBase.branch).not.toBe('pylon/x')
+  })
+
+  test('work-context threads the writeback block only when provided (no credential)', () => {
+    const inference = buildCloudRuntimeInferenceConfig({
+      agentToken: 'oa_agent_secret',
+      baseUrl: 'https://x',
+      model: 'm',
+      ownerUserId: 'github:300914913',
+    })
+    const without = buildCloudRuntimeWorkContext({
+      commit: '7fd1a60b01f91b314f59955a4e4d4e80d8edf11d',
+      inference,
+      repo: 'AgentFlampy/agent-computer-proof',
+      threadRef: 'thread.t1',
+      turnId: 'turn.t1',
+      workContextRef: 'wc1',
+    })
+    expect('writeback' in without).toBe(false)
+    const writeback = buildCloudRuntimeWritebackConfig({
+      repositoryFullName: 'AgentFlampy/agent-computer-proof',
+      turnId: 'turn.t1',
+    })
+    const withWb = buildCloudRuntimeWorkContext({
+      commit: '7fd1a60b01f91b314f59955a4e4d4e80d8edf11d',
+      inference,
+      repo: 'AgentFlampy/agent-computer-proof',
+      threadRef: 'thread.t1',
+      turnId: 'turn.t1',
+      workContextRef: 'wc1',
+      writeback,
+    })
+    expect(withWb.writeback).toEqual(writeback)
+    // the writeback block never carries a token/secret field.
+    expect(JSON.stringify(withWb.writeback)).not.toContain('oa_agent_secret')
+    expect(JSON.stringify(withWb.writeback)).not.toMatch(/token|secret|password/i)
   })
 })
 

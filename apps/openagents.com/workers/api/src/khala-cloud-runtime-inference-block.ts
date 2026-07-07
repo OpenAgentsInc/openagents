@@ -31,6 +31,19 @@ export type CloudRuntimeInferenceConfig = Readonly<{
   noMeterSecret?: string
 }>
 
+/**
+ * The turn-runner's `WritebackConfig` (MM-C5 #8477), re-stated as the builder's
+ * output. PUBLIC-SAFE ONLY — it carries NO credential. The microVM brokers a
+ * short-lived GitHub credential at push time (`noRawUserOAuthTokens: true`).
+ */
+export type CloudRuntimeWritebackConfig = Readonly<{
+  ingestPath: string
+  repositoryFullName: string
+  baseBranch: string
+  branch: string
+  mode: 'branch_only' | 'pull_request'
+}>
+
 /** The turn-runner's `WorkContext`, re-stated as the builder's output. */
 export type CloudRuntimeWorkContext = Readonly<{
   workContextRef: string
@@ -41,12 +54,62 @@ export type CloudRuntimeWorkContext = Readonly<{
   branch: string
   objective: string
   inference: CloudRuntimeInferenceConfig
+  writeback?: CloudRuntimeWritebackConfig
 }>
 
 /** Default lane the ingest route accepts for the hosted-Khala model turn. */
 export const CLOUD_RUNTIME_INFERENCE_DEFAULT_LANE = 'hosted_khala'
 /** Default branch when a work-context does not pin one. */
 export const CLOUD_RUNTIME_DEFAULT_BRANCH = 'main'
+/** The Worker writeback ingest route the microVM POSTs its outcome to (#8477). */
+export const CLOUD_RUNTIME_WRITEBACK_DEFAULT_INGEST_PATH =
+  '/api/khala/cloud/runtime-turn-writeback'
+/** Default writeback mode when a work-context does not choose one. */
+export const CLOUD_RUNTIME_WRITEBACK_DEFAULT_MODE = 'pull_request' as const
+/** Scoped-branch prefix. The microVM refuses any push that is not under it. */
+export const CLOUD_RUNTIME_WRITEBACK_BRANCH_PREFIX = 'pylon/agent-computer-'
+
+export type BuildWritebackConfigInput = Readonly<{
+  repositoryFullName: string
+  turnId: string
+  baseBranch?: string | undefined
+  branch?: string | undefined
+  mode?: 'branch_only' | 'pull_request' | undefined
+  ingestPath?: string | undefined
+}>
+
+/**
+ * Build the public-safe `writeback` block. The scoped branch is deterministic
+ * from the turn id (so a retried turn lands on the same branch, never a new
+ * one), always under {@link CLOUD_RUNTIME_WRITEBACK_BRANCH_PREFIX}, never the
+ * base branch. Carries NO credential — the microVM brokers one at push time.
+ */
+export const buildCloudRuntimeWritebackConfig = (
+  input: BuildWritebackConfigInput,
+): CloudRuntimeWritebackConfig => {
+  const baseBranch =
+    input.baseBranch !== undefined && input.baseBranch.length > 0
+      ? input.baseBranch
+      : CLOUD_RUNTIME_DEFAULT_BRANCH
+  const scoped = `${CLOUD_RUNTIME_WRITEBACK_BRANCH_PREFIX}${input.turnId
+    .replace(/[^A-Za-z0-9._-]/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80)}`
+  const branch =
+    input.branch !== undefined &&
+    input.branch.startsWith('pylon/') &&
+    input.branch !== baseBranch
+      ? input.branch
+      : scoped
+  return {
+    baseBranch,
+    branch,
+    ingestPath: input.ingestPath ?? CLOUD_RUNTIME_WRITEBACK_DEFAULT_INGEST_PATH,
+    mode: input.mode ?? CLOUD_RUNTIME_WRITEBACK_DEFAULT_MODE,
+    repositoryFullName: input.repositoryFullName,
+  }
+}
 
 export type BuildInferenceConfigInput = Readonly<{
   baseUrl: string
@@ -93,6 +156,7 @@ export type BuildWorkContextInput = Readonly<{
   branch?: string | undefined
   objective?: string | undefined
   inference: CloudRuntimeInferenceConfig
+  writeback?: CloudRuntimeWritebackConfig | undefined
 }>
 
 /** Build the full work-context object the turn-runner reads from `/tmp/wc.json`. */
@@ -109,6 +173,7 @@ export const buildCloudRuntimeWorkContext = (
   threadRef: input.threadRef,
   turnId: input.turnId,
   workContextRef: input.workContextRef,
+  ...(input.writeback === undefined ? {} : { writeback: input.writeback }),
 })
 
 /**

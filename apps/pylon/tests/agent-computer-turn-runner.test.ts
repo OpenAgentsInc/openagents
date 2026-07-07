@@ -3,15 +3,27 @@ import { describe, expect, test } from 'bun:test'
 import {
   AGENT_COMPUTER_DEFAULT_PROVIDER,
   AGENT_COMPUTER_RECEIPT_LANE,
+  GITHUB_SCM_AUTH_BROKER_HELPER_REF,
+  GITHUB_SCM_AUTH_BROKER_PATH,
+  GITHUB_SCM_AUTH_BROKER_REQUEST_SCHEMA,
   INFERENCE_ORG_CLOUD_RUNTIME_NO_METER_HEADER,
+  KHALA_AGENT_COMPUTER_WRITEBACK_INGEST_PATH,
+  KHALA_AGENT_COMPUTER_WRITEBACK_SCHEMA_VERSION,
   KHALA_CLOUD_RUNTIME_USAGE_INGEST_PATH,
   KHALA_CLOUD_RUNTIME_USAGE_SCHEMA_VERSION,
+  brokerGitCredential,
   chatCompletionUsage,
   chatCompletionText,
   chatCompletionsRequest,
+  classifyPushFailure,
+  gitCredentialBrokerRequest,
+  parseRepoFullName,
   runModelTurnReceipt,
+  runWritebackForTurn,
   usageIngestBody,
+  type GitRun,
   type InferenceConfig,
+  type WritebackConfig,
 } from '../deploy/agent-computer/turn-runner.ts'
 
 const inference: InferenceConfig = {
@@ -333,5 +345,282 @@ describe('agent-computer turn-runner: runModelTurnReceipt (mock fetch)', () => {
       expect(result.status).toBe(403)
       expect(result.error).toBe('owner mismatch')
     }
+  })
+})
+
+// ---------------------------------------------------------------------------
+// MM-C5 (#8477): branch/PR writeback under the user's GitHub authorization.
+// ---------------------------------------------------------------------------
+
+const writeback: WritebackConfig = {
+  baseBranch: 'main',
+  branch: 'pylon/agent-computer-turn-proof-1',
+  ingestPath: KHALA_AGENT_COMPUTER_WRITEBACK_INGEST_PATH,
+  mode: 'pull_request',
+  repositoryFullName: 'AgentFlampy/agent-computer-proof',
+}
+
+const BROKER_TOKEN = 'gho_fake_broker_token_never_serialized'
+
+/** A gitRun spy that records every invocation and always succeeds. */
+const recordingGitRun = () => {
+  const calls: Array<string[]> = []
+  const gitRun: GitRun = (_cwd, args) => {
+    calls.push(args)
+    return { code: 0, stderr: '', stdout: '' }
+  }
+  return { calls, gitRun }
+}
+
+/** A fetch fake routing broker / GitHub-API / writeback-ingest calls. */
+const writebackFetch = (opts: {
+  broker?: Response
+  pullsPost?: Response
+  pullsList?: Response
+  ingest?: Response
+} = {}) => {
+  const calls: Array<{ url: string; init: RequestInit }> = []
+  const fetchImpl = (async (url: string | URL | Request, init?: RequestInit) => {
+    const u = String(url)
+    calls.push({ init: init ?? {}, url: u })
+    if (u.endsWith(GITHUB_SCM_AUTH_BROKER_PATH)) {
+      return (
+        opts.broker ??
+        new Response(
+          JSON.stringify({ username: 'x-access-token', password: BROKER_TOKEN, expiresAt: '2026-07-07T00:05:00Z' }),
+          { status: 200 },
+        )
+      )
+    }
+    if (u.includes('/pulls?')) {
+      return opts.pullsList ?? new Response(JSON.stringify([]), { status: 200 })
+    }
+    if (u.endsWith('/pulls')) {
+      return (
+        opts.pullsPost ??
+        new Response(
+          JSON.stringify({ html_url: 'https://github.com/AgentFlampy/agent-computer-proof/pull/7', number: 7 }),
+          { status: 201 },
+        )
+      )
+    }
+    if (u.endsWith(KHALA_AGENT_COMPUTER_WRITEBACK_INGEST_PATH)) {
+      return (
+        opts.ingest ??
+        new Response(
+          JSON.stringify({ ok: true, decision: 'recorded', eventId: 'event.private.agent_computer.writeback.abc' }),
+          { status: 200 },
+        )
+      )
+    }
+    return new Response('not found', { status: 404 })
+  }) as unknown as typeof globalThis.fetch
+  return { calls, fetchImpl }
+}
+
+const runWriteback = (
+  fetchImpl: typeof globalThis.fetch,
+  gitRun: GitRun,
+  overrides: Partial<Parameters<typeof runWritebackForTurn>[0]> = {},
+) =>
+  runWritebackForTurn(
+    {
+      changedFileCount: 1,
+      commitMessage: 'chore(agent-computer): staged change',
+      inference,
+      prBody: 'body',
+      prTitle: 'Agent Computer: proof',
+      turnId: 'turn-proof-1',
+      workingDirectory: '/tmp/ws',
+      writeback,
+      ...overrides,
+    },
+    { fetchImpl, gitRun },
+  )
+
+describe('turn-runner writeback: request contracts', () => {
+  test('parseRepoFullName splits owner/name and rejects malformed', () => {
+    expect(parseRepoFullName('AgentFlampy/agent-computer-proof')).toEqual({
+      name: 'agent-computer-proof',
+      owner: 'AgentFlampy',
+    })
+    expect(parseRepoFullName('no-slash')).toBeNull()
+    expect(parseRepoFullName('a/b/c')).toBeNull()
+  })
+
+  test('git credential broker request matches the #8475 broker contract', () => {
+    const req = gitCredentialBrokerRequest(inference, 'AgentFlampy/agent-computer-proof')!
+    expect(req.url).toBe(`${inference.baseUrl}${GITHUB_SCM_AUTH_BROKER_PATH}`)
+    expect(req.headers.Authorization).toBe(`Bearer ${inference.agentToken}`)
+    const body = JSON.parse(req.body)
+    expect(body).toEqual({
+      authRefs: [`github-identity:token:${inference.ownerUserId}`],
+      helperRef: GITHUB_SCM_AUTH_BROKER_HELPER_REF,
+      host: 'github.com',
+      path: '/AgentFlampy/agent-computer-proof',
+      protocol: 'https',
+      repositoryRef: 'repo.github/AgentFlampy/agent-computer-proof',
+      schema: GITHUB_SCM_AUTH_BROKER_REQUEST_SCHEMA,
+    })
+  })
+
+  test('classifyPushFailure maps stderr to public-safe reason refs', () => {
+    expect(classifyPushFailure('remote: Permission to o/n denied to user')).toBe(
+      'writeback.permission.github_write_permission_missing',
+    )
+    expect(classifyPushFailure('! [rejected] main -> main (non-fast-forward)')).toBe(
+      'writeback.branch_update_rejected',
+    )
+    expect(classifyPushFailure('some other transient error')).toBe('writeback.push_failed')
+  })
+
+  test('brokerGitCredential maps HTTP statuses to reason refs', async () => {
+    const at = async (status: number) => {
+      const { fetchImpl } = writebackFetch({ broker: new Response('{}', { status }) })
+      return brokerGitCredential(inference, 'o/n', fetchImpl)
+    }
+    expect((await at(409) as { reasonRef: string }).reasonRef).toBe(
+      'writeback.permission.github_write_connection_required',
+    )
+    expect((await at(403) as { reasonRef: string }).reasonRef).toBe(
+      'writeback.permission.github_write_permission_missing',
+    )
+    expect((await at(401) as { reasonRef: string }).reasonRef).toBe(
+      'writeback.permission.github_write_connection_unusable',
+    )
+  })
+})
+
+describe('turn-runner writeback: runWritebackForTurn', () => {
+  test('happy pull_request: broker -> commit -> push (no force) -> PR -> record', async () => {
+    const { calls, fetchImpl } = writebackFetch()
+    const { calls: gitCalls, gitRun } = recordingGitRun()
+    const result = await runWriteback(fetchImpl, gitRun)
+
+    expect(result.outcome.status).toBe('pull_request_opened')
+    expect(result.outcome.pullRequestUrl).toBe(
+      'https://github.com/AgentFlampy/agent-computer-proof/pull/7',
+    )
+    expect(result.outcome.pullRequestNumber).toBe(7)
+    expect(result.outcome.changedFileCount).toBe(1)
+    expect(result.recorded).toBe(true)
+    expect(result.recordDecision).toBe('recorded')
+
+    // Exactly one push, to the scoped branch, NEVER force, NEVER the base.
+    const pushCalls = gitCalls.filter(a => a[0] === 'push')
+    expect(pushCalls).toHaveLength(1)
+    const push = pushCalls[0]!
+    expect(push).toContain('HEAD:refs/heads/pylon/agent-computer-turn-proof-1')
+    expect(push).not.toContain('--force')
+    expect(push).not.toContain('-f')
+    expect(push.join(' ')).not.toContain('main:refs/heads/main')
+
+    // A real commit happened before the push.
+    expect(gitCalls.some(a => a.includes('commit'))).toBe(true)
+
+    // The ingest body matches the server schema and the owner attribution.
+    const ingest = calls.find(c => c.url.endsWith(KHALA_AGENT_COMPUTER_WRITEBACK_INGEST_PATH))!
+    const ingestBody = JSON.parse(ingest.init.body as string)
+    expect(ingestBody.schemaVersion).toBe(KHALA_AGENT_COMPUTER_WRITEBACK_SCHEMA_VERSION)
+    expect(ingestBody.ownerUserId).toBe(inference.ownerUserId)
+    expect(ingestBody.turnId).toBe('turn-proof-1')
+    expect(ingestBody.outcome.status).toBe('pull_request_opened')
+
+    // The brokered token and the agent bearer never appear in the outcome/result.
+    expect(JSON.stringify(result.outcome)).not.toContain(BROKER_TOKEN)
+    expect(JSON.stringify(result)).not.toContain(BROKER_TOKEN)
+    expect(JSON.stringify(result)).not.toContain(inference.agentToken)
+    // git push URL embedded the token but never in a git argv we serialize here.
+    expect(JSON.stringify(gitCalls)).toContain(BROKER_TOKEN) // sanity: it IS in the git argv
+  })
+
+  test('branch_only mode pushes the branch but never opens a PR', async () => {
+    const { calls, fetchImpl } = writebackFetch()
+    const { calls: gitCalls, gitRun } = recordingGitRun()
+    const result = await runWriteback(fetchImpl, gitRun, {
+      writeback: { ...writeback, mode: 'branch_only' },
+    })
+    expect(result.outcome.status).toBe('branch_pushed')
+    expect(result.outcome.pullRequestUrl).toBeUndefined()
+    expect(calls.some(c => c.url.endsWith('/pulls'))).toBe(false)
+    expect(gitCalls.filter(a => a[0] === 'push')).toHaveLength(1)
+    expect(result.recorded).toBe(true)
+  })
+
+  test('broker failure => typed failed outcome, no push, still recorded', async () => {
+    const { calls, fetchImpl } = writebackFetch({ broker: new Response('{}', { status: 409 }) })
+    const { calls: gitCalls, gitRun } = recordingGitRun()
+    const result = await runWriteback(fetchImpl, gitRun)
+    expect(result.outcome.status).toBe('failed')
+    expect(result.outcome.reasonRef).toBe('writeback.permission.github_write_connection_required')
+    expect(gitCalls.some(a => a[0] === 'push')).toBe(false)
+    // the failed outcome is still POSTed so the thread shows an honest state.
+    expect(calls.some(c => c.url.endsWith(KHALA_AGENT_COMPUTER_WRITEBACK_INGEST_PATH))).toBe(true)
+  })
+
+  test('push permission failure => typed failed outcome (raw stderr never surfaced)', async () => {
+    const { fetchImpl } = writebackFetch()
+    const gitRun: GitRun = (_cwd, args) => {
+      if (args[0] === 'push') {
+        return { code: 1, stderr: 'remote: Permission to AgentFlampy/x denied to bot.', stdout: '' }
+      }
+      return { code: 0, stderr: '', stdout: '' }
+    }
+    const result = await runWriteback(fetchImpl, gitRun)
+    expect(result.outcome.status).toBe('failed')
+    expect(result.outcome.reasonRef).toBe('writeback.permission.github_write_permission_missing')
+    expect(JSON.stringify(result)).not.toContain('denied to bot')
+  })
+
+  test('non-scoped branch is rejected before any broker/push', async () => {
+    const { calls, fetchImpl } = writebackFetch()
+    const { calls: gitCalls, gitRun } = recordingGitRun()
+    const result = await runWriteback(fetchImpl, gitRun, {
+      writeback: { ...writeback, branch: 'main' },
+    })
+    expect(result.outcome.status).toBe('failed')
+    expect(result.outcome.reasonRef).toBe('writeback.branch_refspec_rejected')
+    expect(calls.some(c => c.url.endsWith(GITHUB_SCM_AUTH_BROKER_PATH))).toBe(false)
+    expect(gitCalls.some(a => a[0] === 'push')).toBe(false)
+  })
+
+  test('existing PR (422) => reused, links the open PR', async () => {
+    const { fetchImpl } = writebackFetch({
+      pullsPost: new Response(JSON.stringify({ message: 'A pull request already exists' }), { status: 422 }),
+      pullsList: new Response(
+        JSON.stringify([{ html_url: 'https://github.com/AgentFlampy/agent-computer-proof/pull/3', number: 3 }]),
+        { status: 200 },
+      ),
+    })
+    const { gitRun } = recordingGitRun()
+    const result = await runWriteback(fetchImpl, gitRun)
+    expect(result.outcome.status).toBe('pull_request_reused')
+    expect(result.outcome.pullRequestNumber).toBe(3)
+  })
+
+  test('PR open failure after a successful push degrades to branch_pushed', async () => {
+    const { fetchImpl } = writebackFetch({
+      pullsPost: new Response('{}', { status: 500 }),
+      pullsList: new Response(JSON.stringify([]), { status: 200 }),
+    })
+    const { gitRun } = recordingGitRun()
+    const result = await runWriteback(fetchImpl, gitRun)
+    expect(result.outcome.status).toBe('branch_pushed')
+    expect(result.outcome.pullRequestUrl).toBeUndefined()
+  })
+
+  test('a rejected ingest (server gate blocked) surfaces recorded=false honestly', async () => {
+    const { fetchImpl } = writebackFetch({
+      ingest: new Response(
+        JSON.stringify({ ok: false, decision: 'permission_blocked', reason: 'github_write_connection_required' }),
+        { status: 200 },
+      ),
+    })
+    const { gitRun } = recordingGitRun()
+    const result = await runWriteback(fetchImpl, gitRun)
+    // the microVM pushed, but the server gate blocked the success record.
+    expect(result.outcome.status).toBe('pull_request_opened')
+    expect(result.recorded).toBe(false)
+    expect(result.recordDecision).toBe('permission_blocked')
   })
 })
