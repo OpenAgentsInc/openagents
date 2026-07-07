@@ -3,6 +3,8 @@ import { SyncScope } from "@openagentsinc/khala-sync"
 import type { ConfirmedEntity, KhalaSyncLocalStore, KhalaSyncOverlay, KhalaSyncSession } from "@openagentsinc/khala-sync-client"
 import { Effect } from "effect"
 
+import { beaconSyncDebug } from "./sync-debug-beacon"
+
 /**
  * Local-first, delta-synced read of one Khala Sync scope/entity-type pair,
  * backed directly by the already-durable Expo SQLite store + overlay +
@@ -135,6 +137,9 @@ export function useKhalaSyncScopeEntities<T>(
           })
         }
         const { error, status } = resolveScopeEntitiesStatusAndError(phase, items.length)
+        // TEMP-DIAG-8467: report the exact drive phase → UI status so we can
+        // see where a signed-in empty-scope load gets stuck on-device.
+        beaconSyncDebug({ entityType, itemCount: items.length, phase, scope, status })
         if (status !== "loading") resolved = true
         // Sticky watchdog error: once the watchdog has fired, a later
         // refresh may only REPLACE it with a real resolution (ready, or a
