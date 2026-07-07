@@ -104,6 +104,11 @@
     // bridge is no longer written. Also re-homes the public tassadar-run-summary
     // + proof-replay READ path off dead D1. Set to "d1" to roll back.
     "KHALA_SYNC_TRAINING_WRITES": "postgres",
+    // CFG D1 evacuation (#8515): remaining adapter-safe non-money domain WRITE
+    // cutovers. Each moves that domain's authoritative reads AND writes onto
+    // the Postgres-backed D1 adapter (mirror disabled); set to "d1" to roll
+    // back a single domain. Code defaults to postgres too.
+    "KHALA_SYNC_GYM_EVALS_WRITES": "postgres",
     "KHALA_SYNC_TREASURY_READS": "postgres",
     // CFG D1 evacuation (#8515): the Cloudflare D1 bridge is 401-dead, so the
     // forum read/write surface (topic lists, threads, new posts) must serve

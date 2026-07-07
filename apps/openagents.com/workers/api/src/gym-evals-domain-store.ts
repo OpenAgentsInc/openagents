@@ -55,6 +55,12 @@ import {
   type MakeKhalaSyncPushSqlClient,
 } from './khala-sync-push-routes'
 import {
+  makeKhalaSyncWritesDatabase,
+  parseKhalaSyncWritesMode,
+  type KhalaSyncWritesMode,
+  type MakeKhalaSyncWritesDatabaseOptions,
+} from './khala-sync-domain-writes-database'
+import {
   makeD1R2HarborFullTraceArchiveStore,
   type HarborFullTraceArchiveStore,
 } from './inference/gym/harbor-full-trace-archive-store'
@@ -88,11 +94,18 @@ export type GymEvalsReadsMode = 'd1' | 'postgres' | 'compare'
 export type GymEvalsFlags = Readonly<{
   dualWrite: boolean
   reads: GymEvalsReadsMode
+  /**
+   * #8515 WRITE cutover: `postgres` (default) makes the Postgres-backed D1
+   * adapter the authoritative gym/evals store — reads AND writes leave the
+   * 401-dead D1 bridge. `d1` restores the D1-authority + best-effort mirror.
+   */
+  writes: KhalaSyncWritesMode
 }>
 
 export type GymEvalsFlagEnv = Readonly<{
   KHALA_SYNC_GYM_EVALS_DUAL_WRITE?: string | undefined
   KHALA_SYNC_GYM_EVALS_READS?: string | undefined
+  KHALA_SYNC_GYM_EVALS_WRITES?: string | undefined
 }>
 
 const FLAG_OFF_VALUES = new Set(['0', 'off', 'false', 'disabled', 'no'])
@@ -114,6 +127,7 @@ export const gymEvalsFlagsFromEnv = (env: GymEvalsFlagEnv): GymEvalsFlags => {
       dualWriteRaw === undefined || !FLAG_OFF_VALUES.has(dualWriteRaw),
     reads:
       readsRaw === 'postgres' || readsRaw === 'compare' ? readsRaw : 'd1',
+    writes: parseKhalaSyncWritesMode(env.KHALA_SYNC_GYM_EVALS_WRITES),
   }
 }
 
@@ -390,8 +404,32 @@ export type GymEvalsStoreEnv = GymEvalsFlagEnv &
 export type MakeGymEvalsStoreOptions = Readonly<{
   /** Injectable client factory (tests). Default: postgres.js/Hyperdrive. */
   makeSqlClient?: MakeKhalaSyncPushSqlClient | undefined
+  /** Injectable adapter client factory for the #8515 Postgres write
+   * authority (tests). */
+  makeD1Client?: MakeKhalaSyncWritesDatabaseOptions['makeD1Client']
   log?: GymEvalsLog | undefined
 }>
+
+/**
+ * #8515 WRITE cutover: the authoritative gym/evals `D1Database` handle. When
+ * `KHALA_SYNC_GYM_EVALS_WRITES=postgres` (default) AND the KHALA_SYNC_DB
+ * binding exists, this is the Postgres-backed D1 adapter; otherwise plain D1.
+ */
+const gymEvalsWritesDatabaseForEnv = (
+  env: GymEvalsStoreEnv,
+  options: MakeGymEvalsStoreOptions,
+): D1Database => {
+  const flags = gymEvalsFlagsFromEnv(env)
+  if (flags.writes === 'postgres') {
+    const postgresDb = makeKhalaSyncWritesDatabase(env, {
+      makeD1Client: options.makeD1Client,
+    })
+    if (postgresDb !== undefined) {
+      return postgresDb
+    }
+  }
+  return openAgentsDatabase(env as { OPENAGENTS_DB: D1Database })
+}
 
 const defaultLog: GymEvalsLog = (event, fields) => {
   logWorkerRouteWarning(event, {
@@ -429,6 +467,12 @@ export const makeGymEvalsDomainMirrorForEnv = (
   if (!flags.dualWrite) {
     return undefined
   }
+  // #8515: when writes go straight to Postgres via the D1 adapter, the
+  // D1 -> Postgres read-back mirror is redundant AND would read the dead D1
+  // bridge. Disable it — the adapter `base` is the single Postgres authority.
+  if (flags.writes === 'postgres') {
+    return undefined
+  }
   const postgres = postgresStoreForEnv(env, options)
   if (postgres === undefined) {
     return undefined
@@ -460,7 +504,7 @@ export const makeGymRunProgressStoreForEnv = (
   options: MakeGymEvalsStoreOptions = {},
 ): GymRunProgressStore => {
   const base = makeD1GymRunProgressStore(
-    openAgentsDatabase(env as { OPENAGENTS_DB: D1Database }),
+    gymEvalsWritesDatabaseForEnv(env, options),
   )
   const mirror = makeGymEvalsDomainMirrorForEnv(env, options)
   if (mirror === undefined) {
@@ -487,7 +531,7 @@ export const makeMirrorCodeRunStoreForEnv = (
   options: MakeGymEvalsStoreOptions = {},
 ): MirrorCodeRunStore => {
   const base = makeD1MirrorCodeRunStore(
-    openAgentsDatabase(env as { OPENAGENTS_DB: D1Database }),
+    gymEvalsWritesDatabaseForEnv(env, options),
   )
   const mirror = makeGymEvalsDomainMirrorForEnv(env, options)
   if (mirror === undefined) {
@@ -512,7 +556,7 @@ export const makeGymLadderStoreForEnv = (
   options: MakeGymEvalsStoreOptions = {},
 ): GymLadderStore => {
   const base = makeD1GymLadderStore(
-    openAgentsDatabase(env as { OPENAGENTS_DB: D1Database }),
+    gymEvalsWritesDatabaseForEnv(env, options),
   )
   const mirror = makeGymEvalsDomainMirrorForEnv(env, options)
   if (mirror === undefined) {
@@ -543,7 +587,7 @@ export const makeMutaliskKhalaDelegationWorkflowStoreForEnv = (
   options: MakeGymEvalsStoreOptions = {},
 ): MutaliskKhalaDelegationWorkflowStore => {
   const base = makeD1MutaliskKhalaDelegationWorkflowStore(
-    openAgentsDatabase(env as { OPENAGENTS_DB: D1Database }),
+    gymEvalsWritesDatabaseForEnv(env, options),
   )
   const mirror = makeGymEvalsDomainMirrorForEnv(env, options)
   if (mirror === undefined) {
@@ -585,7 +629,7 @@ export const makeHarborFullTraceArchiveStoreForEnv = (
   options: MakeGymEvalsStoreOptions = {},
 ): HarborFullTraceArchiveStore => {
   const base = makeD1R2HarborFullTraceArchiveStore(
-    openAgentsDatabase(env as { OPENAGENTS_DB: D1Database }),
+    gymEvalsWritesDatabaseForEnv(env, options),
     bucket,
   )
   const mirror = makeGymEvalsDomainMirrorForEnv(env, options)

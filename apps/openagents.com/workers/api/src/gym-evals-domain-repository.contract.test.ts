@@ -36,11 +36,13 @@ import {
   makeD1GymEvalsDomainWriteStore,
   makeDualWriteGymEvalsDomainWriteStore,
   makeGymEvalsDomainMirror,
+  makeGymEvalsDomainMirrorForEnv,
   makePostgresGymEvalsDomainStore,
   type GymEvalsDiagnostic,
   type GymEvalsDiagnosticEvent,
   type GymEvalsDomainRow,
   type GymEvalsDomainWriteStore,
+  type GymEvalsStoreEnv,
 } from './gym-evals-domain-store'
 import { GYM_EVALS_DOMAIN_D1_SCHEMA, makeSqliteD1 } from './test/sqlite-d1'
 
@@ -405,8 +407,19 @@ describe.skipIf(!hasLocalPostgres())(
 // ---------------------------------------------------------------------------
 
 describe('gym/evals domain seam', () => {
-  test('flags: dual-write defaults ON, reads default d1, typos never fail open', () => {
-    expect(gymEvalsFlagsFromEnv({})).toEqual({ dualWrite: true, reads: 'd1' })
+  test('flags: dual-write defaults ON, reads default d1, writes default postgres, typos never fail open', () => {
+    expect(gymEvalsFlagsFromEnv({})).toEqual({
+      dualWrite: true,
+      reads: 'd1',
+      writes: 'postgres',
+    })
+    // #8515 WRITE cutover: default postgres; only an explicit 'd1' opts out.
+    expect(
+      gymEvalsFlagsFromEnv({ KHALA_SYNC_GYM_EVALS_WRITES: 'd1' }).writes,
+    ).toBe('d1')
+    expect(
+      gymEvalsFlagsFromEnv({ KHALA_SYNC_GYM_EVALS_WRITES: 'postgrse' }).writes,
+    ).toBe('postgres')
     expect(
       gymEvalsFlagsFromEnv({ KHALA_SYNC_GYM_EVALS_DUAL_WRITE: 'off' })
         .dualWrite,
@@ -420,6 +433,30 @@ describe('gym/evals domain seam', () => {
     expect(
       gymEvalsFlagsFromEnv({ KHALA_SYNC_GYM_EVALS_READS: 'postgrse' }).reads,
     ).toBe('d1')
+  })
+
+  test('#8515 writes cutover: the D1->Postgres mirror is DISABLED when writes=postgres and ACTIVE on the d1 rollback path', () => {
+    const sqlite = makeSqliteD1()
+    try {
+      const baseEnv = {
+        KHALA_SYNC_DB: { connectionString: 'postgres://scripted/test' },
+        OPENAGENTS_DB: sqlite.db,
+      }
+      // Default (postgres): base runs on the adapter, so the read-back mirror
+      // is redundant and disabled.
+      expect(
+        makeGymEvalsDomainMirrorForEnv(baseEnv as unknown as GymEvalsStoreEnv),
+      ).toBeUndefined()
+      // Explicit d1 rollback: the dual-write mirror is active again.
+      expect(
+        makeGymEvalsDomainMirrorForEnv({
+          ...baseEnv,
+          KHALA_SYNC_GYM_EVALS_WRITES: 'd1',
+        } as unknown as GymEvalsStoreEnv),
+      ).toBeDefined()
+    } finally {
+      sqlite.close()
+    }
   })
 
   test('dual-write: a Postgres mirror failure NEVER fails the D1 write; the drift metric fires with refs only', async () => {
@@ -440,7 +477,7 @@ describe('gym/evals domain seam', () => {
     }
     const store = makeDualWriteGymEvalsDomainWriteStore({
       d1,
-      flags: { dualWrite: true, reads: 'd1' },
+      flags: { dualWrite: true, reads: 'd1', writes: 'd1' },
       log: (event, fields) => logged.push({ event, fields }),
       postgres: failing,
     })
@@ -466,7 +503,7 @@ describe('gym/evals domain seam', () => {
     }
     const offStore = makeDualWriteGymEvalsDomainWriteStore({
       d1,
-      flags: { dualWrite: false, reads: 'd1' },
+      flags: { dualWrite: false, reads: 'd1', writes: 'd1' },
       postgres: neverCalled,
     })
     expect(
@@ -474,7 +511,7 @@ describe('gym/evals domain seam', () => {
     ).toBe(1)
     const unboundStore = makeDualWriteGymEvalsDomainWriteStore({
       d1,
-      flags: { dualWrite: true, reads: 'd1' },
+      flags: { dualWrite: true, reads: 'd1', writes: 'd1' },
       postgres: undefined,
     })
     expect(
