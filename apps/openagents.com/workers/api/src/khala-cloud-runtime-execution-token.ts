@@ -48,6 +48,28 @@ export const CLOUD_RUNTIME_EXECUTION_TOKEN_NAME =
 export const CLOUD_RUNTIME_EXECUTION_TOKEN_ID_PREFIX =
   'agentcred.seam-a.cloud-runtime'
 
+/**
+ * Stable system AGENT user the minted credential's `user_id` points at.
+ *
+ * WHY A SYSTEM AGENT USER, NOT THE OWNER. The inference-gateway auth gate
+ * (`findAgentByTokenHash`) resolves a bearer's `agent_credentials.user_id`
+ * against the `users` table filtered to `kind='agent' AND status='active'`, and
+ * REJECTS (401) when it does not resolve. The turn OWNER is a human/OpenAuth
+ * user (`github:…`), NOT an agent-kind user, so a credential minted with
+ * `user_id = ownerUserId` can never authenticate the microVM's inference call.
+ * So `user_id` is this stable service-agent identity (ensured to exist at mint),
+ * while OWNER ATTRIBUTION rides `openauth_user_id = ownerUserId`: the single
+ * billable `token_usage_events` receipt is attributed by the receipt BODY's
+ * `ownerUserId`, gated by `requireOwnerPostingAuthority` matching this
+ * credential's `openauth_user_id`. Attribution is unchanged; auth now resolves.
+ */
+export const CLOUD_RUNTIME_EXECUTION_TOKEN_AGENT_USER_ID =
+  'agent.openagents-agent-computer'
+
+/** Display name for the {@link CLOUD_RUNTIME_EXECUTION_TOKEN_AGENT_USER_ID} row. */
+export const CLOUD_RUNTIME_EXECUTION_TOKEN_AGENT_DISPLAY_NAME =
+  'OpenAgents Agent Computer'
+
 /** The raw-token half of a mint, returned to the caller EXACTLY ONCE. */
 export type MintedExecutionToken = Readonly<{
   /** `agent_credentials.id` — the handle to revoke after the turn. */
@@ -108,14 +130,27 @@ export const mintCloudRuntimeExecutionToken = async (
   const tokenHash = await hash(rawToken)
   const tokenPrefix = rawToken.slice(0, 20)
 
+  // Ensure the stable service-agent user exists so the inference-gateway auth
+  // gate (`kind='agent' AND status='active'`) resolves this credential's
+  // `user_id`. Idempotent — a concurrent mint just no-ops on conflict.
+  await sql`
+    INSERT INTO users
+      (id, kind, display_name, status, created_at, updated_at)
+    VALUES
+      (${CLOUD_RUNTIME_EXECUTION_TOKEN_AGENT_USER_ID}, 'agent',
+       ${CLOUD_RUNTIME_EXECUTION_TOKEN_AGENT_DISPLAY_NAME}, 'active',
+       ${createdAt}, ${createdAt})
+    ON CONFLICT (id) DO NOTHING
+  `
+
   await sql`
     INSERT INTO agent_credentials
       (id, user_id, openauth_user_id, token_hash, token_prefix, name,
        status, created_at, expires_at)
     VALUES
-      (${credentialId}, ${input.ownerUserId}, ${input.ownerUserId},
-       ${tokenHash}, ${tokenPrefix}, ${CLOUD_RUNTIME_EXECUTION_TOKEN_NAME},
-       'active', ${createdAt}, ${expiresAt})
+      (${credentialId}, ${CLOUD_RUNTIME_EXECUTION_TOKEN_AGENT_USER_ID},
+       ${input.ownerUserId}, ${tokenHash}, ${tokenPrefix},
+       ${CLOUD_RUNTIME_EXECUTION_TOKEN_NAME}, 'active', ${createdAt}, ${expiresAt})
   `
 
   return {

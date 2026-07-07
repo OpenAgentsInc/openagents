@@ -3,6 +3,7 @@ import { describe, expect, test } from 'vitest'
 import type { SyncSql } from '@openagentsinc/khala-sync-server'
 
 import {
+  CLOUD_RUNTIME_EXECUTION_TOKEN_AGENT_USER_ID,
   CLOUD_RUNTIME_EXECUTION_TOKEN_NAME,
   DEFAULT_EXECUTION_TOKEN_TTL_SECONDS,
   mintCloudRuntimeExecutionToken,
@@ -33,7 +34,7 @@ const makeRecordingSql = (
 describe('mintCloudRuntimeExecutionToken', () => {
   const fixedNow = () => '2026-07-07T00:00:00.000Z'
 
-  test('links to ownerUserId, returns the raw token once, and sets a TTL expiry', async () => {
+  test('user_id is the service agent, openauth_user_id is the owner; raw token once + TTL expiry', async () => {
     const { captured, sql } = makeRecordingSql()
     const minted = await mintCloudRuntimeExecutionToken(sql, {
       createToken: () => 'oa_agent_RAWTOKEN0123456789abcdef',
@@ -45,6 +46,7 @@ describe('mintCloudRuntimeExecutionToken', () => {
 
     // raw token returned once, in memory only.
     expect(minted.rawToken).toBe('oa_agent_RAWTOKEN0123456789abcdef')
+    // the mint still reports the OWNER (used for the receipt attribution).
     expect(minted.ownerUserId).toBe('github:14167547')
     // prefix is the first 20 chars, safe for logs.
     expect(minted.tokenPrefix).toBe('oa_agent_RAWTOKEN012')
@@ -58,14 +60,26 @@ describe('mintCloudRuntimeExecutionToken', () => {
       ).toISOString(),
     )
 
+    // ensures the service-agent user exists (idempotent) BEFORE the credential,
+    // so the inference-gateway auth gate (kind='agent') can resolve user_id.
+    const userUpsert = captured.find(
+      c => c.text.includes('INSERT INTO users') && c.text.includes('ON CONFLICT'),
+    )
+    expect(userUpsert).toBeDefined()
+    expect(userUpsert!.values[0]).toBe(CLOUD_RUNTIME_EXECUTION_TOKEN_AGENT_USER_ID)
+    // kind='agent'/status='active' are SQL literals in the template text.
+    expect(userUpsert!.text).toContain("'agent'")
+    expect(userUpsert!.text).toContain("'active'")
+
     // exactly one INSERT into agent_credentials.
     const inserts = captured.filter(c => c.text.includes('INSERT INTO agent_credentials'))
     expect(inserts).toHaveLength(1)
     const values = inserts[0]!.values
     // (id, user_id, openauth_user_id, token_hash, token_prefix, name, created_at, expires_at)
     expect(values[0]).toBe(minted.credentialId)
-    // BOTH user_id and openauth_user_id are owner-linked.
-    expect(values[1]).toBe('github:14167547')
+    // user_id = the service AGENT user (so gateway auth resolves)…
+    expect(values[1]).toBe(CLOUD_RUNTIME_EXECUTION_TOKEN_AGENT_USER_ID)
+    // …openauth_user_id = the OWNER (so the receipt is owner-attributed).
     expect(values[2]).toBe('github:14167547')
     // only the HASH is persisted, never the raw token.
     expect(values[3]).toBe('hash(oa_agent_RAWTOKEN0123456789abcdef)')
