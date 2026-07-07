@@ -17,7 +17,8 @@ Terminology: per the owner rule recorded in
 the testing process is modeled in **Blueprint** vocabulary (Eval Suites,
 oracles, Release Gates, receipts) — our own terms throughout. The QAM
 lanes are sequenced as **Phase P0** of
-`docs/fable/MASTER_ROADMAP.md` (fully-tested MVP first, then Codex).
+`docs/fable/MASTER_ROADMAP.md` (fully-tested, store-submitted MVP first,
+then Sarah, then Codex).
 
 ## 0. The verdict in one paragraph
 

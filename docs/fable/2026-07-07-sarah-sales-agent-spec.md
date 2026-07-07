@@ -10,11 +10,12 @@ two parallel explorations run 2026-07-07: the blitz/legal-lane sales
 vision and the monorepo asset inventory), and specifies the build. Nothing
 here is promise copy; pricing figures are indicative and owner-gated; the
 behavior contracts named in §10 land with their implementation lanes.
-Sequencing: Sarah is a **pulled-forward flagship instance** of the AI
-employee track (`MASTER_ROADMAP.md` P3/P4) run as its own lane family
-(SR-*), justified because she is simultaneously a sales channel, the
-dogfood proof of "we sell AI employees," and the first public tenant of
-the employee substrate.
+Sequencing (MASTER_ROADMAP rev 2, owner-directed): **Sarah is Phase P1**
+— immediately after the store-submitted mobile MVP (P0) and ahead of
+Codex (P2) — with SR-1..3 shipping on the new openagents.com
+React/TanStack Start app, SR-4 voice by P6 at the latest, and SR-5/SR-6
+landing with the P5 template catalog. She remains the flagship instance
+the P4 employee record generalizes from.
 
 ## 0. The owner direction (2026-07-07, recorded in essence)
 

@@ -48,8 +48,9 @@ lanes named here (§4).
 > (structural vs contractual)" as its selling vocabulary.
 >
 > **Update (2026-07-07, final):** execution sequencing of the horizons is
-> consolidated — with the mobile testing system (QAM) first and Codex (CX)
-> second per owner direction — into `docs/fable/MASTER_ROADMAP.md`, which
+> consolidated — rev 2 order: the tested, store-submitted MVP (QAM) first,
+> Sarah the sales agent second, Codex (CX) third, per owner direction —
+> into `docs/fable/MASTER_ROADMAP.md`, which
 > now owns top-level ordering. This doc remains the content authority for
 > the horizon ladder, lane reconciliation, and evidence base.
 

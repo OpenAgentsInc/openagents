@@ -263,8 +263,9 @@ means we deliver, mapped to their own program:
 ## 6. Roadmap implications (deltas to the standing plan)
 
 The horizon ladder (H0–H6) absorbs all of this without resequencing —
-sequenced in `MASTER_ROADMAP.md` (Blueprint-lite brain in P3, canaries and
-data-posture objects in P5, the 15-step assessment in P6); the deltas are:
+sequenced in `MASTER_ROADMAP.md` (rev 2: Blueprint-lite brain in P4,
+canaries and data-posture objects in P6, the 15-step assessment in P7);
+the deltas are:
 
 1. **The 15-step assessment (H6 campaign, build early).** Upgrade the
    agent-readiness/level-assessment instrument to score a business against

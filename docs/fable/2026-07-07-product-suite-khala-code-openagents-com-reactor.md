@@ -291,7 +291,7 @@ availability, or pricing claim flips without their own gates.
 > vocabulary and Reactor Zero as the Tier-1 proof asset — in
 > `docs/fable/2026-07-07-palantir-institutional-sovereignty-smb-analysis.md`.
 > Suite arming (IAP/credits brand, pairing reopen, assurance-level tiers) is
-> sequenced as Phase P6 of `docs/fable/MASTER_ROADMAP.md`.
+> sequenced as Phase P7 of `docs/fable/MASTER_ROADMAP.md` (rev 2).
 
 ## 7. Cross-surface journeys (the suite working as one)
 
