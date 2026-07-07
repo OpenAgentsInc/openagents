@@ -37,11 +37,36 @@ forge-git-canonical, gym-evals, pylon (+spark-payout), supervision, training**; 
 entitlements-gate, github-signup-grant** (all deployed).
 
 WRITES still on DEAD D1 (remaining work to drop the binding):
-1. **Money audit/ledger writes**: billing, ledger (`token_usage_events` — the public tokens-served counter source),
-   treasury (27 tables/6 crons), artanis, business, forum-money. A subagent (task `a1468147dfddadc67`) was mid-cutover
-   at stop — READ ITS HANDOFF for which committed vs reverted. These are audit tables whose writes currently FAIL
-   silently (data loss); cutting to Postgres resumes them. **Customer credits/pay_ins/agent_balances are ALREADY
-   Postgres-authoritative — DO NOT touch that path.** Verify Postgres-internal invariants (no orphans) before flipping.
+1. **Money audit/ledger writes** (task `a1468147dfddadc67`, DONE): **LEDGER (`token_usage_events`, the public
+   tokens-served counter source) IS NOW CUT** — flag `KHALA_SYNC_LEDGER_WRITES=postgres`, commit `f79de61806`,
+   Postgres parity verified (311,783 rows, 0 dupes/nulls/negatives, PK+UNIQUE+CHECK constraints match D1). Writes had
+   been dead since 2026-07-06 13:30 UTC → this RESUMES lost capture. **DEPLOYED by parent this session**: monolith
+   Cloud Run revision `openagents-monolith-00028-9cm` (100% traffic, `/internal/healthz` green), flag armed. VERIFY
+   STATUS: Postgres-internal parity confirmed pre-flip; end-to-end confirmed by the first organic `token_usage_events`
+   row with `observed_at` after 2026-07-07 16:04Z (the serving fleet had produced no rows for ~26.5h, so the first
+   post-deploy inference is the proof — re-check `max(observed_at)` via the proxy). Rollback if a dialect throw appears
+   in logs: set `KHALA_SYNC_LEDGER_WRITES=d1` in wrangler + redeploy (but D1 is dead, so d1 = the same data loss). The remaining money domains were NOT cut (each has a clean lever documented — customer
+   credits/pay_ins/agent_balances are ALREADY Postgres-authoritative; DO NOT touch that path):
+   - **Treasury** (`treasury-domain-store.ts:866 const d1 = openAgentsDatabase(env)`) — single clean handle; swap to
+     `makeKhalaSyncWritesDatabase(env)` gated on `KHALA_SYNC_TREASURY_WRITES`, disable the redundant mirror on that
+     path, verify 27-table twin-schema + txn semantics, add the wrangler flag. (`_READS=postgres` already set.)
+   - **Artanis** (`artanis-domain-store.ts:901 const d1 = options.d1 ?? openAgentsDatabase(env)`) — same recipe +
+     `KHALA_SYNC_ARTANIS_WRITES`. `artanis-fleet-overseer-tick.ts` uses `json_extract` (now adapter-translatable).
+   - **Business** (`business-domain-store.ts:1054`) — same lever + `KHALA_SYNC_BUSINESS_WRITES`, BUT
+     `business-factory-metrics.ts` uses `?1/?2` numbered placeholders + relative-datetime modifiers → the generic
+     adapter THROWS on those; handle that module per-call-site, not through the adapter.
+   - **Billing** (`billing-store.ts`/`billing-routes.ts`) — **NOT a native write store**: `makePostgresBillingStore`
+     is a converge/mirror + reads store. Billing is D1-authoritative + best-effort mirror via `BillingRuntime.mirror`;
+     real writes are scattered across `billing.ts`, `stripe-billing.ts`, pay-ins, buyer-ledger, paid-plan-intents,
+     `billing-routes.ts` (9 `openAgentsDatabase(` sites). No single handle to swap — decide per-writer, verifying each
+     statement's dialect. `billing_ledger_entries` feeds the balance SUM (reads already Postgres) so its dead writes
+     mean balance mutations are currently LOST — real, but needs careful per-writer surgery. Do NOT assume ledger's
+     "native store" shape here.
+   - **Forum money/labor** (`forum/tip-earnings.ts`, `forum/repository.ts`) — 0 direct `openAgentsDatabase(`; money
+     writes route through the forum-domain handle. Trace how tip-earnings writes reach D1 and cut only the money/labor
+     write statements; don't conflict with the already-Postgres `forum-postgres-serving.ts` content path.
+   Binding reality: **393** live `openAgentsDatabase(` call sites remain in non-test `workers/api/src` — the binding is
+   far from droppable; `OPENAGENTS_DB` still declared in wrangler prod line 519 / staging line 796.
 2. **Sites + CRM**: SKIPPED deliberately — their write handles carry secret columns (`site_environment_values.plain_value`,
    CRM token hashes) that a raw `makePostgresD1Database` swap would LEAK to Postgres (the mirror redacts them, the adapter
    doesn't). Needs redaction-aware authority-path work before cutting.
