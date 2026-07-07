@@ -3,6 +3,7 @@ import { AppRegistry, LogBox } from "react-native"
 
 LogBox.ignoreLogs([
   "[react-native-gesture-handler] None of the callbacks in the gesture are worklets",
+  "Deep imports from the 'react-native' package are deprecated",
 ])
 
 const storybookStorage = new Map<string, string>()

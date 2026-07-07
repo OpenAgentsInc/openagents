@@ -10,8 +10,12 @@ const defaultResolveRequest =
     : undefined
 
 const storybookLogBoxAliases = new Map([
+  ["./UI/LogBoxNotification", ".rnstorybook/logbox/LogBoxNotification.js"],
+  ["./UI/LogBoxNotification.js", ".rnstorybook/logbox/LogBoxNotification.js"],
   ["./UI/LogBoxStyle", ".rnstorybook/logbox/LogBoxStyle.js"],
   ["./UI/LogBoxStyle.js", ".rnstorybook/logbox/LogBoxStyle.js"],
+  ["./LogBoxNotification", ".rnstorybook/logbox/LogBoxNotification.js"],
+  ["./LogBoxNotification.js", ".rnstorybook/logbox/LogBoxNotification.js"],
   ["./LogBoxStyle", ".rnstorybook/logbox/LogBoxStyle.js"],
   ["./LogBoxStyle.js", ".rnstorybook/logbox/LogBoxStyle.js"],
 ])
