@@ -79,34 +79,38 @@ in-microVM model-token receipt is reported proven on main
 rootfs). Verify the full DoD bundle against the issue before treating
 P0.4 as closed.
 
+P0 issue index: QAM-1..7 = #8536 #8537 #8538 #8539 #8540 #8541 #8542;
+launch readiness #8543; store submissions #8544; in-flight proofs #8503,
+#8477 under epic #8467.
+
 Order inside P0 (testing starts immediately; nothing waits on infra):
 
-- **P0.1 = QAM-1** The gate. `qa:mobile:gate` (static → units → mounts →
+- **P0.1 = QAM-1 (#8536)** The gate. `qa:mobile:gate` (static → units → mounts →
   contracts → generator conformance → fixture tier), typecheck/depcruise
   promoted to blocking, pre-push wiring.
-- **P0.2 = QAM-2** Mount debt + fixture suites. Thread-list,
+- **P0.2 = QAM-2 (#8537)** Mount debt + fixture suites. Thread-list,
   thread-messages, credits-history, settings mounted (or typed waivers);
   the **agent-computer streaming fixture suite** (runtime events →
   thread UI, typed refusals, writeback card).
-- **P0.3 = QAM-3** Generators as the enforced path (screen gen emits
+- **P0.3 = QAM-3 (#8538)** Generators as the enforced path (screen gen emits
   mount test + stories + contract stub + flow stub + visual
   registration; conformance policy test).
-- **P0.4** MVP proofs (existing scope, unchanged): the full #8503
-  receipt bundle verified and the issue closed; #8477 writeback E2E;
-  Aiur #8500/#8501.
-- **P0.5 = QAM-4** Visual tier: story screenshots + screen checkpoints
+- **P0.4** MVP proofs (existing scope, unchanged; in flight with the
+  other agent): the full #8503 receipt bundle verified and the issue
+  closed; #8477 writeback E2E; Aiur #8500/#8501 (closed 2026-07-07).
+- **P0.5 = QAM-4 (#8539)** Visual tier: story screenshots + screen checkpoints
   into `openagents.khala_visual_baselines.v1`; blessing workflow.
-- **P0.6 = QAM-5** Nightly mobile row on an owned Mac (Maestro flows,
+- **P0.6 = QAM-5 (#8540)** Nightly mobile row on an owned Mac (Maestro flows,
   device monkey, visual capture, perf budgets, seam probes) reporting
   into the QA nightly/status/strict-issue discipline; mobile nodes on
   the QA Swarm board.
-- **P0.7 = QAM-6** Android lane (emulator boot proof, flows, capture
+- **P0.7 = QAM-6 (#8541)** Android lane (emulator boot proof, flows, capture
   parity).
-- **P0.8** Launch readiness: seeded test account (owner-gated, R4) →
+- **P0.8 (#8543)** Launch readiness: seeded test account (owner-gated, R4) →
   unattended straight-line E2E green
   (`khala_mobile.platform.launched_app_interaction_smoke.v1` enforced);
   promises/copy pass.
-- **P0.9 Store submission (the exit).** App Store submission executed
+- **P0.9 (#8544) Store submission (the exit).** App Store submission executed
   (build uploaded, metadata/screenshots final, review answers prepared,
   account-deletion + 3.1.1 compliance verified — #8483/#8502/#8491
   packs current) and Play submission executed through the Play lane
@@ -118,7 +122,7 @@ refusing an unbundled screen; 7 consecutive nightly mobile receipts
 incl. one auto-filed strict issue; every MVP feature at its target
 ladder rung; straight-line E2E green on iOS + Android emulator; **both
 store submissions recorded** (submission IDs + review states in the
-registry evidence); QAM-7 fixture-first suites authored (red/waived) for
+registry evidence); QAM-7 (#8542) fixture-first suites authored (red/waived) for
 every P1+ feature named below.
 
 ## P1 — Sarah, on the new openagents.com (React/TanStack Start)
