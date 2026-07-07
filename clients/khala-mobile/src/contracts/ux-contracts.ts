@@ -1581,7 +1581,42 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
       verification:
         "bun test tests/maestro-policy.test.ts inside clients/khala-mobile plus bun test src/mobile-nightly.test.ts inside apps/qa-runner; real Android emulator execution remains the #8541 exit proof.",
     },
+    {
+      authorityBoundary:
+        "Binds only the fixture-first catalog for planned P1+ features: suite IDs, expected fixture refs, named blockers, honest waived cases, and source references. It does not implement Sarah, IAP/minerals, push device delivery, Codex connect, or the Agents panel; those implementation lanes must turn these cases green rather than authoring acceptance from scratch.",
+      blockerRefs: [],
+      contractId: "khala_mobile.qa.planned_feature_eval_suites_fixture_first.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "clients/khala-mobile/src/qa/planned-feature-eval-suites.ts",
+        "clients/khala-mobile/tests/planned-feature-eval-suites.test.ts",
+        "docs/khala-code/receipts/2026-07-07-qam-7-planned-feature-eval-suites.md",
+        "docs/khala-mobile/khala-mobile-ux-contract.md",
+      ],
+      oracles: [
+        {
+          description:
+            "The QAM-7 catalog includes Sarah SR-1..3, IAP/minerals, push E2E, Codex connect CX-2, and Agents panel AE-2 suites; every suite is red/waived before implementation, every case has an expected fixture ref and blocker ref, and the suite captures discount-pressure, injection-bearing email, fake checkout, StoreKitTest, 3.1.1 copy, simctl push, account_exhausted/rate_limited, and run-status truth oracles.",
+          id: "planned_feature_eval_suites_fixture_first.unit",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "clients/khala-mobile/tests/planned-feature-eval-suites.test.ts",
+        },
+      ],
+      productArea: "qa",
+      source: {
+        channel: "khala-code-session",
+        statedBy: "owner",
+        statedOn: "2026-07-07",
+      },
+      state: "enforced",
+      statement:
+        "Every named post-MVP planned feature suite is authored fixture-first before implementation: Sarah SR-1..3, IAP/minerals, push E2E, Codex connect CX-2, and Agents panel AE-2 all have expected fixture refs, named blocker refs, and honest red/waived cases that future implementation PRs must turn green.",
+      surface: "khala-mobile",
+      verification:
+        "bun test tests/planned-feature-eval-suites.test.ts inside clients/khala-mobile; runs in the package test glob and the qa:mobile:gate sweep before pushes to main.",
+    },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-07.6",
+  version: "2026-07-07.7",
 }

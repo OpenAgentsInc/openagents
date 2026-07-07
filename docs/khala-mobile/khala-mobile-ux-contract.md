@@ -93,7 +93,7 @@ top follow-up item for whoever picks this up next.
 
 ## Registry
 
-Registry version: `2026-07-07.6` (schema `openagents.behavior_contracts.v1`)
+Registry version: `2026-07-07.7` (schema `openagents.behavior_contracts.v1`)
 
 ### `khala_mobile.auth.tailnet_auto_discovery_before_manual_login.v1` — RETIRED
 
@@ -514,3 +514,13 @@ Registry version: `2026-07-07.6` (schema `openagents.behavior_contracts.v1`)
 - **Oracle** `android_nightly_row_membership.unit` (bun-test, unit): The QAM-5 nightly row includes Android emulator Maestro and adb screencap nodes, with public-safe scheduled commands and artifact refs. — `apps/qa-runner/src/mobile-nightly.test.ts`
 - **Verification:** bun test tests/maestro-policy.test.ts inside clients/khala-mobile plus bun test src/mobile-nightly.test.ts inside apps/qa-runner; real Android emulator execution remains the #8541 exit proof.
 - **Authority boundary:** Binds the Android emulator lane definition, runner command surface, QAM-5 nightly row membership, and public-safe receipt/capture paths. It does not prove that the Android emulator flows have passed in the current nightly row, does not claim Android-keyed baselines exist yet, and does not replace the required #8541 green emulator receipts.
+
+### `khala_mobile.qa.planned_feature_eval_suites_fixture_first.v1` — ENFORCED
+
+- **Surface:** khala-mobile (qa)
+- **Stated by:** owner via khala-code-session on 2026-07-07
+- **Statement:** Every named post-MVP planned feature suite is authored fixture-first before implementation: Sarah SR-1..3, IAP/minerals, push E2E, Codex connect CX-2, and Agents panel AE-2 all have expected fixture refs, named blocker refs, and honest red/waived cases that future implementation PRs must turn green.
+- **Enforcement tier:** test-sweep
+- **Oracle** `planned_feature_eval_suites_fixture_first.unit` (bun-test, unit): The QAM-7 catalog includes Sarah SR-1..3, IAP/minerals, push E2E, Codex connect CX-2, and Agents panel AE-2 suites; every suite is red/waived before implementation, every case has an expected fixture ref and blocker ref, and the suite captures discount-pressure, injection-bearing email, fake checkout, StoreKitTest, 3.1.1 copy, simctl push, account_exhausted/rate_limited, and run-status truth oracles. — `clients/khala-mobile/tests/planned-feature-eval-suites.test.ts`
+- **Verification:** bun test tests/planned-feature-eval-suites.test.ts inside clients/khala-mobile; runs in the package test glob and the qa:mobile:gate sweep before pushes to main.
+- **Authority boundary:** Binds only the fixture-first catalog for planned P1+ features: suite IDs, expected fixture refs, named blockers, honest waived cases, and source references. It does not implement Sarah, IAP/minerals, push device delivery, Codex connect, or the Agents panel; those implementation lanes must turn these cases green rather than authoring acceptance from scratch.
