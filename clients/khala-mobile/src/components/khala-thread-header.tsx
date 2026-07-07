@@ -5,16 +5,19 @@ import { TouchableFeedback } from "./touchable-feedback"
 
 export type KhalaThreadHeaderProps = Readonly<{
   onBack: () => void
-  onMore?: () => void
-  onNewNote?: () => void
+  /** One-tap "start a fresh thread" action. Always rendered so it stays a
+   * reachable escape hatch even while a turn is in flight (owner report,
+   * 2026-07-06: "no way to start a new thread ... cant do anything"). When
+   * `undefined` (the sync runtime hasn't opened yet) the button is shown
+   * disabled rather than hidden, so the affordance never disappears. */
+  onNewThread?: () => void
   subtitle: string
   title: string
 }>
 
 export const KhalaThreadHeader = ({
   onBack,
-  onMore,
-  onNewNote,
+  onNewThread,
   subtitle,
   title,
 }: KhalaThreadHeaderProps) => (
@@ -41,32 +44,33 @@ export const KhalaThreadHeader = ({
         </KhalaText>
       </View>
 
-      <View className="flex-row items-center gap-2 rounded-full border border-borderMuted bg-surfaceRaised px-3 py-2">
-        <TouchableFeedback
-          accessibilityLabel="New note"
-          accessibilityRole="button"
-          className="h-9 w-9 items-center justify-center rounded-full"
-          disabled={onNewNote === undefined}
-          hitSlop={8}
-          onPress={onNewNote}
+      <TouchableFeedback
+        accessibilityLabel="New thread"
+        accessibilityRole="button"
+        className={`h-14 flex-row items-center gap-2 rounded-full border px-4 ${
+          onNewThread === undefined
+            ? "border-borderMuted bg-surface"
+            : "border-accent/60 bg-surfaceRaised"
+        }`}
+        disabled={onNewThread === undefined}
+        hitSlop={10}
+        onPress={onNewThread}
+      >
+        <KhalaText
+          className={`text-[22px] leading-6 ${onNewThread === undefined ? "text-textFaint" : "text-accent"}`}
+          variant="body"
         >
-          <KhalaText className="text-[26px] leading-8 text-text" variant="body">
-            ✎
-          </KhalaText>
-        </TouchableFeedback>
-        <TouchableFeedback
-          accessibilityLabel="More"
-          accessibilityRole="button"
-          className="h-9 w-9 items-center justify-center rounded-full"
-          disabled={onMore === undefined}
-          hitSlop={8}
-          onPress={onMore}
+          ✎
+        </KhalaText>
+        <KhalaText
+          className={`text-[12px] font-semibold uppercase tracking-wide ${
+            onNewThread === undefined ? "text-textFaint" : "text-accent"
+          }`}
+          variant="faint"
         >
-          <KhalaText className="text-[24px] leading-7 text-text" variant="body">
-            ⋯
-          </KhalaText>
-        </TouchableFeedback>
-      </View>
+          New
+        </KhalaText>
+      </TouchableFeedback>
     </View>
   </View>
 )

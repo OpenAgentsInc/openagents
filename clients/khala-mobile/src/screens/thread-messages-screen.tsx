@@ -51,7 +51,10 @@ import {
   type TranscriptPart,
 } from "../sync/khala-runtime-transcript-core"
 import { buildQuoteSnippet } from "../sync/swipe-quote-core"
-import { useKhalaMobileSyncPrimitives } from "../sync/khala-mobile-sync-runtime-context"
+import {
+  useKhalaMobileSyncPrimitives,
+  useKhalaMobileSyncRuntime,
+} from "../sync/khala-mobile-sync-runtime-context"
 import { useKhalaSyncScopeEntities } from "../sync/use-khala-sync-scope-entities"
 import { useKhalaSyncPush } from "../sync/use-khala-sync-push"
 import { MOTION_MEDIUM, MOTION_STAGGER_MS } from "../theme/motion"
@@ -150,10 +153,37 @@ export const ThreadMessagesScreen = ({ navigation, route }: ThreadMessagesScreen
   const activeTurn = useMemo(() => findActiveTurn(turnState.items), [turnState.items])
   const defaultLane = useMemo(() => mostRecentTurnLane(turnState.items), [turnState.items])
   const push = useKhalaSyncPush()
+  const syncRuntime = useKhalaMobileSyncRuntime()
   const [quoteRequest, setQuoteRequest] = useState<QuoteRequest | undefined>(undefined)
   const [handoffPendingTurnId, setHandoffPendingTurnId] = useState<string | undefined>(undefined)
   const [handoffError, setHandoffError] = useState<string | null>(null)
   const [showScrollToLatest, setShowScrollToLatest] = useState(false)
+  const [creatingThread, setCreatingThread] = useState(false)
+  const [newThreadError, setNewThreadError] = useState<string | null>(null)
+
+  // One-tap "new thread" escape hatch (owner report, 2026-07-06: "no way to
+  // start a new thread ... cant do anything"). Creates a fresh empty thread
+  // and replaces the current one so the back stack doesn't accumulate a pile
+  // of half-empty threads. Always reachable — even while a turn is in flight,
+  // because the header (which owns this action) renders above the turn-gated
+  // composer and never depends on turn state.
+  const startNewThread = async () => {
+    if (syncRuntime.status !== "ready" || creatingThread) return
+    setCreatingThread(true)
+    setNewThreadError(null)
+    try {
+      const newThreadId = makeSafeRef("thread")
+      const newTitle = "New chat"
+      const created = await syncRuntime.runtime.createThread({ threadId: newThreadId, title: newTitle })
+      if (!created.ok) {
+        throw new Error(created.error ?? "Could not create a new thread.")
+      }
+      navigation.replace("ThreadMessages", { threadId: newThreadId, title: newTitle })
+    } catch (error) {
+      setNewThreadError(error instanceof Error ? error.message : String(error))
+      setCreatingThread(false)
+    }
+  }
 
   const requestHandoff = async (input: {
     turnId: string
@@ -221,9 +251,15 @@ export const ThreadMessagesScreen = ({ navigation, route }: ThreadMessagesScreen
         onBack={() => {
           if (navigation.canGoBack()) navigation.goBack()
         }}
+        onNewThread={syncRuntime.status === "ready" && !creatingThread ? () => void startNewThread() : undefined}
         subtitle="work · Khala Mobile"
         title={title ?? "Thread"}
       />
+      {newThreadError === null ? null : (
+        <KhalaText className="mx-4 mb-1 text-danger" numberOfLines={2} variant="faint">
+          {newThreadError}
+        </KhalaText>
+      )}
       <Pressable
         accessibilityLabel={
           boundRepo === undefined || boundRepo === null
@@ -305,18 +341,25 @@ export const ThreadMessagesScreen = ({ navigation, route }: ThreadMessagesScreen
             <KhalaEmptyState className="flex-1" title="No messages yet" />
           ) : (
             <FlatList
-              contentContainerClassName="gap-4 px-8 pb-8 pt-1"
+              // `grow justify-end` anchors a short conversation to the bottom,
+              // just above the composer, instead of stranding a single message
+              // at the top with a large empty gap below it (owner report,
+              // 2026-07-06: "just the one message ... the big empty gap"). Has
+              // no effect once the transcript overflows the viewport.
+              contentContainerClassName="grow justify-end gap-3 px-4 pb-4 pt-6"
               data={messages}
               keyExtractor={message => message.messageId}
               onScroll={event => setShowScrollToLatest(!atBottomFromScroll(event))}
               ref={listRef}
               renderItem={({ item: message }) => (
-                <View className="gap-1 px-1 py-1">
-                  <KhalaText variant="faint">
+                <View className="items-end">
+                  <View className="max-w-[86%] rounded-2xl rounded-br-md border border-accent/40 bg-surfaceRaised px-4 py-3">
+                    <KhalaText className="text-[17px] leading-6 text-text" variant="body">
+                      {message.body}
+                    </KhalaText>
+                  </View>
+                  <KhalaText className="mt-1 px-1" variant="faint">
                     {formatClockTime(message.createdAt)}
-                  </KhalaText>
-                  <KhalaText className="text-[22px] leading-8 text-text" variant="body">
-                    {message.body}
                   </KhalaText>
                 </View>
               )}

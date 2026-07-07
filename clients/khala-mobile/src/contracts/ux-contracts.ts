@@ -1074,7 +1074,103 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
       verification:
         "No two-sided oracle yet. Needs a fingerprint-roundtrip e2e (*.e2e.test.ts): compute the REAL runtime fingerprint from the client package (npx expo-updates fingerprint:generate over clients/khala-mobile, the same computation publish-ota.sh uses), then drive the REAL apps/oa-updates manifest resolver with that value as Expo-Runtime-Version and prove a published update for it resolves — and that a fingerprint drift against the latest published runtimeVersion fails loudly. Flip to enforced with that ref once it lands; the seam coverage checker in packages/behavior-contracts will then hold it to the e2e requirement.",
     },
+    {
+      authorityBoundary:
+        "Binds KhalaThreadHeader's own render/press wiring (proven by a real mounted component tree) plus the thread screen's wiring of the action. It does not prove the full ThreadMessagesScreen mounts end to end, nor that createThread succeeds against a live server — the header owns the affordance; the sync runtime's createThread is exercised separately. When the runtime isn't ready the button is rendered disabled rather than hidden, so the affordance never disappears mid-session.",
+      blockerRefs: [],
+      contractId: "khala_mobile.thread.new_thread_action_always_reachable.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "clients/khala-mobile/src/components/khala-thread-header.tsx",
+        "clients/khala-mobile/src/screens/thread-messages-screen.tsx",
+        "clients/khala-mobile/tests/khala-thread-header.test.tsx",
+        "docs/khala-mobile/khala-mobile-ux-contract.md",
+      ],
+      oracles: [
+        {
+          description:
+            "The mounted KhalaThreadHeader renders exactly one 'New thread' button; when a handler is provided the button is enabled and pressing it calls the handler exactly once.",
+          id: "new_thread_button_present_and_calls_handler.unit",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "clients/khala-mobile/tests/khala-thread-header.test.tsx",
+        },
+        {
+          description:
+            "With no handler (sync runtime not yet ready) the 'New thread' button still renders — never hidden — but is disabled (no onPress, accessibilityState.disabled), so the affordance can never disappear mid-session.",
+          id: "new_thread_button_disabled_without_runtime.unit",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "clients/khala-mobile/tests/khala-thread-header.test.tsx",
+        },
+        {
+          description:
+            "The thread-messages screen passes onNewThread to KhalaThreadHeader and its handler creates a fresh thread via runtime.createThread and navigates to it with navigation.replace('ThreadMessages').",
+          id: "thread_screen_wires_new_thread_action.source",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "clients/khala-mobile/tests/khala-thread-header.test.tsx",
+        },
+      ],
+      productArea: "thread view",
+      source: {
+        channel: "khala-code-session",
+        statedBy: "owner",
+        statedOn: "2026-07-06",
+      },
+      state: "enforced",
+      statement:
+        "There must be an obvious one-tap way to start a new thread from the thread view. Filed after the owner's report: \"loads but sucks ... also no way to start a new thread.\" The thread header always shows a New thread action that creates a fresh thread and navigates to it.",
+      surface: "khala-mobile",
+      verification:
+        "bun test tests/khala-thread-header.test.tsx inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.",
+    },
+    {
+      authorityBoundary:
+        "Binds that the thread view's two ways out (Back, New thread) live in a turn-agnostic header that renders unconditionally, and that Stop dispatches a real interrupt while an idle composer is editable. The live idle↔active render transition of the composer itself is owned/proven by khala_mobile.composer.rn_component_mount_coverage.v1 (idle-shows-Send + Stop-calls-interrupt oracles); this contract binds the never-trapped structural guarantee around it. It does not prove the server actually settles an interrupted turn.",
+      blockerRefs: [],
+      contractId: "khala_mobile.thread.active_turn_never_traps_user.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "clients/khala-mobile/src/components/khala-thread-header.tsx",
+        "clients/khala-mobile/src/components/chat-composer.tsx",
+        "clients/khala-mobile/src/screens/thread-messages-screen.tsx",
+        "clients/khala-mobile/tests/khala-thread-header.test.tsx",
+        "contract:khala_mobile.composer.rn_component_mount_coverage.v1",
+        "docs/khala-mobile/khala-mobile-ux-contract.md",
+      ],
+      oracles: [
+        {
+          description:
+            "The mounted KhalaThreadHeader always renders both a 'Back' and a 'New thread' button; the header takes no turn state, so neither escape hatch can be hidden while a turn is queued/running/waiting_for_input.",
+          id: "header_escape_hatches_always_render.unit",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "clients/khala-mobile/tests/khala-thread-header.test.tsx",
+        },
+        {
+          description:
+            "Stop builds a runtime.interruptTurn intent (a real cancel, not a visual no-op), the composer exposes an editable Send button for the idle state, and the thread screen renders KhalaThreadHeader above the only turn-gated element.",
+          id: "stop_interrupts_and_composer_reverts_when_idle.source",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "clients/khala-mobile/tests/khala-thread-header.test.tsx",
+        },
+      ],
+      productArea: "thread view",
+      source: {
+        channel: "khala-code-session",
+        statedBy: "owner",
+        statedOn: "2026-07-06",
+      },
+      state: "enforced",
+      statement:
+        "A queued or running turn must never trap the user. Filed after the owner's report: \"just the one message and button shows stop, cant do anything.\" Stop cancels the turn and returns the composer to an editable state, and the user can always navigate back or start a new thread even with a turn in flight.",
+      surface: "khala-mobile",
+      verification:
+        "bun test tests/khala-thread-header.test.tsx tests/chat-composer.test.tsx inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.",
+    },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-06.7",
+  version: "2026-07-06.8",
 }

@@ -266,9 +266,16 @@ export const ChatComposer = ({
         </KhalaText>
       )}
       {activeStatusLabel === undefined ? null : (
-        <KhalaText className="mb-1 px-3 text-textFaint" variant="faint">
-          turn {activeStatusLabel}
-        </KhalaText>
+        <View className="mb-2 flex-row items-center gap-2 self-start rounded-full border border-accent/40 bg-surface px-3 py-1.5">
+          {activeTurn?.status === "running" ? (
+            <ActivityIndicator color={khalaMobileTheme.accent} size={12} />
+          ) : (
+            <View className="h-2 w-2 rounded-full bg-accent" />
+          )}
+          <KhalaText className="text-[11px] uppercase tracking-wide text-accent" variant="faint">
+            {activeStatusLabel}
+          </KhalaText>
+        </View>
       )}
       {showOptions ? optionRow : null}
       <View className="min-h-16 flex-row items-center gap-2 rounded-full border border-borderMuted bg-surfaceRaised px-3 py-2">
