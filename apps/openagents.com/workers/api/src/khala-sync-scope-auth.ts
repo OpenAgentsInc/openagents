@@ -180,8 +180,27 @@ export const makeKhalaSyncScopeReadResolver = (
             uid,
             await resolveAgentRunIdAsync(deps.db, runId),
           ),
-        canReadThread: async (uid, threadId) =>
-          (await canReadResolvedRun(
+        canReadThread: async (uid, threadId) => {
+          // Owner-private MC-1 chat/runtime threads (the Khala Code mobile +
+          // desktop path) are owned in Khala Sync Postgres
+          // (`khala_sync_scope_owners`). Check that FIRST so a legacy D1
+          // outage cannot block them. Real production failure (2026-07-06, CFG
+          // D1 evacuation): the Cloudflare D1 bridge 401s account-wide, so the
+          // former ordering — legacy D1 `agent_runs` lookup, THEN the Postgres
+          // owner check on the right of `||` — THREW on the D1 read and the
+          // owner check was never reached. resolveScopeRead maps that throw to
+          // `unavailable`, so every brand-new mobile thread's bootstrap
+          // errored → retried → `must_refetch` ("Thread unavailable"). A
+          // direct owner match returns true here without ever touching D1.
+          if ((await readOwnedScopeOwner(threadScope(threadId))) === uid) {
+            return true
+          }
+          // Not an owner-private thread we own → fall back to legacy D1
+          // agent-run / autopilot-thread ownership. If D1 is unavailable this
+          // THROWS (not returns false), which resolveScopeRead maps to
+          // `unavailable` (retryable) rather than a false grant — the
+          // fail-closed contract for genuinely-D1 scopes is preserved.
+          return canReadResolvedRun(
             deps.db,
             uid,
             (await resolveAgentRunIdAsync(deps.db, threadId)) ??
@@ -189,7 +208,8 @@ export const makeKhalaSyncScopeReadResolver = (
                 deps.db,
                 threadId,
               )),
-          )) || (await readOwnedScopeOwner(threadScope(threadId))) === uid,
+          )
+        },
         isTeamMember: async (uid, teamId) =>
           (await readActiveTeamMembershipRole(deps.db, teamId, uid)) !==
           undefined,

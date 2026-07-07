@@ -281,6 +281,25 @@ describe('makeKhalaSyncScopeReadResolver (Worker auth matrix)', () => {
     expect(fleet.endedCount()).toBe(3)
   })
 
+  test('thread: an owner-private Postgres-owned scope resolves even when D1 is UNAVAILABLE (CFG D1 evacuation regression)', async () => {
+    // Real production failure (2026-07-06): the Cloudflare D1 bridge 401s
+    // account-wide. A brand-new mobile chat thread is owned in
+    // khala_sync_scope_owners (Postgres); its bootstrap must still authorize
+    // even though the legacy D1 agent-run lookup throws. Before the fix, the
+    // D1 read ran first and threw -> `unavailable` -> endless "Thread
+    // unavailable" / must_refetch.
+    const scope = threadScope('mobile-thread-1')
+    const { resolver } = makeResolver({
+      db: throwingD1(),
+      fleetOwners: { [String(scope)]: USER },
+    })
+    expect(await resolver(USER, scope)).toEqual({ kind: 'allowed' })
+    // A foreign caller on an owner-private thread we can't match in Postgres
+    // still falls through to the (throwing) D1 path and fails CLOSED as
+    // `unavailable` — never a grant.
+    expect((await resolver(OTHER, scope)).kind).not.toBe('allowed')
+  })
+
   test('fleet_run: khala_sync_scope_owners owner allowed, foreign/unowned denied; client always released', async () => {
     const scope = fleetRunScope('fleet-1')
     const { fleet, resolver } = makeResolver({
