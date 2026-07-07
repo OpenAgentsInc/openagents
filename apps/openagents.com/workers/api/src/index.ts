@@ -7689,9 +7689,21 @@ const routeAuthHostRequest = async (
     const state = url.searchParams.get('state')
 
     if (state !== null) {
-      const attempt = await makeGitHubWriteRepositoryForEnv(env).findAttemptByState(
-        state,
-      )
+      // The GitHub write-connection attempt store still lives on D1
+      // (github_write_connection_attempts, not yet migrated). On the Cloud
+      // Run monolith that D1 access goes through the d1-http bridge, which
+      // fails when the account's D1 is unavailable — and this probe runs on
+      // EVERY GitHub callback, including normal sign-in. A failure here must
+      // NEVER abort login: this lookup only decides whether the callback is
+      // the (rare) branch/PR write-connection flow vs a normal OpenAuth
+      // sign-in. Treat any error as "not a write-connection attempt" and fall
+      // through to the normal issuer flow (#8467 login incident, 2026-07-06).
+      const attempt = await makeGitHubWriteRepositoryForEnv(env)
+        .findAttemptByState(state)
+        .catch(error => {
+          logWorkerRouteError('github_write_attempt_lookup_failed', error)
+          return undefined
+        })
 
       if (attempt !== undefined) {
         return handleGitHubWriteCallback(request, env, attempt)

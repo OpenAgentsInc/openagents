@@ -57,23 +57,39 @@ const HOLDING_PAGE_HTML = `<!doctype html>
     align-items: center;
     justify-content: center;
     text-align: center;
+    overflow: hidden;
   }
-  .wrap { padding: 24px; }
+  /* Still capture of the live landing 3D glow-grid scene, behind a center
+   * vignette that mutes the baked wordmark and keeps the blue bloom ambiance. */
+  .bg {
+    position: fixed;
+    inset: 0;
+    background-image:
+      radial-gradient(circle at center, rgba(5,7,13,0.92) 0%, rgba(5,7,13,0.66) 55%, rgba(5,7,13,0.5) 100%),
+      url('/holding-bg.jpg');
+    background-size: cover;
+    background-position: center;
+    z-index: 0;
+  }
+  .wrap { position: relative; z-index: 1; padding: 24px; }
   h1 {
     margin: 0;
     font-size: clamp(40px, 9vw, 88px);
     font-weight: 650;
     letter-spacing: -0.02em;
+    text-shadow: 0 2px 40px rgba(0,0,0,0.6);
   }
   p {
     margin: 14px 0 0;
     font-size: clamp(16px, 3.4vw, 22px);
-    color: #7f94b5;
+    color: #9db4d8;
     letter-spacing: 0.01em;
+    text-shadow: 0 1px 20px rgba(0,0,0,0.6);
   }
 </style>
 </head>
 <body>
+  <div class="bg"></div>
   <div class="wrap">
     <h1>OpenAgents</h1>
     <p>be right back</p>
