@@ -44,9 +44,11 @@
     "defaultAccess": "iap-ssh-only"
   },
   "guestImage": {
-    "kernelDigest": "NEEDS_OWNER_AFTER_PRIVATE_IMAGE_BUILD",
-    "rootfsDigest": "NEEDS_OWNER_AFTER_PRIVATE_IMAGE_BUILD",
-    "rootfsSource": "private cloud/ image build output",
+    "kernelDigest": "sha256:22847375721aceea63d934c28f2dfce4670b6f52ec904fae19f5145a970c1e65",
+    "kernelSource": "firecracker-ci/v1.10/x86_64/vmlinux-5.10.223",
+    "rootfsDigest": "sha256:3e612f6fd4e9f98cacf167cdb5582eaf2399a57e86705e4b165797367a63cf0b",
+    "rootfsSource": "debootstrap jammy (ubuntu 22.04) + git 2.34.1 + bun 1.3.14 + python3 + ca-certificates + openssh-client + vsock guest agent (:1024) + turn-runner (compiled from apps/pylon/deploy/agent-computer/turn-runner.ts, real #8475 materializer); built on agent-computer-gce-1 at /srv/openagents/cloud-vm/agent-computer-rootfs.ext4 (577M)",
+    "rootfsStatus": "boots + vsock-exec proven inside microVM; in-guest git egress still FAILING (git fetch -> fetch_failed) — likely systemd-networkd clearing the kernel ip= config; fix before this digest is a validated turn image",
     "scratchPolicy": "per-work-context-disposable",
     "scratchWipeReceiptRequired": true,
     "microvmDestroyReceiptRequired": true
