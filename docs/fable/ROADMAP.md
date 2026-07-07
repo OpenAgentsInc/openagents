@@ -1,5 +1,9 @@
 # Fable Unified Roadmap — Khala Code, Fleet, QA, Multi-Harness, Artanis
 
+> **Sequencing note (2026-07-07):** top-level execution sequencing is now
+> owned by [`docs/fable/MASTER_ROADMAP.md`](MASTER_ROADMAP.md); this document
+> remains the content authority for the Khala Code desktop/harness workstreams.
+
 Date: 2026-07-01
 Status: the single consolidated execution roadmap for every recommendation
 and plan in `docs/fable/`. Sources: the Khala Code summary/analysis, the

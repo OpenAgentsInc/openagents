@@ -20,7 +20,8 @@ Agent Computer runtime seams, business/background-agent strategy corpus).
 > and the blitz program in the overarching strategic roadmap:
 > `docs/fable/2026-07-07-overarching-roadmap-khala-code-agent-computers-ai-employees.md`.
 > That doc supersedes both numbering schemes for new issue filing; the
-> content of this doc's lanes stands unchanged.
+> content of this doc's lanes stands unchanged. Execution sequencing now
+> lives in `docs/fable/MASTER_ROADMAP.md` (CX-1..5 = Phase P1).
 
 ## 0. The owner direction (2026-07-07, recorded in essence)
 

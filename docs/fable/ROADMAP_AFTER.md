@@ -1,5 +1,9 @@
 # ROADMAP_AFTER — What Comes When The Machine Is Built
 
+> **Sequencing note (2026-07-07):** top-level execution sequencing is now
+> owned by [`docs/fable/MASTER_ROADMAP.md`](MASTER_ROADMAP.md); this document
+> remains the content authority for the market-contact (AW-*) lanes.
+
 Date: 2026-07-02
 Status: **speculative successor roadmap.** This doc assumes
 [`ROADMAP.md`](./ROADMAP.md) is fully implemented — M1 through M6 landed,

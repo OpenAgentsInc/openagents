@@ -1,5 +1,9 @@
 # ROADMAP_BIZ — The Business Fulfillment Engine
 
+> **Sequencing note (2026-07-07):** top-level execution sequencing is now
+> owned by [`docs/fable/MASTER_ROADMAP.md`](MASTER_ROADMAP.md); this document
+> remains the content authority for the business-fulfillment (BF-*) lanes.
+
 Date: 2026-07-02
 Status: completed issue-map closeout for the end-to-end business funnel and
 fulfillment engine. Source meditation:

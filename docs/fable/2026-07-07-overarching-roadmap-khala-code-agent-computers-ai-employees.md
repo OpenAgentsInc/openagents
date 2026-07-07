@@ -46,6 +46,12 @@ lanes named here (§4).
 > Explanation); H5 gains corpus canaries; H6's assessment instrument
 > upgrades to the 15-step rubric; the §5 ladder adopts "assurance level
 > (structural vs contractual)" as its selling vocabulary.
+>
+> **Update (2026-07-07, final):** execution sequencing of the horizons is
+> consolidated — with the mobile testing system (QAM) first and Codex (CX)
+> second per owner direction — into `docs/fable/MASTER_ROADMAP.md`, which
+> now owns top-level ordering. This doc remains the content authority for
+> the horizon ladder, lane reconciliation, and evidence base.
 
 ## 1. The single thesis
 

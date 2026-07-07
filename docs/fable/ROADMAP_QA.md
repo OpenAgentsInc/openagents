@@ -1,5 +1,9 @@
 # ROADMAP_QA — The Fully Automated Khala Code QA Cycle
 
+> **Sequencing note (2026-07-07):** top-level execution sequencing is now
+> owned by [`docs/fable/MASTER_ROADMAP.md`](MASTER_ROADMAP.md); this document
+> remains the content authority for the QA engine lanes.
+
 Date: 2026-07-02
 Status: **completed issue map; follow-on QA Swarm work continues under
 #8071.** Successor to WS-6/WS-14 of

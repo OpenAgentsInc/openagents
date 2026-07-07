@@ -15,7 +15,9 @@ lessons of `docs/fable/2026-07-06-seam-testing-audit-qa-swarm-gaps.md`.
 Terminology: per the owner rule recorded in
 `docs/fable/2026-07-07-palantir-institutional-sovereignty-smb-analysis.md`,
 the testing process is modeled in **Blueprint** vocabulary (Eval Suites,
-oracles, Release Gates, receipts) — our own terms throughout.
+oracles, Release Gates, receipts) — our own terms throughout. The QAM
+lanes are sequenced as **Phase P0** of
+`docs/fable/MASTER_ROADMAP.md` (fully-tested MVP first, then Codex).
 
 ## 0. The verdict in one paragraph
 

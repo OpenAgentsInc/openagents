@@ -8,7 +8,8 @@ the 2026-07-07 strategy set — the Palantir sovereignty analysis
 product suite doc, the overarching roadmap, the post-MVP direction doc —
 plus the standing business corpus (services engine, come-for-the-tool,
 business fulfillment engine, Agentic Society field evidence, Reactor plan,
-QA Swarm, Tassadar).
+QA Swarm, Tassadar). Execution sequencing for everything described here:
+`MASTER_ROADMAP.md`.
 
 **This is internal narrative source material, not published copy.** Public
 claims still gate through `docs/promises/` and owner sign-off; anything

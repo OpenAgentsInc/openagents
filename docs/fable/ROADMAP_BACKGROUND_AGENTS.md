@@ -1,5 +1,9 @@
 # Background-Agents Roadmap — Open-Inspect Harvest Execution
 
+> **Sequencing note (2026-07-07):** top-level execution sequencing is now
+> owned by [`docs/fable/MASTER_ROADMAP.md`](MASTER_ROADMAP.md); this document
+> remains the content authority for the background-agent (BA-*) lanes.
+
 Date: 2026-07-03
 Status: the consolidated execution roadmap for the
 [Open-Inspect harvest audit](./2026-07-03-background-agents-open-inspect-harvest-audit.md)
