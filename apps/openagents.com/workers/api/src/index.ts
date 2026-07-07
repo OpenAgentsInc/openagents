@@ -1344,6 +1344,7 @@ import {
 } from './token-usage'
 import {
   directTokenLedgerRowFromIngestBody,
+  ledgerDirectInsertDatabaseForEnv,
   makeTokenLedgerWriteStoreForEnv,
   makeTokenUsageLedgerForEnv,
   mirrorTokenLedgerDirectInsertBestEffort,
@@ -9376,8 +9377,10 @@ const crmMcpRoutes = makeCrmMcpRoutes<WorkerBindings>({
       agentStore: env => makeAgentRegistrationStoreForEnv(env),
       pylonStore: env => makePylonApiStoreForEnv(env),
       recordTokensServed: env =>
-        makeKhalaMcpServedTokensRecorder(openAgentsDatabase(env), {
-          // KS-8.2 (#8308): fail-soft Postgres mirror for direct rows.
+        makeKhalaMcpServedTokensRecorder(ledgerDirectInsertDatabaseForEnv(env), {
+          // KS-8.2 (#8308): fail-soft Postgres mirror for direct rows. #8515:
+          // when writes==='postgres' the db handle above IS the Postgres
+          // adapter, so this mirror short-circuits to a no-op.
           mirrorRow: row => mirrorTokenLedgerDirectInsertBestEffort(env, row),
           // KS-6.3 (#8304): projection producer (fail-soft, exact-once).
           onIngestedEvent: makeTokensServedProjectionObserver(env),

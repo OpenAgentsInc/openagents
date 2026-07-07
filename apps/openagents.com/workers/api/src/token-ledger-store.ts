@@ -60,6 +60,11 @@ import {
   type KhalaSyncPushSqlClient,
   type MakeKhalaSyncPushSqlClient,
 } from './khala-sync-push-routes'
+import {
+  makeKhalaSyncWritesDatabase,
+  parseKhalaSyncWritesMode,
+  type KhalaSyncWritesMode,
+} from './khala-sync-domain-writes-database'
 import { logWorkerRouteWarning } from './observability'
 import { openAgentsDatabase } from './runtime'
 import {
@@ -110,11 +115,19 @@ export type TokenLedgerReadsMode = 'd1' | 'postgres' | 'compare'
 export type TokenLedgerFlags = Readonly<{
   dualWrite: boolean
   reads: TokenLedgerReadsMode
+  /**
+   * #8515 WRITE cutover: `postgres` (default) makes the Postgres token-ledger
+   * store the AUTHORITATIVE write + dedupe-read seam — both leave the 401-dead
+   * D1 bridge. `d1` restores the historic D1-authority + best-effort Postgres
+   * mirror.
+   */
+  writes: KhalaSyncWritesMode
 }>
 
 export type TokenLedgerFlagEnv = Readonly<{
   KHALA_SYNC_LEDGER_DUAL_WRITE?: string | undefined
   KHALA_SYNC_LEDGER_READS?: string | undefined
+  KHALA_SYNC_LEDGER_WRITES?: string | undefined
 }>
 
 const FLAG_OFF_VALUES = new Set(['0', 'off', 'false', 'disabled', 'no'])
@@ -137,6 +150,7 @@ export const tokenLedgerFlagsFromEnv = (
       dualWriteRaw === undefined || !FLAG_OFF_VALUES.has(dualWriteRaw),
     reads:
       readsRaw === 'postgres' || readsRaw === 'compare' ? readsRaw : 'd1',
+    writes: parseKhalaSyncWritesMode(env.KHALA_SYNC_LEDGER_WRITES),
   }
 }
 
@@ -784,8 +798,12 @@ export const makePostgresTokenLedgerStore = (
 export type MakeDualWriteTokenLedgerWriteStoreDependencies = Readonly<{
   /** The authoritative D1 write store (extracted, behavior-identical). */
   d1: TokenLedgerWriteStore
-  /** The Postgres store, or undefined when no KHALA_SYNC_DB binding. */
-  postgres: Pick<PostgresTokenLedgerStore, 'insertEventRow'> | undefined
+  /** The Postgres store, or undefined when no KHALA_SYNC_DB binding. #8515:
+   * `findExistingRow` is now consumed too (the Postgres-authoritative dedupe
+   * read when `writes==='postgres'`), not just `insertEventRow`. */
+  postgres:
+    | Pick<PostgresTokenLedgerStore, 'insertEventRow' | 'findExistingRow'>
+    | undefined
   flags: TokenLedgerFlags
   log?: TokenLedgerLog | undefined
 }>
@@ -804,6 +822,17 @@ export const makeDualWriteTokenLedgerWriteStore = (
 ): TokenLedgerWriteStore => {
   const { d1, flags, postgres } = deps
   const log = deps.log ?? (() => {})
+
+  // #8515: Postgres is authoritative. BOTH the dedupe read (`findExistingRow`)
+  // and the write (`insertEventRow`, which does ON CONFLICT dedupe + rollups in
+  // ONE Postgres transaction) run on Postgres — nothing here touches the
+  // 401-dead D1 bridge. The D1 dedupe read must NOT be left hitting dead D1.
+  if (postgres !== undefined && flags.writes === 'postgres') {
+    return {
+      findExistingRow: postgres.findExistingRow,
+      insertEventRow: postgres.insertEventRow,
+    }
+  }
 
   if (postgres === undefined || !flags.dualWrite) {
     return d1
@@ -1150,7 +1179,10 @@ export const makeTokenLedgerWriteStoreForEnv = (
   options: MakeTokenLedgerStoreOptions = {},
 ): TokenLedgerWriteStore | undefined => {
   const flags = tokenLedgerFlagsFromEnv(env)
-  if (!flags.dualWrite) {
+  // #8515: when writes==='postgres' the Postgres store is authoritative even if
+  // the dual-write mirror flag is off, so don't short-circuit to undefined (a
+  // D1-only fallback) on that path.
+  if (!flags.dualWrite && flags.writes !== 'postgres') {
     return undefined
   }
   const postgres = postgresStoreForEnv(env, options)
@@ -1191,7 +1223,10 @@ export const makeTokenUsageLedgerForEnv = (
       : { onIngestedEvent: options.onIngestedEvent }
   const postgres = postgresStoreForEnv(env, options)
 
-  if (postgres === undefined || (!flags.dualWrite && flags.reads === 'd1')) {
+  if (
+    postgres === undefined ||
+    (!flags.dualWrite && flags.reads === 'd1' && flags.writes !== 'postgres')
+  ) {
     return makeD1TokenUsageLedger(db, runtime, ledgerOptions)
   }
 
@@ -1363,12 +1398,39 @@ export const directTokenLedgerRowFromIngestBody = (
  * (the direct paths fire their own producer hook exactly once, before and
  * independent of this mirror). Never throws.
  */
+/**
+ * #8515: the authoritative `D1Database` handle the RAW `INSERT OR IGNORE`
+ * direct-insert paths (khala-chat public completions + khala-MCP recorder)
+ * write through. When `KHALA_SYNC_LEDGER_WRITES=postgres` (default) AND the
+ * KHALA_SYNC_DB binding exists, this is the Postgres-backed D1 adapter — the
+ * `INSERT OR IGNORE` translates to `ON CONFLICT DO NOTHING` and lands the row
+ * in Postgres instead of the 401-dead D1 bridge. Otherwise plain D1.
+ */
+export const ledgerDirectInsertDatabaseForEnv = (
+  env: TokenLedgerStoreEnv,
+): D1Database => {
+  const flags = tokenLedgerFlagsFromEnv(env)
+  if (flags.writes === 'postgres') {
+    const postgresDb = makeKhalaSyncWritesDatabase(env)
+    if (postgresDb !== undefined) {
+      return postgresDb
+    }
+  }
+  return openAgentsDatabase(env)
+}
+
 export const mirrorTokenLedgerDirectInsertBestEffort = async (
   env: TokenLedgerStoreEnv,
   row: TokenUsageEventRow,
   options: MakeTokenLedgerStoreOptions = {},
 ): Promise<void> => {
   const flags = tokenLedgerFlagsFromEnv(env)
+  // #8515: when writes==='postgres' the authoritative direct INSERT already ran
+  // ON Postgres via `ledgerDirectInsertDatabaseForEnv` (the adapter), so this
+  // secondary event-row-only mirror would be a redundant no-op — skip it.
+  if (flags.writes === 'postgres') {
+    return
+  }
   if (!flags.dualWrite) {
     return
   }

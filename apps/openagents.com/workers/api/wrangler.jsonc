@@ -111,6 +111,16 @@
     "KHALA_SYNC_AGENT_RUNTIME_WRITES": "postgres",
     "KHALA_SYNC_GYM_EVALS_WRITES": "postgres",
     "KHALA_SYNC_SUPERVISION_WRITES": "postgres",
+    // CFG D1 evacuation (#8515): the money-domain AUDIT/LEDGER-MIRROR WRITE
+    // cutovers. These tables' D1 writes were FAILING entirely on the 401-dead
+    // bridge (silent loss); routing them to Postgres RESUMES capture. The
+    // customer credit/pay_ins/agent_balances money path is separately Postgres-
+    // authoritative and is NOT touched here. Set any flag to "d1" to roll back
+    // that single domain. Code defaults to postgres too.
+    // LEDGER: the public tokens-served counter source (`token_usage_events`) —
+    // authoritative insert + dedupe read + the raw direct-insert recorder paths
+    // all move to the Postgres store/adapter.
+    "KHALA_SYNC_LEDGER_WRITES": "postgres",
     "KHALA_SYNC_TREASURY_READS": "postgres",
     // CFG D1 evacuation (#8515): the Cloudflare D1 bridge is 401-dead, so the
     // forum read/write surface (topic lists, threads, new posts) must serve

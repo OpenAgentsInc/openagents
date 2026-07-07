@@ -13,10 +13,10 @@ import {
 } from './inference/served-tokens-recorder'
 import type { KhalaSyncHyperdriveBinding } from './khala-sync-push-routes'
 import { recordTokensServedProjectionBestEffort } from './khala-sync-public-tokens-served'
-import { openAgentsDatabase } from './runtime'
 import { currentIsoTimestamp } from './runtime-primitives'
 import {
   directTokenLedgerRowFromIngestBody,
+  ledgerDirectInsertDatabaseForEnv,
   mirrorTokenLedgerDirectInsertBestEffort,
 } from './token-ledger-store'
 
@@ -136,7 +136,7 @@ export const recordPublicKhalaChatServedTokens = ({
     // KS-8.2 (#8308): captured so the Postgres mirror stores the SAME
     // ingested_at byte the D1 row stores (row-hash reconciliation).
     const ingestedAt = currentIsoTimestamp()
-    const result = await openAgentsDatabase(env)
+    const result = await ledgerDirectInsertDatabaseForEnv(env)
       .prepare(
         `INSERT OR IGNORE INTO token_usage_events (
           id,

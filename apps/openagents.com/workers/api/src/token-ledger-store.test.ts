@@ -93,6 +93,7 @@ describe('tokenLedgerFlagsFromEnv', () => {
     expect(tokenLedgerFlagsFromEnv({})).toEqual({
       dualWrite: true,
       reads: 'd1',
+      writes: 'postgres',
     })
   })
 
@@ -123,7 +124,7 @@ describe('tokenLedgerFlagsFromEnv', () => {
 // Dual-write write store
 // ---------------------------------------------------------------------------
 
-const flagsOn: TokenLedgerFlags = { dualWrite: true, reads: 'd1' }
+const flagsOn: TokenLedgerFlags = { dualWrite: true, reads: 'd1', writes: 'd1' }
 
 const memoryD1Store = () => {
   const rows = new Map<string, TokenUsageEventRow>()
@@ -160,6 +161,7 @@ describe('makeDualWriteTokenLedgerWriteStore', () => {
       d1: d1.store,
       flags: flagsOn,
       postgres: {
+        findExistingRow: () => Promise.resolve(undefined),
         insertEventRow: row => {
           mirrored.push(row.id)
           return Promise.resolve('inserted' as const)
@@ -183,6 +185,7 @@ describe('makeDualWriteTokenLedgerWriteStore', () => {
       flags: flagsOn,
       log: capture.log,
       postgres: {
+        findExistingRow: () => Promise.resolve(undefined),
         insertEventRow: () => Promise.reject(new Error('postgres down')),
       },
     })
@@ -206,8 +209,9 @@ describe('makeDualWriteTokenLedgerWriteStore', () => {
     const mirrored: Array<string> = []
     const offStore = makeDualWriteTokenLedgerWriteStore({
       d1: d1.store,
-      flags: { dualWrite: false, reads: 'd1' },
+      flags: { dualWrite: false, reads: 'd1', writes: 'd1' },
       postgres: {
+        findExistingRow: () => Promise.resolve(undefined),
         insertEventRow: row => {
           mirrored.push(row.id)
           return Promise.resolve('inserted' as const)
@@ -224,8 +228,54 @@ describe('makeDualWriteTokenLedgerWriteStore', () => {
     expect(missingStore).toBe(d1.store)
     expect(mirrored).toEqual([])
   })
-})
 
+  test('#8515 writes=postgres routes BOTH insert and dedupe read to Postgres, never D1', async () => {
+    const d1 = memoryD1Store()
+    const d1FindSpy: Array<string> = []
+    const d1InsertSpy: Array<string> = []
+    const guardedD1: TokenLedgerWriteStore = {
+      findExistingRow: input => {
+        d1FindSpy.push(input.eventId)
+        return d1.store.findExistingRow(input)
+      },
+      insertEventRow: row => {
+        d1InsertSpy.push(row.id)
+        return d1.store.insertEventRow(row)
+      },
+    }
+    const pgRows = new Map<string, TokenUsageEventRow>()
+    const pgFindSpy: Array<string> = []
+    const store = makeDualWriteTokenLedgerWriteStore({
+      d1: guardedD1,
+      flags: { dualWrite: true, reads: 'postgres', writes: 'postgres' },
+      postgres: {
+        findExistingRow: input => {
+          pgFindSpy.push(input.eventId)
+          return Promise.resolve(pgRows.get(input.eventId))
+        },
+        insertEventRow: row => {
+          if (pgRows.has(row.id)) {
+            return Promise.resolve('duplicate' as const)
+          }
+          pgRows.set(row.id, row)
+          return Promise.resolve('inserted' as const)
+        },
+      },
+    })
+
+    const row = sampleRow('pg_auth_1')
+    expect(await store.insertEventRow(row)).toBe('inserted')
+    expect(await store.insertEventRow(row)).toBe('duplicate')
+    expect(await store.findExistingRow({ eventId: 'pg_auth_1', idempotencyKey: row.idempotency_key })).toBeDefined()
+
+    // Postgres is authoritative; the 401-dead D1 handle is never touched.
+    expect(pgRows.has('pg_auth_1')).toBe(true)
+    expect(pgFindSpy).toEqual(['pg_auth_1'])
+    expect(d1InsertSpy).toEqual([])
+    expect(d1FindSpy).toEqual([])
+    expect(d1.rows.size).toBe(0)
+  })
+})
 // ---------------------------------------------------------------------------
 // #8304 interplay: EXACTLY-ONCE counter regression
 // ---------------------------------------------------------------------------
@@ -273,7 +323,7 @@ describe('public counter exactly-once under dual-write (#8304 regression)', () =
         d1: makeD1TokenLedgerWriteStore(sqlite.db),
         flags: flagsOn,
         log: capture.log,
-        postgres: mirror,
+        postgres: { findExistingRow: () => Promise.resolve(undefined), ...mirror },
       }),
     })
     return { capture, ledger, observed, sqlite }
@@ -372,7 +422,7 @@ describe('makeReadRoutedTokenUsageLedger', () => {
       d1: stubLedger({
         readPublicTokensServed: () => Effect.succeed(aggregate(11)),
       }),
-      flags: { dualWrite: true, reads: 'd1' },
+      flags: { dualWrite: true, reads: 'd1', writes: 'd1' },
       postgres: pgReads({
         readPublicTokensServed: () =>
           Effect.sync(() => {
@@ -391,7 +441,7 @@ describe('makeReadRoutedTokenUsageLedger', () => {
       d1: stubLedger({
         readPublicTokensServed: () => Effect.succeed(aggregate(11)),
       }),
-      flags: { dualWrite: true, reads: 'postgres' },
+      flags: { dualWrite: true, reads: 'postgres', writes: 'd1' },
       postgres: pgReads({
         readPublicTokensServed: () => Effect.succeed(aggregate(99)),
       }),
@@ -408,7 +458,7 @@ describe('makeReadRoutedTokenUsageLedger', () => {
       d1: stubLedger({
         readPublicTokensServed: () => Effect.succeed(aggregate(11)),
       }),
-      flags: { dualWrite: true, reads: 'postgres' },
+      flags: { dualWrite: true, reads: 'postgres', writes: 'd1' },
       log: capture.log,
       postgres: pgReads({
         readPublicTokensServed: () =>
@@ -446,7 +496,7 @@ describe('makeReadRoutedTokenUsageLedger', () => {
       d1: stubLedger({
         readPublicTokensServed: () => Effect.succeed(aggregate(11)),
       }),
-      flags: { dualWrite: true, reads: 'postgres' },
+      flags: { dualWrite: true, reads: 'postgres', writes: 'd1' },
       postgres: pgReads({
         readPublicTokensServed: () =>
           Effect.suspend(() => {
@@ -473,7 +523,7 @@ describe('makeReadRoutedTokenUsageLedger', () => {
       d1: stubLedger({
         readPublicTokensServed: () => Effect.succeed(aggregate(11)),
       }),
-      flags: { dualWrite: true, reads: 'compare' },
+      flags: { dualWrite: true, reads: 'compare', writes: 'd1' },
       log: capture.log,
       postgres: pgReads({
         readPublicTokensServed: () => Effect.succeed(aggregate(99)),
@@ -499,7 +549,7 @@ describe('makeReadRoutedTokenUsageLedger', () => {
       d1: stubLedger({
         readPublicTokensServed: () => Effect.succeed(aggregate(42)),
       }),
-      flags: { dualWrite: true, reads: 'compare' },
+      flags: { dualWrite: true, reads: 'compare', writes: 'd1' },
       log: capture.log,
       postgres: pgReads({
         readPublicTokensServed: () => Effect.succeed(aggregate(42)),
@@ -516,7 +566,7 @@ describe('makeReadRoutedTokenUsageLedger', () => {
       d1: stubLedger({
         readPublicTokensServed: () => Effect.succeed(aggregate(7)),
       }),
-      flags: { dualWrite: true, reads: 'compare' },
+      flags: { dualWrite: true, reads: 'compare', writes: 'd1' },
       log: capture.log,
       postgres: pgReads({
         readPublicTokensServed: () =>
