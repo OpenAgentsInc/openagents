@@ -1,11 +1,12 @@
 import type { KhalaRuntimeLane, RuntimeTurnEntity } from "@openagentsinc/khala-sync"
 import { useEffect, useRef, useState } from "react"
-import { Platform, Pressable, TextInput, View } from "react-native"
+import { Platform, Pressable, TextInput, View, type TextStyle, type ViewStyle } from "react-native"
 
 import { ActivityIndicator } from "./activity-indicator"
-import { KhalaText } from "./khala-text"
 import { TouchableFeedback } from "./touchable-feedback"
 import { useKhalaAuth } from "../auth/khala-auth-context"
+import { Text, useAppTheme } from "../ignite"
+import type { ThemedStyle } from "../ignite"
 import { mergeTranscriptIntoDraft } from "../native/push-to-talk-core"
 import { usePushToTalk } from "../native/use-push-to-talk"
 import { registerForPushNotificationsAsync } from "../push/push-notifications-client"
@@ -20,7 +21,6 @@ import {
 import { makeSafeRef } from "../sync/khala-sync-push-core"
 import { buildComposerTextWithQuote } from "../sync/swipe-quote-core"
 import type { PendingMutation } from "../sync/use-khala-sync-push"
-import { khalaMobileTheme } from "../theme/tokens"
 
 type SendMode = "steer" | "queue"
 
@@ -62,8 +62,9 @@ type ChatComposerProps = Readonly<{
   onQuoteConsumed?: () => void
 }>
 
-/** Bottom input bar for a thread. Idle: plain send starts a new turn, using
- * whichever lane (Codex/Claude) is picked in the small idle-only lane
+/** Bottom input bar for a thread, on the ported Infinite Red Ignite `Text`
+ * primitive + theme tokens (`../ignite`). Idle: plain send starts a new turn,
+ * using whichever lane (Codex/Claude) is picked in the small idle-only lane
  * toggle. While a turn is active: the trailing button becomes Stop (always
  * reachable), and typing a follow-up surfaces an explicit Steer-vs-Queue
  * choice — steer attaches to the running turn's context now, queue starts a
@@ -79,6 +80,7 @@ export const ChatComposer = ({
   quoteRequest,
   threadId
 }: ChatComposerProps) => {
+  const { theme, themed } = useAppTheme()
   const [text, setText] = useState("")
   const [sending, setSending] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -210,153 +212,144 @@ export const ChatComposer = ({
   const activeStatusLabel =
     activeTurn === undefined ? undefined : TURN_STATUS_LABEL[activeTurn.status] ?? activeTurn.status
 
+  const pill = (selected: boolean): ViewStyle => ({
+    flex: 1,
+    alignItems: "center",
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingVertical: theme.spacing.xs,
+    borderColor: selected ? theme.colors.tint : theme.colors.palette.neutral400,
+    backgroundColor: selected ? theme.colors.palette.neutral300 : theme.colors.palette.neutral200
+  })
+
   const optionRow = hasActiveTurn ? (
-    <View className="mb-2 flex-row gap-2 px-1">
+    <View style={themed($optionRowWrap)}>
       <Pressable
         accessibilityRole="button"
         accessibilityState={{ selected: mode === "steer" }}
-        className={`flex-1 items-center rounded-full border py-2 ${
-          mode === "steer" ? "border-accent bg-surfaceActive" : "border-borderMuted bg-surface"
-        }`}
+        style={pill(mode === "steer")}
         onPress={() => setMode("steer")}
       >
-        <KhalaText className="text-[11px] uppercase tracking-wide text-text" variant="faint">
-          Steer
-        </KhalaText>
+        <Text size="xxs" style={themed($pillLabel)} text="Steer" />
       </Pressable>
       <Pressable
         accessibilityRole="button"
         accessibilityState={{ selected: mode === "queue" }}
-        className={`flex-1 items-center rounded-full border py-2 ${
-          mode === "queue" ? "border-accent bg-surfaceActive" : "border-borderMuted bg-surface"
-        }`}
+        style={pill(mode === "queue")}
         onPress={() => setMode("queue")}
       >
-        <KhalaText className="text-[11px] uppercase tracking-wide text-text" variant="faint">
-          Queue
-        </KhalaText>
+        <Text size="xxs" style={themed($pillLabel)} text="Queue" />
       </Pressable>
     </View>
   ) : (
-    <View accessibilityLabel="Provider" className="mb-2 flex-row gap-2 px-1">
+    <View accessibilityLabel="Provider" style={themed($optionRowWrap)}>
       {PICKABLE_LANES.map(({ label, lane }) => (
         <Pressable
           accessibilityLabel={`Send with ${label}`}
           accessibilityRole="button"
           accessibilityState={{ selected: selectedLane === lane }}
-          className={`flex-1 items-center rounded-full border py-2 ${
-            selectedLane === lane ? "border-accent bg-surfaceActive" : "border-borderMuted bg-surface"
-          }`}
+          style={pill(selectedLane === lane)}
           key={lane}
           onPress={() => {
             setLaneTouched(true)
             setSelectedLane(lane)
           }}
         >
-          <KhalaText className="text-[11px] uppercase tracking-wide text-text" variant="faint">
-            {label}
-          </KhalaText>
+          <Text size="xxs" style={themed($pillLabel)} text={label} />
         </Pressable>
       ))}
     </View>
   )
 
   return (
-    <View className="bg-transparent px-4 pb-3 pt-2">
+    <View style={themed($container)}>
       {errorMessage === null ? null : (
-        <KhalaText className="mb-1 px-3 text-danger" numberOfLines={2} variant="faint">
-          {errorMessage}
-        </KhalaText>
+        <Text size="xxs" numberOfLines={2} style={themed($error)} text={errorMessage} />
       )}
       {activeStatusLabel === undefined ? null : (
-        <View className="mb-2 flex-row items-center gap-2 self-start rounded-full border border-accent/40 bg-surface px-3 py-1.5">
+        <View style={themed($statusBadge)}>
           {activeTurn?.status === "running" ? (
-            <ActivityIndicator color={khalaMobileTheme.accent} size={12} />
+            <ActivityIndicator color={theme.colors.tint} size={12} />
           ) : (
-            <View className="h-2 w-2 rounded-full bg-accent" />
+            <View style={themed($statusDot)} />
           )}
-          <KhalaText className="text-[11px] uppercase tracking-wide text-accent" variant="faint">
-            {activeStatusLabel}
-          </KhalaText>
+          <Text size="xxs" style={themed($statusLabel)} text={activeStatusLabel} />
         </View>
       )}
       {showOptions ? optionRow : null}
-      <View className="min-h-16 flex-row items-center gap-2 rounded-full border border-borderMuted bg-surfaceRaised px-3 py-2">
+      <View style={themed($inputPill)}>
         <Pressable
           accessibilityLabel={showOptions ? "Hide composer options" : "Show composer options"}
           accessibilityRole="button"
-          className="h-11 w-11 items-center justify-center rounded-full"
+          style={themed($iconButton)}
           hitSlop={8}
           onPress={() => setShowOptions(current => !current)}
         >
-          <KhalaText className="text-[34px] leading-9 text-text" variant="body">
-            +
-          </KhalaText>
+          <Text style={[$plusGlyph, { color: theme.colors.text }]}>+</Text>
         </Pressable>
         <TextInput
-          className="max-h-28 min-h-10 flex-1 px-1 py-2 font-sans text-[19px] leading-6 text-text"
+          style={themed($textInput)}
           multiline
           onChangeText={setText}
           placeholder={hasActiveTurn ? "Follow up" : "Message"}
-          placeholderTextColor={khalaMobileTheme.textMuted}
+          placeholderTextColor={theme.colors.textDim}
           value={text}
         />
         <Pressable
           accessibilityLabel={pushToTalk.accessibilityLabel}
           accessibilityRole="button"
-          className="h-11 w-11 items-center justify-center rounded-full"
+          style={themed($iconButton)}
           disabled={!pushToTalk.pressable}
           onPress={pushToTalk.press}
         >
           {pushToTalk.phase === "checking" ? (
-            <ActivityIndicator color={khalaMobileTheme.textMuted} size={20} />
+            <ActivityIndicator color={theme.colors.textDim} size={20} />
           ) : (
-            <KhalaText
-              className={`text-[30px] leading-8 ${
-                pushToTalk.phase === "recording"
-                  ? "text-danger"
-                  : pushToTalk.pressable
-                    ? "text-text"
-                    : "text-textFaint"
-              }`}
-              variant="body"
+            <Text
+              style={[
+                $micGlyph,
+                {
+                  color:
+                    pushToTalk.phase === "recording"
+                      ? theme.colors.error
+                      : pushToTalk.pressable
+                        ? theme.colors.text
+                        : theme.colors.textDim
+                }
+              ]}
             >
               {pushToTalk.phase === "recording" ? "●" : "◉"}
-            </KhalaText>
+            </Text>
           )}
         </Pressable>
         {hasActiveTurn ? (
           <TouchableFeedback
             accessibilityLabel="Stop"
             accessibilityRole="button"
-            className="h-12 w-12 items-center justify-center rounded-full bg-text"
+            style={[themed($sendButton), { backgroundColor: theme.colors.text }]}
             disabled={sending}
             highlightColor="rgba(0, 0, 0, 0.14)"
             onPress={stopActiveTurn}
           >
             {sending ? (
-              <ActivityIndicator color={khalaMobileTheme.background} size={24} />
+              <ActivityIndicator color={theme.colors.background} size={24} />
             ) : (
-              <KhalaText className="text-[20px] leading-6 text-bg" variant="body">
-                ■
-              </KhalaText>
+              <Text style={[$stopGlyph, { color: theme.colors.background }]}>■</Text>
             )}
           </TouchableFeedback>
         ) : (
           <TouchableFeedback
             accessibilityLabel="Send"
             accessibilityRole="button"
-            className={`h-12 w-12 items-center justify-center rounded-full ${canSend ? "bg-text" : "bg-surfaceMuted"}`}
+            style={[themed($sendButton), { backgroundColor: canSend ? theme.colors.text : theme.colors.palette.neutral400 }]}
             disabled={!canSend}
             highlightColor="rgba(0, 0, 0, 0.14)"
             onPress={() => sendMessage("queue")}
           >
             {sending ? (
-              <ActivityIndicator color={khalaMobileTheme.background} size={24} />
+              <ActivityIndicator color={theme.colors.background} size={24} />
             ) : (
-              <KhalaText className={`text-[26px] leading-8 ${canSend ? "text-bg" : "text-textFaint"}`} variant="body">
-                ↑
-              </KhalaText>
+              <Text style={[$sendGlyph, { color: canSend ? theme.colors.background : theme.colors.textDim }]}>↑</Text>
             )}
           </TouchableFeedback>
         )}
@@ -366,3 +359,102 @@ export const ChatComposer = ({
 }
 
 export const chatComposerKeyboardVerticalOffset = Platform.select({ default: 0, ios: 88 })
+
+const $container: ThemedStyle<ViewStyle> = ({ spacing }) => ({
+  backgroundColor: "transparent",
+  paddingHorizontal: spacing.md,
+  paddingTop: spacing.xs,
+  paddingBottom: spacing.sm
+})
+
+const $optionRowWrap: ThemedStyle<ViewStyle> = ({ spacing }) => ({
+  flexDirection: "row",
+  gap: spacing.xs,
+  marginBottom: spacing.xs,
+  paddingHorizontal: spacing.xxxs
+})
+
+const $pillLabel: ThemedStyle<TextStyle> = ({ colors }) => ({
+  color: colors.text,
+  textTransform: "uppercase",
+  letterSpacing: 0.5
+})
+
+const $statusBadge: ThemedStyle<ViewStyle> = ({ colors, spacing }) => ({
+  flexDirection: "row",
+  alignItems: "center",
+  gap: spacing.xs,
+  alignSelf: "flex-start",
+  marginBottom: spacing.xs,
+  borderRadius: 999,
+  borderWidth: 1,
+  borderColor: colors.tint,
+  backgroundColor: colors.palette.neutral200,
+  paddingHorizontal: spacing.sm,
+  paddingVertical: spacing.xxs
+})
+
+const $statusDot: ThemedStyle<ViewStyle> = ({ colors }) => ({
+  height: 8,
+  width: 8,
+  borderRadius: 4,
+  backgroundColor: colors.tint
+})
+
+const $statusLabel: ThemedStyle<TextStyle> = ({ colors }) => ({
+  color: colors.tint,
+  textTransform: "uppercase",
+  letterSpacing: 0.5
+})
+
+const $inputPill: ThemedStyle<ViewStyle> = ({ colors, spacing }) => ({
+  minHeight: 64,
+  flexDirection: "row",
+  alignItems: "center",
+  gap: spacing.xs,
+  borderRadius: 999,
+  borderWidth: 1,
+  borderColor: colors.palette.neutral400,
+  backgroundColor: colors.palette.neutral300,
+  paddingHorizontal: spacing.sm,
+  paddingVertical: spacing.xs
+})
+
+const $iconButton: ThemedStyle<ViewStyle> = () => ({
+  height: 44,
+  width: 44,
+  alignItems: "center",
+  justifyContent: "center",
+  borderRadius: 22
+})
+
+const $textInput: ThemedStyle<TextStyle> = ({ colors, typography, spacing }) => ({
+  maxHeight: 112,
+  minHeight: 40,
+  flex: 1,
+  paddingHorizontal: spacing.xxs,
+  paddingVertical: spacing.xs,
+  fontFamily: typography.primary.normal,
+  fontSize: 19,
+  lineHeight: 24,
+  color: colors.text
+})
+
+const $error: ThemedStyle<TextStyle> = ({ colors, spacing }) => ({
+  color: colors.error,
+  marginBottom: spacing.xxs,
+  paddingHorizontal: spacing.sm
+})
+
+const $sendButton: ThemedStyle<ViewStyle> = () => ({
+  height: 48,
+  width: 48,
+  alignItems: "center",
+  justifyContent: "center",
+  borderRadius: 24
+})
+
+const $plusGlyph: TextStyle = { fontSize: 34, lineHeight: 36 }
+const $micGlyph: TextStyle = { fontSize: 30, lineHeight: 32 }
+const $stopGlyph: TextStyle = { fontSize: 20, lineHeight: 24 }
+const $sendGlyph: TextStyle = { fontSize: 26, lineHeight: 32 }

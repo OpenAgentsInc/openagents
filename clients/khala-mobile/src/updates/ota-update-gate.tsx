@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react"
 import { AppState, StyleSheet, View } from "react-native"
 import * as Updates from "expo-updates"
 
-import { KhalaText } from "../components/khala-text"
+import { Text } from "../ignite"
 import { khalaMobileTheme } from "../theme/tokens"
 import { ActivityIndicator } from "../components/activity-indicator"
 import { decideOtaGateAction, otaGateVisibleState } from "./ota-update-gate-core"
@@ -95,9 +95,9 @@ export const OtaUpdateGate = () => {
     <View pointerEvents="none" style={styles.container}>
       <View style={styles.pill}>
         <ActivityIndicator color={khalaMobileTheme.accent} size={14} />
-        <KhalaText style={{ color: khalaMobileTheme.accentText }} variant="mono">
+        <Text size="xs" style={{ color: khalaMobileTheme.accentText }}>
           {label}
-        </KhalaText>
+        </Text>
       </View>
     </View>
   )

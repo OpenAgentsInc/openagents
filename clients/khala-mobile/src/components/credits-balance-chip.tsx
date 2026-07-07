@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { View } from "react-native"
+import { View, type TextStyle, type ViewStyle } from "react-native"
 
 import {
   CREDIT_BALANCE_ENTITY_TYPE,
@@ -9,6 +9,8 @@ import {
 } from "@openagentsinc/khala-sync"
 
 import { useKhalaAuth } from "../auth/khala-auth-context"
+import { Text, useAppTheme } from "../ignite"
+import type { ThemedStyle } from "../ignite"
 import { fetchKhalaMobileCreditsBalance } from "../sync/khala-mobile-credits-api"
 import {
   formatUsdCents,
@@ -17,11 +19,11 @@ import {
 } from "../sync/khala-mobile-credits-format-core"
 import { useKhalaMobileSyncPrimitives } from "../sync/khala-mobile-sync-runtime-context"
 import { useKhalaSyncScopeEntities } from "../sync/use-khala-sync-scope-entities"
-import { KhalaText } from "./khala-text"
 
 /**
  * MM-D3 (#8480) + #8505 Part 2: the "glanceable near the composer" half of
- * the acceptance criterion — a small, non-interactive balance readout.
+ * the acceptance criterion — a small, non-interactive balance readout, now on
+ * the ported Infinite Red Ignite `Text` primitive (`../ignite`).
  *
  * Reads live from the synced `scope.user.<id>` `credit_balance` entity
  * (#8505 Part 2) through the SAME already-open Khala Sync subscription the
@@ -39,6 +41,7 @@ import { KhalaText } from "./khala-text"
  */
 export const CreditsBalanceChip = () => {
   const { baseUrl, ownerUserId, token } = useKhalaAuth()
+  const { themed } = useAppTheme()
   const [restBalanceUsdCents, setRestBalanceUsdCents] = useState<number | null>(null)
 
   useEffect(() => {
@@ -71,9 +74,18 @@ export const CreditsBalanceChip = () => {
   if (balanceUsdCents === null) return null
 
   return (
-    <View className="flex-row items-center gap-2">
-      <KhalaText variant="faint">Balance: {formatUsdCents(balanceUsdCents)}</KhalaText>
-      {isLowBalance(balanceUsdCents) ? <KhalaText variant="danger">Low</KhalaText> : null}
+    <View style={themed($chipRow)}>
+      <Text size="xxs" style={themed($faint)} text={`Balance: ${formatUsdCents(balanceUsdCents)}`} />
+      {isLowBalance(balanceUsdCents) ? <Text size="xxs" style={themed($danger)} text="Low" /> : null}
     </View>
   )
 }
+
+const $chipRow: ThemedStyle<ViewStyle> = ({ spacing }) => ({
+  flexDirection: "row",
+  alignItems: "center",
+  gap: spacing.xs,
+})
+
+const $faint: ThemedStyle<TextStyle> = ({ colors }) => ({ color: colors.textDim })
+const $danger: ThemedStyle<TextStyle> = ({ colors }) => ({ color: colors.error })

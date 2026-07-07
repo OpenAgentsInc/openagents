@@ -77,13 +77,30 @@ import { act, create as createTestRenderer } from "react-test-renderer"
  * real, unmocked module.
  */
 
-mock.module("../src/components/khala-screen", () => ({
-  KhalaScreen: ({ children }: { children?: React.ReactNode }) => React.createElement(React.Fragment, null, children),
+// RepoPickerScreen is now composed from the ported Infinite Red Ignite kit
+// (`src/ignite`). The Ignite `Screen` and `Header` are the native-shell
+// wrappers (`react-native-edge-to-edge` SystemBars + `react-native-safe-area-
+// context` insets) with no meaning under `bun test`, so they're stood in with
+// plain pass-throughs — exactly the same idea the old `khala-screen`/
+// `app-header` stand-ins used. Everything the test actually exercises (the real
+// Ignite `ListItem`, `TextField`, `EmptyState`, `Text`, and the real
+// khala-mobile-repos-api client + repo-search-core filters) stays REAL.
+mock.module("../src/ignite/components/Screen", () => ({
+  Screen: ({ children }: { children?: React.ReactNode }) => React.createElement(React.Fragment, null, children),
 }))
 
-mock.module("../src/components/app-header", () => ({
-  AppHeader: ({ title }: { title: string; showBack?: boolean }) =>
-    React.createElement("AppHeader", null, title),
+mock.module("../src/ignite/components/Header", () => ({
+  Header: ({ title }: { title?: string }) => React.createElement("Header", null, title),
+}))
+
+// The `../ignite` barrel re-exports `useSafeAreaInsetsStyle`, which imports
+// `react-native-safe-area-context` — a CommonJS native module whose top-level
+// `require("react-native")` trips Bun's reentrant-require guard under this test
+// harness ("Requested module is already fetched"). This screen never renders a
+// safe-area style (Screen/Header are mocked above), so a bare stand-in for the
+// hook keeps the barrel importable without pulling the native module in.
+mock.module("react-native-safe-area-context", () => ({
+  useSafeAreaInsets: () => ({ bottom: 0, left: 0, right: 0, top: 0 }),
 }))
 
 // Arcade-fidelity audit (2026-07-06) added a real `react-native-reanimated`

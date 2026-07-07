@@ -1,6 +1,7 @@
-import { View } from "react-native"
+import { View, type TextStyle, type ViewStyle } from "react-native"
 
-import { KhalaText } from "./khala-text"
+import { Text, useAppTheme } from "../ignite"
+import type { ThemedStyle } from "../ignite"
 import { TouchableFeedback } from "./touchable-feedback"
 
 export type KhalaThreadHeaderProps = Readonly<{
@@ -15,62 +16,109 @@ export type KhalaThreadHeaderProps = Readonly<{
   title: string
 }>
 
+/** Thread view's top bar. Presentation is on the ported Infinite Red Ignite
+ * `Text` primitive + theme tokens (`../ignite`); the UI-thread press
+ * cross-fade stays on the arcade `TouchableFeedback`. */
 export const KhalaThreadHeader = ({
   onBack,
   onNewThread,
   subtitle,
   title,
-}: KhalaThreadHeaderProps) => (
-  <View className="px-4 pb-3 pt-2">
-    <View className="flex-row items-center gap-3">
-      <TouchableFeedback
-        accessibilityLabel="Back"
-        accessibilityRole="button"
-        className="h-14 w-14 items-center justify-center rounded-full border border-borderMuted bg-surfaceRaised"
-        hitSlop={10}
-        onPress={onBack}
-      >
-        <KhalaText className="text-[36px] leading-10 text-text" variant="body">
-          ‹
-        </KhalaText>
-      </TouchableFeedback>
+}: KhalaThreadHeaderProps) => {
+  const { theme, themed } = useAppTheme()
+  const newDisabled = onNewThread === undefined
+  return (
+    <View style={themed($container)}>
+      <View style={themed($row)}>
+        <TouchableFeedback
+          accessibilityLabel="Back"
+          accessibilityRole="button"
+          style={themed($circleButton)}
+          hitSlop={10}
+          onPress={onBack}
+        >
+          <Text style={[$backGlyph, { color: theme.colors.text }]}>‹</Text>
+        </TouchableFeedback>
 
-      <View className="min-w-0 flex-1">
-        <KhalaText className="text-[19px] font-semibold leading-6" numberOfLines={1} variant="body">
-          {title}
-        </KhalaText>
-        <KhalaText className="text-[15px] leading-5" numberOfLines={1} variant="muted">
-          {subtitle}
-        </KhalaText>
+        <View style={themed($titleColumn)}>
+          <Text weight="medium" size="md" numberOfLines={1} text={title} />
+          <Text size="sm" numberOfLines={1} style={themed($subtitle)} text={subtitle} />
+        </View>
+
+        <TouchableFeedback
+          accessibilityLabel="New thread"
+          accessibilityRole="button"
+          style={[themed($newButton), newDisabled ? themed($newButtonDisabled) : themed($newButtonEnabled)]}
+          disabled={newDisabled}
+          hitSlop={10}
+          onPress={onNewThread}
+        >
+          <Text style={[$newGlyph, { color: newDisabled ? theme.colors.textDim : theme.colors.tint }]}>✎</Text>
+          <Text
+            size="xxs"
+            weight="medium"
+            style={{
+              color: newDisabled ? theme.colors.textDim : theme.colors.tint,
+              textTransform: "uppercase",
+              letterSpacing: 0.5,
+            }}
+            text="New"
+          />
+        </TouchableFeedback>
       </View>
-
-      <TouchableFeedback
-        accessibilityLabel="New thread"
-        accessibilityRole="button"
-        className={`h-14 flex-row items-center gap-2 rounded-full border px-4 ${
-          onNewThread === undefined
-            ? "border-borderMuted bg-surface"
-            : "border-accent/60 bg-surfaceRaised"
-        }`}
-        disabled={onNewThread === undefined}
-        hitSlop={10}
-        onPress={onNewThread}
-      >
-        <KhalaText
-          className={`text-[22px] leading-6 ${onNewThread === undefined ? "text-textFaint" : "text-accent"}`}
-          variant="body"
-        >
-          ✎
-        </KhalaText>
-        <KhalaText
-          className={`text-[12px] font-semibold uppercase tracking-wide ${
-            onNewThread === undefined ? "text-textFaint" : "text-accent"
-          }`}
-          variant="faint"
-        >
-          New
-        </KhalaText>
-      </TouchableFeedback>
     </View>
-  </View>
-)
+  )
+}
+
+const $container: ThemedStyle<ViewStyle> = ({ spacing }) => ({
+  paddingHorizontal: spacing.md,
+  paddingTop: spacing.xs,
+  paddingBottom: spacing.sm,
+})
+
+const $row: ThemedStyle<ViewStyle> = ({ spacing }) => ({
+  flexDirection: "row",
+  alignItems: "center",
+  gap: spacing.sm,
+})
+
+const $circleButton: ThemedStyle<ViewStyle> = ({ colors }) => ({
+  height: 56,
+  width: 56,
+  alignItems: "center",
+  justifyContent: "center",
+  borderRadius: 28,
+  borderWidth: 1,
+  borderColor: colors.palette.neutral400,
+  backgroundColor: colors.palette.neutral200,
+})
+
+const $titleColumn: ThemedStyle<ViewStyle> = () => ({
+  flex: 1,
+  minWidth: 0,
+})
+
+const $newButton: ThemedStyle<ViewStyle> = ({ spacing }) => ({
+  height: 56,
+  flexDirection: "row",
+  alignItems: "center",
+  gap: spacing.xs,
+  borderRadius: 28,
+  borderWidth: 1,
+  paddingHorizontal: spacing.md,
+})
+
+const $newButtonEnabled: ThemedStyle<ViewStyle> = ({ colors }) => ({
+  borderColor: colors.tint,
+  backgroundColor: colors.palette.neutral200,
+})
+
+const $newButtonDisabled: ThemedStyle<ViewStyle> = ({ colors }) => ({
+  borderColor: colors.palette.neutral400,
+  backgroundColor: colors.background,
+})
+
+const $subtitle: ThemedStyle<TextStyle> = ({ colors }) => ({ color: colors.textDim })
+
+const $backGlyph: TextStyle = { fontSize: 36, lineHeight: 40 }
+const $newGlyph: TextStyle = { fontSize: 22, lineHeight: 24 }

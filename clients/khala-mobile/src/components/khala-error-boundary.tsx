@@ -1,4 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from "react"
+import { View, type TextStyle, type ViewStyle } from "react-native"
+import { SafeAreaView } from "react-native-safe-area-context"
 
 import {
   buildKhalaCrashReport,
@@ -6,9 +8,8 @@ import {
   type KhalaCrashReporter,
 } from "../diagnostics/crash-reporting"
 import { tx } from "../i18n/copy"
-import { KhalaButton } from "./khala-button"
-import { KhalaScreen } from "./khala-screen"
-import { KhalaText } from "./khala-text"
+import { Button, Text, useAppTheme } from "../ignite"
+import type { ThemedStyle } from "../ignite"
 
 type KhalaErrorBoundaryProps = Readonly<{
   crashReporter?: KhalaCrashReporter
@@ -19,22 +20,32 @@ type KhalaErrorBoundaryState = Readonly<{
   error: Error | null
 }>
 
-const KhalaErrorFallback = ({ onReset }: { onReset: () => void }) => (
-  <KhalaScreen contentClassName="items-center justify-center px-6" preset="fixed">
-    <KhalaText className="text-center" text={tx("app.title")} variant="heading" />
-    <KhalaText
-      className="mt-4 text-center"
-      text={tx("errorBoundary.body")}
-      variant="muted"
-    />
-    <KhalaText
-      className="mt-2 text-center"
-      text={tx("errorBoundary.help")}
-      variant="faint"
-    />
-    <KhalaButton className="mt-8 self-stretch" onPress={onReset} text={tx("errorBoundary.retry")} variant="primary" />
-  </KhalaScreen>
-)
+const KhalaErrorFallback = ({ onReset }: { onReset: () => void }) => {
+  const { themed } = useAppTheme()
+  return (
+    <SafeAreaView style={themed($safeArea)}>
+      <View style={themed($content)}>
+        <Text preset="heading" style={$center} text={tx("app.title")} />
+        <Text style={[$center, themed($dim)]} text={tx("errorBoundary.body")} />
+        <Text size="xs" style={[$center, themed($faint)]} text={tx("errorBoundary.help")} />
+        <Button preset="reversed" style={$stretch} onPress={onReset} text={tx("errorBoundary.retry")} />
+      </View>
+    </SafeAreaView>
+  )
+}
+
+const $safeArea: ThemedStyle<ViewStyle> = ({ colors }) => ({ flex: 1, backgroundColor: colors.background })
+const $content: ThemedStyle<ViewStyle> = ({ spacing }) => ({
+  flex: 1,
+  alignItems: "center",
+  justifyContent: "center",
+  paddingHorizontal: spacing.lg,
+  gap: spacing.md,
+})
+const $center: TextStyle = { textAlign: "center" }
+const $stretch: ViewStyle = { alignSelf: "stretch", marginTop: 16 }
+const $dim: ThemedStyle<TextStyle> = ({ colors }) => ({ color: colors.textDim })
+const $faint: ThemedStyle<TextStyle> = ({ colors }) => ({ color: colors.textDim })
 
 export class KhalaErrorBoundary extends Component<
   KhalaErrorBoundaryProps,

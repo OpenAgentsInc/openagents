@@ -83,35 +83,38 @@ describe("Khala mobile provider spine and primitives", () => {
     expect(settings).not.toContain("<Pressable")
   })
 
-  test("uses restrained Arcade primitives on the signed-in thread list", async () => {
+  // MM-H1 follow-up (Ignite port): the signed-in thread list was rebuilt on
+  // the ported Infinite Red Ignite kit (`../ignite`) — Screen/Header/Card/
+  // ListItem/EmptyState/Text + theme tokens — replacing the KhalaListItem/
+  // KhalaEmptyState/BackgroundGradient composition. The staggered entrance
+  // (arcade-fidelity §4 behavior) stays.
+  test("uses the Ignite component kit on the signed-in thread list", async () => {
     const threadList = await readSource("src/screens/thread-list-screen.tsx")
 
-    expect(threadList).toContain("ActivityIndicator")
-    expect(threadList).toContain("BackgroundGradient")
-    expect(threadList).toContain("KhalaListItem")
-    expect(threadList).toContain("KhalaEmptyState")
-    // Arcade-fidelity audit (2026-07-06) §4: staggered entrance was
-    // inconsistent between this list and thread-messages-screen.tsx's
-    // transcript (which already had it) — now both do, matching arcade's
-    // own list-entrance pattern.
+    expect(threadList).toContain('from "../ignite"')
+    expect(threadList).toContain("<Screen")
+    expect(threadList).toContain("<Header")
+    expect(threadList).toContain("ListItem")
+    expect(threadList).toContain("EmptyState")
     expect(threadList).toContain("FadeIn.delay")
+    expect(threadList).not.toContain("KhalaListItem")
+    expect(threadList).not.toContain("KhalaEmptyState")
+    expect(threadList).not.toContain("BackgroundGradient")
     expect(threadList).not.toContain("Frame")
     expect(threadList).not.toContain("usePowerOnVisible")
-    expect(threadList).not.toContain("rowFrame")
-    expect(threadList).not.toContain('className="border-b border-borderMuted px-4 py-4"')
   })
 
-  test("uses button primitives on the GitHub-only sign-in fallback", async () => {
+  test("uses Ignite button primitives on the GitHub-only sign-in fallback", async () => {
     const signIn = await readSource("src/components/sign-in-screen.tsx")
 
-    // Arcade-fidelity audit (2026-07-06): the bespoke `NexusSignInButton`
-    // (a wireframe-derived button with no arcade lineage) was folded into
-    // the shared `KhalaButton` instead of keeping a fourth bespoke button
-    // component.
-    expect(signIn).toContain("<KhalaButton")
+    // MM-H1 follow-up (Ignite port): the sign-in CTA is now the ported Ignite
+    // `Button` (`../ignite`), replacing the shared `KhalaButton`.
+    expect(signIn).toContain("<Button")
+    expect(signIn).toContain('from "../ignite"')
     expect(signIn).toContain("signInWithGitHub")
     expect(signIn).toContain("signIn.github.primary")
     expect(signIn).not.toContain("NexusSignInButton")
+    expect(signIn).not.toContain("KhalaButton")
     expect(signIn).not.toContain("KhalaTextField")
     expect(signIn).not.toContain("KhalaEmptyState")
     expect(signIn).not.toContain("<TextInput")

@@ -540,7 +540,6 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
       evidenceRefs: [
         "clients/khala-mobile/src/status/khala-code-connectivity-core.ts",
         "clients/khala-mobile/src/status/khala-code-connectivity.ts",
-        "clients/khala-mobile/src/components/app-header.tsx",
         "clients/khala-mobile/tests/khala-code-connectivity.test.ts",
         "docs/fable/2026-07-05-khala-code-mobile-only-mvp-launch-audit.md",
         "docs/khala-mobile/khala-mobile-ux-contract.md",

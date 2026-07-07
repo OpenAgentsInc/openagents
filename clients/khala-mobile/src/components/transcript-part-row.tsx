@@ -1,10 +1,11 @@
-import { Pressable, View } from "react-native"
+import { Pressable, View, type TextStyle, type ViewStyle } from "react-native"
 
 import type { KhalaRuntimeLane } from "@openagentsinc/khala-sync"
 
 import { handoffLaneLabel, handoffTargetLane } from "../sync/khala-cross-agent-handoff-core"
 import { summarizeToolPart, type TranscriptPart, type ToolSummaryTone } from "../sync/khala-runtime-transcript-core"
-import { KhalaText } from "./khala-text"
+import { Text, useAppTheme } from "../ignite"
+import type { Theme, ThemedStyle } from "../ignite"
 import { TouchableFeedback } from "./touchable-feedback"
 
 const TURN_STATUS_LABEL: Record<
@@ -17,11 +18,18 @@ const TURN_STATUS_LABEL: Record<
   running: "turn started"
 }
 
-const TOOL_TONE_CLASS_NAME: Record<ToolSummaryTone, string> = {
-  danger: "text-danger",
-  muted: "text-textMuted",
-  success: "text-success",
-  warning: "text-warning",
+const toolToneColor = (theme: Theme, tone: ToolSummaryTone): string => {
+  switch (tone) {
+    case "danger":
+      return theme.colors.error
+    case "success":
+      return theme.colors.palette.secondary300
+    case "warning":
+      return theme.colors.palette.accent200
+    case "muted":
+    default:
+      return theme.colors.textDim
+  }
 }
 
 const TOOL_ICON: Record<ReturnType<typeof summarizeToolPart>["icon"], string> = {
@@ -58,91 +66,79 @@ export type TranscriptPartRowProps = Readonly<{
 
 /** Renders one AI-SDK-shaped runtime transcript part in the screenshot target
  * rhythm: large plain prose, collapsed one-line tool summaries, and compact
- * status affordances. */
+ * status affordances — on the ported Infinite Red Ignite `Text` primitive +
+ * theme tokens (`../ignite`). */
 export const TranscriptPartRow = ({
   handoffDisabled,
   handoffPending,
   onRequestHandoff,
   part
 }: TranscriptPartRowProps) => {
+  const { theme, themed } = useAppTheme()
   switch (part.kind) {
     case "text":
       return (
-        <View className="px-1 py-1">
-          <KhalaText className="text-[22px] leading-8 text-text" variant="body">
-            {part.text}
-          </KhalaText>
+        <View style={themed($prosePad)}>
+          <Text style={[$prose, { color: theme.colors.text }]}>{part.text}</Text>
         </View>
       )
     case "reasoning":
       return (
-        <View className="px-1 py-1">
-          <KhalaText className="text-[20px] leading-7 text-textMuted" variant="muted">
-            {part.text}
-          </KhalaText>
+        <View style={themed($prosePad)}>
+          <Text style={[$reasoning, { color: theme.colors.textDim }]}>{part.text}</Text>
         </View>
       )
     case "tool": {
       const summary = summarizeToolPart(part)
+      const toneColor = toolToneColor(theme, summary.tone)
       return (
         <TouchableFeedback
           accessibilityLabel={summary.label}
           accessibilityRole="button"
-          className="rounded-lg"
-          highlightColor="rgba(79, 208, 255, 0.08)"
+          style={$toolTouchable}
+          highlightColor="rgba(232, 193, 180, 0.10)"
         >
-          <View className="flex-row items-center gap-2 px-1 py-2">
-            <KhalaText className={`w-5 text-center text-xl ${TOOL_TONE_CLASS_NAME[summary.tone]}`} variant="mono">
-              {TOOL_ICON[summary.icon]}
-            </KhalaText>
-            <KhalaText
-              className={`min-w-0 flex-1 text-[20px] leading-7 ${TOOL_TONE_CLASS_NAME[summary.tone]}`}
-              numberOfLines={1}
-              variant="muted"
-            >
+          <View style={themed($toolRow)}>
+            <Text style={[$toolIcon, { color: toneColor }]}>{TOOL_ICON[summary.icon]}</Text>
+            <Text numberOfLines={1} style={[$toolLabel, { color: toneColor }]}>
               {summary.label}
-            </KhalaText>
-            <KhalaText className="text-[24px] text-textFaint" variant="faint">
-              ›
-            </KhalaText>
+            </Text>
+            <Text style={[$chevron, { color: theme.colors.textDim }]}>›</Text>
           </View>
         </TouchableFeedback>
       )
     }
     case "usage":
       return (
-        <KhalaText className="px-1 py-1" variant="faint">
+        <Text size="xxs" style={themed($usage)}>
           {part.inputTokens ?? 0} in · {part.outputTokens ?? 0} out · {part.totalTokens ?? 0} total tokens
-        </KhalaText>
+        </Text>
       )
     case "turn-status": {
       const targetLane = part.status === "completed" ? handoffTargetLane(part.lane) : undefined
       const canRequestHandoff = targetLane !== undefined && onRequestHandoff !== undefined
       return (
-        <View className="items-start gap-2 px-1 py-1">
-          <View className="flex-row items-center gap-2">
-            <KhalaText className="text-textFaint" variant="faint">
-              {TURN_STATUS_LABEL[part.status]}
-            </KhalaText>
-            <View className="rounded-full border border-borderMuted bg-surface px-1.5 py-0.5">
-              <KhalaText className="text-[10px]" variant="faint">
-                {laneLabel(part.lane)}
-              </KhalaText>
+        <View style={themed($statusContainer)}>
+          <View style={themed($statusRow)}>
+            <Text size="xxs" style={themed($faint)} text={TURN_STATUS_LABEL[part.status]} />
+            <View style={themed($laneBadge)}>
+              <Text style={[$laneBadgeText, { color: theme.colors.textDim }]} text={laneLabel(part.lane)} />
             </View>
           </View>
           {canRequestHandoff ? (
             <Pressable
               accessibilityLabel={`Ask ${laneLabel(targetLane)} to review this`}
               accessibilityRole="button"
-              className="rounded-full border border-borderMuted bg-surface px-2 py-1"
+              style={themed($handoffButton)}
               disabled={handoffDisabled === true || handoffPending === true}
               onPress={() =>
                 onRequestHandoff({ sourceLane: part.lane, targetLane, turnId: part.turnId })
               }
             >
-              <KhalaText className="text-[10px] uppercase tracking-wide text-accent" variant="faint">
-                {handoffPending === true ? "asking…" : `ask ${laneLabel(targetLane)} to review this`}
-              </KhalaText>
+              <Text
+                style={[$handoffText, { color: theme.colors.tint }]}
+                text={handoffPending === true ? "asking…" : `ask ${laneLabel(targetLane)} to review this`}
+              />
             </Pressable>
           ) : null}
         </View>
@@ -150,3 +146,65 @@ export const TranscriptPartRow = ({
     }
   }
 }
+
+const $prosePad: ThemedStyle<ViewStyle> = ({ spacing }) => ({
+  paddingHorizontal: spacing.xxxs,
+  paddingVertical: spacing.xxxs
+})
+
+const $toolTouchable: ViewStyle = { borderRadius: 8 }
+
+const $toolRow: ThemedStyle<ViewStyle> = ({ spacing }) => ({
+  flexDirection: "row",
+  alignItems: "center",
+  gap: spacing.xs,
+  paddingHorizontal: spacing.xxxs,
+  paddingVertical: spacing.xxs
+})
+
+const $usage: ThemedStyle<TextStyle> = ({ colors, spacing }) => ({
+  color: colors.textDim,
+  paddingHorizontal: spacing.xxxs,
+  paddingVertical: spacing.xxxs
+})
+
+const $statusContainer: ThemedStyle<ViewStyle> = ({ spacing }) => ({
+  alignItems: "flex-start",
+  gap: spacing.xs,
+  paddingHorizontal: spacing.xxxs,
+  paddingVertical: spacing.xxxs
+})
+
+const $statusRow: ThemedStyle<ViewStyle> = ({ spacing }) => ({
+  flexDirection: "row",
+  alignItems: "center",
+  gap: spacing.xs
+})
+
+const $laneBadge: ThemedStyle<ViewStyle> = ({ colors, spacing }) => ({
+  borderRadius: 999,
+  borderWidth: 1,
+  borderColor: colors.palette.neutral400,
+  backgroundColor: colors.palette.neutral200,
+  paddingHorizontal: spacing.xs,
+  paddingVertical: 2
+})
+
+const $handoffButton: ThemedStyle<ViewStyle> = ({ colors, spacing }) => ({
+  borderRadius: 999,
+  borderWidth: 1,
+  borderColor: colors.palette.neutral400,
+  backgroundColor: colors.palette.neutral200,
+  paddingHorizontal: spacing.xs,
+  paddingVertical: spacing.xxs
+})
+
+const $faint: ThemedStyle<TextStyle> = ({ colors }) => ({ color: colors.textDim })
+
+const $prose: TextStyle = { fontSize: 22, lineHeight: 32 }
+const $reasoning: TextStyle = { fontSize: 20, lineHeight: 28 }
+const $toolIcon: TextStyle = { width: 20, textAlign: "center", fontSize: 20 }
+const $toolLabel: TextStyle = { minWidth: 0, flex: 1, fontSize: 20, lineHeight: 28 }
+const $chevron: TextStyle = { fontSize: 24 }
+const $laneBadgeText: TextStyle = { fontSize: 10, lineHeight: 14 }
+const $handoffText: TextStyle = { fontSize: 10, lineHeight: 14, textTransform: "uppercase", letterSpacing: 0.5 }
