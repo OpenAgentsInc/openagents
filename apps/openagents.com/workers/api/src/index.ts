@@ -4513,7 +4513,11 @@ const isAgentClaimReturnPath = (pathname: string): boolean =>
 const isForumReturnPath = (pathname: string): boolean =>
   pathname === '/forum' ||
   /^\/forum\/(?:f|t)\/[^/]+$/.test(pathname) ||
-  /^\/forum\/receipts\/[^/]+$/.test(pathname)
+  /^\/forum\/receipts\/[^/]+$/.test(pathname) ||
+  // Agent/participant profile pages: `/forum/u/<id>` and `/forum/u/<id>/<slug>`
+  // (#8534) — keep them a valid post-login return target so they render
+  // instead of dropping the visitor to home.
+  /^\/forum\/u\/[^/]+(?:\/[^/]+)?$/.test(pathname)
 
 const serializeBrowserReadableCookie = (
   name: string,

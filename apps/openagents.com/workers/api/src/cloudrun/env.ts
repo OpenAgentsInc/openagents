@@ -6,8 +6,20 @@
  * owned backends:
  *
  * - vars + secrets: pass-through from process.env (Secret Manager mounts)
- * - OPENAGENTS_DB:   D1-over-HTTP bridge (d1-http.ts) until CFG-4 finishes
- *                    the Postgres hard cutover; typed-503 when unconfigured
+ * - OPENAGENTS_DB:   the Cloud SQL Postgres D1-adapter (CFG D1 evacuation,
+ *                    #8515). When `KHALA_SYNC_DATABASE_URL` is configured this
+ *                    is `makeKhalaSyncWritesDatabase` — the same Postgres
+ *                    `makePostgresD1Database` adapter the per-domain WRITES
+ *                    cutovers already run on — so every remaining
+ *                    `openAgentsDatabase(env)` code path serves off Cloud SQL
+ *                    Postgres instead of the 401-dead Cloudflare D1 bridge.
+ *                    Already-cut domains short-circuit their own D1 leg in
+ *                    `postgres` mode, so this repoint does NOT double-write
+ *                    them; the credits money path (pay_ins/pay_in_legs/
+ *                    agent_balances) and the token_usage_events ledger run on
+ *                    their own separate Postgres handles and are untouched.
+ *                    Falls back to the d1-http bridge (typed-503 when
+ *                    unconfigured) only when no `KHALA_SYNC_DATABASE_URL`.
  * - auth KV + OpenAuth issuer storage: CFG-3's KvStore over KHALA_SYNC_DB
  *   (auth/auth-kv.ts, auth/openauth-storage.ts) — config-driven, no shim
  * - KHALA_SYNC_DB:   DIRECT Cloud SQL connection string (kills Hyperdrive)
@@ -22,6 +34,7 @@
 import path from 'node:path'
 
 import type { OpenAgentsWorkerEnv } from '../bindings'
+import { makeKhalaSyncWritesDatabase } from '../khala-sync-domain-writes-database'
 import { makeAssetsFetcher } from './assets'
 import { d1FromProcessEnv } from './d1-http'
 import { makeUnavailableDurableObjectNamespace } from './do-shims'
@@ -52,13 +65,27 @@ export const buildCloudRunRuntime = (
   )
 
   const khalaSyncUrl = processEnv['KHALA_SYNC_DATABASE_URL']
+  const khalaSyncBinding =
+    khalaSyncUrl === undefined || khalaSyncUrl.length === 0
+      ? undefined
+      : { connectionString: khalaSyncUrl }
+
+  // CFG D1 evacuation (#8515): OPENAGENTS_DB now serves off Cloud SQL Postgres
+  // through the same D1-shaped adapter the per-domain WRITES cutovers use, so
+  // every remaining `openAgentsDatabase(env)` path stops hitting the 401-dead
+  // Cloudflare D1 bridge. When `KHALA_SYNC_DATABASE_URL` is absent (tests /
+  // unconfigured) this falls back to the d1-http bridge, which itself degrades
+  // to the typed `BindingUnavailableError` 503 proxy.
+  const openAgentsDb =
+    makeKhalaSyncWritesDatabase({ KHALA_SYNC_DB: khalaSyncBinding }) ??
+    d1FromProcessEnv(processEnv)
 
   const bindings = {
     // ---- storage/data backends -------------------------------------------
-    OPENAGENTS_DB: d1FromProcessEnv(processEnv),
-    ...(khalaSyncUrl === undefined || khalaSyncUrl.length === 0
+    OPENAGENTS_DB: openAgentsDb,
+    ...(khalaSyncBinding === undefined
       ? {}
-      : { KHALA_SYNC_DB: { connectionString: khalaSyncUrl } }),
+      : { KHALA_SYNC_DB: khalaSyncBinding }),
 
     // Queues: CFG-7 deleted the Queue bindings — producers enqueue via
     // makeOaJobEnqueueForEnv over KHALA_SYNC_DB, and the separate
