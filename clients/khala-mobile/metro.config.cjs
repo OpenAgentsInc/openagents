@@ -1,4 +1,5 @@
 const { getDefaultConfig } = require("expo/metro-config")
+const { withStorybook } = require("@storybook/react-native/withStorybook")
 const { withNativeWind } = require("nativewind/metro")
 
 const config = getDefaultConfig(__dirname)
@@ -24,6 +25,6 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
     : defaultResolveRequest(context, moduleName, platform)
 }
 
-module.exports = withNativeWind(config, {
+module.exports = withStorybook(withNativeWind(config, {
   input: "./global.css"
-})
+}))

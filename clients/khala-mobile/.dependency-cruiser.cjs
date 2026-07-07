@@ -8,6 +8,7 @@ const extensions = sourceExts.flatMap(ext =>
 )
 
 const productionPath = "^(index\\.tsx|src/)"
+const productionFixturePath = "\\.(spec|test|stories)\\.(js|mjs|cjs|ts|tsx)$"
 const domainPath = "^src/(auth|config|native|security|status|sync|theme)/"
 const routePath = "^src/(navigators|screens)/"
 const nativeModulePath =
@@ -31,7 +32,7 @@ module.exports = {
         "Shipping app/source files must never depend on tests or test support.",
       from: {
         path: productionPath,
-        pathNot: "\\.(spec|test)\\.(js|mjs|cjs|ts|tsx)$",
+        pathNot: productionFixturePath,
       },
       to: {
         path: "^tests/",
@@ -65,7 +66,7 @@ module.exports = {
         "Production app/source files cannot import devDependencies; move the import to tests/tooling or promote the package.",
       from: {
         path: productionPath,
-        pathNot: "\\.(spec|test)\\.(js|mjs|cjs|ts|tsx)$",
+        pathNot: productionFixturePath,
       },
       to: {
         dependencyTypes: ["npm-dev"],

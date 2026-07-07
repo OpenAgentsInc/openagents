@@ -53,6 +53,30 @@ bun run --cwd clients/khala-mobile typecheck
 bun run --cwd clients/khala-mobile architecture:check
 ```
 
+## Local Storybook
+
+Khala Mobile has an on-device React Native Storybook for public-safe component
+fixtures. It is enabled only through Metro's `STORYBOOK_ENABLED=true` entry
+swap, so normal app bundles do not include Storybook.
+
+```sh
+bun run --cwd clients/khala-mobile storybook
+bun run --cwd clients/khala-mobile storybook:ios
+bun run --cwd clients/khala-mobile storybook:android
+```
+
+Stories live beside component sources as `*.stories.tsx`, and the generated
+Storybook index lives under `.rnstorybook/storybook.requires.ts`. After adding
+or moving stories, run:
+
+```sh
+bun run --cwd clients/khala-mobile storybook-generate
+```
+
+Keep stories to static, public-safe UI fixtures. Do not connect them to real
+Khala Sync credentials, chat bodies, local keychain state, or private runtime
+logs.
+
 ## Architecture Guardrails
 
 Khala Mobile has a package-local Dependency Cruiser check inspired by Ignite:
