@@ -1,5 +1,5 @@
 /**
- * Postgres Mutex backend — advisory locks, no table required.
+ * Postgres Mutex backend — driver-agnostic core (advisory locks, no table).
  *
  * Acquire reserves a dedicated connection from the pool, opens a
  * transaction, and takes `pg_advisory_xact_lock(hashtextextended(name, 0))`
@@ -7,20 +7,50 @@
  * xact-scoped advisory locks automatically at transaction end, so even a
  * crashed/killed session can never wedge the name. The reserved connection
  * is returned to the pool in all cases.
+ *
+ * WHY THIS FILE IMPORTS NO BUN TYPES (CFG-17, issue #8533): the Cloud Run
+ * monolith / `openagents.com` Worker seam reaches Postgres through a
+ * postgres.js client over the KHALA_SYNC_DB connection (the same
+ * transaction-mode-safe discipline every other khala-sync store uses), not
+ * Bun's built-in `SQL`. Bun's `SQL` and postgres.js (>=3.4) both expose the
+ * same `reserve()` → reserved-connection surface, so the backend accepts
+ * that structural slice (`MutexSqlClient`) and both drivers plug in. The Bun
+ * `SQL` Layer stays in ./mutex-postgres-layer.ts; the postgres.js driver run
+ * of the conformance suite lives in ./postgres-backends.test.ts (mirrors the
+ * kv-store and durable-stream driver-seam split).
  */
-import { Effect, Layer } from "effect"
-import { Mutex, MutexBackendError, type MutexShape } from "./mutex.ts"
-import { OaInfraSql } from "./sql.ts"
-import type { SQL } from "bun"
+import { Effect } from "effect"
+import { MutexBackendError, type MutexShape } from "./mutex.ts"
 
 const BACKEND = "postgres"
 
-type Reserved = Awaited<ReturnType<SQL["reserve"]>>
+/**
+ * A reserved single connection: a tagged-template query function plus
+ * `release()` to return it to the pool. Satisfied by Bun's `ReservedSQL`
+ * and by postgres.js's reserved connection (`await sql.reserve()`).
+ */
+export interface MutexReservedSql {
+  (strings: TemplateStringsArray, ...values: ReadonlyArray<unknown>): PromiseLike<unknown>
+  readonly release: () => void
+}
 
-export const makePostgresMutex = (sql: SQL): MutexShape => {
+/**
+ * The structural client slice this backend needs — a `reserve()` that hands
+ * back a dedicated connection. Satisfied by Bun's built-in `SQL` and by
+ * postgres.js (`postgres(url, { prepare: false })`). Callers hand their
+ * driver instance across this seam with a single deliberate cast (the same
+ * convention as durable-stream's `DurableStreamSqlClient`); behavioral
+ * equivalence is proven by running the conformance suite against both
+ * drivers.
+ */
+export interface MutexSqlClient {
+  readonly reserve: () => Promise<MutexReservedSql>
+}
+
+export const makePostgresMutex = (sql: MutexSqlClient): MutexShape => {
   const acquire = (name: string) =>
     Effect.tryPromise({
-      try: async (): Promise<Reserved> => {
+      try: async (): Promise<MutexReservedSql> => {
         const reserved = await sql.reserve()
         try {
           await reserved`BEGIN`
@@ -39,7 +69,7 @@ export const makePostgresMutex = (sql: SQL): MutexShape => {
       catch: (cause) => new MutexBackendError({ backend: BACKEND, operation: "acquire", cause }),
     })
 
-  const release = (reserved: Reserved) =>
+  const release = (reserved: MutexReservedSql) =>
     Effect.promise(async () => {
       try {
         await reserved`COMMIT`
@@ -63,12 +93,3 @@ export const makePostgresMutex = (sql: SQL): MutexShape => {
 
   return { withLock }
 }
-
-/** Postgres Mutex Layer; requires `OaInfraSql` (see src/sql.ts). */
-export const layerPostgres: Layer.Layer<Mutex, never, OaInfraSql> = Layer.effect(
-  Mutex,
-  Effect.gen(function* () {
-    const { sql } = yield* OaInfraSql
-    return makePostgresMutex(sql)
-  }),
-)

@@ -27,8 +27,10 @@ import * as DurableStreamPostgres from "./durable-stream-postgres.ts"
 import * as JobQueuePostgres from "./job-queue-postgres.ts"
 import { KvStore } from "./kv-store.ts"
 import * as KvStorePostgresLayer from "./kv-store-postgres-layer.ts"
+import { Mutex } from "./mutex.ts"
 import { runOaInfraMigrations } from "./migrate.ts"
 import * as MutexPostgres from "./mutex-postgres.ts"
+import * as MutexPostgresLayer from "./mutex-postgres-layer.ts"
 import * as BlobStoreGcs from "./blob-store-gcs.ts"
 import { OaInfraSql } from "./sql.ts"
 
@@ -99,7 +101,21 @@ runDurableStreamConformance({
 runMutexConformance({
   label: "postgres",
   skip: !pgAvailable,
-  makeLayer: () => Layer.provide(MutexPostgres.layerPostgres, sqlLayer()),
+  makeLayer: () => Layer.provide(MutexPostgresLayer.layerPostgres, sqlLayer()),
+})
+// Same backend, postgres.js driver — the client the Cloud Run monolith /
+// openagents.com Worker uses over KHALA_SYNC_DB (CFG-17 #8533). Both drivers
+// must pass the identical suite for the `reserve()` driver seam to be a
+// config-time swap.
+runMutexConformance({
+  label: "postgres.js",
+  skip: !pgAvailable,
+  makeLayer: () =>
+    Layer.sync(Mutex, () =>
+      MutexPostgres.makePostgresMutex(
+        pgJsSql as unknown as MutexPostgres.MutexSqlClient,
+      ),
+    ),
 })
 
 // The GCS BlobStore cannot run against local Postgres; exercise the

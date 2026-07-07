@@ -747,6 +747,14 @@ const runPromiseAllowlist = new Map([
   // bridge; ratchet down if the transport port becomes an Effect program
   // end-to-end (the CFG-9 monolith cutover is the natural moment).
   ['workers/api/src/inference/durable-inference-stream-backend.ts', 1],
+  // Added 2026-07-06 (CFG-17, #8533): the Cloud Run event-ledger-ingest append
+  // bridges the owned oa-infra Mutex (`mutex.withLock`, Effect-returning) once
+  // from the Promise-shaped `recordEventLedgerMessageWithOwnerMutex` seam the
+  // queue dispatcher (`dispatchOaQueueMessage`) calls — the DO replacement that
+  // serializes per-owner appends via `pg_advisory_xact_lock`. Named bridge;
+  // ratchet down if the queue dispatch path becomes an Effect program
+  // end-to-end (the CFG-9 monolith cutover is the natural moment).
+  ['workers/api/src/event-ledger-owner-sequence-store.ts', 1],
 ])
 
 const runPromiseDetails = countByFile(sourceFiles, /Effect\.runPromise\(/g)

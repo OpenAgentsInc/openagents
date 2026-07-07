@@ -101,6 +101,7 @@ import {
   recordEventLedgerMessageWithOwnerObject,
 } from './event-ledger'
 export { EventLedgerOwnerDurableObject } from './event-ledger'
+import { recordEventLedgerMessageWithOwnerMutex } from './event-ledger-owner-sequence-store'
 import {
   makeAgentScopedGrantRoutes,
   makeD1AgentScopedGrantStore,
@@ -16209,6 +16210,27 @@ export const dispatchOaQueueMessage = async (
   }
 
   if (schemaVersion === EVENT_LEDGER_INGEST_QUEUE_SCHEMA_VERSION) {
+    const decoded = S.decodeUnknownSync(EventLedgerIngestQueueMessage)(body)
+
+    // CFG-17 (#8533): on Cloud Run there is no EVENT_LEDGER_OWNER Durable
+    // Object (it is a typed-unavailable shim). When KHALA_SYNC_DB is
+    // configured, serialize the per-owner append with the owned oa-infra
+    // Mutex (pg_advisory_xact_lock) instead of the DO's single thread.
+    const connectionString = (
+      env as { KHALA_SYNC_DB?: { connectionString?: string } }
+    ).KHALA_SYNC_DB?.connectionString
+
+    if (connectionString !== undefined && connectionString.length > 0) {
+      await recordEventLedgerMessageWithOwnerMutex(
+        env as unknown as Parameters<
+          typeof recordEventLedgerMessageWithOwnerMutex
+        >[0],
+        decoded,
+      )
+      return
+    }
+
+    // Legacy Cloudflare Worker path: the real EVENT_LEDGER_OWNER DO.
     const namespace = (
       env as Env & {
         EVENT_LEDGER_OWNER?: DurableObjectNamespace
@@ -16219,7 +16241,6 @@ export const dispatchOaQueueMessage = async (
       throw { error: 'event_ledger_owner_binding_missing' }
     }
 
-    const decoded = S.decodeUnknownSync(EventLedgerIngestQueueMessage)(body)
     await recordEventLedgerMessageWithOwnerObject(namespace, decoded)
     return
   }

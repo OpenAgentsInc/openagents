@@ -24,6 +24,7 @@
     "./mutex": "./src/mutex.ts",
     "./mutex-memory": "./src/mutex-memory.ts",
     "./mutex-postgres": "./src/mutex-postgres.ts",
+    "./mutex-postgres-layer": "./src/mutex-postgres-layer.ts",
     "./scheduler": "./src/scheduler.ts",
     "./cron": "./src/cron.ts",
     "./sql": "./src/sql.ts",
