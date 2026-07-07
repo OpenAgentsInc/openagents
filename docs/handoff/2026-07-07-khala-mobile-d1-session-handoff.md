@@ -41,11 +41,12 @@ WRITES still on DEAD D1 (remaining work to drop the binding):
    tokens-served counter source) IS NOW CUT** — flag `KHALA_SYNC_LEDGER_WRITES=postgres`, commit `f79de61806`,
    Postgres parity verified (311,783 rows, 0 dupes/nulls/negatives, PK+UNIQUE+CHECK constraints match D1). Writes had
    been dead since 2026-07-06 13:30 UTC → this RESUMES lost capture. **DEPLOYED by parent this session**: monolith
-   Cloud Run revision `openagents-monolith-00028-9cm` (100% traffic, `/internal/healthz` green), flag armed. VERIFY
-   STATUS: Postgres-internal parity confirmed pre-flip; end-to-end confirmed by the first organic `token_usage_events`
-   row with `observed_at` after 2026-07-07 16:04Z (the serving fleet had produced no rows for ~26.5h, so the first
-   post-deploy inference is the proof — re-check `max(observed_at)` via the proxy). Rollback if a dialect throw appears
-   in logs: set `KHALA_SYNC_LEDGER_WRITES=d1` in wrangler + redeploy (but D1 is dead, so d1 = the same data loss). The remaining money domains were NOT cut (each has a clean lever documented — customer
+   Cloud Run revision `openagents-monolith-00028-9cm` (100% traffic, `/internal/healthz` green), flag armed.
+   **VERIFIED end-to-end**: after the deploy, real `token_usage_events` rows resumed landing in Postgres (first at
+   2026-07-07 16:05:00Z, provider `hydralisk-vllm-glm-5p2-reap-504b`, `usage_truth=exact`); the ~26.5h write gap is
+   closed. 11 post-deploy rows checked — all distinct `id` AND distinct `idempotency_key` (0 dupes → the adapter's
+   `INSERT … ON CONFLICT` dedupe works). No dialect throws. Rollback lever if ever needed: `KHALA_SYNC_LEDGER_WRITES=d1`
+   + redeploy (but D1 is dead, so `d1` = data loss — do not roll back without a live D1). The remaining money domains were NOT cut (each has a clean lever documented — customer
    credits/pay_ins/agent_balances are ALREADY Postgres-authoritative; DO NOT touch that path):
    - **Treasury** (`treasury-domain-store.ts:866 const d1 = openAgentsDatabase(env)`) — single clean handle; swap to
      `makeKhalaSyncWritesDatabase(env)` gated on `KHALA_SYNC_TREASURY_WRITES`, disable the redundant mirror on that
