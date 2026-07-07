@@ -28,7 +28,7 @@ export const SignInScreen = () => {
     <View style={themed($root)}>
       <Image
         resizeMode="cover"
-        source={require("../../assets/images/city-cyan.png")}
+        source={require("../../assets/images/home-hero.jpg")}
         style={StyleSheet.absoluteFill}
       />
       <View pointerEvents="none" style={styles.scrim} />
@@ -96,9 +96,13 @@ const styles = StyleSheet.create({
   },
   title: {
     color: "white",
-    fontSize: 56,
-    letterSpacing: 4,
-    lineHeight: 68,
+    // Restore the previous display font (arcade's Protomolecule), overriding
+    // the Ignite `heading` preset's Space Grotesk, and smaller than the old
+    // 56px. Protomolecule is loaded in app.tsx under this exact family name.
+    fontFamily: "Protomolecule",
+    fontSize: 40,
+    letterSpacing: 2,
+    lineHeight: 48,
     textAlign: "center",
   },
 })
