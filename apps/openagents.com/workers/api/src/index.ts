@@ -1141,6 +1141,15 @@ import {
   publishKhalaCloudRuntimeInsufficientCreditEvent,
 } from './khala-cloud-runtime-usage-routes'
 import {
+  dispatchCloudGcpRuntimeTurn,
+  makeCloudCodingAdapterLaunchSeam,
+} from './khala-cloud-runtime-dispatch'
+import {
+  handleCloudGcpRuntimeDispatchAdminRoute,
+  KHALA_CLOUD_RUNTIME_DISPATCH_ADMIN_PATH,
+  type CloudGcpRuntimeDispatchContext,
+} from './khala-cloud-runtime-dispatch-admin-route'
+import {
   KHALA_AGENT_COMPUTER_WRITEBACK_INGEST_PATH,
   makeKhalaAgentComputerWritebackRoutes,
 } from './cloud/khala-agent-computer-writeback-routes'
@@ -8005,6 +8014,68 @@ const runHostedRuntimeTurnDispatchForEnv = async (
   }
 }
 
+// Seam A (#8503, AC-1): resolve the live `cloud-gcp` runtime dispatch context
+// for the admin-guarded trigger route. Fail-closed by construction: returns
+// `configured:false` (=> 503) when the KHALA_SYNC_DB connection is absent; the
+// `armed` flag is the SAME `isCloudGceProvisioningArmed(OA_CODEX_GCE_PROVISIONER)`
+// gate the cloud-coding route uses (=> the handler refuses 409 not_armed
+// before any mint/placement in the production default). When armed, `run`
+// opens a per-turn khala_sync SQL client, drives ONE
+// `dispatchCloudGcpRuntimeTurn` (mint owner-linked token -> inference block +
+// work_context_b64 -> POST /v1/placement through the real cloud-control adapter
+// -> stream events -> revoke on failure), and always closes the client.
+const resolveCloudGcpRuntimeDispatchContext = async (
+  env: OpenAgentsWorkerEnv,
+): Promise<CloudGcpRuntimeDispatchContext> => {
+  const connectionString = env.KHALA_SYNC_DB?.connectionString
+  if (connectionString === undefined || connectionString.length === 0) {
+    return { configured: false }
+  }
+  const armed = isCloudGceProvisioningArmed(env.OA_CODEX_GCE_PROVISIONER)
+  const noMeterSecret = env.OA_CLOUD_RUNTIME_NO_METER_SECRET
+  const inferenceProvider = env.OA_CLOUD_RUNTIME_INFERENCE_PROVIDER
+  const inferenceBaseUrl =
+    env.OA_CLOUD_RUNTIME_INFERENCE_BASE_URL !== undefined &&
+    env.OA_CLOUD_RUNTIME_INFERENCE_BASE_URL.length > 0
+      ? env.OA_CLOUD_RUNTIME_INFERENCE_BASE_URL
+      : getAppOrigin(env)
+  const launch = makeCloudCodingAdapterLaunchSeam(
+    makeCloudControlCloudCodingAdapter({
+      baseUrl: env.OA_CLOUD_CONTROL_URL ?? '',
+      bearerToken: env.OA_CLOUD_CONTROL_TOKEN ?? '',
+      gceProvisioningArmed: true,
+    }),
+  )
+  return {
+    armed,
+    configured: true,
+    run: async admitted => {
+      const client = await defaultMakeKhalaSyncSqlClient(connectionString)
+      try {
+        return await dispatchCloudGcpRuntimeTurn(
+          {
+            armed: true,
+            inference: {
+              baseUrl: inferenceBaseUrl,
+              model: 'openagents/khala',
+              ...(noMeterSecret === undefined ? {} : { noMeterSecret }),
+              ...(inferenceProvider === undefined
+                ? {}
+                : { provider: inferenceProvider }),
+            },
+            launch,
+            log: (line, fields) => logWorkerRouteWarning(line, fields ?? {}),
+            sql: client.sql,
+          },
+          admitted,
+        )
+      } finally {
+        await client.end()
+      }
+    },
+  }
+}
+
 // Issue #8505 (Part 2): shared fail-soft producer deps for the per-user
 // credit-balance projection (scope.user.<userId>). Reused at every D1 ledger
 // write site that charges/grants/claws back credit — see
@@ -13331,6 +13402,22 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       khalaAgentComputerWritebackRoutes.handleKhalaAgentComputerWritebackIngestApi(
         request,
         env,
+      ),
+  },
+  {
+    // Seam A (#8503, AC-1): admin-guarded reachable trigger. Seeds ONE admitted
+    // cloud-gcp work-context and drives a single dispatchCloudGcpRuntimeTurn.
+    // Fail-closed: 401 without admin, 503 not-configured, 409 not_armed (no
+    // mint/placement) until OA_CODEX_GCE_PROVISIONER=live.
+    path: KHALA_CLOUD_RUNTIME_DISPATCH_ADMIN_PATH,
+    handler: (request, env) =>
+      Effect.promise(() =>
+        handleCloudGcpRuntimeDispatchAdminRoute(request, env, {
+          requireAdminApiToken: (adminRequest, adminEnv) =>
+            requireAdminApiToken(adminRequest, adminEnv),
+          resolveContext: resolveCloudGcpRuntimeDispatchContext,
+          log: (line, fields) => logWorkerRouteWarning(line, fields ?? {}),
+        }),
       ),
   },
   {

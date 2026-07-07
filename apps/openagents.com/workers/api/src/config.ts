@@ -267,6 +267,15 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   // the gateway meters normally. The Seam-A dispatcher injects the SAME value
   // into the work-context `inference` block it hands the microVM.
   OA_CLOUD_RUNTIME_NO_METER_SECRET?: string | undefined
+  // Seam A (#8503) — the base URL the agent-computer microVM calls for its ONE
+  // internal `/v1/chat/completions` turn. Must point at the SAME monolith that
+  // minted the short-lived execution token (so the token validates against the
+  // same khala_sync DB and the no-meter secret matches). Absent => the Seam-A
+  // dispatcher falls back to this Worker's own app origin.
+  OA_CLOUD_RUNTIME_INFERENCE_BASE_URL?: string | undefined
+  // Seam A (#8503) — optional provider hint stamped on the microVM inference
+  // block. Absent => omitted (the `openagents/khala` model routes by model id).
+  OA_CLOUD_RUNTIME_INFERENCE_PROVIDER?: string | undefined
   // Partner passthrough adapter secrets (EPIC #5474, #5481). Worker secrets,
   // never committed/logged. Each enables the corresponding passthrough adapter
   // when the gateway flag is on; absent => that partner adapter stays inert.
