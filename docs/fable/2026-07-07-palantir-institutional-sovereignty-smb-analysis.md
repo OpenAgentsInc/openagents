@@ -17,6 +17,12 @@ the BF-3.4 sovereign-tier spec, and the Blueprint archive
 `autopilot-omega/docs/blueprint/2026-06-05-legacy-blueprint-primitives-omega-inventory.md`).
 Nothing here is promise copy; the framing question in §5 is owner-gated.
 
+**Terminology rule (owner, 2026-07-07):** "ontology" is Palantir's
+vocabulary. It appears in this document only when describing Palantir's
+report and products. Our own offerings are always described in our own
+terms — **Blueprint**, company brain, typed business schema — never as
+"our ontology." This rule applies to all product copy and docs.
+
 ## 0. What the report says, compressed
 
 Palantir's thesis: **sovereignty is your alpha** — ownership of the value
@@ -93,7 +99,7 @@ the whole SMB problem. The governance spine of Blueprint (Program
 Types/Signatures/Module Versions/Program Runs, Action Submissions as the
 only write path, Source Authority, Context Packs, receipts, release gates,
 Simulation Branch/Scenario Fork) is being actively absorbed into the
-Omega Blueprint kernel; the heavy ontology platform (full object graph,
+Omega Blueprint kernel; the heavy platform layer (full object graph,
 object-set engine, manager UI) was deliberately deferred.
 
 **Second: the current product stack independently converged on the same
@@ -137,18 +143,19 @@ FDEs are a fleet.
 | XIV | Build by branching | Blueprint **Simulation Branch / Scenario Fork** (explicitly credited to Palantir Global Branching, absorbed into Omega); git worktree isolation; per-turn Firecracker microVMs; branch-then-writeback (#8477, no force-push); the authority ladder = staged promotion of agent surface area | "Branch the org's digital twin" = simulation on the company brain — defer, but design `company_brain.v1` so entries are versioned/forkable from day one |
 | XV | Context flywheel / ontology | CB-1 company brain (named collections, per-entry provenance, role-scoped slices, Khala Sync cross-device); event-ledger ingestion; "the brain is the deliverable" (prefill pipeline) | **The big one:** CB-1 should adopt Blueprint's typed vocabulary rather than shipping as a doc pile — §3 |
 
-## 3. What this changes for the company brain: ontology-lite, on purpose
+## 3. What this changes for the company brain: Blueprint-lite, on purpose
 
 The report's sharpest architectural claim is XV: *the ontology knowledge
 layer must exist independently of the model intelligence layer* — if your
 only assets are prompts plus a provider's hidden weights, your knowhow is
 trapped inside a single model relationship. That is a direct argument
 about how we build `company_brain.v1`, and it resolves a real design risk:
-a "brain" that is just an embedded document pile is a *corpus*, not an
-ontology — it grounds RAG but it does not compound, permission, or branch.
+a "brain" that is just an embedded document pile is a *corpus*, not a
+typed business model — it grounds RAG but it does not compound,
+permission, or branch.
 
 Recommendation: **CB-1 adopts the Blueprint schema vocabulary at SMB
-scale — ontology-lite, not the deferred platform.** Concretely:
+scale — Blueprint-lite, not the deferred platform.** Concretely:
 
 - Brain entries are typed **objects with properties and links** (Customer,
   Offer, Matter, Channel, SOP — the vertical config decides the object
@@ -170,7 +177,7 @@ scale — ontology-lite, not the deferred platform.** Concretely:
 
 What we deliberately do *not* do: resurrect the full Business Object
 graph, object-set engine, or Blueprint Manager (the Omega inventory's
-"defer/discard" calls stand). The SMB ontology is small — dozens of object
+"defer/discard" calls stand). The SMB Blueprint is small — dozens of object
 types, not thousands — which is exactly why the compounding loop can be
 delivered as a product default instead of a Foundry deployment.
 
@@ -202,7 +209,8 @@ American open-weight watershed. Implications:
 ## 5. "Palantir for SMB" — the framing, its power, and its limits
 
 **Why it works internally and with investors:** it names the position in
-four words — the ontology-plus-control-layer-plus-sovereignty program,
+four words — the typed-business-model-plus-control-layer-plus-sovereignty
+program,
 delivered down-market by automation instead of forward-deployed humans.
 The positioning triangle is clean: Palantir owns government/enterprise
 with FDE-heavy ontology deployments; Varick-style firms do enterprise FDE
@@ -219,7 +227,7 @@ means we deliver, mapped to their own program:
    Palantir*; we run agent-readiness/level audits at fleet scale and lead
    outbound with the prospect's own report. §6.1 upgrades this with the
    15-step vocabulary.
-2. **The ontology, prefilled** (their Ontology → our company brain):
+2. **The business model, prefilled** (their Ontology → our company brain):
    they deploy FDEs for months; our prefill pipeline seeds a typed brain
    from public data before the prospect signs in, with an intro receipt.
 3. **The control layer, as defaults** (their AIP → our
@@ -265,7 +273,7 @@ deltas are:
    is audit-first outbound with category-defining language someone else
    paid to promote. It is also honest: most SMBs score near zero today on
    a rubric a $400B company says matters.
-2. **CB-1 becomes ontology-lite (H3).** The §3 recommendation: typed
+2. **CB-1 becomes Blueprint-lite (H3).** The §3 recommendation: typed
    objects/properties/links with provenance, Action-Submission writes,
    Access-Explanation permissioning, versioned entries. File this into the
    CB-1.x lanes before implementation starts; it changes the schema, not
@@ -291,7 +299,8 @@ deltas are:
 
 ## 7. Summary
 
-Palantir just published the argument that owning your ontology, control
+Palantir just published the argument that owning your knowledge layer,
+control
 layer, and (where it matters) your compute is the difference between
 compounding your alpha and donating it to a model vendor — and offered
 the remedy to institutions via forward-deployed engineers and emailed

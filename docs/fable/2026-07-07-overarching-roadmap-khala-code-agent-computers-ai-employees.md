@@ -41,7 +41,7 @@ lanes named here (§4).
 > the Age of AI* report (15 steps) maps near-1:1 onto this roadmap; the
 > analysis is
 > `docs/fable/2026-07-07-palantir-institutional-sovereignty-smb-analysis.md`.
-> Deltas it adds here: CB-1 (H3) adopts Blueprint's ontology-lite typed
+> Deltas it adds here: CB-1 (H3) adopts the Blueprint-lite typed
 > vocabulary (objects/properties/links, Action-Submission writes, Access
 > Explanation); H5 gains corpus canaries; H6's assessment instrument
 > upgrades to the 15-step rubric; the §5 ladder adopts "assurance level
