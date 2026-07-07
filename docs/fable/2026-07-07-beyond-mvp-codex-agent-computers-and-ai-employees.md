@@ -15,6 +15,13 @@ names the real gaps, and proposes the build sequence. Grounded in three
 parallel code/doc explorations run 2026-07-07 (Codex fleet infrastructure,
 Agent Computer runtime seams, business/background-agent strategy corpus).
 
+> **Update (later 2026-07-07):** the lane numbering proposed in §6 (CX/AE/BI)
+> is reconciled with the Agentic Society integration roadmap's AE/CB phases
+> and the blitz program in the overarching strategic roadmap:
+> `docs/fable/2026-07-07-overarching-roadmap-khala-code-agent-computers-ai-employees.md`.
+> That doc supersedes both numbering schemes for new issue filing; the
+> content of this doc's lanes stands unchanged.
+
 ## 0. The owner direction (2026-07-07, recorded in essence)
 
 Plan beyond the MVP. First: **Codex support** — connect one or more
