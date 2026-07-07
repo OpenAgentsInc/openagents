@@ -93,7 +93,7 @@ top follow-up item for whoever picks this up next.
 
 ## Registry
 
-Registry version: `2026-07-07.8` (schema `openagents.behavior_contracts.v1`)
+Registry version: `2026-07-07.9` (schema `openagents.behavior_contracts.v1`)
 
 ### `khala_mobile.auth.tailnet_auto_discovery_before_manual_login.v1` — RETIRED
 
@@ -534,3 +534,13 @@ Registry version: `2026-07-07.8` (schema `openagents.behavior_contracts.v1`)
 - **Enforcement tier:** unenforced
 - **Verification:** bun test tests/launch-readiness.test.ts inside clients/khala-mobile asserts the pending launch-readiness receipt and owner gate stay honest. The contract itself remains pending until #8543's device-only launch truth has real iOS and Android full straight-line receipts.
 - **Authority boundary:** Binds the honesty of the P0.8 launch-readiness state only: the seeded-account owner gate, the missing iOS/Android full straight-line E2E receipts, and the copy/pass no-green-without-receipts rule. It does not claim the app is launch-ready and does not enforce the older launched-app smoke as sufficient for #8543.
+
+### `khala_mobile.qa.store_submission_receipts.v1` — PENDING
+
+- **Surface:** khala-mobile (qa)
+- **Stated by:** owner via khala-code-session on 2026-07-07
+- **Statement:** P0.9 store submission evidence must stay honest: Khala Mobile P0 is not exited until App Store Connect and Play Console both have real submission IDs and in-review states recorded as registry evidence.
+- **Blockers:** `owner.app_store_connect_submission_required`, `owner.play_console_submission_required`, `blocker.ios.submission_id_missing`, `blocker.android.submission_id_missing`, `blocker.p08.full_launch_e2e_not_green`
+- **Enforcement tier:** unenforced
+- **Verification:** bun test tests/store-submissions.test.ts inside clients/khala-mobile asserts the not-submitted receipt and owner-console action list stay explicit. The contract remains pending until real App Store Connect and Play Console submission receipts exist.
+- **Authority boundary:** Binds only the P0.9 store-submission evidence ledger: both stores require real owner-console submission IDs and review states before P0 can be called exited. It does not submit a build, upload binaries, imply approval, or replace App Store Connect / Play Console as the authority.

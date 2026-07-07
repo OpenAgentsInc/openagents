@@ -33,6 +33,45 @@ Exact operator path after owner approval:
 Until those steps complete, #8543 remains `INCONCLUSIVE`: no launch copy or
 promise may claim the full mobile straight-line E2E is proven on both platforms.
 
+## Khala Mobile P0.9 Store Submissions
+
+Source issue: OpenAgentsInc/openagents#8544
+Receipt:
+`docs/khala-code/receipts/2026-07-07-qam-9-store-submissions.md`
+
+P0 is not satisfied until both store submissions are actually in review and the
+submission IDs plus review states are recorded as evidence. Agents may prepare
+packs and receipts, but App Store Connect and Play Console submissions are
+owner-console actions.
+
+Owner actions required:
+
+- Create or confirm the App Store Connect app record for com.openagents.khala.mobile.
+- Upload the final locally built iOS archive through Apple Transporter or Xcode Organizer.
+- Enter current App Store metadata, screenshots, privacy answers, age rating, and review notes.
+- Submit the iOS build for review and record the App Store Connect submission ID and review state.
+- Create or confirm the Play Console app record for com.openagents.khala.mobile.
+- Upload the final locally signed Android App Bundle to the intended Play track.
+- Enter current Play listing, data-safety, content-rating, tester/release notes, and review answers.
+- Submit the Play release and record the Play Console release/submission ID and review state.
+
+Exact owner-console URLs:
+
+- App Store Connect apps: https://appstoreconnect.apple.com/apps
+- Play Console: https://play.google.com/console
+
+Pre-submission evidence that must be attached or rechecked:
+
+1. P0.8 launch readiness: `docs/khala-code/receipts/2026-07-07-qam-8-launch-readiness.md`.
+2. App Store submission pack: `docs/khala-mobile/2026-07-06-app-store-submission-pack.md`.
+3. Android build/upload runbook: `docs/khala-mobile/2026-07-06-android-build-and-upload-runbook.md`.
+4. Account deletion and 3.1.1/IAP posture must be rechecked against the exact build submitted.
+5. Public-safe screenshots must be captured from the approved seed account, not mock data.
+
+Until both submissions are actually in review, record the P0.9 verdict as
+`not_submitted`; do not claim store submission, TestFlight external review,
+Play internal review, production review, or P0 exit completion.
+
 ## QA Swarm Rate Card Draft
 
 Source issue: OpenAgentsInc/openagents#8061

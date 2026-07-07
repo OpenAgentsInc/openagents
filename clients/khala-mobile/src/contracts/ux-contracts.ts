@@ -1648,7 +1648,40 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
       verification:
         "bun test tests/launch-readiness.test.ts inside clients/khala-mobile asserts the pending launch-readiness receipt and owner gate stay honest. The contract itself remains pending until #8543's device-only launch truth has real iOS and Android full straight-line receipts.",
     },
+    {
+      authorityBoundary:
+        "Binds only the P0.9 store-submission evidence ledger: both stores require real owner-console submission IDs and review states before P0 can be called exited. It does not submit a build, upload binaries, imply approval, or replace App Store Connect / Play Console as the authority.",
+      blockerRefs: [
+        "owner.app_store_connect_submission_required",
+        "owner.play_console_submission_required",
+        "blocker.ios.submission_id_missing",
+        "blocker.android.submission_id_missing",
+        "blocker.p08.full_launch_e2e_not_green",
+      ],
+      contractId: "khala_mobile.qa.store_submission_receipts.v1",
+      enforcementTier: "unenforced",
+      evidenceRefs: [
+        "clients/khala-mobile/src/qa/store-submissions.ts",
+        "clients/khala-mobile/tests/store-submissions.test.ts",
+        "docs/khala-code/receipts/2026-07-07-qam-9-store-submissions.md",
+        "NEEDS_OWNER.md",
+        "docs/khala-mobile/khala-mobile-ux-contract.md",
+      ],
+      oracles: [],
+      productArea: "qa",
+      source: {
+        channel: "khala-code-session",
+        statedBy: "owner",
+        statedOn: "2026-07-07",
+      },
+      state: "pending",
+      statement:
+        "P0.9 store submission evidence must stay honest: Khala Mobile P0 is not exited until App Store Connect and Play Console both have real submission IDs and in-review states recorded as registry evidence.",
+      surface: "khala-mobile",
+      verification:
+        "bun test tests/store-submissions.test.ts inside clients/khala-mobile asserts the not-submitted receipt and owner-console action list stay explicit. The contract remains pending until real App Store Connect and Play Console submission receipts exist.",
+    },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-07.8",
+  version: "2026-07-07.9",
 }
