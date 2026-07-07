@@ -1,5 +1,9 @@
 import { view } from "./storybook.requires"
-import { AppRegistry } from "react-native"
+import { AppRegistry, LogBox } from "react-native"
+
+LogBox.ignoreLogs([
+  "[react-native-gesture-handler] None of the callbacks in the gesture are worklets",
+])
 
 const storybookStorage = new Map<string, string>()
 

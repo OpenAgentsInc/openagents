@@ -79,6 +79,7 @@
     "@storybook/addon-ondevice-backgrounds": "^10.4.7",
     "@storybook/addon-ondevice-controls": "^10.4.7",
     "@storybook/react-native": "^10.4.7",
+    "@storybook/react-native-ui": "^10.4.7",
     "@types/babel__core": "7.20.5",
     "@types/react": "^19.2.14",
     "@types/react-test-renderer": "19.1.0",
