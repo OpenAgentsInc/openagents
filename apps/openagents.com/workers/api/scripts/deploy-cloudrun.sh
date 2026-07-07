@@ -91,6 +91,12 @@ SET_SECRETS=(
 
 if [[ "$TARGET" == "production" ]]; then
   SET_SECRETS+=(
+    # CFG-15: service tokens the monolith presents to the Cloud Run MDK
+    # money-path daemons (x-treasury-service-token / x-tips-buffer-service-token).
+    # The matching run.app URLs are committed wrangler vars. Sidecar token is
+    # omitted until the sidecar cutover lands.
+    "MDK_TREASURY_SERVICE_TOKEN=mdk-treasury-service-token:latest"
+    "MDK_TIPS_BUFFER_SERVICE_TOKEN=mdk-tips-buffer-service-token:latest"
     "GITHUB_CLIENT_SECRET=openagents-github-client-secret:latest"
     # SHC live dispatch (config validation requires the bearer when
     # SHC_DISPATCH_MODE=live).

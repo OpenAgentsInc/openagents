@@ -365,6 +365,13 @@
     "MDK_CHECKOUT_ROUTE_KIND": "self_hosted_mdkd_sidecar",
     "MDK_CHECKOUT_ROUTE_URL": "https://openagents.com/api/mdk",
     "MDK_CHECKOUT_WEBHOOK_SOURCE": "sdk_node_control",
+    // CFG-15: MDK money-path daemons on Cloud Run (replace the Cloudflare
+    // MDK containers). Non-secret run.app URLs; the matching service tokens
+    // ride --set-secrets in scripts/deploy-cloudrun.sh. Sidecar URL is
+    // intentionally omitted until the sidecar's production checkout secrets
+    // are confirmed (checkout stays on the fail-closed path until then).
+    "MDK_TREASURY_SERVICE_URL": "https://oa-mdk-treasury-157437760789.us-central1.run.app",
+    "MDK_TIPS_BUFFER_SERVICE_URL": "https://oa-mdk-tips-buffer-157437760789.us-central1.run.app",
     "SHC_CONTROL_API_URL": "http://23.182.128.195.sslip.io/v1/codex-runs",
     "SHC_DISPATCH_MODE": "live",
   },
