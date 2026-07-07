@@ -617,6 +617,74 @@ describe('handleKhalaSyncLog', () => {
     expect(response.status).toBe(200)
   })
 
+  // ---------------------------------------------------------------------
+  // CFG D1 evacuation (#8515): a `scope.public.*` read is a public PROJECTION
+  // and must NEVER 500. Live on the Cloud Run monolith,
+  // `scope.public.activity-timeline` returned an empty-body top-level 500
+  // (the oversized cron snapshot row's Postgres read/transaction crashed).
+  // Every failure on a public scope now degrades to a 200 EMPTY page
+  // (`upToDate:false` so a poller retries); non-public scopes stay fail-CLOSED.
+  // ---------------------------------------------------------------------
+
+  test('CFG-#8515: a public scope with a THROWING Postgres read degrades to 200 EMPTY (never 500)', async () => {
+    const response = await run({
+      request: get({ scope: PUBLIC_SCOPE, cursor: '5' }),
+      userId: undefined,
+      logPage: async () => {
+        throw new Error('d1-http bridge query failed (401)')
+      },
+    })
+    expect(response.status).toBe(200)
+    const body = decodeLogPage(await response.json())
+    expect(body.entries).toHaveLength(0)
+    expect(Number(body.nextCursor)).toBe(5)
+    expect(body.upToDate).toBe(false)
+  })
+
+  test('CFG-#8515: a public scope with a KhalaSyncStorageError read degrades to 200 EMPTY (never 503)', async () => {
+    const response = await run({
+      request: get({ scope: PUBLIC_SCOPE }),
+      userId: undefined,
+      logPage: async () => {
+        throw new KhalaSyncStorageError('connection_failed', 'no route to db')
+      },
+    })
+    expect(response.status).toBe(200)
+    expect(decodeLogPage(await response.json()).entries).toHaveLength(0)
+  })
+
+  test('CFG-#8515: an UNCAUGHT resolver defect on a public scope degrades to 200 EMPTY (never a top-level 500)', async () => {
+    const response = await run({
+      request: get({ scope: PUBLIC_SCOPE }),
+      userId: undefined,
+      resolveScopeRead: (() => {
+        throw new Error('unexpected resolver defect')
+      }) as unknown as KhalaSyncScopeReadResolver,
+    })
+    expect(response.status).toBe(200)
+    expect(decodeLogPage(await response.json()).entries).toHaveLength(0)
+  })
+
+  test('CFG-#8515: a public scope with NO KHALA_SYNC_DB binding degrades to 200 EMPTY (not 503)', async () => {
+    const response = await run({
+      request: get({ scope: PUBLIC_SCOPE }),
+      userId: undefined,
+      binding: undefined,
+    })
+    expect(response.status).toBe(200)
+    expect(decodeLogPage(await response.json()).entries).toHaveLength(0)
+  })
+
+  test('CFG-#8515: a NON-public scope still fails CLOSED (500) on an unexpected read error', async () => {
+    const response = await run({
+      request: get({ scope: OWN_SCOPE }),
+      logPage: async () => {
+        throw new Error('boom')
+      },
+    })
+    expect(response.status).toBe(500)
+  })
+
   test.each<Record<string, string>>([
     { scope: OWN_SCOPE },
     { scope: personalScope('user-2') },

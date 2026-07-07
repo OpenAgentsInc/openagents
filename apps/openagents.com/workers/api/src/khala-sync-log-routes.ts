@@ -63,10 +63,12 @@ import { Effect, Schema as S } from 'effect'
 
 import {
   decodeLogPage,
+  KHALA_SYNC_PROTOCOL_VERSION,
   LogPage,
   SyncError,
   type SyncErrorCode,
   SyncScope,
+  SyncVersionWatermark,
 } from '@openagentsinc/khala-sync'
 import {
   DEFAULT_LOG_PAGE_LIMIT,
@@ -376,80 +378,117 @@ export const handleKhalaSyncLog = (
       }
     }
 
-    const authDenied = scopeReadDecisionResponse(
-      await deps.resolveScopeRead(actor?.userId, query.scope),
-    )
-    if (authDenied !== undefined) {
-      return authDenied
-    }
-
-    // 1. Hub window (cache) first.
-    const hubPage = await tryHubLogPage(deps.hubNamespace, query)
-    if (hubPage !== undefined) {
-      return logPageResponse(request, hubPage)
-    }
-
-    // 2. Authoritative Postgres fallthrough.
-    if (
-      deps.binding === undefined ||
-      typeof deps.binding.connectionString !== 'string' ||
-      deps.binding.connectionString.length === 0
-    ) {
-      return syncErrorResponse(
-        503,
-        'storage_unavailable',
-        'Khala Sync storage is not configured on this deployment ' +
-          '(env.KHALA_SYNC_DB Hyperdrive binding is absent).',
-        true,
+    // CFG D1 evacuation (#8515): a `scope.public.*` read is a public
+    // PROJECTION and must NEVER 500. Live on the Cloud Run monolith,
+    // `scope.public.activity-timeline` returned an empty-body top-level 500
+    // (an uncaught throw from the scope resolver / hub / the oversized-snapshot
+    // Postgres transaction itself — NOT the typed inner catch). So for an
+    // anonymous-readable scope every failure below degrades to a 200 EMPTY page
+    // (`upToDate:false`, so a poller simply retries next tick) instead of a
+    // 500/503. Non-public scopes keep their fail-CLOSED typed errors unchanged.
+    const servePublicDegraded = (): HttpResponse =>
+      logPageResponse(
+        request,
+        new LogPage({
+          protocolVersion: KHALA_SYNC_PROTOCOL_VERSION,
+          scope: query.scope,
+          entries: [],
+          nextCursor: SyncVersionWatermark.make(query.cursor),
+          upToDate: false,
+        }),
       )
-    }
 
-    const makeSqlClient = deps.makeSqlClient ?? defaultMakeSqlClient
-    const readLogPage = deps.logPageFromPostgres ?? logPageFromPostgres
-
-    let client: KhalaSyncPushSqlClient | undefined
     try {
-      client = await makeSqlClient(deps.binding.connectionString)
-      const page = await readLogPage(client.sql, {
-        afterVersion: query.cursor,
-        limit: query.limit,
-        scope: query.scope,
-      })
-      return logPageResponse(request, page)
-    } catch (error) {
-      if (error instanceof KhalaSyncCursorBehindRetainedWindowError) {
-        // Compaction passed the cursor: the range is permanently gone.
-        // MustRefetch (invariant 6) — the client clears scope-local state
-        // and re-bootstraps; retrying the same cursor can never succeed.
-        return syncErrorResponse(
-          410,
-          'cursor_behind_retained_window',
-          'Cursor is behind the retained window for this scope; re-bootstrap.',
-          false,
-        )
+      const authDenied = scopeReadDecisionResponse(
+        await deps.resolveScopeRead(actor?.userId, query.scope),
+      )
+      if (authDenied !== undefined) {
+        return authDenied
       }
-      if (error instanceof KhalaSyncStorageError) {
+
+      // 1. Hub window (cache) first.
+      const hubPage = await tryHubLogPage(deps.hubNamespace, query)
+      if (hubPage !== undefined) {
+        return logPageResponse(request, hubPage)
+      }
+
+      // 2. Authoritative Postgres fallthrough.
+      if (
+        deps.binding === undefined ||
+        typeof deps.binding.connectionString !== 'string' ||
+        deps.binding.connectionString.length === 0
+      ) {
+        return anonymousAllowed
+          ? servePublicDegraded()
+          : syncErrorResponse(
+              503,
+              'storage_unavailable',
+              'Khala Sync storage is not configured on this deployment ' +
+                '(env.KHALA_SYNC_DB Hyperdrive binding is absent).',
+              true,
+            )
+      }
+
+      const makeSqlClient = deps.makeSqlClient ?? defaultMakeSqlClient
+      const readLogPage = deps.logPageFromPostgres ?? logPageFromPostgres
+
+      let client: KhalaSyncPushSqlClient | undefined
+      try {
+        client = await makeSqlClient(deps.binding.connectionString)
+        const page = await readLogPage(client.sql, {
+          afterVersion: query.cursor,
+          limit: query.limit,
+          scope: query.scope,
+        })
+        return logPageResponse(request, page)
+      } catch (error) {
+        if (error instanceof KhalaSyncCursorBehindRetainedWindowError) {
+          // Compaction passed the cursor: the range is permanently gone.
+          // MustRefetch (invariant 6) — the client clears scope-local state
+          // and re-bootstraps; retrying the same cursor can never succeed.
+          // A valid client-refetch signal even for a public poller.
+          return syncErrorResponse(
+            410,
+            'cursor_behind_retained_window',
+            'Cursor is behind the retained window for this scope; re-bootstrap.',
+            false,
+          )
+        }
+        if (anonymousAllowed) {
+          return servePublicDegraded()
+        }
+        if (error instanceof KhalaSyncStorageError) {
+          return syncErrorResponse(
+            503,
+            'storage_unavailable',
+            `Khala Sync storage failed (${error.reason}); retry the read.`,
+            true,
+          )
+        }
         return syncErrorResponse(
-          503,
-          'storage_unavailable',
-          `Khala Sync storage failed (${error.reason}); retry the read.`,
+          500,
+          'internal',
+          'Khala Sync log read failed unexpectedly; retry the read.',
           true,
         )
-      }
-      return syncErrorResponse(
-        500,
-        'internal',
-        'Khala Sync log read failed unexpectedly; retry the read.',
-        true,
-      )
-    } finally {
-      if (client !== undefined) {
-        try {
-          await client.end()
-        } catch {
-          // best-effort teardown: never mask the real result with a close
-          // error; the `max: 1` client is dropped with the isolate anyway.
+      } finally {
+        if (client !== undefined) {
+          try {
+            await client.end()
+          } catch {
+            // best-effort teardown: never mask the real result with a close
+            // error; the `max: 1` client is dropped with the isolate anyway.
+          }
         }
       }
+    } catch (error) {
+      // Uncaught throw from the scope resolver, the hub attempt, or the
+      // Postgres transaction itself (the empty-body top-level 500 observed
+      // live on `scope.public.activity-timeline`). A public projection
+      // degrades to 200-empty; every other scope stays fail-CLOSED.
+      if (anonymousAllowed) {
+        return servePublicDegraded()
+      }
+      throw error
     }
   })

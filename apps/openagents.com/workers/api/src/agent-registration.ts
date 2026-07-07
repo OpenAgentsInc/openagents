@@ -10,6 +10,7 @@ import {
   type IdentityAuthMirror,
 } from './identity-auth-domain-store'
 import { identityDbForEnv, type IdentityDb } from './identity-db'
+import { logWorkerRouteWarning } from './observability'
 import { openAgentsDatabase } from './runtime'
 import { currentIsoTimestamp, randomUuid } from './runtime-primitives'
 
@@ -348,6 +349,60 @@ const readActiveAgentUser = async (
 ): Promise<AgentUserRecord | undefined> =>
   (await readActiveAgentUsers(identityDb, [userId])).get(userId)
 
+// CFG D1 evacuation (#8515): the Postgres-mirror twin of the agent auth-gate
+// credential/profile SELECT. `agent_credentials`/`agent_profiles` are KS-8.5
+// (#8334) read-back mirrors in the SAME khala_sync Postgres database the
+// identity core (`users`/`auth_identities`, CFG-4 #8519) is authoritative in,
+// so `identityDb` (a generic KHALA_SYNC_DB executor) can serve them directly.
+// Used only as the fail-soft fallback when the D1 `d1-http` bridge 401s
+// account-wide, so the OpenAI-compatible inference gateway (and every other
+// authenticated agent request) does not 500 on a dead D1. All mirror columns
+// are `text`, so the ISO-timestamp `expires_at > ?` comparison is exact.
+const AGENT_CREDENTIAL_BY_TOKEN_HASH_PG_SQL = `SELECT
+    agent_credentials.user_id,
+    agent_credentials.id AS credential_id,
+    agent_credentials.openauth_user_id,
+    agent_profiles.metadata_json,
+    agent_credentials.token_prefix
+ FROM agent_credentials
+ LEFT JOIN agent_profiles ON agent_profiles.user_id = agent_credentials.user_id
+ WHERE agent_credentials.token_hash = ?
+   AND agent_credentials.status = 'active'
+   AND agent_credentials.revoked_at IS NULL
+   AND (
+     agent_credentials.expires_at IS NULL
+     OR agent_credentials.expires_at > ?
+   )
+ LIMIT 1`
+
+const readAgentCredentialByTokenHashFromPostgres = async (
+  identityDb: IdentityDb,
+  tokenHash: string,
+  now: string,
+): Promise<AgentCredentialRow | null> => {
+  const rows = await identityDb.query(AGENT_CREDENTIAL_BY_TOKEN_HASH_PG_SQL, [
+    tokenHash,
+    now,
+  ])
+  const row = rows[0]
+  if (row === undefined) {
+    return null
+  }
+  return {
+    user_id: String(row.user_id),
+    credential_id: String(row.credential_id),
+    openauth_user_id:
+      row.openauth_user_id === null || row.openauth_user_id === undefined
+        ? null
+        : String(row.openauth_user_id),
+    metadata_json:
+      row.metadata_json === null || row.metadata_json === undefined
+        ? null
+        : String(row.metadata_json),
+    token_prefix: String(row.token_prefix),
+  }
+}
+
 const textEncoder = new TextEncoder()
 
 const bytesToBase64Url = (bytes: Uint8Array): string =>
@@ -478,9 +533,19 @@ export const makeD1AgentRegistrationStore = (
     // JOIN splits — credential/profile from D1, then the Postgres-
     // authoritative `users` gate check. Two reads per authenticated agent
     // request is the accepted hard-cut cost.
-    const row = await db
-      .prepare(
-        `SELECT
+    //
+    // CFG D1 evacuation (#8515): the D1 `d1-http` bridge 401s account-wide, so
+    // this credential/profile SELECT THROWS on the Cloud Run monolith and used
+    // to 500 every authenticated agent request (the OpenAI-compatible inference
+    // gateway `POST /api/v1/chat/completions` among them). Fail-soft: on a D1
+    // read error serve the identical row from the Postgres mirror. A total
+    // outage (both stores unreachable) returns undefined -> 401
+    // (fail-CLOSED for an auth gate — never grant, never 500).
+    let row: AgentCredentialRow | null
+    try {
+      row = await db
+        .prepare(
+          `SELECT
             agent_credentials.user_id,
             agent_credentials.id AS credential_id,
             agent_credentials.openauth_user_id,
@@ -495,9 +560,23 @@ export const makeD1AgentRegistrationStore = (
              agent_credentials.expires_at IS NULL
              OR agent_credentials.expires_at > ?
            )`,
-      )
-      .bind(tokenHash, now)
-      .first<AgentCredentialRow>()
+        )
+        .bind(tokenHash, now)
+        .first<AgentCredentialRow>()
+    } catch (error) {
+      logWorkerRouteWarning('khala_sync_agent_auth_postgres_read_fallback', {
+        messageSafe: error instanceof Error ? error.name : 'error',
+      })
+      try {
+        row = await readAgentCredentialByTokenHashFromPostgres(
+          identityDb,
+          tokenHash,
+          now,
+        )
+      } catch {
+        return undefined
+      }
+    }
 
     if (row === null) {
       return undefined
@@ -518,14 +597,21 @@ export const makeD1AgentRegistrationStore = (
   },
 
   touchAgentCredential: async (credentialId, lastUsedAt) => {
-    await db
-      .prepare(
-        `UPDATE agent_credentials
+    // CFG D1 evacuation (#8515): `last_used_at` is non-authoritative
+    // bookkeeping. A dead-D1 (`d1-http` 401) write must never fail an
+    // otherwise-valid authentication, so this is best-effort.
+    try {
+      await db
+        .prepare(
+          `UPDATE agent_credentials
          SET last_used_at = ?
          WHERE id = ?`,
-      )
-      .bind(lastUsedAt, credentialId)
-      .run()
+        )
+        .bind(lastUsedAt, credentialId)
+        .run()
+    } catch {
+      // Swallow: touch bookkeeping is never allowed to 500 an auth request.
+    }
   },
 
   updateAgentDisplayName: async (userId, displayName, updatedAt) => {
