@@ -1,16 +1,14 @@
 import type { Meta, StoryObj } from "@storybook/react-native"
 import type { KhalaRuntimeLane, RuntimeTurnEntity } from "@openagentsinc/khala-sync"
-import { View } from "react-native"
+import { Pressable, TextInput, View } from "react-native"
 import { useSharedValue } from "react-native-reanimated"
 
-import { KhalaAuthProvider } from "../auth/khala-auth-context"
 import type { TranscriptPart } from "../sync/khala-runtime-transcript-core"
-import { ChatComposer } from "./chat-composer"
 import { KhalaListItem } from "./khala-list-item"
+import { KhalaText } from "./khala-text"
 import { ReText } from "./re-text"
 import { SwipeableItem } from "./swipeable-item"
 import { SwipeQuoteDonut } from "./swipeable-item/swipe-quote-donut"
-import { TranscriptPartRow } from "./transcript-part-row"
 
 const meta = {
   title: "Khala/Components/Chat",
@@ -18,11 +16,9 @@ const meta = {
   parameters: { layout: "fullscreen" },
   decorators: [
     (Story) => (
-      <KhalaAuthProvider>
-        <View className="flex-1 gap-4 p-5">
-          <Story />
-        </View>
-      </KhalaAuthProvider>
+      <View className="flex-1 gap-4 p-5">
+        <Story />
+      </View>
     ),
   ],
 } satisfies Meta<typeof View>
@@ -70,15 +66,69 @@ const ReTextExample = () => {
   return <ReText className="text-text" text={text} />
 }
 
+const TranscriptPartExample = ({ part }: { readonly part: TranscriptPart }) => {
+  const title =
+    part.kind === "turn-status"
+      ? `${part.lane} ${part.status}`
+      : part.kind === "tool"
+        ? `${part.toolName} ${part.status}`
+        : part.kind === "usage"
+          ? `${part.totalTokens} tokens`
+          : part.kind
+  const detail =
+    part.kind === "text" || part.kind === "reasoning"
+      ? part.text
+      : part.kind === "tool"
+        ? part.toolCallId
+        : part.kind === "usage"
+          ? `${part.inputTokens} in / ${part.outputTokens} out`
+          : part.turnId
+
+  return (
+    <View className="rounded-lg border border-border bg-surfaceRaised p-3">
+      <KhalaText className="font-semibold text-text" variant="caption">
+        {title}
+      </KhalaText>
+      <KhalaText className="mt-1" variant="muted">
+        {detail}
+      </KhalaText>
+    </View>
+  )
+}
+
+const ComposerShell = ({ running = false }: { readonly running?: boolean }) => (
+  <View className="gap-2 rounded-2xl border border-border bg-surfaceRaised p-3">
+    {running ? (
+      <View className="self-start rounded-full border border-accent/40 bg-accent/10 px-3 py-1">
+        <KhalaText className="text-accent" variant="caption">
+          Codex running
+        </KhalaText>
+      </View>
+    ) : null}
+    <View className="min-h-[54px] flex-row items-center gap-2 rounded-full border border-border bg-bg px-3">
+      <Pressable accessibilityRole="button" className="h-10 w-10 items-center justify-center rounded-full bg-surface">
+        <KhalaText className="text-xl">+</KhalaText>
+      </Pressable>
+      <TextInput
+        className="min-w-0 flex-1 text-text"
+        editable={false}
+        multiline
+        placeholder={running ? "Follow up" : "Message"}
+        placeholderTextColor="#7f90a6"
+        value={running ? "Queue a note for the active turn" : ""}
+      />
+      <Pressable accessibilityRole="button" className="h-10 w-10 items-center justify-center rounded-full bg-text">
+        <KhalaText className="text-bg">{running ? "■" : "↑"}</KhalaText>
+      </Pressable>
+    </View>
+  </View>
+)
+
 export const TranscriptRows: Story = {
   render: () => (
     <View className="gap-3">
       {transcriptParts.map((part, index) => (
-        <TranscriptPartRow
-          key={`${part.kind}-${index}`}
-          part={part}
-          onRequestHandoff={() => undefined}
-        />
+        <TranscriptPartExample key={`${part.kind}-${index}`} part={part} />
       ))}
     </View>
   ),
@@ -104,25 +154,9 @@ export const SwipeToQuote: Story = {
 }
 
 export const ComposerIdle: Story = {
-  render: () => (
-    <ChatComposer
-      activeTurn={undefined}
-      appendMessage={async () => ({ ok: true })}
-      defaultLane="hosted_khala"
-      push={async () => undefined}
-      threadId="thread_storybook"
-    />
-  ),
+  render: () => <ComposerShell />,
 }
 
 export const ComposerWhileRunning: Story = {
-  render: () => (
-    <ChatComposer
-      activeTurn={activeTurn}
-      appendMessage={async () => ({ ok: true })}
-      push={async () => undefined}
-      quoteRequest={{ id: "quote_storybook", snippet: "The simulator is already running Storybook." }}
-      threadId="thread_storybook"
-    />
-  ),
+  render: () => <ComposerShell running />,
 }

@@ -2,7 +2,9 @@ import type { Meta, StoryObj } from "@storybook/react-native"
 import { useState } from "react"
 import { View } from "react-native"
 
-import { Toggle } from "../../components/toggle"
+import { KhalaCheckbox } from "../../components/khala-checkbox"
+import { KhalaRadio } from "../../components/khala-radio"
+import { KhalaSwitch } from "../../components/khala-switch"
 import { IgniteStory, IgniteStoryScreen, IgniteUseCase } from "../storybook-layout"
 
 const meta = {
@@ -25,7 +27,9 @@ const ToggleState = ({
   variant?: "checkbox" | "radio" | "switch"
 }) => {
   const [value, setValue] = useState(initial)
-  return <Toggle label={label} value={value} variant={variant} onValueChange={setValue} />
+  if (variant === "switch") return <KhalaSwitch label={label} value={value} onValueChange={setValue} />
+  if (variant === "radio") return <KhalaRadio label={label} value={value} onValueChange={setValue} />
+  return <KhalaCheckbox label={label} value={value} onValueChange={setValue} />
 }
 
 export const CheckboxBehaviour: Story = {
@@ -35,10 +39,10 @@ export const CheckboxBehaviour: Story = {
         <ToggleState label="Toggle me" />
       </IgniteUseCase>
       <IgniteUseCase text="value = true" usage="This is permanently on.">
-        <Toggle label="Always on" value />
+        <KhalaCheckbox label="Always on" value />
       </IgniteUseCase>
       <IgniteUseCase text="value = false" usage="This is permanently off.">
-        <Toggle label="Always off" value={false} />
+        <KhalaCheckbox label="Always off" value={false} />
       </IgniteUseCase>
       <IgniteUseCase text="radio" usage="The newer Khala toggle also exposes radio state.">
         <ToggleState initial label="Radio selected" variant="radio" />
@@ -59,7 +63,7 @@ export const CheckboxStyling: Story = {
         </View>
       </IgniteUseCase>
       <IgniteUseCase text="disabled" usage="Disabled checkbox styling.">
-        <Toggle disabled label="Disabled checkbox" value />
+        <KhalaCheckbox disabled label="Disabled checkbox" value />
       </IgniteUseCase>
     </IgniteStory>
   ),
@@ -72,10 +76,10 @@ export const SwitchBehaviour: Story = {
         <ToggleState label="Toggle me" variant="switch" />
       </IgniteUseCase>
       <IgniteUseCase text="value = true" usage="This is permanently on.">
-        <Toggle label="Always on" value variant="switch" />
+        <KhalaSwitch label="Always on" value />
       </IgniteUseCase>
       <IgniteUseCase text="value = false" usage="This is permanently off.">
-        <Toggle label="Always off" value={false} variant="switch" />
+        <KhalaSwitch label="Always off" value={false} />
       </IgniteUseCase>
     </IgniteStory>
   ),
@@ -90,7 +94,7 @@ export const SwitchStyling: Story = {
         </View>
       </IgniteUseCase>
       <IgniteUseCase text="Disabled" usage="Disabled switch styling.">
-        <Toggle disabled label="Disabled switch" value={false} variant="switch" />
+        <KhalaSwitch disabled label="Disabled switch" value={false} />
       </IgniteUseCase>
     </IgniteStory>
   ),

@@ -1,39 +1,43 @@
-import type { TextStyle, ViewStyle } from "react-native"
+import { StyleSheet, type TextStyle, type ViewStyle } from "react-native"
 
-import { Text, useAppTheme } from "../ignite"
-import type { ThemedStyle } from "../ignite"
+import { khalaMobileTheme } from "../theme/tokens"
+import { KhalaText } from "./khala-text"
 import { TouchableFeedback } from "./touchable-feedback"
 
 export type KhalaScrollToLatestButtonProps = Readonly<{
   onPress: () => void
 }>
 
-/** Floating "jump to latest" affordance. Presentation is on the ported
- * Infinite Red Ignite `Text` primitive + theme tokens (`../ignite`); the
- * UI-thread press cross-fade stays on the arcade `TouchableFeedback`. */
+/** Floating "jump to latest" affordance. Presentation uses the Khala token
+ * surface directly so this tiny control does not pull the full Ignite `Screen`
+ * barrel into Storybook just to render a glyph. */
 export const KhalaScrollToLatestButton = ({ onPress }: KhalaScrollToLatestButtonProps) => {
-  const { theme, themed } = useAppTheme()
   return (
     <TouchableFeedback
       accessibilityLabel="Scroll to latest"
       accessibilityRole="button"
-      style={themed($button)}
+      style={styles.button}
       onPress={onPress}
     >
-      <Text style={[$glyph, { color: theme.colors.text }]}>↓</Text>
+      <KhalaText style={styles.glyph}>↓</KhalaText>
     </TouchableFeedback>
   )
 }
 
-const $button: ThemedStyle<ViewStyle> = ({ colors }) => ({
-  height: 48,
-  width: 48,
-  alignItems: "center",
-  justifyContent: "center",
-  borderRadius: 24,
-  borderWidth: 1,
-  borderColor: colors.palette.neutral400,
-  backgroundColor: colors.palette.neutral200,
+const styles = StyleSheet.create({
+  button: {
+    alignItems: "center",
+    backgroundColor: khalaMobileTheme.surfaceRaised,
+    borderColor: khalaMobileTheme.border,
+    borderRadius: 24,
+    borderWidth: 1,
+    height: 48,
+    justifyContent: "center",
+    width: 48,
+  } satisfies ViewStyle,
+  glyph: {
+    color: khalaMobileTheme.text,
+    fontSize: 30,
+    lineHeight: 32,
+  } satisfies TextStyle,
 })
-
-const $glyph: TextStyle = { fontSize: 30, lineHeight: 32 }

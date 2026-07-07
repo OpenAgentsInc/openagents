@@ -61,7 +61,7 @@ export const ActionSurfaces: Story = {
       <View className="flex-row items-center gap-4">
         <KhalaButton loading variant="primary" text="Sending" />
         <ActivityIndicator />
-        <ActivityIndicator type="large" size={44} />
+        <ActivityIndicator type="large" size={112} />
         <KhalaScrollToLatestButton onPress={() => undefined} />
       </View>
       <TouchableFeedback className="rounded-lg border border-border bg-surfaceRaised p-4">

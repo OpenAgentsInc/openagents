@@ -15,8 +15,8 @@ export type ActivityIndicatorProps = Readonly<{
   type?: ActivityIndicatorType
   color?: string
   strokeWidth?: number
-  /** Canvas size (square) in dp. Defaults to a compact size that fits inside
-   * a 44x44 icon button, unlike Arcade's fixed 240dp demo-screen canvas. */
+  /** Canvas size (square) in dp. Defaults to a prominent app-loading size.
+   * Compact controls should pass an explicit smaller size. */
   size?: number
 }>
 
@@ -40,8 +40,8 @@ export type ActivityIndicatorProps = Readonly<{
  * demo. */
 export const ActivityIndicator = ({
   color = khalaMobileTheme.accent,
-  size = 28,
-  strokeWidth = 3,
+  size = 112,
+  strokeWidth = 7,
   type = "small"
 }: ActivityIndicatorProps) => {
   const internalOffset = size * 0.125

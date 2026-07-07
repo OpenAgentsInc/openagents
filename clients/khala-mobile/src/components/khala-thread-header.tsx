@@ -1,7 +1,7 @@
-import { View, type TextStyle, type ViewStyle } from "react-native"
+import { StyleSheet, View, type TextStyle, type ViewStyle } from "react-native"
 
-import { Text, useAppTheme } from "../ignite"
-import type { ThemedStyle } from "../ignite"
+import { khalaMobileTheme } from "../theme/tokens"
+import { KhalaText } from "./khala-text"
 import { TouchableFeedback } from "./touchable-feedback"
 
 export type KhalaThreadHeaderProps = Readonly<{
@@ -20,109 +20,120 @@ export type KhalaThreadHeaderProps = Readonly<{
   title: string
 }>
 
-/** Thread view's top bar. Presentation is on the ported Infinite Red Ignite
- * `Text` primitive + theme tokens (`../ignite`); the UI-thread press
- * cross-fade stays on the arcade `TouchableFeedback`. */
+/** Thread view's top bar. Presentation uses Khala tokens directly so the
+ * header can render in Storybook without importing Ignite's native Screen
+ * dependencies through the component barrel. */
 export const KhalaThreadHeader = ({
   onOpenMenu,
   onNewThread,
   subtitle,
   title,
 }: KhalaThreadHeaderProps) => {
-  const { theme, themed } = useAppTheme()
   const newDisabled = onNewThread === undefined
   return (
-    <View style={themed($container)}>
-      <View style={themed($row)}>
+    <View style={styles.container}>
+      <View style={styles.row}>
         <TouchableFeedback
           accessibilityLabel="Open menu"
           accessibilityRole="button"
-          style={themed($circleButton)}
+          style={styles.circleButton}
           hitSlop={10}
           onPress={onOpenMenu}
         >
-          <Text style={[$menuGlyph, { color: theme.colors.text }]}>☰</Text>
+          <KhalaText style={styles.menuGlyph}>☰</KhalaText>
         </TouchableFeedback>
 
-        <View style={themed($titleColumn)}>
-          <Text weight="medium" size="md" numberOfLines={1} text={title} />
-          <Text size="sm" numberOfLines={1} style={themed($subtitle)} text={subtitle} />
+        <View style={styles.titleColumn}>
+          <KhalaText className="font-medium" numberOfLines={1} variant="body">
+            {title}
+          </KhalaText>
+          <KhalaText numberOfLines={1} style={styles.subtitle} variant="muted">
+            {subtitle}
+          </KhalaText>
         </View>
 
         <TouchableFeedback
           accessibilityLabel="New thread"
           accessibilityRole="button"
-          style={[themed($newButton), newDisabled ? themed($newButtonDisabled) : themed($newButtonEnabled)]}
+          style={[styles.newButton, newDisabled ? styles.newButtonDisabled : styles.newButtonEnabled]}
           disabled={newDisabled}
           hitSlop={10}
           onPress={onNewThread}
         >
-          <Text style={[$newGlyph, { color: newDisabled ? theme.colors.textDim : theme.colors.tint }]}>✎</Text>
-          <Text
-            size="xxs"
-            weight="medium"
-            style={{
-              color: newDisabled ? theme.colors.textDim : theme.colors.tint,
-              textTransform: "uppercase",
-              letterSpacing: 0.5,
-            }}
-            text="New"
-          />
+          <KhalaText style={[styles.newGlyph, newDisabled ? styles.newTextDisabled : styles.newTextEnabled]}>✎</KhalaText>
+          <KhalaText
+            className="font-medium uppercase"
+            style={[styles.newLabel, newDisabled ? styles.newTextDisabled : styles.newTextEnabled]}
+          >
+            New
+          </KhalaText>
         </TouchableFeedback>
       </View>
     </View>
   )
 }
 
-const $container: ThemedStyle<ViewStyle> = ({ spacing }) => ({
-  paddingHorizontal: spacing.md,
-  paddingTop: spacing.xs,
-  paddingBottom: spacing.sm,
+const styles = StyleSheet.create({
+  circleButton: {
+    alignItems: "center",
+    backgroundColor: khalaMobileTheme.surfaceRaised,
+    borderColor: khalaMobileTheme.border,
+    borderRadius: 28,
+    borderWidth: 1,
+    height: 56,
+    justifyContent: "center",
+    width: 56,
+  } satisfies ViewStyle,
+  container: {
+    paddingBottom: 12,
+    paddingHorizontal: 16,
+    paddingTop: 8,
+  } satisfies ViewStyle,
+  menuGlyph: {
+    color: khalaMobileTheme.text,
+    fontSize: 26,
+    lineHeight: 30,
+  } satisfies TextStyle,
+  newButton: {
+    alignItems: "center",
+    borderRadius: 28,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 8,
+    height: 56,
+    paddingHorizontal: 16,
+  } satisfies ViewStyle,
+  newButtonDisabled: {
+    backgroundColor: khalaMobileTheme.background,
+    borderColor: khalaMobileTheme.border,
+  } satisfies ViewStyle,
+  newButtonEnabled: {
+    backgroundColor: khalaMobileTheme.surfaceRaised,
+    borderColor: khalaMobileTheme.accent,
+  } satisfies ViewStyle,
+  newGlyph: {
+    fontSize: 22,
+    lineHeight: 24,
+  } satisfies TextStyle,
+  newLabel: {
+    letterSpacing: 0.5,
+  } satisfies TextStyle,
+  newTextDisabled: {
+    color: khalaMobileTheme.textMuted,
+  } satisfies TextStyle,
+  newTextEnabled: {
+    color: khalaMobileTheme.accent,
+  } satisfies TextStyle,
+  row: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 12,
+  } satisfies ViewStyle,
+  subtitle: {
+    color: khalaMobileTheme.textMuted,
+  } satisfies TextStyle,
+  titleColumn: {
+    flex: 1,
+    minWidth: 0,
+  } satisfies ViewStyle,
 })
-
-const $row: ThemedStyle<ViewStyle> = ({ spacing }) => ({
-  flexDirection: "row",
-  alignItems: "center",
-  gap: spacing.sm,
-})
-
-const $circleButton: ThemedStyle<ViewStyle> = ({ colors }) => ({
-  height: 56,
-  width: 56,
-  alignItems: "center",
-  justifyContent: "center",
-  borderRadius: 28,
-  borderWidth: 1,
-  borderColor: colors.palette.neutral400,
-  backgroundColor: colors.palette.neutral200,
-})
-
-const $titleColumn: ThemedStyle<ViewStyle> = () => ({
-  flex: 1,
-  minWidth: 0,
-})
-
-const $newButton: ThemedStyle<ViewStyle> = ({ spacing }) => ({
-  height: 56,
-  flexDirection: "row",
-  alignItems: "center",
-  gap: spacing.xs,
-  borderRadius: 28,
-  borderWidth: 1,
-  paddingHorizontal: spacing.md,
-})
-
-const $newButtonEnabled: ThemedStyle<ViewStyle> = ({ colors }) => ({
-  borderColor: colors.tint,
-  backgroundColor: colors.palette.neutral200,
-})
-
-const $newButtonDisabled: ThemedStyle<ViewStyle> = ({ colors }) => ({
-  borderColor: colors.palette.neutral400,
-  backgroundColor: colors.background,
-})
-
-const $subtitle: ThemedStyle<TextStyle> = ({ colors }) => ({ color: colors.textDim })
-
-const $menuGlyph: TextStyle = { fontSize: 26, lineHeight: 30 }
-const $newGlyph: TextStyle = { fontSize: 22, lineHeight: 24 }

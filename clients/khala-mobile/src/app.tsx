@@ -32,7 +32,7 @@ const AuthGate = () => {
   if (status === "loading") {
     return (
       <View className="flex-1 items-center justify-center bg-bg">
-        <ActivityIndicator color={khalaMobileTheme.accent} size={72} strokeWidth={5} type="large" />
+        <ActivityIndicator color={khalaMobileTheme.accent} size={220} strokeWidth={10} type="large" />
       </View>
     )
   }
@@ -91,7 +91,7 @@ export const App = () => {
   if (!fontGateReady) {
     return (
       <View className="flex-1 items-center justify-center bg-bg">
-        <ActivityIndicator color={khalaMobileTheme.accent} size={72} strokeWidth={5} type="large" />
+        <ActivityIndicator color={khalaMobileTheme.accent} size={220} strokeWidth={10} type="large" />
       </View>
     )
   }

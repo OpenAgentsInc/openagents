@@ -87,7 +87,7 @@ export const KhalaButton = ({
       testID={testID}
     >
       {leftAccessory === undefined ? null : <View>{leftAccessory}</View>}
-      {loading ? <ActivityIndicator color={loadingColor[variant]} size={36} strokeWidth={4} type="large" /> : null}
+      {loading ? <ActivityIndicator color={loadingColor[variant]} size={52} strokeWidth={5} type="large" /> : null}
       {text === undefined && children === undefined ? null : (
         <KhalaText
           className={`text-center font-semibold ${variantTextClassName[variant]} ${textClassName}`.trim()}

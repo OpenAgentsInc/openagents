@@ -21,6 +21,7 @@ import { ArwesButton } from "./arwes-button"
 import { BackgroundGradient } from "./background-gradient"
 import { BlurredPopupProvider, TouchablePopupHandler } from "./blurred-popup"
 import { Frame, usePowerOnVisible } from "./frame"
+import { KhalaCityBackground } from "./khala-city-background"
 import { KhalaListItem } from "./khala-list-item"
 import { KhalaText } from "./khala-text"
 import { ReText } from "./re-text"
@@ -279,7 +280,7 @@ export const SkiaSpinnerAndFrame: Story = {
     <StoryShell>
       <KhalaText variant="heading">Skia spinner + frame unfold</KhalaText>
       <View style={styles.row}>
-        <KhalaActivityIndicator size={72} strokeWidth={5} type="large" />
+        <KhalaActivityIndicator size={160} strokeWidth={8} type="large" />
         <PowerOnFrame index={0} title="Power-on frame" />
       </View>
       <ArwesButtonExample />
@@ -299,6 +300,26 @@ export const AmbientGradientAndDonut: Story = {
         </KhalaText>
       </View>
     </StoryShell>
+  )
+}
+
+export const CityBackgroundAndSpotlight: Story = {
+  render: () => (
+    <KhalaCityBackground overlayOpacity={0.9} style={styles.cityStory}>
+      <View style={styles.cityContent}>
+        <KhalaText style={styles.cityTitle} variant="heading">
+          KHALA CODE
+        </KhalaText>
+        <Frame style={styles.cityFrame} visible>
+          <KhalaText className="text-accent" variant="body">
+            full-bleed wallpaper
+          </KhalaText>
+          <KhalaText className="mt-1" variant="muted">
+            darker overlay + Skia radial spotlight
+          </KhalaText>
+        </Frame>
+      </View>
+    </KhalaCityBackground>
   )
 }
 
@@ -381,6 +402,27 @@ const styles = StyleSheet.create({
     width: "100%"
   },
   centerRow: { alignItems: "center", flexDirection: "row", gap: 18 },
+  cityContent: {
+    flex: 1,
+    gap: 24,
+    justifyContent: "center",
+    padding: 24
+  },
+  cityFrame: {
+    minHeight: 104,
+    padding: 16
+  },
+  cityStory: { flex: 1 },
+  cityTitle: {
+    color: khalaMobileTheme.text,
+    fontFamily: "Protomolecule",
+    fontSize: 40,
+    lineHeight: 48,
+    textAlign: "center",
+    textShadowColor: khalaMobileTheme.accent,
+    textShadowOffset: { height: 0, width: 0 },
+    textShadowRadius: 14
+  },
   drawerBar: { borderRadius: 999, height: 2 },
   drawerButton: {
     alignItems: "center",

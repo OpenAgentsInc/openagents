@@ -41,7 +41,7 @@ export const KhalaEmptyState = ({
     testID={testID}
   >
     {loading ? (
-      <ActivityIndicator color={khalaMobileTheme.accent} size={72} strokeWidth={5} type="large" />
+      <ActivityIndicator color={khalaMobileTheme.accent} size={180} strokeWidth={9} type="large" />
     ) : null}
     <KhalaText
       className={`${loading ? "mt-4 " : ""}text-center ${titleToneClassName[tone]}`.trim()}
