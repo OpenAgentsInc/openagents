@@ -35,12 +35,13 @@ import type { MutexSqlClient } from '@openagentsinc/oa-infra/mutex-postgres'
 import type { MutexShape } from '@openagentsinc/oa-infra/mutex'
 
 import {
-  makeEventLedgerStoreForEnv,
+  makePostgresEventLedgerStore,
   recordEventLedgerIngestMessage,
   type EventLedgerIngestOutcome,
   type EventLedgerIngestQueueMessage,
   type EventLedgerOwnerSequenceReservation,
   type EventLedgerOwnerSequenceStore,
+  type EventLedgerSql,
   type EventLedgerStore,
 } from './event-ledger'
 import type { AgentRuntimeRemainderStoreEnv } from './agent-runtime-remainder-store'
@@ -159,16 +160,23 @@ export type RecordEventLedgerMessageWithOwnerMutexOptions = Readonly<{
         ownerAgentUserId: string,
       ) => EventLedgerOwnerSequenceStore)
     | undefined
-  /** Injectable ledger store (tests). Default: D1 over the env. */
+  /**
+   * Injectable ledger store (tests). Default: the Postgres
+   * `event_ledger_entries` store on the SAME KHALA_SYNC_DB connection the
+   * sequence store uses, so the reserve + ledger insert + mark-persisted append
+   * all run on Postgres under the one held per-owner advisory lock.
+   */
   makeStore?: ((env: EventLedgerOwnerMutexEnv) => EventLedgerStore) | undefined
   nowIso?: (() => string) | undefined
 }>
 
 /**
  * The Cloud Run event-ledger-ingest append: reserve a per-owner sequence,
- * write the D1 ledger row, and mark the reservation persisted — all inside
- * the owned oa-infra Mutex keyed by the ledger owner, so concurrent jobs for
- * the same owner serialize (advisory lock held for the whole append).
+ * write the Postgres `event_ledger_entries` ledger row (CFG-17 #8533; the
+ * former D1 `d1-http` OPENAGENTS_DB write is 401-dead account-wide), and mark
+ * the reservation persisted — all inside the owned oa-infra Mutex keyed by the
+ * ledger owner, so concurrent jobs for the same owner serialize (advisory lock
+ * held for the whole append).
  *
  * Throws on failure so the caller (`dispatchOaQueueMessage`) rethrows and the
  * oa-queue-worker pump nacks → retries → dead-letters, same as the DO path.
@@ -189,11 +197,13 @@ export const recordEventLedgerMessageWithOwnerMutex = async (
   const makeMutex = options.makeMutex ?? makePostgresMutex
   const makeSequenceStore =
     options.makeSequenceStore ?? makePostgresEventLedgerOwnerSequenceStore
-  const makeStore = options.makeStore ?? makeEventLedgerStoreForEnv
 
   // The mutex holds a dedicated reserved connection for the lock's lifetime;
-  // the sequence store uses a SEPARATE connection so its own queries never
-  // wait on the lock connection. D1 (the ledger rows) is a separate HTTP path.
+  // the sequence store AND the Postgres ledger store share a SEPARATE
+  // connection so their queries never wait on the lock connection. Both run on
+  // the same held per-owner advisory lock, so the reserve + ledger insert +
+  // mark-persisted append are effectively atomic per owner (no concurrent
+  // same-owner writer) — exactly the guarantee the DO's single thread gave.
   const lockClient = await makeSqlClient(connectionString)
   const seqClient = await makeSqlClient(connectionString)
 
@@ -203,7 +213,12 @@ export const recordEventLedgerMessageWithOwnerMutex = async (
       seqClient.sql as unknown as EventLedgerOwnerSequenceSql,
       message.ownerAgentUserId,
     )
-    const store = makeStore(env)
+    const store =
+      options.makeStore !== undefined
+        ? options.makeStore(env)
+        : makePostgresEventLedgerStore(
+            seqClient.sql as unknown as EventLedgerSql,
+          )
 
     return await Effect.runPromise(
       mutex.withLock(

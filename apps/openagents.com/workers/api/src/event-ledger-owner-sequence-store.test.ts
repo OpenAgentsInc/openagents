@@ -260,3 +260,205 @@ describe('event ledger owner mutex serialization', () => {
     )
   })
 })
+
+// ---------------------------------------------------------------------------
+// CFG-17 (#8533): the append writes the ledger row to Postgres, not D1.
+//
+// This exercises the REAL defaults — the Postgres owner-sequence store AND the
+// Postgres event_ledger_entries store — against one in-memory fake Postgres
+// client shared by both (the same KHALA_SYNC_DB connection the code shares),
+// with the memory mutex standing in for the advisory lock. It proves the
+// append completes on Postgres end-to-end: a row lands in event_ledger_entries,
+// persisted_at flips on the reservation, `persisted: true` is returned, and a
+// redelivery dedups idempotently with no second ledger row.
+// ---------------------------------------------------------------------------
+
+type FakeRow = Record<string, unknown>
+
+/** One in-memory Postgres double backing BOTH event_ledger_owner_order and
+ * event_ledger_entries via the same tagged-template `sql` seam postgres.js
+ * exposes. Dispatches on the reconstructed query text + positional params. */
+const makeFakeKhalaSyncSql = () => {
+  const orders: Array<{
+    owner: string
+    key: string
+    seq: number
+    persisted_at: string | null
+  }> = []
+  const entries: Array<FakeRow> = []
+
+  const sql = (async (
+    strings: TemplateStringsArray,
+    ...values: ReadonlyArray<unknown>
+  ): Promise<Array<FakeRow>> => {
+    const q = strings.join(' ')
+    const v = values as ReadonlyArray<unknown>
+
+    if (q.includes('event_ledger_owner_order')) {
+      if (q.includes('INSERT INTO event_ledger_owner_order')) {
+        const [owner, key, seq] = v as [string, string, number]
+        orders.push({ owner, key, seq: Number(seq), persisted_at: null })
+        return []
+      }
+      if (q.includes('UPDATE event_ledger_owner_order')) {
+        const [persistedAt, owner, key] = v as [string, string, string]
+        const row = orders.find(o => o.owner === owner && o.key === key)
+        if (row !== undefined) {
+          row.persisted_at = persistedAt
+        }
+        return []
+      }
+      if (q.includes('MAX(ordering_sequence)')) {
+        const [owner] = v as [string]
+        const max = orders
+          .filter(o => o.owner === owner)
+          .reduce((m, o) => Math.max(m, o.seq), 0)
+        return [{ next_sequence: max + 1 }]
+      }
+      const [owner, key] = v as [string, string]
+      const row = orders.find(o => o.owner === owner && o.key === key)
+      return row === undefined
+        ? []
+        : [{ ordering_sequence: row.seq, persisted_at: row.persisted_at }]
+    }
+
+    if (q.includes('INSERT INTO event_ledger_entries')) {
+      const [
+        entry_id,
+        owner_agent_user_id,
+        owner_ref,
+        source,
+        external_ref,
+        actor_ref,
+        content_ref,
+        subject_ref,
+        event_type,
+        source_refs_json,
+        payload_summary_json,
+        occurred_at,
+        received_at,
+        ordering_key,
+        ordering_sequence,
+        created_at,
+        updated_at,
+      ] = v as Array<unknown>
+      const duplicate = entries.some(
+        r =>
+          r.owner_agent_user_id === owner_agent_user_id &&
+          r.source === source &&
+          r.external_ref === external_ref,
+      )
+      if (!duplicate) {
+        entries.push({
+          entry_id,
+          owner_agent_user_id,
+          owner_ref,
+          source,
+          external_ref,
+          actor_ref,
+          content_ref,
+          subject_ref,
+          event_type,
+          source_refs_json,
+          payload_summary_json,
+          occurred_at,
+          received_at,
+          ordering_key,
+          // bigint comes back from postgres.js as a string; keep it that way so
+          // the store's Number() coercion is exercised.
+          ordering_sequence: String(ordering_sequence),
+          handled_state: 'open',
+          handled_by_run_id: null,
+          handled_by_definition_id: null,
+          handled_at: null,
+          handled_reason_ref: null,
+          training_consent: 0,
+          created_at,
+          updated_at,
+        })
+      }
+      return []
+    }
+
+    if (q.includes('SELECT * FROM event_ledger_entries')) {
+      const [owner, source, external] = v as [string, string, string]
+      return entries
+        .filter(
+          r =>
+            r.owner_agent_user_id === owner &&
+            r.source === source &&
+            r.external_ref === external,
+        )
+        .slice(0, 1)
+    }
+
+    return []
+  }) as unknown as (
+    strings: TemplateStringsArray,
+    ...values: ReadonlyArray<unknown>
+  ) => Promise<Array<FakeRow>>
+
+  return { sql, orders, entries }
+}
+
+describe('event ledger owner append writes to Postgres (CFG-17 #8533)', () => {
+  test('append persists the ledger row in Postgres and flips persisted_at', async () => {
+    const fake = makeFakeKhalaSyncSql()
+    const options = {
+      makeSqlClient: async () => ({
+        sql: fake.sql as never,
+        end: async () => undefined,
+      }),
+      makeMutex: () => makeMemoryMutex(),
+    }
+
+    const outcome = await recordEventLedgerMessageWithOwnerMutex(
+      envWithDb,
+      message({ externalRef: 'github.delivery.pg-1' }),
+      options,
+    )
+
+    expect(outcome.persisted).toBe(true)
+    expect(outcome.duplicate).toBe(false)
+    expect(outcome.orderingSequence).toBe(1)
+
+    // The ledger row landed in Postgres event_ledger_entries.
+    expect(fake.entries).toHaveLength(1)
+    expect(fake.entries[0]?.entry_id).toBe(outcome.entryId)
+    expect(fake.entries[0]?.source).toBe('github')
+    expect(fake.entries[0]?.external_ref).toBe('github.delivery.pg-1')
+
+    // The reservation's persisted_at flipped (append proof), on Postgres.
+    expect(fake.orders).toHaveLength(1)
+    expect(fake.orders[0]?.persisted_at).not.toBeNull()
+  })
+
+  test('redelivery dedups against Postgres with no second ledger row', async () => {
+    const fake = makeFakeKhalaSyncSql()
+    const options = {
+      makeSqlClient: async () => ({
+        sql: fake.sql as never,
+        end: async () => undefined,
+      }),
+      makeMutex: () => makeMemoryMutex(),
+    }
+
+    const first = await recordEventLedgerMessageWithOwnerMutex(
+      envWithDb,
+      message({ externalRef: 'github.delivery.pg-dup' }),
+      options,
+    )
+    const again = await recordEventLedgerMessageWithOwnerMutex(
+      envWithDb,
+      message({ externalRef: 'github.delivery.pg-dup' }),
+      options,
+    )
+
+    expect(first.duplicate).toBe(false)
+    expect(again.duplicate).toBe(true)
+    expect(again.orderingSequence).toBe(first.orderingSequence)
+    expect(again.persisted).toBe(true)
+    // No duplicate ledger row was written.
+    expect(fake.entries).toHaveLength(1)
+  })
+})

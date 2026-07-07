@@ -97,8 +97,9 @@ import {
 import {
   EVENT_LEDGER_INGEST_QUEUE_SCHEMA_VERSION,
   EventLedgerIngestQueueMessage,
-  makeEventLedgerStoreForEnv,
+  makePostgresEventLedgerStore,
   recordEventLedgerMessageWithOwnerObject,
+  type EventLedgerSql,
 } from './event-ledger'
 export { EventLedgerOwnerDurableObject } from './event-ledger'
 import { recordEventLedgerMessageWithOwnerMutex } from './event-ledger-owner-sequence-store'
@@ -15284,12 +15285,37 @@ const routeRequest = makeWorkerRouteRequest({
                 pylonStore: makePylonApiStoreForEnv(env),
                 runStore: makeAgentDefinitionRunStoreForEnv(env),
               })
-            : await handleAgentDefinitionEventLedgerGatewayRequest(request, {
-                agentStore: makeAgentRegistrationStoreForEnv(env),
-                definitionStore: makeAgentDefinitionStoreForEnv(env),
-                eventLedgerStore: makeEventLedgerStoreForEnv(env),
-                runStore: makeAgentDefinitionRunStoreForEnv(env),
-              })
+            : await (async () => {
+                // CFG-17 (#8533): the event ledger lives in Postgres now (the
+                // D1 OPENAGENTS_DB `d1-http` bridge is 401-dead account-wide),
+                // so the gateway read + handled-state route reads/writes
+                // `event_ledger_entries` over KHALA_SYNC_DB, matching the
+                // owner-serialized append path.
+                const ledgerConnection = env.KHALA_SYNC_DB?.connectionString
+                if (
+                  ledgerConnection === undefined ||
+                  ledgerConnection.length === 0
+                ) {
+                  return serverError()
+                }
+                const ledgerClient =
+                  await defaultMakeKhalaSyncSqlClient(ledgerConnection)
+                try {
+                  return await handleAgentDefinitionEventLedgerGatewayRequest(
+                    request,
+                    {
+                      agentStore: makeAgentRegistrationStoreForEnv(env),
+                      definitionStore: makeAgentDefinitionStoreForEnv(env),
+                      eventLedgerStore: makePostgresEventLedgerStore(
+                        ledgerClient.sql as unknown as EventLedgerSql,
+                      ),
+                      runStore: makeAgentDefinitionRunStoreForEnv(env),
+                    },
+                  )
+                } finally {
+                  await ledgerClient.end().catch(() => undefined)
+                }
+              })()
 
         return response ?? notFound()
       }),

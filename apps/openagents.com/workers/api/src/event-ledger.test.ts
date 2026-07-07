@@ -20,6 +20,7 @@ import {
   eventLedgerMessageForMatchedTrigger,
   makeD1EventLedgerStore,
   makeMirroredEventLedgerStore,
+  makePostgresEventLedgerStore,
   recordEventLedgerIngestMessage,
 } from './event-ledger'
 
@@ -703,5 +704,287 @@ describe('event ledger ingest', () => {
     expect(wrangler).toContain(
       '"new_sqlite_classes": ["EventLedgerOwnerDurableObject"]',
     )
+  })
+})
+
+// ---------------------------------------------------------------------------
+// CFG-17 (#8533): makePostgresEventLedgerStore — the D1 evacuation target.
+//
+// Backed by an in-memory Postgres double over the same tagged-template `sql`
+// seam postgres.js exposes. Proves the store's four operations against
+// event_ledger_entries: idempotent insert + read-back, per-owner listing with
+// subject/handled-state filters, single-entry read, and handled-state update.
+// ---------------------------------------------------------------------------
+
+const makeFakeEventLedgerEntriesSql = () => {
+  const rows: Array<Record<string, unknown>> = []
+
+  const sql = (async (
+    strings: TemplateStringsArray,
+    ...values: ReadonlyArray<unknown>
+  ): Promise<Array<Record<string, unknown>>> => {
+    const q = strings.join(' ')
+    const v = values as Array<unknown>
+
+    if (q.includes('INSERT INTO event_ledger_entries')) {
+      const [
+        entry_id,
+        owner_agent_user_id,
+        owner_ref,
+        source,
+        external_ref,
+        actor_ref,
+        content_ref,
+        subject_ref,
+        event_type,
+        source_refs_json,
+        payload_summary_json,
+        occurred_at,
+        received_at,
+        ordering_key,
+        ordering_sequence,
+        created_at,
+        updated_at,
+      ] = v
+      const duplicate = rows.some(
+        r =>
+          r.owner_agent_user_id === owner_agent_user_id &&
+          r.source === source &&
+          r.external_ref === external_ref,
+      )
+      if (!duplicate) {
+        rows.push({
+          entry_id,
+          owner_agent_user_id,
+          owner_ref,
+          source,
+          external_ref,
+          actor_ref,
+          content_ref,
+          subject_ref,
+          event_type,
+          source_refs_json,
+          payload_summary_json,
+          occurred_at,
+          received_at,
+          ordering_key,
+          ordering_sequence: String(ordering_sequence),
+          handled_state: 'open',
+          handled_by_run_id: null,
+          handled_by_definition_id: null,
+          handled_at: null,
+          handled_reason_ref: null,
+          training_consent: 0,
+          created_at,
+          updated_at,
+        })
+      }
+      return []
+    }
+
+    if (q.includes('UPDATE event_ledger_entries')) {
+      const [
+        handled_state,
+        handled_by_run_id,
+        handled_by_definition_id,
+        handled_at,
+        handled_reason_ref,
+        updated_at,
+        owner_agent_user_id,
+        entry_id,
+      ] = v
+      const row = rows.find(
+        r =>
+          r.owner_agent_user_id === owner_agent_user_id &&
+          r.entry_id === entry_id,
+      )
+      if (row !== undefined) {
+        Object.assign(row, {
+          handled_state,
+          handled_by_run_id,
+          handled_by_definition_id,
+          handled_at,
+          handled_reason_ref,
+          updated_at,
+        })
+      }
+      return []
+    }
+
+    if (q.includes('SELECT * FROM event_ledger_entries')) {
+      if (q.includes('external_ref =')) {
+        const [owner, source, external] = v as [string, string, string]
+        return rows
+          .filter(
+            r =>
+              r.owner_agent_user_id === owner &&
+              r.source === source &&
+              r.external_ref === external,
+          )
+          .slice(0, 1)
+      }
+      if (q.includes('entry_id =')) {
+        const [owner, entry] = v as [string, string]
+        return rows
+          .filter(
+            r => r.owner_agent_user_id === owner && r.entry_id === entry,
+          )
+          .slice(0, 1)
+      }
+      // listOwnerEntries: [owner, subjectRef, subjectRef, states, states, limit]
+      const owner = v[0]
+      const subjectRef = v[1] as string | null
+      const handledStates = v[3] as ReadonlyArray<string> | null
+      const limit = v[5] as number
+      let out = rows.filter(r => r.owner_agent_user_id === owner)
+      if (subjectRef !== null && subjectRef !== undefined) {
+        out = out.filter(r => r.subject_ref === subjectRef)
+      }
+      if (handledStates !== null && handledStates !== undefined) {
+        out = out.filter(r =>
+          handledStates.includes(r.handled_state as string),
+        )
+      }
+      return out
+        .sort(
+          (a, b) =>
+            Number(a.ordering_sequence) - Number(b.ordering_sequence),
+        )
+        .slice(0, limit)
+    }
+
+    return []
+  }) as never
+
+  return { sql, rows }
+}
+
+const pgMessage = (
+  overrides: Partial<{ externalRef: string; subjectRef: string }> = {},
+) =>
+  new EventLedgerIngestQueueMessage({
+    schemaVersion: EVENT_LEDGER_INGEST_QUEUE_SCHEMA_VERSION,
+    actorRef: 'github.user.octocat',
+    contentRef: 'github.issue.7',
+    eventType: 'issues.opened',
+    externalRef: overrides.externalRef ?? 'github.delivery.pg',
+    occurredAt: '2026-07-06T00:00:00.000Z',
+    ownerAgentUserId: 'owner-pg',
+    ownerRef: 'agent.owner-pg',
+    payloadSummary: { action: 'opened' },
+    receivedAt: '2026-07-06T00:00:01.000Z',
+    source: 'github',
+    sourceRefs: ['github.delivery.pg'],
+    subjectRef: overrides.subjectRef ?? 'github.issue.7',
+    trainingConsent: false,
+  })
+
+describe('makePostgresEventLedgerStore (CFG-17 #8533)', () => {
+  test('insertEntry writes the row and reads it back with coerced sequence', async () => {
+    const fake = makeFakeEventLedgerEntriesSql()
+    const store = makePostgresEventLedgerStore(fake.sql)
+
+    const entry = await store.insertEntry({
+      entryId: 'entry-1',
+      message: pgMessage({ externalRef: 'github.delivery.a' }),
+      nowIso: '2026-07-06T00:00:02.000Z',
+      orderingSequence: 1,
+    })
+
+    expect(entry.entryId).toBe('entry-1')
+    expect(entry.orderingSequence).toBe(1)
+    expect(typeof entry.orderingSequence).toBe('number')
+    expect(entry.orderingKey).toBe('github:github.delivery.a')
+    expect(entry.handledState).toBe('open')
+    expect(entry.payloadSummary).toEqual({ action: 'opened' })
+    expect(entry.trainingConsent).toBe(false)
+    expect(fake.rows).toHaveLength(1)
+  })
+
+  test('insertEntry is idempotent on (owner, source, external_ref)', async () => {
+    const fake = makeFakeEventLedgerEntriesSql()
+    const store = makePostgresEventLedgerStore(fake.sql)
+
+    await store.insertEntry({
+      entryId: 'entry-1',
+      message: pgMessage({ externalRef: 'github.delivery.dup' }),
+      nowIso: '2026-07-06T00:00:02.000Z',
+      orderingSequence: 1,
+    })
+    const second = await store.insertEntry({
+      entryId: 'entry-1',
+      message: pgMessage({ externalRef: 'github.delivery.dup' }),
+      nowIso: '2026-07-06T00:00:03.000Z',
+      orderingSequence: 1,
+    })
+
+    expect(second.entryId).toBe('entry-1')
+    expect(fake.rows).toHaveLength(1)
+  })
+
+  test('listOwnerEntries filters by handled state and orders by sequence', async () => {
+    const fake = makeFakeEventLedgerEntriesSql()
+    const store = makePostgresEventLedgerStore(fake.sql)
+
+    await store.insertEntry({
+      entryId: 'entry-1',
+      message: pgMessage({ externalRef: 'd.1' }),
+      nowIso: '2026-07-06T00:00:02.000Z',
+      orderingSequence: 2,
+    })
+    await store.insertEntry({
+      entryId: 'entry-2',
+      message: pgMessage({ externalRef: 'd.2' }),
+      nowIso: '2026-07-06T00:00:03.000Z',
+      orderingSequence: 1,
+    })
+
+    const all = await store.listOwnerEntries({
+      limit: 50,
+      ownerAgentUserId: 'owner-pg',
+    })
+    expect(all.map(e => e.orderingSequence)).toEqual([1, 2])
+
+    const open = await store.listOwnerEntries({
+      handledStates: ['open'],
+      limit: 50,
+      ownerAgentUserId: 'owner-pg',
+    })
+    expect(open).toHaveLength(2)
+
+    const handled = await store.listOwnerEntries({
+      handledStates: ['handled'],
+      limit: 50,
+      ownerAgentUserId: 'owner-pg',
+    })
+    expect(handled).toHaveLength(0)
+  })
+
+  test('updateHandledState mutates the row and returns the updated entry', async () => {
+    const fake = makeFakeEventLedgerEntriesSql()
+    const store = makePostgresEventLedgerStore(fake.sql)
+
+    await store.insertEntry({
+      entryId: 'entry-1',
+      message: pgMessage({ externalRef: 'd.1' }),
+      nowIso: '2026-07-06T00:00:02.000Z',
+      orderingSequence: 1,
+    })
+
+    const updated = await store.updateHandledState({
+      entryId: 'entry-1',
+      handledAt: '2026-07-06T00:01:00.000Z',
+      handledByDefinitionId: 'def-1',
+      handledByRunId: 'run-1',
+      handledState: 'handled',
+      ownerAgentUserId: 'owner-pg',
+    })
+
+    expect(updated?.handledState).toBe('handled')
+    expect(updated?.handledByRunId).toBe('run-1')
+    expect(updated?.handledByDefinitionId).toBe('def-1')
+
+    const read = await store.readOwnerEntry('owner-pg', 'entry-1')
+    expect(read?.handledState).toBe('handled')
   })
 })

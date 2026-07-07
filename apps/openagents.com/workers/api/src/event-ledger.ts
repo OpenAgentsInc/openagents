@@ -511,6 +511,130 @@ export const makeD1EventLedgerStore = (db: D1Database): EventLedgerStore => ({
   },
 })
 
+/**
+ * Minimal structural tagged-template Postgres client the ledger store needs —
+ * a parameterized query resolving with result rows. Satisfied by postgres.js
+ * (the KHALA_SYNC_DB `defaultMakeKhalaSyncSqlClient` seam) and Bun's `SQL`
+ * alike (same shape as the owner-sequence store's client seam).
+ */
+export type EventLedgerSql = <T = Record<string, unknown>>(
+  strings: TemplateStringsArray,
+  ...values: ReadonlyArray<unknown>
+) => Promise<Array<T>>
+
+/** Coerce a `SELECT *` Postgres row into an `EventLedgerEntry`. postgres.js
+ * hands back `bigint` (ordering_sequence) and `smallint` (training_consent) as
+ * strings/numbers; normalize `ordering_sequence` to a number before the shared
+ * `rowToEntry` mapper (which passes every text/ISO field straight through). */
+const pgEventLedgerRowToEntry = (row: Record<string, unknown>): EventLedgerEntry =>
+  rowToEntry({
+    ...(row as unknown as EventLedgerEntryRow),
+    ordering_sequence: Number(
+      (row as { ordering_sequence: unknown }).ordering_sequence,
+    ),
+  })
+
+/**
+ * CFG-17 (#8533): Postgres-backed `EventLedgerStore`. This is the D1 evacuation
+ * target for `event_ledger_entries` (khala-sync migration 0046). The Cloud Run
+ * append writes the ledger row here — under the same per-owner oa-infra advisory
+ * lock that guards the owner-sequence reservation — instead of the 401-dead
+ * `d1-http` OPENAGENTS_DB bridge. The reservation, this insert, and the
+ * mark-persisted flip all run on the SAME held-lock owner, so per-owner ordering
+ * and dedup are preserved. The dedup insert uses `ON CONFLICT DO NOTHING` on the
+ * `(owner_agent_user_id, source, external_ref)` unique constraint (the Postgres
+ * equivalent of the D1 `INSERT OR IGNORE`), so redelivery is idempotent.
+ */
+export const makePostgresEventLedgerStore = (
+  sql: EventLedgerSql,
+): EventLedgerStore => {
+  const store: EventLedgerStore = {
+    insertEntry: async ({ entryId, message, nowIso, orderingSequence }) => {
+      const orderingKey = `${message.source}:${message.externalRef}`
+
+      await sql`
+        INSERT INTO event_ledger_entries
+          (entry_id, owner_agent_user_id, owner_ref, source, external_ref,
+           actor_ref, content_ref, subject_ref, event_type, source_refs_json,
+           payload_summary_json, occurred_at, received_at, ordering_key,
+           ordering_sequence, handled_state, training_consent,
+           created_at, updated_at)
+        VALUES
+          (${entryId}, ${message.ownerAgentUserId}, ${message.ownerRef},
+           ${message.source}, ${message.externalRef}, ${message.actorRef},
+           ${message.contentRef}, ${message.subjectRef}, ${message.eventType},
+           ${JSON.stringify(message.sourceRefs)},
+           ${JSON.stringify(message.payloadSummary)},
+           ${message.occurredAt}, ${message.receivedAt}, ${orderingKey},
+           ${orderingSequence}, 'open', 0, ${nowIso}, ${nowIso})
+        ON CONFLICT (owner_agent_user_id, source, external_ref) DO NOTHING
+      `
+
+      const row = (await sql<Record<string, unknown>>`
+        SELECT * FROM event_ledger_entries
+         WHERE owner_agent_user_id = ${message.ownerAgentUserId}
+           AND source = ${message.source}
+           AND external_ref = ${message.externalRef}
+         LIMIT 1
+      `)[0]
+
+      if (row === undefined) {
+        throw { error: 'event_ledger_entry_not_persisted' }
+      }
+
+      return pgEventLedgerRowToEntry(row)
+    },
+    listOwnerEntries: async input => {
+      const subjectRef = input.subjectRef ?? null
+      const handledStates =
+        input.handledStates !== undefined && input.handledStates.length > 0
+          ? [...input.handledStates]
+          : null
+
+      const rows = await sql<Record<string, unknown>>`
+        SELECT * FROM event_ledger_entries
+         WHERE owner_agent_user_id = ${input.ownerAgentUserId}
+           AND (${subjectRef}::text IS NULL OR subject_ref = ${subjectRef})
+           AND (
+             ${handledStates}::text[] IS NULL
+             OR handled_state = ANY(${handledStates}::text[])
+           )
+         ORDER BY ordering_sequence ASC
+         LIMIT ${safeLimit(input.limit)}
+      `
+
+      return rows.map(pgEventLedgerRowToEntry)
+    },
+    readOwnerEntry: async (ownerAgentUserId, entryId) => {
+      const row = (await sql<Record<string, unknown>>`
+        SELECT * FROM event_ledger_entries
+         WHERE owner_agent_user_id = ${ownerAgentUserId}
+           AND entry_id = ${entryId}
+         LIMIT 1
+      `)[0]
+
+      return row === undefined ? undefined : pgEventLedgerRowToEntry(row)
+    },
+    updateHandledState: async input => {
+      await sql`
+        UPDATE event_ledger_entries
+           SET handled_state = ${input.handledState},
+               handled_by_run_id = ${input.handledByRunId},
+               handled_by_definition_id = ${input.handledByDefinitionId},
+               handled_at = ${input.handledAt},
+               handled_reason_ref = ${input.handledReasonRef ?? null},
+               updated_at = ${input.handledAt}
+         WHERE owner_agent_user_id = ${input.ownerAgentUserId}
+           AND entry_id = ${input.entryId}
+      `
+
+      return store.readOwnerEntry(input.ownerAgentUserId, input.entryId)
+    },
+  }
+
+  return store
+}
+
 export const makeMirroredEventLedgerStore = (
   d1: EventLedgerStore,
   mirror: AgentRuntimeRemainderMirror | undefined,
