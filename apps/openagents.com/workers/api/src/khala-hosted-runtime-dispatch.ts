@@ -69,6 +69,14 @@ import {
   type SyncSql,
 } from '@openagentsinc/khala-sync-server'
 
+import { currentIsoTimestamp, randomUuid } from './runtime-primitives'
+
+/** Typed failure for the hosted dispatch push path (the zero-debt
+ * architecture check forbids generic `throw new Error` in Worker modules). */
+class HostedRuntimeDispatchError extends Error {
+  readonly _tag = 'HostedRuntimeDispatchError'
+}
+
 /** The single lane this server consumer owns. */
 export const HOSTED_RUNTIME_LANE = 'hosted_khala'
 
@@ -167,11 +175,11 @@ const resolveDeps = (deps: HostedRuntimeDispatchDependencies): ResolvedDeps => (
       : DEFAULT_HOSTED_RUNTIME_DISPATCH_LIMIT,
   log: deps.log ?? (() => undefined),
   model: deps.model ?? DEFAULT_HOSTED_RUNTIME_MODEL,
-  now: deps.now ?? (() => new Date().toISOString()),
+  now: deps.now ?? currentIsoTimestamp,
   registry: deps.registry ?? makeMutatorRegistry([...runtimeMutators]),
   sql: deps.sql,
   systemPrompt: deps.systemPrompt ?? DEFAULT_HOSTED_RUNTIME_SYSTEM_PROMPT,
-  uuid: deps.uuid ?? (() => crypto.randomUUID()),
+  uuid: deps.uuid ?? randomUuid,
 })
 
 type RuntimeTurnQueueRow = Readonly<{
@@ -327,7 +335,9 @@ export const dispatchHostedRuntimeTurn = async (
     }).then(response => {
       const result = response.results[0]
       if (result === undefined) {
-        throw new Error('executePush returned no result for runtime.recordEvent')
+        throw new HostedRuntimeDispatchError(
+          'executePush returned no result for runtime.recordEvent',
+        )
       }
       return result
     })
