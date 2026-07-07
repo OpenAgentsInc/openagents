@@ -1,0 +1,11 @@
+import { describe, expect, test } from "bun:test"
+import { create } from "react-test-renderer"
+
+import { NAME } from "../src/components/<%= kebabName %>"
+
+describe("NAME", () => {
+  test("mounts idle and active states", () => {
+    expect(JSON.stringify(create(<NAME state="idle" title="NAME" />).toJSON())).toContain("Idle")
+    expect(JSON.stringify(create(<NAME state="active" title="NAME" />).toJSON())).toContain("Active")
+  })
+})

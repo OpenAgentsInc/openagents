@@ -1,0 +1,9 @@
+import { describe, expect, test } from "bun:test"
+
+// Pending oracle for khala_mobile.mobile-testing-lab.behavior.v1.
+// Replace this with the real behavior oracle before routing production UX here.
+describe("contract khala_mobile.mobile-testing-lab.behavior.v1", () => {
+  test("pending oracle names its blocker until the behavior is specified", () => {
+    expect("blocker.qam_3.generated_contract_pending").toMatch(/^blocker\./)
+  })
+})

@@ -29,7 +29,14 @@ describe("Khala mobile architecture guardrails", () => {
     const templates = await Promise.all([
       read("templates/screen/NAME-screen.tsx.ejs"),
       read("templates/component/NAME.tsx.ejs"),
+      read("templates/component-test/NAME.test.tsx.ejs"),
+      read("templates/component-stories/NAME.stories.tsx.ejs"),
       read("templates/navigator/NAMENavigator.tsx.ejs"),
+      read("templates/screen-contract/NAME-contract.test.ts.ejs"),
+      read("templates/screen-maestro/NAME-screen.yaml.ejs"),
+      read("templates/screen-mount-test/NAME-screen.test.tsx.ejs"),
+      read("templates/screen-stories/NAME-screen.stories.tsx.ejs"),
+      read("templates/screen-visual/NAME-screen.ts.ejs"),
       read("templates/ux-contract-oracle/NAME.test.ts.ejs"),
       read("templates/README.md"),
     ])
@@ -40,5 +47,7 @@ describe("Khala mobile architecture guardrails", () => {
     expect(joined).toContain("createNativeStackNavigator")
     expect(joined).toContain("khala_mobile.PRODUCT_AREA.BEHAVIOR.v1")
     expect(joined).toContain("does not depend on the Ignite CLI")
+    expect(joined).toContain("visual-baseline registration")
+    expect(joined).toContain("mount test")
   })
 })

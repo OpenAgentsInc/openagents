@@ -1,0 +1,12 @@
+# flow: Generated MobileTestingLab screen smoke stub
+# intent:
+# Keep a local Maestro placeholder beside every generated screen. Replace the
+# route setup with a real reachable path before counting this as device truth.
+#
+appId: ${MAESTRO_APP_ID}
+onFlowStart:
+  - runFlow: ../shared/_OnFlowStart.yaml
+---
+- assertVisible:
+    text: "MobileTestingLab"
+    optional: true

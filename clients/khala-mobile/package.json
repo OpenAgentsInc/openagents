@@ -15,6 +15,7 @@
     "export:ota:android": "expo export --platform android --output-dir ../../apps/oa-updates/dist",
     "publish:ota": "bash ../../apps/oa-updates/scripts/publish-ota.sh",
     "assets:generate": "bash scripts/generate-assets.sh",
+    "generate": "bun run scripts/generate.ts",
     "architecture:check": "depcruise index.tsx src tests --config .dependency-cruiser.cjs",
     "storybook": "STORYBOOK_ENABLED=true EXPO_PUBLIC_STORYBOOK_ENABLED=true expo start",
     "storybook:ios": "STORYBOOK_ENABLED=true EXPO_PUBLIC_STORYBOOK_ENABLED=true expo start --ios",

@@ -1,0 +1,32 @@
+export type NAMERecord = Readonly<{
+  id: string
+  title: string
+}>
+
+export type NAMEFetchResult =
+  | Readonly<{ records: readonly NAMERecord[]; status: "ok" }>
+  | Readonly<{ message: string; status: "error" }>
+
+export async function fetchNAMECore(fetcher: typeof fetch, endpoint: string): Promise<NAMEFetchResult> {
+  const response = await fetcher(endpoint)
+  if (!response.ok) {
+    return { message: `NAME request failed with ${response.status}`, status: "error" }
+  }
+
+  const json = (await response.json()) as { records?: unknown }
+  if (!Array.isArray(json.records)) {
+    return { message: "NAME response was malformed", status: "error" }
+  }
+
+  return {
+    records: json.records.flatMap(record => parseRecord(record)),
+    status: "ok",
+  }
+}
+
+function parseRecord(record: unknown): readonly NAMERecord[] {
+  if (typeof record !== "object" || record === null) return []
+  const candidate = record as { id?: unknown; title?: unknown }
+  if (typeof candidate.id !== "string" || typeof candidate.title !== "string") return []
+  return [{ id: candidate.id, title: candidate.title }]
+}

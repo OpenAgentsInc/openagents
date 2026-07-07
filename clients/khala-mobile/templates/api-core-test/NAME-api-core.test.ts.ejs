@@ -1,0 +1,17 @@
+import { describe, expect, test } from "bun:test"
+
+import { fetchNAMECore } from "../src/api/<%= kebabName %>-core"
+
+describe("fetchNAMECore", () => {
+  test("parses fixture-server records", async () => {
+    const result = await fetchNAMECore(async () => Response.json({ records: [{ id: "record_1", title: "NAME" }] }), "/fixture")
+
+    expect(result).toEqual({ records: [{ id: "record_1", title: "NAME" }], status: "ok" })
+  })
+
+  test("returns a typed error for malformed records", async () => {
+    const result = await fetchNAMECore(async () => Response.json({ nope: true }), "/fixture")
+
+    expect(result.status).toBe("error")
+  })
+})

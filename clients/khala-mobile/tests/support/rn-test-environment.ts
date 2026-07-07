@@ -55,6 +55,16 @@ import { readFileSync } from "node:fs"
 // emit "not wrapped in act()" warnings and — worse, empirically — silently
 // unmount instead of rendering.
 ;(globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT ??= true
+;(globalThis as Record<string, unknown>).expo ??= {
+  EventEmitter: class EventEmitter {
+    addListener() {
+      return { remove() {} }
+    }
+    emit() {}
+    removeAllListeners() {}
+    removeSubscription() {}
+  },
+}
 
 /**
  * React Native ships raw Flow + JSX source as its published npm package —
@@ -493,7 +503,7 @@ const PACKAGE_STUBS: ReadonlyArray<{ readonly test: RegExp; readonly contents: s
       export const SafeAreaInsetsContext = React.createContext(null)
       export const initialWindowMetrics = null
     `,
-    test: /react-native-safe-area-context\/lib\/commonjs\/index\.js$/
+    test: /react-native-safe-area-context\/lib\/(commonjs|module)\/index\.js$/
   },
   {
     contents: `
@@ -501,7 +511,7 @@ const PACKAGE_STUBS: ReadonlyArray<{ readonly test: RegExp; readonly contents: s
       export const SystemBars = () => null
       export const SystemBarStyle = null
     `,
-    test: /react-native-edge-to-edge\/dist\/commonjs\/index\.js$/
+    test: /react-native-edge-to-edge\/dist\/(commonjs|module)\/index\.js$/
   },
   {
     contents: `
@@ -512,7 +522,7 @@ const PACKAGE_STUBS: ReadonlyArray<{ readonly test: RegExp; readonly contents: s
       export const KeyboardController = {}
       export const useKeyboardController = () => ({ setEnabled: () => undefined })
     `,
-    test: /react-native-keyboard-controller\/lib\/commonjs\/index\.js$/
+    test: /react-native-keyboard-controller\/lib\/(commonjs|module)\/index\.js$/
   }
 ]
 

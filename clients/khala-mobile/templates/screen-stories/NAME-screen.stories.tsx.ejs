@@ -1,0 +1,18 @@
+import type { Meta, StoryObj } from "@storybook/react-native"
+
+import { NAMEScreen } from "./<%= kebabName %>-screen"
+
+const meta = {
+  title: "Khala/Generated Screens/NAME",
+  component: NAMEScreen,
+  parameters: { layout: "fullscreen" },
+} satisfies Meta<typeof NAMEScreen>
+
+export default meta
+
+type Story = StoryObj<typeof meta>
+
+export const Loading: Story = { args: { state: "loading" } }
+export const Error: Story = { args: { state: "error" } }
+export const Empty: Story = { args: { state: "empty" } }
+export const Populated: Story = { args: { state: "populated" } }

@@ -1,0 +1,25 @@
+import type { Meta, StoryObj } from "@storybook/react-native"
+
+import { NAME } from "./<%= kebabName %>"
+
+const meta = {
+  title: "Khala/Generated Components/NAME",
+  component: NAME,
+  args: {
+    state: "idle",
+    title: "NAME",
+  },
+  argTypes: {
+    state: {
+      control: "select",
+      options: ["idle", "active"],
+    },
+  },
+} satisfies Meta<typeof NAME>
+
+export default meta
+
+type Story = StoryObj<typeof meta>
+
+export const Idle: Story = {}
+export const Active: Story = { args: { state: "active" } }

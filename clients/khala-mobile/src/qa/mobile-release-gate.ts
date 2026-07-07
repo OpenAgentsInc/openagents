@@ -36,16 +36,24 @@ export const khalaMobileGateScreenMountBundles: readonly KhalaMobileGateScreenBu
     mountTest: "tests/settings-screen.test.tsx",
     screenFile: "src/screens/settings-screen.tsx",
   },
+  {
+    mountTest: "tests/mobile-testing-lab-screen.test.tsx",
+    screenFile: "src/screens/mobile-testing-lab-screen.tsx",
+  },
 ]
 
 export const khalaMobileGateScreenMountWaivers: readonly KhalaMobileGateScreenWaiver[] = []
 
 export const khalaMobileGateGeneratorConformanceStatus = {
-  blockerRef: "blocker.qam_3.generator_bundle_upgrade",
+  enforcedArtifacts: [
+    "scripts/generate.ts",
+    "tests/generated/generator-conformance.test.ts",
+    "src/qa/screen-bundles/generated-screen-bundles.ts",
+  ],
   issueRef: "#8538",
-  state: "stubbed_until_qam_3",
+  state: "qam_3_generator_bundle_enforced",
   statement:
-    "QAM-1 enforces that every existing screen has a mount artifact or typed waiver; QAM-3 upgrades templates so new generated screens emit mount tests, stories, contract stubs, Maestro stubs, and visual registration.",
+    "Generated screens must be created through the local generator and keep screen, mount tests, stories, pending contract stub, Maestro flow stub, visual registration, and visual-baseline registration bundle members.",
 } as const
 
 export const khalaMobileGateFixtureTierStatus = {

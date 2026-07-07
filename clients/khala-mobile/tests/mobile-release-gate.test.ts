@@ -53,12 +53,14 @@ describe("QAM-1 mobile release gate policy", () => {
     expect(khalaMobileGateScreenMountWaivers).toEqual([])
   })
 
-  test("generator conformance is an explicit QAM-3 blocker until templates emit full bundles", () => {
+  test("generator conformance is enforced in the gate", () => {
     expect(khalaMobileGateGeneratorConformanceStatus.issueRef).toBe("#8538")
-    expect(khalaMobileGateGeneratorConformanceStatus.blockerRef).toBe("blocker.qam_3.generator_bundle_upgrade")
-    expect(khalaMobileGateGeneratorConformanceStatus.state).toBe("stubbed_until_qam_3")
+    expect(khalaMobileGateGeneratorConformanceStatus.state).toBe("qam_3_generator_bundle_enforced")
     expect(khalaMobileGateGeneratorConformanceStatus.statement).toContain("mount tests")
     expect(khalaMobileGateGeneratorConformanceStatus.statement).toContain("visual registration")
+    for (const artifact of khalaMobileGateGeneratorConformanceStatus.enforcedArtifacts) {
+      expect(existsSync(fromRoot(artifact))).toBe(true)
+    }
   })
 
   test("fixture tier names the existing runtime tests and the enforced QAM-2 streaming suite", () => {
