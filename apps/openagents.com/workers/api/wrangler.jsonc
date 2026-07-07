@@ -59,7 +59,20 @@
     // and public-report latest-row reads. Roll back to `d1` at any time; the
     // remaining five cron ticks' own decision-making reads stay D1-direct
     // regardless of this flag (no Postgres reader wired for them yet).
-    "KHALA_SYNC_ARTANIS_READS": "compare",
+    "KHALA_SYNC_ARTANIS_READS": "postgres",
+    // CFG D1 evacuation (2026-07-06): the Cloudflare D1 bridge is 401-dead
+    // account-wide, so `compare`/`d1` reads are an active outage. These seven
+    // domains have complete, backfilled Postgres mirrors and route no
+    // money/spend DECISION to Postgres (display/counter/read surfaces only —
+    // treasury/billing write-decision scans stay D1 regardless of the flag),
+    // so serving their reads from Postgres strictly restores them. Readiness:
+    // docs/cloud/2026-07-06-d1-domain-cutover-readiness.md.
+    "KHALA_SYNC_AGENT_RUNTIME_READS": "postgres",
+    "KHALA_SYNC_BILLING_READS": "postgres",
+    "KHALA_SYNC_CRM_READS": "postgres",
+    "KHALA_SYNC_LEDGER_READS": "postgres",
+    "KHALA_SYNC_TRAINING_READS": "postgres",
+    "KHALA_SYNC_TREASURY_READS": "postgres",
     // KS-8.16 follow-up Forge READ cutover (#8358): `postgres` SERVES the
     // canonical `listRefs` ref advertisement (the §3.13 git-ls-remote-twin
     // surface) from the Postgres twin, and is FAIL-SOFT — any Postgres
