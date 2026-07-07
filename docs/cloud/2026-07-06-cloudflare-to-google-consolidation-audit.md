@@ -152,6 +152,32 @@ swap each binding for an owned interface (§5), and keep route/domain parity.
 Rendering, Containers, WfP + custom hostnames) goes to zero; optional remainder
 is the free DNS/proxy tier. All replacement spend lands on the $70k GCP credit.
 
+> **Update 2026-07-07 (CFG-16 #8532) — post-cutover CF teardown done, one gap found.**
+> With `openagents.com`/`auth`/`aiur` serving from Cloud Run (Google TLS) and
+> DNS off Cloudflare, the orphaned monolith Workers were confirmed
+> non-serving (`openagents-autopilot` + `openagents-staging`: 0 custom
+> domains, 0 zone routes, DNS off CF) and **deleted**, which unblocked the
+> long-blocked destructive cleanup: the **8 CF Queues** (4 prod + 4 staging
+> CFG-7 lanes) are gone, the **`openagents-sites-production` WfP dispatch
+> namespace** (0 scripts) is gone, and the orphaned **MDK checkout sidecar
+> container** `a03cb880-…` is gone. `relay.openagents.com` (worker
+> `openagents-market-relay`) and the out-of-scope `openagents-inference-batch-jobs`
+> / `openagents-world-bridge` queues were left intact. Billing is cancelled,
+> so any residual orphan costs nothing.
+>
+> **Row 9 gap (ledger DO → advisory locks) is NOT actually implemented.** Row 9
+> claims "advisory locks replace the scheduler/ledger DOs," but on Cloud Run
+> `EVENT_LEDGER_OWNER` is still a *typed-unavailable DO stub*
+> (`cloudrun/do-shims.ts`) with **no** oa-infra `Mutex`/`pg_advisory` +
+> Postgres sequence-store replacement wired. So an `event-ledger-ingest` job
+> delivered to the Cloud Run monolith rejects with `BindingUnavailableError`
+> → 500 → the pump nacks → dead-letter. `EventLedgerOwnerSequenceStore` has
+> only a DO-SQLite impl; `Mutex` is not yet integrated in the monolith. This
+> is a real CFG-9 completion item (own lane): add a Postgres/Mutex-backed
+> owner sequence store + serialize per `ownerAgentUserId`, apply the
+> migration, redeploy `openagents-monolith`, then prove one job
+> lease→deliver→serialized-ingest→ack. Tracked on #8532.
+
 ---
 
 ## 4. Rivet stack evaluation (`projects/repos/{rivet,sandbox-agent,agent-os}`)

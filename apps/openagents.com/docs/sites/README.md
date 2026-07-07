@@ -6,9 +6,13 @@
 > serving route, the `SITES_DISPATCH` dispatch-namespace binding, the
 > site-runtime serving pipeline, the Cloudflare custom-hostname client, the
 > hostname provisioning core, the `/api/tenant/hostnames` self-serve routes,
-> and the operator deploy/provisioning routes were deleted, and the
-> `openagents-sites-production` dispatch namespace is deleted on the
-> Cloudflare side. Trial-site D1 rows were archived before removal. Sites
+> and the operator deploy/provisioning routes were deleted. The
+> `openagents-sites-production` dispatch namespace deletion was blocked in
+> CFG-13 (code 100135: still bound by the then-undeployable frozen Worker) and
+> was **actually deleted on the Cloudflare side in CFG-16 (#8532, 2026-07-07)**
+> once the orphaned `openagents-autopilot`/`openagents-staging` Workers were
+> removed post-cutover (the namespace held 0 scripts). Trial-site D1 rows were
+> archived before removal. Sites
 > returns later redesigned on owned primitives — see
 > `docs/cloud/2026-07-06-cloudflare-to-google-consolidation-audit.md`
 > (Phase 4). Everything below is a historical record of the retired program.
