@@ -64,6 +64,51 @@ The manifest intentionally records #8476's public enforcement requirements. A
 signed image/control-plane receipt must prove the same requirements before
 #8503 can close.
 
+## Proven Substrate (2026-07-07)
+
+The Firecracker-on-GCE substrate is proven end-to-end on `agent-computer-gce-1`
+(`openagentsgemini`, `us-central1-a`, `n2-standard-4`, nested-virt enabled,
+`/dev/kvm` present, host kernel `6.17.0-1020-gcp`):
+
+- Firecracker + jailer `v1.16.1` installed at `/usr/local/bin`.
+- Firecracker CI baseline kernel + rootfs staged under `/srv/openagents/cloud-vm/`
+  (digests recorded in `agent-computer-image.manifest.json` `substrateProof`).
+- A real microVM booted in ~1s with its own guest kernel `5.10.223` (distinct
+  from the host's `6.17` — a true separate-kernel isolation boundary), 2 vCPUs.
+- Real commands ran inside the microVM (ssh-on-tap), HTTPS egress worked
+  through host NAT (fetched real bytes from a public repo), an artifact was
+  copied microVM -> host, and the microVM was destroyed with its per-run scratch
+  rootfs wiped.
+
+This is the substrate, not the product turn. The baked rootfs above is the
+**stock Ubuntu 22.04 CI image** and intentionally has no `git`, `bun`, `node`,
+Pylon runtime, or guest agent.
+
+## Remaining Work Before The #8503 DoD Turn
+
+Ranked, with the owning repo:
+
+1. **Baked agent-computer rootfs (this repo + `cloud/` build)** — an ext4 image
+   with `git`, `bun`, the Pylon runtime + #8473 executor, the coding agents, a
+   CA bundle, and a guest agent (vsock or ssh-on-tap) that reports ready, runs
+   the executor, and copies artifacts out. Version-pin its digest into the
+   manifest `guestImage`.
+2. **Control-plane guest transport (`cloud/` `crates/oa-codex-control/src/cloud_vm.rs`)**
+   — `guest_exec`/`guest_copy_out` currently return
+   `guest ... transport not wired on this host (deploy step)`. Wire the
+   host<->guest bridge (the proven ssh-on-tap recipe works) and make
+   `wait_guest_ready` poll a real guest readiness signal.
+3. **placement -> firecracker -> executor integration (`cloud/`)** — today
+   `POST /v1/placement` binds a run to a Codex runner lane, not a Firecracker
+   microVM. Add the Agent Computer placement path that boots a microVM from the
+   baked image, runs the executor for the admitted work context, streams
+   `runtime_event`s into the thread scope, and emits `cloud.gce.*` lifecycle +
+   `openagents.resource_usage_receipt.v1` receipts carrying `workContextRef`,
+   `scratchWipeReceiptRef`, and `microvmDestroyReceiptRef` (the Worker's
+   `validateAgentComputerPlacement` already requires these).
+4. **Arm + dispatch** — arm staging flags against that control plane and run one
+   real mobile-dispatched turn.
+
 ## Owner-Gated Receipts
 
 #8503 is not complete until the owner records public-safe receipts for:

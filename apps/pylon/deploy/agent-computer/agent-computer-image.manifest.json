@@ -1,7 +1,35 @@
 {
   "schemaVersion": "openagents.agent_computer_image_manifest.v1",
-  "status": "planned_owner_gated_until_signed_image_receipt",
+  "status": "substrate_proven_baked_image_and_placement_integration_pending",
   "strategyDoc": "docs/khala-code/2026-07-06-agent-computers-strategy.md",
+  "substrateProof": {
+    "provedAt": "2026-07-07",
+    "host": "agent-computer-gce-1 (openagentsgemini, us-central1-a, n2-standard-4)",
+    "nestedVirtualization": true,
+    "devKvmPresent": true,
+    "hostKernel": "6.17.0-1020-gcp",
+    "firecrackerVersion": "v1.16.1",
+    "jailerVersion": "v1.16.1",
+    "baselineKernel": {
+      "source": "firecracker-ci/v1.10/x86_64/vmlinux-5.10.223",
+      "sha256": "22847375721aceea63d934c28f2dfce4670b6f52ec904fae19f5145a970c1e65",
+      "stagedAt": "/srv/openagents/cloud-vm/vmlinux"
+    },
+    "baselineRootfs": {
+      "source": "firecracker-ci/v1.10/x86_64/ubuntu-22.04.ext4 (STOCK CI rootfs, NOT the baked agent-computer image)",
+      "sha256": "040927105bd01b19e7b02cd5da5a9552b428a7f84bd5ffc22ebfce4ddf258a07",
+      "stagedAt": "/srv/openagents/cloud-vm/rootfs.ext4",
+      "missingRuntime": ["git", "bun", "node", "openagents-pylon-runtime", "guest-agent"]
+    },
+    "provenLifecycle": {
+      "boot": "microVM booted in ~1s with its own guest kernel 5.10.223 (host runs 6.17), 2 vCPUs / 1024 MiB",
+      "execInGuest": "real commands ran inside the microVM over ssh-on-tap (uname/nproc)",
+      "egress": "HTTPS 200 from inside the microVM through host NAT (fetched 3662 real bytes from raw.githubusercontent.com; stock rootfs curl needs a CA bundle, TLS handshake reached without it)",
+      "artifactCopyOut": "result.json copied microVM -> host",
+      "reclaim": "microVM destroyed + per-run scratch rootfs wiped, tap deleted"
+    },
+    "note": "This proves the Firecracker-on-our-GCE substrate end-to-end. It is NOT a real mobile Khala turn: the baked agent-computer rootfs (git+bun+pylon #8473 executor), the control-plane guest transport, and the /v1/placement -> firecracker -> executor integration remain to be built before the #8503 DoD turn can run."
+  },
   "contracts": [
     "openagents.codex_placement_assignment.v1",
     "openagents.resource_usage_receipt.v1",
