@@ -95,6 +95,7 @@ const RN_EAGER_EXPORT_ALLOWLIST = new Set([
   "FlatList",
   "Platform",
   "Pressable",
+  "ScrollView",
   "Text",
   "TextInput",
   "TouchableOpacity",
@@ -395,6 +396,18 @@ const RN_LEAF_STUBS: ReadonlyArray<{ readonly test: RegExp; readonly contents: s
       export default FlatList
     `,
     test: /\/Libraries\/Lists\/FlatList\.js$/
+  },
+  {
+    // Real `ScrollView.js` composes the native scroll responder + the dead
+    // native bridge; a mount test only needs it to render its `children` (and
+    // forward `style`/`contentContainerStyle`) like a plain scroll container.
+    contents: `
+      import * as React from "react"
+      const ScrollView = React.forwardRef((props, ref) => React.createElement("ScrollView", { ...props, ref }, props.children))
+      ScrollView.displayName = "ScrollView"
+      export default ScrollView
+    `,
+    test: /\/Libraries\/Components\/ScrollView\/ScrollView\.js$/
   }
 ]
 

@@ -27,7 +27,7 @@ import { mobileProblemMessageSafe } from "../network/mobile-problem"
 import { unregisterPushNotificationsAsync } from "../push/push-notifications-client"
 import { describeAuthSessionFailure } from "./auth-session-failure"
 import { resolveVerifiedStoredCredentials } from "./khala-auth-resume-verify-core"
-import { clearStoredCredentials, loadStoredCredentials, saveStoredCredentials } from "./khala-auth-store"
+import { clearStoredCredentials, loadStoredCredentials, saveStoredCredentials, type KhalaStoredCredentials } from "./khala-auth-store"
 import {
   initialKhalaAuthMachineState,
   reduceKhalaAuthMachine,
@@ -54,6 +54,10 @@ export type KhalaAuthState = Readonly<{
   baseUrl: string
   githubSignInReady: boolean
   ownerUserId: string
+  /** GitHub login (username) for the signed-in user, or "" when unavailable
+   * (email-provider session, or a Worker deploy predating the greeting
+   * change). Used to personalize the onboarding greeting. */
+  githubLogin: string
   deleteAccount: () => Promise<void>
   signInErrorMessage: string | null
   signInWithGitHub: () => Promise<void>
@@ -141,7 +145,7 @@ export const KhalaAuthProvider = ({ children }: { children: ReactNode }) => {
   }, [])
 
   const applyCredentials = useCallback(
-    async (credentials: { ownerUserId: string; token: string }, persist: boolean) => {
+    async (credentials: KhalaStoredCredentials, persist: boolean) => {
       if (persist) {
         // A Keychain/SecureStore write hiccup must NEVER bounce a user who
         // already holds a valid mobile session back to an error screen. A
@@ -359,10 +363,16 @@ export const KhalaAuthProvider = ({ children }: { children: ReactNode }) => {
       // a persist failure (see `applyCredentials`).
       stage = "apply"
       await applyCredentials(
-        {
-          ownerUserId: mobileSession.ownerUserId,
-          token: mobileSession.syncToken,
-        },
+        mobileSession.githubLogin !== undefined
+          ? {
+              ownerUserId: mobileSession.ownerUserId,
+              token: mobileSession.syncToken,
+              githubLogin: mobileSession.githubLogin,
+            }
+          : {
+              ownerUserId: mobileSession.ownerUserId,
+              token: mobileSession.syncToken,
+            },
         true,
       )
 
@@ -470,6 +480,7 @@ export const KhalaAuthProvider = ({ children }: { children: ReactNode }) => {
       // soon as we are not already mid sign-in.
       githubSignInReady: machine.status !== "signing_in",
       ownerUserId: machine.credentials?.ownerUserId ?? "",
+      githubLogin: machine.credentials?.githubLogin ?? "",
       signInErrorMessage: machine.messageSafe,
       signInWithGitHub,
       signOut,

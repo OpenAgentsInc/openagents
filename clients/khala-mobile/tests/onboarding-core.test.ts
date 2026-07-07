@@ -4,6 +4,7 @@ import {
   blocksOnZeroBalance,
   deriveThreadTitleFromTask,
   ONBOARDING_SUGGESTED_TASKS,
+  welcomeHeadingForLogin,
 } from "../src/screens/onboarding-core"
 
 // Oracle for khala_mobile.onboarding.first_task_straight_line.v1
@@ -29,6 +30,22 @@ describe("ONBOARDING_SUGGESTED_TASKS", () => {
   test("every task has a unique id", () => {
     const ids = ONBOARDING_SUGGESTED_TASKS.map(task => task.id)
     expect(new Set(ids).size).toBe(ids.length)
+  })
+})
+
+// Oracle for khala_mobile.onboarding.welcome_greeting_uses_github_username.v1
+describe("welcomeHeadingForLogin", () => {
+  test("personalizes the greeting with the GitHub login when present", () => {
+    expect(welcomeHeadingForLogin("octocat")).toBe("Welcome, octocat")
+  })
+
+  test("trims surrounding whitespace from the login", () => {
+    expect(welcomeHeadingForLogin("  octocat  ")).toBe("Welcome, octocat")
+  })
+
+  test("falls back to the product-name greeting when no login is available", () => {
+    expect(welcomeHeadingForLogin("")).toBe("Welcome to Khala Code")
+    expect(welcomeHeadingForLogin("   ")).toBe("Welcome to Khala Code")
   })
 })
 

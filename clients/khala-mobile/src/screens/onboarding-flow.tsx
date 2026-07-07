@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { ScrollView, View, type TextStyle, type ViewStyle } from "react-native"
+import { Pressable, ScrollView, Text as RNText, View, type TextStyle, type ViewStyle } from "react-native"
 
 import { useKhalaAuth } from "../auth/khala-auth-context"
 import { CreditsBalanceChip } from "../components/credits-balance-chip"
@@ -17,7 +17,7 @@ import { useKhalaMobileSyncRuntime } from "../sync/khala-mobile-sync-runtime-con
 import { buildChatAppendMessageArgs, buildStartTurnIntentArgs, chatMessageBodyRef, DEFAULT_RUNTIME_LANE } from "../sync/khala-runtime-compose-core"
 import { makeSafeRef } from "../sync/khala-sync-push-core"
 import { useKhalaSyncPush } from "../sync/use-khala-sync-push"
-import { blocksOnZeroBalance, deriveThreadTitleFromTask, ONBOARDING_SUGGESTED_TASKS, type OnboardingRepoBinding } from "./onboarding-core"
+import { blocksOnZeroBalance, deriveThreadTitleFromTask, ONBOARDING_SUGGESTED_TASKS, welcomeHeadingForLogin, type OnboardingRepoBinding } from "./onboarding-core"
 
 type OnboardingStep = "welcome" | "repo" | "task"
 
@@ -69,10 +69,15 @@ export const OnboardingFlow = ({ onThreadCreated }: OnboardingFlowProps) => {
 
 const WelcomeStep = ({ onContinue }: { onContinue: () => void }) => {
   const { themed } = useAppTheme()
+  const { githubLogin } = useKhalaAuth()
+  // Personalize with the GitHub username when the server provided it (pure
+  // selection in onboarding-core; falls back to the product-name greeting for
+  // an email-provider session or a Worker deploy predating the field).
+  const heading = welcomeHeadingForLogin(githubLogin)
   return (
     <ScrollView style={themed($flex)} contentContainerStyle={themed($welcomeContent)}>
       <View style={themed($gapSm)}>
-        <Text preset="heading" style={themed($center)} text="Welcome to Khala Code" />
+        <Text preset="heading" style={themed($center)} text={heading} />
         <Text
           style={themed($centerDim)}
           text="Pick a repo, ask the agent to do something, and watch it work — right from your phone."
@@ -81,9 +86,44 @@ const WelcomeStep = ({ onContinue }: { onContinue: () => void }) => {
       <View style={themed($centerRow)}>
         <CreditsBalanceChip />
       </View>
-      <Button preset="reversed" onPress={onContinue} text="Get started" />
+      {/* Filled high-contrast CTA. The fill lives on an INNER plain `View`, not
+        * on the `Pressable` itself: under the New Architecture (Fabric) a
+        * `Pressable` with a function `style` does NOT paint its own
+        * `backgroundColor` (same bug the login button hit — see
+        * `sign-in-screen.tsx`). A plain `View` always paints its
+        * `backgroundColor`, so the cyan pill is guaranteed; the `Pressable`
+        * only owns the touch target + press feedback + onPress. */}
+      <Pressable accessibilityRole="button" onPress={onContinue} style={$ctaPressable}>
+        {({ pressed }) => (
+          <View style={[$ctaButton, pressed ? $ctaButtonPressed : null]}>
+            <RNText style={$ctaButtonText}>Get started</RNText>
+          </View>
+        )}
+      </Pressable>
     </ScrollView>
   )
+}
+
+/* CTA fill styles. Plain objects (not `StyleSheet.create`) to match this
+ * file's existing `Themed`/plain-object style convention. Mirrors the login
+ * button's cyan pill + dark bold label in `sign-in-screen.tsx` so the
+ * onboarding CTA is an obvious, tappable button under Fabric. */
+const $ctaPressable: ViewStyle = { width: "100%" }
+const $ctaButton: ViewStyle = {
+  alignItems: "center",
+  backgroundColor: "#4fd0ff",
+  borderRadius: 12,
+  justifyContent: "center",
+  minHeight: 54,
+  paddingHorizontal: 20,
+  width: "100%",
+}
+const $ctaButtonPressed: ViewStyle = { backgroundColor: "#3bb8e6" }
+const $ctaButtonText: TextStyle = {
+  color: "#02060d",
+  fontSize: 17,
+  fontWeight: "700",
+  textAlign: "center",
 }
 
 const REPO_STEP_PER_PAGE = 100

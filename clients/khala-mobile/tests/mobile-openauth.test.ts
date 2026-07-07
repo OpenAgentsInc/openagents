@@ -82,6 +82,46 @@ describe("mobile OpenAuth boundary", () => {
     })
   })
 
+  // Oracle for khala_mobile.onboarding.welcome_greeting_uses_github_username.v1
+  test("surfaces the GitHub login when the session bridge returns it", async () => {
+    const session = await fetchMobileSyncSession({
+      accessToken: "access-token",
+      apiBaseUrl: "https://openagents.com/",
+      fetchImpl: async () => ({
+        json: async () => ({
+          ownerUserId: "user_abc",
+          syncToken: "mobile-sync-token",
+          githubLogin: " octocat ",
+        }),
+        ok: true,
+        status: 200,
+        statusText: "OK",
+      }),
+    })
+
+    expect(session).toEqual({
+      ownerUserId: "user_abc",
+      syncToken: "mobile-sync-token",
+      githubLogin: "octocat",
+    })
+  })
+
+  test("omits githubLogin when the bridge (older Worker deploy) does not send it", async () => {
+    const session = await fetchMobileSyncSession({
+      accessToken: "access-token",
+      apiBaseUrl: "https://openagents.com/",
+      fetchImpl: async () => ({
+        json: async () => ({ ownerUserId: "user_abc", syncToken: "tok" }),
+        ok: true,
+        status: 200,
+        statusText: "OK",
+      }),
+    })
+
+    expect(session).toEqual({ ownerUserId: "user_abc", syncToken: "tok" })
+    expect("githubLogin" in session).toBe(false)
+  })
+
   test("surfaces a safe message when the session bridge rejects the bearer", async () => {
     await expect(
       fetchMobileSyncSession({

@@ -45,6 +45,16 @@ export const deriveThreadTitleFromTask = (taskText: string): string => {
   return `${trimmed.slice(0, MAX_DERIVED_TITLE_LENGTH - 1).trimEnd()}…`
 }
 
+/** The onboarding welcome heading. Personalizes with the signed-in user's
+ * GitHub login when the server provided one ("Welcome, <login>"); falls back
+ * to the product-name greeting for an email-provider session or a Worker
+ * deploy that predates the `githubLogin` session field. Pure so the greeting
+ * choice is unit-tested without mounting the React tree. */
+export const welcomeHeadingForLogin = (githubLogin: string): string => {
+  const trimmed = githubLogin.trim()
+  return trimmed.length > 0 ? `Welcome, ${trimmed}` : "Welcome to Khala Code"
+}
+
 export type OnboardingRepoBinding = Readonly<{ defaultBranch: string; name: string; owner: string }>
 
 /** Whether the "Start" action should be blocked on a confirmed (not merely

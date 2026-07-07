@@ -6,7 +6,10 @@ const palette = {
   neutral500: "#978F8A",
   neutral400: "#564E4A",
   neutral300: "#3C3836",
-  neutral200: "#191015",
+  // App-wide base background: very dark navy blue (owner request 2026-07-07).
+  // Replaces Ignite's warm dark brown (#191015). `colors.background` below
+  // reads this, so every Ignite `Screen` picks up the navy base.
+  neutral200: "#050b18",
   neutral100: "#000000",
 
   primary600: "#F4E0D9",
@@ -31,8 +34,8 @@ const palette = {
   angry100: "#F2D6CD",
   angry500: "#C03403",
 
-  overlay20: "rgba(25, 16, 21, 0.2)",
-  overlay50: "rgba(25, 16, 21, 0.5)",
+  overlay20: "rgba(5, 11, 24, 0.2)",
+  overlay50: "rgba(5, 11, 24, 0.5)",
 } as const
 
 export const colors = {

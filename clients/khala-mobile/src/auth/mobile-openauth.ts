@@ -31,6 +31,10 @@ export type MobileOpenAuthTokenExchangeConfig = Readonly<{
 export type MobileSyncSession = Readonly<{
   ownerUserId: string
   syncToken: string
+  // GitHub login (username) for the signed-in user, when available. Absent for
+  // email-provider sessions and for responses from a Worker deploy that
+  // predates the greeting change — always treat as optional.
+  githubLogin?: string
 }>
 
 export type FetchLike = (
@@ -41,6 +45,7 @@ export type FetchLike = (
 const MobileSyncSessionSchema = S.Struct({
   ownerUserId: S.String,
   syncToken: S.String,
+  githubLogin: S.optional(S.String),
 })
 
 export const normalizeHttpsBaseUrl = (value: string, label: string): string => {
@@ -100,12 +105,15 @@ const decodeMobileSyncSession = (input: unknown): MobileSyncSession => {
   const decoded = S.decodeUnknownSync(MobileSyncSessionSchema)(input)
   const ownerUserId = decoded.ownerUserId.trim()
   const syncToken = decoded.syncToken.trim()
+  const githubLogin = decoded.githubLogin?.trim()
 
   if (ownerUserId.length === 0 || syncToken.length === 0) {
     throw new Error("Mobile session response was missing owner or sync token")
   }
 
-  return { ownerUserId, syncToken }
+  return githubLogin !== undefined && githubLogin.length > 0
+    ? { ownerUserId, syncToken, githubLogin }
+    : { ownerUserId, syncToken }
 }
 
 export const fetchMobileSyncSession = async (input: {

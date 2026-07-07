@@ -39,6 +39,23 @@ describe("khala-auth-store credential epoch purge", () => {
     expect(await loadStoredCredentials()).toEqual(credentials)
   })
 
+  test("githubLogin, when present, round-trips so the greeting can personalize", async () => {
+    const withLogin = { ...credentials, githubLogin: "octocat" }
+    await saveStoredCredentials(withLogin)
+    expect(await loadStoredCredentials()).toEqual(withLogin)
+  })
+
+  test("a credential saved without githubLogin loads without the key (not an empty string)", async () => {
+    // Re-saving without githubLogin must clear any stale login from a prior
+    // write, so an email-provider or pre-greeting session never resurrects an
+    // old username.
+    await saveStoredCredentials({ ...credentials, githubLogin: "octocat" })
+    await saveStoredCredentials(credentials)
+    const loaded = await loadStoredCredentials()
+    expect(loaded).toEqual(credentials)
+    expect(loaded && "githubLogin" in loaded).toBe(false)
+  })
+
   test("a credential written under an older/missing epoch (e.g. a leftover retired-flow token) is force-cleared, not resumed", async () => {
     // Simulate a pre-epoch write: ownerUserId/token present, no epoch key —
     // exactly what a leftover Tailnet-pairing or pre-GitHub-OpenAuth token

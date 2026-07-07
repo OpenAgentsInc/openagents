@@ -9,10 +9,15 @@ import * as SecureStore from "expo-secure-store"
 export type KhalaStoredCredentials = Readonly<{
   ownerUserId: string
   token: string
+  // GitHub login (username) for the signed-in user, when the server returned
+  // it. Optional: absent for email-provider sessions and for credentials
+  // persisted before the greeting change shipped.
+  githubLogin?: string
 }>
 
 const OWNER_USER_ID_KEY = "khala.auth.ownerUserId"
 const TOKEN_KEY = "khala.auth.token"
+const GITHUB_LOGIN_KEY = "khala.auth.githubLogin"
 const CREDENTIAL_EPOCH_KEY = "khala.auth.credentialEpoch"
 
 /** Bumped whenever the auth model changes underneath stored credentials
@@ -26,9 +31,10 @@ const CREDENTIAL_EPOCH_KEY = "khala.auth.credentialEpoch"
 const CURRENT_CREDENTIAL_EPOCH = "2026-07-06-github-openauth-v1"
 
 export const loadStoredCredentials = async (): Promise<KhalaStoredCredentials | null> => {
-  const [ownerUserId, token, epoch] = await Promise.all([
+  const [ownerUserId, token, githubLogin, epoch] = await Promise.all([
     SecureStore.getItemAsync(OWNER_USER_ID_KEY),
     SecureStore.getItemAsync(TOKEN_KEY),
+    SecureStore.getItemAsync(GITHUB_LOGIN_KEY),
     SecureStore.getItemAsync(CREDENTIAL_EPOCH_KEY)
   ])
   if (ownerUserId === null || ownerUserId === "" || token === null || token === "") return null
@@ -36,13 +42,18 @@ export const loadStoredCredentials = async (): Promise<KhalaStoredCredentials | 
     await clearStoredCredentials()
     return null
   }
-  return { ownerUserId, token }
+  return githubLogin !== null && githubLogin !== ""
+    ? { ownerUserId, token, githubLogin }
+    : { ownerUserId, token }
 }
 
 export const saveStoredCredentials = async (credentials: KhalaStoredCredentials): Promise<void> => {
   await Promise.all([
     SecureStore.setItemAsync(OWNER_USER_ID_KEY, credentials.ownerUserId),
     SecureStore.setItemAsync(TOKEN_KEY, credentials.token),
+    credentials.githubLogin !== undefined && credentials.githubLogin !== ""
+      ? SecureStore.setItemAsync(GITHUB_LOGIN_KEY, credentials.githubLogin)
+      : SecureStore.deleteItemAsync(GITHUB_LOGIN_KEY),
     SecureStore.setItemAsync(CREDENTIAL_EPOCH_KEY, CURRENT_CREDENTIAL_EPOCH)
   ])
 }
@@ -51,6 +62,7 @@ export const clearStoredCredentials = async (): Promise<void> => {
   await Promise.all([
     SecureStore.deleteItemAsync(OWNER_USER_ID_KEY),
     SecureStore.deleteItemAsync(TOKEN_KEY),
+    SecureStore.deleteItemAsync(GITHUB_LOGIN_KEY),
     SecureStore.deleteItemAsync(CREDENTIAL_EPOCH_KEY)
   ])
 }

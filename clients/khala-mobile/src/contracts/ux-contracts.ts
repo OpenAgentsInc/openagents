@@ -1292,7 +1292,126 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
       verification:
         "bun test tests/auth-ephemeral-session.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.",
     },
+    {
+      authorityBoundary:
+        "Binds the app's single base background color (the token every Ignite `Screen` reads) only. It does not repaint per-surface accent/tint colors, the baked hero artwork on the sign-in screen, or any component-local background override.",
+      blockerRefs: [],
+      contractId: "khala_mobile.theme.base_background_dark_navy.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "clients/khala-mobile/src/ignite/theme/colorsDark.ts",
+        "clients/khala-mobile/tests/theme-colors.test.ts",
+        "docs/khala-mobile/khala-mobile-ux-contract.md",
+      ],
+      oracles: [
+        {
+          description:
+            "The dark theme's base `background` (and the `neutral200` palette slot it reads) is a very dark navy blue in the #05xx–#07xx range with blue as the dominant channel — not the retired warm brown #191015 and not pure black.",
+          id: "base_background_is_dark_navy.unit",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "clients/khala-mobile/tests/theme-colors.test.ts",
+        },
+      ],
+      productArea: "theme",
+      source: {
+        channel: "khala-code-session",
+        statedBy: "owner",
+        statedOn: "2026-07-07",
+      },
+      state: "enforced",
+      statement:
+        "The app's primary background is a very dark navy blue across every screen — dark and clearly navy, not the old warm brown and not pure black.",
+      surface: "khala-mobile",
+      verification:
+        "bun test tests/theme-colors.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.",
+    },
+    {
+      authorityBoundary:
+        "Binds the onboarding welcome heading's text selection only (personalize when a GitHub login is available, fall back to the product name otherwise) and the plumbing that carries the login from the mobile-session response through the auth context. It does not change who the session belongs to or any server-side scope/authority; the greeting is display-only.",
+      blockerRefs: [],
+      contractId: "khala_mobile.onboarding.welcome_greeting_uses_github_username.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "clients/khala-mobile/src/screens/onboarding-core.ts",
+        "clients/khala-mobile/src/screens/onboarding-flow.tsx",
+        "clients/khala-mobile/src/auth/mobile-openauth.ts",
+        "clients/khala-mobile/src/auth/khala-auth-store.ts",
+        "clients/khala-mobile/src/auth/khala-auth-context.tsx",
+        "apps/openagents.com/workers/api/src/index.ts",
+        "clients/khala-mobile/tests/onboarding-core.test.ts",
+        "clients/khala-mobile/tests/mobile-openauth.test.ts",
+        "clients/khala-mobile/tests/khala-auth-store.test.ts",
+        "docs/khala-mobile/khala-mobile-ux-contract.md",
+      ],
+      oracles: [
+        {
+          description:
+            "The welcome heading personalizes to `Welcome, <login>` (trimmed) when a GitHub login is available, and falls back to `Welcome to Khala Code` for a blank/whitespace login (email-provider session, or a Worker deploy predating the session field).",
+          id: "welcome_heading_personalizes_or_falls_back.unit",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "clients/khala-mobile/tests/onboarding-core.test.ts",
+        },
+        {
+          description:
+            "The mobile-session client surfaces `githubLogin` when the bridge returns it and omits it otherwise, and a saved credential round-trips `githubLogin` through SecureStore so the greeting survives a relaunch.",
+          id: "github_login_flows_through_session_and_store.unit",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "clients/khala-mobile/tests/mobile-openauth.test.ts",
+        },
+      ],
+      productArea: "onboarding",
+      source: {
+        channel: "khala-code-session",
+        statedBy: "owner",
+        statedOn: "2026-07-07",
+      },
+      state: "enforced",
+      statement:
+        "The onboarding welcome heading greets the signed-in user by their GitHub username (`Welcome, <username>`), falling back to a warm generic greeting only when the username is genuinely unavailable.",
+      surface: "khala-mobile",
+      verification:
+        "bun test tests/onboarding-core.test.ts tests/mobile-openauth.test.ts tests/khala-auth-store.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main. The server side (githubLogin in the /api/mobile/session response) is covered by apps/openagents.com/workers/api/src/auth/mobile-session.test.ts and needs a monolith redeploy before the greeting personalizes on-device.",
+    },
+    {
+      authorityBoundary:
+        "Binds the onboarding 'Get started' CTA's fill placement (fill on an inner plain View, not on the Pressable's function style) and its high-contrast appearance, as proven by a real mounted component tree. It does not cover real native touch/gesture physics on a device — that stays under khala_mobile.platform.launched_app_interaction_smoke.v1, which remains pending.",
+      blockerRefs: [],
+      contractId: "khala_mobile.onboarding.get_started_cta_fill_on_inner_view.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "clients/khala-mobile/src/screens/onboarding-flow.tsx",
+        "clients/khala-mobile/src/components/sign-in-screen.tsx",
+        "clients/khala-mobile/tests/onboarding-welcome-cta.test.tsx",
+        "clients/khala-mobile/tests/support/rn-test-environment.ts",
+        "docs/khala-mobile/khala-mobile-ux-contract.md",
+      ],
+      oracles: [
+        {
+          description:
+            "The mounted WelcomeStep renders a single cyan (#4fd0ff) filled inner View — button-sized (minHeight 54, borderRadius 12) — wrapping the dark bold `Get started` label, while the Pressable owns only the touch target (accessibilityRole button, onPress) and carries NO backgroundColor of its own. This is the Fabric no-paint fix: a Pressable with a function style does not paint its own background, so the fill must live on a plain View.",
+          id: "get_started_cta_fill_on_inner_view.unit",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "clients/khala-mobile/tests/onboarding-welcome-cta.test.tsx",
+        },
+      ],
+      productArea: "onboarding",
+      source: {
+        channel: "khala-code-session",
+        statedBy: "owner",
+        statedOn: "2026-07-07",
+      },
+      state: "enforced",
+      statement:
+        "The onboarding 'Get started' button is a real, obviously-tappable filled CTA (high-contrast cyan pill with a dark bold label), never an invisible no-fill control — the fill lives on an inner View so it paints under the New Architecture (Fabric), matching the login button fix.",
+      surface: "khala-mobile",
+      verification:
+        "bun test tests/onboarding-welcome-cta.test.tsx inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main. Real component mounting uses the bun test React Native harness in tests/support/rn-test-environment.ts (extended here with a ScrollView leaf stub).",
+    },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-07.1",
+  version: "2026-07-07.2",
 }

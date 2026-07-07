@@ -323,13 +323,17 @@ describe('Khala mobile OpenAuth session policy', () => {
 
       const mobileSession = await postMobileSession(env, tokens.access_token)
       const mobileSessionBody = (await mobileSession.json()) as {
+        githubLogin: string
         ownerUserId: string
         syncToken: string
       }
 
       expect(mobileSession.status).toBe(200)
       expect(mobileSession.headers.get('cache-control')).toBe('no-store')
+      // Includes the GitHub login so the mobile onboarding greeting can
+      // personalize ("Welcome, <login>").
       expect(mobileSessionBody).toEqual({
+        githubLogin: 'octo-mobile',
         ownerUserId: 'github:12345',
         syncToken: tokens.access_token,
       })
@@ -378,12 +382,14 @@ describe('Khala mobile OpenAuth session policy', () => {
       )
       const refreshedMobileSessionBody =
         (await refreshedMobileSession.json()) as {
+          githubLogin: string
           ownerUserId: string
           syncToken: string
         }
 
       expect(refreshedMobileSession.status).toBe(200)
       expect(refreshedMobileSessionBody).toEqual({
+        githubLogin: 'octo-mobile',
         ownerUserId: 'github:12345',
         syncToken: refreshedTokens.access_token,
       })

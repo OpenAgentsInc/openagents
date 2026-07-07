@@ -5284,6 +5284,11 @@ const handleMobileSessionApi = async (
   return noStoreJsonResponse({
     ownerUserId: session.user.userId,
     syncToken: accessToken,
+    // Surface the GitHub login so the mobile client can personalize the
+    // onboarding greeting ("Welcome, <login>"). The `userId` above is the
+    // internal `user_…` id, not a human-readable name; `session.user.login`
+    // is the GitHub username resolved for this bearer session.
+    githubLogin: session.user.login,
   })
 }
 
