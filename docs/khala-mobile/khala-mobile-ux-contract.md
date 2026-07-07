@@ -93,7 +93,7 @@ top follow-up item for whoever picks this up next.
 
 ## Registry
 
-Registry version: `2026-07-07.7` (schema `openagents.behavior_contracts.v1`)
+Registry version: `2026-07-07.8` (schema `openagents.behavior_contracts.v1`)
 
 ### `khala_mobile.auth.tailnet_auto_discovery_before_manual_login.v1` — RETIRED
 
@@ -524,3 +524,13 @@ Registry version: `2026-07-07.7` (schema `openagents.behavior_contracts.v1`)
 - **Oracle** `planned_feature_eval_suites_fixture_first.unit` (bun-test, unit): The QAM-7 catalog includes Sarah SR-1..3, IAP/minerals, push E2E, Codex connect CX-2, and Agents panel AE-2 suites; every suite is red/waived before implementation, every case has an expected fixture ref and blocker ref, and the suite captures discount-pressure, injection-bearing email, fake checkout, StoreKitTest, 3.1.1 copy, simctl push, account_exhausted/rate_limited, and run-status truth oracles. — `clients/khala-mobile/tests/planned-feature-eval-suites.test.ts`
 - **Verification:** bun test tests/planned-feature-eval-suites.test.ts inside clients/khala-mobile; runs in the package test glob and the qa:mobile:gate sweep before pushes to main.
 - **Authority boundary:** Binds only the fixture-first catalog for planned P1+ features: suite IDs, expected fixture refs, named blockers, honest waived cases, and source references. It does not implement Sarah, IAP/minerals, push device delivery, Codex connect, or the Agents panel; those implementation lanes must turn these cases green rather than authoring acceptance from scratch.
+
+### `khala_mobile.qa.launch_readiness_honesty.v1` — PENDING
+
+- **Surface:** khala-mobile (qa)
+- **Stated by:** owner via khala-code-session on 2026-07-07
+- **Statement:** P0.8 launch readiness must stay honest: Khala Mobile is not launch-ready until the owner-gated seed account exists, the full straight-line E2E is receipted on both iOS simulator and Android emulator, and launch promises/copy are reviewed against those receipts.
+- **Blockers:** `owner.github_seeded_public_safe_account`, `blocker.ios.full_straight_line_e2e_missing_receipt`, `blocker.android.full_straight_line_e2e_missing_receipt`, `blocker.launch_copy_owner_signoff_missing`
+- **Enforcement tier:** unenforced
+- **Verification:** bun test tests/launch-readiness.test.ts inside clients/khala-mobile asserts the pending launch-readiness receipt and owner gate stay honest. The contract itself remains pending until #8543's device-only launch truth has real iOS and Android full straight-line receipts.
+- **Authority boundary:** Binds the honesty of the P0.8 launch-readiness state only: the seeded-account owner gate, the missing iOS/Android full straight-line E2E receipts, and the copy/pass no-green-without-receipts rule. It does not claim the app is launch-ready and does not enforce the older launched-app smoke as sufficient for #8543.

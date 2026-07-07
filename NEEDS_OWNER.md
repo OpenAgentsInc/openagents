@@ -1,5 +1,38 @@
 # NEEDS_OWNER
 
+## Khala Mobile P0.8 Launch Readiness
+
+Source issue: OpenAgentsInc/openagents#8543
+Receipt:
+`docs/khala-code/receipts/2026-07-07-qam-8-launch-readiness.md`
+
+Khala Mobile has a signed-in iOS simulator thread-smoke receipt and Android
+launch/sign-in handoff evidence, but #8543 requires a stricter launch account
+and full straight-line E2E on both platforms. This is owner-gated because the
+seed account must have real GitHub authorization, real credit-grant visibility,
+and writeback scope without committing credentials or private repo data.
+
+Owner actions required:
+
+- Create or approve a public-safe GitHub test account for Khala Mobile launch readiness.
+- Grant only the repo scopes needed for the smoke repo and writeback proof.
+- Seed a visible $10 launch credit grant and record the public-safe grant receipt ref.
+- Run the full straight-line E2E on iOS simulator and Android emulator.
+- Review the launch promises/copy pass only after both platform E2E receipts exist.
+
+Exact operator path after owner approval:
+
+1. Store credentials only in `~/work/.secrets/khala-maestro.env`.
+2. Boot the owned iOS simulator and install a Release build of `com.openagents.khala.mobile`.
+3. Run `clients/khala-mobile/scripts/signed-in-thread-smoke-run.sh` as the baseline smoke.
+4. Extend/run the launch E2E flow for sign in -> $10 grant visible -> pick repo -> dispatch turn -> live updates -> push/writeback link -> credits drain.
+5. Repeat the same full launch E2E on Android through `bun run --cwd clients/khala-mobile qa:android:emulator` once the Android lane is green.
+6. Record public-safe receipt refs only: platform, build, flow name, verdict, seed account ref, grant receipt ref, writeback URL/ref, and credit-drain assertion. Do not record tokens, raw chat bodies, private repo contents, raw sync rows, local machine identifiers, or secret paths beyond the gitignored env-file location above.
+7. Only then review launch promises/copy and flip any promise or contract state with the real receipts attached.
+
+Until those steps complete, #8543 remains `INCONCLUSIVE`: no launch copy or
+promise may claim the full mobile straight-line E2E is proven on both platforms.
+
 ## QA Swarm Rate Card Draft
 
 Source issue: OpenAgentsInc/openagents#8061

@@ -1616,7 +1616,39 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
       verification:
         "bun test tests/planned-feature-eval-suites.test.ts inside clients/khala-mobile; runs in the package test glob and the qa:mobile:gate sweep before pushes to main.",
     },
+    {
+      authorityBoundary:
+        "Binds the honesty of the P0.8 launch-readiness state only: the seeded-account owner gate, the missing iOS/Android full straight-line E2E receipts, and the copy/pass no-green-without-receipts rule. It does not claim the app is launch-ready and does not enforce the older launched-app smoke as sufficient for #8543.",
+      blockerRefs: [
+        "owner.github_seeded_public_safe_account",
+        "blocker.ios.full_straight_line_e2e_missing_receipt",
+        "blocker.android.full_straight_line_e2e_missing_receipt",
+        "blocker.launch_copy_owner_signoff_missing",
+      ],
+      contractId: "khala_mobile.qa.launch_readiness_honesty.v1",
+      enforcementTier: "unenforced",
+      evidenceRefs: [
+        "clients/khala-mobile/src/qa/launch-readiness.ts",
+        "clients/khala-mobile/tests/launch-readiness.test.ts",
+        "docs/khala-code/receipts/2026-07-07-qam-8-launch-readiness.md",
+        "NEEDS_OWNER.md",
+        "docs/khala-mobile/khala-mobile-ux-contract.md",
+      ],
+      oracles: [],
+      productArea: "qa",
+      source: {
+        channel: "khala-code-session",
+        statedBy: "owner",
+        statedOn: "2026-07-07",
+      },
+      state: "pending",
+      statement:
+        "P0.8 launch readiness must stay honest: Khala Mobile is not launch-ready until the owner-gated seed account exists, the full straight-line E2E is receipted on both iOS simulator and Android emulator, and launch promises/copy are reviewed against those receipts.",
+      surface: "khala-mobile",
+      verification:
+        "bun test tests/launch-readiness.test.ts inside clients/khala-mobile asserts the pending launch-readiness receipt and owner gate stay honest. The contract itself remains pending until #8543's device-only launch truth has real iOS and Android full straight-line receipts.",
+    },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-07.7",
+  version: "2026-07-07.8",
 }
