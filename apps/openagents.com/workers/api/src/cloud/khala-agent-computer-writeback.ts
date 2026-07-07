@@ -55,6 +55,7 @@ import {
 } from '@openagentsinc/khala-sync-server'
 
 import {
+  GITHUB_WRITE_REQUIRED_SCOPES,
   hasRequiredGitHubWriteScopes,
   type GitHubWriteRepository,
 } from '../github-write-connections'
@@ -97,9 +98,14 @@ export const writebackPermissionReasonRef = (
   reason: KhalaWritebackAuthorizationBlockedReason,
 ): string => `writeback.permission.${reason}`
 
+export type KhalaWritebackAuthorizationSource =
+  | 'github_write_connection'
+  | 'github_identity'
+
 export type KhalaWritebackAuthorization =
   | Readonly<{
       authorized: true
+      source: KhalaWritebackAuthorizationSource
       connectionRef: string
       scopes: ReadonlyArray<string>
     }>
@@ -110,21 +116,86 @@ export type KhalaWritebackAuthorization =
     }>
 
 /**
+ * The user's brokerable GitHub-IDENTITY authorization (the credential the
+ * in-guest push actually uses via the SCM auth broker, #8475). `usable` means a
+ * `repo`-capable identity token is present for the user in the environment the
+ * broker reads. This never reads or returns the raw token — only presence.
+ *
+ * WHY THIS EXISTS. The writeback recorder runs AFTER the microVM has already
+ * pushed under the brokered identity credential; the actual repo-scope + write
+ * access is enforced at push time by the broker + GitHub (fail-closed — a
+ * scope-lacking identity yields a typed `failed` push, never a real branch). So
+ * a reported SUCCESS outcome PROVES the user had a working brokered
+ * authorization. Gating that success ONLY on the separate
+ * `github_write_connections` table caused the seam bug this closes: a real
+ * pushed branch was recorded as `failed` when the user authorized via the
+ * identity/broker path but had no explicit write-connection row. The gate now
+ * accepts EITHER authoritative source.
+ */
+export type KhalaIdentityWriteAuthority = Readonly<{
+  hasUsableIdentityAuthorization: (userId: string) => Promise<boolean>
+}>
+
+const MISSING_AUTHORIZATION_MESSAGE =
+  'Connect your GitHub account (with repository access) before OpenAgents can push a branch or open a pull request for you.'
+
+/**
  * Resolve whether `userId` has authorized repo write under their OWN GitHub
- * identity. A usable connection is connected, healthy, has a stored secret ref,
- * AND carries the required `repo`/`workflow` scopes. Anything less is a typed,
- * public-safe block — never an implicit allow. This reads only connection
- * health/scope refs; it never reads or returns the raw OAuth token.
+ * identity, accepting EITHER authoritative source:
+ *  1. an explicit `github_write_connections` row (connected, healthy, stored
+ *     secret ref, `repo`/`workflow` scopes), OR
+ *  2. a usable brokerable github-IDENTITY authorization (the credential the
+ *     in-guest push uses; presence in the broker's environment).
+ *
+ * Anything less is a typed, public-safe block — never an implicit allow. This
+ * reads only connection health/scope refs and identity-token PRESENCE; it never
+ * reads or returns a raw OAuth token.
  */
 export const resolveKhalaWritebackAuthorization = async (
   repository: GitHubWriteRepository,
   userId: string,
+  identityAuthority?: KhalaIdentityWriteAuthority,
 ): Promise<KhalaWritebackAuthorization> => {
   const connection = await repository.findUsableConnectionForUser(userId)
+  const connectionUsable =
+    connection !== undefined &&
+    connection.status === 'connected' &&
+    connection.health === 'healthy' &&
+    connection.secretRef !== null &&
+    hasRequiredGitHubWriteScopes(connection.scopes)
+  if (connectionUsable) {
+    return {
+      authorized: true,
+      connectionRef: connection.connectionRef,
+      scopes: connection.scopes,
+      source: 'github_write_connection',
+    }
+  }
+
+  // Fall back to the brokerable identity authorization (the push's real
+  // credential). Presence is sufficient here; the broker + GitHub enforce the
+  // actual repo-scope/access at push time (fail-closed).
+  if (identityAuthority !== undefined) {
+    const identityUsable = await identityAuthority
+      .hasUsableIdentityAuthorization(userId)
+      .catch(() => false)
+    if (identityUsable) {
+      return {
+        authorized: true,
+        connectionRef: `github-identity:${userId}`,
+        scopes: [...GITHUB_WRITE_REQUIRED_SCOPES],
+        source: 'github_identity',
+      }
+    }
+  }
+
+  // Neither source is usable — return the most specific typed block.
   if (connection === undefined) {
     return {
       authorized: false,
-      message: MISSING_CONNECTION_MESSAGE,
+      message: identityAuthority === undefined
+        ? MISSING_CONNECTION_MESSAGE
+        : MISSING_AUTHORIZATION_MESSAGE,
       reason: 'github_write_connection_required',
     }
   }
@@ -139,17 +210,10 @@ export const resolveKhalaWritebackAuthorization = async (
       reason: 'github_write_connection_unusable',
     }
   }
-  if (!hasRequiredGitHubWriteScopes(connection.scopes)) {
-    return {
-      authorized: false,
-      message: MISSING_SCOPES_MESSAGE,
-      reason: 'github_write_permission_missing',
-    }
-  }
   return {
-    authorized: true,
-    connectionRef: connection.connectionRef,
-    scopes: connection.scopes,
+    authorized: false,
+    message: MISSING_SCOPES_MESSAGE,
+    reason: 'github_write_permission_missing',
   }
 }
 
@@ -429,6 +493,12 @@ export type KhalaAgentComputerWritebackPublishDependencies =
     Readonly<{
       /** User GitHub write-connection authority (for the authorization gate). */
       githubWriteRepository: GitHubWriteRepository
+      /**
+       * Brokerable github-IDENTITY authority (the credential the in-guest push
+       * uses). When present, the gate accepts a usable identity authorization
+       * as an alternative to an explicit write-connection row (seam alignment).
+       */
+      identityWriteAuthority?: KhalaIdentityWriteAuthority | undefined
     }>
 
 export type KhalaAgentComputerWritebackPublishResult =
@@ -501,6 +571,7 @@ export const publishKhalaAgentComputerWriteback = async (
     const authorization = await resolveKhalaWritebackAuthorization(
       deps.githubWriteRepository,
       input.userId,
+      deps.identityWriteAuthority,
     )
     if (!authorization.authorized) {
       const blockedOutcome: KhalaAgentComputerWritebackOutcome = {

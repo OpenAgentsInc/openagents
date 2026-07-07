@@ -191,7 +191,60 @@ describe('resolveKhalaWritebackAuthorization', () => {
       authorized: true,
       connectionRef: 'ghw:conn1',
       scopes: ['repo', 'workflow'],
+      source: 'github_write_connection',
     })
+  })
+
+  test('seam alignment: authorized via a usable brokerable IDENTITY when no write-connection row exists (#8477)', async () => {
+    const decision = await resolveKhalaWritebackAuthorization(
+      makeGitHubRepo(undefined),
+      'github:300914913',
+      { hasUsableIdentityAuthorization: () => Promise.resolve(true) },
+    )
+    expect(decision).toEqual({
+      authorized: true,
+      connectionRef: 'github-identity:github:300914913',
+      scopes: ['repo', 'workflow'],
+      source: 'github_identity',
+    })
+  })
+
+  test('write-connection takes precedence over identity (no identity check needed)', async () => {
+    let identityChecked = false
+    const decision = await resolveKhalaWritebackAuthorization(
+      makeGitHubRepo(connection()),
+      'github:14167547',
+      {
+        hasUsableIdentityAuthorization: () => {
+          identityChecked = true
+          return Promise.resolve(true)
+        },
+      },
+    )
+    expect(decision.authorized).toBe(true)
+    if (decision.authorized) expect(decision.source).toBe('github_write_connection')
+    expect(identityChecked).toBe(false)
+  })
+
+  test('blocked when neither a write-connection NOR a usable identity exists', async () => {
+    const decision = await resolveKhalaWritebackAuthorization(
+      makeGitHubRepo(undefined),
+      'github:300914913',
+      { hasUsableIdentityAuthorization: () => Promise.resolve(false) },
+    )
+    expect(decision.authorized).toBe(false)
+    if (!decision.authorized) {
+      expect(decision.reason).toBe('github_write_connection_required')
+    }
+  })
+
+  test('identity-authority errors fail closed (treated as not usable)', async () => {
+    const decision = await resolveKhalaWritebackAuthorization(
+      makeGitHubRepo(undefined),
+      'github:300914913',
+      { hasUsableIdentityAuthorization: () => Promise.reject(new Error('kv down')) },
+    )
+    expect(decision.authorized).toBe(false)
   })
 
   test('blocked (connection_required) when the user has no usable connection', async () => {
@@ -422,6 +475,32 @@ describe('publishKhalaAgentComputerWriteback', () => {
       expect(result.reason).toBe('github_write_connection_required')
     }
     expect(push.recorded[0]!.event.status).toBe('failed')
+  })
+
+  test('seam alignment: a real pushed branch is RECORDED (not failed) when the user is authorized via IDENTITY only (#8477)', async () => {
+    const push = makeRecordingExecutePush()
+    const result = await publishKhalaAgentComputerWriteback(
+      {
+        ...baseDeps([turnRow], push),
+        // No explicit write-connection row for this user...
+        githubWriteRepository: makeGitHubRepo(undefined),
+        // ...but a usable brokerable identity (the push's real credential).
+        identityWriteAuthority: {
+          hasUsableIdentityAuthorization: () => Promise.resolve(true),
+        },
+      },
+      { outcome: prOutcome, turnId: 'turn.t1', userId: 'github:14167547' },
+    )
+    expect(result).toMatchObject({
+      decision: 'recorded',
+      ok: true,
+      status: 'pull_request_opened',
+    })
+    // The success (with its tappable PR link) is recorded — the seam bug where a
+    // real branch was recorded as `failed` is fixed.
+    expect(push.recorded).toHaveLength(1)
+    expect(push.recorded[0]!.event.status).toBe('pull_request_opened')
+    expect(push.recorded[0]!.event.pullRequestUrl).toBe(prOutcome.pullRequestUrl)
   })
 
   test('a failed outcome skips the authorization gate and is recorded as reported', async () => {

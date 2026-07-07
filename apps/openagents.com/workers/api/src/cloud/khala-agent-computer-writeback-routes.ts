@@ -39,6 +39,7 @@ import {
 } from '../agent-registration'
 import { readAgentBearerToken as bearerTokenFromRequest } from '../auth/bearer-token'
 import type { GitHubWriteRepository } from '../github-write-connections'
+import type { KhalaIdentityWriteAuthority } from './khala-agent-computer-writeback'
 import {
   methodNotAllowed,
   noStoreJsonResponse,
@@ -105,6 +106,12 @@ export type KhalaAgentComputerWritebackPublishFn = (
 export type KhalaAgentComputerWritebackDependencies<Bindings> = Readonly<{
   agentStore: (env: Bindings) => AgentRegistrationStore
   githubWriteRepository: (env: Bindings) => GitHubWriteRepository
+  /**
+   * Optional brokerable github-IDENTITY authority (the push's real credential
+   * source). When wired, the success gate accepts a usable identity
+   * authorization as an alternative to an explicit write-connection row.
+   */
+  identityWriteAuthority?: (env: Bindings) => KhalaIdentityWriteAuthority
   binding: (env: Bindings) => KhalaSyncHyperdriveBinding | undefined
   registry: MutatorRegistry
   makeSqlClient?: MakeKhalaSyncPushSqlClient | undefined
@@ -339,6 +346,7 @@ const routeWritebackIngest = <Bindings>(
     const makeSqlClient =
       dependencies.makeSqlClient ?? defaultMakeKhalaSyncSqlClient
     const githubWriteRepository = dependencies.githubWriteRepository(env)
+    const identityWriteAuthority = dependencies.identityWriteAuthority?.(env)
 
     const result = yield* Effect.tryPromise({
       catch: error =>
@@ -351,6 +359,9 @@ const routeWritebackIngest = <Bindings>(
           return await publish(
             {
               githubWriteRepository,
+              ...(identityWriteAuthority === undefined
+                ? {}
+                : { identityWriteAuthority }),
               registry: dependencies.registry,
               sql: client.sql as SyncSql,
             },

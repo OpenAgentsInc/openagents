@@ -8823,6 +8823,22 @@ const khalaAgentComputerWritebackRoutes =
     agentStore: env => makeAgentRegistrationStoreForEnv(env),
     binding: env => env.KHALA_SYNC_DB,
     githubWriteRepository: env => makeGitHubWriteRepositoryForEnv(env),
+    // MM-C5 (#8477) seam alignment: the writeback success gate accepts a usable
+    // brokerable github-IDENTITY authorization (the credential the in-guest push
+    // uses via `/api/pylon/github/git-credentials`) as an alternative to an
+    // explicit write-connection row. Presence only — never reads the raw token.
+    identityWriteAuthority: env => ({
+      hasUsableIdentityAuthorization: async userId => {
+        try {
+          const token = await authKvStoreForEnv(env).get(
+            githubIdentityTokenKey(userId),
+          )
+          return typeof token === 'string' && token.trim().length > 0
+        } catch {
+          return false
+        }
+      },
+    }),
     registry: khalaSyncMutatorRegistry,
   })
 
