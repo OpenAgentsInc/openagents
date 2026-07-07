@@ -82,6 +82,26 @@ describe('makeMdkServiceHttpPathFetch', () => {
     expect(await request.text()).toBe(JSON.stringify({ amountSat: 21 }))
     expect(request.headers.get('x-treasury-service-token')).toBeNull()
   })
+
+  it('rewrites /healthz to /health so Cloud Run health probes reach the daemon', async () => {
+    // The Google Frontend reserves /healthz on run.app domains and answers 404
+    // before the container; the daemons serve /health as the alias (CFG-15).
+    const seen: Request[] = []
+    const fetchTreasury = makeMdkServiceHttpPathFetch({
+      baseUrl: 'https://mdk-treasury-abc.a.run.app',
+      fetchImpl: async input => {
+        seen.push(input as Request)
+        return new Response(JSON.stringify({ ok: true }), { status: 200 })
+      },
+      serviceToken: 'token-123',
+      serviceTokenHeader: 'x-treasury-service-token',
+    })
+
+    await fetchTreasury('/healthz')
+
+    expect(seen).toHaveLength(1)
+    expect(seen[0]!.url).toBe('https://mdk-treasury-abc.a.run.app/health')
+  })
 })
 
 describe('makeMdkSidecarHttpRequestForward', () => {

@@ -74,9 +74,15 @@ export const makeMdkServiceHttpPathFetch = (options: {
 }): ContainerPathFetch => {
   const fetchImpl = options.fetchImpl ?? fetch
 
-  return (path: string, init?: ContainerFetchInit) =>
-    fetchImpl(
-      new Request(`${options.baseUrl}${path}`, {
+  return (path: string, init?: ContainerFetchInit) => {
+    // Cloud Run's Google Frontend reserves `/healthz` on `run.app` domains
+    // and answers 404 before the request reaches the container; the MDK
+    // daemons serve `/health` as the alias (CFG-15 runbook). Rewrite the
+    // health-probe path so the HTTP seam's health checks reach the daemon.
+    const daemonPath = path === '/healthz' ? '/health' : path
+
+    return fetchImpl(
+      new Request(`${options.baseUrl}${daemonPath}`, {
         ...(init?.body === undefined ? {} : { body: init.body }),
         headers: {
           'content-type': 'application/json',
@@ -88,6 +94,7 @@ export const makeMdkServiceHttpPathFetch = (options: {
         ...(init?.signal === undefined ? {} : { signal: init.signal }),
       }),
     )
+  }
 }
 
 export const MDK_SIDECAR_SERVICE_TOKEN_HEADER = 'x-mdk-sidecar-service-token'
