@@ -42,7 +42,17 @@ export const OtaUpdateGate = () => {
     const subscription = AppState.addEventListener("change", nextState => {
       if (nextState === "active") checkNow()
     })
-    return () => subscription.remove()
+    // TEMP (owner dev convenience, 2026-07-07): poll for OTAs every 3s so a
+    // freshly-published bundle lands near-instantly while actively testing.
+    // DISABLE BEFORE PROD — a 3s update poll is far too aggressive for a
+    // shipped app (battery/network); the on-mount + on-foreground checks above
+    // are the real production cadence. Remove this interval (or gate it behind
+    // a dev flag) when cutting over to a public production build.
+    const devPoll = setInterval(checkNow, 3000)
+    return () => {
+      subscription.remove()
+      clearInterval(devPoll)
+    }
   }, [])
 
   useEffect(() => {

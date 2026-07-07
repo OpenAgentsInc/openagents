@@ -1,8 +1,16 @@
-import { Image, StyleSheet, View, type TextStyle, type ViewStyle } from "react-native"
+import {
+  Image,
+  Pressable,
+  StyleSheet,
+  Text as RNText,
+  View,
+  type TextStyle,
+  type ViewStyle,
+} from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
 
 import { useKhalaAuth } from "../auth/khala-auth-context"
-import { Button, Text, useAppTheme } from "../ignite"
+import { Text, useAppTheme } from "../ignite"
 import type { ThemedStyle } from "../ignite"
 import { tx } from "../i18n/copy"
 
@@ -31,6 +39,10 @@ export const SignInScreen = () => {
         source={require("../../assets/images/home-hero.jpg")}
         style={StyleSheet.absoluteFill}
       />
+      {/* StarCraft/Protoss-blue color grade over the hero (owner request): a
+        * blue tint layer so the whole image reads as uniformly blue-cast, then
+        * a darkening scrim under the content for text contrast. */}
+      <View pointerEvents="none" style={styles.tint} />
       <View pointerEvents="none" style={styles.scrim} />
 
       <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
@@ -40,19 +52,23 @@ export const SignInScreen = () => {
           <Text preset="heading" style={[styles.title, themed($titleGlow)]} text={tx("app.title")} />
 
           <View style={themed($ctaColumn)}>
-            <Button
-              preset="reversed"
+            {/* Raw Pressable, NOT the Ignite Button: the ported Button was not
+              * applying the `style` background override (it rendered as bare
+              * dark text with no fill over the hero art). A plain Pressable +
+              * RN Text with inline styles guarantees a real, filled CTA. */}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityState={{ disabled: !githubSignInReady || signingIn }}
               disabled={!githubSignInReady || signingIn}
               onPress={signInWithGitHub}
-              // Explicit solid CTA styling: the hero is a busy dark image, so
-              // the button needs an unmistakable filled surface + high-contrast
-              // label rather than relying on the theme preset (which rendered
-              // as near-invisible dark text over the artwork).
-              style={styles.loginButton}
-              pressedStyle={styles.loginButtonPressed}
-              textStyle={styles.loginButtonText}
-              text={tx("signIn.github.primary")}
-            />
+              style={({ pressed }) => [
+                styles.loginButton,
+                pressed && styles.loginButtonPressed,
+                (!githubSignInReady || signingIn) && styles.loginButtonDisabled,
+              ]}
+            >
+              <RNText style={styles.loginButtonText}>{tx("signIn.github.primary")}</RNText>
+            </Pressable>
 
             {signInErrorMessage === null ? null : (
               <Text style={[styles.center, themed($danger)]} text={signInErrorMessage} />
@@ -99,16 +115,23 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     width: "100%",
   },
+  loginButtonDisabled: { opacity: 0.5 },
   loginButtonPressed: { backgroundColor: "#3bb8e6" },
   loginButtonText: {
     color: "#02060d",
     fontSize: 17,
     fontWeight: "700",
+    textAlign: "center",
   },
   safe: { flex: 1 },
   scrim: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: "rgba(0, 0, 0, 0.75)",
+    backgroundColor: "rgba(2, 10, 22, 0.5)",
+  },
+  tint: {
+    ...StyleSheet.absoluteFill,
+    // StarCraft/Protoss blue cast over the whole hero image.
+    backgroundColor: "rgba(20, 92, 150, 0.45)",
   },
   title: {
     color: "white",
