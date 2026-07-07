@@ -93,7 +93,7 @@ top follow-up item for whoever picks this up next.
 
 ## Registry
 
-Registry version: `2026-07-07.4` (schema `openagents.behavior_contracts.v1`)
+Registry version: `2026-07-07.5` (schema `openagents.behavior_contracts.v1`)
 
 ### `khala_mobile.auth.tailnet_auto_discovery_before_manual_login.v1` — RETIRED
 
@@ -493,3 +493,13 @@ Registry version: `2026-07-07.4` (schema `openagents.behavior_contracts.v1`)
 - **Oracle** `delete_account_isolated_at_bottom.source` (bun-test, unit): The Delete account trigger (and its deleteAccount() call) is no longer inside AccountSection; it lives in a dedicated DeleteAccountSection (red outlined pill + red-bordered $dangerCard) that is rendered as the LAST section in the Settings body, after About & diagnostics — never adjacent to Sign out. — `clients/khala-mobile/tests/settings-screen-composition.test.ts`
 - **Verification:** bun test tests/settings-screen-composition.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.
 - **Authority boundary:** Source-composition assertion (explicitly labeled stopgap, same allowance as khala_mobile.settings.no_desktop_dependent_sections.v1): proves WHICH section the Delete account trigger is declared and rendered in, and its render order relative to the other sections. It cannot prove on-device layout pixels; the confirmation modal + KHALA_ACCOUNT_DELETION_POLICY_COPY + deleteAccount() behavior it relocates are unchanged and covered where they already were. A real RN-mount oracle for Settings is future work under khala_mobile.platform.launched_app_interaction_smoke.v1 (a full Settings mount needs a Modal harness stub not yet in tests/support/rn-test-environment.ts).
+
+### `khala_mobile.qa.nightly_mobile_row_owned_runner_discipline.v1` — ENFORCED
+
+- **Surface:** khala-mobile (qa)
+- **Stated by:** owner via khala-code-session on 2026-07-07
+- **Statement:** The Khala Mobile nightly row is defined as owned-runner-only launchd work: iOS Maestro, seeded device monkey, QAM-4 visual capture, named mobile perf budgets, and seam probes all report through typed QA receipts/projection metadata, never hosted CI/EAS; exit remains blocked until seven consecutive passed real nightly receipts exist.
+- **Enforcement tier:** test-sweep
+- **Oracle** `nightly_mobile_row_owned_runner_discipline.unit` (bun-test, unit): The QAM-5 row definition schedules only owned Tailnet Mac launchd work for iOS Maestro, seeded device monkey, visual capture, named perf budgets, and seam probes; excludes hosted CI/EAS; carries the required perf IDs and khala-sync live-classification seam probe; emits a public-safe strict issue body; and refuses to satisfy exit before seven consecutive passed nightly receipts. — `apps/qa-runner/src/mobile-nightly.test.ts`
+- **Verification:** bun test src/mobile-nightly.test.ts inside apps/qa-runner plus the Khala mobile UX-contract sweep; real nightly execution remains blocked/pending under #8540 until owned-runner receipts exist.
+- **Authority boundary:** Binds the QAM-5 nightly mobile row definition, launchd-owned runner posture, QA Swarm projection node, required named perf budgets, required seam probes, strict auto-filed issue body, and seven-receipt exit evaluator. It does not prove any real nightly has run, does not claim the seven-consecutive-night exit is satisfied, and keeps QAM-4 Storybook V1 visual capture blocked until #8539 has a proven device-walk receipt.

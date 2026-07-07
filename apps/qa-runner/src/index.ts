@@ -85,6 +85,23 @@ export {
   type KhalaFlagshipDemoReport,
   type KhalaFlagshipSeededBugSpec,
 } from "./khala-flagship-demo";
+export {
+  KHALA_MOBILE_NIGHTLY_ROW_SCHEMA,
+  assertKhalaMobileNightlyPublicSafe,
+  buildKhalaMobileNightlyReport,
+  buildKhalaMobileNightlySteps,
+  buildKhalaMobileNightlyStrictIssueBody,
+  evaluateKhalaMobileConsecutiveNightlyReceipts,
+  khalaMobileNightlyPerfBudgetIds,
+  renderKhalaMobileNightlyLaunchdPlist,
+  type KhalaMobileNightlyPerfBudgetId,
+  type KhalaMobileNightlyReceiptSummary,
+  type KhalaMobileNightlyReport,
+  type KhalaMobileNightlySeamProbeId,
+  type KhalaMobileNightlyStep,
+  type KhalaMobileNightlyStepId,
+  type KhalaMobileNightlyVerdict,
+} from "./mobile-nightly";
 
 // The fixed-step runner (runQaSession) and the autonomous model-driven runner.
 export { runQaSession, type RunInput, type RunOutcome } from "./runner";

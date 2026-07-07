@@ -1501,7 +1501,42 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
       verification:
         "bun test tests/settings-screen-composition.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.",
     },
+    {
+      authorityBoundary:
+        "Binds the QAM-5 nightly mobile row definition, launchd-owned runner posture, QA Swarm projection node, required named perf budgets, required seam probes, strict auto-filed issue body, and seven-receipt exit evaluator. It does not prove any real nightly has run, does not claim the seven-consecutive-night exit is satisfied, and keeps QAM-4 Storybook V1 visual capture blocked until #8539 has a proven device-walk receipt.",
+      blockerRefs: [],
+      contractId: "khala_mobile.qa.nightly_mobile_row_owned_runner_discipline.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "apps/qa-runner/src/mobile-nightly.ts",
+        "apps/qa-runner/src/mobile-nightly.test.ts",
+        "docs/khala-code/receipts/2026-07-07-qam-5-mobile-nightly-row.md",
+        "docs/khala-mobile/khala-mobile-ux-contract.md",
+      ],
+      oracles: [
+        {
+          description:
+            "The QAM-5 row definition schedules only owned Tailnet Mac launchd work for iOS Maestro, seeded device monkey, visual capture, named perf budgets, and seam probes; excludes hosted CI/EAS; carries the required perf IDs and khala-sync live-classification seam probe; emits a public-safe strict issue body; and refuses to satisfy exit before seven consecutive passed nightly receipts.",
+          id: "nightly_mobile_row_owned_runner_discipline.unit",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/qa-runner/src/mobile-nightly.test.ts",
+        },
+      ],
+      productArea: "qa",
+      source: {
+        channel: "khala-code-session",
+        statedBy: "owner",
+        statedOn: "2026-07-07",
+      },
+      state: "enforced",
+      statement:
+        "The Khala Mobile nightly row is defined as owned-runner-only launchd work: iOS Maestro, seeded device monkey, QAM-4 visual capture, named mobile perf budgets, and seam probes all report through typed QA receipts/projection metadata, never hosted CI/EAS; exit remains blocked until seven consecutive passed real nightly receipts exist.",
+      surface: "khala-mobile",
+      verification:
+        "bun test src/mobile-nightly.test.ts inside apps/qa-runner plus the Khala mobile UX-contract sweep; real nightly execution remains blocked/pending under #8540 until owned-runner receipts exist.",
+    },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-07.4",
+  version: "2026-07-07.5",
 }

@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.openagents.khala-mobile-nightly</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/zsh</string>
+    <string>-lc</string>
+    <string>cd /opt/openagents &amp;&amp; OA_QA_NIGHTLY_INCLUDE_MOBILE=1 bun scripts/qa-nightly-matrix.ts</string>
+  </array>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>2</integer>
+    <key>Minute</key>
+    <integer>30</integer>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>/opt/openagents/var/qa-nightly/khala-mobile-nightly.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/opt/openagents/var/qa-nightly/khala-mobile-nightly.err.log</string>
+</dict>
+</plist>
