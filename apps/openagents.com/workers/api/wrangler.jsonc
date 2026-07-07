@@ -52,6 +52,18 @@
     // Codex proof metadata reads serve from Cloud SQL with bounded retry and D1
     // fallback. Roll back by setting this to `d1`.
     "KHALA_SYNC_PYLON_READS": "postgres",
+    // CFG D1 evacuation (#8515) Pylon WRITE cutover: the D1 bridge is 401-dead
+    // account-wide, so the assignment/heartbeat/dispatch WRITES (createAssignment,
+    // createEvent, updateAssignment(IfState), upsertRegistration presence/capacity,
+    // upsertProviderJobLifecycle, upsertQuarantine, sweepStaleAssignmentLeases)
+    // must be AUTHORITATIVE on Postgres — the same mirror the reads already serve
+    // from. `postgres` makes Postgres the sole write authority with no D1 fallback
+    // (fail loud, never diverge); D1 is neither written nor mirrored back to on
+    // this path. Set here (top-level production vars) so it PERSISTS across
+    // deploys: `pylonDispatchFlagsFromEnv` also defaults to `postgres`, so an
+    // unset flag stays cut over — set to `d1` explicitly to restore D1 authority.
+    // See src/pylon-dispatch-store.ts.
+    "KHALA_SYNC_PYLON_WRITES": "postgres",
     // KS-8.6 Artanis read cutover (#8335, TEMPORARY compare soak): dual-write
     // has been live since 357562dcfc; this reads BOTH stores, serves D1, and
     // logs `khala_sync_artanis_read_compare_mismatch` on any drift. Covers the
@@ -662,6 +674,10 @@
         // KS-8 Pylon read cutover (#8315), staging parity for the production
         // Cloud SQL read path. Roll back by setting this to `d1`.
         "KHALA_SYNC_PYLON_READS": "postgres",
+        // CFG D1 evacuation (#8515) Pylon WRITE cutover, staging parity for the
+        // production Postgres-authoritative assignment/heartbeat/dispatch writes.
+        // Roll back by setting this to `d1`.
+        "KHALA_SYNC_PYLON_WRITES": "postgres",
         // KS-8.6 Artanis read cutover (#8335, TEMPORARY compare soak), staging
         // parity. ARTANIS_SCHEDULED_RUNNER_ENABLED is false on staging so this
         // mainly exercises operator-console/public-report reads here; the

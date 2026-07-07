@@ -31,7 +31,18 @@
 //     use instead of bare `makeD1PylonApiStore`. Flags:
 //       KHALA_SYNC_PYLON_DUAL_WRITE  (default ON; 'off'|'0'|'false'|'disabled')
 //       KHALA_SYNC_PYLON_READS       (default 'd1'; 'd1'|'postgres'|'compare')
+//       KHALA_SYNC_PYLON_WRITES      (default 'postgres' after #8515; 'd1'
+//                                     restores D1 authority — see below)
 //     With no KHALA_SYNC_DB binding everything degrades to plain D1.
+//
+// #8515 WRITE cutover (Cloudflare exit): the D1 HTTP bridge 401s account-wide
+// (Workers Paid plan cancelled). `KHALA_SYNC_PYLON_WRITES=postgres` (now the
+// default) makes Postgres the SOLE authority for the assignment / heartbeat /
+// dispatch write surface — createAssignment, createEvent, updateAssignment,
+// updateAssignmentIfState, upsertRegistration (presence/heartbeat + capacity),
+// upsertProviderJobLifecycle, upsertQuarantine, sweepStaleAssignmentLeases.
+// Dead D1 is no longer written or mirrored back to on that path, and there is
+// no D1 fallback on a Postgres error (fail loud, never diverge).
 //
 // Cutover order (docs/khala-sync/RUNBOOK.md "Pylon dispatch domain"):
 // dual-write on → backfill (scripts/backfill-pylon.ts) → verify → compare
@@ -80,14 +91,26 @@ import { openAgentsDatabase } from './runtime'
 
 export type PylonDispatchReadsMode = 'd1' | 'postgres' | 'compare'
 
+// KS-8 WRITE cutover (#8515 Cloudflare exit): the D1 HTTP bridge 401s
+// account-wide (Workers Paid plan cancelled — no token fix). `writes` moves
+// the AUTHORITATIVE assignment/heartbeat/dispatch writes off dead D1 onto the
+// same Postgres connection the reads already use. In 'postgres' mode Postgres
+// is the SOLE write authority — there is deliberately NO silent D1 fallback
+// (a Postgres outage must fail the request loud, not diverge), and D1 is not
+// mirrored back to because it is a dead endpoint. This mirrors the forge
+// canonical-write cutover discipline (`forgeGitCanonicalWritesFromEnv`).
+export type PylonDispatchWritesMode = 'd1' | 'postgres'
+
 export type PylonDispatchFlags = Readonly<{
   dualWrite: boolean
   reads: PylonDispatchReadsMode
+  writes: PylonDispatchWritesMode
 }>
 
 export type PylonDispatchFlagEnv = Readonly<{
   KHALA_SYNC_PYLON_DUAL_WRITE?: string | undefined
   KHALA_SYNC_PYLON_READS?: string | undefined
+  KHALA_SYNC_PYLON_WRITES?: string | undefined
 }>
 
 const FLAG_OFF_VALUES = new Set(['0', 'off', 'false', 'disabled', 'no'])
@@ -98,18 +121,28 @@ const FLAG_OFF_VALUES = new Set(['0', 'off', 'false', 'disabled', 'no'])
  * reads default to D1 authority until the runbook's cutover sequence flips
  * them. Unknown read values fall back to 'd1' — never fail open into an
  * unproven read path on a typo.
+ *
+ * `writes` defaults to 'postgres' (#8515): D1 is dead account-wide, so the
+ * authoritative assignment/heartbeat/dispatch writes MUST live on Postgres.
+ * Any value other than an explicit 'd1' resolves to 'postgres'; the only way
+ * back to D1 authority is to set the flag to 'd1' explicitly. This is the
+ * inverse typo-posture of `reads` on purpose — after the Cloudflare exit the
+ * safe default is Postgres, and a typo must not silently route writes back to
+ * the 401-dead bridge.
  */
 export const pylonDispatchFlagsFromEnv = (
   env: PylonDispatchFlagEnv,
 ): PylonDispatchFlags => {
   const dualWriteRaw = env.KHALA_SYNC_PYLON_DUAL_WRITE?.trim().toLowerCase()
   const readsRaw = env.KHALA_SYNC_PYLON_READS?.trim().toLowerCase()
+  const writesRaw = env.KHALA_SYNC_PYLON_WRITES?.trim().toLowerCase()
 
   return {
     dualWrite:
       dualWriteRaw === undefined || !FLAG_OFF_VALUES.has(dualWriteRaw),
     reads:
       readsRaw === 'postgres' || readsRaw === 'compare' ? readsRaw : 'd1',
+    writes: writesRaw === 'd1' ? 'd1' : 'postgres',
   }
 }
 
@@ -1103,6 +1136,14 @@ export const makeDualWritePylonApiStore = (
     return readD1()
   }
 
+  // #8515 WRITE cutover: when 'postgres', Postgres is the SOLE authority for
+  // assignment/heartbeat/dispatch writes. D1 is not written at all (it 401s
+  // account-wide — a mirror-back would only log failures and add latency), and
+  // there is NO D1 fallback on a Postgres error: the request fails loud so a
+  // Postgres outage cannot silently diverge state. In 'd1' mode the original
+  // D1-first + best-effort Postgres-mirror path is preserved intact.
+  const writesPostgres = flags.writes === 'postgres'
+
   return {
     // KS-8.4 read path remains D1-authoritative until #8315 cutover evidence.
     ...(d1.readActiveQuarantineForPylon === undefined
@@ -1112,6 +1153,9 @@ export const makeDualWritePylonApiStore = (
       ? {}
       : {
           upsertQuarantine: async (record: PylonApiQuarantineRecord) => {
+            if (writesPostgres) {
+              return postgres.upsertQuarantine(record)
+            }
             const next = await d1.upsertQuarantine!(record)
             await mirror(
               'upsertQuarantine',
@@ -1123,6 +1167,9 @@ export const makeDualWritePylonApiStore = (
         }),
 
     createAssignment: async record => {
+      if (writesPostgres) {
+        return postgres.createAssignment(record)
+      }
       const result = await d1.createAssignment(record)
       await mirror('createAssignment', [result.record.assignmentRef], () =>
         postgres.mirrorAssignment(result.record),
@@ -1131,6 +1178,9 @@ export const makeDualWritePylonApiStore = (
     },
 
     createEvent: async record => {
+      if (writesPostgres) {
+        return postgres.createEvent(record)
+      }
       const result = await d1.createEvent(record)
       await mirror('createEvent', [result.record.eventRef], () =>
         postgres.mirrorEvent(result.record),
@@ -1236,6 +1286,13 @@ export const makeDualWritePylonApiStore = (
       ),
 
     sweepStaleAssignmentLeases: async (pylonRef, nowIso, staleBeforeIso) => {
+      if (writesPostgres) {
+        return postgres.sweepStaleAssignmentLeases(
+          pylonRef,
+          nowIso,
+          staleBeforeIso,
+        )
+      }
       if (d1.sweepStaleAssignmentLeases === undefined) {
         return []
       }
@@ -1251,6 +1308,9 @@ export const makeDualWritePylonApiStore = (
     },
 
     updateAssignment: async record => {
+      if (writesPostgres) {
+        return postgres.updateAssignment(record)
+      }
       const next = await d1.updateAssignment(record)
       await mirror('updateAssignment', [next.assignmentRef], () =>
         postgres.mirrorAssignment(next),
@@ -1259,6 +1319,9 @@ export const makeDualWritePylonApiStore = (
     },
 
     updateAssignmentIfState: async (record, expectedState) => {
+      if (writesPostgres) {
+        return postgres.updateAssignmentIfState(record, expectedState)
+      }
       const next = await d1.updateAssignmentIfState(record, expectedState)
       if (next !== undefined) {
         await mirror('updateAssignmentIfState', [next.assignmentRef], () =>
@@ -1269,6 +1332,9 @@ export const makeDualWritePylonApiStore = (
     },
 
     upsertProviderJobLifecycle: async record => {
+      if (writesPostgres) {
+        return postgres.upsertProviderJobLifecycle(record)
+      }
       const next = await d1.upsertProviderJobLifecycle(record)
       await mirror(
         'upsertProviderJobLifecycle',
@@ -1279,6 +1345,9 @@ export const makeDualWritePylonApiStore = (
     },
 
     upsertRegistration: async (record, options) => {
+      if (writesPostgres) {
+        return postgres.upsertRegistration(record, options)
+      }
       const next = await d1.upsertRegistration(record, options)
       await mirror('upsertRegistration', [next.pylonRef], () =>
         postgres.mirrorRegistration(next),
@@ -1362,10 +1431,14 @@ export const makePylonApiStoreForEnv = (
   const connectionString = env.KHALA_SYNC_DB?.connectionString
   const flags = pylonDispatchFlagsFromEnv(env)
 
+  // Degrade to plain D1 ONLY when there is no Postgres binding, or when every
+  // Postgres lever is off (no dual-write mirror, D1 reads, AND D1 writes). With
+  // writes='postgres' (the #8515 default) we must build the Postgres-authoritative
+  // store even if dual-write/reads happen to be D1.
   if (
     connectionString === undefined ||
     connectionString.length === 0 ||
-    (!flags.dualWrite && flags.reads === 'd1')
+    (!flags.dualWrite && flags.reads === 'd1' && flags.writes === 'd1')
   ) {
     return d1
   }

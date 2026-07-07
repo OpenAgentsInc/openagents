@@ -309,11 +309,31 @@ const noWait = () => Promise.resolve()
 // ---------------------------------------------------------------------------
 
 describe('pylonDispatchFlagsFromEnv', () => {
-  test('dual-write defaults ON; reads default d1', () => {
+  test('dual-write defaults ON; reads default d1; writes default postgres (#8515)', () => {
     expect(pylonDispatchFlagsFromEnv({})).toEqual({
       dualWrite: true,
       reads: 'd1',
+      writes: 'postgres',
     })
+  })
+
+  test('writes: explicit d1 restores D1 authority; everything else is postgres', () => {
+    expect(
+      pylonDispatchFlagsFromEnv({ KHALA_SYNC_PYLON_WRITES: 'd1' }).writes,
+    ).toBe('d1')
+    expect(
+      pylonDispatchFlagsFromEnv({ KHALA_SYNC_PYLON_WRITES: 'D1' }).writes,
+    ).toBe('d1')
+    expect(
+      pylonDispatchFlagsFromEnv({ KHALA_SYNC_PYLON_WRITES: 'postgres' }).writes,
+    ).toBe('postgres')
+    // A typo must NOT silently route writes back to the 401-dead D1 bridge.
+    expect(
+      pylonDispatchFlagsFromEnv({ KHALA_SYNC_PYLON_WRITES: 'd11' }).writes,
+    ).toBe('postgres')
+    expect(
+      pylonDispatchFlagsFromEnv({ KHALA_SYNC_PYLON_WRITES: '' }).writes,
+    ).toBe('postgres')
   })
 
   test('dual-write off values', () => {
@@ -352,7 +372,7 @@ describe('dual-write mirroring', () => {
     const pg = makeFakePostgres()
     const store = makeDualWritePylonApiStore({
       d1: d1.store,
-      flags: { dualWrite: true, reads: 'd1' },
+      flags: { dualWrite: true, reads: 'd1', writes: 'd1' },
       postgres: pg.store,
       wait: noWait,
     })
@@ -390,7 +410,7 @@ describe('dual-write mirroring', () => {
     const sink = makeLogSink()
     const store = makeDualWritePylonApiStore({
       d1: d1.store,
-      flags: { dualWrite: true, reads: 'd1' },
+      flags: { dualWrite: true, reads: 'd1', writes: 'd1' },
       log: sink.log,
       postgres: pg.store,
       wait: noWait,
@@ -410,7 +430,7 @@ describe('dual-write mirroring', () => {
     const pg = makeFakePostgres()
     const store = makeDualWritePylonApiStore({
       d1: d1.store,
-      flags: { dualWrite: false, reads: 'd1' },
+      flags: { dualWrite: false, reads: 'd1', writes: 'd1' },
       postgres: pg.store,
       wait: noWait,
     })
@@ -426,7 +446,7 @@ describe('dual-write mirroring', () => {
     const pg = makeFakePostgres()
     const store = makeDualWritePylonApiStore({
       d1: d1.store,
-      flags: { dualWrite: true, reads: 'd1' },
+      flags: { dualWrite: true, reads: 'd1', writes: 'd1' },
       postgres: pg.store,
       wait: noWait,
     })
@@ -434,6 +454,88 @@ describe('dual-write mirroring', () => {
       await store.updateAssignmentIfState(assignment('a1'), 'accepted'),
     ).toBeUndefined()
     expect(pg.calls).toEqual([])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Write cutover (#8515): Postgres is the SOLE write authority; D1 is dead
+// ---------------------------------------------------------------------------
+
+describe('writes: postgres authority', () => {
+  test('every assignment/heartbeat/dispatch write hits Postgres, D1 untouched', async () => {
+    const d1 = makeFakeD1()
+    const pg = makeFakePostgres()
+    const store = makeDualWritePylonApiStore({
+      d1: d1.store,
+      flags: { dualWrite: true, reads: 'postgres', writes: 'postgres' },
+      postgres: pg.store,
+      wait: noWait,
+    })
+
+    await store.createAssignment(assignment('a1'))
+    await store.createEvent(event('e1'))
+    await store.updateAssignment(assignment('a1'))
+    await store.updateAssignmentIfState(assignment('a1'), 'offered')
+    await store.upsertRegistration(registration('pylon.dual.1'))
+    await store.upsertProviderJobLifecycle(lifecycle('a1'))
+    await store.upsertQuarantine?.(quarantine('quarantine.public.pylon.dual.1'))
+    await store.sweepStaleAssignmentLeases!(
+      'pylon.dual.1',
+      '2026-07-01T05:00:00.000Z',
+      '2026-07-01T04:00:00.000Z',
+    )
+
+    // The dead D1 bridge is never touched on the write path.
+    expect(d1.calls).toEqual([])
+    // Authoritative Postgres write methods are used — NOT the mirror* methods.
+    expect(pg.calls.map(c => c.method)).toEqual([
+      'createAssignment',
+      'createEvent',
+      'updateAssignment',
+      'updateAssignmentIfState',
+      'upsertRegistration',
+      'upsertProviderJobLifecycle',
+      'upsertQuarantine',
+      'sweepStaleAssignmentLeases',
+    ])
+    expect(pg.calls.some(c => c.method.startsWith('mirror'))).toBe(false)
+  })
+
+  test('a Postgres write error propagates (fail loud — no silent D1 fallback)', async () => {
+    const d1 = makeFakeD1()
+    const pg = makeFakePostgres({
+      createAssignment: () => Promise.reject(new Error('pg write down')),
+    })
+    const store = makeDualWritePylonApiStore({
+      d1: d1.store,
+      flags: { dualWrite: true, reads: 'postgres', writes: 'postgres' },
+      postgres: pg.store,
+      wait: noWait,
+    })
+
+    await expect(store.createAssignment(assignment('a1'))).rejects.toThrow(
+      'pg write down',
+    )
+    // D1 was NOT written as a fallback — a Postgres outage fails loud.
+    expect(d1.calls).toEqual([])
+  })
+
+  test('createAssignment returns the Postgres store result verbatim', async () => {
+    const d1 = makeFakeD1()
+    const pg = makeFakePostgres({
+      createAssignment: () =>
+        Promise.resolve({ idempotent: true, record: assignment('a-pg') }),
+    })
+    const store = makeDualWritePylonApiStore({
+      d1: d1.store,
+      flags: { dualWrite: true, reads: 'postgres', writes: 'postgres' },
+      postgres: pg.store,
+      wait: noWait,
+    })
+    const result = await store.createAssignment(assignment('a1'))
+    expect(result.idempotent).toBe(true)
+    expect(result.record.assignmentRef).toBe('a-pg')
+    expect(d1.calls).toEqual([])
   })
 })
 
@@ -447,7 +549,7 @@ describe('read routing', () => {
     const pg = makeFakePostgres()
     const store = makeDualWritePylonApiStore({
       d1: d1.store,
-      flags: { dualWrite: true, reads: 'd1' },
+      flags: { dualWrite: true, reads: 'd1', writes: 'd1' },
       postgres: pg.store,
       wait: noWait,
     })
@@ -465,7 +567,7 @@ describe('read routing', () => {
     const pg = makeFakePostgres()
     const store = makeDualWritePylonApiStore({
       d1: d1.store,
-      flags: { dualWrite: true, reads: 'postgres' },
+      flags: { dualWrite: true, reads: 'postgres', writes: 'd1' },
       postgres: pg.store,
       wait: noWait,
     })
@@ -492,7 +594,7 @@ describe('read routing', () => {
     const sink = makeLogSink()
     const store = makeDualWritePylonApiStore({
       d1: d1.store,
-      flags: { dualWrite: true, reads: 'postgres' },
+      flags: { dualWrite: true, reads: 'postgres', writes: 'd1' },
       log: sink.log,
       postgres: pg.store,
       wait: noWait,
@@ -523,7 +625,7 @@ describe('read routing', () => {
     const d1 = makeFakeD1()
     const store = makeDualWritePylonApiStore({
       d1: d1.store,
-      flags: { dualWrite: true, reads: 'postgres' },
+      flags: { dualWrite: true, reads: 'postgres', writes: 'd1' },
       postgres: pg.store,
       wait: noWait,
     })
@@ -545,7 +647,7 @@ describe('read routing', () => {
     const sink = makeLogSink()
     const store = makeDualWritePylonApiStore({
       d1: d1.store,
-      flags: { dualWrite: true, reads: 'compare' },
+      flags: { dualWrite: true, reads: 'compare', writes: 'd1' },
       log: sink.log,
       postgres: pg.store,
       wait: noWait,
@@ -567,7 +669,7 @@ describe('read routing', () => {
     const sink = makeLogSink()
     const store = makeDualWritePylonApiStore({
       d1: d1.store,
-      flags: { dualWrite: true, reads: 'compare' },
+      flags: { dualWrite: true, reads: 'compare', writes: 'd1' },
       log: sink.log,
       postgres: matching.store,
       wait: noWait,
@@ -581,7 +683,7 @@ describe('read routing', () => {
     const sink2 = makeLogSink()
     const store2 = makeDualWritePylonApiStore({
       d1: makeFakeD1().store,
-      flags: { dualWrite: true, reads: 'compare' },
+      flags: { dualWrite: true, reads: 'compare', writes: 'd1' },
       log: sink2.log,
       postgres: broken.store,
       wait: noWait,
@@ -598,7 +700,7 @@ describe('read routing', () => {
     const pg = makeFakePostgres()
     const store = makeDualWritePylonApiStore({
       d1: d1.store,
-      flags: { dualWrite: true, reads: 'postgres' },
+      flags: { dualWrite: true, reads: 'postgres', writes: 'd1' },
       postgres: pg.store,
       wait: noWait,
     })
@@ -620,7 +722,7 @@ describe('read routing', () => {
     const d1 = makeFakeD1()
     const store = makeDualWritePylonApiStore({
       d1: d1.store,
-      flags: { dualWrite: true, reads: 'postgres' },
+      flags: { dualWrite: true, reads: 'postgres', writes: 'd1' },
       postgres: undefined,
       wait: noWait,
     })
