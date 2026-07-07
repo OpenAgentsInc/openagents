@@ -896,6 +896,11 @@ import { handleKhalaSyncLog } from './khala-sync-log-routes'
 import { makeKhalaSyncRouteWiring } from './khala-sync-route-wiring'
 import { makeKhalaSyncWorkerMutatorRegistry } from './khala-sync-mutators'
 import {
+  DEFAULT_HOSTED_RUNTIME_MODEL,
+  runHostedRuntimeTurnDispatch,
+  type HostedRuntimeCompleteFn,
+} from './khala-hosted-runtime-dispatch'
+import {
   handleKhalaSyncTokensServedReconcile,
   KHALA_SYNC_TOKENS_SERVED_RECONCILE_PATH,
 } from './khala-sync-public-counter-reconcile-routes'
@@ -7914,6 +7919,65 @@ const makeTokensServedReconcileDeps = (
   readExactTokensServed: () =>
     readPublicTokensServedExactTotal(openAgentsDatabase(env)),
 })
+
+// #8467 follow-up: server-side hosted-Khala runtime dispatch. Claims `queued`
+// `hosted_khala` turns (mobile Khala Code chat turns with no local Pylon) and
+// answers them with hosted Gemini inference, writing the response back as
+// runtime events through the push engine. Postgres + pure-HTTP inference only
+// — no Cloudflare bindings, no D1. Fail-soft: a missing KHALA_SYNC_DB binding
+// or GEMINI_API_KEY is a clean no-op, and per-turn failures are isolated.
+const runHostedRuntimeTurnDispatchForEnv = async (
+  env: Readonly<{
+    KHALA_SYNC_DB?: Readonly<{ connectionString: string }>
+    GEMINI_API_KEY?: string
+    CF_AIG_TOKEN?: string
+  }>,
+): Promise<void> => {
+  const connectionString = env.KHALA_SYNC_DB?.connectionString
+  const apiKey = env.GEMINI_API_KEY
+  if (
+    connectionString === undefined ||
+    connectionString.length === 0 ||
+    apiKey === undefined ||
+    apiKey.length === 0
+  ) {
+    return
+  }
+  const gatewayToken = env.CF_AIG_TOKEN
+  const complete: HostedRuntimeCompleteFn = async ({ prompt, system }) => {
+    const result = await artanisMindComplete({
+      apiKey,
+      ...(gatewayToken === undefined || gatewayToken === ''
+        ? {}
+        : { gatewayToken }),
+      model: DEFAULT_HOSTED_RUNTIME_MODEL,
+      prompt,
+      system,
+    })
+    return 'error' in result
+      ? { detail: 'artanis_mind_unavailable', ok: false }
+      : { ok: true, text: result.text }
+  }
+  const client = await defaultMakeKhalaSyncSqlClient(connectionString)
+  try {
+    const summary = await runHostedRuntimeTurnDispatch({
+      complete,
+      registry: khalaSyncMutatorRegistry,
+      sql: client.sql,
+      log: (line, fields) => logWorkerRouteWarning(line, fields ?? {}),
+    })
+    if (summary.scanned > 0) {
+      logWorkerRouteWarning('hosted_runtime_dispatch_tick', {
+        answered: summary.answered,
+        failed: summary.failed,
+        scanned: summary.scanned,
+        skipped: summary.skipped,
+      })
+    }
+  } finally {
+    await client.end()
+  }
+}
 
 // Issue #8505 (Part 2): shared fail-soft producer deps for the per-user
 // credit-balance projection (scope.user.<userId>). Reused at every D1 ledger
@@ -16280,6 +16344,13 @@ export default {
           config.artanis.scheduledRunnerEnabled,
           event.scheduledTime,
         ),
+      ),
+      // #8467 follow-up: drain `queued` hosted_khala runtime turns (mobile
+      // Khala Code chat turns) into hosted Gemini answers on Cloud Run.
+      // Fail-soft: no KHALA_SYNC_DB/GEMINI_API_KEY ⇒ clean no-op.
+      observedEffect(
+        'HostedRuntimeTurnDispatch.tick',
+        Effect.promise(() => runHostedRuntimeTurnDispatchForEnv(env)),
       ),
       observedEffect(
         'PylonCapacityFunnel.recordSnapshots',

@@ -30,11 +30,14 @@ const TURN_STATUS_LABEL: Record<string, string> = {
   waiting_for_input: "waiting for input"
 }
 
-/** The only two lanes a user can actively pick from the composer today
- * (#8405) — every other `KhalaRuntimeLane` literal is an internal routing
- * lane (ai_sdk_core, khala_sync_mobile_control, test_fixture, …), never a
- * provider a person chooses in this UI. */
+/** The lanes a user can actively pick from the composer (#8405, #8467) —
+ * every other `KhalaRuntimeLane` literal is an internal routing lane
+ * (ai_sdk_core, khala_sync_mobile_control, test_fixture, …), never a provider
+ * a person chooses in this UI. "Khala" is the server-hosted default lane
+ * (drained on Cloud Run, no local Pylon needed); Codex/Claude route to the
+ * user's own local Pylon runtime. */
 const PICKABLE_LANES: ReadonlyArray<{ lane: KhalaRuntimeLane; label: string }> = [
+  { label: "Khala", lane: "hosted_khala" },
   { label: "Codex", lane: "codex_app_server" },
   { label: "Claude", lane: "claude_pylon" }
 ]

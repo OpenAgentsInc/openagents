@@ -68,10 +68,15 @@ export const chatMessageBodyRef = (messageId: string): string => `chat_message.$
 
 const RUNTIME_ORIGIN = { lane: "khala_sync_mobile_control", surface: "mobile" } as const
 
-/** The Codex lane stays the app-wide fallback (#8405): a thread with no
- * turns yet, or a caller that hasn't threaded a `target` at all, preselects
- * Codex — same behavior as before this issue, when the lane was hardcoded. */
-export const DEFAULT_RUNTIME_LANE: KhalaRuntimeLane = "codex_app_server"
+/** The server-hosted Khala lane is the app-wide default (#8467): a thread
+ * with no turns yet, or a caller that hasn't threaded a `target` at all,
+ * preselects `hosted_khala`. Unlike `codex_app_server` / `claude_pylon`
+ * (which require the user's own local Pylon to consume the queued turn),
+ * `hosted_khala` is drained SERVER-SIDE by the Cloud Run dispatch consumer
+ * (`apps/openagents.com/workers/api/src/khala-hosted-runtime-dispatch.ts`),
+ * so a plain mobile chat turn gets a real model answer with no local runtime.
+ * Users who want their own Codex/Claude runtime still pick it explicitly. */
+export const DEFAULT_RUNTIME_LANE: KhalaRuntimeLane = "hosted_khala"
 
 export type RuntimeControlIntentTarget = Readonly<{ lane: KhalaRuntimeLane }>
 
