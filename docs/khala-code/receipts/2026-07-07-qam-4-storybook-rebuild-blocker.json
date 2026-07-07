@@ -1,0 +1,30 @@
+{
+  "schema": "openagents.khala_mobile.visual_tier_storybook_device_attempt.v1",
+  "generatedAt": "2026-07-07T22:58:00.000Z",
+  "issue": 8539,
+  "verdict": "INCONCLUSIVE",
+  "simulator": {
+    "name": "iPhone 17e",
+    "udid": "8FFF77DA-C4D1-4CCD-ACB7-614A79D7216F",
+    "runtime": "iOS 26.5"
+  },
+  "storybookMetroAttempt": {
+    "command": "STORYBOOK_ENABLED=true EXPO_PUBLIC_STORYBOOK_ENABLED=true EXPO_NO_INTERACTIVE=1 bunx expo start --localhost --port 8082 --clear",
+    "result": "Metro started, but the already-installed app did not request the 8082 bundle after the development-client URL was accepted.",
+    "screenshotEvidence": [
+      "docs/khala-code/receipts/qam-4-storybook-captures/iphone-17e-storybook-attempt.png",
+      "docs/khala-code/receipts/qam-4-storybook-captures/iphone-17e-after-click.png"
+    ]
+  },
+  "storybookRebuildAttempt": {
+    "command": "STORYBOOK_ENABLED=true EXPO_PUBLIC_STORYBOOK_ENABLED=true EXPO_NO_TELEMETRY=1 bunx expo run:ios --device 8FFF77DA-C4D1-4CCD-ACB7-614A79D7216F --port 8082",
+    "exitCode": 1,
+    "error": "xcodebuild exited 65 while linking KhalaCode.debug.dylib: cannot link directly with SwiftUICore because product being built is not an allowed client of it; ld: symbol(s) not found for architecture arm64",
+    "storybookEntryBundled": false
+  },
+  "claims": {
+    "v1StorybookWalk": "not_proven",
+    "v2SimulatorCheckpoint": "proven_by_qam_4_baseline_receipt",
+    "baselineBlessingWorkflow": "proven_by_packages_khala_qa_harness_mobile_visual_tier_tests"
+  }
+}

@@ -7,10 +7,13 @@ import {
   khalaMobileGateGeneratorConformanceStatus,
   khalaMobileGateScreenMountBundles,
   khalaMobileGateScreenMountWaivers,
+  khalaMobileGateVisualTierStatus,
 } from "../src/qa/mobile-release-gate"
 
 const mobileRoot = new URL("../", import.meta.url).pathname
+const repoRoot = join(mobileRoot, "../..")
 const fromRoot = (path: string): string => join(mobileRoot, path)
+const fromRepoRoot = (path: string): string => join(repoRoot, path)
 
 const screenFiles = (): readonly string[] =>
   readdirSync(fromRoot("src/screens"))
@@ -70,5 +73,16 @@ describe("QAM-1 mobile release gate policy", () => {
     expect(khalaMobileGateFixtureTierStatus.enforcedArtifacts).toContain("tests/thread-messages-screen.test.tsx")
     expect(khalaMobileGateFixtureTierStatus.pendingArtifacts).toEqual([])
     expect(khalaMobileGateFixtureTierStatus.state).toBe("qam_2_streaming_fixture_tier_enforced")
+  })
+
+  test("visual tier uses the owned baseline engine and records simulator truth separately", () => {
+    expect(khalaMobileGateVisualTierStatus.issueRef).toBe("#8539")
+    expect(khalaMobileGateVisualTierStatus.baselineEngine).toBe("packages/khala-qa-harness/src/visual-baseline.ts")
+    expect(khalaMobileGateVisualTierStatus.reportSchema).toBe("openagents.khala_mobile.visual_tier_report.v1")
+    expect(khalaMobileGateVisualTierStatus.statement).toContain("openagents.khala_visual_baselines.v1")
+    expect(khalaMobileGateVisualTierStatus.statement).toContain("simulator screenshot truth")
+    for (const artifact of khalaMobileGateVisualTierStatus.enforcedArtifacts) {
+      expect(existsSync(fromRepoRoot(artifact))).toBe(true)
+    }
   })
 })

@@ -1,0 +1,17 @@
+{
+  "entries": [
+    {
+      "colorScheme": "dark",
+      "harness": "maestro-checkpoint",
+      "height": 2532,
+      "id": "khala.mobile.screen.thread-empty.iphone-17e.dark",
+      "redactionCheckedAt": "2026-07-07T22:45:00.000Z",
+      "reducedMotion": "no-preference",
+      "screenshot": "screenshots/khala.mobile.screen.thread-empty.iphone-17e.dark.png",
+      "sha256": "293faba29215057258014da8448c154a1d29fa12dc3883f09650e2ca25907716",
+      "viewport": "iphone-17e",
+      "width": 1170
+    }
+  ],
+  "schema": "openagents.khala_visual_baselines.v1"
+}

@@ -67,3 +67,16 @@ export const khalaMobileGateFixtureTierStatus = {
   pendingArtifacts: [],
   state: "qam_2_streaming_fixture_tier_enforced",
 } as const
+
+export const khalaMobileGateVisualTierStatus = {
+  baselineEngine: "packages/khala-qa-harness/src/visual-baseline.ts",
+  enforcedArtifacts: [
+    "packages/khala-qa-harness/src/mobile-visual-tier.ts",
+    "packages/khala-qa-harness/src/mobile-visual-tier.test.ts",
+  ],
+  issueRef: "#8539",
+  reportSchema: "openagents.khala_mobile.visual_tier_report.v1",
+  state: "qam_4_baseline_blessing_workflow_enforced",
+  statement:
+    "QAM-4 uses the owned openagents.khala_visual_baselines.v1 engine for mobile visual blessing, changed-delta blocking, and intentional blessing receipts; simulator screenshot truth is recorded separately and never inferred from fixture proofs.",
+} as const
