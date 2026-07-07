@@ -42,8 +42,16 @@ onFlowStart:
 - tapOn: ${KHALA_MAESTRO_THREAD_TITLE}
 - assertVisible:
     text: "${KHALA_MAESTRO_THREAD_TITLE}|Thread"
-- assertVisible: "Provider"
-- tapOn: "Message…"
+# The composer's provider/lane picker row is collapsed behind the "+" toggle by
+# default (chat-composer.tsx `showOptions` starts false); open it so the
+# contract's "composer's lane picker is visible" clause is actually exercised.
+# The lane pills are accessible buttons that absorb their child text, so match
+# a pill's accessibilityLabel ("Send with <lane>"), then collapse the row again
+# so the bare "Send" button is unambiguous below.
+- tapOn: "Show composer options"
+- assertVisible: "Send with Claude"
+- tapOn: "Hide composer options"
+- tapOn: "Message"
 - inputText: ${KHALA_MAESTRO_PUBLIC_MESSAGE}
 - tapOn: "Send"
 - assertVisible: ${KHALA_MAESTRO_PUBLIC_MESSAGE}
