@@ -238,6 +238,7 @@ const makeTurn = (overrides: Partial<RuntimeTurnEntity> = {}): RuntimeTurnEntity
 
 type ChatComposerTestProps = Readonly<{
   activeTurn: RuntimeTurnEntity | undefined
+  appendMessage?: (input: { body: string; messageId: string; threadId: string }) => Promise<{ ok: boolean; error?: string }>
   push: (mutations: ReadonlyArray<{ name: string; args: unknown }>) => Promise<unknown>
 }>
 
@@ -245,11 +246,18 @@ type ChatComposerTestProps = Readonly<{
  * microtask turn so `usePushToTalk`'s real mount effect (which awaits the
  * mocked `getAvailabilityAsync()`) settles before any assertions run —
  * otherwise that state update lands just after `act`'s synchronous window
- * closes and React logs an "not wrapped in act(...)" warning. */
+ * closes and React logs an "not wrapped in act(...)" warning.
+ *
+ * `appendMessage` defaults to a resolving optimistic-append stand-in so the
+ * Send button is enabled (send is gated on the overlay-backed append path,
+ * 2026-07-07); a test can override it to assert the exact append call. */
 const mountComposer = async (props: ChatComposerTestProps) => {
+  const appendMessage = props.appendMessage ?? (() => Promise.resolve({ ok: true }))
   let renderer: ReturnType<typeof createTestRenderer> | undefined
   await act(async () => {
-    renderer = createTestRenderer(React.createElement(ChatComposer, { threadId: "thread_1", ...props }))
+    renderer = createTestRenderer(
+      React.createElement(ChatComposer, { threadId: "thread_1", ...props, appendMessage })
+    )
     await Promise.resolve()
   })
   return renderer!
@@ -305,9 +313,15 @@ describe("contract khala_mobile.composer.rn_component_mount_coverage.v1 — Chat
     expect((updatedInputs[0]!.props as { value: string }).value).toBe("hello from the test")
   })
 
-  test("pressing Send with idle text starts a new turn via push()", async () => {
+  // Also an oracle for khala_mobile.chat.optimistic_message_renders_on_send.v1
+  // (composer_send_uses_optimistic_append.unit): the send routes the chat
+  // message through the optimistic appendMessage path, not the raw push.
+  test("pressing Send with idle text optimistically appends the message, then starts a new turn via push()", async () => {
     const push = mock(() => Promise.resolve())
-    const renderer = await mountComposer({ activeTurn: undefined, push })
+    const appendMessage = mock((_input: { body: string; messageId: string; threadId: string }) =>
+      Promise.resolve({ ok: true }),
+    )
+    const renderer = await mountComposer({ activeTurn: undefined, appendMessage, push })
 
     const inputs = renderer.root.findAllByType("TextInput" as unknown as React.ComponentType)
     await act(() => {
@@ -316,18 +330,32 @@ describe("contract khala_mobile.composer.rn_component_mount_coverage.v1 — Chat
 
     const sendButtons = findByProp(renderer.root, "accessibilityLabel", "Send")
     expect(sendButtons.length).toBe(1)
-    // `onPress` triggers `sendMessage`, an async handler that awaits `push()`
-    // before its `finally` clears `sending` — awaiting the returned promise
-    // inside `act` keeps that whole state transition inside act's tracking
-    // window instead of leaking a state update past it.
+    // `onPress` triggers `sendMessage`, an async handler that awaits the
+    // optimistic append then `push()` before its `finally` clears `sending` —
+    // awaiting the returned promise inside `act` keeps that whole state
+    // transition inside act's tracking window instead of leaking a state
+    // update past it.
     await act(async () => {
       await (sendButtons[0]!.props as { onPress: () => Promise<void> }).onPress()
     })
 
+    // The chat message goes through the OPTIMISTIC overlay append (shows
+    // immediately + durably persists), not the raw control-intent push — the
+    // exact regression behind "sending a message does nothing" (2026-07-07).
+    expect(appendMessage).toHaveBeenCalledTimes(1)
+    const appendArgs = appendMessage.mock.calls[0]![0]!
+    expect(appendArgs.body).toBe("ship it")
+    expect(appendArgs.threadId).toBe("thread_1")
+    expect(typeof appendArgs.messageId).toBe("string")
+
+    // The push now carries ONLY the turn-start control intent; its bodyRef
+    // references the message the append just committed.
     expect(push).toHaveBeenCalledTimes(1)
     const calls = push.mock.calls as unknown as Array<Array<ReadonlyArray<{ name: string; args: unknown }>>>
     const mutations = calls[0]![0]!
-    expect(mutations.map(m => m.name)).toEqual(["chat.appendMessage", "runtime.startTurn"])
+    expect(mutations.map(m => m.name)).toEqual(["runtime.startTurn"])
+    const startTurnArgs = mutations[0]!.args as { bodyRef?: string }
+    expect(startTurnArgs.bodyRef).toBe(`chat_message.${appendArgs.messageId}`)
   })
 
   test("pressing Stop on an active turn calls push() with runtime.interruptTurn", async () => {

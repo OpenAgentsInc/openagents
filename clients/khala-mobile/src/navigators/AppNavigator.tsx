@@ -1,4 +1,9 @@
-import { createDrawerNavigator } from "@react-navigation/drawer"
+import {
+  createDrawerNavigator,
+  DrawerContentScrollView,
+  DrawerItemList,
+  type DrawerContentComponentProps,
+} from "@react-navigation/drawer"
 import {
   DarkTheme,
   NavigationContainer,
@@ -7,7 +12,10 @@ import {
 } from "@react-navigation/native"
 import { createNativeStackNavigator } from "@react-navigation/native-stack"
 import * as Linking from "expo-linking"
+import { View, type ViewStyle } from "react-native"
+import { SafeAreaView } from "react-native-safe-area-context"
 
+import { DrawerCreditsBalance } from "../components/drawer-credits-balance"
 import { CreditsHistoryScreen } from "../screens/credits-history-screen"
 import { RepoPickerScreen } from "../screens/repo-picker-screen"
 import { SettingsScreen } from "../screens/settings-screen"
@@ -35,36 +43,52 @@ const navigationTheme: Theme = {
   },
 }
 
-const linking: LinkingOptions<AppStackParamList> = {
+const linking: LinkingOptions<AppDrawerParamList> = {
   config: {
     screens: {
-      Home: {
+      Main: {
         screens: {
-          Settings: "settings",
           Threads: "",
+          ThreadMessages: "thread/:threadId",
+          RepoPicker: "thread/:threadId/repo",
+          CreditsHistory: "credits/history",
         },
       },
-      ThreadMessages: "thread/:threadId",
-      RepoPicker: "thread/:threadId/repo",
-      CreditsHistory: "credits/history",
+      Settings: "settings",
     },
   },
   prefixes: [Linking.createURL("/")],
 }
 
-const AppDrawerNavigator = () => (
-  <Drawer.Navigator
+/** The threads area — list, thread/chat view, repo picker, and credit history —
+ * as a native stack nested inside the root Drawer's "Main" screen. The chat
+ * header's hamburger opens the drawer from any of these via
+ * `navigation.getParent()?.openDrawer()`. */
+const MainStackNavigator = () => (
+  <Stack.Navigator
     screenOptions={{
-      drawerActiveTintColor: khalaMobileTheme.text,
-      drawerInactiveTintColor: khalaMobileTheme.textMuted,
-      drawerStyle: { backgroundColor: khalaMobileTheme.surface },
+      contentStyle: { backgroundColor: khalaMobileTheme.background },
       headerShown: false,
-      sceneStyle: { backgroundColor: khalaMobileTheme.background },
     }}
   >
-    <Drawer.Screen name="Threads" component={ThreadListScreen} options={{ title: tx("nav.threads") }} />
-    <Drawer.Screen name="Settings" component={SettingsScreen} options={{ title: tx("nav.settings") }} />
-  </Drawer.Navigator>
+    <Stack.Screen name="Threads" component={ThreadListScreen} />
+    <Stack.Screen name="ThreadMessages" component={ThreadMessagesScreen} />
+    <Stack.Screen name="RepoPicker" component={RepoPickerScreen} options={{ presentation: "modal" }} />
+    <Stack.Screen name="CreditsHistory" component={CreditsHistoryScreen} />
+  </Stack.Navigator>
+)
+
+/** Custom drawer flyout: the standard nav items, then the live credit balance
+ * pinned at the very bottom (owner request, 2026-07-07). */
+const AppDrawerContent = (props: DrawerContentComponentProps) => (
+  <SafeAreaView style={$drawerContent} edges={["top", "bottom"]}>
+    <DrawerContentScrollView {...props} contentContainerStyle={$drawerScroll}>
+      <DrawerItemList {...props} />
+    </DrawerContentScrollView>
+    <View style={$drawerFooter}>
+      <DrawerCreditsBalance />
+    </View>
+  </SafeAreaView>
 )
 
 export const AppNavigator = () => {
@@ -77,17 +101,23 @@ export const AppNavigator = () => {
 
   return (
     <NavigationContainer linking={linking} ref={navigationRef} theme={navigationTheme}>
-      <Stack.Navigator
+      <Drawer.Navigator
+        drawerContent={AppDrawerContent}
         screenOptions={{
-          contentStyle: { backgroundColor: khalaMobileTheme.background },
+          drawerActiveTintColor: khalaMobileTheme.text,
+          drawerInactiveTintColor: khalaMobileTheme.textMuted,
+          drawerStyle: { backgroundColor: khalaMobileTheme.surface },
           headerShown: false,
+          sceneStyle: { backgroundColor: khalaMobileTheme.background },
         }}
       >
-        <Stack.Screen name="Home" component={AppDrawerNavigator} />
-        <Stack.Screen name="ThreadMessages" component={ThreadMessagesScreen} />
-        <Stack.Screen name="RepoPicker" component={RepoPickerScreen} options={{ presentation: "modal" }} />
-        <Stack.Screen name="CreditsHistory" component={CreditsHistoryScreen} />
-      </Stack.Navigator>
+        <Drawer.Screen name="Main" component={MainStackNavigator} options={{ title: tx("nav.threads") }} />
+        <Drawer.Screen name="Settings" component={SettingsScreen} options={{ title: tx("nav.settings") }} />
+      </Drawer.Navigator>
     </NavigationContainer>
   )
 }
+
+const $drawerContent: ViewStyle = { flex: 1, backgroundColor: khalaMobileTheme.surface }
+const $drawerScroll: ViewStyle = { flexGrow: 1 }
+const $drawerFooter: ViewStyle = { backgroundColor: khalaMobileTheme.surface }

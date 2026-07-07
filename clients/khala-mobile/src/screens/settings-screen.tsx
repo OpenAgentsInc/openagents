@@ -1,4 +1,3 @@
-import type { NativeStackNavigationProp } from "@react-navigation/native-stack"
 import Constants from "expo-constants"
 import { useEffect, useState } from "react"
 import * as Notifications from "expo-notifications"
@@ -8,7 +7,7 @@ import { useKhalaAuth } from "../auth/khala-auth-context"
 import { KHALA_ACCOUNT_DELETION_POLICY_COPY } from "../auth/mobile-openauth"
 import { Button, Card, Header, ListItem, Screen, Text, useAppTheme } from "../ignite"
 import type { ThemedStyle } from "../ignite"
-import type { AppDrawerScreenProps, AppStackParamList } from "../navigators/navigationTypes"
+import type { AppDrawerScreenProps } from "../navigators/navigationTypes"
 import type { OnDeviceReadinessRow } from "../native/on-device-readiness-core"
 import { useOnDeviceReadiness } from "../native/use-on-device-readiness"
 import { registerForPushNotificationsAsync } from "../push/push-notifications-client"
@@ -365,7 +364,6 @@ type SettingsScreenProps = AppDrawerScreenProps<"Settings">
 
 export const SettingsScreen = ({ navigation }: SettingsScreenProps) => {
   const { themed } = useAppTheme()
-  const stackNavigation = navigation.getParent<NativeStackNavigationProp<AppStackParamList>>()
 
   return (
     <Screen preset="scroll" contentContainerStyle={themed($contentContainer)}>
@@ -376,7 +374,7 @@ export const SettingsScreen = ({ navigation }: SettingsScreenProps) => {
       />
       <View style={themed($body)}>
         <AccountSection />
-        <CreditsSection onViewHistory={() => stackNavigation?.navigate("CreditsHistory")} />
+        <CreditsSection onViewHistory={() => navigation.navigate("Main", { screen: "CreditsHistory" })} />
         <ModelsSection />
         <NotificationsSection />
         <AboutSection />

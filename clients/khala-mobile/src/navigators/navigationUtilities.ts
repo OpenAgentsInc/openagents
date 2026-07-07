@@ -6,9 +6,9 @@ import {
   type PartialState
 } from "@react-navigation/native"
 
-import type { AppStackParamList } from "./navigationTypes"
+import type { AppDrawerParamList } from "./navigationTypes"
 
-export const navigationRef = createNavigationContainerRef<AppStackParamList>()
+export const navigationRef = createNavigationContainerRef<AppDrawerParamList>()
 
 export type KhalaBackAction = "exit_app" | "go_back" | "ignore"
 

@@ -5,7 +5,11 @@ import type { ThemedStyle } from "../ignite"
 import { TouchableFeedback } from "./touchable-feedback"
 
 export type KhalaThreadHeaderProps = Readonly<{
-  onBack: () => void
+  /** Opens the drawer flyout menu (owner report, 2026-07-07: the chat header's
+   * left button is the hamburger nav that opens the drawer — not a broken
+   * back chevron). Wired to `navigation.getParent()?.openDrawer()` by the
+   * thread screen; the drawer is where the nav items and credit balance live. */
+  onOpenMenu: () => void
   /** One-tap "start a fresh thread" action. Always rendered so it stays a
    * reachable escape hatch even while a turn is in flight (owner report,
    * 2026-07-06: "no way to start a new thread ... cant do anything"). When
@@ -20,7 +24,7 @@ export type KhalaThreadHeaderProps = Readonly<{
  * `Text` primitive + theme tokens (`../ignite`); the UI-thread press
  * cross-fade stays on the arcade `TouchableFeedback`. */
 export const KhalaThreadHeader = ({
-  onBack,
+  onOpenMenu,
   onNewThread,
   subtitle,
   title,
@@ -31,13 +35,13 @@ export const KhalaThreadHeader = ({
     <View style={themed($container)}>
       <View style={themed($row)}>
         <TouchableFeedback
-          accessibilityLabel="Back"
+          accessibilityLabel="Open menu"
           accessibilityRole="button"
           style={themed($circleButton)}
           hitSlop={10}
-          onPress={onBack}
+          onPress={onOpenMenu}
         >
-          <Text style={[$backGlyph, { color: theme.colors.text }]}>‹</Text>
+          <Text style={[$menuGlyph, { color: theme.colors.text }]}>☰</Text>
         </TouchableFeedback>
 
         <View style={themed($titleColumn)}>
@@ -120,5 +124,5 @@ const $newButtonDisabled: ThemedStyle<ViewStyle> = ({ colors }) => ({
 
 const $subtitle: ThemedStyle<TextStyle> = ({ colors }) => ({ color: colors.textDim })
 
-const $backGlyph: TextStyle = { fontSize: 36, lineHeight: 40 }
+const $menuGlyph: TextStyle = { fontSize: 26, lineHeight: 30 }
 const $newGlyph: TextStyle = { fontSize: 22, lineHeight: 24 }

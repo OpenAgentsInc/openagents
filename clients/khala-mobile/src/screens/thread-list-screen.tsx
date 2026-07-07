@@ -4,14 +4,14 @@ import {
   personalScope,
   type ChatThreadEntity,
 } from "@openagentsinc/khala-sync"
-import type { NativeStackNavigationProp } from "@react-navigation/native-stack"
+import type { DrawerNavigationProp } from "@react-navigation/drawer"
 import { ActivityIndicator, FlatList, View, type TextStyle, type ViewStyle } from "react-native"
 import Animated, { FadeIn } from "react-native-reanimated"
 
 import { useKhalaAuth } from "../auth/khala-auth-context"
 import { Card, EmptyState, Header, ListItem, Screen, Text, useAppTheme } from "../ignite"
 import type { ThemedStyle } from "../ignite"
-import type { AppDrawerScreenProps, AppStackParamList } from "../navigators/navigationTypes"
+import type { AppDrawerParamList, AppStackScreenProps } from "../navigators/navigationTypes"
 import { OnboardingFlow } from "./onboarding-flow"
 import { formatRelativeTime } from "../sync/relative-time-core"
 import { sortByKeyDesc } from "../sync/khala-sync-entities-core"
@@ -30,7 +30,7 @@ const threadEntranceDelay = (index: number): number =>
 const recencyOf = (thread: ChatThreadEntity): string =>
   thread.lastMessageAt ?? thread.updatedAt ?? thread.createdAt
 
-type ThreadListScreenProps = AppDrawerScreenProps<"Threads">
+type ThreadListScreenProps = AppStackScreenProps<"Threads">
 
 type ThreadListNoticeProps = Readonly<{
   detail?: string
@@ -192,13 +192,12 @@ export const ThreadListScreen = ({ navigation }: ThreadListScreenProps) => {
   })
   const threads = sortByKeyDesc(state.items, recencyOf)
   const now = Date.now()
-  const stackNavigation = navigation.getParent<NativeStackNavigationProp<AppStackParamList>>()
   const firstThread = threads[0]
   const latestRecency = firstThread === undefined ? undefined : recencyOf(firstThread)
 
   return (
     <Screen preset="fixed" contentContainerStyle={themed($fill)}>
-      <Header title="Khala" leftIcon="☰" onLeftPress={() => navigation.openDrawer()} />
+      <Header title="Khala" leftIcon="☰" onLeftPress={() => navigation.getParent<DrawerNavigationProp<AppDrawerParamList>>()?.openDrawer()} />
       {syncRuntimeStatus === "missing_token" ? (
         <ThreadListNotice
           detail="Restart the app to sign in again."
@@ -216,7 +215,7 @@ export const ThreadListScreen = ({ navigation }: ThreadListScreenProps) => {
         // stuck on, and it naturally never shows again once the user has any
         // thread at all.
         <OnboardingFlow
-          onThreadCreated={({ threadId, title }) => stackNavigation?.replace("ThreadMessages", { threadId, title })}
+          onThreadCreated={({ threadId, title }) => navigation.replace("ThreadMessages", { threadId, title })}
         />
       ) : (
         <FlatList
@@ -239,7 +238,7 @@ export const ThreadListScreen = ({ navigation }: ThreadListScreenProps) => {
               <ThreadRow
                 now={now}
                 onPress={() =>
-                  stackNavigation?.navigate("ThreadMessages", {
+                  navigation.navigate("ThreadMessages", {
                     threadId: thread.threadId,
                     title: thread.title,
                   })

@@ -93,7 +93,7 @@ top follow-up item for whoever picks this up next.
 
 ## Registry
 
-Registry version: `2026-07-06.8` (schema `openagents.behavior_contracts.v1`)
+Registry version: `2026-07-07.1` (schema `openagents.behavior_contracts.v1`)
 
 ### `khala_mobile.auth.tailnet_auto_discovery_before_manual_login.v1` — RETIRED
 
@@ -141,7 +141,7 @@ Registry version: `2026-07-06.8` (schema `openagents.behavior_contracts.v1`)
 - **Stated by:** owner via khala-code-session on 2026-07-06
 - **Statement:** A thread-list (or any scope-entities read) that gets stuck in the sync session's must_refetch phase is never shown as an eternal, unexplained loading spinner. It surfaces as a real error with a restart hint, and the hook makes one bounded automatic retry attempt before giving up. Filed after a fresh GitHub sign-in landed on the Khala nav with a permanent 'Loading threads' spinner and no way to tell anything had gone wrong.
 - **Enforcement tier:** test-sweep
-- **Oracle** `resolve_scope_entities_status.must_refetch.unit` (bun-test, unit): A scope parked in the session's must_refetch phase (bootstrap retries exhausted) always maps to an error state with a clear message, regardless of item count — never silently "loading" forever. — `clients/khala-mobile/tests/resolve-scope-entities-status.test.ts`
+- **Oracle** `resolve_scope_entities_status.must_refetch.unit` (bun-test, unit): A scope parked in the session's must_refetch phase (bootstrap retries exhausted) always maps to an error state with a clear message, regardless of item count — never silently 'loading' forever. — `clients/khala-mobile/tests/resolve-scope-entities-status.test.ts`
 - **Verification:** bun test tests/resolve-scope-entities-status.test.ts tests/use-khala-sync-scope-entities.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.
 - **Authority boundary:** Binds only the thread-list/scope-entities read hook's status mapping (what the UI shows for a given sync phase). It does not change the underlying session's bootstrap retry/backoff policy itself, and it does not cover why a scope's bootstrap fails in the first place — only that a failure is never silently indistinguishable from still-loading.
 
@@ -285,7 +285,7 @@ Registry version: `2026-07-06.8` (schema `openagents.behavior_contracts.v1`)
 - **Oracle** `composer_mounts_idle_shows_send.unit` (bun-test, unit): The real ChatComposer component mounts without crashing via react-test-renderer, and the idle (no active turn) state shows exactly one Send button and zero Stop buttons. — `clients/khala-mobile/tests/chat-composer.test.tsx`
 - **Oracle** `composer_active_turn_shows_stop_hides_lane_picker.unit` (bun-test, unit): With an active turn, the composer shows exactly one Stop button and zero Send buttons, and the idle-only lane picker (accessibilityLabel="Provider") does not render. — `clients/khala-mobile/tests/chat-composer.test.tsx`
 - **Oracle** `composer_typing_updates_input_value.unit` (bun-test, unit): Calling the real TextInput's onChangeText prop updates the controlled input's value on next render, proving the component's own text state wiring, not just the pure text-merge helpers. — `clients/khala-mobile/tests/chat-composer.test.tsx`
-- **Oracle** `composer_press_send_calls_push_start_turn.unit` (bun-test, unit): Pressing the real Send button's onPress after typing idle text calls the injected push() exactly once with a [chat.appendMessage, runtime.startTurn] mutation pair, proving the component's own send-dispatch wiring end to end. — `clients/khala-mobile/tests/chat-composer.test.tsx`
+- **Oracle** `composer_press_send_calls_push_start_turn.unit` (bun-test, unit): Pressing the real Send button's onPress after typing idle text optimistically appends the chat message through the injected appendMessage() exactly once (body/threadId/messageId), then calls push() exactly once with a [runtime.startTurn] control intent whose bodyRef references that message — proving the component's send-dispatch wiring end to end (the message goes through the optimistic overlay path, not the raw control-intent push). — `clients/khala-mobile/tests/chat-composer.test.tsx`
 - **Oracle** `composer_press_stop_calls_push_interrupt_turn.unit` (bun-test, unit): Pressing the real Stop button's onPress while a turn is active calls the injected push() exactly once with a [runtime.interruptTurn] mutation. — `clients/khala-mobile/tests/chat-composer.test.tsx`
 - **Oracle** `composer_turn_status_labels_render_per_status.unit` (bun-test, unit): For each real turn-status value (queued, running, waiting_for_input), the mounted component renders the correct human status label and still shows a reachable Stop button. — `clients/khala-mobile/tests/chat-composer.test.tsx`
 - **Verification:** bun test tests/chat-composer.test.tsx inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main. Real component mounting is enabled by the bun test React Native harness in tests/support/rn-test-environment.ts (see that file's header for how react-native itself becomes importable, and which native-bridge-touching leaves are stubbed).
@@ -403,9 +403,41 @@ Registry version: `2026-07-06.8` (schema `openagents.behavior_contracts.v1`)
 
 - **Surface:** khala-mobile (thread view)
 - **Stated by:** owner via khala-code-session on 2026-07-06
-- **Statement:** A queued or running turn must never trap the user. Filed after the owner's report: "just the one message and button shows stop, cant do anything." Stop cancels the turn and returns the composer to an editable state, and the user can always navigate back or start a new thread even with a turn in flight.
+- **Statement:** A queued or running turn must never trap the user. Filed after the owner's report: "just the one message and button shows stop, cant do anything." Stop cancels the turn and returns the composer to an editable state, and the user can always open the drawer menu or start a new thread even with a turn in flight.
 - **Enforcement tier:** test-sweep
-- **Oracle** `header_escape_hatches_always_render.unit` (bun-test, unit): The mounted KhalaThreadHeader always renders both a 'Back' and a 'New thread' button; the header takes no turn state, so neither escape hatch can be hidden while a turn is queued/running/waiting_for_input. — `clients/khala-mobile/tests/khala-thread-header.test.tsx`
+- **Oracle** `header_escape_hatches_always_render.unit` (bun-test, unit): The mounted KhalaThreadHeader always renders both an 'Open menu' (drawer hamburger) and a 'New thread' button; the header takes no turn state, so neither escape hatch can be hidden while a turn is queued/running/waiting_for_input. — `clients/khala-mobile/tests/khala-thread-header.test.tsx`
 - **Oracle** `stop_interrupts_and_composer_reverts_when_idle.source` (bun-test, unit): Stop builds a runtime.interruptTurn intent (a real cancel, not a visual no-op), the composer exposes an editable Send button for the idle state, and the thread screen renders KhalaThreadHeader above the only turn-gated element. — `clients/khala-mobile/tests/khala-thread-header.test.tsx`
 - **Verification:** bun test tests/khala-thread-header.test.tsx tests/chat-composer.test.tsx inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.
-- **Authority boundary:** Binds that the thread view's two ways out (Back, New thread) live in a turn-agnostic header that renders unconditionally, and that Stop dispatches a real interrupt while an idle composer is editable. The live idle↔active render transition of the composer itself is owned/proven by khala_mobile.composer.rn_component_mount_coverage.v1 (idle-shows-Send + Stop-calls-interrupt oracles); this contract binds the never-trapped structural guarantee around it. It does not prove the server actually settles an interrupted turn.
+- **Authority boundary:** Binds that the thread view's two ways out (Open menu, New thread) live in a turn-agnostic header that renders unconditionally, and that Stop dispatches a real interrupt while an idle composer is editable. The live idle↔active render transition of the composer itself is owned/proven by khala_mobile.composer.rn_component_mount_coverage.v1 (idle-shows-Send + Stop-calls-interrupt oracles); this contract binds the never-trapped structural guarantee around it. It does not prove the server actually settles an interrupted turn.
+
+### `khala_mobile.thread.header_menu_opens_drawer.v1` — ENFORCED
+
+- **Surface:** khala-mobile (thread view)
+- **Stated by:** owner via khala-code-session on 2026-07-07
+- **Statement:** The chat/thread header's left button is a hamburger that opens the drawer flyout menu — not a back button (the old back chevron did not work). Filed after the owner's report that the chat header back button didn't work and should open the drawer nav instead.
+- **Enforcement tier:** test-sweep
+- **Oracle** `menu_button_present_and_calls_handler.unit` (bun-test, unit): The mounted KhalaThreadHeader renders exactly one 'Open menu' hamburger button (and zero 'Back' buttons); pressing it calls onOpenMenu exactly once. — `clients/khala-mobile/tests/khala-thread-header.test.tsx`
+- **Oracle** `thread_screen_wires_menu_to_open_drawer.source` (bun-test, unit): The thread-messages screen wires the header's onOpenMenu to open the root Drawer via navigation.getParent()?.openDrawer(), so the flyout menu (nav items + credit balance) opens from the chat view. — `clients/khala-mobile/tests/khala-thread-header.test.tsx`
+- **Verification:** bun test tests/khala-thread-header.test.tsx inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.
+- **Authority boundary:** Binds KhalaThreadHeader's left-action render/press wiring (a real mounted component tree) plus the thread screen's source wiring of that action to the root Drawer. It does not prove the Drawer actually animates open on a device (that is React Navigation's own behavior), nor that the thread screen mounts end to end — the header owns the affordance; the navigator wiring is asserted at the source level.
+
+### `khala_mobile.chat.optimistic_message_renders_on_send.v1` — ENFORCED
+
+- **Surface:** khala-mobile (chat composer)
+- **Stated by:** owner via khala-code-session on 2026-07-07
+- **Statement:** When a user sends a message it must appear in the transcript immediately (optimistic) and persist. Filed after the owner's report that typing a message and hitting send did nothing — the message vanished from the input and never showed in the list.
+- **Enforcement tier:** test-sweep
+- **Oracle** `optimistic_append_visible_via_hook.unit` (bun-test, unit): An optimistic chat append (overlay-backed, its server push not yet resolved) is surfaced by useKhalaSyncScopeEntities immediately — proving the hook reads the overlay (confirmed base + pending optimistic), not the confirmed-only store. A store-only read would return an empty thread, the exact 'sending does nothing' bug. — `clients/khala-mobile/tests/use-khala-sync-scope-entities.test.ts`
+- **Oracle** `composer_send_uses_optimistic_append.unit` (bun-test, unit): Pressing Send routes the chat message through the optimistic appendMessage() (shows immediately + persists) and sends only the runtime.startTurn control intent via push — so a plain send always produces a locally-visible message. — `clients/khala-mobile/tests/chat-composer.test.tsx`
+- **Verification:** bun test tests/use-khala-sync-scope-entities.test.ts tests/chat-composer.test.tsx inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.
+- **Authority boundary:** Binds the local-first read path: an optimistic chat-message append is visible through useKhalaSyncScopeEntities (the transcript's read hook) before the server confirms it, and the composer routes a send through that optimistic append. It does not prove server-side turn dispatch, nor the on-device FlatList render — it binds that the user's own just-sent message exists in the read model the transcript renders from, which is exactly what regressed.
+
+### `khala_mobile.auth.signout_ends_web_session_for_account_switch.v1` — ENFORCED
+
+- **Surface:** khala-mobile (auth)
+- **Stated by:** owner via khala-code-session on 2026-07-07
+- **Statement:** Signing out fully ends the web auth session so the next sign-in can choose a different account. Filed after the owner could not switch to a test account: after Sign out, 'Log in with GitHub' silently re-authenticated the same account because the persistent Safari/issuer cookies were reused.
+- **Enforcement tier:** test-sweep
+- **Oracle** `signout_ephemeral_web_session.source` (bun-test, unit): signInWithGitHub runs the auth prompt with prefersEphemeralWebBrowserSession: true (a non-persistent web session that does not reuse Safari/issuer/GitHub cookies), and signOut revokes the server session (deleteMobileOpenAuthSession) — so re-auth after sign-out presents a fresh GitHub login / account picker instead of silently re-signing-in the previous account. — `clients/khala-mobile/tests/auth-ephemeral-session.test.ts`
+- **Verification:** bun test tests/auth-ephemeral-session.test.ts inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.
+- **Authority boundary:** Binds the client-side web-auth session posture: the OAuth prompt runs in an ephemeral (non-cookie-sharing) web session, and sign-out revokes the server session. It does not control the OpenAuth issuer's or GitHub's own server-side session lifetime beyond the revoke call, and it is a source-level assertion of the flow, not a device-driven account-switch e2e.

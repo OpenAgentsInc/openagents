@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react"
 import { SyncScope } from "@openagentsinc/khala-sync"
-import type { ConfirmedEntity, KhalaSyncLocalStore, KhalaSyncOverlay, KhalaSyncSession } from "@openagentsinc/khala-sync-client"
+import type { KhalaSyncLocalStore, KhalaSyncOverlay, KhalaSyncSession } from "@openagentsinc/khala-sync-client"
 import { Effect } from "effect"
 
 import { acquireScopeSubscription, releaseScopeSubscription } from "./scope-subscription-refcount"
@@ -85,8 +85,8 @@ export const resolveScopeEntitiesStatusAndError = (
   return { error: null, status: "loading" }
 }
 
-const decodeConfirmed = <T>(
-  entities: ReadonlyArray<ConfirmedEntity>,
+const decodeEntities = <T>(
+  entities: ReadonlyArray<{ readonly postImageJson: string }>,
   decode: (value: unknown) => T
 ): ReadonlyArray<T> =>
   entities.map(entity => decode(JSON.parse(entity.postImageJson) as unknown))
@@ -118,9 +118,16 @@ export function useKhalaSyncScopeEntities<T>(
 
     const refresh = async () => {
       try {
-        const entities = await runEffect(store.readEntities(syncScope, entityType))
+        // Read through the OVERLAY (confirmed base + still-pending optimistic
+        // mutations), not the confirmed-only durable store. Local-first fix
+        // (2026-07-07 "sending a message does nothing"): an optimistic
+        // chat-message append lives only in the overlay until the server
+        // confirms it, so a store-only read never showed the user's own
+        // just-sent message. `overlay.read` loads the same confirmed rows the
+        // store holds and layers pending optimistic effects on top.
+        const view = await runEffect(overlay.read(syncScope))
         if (cancelled) return
-        const items = decodeConfirmed(entities, decodeRef.current)
+        const items = decodeEntities(view.list(entityType), decodeRef.current)
         const phase = session.state(syncScope).phase
         // One bounded, automatic recovery attempt: `must_refetch` means the
         // session's OWN bootstrap retries already ran out, but re-calling

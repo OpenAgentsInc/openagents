@@ -409,3 +409,69 @@ describe("useKhalaSyncScopeEntities (thread revisit local-first cache)", () => {
     })
   })
 })
+
+/**
+ * Regression for "sending a message does nothing" (2026-07-07): the user's
+ * own just-sent message must show IMMEDIATELY, before the server confirms it.
+ * This is the optimistic-overlay path — a store-only read (confirmed rows
+ * only) would show nothing here, which was the exact bug. The hook must read
+ * through the overlay (confirmed base + pending optimistic effects).
+ *
+ * Oracle for khala_mobile.chat.optimistic_message_renders_on_send.v1
+ */
+describe("useKhalaSyncScopeEntities (optimistic append visible before server confirmation)", () => {
+  test("an optimistic overlay row absent from the confirmed store is still surfaced by the hook", async () => {
+    const scope = String(threadScope(THREAD_ID))
+    const optimisticMessage = {
+      authorUserId: OWNER_ID,
+      body: "optimistic hello",
+      createdAt: FIXED_TIME,
+      deletedAt: null,
+      messageId: "chat-message.optimistic",
+      threadId: THREAD_ID,
+      updatedAt: FIXED_TIME,
+    }
+    const optimisticEntity = {
+      entityId: optimisticMessage.messageId,
+      entityType: CHAT_MESSAGE_ENTITY_TYPE,
+      postImageJson: JSON.stringify(optimisticMessage),
+    }
+
+    // The confirmed store is EMPTY (the message hasn't been confirmed by the
+    // server yet); the pending optimistic effect lives ONLY in the overlay.
+    // A store-only read would show an empty thread — the exact "sending does
+    // nothing" bug. Reading the overlay, the hook must surface the row.
+    const session = {
+      state: () => ({ phase: "live" as const }),
+      subscribe: () => Effect.succeed(undefined),
+      subscribeState: () => () => undefined,
+      unsubscribe: () => Effect.succeed(undefined),
+    }
+    const store = {
+      readEntities: () => Effect.succeed([]),
+    }
+    const overlay = {
+      read: () =>
+        Effect.succeed({
+          get: () => undefined,
+          list: (entityType: string) =>
+            entityType === CHAT_MESSAGE_ENTITY_TYPE ? [optimisticEntity] : [],
+        }),
+      subscribe: () => () => undefined,
+    }
+
+    const { states } = await mountScopeEntities(scope, CHAT_MESSAGE_ENTITY_TYPE, {
+      overlay: overlay as never,
+      session: session as never,
+      store: store as never,
+    })
+
+    await act(async () => {
+      await flush()
+    })
+
+    const latest = states[states.length - 1]!
+    expect(latest.items.map(message => message.messageId)).toEqual(["chat-message.optimistic"])
+    expect(latest.status).toBe("ready")
+  })
+})

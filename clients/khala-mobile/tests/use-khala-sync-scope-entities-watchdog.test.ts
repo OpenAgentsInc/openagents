@@ -44,6 +44,7 @@ describe("useKhalaSyncScopeEntities watchdog", () => {
       readEntities: () => Effect.succeed([]),
     }
     const overlay = {
+      read: () => Effect.succeed({ get: () => undefined, list: () => [] }),
       subscribe: () => () => undefined,
     }
 
@@ -114,6 +115,7 @@ describe("useKhalaSyncScopeEntities watchdog", () => {
       readEntities: () => Effect.succeed([]),
     }
     const overlay = {
+      read: () => Effect.succeed({ get: () => undefined, list: () => [] }),
       subscribe: () => () => undefined,
     }
 

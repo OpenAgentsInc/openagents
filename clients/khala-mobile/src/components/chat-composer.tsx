@@ -1,6 +1,6 @@
 import type { KhalaRuntimeLane, RuntimeTurnEntity } from "@openagentsinc/khala-sync"
 import { useEffect, useRef, useState } from "react"
-import { Platform, Pressable, TextInput, View, type TextStyle, type ViewStyle } from "react-native"
+import { Pressable, TextInput, View, type TextStyle, type ViewStyle } from "react-native"
 
 import { ActivityIndicator } from "./activity-indicator"
 import { TouchableFeedback } from "./touchable-feedback"
@@ -12,7 +12,6 @@ import { usePushToTalk } from "../native/use-push-to-talk"
 import { registerForPushNotificationsAsync } from "../push/push-notifications-client"
 import {
   buildAppendUserMessageIntentArgs,
-  buildChatAppendMessageArgs,
   buildInterruptTurnIntentArgs,
   buildStartTurnIntentArgs,
   chatMessageBodyRef,
@@ -42,9 +41,24 @@ const PICKABLE_LANES: ReadonlyArray<{ lane: KhalaRuntimeLane; label: string }> =
   { label: "Claude", lane: "claude_pylon" }
 ]
 
+export type ChatComposerAppendMessage = (
+  input: Readonly<{ body: string; messageId: string; threadId: string }>,
+) => Promise<Readonly<{ ok: boolean; error?: string }>>
+
 type ChatComposerProps = Readonly<{
   threadId: string
   activeTurn: RuntimeTurnEntity | undefined
+  /** Optimistic chat-message append (the sync runtime's overlay-backed
+   * `appendMessage`). Bug fix (2026-07-07: "sending a message does nothing"):
+   * the chat message is written through the OVERLAY here so it shows in the
+   * transcript IMMEDIATELY (local-first) and is durably queued through the
+   * same sync session, instead of only going out on the raw control-intent
+   * push (a separate client group that produced no optimistic local row).
+   * The `runtime.startTurn` / `runtime.appendUserMessage` control intent is
+   * still sent via `push` AFTER the message is durably committed, so the
+   * dispatch consumer can always resolve the message the intent references.
+   * `undefined` while the sync runtime is still opening (send is gated off). */
+  appendMessage?: ChatComposerAppendMessage
   /** Which lane to preselect for the NEXT brand-new turn (#8405) — normally
    * the thread's most recent turn's lane (`mostRecentTurnLane`), so a
    * thread that's always talked to Claude keeps defaulting to Claude.
@@ -74,6 +88,7 @@ type ChatComposerProps = Readonly<{
  * that's cross-agent delegation, #8407. */
 export const ChatComposer = ({
   activeTurn,
+  appendMessage,
   defaultLane,
   onQuoteConsumed,
   push,
@@ -122,7 +137,11 @@ export const ChatComposer = ({
 
   const trimmed = text.trim()
   const hasActiveTurn = activeTurn !== undefined
-  const canSend = trimmed.length > 0 && !sending
+  // Send needs the overlay-backed append path (the sync runtime) — without it
+  // a control intent would reference a chat message that was never created,
+  // which is exactly the "sending does nothing" bug. Disabled (not silently
+  // no-op) while the runtime is still opening.
+  const canSend = trimmed.length > 0 && !sending && appendMessage !== undefined
 
   const sendMessage = async (sendMode: SendMode) => {
     if (!canSend) return
@@ -133,16 +152,24 @@ export const ChatComposer = ({
     const messageId = makeSafeRef("msg")
     const bodyRef = chatMessageBodyRef(messageId)
     try {
-      const chatMutation: PendingMutation = {
-        args: buildChatAppendMessageArgs({ body, messageId, threadId }),
-        name: "chat.appendMessage"
+      // Optimistic, local-first chat-message append: shows the message in the
+      // transcript IMMEDIATELY (overlay-backed) and durably commits it through
+      // the sync session BEFORE the control intent that references it goes out
+      // — so a plain send can never look like it "did nothing" (2026-07-07).
+      // The append is idempotent by messageId; awaiting its commit here keeps
+      // the message ahead of the turn intent so the dispatch consumer can
+      // always resolve `bodyRef`.
+      if (appendMessage !== undefined) {
+        const appended = await appendMessage({ body, messageId, threadId })
+        if (!appended.ok) {
+          throw new Error(appended.error ?? "Could not send your message.")
+        }
       }
       if (hasActiveTurn && sendMode === "steer" && activeTurn !== undefined) {
         // Steering attaches to a turn that's already dispatching on a fixed
         // provider — target its lane, not whatever the (hidden, while a
         // turn is active) idle picker currently holds.
         await push([
-          chatMutation,
           {
             args: buildAppendUserMessageIntentArgs({
               bodyRef,
@@ -163,7 +190,6 @@ export const ChatComposer = ({
         const turnId = makeSafeRef("turn")
         const target = { lane: hasActiveTurn && activeTurn !== undefined ? activeTurn.lane : selectedLane }
         await push([
-          chatMutation,
           { args: buildStartTurnIntentArgs({ bodyRef, nowIso, target, threadId, turnId }), name: "runtime.startTurn" }
         ])
         // Push notification permission prompt fires exactly here — the first
@@ -358,7 +384,11 @@ export const ChatComposer = ({
   )
 }
 
-export const chatComposerKeyboardVerticalOffset = Platform.select({ default: 0, ios: 88 })
+/** Zero on every platform. The thread screen's `KeyboardAvoidingView` uses
+ * `padding` on iOS with THIS offset; the SafeAreaView's bottom inset already
+ * sits below that view, so any non-zero offset double-counts and opens a dead
+ * gap under the input when the keyboard is up (owner report, 2026-07-06). */
+export const chatComposerKeyboardVerticalOffset = 0
 
 const $container: ThemedStyle<ViewStyle> = ({ spacing }) => ({
   backgroundColor: "transparent",

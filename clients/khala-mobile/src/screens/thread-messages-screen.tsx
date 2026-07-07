@@ -16,6 +16,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import {
   FlatList,
   KeyboardAvoidingView,
+  Platform,
   Pressable,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
@@ -23,19 +24,19 @@ import {
   type ViewStyle,
   View,
 } from "react-native"
+import type { DrawerNavigationProp } from "@react-navigation/drawer"
 import Animated, { FadeIn } from "react-native-reanimated"
 import { SafeAreaView } from "react-native-safe-area-context"
 
 import { type PopupOptionType, TouchablePopupHandler } from "../components/blurred-popup"
 import { ChatComposer, chatComposerKeyboardVerticalOffset } from "../components/chat-composer"
-import { CreditsBalanceChip } from "../components/credits-balance-chip"
 import { KhalaScrollToLatestButton } from "../components/khala-scroll-to-latest-button"
 import { KhalaThreadHeader } from "../components/khala-thread-header"
 import { SwipeableItem } from "../components/swipeable-item"
 import { TranscriptPartRow } from "../components/transcript-part-row"
 import { EmptyState, Text, useAppTheme } from "../ignite"
 import type { ThemedStyle } from "../ignite"
-import type { AppStackScreenProps } from "../navigators/navigationTypes"
+import type { AppDrawerParamList, AppStackScreenProps } from "../navigators/navigationTypes"
 import { buildCopyMarkdown, buildCopyText } from "../sync/blurred-popup-menu-core"
 import { buildHandoffPromptBody, summarizeTurnEventsForHandoff } from "../sync/khala-cross-agent-handoff-core"
 import {
@@ -259,9 +260,7 @@ export const ThreadMessagesScreen = ({ navigation, route }: ThreadMessagesScreen
   return (
     <SafeAreaView style={themed($safeArea)} edges={["top", "bottom", "left", "right"]}>
       <KhalaThreadHeader
-        onBack={() => {
-          if (navigation.canGoBack()) navigation.goBack()
-        }}
+        onOpenMenu={() => navigation.getParent<DrawerNavigationProp<AppDrawerParamList>>()?.openDrawer()}
         onNewThread={syncRuntime.status === "ready" && !creatingThread ? () => void startNewThread() : undefined}
         subtitle="work · Khala Mobile"
         title={title ?? "Thread"}
@@ -280,11 +279,14 @@ export const ThreadMessagesScreen = ({ navigation, route }: ThreadMessagesScreen
         <Text numberOfLines={1} style={themed($dim)} text={repoBound ? `Repo: ${boundRepo.owner}/${boundRepo.name}` : "No repo — tap to pick one"} />
         <Text style={themed($faint)} text="›" />
       </Pressable>
-      <View style={themed($chipRowWrap)}>
-        <CreditsBalanceChip />
-      </View>
       <KeyboardAvoidingView
-        behavior={chatComposerKeyboardVerticalOffset === 0 ? "height" : "padding"}
+        // iOS: `padding` + a 0 vertical offset makes the composer hug the top
+        // of the keyboard exactly. The SafeAreaView's own bottom inset already
+        // sits BELOW this view (covered by the keyboard once it's up), so any
+        // extra offset here double-counts and opens a dead gap under the input
+        // (owner report, 2026-07-06). Android keeps its prior `height` resize
+        // (unchanged). See `chatComposerKeyboardVerticalOffset` (now 0).
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={$flex1}
         keyboardVerticalOffset={chatComposerKeyboardVerticalOffset}
       >
@@ -373,6 +375,7 @@ export const ThreadMessagesScreen = ({ navigation, route }: ThreadMessagesScreen
         {syncRuntimeStatus === "missing_token" ? null : (
           <ChatComposer
             activeTurn={activeTurn}
+            appendMessage={syncRuntime.status === "ready" ? syncRuntime.runtime.appendMessage : undefined}
             defaultLane={defaultLane}
             onQuoteConsumed={() => setQuoteRequest(undefined)}
             push={push}
@@ -408,11 +411,6 @@ const $repoChip: ThemedStyle<ViewStyle> = ({ colors, spacing }) => ({
   backgroundColor: colors.palette.neutral300,
   paddingHorizontal: spacing.sm,
   paddingVertical: spacing.xs,
-})
-
-const $chipRowWrap: ThemedStyle<ViewStyle> = ({ spacing }) => ({
-  marginHorizontal: spacing.md,
-  marginBottom: spacing.xs,
 })
 
 const $transcriptContent: ThemedStyle<ViewStyle> = ({ spacing }) => ({

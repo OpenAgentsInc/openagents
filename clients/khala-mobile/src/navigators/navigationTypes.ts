@@ -2,13 +2,16 @@ import type { DrawerScreenProps } from "@react-navigation/drawer"
 import type { CompositeScreenProps, NavigatorScreenParams } from "@react-navigation/native"
 import type { NativeStackScreenProps } from "@react-navigation/native-stack"
 
-export type AppDrawerParamList = {
-  Threads: undefined
-  Settings: undefined
-}
-
+/**
+ * Navigation hierarchy (MM chat-header drawer rework, 2026-07-07): the Drawer
+ * is now the ROOT navigator so the flyout menu overlays every in-app screen —
+ * including the thread/chat view — and the chat header's hamburger can open it
+ * via `navigation.getParent()?.openDrawer()`. The threads area (list + thread
+ * view + repo picker + credit history) is a native stack hosted inside the
+ * drawer's "Main" screen; Settings is a sibling drawer screen.
+ */
 export type AppStackParamList = {
-  Home: NavigatorScreenParams<AppDrawerParamList> | undefined
+  Threads: undefined
   CreditsHistory: undefined
   RepoPicker: {
     threadId: string
@@ -19,11 +22,19 @@ export type AppStackParamList = {
   }
 }
 
-export type AppStackScreenProps<T extends keyof AppStackParamList> =
-  NativeStackScreenProps<AppStackParamList, T>
+export type AppDrawerParamList = {
+  Main: NavigatorScreenParams<AppStackParamList> | undefined
+  Settings: undefined
+}
 
-export type AppDrawerScreenProps<T extends keyof AppDrawerParamList> =
+/** A screen inside the threads native stack. `getParent()` reaches the root
+ * Drawer (so the chat header's hamburger can `openDrawer()`). */
+export type AppStackScreenProps<T extends keyof AppStackParamList> =
   CompositeScreenProps<
-    DrawerScreenProps<AppDrawerParamList, T>,
-    AppStackScreenProps<keyof AppStackParamList>
+    NativeStackScreenProps<AppStackParamList, T>,
+    DrawerScreenProps<AppDrawerParamList>
   >
+
+/** A screen mounted directly on the root Drawer (e.g. Settings). */
+export type AppDrawerScreenProps<T extends keyof AppDrawerParamList> =
+  DrawerScreenProps<AppDrawerParamList, T>

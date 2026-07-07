@@ -231,7 +231,18 @@ export const KhalaAuthProvider = ({ children }: { children: ReactNode }) => {
       const authRequest = new AuthRequest(
         mobileOpenAuthRequestConfig(redirectUri) as AuthRequestConfig,
       )
-      const result = await authRequest.promptAsync(discovery)
+      // `preferEphemeralSession: true` is the reliable fix for "sign out can't
+      // switch accounts" (owner report, 2026-07-07): on iOS this opens
+      // a NON-persistent ASWebAuthenticationSession that does not share cookies
+      // with system Safari, so the OpenAuth issuer session cookie
+      // (auth.openagents.com) and GitHub's own session are never reused. Every
+      // login therefore presents a fresh GitHub login / account picker instead
+      // of silently re-authenticating the previously signed-in account. Pairs
+      // with `signOut`'s server-side session revoke below; together they end the
+      // web session so re-auth can choose a different account.
+      const result = await authRequest.promptAsync(discovery, {
+        preferEphemeralSession: true,
+      })
 
       // Pull the callback query params (present on success AND on error
       // results — `parseReturnUrl` attaches them either way).

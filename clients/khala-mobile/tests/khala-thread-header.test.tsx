@@ -104,7 +104,7 @@ describe("contract khala_mobile.thread.new_thread_action_always_reachable.v1 —
     const onNewThread = mock(() => undefined)
     const renderer = await mount(
       React.createElement(KhalaThreadHeader, {
-        onBack: () => undefined,
+        onOpenMenu: () => undefined,
         onNewThread,
         subtitle: "work · Khala Mobile",
         title: "Thread",
@@ -122,7 +122,7 @@ describe("contract khala_mobile.thread.new_thread_action_always_reachable.v1 —
   test("new_thread_button_disabled_without_runtime.unit — with no handler the button still renders (never hidden) but is disabled", async () => {
     const renderer = await mount(
       React.createElement(KhalaThreadHeader, {
-        onBack: () => undefined,
+        onOpenMenu: () => undefined,
         subtitle: "work · Khala Mobile",
         title: "Thread",
       }),
@@ -147,10 +147,10 @@ describe("contract khala_mobile.thread.new_thread_action_always_reachable.v1 —
 
 // Oracle for khala_mobile.thread.active_turn_never_traps_user.v1
 describe("contract khala_mobile.thread.active_turn_never_traps_user.v1 — escape hatches survive an in-flight turn", () => {
-  test("header_escape_hatches_always_render.unit — Back and New thread both render, independent of any turn state", async () => {
+  test("header_escape_hatches_always_render.unit — Open menu and New thread both render, independent of any turn state", async () => {
     const renderer = await mount(
       React.createElement(KhalaThreadHeader, {
-        onBack: () => undefined,
+        onOpenMenu: () => undefined,
         onNewThread: () => undefined,
         subtitle: "work · Khala Mobile",
         title: "Thread",
@@ -159,7 +159,7 @@ describe("contract khala_mobile.thread.active_turn_never_traps_user.v1 — escap
 
     // The header takes NO turn/props gating, so both ways out of a thread are
     // structurally unconditional — a running turn can never hide them.
-    expect(findButton(renderer.root as never, "Back").length).toBe(1)
+    expect(findButton(renderer.root as never, "Open menu").length).toBe(1)
     expect(findButton(renderer.root as never, "New thread").length).toBe(1)
   })
 
@@ -174,5 +174,38 @@ describe("contract khala_mobile.thread.active_turn_never_traps_user.v1 — escap
     expect(composer).toContain('accessibilityLabel="Send"')
     const screen = await Bun.file(repoPath("clients/khala-mobile/src/screens/thread-messages-screen.tsx")).text()
     expect(screen).toContain("KhalaThreadHeader")
+  })
+})
+
+// Oracle for khala_mobile.thread.header_menu_opens_drawer.v1
+describe("contract khala_mobile.thread.header_menu_opens_drawer.v1 — chat header left button opens the drawer", () => {
+  test("menu_button_present_and_calls_handler.unit — the header renders a single 'Open menu' hamburger that fires onOpenMenu, and no 'Back' button", async () => {
+    const onOpenMenu = mock(() => undefined)
+    const renderer = await mount(
+      React.createElement(KhalaThreadHeader, {
+        onOpenMenu,
+        onNewThread: () => undefined,
+        subtitle: "work · Khala Mobile",
+        title: "Thread",
+      }),
+    )
+
+    // The old broken back chevron is gone; the left action is the hamburger.
+    expect(findButton(renderer.root as never, "Back").length).toBe(0)
+    const menuButtons = findButton(renderer.root as never, "Open menu")
+    expect(menuButtons.length).toBe(1)
+    const onPress = menuButtons[0]!.props.onPress as (() => void) | undefined
+    expect(typeof onPress).toBe("function")
+    act(() => onPress?.())
+    expect(onOpenMenu).toHaveBeenCalledTimes(1)
+  })
+
+  test("thread_screen_wires_menu_to_open_drawer.source — the thread screen opens the root Drawer from the header hamburger", async () => {
+    const source = await Bun.file(repoPath("clients/khala-mobile/src/screens/thread-messages-screen.tsx")).text()
+    expect(source).toContain("onOpenMenu=")
+    expect(source).toContain("openDrawer()")
+    // The thread view is a native-stack screen inside the Drawer, so the
+    // drawer is reached one level up via getParent().
+    expect(source).toContain("getParent")
   })
 })
