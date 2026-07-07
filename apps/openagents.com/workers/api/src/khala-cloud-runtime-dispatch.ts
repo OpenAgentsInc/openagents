@@ -30,8 +30,12 @@
 // EVENT STREAM. Each turn streams owner-attributed runtime events on a valid
 // `KhalaRuntimeLane` (default `hosted_khala`) through the same sanctioned
 // `executePush` + `runtime.recordEvent` path the hosted consumer uses:
-// `turn.started` (the atomic claim) -> `tool.call`/`tool.result|tool.error`
-// (placement) -> `turn.finished`. The minted bearer NEVER appears in any event.
+// `turn.started` (the atomic claim) -> `text.delta`/`text.completed` (a
+// public-safe placement status line, on a successful launch) -> `turn.finished`
+// (`stop` on launch, `error` on refusal). The minted bearer NEVER appears in
+// any event.
+
+import { Cause, Effect, Exit, Option } from 'effect'
 
 import {
   decodeKhalaRuntimeEvent,
@@ -49,6 +53,10 @@ import {
   type SyncSql,
 } from '@openagentsinc/khala-sync-server'
 
+import type {
+  CloudCodingRuntimeAdapter,
+  CloudCodingSessionRequest,
+} from './cloud/cloud-coding-session-routes'
 import {
   buildCloudRuntimeInferenceConfig,
   buildCloudRuntimeWorkContext,
@@ -497,4 +505,80 @@ export const runCloudGcpRuntimeDispatch = async (
     }
   }
   return { failed, launched, scanned: admitted.length, skipped }
+}
+
+// PRODUCTION LAUNCH SEAM --------------------------------------------------
+// Bridge the injected {@link CloudGcpPlacementLaunchFn} to the real
+// cloud-control adapter (`makeCloudControlCloudCodingAdapter`). Builds a
+// `cloud-gcp` `CloudCodingSessionRequest` carrying `work_context_b64` in its
+// options (which step 3's adapter forwards onto the /v1/placement POST) and
+// runs the adapter's Effect, mapping success/typed-failure to the seam's
+// result. Owner-attributed: the account ref defaults to `agent:<ownerUserId>`.
+
+export type CloudCodingAdapterLaunchSeamConfig = Readonly<{
+  /** Adapter (Codex vs claude_agent) for the placement request. Default 'codex'. */
+  adapter?: 'codex' | 'claude_agent'
+  /** Repo trust tier. Default 'private' (owner-owned repos). */
+  repoTrustTier?: 'public' | 'private' | 'regulated'
+  /** Map an ownerUserId to the placement account ref. Default `agent:<owner>`. */
+  accountRefForOwner?: (ownerUserId: string) => string
+}>
+
+const defaultAccountRefForOwner = (ownerUserId: string): string =>
+  `agent:${ownerUserId}`
+
+/**
+ * Wrap a live {@link CloudCodingRuntimeAdapter} as a
+ * {@link CloudGcpPlacementLaunchFn}. Pure glue: no I/O of its own beyond
+ * running the adapter's Effect; unit-testable with a fake adapter.
+ */
+export const makeCloudCodingAdapterLaunchSeam = (
+  adapter: CloudCodingRuntimeAdapter,
+  config: CloudCodingAdapterLaunchSeamConfig = {},
+): CloudGcpPlacementLaunchFn => {
+  const adapterKind = config.adapter ?? 'codex'
+  const repoTrustTier = config.repoTrustTier ?? 'private'
+  const accountRefForOwner =
+    config.accountRefForOwner ?? defaultAccountRefForOwner
+  return async input => {
+    const request: CloudCodingSessionRequest = {
+      adapter: adapterKind,
+      lane: CLOUD_GCP_RUNTIME_LANE,
+      objective: input.objective,
+      options: { workContextB64: input.workContextB64 },
+      repoRef: input.repoRef,
+      repoTrustTier,
+      timeoutSeconds: input.timeoutSeconds,
+      verify: [],
+      workContextRef: input.workContextRef,
+      threadRef: input.threadRef,
+      ...(input.repoBindingRef === undefined
+        ? {}
+        : { repoBindingRef: input.repoBindingRef }),
+    }
+    const exit = await Effect.runPromiseExit(
+      adapter.launch({
+        accountRef: accountRefForOwner(input.ownerUserId),
+        lane: CLOUD_GCP_RUNTIME_LANE,
+        request,
+        sessionId: input.sessionId,
+      }),
+    )
+    if (Exit.isSuccess(exit)) {
+      const session = exit.value
+      return {
+        agentComputerState: session.agentComputerState,
+        lifecycleReceiptRefs: session.lifecycleReceiptRefs,
+        ok: true,
+        placementRef:
+          session.placementRef ?? `placement.cloud-coding.${session.sessionId}`,
+        sessionId: session.sessionId,
+      }
+    }
+    const failure = Cause.findErrorOption(exit.cause)
+    const reason = Option.isSome(failure)
+      ? failure.value.reason
+      : 'cloud_placement_effect_failed'
+    return { ok: false, reason }
+  }
 }

@@ -1,11 +1,18 @@
+import { Effect } from 'effect'
 import { describe, expect, test } from 'vitest'
 
 import type { PushResponse } from '@openagentsinc/khala-sync'
 import type { SyncSql } from '@openagentsinc/khala-sync-server'
 
 import {
+  CloudCodingAdapterError,
+  type CloudCodingRuntimeAdapter,
+  type CloudCodingSession,
+} from './cloud/cloud-coding-session-routes'
+import {
   CLOUD_GCP_RUNTIME_DISPATCH_CLIENT_GROUP_ID,
   dispatchCloudGcpRuntimeTurn,
+  makeCloudCodingAdapterLaunchSeam,
   runCloudGcpRuntimeDispatch,
   type CloudGcpAdmittedWorkContext,
   type CloudGcpMintFn,
@@ -293,5 +300,91 @@ describe('runCloudGcpRuntimeDispatch', () => {
     reset()
     const summary = await runCloudGcpRuntimeDispatch(baseDeps())
     expect(summary).toEqual({ failed: 0, launched: 0, scanned: 0, skipped: 0 })
+  })
+})
+
+describe('makeCloudCodingAdapterLaunchSeam', () => {
+  const session = (
+    over: Partial<CloudCodingSession> = {},
+  ): CloudCodingSession => ({
+    accountRef: 'agent:github:1',
+    adapter: 'codex',
+    agentComputerRef: 'agent-computer.run_gce_1',
+    agentComputerState: 'provisioning',
+    artifactRef: null,
+    createdAt: '2026-07-07T00:00:00.000Z',
+    lane: 'cloud-gcp',
+    leaseRefs: [],
+    lifecycleReceiptRefs: ['receipt.cloud.gce.provisioning.1'],
+    placementRef: 'placement.cloud-coding.run_gce_1',
+    repoRef: 'repo:octocat/Hello-World',
+    repoTrustTier: 'private',
+    resourceUsageReceiptRefs: [],
+    sessionId: 'ccs.turn_t1',
+    state: 'running',
+    timeoutSeconds: 1800,
+    workContextRef: 'work-context.agent-computer.wc1',
+    ...over,
+  })
+
+  const launchInput = {
+    objective: 'seam-a',
+    ownerUserId: 'github:14167547',
+    repoRef: 'repo:octocat/Hello-World',
+    sessionId: 'ccs.turn_t1',
+    threadRef: 'thread.t1',
+    timeoutSeconds: 1800,
+    workContextB64: 'eyJhIjoxfQ==',
+    workContextRef: 'work-context.agent-computer.wc1',
+  }
+
+  test('maps a successful adapter launch and passes work_context_b64 + owner account ref', async () => {
+    let launchArg: unknown
+    const adapter: CloudCodingRuntimeAdapter = {
+      id: 'fake',
+      get: () => Effect.succeed(undefined),
+      launch: input => {
+        launchArg = input
+        return Effect.succeed(session())
+      },
+    }
+    const seam = makeCloudCodingAdapterLaunchSeam(adapter)
+    const result = await seam(launchInput)
+    expect(result).toEqual({
+      agentComputerState: 'provisioning',
+      lifecycleReceiptRefs: ['receipt.cloud.gce.provisioning.1'],
+      ok: true,
+      placementRef: 'placement.cloud-coding.run_gce_1',
+      sessionId: 'ccs.turn_t1',
+    })
+    const arg = launchArg as {
+      accountRef: string
+      lane: string
+      request: { options: Record<string, unknown>; lane: string }
+    }
+    expect(arg.accountRef).toBe('agent:github:14167547')
+    expect(arg.lane).toBe('cloud-gcp')
+    expect(arg.request.lane).toBe('cloud-gcp')
+    expect(arg.request.options.workContextB64).toBe('eyJhIjoxfQ==')
+  })
+
+  test('maps a typed adapter failure to ok:false with the adapter reason', async () => {
+    const adapter: CloudCodingRuntimeAdapter = {
+      id: 'fake',
+      get: () => Effect.succeed(undefined),
+      launch: () =>
+        Effect.fail(
+          new CloudCodingAdapterError({
+            adapterId: 'not-armed-cloud-gce',
+            reason: 'cloud_gce_provisioning_not_armed',
+          }),
+        ),
+    }
+    const seam = makeCloudCodingAdapterLaunchSeam(adapter)
+    const result = await seam(launchInput)
+    expect(result).toEqual({
+      ok: false,
+      reason: 'cloud_gce_provisioning_not_armed',
+    })
   })
 })
