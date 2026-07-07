@@ -76,6 +76,93 @@ describe('translateProductStateSql', () => {
       'INSERT INTO t (id, v) VALUES ($1, $2) ON CONFLICT(id) DO UPDATE SET v = excluded.v',
     )
   })
+
+  // #8515 dialect widening: json_extract / datetime / julianday / strftime and
+  // INSERT OR REPLACE, driven by the real money-domain SQL these translate.
+  test('json_extract with a top-level key becomes ::jsonb ->> (forum tip-earnings shape)', () => {
+    expect(
+      translateProductStateSql(
+        `SELECT json_extract(pe.public_projection_json, '$.status') AS s FROM t WHERE json_extract(pe.public_projection_json, '$.settlementAuthority') = ?`,
+      ),
+    ).toBe(
+      `SELECT (pe.public_projection_json)::jsonb ->> 'status' AS s FROM t WHERE (pe.public_projection_json)::jsonb ->> 'settlementAuthority' = $1`,
+    )
+  })
+
+  test('json_extract on a bare column translates too (token-usage-ledger shape)', () => {
+    expect(
+      translateProductStateSql(
+        `SELECT json_extract(safe_metadata_json, '$.selectedReplicaId') FROM token_usage_events`,
+      ),
+    ).toBe(
+      `SELECT (safe_metadata_json)::jsonb ->> 'selectedReplicaId' FROM token_usage_events`,
+    )
+  })
+
+  test('json_extract with a nested path becomes #>> {a,b}', () => {
+    expect(
+      translateProductStateSql(`SELECT json_extract(actor_json, '$.owner.slug') FROM forum_posts`),
+    ).toBe(`SELECT (actor_json)::jsonb #>> '{owner,slug}' FROM forum_posts`)
+  })
+
+  test(`datetime('now') becomes now()`, () => {
+    expect(
+      translateProductStateSql(`UPDATE t SET updated_at = datetime('now') WHERE id = ?`),
+    ).toBe(`UPDATE t SET updated_at = now() WHERE id = $1`)
+  })
+
+  test('julianday day-difference stays correct (business-factory cycle-time shape)', () => {
+    expect(
+      translateProductStateSql(
+        `SELECT (julianday(ac.updated_at) - julianday(ac.created_at)) * 1440.0 FROM c ac`,
+      ),
+    ).toBe(
+      `SELECT ((extract(epoch from (ac.updated_at)::timestamptz) / 86400.0 + 2440587.5) - (extract(epoch from (ac.created_at)::timestamptz) / 86400.0 + 2440587.5)) * 1440.0 FROM c ac`,
+    )
+  })
+
+  test(`julianday('now') resolves against now()`, () => {
+    expect(translateProductStateSql(`SELECT julianday('now')`)).toBe(
+      `SELECT (extract(epoch from now()) / 86400.0 + 2440587.5)`,
+    )
+  })
+
+  test(`strftime('%s', col) becomes a floored epoch bigint`, () => {
+    expect(translateProductStateSql(`SELECT strftime('%s', created_at) FROM t`)).toBe(
+      `SELECT floor(extract(epoch from (created_at)::timestamptz))::bigint FROM t`,
+    )
+  })
+
+  test('a non-%s strftime format is left untouched (fails loud at Postgres)', () => {
+    const sql = `SELECT strftime('%Y-%m-01T00:00:00.000Z', window_start) FROM p`
+    expect(translateProductStateSql(sql)).toBe(sql)
+  })
+
+  test('INSERT OR REPLACE with an explicit ON CONFLICT target is accepted', () => {
+    expect(
+      translateProductStateSql(
+        'INSERT OR REPLACE INTO t (id, v) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET v = excluded.v',
+      ),
+    ).toBe(
+      'INSERT INTO t (id, v) VALUES ($1, $2) ON CONFLICT(id) DO UPDATE SET v = excluded.v',
+    )
+  })
+
+  test('a bare INSERT OR REPLACE (no conflict target) throws loudly', () => {
+    expect(() =>
+      translateProductStateSql('INSERT OR REPLACE INTO t (id, v) VALUES (?, ?)'),
+    ).toThrow(/INSERT OR REPLACE needs an explicit ON CONFLICT/)
+  })
+
+  test('json_extract + IS ? + placeholders compose in one statement', () => {
+    expect(
+      translateProductStateSql(
+        `SELECT id FROM pe WHERE json_extract(pe.public_projection_json, '$.status') = ? AND settled_at IS ?`,
+      ),
+    ).toBe(
+      `SELECT id FROM pe WHERE (pe.public_projection_json)::jsonb ->> 'status' = $1 AND settled_at IS NOT DISTINCT FROM $2`,
+    )
+  })
 })
 
 describe.skipIf(!hasLocalPostgres())(
