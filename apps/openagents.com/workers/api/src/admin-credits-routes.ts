@@ -57,6 +57,12 @@ export type AdminCaller = Readonly<{ userId: string }>
 
 export type AdminCreditsRouteDependencies<Bindings> = Readonly<{
   db: (env: Bindings) => D1Database
+  /** #8515: the Postgres-adapter handle for `github_signup_credit_grants`
+   * (khala-sync migration 0047) — the grant now writes it there, so the
+   * admin display reads it there too. Optional: falls back to `db` when
+   * absent (tests), so only production is redirected. `admin_credit_grants`
+   * stays on `db`. */
+  signupGrantsDb?: ((env: Bindings) => D1Database) | undefined
   /** CFG-4 (#8519): the Postgres-authoritative credits ledger — every
    * `agent_balances`/`pay_ins` read on this surface goes through it. The D1
    * handle above keeps the grant-tracking tables (admin_credit_grants,
@@ -249,10 +255,14 @@ const routeListUsers = async <Bindings>(
   )
 
   const userIds = pageRows.map(row => String(row.user_id))
-  const grantUserIds = async (table: string): Promise<ReadonlySet<string>> => {
+  const signupGrantsDb = (dependencies.signupGrantsDb ?? dependencies.db)(env)
+  const grantUserIdsFrom = async (
+    source: D1Database,
+    table: string,
+  ): Promise<ReadonlySet<string>> => {
     if (userIds.length === 0) return new Set()
     const placeholders = userIds.map(() => '?').join(', ')
-    const result = await db
+    const result = await source
       .prepare(
         `SELECT DISTINCT user_id FROM ${table} WHERE user_id IN (${placeholders})`,
       )
@@ -262,8 +272,8 @@ const routeListUsers = async <Bindings>(
   }
   const [signupGrantUsers, adminGrantUsers, balancesByActorRef] =
     await Promise.all([
-      grantUserIds('github_signup_credit_grants'),
-      grantUserIds('admin_credit_grants'),
+      grantUserIdsFrom(signupGrantsDb, 'github_signup_credit_grants'),
+      grantUserIdsFrom(db, 'admin_credit_grants'),
       readBalancesMsatByActorRef(
         dependencies.ledgerDb(env),
         userIds.map(userId => agentRefForUser(userId)),
@@ -357,9 +367,10 @@ const routeHistory = async <Bindings>(
   if (target === null) return targetUserNotFound()
   const limit = Math.max(1, Math.min(200, optionalInteger(url.searchParams.get('limit') ?? undefined) ?? 50))
 
+  const signupGrantsDb = (dependencies.signupGrantsDb ?? dependencies.db)(env)
   const [adminGrants, signupGrants] = await Promise.all([
     readAdminCreditGrantsForUser(db, target.user_id),
-    readGithubSignupCreditGrantsForUser(db, target.user_id),
+    readGithubSignupCreditGrantsForUser(signupGrantsDb, target.user_id),
   ])
 
   type HistoryEntry = Readonly<{

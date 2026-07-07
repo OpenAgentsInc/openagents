@@ -3923,7 +3923,12 @@ const makeAuthIssuer = (env: OpenAgentsWorkerEnv) => {
                 : { ipHash: await sha256Hex(clientIp) }),
             },
             {
-              db: openAgentsDatabase(env),
+              // #8515: the grant's idempotency/audit + abuse-floor writes
+              // (github_signup_credit_grants / github_signup_credit_ip_mints)
+              // ran on the 401-dead D1 bridge, so the grant threw and new
+              // signups silently got $0. Route them through the Postgres
+              // product-state adapter handle (khala-sync migration 0047).
+              db: khalaCodeProductStateDatabaseForEnv(env),
               ledgerDb: paymentsLedgerDbForEnv(env),
               recordCreditBalanceProjection: creditBalanceProjectionRecorderForEnv(env),
             },
@@ -4099,6 +4104,10 @@ const { requireUserBearerSession } =
 // its own.
 const adminCreditsRoutes = makeAdminCreditsRoutes<Env>({
   db: openAgentsDatabase,
+  // #8515: the signup-grant tracking table moved to Postgres (migration 0047);
+  // read it through the same adapter handle the grant now writes. admin_credit_
+  // grants stays on `db` (separate un-migrated table, out of this cut's scope).
+  signupGrantsDb: env => khalaCodeProductStateDatabaseForEnv(env),
   identityDb: env => identityDbForEnv(env),
   ledgerDb: env => paymentsLedgerDbForEnv(env),
   recordCreditBalanceProjection: env => creditBalanceProjectionRecorderForEnv(env),
