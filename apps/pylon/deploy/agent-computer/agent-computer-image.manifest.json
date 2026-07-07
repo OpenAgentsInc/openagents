@@ -1,6 +1,6 @@
 {
   "schemaVersion": "openagents.agent_computer_image_manifest.v1",
-  "status": "in_microvm_coding_turn_proven_placement_integration_pending",
+  "status": "in_microvm_exact_model_token_receipt_proven_placement_dispatch_integration_pending",
   "strategyDoc": "docs/khala-code/2026-07-06-agent-computers-strategy.md",
   "inMicrovmTurnProof": {
     "provedAt": "2026-07-07",
@@ -12,7 +12,7 @@
     "artifactCopyOut": "result.json extracted microVM -> host; baseCommit matched the pinned commit",
     "reclaim": "microVM SIGKILLed, per-run scratch rootfs wiped, tap deleted",
     "egressFix": "baked image had systemd-networkd enabled with empty /etc/systemd/network/, which claimed eth0 and cleared the kernel ip=; fix = disable+mask systemd-networkd.service/.socket/-wait-online + mask systemd-resolved + static /etc/resolv.conf (8.8.8.8/1.1.1.1), then e2fsck -fy",
-    "modelTokenReceipt": "NOT produced — the turn-runner runs a deterministic coding step, not an LLM turn; a real model-token receipt (/api/khala/cloud/runtime-turn-usage) requires a Codex/Claude OAuth login baked into the image or routing through the hosted Khala gateway"
+    "modelTokenReceipt": "PROVEN 2026-07-07 (re-baked phase-2 turn-runner): a real microVM turn from the baked image (rootfsDigest sha256:fe7d6606...) ran the in-guest turn-runner with a work-context `inference` block (AC1 staging agent bearer linked to the mobile ownerUserId, gateway baseUrl=openagents-monolith-staging, model=openagents/khala, no-meter secret). It made ONE POST /v1/chat/completions (no-meter header => gateway billing.mode=no_debit, ZERO gateway rows) then POST /api/khala/cloud/runtime-turn-usage => insertedTokenUsage:true. Authoritative khala_sync_staging: EXACTLY ONE exact token_usage_events row for the turn (id event.inference.served-tokens.khala-cloud-runtime.276237b445903380835eb1b1cd53d4e4; openagents/khala; in=906 out=198 reasoning=0 total=1104; usage_truth=exact; demand_kind=external; demand_source=khala_mobile_org_cloud_runtime; actor_user_id=the mobile owner) and ZERO non-runtime-usage gateway rows for the turn/thread. The exact-one-receipt single-charge money path is proven from inside a real Firecracker microVM."
   },
   "substrateProof": {
     "provedAt": "2026-07-07",
@@ -31,7 +31,13 @@
       "source": "firecracker-ci/v1.10/x86_64/ubuntu-22.04.ext4 (STOCK CI rootfs, NOT the baked agent-computer image)",
       "sha256": "040927105bd01b19e7b02cd5da5a9552b428a7f84bd5ffc22ebfce4ddf258a07",
       "stagedAt": "/srv/openagents/cloud-vm/rootfs.ext4",
-      "missingRuntime": ["git", "bun", "node", "openagents-pylon-runtime", "guest-agent"]
+      "missingRuntime": [
+        "git",
+        "bun",
+        "node",
+        "openagents-pylon-runtime",
+        "guest-agent"
+      ]
     },
     "provenLifecycle": {
       "boot": "microVM booted in ~1s with its own guest kernel 5.10.223 (host runs 6.17), 2 vCPUs / 1024 MiB",
@@ -51,17 +57,20 @@
     "gcpProject": "openagentsgemini",
     "nestedVirtualization": true,
     "kvmDeviceRequired": true,
-    "allowedMachineFamilies": ["n2", "n1-haswell-or-newer"],
+    "allowedMachineFamilies": [
+      "n2",
+      "n1-haswell-or-newer"
+    ],
     "inboundNetwork": "none",
     "defaultAccess": "iap-ssh-only"
   },
   "guestImage": {
     "kernelDigest": "sha256:22847375721aceea63d934c28f2dfce4670b6f52ec904fae19f5145a970c1e65",
     "kernelSource": "firecracker-ci/v1.10/x86_64/vmlinux-5.10.223",
-    "rootfsDigest": "sha256:78861d5a033657ec5a0752ee328d5ca568bee815122fba0797da5b6cb5a339eb",
-    "rootfsDigestPrevious": "sha256:3e612f6fd4e9f98cacf167cdb5582eaf2399a57e86705e4b165797367a63cf0b (pre-egress-fix)",
-    "rootfsSource": "debootstrap jammy (ubuntu 22.04) + git 2.34.1 + bun 1.3.14 + python3 + ca-certificates + openssh-client + vsock guest agent (:1024) + turn-runner (compiled from apps/pylon/deploy/agent-computer/turn-runner.ts, real #8475 materializer) + egress fix (systemd-networkd disabled/masked, static resolv.conf); built on agent-computer-gce-1 at /srv/openagents/cloud-vm/agent-computer-rootfs.ext4 (4.0G ext4)",
-    "rootfsStatus": "VALIDATED TURN IMAGE: boots + vsock-exec proven inside microVM + real in-guest git egress + full checkout->staged-diff coding turn (TURN-PROOF-RESULT: PASS 2026-07-07). See inMicrovmTurnProof above.",
+    "rootfsDigest": "sha256:fe7d660683100915e5010c0472099cf72fc3ddf7d840611c5826b58dea792635",
+    "rootfsDigestPrevious": "sha256:78861d5a033657ec5a0752ee328d5ca568bee815122fba0797da5b6cb5a339eb (pre-model-turn-bake: git egress fixed but /opt/agent/turn-runner predated the phase-2 no-meter inference call)",
+    "rootfsSource": "debootstrap jammy (ubuntu 22.04) + git 2.34.1 + bun 1.3.14 + python3 + ca-certificates + openssh-client + vsock guest agent (:1024) + turn-runner (phase-2 no-meter model turn, bun build --compile --target=bun-linux-x64 apps/pylon/deploy/agent-computer/turn-runner.ts @ origin/main; carries the x-openagents-org-cloud-runtime-no-meter header) + egress fix (systemd-networkd disabled/masked, static resolv.conf); built on agent-computer-gce-1 at /srv/openagents/cloud-vm/agent-computer-rootfs.ext4 (4.0G ext4)",
+    "rootfsStatus": "VALIDATED TURN IMAGE: boots + vsock-exec proven inside microVM + real in-guest git egress + full checkout->staged-diff coding turn + EXACT model-token receipt from the in-guest phase-2 turn (2026-07-07). See inMicrovmTurnProof above.",
     "scratchPolicy": "per-work-context-disposable",
     "scratchWipeReceiptRequired": true,
     "microvmDestroyReceiptRequired": true
@@ -69,13 +78,17 @@
   "runtime": {
     "pylonRuntime": "apps/pylon",
     "executor": "agent-computer-executor-from-issue-8473",
-    "agents": ["codex", "claude_agent", "hosted_khala"],
+    "agents": [
+      "codex",
+      "claude_agent",
+      "hosted_khala"
+    ],
     "scmCredentialPath": "openagents-scm-broker-only",
     "modelTurnRuntime": {
-      "status": "source_landed_bake_pending",
+      "status": "in_microvm_exact_model_token_receipt_proven",
       "source": "apps/pylon/deploy/agent-computer/turn-runner.ts",
-      "note": "turn-runner.ts now has a phase-2 model turn: when the work-context carries an `inference` block (agent bearer + gateway baseUrl + model + ownerUserId), it makes ONE POST /v1/chat/completions call (mirroring runWithHostedKhalaGateway) and posts the EXACT model-token receipt to POST /api/khala/cloud/runtime-turn-usage (mirroring recordRuntimeTurnUsageReceipt + KhalaCloudRuntimeUsageIngestBody). Unit-tested (apps/pylon/tests/agent-computer-turn-runner.test.ts, 9 pass) + bundles clean (0.29 MB, no server/Effect deps). The agent bearer is never serialized into events/result. The baked rootfsDigest sha256:78861d5a... PREDATES this change: rebuild the turn-runner bundle and re-bake /opt/agent/turn-runner before this digest carries the model turn, then re-pin.",
-      "liveProof": "PENDING owner unblock — the DoD's exact-model-token receipt from inside the microVM needs a valid STAGING programmatic agent token. As of 2026-07-07 POST /api/agents/register 500s on openagents-monolith-staging (prod register works — staging-specific store/migration bug) AND gcloud requires interactive reauth (blocks Cloud Run deploy + Cloud SQL proxy). See NEEDS_OWNER.md."
+      "note": "Phase-2 model turn: when the work-context carries an `inference` block (agent bearer + gateway baseUrl + model + ownerUserId + no-meter secret), the turn-runner makes ONE POST /v1/chat/completions (mirroring runWithHostedKhalaGateway, carrying x-openagents-org-cloud-runtime-no-meter) then posts the EXACT model-token receipt to POST /api/khala/cloud/runtime-turn-usage (mirroring recordRuntimeTurnUsageReceipt + KhalaCloudRuntimeUsageIngestBody). The agent bearer is never serialized into events/result. The baked /opt/agent/turn-runner IS this build as of rootfsDigest sha256:fe7d6606... (re-compiled bun-linux-x64 from origin/main and re-baked 2026-07-07).",
+      "liveProof": "PROVEN 2026-07-07 against openagents-monolith-staging. See inMicrovmTurnProof.modelTokenReceipt for the authoritative khala_sync_staging row (COUNT=1 exact, owner-attributed, 0 gateway rows). Remaining for the full #8503 dispatch DoD: (1) Seam A \u2014 a cloud-gcp intent->/v1/placement dispatcher that threads the `inference` block; (2) cloud oa-codex-control placement->cloud_vm.rs microVM branch + openagents.resource_usage_receipt.v1 lifecycle receipts (provision/active/idle/reclaim vm_seconds); (3) run the control daemon as a root-armed service so /v1/placement can boot Firecracker; (4) #8477 git writeback (branch/PR) from the in-guest turn. The in-VM turn here was driven through the same cloud_vm.rs run_cloud_vm_session path the placement branch will call, with an inference-bearing work-context."
     }
   },
   "isolation": {
