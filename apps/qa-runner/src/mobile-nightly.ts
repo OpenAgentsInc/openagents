@@ -4,6 +4,8 @@ export const KHALA_MOBILE_NIGHTLY_ROW_SCHEMA =
 export type KhalaMobileNightlyVerdict = "passed" | "failed" | "blocked" | "inconclusive";
 
 export type KhalaMobileNightlyStepId =
+  | "android-maestro-flows"
+  | "android-visual-capture"
   | "ios-maestro-flows"
   | "device-monkey"
   | "visual-capture"
@@ -89,6 +91,26 @@ export const buildKhalaMobileNightlySteps = (): readonly KhalaMobileNightlyStep[
     label: "Khala Mobile iOS simulator Maestro flows",
     ownedRunner: "tailnet-macos-launchd",
     requiredArtifactRefs: ["artifact.khala_mobile.maestro.ios_flows"],
+    verdict: "inconclusive",
+  },
+  {
+    command: ["bash", "clients/khala-mobile/scripts/android-emulator-test-run.sh"],
+    id: "android-maestro-flows",
+    label: "Khala Mobile Android emulator Maestro launch/sign-in flows",
+    ownedRunner: "tailnet-macos-launchd",
+    requiredArtifactRefs: [
+      "artifact.khala_mobile.android_emulator.boot_proof",
+      "artifact.khala_mobile.android_maestro.launch_fallback",
+      "artifact.khala_mobile.android_maestro.github_sign_in_interaction",
+    ],
+    verdict: "inconclusive",
+  },
+  {
+    command: ["adb", "exec-out", "screencap", "-p"],
+    id: "android-visual-capture",
+    label: "Khala Mobile Android adb screencap visual capture",
+    ownedRunner: "tailnet-macos-launchd",
+    requiredArtifactRefs: ["artifact.khala_mobile.visual.android_emulator_screencap"],
     verdict: "inconclusive",
   },
   {

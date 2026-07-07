@@ -10,6 +10,7 @@ import {
 } from "./mobile-nightly";
 
 // Oracle for khala_mobile.qa.nightly_mobile_row_owned_runner_discipline.v1
+// Oracle for khala_mobile.qa.android_emulator_lane_definition.v1
 describe("contract khala_mobile.qa.nightly_mobile_row_owned_runner_discipline.v1", () => {
   test("QAM-5 row schedules owned-Mac device, visual, monkey, perf, and seam nodes", () => {
     const report = buildKhalaMobileNightlyReport({
@@ -21,6 +22,8 @@ describe("contract khala_mobile.qa.nightly_mobile_row_owned_runner_discipline.v1
     expect(report.launchd.label).toBe("com.openagents.khala-mobile-nightly");
     expect(report.steps.map(step => step.id)).toEqual([
       "ios-maestro-flows",
+      "android-maestro-flows",
+      "android-visual-capture",
       "device-monkey",
       "visual-capture",
       "perf-budgets",
@@ -105,5 +108,7 @@ describe("contract khala_mobile.qa.nightly_mobile_row_owned_runner_discipline.v1
     expect(commands.join("\n")).not.toContain("/Users/");
     expect(commands.join("\n")).not.toContain("token");
     expect(commands.find(command => command.includes("maestro test"))).toBeDefined();
+    expect(commands).toContain("bash clients/khala-mobile/scripts/android-emulator-test-run.sh");
+    expect(commands).toContain("adb exec-out screencap -p");
   });
 });

@@ -93,7 +93,7 @@ top follow-up item for whoever picks this up next.
 
 ## Registry
 
-Registry version: `2026-07-07.5` (schema `openagents.behavior_contracts.v1`)
+Registry version: `2026-07-07.6` (schema `openagents.behavior_contracts.v1`)
 
 ### `khala_mobile.auth.tailnet_auto_discovery_before_manual_login.v1` — RETIRED
 
@@ -503,3 +503,14 @@ Registry version: `2026-07-07.5` (schema `openagents.behavior_contracts.v1`)
 - **Oracle** `nightly_mobile_row_owned_runner_discipline.unit` (bun-test, unit): The QAM-5 row definition schedules only owned Tailnet Mac launchd work for iOS Maestro, seeded device monkey, visual capture, named perf budgets, and seam probes; excludes hosted CI/EAS; carries the required perf IDs and khala-sync live-classification seam probe; emits a public-safe strict issue body; and refuses to satisfy exit before seven consecutive passed nightly receipts. — `apps/qa-runner/src/mobile-nightly.test.ts`
 - **Verification:** bun test src/mobile-nightly.test.ts inside apps/qa-runner plus the Khala mobile UX-contract sweep; real nightly execution remains blocked/pending under #8540 until owned-runner receipts exist.
 - **Authority boundary:** Binds the QAM-5 nightly mobile row definition, launchd-owned runner posture, QA Swarm projection node, required named perf budgets, required seam probes, strict auto-filed issue body, and seven-receipt exit evaluator. It does not prove any real nightly has run, does not claim the seven-consecutive-night exit is satisfied, and keeps QAM-4 Storybook V1 visual capture blocked until #8539 has a proven device-walk receipt.
+
+### `khala_mobile.qa.android_emulator_lane_definition.v1` — ENFORCED
+
+- **Surface:** khala-mobile (qa)
+- **Stated by:** owner via khala-code-session on 2026-07-07
+- **Statement:** The Khala Mobile Android lane has a local owned-runner emulator harness and QAM-5 nightly row entries for boot proof, shared Maestro launch/sign-in flow parity, and adb screencap visual-capture parity; #8541 remains open until those flows are green in the nightly row with Android-keyed baseline receipts.
+- **Enforcement tier:** test-sweep
+- **Oracle** `android_emulator_lane_definition.source` (bun-test, unit): The Android emulator lane exposes a local package script, boots/creates an AVD, waits for sys.boot_completed, installs the debug APK, runs the shared launch/sign-in Maestro flows, records an honest receipt, captures adb exec-out screencaps, and is represented in the QAM-5 nightly row without hosted CI/EAS. — `clients/khala-mobile/tests/maestro-policy.test.ts`
+- **Oracle** `android_nightly_row_membership.unit` (bun-test, unit): The QAM-5 nightly row includes Android emulator Maestro and adb screencap nodes, with public-safe scheduled commands and artifact refs. — `apps/qa-runner/src/mobile-nightly.test.ts`
+- **Verification:** bun test tests/maestro-policy.test.ts inside clients/khala-mobile plus bun test src/mobile-nightly.test.ts inside apps/qa-runner; real Android emulator execution remains the #8541 exit proof.
+- **Authority boundary:** Binds the Android emulator lane definition, runner command surface, QAM-5 nightly row membership, and public-safe receipt/capture paths. It does not prove that the Android emulator flows have passed in the current nightly row, does not claim Android-keyed baselines exist yet, and does not replace the required #8541 green emulator receipts.

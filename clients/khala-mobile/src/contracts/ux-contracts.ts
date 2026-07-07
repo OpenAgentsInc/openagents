@@ -1536,7 +1536,52 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
       verification:
         "bun test src/mobile-nightly.test.ts inside apps/qa-runner plus the Khala mobile UX-contract sweep; real nightly execution remains blocked/pending under #8540 until owned-runner receipts exist.",
     },
+    {
+      authorityBoundary:
+        "Binds the Android emulator lane definition, runner command surface, QAM-5 nightly row membership, and public-safe receipt/capture paths. It does not prove that the Android emulator flows have passed in the current nightly row, does not claim Android-keyed baselines exist yet, and does not replace the required #8541 green emulator receipts.",
+      blockerRefs: [],
+      contractId: "khala_mobile.qa.android_emulator_lane_definition.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "clients/khala-mobile/scripts/android-emulator-test-run.sh",
+        "clients/khala-mobile/tests/maestro-policy.test.ts",
+        "apps/qa-runner/src/mobile-nightly.ts",
+        "apps/qa-runner/src/mobile-nightly.test.ts",
+        "docs/khala-code/receipts/2026-07-07-qam-6-android-lane-definition.md",
+        "docs/khala-mobile/khala-mobile-ux-contract.md",
+      ],
+      oracles: [
+        {
+          description:
+            "The Android emulator lane exposes a local package script, boots/creates an AVD, waits for sys.boot_completed, installs the debug APK, runs the shared launch/sign-in Maestro flows, records an honest receipt, captures adb exec-out screencaps, and is represented in the QAM-5 nightly row without hosted CI/EAS.",
+          id: "android_emulator_lane_definition.source",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "clients/khala-mobile/tests/maestro-policy.test.ts",
+        },
+        {
+          description:
+            "The QAM-5 nightly row includes Android emulator Maestro and adb screencap nodes, with public-safe scheduled commands and artifact refs.",
+          id: "android_nightly_row_membership.unit",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/qa-runner/src/mobile-nightly.test.ts",
+        },
+      ],
+      productArea: "qa",
+      source: {
+        channel: "khala-code-session",
+        statedBy: "owner",
+        statedOn: "2026-07-07",
+      },
+      state: "enforced",
+      statement:
+        "The Khala Mobile Android lane has a local owned-runner emulator harness and QAM-5 nightly row entries for boot proof, shared Maestro launch/sign-in flow parity, and adb screencap visual-capture parity; #8541 remains open until those flows are green in the nightly row with Android-keyed baseline receipts.",
+      surface: "khala-mobile",
+      verification:
+        "bun test tests/maestro-policy.test.ts inside clients/khala-mobile plus bun test src/mobile-nightly.test.ts inside apps/qa-runner; real Android emulator execution remains the #8541 exit proof.",
+    },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-07.5",
+  version: "2026-07-07.6",
 }
