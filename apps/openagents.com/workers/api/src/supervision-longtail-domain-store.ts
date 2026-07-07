@@ -97,6 +97,12 @@ import {
   type KhalaSyncPushSqlClient,
   type MakeKhalaSyncPushSqlClient,
 } from './khala-sync-push-routes'
+import {
+  makeKhalaSyncWritesDatabase,
+  parseKhalaSyncWritesMode,
+  type KhalaSyncWritesMode,
+  type MakeKhalaSyncWritesDatabaseOptions,
+} from './khala-sync-domain-writes-database'
 import { logWorkerRouteWarning } from './observability'
 import {
   rowToRecord as omniPublicProofBundleRowToRecord,
@@ -120,11 +126,18 @@ export type SupervisionLongtailReadsMode = 'd1' | 'postgres' | 'compare'
 export type SupervisionLongtailFlags = Readonly<{
   dualWrite: boolean
   reads: SupervisionLongtailReadsMode
+  /**
+   * #8515 WRITE cutover: `postgres` (default) makes the Postgres-backed D1
+   * adapter the authoritative supervision store — reads AND writes leave the
+   * 401-dead D1 bridge. `d1` restores the D1-authority + best-effort mirror.
+   */
+  writes: KhalaSyncWritesMode
 }>
 
 export type SupervisionLongtailFlagEnv = Readonly<{
   KHALA_SYNC_SUPERVISION_DUAL_WRITE?: string | undefined
   KHALA_SYNC_SUPERVISION_READS?: string | undefined
+  KHALA_SYNC_SUPERVISION_WRITES?: string | undefined
 }>
 
 const FLAG_OFF_VALUES = new Set(['0', 'off', 'false', 'disabled', 'no'])
@@ -147,6 +160,7 @@ export const supervisionLongtailFlagsFromEnv = (
       dualWriteRaw === undefined || !FLAG_OFF_VALUES.has(dualWriteRaw),
     reads:
       readsRaw === 'postgres' || readsRaw === 'compare' ? readsRaw : 'd1',
+    writes: parseKhalaSyncWritesMode(env.KHALA_SYNC_SUPERVISION_WRITES),
   }
 }
 
@@ -408,6 +422,9 @@ export type SupervisionLongtailStoreEnv = SupervisionLongtailFlagEnv &
 export type MakeSupervisionLongtailStoreOptions = Readonly<{
   /** Injectable client factory (tests). Default: postgres.js/Hyperdrive. */
   makeSqlClient?: MakeKhalaSyncPushSqlClient | undefined
+  /** Injectable adapter client factory for the #8515 Postgres write
+   * authority (tests). */
+  makeD1Client?: MakeKhalaSyncWritesDatabaseOptions['makeD1Client']
   log?: SupervisionLongtailLog | undefined
   /** D1 handle override (call sites that already hold a proxied database). */
   db?: D1Database | undefined
@@ -457,9 +474,21 @@ const runtimeForEnv = (
   env: SupervisionLongtailStoreEnv,
   options: MakeSupervisionLongtailStoreOptions,
 ): SupervisionLongtailRuntime => {
-  const db =
-    options.db ?? openAgentsDatabase(env as { OPENAGENTS_DB: D1Database })
   const flags = supervisionLongtailFlagsFromEnv(env)
+  // #8515 WRITE cutover: when writes=postgres (default) and the binding
+  // exists, the authoritative handle is the Postgres-backed D1 adapter — reads
+  // AND writes leave the dead D1 bridge. `options.db` overrides still win (call
+  // sites holding a proxied handle). Every supervision column is a public-safe
+  // ref/path/digest (SPEC invariant 9), so the full-row adapter path carries no
+  // secret material.
+  const postgresWritesDb =
+    options.db === undefined && flags.writes === 'postgres'
+      ? makeKhalaSyncWritesDatabase(env, { makeD1Client: options.makeD1Client })
+      : undefined
+  const db =
+    options.db ??
+    postgresWritesDb ??
+    openAgentsDatabase(env as { OPENAGENTS_DB: D1Database })
   const log = options.log ?? defaultLog
   const postgres = postgresStoreForEnv(env, options)
   // The durable Analytics Engine soak sink was removed with the account-level
@@ -473,8 +502,12 @@ const runtimeForEnv = (
     flags,
     log,
     metrics,
+    // When writes go straight to Postgres via the adapter, the D1 -> Postgres
+    // read-back mirror is redundant AND would read the dead D1 bridge.
     mirror:
-      postgres !== undefined && flags.dualWrite
+      postgres !== undefined &&
+      flags.dualWrite &&
+      postgresWritesDb === undefined
         ? makeSupervisionLongtailMirror({ db, log, postgres })
         : undefined,
   }

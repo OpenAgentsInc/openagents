@@ -62,11 +62,23 @@ const T2 = '2026-07-04T02:00:00.000Z'
 // ---------------------------------------------------------------------------
 
 describe('supervisionLongtailFlagsFromEnv (pure)', () => {
-  test('dual-write defaults ON; reads default d1; off-values disable', () => {
+  test('dual-write defaults ON; reads default d1; writes default postgres; off-values disable', () => {
     expect(supervisionLongtailFlagsFromEnv({})).toEqual({
       dualWrite: true,
       reads: 'd1',
+      writes: 'postgres',
     })
+    // #8515 WRITE cutover: default postgres; only an explicit 'd1' opts out.
+    expect(
+      supervisionLongtailFlagsFromEnv({
+        KHALA_SYNC_SUPERVISION_WRITES: 'd1',
+      }).writes,
+    ).toBe('d1')
+    expect(
+      supervisionLongtailFlagsFromEnv({
+        KHALA_SYNC_SUPERVISION_WRITES: 'psotgres',
+      }).writes,
+    ).toBe('postgres')
     expect(
       supervisionLongtailFlagsFromEnv({
         KHALA_SYNC_SUPERVISION_DUAL_WRITE: 'off',
@@ -127,6 +139,27 @@ describe('store-factory gate (no Postgres binding needed)', () => {
       { db: sqlite.db, makeSqlClient: () => Promise.reject(new Error('unused')) },
     )
     expect(mirror).toBeUndefined()
+    sqlite.close()
+  })
+
+  test('#8515 writes cutover: mirror DISABLED when writes=postgres (adapter is authority), ACTIVE on the d1 rollback path', () => {
+    const sqlite = makeSqliteD1()
+    sqlite.exec(SUPERVISION_LONGTAIL_D1_SCHEMA)
+    const baseEnv = {
+      KHALA_SYNC_DB: { connectionString: 'postgres://contract' },
+      OPENAGENTS_DB: sqlite.db,
+    }
+    // Default (postgres authority via the D1 adapter): the D1->Postgres
+    // read-back mirror is redundant and disabled. No `db` override so the
+    // runtime resolves the Postgres adapter itself.
+    expect(makeSupervisionLongtailMirrorForEnv(baseEnv)).toBeUndefined()
+    // Explicit d1 rollback: dual-write mirror is active again.
+    expect(
+      makeSupervisionLongtailMirrorForEnv(
+        { ...baseEnv, KHALA_SYNC_SUPERVISION_WRITES: 'd1' },
+        { makeSqlClient: () => Promise.reject(new Error('unused')) },
+      ),
+    ).toBeDefined()
     sqlite.close()
   })
 })
