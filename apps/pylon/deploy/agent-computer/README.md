@@ -80,24 +80,42 @@ The Firecracker-on-GCE substrate is proven end-to-end on `agent-computer-gce-1`
   copied microVM -> host, and the microVM was destroyed with its per-run scratch
   rootfs wiped.
 
-This is the substrate, not the product turn. The baked rootfs above is the
-**stock Ubuntu 22.04 CI image** and intentionally has no `git`, `bun`, `node`,
-Pylon runtime, or guest agent.
+## In-microVM coding turn PROVEN (2026-07-07)
+
+The baked agent-computer rootfs now runs a real coding turn **inside** the
+microVM. Proof script `/tmp/vsock-turn-proof.py` (host-local, root) reports
+`TURN-PROOF-RESULT: PASS`:
+
+- microVM boots from the baked rootfs
+  (`sha256:78861d5a033657ec5a0752ee328d5ca568bee815122fba0797da5b6cb5a339eb`);
+  the vsock guest agent (`agent-guest.service`, port `1024`) is ready in ~3s.
+- `turn-runner` runs inside the guest: real depth-1 checkout of
+  `octocat/Hello-World@7fd1a60b01f9` (in-guest git-fetch egress works) + a real
+  1-file staged diff, with Khala-shaped `runtime_event`s streamed over vsock.
+- `result.json` is extracted microVM -> host; `baseCommit` matches the pinned
+  commit; the microVM is SIGKILLed and its per-run scratch rootfs is wiped.
+
+Egress fix (recorded in the manifest `inMicrovmTurnProof.egressFix`): the baked
+image enabled `systemd-networkd` with an empty `/etc/systemd/network/`, which
+claimed `eth0` and cleared the kernel `ip=`. Disabling + masking
+`systemd-networkd.service`/`.socket`/`-wait-online`, masking `systemd-resolved`,
+and writing a static `/etc/resolv.conf` (then `e2fsck -fy`) restores in-guest
+egress under the TAP+NAT + kernel `ip=` boot config.
+
+This is a real coding turn, but **not** an LLM turn: `turn-runner` performs a
+deterministic checkout + staged-diff step. A real model-token usage receipt
+(`/api/khala/cloud/runtime-turn-usage`) still requires a Codex/Claude OAuth
+login baked into the image or routing the turn through the hosted Khala gateway.
 
 ## Remaining Work Before The #8503 DoD Turn
 
 Ranked, with the owning repo:
 
-1. **Baked agent-computer rootfs (this repo + `cloud/` build)** — an ext4 image
-   with `git`, `bun`, the Pylon runtime + #8473 executor, the coding agents, a
-   CA bundle, and a guest agent (vsock or ssh-on-tap) that reports ready, runs
-   the executor, and copies artifacts out. Version-pin its digest into the
-   manifest `guestImage`.
+1. ~~Baked agent-computer rootfs~~ — DONE (digest pinned in `guestImage`,
+   in-microVM turn proven above).
 2. **Control-plane guest transport (`cloud/` `crates/oa-codex-control/src/cloud_vm.rs`)**
-   — `guest_exec`/`guest_copy_out` currently return
-   `guest ... transport not wired on this host (deploy step)`. Wire the
-   host<->guest bridge (the proven ssh-on-tap recipe works) and make
-   `wait_guest_ready` poll a real guest readiness signal.
+   — port the proven vsock protocol into `guest_exec`/`guest_copy_out` and make
+   `wait_guest_ready` poll the real vsock readiness signal.
 3. **placement -> firecracker -> executor integration (`cloud/`)** — today
    `POST /v1/placement` binds a run to a Codex runner lane, not a Firecracker
    microVM. Add the Agent Computer placement path that boots a microVM from the
@@ -106,7 +124,10 @@ Ranked, with the owning repo:
    `openagents.resource_usage_receipt.v1` receipts carrying `workContextRef`,
    `scratchWipeReceiptRef`, and `microvmDestroyReceiptRef` (the Worker's
    `validateAgentComputerPlacement` already requires these).
-4. **Arm + dispatch** — arm staging flags against that control plane and run one
+4. **Model-token receipt** — bake a Codex/Claude OAuth login into the image (or
+   route the turn through the hosted Khala gateway) so the turn produces a real
+   model-token usage receipt, not just the deterministic coding step.
+5. **Arm + dispatch** — arm staging flags against that control plane and run one
    real mobile-dispatched turn.
 
 ## Owner-Gated Receipts

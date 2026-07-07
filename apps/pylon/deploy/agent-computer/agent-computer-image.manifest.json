@@ -1,7 +1,19 @@
 {
   "schemaVersion": "openagents.agent_computer_image_manifest.v1",
-  "status": "substrate_proven_baked_image_and_placement_integration_pending",
+  "status": "in_microvm_coding_turn_proven_placement_integration_pending",
   "strategyDoc": "docs/khala-code/2026-07-06-agent-computers-strategy.md",
+  "inMicrovmTurnProof": {
+    "provedAt": "2026-07-07",
+    "host": "agent-computer-gce-1 (openagentsgemini, us-central1-a, n2-standard-4)",
+    "proofScript": "/tmp/vsock-turn-proof.py (host-local, root)",
+    "result": "TURN-PROOF-RESULT: PASS",
+    "boot": "microVM booted from the baked agent-computer rootfs; vsock guest agent (agent-guest.service) ready in ~3s",
+    "inGuestTurn": "turn-runner ran INSIDE the microVM: real depth-1 checkout of octocat/Hello-World@7fd1a60b01f91b314f59955a4e4d4e80d8edf11d (in-guest git fetch egress now works) + real 1-file staged diff (AGENT_COMPUTER_TURN.md, 8 insertions), Khala-shaped runtime events streamed over vsock (turn.started/tool.call/tool.result/text.completed/turn.finished)",
+    "artifactCopyOut": "result.json extracted microVM -> host; baseCommit matched the pinned commit",
+    "reclaim": "microVM SIGKILLed, per-run scratch rootfs wiped, tap deleted",
+    "egressFix": "baked image had systemd-networkd enabled with empty /etc/systemd/network/, which claimed eth0 and cleared the kernel ip=; fix = disable+mask systemd-networkd.service/.socket/-wait-online + mask systemd-resolved + static /etc/resolv.conf (8.8.8.8/1.1.1.1), then e2fsck -fy",
+    "modelTokenReceipt": "NOT produced — the turn-runner runs a deterministic coding step, not an LLM turn; a real model-token receipt (/api/khala/cloud/runtime-turn-usage) requires a Codex/Claude OAuth login baked into the image or routing through the hosted Khala gateway"
+  },
   "substrateProof": {
     "provedAt": "2026-07-07",
     "host": "agent-computer-gce-1 (openagentsgemini, us-central1-a, n2-standard-4)",
@@ -46,9 +58,10 @@
   "guestImage": {
     "kernelDigest": "sha256:22847375721aceea63d934c28f2dfce4670b6f52ec904fae19f5145a970c1e65",
     "kernelSource": "firecracker-ci/v1.10/x86_64/vmlinux-5.10.223",
-    "rootfsDigest": "sha256:3e612f6fd4e9f98cacf167cdb5582eaf2399a57e86705e4b165797367a63cf0b",
-    "rootfsSource": "debootstrap jammy (ubuntu 22.04) + git 2.34.1 + bun 1.3.14 + python3 + ca-certificates + openssh-client + vsock guest agent (:1024) + turn-runner (compiled from apps/pylon/deploy/agent-computer/turn-runner.ts, real #8475 materializer); built on agent-computer-gce-1 at /srv/openagents/cloud-vm/agent-computer-rootfs.ext4 (577M)",
-    "rootfsStatus": "boots + vsock-exec proven inside microVM; in-guest git egress still FAILING (git fetch -> fetch_failed) — likely systemd-networkd clearing the kernel ip= config; fix before this digest is a validated turn image",
+    "rootfsDigest": "sha256:78861d5a033657ec5a0752ee328d5ca568bee815122fba0797da5b6cb5a339eb",
+    "rootfsDigestPrevious": "sha256:3e612f6fd4e9f98cacf167cdb5582eaf2399a57e86705e4b165797367a63cf0b (pre-egress-fix)",
+    "rootfsSource": "debootstrap jammy (ubuntu 22.04) + git 2.34.1 + bun 1.3.14 + python3 + ca-certificates + openssh-client + vsock guest agent (:1024) + turn-runner (compiled from apps/pylon/deploy/agent-computer/turn-runner.ts, real #8475 materializer) + egress fix (systemd-networkd disabled/masked, static resolv.conf); built on agent-computer-gce-1 at /srv/openagents/cloud-vm/agent-computer-rootfs.ext4 (4.0G ext4)",
+    "rootfsStatus": "VALIDATED TURN IMAGE: boots + vsock-exec proven inside microVM + real in-guest git egress + full checkout->staged-diff coding turn (TURN-PROOF-RESULT: PASS 2026-07-07). See inMicrovmTurnProof above.",
     "scratchPolicy": "per-work-context-disposable",
     "scratchWipeReceiptRequired": true,
     "microvmDestroyReceiptRequired": true
