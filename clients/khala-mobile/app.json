@@ -28,7 +28,7 @@
     "ios": {
       "appleTeamId": "HQWSG26L43",
       "bundleIdentifier": "com.openagents.khala.mobile",
-      "buildNumber": "15",
+      "buildNumber": "16",
       "supportsTablet": true,
       "infoPlist": {
         "NSMicrophoneUsageDescription": "Khala uses the microphone for push-to-talk transcription.",
@@ -61,7 +61,8 @@
           "color": "#4fd0ff"
         }
       ],
-      "expo-font"
+      "expo-font",
+      "react-native-edge-to-edge"
     ],
     "extra": {
       "khala": {

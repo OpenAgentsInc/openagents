@@ -2,15 +2,12 @@ import type { NativeStackNavigationProp } from "@react-navigation/native-stack"
 import Constants from "expo-constants"
 import { useEffect, useState } from "react"
 import * as Notifications from "expo-notifications"
-import { Linking, Modal, ScrollView, View } from "react-native"
+import { Linking, Modal, View, type TextStyle, type ViewStyle } from "react-native"
 
 import { useKhalaAuth } from "../auth/khala-auth-context"
 import { KHALA_ACCOUNT_DELETION_POLICY_COPY } from "../auth/mobile-openauth"
-import { AppHeader } from "../components/app-header"
-import { Frame, usePowerOnVisible } from "../components/frame"
-import { KhalaButton } from "../components/khala-button"
-import { KhalaScreen } from "../components/khala-screen"
-import { KhalaText } from "../components/khala-text"
+import { Button, Card, Header, ListItem, Screen, Text, useAppTheme } from "../ignite"
+import type { ThemedStyle } from "../ignite"
 import type { AppDrawerScreenProps, AppStackParamList } from "../navigators/navigationTypes"
 import type { OnDeviceReadinessRow } from "../native/on-device-readiness-core"
 import { useOnDeviceReadiness } from "../native/use-on-device-readiness"
@@ -23,28 +20,35 @@ import {
   type KhalaModelPreference,
 } from "../sync/khala-mobile-model-preference-api"
 import { modelDisplayLabel, modelPreferenceFallbackMessage } from "../sync/khala-mobile-model-preference-format-core"
-import { MOTION_STAGGER_MS } from "../theme/motion"
-
-const SectionLabel = ({ children }: { children: string }) => (
-  <KhalaText className="mb-2" variant="label">
-    {children}
-  </KhalaText>
-)
 
 /**
- * MM-H1 (#8487): the mobile-only MVP pivot's Settings rework. The prior
- * desktop-oriented Fleet section (env-var fleet-run id, "credential never
- * leaves the desktop" copy) is removed entirely — Settings must contain
- * nothing that requires a desktop (acceptance criterion). Models remains an
- * honest "not yet available" stub (MM-F1, #8484, per-user model config, not
- * merged yet). Notifications is real (backed by the merged MM-G1 push
- * infrastructure, #8485/#8486). Credits (MM-D3, #8480) is now live-attempting:
- * it queries the proposed `/api/mobile/credits/balance` contract
- * (`khala-mobile-credits-api.ts`) and degrades to the same honest stub copy
- * if that endpoint isn't built yet, never fabricating a number.
+ * MM-H1 (#8487) Settings, rebuilt entirely on the ported Infinite Red Ignite
+ * component kit (`../ignite`: `Screen`, `Header`, `Text`, `Card`, `ListItem`,
+ * `Button`) so the app shows the real Ignite look on a live screen. The prior
+ * NativeWind + bespoke-primitive composition is gone; the product behavior is
+ * unchanged. Settings must contain nothing that requires a desktop
+ * (acceptance criterion): Account, Credits (MM-D3, #8480, live-attempting with
+ * an honest fallback), Models (MM-F1, #8484, real `GET/PUT` model preference),
+ * Notifications (MM-G1, #8485/#8486, real push permissions), and
+ * About & diagnostics (on-device native-module readiness).
  */
+
+const SectionCard = ({ heading, children }: { heading: string; children: React.ReactNode }) => {
+  const { themed } = useAppTheme()
+  return (
+    <Card
+      style={themed($sectionCard)}
+      verticalAlignment="top"
+      heading={heading}
+      HeadingTextProps={{ preset: "subheading" }}
+      ContentComponent={<View style={themed($sectionBody)}>{children}</View>}
+    />
+  )
+}
+
 const AccountSection = () => {
   const { deleteAccount, ownerUserId, signOut } = useKhalaAuth()
+  const { theme, themed } = useAppTheme()
   const [confirmingDeletion, setConfirmingDeletion] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
@@ -70,45 +74,52 @@ const AccountSection = () => {
   }
 
   return (
-    <View className="gap-2">
-      <SectionLabel>Account</SectionLabel>
-      <KhalaText numberOfLines={1} variant="faint">
-        {ownerUserId}
-      </KhalaText>
-      <KhalaText variant="muted">Signed in with GitHub.</KhalaText>
-      <KhalaButton onPress={() => void signOut()} text="Sign out" variant="danger" />
-      <KhalaButton onPress={() => setConfirmingDeletion(true)} text="Delete account" variant="danger" />
+    <SectionCard heading="Account">
+      <Text size="xs" numberOfLines={1} style={themed($dim)} text={ownerUserId} />
+      <Text size="xs" style={themed($dim)} text="Signed in with GitHub." />
+      <Button preset="reversed" text="Sign out" onPress={() => void signOut()} />
+      <Button
+        preset="default"
+        text="Delete account"
+        textStyle={{ color: theme.colors.error }}
+        onPress={() => setConfirmingDeletion(true)}
+      />
       <Modal
         animationType="fade"
         onRequestClose={closeConfirmation}
         transparent
         visible={confirmingDeletion}
       >
-        <View className="flex-1 justify-end bg-black/70 px-4 py-6">
-          <View className="gap-4 rounded-lg border border-border bg-surface p-4">
-            <View className="gap-2">
-              <KhalaText variant="heading">Delete account</KhalaText>
-              <KhalaText variant="muted">{KHALA_ACCOUNT_DELETION_POLICY_COPY}</KhalaText>
-              {deleteError === null ? null : <KhalaText variant="danger">{deleteError}</KhalaText>}
-            </View>
-            <View className="gap-2">
-              <KhalaButton
-                loading={deleting}
-                onPress={() => void handleDeleteAccount()}
-                text="Delete account"
-                variant="danger"
-              />
-              <KhalaButton
-                disabled={deleting}
-                onPress={closeConfirmation}
-                text="Cancel"
-                variant="secondary"
-              />
-            </View>
-          </View>
+        <View style={themed($modalScrim)}>
+          <Card
+            style={themed($modalCard)}
+            verticalAlignment="top"
+            HeadingComponent={<Text preset="subheading" text="Delete account" />}
+            ContentComponent={
+              <View style={themed($sectionBody)}>
+                <Text size="xs" style={themed($dim)} text={KHALA_ACCOUNT_DELETION_POLICY_COPY} />
+                {deleteError === null ? null : (
+                  <Text size="xs" style={{ color: theme.colors.error }} text={deleteError} />
+                )}
+                <Button
+                  preset="default"
+                  text="Delete account"
+                  textStyle={{ color: theme.colors.error }}
+                  disabled={deleting}
+                  onPress={() => void handleDeleteAccount()}
+                />
+                <Button
+                  preset="filled"
+                  text="Cancel"
+                  disabled={deleting}
+                  onPress={closeConfirmation}
+                />
+              </View>
+            }
+          />
         </View>
       </Modal>
-    </View>
+    </SectionCard>
   )
 }
 
@@ -117,14 +128,10 @@ type CreditsBalanceState =
   | Readonly<{ status: "unavailable" }>
   | Readonly<{ status: "ready"; balanceUsdCents: number }>
 
-/** MM-D3 (#8480): live-attempting balance, honest fallback. Neither the
- * balance nor the transaction-history route exists on the server yet (see
- * `khala-mobile-credits-api.ts`'s header comment for the proposed contract),
- * so `status === "unavailable"` is the expected state today — the section
- * still states the one thing that IS true and shipped (#8478's $10
- * GitHub-account-keyed signup grant) rather than showing nothing. */
+/** MM-D3 (#8480): live-attempting balance, honest fallback. */
 const CreditsSection = ({ onViewHistory }: { onViewHistory: () => void }) => {
   const { baseUrl, token } = useKhalaAuth()
+  const { theme, themed } = useAppTheme()
   const [state, setState] = useState<CreditsBalanceState>({ status: "loading" })
 
   useEffect(() => {
@@ -139,28 +146,29 @@ const CreditsSection = ({ onViewHistory }: { onViewHistory: () => void }) => {
   }, [baseUrl, token])
 
   return (
-    <View className="gap-2">
-      <SectionLabel>Credits</SectionLabel>
+    <SectionCard heading="Credits">
       {state.status === "loading" ? (
-        <KhalaText variant="muted">Checking your balance…</KhalaText>
+        <Text size="xs" style={themed($dim)} text="Checking your balance…" />
       ) : state.status === "ready" ? (
-        <View className="gap-2">
-          <KhalaText variant="muted">Balance: {formatUsdCents(state.balanceUsdCents)}</KhalaText>
+        <>
+          <Text size="xs" style={themed($dim)} text={"Balance: " + formatUsdCents(state.balanceUsdCents)} />
           {isLowBalance(state.balanceUsdCents) ? (
-            <KhalaText variant="danger">Your balance is low.</KhalaText>
+            <Text size="xs" style={{ color: theme.colors.error }} text="Your balance is low." />
           ) : null}
-          <KhalaButton onPress={onViewHistory} text="View history" variant="secondary" />
-          <KhalaButton disabled text="Buy more credits (coming soon)" variant="secondary" />
-        </View>
+          <Button preset="filled" text="View history" onPress={onViewHistory} />
+          <Button preset="filled" text="Buy more credits (coming soon)" disabled />
+        </>
       ) : (
-        <View className="gap-2">
-          <KhalaText variant="muted">
-            You received $10 in free credit when you signed in with GitHub.
-          </KhalaText>
-          <KhalaText variant="faint">Balance and usage history are coming soon.</KhalaText>
-        </View>
+        <>
+          <Text
+            size="xs"
+            style={themed($dim)}
+            text="You received $10 in free credit when you signed in with GitHub."
+          />
+          <Text size="xs" style={themed($faint)} text="Balance and usage history are coming soon." />
+        </>
       )}
-    </View>
+    </SectionCard>
   )
 }
 
@@ -169,13 +177,10 @@ type ModelsState =
   | Readonly<{ status: "unavailable" }>
   | Readonly<{ status: "ready"; preference: KhalaModelPreference }>
 
-/** MM-F1 (#8484, merged 8f38922fc4 while this lane was mid-flight) shipped
- * the real `GET/PUT /api/mobile/model-preference` route — this section now
- * wires directly against it rather than stubbing. The coding executor's own
- * honor of this preference (per #8484's scoping note) is Lane 0's follow-up,
- * separate from this store/read/write UI. */
+/** MM-F1 (#8484): real `GET/PUT /api/mobile/model-preference`. */
 const ModelsSection = () => {
   const { baseUrl, token } = useKhalaAuth()
+  const { themed } = useAppTheme()
   const [state, setState] = useState<ModelsState>({ status: "loading" })
   const [selecting, setSelecting] = useState<string | null>(null)
 
@@ -198,36 +203,42 @@ const ModelsSection = () => {
   }
 
   return (
-    <View className="gap-2">
-      <SectionLabel>Models</SectionLabel>
+    <SectionCard heading="Models">
       {state.status === "loading" ? (
-        <KhalaText variant="muted">Loading models…</KhalaText>
+        <Text size="xs" style={themed($dim)} text="Loading models…" />
       ) : state.status === "unavailable" ? (
-        <View className="gap-1">
-          <KhalaText variant="muted">Khala Code currently runs the default model for every task.</KhalaText>
-          <KhalaText variant="faint">Choosing your own model isn't available right now.</KhalaText>
-        </View>
+        <>
+          <Text
+            size="xs"
+            style={themed($dim)}
+            text="Khala Code currently runs the default model for every task."
+          />
+          <Text size="xs" style={themed($faint)} text="Choosing your own model isn't available right now." />
+        </>
       ) : (
-        <View className="gap-2">
+        <>
           {modelPreferenceFallbackMessage(state.preference.fallback) === null ? null : (
-            <KhalaText variant="warning">{modelPreferenceFallbackMessage(state.preference.fallback)}</KhalaText>
+            <Text
+              size="xs"
+              style={themed($warning)}
+              text={modelPreferenceFallbackMessage(state.preference.fallback) ?? ""}
+            />
           )}
           {state.preference.availableModelIds.map(modelId => {
             const active = state.preference.effectiveModelId === modelId
             return (
-              <KhalaButton
-                disabled={selecting !== null}
+              <Button
                 key={modelId}
-                loading={selecting === modelId}
+                preset={active ? "reversed" : "default"}
+                disabled={selecting !== null}
                 onPress={() => void handleSelect(modelId)}
                 text={active ? `${modelDisplayLabel(modelId)} (active)` : modelDisplayLabel(modelId)}
-                variant={active ? "primary" : "secondary"}
               />
             )
           })}
-        </View>
+        </>
       )}
-    </View>
+    </SectionCard>
   )
 }
 
@@ -235,6 +246,7 @@ type PushPermissionStatus = "loading" | "granted" | "denied" | "undetermined"
 
 const NotificationsSection = () => {
   const { baseUrl, token } = useKhalaAuth()
+  const { themed } = useAppTheme()
   const [status, setStatus] = useState<PushPermissionStatus>("loading")
   const [requesting, setRequesting] = useState(false)
 
@@ -263,59 +275,44 @@ const NotificationsSection = () => {
   }
 
   return (
-    <View className="gap-2">
-      <SectionLabel>Notifications</SectionLabel>
+    <SectionCard heading="Notifications">
       {status === "loading" ? (
-        <KhalaText variant="muted">checking…</KhalaText>
+        <Text size="xs" style={themed($dim)} text="checking…" />
       ) : status === "granted" ? (
-        <KhalaText variant="muted">Enabled — you'll get a push when a task finishes or needs you.</KhalaText>
+        <Text
+          size="xs"
+          style={themed($dim)}
+          text="Enabled — you'll get a push when a task finishes or needs you."
+        />
       ) : status === "denied" ? (
-        <View className="gap-2">
-          <KhalaText variant="muted">
-            Notifications are turned off for Khala Code in your device Settings.
-          </KhalaText>
-          <KhalaButton onPress={() => void Linking.openSettings()} text="Open device settings" variant="secondary" />
-        </View>
-      ) : (
-        <View className="gap-2">
-          <KhalaText variant="muted">
-            Get notified when a task finishes or needs your input.
-          </KhalaText>
-          <KhalaButton
-            disabled={requesting}
-            loading={requesting}
-            onPress={() => void handleEnable()}
-            text="Enable notifications"
-            variant="secondary"
+        <>
+          <Text
+            size="xs"
+            style={themed($dim)}
+            text="Notifications are turned off for Khala Code in your device Settings."
           />
-        </View>
+          <Button preset="filled" text="Open device settings" onPress={() => void Linking.openSettings()} />
+        </>
+      ) : (
+        <>
+          <Text size="xs" style={themed($dim)} text="Get notified when a task finishes or needs your input." />
+          <Button
+            preset="filled"
+            text="Enable notifications"
+            disabled={requesting}
+            onPress={() => void handleEnable()}
+          />
+        </>
       )}
-    </View>
+    </SectionCard>
   )
 }
 
-const ON_DEVICE_TONE_COLOR: Record<OnDeviceReadinessRow["tone"], string> = {
-  danger: "text-danger",
-  faint: "text-textFaint",
-  success: "text-success",
-  warning: "text-warning",
-}
-
-const OnDeviceCard = ({ row, index }: { row: OnDeviceReadinessRow; index: number }) => {
-  const visible = usePowerOnVisible(MOTION_STAGGER_MS * index)
-  return (
-    <Frame alwaysShowBorder visible={visible}>
-      <View className="px-3 py-2">
-        <View className="flex-row items-center justify-between">
-          <KhalaText text={row.label} variant="caption" />
-          <KhalaText className={ON_DEVICE_TONE_COLOR[row.tone]} text={row.status} variant="faint" />
-        </View>
-        {row.detail === undefined ? null : (
-          <KhalaText className="mt-1" text={row.detail} variant="faint" />
-        )}
-      </View>
-    </Frame>
-  )
+const ON_DEVICE_TONE_COLOR: Record<OnDeviceReadinessRow["tone"], ThemedStyle<TextStyle>> = {
+  danger: ({ colors }) => ({ color: colors.error }),
+  faint: ({ colors }) => ({ color: colors.textDim }),
+  success: ({ colors }) => ({ color: colors.palette.secondary300 }),
+  warning: ({ colors }) => ({ color: colors.palette.accent200 }),
 }
 
 const appVersionLabel = (): string => {
@@ -333,36 +330,100 @@ const appVersionLabel = (): string => {
 
 const AboutSection = () => {
   const readiness = useOnDeviceReadiness()
+  const { themed } = useAppTheme()
   return (
-    <View className="gap-2">
-      <SectionLabel>About &amp; diagnostics</SectionLabel>
-      <KhalaText variant="faint">{appVersionLabel()}</KhalaText>
+    <SectionCard heading="About & diagnostics">
+      <Text size="xs" style={themed($faint)} text={appVersionLabel()} />
       {readiness.status === "loading" ? (
-        <KhalaText text="checking…" variant="muted" />
+        <Text size="xs" style={themed($dim)} text="checking…" />
       ) : readiness.status === "error" ? (
-        <KhalaText text="Could not read native module readiness." variant="danger" />
+        <Text size="xs" style={themed($danger)} text="Could not read native module readiness." />
       ) : (
-        readiness.rows.map((row, index) => <OnDeviceCard index={index} key={row.key} row={row} />)
+        readiness.rows.map(row => (
+          <ListItem
+            key={row.key}
+            topSeparator
+            height={44}
+            text={row.label}
+            TextProps={{ size: "xs" }}
+            RightComponent={
+              <View style={themed($readinessRight)}>
+                <Text size="xs" style={themed(ON_DEVICE_TONE_COLOR[row.tone])} text={row.status} />
+                {row.detail === undefined ? null : (
+                  <Text size="xxs" style={themed($faint)} text={row.detail} />
+                )}
+              </View>
+            }
+          />
+        ))
       )}
-    </View>
+    </SectionCard>
   )
 }
 
 type SettingsScreenProps = AppDrawerScreenProps<"Settings">
 
 export const SettingsScreen = ({ navigation }: SettingsScreenProps) => {
+  const { themed } = useAppTheme()
   const stackNavigation = navigation.getParent<NativeStackNavigationProp<AppStackParamList>>()
 
   return (
-    <KhalaScreen preset="fixed">
-      <AppHeader showMenu title="Settings" />
-      <ScrollView contentContainerClassName="gap-6 px-4 py-4">
+    <Screen preset="scroll" contentContainerStyle={themed($contentContainer)}>
+      <Header
+        title="Settings"
+        leftIcon="☰"
+        onLeftPress={() => navigation.openDrawer()}
+      />
+      <View style={themed($body)}>
         <AccountSection />
         <CreditsSection onViewHistory={() => stackNavigation?.navigate("CreditsHistory")} />
         <ModelsSection />
         <NotificationsSection />
         <AboutSection />
-      </ScrollView>
-    </KhalaScreen>
+      </View>
+    </Screen>
   )
 }
+
+const $contentContainer: ThemedStyle<ViewStyle> = () => ({
+  flexGrow: 1,
+})
+
+const $body: ThemedStyle<ViewStyle> = ({ spacing }) => ({
+  paddingHorizontal: spacing.md,
+  paddingVertical: spacing.md,
+  gap: spacing.md,
+})
+
+const $sectionCard: ThemedStyle<ViewStyle> = ({ colors }) => ({
+  backgroundColor: colors.palette.neutral200,
+  borderColor: colors.palette.neutral400,
+})
+
+const $sectionBody: ThemedStyle<ViewStyle> = ({ spacing }) => ({
+  gap: spacing.xs,
+})
+
+const $modalScrim: ThemedStyle<ViewStyle> = ({ spacing, colors }) => ({
+  flex: 1,
+  justifyContent: "flex-end",
+  paddingHorizontal: spacing.md,
+  paddingVertical: spacing.lg,
+  backgroundColor: colors.palette.overlay50,
+})
+
+const $modalCard: ThemedStyle<ViewStyle> = ({ colors }) => ({
+  backgroundColor: colors.palette.neutral200,
+  borderColor: colors.palette.neutral400,
+})
+
+const $readinessRight: ThemedStyle<ViewStyle> = () => ({
+  alignItems: "flex-end",
+  justifyContent: "center",
+  flexShrink: 1,
+})
+
+const $dim: ThemedStyle<TextStyle> = ({ colors }) => ({ color: colors.textDim })
+const $faint: ThemedStyle<TextStyle> = ({ colors }) => ({ color: colors.palette.neutral500 })
+const $warning: ThemedStyle<TextStyle> = ({ colors }) => ({ color: colors.palette.accent200 })
+const $danger: ThemedStyle<TextStyle> = ({ colors }) => ({ color: colors.error })

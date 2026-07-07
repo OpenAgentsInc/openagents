@@ -6,6 +6,7 @@ import { StatusBar } from "expo-status-bar"
 import { useEffect, useState } from "react"
 import { LogBox, View } from "react-native"
 import { GestureHandlerRootView } from "react-native-gesture-handler"
+import { KeyboardProvider } from "react-native-keyboard-controller"
 import { initialWindowMetrics, SafeAreaProvider } from "react-native-safe-area-context"
 
 import { KhalaAuthProvider, useKhalaAuth } from "./auth/khala-auth-context"
@@ -97,16 +98,22 @@ export const App = () => {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
+      {/* KeyboardProvider is required by the ported Ignite `Screen`'s
+       * `KeyboardAwareScrollView` (react-native-keyboard-controller). Mounted
+       * high in the tree, inside GestureHandlerRootView/SafeAreaProvider, so
+       * every screen's keyboard-aware scrolling works. */}
       <SafeAreaProvider initialMetrics={initialWindowMetrics}>
-        <KhalaThemeProvider>
-          <StatusBar style="light" />
-          {/* Mounted above auth so OTA checking works even on the sign-in
-           * screen — the exact screen a stale/stuck build gets caught on. */}
-          <OtaUpdateGate />
-          <KhalaAuthProvider>
-            <AuthGate />
-          </KhalaAuthProvider>
-        </KhalaThemeProvider>
+        <KeyboardProvider>
+          <KhalaThemeProvider>
+            <StatusBar style="light" />
+            {/* Mounted above auth so OTA checking works even on the sign-in
+             * screen — the exact screen a stale/stuck build gets caught on. */}
+            <OtaUpdateGate />
+            <KhalaAuthProvider>
+              <AuthGate />
+            </KhalaAuthProvider>
+          </KhalaThemeProvider>
+        </KeyboardProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   )

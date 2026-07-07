@@ -58,13 +58,28 @@ describe("Khala mobile provider spine and primitives", () => {
     expect(emptyState).toContain('accessibilityRole={loading ? "progressbar" : "summary"}')
   })
 
-  test("migrates Settings onto the new plain UI primitives", async () => {
+  // MM-H1 follow-up (Ignite port, #8487): Settings was deliberately rebuilt on
+  // the ported Infinite Red Ignite component kit (`../ignite`) so the app shows
+  // the real Ignite look on a live screen — replacing the earlier
+  // KhalaScreen/KhalaText/KhalaButton composition. This oracle now pins that
+  // owner-directed migration: Settings is composed ENTIRELY from Ignite
+  // primitives and imports none of the bespoke Khala UI wrappers.
+  test("rebuilds Settings entirely on the ported Ignite component kit", async () => {
     const settings = await readSource("src/screens/settings-screen.tsx")
 
-    expect(settings).toContain("<KhalaScreen")
-    expect(settings).toContain("<KhalaText")
-    expect(settings).toContain("<KhalaButton")
+    // Composed from the ported Ignite kit only.
+    expect(settings).toContain('from "../ignite"')
+    expect(settings).toContain("<Screen")
+    expect(settings).toContain("<Header")
+    expect(settings).toContain("<Card")
+    expect(settings).toContain("<Button")
     expect(settings).toContain('text="Sign out"')
+
+    // No bespoke Khala UI wrappers and no raw Pressable in the screen.
+    expect(settings).not.toContain("KhalaScreen")
+    expect(settings).not.toContain("KhalaText")
+    expect(settings).not.toContain("KhalaButton")
+    expect(settings).not.toContain("AppHeader")
     expect(settings).not.toContain("<Pressable")
   })
 
