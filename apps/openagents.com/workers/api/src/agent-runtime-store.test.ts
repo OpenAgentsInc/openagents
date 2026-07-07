@@ -152,11 +152,20 @@ const TRACE_INPUT = {
 // ---------------------------------------------------------------------------
 
 describe('agentRuntimeFlagsFromEnv', () => {
-  test('dual-write defaults ON; reads default d1', () => {
+  test('dual-write defaults ON; reads default d1; writes default postgres', () => {
     expect(agentRuntimeFlagsFromEnv({})).toEqual({
       dualWrite: true,
       reads: 'd1',
+      writes: 'postgres',
     })
+    // #8515 WRITE cutover: default postgres; only an explicit 'd1' opts out.
+    expect(
+      agentRuntimeFlagsFromEnv({ KHALA_SYNC_AGENT_RUNTIME_WRITES: 'd1' }).writes,
+    ).toBe('d1')
+    expect(
+      agentRuntimeFlagsFromEnv({ KHALA_SYNC_AGENT_RUNTIME_WRITES: 'postgress' })
+        .writes,
+    ).toBe('postgres')
   })
 
   test('off values disable dual-write; read modes parse; typos fall back to d1', () => {
@@ -208,7 +217,7 @@ describe('makeDualWriteAgentRuntimeWriteStore', () => {
     const recorder = makeLogRecorder()
     const store = makeDualWriteAgentRuntimeWriteStore({
       d1,
-      flags: { dualWrite: true, reads: 'd1' },
+      flags: { dualWrite: true, reads: 'd1', writes: 'd1' },
       log: recorder.log,
       postgres: makeFakePostgresStore('throw'),
     })
@@ -228,7 +237,7 @@ describe('makeDualWriteAgentRuntimeWriteStore', () => {
     const postgres = makeFakePostgresStore()
     const store = makeDualWriteAgentRuntimeWriteStore({
       d1,
-      flags: { dualWrite: false, reads: 'd1' },
+      flags: { dualWrite: false, reads: 'd1', writes: 'd1' },
       postgres,
     })
     await store.upsertRows('agent_runs', [{ id: 'run-y' } as AgentRuntimeRow])
@@ -369,6 +378,7 @@ describe('makeTraceStoreForEnv', () => {
     const scripted = makeScriptedSqlClient()
     const store = makeTraceStoreForEnv(
       {
+        KHALA_SYNC_AGENT_RUNTIME_WRITES: 'd1',
         KHALA_SYNC_DB: { connectionString: 'postgres://fake' },
         OPENAGENTS_DB: sqlite.db,
       },
@@ -381,11 +391,56 @@ describe('makeTraceStoreForEnv', () => {
     ).toBe(true)
   })
 
+  test('#8515 writes=postgres (default): createTrace runs on the Postgres D1 adapter and the D1 mirror is disabled', async () => {
+    // Recording fake of the Postgres-backed D1 adapter client: captures every
+    // `unsafe(text, params)` and echoes an affected-row count.
+    const pgStatements: Array<string> = []
+    const unsafe = (text: string, _params: Array<unknown>) => {
+      const normalized = text.replaceAll(/\s+/g, ' ').trim()
+      pgStatements.push(normalized)
+      const rows: Array<Record<string, unknown>> = []
+      return Promise.resolve(Object.assign(rows, { count: 1 }))
+    }
+    const makeD1Client = async (_c: string) => ({
+      end: () => Promise.resolve(),
+      sql: {
+        begin: <A>(fn: (tx: { unsafe: typeof unsafe }) => Promise<A>) =>
+          fn({ unsafe }),
+        unsafe,
+      },
+    })
+    const scripted = makeScriptedSqlClient() // mirror client — must stay idle
+    const store = makeTraceStoreForEnv(
+      {
+        // KHALA_SYNC_AGENT_RUNTIME_WRITES defaults to 'postgres'.
+        KHALA_SYNC_DB: { connectionString: 'postgres://fake' },
+        OPENAGENTS_DB: sqlite.db,
+      },
+      { makeD1Client, makeSqlClient: scripted.makeSqlClient },
+    )
+    // The read-back after INSERT is served by the same fake (which returns no
+    // rows), so createTrace surfaces a read-back error — irrelevant here: the
+    // point is WHERE the authoritative INSERT landed.
+    await store.createTrace(TRACE_INPUT).catch(() => undefined)
+    // Authority write went to Postgres via the adapter ...
+    expect(
+      pgStatements.some(text => text.startsWith('INSERT INTO agent_traces')),
+    ).toBe(true)
+    // ... the D1 -> Postgres mirror is disabled (mirror client idle) ...
+    expect(scripted.executed).toEqual([])
+    // ... and the dead D1 authority was NOT written.
+    const d1Rows = await sqlite.db
+      .prepare('SELECT trace_uuid FROM agent_traces')
+      .all<{ trace_uuid: string }>()
+    expect(d1Rows.results).toEqual([])
+  })
+
   test('dual-write off (or missing binding) → plain D1, zero Postgres calls', async () => {
     const scripted = makeScriptedSqlClient()
     const offStore = makeTraceStoreForEnv(
       {
         KHALA_SYNC_AGENT_RUNTIME_DUAL_WRITE: 'off',
+        KHALA_SYNC_AGENT_RUNTIME_WRITES: 'd1',
         KHALA_SYNC_DB: { connectionString: 'postgres://fake' },
         OPENAGENTS_DB: sqlite.db,
       },
@@ -410,6 +465,7 @@ describe('makeTraceStoreForEnv', () => {
     const scripted = makeScriptedSqlClient({ throwOnEveryCall: true })
     const store = makeTraceStoreForEnv(
       {
+        KHALA_SYNC_AGENT_RUNTIME_WRITES: 'd1',
         KHALA_SYNC_DB: { connectionString: 'postgres://fake' },
         OPENAGENTS_DB: sqlite.db,
       },
@@ -447,6 +503,7 @@ describe('makeAgentGoalEventRepositoryForEnv', () => {
     const scripted = makeScriptedSqlClient()
     const repo = makeAgentGoalEventRepositoryForEnv(
       {
+        KHALA_SYNC_AGENT_RUNTIME_WRITES: 'd1',
         KHALA_SYNC_DB: { connectionString: 'postgres://fake' },
         OPENAGENTS_DB: sqlite.db,
       },
@@ -517,6 +574,7 @@ describe('makeAgentDefinitionTriggerStoreForEnv read routing', () => {
     const scripted = makeScriptedSqlClient()
     const store = makeAgentDefinitionTriggerStoreForEnv(
       {
+        KHALA_SYNC_AGENT_RUNTIME_WRITES: 'd1',
         KHALA_SYNC_DB: { connectionString: 'postgres://fake' },
         OPENAGENTS_DB: sqlite.db,
       },
@@ -534,6 +592,7 @@ describe('makeAgentDefinitionTriggerStoreForEnv read routing', () => {
     const store = makeAgentDefinitionTriggerStoreForEnv(
       {
         KHALA_SYNC_AGENT_RUNTIME_READS: 'postgres',
+        KHALA_SYNC_AGENT_RUNTIME_WRITES: 'd1',
         KHALA_SYNC_DB: { connectionString: 'postgres://fake' },
         OPENAGENTS_DB: sqlite.db,
       },
@@ -551,6 +610,7 @@ describe('makeAgentDefinitionTriggerStoreForEnv read routing', () => {
     const store = makeAgentDefinitionTriggerStoreForEnv(
       {
         KHALA_SYNC_AGENT_RUNTIME_READS: 'postgres',
+        KHALA_SYNC_AGENT_RUNTIME_WRITES: 'd1',
         KHALA_SYNC_DB: { connectionString: 'postgres://fake' },
         OPENAGENTS_DB: sqlite.db,
       },
@@ -578,6 +638,7 @@ describe('makeAgentDefinitionTriggerStoreForEnv read routing', () => {
     const store = makeAgentDefinitionTriggerStoreForEnv(
       {
         KHALA_SYNC_AGENT_RUNTIME_READS: 'compare',
+        KHALA_SYNC_AGENT_RUNTIME_WRITES: 'd1',
         KHALA_SYNC_DB: { connectionString: 'postgres://fake' },
         OPENAGENTS_DB: sqlite.db,
       },
@@ -597,6 +658,7 @@ describe('makeAgentDefinitionTriggerStoreForEnv read routing', () => {
     const store = makeAgentDefinitionTriggerStoreForEnv(
       {
         KHALA_SYNC_AGENT_RUNTIME_READS: 'compare',
+        KHALA_SYNC_AGENT_RUNTIME_WRITES: 'd1',
         KHALA_SYNC_DB: { connectionString: 'postgres://fake' },
         OPENAGENTS_DB: sqlite.db,
       },
@@ -630,6 +692,7 @@ describe('cancelActiveAgentRunsForBillingExhaustionForEnv', () => {
       const canceled = await cancelActiveAgentRunsForBillingExhaustionForEnv(
         {
           KHALA_SYNC_AGENT_RUNTIME_DUAL_WRITE: 'off',
+          KHALA_SYNC_AGENT_RUNTIME_WRITES: 'd1',
           KHALA_SYNC_DB: { connectionString: 'postgres://fake' },
           OPENAGENTS_DB: sqlite.db,
         },
@@ -705,6 +768,7 @@ describe('makeOmniRunStoreForEnv KS-6.6 khala-sync agent-run projection', () => 
         // raw-table mirror is a separate, unrelated dual-write mechanism
         // that would ALSO try (and fail-soft-fail) against this fake client.
         KHALA_SYNC_AGENT_RUNTIME_DUAL_WRITE: 'off',
+        KHALA_SYNC_AGENT_RUNTIME_WRITES: 'd1',
         KHALA_SYNC_DB: { connectionString: 'postgres://fake' },
         OPENAGENTS_DB: sqlite.db,
       },
@@ -803,6 +867,7 @@ describe('makeOmniRunStoreForEnv KS-6.6 khala-sync agent-run projection', () => 
     const store = makeOmniRunStoreForEnv(
       {
         KHALA_SYNC_AGENT_RUNTIME_DUAL_WRITE: 'off',
+        KHALA_SYNC_AGENT_RUNTIME_WRITES: 'd1',
         KHALA_SYNC_DB: { connectionString: 'postgres://fake' },
         OPENAGENTS_DB: sqlite.db,
       },

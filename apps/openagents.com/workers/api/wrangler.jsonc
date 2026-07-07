@@ -108,6 +108,7 @@
     // cutovers. Each moves that domain's authoritative reads AND writes onto
     // the Postgres-backed D1 adapter (mirror disabled); set to "d1" to roll
     // back a single domain. Code defaults to postgres too.
+    "KHALA_SYNC_AGENT_RUNTIME_WRITES": "postgres",
     "KHALA_SYNC_GYM_EVALS_WRITES": "postgres",
     "KHALA_SYNC_SUPERVISION_WRITES": "postgres",
     "KHALA_SYNC_TREASURY_READS": "postgres",

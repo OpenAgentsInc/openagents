@@ -102,6 +102,12 @@ import {
   type KhalaSyncPushSqlClient,
   type MakeKhalaSyncPushSqlClient,
 } from './khala-sync-push-routes'
+import {
+  makeKhalaSyncWritesDatabase,
+  parseKhalaSyncWritesMode,
+  type KhalaSyncWritesMode,
+  type MakeKhalaSyncWritesDatabaseOptions,
+} from './khala-sync-domain-writes-database'
 import { logWorkerRouteWarning } from './observability'
 import {
   agentRunEventProjection,
@@ -130,11 +136,18 @@ export type AgentRuntimeReadsMode = 'd1' | 'postgres' | 'compare'
 export type AgentRuntimeFlags = Readonly<{
   dualWrite: boolean
   reads: AgentRuntimeReadsMode
+  /**
+   * #8515 WRITE cutover: `postgres` (default) makes the Postgres-backed D1
+   * adapter the authoritative agent-runtime store — reads AND writes leave the
+   * 401-dead D1 bridge. `d1` restores the D1-authority + best-effort mirror.
+   */
+  writes: KhalaSyncWritesMode
 }>
 
 export type AgentRuntimeFlagEnv = Readonly<{
   KHALA_SYNC_AGENT_RUNTIME_DUAL_WRITE?: string | undefined
   KHALA_SYNC_AGENT_RUNTIME_READS?: string | undefined
+  KHALA_SYNC_AGENT_RUNTIME_WRITES?: string | undefined
 }>
 
 const FLAG_OFF_VALUES = new Set(['0', 'off', 'false', 'disabled', 'no'])
@@ -158,6 +171,7 @@ export const agentRuntimeFlagsFromEnv = (
       dualWriteRaw === undefined || !FLAG_OFF_VALUES.has(dualWriteRaw),
     reads:
       readsRaw === 'postgres' || readsRaw === 'compare' ? readsRaw : 'd1',
+    writes: parseKhalaSyncWritesMode(env.KHALA_SYNC_AGENT_RUNTIME_WRITES),
   }
 }
 
@@ -1097,10 +1111,38 @@ export type AgentRuntimeStoreEnv = AgentRuntimeFlagEnv &
 export type MakeAgentRuntimeStoreOptions = Readonly<{
   /** Injectable client factory (tests). Default: postgres.js/Hyperdrive. */
   makeSqlClient?: MakeKhalaSyncPushSqlClient | undefined
+  /** Injectable adapter client factory for the #8515 Postgres write
+   * authority (tests). */
+  makeD1Client?: MakeKhalaSyncWritesDatabaseOptions['makeD1Client']
   log?: AgentRuntimeLog | undefined
   /** Bounded-retry backoff hook for routed reads (tests inject a no-op). */
   wait?: ((ms: number) => Promise<void>) | undefined
 }>
+
+/**
+ * #8515 WRITE cutover: the authoritative agent-runtime `D1Database` handle.
+ * When `KHALA_SYNC_AGENT_RUNTIME_WRITES=postgres` (default) AND the
+ * KHALA_SYNC_DB binding exists, this is the Postgres-backed D1 adapter — reads
+ * AND writes leave the 401-dead D1 bridge; otherwise plain D1. Covers the
+ * agent_definitions/runs/triggers/goals/goal_events/runs/run_events/traces
+ * tables only — NOT the credential/owner-claim seam (that stays on
+ * `agent-registration.ts` / the remainder store).
+ */
+const agentRuntimeWritesDatabaseForEnv = (
+  env: AgentRuntimeStoreEnv,
+  options: MakeAgentRuntimeStoreOptions,
+): D1Database => {
+  const flags = agentRuntimeFlagsFromEnv(env)
+  if (flags.writes === 'postgres') {
+    const postgresDb = makeKhalaSyncWritesDatabase(env, {
+      makeD1Client: options.makeD1Client,
+    })
+    if (postgresDb !== undefined) {
+      return postgresDb
+    }
+  }
+  return openAgentsDatabase(env as { OPENAGENTS_DB: D1Database })
+}
 
 const defaultLog: AgentRuntimeLog = (event, fields) => {
   logWorkerRouteWarning(event, {
@@ -1132,6 +1174,12 @@ const mirrorForEnv = (
   if (!flags.dualWrite) {
     return undefined
   }
+  // #8515: when writes go straight to Postgres via the D1 adapter, the
+  // D1 -> Postgres read-back mirror is redundant AND would read the dead D1
+  // bridge. Disable it — the adapter `base` is the single Postgres authority.
+  if (flags.writes === 'postgres') {
+    return undefined
+  }
   const postgres = postgresStoreForEnv(env, options)
   if (postgres === undefined) {
     return undefined
@@ -1153,7 +1201,7 @@ export const makeAgentDefinitionStoreForEnv = (
   options: MakeAgentRuntimeStoreOptions = {},
 ): AgentDefinitionStore => {
   const base = makeD1AgentDefinitionStore(
-    openAgentsDatabase(env as { OPENAGENTS_DB: D1Database }),
+    agentRuntimeWritesDatabaseForEnv(env, options),
   )
   const mirror = mirrorForEnv(env, options)
   if (mirror === undefined) {
@@ -1181,7 +1229,7 @@ export const makeAgentDefinitionRunStoreForEnv = (
   options: MakeAgentRuntimeStoreOptions = {},
 ): AgentDefinitionRunStore => {
   const base = makeD1AgentDefinitionRunStore(
-    openAgentsDatabase(env as { OPENAGENTS_DB: D1Database }),
+    agentRuntimeWritesDatabaseForEnv(env, options),
   )
   const mirror = mirrorForEnv(env, options)
   if (mirror === undefined) {
@@ -1223,7 +1271,7 @@ export const makeAgentDefinitionTriggerStoreForEnv = (
   options: MakeAgentRuntimeStoreOptions = {},
 ): AgentDefinitionTriggerStore => {
   const base = makeD1AgentDefinitionTriggerStore(
-    openAgentsDatabase(env as { OPENAGENTS_DB: D1Database }),
+    agentRuntimeWritesDatabaseForEnv(env, options),
   )
   const flags = agentRuntimeFlagsFromEnv(env)
   const postgres = postgresStoreForEnv(env, options)
@@ -1475,7 +1523,7 @@ export const makeOmniRunStoreForEnv = (
           },
         }
   const base = makeD1OmniRunStore(
-    openAgentsDatabase(env as { OPENAGENTS_DB: D1Database }),
+    agentRuntimeWritesDatabaseForEnv(env, options),
     mergedHooks,
   )
   const mirror = mirrorForEnv(env, options)
@@ -1535,7 +1583,7 @@ export const cancelActiveAgentRunsForBillingExhaustionForEnv = async (
   options: MakeAgentRuntimeStoreOptions = {},
 ): Promise<ReadonlyArray<BillingCanceledAgentRun>> => {
   const canceled = await cancelActiveAgentRunsForBillingExhaustion(
-    openAgentsDatabase(env as { OPENAGENTS_DB: D1Database }),
+    agentRuntimeWritesDatabaseForEnv(env, options),
     userId,
     input,
   )
@@ -1558,7 +1606,7 @@ export const makeTraceStoreForEnv = (
   options: MakeAgentRuntimeStoreOptions = {},
 ): TraceStore => {
   const base = makeD1TraceStore(
-    openAgentsDatabase(env as { OPENAGENTS_DB: D1Database }),
+    agentRuntimeWritesDatabaseForEnv(env, options),
   )
   const mirror = mirrorForEnv(env, options)
   if (mirror === undefined) {
@@ -1602,7 +1650,7 @@ export const makeAgentGoalRepositoryForEnv = (
   options: MakeAgentRuntimeStoreOptions = {},
 ): AgentGoalRepositoryShape => {
   const base = makeD1AgentGoalRepository(
-    openAgentsDatabase(env as { OPENAGENTS_DB: D1Database }),
+    agentRuntimeWritesDatabaseForEnv(env, options),
     runtime,
   )
   const mirror = mirrorForEnv(env, options)
@@ -1687,7 +1735,7 @@ export const makeAgentGoalEventRepositoryForEnv = (
   options: MakeAgentRuntimeStoreOptions = {},
 ): AgentGoalEventRepositoryShape => {
   const base = makeD1AgentGoalEventRepository(
-    openAgentsDatabase(env as { OPENAGENTS_DB: D1Database }),
+    agentRuntimeWritesDatabaseForEnv(env, options),
     runtime,
   )
   const mirror = mirrorForEnv(env, options)
