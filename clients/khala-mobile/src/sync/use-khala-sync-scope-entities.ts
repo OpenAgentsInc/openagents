@@ -3,6 +3,7 @@ import { SyncScope } from "@openagentsinc/khala-sync"
 import type { ConfirmedEntity, KhalaSyncLocalStore, KhalaSyncOverlay, KhalaSyncSession } from "@openagentsinc/khala-sync-client"
 import { Effect } from "effect"
 
+import { acquireScopeSubscription, releaseScopeSubscription } from "./scope-subscription-refcount"
 import { beaconSyncDebug } from "./sync-debug-beacon"
 
 /**
@@ -163,7 +164,16 @@ export function useKhalaSyncScopeEntities<T>(
     }
 
     void refresh()
-    void runEffect(session.subscribe(syncScope)).catch(error => {
+    // Reference-counted subscribe: multiple hooks observe the SAME scope at
+    // once (thread-list `chat_thread` + credits-chip `credit_balance` on the
+    // personal scope; several entity hooks on one thread scope). The real
+    // `session.unsubscribe` is a destructive shared-scope teardown, so it must
+    // only fire when the LAST observer leaves — otherwise one hook unmounting
+    // snaps a live scope back to `idle` under the others (confirmed on-device:
+    // a `live`/`ready` thread list reset to an endless "Loading threads"
+    // spinner when the credits chip unmounted). See
+    // `scope-subscription-refcount.ts`.
+    void acquireScopeSubscription(session, syncScope).catch(error => {
       if (cancelled) return
       resolved = true
       setState({
@@ -208,7 +218,9 @@ export function useKhalaSyncScopeEntities<T>(
       clearTimeout(watchdog)
       unsubscribeState()
       unsubscribeOverlay()
-      void runEffect(session.unsubscribe(syncScope))
+      // Refcounted release: only the LAST observer of this scope triggers the
+      // real (destructive) `session.unsubscribe`. See the acquire above.
+      releaseScopeSubscription(session, syncScope)
     }
   }, [session, overlay, store, scope, entityType, watchdogMs])
 
