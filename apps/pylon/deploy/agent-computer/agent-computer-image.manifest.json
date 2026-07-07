@@ -67,9 +67,9 @@
   "guestImage": {
     "kernelDigest": "sha256:22847375721aceea63d934c28f2dfce4670b6f52ec904fae19f5145a970c1e65",
     "kernelSource": "firecracker-ci/v1.10/x86_64/vmlinux-5.10.223",
-    "rootfsDigest": "sha256:fe7d660683100915e5010c0472099cf72fc3ddf7d840611c5826b58dea792635",
-    "rootfsDigestPrevious": "sha256:78861d5a033657ec5a0752ee328d5ca568bee815122fba0797da5b6cb5a339eb (pre-model-turn-bake: git egress fixed but /opt/agent/turn-runner predated the phase-2 no-meter inference call)",
-    "rootfsSource": "debootstrap jammy (ubuntu 22.04) + git 2.34.1 + bun 1.3.14 + python3 + ca-certificates + openssh-client + vsock guest agent (:1024) + turn-runner (phase-2 no-meter model turn, bun build --compile --target=bun-linux-x64 apps/pylon/deploy/agent-computer/turn-runner.ts @ origin/main; carries the x-openagents-org-cloud-runtime-no-meter header) + egress fix (systemd-networkd disabled/masked, static resolv.conf); built on agent-computer-gce-1 at /srv/openagents/cloud-vm/agent-computer-rootfs.ext4 (4.0G ext4)",
+    "rootfsDigest": "sha256:2eb563b3f52e22eedfe85f1593cf08b0c8a1cc5dc3ca3d88f06bcc8f42cc7e0a",
+    "rootfsDigestPrevious": "sha256:fe7d660683100915e5010c0472099cf72fc3ddf7d840611c5826b58dea792635 (phase-2 no-meter model turn; predated the #8477 in-guest branch/PR writeback)",
+    "rootfsSource": "debootstrap jammy (ubuntu 22.04) + git 2.34.1 + bun 1.3.14 + python3 + ca-certificates + openssh-client + vsock guest agent (:1024) + turn-runner (phase-2 no-meter model turn + MM-C5 #8477 branch/PR writeback: brokers a short-lived GitHub credential from the SCM auth broker under the agent bearer, commits + pushes a scoped pylon/ branch never force / never base, optionally opens a PR, then POSTs the outcome to /api/khala/cloud/runtime-turn-writeback; bun build --compile --target=bun-linux-x64 apps/pylon/deploy/agent-computer/turn-runner.ts @ origin/main 8ebbef96c7, binary sha256:ca5bb8bb4924753c17875056615357c0a6ca187dbae290980a25fa9e2f1bf679) + egress fix (systemd-networkd disabled/masked, static resolv.conf); rebaked into /opt/agent/turn-runner on agent-computer-gce-1 at /srv/openagents/cloud-vm/agent-computer-rootfs.ext4 (4.0G ext4)",
     "rootfsStatus": "VALIDATED TURN IMAGE: boots + vsock-exec proven inside microVM + real in-guest git egress + full checkout->staged-diff coding turn + EXACT model-token receipt from the in-guest phase-2 turn (2026-07-07). See inMicrovmTurnProof above.",
     "scratchPolicy": "per-work-context-disposable",
     "scratchWipeReceiptRequired": true,
