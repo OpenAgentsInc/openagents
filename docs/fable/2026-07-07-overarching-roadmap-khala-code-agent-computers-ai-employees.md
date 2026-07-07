@@ -27,6 +27,16 @@ reconciliation and supersedes both numbering schemes** — the underlying
 content of each stands, but new issues should be filed against the horizon
 lanes named here (§4).
 
+> **Update (later 2026-07-07):** the customer-facing product layer over
+> these horizons — Khala Code mobile (App Store front door, IAP
+> "minerals"), Khala Code desktop (the inverted agentic IDE), the
+> openagents.com business dashboard, and **Reactor** (which the four-prong
+> framing omitted; it is the custody dimension and its own offering, with
+> **Reactor Zero** as our own internal deployment) — is articulated in
+> `docs/fable/2026-07-07-product-suite-khala-code-openagents-com-reactor.md`.
+> That doc amends this one's §5: the sovereignty ladder explicitly
+> terminates at Reactor-as-product.
+
 ## 1. The single thesis
 
 Khala Code evolves along one line: **from a coding agent you dispatch from
