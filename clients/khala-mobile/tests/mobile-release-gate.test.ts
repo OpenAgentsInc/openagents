@@ -27,7 +27,7 @@ describe("QAM-1 mobile release gate policy", () => {
     expect(packageJson.scripts?.["qa:mobile:gate"]).toBe("bun run scripts/qa-mobile-gate.ts")
   })
 
-  test("every screen has a mount artifact or a typed QAM-2 waiver", () => {
+  test("every screen has a mount artifact and no QAM-2 screen waiver remains", () => {
     const covered = new Map(khalaMobileGateScreenMountBundles.map(bundle => [bundle.screenFile, bundle]))
     const waived = new Map(khalaMobileGateScreenMountWaivers.map(waiver => [waiver.screenFile, waiver]))
     const missing = screenFiles().filter(screen => !covered.has(screen) && !waived.has(screen))
@@ -50,6 +50,7 @@ describe("QAM-1 mobile release gate policy", () => {
       expect(waiver.targetArtifact).toMatch(/^tests\/.+\.test\.tsx$/)
       expect(waiver.reason.length).toBeGreaterThan(40)
     }
+    expect(khalaMobileGateScreenMountWaivers).toEqual([])
   })
 
   test("generator conformance is an explicit QAM-3 blocker until templates emit full bundles", () => {
@@ -60,16 +61,12 @@ describe("QAM-1 mobile release gate policy", () => {
     expect(khalaMobileGateGeneratorConformanceStatus.statement).toContain("visual registration")
   })
 
-  test("fixture tier names the existing runtime tests and the QAM-2 streaming gap", () => {
+  test("fixture tier names the existing runtime tests and the enforced QAM-2 streaming suite", () => {
     for (const artifact of khalaMobileGateFixtureTierStatus.enforcedArtifacts) {
       expect(existsSync(fromRoot(artifact))).toBe(true)
     }
-    expect(khalaMobileGateFixtureTierStatus.pendingArtifacts).toEqual([
-      {
-        blockerRef: "blocker.qam_2.agent_computer_streaming_fixture_suite",
-        issueRef: "#8537",
-        targetArtifact: "tests/thread-messages-streaming-fixtures.test.tsx",
-      },
-    ])
+    expect(khalaMobileGateFixtureTierStatus.enforcedArtifacts).toContain("tests/thread-messages-screen.test.tsx")
+    expect(khalaMobileGateFixtureTierStatus.pendingArtifacts).toEqual([])
+    expect(khalaMobileGateFixtureTierStatus.state).toBe("qam_2_streaming_fixture_tier_enforced")
   })
 })

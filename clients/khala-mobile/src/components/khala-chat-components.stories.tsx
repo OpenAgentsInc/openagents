@@ -82,7 +82,9 @@ const TranscriptPartExample = ({ part }: { readonly part: TranscriptPart }) => {
         ? part.toolCallId
         : part.kind === "usage"
           ? `${part.inputTokens} in / ${part.outputTokens} out`
-          : part.turnId
+          : part.kind === "writeback"
+            ? `${part.repositoryFullName} ${part.pullRequestNumber === undefined ? part.branch : `PR #${part.pullRequestNumber}`}`
+            : part.turnId
 
   return (
     <View className="rounded-lg border border-border bg-surfaceRaised p-3">

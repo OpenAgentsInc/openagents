@@ -91,9 +91,12 @@ export const TranscriptPartRow = ({
     case "tool": {
       const summary = summarizeToolPart(part)
       const toneColor = toolToneColor(theme, summary.tone)
+      const label = part.status === "failed" && part.errorMessageSafe !== undefined
+        ? `Failed: ${part.errorMessageSafe}`
+        : summary.label
       return (
         <TouchableFeedback
-          accessibilityLabel={summary.label}
+          accessibilityLabel={label}
           accessibilityRole="button"
           style={$toolTouchable}
           highlightColor="rgba(232, 193, 180, 0.10)"
@@ -101,13 +104,28 @@ export const TranscriptPartRow = ({
           <View style={themed($toolRow)}>
             <Text style={[$toolIcon, { color: toneColor }]}>{TOOL_ICON[summary.icon]}</Text>
             <Text numberOfLines={1} style={[$toolLabel, { color: toneColor }]}>
-              {summary.label}
+              {label}
             </Text>
             <Text style={[$chevron, { color: theme.colors.textDim }]}>›</Text>
           </View>
         </TouchableFeedback>
       )
     }
+    case "writeback":
+      return (
+        <View style={themed($writebackCard)}>
+          <Text size="xxs" style={themed($faint)} text={part.status.replace(/_/g, " ")} />
+          <Text style={[$writebackTitle, { color: theme.colors.text }]} text={part.repositoryFullName} />
+          <Text
+            numberOfLines={2}
+            style={[$writebackMeta, { color: theme.colors.textDim }]}
+            text={[
+              part.pullRequestNumber === undefined ? part.branch : `PR #${part.pullRequestNumber}`,
+              part.changedFileCount === undefined ? undefined : `${part.changedFileCount} files`,
+            ].filter(Boolean).join(" · ")}
+          />
+        </View>
+      )
     case "usage":
       return (
         <Text size="xxs" style={themed($usage)}>
@@ -199,6 +217,16 @@ const $handoffButton: ThemedStyle<ViewStyle> = ({ colors, spacing }) => ({
   paddingVertical: spacing.xxs
 })
 
+const $writebackCard: ThemedStyle<ViewStyle> = ({ colors, spacing }) => ({
+  borderRadius: 10,
+  borderWidth: 1,
+  borderColor: colors.palette.neutral400,
+  backgroundColor: colors.palette.neutral200,
+  gap: spacing.xxxs,
+  paddingHorizontal: spacing.sm,
+  paddingVertical: spacing.xs
+})
+
 const $faint: ThemedStyle<TextStyle> = ({ colors }) => ({ color: colors.textDim })
 
 const $prose: TextStyle = { fontSize: 22, lineHeight: 32 }
@@ -208,3 +236,5 @@ const $toolLabel: TextStyle = { minWidth: 0, flex: 1, fontSize: 20, lineHeight: 
 const $chevron: TextStyle = { fontSize: 24 }
 const $laneBadgeText: TextStyle = { fontSize: 10, lineHeight: 14 }
 const $handoffText: TextStyle = { fontSize: 10, lineHeight: 14, textTransform: "uppercase", letterSpacing: 0.5 }
+const $writebackTitle: TextStyle = { fontSize: 16, fontWeight: "600", lineHeight: 22 }
+const $writebackMeta: TextStyle = { fontSize: 13, lineHeight: 18 }

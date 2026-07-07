@@ -1,0 +1,53 @@
+{
+  "checks": [
+    {
+      "command": [
+        "bun",
+        "run",
+        "typecheck"
+      ],
+      "durationMs": 2720,
+      "exitCode": 0,
+      "id": "static.typecheck",
+      "name": "Static TypeScript check",
+      "stderrTail": "$ tsc -p tsconfig.json --noEmit\n",
+      "stdoutTail": "",
+      "status": "pass"
+    },
+    {
+      "command": [
+        "bun",
+        "run",
+        "architecture:check"
+      ],
+      "durationMs": 619,
+      "exitCode": 0,
+      "id": "static.dependency_cruiser",
+      "name": "Dependency Cruiser architecture check",
+      "stderrTail": "$ depcruise index.tsx src tests --config .dependency-cruiser.cjs\n",
+      "stdoutTail": "\n✔ no dependency violations found (339 modules, 1062 dependencies cruised)\n\n",
+      "status": "pass"
+    },
+    {
+      "command": [
+        "bun",
+        "test"
+      ],
+      "durationMs": 1319,
+      "exitCode": 0,
+      "id": "unit.mounts.contracts.generator_fixture",
+      "name": "Unit, mount, behavior-contract, generator-conformance, and fixture-tier tests",
+      "stderrTail": "kit on the signed-in thread list [0.11ms]\n(pass) Khala mobile provider spine and primitives > uses a raw filled Pressable CTA on the GitHub-only sign-in fallback [0.09ms]\n(pass) Khala mobile provider spine and primitives > the signed-out screen matches the owned arcade app's plain look, not a composed dashboard widget [0.10ms]\n\ntests/thread-messages-screen.test.tsx:\n(pass) contract khala_mobile.thread_messages.rn_component_mount_coverage.v1 — ThreadMessagesScreen streaming renderer > screen source stays wired to synced messages, runtime events, empty/loading/error states, and transcript rows [0.04ms]\nreact-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer\nreact-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer\nreact-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer\n(pass) contract khala_mobile.thread_messages.rn_component_mount_coverage.v1 — ThreadMessagesScreen streaming renderer > renders ordered runtime streams with transcript order, interruption, typed refusals, and writeback cards [1.56ms]\n\ntests/push-to-talk-core.test.ts:\n(pass) phaseFromAvailability > available maps to idle (pressable)\n(pass) phaseFromAvailability > denied maps to denied (not pressable) [0.04ms]\n(pass) phaseFromAvailability > unavailable maps to unavailable (not pressable)\n(pass) isPushToTalkPressable > idle and recording are pressable\n(pass) isPushToTalkPressable > checking, denied, unavailable, error are not pressable [0.02ms]\n(pass) pushToTalkAccessibilityLabel > has a distinct label per phase [0.02ms]\n(pass) describePushToTalkFailure > wraps an Error message in a user-facing sentence [0.03ms]\n(pass) describePushToTalkFailure > falls back to a generic sentence for a blank error\n(pass) describePushToTalkFailure > handles a non-Error thrown value\n(pass) mergeTranscriptIntoDraft > uses the transcript verbatim when the draft is empty\n(pass) mergeTranscriptIntoDraft > appends with a separating space when the draft has content [0.01ms]\n(pass) mergeTranscriptIntoDraft > does not double a trailing space already on the draft\n(pass) mergeTranscriptIntoDraft > does not double a trailing newline already on the draft\n(pass) mergeTranscriptIntoDraft > is a no-op for a blank transcript\n(pass) mergeTranscriptIntoDraft > trims the transcript's own surrounding whitespace\n\ntests/khala-ui-primitives.test.tsx:\nreact-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer\n(pass) Khala ordinary UI primitives > KhalaTextField derives label, disabled, and invalid accessibility state [4.51ms]\nreact-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer\n(pass) Khala ordinary UI primitives > KhalaListItem exposes an accessible button row when interactive [1.50ms]\nreact-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer\n(pass) Khala ordinary UI primitives > KhalaEmptyState marks loading fallback as progress [0.18ms]\n\ntests/swipe-quote-core.test.ts:\n(pass) buildQuoteSnippet > quotes a text part verbatim when short [0.10ms]\n(pass) buildQuoteSnippet > truncates long text with an ellipsis at the requested max length [0.02ms]\n(pass) buildQuoteSnippet > collapses internal whitespace/newlines before truncating [0.01ms]\n(pass) buildQuoteSnippet > labels a reasoning part distinctly from a text part\n(pass) buildQuoteSnippet > quotes a tool part by name and status, not by (absent) text\n(pass) buildQuoteSnippet > returns undefined for usage parts (nothing meaningful to quote) [0.01ms]\n(pass) buildQuoteSnippet > returns undefined for turn-status parts (nothing meaningful to quote)\n(pass) buildComposerTextWithQuote > starts the draft with the snippet plus a trailing space when the draft is empty\n(pass) buildComposerTextWithQuote > treats a whitespace-only draft as empty\n(pass) buildComposerTextWithQuote > prepends the snippet above an existing non-empty draft, preserving it\n\ntests/onboarding-core.test.ts:\n(pass) contract khala_mobile.onboarding.first_task_straight_line.v1 > onboarding_never_blocks_on_undetermined_balance.unit — Start is only ever blocked on a CONFIRMED zero/negative balance\n(pass) ONBOARDING_SUGGESTED_TASKS > has at least the two audit-named examples plus a third, each with a non-empty prompt [0.16ms]\n(pass) ONBOARDING_SUGGESTED_TASKS > every task has a unique id [0.02ms]\n(pass) welcomeHeadingForLogin > personalizes the greeting with the GitHub login when present [0.02ms]\n(pass) welcomeHeadingForLogin > trims surrounding whitespace from the login\n(pass) welcomeHeadingForLogin > falls back to the product-name greeting when no login is available\n(pass) deriveThreadTitleFromTask > uses the trimmed task text as the title when short enough [0.01ms]\n(pass) deriveThreadTitleFromTask > falls back to 'New chat' for blank input\n(pass) deriveThreadTitleFromTask > truncates a long task with an ellipsis [0.01ms]\n(pass) blocksOnZeroBalance > blocks on a confirmed zero balance\n(pass) blocksOnZeroBalance > blocks on a confirmed negative balance\n(pass) blocksOnZeroBalance > does not block on a confirmed positive balance\n(pass) blocksOnZeroBalance > does not block when the balance could not be determined\n\ntests/onboarding-welcome-cta.test.tsx:\nreact-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer\n(pass) contract khala_mobile.onboarding.get_started_cta_fill_on_inner_view.v1 — WelcomeStep CTA (real component mount) > renders a 'Get started' label inside a cyan-filled inner View, with the Pressable owning only the touch target [11.07ms]\n\ntests/khala-auth-state-machine.test.ts:\n(pass) Khala auth state machine > fresh installs become signed out without entering Tailnet discovery [0.03ms]\n(pass) Khala auth state machine > stored credentials still restore the session [0.03ms]\n(pass) Khala auth state machine > GitHub sign-in moves through pending, failure, and success states [0.04ms]\n\n 392 pass\n 0 fail\n 1126 expect() calls\nRan 392 tests across 74 files. [1305.00ms]\n",
+      "stdoutTail": "bun test v1.3.11 (af24e281)\n",
+      "status": "pass"
+    }
+  ],
+  "generatedAt": "2026-07-07T22:28:35.149Z",
+  "ok": true,
+  "rollbackPosture": [
+    "OTA JavaScript regression: hold or republish through OpenAgents Updates only.",
+    "Native regression: hold the store build; do not use EAS or hosted submit.",
+    "Contract or waiver change: keep pending blockers named until an oracle lands."
+  ],
+  "schema": "openagents.khala_mobile.release_gate.v1"
+}

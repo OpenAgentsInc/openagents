@@ -154,6 +154,34 @@ describe("reduceRuntimeTranscript", () => {
       totalTokens: 120
     })
   })
+
+  test("writeback.recorded becomes a public-safe writeback card part", () => {
+    const parts = reduceRuntimeTranscript([
+      {
+        ...base,
+        branch: "codex/qam-2",
+        branchUrl: "https://github.com/OpenAgentsInc/openagents/tree/codex/qam-2",
+        changedFileCount: 4,
+        eventId: "e1",
+        kind: "writeback.recorded",
+        pullRequestNumber: 8537,
+        pullRequestUrl: "https://github.com/OpenAgentsInc/openagents/pull/8537",
+        repositoryFullName: "OpenAgentsInc/openagents",
+        status: "pull_request_opened",
+        writebackRef: "writeback.private.fixture.qam_2"
+      }
+    ])
+    expect(parts[0]).toEqual({
+      branch: "codex/qam-2",
+      changedFileCount: 4,
+      id: "e1",
+      kind: "writeback",
+      pullRequestNumber: 8537,
+      pullRequestUrl: "https://github.com/OpenAgentsInc/openagents/pull/8537",
+      repositoryFullName: "OpenAgentsInc/openagents",
+      status: "pull_request_opened",
+    })
+  })
 })
 
 describe("summarizeToolPart", () => {

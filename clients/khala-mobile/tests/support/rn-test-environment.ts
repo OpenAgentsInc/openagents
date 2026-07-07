@@ -93,6 +93,9 @@ import { readFileSync } from "node:fs"
 const RN_EAGER_EXPORT_ALLOWLIST = new Set([
   "ActivityIndicator",
   "FlatList",
+  "KeyboardAvoidingView",
+  "Linking",
+  "Modal",
   "Platform",
   "Pressable",
   "ScrollView",
@@ -226,6 +229,37 @@ const definePropertyExportsPlugin = ({ types: t }: any) => ({
  * `jest.requireActual()` globals, which don't exist under `bun test`.
  */
 const RN_LEAF_STUBS: ReadonlyArray<{ readonly test: RegExp; readonly contents: string }> = [
+  {
+    contents: `
+      import * as React from "react"
+      const KeyboardAvoidingView = React.forwardRef((props, ref) => React.createElement("KeyboardAvoidingView", { ...props, ref }, props.children))
+      KeyboardAvoidingView.displayName = "KeyboardAvoidingView"
+      export default KeyboardAvoidingView
+    `,
+    test: /\/Libraries\/Components\/Keyboard\/KeyboardAvoidingView\.js$/
+  },
+  {
+    contents: `
+      import * as React from "react"
+      const Modal = React.forwardRef((props, ref) => props.visible === false ? null : React.createElement("Modal", { ...props, ref }, props.children))
+      Modal.displayName = "Modal"
+      export default Modal
+    `,
+    test: /\/Libraries\/Modal\/Modal\.js$/
+  },
+  {
+    contents: `
+      const Linking = {
+        openSettings: async () => undefined,
+        openURL: async () => undefined,
+        canOpenURL: async () => true,
+        addEventListener: () => ({ remove: () => undefined }),
+        getInitialURL: async () => null
+      }
+      export default Linking
+    `,
+    test: /\/Libraries\/Linking\/Linking\.js$/
+  },
   {
     contents: `
       import * as React from "react"

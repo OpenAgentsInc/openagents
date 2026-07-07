@@ -17,6 +17,16 @@ export type TranscriptPart =
     }>
   | Readonly<{ kind: "usage"; id: string; inputTokens?: number; outputTokens?: number; totalTokens?: number }>
   | Readonly<{
+      branch: string
+      changedFileCount?: number
+      id: string
+      kind: "writeback"
+      pullRequestNumber?: number
+      pullRequestUrl?: string
+      repositoryFullName: string
+      status: string
+    }>
+  | Readonly<{
       kind: "turn-status"
       id: string
       status: "running" | "completed" | "failed" | "interrupted"
@@ -200,6 +210,18 @@ export const reduceRuntimeTranscript = (
           ...(event.usage.inputTokens === undefined ? {} : { inputTokens: event.usage.inputTokens }),
           ...(event.usage.outputTokens === undefined ? {} : { outputTokens: event.usage.outputTokens }),
           ...(event.usage.totalTokens === undefined ? {} : { totalTokens: event.usage.totalTokens })
+        })
+        break
+      case "writeback.recorded":
+        parts.push({
+          branch: event.branch,
+          id: event.eventId,
+          kind: "writeback",
+          ...(event.changedFileCount === undefined ? {} : { changedFileCount: event.changedFileCount }),
+          ...(event.pullRequestNumber === undefined ? {} : { pullRequestNumber: event.pullRequestNumber }),
+          ...(event.pullRequestUrl === undefined ? {} : { pullRequestUrl: event.pullRequestUrl }),
+          repositoryFullName: event.repositoryFullName,
+          status: event.status,
         })
         break
       default:
