@@ -3,10 +3,14 @@
 // the Cloudflare D1 `d1-http` bridge 401-dead account-wide on the Cloud Run
 // monolith, that read THREW and 500'd every authenticated agent request — the
 // OpenAI-compatible inference gateway `POST /api/v1/chat/completions` among
-// them. These tests pin the fail-soft fallback: a D1 read error serves the
-// identical row from the Postgres mirror (`agent_credentials`/`agent_profiles`
-// in the same khala_sync database `users`/`auth_identities` are authoritative
-// in), and a total outage fails CLOSED (undefined -> 401), never a 500.
+// them. It is now Postgres-PRIMARY by default (`KHALA_SYNC_AGENT_CREDENTIALS_
+// WRITES` unset -> 'postgres'): the credential/profile read serves from the
+// khala_sync Postgres twin and NEVER touches the dead bridge, so a normal
+// authed request emits no d1-http 401. These tests pin (1) the default
+// Postgres-primary path (dead D1 is never consulted) and (2) the legacy 'd1'
+// escape-hatch path (D1-first read with a Postgres fail-soft fallback on a D1
+// error). Either way a total outage fails CLOSED (undefined -> 401), never a
+// 500.
 
 import { describe, expect, test } from 'vitest'
 
@@ -83,8 +87,11 @@ const postgresIdentityDb = (
 
 const AGENT_TOKEN = 'oa_agent_fallbacktoken000000000000000000'
 
-describe('findAgentByTokenHash Postgres fallback (CFG #8515)', () => {
-  test('a dead-D1 credential read serves the mirrored row from Postgres (auth succeeds)', async () => {
+describe('findAgentByTokenHash Postgres-primary + fallback (CFG #8515)', () => {
+  test('the default path serves the credential from Postgres without touching dead D1 (auth succeeds)', async () => {
+    // Default mode is 'postgres': the credential/profile read serves from the
+    // Postgres twin. `deadD1` would throw if consulted, so a success here
+    // proves the auth read never touches the 401-dead bridge.
     const store = makeD1AgentRegistrationStore(
       deadD1(),
       postgresIdentityDb({ includeCredential: true, includeUser: true }),
@@ -96,12 +103,25 @@ describe('findAgentByTokenHash Postgres fallback (CFG #8515)', () => {
     expect(session?.credential.profileMetadataJson).toBe('{"x":1}')
   })
 
+  test("the legacy 'd1' escape hatch falls back to Postgres on a dead-D1 read error (auth succeeds)", async () => {
+    const store = makeD1AgentRegistrationStore(
+      deadD1(),
+      postgresIdentityDb({ includeCredential: true, includeUser: true }),
+      'd1',
+    )
+    const session = await authenticateProgrammaticAgent(store, AGENT_TOKEN)
+    expect(session).not.toBeUndefined()
+    expect(session?.user.id).toBe(USER_ID)
+    expect(session?.credential.id).toBe(CREDENTIAL_ID)
+  })
+
   test('the best-effort touch write never 500s auth when D1 is dead', async () => {
     const store = makeD1AgentRegistrationStore(
       deadD1(),
       postgresIdentityDb({ includeCredential: true, includeUser: true }),
     )
-    // Would throw (dead-D1 UPDATE) if the touch were not swallowed.
+    // In the default 'postgres' mode the touch UPDATE goes to Postgres (not
+    // the dead bridge); it stays best-effort and never fails the auth.
     await expect(
       authenticateProgrammaticAgent(store, AGENT_TOKEN),
     ).resolves.not.toBeUndefined()
@@ -140,5 +160,105 @@ describe('findAgentByTokenHash Postgres fallback (CFG #8515)', () => {
     await expect(
       authenticateProgrammaticAgent(store, AGENT_TOKEN),
     ).resolves.toBeUndefined()
+  })
+})
+
+// A dead D1 whose WRITES (`run`/`batch`) reject like the 401-dead bridge, and
+// an identityDb that RECORDS every batch/query so a test can prove the
+// credential/profile writes are Postgres-authoritative and never hit D1.
+const recordingPostgres = () => {
+  const batches: Array<ReadonlyArray<{ sql: string }>> = []
+  const queries: Array<{ sql: string; params: ReadonlyArray<unknown> }> = []
+  const db = {
+    batch: async (statements: ReadonlyArray<{ sql: string }>) => {
+      batches.push(statements)
+    },
+    query: async (sql: string, params: ReadonlyArray<unknown> = []) => {
+      queries.push({ params, sql })
+      return []
+    },
+  } as unknown as IdentityDb
+  return { batches, db, queries }
+}
+
+describe('agent credential/profile WRITES are Postgres-authoritative (CFG #8515)', () => {
+  const REGISTRATION = {
+    user: {
+      id: USER_ID,
+      kind: 'agent' as const,
+      displayName: 'Write Path Agent',
+      primaryEmail: null,
+      avatarUrl: null,
+      status: 'active' as const,
+      createdAt: '2026-07-07T00:00:00.000Z',
+      updatedAt: '2026-07-07T00:00:00.000Z',
+    },
+    identity: {
+      id: 'auth_identity_write_1',
+      userId: USER_ID,
+      provider: 'agent_programmatic' as const,
+      providerSubject: 'ext_write_1',
+      email: null,
+      createdAt: '2026-07-07T00:00:00.000Z',
+      updatedAt: '2026-07-07T00:00:00.000Z',
+    },
+    profile: {
+      userId: USER_ID,
+      slug: 'write-path-agent',
+      metadataJson: '{}',
+      createdAt: '2026-07-07T00:00:00.000Z',
+      updatedAt: '2026-07-07T00:00:00.000Z',
+    },
+    credential: {
+      id: CREDENTIAL_ID,
+      userId: USER_ID,
+      openauthUserId: null,
+      tokenHash: 'hash_write_1',
+      tokenPrefix: 'oa_agent_writepref01',
+      name: 'Write Path Agent programmatic token',
+      status: 'active' as const,
+      createdAt: '2026-07-07T00:00:00.000Z',
+      expiresAt: null,
+    },
+  }
+
+  test('createAgentRegistration lands all four tables in one Postgres transaction, never D1', async () => {
+    const pg = recordingPostgres()
+    const store = makeD1AgentRegistrationStore(deadD1(), pg.db)
+    // deadD1.batch would reject if consulted -> a success proves Postgres-only.
+    await store.createAgentRegistration(REGISTRATION)
+    expect(pg.batches).toHaveLength(1)
+    const tables = (pg.batches[0] ?? []).map(s => s.sql)
+    expect(tables.some(sql => sql.includes('INSERT INTO users'))).toBe(true)
+    expect(tables.some(sql => sql.includes('INSERT INTO auth_identities'))).toBe(
+      true,
+    )
+    expect(tables.some(sql => sql.includes('INSERT INTO agent_profiles'))).toBe(
+      true,
+    )
+    expect(
+      tables.some(sql => sql.includes('INSERT INTO agent_credentials')),
+    ).toBe(true)
+  })
+
+  test('addAgentCredential (reissue) inserts into Postgres agent_credentials, never D1', async () => {
+    const pg = recordingPostgres()
+    const store = makeD1AgentRegistrationStore(deadD1(), pg.db)
+    await store.addAgentCredential?.(REGISTRATION.credential)
+    expect(pg.queries).toHaveLength(1)
+    expect(pg.queries[0]?.sql).toContain('INSERT INTO agent_credentials')
+    expect(pg.queries[0]?.params?.[0]).toBe(CREDENTIAL_ID)
+  })
+
+  test('touchAgentCredential updates Postgres last_used_at, never D1', async () => {
+    const pg = recordingPostgres()
+    const store = makeD1AgentRegistrationStore(deadD1(), pg.db)
+    await store.touchAgentCredential(CREDENTIAL_ID, '2026-07-07T01:00:00.000Z')
+    expect(pg.queries).toHaveLength(1)
+    expect(pg.queries[0]?.sql).toContain('UPDATE agent_credentials')
+    expect(pg.queries[0]?.params).toEqual([
+      '2026-07-07T01:00:00.000Z',
+      CREDENTIAL_ID,
+    ])
   })
 })

@@ -1,16 +1,17 @@
 import { Schema as S } from 'effect'
 
 import {
-  makeAgentRuntimeRemainderMirrorForEnv,
   type AgentRuntimeRemainderMirror,
   type AgentRuntimeRemainderStoreEnv,
+  makeAgentRuntimeRemainderMirrorForEnv,
 } from './agent-runtime-remainder-store'
 import {
-  identityAuthMirrorFromEnv,
   type IdentityAuthMirror,
+  identityAuthMirrorFromEnv,
 } from './identity-auth-domain-store'
-import { identityDbForEnv, type IdentityDb } from './identity-db'
+import { type IdentityDb, identityDbForEnv } from './identity-db'
 import { logWorkerRouteWarning } from './observability'
+import type { LedgerParam } from './payments-ledger-db'
 import { openAgentsDatabase } from './runtime'
 import { currentIsoTimestamp, randomUuid } from './runtime-primitives'
 
@@ -449,103 +450,234 @@ export const timingSafeEqual = async (
   return mismatch === 0
 }
 
+// CFG D1 evacuation (#8515): the Cloudflare D1 `d1-http` bridge 401s
+// account-wide (Workers Paid plan cancelled — no token fix). The agent
+// bearer-token auth GATE reads `agent_credentials`/`agent_profiles` on EVERY
+// authenticated request; against dead D1 that was the dominant residual
+// d1-http 401 source (~30 401s/35s) AND it broke `POST /api/agents/register`
+// (the credential/profile writes went to dead D1). `agent_credentials` and
+// `agent_profiles` are KS-8.5 (#8334) read-back twins in the SAME khala_sync
+// Postgres database the identity core (`users`/`auth_identities`, CFG-4 #8519)
+// is already authoritative in, so `identityDb` (a generic KHALA_SYNC_DB
+// executor) can serve BOTH tables' reads AND writes directly — no cross-store
+// JOIN boundary remains between the four tables.
+//
+// `KHALA_SYNC_AGENT_CREDENTIALS_WRITES` is the cutover lever (mirrors the
+// `KHALA_SYNC_PYLON_WRITES` / `KHALA_SYNC_FORGE_GIT_CANONICAL_WRITES`
+// posture). Default 'postgres': the agent credential/profile READS and WRITES
+// are Postgres-authoritative and never touch the dead D1 bridge. Any value
+// other than an explicit 'd1' resolves to 'postgres' — the inverse-typo
+// posture the other WRITE cutovers use, so a typo can never route the auth
+// gate back onto the 401-dead bridge. 'd1' restores the legacy path (reads
+// D1-first with a Postgres fail-soft fallback; writes to D1) as an emergency
+// escape hatch only.
+export type AgentCredentialsWritesMode = 'd1' | 'postgres'
+
+export type AgentCredentialsFlagEnv = Readonly<{
+  KHALA_SYNC_AGENT_CREDENTIALS_WRITES?: string | undefined
+}>
+
+export const agentCredentialsWritesModeFromEnv = (
+  env: AgentCredentialsFlagEnv,
+): AgentCredentialsWritesMode =>
+  env.KHALA_SYNC_AGENT_CREDENTIALS_WRITES?.trim().toLowerCase() === 'd1'
+    ? 'd1'
+    : 'postgres'
+
+// The Postgres-authoritative twin of the D1 credential/profile INSERTs.
+// `agent_credentials`/`agent_profiles` live in the same khala_sync database as
+// `users`/`auth_identities`, so the whole registration lands in ONE atomic
+// Postgres transaction — the UNIQUE (provider, provider_subject) dedupe and
+// the slug UNIQUE both enforce together, and there is no D1 batch that can
+// half-fail behind a committed identity row.
+const insertAgentRegistrationOnPostgres = (
+  identityDb: IdentityDb,
+  record: AgentRegistrationRecord,
+  credentialOpenauthUserId: string | null,
+): Promise<void> =>
+  identityDb.batch([
+    {
+      sql: `INSERT INTO users
+          (id, kind, display_name, primary_email, avatar_url, status, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      params: [
+        record.user.id,
+        record.user.kind,
+        record.user.displayName,
+        record.user.primaryEmail,
+        record.user.avatarUrl,
+        record.user.status,
+        record.user.createdAt,
+        record.user.updatedAt,
+      ],
+    },
+    {
+      sql: `INSERT INTO auth_identities
+          (id, user_id, provider, provider_subject, email, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      params: [
+        record.identity.id,
+        record.identity.userId,
+        record.identity.provider,
+        record.identity.providerSubject,
+        record.identity.email,
+        record.identity.createdAt,
+        record.identity.updatedAt,
+      ],
+    },
+    {
+      sql: `INSERT INTO agent_profiles
+          (user_id, slug, metadata_json, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?)`,
+      params: [
+        record.profile.userId,
+        record.profile.slug,
+        record.profile.metadataJson,
+        record.profile.createdAt,
+        record.profile.updatedAt,
+      ],
+    },
+    {
+      sql: `INSERT INTO agent_credentials
+          (id, user_id, openauth_user_id, token_hash, token_prefix, name, status, created_at, expires_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      params: [
+        record.credential.id,
+        record.credential.userId,
+        credentialOpenauthUserId,
+        record.credential.tokenHash,
+        record.credential.tokenPrefix,
+        record.credential.name,
+        record.credential.status,
+        record.credential.createdAt,
+        record.credential.expiresAt,
+      ],
+    },
+  ])
+
 export const makeD1AgentRegistrationStore = (
   db: D1Database,
   identityDb: IdentityDb,
-): AgentRegistrationStore & AgentReissueStore & AgentForumIdentityStore => ({
-  createAgentRegistration: async record => {
-    // CFG-4 Domain 2 (#8519) cross-store seam: `users`/`auth_identities`
-    // are Postgres-authoritative; `agent_profiles`/`agent_credentials`
-    // stay D1. Identity first — the Postgres UNIQUE
-    // (provider, provider_subject) refuses a duplicate externalId BEFORE
-    // any D1 row lands (same dedupe D1 enforced when this was one batch).
-    // If the D1 batch then fails (e.g. slug UNIQUE), the orphaned agent
-    // user has no credential/profile, can never authenticate, and the
-    // registration surfaces the error to the caller — no broken slug is
-    // ever claimed.
-    await identityDb.batch([
-      {
-        sql: `INSERT INTO users
+  mode: AgentCredentialsWritesMode = 'postgres',
+): AgentRegistrationStore & AgentReissueStore & AgentForumIdentityStore => {
+  // Default 'postgres': agent credential/profile reads + writes are
+  // Postgres-authoritative (D1 is 401-dead). 'd1' is the emergency escape
+  // hatch that restores the legacy D1 path.
+  const credentialsOnPostgres = mode !== 'd1'
+  return {
+    createAgentRegistration: async record => {
+      if (credentialsOnPostgres) {
+        // Postgres-authoritative: one atomic transaction across all four tables
+        // (identity core + credential/profile), never the dead D1 bridge.
+        await insertAgentRegistrationOnPostgres(
+          identityDb,
+          record,
+          record.credential.openauthUserId,
+        )
+        return
+      }
+      // CFG-4 Domain 2 (#8519) cross-store seam: `users`/`auth_identities`
+      // are Postgres-authoritative; `agent_profiles`/`agent_credentials`
+      // stay D1. Identity first — the Postgres UNIQUE
+      // (provider, provider_subject) refuses a duplicate externalId BEFORE
+      // any D1 row lands (same dedupe D1 enforced when this was one batch).
+      // If the D1 batch then fails (e.g. slug UNIQUE), the orphaned agent
+      // user has no credential/profile, can never authenticate, and the
+      // registration surfaces the error to the caller — no broken slug is
+      // ever claimed.
+      await identityDb.batch([
+        {
+          sql: `INSERT INTO users
             (id, kind, display_name, primary_email, avatar_url, status, created_at, updated_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        params: [
-          record.user.id,
-          record.user.kind,
-          record.user.displayName,
-          record.user.primaryEmail,
-          record.user.avatarUrl,
-          record.user.status,
-          record.user.createdAt,
-          record.user.updatedAt,
-        ],
-      },
-      {
-        sql: `INSERT INTO auth_identities
+          params: [
+            record.user.id,
+            record.user.kind,
+            record.user.displayName,
+            record.user.primaryEmail,
+            record.user.avatarUrl,
+            record.user.status,
+            record.user.createdAt,
+            record.user.updatedAt,
+          ],
+        },
+        {
+          sql: `INSERT INTO auth_identities
             (id, user_id, provider, provider_subject, email, created_at, updated_at)
            VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        params: [
-          record.identity.id,
-          record.identity.userId,
-          record.identity.provider,
-          record.identity.providerSubject,
-          record.identity.email,
-          record.identity.createdAt,
-          record.identity.updatedAt,
-        ],
-      },
-    ])
-    await db.batch([
-      db
-        .prepare(
-          `INSERT INTO agent_profiles
+          params: [
+            record.identity.id,
+            record.identity.userId,
+            record.identity.provider,
+            record.identity.providerSubject,
+            record.identity.email,
+            record.identity.createdAt,
+            record.identity.updatedAt,
+          ],
+        },
+      ])
+      await db.batch([
+        db
+          .prepare(
+            `INSERT INTO agent_profiles
             (user_id, slug, metadata_json, created_at, updated_at)
            VALUES (?, ?, ?, ?, ?)`,
-        )
-        .bind(
-          record.profile.userId,
-          record.profile.slug,
-          record.profile.metadataJson,
-          record.profile.createdAt,
-          record.profile.updatedAt,
-        ),
-      db
-        .prepare(
-          `INSERT INTO agent_credentials
+          )
+          .bind(
+            record.profile.userId,
+            record.profile.slug,
+            record.profile.metadataJson,
+            record.profile.createdAt,
+            record.profile.updatedAt,
+          ),
+        db
+          .prepare(
+            `INSERT INTO agent_credentials
             (id, user_id, openauth_user_id, token_hash, token_prefix, name, status, created_at, expires_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        )
-        .bind(
-          record.credential.id,
-          record.credential.userId,
-          record.credential.openauthUserId,
-          record.credential.tokenHash,
-          record.credential.tokenPrefix,
-          record.credential.name,
-          record.credential.status,
-          record.credential.createdAt,
-          record.credential.expiresAt,
-        ),
-    ])
-  },
+          )
+          .bind(
+            record.credential.id,
+            record.credential.userId,
+            record.credential.openauthUserId,
+            record.credential.tokenHash,
+            record.credential.tokenPrefix,
+            record.credential.name,
+            record.credential.status,
+            record.credential.createdAt,
+            record.credential.expiresAt,
+          ),
+      ])
+    },
 
-  findAgentByTokenHash: async (tokenHash, now) => {
-    // CFG-4 Domain 2 (#8519): THE agent auth-gate read. The old single D1
-    // JOIN splits — credential/profile from D1, then the Postgres-
-    // authoritative `users` gate check. Two reads per authenticated agent
-    // request is the accepted hard-cut cost.
-    //
-    // CFG D1 evacuation (#8515): the D1 `d1-http` bridge 401s account-wide, so
-    // this credential/profile SELECT THROWS on the Cloud Run monolith and used
-    // to 500 every authenticated agent request (the OpenAI-compatible inference
-    // gateway `POST /api/v1/chat/completions` among them). Fail-soft: on a D1
-    // read error serve the identical row from the Postgres mirror. A total
-    // outage (both stores unreachable) returns undefined -> 401
-    // (fail-CLOSED for an auth gate — never grant, never 500).
-    let row: AgentCredentialRow | null
-    try {
-      row = await db
-        .prepare(
-          `SELECT
+    findAgentByTokenHash: async (tokenHash, now) => {
+      // CFG-4 Domain 2 (#8519): THE agent auth-gate read — runs on EVERY
+      // authenticated agent request.
+      //
+      // CFG D1 evacuation (#8515): the D1 `d1-http` bridge 401s account-wide, so
+      // this read is Postgres-PRIMARY by default (`credentialsOnPostgres`). The
+      // credential/profile SELECT serves from the khala_sync Postgres twin — the
+      // same database `users`/`auth_identities` are authoritative in — so a
+      // normal authed request never touches the 401-dead bridge (this removed
+      // the dominant ~30 401s/35s d1-http source). A Postgres error fails CLOSED
+      // (undefined -> 401 — never grant, never 500). The legacy 'd1' escape
+      // hatch keeps the old D1-first read with a Postgres fail-soft fallback.
+      let row: AgentCredentialRow | null
+      if (credentialsOnPostgres) {
+        try {
+          row = await readAgentCredentialByTokenHashFromPostgres(
+            identityDb,
+            tokenHash,
+            now,
+          )
+        } catch {
+          return undefined
+        }
+      } else {
+        try {
+          row = await db
+            .prepare(
+              `SELECT
             agent_credentials.user_id,
             agent_credentials.id AS credential_id,
             agent_credentials.openauth_user_id,
@@ -560,82 +692,102 @@ export const makeD1AgentRegistrationStore = (
              agent_credentials.expires_at IS NULL
              OR agent_credentials.expires_at > ?
            )`,
-        )
-        .bind(tokenHash, now)
-        .first<AgentCredentialRow>()
-    } catch (error) {
-      logWorkerRouteWarning('khala_sync_agent_auth_postgres_read_fallback', {
-        messageSafe: error instanceof Error ? error.name : 'error',
-      })
-      try {
-        row = await readAgentCredentialByTokenHashFromPostgres(
-          identityDb,
-          tokenHash,
-          now,
-        )
-      } catch {
+            )
+            .bind(tokenHash, now)
+            .first<AgentCredentialRow>()
+        } catch (error) {
+          logWorkerRouteWarning(
+            'khala_sync_agent_auth_postgres_read_fallback',
+            {
+              messageSafe: error instanceof Error ? error.name : 'error',
+            },
+          )
+          try {
+            row = await readAgentCredentialByTokenHashFromPostgres(
+              identityDb,
+              tokenHash,
+              now,
+            )
+          } catch {
+            return undefined
+          }
+        }
+      }
+
+      if (row === null) {
         return undefined
       }
-    }
 
-    if (row === null) {
-      return undefined
-    }
+      const user = await readActiveAgentUser(identityDb, row.user_id)
+      if (user === undefined) {
+        return undefined
+      }
 
-    const user = await readActiveAgentUser(identityDb, row.user_id)
-    if (user === undefined) {
-      return undefined
-    }
+      return {
+        user,
+        credentialId: row.credential_id,
+        openauthUserId: row.openauth_user_id,
+        profileMetadataJson: row.metadata_json ?? '{}',
+        tokenPrefix: row.token_prefix,
+      }
+    },
 
-    return {
-      user,
-      credentialId: row.credential_id,
-      openauthUserId: row.openauth_user_id,
-      profileMetadataJson: row.metadata_json ?? '{}',
-      tokenPrefix: row.token_prefix,
-    }
-  },
-
-  touchAgentCredential: async (credentialId, lastUsedAt) => {
-    // CFG D1 evacuation (#8515): `last_used_at` is non-authoritative
-    // bookkeeping. A dead-D1 (`d1-http` 401) write must never fail an
-    // otherwise-valid authentication, so this is best-effort.
-    try {
-      await db
-        .prepare(
-          `UPDATE agent_credentials
+    touchAgentCredential: async (credentialId, lastUsedAt) => {
+      // CFG D1 evacuation (#8515): `last_used_at` is non-authoritative
+      // bookkeeping. Writes go to the Postgres twin by default so the touch
+      // actually lands (and never hits the 401-dead bridge); a store error must
+      // never fail an otherwise-valid authentication, so this is best-effort.
+      try {
+        if (credentialsOnPostgres) {
+          await identityDb.query(
+            `UPDATE agent_credentials
          SET last_used_at = ?
          WHERE id = ?`,
-        )
-        .bind(lastUsedAt, credentialId)
-        .run()
-    } catch {
-      // Swallow: touch bookkeeping is never allowed to 500 an auth request.
-    }
-  },
+            [lastUsedAt, credentialId],
+          )
+        } else {
+          await db
+            .prepare(
+              `UPDATE agent_credentials
+         SET last_used_at = ?
+         WHERE id = ?`,
+            )
+            .bind(lastUsedAt, credentialId)
+            .run()
+        }
+      } catch {
+        // Swallow: touch bookkeeping is never allowed to 500 an auth request.
+      }
+    },
 
-  updateAgentDisplayName: async (userId, displayName, updatedAt) => {
-    // CFG-4 Domain 2 (#8519): Postgres-authoritative `users` write.
-    // RETURNING gives the touched-row count on both engines.
-    const rows = await identityDb.query(
-      `UPDATE users
+    updateAgentDisplayName: async (userId, displayName, updatedAt) => {
+      // CFG-4 Domain 2 (#8519): Postgres-authoritative `users` write.
+      // RETURNING gives the touched-row count on both engines.
+      const rows = await identityDb.query(
+        `UPDATE users
          SET display_name = ?, updated_at = ?
        WHERE id = ?
          AND kind = 'agent'
          AND status = 'active'
          AND deleted_at IS NULL
        RETURNING id`,
-      [displayName, updatedAt, userId],
-    )
+        [displayName, updatedAt, userId],
+      )
 
-    return rows.length
-  },
+      return rows.length
+    },
 
-  linkOpenAuthAgent: async record => {
-    await db.batch([
-      db
-        .prepare(
-          `INSERT INTO openauth_agent_links
+    linkOpenAuthAgent: async record => {
+      // RESIDUAL D1 (out of scope for the #8515 agent-credentials cutover):
+      // `openauth_agent_links` is a DIFFERENT, still-D1-authoritative domain
+      // (identity-auth-domain-store), and this write is an atomic D1 batch with
+      // the `agent_credentials.openauth_user_id` linkage UPDATE. It cannot move
+      // to Postgres without cutting the openauth_agent_links domain too, so it
+      // stays on D1 here; the owner-link/claim lane is blocked independently.
+      await db.batch([
+        db
+          .prepare(
+            `INSERT INTO openauth_agent_links
             (id, openauth_user_id, agent_user_id, agent_credential_id,
              link_kind, status, created_at, updated_at, revoked_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -645,46 +797,52 @@ export const makeD1AgentRegistrationStore = (
              status = excluded.status,
              updated_at = excluded.updated_at,
              revoked_at = excluded.revoked_at`,
-        )
-        .bind(
-          record.id,
-          record.openauthUserId,
-          record.agentUserId,
-          record.agentCredentialId,
-          record.linkKind,
-          record.status,
-          record.createdAt,
-          record.updatedAt,
-          record.revokedAt,
-        ),
-      ...(record.agentCredentialId === null
-        ? []
-        : [
-            db
-              .prepare(
-                `UPDATE agent_credentials
+          )
+          .bind(
+            record.id,
+            record.openauthUserId,
+            record.agentUserId,
+            record.agentCredentialId,
+            record.linkKind,
+            record.status,
+            record.createdAt,
+            record.updatedAt,
+            record.revokedAt,
+          ),
+        ...(record.agentCredentialId === null
+          ? []
+          : [
+              db
+                .prepare(
+                  `UPDATE agent_credentials
                     SET openauth_user_id = ?
                   WHERE id = ?
                     AND user_id = ?
                     AND status = 'active'
                     AND revoked_at IS NULL`,
-              )
-              .bind(
-                record.openauthUserId,
-                record.agentCredentialId,
-                record.agentUserId,
-              ),
-          ]),
-    ])
-  },
+                )
+                .bind(
+                  record.openauthUserId,
+                  record.agentCredentialId,
+                  record.agentUserId,
+                ),
+            ]),
+      ])
+    },
 
-  listLinkedAgentsForOpenAuthUser: async (openauthUserId, limit) => {
-    const boundedLimit = Math.max(1, Math.min(Math.trunc(limit), 100))
-    // CFG-4 Domain 2 (#8519): links/credentials from D1, the active-agent
-    // gate + display fields + `users.updated_at` ordering from Postgres.
-    const result = await db
-      .prepare(
-        `WITH explicit_links AS (
+    listLinkedAgentsForOpenAuthUser: async (openauthUserId, limit) => {
+      const boundedLimit = Math.max(1, Math.min(Math.trunc(limit), 100))
+      // RESIDUAL D1 (out of scope for the #8515 agent-credentials cutover):
+      // this query is anchored on `openauth_agent_links` (a still-D1-authoritative
+      // domain) JOINed with `agent_credentials`, so it cannot serve purely from
+      // the Postgres agent-credentials twin without also routing the
+      // openauth_agent_links domain. It stays on D1; the owner "linked agents"
+      // dashboard is blocked by the openauth_agent_links domain independently.
+      // CFG-4 Domain 2 (#8519): links/credentials from D1, the active-agent
+      // gate + display fields + `users.updated_at` ordering from Postgres.
+      const result = await db
+        .prepare(
+          `WITH explicit_links AS (
            SELECT
              openauth_agent_links.openauth_user_id,
              openauth_agent_links.agent_user_id,
@@ -715,72 +873,86 @@ export const makeD1AgentRegistrationStore = (
          SELECT * FROM explicit_links
          UNION
          SELECT * FROM credential_links`,
+        )
+        .bind(openauthUserId, openauthUserId)
+        .all<LinkedAgentOwnerRow>()
+
+      const links = result.results ?? []
+      const users = await readActiveAgentUsers(
+        identityDb,
+        links.map(row => row.agent_user_id),
       )
-      .bind(openauthUserId, openauthUserId)
-      .all<LinkedAgentOwnerRow>()
 
-    const links = result.results ?? []
-    const users = await readActiveAgentUsers(
-      identityDb,
-      links.map(row => row.agent_user_id),
-    )
+      return links
+        .flatMap(row => {
+          const user = users.get(row.agent_user_id)
+          return user === undefined
+            ? []
+            : [
+                {
+                  agentUserId: row.agent_user_id,
+                  credentialId: row.credential_id,
+                  displayName: user.displayName,
+                  linkKind: row.link_kind,
+                  openauthUserId: row.openauth_user_id,
+                  tokenPrefix: row.token_prefix,
+                  updatedAt: user.updatedAt,
+                },
+              ]
+        })
+        .sort(
+          (a, b) =>
+            b.updatedAt.localeCompare(a.updatedAt) ||
+            a.agentUserId.localeCompare(b.agentUserId),
+        )
+        .slice(0, boundedLimit)
+        .map(({ updatedAt: _updatedAt, ...record }) => record)
+    },
 
-    return links
-      .flatMap(row => {
-        const user = users.get(row.agent_user_id)
-        return user === undefined
-          ? []
-          : [
-              {
-                agentUserId: row.agent_user_id,
-                credentialId: row.credential_id,
-                displayName: user.displayName,
-                linkKind: row.link_kind,
-                openauthUserId: row.openauth_user_id,
-                tokenPrefix: row.token_prefix,
-                updatedAt: user.updatedAt,
-              },
-            ]
-      })
-      .sort(
-        (a, b) =>
-          b.updatedAt.localeCompare(a.updatedAt) ||
-          a.agentUserId.localeCompare(b.agentUserId),
-      )
-      .slice(0, boundedLimit)
-      .map(({ updatedAt: _updatedAt, ...record }) => record)
-  },
-
-  findAgentForReissue: async selector => {
-    // CFG-4 Domain 2 (#8519): slug resolves via D1 `agent_profiles` then
-    // the Postgres active-agent gate; externalId resolves via the
-    // Postgres `auth_identities` × `users` join then D1 for the slug.
-    if ('slug' in selector) {
-      const profile = await db
-        .prepare(
-          `SELECT user_id, slug
+    findAgentForReissue: async selector => {
+      // CFG-4 Domain 2 (#8519) + CFG D1 evacuation (#8515): `agent_profiles`
+      // reads serve from the Postgres twin by default (D1 is 401-dead). slug
+      // resolves via `agent_profiles` then the Postgres active-agent gate;
+      // externalId resolves via the Postgres `auth_identities` × `users` join
+      // then `agent_profiles` for the slug.
+      if ('slug' in selector) {
+        const profile = credentialsOnPostgres
+          ? (((
+              await identityDb.query(
+                `SELECT user_id, slug
              FROM agent_profiles
             WHERE slug = ?
             LIMIT 1`,
-        )
-        .bind(selector.slug)
-        .first<Readonly<{ user_id: string; slug: string | null }>>()
-      if (profile === null) {
-        return undefined
+                [selector.slug],
+              )
+            )[0] as
+              | Readonly<{ user_id: string; slug: string | null }>
+              | undefined) ?? null)
+          : await db
+              .prepare(
+                `SELECT user_id, slug
+             FROM agent_profiles
+            WHERE slug = ?
+            LIMIT 1`,
+              )
+              .bind(selector.slug)
+              .first<Readonly<{ user_id: string; slug: string | null }>>()
+        if (profile === null) {
+          return undefined
+        }
+        const user = await readActiveAgentUser(identityDb, profile.user_id)
+        if (user === undefined) {
+          return undefined
+        }
+        return {
+          userId: user.id,
+          slug: profile.slug ?? null,
+          displayName: user.displayName,
+        }
       }
-      const user = await readActiveAgentUser(identityDb, profile.user_id)
-      if (user === undefined) {
-        return undefined
-      }
-      return {
-        userId: user.id,
-        slug: profile.slug ?? null,
-        displayName: user.displayName,
-      }
-    }
 
-    const rows = await identityDb.query(
-      `SELECT users.id AS user_id,
+      const rows = await identityDb.query(
+        `SELECT users.id AS user_id,
               users.display_name
          FROM auth_identities
          INNER JOIN users ON users.id = auth_identities.user_id
@@ -790,73 +962,115 @@ export const makeD1AgentRegistrationStore = (
           AND users.status = 'active'
           AND users.deleted_at IS NULL
         LIMIT 1`,
-      [selector.externalId],
-    )
-    const identityRow = rows[0]
-    if (identityRow === undefined) {
-      return undefined
-    }
-    const userId = String(identityRow.user_id)
-    const profile = await db
-      .prepare(
-        `SELECT slug FROM agent_profiles WHERE user_id = ? LIMIT 1`,
+        [selector.externalId],
       )
-      .bind(userId)
-      .first<Readonly<{ slug: string | null }>>()
+      const identityRow = rows[0]
+      if (identityRow === undefined) {
+        return undefined
+      }
+      const userId = String(identityRow.user_id)
+      const profile = credentialsOnPostgres
+        ? (((
+            await identityDb.query(
+              `SELECT slug FROM agent_profiles WHERE user_id = ? LIMIT 1`,
+              [userId],
+            )
+          )[0] as Readonly<{ slug: string | null }> | undefined) ?? null)
+        : await db
+            .prepare(
+              `SELECT slug FROM agent_profiles WHERE user_id = ? LIMIT 1`,
+            )
+            .bind(userId)
+            .first<Readonly<{ slug: string | null }>>()
 
-    return {
-      userId,
-      slug: profile?.slug ?? null,
-      displayName: String(identityRow.display_name),
-    }
-  },
+      return {
+        userId,
+        slug: profile?.slug ?? null,
+        displayName: String(identityRow.display_name),
+      }
+    },
 
-  addAgentCredential: async record => {
-    await db
-      .prepare(
-        `INSERT INTO agent_credentials
+    addAgentCredential: async record => {
+      // #6370 reissue: Postgres-authoritative additive credential insert by
+      // default (D1 is 401-dead); the legacy 'd1' path stays as the escape hatch.
+      if (credentialsOnPostgres) {
+        await identityDb.query(
+          `INSERT INTO agent_credentials
           (id, user_id, openauth_user_id, token_hash, token_prefix, name, status, created_at, expires_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .bind(
-        record.id,
-        record.userId,
-        record.openauthUserId,
-        record.tokenHash,
-        record.tokenPrefix,
-        record.name,
-        record.status,
-        record.createdAt,
-        record.expiresAt,
-      )
-      .run()
-  },
+          [
+            record.id,
+            record.userId,
+            record.openauthUserId,
+            record.tokenHash,
+            record.tokenPrefix,
+            record.name,
+            record.status,
+            record.createdAt,
+            record.expiresAt,
+          ],
+        )
+        return
+      }
+      await db
+        .prepare(
+          `INSERT INTO agent_credentials
+          (id, user_id, openauth_user_id, token_hash, token_prefix, name, status, created_at, expires_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .bind(
+          record.id,
+          record.userId,
+          record.openauthUserId,
+          record.tokenHash,
+          record.tokenPrefix,
+          record.name,
+          record.status,
+          record.createdAt,
+          record.expiresAt,
+        )
+        .run()
+    },
 
-  findAgentForumIdentity: async (selector, now) => {
-    // CFG-4 Domain 2 (#8519): profile/credential resolution stays D1;
-    // the active-agent user row comes from Postgres. Slug variant gates
-    // AFTER the D1 lookup; externalId variant resolves the user id from
-    // the Postgres `auth_identities` join FIRST.
-    type ForumIdentityD1Row = Readonly<{
-      user_id: string
-      slug: string | null
-      metadata_json: string | null
-      credential_id: string
-      openauth_user_id: string | null
-      token_prefix: string
-    }>
-    const activeCredentialClause = `agent_credentials.status = 'active'
+    findAgentForumIdentity: async (selector, now) => {
+      // CFG-4 Domain 2 (#8519): profile/credential resolution stays D1;
+      // the active-agent user row comes from Postgres. Slug variant gates
+      // AFTER the D1 lookup; externalId variant resolves the user id from
+      // the Postgres `auth_identities` join FIRST.
+      type ForumIdentityD1Row = Readonly<{
+        user_id: string
+        slug: string | null
+        metadata_json: string | null
+        credential_id: string
+        openauth_user_id: string | null
+        token_prefix: string
+      }>
+      const activeCredentialClause = `agent_credentials.status = 'active'
        AND agent_credentials.revoked_at IS NULL
        AND (
          agent_credentials.expires_at IS NULL
          OR agent_credentials.expires_at > ?
        )`
 
-    let row: ForumIdentityD1Row | null
-    let user: AgentUserRecord | undefined
-    if ('slug' in selector) {
-      row = await db
-        .prepare(
+      // CFG D1 evacuation (#8515): `agent_profiles`/`agent_credentials` reads
+      // serve from the Postgres twin by default (D1 is 401-dead).
+      const readForumIdentityRow = async (
+        sql: string,
+        params: ReadonlyArray<LedgerParam>,
+      ): Promise<ForumIdentityD1Row | null> =>
+        credentialsOnPostgres
+          ? (((await identityDb.query(sql, params))[0] as
+              | ForumIdentityD1Row
+              | undefined) ?? null)
+          : await db
+              .prepare(sql)
+              .bind(...params)
+              .first<ForumIdentityD1Row>()
+
+      let row: ForumIdentityD1Row | null
+      let user: AgentUserRecord | undefined
+      if ('slug' in selector) {
+        row = await readForumIdentityRow(
           `SELECT
               agent_profiles.user_id,
               agent_profiles.slug,
@@ -870,16 +1084,15 @@ export const makeD1AgentRegistrationStore = (
              AND ${activeCredentialClause}
            ORDER BY agent_credentials.created_at DESC, agent_credentials.id DESC
            LIMIT 1`,
+          [selector.slug, now],
         )
-        .bind(selector.slug, now)
-        .first<ForumIdentityD1Row>()
-      if (row === null) {
-        return undefined
-      }
-      user = await readActiveAgentUser(identityDb, row.user_id)
-    } else {
-      const identityRows = await identityDb.query(
-        `SELECT users.id,
+        if (row === null) {
+          return undefined
+        }
+        user = await readActiveAgentUser(identityDb, row.user_id)
+      } else {
+        const identityRows = await identityDb.query(
+          `SELECT users.id,
                 users.display_name,
                 users.primary_email,
                 users.avatar_url,
@@ -893,15 +1106,14 @@ export const makeD1AgentRegistrationStore = (
             AND users.status = 'active'
             AND users.deleted_at IS NULL
           LIMIT 1`,
-        [selector.externalId],
-      )
-      const identityRow = identityRows[0]
-      if (identityRow === undefined) {
-        return undefined
-      }
-      user = toActiveAgentUser(identityRow)
-      row = await db
-        .prepare(
+          [selector.externalId],
+        )
+        const identityRow = identityRows[0]
+        if (identityRow === undefined) {
+          return undefined
+        }
+        user = toActiveAgentUser(identityRow)
+        row = await readForumIdentityRow(
           `SELECT
               agent_credentials.user_id,
               agent_profiles.slug,
@@ -915,30 +1127,30 @@ export const makeD1AgentRegistrationStore = (
              AND ${activeCredentialClause}
            ORDER BY agent_credentials.created_at DESC, agent_credentials.id DESC
            LIMIT 1`,
+          [user.id, now],
         )
-        .bind(user.id, now)
-        .first<ForumIdentityD1Row>()
-    }
+      }
 
-    if (row === null || user === undefined) {
-      return undefined
-    }
+      if (row === null || user === undefined) {
+        return undefined
+      }
 
-    return {
-      session: {
-        user,
-        credential: {
-          id: row.credential_id,
-          openauthUserId: row.openauth_user_id,
-          profileMetadataJson: row.metadata_json ?? '{}',
-          tokenPrefix: row.token_prefix,
-          lastUsedAt: now,
+      return {
+        session: {
+          user,
+          credential: {
+            id: row.credential_id,
+            openauthUserId: row.openauth_user_id,
+            profileMetadataJson: row.metadata_json ?? '{}',
+            tokenPrefix: row.token_prefix,
+            lastUsedAt: now,
+          },
         },
-      },
-      slug: row.slug ?? null,
-    }
-  },
-})
+        slug: row.slug ?? null,
+      }
+    },
+  }
+}
 
 type MirrorableAgentRegistrationStore = AgentRegistrationStore &
   Partial<AgentReissueStore> &
@@ -1026,8 +1238,7 @@ export const makeMirroredAgentRegistrationStore = <
           findAgentForumIdentity: (
             selector: AgentReissueSelector,
             now: string,
-          ) =>
-            findAgentForumIdentity.call(d1, selector, now),
+          ) => findAgentForumIdentity.call(d1, selector, now),
         }),
   } as Store
 }
@@ -1059,24 +1270,39 @@ const makeIdentityAuthMirroredAgentRegistrationStore = <
       : {
           linkOpenAuthAgent: async (record: OpenAuthAgentLinkRecord) => {
             await linkOpenAuthAgent.call(d1, record)
-            await mirror.mirrorRowsByKey('openauth_agent_links', [
-              [record.id],
-            ])
+            await mirror.mirrorRowsByKey('openauth_agent_links', [[record.id]])
           },
         }),
   } as Store
 }
 
 export const makeAgentRegistrationStoreForEnv = (
-  env: AgentRuntimeRemainderStoreEnv,
-): AgentRegistrationStore & AgentReissueStore & AgentForumIdentityStore =>
-  makeIdentityAuthMirroredAgentRegistrationStore(
-    makeMirroredAgentRegistrationStore(
-      makeD1AgentRegistrationStore(openAgentsDatabase(env), identityDbForEnv(env)),
-      makeAgentRuntimeRemainderMirrorForEnv(env),
-    ),
+  env: AgentRuntimeRemainderStoreEnv & AgentCredentialsFlagEnv,
+): AgentRegistrationStore & AgentReissueStore & AgentForumIdentityStore => {
+  const credentialsMode = agentCredentialsWritesModeFromEnv(env)
+  const base = makeD1AgentRegistrationStore(
+    openAgentsDatabase(env),
+    identityDbForEnv(env),
+    credentialsMode,
+  )
+  // CFG D1 evacuation (#8515): in the default 'postgres' mode the
+  // credential/profile WRITES are already Postgres-authoritative, so the
+  // `AgentRuntimeRemainderMirror` D1->Postgres read-back is redundant AND its
+  // source read hits the 401-dead D1 bridge. Skip it; the still-D1-owned
+  // `openauth_agent_links` read-back (identityAuthMirror) is a different domain
+  // and stays wired regardless.
+  const withRemainderMirror =
+    credentialsMode === 'd1'
+      ? makeMirroredAgentRegistrationStore(
+          base,
+          makeAgentRuntimeRemainderMirrorForEnv(env),
+        )
+      : base
+  return makeIdentityAuthMirroredAgentRegistrationStore(
+    withRemainderMirror,
     identityAuthMirrorFromEnv(env),
   )
+}
 
 export const buildProgrammaticAgentRegistrationRecord = (
   input: ProgrammaticAgentRegistrationRequest,

@@ -104,24 +104,38 @@ const fakeAgentD1 = (bearerTokenHash: string) => {
   }
 }
 
-/** CFG-4 Domain 2 (#8519): the Postgres identity handle for the gate's
- * `users` read — answers the known agent's active row. */
-const fakeIdentityDb = () => ({
+/** CFG-4 Domain 2 (#8519) + CFG D1 evacuation (#8515): the Postgres identity
+ * handle. Serves BOTH the gate's `users` read AND the now-Postgres-PRIMARY
+ * agent credential/profile read (`findAgentByTokenHash` reads Postgres first,
+ * never the 401-dead D1 bridge) — answers the known agent's active credential
+ * for the known bearer's hash and its active `users` row. */
+const fakeIdentityDb = (bearerTokenHash: string) => ({
   batch: () => Promise.resolve(),
   query: (sql: string, params: ReadonlyArray<unknown> = []) =>
     Promise.resolve(
-      sql.includes('FROM users') && params.map(String).includes(AGENT_USER_ID)
+      sql.includes('FROM agent_credentials') && params[0] === bearerTokenHash
         ? [
             {
-              avatar_url: null,
-              created_at: '2026-07-06T00:00:00.000Z',
-              display_name: 'ST3 Wiring Test Agent',
-              id: AGENT_USER_ID,
-              primary_email: null,
-              updated_at: '2026-07-06T00:00:00.000Z',
+              credential_id: 'agent_credential_st3_wiring',
+              metadata_json: '{}',
+              openauth_user_id: null,
+              token_prefix: AGENT_BEARER.slice(0, 16),
+              user_id: AGENT_USER_ID,
             },
           ]
-        : [],
+        : sql.includes('FROM users') &&
+            params.map(String).includes(AGENT_USER_ID)
+          ? [
+              {
+                avatar_url: null,
+                created_at: '2026-07-06T00:00:00.000Z',
+                display_name: 'ST3 Wiring Test Agent',
+                id: AGENT_USER_ID,
+                primary_email: null,
+                updated_at: '2026-07-06T00:00:00.000Z',
+              },
+            ]
+          : [],
     ),
 })
 
@@ -158,10 +172,11 @@ const makeFakeEnv = async (
       },
     },
     OPENAGENTS_DB: fakeAgentD1(await sha256Hex(AGENT_BEARER)),
-    // CFG-4 Domain 2 (#8519): the agent auth gate's `users` half reads the
-    // Postgres identity handle — the fake env serves the known agent's row
-    // through the IDENTITY_DB test-override slot.
-    IDENTITY_DB: fakeIdentityDb(),
+    // CFG-4 Domain 2 (#8519) + CFG D1 evacuation (#8515): the agent auth gate
+    // reads the credential/profile AND `users` rows from the Postgres identity
+    // handle (Postgres-PRIMARY, never the 401-dead D1 bridge) — the fake env
+    // serves the known agent through the IDENTITY_DB test-override slot.
+    IDENTITY_DB: fakeIdentityDb(await sha256Hex(AGENT_BEARER)),
     ...(options.hub === undefined ? {} : { KHALA_SYNC_HUB: options.hub }),
     // KHALA_SYNC_DB deliberately absent: every identity/remainder mirror
     // resolves to undefined and the scope resolver stays in-memory for

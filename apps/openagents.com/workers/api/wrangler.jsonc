@@ -80,6 +80,20 @@
     // so serving their reads from Postgres strictly restores them. Readiness:
     // docs/cloud/2026-07-06-d1-domain-cutover-readiness.md.
     "KHALA_SYNC_AGENT_RUNTIME_READS": "postgres",
+    // CFG D1 evacuation (#8515): the agent bearer-token auth GATE reads
+    // `agent_credentials`/`agent_profiles` on EVERY authenticated request; the
+    // 401-dead D1 bridge made that the dominant residual d1-http 401 source
+    // (~30/35s) AND broke `POST /api/agents/register` (writes went to dead D1).
+    // `postgres` makes the agent credential/profile READS and WRITES
+    // Postgres-authoritative (KS-8.5 #8334 twins in the same khala_sync DB the
+    // identity core is authoritative in) so a normal authed request never
+    // touches the dead bridge and registration/reissue re-enable token minting.
+    // Set here (top-level production vars) so it PERSISTS across deploys:
+    // `agentCredentialsWritesModeFromEnv` also defaults to `postgres`, so an
+    // unset flag stays cut over — set to `d1` explicitly to restore the legacy
+    // D1 path. See src/agent-registration.ts. Owner-claim's cross-domain
+    // (openauth_agent_links + agent_owner_claims) batch is a separate lane.
+    "KHALA_SYNC_AGENT_CREDENTIALS_WRITES": "postgres",
     "KHALA_SYNC_BILLING_READS": "postgres",
     "KHALA_SYNC_CRM_READS": "postgres",
     "KHALA_SYNC_LEDGER_READS": "postgres",
@@ -678,6 +692,10 @@
         // production Postgres-authoritative assignment/heartbeat/dispatch writes.
         // Roll back by setting this to `d1`.
         "KHALA_SYNC_PYLON_WRITES": "postgres",
+        // CFG D1 evacuation (#8515) agent credential/profile READ+WRITE cutover,
+        // staging parity for the production Postgres-authoritative auth-gate read
+        // + registration/reissue/touch writes. Roll back by setting this to `d1`.
+        "KHALA_SYNC_AGENT_CREDENTIALS_WRITES": "postgres",
         // KS-8.6 Artanis read cutover (#8335, TEMPORARY compare soak), staging
         // parity. ARTANIS_SCHEDULED_RUNNER_ENABLED is false on staging so this
         // mainly exercises operator-console/public-report reads here; the
