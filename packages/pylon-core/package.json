@@ -9,7 +9,8 @@
     "./shared": "./src/shared/index.ts",
     "./shared/*": "./src/shared/*.ts",
     "./custody": "./src/custody/index.ts",
-    "./custody/*": "./src/custody/*.ts"
+    "./custody/*": "./src/custody/*.ts",
+    "./rpc": "./src/rpc/index.ts"
   },
   "files": [
     "src",
@@ -23,6 +24,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@openagentsinc/agent-runtime-schema": "workspace:*",
     "@noble/curves": "1.8.1",
     "@noble/hashes": "1.7.1",
     "@scure/base": "1.2.4",

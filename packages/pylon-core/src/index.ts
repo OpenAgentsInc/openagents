@@ -25,3 +25,4 @@
 
 export * as Shared from "./shared/index.js"
 export * as Custody from "./custody/index.js"
+export * as Rpc from "./rpc/index.js"

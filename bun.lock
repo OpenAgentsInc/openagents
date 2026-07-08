@@ -1057,6 +1057,7 @@
       "dependencies": {
         "@noble/curves": "1.8.1",
         "@noble/hashes": "1.7.1",
+        "@openagentsinc/agent-runtime-schema": "workspace:*",
         "@scure/base": "1.2.4",
         "@scure/bip32": "1.6.2",
         "@scure/bip39": "1.5.4",
