@@ -1,0 +1,32 @@
+{
+  "schema": "openagents.khala_mobile.visual_tier_storybook_device_run.v1",
+  "generatedAt": "2026-07-08T00:41:41Z",
+  "issue": 8539,
+  "verdict": "PASS",
+  "simulator": {
+    "name": "iPhone Air",
+    "udid": "DDE26798-3F92-46B4-B98B-0EDA5F32E672",
+    "runtime": "iOS 26.5"
+  },
+  "command": "STORYBOOK_ENABLED=true EXPO_PUBLIC_STORYBOOK_ENABLED=true EXPO_NO_TELEMETRY=1 bunx expo run:ios --device DDE26798-3F92-46B4-B98B-0EDA5F32E672 --port 8082",
+  "metroEvidence": {
+    "storybookEntryBundled": true,
+    "line": "iOS Bundled 4647ms clients/khala-mobile/.rnstorybook/index.ts (2252 modules)"
+  },
+  "nativeBuildFixesAppliedByGeneratedPrebuild": {
+    "iosBuildReactNativeFromSource": true,
+    "enableDebugDylibForDebugAppTarget": false,
+    "trackedSource": "clients/khala-mobile/plugins/with-storybook-ios-build-fixes.cjs"
+  },
+  "screenshotEvidence": [
+    "docs/khala-code/receipts/qam-4-storybook-captures/iphone-air-storybook-initial.png"
+  ],
+  "publicSafety": {
+    "containsPrivateAccountData": false,
+    "fixture": "public-safe Storybook agent chat renderer demo"
+  },
+  "limits": [
+    "This receipt proves local iOS simulator Storybook boot and visual capture on a separate simulator.",
+    "It does not claim App Store, TestFlight, hosted CI, EAS, or owned-Mac scheduled execution."
+  ]
+}

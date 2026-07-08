@@ -51,6 +51,7 @@
       "expo-secure-store",
       "expo-sqlite",
       "expo-updates",
+      "./plugins/with-storybook-ios-build-fixes.cjs",
       "./modules/khala-push-to-talk-stt/app.plugin.js",
       "./modules/khala-apple-foundation-models/app.plugin.js",
       "expo-web-browser",

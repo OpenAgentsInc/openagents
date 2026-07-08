@@ -64,6 +64,18 @@ describe("Khala mobile Storybook setup", () => {
     expect(requires).toContain("**/*.stories.?(ts|tsx)")
   })
 
+  test("keeps the generated iOS Storybook build path reproducible", async () => {
+    const [appJson, plugin] = await Promise.all([
+      read("app.json"),
+      read("plugins/with-storybook-ios-build-fixes.cjs"),
+    ])
+
+    expect(appJson).toContain("./plugins/with-storybook-ios-build-fixes.cjs")
+    expect(plugin).toContain('pluginConfig.modResults["ios.buildReactNativeFromSource"] = "true"')
+    expect(plugin).toContain('buildSettings.ENABLE_DEBUG_DYLIB = "NO"')
+    expect(plugin).toContain('const APP_TARGET_DEVELOPMENT_TEAM = "HQWSG26L43"')
+  })
+
   test("keeps Storybook out of hosted build automation", async () => {
     const allStorybookText = (
       await Promise.all([

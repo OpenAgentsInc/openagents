@@ -2,9 +2,9 @@
 
 Issue: #8539
 
-Status: partial simulator-backed pass. The owned baseline/blessing workflow is
-enforced and one real iOS simulator screen checkpoint was captured. V1
-Storybook walking is not claimed in this receipt.
+Status: simulator-backed pass for the owned baseline/blessing workflow, one
+real iOS simulator screen checkpoint, and a verified on-device Storybook boot
+on a separate iPhone Air simulator.
 
 ## Evidence
 
@@ -34,12 +34,19 @@ Storybook walking is not claimed in this receipt.
   did not request the 8082 Storybook bundle, and the Storybook rebuild failed
   before launch with Xcode linker error 65:
   `cannot link directly with SwiftUICore`.
+- `docs/khala-code/receipts/2026-07-07-qam-4-storybook-iphone-air.json`
+  supersedes the Storybook rebuild blocker for local iOS simulator Storybook
+  boot. It records the iPhone Air simulator run, the `.rnstorybook/index.ts`
+  Metro bundle line, and the tracked Expo config plugin that reapplies the
+  native prebuild fixes.
+- `docs/khala-code/receipts/qam-4-storybook-captures/iphone-air-storybook-initial.png`
+  is the verified iPhone Air Storybook screenshot from simulator
+  `DDE26798-3F92-46B4-B98B-0EDA5F32E672`.
 
 ## Limits
 
-- V1 Storybook deep-link walking was not completed in this receipt. The
-  currently captured simulator proof is a V2 screen checkpoint against the
-  installed Khala app. The V1 device attempt is blocked before Storybook can
-  bundle `.rnstorybook/index.ts`.
+- The iPhone Air receipt proves local simulator Storybook boot and visual
+  capture. It does not claim hosted CI, EAS, TestFlight, App Store, or owned-Mac
+  scheduled execution.
 - The screenshot is public-safe empty-thread state only. No private account
   data, prompts, bearer material, or provider payloads are present.

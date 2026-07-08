@@ -47,6 +47,13 @@ starts Metro, and opens the development-client URL. `STORYBOOK_ENABLED=true`
 enables the Metro/Storybook resolver path. `EXPO_PUBLIC_STORYBOOK_ENABLED=true`
 is the app-root flag for Expo's client bundle.
 
+The generated iOS project is intentionally ignored in this repo. During
+prebuild, `clients/khala-mobile/plugins/with-storybook-ios-build-fixes.cjs`
+sets `ios.buildReactNativeFromSource=true` and disables Xcode's debug dylib
+for the app target. Those two generated settings keep the local Storybook
+simulator build off the React Native 0.86 prebuilt-framework linker path that
+can fail with missing Fabric symbols or `SwiftUICore` debug dylib linkage.
+
 If the app is already installed and you only need to restart Metro on a
 non-default port, use:
 
@@ -73,6 +80,12 @@ Confirm Metro is serving the Storybook entry:
 # In the Metro output, look for:
 # iOS Bundled ... clients/khala-mobile/.rnstorybook/index.ts
 ```
+
+Receipt from the first verified iPhone Air run:
+
+- `docs/khala-code/receipts/qam-4-storybook-captures/iphone-air-storybook-initial.png`
+- Simulator: iPhone Air (`DDE26798-3F92-46B4-B98B-0EDA5F32E672`)
+- Metro receipt line: `iOS Bundled ... clients/khala-mobile/.rnstorybook/index.ts`
 
 Capture a screenshot:
 
