@@ -421,6 +421,15 @@ cutover ledger seeded and is blocked on the owner's full dogfood-day receipt:
 at least five real mobile-Codex tasks, zero desktop fallback, billing sanity,
 friction report, and owner sign-off.
 
+**Owner test build (2026-07-08):** Khala Code iOS TestFlight build **22** is
+uploaded from `main` (`99098e4b15`, receipt `0578374bbf`; Delivery UUID
+`f30897f8-ee48-448f-b7bd-f37aa51dc626`). It is the current phone artifact for
+CX-9: test fresh GitHub sign-in, Codex account connect, account-targeted
+dispatch, interrupt / steer / resume / retry, multi-account busy/quota truth,
+repo/writeback deep links, Claude parity if available, and the five-task
+dogfood ledger. Receipt:
+`docs/khala-mobile/2026-07-08-khala-mobile-testflight-build-22-receipt.md`.
+
 - **CX-1 (#8545)** Provider-credential invariant + broker contract
   (`provider_credential_policy: broker_only`; never-pooled /
   never-cross-owner law; scanner coverage; fail-closed tests; ToS
@@ -459,9 +468,9 @@ friction report, and owner sign-off.
 - **CX-9 (#8553)** **Dogfood cutover — the P2 exit.** Owner accounts
   connected (custody import; never the live `~/.codex`), real backlog
   work on our own repos through Khala Code mobile; cutover ledger +
-  friction report. *Exit receipt: one full working day — ≥5 real
-  tasks completed through Khala Code mobile on our own Codex, zero
-  desktop fallback, receipts linked, owner sign-off.*
+  friction report. Build 22 is uploaded for this proof window. *Exit receipt:
+  one full working day — ≥5 real tasks completed through Khala Code mobile on
+  our own Codex, zero desktop fallback, receipts linked, owner sign-off.*
 
 Standing policy throughout: `subscription_capacity_resale` blocked
 unconditionally — connected accounts serve their owner's work only.
