@@ -550,16 +550,25 @@ and local Codex auth out of reports.
   flag the rest** (in the report, and a tracking issue if it will persist) — never
   silently leave a red, and never describe a partially-green run as clean.
 - Keep new TypeScript implementation work on Bun, Effect, and Effect Schema.
-  **UI layer (owner decision, 2026-07-04): one UI ecosystem — React +
-  Tailwind** across web (TanStack Start), Khala Code desktop (Electrobun +
-  React), and mobile (Expo React Native), per
-  `docs/fable/2026-07-04-tanstack-start-sites-and-web-app-evaluation.md`
-  §6/§9. Effect remains the services/logic substrate everywhere; existing
-  Foldkit surfaces in `apps/openagents.com/apps/web` are migration-era
-  legacy (bridged via `ssr:false` CSR mounts, deleted route-by-route) —
-  do not start new Foldkit surfaces there, and do not begin the previously
-  planned Foldkit shell migration in `clients/khala-code-desktop` (the
-  shell rewrite target is React + Tailwind).
+  **UI layer (owner decision, 2026-07-08 — supersedes the 2026-07-04
+  React+Tailwind clause): the entire repo converts to Effect Native, ASAP**
+  — one typed Effect-Schema component set with typed intents, an Effect v4
+  runtime, and thin swappable renderers, per
+  `docs/fable/MASTER_ROADMAP.md` §EN (rev 6, the conversion program CV0–CV5)
+  and the `docs/effect-native/` design docs; the framework is public at
+  `OpenAgentsInc/effect-native` (workspace sibling `~/work/effect-native`).
+  New UI anywhere authors the Effect Native component set wherever a
+  renderer exists for that surface; React/TanStack Start and React Native
+  are renderer adapters and serving hosts only — never the architecture.
+  Effect remains the services/logic substrate everywhere. Existing Foldkit
+  surfaces in `apps/openagents.com/apps/web` are legacy, converted and
+  deleted route-by-route under EN-4 (#8573) — never grown. The Khala Code
+  desktop shell target is **Effect Native** (EN-5 #8574 on the
+  effect-native Phase 4 epic #20/#21–#43); the previously planned
+  React+Tailwind desktop shell rewrite is cancelled. Every conversion PR
+  keeps its surface's tests/QAM gates/behavior contracts green and deletes
+  the legacy surface it replaces; component gaps go upstream through the
+  effect-native GAPS register (EN-2 #8572), never local one-off primitives.
 - Never stash, reset, checkout, restore, or otherwise move another agent's
   uncommitted work out of the way. If a checkout is dirty with concurrent work
   and you need a clean tree for tests, commits, or pushes, create a fresh

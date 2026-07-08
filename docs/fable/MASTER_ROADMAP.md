@@ -1,12 +1,39 @@
 # MASTER ROADMAP — Khala Code MVP (Tested, Submitted) → Sarah → Codex → AI Employees → the Suite
 
-Date: 2026-07-08 (rev 5 — Effect Native substrate incorporated)
+Date: 2026-07-08 (rev 6 — Effect Native FULL CONVERSION, ASAP)
 Status: **the single consolidated execution roadmap.** This document owns
 top-level sequencing across everything designed in the 2026-07-07 strategy
 set and its predecessors. The source docs remain authoritative for their
 *content* (specs, evidence, arguments); when sequencing here and sequencing
 there disagree, **this document wins**, and new issues are filed against the
 phase lanes named here.
+
+**Rev 6 changes (owner directive, 2026-07-08 later same day — FULL
+CONVERSION, ASAP):** the **entire repository converts to Effect Native as
+fast as the substrate allows.** Rev 5's pacing rule ("greenfield adopts
+first, shipping code migrates on touch, nothing working is rewritten just
+to move it; EN rides inside product work") is **revoked as pacing** — it
+survives only as the safety floor: every conversion PR keeps its
+surface's tests, QAM gates, and behavior contracts green, and nothing
+destabilizes the P0 store-submission artifacts. Concretely: (1) §EN gains
+a **conversion program** (waves CV0–CV5) run as dedicated parallel lanes
+— conversion is first-class scheduled work, no longer a rider inside
+product phases; (2) the previously deferred EN lane issues are **filed
+now** — EN-2 #8572 (catalog demand), EN-4 #8573 (web absorption), EN-5
+#8574 (Khala Code desktop conversion), EN-6 #8575 (canvas/Verse) — and
+EN-3 #8568 is upgraded from migrate-on-touch to a **scheduled mobile
+burn-down**; (3) Khala Code desktop's shell target is **Effect Native**
+via the effect-native Phase 4 epic (effect-native#20, children #21–#43,
+filed 2026-07-08: desktop adapter, canvas renderer, foreign-host `Host`
+node, interaction expansion, theme, streaming binding, and the full
+desktop component set) — **the earlier React+Tailwind shell-rewrite plan
+is cancelled**; (4) discipline 5 and the repo agent contract (CLAUDE.md
+UI clause) are amended in the same commit. Dependency order still binds:
+the public `OpenAgentsInc/effect-native` repo is the substrate critical
+path (Phase 2/3 issues #9–#19, Phase 4 epic #20–#43 gate the waves) —
+**ASAP means maximal parallel lanes, never skipping the substrate.**
+Non-UI systems (voice runtime, eve, services, brokers, runtimes) are
+untouched throughout.
 
 **Rev 5 changes (owner decision, 2026-07-08 — Effect Native):** every UI
 surface in this repo converges on **Effect Native** — one typed
@@ -24,11 +51,10 @@ stands as the visual reference/baseline, and the production root-cutover
 landing is authored in the Effect Native component set with launch-ui's
 theme ported into tokens, not adopted as React components; (3) Sarah's UI
 work (sarah#15 / S-10) folds into the Effect Native web renderer;
-(4) cross-cutting discipline 5 is amended. The governing rule throughout:
-**greenfield adopts first, shipping code migrates on touch, nothing working
-is rewritten just to move it** — Effect Native rides inside product work
-already scheduled; if it starts stealing hours from the sales push it has
-failed its own justification. (Rev 4.4's status snapshot below is retained
+(4) cross-cutting discipline 5 is amended. The governing rule of this
+rev — greenfield adopts first, shipping code migrates on touch, EN rides
+inside product work — **is superseded as pacing by rev 6 above**; only
+its safety floor survives. (Rev 4.4's status snapshot below is retained
 unchanged.)
 
 **Rev 2 changes (owner direction):** (1) P0's exit is strengthened from
@@ -144,38 +170,30 @@ from the landing. What is genuinely DONE vs what is only DIRECTION:
 - **`#8467` (Khala Code Mobile MVP epic) OPEN** — the live multi-workstream P0
   program that `#8543` gates.
 
-**Review addendum / recommended next work (2026-07-08):** do `#8569` first,
-then resume EN-1/WEB-1.
+**Review addendum / recommended next work (updated rev 6, 2026-07-08):**
+`#8569` (the pylon-stats production break) is **CLOSED** — the earlier
+"do #8569 first" recommendation is resolved. Current recommended order
+under the rev 6 conversion mandate:
 
-- **Next concrete work:** restore `GET /api/public/pylon-stats` to
-  `available:true` on production. The route still builds its public projection
-  from Pylon registrations (`apps/openagents.com/workers/api/src/public-pylon-stats-routes.ts`
-  → `makeD1PylonApiStore(...).listRegistrations`), while the migration plan says
-  the live Postgres twin is `pylon_registrations` behind the KS-8.1 dispatch
-  seam (`apps/openagents.com/workers/api/src/pylon-dispatch-store.ts`,
-  `packages/khala-sync-server/migrations/0005_pylon_dispatch.sql`). Repair by
-  routing the public stats store through the existing Postgres/flagged dispatch
-  seam, or by applying a short-lived compatibility relation only if that is the
-  fastest production-safe recovery. Verify with a direct probe of
-  `https://openagents.com/api/public/pylon-stats`, plus a focused regression so
-  the endpoint cannot silently fall back to a missing D1-named table in Cloud
-  SQL again.
-- **Why it beats the next substrate slice:** WEB-1's preview already renders
-  fail-soft live stats and pricing, and `#8569` is the only fresh non-owner-gated
-  production break found in this review. Fixing it keeps the sales landing's
-  "live counters from public projections, no dummy values" promise honest.
-- **Immediately after:** continue EN-1 by starting with the public
-  `effect-native` Phase 1 DOM renderer (`OpenAgentsInc/effect-native#6`) and
-  the one-screen proof (`#8`). Phase 0 core issues `#1–#5` are already closed;
-  the remaining renderer/proof issues `#6–#8` are open. Keep the existing
-  React/Tailwind `/demo` and `/new` routes as visual baselines, and author the
-  first production root-cutover candidate in the Effect Native DOM renderer
-  under `#8565/#8567`.
+- **CV0 substrate lanes (continuous, fleet-parallel):** effect-native
+  Phase 0/1 (`#1–#8`) are CLOSED; work the open Phase 2/3 set
+  (`#11–#19`) and the Phase 4 epic (`#20`, children `#21–#43`) as
+  parallel lanes — this is the critical path for every conversion wave.
+- **CV1 now:** author the production root-cutover landing in the Effect
+  Native DOM renderer under `#8565`/EN-1 `#8567`, with the React
+  `/demo`/`/new` routes as the visual baselines; start the EN-4 `#8573`
+  route inventory/burn-down table in parallel (inventory needs no new
+  substrate).
+- **In parallel, non-EN:** the sales push (OB-1..6) and P2 Codex lanes
+  (CX-2..) continue unchanged — they are mostly backend; their UI
+  surfaces are authored EN-native as their turn arrives.
 
-**Bottom line:** the substrate is real and proven; most open work still spans
-the private `cloud/` repo (CX-3) or owner gates (seeded account, DNS/Resend,
-Stripe, prod arming, copy sign-offs), but `#8569` is now the immediate in-repo
-repair before the next WEB-1/EN cut.
+**Bottom line:** the substrate is real and proven; most open non-EN work
+still spans the private `cloud/` repo (CX-3) or owner gates (seeded
+account, DNS/Resend, Stripe, prod arming, copy sign-offs). Under rev 6
+the conversion program itself is now first-class scheduled work rather
+than a rider — the substrate lanes and CV1/CV2 conversions proceed at
+maximum parallel capacity.
 
 ## 0. The one-page shape
 
@@ -197,9 +215,10 @@ include its Eval Suite green at the target ladder rungs. Sarah's suite
 (SR) is authored fixture-first under the same law.
 
 Running underneath every phase from P1 onward is the **Effect Native
-substrate track** (§EN): substrate pieces are built just-in-time, each
-one unlocking the next product surface's refactor onto the one typed
-component set:
+substrate track** (§EN). As of rev 6 this is a **full-conversion
+program run ASAP**: the substrate is the critical path (CV0), and each
+piece unlocks a conversion wave the moment it lands — no longer
+just-in-time pacing:
 
 ```
 EN  Phase 0 core + DOM renderer ──► RN adapter ──► catalog growth ──► desktop + canvas ──► native Swift/Compose
@@ -225,26 +244,40 @@ itself is built in the open in the **public repo
 codenames); its public ROADMAP phases 0–6 are the substrate build
 order, and this section binds them to the product phases.
 
-**Issue index (filed 2026-07-08):** epic **#8566**; lanes **EN-1 #8567**
-(production landing on the DOM renderer) and **EN-3 #8568** (RN adapter
-wrapping khala-mobile primitives; post-P0 gate). Substrate first wave in
-the public repo: effect-native **#1–#5** (Phase 0: scaffolding, catalog,
-intents, runtime, tokens) and **#6–#8** (Phase 1: DOM renderer, RN
-renderer, the two-renderer proof). WEB-1 #8565 carries the rescope
-comment and keeps the owner cutover gates. Later lanes (EN-2/4/5/6/7)
-are filed as their unlock lands — never speculatively.
+**Issue index (updated rev 6, 2026-07-08):** epic **#8566**; lanes
+**EN-1 #8567** (production landing on the DOM renderer), **EN-2 #8572**
+(catalog demand register + version adoption), **EN-3 #8568** (RN adapter
++ the scheduled mobile burn-down — upgraded from on-touch by rev 6),
+**EN-4 #8573** (web absorption route-by-route, legacy deleted), **EN-5
+#8574** (Khala Code desktop conversion; cancels the React+Tailwind shell
+rewrite), **EN-6 #8575** (canvas/Verse under the canvas contract; Foldkit
+adapter retired), plus the deploy lanes **#8570** (component gallery on
+Cloud Run) and **#8571** (effectnative.org hosting). Substrate in the
+public repo: **#1–#8** (Phase 0 core + Phase 1 renderers/proof — CLOSED),
+**#9–#14** (Phase 2 catalog growth: process, Link, responsive, forms,
+modal/sheet, virtualized lists), **#15–#19** (Phase 3 DX: DevTools,
+testkit, guide, gallery, effectnative.org), and the **Phase 4 epic #20
+with children #21–#43** (desktop adapter, canvas renderer, foreign-host
+`Host` node, interaction expansion, Protoss-blue theme, streaming
+binding, the full desktop component set, the port proof, docs). WEB-1
+#8565 carries the rescope comment and keeps the owner cutover gates.
+Only EN-7 (native Swift/Compose fidelity) remains deferred — it is
+value-gated per component and its substrate (Phase 5) does not exist yet.
 
 **The unlock chain — build this substrate piece, unlock that product
-refactor (this ordering is the law for EN work):**
+refactor.** Dependency order remains the law for EN work. **Pacing is
+rev 6's conversion program below** — the "rides inside" column records
+rev 5's original just-in-time pacing and no longer gates when a wave
+starts; a wave starts the moment its substrate dependency lands.
 
 | # | Effect Native piece (public repo phase) | Internal lane | Unlocks (the next OpenAgents surface on the substrate) | Rides inside |
 |---|---|---|---|---|
 | 1 | **Phase 0 — the core**: catalog v0 (~8 components), typed intent algebra, Effect runtime, `@effect-native/tokens` (Protoss blue; launch-ui's Tailwind theme — already vendored in the WEB-1 Phase 1 replica — ported as typed token *values*) | EN-0 | Everything below — gates all adoption; exit = one screen, two renderers, snapshot-tested | P1 Track A (a focused sprint on WEB-1's critical path) |
 | 2 | **Phase 1 — DOM renderer** (no React) | EN-0/EN-1 | **WEB-1 #8565 forward work**: the production root-cutover landing is the first Effect Native surface (the landed React replica at `/demo`/`/new` stays as the visual baseline it's compared against); then **Sarah's branded UI** (sarah#15 / S-10) — sarah.openagents.com and openagents.com become one component system *by construction* | P1 Track A / SR-0.5 |
-| 3 | **Phase 1 — RN renderer** (wrapping the ~94 shipping khala-mobile primitives as adapter #1; zero new native work) | EN-0/EN-3 | New/changed mobile screens author the component set from then on — the P2 surfaces (CX-2 accounts UI, CX-4 harness pill) are the first candidates; existing screens migrate **on touch only, post-P0** — never during MVP submission | P2 (CX-2/CX-4) |
+| 3 | **Phase 1 — RN renderer** (wrapping the ~94 shipping khala-mobile primitives as adapter #1; zero new native work) | EN-0/EN-3 | New/changed mobile screens author the component set from then on — the P2 surfaces (CX-2 accounts UI, CX-4 harness pill) are the first candidates; existing screens convert on the **scheduled burn-down** (rev 6 — was on-touch), with the safety floor that the launch straight line and store artifacts stay green through every PR | P2 (CX-2/CX-4) |
 | 4 | **Phase 2 — catalog growth**: forms/validation, virtualized + section lists, modals/sheets/tabs, images/media, **typed navigation intent**, typed variants (state/platform/breakpoint) | EN-2 | **P4 phone-cockpit web twin + Agents panel (AE-2.3)** and the business-dashboard build-out; the deeper mobile migration; demand-driven — a component enters the catalog when one of these screens needs it | P4 (AE-2.3) |
 | 5 | **Phase 3 — DX**: DevTools (view-tree inspection, intent log/replay, time-travel), deterministic snapshot + intent-driven testing, visual baselines per renderer | EN-2/EN-9 | The QAM discipline extended natively to Effect Native surfaces; **agent-authored UI validated against the catalog by construction** (the substrate's whole point at 1000 edits/day) | parallel with #4 |
-| 6 | **Phase 4 — desktop + canvas**: Electrobun consumes the DOM renderer; `@effect-native/render-canvas` (three-effect's ~600-LOC reconciler/frame-clock/scope kernel reimplemented on Effect `Scope`/`Stream`/`Layer`; the 24k-LOC VFX/Verse domain library stays standalone as the catalogue) | EN-5/EN-6 | **Khala Code desktop panels** (chat, fleet, inbox, forum, gym, settings) on the component set; **Verse/3D surfaces under the same contract**; the Foldkit three-effect adapter retired | after web is solid (P4+) |
+| 6 | **Phase 4 — desktop + canvas** (epic effect-native#20, children #21–#43, filed 2026-07-08): desktop adapter (Electrobun consumes the DOM renderer), `@effect-native/render-canvas` (three-effect's ~600-LOC reconciler/frame-clock/scope kernel reimplemented on Effect `Scope`/`Stream`/`Layer`; the 24k-LOC VFX/Verse domain library stays standalone as the catalogue), the foreign-host `Host` node (Monaco/terminal), interaction expansion, theme, streaming binding, and the full desktop component set with the Khala-chat port proof (#42) | EN-5/EN-6 | **Khala Code desktop — full shell + panel conversion** (EN-5 #8574; the React+Tailwind shell rewrite is cancelled); **Verse/3D surfaces under the same contract** (EN-6 #8575); the Foldkit three-effect adapter retired | after web is solid (P4+) |
 | 7 | **Phase 5 — native Swift/Compose renderers**, per component, RN as the long-tail fallback | EN-7 | Fidelity/perf upgrades on the highest-value mobile components — a migration, never a rewrite, because the contract is renderer-agnostic | value-gated, multi-quarter (P5+) |
 | 8 | **Phase 6 + governance**: server-driven-UI option, lint boundary | EN-8/EN-9 | Steady state: **new UI authors the component set only**; direct React/RN/DOM authoring outside renderer adapters is deprecated and lint-guarded | continuous once #2–#3 land |
 
@@ -253,19 +286,52 @@ doc's EN-0..EN-9):** the openagents.com landing (WEB-1) and Sarah UI
 (greenfield — first); the web product routes — dashboard, Forum, Sites,
 operator/Aiur, Autopilot — absorbed route-by-route from legacy Foldkit
 and interim React onto the DOM renderer, deleting legacy surfaces as
-replaced (EN-4); the mobile app's ~94 `.tsx` screens (EN-3, on touch);
-Khala Code desktop (EN-5); canvas/Verse (EN-6). **Definition of done:**
-every UI surface renders from the one component set; renderer adapters
-are the only platform-specific UI code in the tree; a bad UI change
-fails at the schema boundary.
+replaced (EN-4 #8573); the mobile app's ~94 `.tsx` screens (EN-3 #8568,
+scheduled burn-down); Khala Code desktop (EN-5 #8574); canvas/Verse
+(EN-6 #8575). **Definition of done:** every UI surface renders from the
+one component set; renderer adapters are the only platform-specific UI
+code in the tree; a bad UI change fails at the schema boundary.
 
-**Sequencing discipline:** EN work never opens a separate rewrite
-front. Unlock #1–#2 ride inside P1 Track A (the landing is greenfield);
-#3 rides inside P2's new mobile screens; #4–#5 pace with P4's dashboard
-demand; #6–#8 follow web-solid. Shipping React (the mobile MVP, Sarah's
-live voice loop, the landed WEB-1 replica routes) is never rewritten
-just to migrate — the voice runtime and eve are not UI and are
-untouched throughout.
+**The conversion program (rev 6 — supersedes rev 5's sequencing
+discipline as pacing).** Conversion is the program, not a rider. Waves
+run as dedicated parallel fleet lanes; a wave starts the moment its
+substrate dependency lands in the public repo; every conversion PR lands
+green (tests, QAM gates, behavior contracts, `check:deploy`) and
+**deletes the legacy surface it replaces** in the same change:
+
+- **CV0 — substrate (continuous; the critical path):** the public repo's
+  Phase 2/3 issues (#11–#19) and the Phase 4 epic (#20–#43), worked as
+  parallel lanes with maximal fleet concurrency; internal demand routes
+  through EN-2 #8572 into `GAPS.md` under the growth rule.
+- **CV1 — web greenfield (unblocked NOW; DOM renderer shipped):** the
+  WEB-1 root landing authored in EN (EN-1 #8567), Sarah's branded UI
+  (sarah#15 / S-10), the component gallery deploy (#8570), and
+  effectnative.org (#8571).
+- **CV2 — web absorption (starts as Phase 2 catalog pieces land):**
+  every product route converted route-by-route on the EN-4 #8573
+  burn-down table, legacy Foldkit/interim React deleted as replaced;
+  the P4 cockpit web twin and business dashboard are authored EN-native
+  when they arrive.
+- **CV3 — mobile burn-down (RN adapter first):** EN-3 #8568 wraps the
+  khala-mobile primitives as adapter #1, CX-2/CX-4's new screens author
+  the set from day one, then the ~94 existing screens convert on a
+  scheduled burn-down. Safety floor: the launch straight line, QAM
+  gates, and store-submission artifacts stay green through every PR.
+- **CV4 — desktop + canvas (starts as effect-native Phase 4 lanes
+  land):** Khala Code desktop shell + panels (EN-5 #8574) on the desktop
+  adapter, Monaco/terminal via the `Host` node, fleet/gym graphs and
+  Verse under the canvas contract (EN-6 #8575); the Foldkit three-effect
+  adapter retired; the legacy desktop shell stays buildable until the
+  owner-gated cutover.
+- **CV5 — native fidelity (the one demand-paced wave):** Swift/Compose
+  per component (EN-7), value-gated; unchanged from rev 5.
+
+Governance is immediate, not phased: from rev 6, new UI anywhere in the
+repo authors the component set wherever a renderer exists for that
+surface; direct React/RN/DOM authoring outside renderer adapters is
+deprecated now and lint-guarded as EN-8/EN-9 land. Non-UI systems — the
+voice runtime, eve, services, brokers, runtimes, sync — are not UI and
+are untouched throughout.
 
 ## P0 — Khala Code mobile MVP: fully tested, submitted to the stores
 
@@ -781,14 +847,15 @@ closed by Sarah running a templated employee.
    are config.
 4. **Subscription no-resale, never waivable.** Org-cloud never touches
    user-owned machines.
-5. **One UI substrate forward (amended 2026-07-08)**: new UI surfaces —
-   web, mobile, desktop, canvas — author the **Effect Native typed
-   component set** on the one Protoss-blue token set (§EN).
+5. **One UI substrate — Effect Native, full conversion (rev 6)**: every
+   UI surface — web, mobile, desktop, canvas — authors the **Effect
+   Native typed component set** on the one Protoss-blue token set (§EN).
    React/TanStack Start and React Native serve as renderer adapters and
    serving hosts, never the architecture; no new UI authors platform
-   primitives outside a renderer adapter. Legacy web is absorbed
-   route-by-route and never grows; shipping React/RN screens migrate on
-   touch, never rewritten just to move.
+   primitives outside a renderer adapter. The whole estate converts on
+   the scheduled §EN wave program (ASAP, substrate-gated — never
+   substrate-skipping); every conversion PR lands green and deletes the
+   legacy surface it replaces; legacy UI never grows.
 6. **Owned vocabulary** — Blueprint (never "ontology"); no third-party
    company names in public copy.
 7. **No hosted CI / no third-party build-update-visual SaaS** — owned
@@ -835,7 +902,7 @@ Standing gates (carried; still open):
 | Mobile testing system (P0) | `../khala-code/2026-07-07-mobile-testing-audit-and-plan.md` |
 | **Sarah (P1, SR-*)** | `2026-07-07-sarah-sales-agent-spec.md` |
 | **Sarah implementation repo** | private `OpenAgentsInc/sarah` (Vercel + AI SDK realtime → sarah.openagents.com; see its README) |
-| **Effect Native substrate (§EN, EN-*)** | `../effect-native/README.md` + the six 2026-07-08 docs (framing doc first; UI-layer analysis holds EN-0..EN-9); public framework repo `OpenAgentsInc/effect-native` (ROADMAP phases 0–6 = the substrate build order) |
+| **Effect Native substrate (§EN, EN-*)** | `../effect-native/README.md` + the six 2026-07-08 docs (framing doc first; UI-layer analysis holds EN-0..EN-9); public framework repo `OpenAgentsInc/effect-native` (ROADMAP phases 0–6 = the substrate build order; issues: #1–#8 Phase 0/1 closed, #9–#19 Phase 2/3, #20–#43 the Phase 4 desktop/canvas epic). Internal lanes: epic #8566, EN-1 #8567, EN-2 #8572, EN-3 #8568, EN-4 #8573, EN-5 #8574, EN-6 #8575, deploys #8570/#8571 |
 | **Landing site kit (P1 Track A, WEB-1 #8565)** | `projects/repos/launch-ui` (MIT reference; **design/tokens reference per §EN** — theme ports into `@effect-native/tokens`; the vendored React replica at `/demo`/`/new` is the visual baseline, not the forward path) |
 | **Outbound engine (P1 Track C)** | `2026-07-03-apollo-outbound-sales-plan.md` (audit-first motion, segments); SELL epic #8261 / LG-1..9 (closed substrate); blitz compliance-guardrails (binding) |
 | Web stack decision (P1 Track A) | `2026-07-04-tanstack-start-sites-and-web-app-evaluation.md` |
