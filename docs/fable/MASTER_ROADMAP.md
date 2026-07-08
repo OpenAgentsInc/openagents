@@ -1,6 +1,6 @@
 # MASTER ROADMAP — Khala Code MVP (Tested, Submitted) → Sarah → Codex → AI Employees → the Suite
 
-Date: 2026-07-07 (rev 2, later same day)
+Date: 2026-07-07 (rev 3, night — P0 status + Sarah repo/deploy plan)
 Status: **the single consolidated execution roadmap.** This document owns
 top-level sequencing across everything designed in the 2026-07-07 strategy
 set and its predecessors. The source docs remain authoritative for their
@@ -73,15 +73,21 @@ the typed testing system, and submitted to the App Store and Play
 Store.** Testing spec:
 `../khala-code/2026-07-07-mobile-testing-audit-and-plan.md`.
 
-Status note (2026-07-07): the #8503 wall is breaking — the exact
-in-microVM model-token receipt is reported proven on main
-(`dd5aa4e231`, phase-2 no-meter turn-runner re-pinned into the baked
-rootfs). Verify the full DoD bundle against the issue before treating
-P0.4 as closed.
+**P0 STATUS (2026-07-07 night): largely COMPLETE.** #8503 and #8477
+CLOSED (the microVM proof landed); QAM-1..7 all CLOSED (#8536–#8542);
+P0.9 #8544 CLOSED with an owner decision recorded on the issue: the P0
+exit is the **shippable/testable submission artifacts** — TestFlight
+build 20 VALID with a reviewer demo-login, installable Android release
+APK + AAB — while the actual public store *review submissions* are
+deferred to broad-release readiness (listing metadata/screenshots, Play
+app record + upload keystore, promise/copy green sign-offs). Remaining
+open: **#8543** (launch readiness — owner-gated seeded test account →
+unattended straight-line E2E, promises/copy pass) and the epic #8467.
 
-P0 issue index: QAM-1..7 = #8536 #8537 #8538 #8539 #8540 #8541 #8542;
-launch readiness #8543; store submissions #8544; in-flight proofs #8503,
-#8477 under epic #8467.
+P0 issue index: QAM-1..7 = #8536 #8537 #8538 #8539 #8540 #8541 #8542
+(closed); launch readiness #8543 (OPEN); store artifacts #8544 (closed,
+review submissions deferred); proofs #8503, #8477 (closed) under epic
+#8467.
 
 Order inside P0 (testing starts immediately; nothing waits on infra):
 
@@ -125,25 +131,64 @@ store submissions recorded** (submission IDs + review states in the
 registry evidence); QAM-7 (#8542) fixture-first suites authored (red/waived) for
 every P1+ feature named below.
 
-## P1 — Sarah, on the new openagents.com (React/TanStack Start)
+## P1 — Sarah (repo: OpenAgentsInc/sarah → sarah.openagents.com)
 
-Two tracks that ship together: the sales agent, and the beginning of the
-new web app she lives in. Spec: `2026-07-07-sarah-sales-agent-spec.md`.
+**P1 STATUS (2026-07-07 night, owner decision):** Sarah lives in a
+**separate private repo, `OpenAgentsInc/sarah`**, built on the standard
+Vercel + AI SDK stack (Next.js 16, `ai`/`@ai-sdk/react`/
+`@ai-sdk/gateway` canary realtime), deploying to
+**sarah.openagents.com** — so the newest voice-agent surface works
+unmodified before any monorepo integration; a later merge into the
+monorepo is possible but not assumed. **The realtime voice loop already
+works locally** (server-minted gateway token for `openai/gpt-realtime-2`,
+browser `useRealtime` with mic capture/server VAD/playback/text send) —
+which **pulls SR-4 voice to the front**: v1 Sarah is voice+text from day
+one, inverting the spec's original deferral. The monorepo remains the
+system of record (CRM, credits, checkout, receipts, promise registry);
+the sarah repo calls its APIs and never re-implements them.
 
-**Track A — the new openagents.com app (WEB-1).** Sarah's surface is the
-first first-class product route on the **new openagents.com app built on
-React + TanStack Start** (ONE-UI/shadcn components, one Protoss-blue
-theme, no light/dark split) — reopening the parked TS-6/#8348 web
-app-shell migration with a concrete product driver instead of a
-migration-for-its-own-sake. Scope discipline: the new app starts with
-Sarah's route + the business/funnel pages she feeds (business intake,
-pricing/packages, checkout return surfaces), absorbing legacy-web
-surfaces route-by-route thereafter (dashboard shell lands with P4's web
-Agents panel; no new legacy Foldkit surfaces, per the standing ONE-UI
-decision). The typed-component renderer (the shipped closed catalog) is
-ported to React as part of this track.
+**Track A (revised) — the surface.** Sarah's home is sarah.openagents.com
+(her repo). The TanStack Start openagents.com rebuild is **decoupled from
+P1's critical path**: it proceeds as the funnel/business-page track that
+*links to* Sarah, and embeds her later; the typed-component renderer port
+and route-by-route legacy absorption move with it (dashboard shell still
+lands with P4). No new legacy Foldkit surfaces, per the standing ONE-UI
+decision.
 
-**Track B — Sarah lanes (from the spec):**
+**Track A′ — SR-0, deploy readiness (the near-term work list, in
+order):**
+
+1. Persona + honesty grounding: Sarah instructions (AI disclosure,
+   one-question-at-a-time, sales posture) via session config;
+   promise-registry state fetched server-side into the instructions.
+2. Token-route hardening before public deploy: origin/rate limits,
+   session caps + TTLs, gateway spend alerts (today it mints client
+   secrets unauthenticated).
+3. Durable sessions + opaque prospect ref; transcript persistence;
+   CRM summary sync over the monorepo API.
+4. First tools on the realtime tool channel: `human_handoff`, intake
+   capture → business-pipeline API, pack-priced checkout link.
+5. Branded Sarah UI (Protoss blue, disclosure, mic states, text
+   fallback) replacing the quickstart surface.
+6. Vercel project + sarah.openagents.com DNS + env + model pin + cost
+   caps (owner/infra actions → NEEDS_OWNER as they arise).
+7. The Sarah Eval Suite (authored under QAM-7 #8542) pointed at the
+   deployment; discount-pressure/honesty/injection probes green.
+
+**Framework evaluation — eve (decide during SR-0):** vercel/eve
+(filesystem-first durable agents; reference clone
+`projects/repos/eve`) is a strong candidate for Sarah's brain behind
+the realtime front-end — durable sessions, `instructions.md` persona,
+typed tools, cron schedules, and channels including the Chat SDK
+**Resend email adapter** (SR-3's inbound/outbound email continuity) and
+Twilio (future phone lane), same Vercel deploy target. It is **not** a
+voice runtime — the realtime loop stays as built. Integration shape if
+adopted: realtime = voice I/O; eve = sessions/tools/email/schedules;
+realtime tool calls execute against eve. Spike (`npx eve init`), then
+decide.
+
+**Track B — Sarah lanes (from the spec; SR-1 partially underway in the
+sarah repo):**
 
 - **SR-1** Sarah v1 (text, on-site): durable sessions + prospect refs;
   persona program (public-scoped Artanis pattern); qualification on the
@@ -160,19 +205,19 @@ ported to React as part of this track.
   binding; approval-gated continuation replies; one relationship
   thread across web and email.
 
-**Deferred within the Sarah family (land in later phases):** SR-4 voice
-(after P2 — it competes with nothing and benefits from the deal-engine
-receipts; may pull forward if owner priorities say so), SR-5 contracts +
-custom bundles (with P5's template work), SR-6 Sarah-as-template (P5,
-under the catalog gate).
+**Resequenced within the Sarah family:** SR-4 voice is **pulled to the
+front** (the realtime loop already works; voice ships with v1). SR-5
+contracts + custom bundles land with P5's template work; SR-6
+Sarah-as-template stays P5, under the catalog gate.
 
-**P1 exit receipts:** a stranger completes qualification → quote →
-settled starter credit purchase entirely with Sarah on the new
-TanStack Start surface; a composed multi-module quote with a bundle rule
-applied closes via an agent-created link, with property tests proving no
-unruled price is reachable; a web conversation resumed by prospect email
-and answered through the approval queue; the new app serving Sarah +
-funnel routes in production with the legacy routes untouched.
+**P1 exit receipts:** sarah.openagents.com live and hardened (SR-0
+list complete, token route protected, spend-capped); a stranger
+completes qualification → quote → settled starter credit purchase
+entirely with Sarah (voice or text); a composed multi-module quote with
+a bundle rule applied closes via an agent-created link, with property
+tests proving no unruled price is reachable; a web conversation resumed
+by prospect email and answered through the approval queue; Sarah's Eval
+Suite green against the live deployment.
 
 ## P2 — Your Codex on your agent computer (CX-1..5)
 
@@ -382,6 +427,7 @@ closed by Sarah running a templated employee.
 | Agent Computers strategy | `../khala-code/2026-07-06-agent-computers-strategy.md` |
 | Mobile testing system (P0) | `../khala-code/2026-07-07-mobile-testing-audit-and-plan.md` |
 | **Sarah (P1, SR-*)** | `2026-07-07-sarah-sales-agent-spec.md` |
+| **Sarah implementation repo** | private `OpenAgentsInc/sarah` (Vercel + AI SDK realtime → sarah.openagents.com; see its README) |
 | Web stack decision (P1 Track A) | `2026-07-04-tanstack-start-sites-and-web-app-evaluation.md` |
 | Codex/BYO harness (P2) | `2026-07-07-beyond-mvp-codex-agent-computers-and-ai-employees.md` |
 | Horizon ladder + lane reconciliation | `2026-07-07-overarching-roadmap-khala-code-agent-computers-ai-employees.md` |

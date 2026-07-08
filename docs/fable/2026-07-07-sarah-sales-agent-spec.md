@@ -17,6 +17,19 @@ React/TanStack Start app, SR-4 voice by P6 at the latest, and SR-5/SR-6
 landing with the P5 template catalog. She remains the flagship instance
 the P4 employee record generalizes from.
 
+> **Update (2026-07-07 night):** implementation began in a **separate
+> private repo, `OpenAgentsInc/sarah`** (standard Vercel + AI SDK canary
+> realtime stack, Next.js; deploy target **sarah.openagents.com**;
+> possible later monorepo merge). The realtime speech loop already works
+> locally, which **pulls SR-4 voice to the front — v1 is voice+text**,
+> inverting §11's deferral; §5's "web (primary)" surface is
+> sarah.openagents.com rather than an embedded monorepo route for now.
+> The deploy-readiness list (SR-0) and the vercel/eve framework
+> evaluation live in MASTER_ROADMAP P1 (rev 3) and the sarah repo
+> README. All authority, deal-rules, memory, and honesty requirements in
+> this spec bind the new repo unchanged; the monorepo stays the system
+> of record for CRM, credits, checkout, and receipts.
+
 ## 0. The owner direction (2026-07-07, recorded in essence)
 
 - We are building a **voice-based sales agent** for openagents.com to
