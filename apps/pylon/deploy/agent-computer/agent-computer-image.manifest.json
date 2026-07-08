@@ -1,16 +1,20 @@
 {
   "schemaVersion": "openagents.agent_computer_image_manifest.v1",
-  "status": "in_microvm_exact_model_token_receipt_proven_plus_in_guest_writeback_wiring_proven_real_branch_awaits_github_authorized_user",
+  "status": "in_microvm_exact_model_token_receipt_proven_plus_real_branch_pr_writeback_green",
   "strategyDoc": "docs/khala-code/2026-07-06-agent-computers-strategy.md",
   "inMicrovmWritebackProof": {
-    "provedAt": "2026-07-07",
-    "issue": "#8477 (MM-C5) branch/PR writeback under the user's own GitHub authorization",
+    "provedAt": "2026-07-08",
+    "issue": "#8477 (MM-C5) branch/PR writeback under the user's own GitHub authorization — GREEN",
     "host": "agent-computer-gce-1 (openagentsgemini, us-central1-a)",
     "rootfsDigest": "sha256:2eb563b3f52e22eedfe85f1593cf08b0c8a1cc5dc3ca3d88f06bcc8f42cc7e0a",
     "turnRunnerBinary": "sha256:ca5bb8bb4924753c17875056615357c0a6ca187dbae290980a25fa9e2f1bf679 (bun-linux-x64 @ origin/main 8ebbef96c7)",
-    "wiringProven": "A real Firecracker microVM booted from the rebaked image, checked out octocat/Hello-World@7fd1a60b, staged a 1-file diff, then FIRED the #8477 writeback: it brokered a GitHub credential from the live SCM auth broker under the agent bearer, produced a typed public-safe outcome, and POSTed it to the live /api/khala/cloud/runtime-turn-writeback route on openagents-monolith-staging. The route recorded a thread-scoped writeback.recorded runtime event in authoritative khala_sync_staging (khala_sync_runtime_events: event_id event.private.agent_computer.writeback.65cf6e46-19c1-482b-b7f4-84c71a62dab8, kind=writeback.recorded, sequence 0, turn_id turn.ac-writeback-20260707232514, thread_id thread.ac-writeback-20260707232514; the turn's event_count incremented 0->1). The brokered credential never appeared in any event/result/log. Zero stray token_usage_events rows for the turn.",
-    "outcomeBoundary": "The recorded event status is `failed` with reasonRef `writeback.permission.github_write_connection_required`, NOT a real branch, because the proof turn's owner is a throwaway registered agent with NO GitHub write authorization (the broker returned 409: no stored github-identity token). This proves the in-guest turn-runner -> broker -> writeback route -> thread-scoped writeback.recorded wiring end-to-end from a real microVM (the exact #8477 gap), but not the literal acceptance.",
-    "remainingForRealBranch": "Drive a turn under a FULLY GitHub-authorized user: a bearer linked to a user whose `repo`-scoped github-identity token is present in the TARGET environment's auth KV (the broker's source) AND a github_write_connections row for that user (the server writeback gate's requirement) AND that user's own repo. AgentFlampy (github:300914913) has a pushable repo (AgentFlampy/openagents) and a prod mobile github-identity token, but staging KV lacks that token and github_write_connections has 0 rows for that user. Note the credential-system seam surfaced here: the microVM push brokers a github-IDENTITY token (#8475) while the server success gate checks github-WRITE-connections; a real success needs both present for the same user."
+    "green": "A real Firecracker microVM (admin trigger POST /api/admin/khala/cloud/runtime-dispatch -> mint owner-linked execution token -> bridge -> daemon -> microVM) booted from this image, checked out AgentFlampy/openagents@main, staged a 1-file diff, brokered AgentFlampy's OWN github-identity credential from the live SCM auth broker (owner-scoped), PUSHED a real scoped branch (never force, never base), opened a real PR, then POSTed the outcome to the live /api/khala/cloud/runtime-turn-writeback route. REAL ARTIFACTS on github.com: branch pylon/agent-computer-turn.wb-final-20260708000734 + PR https://github.com/AgentFlampy/openagents/pull/3. The route recorded the thread-scoped writeback.recorded event in authoritative khala_sync_staging (event_id event.private.agent_computer.writeback.e913a752-ee6a-4fa7-a6b5-521b7741cfb0, status=pull_request_opened, pullRequestUrl=.../pull/3, sequence 6, turn turn.wb-final-20260708000734). Exactly ONE exact owner-attributed token_usage_events row for the turn. microVM reclaimed (0 live firecracker, scratch wiped). The brokered credential never appeared in any event/result/log.",
+    "serverSeamFixesThatMadeItGreen": [
+      "gate: resolveKhalaWritebackAuthorization accepts a usable brokerable github-IDENTITY authorization, not only a github_write_connections row (the push already proves authorization) — dd8ba4f7fd",
+      "broker: the SCM auth broker vends the credential OWNER's github-identity (openauth_user_id), not the shared execution-agent user_id — e2673c68e1",
+      "recorder: owner-scoped client group so different owners never collide on one Khala Sync client group — 5f710e7492",
+      "recorder: derive the event sequence from GREATEST(event_count, MAX(sequence)+1) so out-of-band events don't cause a runtime_event_exists collision — fc01cb8497"
+    ]
   },
   "inMicrovmTurnProof": {
     "provedAt": "2026-07-07",
