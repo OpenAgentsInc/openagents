@@ -1,5 +1,13 @@
 # Tassadar: The LLM as a Computer
 
+**STATUS (2026-07-08): RETIRED FOR NOW — not current direction.**
+OpenAgents is focused on Khala Code and business-facing work
+(`docs/fable/MASTER_ROADMAP.md` rev 6). This program is retired
+until an explicit owner decision revives it (earliest
+reconsideration: after cashflow-positive). Preserved for history;
+do not route new work, issues, or copy from this document.
+
+
 > Status: research essay and folder index, updated 2026-06-11. Everything
 > described here is committed public code in `OpenAgentsInc/psionic` with
 > tests and stated claim boundaries, or published external research

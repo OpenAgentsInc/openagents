@@ -1,5 +1,13 @@
 # The Store We Built Twice: Tassadar and the Agent Marketplace
 
+**STATUS (2026-07-08): RETIRED FOR NOW — not current direction.**
+OpenAgents is focused on Khala Code and business-facing work
+(`docs/fable/MASTER_ROADMAP.md` rev 6). This program is retired
+until an explicit owner decision revives it (earliest
+reconsideration: after cashflow-positive). Preserved for history;
+do not route new work, issues, or copy from this document.
+
+
 > Status: history audit plus speculative essay, 2026-06-11. The audit
 > sections cite committed transcripts, deprecated-repo docs, and live
 > psionic code; the essay sections are labeled speculative and claim

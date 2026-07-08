@@ -1,5 +1,13 @@
 # Inference-Engineering Book — Implementation Log
 
+**STATUS (2026-07-08): RETIRED FOR NOW — not current direction.**
+OpenAgents is focused on Khala Code and business-facing work
+(`docs/fable/MASTER_ROADMAP.md` rev 6). This program is retired
+until an explicit owner decision revives it (earliest
+reconsideration: after cashflow-positive). Preserved for history;
+do not route new work, issues, or copy from this document.
+
+
 The overnight loop's audit log for turning the inference-engineering book's
 investigation notes (`khala-investigation-notes.md`) into shipped Khala product
 behavior. Each entry records what was done, where, the verification bar, and the

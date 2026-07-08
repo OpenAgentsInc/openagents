@@ -1,5 +1,13 @@
 # The Agent Cloud — one balance, revshare throughout, across everything
 
+**STATUS (2026-07-08): RETIRED FOR NOW — not current direction.**
+OpenAgents is focused on Khala Code and business-facing work
+(`docs/fable/MASTER_ROADMAP.md` rev 6). This program is retired
+until an explicit owner decision revives it (earliest
+reconsideration: after cashflow-positive). Preserved for history;
+do not route new work, issues, or copy from this document.
+
+
 Date: 2026-06-19. Status: **vision capstone.** This connects the inference gateway/credits/
 referral work (the rest of `docs/inference/`) to the broader **OpenAgents Cloud** and the
 "Let's Make Money" revenue thesis.

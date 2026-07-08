@@ -1,5 +1,13 @@
 # Report: Sakana AI’s work on “collective intelligence”
 
+**STATUS (2026-07-08): RETIRED FOR NOW — not current direction.**
+OpenAgents is focused on Khala Code and business-facing work
+(`docs/fable/MASTER_ROADMAP.md` rev 6). This program is retired
+until an explicit owner decision revives it (earliest
+reconsideration: after cashflow-positive). Preserved for history;
+do not route new work, issues, or copy from this document.
+
+
 A terminology note: the company is officially **Sakana AI**, not usually “Sakana Labs.” It is a Tokyo-based frontier AI R&D company founded in 2023 by David Ha, Ren Ito, and Llion Jones. The “collective intelligence” theme is not a side metaphor for Sakana; it is part of the company’s identity. Its logo and name evoke a school of fish, and the company describes its research as inspired by natural collectives such as swarms, evolution, and self-organizing systems. ([Sakana AI][1])
 
 ## 1. Executive thesis

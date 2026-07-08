@@ -1,5 +1,13 @@
 # OpenAgents Systems Index
 
+**STATUS (2026-07-08): RETIRED FOR NOW — not current direction.**
+OpenAgents is focused on Khala Code and business-facing work
+(`docs/fable/MASTER_ROADMAP.md` rev 6). This program is retired
+until an explicit owner decision revives it (earliest
+reconsideration: after cashflow-positive). Preserved for history;
+do not route new work, issues, or copy from this document.
+
+
 This directory is the source-of-truth master list for OpenAgents system
 documentation. Each row below identifies a real system, its purpose, the owning
 code paths, current doc status, and any related architecture record. This pass

@@ -1,5 +1,13 @@
 # The Tassadar + Psion Research Plan
 
+**STATUS (2026-07-08): RETIRED FOR NOW — not current direction.**
+OpenAgents is focused on Khala Code and business-facing work
+(`docs/fable/MASTER_ROADMAP.md` rev 6). This program is retired
+until an explicit owner decision revives it (earliest
+reconsideration: after cashflow-positive). Preserved for history;
+do not route new work, issues, or copy from this document.
+
+
 > Status: unified research directive, updated **2026-06-18 (post-launch)** from
 > the 2026-06-11 baseline. The launch has **happened**: the public run
 > `run.tassadar.executor.20260615` is live and active, self-serve claiming is

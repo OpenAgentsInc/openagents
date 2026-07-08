@@ -1,5 +1,13 @@
 # Terminal-Bench 2.0 — Khala black-box runner, replication, and path-to-beat (#6253)
 
+**STATUS (2026-07-08): RETIRED FOR NOW — not current direction.**
+OpenAgents is focused on Khala Code and business-facing work
+(`docs/fable/MASTER_ROADMAP.md` rev 6). This program is retired
+until an explicit owner decision revives it (earliest
+reconsideration: after cashflow-positive). Preserved for history;
+do not route new work, issues, or copy from this document.
+
+
 Status: **measured baseline + replication methodology + path-to-beat**, as of
 2026-06-26. The measured values below are a **historical snapshot**, not current
 liveness evidence. This subtree is an **isolated, Terminal-Bench-2.0-specific** lane.

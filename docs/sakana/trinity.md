@@ -1,5 +1,13 @@
 # TRINITY: An Evolved LLM Coordinator
 
+**STATUS (2026-07-08): RETIRED FOR NOW — not current direction.**
+OpenAgents is focused on Khala Code and business-facing work
+(`docs/fable/MASTER_ROADMAP.md` rev 6). This program is retired
+until an explicit owner decision revives it (earliest
+reconsideration: after cashflow-positive). Preserved for history;
+do not route new work, issues, or copy from this document.
+
+
 **Authors:** Jinglue Xu, Qi Sun, Peter Schwendeman, Stefan Nielsen, Edoardo
 Cetin, Yujin Tang (Sakana AI; Univ. Michigan; Institute of Science Tokyo)
 **Venue:** ICLR 2026 · **arXiv:** [2512.04695](https://arxiv.org/abs/2512.04695)

@@ -1,5 +1,13 @@
 # OpenAgents Inference Gateway + Credits Business — initial thoughts
 
+**STATUS (2026-07-08): RETIRED FOR NOW — not current direction.**
+OpenAgents is focused on Khala Code and business-facing work
+(`docs/fable/MASTER_ROADMAP.md` rev 6). This program is retired
+until an explicit owner decision revives it (earliest
+reconsideration: after cashflow-positive). Preserved for history;
+do not route new work, issues, or copy from this document.
+
+
 Date: 2026-06-19. Status: **initial thinking doc**, not a spec. Companion to the
 "Let's Make Money" revenue-engine plan (root `launch-videos/2026-06-18-video-2-referral-revenue-share.md`)
 and the §2H implementation audit. The point of this doc: sketch the inference

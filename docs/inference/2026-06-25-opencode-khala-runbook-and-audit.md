@@ -1,5 +1,13 @@
 # OpenCode x Khala Runbook And Compatibility Audit
 
+**STATUS (2026-07-08): RETIRED FOR NOW — not current direction.**
+OpenAgents is focused on Khala Code and business-facing work
+(`docs/fable/MASTER_ROADMAP.md` rev 6). This program is retired
+until an explicit owner decision revives it (earliest
+reconsideration: after cashflow-positive). Preserved for history;
+do not route new work, issues, or copy from this document.
+
+
 > Status: internal runbook/audit, 2026-06-25. This is not public claim copy and
 > does not change any product-promise state. The authoritative OpenCode recipe
 > lives at [`../opencode/opencode-khala-recipe.md`](../opencode/opencode-khala-recipe.md).

@@ -1,5 +1,13 @@
 # GEPA in OpenAgents — How We Use It, and a Fleet-Delegation Optimization Loop for Khala Code
 
+**STATUS (2026-07-08): RETIRED FOR NOW — not current direction.**
+OpenAgents is focused on Khala Code and business-facing work
+(`docs/fable/MASTER_ROADMAP.md` rev 6). This program is retired
+until an explicit owner decision revives it (earliest
+reconsideration: after cashflow-positive). Preserved for history;
+do not route new work, issues, or copy from this document.
+
+
 Date: 2026-06-30
 
 Status: research + design audit. Documents what GEPA is, how OpenAgents **does**

@@ -1,5 +1,13 @@
 # CS336 A2 Same-Class Replication Status
 
+**STATUS (2026-07-08): RETIRED FOR NOW — not current direction.**
+OpenAgents is focused on Khala Code and business-facing work
+(`docs/fable/MASTER_ROADMAP.md` rev 6). This program is retired
+until an explicit owner decision revives it (earliest
+reconsideration: after cashflow-positive). Preserved for history;
+do not route new work, issues, or copy from this document.
+
+
 Promise: `training.device_capability_dataset.v1` (stays **yellow**; no green
 flip).
 

@@ -1,5 +1,13 @@
 # Khala inference cost model, free-tier quota, and provider-lane analytics
 
+**STATUS (2026-07-08): RETIRED FOR NOW — not current direction.**
+OpenAgents is focused on Khala Code and business-facing work
+(`docs/fable/MASTER_ROADMAP.md` rev 6). This program is retired
+until an explicit owner decision revives it (earliest
+reconsideration: after cashflow-positive). Preserved for history;
+do not route new work, issues, or copy from this document.
+
+
 Date: 2026-06-25. Issues #6232, #6266, and #6267. Status: **shipped** (cost
 model + raised quota + owner-gated analytics, extended with GLM pool visibility
 and owned-GPU hourly amortization).

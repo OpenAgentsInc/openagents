@@ -1,5 +1,13 @@
 # Long-running inference on Cloudflare — response strategies
 
+**STATUS (2026-07-08): RETIRED FOR NOW — not current direction.**
+OpenAgents is focused on Khala Code and business-facing work
+(`docs/fable/MASTER_ROADMAP.md` rev 6). This program is retired
+until an explicit owner decision revives it (earliest
+reconsideration: after cashflow-positive). Preserved for history;
+do not route new work, issues, or copy from this document.
+
+
 *2026-06-22. Reference for how the Khala / inference gateway must handle
 completions that take tens of seconds to minutes, so we never hit edge timeouts.
 Written after a `524` postmortem (below).*

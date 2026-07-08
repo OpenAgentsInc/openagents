@@ -1,5 +1,13 @@
 # opencode shareable-chat web render — audit for `/trace/{uuid}` (#6209)
 
+**STATUS (2026-07-08): RETIRED FOR NOW — not current direction.**
+OpenAgents is focused on Khala Code and business-facing work
+(`docs/fable/MASTER_ROADMAP.md` rev 6). This program is retired
+until an explicit owner decision revives it (earliest
+reconsideration: after cashflow-positive). Preserved for history;
+do not route new work, issues, or copy from this document.
+
+
 > **Purpose.** opencode renders shared coding sessions at a public web URL whose
 > styling we want to repurpose for the OpenAgents agent-trace page
 > (`GET /trace/{uuid}`, spec in `docs/traces/README.md`, epic #6209). This audit

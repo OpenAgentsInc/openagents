@@ -1,5 +1,13 @@
 # Sakana AI — LLM Coordination Papers
 
+**STATUS (2026-07-08): RETIRED FOR NOW — not current direction.**
+OpenAgents is focused on Khala Code and business-facing work
+(`docs/fable/MASTER_ROADMAP.md` rev 6). This program is retired
+until an explicit owner decision revives it (earliest
+reconsideration: after cashflow-positive). Preserved for history;
+do not route new work, issues, or copy from this document.
+
+
 Summaries of two ICLR 2026 papers from Sakana AI on **test-time model
 composition via coordination**: combining the complementary strengths of
 diverse, black-box LLMs without merging weights or retraining the workers.

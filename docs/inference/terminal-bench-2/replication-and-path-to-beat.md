@@ -1,5 +1,13 @@
 # Terminal-Bench 2.0: replicating REAP's 69.1%, Khala's measured baseline, and the path to beat it (#6253)
 
+**STATUS (2026-07-08): RETIRED FOR NOW — not current direction.**
+OpenAgents is focused on Khala Code and business-facing work
+(`docs/fable/MASTER_ROADMAP.md` rev 6). This program is retired
+until an explicit owner decision revives it (earliest
+reconsideration: after cashflow-positive). Preserved for history;
+do not route new work, issues, or copy from this document.
+
+
 Status: 2026-06-26. Honesty bar (from #6253): published numbers come only from
 the owner-armed real seam over the official TB-2.0 task set; pilot/attempted-only
 denominators are never presented as the full score; the GLM model is attributed

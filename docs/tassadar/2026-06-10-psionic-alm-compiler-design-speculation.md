@@ -1,5 +1,13 @@
 # Building Our Own LLM-Computer: An ALM-Class Compiler In Psionic
 
+**STATUS (2026-07-08): RETIRED FOR NOW — not current direction.**
+OpenAgents is focused on Khala Code and business-facing work
+(`docs/fable/MASTER_ROADMAP.md` rev 6). This program is retired
+until an explicit owner decision revives it (earliest
+reconsideration: after cashflow-positive). Preserved for history;
+do not route new work, issues, or copy from this document.
+
+
 Date: 2026-06-10
 
 Status: **speculative design**. Nothing here is implemented, scheduled, or

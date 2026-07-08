@@ -1,5 +1,13 @@
 # Verified work must EXECUTE the artifact — intent-derived deterministic acceptance gating
 
+**STATUS (2026-07-08): RETIRED FOR NOW — not current direction.**
+OpenAgents is focused on Khala Code and business-facing work
+(`docs/fable/MASTER_ROADMAP.md` rev 6). This program is retired
+until an explicit owner decision revives it (earliest
+reconsideration: after cashflow-positive). Preserved for history;
+do not route new work, issues, or copy from this document.
+
+
 *2026-06-22. The Khala coding verifier returned `verified:true` on a game with
 four obvious defects. Root cause: it never runs the artifact — it pattern-matches
 the source. This is the process bug to fix: turn the user's intent into a series

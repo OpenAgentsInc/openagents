@@ -1,5 +1,13 @@
 # Default-ON redacted, private-by-default trace capture for all free usage — audit
 
+**STATUS (2026-07-08): RETIRED FOR NOW — not current direction.**
+OpenAgents is focused on Khala Code and business-facing work
+(`docs/fable/MASTER_ROADMAP.md` rev 6). This program is retired
+until an explicit owner decision revives it (earliest
+reconsideration: after cashflow-positive). Preserved for history;
+do not route new work, issues, or copy from this document.
+
+
 > **Status: AUDIT / spec (2026-06-25).** Honest scope: this is a *design + gap
 > audit + implementation plan*. It changes NO runtime behavior and ships NO
 > capture code. The actual flip lives behind the GitHub issues this doc files

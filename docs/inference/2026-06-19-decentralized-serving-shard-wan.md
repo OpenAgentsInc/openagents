@@ -1,5 +1,13 @@
 # Decentralized model serving (shard-WAN + every-Pylon-serves) folded into the inference gateway
 
+**STATUS (2026-07-08): RETIRED FOR NOW — not current direction.**
+OpenAgents is focused on Khala Code and business-facing work
+(`docs/fable/MASTER_ROADMAP.md` rev 6). This program is retired
+until an explicit owner decision revives it (earliest
+reconsideration: after cashflow-positive). Preserved for history;
+do not route new work, issues, or copy from this document.
+
+
 Date: 2026-06-19. Status: **initial thinking doc**, not a spec. Third supply pillar
 companion to `2026-06-19-inference-gateway-business.md` (the gateway/credits business)
 and `2026-06-19-pricing-vs-factory.md` (the pricing/margin model). Where those two cover

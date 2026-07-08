@@ -1,5 +1,13 @@
 # Agentic kernel optimization: work definition + throughput-parity protocol — 2026-06-19
 
+**STATUS (2026-07-08): RETIRED FOR NOW — not current direction.**
+OpenAgents is focused on Khala Code and business-facing work
+(`docs/fable/MASTER_ROADMAP.md` rev 6). This program is retired
+until an explicit owner decision revives it (earliest
+reconsideration: after cashflow-positive). Preserved for history;
+do not route new work, issues, or copy from this document.
+
+
 Weekend promise assault, DE-10. This defines the **public kernel-optimization
 work definition** and the **throughput-parity verification protocol** that
 `compute.agentic_kernel_optimization_at_scale.v1` (red) requires, by binding the

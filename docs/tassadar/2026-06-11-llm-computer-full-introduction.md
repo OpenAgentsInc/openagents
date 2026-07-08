@@ -1,5 +1,13 @@
 # The LLM as a Computer: A Full Introduction
 
+**STATUS (2026-07-08): RETIRED FOR NOW — not current direction.**
+OpenAgents is focused on Khala Code and business-facing work
+(`docs/fable/MASTER_ROADMAP.md` rev 6). This program is retired
+until an explicit owner decision revives it (earliest
+reconsideration: after cashflow-positive). Preserved for history;
+do not route new work, issues, or copy from this document.
+
+
 > Status: pedagogical deep introduction, 2026-06-11. This document teaches
 > the Percepta construction from zero and maps it onto what exists in our
 > own code. Sources: Percepta's "Can LLMs Be Computers?" (2026-03-11) and

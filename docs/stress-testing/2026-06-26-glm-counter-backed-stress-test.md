@@ -1,5 +1,13 @@
 # 2026-06-26 GLM Counter-Backed Stress Test
 
+**STATUS (2026-07-08): RETIRED FOR NOW — not current direction.**
+OpenAgents is focused on Khala Code and business-facing work
+(`docs/fable/MASTER_ROADMAP.md` rev 6). This program is retired
+until an explicit owner decision revives it (earliest
+reconsideration: after cashflow-positive). Preserved for history;
+do not route new work, issues, or copy from this document.
+
+
 Retirement note (2026-07-05, #8381): this document is historical. The
 `glm-stress:adaptive` script, adaptive runner helpers, stress-saturation plan,
 and GLM stress-scheduler Durable Object described below were removed from

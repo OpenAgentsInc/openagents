@@ -1,5 +1,13 @@
 # Khala DeepSeek V4 Flash Provider Backing
 
+**STATUS (2026-07-08): RETIRED FOR NOW — not current direction.**
+OpenAgents is focused on Khala Code and business-facing work
+(`docs/fable/MASTER_ROADMAP.md` rev 6). This program is retired
+until an explicit owner decision revives it (earliest
+reconsideration: after cashflow-positive). Preserved for history;
+do not route new work, issues, or copy from this document.
+
+
 Date: 2026-06-24
 Issues: OpenAgentsInc/openagents#6198, OpenAgentsInc/openagents#6201,
 OpenAgentsInc/openagents#6202, OpenAgentsInc/openagents#6203,

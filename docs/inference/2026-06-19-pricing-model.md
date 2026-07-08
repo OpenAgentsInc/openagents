@@ -1,5 +1,13 @@
 # OpenAgents inference pricing model — credits, multipliers, margin, BTC discount
 
+**STATUS (2026-07-08): RETIRED FOR NOW — not current direction.**
+OpenAgents is focused on Khala Code and business-facing work
+(`docs/fable/MASTER_ROADMAP.md` rev 6). This program is retired
+until an explicit owner decision revives it (earliest
+reconsideration: after cashflow-positive). Preserved for history;
+do not route new work, issues, or copy from this document.
+
+
 Date: 2026-06-19. Status: **worked pricing model + the math to finalize it.** Companion
 to `2026-06-19-inference-gateway-business.md` and `2026-06-19-pricing-vs-factory.md`.
 This doc does the exercise: cost basis → base credit price + target margin → multiplier

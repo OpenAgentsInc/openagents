@@ -1,5 +1,13 @@
 # OpenAgents Gym — Spec & Roadmap
 
+**STATUS (2026-07-08): RETIRED FOR NOW — not current direction.**
+OpenAgents is focused on Khala Code and business-facing work
+(`docs/fable/MASTER_ROADMAP.md` rev 6). This program is retired
+until an explicit owner decision revives it (earliest
+reconsideration: after cashflow-positive). Preserved for history;
+do not route new work, issues, or copy from this document.
+
+
 > **Status:** Phase 0 backend core, public fixture UI, and illustrative
 > report/scene viewer landed and closed (#6163, #6164, #6165, #6166).
 > `GymExperiment`,

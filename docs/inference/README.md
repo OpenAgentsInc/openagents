@@ -1,5 +1,13 @@
 # OpenAgents Inference — gateway, credits business, decentralized serving
 
+**STATUS (2026-07-08): RETIRED FOR NOW — not current direction.**
+OpenAgents is focused on Khala Code and business-facing work
+(`docs/fable/MASTER_ROADMAP.md` rev 6). This program is retired
+until an explicit owner decision revives it (earliest
+reconsideration: after cashflow-positive). Preserved for history;
+do not route new work, issues, or copy from this document.
+
+
 This folder holds the thinking on the **OpenAgents inference business**: a single,
 subscription-free, usage-based API where people and agents **buy inference credits** (USD
 card or Bitcoin) and we serve them from the supply we control — our Google Cloud / Vertex

@@ -1,5 +1,13 @@
 # Terminal-Bench 2.0 — measured Khala black-box run (#6253)
 
+**STATUS (2026-07-08): RETIRED FOR NOW — not current direction.**
+OpenAgents is focused on Khala Code and business-facing work
+(`docs/fable/MASTER_ROADMAP.md` rev 6). This program is retired
+until an explicit owner decision revives it (earliest
+reconsideration: after cashflow-positive). Preserved for history;
+do not route new work, issues, or copy from this document.
+
+
 This records the **isolated bounded measurement** produced by `run-khala-tb2.sh`
 against the **public Khala API as a black box** in this environment. It is
 public-safe: only aggregate counts + per-task reward + token totals. Raw Harbor

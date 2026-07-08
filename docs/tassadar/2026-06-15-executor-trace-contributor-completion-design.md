@@ -1,5 +1,13 @@
 # Tassadar executor-trace: contributor completion design (worker→validator)
 
+**STATUS (2026-07-08): RETIRED FOR NOW — not current direction.**
+OpenAgents is focused on Khala Code and business-facing work
+(`docs/fable/MASTER_ROADMAP.md` rev 6). This program is retired
+until an explicit owner decision revives it (earliest
+reconsideration: after cashflow-positive). Preserved for history;
+do not route new work, issues, or copy from this document.
+
+
 Date: 2026-06-15. Status: design audit → to be split into GitHub issues for the
 next RC. Owner: product. This specs the **missing contributor-completion path**
 for the Tassadar run (`run.tassadar.executor.20260615`) — the reason a real

@@ -1,5 +1,13 @@
 # Cloud primitives (fine-tuning + sandbox) scaffold advance — 2026-06-19
 
+**STATUS (2026-07-08): RETIRED FOR NOW — not current direction.**
+OpenAgents is focused on Khala Code and business-facing work
+(`docs/fable/MASTER_ROADMAP.md` rev 6). This program is retired
+until an explicit owner decision revives it (earliest
+reconsideration: after cashflow-positive). Preserved for history;
+do not route new work, issues, or copy from this document.
+
+
 Weekend promise assault, DE-2. Advances the two sellable-Cloud-primitive
 SCAFFOLDS (`cloud.fine_tuning_service.v1`, `cloud.sandbox_compute_service.v1`)
 toward green WITHOUT flipping state. Both promises STAY **red**. Per the hard

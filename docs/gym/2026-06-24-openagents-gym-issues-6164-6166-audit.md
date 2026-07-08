@@ -1,5 +1,13 @@
 # OpenAgents Gym Issue Run Audit (#6163-#6167)
 
+**STATUS (2026-07-08): RETIRED FOR NOW — not current direction.**
+OpenAgents is focused on Khala Code and business-facing work
+(`docs/fable/MASTER_ROADMAP.md` rev 6). This program is retired
+until an explicit owner decision revives it (earliest
+reconsideration: after cashflow-positive). Preserved for history;
+do not route new work, issues, or copy from this document.
+
+
 Updated: 2026-06-25
 
 This audit tracks the sequential issue run for the OpenAgents Gym Phase 0 work

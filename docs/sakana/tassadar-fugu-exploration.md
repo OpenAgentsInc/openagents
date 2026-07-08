@@ -1,5 +1,13 @@
 # Tassadar × Fugu: Exploration
 
+**STATUS (2026-07-08): RETIRED FOR NOW — not current direction.**
+OpenAgents is focused on Khala Code and business-facing work
+(`docs/fable/MASTER_ROADMAP.md` rev 6). This program is retired
+until an explicit owner decision revives it (earliest
+reconsideration: after cashflow-positive). Preserved for history;
+do not route new work, issues, or copy from this document.
+
+
 *Speculative design — 2026-06-22. An imagined episode and a 3D Verse experience
 where the Tassadar run meets Sakana's Fugu approach: apply Fugu's
 "multi-agent-system-as-one-model" orchestration to Tassadar's verified,
