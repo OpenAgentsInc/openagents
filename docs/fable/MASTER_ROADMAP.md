@@ -404,17 +404,17 @@ Khala Code.** That raises the bar from "one proven turn" to a daily
 driver, so the lane set grows from CX-1..5 to CX-1..9. Issues filed:
 **#8545–#8553**.
 
-**STATUS (2026-07-08): foundation proven, own-Codex not started.** CX-1
-(`#8545`) CLOSED (broker law); `#8503`/`#8477` CLOSED (a real microVM turn +
-branch/PR writeback) — **but that proven turn runs the hosted Khala gateway
-model (Gemini), not the user's Codex.** **CX-2..9 (`#8546–#8553`) are all OPEN
-and unstarted.** The linchpin is **CX-3 (`#8547`)**: the in-guest turn-runner
-has no Codex execution path (no in-VM grant redemption, no `CODEX_HOME` on
-scratch, no `codex_app_server` lane); its control-plane half lives in the
-private `cloud/` repo, so it can't be fully landed from this repo. CX-2
-(`#8546`, mobile Codex-connect UI) is the one lane fully buildable here today
-(the custody-rail routes already exist server-side; only the phone flow is
-missing — its QAM-7 fixture suite is red pending it).
+**STATUS (2026-07-08): mainline slices landed; owner proof gates remain.**
+CX-1 (`#8545`) is CLOSED (`7bd4fb2eb1`). CX-2..CX-8 have contract/UI/runtime
+slices landed on `main` (`9b963db890`, `b9b56d8e0f`, `4aa8ca37db`,
+`92dbe36614`, `ffb157415f`, `4d3506eb89`, `ecbacec2d5`) and remain open only
+where live proof is still required: real phone device-auth, rootfs/dispatch
+proof, account proof, Claude proof, multi-provision continuity, live account
+serialization/concurrency/rotation, and phone dispatch → watch → interrupt /
+steer / resume → PR plus monorepo latency numbers. CX-9 (`#8553`) has the
+cutover ledger seeded and is blocked on the owner's full dogfood-day receipt:
+at least five real mobile-Codex tasks, zero desktop fallback, billing sanity,
+friction report, and owner sign-off.
 
 - **CX-1 (#8545)** Provider-credential invariant + broker contract
   (`provider_credential_policy: broker_only`; never-pooled /
