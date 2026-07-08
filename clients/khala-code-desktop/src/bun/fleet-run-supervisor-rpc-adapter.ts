@@ -37,6 +37,7 @@ import {
   type KhalaCodexFleetToolOptions,
 } from "./khala-fleet-tools.js"
 import { collectKhalaProcessText, spawnKhalaProcess } from "./khala-process.js"
+import { narrowToDelegateWorkerKind } from "@openagentsinc/khala-tools"
 import { makePylonService, type PylonServiceShape } from "./pylon-service.js"
 import {
   startFleetRunSupervisor,
@@ -311,7 +312,7 @@ const capacityFor = (options: KhalaCodexFleetToolOptions | undefined): FleetRunS
       includeProcesses: false,
       includeRateLimits: false,
       startPylon: true,
-      workerKind: run.workerKind,
+      workerKind: narrowToDelegateWorkerKind(run.workerKind),
     }, options)
     return status.accounts
       .filter(account => !account.paused && (
@@ -350,7 +351,7 @@ const runnerFor = (input: {
       pylonRef: input.pylonRef ?? undefined,
       repo: dispatch.workUnit.repo,
       verify: fixture ? undefined : dispatch.workUnit.verify ?? DEFAULT_VERIFY,
-      workerKind: dispatch.run.workerKind,
+      workerKind: narrowToDelegateWorkerKind(dispatch.run.workerKind),
     }))
   },
 })

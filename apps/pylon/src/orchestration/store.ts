@@ -81,7 +81,7 @@ export const WORK_CLAIM_SCHEMA = "openagents.khala_code.work_claim.v1" as const
 export const FleetRunWorkSourceSchema = S.Literals(["github_backlog", "issue_list", "fixture", "plan_dag"])
 export type FleetRunWorkSource = typeof FleetRunWorkSourceSchema.Type
 
-export const FleetRunWorkerKindSchema = S.Literals(["codex", "claude", "auto"])
+export const FleetRunWorkerKindSchema = S.Literals(["codex", "claude", "grok", "auto"])
 export type FleetRunWorkerKind = typeof FleetRunWorkerKindSchema.Type
 
 export const FleetRunDispatchKindSchema = S.Literals(["handoff", "supervised_dispatch"])

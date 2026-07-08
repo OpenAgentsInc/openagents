@@ -538,6 +538,7 @@
         "@openagentsinc/behavior-contracts": "workspace:*",
         "@openagentsinc/composer-state": "workspace:*",
         "@openagentsinc/grok-harness": "workspace:*",
+        "@openagentsinc/khala-fleet-intents": "workspace:*",
         "@openagentsinc/khala-sync": "workspace:*",
         "@openagentsinc/khala-sync-client": "workspace:*",
         "@openagentsinc/khala-sync-db-collection": "workspace:*",
@@ -869,6 +870,17 @@
         "@openagentsinc/agent-runtime-schema": "workspace:*",
         "@openagentsinc/khala-tools": "workspace:*",
         "ai": "7.0.15",
+        "effect": "catalog:",
+      },
+      "devDependencies": {
+        "bun-types": "^1.0.0",
+        "typescript": "catalog:",
+      },
+    },
+    "packages/khala-fleet-intents": {
+      "name": "@openagentsinc/khala-fleet-intents",
+      "version": "0.0.1",
+      "dependencies": {
         "effect": "catalog:",
       },
       "devDependencies": {
@@ -1792,6 +1804,8 @@
     "@openagentsinc/khala-capture": ["@openagentsinc/khala-capture@workspace:apps/khala-capture"],
 
     "@openagentsinc/khala-code-desktop": ["@openagentsinc/khala-code-desktop@workspace:clients/khala-code-desktop"],
+
+    "@openagentsinc/khala-fleet-intents": ["@openagentsinc/khala-fleet-intents@workspace:packages/khala-fleet-intents"],
 
     "@openagentsinc/khala-live-hub": ["@openagentsinc/khala-live-hub@workspace:apps/khala-live-hub"],
 
@@ -4466,6 +4480,8 @@
     "@openagentsinc/khala-code-desktop/@openagentsinc/three-effect": ["@openagentsinc/three-effect@github:OpenAgentsInc/three-effect#fa84064", { "dependencies": { "@types/three": "0.184.0", "effect": "4.0.0-beta.70", "foldkit": "0.102.1", "three": "0.184.0" } }, "OpenAgentsInc-three-effect-fa84064", "sha512-ZryqztYQmE3/batmfwxAni68wOMBKCCAlIYhS7XXAoasn5VO5bfoJvD4ut0p8Tf31hMNwvuJ8T5PwqjoxQjhFg=="],
 
     "@openagentsinc/khala-code-desktop/effect": ["effect@4.0.0-beta.70", "", { "dependencies": { "@standard-schema/spec": "^1.1.0", "fast-check": "^4.8.0", "find-my-way-ts": "^0.1.6", "ini": "^7.0.0", "kubernetes-types": "^1.30.0", "msgpackr": "^2.0.1", "multipasta": "^0.2.7", "toml": "^4.1.1", "uuid": "^14.0.0", "yaml": "^2.9.0" } }, "sha512-8AwGTRiNriirHGEYHrOS0E9fzdhIqCdZjiHP1YXmNo2UyPGS43ILsymsSHT7V0DJS+8dvlKq2RxnrDBUhDNZHg=="],
+
+    "@openagentsinc/khala-fleet-intents/effect": ["effect@4.0.0-beta.70", "", { "dependencies": { "@standard-schema/spec": "^1.1.0", "fast-check": "^4.8.0", "find-my-way-ts": "^0.1.6", "ini": "^7.0.0", "kubernetes-types": "^1.30.0", "msgpackr": "^2.0.1", "multipasta": "^0.2.7", "toml": "^4.1.1", "uuid": "^14.0.0", "yaml": "^2.9.0" } }, "sha512-8AwGTRiNriirHGEYHrOS0E9fzdhIqCdZjiHP1YXmNo2UyPGS43ILsymsSHT7V0DJS+8dvlKq2RxnrDBUhDNZHg=="],
 
     "@openagentsinc/khala-live-hub/effect": ["effect@4.0.0-beta.70", "", { "dependencies": { "@standard-schema/spec": "^1.1.0", "fast-check": "^4.8.0", "find-my-way-ts": "^0.1.6", "ini": "^7.0.0", "kubernetes-types": "^1.30.0", "msgpackr": "^2.0.1", "multipasta": "^0.2.7", "toml": "^4.1.1", "uuid": "^14.0.0", "yaml": "^2.9.0" } }, "sha512-8AwGTRiNriirHGEYHrOS0E9fzdhIqCdZjiHP1YXmNo2UyPGS43ILsymsSHT7V0DJS+8dvlKq2RxnrDBUhDNZHg=="],
 

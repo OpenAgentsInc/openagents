@@ -36,6 +36,7 @@
     "@openagentsinc/arbiter-effect": "workspace:*",
     "@openagentsinc/behavior-contracts": "workspace:*",
     "@openagentsinc/composer-state": "workspace:*",
+    "@openagentsinc/khala-fleet-intents": "workspace:*",
     "@openagentsinc/khala-sync": "workspace:*",
     "@openagentsinc/khala-sync-client": "workspace:*",
     "@openagentsinc/khala-sync-db-collection": "workspace:*",

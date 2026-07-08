@@ -1,5 +1,22 @@
 import { Schema as S } from "effect"
+import { MarginalCostClass } from "@openagentsinc/khala-fleet-intents"
 import type { KhalaToolEvent } from "@openagentsinc/khala-tools"
+
+// The neutral, versioned chat-turn-event contract (`khala.chat_turn_event.v1`)
+// now lives in @openagentsinc/agent-runtime-schema and is the canonical,
+// harness-agnostic spine shared with Khala mobile and Khala Sync. Desktop
+// re-exports it here so desktop code can adopt the versioned contract without a
+// second import site. The desktop-specialized `KhalaCodeDesktopChatTurnEvent`
+// below carries richer per-item cards but projects onto the SAME set of event
+// `type`s (thread_ready / message_start / message_delta / message_replace /
+// message_done / tool_event).
+export {
+  decodeKhalaChatTurnEventV1,
+  KhalaChatTurnEventMessage,
+  KhalaChatTurnEventSchemaLiteral,
+  KhalaChatTurnEventToolEvent,
+  KhalaChatTurnEventV1,
+} from "@openagentsinc/agent-runtime-schema"
 import type { KhalaAppleFmReadiness } from "./apple-fm-readiness.js"
 import type { KhalaCodeDeepLinkTarget } from "./deep-links.js"
 import type {
@@ -1636,7 +1653,7 @@ const RpcFleetCapacity = S.Struct({
   ready: RpcNumberNull,
 })
 const RpcFleetAccountProvider = S.Literals(["claude_agent", "codex"])
-const RpcFleetRunWorkerKind = S.Literals(["codex", "claude", "auto"])
+const RpcFleetRunWorkerKind = S.Literals(["codex", "claude", "grok", "auto"])
 const RpcFleetTokenMeasurementStatus = S.Literals(["exact", "estimated", "not_measured", "pending"])
 const RpcFleetSessionRole = S.Literals(["main_local_codex_session", "swarm_worker_codex_session"])
 const RpcFleetHomeRole = S.Literals(["main_user_codex_home_display_only", "pylon_isolated_worker_codex_home"])
@@ -1667,6 +1684,9 @@ const RpcFleetAccount = S.Struct({
   queuePolicy: S.optional(RpcFleetQueuePolicy),
   sessionRole: S.optional(RpcFleetSessionRole),
   email: RpcStringNull,
+  // Per-harness economics for `auto` ranking (MH-8). Optional and additive:
+  // absent means the marginal cost class was not reported for this account.
+  marginalCostClass: S.optional(MarginalCostClass),
 })
 const RpcFleetAssignmentTokenRate = S.Struct({
   source: S.String,

@@ -15,6 +15,7 @@ export const AgentRuntimeAdapterKind = S.Literals([
   "openagents_native",
   "claude_code",
   "codex",
+  "grok_cli",
   "opencode",
   "hermes",
   "hosted_container",
@@ -27,6 +28,7 @@ export const agentRuntimeAdapterKinds: ReadonlyArray<AgentRuntimeAdapterKind> = 
   "openagents_native",
   "claude_code",
   "codex",
+  "grok_cli",
   "opencode",
   "hermes",
   "hosted_container",
@@ -37,6 +39,7 @@ export const agentRuntimeAdapterKinds: ReadonlyArray<AgentRuntimeAdapterKind> = 
 export const AgentDefinitionHarnessKind = S.Literals([
   "codex",
   "claude_code",
+  "grok_cli",
   "khala",
   "opencode",
   "hermes",
@@ -50,6 +53,7 @@ export type AgentDefinitionHarnessKind = typeof AgentDefinitionHarnessKind.Type
 export const agentDefinitionHarnessKinds: ReadonlyArray<AgentDefinitionHarnessKind> = [
   "codex",
   "claude_code",
+  "grok_cli",
   "khala",
   "opencode",
   "hermes",
@@ -865,6 +869,7 @@ export const KhalaRuntimeEvent = S.Union([
       "ai_sdk_stream_part",
       "codex_sdk_event",
       "claude_sdk_event",
+      "grok_acp_event",
       "provider_chunk",
       "other",
     ]),
@@ -937,6 +942,103 @@ export type KhalaRuntimeControlIntent =
 export const decodeKhalaRuntimeEvent = S.decodeUnknownSync(KhalaRuntimeEvent)
 export const decodeKhalaRuntimeControlIntent =
   S.decodeUnknownSync(KhalaRuntimeControlIntent)
+
+// ---------------------------------------------------------------------------
+// khala.chat_turn_event.v1 — the neutral, harness-agnostic chat turn event.
+//
+// This is the versioned, canonical turn-event contract shared across harnesses
+// (codex | claude | grok | ...) and surfaces (desktop | mobile | sync | web).
+// It is intentionally narrow: it carries only harness-neutral message and tool
+// data so mobile/sync consumers can depend on it without pulling any desktop-
+// specific types. Harness-specialized surfaces (e.g. Khala Code desktop) may
+// project their richer per-item cards onto this contract, but the neutral shape
+// here is the interoperable spine.
+// ---------------------------------------------------------------------------
+
+export const KhalaChatTurnEventSchemaLiteral = "khala.chat_turn_event.v1" as const
+
+export const KhalaChatTurnEventMessageRole = S.Literals([
+  "user",
+  "assistant",
+  "system",
+  "tool",
+])
+export type KhalaChatTurnEventMessageRole = typeof KhalaChatTurnEventMessageRole.Type
+
+export const KhalaChatTurnEventMessage = S.Struct({
+  id: S.String,
+  role: KhalaChatTurnEventMessageRole,
+  body: S.String,
+})
+export type KhalaChatTurnEventMessage = typeof KhalaChatTurnEventMessage.Type
+
+// Neutral tool event: harness-agnostic envelope. `payload` is opaque so each
+// harness can carry its own tool-event body without leaking a harness-specific
+// shape into the shared contract.
+export const KhalaChatTurnEventToolEvent = S.Struct({
+  eventId: S.String,
+  invocationId: S.optional(S.String),
+  kind: S.String,
+  sessionId: S.String,
+  payload: S.Unknown,
+})
+export type KhalaChatTurnEventToolEvent = typeof KhalaChatTurnEventToolEvent.Type
+
+export const KhalaChatTurnEventKind = S.Literals([
+  "thread_ready",
+  "message_start",
+  "message_delta",
+  "message_replace",
+  "message_done",
+  "tool_event",
+])
+export type KhalaChatTurnEventKind = typeof KhalaChatTurnEventKind.Type
+
+export const khalaChatTurnEventKinds: ReadonlyArray<KhalaChatTurnEventKind> = [
+  "thread_ready",
+  "message_start",
+  "message_delta",
+  "message_replace",
+  "message_done",
+  "tool_event",
+]
+
+export const KhalaChatTurnEventV1 = S.Union([
+  S.Struct({
+    type: S.Literal("thread_ready"),
+    threadId: S.String,
+    turnId: S.String,
+  }),
+  S.Struct({
+    type: S.Literal("message_start"),
+    turnId: S.String,
+    message: KhalaChatTurnEventMessage,
+  }),
+  S.Struct({
+    type: S.Literal("message_delta"),
+    turnId: S.String,
+    messageId: S.String,
+    delta: S.String,
+  }),
+  S.Struct({
+    type: S.Literal("message_replace"),
+    turnId: S.String,
+    message: KhalaChatTurnEventMessage,
+  }),
+  S.Struct({
+    type: S.Literal("message_done"),
+    turnId: S.String,
+    messageId: S.String,
+  }),
+  S.Struct({
+    type: S.Literal("tool_event"),
+    turnId: S.String,
+    event: KhalaChatTurnEventToolEvent,
+  }),
+])
+export type KhalaChatTurnEventV1 = typeof KhalaChatTurnEventV1.Type
+
+export const decodeKhalaChatTurnEventV1 = S.decodeUnknownSync(KhalaChatTurnEventV1)
 
 export type KhalaRuntimeAiSdkUsage = {
   readonly inputTokens?: number | undefined
@@ -1567,7 +1669,7 @@ function khalaRuntimeRequireToolAuthority(
 function khalaRuntimeRawSidecarEvent(
   base: Record<string, unknown>,
   event: AgentRuntimeEvent,
-  rawEventKind: "ai_sdk_stream_part" | "codex_sdk_event" | "claude_sdk_event" | "provider_chunk" | "other",
+  rawEventKind: "ai_sdk_stream_part" | "codex_sdk_event" | "claude_sdk_event" | "grok_acp_event" | "provider_chunk" | "other",
 ): KhalaRuntimeEvent {
   return decodeKhalaRuntimeEvent({
     ...base,

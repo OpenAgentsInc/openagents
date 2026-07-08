@@ -1,0 +1,20 @@
+{
+  "name": "@openagentsinc/khala-fleet-intents",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "bun test src/*.test.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "effect": "catalog:"
+  },
+  "devDependencies": {
+    "bun-types": "^1.0.0",
+    "typescript": "catalog:"
+  }
+}

@@ -65,6 +65,7 @@ export {
   selectKhalaFleetDelegateAccount,
   type KhalaFleetDelegateAdvertiseReason,
   khalaFleetDelegateWorkerKindForWorkflowClass,
+  narrowToDelegateWorkerKind,
   type KhalaFleetDelegateProgramOptions,
   type KhalaFleetDelegateAccount,
   type KhalaFleetDelegateAdvertiseResult,

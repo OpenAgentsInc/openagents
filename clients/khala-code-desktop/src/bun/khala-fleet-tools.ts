@@ -21,6 +21,7 @@ import {
   redactKhalaPublicText,
   renderKhalaFleetDelegationObjective,
   resolveKhalaFleetDelegationParameters,
+  narrowToDelegateWorkerKind,
   runKhalaFleetDelegateProgram,
   type KhalaFleetDelegateAccount,
   type KhalaFleetDelegateBlockerCode,
@@ -1054,8 +1055,9 @@ export async function spawnCodexInstances(
   const baseDelegationParameters = options.delegationParameters ??
     khalaFleetDelegationParametersFromEnv(baseEnv)
   const input = decodeSpawnInput(raw, baseDelegationParameters)
-  const delegationParameters = delegationParametersWithWorkerKind(baseDelegationParameters, input.workerKind)
-  const env = withWorkerCapacityAdvertisementEnv(baseEnv, input.count, delegationParameters, input.workerKind)
+  const delegateWorkerKind = narrowToDelegateWorkerKind(input.workerKind)
+  const delegationParameters = delegationParametersWithWorkerKind(baseDelegationParameters, delegateWorkerKind)
+  const env = withWorkerCapacityAdvertisementEnv(baseEnv, input.count, delegationParameters, delegateWorkerKind)
   const paths = resolvePylonPaths(env)
   const baseUrl = resolveOpenAgentsBaseUrl(env, input.baseUrl)
   const preparedInput = await resolveRealWorkCommitPin(input, {
@@ -1091,9 +1093,9 @@ export async function spawnCodexInstances(
     const freshHeartbeatPylonRef = stringField(heartbeatJson, "pylonRef")
     if (freshHeartbeatPylonRef !== null) heartbeatPylonRef = freshHeartbeatPylonRef
     else if (pylonRef !== undefined) heartbeatPylonRef = pylonRef
-    fleetStatus = await inspectCodexFleet({ includeProcesses: false, startPylon: false, workerKind: input.workerKind }, { ...options, env })
+    fleetStatus = await inspectCodexFleet({ includeProcesses: false, startPylon: false, workerKind: delegateWorkerKind }, { ...options, env })
     providerProjection = await readProviderProjection(env, paths, options.runner)
-    accountAvailability = accountAvailabilityByRef(fleetStatus.accounts, providerProjection, input.workerKind)
+    accountAvailability = accountAvailabilityByRef(fleetStatus.accounts, providerProjection, delegateWorkerKind)
     const heartbeatRef = stringField(heartbeatJson, "heartbeatRef")
     return {
       capacity: khalaDelegateCapacityFromFleetStatus(
@@ -1718,7 +1720,7 @@ export class DefaultKhalaFleetRunSupervisorManager implements KhalaFleetRunSuper
           repo: fixture ? undefined : workUnit.repo ?? config.repo,
           timeoutMs: config.timeoutMs,
           verify: fixture ? undefined : workUnit.verify ?? config.verify,
-          workerKind: run.workerKind,
+          workerKind: narrowToDelegateWorkerKind(run.workerKind),
         }))
       },
     }
@@ -1736,7 +1738,7 @@ export class DefaultKhalaFleetRunSupervisorManager implements KhalaFleetRunSuper
           includeProcesses: false,
           includeRateLimits: false,
           startPylon: true,
-          workerKind: run?.workerKind ?? "codex",
+          workerKind: narrowToDelegateWorkerKind(run?.workerKind ?? "codex"),
         }, env === undefined ? this.options : { ...this.options, env })
         return status.accounts
           .filter(account => account.readiness === "ready" && !account.paused)
@@ -1759,7 +1761,7 @@ export class DefaultKhalaFleetRunSupervisorManager implements KhalaFleetRunSuper
       baseEnv,
       run.targetConcurrency,
       parameters,
-      run.workerKind,
+      narrowToDelegateWorkerKind(run.workerKind),
     )
     const baseUrl = resolveOpenAgentsBaseUrl(advertisedEnv, config.baseUrl)
     const env = {

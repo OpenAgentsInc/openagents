@@ -64,6 +64,24 @@ export type KhalaFleetDelegateConcreteWorkerKind =
 export const KhalaFleetDelegateWorkerKind = S.Literals(["auto", "claude", "codex"])
 export type KhalaFleetDelegateWorkerKind = typeof KhalaFleetDelegateWorkerKind.Type
 
+// A FleetRun may be *labeled* with any run-selection worker kind — including
+// `grok` (MH-0) — but the codex/claude delegation + executor path only
+// dispatches the concrete kinds it implements. Grok execution arrives with the
+// MH-4 Grok executor in the pylon-core boundary; until then no product surface
+// can create a grok run, so this narrows the run-selection kind to the
+// dispatchable delegate kind and fails loudly if that invariant is ever
+// violated (rather than silently dispatching grok work to codex).
+export function narrowToDelegateWorkerKind(
+  workerKind: "codex" | "claude" | "grok" | "auto",
+): KhalaFleetDelegateWorkerKind {
+  if (workerKind === "grok") {
+    throw new Error(
+      "grok fleet dispatch is not yet available (pending the MH-4 Grok executor); a grok-labeled FleetRun cannot be delegated through the codex/claude path",
+    )
+  }
+  return workerKind
+}
+
 export const KhalaFleetDelegationWorkflowClass = S.Literals([
   "claude_agent_task",
   "cloud_coding_session",
