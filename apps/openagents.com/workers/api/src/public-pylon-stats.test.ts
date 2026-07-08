@@ -19,7 +19,10 @@ import {
 } from './public-pylon-stats'
 import { handlePublicPylonStatsApi } from './public-pylon-stats-routes'
 import { publicScannerSafeRef } from './public-ref-scanner-safety'
-import type { PylonApiRegistrationRecord } from './pylon-api'
+import type {
+  PylonApiRegistrationRecord,
+  PylonApiRegistrationRow,
+} from './pylon-api'
 import type { TreasuryTransactionRecord } from './treasury-page-routes'
 import {
   buildTrainingRunRecord,
@@ -66,6 +69,68 @@ const storeFor = (
 ) => ({
   listRegistrations: () => Promise.resolve(registrations),
 })
+
+const registrationRow = (
+  input: Partial<PylonApiRegistrationRecord> &
+    Pick<PylonApiRegistrationRecord, 'pylonRef'>,
+): PylonApiRegistrationRow => {
+  const record = registration(input)
+  return {
+    capability_refs_json: JSON.stringify(record.capabilityRefs),
+    client_protocol_version: record.clientProtocolVersion,
+    client_version: record.clientVersion,
+    created_at: record.createdAt,
+    display_name: record.displayName,
+    id: record.id,
+    latest_capacity_refs_json: JSON.stringify(record.latestCapacityRefs),
+    latest_health_refs_json: JSON.stringify(record.latestHealthRefs),
+    latest_heartbeat_at: record.latestHeartbeatAt,
+    latest_heartbeat_status: record.latestHeartbeatStatus,
+    latest_load_refs_json: JSON.stringify(record.latestLoadRefs),
+    latest_resource_mode: record.latestResourceMode,
+    owner_agent_credential_id: record.ownerAgentCredentialId,
+    owner_agent_token_prefix: record.ownerAgentTokenPrefix,
+    owner_agent_user_id: record.ownerAgentUserId,
+    provider_market_relay_refs_json: JSON.stringify(
+      record.providerMarketRelayRefs,
+    ),
+    provider_nip90_lane_refs_json: JSON.stringify(record.providerNip90LaneRefs),
+    provider_nostr_npub: record.providerNostrNpub,
+    provider_nostr_pubkey: record.providerNostrPubkey,
+    public_projection_json: record.publicProjectionJson,
+    pylon_ref: record.pylonRef,
+    resource_mode: record.resourceMode,
+    status: record.status,
+    updated_at: record.updatedAt,
+    wallet_ready: record.walletReady ? 1 : 0,
+    wallet_ref: record.walletRef,
+  }
+}
+
+const failingPylonD1Db = (): D1Database =>
+  ({
+    prepare: () => {
+      throw new Error('legacy D1 pylon_api_registrations path was used')
+    },
+  }) as unknown as D1Database
+
+const makePylonStatsSqlClient = (
+  rows: ReadonlyArray<PylonApiRegistrationRow>,
+) => {
+  const statements: Array<string> = []
+  const sql = (strings: TemplateStringsArray, ..._values: Array<unknown>) => {
+    statements.push(strings.join('?').replaceAll(/\s+/g, ' ').trim())
+    return Promise.resolve(rows)
+  }
+
+  return {
+    makeSqlClient: async () => ({
+      end: () => Promise.resolve(),
+      sql: sql as never,
+    }),
+    statements,
+  }
+}
 
 const bitcoinSatsAmount = (sats: number): NexusTreasuryPayoutAmount => ({
   amountMinorUnits: sats * 1000,
@@ -1157,6 +1222,42 @@ describe('public pylon stats', () => {
     expect((stats.caveatRefs as ReadonlyArray<string>)).toContain(
       'caveat.public.training_contributors_are_live_run_contributor_refs_not_stale_registrations',
     )
+  })
+
+  test('routes live stats registration reads through the Khala Sync Pylon store', async () => {
+    const pg = makePylonStatsSqlClient([
+      registrationRow({ pylonRef: 'pylon.public.postgres_ready' }),
+    ])
+    const response = await Effect.runPromise(
+      handlePublicPylonStatsApi(
+        new Request('https://openagents.com/api/public/pylon-stats'),
+        {
+          KHALA_SYNC_DB: { connectionString: 'postgres://khala-sync-test' },
+          KHALA_SYNC_PYLON_READS: 'postgres',
+          OPENAGENTS_DB: failingPylonD1Db(),
+          marketReceiptStore: marketReceiptStore([]),
+          nowUnixMs: () => nowUnixMs,
+          pylonStoreOptions: { makeSqlClient: pg.makeSqlClient },
+          receiptStore: settlementReceiptStore({}),
+          trainingStore: trainingContributorStore([]),
+          treasuryPayoutStore: treasuryPayoutStore([]),
+        },
+      ),
+    )
+    const stats = (await response.json()) as Record<string, unknown>
+
+    expect(response.status).toBe(200)
+    expect(stats).toMatchObject({
+      available: true,
+      pylonsAssignmentReadyNow: 1,
+      pylonsOnlineNow: 1,
+      pylonsRegisteredTotal: 1,
+      sourceUrl: PUBLIC_PYLON_STATS_URL,
+      status: 'live',
+    })
+    expect(pg.statements).toEqual([
+      'SELECT * FROM pylon_registrations WHERE archived_at IS NULL ORDER BY updated_at DESC LIMIT ?',
+    ])
   })
 
   test('serves no-store public stats from the injected Omega store', async () => {

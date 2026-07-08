@@ -13,20 +13,33 @@ import {
   type PublicTreasuryPayoutStatsStore,
   publicPylonStatsSnapshot,
 } from './public-pylon-stats'
-import { makeD1PylonApiStore } from './pylon-api'
+import {
+  makePylonApiStoreForEnv,
+  type MakePylonApiStoreForEnvOptions,
+  type PylonDispatchStoreEnv,
+} from './pylon-dispatch-store'
 import { makeD1TrainingAuthorityStore } from './training-run-window-authority'
 import { makeD1TreasuryTransactionStore } from './treasury-page-routes'
 import { currentEpochMillis } from './runtime-primitives'
 
-type PublicPylonStatsRouteInput = Readonly<{
-  OPENAGENTS_DB?: D1Database
-  marketReceiptStore?: Nip90MarketReceiptStore
-  nowUnixMs?: () => number
-  receiptStore?: PublicPylonSettlementReceiptStore
-  store?: PublicPylonStatsStore
-  trainingStore?: PublicTrainingContributorStatsStore
-  treasuryPayoutStore?: PublicTreasuryPayoutStatsStore
-}>
+type PublicPylonStatsRouteInput = Partial<PylonDispatchStoreEnv> &
+  Readonly<{
+    marketReceiptStore?: Nip90MarketReceiptStore
+    nowUnixMs?: () => number
+    pylonStoreOptions?: MakePylonApiStoreForEnvOptions
+    receiptStore?: PublicPylonSettlementReceiptStore
+    store?: PublicPylonStatsStore
+    trainingStore?: PublicTrainingContributorStatsStore
+    treasuryPayoutStore?: PublicTreasuryPayoutStatsStore
+  }>
+
+const makePublicPylonStatsStoreForEnv = (
+  input: PublicPylonStatsRouteInput,
+): PublicPylonStatsStore =>
+  makePylonApiStoreForEnv(
+    input as PylonDispatchStoreEnv,
+    input.pylonStoreOptions,
+  )
 
 // #5050 perf: the homepage polls this every few seconds and several visitors hit
 // it at once; recomputing the full snapshot per request (D1 scans + receipt
@@ -44,10 +57,11 @@ export const handlePublicPylonStatsApi = (
 ) => {
   if (request.method !== 'GET') return Effect.succeed(methodNotAllowed(['GET']))
 
-  // Only cache the real (D1-backed) production path. Tests inject in-memory
-  // stores and must each see their own snapshot, so they bypass the cache.
+  // Only cache the real production path. Tests inject in-memory stores or route
+  // factory options and must each see their own snapshot, so they bypass it.
   const cacheable =
     input.store === undefined &&
+    input.pylonStoreOptions === undefined &&
     input.receiptStore === undefined &&
     input.marketReceiptStore === undefined &&
     input.treasuryPayoutStore === undefined &&
@@ -74,8 +88,7 @@ export const handlePublicPylonStatsApi = (
         (input.OPENAGENTS_DB === undefined
           ? undefined
           : makeD1NexusTreasuryPayoutLedgerStore(input.OPENAGENTS_DB)),
-      store:
-        input.store ?? makeD1PylonApiStore(input.OPENAGENTS_DB as D1Database),
+      store: input.store ?? makePublicPylonStatsStoreForEnv(input),
       trainingStore:
         input.trainingStore ??
         (input.OPENAGENTS_DB === undefined
