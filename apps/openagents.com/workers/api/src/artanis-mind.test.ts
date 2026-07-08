@@ -46,6 +46,40 @@ describe('artanis cloud mind', () => {
     expect(result.text).toContain('verify')
   })
 
+  // Regression for the prod bug where hosted-Khala inference routed through
+  // the now-401 Cloudflare AI Gateway and every chat turn failed (commit
+  // 4135071a9b). With no cf-aig token — the state after the CF exit — the
+  // gateway must be SKIPPED ENTIRELY (no guaranteed-401 round-trip) and the
+  // direct Google AI Studio path must serve. `fetchImpl` throws if any gateway
+  // URL is touched, so a regression that re-enables the tokenless gateway hop
+  // turns this red instead of silently orphaning replies.
+  test('without a gateway token, skips the Cloudflare AI gateway entirely and serves direct', async () => {
+    const seen: string[] = []
+    const fetchImpl: typeof fetch = async input => {
+      const url = String(input)
+      seen.push(url)
+      if (url.includes('gateway.ai.cloudflare.com')) {
+        throw new Error('tokenless gateway path must not be reached (it 401s)')
+      }
+      return new Response(geminiOk, { status: 200 })
+    }
+    const result = await artanisMindComplete({
+      apiKey: 'k',
+      fetchImpl,
+      // No gatewayToken: the post-CF-exit reality.
+      prompt: 'p',
+      system: 's',
+    })
+    expect('error' in result).toBe(false)
+    if ('error' in result) return
+    expect(result.servedVia).toBe('google_direct')
+    expect(result.gatewayId).toBeNull()
+    expect(result.text).toContain('verify')
+    // Not one request went to the Cloudflare gateway.
+    expect(seen.some(url => url.includes('gateway.ai.cloudflare.com'))).toBe(false)
+    expect(seen.some(url => url.includes('generativelanguage.googleapis.com'))).toBe(true)
+  })
+
   test('falls back to direct Google when every gateway candidate fails', async () => {
     const fetchImpl: typeof fetch = async input => {
       const url = String(input)

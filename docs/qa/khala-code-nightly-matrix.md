@@ -137,6 +137,50 @@ tier is asserted every platform by
 booted iOS simulator + installed Release build, same opt-in posture as the
 signed-in smoke.
 
+### Hosted chat send -> assistant reply guard (issue #8510)
+
+The "send a message -> get an assistant reply" loop for the hosted_khala lane is
+guarded at three tiers. This class of bug (message sent, NO server reply) shipped
+to prod because the SignedInThreadSmoke flow only asserted the SENT bubble
+rendered, never that a reply came back.
+
+1. **Deterministic (always-on, no creds).** The end-to-end guard
+   `apps/openagents.com/workers/api/src/khala-hosted-runtime-dispatch.e2e.test.ts`
+   drives a queued hosted_khala turn through `runHostedRuntimeTurnDispatch` with
+   the dispatch's injectable seams and asserts a REAL assistant reply is produced
+   (turn.started -> non-empty text -> turn.finished, finishReason !== error). It
+   is FAIL-CLOSED and covers the three shipped regressions: a double-encoded
+   `intent_json` string still resolves the prompt, two DIFFERENT owners are both
+   answered without a client-group collision, and an inference failure records a
+   terminal `turn.finished(error)` instead of orphaning the turn. It runs in the
+   normal workers/api vitest sweep (`bun run --cwd apps/openagents.com test:api`),
+   alongside the tokenless-gateway-skip regression in
+   `apps/openagents.com/workers/api/src/artanis-mind.test.ts`. This tier is the
+   enforced oracle for behavior contract
+   `khala_sync.hosted_chat.send_yields_assistant_reply.v1`.
+
+2. **Live API smoke (opt-in, gated on creds).**
+   `bun apps/openagents.com/workers/api/scripts/hosted-chat-e2e-smoke.ts` does the
+   real API-level send -> poll-for-reply against `OPENAGENTS_BASE_URL` (default
+   `https://openagents.com`), using `~/work/.secrets/khala-maestro.env`
+   (`KHALA_MAESTRO_TOKEN` + `KHALA_MAESTRO_THREAD_ID`, gitignored, never printed).
+   It pushes `chat.appendMessage` + `runtime.startTurn` on the hosted_khala lane
+   and polls `/api/sync/bootstrap` until an assistant `text.delta`/`text.completed`
+   and a `turn.finished(finishReason !== error)` land, printing PASS with the
+   reply (or FAIL). It is a no-op in CI without the creds file. Verified live
+   2026-07-07 (prod): sent "capital of France", reply "Paris", turn finished(stop).
+
+3. **Device flow (opt-in, macOS + booted iOS simulator).**
+   `clients/khala-mobile/.maestro/flows/SignedInThreadReply.yaml`, driven by
+   `clients/khala-mobile/scripts/signed-in-thread-reply-run.sh` (same turn-reset
+   preamble as the smoke runner), sends a deterministic prompt whose answer token
+   ("Paris") is NOT in the prompt, then `extendedWaitUntil` (bounded ~90s) that
+   token becomes visible in the transcript — asserting an actual reply, not just
+   the sent bubble. It is a SEPARATE opt-in flow so the default fast smoke lane
+   stays deterministic and the server-round-trip wait cannot flake it; the flow's
+   reply-assertion shape is itself asserted in
+   `clients/khala-mobile/tests/maestro-policy.test.ts`.
+
 The status surface emitted by the run includes the Q2 latency budget catalog
 from `qaMetrics`. The harness scenario `perf` oracle evaluates budgeted samples;
 sampleless catalog rows remain inconclusive, while `latencyBudgets.trends`

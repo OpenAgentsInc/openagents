@@ -37,6 +37,7 @@ describe("Khala mobile Maestro flows", () => {
       read(".maestro/flows/LaunchFallback.yaml"),
       read(".maestro/flows/LaunchGitHubSignInInteraction.yaml"),
       read(".maestro/flows/SignedInThreadSmoke.yaml"),
+      read(".maestro/flows/SignedInThreadReply.yaml"),
       read(".maestro/flows/SignedInScreensVisual.yaml"),
       read(".maestro/flows/SignedInScreensPopulatedVisual.yaml"),
       read(".maestro/flows/OnboardingFirstRunVisual.yaml"),
@@ -46,6 +47,37 @@ describe("Khala mobile Maestro flows", () => {
     expect(allFlowText).not.toMatch(/oa_agent_[A-Za-z0-9_-]{8,}/)
     expect(allFlowText).not.toMatch(/Bearer\s+[A-Za-z0-9._-]+/)
     expect(allFlowText).not.toContain("eas ")
+  })
+
+  // The SignedInThreadReply flow must actually ASSERT an assistant reply comes
+  // back after Send — not just that the sent bubble renders. This is the guard
+  // for the "message sent, NO server reply" class of prod bug (issue #8510):
+  // the smoke flow only proved the SENT message rendered. The reply flow sends
+  // a deterministic prompt whose answer token is NOT present in the prompt and
+  // waits (bounded) for that token to become visible — a real reply assertion.
+  test("SignedInThreadReply asserts a real assistant reply after Send", async () => {
+    const reply = await read(".maestro/flows/SignedInThreadReply.yaml")
+
+    // Same sign-in preamble contract as the smoke flow.
+    expect(reply).toContain("${KHALA_MAESTRO_OWNER_USER_ID}")
+    expect(reply).toContain("${KHALA_MAESTRO_TOKEN}")
+    expect(reply).toContain("${KHALA_MAESTRO_THREAD_TITLE}")
+
+    // Sends a message, then bounded-waits for the assistant REPLY token.
+    expect(reply).toContain("tapOn: \"Send\"")
+    expect(reply).toContain("extendedWaitUntil")
+    expect(reply).toContain("${KHALA_MAESTRO_REPLY_EXPECT}")
+
+    // The answer token ("Paris") must NOT appear in the prompt, so a visible
+    // match can only be the reply, never an echo of the sent text.
+    const promptMatch = reply.match(/KHALA_MAESTRO_REPLY_PROMPT:\s*"([^"]*)"/)
+    const expectMatch = reply.match(/KHALA_MAESTRO_REPLY_EXPECT:\s*"([^"]*)"/)
+    expect(promptMatch).not.toBeNull()
+    expect(expectMatch).not.toBeNull()
+    const prompt = (promptMatch?.[1] ?? "").toLowerCase()
+    const expected = (expectMatch?.[1] ?? "").toLowerCase()
+    expect(expected.length).toBeGreaterThan(0)
+    expect(prompt.includes(expected)).toBe(false)
   })
 
   // Oracle for the QAM-4 (#8539) POPULATED-happy-path follow-up: the two screens

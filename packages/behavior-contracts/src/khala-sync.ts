@@ -215,7 +215,44 @@ export const khalaSyncContractRegistry: BehaviorContractRegistryDocument = {
       verification:
         "Pending on ST-1 (#8507): the oracle is the live-seam smoke at packages/khala-sync-client/src/live-seam-smoke.e2e.test.ts, which drives the REAL transport (bootstrap -> logPage -> connectLive) with a bearer-only credential against the real Worker route stack. Once that suite lands on main, flip this contract to enforced/test-sweep with that ref as its bun-test oracle — the seam coverage checker will then require the e2e ref and its contractId reference. The one-sided halves that already exist (the connect route's query-param tests and the client's fake-transport session suite) are deliberately NOT acceptable oracles for this contract.",
     },
+    {
+      authorityBoundary:
+        "Binds the server-owned hosted_khala dispatch's send->reply loop: a queued turn is driven through runHostedRuntimeTurnDispatch and either produces a real assistant reply (turn.started -> non-empty text -> turn.finished, finishReason !== error) or settles as a terminal turn.finished(error) — never a silent orphan the client spins on forever. It does not bind on-device transcript rendering (that is the mobile launched-app contract's surface), token accounting, or model answer QUALITY beyond non-emptiness. Inference is exercised through the dispatch's injected `complete` seam in the deterministic oracle; the real Gemini inference path (gateway-skip when tokenless) is separately regressed in apps/openagents.com/workers/api/src/artanis-mind.test.ts.",
+      blockerRefs: [],
+      contractId: "khala_sync.hosted_chat.send_yields_assistant_reply.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "https://github.com/OpenAgentsInc/openagents/issues/8510",
+        "apps/openagents.com/workers/api/src/khala-hosted-runtime-dispatch.ts",
+        "apps/openagents.com/workers/api/src/khala-hosted-runtime-dispatch.e2e.test.ts",
+        "apps/openagents.com/workers/api/scripts/hosted-chat-e2e-smoke.ts",
+        "apps/openagents.com/workers/api/src/artanis-mind.test.ts",
+        "docs/qa/khala-code-nightly-matrix.md",
+      ],
+      oracles: [
+        {
+          description:
+            "A queued hosted_khala turn driven end to end through runHostedRuntimeTurnDispatch produces an ACTUAL assistant reply (turn.started -> non-empty text.delta -> text.completed -> turn.finished with finishReason 'stop'). Fail-closed: an empty reply or an errored/absent finish is a red test. Covers the three prod regressions on this loop — a double-encoded intent_json string still resolves the prompt, two DIFFERENT owners are both answered without a client-group collision, and an inference failure records a terminal turn.finished(error) instead of orphaning the turn.",
+          id: "khala_sync.hosted_chat.send_yields_reply.e2e",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/openagents.com/workers/api/src/khala-hosted-runtime-dispatch.e2e.test.ts",
+        },
+      ],
+      productArea: "hosted khala chat dispatch",
+      source: {
+        channel: "khala-code-session",
+        statedBy: "owner",
+        statedOn: "2026-07-07",
+      },
+      state: "enforced",
+      statement:
+        "Sending a message yields an assistant reply: a hosted_khala chat turn a user sends is answered server-side — the send->response loop actually produces a real assistant reply, and when inference cannot answer the turn settles as a terminal error instead of silently hanging forever.",
+      surface: "openagents.com-worker",
+      verification:
+        "Enforced by the deterministic end-to-end guard apps/openagents.com/workers/api/src/khala-hosted-runtime-dispatch.e2e.test.ts (runs in the workers/api vitest sweep, `bun run --cwd apps/openagents.com test:api`), which drives runHostedRuntimeTurnDispatch through its injectable seams and asserts a real assistant reply is produced — fail-closed on an empty reply or an errored turn. It would have caught all three shipped regressions (client-group collision, double-encoded intent_json, inference-error orphan); each is a dedicated case that goes red when its fix is reverted. The live counterpart apps/openagents.com/workers/api/scripts/hosted-chat-e2e-smoke.ts does the real API-level send->poll-for-reply against a configurable base URL (gated on ~/work/.secrets/khala-maestro.env creds; opt-in nightly step in docs/qa/khala-code-nightly-matrix.md).",
+    },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-06.1",
+  version: "2026-07-07.1",
 }

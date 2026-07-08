@@ -634,6 +634,7 @@ describe("khala sync contract registry", () => {
       "khala_sync.client.staleness_never_fabricated.v1",
       "khala_sync.access.revocation_clears_synced_state.v1",
       "khala_sync.seam.bearer_ws_connect_reaches_live.v1",
+      "khala_sync.hosted_chat.send_yields_assistant_reply.v1",
     ])
     for (const contract of khalaSyncContractRegistry.contracts.filter(
       contract => contract.state === "enforced",

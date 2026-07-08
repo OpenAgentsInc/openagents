@@ -1,0 +1,71 @@
+# flow: Khala Mobile signed-in seeded-thread SEND -> ASSISTANT REPLY
+# intent:
+# The launched-app smoke (SignedInThreadSmoke.yaml) only proves a typed message
+# renders in the transcript (the SENT bubble). It does NOT prove the server
+# answers — exactly the gap that let a "message sent, NO reply" bug ship to
+# prod. This flow closes that gap: it sends a deterministic prompt whose answer
+# is a stable token that is NOT present in the prompt itself, then waits
+# (bounded) for that token to become visible in the thread — i.e. it asserts an
+# actual ASSISTANT REPLY comes back, not just the send.
+#
+# This is an OPT-IN flow (its own runner + nightly step), deliberately separate
+# from SignedInThreadSmoke.yaml so the default fast smoke lane stays
+# deterministic and this bounded up-to-90s server-round-trip wait cannot flake
+# the default lane. Run it with clients/khala-mobile/scripts/signed-in-thread-reply-run.sh
+# (which resets the seeded thread's turn state first, same preamble as the
+# smoke runner).
+#
+# Preconditions (identical to SignedInThreadSmoke.yaml):
+# - Installed dev/simulator build pointed at a public-safe Khala Sync account.
+# - The seeded thread whose visible title matches KHALA_MAESTRO_THREAD_TITLE.
+# - The hosted_khala server dispatch cron is live (it answers the queued turn).
+#
+# Required when the app does not auto-sign-in from EXPO_PUBLIC_*:
+# - KHALA_MAESTRO_OWNER_USER_ID
+# - KHALA_MAESTRO_TOKEN
+# Required for the thread assertion:
+# - KHALA_MAESTRO_THREAD_TITLE
+#
+appId: ${MAESTRO_APP_ID}
+env:
+  # A prompt with a stable one-word answer that does NOT appear in the prompt,
+  # so a visible match proves the REPLY, never an echo of the sent text.
+  KHALA_MAESTRO_REPLY_PROMPT: "What is the capital of France? Answer with only the city name."
+  KHALA_MAESTRO_REPLY_EXPECT: "Paris"
+  # Bounded wait for the server round-trip (cron answers within ~1 min).
+  KHALA_MAESTRO_REPLY_TIMEOUT_MS: "90000"
+onFlowStart:
+  - runFlow: ../shared/_OnFlowStart.yaml
+---
+- runFlow:
+    when:
+      visible: "Sign in manually instead"
+    commands:
+      - tapOn: "Sign in manually instead"
+      - tapOn: "user_..."
+      - inputText: ${KHALA_MAESTRO_OWNER_USER_ID}
+      - tapOn: "oa_agent_..."
+      - inputText: ${KHALA_MAESTRO_TOKEN}
+      - tapOn: "Sign in"
+      - waitForAnimationToEnd
+
+- assertVisible: "Khala"
+- assertVisible: ${KHALA_MAESTRO_THREAD_TITLE}
+- tapOn: ${KHALA_MAESTRO_THREAD_TITLE}
+- assertVisible:
+    text: "${KHALA_MAESTRO_THREAD_TITLE}|Thread"
+# Send the deterministic prompt on the default hosted_khala lane (no lane
+# picker needed — hosted_khala is the app-wide default and is what the server
+# dispatch answers).
+- tapOn: "Message"
+- inputText: ${KHALA_MAESTRO_REPLY_PROMPT}
+- tapOn: "Send"
+# The sent message renders (the SENT bubble) — same guarantee as the smoke.
+- assertVisible: ${KHALA_MAESTRO_REPLY_PROMPT}
+# THE REPLY ASSERTION: wait (bounded) for the assistant's answer token to
+# appear in the transcript. "Paris" is not in the prompt, so this can only
+# match the server's reply. If no reply comes back within the timeout, the
+# flow FAILS here — which is exactly the prod bug this guards against.
+- extendedWaitUntil:
+    visible: ${KHALA_MAESTRO_REPLY_EXPECT}
+    timeout: ${KHALA_MAESTRO_REPLY_TIMEOUT_MS}
