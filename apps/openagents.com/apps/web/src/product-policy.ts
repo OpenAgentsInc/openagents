@@ -196,6 +196,7 @@ export const browserRouteProductIntents = {
   PublicTrainingRuns: 'public.training.runs',
   Gym: 'public.gym.terminal-bench',
   MirrorCode: 'public.mirrorcode',
+  NewLanding: 'public.new-landing',
   Run: 'public.tassadar.run',
   GymOss: 'gym.oss.playground',
   Tassadar: 'public.tassadar.run',

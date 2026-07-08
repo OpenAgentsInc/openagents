@@ -26,6 +26,7 @@ import type {
 } from './page/loggedOut/model'
 import * as Code from './page/code'
 import * as KhalaCodeDownload from './page/khalaCodeDownload'
+import * as NewLanding from './page/newLanding'
 import * as Privacy from './page/privacy'
 import type {
   PublicHeaderAuthState,
@@ -372,6 +373,8 @@ const title = (model: Model): string => {
   switch (model.route._tag) {
     case 'Docs':
       return 'Docs - OpenAgents'
+    case 'NewLanding':
+      return 'Launch UI replica - OpenAgents'
     case 'DocsPage':
       return `${docTitle(model.route.slug)} - OpenAgents`
     case 'Forum':
@@ -599,6 +602,7 @@ const publicRouteBody = (model: Model): Document['body'] | undefined => {
     if (
       model.route._tag !== 'SiteCheckoutDemo' &&
       model.route._tag !== 'SiteCheckoutDemoReturn' &&
+      model.route._tag !== 'NewLanding' &&
       model.route._tag !== 'Blog' &&
       model.route._tag !== 'BlogPost' &&
       model.route._tag !== 'Business' &&
@@ -654,6 +658,10 @@ const publicRouteBody = (model: Model): Document['body'] | undefined => {
 
   if (model.route._tag === 'Business') {
     return Business.view<Message>(authState)
+  }
+
+  if (model.route._tag === 'NewLanding') {
+    return NewLanding.view<Message>()
   }
 
   if (model.route._tag === 'BusinessKpi') {

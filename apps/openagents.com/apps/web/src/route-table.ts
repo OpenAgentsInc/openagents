@@ -133,6 +133,7 @@ export type RouteTableEntry = Readonly<{
 // which tags collapse to one server-admitted shape — and the Worker dedupes by
 // `RegExp.source` so a shared pattern is contributed exactly once.
 const ROOT = /^\/$/
+const NEW_LANDING = /^\/new$/
 const AUTOPILOT = /^\/autopilot(?:\/(?:legal|work))?$/
 const BLOG = /^\/blog(?:\/[^/]+)?$/
 const DEMO = /^\/demo(?:\/.*)?$/
@@ -168,6 +169,16 @@ export const routeTable = {
     inLoggedOutUnion: true,
     inLoggedInUnion: false,
     render: 'submodel',
+  },
+  NewLanding: {
+    surface: 'spaDocument',
+    serverDocument: NEW_LANDING,
+    examplePaths: ['/new'],
+    requiresAuthBootstrap: false,
+    loggedInGate: 'open',
+    inLoggedOutUnion: true,
+    inLoggedInUnion: false,
+    render: 'statelessShell',
   },
   Invite: {
     // `/invite` resolves in the client parser and is a startup membership

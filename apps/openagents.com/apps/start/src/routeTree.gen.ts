@@ -17,6 +17,7 @@ import { Route as PylonsRouteImport } from './routes/pylons'
 import { Route as PromisesRouteImport } from './routes/promises'
 import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
+import { Route as NewRouteImport } from './routes/new'
 import { Route as MirrorcodeRouteImport } from './routes/mirrorcode'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as GymRouteImport } from './routes/gym'
@@ -90,6 +91,11 @@ const PrivacyRoute = PrivacyRouteImport.update({
 const OnboardingRoute = OnboardingRouteImport.update({
   id: '/onboarding',
   path: '/onboarding',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const NewRoute = NewRouteImport.update({
+  id: '/new',
+  path: '/new',
   getParentRoute: () => rootRouteImport,
 } as any)
 const MirrorcodeRoute = MirrorcodeRouteImport.update({
@@ -275,6 +281,7 @@ export interface FileRoutesByFullPath {
   '/gym': typeof GymRoute
   '/login': typeof LoginRoute
   '/mirrorcode': typeof MirrorcodeRoute
+  '/new': typeof NewRoute
   '/onboarding': typeof OnboardingRoute
   '/privacy': typeof PrivacyRoute
   '/promises': typeof PromisesRoute
@@ -319,6 +326,7 @@ export interface FileRoutesByTo {
   '/gym': typeof GymRoute
   '/login': typeof LoginRoute
   '/mirrorcode': typeof MirrorcodeRoute
+  '/new': typeof NewRoute
   '/onboarding': typeof OnboardingRoute
   '/privacy': typeof PrivacyRoute
   '/promises': typeof PromisesRoute
@@ -364,6 +372,7 @@ export interface FileRoutesById {
   '/gym': typeof GymRoute
   '/login': typeof LoginRoute
   '/mirrorcode': typeof MirrorcodeRoute
+  '/new': typeof NewRoute
   '/onboarding': typeof OnboardingRoute
   '/privacy': typeof PrivacyRoute
   '/promises': typeof PromisesRoute
@@ -410,6 +419,7 @@ export interface FileRouteTypes {
     | '/gym'
     | '/login'
     | '/mirrorcode'
+    | '/new'
     | '/onboarding'
     | '/privacy'
     | '/promises'
@@ -454,6 +464,7 @@ export interface FileRouteTypes {
     | '/gym'
     | '/login'
     | '/mirrorcode'
+    | '/new'
     | '/onboarding'
     | '/privacy'
     | '/promises'
@@ -498,6 +509,7 @@ export interface FileRouteTypes {
     | '/gym'
     | '/login'
     | '/mirrorcode'
+    | '/new'
     | '/onboarding'
     | '/privacy'
     | '/promises'
@@ -543,6 +555,7 @@ export interface RootRouteChildren {
   GymRoute: typeof GymRoute
   LoginRoute: typeof LoginRoute
   MirrorcodeRoute: typeof MirrorcodeRoute
+  NewRoute: typeof NewRoute
   OnboardingRoute: typeof OnboardingRoute
   PrivacyRoute: typeof PrivacyRoute
   PromisesRoute: typeof PromisesRoute
@@ -634,6 +647,13 @@ declare module '@tanstack/react-router' {
       path: '/onboarding'
       fullPath: '/onboarding'
       preLoaderRoute: typeof OnboardingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/new': {
+      id: '/new'
+      path: '/new'
+      fullPath: '/new'
+      preLoaderRoute: typeof NewRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/mirrorcode': {
@@ -897,6 +917,7 @@ const rootRouteChildren: RootRouteChildren = {
   GymRoute: GymRoute,
   LoginRoute: LoginRoute,
   MirrorcodeRoute: MirrorcodeRoute,
+  NewRoute: NewRoute,
   OnboardingRoute: OnboardingRoute,
   PrivacyRoute: PrivacyRoute,
   PromisesRoute: PromisesRoute,

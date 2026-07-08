@@ -63,26 +63,23 @@ If `foldkit-skills` is installed as a Claude Code plugin, the `generate-program`
   `apps/web/src/page/loggedOut/page/login.ts` is a legacy/local auth view and
   is not the production `/login` surface. When changing deployed UI, verify
   against the served bundle or rendered DOM before calling the work complete.
-- When the user asks to deploy this repo, the ONLY sanctioned path is
-  `bun run --cwd workers/api deploy:safe` (see the Worker deploy safety gate in
-  `docs/DEPLOYMENT.md`). It always, in order: checks local==origin/main, runs
-  `check:deploy` (typecheck:web/api + the real web/worker test suites + guards,
-  with NO dependency on the flaky `verse-launch-smoke`), applies staging D1
-  migrations, builds web assets, deploys the staging Worker, runs the staging
-  five-way `predeploy:parallel-dispatch-smoke` gate for #6409, applies remote
-  production D1 migrations, runs `check:pending-migrations` (fails if ANY
-  migration is still pending), then uploads the production worker LAST with
-  `--containers-rollout=none` so Wrangler does not probe local Docker/container
-  rollout state. **Raw
-  `bunx wrangler deploy` / `npx wrangler deploy` is FORBIDDEN as a deploy path:**
-  it skips migrations and shipped the worker ahead of its schema in the
-  2026-06-25 gateway-wide 500 outage
-  (`docs/incidents/2026-06-25-khala-500-completions-outage-aar.md`). Migrations
-  are always applied before the worker is uploaded. Never report deployment
-  success until live smoke checks prove both the document and JS asset are
-  reachable:
-  `curl -fsSI https://openagents.com/` and the concrete
-  `/assets/index-*.js` URL referenced by the served HTML must both return 200.
+- When the user asks to deploy `openagents.com`, the sanctioned production path
+  is the Google Cloud Run monolith script:
+  `CLOUDSDK_CONFIG=/Users/christopherdavid/work/.secrets/gcloud-sa-config bash workers/api/scripts/deploy-cloudrun.sh production`.
+  The script builds the web assets, bundles the Bun Cloud Run entrypoint, renders
+  non-secret env vars, mounts Secret Manager secrets, attaches the Cloud SQL
+  instance, and deploys `openagents-monolith` in `us-central1`. Use the
+  automation service-account config from the workspace `AGENTS.md`; do not fall
+  back to interactive `gcloud`.
+- The old Wrangler/Cloudflare Worker deploy path is legacy for this app. Do not
+  report an `openagents.com` production deploy as complete because a Worker or
+  `workers.dev` target deployed. Never use raw `bunx wrangler deploy` /
+  `npx wrangler deploy` for `openagents.com` production.
+- Never report deployment success until live smoke checks prove both the document
+  and JS asset are reachable on the public domain: `curl -fsSI
+  https://openagents.com/` and the concrete `/assets/index-*.js` URL referenced
+  by the served HTML must both return 200. For route-specific requests, also
+  smoke that route directly, for example `curl -fsSI https://openagents.com/new`.
 - Before changing Worker route/service boundaries, sync/runtime/config code,
   provider-account or GitHub-write error handling, logged-in update routing,
   login/root route behavior, UI family modules, or other zero-tech-debt

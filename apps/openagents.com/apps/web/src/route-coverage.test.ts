@@ -18,6 +18,7 @@ import { unregisteredParserRouters, urlToAppRoute } from './route'
 // half-wire.
 const PUBLIC_ROUTE_PARSE_COVERAGE: ReadonlyArray<readonly [string, string]> = [
   ['/login', 'Login'],
+  ['/new', 'NewLanding'],
   ['/khala', 'Khala'],
   ['/chat', 'KhalaChat'],
   ['/stats', 'Stats'],
@@ -92,7 +93,7 @@ describe('public route parser coverage', () => {
     // `/trace/compare/{ids}` comparison (#6211). Wave 0 cleanup retired the old
     // scratch/preview routes, so this count tracks the current documented
     // surface only.
-    expect(PUBLIC_ROUTE_PARSE_COVERAGE.length).toBe(36)
+    expect(PUBLIC_ROUTE_PARSE_COVERAGE.length).toBe(37)
   })
 
   // The public shareable trace render (#6209) must capture the uuid param so the

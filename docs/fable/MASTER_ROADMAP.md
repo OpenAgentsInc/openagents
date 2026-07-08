@@ -77,16 +77,18 @@ quick-wins.** What is genuinely DONE vs what is only DIRECTION:
   never-resale, fail-closed placement, scanner coverage).
 
 **Build-forward / owner-gated (open; partially landed as code):**
-- **WEB-1 (`#8565`) sales landing — Phase 1 replica landed on main.**
-  Commit `7899f3ec15` ports the Launch UI homepage replica into
+- **WEB-1 (`#8565`) sales landing — Phase 1 replica landed; `/new` preview
+  route wired for Cloud Run.** Commit `7899f3ec15` ports the Launch UI homepage
+  replica into
   `apps/openagents.com/apps/start`: vendored Launch UI components/sections,
   dark-only shell, blue glow + minimal radius tokens, placeholder dashboard
-  assets, MIT notice, route tests, and Start funnel budget. Verified at landing:
-  Start typecheck/test/budget and full `bun run --cwd apps/openagents.com
-  check:deploy` green. Still open: Phase 2 OpenAgents adaptation (brand/nav,
-  owner-approved sales copy, live counters, credit-tier pricing, CTAs to
-  business intake + Sarah), Phase 3 Cloud Run preview, owner cutover decision,
-  and production route flip/rollback notes.
+  assets, MIT notice, route tests, and Start funnel budget. The production
+  Cloud Run monolith now has a bounded `/new` web route for viewing the landing
+  without replacing `/`. Verified at landing: Start typecheck/test/budget and
+  full `bun run --cwd apps/openagents.com check:deploy` green for Phase 1.
+  Still open: Phase 2 OpenAgents adaptation (brand/nav, owner-approved sales
+  copy, live counters, credit-tier pricing, CTAs to business intake + Sarah),
+  owner-approved root cutover, and root-route rollback notes.
 
 **Direction only (open; NOT started as code):**
 - **OB-1..6 (`#8558–#8563`) outbound engine — all OPEN, no Sarah engine on
@@ -231,14 +233,16 @@ the sarah repo calls its APIs and never re-implements them.
 
 **Track A (revised 2026-07-08, HIGH PRIORITY) — the new openagents.com
 sales landing, built from launch-ui.** **STATUS (2026-07-08): PHASE 1 LANDED
-AS CODE** — commit `7899f3ec15` ports the exact Launch UI homepage replica into
-the TanStack Start app at `apps/openagents.com/apps/start`, including the
-vendored Launch UI components/sections, blue glow + minimal radius token set,
-dark-only shell, placeholder dashboard assets, MIT attribution, route tests,
-and Start funnel budget. The replica is intentionally still Launch UI
-placeholder content; Phase 2 OpenAgents adaptation plus owner copy sign-off,
-live public counters, credit-tier pricing, production CTAs, Cloud Run preview,
-and owner-approved cutover remain. Owner directive: switch the
+AS CODE; `/new` PREVIEW ROUTE ON CLOUD RUN** — commit `7899f3ec15` ports the
+exact Launch UI homepage replica into the TanStack Start app at
+`apps/openagents.com/apps/start`, including the vendored Launch UI
+components/sections, blue glow + minimal radius token set, dark-only shell,
+placeholder dashboard assets, MIT attribution, route tests, and Start funnel
+budget. The production Cloud Run monolith exposes the replica at `/new` as a
+bounded preview route without replacing `/`. The replica is intentionally still
+Launch UI placeholder content; Phase 2 OpenAgents adaptation plus owner copy
+sign-off, live public counters, credit-tier pricing, production CTAs, and
+owner-approved root cutover remain. Owner directive: switch the
 openagents.com landing/marketing site from this replica milestone to a
 sales-focused site built from
 **launch-ui** (`projects/repos/launch-ui` — MIT; shadcn/ui + Tailwind 4 +
@@ -249,10 +253,9 @@ port is link/image swaps, not a rewrite). Phase 1 establishes the
 Protoss blue (one theme — next-themes/mode-toggle dropped), the stats
 section wired to the LIVE public counters, pricing wired to the credit
 tiers, CTAs → business intake + **"Talk to Sarah"**, copy through the
-promise-registry gates with owner sign-off before the switch. The new
-app will serve the landing in production (Cloud Run) while existing product
-routes stay on the current worker until absorbed route-by-route — no new
-legacy Foldkit surfaces, per the standing ONE-UI decision. Filed as
+promise-registry gates with owner sign-off before the switch. The new landing
+serves through the production Cloud Run monolith; existing product routes stay
+on their current Cloud Run monolith paths until absorbed route-by-route. Filed as
 **#8565**. Synergy: sarah#15's TanStack port shares the same
 launch-ui/shadcn base, so sarah.openagents.com and openagents.com become
 one component system. Sarah's home remains sarah.openagents.com (her

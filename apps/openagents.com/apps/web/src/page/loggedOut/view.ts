@@ -51,6 +51,7 @@ import { backButton, khalaTokensServedPill } from './page/backButton'
 import * as Gym from './page/gym'
 import * as Home from './page/home'
 import * as MirrorCode from './page/mirrorcode'
+import * as NewLanding from '../newLanding'
 import * as Onboarding from './page/onboarding'
 import * as PersistentScene from './page/persistentScene'
 import * as Promises from './page/promises'
@@ -256,6 +257,7 @@ export const view = Submodel.defineView<Model, Message>((model): Html => {
               Onboarding: () => Onboarding.view(model.onboarding),
               Docs: route => Docs.view(route, { _tag: 'LoggedOut' }),
               DocsPage: route => Docs.view(route, { _tag: 'LoggedOut' }),
+              NewLanding: () => NewLanding.view(),
               ProductPromises: () =>
                 Promises.view(
                   model.publicProductPromises,

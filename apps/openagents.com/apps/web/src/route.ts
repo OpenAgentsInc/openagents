@@ -14,6 +14,7 @@ import {
 } from './route-table'
 
 export const HomeRoute = r('Home')
+export const NewLandingRoute = r('NewLanding')
 export const InviteRoute = r('Invite')
 export const OnboardingRoute = r('Onboarding')
 export const OrderRoute = r('Order')
@@ -145,6 +146,7 @@ export const Demo2TeamFileRoute = r('Demo2TeamFile', {
 export const NotFoundRoute = r('NotFound', { path: S.String })
 
 export type HomeRoute = typeof HomeRoute.Type
+export type NewLandingRoute = typeof NewLandingRoute.Type
 export type InviteRoute = typeof InviteRoute.Type
 export type OnboardingRoute = typeof OnboardingRoute.Type
 export type OrderRoute = typeof OrderRoute.Type
@@ -234,6 +236,7 @@ export type NotFoundRoute = typeof NotFoundRoute.Type
 
 export const LoggedOutRoute = S.Union([
   HomeRoute,
+  NewLandingRoute,
   StatsRoute,
   InviteRoute,
   OnboardingRoute,
@@ -343,6 +346,7 @@ export const LoggedInRoute = S.Union([
 ])
 export const AppRoute = S.Union([
   HomeRoute,
+  NewLandingRoute,
   InviteRoute,
   OnboardingRoute,
   OrderRoute,
@@ -435,6 +439,10 @@ export type AppRoute = typeof AppRoute.Type
 
 // The root path `/` is the canonical homepage.
 export const homeRouter = pipe(Route.root, Route.mapTo(HomeRoute))
+export const newLandingRouter = pipe(
+  literal('new'),
+  Route.mapTo(NewLandingRoute),
+)
 export const chatRouter = pipe(literal('autopilot'), Route.mapTo(ChatRoute))
 export const autopilotRouter = pipe(
   literal('autopilot'),
@@ -918,6 +926,7 @@ const orderedParserRouters = [
   demoLegalRouter,
   demoRouter,
   productPromisesRouter,
+  newLandingRouter,
   publicTrainingRunRouter,
   publicTrainingRunsRouter,
   docsPageRouter,

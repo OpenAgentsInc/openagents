@@ -86,6 +86,7 @@ export const startupRouteForLoggedOut = (
     M.tag(
       'Docs',
       'DocsPage',
+      'NewLanding',
       'ProductPromises',
       'PublicTrainingRuns',
       'PublicTrainingRun',
@@ -172,6 +173,7 @@ const startupRouteForIncompleteOnboarding = (route: AppRoute): StartupRoute =>
     M.tag(
       'PublicAgent',
       'ArtanisTraceTree',
+      'NewLanding',
       'ProductPromises',
       'Stats',
       'Share',
@@ -295,6 +297,7 @@ const startupRouteForCompleteOnboarding = (
     M.tag(
       'PublicAgent',
       'ArtanisTraceTree',
+      'NewLanding',
       'ProductPromises',
       'PublicTrainingRuns',
       'PublicTrainingRun',
@@ -434,6 +437,7 @@ export type StartupCompleteDisposition =
 
 export const startupCompleteDisposition = {
   Home: 'home',
+  NewLanding: 'public',
   Invite: 'redirectDefault',
   Onboarding: 'onboarding',
   Order: 'gated',
