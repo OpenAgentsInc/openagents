@@ -30,10 +30,10 @@ existing consumers keep compiling.
   nostr-identity, inventory, state (linchpin the higher layers depend on)
 - [~] Step 2 — custody: **wave 1** (account-registry, account-quota,
   codex-account-health, codex-custody-reprime) + **wave 2** (account-quota-
-  ledger, codex-account-health-ledger) done. **Still in `apps/pylon`:**
-  account-usage (→ claude/codex-agent = executor), account-status (→
-  account-usage), account-connect (→ presence), codex-account-auth-health
-  (→ account-connect).
+  ledger, codex-account-health-ledger) + **wave 3** (account-usage,
+  account-status — unblocked once the executor agent leaves landed in step 5)
+  done. **Still in `apps/pylon`:** account-connect (→ presence),
+  codex-account-auth-health (→ account-connect).
 - [ ] Step 3 — presence (blocked: `presence.ts` sits near the TOP of the
   graph — it transitively pulls in wallet, claude/codex-agent, active-
   assignment-runs, and the postponed P6 earning code; needs those resolved
@@ -45,7 +45,22 @@ existing consumers keep compiling.
   (#5166/#5404). Moving it needs the generator relocated + an **RC-binary
   build verification** (can't be done source-only). Do this in a session that
   can build+run the packaged binary.
-- [ ] Step 5 — executor (assignment, khala-dispatch/requester/spawn,
-  codex/claude-agent-executor, workspace-materializer)
+- [~] Step 5 — executor (`executor/`): **leaf wave done** — the
+  dependency-closed leaves `claude-agent`, `codex-agent`, `claude-turn-reporter`
+  and (built on the first two) `workspace-materializer` are relocated with
+  shims. That unblocked the custody `account-usage → account-status` wave
+  above. **Still in `apps/pylon`:**
+  - `claude-agent-executor` — extractable now (all real deps in-package), but
+    it is MH-2's actively-contested file (#8583 / Claude worker-executor
+    parity); left in place to avoid a whole-file move-conflict with their
+    in-flight work. Extract in a window when MH-2 is idle, pushing fast.
+  - `codex-agent-executor`, `assignment`, `khala-spawn` — TOP of the graph:
+    they import `account-connect` (→ presence) and/or `presence`/`assignment`,
+    so they need step 3 (presence) resolved first.
+  - `khala-requester`, `khala-dispatch` — extractable dependency-wise, but
+    their leaf closure includes `tips` (Spark-tipping / payment-adjacent,
+    semantically an earning/wallet-boundary module, NOT executor) and
+    `work-requester`. Deferred pending a boundary decision on where `tips`
+    lives; do not shove `tips` into `executor/` just to satisfy the move.
 - [x] Step 6 — typed RPC contract (`rpc/`) — **unconsumed seed**; PY-2 (#8579)
   wires it and deletes the desktop stdout seam.
