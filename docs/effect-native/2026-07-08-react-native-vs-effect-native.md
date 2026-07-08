@@ -7,6 +7,15 @@ the Foldkit comparison. Grounded in a deep read of the real
 `facebook/react-native` monorepo (`projects/repos/react-native`) on
 2026-07-08.
 
+> **Framing note (2026-07-08):** the deepest version of this comparison —
+> "Effect is to Effect Native what React is to React Native," i.e. Effect
+> Native is a `platform-native` host adapter for Effect the way React Native
+> is a native host for React — is in
+> `2026-07-08-effect-native-is-a-framework-for-native-apps-using-effect.md`.
+> This doc is the renderer-level half: which parts of RN to use as a backend,
+> and which to leave. **Effect is our React** — the app is authored in Effect;
+> RN only paints.
+
 The short version: **React Native and Effect Native are not the same layer,
 and the right relationship is "use one, inside the other."** React Native is
 two things fused together — a genuinely excellent **native rendering engine**

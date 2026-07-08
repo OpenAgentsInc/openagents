@@ -1,7 +1,19 @@
-# Effect Native — One Typed Component Set Across Web, Mobile, and Native Renderers
+# Effect Native — The UI Layer: One Typed Component Set Across Web, Mobile, and Native Renderers
 
 Date: 2026-07-08
-Status: **OWNER DECISION (2026-07-08) — pivot now.** This supersedes the
+Status: **OWNER DECISION (2026-07-08) — pivot now.**
+
+> **Scope note (2026-07-08):** Effect Native is **a framework for building
+> native applications using Effect** (the React Native sentence, Effect for
+> React) — see
+> `2026-07-08-effect-native-is-a-framework-for-native-apps-using-effect.md`
+> for that framing. *This* document covers the **UI layer** of that framework
+> — the typed component set and the renderer adapters. Where it says
+> "runtime," read Effect's fiber runtime; where it says "typed," read
+> `Schema`. The base is **Effect v4 (`effect-smol`, `4.0.0-beta.94`)** —
+> the rewritten ~6.3 KB fiber runtime, the single consolidated `effect`
+> package, and the `unstable/reactivity` (`Atom`) state→view binding are the
+> reasons to build on v4 rather than v3. This supersedes the
 2026-07-04 "one UI ecosystem = React + Tailwind everywhere" clause in
 `CLAUDE.md` for **new** UI surfaces. The owner's call, recorded verbatim
 in essence:

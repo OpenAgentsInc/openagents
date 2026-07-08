@@ -1,13 +1,21 @@
 # Effect Native
 
-**One set of UI components, defined once, that runs everywhere — web,
-mobile, desktop, and beyond — without rewriting them for each platform.**
+**A framework for building native applications using Effect.**
 
-Effect Native is OpenAgents' approach to building user interfaces. Instead
-of maintaining separate codebases for the website, the mobile app, and the
-desktop app — each with its own framework, its own components, and its own
-bugs — we define our UI **once**, as typed data, and render it on any
-platform through small, swappable "renderers."
+That is the same sentence React Native uses for itself
+("a framework for building native applications using React"), with one word
+changed — and the change is the whole point. React Native takes **React** (a
+model for describing UI and state) and runs it on native platforms. Effect
+Native takes **[Effect](https://effect.website)** (a model for describing
+*whole programs* — state, effects, concurrency, typed data, services,
+resource lifetimes, and UI) and runs it on native platforms. **The UI is one
+part of an Effect Native app; the rest of the app is Effect.**
+
+So Effect Native is more than a UI toolkit. It is how we build entire
+applications — services, state, logic, data, and interface — as one typed
+Effect program, and render that program's UI faithfully on the web, on
+phones, and on desktop through small, swappable "renderers." (The base is
+Effect **v4**, the `effect-smol` line.)
 
 ## The problem it solves
 
@@ -22,7 +30,11 @@ Effect Native removes the duplication at its root: there is **one
 definition** of each component, and everything else is a thin translation
 layer.
 
-## How it works, in three parts
+## How the UI layer works, in three parts
+
+The whole application is an Effect program (services, state, logic, data —
+see the framing doc above). This section describes its **UI layer** — the
+part that turns that program's interface into pixels.
 
 1. **The component set.** A small, fixed catalog of building blocks —
    text, buttons, stacks (layouts), fields, lists, cards — each described
@@ -80,7 +92,19 @@ move them.
 
 ## Documents in this folder
 
-- **[Decision, architecture & roadmap](./2026-07-08-effect-native-one-ui-substrate-analysis.md)**
+- **[What Effect Native is — a framework for native apps using Effect](./2026-07-08-effect-native-is-a-framework-for-native-apps-using-effect.md)**
+  — the definitive framing: "Effect is to Effect Native what React is to
+  React Native." A role-for-role parallel (React→Effect, Fabric→renderers,
+  the reconciler→Effect's fiber runtime, hooks→`Ref`/`SubscriptionRef`/`Atom`,
+  Context→`Layer`, PropTypes→`Schema`), why Effect is a *stronger* foundation
+  than React (typed errors, structured concurrency, DI, resource safety,
+  schema boundaries — things React lacks), and the technical seam: **Effect
+  Native is a `platform-native` host adapter**, mirroring how
+  `platform-browser`/`-node`/`-bun` already extend Effect. Pins **Effect v4
+  (effect-smol)** as the base. *Read this first — it reframes everything
+  below as layers of one application framework.*
+
+- **[UI layer: decision, architecture & roadmap](./2026-07-08-effect-native-one-ui-substrate-analysis.md)**
   — the owner decision to pivot, the three-layer architecture (typed
   component set → Effect runtime → swappable renderers), the greenfield-first
   vs migrate-on-touch discipline, a ruthlessly-small v0, and the phased
