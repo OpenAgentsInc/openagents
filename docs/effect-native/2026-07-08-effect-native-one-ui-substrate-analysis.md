@@ -278,7 +278,113 @@ the guardrail:
 
 Cascade the doc reconciliation (§7) on the owner's go.
 
-## 10. Open questions
+## 10. The full-conversion roadmap (every UI surface → Effect Native)
+
+High-level phases to convert **all** of our UI — web, mobile, desktop,
+canvas, and eventually native — to the one typed component set. Phases
+overlap (the parallelism is noted); each has a hard exit receipt. The
+ordering rule throughout: **greenfield adopts first, shipping code
+migrates incrementally, nothing working is rewritten just to move it.**
+
+**EN-0 — Foundation (the substrate).** `packages/effect-native`: the
+Effect-Schema component catalog (v0 ~8 components, §6), the Effect
+runtime + typed intent algebra, a `@effect-native/tokens` package (the
+single Protoss-blue token source both renderers read), **RN adapter #1**
+(wrapping the existing khala-mobile primitives), **DOM adapter #2** (no
+React). *Exit: one screen defined once, rendered identically by both
+adapters, contract- and snapshot-tested.* Gates everything else.
+
+**EN-1 — Greenfield web (prove it at product scale).** Build the new
+openagents.com landing (WEB-1) and Sarah's branded UI on the DOM
+renderer, with launch-ui as the *look* (its shadcn/Tailwind ported into
+the token set), not as React components. *Exit: openagents.com landing +
+Sarah surface live on Effect Native web, zero React components authored.*
+Runs right after EN-0; this is the "stop the React slop at the greenfield
+boundary" phase.
+
+**EN-2 — Catalog completion (grow to cover real screens).** Expand the
+catalog demand-driven from EN-1/EN-3 to the elements real surfaces need:
+forms/validation, virtualized lists + section lists, images/media,
+modals/sheets/tabs, a typed **navigation intent**, and a charts/graph
+bridge to three-effect. Never speculative — a component enters the
+catalog when a screen needs it. *Exit: the catalog covers ≥90% of the
+elements across existing screens; a gap register tracks the tail.*
+Parallel with EN-1 and EN-3.
+
+**EN-3 — Mobile migration (the 94 `.tsx` files).** RN is already adapter
+#1 (EN-0). New/changed mobile screens land on the component set from now;
+existing screens migrate **screen-by-screen under the QAM gate**,
+retiring duplicate primitives as they go. No working screen is rewritten
+solely to migrate — only when it's touched. *Exit: all khala-mobile
+screens render via the component set; the RN adapter is the only
+platform-specific mobile UI code.* Starts after the P0 MVP ships (never
+during).
+
+**EN-4 — Web product migration (openagents.com).** Migrate the product
+surfaces — dashboard, Forum, Sites, operator/Aiur, Autopilot — from
+legacy Foldkit (and any interim React) onto the DOM renderer,
+route-by-route as WEB-1's TanStack app absorbs them. Delete legacy
+Foldkit surfaces as they're replaced. *Exit: openagents.com served
+entirely by Effect Native web; legacy Foldkit UI removed.*
+
+**EN-5 — Desktop (Khala Code desktop).** The Electrobun shell is already
+a DOM host, so it consumes the **DOM renderer** directly; migrate the
+desktop panels (chat, fleet, inbox, forum, gym, settings, editor) onto
+the component set. *Exit: Khala Code desktop UI is Effect Native;
+Sarah/desktop/web share one component definition set.*
+
+**EN-6 — Canvas unification.** Fold `three-effect` and `arbiter-effect`
+in as the **canvas renderer** under the same contract, so 3D/graph
+surfaces (Verse world, the QA swarm board, visualizations) become Effect
+Native components with a canvas adapter rather than parallel islands.
+*Exit: canvas surfaces render from the shared component/spec contract.*
+Parallel with EN-4/EN-5.
+
+**EN-7 — Native renderers (the fidelity upgrade).** Per-component **Swift
+(iOS)** and **Jetpack Compose (Android)** renderers, swapped in *only*
+where fidelity or performance demands, with RN as the fallback for the
+tail. Incremental and per-component by construction — never a blocking
+rewrite, because the contract is renderer-agnostic. *Exit: the
+highest-value mobile components render truly native; the RN adapter
+shrinks to the long tail.* This is the multi-quarter insurance the whole
+architecture exists to enable; it starts only once the catalog is stable
+and a screen proves it needs native.
+
+**EN-8 — Terminal (optional).** A `tty` renderer if the Toad/`wterm`
+direction justifies a first-class terminal surface. Design-for; build
+only on demand.
+
+**EN-9 — Steady state / governance.** The component set is the single
+UI source of truth: behavior contracts + visual baselines bind every
+component; agent-authored UI is validated against the catalog by
+construction; a standing rule that **new UI authors the component set,
+never platform primitives outside a renderer adapter**; direct
+React/RN/DOM authoring outside adapters is deprecated and lint-guarded.
+
+**Sequencing at a glance:** EN-0 → (EN-1 ∥ EN-2 ∥ EN-3-after-MVP) →
+(EN-4 ∥ EN-5 ∥ EN-6) → EN-7 (long tail) → EN-9 (continuous). EN-8 is
+opportunistic.
+
+**Definition of done for full conversion:** every UI surface — web
+landing, web product, desktop, mobile, canvas — renders from the **one**
+Effect-Schema component set; the only platform-specific UI code in the
+tree is the renderer adapters; no surface authors platform primitives
+directly; and the catalog + behavior contracts + visual baselines make a
+bad UI change fail at the boundary. At that point "one component set,
+many renderers" is not an aspiration but the operating reality, and
+adding a native (Swift/Compose) or terminal renderer is a contained,
+per-component project rather than a rewrite.
+
+**Rough scale (honest, not a commitment):** EN-0/EN-1 are a focused
+sprint each (days–weeks); EN-2/EN-3/EN-4/EN-5/EN-6 are the bulk of the
+conversion and run in parallel over months, paced by "migrate on touch"
+so they never block product work; EN-7 (native) is a multi-quarter,
+value-gated long tail; EN-9 is permanent. The cost is front-loaded into
+EN-0's design quality — a small, correct catalog makes everything after
+it cheap; a bloated one recreates the brick wall. Keep v0 ruthlessly
+small.
+
+## 11. Open questions
 
 1. Encoding of the component set: pure Effect Schema types (compile-time,
    our world) with an optional serialized form for the server-driven/agent
