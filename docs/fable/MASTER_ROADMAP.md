@@ -1,6 +1,6 @@
 # MASTER ROADMAP — Khala Code MVP (Tested, Submitted) → Sarah → Codex → AI Employees → the Suite
 
-Date: 2026-07-07 (rev 3, night — P0 status + Sarah repo/deploy plan)
+Date: 2026-07-08 (rev 4 — sales engine: Sarah outbound Track C)
 Status: **the single consolidated execution roadmap.** This document owns
 top-level sequencing across everything designed in the 2026-07-07 strategy
 set and its predecessors. The source docs remain authoritative for their
@@ -49,10 +49,10 @@ Consolidates:
 ## 0. The one-page shape
 
 ```
-P0  MVP: tested + SUBMITTED ──► P1  Sarah + the new ──► P2  Your Codex ──► P3  Standing
-    (QAM gate + suites +            openagents.com          (CX-1..9 →        employees
-     #8503/#8477 proofs +           (SR-1..3 on React/                        (AE-1)
-     store submission)              TanStack Start)      dogfood cutover)         │
+P0  MVP: tested + SUBMITTED ──► P1  Sarah: inbound + ──► P2  Your Codex ──► P3  Standing
+    (QAM gate + suites +            outbound sales          (CX-1..9 →        employees
+     #8503/#8477 proofs +           (SR-1..3 + OB-1..6                        (AE-1)
+     store submission)              sales engine)        dogfood cutover)         │
                                                                                  ▼
 P7  Scale / GTM / suite ◄── P6  Trust layer ◄── P5  Templates & ◄── P4  Employees &
     (assessment, IAP,           (skills registry,    integrations        the brain
@@ -131,7 +131,7 @@ store submissions recorded** (submission IDs + review states in the
 registry evidence); QAM-7 (#8542) fixture-first suites authored (red/waived) for
 every P1+ feature named below.
 
-## P1 — Sarah (repo: OpenAgentsInc/sarah → sarah.openagents.com)
+## P1 — Sarah: inbound + OUTBOUND sales (repo: OpenAgentsInc/sarah + the LG engine)
 
 **P1 STATUS (2026-07-07 night, owner decision):** Sarah lives in a
 **separate private repo, `OpenAgentsInc/sarah`**, built on the standard
@@ -212,6 +212,70 @@ front** (the realtime loop already works; voice ships with v1). SR-5
 contracts + custom bundles land with P5's template work; SR-6
 Sarah-as-template stays P5, under the catalog gate.
 
+**Track C — the outbound sales engine (OB-1..6; owner directive
+2026-07-08: "sales sales sales — start getting targeted outreach to
+people NOW").** Sarah does outbound too. The substrate is **already
+built and closed** — the SELL epic (#8261, LG-1..9 all closed) shipped
+the agent-readiness prober (`packages/agent-readiness`), the pipeline
+queue + commitment ledger (`business_pipeline_rows`), receipted starter
+credits, **approval-gated suppression-aware sequence tooling**
+(`email-sequence-authoring.ts` / `email-sequence-send-service.ts`), the
+prospect report renderer, source attribution, the standing drafting-only
+lead-gen definition (send denied without an approval receipt — enforced
+contracts `lead_gen_agent.drafting_only_toolset.v1` /
+`no_send_without_approval_receipt.v1`), and affiliate/partner
+bookkeeping. Apollo.io is connected via MCP (owner OAuth) with the
+audit-first plan and segments written
+(`2026-07-03-apollo-outbound-sales-plan.md`; blitz §5.3 clone-segments;
+own-your-ai target list). Track C connects that engine to Sarah's
+identity and turns the volume knob:
+
+- **OB-1 Sending identity + deliverability foundation.** Sarah's
+  outbound address on a **dedicated sending subdomain** (protect the
+  root domain's reputation) with SPF/DKIM/DMARC; Resend arming
+  (`CRM_RESEND_SEND_ENABLED` + keys — owner gate); CAN-SPAM
+  identification + working opt-out on every send; suppression list
+  live; **warm-up ramp** to the 100/day target (field discipline says
+  10–20/day/identity sub-spam at the start — ramp gated on
+  bounce/complaint rates, and add identities rather than burning one).
+- **OB-2 Apollo sourcing at volume.** Segment waves from the written
+  plans (mastermind clone-segments, own-your-ai sovereignty targets,
+  legal/agency verticals) enriched through the Apollo MCP into
+  `business_pipeline_rows` with LG-6 source attribution; Apollo stays a
+  mirror — our pipeline is the system of record (BF-9.2 law).
+- **OB-3 Audit-first personalization at fleet scale.** Every email
+  leads with the prospect's own agent-readiness report (LG-1/LG-5),
+  upgraded with the 15-step assessment rubric (P7.1 pulled forward as
+  content); fleet lane renders one report per prospect — no generic
+  blasts, ever (compliance-guardrails law: value before ask).
+- **OB-4 The draft→approve→send loop at 100/day.** Sarah drafts
+  sequences into the **existing CRM approval queue** (propose →
+  operator approve → `dispatchCrmSend`) — the owner's "queue drafts,
+  send manually" is already the enforced law; what's new is a **batch
+  approval UX** (review/edit/approve a day's queue in minutes, one-tap
+  per batch with receipts) so 100/day is operable by one human.
+  Replies route to Sarah's inbox (sarah repo S-8 email channel) and the
+  CRM; every send/reply is a `crm_activity` + email-ledger row.
+- **OB-5 Close via Stripe.** Reply → Sarah conversation (email or a
+  link into sarah.openagents.com) → qualification → checkout link
+  (pack-priced now; deal-rules quotes when SR-2 lands) → settled
+  Stripe receipt → provision; pipeline states tracked on
+  `crm_opportunities`; funnel counters per LG-6 attribution.
+- **OB-6 The daily sales ledger.** Sent / delivered / replies /
+  report-clicks / conversations / quotes / closes per day, per segment,
+  with deliverability health (bounce/complaint) gating the ramp;
+  surfaced to the owner daily (ops view + a one-line digest). The
+  agency-trap discipline applies: operator-minutes per send must fall
+  as volume rises — the batch UX and Sarah's drafting quality are the
+  levers.
+
+Authority posture (unchanged law): outbound send remains
+**approval-gated** — the existing contracts stay enforced; promotion of
+any send class to policy-bound is a later, receipted owner decision.
+Owner gates for Track C: Resend/domain arming + DNS, the sending
+subdomain choice, daily-cap ramp sign-offs, and pricing on anything
+Sarah quotes beyond existing packs.
+
 **P1 exit receipts:** sarah.openagents.com live and hardened (SR-0
 list complete, token route protected, spend-capped); a stranger
 completes qualification → quote → settled starter credit purchase
@@ -219,7 +283,12 @@ entirely with Sarah (voice or text); a composed multi-module quote with
 a bundle rule applied closes via an agent-created link, with property
 tests proving no unruled price is reachable; a web conversation resumed
 by prospect email and answered through the approval queue; Sarah's Eval
-Suite green against the live deployment.
+Suite green against the live deployment. **Track C exits:** the sending
+identity warm and healthy at the 100/day cap (deliverability receipts);
+a full week of the daily sales ledger; and **the first outbound-sourced,
+Sarah-conversed, Stripe-settled sale** with its attribution chain
+(segment → email → reply → conversation → checkout receipt) dereferencing
+end to end.
 
 ## P2 — Your Codex on your agent computer (CX-1..9) — the workflow cutover sprint
 
@@ -448,6 +517,11 @@ closed by Sarah running a templated employee.
   reconciliation confirmation (Sarah spec §14.4).
 - Sarah surname/IP check before any public use beyond "Sarah";
   investor-routing posture (qualify-and-route only) confirmation.
+- **Track C (outbound) gates:** Resend send arming
+  (`CRM_RESEND_SEND_ENABLED` + keys) and the dedicated sending
+  subdomain/DNS; daily-cap ramp sign-offs on deliverability receipts;
+  send-class promotion beyond approval-gated (never without a receipted
+  owner decision).
 - Agent-computer compute rate; IAP arming + credits-brand
   ("minerals"); template/services pricing; any promise green flips.
 
@@ -460,6 +534,7 @@ closed by Sarah running a templated employee.
 | Mobile testing system (P0) | `../khala-code/2026-07-07-mobile-testing-audit-and-plan.md` |
 | **Sarah (P1, SR-*)** | `2026-07-07-sarah-sales-agent-spec.md` |
 | **Sarah implementation repo** | private `OpenAgentsInc/sarah` (Vercel + AI SDK realtime → sarah.openagents.com; see its README) |
+| **Outbound engine (P1 Track C)** | `2026-07-03-apollo-outbound-sales-plan.md` (audit-first motion, segments); SELL epic #8261 / LG-1..9 (closed substrate); blitz compliance-guardrails (binding) |
 | Web stack decision (P1 Track A) | `2026-07-04-tanstack-start-sites-and-web-app-evaluation.md` |
 | Codex/BYO harness (P2) | `2026-07-07-beyond-mvp-codex-agent-computers-and-ai-employees.md` |
 | Horizon ladder + lane reconciliation | `2026-07-07-overarching-roadmap-khala-code-agent-computers-ai-employees.md` |
