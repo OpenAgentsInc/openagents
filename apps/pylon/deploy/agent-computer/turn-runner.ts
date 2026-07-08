@@ -382,9 +382,41 @@ type WorkContext = {
   objective?: string
   providerAuth?: CodexProviderAuthConfig
   claudeProviderAuth?: ClaudeProviderAuthConfig
+  codexContinuity?: CodexContinuityConfig
   inference?: InferenceConfig
   writeback?: WritebackConfig
 }
+
+export type CodexContinuityConfig = {
+  strategy: 'khala_sync_history_reprime'
+  maxReplayMessages: number
+  previousTurnCount?: number
+  persistedCodexHome: false
+}
+
+export type CodexContinuitySummary = {
+  strategy: 'khala_sync_history_reprime'
+  maxReplayMessages: number
+  previousTurnCount: number | null
+  persistedCodexHome: false
+  replaySource: 'khala_sync_history'
+}
+
+export const codexContinuityResultSummary = (
+  continuity: CodexContinuityConfig | undefined,
+): CodexContinuitySummary | null =>
+  continuity === undefined
+    ? null
+    : {
+        maxReplayMessages: Math.max(0, Math.trunc(continuity.maxReplayMessages)),
+        persistedCodexHome: false,
+        previousTurnCount:
+          continuity.previousTurnCount === undefined
+            ? null
+            : Math.max(0, Math.trunc(continuity.previousTurnCount)),
+        replaySource: 'khala_sync_history',
+        strategy: 'khala_sync_history_reprime',
+      }
 
 const nowIso = () => new Date().toISOString()
 const integerOrZero = (value: unknown): number =>
@@ -1116,6 +1148,7 @@ async function main() {
   const branch = wc.branch ?? 'main'
   const turnId = wc.turnId ?? 'turn-1'
   const threadRef = wc.threadRef
+  const codexContinuity = codexContinuityResultSummary(wc.codexContinuity)
 
   emit({
     kind: 'turn.started',
@@ -1157,6 +1190,16 @@ async function main() {
       providerAccountRef: codexProviderAuth.providerAccountRef,
       authGrantRef: codexProviderAuth.authGrantRef,
       homeIsolation: 'scratch_per_turn',
+    })
+  }
+
+  if (codexContinuity !== null) {
+    emit({
+      kind: 'tool.result',
+      turnId,
+      tool: 'codex.continuity.rebuilt',
+      status: 'ok',
+      ...codexContinuity,
     })
   }
 
@@ -1353,6 +1396,7 @@ async function main() {
     headSubject: subject,
     stagedDiffStat: diff,
     stagedDiffBytes: diffFull.length,
+    codexContinuity,
     codexProviderAuth:
       codexProviderAuth === null
         ? null

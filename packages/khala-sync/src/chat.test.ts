@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test"
 
 import {
+  decodeChatThreadCodexContinuityPin,
   chatThreadRepoBindingRef,
   decodeChatThreadEntity,
   decodeChatThreadRepoBinding,
+  encodeChatThreadCodexContinuityPin,
   encodeChatThreadEntity,
   encodeChatThreadRepoBinding,
 } from "./index.js"
@@ -86,6 +88,85 @@ describe("ChatThreadEntity.repoBinding (MM-B2, #8472)", () => {
       decodeChatThreadEntity({
         ...baseThreadJson,
         repoBinding: { defaultBranch: "main", name: "openagents" }, // missing owner
+      }),
+    ).toThrow()
+  })
+})
+
+describe("ChatThreadCodexContinuityPin (CX-6, #8550)", () => {
+  test("decodes and encodes public-safe custody refs only", () => {
+    const pin = decodeChatThreadCodexContinuityPin({
+      accountRefHash: "acct_hash_1",
+      authGrantRef: "grant.codex.thread_1",
+      pinnedAt: "2026-07-08T00:00:00.000Z",
+      provider: "chatgpt_codex",
+      providerAccountRef: "provider-account.codex.owner_1",
+    })
+    expect(encodeChatThreadCodexContinuityPin(pin)).toEqual({
+      accountRefHash: "acct_hash_1",
+      authGrantRef: "grant.codex.thread_1",
+      pinnedAt: "2026-07-08T00:00:00.000Z",
+      provider: "chatgpt_codex",
+      providerAccountRef: "provider-account.codex.owner_1",
+    })
+    expect(JSON.stringify(pin)).not.toMatch(/token|secret|authJson|CODEX_HOME/i)
+  })
+
+  test("rejects non-Codex providers and slash-shaped refs", () => {
+    expect(() =>
+      decodeChatThreadCodexContinuityPin({
+        authGrantRef: "grant.codex.thread_1",
+        pinnedAt: "2026-07-08T00:00:00.000Z",
+        provider: "claude",
+        providerAccountRef: "provider-account.codex.owner_1",
+      }),
+    ).toThrow()
+    expect(() =>
+      decodeChatThreadCodexContinuityPin({
+        authGrantRef: "grant/codex/thread_1",
+        pinnedAt: "2026-07-08T00:00:00.000Z",
+        provider: "chatgpt_codex",
+        providerAccountRef: "provider-account.codex.owner_1",
+      }),
+    ).toThrow()
+  })
+})
+
+describe("ChatThreadEntity.codexContinuity (CX-6, #8550)", () => {
+  test("decodes a legacy row with no codexContinuity key", () => {
+    const thread = decodeChatThreadEntity(baseThreadJson)
+    expect(thread.codexContinuity).toBeUndefined()
+    expect(encodeChatThreadEntity(thread)).not.toHaveProperty("codexContinuity")
+  })
+
+  test("decodes explicit null and a real continuity pin", () => {
+    expect(decodeChatThreadEntity({ ...baseThreadJson, codexContinuity: null }).codexContinuity).toBeNull()
+    const thread = decodeChatThreadEntity({
+      ...baseThreadJson,
+      codexContinuity: {
+        authGrantRef: "grant.codex.thread_1",
+        pinnedAt: "2026-07-08T00:00:00.000Z",
+        provider: "chatgpt_codex",
+        providerAccountRef: "provider-account.codex.owner_1",
+      },
+    })
+    expect(thread.codexContinuity).toEqual({
+      authGrantRef: "grant.codex.thread_1",
+      pinnedAt: "2026-07-08T00:00:00.000Z",
+      provider: "chatgpt_codex",
+      providerAccountRef: "provider-account.codex.owner_1",
+    })
+  })
+
+  test("rejects a malformed continuity pin on an otherwise-valid thread", () => {
+    expect(() =>
+      decodeChatThreadEntity({
+        ...baseThreadJson,
+        codexContinuity: {
+          pinnedAt: "2026-07-08T00:00:00.000Z",
+          provider: "chatgpt_codex",
+          providerAccountRef: "provider-account.codex.owner_1",
+        },
       }),
     ).toThrow()
   })

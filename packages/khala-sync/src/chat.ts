@@ -83,6 +83,30 @@ export const chatThreadRepoBindingRef = (
   binding: Pick<ChatThreadRepoBinding, "name" | "owner">,
 ): string => `${binding.owner}/${binding.name}`
 
+/**
+ * Durable per-thread Codex continuity pin (CX-6, #8550). This stores only
+ * public-safe custody references beside the thread metadata; it never stores
+ * Codex HOME contents, OAuth material, bearer tokens, transcript bodies, or
+ * any VM-local path. Reclaim/resume strategy is deliberately re-prime +
+ * bounded Khala Sync history replay; persisted Codex homes stay deferred.
+ */
+export class ChatThreadCodexContinuityPin extends S.Class<ChatThreadCodexContinuityPin>(
+  "ChatThreadCodexContinuityPin",
+)({
+  provider: S.Literal("chatgpt_codex"),
+  providerAccountRef: ChatPublicRef,
+  authGrantRef: ChatPublicRef,
+  accountRefHash: S.optional(ChatPublicRef),
+  pinnedAt: ChatIsoTimestamp,
+}) {}
+
+export const decodeChatThreadCodexContinuityPin = S.decodeUnknownSync(
+  ChatThreadCodexContinuityPin,
+)
+export const encodeChatThreadCodexContinuityPin = S.encodeSync(
+  ChatThreadCodexContinuityPin,
+)
+
 export class ChatThreadEntity extends S.Class<ChatThreadEntity>(
   "ChatThreadEntity",
 )({
@@ -100,6 +124,11 @@ export class ChatThreadEntity extends S.Class<ChatThreadEntity>(
    * available in this repo's pinned Effect version) so decoding a
    * pre-#8472 stored row that never had this key never fails. */
   repoBinding: S.optional(S.NullOr(ChatThreadRepoBinding)),
+  /** Optional/nullable for the same compatibility reasons as `repoBinding`.
+   * When present, the server and cloud dispatcher use it to re-prime a fresh
+   * VM for this thread after reclaim, then replay bounded Khala Sync history
+   * into the first turn. */
+  codexContinuity: S.optional(S.NullOr(ChatThreadCodexContinuityPin)),
 }) {}
 
 export class ChatMessageEntity extends S.Class<ChatMessageEntity>(

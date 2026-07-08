@@ -24,6 +24,7 @@ import {
   chatCompletionsRequest,
   classifyPushFailure,
   claudeProviderAuthMaterialRequest,
+  codexContinuityResultSummary,
   codexProviderAuthMaterialRequest,
   gitCredentialBrokerRequest,
   materializeClaudeProviderAuth,
@@ -234,6 +235,29 @@ describe('agent-computer turn-runner: Codex provider-account broker materializat
         microvmDestroyReceiptRef: 'sha256:microvm-destroyed',
       }),
     ).toBe(false)
+  })
+})
+
+describe('agent-computer turn-runner: Codex continuity re-prime summary', () => {
+  test('summarizes bounded Khala Sync replay and explicitly defers persisted CODEX_HOME', () => {
+    const summary = codexContinuityResultSummary({
+      maxReplayMessages: 24.8,
+      persistedCodexHome: false,
+      previousTurnCount: 3.2,
+      strategy: 'khala_sync_history_reprime',
+    })
+    expect(summary).toEqual({
+      maxReplayMessages: 24,
+      persistedCodexHome: false,
+      previousTurnCount: 3,
+      replaySource: 'khala_sync_history',
+      strategy: 'khala_sync_history_reprime',
+    })
+    expect(JSON.stringify(summary)).not.toMatch(/CODEX_HOME|token|secret|authJson/i)
+  })
+
+  test('omits continuity when the work-context has no continuity block', () => {
+    expect(codexContinuityResultSummary(undefined)).toBeNull()
   })
 })
 

@@ -180,6 +180,43 @@ describe('buildCloudRuntimeWritebackConfig (MM-C5 #8477)', () => {
     expect(JSON.stringify(withWb.writeback)).not.toContain('oa_agent_secret')
     expect(JSON.stringify(withWb.writeback)).not.toMatch(/token|secret|password/i)
   })
+
+  test('threads Codex continuity as refs + bounded replay, never persisted homes', () => {
+    const inference = buildCloudRuntimeInferenceConfig({
+      agentToken: 'oa_agent_secret',
+      baseUrl: 'https://x',
+      model: 'm',
+      ownerUserId: 'github:300914913',
+    })
+    const wc = buildCloudRuntimeWorkContext({
+      codexContinuity: {
+        maxReplayMessages: 24,
+        persistedCodexHome: false,
+        previousTurnCount: 3,
+        strategy: 'khala_sync_history_reprime',
+      },
+      commit: '7fd1a60b01f91b314f59955a4e4d4e80d8edf11d',
+      inference,
+      providerAuth: {
+        agentToken: 'oa_agent_secret',
+        authGrantRef: 'grant.codex.thread_1',
+        baseUrl: 'https://x',
+        providerAccountRef: 'provider-account.codex.owner_1',
+      },
+      repo: 'AgentFlampy/agent-computer-proof',
+      threadRef: 'thread.t1',
+      turnId: 'turn.t1',
+      workContextRef: 'wc1',
+    })
+    expect(wc.providerAuth?.providerAccountRef).toBe('provider-account.codex.owner_1')
+    expect(wc.codexContinuity).toEqual({
+      maxReplayMessages: 24,
+      persistedCodexHome: false,
+      previousTurnCount: 3,
+      strategy: 'khala_sync_history_reprime',
+    })
+    expect(JSON.stringify(wc.codexContinuity)).not.toMatch(/CODEX_HOME|authJson|token|secret/i)
+  })
 })
 
 describe('encodeWorkContextB64 / decodeWorkContextB64', () => {

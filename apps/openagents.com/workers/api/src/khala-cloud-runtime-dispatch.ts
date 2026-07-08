@@ -98,6 +98,7 @@ export const DEFAULT_CLOUD_GCP_RUNTIME_DISPATCH_LIMIT = 4
 
 /** Default placement timeout (seconds). */
 export const DEFAULT_CLOUD_GCP_RUNTIME_TIMEOUT_SECONDS = 1800
+export const DEFAULT_CODEX_CONTINUITY_REPLAY_MESSAGES = 24
 
 const refPart = (value: string): string => value.replace(/[^a-zA-Z0-9_.:-]/g, '_')
 
@@ -128,6 +129,16 @@ export type CloudGcpAdmittedWorkContext = Readonly<{
         mode?: 'branch_only' | 'pull_request' | undefined
         branch?: string | undefined
         baseBranch?: string | undefined
+      }>
+    | undefined
+  /** CX-6 (#8550): durable per-thread Codex account pin. Ref-only. */
+  codexContinuity?:
+    | Readonly<{
+        providerAccountRef: string
+        authGrantRef: string
+        accountRefHash?: string | undefined
+        previousTurnCount?: number | undefined
+        maxReplayMessages?: number | undefined
       }>
     | undefined
 }>
@@ -324,7 +335,7 @@ export const dispatchCloudGcpRuntimeTurn = async (
       .then(response => {
         const result = response.results[0]
         if (result === undefined) {
-          throw new Error('executePush returned no result for runtime.recordEvent')
+          throw Error('executePush returned no result for runtime.recordEvent')
         }
         return result
       })
@@ -390,6 +401,28 @@ export const dispatchCloudGcpRuntimeTurn = async (
               ? {}
               : { mode: turn.writeback.mode }),
           })
+    const providerAuthConfig =
+      turn.codexContinuity === undefined
+        ? undefined
+        : {
+            agentToken: minted.rawToken,
+            authGrantRef: turn.codexContinuity.authGrantRef,
+            baseUrl: resolved.inference.baseUrl,
+            providerAccountRef: turn.codexContinuity.providerAccountRef,
+          }
+    const codexContinuityConfig =
+      turn.codexContinuity === undefined
+        ? undefined
+        : {
+            maxReplayMessages:
+              turn.codexContinuity.maxReplayMessages ??
+              DEFAULT_CODEX_CONTINUITY_REPLAY_MESSAGES,
+            persistedCodexHome: false as const,
+            ...(turn.codexContinuity.previousTurnCount === undefined
+              ? {}
+              : { previousTurnCount: turn.codexContinuity.previousTurnCount }),
+            strategy: 'khala_sync_history_reprime' as const,
+          }
     const workContext = buildCloudRuntimeWorkContext({
       commit: turn.commit,
       inference: inferenceConfig,
@@ -400,8 +433,37 @@ export const dispatchCloudGcpRuntimeTurn = async (
       ...(turn.branch === undefined ? {} : { branch: turn.branch }),
       ...(turn.objective === undefined ? {} : { objective: turn.objective }),
       ...(writebackConfig === undefined ? {} : { writeback: writebackConfig }),
+      ...(providerAuthConfig === undefined ? {} : { providerAuth: providerAuthConfig }),
+      ...(codexContinuityConfig === undefined
+        ? {}
+        : { codexContinuity: codexContinuityConfig }),
     })
     const workContextB64 = encodeWorkContextB64(workContext)
+
+    let nextMutationId = 2
+    if (turn.codexContinuity !== undefined) {
+      await record(
+        nextMutationId,
+        buildEvent(resolved, turn, seq, {
+          authority: {
+            allowed: true,
+            authorityRef: 'authority.codex.continuity.reprime',
+            blockerRefs: [],
+            decisionRef: 'decision.codex.continuity.reprime',
+            policyRef: 'policy.codex.continuity.reprime',
+            status: 'allowed',
+            toolRef: 'tool.codex.continuity.rebuilt',
+          },
+          kind: 'tool.result',
+          providerExecuted: false,
+          resultRef: `continuity.codex.${refPart(turn.threadId)}.${refPart(turn.turnId)}`,
+          toolCallId: `tool.${resolved.uuid()}`,
+          toolName: 'codex.continuity.rebuilt',
+        }),
+      )
+      nextMutationId += 1
+      seq += 1
+    }
 
     // 4. POST the placement through the adapter (forwards work_context_b64).
     const sessionId = `ccs.${refPart(turn.turnId)}`
@@ -447,7 +509,7 @@ export const dispatchCloudGcpRuntimeTurn = async (
       `Launched an OpenAgents Agent Computer microVM turn for ` +
       `${turn.repo}@${turn.commit.slice(0, 12)}.`
     await record(
-      2,
+      nextMutationId,
       buildEvent(resolved, turn, seq, {
         chunkId: `chunk.${resolved.uuid()}`,
         kind: 'text.delta',
@@ -455,14 +517,16 @@ export const dispatchCloudGcpRuntimeTurn = async (
         text: statusText,
       }),
     )
+    nextMutationId += 1
     seq += 1
     await record(
-      3,
+      nextMutationId,
       buildEvent(resolved, turn, seq, { kind: 'text.completed', messageId }),
     )
+    nextMutationId += 1
     seq += 1
     await record(
-      4,
+      nextMutationId,
       buildEvent(resolved, turn, seq, {
         finishReason: 'stop' satisfies KhalaRuntimeFinishReason,
         kind: 'turn.finished',

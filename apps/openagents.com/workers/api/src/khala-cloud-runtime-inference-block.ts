@@ -18,6 +18,8 @@
 // returned blob, which the caller passes straight to the placement adapter and
 // then discards. This module never logs them; the blob is opaque to the daemon.
 
+import { parseJsonUnknown } from './json-boundary'
+
 /** The turn-runner's `InferenceConfig`, re-stated as the builder's output. */
 export type CloudRuntimeInferenceConfig = Readonly<{
   baseUrl: string
@@ -44,6 +46,26 @@ export type CloudRuntimeWritebackConfig = Readonly<{
   mode: 'branch_only' | 'pull_request'
 }>
 
+/** Short-lived provider-auth redemption request for the VM. */
+export type CloudRuntimeCodexProviderAuthConfig = Readonly<{
+  baseUrl: string
+  agentToken: string
+  providerAccountRef: string
+  authGrantRef: string
+}>
+
+/**
+ * CX-6 (#8550) continuity strategy (a): fresh Codex provision, re-prime from
+ * custody, then bounded Khala Sync history replay. Persisted CODEX_HOME
+ * volumes are explicitly deferred and represented as `false`.
+ */
+export type CloudRuntimeCodexContinuityConfig = Readonly<{
+  strategy: 'khala_sync_history_reprime'
+  maxReplayMessages: number
+  previousTurnCount?: number
+  persistedCodexHome: false
+}>
+
 /** The turn-runner's `WorkContext`, re-stated as the builder's output. */
 export type CloudRuntimeWorkContext = Readonly<{
   workContextRef: string
@@ -55,6 +77,8 @@ export type CloudRuntimeWorkContext = Readonly<{
   objective: string
   inference: CloudRuntimeInferenceConfig
   writeback?: CloudRuntimeWritebackConfig
+  providerAuth?: CloudRuntimeCodexProviderAuthConfig
+  codexContinuity?: CloudRuntimeCodexContinuityConfig
 }>
 
 /** Default lane the ingest route accepts for the hosted-Khala model turn. */
@@ -157,6 +181,8 @@ export type BuildWorkContextInput = Readonly<{
   objective?: string | undefined
   inference: CloudRuntimeInferenceConfig
   writeback?: CloudRuntimeWritebackConfig | undefined
+  providerAuth?: CloudRuntimeCodexProviderAuthConfig | undefined
+  codexContinuity?: CloudRuntimeCodexContinuityConfig | undefined
 }>
 
 /** Build the full work-context object the turn-runner reads from `/tmp/wc.json`. */
@@ -174,6 +200,8 @@ export const buildCloudRuntimeWorkContext = (
   turnId: input.turnId,
   workContextRef: input.workContextRef,
   ...(input.writeback === undefined ? {} : { writeback: input.writeback }),
+  ...(input.providerAuth === undefined ? {} : { providerAuth: input.providerAuth }),
+  ...(input.codexContinuity === undefined ? {} : { codexContinuity: input.codexContinuity }),
 })
 
 /**
@@ -196,5 +224,5 @@ export const encodeWorkContextB64 = (
 export const decodeWorkContextB64 = (b64: string): CloudRuntimeWorkContext => {
   const binary = atob(b64)
   const bytes = Uint8Array.from(binary, ch => ch.charCodeAt(0))
-  return JSON.parse(new TextDecoder().decode(bytes)) as CloudRuntimeWorkContext
+  return parseJsonUnknown(new TextDecoder().decode(bytes)) as CloudRuntimeWorkContext
 }

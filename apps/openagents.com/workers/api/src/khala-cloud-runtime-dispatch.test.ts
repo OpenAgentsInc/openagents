@@ -31,6 +31,7 @@ type RecordedEvent = {
   kind: string
   toolName: string | undefined
   finishReason: string | undefined
+  resultRef: string | undefined
   clientId: string
 }
 
@@ -50,12 +51,14 @@ const makeRecordingExecutePush = (
       kind: string
       toolName?: string
       finishReason?: string
+      resultRef?: string
     }
     const rec: RecordedEvent = {
       clientId: input.request.clientId,
       finishReason: event.finishReason,
       kind: event.kind,
       mutationId: envelope.mutationId,
+      resultRef: event.resultRef,
       toolName: event.toolName,
       userId: input.userId,
     }
@@ -200,6 +203,52 @@ describe('dispatchCloudGcpRuntimeTurn', () => {
       { ...admitted, repoBindingRef: 'repo-binding.mobile.thread-1' },
     )
     expect(captured.repoBindingRef).toBe('repo-binding.mobile.thread-1')
+  })
+
+  test('reclaim resume: work-context re-primes pinned Codex account and emits continuity event', async () => {
+    reset()
+    const push = makeRecordingExecutePush()
+    const captured: { b64?: string; repoBindingRef?: string | undefined } = {}
+    const result = await dispatchCloudGcpRuntimeTurn(
+      baseDeps({ executePush: push.executePush, launch: okLaunch(captured) }),
+      {
+        ...admitted,
+        codexContinuity: {
+          accountRefHash: 'acct_hash_1',
+          authGrantRef: 'grant.codex.thread_1',
+          maxReplayMessages: 12,
+          previousTurnCount: 3,
+          providerAccountRef: 'provider-account.codex.owner_1',
+        },
+        eventCount: 4,
+      },
+    )
+    expect(result.outcome).toBe('launched')
+    expect(push.recorded.map(r => r.kind)).toEqual([
+      'turn.started',
+      'tool.result',
+      'text.delta',
+      'text.completed',
+      'turn.finished',
+    ])
+    expect(push.recorded.map(r => r.mutationId)).toEqual([1, 2, 3, 4, 5])
+    expect(push.recorded[1]?.toolName).toBe('codex.continuity.rebuilt')
+    expect(push.recorded[1]?.resultRef).toBe('continuity.codex.thread.t1.turn.t1')
+
+    const wc = decodeWorkContextB64(captured.b64!)
+    expect(wc.providerAuth).toEqual({
+      agentToken: 'oa_agent_RAWTOKEN0123456789abcdef',
+      authGrantRef: 'grant.codex.thread_1',
+      baseUrl: 'https://staging.example',
+      providerAccountRef: 'provider-account.codex.owner_1',
+    })
+    expect(wc.codexContinuity).toEqual({
+      maxReplayMessages: 12,
+      persistedCodexHome: false,
+      previousTurnCount: 3,
+      strategy: 'khala_sync_history_reprime',
+    })
+    expect(JSON.stringify(wc.codexContinuity)).not.toMatch(/CODEX_HOME|token|secret|authJson/i)
   })
 
   test('launch refused: finished(error) and token IS revoked', async () => {

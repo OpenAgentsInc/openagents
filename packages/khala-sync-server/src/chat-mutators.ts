@@ -1,6 +1,7 @@
 import {
   CHAT_MESSAGE_ENTITY_TYPE,
   CHAT_THREAD_ENTITY_TYPE,
+  ChatThreadCodexContinuityPin,
   ChatThreadRepoBinding,
   decodeChatMessageEntity,
   decodeChatThreadEntity,
@@ -36,6 +37,7 @@ export const CHAT_CREATE_THREAD_MUTATOR_NAME = "chat.createThread"
 export const CHAT_APPEND_MESSAGE_MUTATOR_NAME = "chat.appendMessage"
 export const CHAT_RENAME_THREAD_MUTATOR_NAME = "chat.renameThread"
 export const CHAT_BIND_THREAD_REPO_MUTATOR_NAME = "chat.bindThreadRepo"
+export const CHAT_PIN_CODEX_CONTINUITY_MUTATOR_NAME = "chat.pinCodexContinuity"
 
 export const CHAT_SCOPE_REJECTION = "unauthorized_scope"
 export const CHAT_THREAD_EXISTS_REJECTION = "thread_exists"
@@ -79,6 +81,12 @@ const BindThreadRepoArgs = S.Struct({
 })
 type BindThreadRepoArgs = typeof BindThreadRepoArgs.Type
 
+const PinCodexContinuityArgs = S.Struct({
+  threadId: ChatRefField,
+  codexContinuity: S.NullOr(ChatThreadCodexContinuityPin),
+})
+type PinCodexContinuityArgs = typeof PinCodexContinuityArgs.Type
+
 export const decodeChatCreateThreadArgs = (
   argsJson: string,
 ): CreateThreadArgs =>
@@ -99,6 +107,11 @@ export const decodeChatBindThreadRepoArgs = (
 ): BindThreadRepoArgs =>
   S.decodeUnknownSync(BindThreadRepoArgs)(JSON.parse(argsJson) as unknown)
 
+export const decodeChatPinCodexContinuityArgs = (
+  argsJson: string,
+): PinCodexContinuityArgs =>
+  S.decodeUnknownSync(PinCodexContinuityArgs)(JSON.parse(argsJson) as unknown)
+
 type ChatThreadRow = Readonly<{
   thread_id: string
   owner_user_id: string
@@ -111,6 +124,11 @@ type ChatThreadRow = Readonly<{
   repo_binding_owner: string | null
   repo_binding_name: string | null
   repo_binding_default_branch: string | null
+  codex_continuity_provider: string | null
+  codex_continuity_provider_account_ref: string | null
+  codex_continuity_auth_grant_ref: string | null
+  codex_continuity_account_ref_hash: string | null
+  codex_continuity_pinned_at: string | null
 }>
 
 type ChatMessageRow = Readonly<{
@@ -158,8 +176,31 @@ const repoBindingFromRow = (row: ChatThreadRow): ChatThreadRepoBinding | null =>
   })
 }
 
+const codexContinuityFromRow = (
+  row: ChatThreadRow,
+): ChatThreadCodexContinuityPin | null => {
+  if (
+    row.codex_continuity_provider !== "chatgpt_codex" ||
+    row.codex_continuity_provider_account_ref === null ||
+    row.codex_continuity_auth_grant_ref === null ||
+    row.codex_continuity_pinned_at === null
+  ) {
+    return null
+  }
+  return new ChatThreadCodexContinuityPin({
+    ...(row.codex_continuity_account_ref_hash === null
+      ? {}
+      : { accountRefHash: row.codex_continuity_account_ref_hash }),
+    authGrantRef: row.codex_continuity_auth_grant_ref,
+    pinnedAt: row.codex_continuity_pinned_at,
+    provider: "chatgpt_codex",
+    providerAccountRef: row.codex_continuity_provider_account_ref,
+  })
+}
+
 const threadEntityFromRow = (row: ChatThreadRow): ChatThreadEntity =>
   decodeChatThreadEntity({
+    codexContinuity: codexContinuityFromRow(row),
     createdAt: row.created_at,
     lastMessageAt: row.last_message_at,
     messageCount: Number(row.message_count),
@@ -178,7 +219,10 @@ const readThreadForUpdate = async (
   const rows: Array<ChatThreadRow> = await ctx.writer.sql`
     SELECT thread_id, owner_user_id, title, status, message_count,
            last_message_at, created_at, updated_at,
-           repo_binding_owner, repo_binding_name, repo_binding_default_branch
+           repo_binding_owner, repo_binding_name, repo_binding_default_branch,
+           codex_continuity_provider, codex_continuity_provider_account_ref,
+           codex_continuity_auth_grant_ref, codex_continuity_account_ref_hash,
+           codex_continuity_pinned_at
     FROM khala_sync_chat_threads
     WHERE thread_id = ${threadId}
     FOR UPDATE
@@ -291,7 +335,10 @@ export const chatCreateThreadMutator: MutatorDefinition =
         ON CONFLICT (thread_id) DO NOTHING
         RETURNING thread_id, owner_user_id, title, status, message_count,
                   last_message_at, created_at, updated_at,
-                  repo_binding_owner, repo_binding_name, repo_binding_default_branch
+                  repo_binding_owner, repo_binding_name, repo_binding_default_branch,
+                  codex_continuity_provider, codex_continuity_provider_account_ref,
+                  codex_continuity_auth_grant_ref, codex_continuity_account_ref_hash,
+                  codex_continuity_pinned_at
       `
       const row = inserted[0]
       if (row === undefined) {
@@ -366,7 +413,10 @@ export const chatAppendMessageMutator: MutatorDefinition =
         WHERE thread_id = ${args.threadId}
         RETURNING thread_id, owner_user_id, title, status, message_count,
                   last_message_at, created_at, updated_at,
-                  repo_binding_owner, repo_binding_name, repo_binding_default_branch
+                  repo_binding_owner, repo_binding_name, repo_binding_default_branch,
+                  codex_continuity_provider, codex_continuity_provider_account_ref,
+                  codex_continuity_auth_grant_ref, codex_continuity_account_ref_hash,
+                  codex_continuity_pinned_at
       `
       const updatedThread = updatedThreads[0]
       if (updatedThread === undefined) {
@@ -409,7 +459,10 @@ export const chatRenameThreadMutator: MutatorDefinition =
         WHERE thread_id = ${args.threadId}
         RETURNING thread_id, owner_user_id, title, status, message_count,
                   last_message_at, created_at, updated_at,
-                  repo_binding_owner, repo_binding_name, repo_binding_default_branch
+                  repo_binding_owner, repo_binding_name, repo_binding_default_branch,
+                  codex_continuity_provider, codex_continuity_provider_account_ref,
+                  codex_continuity_auth_grant_ref, codex_continuity_account_ref_hash,
+                  codex_continuity_pinned_at
       `
       const updatedThread = updatedThreads[0]
       if (updatedThread === undefined) {
@@ -458,7 +511,10 @@ export const chatBindThreadRepoMutator: MutatorDefinition =
         WHERE thread_id = ${args.threadId}
         RETURNING thread_id, owner_user_id, title, status, message_count,
                   last_message_at, created_at, updated_at,
-                  repo_binding_owner, repo_binding_name, repo_binding_default_branch
+                  repo_binding_owner, repo_binding_name, repo_binding_default_branch,
+                  codex_continuity_provider, codex_continuity_provider_account_ref,
+                  codex_continuity_auth_grant_ref, codex_continuity_account_ref_hash,
+                  codex_continuity_pinned_at
       `
       const updatedThread = updatedThreads[0]
       if (updatedThread === undefined) {
@@ -474,9 +530,63 @@ export const chatBindThreadRepoMutator: MutatorDefinition =
     name: MutatorName.make(CHAT_BIND_THREAD_REPO_MUTATOR_NAME),
   })
 
+/** CX-6 (#8550): durable per-thread Codex account pin. This stores only
+ * custody refs and the pin timestamp alongside the thread metadata; the VM
+ * redeems the grant on each fresh provision and replays bounded Khala Sync
+ * history. `codexContinuity: null` explicitly clears the pin so unhealthy
+ * account rotation can fall back without leaving stale refs. */
+export const chatPinCodexContinuityMutator: MutatorDefinition =
+  defineMutator<PinCodexContinuityArgs>({
+    decodeArgs: decodeChatPinCodexContinuityArgs,
+    execute: async (args, ctx) => {
+      const thread = await readThreadForUpdate(ctx, args.threadId)
+      if (thread === null) {
+        return reject(
+          ctx,
+          CHAT_THREAD_NOT_FOUND_REJECTION,
+          "this chat thread does not exist",
+        )
+      }
+      if (thread.owner_user_id !== ctx.userId) return rejectForeignScope(ctx)
+
+      const ownerRejection = await ensureThreadScopeOwner(ctx, args.threadId)
+      if (ownerRejection !== null) return ownerRejection
+
+      const nowIso = await transactionNowIso(ctx)
+      const updatedThreads: Array<ChatThreadRow> = await ctx.writer.sql`
+        UPDATE khala_sync_chat_threads
+        SET codex_continuity_provider = ${args.codexContinuity?.provider ?? null},
+            codex_continuity_provider_account_ref = ${args.codexContinuity?.providerAccountRef ?? null},
+            codex_continuity_auth_grant_ref = ${args.codexContinuity?.authGrantRef ?? null},
+            codex_continuity_account_ref_hash = ${args.codexContinuity?.accountRefHash ?? null},
+            codex_continuity_pinned_at = ${args.codexContinuity?.pinnedAt ?? null},
+            updated_at = ${nowIso}
+        WHERE thread_id = ${args.threadId}
+        RETURNING thread_id, owner_user_id, title, status, message_count,
+                  last_message_at, created_at, updated_at,
+                  repo_binding_owner, repo_binding_name, repo_binding_default_branch,
+                  codex_continuity_provider, codex_continuity_provider_account_ref,
+                  codex_continuity_auth_grant_ref, codex_continuity_account_ref_hash,
+                  codex_continuity_pinned_at
+      `
+      const updatedThread = updatedThreads[0]
+      if (updatedThread === undefined) {
+        throw new Error("chat thread disappeared during pinCodexContinuity")
+      }
+
+      await appendThreadEntityChanges(ctx, threadEntityFromRow(updatedThread))
+      return new MutationResult({
+        mutationId: ctx.mutationId,
+        status: "applied",
+      })
+    },
+    name: MutatorName.make(CHAT_PIN_CODEX_CONTINUITY_MUTATOR_NAME),
+  })
+
 export const chatMutators: ReadonlyArray<MutatorDefinition> = [
   chatCreateThreadMutator,
   chatAppendMessageMutator,
   chatRenameThreadMutator,
   chatBindThreadRepoMutator,
+  chatPinCodexContinuityMutator,
 ]
