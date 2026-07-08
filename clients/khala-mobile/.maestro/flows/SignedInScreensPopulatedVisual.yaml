@@ -1,0 +1,64 @@
+# flow: Khala Mobile signed-in POPULATED-happy-path visual sweep (QAM-4 follow-up, #8539)
+# intent:
+# Capture the POPULATED happy-path of the two signed-in product screens whose
+# SignedInScreensVisual baselines can only render the honest DEGRADED state:
+# Credit history and the repo picker. Those two screens read owner-scoped
+# mobile REST routes (`GET /api/mobile/credits/transactions`,
+# `GET /api/mobile/repos`) that — by INVARIANTS.md ("Khala mobile native
+# sign-in ... syncToken is the current OpenAuth mobile access token ... not a
+# separate agent/admin credential") — require a REAL mobile OpenAuth USER
+# bearer session, never the seeded `oa_agent_` agent token. Under the agent
+# token they correctly 401 and render "History unavailable" /
+# "Repositories unavailable"; under a real GitHub-OAuth'd session they render
+# the account's real balance history and real repo list.
+#
+# This flow therefore REQUIRES a build that auto-signs-in with a REAL mobile
+# session (owner-provided, baked by scripts/build-populated-ios.sh from
+# ~/work/.secrets/khala-mobile-session.env). The oracles below are honest and
+# FAIL-CLOSED: they assert the real-data markers are visible AND the degraded
+# "unavailable" empty states are NOT — so this flow can never silently pass on
+# the degraded (agent-token) build. There is deliberately NO agent-token
+# manual-sign-in fallback here (that would only reach the degraded state).
+#
+# Required env:
+# - KHALA_MAESTRO_THREAD_TITLE (the seeded thread to open for the repo picker)
+#
+appId: ${MAESTRO_APP_ID}
+onFlowStart:
+  - runFlow: ../shared/_OnFlowStart.yaml
+---
+# A populated build auto-signs-in with the real owner session; if the app is
+# instead sitting on the sign-in screen the build was not baked with a real
+# session — fail here rather than degrade.
+- assertVisible: "Khala"
+- assertNotVisible: "Sign in manually instead"
+
+# --- Credit history (real linked route, POPULATED) ---
+- openLink: khala://credits/history
+- assertVisible: "Credit history"
+- waitForAnimationToEnd
+# Honest populated oracle: a real signed money amount is visible (every
+# transaction row renders a `+$…`/`-$…` meta via signedAmountLabel) and the
+# degraded empty states are absent.
+- assertNotVisible: "History unavailable"
+- assertNotVisible: "No transactions yet"
+- assertVisible:
+    text: ".*\\$[0-9].*"
+- takeScreenshot: khala.mobile.screen.credits-history.populated.iphone-17-pro.dark
+
+# --- Repo picker (opened from the thread, POPULATED) ---
+- openLink: khala://
+- assertVisible: ${KHALA_MAESTRO_THREAD_TITLE}
+- tapOn: ${KHALA_MAESTRO_THREAD_TITLE}
+- tapOn:
+    text: "No repo.*|Repo:.*|Repo bound.*"
+- assertVisible: "Pick a repo"
+- waitForAnimationToEnd
+# Honest populated oracle: at least one real repo row is visible (each row
+# renders a `public`/`private` visibility badge) and the degraded/empty
+# states are absent.
+- assertNotVisible: "Repositories unavailable"
+- assertNotVisible: "No repositories found"
+- assertVisible:
+    text: "public|private"
+- takeScreenshot: khala.mobile.screen.repo-picker.populated.iphone-17-pro.dark

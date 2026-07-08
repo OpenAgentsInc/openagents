@@ -13,6 +13,15 @@
 # resets the seeded thread's turn state, exactly like
 # signed-in-thread-smoke-run.sh, so opening the thread is deterministic.
 #
+# The POPULATED happy-path variant (MOBILE_VISUAL_FLOW=SignedInScreensPopulatedVisual)
+# captures Credit history + repo picker with their REAL owner data and REQUIRES a
+# build installed by scripts/build-populated-ios.sh (a real mobile OpenAuth USER
+# session baked, not the oa_agent_ token — which correctly 401s those routes).
+# Point MOBILE_VISUAL_REPORT at a populated receipt when running it, e.g.:
+#   MOBILE_VISUAL_FLOW=SignedInScreensPopulatedVisual \
+#   MOBILE_VISUAL_REPORT=docs/khala-code/receipts/2026-07-07-qam-4-ios-populated-screens.json \
+#   bash scripts/mobile-visual-tier-run.sh
+#
 # The onboarding first-run screen lives only on an empty thread list, so it is
 # captured by pointing MOBILE_VISUAL_FLOW at OnboardingFirstRunVisual against a
 # Release build baked with a public-safe ZERO-THREAD account instead
@@ -52,7 +61,7 @@ export JAVA_HOME
 export PATH="${JAVA_HOME}/bin:${HOME}/.maestro/bin:${PATH}"
 export MAESTRO_CLI_NO_ANALYTICS=1
 
-if [[ "${MOBILE_VISUAL_RESET:-1}" == "1" && "$FLOW_NAME" == "SignedInScreensVisual" ]]; then
+if [[ "${MOBILE_VISUAL_RESET:-1}" == "1" && ( "$FLOW_NAME" == "SignedInScreensVisual" || "$FLOW_NAME" == "SignedInScreensPopulatedVisual" ) ]]; then
   echo "==> resetting seeded thread turn state"
   python3 - "$BASE_URL" "$KHALA_MAESTRO_TOKEN" "$KHALA_MAESTRO_THREAD_ID" <<'PY'
 import json, sys, time, urllib.request, datetime

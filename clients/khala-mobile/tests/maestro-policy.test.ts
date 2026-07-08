@@ -38,6 +38,7 @@ describe("Khala mobile Maestro flows", () => {
       read(".maestro/flows/LaunchGitHubSignInInteraction.yaml"),
       read(".maestro/flows/SignedInThreadSmoke.yaml"),
       read(".maestro/flows/SignedInScreensVisual.yaml"),
+      read(".maestro/flows/SignedInScreensPopulatedVisual.yaml"),
       read(".maestro/flows/OnboardingFirstRunVisual.yaml"),
     ])
     const allFlowText = files.join("\n")
@@ -45,6 +46,49 @@ describe("Khala mobile Maestro flows", () => {
     expect(allFlowText).not.toMatch(/oa_agent_[A-Za-z0-9_-]{8,}/)
     expect(allFlowText).not.toMatch(/Bearer\s+[A-Za-z0-9._-]+/)
     expect(allFlowText).not.toContain("eas ")
+  })
+
+  // Oracle for the QAM-4 (#8539) POPULATED-happy-path follow-up: the two screens
+  // whose SignedInScreensVisual baselines can only render the honest DEGRADED
+  // state (Credit history + repo picker read owner-scoped mobile REST routes that
+  // require a real mobile OpenAuth USER session — never the seeded agent token —
+  // per INVARIANTS.md) get a dedicated populated flow whose oracles are
+  // FAIL-CLOSED: they assert the real-data markers ARE visible AND the degraded
+  // "unavailable" empty states are NOT, so the flow can never silently pass on a
+  // degraded (agent-token) build. This is a file-shape oracle (the captured
+  // populated baselines themselves are gated on a one-time owner-provided real
+  // session — see docs/khala-code/receipts/2026-07-07-qam-4-populated-happy-path.md).
+  test("define populated signed-in visual flow with fail-closed populated oracles", async () => {
+    const [populated, buildScript, runner] = await Promise.all([
+      read(".maestro/flows/SignedInScreensPopulatedVisual.yaml"),
+      read("scripts/build-populated-ios.sh"),
+      read("scripts/mobile-visual-tier-run.sh"),
+    ])
+
+    // Reaches the same two screens and captures POPULATED-keyed checkpoints.
+    expect(populated).toContain("takeScreenshot: khala.mobile.screen.credits-history.populated.iphone-17-pro.dark")
+    expect(populated).toContain("takeScreenshot: khala.mobile.screen.repo-picker.populated.iphone-17-pro.dark")
+
+    // Fail-closed oracle: real data asserted present, degraded empty states
+    // asserted absent, and NO agent-token manual-sign-in fallback (which would
+    // only ever reach the degraded state).
+    expect(populated).toContain('assertNotVisible: "History unavailable"')
+    expect(populated).toContain('assertNotVisible: "Repositories unavailable"')
+    expect(populated).toContain('text: ".*\\\\$[0-9].*"')
+    expect(populated).toContain('text: "public|private"')
+    expect(populated).not.toContain("${KHALA_MAESTRO_TOKEN}")
+
+    // The populated build script bakes a REAL session and refuses an agent
+    // token via a live credits-balance 200 guard before building anything.
+    expect(buildScript).toContain("khala-mobile-session.env")
+    expect(buildScript).toContain("/api/mobile/credits/balance")
+    expect(buildScript).not.toContain("eas ")
+    expect(buildScript).not.toMatch(/oa_agent_[A-Za-z0-9_-]{8,}/)
+
+    // The runner resets the seeded thread for the populated flow too and still
+    // blesses/verifies through the owned engine, never hosted CI.
+    expect(runner).toContain("SignedInScreensPopulatedVisual")
+    expect(runner).toContain("bless-ios-mobile-visual-baselines.ts")
   })
 
   // Oracle for the QAM-4 (#8539) iOS signed-in screen visual sweep: the flows
