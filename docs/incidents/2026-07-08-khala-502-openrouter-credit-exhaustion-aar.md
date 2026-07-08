@@ -75,16 +75,77 @@ the package — verify with the cloudrun bundle build, not just typecheck.
   OpenRouter lane from the prod plan / dropping the prod
   `OPENROUTER_API_KEY` like staging) is an owner money/posture decision.
   Recorded in `NEEDS_OWNER.md`.
-- **Separate ongoing fault:** `openagents-monolith` logs a continuous flood of
+- **Separate fault — FIXED (see "Connection-pool fix" below):**
+  `openagents-monolith` logged a continuous flood of
   `Exceeded maximum of 100 connections per instance
   "openagentsgemini:us-central1:khala-sync-pg"` (Cloud SQL connector
-  per-instance cap) since at least 2026-07-07T15:32Z, with intermittent
-  500/503s on DB-heavy routes (pylon heartbeat, forum, khala-sync
-  runtime-intents). The Postgres D1 adapter
-  (`postgres-d1-adapter.ts` / `khala-sync-domain-writes-database.ts`) opens a
-  NEW `postgres.js` client (max:1) per statement; under `containerConcurrency:
-  80` that bursts past the 100-conn connector cap. Needs a shared pool or a
-  per-instance connection budget — separate lane, filed as follow-up.
+  per-instance cap) since at least 2026-07-07T15:32Z (correlates with the
+  GCP/Cloud SQL migration cutover, epic #8515), with intermittent 500/503s on
+  DB-heavy routes (pylon heartbeat, forum, khala-sync runtime-intents). Every
+  Khala Sync Postgres seam (the Postgres D1 adapter path via
+  `khala-sync-domain-writes-database.ts` /
+  `khala-code-product-state-store.ts`, plus the raw sync-engine routes, forum
+  serving, auth-KV, and the durable inference stream) opened a NEW
+  `postgres.js` client (`max: 1`) per statement and `end()`ed it; under
+  `--concurrency 80` × up-to-4 instances that bursts past the 100-conn
+  per-instance connector cap. Now converted to a shared, memoized connection
+  pool — see below.
+
+## Connection-pool fix (2026-07-08)
+
+Root cause confirmed by reading the code (not just the diagnosis above): all 10
+`postgres.js` construction sites in `apps/openagents.com/workers/api/src`
+followed the same `postgres(connectionString, { max: 1 })`-per-acquire +
+`end()`-after-each-op pattern. That discipline is correct under Cloudflare
+Workers + Hyperdrive (isolate-per-request; Hyperdrive pools upstream) but is
+pathological on the long-lived Cloud Run Bun process: one raw Cloud SQL
+connection per statement.
+
+Fix: a new shared helper `khala-sync-postgres-pool.ts`
+(`acquireSharedPostgresClient`) that, on the server runtime, constructs ONE
+pool-backed `postgres.js` client per `(connectionString, variant)` at first use
+and reuses it across every request and statement; the returned `end()` is a
+no-op so callers' existing per-op teardown never tears the shared pool down.
+Idle connections are released by `idle_timeout: 20`. On Cloudflare Workers
+(auto-detected via `navigator.userAgent`) the legacy fresh-`max:1`-client +
+real-teardown path is preserved unchanged. `variant` keys the cache so the D1
+adapter's int8→Number `types` parser never shares a connection with the
+raw-string sync-engine client. Pool size is `KHALA_SYNC_PG_POOL_MAX`
+(default 10); with ≤4 active variants against the single prod DSN that is
+≤40 conns/instance, comfortably under the 100 cap, and ≤160 across 4 instances,
+well under the db-custom-8-53248 instance's `max_connections`.
+
+All 10 sites now delegate to the helper: `khala-sync-push-routes.ts`,
+`khala-sync-log-routes.ts`, `khala-sync-cvr-routes.ts`,
+`khala-sync-scope-auth.ts`, `khala-sync-bootstrap-routes.ts`,
+`khala-sync-db-smoke-routes.ts`, `khala-code-product-state-store.ts`,
+`khala-sync-domain-writes-database.ts`, `forum/forum-postgres-serving.ts`,
+`inference/durable-inference-stream-backend.ts` (auth-KV and the money/billing
+paths inherit the fix through `defaultMakeKhalaSyncSqlClient`).
+
+Tests: `khala-sync-postgres-pool.test.ts` pins reuse (one client per
+`(dsn, variant)`), the no-op `end()`, `max` injection, variant/DSN isolation,
+and the Workers fresh-client fallback. `typecheck:cloudrun` clean; all 10
+affected suites + the adapter contract test green (230 tests).
+
+Fix commit: `1f1d93d433` on `main`.
+
+Deploy (2026-07-08 ~23:2x–23:28Z): staging revision
+`openagents-monolith-staging-00024-5tz` (healthz 200; 100 concurrent DB-backed
+requests all 200; zero connection errors), then production revision
+`openagents-monolith-00045-87l` serving 100%.
+
+Verification under live prod traffic: `khala-tokens-served`, `product-promises`,
+and repeated 60–80-concurrent bursts all 200; healthz green. The
+`Exceeded maximum of 100 connections per instance` flood STOPPED at the
+revision cut — the last occurrence was 2026-07-08T23:27:52Z on the draining old
+revision `00044-hmj`; the new revision `00045-87l` logged ZERO connection
+errors across the following minutes of sustained traffic.
+
+Pool sizing knob: `KHALA_SYNC_PG_POOL_MAX` (default 10). Raise it (redeploy) if
+a future load profile needs more concurrent connections per variant — keep
+`variants × poolMax × maxInstances` under both the 100-conn/instance connector
+cap and `khala-sync-pg`'s `max_connections`.
 
 ## Timeline (UTC)
 
