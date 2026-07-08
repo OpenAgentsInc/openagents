@@ -1,11 +1,16 @@
 # Proposal: fold Pylon into Khala Code as the primary surface
 
 Date: 2026-07-08
-Status: **proposal for owner review** (direction requested by the owner:
-"previous Pylon ideas folded into Khala Code as primary surface"). No
-implementation is authorized by this document alone; the accepted parts
-should be filed as lanes under MASTER_ROADMAP and the EN/PRUNE programs
-already in flight. Flips no promise state, changes no runtime authority.
+Status: **ACCEPTED (owner, 2026-07-08).** Gate resolutions: (1)
+daemon-cockpit shape (§3 rec C) — accepted; (2) TUI retirement —
+accepted, gated on cockpit parity; (3) naming — **"Pylon" stays** (npm
+continuity, no rebrand); (4) earning rails — **the Spark wallet is
+preserved as a live rail** (owner: "so we can do cool shit with that");
+the non-Spark earning/labor rails go to #8577's Wave-4 ask-first list.
+Execution lanes filed: **PY-1 #8578** (pylon-core extraction + daemon +
+typed RPC), **PY-2 #8579** (desktop cockpit parity, rides EN-5 #8574),
+**PY-3 #8580** (TUI retirement, gated). Recorded in MASTER_ROADMAP
+rev 6.3. Original proposal text below, unchanged.
 
 ## 1. The question
 

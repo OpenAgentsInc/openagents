@@ -1,12 +1,36 @@
 # MASTER ROADMAP — Khala Code MVP (Tested, Submitted) → Sarah → Codex → AI Employees → the Suite
 
-Date: 2026-07-08 (rev 6.2 — status refresh on rev 6's full-conversion mandate)
+Date: 2026-07-08 (rev 6.3 — Pylon folds into Khala Code as the primary surface)
 Status: **the single consolidated execution roadmap.** This document owns
 top-level sequencing across everything designed in the 2026-07-07 strategy
 set and its predecessors. The source docs remain authoritative for their
 *content* (specs, evidence, arguments); when sequencing here and sequencing
 there disagree, **this document wins**, and new issues are filed against the
 phase lanes named here.
+
+**Rev 6.3 changes (owner decision, 2026-07-08 night — the Pylon fold):**
+the Pylon-into-Khala-Code proposal
+(`2026-07-08-pylon-into-khala-code-proposal.md`) is **ACCEPTED**:
+**Khala Code desktop is the primary human surface for everything Pylon
+does**, on the daemon-cockpit model — typed `pylon-core` engine packages
+(custody, executor, presence, wallet) behind a typed RPC contract; a
+desktop-optional engine daemon carries 24/7 standing capacity; the
+desktop's stdout-subprocess seam is deleted; one MCP surface (Khala
+Code's). Gate resolutions: the name stays **Pylon** (npm
+`@openagentsinc/pylon` continuity, no rebrand); the **OpenTUI surface is
+retired**, gated on desktop cockpit-parity receipts; **the Spark wallet
+is preserved as a live rail by owner mandate** (never a retirement
+candidate — it stays in the engine daemon, surfaced read-only in the
+desktop); the non-Spark earning/labor rails go to `#8577`'s Wave-4
+ask-first list. Lanes filed: **PY-1 `#8578`** (pylon-core extraction +
+daemon + typed RPC; runs after `#8577` waves 1–2), **PY-2 `#8579`**
+(desktop cockpit parity — Go online toggle, accounts/runs/receipts —
+authored Effect Native, rides EN-5 `#8574`), **PY-3 `#8580`** (TUI
+retirement, gated on PY-2). Boundaries unchanged: org-cloud CX lanes,
+server dispatch gates, token accounting, payments/credits, and the
+`khala fleet connect` CLI front door are untouched; owner-local capacity
+and org-cloud remain two additive rails meeting only at the shared
+custody registry.
 
 **Rev 6.2 changes (2026-07-08 evening — status refresh, no policy
 change):** the status snapshot and review addendum are reconciled
@@ -228,7 +252,14 @@ mandate:
   no new substrate).
 - **Retired-program removal (#8577, gate lifted):** execute the
   archive-to-backroom physical removal per the PRUNE brief — heavy LOC
-  reduction with archive-before-delete, production kept green.
+  reduction with archive-before-delete, production kept green. Hard
+  guardrail: the Spark wallet modules are live-rail code, never removal
+  candidates (rev 6.3).
+- **Pylon fold (rev 6.3, accepted):** after #8577 waves 1–2 shrink
+  `apps/pylon`, run PY-1 #8578 (pylon-core extraction, daemon, typed
+  RPC, one MCP surface), then PY-2 #8579 (desktop cockpit parity as
+  Effect Native surfaces, riding EN-5 #8574), then PY-3 #8580 (TUI
+  retirement, gated on PY-2 receipts).
 - **In parallel, non-EN:** the sales push (OB-1..6; OB-2 ingest is
   landed, continue to the wave runner + OB-3 reports) and P2 Codex
   lanes (CX-2..) continue unchanged — they are mostly backend; their UI
@@ -974,6 +1005,7 @@ Standing gates (carried; still open):
 | Mobile testing system (P0) | `../khala-code/2026-07-07-mobile-testing-audit-and-plan.md` |
 | **Sarah (P1, SR-*)** | `2026-07-07-sarah-sales-agent-spec.md` |
 | **Sarah implementation repo** | private `OpenAgentsInc/sarah` (Vercel + AI SDK realtime → sarah.openagents.com; see its README) |
+| **Pylon fold (PY-1..3, rev 6.3)** | `2026-07-08-pylon-into-khala-code-proposal.md` (ACCEPTED — daemon-cockpit model; lanes #8578/#8579/#8580; Spark wallet preserved by owner mandate) |
 | **Effect Native substrate (§EN, EN-*)** | `../effect-native/README.md` + the six 2026-07-08 docs (framing doc first; UI-layer analysis holds EN-0..EN-9); public framework repo `OpenAgentsInc/effect-native` (ROADMAP phases 0–6 = the substrate build order; issues: #1–#8 Phase 0/1 closed, #9–#19 Phase 2/3, #20–#43 the Phase 4 desktop/canvas epic). Internal lanes: epic #8566, EN-1 #8567, EN-2 #8572, EN-3 #8568, EN-4 #8573, EN-5 #8574, EN-6 #8575, deploys #8570/#8571 |
 | **Landing site kit (P1 Track A, WEB-1 #8565)** | `projects/repos/launch-ui` (MIT reference; **design/tokens reference per §EN** — theme ports into `@effect-native/tokens`; the vendored React replica at `/demo`/`/new` is the visual baseline, not the forward path) |
 | **Outbound engine (P1 Track C)** | `2026-07-03-apollo-outbound-sales-plan.md` (audit-first motion, segments); SELL epic #8261 / LG-1..9 (closed substrate); blitz compliance-guardrails (binding) |
