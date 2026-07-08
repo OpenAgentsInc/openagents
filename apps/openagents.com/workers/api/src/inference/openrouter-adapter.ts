@@ -110,9 +110,22 @@ const requestBody = (
 
 const classifyStatus = (
   status: number,
+  usesCallerProviderKey: boolean,
 ): Readonly<{ kind: string; retryable: boolean }> => {
   if (status === 429) {
     return { kind: 'rate_limited', retryable: true }
+  }
+  if (status === 402 && !usesCallerProviderKey) {
+    // The PLATFORM OpenRouter key is out of credits. That makes the LANE
+    // unviable, not the request — mark it retryable so dispatchWithOverflow
+    // moves on to the next lane in the plan (Vertex Gemini / Fireworks)
+    // instead of failing every Khala completion with a 502 provider_error.
+    // (2026-07-08 incident: OpenRouter credit exhaustion took the whole
+    // gateway down because 402 was classified non-retryable and OpenRouter
+    // leads the Khala plan.) A BYOK caller's own 402 still surfaces — only
+    // the caller can top up their key, and overflowing would silently move
+    // their traffic onto platform-paid lanes.
+    return { kind: 'quota_exhausted', retryable: true }
   }
   if (status === 503) {
     return { kind: 'service_overloaded', retryable: true }
@@ -121,6 +134,23 @@ const classifyStatus = (
     return { kind: 'upstream_error', retryable: true }
   }
   return { kind: 'request_rejected', retryable: false }
+}
+
+const usesCallerProviderKey = (request: InferenceRequest): boolean =>
+  request.callerProviderKey?.provider === 'openrouter'
+
+const rejectionReason = (
+  status: number,
+  classified: Readonly<{ retryable: boolean }>,
+  surface: 'request' | 'stream request',
+): string => {
+  if (status === 429) {
+    return 'retryable: openrouter rate limited (429)'
+  }
+  if (status === 402 && classified.retryable) {
+    return `retryable: openrouter platform credits exhausted (402) — overflowing ${surface} to next lane`
+  }
+  return `openrouter rejected ${surface} (${status})`
 }
 
 const adapterError = (
@@ -295,15 +325,15 @@ const runCompletion = (
       )
     }
     if (!response.ok) {
-      const classified = classifyStatus(response.status)
+      const classified = classifyStatus(
+        response.status,
+        usesCallerProviderKey(request),
+      )
       return yield* Effect.fail(
         adapterError(config, {
           httpStatus: response.status,
           kind: classified.kind,
-          reason:
-            response.status === 429
-              ? 'retryable: openrouter rate limited (429)'
-              : `openrouter rejected request (${response.status})`,
+          reason: rejectionReason(response.status, classified, 'request'),
           retryable: classified.retryable,
         }),
       )
@@ -509,15 +539,19 @@ export const makeOpenRouterAdapter = (
         stream: true,
       })
       if (!response.ok) {
-        const classified = classifyStatus(response.status)
+        const classified = classifyStatus(
+          response.status,
+          usesCallerProviderKey(request),
+        )
         return yield* Effect.fail(
           adapterError(config, {
             httpStatus: response.status,
             kind: classified.kind,
-            reason:
-              response.status === 429
-                ? 'retryable: openrouter rate limited (429)'
-                : `openrouter rejected stream request (${response.status})`,
+            reason: rejectionReason(
+              response.status,
+              classified,
+              'stream request',
+            ),
             retryable: classified.retryable,
           }),
         )

@@ -415,6 +415,7 @@
         "@openagentsinc/reactor-contracts": "workspace:*",
         "@openagentsinc/sync-schema": "workspace:*",
         "@openagentsinc/sync-worker": "workspace:*",
+        "@openagentsinc/tassadar-executor": "workspace:*",
         "@openauthjs/openauth": "^0.4.3",
         "@orpc/client": "1.14.5",
         "arctic": "^2.2.2",
@@ -1064,6 +1065,10 @@
         "bun-types": "^1.0.0",
         "typescript": "catalog:",
       },
+    },
+    "packages/tassadar-executor": {
+      "name": "@openagentsinc/tassadar-executor",
+      "version": "0.1.0",
     },
     "packages/ui": {
       "name": "@openagentsinc/ui",
@@ -1853,6 +1858,8 @@
     "@openagentsinc/sync-schema": ["@openagentsinc/sync-schema@workspace:apps/openagents.com/packages/sync-schema"],
 
     "@openagentsinc/sync-worker": ["@openagentsinc/sync-worker@workspace:apps/openagents.com/packages/sync-worker"],
+
+    "@openagentsinc/tassadar-executor": ["@openagentsinc/tassadar-executor@workspace:packages/tassadar-executor"],
 
     "@openagentsinc/three-effect": ["@openagentsinc/three-effect@github:OpenAgentsInc/three-effect#7c6df05", { "dependencies": { "@types/three": "0.184.0", "effect": "4.0.0-beta.70", "foldkit": "0.102.1", "three": "0.184.0" } }, "OpenAgentsInc-three-effect-7c6df05", "sha512-6J9c3WOs36Mzsz/2oJlME+guOQvuR/GOb/7j7JU47ghK6lZH+J9A+3lpwxoA/E8Hmn4eA/XOu5lJbrfNLAuQUg=="],
 

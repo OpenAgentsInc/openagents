@@ -212,4 +212,76 @@ describe('OpenRouter Khala fallback adapter', () => {
     expect(result._tag).toBe('Success')
     expect(capturedAuthorization).toBe('Bearer sk-or-caller-owned')
   })
+
+  // 2026-07-08 incident: OpenRouter platform credits ran out, every request on
+  // the lane failed 402, and because 402 was classified non-retryable the
+  // dispatch chain never overflowed to Vertex Gemini / Fireworks — the whole
+  // gateway surfaced 502. A platform-key 402 must be a retryable LANE failure.
+  it('classifies a platform-key 402 as retryable so dispatch overflows the lane', async () => {
+    const fetchImpl: OpenRouterFetch = async () =>
+      jsonResponse({ error: { code: 402, message: 'Insufficient credits' } }, 402)
+    const adapter = makeOpenRouterAdapter(adapterConfig(fetchImpl))
+
+    const result = await runResult(adapter.complete(request()))
+
+    expect(result._tag).toBe('Failure')
+    if (result._tag !== 'Failure') return
+    const error = result.failure as {
+      httpStatus?: number
+      kind?: string
+      retryable?: boolean
+    }
+    expect(error.httpStatus).toBe(402)
+    expect(error.kind).toBe('quota_exhausted')
+    expect(error.retryable).toBe(true)
+  })
+
+  it('classifies a platform-key 402 on the stream path as retryable', async () => {
+    const fetchImpl: OpenRouterFetch = async () =>
+      jsonResponse({ error: { code: 402, message: 'Insufficient credits' } }, 402)
+    const adapter = makeOpenRouterAdapter(adapterConfig(fetchImpl))
+
+    const result = await runResult(
+      adapter.streamSse(request({ stream: true })),
+    )
+
+    expect(result._tag).toBe('Failure')
+    if (result._tag !== 'Failure') return
+    const error = result.failure as {
+      httpStatus?: number
+      kind?: string
+      retryable?: boolean
+    }
+    expect(error.httpStatus).toBe(402)
+    expect(error.kind).toBe('quota_exhausted')
+    expect(error.retryable).toBe(true)
+  })
+
+  it('keeps a BYOK caller-key 402 non-retryable (must surface to the caller)', async () => {
+    const fetchImpl: OpenRouterFetch = async () =>
+      jsonResponse({ error: { code: 402, message: 'Insufficient credits' } }, 402)
+    const adapter = makeOpenRouterAdapter(adapterConfig(fetchImpl))
+
+    const result = await runResult(
+      adapter.complete(
+        request({
+          callerProviderKey: {
+            apiKey: Redacted.make('sk-or-caller-owned'),
+            provider: 'openrouter',
+          },
+        }),
+      ),
+    )
+
+    expect(result._tag).toBe('Failure')
+    if (result._tag !== 'Failure') return
+    const error = result.failure as {
+      httpStatus?: number
+      kind?: string
+      retryable?: boolean
+    }
+    expect(error.httpStatus).toBe(402)
+    expect(error.kind).toBe('request_rejected')
+    expect(error.retryable).toBe(false)
+  })
 })

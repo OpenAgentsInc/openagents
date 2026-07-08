@@ -60,6 +60,7 @@
     "@openagentsinc/reactor-contracts": "workspace:*",
     "@openagentsinc/sync-schema": "workspace:*",
     "@openagentsinc/sync-worker": "workspace:*",
+    "@openagentsinc/tassadar-executor": "workspace:*",
     "@openauthjs/openauth": "^0.4.3",
     "@orpc/client": "1.14.5",
     "arctic": "^2.2.2",
