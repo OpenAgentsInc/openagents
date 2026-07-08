@@ -28,6 +28,10 @@ describe("contract khala_mobile.thread_list.rn_component_mount_coverage.v1 — T
     expect(source).toContain("Not signed in")
     expect(source).toContain("Sync unavailable")
     expect(source).toContain("Threads unavailable")
+    expect(source).toContain("ThreadListNewAction")
+    expect(source).toContain('accessibilityLabel="New thread"')
+    expect(source).toContain("runtime.createThread")
+    expect(source).toContain('navigation.navigate("ThreadMessages"')
     expect(source).toContain("OnboardingFlow")
     expect(source).toContain("FlatList")
     expect(mobileThreadFixtures.map(thread => thread.title)).toEqual([

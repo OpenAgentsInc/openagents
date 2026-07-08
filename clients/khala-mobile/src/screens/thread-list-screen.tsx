@@ -5,7 +5,15 @@ import {
   type ChatThreadEntity,
 } from "@openagentsinc/khala-sync"
 import type { DrawerNavigationProp } from "@react-navigation/drawer"
-import { ActivityIndicator, FlatList, View, type TextStyle, type ViewStyle } from "react-native"
+import { useState } from "react"
+import {
+  ActivityIndicator,
+  FlatList,
+  TouchableOpacity,
+  View,
+  type TextStyle,
+  type ViewStyle,
+} from "react-native"
 import Animated, { FadeIn } from "react-native-reanimated"
 
 import { useKhalaAuth } from "../auth/khala-auth-context"
@@ -15,7 +23,11 @@ import type { AppDrawerParamList, AppStackScreenProps } from "../navigators/navi
 import { OnboardingFlow } from "./onboarding-flow"
 import { formatRelativeTime } from "../sync/relative-time-core"
 import { sortByKeyDesc } from "../sync/khala-sync-entities-core"
-import { useKhalaMobileSyncPrimitives } from "../sync/khala-mobile-sync-runtime-context"
+import {
+  useKhalaMobileSyncPrimitives,
+  useKhalaMobileSyncRuntime,
+} from "../sync/khala-mobile-sync-runtime-context"
+import { makeSafeRef } from "../sync/khala-sync-push-core"
 import { useKhalaSyncScopeEntities } from "../sync/use-khala-sync-scope-entities"
 import { MOTION_MEDIUM, MOTION_STAGGER_MS } from "../theme/motion"
 
@@ -174,9 +186,45 @@ const renderThreadListFooter = () => <ThreadListFooter />
 
 const renderThreadListEmpty = () => <ThreadListEmpty />
 
+type ThreadListNewActionProps = Readonly<{
+  disabled: boolean
+  onPress: () => void
+}>
+
+const ThreadListNewAction = ({ disabled, onPress }: ThreadListNewActionProps) => {
+  const { themed } = useAppTheme()
+  return (
+    <TouchableOpacity
+      accessibilityLabel="New thread"
+      accessibilityRole="button"
+      accessibilityState={{ disabled }}
+      activeOpacity={0.8}
+      disabled={disabled}
+      hitSlop={10}
+      onPress={onPress}
+      style={themed([$newThreadAction, disabled ? $newThreadActionDisabled : $newThreadActionEnabled])}
+    >
+      <Text
+        size="sm"
+        style={themed(disabled ? $newThreadActionTextDisabled : $newThreadActionTextEnabled)}
+        text="✎"
+      />
+      <Text
+        size="xs"
+        weight="medium"
+        style={themed(disabled ? $newThreadActionTextDisabled : $newThreadActionTextEnabled)}
+        text="NEW"
+      />
+    </TouchableOpacity>
+  )
+}
+
 export const ThreadListScreen = ({ navigation }: ThreadListScreenProps) => {
   const { demoMode, ownerUserId } = useKhalaAuth()
   const { themed } = useAppTheme()
+  const syncRuntime = useKhalaMobileSyncRuntime()
+  const [creatingThread, setCreatingThread] = useState(false)
+  const [newThreadError, setNewThreadError] = useState<string | null>(null)
   // Local-first, delta-synced: same fix as the thread message view. Reads
   // whatever thread rows are already on-device immediately, then catches up
   // via the shared session's durable cursor.
@@ -194,15 +242,47 @@ export const ThreadListScreen = ({ navigation }: ThreadListScreenProps) => {
   const now = Date.now()
   const firstThread = threads[0]
   const latestRecency = firstThread === undefined ? undefined : recencyOf(firstThread)
+  const newThreadDisabled = syncRuntime.status !== "ready" || creatingThread
+
+  const startNewThread = async () => {
+    if (newThreadDisabled || syncRuntime.status !== "ready") return
+    setCreatingThread(true)
+    setNewThreadError(null)
+    try {
+      const threadId = makeSafeRef("thread")
+      const title = "New chat"
+      const created = await syncRuntime.runtime.createThread({ threadId, title })
+      if (!created.ok) {
+        throw new Error(created.error ?? "Could not create a new thread.")
+      }
+      navigation.navigate("ThreadMessages", { threadId, title })
+    } catch (error) {
+      setNewThreadError(error instanceof Error ? error.message : String(error))
+    } finally {
+      setCreatingThread(false)
+    }
+  }
 
   return (
     <Screen preset="fixed" contentContainerStyle={themed($fill)}>
-      <Header title="Khala" leftIcon="☰" onLeftPress={() => navigation.getParent<DrawerNavigationProp<AppDrawerParamList>>()?.openDrawer()} />
+      <Header
+        title="Khala"
+        leftIcon="☰"
+        onLeftPress={() => navigation.getParent<DrawerNavigationProp<AppDrawerParamList>>()?.openDrawer()}
+        RightActionComponent={
+          <ThreadListNewAction disabled={newThreadDisabled} onPress={() => void startNewThread()} />
+        }
+      />
       {demoMode ? (
         <View style={themed($demoBanner)}>
           <Text size="xxs" style={themed($demoBannerText)} text="Demo mode — example data" />
         </View>
       ) : null}
+      {newThreadError === null ? null : (
+        <View style={themed($newThreadError)}>
+          <Text size="xs" style={themed($danger)} text={newThreadError} />
+        </View>
+      )}
       {syncRuntimeStatus === "missing_token" ? (
         <ThreadListNotice
           detail="Restart the app to sign in again."
@@ -324,6 +404,34 @@ const $demoBanner: ThemedStyle<ViewStyle> = ({ colors, spacing }) => ({
 })
 
 const $demoBannerText: ThemedStyle<TextStyle> = ({ colors }) => ({ color: colors.tint })
+
+const $newThreadAction: ThemedStyle<ViewStyle> = ({ spacing }) => ({
+  alignItems: "center",
+  flexDirection: "row",
+  gap: spacing.xxs,
+  height: "100%",
+  justifyContent: "center",
+  paddingHorizontal: spacing.md,
+})
+
+const $newThreadActionDisabled: ThemedStyle<ViewStyle> = () => ({ opacity: 0.45 })
+
+const $newThreadActionEnabled: ThemedStyle<ViewStyle> = () => ({ opacity: 1 })
+
+const $newThreadActionTextDisabled: ThemedStyle<TextStyle> = ({ colors }) => ({
+  color: colors.textDim,
+  letterSpacing: 0,
+})
+
+const $newThreadActionTextEnabled: ThemedStyle<TextStyle> = ({ colors }) => ({
+  color: colors.tint,
+  letterSpacing: 0,
+})
+
+const $newThreadError: ThemedStyle<ViewStyle> = ({ spacing }) => ({
+  paddingHorizontal: spacing.md,
+  paddingBottom: spacing.xs,
+})
 
 const $dim: ThemedStyle<TextStyle> = ({ colors }) => ({ color: colors.textDim })
 const $meta: ThemedStyle<TextStyle> = ({ colors }) => ({ color: colors.textDim, paddingTop: 2 })
