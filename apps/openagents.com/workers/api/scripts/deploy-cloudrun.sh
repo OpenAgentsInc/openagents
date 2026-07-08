@@ -185,6 +185,12 @@ if [[ "$WITH_SCHEDULER" == "--with-scheduler" ]]; then
   echo "==> Ensuring per-minute Cloud Scheduler cron ($SERVICE-cron)"
   CRON_TOKEN="$(gcloud secrets versions access latest --secret "openagents-monolith-cron-token-${ENV_SUFFIX}" --project "$PROJECT")"
   gcloud scheduler jobs delete "$SERVICE-cron" --project "$PROJECT" --location "$REGION" --quiet 2>/dev/null || true
+  # NOTE(#8564): `--format='value(name)'` is REQUIRED, not cosmetic. Without it
+  # `gcloud scheduler jobs create` prints the created job resource to stdout,
+  # including `httpTarget.headers.Authorization: "Bearer <CRON_TOKEN>"` — i.e.
+  # it would leak the live cron bearer into the deploy log / CI output / any
+  # captured task transcript. Narrowing the output to just the job name keeps
+  # the secret out of stdout. Do not remove.
   gcloud scheduler jobs create http "$SERVICE-cron" \
     --project "$PROJECT" \
     --location "$REGION" \
@@ -192,7 +198,8 @@ if [[ "$WITH_SCHEDULER" == "--with-scheduler" ]]; then
     --uri "${SERVICE_URL}/internal/cron" \
     --http-method POST \
     --headers "Authorization=Bearer ${CRON_TOKEN}" \
-    --attempt-deadline 300s
+    --attempt-deadline 300s \
+    --format='value(name)'
 fi
 
 echo "==> Smoke: /internal/healthz"
