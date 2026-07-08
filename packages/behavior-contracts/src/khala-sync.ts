@@ -252,7 +252,48 @@ export const khalaSyncContractRegistry: BehaviorContractRegistryDocument = {
       verification:
         "Enforced by the deterministic end-to-end guard apps/openagents.com/workers/api/src/khala-hosted-runtime-dispatch.e2e.test.ts (runs in the workers/api vitest sweep, `bun run --cwd apps/openagents.com test:api`), which drives runHostedRuntimeTurnDispatch through its injectable seams and asserts a real assistant reply is produced — fail-closed on an empty reply or an errored turn. It would have caught all three shipped regressions (client-group collision, double-encoded intent_json, inference-error orphan); each is a dedicated case that goes red when its fix is reverted. The live counterpart apps/openagents.com/workers/api/scripts/hosted-chat-e2e-smoke.ts does the real API-level send->poll-for-reply against a configurable base URL (gated on ~/work/.secrets/khala-maestro.env creds; opt-in nightly step in docs/qa/khala-code-nightly-matrix.md).",
     },
+    {
+      authorityBoundary:
+        "This contract binds the LIVE DELIVERY of a credit_balance projection change to an attached subscriber: a producer-written change reaches a live-hub subscriber's socket as a DeltaFrame carrying the new decoded balance. It does not bind the authoritative money/ledger write (the D1 agent_balances ledger stays authoritative), the msat→USD-cents conversion rate, WebSocket transport auth (owned by the bearer-connect seam contract above), delivery latency, or availability. The projection is best-effort per its own module contract; this guard proves the delivery path is wired end to end, not that a lost projection reverses a charge.",
+      blockerRefs: [],
+      contractId: "khala_sync.credit_balance.change_delivers_live.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "https://github.com/OpenAgentsInc/openagents/issues/8554",
+        "https://github.com/OpenAgentsInc/openagents/issues/8555",
+        "https://github.com/OpenAgentsInc/openagents/issues/8556",
+        "docs/khala-sync/SPEC.md",
+        "packages/khala-sync/src/credit-balance.ts",
+        "packages/khala-sync-server/src/user-credit-balance-projection.ts",
+        "apps/khala-live-hub/src/scope-hub.ts",
+        "apps/khala-live-hub/src/server.ts",
+        "clients/khala-mobile/src/components/drawer-credits-balance.tsx",
+        "apps/khala-live-hub/src/credit-balance-live-delivery.test.ts",
+      ],
+      oracles: [
+        {
+          description:
+            "End-to-end over real local Postgres + the real LiveHub server: seed a user's credit_balance projection (1000c) via repairUserCreditBalance, drain it to the hub so a subscriber attaches at the LIVE edge, apply a -5c delta through applyUserCreditBalanceDelta (a real changelog version bump), run the real capture pass + hub /append, and assert a DeltaFrame is DELIVERED to the attached subscriber whose decoded credit_balance entity reads 995c at a higher version. A companion case documents the sub-cent behavior: a delta that rounds to 0c is refused with no version bump and no frame.",
+          id: "khala_sync.credit_balance.live_delivery_e2e",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/khala-live-hub/src/credit-balance-live-delivery.test.ts",
+        },
+      ],
+      productArea: "khala sync credit balance projection",
+      source: {
+        channel: "session",
+        statedBy: "owner",
+        statedOn: "2026-07-08",
+      },
+      state: "enforced",
+      statement:
+        "A credit_balance change is delivered live over Khala Sync: when the balance projection changes, the new balance is fanned out to an already-subscribed client on the user's personal scope as a DeltaFrame — not merely written to the changelog.",
+      surface: "khala-live-hub",
+      verification:
+        "bun test src/credit-balance-live-delivery.test.ts inside apps/khala-live-hub drives the real producer → real Postgres changelog → real capture pass → real LiveHub /append → real ScopeHub fan-out to a structural subscriber attached through the same ScopeHub.attachSocket call server.ts uses for a live WebSocket. It runs in that app's normal bun test sweep before pushes to main and skips only on machines without local Postgres binaries (initdb/pg_ctl).",
+    },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-07.1",
+  version: "2026-07-08.1",
 }
