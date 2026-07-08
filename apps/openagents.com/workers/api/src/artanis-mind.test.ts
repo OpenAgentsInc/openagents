@@ -33,6 +33,9 @@ describe('artanis cloud mind', () => {
     const result = await artanisMindComplete({
       apiKey: 'k',
       fetchImpl,
+      // A cf-aig token opts back into the Cloudflare AI Gateway path (it is
+      // skipped when absent, since the gateway 401s without it post-CF-exit).
+      gatewayToken: 'gw',
       prompt: 'p',
       system: 's',
     })
@@ -121,6 +124,9 @@ describe('artanis cloud mind', () => {
       apiKey: 'k',
       fetchImpl,
       gatewayId: 'only-one',
+      // With a cf-aig token the gateway is attempted (then falls through to the
+      // direct path); both fail here, giving two attempt records.
+      gatewayToken: 'gw',
       prompt: 'p',
       system: 's',
     })

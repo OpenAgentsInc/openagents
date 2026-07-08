@@ -244,7 +244,20 @@ export const readTurnStartBodyRef = async (
     ORDER BY seq ASC
     LIMIT 1
   `
-  const intentJson = rows[0]?.intent_json
+  // `intent_json` may come back as a real object OR as a JSON-encoded STRING
+  // (some writers/adapters store the control intent double-encoded, i.e. a
+  // JSON string inside the jsonb column: `"{\"bodyRef\":...}"`). A string form
+  // would previously fall through the `typeof !== 'object'` guard and orphan
+  // EVERY hosted turn as `prompt_unresolved` (no assistant reply ever lands).
+  // Parse the string form so both encodings resolve the bodyRef.
+  let intentJson = rows[0]?.intent_json
+  if (typeof intentJson === 'string') {
+    try {
+      intentJson = JSON.parse(intentJson) as unknown
+    } catch {
+      return null
+    }
+  }
   if (intentJson === null || typeof intentJson !== 'object') return null
   const bodyRef = (intentJson as { bodyRef?: unknown }).bodyRef
   return typeof bodyRef === 'string' && bodyRef.length > 0 ? bodyRef : null
