@@ -873,6 +873,11 @@ import { khalaCodeProductStateDatabaseForEnv } from './khala-code-product-state-
 import { handleKhalaSyncConnect } from './khala-sync-connect-routes'
 import { handleKhalaSyncDbSmoke } from './khala-sync-db-smoke-routes'
 import {
+  KHALA_SYNC_CAPTURE_HEALTH_PATH,
+  handleKhalaSyncCaptureHealth,
+  runKhalaSyncCaptureStalenessProbe,
+} from './khala-sync-capture-health-routes'
+import {
   OA_QUEUE_DELIVER_PATH,
   handleOaQueueDeliver,
 } from './oa-queue-delivery-routes'
@@ -13205,6 +13210,20 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       }),
   },
   {
+    // Khala Sync capture liveness probe (#8556). Admin bearer only. Reads the
+    // capture checkpoints (max(updated_at) staleness + undelivered backlog)
+    // through the KHALA_SYNC_DB binding and returns a typed
+    // { status: 'healthy'|'stale', stalenessMs, versionsUndelivered, ... }
+    // snapshot. The same evaluation runs per-minute in scheduled() and pages
+    // via the khala_sync_capture_stale log-based alert on a real stall.
+    path: KHALA_SYNC_CAPTURE_HEALTH_PATH,
+    handler: (request, env) =>
+      handleKhalaSyncCaptureHealth(request, {
+        binding: env.KHALA_SYNC_DB,
+        requireOperator: () => requireAdminApiToken(request, env),
+      }),
+  },
+  {
     // Khala Sync public tokens-served reconcile/repair (KS-6.3, #8304;
     // SPEC §7 invariant 8). Admin bearer only. GET = read-only reconcile
     // (exact D1 SUM vs the scope.public.tokens-served projection); POST
@@ -16653,6 +16672,16 @@ export default {
     // silent, and every already-fail-soft entry here is unaffected.
     const scheduledTaskResults = await Promise.allSettled([
       sweepActiveAgentRunBilling(env, ctx),
+      // #8556: Khala Sync capture liveness probe. Every minute, read the
+      // capture checkpoints and, ONLY when a backlog exists AND checkpoints
+      // have stopped advancing past the threshold (stuck-but-running), emit
+      // the single structured `khala_sync_capture_stale` warning a log-based
+      // Cloud Monitoring alert pages on. Healthy/idle ticks are silent, and a
+      // probe/query failure is fail-soft (logged, never rejects the batch).
+      runKhalaSyncCaptureStalenessProbe({ binding: env.KHALA_SYNC_DB }).then(
+        () => undefined,
+        () => undefined,
+      ),
       sendPendingReviewReadyArtifactNotifications(env),
       sendPendingReviewReadySiteNotifications(env),
       // KS-6.3 (#8304): scheduled tokens-served projection reconcile

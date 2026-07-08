@@ -292,6 +292,87 @@ Recovery:
 - **One scope failing is isolated**: other scopes keep advancing; fix the
   failing scope without stopping the daemon.
 
+## Capture liveness alerting (#8556)
+
+Context: capture used to run as an unsupervised daemon. A silent stall killed
+all realtime for ~32h with a 20k-version backlog and **nothing paged**. #8554
+moved capture onto the always-on `khala-capture` Cloud Run service
+(`--min-instances 1 --max-instances 1 --no-cpu-throttling`), so a *crash* now
+auto-restarts. #8556 adds the monitoring layer for a *stuck-but-running* or
+degraded capture (process alive, checkpoints not advancing while a backlog
+exists) — the failure mode a crash-restart cannot catch.
+
+**The liveness signal** (checkpoints table is the truth). Capture advances
+`khala_sync_capture_checkpoints.updated_at` ONLY after the hub 2xx-acks a
+batch, so a real stall is BOTH of:
+
+- undelivered work exists: `SUM(scopes.last_version - checkpoint) > 0`, and
+- checkpoints are not advancing: `now() - max(updated_at) > 120s`.
+
+A quiet system (no writes → no backlog) is intentionally NOT an alert even
+though `updated_at` is old — there is nothing to push. A healthy busy system
+keeps `updated_at` fresh (seconds). Only "backlog present AND not draining"
+fires. The single bounded read the probe/route run:
+
+```sql
+SELECT
+  EXTRACT(EPOCH FROM now())::double precision                       AS db_now_epoch,
+  EXTRACT(EPOCH FROM max(c.updated_at))::double precision           AS max_updated_at_epoch,
+  COALESCE(SUM(GREATEST(s.last_version - COALESCE(c.pushed_through_version,0),0)),0)::bigint AS versions_undelivered,
+  COALESCE(SUM(CASE WHEN s.last_version > COALESCE(c.pushed_through_version,0) THEN 1 ELSE 0 END),0)::bigint AS scopes_behind,
+  COUNT(c.scope)::bigint                                            AS checkpoint_count
+FROM khala_sync_scopes s
+LEFT JOIN khala_sync_capture_checkpoints c USING (scope);
+```
+
+**Probe route (operators / uptime checks).**
+`GET /api/internal/khala-sync/capture-health` on the monolith (admin bearer)
+returns the typed snapshot
+`{ ok, status: "healthy"|"stale", stalenessMs, versionsUndelivered,
+scopesBehind, checkpointCount, thresholdMs }`. `ok` = the probe ran; `status`
+= the health verdict. Never leaks connection details. Source + typed
+threshold logic (`evaluateCaptureHealth`, unit-tested):
+`apps/openagents.com/workers/api/src/khala-sync-capture-health-routes.ts`.
+
+**Alerting path (pages the owner).** The same evaluation runs per-minute in
+the monolith `scheduled()` task table (Cloud Scheduler `openagents-monolith-cron`).
+On a `stale` verdict it emits ONE single-line structured log
+`jsonPayload.event="khala_sync_capture_stale"` (severity WARNING). GCP-native
+wiring (all in project `openagentsgemini`, no third-party SaaS):
+
+- log-based metric `khala_sync_capture_stale_count` — filter
+  `resource.type="cloud_run_revision" AND
+  resource.labels.service_name="openagents-monolith" AND
+  jsonPayload.event="khala_sync_capture_stale"`.
+- alert policy **"Khala Sync capture stalled (#8556)"** — fires when the
+  metric sums `> 0` over a rolling 5m window (`ALIGN_SUM`), auto-closes 30m
+  after it clears.
+- notification channel: email **chris@openagents.com** ("Khala Sync capture
+  alerts (owner email)"). The channel must be verified once (Console →
+  Monitoring → Alerting → Edit notification channels) or it will not deliver.
+
+Threshold override: the route/probe accept `thresholdMs`; default is
+`KHALA_SYNC_CAPTURE_HEALTH_DEFAULT_THRESHOLD_MS` (120000 = ~24 missed 5s poll
+cycles). Healthy/idle ticks emit nothing (no metric samples, no cost). A
+probe query failure is fail-soft: it emits
+`jsonPayload.event="khala_sync_capture_probe_error"` (so a broken probe is
+itself visible) and never rejects the shared cron batch.
+
+**Restart / auto-heal.** #8554's `min-instances=1` restarts a *crashed*
+capture automatically. For a *stuck-but-running* capture the alert is the
+signal; force a fresh revision to restart the process:
+
+```sh
+# roll a new khala-capture revision (fastest safe restart):
+CLOUDSDK_CONFIG=… gcloud run services update khala-capture \
+  --region us-central1 --update-labels restart=$(date +%s)
+# confirm health after it comes up:
+curl -s https://khala-capture-ezxz4mgdsq-uc.a.run.app/health
+# and confirm the probe verdict:
+curl -s -H "Authorization: Bearer $OPENAGENTS_ADMIN_API_TOKEN" \
+  https://openagents.com/api/internal/khala-sync/capture-health
+```
+
 ## LiveHub service operation (CFG-5, #8520)
 
 The hub is the Bun Cloud Run service `apps/khala-live-hub` (project

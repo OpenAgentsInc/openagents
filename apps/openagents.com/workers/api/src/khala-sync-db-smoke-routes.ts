@@ -93,7 +93,7 @@ export const redactConnectionDetails = (message: string): string =>
     .replace(/\b(?:[0-9a-f]{0,4}:){2,7}[0-9a-f]{0,4}\b/gi, '[redacted-address]')
     .slice(0, 300)
 
-const defaultMakeSqlClient: MakeKhalaSyncSmokeSqlClient = async (
+export const defaultMakeSqlClient: MakeKhalaSyncSmokeSqlClient = async (
   connectionString,
 ) => {
   const mod = (await import('postgres')) as unknown as {
