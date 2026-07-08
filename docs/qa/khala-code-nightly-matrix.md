@@ -70,6 +70,43 @@ receipt-asserting bun-test
 in the normal `test:khala-mobile` sweep on every platform and keeps the contract
 covered even where the simulator step cannot run.
 
+### Mobile visual tier — iOS signed-in screens (QAM-4, #8539)
+
+The QAM-4 visual-regression tier drives Maestro flows that reach the signed-in
+product screens and capture a `takeScreenshot` checkpoint per screen, then
+blesses/compares them through the owned `openagents.khala_visual_baselines.v1`
+engine (`packages/khala-qa-harness/src/visual-baseline.ts` +
+`mobile-visual-tier.ts`). Baselines live in
+`docs/khala-code/receipts/qam-4-baselines/` (manifest + `screenshots/`); the
+capture receipt is `docs/khala-code/receipts/2026-07-07-qam-4-ios-signed-in-screens.json`.
+
+Covered `iphone-17-pro` screens (previously had NO device-flow coverage):
+
+- `khala.mobile.screen.settings.iphone-17-pro.dark` — reached via the real
+  drawer hamburger; fully populated (Account/Credits/Models/Notifications/About).
+- `khala.mobile.screen.credits-history.iphone-17-pro.dark` — reached via the
+  app's own `khala://credits/history` route.
+- `khala.mobile.screen.repo-picker.iphone-17-pro.dark` — reached by opening the
+  seeded thread and tapping the repo chip.
+- `khala.mobile.screen.onboarding-welcome.iphone-17-pro.dark` — the first-run
+  welcome step, reached against a public-safe ZERO-THREAD account build (it only
+  renders in place of an empty thread list; there is no separate route).
+
+Repeatable runner: `clients/khala-mobile/scripts/mobile-visual-tier-run.sh`
+(`--verify` = nightly regression compare; default = re-bless), which captures
+via the flow and calls `scripts/bless-ios-visual-baselines.ts`. Note: the
+seeded public-safe **agent-token** session is NOT authorized for the mobile
+product REST routes (repos/credits/model-preference all 401), so credit-history
+and repo-picker honestly render their degraded ("unavailable") states — that IS
+the truthful state for this account, and the baseline still catches navigation,
+mount, and degraded-render regressions. A populated-transactions / populated-repo
+baseline additionally needs a real OpenAuth mobile session (a follow-up). The
+tier is asserted every platform by
+`clients/khala-mobile/tests/maestro-policy.test.ts` (manifest entries + report
+`blessed`/`captured` + flow checkpoints); the simulator capture itself requires a
+booted iOS simulator + installed Release build, same opt-in posture as the
+signed-in smoke.
+
 The status surface emitted by the run includes the Q2 latency budget catalog
 from `qaMetrics`. The harness scenario `perf` oracle evaluates budgeted samples;
 sampleless catalog rows remain inconclusive, while `latencyBudgets.trends`

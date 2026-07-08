@@ -1,0 +1,71 @@
+# flow: Khala Mobile signed-in screen visual sweep (QAM-4, #8539)
+# intent:
+# Reach the three signed-in product screens that had NO device-flow coverage —
+# Settings, Credit history, and the repo picker — against a real signed-in
+# Khala Sync session, and drop a `takeScreenshot` checkpoint at each so the
+# owned `openagents.khala_visual_baselines.v1` engine can bless/compare them.
+#
+# Reachability (all from the seeded public-safe AgentFlampy session):
+# - Settings: the thread-list header hamburger (☰, rendered as a tappable
+#   Ignite glyph) opens the root Drawer; its "Settings" item is the real screen.
+# - Credit history: the Settings > Credits "View history" button is gated on a
+#   loaded balance, and the public-safe agent-token session is NOT authorized
+#   for the mobile credits REST route (401), so the button is absent. The
+#   screen is still a real linked route (`khala://credits/history`), reached
+#   here by the app's own deep-link config; it renders its honest degraded
+#   ("History unavailable") state, which is the truthful state for this account.
+# - Repo picker: opening the seeded thread shows the repo chip; tapping it opens
+#   the real RepoPicker route. The mobile repos REST route is likewise not
+#   authorized for the agent-token session (401), so it renders its honest
+#   "Repositories unavailable" state.
+#
+# Screenshots are written to the runner's CWD as `<id>.png`; the runner
+# (scripts/mobile-visual-tier-run.sh) blesses them into the baseline manifest.
+#
+# Required env:
+# - KHALA_MAESTRO_OWNER_USER_ID, KHALA_MAESTRO_TOKEN (manual sign-in fallback)
+# - KHALA_MAESTRO_THREAD_TITLE (the seeded thread to open for the repo picker)
+#
+appId: ${MAESTRO_APP_ID}
+onFlowStart:
+  - runFlow: ../shared/_OnFlowStart.yaml
+---
+# Manual sign-in fallback for a non-baked build (a baked build auto-signs-in).
+- runFlow:
+    when:
+      visible: "Sign in manually instead"
+    commands:
+      - tapOn: "Sign in manually instead"
+      - tapOn: "user_..."
+      - inputText: ${KHALA_MAESTRO_OWNER_USER_ID}
+      - tapOn: "oa_agent_..."
+      - inputText: ${KHALA_MAESTRO_TOKEN}
+      - tapOn: "Sign in"
+      - waitForAnimationToEnd
+
+- assertVisible: "Khala"
+
+# --- Settings (real drawer tap) ---
+- tapOn: "☰"
+- assertVisible: "Settings"
+- tapOn: "Settings"
+- assertVisible: "Account"
+- assertVisible: "Credits"
+- waitForAnimationToEnd
+- takeScreenshot: khala.mobile.screen.settings.iphone-17-pro.dark
+
+# --- Credit history (real linked route) ---
+- openLink: khala://credits/history
+- assertVisible: "Credit history"
+- waitForAnimationToEnd
+- takeScreenshot: khala.mobile.screen.credits-history.iphone-17-pro.dark
+
+# --- Repo picker (opened from the thread) ---
+- openLink: khala://
+- assertVisible: ${KHALA_MAESTRO_THREAD_TITLE}
+- tapOn: ${KHALA_MAESTRO_THREAD_TITLE}
+- tapOn:
+    text: "No repo.*|Repo:.*|Repo bound.*"
+- assertVisible: "Pick a repo"
+- waitForAnimationToEnd
+- takeScreenshot: khala.mobile.screen.repo-picker.iphone-17-pro.dark

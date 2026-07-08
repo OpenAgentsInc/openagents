@@ -1,0 +1,20 @@
+# flow: Khala Mobile onboarding first-run visual (QAM-4, #8539)
+# intent:
+# The onboarding straight line renders in place of the empty thread list (see
+# thread-list-screen.tsx / onboarding-flow.tsx) — there is no separate route,
+# so it is only reachable for an account with ZERO threads. This flow is run
+# against a Release build baked with a public-safe zero-thread account, so the
+# app auto-signs-in and lands directly on the onboarding welcome step. It
+# asserts the welcome heading + CTA and captures a `takeScreenshot` checkpoint.
+#
+# Screenshot is written to the runner's CWD as `<id>.png`.
+#
+appId: ${MAESTRO_APP_ID}
+onFlowStart:
+  - runFlow: ../shared/_OnFlowStart.yaml
+---
+- assertVisible: "Get started"
+- assertVisible:
+    text: "Welcome.*"
+- waitForAnimationToEnd
+- takeScreenshot: khala.mobile.screen.onboarding-welcome.iphone-17-pro.dark

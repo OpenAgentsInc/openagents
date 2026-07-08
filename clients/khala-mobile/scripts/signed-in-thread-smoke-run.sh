@@ -45,8 +45,14 @@ export MAESTRO_CLI_NO_ANALYTICS=1
 
 echo "==> resetting seeded thread turn state (close any active/queued turn)"
 python3 - "$BASE_URL" "$KHALA_MAESTRO_TOKEN" "$KHALA_MAESTRO_THREAD_ID" <<'PY'
-import json, sys, urllib.request, datetime
+import json, sys, time, urllib.request, datetime
 base, token, thread = sys.argv[1], sys.argv[2], sys.argv[3]
+# A per-run client id so each reset's mutationId sequence is fresh. Reusing a
+# fixed clientId meant the server deduped closeTurn (mutationId 1) as a
+# `duplicate` on every run after the first, so a leftover queued turn was never
+# actually closed and the composer stayed in its Steer/Queue active state
+# (hiding the lane picker the smoke asserts). See issue #8539.
+reset_client = "maestro-reset-client-" + str(int(time.time() * 1000))
 def post(path, body):
     req = urllib.request.Request(
         base + path,
@@ -79,7 +85,7 @@ for i, turn in enumerate(active, start=1):
     }
     res = post("/api/sync/push", {
         "protocolVersion": 1, "schemaVersion": 1,
-        "clientGroupId": "maestro-reset", "clientId": "maestro-reset-client",
+        "clientGroupId": "maestro-reset", "clientId": reset_client,
         "mutations": [{"mutationId": i, "name": "runtime.closeTurn",
                        "argsJson": json.dumps(intent)}],
     })

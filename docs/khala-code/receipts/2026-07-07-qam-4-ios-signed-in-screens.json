@@ -1,0 +1,71 @@
+{
+  "baselineDir": "/Users/christopherdavid/work/openagents/docs/khala-code/receipts/qam-4-baselines",
+  "blessings": [],
+  "changed": [],
+  "generatedAt": "2026-07-08T01:02:24.338Z",
+  "ok": true,
+  "results": [
+    {
+      "baseline": "screenshots/khala.mobile.screen.credits-history.iphone-17-pro.dark.png",
+      "candidateSha256": "d651e879c67e84407bc29961fb5f4459c2a03450a572b83682c6f2375ae90e77",
+      "colorScheme": "dark",
+      "harness": "maestro-checkpoint",
+      "height": 2622,
+      "id": "khala.mobile.screen.credits-history.iphone-17-pro.dark",
+      "reducedMotion": "no-preference",
+      "schema": "openagents.khala_visual_baselines.v1",
+      "viewport": "iphone-17-pro",
+      "width": 1206,
+      "baselineSha256": "d651e879c67e84407bc29961fb5f4459c2a03450a572b83682c6f2375ae90e77",
+      "ok": true,
+      "status": "blessed"
+    },
+    {
+      "baseline": "screenshots/khala.mobile.screen.onboarding-welcome.iphone-17-pro.dark.png",
+      "candidateSha256": "8a060c67a57109867335db353b37fd1d9b8b74c49209b9a25c9dd63701aa579e",
+      "colorScheme": "dark",
+      "harness": "maestro-checkpoint",
+      "height": 2622,
+      "id": "khala.mobile.screen.onboarding-welcome.iphone-17-pro.dark",
+      "reducedMotion": "no-preference",
+      "schema": "openagents.khala_visual_baselines.v1",
+      "viewport": "iphone-17-pro",
+      "width": 1206,
+      "baselineSha256": "8a060c67a57109867335db353b37fd1d9b8b74c49209b9a25c9dd63701aa579e",
+      "ok": true,
+      "status": "blessed"
+    },
+    {
+      "baseline": "screenshots/khala.mobile.screen.repo-picker.iphone-17-pro.dark.png",
+      "candidateSha256": "c8e4bb74a62f1acd40ccfc8bd4301047f6ccc9b3e9205be7e81328bd051ec496",
+      "colorScheme": "dark",
+      "harness": "maestro-checkpoint",
+      "height": 2622,
+      "id": "khala.mobile.screen.repo-picker.iphone-17-pro.dark",
+      "reducedMotion": "no-preference",
+      "schema": "openagents.khala_visual_baselines.v1",
+      "viewport": "iphone-17-pro",
+      "width": 1206,
+      "baselineSha256": "c8e4bb74a62f1acd40ccfc8bd4301047f6ccc9b3e9205be7e81328bd051ec496",
+      "ok": true,
+      "status": "blessed"
+    },
+    {
+      "baseline": "screenshots/khala.mobile.screen.settings.iphone-17-pro.dark.png",
+      "candidateSha256": "1e50e9a4c802c255f42f0eda23ce2a7a75af026fb99ddefd1301e363ccf04cb7",
+      "colorScheme": "dark",
+      "harness": "maestro-checkpoint",
+      "height": 2622,
+      "id": "khala.mobile.screen.settings.iphone-17-pro.dark",
+      "reducedMotion": "no-preference",
+      "schema": "openagents.khala_visual_baselines.v1",
+      "viewport": "iphone-17-pro",
+      "width": 1206,
+      "baselineSha256": "1e50e9a4c802c255f42f0eda23ce2a7a75af026fb99ddefd1301e363ccf04cb7",
+      "ok": true,
+      "status": "blessed"
+    }
+  ],
+  "schema": "openagents.khala_mobile.visual_tier_report.v1",
+  "simulatorTruth": "captured"
+}

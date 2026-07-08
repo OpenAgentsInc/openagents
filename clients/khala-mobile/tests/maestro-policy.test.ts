@@ -37,12 +37,86 @@ describe("Khala mobile Maestro flows", () => {
       read(".maestro/flows/LaunchFallback.yaml"),
       read(".maestro/flows/LaunchGitHubSignInInteraction.yaml"),
       read(".maestro/flows/SignedInThreadSmoke.yaml"),
+      read(".maestro/flows/SignedInScreensVisual.yaml"),
+      read(".maestro/flows/OnboardingFirstRunVisual.yaml"),
     ])
     const allFlowText = files.join("\n")
 
     expect(allFlowText).not.toMatch(/oa_agent_[A-Za-z0-9_-]{8,}/)
     expect(allFlowText).not.toMatch(/Bearer\s+[A-Za-z0-9._-]+/)
     expect(allFlowText).not.toContain("eas ")
+  })
+
+  // Oracle for the QAM-4 (#8539) iOS signed-in screen visual sweep: the flows
+  // that close the device-flow coverage gap for the four previously-uncovered
+  // product screens each reach their screen against a real signed-in session
+  // and drop a `takeScreenshot` checkpoint keyed to its baseline id.
+  test("define signed-in screen + onboarding visual flows with screenshot checkpoints", async () => {
+    const [signedInScreens, onboarding, runner] = await Promise.all([
+      read(".maestro/flows/SignedInScreensVisual.yaml"),
+      read(".maestro/flows/OnboardingFirstRunVisual.yaml"),
+      read("scripts/mobile-visual-tier-run.sh"),
+    ])
+
+    // Settings reached via the real drawer hamburger, credit history + repo
+    // picker reached (drawer/deep-link + thread), each captured.
+    expect(signedInScreens).toContain('tapOn: "☰"')
+    expect(signedInScreens).toContain('tapOn: "Settings"')
+    expect(signedInScreens).toContain("takeScreenshot: khala.mobile.screen.settings.iphone-17-pro.dark")
+    expect(signedInScreens).toContain("takeScreenshot: khala.mobile.screen.credits-history.iphone-17-pro.dark")
+    expect(signedInScreens).toContain("takeScreenshot: khala.mobile.screen.repo-picker.iphone-17-pro.dark")
+
+    // Onboarding first-run renders on an empty thread list; captured too.
+    expect(onboarding).toContain('assertVisible: "Get started"')
+    expect(onboarding).toContain("takeScreenshot: khala.mobile.screen.onboarding-welcome.iphone-17-pro.dark")
+
+    // The runner blesses/verifies through the owned engine, never hosted CI.
+    expect(runner).toContain("bless-ios-mobile-visual-baselines.ts")
+    expect(runner).toContain("--verify")
+    expect(runner).not.toContain("eas ")
+  })
+
+  test("records iOS signed-in screen visual baselines captured on the simulator", async () => {
+    const [manifestText, reportText] = await Promise.all([
+      readRepo("docs/khala-code/receipts/qam-4-baselines/manifest.json"),
+      readRepo("docs/khala-code/receipts/2026-07-07-qam-4-ios-signed-in-screens.json"),
+    ])
+    const manifest = JSON.parse(manifestText) as {
+      entries: Array<{ id: string; screenshot: string; viewport: string }>
+      schema: string
+    }
+    const report = JSON.parse(reportText) as {
+      ok: boolean
+      results: Array<{ id: string; status: string }>
+      schema: string
+      simulatorTruth: string
+    }
+    const iosScreenIds = [
+      "khala.mobile.screen.credits-history.iphone-17-pro.dark",
+      "khala.mobile.screen.onboarding-welcome.iphone-17-pro.dark",
+      "khala.mobile.screen.repo-picker.iphone-17-pro.dark",
+      "khala.mobile.screen.settings.iphone-17-pro.dark",
+    ]
+
+    expect(manifest.schema).toBe("openagents.khala_visual_baselines.v1")
+    expect(report.schema).toBe("openagents.khala_mobile.visual_tier_report.v1")
+    expect(report.ok).toBe(true)
+    expect(report.simulatorTruth).toBe("captured")
+
+    const iosEntries = manifest.entries.filter(entry => iosScreenIds.includes(entry.id))
+    expect(iosEntries.map(entry => entry.id).sort()).toEqual(iosScreenIds)
+    for (const entry of iosEntries) {
+      expect(entry.viewport).toBe("iphone-17-pro")
+      await expect(
+        Bun.file(new URL(`docs/khala-code/receipts/qam-4-baselines/${entry.screenshot}`, repoRoot)).exists(),
+      ).resolves.toBe(true)
+    }
+
+    const reportedIds = report.results.filter(result => iosScreenIds.includes(result.id))
+    expect(reportedIds.map(result => result.id).sort()).toEqual(iosScreenIds)
+    for (const result of reportedIds) {
+      expect(result.status).toBe("blessed")
+    }
   })
 
   // Oracle for khala_mobile.qa.android_emulator_lane_definition.v1
