@@ -1,12 +1,26 @@
 # MASTER ROADMAP — Khala Code MVP (Tested, Submitted) → Sarah → Codex → AI Employees → the Suite
 
-Date: 2026-07-08 (rev 6 — Effect Native FULL CONVERSION, ASAP)
+Date: 2026-07-08 (rev 6.2 — status refresh on rev 6's full-conversion mandate)
 Status: **the single consolidated execution roadmap.** This document owns
 top-level sequencing across everything designed in the 2026-07-07 strategy
 set and its predecessors. The source docs remain authoritative for their
 *content* (specs, evidence, arguments); when sequencing here and sequencing
 there disagree, **this document wins**, and new issues are filed against the
 phase lanes named here.
+
+**Rev 6.2 changes (2026-07-08 evening — status refresh, no policy
+change):** the status snapshot and review addendum are reconciled
+against `origin/main` and live production: `#8569` pylon-stats is
+repaired and CLOSED (live probe `available:true`); the docs/direction
+cleanup `#8576` is CLOSED (RETIRED FOR NOW / SUPERSEDED / POSTPONED /
+HISTORICAL banners landed, `docs/RETIRED.md` ledger live); **the
+Tassadar/Psionic code-removal gate on `#8577` is LIFTED by owner
+direction** — physical removal to the `backroom` archive is now
+mandated execution work; **EN-1's first render receipt landed** (the
+`/stage1` Effect Native staging route,
+`2026-07-08-en-1-stage1-effect-native-receipt.md`); and OB-2's Apollo
+wave-ingest path landed as code. The "Retired programs" subsection is
+re-homed to the end of the snapshot (it had split the review addendum).
 
 **Rev 6 changes (owner directive, 2026-07-08 later same day — FULL
 CONVERSION, ASAP):** the **entire repository converts to Effect Native as
@@ -101,14 +115,15 @@ Consolidates:
   ROADMAP_QA.md (QA engine), ROADMAP_BIZ.md (BF-*), ROADMAP_AFTER.md
   (AW-*), ROADMAP_BACKGROUND_AGENTS.md (BA-*), Reactor RX-*.
 
-## Status snapshot (2026-07-08, code+issue audit)
+## Status snapshot (2026-07-08 evening, rev 6.2 code+issue audit)
 
-Reconciled against `origin/main` and GitHub issue state. **21 issues open, all
-≥ #8467.** The backlog is still overwhelmingly build-forward product work, but
-the later `#8569` filing is a real clean operational bug: `/api/public/pylon-stats`
-is broken in production after the GCP/Cloud SQL migration, and it directly
-blocks WEB-1's live-counter acceptance until repaired or explicitly removed
-from the landing. What is genuinely DONE vs what is only DIRECTION:
+Reconciled against `origin/main`, GitHub issue state, and live production
+probes. **26 issues open, all ≥ #8467** — the rev 6 EN lane set (#8572–#8575)
+and the #8577 removal-execution lane joined the backlog; `#8569` and `#8576`
+closed. The backlog is entirely current-direction work: the Effect Native
+conversion program, the Khala Code mobile P2 lanes, the outbound sales engine,
+and the retired-program physical removal. What is genuinely DONE vs what is
+only DIRECTION:
 
 **Proven / shipped (closed, evidence on main):**
 - **P0 substrate:** the Agent Computer foundation — `#8503` (first real
@@ -133,6 +148,23 @@ from the landing. What is genuinely DONE vs what is only DIRECTION:
 - **CX foundation:** **CX-1 (`#8545`) CLOSED** — the broker-only provider-
   credential law (`provider_credential_policy: broker_only`, never-pooled/
   never-resale, fail-closed placement, scanner coverage).
+- **`#8569` pylon-stats production repair CLOSED** — `GET
+  /api/public/pylon-stats` serves `available:true` live again (probed at
+  this audit), unblocking WEB-1's live-counter acceptance.
+- **Docs/direction cleanup `#8576` CLOSED** (commits `97b600f4d7` …
+  `34c2352e1b`): the RETIRED FOR NOW / SUPERSEDED / POSTPONED /
+  HISTORICAL banners are on every directory named by the cleanup audit,
+  `docs/RETIRED.md` is the live ledger, and the fable indexes lead with
+  this roadmap.
+- **EN-1 first render receipt** (`02a28d49a5`,
+  `2026-07-08-en-1-stage1-effect-native-receipt.md`): the `/stage1`
+  route renders the public launch slice through the **Effect Native DOM
+  renderer** on a Cloud Run staging service
+  (`openagents-com-start-stage1`) with live public projections (tokens
+  served, pylon stats, Khala Code plans) — using an app-local snapshot
+  of effect-native `6dda1d44` while upstream packages are pre-alpha.
+  `/`, `/new`, `/demo` untouched as baselines; upstream schema/style
+  exactness bug filed as effect-native#44.
 
 **Build-forward / owner-gated (open; partially landed as code):**
 - **WEB-1 (`#8565`) sales landing — React/Tailwind split preview live on Cloud
@@ -144,19 +176,25 @@ from the landing. What is genuinely DONE vs what is only DIRECTION:
   suite (Khala Code mobile, Khala Code desktop, openagents.com, Reactor).
   Verified at landing: React API route tests, API/Cloud Run typechecks, web
   route guards, Start typecheck/budget, and Google Cloud Run deploy smoke.
-  Still open:
-  owner-approved root cutover, final sales-copy sign-off, live counters
-  (including the `#8569` pylon-stats production repair), credit-tier pricing,
-  production CTAs to business intake + Sarah, and root-route rollback notes.
+  **Rev 6.2 addition:** the EN-1 `/stage1` staging route (above) is the first
+  Effect Native render of this surface — the forward path per the §EN rescope.
+  Still open: EN/`/new` visual parity (icon/media primitives, hero — paced by
+  the upstream catalog + effect-native#44), owner-approved root cutover, final
+  sales-copy sign-off, credit-tier pricing wiring, production CTAs to business
+  intake + Sarah, and root-route rollback notes. The `#8569` live-counter
+  blocker is resolved.
 
 **Direction only (open; NOT started as code):**
-- **OB-1..6 (`#8558–#8563`) outbound engine — all OPEN, no Sarah engine on
-  main.** Sarah lives in the separate `OpenAgentsInc/sarah` repo. A pre-existing
+- **OB-1..6 (`#8558–#8563`) outbound engine — all OPEN; first code landed.**
+  Sarah lives in the separate `OpenAgentsInc/sarah` repo. A pre-existing
   *operator-assisted* CRM/pipeline substrate exists in-repo
-  (`business_pipeline_rows`, outreach/email plumbing), but Apollo-sourcing,
-  audit-first personalization, the draft→approve→send loop, and Stripe close are
-  planned. Owner-gated: OB-1 (sending subdomain + DNS + Resend arming), OB-5
-  (Stripe keys).
+  (`business_pipeline_rows`, outreach/email plumbing), and **OB-2's Apollo
+  wave-ingest path is now on main** (`6c7b9cdfe4`:
+  `business-pipeline-queue.ts` + routes/tests — segment waves into
+  `business_pipeline_rows`). Still to build: the wave runner at volume,
+  audit-first personalization (OB-3), the draft→approve→send loop (OB-4),
+  Stripe close (OB-5), the daily ledger (OB-6). Owner-gated: OB-1 (sending
+  subdomain + DNS + Resend arming), OB-5 (Stripe keys).
 - **CX-2..9 (`#8546–#8553`) "your own Codex in the cloud" — all OPEN,
   unstarted.** The proven `#8503` microVM turn runs the **hosted Khala gateway
   model (Gemini), not Codex**. **CX-3 (`#8547`) is the unstarted linchpin:** the
@@ -170,12 +208,41 @@ from the landing. What is genuinely DONE vs what is only DIRECTION:
 - **`#8467` (Khala Code Mobile MVP epic) OPEN** — the live multi-workstream P0
   program that `#8543` gates.
 
-**Review addendum / recommended next work (updated rev 6, 2026-07-08):**
-`#8569` (the pylon-stats production break) is **CLOSED** — the earlier
-"do #8569 first" recommendation is resolved. Current recommended order
-under the rev 6 conversion mandate:
+**Review addendum / recommended next work (updated rev 6.2, 2026-07-08
+evening):** current recommended order under the rev 6 conversion
+mandate:
 
-### Retired programs (rev 6.1)
+- **CV0 substrate lanes (continuous, fleet-parallel):** effect-native
+  Phase 0/1 (`#1–#8`) are CLOSED; work the open Phase 2/3 set
+  (`#11–#19`) and the Phase 4 epic (`#20`, children `#21–#43`) as
+  parallel lanes — this is the critical path for every conversion wave.
+  Fix effect-native#44 (schema/style exactness) early — the `/stage1`
+  consumer already depends on it.
+- **CV1 next steps:** `/stage1` (EN-1 first render) is landed; drive it
+  to `/new` visual parity (icon/media/hero primitives arrive via the
+  upstream catalog per EN-2 #8572 demand), replace the app-local
+  effect-native snapshot with the published packages when they
+  stabilize, then walk the owner cutover gates on `#8565` (copy
+  sign-off, pricing, CTAs, root flip + rollback notes). Start the EN-4
+  `#8573` route inventory/burn-down table in parallel (inventory needs
+  no new substrate).
+- **Retired-program removal (#8577, gate lifted):** execute the
+  archive-to-backroom physical removal per the PRUNE brief — heavy LOC
+  reduction with archive-before-delete, production kept green.
+- **In parallel, non-EN:** the sales push (OB-1..6; OB-2 ingest is
+  landed, continue to the wave runner + OB-3 reports) and P2 Codex
+  lanes (CX-2..) continue unchanged — they are mostly backend; their UI
+  surfaces are authored EN-native as their turn arrives.
+
+**Bottom line:** the substrate is real and proven, and the first
+production surface now renders through it. Most open non-EN work still
+spans the private `cloud/` repo (CX-3) or owner gates (seeded account,
+DNS/Resend, Stripe, prod arming, copy sign-offs). Under rev 6 the
+conversion program itself is first-class scheduled work — the substrate
+lanes, CV1 parity work, the retired-code removal, and the sales push
+proceed at maximum parallel capacity.
+
+### Retired programs (rev 6.1; execution status rev 6.2)
 
 Tassadar/Psionic and their training, gym, inference, proof/replay, and
 speculative compute-market satellites are retired for now. Revival requires an
@@ -184,25 +251,17 @@ See
 [`2026-07-08-repo-docs-direction-cleanup-audit.md`](2026-07-08-repo-docs-direction-cleanup-audit.md)
 and [`../RETIRED.md`](../RETIRED.md) for the status ledger.
 
-- **CV0 substrate lanes (continuous, fleet-parallel):** effect-native
-  Phase 0/1 (`#1–#8`) are CLOSED; work the open Phase 2/3 set
-  (`#11–#19`) and the Phase 4 epic (`#20`, children `#21–#43`) as
-  parallel lanes — this is the critical path for every conversion wave.
-- **CV1 now:** author the production root-cutover landing in the Effect
-  Native DOM renderer under `#8565`/EN-1 `#8567`, with the React
-  `/demo`/`/new` routes as the visual baselines; start the EN-4 `#8573`
-  route inventory/burn-down table in parallel (inventory needs no new
-  substrate).
-- **In parallel, non-EN:** the sales push (OB-1..6) and P2 Codex lanes
-  (CX-2..) continue unchanged — they are mostly backend; their UI
-  surfaces are authored EN-native as their turn arrives.
-
-**Bottom line:** the substrate is real and proven; most open non-EN work
-still spans the private `cloud/` repo (CX-3) or owner gates (seeded
-account, DNS/Resend, Stripe, prod arming, copy sign-offs). Under rev 6
-the conversion program itself is now first-class scheduled work rather
-than a rider — the substrate lanes and CV1/CV2 conversions proceed at
-maximum parallel capacity.
+**Execution status (rev 6.2):** the docs retirement landed and `#8576` is
+CLOSED. The `#8577` code inventory's "no action" gate is **lifted by owner
+direction (2026-07-08)**: retired-program code and its archived docs move
+physically out of this repo into the workspace archive repo
+(`backroom/openagents-prune-20260708-tassadar-psionic/`), archive-before-delete
+with paired commit hashes, waves per the PRUNE brief on `#8577` — whole
+retired packages first, then surgical removal inside live apps (never touching
+exact token accounting, live counters, promises evidence, or payments rails),
+then a reference scrub. POSTPONED programs (Reactor, Verse/world, labor,
+Nostr) are **not** deprecated and are removed only by a separate explicit
+owner decision.
 
 ## 0. The one-page shape
 
@@ -872,7 +931,11 @@ closed by Sarah running a templated employee.
 8. **Constant motion**: owner-gated steps go to NEEDS_OWNER and work
    continues on the next non-blocked lane.
 
-## Current owner gates (as of 2026-07-08 rev 4.3)
+## Current owner gates (as of 2026-07-08 rev 6.2)
+
+Rev 6.2 note: the `#8577` Tassadar/Psionic code-removal gate is **no longer
+open — the owner lifted it 2026-07-08** (removal is now mandated work). The
+gates below remain open:
 
 New this pass (Khala Sync realtime hardening, 2026-07-08):
 
