@@ -570,6 +570,54 @@ describe("materializeGitCheckoutWorkspace", () => {
       await rm(workerHome, { recursive: true, force: true })
     }
   })
+
+  // Regression for issue #8583: a provider account's OWN login living in its
+  // isolated account home is expected, not a leaked secret. A Claude OAuth
+  // token (`sk-ant-oat01-…`) previously tripped the OpenAI-key pattern and
+  // refused every real-account run. `providerAuthHome` skips provider-auth
+  // patterns for that root while STILL catching source-control credentials.
+  test("providerAuthHome allows the account's own provider login but still catches SCM tokens", async () => {
+    const accountHome = await mkdtemp(join(tmpdir(), "pylon-claude-account-home-"))
+    try {
+      await writeFile(
+        join(accountHome, "claude-oauth-token"),
+        `sk-ant-oat01-${"A".repeat(80)}\n`,
+      )
+      // With the provider-auth-home flag, the account's own Claude OAuth login
+      // is not treated as a leak.
+      const clean = await scanLongLivedScmCredentials({
+        roots: [
+          { rootRef: "account_home.test", path: accountHome, providerAuthHome: true },
+        ],
+      })
+      expect(clean.state).toBe("clean")
+
+      // Without the flag (e.g. a bounded git workspace) the same material is a
+      // leak — the pattern itself is unchanged.
+      const workspaceLeak = await scanLongLivedScmCredentials({
+        roots: [{ rootRef: "workspace.test", path: accountHome }],
+      })
+      expect(workspaceLeak.state).toBe("leaked")
+
+      // A source-control credential in a provider account home is STILL a leak,
+      // even with the flag set — those enable arbitrary git push.
+      await writeFile(
+        join(accountHome, ".git-credentials"),
+        "https://x-access-token:ghp_abcdefghijklmnopqrstuvwxyz123456@github.com/OpenAgentsInc/openagents.git\n",
+      )
+      const scmLeak = await scanLongLivedScmCredentials({
+        roots: [
+          { rootRef: "account_home.test", path: accountHome, providerAuthHome: true },
+        ],
+      })
+      expect(scmLeak.state).toBe("leaked")
+      expect(scmLeak.findings.map((finding) => finding.reasonRef)).toContain(
+        "reason.workspace_scm_credentials.github_pat",
+      )
+    } finally {
+      await rm(accountHome, { recursive: true, force: true })
+    }
+  })
 })
 
 describe("removeMaterializedWorkspace", () => {

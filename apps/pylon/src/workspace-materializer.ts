@@ -189,6 +189,18 @@ export const WORKSPACE_SCM_CREDENTIAL_SCAN_SCHEMA =
 export type WorkspaceScmCredentialScanRoot = {
   rootRef: string
   path: string
+  // When true this root is an ISOLATED provider account home (e.g. a Pylon
+  // per-account `~/.claude-pylon-*` or `~/.codex-pylon-*`). Such a home is
+  // EXPECTED to hold the account's own provider login (a Claude OAuth token,
+  // a Codex `auth.json`, an OpenAI API key) — that material is the account's
+  // reason for existing, not a leaked secret. The SCM credential policy still
+  // fully applies its source-control patterns here (a GitHub PAT, a forge git
+  // token, a credentialed git URL, or a git `extraheader` in an account home
+  // WOULD let an agent push to arbitrary repos), but the provider-auth
+  // patterns are skipped so a legitimate login is not misclassified as a leak.
+  // Omit / false = scan everything (correct for a bounded git workspace, where
+  // no credential of any kind should live).
+  providerAuthHome?: boolean
 }
 
 export type WorkspaceScmCredentialFinding = {
@@ -318,6 +330,10 @@ const rawCredentialMaterialPattern =
 const longLivedScmCredentialPatterns: ReadonlyArray<{
   reasonRef: string
   pattern: RegExp
+  // Provider LOGIN material (the account's own auth), as opposed to a
+  // source-control credential. Skipped when scanning an isolated provider
+  // account home (see `WorkspaceScmCredentialScanRoot.providerAuthHome`).
+  providerAuth?: boolean
 }> = [
   {
     reasonRef: "reason.workspace_scm_credentials.github_pat",
@@ -339,10 +355,14 @@ const longLivedScmCredentialPatterns: ReadonlyArray<{
     reasonRef: "reason.workspace_scm_credentials.provider_codex_auth_json",
     pattern:
       /"(?:access|refresh|idToken|id_token)"\s*:\s*"[A-Za-z0-9._~+/=-]{20,}"/i,
+    providerAuth: true,
   },
   {
     reasonRef: "reason.workspace_scm_credentials.provider_openai_api_key",
+    // NB: also matches Anthropic OAuth tokens (`sk-ant-oat01-…`) — treated as
+    // provider login, so it is skipped inside a provider account home.
     pattern: /\b(?:sk-proj-|sk-)[A-Za-z0-9_-]{20,}\b/i,
+    providerAuth: true,
   },
 ]
 
@@ -361,8 +381,12 @@ const credentialScanIgnoredDirectoryNames = new Set([
 const credentialScanIgnoredGitAdminDirectoryNames = new Set(["objects", "logs"])
 const defaultCredentialScanMaxFileBytes = 256 * 1024
 
-function longLivedScmCredentialReasonFor(contents: string): string | null {
+function longLivedScmCredentialReasonFor(
+  contents: string,
+  options: { skipProviderAuth: boolean } = { skipProviderAuth: false },
+): string | null {
   for (const candidate of longLivedScmCredentialPatterns) {
+    if (options.skipProviderAuth && candidate.providerAuth === true) continue
     if (candidate.pattern.test(contents)) return candidate.reasonRef
   }
   return null
@@ -381,6 +405,7 @@ async function scanCredentialPath(input: {
   rootPath: string
   rootRef: string
   seenRealPaths: Set<string>
+  skipProviderAuth: boolean
 }): Promise<number> {
   let info: Awaited<ReturnType<typeof lstat>>
   try {
@@ -426,7 +451,9 @@ async function scanCredentialPath(input: {
   } catch {
     return 0
   }
-  const reasonRef = longLivedScmCredentialReasonFor(contents)
+  const reasonRef = longLivedScmCredentialReasonFor(contents, {
+    skipProviderAuth: input.skipProviderAuth,
+  })
   if (reasonRef !== null) {
     const findingRef = stableRef(
       "finding.pylon.workspace_scm_credential",
@@ -457,6 +484,7 @@ export async function scanLongLivedScmCredentials(input: {
       rootPath: resolve(root.path),
       rootRef: root.rootRef,
       seenRealPaths: new Set(),
+      skipProviderAuth: root.providerAuthHome === true,
     })
   }
   return {

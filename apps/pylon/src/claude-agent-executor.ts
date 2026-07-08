@@ -438,7 +438,20 @@ function claudeScmCredentialScanRoots(input: {
     { rootRef: input.materialized.workspaceRef, path: input.materialized.workspace },
     ...(input.account === null || input.account === undefined
       ? []
-      : [{ rootRef: input.account.accountRefHash, path: input.account.home }]),
+      : [
+          // The selected worker home is an isolated Claude account home; it is
+          // expected to hold that account's own Claude OAuth login. Still scan
+          // it for long-lived SCM credentials (a stray GitHub PAT / forge git
+          // token / credentialed git URL there would let the agent push
+          // anywhere), but do not misclassify the account's own provider login
+          // as a leak (issue #8583 — `sk-ant-oat01-…` tripped the OpenAI-key
+          // pattern and refused every real-account run).
+          {
+            rootRef: input.account.accountRefHash,
+            path: input.account.home,
+            providerAuthHome: true,
+          },
+        ]),
   ]
 }
 
