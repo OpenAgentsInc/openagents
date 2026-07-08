@@ -94,7 +94,13 @@ describe('Blueprint Program Registry projection', () => {
     ).toBe(true)
   })
 
-  test('seeds the ShowReplay proof-projection signature with a replay module scope', () => {
+  test('seeds an inert archived registry entry for the retired ShowReplay program type', () => {
+    // The original `@openagentsinc/proof-replay`-backed ShowReplay module was
+    // retired in the Tassadar/Psionic prune
+    // (backroom:openagents-prune-20260708-tassadar-psionic). The registry
+    // still carries a schema-conformant "archived" entry for this program
+    // type so the projection stays total, but it no longer wires up a live
+    // replay-module tool scope.
     const entry = AUTOPILOT_CONTINUATION_PROGRAM_REGISTRY.entries.find(
       candidate => candidate.programTypeId === BLUEPRINT_REPLAY_PROGRAM_TYPE_ID,
     )
@@ -109,18 +115,18 @@ describe('Blueprint Program Registry projection', () => {
       programSignatureIds: [BLUEPRINT_REPLAY_PROGRAM_SIGNATURE_ID],
       programTypeId: BLUEPRINT_REPLAY_PROGRAM_TYPE_ID,
       safeProjection: true,
+      status: 'archived',
     })
     expect(signature).toMatchObject({
-      inputSchema: { schemaRef: 'schema.blueprint.ShowReplayInput.v1' },
-      outputSchema: { schemaRef: 'schema.blueprint.ShowReplayOutput.v1' },
-      supportsProofProjection: true,
+      inputSchema: { schemaRef: 'schema.blueprint.proof_replay.archived.input' },
+      outputSchema: { schemaRef: 'schema.blueprint.proof_replay.archived.output' },
+      status: 'archived',
+      supportsProofProjection: false,
     })
     expect(signature?.toolScopes[0]).toMatchObject({
-      replayModule: {
-        kind: 'replay_module',
-      },
       toolRef: BLUEPRINT_REPLAY_TOOL_REF,
     })
+    expect(signature?.toolScopes[0]).not.toHaveProperty('replayModule')
   })
 
   test('folds delivery-pipeline programs into the registry projection', () => {
