@@ -77,18 +77,19 @@ quick-wins.** What is genuinely DONE vs what is only DIRECTION:
   never-resale, fail-closed placement, scanner coverage).
 
 **Build-forward / owner-gated (open; partially landed as code):**
-- **WEB-1 (`#8565`) sales landing — Phase 1 replica landed; `/new` preview
-  route wired for Cloud Run.** Commit `7899f3ec15` ports the Launch UI homepage
-  replica into
-  `apps/openagents.com/apps/start`: vendored Launch UI components/sections,
-  dark-only shell, blue glow + minimal radius tokens, placeholder dashboard
-  assets, MIT notice, route tests, and Start funnel budget. The production
-  Cloud Run monolith now has a bounded `/new` web route for viewing the landing
-  without replacing `/`. Verified at landing: Start typecheck/test/budget and
-  full `bun run --cwd apps/openagents.com check:deploy` green for Phase 1.
-  Still open: Phase 2 OpenAgents adaptation (brand/nav, owner-approved sales
-  copy, live counters, credit-tier pricing, CTAs to business intake + Sarah),
-  owner-approved root cutover, and root-route rollback notes.
+- **WEB-1 (`#8565`) sales landing — React/Tailwind split preview live on Cloud
+  Run.** Commit `7899f3ec15` ports the Launch UI homepage replica into
+  `apps/openagents.com/apps/start` as the reference milestone. The production
+  Cloud Run monolith now serves exact React-rendered document routes before the
+  legacy app shell: `/demo` preserves the original Launch UI replica for
+  comparison, while `/new` adapts the same fold to the four-prong OpenAgents
+  suite (Khala Code mobile, Khala Code desktop, openagents.com, Reactor).
+  Verified at landing: React API route tests, API/Cloud Run typechecks, web
+  route guards, Start typecheck/budget, and Google Cloud Run deploy smoke.
+  Still open:
+  owner-approved root cutover, final sales-copy sign-off, live counters,
+  credit-tier pricing, production CTAs to business intake + Sarah, and
+  root-route rollback notes.
 
 **Direction only (open; NOT started as code):**
 - **OB-1..6 (`#8558–#8563`) outbound engine — all OPEN, no Sarah engine on
@@ -232,17 +233,18 @@ system of record (CRM, credits, checkout, receipts, promise registry);
 the sarah repo calls its APIs and never re-implements them.
 
 **Track A (revised 2026-07-08, HIGH PRIORITY) — the new openagents.com
-sales landing, built from launch-ui.** **STATUS (2026-07-08): PHASE 1 LANDED
-AS CODE; `/new` PREVIEW ROUTE ON CLOUD RUN** — commit `7899f3ec15` ports the
-exact Launch UI homepage replica into the TanStack Start app at
+sales landing, built from launch-ui.** **STATUS (2026-07-08): REACT/TAILWIND
+PREVIEW PAIR LIVE ON CLOUD RUN** — commit `7899f3ec15` ports the exact Launch
+UI homepage replica into the TanStack Start app at
 `apps/openagents.com/apps/start`, including the vendored Launch UI
 components/sections, blue glow + minimal radius token set, dark-only shell,
 placeholder dashboard assets, MIT attribution, route tests, and Start funnel
-budget. The production Cloud Run monolith exposes the replica at `/new` as a
-bounded preview route without replacing `/`. The replica is intentionally still
-Launch UI placeholder content; Phase 2 OpenAgents adaptation plus owner copy
-sign-off, live public counters, credit-tier pricing, production CTAs, and
-owner-approved root cutover remain. Owner directive: switch the
+budget. The production Cloud Run monolith now serves exact React-rendered
+document routes ahead of the legacy app shell: `/demo` keeps the original Launch
+UI replica, and `/new` adapts that fold to the OpenAgents suite (Khala Code
+mobile, Khala Code desktop, openagents.com, Reactor). Owner copy sign-off, live
+public counters, credit-tier pricing, production CTAs, and owner-approved root
+cutover remain. Owner directive: switch the
 openagents.com landing/marketing site from this replica milestone to a
 sales-focused site built from
 **launch-ui** (`projects/repos/launch-ui` — MIT; shadcn/ui + Tailwind 4 +

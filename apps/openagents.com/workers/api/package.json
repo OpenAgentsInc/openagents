@@ -72,11 +72,15 @@
     "hono": "^4.12.23",
     "nostr-effect": "github:OpenAgentsInc/nostr-effect#4c52847",
     "postgres": "3.4.9",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
     "stripe": "^22.2.0"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260609.1",
     "@openagentsinc/khala-sync-client": "workspace:*",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "19.2.3",
     "playwright": "^1.61.0",
     "vitest": "^4.1.8",
     "bun-types": "^1.0.0"

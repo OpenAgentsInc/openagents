@@ -1121,6 +1121,7 @@ import { handleLander2Page } from './lander2-routes'
 import { handleLander3Page } from './lander3-routes'
 import { handleLander4Page } from './lander4-routes'
 import { handleLander5Page } from './lander5-routes'
+import { handleReactLandingPage } from './react-landing-routes'
 import {
   handleBusinessAgentGuide,
   handleBusinessNewPage,
@@ -14265,6 +14266,16 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     path: '/skill.json',
     handler: (request, env) =>
       handleOpenAgentsCompanionFile(request, env.ASSETS, '/skill.json'),
+  },
+  // React + Tailwind landing pair. These exact document routes intentionally
+  // intercept before the legacy app-shell fallback.
+  {
+    path: '/demo',
+    handler: request => handleReactLandingPage(request, 'demo'),
+  },
+  {
+    path: '/new',
+    handler: request => handleReactLandingPage(request, 'new'),
   },
   // Server-rendered landing experiment (site-speed lane; unlisted, noindex).
   {
