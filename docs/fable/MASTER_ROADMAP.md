@@ -1,6 +1,6 @@
 # MASTER ROADMAP — Khala Code MVP (Tested, Submitted) → Sarah → Codex → AI Employees → the Suite
 
-Date: 2026-07-08 (rev 4.2 — + launch-ui: new openagents.com sales landing, HIGH priority)
+Date: 2026-07-08 (rev 4.3 — fresh status reconciliation against `main`; done/not-done marked from a code+issue audit, not intent)
 Status: **the single consolidated execution roadmap.** This document owns
 top-level sequencing across everything designed in the 2026-07-07 strategy
 set and its predecessors. The source docs remain authoritative for their
@@ -45,6 +45,68 @@ Consolidates:
 - The standing lane families: ROADMAP.md (desktop/harness),
   ROADMAP_QA.md (QA engine), ROADMAP_BIZ.md (BF-*), ROADMAP_AFTER.md
   (AW-*), ROADMAP_BACKGROUND_AGENTS.md (BA-*), Reactor RX-*.
+
+## Status snapshot (2026-07-08, code+issue audit)
+
+Reconciled against `origin/main` and GitHub issue state. **17 issues open, all
+≥ #8467; every one is forward feature work — no remaining "clean bug"
+quick-wins.** What is genuinely DONE vs what is only DIRECTION:
+
+**Proven / shipped (closed, evidence on main):**
+- **P0 substrate:** the Agent Computer foundation — `#8503` (first real
+  Firecracker microVM turn on our GCE host: admitted turn → exact
+  owner-attributed `token_usage_events` row → full reclaim lifecycle) and
+  `#8477` (real branch **+ PR** writeback from inside the microVM under the
+  owner's brokered GitHub identity) — both CLOSED and proven live. QAM-1..7
+  (`#8536–#8542`) CLOSED; store artifacts `#8544` CLOSED (public review
+  submissions deferred by owner decision).
+- **Khala Sync realtime + credits (hardened 2026-07-08):** `#8554` (capture
+  daemon moved to the `khala-capture` Cloud Run service — restored the dead
+  ~32h live-tail pipe, 0 backlog), `#8555` (hosted mobile-chat exact per-turn
+  credit metering), `#8556` (capture liveness alerting/auto-heal), `#8557`
+  (credit-balance projection backfill skip-not-fail for legacy `email:` IDs),
+  `#8564` (deploy-script cron-bearer leak) — ALL CLOSED. The credit-balance
+  projection was backfilled (42 real users seeded). Live send→reply→**metered
+  credit debit** proven end-to-end on a real Android device (turn recorded
+  server-side with an exact `usage_truth=exact` row + a `paid` charge). Honest
+  caveat: one Flash turn is sub-cent so it does not move a *whole-cent* display;
+  any ≥1¢ change pushes live.
+- **GCP migration (`#8515`) CLOSED** — MVP path fully on Cloud Run + Cloud SQL.
+- **CX foundation:** **CX-1 (`#8545`) CLOSED** — the broker-only provider-
+  credential law (`provider_credential_policy: broker_only`, never-pooled/
+  never-resale, fail-closed placement, scanner coverage).
+
+**Direction only (open; NOT started as code):**
+- **WEB-1 (`#8565`) sales landing — 0 lines of code on main.** `launch-ui` has
+  no hits in the tree and the reference clone is absent; the only "landing"
+  route is the old review-only two-door preview. The rev 4.2 directive doc
+  landed; the entire build (port launch-ui → theme → wire counters/pricing/CTAs
+  → route to prod) plus owner copy sign-off remain.
+- **OB-1..6 (`#8558–#8563`) outbound engine — all OPEN, no Sarah engine on
+  main.** Sarah lives in the separate `OpenAgentsInc/sarah` repo. A pre-existing
+  *operator-assisted* CRM/pipeline substrate exists in-repo
+  (`business_pipeline_rows`, outreach/email plumbing), but Apollo-sourcing,
+  audit-first personalization, the draft→approve→send loop, and Stripe close are
+  planned. Owner-gated: OB-1 (sending subdomain + DNS + Resend arming), OB-5
+  (Stripe keys).
+- **CX-2..9 (`#8546–#8553`) "your own Codex in the cloud" — all OPEN,
+  unstarted.** The proven `#8503` microVM turn runs the **hosted Khala gateway
+  model (Gemini), not Codex**. **CX-3 (`#8547`) is the unstarted linchpin:** the
+  in-guest turn-runner has no Codex path at all (no in-VM grant redemption, no
+  `CODEX_HOME` on scratch, no `codex_app_server` lane). CX-3's control-plane half
+  lives in the private `cloud/` repo, so it cannot be fully landed from here.
+- **`#8543` (P0.8 launch readiness) OPEN** — blocked on the owner-gated seeded
+  public-safe test account, the full dual-platform straight-line E2E (the
+  chat→reply→credit half is now device-proven; the pick-repo→push→writeback half
+  depends on CX-3), and the promises/copy pass with owner sign-off.
+- **`#8467` (Khala Code Mobile MVP epic) OPEN** — the live multi-workstream P0
+  program that `#8543` gates.
+
+**Bottom line:** the substrate is real and proven; the open backlog is all
+build-forward product work, most of it either spanning the private `cloud/` repo
+(CX-3) or owner-gated (seeded account, DNS/Resend, Stripe, prod arming, copy
+sign-offs). None can be honestly closed by in-repo work alone today. See "Current
+owner gates" below for the exact unblock list.
 
 ## 0. The one-page shape
 
@@ -161,7 +223,11 @@ system of record (CRM, credits, checkout, receipts, promise registry);
 the sarah repo calls its APIs and never re-implements them.
 
 **Track A (revised 2026-07-08, HIGH PRIORITY) — the new openagents.com
-sales landing, built from launch-ui.** Owner directive: switch the
+sales landing, built from launch-ui.** **STATUS (2026-07-08): NOT STARTED as
+code** — only the directive (this doc) landed; `launch-ui` has zero hits on
+`main`, the reference clone is absent, and the sole "landing" route is the old
+review-only two-door preview. The entire build below plus owner copy sign-off
+remain. Owner directive: switch the
 openagents.com landing/marketing site to a sales-focused site built from
 **launch-ui** (`projects/repos/launch-ui` — MIT; shadcn/ui + Tailwind 4 +
 React 19; a complete landing kit: hero/navbar/pricing/stats/logos/items/
@@ -325,6 +391,18 @@ Code mobile — we use Codex primarily and want all our coding through
 Khala Code.** That raises the bar from "one proven turn" to a daily
 driver, so the lane set grows from CX-1..5 to CX-1..9. Issues filed:
 **#8545–#8553**.
+
+**STATUS (2026-07-08): foundation proven, own-Codex not started.** CX-1
+(`#8545`) CLOSED (broker law); `#8503`/`#8477` CLOSED (a real microVM turn +
+branch/PR writeback) — **but that proven turn runs the hosted Khala gateway
+model (Gemini), not the user's Codex.** **CX-2..9 (`#8546–#8553`) are all OPEN
+and unstarted.** The linchpin is **CX-3 (`#8547`)**: the in-guest turn-runner
+has no Codex execution path (no in-VM grant redemption, no `CODEX_HOME` on
+scratch, no `codex_app_server` lane); its control-plane half lives in the
+private `cloud/` repo, so it can't be fully landed from this repo. CX-2
+(`#8546`, mobile Codex-connect UI) is the one lane fully buildable here today
+(the custody-rail routes already exist server-side; only the phone flow is
+missing — its QAM-7 fixture suite is red pending it).
 
 - **CX-1 (#8545)** Provider-credential invariant + broker contract
   (`provider_credential_policy: broker_only`; never-pooled /
@@ -533,7 +611,18 @@ closed by Sarah running a templated employee.
 8. **Constant motion**: owner-gated steps go to NEEDS_OWNER and work
    continues on the next non-blocked lane.
 
-## Current owner gates (as of 2026-07-07 rev 2)
+## Current owner gates (as of 2026-07-08 rev 4.3)
+
+New this pass (Khala Sync realtime hardening, 2026-07-08):
+
+- **`#8556` alert channel:** one click to verify the capture-staleness alert
+  email channel (verification email sent to the owner) — in `NEEDS_OWNER.md`.
+- **`#8564` (optional, precautionary):** rotate the cron bearer if the pre-fix
+  deploy log was ever persisted/shared (it was local scratchpad only) — can be
+  done non-interactively via the automation SA on the owner's say-so.
+
+Standing gates (carried; still open):
+
 
 - #8503 DoD verification + production arming decisions (P0.4).
 - Seeded public-safe test account (P0.8 / R4).
