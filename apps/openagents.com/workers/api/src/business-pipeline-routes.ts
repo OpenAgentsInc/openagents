@@ -2,6 +2,7 @@ import { Effect, Match as M } from 'effect'
 
 import {
   type BusinessPipelineAdvanceInput,
+  type BusinessPipelineApolloWaveInput,
   type BusinessPipelineCommitmentInput,
   type BusinessPipelineCreateInput,
   type BusinessPipelinePartnerRouteInput,
@@ -154,6 +155,61 @@ const createInputFromBody = (
   }
 }
 
+const apolloWaveInputFromBody = (
+  body: Record<string, unknown>,
+): BusinessPipelineApolloWaveInput => {
+  const prospects =
+    Array.isArray(body.prospects)
+      ? body.prospects
+          .filter(
+            prospect =>
+              typeof prospect === 'object' &&
+              prospect !== null &&
+              !Array.isArray(prospect),
+          )
+          .map(prospect => {
+            const entry = prospect as Record<string, unknown>
+            const sourceRef = optionalString(entry.sourceRef)
+            const quotedBand =
+              entry.quotedMinUsdCents === undefined &&
+              entry.quotedMaxUsdCents === undefined &&
+              entry.quotedBandLabel === undefined &&
+              entry.quotedBand === undefined
+                ? undefined
+                : {
+                    label:
+                      optionalString(entry.quotedBandLabel) ??
+                      optionalString(entry.quotedBand) ??
+                      'unquoted',
+                    maxUsdCents:
+                      optionalInteger(entry.quotedMaxUsdCents) ??
+                      numberOrUndefined(entry.quotedMaxUsdCents) ??
+                      0,
+                    minUsdCents:
+                      optionalInteger(entry.quotedMinUsdCents) ??
+                      numberOrUndefined(entry.quotedMinUsdCents) ??
+                      0,
+                  }
+
+            return {
+              pipelineRef: optionalString(entry.pipelineRef) ?? '',
+              ...(quotedBand === undefined ? {} : { quotedBand }),
+              receiptRefs: stringArrayFromUnknown(entry.receiptRefs),
+              ...(sourceRef === undefined ? {} : { sourceRef }),
+              subjectRef: optionalString(entry.subjectRef) ?? '',
+              vertical: optionalString(entry.vertical) ?? '',
+            }
+          })
+      : []
+
+  return {
+    prospects,
+    segmentRef: optionalString(body.segmentRef) ?? '',
+    sourceRef: optionalString(body.sourceRef) ?? '',
+    waveRef: optionalString(body.waveRef) ?? '',
+  }
+}
+
 const advanceInputFromBody = (
   body: Record<string, unknown>,
 ): BusinessPipelineAdvanceInput => {
@@ -277,6 +333,34 @@ const routeCreate = <Bindings>(
     },
   }).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
 
+const routeIngestApolloWave = <Bindings>(
+  dependencies: OperatorBusinessPipelineDependencies<Bindings>,
+  request: Request,
+  env: Bindings,
+) =>
+  Effect.tryPromise({
+    catch: error =>
+      error instanceof BusinessPipelineStoreError
+        ? error
+        : new BusinessPipelineStoreError({
+            kind: 'storage_error',
+            reason: error instanceof Error ? error.message : String(error),
+          }),
+    try: async () => {
+      const denial = await requireOperator(dependencies, request, env)
+      if (denial !== undefined) return denial
+      const body = await readJsonObject(request)
+      const wave = await dependencies.makeStore(env).ingestApolloWave(
+        apolloWaveInputFromBody(body),
+        {
+          ...systemBusinessPipelineRuntime,
+          nowIso: dependencies.nowIso ?? systemBusinessPipelineRuntime.nowIso,
+        },
+      )
+      return noStoreJsonResponse({ wave }, { status: 201 })
+    },
+  }).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
+
 const routeAdvance = <Bindings>(
   dependencies: OperatorBusinessPipelineDependencies<Bindings>,
   request: Request,
@@ -392,6 +476,13 @@ export const makeOperatorBusinessPipelineRoutes = <Bindings>(
     if (url.pathname === '/api/operator/business/pipeline/metrics') {
       if (request.method === 'GET') return routeMetrics(dependencies, request, env)
       return Effect.succeed(methodNotAllowed(['GET']))
+    }
+
+    if (url.pathname === '/api/operator/business/pipeline/apollo-waves') {
+      if (request.method === 'POST') {
+        return routeIngestApolloWave(dependencies, request, env)
+      }
+      return Effect.succeed(methodNotAllowed(['POST']))
     }
 
     const match =

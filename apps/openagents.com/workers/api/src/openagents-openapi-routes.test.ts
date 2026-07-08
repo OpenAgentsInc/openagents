@@ -1473,6 +1473,7 @@ const intentionallyUndocumentedApiRoutes: ReadonlyArray<string> = [
   '/api/operator/business/affiliate-codes',
   '/api/operator/business/affiliate-attribution',
   '/api/operator/business/pipeline',
+  '/api/operator/business/pipeline/apollo-waves',
   '/api/operator/business/pipeline/metrics',
   '/api/operator/business/pipeline/{param}/advance',
   '/api/operator/business/pipeline/{param}/commitments',

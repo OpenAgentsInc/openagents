@@ -202,6 +202,36 @@ export const BusinessPipelineMetrics = S.Struct({
 })
 export type BusinessPipelineMetrics = typeof BusinessPipelineMetrics.Type
 
+export const BusinessPipelineApolloWaveProspect = S.Struct({
+  pipelineRef: S.String,
+  quotedBand: S.optional(BusinessPipelineQuotedBand),
+  receiptRefs: S.optional(S.Array(S.String)),
+  sourceRef: S.optional(S.String),
+  subjectRef: S.String,
+  vertical: S.String,
+})
+export type BusinessPipelineApolloWaveProspect =
+  typeof BusinessPipelineApolloWaveProspect.Type
+
+export const BusinessPipelineApolloWaveIngest = S.Struct({
+  acceptedCount: S.Number,
+  duplicateCount: S.Number,
+  duplicates: S.Array(S.String),
+  inserted: S.Array(BusinessPipelineRow),
+  schemaVersion: S.Literal('openagents.business_pipeline_apollo_wave_ingest.v1'),
+  segmentRef: S.String,
+  sourceRef: S.String,
+  suppressed: S.Array(S.Struct({
+    pipelineRef: S.String,
+    subjectRef: S.String,
+    suppressionRef: S.String,
+  })),
+  suppressedCount: S.Number,
+  waveRef: S.String,
+})
+export type BusinessPipelineApolloWaveIngest =
+  typeof BusinessPipelineApolloWaveIngest.Type
+
 export class BusinessPipelineValidationError extends S.TaggedErrorClass<BusinessPipelineValidationError>()(
   'BusinessPipelineValidationError',
   { reason: S.String },
@@ -263,6 +293,13 @@ export type BusinessPipelineCommitmentInput = Readonly<{
   promisedObjectRef: string
   shippedAt?: string | null
   sourceRefs?: ReadonlyArray<string>
+}>
+
+export type BusinessPipelineApolloWaveInput = Readonly<{
+  prospects: ReadonlyArray<BusinessPipelineApolloWaveProspect>
+  segmentRef: string
+  sourceRef: string
+  waveRef: string
 }>
 
 export type BusinessPipelineRuntime = Readonly<{
@@ -328,6 +365,10 @@ type BusinessSignupPipelineLinkRow = Readonly<{
   id: string
   linked_pipeline_ref: string | null
   source_ref: string | null
+}>
+type BusinessOutreachSuppressionD1Row = Readonly<{
+  subject_ref: string
+  suppression_ref: string
 }>
 
 const SAFE_REF_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.:/=#-]{0,240}$/
@@ -858,6 +899,10 @@ export type BusinessPipelineStore = Readonly<{
     input: BusinessPipelineCreateInput,
     runtime?: BusinessPipelineRuntime,
   ) => Promise<BusinessPipelineRow>
+  ingestApolloWave: (
+    input: BusinessPipelineApolloWaveInput,
+    runtime?: BusinessPipelineRuntime,
+  ) => Promise<BusinessPipelineApolloWaveIngest>
   setPartnerRoute: (
     pipelineRef: string,
     input: BusinessPipelinePartnerRouteInput,
@@ -890,6 +935,22 @@ export const makeD1BusinessPipelineStore = (db: D1Database): BusinessPipelineSto
       .all<BusinessPipelineD1Row>()
 
     return (rows.results ?? []).map(businessPipelineRowFromD1)
+  }
+
+  const readSuppressionForSubject = async (
+    subjectRef: string,
+  ): Promise<BusinessOutreachSuppressionD1Row | null> => {
+    assertPublicSafeRef('subjectRef', subjectRef)
+    return db
+      .prepare(
+        `SELECT subject_ref, suppression_ref
+           FROM business_outreach_suppressions
+          WHERE subject_ref = ?
+          ORDER BY created_at DESC
+          LIMIT 1`,
+      )
+      .bind(subjectRef)
+      .first<BusinessOutreachSuppressionD1Row>()
   }
 
   const listCommitmentsForPipeline = async (
@@ -1122,6 +1183,159 @@ export const makeD1BusinessPipelineStore = (db: D1Database): BusinessPipelineSto
         })
       }
       return created
+    } catch (error) {
+      if (error instanceof BusinessPipelineValidationError) {
+        throw storeValidationError(error.reason)
+      }
+      throw storageError(error)
+    }
+  }
+
+  const ingestApolloWave = async (
+    input: BusinessPipelineApolloWaveInput,
+    runtime: BusinessPipelineRuntime = systemBusinessPipelineRuntime,
+  ): Promise<BusinessPipelineApolloWaveIngest> => {
+    try {
+      const waveRef = input.waveRef.trim()
+      const segmentRef = input.segmentRef.trim()
+      const decodedSourceRef = decodeBusinessSourceRef(input.sourceRef)
+      if ('reason' in decodedSourceRef) {
+        throw validationError(decodedSourceRef.reason)
+      }
+      const sourceRef = decodedSourceRef.sourceRef
+      assertPublicSafeRef('waveRef', waveRef)
+      assertPublicSafeRef('segmentRef', segmentRef)
+      assertPublicSafeRef('sourceRef', sourceRef)
+
+      if (input.prospects.length === 0 || input.prospects.length > 500) {
+        throw validationError('apollo wave must contain 1-500 prospects')
+      }
+
+      const normalizedProspects = input.prospects.map(prospect => {
+        const pipelineRef = prospect.pipelineRef.trim()
+        const subjectRef = prospect.subjectRef.trim()
+        const vertical = prospect.vertical.trim().toLowerCase()
+        const prospectSourceRef =
+          prospect.sourceRef === undefined
+            ? sourceRef
+            : decodeBusinessSourceRef(prospect.sourceRef)
+
+        if (typeof prospectSourceRef !== 'string' && 'reason' in prospectSourceRef) {
+          throw validationError(prospectSourceRef.reason)
+        }
+
+        const rowSourceRef =
+          typeof prospectSourceRef === 'string'
+            ? prospectSourceRef
+            : prospectSourceRef.sourceRef
+
+        assertPublicSafeRef('pipelineRef', pipelineRef)
+        assertPublicSafeRef('subjectRef', subjectRef)
+        assertPublicSafeDescriptor('vertical', vertical)
+        assertPublicSafeRef('sourceRef', rowSourceRef)
+
+        return {
+          pipelineRef,
+          quotedBand: prospect.quotedBand,
+          receiptRefs: prospect.receiptRefs,
+          sourceRef: rowSourceRef,
+          subjectRef,
+          vertical,
+        }
+      })
+      const duplicatePipelineRef = normalizedProspects.find((prospect, index) =>
+        normalizedProspects.findIndex(
+          candidate => candidate.pipelineRef === prospect.pipelineRef,
+        ) !== index,
+      )
+      if (duplicatePipelineRef !== undefined) {
+        throw validationError(
+          `apollo wave contains duplicate pipelineRef: ${duplicatePipelineRef.pipelineRef}`,
+        )
+      }
+
+      const suppressions = await Promise.all(
+        normalizedProspects.map(async prospect => ({
+          pipelineRef: prospect.pipelineRef,
+          subjectRef: prospect.subjectRef,
+          suppression: await readSuppressionForSubject(prospect.subjectRef),
+        })),
+      )
+      const suppressed = suppressions.flatMap(entry =>
+        entry.suppression === null
+          ? []
+          : [{
+              pipelineRef: entry.pipelineRef,
+              subjectRef: entry.subjectRef,
+              suppressionRef: entry.suppression.suppression_ref,
+            }],
+      )
+      const suppressedSubjectRefs = new Set(
+        suppressed.map(entry => entry.subjectRef),
+      )
+      const unsuppressed = normalizedProspects.filter(
+        prospect => !suppressedSubjectRefs.has(prospect.subjectRef),
+      )
+      const outcomes = await Promise.all(
+        unsuppressed.map(async prospect => {
+          try {
+            const row = await createPipelineRow(
+              {
+                ownerRole: 'operator',
+                pipelineRef: prospect.pipelineRef,
+                ...(prospect.quotedBand === undefined
+                  ? {}
+                  : { quotedBand: prospect.quotedBand }),
+                receiptRefs: [
+                  `receipt.business.apollo_wave.${businessPipelineSafeRefPart(waveRef)}`,
+                  ...(prospect.receiptRefs ?? []),
+                ],
+                sourceRef: prospect.sourceRef,
+                vertical: prospect.vertical,
+              },
+              runtime,
+            )
+            return { kind: 'inserted' as const, row }
+          } catch (error) {
+            if (
+              error instanceof BusinessPipelineStoreError &&
+              error.kind === 'conflict'
+            ) {
+              const existing = await readPipelineRow(prospect.pipelineRef)
+              if (
+                existing !== null &&
+                existing.sourceRef === prospect.sourceRef &&
+                existing.vertical === prospect.vertical
+              ) {
+                return {
+                  kind: 'duplicate' as const,
+                  pipelineRef: prospect.pipelineRef,
+                }
+              }
+            }
+            throw error
+          }
+        }),
+      )
+      const inserted = outcomes.flatMap(outcome =>
+        outcome.kind === 'inserted' ? [outcome.row] : [],
+      )
+      const duplicates = outcomes.flatMap(outcome =>
+        outcome.kind === 'duplicate' ? [outcome.pipelineRef] : [],
+      )
+
+      return S.decodeUnknownSync(BusinessPipelineApolloWaveIngest)({
+        acceptedCount: inserted.length,
+        duplicateCount: duplicates.length,
+        duplicates,
+        inserted,
+        schemaVersion: 'openagents.business_pipeline_apollo_wave_ingest.v1',
+        segmentRef,
+        sourceRef,
+        suppressed,
+        suppressedCount: suppressed.length,
+        waveRef,
+      })
     } catch (error) {
       if (error instanceof BusinessPipelineValidationError) {
         throw storeValidationError(error.reason)
@@ -1529,6 +1743,7 @@ export const makeD1BusinessPipelineStore = (db: D1Database): BusinessPipelineSto
     advancePipelineRow,
     createCommitment,
     createPipelineRow,
+    ingestApolloWave,
     listCommitmentsForPipeline,
     listPipelineRows,
     readMetrics,

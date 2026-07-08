@@ -59,6 +59,7 @@ const makeDb = (): D1Database => {
   db.exec(migration('0270_business_funnel_events.sql'))
   db.exec(migration('0278_business_commitment_ledger.sql'))
   db.exec(migration('0294_business_pipeline_queue.sql'))
+  db.exec(migration('0296_business_outreach_sequences.sql'))
   db.exec(migration('0299_business_pipeline_partner_routing.sql'))
   db.exec(migration('0297_business_source_attribution.sql'))
   return new SqliteD1(db) as unknown as D1Database
@@ -128,7 +129,147 @@ const runRoute = async (db: D1Database, request: Request): Promise<Response> => 
   return Effect.runPromise(routed)
 }
 
+const waveProspects = (
+  prefix: string,
+  count: number,
+  vertical: string,
+): ReadonlyArray<Record<string, unknown>> =>
+  Array.from({ length: count }, (_, index) => {
+    const n = String(index + 1).padStart(3, '0')
+    return {
+      pipelineRef: `biz-pipe-${prefix}-${n}`,
+      quotedBandLabel: 'audit first',
+      quotedMaxUsdCents: 500_000,
+      quotedMinUsdCents: 150_000,
+      subjectRef: `prospect.${prefix}.${n}`,
+      vertical,
+    }
+  })
+
 describe('business pipeline queue routes', () => {
+  test('ingests Apollo waves at volume with source attribution, suppression, and idempotent replays', async () => {
+    const db = makeDb()
+    await db
+      .prepare(
+        `INSERT INTO business_outreach_suppressions (
+          suppression_ref,
+          subject_ref,
+          reason,
+          source_ref,
+          created_at
+        ) VALUES (?, ?, 'existing_customer', ?, ?)`,
+      )
+      .bind(
+        'business.outreach.suppression.agency_050',
+        'prospect.agency.050',
+        'crm.suppression.20260708',
+        runtime.nowIso(),
+      )
+      .run()
+
+    const agencyWave = await runRoute(
+      db,
+      operatorRequest('/api/operator/business/pipeline/apollo-waves', {
+        body: JSON.stringify({
+          prospects: waveProspects('agency', 100, 'agency'),
+          segmentRef: 'segment.apollo.agencies_seo',
+          sourceRef: 'apollo_agent_readiness_agency',
+          waveRef: 'apollo.wave.agencies_seo.20260708a',
+        }),
+        method: 'POST',
+      }),
+    )
+    const agencyBody = await agencyWave.json() as {
+      wave: {
+        acceptedCount: number
+        duplicateCount: number
+        inserted: ReadonlyArray<{ sourceRef: string }>
+        suppressed: ReadonlyArray<{ subjectRef: string }>
+        suppressedCount: number
+      }
+    }
+    expect(agencyWave.status, JSON.stringify(agencyBody)).toBe(201)
+    expect(agencyBody.wave).toMatchObject({
+      acceptedCount: 99,
+      duplicateCount: 0,
+      suppressed: [{ subjectRef: 'prospect.agency.050' }],
+      suppressedCount: 1,
+    })
+    expect(
+      agencyBody.wave.inserted.every(
+        row => row.sourceRef === 'apollo_agent_readiness_agency',
+      ),
+    ).toBe(true)
+
+    const legalWave = await runRoute(
+      db,
+      operatorRequest('/api/operator/business/pipeline/apollo-waves', {
+        body: JSON.stringify({
+          prospects: waveProspects('legal', 100, 'regulated legal'),
+          segmentRef: 'segment.apollo.legal_small_firm',
+          sourceRef: 'apollo_model_custody',
+          waveRef: 'apollo.wave.legal_small_firm.20260708a',
+        }),
+        method: 'POST',
+      }),
+    )
+    expect(legalWave.status).toBe(201)
+    expect(await legalWave.json()).toMatchObject({
+      wave: {
+        acceptedCount: 100,
+        duplicateCount: 0,
+        sourceRef: 'apollo_model_custody',
+        suppressedCount: 0,
+      },
+    })
+
+    const replay = await runRoute(
+      db,
+      operatorRequest('/api/operator/business/pipeline/apollo-waves', {
+        body: JSON.stringify({
+          prospects: waveProspects('agency', 100, 'agency'),
+          segmentRef: 'segment.apollo.agencies_seo',
+          sourceRef: 'apollo_agent_readiness_agency',
+          waveRef: 'apollo.wave.agencies_seo.20260708a',
+        }),
+        method: 'POST',
+      }),
+    )
+    expect(replay.status).toBe(201)
+    expect(await replay.json()).toMatchObject({
+      wave: {
+        acceptedCount: 0,
+        duplicateCount: 99,
+        suppressedCount: 1,
+      },
+    })
+
+    const metrics = await runRoute(
+      db,
+      operatorRequest('/api/operator/business/pipeline/metrics'),
+    )
+    const metricsBody = await metrics.json() as {
+      commitmentCoverage: { totalPipelineRowCount: number }
+      sourceRefBreakdown: ReadonlyArray<{ rowCount: number; sourceRef: string }>
+    }
+    expect(metricsBody.commitmentCoverage.totalPipelineRowCount).toBe(199)
+    expect(metricsBody.sourceRefBreakdown).toContainEqual(
+      expect.objectContaining({
+        rowCount: 99,
+        sourceRef: 'apollo_agent_readiness_agency',
+      }),
+    )
+    expect(metricsBody.sourceRefBreakdown).toContainEqual(
+      expect.objectContaining({
+        rowCount: 100,
+        sourceRef: 'apollo_model_custody',
+      }),
+    )
+    expect(JSON.stringify(metricsBody)).not.toMatch(
+      /lead@example\.com|apollo payload|private\.example\.com|prospect\.agency\.050/i,
+    )
+  })
+
   test('creates, advances, and measures opaque pipeline rows with linked commitments', async () => {
     const db = makeDb()
     await insertSignup(db)
