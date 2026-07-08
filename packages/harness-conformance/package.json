@@ -1,0 +1,32 @@
+{
+  "name": "@openagentsinc/harness-conformance",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./contract": "./src/contract.ts",
+    "./runner": "./src/runner.ts",
+    "./chat-turn-projection": "./src/chat-turn-projection.ts"
+  },
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "bun test src/*.test.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@openagentsinc/agent-runtime-schema": "workspace:*",
+    "@openagentsinc/khala-fleet-intents": "workspace:*",
+    "@openagentsinc/khala-code-desktop": "workspace:*",
+    "@openagentsinc/pylon": "workspace:*",
+    "@openagentsinc/pylon-core": "workspace:*",
+    "effect": "catalog:"
+  },
+  "devDependencies": {
+    "bun-types": "^1.0.0",
+    "typescript": "catalog:"
+  }
+}
