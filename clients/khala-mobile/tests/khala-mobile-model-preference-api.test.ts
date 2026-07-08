@@ -8,9 +8,12 @@ import {
 
 const samplePreference = {
   availableModelIds: ["gemini", "vertex-anthropic-claude"],
+  availableTargetIds: ["gemini", "auto", "codex:owner-account"],
   effectiveModelId: "gemini",
+  effectiveTargetId: "codex:owner-account",
   fallback: "no_preference_set" as const,
   preferredModelId: null,
+  preferredTargetId: "codex:owner-account",
   updatedAt: null,
   usedPreference: false,
 }
@@ -26,6 +29,31 @@ describe("fetchKhalaMobileModelPreference", () => {
       fakeFetch({ body: samplePreference, ok: true }),
     )
     expect(result).toEqual({ ok: true, value: samplePreference })
+  })
+
+  test("parses legacy model-only responses as target-compatible preferences", async () => {
+    const legacyPreference = {
+      availableModelIds: ["gemini"],
+      effectiveModelId: "gemini",
+      fallback: "none" as const,
+      preferredModelId: "gemini",
+      updatedAt: null,
+      usedPreference: true,
+    }
+    const result = await fetchKhalaMobileModelPreference(
+      "https://openagents.com",
+      "tok",
+      fakeFetch({ body: legacyPreference, ok: true }),
+    )
+    expect(result).toEqual({
+      ok: true,
+      value: {
+        ...legacyPreference,
+        availableTargetIds: ["gemini"],
+        effectiveTargetId: "gemini",
+        preferredTargetId: "gemini",
+      },
+    })
   })
 
   test("reports unauthorized on a 401", async () => {
@@ -51,29 +79,47 @@ describe("putKhalaMobileModelPreference", () => {
     let capturedBody = ""
     const fetchImpl: KhalaModelPreferenceFetchLike = (async (_url, init) => {
       capturedBody = init.body ?? ""
-      return { json: async () => ({ ...samplePreference, preferredModelId: "gemini", usedPreference: true }), ok: true }
+      return {
+        json: async () => ({
+          ...samplePreference,
+          effectiveTargetId: "codex:owner-account",
+          preferredTargetId: "codex:owner-account",
+          usedPreference: true,
+        }),
+        ok: true,
+      }
     }) as KhalaModelPreferenceFetchLike
-    const result = await putKhalaMobileModelPreference("https://openagents.com", "tok", "gemini", fetchImpl)
-    expect(capturedBody).toBe(JSON.stringify({ modelId: "gemini" }))
+    const result = await putKhalaMobileModelPreference("https://openagents.com", "tok", "codex:owner-account", fetchImpl)
+    expect(capturedBody).toBe(JSON.stringify({ targetId: "codex:owner-account" }))
     expect(result.ok).toBe(true)
     if (result.ok) {
-      expect(result.value.preferredModelId).toBe("gemini")
+      expect(result.value.preferredTargetId).toBe("codex:owner-account")
       expect(result.value.usedPreference).toBe(true)
     }
   })
 
-  test("reports model_unavailable with the available list on a 409", async () => {
+  test("reports target_unavailable with available target and model lists on a 409", async () => {
     const result = await putKhalaMobileModelPreference(
       "https://openagents.com",
       "tok",
-      "nonexistent-model",
+      "codex:missing",
       fakeFetch({
-        body: { availableModelIds: ["gemini"], error: "model_unavailable", modelId: "nonexistent-model" },
+        body: {
+          availableModelIds: ["gemini"],
+          availableTargetIds: ["gemini", "auto"],
+          error: "target_unavailable",
+          targetId: "codex:missing",
+        },
         ok: false,
         status: 409,
       }),
     )
-    expect(result).toEqual({ availableModelIds: ["gemini"], kind: "model_unavailable", ok: false })
+    expect(result).toEqual({
+      availableModelIds: ["gemini"],
+      availableTargetIds: ["gemini", "auto"],
+      kind: "target_unavailable",
+      ok: false,
+    })
   })
 
   test("reports bad_request on a 400", async () => {
@@ -81,7 +127,7 @@ describe("putKhalaMobileModelPreference", () => {
       "https://openagents.com",
       "tok",
       "",
-      fakeFetch({ body: { error: "bad_request", reason: "modelId is required" }, ok: false, status: 400 }),
+      fakeFetch({ body: { error: "bad_request", reason: "targetId is required" }, ok: false, status: 400 }),
     )
     expect(result).toEqual({ kind: "bad_request", ok: false })
   })

@@ -15,7 +15,8 @@ import {
   buildInterruptTurnIntentArgs,
   buildStartTurnIntentArgs,
   chatMessageBodyRef,
-  DEFAULT_RUNTIME_LANE
+  DEFAULT_RUNTIME_LANE,
+  type RuntimeControlIntentTarget
 } from "../sync/khala-runtime-compose-core"
 import { makeSafeRef } from "../sync/khala-sync-push-core"
 import { buildComposerTextWithQuote } from "../sync/swipe-quote-core"
@@ -35,11 +36,19 @@ const TURN_STATUS_LABEL: Record<string, string> = {
  * a person chooses in this UI. "Khala" is the server-hosted default lane
  * (drained on Cloud Run, no local Pylon needed); Codex/Claude route to the
  * user's own local Pylon runtime. */
-const PICKABLE_LANES: ReadonlyArray<{ lane: KhalaRuntimeLane; label: string }> = [
-  { label: "Khala", lane: "hosted_khala" },
-  { label: "Codex", lane: "codex_app_server" },
-  { label: "Claude", lane: "claude_pylon" }
+export type ChatComposerExecutionTarget = Readonly<{
+  label: string
+  target: RuntimeControlIntentTarget
+}>
+
+const DEFAULT_EXECUTION_TARGETS: ReadonlyArray<ChatComposerExecutionTarget> = [
+  { label: "Khala", target: { executionTargetId: "khala", lane: "hosted_khala" } },
+  { label: "Codex", target: { lane: "codex_app_server" } },
+  { label: "Claude", target: { lane: "claude_pylon" } }
 ]
+
+const executionTargetKey = (target: RuntimeControlIntentTarget): string =>
+  `${target.lane}.${target.executionTargetId ?? "lane"}`
 
 export type ChatComposerAppendMessage = (
   input: Readonly<{ body: string; messageId: string; threadId: string }>,
@@ -66,6 +75,12 @@ type ChatComposerProps = Readonly<{
    * `DEFAULT_RUNTIME_LANE`. Only read while idle; once a turn is running,
    * its own already-fixed lane governs steer/queue/stop, not this prop. */
   defaultLane?: KhalaRuntimeLane
+  /** Per-thread execution targets for the idle picker (CX-4, #8548). When
+   * account health is loaded, parent screens pass account-specific targets
+   * such as `{ label: "Your Codex", target: { lane: "codex_app_server",
+   * executionTargetId: "codex:<accountRefHash>" } }`. The fallback list keeps
+   * the pre-existing lane picker behavior while older parents roll forward. */
+  executionTargets?: ReadonlyArray<ChatComposerExecutionTarget>
   push: (mutations: ReadonlyArray<PendingMutation>) => Promise<unknown>
   /** Swipe-to-quote request from the thread's transcript list (`SwipeableItem`
    * in `app/thread/[threadId].tsx`, see issue #8393). `id` is the swiped
@@ -90,6 +105,7 @@ export const ChatComposer = ({
   activeTurn,
   appendMessage,
   defaultLane,
+  executionTargets = DEFAULT_EXECUTION_TARGETS,
   onQuoteConsumed,
   push,
   quoteRequest,
@@ -100,7 +116,11 @@ export const ChatComposer = ({
   const [sending, setSending] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [mode, setMode] = useState<SendMode>("steer")
-  const [selectedLane, setSelectedLane] = useState<KhalaRuntimeLane>(defaultLane ?? DEFAULT_RUNTIME_LANE)
+  const [selectedExecutionTarget, setSelectedExecutionTarget] = useState<RuntimeControlIntentTarget>(
+    executionTargets.find(option => option.target.lane === (defaultLane ?? DEFAULT_RUNTIME_LANE))?.target ?? {
+      lane: defaultLane ?? DEFAULT_RUNTIME_LANE
+    },
+  )
   const [laneTouched, setLaneTouched] = useState(false)
   const [showOptions, setShowOptions] = useState(false)
   const lastQuoteRequestId = useRef<string | undefined>(undefined)
@@ -120,8 +140,12 @@ export const ChatComposer = ({
   // deliberately picks a lane themselves — after that, respect their choice
   // even if `defaultLane` recomputes (e.g. a new turn lands from elsewhere).
   useEffect(() => {
-    if (!laneTouched && defaultLane !== undefined) setSelectedLane(defaultLane)
-  }, [defaultLane, laneTouched])
+    if (!laneTouched && defaultLane !== undefined) {
+      setSelectedExecutionTarget(
+        executionTargets.find(option => option.target.lane === defaultLane)?.target ?? { lane: defaultLane },
+      )
+    }
+  }, [defaultLane, executionTargets, laneTouched])
 
   // Merges a swipe-to-quote request into the draft exactly once per request
   // id (see `ChatComposerProps.quoteRequest` above), then tells the parent to
@@ -188,7 +212,8 @@ export const ChatComposer = ({
         // as the turn it's queued behind, so a thread doesn't silently
         // switch providers mid-conversation via the hidden picker value.
         const turnId = makeSafeRef("turn")
-        const target = { lane: hasActiveTurn && activeTurn !== undefined ? activeTurn.lane : selectedLane }
+        const target =
+          hasActiveTurn && activeTurn !== undefined ? { lane: activeTurn.lane } : selectedExecutionTarget
         await push([
           { args: buildStartTurnIntentArgs({ bodyRef, nowIso, target, threadId, turnId }), name: "runtime.startTurn" }
         ])
@@ -269,16 +294,16 @@ export const ChatComposer = ({
     </View>
   ) : (
     <View accessibilityLabel="Provider" style={themed($optionRowWrap)}>
-      {PICKABLE_LANES.map(({ label, lane }) => (
+      {executionTargets.map(({ label, target }) => (
         <Pressable
           accessibilityLabel={`Send with ${label}`}
           accessibilityRole="button"
-          accessibilityState={{ selected: selectedLane === lane }}
-          style={pill(selectedLane === lane)}
-          key={lane}
+          accessibilityState={{ selected: executionTargetKey(selectedExecutionTarget) === executionTargetKey(target) }}
+          style={pill(executionTargetKey(selectedExecutionTarget) === executionTargetKey(target))}
+          key={executionTargetKey(target)}
           onPress={() => {
             setLaneTouched(true)
-            setSelectedLane(lane)
+            setSelectedExecutionTarget(target)
           }}
         >
           <Text size="xxs" style={themed($pillLabel)} text={label} />

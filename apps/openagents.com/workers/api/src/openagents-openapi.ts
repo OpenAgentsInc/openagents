@@ -2919,9 +2919,12 @@ const schemaComponents = (): JsonSchema => ({
     additionalProperties: false,
     required: [
       'availableModelIds',
+      'availableTargetIds',
       'effectiveModelId',
+      'effectiveTargetId',
       'fallback',
       'preferredModelId',
+      'preferredTargetId',
       'updatedAt',
       'usedPreference',
     ],
@@ -2933,22 +2936,38 @@ const schemaComponents = (): JsonSchema => ({
       effectiveModelId: {
         type: ['string', 'null'],
         description:
-          'The model id that should actually be used. Only null in the extreme case where neither the stored preference nor the compiled default (`gemini`) is currently servable by this deployment.',
+          'Legacy alias for effectiveTargetId retained for older mobile clients.',
+      },
+      preferredTargetId: {
+        type: ['string', 'null'],
+        description:
+          'The caller’s raw stored execution target, or null if never set. Account-backed targets use public-safe ids such as `codex:<accountRefHash>`.',
+      },
+      effectiveTargetId: {
+        type: ['string', 'null'],
+        description:
+          'The execution target that should actually be used. Only null in the extreme case where neither the stored preference nor the compiled default (`gemini`) is currently servable by this deployment.',
       },
       usedPreference: {
         type: 'boolean',
-        description: 'True only when effectiveModelId is actually the caller’s own stored preference.',
+        description: 'True only when effectiveTargetId is actually the caller’s own stored preference.',
       },
       fallback: {
         type: 'string',
         enum: ['none', 'no_preference_set', 'preference_unavailable', 'default_unavailable'],
         description:
-          'Always reports which case applied — never a silent substitution. `preference_unavailable` means the stored choice is no longer servable by this deployment (its supply lane is unarmed); `default_unavailable` means even the compiled default (gemini) is currently unservable.',
+          'Always reports which case applied — never a silent substitution. `preference_unavailable` means the stored execution target is no longer servable by this deployment; `default_unavailable` means even the compiled default (gemini) is currently unservable.',
       },
       availableModelIds: {
         type: 'array',
         items: { type: 'string' },
-        description: 'Model ids this deployment can actually serve right now (supply lane armed), for the Settings picker.',
+        description: 'Legacy list of model ids this deployment can actually serve right now (supply lane armed).',
+      },
+      availableTargetIds: {
+        type: 'array',
+        items: { type: 'string' },
+        description:
+          'Execution targets the Settings picker may choose right now: `gemini`, `auto`, hosted lanes such as `khala`, and account-backed ids such as `codex:<accountRefHash>`.',
       },
       updatedAt: {
         type: ['string', 'null'],
@@ -2956,19 +2975,24 @@ const schemaComponents = (): JsonSchema => ({
       },
     },
     description:
-      'Per-user model configuration (MM-F1, #8484): the caller’s stored model preference resolved against this deployment’s actually-armed supply lanes, with a typed, never-silent fallback.',
+      'Per-user model/execution-target configuration (MM-F1, #8484; CX-4, #8548): the caller’s stored target preference resolved against this deployment’s actually-available targets, with a typed, never-silent fallback.',
   },
   SetModelPreferenceRequest: {
     type: 'object',
     additionalProperties: false,
-    required: ['modelId'],
     properties: {
+      targetId: {
+        type: 'string',
+        description:
+          'An execution target id from the current GET response’s availableTargetIds (for example `gemini`, `auto`, `khala`, or `codex:<accountRefHash>`). An unavailable target is rejected with 409 target_unavailable, never silently substituted.',
+      },
       modelId: {
         type: 'string',
         description:
-          'A model id from the current GET response’s availableModelIds (e.g. "gemini"). A model this deployment cannot currently serve is rejected with 409 model_unavailable, never silently substituted.',
+          'Deprecated compatibility alias for targetId. New clients should send targetId.',
       },
     },
+    anyOf: [{ required: ['targetId'] }, { required: ['modelId'] }],
   },
   OnboardingStatus: objectSummary(
     'Signed-in customer onboarding state projection.',
@@ -10911,9 +10935,9 @@ const paths = (): JsonSchema => ({
   '/api/mobile/model-preference': {
     get: operation({
       operationId: 'getMobileModelPreference',
-      summary: 'Read per-user model configuration',
+      summary: 'Read per-user model/target configuration',
       description:
-        'Reads the signed-in mobile user’s stored model preference (MM-F1, #8484), resolved against this deployment’s actually-armed supply lanes. Defaults to `gemini` when unset. Never silently substitutes: `fallback` always reports whether the response is the caller’s real preference, the default, or an honest "nothing servable" (`effectiveModelId: null`).',
+        'Reads the signed-in mobile user’s stored execution target preference (MM-F1, #8484; CX-4, #8548), resolved against this deployment’s actually-available targets. Defaults to `gemini` when unset. Never silently substitutes: `fallback` always reports whether the response is the caller’s real preference, the default, or an honest "nothing servable" (`effectiveTargetId: null`).',
       tags: ['Agents'],
       security: mobileUserBearer,
       responses: {
@@ -10923,20 +10947,20 @@ const paths = (): JsonSchema => ({
     }),
     put: operation({
       operationId: 'setMobileModelPreference',
-      summary: 'Set per-user model configuration',
+      summary: 'Set per-user model/target configuration',
       description:
-        'Sets the signed-in mobile user’s model preference (MM-F1, #8484). Rejects a model id this deployment cannot currently serve with 409 model_unavailable (and the current availableModelIds) rather than silently accepting an unservable choice.',
+        'Sets the signed-in mobile user’s execution target preference (MM-F1, #8484; CX-4, #8548). Rejects a target id this deployment cannot currently serve with 409 target_unavailable (and the current availableTargetIds) rather than silently accepting an unservable choice.',
       tags: ['Agents'],
       security: mobileUserBearer,
       requestBody: jsonContent('#/components/schemas/SetModelPreferenceRequest'),
       responses: {
         '200': okJson('Updated model preference.', '#/components/schemas/ModelPreference'),
         '400': {
-          description: 'modelId missing or invalid JSON body.',
+          description: 'targetId/modelId missing or invalid JSON body.',
           ...jsonContent('#/components/schemas/ErrorResponse'),
         },
         '409': {
-          description: 'The requested modelId is not currently servable by this deployment.',
+          description: 'The requested targetId is not currently servable by this deployment.',
           ...jsonContent('#/components/schemas/ErrorResponse'),
         },
         ...errorResponses(),

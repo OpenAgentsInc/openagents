@@ -51,6 +51,9 @@ import type { SupplyLaneArming } from './model-serving-policy'
 // It is the default preference per the issue ("Gemini is the default for the
 // coding lane").
 export const DEFAULT_MODEL_PREFERENCE_ID = 'gemini' as const
+export const DEFAULT_EXECUTION_TARGET_ID = DEFAULT_MODEL_PREFERENCE_ID
+export const AUTO_EXECUTION_TARGET_ID = 'auto' as const
+export const KHALA_EXECUTION_TARGET_ID = 'khala' as const
 
 // ----------------------------------------------------------------------------
 // Availability: only lanes actually armed in THIS deployment
@@ -109,6 +112,14 @@ export const resolveAvailableModelIds = (
 export const normalizeModelPreferenceId = (modelId: string): string =>
   normalizeKhalaModelId(modelId)
 
+export const normalizeExecutionTargetId = (targetId: string): string => {
+  const normalized = targetId.trim()
+  if (normalized.toLowerCase().startsWith('codex:')) {
+    return `codex:${normalized.slice('codex:'.length)}`
+  }
+  return normalizeModelPreferenceId(normalized)
+}
+
 export const isModelIdAvailable = (
   modelId: string,
   availableModelIds: ReadonlyArray<string>,
@@ -116,6 +127,43 @@ export const isModelIdAvailable = (
   const normalized = normalizeModelPreferenceId(modelId)
   return availableModelIds.some(
     id => normalizeModelPreferenceId(id) === normalized,
+  )
+}
+
+export const isCodexExecutionTargetId = (targetId: string): boolean =>
+  /^codex:[A-Za-z0-9_.:-]{3,128}$/.test(normalizeExecutionTargetId(targetId))
+
+export const resolveAvailableExecutionTargetIds = (
+  input: Readonly<{
+    availableModelIds: ReadonlyArray<string>
+    codexAccountRefHashes?: ReadonlyArray<string>
+  }>,
+): ReadonlyArray<string> => {
+  const ids = new Set<string>()
+  if (isModelIdAvailable(DEFAULT_EXECUTION_TARGET_ID, input.availableModelIds)) {
+    ids.add(DEFAULT_EXECUTION_TARGET_ID)
+    ids.add(AUTO_EXECUTION_TARGET_ID)
+  }
+  if (isModelIdAvailable(KHALA_MODEL_ID, input.availableModelIds)) {
+    ids.add(KHALA_EXECUTION_TARGET_ID)
+  }
+  for (const accountRefHash of input.codexAccountRefHashes ?? []) {
+    const trimmed = accountRefHash.trim()
+    if (trimmed !== '') ids.add(`codex:${trimmed}`)
+  }
+  return [...ids]
+}
+
+export const isExecutionTargetIdAvailable = (
+  targetId: string,
+  availableTargetIds: ReadonlyArray<string>,
+): boolean => {
+  const normalized = normalizeExecutionTargetId(targetId)
+  if (isCodexExecutionTargetId(normalized)) {
+    return availableTargetIds.some(id => normalizeExecutionTargetId(id) === normalized)
+  }
+  return availableTargetIds.some(
+    id => normalizeExecutionTargetId(id) === normalized,
   )
 }
 
@@ -176,6 +224,44 @@ export const resolveModelPreference = (
     effectiveModelId: defaultAvailable ? DEFAULT_MODEL_PREFERENCE_ID : null,
     fallback: defaultAvailable ? 'preference_unavailable' : 'default_unavailable',
     preferredModelId: input.storedModelId,
+    usedPreference: false,
+  }
+}
+
+export const resolveExecutionTargetPreference = (
+  input: Readonly<{
+    storedTargetId: string | null
+    availableTargetIds: ReadonlyArray<string>
+  }>,
+): ModelPreferenceResolution => {
+  const defaultAvailable = isExecutionTargetIdAvailable(
+    DEFAULT_EXECUTION_TARGET_ID,
+    input.availableTargetIds,
+  )
+
+  if (input.storedTargetId === null) {
+    return {
+      effectiveModelId: defaultAvailable ? DEFAULT_EXECUTION_TARGET_ID : null,
+      fallback: defaultAvailable ? 'no_preference_set' : 'default_unavailable',
+      preferredModelId: null,
+      usedPreference: false,
+    }
+  }
+
+  const normalized = normalizeExecutionTargetId(input.storedTargetId)
+  if (isExecutionTargetIdAvailable(normalized, input.availableTargetIds)) {
+    return {
+      effectiveModelId: normalized,
+      fallback: 'none',
+      preferredModelId: normalized,
+      usedPreference: true,
+    }
+  }
+
+  return {
+    effectiveModelId: defaultAvailable ? DEFAULT_EXECUTION_TARGET_ID : null,
+    fallback: defaultAvailable ? 'preference_unavailable' : 'default_unavailable',
+    preferredModelId: normalized,
     usedPreference: false,
   }
 }

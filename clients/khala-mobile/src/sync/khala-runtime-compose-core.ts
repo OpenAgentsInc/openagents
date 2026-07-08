@@ -78,7 +78,10 @@ const RUNTIME_ORIGIN = { lane: "khala_sync_mobile_control", surface: "mobile" } 
  * Users who want their own Codex/Claude runtime still pick it explicitly. */
 export const DEFAULT_RUNTIME_LANE: KhalaRuntimeLane = "hosted_khala"
 
-export type RuntimeControlIntentTarget = Readonly<{ lane: KhalaRuntimeLane }>
+export type RuntimeControlIntentTarget = Readonly<{
+  executionTargetId?: string
+  lane: KhalaRuntimeLane
+}>
 
 export type RuntimeControlIntentArgs = Readonly<{
   schema: "openagents.khala_runtime_control_intent.v1"

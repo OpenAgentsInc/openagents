@@ -5,10 +5,16 @@ import { describe, expect, test } from 'vitest'
 import { ALL_LANES_UNARMED, type SupplyLaneArming } from './model-serving-policy'
 import { HYDRALISK_GPT_OSS_20B_MODEL_ID, KHALA_MODEL_ID } from './pricing'
 import {
+  AUTO_EXECUTION_TARGET_ID,
+  DEFAULT_EXECUTION_TARGET_ID,
   DEFAULT_MODEL_PREFERENCE_ID,
+  isExecutionTargetIdAvailable,
   isModelIdAvailable,
+  normalizeExecutionTargetId,
   readUserModelPreference,
+  resolveAvailableExecutionTargetIds,
   resolveAvailableModelIds,
+  resolveExecutionTargetPreference,
   resolveModelPreference,
   writeUserModelPreference,
 } from './model-preference-store'
@@ -122,6 +128,79 @@ describe('isModelIdAvailable (MM-F1, #8484)', () => {
 
   test('the khala slug normalizes to the canonical id both ways', () => {
     expect(isModelIdAvailable('khala', [KHALA_MODEL_ID])).toBe(true)
+  })
+})
+
+describe('execution target selection (CX-4, #8548)', () => {
+  test('exposes gemini, auto, hosted khala, and connected Codex accounts as targets', () => {
+    const targets = resolveAvailableExecutionTargetIds({
+      availableModelIds: ['gemini', KHALA_MODEL_ID],
+      codexAccountRefHashes: ['acct_a', 'acct_b'],
+    })
+    expect(targets).toEqual([
+      DEFAULT_EXECUTION_TARGET_ID,
+      AUTO_EXECUTION_TARGET_ID,
+      'khala',
+      'codex:acct_a',
+      'codex:acct_b',
+    ])
+  })
+
+  test('normalizes execution targets while preserving account-ref hash case', () => {
+    expect(normalizeExecutionTargetId('  Gemini  ')).toBe('gemini')
+    expect(normalizeExecutionTargetId('CODEX:AccountRefHash_01')).toBe(
+      'codex:AccountRefHash_01',
+    )
+  })
+
+  test('only accepts account-specific Codex targets that are surfaced as available', () => {
+    const availableTargetIds = resolveAvailableExecutionTargetIds({
+      availableModelIds: ['gemini'],
+      codexAccountRefHashes: ['owner-codex'],
+    })
+    expect(isExecutionTargetIdAvailable('codex:owner-codex', availableTargetIds)).toBe(true)
+    expect(isExecutionTargetIdAvailable('codex:missing', availableTargetIds)).toBe(false)
+  })
+
+  test('defaults to gemini when no target is set and gemini is available', () => {
+    expect(
+      resolveExecutionTargetPreference({
+        availableTargetIds: ['gemini', 'auto', 'codex:owner-codex'],
+        storedTargetId: null,
+      }),
+    ).toEqual({
+      effectiveModelId: 'gemini',
+      fallback: 'no_preference_set',
+      preferredModelId: null,
+      usedPreference: false,
+    })
+  })
+
+  test('honors an available account-specific Codex target', () => {
+    expect(
+      resolveExecutionTargetPreference({
+        availableTargetIds: ['gemini', 'auto', 'codex:owner-codex'],
+        storedTargetId: 'codex:owner-codex',
+      }),
+    ).toEqual({
+      effectiveModelId: 'codex:owner-codex',
+      fallback: 'none',
+      preferredModelId: 'codex:owner-codex',
+      usedPreference: true,
+    })
+  })
+
+  test('TYPED FALLBACK: unavailable execution targets report both requested and effective targets', () => {
+    const resolution = resolveExecutionTargetPreference({
+      availableTargetIds: ['gemini', 'auto'],
+      storedTargetId: 'codex:exhausted-account',
+    })
+    expect(resolution).toEqual({
+      effectiveModelId: 'gemini',
+      fallback: 'preference_unavailable',
+      preferredModelId: 'codex:exhausted-account',
+      usedPreference: false,
+    })
   })
 })
 

@@ -239,6 +239,10 @@ const makeTurn = (overrides: Partial<RuntimeTurnEntity> = {}): RuntimeTurnEntity
 type ChatComposerTestProps = Readonly<{
   activeTurn: RuntimeTurnEntity | undefined
   appendMessage?: (input: { body: string; messageId: string; threadId: string }) => Promise<{ ok: boolean; error?: string }>
+  executionTargets?: ReadonlyArray<{
+    label: string
+    target: Readonly<{ executionTargetId?: string; lane: RuntimeTurnEntity["lane"] }>
+  }>
   push: (mutations: ReadonlyArray<{ name: string; args: unknown }>) => Promise<unknown>
 }>
 
@@ -356,6 +360,50 @@ describe("contract khala_mobile.composer.rn_component_mount_coverage.v1 — Chat
     expect(mutations.map(m => m.name)).toEqual(["runtime.startTurn"])
     const startTurnArgs = mutations[0]!.args as { bodyRef?: string }
     expect(startTurnArgs.bodyRef).toBe(`chat_message.${appendArgs.messageId}`)
+  })
+
+  test("idle provider pill can select an account-specific Codex execution target", async () => {
+    const push = mock(() => Promise.resolve())
+    const renderer = await mountComposer({
+      activeTurn: undefined,
+      executionTargets: [
+        { label: "Khala", target: { executionTargetId: "khala", lane: "hosted_khala" } },
+        { label: "Your Codex", target: { executionTargetId: "codex:owner-account-ref-hash", lane: "codex_app_server" } }
+      ],
+      push
+    })
+
+    const optionButtons = findByProp(renderer.root, "accessibilityLabel", "Show composer options")
+    expect(optionButtons.length).toBe(1)
+    await act(() => {
+      ;(optionButtons[0]!.props as { onPress: () => void }).onPress()
+    })
+
+    const codexButtons = findByProp(renderer.root, "accessibilityLabel", "Send with Your Codex")
+    expect(codexButtons.length).toBe(1)
+    await act(() => {
+      ;(codexButtons[0]!.props as { onPress: () => void }).onPress()
+    })
+
+    const inputs = renderer.root.findAllByType("TextInput" as unknown as React.ComponentType)
+    await act(() => {
+      ;(inputs[0]!.props as { onChangeText: (text: string) => void }).onChangeText("run my account")
+    })
+
+    const sendButtons = findByProp(renderer.root, "accessibilityLabel", "Send")
+    await act(async () => {
+      await (sendButtons[0]!.props as { onPress: () => Promise<void> }).onPress()
+    })
+
+    const calls = push.mock.calls as unknown as Array<Array<ReadonlyArray<{ name: string; args: unknown }>>>
+    const mutations = calls[0]![0]!
+    const startTurnArgs = mutations[0]!.args as {
+      target?: { executionTargetId?: string; lane?: string }
+    }
+    expect(startTurnArgs.target).toEqual({
+      executionTargetId: "codex:owner-account-ref-hash",
+      lane: "codex_app_server"
+    })
   })
 
   test("pressing Stop on an active turn calls push() with runtime.interruptTurn", async () => {

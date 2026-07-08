@@ -728,11 +728,12 @@ import {
   resolveSupplyLaneArming,
 } from './inference/model-serving-policy'
 import {
-  isModelIdAvailable,
-  normalizeModelPreferenceId,
+  isExecutionTargetIdAvailable,
+  normalizeExecutionTargetId,
   readUserModelPreference,
+  resolveAvailableExecutionTargetIds,
   resolveAvailableModelIds,
-  resolveModelPreference,
+  resolveExecutionTargetPreference,
   writeUserModelPreference,
 } from './inference/model-preference-store'
 import {
@@ -5349,46 +5350,59 @@ const handleMobileModelPreferenceApi = async (
 
   const db = openAgentsDatabase(env)
   const availableModelIds = resolveAvailableModelIds(resolveSupplyLaneArming(env))
+  const availableTargetIds = resolveAvailableExecutionTargetIds({
+    availableModelIds,
+  })
 
   if (request.method === 'PUT') {
     const rawBody = await request.json().catch(() => undefined)
-    const modelId =
-      typeof (rawBody as { modelId?: unknown } | undefined)?.modelId === 'string'
-        ? ((rawBody as { modelId: string }).modelId.trim())
+    const targetId =
+      typeof (rawBody as { targetId?: unknown } | undefined)?.targetId === 'string'
+        ? ((rawBody as { targetId: string }).targetId.trim())
+        : typeof (rawBody as { modelId?: unknown } | undefined)?.modelId === 'string'
+          ? ((rawBody as { modelId: string }).modelId.trim())
         : ''
 
-    if (modelId === '') {
+    if (targetId === '') {
       return noStoreJsonResponse(
-        { error: 'bad_request', reason: 'modelId is required' },
+        { error: 'bad_request', reason: 'targetId is required' },
         { status: 400 },
       )
     }
 
-    if (!isModelIdAvailable(modelId, availableModelIds)) {
+    if (!isExecutionTargetIdAvailable(targetId, availableTargetIds)) {
       return noStoreJsonResponse(
-        { availableModelIds, error: 'model_unavailable', modelId },
+        {
+          availableModelIds,
+          availableTargetIds,
+          error: 'target_unavailable',
+          targetId,
+        },
         { status: 409 },
       )
     }
 
     await writeUserModelPreference(db, {
-      modelId: normalizeModelPreferenceId(modelId),
+      modelId: normalizeExecutionTargetId(targetId),
       nowIso: currentIsoTimestamp(),
       userId: session.user.userId,
     })
   }
 
   const stored = await readUserModelPreference(db, session.user.userId)
-  const resolution = resolveModelPreference({
-    availableModelIds,
-    storedModelId: stored?.modelId ?? null,
+  const resolution = resolveExecutionTargetPreference({
+    availableTargetIds,
+    storedTargetId: stored?.modelId ?? null,
   })
 
   return noStoreJsonResponse({
     availableModelIds,
+    availableTargetIds,
     effectiveModelId: resolution.effectiveModelId,
+    effectiveTargetId: resolution.effectiveModelId,
     fallback: resolution.fallback,
     preferredModelId: resolution.preferredModelId,
+    preferredTargetId: resolution.preferredModelId,
     updatedAt: stored?.updatedAt ?? null,
     usedPreference: resolution.usedPreference,
   })

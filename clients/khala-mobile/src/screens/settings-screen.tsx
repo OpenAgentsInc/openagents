@@ -39,7 +39,10 @@ import {
   putKhalaMobileModelPreference,
   type KhalaModelPreference,
 } from "../sync/khala-mobile-model-preference-api"
-import { modelDisplayLabel, modelPreferenceFallbackMessage } from "../sync/khala-mobile-model-preference-format-core"
+import {
+  executionTargetDisplayLabel,
+  modelPreferenceFallbackMessage,
+} from "../sync/khala-mobile-model-preference-format-core"
 
 /**
  * MM-H1 (#8487) Settings, rebuilt entirely on the ported Infinite Red Ignite
@@ -392,10 +395,10 @@ const ModelsSection = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const handleSelect = async (modelId: string) => {
+  const handleSelect = async (targetId: string) => {
     if (selecting !== null) return
-    setSelecting(modelId)
-    const result = await putKhalaMobileModelPreference(baseUrl, token, modelId)
+    setSelecting(targetId)
+    const result = await putKhalaMobileModelPreference(baseUrl, token, targetId)
     setSelecting(null)
     if (result.ok) setState({ preference: result.value, status: "ready" })
   }
@@ -422,15 +425,16 @@ const ModelsSection = () => {
               text={modelPreferenceFallbackMessage(state.preference.fallback) ?? ""}
             />
           )}
-          {state.preference.availableModelIds.map(modelId => {
-            const active = state.preference.effectiveModelId === modelId
+          {state.preference.availableTargetIds.map(targetId => {
+            const active = state.preference.effectiveTargetId === targetId
+            const label = executionTargetDisplayLabel(targetId)
             return (
               <Button
-                key={modelId}
+                key={targetId}
                 preset={active ? "reversed" : "default"}
                 disabled={selecting !== null}
-                onPress={() => void handleSelect(modelId)}
-                text={active ? `${modelDisplayLabel(modelId)} (active)` : modelDisplayLabel(modelId)}
+                onPress={() => void handleSelect(targetId)}
+                text={active ? `${label} (active)` : label}
               />
             )
           })}

@@ -63,9 +63,12 @@ export type DemoRepository = Readonly<{
 /** Structural mirror of `KhalaModelPreference`. */
 export type DemoModelPreference = Readonly<{
   availableModelIds: ReadonlyArray<string>
+  availableTargetIds: ReadonlyArray<string>
   effectiveModelId: string | null
+  effectiveTargetId: string | null
   fallback: "none" | "no_preference_set" | "preference_unavailable" | "default_unavailable"
   preferredModelId: string | null
+  preferredTargetId: string | null
   updatedAt: string | null
   usedPreference: boolean
 }>
@@ -329,9 +332,12 @@ export const DEMO_MODEL_ID = "openagents/khala"
 
 export const demoModelPreference = (preferredModelId: string = DEMO_MODEL_ID): DemoModelPreference => ({
   availableModelIds: [DEMO_MODEL_ID],
+  availableTargetIds: ["gemini", "auto", "khala"],
   effectiveModelId: DEMO_MODEL_ID,
+  effectiveTargetId: preferredModelId,
   fallback: "none",
   preferredModelId,
+  preferredTargetId: preferredModelId,
   updatedAt: "2026-07-06T14:00:00Z",
   usedPreference: true,
 })

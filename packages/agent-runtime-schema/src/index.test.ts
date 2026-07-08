@@ -476,6 +476,18 @@ describe("@openagentsinc/agent-runtime-schema", () => {
     for (const intent of decodedIntents) {
       expect(assertKhalaRuntimeControlIntentSafe(intent)).toBe(intent)
     }
+
+    const accountTargetIntent = decodeKhalaRuntimeControlIntent({
+      ...khalaRuntimeControlIntentFixtures[0],
+      target: {
+        executionTargetId: "codex:owner-account-ref-hash",
+        lane: "codex_app_server",
+      },
+    })
+    expect(accountTargetIntent.target).toEqual({
+      executionTargetId: "codex:owner-account-ref-hash",
+      lane: "codex_app_server",
+    })
   })
 
   test("maps existing AgentRuntime events and AI SDK TextStreamPart fixtures into the Khala event schema", () => {

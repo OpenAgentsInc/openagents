@@ -281,9 +281,12 @@ export const mobileCreditsTransactions: readonly KhalaMobileCreditsTransaction[]
 
 export const mobileModelPreference: KhalaModelPreference = {
   availableModelIds: ["gpt-5", "gpt-5-mini"],
+  availableTargetIds: ["gemini", "auto", "codex:owner-account"],
   effectiveModelId: "gpt-5",
+  effectiveTargetId: "codex:owner-account",
   fallback: "none",
   preferredModelId: "gpt-5",
+  preferredTargetId: "codex:owner-account",
   updatedAt: mobileFixtureAt,
   usedPreference: true,
 }

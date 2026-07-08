@@ -113,9 +113,12 @@ describe("contract khala_mobile.auth.demo_login_example_data.v1 — reviewer dem
     // Model config: the single Khala model.
     expect(demoModelPreference()).toEqual({
       availableModelIds: [DEMO_MODEL_ID],
+      availableTargetIds: ["gemini", "auto", "khala"],
       effectiveModelId: DEMO_MODEL_ID,
+      effectiveTargetId: DEMO_MODEL_ID,
       fallback: "none",
       preferredModelId: DEMO_MODEL_ID,
+      preferredTargetId: DEMO_MODEL_ID,
       updatedAt: "2026-07-06T14:00:00Z",
       usedPreference: true,
     })

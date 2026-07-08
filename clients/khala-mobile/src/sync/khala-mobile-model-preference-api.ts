@@ -18,9 +18,12 @@ export type KhalaModelPreferenceFallback =
 
 export type KhalaModelPreference = Readonly<{
   availableModelIds: ReadonlyArray<string>
+  availableTargetIds: ReadonlyArray<string>
   effectiveModelId: string | null
+  effectiveTargetId: string | null
   fallback: KhalaModelPreferenceFallback
   preferredModelId: string | null
+  preferredTargetId: string | null
   updatedAt: string | null
   usedPreference: boolean
 }>
@@ -32,7 +35,12 @@ export type KhalaModelPreferenceFetchLike = (
 
 export type KhalaModelPreferenceResult =
   | Readonly<{ ok: true; value: KhalaModelPreference }>
-  | Readonly<{ availableModelIds: ReadonlyArray<string>; kind: "model_unavailable"; ok: false }>
+  | Readonly<{
+      availableModelIds: ReadonlyArray<string>
+      availableTargetIds: ReadonlyArray<string>
+      kind: "target_unavailable"
+      ok: false
+    }>
   | Readonly<{ kind: "unauthorized" | "bad_request" | "unavailable" | "unknown"; ok: false }>
 
 const FALLBACK_VALUES: ReadonlySet<string> = new Set([
@@ -54,11 +62,21 @@ const parsePreference = (body: unknown): KhalaModelPreference | null => {
   ) {
     return null
   }
+  const availableModelIds = record.availableModelIds as ReadonlyArray<string>
+  const effectiveModelId = typeof record.effectiveModelId === "string" ? record.effectiveModelId : null
+  const preferredModelId = typeof record.preferredModelId === "string" ? record.preferredModelId : null
+  const availableTargetIds =
+    Array.isArray(record.availableTargetIds) && record.availableTargetIds.every(id => typeof id === "string")
+      ? (record.availableTargetIds as ReadonlyArray<string>)
+      : availableModelIds
   return {
-    availableModelIds: record.availableModelIds as ReadonlyArray<string>,
-    effectiveModelId: typeof record.effectiveModelId === "string" ? record.effectiveModelId : null,
+    availableModelIds,
+    availableTargetIds,
+    effectiveModelId,
+    effectiveTargetId: typeof record.effectiveTargetId === "string" ? record.effectiveTargetId : effectiveModelId,
     fallback: record.fallback as KhalaModelPreferenceFallback,
-    preferredModelId: typeof record.preferredModelId === "string" ? record.preferredModelId : null,
+    preferredModelId,
+    preferredTargetId: typeof record.preferredTargetId === "string" ? record.preferredTargetId : preferredModelId,
     updatedAt: typeof record.updatedAt === "string" ? record.updatedAt : null,
     usedPreference: record.usedPreference,
   }
@@ -88,23 +106,26 @@ export const fetchKhalaMobileModelPreference = async (
 export const putKhalaMobileModelPreference = async (
   apiBaseUrl: string,
   token: string,
-  modelId: string,
+  targetId: string,
   fetchImpl: KhalaModelPreferenceFetchLike = fetch,
 ): Promise<KhalaModelPreferenceResult> => {
-  if (isDemoToken(token)) return { ok: true, value: demoModelPreference(modelId) }
+  if (isDemoToken(token)) return { ok: true, value: demoModelPreference(targetId) }
   try {
     const response = await fetchImpl(`${apiBaseUrl.replace(/\/$/, "")}/api/mobile/model-preference`, {
-      body: JSON.stringify({ modelId }),
+      body: JSON.stringify({ targetId }),
       headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
       method: "PUT",
     })
     const body = await response.json()
     if (response.status === 409) {
-      const record = body as { availableModelIds?: unknown }
+      const record = body as { availableModelIds?: unknown; availableTargetIds?: unknown }
       const availableModelIds = Array.isArray(record.availableModelIds)
         ? record.availableModelIds.filter((id): id is string => typeof id === "string")
         : []
-      return { availableModelIds, kind: "model_unavailable", ok: false }
+      const availableTargetIds = Array.isArray(record.availableTargetIds)
+        ? record.availableTargetIds.filter((id): id is string => typeof id === "string")
+        : availableModelIds
+      return { availableModelIds, availableTargetIds, kind: "target_unavailable", ok: false }
     }
     if (response.status === 400) return { kind: "bad_request", ok: false }
     if (response.status === 401) return { kind: "unauthorized", ok: false }

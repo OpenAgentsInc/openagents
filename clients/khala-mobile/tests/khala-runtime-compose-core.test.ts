@@ -113,6 +113,20 @@ describe("buildStartTurnIntentArgs", () => {
     })
     expect(args.target).toEqual({ lane: "claude_pylon" })
   })
+
+  test("threads an account-specific execution target through for CX-4 receipts", () => {
+    const args = buildStartTurnIntentArgs({
+      bodyRef: chatMessageBodyRef("m1"),
+      nowIso: "2026-01-01T00:00:00Z",
+      target: { executionTargetId: "codex:owner-account-ref-hash", lane: "codex_app_server" },
+      threadId: "t1",
+      turnId: "turn0001"
+    })
+    expect(args.target).toEqual({
+      executionTargetId: "codex:owner-account-ref-hash",
+      lane: "codex_app_server"
+    })
+  })
 })
 
 describe("buildAppendUserMessageIntentArgs", () => {

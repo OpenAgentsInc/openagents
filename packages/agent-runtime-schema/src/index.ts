@@ -918,6 +918,7 @@ export const KhalaRuntimeControlIntent = S.Struct({
   target: S.Struct({
     lane: KhalaRuntimeLane,
     adapterKind: S.optional(AgentRuntimeAdapterKind),
+    executionTargetId: S.optional(KhalaRuntimeSafeRef),
   }),
   visibility: S.Literals(["operator", "private"]),
   redactionClass: AgentRuntimeRedactionClass,
