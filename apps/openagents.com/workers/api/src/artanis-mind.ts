@@ -21,6 +21,25 @@ export type ArtanisMindServedVia =
   | 'google_direct'
   | 'openagents_khala'
 
+// Exact token usage parsed from Gemini's `usageMetadata` (the receipt-first
+// source the hosted-Khala metering lane prices + debits against — #8555). Every
+// field is the raw Gemini counter; the metering helper normalizes them (thoughts
+// fold into output, prompt is input, etc). `null` on `ArtanisMindResult.usage`
+// means the provider returned no usageMetadata, so the caller must NOT fabricate
+// a usage row (exact-only money path).
+export type ArtanisMindUsage = Readonly<{
+  /** Gemini `promptTokenCount` — billed input tokens. */
+  promptTokens: number
+  /** Gemini `candidatesTokenCount` — visible output tokens. */
+  candidatesTokens: number
+  /** Gemini `thoughtsTokenCount` — thinking tokens (0 when thinking disabled). */
+  thoughtsTokens: number
+  /** Gemini `cachedContentTokenCount` — cached-input subset of prompt tokens. */
+  cachedInputTokens: number
+  /** Gemini `totalTokenCount`. */
+  totalTokens: number
+}>
+
 export type ArtanisMindResult = Readonly<{
   servedVia: ArtanisMindServedVia
   gatewayId: string | null
@@ -28,6 +47,8 @@ export type ArtanisMindResult = Readonly<{
   text: string
   promptChars: number
   responseChars: number
+  /** Exact provider usage, or `null` when Gemini reported no usageMetadata. */
+  usage: ArtanisMindUsage | null
 }>
 
 export type ArtanisMindFailure = Readonly<{
@@ -67,6 +88,42 @@ const geminiBody = (system: string, prompt: string, maxOutputTokens: number) =>
     },
     systemInstruction: { parts: [{ text: system }] },
   })
+
+// Parse Gemini's `usageMetadata` receipt into exact token counts. Returns
+// `null` when the block is absent or carries no usable counts, so the caller
+// records no fabricated usage (exact-only money path). Non-finite/negative
+// counters are clamped to 0 (never a negative charge basis).
+const nonNegInt = (value: unknown): number => {
+  const n = typeof value === 'number' ? value : Number(value)
+  return Number.isFinite(n) && n > 0 ? Math.trunc(n) : 0
+}
+
+const usageFromGeminiResponse = (payload: unknown): ArtanisMindUsage | null => {
+  const meta = (payload as {
+    usageMetadata?: {
+      promptTokenCount?: unknown
+      candidatesTokenCount?: unknown
+      thoughtsTokenCount?: unknown
+      cachedContentTokenCount?: unknown
+      totalTokenCount?: unknown
+    }
+  }).usageMetadata
+  if (meta === undefined || meta === null || typeof meta !== 'object') {
+    return null
+  }
+  const usage: ArtanisMindUsage = {
+    candidatesTokens: nonNegInt(meta.candidatesTokenCount),
+    cachedInputTokens: nonNegInt(meta.cachedContentTokenCount),
+    promptTokens: nonNegInt(meta.promptTokenCount),
+    thoughtsTokens: nonNegInt(meta.thoughtsTokenCount),
+    totalTokens: nonNegInt(meta.totalTokenCount),
+  }
+  // No exact input OR output tokens => nothing billable; treat as absent so the
+  // metering lane skips the row rather than writing a zero-token exact receipt.
+  return usage.promptTokens + usage.candidatesTokens + usage.totalTokens > 0
+    ? usage
+    : null
+}
 
 const textFromGeminiResponse = (payload: unknown): GeminiCandidateText => {
   const candidate = (payload as {
@@ -141,6 +198,7 @@ const artanisMindCompleteOnce = async (input: Readonly<{
             responseChars: candidate.text.length,
             servedVia: 'cloudflare_ai_gateway',
             text: candidate.text,
+            usage: usageFromGeminiResponse(payload),
           },
         }
       }
@@ -184,6 +242,7 @@ const artanisMindCompleteOnce = async (input: Readonly<{
           responseChars: candidate.text.length,
           servedVia: 'google_direct',
           text: candidate.text,
+          usage: usageFromGeminiResponse(payload),
         },
       }
     }

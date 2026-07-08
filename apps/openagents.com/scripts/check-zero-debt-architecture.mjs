@@ -755,6 +755,16 @@ const runPromiseAllowlist = new Map([
   // ratchet down if the queue dispatch path becomes an Effect program
   // end-to-end (the CFG-9 monolith cutover is the natural moment).
   ['workers/api/src/event-ledger-owner-sequence-store.ts', 1],
+  // Added 2026-07-08 (#8555): the hosted-Khala chat metering seam
+  // (`recordHostedTurnUsageAndCharge`) bridges TWO Effect-returning primitives
+  // — the token ledger `ingestEvent` (exact `token_usage_events` row) and the
+  // live ledger `meteringHook` (credit debit + balance projection) — once each
+  // from the Promise-shaped hosted-runtime dispatch loop
+  // (`khala-hosted-runtime-dispatch.ts`, which is not Effect-native). Same
+  // named-bridge shape as the billing/operator/ledger routes above. Fail-soft:
+  // neither bridge throws back into the dispatch loop. Ratchet down if the
+  // hosted-runtime dispatch loop becomes an Effect program end-to-end.
+  ['workers/api/src/khala-hosted-runtime-metering.ts', 2],
 ])
 
 const runPromiseDetails = countByFile(sourceFiles, /Effect\.runPromise\(/g)

@@ -12,6 +12,7 @@ import {
   resolveHostedTurnPrompt,
   runHostedRuntimeTurnDispatch,
   type HostedRuntimeCompleteFn,
+  type HostedTurnUsage,
   type QueuedHostedTurn,
 } from './khala-hosted-runtime-dispatch'
 
@@ -93,6 +94,7 @@ type RecordedEvent = {
   kind: string
   text: string | undefined
   finishReason: string | undefined
+  usage: Record<string, unknown> | undefined
   clientId: string
 }
 
@@ -112,10 +114,12 @@ const makeRecordingExecutePush = (
       kind: string
       text?: string
       finishReason?: string
+      usage?: Record<string, unknown>
     }
     const rec: RecordedEvent = {
       clientId: input.request.clientId,
       finishReason: event.finishReason,
+      usage: event.usage,
       kind: event.kind,
       mutationId: envelope.mutationId,
       text: event.text,
@@ -302,6 +306,143 @@ describe('dispatchHostedRuntimeTurn', () => {
     expect(push.recorded.map(r => r.kind)).toEqual(['turn.started', 'turn.finished'])
     expect(push.recorded[1]?.finishReason).toBe('stop')
   })
+
+  // ---- #8555: metering + balance gate --------------------------------------
+
+  const exactUsage: HostedTurnUsage = {
+    cacheReadTokens: 0,
+    inputTokens: 4000,
+    outputTokens: 1000,
+    reasoningTokens: 100,
+    totalTokens: 5000,
+  }
+
+  const okCompleteWithUsage = (
+    text: string,
+    usage: HostedTurnUsage,
+  ): HostedRuntimeCompleteFn => () => Promise.resolve({ ok: true, text, usage })
+
+  test('a turn with exact usage records usage AND emits usage.recorded', async () => {
+    const push = makeRecordingExecutePush()
+    const metered: Array<{ turnId: string; usage: HostedTurnUsage }> = []
+    const recordUsage = (input: {
+      ownerUserId: string
+      turnId: string
+      usage: HostedTurnUsage
+    }) => {
+      metered.push({ turnId: input.turnId, usage: input.usage })
+      return Promise.resolve({
+        chargeReceiptRef: 'receipt.inference.charge.khala-hosted.turn.t1',
+        chargeUsdCents: 1,
+        insertedTokenUsage: true,
+        metered: true,
+        tokenUsageEventRef: 'event.inference.served-tokens.khala-hosted.turn.t1',
+        tokensServed: 5000,
+        usageRef: 'usage.khala-hosted.turn.t1',
+        zeroCharge: false,
+      })
+    }
+
+    const outcome = await dispatchHostedRuntimeTurn(
+      {
+        ...baseDeps(oneQueuedTurn, push, okCompleteWithUsage('answer', exactUsage)),
+        recordUsage: recordUsage as never,
+      },
+      turn,
+    )
+
+    expect(outcome).toBe('answered')
+    // usage.recorded lands between text.completed and turn.finished.
+    expect(push.recorded.map(r => r.kind)).toEqual([
+      'turn.started',
+      'text.delta',
+      'text.completed',
+      'usage.recorded',
+      'turn.finished',
+    ])
+    // recordUsage was called once with the exact usage.
+    expect(metered).toEqual([{ turnId: 'turn.t1', usage: exactUsage }])
+    // the usage.recorded event carries the exact token counts + charge ref.
+    const usageEvent = push.recorded.find(r => r.kind === 'usage.recorded')
+    expect(usageEvent?.usage).toMatchObject({
+      inputTokens: 4000,
+      outputTokens: 1000,
+      reasoningTokens: 100,
+      totalTokens: 5000,
+      usageRef: 'usage.khala-hosted.turn.t1',
+    })
+    // turn.finished also carries the exact usage.
+    const finished = push.recorded.find(r => r.kind === 'turn.finished')
+    expect(finished?.usage).toMatchObject({ inputTokens: 4000, totalTokens: 5000 })
+  })
+
+  test('zero-balance owner is refused before inference (fail-closed)', async () => {
+    const push = makeRecordingExecutePush()
+    let completeCalls = 0
+    let recordUsageCalls = 0
+    const outcome = await dispatchHostedRuntimeTurn(
+      {
+        ...baseDeps(oneQueuedTurn, push, () => {
+          completeCalls += 1
+          return Promise.resolve({ ok: true, text: 'should not run' })
+        }),
+        readOwnerBalanceMsat: () => Promise.resolve(0),
+        recordUsage: (() => {
+          recordUsageCalls += 1
+          return Promise.resolve({} as never)
+        }) as never,
+      },
+      turn,
+    )
+    expect(outcome).toBe('refused')
+    expect(completeCalls).toBe(0)
+    expect(recordUsageCalls).toBe(0)
+    // claimed, then settled as finished(error) — never served for free.
+    expect(push.recorded.map(r => r.kind)).toEqual(['turn.started', 'turn.finished'])
+    expect(push.recorded[1]?.finishReason).toBe('error')
+  })
+
+  test('undetermined balance (null) never blocks the turn', async () => {
+    const push = makeRecordingExecutePush()
+    let completeCalls = 0
+    const outcome = await dispatchHostedRuntimeTurn(
+      {
+        ...baseDeps(oneQueuedTurn, push, () => {
+          completeCalls += 1
+          return Promise.resolve({ ok: true, text: 'answer' })
+        }),
+        // null == UNDETERMINED (read failure / no row): proceed, do not block.
+        readOwnerBalanceMsat: () => Promise.resolve(null),
+      },
+      turn,
+    )
+    expect(outcome).toBe('answered')
+    expect(completeCalls).toBe(1)
+    expect(push.recorded.map(r => r.kind)).toEqual([
+      'turn.started',
+      'text.delta',
+      'text.completed',
+      'turn.finished',
+    ])
+  })
+
+  test('positive balance proceeds to inference', async () => {
+    const push = makeRecordingExecutePush()
+    const outcome = await dispatchHostedRuntimeTurn(
+      {
+        ...baseDeps(oneQueuedTurn, push, okComplete('answer')),
+        readOwnerBalanceMsat: () => Promise.resolve(1_000_000),
+      },
+      turn,
+    )
+    expect(outcome).toBe('answered')
+    expect(push.recorded.map(r => r.kind)).toEqual([
+      'turn.started',
+      'text.delta',
+      'text.completed',
+      'turn.finished',
+    ])
+  })
 })
 
 describe('runHostedRuntimeTurnDispatch', () => {
@@ -341,6 +482,7 @@ describe('runHostedRuntimeTurnDispatch', () => {
       answered: 1,
       claimed: 2,
       failed: 1,
+      refused: 0,
       scanned: 2,
       skipped: 0,
     })
@@ -359,6 +501,7 @@ describe('runHostedRuntimeTurnDispatch', () => {
       answered: 0,
       claimed: 0,
       failed: 0,
+      refused: 0,
       scanned: 0,
       skipped: 0,
     })

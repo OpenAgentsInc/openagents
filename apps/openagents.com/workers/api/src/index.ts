@@ -908,6 +908,11 @@ import {
   type HostedRuntimeCompleteFn,
 } from './khala-hosted-runtime-dispatch'
 import {
+  hostedKhalaOwnerCreditAccountRef,
+  hostedTurnUsageFromArtanisMind,
+  recordHostedTurnUsageAndCharge,
+} from './khala-hosted-runtime-metering'
+import {
   handleKhalaSyncTokensServedReconcile,
   KHALA_SYNC_TOKENS_SERVED_RECONCILE_PATH,
 } from './khala-sync-public-counter-reconcile-routes'
@@ -7982,11 +7987,7 @@ const makeTokensServedReconcileDeps = (
 // — no Cloudflare bindings, no D1. Fail-soft: a missing KHALA_SYNC_DB binding
 // or GEMINI_API_KEY is a clean no-op, and per-turn failures are isolated.
 const runHostedRuntimeTurnDispatchForEnv = async (
-  env: Readonly<{
-    KHALA_SYNC_DB?: Readonly<{ connectionString: string }>
-    GEMINI_API_KEY?: string
-    CF_AIG_TOKEN?: string
-  }>,
+  env: OpenAgentsWorkerEnv,
 ): Promise<void> => {
   const connectionString = env.KHALA_SYNC_DB?.connectionString
   const apiKey = env.GEMINI_API_KEY
@@ -7998,7 +7999,7 @@ const runHostedRuntimeTurnDispatchForEnv = async (
   ) {
     return
   }
-  const gatewayToken = env.CF_AIG_TOKEN
+  const gatewayToken = (env as { CF_AIG_TOKEN?: string }).CF_AIG_TOKEN
   const complete: HostedRuntimeCompleteFn = async ({ prompt, system }) => {
     const result = await artanisMindComplete({
       apiKey,
@@ -8022,12 +8023,57 @@ const runHostedRuntimeTurnDispatchForEnv = async (
       logWorkerRouteWarning('hosted_runtime_inference_failed', { detail })
       return { detail, ok: false }
     }
-    return { ok: true, text: result.text }
+    // Exact usage from Gemini's usageMetadata receipt (null when the provider
+    // reported none => no metering row for this turn; exact-only money path).
+    const usage =
+      result.usage === null
+        ? undefined
+        : (hostedTurnUsageFromArtanisMind(result.usage) ?? undefined)
+    return usage === undefined
+      ? { ok: true, text: result.text }
+      : { ok: true, text: result.text, usage }
   }
+
+  // #8555: exact usage metering + credit debit for the hosted lane. The token
+  // ledger writes the exact `token_usage_events` row (+ public tokens-served
+  // projection + Postgres mirror); the live ledger metering hook debits the
+  // owner's credits and best-effort projects the `scope.user.<userId>`
+  // `credit_balance` delta so the mobile balance chip fans out live.
+  const ledger = makeD1TokenUsageLedger(openAgentsDatabase(env), undefined, {
+    onIngestedEvent: makeTokensServedProjectionObserver(env),
+    ...tokenLedgerWriteStoreOptionForEnv(env),
+  })
+  const meteringHook = makeLedgerMeteringHook({
+    ledgerDb: paymentsLedgerDbForEnv(env),
+    recordCreditBalanceProjection: creditBalanceProjectionRecorderForEnv(env),
+  })
+
   const client = await defaultMakeKhalaSyncSqlClient(connectionString)
   try {
     const summary = await runHostedRuntimeTurnDispatch({
       complete,
+      // Balance gate (#8555, #8467). Refuse a positively-empty owner; a missing
+      // balance row or a read failure is UNDETERMINED (null) and never blocks.
+      readOwnerBalanceMsat: async ownerUserId => {
+        try {
+          const row = await readAgentBalance(
+            paymentsLedgerDbForEnv(env),
+            hostedKhalaOwnerCreditAccountRef(ownerUserId),
+          )
+          return row === null ? null : row.availableMsat
+        } catch {
+          return null
+        }
+      },
+      recordUsage: input =>
+        recordHostedTurnUsageAndCharge(
+          {
+            ledger,
+            log: (line, fields) => logWorkerRouteWarning(line, fields ?? {}),
+            meteringHook,
+          },
+          input,
+        ),
       registry: khalaSyncMutatorRegistry,
       sql: client.sql,
       log: (line, fields) => logWorkerRouteWarning(line, fields ?? {}),
@@ -8036,6 +8082,7 @@ const runHostedRuntimeTurnDispatchForEnv = async (
       logWorkerRouteWarning('hosted_runtime_dispatch_tick', {
         answered: summary.answered,
         failed: summary.failed,
+        refused: summary.refused,
         scanned: summary.scanned,
         skipped: summary.skipped,
       })
