@@ -40,7 +40,14 @@ const makeFakeSql = (turns: ReadonlyArray<TurnRow>): SyncSql => {
     const text = strings.join(' ')
     if (text.includes('FROM khala_sync_runtime_turns')) {
       const turnId = values[0] as string
-      return Promise.resolve(turns.filter(row => row.turn_id === turnId))
+      // readWritebackTargetTurn selects `next_sequence` (GREATEST(event_count,
+      // MAX(sequence)+1)); the fake has no events table, so next_sequence ==
+      // event_count.
+      return Promise.resolve(
+        turns
+          .filter(row => row.turn_id === turnId)
+          .map(row => ({ ...row, next_sequence: row.event_count })),
+      )
     }
     throw new Error(`unexpected SQL in fake: ${text}`)
   }

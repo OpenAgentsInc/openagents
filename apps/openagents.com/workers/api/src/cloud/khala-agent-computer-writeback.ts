@@ -310,6 +310,15 @@ export type WritebackTargetTurn = Readonly<{
   turnId: string
   threadId: string
   ownerUserId: string
+  /**
+   * The next FREE event sequence for this turn — `GREATEST(event_count,
+   * MAX(sequence)+1)`. NOT the raw `event_count`: a turn's `event_count` can lag
+   * behind the actual max sequence (the dispatch consumer and the async model-
+   * turn usage recorder append events out-of-band and can leave a gap), so
+   * writing at `event_count` collides with an existing `(turn_id, sequence)` and
+   * the mutation ledger rejects it (`runtime_event_exists`). Deriving from the
+   * true max makes the writeback event land in a free slot.
+   */
   eventCount: number
 }>
 
@@ -317,27 +326,39 @@ type RuntimeTurnRow = Readonly<{
   turn_id: string
   thread_id: string
   owner_user_id: string
-  event_count: string | number
+  next_sequence: string | number
 }>
 
 /**
- * Read the target turn's owner, thread, and current event count (the next
- * writeback event's `sequence`). `null` when the turn does not exist.
+ * Read the target turn's owner, thread, and the next FREE event sequence.
+ * `null` when the turn does not exist.
  */
 export const readWritebackTargetTurn = async (
   sql: SyncSql,
   turnId: string,
 ): Promise<WritebackTargetTurn | null> => {
   const rows: Array<RuntimeTurnRow> = await sql`
-    SELECT turn_id, thread_id, owner_user_id, event_count
-    FROM khala_sync_runtime_turns
-    WHERE turn_id = ${turnId}
+    SELECT
+      t.turn_id,
+      t.thread_id,
+      t.owner_user_id,
+      GREATEST(
+        t.event_count,
+        COALESCE(
+          (SELECT MAX(e.sequence) + 1
+             FROM khala_sync_runtime_events e
+            WHERE e.turn_id = t.turn_id),
+          0
+        )
+      ) AS next_sequence
+    FROM khala_sync_runtime_turns t
+    WHERE t.turn_id = ${turnId}
     LIMIT 1
   `
   const row = rows[0]
   if (row === undefined) return null
   return {
-    eventCount: Number(row.event_count),
+    eventCount: Number(row.next_sequence),
     ownerUserId: row.owner_user_id,
     threadId: row.thread_id,
     turnId: row.turn_id,
@@ -442,50 +463,64 @@ export type KhalaWritebackRecordResult =
  * as `userId`. `(turn_id, sequence)` is the dedupe key, so a duplicated record
  * attempt is rejected in-band and surfaced as a typed failure.
  */
+export const RECORD_WRITEBACK_MAX_ATTEMPTS = 3
+
 export const recordKhalaWritebackRuntimeEvent = async (
   deps: KhalaWritebackRecordingDependencies,
   turn: WritebackTargetTurn,
   outcome: KhalaAgentComputerWritebackOutcome,
 ): Promise<KhalaWritebackRecordResult> => {
   const resolved = resolveRecordingDeps(deps)
-  const event = buildWritebackRuntimeEvent(resolved, turn, outcome)
   const clientGroupId = writebackClientGroupIdForOwner(turn.ownerUserId)
-  const clientId = `${clientGroupId}.${turn.turnId}.${resolved.uuid()}`
 
-  const response = await resolved.executePush({
-    registry: resolved.registry,
-    request: decodePushRequest({
-      clientGroupId,
-      clientId,
-      mutations: [
-        {
-          argsJson: JSON.stringify(event),
-          mutationId: 1,
-          name: 'runtime.recordEvent',
-        },
-      ],
-      protocolVersion: 1,
-      schemaVersion: 1,
-    }),
-    sql: resolved.sql,
-    userId: turn.ownerUserId,
-  })
-  const result: MutationResult | undefined = response.results[0]
-  if (result === undefined || result.status !== 'applied') {
-    return {
-      detail: result?.errorCode ?? 'executePush returned no result',
-      ok: false,
-      reason: 'record_rejected',
+  // Retry a sequence collision: another out-of-band recorder (dispatch stream,
+  // async model-turn usage) may take the next slot between our read and insert.
+  // Each attempt re-reads the true next-free sequence and rebuilds the event.
+  let attemptTurn = turn
+  let lastDetail = 'executePush returned no result'
+  for (let attempt = 0; attempt < RECORD_WRITEBACK_MAX_ATTEMPTS; attempt += 1) {
+    const event = buildWritebackRuntimeEvent(resolved, attemptTurn, outcome)
+    const clientId = `${clientGroupId}.${attemptTurn.turnId}.${resolved.uuid()}`
+    const response = await resolved.executePush({
+      registry: resolved.registry,
+      request: decodePushRequest({
+        clientGroupId,
+        clientId,
+        mutations: [
+          {
+            argsJson: JSON.stringify(event),
+            mutationId: 1,
+            name: 'runtime.recordEvent',
+          },
+        ],
+        protocolVersion: 1,
+        schemaVersion: 1,
+      }),
+      sql: resolved.sql,
+      userId: attemptTurn.ownerUserId,
+    })
+    const result: MutationResult | undefined = response.results[0]
+    if (result !== undefined && result.status === 'applied') {
+      return {
+        eventId: event.eventId,
+        ok: true,
+        ownerUserId: attemptTurn.ownerUserId,
+        sequence: attemptTurn.eventCount,
+        status: outcome.status,
+        threadId: attemptTurn.threadId,
+      }
     }
+    lastDetail = result?.errorCode ?? 'executePush returned no result'
+    // Only a sequence collision is retriable; re-read the next-free sequence.
+    if (lastDetail !== 'runtime_event_exists') break
+    const reread = await readWritebackTargetTurn(
+      resolved.sql,
+      attemptTurn.turnId,
+    ).catch(() => null)
+    if (reread === null) break
+    attemptTurn = reread
   }
-  return {
-    eventId: event.eventId,
-    ok: true,
-    ownerUserId: turn.ownerUserId,
-    sequence: turn.eventCount,
-    status: outcome.status,
-    threadId: turn.threadId,
-  }
+  return { detail: lastDetail, ok: false, reason: 'record_rejected' }
 }
 
 // ORCHESTRATION ------------------------------------------------------------
