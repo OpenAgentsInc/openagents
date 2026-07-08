@@ -1,12 +1,35 @@
 # MASTER ROADMAP — Khala Code MVP (Tested, Submitted) → Sarah → Codex → AI Employees → the Suite
 
-Date: 2026-07-08 (rev 4.4 — WEB-1 Phase 1 launch-ui replica reconciled against `main`; done/not-done marked from a code+issue audit, not intent)
+Date: 2026-07-08 (rev 5 — Effect Native substrate incorporated)
 Status: **the single consolidated execution roadmap.** This document owns
 top-level sequencing across everything designed in the 2026-07-07 strategy
 set and its predecessors. The source docs remain authoritative for their
 *content* (specs, evidence, arguments); when sequencing here and sequencing
 there disagree, **this document wins**, and new issues are filed against the
 phase lanes named here.
+
+**Rev 5 changes (owner decision, 2026-07-08 — Effect Native):** every UI
+surface in this repo converges on **Effect Native** — one typed
+Effect-Schema component set with typed intents, an Effect v4 runtime, and
+thin swappable renderers (see `../effect-native/` and the public framework
+repo `OpenAgentsInc/effect-native`). This supersedes the 2026-07-04 ONE-UI
+"React + Tailwind everywhere" clause **for new surfaces**; React/TanStack
+Start and React Native remain as renderer adapters and serving hosts, never
+the architecture. Concretely in this rev: (1) a new cross-phase **EN lane
+family** (§EN below) binds the public effect-native ROADMAP phases 0–6 to
+the product phases here, so each substrate piece is built exactly when it
+unlocks the next product surface's refactor; (2) **WEB-1 (#8565) forward
+work is rescoped** — the landed Phase 1 React replica (`/demo`, `/new`)
+stands as the visual reference/baseline, and the production root-cutover
+landing is authored in the Effect Native component set with launch-ui's
+theme ported into tokens, not adopted as React components; (3) Sarah's UI
+work (sarah#15 / S-10) folds into the Effect Native web renderer;
+(4) cross-cutting discipline 5 is amended. The governing rule throughout:
+**greenfield adopts first, shipping code migrates on touch, nothing working
+is rewritten just to move it** — Effect Native rides inside product work
+already scheduled; if it starts stealing hours from the sales push it has
+failed its own justification. (Rev 4.4's status snapshot below is retained
+unchanged.)
 
 **Rev 2 changes (owner direction):** (1) P0's exit is strengthened from
 "launch-ready" to **submitted to the app stores**; (2) **Sarah** — the AI
@@ -41,7 +64,13 @@ Consolidates:
 - The web-stack decision: **one UI ecosystem — React + Tailwind on
   TanStack Start** for web (owner decision 2026-07-04,
   `2026-07-04-tanstack-start-sites-and-web-app-evaluation.md`; ONE-UI
-  epic #8339 and TS-6 web app-shell migration #8348 reopen here)
+  epic #8339 and TS-6 web app-shell migration #8348 reopen here) —
+  **amended 2026-07-08 by the Effect Native decision** (§EN): the typed
+  component set is the substrate; React/RN are renderer adapters
+- **Effect Native — the UI substrate (§EN, EN-0..EN-9)**
+  (`../effect-native/README.md` + the six 2026-07-08 docs; public
+  framework repo `OpenAgentsInc/effect-native` with its ROADMAP
+  phases 0–6)
 - The standing lane families: ROADMAP.md (desktop/harness),
   ROADMAP_QA.md (QA engine), ROADMAP_BIZ.md (BF-*), ROADMAP_AFTER.md
   (AW-*), ROADMAP_BACKGROUND_AGENTS.md (BA-*), Reactor RX-*.
@@ -136,6 +165,68 @@ Testing is not a phase that ends: the P0 gate and feature-ladder
 discipline apply to **every** phase after it — a lane's exit receipts
 include its Eval Suite green at the target ladder rungs. Sarah's suite
 (SR) is authored fixture-first under the same law.
+
+Running underneath every phase from P1 onward is the **Effect Native
+substrate track** (§EN): substrate pieces are built just-in-time, each
+one unlocking the next product surface's refactor onto the one typed
+component set:
+
+```
+EN  Phase 0 core + DOM renderer ──► RN adapter ──► catalog growth ──► desktop + canvas ──► native Swift/Compose
+    (inside P1: WEB-1 + Sarah UI)   (post-P0:      (P4 cockpit/        (Khala Code desk-    (P5+ fidelity,
+                                     mobile on      dashboard;          top panels; Verse    value-gated,
+                                     touch)         web absorption)     under contract)      per component)
+```
+
+## EN — the Effect Native substrate (cross-phase lane family)
+
+**The decision (owner, 2026-07-08):** all UI in this repo converges on
+**Effect Native** — a closed, versioned Effect-Schema component catalog
+with a typed intent algebra (interactions as data, never closures), an
+Effect v4 runtime that binds data and dispatches intents as Effect
+programs, typed style values on one token set (StyleX-model +
+Tailwind-derived tokens; no class strings in any contract), and thin
+per-platform renderers as the *only* platform-specific UI code. Design
+docs: `../effect-native/` (read the framing doc first, then the
+UI-layer analysis with the internal EN-0..EN-9 phases). The framework
+itself is built in the open in the **public repo
+`OpenAgentsInc/effect-native`** (workspace sibling
+`~/work/effect-native`; MIT; keep it public-safe — no internal
+codenames); its public ROADMAP phases 0–6 are the substrate build
+order, and this section binds them to the product phases.
+
+**The unlock chain — build this substrate piece, unlock that product
+refactor (this ordering is the law for EN work):**
+
+| # | Effect Native piece (public repo phase) | Internal lane | Unlocks (the next OpenAgents surface on the substrate) | Rides inside |
+|---|---|---|---|---|
+| 1 | **Phase 0 — the core**: catalog v0 (~8 components), typed intent algebra, Effect runtime, `@effect-native/tokens` (Protoss blue; launch-ui's Tailwind theme — already vendored in the WEB-1 Phase 1 replica — ported as typed token *values*) | EN-0 | Everything below — gates all adoption; exit = one screen, two renderers, snapshot-tested | P1 Track A (a focused sprint on WEB-1's critical path) |
+| 2 | **Phase 1 — DOM renderer** (no React) | EN-0/EN-1 | **WEB-1 #8565 forward work**: the production root-cutover landing is the first Effect Native surface (the landed React replica at `/demo`/`/new` stays as the visual baseline it's compared against); then **Sarah's branded UI** (sarah#15 / S-10) — sarah.openagents.com and openagents.com become one component system *by construction* | P1 Track A / SR-0.5 |
+| 3 | **Phase 1 — RN renderer** (wrapping the ~94 shipping khala-mobile primitives as adapter #1; zero new native work) | EN-0/EN-3 | New/changed mobile screens author the component set from then on — the P2 surfaces (CX-2 accounts UI, CX-4 harness pill) are the first candidates; existing screens migrate **on touch only, post-P0** — never during MVP submission | P2 (CX-2/CX-4) |
+| 4 | **Phase 2 — catalog growth**: forms/validation, virtualized + section lists, modals/sheets/tabs, images/media, **typed navigation intent**, typed variants (state/platform/breakpoint) | EN-2 | **P4 phone-cockpit web twin + Agents panel (AE-2.3)** and the business-dashboard build-out; the deeper mobile migration; demand-driven — a component enters the catalog when one of these screens needs it | P4 (AE-2.3) |
+| 5 | **Phase 3 — DX**: DevTools (view-tree inspection, intent log/replay, time-travel), deterministic snapshot + intent-driven testing, visual baselines per renderer | EN-2/EN-9 | The QAM discipline extended natively to Effect Native surfaces; **agent-authored UI validated against the catalog by construction** (the substrate's whole point at 1000 edits/day) | parallel with #4 |
+| 6 | **Phase 4 — desktop + canvas**: Electrobun consumes the DOM renderer; `@effect-native/render-canvas` (three-effect's ~600-LOC reconciler/frame-clock/scope kernel reimplemented on Effect `Scope`/`Stream`/`Layer`; the 24k-LOC VFX/Verse domain library stays standalone as the catalogue) | EN-5/EN-6 | **Khala Code desktop panels** (chat, fleet, inbox, forum, gym, settings) on the component set; **Verse/3D surfaces under the same contract**; the Foldkit three-effect adapter retired | after web is solid (P4+) |
+| 7 | **Phase 5 — native Swift/Compose renderers**, per component, RN as the long-tail fallback | EN-7 | Fidelity/perf upgrades on the highest-value mobile components — a migration, never a rewrite, because the contract is renderer-agnostic | value-gated, multi-quarter (P5+) |
+| 8 | **Phase 6 + governance**: server-driven-UI option, lint boundary | EN-8/EN-9 | Steady state: **new UI authors the component set only**; direct React/RN/DOM authoring outside renderer adapters is deprecated and lint-guarded | continuous once #2–#3 land |
+
+**Full-conversion scope (every part of this repo, per the analysis
+doc's EN-0..EN-9):** the openagents.com landing (WEB-1) and Sarah UI
+(greenfield — first); the web product routes — dashboard, Forum, Sites,
+operator/Aiur, Autopilot — absorbed route-by-route from legacy Foldkit
+and interim React onto the DOM renderer, deleting legacy surfaces as
+replaced (EN-4); the mobile app's ~94 `.tsx` screens (EN-3, on touch);
+Khala Code desktop (EN-5); canvas/Verse (EN-6). **Definition of done:**
+every UI surface renders from the one component set; renderer adapters
+are the only platform-specific UI code in the tree; a bad UI change
+fails at the schema boundary.
+
+**Sequencing discipline:** EN work never opens a separate rewrite
+front. Unlock #1–#2 ride inside P1 Track A (the landing is greenfield);
+#3 rides inside P2's new mobile screens; #4–#5 pace with P4's dashboard
+demand; #6–#8 follow web-solid. Shipping React (the mobile MVP, Sarah's
+live voice loop, the landed WEB-1 replica routes) is never rewritten
+just to migrate — the voice runtime and eve are not UI and are
+untouched throughout.
 
 ## P0 — Khala Code mobile MVP: fully tested, submitted to the stores
 
@@ -262,6 +353,24 @@ on their current Cloud Run monolith paths until absorbed route-by-route. Filed a
 launch-ui/shadcn base, so sarah.openagents.com and openagents.com become
 one component system. Sarah's home remains sarah.openagents.com (her
 repo); the dashboard shell still lands with P4.
+
+**Track A rescope (2026-07-08, Effect Native — §EN):** the landed
+Phase 1 React replica is a legitimate milestone and **stays as the
+visual reference/baseline** (`/demo`, `/new` untouched), but it is not
+the forward path. The **production root-cutover landing is authored in
+the Effect Native component set** rendered by the DOM renderer (§EN
+unlocks #1–#2, which gate this track and are built inside it):
+launch-ui's theme and section designs — already vendored and themed in
+the replica — port into `@effect-native/tokens` and catalog components;
+zero further React components are authored for the landing. The
+TanStack Start app remains the serving shell/host (routing, SSR entry)
+— a host, not the architecture. Everything else stands: owner copy
+sign-off, live counters, credit-tier pricing, production CTAs, and
+owner-approved root cutover remain the open items, now landing on the
+Effect Native surface. sarah#15 folds into "render Sarah's UI via the
+Effect Native web renderer" (same catalog, same tokens) — the
+one-component-system synergy becomes true by construction. Rescope to
+be recorded on #8565.
 
 **Track A′ — SR-0, deploy readiness (the near-term work list, in
 order):**
@@ -515,8 +624,12 @@ as its flagship instance.
   SR-3 is the precedent).
 - **AE-2.3** The phone cockpit: Agents panel + event-ledger inbox +
   one-tap push approvals; pending contracts land with it. The **web
-  twin lands on the new TanStack Start app** (the P1 Track A codebase),
-  beginning the business-dashboard build-out.
+  twin lands on the P1 Track A web codebase authored in the Effect
+  Native component set** (§EN unlock #4 — the catalog's forms/lists/
+  modals/navigation growth is paced by exactly this surface), beginning
+  the business-dashboard build-out. The mobile cockpit screens are new
+  screens and therefore author the component set via the RN adapter
+  (§EN unlock #3).
 - **AE-4 (scopes)** Authority scoping law before the cockpit ships:
   `owner_self | shared_fleet | owner_operator`.
 - **CB-1.1–1.3** `company_brain.v1` (named owner-scoped collections on
@@ -597,9 +710,11 @@ sovereignty analysis §5–6; suite/pricing owner gates.
 - **P7.2** Suite arming, owner-timed: IAP reopen (#8481/#8482) with the
   credits-brand decision (*"minerals"* gate); desktop pairing reopen
   (MC-5); the two-register design spec; the **openagents.com business
-  dashboard** completed on the P1/P4 TanStack Start codebase (spend,
-  receipts, roster, approvals, team) with legacy-web retirement per the
-  reopen ledger.
+  dashboard** completed on the P1/P4 web codebase in the Effect Native
+  component set (spend, receipts, roster, approvals, team) with
+  legacy-web retirement per the reopen ledger — this is where the EN-4
+  route-by-route absorption of the remaining legacy web surfaces
+  (Forum, Sites, Aiur/operator, Autopilot) completes.
 - **P7.3** Sovereignty ladder as quoted **assurance levels**
   (structural vs contractual): hosted → BYO subscription →
   `regulated_private` (BF-3.4) → **Reactor** (RX-* lanes, sales-led).
@@ -627,9 +742,14 @@ closed by Sarah running a templated employee.
    are config.
 4. **Subscription no-resale, never waivable.** Org-cloud never touches
    user-owned machines.
-5. **One web stack forward**: new web surfaces land on the React/
-   TanStack Start openagents.com app (ONE-UI/shadcn, one Protoss-blue
-   theme); legacy web is absorbed route-by-route and never grows.
+5. **One UI substrate forward (amended 2026-07-08)**: new UI surfaces —
+   web, mobile, desktop, canvas — author the **Effect Native typed
+   component set** on the one Protoss-blue token set (§EN).
+   React/TanStack Start and React Native serve as renderer adapters and
+   serving hosts, never the architecture; no new UI authors platform
+   primitives outside a renderer adapter. Legacy web is absorbed
+   route-by-route and never grows; shipping React/RN screens migrate on
+   touch, never rewritten just to move.
 6. **Owned vocabulary** — Blueprint (never "ontology"); no third-party
    company names in public copy.
 7. **No hosted CI / no third-party build-update-visual SaaS** — owned
@@ -676,7 +796,8 @@ Standing gates (carried; still open):
 | Mobile testing system (P0) | `../khala-code/2026-07-07-mobile-testing-audit-and-plan.md` |
 | **Sarah (P1, SR-*)** | `2026-07-07-sarah-sales-agent-spec.md` |
 | **Sarah implementation repo** | private `OpenAgentsInc/sarah` (Vercel + AI SDK realtime → sarah.openagents.com; see its README) |
-| **Landing site kit (P1 Track A, WEB-1 #8565)** | `projects/repos/launch-ui` (MIT reference; shadcn/Tailwind sections ported to TanStack Start) |
+| **Effect Native substrate (§EN, EN-*)** | `../effect-native/README.md` + the six 2026-07-08 docs (framing doc first; UI-layer analysis holds EN-0..EN-9); public framework repo `OpenAgentsInc/effect-native` (ROADMAP phases 0–6 = the substrate build order) |
+| **Landing site kit (P1 Track A, WEB-1 #8565)** | `projects/repos/launch-ui` (MIT reference; **design/tokens reference per §EN** — theme ports into `@effect-native/tokens`; the vendored React replica at `/demo`/`/new` is the visual baseline, not the forward path) |
 | **Outbound engine (P1 Track C)** | `2026-07-03-apollo-outbound-sales-plan.md` (audit-first motion, segments); SELL epic #8261 / LG-1..9 (closed substrate); blitz compliance-guardrails (binding) |
 | Web stack decision (P1 Track A) | `2026-07-04-tanstack-start-sites-and-web-app-evaluation.md` |
 | Codex/BYO harness (P2) | `2026-07-07-beyond-mvp-codex-agent-computers-and-ai-employees.md` |
