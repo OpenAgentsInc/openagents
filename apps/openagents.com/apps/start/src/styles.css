@@ -185,6 +185,55 @@
   }
 }
 
+.stage1-effect-native-host {
+  min-height: 100dvh;
+  background: #000000;
+  color: var(--khala-text);
+  font-family: var(--font-sans);
+}
+
+.stage1-effect-native-host [data-effect-native-surface='dom'] {
+  min-height: 100dvh;
+}
+
+.stage1-effect-native-host [data-en-tag='Stack'] {
+  flex-wrap: wrap;
+}
+
+.stage1-effect-native-host [data-en-tag='Text'] {
+  display: block;
+  text-wrap: pretty;
+}
+
+.stage1-effect-native-host [data-en-tag='Card'],
+.stage1-effect-native-host [data-en-tag='List'] {
+  display: flex;
+  flex-direction: column;
+  gap: var(--en-spacing-3);
+}
+
+.stage1-effect-native-host [data-en-tag='List'] {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.stage1-effect-native-host [data-en-variant='heading'],
+.stage1-effect-native-host [data-en-variant='title'] {
+  text-wrap: balance;
+}
+
+.stage1-effect-native-host button {
+  min-height: 44px;
+  cursor: pointer;
+  font: inherit;
+}
+
+.stage1-effect-native-host button:focus-visible {
+  outline: 2px solid #4fd0ff;
+  outline-offset: 2px;
+}
+
 @utility glass-1 {
   @apply border-border from-card/80 to-card/40 dark:border-border/10 dark:border-b-border/5 dark:border-t-border/20 dark:from-card/5 dark:to-card/0 border bg-linear-to-b;
 }

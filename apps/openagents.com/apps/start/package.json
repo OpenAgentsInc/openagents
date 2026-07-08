@@ -9,12 +9,17 @@
     "build": "vite build --logLevel warn",
     "budget": "bun run build && bun run src/routes/-funnel-budget.ts",
     "preview": "vite preview",
-    "deploy": "bun run build && wrangler deploy",
+    "deploy": "bash scripts/deploy-cloudrun.sh stage1",
+    "deploy:cloudrun": "bash scripts/deploy-cloudrun.sh",
+    "deploy:legacy-worker": "bun run build && wrangler deploy",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "cf:typegen": "wrangler types"
   },
   "dependencies": {
+    "@effect-native/core": "workspace:*",
+    "@effect-native/render-dom": "workspace:*",
+    "@effect-native/tokens": "workspace:*",
     "@openagentsinc/effect-start": "workspace:*",
     "@openagentsinc/khala-sync": "workspace:*",
     "@openagentsinc/khala-sync-client": "workspace:*",

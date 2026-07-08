@@ -1,0 +1,18 @@
+{
+  "name": "@effect-native/core",
+  "version": "0.0.0-openagents.8567",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    ".": "./src/index.ts",
+    "./effect": "./src/effect.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -b"
+  },
+  "dependencies": {
+    "@effect-native/tokens": "workspace:*",
+    "effect": "4.0.0-beta.94"
+  }
+}
