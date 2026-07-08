@@ -175,17 +175,19 @@ order):**
 7. The Sarah Eval Suite (authored under QAM-7 #8542) pointed at the
    deployment; discount-pressure/honesty/injection probes green.
 
-**Framework evaluation — eve (decide during SR-0):** vercel/eve
-(filesystem-first durable agents; reference clone
-`projects/repos/eve`) is a strong candidate for Sarah's brain behind
-the realtime front-end — durable sessions, `instructions.md` persona,
+**Framework — eve (DECIDED, owner 2026-07-07):** Sarah's brain is
+vercel/eve (filesystem-first durable agents; reference clone
+`projects/repos/eve`) — durable sessions, `instructions.md` persona,
 typed tools, cron schedules, and channels including the Chat SDK
 **Resend email adapter** (SR-3's inbound/outbound email continuity) and
 Twilio (future phone lane), same Vercel deploy target. It is **not** a
-voice runtime — the realtime loop stays as built. Integration shape if
-adopted: realtime = voice I/O; eve = sessions/tools/email/schedules;
-realtime tool calls execute against eve. Spike (`npx eve init`), then
-decide.
+voice runtime — the realtime loop stays as built; realtime = voice I/O,
+eve = sessions/tools/email/schedules, realtime tool calls execute
+against eve. Setup work is filed as **OpenAgentsInc/sarah issues
+S-1..S-13** (#1–#13): eve integration, honesty grounding, token
+hardening (blocks public deploy), durable sessions/prospect ref, tool
+bridge, first tools, CRM sync, email channel, deal rules v0, branded
+UI, Vercel/DNS wiring, eval suite, schedules/receipts.
 
 **Track B — Sarah lanes (from the spec; SR-1 partially underway in the
 sarah repo):**
