@@ -45,6 +45,7 @@ const runRoute = async (
   >[0]['createCreditCheckout'],
 ): Promise<Response> => {
   const routes = makeOperatorSarahSalesCheckoutRoutes<TestEnv>({
+    appOrigin: () => 'https://openagents.com',
     ...(createCreditCheckout === undefined ? {} : { createCreditCheckout }),
     makeDb: env => env.OPENAGENTS_DB,
     nowIso: () => '2026-07-08T00:00:00.000Z',

@@ -1,5 +1,9 @@
 import { Effect, Match as M } from 'effect'
 
+import {
+  getOpenAgentsWorkerConfig,
+  type OpenAgentsWorkerConfigEnv,
+} from './config'
 import { methodNotAllowed, noStoreJsonResponse, unauthorized } from './http/responses'
 import { optionalInteger, optionalString, readJsonObject, stringArrayFromUnknown } from './json-boundary'
 import { compactRandomId, currentIsoTimestamp } from './runtime-primitives'
@@ -13,10 +17,10 @@ import {
 } from './stripe-billing'
 import type { BillingSyncEnv } from './billing-store'
 
-type SarahCheckoutEnv = StripeBillingEnv &
+type SarahCheckoutBindings = StripeBillingEnv &
   BillingSyncEnv &
+  OpenAgentsWorkerConfigEnv &
   Readonly<{
-    OPENAGENTS_APP_URL?: string | undefined
     OPENAGENTS_DB: D1Database
     SARAH_SALES_CHECKOUT_TEST_MODE?: string | undefined
   }>
@@ -45,13 +49,14 @@ type CreateCreditCheckout = (input: {
   userId: string
 }) => Promise<Readonly<{ checkoutUrl: string; sessionId?: string | undefined }>>
 
-type SarahSalesCheckoutDependencies<Env extends SarahCheckoutEnv> = Readonly<{
+type SarahSalesCheckoutDependencies<Bindings extends SarahCheckoutBindings> = Readonly<{
+  appOrigin?: (env: Bindings, request: Request) => string
   createCreditCheckout?: CreateCreditCheckout
-  makeDb: (env: Env) => D1Database
+  makeDb: (env: Bindings) => D1Database
   nowIso?: () => string
-  readCreditPackages?: (env: Env) => ReadonlyArray<CreditPackage>
-  requireAdminApiToken: (request: Request, env: Env) => Promise<boolean>
-  testModeEnabled?: (env: Env) => boolean
+  readCreditPackages?: (env: Bindings) => ReadonlyArray<CreditPackage>
+  requireAdminApiToken: (request: Request, env: Bindings) => Promise<boolean>
+  testModeEnabled?: (env: Bindings) => boolean
 }>
 
 class SarahSalesCheckoutRouteError extends Error {
@@ -176,7 +181,7 @@ const inputFromBody = (body: Record<string, unknown>): SarahCheckoutInput => {
   }
 }
 
-const routeErrorResponse = (error: unknown): Response => {
+const routeErrorResponse = (error: unknown) => {
   if (error instanceof StripeConfigError) {
     return noStoreJsonResponse(
       {
@@ -259,11 +264,8 @@ const routeCreateError = (error: unknown) => {
   )
 }
 
-const appOrigin = (env: SarahCheckoutEnv, request: Request): string => {
-  const configured = trimText(env.OPENAGENTS_APP_URL)
-
-  return configured === undefined ? new URL(request.url).origin : configured
-}
+const configuredAppOrigin = (env: OpenAgentsWorkerConfigEnv): string =>
+  getOpenAgentsWorkerConfig(env).app.origin
 
 const resolvePackage = (
   packages: ReadonlyArray<CreditPackage>,
@@ -289,14 +291,13 @@ const resolvePackage = (
 }
 
 const testModeResponse = (
-  request: Request,
-  env: SarahCheckoutEnv,
+  appOrigin: string,
   input: SarahCheckoutInput,
   nowIso: string,
-): Response => {
+) => {
   const checkoutRef = compactRandomId('sarah_checkout_test')
   const receiptRef = `receipt.operator.sarah_checkout_test.${checkoutRef}`
-  const checkoutUrl = `${appOrigin(env, request)}/business?sarah_checkout_ref=${encodeURIComponent(checkoutRef)}`
+  const checkoutUrl = `${appOrigin}/business?sarah_checkout_ref=${encodeURIComponent(checkoutRef)}`
 
   return noStoreJsonResponse(
     {
@@ -317,10 +318,10 @@ const testModeResponse = (
   )
 }
 
-const routeCreate = <Env extends SarahCheckoutEnv>(
-  dependencies: SarahSalesCheckoutDependencies<Env>,
+const routeCreate = <Bindings extends SarahCheckoutBindings>(
+  dependencies: SarahSalesCheckoutDependencies<Bindings>,
   request: Request,
-  env: Env,
+  env: Bindings,
 ) =>
   Effect.tryPromise({
     catch: routeCreateError,
@@ -341,7 +342,10 @@ const routeCreate = <Env extends SarahCheckoutEnv>(
         env.SARAH_SALES_CHECKOUT_TEST_MODE === '1'
 
       if (testMode) {
-        return testModeResponse(request, env, input, nowIso)
+        const appOrigin =
+          dependencies.appOrigin?.(env, request) ?? configuredAppOrigin(env)
+
+        return testModeResponse(appOrigin, input, nowIso)
       }
 
       if (input.buyerUserId === null) {
@@ -401,14 +405,16 @@ const routeCreate = <Env extends SarahCheckoutEnv>(
     },
   }).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
 
-export const makeOperatorSarahSalesCheckoutRoutes = <Env extends SarahCheckoutEnv>(
-  dependencies: SarahSalesCheckoutDependencies<Env>,
+export const makeOperatorSarahSalesCheckoutRoutes = <
+  Bindings extends SarahCheckoutBindings,
+>(
+  dependencies: SarahSalesCheckoutDependencies<Bindings>,
 ) => ({
   routeOperatorSarahSalesCheckoutRequest: (
     request: Request,
-    env: Env,
+    env: Bindings,
     _ctx: ExecutionContext,
-  ): Effect.Effect<Response> | undefined => {
+  ) => {
     const url = new URL(request.url)
 
     if (url.pathname !== '/api/operator/business/sarah-checkout-links') {
