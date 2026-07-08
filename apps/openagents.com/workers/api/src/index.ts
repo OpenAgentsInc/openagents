@@ -282,6 +282,10 @@ import {
   makeAdminOpsRoutes,
 } from './admin-ops-routes'
 import {
+  ADMIN_OPS_DAILY_SALES_LEDGER_PATH,
+  makeDailySalesLedgerRoutes,
+} from './business-outreach-daily-ledger-routes'
+import {
   handleMobileAccountDeletionRequest,
   MOBILE_ACCOUNT_PATH,
 } from './mobile-account-deletion-routes'
@@ -4157,6 +4161,18 @@ const adminOpsRoutes = makeAdminOpsRoutes<Env>({
   db: openAgentsDatabase,
   // CFG-4 Domain 4 (#8519): push readiness count reads Postgres.
   pushDb: paymentsLedgerDbForEnv,
+  requireAdminCaller: async (request, env, ctx) => {
+    const session = await requireUserBearerSession(request, env, ctx)
+    if (session === undefined) return undefined
+    if (!isOpenAgentsAdminEmail(session.user.email)) return undefined
+    return { userId: session.user.userId }
+  },
+})
+
+// OB-6 (P1 Track C, #8563): the daily sales ledger reuses the exact same
+// owner-gate composition as the credits/ops consoles above.
+const dailySalesLedgerRoutes = makeDailySalesLedgerRoutes<Env>({
+  db: openAgentsDatabase,
   requireAdminCaller: async (request, env, ctx) => {
     const session = await requireUserBearerSession(request, env, ctx)
     if (session === undefined) return undefined
@@ -13261,6 +13277,17 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     path: ADMIN_OPS_HEALTH_PATH,
     handler: (request, env, ctx) =>
       Effect.promise(() => adminOpsRoutes.handleAdminOpsHealthApi(request, env, ctx)),
+  },
+  {
+    // OB-6 (P1 Track C, #8563): the daily sales ledger — per-day, per-segment
+    // outbound funnel (sourced/drafted/approved/sent/quoted/closed) plus
+    // deliverability health (bounce/complaint rate). Metrics surface only —
+    // see business-outreach-daily-ledger.ts for the honest scope pin.
+    path: ADMIN_OPS_DAILY_SALES_LEDGER_PATH,
+    handler: (request, env, ctx) =>
+      Effect.promise(() =>
+        dailySalesLedgerRoutes.handleDailySalesLedgerApi(request, env, ctx),
+      ),
   },
   {
     // Admin-gated Cloudflare Browser Rendering smoke (#6205). Proves the real

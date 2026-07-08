@@ -454,7 +454,12 @@ const assertPublicSafeText = (field: string, value: string): void => {
   }
 }
 
-const segmentFromVertical = (vertical: string): BusinessOutreachSegmentRef => {
+// Exported (OB-6, #8563): the daily sales ledger needs the SAME
+// vertical->segment mapping this module uses at draft time, so `sourced`
+// (business_pipeline_rows, which only carries `vertical`) lines up with
+// `drafted`/`sent` (which carry the resolved `segmentRef`) instead of a
+// second, potentially-drifting copy of this heuristic.
+export const segmentFromVertical = (vertical: string): BusinessOutreachSegmentRef => {
   const normalized = vertical.toLowerCase()
   if (
     /\b(regulated|legal|law|health|biotech|finance|insurance|defense|manufacturing|logistics|ip-sensitive|data-rich)\b/i

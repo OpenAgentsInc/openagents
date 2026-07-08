@@ -3,7 +3,11 @@
  * Aiur's own same-origin admin-credits-proxy paths (shared with AIUR-2),
  * which forward to the main Worker with the signed-in owner's bearer.
  */
-import { AIUR_ADMIN_OPS_HEALTH_PATH, AIUR_ADMIN_OPS_RUNS_PATH } from '../admin-credits-proxy'
+import {
+  AIUR_ADMIN_OPS_DAILY_SALES_LEDGER_PATH,
+  AIUR_ADMIN_OPS_HEALTH_PATH,
+  AIUR_ADMIN_OPS_RUNS_PATH,
+} from '../admin-credits-proxy'
 
 export type OpsRun = Readonly<{
   observedAt: string
@@ -78,3 +82,85 @@ export const fetchOpsRuns = (limit = 50): Promise<OpsApiResult<OpsRunsResponse>>
 
 export const fetchOpsHealth = (): Promise<OpsApiResult<OpsHealthResponse>> =>
   requestJson(AIUR_ADMIN_OPS_HEALTH_PATH)
+
+// OB-6 (P1 Track C, #8563): the daily sales ledger — per-day, per-segment
+// outbound funnel plus deliverability health. See
+// business-outreach-daily-ledger.ts for the exact/not_measured field split.
+export type DailySalesLedgerNotMeasured = Readonly<{
+  status: 'not_measured'
+  reasonRef: string
+}>
+
+export type DailySalesLedgerSegmentDay = Readonly<{
+  date: string
+  segmentRef: string
+  sourced: number
+  drafted: number
+  approved: number
+  sent: number
+  quoted: number
+  closedWon: number
+  closedLost: number
+  replies: DailySalesLedgerNotMeasured
+  reportClicks: DailySalesLedgerNotMeasured
+  conversations: DailySalesLedgerNotMeasured
+}>
+
+export type DailySalesLedgerRateMetric =
+  | Readonly<{ status: 'measured'; valuePct: number }>
+  | DailySalesLedgerNotMeasured
+
+export type DailySalesLedgerDeliverabilityDay = Readonly<{
+  date: string
+  delivered: number
+  bounced: number
+  complained: number
+  failed: number
+  optOuts: number
+  bounceRatePct: DailySalesLedgerRateMetric
+  complaintRatePct: DailySalesLedgerRateMetric
+  health: 'healthy' | 'at_risk' | 'breach' | 'not_measured'
+}>
+
+export type DailySalesLedgerTotals = Readonly<{
+  sourced: number
+  drafted: number
+  approved: number
+  sent: number
+  delivered: number
+  bounced: number
+  complained: number
+  optOuts: number
+  quoted: number
+  closedWon: number
+  closedLost: number
+}>
+
+export type DailySalesLedger = Readonly<{
+  since: string
+  until: string
+  generatedAt: string
+  segmentRefs: ReadonlyArray<string>
+  segmentDays: ReadonlyArray<DailySalesLedgerSegmentDay>
+  deliverabilityDays: ReadonlyArray<DailySalesLedgerDeliverabilityDay>
+  totals: DailySalesLedgerTotals
+  digestLine: string
+  notMeasured: ReadonlyArray<Readonly<{ field: string; reasonRef: string }>>
+}>
+
+export type DailySalesLedgerResponse = Readonly<{
+  ok: true
+  ledger: DailySalesLedger
+}>
+
+export const fetchDailySalesLedger = (
+  params: Readonly<{ since?: string; until?: string }> = {},
+): Promise<OpsApiResult<DailySalesLedgerResponse>> => {
+  const query = new URLSearchParams()
+  if (params.since !== undefined) query.set('since', params.since)
+  if (params.until !== undefined) query.set('until', params.until)
+  const search = query.toString()
+  return requestJson(
+    `${AIUR_ADMIN_OPS_DAILY_SALES_LEDGER_PATH}${search === '' ? '' : `?${search}`}`,
+  )
+}

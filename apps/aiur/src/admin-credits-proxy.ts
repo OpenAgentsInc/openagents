@@ -38,6 +38,11 @@ export const AIUR_ADMIN_CREDITS_CLAWBACK_PATH = '/api/admin/credits/clawback'
 export const AIUR_ADMIN_OPS_RUNS_PATH = '/api/admin/ops/runs'
 export const AIUR_ADMIN_OPS_HEALTH_PATH = '/api/admin/ops/health'
 
+// OB-6 (P1 Track C, #8563): the daily sales ledger route — same proxy, same
+// auth boundary (see business-outreach-daily-ledger-routes.ts).
+export const AIUR_ADMIN_OPS_DAILY_SALES_LEDGER_PATH =
+  '/api/admin/ops/daily-sales-ledger'
+
 const PROXIED_PATHS: ReadonlySet<string> = new Set([
   AIUR_ADMIN_CREDITS_USERS_PATH,
   AIUR_ADMIN_CREDITS_BALANCE_PATH,
@@ -47,6 +52,7 @@ const PROXIED_PATHS: ReadonlySet<string> = new Set([
   AIUR_ADMIN_CREDITS_CLAWBACK_PATH,
   AIUR_ADMIN_OPS_RUNS_PATH,
   AIUR_ADMIN_OPS_HEALTH_PATH,
+  AIUR_ADMIN_OPS_DAILY_SALES_LEDGER_PATH,
 ])
 
 const noStoreJson = (body: unknown, status = 200): Response =>
