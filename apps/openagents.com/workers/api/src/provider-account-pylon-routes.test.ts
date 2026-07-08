@@ -211,6 +211,31 @@ const env = (): { AUTH_STORAGE: KVNamespace; OPENAGENTS_DB: D1Database } =>
     OPENAGENTS_DB: {} as D1Database,
   }) as { AUTH_STORAGE: KVNamespace; OPENAGENTS_DB: D1Database }
 
+const makeAccount = (
+  overrides: Partial<ProviderAccountRecord>,
+): ProviderAccountRecord => ({
+  accountLabel: 'Claude Work',
+  authMode: 'api_key',
+  connectedAt: '2026-06-25T12:00:00.000Z',
+  createdAt: '2026-06-25T12:00:00.000Z',
+  deletedAt: null,
+  deniedAt: null,
+  disconnectedAt: null,
+  health: 'healthy',
+  id: 'provider-account-claude-owner',
+  lastStatusAt: '2026-06-25T12:00:00.000Z',
+  metadataJson: null,
+  planType: null,
+  provider: 'anthropic_claude',
+  providerAccountRef: 'provider_account_claude_owner',
+  secretRef: 'provider-auth:provider_account_claude_owner',
+  status: 'connected',
+  teamId: null,
+  updatedAt: '2026-06-25T12:00:00.000Z',
+  userId: 'openauth-user-owner',
+  ...overrides,
+})
+
 const linkedSession = (
   tokenHash: string,
   openauthUserId: string | null,
@@ -494,6 +519,112 @@ describe('provider account Pylon device-login routes', () => {
 
     expect(response.status).toBe(409)
     expect(body.error).toBe('pylon_agent_not_linked')
+  })
+
+  test('issues Claude auth material only for the linked owner account', async () => {
+    const token = 'oa_agent_claude_auth_material_token'
+    const repository = new MemoryProviderAccountRepository()
+    repository.accounts.push(makeAccount({}))
+    const calls: Array<{ ownerUserId: string; providerAccountRef: string }> = []
+    const handlers = makeProviderAccountPylonHandlers({
+      agentStore: () => agentStoreFor(token, 'openauth-user-owner'),
+      deleteStartedCodexDeviceLogin: () => () => Promise.resolve(),
+      makeProviderAccountRepository: () => repository,
+      readConnectedCodexAuthMaterial: () => Promise.resolve(undefined),
+      readConnectedClaudeAuthMaterial: (_env, ownerUserId, providerAccountRef) => {
+        calls.push({ ownerUserId, providerAccountRef })
+        return Promise.resolve({
+          authContentEnv: 'CLAUDE_CODE_OAUTH_TOKEN',
+          authContentValue: 'sk-ant-oat-claude-secret',
+        })
+      },
+      readStartedCodexDeviceLogin: () => () => Promise.resolve(undefined),
+      storeConnectedCodexAuth: () => () => Promise.resolve('codex-auth://unused'),
+      storeStartedCodexDeviceLogin: () => () => Promise.resolve(),
+    })
+
+    const response = await handlers.handlePylonProviderClaudeAuthMaterialApi(
+      new Request(
+        'https://openagents.com/api/pylon/provider-accounts/anthropic-claude/auth-material',
+        {
+          method: 'POST',
+          headers: {
+            authorization: `Bearer ${token}`,
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify({
+            providerAccountRef: 'provider_account_claude_owner',
+          }),
+        },
+      ),
+      env(),
+    )
+    const body = (await response.json()) as {
+      authMaterial: {
+        authContentEnv: string
+        authContentValue: string
+      }
+      pylonLink: { owner: string; status: string }
+      status: string
+    }
+
+    expect(response.status).toBe(200)
+    expect(body.status).toBe('issued')
+    expect(body.pylonLink).toEqual({ owner: 'openauth', status: 'linked' })
+    expect(calls).toEqual([
+      {
+        ownerUserId: 'openauth-user-owner',
+        providerAccountRef: 'provider_account_claude_owner',
+      },
+    ])
+    expect(body.authMaterial.authContentEnv).toBe('CLAUDE_CODE_OAUTH_TOKEN')
+    expect(body.authMaterial.authContentValue).toBe('sk-ant-oat-claude-secret')
+  })
+
+  test('refuses Claude auth material for an account not owned by the linked user', async () => {
+    const token = 'oa_agent_claude_wrong_owner_token'
+    const repository = new MemoryProviderAccountRepository()
+    repository.accounts.push(
+      makeAccount({
+        userId: 'other-owner',
+        providerAccountRef: 'provider_account_claude_other',
+      }),
+    )
+    const handlers = makeProviderAccountPylonHandlers({
+      agentStore: () => agentStoreFor(token, 'openauth-user-owner'),
+      deleteStartedCodexDeviceLogin: () => () => Promise.resolve(),
+      makeProviderAccountRepository: () => repository,
+      readConnectedCodexAuthMaterial: () => Promise.resolve(undefined),
+      readConnectedClaudeAuthMaterial: () =>
+        Promise.resolve({
+          authContentEnv: 'CLAUDE_CODE_OAUTH_TOKEN',
+          authContentValue: 'sk-ant-oat-should-not-read',
+        }),
+      readStartedCodexDeviceLogin: () => () => Promise.resolve(undefined),
+      storeConnectedCodexAuth: () => () => Promise.resolve('codex-auth://unused'),
+      storeStartedCodexDeviceLogin: () => () => Promise.resolve(),
+    })
+
+    const response = await handlers.handlePylonProviderClaudeAuthMaterialApi(
+      new Request(
+        'https://openagents.com/api/pylon/provider-accounts/anthropic-claude/auth-material',
+        {
+          method: 'POST',
+          headers: {
+            authorization: `Bearer ${token}`,
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify({
+            providerAccountRef: 'provider_account_claude_other',
+          }),
+        },
+      ),
+      env(),
+    )
+    const body = (await response.json()) as { error: string }
+
+    expect(response.status).toBe(409)
+    expect(body.error).toBe('provider_account_auth_material_unavailable')
   })
 
   test('imports local Codex auth under the linked OpenAuth owner without echoing credentials', async () => {

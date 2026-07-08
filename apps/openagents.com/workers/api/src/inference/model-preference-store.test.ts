@@ -136,6 +136,7 @@ describe('execution target selection (CX-4, #8548)', () => {
     const targets = resolveAvailableExecutionTargetIds({
       availableModelIds: ['gemini', KHALA_MODEL_ID],
       codexAccountRefHashes: ['acct_a', 'acct_b'],
+      claudeAccountRefHashes: ['claude_a'],
     })
     expect(targets).toEqual([
       DEFAULT_EXECUTION_TARGET_ID,
@@ -143,6 +144,7 @@ describe('execution target selection (CX-4, #8548)', () => {
       'khala',
       'codex:acct_a',
       'codex:acct_b',
+      'claude:claude_a',
     ])
   })
 
@@ -151,15 +153,21 @@ describe('execution target selection (CX-4, #8548)', () => {
     expect(normalizeExecutionTargetId('CODEX:AccountRefHash_01')).toBe(
       'codex:AccountRefHash_01',
     )
+    expect(normalizeExecutionTargetId('CLAUDE:AccountRefHash_02')).toBe(
+      'claude:AccountRefHash_02',
+    )
   })
 
-  test('only accepts account-specific Codex targets that are surfaced as available', () => {
+  test('only accepts account-specific provider targets that are surfaced as available', () => {
     const availableTargetIds = resolveAvailableExecutionTargetIds({
       availableModelIds: ['gemini'],
       codexAccountRefHashes: ['owner-codex'],
+      claudeAccountRefHashes: ['owner-claude'],
     })
     expect(isExecutionTargetIdAvailable('codex:owner-codex', availableTargetIds)).toBe(true)
     expect(isExecutionTargetIdAvailable('codex:missing', availableTargetIds)).toBe(false)
+    expect(isExecutionTargetIdAvailable('claude:owner-claude', availableTargetIds)).toBe(true)
+    expect(isExecutionTargetIdAvailable('claude:missing', availableTargetIds)).toBe(false)
   })
 
   test('defaults to gemini when no target is set and gemini is available', () => {
@@ -186,6 +194,20 @@ describe('execution target selection (CX-4, #8548)', () => {
       effectiveModelId: 'codex:owner-codex',
       fallback: 'none',
       preferredModelId: 'codex:owner-codex',
+      usedPreference: true,
+    })
+  })
+
+  test('honors an available account-specific Claude target', () => {
+    expect(
+      resolveExecutionTargetPreference({
+        availableTargetIds: ['gemini', 'auto', 'claude:owner-claude'],
+        storedTargetId: 'claude:owner-claude',
+      }),
+    ).toEqual({
+      effectiveModelId: 'claude:owner-claude',
+      fallback: 'none',
+      preferredModelId: 'claude:owner-claude',
       usedPreference: true,
     })
   })

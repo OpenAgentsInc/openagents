@@ -7,6 +7,7 @@ import { join } from 'node:path'
 import {
   AGENT_COMPUTER_DEFAULT_PROVIDER,
   AGENT_COMPUTER_RECEIPT_LANE,
+  CLAUDE_PROVIDER_AUTH_MATERIAL_PATH,
   CODEX_PROVIDER_AUTH_MATERIAL_PATH,
   GITHUB_SCM_AUTH_BROKER_HELPER_REF,
   GITHUB_SCM_AUTH_BROKER_PATH,
@@ -22,14 +23,17 @@ import {
   chatCompletionText,
   chatCompletionsRequest,
   classifyPushFailure,
+  claudeProviderAuthMaterialRequest,
   codexProviderAuthMaterialRequest,
   gitCredentialBrokerRequest,
+  materializeClaudeProviderAuth,
   materializeCodexProviderAuth,
   parseRepoFullName,
   runModelTurnReceipt,
   runWritebackForTurn,
   shortLivedOpenCodeAuthExpiresAt,
   usageIngestBody,
+  type ClaudeProviderAuthConfig,
   type CodexProviderAuthConfig,
   type GitRun,
   type InferenceConfig,
@@ -52,11 +56,83 @@ const codexProviderAuth: CodexProviderAuthConfig = {
   providerAccountRef: 'provider-account.public.codex.owner',
 }
 
+const claudeProviderAuth: ClaudeProviderAuthConfig = {
+  authGrantRef: 'grant.public.claude.owner.turn',
+  baseUrl: 'https://openagents.example',
+  agentToken: 'agent-secret-token-should-never-be-serialized',
+  providerAccountRef: 'provider-account.public.claude.owner',
+}
+
 const shortLivedAuthContent = JSON.stringify({
   openai: {
     access: 'short-lived-access-token-never-serialized',
     expires: Date.parse('2026-07-08T12:30:00.000Z'),
   },
+})
+
+describe('agent-computer turn-runner: Claude provider-account broker materialization', () => {
+  test('auth-material request carries only refs plus the agent bearer', () => {
+    const req = claudeProviderAuthMaterialRequest(claudeProviderAuth)
+    expect(req.url).toBe(`${claudeProviderAuth.baseUrl}${CLAUDE_PROVIDER_AUTH_MATERIAL_PATH}`)
+    expect(req.headers.Authorization).toBe(`Bearer ${claudeProviderAuth.agentToken}`)
+    expect(JSON.parse(req.body)).toEqual({
+      authGrantRef: claudeProviderAuth.authGrantRef,
+      providerAccountRef: claudeProviderAuth.providerAccountRef,
+    })
+    expect(req.body).not.toContain('claude-oauth-token')
+  })
+
+  test('materializes Claude OAuth only as CLAUDE_CODE_OAUTH_TOKEN env', async () => {
+    const fetchImpl = (async () =>
+      new Response(
+        JSON.stringify({
+          authMaterial: {
+            authContentEnv: 'CLAUDE_CODE_OAUTH_TOKEN',
+            authContentValue: 'claude-oauth-token-never-serialized',
+          },
+        }),
+        { status: 200 },
+      )) as unknown as typeof globalThis.fetch
+
+    const result = await materializeClaudeProviderAuth(
+      { providerAuth: claudeProviderAuth },
+      fetchImpl,
+    )
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) throw new Error('unreachable')
+    expect(result.env.CLAUDE_CODE_OAUTH_TOKEN).toBe('claude-oauth-token-never-serialized')
+    expect(
+      JSON.stringify({
+        providerAccountRef: result.providerAccountRef,
+        authGrantRef: result.authGrantRef,
+      }),
+    ).not.toContain('claude-oauth-token')
+  })
+
+  test('rejects malformed Claude auth material', async () => {
+    const fetchImpl = (async () =>
+      new Response(
+        JSON.stringify({
+          authMaterial: {
+            authContentEnv: 'ANTHROPIC_API_KEY',
+            authContentValue: 'wrong-shape',
+          },
+        }),
+        { status: 200 },
+      )) as unknown as typeof globalThis.fetch
+
+    const result = await materializeClaudeProviderAuth(
+      { providerAuth: claudeProviderAuth },
+      fetchImpl,
+    )
+
+    expect(result).toEqual({
+      ok: false,
+      reasonRef: 'claude.provider_auth_material_invalid',
+      status: 200,
+    })
+  })
 })
 
 describe('agent-computer turn-runner: Codex provider-account broker materialization', () => {

@@ -117,6 +117,9 @@ export const normalizeExecutionTargetId = (targetId: string): string => {
   if (normalized.toLowerCase().startsWith('codex:')) {
     return `codex:${normalized.slice('codex:'.length)}`
   }
+  if (normalized.toLowerCase().startsWith('claude:')) {
+    return `claude:${normalized.slice('claude:'.length)}`
+  }
   return normalizeModelPreferenceId(normalized)
 }
 
@@ -133,10 +136,14 @@ export const isModelIdAvailable = (
 export const isCodexExecutionTargetId = (targetId: string): boolean =>
   /^codex:[A-Za-z0-9_.:-]{3,128}$/.test(normalizeExecutionTargetId(targetId))
 
+export const isClaudeExecutionTargetId = (targetId: string): boolean =>
+  /^claude:[A-Za-z0-9_.:-]{3,128}$/.test(normalizeExecutionTargetId(targetId))
+
 export const resolveAvailableExecutionTargetIds = (
   input: Readonly<{
     availableModelIds: ReadonlyArray<string>
     codexAccountRefHashes?: ReadonlyArray<string>
+    claudeAccountRefHashes?: ReadonlyArray<string>
   }>,
 ): ReadonlyArray<string> => {
   const ids = new Set<string>()
@@ -151,6 +158,10 @@ export const resolveAvailableExecutionTargetIds = (
     const trimmed = accountRefHash.trim()
     if (trimmed !== '') ids.add(`codex:${trimmed}`)
   }
+  for (const accountRefHash of input.claudeAccountRefHashes ?? []) {
+    const trimmed = accountRefHash.trim()
+    if (trimmed !== '') ids.add(`claude:${trimmed}`)
+  }
   return [...ids]
 }
 
@@ -160,6 +171,9 @@ export const isExecutionTargetIdAvailable = (
 ): boolean => {
   const normalized = normalizeExecutionTargetId(targetId)
   if (isCodexExecutionTargetId(normalized)) {
+    return availableTargetIds.some(id => normalizeExecutionTargetId(id) === normalized)
+  }
+  if (isClaudeExecutionTargetId(normalized)) {
     return availableTargetIds.some(id => normalizeExecutionTargetId(id) === normalized)
   }
   return availableTargetIds.some(

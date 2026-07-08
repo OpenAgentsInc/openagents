@@ -54,6 +54,11 @@ type ConnectedCodexAuthMaterial = Readonly<{
   authContentJson: string
 }>
 
+type ConnectedClaudeAuthMaterial = Readonly<{
+  authContentEnv: 'CLAUDE_CODE_OAUTH_TOKEN'
+  authContentValue: string
+}>
+
 type ProviderAccountPylonDependencies<
   Bindings extends ProviderAccountPylonBindings,
 > = Readonly<{
@@ -69,6 +74,11 @@ type ProviderAccountPylonDependencies<
     ownerUserId: string,
     providerAccountRef: string,
   ) => Promise<ConnectedCodexAuthMaterial | undefined>
+  readConnectedClaudeAuthMaterial?: (
+    bindings: Bindings,
+    ownerUserId: string,
+    providerAccountRef: string,
+  ) => Promise<ConnectedClaudeAuthMaterial | undefined>
   readStartedCodexDeviceLogin: (kv: AuthKvStore) => ReadStartedCodexDeviceLogin
   startDeviceLogin?: StartCodexDeviceLogin
   storeConnectedCodexAuth: (env: Bindings) => StoreConnectedCodexAuth
@@ -351,6 +361,100 @@ export const makeProviderAccountPylonHandlers = <
       )
     } catch (error) {
       logWorkerRouteError('pylon_provider_codex_auth_material_failed', error, {
+        errorName: providerAccountRouteErrorName(error),
+        providerAccountRef,
+      })
+
+      return noStoreJsonResponse(
+        {
+          error: 'provider_account_auth_material_unavailable',
+          message: providerAccountRouteErrorMessage(error),
+        },
+        { status: providerAccountRouteErrorStatus(error, 409) },
+      )
+    }
+  },
+
+  handlePylonProviderClaudeAuthMaterialApi: async (
+    request: Request,
+    env: Bindings,
+  ) => {
+    if (request.method !== 'POST') {
+      return methodNotAllowed(['POST'])
+    }
+
+    const session = await requireAgent(dependencies, request, env)
+    if (session === undefined) {
+      return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
+    }
+
+    const userId = linkedOpenAuthOwnerUserId(session)
+    if (userId === undefined) {
+      return pylonAgentNotLinkedResponse()
+    }
+
+    const body = await readJsonObject(request).catch(
+      (): Record<string, unknown> => ({}),
+    )
+    const providerAccountRef = optionalString(body.providerAccountRef)
+    if (providerAccountRef === undefined) {
+      return noStoreJsonResponse(
+        {
+          error: 'provider_account_ref_required',
+          message:
+            'A providerAccountRef is required before Pylon can request Claude auth material from custody.',
+        },
+        { status: 400 },
+      )
+    }
+
+    try {
+      const account = await routeProviderAccountRepository(
+        dependencies,
+        env,
+      ).findAccountByRef(userId, providerAccountRef)
+      if (account === undefined || account.provider !== 'anthropic_claude') {
+        return noStoreJsonResponse(
+          {
+            error: 'provider_account_auth_material_unavailable',
+            message:
+              'Claude provider account auth material is unavailable in custody for this owner.',
+          },
+          { status: 409 },
+        )
+      }
+
+      const authMaterial = await observedPromise(
+        'ProviderAccountPylon.readConnectedClaudeAuthMaterial',
+        () =>
+          dependencies.readConnectedClaudeAuthMaterial?.(
+            env,
+            userId,
+            providerAccountRef,
+          ) ?? Promise.resolve(undefined),
+      )
+
+      if (authMaterial === undefined) {
+        return noStoreJsonResponse(
+          {
+            error: 'provider_account_auth_material_unavailable',
+            message:
+              'Claude provider account auth material is unavailable in custody for this owner.',
+          },
+          { status: 409 },
+        )
+      }
+
+      return noStoreJsonResponse(
+        withPylonLinkMetadata({
+          schema: 'openagents.pylon.provider_account.claude_auth_material.v1',
+          status: 'issued',
+          providerAccountRef,
+          authMaterial,
+        }),
+      )
+    } catch (error) {
+      logWorkerRouteError('pylon_provider_claude_auth_material_failed', error, {
         errorName: providerAccountRouteErrorName(error),
         providerAccountRef,
       })

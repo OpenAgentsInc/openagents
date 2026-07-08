@@ -233,6 +233,7 @@ import {
   revokeOpenAuthRefreshToken,
 } from './auth/mobile-session'
 import {
+  type AuthKvEnv,
   type AuthKvStore,
   authKvStoreForEnv,
 } from './auth/auth-kv'
@@ -7252,7 +7253,8 @@ const storeConnectedProviderApiKey =
     )
   }
 
-type ProviderAccountTokenCustodyEnv = ProviderTokenCustodyKeyEnv &
+type ProviderAccountTokenCustodyEnv = AuthKvEnv &
+  ProviderTokenCustodyKeyEnv &
   Readonly<{
     OPENAGENTS_DB: D1Database
   }>
@@ -7282,6 +7284,9 @@ const storeConnectedCodexAuth =
     )
   }
 
+const storeConnectedCodexAuthForWorkerEnv = (env: OpenAgentsWorkerEnv) =>
+  storeConnectedCodexAuth(env)
+
 const deleteConnectedCodexAuth = async (
   env: ProviderAccountTokenCustodyEnv,
   input: Readonly<{
@@ -7295,6 +7300,14 @@ const deleteConnectedCodexAuth = async (
     providerAccountRef: input.providerAccountRef,
     nowIso: currentIsoTimestamp(),
   })
+
+const deleteConnectedCodexAuthForWorkerEnv = (
+  env: OpenAgentsWorkerEnv,
+  input: Readonly<{
+    ownerUserId: string
+    providerAccountRef: string
+  }>,
+) => deleteConnectedCodexAuth(env, input)
 
 const readConnectedCodexAuthMaterial = async (
   env: ProviderAccountTokenCustodyEnv,
@@ -7335,6 +7348,12 @@ const readConnectedCodexAuthMaterial = async (
   }
 }
 
+const readConnectedCodexAuthMaterialForWorkerEnv = (
+  env: OpenAgentsWorkerEnv,
+  ownerUserId: string,
+  providerAccountRef: string,
+) => readConnectedCodexAuthMaterial(env, ownerUserId, providerAccountRef)
+
 const readConnectedOpenRouterApiKey = async (
   kv: AuthKvStore,
   providerAccountRef: string,
@@ -7358,6 +7377,40 @@ const readConnectedOpenRouterApiKey = async (
   }
 
   return Redacted.make(key)
+}
+
+const readConnectedClaudeAuthMaterial = async (
+  kv: AuthKvStore,
+  providerAccountRef: string,
+): Promise<
+  | Readonly<{
+      authContentEnv: 'CLAUDE_CODE_OAUTH_TOKEN'
+      authContentValue: string
+    }>
+  | undefined
+> => {
+  const raw = await kv.get(providerAuthSecretKey(providerAccountRef), 'text')
+
+  if (raw === null) {
+    return undefined
+  }
+
+  const parsed = safeJsonRecord(raw)
+  const anthropic = isRecord(parsed) ? parsed.anthropic : undefined
+
+  if (!isRecord(anthropic) || optionalString(anthropic.type) !== 'api_key') {
+    return undefined
+  }
+
+  const key = optionalString(anthropic.key)?.trim()
+  if (key === undefined || key === '') {
+    return undefined
+  }
+
+  return {
+    authContentEnv: 'CLAUDE_CODE_OAUTH_TOKEN',
+    authContentValue: key,
+  }
 }
 
 export const handleProgrammaticAgentRegistration = async (
@@ -8559,21 +8612,24 @@ const providerAccountBrowserHandlers = makeProviderAccountBrowserHandlers({
   storeStartedCodexDeviceLogin,
 })
 
-const providerAccountPylonHandlers = makeProviderAccountPylonHandlers({
+const providerAccountPylonHandlers =
+  makeProviderAccountPylonHandlers<OpenAgentsWorkerEnv>({
   agentStore: env => makeAgentRegistrationStoreForEnv(env),
   deleteStartedCodexDeviceLogin,
-  readConnectedCodexAuthMaterial,
+  readConnectedClaudeAuthMaterial: (env, _ownerUserId, providerAccountRef) =>
+    readConnectedClaudeAuthMaterial(authKvStoreForEnv(env), providerAccountRef),
+  readConnectedCodexAuthMaterial: readConnectedCodexAuthMaterialForWorkerEnv,
   readStartedCodexDeviceLogin,
   storeConnectedCodexAuth,
   storeStartedCodexDeviceLogin,
-})
+  })
 
 const providerAccountMobileHandlers = makeProviderAccountMobileHandlers({
-  deleteConnectedCodexAuth,
+  deleteConnectedCodexAuth: deleteConnectedCodexAuthForWorkerEnv,
   deleteStartedCodexDeviceLogin,
   readStartedCodexDeviceLogin,
   requireUserBearerSession,
-  storeConnectedCodexAuth,
+  storeConnectedCodexAuth: storeConnectedCodexAuthForWorkerEnv,
   storeStartedCodexDeviceLogin,
   userIdFromSession: session => session.user.userId,
 })
@@ -8591,7 +8647,7 @@ const khalaCodeOpenAgentsAuthHandlers = makeKhalaCodeOpenAgentsAuthHandlers({
 })
 
 const providerAccountServiceHandlers = makeProviderAccountServiceHandlers({
-  readConnectedCodexAuthMaterial,
+  readConnectedCodexAuthMaterial: readConnectedCodexAuthMaterialForWorkerEnv,
   requireProviderServiceActor,
 })
 
@@ -8609,7 +8665,7 @@ const providerAccountUsageRoutes = makeProviderAccountUsageRoutes({
 
 const operatorProviderAccountRoutes = makeOperatorProviderAccountRoutes({
   deleteStartedCodexDeviceLogin,
-  readConnectedCodexAuthMaterial,
+  readConnectedCodexAuthMaterial: readConnectedCodexAuthMaterialForWorkerEnv,
   readSelectedOperatorTargetUser,
   readStartedCodexDeviceLogin,
   requireAdminApiToken,
@@ -8811,6 +8867,13 @@ const providerAccountRoutes = makeProviderAccountRoutes({
   handlePylonProviderCodexAuthMaterialApi: (request, env) =>
     routeEffect('handle_pylon_provider_codex_auth_material_api', () =>
       providerAccountPylonHandlers.handlePylonProviderCodexAuthMaterialApi(
+        request,
+        env,
+      ),
+    ),
+  handlePylonProviderClaudeAuthMaterialApi: (request, env) =>
+    routeEffect('handle_pylon_provider_claude_auth_material_api', () =>
+      providerAccountPylonHandlers.handlePylonProviderClaudeAuthMaterialApi(
         request,
         env,
       ),

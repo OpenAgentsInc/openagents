@@ -76,6 +76,8 @@ export const AGENT_COMPUTER_DEFAULT_PROVIDER = 'vertex-gemini'
 export const AGENT_COMPUTER_RECEIPT_LANE = 'hosted_khala'
 export const CODEX_PROVIDER_AUTH_MATERIAL_PATH =
   '/api/pylon/provider-accounts/chatgpt-codex/auth-material'
+export const CLAUDE_PROVIDER_AUTH_MATERIAL_PATH =
+  '/api/pylon/provider-accounts/anthropic-claude/auth-material'
 export const CODEX_PROVIDER_AUTH_PRE_EXPIRY_BUFFER_MS = 5 * 60 * 1000
 
 /**
@@ -118,6 +120,13 @@ export type CodexProviderAuthConfig = {
   scratchRoot?: string
 }
 
+export type ClaudeProviderAuthConfig = {
+  baseUrl: string
+  agentToken: string
+  providerAccountRef: string
+  authGrantRef: string
+}
+
 export type CodexProviderAuthMaterialization =
   | {
       ok: true
@@ -137,6 +146,21 @@ export type CodexProviderAuthMaterialization =
       status: number | null
     }
 
+export type ClaudeProviderAuthMaterialization =
+  | {
+      ok: true
+      providerAccountRef: string
+      authGrantRef: string
+      env: Record<string, string>
+    }
+  | {
+      ok: false
+      reasonRef:
+        | 'claude.provider_auth_broker_unavailable'
+        | 'claude.provider_auth_material_invalid'
+      status: number | null
+    }
+
 export const codexProviderAuthMaterialRequest = (
   providerAuth: CodexProviderAuthConfig,
 ): { url: string; headers: Record<string, string>; body: string } => ({
@@ -151,6 +175,20 @@ export const codexProviderAuthMaterialRequest = (
   url: new URL(CODEX_PROVIDER_AUTH_MATERIAL_PATH, providerAuth.baseUrl).toString(),
 })
 
+export const claudeProviderAuthMaterialRequest = (
+  providerAuth: ClaudeProviderAuthConfig,
+): { url: string; headers: Record<string, string>; body: string } => ({
+  body: JSON.stringify({
+    providerAccountRef: providerAuth.providerAccountRef,
+    authGrantRef: providerAuth.authGrantRef,
+  }),
+  headers: {
+    Authorization: `Bearer ${providerAuth.agentToken}`,
+    'content-type': 'application/json',
+  },
+  url: new URL(CLAUDE_PROVIDER_AUTH_MATERIAL_PATH, providerAuth.baseUrl).toString(),
+})
+
 const authContentJsonFromMaterialResponse = (value: unknown): string | null => {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) {
     return null
@@ -163,6 +201,23 @@ const authContentJsonFromMaterialResponse = (value: unknown): string | null => {
   const authContentJson = (material as { authContentJson?: unknown }).authContentJson
   return authContentEnv === 'OPENCODE_AUTH_CONTENT' && typeof authContentJson === 'string'
     ? authContentJson
+    : null
+}
+
+const claudeOauthTokenFromMaterialResponse = (value: unknown): string | null => {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    return null
+  }
+  const material = (value as { authMaterial?: unknown }).authMaterial
+  if (material === null || typeof material !== 'object' || Array.isArray(material)) {
+    return null
+  }
+  const authContentEnv = (material as { authContentEnv?: unknown }).authContentEnv
+  const authContentValue = (material as { authContentValue?: unknown }).authContentValue
+  return authContentEnv === 'CLAUDE_CODE_OAUTH_TOKEN' &&
+    typeof authContentValue === 'string' &&
+    authContentValue.trim() !== ''
+    ? authContentValue
     : null
 }
 
@@ -252,6 +307,46 @@ export const materializeCodexProviderAuth = async (
   }
 }
 
+export const materializeClaudeProviderAuth = async (
+  args: {
+    providerAuth: ClaudeProviderAuthConfig
+  },
+  fetchImpl: typeof globalThis.fetch = globalThis.fetch,
+): Promise<ClaudeProviderAuthMaterialization> => {
+  const request = claudeProviderAuthMaterialRequest(args.providerAuth)
+  let response: Response
+  try {
+    response = await fetchImpl(request.url, {
+      body: request.body,
+      headers: request.headers,
+      method: 'POST',
+    })
+  } catch {
+    return { ok: false, reasonRef: 'claude.provider_auth_broker_unavailable', status: null }
+  }
+  if (!response.ok) {
+    return {
+      ok: false,
+      reasonRef: 'claude.provider_auth_broker_unavailable',
+      status: response.status,
+    }
+  }
+  const oauthToken = claudeOauthTokenFromMaterialResponse(
+    await response.json().catch((): unknown => null),
+  )
+  if (oauthToken === null) {
+    return { ok: false, reasonRef: 'claude.provider_auth_material_invalid', status: response.status }
+  }
+  return {
+    ok: true,
+    authGrantRef: args.providerAuth.authGrantRef,
+    env: {
+      CLAUDE_CODE_OAUTH_TOKEN: oauthToken,
+    },
+    providerAccountRef: args.providerAuth.providerAccountRef,
+  }
+}
+
 export const canReplayCodexProviderGrantAfterReclaim = (_input: {
   scratchWipeReceiptRef: string
   microvmDestroyReceiptRef: string
@@ -286,6 +381,7 @@ type WorkContext = {
   branch?: string
   objective?: string
   providerAuth?: CodexProviderAuthConfig
+  claudeProviderAuth?: ClaudeProviderAuthConfig
   inference?: InferenceConfig
   writeback?: WritebackConfig
 }
@@ -1064,6 +1160,40 @@ async function main() {
     })
   }
 
+  let claudeProviderAuth: ClaudeProviderAuthMaterialization | null = null
+  if (wc.claudeProviderAuth !== undefined) {
+    emit({
+      kind: 'tool.call',
+      turnId,
+      tool: 'claude.provider_auth.materialize',
+      providerAccountRef: wc.claudeProviderAuth.providerAccountRef,
+      authGrantRef: wc.claudeProviderAuth.authGrantRef,
+    })
+    claudeProviderAuth = await materializeClaudeProviderAuth({
+      providerAuth: wc.claudeProviderAuth,
+    })
+    if (!claudeProviderAuth.ok) {
+      emit({
+        kind: 'tool.result',
+        turnId,
+        tool: 'claude.provider_auth.materialize',
+        status: 'failed',
+        reasonRef: claudeProviderAuth.reasonRef,
+        httpStatus: claudeProviderAuth.status,
+      })
+      throw new Error(claudeProviderAuth.reasonRef)
+    }
+    emit({
+      kind: 'tool.result',
+      turnId,
+      tool: 'claude.provider_auth.materialize',
+      status: 'ok',
+      providerAccountRef: claudeProviderAuth.providerAccountRef,
+      authGrantRef: claudeProviderAuth.authGrantRef,
+      delivery: 'env:CLAUDE_CODE_OAUTH_TOKEN',
+    })
+  }
+
   // 1. Real repo checkout via the #8475 materializer (unauthenticated depth-1
   //    clone + detached checkout of the pinned commit; public repo, no broker).
   emit({ kind: 'tool.call', turnId, tool: 'workspace.checkout', repo: wc.repo, commit: wc.commit })
@@ -1238,6 +1368,21 @@ async function main() {
               ok: false,
               reasonRef: codexProviderAuth.reasonRef,
               status: codexProviderAuth.status,
+            },
+    claudeProviderAuth:
+      claudeProviderAuth === null
+        ? null
+        : claudeProviderAuth.ok
+          ? {
+              ok: true,
+              providerAccountRef: claudeProviderAuth.providerAccountRef,
+              authGrantRef: claudeProviderAuth.authGrantRef,
+              delivery: 'env:CLAUDE_CODE_OAUTH_TOKEN',
+            }
+          : {
+              ok: false,
+              reasonRef: claudeProviderAuth.reasonRef,
+              status: claudeProviderAuth.status,
             },
     model: wc.inference?.model ?? null,
     modelTokenReceipt:

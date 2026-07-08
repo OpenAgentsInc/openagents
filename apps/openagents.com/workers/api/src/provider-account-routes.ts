@@ -102,6 +102,10 @@ type ProviderAccountRouteDependencies<Bindings = OpenAgentsEnv> = Readonly<{
     request: Request,
     env: Bindings,
   ) => RouteEffect
+  handlePylonProviderClaudeAuthMaterialApi: (
+    request: Request,
+    env: Bindings,
+  ) => RouteEffect
   handlePylonProviderLocalCodexAuthImportApi: (
     request: Request,
     env: Bindings,
@@ -211,6 +215,15 @@ export const makeProviderAccountRoutes = <Bindings = OpenAgentsEnv>(
     ) {
       return routeEffectOrResponse(
         dependencies.handlePylonProviderCodexAuthMaterialApi(request, env),
+      )
+    }
+
+    if (
+      url.pathname ===
+      '/api/pylon/provider-accounts/anthropic-claude/auth-material'
+    ) {
+      return routeEffectOrResponse(
+        dependencies.handlePylonProviderClaudeAuthMaterialApi(request, env),
       )
     }
 

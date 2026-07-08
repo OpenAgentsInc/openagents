@@ -476,6 +476,10 @@ describe('provider api key connect route dispatch', () => {
         'pylonCodexAuthMaterial',
         calls,
       ),
+      handlePylonProviderClaudeAuthMaterialApi: stub(
+        'pylonClaudeAuthMaterial',
+        calls,
+      ),
       handlePylonProviderLocalCodexAuthImportApi: stub(
         'pylonLocalCodexAuthImport',
         calls,
