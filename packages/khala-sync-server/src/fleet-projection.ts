@@ -2,26 +2,33 @@ import {
   canonicalJson,
   type ChangelogEntry,
   decodeFleetAccountEntity,
+  decodeFleetApprovalEntity,
   decodeFleetAssignmentEntity,
   decodeFleetRunEntity,
   decodeFleetWorkerEntity,
   encodeFleetAccountEntity,
+  encodeFleetApprovalEntity,
   encodeFleetAssignmentEntity,
   encodeFleetInboxFlagEntity,
   encodeFleetRunEntity,
+  encodeFleetSteerEntity,
   encodeFleetWorkerEntity,
   EntityId,
   EntityType,
   FLEET_ACCOUNT_ENTITY_TYPE,
+  FLEET_APPROVAL_ENTITY_TYPE,
   FLEET_ASSIGNMENT_ENTITY_TYPE,
   FLEET_INBOX_FLAG_ENTITY_TYPE,
   FLEET_RUN_ENTITY_TYPE,
+  FLEET_STEER_ENTITY_TYPE,
   FLEET_WORKER_ENTITY_TYPE,
   type FleetAccountEntity,
+  type FleetApprovalEntity,
   type FleetAssignmentEntity,
   type FleetInboxFlagEntity,
   type FleetRunEntity,
   fleetRunScope,
+  type FleetSteerEntity,
   type FleetWorkerEntity,
   type SyncScope,
 } from "@openagentsinc/khala-sync"
@@ -225,6 +232,7 @@ export const fleetRunPostImage = (row: RawFleetRunRow): FleetRunEntity =>
 export interface RawFleetWorkerRow {
   readonly id: string
   readonly status: string
+  readonly harnessKind?: string | null
   readonly currentAssignmentRef?: string | null
   readonly accountRefHash?: string | null
   readonly lastHeartbeatAt?: string | Date | null
@@ -235,6 +243,7 @@ export const fleetWorkerPostImage = (
   row: RawFleetWorkerRow,
 ): FleetWorkerEntity =>
   decodeFleetWorkerEntity({
+    ...(row.harnessKind == null ? {} : { harnessKind: row.harnessKind }),
     ...(row.currentAssignmentRef == null
       ? {}
       : { assignmentRef: row.currentAssignmentRef }),
@@ -316,6 +325,34 @@ export const fleetAccountPostImage = (
     updatedAt: toIso(row.updatedAt),
   })
 
+/**
+ * Raw pending-approval row shape (the desktop supervisor's approval gate).
+ * The tool's arguments/prompt/output have NO mapping here; only the ref, the
+ * blocked worker, and a bounded tool class token cross into the post-image.
+ */
+export interface RawFleetApprovalRow {
+  readonly approvalRef: string
+  readonly status: string
+  readonly workerId?: string | null
+  readonly toolClass?: string | null
+  readonly openedAt?: string | Date | null
+  readonly decidedAt?: string | Date | null
+  readonly updatedAt: string | Date
+}
+
+export const fleetApprovalPostImage = (
+  row: RawFleetApprovalRow,
+): FleetApprovalEntity =>
+  decodeFleetApprovalEntity({
+    approvalRef: row.approvalRef,
+    ...(row.workerId == null ? {} : { workerId: row.workerId }),
+    ...(row.toolClass == null ? {} : { toolClass: row.toolClass }),
+    ...(row.openedAt == null ? {} : { openedAt: toIso(row.openedAt) }),
+    ...(row.decidedAt == null ? {} : { decidedAt: toIso(row.decidedAt) }),
+    status: row.status,
+    updatedAt: toIso(row.updatedAt),
+  })
+
 // ---------------------------------------------------------------------------
 // Append helpers (inside a SyncTransactionWriter)
 // ---------------------------------------------------------------------------
@@ -334,6 +371,8 @@ export type FleetEntityChange =
   | { readonly kind: "fleet_assignment"; readonly op: "upsert"; readonly entity: FleetAssignmentEntity }
   | { readonly kind: "fleet_account"; readonly op: "upsert"; readonly entity: FleetAccountEntity }
   | { readonly kind: "fleet_inbox_flag"; readonly op: "upsert"; readonly entity: FleetInboxFlagEntity }
+  | { readonly kind: "fleet_approval"; readonly op: "upsert"; readonly entity: FleetApprovalEntity }
+  | { readonly kind: "fleet_steer"; readonly op: "upsert"; readonly entity: FleetSteerEntity }
   | {
       readonly kind:
         | "fleet_run"
@@ -341,6 +380,8 @@ export type FleetEntityChange =
         | "fleet_assignment"
         | "fleet_account"
         | "fleet_inbox_flag"
+        | "fleet_approval"
+        | "fleet_steer"
       readonly op: "delete"
       readonly entityId: string
     }
@@ -356,6 +397,10 @@ const encodeByKind = {
     encodeFleetRunEntity(entity),
   [FLEET_WORKER_ENTITY_TYPE]: (entity: FleetWorkerEntity) =>
     encodeFleetWorkerEntity(entity),
+  [FLEET_APPROVAL_ENTITY_TYPE]: (entity: FleetApprovalEntity) =>
+    encodeFleetApprovalEntity(entity),
+  [FLEET_STEER_ENTITY_TYPE]: (entity: FleetSteerEntity) =>
+    encodeFleetSteerEntity(entity),
 }
 
 const entityIdOf = (change: FleetEntityChange): string => {
@@ -371,6 +416,10 @@ const entityIdOf = (change: FleetEntityChange): string => {
       return change.entity.accountRefHash
     case "fleet_inbox_flag":
       return change.entity.flagRef
+    case "fleet_approval":
+      return change.entity.approvalRef
+    case "fleet_steer":
+      return change.entity.steerRef
   }
 }
 

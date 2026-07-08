@@ -44,6 +44,8 @@ describe("fleet entity contracts", () => {
       "fleet_assignment",
       "fleet_account",
       "fleet_inbox_flag",
+      "fleet_approval",
+      "fleet_steer",
     ])
   })
 

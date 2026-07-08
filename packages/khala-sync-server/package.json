@@ -29,6 +29,7 @@
     "query-compare-soak": "bun scripts/query-compare-soak.ts"
   },
   "dependencies": {
+    "@openagentsinc/khala-fleet-intents": "workspace:*",
     "@openagentsinc/khala-sync": "workspace:*",
     "effect": "catalog:",
     "postgres": "3.4.9"

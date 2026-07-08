@@ -33,6 +33,11 @@ export const FLEET_WORKER_ENTITY_TYPE = "fleet_worker"
 export const FLEET_ASSIGNMENT_ENTITY_TYPE = "fleet_assignment"
 export const FLEET_ACCOUNT_ENTITY_TYPE = "fleet_account"
 export const FLEET_INBOX_FLAG_ENTITY_TYPE = "fleet_inbox_flag"
+// MH-6 (#8585): the projected post-images the three MH-0 typed steering
+// intents (`khala.fleet_intent.v1`) drive — a pending-approval card and a
+// body-free steer receipt.
+export const FLEET_APPROVAL_ENTITY_TYPE = "fleet_approval"
+export const FLEET_STEER_ENTITY_TYPE = "fleet_steer"
 
 export const FLEET_ENTITY_TYPES = [
   FLEET_RUN_ENTITY_TYPE,
@@ -40,6 +45,8 @@ export const FLEET_ENTITY_TYPES = [
   FLEET_ASSIGNMENT_ENTITY_TYPE,
   FLEET_ACCOUNT_ENTITY_TYPE,
   FLEET_INBOX_FLAG_ENTITY_TYPE,
+  FLEET_APPROVAL_ENTITY_TYPE,
+  FLEET_STEER_ENTITY_TYPE,
 ] as const
 
 // ---------------------------------------------------------------------------
@@ -114,8 +121,17 @@ export const FleetRunStatus = S.Literals([
 ])
 export type FleetRunStatus = typeof FleetRunStatus.Type
 
-export const FleetWorkerKind = S.Literals(["codex", "claude", "auto"])
+// Kept in lockstep with `@openagentsinc/khala-fleet-intents` `FleetWorkerKind`
+// (MH-0 #8581). `grok` is additive: pre-multi-harness post-images that only
+// ever carried codex/claude/auto still decode unchanged.
+export const FleetWorkerKind = S.Literals(["codex", "claude", "grok", "auto"])
 export type FleetWorkerKind = typeof FleetWorkerKind.Type
+
+// A concrete coding harness that actually executes work (no `auto`), mirroring
+// `FleetHarnessKind` in `@openagentsinc/khala-fleet-intents`. Rides on
+// `fleet_worker` cards so the cockpit can show a per-harness badge (MH-6/MH-7).
+export const FleetHarnessKind = S.Literals(["codex", "claude", "grok"])
+export type FleetHarnessKind = typeof FleetHarnessKind.Type
 
 export class FleetRunCounters extends S.Class<FleetRunCounters>(
   "FleetRunCounters",
@@ -175,6 +191,13 @@ export class FleetWorkerEntity extends S.Class<FleetWorkerEntity>(
 )({
   workerId: FleetPublicRef,
   phase: FleetWorkerPhase,
+  /**
+   * Which concrete harness backs this worker (MH-6): the per-harness badge on
+   * the cockpit's worker card. Optional so pre-multi-harness `fleet_worker`
+   * post-images still decode (the account lane in `accountRefHash` was the
+   * only harness signal before).
+   */
+  harnessKind: S.optionalKey(FleetHarnessKind),
   assignmentRef: S.optionalKey(FleetPublicRef),
   accountRefHash: S.optionalKey(FleetAccountRefHash),
   lastProgressAt: S.optionalKey(FleetIsoTimestamp),
@@ -270,6 +293,58 @@ export class FleetInboxFlagEntity extends S.Class<FleetInboxFlagEntity>(
 }) {}
 
 // ---------------------------------------------------------------------------
+// fleet_approval (MH-6 #8585)
+// ---------------------------------------------------------------------------
+
+/**
+ * A pending tool/approval gate on a worker, and its resolution. The desktop
+ * authority projects `pending` when a worker blocks on a tool that needs a
+ * human allow/deny; the mobile `approval_decision` intent flips it to
+ * `allowed`/`denied`. PUBLIC-SAFE: only refs and a bounded tool class token —
+ * never the tool's arguments, prompt, or output.
+ */
+export const FleetApprovalStatus = S.Literals(["pending", "allowed", "denied"])
+export type FleetApprovalStatus = typeof FleetApprovalStatus.Type
+
+export class FleetApprovalEntity extends S.Class<FleetApprovalEntity>(
+  "FleetApprovalEntity",
+)({
+  approvalRef: FleetPublicRef,
+  status: FleetApprovalStatus,
+  /** The worker slot blocked on this approval. */
+  workerId: S.optionalKey(FleetPublicRef),
+  /** Bounded tool classification (e.g. `bash`, `write_file`); never args. */
+  toolClass: S.optionalKey(FleetClassToken),
+  openedAt: S.optionalKey(FleetIsoTimestamp),
+  /** When the allow/deny decision landed. */
+  decidedAt: S.optionalKey(FleetIsoTimestamp),
+  updatedAt: FleetIsoTimestamp,
+}) {}
+
+// ---------------------------------------------------------------------------
+// fleet_steer (MH-6 #8585)
+// ---------------------------------------------------------------------------
+
+/**
+ * A body-free receipt that a steer message was dispatched at an in-flight
+ * worker/turn. The message body itself is NEVER projected here (it can carry
+ * arbitrary text); only the steer's ref, an optional target worker/turn ref,
+ * and whether a body was carried inline vs. by opaque ref ride in the
+ * post-image, so the cockpit can show "steer delivered" without leaking text.
+ */
+export class FleetSteerEntity extends S.Class<FleetSteerEntity>(
+  "FleetSteerEntity",
+)({
+  steerRef: FleetPublicRef,
+  /** The worker/turn the steer targeted, when the intent named one. */
+  targetRef: S.optionalKey(FleetPublicRef),
+  /** How the body travelled: `inline` (public-unsafe, stored elsewhere) or `ref`. */
+  bodyCarrier: S.Literals(["inline", "ref", "none"]),
+  createdAt: FleetIsoTimestamp,
+  updatedAt: FleetIsoTimestamp,
+}) {}
+
+// ---------------------------------------------------------------------------
 // Fleet operator intents (KS-3.2 #8292)
 // ---------------------------------------------------------------------------
 
@@ -332,3 +407,7 @@ export const decodeFleetInboxFlagEntity = S.decodeUnknownSync(
   FleetInboxFlagEntity,
 )
 export const encodeFleetInboxFlagEntity = S.encodeSync(FleetInboxFlagEntity)
+export const decodeFleetApprovalEntity = S.decodeUnknownSync(FleetApprovalEntity)
+export const encodeFleetApprovalEntity = S.encodeSync(FleetApprovalEntity)
+export const decodeFleetSteerEntity = S.decodeUnknownSync(FleetSteerEntity)
+export const encodeFleetSteerEntity = S.encodeSync(FleetSteerEntity)
