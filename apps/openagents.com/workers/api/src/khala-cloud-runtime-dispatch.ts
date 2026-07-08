@@ -102,6 +102,18 @@ export const DEFAULT_CODEX_CONTINUITY_REPLAY_MESSAGES = 24
 
 const refPart = (value: string): string => value.replace(/[^a-zA-Z0-9_.:-]/g, '_')
 
+export type CloudGcpRuntimeAccountQuotaState =
+  | 'available'
+  | 'exhausted'
+  | 'rate_limited'
+
+export type CloudGcpRuntimeAccountState = Readonly<{
+  accountRefHash: string
+  providerAccountRef: string
+  authGrantRef: string
+  quotaState: CloudGcpRuntimeAccountQuotaState
+}>
+
 /** An admitted `cloud-gcp` work-context awaiting a microVM turn. */
 export type CloudGcpAdmittedWorkContext = Readonly<{
   ownerUserId: string
@@ -141,7 +153,145 @@ export type CloudGcpAdmittedWorkContext = Readonly<{
         maxReplayMessages?: number | undefined
       }>
     | undefined
+  /** CX-7 (#8551): non-secret account hash selected for non-continuity turns. */
+  accountRefHash?: string | undefined
 }>
+
+export type CloudGcpAccountDispatchDecision =
+  | Readonly<{
+      kind: 'dispatch'
+      turn: CloudGcpAdmittedWorkContext
+      accountRefHash?: string | undefined
+      rotation?:
+        | Readonly<{
+            fromAccountRefHash: string
+            toAccountRefHash: string
+            reason: 'account_exhausted' | 'account_rate_limited'
+          }>
+        | undefined
+    }>
+  | Readonly<{
+      kind: 'queued'
+      turn: CloudGcpAdmittedWorkContext
+      accountRefHash: string
+      reason: 'account_busy_queued'
+    }>
+
+export type CloudGcpAccountDispatchPlan = Readonly<{
+  decisions: ReadonlyArray<CloudGcpAccountDispatchDecision>
+  dispatchable: ReadonlyArray<Extract<CloudGcpAccountDispatchDecision, { kind: 'dispatch' }>>
+  queued: ReadonlyArray<Extract<CloudGcpAccountDispatchDecision, { kind: 'queued' }>>
+}>
+
+const preferredAccountRefHash = (
+  turn: CloudGcpAdmittedWorkContext,
+): string | undefined => turn.codexContinuity?.accountRefHash ?? turn.accountRefHash
+
+const quotaRotationReason = (
+  quotaState: CloudGcpRuntimeAccountQuotaState,
+): 'account_exhausted' | 'account_rate_limited' | undefined =>
+  quotaState === 'exhausted'
+    ? 'account_exhausted'
+    : quotaState === 'rate_limited'
+      ? 'account_rate_limited'
+      : undefined
+
+const accountStateByHash = (
+  accounts: ReadonlyArray<CloudGcpRuntimeAccountState>,
+): ReadonlyMap<string, CloudGcpRuntimeAccountState> =>
+  new Map(accounts.map(account => [account.accountRefHash, account]))
+
+const rotateTurnToAccount = (
+  turn: CloudGcpAdmittedWorkContext,
+  account: CloudGcpRuntimeAccountState,
+): CloudGcpAdmittedWorkContext => ({
+  ...turn,
+  accountRefHash: account.accountRefHash,
+  ...(turn.codexContinuity === undefined
+    ? {}
+    : {
+        codexContinuity: {
+          ...turn.codexContinuity,
+          accountRefHash: account.accountRefHash,
+          authGrantRef: account.authGrantRef,
+          providerAccountRef: account.providerAccountRef,
+        },
+      }),
+})
+
+export const planCloudGcpRuntimeAccountDispatch = (
+  turns: ReadonlyArray<CloudGcpAdmittedWorkContext>,
+  options: Readonly<{
+    activeAccountRefHashes?: ReadonlyArray<string>
+    accounts?: ReadonlyArray<CloudGcpRuntimeAccountState>
+  }> = {},
+): CloudGcpAccountDispatchPlan => {
+  const active = new Set(options.activeAccountRefHashes ?? [])
+  const reserved = new Set(active)
+  const accounts = options.accounts ?? []
+  const byHash = accountStateByHash(accounts)
+  const decisions: CloudGcpAccountDispatchDecision[] = []
+
+  for (const turn of turns) {
+    const preferred = preferredAccountRefHash(turn)
+    const preferredState = preferred === undefined ? undefined : byHash.get(preferred)
+    const rotationReason =
+      preferredState === undefined
+        ? undefined
+        : quotaRotationReason(preferredState.quotaState)
+    const rotationTarget =
+      rotationReason === undefined
+        ? undefined
+        : accounts.find(
+            account =>
+              account.accountRefHash !== preferred &&
+              account.quotaState === 'available' &&
+              !reserved.has(account.accountRefHash),
+          )
+    const effectiveTurn =
+      rotationTarget === undefined ? turn : rotateTurnToAccount(turn, rotationTarget)
+    const accountRefHash =
+      rotationTarget?.accountRefHash ?? preferredAccountRefHash(effectiveTurn)
+
+    if (accountRefHash !== undefined && reserved.has(accountRefHash)) {
+      decisions.push({
+        accountRefHash,
+        kind: 'queued',
+        reason: 'account_busy_queued',
+        turn,
+      })
+      continue
+    }
+
+    if (accountRefHash !== undefined) reserved.add(accountRefHash)
+    decisions.push({
+      accountRefHash,
+      kind: 'dispatch',
+      turn: effectiveTurn,
+      ...(rotationTarget === undefined || preferred === undefined || rotationReason === undefined
+        ? {}
+        : {
+            rotation: {
+              fromAccountRefHash: preferred,
+              reason: rotationReason,
+              toAccountRefHash: rotationTarget.accountRefHash,
+            },
+          }),
+    })
+  }
+
+  return {
+    decisions,
+    dispatchable: decisions.filter(
+      (decision): decision is Extract<CloudGcpAccountDispatchDecision, { kind: 'dispatch' }> =>
+        decision.kind === 'dispatch',
+    ),
+    queued: decisions.filter(
+      (decision): decision is Extract<CloudGcpAccountDispatchDecision, { kind: 'queued' }> =>
+        decision.kind === 'queued',
+    ),
+  }
+}
 
 /** Placement launch result the injected launch seam resolves to. */
 export type CloudGcpPlacementResult =
@@ -203,6 +353,8 @@ export type CloudGcpRuntimeDispatchDependencies = Readonly<{
   readAdmitted?:
     | ((sql: SyncSql, limit: number) => Promise<ReadonlyArray<CloudGcpAdmittedWorkContext>>)
     | undefined
+  activeAccountRefHashes?: ReadonlyArray<string> | undefined
+  accountStates?: ReadonlyArray<CloudGcpRuntimeAccountState> | undefined
   /** Token mint seam (default the real mint). */
   mint?: CloudGcpMintFn | undefined
   /** Token revoke seam (default the real revoke). */
@@ -284,6 +436,57 @@ const buildEvent = (
     visibility: 'private',
     ...extra,
   })
+
+const runtimeToolAuthority = (toolRef: string) => ({
+  allowed: true,
+  authorityRef: `authority.${toolRef}`,
+  blockerRefs: [],
+  decisionRef: `decision.${toolRef}`,
+  policyRef: `policy.${toolRef}`,
+  status: 'allowed' as const,
+  toolRef: `tool.${toolRef}`,
+})
+
+const recordRuntimeEvent = (
+  deps: ResolvedDeps,
+  turn: CloudGcpAdmittedWorkContext,
+  input: Readonly<{
+    mutationId: number
+    sequence: number
+    extra: Record<string, unknown>
+  }>,
+): Promise<MutationResult> => {
+  const ownerId = turn.ownerUserId
+  const clientGroupId = cloudGcpDispatchClientGroupIdForOwner(ownerId)
+  const clientId = `${clientGroupId}.${turn.turnId}.${deps.uuid()}`
+  const event = buildEvent(deps, turn, input.sequence, input.extra)
+  return deps
+    .executePush({
+      registry: deps.registry,
+      request: decodePushRequest({
+        clientGroupId,
+        clientId,
+        mutations: [
+          {
+            argsJson: JSON.stringify(event),
+            mutationId: input.mutationId,
+            name: 'runtime.recordEvent',
+          },
+        ],
+        protocolVersion: 1,
+        schemaVersion: 1,
+      }),
+      sql: deps.sql,
+      userId: ownerId,
+    })
+    .then(response => {
+      const result = response.results[0]
+      if (result === undefined) {
+        throw Error('executePush returned no result for runtime.recordEvent')
+      }
+      return result
+    })
+}
 
 /** Terminal outcome of dispatching one admitted `cloud-gcp` work-context. */
 export type CloudGcpDispatchOutcome = Readonly<{
@@ -445,15 +648,7 @@ export const dispatchCloudGcpRuntimeTurn = async (
       await record(
         nextMutationId,
         buildEvent(resolved, turn, seq, {
-          authority: {
-            allowed: true,
-            authorityRef: 'authority.codex.continuity.reprime',
-            blockerRefs: [],
-            decisionRef: 'decision.codex.continuity.reprime',
-            policyRef: 'policy.codex.continuity.reprime',
-            status: 'allowed',
-            toolRef: 'tool.codex.continuity.rebuilt',
-          },
+          authority: runtimeToolAuthority('codex.continuity.reprime'),
           kind: 'tool.result',
           providerExecuted: false,
           resultRef: `continuity.codex.${refPart(turn.threadId)}.${refPart(turn.turnId)}`,
@@ -574,6 +769,8 @@ export type CloudGcpRuntimeDispatchSummary = Readonly<{
   launched: number
   failed: number
   skipped: number
+  queued: number
+  rotated: number
 }>
 
 /**
@@ -587,31 +784,75 @@ export const runCloudGcpRuntimeDispatch = async (
   const resolved = resolveDeps(deps)
   if (!resolved.armed) {
     resolved.log('cloud_gcp_runtime_dispatch_not_armed', {})
-    return { failed: 0, launched: 0, scanned: 0, skipped: 0 }
+    return { failed: 0, launched: 0, queued: 0, rotated: 0, scanned: 0, skipped: 0 }
   }
   const read = deps.readAdmitted
   if (read === undefined) {
-    return { failed: 0, launched: 0, scanned: 0, skipped: 0 }
+    return { failed: 0, launched: 0, queued: 0, rotated: 0, scanned: 0, skipped: 0 }
   }
   const admitted = await read(resolved.sql, resolved.limit)
-  let launched = 0
-  let failed = 0
-  let skipped = 0
-  for (const turn of admitted) {
+  const plan = planCloudGcpRuntimeAccountDispatch(admitted, {
+    ...(deps.activeAccountRefHashes === undefined
+      ? {}
+      : { activeAccountRefHashes: deps.activeAccountRefHashes }),
+    ...(deps.accountStates === undefined ? {} : { accounts: deps.accountStates }),
+  })
+
+  for (const queued of plan.queued) {
+    await recordRuntimeEvent(resolved, queued.turn, {
+      extra: {
+        authority: runtimeToolAuthority('codex.account_busy_queued'),
+        kind: 'tool.result',
+        providerExecuted: false,
+        resultRef: `queue.codex.${refPart(queued.accountRefHash)}.${refPart(queued.turn.turnId)}`,
+        toolCallId: `tool.${resolved.uuid()}`,
+        toolName: 'codex.account_busy_queued',
+      },
+      mutationId: 1,
+      sequence: queued.turn.eventCount,
+    })
+  }
+
+  for (const decision of plan.dispatchable) {
+    if (decision.rotation === undefined) continue
+    await recordRuntimeEvent(resolved, decision.turn, {
+      extra: {
+        authority: runtimeToolAuthority('codex.account_rotation'),
+        kind: 'tool.result',
+        providerExecuted: false,
+        resultRef: `rotation.codex.${refPart(decision.rotation.fromAccountRefHash)}.${refPart(decision.rotation.toAccountRefHash)}.${refPart(decision.turn.turnId)}`,
+        toolCallId: `tool.${resolved.uuid()}`,
+        toolName: decision.rotation.reason,
+      },
+      mutationId: 1,
+      sequence: decision.turn.eventCount,
+    })
+  }
+
+  const outcomes = await Promise.all(plan.dispatchable.map(async decision => {
+    const turnForDispatch =
+      decision.rotation === undefined
+        ? decision.turn
+        : { ...decision.turn, eventCount: decision.turn.eventCount + 1 }
     try {
-      const result = await dispatchCloudGcpRuntimeTurn(deps, turn)
-      if (result.outcome === 'launched') launched += 1
-      else if (result.outcome === 'failed') failed += 1
-      else skipped += 1
+      return await dispatchCloudGcpRuntimeTurn(deps, turnForDispatch)
     } catch (error) {
-      failed += 1
       resolved.log('cloud_gcp_runtime_dispatch_batch_threw', {
         detail: error instanceof Error ? error.message : 'unknown',
-        turnId: turn.turnId,
+        turnId: decision.turn.turnId,
       })
+      return { outcome: 'failed' as const, tokenRevoked: false, reason: 'dispatch_threw' }
     }
+  }))
+
+  return {
+    failed: outcomes.filter(result => result.outcome === 'failed').length,
+    launched: outcomes.filter(result => result.outcome === 'launched').length,
+    queued: plan.queued.length,
+    rotated: plan.dispatchable.filter(decision => decision.rotation !== undefined).length,
+    scanned: admitted.length,
+    skipped: outcomes.filter(result => result.outcome === 'skipped').length,
   }
-  return { failed, launched, scanned: admitted.length, skipped }
 }
 
 // PRODUCTION LAUNCH SEAM --------------------------------------------------

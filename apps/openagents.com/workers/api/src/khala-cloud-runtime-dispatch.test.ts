@@ -13,6 +13,7 @@ import {
   CLOUD_GCP_RUNTIME_DISPATCH_CLIENT_GROUP_ID,
   dispatchCloudGcpRuntimeTurn,
   makeCloudCodingAdapterLaunchSeam,
+  planCloudGcpRuntimeAccountDispatch,
   runCloudGcpRuntimeDispatch,
   type CloudGcpAdmittedWorkContext,
   type CloudGcpMintFn,
@@ -32,6 +33,7 @@ type RecordedEvent = {
   toolName: string | undefined
   finishReason: string | undefined
   resultRef: string | undefined
+  sequence: number
   clientId: string
 }
 
@@ -52,6 +54,7 @@ const makeRecordingExecutePush = (
       toolName?: string
       finishReason?: string
       resultRef?: string
+      sequence: number
     }
     const rec: RecordedEvent = {
       clientId: input.request.clientId,
@@ -59,6 +62,7 @@ const makeRecordingExecutePush = (
       kind: event.kind,
       mutationId: envelope.mutationId,
       resultRef: event.resultRef,
+      sequence: event.sequence,
       toolName: event.toolName,
       userId: input.userId,
     }
@@ -107,6 +111,18 @@ const admitted: CloudGcpAdmittedWorkContext = {
   turnId: 'turn.t1',
   workContextRef: 'work-context.agent-computer.wc1',
 }
+
+const withPinnedAccount = (
+  turn: CloudGcpAdmittedWorkContext,
+  accountRefHash: string,
+): CloudGcpAdmittedWorkContext => ({
+  ...turn,
+  codexContinuity: {
+    accountRefHash,
+    authGrantRef: `grant.${accountRefHash}`,
+    providerAccountRef: `provider.${accountRefHash}`,
+  },
+})
 
 const okLaunch =
   (captured: { b64?: string; repoBindingRef?: string | undefined } = {}): CloudGcpPlacementLaunchFn =>
@@ -305,6 +321,72 @@ describe('dispatchCloudGcpRuntimeTurn', () => {
   })
 })
 
+describe('planCloudGcpRuntimeAccountDispatch (CX-7 account serialization)', () => {
+  test('same connected account serializes: first dispatches, second queues honestly', () => {
+    const t1 = withPinnedAccount(admitted, 'acct_a')
+    const t2 = withPinnedAccount(
+      { ...admitted, threadId: 'thread.t2', turnId: 'turn.t2', workContextRef: 'wc2' },
+      'acct_a',
+    )
+    const plan = planCloudGcpRuntimeAccountDispatch([t1, t2])
+    expect(plan.dispatchable.map(decision => decision.turn.turnId)).toEqual(['turn.t1'])
+    expect(plan.queued.map(decision => [decision.turn.turnId, decision.reason])).toEqual([
+      ['turn.t2', 'account_busy_queued'],
+    ])
+  })
+
+  test('two connected accounts are both dispatchable in the same tick', () => {
+    const t1 = withPinnedAccount(admitted, 'acct_a')
+    const t2 = withPinnedAccount(
+      { ...admitted, threadId: 'thread.t2', turnId: 'turn.t2', workContextRef: 'wc2' },
+      'acct_b',
+    )
+    const plan = planCloudGcpRuntimeAccountDispatch([t1, t2])
+    expect(plan.queued).toEqual([])
+    expect(plan.dispatchable.map(decision => decision.turn.turnId)).toEqual(['turn.t1', 'turn.t2'])
+  })
+
+  test('quota exhaustion rotates away from the pinned account when a fallback is available', () => {
+    const t1 = withPinnedAccount(admitted, 'acct_exhausted')
+    const plan = planCloudGcpRuntimeAccountDispatch([t1], {
+      accounts: [
+        {
+          accountRefHash: 'acct_exhausted',
+          authGrantRef: 'grant.exhausted',
+          providerAccountRef: 'provider.exhausted',
+          quotaState: 'exhausted',
+        },
+        {
+          accountRefHash: 'acct_fallback',
+          authGrantRef: 'grant.fallback',
+          providerAccountRef: 'provider.fallback',
+          quotaState: 'available',
+        },
+      ],
+    })
+    expect(plan.dispatchable).toHaveLength(1)
+    expect(plan.dispatchable[0]?.rotation).toEqual({
+      fromAccountRefHash: 'acct_exhausted',
+      reason: 'account_exhausted',
+      toAccountRefHash: 'acct_fallback',
+    })
+    expect(plan.dispatchable[0]?.turn.codexContinuity).toMatchObject({
+      accountRefHash: 'acct_fallback',
+      authGrantRef: 'grant.fallback',
+      providerAccountRef: 'provider.fallback',
+    })
+  })
+
+  test('active accounts count as busy before this tick starts', () => {
+    const plan = planCloudGcpRuntimeAccountDispatch(
+      [withPinnedAccount(admitted, 'acct_a')],
+      { activeAccountRefHashes: ['acct_a'] },
+    )
+    expect(plan.dispatchable).toEqual([])
+    expect(plan.queued[0]?.reason).toBe('account_busy_queued')
+  })
+})
+
 describe('runCloudGcpRuntimeDispatch', () => {
   test('FAIL-CLOSED when not armed: no read, no mint, no launch', async () => {
     reset()
@@ -323,7 +405,7 @@ describe('runCloudGcpRuntimeDispatch', () => {
         },
       }),
     )
-    expect(summary).toEqual({ failed: 0, launched: 0, scanned: 0, skipped: 0 })
+    expect(summary).toEqual({ failed: 0, launched: 0, queued: 0, rotated: 0, scanned: 0, skipped: 0 })
     expect(read).toBe(false)
     expect(launched).toBe(false)
     expect(mintCalls).toHaveLength(0)
@@ -342,13 +424,68 @@ describe('runCloudGcpRuntimeDispatch', () => {
           ]),
       }),
     )
-    expect(summary).toEqual({ failed: 0, launched: 2, scanned: 2, skipped: 0 })
+    expect(summary).toEqual({ failed: 0, launched: 2, queued: 0, rotated: 0, scanned: 2, skipped: 0 })
   })
 
   test('armed but no reader configured is a clean no-op', async () => {
     reset()
     const summary = await runCloudGcpRuntimeDispatch(baseDeps())
-    expect(summary).toEqual({ failed: 0, launched: 0, scanned: 0, skipped: 0 })
+    expect(summary).toEqual({ failed: 0, launched: 0, queued: 0, rotated: 0, scanned: 0, skipped: 0 })
+  })
+
+  test('same account: records account_busy_queued and launches only one turn', async () => {
+    reset()
+    const push = makeRecordingExecutePush()
+    const summary = await runCloudGcpRuntimeDispatch(
+      baseDeps({
+        executePush: push.executePush,
+        readAdmitted: () =>
+          Promise.resolve([
+            withPinnedAccount(admitted, 'acct_a'),
+            withPinnedAccount(
+              { ...admitted, threadId: 'thread.t2', turnId: 'turn.t2', workContextRef: 'wc2' },
+              'acct_a',
+            ),
+          ]),
+      }),
+    )
+    expect(summary).toEqual({ failed: 0, launched: 1, queued: 1, rotated: 0, scanned: 2, skipped: 0 })
+    expect(push.recorded.some(event => event.toolName === 'codex.account_busy_queued')).toBe(true)
+    expect(mintCalls).toHaveLength(1)
+  })
+
+  test('quota exhausted pinned account rotates to fallback and records typed receipt', async () => {
+    reset()
+    const push = makeRecordingExecutePush()
+    const captured: { b64?: string } = {}
+    const summary = await runCloudGcpRuntimeDispatch(
+      baseDeps({
+        accountStates: [
+          {
+            accountRefHash: 'acct_exhausted',
+            authGrantRef: 'grant.exhausted',
+            providerAccountRef: 'provider.exhausted',
+            quotaState: 'exhausted',
+          },
+          {
+            accountRefHash: 'acct_fallback',
+            authGrantRef: 'grant.fallback',
+            providerAccountRef: 'provider.fallback',
+            quotaState: 'available',
+          },
+        ],
+        executePush: push.executePush,
+        launch: okLaunch(captured),
+        readAdmitted: () => Promise.resolve([withPinnedAccount(admitted, 'acct_exhausted')]),
+      }),
+    )
+    expect(summary).toEqual({ failed: 0, launched: 1, queued: 0, rotated: 1, scanned: 1, skipped: 0 })
+    expect(push.recorded.find(event => event.toolName === 'account_exhausted')?.kind).toBe('tool.result')
+    const wc = decodeWorkContextB64(captured.b64!)
+    expect(wc.providerAuth).toMatchObject({
+      authGrantRef: 'grant.fallback',
+      providerAccountRef: 'provider.fallback',
+    })
   })
 })
 
