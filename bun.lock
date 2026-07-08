@@ -116,6 +116,19 @@
         "bun-types": "^1.0.0",
       },
     },
+    "apps/khala-capture": {
+      "name": "@openagentsinc/khala-capture",
+      "version": "0.1.0",
+      "dependencies": {
+        "@openagentsinc/khala-sync": "workspace:*",
+        "@openagentsinc/khala-sync-server": "workspace:*",
+        "postgres": "3.4.9",
+      },
+      "devDependencies": {
+        "bun-types": "^1.0.0",
+        "typescript": "catalog:",
+      },
+    },
     "apps/khala-live-hub": {
       "name": "@openagentsinc/khala-live-hub",
       "version": "0.1.0",
@@ -1734,6 +1747,8 @@
     "@openagentsinc/khala": ["@openagentsinc/khala@workspace:clients/khala-cli"],
 
     "@openagentsinc/khala-ai-sdk-core": ["@openagentsinc/khala-ai-sdk-core@workspace:packages/khala-ai-sdk-core"],
+
+    "@openagentsinc/khala-capture": ["@openagentsinc/khala-capture@workspace:apps/khala-capture"],
 
     "@openagentsinc/khala-code-desktop": ["@openagentsinc/khala-code-desktop@workspace:clients/khala-code-desktop"],
 

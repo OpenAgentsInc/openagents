@@ -29,7 +29,7 @@ monolith cutover.
 | Databases | `khala_sync_prod`, `khala_sync_staging` (same instance) | — |
 | Worker request paths (push/log/bootstrap) | `openagents.com` Worker, binding `KHALA_SYNC_DB` | Hyperdrive, transaction-mode pooling, role `khala_app` |
 | Migrations | `packages/khala-sync-server/scripts/migrate.ts` | DIRECT connection, role `khala_migrate` — never Hyperdrive |
-| Capture daemon | `packages/khala-sync-server/scripts/capture.ts` (launchd, owner Mac first) | DIRECT connection, role `khala_capture` — never Hyperdrive (LISTEN needs a session) |
+| Capture daemon | `apps/khala-capture` Cloud Run service (`startCaptureDaemon`; #8554) — replaces the launchd/Mac path | Cloud SQL Auth Connector SESSION socket, role `khala_capture` — never Hyperdrive (LISTEN needs a session) |
 | Compaction | `packages/khala-sync-server/scripts/compact.ts` (cron) | DIRECT connection — never Hyperdrive |
 | Hub delivery | LiveHub Cloud Run service `khala-live-hub` / `khala-live-hub-staging` (per-scope in-memory windows, Postgres rebuild on first touch); legacy `KhalaSyncHubDO` where LiveHub is unconfigured | HTTPS/WSS, shared bearer (Secret Manager `khala-live-hub-token`); LiveHub itself uses a DIRECT connection (role `khala_capture`) for window rebuilds |
 
@@ -202,21 +202,57 @@ Mechanics and semantics: `packages/khala-sync-server/README.md`
 
 ## Capture daemon operation
 
-Mechanics: `packages/khala-sync-server/README.md` "Capture runbook".
-Supervision template: `packages/khala-sync-server/ops/com.openagents.khala-sync-capture.plist`
-(fill placeholders, install to `~/Library/LaunchAgents/`, `launchctl
-bootstrap gui/$(id -u) …`; `KeepAlive` restarts on crash).
+**PRODUCTION METHOD (#8554): the `khala-capture` Cloud Run service.** The
+capture daemon runs as an always-on Cloud Run service — `apps/khala-capture`
+(`bash apps/khala-capture/scripts/deploy-cloudrun.sh [staging|prod]`) — NOT
+the launchd/Mac job. CFG-14 closed the Cloud SQL public ingress, freezing the
+old direct-IP launchd path; the service reaches the DB through the **Cloud SQL
+Auth Connector unix socket** (`--add-cloudsql-instances`, `PGHOST=
+/cloudsql/openagentsgemini:us-central1:khala-sync-pg`) with a **session**
+connection (role `khala_capture` — never Hyperdrive; LISTEN/NOTIFY needs a
+persistent session).
 
-Env (token env-only, never a flag): `KHALA_SYNC_DATABASE_URL` (direct URL
-as `khala_capture` — NEVER the Hyperdrive string),
-`KHALA_SYNC_HUB_APPEND_URL` (prod
-`https://openagents.com/api/internal/khala-sync/hub/append`, or the LiveHub
-`https://<service>/append` after the CFG-5 cutover),
-`OPENAGENTS_ADMIN_API_TOKEN`, optional `KHALA_SYNC_HUB_TOKEN` (bearer for a
-non-Worker hub such as LiveHub; defaults to the admin token), optional
-`KHALA_SYNC_HUB_MIRROR_APPEND_URL` / `KHALA_SYNC_HUB_MIRROR_TOKEN`
-(fail-soft second hub — CFG-5 transition), `KHALA_SYNC_CAPTURE_POLL_INTERVAL_MS`
-(default 5000), `KHALA_SYNC_CAPTURE_BATCH_VERSIONS` (default 200).
+Deploy shape (deliberate — see `apps/khala-capture/src/server.ts`):
+`--min-instances 1 --max-instances 1` (SINGLETON daemon; a second instance
+only double-pushes and the hub dedupes by version), `--no-cpu-throttling`
+(the daemon loop, LISTEN connection, and poll timer must run BETWEEN HTTP
+requests), `--add-cloudsql-instances openagentsgemini:us-central1:khala-sync-pg`.
+
+Prod service (2026-07-08): `khala-capture`
+(`https://khala-capture-ezxz4mgdsq-uc.a.run.app`), pushing to LiveHub
+`https://khala-live-hub-ezxz4mgdsq-uc.a.run.app/append`. Health:
+`curl -s https://khala-capture-ezxz4mgdsq-uc.a.run.app/health` →
+`{"ok":true,"listener":"listening",...}`. Logs:
+`gcloud run services logs read khala-capture --region us-central1`.
+
+Env (secrets via Secret Manager, never a flag/log): connector socket
+`PGHOST` (`/cloudsql/<instance>`), `PGUSER` (`khala_capture`), `PGPASSWORD`
+(Secret Manager `khala-sync-capture-password`), `PGDATABASE`
+(`khala_sync_prod` / `khala_sync_staging`); `KHALA_SYNC_HUB_APPEND_URL`
+(LiveHub `/append`), `KHALA_SYNC_HUB_TOKEN` (Secret Manager
+`khala-live-hub-token`, the shared LiveHub bearer). Optional
+`KHALA_SYNC_CAPTURE_POLL_INTERVAL_MS` (default 5000),
+`KHALA_SYNC_CAPTURE_BATCH_VERSIONS` (default 200). `captureConfigFromEnv`
+selects socket mode automatically when `PGHOST` is an absolute connector path
+(no `KHALA_SYNC_DATABASE_URL`); a `KHALA_SYNC_HUB_TOKEN` alone satisfies the
+bearer requirement (no Worker admin token needed for the LiveHub-only push).
+
+Live-tail proof (the real green — NOT bootstrap polling, which reads Postgres
+and would pass even with a dead capture daemon):
+`CURSOR=<thread head> bun apps/openagents.com/workers/api/scripts/hosted-chat-live-ws-proof.ts`
+holds an open `/api/sync/connect` WebSocket, pushes a hosted chat turn, and
+PASSes only when the assistant `text.delta` arrives LIVE over the socket
+(capture → LiveHub → WS). Verified 2026-07-08.
+
+DEPRECATED (historical): the launchd/Mac path — supervision template
+`packages/khala-sync-server/ops/com.openagents.khala-sync-capture.plist`
+(direct URL as `khala_capture` via `KHALA_SYNC_DATABASE_URL`, `launchctl
+bootstrap gui/$(id -u) …`, `KeepAlive` restart) and the CFG-5 mirror env
+`KHALA_SYNC_HUB_MIRROR_APPEND_URL` / `KHALA_SYNC_HUB_MIRROR_TOKEN`. Retire the
+Mac job (`launchctl bootout gui/$(id -u)/com.openagents.khala-sync-capture`)
+now that the Cloud Run service is authoritative — running both only
+double-pushes (harmless: hub dedupes by version). The `--once` CLI
+(`scripts/capture.ts`) remains a valid one-shot drain / cron unit.
 
 Liveness check (the checkpoints table is the truth):
 
@@ -231,8 +267,10 @@ LEFT JOIN khala_sync_capture_checkpoints c USING (scope)
 WHERE s.last_version > COALESCE(c.pushed_through_version, 0);
 ```
 
-Process side: `launchctl print gui/$(id -u)/com.openagents.khala-sync-capture`
-plus the plist's stdout/err logs. Edge side: the hub internal log route
+Process side (prod): `gcloud run services logs read khala-capture --region
+us-central1` and `curl -s https://khala-capture-ezxz4mgdsq-uc.a.run.app/health`.
+(Legacy Mac: `launchctl print gui/$(id -u)/com.openagents.khala-sync-capture`
+plus the plist's stdout/err logs.) Edge side: the hub internal log route
 (`GET /api/internal/khala-sync/hub/log?scope=…&cursor=…`, admin bearer)
 should serve freshly pushed versions.
 

@@ -84,17 +84,55 @@ export const DEFAULT_CAPTURE_BATCH_VERSIONS = 200
 export const DEFAULT_CAPTURE_MAX_PUSH_ATTEMPTS = 3
 export const DEFAULT_CAPTURE_PUSH_RETRY_BACKOFF_MS = 250
 
+/**
+ * A Cloud SQL Auth Connector (unix socket) SESSION connection — the
+ * production DB path after CFG-14 closed the instance's public ingress
+ * (#8554). Both the Bun `SQL` pass/checkpoint connection AND the dedicated
+ * postgres.js LISTEN connection dial the connector socket file directly
+ * (a session connection, never a transaction pool — LISTEN/NOTIFY needs the
+ * persistent session). Cloud Run mounts the socket DIRECTORY under
+ * `/cloudsql/<instance>` via `--add-cloudsql-instances`.
+ *
+ * `socketPath` may be either the connector directory
+ * (`/cloudsql/openagentsgemini:us-central1:khala-sync-pg`) or the full
+ * socket file (`…/.s.PGSQL.5432`); {@link socketConnectionFromEnv} normalizes
+ * a bare directory to the `.s.PGSQL.<port>` file.
+ */
+export interface CaptureSocketConnection {
+  /** Connector socket file (or directory — normalized on build). */
+  readonly socketPath: string
+  readonly username: string
+  readonly password: string
+  readonly database: string
+}
+
 export interface CaptureConfig {
-  /** DIRECT Postgres connection URL (never a Hyperdrive string). */
-  readonly databaseUrl: string
+  /**
+   * DIRECT Postgres connection URL (never a Hyperdrive string). Provide this
+   * OR {@link socket}. When {@link socket} is set it takes precedence and the
+   * connection dials the Cloud SQL Auth Connector unix socket instead.
+   */
+  readonly databaseUrl?: string | undefined
+  /**
+   * Cloud SQL Auth Connector session connection (CFG-14: public DB ingress
+   * closed). When set, both the pass and LISTEN connections dial the
+   * connector unix socket instead of {@link databaseUrl}. Bun's `SQL`
+   * ignores `PGHOST` for a URL, so the socket path is passed explicitly.
+   */
+  readonly socket?: CaptureSocketConnection | undefined
   /**
    * Full URL of the Worker's internal hub append route, e.g.
    * `https://openagents.com/api/internal/khala-sync/hub/append`.
    * Capture adds the `scope` query parameter per push.
    */
   readonly hubAppendUrl: string
-  /** Admin bearer for the internal route (OPENAGENTS_ADMIN_API_TOKEN). */
-  readonly adminToken: string
+  /**
+   * Admin bearer for the Worker's internal route
+   * (OPENAGENTS_ADMIN_API_TOKEN). Optional when {@link hubToken} is provided
+   * — a LiveHub-only capture deploy (CFG-5/#8554) pushes with the shared
+   * LiveHub bearer and has no Worker admin token.
+   */
+  readonly adminToken?: string | undefined
   /**
    * Bearer for `hubAppendUrl` when it is NOT the Worker's admin-guarded
    * internal route — e.g. the LiveHub Cloud Run service's shared service
@@ -119,7 +157,8 @@ export interface CaptureConfig {
 }
 
 interface ResolvedCaptureConfig {
-  readonly databaseUrl: string
+  readonly databaseUrl: string | undefined
+  readonly socket: CaptureSocketConnection | undefined
   readonly hubAppendUrl: string
   readonly adminToken: string
   readonly hubToken: string
@@ -136,23 +175,40 @@ const positiveOrDefault = (value: number | undefined, dflt: number): number =>
   value !== undefined && Number.isSafeInteger(value) && value >= 1 ? value : dflt
 
 const resolveConfig = (config: CaptureConfig): ResolvedCaptureConfig => {
-  if (config.databaseUrl === "") {
-    throw new Error("capture: databaseUrl must not be empty")
+  const socket = config.socket
+  const hasUrl = config.databaseUrl !== undefined && config.databaseUrl !== ""
+  if (socket === undefined && !hasUrl) {
+    throw new Error("capture: databaseUrl or socket connection must be provided")
+  }
+  if (socket !== undefined) {
+    if (socket.socketPath === "") {
+      throw new Error("capture: socket.socketPath must not be empty")
+    }
+    if (socket.username === "") {
+      throw new Error("capture: socket.username must not be empty")
+    }
+    if (socket.database === "") {
+      throw new Error("capture: socket.database must not be empty")
+    }
   }
   if (config.hubAppendUrl === "") {
     throw new Error("capture: hubAppendUrl must not be empty")
   }
-  if (config.adminToken === "") {
-    throw new Error("capture: adminToken must not be empty")
+  const adminToken = config.adminToken ?? ""
+  const hubTokenRaw = config.hubToken ?? ""
+  if (adminToken === "" && hubTokenRaw === "") {
+    throw new Error("capture: adminToken or hubToken must be provided")
   }
+  // Either bearer covers the other: the admin token defaults the hub bearer
+  // (Worker internal route), and the hub bearer defaults the admin slot
+  // (LiveHub-only deploy with no Worker admin token).
+  const effectiveAdmin = adminToken !== "" ? adminToken : hubTokenRaw
   return {
-    databaseUrl: config.databaseUrl,
+    databaseUrl: hasUrl ? config.databaseUrl : undefined,
+    socket,
     hubAppendUrl: config.hubAppendUrl,
-    adminToken: config.adminToken,
-    hubToken:
-      config.hubToken !== undefined && config.hubToken !== ""
-        ? config.hubToken
-        : config.adminToken,
+    adminToken: effectiveAdmin,
+    hubToken: hubTokenRaw !== "" ? hubTokenRaw : effectiveAdmin,
     mirrorAppendUrl:
       config.mirrorAppendUrl !== undefined && config.mirrorAppendUrl !== ""
         ? config.mirrorAppendUrl
@@ -160,7 +216,7 @@ const resolveConfig = (config: CaptureConfig): ResolvedCaptureConfig => {
     mirrorToken:
       config.mirrorToken !== undefined && config.mirrorToken !== ""
         ? config.mirrorToken
-        : config.adminToken,
+        : effectiveAdmin,
     pollIntervalMs: positiveOrDefault(
       config.pollIntervalMs,
       DEFAULT_CAPTURE_POLL_INTERVAL_MS,
@@ -185,9 +241,41 @@ const envInt = (raw: string | undefined): number | undefined => {
 }
 
 /**
+ * Resolve a Cloud SQL Auth Connector socket connection from the standard
+ * libpq env vars, selected ONLY when `PGHOST` is an absolute path (the
+ * connector unix-socket directory, e.g.
+ * `/cloudsql/openagentsgemini:us-central1:khala-sync-pg`). A TCP `PGHOST`
+ * returns `undefined` so URL mode / libpq handles the network path. Requires
+ * `PGUSER` and `PGDATABASE`; `PGPASSWORD` may be empty. Normalizes a bare
+ * directory to the `.s.PGSQL.<PGPORT|5432>` socket file.
+ */
+export const socketConnectionFromEnv = (
+  env: Record<string, string | undefined> = process.env,
+): CaptureSocketConnection | undefined => {
+  const host = env["PGHOST"]
+  if (host === undefined || host === "" || !host.startsWith("/")) return undefined
+  const username = env["PGUSER"]
+  const database = env["PGDATABASE"]
+  if (username === undefined || username === "") return undefined
+  if (database === undefined || database === "") return undefined
+  const port = env["PGPORT"] !== undefined && env["PGPORT"] !== "" ? env["PGPORT"] : "5432"
+  const suffix = `/.s.PGSQL.${port}`
+  const socketPath = host.endsWith(suffix) ? host : `${host}${suffix}`
+  return {
+    socketPath,
+    username,
+    password: env["PGPASSWORD"] ?? "",
+    database,
+  }
+}
+
+/**
  * Build a {@link CaptureConfig} from the environment:
- * `KHALA_SYNC_DATABASE_URL`, `KHALA_SYNC_HUB_APPEND_URL`,
- * `OPENAGENTS_ADMIN_API_TOKEN`, and optional `KHALA_SYNC_HUB_TOKEN`
+ * `KHALA_SYNC_DATABASE_URL` (or a Cloud SQL Auth Connector socket via
+ * `PGHOST`/`PGUSER`/`PGPASSWORD`/`PGDATABASE` when the URL is absent —
+ * CFG-14/#8554), `KHALA_SYNC_HUB_APPEND_URL`,
+ * `OPENAGENTS_ADMIN_API_TOKEN` (or `KHALA_SYNC_HUB_TOKEN` alone for a
+ * LiveHub-only deploy), and optional `KHALA_SYNC_HUB_TOKEN`
  * (bearer for a non-Worker hub such as LiveHub; defaults to the admin
  * token), `KHALA_SYNC_HUB_MIRROR_APPEND_URL` / `KHALA_SYNC_HUB_MIRROR_TOKEN`
  * (fail-soft second hub, CFG-5 cutover aid), and
@@ -201,23 +289,28 @@ export const captureConfigFromEnv = (
   const databaseUrl = env["KHALA_SYNC_DATABASE_URL"]
   const hubAppendUrl = env["KHALA_SYNC_HUB_APPEND_URL"]
   const adminToken = env["OPENAGENTS_ADMIN_API_TOKEN"]
-  if (databaseUrl === undefined || databaseUrl === "") {
+  const hubTokenEnv = env["KHALA_SYNC_HUB_TOKEN"]
+  const hasUrl = databaseUrl !== undefined && databaseUrl !== ""
+  const socket = hasUrl ? undefined : socketConnectionFromEnv(env)
+  if (!hasUrl && socket === undefined) {
     missing.push("KHALA_SYNC_DATABASE_URL")
   }
   if (hubAppendUrl === undefined || hubAppendUrl === "") {
     missing.push("KHALA_SYNC_HUB_APPEND_URL")
   }
-  if (adminToken === undefined || adminToken === "") {
+  const hasAdmin = adminToken !== undefined && adminToken !== ""
+  const hasHubToken = hubTokenEnv !== undefined && hubTokenEnv !== ""
+  if (!hasAdmin && !hasHubToken) {
     missing.push("OPENAGENTS_ADMIN_API_TOKEN")
   }
   if (missing.length > 0) {
     throw new Error(`capture: missing environment variable(s): ${missing.join(", ")}`)
   }
   return {
-    databaseUrl: databaseUrl!,
+    ...(socket === undefined ? { databaseUrl: databaseUrl! } : { socket }),
     hubAppendUrl: hubAppendUrl!,
-    adminToken: adminToken!,
-    hubToken: env["KHALA_SYNC_HUB_TOKEN"],
+    ...(hasAdmin ? { adminToken } : {}),
+    hubToken: hubTokenEnv,
     mirrorAppendUrl: env["KHALA_SYNC_HUB_MIRROR_APPEND_URL"],
     mirrorToken: env["KHALA_SYNC_HUB_MIRROR_TOKEN"],
     pollIntervalMs: envInt(env["KHALA_SYNC_CAPTURE_POLL_INTERVAL_MS"]),
@@ -619,11 +712,53 @@ export const runCapturePass = async (
   }
 }
 
+// ---------------------------------------------------------------------------
+// Connection factories (socket via the Cloud SQL Auth Connector, or URL)
+// ---------------------------------------------------------------------------
+
+/**
+ * The Bun `SQL` client for pass/checkpoint work. Bun's `SQL` does NOT resolve
+ * `PGHOST` from a URL to a unix socket, so a connector deploy passes the
+ * socket file path explicitly; a direct-URL deploy keeps the URL form.
+ */
+const makeCaptureSql = (config: ResolvedCaptureConfig, max: number): SQL =>
+  config.socket !== undefined
+    ? new SQL({
+        adapter: "postgres",
+        path: config.socket.socketPath,
+        username: config.socket.username,
+        password: config.socket.password,
+        database: config.socket.database,
+        max,
+      })
+    : new SQL({ url: config.databaseUrl!, max })
+
+/**
+ * The dedicated postgres.js LISTEN connection (session mode — never a
+ * transaction pool, which drops LISTEN/NOTIFY). postgres.js derives the
+ * connector socket file from a `/`-prefixed host, so both the explicit
+ * `path` (connector) and the URL form work.
+ */
+const makeCaptureListener = (
+  config: ResolvedCaptureConfig,
+): ReturnType<typeof postgres> =>
+  config.socket !== undefined
+    ? postgres({
+        path: config.socket.socketPath,
+        username: config.socket.username,
+        password: config.socket.password,
+        database: config.socket.database,
+        max: 1,
+        onnotice: () => {},
+      })
+    : postgres(config.databaseUrl!, { max: 1, onnotice: () => {} })
+
 /** Single-pass convenience for the CLI `--once` mode (and cron). */
 export const runCaptureOnce = async (
   configInput: CaptureConfig,
 ): Promise<CapturePassResult> => {
-  const sql = new SQL({ url: configInput.databaseUrl, max: 2 })
+  const config = resolveConfig(configInput)
+  const sql = makeCaptureSql(config, 2)
   try {
     return await runCapturePass(sql, configInput)
   } finally {
@@ -711,10 +846,7 @@ export const startCaptureDaemon = (configInput: CaptureConfig): CaptureDaemon =>
     let backoffMs = 1_000
     while (!stopped) {
       try {
-        const listener = postgres(config.databaseUrl, {
-          max: 1,
-          onnotice: () => {},
-        })
+        const listener = makeCaptureListener(config)
         listenSql = listener
         await listener.listen(KHALA_SYNC_NOTIFY_CHANNEL, () => wake())
         log(`capture: LISTEN ${KHALA_SYNC_NOTIFY_CHANNEL} established`)
@@ -734,7 +866,7 @@ export const startCaptureDaemon = (configInput: CaptureConfig): CaptureDaemon =>
     listenerReadyResolve()
   })()
 
-  const sql = new SQL({ url: config.databaseUrl, max: 3 })
+  const sql = makeCaptureSql(config, 3)
 
   const done = (async () => {
     let failureBackoffMs = 0

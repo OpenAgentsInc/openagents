@@ -10,6 +10,7 @@ import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "
 import {
   captureConfigFromEnv,
   runCapturePass,
+  socketConnectionFromEnv,
   startCaptureDaemon,
   type CaptureConfig,
   pushBatchToHub,
@@ -215,6 +216,74 @@ describe("captureConfigFromEnv", () => {
     expect(() => captureConfigFromEnv({})).toThrow(
       "KHALA_SYNC_DATABASE_URL, KHALA_SYNC_HUB_APPEND_URL, OPENAGENTS_ADMIN_API_TOKEN",
     )
+  })
+
+  test("builds a Cloud SQL Auth Connector socket config from PG* env when no URL (CFG-14/#8554)", () => {
+    const config = captureConfigFromEnv({
+      // No KHALA_SYNC_DATABASE_URL — connector socket path instead.
+      PGHOST: "/cloudsql/openagentsgemini:us-central1:khala-sync-pg",
+      PGUSER: "khala_capture",
+      PGPASSWORD: "secret",
+      PGDATABASE: "khala_sync_prod",
+      KHALA_SYNC_HUB_APPEND_URL: "https://hub.example/append",
+      // LiveHub-only deploy: no admin token, just the shared hub bearer.
+      KHALA_SYNC_HUB_TOKEN: "hub-bearer",
+    })
+    expect(config.databaseUrl).toBeUndefined()
+    expect(config.socket).toEqual({
+      socketPath:
+        "/cloudsql/openagentsgemini:us-central1:khala-sync-pg/.s.PGSQL.5432",
+      username: "khala_capture",
+      password: "secret",
+      database: "khala_sync_prod",
+    })
+    // The hub bearer alone satisfies the token requirement.
+    expect(config.hubToken).toBe("hub-bearer")
+  })
+
+  test("a URL takes precedence over PG* socket env", () => {
+    const config = captureConfigFromEnv({
+      KHALA_SYNC_DATABASE_URL: "postgres://u@h:5432/db",
+      PGHOST: "/cloudsql/inst",
+      PGUSER: "khala_capture",
+      PGDATABASE: "khala_sync_prod",
+      KHALA_SYNC_HUB_APPEND_URL: "https://hub.example/append",
+      OPENAGENTS_ADMIN_API_TOKEN: "tok",
+    })
+    expect(config.databaseUrl).toBe("postgres://u@h:5432/db")
+    expect(config.socket).toBeUndefined()
+  })
+
+  test("a TCP PGHOST is not treated as a connector socket", () => {
+    // Non-absolute PGHOST => URL is still required.
+    expect(() =>
+      captureConfigFromEnv({
+        PGHOST: "10.0.0.5",
+        PGUSER: "khala_capture",
+        PGDATABASE: "khala_sync_prod",
+        KHALA_SYNC_HUB_APPEND_URL: "https://hub.example/append",
+        KHALA_SYNC_HUB_TOKEN: "hub-bearer",
+      }),
+    ).toThrow("KHALA_SYNC_DATABASE_URL")
+  })
+
+  test("socketConnectionFromEnv normalizes a bare directory and honors PGPORT", () => {
+    expect(
+      socketConnectionFromEnv({
+        PGHOST: "/cloudsql/inst",
+        PGUSER: "u",
+        PGDATABASE: "d",
+        PGPORT: "6543",
+      })?.socketPath,
+    ).toBe("/cloudsql/inst/.s.PGSQL.6543")
+    // An already-complete socket file path is left intact.
+    expect(
+      socketConnectionFromEnv({
+        PGHOST: "/cloudsql/inst/.s.PGSQL.5432",
+        PGUSER: "u",
+        PGDATABASE: "d",
+      })?.socketPath,
+    ).toBe("/cloudsql/inst/.s.PGSQL.5432")
   })
 })
 
