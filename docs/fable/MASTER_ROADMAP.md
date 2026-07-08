@@ -195,6 +195,15 @@ itself is built in the open in the **public repo
 codenames); its public ROADMAP phases 0–6 are the substrate build
 order, and this section binds them to the product phases.
 
+**Issue index (filed 2026-07-08):** epic **#8566**; lanes **EN-1 #8567**
+(production landing on the DOM renderer) and **EN-3 #8568** (RN adapter
+wrapping khala-mobile primitives; post-P0 gate). Substrate first wave in
+the public repo: effect-native **#1–#5** (Phase 0: scaffolding, catalog,
+intents, runtime, tokens) and **#6–#8** (Phase 1: DOM renderer, RN
+renderer, the two-renderer proof). WEB-1 #8565 carries the rescope
+comment and keeps the owner cutover gates. Later lanes (EN-2/4/5/6/7)
+are filed as their unlock lands — never speculatively.
+
 **The unlock chain — build this substrate piece, unlock that product
 refactor (this ordering is the law for EN work):**
 
