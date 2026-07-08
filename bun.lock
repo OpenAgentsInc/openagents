@@ -456,6 +456,7 @@
         "@openagentsinc/mcp-contract": "workspace:*",
         "@openagentsinc/nip90": "workspace:*",
         "@openagentsinc/provider-account-schema": "workspace:*",
+        "@openagentsinc/pylon-core": "workspace:*",
         "@scure/base": "1.2.4",
         "@scure/bip32": "1.6.2",
         "@scure/bip39": "1.5.4",

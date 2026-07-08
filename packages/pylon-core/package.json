@@ -5,7 +5,9 @@
   "private": false,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./custody": "./src/custody/index.ts",
+    "./custody/*": "./src/custody/*.ts"
   },
   "files": [
     "src",

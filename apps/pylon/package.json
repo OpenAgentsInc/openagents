@@ -81,6 +81,7 @@
     "@openagentsinc/khala-sync": "workspace:*",
     "@openagentsinc/mcp-contract": "workspace:*",
     "@openagentsinc/nip90": "workspace:*",
+    "@openagentsinc/pylon-core": "workspace:*",
     "@openagentsinc/provider-account-schema": "workspace:*",
     "@scure/base": "1.2.4",
     "@scure/bip32": "1.6.2",
