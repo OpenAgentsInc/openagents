@@ -443,10 +443,12 @@ import {
   getOpenAgentsWorkerConfig,
   redactedValue,
 } from './config'
+import { makeCrmApprovalBatchRoutes } from './crm-approval-batch-routes'
 import { makeCrmBatchRoutes } from './crm-batch-routes'
 import { makeCrmCommandRoutes } from './crm-command-routes'
 import { makeCrmEmailRoutes } from './crm-email-routes'
 import { makeCrmImportRoutes } from './crm-import-routes'
+import { makeCrmReplyRoutes } from './crm-reply-routes'
 import { makeCrmMcpCatalog } from './crm-mcp'
 import { makeCrmMcpDiscoveryRoutes } from './crm-mcp-discovery-routes'
 import {
@@ -9605,6 +9607,18 @@ const crmBatchRoutes = makeCrmBatchRoutes<WorkerBindings>({
   resolveResendDeps: resolveCrmResendDeps,
 })
 
+// OB-4 (#8561): batch approval UX over the existing crm_contact_commands
+// queue (review/edit/approve a day's drafts in one screen, one-tap approve
+// with per-send receipts unchanged) + Sarah reply-routing plumbing.
+const crmApprovalBatchRoutes = makeCrmApprovalBatchRoutes<WorkerBindings>({
+  requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
+  resolveResendDeps: resolveCrmResendDeps,
+})
+
+const crmReplyRoutes = makeCrmReplyRoutes<WorkerBindings>({
+  requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
+})
+
 const makeKhalaMcpServedTokensRecorder = (
   db: D1Database,
   options: Readonly<{
@@ -16191,6 +16205,8 @@ const routeRequest = makeWorkerRouteRequest({
     crmSendRoutes.routeCrmSendRequest(request, env, ctx) ??
     crmCommandRoutes.routeCrmCommandRequest(request, env, ctx) ??
     crmBatchRoutes.routeCrmBatchRequest(request, env, ctx) ??
+    crmApprovalBatchRoutes.routeCrmApprovalBatchRequest(request, env, ctx) ??
+    crmReplyRoutes.routeCrmReplyRequest(request, env, ctx) ??
     crmMcpDiscoveryRoutes.routeCrmMcpDiscoveryRequest(request, env, ctx) ??
     crmMcpGrantRoutes.routeCrmMcpGrantRequest(request, env, ctx) ??
     crmMcpRoutes.routeCrmMcpRequest(request, env, ctx) ??

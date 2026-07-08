@@ -128,6 +128,10 @@ export const makeCrmCommandRoutes = <Bindings extends CrmCommandEnv>(
             contactId: proposeContactId,
             proposedByRef:
               body !== null && typeof body.proposedByRef === 'string' ? body.proposedByRef : null,
+            // OB-4 (#8561): optional batch-queue grouping/traceability refs.
+            reportRef: body !== null && typeof body.reportRef === 'string' ? body.reportRef : null,
+            segmentRef:
+              body !== null && typeof body.segmentRef === 'string' ? body.segmentRef : null,
             sendReason:
               body !== null && typeof body.sendReason === 'string' ? body.sendReason : null,
             templateSlug,

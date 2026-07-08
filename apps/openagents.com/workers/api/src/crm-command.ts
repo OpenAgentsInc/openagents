@@ -51,6 +51,12 @@ export type CrmSendCommandPayload = Readonly<{
   channel: CrmSendChannel
   templateSlug: string
   sendReason?: string | null
+  // OB-4 (#8561): optional grouping/traceability refs a drafting agent (e.g.
+  // Sarah, LG-4) can attach so the batch approval queue can group a day's
+  // drafts by segment and every draft can carry its source report link.
+  // Both are display/grouping metadata only — never used for authority.
+  segmentRef?: string | null
+  reportRef?: string | null
 }>
 
 const str = (v: unknown): string =>
@@ -99,6 +105,8 @@ export const proposeCrmSendCommand = async (
     templateSlug: string
     sendReason?: string | null
     proposedByRef?: string | null
+    segmentRef?: string | null
+    reportRef?: string | null
   }>,
   runtime: CrmRuntime = defaultCrmRuntime,
 ): Promise<CrmContactCommand> => {
@@ -106,6 +114,8 @@ export const proposeCrmSendCommand = async (
   const now = runtime.nowIso()
   const payload: CrmSendCommandPayload = {
     channel: input.channel,
+    reportRef: input.reportRef ?? null,
+    segmentRef: input.segmentRef ?? null,
     sendReason: input.sendReason ?? null,
     templateSlug: input.templateSlug,
   }
