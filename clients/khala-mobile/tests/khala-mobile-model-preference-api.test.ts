@@ -18,6 +18,11 @@ const samplePreference = {
   usedPreference: false,
 }
 
+// CX-4 (#8548): `parsePreference` always fills these in (`null`/`[]`
+// defaults) even when the wire body omits them — the never-undefined
+// baseline every response-parsing test below expects.
+const CX4_DEFAULTS = { autoResolution: null, claudeAccounts: [], codexAccounts: [] } as const
+
 const fakeFetch = (response: { body?: unknown; ok: boolean; status?: number }): KhalaModelPreferenceFetchLike =>
   (async () => ({ json: async () => response.body ?? {}, ok: response.ok, status: response.status })) as KhalaModelPreferenceFetchLike
 
@@ -28,7 +33,7 @@ describe("fetchKhalaMobileModelPreference", () => {
       "tok",
       fakeFetch({ body: samplePreference, ok: true }),
     )
-    expect(result).toEqual({ ok: true, value: samplePreference })
+    expect(result).toEqual({ ok: true, value: { ...samplePreference, ...CX4_DEFAULTS } })
   })
 
   test("parses legacy model-only responses as target-compatible preferences", async () => {
@@ -49,6 +54,7 @@ describe("fetchKhalaMobileModelPreference", () => {
       ok: true,
       value: {
         ...legacyPreference,
+        ...CX4_DEFAULTS,
         availableTargetIds: ["gemini"],
         effectiveTargetId: "gemini",
         preferredTargetId: "gemini",

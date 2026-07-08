@@ -281,6 +281,95 @@ export const resolveExecutionTargetPreference = (
 }
 
 // ----------------------------------------------------------------------------
+// CX-4 (#8548): quota-aware `auto`, typed and never silent.
+//
+// v1 is DELIBERATELY dumb per the multi-harness analysis doc §6
+// (`docs/fable/2026-07-08-multi-harness-parallelization-effect-native-analysis.md`):
+// first READY candidate in a FIXED preference order wins; every candidate
+// skipped along the way emits its own typed event naming which target was
+// skipped, why, and what it fell through to. No cost/affinity/role scoring —
+// that's explicitly deferred until per-harness economics are measured. This
+// contract is intentionally generic over "what counts as ready" (a plain
+// boolean per candidate) so it works whether the readiness signal is today's
+// coarse account `health` projection or tomorrow's real quota/cooldown
+// telemetry (CX-7) — callers just build a different `candidates` list, the
+// resolution + event shape never changes. Reusable as-is for MH-8.
+// ----------------------------------------------------------------------------
+
+export type AutoExecutionTargetSkipReason =
+  | 'account_exhausted'
+  | 'account_rate_limited'
+  | 'account_requires_reauth'
+  | 'account_unavailable'
+
+export type AutoExecutionTargetCandidate = Readonly<{
+  targetId: string
+  ready: boolean
+  // Only meaningful when `ready` is false; a not-ready candidate with no
+  // reason falls back to `account_unavailable`.
+  reason?: AutoExecutionTargetSkipReason | undefined
+}>
+
+export type AutoExecutionTargetFallbackEvent = Readonly<{
+  type: AutoExecutionTargetSkipReason
+  targetId: string
+  nextTargetId: string | null
+}>
+
+export type AutoExecutionTargetResolution = Readonly<{
+  // The concrete, dispatchable target `auto` resolves to right now, or
+  // `null` only when every candidate was skipped AND no fallback target was
+  // servable either (mirrors `ModelPreferenceResolution.effectiveModelId`'s
+  // "nothing servable" law).
+  effectiveTargetId: string | null
+  // True whenever the resolution did NOT land on the first candidate in the
+  // preference order — i.e. at least one skip happened.
+  usedFallback: boolean
+  // One typed event per skipped candidate, in order. NEVER empty when
+  // `usedFallback` is true — every skip is named, never a silent swap.
+  events: ReadonlyArray<AutoExecutionTargetFallbackEvent>
+}>
+
+/**
+ * Pure, typed `auto` policy: walk `candidates` in the given fixed order,
+ * return the first `ready` one, and emit one `AutoExecutionTargetFallbackEvent`
+ * for every not-ready candidate skipped along the way. Falls through to
+ * `fallbackTargetId` (e.g. the compiled default `gemini`/`khala` lane) when
+ * NO candidate is ready — that fallback itself is also reported as an event
+ * chain, never a silent substitution.
+ */
+export const resolveAutoExecutionTarget = (
+  input: Readonly<{
+    candidates: ReadonlyArray<AutoExecutionTargetCandidate>
+    fallbackTargetId: string | null
+  }>,
+): AutoExecutionTargetResolution => {
+  const events: AutoExecutionTargetFallbackEvent[] = []
+
+  for (let i = 0; i < input.candidates.length; i++) {
+    const candidate = input.candidates[i]
+    if (candidate === undefined) continue
+
+    if (candidate.ready) {
+      return { effectiveTargetId: candidate.targetId, events, usedFallback: events.length > 0 }
+    }
+
+    const next = input.candidates[i + 1]?.targetId ?? input.fallbackTargetId
+    events.push({
+      nextTargetId: next,
+      targetId: candidate.targetId,
+      type: candidate.reason ?? 'account_unavailable',
+    })
+  }
+
+  return {
+    effectiveTargetId: input.fallbackTargetId,
+    events,
+    usedFallback: true,
+  }
+}
+
+// ----------------------------------------------------------------------------
 // D1 read/write (one mutable row per user)
 // ----------------------------------------------------------------------------
 

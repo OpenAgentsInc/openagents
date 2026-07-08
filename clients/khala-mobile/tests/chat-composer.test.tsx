@@ -243,6 +243,7 @@ type ChatComposerTestProps = Readonly<{
     label: string
     target: Readonly<{ executionTargetId?: string; lane: RuntimeTurnEntity["lane"] }>
   }>
+  noticeMessage?: string | null
   push: (mutations: ReadonlyArray<{ name: string; args: unknown }>) => Promise<unknown>
   recoverableTurn?: RuntimeTurnEntity | undefined
 }>
@@ -405,6 +406,43 @@ describe("contract khala_mobile.composer.rn_component_mount_coverage.v1 — Chat
       executionTargetId: "codex:owner-account-ref-hash",
       lane: "codex_app_server"
     })
+  })
+
+  // CX-4 (#8548): the typed, never-silent auto notice — visible only while the
+  // idle picker is open, never a persistent banner and never silently absent
+  // when a fallback actually happened.
+  test("a noticeMessage renders only once the idle picker is opened, never on an active turn", async () => {
+    const push = mock(() => Promise.resolve())
+    const renderer = await mountComposer({
+      activeTurn: undefined,
+      noticeMessage: "Auto skipped Your Codex (exhausted) → using Khala.",
+      push
+    })
+
+    expect(findByProp(renderer.root, "accessibilityLabel", "Auto routing notice").length).toBe(0)
+
+    const optionButtons = findByProp(renderer.root, "accessibilityLabel", "Show composer options")
+    await act(() => {
+      ;(optionButtons[0]!.props as { onPress: () => void }).onPress()
+    })
+
+    const notices = findByProp(renderer.root, "accessibilityLabel", "Auto routing notice")
+    expect(notices.length).toBe(1)
+    expect((notices[0]!.props as { children: unknown }).children).toBe(
+      "Auto skipped Your Codex (exhausted) → using Khala."
+    )
+  })
+
+  test("no noticeMessage renders nothing, even with the picker open", async () => {
+    const push = mock(() => Promise.resolve())
+    const renderer = await mountComposer({ activeTurn: undefined, push })
+
+    const optionButtons = findByProp(renderer.root, "accessibilityLabel", "Show composer options")
+    await act(() => {
+      ;(optionButtons[0]!.props as { onPress: () => void }).onPress()
+    })
+
+    expect(findByProp(renderer.root, "accessibilityLabel", "Auto routing notice").length).toBe(0)
   })
 
   test("pressing Stop on an active turn calls push() with runtime.interruptTurn", async () => {

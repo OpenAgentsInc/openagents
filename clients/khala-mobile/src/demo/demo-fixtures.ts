@@ -60,10 +60,39 @@ export type DemoRepository = Readonly<{
   provider: "github"
 }>
 
+/** Structural mirror of `KhalaModelPreferenceAccountSummary` (CX-4, #8548). */
+export type DemoModelPreferenceAccountSummary = Readonly<{
+  accountRefHash: string
+  label: string
+  ready: boolean
+  reason?:
+    | "account_exhausted"
+    | "account_rate_limited"
+    | "account_requires_reauth"
+    | "account_unavailable"
+    | undefined
+}>
+
+/** Structural mirror of `KhalaAutoExecutionTargetResolution` (CX-4, #8548). */
+export type DemoAutoExecutionTargetResolution = Readonly<{
+  effectiveTargetId: string | null
+  usedFallback: boolean
+  events: ReadonlyArray<
+    Readonly<{
+      type: "account_exhausted" | "account_rate_limited" | "account_requires_reauth" | "account_unavailable"
+      targetId: string
+      nextTargetId: string | null
+    }>
+  >
+}>
+
 /** Structural mirror of `KhalaModelPreference`. */
 export type DemoModelPreference = Readonly<{
   availableModelIds: ReadonlyArray<string>
   availableTargetIds: ReadonlyArray<string>
+  autoResolution: DemoAutoExecutionTargetResolution | null
+  claudeAccounts: ReadonlyArray<DemoModelPreferenceAccountSummary>
+  codexAccounts: ReadonlyArray<DemoModelPreferenceAccountSummary>
   effectiveModelId: string | null
   effectiveTargetId: string | null
   fallback: "none" | "no_preference_set" | "preference_unavailable" | "default_unavailable"
@@ -330,9 +359,21 @@ export const demoRepositories: ReadonlyArray<DemoRepository> = [
 /** Single Khala model (there are no variants). */
 export const DEMO_MODEL_ID = "openagents/khala"
 
+/** CX-4 (#8548): a single ready demo Codex account so the reviewer demo
+ * session shows the real per-thread picker + `auto` behavior, not just the
+ * hosted lanes. */
+const DEMO_CODEX_ACCOUNT_REF_HASH = "demo-codex-account-ref"
+
 export const demoModelPreference = (preferredModelId: string = DEMO_MODEL_ID): DemoModelPreference => ({
   availableModelIds: [DEMO_MODEL_ID],
-  availableTargetIds: ["gemini", "auto", "khala"],
+  availableTargetIds: ["gemini", "auto", "khala", `codex:${DEMO_CODEX_ACCOUNT_REF_HASH}`],
+  autoResolution: {
+    effectiveTargetId: `codex:${DEMO_CODEX_ACCOUNT_REF_HASH}`,
+    events: [],
+    usedFallback: false,
+  },
+  claudeAccounts: [],
+  codexAccounts: [{ accountRefHash: DEMO_CODEX_ACCOUNT_REF_HASH, label: "Your Codex", ready: true }],
   effectiveModelId: DEMO_MODEL_ID,
   effectiveTargetId: preferredModelId,
   fallback: "none",

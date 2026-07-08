@@ -34,11 +34,17 @@ import { KhalaScrollToLatestButton } from "../components/khala-scroll-to-latest-
 import { KhalaThreadHeader } from "../components/khala-thread-header"
 import { SwipeableItem } from "../components/swipeable-item"
 import { TranscriptPartRow } from "../components/transcript-part-row"
+import { useKhalaAuth } from "../auth/khala-auth-context"
 import { EmptyState, Text, useAppTheme } from "../ignite"
 import type { ThemedStyle } from "../ignite"
 import type { AppDrawerParamList, AppStackScreenProps } from "../navigators/navigationTypes"
 import { buildCopyMarkdown, buildCopyText } from "../sync/blurred-popup-menu-core"
 import { buildHandoffPromptBody, summarizeTurnEventsForHandoff } from "../sync/khala-cross-agent-handoff-core"
+import { fetchKhalaMobileModelPreference, type KhalaModelPreference } from "../sync/khala-mobile-model-preference-api"
+import {
+  autoResolutionNoticeMessage,
+  buildExecutionTargetOptions,
+} from "../sync/khala-mobile-model-preference-format-core"
 import {
   buildChatAppendMessageArgs,
   buildStartTurnIntentArgs,
@@ -172,6 +178,31 @@ export const ThreadMessagesScreen = ({ navigation, route }: ThreadMessagesScreen
   const [showScrollToLatest, setShowScrollToLatest] = useState(false)
   const [creatingThread, setCreatingThread] = useState(false)
   const [newThreadError, setNewThreadError] = useState<string | null>(null)
+
+  // CX-4 (#8548): the composer's execution-target picker is fed by the
+  // caller's REAL connected accounts (never a static Codex/Claude label
+  // guess) — one user-wide fetch, reused for every thread (the preference
+  // and connected accounts aren't per-thread state). `undefined` while
+  // loading/unavailable falls back to `ChatComposer`'s own built-in default
+  // list rather than rendering an empty picker.
+  const { baseUrl: khalaAuthBaseUrl, token: khalaAuthToken } = useKhalaAuth()
+  const [modelPreference, setModelPreference] = useState<KhalaModelPreference | undefined>(undefined)
+  useEffect(() => {
+    let cancelled = false
+    void fetchKhalaMobileModelPreference(khalaAuthBaseUrl, khalaAuthToken).then(result => {
+      if (!cancelled && result.ok) setModelPreference(result.value)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [khalaAuthBaseUrl, khalaAuthToken])
+  const executionTargets = useMemo(() => {
+    if (modelPreference === undefined) return undefined
+    const options = buildExecutionTargetOptions(modelPreference)
+    return options.length > 0 ? options : undefined
+  }, [modelPreference])
+  const autoNoticeMessage =
+    modelPreference === undefined ? null : autoResolutionNoticeMessage(modelPreference.autoResolution)
 
   // One-tap "new thread" escape hatch (owner report, 2026-07-06: "no way to
   // start a new thread ... cant do anything"). Creates a fresh empty thread
@@ -386,6 +417,8 @@ export const ThreadMessagesScreen = ({ navigation, route }: ThreadMessagesScreen
             activeTurn={activeTurn}
             appendMessage={syncRuntime.status === "ready" ? syncRuntime.runtime.appendMessage : undefined}
             defaultLane={defaultLane}
+            executionTargets={executionTargets}
+            noticeMessage={autoNoticeMessage}
             onQuoteConsumed={() => setQuoteRequest(undefined)}
             push={push}
             quoteRequest={quoteRequest}

@@ -12,6 +12,7 @@ import {
   isModelIdAvailable,
   normalizeExecutionTargetId,
   readUserModelPreference,
+  resolveAutoExecutionTarget,
   resolveAvailableExecutionTargetIds,
   resolveAvailableModelIds,
   resolveExecutionTargetPreference,
@@ -325,5 +326,98 @@ describe('user_model_preferences D1 store (MM-F1, #8484)', () => {
     await writeUserModelPreference(db, { modelId: 'sonnet', nowIso: NOW, userId: 'github:2' })
     expect((await readUserModelPreference(db, 'github:1'))?.modelId).toBe('gemini')
     expect((await readUserModelPreference(db, 'github:2'))?.modelId).toBe('sonnet')
+  })
+})
+
+describe('resolveAutoExecutionTarget (CX-4, #8548) — typed, never-silent auto policy', () => {
+  test('first ready candidate wins with no fallback events', () => {
+    const resolution = resolveAutoExecutionTarget({
+      candidates: [
+        { ready: true, targetId: 'codex:acct-a' },
+        { ready: true, targetId: 'codex:acct-b' },
+      ],
+      fallbackTargetId: 'gemini',
+    })
+    expect(resolution).toEqual({
+      effectiveTargetId: 'codex:acct-a',
+      events: [],
+      usedFallback: false,
+    })
+  })
+
+  test('skips an exhausted account to the next ready one, emitting a typed account_exhausted event', () => {
+    const resolution = resolveAutoExecutionTarget({
+      candidates: [
+        { reason: 'account_exhausted', ready: false, targetId: 'codex:acct-a' },
+        { ready: true, targetId: 'codex:acct-b' },
+      ],
+      fallbackTargetId: 'gemini',
+    })
+    expect(resolution.effectiveTargetId).toBe('codex:acct-b')
+    expect(resolution.usedFallback).toBe(true)
+    expect(resolution.events).toEqual([
+      { nextTargetId: 'codex:acct-b', targetId: 'codex:acct-a', type: 'account_exhausted' },
+    ])
+  })
+
+  test('skips multiple not-ready candidates in order before landing on a ready one', () => {
+    const resolution = resolveAutoExecutionTarget({
+      candidates: [
+        { reason: 'account_rate_limited', ready: false, targetId: 'codex:acct-a' },
+        { reason: 'account_requires_reauth', ready: false, targetId: 'codex:acct-b' },
+        { ready: true, targetId: 'codex:acct-c' },
+      ],
+      fallbackTargetId: 'gemini',
+    })
+    expect(resolution.effectiveTargetId).toBe('codex:acct-c')
+    expect(resolution.events).toEqual([
+      { nextTargetId: 'codex:acct-b', targetId: 'codex:acct-a', type: 'account_rate_limited' },
+      { nextTargetId: 'codex:acct-c', targetId: 'codex:acct-b', type: 'account_requires_reauth' },
+    ])
+  })
+
+  test('falls through to the fallback target when every candidate is skipped, with a typed event per candidate', () => {
+    const resolution = resolveAutoExecutionTarget({
+      candidates: [
+        { reason: 'account_exhausted', ready: false, targetId: 'codex:acct-a' },
+        { reason: 'account_exhausted', ready: false, targetId: 'codex:acct-b' },
+      ],
+      fallbackTargetId: 'gemini',
+    })
+    expect(resolution.effectiveTargetId).toBe('gemini')
+    expect(resolution.usedFallback).toBe(true)
+    expect(resolution.events).toEqual([
+      { nextTargetId: 'codex:acct-b', targetId: 'codex:acct-a', type: 'account_exhausted' },
+      { nextTargetId: 'gemini', targetId: 'codex:acct-b', type: 'account_exhausted' },
+    ])
+  })
+
+  test('no candidates at all resolves straight to the fallback target with no events', () => {
+    const resolution = resolveAutoExecutionTarget({ candidates: [], fallbackTargetId: 'gemini' })
+    expect(resolution).toEqual({ effectiveTargetId: 'gemini', events: [], usedFallback: true })
+  })
+
+  test('a null fallback (nothing servable) reports null, mirroring resolveModelPreference’s never-silent-null law', () => {
+    const resolution = resolveAutoExecutionTarget({
+      candidates: [{ reason: 'account_exhausted', ready: false, targetId: 'codex:acct-a' }],
+      fallbackTargetId: null,
+    })
+    expect(resolution.effectiveTargetId).toBe(null)
+    expect(resolution.events).toEqual([
+      { nextTargetId: null, targetId: 'codex:acct-a', type: 'account_exhausted' },
+    ])
+  })
+
+  test('a not-ready candidate with no reason defaults to account_unavailable, never silently dropped', () => {
+    const resolution = resolveAutoExecutionTarget({
+      candidates: [
+        { ready: false, targetId: 'codex:acct-a' },
+        { ready: true, targetId: 'codex:acct-b' },
+      ],
+      fallbackTargetId: 'gemini',
+    })
+    expect(resolution.events).toEqual([
+      { nextTargetId: 'codex:acct-b', targetId: 'codex:acct-a', type: 'account_unavailable' },
+    ])
   })
 })

@@ -84,6 +84,13 @@ type ChatComposerProps = Readonly<{
    * executionTargetId: "codex:<accountRefHash>" } }`. The fallback list keeps
    * the pre-existing lane picker behavior while older parents roll forward. */
   executionTargets?: ReadonlyArray<ChatComposerExecutionTarget>
+  /** Typed, never-silent notice for the idle picker (CX-4, #8548) — e.g. what
+   * `auto` skipped and why (`autoResolutionNoticeMessage` in
+   * `khala-mobile-model-preference-format-core.ts`). Rendered only while the
+   * picker (`showOptions`) is open, right above the target row, so it's never
+   * a silent substitution but also never a persistent banner. `undefined`/
+   * `null` renders nothing. */
+  noticeMessage?: string | null
   push: (mutations: ReadonlyArray<PendingMutation>) => Promise<unknown>
   /** Swipe-to-quote request from the thread's transcript list (`SwipeableItem`
    * in `app/thread/[threadId].tsx`, see issue #8393). `id` is the swiped
@@ -109,6 +116,7 @@ export const ChatComposer = ({
   appendMessage,
   defaultLane,
   executionTargets = DEFAULT_EXECUTION_TARGETS,
+  noticeMessage,
   onQuoteConsumed,
   push,
   quoteRequest,
@@ -368,6 +376,15 @@ export const ChatComposer = ({
           <Text size="xxs" style={themed($statusLabel)} text={activeStatusLabel} />
         </View>
       )}
+      {showOptions && !hasActiveTurn && noticeMessage !== undefined && noticeMessage !== null ? (
+        <Text
+          accessibilityLabel="Auto routing notice"
+          numberOfLines={2}
+          size="xxs"
+          style={themed($notice)}
+          text={noticeMessage}
+        />
+      ) : null}
       {showOptions ? optionRow : null}
       {activeTurn === undefined && recoverableTurn !== undefined ? (
         <View style={themed($resumeRow)}>
@@ -595,6 +612,14 @@ const $textInput: ThemedStyle<TextStyle> = ({ colors, typography, spacing }) => 
 
 const $error: ThemedStyle<TextStyle> = ({ colors, spacing }) => ({
   color: colors.error,
+  marginBottom: spacing.xxs,
+  paddingHorizontal: spacing.sm
+})
+
+/** CX-4 (#8548): the typed, never-silent `auto` fallback notice — informational,
+ * not an error, so it uses `textDim` rather than `$error`'s error color. */
+const $notice: ThemedStyle<TextStyle> = ({ colors, spacing }) => ({
+  color: colors.textDim,
   marginBottom: spacing.xxs,
   paddingHorizontal: spacing.sm
 })

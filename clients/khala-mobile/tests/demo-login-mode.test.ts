@@ -110,10 +110,18 @@ describe("contract khala_mobile.auth.demo_login_example_data.v1 — reviewer dem
     // Repos: public + private badges both represented.
     expect(demoRepositories.some(repo => repo.private)).toBe(true)
     expect(demoRepositories.some(repo => !repo.private)).toBe(true)
-    // Model config: the single Khala model.
+    // Model config: the single Khala model, plus (CX-4, #8548) a ready demo
+    // Codex account so the picker/auto UI has something real to show.
     expect(demoModelPreference()).toEqual({
       availableModelIds: [DEMO_MODEL_ID],
-      availableTargetIds: ["gemini", "auto", "khala"],
+      availableTargetIds: ["gemini", "auto", "khala", "codex:demo-codex-account-ref"],
+      autoResolution: {
+        effectiveTargetId: "codex:demo-codex-account-ref",
+        events: [],
+        usedFallback: false,
+      },
+      claudeAccounts: [],
+      codexAccounts: [{ accountRefHash: "demo-codex-account-ref", label: "Your Codex", ready: true }],
       effectiveModelId: DEMO_MODEL_ID,
       effectiveTargetId: DEMO_MODEL_ID,
       fallback: "none",

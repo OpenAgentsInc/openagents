@@ -734,13 +734,18 @@ import {
   resolveSupplyLaneArming,
 } from './inference/model-serving-policy'
 import {
+  AUTO_EXECUTION_TARGET_ID,
+  DEFAULT_EXECUTION_TARGET_ID,
   isExecutionTargetIdAvailable,
   normalizeExecutionTargetId,
   readUserModelPreference,
+  resolveAutoExecutionTarget,
   resolveAvailableExecutionTargetIds,
   resolveAvailableModelIds,
   resolveExecutionTargetPreference,
   writeUserModelPreference,
+  type AutoExecutionTargetCandidate,
+  type AutoExecutionTargetResolution,
 } from './inference/model-preference-store'
 import {
   handleModelsList,
@@ -1103,8 +1108,11 @@ import {
 } from './provider-account-token-custody'
 import { makeProviderAccountUsageRoutes } from './provider-account-usage-routes'
 import {
+  ANTHROPIC_CLAUDE_PROVIDER,
+  CHATGPT_CODEX_PROVIDER,
   type CodexOAuthAuth,
   type ProviderAccountBundle,
+  type PublicProviderAccount,
   listProviderAccountsForUser,
   makeD1ProviderAccountRepository,
 } from './provider-accounts'
@@ -5342,6 +5350,67 @@ const handleMobileSessionApi = async (
   })
 }
 
+// CX-4 (#8548): a connected provider account, projected down to exactly what
+// the mobile picker needs — never a secret, never the raw credential. The
+// `codex:`/`claude:` execution-target id convention (established in
+// `model-preference-store.ts`) reuses the account's own `providerAccountRef`
+// as its "accountRefHash" component, the SAME convention already used by the
+// operator dashboard (`artanis-operator-dashboard-routes.ts`'s
+// `accountRefHash: row.provider_account_ref`) — it's already an opaque,
+// non-secret, server-minted ref, not a raw credential, so no extra hashing
+// step is needed.
+type MobileExecutionTargetAccountSummary = Readonly<{
+  accountRefHash: string
+  label: string
+  ready: boolean
+  reason?: AutoExecutionTargetCandidate['reason']
+}>
+
+// v1 readiness signal: the account's own `health` projection (already
+// tracked by CX-1/CX-2's connect flow). This is deliberately NOT real
+// usage-based quota/cooldown telemetry — that lives in
+// `provider_accounts.cooldown_until` (CX-7's "multi-account concurrency"
+// scope, #8551) and isn't wired to this read path yet. The candidate shape
+// below (`{ targetId, ready, reason }`) is the stable extension point: once
+// CX-7 lands live cooldown truth, only THIS mapping function needs to change
+// — `resolveAutoExecutionTarget`'s typed-event contract does not.
+const mobileExecutionTargetReadiness = (
+  health: PublicProviderAccount['health'],
+): Readonly<{ ready: boolean; reason?: AutoExecutionTargetCandidate['reason'] }> => {
+  if (health === 'requires_reauth') {
+    return { reason: 'account_requires_reauth', ready: false }
+  }
+  if (health === 'unhealthy') {
+    return { reason: 'account_unavailable', ready: false }
+  }
+  // 'healthy' and 'unknown' (no negative signal recorded yet) are both
+  // treated as ready — an account never demoted below "auto-eligible" on
+  // absence of evidence, only on an explicit health failure.
+  return { ready: true }
+}
+
+const mobileExecutionTargetAccountSummaries = (
+  accounts: ReadonlyArray<PublicProviderAccount>,
+  provider: PublicProviderAccount['provider'],
+  targetPrefix: 'claude' | 'codex',
+): ReadonlyArray<MobileExecutionTargetAccountSummary> =>
+  accounts
+    .filter(account => account.provider === provider && account.publicStatus === 'connected')
+    .sort((a, b) => (a.connectedAt ?? a.createdAt).localeCompare(b.connectedAt ?? b.createdAt))
+    .map((account, index) => {
+      const readiness = mobileExecutionTargetReadiness(account.health)
+      return {
+        accountRefHash: account.providerAccountRef,
+        label:
+          index === 0
+            ? targetPrefix === 'codex'
+              ? 'Your Codex'
+              : 'Your Claude'
+            : `${targetPrefix === 'codex' ? 'Your Codex' : 'Your Claude'} ${index + 1}`,
+        ...readiness,
+      }
+    })
+
 // MM-F1 (#8484): per-user model configuration. GET reads the caller's stored
 // preference (or the compiled default) resolved against this deployment's
 // actually-armed supply lanes; PUT sets it, rejecting a model id this
@@ -5352,6 +5421,12 @@ const handleMobileSessionApi = async (
 // gateway's collapse-to-Khala model policy — the coding-executor lane
 // selection (#8473) is the intended consumer of the read side for coding
 // turns.
+//
+// CX-4 (#8548): also feeds the picker with the caller's REAL connected Codex/
+// Claude accounts (`codexAccounts`/`claudeAccounts`, non-secret) and, when
+// `auto` is available, a resolved `autoResolution` — the typed, never-silent
+// answer to "which concrete account would `auto` use right now, and what did
+// it skip to get there" (`resolveAutoExecutionTarget`).
 const handleMobileModelPreferenceApi = async (
   request: Request,
   env: MobileAuthSessionBindings,
@@ -5368,9 +5443,25 @@ const handleMobileModelPreferenceApi = async (
   }
 
   const db = openAgentsDatabase(env)
+  const providerAccountBundle = await listProviderAccountsForUser(
+    makeD1ProviderAccountRepository(db),
+    session.user.userId,
+  )
+  const codexAccounts = mobileExecutionTargetAccountSummaries(
+    providerAccountBundle.accounts,
+    CHATGPT_CODEX_PROVIDER,
+    'codex',
+  )
+  const claudeAccounts = mobileExecutionTargetAccountSummaries(
+    providerAccountBundle.accounts,
+    ANTHROPIC_CLAUDE_PROVIDER,
+    'claude',
+  )
   const availableModelIds = resolveAvailableModelIds(resolveSupplyLaneArming(env))
   const availableTargetIds = resolveAvailableExecutionTargetIds({
     availableModelIds,
+    claudeAccountRefHashes: claudeAccounts.map(account => account.accountRefHash),
+    codexAccountRefHashes: codexAccounts.map(account => account.accountRefHash),
   })
 
   if (request.method === 'PUT') {
@@ -5414,9 +5505,38 @@ const handleMobileModelPreferenceApi = async (
     storedTargetId: stored?.modelId ?? null,
   })
 
+  // Fixed preference order: Codex accounts first (this lane's primary
+  // target per the issue), then Claude — oldest-connected account within
+  // each provider first (`mobileExecutionTargetAccountSummaries`'s sort).
+  // Only computed when `auto` is actually offered, so a deployment/user with
+  // no accounts connected doesn't pay for a resolution nobody can pick.
+  const toAutoCandidate = (
+    prefix: 'claude' | 'codex',
+    account: MobileExecutionTargetAccountSummary,
+  ): AutoExecutionTargetCandidate => ({
+    reason: account.reason,
+    ready: account.ready,
+    targetId: `${prefix}:${account.accountRefHash}`,
+  })
+  const autoResolution: AutoExecutionTargetResolution | null =
+    availableTargetIds.includes(AUTO_EXECUTION_TARGET_ID)
+      ? resolveAutoExecutionTarget({
+          candidates: [
+            ...codexAccounts.map(account => toAutoCandidate('codex', account)),
+            ...claudeAccounts.map(account => toAutoCandidate('claude', account)),
+          ],
+          fallbackTargetId: availableTargetIds.includes(DEFAULT_EXECUTION_TARGET_ID)
+            ? DEFAULT_EXECUTION_TARGET_ID
+            : null,
+        })
+      : null
+
   return noStoreJsonResponse({
     availableModelIds,
     availableTargetIds,
+    autoResolution,
+    claudeAccounts,
+    codexAccounts,
     effectiveModelId: resolution.effectiveModelId,
     effectiveTargetId: resolution.effectiveModelId,
     fallback: resolution.fallback,

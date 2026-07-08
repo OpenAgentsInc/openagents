@@ -16,9 +16,50 @@ export type KhalaModelPreferenceFallback =
   | "preference_unavailable"
   | "default_unavailable"
 
+/** CX-4 (#8548): a connected Codex/Claude account, projected down to exactly
+ * what the picker needs (never a secret). `accountRefHash` is the opaque,
+ * non-secret ref the server already uses to build `codex:<accountRefHash>` /
+ * `claude:<accountRefHash>` execution-target ids. */
+export type KhalaModelPreferenceAccountSummary = Readonly<{
+  accountRefHash: string
+  label: string
+  ready: boolean
+  reason?: KhalaAutoExecutionTargetFallbackReason | undefined
+}>
+
+export type KhalaAutoExecutionTargetFallbackReason =
+  | "account_exhausted"
+  | "account_rate_limited"
+  | "account_requires_reauth"
+  | "account_unavailable"
+
+export type KhalaAutoExecutionTargetFallbackEvent = Readonly<{
+  type: KhalaAutoExecutionTargetFallbackReason
+  targetId: string
+  nextTargetId: string | null
+}>
+
+/** The typed, never-silent answer to "what would `auto` do right now" —
+ * mirrors the server's `AutoExecutionTargetResolution`
+ * (`inference/model-preference-store.ts`). `events` is non-empty whenever
+ * `auto` skipped a connected account; the UI renders it, never swaps quietly. */
+export type KhalaAutoExecutionTargetResolution = Readonly<{
+  effectiveTargetId: string | null
+  usedFallback: boolean
+  events: ReadonlyArray<KhalaAutoExecutionTargetFallbackEvent>
+}>
+
 export type KhalaModelPreference = Readonly<{
   availableModelIds: ReadonlyArray<string>
   availableTargetIds: ReadonlyArray<string>
+  // Optional (CX-4, #8548, added after MM-F1 shipped): absent/undefined on
+  // older cached shapes or hand-built test fixtures means "not computed",
+  // treated the same as `null`/empty by every consumer
+  // (`buildExecutionTargetOptions`, `autoResolutionNoticeMessage`) —
+  // never a silent crash on a pre-CX-4 shape.
+  autoResolution?: KhalaAutoExecutionTargetResolution | null | undefined
+  claudeAccounts?: ReadonlyArray<KhalaModelPreferenceAccountSummary> | undefined
+  codexAccounts?: ReadonlyArray<KhalaModelPreferenceAccountSummary> | undefined
   effectiveModelId: string | null
   effectiveTargetId: string | null
   fallback: KhalaModelPreferenceFallback
@@ -50,6 +91,67 @@ const FALLBACK_VALUES: ReadonlySet<string> = new Set([
   "default_unavailable",
 ])
 
+const FALLBACK_REASON_VALUES: ReadonlySet<string> = new Set([
+  "account_exhausted",
+  "account_rate_limited",
+  "account_requires_reauth",
+  "account_unavailable",
+])
+
+const parseAccountSummary = (value: unknown): KhalaModelPreferenceAccountSummary | null => {
+  if (value === null || typeof value !== "object") return null
+  const record = value as Record<string, unknown>
+  if (
+    typeof record.accountRefHash !== "string" ||
+    typeof record.label !== "string" ||
+    typeof record.ready !== "boolean"
+  ) {
+    return null
+  }
+  const reason = typeof record.reason === "string" && FALLBACK_REASON_VALUES.has(record.reason) ? record.reason : undefined
+  return {
+    accountRefHash: record.accountRefHash,
+    label: record.label,
+    ready: record.ready,
+    reason: reason as KhalaAutoExecutionTargetFallbackReason | undefined,
+  }
+}
+
+const parseAccountSummaries = (value: unknown): ReadonlyArray<KhalaModelPreferenceAccountSummary> => {
+  if (!Array.isArray(value)) return []
+  const parsed = value.map(parseAccountSummary)
+  return parsed.every((account): account is KhalaModelPreferenceAccountSummary => account !== null) ? parsed : []
+}
+
+const parseAutoResolution = (value: unknown): KhalaAutoExecutionTargetResolution | null => {
+  if (value === null || typeof value !== "object") return null
+  const record = value as Record<string, unknown>
+  if (typeof record.usedFallback !== "boolean" || !Array.isArray(record.events)) return null
+  const events: Array<KhalaAutoExecutionTargetFallbackEvent> = []
+  for (const raw of record.events) {
+    if (raw === null || typeof raw !== "object") return null
+    const event = raw as Record<string, unknown>
+    if (
+      typeof event.type !== "string" ||
+      !FALLBACK_REASON_VALUES.has(event.type) ||
+      typeof event.targetId !== "string" ||
+      (typeof event.nextTargetId !== "string" && event.nextTargetId !== null)
+    ) {
+      return null
+    }
+    events.push({
+      nextTargetId: event.nextTargetId,
+      targetId: event.targetId,
+      type: event.type as KhalaAutoExecutionTargetFallbackReason,
+    })
+  }
+  return {
+    effectiveTargetId: typeof record.effectiveTargetId === "string" ? record.effectiveTargetId : null,
+    events,
+    usedFallback: record.usedFallback,
+  }
+}
+
 const parsePreference = (body: unknown): KhalaModelPreference | null => {
   if (body === null || typeof body !== "object") return null
   const record = body as Record<string, unknown>
@@ -72,6 +174,9 @@ const parsePreference = (body: unknown): KhalaModelPreference | null => {
   return {
     availableModelIds,
     availableTargetIds,
+    autoResolution: "autoResolution" in record ? parseAutoResolution(record.autoResolution) : null,
+    claudeAccounts: parseAccountSummaries(record.claudeAccounts),
+    codexAccounts: parseAccountSummaries(record.codexAccounts),
     effectiveModelId,
     effectiveTargetId: typeof record.effectiveTargetId === "string" ? record.effectiveTargetId : effectiveModelId,
     fallback: record.fallback as KhalaModelPreferenceFallback,
