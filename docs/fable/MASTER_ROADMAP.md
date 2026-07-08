@@ -1,6 +1,6 @@
 # MASTER ROADMAP — Khala Code MVP (Tested, Submitted) → Sarah → Codex → AI Employees → the Suite
 
-Date: 2026-07-08 (rev 4.3 — fresh status reconciliation against `main`; done/not-done marked from a code+issue audit, not intent)
+Date: 2026-07-08 (rev 4.4 — WEB-1 Phase 1 launch-ui replica reconciled against `main`; done/not-done marked from a code+issue audit, not intent)
 Status: **the single consolidated execution roadmap.** This document owns
 top-level sequencing across everything designed in the 2026-07-07 strategy
 set and its predecessors. The source docs remain authoritative for their
@@ -76,12 +76,19 @@ quick-wins.** What is genuinely DONE vs what is only DIRECTION:
   credential law (`provider_credential_policy: broker_only`, never-pooled/
   never-resale, fail-closed placement, scanner coverage).
 
+**Build-forward / owner-gated (open; partially landed as code):**
+- **WEB-1 (`#8565`) sales landing — Phase 1 replica landed on main.**
+  Commit `7899f3ec15` ports the Launch UI homepage replica into
+  `apps/openagents.com/apps/start`: vendored Launch UI components/sections,
+  dark-only shell, blue glow + minimal radius tokens, placeholder dashboard
+  assets, MIT notice, route tests, and Start funnel budget. Verified at landing:
+  Start typecheck/test/budget and full `bun run --cwd apps/openagents.com
+  check:deploy` green. Still open: Phase 2 OpenAgents adaptation (brand/nav,
+  owner-approved sales copy, live counters, credit-tier pricing, CTAs to
+  business intake + Sarah), Phase 3 Cloud Run preview, owner cutover decision,
+  and production route flip/rollback notes.
+
 **Direction only (open; NOT started as code):**
-- **WEB-1 (`#8565`) sales landing — 0 lines of code on main.** `launch-ui` has
-  no hits in the tree and the reference clone is absent; the only "landing"
-  route is the old review-only two-door preview. The rev 4.2 directive doc
-  landed; the entire build (port launch-ui → theme → wire counters/pricing/CTAs
-  → route to prod) plus owner copy sign-off remain.
 - **OB-1..6 (`#8558–#8563`) outbound engine — all OPEN, no Sarah engine on
   main.** Sarah lives in the separate `OpenAgentsInc/sarah` repo. A pre-existing
   *operator-assisted* CRM/pipeline substrate exists in-repo
@@ -223,22 +230,27 @@ system of record (CRM, credits, checkout, receipts, promise registry);
 the sarah repo calls its APIs and never re-implements them.
 
 **Track A (revised 2026-07-08, HIGH PRIORITY) — the new openagents.com
-sales landing, built from launch-ui.** **STATUS (2026-07-08): NOT STARTED as
-code** — only the directive (this doc) landed; `launch-ui` has zero hits on
-`main`, the reference clone is absent, and the sole "landing" route is the old
-review-only two-door preview. The entire build below plus owner copy sign-off
-remain. Owner directive: switch the
-openagents.com landing/marketing site to a sales-focused site built from
+sales landing, built from launch-ui.** **STATUS (2026-07-08): PHASE 1 LANDED
+AS CODE** — commit `7899f3ec15` ports the exact Launch UI homepage replica into
+the TanStack Start app at `apps/openagents.com/apps/start`, including the
+vendored Launch UI components/sections, blue glow + minimal radius token set,
+dark-only shell, placeholder dashboard assets, MIT attribution, route tests,
+and Start funnel budget. The replica is intentionally still Launch UI
+placeholder content; Phase 2 OpenAgents adaptation plus owner copy sign-off,
+live public counters, credit-tier pricing, production CTAs, Cloud Run preview,
+and owner-approved cutover remain. Owner directive: switch the
+openagents.com landing/marketing site from this replica milestone to a
+sales-focused site built from
 **launch-ui** (`projects/repos/launch-ui` — MIT; shadcn/ui + Tailwind 4 +
 React 19; a complete landing kit: hero/navbar/pricing/stats/logos/items/
 faq/cta/footer; only **4 files** import `next/*`, so the TanStack Start
-port is link/image swaps, not a rewrite). This is the **birth of the
-TanStack Start openagents.com app**: launch-ui components themed to
+port is link/image swaps, not a rewrite). Phase 1 establishes the
+**TanStack Start openagents.com app**: launch-ui components themed to
 Protoss blue (one theme — next-themes/mode-toggle dropped), the stats
 section wired to the LIVE public counters, pricing wired to the credit
 tiers, CTAs → business intake + **"Talk to Sarah"**, copy through the
 promise-registry gates with owner sign-off before the switch. The new
-app serves the landing in production (Cloud Run) while existing product
+app will serve the landing in production (Cloud Run) while existing product
 routes stay on the current worker until absorbed route-by-route — no new
 legacy Foldkit surfaces, per the standing ONE-UI decision. Filed as
 **#8565**. Synergy: sarah#15's TanStack port shares the same
