@@ -263,8 +263,8 @@ describe("contract khala_mobile.repo_picker.rn_component_mount_coverage.v1 — R
     const [calledUrl] = fetchSpy.mock.calls[0] as unknown as Array<string>
     expect(calledUrl).toContain("/api/mobile/repos")
 
-    const widgetsRow = findByProp(renderer.root, "accessibilityLabel", "acme/widgets")
-    const docsRow = findByProp(renderer.root, "accessibilityLabel", "acme/docs")
+    const widgetsRow = findByProp(renderer.root, "accessibilityLabel", "acme/widgets, public")
+    const docsRow = findByProp(renderer.root, "accessibilityLabel", "acme/docs, public")
     expect(widgetsRow.length).toBe(1)
     expect(docsRow.length).toBe(1)
   })
@@ -278,15 +278,15 @@ describe("contract khala_mobile.repo_picker.rn_component_mount_coverage.v1 — R
       ;(searchInputs[0]!.props as { onChangeText: (text: string) => void }).onChangeText("docs")
     })
 
-    expect(findByProp(renderer.root, "accessibilityLabel", "acme/docs").length).toBe(1)
-    expect(findByProp(renderer.root, "accessibilityLabel", "acme/widgets").length).toBe(0)
+    expect(findByProp(renderer.root, "accessibilityLabel", "acme/docs, public").length).toBe(1)
+    expect(findByProp(renderer.root, "accessibilityLabel", "acme/widgets, public").length).toBe(0)
   })
 
   test("selecting a repo calls the real runtime's bindThreadRepo() with the picked repo and threadId", async () => {
     bindThreadRepoMock.mockClear()
     const renderer = await mountRepoPicker()
 
-    const widgetsRow = findByProp(renderer.root, "accessibilityLabel", "acme/widgets")[0]!
+    const widgetsRow = findByProp(renderer.root, "accessibilityLabel", "acme/widgets, public")[0]!
     await act(async () => {
       await (widgetsRow.props as { onPress: () => Promise<void> }).onPress()
     })

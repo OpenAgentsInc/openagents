@@ -40,13 +40,19 @@ const RepoRow = ({
   repo: KhalaMobileRepository
 }) => {
   const { themed } = useAppTheme()
+  const visibilityLabel = repo.private ? "private" : "public"
   return (
     <ListItem
-      accessibilityLabel={repo.fullName}
+      // Announce visibility in the accessible label: a ListItem with an
+      // accessibilityLabel collapses its children, so the "public"/"private"
+      // RightComponent text would otherwise never reach the accessibility tree
+      // (screen readers or the mobile visual harness). Keeping it here makes the
+      // visibility a first-class, testable part of each real repo row.
+      accessibilityLabel={`${repo.fullName}, ${visibilityLabel}`}
       disabled={binding === "pending"}
       onPress={onPress}
       TextProps={{ weight: "medium", size: "sm" }}
-      RightComponent={<Text size="xs" style={themed($meta)} text={repo.private ? "private" : "public"} />}
+      RightComponent={<Text size="xs" style={themed($meta)} text={visibilityLabel} />}
     >
       {repo.fullName}
       {repo.description ? "\n" : ""}
