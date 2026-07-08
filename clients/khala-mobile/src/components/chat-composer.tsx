@@ -12,7 +12,9 @@ import { usePushToTalk } from "../native/use-push-to-talk"
 import { registerForPushNotificationsAsync } from "../push/push-notifications-client"
 import {
   buildAppendUserMessageIntentArgs,
+  buildContinueTurnIntentArgs,
   buildInterruptTurnIntentArgs,
+  buildRetryTurnIntentArgs,
   buildStartTurnIntentArgs,
   chatMessageBodyRef,
   DEFAULT_RUNTIME_LANE,
@@ -57,6 +59,7 @@ export type ChatComposerAppendMessage = (
 type ChatComposerProps = Readonly<{
   threadId: string
   activeTurn: RuntimeTurnEntity | undefined
+  recoverableTurn?: RuntimeTurnEntity | undefined
   /** Optimistic chat-message append (the sync runtime's overlay-backed
    * `appendMessage`). Bug fix (2026-07-07: "sending a message does nothing"):
    * the chat message is written through the OVERLAY here so it shows in the
@@ -109,11 +112,13 @@ export const ChatComposer = ({
   onQuoteConsumed,
   push,
   quoteRequest,
+  recoverableTurn,
   threadId
 }: ChatComposerProps) => {
   const { theme, themed } = useAppTheme()
   const [text, setText] = useState("")
   const [sending, setSending] = useState(false)
+  const [steering, setSteering] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [mode, setMode] = useState<SendMode>("steer")
   const [selectedExecutionTarget, setSelectedExecutionTarget] = useState<RuntimeControlIntentTarget>(
@@ -165,7 +170,7 @@ export const ChatComposer = ({
   // a control intent would reference a chat message that was never created,
   // which is exactly the "sending does nothing" bug. Disabled (not silently
   // no-op) while the runtime is still opening.
-  const canSend = trimmed.length > 0 && !sending && appendMessage !== undefined
+  const canSend = trimmed.length > 0 && !sending && !steering && appendMessage !== undefined
 
   const sendMessage = async (sendMode: SendMode) => {
     if (!canSend) return
@@ -236,9 +241,45 @@ export const ChatComposer = ({
     }
   }
 
+  const controlRecoverableTurn = async (kind: "continue" | "retry") => {
+    if (recoverableTurn === undefined || sending || steering) return
+    setSteering(true)
+    setErrorMessage(null)
+    const nowIso = new Date().toISOString()
+    const nonce = makeSafeRef("nonce")
+    const args =
+      kind === "continue"
+        ? buildContinueTurnIntentArgs({
+            nonce,
+            nowIso,
+            target: { lane: recoverableTurn.lane },
+            threadId,
+            turnId: recoverableTurn.turnId
+          })
+        : buildRetryTurnIntentArgs({
+            nonce,
+            nowIso,
+            target: { lane: recoverableTurn.lane },
+            threadId,
+            turnId: recoverableTurn.turnId
+          })
+    try {
+      await push([
+        {
+          args,
+          name: kind === "continue" ? "runtime.continueTurn" : "runtime.retryTurn"
+        }
+      ])
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : String(error))
+    } finally {
+      setSteering(false)
+    }
+  }
+
   const stopActiveTurn = async () => {
-    if (activeTurn === undefined || sending) return
-    setSending(true)
+    if (activeTurn === undefined || sending || steering) return
+    setSteering(true)
     setErrorMessage(null)
     try {
       await push([
@@ -256,7 +297,7 @@ export const ChatComposer = ({
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : String(error))
     } finally {
-      setSending(false)
+      setSteering(false)
     }
   }
 
@@ -328,6 +369,35 @@ export const ChatComposer = ({
         </View>
       )}
       {showOptions ? optionRow : null}
+      {activeTurn === undefined && recoverableTurn !== undefined ? (
+        <View style={themed($resumeRow)}>
+          <View style={$resumeCopy}>
+            <Text
+              size="xxs"
+              style={themed($statusLabel)}
+              text={recoverableTurn.status === "failed" ? "last turn failed" : "turn interrupted"}
+            />
+          </View>
+          <Pressable
+            accessibilityLabel="Resume turn"
+            accessibilityRole="button"
+            disabled={steering}
+            style={themed($resumeButton)}
+            onPress={() => void controlRecoverableTurn("continue")}
+          >
+            <Text size="xxs" style={themed($pillLabel)} text="Resume" />
+          </Pressable>
+          <Pressable
+            accessibilityLabel="Retry turn"
+            accessibilityRole="button"
+            disabled={steering}
+            style={themed($resumeButton)}
+            onPress={() => void controlRecoverableTurn("retry")}
+          >
+            <Text size="xxs" style={themed($pillLabel)} text="Retry" />
+          </Pressable>
+        </View>
+      ) : null}
       <View style={themed($inputPill)}>
         <Pressable
           accessibilityLabel={showOptions ? "Hide composer options" : "Show composer options"}
@@ -378,11 +448,11 @@ export const ChatComposer = ({
             accessibilityLabel="Stop"
             accessibilityRole="button"
             style={[themed($sendButton), { backgroundColor: theme.colors.text }]}
-            disabled={sending}
+            disabled={steering}
             highlightColor="rgba(0, 0, 0, 0.14)"
             onPress={stopActiveTurn}
           >
-            {sending ? (
+            {steering ? (
               <ActivityIndicator color={theme.colors.background} size={24} />
             ) : (
               <Text style={[$stopGlyph, { color: theme.colors.background }]}>■</Text>
@@ -427,6 +497,34 @@ const $optionRowWrap: ThemedStyle<ViewStyle> = ({ spacing }) => ({
   gap: spacing.xs,
   marginBottom: spacing.xs,
   paddingHorizontal: spacing.xxxs
+})
+
+const $resumeRow: ThemedStyle<ViewStyle> = ({ colors, spacing }) => ({
+  flexDirection: "row",
+  alignItems: "center",
+  gap: spacing.xs,
+  marginBottom: spacing.xs,
+  borderRadius: 8,
+  borderWidth: 1,
+  borderColor: colors.palette.neutral400,
+  backgroundColor: colors.palette.neutral200,
+  paddingHorizontal: spacing.xs,
+  paddingVertical: spacing.xs
+})
+
+const $resumeCopy: ViewStyle = {
+  flex: 1
+}
+
+const $resumeButton: ThemedStyle<ViewStyle> = ({ colors, spacing }) => ({
+  alignItems: "center",
+  borderRadius: 999,
+  borderWidth: 1,
+  borderColor: colors.tint,
+  backgroundColor: colors.palette.neutral300,
+  minWidth: 76,
+  paddingHorizontal: spacing.sm,
+  paddingVertical: spacing.xs
 })
 
 const $pillLabel: ThemedStyle<TextStyle> = ({ colors }) => ({

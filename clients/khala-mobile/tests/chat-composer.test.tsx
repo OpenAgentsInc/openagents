@@ -244,6 +244,7 @@ type ChatComposerTestProps = Readonly<{
     target: Readonly<{ executionTargetId?: string; lane: RuntimeTurnEntity["lane"] }>
   }>
   push: (mutations: ReadonlyArray<{ name: string; args: unknown }>) => Promise<unknown>
+  recoverableTurn?: RuntimeTurnEntity | undefined
 }>
 
 /** Mounts the real `ChatComposer` inside `act`, then flushes one more
@@ -420,6 +421,57 @@ describe("contract khala_mobile.composer.rn_component_mount_coverage.v1 — Chat
     const calls = push.mock.calls as unknown as Array<Array<ReadonlyArray<{ name: string; args: unknown }>>>
     const mutations = calls[0]![0]!
     expect(mutations.map(m => m.name)).toEqual(["runtime.interruptTurn"])
+  })
+
+  // Oracle for khala_mobile.composer.resume_retry_controls_use_same_turn_lane.v1
+  test("interrupted recoverable turn shows Resume and calls runtime.continueTurn on the same lane", async () => {
+    const push = mock(() => Promise.resolve())
+    const renderer = await mountComposer({
+      activeTurn: undefined,
+      push,
+      recoverableTurn: makeTurn({ lane: "claude_pylon", status: "interrupted", turnId: "turn_recover" })
+    })
+
+    const resumeButtons = findByProp(renderer.root, "accessibilityLabel", "Resume turn")
+    expect(resumeButtons.length).toBe(1)
+    await act(async () => {
+      await (resumeButtons[0]!.props as { onPress: () => Promise<void> }).onPress()
+    })
+
+    expect(push).toHaveBeenCalledTimes(1)
+    const calls = push.mock.calls as unknown as Array<Array<ReadonlyArray<{ name: string; args: unknown }>>>
+    const mutations = calls[0]![0]!
+    expect(mutations.map(m => m.name)).toEqual(["runtime.continueTurn"])
+    expect(mutations[0]!.args).toMatchObject({
+      kind: "turn.continue",
+      target: { lane: "claude_pylon" },
+      turnId: "turn_recover"
+    })
+  })
+
+  test("failed recoverable turn shows Retry and calls runtime.retryTurn on the same lane", async () => {
+    const push = mock(() => Promise.resolve())
+    const renderer = await mountComposer({
+      activeTurn: undefined,
+      push,
+      recoverableTurn: makeTurn({ lane: "codex_app_server", status: "failed", turnId: "turn_failed" })
+    })
+
+    const retryButtons = findByProp(renderer.root, "accessibilityLabel", "Retry turn")
+    expect(retryButtons.length).toBe(1)
+    await act(async () => {
+      await (retryButtons[0]!.props as { onPress: () => Promise<void> }).onPress()
+    })
+
+    expect(push).toHaveBeenCalledTimes(1)
+    const calls = push.mock.calls as unknown as Array<Array<ReadonlyArray<{ name: string; args: unknown }>>>
+    const mutations = calls[0]![0]!
+    expect(mutations.map(m => m.name)).toEqual(["runtime.retryTurn"])
+    expect(mutations[0]!.args).toMatchObject({
+      kind: "turn.retry",
+      target: { lane: "codex_app_server" },
+      turnId: "turn_failed"
+    })
   })
 
   test("each turn status label renders correctly (queued / running / waiting_for_input)", async () => {

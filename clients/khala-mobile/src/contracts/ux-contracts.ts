@@ -351,6 +351,50 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
     },
     {
       authorityBoundary:
+        "Binds the mobile control-intent layer and mounted composer controls for resuming or retrying an existing turn. It does not prove a live Agent Computer successfully drains the requeued turn; CX-8 live phone receipts own that proof.",
+      blockerRefs: [],
+      contractId: "khala_mobile.composer.resume_retry_controls_use_same_turn_lane.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "clients/khala-mobile/src/sync/khala-runtime-compose-core.ts",
+        "clients/khala-mobile/src/components/chat-composer.tsx",
+        "clients/khala-mobile/tests/khala-runtime-compose-core.test.ts",
+        "clients/khala-mobile/tests/chat-composer.test.tsx",
+        "docs/khala-mobile/khala-mobile-ux-contract.md",
+      ],
+      oracles: [
+        {
+          description:
+            "Resume builds a runtime.continueTurn intent and Retry builds a runtime.retryTurn intent for the existing turn id, targeting that turn's own lane and carrying no raw body text.",
+          id: "resume_retry_use_same_turn_lane.unit",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "clients/khala-mobile/tests/ux-contracts.test.ts",
+        },
+        {
+          description:
+            "Mounted ChatComposer renders Resume for an interrupted recoverable turn and Retry for a failed recoverable turn; pressing each real control calls the corresponding runtime mutator with the same turn id and lane.",
+          id: "composer_resume_retry_buttons_call_runtime_mutators.unit",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "clients/khala-mobile/tests/chat-composer.test.tsx",
+        },
+      ],
+      productArea: "chat composer",
+      source: {
+        channel: "khala-code-session",
+        statedBy: "operator-agent",
+        statedOn: "2026-07-08",
+      },
+      state: "enforced",
+      statement:
+        "After a phone interrupt or turn failure, the composer exposes first-class Resume and Retry controls that requeue the same turn on its original lane, rather than forcing the user to start an unrelated new turn.",
+      surface: "khala-mobile",
+      verification:
+        "bun test tests/ux-contracts.test.ts tests/chat-composer.test.tsx inside clients/khala-mobile; runs in the package test glob and the repo test:khala-mobile sweep before pushes to main.",
+    },
+    {
+      authorityBoundary:
         "This is not a filter applied to ordinary chat messages; it binds only the typed codex_agent_task delegation-prompt path documented in the repo-root Khala -> Pylon -> Codex runbook. It also binds only pattern-detectable secret shapes, not a guarantee that no private material can ever pass validation.",
       blockerRefs: [],
       contractId: "khala_mobile.security.delegation_prompt_rejects_secrets_and_local_paths.v1",
@@ -1729,5 +1773,5 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
     },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-07.10",
+  version: "2026-07-08.1",
 }

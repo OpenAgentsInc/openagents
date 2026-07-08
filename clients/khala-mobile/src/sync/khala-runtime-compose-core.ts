@@ -14,6 +14,11 @@ const ACTIVE_TURN_STATUSES: ReadonlySet<string> = new Set([
   "waiting_for_input"
 ])
 
+const RECOVERABLE_TURN_STATUSES: ReadonlySet<string> = new Set([
+  "failed",
+  "interrupted"
+])
+
 /** The most recent turn for a thread that hasn't settled yet, or undefined
  * if the thread is idle. Turn ids are UUIDv7 (time-ordered), so lexicographic
  * sort gives chronological order. */
@@ -24,6 +29,20 @@ export const findActiveTurn = (
   for (let i = sorted.length - 1; i >= 0; i--) {
     const turn = sorted[i]
     if (turn !== undefined && ACTIVE_TURN_STATUSES.has(turn.status)) return turn
+  }
+  return undefined
+}
+
+/** The most recent turn that can be resumed/retried from the phone after an
+ * interrupt or provider/runtime failure. Completed and closed turns are final;
+ * active turns are handled by `findActiveTurn`. */
+export const findRecoverableTurn = (
+  turns: ReadonlyArray<RuntimeTurnEntity>
+): RuntimeTurnEntity | undefined => {
+  const sorted = [...turns].sort((a, b) => a.turnId.localeCompare(b.turnId))
+  for (let i = sorted.length - 1; i >= 0; i--) {
+    const turn = sorted[i]
+    if (turn !== undefined && RECOVERABLE_TURN_STATUSES.has(turn.status)) return turn
   }
   return undefined
 }
@@ -86,7 +105,7 @@ export type RuntimeControlIntentTarget = Readonly<{
 export type RuntimeControlIntentArgs = Readonly<{
   schema: "openagents.khala_runtime_control_intent.v1"
   intentId: string
-  kind: "turn.start" | "message.append" | "turn.interrupt"
+  kind: "turn.start" | "message.append" | "turn.interrupt" | "turn.continue" | "turn.retry"
   threadId: string
   turnId?: string
   messageId?: string
@@ -181,6 +200,48 @@ export const buildInterruptTurnIntentArgs = (input: {
   idempotencyKey: `idem.interrupt.${input.turnId}.${input.nonce}`,
   intentId: `intent.interrupt.${input.turnId}.${input.nonce}`,
   kind: "turn.interrupt",
+  origin: RUNTIME_ORIGIN,
+  redactionClass: "private_ref",
+  schema: "openagents.khala_runtime_control_intent.v1",
+  target: input.target,
+  threadId: input.threadId,
+  turnId: input.turnId,
+  visibility: "private"
+})
+
+export const buildContinueTurnIntentArgs = (input: {
+  threadId: string
+  turnId: string
+  nowIso: string
+  nonce: string
+  target: RuntimeControlIntentTarget
+}): RuntimeControlIntentArgs => ({
+  causalityRefs: [],
+  createdAt: input.nowIso,
+  idempotencyKey: `idem.continue.${input.turnId}.${input.nonce}`,
+  intentId: `intent.continue.${input.turnId}.${input.nonce}`,
+  kind: "turn.continue",
+  origin: RUNTIME_ORIGIN,
+  redactionClass: "private_ref",
+  schema: "openagents.khala_runtime_control_intent.v1",
+  target: input.target,
+  threadId: input.threadId,
+  turnId: input.turnId,
+  visibility: "private"
+})
+
+export const buildRetryTurnIntentArgs = (input: {
+  threadId: string
+  turnId: string
+  nowIso: string
+  nonce: string
+  target: RuntimeControlIntentTarget
+}): RuntimeControlIntentArgs => ({
+  causalityRefs: [],
+  createdAt: input.nowIso,
+  idempotencyKey: `idem.retry.${input.turnId}.${input.nonce}`,
+  intentId: `intent.retry.${input.turnId}.${input.nonce}`,
+  kind: "turn.retry",
   origin: RUNTIME_ORIGIN,
   redactionClass: "private_ref",
   schema: "openagents.khala_runtime_control_intent.v1",

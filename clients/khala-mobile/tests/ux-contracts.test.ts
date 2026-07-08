@@ -23,6 +23,8 @@ import {
 } from "../src/native/push-to-talk-core"
 import {
   buildAppendUserMessageIntentArgs,
+  buildContinueTurnIntentArgs,
+  buildRetryTurnIntentArgs,
   buildStartTurnIntentArgs,
 } from "../src/sync/khala-runtime-compose-core"
 import { validateDelegationPrompt } from "../src/security/delegation-prompt"
@@ -157,6 +159,33 @@ describe("contract khala_mobile.composer.steer_targets_active_turn_lane_not_idle
     })
     expect(queueArgs.target).toEqual({ lane: "claude_pylon" })
     expect(queueArgs.kind).toBe("turn.start")
+  })
+})
+
+// Oracle for khala_mobile.composer.resume_retry_controls_use_same_turn_lane.v1
+describe("contract khala_mobile.composer.resume_retry_controls_use_same_turn_lane.v1", () => {
+  test("resume_retry_use_same_turn_lane.unit — continue and retry requeue the same turn on its own lane", () => {
+    const continueArgs = buildContinueTurnIntentArgs({
+      nonce: "resume1",
+      nowIso: "2026-07-08T00:00:00.000Z",
+      target: { lane: "claude_pylon" },
+      threadId: "thread1",
+      turnId: "turn1",
+    })
+    expect(continueArgs.kind).toBe("turn.continue")
+    expect(continueArgs.turnId).toBe("turn1")
+    expect(continueArgs.target).toEqual({ lane: "claude_pylon" })
+
+    const retryArgs = buildRetryTurnIntentArgs({
+      nonce: "retry1",
+      nowIso: "2026-07-08T00:01:00.000Z",
+      target: { lane: "codex_app_server" },
+      threadId: "thread1",
+      turnId: "turn2",
+    })
+    expect(retryArgs.kind).toBe("turn.retry")
+    expect(retryArgs.turnId).toBe("turn2")
+    expect(retryArgs.target).toEqual({ lane: "codex_app_server" })
   })
 })
 

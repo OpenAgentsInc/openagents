@@ -44,6 +44,7 @@ import {
   buildStartTurnIntentArgs,
   chatMessageBodyRef,
   findActiveTurn,
+  findRecoverableTurn,
   mostRecentTurnLane,
 } from "../sync/khala-runtime-compose-core"
 import { sortByKeyAsc } from "../sync/khala-sync-entities-core"
@@ -161,6 +162,7 @@ export const ThreadMessagesScreen = ({ navigation, route }: ThreadMessagesScreen
   })
   const boundRepo = threadEntityState.items[0]?.repoBinding
   const activeTurn = useMemo(() => findActiveTurn(turnState.items), [turnState.items])
+  const recoverableTurn = useMemo(() => findRecoverableTurn(turnState.items), [turnState.items])
   const defaultLane = useMemo(() => mostRecentTurnLane(turnState.items), [turnState.items])
   const push = useKhalaSyncPush()
   const syncRuntime = useKhalaMobileSyncRuntime()
@@ -380,6 +382,7 @@ export const ThreadMessagesScreen = ({ navigation, route }: ThreadMessagesScreen
             onQuoteConsumed={() => setQuoteRequest(undefined)}
             push={push}
             quoteRequest={quoteRequest}
+            recoverableTurn={activeTurn === undefined ? recoverableTurn : undefined}
             threadId={threadId}
           />
         )}

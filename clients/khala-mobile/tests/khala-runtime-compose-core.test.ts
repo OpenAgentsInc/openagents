@@ -4,10 +4,13 @@ import type { RuntimeTurnEntity } from "@openagentsinc/khala-sync"
 import {
   buildAppendUserMessageIntentArgs,
   buildChatAppendMessageArgs,
+  buildContinueTurnIntentArgs,
   buildInterruptTurnIntentArgs,
+  buildRetryTurnIntentArgs,
   buildStartTurnIntentArgs,
   chatMessageBodyRef,
   findActiveTurn,
+  findRecoverableTurn,
   mostRecentTurnLane
 } from "../src/sync/khala-runtime-compose-core"
 
@@ -48,6 +51,21 @@ describe("findActiveTurn", () => {
       turn({ turnId: "turn0003", status: "queued" })
     ]
     expect(findActiveTurn(turns)?.turnId).toBe("turn0003")
+  })
+})
+
+describe("findRecoverableTurn", () => {
+  test("returns undefined when no interrupted or failed turn exists", () => {
+    expect(findRecoverableTurn([turn({ status: "completed" }), turn({ status: "closed", turnId: "turn0002" })])).toBeUndefined()
+  })
+
+  test("returns the latest interrupted or failed turn by turn id order", () => {
+    const turns = [
+      turn({ status: "interrupted", turnId: "turn0001" }),
+      turn({ status: "completed", turnId: "turn0002" }),
+      turn({ status: "failed", turnId: "turn0003" })
+    ]
+    expect(findRecoverableTurn(turns)?.turnId).toBe("turn0003")
   })
 })
 
@@ -191,5 +209,37 @@ describe("buildInterruptTurnIntentArgs", () => {
       turnId: "turn0001"
     })
     expect(a.idempotencyKey).not.toBe(b.idempotencyKey)
+  })
+})
+
+describe("buildContinueTurnIntentArgs", () => {
+  test("builds a turn.continue control intent for the same turn and lane", () => {
+    const args = buildContinueTurnIntentArgs({
+      nonce: "resume1",
+      nowIso: "2026-01-01T00:03:00Z",
+      target: { lane: "codex_app_server" },
+      threadId: "t1",
+      turnId: "turn0001"
+    })
+    expect(args.kind).toBe("turn.continue")
+    expect(args.turnId).toBe("turn0001")
+    expect(args.target).toEqual({ lane: "codex_app_server" })
+    expect(args.bodyRef).toBeUndefined()
+  })
+})
+
+describe("buildRetryTurnIntentArgs", () => {
+  test("builds a turn.retry control intent for the same turn and lane", () => {
+    const args = buildRetryTurnIntentArgs({
+      nonce: "retry1",
+      nowIso: "2026-01-01T00:04:00Z",
+      target: { lane: "claude_pylon" },
+      threadId: "t1",
+      turnId: "turn0001"
+    })
+    expect(args.kind).toBe("turn.retry")
+    expect(args.turnId).toBe("turn0001")
+    expect(args.target).toEqual({ lane: "claude_pylon" })
+    expect(args.bodyRef).toBeUndefined()
   })
 })
