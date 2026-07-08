@@ -104,9 +104,23 @@ the package — verify with the cloudrun bundle build, not just typecheck.
 
 ## Recovery evidence
 
-See the canary lines following the prod deploy in
-`~/work/.khala-heartbeat/canary.jsonl` (state=up, http=200, non-zero token
-delta) — appended by the on-host canary loop after the fix went live.
+Fix commit `9bf6be5191` on `main`; staging revision
+`openagents-monolith-staging-00023-88t` (healthz 200), production revision
+`openagents-monolith-00044-hmj` serving 100% from 2026-07-08 ~22:59Z.
+
+Immediately after the prod rollout, `POST /api/v1/chat/completions` returned
+200 with `"supply_lane":"fireworks"` (`deepseek-v4-flash`) — the request
+overflowed past the dead OpenRouter lane exactly as intended. The streaming
+path also returned 200 with SSE deltas.
+
+Three consecutive official canary runs (`scripts/khala-canary.sh`, exit 0,
+public counter movement required and observed):
+
+```text
+{"ts":"2026-07-08T23:02:25Z","kind":"canary","state":"up","http":200,"counterDelta":842,...,"detail":"ok"}
+{"ts":"2026-07-08T23:02:39Z","kind":"canary","state":"up","http":200,"counterDelta":842,...,"detail":"ok"}
+{"ts":"2026-07-08T23:02:46Z","kind":"canary","state":"up","http":200,"counterDelta":842,...,"detail":"ok"}
+```
 
 ## Lessons
 
