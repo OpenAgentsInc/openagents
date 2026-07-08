@@ -76,12 +76,62 @@ components and the app on top don't change at all.
 Effect Native is an **owner decision as of 2026-07-08** and is being
 adopted greenfield-first: new surfaces are built on it immediately, while
 existing, shipping apps migrate onto it gradually — never rewritten just to
-move them. The full design, rationale, the reference material that inspired
-it, and the phased plan to convert every surface live in:
+move them.
 
-- [`2026-07-08-effect-native-one-ui-substrate-analysis.md`](./2026-07-08-effect-native-one-ui-substrate-analysis.md)
-  — the decision, architecture, and full-conversion roadmap (phases
-  EN-0…EN-9).
+## Documents in this folder
+
+- **[Decision, architecture & roadmap](./2026-07-08-effect-native-one-ui-substrate-analysis.md)**
+  — the owner decision to pivot, the three-layer architecture (typed
+  component set → Effect runtime → swappable renderers), the greenfield-first
+  vs migrate-on-touch discipline, a ruthlessly-small v0, and the phased
+  full-conversion roadmap **EN-0…EN-9** (foundation → greenfield web →
+  catalog → mobile → web product → desktop → canvas → native renderers →
+  terminal → governance). *The main doc; read first.*
+
+- **[Foldkit vs Effect Native](./2026-07-08-foldkit-vs-effect-native.md)**
+  — Foldkit is our Elm/MVU Effect framework with a *fixed DOM renderer* and
+  a *whole-app* mandate; Effect Native is a *renderer-agnostic component
+  substrate*. Different layers. **Learn from Foldkit:** interactions-as-data
+  (not callbacks), impossible-states-unrepresentable via Schema, exhaustive
+  match, the Command/Subscription/Mount effect taxonomy, and **Ports** as the
+  typed embed/migration boundary. **Diverge on:** renderer abstraction, the
+  component-not-app unit, incremental adoption, tokens + a prop-driven
+  catalog. Names a real option — host Effect Native's web surface *inside*
+  Foldkit via Ports to reuse its mature rendering.
+
+- **[React Native vs Effect Native](./2026-07-08-react-native-vs-effect-native.md)**
+  — RN is two things fused: an excellent *native rendering engine*
+  (Fabric/Yoga/JSI) **and** the *React programming model*. They separate
+  cleanly (RN's own out-of-tree seam proves it). **Use** RN as Effect
+  Native's mobile *renderer* (adapter #1 — reuse the shipping primitives,
+  Yoga layout, host components); **leave** React as the authoring model
+  (no JSX screens, no hooks/component-local state, no callbacks-in-view).
+  Native Swift/Compose is a per-component escape, never a from-scratch
+  Fabric replacement.
+
+- **[three-effect vs Effect Native](./2026-07-08-three-effect-vs-effect-native.md)**
+  — our Three.js library is really two things: a large standalone-worthy
+  *domain library* (Verse world, VFX, HUD, Drei ports) and a small
+  *renderer kernel* (reconciler + frame clock + scope). **Split, don't
+  choose:** keep the domain library standalone; **fold the kernel into the
+  Effect Native canvas renderer** (EN-6), reimplemented on real Effect
+  `Scope`/`Stream`/`Layer`; retire its Foldkit adapter. Realizes the
+  "Effect" the name currently only claims, without rewriting the live Verse.
+
+- **[Styling: Tailwind, StyleX & native](./2026-07-08-styling-tailwind-stylex-effect-native.md)**
+  — a Tailwind *class string* is a web-coupled contract; a StyleX-style
+  *typed style object* is a portable value that lowers to CSS on web and RN
+  objects on native, with a deterministic no-cascade merge. **Verdict:**
+  adopt **StyleX's typed-object model** (the contract, merge, typed
+  tokens/themes, typed per-component style contracts) + carry **Tailwind's
+  design tokens** (the scale/taste, as typed tokens not classes) + **lower
+  per renderer**. Not class-strings-as-contract; not per-platform native CSS
+  (that forks the source of truth). NativeWind is the proof the lowering
+  works and the map of the CSS-runtime seams.
+
+The reference codebases these analyses draw on live under
+`projects/repos/` (hyperview, react-native, tailwindcss, nativewind, stylex)
+and the workspace siblings `foldkit`/`three-effect`.
 
 ## The one-sentence version
 
