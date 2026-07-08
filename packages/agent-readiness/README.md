@@ -72,6 +72,22 @@ only the `openagents.com` own-domain fixture may be rendered through
 `renderAgentReadinessCaseStudyArtifact` into a repo-persisted case-study
 artifact. PDF/attachment export is intentionally deferred.
 
+## 15-Step Assessment Rubric (OB-3, #8560)
+
+`renderAgentReadinessFifteenStepAssessment` frames an LG-1 report through the
+15-step vocabulary from Palantir's "Institutional Sovereignty in the Age of
+AI" report (analysis:
+`docs/fable/2026-07-07-palantir-institutional-sovereignty-smb-analysis.md`
+§2). Only the three steps the public probe set actually evidences (II — AI
+decision tree / discoverability, X — model-agnostic agent-legible rendering,
+XV — the business's own typed/machine-readable context) are ever scored, and
+every gap or evidence ref on a scored step is copied verbatim from the real
+`AgentReadinessReport`'s own findings. The other 12 steps (data retention,
+vendor contracts, internal permissioning, and similar) are explicitly marked
+`not_assessed_by_public_scan` — no score, no invented claim about the
+prospect. This keeps the rubric framing honest: it upgrades the sales
+language without ever asserting something the scan did not observe.
+
 ## Model-Custody Analyzer
 
 RX-8 adds a second LG-1 config for the Own-your-AI Reactor segment. It scans

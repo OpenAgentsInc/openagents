@@ -1,18 +1,21 @@
 import { describe, expect, test } from "bun:test"
 
 import {
+  AGENT_READINESS_FIFTEEN_STEP_ASSESSMENT_SCHEMA_VERSION,
   AGENT_READINESS_REPORT_RENDER_SCHEMA_VERSION,
   AGENT_READINESS_REPORT_SCHEMA_VERSION,
   MODEL_CUSTODY_ANALYZER_CONFIG,
   MODEL_CUSTODY_REPORT_SCHEMA_VERSION,
   agentReadinessTaskForDomain,
   analyzeModelCustodyPublicSurfaces,
+  decodeAgentReadinessFifteenStepAssessment,
   decodeAgentReadinessReport,
   decodeAgentReadinessReportRender,
   defaultAgentReadinessProbeSet,
   normalizeAgentReadinessTarget,
   parseAgentReadinessCliArgs,
   renderAgentReadinessCaseStudyArtifact,
+  renderAgentReadinessFifteenStepAssessment,
   renderAgentReadinessReport,
   runAgentReadinessBatch,
   scanAgentReadinessDomain,
@@ -349,6 +352,95 @@ describe("@openagentsinc/agent-readiness", () => {
       },
       generatedAt: "2026-07-04T07:00:00.000Z",
     })).toThrow(/Missing commercial context/)
+  })
+
+  test("OB-3: renders the 15-step assessment with real gaps for a failing prospect domain", async () => {
+    const report = await scanAgentReadinessDomain("broken-spa.example", {
+      fetch: fixtureFetch("spa"),
+      generatedAt: "2026-07-08T06:30:00.000Z",
+      minRequestIntervalMs: 0,
+    })
+    const assessment = renderAgentReadinessFifteenStepAssessment(report, {
+      generatedAt: "2026-07-08T07:00:00.000Z",
+    })
+
+    expect(decodeAgentReadinessFifteenStepAssessment(assessment)).toEqual(assessment)
+    expect(assessment.schemaVersion).toBe(
+      AGENT_READINESS_FIFTEEN_STEP_ASSESSMENT_SCHEMA_VERSION,
+    )
+    expect(assessment.domain).toBe("broken-spa.example")
+    expect(assessment.overallScore).toBe(report.score)
+    expect(assessment.overallGrade).toBe(report.grade)
+    expect(assessment.steps).toHaveLength(15)
+    expect(assessment.steps.map((step) => step.stepId)).toEqual([
+      "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X",
+      "XI", "XII", "XIII", "XIV", "XV",
+    ])
+
+    // Only the public-scan-backed steps (II, X, XV) are ever scored; the
+    // other 12 must be explicitly marked unassessed, never fabricated.
+    const scored = assessment.steps.filter(
+      (step) => step.status === "scored_from_public_scan",
+    )
+    const notAssessed = assessment.steps.filter(
+      (step) => step.status === "not_assessed_by_public_scan",
+    )
+    expect(scored.map((step) => step.stepId).sort()).toEqual(["II", "X", "XV"])
+    expect(notAssessed).toHaveLength(12)
+    for (const step of notAssessed) {
+      expect(step.earned).toBeNull()
+      expect(step.possible).toBeNull()
+      expect(step.gap).toBeNull()
+    }
+    expect(assessment.assessedStepCount).toBe(3)
+
+    // Every scored step's gap text must be a real finding.impact string
+    // copied from the underlying report, never templated/invented prose.
+    const realImpacts = new Set(report.findings.map((finding) => finding.impact))
+    for (const step of scored) {
+      if (step.gap !== null) {
+        expect(realImpacts.has(step.gap)).toBe(true)
+      }
+    }
+
+    // topGaps must be grounded in real findings too, capped at 3, distinct
+    // steps, each with a real evidence ref pulled from the same finding.
+    expect(assessment.topGaps.length).toBeLessThanOrEqual(3)
+    expect(assessment.topGaps.length).toBeGreaterThan(0)
+    const stepIds = assessment.topGaps.map((gap) => gap.stepId)
+    expect(new Set(stepIds).size).toBe(stepIds.length)
+    for (const gap of assessment.topGaps) {
+      expect(realImpacts.has(gap.gap)).toBe(true)
+      expect(gap.evidenceRefs.length).toBeGreaterThan(0)
+    }
+
+    expect(assessment.honestyNote).toContain("3 of the 15 steps")
+    expect(assessment.honestyNote).toContain("12 steps")
+    expect(assessment.sourceRefs).toContain("github:OpenAgentsInc/openagents#8560")
+  })
+
+  test("OB-3: a passing domain still marks the 12 unmeasurable steps honestly, never green-washing them", async () => {
+    const report = await openAgentsReportFixture()
+    const assessment = renderAgentReadinessFifteenStepAssessment(report, {
+      generatedAt: "2026-07-08T07:00:00.000Z",
+    })
+
+    expect(assessment.overallScore).toBe(100)
+    expect(assessment.overallGrade).toBe("A")
+    // No findings on a clean report -> no gaps to report, even though the
+    // rubric has 15 named steps.
+    expect(assessment.topGaps).toHaveLength(0)
+    const notAssessed = assessment.steps.filter(
+      (step) => step.status === "not_assessed_by_public_scan",
+    )
+    expect(notAssessed).toHaveLength(12)
+    const scored = assessment.steps.filter(
+      (step) => step.status === "scored_from_public_scan",
+    )
+    for (const step of scored) {
+      expect(step.earned).toBe(step.possible)
+      expect(step.gap).toBeNull()
+    }
   })
 
   test("declares the RX-8 model-custody analyzer as public-only and no-speculation", () => {

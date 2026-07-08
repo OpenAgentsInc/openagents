@@ -1952,6 +1952,378 @@ export const renderAgentReadinessCaseStudyArtifact = (
   ].join("\n")
 }
 
+// ---------------------------------------------------------------------------
+// OB-3 (#8560): the 15-step assessment rubric framing.
+//
+// Palantir's "Institutional Sovereignty in the Age of AI" report (28pp,
+// read 2026-07-07; analysis at
+// docs/fable/2026-07-07-palantir-institutional-sovereignty-smb-analysis.md
+// §2 "The 15 steps mapped to our stack") lays out 15 numbered steps
+// (I-XV) every institution can take. This renderer maps the LG-1 public
+// probe set's five real layers (discovery, identity, access, payments,
+// experience) onto that 15-step vocabulary honestly: a step is
+// "scored_from_public_scan" only when a public HTTP probe actually
+// produced evidence for it, and every gap/evidence string is copied
+// verbatim from the real report's own findings — never invented or
+// templated prose about the prospect. Steps that a domain-only public
+// scan cannot evidence (data-retention terms, vendor contracts, internal
+// permissioning, etc.) are explicitly marked
+// "not_assessed_by_public_scan" with no score and no claim.
+// ---------------------------------------------------------------------------
+
+export const AGENT_READINESS_FIFTEEN_STEP_ASSESSMENT_SCHEMA_VERSION =
+  "openagents.agent_readiness_fifteen_step_assessment.v1" as const
+
+export const AgentReadinessFifteenStepId = S.Literals([
+  "I",
+  "II",
+  "III",
+  "IV",
+  "V",
+  "VI",
+  "VII",
+  "VIII",
+  "IX",
+  "X",
+  "XI",
+  "XII",
+  "XIII",
+  "XIV",
+  "XV",
+])
+export type AgentReadinessFifteenStepId =
+  typeof AgentReadinessFifteenStepId.Type
+
+export const AgentReadinessFifteenStepAssessmentStatus = S.Literals([
+  "scored_from_public_scan",
+  "not_assessed_by_public_scan",
+])
+export type AgentReadinessFifteenStepAssessmentStatus =
+  typeof AgentReadinessFifteenStepAssessmentStatus.Type
+
+export const AgentReadinessFifteenStepItem = S.Struct({
+  stepId: AgentReadinessFifteenStepId,
+  title: S.String,
+  smbTranslation: S.String,
+  status: AgentReadinessFifteenStepAssessmentStatus,
+  sourceLayers: S.Array(AgentReadinessLayer),
+  earned: S.NullOr(S.Number),
+  possible: S.NullOr(S.Number),
+  gap: S.NullOr(S.String),
+  gapEvidenceRefs: S.Array(S.String),
+  offerFixRef: S.String,
+})
+export type AgentReadinessFifteenStepItem =
+  typeof AgentReadinessFifteenStepItem.Type
+
+export const AgentReadinessFifteenStepGap = S.Struct({
+  stepId: AgentReadinessFifteenStepId,
+  title: S.String,
+  gap: S.String,
+  offerFixRef: S.String,
+  evidenceRefs: S.Array(S.String),
+})
+export type AgentReadinessFifteenStepGap =
+  typeof AgentReadinessFifteenStepGap.Type
+
+export const AgentReadinessFifteenStepAssessment = S.Struct({
+  schemaVersion: S.Literal(
+    AGENT_READINESS_FIFTEEN_STEP_ASSESSMENT_SCHEMA_VERSION,
+  ),
+  domain: S.String,
+  generatedAt: S.String,
+  reportGeneratedAt: S.String,
+  reportStatus: S.Literals(["passed", "attention", "blocked"]),
+  overallScore: S.Number,
+  overallGrade: AgentReadinessGrade,
+  assessedStepCount: S.Number,
+  totalStepCount: S.Literal(15),
+  steps: S.Array(AgentReadinessFifteenStepItem),
+  topGaps: S.Array(AgentReadinessFifteenStepGap),
+  honestyNote: S.String,
+  sourceRefs: S.Array(S.String),
+})
+export type AgentReadinessFifteenStepAssessment =
+  typeof AgentReadinessFifteenStepAssessment.Type
+
+/** Offer-fix vocabulary reused from the LG-4/LG-5 template-family refs
+ * already declared for the sell-side lead-gen agent
+ * (`autopilot-lead-gen-agent-definition.ts`), plus one new ref for steps
+ * that require a real conversation rather than an automated scan. */
+export const AGENT_READINESS_AUDIT_CONVERSATION_OFFER_REF =
+  "template_family.lead_gen.fifteen_step_audit_conversation.v1" as const
+export const AGENT_READINESS_REPORT_LED_SEQUENCE_OFFER_REF =
+  "template_family.lead_gen.report_led_sequence.v1" as const
+export const AGENT_READINESS_REACTOR_ASSESSMENT_OFFER_REF =
+  "template_family.lead_gen.model_custody_regulated.reactor_assessment.v1" as const
+
+type FifteenStepDefinition = Readonly<{
+  stepId: AgentReadinessFifteenStepId
+  title: string
+  smbTranslation: string
+  sourceLayers: ReadonlyArray<AgentReadinessLayer>
+  offerFixRef: string
+}>
+
+const FIFTEEN_STEP_DEFINITIONS: ReadonlyArray<FifteenStepDefinition> = [
+  {
+    stepId: "I",
+    title: "Zero data retention",
+    smbTranslation:
+      "Do you know, in writing, what any AI vendor you use retains from your prompts and for how long?",
+    sourceLayers: [],
+    offerFixRef: AGENT_READINESS_AUDIT_CONVERSATION_OFFER_REF,
+  },
+  {
+    stepId: "II",
+    title: "AI decision tree",
+    smbTranslation:
+      "Can an AI agent discover and call a deterministic, documented surface for your business, or does it have to guess from a rendered page?",
+    sourceLayers: ["discovery", "access"],
+    offerFixRef: AGENT_READINESS_REPORT_LED_SEQUENCE_OFFER_REF,
+  },
+  {
+    stepId: "III",
+    title: "Three layers: compute, models, control",
+    smbTranslation:
+      "Do you know which parts of your AI stack you own outright versus rent from a provider?",
+    sourceLayers: [],
+    offerFixRef: AGENT_READINESS_AUDIT_CONVERSATION_OFFER_REF,
+  },
+  {
+    stepId: "IV",
+    title: "Misaligned incentives / extraction-prone models",
+    smbTranslation:
+      "Are you paying an AI provider per token with no visibility into what they learn from your traffic?",
+    sourceLayers: [],
+    offerFixRef: AGENT_READINESS_AUDIT_CONVERSATION_OFFER_REF,
+  },
+  {
+    stepId: "V",
+    title: "Model liquidity",
+    smbTranslation:
+      "Could you switch your AI vendor this week without rebuilding your workflow around it?",
+    sourceLayers: [],
+    offerFixRef: AGENT_READINESS_AUDIT_CONVERSATION_OFFER_REF,
+  },
+  {
+    stepId: "VI",
+    title: "Model flywheel",
+    smbTranslation:
+      "Does your own usage make your systems smarter over time, or only a vendor's model?",
+    sourceLayers: [],
+    offerFixRef: AGENT_READINESS_AUDIT_CONVERSATION_OFFER_REF,
+  },
+  {
+    stepId: "VII",
+    title: "Assurance ladder",
+    smbTranslation:
+      "Do you know which assurance tier (owned hardware, attested compute, zero-retention cloud, or standard API) each AI workload actually runs on?",
+    sourceLayers: [],
+    offerFixRef: AGENT_READINESS_AUDIT_CONVERSATION_OFFER_REF,
+  },
+  {
+    stepId: "VIII",
+    title: "Adaptable hardware and stack",
+    smbTranslation:
+      "Could your AI workloads move to different compute without a rebuild?",
+    sourceLayers: [],
+    offerFixRef: AGENT_READINESS_AUDIT_CONVERSATION_OFFER_REF,
+  },
+  {
+    stepId: "IX",
+    title: "Verify compute you do not own",
+    smbTranslation:
+      "If a vendor claims a job ran a certain way, can you verify it, or only trust it?",
+    sourceLayers: [],
+    offerFixRef: AGENT_READINESS_AUDIT_CONVERSATION_OFFER_REF,
+  },
+  {
+    stepId: "X",
+    title: "Model-agnostic access",
+    smbTranslation:
+      "Can any agent, on any model or provider, actually read and use your public content, or only a human in a browser?",
+    sourceLayers: ["experience"],
+    offerFixRef: AGENT_READINESS_REPORT_LED_SEQUENCE_OFFER_REF,
+  },
+  {
+    stepId: "XI",
+    title: "Granular permissions",
+    smbTranslation:
+      "For any AI action taken on your business's behalf, can you explain exactly what it was and was not allowed to touch, and why?",
+    sourceLayers: [],
+    offerFixRef: AGENT_READINESS_AUDIT_CONVERSATION_OFFER_REF,
+  },
+  {
+    stepId: "XII",
+    title: "Audit, log, and canaries",
+    smbTranslation:
+      "Do you have a receipt trail for what your AI systems did, and a way to detect if a vendor model learned something it should not have?",
+    sourceLayers: [],
+    offerFixRef: AGENT_READINESS_AUDIT_CONVERSATION_OFFER_REF,
+  },
+  {
+    stepId: "XIII",
+    title: "Adaptive cybersecurity",
+    smbTranslation:
+      "Is your AI-assisted shipping rate the same as it was six months ago, or has your security posture stalled?",
+    sourceLayers: [],
+    offerFixRef: AGENT_READINESS_AUDIT_CONVERSATION_OFFER_REF,
+  },
+  {
+    stepId: "XIV",
+    title: "Build by branching",
+    smbTranslation:
+      "Can you simulate a change to a business process before committing to it?",
+    sourceLayers: [],
+    offerFixRef: AGENT_READINESS_AUDIT_CONVERSATION_OFFER_REF,
+  },
+  {
+    stepId: "XV",
+    title: "Context flywheel: your own typed knowledge",
+    smbTranslation:
+      "Is your business knowledge captured somewhere your business owns, in a form agents can actually read, independent of any one AI vendor?",
+    sourceLayers: ["identity"],
+    offerFixRef: AGENT_READINESS_REACTOR_ASSESSMENT_OFFER_REF,
+  },
+]
+
+const LAYER_BY_PROBE_KIND: ReadonlyMap<AgentReadinessProbeKind, AgentReadinessLayer> =
+  new Map(defaultAgentReadinessProbeSet.map((probe) => [probe.kind, probe.layer]))
+
+const worstFindingForLayers = (
+  findingsByLayer: ReadonlyMap<AgentReadinessLayer, ReadonlyArray<AgentReadinessFinding>>,
+  layers: ReadonlyArray<AgentReadinessLayer>,
+): AgentReadinessFinding | undefined => {
+  const candidates = layers.flatMap((layer) => findingsByLayer.get(layer) ?? [])
+  return [...candidates].sort(compareFindingsByPriority)[0]
+}
+
+const HONESTY_NOTE_TEMPLATE = (assessedStepCount: number): string =>
+  `This is an automated public-web scan, not a vendor interview. It can directly evidence ${assessedStepCount} of the 15 steps below from what your own site publishes today; the other ${
+    15 - assessedStepCount
+  } steps depend on information (vendor contracts, internal permissioning, retention terms) that is not visible from a public scan, so no score or claim is made about them here. Numbering follows Palantir's public report "Institutional Sovereignty in the Age of AI."`
+
+/**
+ * Renders an `AgentReadinessReport` (LG-1) through the 15-step
+ * sovereignty-assessment rubric (OB-3, #8560). Every scored step, gap, and
+ * evidence ref is derived directly from the real report; steps the public
+ * scan cannot evidence are explicitly marked as not assessed rather than
+ * filled in with invented or templated claims about the prospect.
+ */
+export const renderAgentReadinessFifteenStepAssessment = (
+  report: AgentReadinessReport,
+  options: Readonly<{ generatedAt?: string }> = {},
+): AgentReadinessFifteenStepAssessment => {
+  const generatedAt = options.generatedAt ?? new Date().toISOString()
+  const layerScoreByLayer = new Map(
+    report.layerScores.map((layerScore) => [layerScore.layer, layerScore]),
+  )
+  const findingsByLayer = new Map<AgentReadinessLayer, Array<AgentReadinessFinding>>()
+  for (const finding of report.findings) {
+    const layer = LAYER_BY_PROBE_KIND.get(finding.kind)
+    if (layer === undefined) continue
+    const bucket = findingsByLayer.get(layer)
+    if (bucket === undefined) {
+      findingsByLayer.set(layer, [finding])
+    } else {
+      bucket.push(finding)
+    }
+  }
+
+  const steps: Array<AgentReadinessFifteenStepItem> = FIFTEEN_STEP_DEFINITIONS.map(
+    (definition) => {
+      const applicableScores = definition.sourceLayers
+        .map((layer) => layerScoreByLayer.get(layer))
+        .filter(
+          (score): score is AgentReadinessLayerScore =>
+            score !== undefined && score.status !== "not_applicable",
+        )
+      if (definition.sourceLayers.length === 0 || applicableScores.length === 0) {
+        return {
+          stepId: definition.stepId,
+          title: definition.title,
+          smbTranslation: definition.smbTranslation,
+          status: "not_assessed_by_public_scan",
+          sourceLayers: [...definition.sourceLayers],
+          earned: null,
+          possible: null,
+          gap: null,
+          gapEvidenceRefs: [],
+          offerFixRef: definition.offerFixRef,
+        }
+      }
+      const worst = worstFindingForLayers(findingsByLayer, definition.sourceLayers)
+      return {
+        stepId: definition.stepId,
+        title: definition.title,
+        smbTranslation: definition.smbTranslation,
+        status: "scored_from_public_scan",
+        sourceLayers: [...definition.sourceLayers],
+        earned: applicableScores.reduce((sum, score) => sum + score.earned, 0),
+        possible: applicableScores.reduce((sum, score) => sum + score.possible, 0),
+        gap: worst?.impact ?? null,
+        gapEvidenceRefs: worst === undefined ? [] : [...worst.evidenceRefs],
+        offerFixRef: definition.offerFixRef,
+      }
+    },
+  )
+
+  const stepByStepId = new Map(steps.map((step) => [step.stepId, step]))
+  const stepIdByLayer = new Map<AgentReadinessLayer, AgentReadinessFifteenStepId>()
+  for (const definition of FIFTEEN_STEP_DEFINITIONS) {
+    for (const layer of definition.sourceLayers) {
+      stepIdByLayer.set(layer, definition.stepId)
+    }
+  }
+
+  const topGaps: Array<AgentReadinessFifteenStepGap> = []
+  const seenStepIds = new Set<AgentReadinessFifteenStepId>()
+  for (const finding of [...report.findings].sort(compareFindingsByPriority)) {
+    if (topGaps.length >= 3) break
+    const layer = LAYER_BY_PROBE_KIND.get(finding.kind)
+    const stepId = layer === undefined ? undefined : stepIdByLayer.get(layer)
+    const step = stepId === undefined ? undefined : stepByStepId.get(stepId)
+    if (stepId === undefined || step === undefined || seenStepIds.has(stepId)) continue
+    seenStepIds.add(stepId)
+    topGaps.push({
+      stepId,
+      title: step.title,
+      gap: finding.impact,
+      offerFixRef: step.offerFixRef,
+      evidenceRefs: [...finding.evidenceRefs],
+    })
+  }
+
+  const assessedStepCount = steps.filter(
+    (step) => step.status === "scored_from_public_scan",
+  ).length
+
+  return S.decodeUnknownSync(AgentReadinessFifteenStepAssessment)({
+    schemaVersion: AGENT_READINESS_FIFTEEN_STEP_ASSESSMENT_SCHEMA_VERSION,
+    domain: report.domain,
+    generatedAt,
+    reportGeneratedAt: report.generatedAt,
+    reportStatus: report.status,
+    overallScore: report.score,
+    overallGrade: report.grade,
+    assessedStepCount,
+    totalStepCount: 15,
+    steps,
+    topGaps,
+    honestyNote: HONESTY_NOTE_TEMPLATE(assessedStepCount),
+    sourceRefs: [
+      ...report.sourceRefs,
+      "docs/fable/2026-07-07-palantir-institutional-sovereignty-smb-analysis.md#2-the-15-steps-mapped-to-our-stack",
+      "github:OpenAgentsInc/openagents#8560",
+    ],
+  })
+}
+
+export const decodeAgentReadinessFifteenStepAssessment = S.decodeUnknownSync(
+  AgentReadinessFifteenStepAssessment,
+)
+
 export type AgentReadinessCliArgs = Readonly<{
   command: "scan"
   domain: string | null
@@ -2012,7 +2384,12 @@ export const parseAgentReadinessCliArgs = (
 }
 
 export const domainsFromBatchFile = async (path: string): Promise<ReadonlyArray<string>> => {
-  const text = await Bun.file(path).text()
+  // Uses `node:fs/promises` rather than the Bun-only `Bun.file` API so this
+  // module stays safe to import from non-Bun consumers (the openagents.com
+  // Worker, which typechecks against `@cloudflare/workers-types`). Bun
+  // itself supports `node:fs/promises`, so the CLI entry point is unaffected.
+  const { readFile } = await import("node:fs/promises")
+  const text = await readFile(path, "utf8")
   return text
     .split(/\r?\n/u)
     .map((line) => line.trim())

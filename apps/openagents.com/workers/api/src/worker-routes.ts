@@ -115,6 +115,8 @@ type WorkerRouteDependencies = Readonly<{
   routeOperatorOrderTriageRequest: OptionalEffectRoute
   routeOperatorBusinessOutreachRequest: OptionalEffectRoute
   routeOperatorBusinessPipelineRequest: OptionalEffectRoute
+  routeOperatorAgentReadinessReportRequest: OptionalEffectRoute
+  routePublicAgentReadinessReportRequest: OptionalEffectRoute
   routeOperatorSarahSalesCheckoutRequest: OptionalEffectRoute
   routeOperatorBusinessStarterCreditRequest: OptionalEffectRoute
   routeOperatorPylonMarketplaceRequest: OptionalEffectRoute
@@ -831,6 +833,22 @@ export const makeWorkerRouteRequest =
 
       if (operatorBusinessPipelineResponse !== undefined) {
         return yield* operatorBusinessPipelineResponse
+      }
+
+      // OB-3 (#8560): operator create + public tokenized read for the
+      // fleet-scale agent-readiness report.
+      const operatorAgentReadinessReportResponse =
+        dependencies.routeOperatorAgentReadinessReportRequest(request, env, ctx)
+
+      if (operatorAgentReadinessReportResponse !== undefined) {
+        return yield* operatorAgentReadinessReportResponse
+      }
+
+      const publicAgentReadinessReportResponse =
+        dependencies.routePublicAgentReadinessReportRequest(request, env, ctx)
+
+      if (publicAgentReadinessReportResponse !== undefined) {
+        return yield* publicAgentReadinessReportResponse
       }
 
       const operatorSarahSalesCheckoutResponse =

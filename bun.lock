@@ -395,6 +395,7 @@
         "@effect/sql-sqlite-do": "4.0.0-beta.70",
         "@liquid-js/qrcode-generator": "1.1.6",
         "@moneydevkit/api-contract": "0.1.36",
+        "@openagentsinc/agent-readiness": "workspace:*",
         "@openagentsinc/agent-runtime-schema": "workspace:*",
         "@openagentsinc/atif": "workspace:*",
         "@openagentsinc/behavior-contracts": "workspace:*",

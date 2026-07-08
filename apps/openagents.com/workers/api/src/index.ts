@@ -359,6 +359,11 @@ import {
   handleOperatorBusinessAffiliateAttributionApi,
   handleOperatorBusinessAffiliateCodeApi,
 } from './business-affiliate-attribution-routes'
+import { makeD1AgentReadinessPublicReportStore } from './agent-readiness-public-report-store'
+import {
+  handlePublicAgentReadinessReportApi,
+  makeOperatorAgentReadinessReportRoutes,
+} from './agent-readiness-public-report-routes'
 import { makeD1BusinessOutreachStore } from './business-outreach'
 import { makeOperatorBusinessOutreachRoutes } from './business-outreach-routes'
 import { makeD1BusinessPipelineStore } from './business-pipeline-queue'
@@ -10570,6 +10575,18 @@ const operatorBusinessPipelineRoutes = makeOperatorBusinessPipelineRoutes({
   requireAdminApiToken,
 })
 
+// OB-3 (#8560): fleet-scale audit-first personalization. The pipeline store
+// rides the same KS-8.14 business-domain mirror as `operatorBusinessPipelineRoutes`
+// above; the new `agent_readiness_public_reports` table is a purpose-scoped
+// reporting table (not money/attribution-critical), so it reads/writes the
+// primary D1 binding directly rather than joining the business-domain mirror.
+const operatorAgentReadinessReportRoutes = makeOperatorAgentReadinessReportRoutes({
+  makePipelineStore: env => makeD1BusinessPipelineStore(businessDomainDatabaseForEnv(env)),
+  makeReportStore: env => makeD1AgentReadinessPublicReportStore(openAgentsDatabase(env)),
+  nowIso: currentIsoTimestamp,
+  requireAdminApiToken,
+})
+
 const operatorSarahSalesCheckoutRoutes = makeOperatorSarahSalesCheckoutRoutes({
   makeDb: env => openAgentsDatabase(env),
   requireAdminApiToken,
@@ -16403,6 +16420,21 @@ const routeRequest = makeWorkerRouteRequest({
     operatorBusinessOutreachRoutes.routeOperatorBusinessOutreachRequest,
   routeOperatorBusinessPipelineRequest:
     operatorBusinessPipelineRoutes.routeOperatorBusinessPipelineRequest,
+  routeOperatorAgentReadinessReportRequest:
+    operatorAgentReadinessReportRoutes.routeOperatorAgentReadinessReportRequest,
+  // OB-3 (#8560): public-safe tokenized report read, GET
+  // /api/public/agent-readiness/reports/{token} — the path-param surface the
+  // exact-route registry cannot match. Returns undefined for any
+  // non-matching path so the cascade falls through.
+  routePublicAgentReadinessReportRequest: (request, env) => {
+    const url = new URL(request.url)
+    if (!url.pathname.startsWith('/api/public/agent-readiness/reports/')) {
+      return undefined
+    }
+    return handlePublicAgentReadinessReportApi(request, {
+      OPENAGENTS_DB: openAgentsDatabase(env),
+    })
+  },
   routeOperatorSarahSalesCheckoutRequest:
     operatorSarahSalesCheckoutRoutes.routeOperatorSarahSalesCheckoutRequest,
   routeOperatorBusinessStarterCreditRequest:
