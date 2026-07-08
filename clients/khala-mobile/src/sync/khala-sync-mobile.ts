@@ -15,7 +15,10 @@ import {
   chatThreadKhalaSyncCollectionOptions,
   chatThreadsForSidebar,
   createKhalaSyncMutationTracker,
-  fleetRunKhalaSyncCollectionOptions
+  fleetApprovalKhalaSyncCollectionOptions,
+  fleetRunKhalaSyncCollectionOptions,
+  fleetSteerKhalaSyncCollectionOptions,
+  fleetWorkerKhalaSyncCollectionOptions
 } from "@openagentsinc/khala-sync-db-collection"
 
 export type KhalaMobileCollectionsInput = Readonly<{
@@ -42,13 +45,50 @@ export const createKhalaMobileCollections = (
       startSync: true
     })
   )
+  const fleetScope = fleetRunScope(input.fleetRunId)
   const fleetRun = createCollection(
     fleetRunKhalaSyncCollectionOptions({
       id: "khala-mobile-fleet-run",
       mutationTracker,
       onError: () => undefined,
       overlay: input.overlay,
-      scope: fleetRunScope(input.fleetRunId),
+      scope: fleetScope,
+      session: input.session,
+      startSync: true
+    })
+  )
+  // MH-6 (#8585): the per-harness worker cards, pending approvals, and steer
+  // receipts the fleet peek observes. All read-only — the phone dispatches the
+  // three typed steering intents via session.mutate, never a local write here.
+  const fleetWorkers = createCollection(
+    fleetWorkerKhalaSyncCollectionOptions({
+      id: "khala-mobile-fleet-workers",
+      mutationTracker,
+      onError: () => undefined,
+      overlay: input.overlay,
+      scope: fleetScope,
+      session: input.session,
+      startSync: true
+    })
+  )
+  const fleetApprovals = createCollection(
+    fleetApprovalKhalaSyncCollectionOptions({
+      id: "khala-mobile-fleet-approvals",
+      mutationTracker,
+      onError: () => undefined,
+      overlay: input.overlay,
+      scope: fleetScope,
+      session: input.session,
+      startSync: true
+    })
+  )
+  const fleetSteers = createCollection(
+    fleetSteerKhalaSyncCollectionOptions({
+      id: "khala-mobile-fleet-steers",
+      mutationTracker,
+      onError: () => undefined,
+      overlay: input.overlay,
+      scope: fleetScope,
       session: input.session,
       startSync: true
     })
@@ -56,7 +96,10 @@ export const createKhalaMobileCollections = (
 
   return {
     chatThreads,
+    fleetApprovals,
     fleetRun,
+    fleetSteers,
+    fleetWorkers,
     mutationTracker
   } as const
 }

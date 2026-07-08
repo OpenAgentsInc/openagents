@@ -25,6 +25,7 @@ export type AppStackParamList = {
 
 export type AppDrawerParamList = {
   Main: NavigatorScreenParams<AppStackParamList> | undefined
+  FleetPeek: undefined
   Settings: undefined
 }
 

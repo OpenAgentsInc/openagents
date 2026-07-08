@@ -70,6 +70,7 @@ describe('khala sync worker mutator registry', () => {
       CHAT_APPEND_MESSAGE_MUTATOR_NAME,
       CHAT_RENAME_THREAD_MUTATOR_NAME,
       CHAT_BIND_THREAD_REPO_MUTATOR_NAME,
+      'chat.pinCodexContinuity',
       RUNTIME_START_TURN_MUTATOR_NAME,
       RUNTIME_APPEND_USER_MESSAGE_MUTATOR_NAME,
       RUNTIME_INTERRUPT_TURN_MUTATOR_NAME,
@@ -85,6 +86,9 @@ describe('khala sync worker mutator registry', () => {
       'fleet.acknowledgeInboxFlag',
       'fleet.stopRun',
       'fleet.reportAccountState',
+      'fleet.dispatchRunControl',
+      'fleet.dispatchApprovalDecision',
+      'fleet.dispatchSteerMessage',
     ])
     expect(
       registry.get(MutatorName.make(SYNC_DEBUG_ECHO_MUTATOR_NAME)),
@@ -94,6 +98,7 @@ describe('khala sync worker mutator registry', () => {
       CHAT_APPEND_MESSAGE_MUTATOR_NAME,
       CHAT_RENAME_THREAD_MUTATOR_NAME,
       CHAT_BIND_THREAD_REPO_MUTATOR_NAME,
+      'chat.pinCodexContinuity',
     ]) {
       expect(registry.get(MutatorName.make(name))).toBeDefined()
     }
@@ -117,6 +122,9 @@ describe('khala sync worker mutator registry', () => {
       'fleet.acknowledgeInboxFlag',
       'fleet.stopRun',
       'fleet.reportAccountState',
+      'fleet.dispatchRunControl',
+      'fleet.dispatchApprovalDecision',
+      'fleet.dispatchSteerMessage',
     ]) {
       expect(registry.get(MutatorName.make(name))).toBeDefined()
     }

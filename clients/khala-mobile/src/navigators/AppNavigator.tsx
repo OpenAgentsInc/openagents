@@ -17,6 +17,7 @@ import { SafeAreaView } from "react-native-safe-area-context"
 
 import { DrawerCreditsBalance } from "../components/drawer-credits-balance"
 import { CreditsHistoryScreen } from "../screens/credits-history-screen"
+import { FleetPeekScreen } from "../screens/fleet-peek-screen"
 import { RepoPickerScreen } from "../screens/repo-picker-screen"
 import { SettingsScreen } from "../screens/settings-screen"
 import { ThreadListScreen } from "../screens/thread-list-screen"
@@ -54,6 +55,7 @@ const linking: LinkingOptions<AppDrawerParamList> = {
           CreditsHistory: "credits/history",
         },
       },
+      FleetPeek: "fleet",
       Settings: "settings",
     },
   },
@@ -112,6 +114,7 @@ export const AppNavigator = () => {
         }}
       >
         <Drawer.Screen name="Main" component={MainStackNavigator} options={{ title: tx("nav.threads") }} />
+        <Drawer.Screen name="FleetPeek" component={FleetPeekScreen} options={{ title: "Fleet" }} />
         <Drawer.Screen name="Settings" component={SettingsScreen} options={{ title: tx("nav.settings") }} />
       </Drawer.Navigator>
     </NavigationContainer>

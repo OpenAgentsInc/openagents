@@ -40,6 +40,10 @@ export const khalaMobileGateScreenMountBundles: readonly KhalaMobileGateScreenBu
     mountTest: "tests/mobile-testing-lab-screen.test.tsx",
     screenFile: "src/screens/mobile-testing-lab-screen.tsx",
   },
+  {
+    mountTest: "tests/fleet-peek-screen.test.tsx",
+    screenFile: "src/screens/fleet-peek-screen.tsx",
+  },
 ]
 
 export const khalaMobileGateScreenMountWaivers: readonly KhalaMobileGateScreenWaiver[] = []

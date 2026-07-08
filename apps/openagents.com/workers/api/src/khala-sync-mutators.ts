@@ -30,6 +30,7 @@ import {
   chatMutators,
   defineMutator,
   fleetOperatorMutators,
+  fleetSteeringMutators,
   makeMutatorRegistry,
   runtimeMutators,
   type MutatorDefinition,
@@ -115,6 +116,15 @@ export const debugEchoMutator: MutatorDefinition =
  * post-image — supervisor-side enforcement of intents (polling
  * GET /api/internal/khala-sync/fleet-intents) is a follow-up lane (see
  * docs/khala-sync/README.md).
+ *
+ * Plus the MH-6 (#8585) fleet steering mutators (`fleet.dispatchRunControl` /
+ * `fleet.dispatchApprovalDecision` / `fleet.dispatchSteerMessage`) which
+ * consume the MH-0 `khala.fleet_intent.v1` typed intents directly: the phone
+ * dispatches a typed intent over Sync, the mutator records a durable receipt
+ * (`khala_sync_fleet_steering_intents`) and projects the observable
+ * post-image, and the desktop/daemon authority observes the intent via
+ * `readPendingFleetSteeringIntents` and enforces it. Same owner-gate; mobile
+ * is never a second supervisor.
  */
 export const makeKhalaSyncWorkerMutatorRegistry = (): MutatorRegistry =>
   makeMutatorRegistry([
@@ -122,4 +132,5 @@ export const makeKhalaSyncWorkerMutatorRegistry = (): MutatorRegistry =>
     ...chatMutators,
     ...runtimeMutators,
     ...fleetOperatorMutators,
+    ...fleetSteeringMutators,
   ])
