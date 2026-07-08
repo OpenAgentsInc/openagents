@@ -1,6 +1,8 @@
 import { createContext, useContext, useEffect, useRef, useState } from "react"
 import type { ReactNode } from "react"
 
+import { createDemoKhalaMobileSyncRuntime } from "../demo/demo-sync-runtime"
+import { isDemoToken } from "../demo/demo-fixtures"
 import { openKhalaMobileSyncRuntime, type KhalaMobileSyncRuntime } from "./khala-mobile-sync-runtime"
 import { registerActiveSyncRuntimeClose } from "./khala-mobile-sync-runtime-registry"
 
@@ -46,6 +48,20 @@ export const KhalaMobileSyncRuntimeProvider = ({
   useEffect(() => {
     let cancelled = false
     setState({ status: "loading" })
+
+    // App Store reviewer demo mode: never open a real runtime (no SQLite
+    // identity, no durable session, no network). Serve an inert offline stub;
+    // the scope-entities hook short-circuits to example fixtures before it ever
+    // uses these primitives.
+    if (isDemoToken(token)) {
+      const runtime = createDemoKhalaMobileSyncRuntime()
+      runtimeRef.current = runtime
+      setState({ runtime, status: "ready" })
+      return () => {
+        cancelled = true
+        runtimeRef.current = null
+      }
+    }
 
     void (async () => {
       const opened = await openKhalaMobileSyncRuntime({

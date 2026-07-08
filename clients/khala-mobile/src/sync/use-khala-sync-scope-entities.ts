@@ -1,8 +1,10 @@
-import { useEffect, useRef, useState } from "react"
+import { useContext, useEffect, useRef, useState } from "react"
 import { SyncScope } from "@openagentsinc/khala-sync"
 import type { KhalaSyncLocalStore, KhalaSyncOverlay, KhalaSyncSession } from "@openagentsinc/khala-sync-client"
 import { Effect } from "effect"
 
+import { KhalaAuthContext } from "../auth/khala-auth-context-value"
+import { demoSyncScopeEntities } from "../demo/demo-fixtures"
 import { acquireScopeSubscription, releaseScopeSubscription } from "./scope-subscription-refcount"
 import { beaconSyncDebug } from "./sync-debug-beacon"
 
@@ -97,6 +99,13 @@ export function useKhalaSyncScopeEntities<T>(
   input: KhalaSyncScopeEntitiesInput<T>
 ): KhalaSyncScopeEntitiesState<T> {
   const { decode, entityType, overlay, scope, session, store, watchdogMs = DEFAULT_WATCHDOG_MS } = input
+  // App Store reviewer demo mode: read defensively (null when rendered outside
+  // a provider, e.g. in unit tests) so this generic hook stays usable without
+  // an auth provider. When the active session is the demo session, every scope
+  // read is served from hardcoded example fixtures — no runtime, session, or
+  // network — so a reviewer sees realistic data on every screen, never a
+  // loading/error/unauthorized state.
+  const demoMode = useContext(KhalaAuthContext)?.demoMode === true
   const [state, setState] = useState<KhalaSyncScopeEntitiesState<T>>({
     error: null,
     items: [],
@@ -106,6 +115,14 @@ export function useKhalaSyncScopeEntities<T>(
   decodeRef.current = decode
 
   useEffect(() => {
+    if (demoMode) {
+      setState({
+        error: null,
+        items: demoSyncScopeEntities(entityType, scope) as ReadonlyArray<T>,
+        status: "ready"
+      })
+      return undefined
+    }
     if (session === null || overlay === null || store === null || scope === "") {
       setState({ error: null, items: [], status: "loading" })
       return undefined
@@ -229,7 +246,7 @@ export function useKhalaSyncScopeEntities<T>(
       // real (destructive) `session.unsubscribe`. See the acquire above.
       releaseScopeSubscription(session, syncScope)
     }
-  }, [session, overlay, store, scope, entityType, watchdogMs])
+  }, [demoMode, session, overlay, store, scope, entityType, watchdogMs])
 
   return state
 }

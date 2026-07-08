@@ -30,6 +30,8 @@
  * and hands the client a currency the user actually understands.
  */
 
+import { DEMO_CREDITS_BALANCE_USD_CENTS, demoCreditsTransactions, isDemoToken } from "../demo/demo-fixtures"
+
 export type KhalaMobileCreditsTransactionKind = "grant" | "purchase" | "charge" | "other"
 
 export type KhalaMobileCreditsTransaction = Readonly<{
@@ -81,7 +83,9 @@ export const fetchKhalaMobileCreditsBalance = async (
   token: string,
   fetchImpl: KhalaMobileCreditsFetchLike = fetch,
 ): Promise<KhalaMobileCreditsResult<number>> =>
-  requestCredits(`${apiBaseUrl.replace(/\/$/, "")}/api/mobile/credits/balance`, token, fetchImpl, parseBalance)
+  isDemoToken(token)
+    ? Promise.resolve({ ok: true, value: DEMO_CREDITS_BALANCE_USD_CENTS })
+    : requestCredits(`${apiBaseUrl.replace(/\/$/, "")}/api/mobile/credits/balance`, token, fetchImpl, parseBalance)
 
 const parseTransaction = (value: unknown): KhalaMobileCreditsTransaction | null => {
   if (value === null || typeof value !== "object") return null
@@ -115,6 +119,9 @@ export const fetchKhalaMobileCreditsTransactions = async (
   input: Readonly<{ cursor?: string; limit?: number }>,
   fetchImpl: KhalaMobileCreditsFetchLike = fetch,
 ): Promise<KhalaMobileCreditsResult<KhalaMobileCreditsTransactionsPage>> => {
+  if (isDemoToken(token)) {
+    return { ok: true, value: { nextCursor: null, transactions: demoCreditsTransactions } }
+  }
   const url = new URL("/api/mobile/credits/transactions", apiBaseUrl)
   if (input.limit !== undefined) url.searchParams.set("limit", String(input.limit))
   if (input.cursor !== undefined) url.searchParams.set("cursor", input.cursor)

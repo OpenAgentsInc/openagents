@@ -93,7 +93,7 @@ top follow-up item for whoever picks this up next.
 
 ## Registry
 
-Registry version: `2026-07-07.9` (schema `openagents.behavior_contracts.v1`)
+Registry version: `2026-07-07.10` (schema `openagents.behavior_contracts.v1`)
 
 ### `khala_mobile.auth.tailnet_auto_discovery_before_manual_login.v1` — RETIRED
 
@@ -530,9 +530,9 @@ Registry version: `2026-07-07.9` (schema `openagents.behavior_contracts.v1`)
 - **Surface:** khala-mobile (qa)
 - **Stated by:** owner via khala-code-session on 2026-07-07
 - **Statement:** P0.8 launch readiness must stay honest: Khala Mobile is not launch-ready until the owner-gated seed account exists, the full straight-line E2E is receipted on both iOS simulator and Android emulator, and launch promises/copy are reviewed against those receipts.
-- **Blockers:** `owner.github_seeded_public_safe_account`, `blocker.ios.full_straight_line_e2e_missing_receipt`, `blocker.android.full_straight_line_e2e_missing_receipt`, `blocker.launch_copy_owner_signoff_missing`
 - **Enforcement tier:** unenforced
 - **Verification:** bun test tests/launch-readiness.test.ts inside clients/khala-mobile asserts the pending launch-readiness receipt and owner gate stay honest. The contract itself remains pending until #8543's device-only launch truth has real iOS and Android full straight-line receipts.
+- **Blockers:** `owner.github_seeded_public_safe_account`, `blocker.ios.full_straight_line_e2e_missing_receipt`, `blocker.android.full_straight_line_e2e_missing_receipt`, `blocker.launch_copy_owner_signoff_missing`
 - **Authority boundary:** Binds the honesty of the P0.8 launch-readiness state only: the seeded-account owner gate, the missing iOS/Android full straight-line E2E receipts, and the copy/pass no-green-without-receipts rule. It does not claim the app is launch-ready and does not enforce the older launched-app smoke as sufficient for #8543.
 
 ### `khala_mobile.qa.store_submission_receipts.v1` — PENDING
@@ -540,7 +540,17 @@ Registry version: `2026-07-07.9` (schema `openagents.behavior_contracts.v1`)
 - **Surface:** khala-mobile (qa)
 - **Stated by:** owner via khala-code-session on 2026-07-07
 - **Statement:** P0.9 store submission evidence must stay honest: Khala Mobile P0 is not exited until App Store Connect and Play Console both have real submission IDs and in-review states recorded as registry evidence.
-- **Blockers:** `owner.app_store_connect_submission_required`, `owner.play_console_submission_required`, `blocker.ios.submission_id_missing`, `blocker.android.submission_id_missing`, `blocker.p08.full_launch_e2e_not_green`
 - **Enforcement tier:** unenforced
 - **Verification:** bun test tests/store-submissions.test.ts inside clients/khala-mobile asserts the not-submitted receipt and owner-console action list stay explicit. The contract remains pending until real App Store Connect and Play Console submission receipts exist.
+- **Blockers:** `owner.app_store_connect_submission_required`, `owner.play_console_submission_required`, `blocker.ios.submission_id_missing`, `blocker.android.submission_id_missing`, `blocker.p08.full_launch_e2e_not_green`
 - **Authority boundary:** Binds only the P0.9 store-submission evidence ledger: both stores require real owner-console submission IDs and review states before P0 can be called exited. It does not submit a build, upload binaries, imply approval, or replace App Store Connect / Play Console as the authority.
+
+### `khala_mobile.auth.demo_login_example_data.v1` — ENFORCED
+
+- **Surface:** khala-mobile (auth)
+- **Stated by:** owner via khala-code-session on 2026-07-07
+- **Statement:** long-press the Sign in with GitHub button → demo login with example data
+- **Enforcement tier:** test-sweep
+- **Oracle** `demo_login_example_data.unit` (bun-test, unit): A deliberate ~1s long-press on the Sign in with GitHub button establishes a signed-in synthetic reviewer session (normal tap still starts real GitHub OAuth), and every product data source (threads, messages, credits, repos, model preference) serves hardcoded, offline, public-safe example fixtures for it. — `clients/khala-mobile/tests/demo-login-mode.test.ts`
+- **Verification:** bun test tests/demo-login-mode.test.ts inside clients/khala-mobile asserts the sign-in button wires onLongPress to demo mode, the auth state machine's demo_sign_in_started event lands a signed-in reviewer session, and the credits/repos/model-preference clients plus the sync scope-entity gate all serve hardcoded example fixtures with no network for the demo sentinel token.
+- **Authority boundary:** Binds only the signed-out sign-in surface and the client-side demo session. The demo session is a synthetic, offline, in-app session with a fake sentinel token that no server accepts; it grants no real account, repo, spend, payout, or admin authority, and every data source serves hardcoded example fixtures for it.

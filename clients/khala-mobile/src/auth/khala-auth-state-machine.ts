@@ -23,6 +23,14 @@ export type KhalaAuthMachineEvent =
       credentials: KhalaStoredCredentials
       type: "github_sign_in_succeeded"
     }>
+  // App Store reviewer demo mode: a synthetic in-app session established by a
+  // long-press on the GitHub sign-in button. It never touches real GitHub
+  // OAuth or a live backend session — the carried credentials are the demo
+  // sentinel, and every data source serves hardcoded example data for them.
+  | Readonly<{
+      credentials: KhalaStoredCredentials
+      type: "demo_sign_in_started"
+    }>
   | Readonly<{ messageSafe: string; type: "github_sign_in_failed" }>
   | Readonly<{ type: "github_sign_in_cancelled" }>
   | Readonly<{ type: "signed_out" }>
@@ -48,6 +56,12 @@ export const reduceKhalaAuthMachine = (
     case "github_sign_in_started":
       return { credentials: null, messageSafe: null, status: "signing_in" }
     case "github_sign_in_succeeded":
+      return {
+        credentials: event.credentials,
+        messageSafe: null,
+        status: "signed_in",
+      }
+    case "demo_sign_in_started":
       return {
         credentials: event.credentials,
         messageSafe: null,

@@ -1683,7 +1683,51 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
       verification:
         "bun test tests/store-submissions.test.ts inside clients/khala-mobile asserts the not-submitted receipt and owner-console action list stay explicit. The contract remains pending until real App Store Connect and Play Console submission receipts exist.",
     },
+    {
+      authorityBoundary:
+        "Binds only the signed-out sign-in surface and the client-side demo session. The demo session is a synthetic, offline, in-app session with a fake sentinel token that no server accepts; it grants no real account, repo, spend, payout, or admin authority, and every data source serves hardcoded example fixtures for it.",
+      blockerRefs: [],
+      contractId: "khala_mobile.auth.demo_login_example_data.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "clients/khala-mobile/src/components/sign-in-screen.tsx",
+        "clients/khala-mobile/src/auth/khala-auth-context.tsx",
+        "clients/khala-mobile/src/auth/khala-auth-state-machine.ts",
+        "clients/khala-mobile/src/demo/demo-fixtures.ts",
+        "clients/khala-mobile/src/demo/demo-sync-runtime.ts",
+        "clients/khala-mobile/src/sync/use-khala-sync-scope-entities.ts",
+        "clients/khala-mobile/src/sync/khala-mobile-sync-runtime-context.tsx",
+        "clients/khala-mobile/src/sync/khala-mobile-credits-api.ts",
+        "clients/khala-mobile/src/sync/khala-mobile-repos-api.ts",
+        "clients/khala-mobile/src/sync/khala-mobile-model-preference-api.ts",
+        "clients/khala-mobile/tests/demo-login-mode.test.ts",
+        "docs/mobile/2026-07-07-app-store-reviewer-demo-login.md",
+        "docs/khala-mobile/khala-mobile-ux-contract.md",
+      ],
+      oracles: [
+        {
+          description:
+            "A deliberate ~1s long-press on the Sign in with GitHub button establishes a signed-in synthetic reviewer session (normal tap still starts real GitHub OAuth), and every product data source (threads, messages, credits, repos, model preference) serves hardcoded, offline, public-safe example fixtures for it.",
+          id: "demo_login_example_data.unit",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "clients/khala-mobile/tests/demo-login-mode.test.ts",
+        },
+      ],
+      productArea: "auth",
+      source: {
+        channel: "khala-code-session",
+        statedBy: "owner",
+        statedOn: "2026-07-07",
+      },
+      state: "enforced",
+      statement:
+        "long-press the Sign in with GitHub button → demo login with example data",
+      surface: "khala-mobile",
+      verification:
+        "bun test tests/demo-login-mode.test.ts inside clients/khala-mobile asserts the sign-in button wires onLongPress to demo mode, the auth state machine's demo_sign_in_started event lands a signed-in reviewer session, and the credits/repos/model-preference clients plus the sync scope-entity gate all serve hardcoded example fixtures with no network for the demo sentinel token.",
+    },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-07.9",
+  version: "2026-07-07.10",
 }

@@ -8,6 +8,8 @@
  * rather than stubbing.
  */
 
+import { demoModelPreference, isDemoToken } from "../demo/demo-fixtures"
+
 export type KhalaModelPreferenceFallback =
   | "none"
   | "no_preference_set"
@@ -67,6 +69,7 @@ export const fetchKhalaMobileModelPreference = async (
   token: string,
   fetchImpl: KhalaModelPreferenceFetchLike = fetch,
 ): Promise<KhalaModelPreferenceResult> => {
+  if (isDemoToken(token)) return { ok: true, value: demoModelPreference() }
   try {
     const response = await fetchImpl(`${apiBaseUrl.replace(/\/$/, "")}/api/mobile/model-preference`, {
       headers: { authorization: `Bearer ${token}` },
@@ -88,6 +91,7 @@ export const putKhalaMobileModelPreference = async (
   modelId: string,
   fetchImpl: KhalaModelPreferenceFetchLike = fetch,
 ): Promise<KhalaModelPreferenceResult> => {
+  if (isDemoToken(token)) return { ok: true, value: demoModelPreference(modelId) }
   try {
     const response = await fetchImpl(`${apiBaseUrl.replace(/\/$/, "")}/api/mobile/model-preference`, {
       body: JSON.stringify({ modelId }),

@@ -6,7 +6,6 @@ import {
 import type { AuthRequestConfig } from "expo-auth-session"
 import * as WebBrowser from "expo-web-browser"
 import {
-  createContext,
   useCallback,
   useContext,
   useEffect,
@@ -23,6 +22,8 @@ import {
   KHALA_SYNC_DEMO_OWNER_USER_ID,
   KHALA_SYNC_DEMO_TOKEN,
 } from "../config/khala-sync-demo"
+import { DEMO_REVIEWER_CREDENTIALS, isDemoToken } from "../demo/demo-fixtures"
+import { KhalaAuthContext, type KhalaAuthState, type KhalaAuthStatus } from "./khala-auth-context-value"
 import { mobileProblemMessageSafe } from "../network/mobile-problem"
 import { unregisterPushNotificationsAsync } from "../push/push-notifications-client"
 import { describeAuthSessionFailure } from "./auth-session-failure"
@@ -31,7 +32,6 @@ import { clearStoredCredentials, loadStoredCredentials, saveStoredCredentials, t
 import {
   initialKhalaAuthMachineState,
   reduceKhalaAuthMachine,
-  type KhalaAuthMachineStatus,
 } from "./khala-auth-state-machine"
 import { validateKhalaCredentials } from "./khala-auth-validate"
 import {
@@ -47,25 +47,11 @@ import {
 
 WebBrowser.maybeCompleteAuthSession()
 
-export type KhalaAuthStatus = KhalaAuthMachineStatus
-
-export type KhalaAuthState = Readonly<{
-  status: KhalaAuthStatus
-  baseUrl: string
-  githubSignInReady: boolean
-  ownerUserId: string
-  /** GitHub login (username) for the signed-in user, or "" when unavailable
-   * (email-provider session, or a Worker deploy predating the greeting
-   * change). Used to personalize the onboarding greeting. */
-  githubLogin: string
-  deleteAccount: () => Promise<void>
-  signInErrorMessage: string | null
-  signInWithGitHub: () => Promise<void>
-  signOut: () => Promise<void>
-  token: string
-}>
-
-const KhalaAuthContext = createContext<KhalaAuthState | null>(null)
+// The context object + value type live in `./khala-auth-context-value` (a
+// native-dep-free module) and are re-exported here for the existing public
+// import surface. See that file for why.
+export { KhalaAuthContext }
+export type { KhalaAuthState, KhalaAuthStatus }
 
 /** The env-var pair only seeds a dev session when BOTH are present. A real
  * distributed build never bakes these in, so a fresh install lands on the
@@ -418,8 +404,23 @@ export const KhalaAuthProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [applyCredentials, machine.status])
 
+  const enterDemoMode = useCallback(() => {
+    // Fully synchronous and offline: no OAuth, no token exchange, no backend
+    // session. Establishes the synthetic reviewer session that every data
+    // source recognizes (via the demo sentinel token) and serves example data.
+    dispatch({ credentials: DEMO_REVIEWER_CREDENTIALS, type: "demo_sign_in_started" })
+  }, [])
+
   const signOut = useCallback(async () => {
     const token = machine.credentials?.token
+
+    // The demo session is purely in-app: leaving it must not clear real stored
+    // credentials or hit any backend revoke endpoint (the demo token is not a
+    // real bearer token).
+    if (token !== undefined && isDemoToken(token)) {
+      dispatch({ type: "signed_out" })
+      return
+    }
 
     await clearStoredCredentials()
 
@@ -450,6 +451,13 @@ export const KhalaAuthProvider = ({ children }: { children: ReactNode }) => {
   const deleteAccount = useCallback(async () => {
     const token = machine.credentials?.token
 
+    // Demo session: "delete account" just exits the offline demo — there is no
+    // real account or backend record to delete.
+    if (token !== undefined && isDemoToken(token)) {
+      dispatch({ type: "signed_out" })
+      return
+    }
+
     if (token === undefined || token.trim().length === 0) {
       await clearStoredCredentials()
       if (!mountedRef.current) return
@@ -475,6 +483,8 @@ export const KhalaAuthProvider = ({ children }: { children: ReactNode }) => {
     () => ({
       baseUrl: KHALA_SYNC_DEMO_BASE_URL,
       deleteAccount,
+      demoMode: isDemoToken(machine.credentials?.token ?? ""),
+      enterDemoMode,
       // The AuthRequest is now built on demand inside `signInWithGitHub`
       // (discovery is a static module constant), so the button is ready as
       // soon as we are not already mid sign-in.
@@ -487,7 +497,7 @@ export const KhalaAuthProvider = ({ children }: { children: ReactNode }) => {
       status: machine.status,
       token: machine.credentials?.token ?? "",
     }),
-    [deleteAccount, machine, signInWithGitHub, signOut],
+    [deleteAccount, enterDemoMode, machine, signInWithGitHub, signOut],
   )
 
   return <KhalaAuthContext.Provider value={value}>{children}</KhalaAuthContext.Provider>

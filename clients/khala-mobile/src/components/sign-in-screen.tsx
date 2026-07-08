@@ -25,6 +25,7 @@ import { tx } from "../i18n/copy"
 export const SignInScreen = () => {
   const { themed } = useAppTheme()
   const {
+    enterDemoMode,
     githubSignInReady,
     signInErrorMessage,
     signInWithGitHub,
@@ -61,6 +62,13 @@ export const SignInScreen = () => {
               accessibilityRole="button"
               accessibilityState={{ disabled: !githubSignInReady || signingIn }}
               disabled={!githubSignInReady || signingIn}
+              // Normal tap = real GitHub OAuth (unchanged). A deliberate ~1s
+              // long-press enters App Store reviewer demo mode with hardcoded
+              // example data — discoverable only to a reviewer who was told
+              // about it (documented in the App Review notes), not triggerable
+              // by an accidental tap. See src/demo/demo-fixtures.ts.
+              delayLongPress={1000}
+              onLongPress={enterDemoMode}
               onPress={signInWithGitHub}
               style={styles.loginPressable}
             >

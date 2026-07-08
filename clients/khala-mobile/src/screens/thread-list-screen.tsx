@@ -175,7 +175,7 @@ const renderThreadListFooter = () => <ThreadListFooter />
 const renderThreadListEmpty = () => <ThreadListEmpty />
 
 export const ThreadListScreen = ({ navigation }: ThreadListScreenProps) => {
-  const { ownerUserId } = useKhalaAuth()
+  const { demoMode, ownerUserId } = useKhalaAuth()
   const { themed } = useAppTheme()
   // Local-first, delta-synced: same fix as the thread message view. Reads
   // whatever thread rows are already on-device immediately, then catches up
@@ -198,6 +198,11 @@ export const ThreadListScreen = ({ navigation }: ThreadListScreenProps) => {
   return (
     <Screen preset="fixed" contentContainerStyle={themed($fill)}>
       <Header title="Khala" leftIcon="☰" onLeftPress={() => navigation.getParent<DrawerNavigationProp<AppDrawerParamList>>()?.openDrawer()} />
+      {demoMode ? (
+        <View style={themed($demoBanner)}>
+          <Text size="xxs" style={themed($demoBannerText)} text="Demo mode — example data" />
+        </View>
+      ) : null}
       {syncRuntimeStatus === "missing_token" ? (
         <ThreadListNotice
           detail="Restart the app to sign in again."
@@ -309,6 +314,16 @@ const $emptyPad: ThemedStyle<ViewStyle> = ({ spacing }) => ({
   paddingHorizontal: spacing.md,
   paddingVertical: spacing.xxxl,
 })
+
+const $demoBanner: ThemedStyle<ViewStyle> = ({ colors, spacing }) => ({
+  alignItems: "center",
+  backgroundColor: colors.palette.neutral200,
+  borderBottomColor: colors.palette.neutral400,
+  borderBottomWidth: 1,
+  paddingVertical: spacing.xxs,
+})
+
+const $demoBannerText: ThemedStyle<TextStyle> = ({ colors }) => ({ color: colors.tint })
 
 const $dim: ThemedStyle<TextStyle> = ({ colors }) => ({ color: colors.textDim })
 const $meta: ThemedStyle<TextStyle> = ({ colors }) => ({ color: colors.textDim, paddingTop: 2 })

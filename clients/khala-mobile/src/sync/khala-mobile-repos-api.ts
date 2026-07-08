@@ -17,6 +17,8 @@
  *   409 / 401 token errors same shape as above
  */
 
+import { demoRepositories, isDemoToken } from "../demo/demo-fixtures"
+
 export type KhalaMobileRepository = Readonly<{
   defaultBranch: string
   description: string | null
@@ -154,6 +156,17 @@ export const fetchKhalaMobileRepositories = async (
   input: Readonly<{ page?: number; perPage?: number }>,
   fetchImpl: KhalaMobileReposFetchLike = fetch,
 ): Promise<KhalaMobileReposResult<KhalaMobileReposListPage>> => {
+  if (isDemoToken(token)) {
+    return {
+      ok: true,
+      value: {
+        hasNextPage: false,
+        page: input.page ?? 1,
+        perPage: input.perPage ?? demoRepositories.length,
+        repositories: demoRepositories,
+      },
+    }
+  }
   const url = new URL("/api/mobile/repos", apiBaseUrl)
   if (input.page !== undefined) url.searchParams.set("page", String(input.page))
   if (input.perPage !== undefined) url.searchParams.set("perPage", String(input.perPage))
