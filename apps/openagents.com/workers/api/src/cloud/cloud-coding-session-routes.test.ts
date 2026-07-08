@@ -61,6 +61,17 @@ const validBody = {
   repoRef: 'repo:openagents/openagents',
 }
 
+const agentComputerIsolationPolicyEcho = {
+  schema_version: AGENT_COMPUTER_ISOLATION_POLICY_SCHEMA,
+  credentials: {
+    credential_scanner_required: true,
+    provider_credential_policy: 'broker_only',
+    provider_grants_owner_scoped: true,
+    scm_broker_only: true,
+    subscription_capacity_resale: false,
+  },
+}
+
 describe('cloud coding sessions feature flag', () => {
   test('defaults off and only enables on explicit truthy tokens', () => {
     expect(isCloudCodingSessionsEnabled(undefined)).toBe(false)
@@ -539,6 +550,7 @@ describe('POST /v1/cloud-coding-sessions', () => {
       fetch: async (_url, init) => {
         placementBody = JSON.parse(String(init?.body)) as Record<string, unknown>
         return Response.json({
+          agent_computer_isolation_policy: agentComputerIsolationPolicyEcho,
           binding: {
             capacityClassId: 'gce-standard',
             externalRunId: 'run_gce_1',
@@ -576,7 +588,10 @@ describe('POST /v1/cloud-coding-sessions', () => {
       unit: 'one_firecracker_microvm_per_work_context',
       credentials: {
         credential_scanner_required: true,
+        provider_credential_policy: 'broker_only',
+        provider_grants_owner_scoped: true,
         scm_broker_only: true,
+        subscription_capacity_resale: false,
       },
       lifecycle: {
         hard_timeout_seconds: 1800,
@@ -603,6 +618,7 @@ describe('POST /v1/cloud-coding-sessions', () => {
       fetch: async (_url, init) => {
         placementBody = JSON.parse(String(init?.body)) as Record<string, unknown>
         return Response.json({
+          agent_computer_isolation_policy: agentComputerIsolationPolicyEcho,
           binding: {
             externalRunId: 'run_gce_1',
             lane: 'cloud-gcp',
@@ -664,6 +680,7 @@ describe('POST /v1/cloud-coding-sessions', () => {
               kind: 'cloud.gce.provisioning',
             },
           ],
+          agent_computer_isolation_policy: agentComputerIsolationPolicyEcho,
           externalRunId: 'run_gce_daemon',
           status: 'provisioning',
         }),
@@ -691,6 +708,73 @@ describe('POST /v1/cloud-coding-sessions', () => {
     expect(session.agentComputerState).toBeDefined()
   })
 
+  test('fails closed when the control plane omits the isolation-policy echo', async () => {
+    const adapter = makeCloudControlCloudCodingAdapter({
+      baseUrl: 'https://cloud.openagents.test',
+      bearerToken: 'secret-test-token',
+      fetch: async () =>
+        Response.json({
+          binding: {
+            externalRunId: 'run_gce_1',
+            lane: 'cloud-gcp',
+            providerLane: 'gcp',
+            runnerId: 'runner_gce_1',
+            workContextRef: 'work-context.agent-computer.ccs_fixed',
+          },
+          externalRunId: 'run_gce_1',
+          status: 'running',
+        }),
+      gceProvisioningArmed: true,
+    })
+    const response = await run(
+      handleCloudCodingSessionLaunch(launchRequest(validBody), {
+        ...baseDeps(),
+        adapter,
+      }),
+    )
+    expect(response.status).toBe(502)
+    expect(((await response.json()) as { reason: string }).reason).toBe(
+      'agent_computer_isolation_policy_echo_missing',
+    )
+  })
+
+  test('fails closed when the control plane weakens provider credential policy', async () => {
+    const adapter = makeCloudControlCloudCodingAdapter({
+      baseUrl: 'https://cloud.openagents.test',
+      bearerToken: 'secret-test-token',
+      fetch: async () =>
+        Response.json({
+          agent_computer_isolation_policy: {
+            ...agentComputerIsolationPolicyEcho,
+            credentials: {
+              ...agentComputerIsolationPolicyEcho.credentials,
+              provider_credential_policy: 'raw_oauth_allowed',
+            },
+          },
+          binding: {
+            externalRunId: 'run_gce_1',
+            lane: 'cloud-gcp',
+            providerLane: 'gcp',
+            runnerId: 'runner_gce_1',
+            workContextRef: 'work-context.agent-computer.ccs_fixed',
+          },
+          externalRunId: 'run_gce_1',
+          status: 'running',
+        }),
+      gceProvisioningArmed: true,
+    })
+    const response = await run(
+      handleCloudCodingSessionLaunch(launchRequest(validBody), {
+        ...baseDeps(),
+        adapter,
+      }),
+    )
+    expect(response.status).toBe(502)
+    expect(((await response.json()) as { reason: string }).reason).toBe(
+      'agent_computer_isolation_policy_echo_mismatch',
+    )
+  })
+
   test('Seam A: does NOT forward work_context_b64 on the cloud-shc lane', async () => {
     let placementBody: Record<string, unknown> | undefined
     const adapter = makeCloudControlCloudCodingAdapter({
@@ -699,6 +783,7 @@ describe('POST /v1/cloud-coding-sessions', () => {
       fetch: async (_url, init) => {
         placementBody = JSON.parse(String(init?.body)) as Record<string, unknown>
         return Response.json({
+          agent_computer_isolation_policy: agentComputerIsolationPolicyEcho,
           binding: {
             externalRunId: 'run_shc_1',
             lane: 'cloud-shc',
@@ -741,6 +826,7 @@ describe('POST /v1/cloud-coding-sessions', () => {
       fetch: async (_url, init) => {
         placementBody = JSON.parse(String(init?.body)) as Record<string, unknown>
         return Response.json({
+          agent_computer_isolation_policy: agentComputerIsolationPolicyEcho,
           binding: {
             externalRunId: 'run_gce_1',
             lane: 'cloud-gcp',
@@ -781,6 +867,7 @@ describe('POST /v1/cloud-coding-sessions', () => {
       bearerToken: 'secret-test-token',
       fetch: async () =>
         Response.json({
+          agent_computer_isolation_policy: agentComputerIsolationPolicyEcho,
           binding: {
             externalRunId: 'run_gce_1',
             lane: 'cloud-gcp',
@@ -811,6 +898,7 @@ describe('POST /v1/cloud-coding-sessions', () => {
       bearerToken: 'secret-test-token',
       fetch: async () =>
         Response.json({
+          agent_computer_isolation_policy: agentComputerIsolationPolicyEcho,
           binding: {
             externalRunId: 'run_gce_1',
             lane: 'cloud-gcp',
@@ -914,6 +1002,7 @@ describe('POST /v1/cloud-coding-sessions', () => {
         )
         placementBody = JSON.parse(String(init?.body)) as Record<string, unknown>
         return Response.json({
+          agent_computer_isolation_policy: agentComputerIsolationPolicyEcho,
           binding: {
             capacityClassId: 'gce-standard',
             externalRunId: 'run_gce_1',

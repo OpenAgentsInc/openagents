@@ -544,6 +544,32 @@ describe("materializeGitCheckoutWorkspace", () => {
       await rm(workerHome, { recursive: true, force: true })
     }
   })
+
+  test("detects long-lived provider auth files in worker roots", async () => {
+    const workerHome = await mkdtemp(join(tmpdir(), "pylon-worker-home-"))
+    try {
+      await mkdir(join(workerHome, ".codex"), { recursive: true })
+      await writeFile(
+        join(workerHome, ".codex", "auth.json"),
+        `${JSON.stringify({
+          access: "eyJhbGciOiJproviderAccessTokenValueLongEnough",
+          refresh: "codexRefreshTokenValueLongEnoughForScanner",
+        })}\n`,
+      )
+      const leaked = await scanLongLivedScmCredentials({
+        roots: [{ rootRef: "worker_home.test", path: workerHome }],
+      })
+      expect(leaked.state).toBe("leaked")
+      expect(leaked.findings).toContainEqual({
+        findingRef: leaked.findingRefs[0],
+        rootRef: "worker_home.test",
+        relativePath: ".codex/auth.json",
+        reasonRef: "reason.workspace_scm_credentials.provider_codex_auth_json",
+      })
+    } finally {
+      await rm(workerHome, { recursive: true, force: true })
+    }
+  })
 })
 
 describe("removeMaterializedWorkspace", () => {

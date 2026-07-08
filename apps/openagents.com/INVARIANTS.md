@@ -507,6 +507,19 @@ This is the invariant ledger for `openagents`.
   Worker may project or reuse an Agent Computer. A cleanup event may become
   `reclaimed` only with both scratch-wipe and microVM-destroy receipt refs;
   missing or mismatched evidence fails closed.
+- Provider credentials for Agent Computers are broker-only and owner-scoped.
+  The isolation policy must carry and the control plane must echo
+  `provider_credential_policy: broker_only`, `provider_grants_owner_scoped:
+  true`, and `subscription_capacity_resale: false`; any missing or mismatched
+  echo fails closed before projection. A custodied ChatGPT/Codex subscription
+  credential may be materialized only from a short-lived provider-account grant
+  ref, only for the same authenticated owner and work context that requested the
+  turn, and only on disposable scratch that dies with scratch-wipe plus
+  microVM-destroy receipts. Raw provider OAuth material, provider master keys,
+  subscription cookies, provider auth files, and credential helper output must
+  not enter placement payloads, public projections, writeback workspaces, tests,
+  fixtures, issue comments, or logs. Such credentials are never pooled, never
+  routed to another owner, and never used to serve OpenAgents org demand.
 - Private GitHub checkout for Agent Computers must go through the Worker-owned
   SCM broker route `/api/pylon/github/git-credentials`. That route is
   executor-agent-bearer-only, derives the GitHub identity token storage key from
@@ -1739,6 +1752,13 @@ This is the invariant ledger for `openagents`.
 - ChatGPT/Codex account connection is not subscription-account resale
   authorization and must not be described as a live subscription-capacity
   marketplace by itself.
+- ChatGPT/Codex subscription custody for Khala Code Agent Computers is allowed
+  only as owner-directed agentic work: the user authorizes OpenAgents to run the
+  user's own Codex account inside the user's own admitted work context. The
+  provider-ToS posture is "user-controlled machine for the user's work," not
+  resale, pooling, lending, marketplace capacity, or org-demand fulfillment.
+  Every grant remains owner-scoped and short-lived; `subscription_capacity_resale`
+  stays blocked unconditionally.
 - Provider capacity monetization claims are provider-specific. ChatGPT/Codex is
   the first modeled provider; unsupported prepaid providers must remain planned or blocked
   until provider schemas, secret handling, route policy, metering, pricing, ToS

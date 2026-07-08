@@ -123,6 +123,7 @@ export const MAX_CLOUD_CODING_TIMEOUT_SECONDS = 14400
 export const DEFAULT_AGENT_COMPUTER_IDLE_RECLAIM_SECONDS = 1800
 export const AGENT_COMPUTER_ISOLATION_POLICY_SCHEMA =
   'openagents.agent_computer_isolation_policy.v1'
+export const AGENT_COMPUTER_PROVIDER_CREDENTIAL_POLICY = 'broker_only'
 
 const USER_CAPACITY_OPTION_KEYS = new Set([
   'pylonRef',
@@ -787,7 +788,10 @@ const agentComputerIsolationPolicy = (
     no_provider_master_keys: true,
     no_raw_user_oauth_tokens: true,
     no_wallet_material: true,
+    provider_credential_policy: AGENT_COMPUTER_PROVIDER_CREDENTIAL_POLICY,
+    provider_grants_owner_scoped: true,
     scm_broker_only: true,
+    subscription_capacity_resale: false,
   },
   network: {
     egress_policy_ref: 'egress.agent_computer.coding_mvp.restricted.v1',
@@ -936,6 +940,7 @@ const leaseRefsFromEvents = (
 type CloudPlacementResponse = Readonly<{
   externalRunId: string
   status: string
+  agentComputerIsolationPolicy: Readonly<Record<string, unknown>> | null
   events: ReadonlyArray<CloudPlacementEvent>
   binding: Readonly<{
     contractVersion: string
@@ -972,6 +977,12 @@ const normalizeCloudPlacementResponse = (
     rawBinding.caps !== null && typeof rawBinding.caps === 'object'
       ? (rawBinding.caps as Record<string, unknown>)
       : undefined
+  const agentComputerIsolationPolicy =
+    recordFromUnknown(record.agentComputerIsolationPolicy) ??
+    recordFromUnknown(record.agent_computer_isolation_policy) ??
+    recordFromUnknown(rawBinding.agentComputerIsolationPolicy) ??
+    recordFromUnknown(rawBinding.agent_computer_isolation_policy) ??
+    null
   const events = Array.isArray(record.events)
     ? record.events.flatMap(event => {
         const normalized = normalizeCloudPlacementEvent(event)
@@ -998,6 +1009,7 @@ const normalizeCloudPlacementResponse = (
     workContextRefFromEvents ??
     null
   return {
+    agentComputerIsolationPolicy,
     binding: {
       capacityClassId: publicRefFromUnknown(rawBinding.capacityClassId) ?? null,
       contractVersion:
@@ -1034,6 +1046,26 @@ const validateAgentComputerPlacement = (
   placement: CloudPlacementResponse,
   expectedWorkContextRef: string,
 ): string | undefined => {
+  const isolationPolicy = placement.agentComputerIsolationPolicy
+  if (isolationPolicy === null) {
+    return 'agent_computer_isolation_policy_echo_missing'
+  }
+  if (
+    isolationPolicy.schema_version !== AGENT_COMPUTER_ISOLATION_POLICY_SCHEMA
+  ) {
+    return 'agent_computer_isolation_policy_echo_mismatch'
+  }
+  const credentials = recordFromUnknown(isolationPolicy.credentials)
+  if (
+    credentials === undefined ||
+    credentials.scm_broker_only !== true ||
+    credentials.provider_credential_policy !==
+      AGENT_COMPUTER_PROVIDER_CREDENTIAL_POLICY ||
+    credentials.provider_grants_owner_scoped !== true ||
+    credentials.subscription_capacity_resale !== false
+  ) {
+    return 'agent_computer_isolation_policy_echo_mismatch'
+  }
   if (placement.binding.workContextRef === null) {
     return 'agent_computer_work_context_binding_missing'
   }

@@ -113,6 +113,9 @@
     "noWalletMaterial": true,
     "noRawUserOAuthTokens": true,
     "noProviderMasterKeys": true,
+    "providerCredentialPolicy": "broker_only",
+    "providerGrantsOwnerScoped": true,
+    "subscriptionCapacityResale": false,
     "credentialScannerRequired": true,
     "noInboundGuestServices": true,
     "egressPolicy": "restricted-to-scm-package-provider-and-openagents-control-plane"

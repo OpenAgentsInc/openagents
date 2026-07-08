@@ -28,9 +28,16 @@ Agent Computer.
   those refs, the Worker rejects the placement as
   `agent_computer_reclaim_evidence_missing`.
 - **Credentials:** repo access enters the microVM only through the SCM broker.
-  Assignment payloads, placement requests, public projections, issue comments,
-  and traces carry refs only. Pylon's `scanLongLivedScmCredentials` remains the
-  closeout/writeback gate for workspaces and isolated account homes.
+  Provider account access enters the microVM only through the provider-account
+  broker with `provider_credential_policy: broker_only`. Assignment payloads,
+  placement requests, public projections, issue comments, and traces carry refs
+  only. A custodied ChatGPT/Codex subscription credential is keyed to one owner
+  and may be injected only into that owner's own admitted work context. It is
+  never pooled, never routed to another user's turn, and never used to serve
+  OpenAgents org demand or `subscription_capacity_resale`. Pylon's
+  `scanLongLivedScmCredentials` remains the closeout/writeback gate for
+  workspaces and isolated account homes, and now rejects provider auth files as
+  well as SCM credentials.
 - **Writeback:** branch/PR publication uses the brokered user GitHub
   authorization and may push only scoped task branches. Force-push refspecs are
   disallowed; permission failures surface as typed refs rather than leaking Git
@@ -48,9 +55,13 @@ Agent Computer.
   builds an `openagents.agent_computer_isolation_policy.v1` payload for every
   live placement request. It includes the hard timeout, idle reclaim default,
   scratch-wipe and microVM-destroy requirements, SCM-broker-only credentials,
-  credential-scanner requirement, no-wallet/no-master-key/no-raw-OAuth claims,
-  no-inbound networking, and public-refs-only projection.
+  provider-credential-broker-only credentials, owner-scoped provider grants,
+  `subscription_capacity_resale: false`, credential-scanner requirement,
+  no-wallet/no-master-key/no-raw-OAuth claims, no-inbound networking, and
+  public-refs-only projection.
 - The same route validates the placement response before projecting it:
+  `agent_computer_isolation_policy_echo_missing`,
+  `agent_computer_isolation_policy_echo_mismatch`,
   `agent_computer_work_context_binding_missing`,
   `agent_computer_work_context_binding_mismatch`, and
   `agent_computer_reclaim_evidence_missing` are typed fail-closed adapter
@@ -58,7 +69,8 @@ Agent Computer.
 - `apps/pylon/src/workspace-materializer.ts` rejects unbrokered private GitHub
   repos, wrong broker scopes, credentialed URLs, embedded tokens, and unsafe
   fallback modes. Its credential scanner rejects long-lived GitHub/Forged Git
-  tokens and Git authorization extraheaders before verification/writeback.
+  tokens, Git authorization extraheaders, Codex auth JSON, and OpenAI API keys
+  before verification/writeback.
 - `apps/pylon/deploy/agent-computer/` documents the public, non-secret GCE host
   and image contract: nested virtualization, `/dev/kvm`, no external IP by
   default, no control tokens in scripts, disposable scratch, and owner-gated
@@ -77,4 +89,16 @@ Verification for this change:
 ```sh
 bun run test -- src/cloud/cloud-coding-session-routes.test.ts
 bun test apps/pylon/tests/gcloud-setup-script.test.ts
+bun test apps/pylon/tests/workspace-materializer.test.ts
 ```
+
+## Provider-ToS Position
+
+The CX-1 amendment treats connected ChatGPT/Codex credentials as
+owner-directed agentic work on a user-controlled machine: the owner explicitly
+connects their own account and asks an Agent Computer to run that owner's own
+repo/thread task. It does not sell, rent, pool, lend, or route the subscription
+to other users or to OpenAgents org demand. The broker path vends only
+short-lived material for the owner-matched work context and reclaim destroys
+the scratch home; any future provider-specific ToS change must update this
+document and `apps/openagents.com/INVARIANTS.md` before widening behavior.

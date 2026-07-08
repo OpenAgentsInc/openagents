@@ -335,6 +335,15 @@ const longLivedScmCredentialPatterns: ReadonlyArray<{
     reasonRef: "reason.workspace_scm_credentials.git_extraheader_authorization",
     pattern: /\bextraheader\b\s*=\s*(?:authorization|bearer|basic)\b/i,
   },
+  {
+    reasonRef: "reason.workspace_scm_credentials.provider_codex_auth_json",
+    pattern:
+      /"(?:access|refresh|idToken|id_token)"\s*:\s*"[A-Za-z0-9._~+/=-]{20,}"/i,
+  },
+  {
+    reasonRef: "reason.workspace_scm_credentials.provider_openai_api_key",
+    pattern: /\b(?:sk-proj-|sk-)[A-Za-z0-9_-]{20,}\b/i,
+  },
 ]
 
 const credentialScanIgnoredDirectoryNames = new Set([
