@@ -950,6 +950,7 @@
       "name": "@openagentsinc/khala-sync-db-collection",
       "version": "0.1.0",
       "dependencies": {
+        "@openagentsinc/khala-fleet-intents": "workspace:*",
         "@openagentsinc/khala-sync": "workspace:*",
         "@openagentsinc/khala-sync-client": "workspace:*",
         "@tanstack/db": "0.6.14",

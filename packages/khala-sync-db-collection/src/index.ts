@@ -7,19 +7,28 @@ import type {
   TransactionWithMutations,
   UtilsRecord,
 } from "@tanstack/db"
+import type { KhalaFleetIntent } from "@openagentsinc/khala-fleet-intents"
 import {
   canonicalJson,
   CHAT_MESSAGE_ENTITY_TYPE,
   CHAT_THREAD_ENTITY_TYPE,
   decodeChatMessageEntity,
   decodeChatThreadEntity,
+  decodeFleetApprovalEntity,
   decodeFleetRunEntity,
+  decodeFleetSteerEntity,
+  decodeFleetWorkerEntity,
   decodeRuntimeEventEntity,
   decodeRuntimeTurnEntity,
   encodeChatMessageEntity,
   encodeChatThreadEntity,
+  encodeFleetApprovalEntity,
   encodeFleetRunEntity,
+  encodeFleetSteerEntity,
+  FLEET_APPROVAL_ENTITY_TYPE,
   FLEET_RUN_ENTITY_TYPE,
+  FLEET_STEER_ENTITY_TYPE,
+  FLEET_WORKER_ENTITY_TYPE,
   fleetRunScope,
   personalScope,
   RUNTIME_EVENT_ENTITY_TYPE,
@@ -27,7 +36,10 @@ import {
   threadScope,
   type ChatMessageEntity,
   type ChatThreadEntity,
+  type FleetApprovalEntity,
   type FleetRunEntity,
+  type FleetSteerEntity,
+  type FleetWorkerEntity,
   MutationId,
   type MutationEnvelope,
   MutationResult,
@@ -959,6 +971,202 @@ export const fleetRunKhalaSyncCollectionOptions = (
     },
   })
 }
+
+// ---------------------------------------------------------------------------
+// MH-6 (#8585): fleet steering — the three MH-0 typed intents as client
+// mutators, plus read-only worker/approval/steer collections for the mobile
+// peek. The mutator NAMES match the server mutators exactly; the args ARE the
+// `KhalaFleetIntent` value (one vocabulary, no bridge). `apply` produces the
+// optimistic projected post-image so the phone reflects the steer instantly;
+// the authoritative behavior change happens server/desktop-side.
+// ---------------------------------------------------------------------------
+
+export const FLEET_DISPATCH_RUN_CONTROL_MUTATOR_NAME = "fleet.dispatchRunControl"
+export const FLEET_DISPATCH_APPROVAL_DECISION_MUTATOR_NAME =
+  "fleet.dispatchApprovalDecision"
+export const FLEET_DISPATCH_STEER_MESSAGE_MUTATOR_NAME =
+  "fleet.dispatchSteerMessage"
+
+const runStatusForAction = (
+  action: "pause" | "resume" | "drain" | "stop",
+): FleetRunEntity["status"] => {
+  switch (action) {
+    case "pause":
+      return "paused"
+    case "resume":
+      return "running"
+    case "drain":
+      return "draining"
+    case "stop":
+      return "stopped"
+  }
+}
+
+export const fleetDispatchRunControlClientMutator: ClientMutator<KhalaFleetIntent> =
+  {
+    apply: (intent, view) => {
+      if (intent.kind !== "fleet_run_control" || intent.runRef === undefined) {
+        return []
+      }
+      const scope = fleetRunScope(intent.runRef)
+      const currentJson = view.get(scope, FLEET_RUN_ENTITY_TYPE, intent.runRef)
+      if (currentJson === undefined) return []
+      const current = decodeFleetRunEntity(JSON.parse(currentJson) as unknown)
+      const next = decodeFleetRunEntity({
+        ...current,
+        counters: { ...current.counters },
+        ...(intent.action === "stop" ? { desiredSlots: 0 } : {}),
+        status: runStatusForAction(intent.action),
+        updatedAt: intent.createdAt,
+      })
+      return [
+        {
+          entityId: intent.runRef,
+          entityType: FLEET_RUN_ENTITY_TYPE,
+          kind: "upsert",
+          postImageJson: canonicalJson(encodeFleetRunEntity(next)),
+          scope,
+        },
+      ]
+    },
+    name: MutatorName.make(FLEET_DISPATCH_RUN_CONTROL_MUTATOR_NAME),
+  }
+
+export const fleetDispatchApprovalDecisionClientMutator: ClientMutator<KhalaFleetIntent> =
+  {
+    apply: (intent, view) => {
+      if (intent.kind !== "approval_decision" || intent.runRef === undefined) {
+        return []
+      }
+      const scope = fleetRunScope(intent.runRef)
+      const currentJson = view.get(
+        scope,
+        FLEET_APPROVAL_ENTITY_TYPE,
+        intent.approvalRef,
+      )
+      const base =
+        currentJson === undefined
+          ? { approvalRef: intent.approvalRef }
+          : (JSON.parse(currentJson) as Record<string, unknown>)
+      const next = decodeFleetApprovalEntity({
+        ...base,
+        approvalRef: intent.approvalRef,
+        decidedAt: intent.createdAt,
+        status: intent.decision === "allow" ? "allowed" : "denied",
+        updatedAt: intent.createdAt,
+      })
+      return [
+        {
+          entityId: intent.approvalRef,
+          entityType: FLEET_APPROVAL_ENTITY_TYPE,
+          kind: "upsert",
+          postImageJson: canonicalJson(encodeFleetApprovalEntity(next)),
+          scope,
+        },
+      ]
+    },
+    name: MutatorName.make(FLEET_DISPATCH_APPROVAL_DECISION_MUTATOR_NAME),
+  }
+
+export const fleetDispatchSteerMessageClientMutator: ClientMutator<KhalaFleetIntent> =
+  {
+    apply: (intent) => {
+      if (intent.kind !== "steer_message" || intent.runRef === undefined) {
+        return []
+      }
+      const scope = fleetRunScope(intent.runRef)
+      const bodyCarrier =
+        intent.body !== undefined
+          ? "inline"
+          : intent.bodyRef !== undefined
+            ? "ref"
+            : "none"
+      const next = decodeFleetSteerEntity({
+        bodyCarrier,
+        createdAt: intent.createdAt,
+        steerRef: intent.intentId,
+        ...(intent.targetRef === undefined
+          ? {}
+          : { targetRef: intent.targetRef }),
+        updatedAt: intent.createdAt,
+      })
+      return [
+        {
+          entityId: intent.intentId,
+          entityType: FLEET_STEER_ENTITY_TYPE,
+          kind: "upsert",
+          postImageJson: canonicalJson(encodeFleetSteerEntity(next)),
+          scope,
+        },
+      ]
+    },
+    name: MutatorName.make(FLEET_DISPATCH_STEER_MESSAGE_MUTATOR_NAME),
+  }
+
+/**
+ * Read-only `fleet_worker` collection — the per-harness worker cards the
+ * mobile peek renders. Workers are projected by the desktop authority; the
+ * phone never writes them locally.
+ */
+export type FleetWorkerCollectionOptions = Omit<
+  KhalaSyncCollectionOptions<FleetWorkerEntity, string>,
+  "collection" | "decode" | "entityIdFromKey" | "getKey" | "mutators"
+>
+
+export const fleetWorkerKhalaSyncCollectionOptions = (
+  options: FleetWorkerCollectionOptions,
+): CollectionConfig<FleetWorkerEntity, string, never, KhalaSyncCollectionUtils> =>
+  khalaSyncCollectionOptions<FleetWorkerEntity, string>({
+    ...options,
+    awaitServerSync: options.awaitServerSync ?? false,
+    collection: FLEET_WORKER_ENTITY_TYPE,
+    decode: entity =>
+      decodeFleetWorkerEntity(JSON.parse(entity.postImageJson) as unknown),
+    entityIdFromKey: key => key,
+    getKey: row => row.workerId,
+  })
+
+/**
+ * `fleet_approval` collection — the pending-approval cards. Reads are the
+ * projected state; the `approval_decision` intent flips a card via
+ * `session.mutate(fleetDispatchApprovalDecisionClientMutator, intent)`.
+ */
+export type FleetApprovalCollectionOptions = Omit<
+  KhalaSyncCollectionOptions<FleetApprovalEntity, string>,
+  "collection" | "decode" | "entityIdFromKey" | "getKey" | "mutators"
+>
+
+export const fleetApprovalKhalaSyncCollectionOptions = (
+  options: FleetApprovalCollectionOptions,
+): CollectionConfig<FleetApprovalEntity, string, never, KhalaSyncCollectionUtils> =>
+  khalaSyncCollectionOptions<FleetApprovalEntity, string>({
+    ...options,
+    awaitServerSync: options.awaitServerSync ?? false,
+    collection: FLEET_APPROVAL_ENTITY_TYPE,
+    decode: entity =>
+      decodeFleetApprovalEntity(JSON.parse(entity.postImageJson) as unknown),
+    entityIdFromKey: key => key,
+    getKey: row => row.approvalRef,
+  })
+
+/** Read-only `fleet_steer` collection — the body-free steer receipts. */
+export type FleetSteerCollectionOptions = Omit<
+  KhalaSyncCollectionOptions<FleetSteerEntity, string>,
+  "collection" | "decode" | "entityIdFromKey" | "getKey" | "mutators"
+>
+
+export const fleetSteerKhalaSyncCollectionOptions = (
+  options: FleetSteerCollectionOptions,
+): CollectionConfig<FleetSteerEntity, string, never, KhalaSyncCollectionUtils> =>
+  khalaSyncCollectionOptions<FleetSteerEntity, string>({
+    ...options,
+    awaitServerSync: options.awaitServerSync ?? false,
+    collection: FLEET_STEER_ENTITY_TYPE,
+    decode: entity =>
+      decodeFleetSteerEntity(JSON.parse(entity.postImageJson) as unknown),
+    entityIdFromKey: key => key,
+    getKey: row => row.steerRef,
+  })
 
 export type ChatThreadCollectionOptions = Omit<
   KhalaSyncCollectionOptions<ChatThreadEntity, string>,
