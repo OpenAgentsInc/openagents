@@ -2,7 +2,13 @@
   "extends": "../../tsconfig.json",
   "compilerOptions": {
     "noEmit": true,
-    "types": ["bun-types"]
+    "types": ["bun-types"],
+    // Modules relocated out of apps/pylon (issue #8578) were authored under
+    // apps/pylon's tsconfig, which does not enable exactOptionalPropertyTypes.
+    // Keep it off here so the extraction stays a faithful relocation rather
+    // than a behavior-touching rewrite; the rest of root's strictness
+    // (strict, noUnusedLocals, verbatimModuleSyntax) still applies.
+    "exactOptionalPropertyTypes": false
   },
   "include": ["src/**/*"]
 }
