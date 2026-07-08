@@ -12,7 +12,16 @@ each source doc.
 
 ## Start Here
 
-- [`ROADMAP.md`](./ROADMAP.md) — the single consolidated roadmap: 17
+- [`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md) — rev 6, the single top-level
+  sequencing authority for Khala Code, Sarah, Codex, business-facing work,
+  and the Effect Native full-conversion program.
+- [`../RETIRED.md`](../RETIRED.md) — the central ledger of retired and
+  postponed program/document areas after the 2026-07-08 owner mandate.
+- [`2026-07-08-repo-docs-direction-cleanup-audit.md`](./2026-07-08-repo-docs-direction-cleanup-audit.md)
+  — the execution prescription for this docs-direction cleanup: Tassadar/
+  Psionic retired for now, non-Khala/non-business lanes postponed, and stale
+  point-in-time records bannered.
+- [`ROADMAP.md`](./ROADMAP.md) — the earlier consolidated roadmap: 17
   workstreams (WS-1…WS-17), ~80 issue-sized tasks with hard dependencies and
   delegability grades, a five-wave parallelization plan for multi-agent
   fan-out, milestones M1–M6, and the merged non-negotiable invariants.

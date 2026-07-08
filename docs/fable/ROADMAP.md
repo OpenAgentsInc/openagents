@@ -4,6 +4,13 @@
 > owned by [`docs/fable/MASTER_ROADMAP.md`](MASTER_ROADMAP.md); this document
 > remains the content authority for the Khala Code desktop/harness workstreams.
 
+> **Direction cleanup note (2026-07-08):** this document's staged Foldkit-
+> migration workstream is superseded by MASTER_ROADMAP §EN rev 6 and the Effect
+> Native full-conversion mandate; Tassadar, training, and gym workstreams are
+> retired for now per
+> [`2026-07-08-repo-docs-direction-cleanup-audit.md`](2026-07-08-repo-docs-direction-cleanup-audit.md).
+> The remaining Khala Code desktop and harness content stays authoritative.
+
 Date: 2026-07-01
 Status: the single consolidated execution roadmap for every recommendation
 and plan in `docs/fable/`. Sources: the Khala Code summary/analysis, the

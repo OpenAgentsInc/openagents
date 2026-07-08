@@ -175,6 +175,15 @@ from the landing. What is genuinely DONE vs what is only DIRECTION:
 "do #8569 first" recommendation is resolved. Current recommended order
 under the rev 6 conversion mandate:
 
+### Retired programs (rev 6.1)
+
+Tassadar/Psionic and their training, gym, inference, proof/replay, and
+speculative compute-market satellites are retired for now. Revival requires an
+explicit owner decision, with earliest reconsideration after cashflow-positive.
+See
+[`2026-07-08-repo-docs-direction-cleanup-audit.md`](2026-07-08-repo-docs-direction-cleanup-audit.md)
+and [`../RETIRED.md`](../RETIRED.md) for the status ledger.
+
 - **CV0 substrate lanes (continuous, fleet-parallel):** effect-native
   Phase 0/1 (`#1–#8`) are CLOSED; work the open Phase 2/3 set
   (`#11–#19`) and the Phase 4 epic (`#20`, children `#21–#43`) as
