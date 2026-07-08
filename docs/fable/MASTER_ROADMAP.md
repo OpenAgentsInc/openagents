@@ -1,12 +1,49 @@
 # MASTER ROADMAP — Khala Code MVP (Tested, Submitted) → Sarah → Codex → AI Employees → the Suite
 
-Date: 2026-07-08 (rev 6.3 — Pylon folds into Khala Code as the primary surface)
+Date: 2026-07-08 (rev 6.4 — multi-harness parallelization is a now-priority program)
 Status: **the single consolidated execution roadmap.** This document owns
 top-level sequencing across everything designed in the 2026-07-07 strategy
 set and its predecessors. The source docs remain authoritative for their
 *content* (specs, evidence, arguments); when sequencing here and sequencing
 there disagree, **this document wins**, and new issues are filed against the
 phase lanes named here.
+
+**Rev 6.4 changes (owner priority, 2026-07-08 night — MULTI-HARNESS
+PARALLELIZATION):** Khala Code (mobile + desktop) parallelizing coding
+work across **Codex, Claude Code, and Grok CLI** is a **now-priority
+program**, run as the new cross-phase **MH lane family** (§MH below) in
+parallel with P1 sales (separate capacity — sales agents never touch the
+coding claim registry) and with **CX-3 `#8547` as the protected cloud
+linchpin whose capacity is never reassigned**. Authorities: the Fable
+analysis + Grok dialogue in
+`2026-07-08-multi-harness-parallelization-effect-native-analysis.md`
+(§1–§12; consensus complete) and the `docs/grok/` pair. Settled law:
+Axis A (chat harness) ≠ Axis B (worker kind); Grok enters via ACP
+(`grok agent stdio`), never TUI scraping; contract-first waves; the
+June 29 claims/verify/refill/product-visibility laws hold at 3×
+engines; **one typed intent/mutator vocabulary shared by Effect Native
+UI and Khala Sync** (steering is serializable data end to end); the
+multi-harness cockpit is the effect-native Phase 4 catalog build
+(demand via EN-2 `#8572`); the Grok executor is born inside the rev 6.3
+`pylon-core` boundary; an enum-driven **harness conformance suite**
+makes adapter consistency mechanical; `auto` v1 is deliberately dumb
+and fully typed. **Free-Grok economic window:** Grok 4.5 is currently
+free for us — bias fixture/dogfood fan-out toward Grok under *measured*
+rate-limit ceilings (RL-1..6 probes), encoded as
+`marginal_cost_class: free|subscription|api_metered|not_measured` on
+capacity rows, never hard-coded. Division of labor: **the Grok lane
+files and executes its own adapters (MH-3/MH-4 + RL probes)**; the main
+fleet owns the spine — filed tonight as **MH-0 `#8581` (serial Wave 0),
+MH-1 `#8582`, MH-2 `#8583`, MH-5 `#8584`, MH-6 `#8585`, MH-7 `#8586`,
+MH-8 `#8587`, MH-9 `#8588`**, dispatched as the disjoint-path subagent
+work packages in the analysis doc §12.3. Effect Native status refresh
+folded in: upstream **Phase 2 is COMPLETE** (#10–#14 closed: Link,
+responsive, forms, modal/sheet, virtualized lists), Phase 3 is 2/5
+(#15 DevTools + #18 gallery closed), Phase 4 (#20–#43) open, and bug
+**effect-native#44** (style-schema exactness, hit by the `/stage1`
+consumer) is on the near-critical path. Owner gates filed to
+NEEDS_OWNER: the X.ai auth plane per capacity host and weekly
+free-window verification.
 
 **Rev 6.3 changes (owner decision, 2026-07-08 night — the Pylon fold):**
 the Pylon-into-Khala-Code proposal
@@ -232,9 +269,14 @@ only DIRECTION:
 - **`#8467` (Khala Code Mobile MVP epic) OPEN** — the live multi-workstream P0
   program that `#8543` gates.
 
-**Review addendum / recommended next work (updated rev 6.2, 2026-07-08
-evening):** current recommended order under the rev 6 conversion
-mandate:
+**Review addendum / recommended next work (updated rev 6.4, 2026-07-08
+night):** current recommended order:
+
+- **MH program (now-priority, §MH):** dispatch WP-A (MH-0 `#8581`,
+  serial, one agent) immediately; on merge, fan out Batch 1 — MH-1/2/5,
+  Grok's MH-3/MH-4, effect-native#44, EN-2 demand rows — as parallel
+  subagent lanes on disjoint paths; then MH-6/7/8. CX-3 keeps its own
+  dedicated capacity in parallel.
 
 - **CV0 substrate lanes (continuous, fleet-parallel):** effect-native
   Phase 0/1 (`#1–#8`) are CLOSED; work the open Phase 2/3 set
@@ -433,6 +475,46 @@ surface; direct React/RN/DOM authoring outside renderer adapters is
 deprecated now and lint-guarded as EN-8/EN-9 land. Non-UI systems — the
 voice runtime, eve, services, brokers, runtimes, sync — are not UI and
 are untouched throughout.
+
+## MH — multi-harness parallelization (cross-phase, now-priority; rev 6.4)
+
+**The program:** Khala Code mobile + desktop steer parallel coding
+agents across `codex | claude | grok | auto`, on one claim registry, one
+Sync plane, one credits/token ledger, one neutral chat-event model
+(`khala.chat_turn_event.v1`), and **one typed intent/mutator vocabulary**
+shared by Effect Native UI and Khala Sync. Content authorities: the
+Fable↔Grok dialogue
+(`2026-07-08-multi-harness-parallelization-effect-native-analysis.md`,
+consensus closed at §12) and `docs/grok/`.
+
+**Lane index (filed 2026-07-08):**
+
+| Lane | Issue | Scope | Owner |
+|---|---|---|---|
+| MH-0 | `#8581` | Wave 0 contracts — **SERIAL critical path**; additive only; `grok_cli` literals, workerKind enum, `khala.chat_turn_event.v1`, shared intent/mutator package, opaque `sessionRef`+capabilities, `marginal_cost_class` | main fleet (one agent) |
+| MH-1 | `#8582` | Enum-driven harness conformance suite (red-until-proven; rate-limit failure fixtures) | main fleet |
+| MH-2 | `#8583` | Claude Axis A/B parity to 100% — the fastest real two-harness fleet | main fleet |
+| MH-3 | *(Grok files)* | `GrokAcpChatRuntime` — Axis A, mock-ACP fixture first | **Grok lane** |
+| MH-4 | *(Grok files)* | Grok worker executor in the `pylon-core` boundary + RL-1..6 rate-limit probes + plane labeling | **Grok lane** |
+| MH-5 | `#8584` | Mixed-kind FleetRun under one claim registry (simulated; zero collisions ≥3) | main fleet |
+| MH-6 | `#8585` | Sync fleet projections + the three mutators as MH-0 intents; phone pause/approve/steer dogfood | main fleet |
+| MH-7 | `#8586` | The one cockpit (merges into PY-2 `#8579`); EN chrome; data-first exceptions | main fleet |
+| MH-8 | `#8587` | Typed dumb `auto` v1 + per-harness economics (`marginal_cost_class`) | main fleet |
+| MH-9 | `#8588` | Cloud parity for Grok/Claude workers — **strictly after CX-3 `#8547`** | held |
+
+**Dispatch shape (analysis doc §12.3):** WP-A (MH-0) runs alone; then
+Batch 1 in parallel on disjoint mutable paths — MH-1, MH-2, MH-5, Grok's
+MH-3/MH-4, upstream effect-native#44, and the EN-2 demand rows; Batch 2
+(MH-6/7/8) follows on Batch-1 partials; MH-9 held for CX-3. One claim
+per lane; no two agents on `agent-runtime-schema` simultaneously; every
+PR green under the safety floor.
+
+**Standing rules:** CX-3 keeps dedicated capacity throughout; sales
+(OB-*) capacity is separate; free-Grok burn only under measured RL
+ceilings with honest metering (`not_measured` over invented tokens);
+harness-internal auto-approve only when the *product* approval posture
+grants it (one authority surface — the Inbox); public multi-agent copy
+stays promise-gated until live receipts exist.
 
 ## P0 — Khala Code mobile MVP: fully tested, submitted to the stores
 
@@ -964,7 +1046,16 @@ closed by Sarah running a templated employee.
 8. **Constant motion**: owner-gated steps go to NEEDS_OWNER and work
    continues on the next non-blocked lane.
 
-## Current owner gates (as of 2026-07-08 rev 6.2)
+## Current owner gates (as of 2026-07-08 rev 6.4)
+
+Rev 6.4 additions (§MH; also filed to NEEDS_OWNER):
+
+- **X.ai auth plane per fleet capacity host** — plane A (free
+  `grok login` / grok.com session) vs plane B (`XAI_API_KEY`, published
+  pricing); pick the burn plane while the free window holds; hosts must
+  record which plane each account uses.
+- **Weekly free-window verification** for Grok 4.5; on expiry flip
+  `marginal_cost_class` and let MH-8 re-rank `auto` (no code change).
 
 Rev 6.2 note: the `#8577` Tassadar/Psionic code-removal gate is **no longer
 open — the owner lifted it 2026-07-08** (removal is now mandated work). The
@@ -1007,6 +1098,7 @@ Standing gates (carried; still open):
 | Mobile testing system (P0) | `../khala-code/2026-07-07-mobile-testing-audit-and-plan.md` |
 | **Sarah (P1, SR-*)** | `2026-07-07-sarah-sales-agent-spec.md` |
 | **Sarah implementation repo** | private `OpenAgentsInc/sarah` (Vercel + AI SDK realtime → sarah.openagents.com; see its README) |
+| **Multi-harness parallelization (§MH, MH-0..9, rev 6.4)** | `2026-07-08-multi-harness-parallelization-effect-native-analysis.md` (Fable §1–10 + Grok §11 + Fable §12 — consensus + dispatch plan); `docs/grok/parallel-multi-harness-asap.md` + `docs/grok/grok-cli-as-third-harness.md` (adapter design); `docs/grok-cli/` (CLI reference) |
 | **Pylon fold (PY-1..3, rev 6.3)** | `2026-07-08-pylon-into-khala-code-proposal.md` (ACCEPTED — daemon-cockpit model; lanes #8578/#8579/#8580; Spark wallet preserved by owner mandate) |
 | **Effect Native substrate (§EN, EN-*)** | `../effect-native/README.md` + the six 2026-07-08 docs (framing doc first; UI-layer analysis holds EN-0..EN-9); public framework repo `OpenAgentsInc/effect-native` (ROADMAP phases 0–6 = the substrate build order; issues: #1–#8 Phase 0/1 closed, #9–#19 Phase 2/3, #20–#43 the Phase 4 desktop/canvas epic). Internal lanes: epic #8566, EN-1 #8567, EN-2 #8572, EN-3 #8568, EN-4 #8573, EN-5 #8574, EN-6 #8575, deploys #8570/#8571 |
 | **Landing site kit (P1 Track A, WEB-1 #8565)** | `projects/repos/launch-ui` (MIT reference; **design/tokens reference per §EN** — theme ports into `@effect-native/tokens`; the vendored React replica at `/demo`/`/new` is the visual baseline, not the forward path) |

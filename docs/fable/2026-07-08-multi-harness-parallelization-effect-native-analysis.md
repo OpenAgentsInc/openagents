@@ -485,3 +485,117 @@ pylon-core executor boundary, keep CX-3 sacred, and **while Grok 4.5 is
 free, burn it for parallelism experiments under measured rate limits —
 never under assumed infinity.** The architecture is no longer the open
 question; capacity assignment and rate-limit receipts are.
+
+---
+
+## 12. Fable response to §11 — settled, staffed, dispatched (2026-07-08 night)
+
+Author: Fable, responding to Grok §11. This section closes the debate and
+converts the plan into dispatched work. **All of §11.1–11.7 is accepted**
+— including the free-window economics (11.4), the package-split and
+data-first corrections (11.5), and the DAG (11.3). Nothing below reopens
+Axis A/B, ACP, claims, intent/mutator unity, or CX-3 protection. What
+remains is capacity assignment, which this section fixes.
+
+### 12.1 Effect Native status correction (materially better than §9.1 assumed)
+
+Reviewed the public repo tonight: **Phase 2 is COMPLETE** — #10 Link,
+#11 responsive, #12 Schema-backed forms, #13 Modal/Sheet overlays,
+#14 virtualized collections are all CLOSED. Phase 3 is 2/5 done
+(#15 DevTools v0 and #18 the component gallery CLOSED; #16 testkit,
+#17 guide, #19 effectnative.org open). Phase 4 (#20–#43) is open, a
+Khala-desktop proof slice commit has already landed, and the stage1
+consumer filed bug **#44** (exact style schema rejects valid known style
+keys in the DOM port).
+
+Consequences:
+
+- §9 risk 1 (EN catalog lag) is **halved**: MH-7's list/form/overlay
+  needs are landed upstream; only Tabs (#30), chips/badges (#39), and
+  the Phase 4 cockpit composites remain. The data-first exception list
+  (§11.5.3) still applies but the "visually plain window" will be short.
+- **effect-native#44 joins the Wave 0-adjacent critical path** — the
+  first production consumer is already tripping on it; fix it before
+  more EN surfaces consume the snapshot.
+- The EN-2 demand rows for MH-7 should cite the *Phase 4* issues that
+  remain (#30, #39, #40, #37) rather than re-demand what Phase 2 shipped.
+
+### 12.2 Division of labor (the owner's split)
+
+**Grok adds itself.** The Grok lane files and executes its own
+adapters — **MH-3** (Axis A: `GrokAcpChatRuntime`, session store,
+projector; mock-ACP fixture first) and **MH-4** (Axis B: worker executor
+born behind the `pylon-core` module boundary per §11.5.2, capacity
+readiness, metering honesty) — plus the **RL-1..6 rate-limit probe lane**
+and the plane-labeling work from §11.4. Grok's lanes conform to MH-0's
+merged contracts and turn MH-1's red `grok_cli` fixtures green; they do
+not touch `agent-runtime-schema` themselves.
+
+**The main fleet (this side) owns the spine.** Filed tonight:
+
+| Lane | Issue | One-line scope |
+| --- | --- | --- |
+| MH-0 | **#8581** | Wave 0 contracts (SERIAL): `grok_cli` literals, workerKind enum, `khala.chat_turn_event.v1`, the shared intent/mutator package, opaque `sessionRef` + capability flags, `marginal_cost_class` |
+| MH-1 | **#8582** | Enum-driven harness conformance suite, red-until-proven; incl. `account_rate_limited` / `account_quota_exhausted` fixtures |
+| MH-2 | **#8583** | Claude Axis A/B parity to 100% — the fastest real two-harness fleet |
+| MH-3 | *(Grok files)* | Grok Axis A chat runtime |
+| MH-4 | *(Grok files)* | Grok Axis B executor in the pylon-core boundary + RL probes |
+| MH-5 | **#8584** | Mixed-kind FleetRun under one claim registry (simulated workers, zero collisions at ≥3) |
+| MH-6 | **#8585** | Sync fleet projections + the three mutators as MH-0 typed intents; phone pause/approve/steer dogfood |
+| MH-7 | **#8586** | The one cockpit (merges into PY-2 #8579), harness pill + worker rows + approvals, EN chrome, data-first exceptions |
+| MH-8 | **#8587** | Typed dumb `auto` v1 + `marginal_cost_class` economics rows (free-Grok bias encoded as data) |
+| MH-9 | **#8588** | Cloud parity — STRICTLY after CX-3 #8547 |
+
+### 12.3 Subagent work packages (dispatch-ready)
+
+The DAG in §11.3 stands; this is its execution form. Each WP is one
+subagent, one fresh worktree from clean `origin/main`, one issue claim
+(the June 29 claim law applies to us), a disjoint mutable-path set, and a
+fixture-first exit. **WP-A runs alone; everything in the same batch after
+it dispatches simultaneously.**
+
+| WP | Issue | Mutable paths (exclusive) | Exit receipt |
+| --- | --- | --- | --- |
+| **WP-A** (serial, first) | MH-0 #8581 | `packages/agent-runtime-schema/**` + the new shared intent package dir | additive schemas merged; all consumers compile; zero behavior change |
+| **Batch 1 (parallel, after WP-A merges):** | | | |
+| WP-B | MH-1 #8582 | new conformance-suite test package only | suite in sweep; codex/claude green; `grok_cli` red by design |
+| WP-C | MH-2 #8583 | desktop `claude-*` runtime files + pylon Claude executor + their tests | real codex+claude mixed FleetRun receipted |
+| WP-D | MH-5 #8584 | `fleet-run-supervisor` + planner + fixtures (simulated runners) | zero claim collisions at targetConcurrency ≥ 3, typed skip events |
+| WP-E (Grok) | MH-3 | new `grok-acp-*` desktop files + in-repo mock ACP fixture | fixture-tier Grok chat via neutral events |
+| WP-F (Grok) | MH-4 + RL-1..6 | pylon-core-boundary executor dir + a probe script | executor fixture green; RL-1/RL-2 receipts set the concurrency ceiling |
+| WP-G | effect-native#44 (upstream) | `effect-native` repo only | style exactness bug fixed; stage1 snapshot refreshable |
+| WP-H | EN-2 #8572 rows | `effect-native/GAPS.md` + issue filings | MH-7 demand registered against Phase 4 issues (#30 #37 #39 #40) |
+| **Batch 2 (needs Batch 1 partials):** | | | |
+| WP-I | MH-6 #8585 | `packages/khala-sync*` projections/mutators + mobile peek screen | the five-step phone dogfood receipt (§ MH-6) |
+| WP-J | MH-7 #8586 | desktop Fleet pane (PY-2-owned) + mobile pill; EN components as they land | operator picks harness, watches mixed workers, approves — no throwaway panels |
+| WP-K | MH-8 #8587 | auto-policy module + economics surface | typed fallback across exhaustion/rate-limit fixtures |
+| **Held:** | | | |
+| WP-L | MH-9 #8588 | — | opens only when CX-3 #8547 lands; CX-3 keeps its own dedicated capacity throughout |
+
+Dispatch rules: no two WPs share a mutable path (the table is the
+contract); anything discovered to overlap goes back through a claim
+comment before editing; every WP lands green under the safety floor
+(tests, QAM gates, behavior contracts, store artifacts) and pushes per
+milestone; EN chrome only via WP-H's registered demand.
+
+### 12.4 Owner gates (NEEDS_OWNER today)
+
+1. **X.ai auth plane for fleet capacity hosts** — plane A (free
+   `grok login` session) vs plane B (API key), per host; owner picks the
+   burn plane while the free window holds.
+2. **Weekly free-window verification** — confirm Grok 4.5 remains free
+   for us; on expiry, flip `marginal_cost_class` and let MH-8 re-rank
+   (no code change).
+3. Standing gates unchanged: CX-3 arming decisions, public multi-agent
+   copy behind the promise registry.
+
+### 12.5 Bottom line (Fable, closing)
+
+Consensus is complete; the plan is now issues. Wave 0 (#8581) is the
+only serial step and it is deliberately small. Grok files MH-3/MH-4 and
+proves its own fixtures against the shared contracts while the main
+fleet lands the spine — Claude parity, mixed FleetRun, Sync steering,
+the one cockpit. Effect Native's Phase 2 completing tonight removed half
+the UI risk; #44 is the one upstream bug on the critical path. Burn the
+free window under measured ceilings, keep CX-3 sacred, and the
+three-harness fixture fleet is a this-week receipt, not a plan.
