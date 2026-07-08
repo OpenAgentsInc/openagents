@@ -1,6 +1,6 @@
 # MASTER ROADMAP — Khala Code MVP (Tested, Submitted) → Sarah → Codex → AI Employees → the Suite
 
-Date: 2026-07-08 (rev 4.1 — + Sarah hosting: off Vercel to Cloud Run; TanStack port scheduled)
+Date: 2026-07-08 (rev 4.2 — + launch-ui: new openagents.com sales landing, HIGH priority)
 Status: **the single consolidated execution roadmap.** This document owns
 top-level sequencing across everything designed in the 2026-07-07 strategy
 set and its predecessors. The source docs remain authoritative for their
@@ -160,13 +160,25 @@ one, inverting the spec's original deferral. The monorepo remains the
 system of record (CRM, credits, checkout, receipts, promise registry);
 the sarah repo calls its APIs and never re-implements them.
 
-**Track A (revised) — the surface.** Sarah's home is sarah.openagents.com
-(her repo). The TanStack Start openagents.com rebuild is **decoupled from
-P1's critical path**: it proceeds as the funnel/business-page track that
-*links to* Sarah, and embeds her later; the typed-component renderer port
-and route-by-route legacy absorption move with it (dashboard shell still
-lands with P4). No new legacy Foldkit surfaces, per the standing ONE-UI
-decision.
+**Track A (revised 2026-07-08, HIGH PRIORITY) — the new openagents.com
+sales landing, built from launch-ui.** Owner directive: switch the
+openagents.com landing/marketing site to a sales-focused site built from
+**launch-ui** (`projects/repos/launch-ui` — MIT; shadcn/ui + Tailwind 4 +
+React 19; a complete landing kit: hero/navbar/pricing/stats/logos/items/
+faq/cta/footer; only **4 files** import `next/*`, so the TanStack Start
+port is link/image swaps, not a rewrite). This is the **birth of the
+TanStack Start openagents.com app**: launch-ui components themed to
+Protoss blue (one theme — next-themes/mode-toggle dropped), the stats
+section wired to the LIVE public counters, pricing wired to the credit
+tiers, CTAs → business intake + **"Talk to Sarah"**, copy through the
+promise-registry gates with owner sign-off before the switch. The new
+app serves the landing in production (Cloud Run) while existing product
+routes stay on the current worker until absorbed route-by-route — no new
+legacy Foldkit surfaces, per the standing ONE-UI decision. Filed as
+**#8565**. Synergy: sarah#15's TanStack port shares the same
+launch-ui/shadcn base, so sarah.openagents.com and openagents.com become
+one component system. Sarah's home remains sarah.openagents.com (her
+repo); the dashboard shell still lands with P4.
 
 **Track A′ — SR-0, deploy readiness (the near-term work list, in
 order):**
@@ -549,6 +561,7 @@ closed by Sarah running a templated employee.
 | Mobile testing system (P0) | `../khala-code/2026-07-07-mobile-testing-audit-and-plan.md` |
 | **Sarah (P1, SR-*)** | `2026-07-07-sarah-sales-agent-spec.md` |
 | **Sarah implementation repo** | private `OpenAgentsInc/sarah` (Vercel + AI SDK realtime → sarah.openagents.com; see its README) |
+| **Landing site kit (P1 Track A, WEB-1 #8565)** | `projects/repos/launch-ui` (MIT reference; shadcn/Tailwind sections ported to TanStack Start) |
 | **Outbound engine (P1 Track C)** | `2026-07-03-apollo-outbound-sales-plan.md` (audit-first motion, segments); SELL epic #8261 / LG-1..9 (closed substrate); blitz compliance-guardrails (binding) |
 | Web stack decision (P1 Track A) | `2026-07-04-tanstack-start-sites-and-web-app-evaluation.md` |
 | Codex/BYO harness (P2) | `2026-07-07-beyond-mvp-codex-agent-computers-and-ai-employees.md` |
