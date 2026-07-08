@@ -134,6 +134,18 @@ type ProviderAccountRouteDependencies<Bindings = OpenAgentsEnv> = Readonly<{
     env: Bindings,
     ctx: ExecutionContext,
   ) => RouteEffect
+  handleMobileCodexAccountDisconnectApi: (
+    request: Request,
+    env: Bindings,
+    ctx: ExecutionContext,
+    providerAccountRef: string,
+  ) => RouteEffect
+  handleMobileCodexDeviceLoginStatusApi: (
+    request: Request,
+    env: Bindings,
+    ctx: ExecutionContext,
+    attemptId: string,
+  ) => RouteEffect
 }>
 
 export const makeProviderAccountRoutes = <Bindings = OpenAgentsEnv>(
@@ -398,6 +410,46 @@ export const makeProviderAccountRoutes = <Bindings = OpenAgentsEnv>(
             request,
             env,
             attemptId,
+          ),
+        )
+      }
+    }
+
+    const mobileCodexDeviceLoginStatusMatch =
+      /^\/api\/mobile\/codex-accounts\/device-login\/([^/]+)$/.exec(
+        url.pathname,
+      )
+
+    if (mobileCodexDeviceLoginStatusMatch !== null) {
+      const attemptId = mobileCodexDeviceLoginStatusMatch[1]
+
+      if (attemptId !== undefined) {
+        return routeEffectOrResponse(
+          dependencies.handleMobileCodexDeviceLoginStatusApi(
+            request,
+            env,
+            ctx,
+            attemptId,
+          ),
+        )
+      }
+    }
+
+    const mobileCodexAccountDisconnectMatch =
+      /^\/api\/mobile\/codex-accounts\/([^/]+)\/disconnect$/.exec(
+        url.pathname,
+      )
+
+    if (mobileCodexAccountDisconnectMatch !== null) {
+      const providerAccountRef = mobileCodexAccountDisconnectMatch[1]
+
+      if (providerAccountRef !== undefined) {
+        return routeEffectOrResponse(
+          dependencies.handleMobileCodexAccountDisconnectApi(
+            request,
+            env,
+            ctx,
+            providerAccountRef,
           ),
         )
       }

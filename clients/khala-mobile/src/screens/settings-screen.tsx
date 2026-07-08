@@ -19,6 +19,19 @@ import type { AppDrawerScreenProps } from "../navigators/navigationTypes"
 import type { OnDeviceReadinessRow } from "../native/on-device-readiness-core"
 import { useOnDeviceReadiness } from "../native/use-on-device-readiness"
 import { registerForPushNotificationsAsync } from "../push/push-notifications-client"
+import {
+  disconnectKhalaMobileCodexAccount,
+  fetchKhalaMobileCodexAccounts,
+  pollKhalaMobileCodexDeviceLogin,
+  startKhalaMobileCodexDeviceLogin,
+  type KhalaMobileCodexAccountsBundle,
+  type KhalaMobileCodexDeviceLoginStart,
+} from "../sync/khala-mobile-codex-accounts-api"
+import {
+  codexAccountTitle,
+  codexQuotaLabel,
+  codexReadinessLabel,
+} from "../sync/khala-mobile-codex-accounts-core"
 import { fetchKhalaMobileCreditsBalance } from "../sync/khala-mobile-credits-api"
 import { formatUsdCents, isLowBalance } from "../sync/khala-mobile-credits-format-core"
 import {
@@ -82,6 +95,126 @@ export const AccountSection = () => {
           </View>
         )}
       </Pressable>
+    </SectionCard>
+  )
+}
+
+type CodexAccountsState =
+  | Readonly<{ status: "loading" }>
+  | Readonly<{ status: "ready"; bundle: KhalaMobileCodexAccountsBundle }>
+  | Readonly<{ status: "unavailable" }>
+
+const CodexAccountsSection = () => {
+  const { baseUrl, token } = useKhalaAuth()
+  const { theme, themed } = useAppTheme()
+  const [state, setState] = useState<CodexAccountsState>({ status: "loading" })
+  const [pendingLogin, setPendingLogin] = useState<KhalaMobileCodexDeviceLoginStart | null>(null)
+  const [working, setWorking] = useState(false)
+
+  const refreshAccounts = async () => {
+    const result = await fetchKhalaMobileCodexAccounts(baseUrl, token)
+    setState(result.ok ? { bundle: result.value, status: "ready" } : { status: "unavailable" })
+  }
+
+  useEffect(() => {
+    void refreshAccounts()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const handleConnect = async () => {
+    if (working) return
+    setWorking(true)
+    const result = await startKhalaMobileCodexDeviceLogin(baseUrl, token)
+    setWorking(false)
+    if (!result.ok) {
+      setState({ status: "unavailable" })
+      return
+    }
+    setPendingLogin(result.value)
+    setState(current =>
+      current.status === "ready"
+        ? {
+            bundle: {
+              accounts: [result.value.account, ...current.bundle.accounts],
+              attempts: [result.value.attempt, ...current.bundle.attempts],
+            },
+            status: "ready",
+          }
+        : { bundle: { accounts: [result.value.account], attempts: [result.value.attempt] }, status: "ready" },
+    )
+    void Linking.openURL(result.value.verificationUrl)
+  }
+
+  const handleRefresh = async () => {
+    if (working) return
+    setWorking(true)
+    if (pendingLogin !== null) {
+      const result = await pollKhalaMobileCodexDeviceLogin(baseUrl, token, pendingLogin.attempt.id)
+      if (result.ok) {
+        setPendingLogin(result.value.attempt.status === "pending" ? pendingLogin : null)
+      }
+    }
+    await refreshAccounts()
+    setWorking(false)
+  }
+
+  const handleDisconnect = async (providerAccountRef: string) => {
+    if (working) return
+    setWorking(true)
+    await disconnectKhalaMobileCodexAccount(baseUrl, token, providerAccountRef)
+    await refreshAccounts()
+    setWorking(false)
+  }
+
+  return (
+    <SectionCard heading="Codex accounts">
+      {state.status === "loading" ? (
+        <Text size="xs" style={themed($dim)} text="Loading Codex accounts…" />
+      ) : state.status === "unavailable" ? (
+        <>
+          <Text size="xs" style={themed($dim)} text="Codex account status is unavailable." />
+          <Button preset="filled" text="Retry" disabled={working} onPress={() => void handleRefresh()} />
+        </>
+      ) : (
+        <>
+          {state.bundle.accounts.length === 0 ? (
+            <Text size="xs" style={themed($dim)} text="No Codex account connected." />
+          ) : (
+            state.bundle.accounts.map(account => (
+              <View key={account.providerAccountRef} style={themed($codexAccountRow)}>
+                <View style={themed($codexAccountText)}>
+                  <Text size="sm" text={codexAccountTitle(account)} />
+                  <Text
+                    size="xs"
+                    style={
+                      account.readiness === "ready"
+                        ? themed($success)
+                        : account.readiness === "account_exhausted" || account.readiness === "account_rate_limited"
+                          ? { color: theme.colors.error }
+                          : themed($dim)
+                    }
+                    text={`${codexReadinessLabel(account.readiness)} · ${codexQuotaLabel(account.quotaState)}`}
+                  />
+                </View>
+                <Button
+                  preset="default"
+                  text="Disconnect"
+                  disabled={working}
+                  onPress={() => void handleDisconnect(account.providerAccountRef)}
+                />
+              </View>
+            ))
+          )}
+          {pendingLogin === null ? null : (
+            <View style={themed($codexDeviceCodeBox)}>
+              <Text size="xs" style={themed($faint)} text="Verification code" />
+              <Text preset="subheading" text={pendingLogin.userCode} />
+            </View>
+          )}
+          <Button preset="filled" text="Connect Codex" disabled={working} onPress={() => void handleConnect()} />
+          <Button preset="default" text="Refresh" disabled={working} onPress={() => void handleRefresh()} />
+        </>
+      )}
     </SectionCard>
   )
 }
@@ -440,6 +573,7 @@ export const SettingsScreen = ({ navigation }: SettingsScreenProps) => {
       />
       <View style={themed($body)}>
         <AccountSection />
+        <CodexAccountsSection />
         <CreditsSection onViewHistory={() => navigation.navigate("Main", { screen: "CreditsHistory" })} />
         <ModelsSection />
         <NotificationsSection />
@@ -480,6 +614,30 @@ const $sectionBody: ThemedStyle<ViewStyle> = ({ spacing }) => ({
   gap: spacing.xs,
 })
 
+const $codexAccountRow: ThemedStyle<ViewStyle> = ({ colors, spacing }) => ({
+  alignItems: "center",
+  borderColor: colors.palette.neutral400,
+  borderRadius: 8,
+  borderWidth: 1,
+  flexDirection: "row",
+  gap: spacing.sm,
+  justifyContent: "space-between",
+  minHeight: 64,
+  padding: spacing.sm,
+})
+
+const $codexAccountText: ThemedStyle<ViewStyle> = () => ({
+  flex: 1,
+  flexShrink: 1,
+})
+
+const $codexDeviceCodeBox: ThemedStyle<ViewStyle> = ({ colors, spacing }) => ({
+  borderColor: colors.palette.neutral400,
+  borderRadius: 8,
+  borderWidth: 1,
+  padding: spacing.sm,
+})
+
 const $modalScrim: ThemedStyle<ViewStyle> = ({ spacing, colors }) => ({
   flex: 1,
   justifyContent: "flex-end",
@@ -501,6 +659,7 @@ const $readinessRight: ThemedStyle<ViewStyle> = () => ({
 
 const $dim: ThemedStyle<TextStyle> = ({ colors }) => ({ color: colors.textDim })
 const $faint: ThemedStyle<TextStyle> = ({ colors }) => ({ color: colors.palette.neutral500 })
+const $success: ThemedStyle<TextStyle> = ({ colors }) => ({ color: colors.palette.secondary300 })
 const $warning: ThemedStyle<TextStyle> = ({ colors }) => ({ color: colors.palette.accent200 })
 const $danger: ThemedStyle<TextStyle> = ({ colors }) => ({ color: colors.error })
 

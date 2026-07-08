@@ -52,6 +52,7 @@ type ProviderAccountTokenCustodyAuditEvent = Readonly<{
   eventKind:
     | 'auth_stored'
     | 'access_issued'
+    | 'auth_deleted'
     | 'refresh_succeeded'
     | 'refresh_failed'
   status: 'succeeded' | 'failed'
@@ -103,6 +104,11 @@ export type ProviderAccountTokenCustodyStore = Readonly<{
   insertAuditEvent: (
     auditEvent: ProviderAccountTokenCustodyAuditEvent,
   ) => Promise<void>
+  deleteByOwnerAndRef: (
+    ownerUserId: string,
+    providerAccountRef: string,
+    auditEvent: ProviderAccountTokenCustodyAuditEvent,
+  ) => Promise<boolean>
 }>
 
 export type ProviderTokenCustodyKeyEnv = Readonly<{
@@ -399,6 +405,41 @@ export const makeD1ProviderAccountTokenCustodyStore = (
   insertAuditEvent: async auditEvent => {
     await bindAuditEvent(auditInsertStatement(db), auditEvent).run()
   },
+
+  deleteByOwnerAndRef: async (ownerUserId, providerAccountRef, auditEvent) => {
+    const existing = await db
+      .prepare(
+        `SELECT owner_user_id
+         FROM provider_account_token_custody
+         WHERE provider_account_ref = ?`,
+      )
+      .bind(providerAccountRef)
+      .first<{ owner_user_id: string }>()
+
+    if (existing === null) {
+      await bindAuditEvent(auditInsertStatement(db), auditEvent).run()
+      return false
+    }
+
+    if (existing.owner_user_id !== ownerUserId) {
+      throw new ProviderAccountRefMismatch({
+        message: 'Provider account custody row belongs to a different owner.',
+      })
+    }
+
+    await db.batch([
+      db
+        .prepare(
+          `DELETE FROM provider_account_token_custody
+           WHERE owner_user_id = ?
+             AND provider_account_ref = ?`,
+        )
+        .bind(ownerUserId, providerAccountRef),
+      bindAuditEvent(auditInsertStatement(db), auditEvent),
+    ])
+
+    return true
+  },
 })
 
 export const makeProviderAccountTokenCustodyCipher = async (
@@ -619,6 +660,35 @@ export const storeConnectedCodexAuthInCustody = async (
   )
 
   return record.secretRef
+}
+
+export const deleteConnectedCodexAuthFromCustody = async (
+  store: ProviderAccountTokenCustodyStore,
+  input: Readonly<{
+    ownerUserId: string
+    providerAccountRef: string
+    actorRef?: string | undefined
+    nowIso?: string | undefined
+    makeId?: IdFactory | undefined
+  }>,
+): Promise<boolean> => {
+  const nowIso = input.nowIso ?? currentIsoTimestamp()
+  const makeId = input.makeId ?? compactRandomId
+
+  return store.deleteByOwnerAndRef(
+    input.ownerUserId,
+    input.providerAccountRef,
+    auditEvent({
+      actorRef: input.actorRef,
+      eventKind: 'auth_deleted',
+      makeId,
+      nowIso,
+      ownerUserId: input.ownerUserId,
+      providerAccountRef: input.providerAccountRef,
+      sourceRef: `providerAccount:${input.providerAccountRef}`,
+      status: 'succeeded',
+    }),
+  )
 }
 
 const shortLivedAccessFromRecord = async (

@@ -504,6 +504,14 @@ describe('provider api key connect route dispatch', () => {
         'khalaCodeOpenAgentsAuthVerify',
         calls,
       ),
+      handleMobileCodexAccountDisconnectApi: stub(
+        'mobileCodexDisconnect',
+        calls,
+      ),
+      handleMobileCodexDeviceLoginStatusApi: stub(
+        'mobileCodexDeviceStatus',
+        calls,
+      ),
     })
 
   const ctx = {
@@ -639,6 +647,33 @@ describe('provider api key connect route dispatch', () => {
       'khalaCodeOpenAgentsAuthStart',
       'khalaCodeOpenAgentsAuthVerify',
       'khalaCodeOpenAgentsAuthStatus',
+    ])
+  })
+
+  test('routes mobile Codex account poll and disconnect paths to mobile handlers', async () => {
+    const calls: Array<string> = []
+    const router = makeRouter(calls)
+
+    for (const path of [
+      '/api/mobile/codex-accounts/device-login/provider_attempt_1',
+      '/api/mobile/codex-accounts/provider-account_1/disconnect',
+    ]) {
+      const effect = router.routeProviderAccountRequest(
+        new Request(`https://openagents.com${path}`, { method: 'POST' }),
+        {},
+        ctx,
+      )
+
+      expect(effect).toBeDefined()
+
+      if (effect !== undefined) {
+        await Effect.runPromise(effect)
+      }
+    }
+
+    expect(calls).toEqual([
+      'mobileCodexDeviceStatus',
+      'mobileCodexDisconnect',
     ])
   })
 })

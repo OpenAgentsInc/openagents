@@ -248,6 +248,11 @@ import {
   MOBILE_CREDITS_TRANSACTIONS_PATH,
 } from './mobile-credits-routes'
 import {
+  makeProviderAccountMobileHandlers,
+  MOBILE_CODEX_ACCOUNTS_PATH,
+  MOBILE_CODEX_DEVICE_LOGIN_START_PATH,
+} from './provider-account-mobile-routes'
+import {
   handlePushDeviceTokensRequest,
   PUSH_DEVICE_TOKENS_PATH,
 } from './push/push-device-token-routes'
@@ -1073,6 +1078,7 @@ import {
 } from './identity-auth-domain-store'
 import {
   codexAccessToAuthMaterial,
+  deleteConnectedCodexAuthFromCustody,
   issueShortLivedCodexAccessFromCustody,
   providerAccountTokenCustodyCipherFromEnv,
   storeConnectedCodexAuthInCustody,
@@ -7252,6 +7258,20 @@ const storeConnectedCodexAuth =
     )
   }
 
+const deleteConnectedCodexAuth = async (
+  env: ProviderAccountTokenCustodyEnv,
+  input: Readonly<{
+    ownerUserId: string
+    providerAccountRef: string
+  }>,
+): Promise<boolean> =>
+  deleteConnectedCodexAuthFromCustody(makeProviderAccountTokenCustodyStoreForEnv(env), {
+    actorRef: `owner:${input.ownerUserId}`,
+    ownerUserId: input.ownerUserId,
+    providerAccountRef: input.providerAccountRef,
+    nowIso: currentIsoTimestamp(),
+  })
+
 const readConnectedCodexAuthMaterial = async (
   env: ProviderAccountTokenCustodyEnv,
   ownerUserId: string,
@@ -8482,6 +8502,16 @@ const providerAccountPylonHandlers = makeProviderAccountPylonHandlers({
   storeStartedCodexDeviceLogin,
 })
 
+const providerAccountMobileHandlers = makeProviderAccountMobileHandlers({
+  deleteConnectedCodexAuth,
+  deleteStartedCodexDeviceLogin,
+  readStartedCodexDeviceLogin,
+  requireUserBearerSession,
+  storeConnectedCodexAuth,
+  storeStartedCodexDeviceLogin,
+  userIdFromSession: session => session.user.userId,
+})
+
 const pylonOpenAgentsAuthHandlers = makePylonOpenAgentsAuthHandlers({
   agentStore: env => makeAgentRegistrationStoreForEnv(env),
   appendRefreshedSessionCookies,
@@ -8668,6 +8698,29 @@ const providerAccountRoutes = makeProviderAccountRoutes({
   handleProviderDeviceLoginStatusApi: (request, env, ctx, attemptId) =>
     routeEffect('handle_provider_device_login_status_api', () =>
       providerAccountBrowserHandlers.handleProviderDeviceLoginStatusApi(
+        request,
+        env,
+        ctx,
+        attemptId,
+      ),
+    ),
+  handleMobileCodexAccountDisconnectApi: (
+    request,
+    env,
+    ctx,
+    providerAccountRef,
+  ) =>
+    routeEffect('handle_mobile_codex_account_disconnect_api', () =>
+      providerAccountMobileHandlers.handleMobileCodexAccountDisconnectApi(
+        request,
+        env,
+        ctx,
+        providerAccountRef,
+      ),
+    ),
+  handleMobileCodexDeviceLoginStatusApi: (request, env, ctx, attemptId) =>
+    routeEffect('handle_mobile_codex_device_login_status_api', () =>
+      providerAccountMobileHandlers.handleMobileCodexDeviceLoginStatusApi(
         request,
         env,
         ctx,
@@ -12816,6 +12869,28 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     path: '/api/mobile/model-preference',
     handler: (request, env, ctx) =>
       Effect.promise(() => handleMobileModelPreferenceApi(request, env, ctx)),
+  },
+  {
+    path: MOBILE_CODEX_ACCOUNTS_PATH,
+    handler: (request, env, ctx) =>
+      Effect.promise(() =>
+        providerAccountMobileHandlers.handleMobileCodexAccountsListApi(
+          request,
+          env,
+          ctx,
+        ),
+      ),
+  },
+  {
+    path: MOBILE_CODEX_DEVICE_LOGIN_START_PATH,
+    handler: (request, env, ctx) =>
+      Effect.promise(() =>
+        providerAccountMobileHandlers.handleMobileCodexDeviceLoginStartApi(
+          request,
+          env,
+          ctx,
+        ),
+      ),
   },
   {
     // TEMP-DIAG-8467: unauthenticated sink so the mobile app can beacon the

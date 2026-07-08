@@ -1825,6 +1825,15 @@ This is the invariant ledger for `openagents`.
   materialization may receive only short-lived access-token
   `OPENCODE_AUTH_CONTENT` without a refresh field. Regression coverage lives in
   `workers/api/src/provider-account-token-custody.test.ts`.
+- Khala Mobile Codex connect is a mobile-bearer facade over the same
+  user-scoped custody rail. `/api/mobile/codex-accounts*` routes must verify
+  the OpenAuth mobile bearer, start/poll device auth without touching
+  `~/.codex`, return only public account/attempt state to the phone, and on
+  disconnect revoke outstanding grants plus delete the encrypted
+  `provider_account_token_custody` row for that owner/account. Regression
+  coverage lives in `workers/api/src/provider-account-api-key.test.ts`,
+  `workers/api/src/provider-account-token-custody.test.ts`, and
+  `clients/khala-mobile/tests/khala-mobile-codex-accounts-api.test.ts`.
 - Owner-linked Pylon Codex accounts re-prime from the same custody authority
   before Codex assignment execution or account-usage refresh. The Pylon route
   `/api/pylon/provider-accounts/chatgpt-codex/auth-material` accepts only a

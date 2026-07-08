@@ -7,7 +7,7 @@ import {
 
 // Oracle for khala_mobile.qa.planned_feature_eval_suites_fixture_first.v1
 describe("contract khala_mobile.qa.planned_feature_eval_suites_fixture_first.v1", () => {
-  test("QAM-7 authors every named P1+ suite red/waived before implementation", () => {
+  test("QAM-7 tracks every named P1+ suite from fixture-first red to implemented green", () => {
     expect(khalaPlannedFeatureEvalSuites.schema).toBe("openagents.khala_mobile.planned_feature_eval_suites.v1");
     expect(khalaPlannedFeatureEvalSuites.suites.map(suite => suite.feature)).toEqual([
       "sarah_sr_1_3",
@@ -18,14 +18,19 @@ describe("contract khala_mobile.qa.planned_feature_eval_suites_fixture_first.v1"
     ] satisfies KhalaPlannedFeatureSuiteId[]);
 
     for (const suite of khalaPlannedFeatureEvalSuites.suites) {
-      expect(suite.status).toBe("red_waived_before_implementation");
+      expect(["green_implemented", "red_waived_before_implementation"]).toContain(suite.status);
       expect(suite.issueRefs).toContain("#8542");
       expect(suite.sourceRefs.length).toBeGreaterThan(0);
       expect(suite.cases.length).toBeGreaterThan(0);
       expect(suite.cases.every(testCase => testCase.expectedFixtureRef.startsWith("fixture."))).toBe(true);
       expect(suite.cases.every(testCase => testCase.blockerRef.startsWith("blocker."))).toBe(true);
-      expect(suite.cases.every(testCase => testCase.status === "blocked" || testCase.status === "waived")).toBe(true);
+      expect(suite.cases.every(testCase => testCase.status === "blocked" || testCase.status === "implemented" || testCase.status === "waived")).toBe(true);
     }
+
+    const codex = khalaPlannedFeatureEvalSuites.suites.find(suite => suite.feature === "codex_connect_cx_2");
+    expect(codex?.status).toBe("green_implemented");
+    expect(codex?.issueRefs).toContain("#8546");
+    expect(codex?.cases.every(testCase => testCase.status === "implemented")).toBe(true);
   });
 
   test("QAM-7 captures the exact blocker-sensitive oracle families", () => {

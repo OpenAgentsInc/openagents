@@ -5,6 +5,7 @@ import { describe, expect, test } from 'vitest'
 
 import {
   codexAccessToAuthMaterial,
+  deleteConnectedCodexAuthFromCustody,
   issueShortLivedCodexAccessFromCustody,
   makeD1ProviderAccountTokenCustodyStore,
   makeProviderAccountTokenCustodyCipher,
@@ -191,6 +192,54 @@ describe('provider account token custody', () => {
     ).rejects.toMatchObject({
       _tag: 'ProviderAccountNotFound',
     })
+  })
+
+  test('deletes owner-scoped Codex custody material with an audit receipt', async () => {
+    const { d1, raw } = makeDb()
+    const store = makeD1ProviderAccountTokenCustodyStore(d1)
+    const cipher = await makeCipher()
+    const makeId = makeIdFactory()
+
+    await storeConnectedCodexAuthInCustody(store, cipher, {
+      auth: {
+        type: 'oauth',
+        access: 'access-secret-1',
+        refresh: 'refresh-secret-1',
+        expires: Date.parse('2026-07-03T18:00:00.000Z'),
+      },
+      makeId,
+      nowIso: '2026-07-03T17:00:00.000Z',
+      ownerUserId,
+      providerAccountRef,
+    })
+
+    const deleted = await deleteConnectedCodexAuthFromCustody(store, {
+      actorRef: `owner:${ownerUserId}`,
+      makeId,
+      nowIso: '2026-07-03T17:30:00.000Z',
+      ownerUserId,
+      providerAccountRef,
+    })
+
+    expect(deleted).toBe(true)
+    expect(raw.prepare('SELECT COUNT(*) AS count FROM provider_account_token_custody').get()).toEqual({ count: 0 })
+    await expect(
+      issueShortLivedCodexAccessFromCustody(store, cipher, {
+        now: new Date('2026-07-03T17:31:00.000Z'),
+        ownerUserId,
+        providerAccountRef,
+      }),
+    ).rejects.toMatchObject({ _tag: 'ProviderAccountNotFound' })
+    expect(
+      raw
+        .prepare(
+          'SELECT event_kind, status FROM provider_account_token_custody_audit ORDER BY rowid',
+        )
+        .all(),
+    ).toEqual([
+      { event_kind: 'auth_stored', status: 'succeeded' },
+      { event_kind: 'auth_deleted', status: 'succeeded' },
+    ])
   })
 
   test('refreshes near-expiry access and persists rotated refresh tokens atomically with audit', async () => {

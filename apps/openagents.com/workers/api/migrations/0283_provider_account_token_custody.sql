@@ -31,6 +31,7 @@ CREATE TABLE provider_account_token_custody_audit (
     event_kind IN (
       'auth_stored',
       'access_issued',
+      'auth_deleted',
       'refresh_succeeded',
       'refresh_failed'
     )

@@ -8,7 +8,7 @@ export type KhalaPlannedFeatureSuiteId =
   | "codex_connect_cx_2"
   | "agents_panel_ae_2";
 
-export type KhalaPlannedFeatureCaseStatus = "blocked" | "waived";
+export type KhalaPlannedFeatureCaseStatus = "blocked" | "implemented" | "waived";
 
 export type KhalaPlannedFeatureEvalCase = Readonly<{
   blockerRef: string;
@@ -24,7 +24,7 @@ export type KhalaPlannedFeatureEvalSuite = Readonly<{
   issueRefs: readonly string[];
   ownerGateRefs: readonly string[];
   sourceRefs: readonly string[];
-  status: "red_waived_before_implementation";
+  status: "green_implemented" | "red_waived_before_implementation";
 }>;
 
 export type KhalaPlannedFeatureEvalSuiteCatalog = Readonly<{
@@ -132,35 +132,35 @@ export const khalaPlannedFeatureEvalSuites: KhalaPlannedFeatureEvalSuiteCatalog 
     {
       cases: [
         {
-          blockerRef: "blocker.cx2.device_auth_state_machine_not_implemented",
+          blockerRef: "blocker.cx2.device_auth_state_machine_implemented",
           expectedFixtureRef: "fixture.cx2.device_auth_state_machine.expected",
           id: "cx2_device_auth_state_machine",
           oracle: "Device auth reaches connected, denied, revoked, and expired states with typed failures.",
-          status: "blocked",
+          status: "implemented",
         },
         {
-          blockerRef: "blocker.cx2.codex_account_readiness_ui_not_implemented",
+          blockerRef: "blocker.cx2.codex_account_readiness_ui_implemented",
           expectedFixtureRef: "fixture.cx2.account_readiness_quota.expected",
           id: "cx2_account_readiness_quota_rendering",
           oracle: "Account list renders ready, exhausted, rate-limited, and unavailable quota states.",
-          status: "blocked",
+          status: "implemented",
         },
         {
-          blockerRef: "blocker.cx2.typed_failure_mapping_not_implemented",
+          blockerRef: "blocker.cx2.typed_failure_mapping_implemented",
           expectedFixtureRef: "fixture.cx2.typed_failures.expected",
           id: "cx2_account_exhausted_and_rate_limited_failures",
           oracle: "Typed failures include account_exhausted and account_rate_limited.",
-          status: "blocked",
+          status: "implemented",
         },
       ],
       feature: "codex_connect_cx_2",
-      issueRefs: ["#8542"],
+      issueRefs: ["#8542", "#8546"],
       ownerGateRefs: ["owner_gate.cx2.provider_account_token_custody_live_binding"],
       sourceRefs: [
         "docs/fable/MASTER_ROADMAP.md#p2--your-codex-from-the-phone-cx-14",
         "docs/fable/2026-07-07-beyond-mvp-codex-agent-computers-and-ai-employees.md",
       ],
-      status: "red_waived_before_implementation",
+      status: "green_implemented",
     },
     {
       cases: [
