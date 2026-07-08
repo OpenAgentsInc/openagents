@@ -6,7 +6,7 @@
 // the deleted cl-47..cl-58 tests covered, without a DOM.
 
 import { describe, expect, test } from "bun:test"
-import { LAUNCH_RECOGNITION_REPLAY_SLUG } from "@openagentsinc/proof-replay"
+import { DEFAULT_DESKTOP_PROOF_REPLAY_SLUG } from "../src/shared/proof-replays"
 import type {
   AssignmentRow,
   NodeStateMessage,
@@ -1206,9 +1206,9 @@ describe("update reducer (CL-53)", () => {
   test("proof replay selection and refresh dispatch public bundle loads", () => {
     const [selected, selectedCommands] = update(
       initialModel,
-      SelectedProofReplay({ slug: LAUNCH_RECOGNITION_REPLAY_SLUG }),
+      SelectedProofReplay({ slug: DEFAULT_DESKTOP_PROOF_REPLAY_SLUG }),
     )
-    expect(selected.selectedProofReplaySlug).toBe(LAUNCH_RECOGNITION_REPLAY_SLUG)
+    expect(selected.selectedProofReplaySlug).toBe(DEFAULT_DESKTOP_PROOF_REPLAY_SLUG)
     expect(selected.selectedProofReplayMode).toBe("catalog")
     expect(selected.proofReplayPending).toBe(true)
     expect(selected.proofReplayStatus.tone).toBe("info")
@@ -1216,7 +1216,7 @@ describe("update reducer (CL-53)", () => {
     expect(selectedCommands[0]?.args).toEqual({
       request: {
         mode: "catalog",
-        slug: LAUNCH_RECOGNITION_REPLAY_SLUG,
+        slug: DEFAULT_DESKTOP_PROOF_REPLAY_SLUG,
       },
     })
 

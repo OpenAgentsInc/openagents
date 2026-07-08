@@ -821,7 +821,7 @@ describe('public product promises document', () => {
       'blocker.product_promises.business_coding_quick_win_self_serve_missing',
     )
     expect(decoded.sourceRefs).toContain(
-      'docs/training/2026-06-20-psion-instruct-sft-fixture-sync.md',
+      'backroom:openagents-prune-20260708-tassadar-psionic@a56fd270',
     )
     expect(decoded.sourceRefs).toContain(
       'docs/launch/vertex-fleet/training.post_training_arc.v1.md',
@@ -845,7 +845,7 @@ describe('public product promises document', () => {
       'docs/launch/vertex-fleet/training.data_refinery_corpus.v1.md',
     )
     expect(decoded.sourceRefs).toContain(
-      'docs/tassadar/2026-06-21-tassadar-cpu-transform-training-receipt-surface.md',
+      'backroom:openagents-prune-20260708-tassadar-psionic@a56fd270',
     )
     expect(decoded.promises.length).toBeGreaterThan(0)
     const codingQuickWin = decoded.promises.find(
@@ -1846,16 +1846,12 @@ describe('public product promises document', () => {
           state: 'planned',
           evidenceRefs: expect.arrayContaining([
             'docs/2026-06-12-episode-236-training-launch-gap-audit.md',
-            'docs/tassadar/2026-06-20-tassadar-percepta-executor-model-spec.md',
-            'docs/tassadar/2026-06-20-tassadar-percepta-architecture-receipt.md',
-            'docs/tassadar/2026-06-21-tassadar-cpu-transform-training-receipt-surface.md',
+            'backroom:openagents-prune-20260708-tassadar-psionic@a56fd270',
             'route:/api/public/models/tassadar-percepta-executor/architecture-receipts',
             'route:/api/public/models/tassadar-percepta-executor/cpu-transform-training-receipts',
             'apps/openagents.com/workers/api/src/tassadar-percepta-architecture-receipts.ts',
             'apps/openagents.com/workers/api/src/tassadar-percepta-cpu-transform-training-receipts.ts',
             'apps/openagents.com/workers/api/src/tassadar-percepta-cpu-transform-training-receipts.test.ts',
-            'apps/pylon/src/tassadar-cpu-transform-training.ts',
-            'apps/pylon/tests/tassadar-cpu-transform-training.test.ts',
             'receipt.models.tassadar_percepta_executor.cpu_transform_training.cpu_transform_fixture_v1',
           ]),
           blockerRefs: [
@@ -2591,8 +2587,7 @@ describe('public product promises document', () => {
         'blocker.product_promises.vibe_test_artifact_missing',
       ],
       evidenceRefs: expect.arrayContaining([
-        'docs/training/2026-06-20-psion-instruct-sft-lane-receipt.md',
-        'docs/training/2026-06-20-psion-instruct-sft-fixture-sync.md',
+        'backroom:openagents-prune-20260708-tassadar-psionic@a56fd270',
         'route:/api/public/training/post-training-arc/instruct-sft-lane',
         'route:/api/public/training/post-training-arc/dpo-preference-workload',
         'route:/api/public/training/post-training-arc/vibe-test-rubric',
@@ -2608,8 +2603,7 @@ describe('public product promises document', () => {
         'apps/openagents.com/workers/api/src/post-training-vibe-test-rubric.test.ts',
         'apps/openagents.com/workers/api/src/cs336-a5-dpo-preference-workload.ts',
         'apps/openagents.com/workers/api/src/cs336-a5-dpo-preference-workload.test.ts',
-        'https://github.com/OpenAgentsInc/psionic/pull/1132',
-        'https://github.com/OpenAgentsInc/psionic/blob/main/fixtures/psion/instruct/psion_instruct_sft_lane_report_v1.json',
+        'backroom:openagents-prune-20260708-tassadar-psionic@a56fd270',
       ]),
     })
     expect(postTrainingPromise?.blockerRefs).not.toContain(
@@ -2755,10 +2749,7 @@ describe('public product promises document', () => {
     )
     expect(kernelPromise?.evidenceRefs).toEqual(
       expect.arrayContaining([
-        'packages/tassadar-executor/src/kernel-optimization-dispatch.ts',
-        'packages/tassadar-executor/src/kernel-optimization-dispatch.test.ts',
-        'packages/tassadar-executor/src/kernel-optimization-parity.ts',
-        'packages/tassadar-executor/src/kernel-optimization-parity.test.ts',
+        'backroom:openagents-prune-20260708-tassadar-psionic@a56fd270',
       ]),
     )
     expect(kernelPromise?.safeCopy).toContain(

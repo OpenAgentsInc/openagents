@@ -6,11 +6,6 @@ import {
   PROBE_GEMINI_BACKEND_CAPABILITY,
 } from "../backends/gemini/contract.js";
 import {
-  PROBE_PSIONIC_QWEN_BACKEND_CAPABILITY,
-  PSIONIC_QWEN_BACKEND_KIND,
-  PSIONIC_QWEN_LOCAL_PROFILE_ID,
-} from "../backends/psionic-qwen/contract.js";
-import {
   BlueprintContractExportSeed,
   BlueprintProgramRegistryProjection,
   isBlueprintProjectionPrivateDataSafe,
@@ -50,17 +45,9 @@ export const ProbeGeminiAssignmentBackend = S.Struct({
 });
 export type ProbeGeminiAssignmentBackend = typeof ProbeGeminiAssignmentBackend.Type;
 
-export const ProbePsionicQwenAssignmentBackend = S.Struct({
-  kind: S.Literal(PSIONIC_QWEN_BACKEND_KIND),
-  profile: S.optional(S.String),
-  backendProfileId: S.optional(S.String),
-});
-export type ProbePsionicQwenAssignmentBackend = typeof ProbePsionicQwenAssignmentBackend.Type;
-
 export const ProbeAssignmentBackend = S.Union([
   ProbeAppleFmAssignmentBackend,
   ProbeGeminiAssignmentBackend,
-  ProbePsionicQwenAssignmentBackend,
 ]);
 export type ProbeAssignmentBackend = typeof ProbeAssignmentBackend.Type;
 
@@ -252,14 +239,8 @@ export function assignmentSelectsGeminiBackend(
   return assignment.backend?.kind === GEMINI_BACKEND_KIND;
 }
 
-export function assignmentSelectsPsionicQwenBackend(
-  assignment: ProbeRunAssignment,
-): assignment is ProbeRunAssignment & { readonly backend: ProbePsionicQwenAssignmentBackend } {
-  return assignment.backend?.kind === PSIONIC_QWEN_BACKEND_KIND;
-}
-
 export function selectedAssignmentBackendProfileId(backend: ProbeAssignmentBackend): string | undefined {
-  return backend.kind === GEMINI_BACKEND_KIND || backend.kind === PSIONIC_QWEN_BACKEND_KIND
+  return backend.kind === GEMINI_BACKEND_KIND
     ? backend.backendProfileId ?? backend.profile
     : backend.profile;
 }
@@ -289,9 +270,7 @@ function validateBackendCapabilityRefs(assignment: ProbeRunAssignment): Effect.E
     ? [PROBE_APPLE_FM_BACKEND_CAPABILITY]
     : assignmentSelectsGeminiBackend(assignment)
       ? [PROBE_GEMINI_BACKEND_CAPABILITY]
-      : assignmentSelectsPsionicQwenBackend(assignment)
-        ? [PROBE_PSIONIC_QWEN_BACKEND_CAPABILITY]
-        : [];
+      : [];
   const mismatched = refs.filter((ref) => !allowedRefs.includes(ref));
 
   return mismatched.length === 0
@@ -360,17 +339,6 @@ export function requireGeminiAssignmentBackend(
         backendProfileId: assignment.backend.backendProfileId ?? assignment.backend.profile ?? GEMINI_API_PROFILE_ID,
       })
     : Effect.fail(new ProbeAssignmentParseError({ reason: "assignment is not selecting gemini_api" }));
-}
-
-export function requirePsionicQwenAssignmentBackend(
-  assignment: ProbeRunAssignment,
-): Effect.Effect<ProbePsionicQwenAssignmentBackend, ProbeAssignmentParseError> {
-  return assignmentSelectsPsionicQwenBackend(assignment)
-    ? Effect.succeed({
-        ...assignment.backend,
-        backendProfileId: assignment.backend.backendProfileId ?? assignment.backend.profile ?? PSIONIC_QWEN_LOCAL_PROFILE_ID,
-      })
-    : Effect.fail(new ProbeAssignmentParseError({ reason: "assignment is not selecting psionic_qwen35" }));
 }
 
 export function requireAssignmentGrantRefs(

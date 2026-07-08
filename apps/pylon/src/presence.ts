@@ -30,7 +30,6 @@ import {
   withAppleFmBackendCapabilities,
   type PylonAppleFmStatusProjection,
 } from "./node/apple-fm-status.js"
-import { publishableCapabilityRefs } from "./tassadar-capability.js"
 import { createNip98Event, encodeNip98Authorization, loadOrCreateNostrIdentity } from "./nostr-identity.js"
 import {
   assertPublicProjectionSafe,
@@ -52,6 +51,9 @@ import {
   type PylonActiveCodingRunAccountCounts,
   type PylonActiveCodingRunCounts,
 } from "./active-assignment-runs.js"
+
+const publishableCapabilityRefs = (refs: readonly string[]) =>
+  refs.filter((ref) => !/tassadar|psionic/i.test(ref))
 
 // The fields of the local wallet probe the heartbeat needs to publish
 // receive-readiness (openagents #5151). A full WalletStatusProjection satisfies

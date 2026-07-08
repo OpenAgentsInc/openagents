@@ -276,9 +276,11 @@ proceed at maximum parallel capacity.
 ### Retired programs (rev 6.1; execution status rev 6.2)
 
 Tassadar/Psionic and their training, gym, inference, proof/replay, and
-speculative compute-market satellites are retired for now. Revival requires an
-explicit owner decision, with earliest reconsideration after cashflow-positive.
-See
+speculative compute-market satellites are retired from active OpenAgents and
+archived to backroom at
+`openagents-prune-20260708-tassadar-psionic` (backroom commit `a56fd270`).
+Revival requires an explicit owner decision, with earliest reconsideration
+after cashflow-positive. See
 [`2026-07-08-repo-docs-direction-cleanup-audit.md`](2026-07-08-repo-docs-direction-cleanup-audit.md)
 and [`../RETIRED.md`](../RETIRED.md) for the status ledger.
 

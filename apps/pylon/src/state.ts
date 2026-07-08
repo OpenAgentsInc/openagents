@@ -6,7 +6,6 @@ import { dirname } from "node:path"
 import { type BootstrapSummary } from "./bootstrap.js"
 import { PYLON_VERSION, type PylonVersion } from "./version.js"
 import type { PylonHostInventoryProjection } from "./inventory.js"
-import type { PsionicConnectorState } from "./psionic-connector.js"
 import { loadOrCreateNostrIdentity } from "./nostr-identity.js"
 
 export type PylonLifecycleState = "offline" | "online" | "paused" | "degraded" | "assignment-ready"
@@ -314,7 +313,6 @@ export function assertPublicProjectionSafe(value: unknown, path = "projection"):
 export function projectPublicStatus(
   state: PylonLocalState,
   inventory?: PylonHostInventoryProjection,
-  psionicConnector?: PsionicConnectorState,
 ) {
   const projection = {
     kind: "status",
@@ -332,7 +330,6 @@ export function projectPublicStatus(
       runtime: state.runtime,
       presence: state.presence,
       inventory,
-      psionicConnector,
     },
   } as const
 

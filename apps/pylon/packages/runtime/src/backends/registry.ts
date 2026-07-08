@@ -11,12 +11,6 @@ import {
   GEMINI_DEFAULT_BASE_URL,
   GEMINI_DEFAULT_MODEL_ID,
 } from "./gemini/contract.js";
-import {
-  PSIONIC_QWEN_BACKEND_KIND,
-  PSIONIC_QWEN_DEFAULT_BASE_URL,
-  PSIONIC_QWEN_DEFAULT_MODEL_ID,
-  PSIONIC_QWEN_LOCAL_PROFILE_ID,
-} from "./psionic-qwen/contract.js";
 import { type ProbeBackendProfile, type ResolvedProbeBackendProfile, type ResolveProbeBackendProfileOptions } from "./backend-profile.js";
 
 export const APPLE_FM_LOCAL_PROFILE: ProbeBackendProfile = {
@@ -41,21 +35,9 @@ export const GEMINI_API_PROFILE: ProbeBackendProfile = {
   streamMode: "sse",
 };
 
-export const PSIONIC_QWEN_LOCAL_PROFILE: ProbeBackendProfile = {
-  id: PSIONIC_QWEN_LOCAL_PROFILE_ID,
-  kind: PSIONIC_QWEN_BACKEND_KIND,
-  defaultBaseUrl: PSIONIC_QWEN_DEFAULT_BASE_URL,
-  model: PSIONIC_QWEN_DEFAULT_MODEL_ID,
-  attachMode: "attach_existing",
-  auth: "none",
-  readinessPath: "/health",
-  streamMode: "sse",
-};
-
 export const DEFAULT_BACKEND_PROFILES: ReadonlyArray<ProbeBackendProfile> = [
   APPLE_FM_LOCAL_PROFILE,
   GEMINI_API_PROFILE,
-  PSIONIC_QWEN_LOCAL_PROFILE,
 ];
 
 export class ProbeBackendRegistryError extends S.TaggedErrorClass<ProbeBackendRegistryError>()(
@@ -104,22 +86,12 @@ export function resolveGeminiBackendProfile(
   return resolveBackendProfile({ ...options, profileId: options.profileId ?? GEMINI_API_PROFILE_ID });
 }
 
-export function resolvePsionicQwenBackendProfile(
-  options: ResolveProbeBackendProfileOptions = {},
-): Effect.Effect<ResolvedProbeBackendProfile, ProbeBackendRegistryError> {
-  return resolveBackendProfile({ ...options, profileId: options.profileId ?? PSIONIC_QWEN_LOCAL_PROFILE_ID });
-}
-
 function resolveBaseUrlForProfile(
   profile: ProbeBackendProfile,
   options: ResolveProbeBackendProfileOptions,
 ): Pick<ResolvedProbeBackendProfile, "baseUrl" | "baseUrlSource"> {
   if (profile.kind === GEMINI_BACKEND_KIND) {
     return resolveGeminiBaseUrl(profile.defaultBaseUrl, options);
-  }
-
-  if (profile.kind === PSIONIC_QWEN_BACKEND_KIND) {
-    return resolvePsionicQwenBaseUrl(profile.defaultBaseUrl, options);
   }
 
   return resolveAppleFmBaseUrl(profile.defaultBaseUrl, options);
@@ -161,25 +133,6 @@ function resolveGeminiBaseUrl(
       baseUrl: `${withoutTrailingSlash(options.env.PROBE_OMEGA_BASE_URL)}/api/provider-accounts/google-gemini`,
       baseUrlSource: "PROBE_OMEGA_BASE_URL",
     };
-  }
-
-  return { baseUrl: defaultBaseUrl, baseUrlSource: "default" };
-}
-
-function resolvePsionicQwenBaseUrl(
-  defaultBaseUrl: string,
-  options: ResolveProbeBackendProfileOptions,
-): Pick<ResolvedProbeBackendProfile, "baseUrl" | "baseUrlSource"> {
-  if (isNonEmptyString(options.explicitBaseUrl)) {
-    return { baseUrl: options.explicitBaseUrl, baseUrlSource: "explicit" };
-  }
-
-  if (isNonEmptyString(options.env?.PYLON_PSIONIC_BASE_URL)) {
-    return { baseUrl: options.env.PYLON_PSIONIC_BASE_URL, baseUrlSource: "PYLON_PSIONIC_BASE_URL" };
-  }
-
-  if (isNonEmptyString(options.env?.PROBE_PSIONIC_BASE_URL)) {
-    return { baseUrl: options.env.PROBE_PSIONIC_BASE_URL, baseUrlSource: "PROBE_PSIONIC_BASE_URL" };
   }
 
   return { baseUrl: defaultBaseUrl, baseUrlSource: "default" };

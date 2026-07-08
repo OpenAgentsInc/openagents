@@ -2,7 +2,6 @@ import { mkdir, writeFile } from "node:fs/promises"
 import { existsSync } from "node:fs"
 import { join } from "node:path"
 import { homedir, platform } from "node:os"
-import { TASSADAR_EXECUTOR_CAPABILITY_REF } from "@openagentsinc/tassadar-executor"
 import { PYLON_VERSION, type PylonVersion } from "./version.js"
 import { detectWslHost } from "./wsl-host-detect.js"
 
@@ -56,9 +55,7 @@ export type BootstrapSummary = {
 }
 
 const supportedTargets: SupportedPlatform[] = ["darwin", "linux"]
-export const PYLON_DEFAULT_CAPABILITY_REFS = [
-  TASSADAR_EXECUTOR_CAPABILITY_REF,
-] as const
+export const PYLON_DEFAULT_CAPABILITY_REFS = [] as const
 
 const withDefaultCapabilityRefs = (refs: string[]) =>
   [...new Set([...refs, ...PYLON_DEFAULT_CAPABILITY_REFS])]

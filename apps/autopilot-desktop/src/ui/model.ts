@@ -10,10 +10,6 @@
 
 import { Schema as S } from "effect"
 import { ts } from "foldkit/schema"
-import {
-  FIRST_REAL_SETTLEMENT_REPLAY_SLUG,
-  LAUNCH_RECOGNITION_REPLAY_SLUG,
-} from "@openagentsinc/proof-replay"
 import { openAgentsDefaultInputProfile } from "@openagentsinc/input-bindings"
 
 import type { NotificationCenterView } from "@openagentsinc/autopilot-control-protocol"
@@ -376,8 +372,8 @@ export const TrainingRunsStatus = S.Struct({
 export type TrainingRunsStatus = typeof TrainingRunsStatus.Type
 
 export const ProofReplaySlug = S.Literals([
-  FIRST_REAL_SETTLEMENT_REPLAY_SLUG,
-  LAUNCH_RECOGNITION_REPLAY_SLUG,
+  "first-real-settlement",
+  DefaultDesktopProofReplaySlug,
 ])
 export type ProofReplaySlug = typeof ProofReplaySlug.Type
 

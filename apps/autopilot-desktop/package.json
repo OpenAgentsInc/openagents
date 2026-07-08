@@ -44,7 +44,6 @@
     "@openagentsinc/autopilot-ui": "workspace:*",
     "@openagentsinc/input-bindings": "workspace:*",
     "@openagentsinc/mcp-contract": "workspace:*",
-    "@openagentsinc/proof-replay": "workspace:*",
     "@openagentsinc/public-activity-timeline": "workspace:*",
     "@openagentsinc/three-effect": "github:OpenAgentsInc/three-effect#7c6df05",
     "@openagentsinc/ui": "workspace:*",

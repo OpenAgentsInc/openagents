@@ -480,7 +480,9 @@ describe('autoSettleVerifiedCompiledModuleConstruction (#5326)', () => {
         denseModule: tassadarLinkedDenseProgramFixture.linkedModule
           .composedDenseModule as unknown as Record<string, unknown>,
         model: {},
-        steps: tassadarLinkedDenseProgramFixture.steps.map(step => [...step]),
+        steps: tassadarLinkedDenseProgramFixture.steps.map((step: unknown[]) => [
+          ...step,
+        ]),
       },
     })
 
@@ -490,7 +492,8 @@ describe('autoSettleVerifiedCompiledModuleConstruction (#5326)', () => {
     )
     expect(
       tassadarLinkedDenseProgramFixture.linkedModule.banks.some(
-        bank => bank.programId === 'tassadar_corpus.loop_sum_v1',
+        (bank: { programId: string }) =>
+          bank.programId === 'tassadar_corpus.loop_sum_v1',
       ),
     ).toBe(false)
 

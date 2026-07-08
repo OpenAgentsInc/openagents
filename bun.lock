@@ -72,7 +72,6 @@
         "@openagentsinc/autopilot-ui": "workspace:*",
         "@openagentsinc/input-bindings": "workspace:*",
         "@openagentsinc/mcp-contract": "workspace:*",
-        "@openagentsinc/proof-replay": "workspace:*",
         "@openagentsinc/public-activity-timeline": "workspace:*",
         "@openagentsinc/three-effect": "github:OpenAgentsInc/three-effect#7c6df05",
         "@openagentsinc/ui": "workspace:*",
@@ -262,10 +261,8 @@
         "@openagentsinc/mcp-contract": "workspace:*",
         "@openagentsinc/mullet-schema": "workspace:*",
         "@openagentsinc/mullet-sim": "workspace:*",
-        "@openagentsinc/proof-replay": "workspace:*",
         "@openagentsinc/provider-account-schema": "workspace:*",
         "@openagentsinc/public-activity-timeline": "workspace:*",
-        "@openagentsinc/replay-clips": "workspace:*",
         "@openagentsinc/sync-client": "workspace:*",
         "@openagentsinc/sync-schema": "workspace:*",
         "@openagentsinc/three-effect": "github:OpenAgentsInc/three-effect#b3bdc2a",
@@ -413,14 +410,11 @@
         "@openagentsinc/mullet-sim": "workspace:*",
         "@openagentsinc/nip90": "workspace:*",
         "@openagentsinc/oa-infra": "workspace:*",
-        "@openagentsinc/proof-replay": "workspace:*",
         "@openagentsinc/provider-account-schema": "workspace:*",
         "@openagentsinc/public-activity-timeline": "workspace:*",
         "@openagentsinc/reactor-contracts": "workspace:*",
-        "@openagentsinc/replay-clips": "workspace:*",
         "@openagentsinc/sync-schema": "workspace:*",
         "@openagentsinc/sync-worker": "workspace:*",
-        "@openagentsinc/tassadar-executor": "workspace:*",
         "@openauthjs/openauth": "^0.4.3",
         "@orpc/client": "1.14.5",
         "arctic": "^2.2.2",
@@ -462,7 +456,6 @@
         "@openagentsinc/mcp-contract": "workspace:*",
         "@openagentsinc/nip90": "workspace:*",
         "@openagentsinc/provider-account-schema": "workspace:*",
-        "@openagentsinc/tassadar-executor": "workspace:*",
         "@scure/base": "1.2.4",
         "@scure/bip32": "1.6.2",
         "@scure/bip39": "1.5.4",
@@ -1010,17 +1003,6 @@
         "marked": "^18.0.5",
       },
     },
-    "packages/proof-replay": {
-      "name": "@openagentsinc/proof-replay",
-      "version": "0.1.0",
-      "dependencies": {
-        "@openagentsinc/public-activity-timeline": "workspace:*",
-      },
-      "devDependencies": {
-        "bun-types": "^1.0.0",
-        "typescript": "catalog:",
-      },
-    },
     "packages/provider-account-schema": {
       "name": "@openagentsinc/provider-account-schema",
       "version": "0.1.0",
@@ -1053,21 +1035,6 @@
         "bun-types": "^1.0.0",
         "typescript": "catalog:",
       },
-    },
-    "packages/replay-clips": {
-      "name": "@openagentsinc/replay-clips",
-      "version": "0.1.0",
-      "dependencies": {
-        "effect": "catalog:",
-      },
-      "devDependencies": {
-        "bun-types": "^1.0.0",
-        "typescript": "catalog:",
-      },
-    },
-    "packages/tassadar-executor": {
-      "name": "@openagentsinc/tassadar-executor",
-      "version": "0.1.0",
     },
     "packages/ui": {
       "name": "@openagentsinc/ui",
@@ -1836,8 +1803,6 @@
 
     "@openagentsinc/probe-runtime": ["@openagentsinc/probe-runtime@workspace:packages/probe/packages/runtime"],
 
-    "@openagentsinc/proof-replay": ["@openagentsinc/proof-replay@workspace:packages/proof-replay"],
-
     "@openagentsinc/provider-account-schema": ["@openagentsinc/provider-account-schema@workspace:packages/provider-account-schema"],
 
     "@openagentsinc/public-activity-timeline": ["@openagentsinc/public-activity-timeline@workspace:packages/public-activity-timeline"],
@@ -1850,15 +1815,11 @@
 
     "@openagentsinc/reactor-contracts": ["@openagentsinc/reactor-contracts@workspace:packages/reactor-contracts"],
 
-    "@openagentsinc/replay-clips": ["@openagentsinc/replay-clips@workspace:packages/replay-clips"],
-
     "@openagentsinc/sync-client": ["@openagentsinc/sync-client@workspace:apps/openagents.com/packages/sync-client"],
 
     "@openagentsinc/sync-schema": ["@openagentsinc/sync-schema@workspace:apps/openagents.com/packages/sync-schema"],
 
     "@openagentsinc/sync-worker": ["@openagentsinc/sync-worker@workspace:apps/openagents.com/packages/sync-worker"],
-
-    "@openagentsinc/tassadar-executor": ["@openagentsinc/tassadar-executor@workspace:packages/tassadar-executor"],
 
     "@openagentsinc/three-effect": ["@openagentsinc/three-effect@github:OpenAgentsInc/three-effect#7c6df05", { "dependencies": { "@types/three": "0.184.0", "effect": "4.0.0-beta.70", "foldkit": "0.102.1", "three": "0.184.0" } }, "OpenAgentsInc-three-effect-7c6df05", "sha512-6J9c3WOs36Mzsz/2oJlME+guOQvuR/GOb/7j7JU47ghK6lZH+J9A+3lpwxoA/E8Hmn4eA/XOu5lJbrfNLAuQUg=="],
 
@@ -4517,8 +4478,6 @@
     "@openagentsinc/qa-runner/effect": ["effect@4.0.0-beta.70", "", { "dependencies": { "@standard-schema/spec": "^1.1.0", "fast-check": "^4.8.0", "find-my-way-ts": "^0.1.6", "ini": "^7.0.0", "kubernetes-types": "^1.30.0", "msgpackr": "^2.0.1", "multipasta": "^0.2.7", "toml": "^4.1.1", "uuid": "^14.0.0", "yaml": "^2.9.0" } }, "sha512-8AwGTRiNriirHGEYHrOS0E9fzdhIqCdZjiHP1YXmNo2UyPGS43ILsymsSHT7V0DJS+8dvlKq2RxnrDBUhDNZHg=="],
 
     "@openagentsinc/reactor-contracts/effect": ["effect@4.0.0-beta.70", "", { "dependencies": { "@standard-schema/spec": "^1.1.0", "fast-check": "^4.8.0", "find-my-way-ts": "^0.1.6", "ini": "^7.0.0", "kubernetes-types": "^1.30.0", "msgpackr": "^2.0.1", "multipasta": "^0.2.7", "toml": "^4.1.1", "uuid": "^14.0.0", "yaml": "^2.9.0" } }, "sha512-8AwGTRiNriirHGEYHrOS0E9fzdhIqCdZjiHP1YXmNo2UyPGS43ILsymsSHT7V0DJS+8dvlKq2RxnrDBUhDNZHg=="],
-
-    "@openagentsinc/replay-clips/effect": ["effect@4.0.0-beta.70", "", { "dependencies": { "@standard-schema/spec": "^1.1.0", "fast-check": "^4.8.0", "find-my-way-ts": "^0.1.6", "ini": "^7.0.0", "kubernetes-types": "^1.30.0", "msgpackr": "^2.0.1", "multipasta": "^0.2.7", "toml": "^4.1.1", "uuid": "^14.0.0", "yaml": "^2.9.0" } }, "sha512-8AwGTRiNriirHGEYHrOS0E9fzdhIqCdZjiHP1YXmNo2UyPGS43ILsymsSHT7V0DJS+8dvlKq2RxnrDBUhDNZHg=="],
 
     "@openagentsinc/sync-client/effect": ["effect@4.0.0-beta.70", "", { "dependencies": { "@standard-schema/spec": "^1.1.0", "fast-check": "^4.8.0", "find-my-way-ts": "^0.1.6", "ini": "^7.0.0", "kubernetes-types": "^1.30.0", "msgpackr": "^2.0.1", "multipasta": "^0.2.7", "toml": "^4.1.1", "uuid": "^14.0.0", "yaml": "^2.9.0" } }, "sha512-8AwGTRiNriirHGEYHrOS0E9fzdhIqCdZjiHP1YXmNo2UyPGS43ILsymsSHT7V0DJS+8dvlKq2RxnrDBUhDNZHg=="],
 

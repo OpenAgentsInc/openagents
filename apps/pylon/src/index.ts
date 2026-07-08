@@ -11,13 +11,6 @@ import { isBunCompiledBinaryUrl } from "./spark-wasm-runtime.js"
 import { readFile } from "node:fs/promises"
 import { existsSync } from "node:fs"
 import {
-  PYLON_TASSADAR_SELF_TEST_FAILED_BLOCKER_REF,
-  declareTassadarExecutorCapability,
-  mergeTassadarCapabilityRefs,
-  writeTassadarCapabilityEvidence,
-} from "./tassadar-capability.js"
-import { runTassadarCpuTransformTrainingFixture } from "./tassadar-cpu-transform-training.js"
-import {
   loadClaudeAgentConfig,
   probeClaudeAgentReadiness,
   withClaudeAgentCapability,
@@ -171,24 +164,6 @@ import {
   runPublicActivityCliCommand,
   type PublicActivityCliCommand,
 } from "./public-activity-cli.js"
-import {
-  activateTrainingWindow,
-  admitTrainingEvidence,
-  claimTrainingLease,
-  closeoutTrainingWindow,
-  planTrainingWindow,
-  reconcileTrainingWindow,
-  readTrainingStatus,
-  trainingPreflightReport,
-} from "./training-cockpit.js"
-import {
-  assertWorkloadFamily,
-  parseTassadarWorkload,
-  runValidatorAuto,
-  submitReplayVerdict,
-  submitTraceContribution,
-} from "./tassadar-trace-client.js"
-import { loadPinnedTassadarSelfTestWorkload } from "@openagentsinc/tassadar-executor/self-test"
 import { readFile as readFileForPacket } from "node:fs/promises"
 import {
   createBootstrapSummary,
@@ -283,11 +258,6 @@ import {
   resolveSelfBinaryPath,
 } from "./self-update.js"
 import { createOperatorSnapshot, formatOperatorSnapshotText } from "./operator.js"
-import { inspectPsionicConnector } from "./psionic-connector.js"
-import {
-  installPsionicBinary,
-  installPsionicModelArtifact,
-} from "./psionic-install.js"
 import {
   PYLON_NIP90_PROVIDER_CAPABILITY_REF,
   policyFromEnv,
@@ -1278,10 +1248,7 @@ const runHeadlessNode = Effect.gen(function* () {
     wallet: { classify: () => classifyPrimaryAgentWalletForState(localState) },
     telemetry: {
       discoverInventory: () => discoverHostInventory(),
-      inspectPsionic: async () => {
-        const connector = await inspectPsionicConnector({ env: Bun.env })
-        return { phase: connector.phase }
-      },
+      inspectPsionic: async () => ({ phase: "archived" }),
       makeOperatorText: operatorTextFromInventory,
     },
     heartbeat: {
@@ -3144,184 +3111,6 @@ async function main() {
     }
   }
 
-  // CL-5035 training: mirror the desktop training cockpit verbs against the
-  // openagents.com training HTTP API (admin verbs need an admin token).
-  if (args[0] === "training") {
-    const command = args[1]
-    const options = parseCliOptions(args.slice(2))
-    try {
-      const baseUrl = optionString(options, "base-url") ?? Bun.env.PYLON_OPENAGENTS_BASE_URL
-      if (!baseUrl) throw new Error("training commands require --base-url or PYLON_OPENAGENTS_BASE_URL")
-      const adminToken = optionString(options, "admin-token") ?? Bun.env.OA_TRAINING_ADMIN_TOKEN
-      const net = { baseUrl, ...(adminToken ? { adminToken } : {}) }
-      let result: unknown
-      if (command === "preflight") {
-        const preflightState = await ensurePylonLocalState(createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env))
-        let sparkPayoutTargetRef = preflightState.presence.sparkPayoutTargetRef
-        try {
-          const presence = await loadOrCreatePresenceState(preflightState.paths, preflightState.identity)
-          sparkPayoutTargetRef = presence.sparkPayoutTargetRef
-        } catch {
-          sparkPayoutTargetRef = preflightState.presence.sparkPayoutTargetRef
-        }
-        result = trainingPreflightReport(
-          {
-            blockerRefs: preflightState.runtime.blockerRefs,
-            capabilityRefs: preflightState.runtime.capabilityRefs,
-            lifecycle: preflightState.runtime.lifecycle,
-            pylonRef: preflightState.identity.pylonRef,
-            sparkPayoutTargetRef,
-          },
-          { baseUrl },
-        )
-      } else if (command === "plan") {
-        result = await planTrainingWindow(net)
-      } else if (command === "activate") {
-        const windowRef = optionString(options, "window-ref")
-        if (!windowRef) throw new Error("training activate requires --window-ref")
-        result = await activateTrainingWindow(net, windowRef)
-      } else if (command === "reconcile") {
-        const windowRef = optionString(options, "window-ref")
-        if (!windowRef) throw new Error("training reconcile requires --window-ref")
-        result = await reconcileTrainingWindow(net, windowRef)
-      } else if (command === "closeout") {
-        const windowRef = optionString(options, "window-ref")
-        if (!windowRef) throw new Error("training closeout requires --window-ref")
-        result = await closeoutTrainingWindow(net, windowRef)
-      } else if (command === "claim") {
-        const claimState = await ensurePylonLocalState(createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env))
-        const pylonRef = optionString(options, "pylon-ref") ?? claimState.identity.pylonRef
-        const leaseSecondsRaw = optionString(options, "lease-seconds")
-        const leaseSeconds = leaseSecondsRaw === undefined ? undefined : Number(leaseSecondsRaw)
-        // Gap #2 (v1.0 self-serve shakeout): resolve whether THIS node has a
-        // registered payout target so the claim can WARN (not block) a fresh
-        // contributor that verified work will not pay until they run
-        // `pylon wallet register-payout-target`. Fail-soft: a presence read
-        // error falls back to "unregistered" (the safe, visible-warning state).
-        let payoutTargetRegistered = false
-        try {
-          const presence = await loadOrCreatePresenceState(claimState.paths, claimState.identity)
-          payoutTargetRegistered =
-            typeof presence.sparkPayoutTargetRef === "string" && presence.sparkPayoutTargetRef.trim() !== ""
-        } catch {
-          payoutTargetRegistered = false
-        }
-        if (!payoutTargetRegistered) {
-          // Human-readable warning on stderr so it is visible even when stdout
-          // is piped to `| jq`. The structured warning also rides the --json
-          // result below (`payoutTargetWarning`).
-          process.stderr.write(
-            "[training claim] WARNING: no payout target registered — verified work will NOT pay. Run `pylon wallet register-payout-target` to get paid.\n",
-          )
-        }
-        result = await claimTrainingLease(net, {
-          pylonRef,
-          payoutTargetRegistered,
-          ...(leaseSeconds !== undefined && Number.isFinite(leaseSeconds) ? { leaseSeconds } : {}),
-        })
-      } else if (command === "admit") {
-        const runRef = optionString(options, "run-ref")
-        if (!runRef) throw new Error("training admit requires --run-ref")
-        const packetPath = optionString(options, "packet")
-        if (!packetPath) throw new Error("training admit requires --packet <evidence-packet.json>")
-        const packet = JSON.parse(await readFileForPacket(packetPath, "utf8")) as unknown
-        result = await admitTrainingEvidence(net, { trainingRunRef: runRef, packet })
-      } else if (command === "status") {
-        result = await readTrainingStatus(net)
-      } else if (command === "submit-trace" || command === "validate") {
-        // #5054 (epic #5051), design §4.5: contributor-callable worker/validator
-        // verbs. These hit the agent-gated trace-submission / replay-verdict
-        // routes (#5052) — agent token, NOT admin. They run the dispatched
-        // workload locally (reuse executeTassadarNumericModel) and submit the
-        // worker trace commitment / validator replay digest. Client-only: no
-        // wallet, settlement, or payout authority, and running them does not
-        // change default node behavior (participating is opt-in by invoking
-        // the verb; the background assignment worker stays PYLON_ASSIGNMENT_WORKER
-        // gated and OFF by default until #5061).
-        const agentToken = optionString(options, "agent-token") ?? Bun.env.OPENAGENTS_AGENT_TOKEN
-        const traceNet = { baseUrl, ...(agentToken ? { agentToken } : {}) }
-        const resolveDeviceRef = async (): Promise<string> =>
-          optionString(options, "device-ref") ??
-          (await ensurePylonLocalState(createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env))).identity.nodeId
-
-        // #5121: opt-in validator AUTO-RUN. `pylon training validate --auto`
-        // discovers the next pending worker contribution from a DISTINCT device
-        // (GET /api/training/contributions/next-unpaired), replays the committed
-        // pinned fixture, and submits the verdict — no manual --lease-ref/--workload.
-        // `--watch` loops until a pairing (or --max-iterations), sleeping
-        // --interval-ms between idle polls. Single-shot otherwise.
-        if (command === "validate" && options.auto !== undefined) {
-          const validatorDeviceRef = await resolveDeviceRef()
-          const workload = parseTassadarWorkload(loadPinnedTassadarSelfTestWorkload())
-          const runRef = optionString(options, "run-ref")
-          const watch = options.watch !== undefined
-          const intervalRaw = Number(optionString(options, "interval-ms") ?? "15000")
-          const intervalMs = Number.isFinite(intervalRaw) && intervalRaw > 0 ? intervalRaw : 15000
-          const maxRaw = Number(optionString(options, "max-iterations") ?? (watch ? "0" : "1"))
-          const maxIterations = Number.isFinite(maxRaw) && maxRaw > 0 ? maxRaw : watch ? 0 : 1
-          let iterations = 0
-          let last: Record<string, unknown> = { ok: true, paired: false, reason: "idle_no_pending" }
-          for (;;) {
-            iterations += 1
-            last = await runValidatorAuto(traceNet, {
-              validatorDeviceRef,
-              workload,
-              ...(runRef ? { trainingRunRef: runRef } : {}),
-            })
-            const paired = (last as { paired?: boolean }).paired === true
-            const failed = (last as { ok?: boolean }).ok === false
-            if (!watch || paired || failed) break
-            if (maxIterations > 0 && iterations >= maxIterations) break
-            await new Promise((resolve) => setTimeout(resolve, intervalMs))
-          }
-          result = { ...last, iterations, mode: "validate_auto" }
-        } else {
-          const leaseRef = optionString(options, "lease-ref")
-          if (!leaseRef) throw new Error(`training ${command} requires --lease-ref`)
-          const workloadFamily = assertWorkloadFamily(optionString(options, "workload-family"))
-          const workloadPath = optionString(options, "workload")
-          if (!workloadPath) {
-            throw new Error(
-              command === "validate"
-                ? `training validate requires --workload <dispatch.json>, or use 'validate --auto' for auto-discovery (#5121)`
-                : `training submit-trace requires --workload <dispatch.json>`,
-            )
-          }
-          const workload = parseTassadarWorkload(
-            JSON.parse(await readFileForPacket(workloadPath, "utf8")) as unknown,
-          )
-          const deviceRef = await resolveDeviceRef()
-          if (command === "submit-trace") {
-            result = await submitTraceContribution(traceNet, {
-              leaseRef,
-              pylonDeviceRef: deviceRef,
-              workload,
-              workloadFamily,
-              ...(optionString(options, "assignment-ref") ? { assignmentRef: optionString(options, "assignment-ref")! } : {}),
-            })
-          } else {
-            result = await submitReplayVerdict(traceNet, {
-              leaseRef,
-              validatorDeviceRef: deviceRef,
-              workload,
-              workloadFamily,
-            })
-          }
-        }
-      } else {
-        throw new Error("usage: pylon training preflight|plan|activate|claim|admit|reconcile|closeout|status|submit-trace|validate [--auto [--watch]] ...")
-      }
-      process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
-      const okFlag = (result as { ok?: boolean } | null)?.ok
-      if (okFlag === false) process.exitCode = 1
-      return
-    } catch (error) {
-      process.stdout.write(`${JSON.stringify({ ok: false, command: "training", error: error instanceof Error ? error.message : String(error) }, null, 2)}\n`)
-      process.exitCode = 1
-      return
-    }
-  }
-
   if (args[0] === "bootstrap") {
     try {
       const options = parseBootstrapArgs(args.slice(1))
@@ -3371,8 +3160,7 @@ async function main() {
       return
     }
     const inventory = await discoverHostInventory({ env: Bun.env })
-    const psionicConnector = await inspectPsionicConnector({ env: Bun.env })
-    const projection = projectPublicStatus(state, inventory, psionicConnector)
+    const projection = projectPublicStatus(state, inventory)
     // When a node is live, attach its read-only wallet status off the warm
     // session (same projection-safe read `wallet status` routes through).
     const liveWallet = probe.reachable
@@ -3717,67 +3505,6 @@ async function main() {
     // handles can keep a one-shot process alive after stdout is complete.
     // Exit explicitly so release gates and pipes see EOF.
     process.exit(0)
-  }
-
-  if (args[0] === "psionic") {
-    try {
-      const command = args[1]
-      if (command === "doctor") {
-        const result = await Effect.runPromise(runProbeCli(["backend", "psionic", "doctor", ...args.slice(2)], { env: Bun.env }))
-        if (result.stdout) process.stdout.write(result.stdout)
-        if (result.stderr) process.stderr.write(result.stderr)
-        process.exitCode = result.exitCode
-        return
-      }
-
-      if (command === "smoke") {
-        const result = await Effect.runPromise(runProbeCli(["backend", "psionic", "smoke", ...args.slice(2)], { env: Bun.env }))
-        if (result.stdout) process.stdout.write(result.stdout)
-        if (result.stderr) process.stderr.write(result.stderr)
-        process.exitCode = result.exitCode
-        return
-      }
-
-      const options = parsePsionicOptions(args.slice(command === "models" ? 4 : 2))
-      const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
-      if (command === "install") {
-        const result = await installPsionicBinary(summary, {
-          channel: stringPsionicOption(options, "channel") ?? "rc",
-          manifestUrl: stringPsionicOption(options, "manifest-url"),
-          consent: options.yes === true,
-          env: Bun.env,
-        })
-        process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
-        process.exitCode = result.state === "installed" ? 0 : 1
-        return
-      }
-
-      if (command === "models" && args[2] === "install") {
-        const modelKey = args[3]
-        const result = await installPsionicModelArtifact(summary, {
-          modelKey,
-          manifestUrl: stringPsionicOption(options, "manifest-url"),
-          consent: options.yes === true,
-          env: Bun.env,
-        })
-        process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
-        process.exitCode = result.state === "installed" ? 0 : 1
-        return
-      }
-
-      throw new Error(`unknown psionic command: ${args.slice(1).join(" ")}`)
-    } catch (error) {
-      process.stderr.write(`Pylon Psionic installer failed: ${error instanceof Error ? error.message : String(error)}\n`)
-      process.exitCode = 1
-      return
-    }
-  }
-
-  if (args[0] === "tassadar" && args[1] === "cpu-transform-training") {
-    const result = runTassadarCpuTransformTrainingFixture()
-    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
-    process.exitCode = result.ok ? 0 : 1
-    return
   }
 
   if (args[0] === "presence") {
@@ -5514,14 +5241,6 @@ async function main() {
           env: Bun.env,
           summary,
         })
-        // W4.1 (#4750): the Tassadar executor capability is declared
-        // only behind a passing self-test receipt — a real digest-pinned
-        // execution on this device — never by configuration assertion.
-        const tassadarDeclaration = await declareTassadarExecutorCapability()
-        await writeTassadarCapabilityEvidence(
-          state.paths.home,
-          tassadarDeclaration,
-        )
         const nextRuntime = {
           ...state.runtime,
           lifecycle: "online" as const,
@@ -5530,7 +5249,7 @@ async function main() {
               withClaudeAgentCapability(
                 withAppleFmBackendCapabilities(
                   [...new Set([
-                    ...mergeTassadarCapabilityRefs(state.runtime.capabilityRefs, tassadarDeclaration),
+                    ...state.runtime.capabilityRefs.filter((ref) => !/tassadar|psionic/i.test(ref)),
                     PYLON_NIP90_PROVIDER_CAPABILITY_REF,
                     PYLON_LABOR_CAPABILITY_REF,
                   ])],
@@ -5544,9 +5263,8 @@ async function main() {
           blockerRefs: [...new Set([
             ...state.runtime.blockerRefs.filter((ref) =>
               ref !== "blocker.assignment.lifecycle_offline" &&
-              ref !== PYLON_TASSADAR_SELF_TEST_FAILED_BLOCKER_REF,
+              !/tassadar|psionic/i.test(ref),
             ),
-            ...tassadarDeclaration.blockerRefs,
             ...appleFmStatus.blockerRefs,
           ])],
         }
@@ -5658,17 +5376,6 @@ async function main() {
             })),
             totalAvailableCodexAssignments: codexAccountTotals.available,
             totalMaxCodexAssignments: codexAccountTotals.ready,
-          },
-          tassadar: {
-            declared: tassadarDeclaration.declared,
-            capabilityRef: tassadarDeclaration.capabilityRef,
-            selfTestReceiptRef: tassadarDeclaration.selfTestReceiptRef,
-            windowVersionRef: tassadarDeclaration.windowVersionRef,
-            legRefs: tassadarDeclaration.legRefs,
-            replayClassId: tassadarDeclaration.replayClassId,
-            matrixRow: tassadarDeclaration.matrixRow,
-            blockerRefs: tassadarDeclaration.blockerRefs,
-            evidenceRef: tassadarDeclaration.selfTestReceiptRef,
           },
           relayUrls: relaysFromEnv(Bun.env),
           policy: policyFromEnv(Bun.env),

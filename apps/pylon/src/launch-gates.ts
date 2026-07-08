@@ -1,5 +1,4 @@
 import { assertPublicProjectionSafe } from "./state.js"
-import type { PsionicTrainingBoundaryProjection } from "./psionic-training-boundary.js"
 import { PYLON_VERSION, PYLON_CLIENT_VERSION } from "./version.js"
 
 export type LaunchClaimState = "allowed" | "blocked" | "planned"
@@ -94,18 +93,9 @@ const unsafePhrasePatterns = [
   /data revenue .* live/i,
 ]
 
-export function projectLaunchGateMatrix(input: { psionicTrainingBoundary?: PsionicTrainingBoundaryProjection } = {}) {
-  const supportsTraining = input.psionicTrainingBoundary?.supportsTraining === true
-  const gates = launchClaimGates.map((gate) =>
-    gate.claimRef === "claim.pylon.psionic_training_boundary" && supportsTraining
-      ? {
-          ...gate,
-          state: "allowed" as const,
-          requiredEvidenceRefs: input.psionicTrainingBoundary?.evidenceRefs ?? gate.requiredEvidenceRefs,
-          blockerRefs: [],
-        }
-      : gate,
-  )
+export function projectLaunchGateMatrix() {
+  const supportsTraining = false
+  const gates = launchClaimGates
   const projection = {
     schema: "openagents.pylon.launch_gate_matrix.v0.3",
     packageName: "@openagentsinc/pylon",

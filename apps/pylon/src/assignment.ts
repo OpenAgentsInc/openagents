@@ -8,7 +8,7 @@ import {
   TASSADAR_EXECUTOR_CAPABILITY_REF,
   TASSADAR_EXECUTOR_TRACE_HOMEWORK_JOB_KIND,
   TASSADAR_EXECUTOR_TRACE_JOB_KIND,
-} from "@openagentsinc/tassadar-executor"
+} from "./archived-tassadar-executor.js"
 import {
   encodePylonAssignmentRunLifecycleEvent,
   type PylonAssignmentRunLifecycleEvent,
@@ -66,7 +66,7 @@ import {
   selectPsionicQwenModel,
   type PsionicQwenModelAdmission,
   type PsionicQwenTaskMode,
-} from "../packages/runtime/src/index.js"
+} from "./archived-psionic-qwen.js"
 import {
   pylonAccountEnvironment,
   resolvePylonAccountSelection,

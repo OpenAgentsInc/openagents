@@ -22,7 +22,6 @@ import {
   SessionList,
   type AccountSummary,
 } from "@openagentsinc/autopilot-ui"
-import type { ProofReplayBundle } from "@openagentsinc/proof-replay"
 import { trainingRunView } from "@openagentsinc/three-effect/foldkit"
 import {
   detectOpenAgentsInputConflicts,
@@ -65,15 +64,10 @@ import {
 } from "./verse-scene-diagnostics.js"
 import { hudStatusProjection } from "../shared/hud-status-projection.js"
 import {
-  OPENAGENTS_PUBLIC_ORIGIN,
-  TASSADAR_REPLAY_ORIGIN_DATA_KEY,
-  TASSADAR_REPLAY_SLUG_DATA_KEY,
-  tassadarProofReplayView,
-} from "../../../openagents.com/apps/web/src/scene/tassadarProofReplayElement.js"
-import {
   DEFAULT_DESKTOP_PROOF_REPLAY_SLUG,
   desktopProofReplayCatalog,
   type DesktopProofReplayProjection,
+  type ProofReplayBundle,
 } from "../shared/proof-replays.js"
 import { isGatewayBalanceLow } from "../shared/inference-routing.js"
 // #5735: adapt the already-written pylon-network scene onto the three-effect
@@ -452,14 +446,16 @@ const tassadarProofReplayScene = (
   slug: string = DEFAULT_DESKTOP_PROOF_REPLAY_SLUG,
   bundle?: ProofReplayBundle | null,
 ): Html =>
-  tassadarProofReplayView<Message>(
-    [
-      cls(className),
-      h.DataAttribute(TASSADAR_REPLAY_SLUG_DATA_KEY, slug),
-      h.DataAttribute(TASSADAR_REPLAY_ORIGIN_DATA_KEY, OPENAGENTS_PUBLIC_ORIGIN),
-    ],
-    bundle,
-  )
+  h.div([cls(className), h.DataAttribute("data-proof-replay-archive", slug)], [
+    h.div([cls("proof-replay-archived")], [
+      h.p([], ["Proof replay archived"]),
+      h.p([], [
+        bundle === null || bundle === undefined
+          ? "The retired Tassadar/Psionic replay bundle now lives in backroom."
+          : "Replay data is no longer rendered in the desktop client.",
+      ]),
+    ]),
+  ])
 
 // ── Small shared building blocks (own h.* — no hand DOM) ─────────────────────
 

@@ -90,7 +90,7 @@ describe('tassadar replay validator (worker as separate device)', () => {
     )
     expect(
       verdict.compositionVerification?.constituentVerifications.every(
-        item => item.verified,
+        (item: { verified: boolean }) => item.verified,
       ),
     ).toBe(true)
   })
