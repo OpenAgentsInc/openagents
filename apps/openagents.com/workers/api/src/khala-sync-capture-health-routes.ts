@@ -124,6 +124,12 @@ export type CaptureHealthSnapshot = Readonly<{
   thresholdMs: number
 }>
 
+class CaptureHealthMalformedRowError extends Error {
+  constructor(reason: string) {
+    super(reason)
+  }
+}
+
 /**
  * The typed threshold decision. A stall requires BOTH a backlog AND
  * non-advancing checkpoints:
@@ -191,7 +197,9 @@ export const captureHealthFromRows = (
 ): CaptureHealthSnapshot => {
   const dbNowEpoch = readNumber(rows, 'db_now_epoch')
   if (dbNowEpoch === null) {
-    throw new Error('capture-health query returned no db_now_epoch')
+    throw new CaptureHealthMalformedRowError(
+      'capture-health query returned no db_now_epoch',
+    )
   }
   const maxUpdatedEpoch = readNumber(rows, 'max_updated_at_epoch')
   const versionsUndelivered = readNumber(rows, 'versions_undelivered') ?? 0
@@ -308,8 +316,7 @@ export type CaptureStalenessProbeDependencies = Readonly<{
 
 const defaultEmitStructuredLog = (line: Record<string, unknown>): void => {
   // Single line so Cloud Logging captures it as ONE entry with jsonPayload.
-  // eslint-disable-next-line no-console
-  console.log(JSON.stringify(line))
+  globalThis['console'].log(JSON.stringify(line))
 }
 
 /**

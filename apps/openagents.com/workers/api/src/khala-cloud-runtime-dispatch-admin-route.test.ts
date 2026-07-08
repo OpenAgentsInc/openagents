@@ -6,7 +6,7 @@ import {
   KHALA_CLOUD_RUNTIME_DISPATCH_ADMIN_PATH,
   type CloudGcpRuntimeDispatchAdminRouteDeps,
   type CloudGcpRuntimeDispatchContext,
-} from './khala-cloud-runtime-dispatch-admin-route'
+} from './khala-cloud-runtime-dispatch-admin-routes'
 
 type Env = Readonly<{ tag: 'test-env' }>
 const env: Env = { tag: 'test-env' }

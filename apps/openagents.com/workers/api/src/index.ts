@@ -1167,7 +1167,7 @@ import {
   handleCloudGcpRuntimeDispatchAdminRoute,
   KHALA_CLOUD_RUNTIME_DISPATCH_ADMIN_PATH,
   type CloudGcpRuntimeDispatchContext,
-} from './khala-cloud-runtime-dispatch-admin-route'
+} from './khala-cloud-runtime-dispatch-admin-routes'
 import {
   KHALA_AGENT_COMPUTER_WRITEBACK_INGEST_PATH,
   makeKhalaAgentComputerWritebackRoutes,

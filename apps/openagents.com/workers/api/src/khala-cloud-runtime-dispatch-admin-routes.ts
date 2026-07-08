@@ -53,11 +53,11 @@ export type CloudGcpRuntimeDispatchContext =
     }>
   | Readonly<{ configured: false }>
 
-export type CloudGcpRuntimeDispatchAdminRouteDeps<Env> = Readonly<{
+export type CloudGcpRuntimeDispatchAdminRouteDeps<Bindings> = Readonly<{
   /** Shared Worker admin-bearer gate. */
-  requireAdminApiToken: (request: Request, env: Env) => Promise<boolean>
+  requireAdminApiToken: (request: Request, env: Bindings) => Promise<boolean>
   /** Resolve the dispatch context (SQL client + armed flag + run closure). */
-  resolveContext: (env: Env) => Promise<CloudGcpRuntimeDispatchContext>
+  resolveContext: (env: Bindings) => Promise<CloudGcpRuntimeDispatchContext>
   log?: ((line: string, fields?: Record<string, unknown>) => void) | undefined
 }>
 
@@ -164,11 +164,11 @@ const parseAdmittedBody = (raw: unknown): ParsedBody => {
  * 503 when not configured, 409 `not_armed` when the lane is not armed (no
  * mint/placement), 400 on a malformed body.
  */
-export const handleCloudGcpRuntimeDispatchAdminRoute = async <Env>(
+export const handleCloudGcpRuntimeDispatchAdminRoute = async <Bindings>(
   request: Request,
-  env: Env,
-  deps: CloudGcpRuntimeDispatchAdminRouteDeps<Env>,
-): Promise<Response> => {
+  env: Bindings,
+  deps: CloudGcpRuntimeDispatchAdminRouteDeps<Bindings>,
+) => {
   if (request.method !== 'POST') {
     return methodNotAllowed(['POST'])
   }

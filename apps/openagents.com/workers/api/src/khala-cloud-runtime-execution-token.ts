@@ -34,7 +34,11 @@
 import type { SyncSql } from '@openagentsinc/khala-sync-server'
 
 import { createAgentToken, sha256Hex } from './agent-registration'
-import { currentIsoTimestamp, randomUuid } from './runtime-primitives'
+import {
+  currentIsoTimestamp,
+  isoTimestampAfterIso,
+  randomUuid,
+} from './runtime-primitives'
 
 /** Default TTL for a minted execution token (10 minutes). Bounds blast radius
  * to well under a single microVM turn's hard timeout. */
@@ -102,7 +106,7 @@ export type MintExecutionTokenInput = Readonly<{
 }>
 
 const isoPlusSeconds = (iso: string, seconds: number): string =>
-  new Date(new Date(iso).getTime() + seconds * 1000).toISOString()
+  isoTimestampAfterIso(iso, seconds * 1000)
 
 const resolveTtl = (ttl: number | undefined): number =>
   ttl !== undefined && Number.isSafeInteger(ttl) && ttl > 0
