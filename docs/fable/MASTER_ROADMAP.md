@@ -50,9 +50,9 @@ Consolidates:
 
 ```
 P0  MVP: tested + SUBMITTED ──► P1  Sarah + the new ──► P2  Your Codex ──► P3  Standing
-    (QAM gate + suites +            openagents.com          (CX-1..5)         employees
+    (QAM gate + suites +            openagents.com          (CX-1..9 →        employees
      #8503/#8477 proofs +           (SR-1..3 on React/                        (AE-1)
-     store submission)              TanStack Start)                              │
+     store submission)              TanStack Start)      dogfood cutover)         │
                                                                                  ▼
 P7  Scale / GTM / suite ◄── P6  Trust layer ◄── P5  Templates & ◄── P4  Employees &
     (assessment, IAP,           (skills registry,    integrations        the brain
@@ -221,32 +221,62 @@ tests proving no unruled price is reachable; a web conversation resumed
 by prospect email and answered through the approval queue; Sarah's Eval
 Suite green against the live deployment.
 
-## P2 — Your Codex on your agent computer (CX-1..5)
+## P2 — Your Codex on your agent computer (CX-1..9) — the workflow cutover sprint
 
 Spec: `2026-07-07-beyond-mvp-codex-agent-computers-and-ai-employees.md`
-§2/§6.
+§2/§6. **Sprint goal (owner, 2026-07-08): switch our own coding to Khala
+Code mobile — we use Codex primarily and want all our coding through
+Khala Code.** That raises the bar from "one proven turn" to a daily
+driver, so the lane set grows from CX-1..5 to CX-1..9. Issues filed:
+**#8545–#8553**.
 
-- **CX-1** Provider-credential invariant + broker contract
+- **CX-1 (#8545)** Provider-credential invariant + broker contract
   (`provider_credential_policy: broker_only`; never-pooled /
-  never-cross-owner law; scanner coverage; fail-closed tests). *An
-  INVARIANTS change; write the law first.*
-- **CX-2** Mobile Codex connect (device-auth → existing
-  `provider_account_token_custody` rail; accounts UI with
-  readiness/quota; disconnect/revocation).
-- **CX-3** Injection + first cloud Codex turn (broker redemption in the
-  microVM, isolated `CODEX_HOME` on scratch, `codex_app_server` armed in
-  the org-cloud lane set, image layer). **Exit:** one real
-  mobile-dispatched turn on the user's own Codex inside Firecracker —
-  receipt bundle with `tokenChargeMetered: false` model rows +
-  compute-time receipts; reclaim wipes the credential.
-- **CX-4** Harness/target selection UX (model-preference store →
-  execution targets; per-thread harness pill; quota-aware `auto` with
-  typed fallback events).
-- **CX-5** Claude account parity (same broker, `claude_pylon` lane).
+  never-cross-owner law; scanner coverage; fail-closed tests; ToS
+  position documented). *An INVARIANTS change; write the law first.*
+- **CX-2 (#8546)** Mobile Codex connect (device-auth → the existing
+  custody rail — device-login/start, local-auth/import, auth-material,
+  grants/resolve routes all exist; accounts UI with readiness/quota;
+  revocation; multi-account from day one). QAM-7's fixture suite turns
+  green here.
+- **CX-3 (#8547)** Codex inside the agent computer: codex baked into the
+  rootfs (re-pinned digest), `auth_grant_ref` populated in placement,
+  in-VM broker redemption → isolated `CODEX_HOME` on scratch,
+  `codex_app_server` added to the org-cloud dispatch lanes. **The P2
+  proof:** one real mobile-dispatched turn on the user's own Codex
+  inside Firecracker — `tokenChargeMetered: false` model rows +
+  compute-time receipts + reclaim evidence; grant replay after reclaim
+  structurally impossible.
+- **CX-4 (#8548)** Harness/target selection UX (model-preference store →
+  execution targets `codex:<accountRefHash>`; per-thread harness pill;
+  quota-aware `auto` with typed fallback events — never silent
+  substitution).
+- **CX-5 (#8549)** Claude account parity (same broker,
+  `CLAUDE_CODE_OAUTH_TOKEN` delivery, `claude_pylon` lane).
+- **CX-6 (#8550)** Session continuity across ephemeral microVMs:
+  durable per-thread account pin + re-prime-and-replay resume from
+  Khala Sync history (persisted-home volumes deferred, recorded).
+- **CX-7 (#8551)** Multi-account concurrency: serialize per account with
+  typed `account_busy_queued` events; more accounts = real concurrency;
+  health/quota truth on the phone. (Resolves the spec's open question
+  on concurrency semantics.)
+- **CX-8 (#8552)** Daily-driver ergonomics: interrupt/continue/steer
+  from the phone on running turns; long-turn streaming quality;
+  **monorepo-scale workspaces** (the openagents repo via the SCM broker
+  at real size, measured checkout/turn-latency envelope); verify
+  commands + writeback + push deep-link loop.
+- **CX-9 (#8553)** **Dogfood cutover — the P2 exit.** Owner accounts
+  connected (custody import; never the live `~/.codex`), real backlog
+  work on our own repos through Khala Code mobile; cutover ledger +
+  friction report. *Exit receipt: one full working day — ≥5 real
+  tasks completed through Khala Code mobile on our own Codex, zero
+  desktop fallback, receipts linked, owner sign-off.*
 
 Standing policy throughout: `subscription_capacity_resale` blocked
 unconditionally — connected accounts serve their owner's work only.
-Provider-ToS diligence documented in CX-1.
+Provider-ToS diligence documented in CX-1. Dependency spine: CX-1 →
+CX-2/CX-3 → CX-4 → CX-5; CX-6/CX-7/CX-8 after CX-3, parallel; CX-9
+last.
 
 ## P3 — Standing employees (AE-1: the cloud lane unification)
 
