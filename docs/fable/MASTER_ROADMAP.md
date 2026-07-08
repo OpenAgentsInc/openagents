@@ -228,9 +228,9 @@ bookkeeping. Apollo.io is connected via MCP (owner OAuth) with the
 audit-first plan and segments written
 (`2026-07-03-apollo-outbound-sales-plan.md`; blitz §5.3 clone-segments;
 own-your-ai target list). Track C connects that engine to Sarah's
-identity and turns the volume knob:
+identity and turns the volume knob. Issues filed: **#8558–#8563**.
 
-- **OB-1 Sending identity + deliverability foundation.** Sarah's
+- **OB-1 (#8558) Sending identity + deliverability foundation.** Sarah's
   outbound address on a **dedicated sending subdomain** (protect the
   root domain's reputation) with SPF/DKIM/DMARC; Resend arming
   (`CRM_RESEND_SEND_ENABLED` + keys — owner gate); CAN-SPAM
@@ -238,17 +238,17 @@ identity and turns the volume knob:
   live; **warm-up ramp** to the 100/day target (field discipline says
   10–20/day/identity sub-spam at the start — ramp gated on
   bounce/complaint rates, and add identities rather than burning one).
-- **OB-2 Apollo sourcing at volume.** Segment waves from the written
+- **OB-2 (#8559) Apollo sourcing at volume.** Segment waves from the written
   plans (mastermind clone-segments, own-your-ai sovereignty targets,
   legal/agency verticals) enriched through the Apollo MCP into
   `business_pipeline_rows` with LG-6 source attribution; Apollo stays a
   mirror — our pipeline is the system of record (BF-9.2 law).
-- **OB-3 Audit-first personalization at fleet scale.** Every email
+- **OB-3 (#8560) Audit-first personalization at fleet scale.** Every email
   leads with the prospect's own agent-readiness report (LG-1/LG-5),
   upgraded with the 15-step assessment rubric (P7.1 pulled forward as
   content); fleet lane renders one report per prospect — no generic
   blasts, ever (compliance-guardrails law: value before ask).
-- **OB-4 The draft→approve→send loop at 100/day.** Sarah drafts
+- **OB-4 (#8561) The draft→approve→send loop at 100/day.** Sarah drafts
   sequences into the **existing CRM approval queue** (propose →
   operator approve → `dispatchCrmSend`) — the owner's "queue drafts,
   send manually" is already the enforced law; what's new is a **batch
@@ -256,12 +256,12 @@ identity and turns the volume knob:
   per batch with receipts) so 100/day is operable by one human.
   Replies route to Sarah's inbox (sarah repo S-8 email channel) and the
   CRM; every send/reply is a `crm_activity` + email-ledger row.
-- **OB-5 Close via Stripe.** Reply → Sarah conversation (email or a
+- **OB-5 (#8562) Close via Stripe.** Reply → Sarah conversation (email or a
   link into sarah.openagents.com) → qualification → checkout link
   (pack-priced now; deal-rules quotes when SR-2 lands) → settled
   Stripe receipt → provision; pipeline states tracked on
   `crm_opportunities`; funnel counters per LG-6 attribution.
-- **OB-6 The daily sales ledger.** Sent / delivered / replies /
+- **OB-6 (#8563) The daily sales ledger.** Sent / delivered / replies /
   report-clicks / conversations / quotes / closes per day, per segment,
   with deliverability health (bounce/complaint) gating the ramp;
   surfaced to the owner daily (ops view + a one-line digest). The
