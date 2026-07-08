@@ -535,6 +535,7 @@
         "@openagentsinc/arbiter-effect": "workspace:*",
         "@openagentsinc/behavior-contracts": "workspace:*",
         "@openagentsinc/composer-state": "workspace:*",
+        "@openagentsinc/grok-harness": "workspace:*",
         "@openagentsinc/khala-sync": "workspace:*",
         "@openagentsinc/khala-sync-client": "workspace:*",
         "@openagentsinc/khala-sync-db-collection": "workspace:*",
@@ -828,6 +829,17 @@
     },
     "packages/forge-protocol": {
       "name": "@openagentsinc/forge-protocol",
+      "version": "0.1.0",
+      "dependencies": {
+        "effect": "catalog:",
+      },
+      "devDependencies": {
+        "bun-types": "^1.0.0",
+        "typescript": "catalog:",
+      },
+    },
+    "packages/grok-harness": {
+      "name": "@openagentsinc/grok-harness",
       "version": "0.1.0",
       "dependencies": {
         "effect": "catalog:",
@@ -1757,6 +1769,8 @@
     "@openagentsinc/forge-protocol": ["@openagentsinc/forge-protocol@workspace:packages/forge-protocol"],
 
     "@openagentsinc/forum": ["@openagentsinc/forum@workspace:apps/forum"],
+
+    "@openagentsinc/grok-harness": ["@openagentsinc/grok-harness@workspace:packages/grok-harness"],
 
     "@openagentsinc/input-bindings": ["@openagentsinc/input-bindings@workspace:packages/input-bindings"],
 
@@ -4427,6 +4441,8 @@
     "@openagentsinc/forge-protocol/effect": ["effect@4.0.0-beta.70", "", { "dependencies": { "@standard-schema/spec": "^1.1.0", "fast-check": "^4.8.0", "find-my-way-ts": "^0.1.6", "ini": "^7.0.0", "kubernetes-types": "^1.30.0", "msgpackr": "^2.0.1", "multipasta": "^0.2.7", "toml": "^4.1.1", "uuid": "^14.0.0", "yaml": "^2.9.0" } }, "sha512-8AwGTRiNriirHGEYHrOS0E9fzdhIqCdZjiHP1YXmNo2UyPGS43ILsymsSHT7V0DJS+8dvlKq2RxnrDBUhDNZHg=="],
 
     "@openagentsinc/forum/effect": ["effect@4.0.0-beta.70", "", { "dependencies": { "@standard-schema/spec": "^1.1.0", "fast-check": "^4.8.0", "find-my-way-ts": "^0.1.6", "ini": "^7.0.0", "kubernetes-types": "^1.30.0", "msgpackr": "^2.0.1", "multipasta": "^0.2.7", "toml": "^4.1.1", "uuid": "^14.0.0", "yaml": "^2.9.0" } }, "sha512-8AwGTRiNriirHGEYHrOS0E9fzdhIqCdZjiHP1YXmNo2UyPGS43ILsymsSHT7V0DJS+8dvlKq2RxnrDBUhDNZHg=="],
+
+    "@openagentsinc/grok-harness/effect": ["effect@4.0.0-beta.70", "", { "dependencies": { "@standard-schema/spec": "^1.1.0", "fast-check": "^4.8.0", "find-my-way-ts": "^0.1.6", "ini": "^7.0.0", "kubernetes-types": "^1.30.0", "msgpackr": "^2.0.1", "multipasta": "^0.2.7", "toml": "^4.1.1", "uuid": "^14.0.0", "yaml": "^2.9.0" } }, "sha512-8AwGTRiNriirHGEYHrOS0E9fzdhIqCdZjiHP1YXmNo2UyPGS43ILsymsSHT7V0DJS+8dvlKq2RxnrDBUhDNZHg=="],
 
     "@openagentsinc/input-bindings/effect": ["effect@4.0.0-beta.70", "", { "dependencies": { "@standard-schema/spec": "^1.1.0", "fast-check": "^4.8.0", "find-my-way-ts": "^0.1.6", "ini": "^7.0.0", "kubernetes-types": "^1.30.0", "msgpackr": "^2.0.1", "multipasta": "^0.2.7", "toml": "^4.1.1", "uuid": "^14.0.0", "yaml": "^2.9.0" } }, "sha512-8AwGTRiNriirHGEYHrOS0E9fzdhIqCdZjiHP1YXmNo2UyPGS43ILsymsSHT7V0DJS+8dvlKq2RxnrDBUhDNZHg=="],
 

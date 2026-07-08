@@ -1,0 +1,198 @@
+{
+  "schema": "openagents.grok_harness.rl_probe.v1",
+  "plane": "cli_session",
+  "marginalCostClass": "free",
+  "binary": "grok",
+  "prompt": "Reply with only the single word: ok",
+  "host": "local",
+  "measuredAt": "2026-07-08T22:33:10.939Z",
+  "concurrencies": [
+    {
+      "concurrency": 1,
+      "startedAt": "2026-07-08T22:31:59.673Z",
+      "finishedAt": "2026-07-08T22:32:06.088Z",
+      "wallClockMs": 6415,
+      "successCount": 1,
+      "failureCount": 0,
+      "rateLimitedCount": 0,
+      "workers": [
+        {
+          "index": 0,
+          "ok": true,
+          "wallClockMs": 6415,
+          "exitCode": 0,
+          "stdoutBytes": 6,
+          "stderrPreview": "",
+          "textPreview": "ok #0"
+        }
+      ]
+    },
+    {
+      "concurrency": 2,
+      "startedAt": "2026-07-08T22:32:06.088Z",
+      "finishedAt": "2026-07-08T22:32:17.629Z",
+      "wallClockMs": 11541,
+      "successCount": 2,
+      "failureCount": 0,
+      "rateLimitedCount": 0,
+      "workers": [
+        {
+          "index": 0,
+          "ok": true,
+          "wallClockMs": 11541,
+          "exitCode": 0,
+          "stdoutBytes": 6,
+          "stderrPreview": "",
+          "textPreview": "ok #0"
+        },
+        {
+          "index": 1,
+          "ok": true,
+          "wallClockMs": 8255,
+          "exitCode": 0,
+          "stdoutBytes": 3,
+          "stderrPreview": "",
+          "textPreview": "ok"
+        }
+      ]
+    },
+    {
+      "concurrency": 4,
+      "startedAt": "2026-07-08T22:32:17.629Z",
+      "finishedAt": "2026-07-08T22:32:30.314Z",
+      "wallClockMs": 12685,
+      "successCount": 4,
+      "failureCount": 0,
+      "rateLimitedCount": 0,
+      "workers": [
+        {
+          "index": 0,
+          "ok": true,
+          "wallClockMs": 8761,
+          "exitCode": 0,
+          "stdoutBytes": 6,
+          "stderrPreview": "",
+          "textPreview": "ok #0"
+        },
+        {
+          "index": 1,
+          "ok": true,
+          "wallClockMs": 8830,
+          "exitCode": 0,
+          "stdoutBytes": 6,
+          "stderrPreview": "",
+          "textPreview": "ok #1"
+        },
+        {
+          "index": 2,
+          "ok": true,
+          "wallClockMs": 12684,
+          "exitCode": 0,
+          "stdoutBytes": 6,
+          "stderrPreview": "",
+          "textPreview": "ok #2"
+        },
+        {
+          "index": 3,
+          "ok": true,
+          "wallClockMs": 9138,
+          "exitCode": 0,
+          "stdoutBytes": 3,
+          "stderrPreview": "",
+          "textPreview": "ok"
+        }
+      ]
+    },
+    {
+      "concurrency": 8,
+      "startedAt": "2026-07-08T22:32:30.314Z",
+      "finishedAt": "2026-07-08T22:33:10.939Z",
+      "wallClockMs": 40625,
+      "successCount": 8,
+      "failureCount": 0,
+      "rateLimitedCount": 0,
+      "workers": [
+        {
+          "index": 0,
+          "ok": true,
+          "wallClockMs": 40625,
+          "exitCode": 0,
+          "stdoutBytes": 6,
+          "stderrPreview": "\u001b[2m2026-07-08T22:32:37.775439Z\u001b[0m \u001b[31mERROR\u001b[0m responses API error \u001b[3mstatus\u001b[0m\u001b[2m=\u001b[0m429 Too Many Requests \u001b[3merror_message\u001b[0m\u001b[2m=\u001b[0mresource-exhausted: Too many requests for team a6558a9c-ad77-4779-8035-1412473982fe and model grok-build. Your team's rate limit is — Requests per Second (actual/limit): 4/4. Your rate limit tier is determined based on your historical API spend. To learn",
+          "textPreview": "ok #0"
+        },
+        {
+          "index": 1,
+          "ok": true,
+          "wallClockMs": 13612,
+          "exitCode": 0,
+          "stdoutBytes": 6,
+          "stderrPreview": "",
+          "textPreview": "ok #1"
+        },
+        {
+          "index": 2,
+          "ok": true,
+          "wallClockMs": 10148,
+          "exitCode": 0,
+          "stdoutBytes": 3,
+          "stderrPreview": "\u001b[2m2026-07-08T22:32:37.564088Z\u001b[0m \u001b[31mERROR\u001b[0m responses API error \u001b[3mstatus\u001b[0m\u001b[2m=\u001b[0m429 Too Many Requests \u001b[3merror_message\u001b[0m\u001b[2m=\u001b[0mresource-exhausted: Too many requests for team a6558a9c-ad77-4779-8035-1412473982fe and model grok-build. Your team's rate limit is — Requests per Second (actual/limit): 4/4. Your rate limit tier is determined based on your historical API spend. To learn",
+          "textPreview": "ok"
+        },
+        {
+          "index": 3,
+          "ok": true,
+          "wallClockMs": 13285,
+          "exitCode": 0,
+          "stdoutBytes": 3,
+          "stderrPreview": "\u001b[2m2026-07-08T22:32:37.519240Z\u001b[0m \u001b[31mERROR\u001b[0m responses API error \u001b[3mstatus\u001b[0m\u001b[2m=\u001b[0m429 Too Many Requests \u001b[3merror_message\u001b[0m\u001b[2m=\u001b[0mresource-exhausted: Too many requests for team a6558a9c-ad77-4779-8035-1412473982fe and model grok-build. Your team's rate limit is — Requests per Second (actual/limit): 4/4. Your rate limit tier is determined based on your historical API spend. To learn",
+          "textPreview": "ok"
+        },
+        {
+          "index": 4,
+          "ok": true,
+          "wallClockMs": 13512,
+          "exitCode": 0,
+          "stdoutBytes": 6,
+          "stderrPreview": "",
+          "textPreview": "ok #4"
+        },
+        {
+          "index": 5,
+          "ok": true,
+          "wallClockMs": 13946,
+          "exitCode": 0,
+          "stdoutBytes": 6,
+          "stderrPreview": "",
+          "textPreview": "ok #5"
+        },
+        {
+          "index": 6,
+          "ok": true,
+          "wallClockMs": 13758,
+          "exitCode": 0,
+          "stdoutBytes": 6,
+          "stderrPreview": "\u001b[2m2026-07-08T22:32:37.773259Z\u001b[0m \u001b[31mERROR\u001b[0m responses API error \u001b[3mstatus\u001b[0m\u001b[2m=\u001b[0m429 Too Many Requests \u001b[3merror_message\u001b[0m\u001b[2m=\u001b[0mresource-exhausted: Too many requests for team a6558a9c-ad77-4779-8035-1412473982fe and model grok-build. Your team's rate limit is — Requests per Second (actual/limit): 4/4. Your rate limit tier is determined based on your historical API spend. To learn",
+          "textPreview": "ok #6"
+        },
+        {
+          "index": 7,
+          "ok": true,
+          "wallClockMs": 14129,
+          "exitCode": 0,
+          "stdoutBytes": 6,
+          "stderrPreview": "",
+          "textPreview": "ok #7"
+        }
+      ]
+    }
+  ],
+  "maxFullSuccessConcurrency": 8,
+  "maxPartialSuccessConcurrency": 8,
+  "notes": [
+    "RL-1: concurrent grok -p sessions on one host (cli_session or api_key plane).",
+    "RL-2: token usage not exposed reliably on plain output — metering labeled not_measured.",
+    "Conservative auto defaults should not exceed maxFullSuccessConcurrency without a new receipt.",
+    "Free-window economics: marginal_cost_class=free only while plane=cli_session remains unmetered for us."
+  ]
+}

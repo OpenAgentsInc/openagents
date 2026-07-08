@@ -25,6 +25,7 @@ Sync ASAP analysis.
 | `execution-discipline.md` | How work is supposed to land (fleet, QA, issues) |
 | **`parallel-multi-harness-asap.md`** | **Parallel Codex + Claude + Grok under MASTER_ROADMAP, Sync, Effect Native** |
 | **`grok-cli-as-third-harness.md`** | **Adapter-level design: ACP, schema, fleet, Sync, EN UI** |
+| **`receipts/mh-3-4-status.md`** | **MH-3/MH-4 implementation + live RL concurrency receipts** |
 
 CLI operator reference (separate folder): `docs/grok-cli/`.
 

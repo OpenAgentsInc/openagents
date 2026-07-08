@@ -51,7 +51,8 @@
     "playwright": "^1.61.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",
-    "three": "0.184.0"
+    "three": "0.184.0",
+    "@openagentsinc/grok-harness": "workspace:*"
   },
   "devDependencies": {
     "@openagentsinc/khala-qa-harness": "workspace:*",

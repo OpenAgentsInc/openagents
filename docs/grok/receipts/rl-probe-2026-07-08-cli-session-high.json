@@ -1,0 +1,520 @@
+{
+  "schema": "openagents.grok_harness.rl_probe.v1",
+  "plane": "cli_session",
+  "marginalCostClass": "free",
+  "binary": "grok",
+  "prompt": "Reply with only the single word: ok",
+  "host": "local",
+  "measuredAt": "2026-07-08T22:35:13.180Z",
+  "concurrencies": [
+    {
+      "concurrency": 12,
+      "startedAt": "2026-07-08T22:33:15.032Z",
+      "finishedAt": "2026-07-08T22:33:52.312Z",
+      "wallClockMs": 37280,
+      "successCount": 12,
+      "failureCount": 0,
+      "rateLimitedCount": 0,
+      "workers": [
+        {
+          "index": 0,
+          "ok": true,
+          "wallClockMs": 19898,
+          "exitCode": 0,
+          "stdoutBytes": 6,
+          "stderrPreview": "\u001b[2m2026-07-08T22:33:24.317845Z\u001b[0m \u001b[31mERROR\u001b[0m responses API error \u001b[3mstatus\u001b[0m\u001b[2m=\u001b[0m429 Too Many Requests \u001b[3merror_message\u001b[0m\u001b[2m=\u001b[0mresource-exhausted: Too many requests for team a6558a9c-ad77-4779-8035-1412473982fe and model grok-build. Your team's rate limit is — Requests per Second (actual/limit): 4/4. Your rate limit tier is determined based on your historical API spend. To learn",
+          "textPreview": "ok #0"
+        },
+        {
+          "index": 1,
+          "ok": true,
+          "wallClockMs": 19128,
+          "exitCode": 0,
+          "stdoutBytes": 3,
+          "stderrPreview": "",
+          "textPreview": "ok"
+        },
+        {
+          "index": 2,
+          "ok": true,
+          "wallClockMs": 14864,
+          "exitCode": 0,
+          "stdoutBytes": 3,
+          "stderrPreview": "\u001b[2m2026-07-08T22:33:24.020869Z\u001b[0m \u001b[31mERROR\u001b[0m responses API error \u001b[3mstatus\u001b[0m\u001b[2m=\u001b[0m429 Too Many Requests \u001b[3merror_message\u001b[0m\u001b[2m=\u001b[0mresource-exhausted: Too many requests for team a6558a9c-ad77-4779-8035-1412473982fe and model grok-build. Your team's rate limit is — Requests per Second (actual/limit): 4/4. Your rate limit tier is determined based on your historical API spend. To learn",
+          "textPreview": "ok"
+        },
+        {
+          "index": 3,
+          "ok": true,
+          "wallClockMs": 20057,
+          "exitCode": 0,
+          "stdoutBytes": 3,
+          "stderrPreview": "\u001b[2m2026-07-08T22:33:24.438232Z\u001b[0m \u001b[31mERROR\u001b[0m responses API error \u001b[3mstatus\u001b[0m\u001b[2m=\u001b[0m429 Too Many Requests \u001b[3merror_message\u001b[0m\u001b[2m=\u001b[0mresource-exhausted: Too many requests for team a6558a9c-ad77-4779-8035-1412473982fe and model grok-build. Your team's rate limit is — Requests per Second (actual/limit): 4/4. Your rate limit tier is determined based on your historical API spend. To learn",
+          "textPreview": "ok"
+        },
+        {
+          "index": 4,
+          "ok": true,
+          "wallClockMs": 20758,
+          "exitCode": 0,
+          "stdoutBytes": 6,
+          "stderrPreview": "\u001b[2m2026-07-08T22:33:23.940498Z\u001b[0m \u001b[31mERROR\u001b[0m responses API error \u001b[3mstatus\u001b[0m\u001b[2m=\u001b[0m429 Too Many Requests \u001b[3merror_message\u001b[0m\u001b[2m=\u001b[0mresource-exhausted: Too many requests for team a6558a9c-ad77-4779-8035-1412473982fe and model grok-build. Your team's rate limit is — Requests per Second (actual/limit): 4/4. Your rate limit tier is determined based on your historical API spend. To learn",
+          "textPreview": "ok #4"
+        },
+        {
+          "index": 5,
+          "ok": true,
+          "wallClockMs": 13106,
+          "exitCode": 0,
+          "stdoutBytes": 6,
+          "stderrPreview": "",
+          "textPreview": "ok #5"
+        },
+        {
+          "index": 6,
+          "ok": true,
+          "wallClockMs": 19913,
+          "exitCode": 0,
+          "stdoutBytes": 6,
+          "stderrPreview": "\u001b[2m2026-07-08T22:33:24.239737Z\u001b[0m \u001b[31mERROR\u001b[0m responses API error \u001b[3mstatus\u001b[0m\u001b[2m=\u001b[0m429 Too Many Requests \u001b[3merror_message\u001b[0m\u001b[2m=\u001b[0mresource-exhausted: Too many requests for team a6558a9c-ad77-4779-8035-1412473982fe and model grok-build. Your team's rate limit is — Requests per Second (actual/limit): 4/4. Your rate limit tier is determined based on your historical API spend. To learn",
+          "textPreview": "ok #6"
+        },
+        {
+          "index": 7,
+          "ok": true,
+          "wallClockMs": 37275,
+          "exitCode": 0,
+          "stdoutBytes": 6,
+          "stderrPreview": "",
+          "textPreview": "ok #7"
+        },
+        {
+          "index": 8,
+          "ok": true,
+          "wallClockMs": 20315,
+          "exitCode": 0,
+          "stdoutBytes": 3,
+          "stderrPreview": "\u001b[2m2026-07-08T22:33:24.462138Z\u001b[0m \u001b[31mERROR\u001b[0m responses API error \u001b[3mstatus\u001b[0m\u001b[2m=\u001b[0m429 Too Many Requests \u001b[3merror_message\u001b[0m\u001b[2m=\u001b[0mresource-exhausted: Too many requests for team a6558a9c-ad77-4779-8035-1412473982fe and model grok-build. Your team's rate limit is — Requests per Second (actual/limit): 4/4. Your rate limit tier is determined based on your historical API spend. To learn",
+          "textPreview": "ok"
+        },
+        {
+          "index": 9,
+          "ok": true,
+          "wallClockMs": 19701,
+          "exitCode": 0,
+          "stdoutBytes": 6,
+          "stderrPreview": "\u001b[2m2026-07-08T22:33:24.317943Z\u001b[0m \u001b[31mERROR\u001b[0m responses API error \u001b[3mstatus\u001b[0m\u001b[2m=\u001b[0m429 Too Many Requests \u001b[3merror_message\u001b[0m\u001b[2m=\u001b[0mresource-exhausted: Too many requests for team a6558a9c-ad77-4779-8035-1412473982fe and model grok-build. Your team's rate limit is — Requests per Second (actual/limit): 4/4. Your rate limit tier is determined based on your historical API spend. To learn",
+          "textPreview": "ok #9"
+        },
+        {
+          "index": 10,
+          "ok": true,
+          "wallClockMs": 19759,
+          "exitCode": 0,
+          "stdoutBytes": 7,
+          "stderrPreview": "",
+          "textPreview": "ok #10"
+        },
+        {
+          "index": 11,
+          "ok": true,
+          "wallClockMs": 19914,
+          "exitCode": 0,
+          "stdoutBytes": 3,
+          "stderrPreview": "",
+          "textPreview": "ok"
+        }
+      ]
+    },
+    {
+      "concurrency": 16,
+      "startedAt": "2026-07-08T22:33:52.312Z",
+      "finishedAt": "2026-07-08T22:34:24.753Z",
+      "wallClockMs": 32441,
+      "successCount": 16,
+      "failureCount": 0,
+      "rateLimitedCount": 0,
+      "workers": [
+        {
+          "index": 0,
+          "ok": true,
+          "wallClockMs": 23362,
+          "exitCode": 0,
+          "stdoutBytes": 6,
+          "stderrPreview": "",
+          "textPreview": "ok #0"
+        },
+        {
+          "index": 1,
+          "ok": true,
+          "wallClockMs": 29493,
+          "exitCode": 0,
+          "stdoutBytes": 6,
+          "stderrPreview": "\u001b[2m2026-07-08T22:34:04.157118Z\u001b[0m \u001b[31mERROR\u001b[0m responses API error \u001b[3mstatus\u001b[0m\u001b[2m=\u001b[0m429 Too Many Requests \u001b[3merror_message\u001b[0m\u001b[2m=\u001b[0mresource-exhausted: Too many requests for team a6558a9c-ad77-4779-8035-1412473982fe and model grok-build. Your team's rate limit is — Requests per Second (actual/limit): 4/4. Your rate limit tier is determined based on your historical API spend. To learn",
+          "textPreview": "ok #1"
+        },
+        {
+          "index": 2,
+          "ok": true,
+          "wallClockMs": 31998,
+          "exitCode": 0,
+          "stdoutBytes": 3,
+          "stderrPreview": "\u001b[2m2026-07-08T22:34:03.403244Z\u001b[0m \u001b[31mERROR\u001b[0m responses API error \u001b[3mstatus\u001b[0m\u001b[2m=\u001b[0m429 Too Many Requests \u001b[3merror_message\u001b[0m\u001b[2m=\u001b[0mresource-exhausted: Too many requests for team a6558a9c-ad77-4779-8035-1412473982fe and model grok-build. Your team's rate limit is — Requests per Second (actual/limit): 4/4. Your rate limit tier is determined based on your historical API spend. To learn",
+          "textPreview": "ok"
+        },
+        {
+          "index": 3,
+          "ok": true,
+          "wallClockMs": 31900,
+          "exitCode": 0,
+          "stdoutBytes": 3,
+          "stderrPreview": "",
+          "textPreview": "ok"
+        },
+        {
+          "index": 4,
+          "ok": true,
+          "wallClockMs": 31747,
+          "exitCode": 0,
+          "stdoutBytes": 6,
+          "stderrPreview": "\u001b[2m2026-07-08T22:34:03.870320Z\u001b[0m \u001b[31mERROR\u001b[0m responses API error \u001b[3mstatus\u001b[0m\u001b[2m=\u001b[0m429 Too Many Requests \u001b[3merror_message\u001b[0m\u001b[2m=\u001b[0mresource-exhausted: Too many requests for team a6558a9c-ad77-4779-8035-1412473982fe and model grok-build. Your team's rate limit is — Requests per Second (actual/limit): 4/4. Your rate limit tier is determined based on your historical API spend. To learn",
+          "textPreview": "ok #4"
+        },
+        {
+          "index": 5,
+          "ok": true,
+          "wallClockMs": 31747,
+          "exitCode": 0,
+          "stdoutBytes": 6,
+          "stderrPreview": "\u001b[2m2026-07-08T22:34:03.518826Z\u001b[0m \u001b[31mERROR\u001b[0m responses API error \u001b[3mstatus\u001b[0m\u001b[2m=\u001b[0m429 Too Many Requests \u001b[3merror_message\u001b[0m\u001b[2m=\u001b[0mresource-exhausted: Too many requests for team a6558a9c-ad77-4779-8035-1412473982fe and model grok-build. Your team's rate limit is — Requests per Second (actual/limit): 4/4. Your rate limit tier is determined based on your historical API spend. To learn",
+          "textPreview": "ok #5"
+        },
+        {
+          "index": 6,
+          "ok": true,
+          "wallClockMs": 32125,
+          "exitCode": 0,
+          "stdoutBytes": 6,
+          "stderrPreview": "\u001b[2m2026-07-08T22:34:03.631601Z\u001b[0m \u001b[31mERROR\u001b[0m responses API error \u001b[3mstatus\u001b[0m\u001b[2m=\u001b[0m429 Too Many Requests \u001b[3merror_message\u001b[0m\u001b[2m=\u001b[0mresource-exhausted: Too many requests for team a6558a9c-ad77-4779-8035-1412473982fe and model grok-build. Your team's rate limit is — Requests per Second (actual/limit): 4/4. Your rate limit tier is determined based on your historical API spend. To learn",
+          "textPreview": "ok #6"
+        },
+        {
+          "index": 7,
+          "ok": true,
+          "wallClockMs": 30593,
+          "exitCode": 0,
+          "stdoutBytes": 3,
+          "stderrPreview": "\u001b[2m2026-07-08T22:34:03.786779Z\u001b[0m \u001b[31mERROR\u001b[0m responses API error \u001b[3mstatus\u001b[0m\u001b[2m=\u001b[0m429 Too Many Requests \u001b[3merror_message\u001b[0m\u001b[2m=\u001b[0mresource-exhausted: Too many requests for team a6558a9c-ad77-4779-8035-1412473982fe and model grok-build. Your team's rate limit is — Requests per Second (actual/limit): 4/4. Your rate limit tier is determined based on your historical API spend. To learn",
+          "textPreview": "ok"
+        },
+        {
+          "index": 8,
+          "ok": true,
+          "wallClockMs": 31746,
+          "exitCode": 0,
+          "stdoutBytes": 6,
+          "stderrPreview": "",
+          "textPreview": "ok #8"
+        },
+        {
+          "index": 9,
+          "ok": true,
+          "wallClockMs": 21649,
+          "exitCode": 0,
+          "stdoutBytes": 3,
+          "stderrPreview": "\u001b[2m2026-07-08T22:34:03.490013Z\u001b[0m \u001b[31mERROR\u001b[0m responses API error \u001b[3mstatus\u001b[0m\u001b[2m=\u001b[0m429 Too Many Requests \u001b[3merror_message\u001b[0m\u001b[2m=\u001b[0mresource-exhausted: Too many requests for team a6558a9c-ad77-4779-8035-1412473982fe and model grok-build. Your team's rate limit is — Requests per Second (actual/limit): 4/4. Your rate limit tier is determined based on your historical API spend. To learn",
+          "textPreview": "ok"
+        },
+        {
+          "index": 10,
+          "ok": true,
+          "wallClockMs": 31440,
+          "exitCode": 0,
+          "stdoutBytes": 7,
+          "stderrPreview": "\u001b[2m2026-07-08T22:34:05.356188Z\u001b[0m \u001b[31mERROR\u001b[0m tool_error: execution_failure \u001b[3msession_id\u001b[0m\u001b[2m=\u001b[0m019f43dd-c65f-7fc1-b207-953d423d311e \u001b[3mtool_name\u001b[0m\u001b[2m=\u001b[0m\"update_goal\" \u001b[3mmodel_id\u001b[0m\u001b[2m=\u001b[0m\"grok-4.5\" \u001b[3merror_kind\u001b[0m\u001b[2m=\u001b[0m\"execution_failure\" \u001b[3merror_message\u001b[0m\u001b[2m=\u001b[0mGoal is not Active; cannot mark complete\n",
+          "textPreview": "ok #10"
+        },
+        {
+          "index": 11,
+          "ok": true,
+          "wallClockMs": 26420,
+          "exitCode": 0,
+          "stdoutBytes": 7,
+          "stderrPreview": "\u001b[2m2026-07-08T22:34:03.786920Z\u001b[0m \u001b[31mERROR\u001b[0m responses API error \u001b[3mstatus\u001b[0m\u001b[2m=\u001b[0m429 Too Many Requests \u001b[3merror_message\u001b[0m\u001b[2m=\u001b[0mresource-exhausted: Too many requests for team a6558a9c-ad77-4779-8035-1412473982fe and model grok-build. Your team's rate limit is — Requests per Second (actual/limit): 4/4. Your rate limit tier is determined based on your historical API spend. To learn",
+          "textPreview": "ok #11"
+        },
+        {
+          "index": 12,
+          "ok": true,
+          "wallClockMs": 32124,
+          "exitCode": 0,
+          "stdoutBytes": 7,
+          "stderrPreview": "",
+          "textPreview": "ok #12"
+        },
+        {
+          "index": 13,
+          "ok": true,
+          "wallClockMs": 21652,
+          "exitCode": 0,
+          "stdoutBytes": 3,
+          "stderrPreview": "",
+          "textPreview": "ok"
+        },
+        {
+          "index": 14,
+          "ok": true,
+          "wallClockMs": 32437,
+          "exitCode": 0,
+          "stdoutBytes": 3,
+          "stderrPreview": "\u001b[2m2026-07-08T22:34:03.518860Z\u001b[0m \u001b[31mERROR\u001b[0m responses API error \u001b[3mstatus\u001b[0m\u001b[2m=\u001b[0m429 Too Many Requests \u001b[3merror_message\u001b[0m\u001b[2m=\u001b[0mresource-exhausted: Too many requests for team a6558a9c-ad77-4779-8035-1412473982fe and model grok-build. Your team's rate limit is — Requests per Second (actual/limit): 4/4. Your rate limit tier is determined based on your historical API spend. To learn",
+          "textPreview": "ok"
+        },
+        {
+          "index": 15,
+          "ok": true,
+          "wallClockMs": 16692,
+          "exitCode": 0,
+          "stdoutBytes": 7,
+          "stderrPreview": "\u001b[2m2026-07-08T22:34:03.518867Z\u001b[0m \u001b[31mERROR\u001b[0m responses API error \u001b[3mstatus\u001b[0m\u001b[2m=\u001b[0m429 Too Many Requests \u001b[3merror_message\u001b[0m\u001b[2m=\u001b[0mresource-exhausted: Too many requests for team a6558a9c-ad77-4779-8035-1412473982fe and model grok-build. Your team's rate limit is — Requests per Second (actual/limit): 4/4. Your rate limit tier is determined based on your historical API spend. To learn",
+          "textPreview": "ok #15"
+        }
+      ]
+    },
+    {
+      "concurrency": 24,
+      "startedAt": "2026-07-08T22:34:24.753Z",
+      "finishedAt": "2026-07-08T22:35:13.180Z",
+      "wallClockMs": 48427,
+      "successCount": 24,
+      "failureCount": 0,
+      "rateLimitedCount": 0,
+      "workers": [
+        {
+          "index": 0,
+          "ok": true,
+          "wallClockMs": 33015,
+          "exitCode": 0,
+          "stdoutBytes": 6,
+          "stderrPreview": "",
+          "textPreview": "ok #0"
+        },
+        {
+          "index": 1,
+          "ok": true,
+          "wallClockMs": 36257,
+          "exitCode": 0,
+          "stdoutBytes": 6,
+          "stderrPreview": "",
+          "textPreview": "ok #1"
+        },
+        {
+          "index": 2,
+          "ok": true,
+          "wallClockMs": 45279,
+          "exitCode": 0,
+          "stdoutBytes": 3,
+          "stderrPreview": "\u001b[2m2026-07-08T22:34:41.296376Z\u001b[0m \u001b[31mERROR\u001b[0m responses API error \u001b[3mstatus\u001b[0m\u001b[2m=\u001b[0m429 Too Many Requests \u001b[3merror_message\u001b[0m\u001b[2m=\u001b[0mresource-exhausted: Too many requests for team a6558a9c-ad77-4779-8035-1412473982fe and model grok-build. Your team's rate limit is — Requests per Second (actual/limit): 4/4. Your rate limit tier is determined based on your historical API spend. To learn",
+          "textPreview": "ok"
+        },
+        {
+          "index": 3,
+          "ok": true,
+          "wallClockMs": 45733,
+          "exitCode": 0,
+          "stdoutBytes": 6,
+          "stderrPreview": "",
+          "textPreview": "ok #3"
+        },
+        {
+          "index": 4,
+          "ok": true,
+          "wallClockMs": 45947,
+          "exitCode": 0,
+          "stdoutBytes": 3,
+          "stderrPreview": "\u001b[2m2026-07-08T22:34:41.263446Z\u001b[0m \u001b[31mERROR\u001b[0m responses API error \u001b[3mstatus\u001b[0m\u001b[2m=\u001b[0m429 Too Many Requests \u001b[3merror_message\u001b[0m\u001b[2m=\u001b[0mresource-exhausted: Too many requests for team a6558a9c-ad77-4779-8035-1412473982fe and model grok-build. Your team's rate limit is — Requests per Second (actual/limit): 4/4. Your rate limit tier is determined based on your historical API spend. To learn",
+          "textPreview": "ok"
+        },
+        {
+          "index": 5,
+          "ok": true,
+          "wallClockMs": 44103,
+          "exitCode": 0,
+          "stdoutBytes": 3,
+          "stderrPreview": "\u001b[2m2026-07-08T22:34:41.407500Z\u001b[0m \u001b[31mERROR\u001b[0m responses API error \u001b[3mstatus\u001b[0m\u001b[2m=\u001b[0m429 Too Many Requests \u001b[3merror_message\u001b[0m\u001b[2m=\u001b[0mresource-exhausted: Too many requests for team a6558a9c-ad77-4779-8035-1412473982fe and model grok-build. Your team's rate limit is — Requests per Second (actual/limit): 4/4. Your rate limit tier is determined based on your historical API spend. To learn",
+          "textPreview": "ok"
+        },
+        {
+          "index": 6,
+          "ok": true,
+          "wallClockMs": 20744,
+          "exitCode": 0,
+          "stdoutBytes": 6,
+          "stderrPreview": "",
+          "textPreview": "ok #6"
+        },
+        {
+          "index": 7,
+          "ok": true,
+          "wallClockMs": 38594,
+          "exitCode": 0,
+          "stdoutBytes": 6,
+          "stderrPreview": "\u001b[2m2026-07-08T22:34:40.845257Z\u001b[0m \u001b[31mERROR\u001b[0m responses API error \u001b[3mstatus\u001b[0m\u001b[2m=\u001b[0m429 Too Many Requests \u001b[3merror_message\u001b[0m\u001b[2m=\u001b[0mresource-exhausted: Too many requests for team a6558a9c-ad77-4779-8035-1412473982fe and model grok-build. Your team's rate limit is — Requests per Second (actual/limit): 4/4. Your rate limit tier is determined based on your historical API spend. To learn",
+          "textPreview": "ok #7"
+        },
+        {
+          "index": 8,
+          "ok": true,
+          "wallClockMs": 44105,
+          "exitCode": 0,
+          "stdoutBytes": 6,
+          "stderrPreview": "",
+          "textPreview": "ok #8"
+        },
+        {
+          "index": 9,
+          "ok": true,
+          "wallClockMs": 46281,
+          "exitCode": 0,
+          "stdoutBytes": 6,
+          "stderrPreview": "\u001b[2m2026-07-08T22:34:41.333694Z\u001b[0m \u001b[31mERROR\u001b[0m responses API error \u001b[3mstatus\u001b[0m\u001b[2m=\u001b[0m429 Too Many Requests \u001b[3merror_message\u001b[0m\u001b[2m=\u001b[0mresource-exhausted: Too many requests for team a6558a9c-ad77-4779-8035-1412473982fe and model grok-build. Your team's rate limit is — Requests per Second (actual/limit): 4/4. Your rate limit tier is determined based on your historical API spend. To learn",
+          "textPreview": "ok #9"
+        },
+        {
+          "index": 10,
+          "ok": true,
+          "wallClockMs": 46116,
+          "exitCode": 0,
+          "stdoutBytes": 7,
+          "stderrPreview": "\u001b[2m2026-07-08T22:34:41.333608Z\u001b[0m \u001b[31mERROR\u001b[0m responses API error \u001b[3mstatus\u001b[0m\u001b[2m=\u001b[0m429 Too Many Requests \u001b[3merror_message\u001b[0m\u001b[2m=\u001b[0mresource-exhausted: Too many requests for team a6558a9c-ad77-4779-8035-1412473982fe and model grok-build. Your team's rate limit is — Requests per Second (actual/limit): 4/4. Your rate limit tier is determined based on your historical API spend. To learn",
+          "textPreview": "ok #10"
+        },
+        {
+          "index": 11,
+          "ok": true,
+          "wallClockMs": 45909,
+          "exitCode": 0,
+          "stdoutBytes": 7,
+          "stderrPreview": "",
+          "textPreview": "ok #11"
+        },
+        {
+          "index": 12,
+          "ok": true,
+          "wallClockMs": 45277,
+          "exitCode": 0,
+          "stdoutBytes": 7,
+          "stderrPreview": "\u001b[2m2026-07-08T22:34:41.333608Z\u001b[0m \u001b[31mERROR\u001b[0m responses API error \u001b[3mstatus\u001b[0m\u001b[2m=\u001b[0m429 Too Many Requests \u001b[3merror_message\u001b[0m\u001b[2m=\u001b[0mresource-exhausted: Too many requests for team a6558a9c-ad77-4779-8035-1412473982fe and model grok-build. Your team's rate limit is — Requests per Second (actual/limit): 4/4. Your rate limit tier is determined based on your historical API spend. To learn",
+          "textPreview": "ok #12"
+        },
+        {
+          "index": 13,
+          "ok": true,
+          "wallClockMs": 48423,
+          "exitCode": 0,
+          "stdoutBytes": 7,
+          "stderrPreview": "\u001b[2m2026-07-08T22:34:40.845234Z\u001b[0m \u001b[31mERROR\u001b[0m responses API error \u001b[3mstatus\u001b[0m\u001b[2m=\u001b[0m429 Too Many Requests \u001b[3merror_message\u001b[0m\u001b[2m=\u001b[0mresource-exhausted: Too many requests for team a6558a9c-ad77-4779-8035-1412473982fe and model grok-build. Your team's rate limit is — Requests per Second (actual/limit): 4/4. Your rate limit tier is determined based on your historical API spend. To learn",
+          "textPreview": "ok #13"
+        },
+        {
+          "index": 14,
+          "ok": true,
+          "wallClockMs": 36069,
+          "exitCode": 0,
+          "stdoutBytes": 3,
+          "stderrPreview": "",
+          "textPreview": "ok"
+        },
+        {
+          "index": 15,
+          "ok": true,
+          "wallClockMs": 46692,
+          "exitCode": 0,
+          "stdoutBytes": 7,
+          "stderrPreview": "\u001b[2m2026-07-08T22:34:41.397965Z\u001b[0m \u001b[31mERROR\u001b[0m responses API error \u001b[3mstatus\u001b[0m\u001b[2m=\u001b[0m429 Too Many Requests \u001b[3merror_message\u001b[0m\u001b[2m=\u001b[0mresource-exhausted: Too many requests for team a6558a9c-ad77-4779-8035-1412473982fe and model grok-build. Your team's rate limit is — Requests per Second (actual/limit): 4/4. Your rate limit tier is determined based on your historical API spend. To learn",
+          "textPreview": "ok #15"
+        },
+        {
+          "index": 16,
+          "ok": true,
+          "wallClockMs": 45273,
+          "exitCode": 0,
+          "stdoutBytes": 7,
+          "stderrPreview": "",
+          "textPreview": "ok #16"
+        },
+        {
+          "index": 17,
+          "ok": true,
+          "wallClockMs": 41805,
+          "exitCode": 0,
+          "stdoutBytes": 3,
+          "stderrPreview": "\u001b[2m2026-07-08T22:34:41.508506Z\u001b[0m \u001b[31mERROR\u001b[0m responses API error \u001b[3mstatus\u001b[0m\u001b[2m=\u001b[0m429 Too Many Requests \u001b[3merror_message\u001b[0m\u001b[2m=\u001b[0mresource-exhausted: Too many requests for team a6558a9c-ad77-4779-8035-1412473982fe and model grok-build. Your team's rate limit is — Requests per Second (actual/limit): 4/4. Your rate limit tier is determined based on your historical API spend. To learn",
+          "textPreview": "ok"
+        },
+        {
+          "index": 18,
+          "ok": true,
+          "wallClockMs": 46277,
+          "exitCode": 0,
+          "stdoutBytes": 7,
+          "stderrPreview": "",
+          "textPreview": "ok #18"
+        },
+        {
+          "index": 19,
+          "ok": true,
+          "wallClockMs": 46276,
+          "exitCode": 0,
+          "stdoutBytes": 3,
+          "stderrPreview": "\u001b[2m2026-07-08T22:34:41.333615Z\u001b[0m \u001b[31mERROR\u001b[0m responses API error \u001b[3mstatus\u001b[0m\u001b[2m=\u001b[0m429 Too Many Requests \u001b[3merror_message\u001b[0m\u001b[2m=\u001b[0mresource-exhausted: Too many requests for team a6558a9c-ad77-4779-8035-1412473982fe and model grok-build. Your team's rate limit is — Requests per Second (actual/limit): 4/4. Your rate limit tier is determined based on your historical API spend. To learn",
+          "textPreview": "ok"
+        },
+        {
+          "index": 20,
+          "ok": true,
+          "wallClockMs": 43914,
+          "exitCode": 0,
+          "stdoutBytes": 3,
+          "stderrPreview": "\u001b[2m2026-07-08T22:34:40.785500Z\u001b[0m \u001b[31mERROR\u001b[0m responses API error \u001b[3mstatus\u001b[0m\u001b[2m=\u001b[0m429 Too Many Requests \u001b[3merror_message\u001b[0m\u001b[2m=\u001b[0mresource-exhausted: Too many requests for team a6558a9c-ad77-4779-8035-1412473982fe and model grok-build. Your team's rate limit is — Requests per Second (actual/limit): 4/4. Your rate limit tier is determined based on your historical API spend. To learn",
+          "textPreview": "ok"
+        },
+        {
+          "index": 21,
+          "ok": true,
+          "wallClockMs": 45270,
+          "exitCode": 0,
+          "stdoutBytes": 3,
+          "stderrPreview": "\u001b[2m2026-07-08T22:34:41.296530Z\u001b[0m \u001b[31mERROR\u001b[0m responses API error \u001b[3mstatus\u001b[0m\u001b[2m=\u001b[0m429 Too Many Requests \u001b[3merror_message\u001b[0m\u001b[2m=\u001b[0mresource-exhausted: Too many requests for team a6558a9c-ad77-4779-8035-1412473982fe and model grok-build. Your team's rate limit is — Requests per Second (actual/limit): 4/4. Your rate limit tier is determined based on your historical API spend. To learn",
+          "textPreview": "ok"
+        },
+        {
+          "index": 22,
+          "ok": true,
+          "wallClockMs": 46274,
+          "exitCode": 0,
+          "stdoutBytes": 3,
+          "stderrPreview": "",
+          "textPreview": "ok"
+        },
+        {
+          "index": 23,
+          "ok": true,
+          "wallClockMs": 46330,
+          "exitCode": 0,
+          "stdoutBytes": 3,
+          "stderrPreview": "\u001b[2m2026-07-08T22:34:40.785411Z\u001b[0m \u001b[31mERROR\u001b[0m responses API error \u001b[3mstatus\u001b[0m\u001b[2m=\u001b[0m429 Too Many Requests \u001b[3merror_message\u001b[0m\u001b[2m=\u001b[0mresource-exhausted: Too many requests for team a6558a9c-ad77-4779-8035-1412473982fe and model grok-build. Your team's rate limit is — Requests per Second (actual/limit): 4/4. Your rate limit tier is determined based on your historical API spend. To learn",
+          "textPreview": "ok"
+        }
+      ]
+    }
+  ],
+  "maxFullSuccessConcurrency": 24,
+  "maxPartialSuccessConcurrency": 24,
+  "notes": [
+    "RL-1: concurrent grok -p sessions on one host (cli_session or api_key plane).",
+    "RL-2: token usage not exposed reliably on plain output — metering labeled not_measured.",
+    "Conservative auto defaults should not exceed maxFullSuccessConcurrency without a new receipt.",
+    "Free-window economics: marginal_cost_class=free only while plane=cli_session remains unmetered for us."
+  ]
+}
