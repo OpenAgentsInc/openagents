@@ -62,6 +62,7 @@
     "smoke:packaged-network": "bun scripts/packaged-live-network-smoke.ts",
     "smoke:packaged-runtime-task": "bun scripts/packaged-runtime-task-smoke.ts",
     "smoke:claude-agent-task": "bun scripts/claude-agent-task-smoke.ts",
+    "smoke:mixed-harness-fleet-run": "bun scripts/mixed-harness-fleet-run-smoke.ts",
     "smoke:codex-agent-task": "bun scripts/codex-agent-task-smoke.ts",
     "build:apple-fm-bridge": "bash swift/foundation-bridge/build.sh",
     "typecheck": "tsc -p tsconfig.json --noEmit",
