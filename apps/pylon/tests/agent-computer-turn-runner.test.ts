@@ -1,8 +1,13 @@
 import { describe, expect, test } from 'bun:test'
+import { mkdtempSync } from 'node:fs'
+import { readFile, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 import {
   AGENT_COMPUTER_DEFAULT_PROVIDER,
   AGENT_COMPUTER_RECEIPT_LANE,
+  CODEX_PROVIDER_AUTH_MATERIAL_PATH,
   GITHUB_SCM_AUTH_BROKER_HELPER_REF,
   GITHUB_SCM_AUTH_BROKER_PATH,
   GITHUB_SCM_AUTH_BROKER_REQUEST_SCHEMA,
@@ -12,15 +17,20 @@ import {
   KHALA_CLOUD_RUNTIME_USAGE_INGEST_PATH,
   KHALA_CLOUD_RUNTIME_USAGE_SCHEMA_VERSION,
   brokerGitCredential,
+  canReplayCodexProviderGrantAfterReclaim,
   chatCompletionUsage,
   chatCompletionText,
   chatCompletionsRequest,
   classifyPushFailure,
+  codexProviderAuthMaterialRequest,
   gitCredentialBrokerRequest,
+  materializeCodexProviderAuth,
   parseRepoFullName,
   runModelTurnReceipt,
   runWritebackForTurn,
+  shortLivedOpenCodeAuthExpiresAt,
   usageIngestBody,
+  type CodexProviderAuthConfig,
   type GitRun,
   type InferenceConfig,
   type WritebackConfig,
@@ -34,6 +44,122 @@ const inference: InferenceConfig = {
   backendProfile: 'omega-hosted-gemini',
   pylonRef: 'pylon.agent-computer.proof',
 }
+
+const codexProviderAuth: CodexProviderAuthConfig = {
+  authGrantRef: 'grant.public.codex.owner.turn',
+  baseUrl: 'https://openagents.example',
+  agentToken: 'agent-secret-token-should-never-be-serialized',
+  providerAccountRef: 'provider-account.public.codex.owner',
+}
+
+const shortLivedAuthContent = JSON.stringify({
+  openai: {
+    access: 'short-lived-access-token-never-serialized',
+    expires: Date.parse('2026-07-08T12:30:00.000Z'),
+  },
+})
+
+describe('agent-computer turn-runner: Codex provider-account broker materialization', () => {
+  test('auth-material request carries only refs plus the agent bearer', () => {
+    const req = codexProviderAuthMaterialRequest(codexProviderAuth)
+    expect(req.url).toBe(`${codexProviderAuth.baseUrl}${CODEX_PROVIDER_AUTH_MATERIAL_PATH}`)
+    expect(req.headers.Authorization).toBe(`Bearer ${codexProviderAuth.agentToken}`)
+    expect(JSON.parse(req.body)).toEqual({
+      authGrantRef: codexProviderAuth.authGrantRef,
+      providerAccountRef: codexProviderAuth.providerAccountRef,
+    })
+    expect(req.body).not.toContain('short-lived-access-token')
+  })
+
+  test('materializes short-lived OPENCODE auth into scratch CODEX_HOME only', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'agent-computer-codex-auth-'))
+    try {
+      const calls: Array<{ url: string; init: RequestInit }> = []
+      const fetchImpl = (async (url: string | URL | Request, init?: RequestInit) => {
+        calls.push({ init: init ?? {}, url: String(url) })
+        return new Response(
+          JSON.stringify({
+            authMaterial: {
+              authContentEnv: 'OPENCODE_AUTH_CONTENT',
+              authContentJson: shortLivedAuthContent,
+            },
+          }),
+          { status: 200 },
+        )
+      }) as unknown as typeof globalThis.fetch
+
+      const result = await materializeCodexProviderAuth(
+        {
+          providerAuth: { ...codexProviderAuth, scratchRoot: root },
+          turnId: 'turn-codex-1',
+          nowMs: Date.parse('2026-07-08T12:00:00.000Z'),
+        },
+        fetchImpl,
+      )
+
+      expect(result.ok).toBe(true)
+      if (!result.ok) throw new Error('unreachable')
+      expect(result.codexHome).toBe(join(root, 'turn-codex-1', 'codex-home'))
+      expect(result.env.CODEX_HOME).toBe(result.codexHome)
+      expect(result.env.OPENCODE_AUTH_CONTENT).toBe(shortLivedAuthContent)
+      expect(await readFile(result.authJsonPath, 'utf8')).toBe(`${shortLivedAuthContent}\n`)
+      expect(JSON.stringify({
+        providerAccountRef: result.providerAccountRef,
+        authGrantRef: result.authGrantRef,
+        expiresAt: result.expiresAt,
+      })).not.toContain('short-lived-access-token')
+      expect(calls).toHaveLength(1)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  test('rejects refresh-bearing or expiring auth material before writing CODEX_HOME', async () => {
+    expect(
+      shortLivedOpenCodeAuthExpiresAt(
+        JSON.stringify({ openai: { access: 'access', refresh: 'refresh', expires: 1 } }),
+      ),
+    ).toBeNull()
+
+    const fetchImpl = (async () =>
+      new Response(
+        JSON.stringify({
+          authMaterial: {
+            authContentEnv: 'OPENCODE_AUTH_CONTENT',
+            authContentJson: JSON.stringify({
+              openai: {
+                access: 'access',
+                expires: Date.parse('2026-07-08T12:03:00.000Z'),
+              },
+            }),
+          },
+        }),
+        { status: 200 },
+      )) as unknown as typeof globalThis.fetch
+    const result = await materializeCodexProviderAuth(
+      {
+        providerAuth: codexProviderAuth,
+        turnId: 'turn-expiring',
+        nowMs: Date.parse('2026-07-08T12:00:00.000Z'),
+      },
+      fetchImpl,
+    )
+    expect(result).toEqual({
+      ok: false,
+      reasonRef: 'codex.provider_auth_material_expiring',
+      status: 200,
+    })
+  })
+
+  test('reclaim receipts make redeemed provider grants non-replayable', () => {
+    expect(
+      canReplayCodexProviderGrantAfterReclaim({
+        scratchWipeReceiptRef: 'sha256:scratch-wiped',
+        microvmDestroyReceiptRef: 'sha256:microvm-destroyed',
+      }),
+    ).toBe(false)
+  })
+})
 
 describe('agent-computer turn-runner: usage + text parsing', () => {
   test('extracts exact usage from an OpenAI-shaped completion (prompt/completion_tokens)', () => {

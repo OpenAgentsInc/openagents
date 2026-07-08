@@ -89,9 +89,9 @@ export function buildCloudSessionRequest(input: {
 export const CLOUD_PROVIDER_DISPLAY_REF = "session.pylon.cloud.openagents_cloud"
 
 // Cloud-side input that the control-session layer threads through for a cloud
-// lane. Grant/owner refs are supplied by the caller (Omega) for the cloud run;
-// when absent, grant resolution is skipped and placement is attempted with the
-// supplied (or empty) refs — the cloud endpoint enforces its own validation.
+// lane. Grant/owner refs are supplied by the caller for the cloud run. Codex
+// Agent Computer placements are fail-closed: a connected provider account and
+// auth grant must both be present before Pylon contacts the control plane.
 export type CloudSessionGrantBinding = {
   authGrantRef?: string
   providerAccountRef?: string
@@ -208,6 +208,10 @@ function stableRef(prefix: string, value: string): string {
   return `${prefix}.${createHash("sha256").update(value).digest("hex").slice(0, 24)}`
 }
 
+function hasText(value: string | undefined): value is string {
+  return value !== undefined && value.trim() !== ""
+}
+
 // Build a cloud executor compatible with the control-session layer. It returns
 // a terminal `ControlSessionExecutorResult` so the existing session lifecycle
 // (artifact write, completed/failed projection, SSE publish) is unchanged.
@@ -221,34 +225,38 @@ export function makeCloudControlSessionExecutor(
 
   return async (input: ControlSessionExecutorInput): Promise<ControlSessionExecutorResult> => {
     const binding = options.grantBindingForSession?.(input.sessionRef) ?? {}
+    if (!hasText(binding.authGrantRef)) {
+      throw new Error("cloud Codex auth grant missing: cloud_codex_auth_grant_ref_missing")
+    }
+    if (!hasText(binding.providerAccountRef)) {
+      throw new Error("cloud Codex provider account missing: cloud_codex_provider_account_ref_missing")
+    }
 
     // 1) Resolve the Codex auth grant (when grant refs are present) so we never
     // place a cloud run against an unusable grant. The resolver is the neutral,
     // Vortex-independent contract from #4999.
-    if (binding.authGrantRef !== undefined && binding.providerAccountRef !== undefined) {
-      input.emit({ phase: "composer_event", message: "resolving cloud Codex auth grant" })
-      try {
-        await Effect.runPromise(
-          grantResolver.resolveGrant({
-            assignmentId: input.sessionRef,
-            runnerSessionId: input.sessionRef,
-            goal: input.objective,
-            provider: "chatgpt_codex",
-            providerAccountRef: binding.providerAccountRef as never,
-            authGrantRef: binding.authGrantRef as never,
-          }),
-        )
-      } catch (error) {
-        // A grant resolution failure is a typed Probe error (no raw secrets).
-        // Surface a bounded reason without leaking raw error text.
-        const reason =
-          error && typeof error === "object" && "_tag" in error
-            ? String((error as { _tag: unknown })._tag)
-            : "grant_resolve_error"
-        throw new Error(`cloud grant resolution failed: ${reason}`)
-      }
-      input.emit({ phase: "composer_event", message: "cloud Codex auth grant resolved" })
+    input.emit({ phase: "composer_event", message: "resolving cloud Codex auth grant" })
+    try {
+      await Effect.runPromise(
+        grantResolver.resolveGrant({
+          assignmentId: input.sessionRef,
+          runnerSessionId: input.sessionRef,
+          goal: input.objective,
+          provider: "chatgpt_codex",
+          providerAccountRef: binding.providerAccountRef as never,
+          authGrantRef: binding.authGrantRef as never,
+        }),
+      )
+    } catch (error) {
+      // A grant resolution failure is a typed Probe error (no raw secrets).
+      // Surface a bounded reason without leaking raw error text.
+      const reason =
+        error && typeof error === "object" && "_tag" in error
+          ? String((error as { _tag: unknown })._tag)
+          : "grant_resolve_error"
+      throw new Error(`cloud grant resolution failed: ${reason}`)
     }
+    input.emit({ phase: "composer_event", message: "cloud Codex auth grant resolved" })
 
     // 2) Place the run on a concrete cloud runner.
     const lane: ControlSessionLane = input.lane ?? "auto"

@@ -765,12 +765,6 @@ const stringOption = (
   key: string,
 ): string | undefined => publicRefFromUnknown(options[key])
 
-const defaultProviderAccountRef = (accountRef: string): string =>
-  `provider-account.cloud-coding.${accountRef.replace(/[^a-zA-Z0-9_.:-]/g, '_')}`
-
-const defaultAuthGrantRef = (sessionId: string): string =>
-  `grant.cloud-coding-session.${sessionId}`
-
 const agentComputerIsolationPolicy = (
   request: CloudCodingSessionRequest,
 ) => ({
@@ -1111,6 +1105,21 @@ export const makeCloudControlCloudCodingAdapter = (
             notArmed('cloud_control_token_not_configured'),
           )
         }
+        const authGrantRef = stringOption(request.options, 'authGrantRef')
+        const providerAccountRef = stringOption(
+          request.options,
+          'providerAccountRef',
+        )
+        if (authGrantRef === undefined) {
+          return yield* Effect.fail(
+            notArmed('cloud_codex_auth_grant_ref_missing'),
+          )
+        }
+        if (providerAccountRef === undefined) {
+          return yield* Effect.fail(
+            notArmed('cloud_codex_provider_account_ref_missing'),
+          )
+        }
         const placementResult = yield* Effect.tryPromise({
           catch: error =>
             new CloudCodingAdapterError({
@@ -1134,9 +1143,7 @@ export const makeCloudControlCloudCodingAdapter = (
                 : undefined
             const response = await fetchImpl(`${baseUrl}/v1/placement`, {
               body: JSON.stringify({
-                auth_grant_ref:
-                  stringOption(request.options, 'authGrantRef') ??
-                  defaultAuthGrantRef(sessionId),
+                auth_grant_ref: authGrantRef,
                 agent_computer_isolation_policy:
                   agentComputerIsolationPolicy(request),
                 contract_version: 'openagents.codex_placement_assignment.v1',
@@ -1144,9 +1151,7 @@ export const makeCloudControlCloudCodingAdapter = (
                 goal: request.objective,
                 lane,
                 owner_ref: accountRef,
-                provider_account_ref:
-                  stringOption(request.options, 'providerAccountRef') ??
-                  defaultProviderAccountRef(accountRef),
+                provider_account_ref: providerAccountRef,
                 repository: request.repoRef,
                 ...(request.repoBindingRef === undefined
                   ? {}

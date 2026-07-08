@@ -57,6 +57,13 @@ const getRequest = (sessionId: string): Request =>
   })
 
 const validBody = {
+  authGrantRef: 'grant.public.test',
+  objective: 'fix the failing test',
+  providerAccountRef: 'provider-account.public.test',
+  repoRef: 'repo:openagents/openagents',
+}
+
+const validBodyWithoutProviderRefs = {
   objective: 'fix the failing test',
   repoRef: 'repo:openagents/openagents',
 }
@@ -640,7 +647,11 @@ describe('POST /v1/cloud-coding-sessions', () => {
           adapter: 'codex',
           lane: 'cloud-gcp',
           objective: 'seam-a',
-          options: { workContextB64: 'eyJhIjoxfQ==' },
+          options: {
+            authGrantRef: 'grant.public.test',
+            providerAccountRef: 'provider-account.public.test',
+            workContextB64: 'eyJhIjoxfQ==',
+          },
           repoRef: 'repo:openagents/openagents',
           repoTrustTier: 'private',
           timeoutSeconds: 1800,
@@ -694,7 +705,11 @@ describe('POST /v1/cloud-coding-sessions', () => {
           adapter: 'codex',
           lane: 'cloud-gcp',
           objective: 'seam-a',
-          options: { workContextB64: 'eyJhIjoxfQ==' },
+          options: {
+            authGrantRef: 'grant.public.test',
+            providerAccountRef: 'provider-account.public.test',
+            workContextB64: 'eyJhIjoxfQ==',
+          },
           repoRef: 'repo:openagents/openagents',
           repoTrustTier: 'private',
           timeoutSeconds: 1800,
@@ -805,7 +820,11 @@ describe('POST /v1/cloud-coding-sessions', () => {
           adapter: 'codex',
           lane: 'cloud-shc',
           objective: 'seam-a',
-          options: { workContextB64: 'eyJhIjoxfQ==' },
+          options: {
+            authGrantRef: 'grant.public.test',
+            providerAccountRef: 'provider-account.public.test',
+            workContextB64: 'eyJhIjoxfQ==',
+          },
           repoRef: 'repo:openagents/openagents',
           repoTrustTier: 'private',
           timeoutSeconds: 1800,
@@ -848,7 +867,10 @@ describe('POST /v1/cloud-coding-sessions', () => {
           adapter: 'codex',
           lane: 'cloud-gcp',
           objective: 'seam-a',
-          options: {},
+          options: {
+            authGrantRef: 'grant.public.test',
+            providerAccountRef: 'provider-account.public.test',
+          },
           repoRef: 'repo:openagents/openagents',
           repoTrustTier: 'private',
           timeoutSeconds: 1800,
@@ -945,7 +967,7 @@ describe('POST /v1/cloud-coding-sessions', () => {
     }
     const response = await run(
       handleCloudCodingSessionLaunch(
-        launchRequest(validBody),
+        launchRequest(validBodyWithoutProviderRefs),
         baseDeps({ adapter }),
       ),
     )
@@ -963,7 +985,7 @@ describe('POST /v1/cloud-coding-sessions', () => {
     })
     const response = await run(
       handleCloudCodingSessionLaunch(
-        launchRequest(validBody),
+        launchRequest(validBodyWithoutProviderRefs),
         baseDeps({ adapter }),
       ),
     )
@@ -980,13 +1002,62 @@ describe('POST /v1/cloud-coding-sessions', () => {
     })
     const response = await run(
       handleCloudCodingSessionLaunch(
-        launchRequest(validBody),
+        launchRequest(validBodyWithoutProviderRefs),
         baseDeps({ adapter }),
       ),
     )
     expect(response.status).toBe(502)
     const body = (await response.json()) as { reason: string }
     expect(body.reason).toBe('cloud_control_token_not_configured')
+  })
+
+  test('fails closed before placement when Codex provider grant refs are absent', async () => {
+    let placementCalled = false
+    const adapter = makeCloudControlCloudCodingAdapter({
+      baseUrl: 'https://cloud.openagents.test',
+      bearerToken: 'secret-test-token',
+      fetch: async () => {
+        placementCalled = true
+        return Response.json({})
+      },
+      gceProvisioningArmed: true,
+    })
+    const response = await run(
+      handleCloudCodingSessionLaunch(
+        launchRequest(validBodyWithoutProviderRefs),
+        baseDeps({ adapter }),
+      ),
+    )
+    expect(response.status).toBe(502)
+    const body = (await response.json()) as { reason: string }
+    expect(body.reason).toBe('cloud_codex_auth_grant_ref_missing')
+    expect(placementCalled).toBe(false)
+  })
+
+  test('fails closed before placement when the Codex provider account ref is absent', async () => {
+    let placementCalled = false
+    const adapter = makeCloudControlCloudCodingAdapter({
+      baseUrl: 'https://cloud.openagents.test',
+      bearerToken: 'secret-test-token',
+      fetch: async () => {
+        placementCalled = true
+        return Response.json({})
+      },
+      gceProvisioningArmed: true,
+    })
+    const response = await run(
+      handleCloudCodingSessionLaunch(
+        launchRequest({
+          ...validBodyWithoutProviderRefs,
+          authGrantRef: 'grant.public.test',
+        }),
+        baseDeps({ adapter }),
+      ),
+    )
+    expect(response.status).toBe(502)
+    const body = (await response.json()) as { reason: string }
+    expect(body.reason).toBe('cloud_codex_provider_account_ref_missing')
+    expect(placementCalled).toBe(false)
   })
 
   test('with live provisioning armed, posts to cloud placement and projects agent computer receipts', async () => {

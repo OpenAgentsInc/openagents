@@ -74,6 +74,9 @@ export const KHALA_CLOUD_RUNTIME_USAGE_SCHEMA_VERSION =
 export const AGENT_COMPUTER_DEFAULT_PROVIDER = 'vertex-gemini'
 /** The ingest route only accepts these lanes; the hosted-Khala model turn is `hosted_khala`. */
 export const AGENT_COMPUTER_RECEIPT_LANE = 'hosted_khala'
+export const CODEX_PROVIDER_AUTH_MATERIAL_PATH =
+  '/api/pylon/provider-accounts/chatgpt-codex/auth-material'
+export const CODEX_PROVIDER_AUTH_PRE_EXPIRY_BUFFER_MS = 5 * 60 * 1000
 
 /**
  * SINGLE-CHARGE HEADER (#8503 owner decision). The microVM's internal
@@ -107,6 +110,153 @@ export type InferenceConfig = {
   noMeterSecret?: string
 }
 
+export type CodexProviderAuthConfig = {
+  baseUrl: string
+  agentToken: string
+  providerAccountRef: string
+  authGrantRef: string
+  scratchRoot?: string
+}
+
+export type CodexProviderAuthMaterialization =
+  | {
+      ok: true
+      providerAccountRef: string
+      authGrantRef: string
+      codexHome: string
+      authJsonPath: string
+      expiresAt: number
+      env: Record<string, string>
+    }
+  | {
+      ok: false
+      reasonRef:
+        | 'codex.provider_auth_broker_unavailable'
+        | 'codex.provider_auth_material_invalid'
+        | 'codex.provider_auth_material_expiring'
+      status: number | null
+    }
+
+export const codexProviderAuthMaterialRequest = (
+  providerAuth: CodexProviderAuthConfig,
+): { url: string; headers: Record<string, string>; body: string } => ({
+  body: JSON.stringify({
+    providerAccountRef: providerAuth.providerAccountRef,
+    authGrantRef: providerAuth.authGrantRef,
+  }),
+  headers: {
+    Authorization: `Bearer ${providerAuth.agentToken}`,
+    'content-type': 'application/json',
+  },
+  url: new URL(CODEX_PROVIDER_AUTH_MATERIAL_PATH, providerAuth.baseUrl).toString(),
+})
+
+const authContentJsonFromMaterialResponse = (value: unknown): string | null => {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    return null
+  }
+  const material = (value as { authMaterial?: unknown }).authMaterial
+  if (material === null || typeof material !== 'object' || Array.isArray(material)) {
+    return null
+  }
+  const authContentEnv = (material as { authContentEnv?: unknown }).authContentEnv
+  const authContentJson = (material as { authContentJson?: unknown }).authContentJson
+  return authContentEnv === 'OPENCODE_AUTH_CONTENT' && typeof authContentJson === 'string'
+    ? authContentJson
+    : null
+}
+
+export const shortLivedOpenCodeAuthExpiresAt = (
+  authContentJson: string,
+): number | null => {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(authContentJson) as unknown
+  } catch {
+    return null
+  }
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return null
+  }
+  const openai = (parsed as { openai?: unknown }).openai
+  if (openai === null || typeof openai !== 'object' || Array.isArray(openai)) {
+    return null
+  }
+  const record = openai as Record<string, unknown>
+  if (typeof record.access !== 'string' || record.access.trim() === '') {
+    return null
+  }
+  if (Object.hasOwn(record, 'refresh')) {
+    return null
+  }
+  const expires = record.expires
+  return typeof expires === 'number' && Number.isFinite(expires) ? expires : null
+}
+
+export const materializeCodexProviderAuth = async (
+  args: {
+    providerAuth: CodexProviderAuthConfig
+    turnId: string
+    nowMs?: number
+  },
+  fetchImpl: typeof globalThis.fetch = globalThis.fetch,
+): Promise<CodexProviderAuthMaterialization> => {
+  const request = codexProviderAuthMaterialRequest(args.providerAuth)
+  let response: Response
+  try {
+    response = await fetchImpl(request.url, {
+      body: request.body,
+      headers: request.headers,
+      method: 'POST',
+    })
+  } catch {
+    return { ok: false, reasonRef: 'codex.provider_auth_broker_unavailable', status: null }
+  }
+  if (!response.ok) {
+    return {
+      ok: false,
+      reasonRef: 'codex.provider_auth_broker_unavailable',
+      status: response.status,
+    }
+  }
+  const authContentJson = authContentJsonFromMaterialResponse(
+    await response.json().catch((): unknown => null),
+  )
+  if (authContentJson === null) {
+    return { ok: false, reasonRef: 'codex.provider_auth_material_invalid', status: response.status }
+  }
+  const expiresAt = shortLivedOpenCodeAuthExpiresAt(authContentJson)
+  if (expiresAt === null) {
+    return { ok: false, reasonRef: 'codex.provider_auth_material_invalid', status: response.status }
+  }
+  const nowMs = args.nowMs ?? Date.now()
+  if (expiresAt - nowMs <= CODEX_PROVIDER_AUTH_PRE_EXPIRY_BUFFER_MS) {
+    return { ok: false, reasonRef: 'codex.provider_auth_material_expiring', status: response.status }
+  }
+  const scratchRoot = args.providerAuth.scratchRoot ?? '/scratch/openagents-codex'
+  const codexHome = join(scratchRoot, args.turnId, 'codex-home')
+  await mkdir(codexHome, { recursive: true })
+  const authJsonPath = join(codexHome, 'auth.json')
+  await writeFile(authJsonPath, `${authContentJson}\n`, { mode: 0o600 })
+  return {
+    ok: true,
+    authGrantRef: args.providerAuth.authGrantRef,
+    authJsonPath,
+    codexHome,
+    env: {
+      CODEX_HOME: codexHome,
+      OPENCODE_AUTH_CONTENT: authContentJson,
+    },
+    expiresAt,
+    providerAccountRef: args.providerAuth.providerAccountRef,
+  }
+}
+
+export const canReplayCodexProviderGrantAfterReclaim = (_input: {
+  scratchWipeReceiptRef: string
+  microvmDestroyReceiptRef: string
+}): false => false
+
 /**
  * MM-C5 (#8477) writeback config. PUBLIC-SAFE ONLY: it carries NO credential.
  * The microVM brokers a short-lived GitHub credential at push time via the
@@ -135,6 +285,7 @@ type WorkContext = {
   commit: string
   branch?: string
   objective?: string
+  providerAuth?: CodexProviderAuthConfig
   inference?: InferenceConfig
   writeback?: WritebackConfig
 }
@@ -878,6 +1029,41 @@ async function main() {
     objective: wc.objective ?? `checkout ${wc.repo}@${wc.commit.slice(0, 12)}`,
   })
 
+  let codexProviderAuth: CodexProviderAuthMaterialization | null = null
+  if (wc.providerAuth !== undefined) {
+    emit({
+      kind: 'tool.call',
+      turnId,
+      tool: 'codex.provider_auth.materialize',
+      providerAccountRef: wc.providerAuth.providerAccountRef,
+      authGrantRef: wc.providerAuth.authGrantRef,
+    })
+    codexProviderAuth = await materializeCodexProviderAuth({
+      providerAuth: wc.providerAuth,
+      turnId,
+    })
+    if (!codexProviderAuth.ok) {
+      emit({
+        kind: 'tool.result',
+        turnId,
+        tool: 'codex.provider_auth.materialize',
+        status: 'failed',
+        reasonRef: codexProviderAuth.reasonRef,
+        httpStatus: codexProviderAuth.status,
+      })
+      throw new Error(codexProviderAuth.reasonRef)
+    }
+    emit({
+      kind: 'tool.result',
+      turnId,
+      tool: 'codex.provider_auth.materialize',
+      status: 'ok',
+      providerAccountRef: codexProviderAuth.providerAccountRef,
+      authGrantRef: codexProviderAuth.authGrantRef,
+      homeIsolation: 'scratch_per_turn',
+    })
+  }
+
   // 1. Real repo checkout via the #8475 materializer (unauthenticated depth-1
   //    clone + detached checkout of the pinned commit; public repo, no broker).
   emit({ kind: 'tool.call', turnId, tool: 'workspace.checkout', repo: wc.repo, commit: wc.commit })
@@ -1037,6 +1223,22 @@ async function main() {
     headSubject: subject,
     stagedDiffStat: diff,
     stagedDiffBytes: diffFull.length,
+    codexProviderAuth:
+      codexProviderAuth === null
+        ? null
+        : codexProviderAuth.ok
+          ? {
+              ok: true,
+              providerAccountRef: codexProviderAuth.providerAccountRef,
+              authGrantRef: codexProviderAuth.authGrantRef,
+              expiresAt: codexProviderAuth.expiresAt,
+              homeIsolation: 'scratch_per_turn',
+            }
+          : {
+              ok: false,
+              reasonRef: codexProviderAuth.reasonRef,
+              status: codexProviderAuth.status,
+            },
     model: wc.inference?.model ?? null,
     modelTokenReceipt:
       modelTokenReceipt === null

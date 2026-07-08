@@ -363,6 +363,49 @@ describe("OpenAgents Cloud execution backend (#4997)", () => {
     })
   })
 
+  test("spawn cloud-gcp fails closed when the Codex auth grant binding is missing", async () => {
+    await withFixture(async ({ proofDir, summary, worktree }) => {
+      const { fakeFetch, calls } = makeFakeCloudControlPlane()
+      const env = {
+        OA_CLOUD_CONTROL_URL: "https://cloud.example",
+        OA_CLOUD_CONTROL_TOKEN: "control-token",
+      }
+      const resolved = resolveCloudControlConfig(env)
+      if (!resolved.configured) throw new Error("unreachable")
+      const cloudExecutor = makeCloudControlSessionExecutor({
+        config: resolved.config,
+        env,
+        fetchImpl: fakeFetch,
+        pollIntervalMs: 1,
+        grantBindingForSession: () => ({}),
+      })
+      const actions = createControlSessionActions({
+        env,
+        cloudExecutor,
+        proofsDir: proofDir,
+        summary,
+      })
+      const spawned = await actions.spawn({
+        type: "session.spawn",
+        adapter: "codex",
+        worktreePath: worktree,
+        objective: "missing grant must not place",
+        verify: ["bun", "--version"],
+        lane: "cloud-gcp",
+      })
+
+      let row: Awaited<ReturnType<typeof actions.list>>[number] | undefined
+      for (let attempt = 0; attempt < 200; attempt += 1) {
+        const list = await actions.list()
+        row = list.find((s) => s.sessionRef === spawned.sessionRef)
+        if (row && (row.state === "completed" || row.state === "failed")) break
+        await Bun.sleep(5)
+      }
+      expect(row?.state).toBe("failed")
+      expect(calls.some((call) => call.url.endsWith("/v1/placement"))).toBe(false)
+    })
+  })
+
   test("cloud run failure ends in failed terminal state without raw error text", async () => {
     await withFixture(async ({ proofDir, summary, worktree }) => {
       const { fakeFetch } = makeFakeCloudControlPlane({
@@ -379,8 +422,7 @@ describe("OpenAgents Cloud execution backend (#4997)", () => {
         env,
         fetchImpl: fakeFetch,
         pollIntervalMs: 1,
-        // No grant binding -> grant resolution skipped; placement still attempted.
-        grantBindingForSession: () => ({}),
+        grantBindingForSession: () => GRANT_BINDING,
       })
       const actions = createControlSessionActions({
         env,
@@ -463,7 +505,7 @@ describe("OpenAgents Cloud execution backend (#4997)", () => {
         env,
         fetchImpl: fakeFetch,
         pollIntervalMs: 1,
-        grantBindingForSession: () => ({}),
+        grantBindingForSession: () => GRANT_BINDING,
       })
       const actions = createControlSessionActions({
         env,
@@ -538,7 +580,7 @@ describe("OpenAgents Cloud execution backend (#4997)", () => {
         env,
         fetchImpl: fakeFetch,
         pollIntervalMs: 1,
-        grantBindingForSession: () => ({}),
+        grantBindingForSession: () => GRANT_BINDING,
       })
       const actions = createControlSessionActions({
         env,
