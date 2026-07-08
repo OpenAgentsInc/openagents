@@ -14,6 +14,7 @@ import { fixtureCandidates, planDagWork, planFixtureWork, planWorkCandidates } f
 import {
   FLEET_RUN_SUPERVISOR_MAX_SPAWN_COUNT,
   makeFleetRunSupervisor,
+  resolveSupervisorWorkerKind,
   startFleetRunSupervisor,
   tickFleetRunSupervisor,
   type FleetRunSupervisorAccount,
@@ -22,6 +23,7 @@ import {
   type FleetRunSupervisorDispatchInput,
   type FleetRunSupervisorRunner,
 } from "../src/bun/fleet-run-supervisor.js"
+import { narrowToDelegateWorkerKind } from "@openagentsinc/khala-tools"
 
 const fixedNow = new Date("2026-07-01T12:00:00.000Z")
 
@@ -43,6 +45,7 @@ function createStoreWithRun(input: {
   readonly runRef?: string
   readonly targetConcurrency: number
   readonly workUnits?: number
+  readonly workerKind?: FleetRun["workerKind"]
 }) {
   const store = createPylonOrchestrationStore(new Database(":memory:"))
   const run = store.createFleetRun({
@@ -50,7 +53,7 @@ function createStoreWithRun(input: {
     objective: "Run fixture fleet units.",
     workSource: "fixture",
     targetConcurrency: input.targetConcurrency,
-    workerKind: "codex",
+    workerKind: input.workerKind ?? "codex",
     state: "running",
     startedAt: fixedNow,
     now: fixedNow,
@@ -1054,5 +1057,193 @@ describe("FleetRunSupervisor", () => {
     }))
     expect(replacementHandle.pylonRef).toBe(handle.pylonRef)
     await Effect.runPromise(replacementHandle.stop())
+  })
+})
+
+describe("FleetRunSupervisor mixed-kind scheduling (MH-5)", () => {
+  test("resolveSupervisorWorkerKind mirrors the MH-0 narrowToDelegateWorkerKind boundary", () => {
+    // The supervisor's non-throwing resolver must agree with the canonical
+    // delegate boundary: codex/claude dispatchable, grok unavailable. Ties the
+    // two so the law cannot drift silently.
+    expect(narrowToDelegateWorkerKind("codex")).toBe("codex")
+    expect(narrowToDelegateWorkerKind("claude")).toBe("claude")
+    expect(narrowToDelegateWorkerKind("auto")).toBe("auto")
+    expect(() => narrowToDelegateWorkerKind("grok")).toThrow(/grok fleet dispatch is not yet available/)
+
+    expect(resolveSupervisorWorkerKind("codex")).toEqual({ available: true, workerKind: "codex" })
+    expect(resolveSupervisorWorkerKind("claude")).toEqual({ available: true, workerKind: "claude" })
+    expect(resolveSupervisorWorkerKind("auto")).toEqual({ available: true, workerKind: "codex" })
+    expect(resolveSupervisorWorkerKind("grok")).toEqual({ available: false, requestedWorkerKind: "grok" })
+  })
+
+  test("mixed codex/claude/grok pool holds concurrency >= 3 under ONE claim registry with zero collisions", async () => {
+    // Core MH-5 deliverable: one `auto` FleetRun scheduling a MIXED worker pool
+    // (codex + claude dispatchable, grok unavailable) must keep the June 29
+    // claim law — one live claim per work unit, never duplicated — while
+    // holding >= 3 concurrent assignments across kinds, and must skip the grok
+    // kind with a typed event rather than silently substituting codex/claude.
+    const workUnits = 9
+    const { store, run } = createStoreWithRun({
+      runRef: "fleet_run.mh5.mixed",
+      targetConcurrency: 3,
+      workUnits,
+      workerKind: "auto",
+    })
+
+    const dispatched: Array<{ readonly workUnitRef: string; readonly accountRef: string; readonly workerKind: string }> = []
+    const observed: FleetRunSupervisorObservedEvent[] = []
+    let peakActive = 0
+
+    const runner: FleetRunSupervisorRunner = {
+      dispatch: async (input: FleetRunSupervisorDispatchInput) => {
+        dispatched.push({
+          workUnitRef: input.workUnit.workUnitRef,
+          accountRef: input.accountRef,
+          workerKind: input.workerKind,
+        })
+        return {
+          assignmentRef: `assignment.${input.claim.claimRef}`,
+          lifecycle: [lifecycleEvent("assignment_run.accepted", { status: "accepted" })],
+          status: "accepted",
+        }
+      },
+      reconcile: async ({ activeAssignments }) => {
+        peakActive = Math.max(peakActive, activeAssignments.length)
+        // Hold the wave until we have genuinely reached >= 3 concurrent mixed
+        // assignments, then drain two at a time so the run refills across ticks.
+        if (peakActive < 3) return []
+        return activeAssignments.slice(0, 2).map(assignment => ({
+          assignmentRef: `assignment.${assignment.claim.claimRef}`,
+          lifecycle: [lifecycleEvent("assignment_run.completed", { status: "closed" })],
+          status: "completed" as const,
+          summary: "mixed fixture assignment completed",
+          taskId: assignment.taskId,
+        }))
+      },
+    }
+
+    let nowMs = fixedNow.getTime()
+    const options = {
+      store,
+      pylonRef: "pylon.owner.mh5.mixed",
+      runRef: run.runRef,
+      planner: fixturePlannerWithClaims(store, workUnits),
+      runner,
+      // grok-a advertises the MOST free capacity, so if it were not partitioned
+      // out it would be selected first — proving the skip is real, not luck.
+      capacity: capacity([
+        { accountRef: "codex-a", advertisedCapacity: 2, workerKind: "codex" },
+        { accountRef: "claude-a", advertisedCapacity: 2, workerKind: "claude" },
+        { accountRef: "grok-a", advertisedCapacity: 3, workerKind: "grok" },
+      ]),
+      clock: { now: () => new Date(nowMs) },
+      onLifecycle: (event: FleetRunSupervisorObservedEvent) => {
+        observed.push(event)
+      },
+    }
+
+    for (let tick = 0; tick < 20; tick += 1) {
+      await tickFleetRunSupervisor(options)
+      nowMs += 1_000
+      if (store.getFleetRun(run.runRef)?.state === "completed") break
+    }
+
+    // Concurrency >= 3 was genuinely held across kinds.
+    expect(peakActive).toBeGreaterThanOrEqual(3)
+
+    // CLAIM UNIQUENESS: each work unit dispatched exactly once — no duplicate
+    // claim, no collision — even though three kinds shared one claim registry.
+    expect(dispatched).toHaveLength(workUnits)
+    expect(new Set(dispatched.map(entry => entry.workUnitRef)).size).toBe(workUnits)
+
+    const claims = store.listWorkClaims({ runRef: run.runRef })
+    expect(new Set(claims.map(claim => claim.workUnitRef)).size).toBe(workUnits)
+    expect(store.listWorkClaims({ runRef: run.runRef, state: "closeout" })).toHaveLength(workUnits)
+    // Exactly one claim total per work unit — no work unit ever held by two
+    // live claims at once (the store's live-claim unique constraint held).
+    expect(store.listWorkClaims({ runRef: run.runRef })).toHaveLength(workUnits)
+    const liveByWorkUnit = new Map<string, number>()
+    for (const claim of store.listLiveWorkClaims(new Date(nowMs)).filter(claim => claim.runRef === run.runRef)) {
+      liveByWorkUnit.set(claim.workUnitRef, (liveByWorkUnit.get(claim.workUnitRef) ?? 0) + 1)
+    }
+    expect([...liveByWorkUnit.values()].every(count => count === 1)).toBe(true)
+
+    // MIXED: both codex and claude actually did work; grok never did.
+    const accountsUsed = new Set(dispatched.map(entry => entry.accountRef))
+    expect(accountsUsed.has("codex-a")).toBe(true)
+    expect(accountsUsed.has("claude-a")).toBe(true)
+    expect(accountsUsed.has("grok-a")).toBe(false)
+
+    // Per-account kind labeling is honest (never a run-level blanket kind).
+    expect(dispatched.filter(entry => entry.accountRef === "codex-a").every(entry => entry.workerKind === "codex")).toBe(true)
+    expect(dispatched.filter(entry => entry.accountRef === "claude-a").every(entry => entry.workerKind === "claude")).toBe(true)
+
+    // TYPED SKIP (never silent substitution) for the unavailable grok kind.
+    const grokSkips = observed.filter(
+      (event): event is Extract<FleetRunSupervisorObservedEvent, { kind: "skip" }> =>
+        event.kind === "skip" && event.accountRef === "grok-a",
+    )
+    expect(grokSkips.length).toBeGreaterThanOrEqual(1)
+    expect(grokSkips[0]).toMatchObject({
+      kind: "skip",
+      reason: "worker_kind_unavailable",
+      requestedWorkerKind: "grok",
+      accountRef: "grok-a",
+    })
+    // The grok account never appears in any claim in the shared registry.
+    expect(claims.some(claim => claim.workerAccountRef === "grok-a")).toBe(false)
+
+    expect(store.getFleetRun(run.runRef)?.state).toBe("completed")
+    expect(store.getFleetRun(run.runRef)?.counters).toMatchObject({
+      activeAssignments: 0,
+      completedAssignments: workUnits,
+      failedAssignments: 0,
+      blockedAssignments: 0,
+      workUnitsTotal: workUnits,
+    })
+  })
+
+  test("explicit grok run fails closed: zero dispatch, typed skip, no substitution onto ready codex capacity", async () => {
+    // Behavior (b) from the issue: an explicitly-requested grok run with no
+    // executor fails closed. Ready codex capacity exists, but nothing is
+    // dispatched and nothing is claimed — grok work is never downgraded.
+    const { store, run } = createStoreWithRun({
+      runRef: "fleet_run.mh5.explicit_grok",
+      targetConcurrency: 3,
+      workUnits: 3,
+      workerKind: "grok",
+    })
+    const dispatched: string[] = []
+    const observed: FleetRunSupervisorObservedEvent[] = []
+
+    const result = await tickFleetRunSupervisor({
+      store,
+      pylonRef: "pylon.owner.mh5.explicit_grok",
+      runRef: run.runRef,
+      planner: fixturePlannerWithClaims(store, 3),
+      runner: acceptingRunner(dispatched),
+      capacity: capacity([{ accountRef: "codex-a", advertisedCapacity: 3 }]),
+      clock: { now: () => fixedNow },
+      onLifecycle: event => {
+        observed.push(event)
+      },
+    })
+
+    expect(result.claimed).toBe(0)
+    expect(result.dispatched).toBe(0)
+    expect(dispatched).toHaveLength(0)
+    // Fail closed means NO claim entered the registry at all.
+    expect(store.listWorkClaims({ runRef: run.runRef })).toHaveLength(0)
+
+    const runSkip = observed.find(
+      (event): event is Extract<FleetRunSupervisorObservedEvent, { kind: "skip" }> =>
+        event.kind === "skip",
+    )
+    expect(runSkip).toMatchObject({
+      kind: "skip",
+      reason: "worker_kind_unavailable",
+      requestedWorkerKind: "grok",
+      accountRef: null,
+    })
   })
 })

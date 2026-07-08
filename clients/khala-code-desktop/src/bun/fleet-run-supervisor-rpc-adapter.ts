@@ -326,6 +326,9 @@ const capacityFor = (options: KhalaCodexFleetToolOptions | undefined): FleetRunS
           account.capacity?.ready ??
           (account.readiness === "ready" || account.readiness === "available" ? 1 : 0),
         )),
+        // Carry the account's concrete kind so a mixed `auto` run labels each
+        // dispatch by the harness that actually claimed the unit.
+        workerKind: account.provider === "claude_agent" ? "claude" as const : "codex" as const,
       }))
   },
 })
@@ -351,7 +354,9 @@ const runnerFor = (input: {
       pylonRef: input.pylonRef ?? undefined,
       repo: dispatch.workUnit.repo,
       verify: fixture ? undefined : dispatch.workUnit.verify ?? DEFAULT_VERIFY,
-      workerKind: narrowToDelegateWorkerKind(dispatch.run.workerKind),
+      // Use the per-account kind the supervisor resolved for THIS claim (mixed
+      // pools dispatch codex and claude side by side); grok never reaches here.
+      workerKind: dispatch.workerKind,
     }))
   },
 })

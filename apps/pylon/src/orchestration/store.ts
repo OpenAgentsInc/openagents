@@ -1106,7 +1106,7 @@ export class PylonOrchestrationStore {
         record_json TEXT NOT NULL,
         state TEXT NOT NULL CHECK (state IN ('draft', 'running', 'paused', 'draining', 'stopped', 'completed')),
         dispatch_kind TEXT NOT NULL CHECK (dispatch_kind IN ('handoff', 'supervised_dispatch')),
-        worker_kind TEXT NOT NULL CHECK (worker_kind IN ('codex', 'claude', 'auto')),
+        worker_kind TEXT NOT NULL CHECK (worker_kind IN ('codex', 'claude', 'grok', 'auto')),
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         started_at TEXT

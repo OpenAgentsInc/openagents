@@ -3030,4 +3030,36 @@ describe("Khala Code fleet tools", () => {
     expect(result.modelOutput.text).toContain("assignment_run.runtime_started")
     expect(result.modelOutput.text).not.toContain("phase=runtime_active")
   })
+
+  test("khala_fleet MCP verbs accept worker_kind grok in their input schema (MH-5)", () => {
+    const tools = createKhalaCodexFleetTools()
+    for (const name of ["codex_spawn", "fleet_run_start"]) {
+      const definition = tools.find(item => item.definition.name === name)?.definition
+      expect(definition).toBeDefined()
+      const workerKind = (definition!.inputSchema.properties as Record<string, { enum?: readonly string[] }>).worker_kind
+      expect(workerKind?.enum).toContain("grok")
+      // The concrete dispatchable kinds must still be offered.
+      expect(workerKind?.enum).toEqual(["codex", "claude", "grok", "auto"])
+    }
+  })
+
+  test("codex_spawn with worker_kind grok fails closed as typed unavailable (never downgraded to codex)", async () => {
+    const tool = createKhalaCodexFleetTools()
+      .find(item => item.definition.name === "codex_spawn")
+
+    const result = await Effect.runPromise(tool!.execute!({
+      prompt: "Delegate this to a grok worker.",
+      worker_kind: "grok",
+    }, {} as never))
+
+    expect(result.status).toBe("unavailable")
+    expect(result.modelOutput.text).toContain("grok fleet dispatch is not yet available")
+    expect(result.ui).toMatchObject({
+      kind: "codex_spawn",
+      acceptedCount: 0,
+      delegateStatus: "blocked",
+      unavailableReason: "worker_kind_unavailable",
+      workerKind: "grok",
+    })
+  })
 })

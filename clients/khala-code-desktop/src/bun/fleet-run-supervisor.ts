@@ -15,11 +15,40 @@ import type {
 
 export const FLEET_RUN_SUPERVISOR_MAX_SPAWN_COUNT = 10
 
+// A FleetRun (MH-0) or an individual account may be *labeled* with any
+// run-selection worker kind — including `grok` — but only the concrete kinds
+// with a live executor (`codex`, `claude`) can actually be dispatched. `grok`
+// execution arrives with the MH-4 Grok executor in the pylon-core boundary.
+export type FleetRunSupervisorWorkerKind = "codex" | "claude" | "grok" | "auto"
+export type FleetRunSupervisorConcreteWorkerKind = "codex" | "claude"
+
+export type FleetRunSupervisorWorkerKindResolution =
+  | { readonly available: true; readonly workerKind: FleetRunSupervisorConcreteWorkerKind }
+  | { readonly available: false; readonly requestedWorkerKind: FleetRunSupervisorWorkerKind }
+
+// Mirrors `@openagentsinc/khala-tools` `narrowToDelegateWorkerKind` (MH-0): the
+// codex/claude delegation path only dispatches the concrete kinds it
+// implements. This resolves a run-selection kind to the dispatchable delegate
+// kind, or reports it unavailable so the supervisor can emit a typed skip event
+// and NEVER silently substitute grok work onto a codex/claude worker. `auto`
+// at the run level defaults to `codex`; genuine per-account kinds override it.
+export function resolveSupervisorWorkerKind(
+  workerKind: FleetRunSupervisorWorkerKind,
+): FleetRunSupervisorWorkerKindResolution {
+  if (workerKind === "grok") return { available: false, requestedWorkerKind: "grok" }
+  if (workerKind === "auto") return { available: true, workerKind: "codex" }
+  return { available: true, workerKind }
+}
+
 export type FleetRunSupervisorAccount = {
   readonly accountRef: string
   readonly advertisedCapacity: number
   readonly cooldownUntil?: Date | string | null
   readonly paused?: boolean
+  // Optional per-account worker kind. When present it lets ONE FleetRun hold a
+  // MIXED pool (e.g. codex + claude + grok accounts under an `auto` run); when
+  // absent the account inherits the run's concrete kind.
+  readonly workerKind?: FleetRunSupervisorWorkerKind
 }
 
 export type FleetRunSupervisorLifecycleEvent = PylonAssignmentRunLifecycleEvent
@@ -30,6 +59,10 @@ export type FleetRunSupervisorDispatchInput = {
   readonly run: FleetRun
   readonly taskId: string
   readonly workUnit: WorkPlannerClaimableUnit
+  // The concrete dispatchable kind the supervisor resolved for the account
+  // that claimed this unit. In a mixed-kind FleetRun this is the per-account
+  // kind, never the raw run kind, so the runner dispatches to the right harness.
+  readonly workerKind: FleetRunSupervisorConcreteWorkerKind
 }
 
 export type FleetRunSupervisorDispatchResult = {
@@ -118,6 +151,18 @@ export type FleetRunSupervisorObservedEvent =
     readonly kind: "completed"
     readonly runRef: string
     readonly reason: "backlog_empty" | "drained"
+  }
+  | {
+    // Typed skip/fallback for an unavailable worker kind. Emitted when a
+    // grok-labeled run (fail closed, `accountRef: null`) or a grok-labeled
+    // account in a mixed pool cannot be dispatched. This is the multi-harness
+    // law: an unavailable kind is always reported, never silently substituted.
+    readonly kind: "skip"
+    readonly runRef: string
+    readonly reason: "worker_kind_unavailable"
+    readonly requestedWorkerKind: FleetRunSupervisorWorkerKind
+    readonly accountRef: string | null
+    readonly detail: string
   }
 
 export type FleetRunSupervisorTickResult = {
@@ -232,6 +277,15 @@ const refreshActiveAssignmentClaims = (
     }
   }
 }
+
+// Resolve the concrete dispatchable kind for one account under a given run. An
+// explicit per-account kind wins (mixed pool); otherwise the account inherits
+// the run's kind. `grok` resolves unavailable, per the MH-0 delegate boundary.
+const resolveAccountWorkerKind = (
+  account: FleetRunSupervisorAccount,
+  run: FleetRun,
+): FleetRunSupervisorWorkerKindResolution =>
+  resolveSupervisorWorkerKind(account.workerKind ?? run.workerKind)
 
 const pickAccount = (
   accounts: readonly FleetRunSupervisorAccount[],
@@ -378,6 +432,31 @@ export async function tickFleetRunSupervisor(
     }
   }
 
+  // Fail closed when the whole run is labeled with an unavailable kind (e.g. an
+  // explicit `grok` run with no executor yet). Emit a typed skip event and
+  // dispatch nothing — never fall through to capacity/runner (which would throw
+  // in `narrowToDelegateWorkerKind`) and never silently substitute a codex or
+  // claude worker for the requested grok work.
+  const runWorkerKindResolution = resolveSupervisorWorkerKind(run.workerKind)
+  if (!runWorkerKindResolution.available) {
+    await emit(options.onLifecycle, {
+      kind: "skip",
+      runRef: run.runRef,
+      reason: "worker_kind_unavailable",
+      requestedWorkerKind: runWorkerKindResolution.requestedWorkerKind,
+      accountRef: null,
+      detail:
+        `FleetRun worker kind '${run.workerKind}' has no executor yet; failing closed with zero dispatch (no silent substitution).`,
+    })
+    return {
+      activeAssignments: activeAssignmentsForRun(store, run.runRef),
+      claimed: 0,
+      dispatched: 0,
+      freeSlots: 0,
+      run,
+    }
+  }
+
   const activeBeforeReconcile = collectActiveAssignments(store, run.runRef)
   if (options.runner.reconcile !== undefined && activeBeforeReconcile.length > 0) {
     const activeByTask = new Map(activeBeforeReconcile.map(assignment => [assignment.taskId, assignment]))
@@ -415,7 +494,31 @@ export async function tickFleetRunSupervisor(
   }
 
   const liveClaims = liveClaimsForRun(store, run.runRef, now)
-  const accounts = await options.capacity.accounts({ run, now })
+  const rawAccounts = await options.capacity.accounts({ run, now })
+  // Partition the (possibly mixed-kind) pool into dispatchable accounts and
+  // accounts whose kind has no executor. Grok-labeled accounts are reported via
+  // a typed skip event and excluded from both slot math and account selection,
+  // so they never receive a claim and are never silently replaced by codex or
+  // claude. This is what makes ONE FleetRun schedule mixed kinds honestly.
+  const accounts: FleetRunSupervisorAccount[] = []
+  const accountWorkerKinds = new Map<string, FleetRunSupervisorConcreteWorkerKind>()
+  for (const account of rawAccounts) {
+    const resolution = resolveAccountWorkerKind(account, run)
+    if (!resolution.available) {
+      await emit(options.onLifecycle, {
+        kind: "skip",
+        runRef: run.runRef,
+        reason: "worker_kind_unavailable",
+        requestedWorkerKind: resolution.requestedWorkerKind,
+        accountRef: account.accountRef,
+        detail:
+          `Account ${account.accountRef} worker kind '${resolution.requestedWorkerKind}' has no executor yet; skipping it without substitution.`,
+      })
+      continue
+    }
+    accounts.push(account)
+    accountWorkerKinds.set(account.accountRef, resolution.workerKind)
+  }
   const activeCounts = activeByAccount(liveClaims)
   const activeAssignments = activeAssignmentsForRun(store, run.runRef)
   const targetFreeSlots = Math.max(0, run.targetConcurrency - activeAssignments)
@@ -488,13 +591,19 @@ export async function tickFleetRunSupervisor(
     claimed += 1
     activeCounts.set(account.accountRef, (activeCounts.get(account.accountRef) ?? 0) + 1)
 
+    // Resolve the concrete dispatch kind for THIS account (mixed pools carry a
+    // per-account kind; otherwise the account inherited the run's kind). Grok
+    // accounts were already partitioned out above, so this is codex or claude.
+    const workerKind = accountWorkerKinds.get(account.accountRef) ?? "codex"
+    const runnerKind = workerKind === "claude" ? "claude_agent" : "codex"
+
     const taskId = taskIdFor(run.runRef, claim.claimRef)
     const contextId = contextIdFor(account.accountRef, taskId)
     if (store.getDispatchContext(contextId) === null) {
       store.createDispatchContext({
         id: contextId,
         assigneeHandle: account.accountRef,
-        runnerKind: run.workerKind === "claude" ? "claude_agent" : "codex",
+        runnerKind,
         lastHeartbeatAt: now,
         maxConcurrentSlots: 1,
         now,
@@ -506,7 +615,7 @@ export async function tickFleetRunSupervisor(
       spec: {
         title: workUnit.title,
         prompt: workUnit.body ?? run.objective,
-        runnerKind: run.workerKind === "claude" ? "claude_agent" : "codex",
+        runnerKind,
         ...(workUnit.branch === undefined ? {} : { branch: workUnit.branch }),
         ...(workUnit.baseCommit === undefined ? {} : { baseCommit: workUnit.baseCommit }),
         ...(workUnit.repo === undefined ? {} : { repo: workUnit.repo }),
@@ -523,7 +632,7 @@ export async function tickFleetRunSupervisor(
     dispatches.push((async () => {
       let result: FleetRunSupervisorDispatchResult
       try {
-        result = await options.runner.dispatch({ accountRef: account.accountRef, claim, run, taskId, workUnit })
+        result = await options.runner.dispatch({ accountRef: account.accountRef, claim, run, taskId, workUnit, workerKind })
       } catch (error) {
         store.recordWorkerDone({
           contextId,

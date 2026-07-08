@@ -578,8 +578,9 @@ const codexSpawnToolDefinition: KhalaToolDefinition = {
       },
       worker_kind: {
         default: "codex",
-        description: "Worker target for delegated assignments.",
-        enum: ["codex", "claude", "auto"],
+        description:
+          "Worker target for delegated assignments. codex/claude dispatch now; grok is accepted but fails closed with a typed unavailable result until the Grok executor lands (never silently downgraded to codex).",
+        enum: ["codex", "claude", "grok", "auto"],
         type: "string",
       },
       workflow_class: {
@@ -697,8 +698,9 @@ const fleetRunStartToolDefinition: KhalaToolDefinition = {
       verify: { description: "Verification command for real repository work.", type: "string" },
       worker_kind: {
         default: "codex",
-        description: "Worker kind. Codex is wired now; claude/auto are accepted for schema stability.",
-        enum: ["codex", "claude", "auto"],
+        description:
+          "Worker kind. codex/claude dispatch now; auto mixes ready kinds under one claim registry; grok is accepted but a grok-labeled run fails closed with a typed skip event (no executor yet, never silently downgraded to codex).",
+        enum: ["codex", "claude", "grok", "auto"],
         type: "string",
       },
       work_source: {
@@ -1307,6 +1309,27 @@ function executeCodexSpawnTool(
   options: KhalaCodexFleetToolOptions,
 ): Effect.Effect<KhalaToolResult, never> {
   return Effect.promise(async () => {
+    // Accept grok, but fail closed with a typed unavailable result instead of
+    // dispatching (no Grok executor yet; never silently downgrade to codex).
+    if (input.worker_kind === "grok") {
+      const detail =
+        "grok fleet dispatch is not yet available (pending the MH-4 Grok executor); the request was not downgraded to codex."
+      return khalaToolUnavailable({
+        modelText: detail,
+        publicSafety: "private",
+        publicSummary: "Grok worker kind is not yet available; no work was dispatched.",
+        ui: {
+          kind: "codex_spawn",
+          acceptedCount: 0,
+          delegateStatus: "blocked",
+          pylonRef: null,
+          requestedCount: optionalInteger(input.count) ?? 1,
+          results: [],
+          unavailableReason: "worker_kind_unavailable",
+          workerKind: "grok",
+        },
+      })
+    }
     try {
       const result = await spawnCodexInstances({
         accountRef: optionalString(input.account_ref),
@@ -4077,7 +4100,10 @@ function optionalWorkSource(value: unknown): FleetRunWorkSource | undefined {
 }
 
 function optionalWorkerKind(value: unknown): FleetRunWorkerKind | undefined {
-  return value === "codex" || value === "claude" || value === "auto" ? value : undefined
+  // `grok` is accepted here (MH-5) so the verb never silently downgrades a grok
+  // request to codex; the unavailable-executor decision is made downstream by
+  // the supervisor / delegate boundary, which fails closed with a typed skip.
+  return value === "codex" || value === "claude" || value === "grok" || value === "auto" ? value : undefined
 }
 
 function optionalWorkflowClassification(
