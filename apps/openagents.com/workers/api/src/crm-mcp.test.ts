@@ -113,12 +113,14 @@ const readPrincipal = {
 describe('CRM MCP read catalog — listing', () => {
   test('full-authority principal sees all read + write tools with valid names', async () => {
     const tools = await catalog.listTools(env, req, principal)
-    expect(tools).toHaveLength(21) // 15 read + 6 write
+    expect(tools).toHaveLength(23) // 15 read + 8 write
     for (const tool of tools) {
       expect(() => assertValidOpenAgentsMcpName(tool.name)).not.toThrow()
       expect(tool.inputSchema).toHaveProperty('type', 'object')
     }
     const names = tools.map(t => t.name)
+    expect(names).toContain('crm.activity.append')
+    expect(names).toContain('crm.contact.upsert')
     expect(names).toContain('crm.contacts.list')
     expect(names).toContain('crm.send.command.propose')
     expect(names).toContain('crm.template.upsert')
@@ -162,6 +164,45 @@ describe('CRM MCP read catalog — dispatch', () => {
 })
 
 describe('CRM MCP Wave 2 — propose + template (no send)', () => {
+  test('crm.contact.upsert records a CRM contact + mutation receipt', async () => {
+    const outcome = await catalog.callTool(env, req, principal, 'crm.contact.upsert', {
+      externalSourceId: 'sarah_session_1',
+      externalSourceLabel: 'sarah',
+      fullName: 'Ada Lovelace',
+      primaryEmail: 'ada@example.com',
+    })
+    expect(outcome.isError).toBe(false)
+    const sc = outcome.structuredContent as {
+      receipt: { kind: string; status: string; targetRef: string }
+      result: { contact: { id: string; primaryEmail: string }; created: boolean }
+    }
+    expect(sc.result.contact.id).toBe('crm_contact_1')
+    expect(sc.result.contact.primaryEmail).toBe('ada@example.com')
+    expect(sc.receipt.kind).toBe('mutation')
+    expect(sc.receipt.status).toBe('recorded')
+  })
+
+  test('crm.activity.append records a CRM activity + mutation receipt', async () => {
+    const outcome = await catalog.callTool(env, req, principal, 'crm.activity.append', {
+      activityType: 'sarah_session_summary',
+      contactId: 'crm_contact_1',
+      sourceRecordId: 'sarah_session_1',
+      sourceRecordType: 'sarah_session',
+      subject: 'Sarah sales call',
+      summary: 'Prospect asked about private coding agents.',
+    })
+    expect(outcome.isError).toBe(false)
+    const sc = outcome.structuredContent as {
+      receipt: { artifactRefs: Array<string>; kind: string; targetRef: string }
+      result: { contactId: string; activityType: string; id: string }
+    }
+    expect(sc.result.contactId).toBe('crm_contact_1')
+    expect(sc.result.activityType).toBe('sarah_session_summary')
+    expect(sc.result.id).toBe('sarah_session_1')
+    expect(sc.receipt.artifactRefs).toContain('sarah_session_1')
+    expect(sc.receipt.targetRef).toBe('crm_contact_1')
+  })
+
   test('crm.send.command.propose records a pending command + a receipt (sends nothing)', async () => {
     const outcome = await catalog.callTool(env, req, principal, 'crm.send.command.propose', {
       channel: 'gmail_gws',
@@ -192,6 +233,8 @@ describe('CRM MCP Wave 2 — propose + template (no send)', () => {
   test('a read+propose principal can propose but NOT upsert templates', async () => {
     const tools = (await catalog.listTools(env, req, readPrincipal)).map(t => t.name)
     expect(tools).toContain('crm.send.command.propose')
+    expect(tools).not.toContain('crm.activity.append')
+    expect(tools).not.toContain('crm.contact.upsert')
     expect(tools).not.toContain('crm.template.upsert')
     await expect(
       catalog.callTool(env, req, readPrincipal, 'crm.template.upsert', {

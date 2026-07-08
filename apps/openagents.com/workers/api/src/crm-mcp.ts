@@ -60,6 +60,8 @@ import {
   listCrmContacts,
   listCrmOpportunities,
   listCrmSourceImportRuns,
+  recordCrmActivity,
+  upsertCrmContact,
 } from './crm-store'
 import { readEmailSendEligibility } from './email-preferences'
 import { stringArrayFromUnknown } from './json-boundary'
@@ -96,6 +98,11 @@ const optLimit = (a: Record<string, unknown>): number | undefined => {
 const optSearch = (a: Record<string, unknown>): string | undefined =>
   typeof a.search === 'string' ? a.search : undefined
 
+const optString = (a: Record<string, unknown>, key: string): string | null => {
+  const value = a[key]
+  return typeof value === 'string' && value.trim() !== '' ? value.trim() : null
+}
+
 // --- JSON Schemas emitted in tools/list (the wire `inputSchema`) ------------
 
 const TENANT_PROP = { description: 'Tenant ref (defaults to the bound tenant).', type: 'string' }
@@ -115,6 +122,42 @@ const idSchema = (idKey: string, idDesc: string): Record<string, unknown> => ({
 })
 
 const CRM_MCP_INPUT_SCHEMAS: Readonly<Record<string, Record<string, unknown>>> = {
+  'crm.activity.append': {
+    additionalProperties: false,
+    properties: {
+      accountId: { description: 'Optional CRM account id.', type: 'string' },
+      activityType: { description: 'CRM activity type.', type: 'string' },
+      actorRef: { description: 'Actor or agent ref responsible for the activity.', type: 'string' },
+      contactId: { description: 'CRM contact id.', type: 'string' },
+      occurredAt: { description: 'ISO timestamp. Defaults to now.', type: 'string' },
+      sourceRecordId: { description: 'Idempotency/source record id.', type: 'string' },
+      sourceRecordType: { description: 'Idempotency/source record type.', type: 'string' },
+      sourceSystem: { description: 'Source system label.', type: 'string' },
+      subject: { description: 'Short activity subject.', type: 'string' },
+      summary: { description: 'Activity summary.', type: 'string' },
+      tenant: TENANT_PROP,
+    },
+    required: ['contactId', 'activityType'],
+    type: 'object',
+  },
+  'crm.contact.upsert': {
+    additionalProperties: false,
+    properties: {
+      accountId: { description: 'Optional CRM account id.', type: 'string' },
+      externalSourceId: { description: 'External source id for audit/dedupe context.', type: 'string' },
+      externalSourceLabel: { description: 'External source label.', type: 'string' },
+      firstName: { description: 'First name.', type: 'string' },
+      fullName: { description: 'Full name.', type: 'string' },
+      jobTitle: { description: 'Job title.', type: 'string' },
+      lastName: { description: 'Last name.', type: 'string' },
+      notes: { description: 'Operator-visible notes.', type: 'string' },
+      primaryEmail: { description: 'Primary email address.', type: 'string' },
+      secondaryEmail: { description: 'Secondary email address.', type: 'string' },
+      tenant: TENANT_PROP,
+    },
+    required: ['primaryEmail'],
+    type: 'object',
+  },
   'crm.send.command.propose': {
     additionalProperties: false,
     properties: {
@@ -319,6 +362,18 @@ const readishTool = (
 
 export const CRM_MCP_WRITE_TOOLS: ReadonlyArray<OpenAgentsMcpToolDescriptor> = [
   writeTool(
+    'crm.contact.upsert',
+    'Upsert CRM contact',
+    'Create or update a CRM contact for the tenant, keyed by normalized primary email.',
+    ['workspace_write'],
+  ),
+  writeTool(
+    'crm.activity.append',
+    'Append CRM activity',
+    'Append an idempotent CRM activity for a contact. Used for Sarah session summaries and captured context.',
+    ['workspace_write'],
+  ),
+  writeTool(
     'crm.send.command.propose',
     'Propose a send',
     'Propose an approval-gated send_email command for a contact. Records a pending_approval command — SENDS NOTHING. A human approves it separately.',
@@ -419,6 +474,44 @@ const CRM_MCP_READ_DISPATCH: Readonly<Record<string, CrmToolHandler>> = {
 }
 
 const CRM_MCP_WRITE_DISPATCH: Readonly<Record<string, CrmToolHandler>> = {
+  'crm.activity.append': async (db, tenant, a, ctx) => {
+    const contactId = requiredId(a, 'contactId')
+    const activityType = requiredId(a, 'activityType')
+    await recordCrmActivity(db, {
+      accountId: optString(a, 'accountId'),
+      activityType,
+      actorRef: optString(a, 'actorRef') ?? ctx.subjectRef,
+      contactId,
+      occurredAt: optString(a, 'occurredAt'),
+      sourceRecordId: optString(a, 'sourceRecordId'),
+      sourceRecordType: optString(a, 'sourceRecordType'),
+      sourceSystem: optString(a, 'sourceSystem') ?? 'openagents_sarah',
+      subject: optString(a, 'subject'),
+      summary: optString(a, 'summary'),
+      tenantRef: tenant,
+    })
+    return {
+      activityType,
+      contactId,
+      id: optString(a, 'sourceRecordId') ?? `crm.activity.${contactId}`,
+      sourceRecordId: optString(a, 'sourceRecordId'),
+      sourceRecordType: optString(a, 'sourceRecordType'),
+    }
+  },
+  'crm.contact.upsert': (db, tenant, a) =>
+    upsertCrmContact(db, {
+      accountId: optString(a, 'accountId'),
+      externalSourceId: optString(a, 'externalSourceId'),
+      externalSourceLabel: optString(a, 'externalSourceLabel'),
+      firstName: optString(a, 'firstName'),
+      fullName: optString(a, 'fullName'),
+      jobTitle: optString(a, 'jobTitle'),
+      lastName: optString(a, 'lastName'),
+      notes: optString(a, 'notes'),
+      primaryEmail: requiredId(a, 'primaryEmail'),
+      secondaryEmail: optString(a, 'secondaryEmail'),
+      tenantRef: tenant,
+    }),
   'crm.send.command.propose': (db, tenant, a, ctx) =>
     proposeCrmSendCommand(db, {
       channel: a.channel === 'resend' ? 'resend' : 'gmail_gws',
