@@ -3,12 +3,13 @@
 Grok's analysis sandbox inside the OpenAgents monorepo.
 
 Purpose: independent orientation, critique, and theme exploration after
-reading `docs/fable/`. These notes **flip no promise state**, change no
-runtime authority, and broaden no public copy. Product claims still gate
-through `docs/promises/` and owner sign-off.
+reading `docs/fable/` and related product code. These notes **flip no
+promise state**, change no runtime authority, and broaden no public copy.
+Product claims still gate through `docs/promises/` and owner sign-off.
 
-Started: 2026-07-08 after a full pass over `docs/fable/` (~85 docs,
-~24k lines on `origin/main`).
+Started: 2026-07-08 after a full pass over `docs/fable/` (~85 docs).
+Extended: 2026-07-08 with multi-harness / Grok CLI / Effect Native / Khala
+Sync ASAP analysis.
 
 ## Contents
 
@@ -22,6 +23,10 @@ Started: 2026-07-08 after a full pass over `docs/fable/` (~85 docs,
 | `product-ladder.md` | Suite + horizons H0–H6 + master phase order |
 | `trust-stack.md` | Receipts, promises, isolation, behavior contracts |
 | `execution-discipline.md` | How work is supposed to land (fleet, QA, issues) |
+| **`parallel-multi-harness-asap.md`** | **Parallel Codex + Claude + Grok under MASTER_ROADMAP, Sync, Effect Native** |
+| **`grok-cli-as-third-harness.md`** | **Adapter-level design: ACP, schema, fleet, Sync, EN UI** |
+
+CLI operator reference (separate folder): `docs/grok-cli/`.
 
 ## Rules for this folder
 
@@ -42,20 +47,28 @@ Started: 2026-07-08 after a full pass over `docs/fable/` (~85 docs,
 Strategic spine:
 
 - `docs/fable/README.md`
-- `docs/fable/MASTER_ROADMAP.md`
+- `docs/fable/MASTER_ROADMAP.md` (rev 6.x — Effect Native full conversion, Pylon fold)
 - `docs/fable/2026-07-07-what-openagents-is-essay-and-talking-points.md`
 - `docs/fable/2026-07-07-overarching-roadmap-khala-code-agent-computers-ai-employees.md`
 - `docs/fable/2026-07-07-product-suite-khala-code-openagents-com-reactor.md`
 - `docs/fable/2026-07-02-come-for-the-tool-stay-for-the-network.md`
 - `docs/fable/2026-07-07-beyond-mvp-codex-agent-computers-and-ai-employees.md`
-- `docs/fable/2026-07-07-palantir-institutional-sovereignty-smb-analysis.md`
+
+Multi-harness / fleet (2026-07-08 deep pass):
+
+- `docs/fable/2026-07-01-episode-245-completion-and-multi-harness-orchestration.md`
+- `docs/fable/2026-07-01-claude-code-parity-and-codex-synergies.md`
+- `docs/fable/2026-07-01-fleet-fanout-coding-instructions.md`
+- `docs/fable/2026-07-02-oh-my-pi-planner-coder-judge-audit.md`
+- `docs/fable/2026-07-01-khala-code-effect-integration-audit.md`
+- `docs/fable/2026-07-04-database-alternatives-and-postgres-sync-engine.md`
+- `docs/fable/2026-07-04-khala-sync-implementation-status.md`
+- `docs/fable/2026-07-08-en-1-stage1-effect-native-receipt.md`
+- `packages/agent-runtime-schema` (harness / adapter kinds)
+- `clients/khala-code-desktop` (ChatRuntime, fleet supervisor)
+- `docs/grok-cli/` (Grok Build CLI reference)
 
 Execution layer:
 
 - `ROADMAP.md`, `ROADMAP_QA.md`, `ROADMAP_BIZ.md`, `ROADMAP_AFTER.md`,
   `ROADMAP_BACKGROUND_AGENTS.md`, `EXECUTION.md`
-
-Systems deep dives sampled: Khala Code summary, Effect audit, Orca,
-fleet fan-out, QA framework, Agent Computers / mobile MVP, Reactor,
-Khala Sync, behavior contracts, business fulfillment meditations,
-Sarah sales agent (as product surface only), Pylon→Khala Code proposal.
