@@ -1,6 +1,6 @@
 # MASTER ROADMAP — Khala Code MVP (Tested, Submitted) → Sarah → Codex → AI Employees → the Suite
 
-Date: 2026-07-08 (rev 4 — sales engine: Sarah outbound Track C)
+Date: 2026-07-08 (rev 4.1 — + Sarah hosting: off Vercel to Cloud Run; TanStack port scheduled)
 Status: **the single consolidated execution roadmap.** This document owns
 top-level sequencing across everything designed in the 2026-07-07 strategy
 set and its predecessors. The source docs remain authoritative for their
@@ -139,7 +139,20 @@ Vercel + AI SDK stack (Next.js 16, `ai`/`@ai-sdk/react`/
 `@ai-sdk/gateway` canary realtime), deploying to
 **sarah.openagents.com** — so the newest voice-agent surface works
 unmodified before any monorepo integration; a later merge into the
-monorepo is possible but not assumed. **The realtime voice loop already
+monorepo is possible but not assumed.
+
+**Hosting update (2026-07-08, owner decision):** the Vercel deployment
+was a bootstrap, not the home. Sarah moves to **our own infrastructure
+(Cloud Run)** — eve officially self-hosts (`eve build && eve start`,
+workflow state on `@workflow/world-postgres` against our Cloud SQL;
+its deploy guide's "Deploy without Vercel" checklist is the spec), the
+Next app lifts-and-shifts as a container, and the realtime WebSocket is
+browser↔provider direct so no server-side WS infra is needed. Filed as
+**sarah#14** (Cloud Run migration; the AI Gateway key may remain
+short-term as the one Vercel service, with its removal path recorded)
+and **sarah#15** (front-end ported to **TanStack Start** with/before
+S-10's branded UI, per the ONE-UI standard — eve untouched). Sarah
+selling sovereignty runs on sovereign infrastructure. **The realtime voice loop already
 works locally** (server-minted gateway token for `openai/gpt-realtime-2`,
 browser `useRealtime` with mic capture/server VAD/playback/text send) —
 which **pulls SR-4 voice to the front**: v1 Sarah is voice+text from day
@@ -170,8 +183,10 @@ order):**
    capture → business-pipeline API, pack-priced checkout link.
 5. Branded Sarah UI (Protoss blue, disclosure, mic states, text
    fallback) replacing the quickstart surface.
-6. Vercel project + sarah.openagents.com DNS + env + model pin + cost
-   caps (owner/infra actions → NEEDS_OWNER as they arise).
+6. Production wiring: sarah.openagents.com DNS + env + model pin +
+   cost caps (owner/infra actions → NEEDS_OWNER as they arise) — target
+   is **Cloud Run per sarah#14**; the interim Vercel deploy is
+   decommissioned at cutover.
 7. The Sarah Eval Suite (authored under QAM-7 #8542) pointed at the
    deployment; discount-pressure/honesty/injection probes green.
 
