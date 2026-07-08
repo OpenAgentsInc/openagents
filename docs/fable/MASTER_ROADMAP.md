@@ -77,9 +77,12 @@ Consolidates:
 
 ## Status snapshot (2026-07-08, code+issue audit)
 
-Reconciled against `origin/main` and GitHub issue state. **17 issues open, all
-≥ #8467; every one is forward feature work — no remaining "clean bug"
-quick-wins.** What is genuinely DONE vs what is only DIRECTION:
+Reconciled against `origin/main` and GitHub issue state. **21 issues open, all
+≥ #8467.** The backlog is still overwhelmingly build-forward product work, but
+the later `#8569` filing is a real clean operational bug: `/api/public/pylon-stats`
+is broken in production after the GCP/Cloud SQL migration, and it directly
+blocks WEB-1's live-counter acceptance until repaired or explicitly removed
+from the landing. What is genuinely DONE vs what is only DIRECTION:
 
 **Proven / shipped (closed, evidence on main):**
 - **P0 substrate:** the Agent Computer foundation — `#8503` (first real
@@ -116,9 +119,9 @@ quick-wins.** What is genuinely DONE vs what is only DIRECTION:
   Verified at landing: React API route tests, API/Cloud Run typechecks, web
   route guards, Start typecheck/budget, and Google Cloud Run deploy smoke.
   Still open:
-  owner-approved root cutover, final sales-copy sign-off, live counters,
-  credit-tier pricing, production CTAs to business intake + Sarah, and
-  root-route rollback notes.
+  owner-approved root cutover, final sales-copy sign-off, live counters
+  (including the `#8569` pylon-stats production repair), credit-tier pricing,
+  production CTAs to business intake + Sarah, and root-route rollback notes.
 
 **Direction only (open; NOT started as code):**
 - **OB-1..6 (`#8558–#8563`) outbound engine — all OPEN, no Sarah engine on
@@ -141,11 +144,38 @@ quick-wins.** What is genuinely DONE vs what is only DIRECTION:
 - **`#8467` (Khala Code Mobile MVP epic) OPEN** — the live multi-workstream P0
   program that `#8543` gates.
 
-**Bottom line:** the substrate is real and proven; the open backlog is all
-build-forward product work, most of it either spanning the private `cloud/` repo
-(CX-3) or owner-gated (seeded account, DNS/Resend, Stripe, prod arming, copy
-sign-offs). None can be honestly closed by in-repo work alone today. See "Current
-owner gates" below for the exact unblock list.
+**Review addendum / recommended next work (2026-07-08):** do `#8569` first,
+then resume EN-1/WEB-1.
+
+- **Next concrete work:** restore `GET /api/public/pylon-stats` to
+  `available:true` on production. The route still builds its public projection
+  from Pylon registrations (`apps/openagents.com/workers/api/src/public-pylon-stats-routes.ts`
+  → `makeD1PylonApiStore(...).listRegistrations`), while the migration plan says
+  the live Postgres twin is `pylon_registrations` behind the KS-8.1 dispatch
+  seam (`apps/openagents.com/workers/api/src/pylon-dispatch-store.ts`,
+  `packages/khala-sync-server/migrations/0005_pylon_dispatch.sql`). Repair by
+  routing the public stats store through the existing Postgres/flagged dispatch
+  seam, or by applying a short-lived compatibility relation only if that is the
+  fastest production-safe recovery. Verify with a direct probe of
+  `https://openagents.com/api/public/pylon-stats`, plus a focused regression so
+  the endpoint cannot silently fall back to a missing D1-named table in Cloud
+  SQL again.
+- **Why it beats the next substrate slice:** WEB-1's preview already renders
+  fail-soft live stats and pricing, and `#8569` is the only fresh non-owner-gated
+  production break found in this review. Fixing it keeps the sales landing's
+  "live counters from public projections, no dummy values" promise honest.
+- **Immediately after:** continue EN-1 by starting with the public
+  `effect-native` Phase 1 DOM renderer (`OpenAgentsInc/effect-native#6`) and
+  the one-screen proof (`#8`). Phase 0 core issues `#1–#5` are already closed;
+  the remaining renderer/proof issues `#6–#8` are open. Keep the existing
+  React/Tailwind `/demo` and `/new` routes as visual baselines, and author the
+  first production root-cutover candidate in the Effect Native DOM renderer
+  under `#8565/#8567`.
+
+**Bottom line:** the substrate is real and proven; most open work still spans
+the private `cloud/` repo (CX-3) or owner gates (seeded account, DNS/Resend,
+Stripe, prod arming, copy sign-offs), but `#8569` is now the immediate in-repo
+repair before the next WEB-1/EN cut.
 
 ## 0. The one-page shape
 
