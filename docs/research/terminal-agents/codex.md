@@ -1,5 +1,9 @@
 # OpenAI Codex tool-layer study for Khala built-in tools
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 Issue: [#6964](https://github.com/OpenAgentsInc/openagents/issues/6964)
 
 Source studied: `openai/codex` public `main` branch at commit

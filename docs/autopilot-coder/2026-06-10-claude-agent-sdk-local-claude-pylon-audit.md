@@ -1,5 +1,9 @@
 # Claude Agent SDK × Pylon — "Pylon Can Talk To Your Local Claude"
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 Date: 2026-06-10 (evening)
 
 Status: originally a design-only audit; the design is now implemented.

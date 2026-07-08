@@ -1,5 +1,9 @@
 # Probe, Autopilot, And Autopilot Sites Agent API Audit
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 Date: 2026-06-09
 
 Status: audit and implementation map. This document does not create a new

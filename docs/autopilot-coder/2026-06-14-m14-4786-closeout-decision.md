@@ -1,5 +1,9 @@
 # M14 And #4786 Closeout Decision
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 Date: 2026-06-14
 
 Issue scope: #4772 and #4786.

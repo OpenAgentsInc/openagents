@@ -1,5 +1,9 @@
 # Hermes Agent tool-layer study for Khala built-in tools
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 Issue: [#6956](https://github.com/OpenAgentsInc/openagents/issues/6956)
 
 Source studied: `NousResearch/hermes-agent` at commit

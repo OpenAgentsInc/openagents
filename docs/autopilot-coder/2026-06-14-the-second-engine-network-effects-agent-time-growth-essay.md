@@ -1,5 +1,9 @@
 # The Second Engine
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 ## Network Effects, Agent Time, and Why the Two Numbers Are Only the Floor
 
 Date: 2026-06-14

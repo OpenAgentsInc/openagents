@@ -1,5 +1,9 @@
 # Autopilot Coder — Claude Lane
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 Dated audits and planning records for Claude support in Pylon: the Claude
 Agent bridge (`@anthropic-ai/claude-agent-sdk`), the `claude_agent_task` work
 class, Fable (`claude-fable-5`) as a model profile on that lane, and the

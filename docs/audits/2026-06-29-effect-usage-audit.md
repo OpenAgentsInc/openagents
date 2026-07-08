@@ -1,5 +1,9 @@
 # Effect usage audit and improvement recommendations
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 Issue: #6970
 
 Date: 2026-06-29

@@ -1,5 +1,9 @@
 # Khala Code Desktop QA Framework — Design
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 Date: 2026-07-01
 Status: design doc. Specifies a testing framework/agent that can drive Khala
 Code Desktop programmatically — defined scenarios and free-explore mode,

@@ -1,5 +1,9 @@
 # Remote Coding — Live Readiness (2026-06-14)
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 Blunt, evidence-backed status of "can the owner code on OpenAgents Cloud from a
 remote client RIGHT NOW." Written autonomously while the owner is traveling
 (default-yes; reviewed post-hoc).

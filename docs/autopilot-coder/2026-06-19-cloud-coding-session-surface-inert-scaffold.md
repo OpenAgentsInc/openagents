@@ -1,5 +1,9 @@
 # Cloud coding-session surface — flag-gated INERT scaffold (wave 2)
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 Date: 2026-06-19
 Promise: `autopilot.cloud_coding_sessions.v1` (stays **red**)
 Branch: `wave2-cloud-coding-sessions`

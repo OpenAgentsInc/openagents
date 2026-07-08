@@ -1,5 +1,9 @@
 # Textual vs. Pylon TUI (Bun/Effect/OpenTUI) — Architecture Audit, Gap Analysis, and What to Learn
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 Date: 2026-06-10
 Author: agent audit (Claude Code)
 Reference repo: `projects/repos/textual` (workspace-root reference lane, read-only)

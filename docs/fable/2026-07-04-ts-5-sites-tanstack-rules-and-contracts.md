@@ -1,5 +1,11 @@
 # TS-5 Sites TanStack Rules And Contracts
 
+**STATUS (2026-07-08): SUPERSEDED by `docs/fable/MASTER_ROADMAP.md`
+§EN (rev 6) — the Effect Native full-conversion mandate.** Kept as
+the historical record of the earlier decision; do not implement
+from this document.
+
+
 Date: 2026-07-04
 Issue: [#8347](https://github.com/OpenAgentsInc/openagents/issues/8347)
 Epic: [#8339](https://github.com/OpenAgentsInc/openagents/issues/8339)

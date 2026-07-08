@@ -1,5 +1,9 @@
 # Amp Orbs → OpenAgents Cloud Adaptation Audit (2026-07-02)
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 Companion to `2026-07-02-amp-orbs-summary.md`. This doc maps what Amp shipped
 with orbs onto our existing Cloud/sandbox stack and states what we should
 adapt, what we already have, and how it connects to Khala Code.

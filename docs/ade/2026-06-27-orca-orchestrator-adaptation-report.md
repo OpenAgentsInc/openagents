@@ -1,5 +1,9 @@
 # Orca orchestrator adaptation report — what to port into OpenAgents
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 - **Date:** 2026-06-27
 - **Author:** ADE architecture review (Claude, opus-4.8 1M)
 - **Subject repo (reference, read-only):** `stablyai/orca` — "The AI Orchestrator for 100x builders." Runs Codex / Claude Code / OpenCode / Pi / Grok / Cursor / Gemini / +30 more CLI agents side by side, each in its own git worktree, tracked in one desktop app, with a Swift/Expo mobile companion to monitor and steer agents.

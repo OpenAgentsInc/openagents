@@ -26,6 +26,10 @@
 
 # Pylon v1.0-rc Agent Test Results - Codex
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 Date: 2026-06-15
 Tester: Codex
 Guide: `docs/autopilot-coder/2026-06-15-rc-agent-test-guide.md`

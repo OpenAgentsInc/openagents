@@ -1,5 +1,9 @@
 # OpenCode → Ecosystem Tools Expansion Plan
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 > Source context: `docs/inference/2026-06-25-khala-inference-gtm-push.md` §3
 > (Next tools after OpenCode), Pillar 2 — The ecosystem-tools playbook.
 > Planning document only. The canonical shipped #6240 recipes live in

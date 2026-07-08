@@ -1,5 +1,11 @@
 # RX-9 Reactor Need-To-Know Access Receipt
 
+**STATUS (2026-07-08): POSTPONED — parked behind the Khala Code +
+business focus (MASTER_ROADMAP rev 6).** Direction retained;
+implementation resumes only when MASTER_ROADMAP sequences it or
+the owner pulls it forward. Do not route new work from it now.
+
+
 Date: 2026-07-04
 Issue: [#8277](https://github.com/OpenAgentsInc/openagents/issues/8277)
 Status: source fixture landed; no external customer deployment or public

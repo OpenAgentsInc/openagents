@@ -1,5 +1,9 @@
 # Amp Orbs — Summary (2026-07-02)
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 Sources (fetched 2026-07-02):
 
 - https://ampcode.com/notes/putting-an-agent-in-an-orb

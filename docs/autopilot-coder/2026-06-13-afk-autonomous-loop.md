@@ -1,5 +1,9 @@
 # AFK Autonomous Loop — standing instructions + live state
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 Date: 2026-06-13. Purpose: let the coordinator (Claude) drive the Autopilot
 clients + self-driving-loop + OTA buildout autonomously for hours while the owner
 is AFK, via `/loop`. This doc is the **source of truth** the loop re-reads each

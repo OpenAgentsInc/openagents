@@ -1,5 +1,12 @@
 # Forge is not JUST a git forge — it's also a software factory
 
+**STATUS (2026-07-08): POSTPONED — parked behind the Khala Code +
+business focus (MASTER_ROADMAP rev 6).** Direction retained;
+implementation resumes only when MASTER_ROADMAP sequences it or
+the owner pulls it forward. Do not route new work from it now.
+Forge implementation routing must respect the separate-private-repo boundary.
+
+
 Date: 2026-06-28
 Status: Synthesis / product-framing doc. Public-safe; no secrets, no tokens,
 no deploy. Theme: fold the historical OpenAgents **software-factory** vision

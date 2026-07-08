@@ -1,5 +1,11 @@
 # TanStack Start Parity Contract
 
+**STATUS (2026-07-08): SUPERSEDED by `docs/fable/MASTER_ROADMAP.md`
+§EN (rev 6) — the Effect Native full-conversion mandate.** Kept as
+the historical record of the earlier decision; do not implement
+from this document.
+
+
 Date: 2026-07-04
 Issue: [#8341](https://github.com/OpenAgentsInc/openagents/issues/8341)
 Epic: [#8339](https://github.com/OpenAgentsInc/openagents/issues/8339)

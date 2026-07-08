@@ -11,6 +11,10 @@ source_pdf: "projects/repos/tmax/assets/paper.pdf"
 
 # TMAX: A Simple Recipe for Terminal Agents
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 > **Conversion note.** This paper is distributed only as a PDF in the project's
 > GitHub repo (no arXiv HTML), so the usual `arxiv2md` path does not apply. This
 > Markdown is a structured rendition produced from the PDF (`pdftotext` +

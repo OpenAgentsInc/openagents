@@ -1,5 +1,9 @@
 # Semantic Retrieval And Search Audit
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 Date: 2026-06-11
 
 This is system #19 from the Bun/Effect terminal-agent systems list. It defines

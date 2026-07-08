@@ -1,5 +1,9 @@
 # OpenCode Gym Benchmark Ladder — Khala vs the Field
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 > **Status:** planning doc, 2026-06-24. Defines the three-rung benchmark ladder
 > that the Gym runs on a recurring basis. Every rung uses the same typed harness
 > (matrix, runner, lane-seam, report schema). Numbers are only publishable from

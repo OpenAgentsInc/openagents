@@ -1,5 +1,9 @@
 # Pylon Multi-Session Agent Runbook
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 Status: operational handoff, 2026-06-13.
 
 Use this when a fresh coding agent needs to drive Pylon as a local coding

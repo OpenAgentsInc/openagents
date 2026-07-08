@@ -1,5 +1,9 @@
 # Programmatic Multi-Account Pylon Audit: Codex Orchestration + Account Usage
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 > Status: audit, 2026-06-13. Authored by Fable (`claude-fable-5`,
 > session-verified). Owner question: how far is Pylon from (a) an external
 > orchestrator (e.g. a chat session spawning subagents) programmatically

@@ -1,5 +1,11 @@
 # Isolated Verse scene harness — audit & plan
 
+**STATUS (2026-07-08): POSTPONED — parked behind the Khala Code +
+business focus (MASTER_ROADMAP rev 6).** Direction retained;
+implementation resumes only when MASTER_ROADMAP sequences it or
+the owner pulls it forward. Do not route new work from it now.
+
+
 *2026-06-22. How to run individual Verse / `three-effect` scenes (e.g. the Khala
 "crackling energy" inference effect) **in isolation** from the command line,
 fed by **stubs/synthetic events** instead of the real Region DO / D1 / Worker /

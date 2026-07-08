@@ -1,5 +1,11 @@
 # RX-10 Reactor Data Liberation Pipeline Receipt
 
+**STATUS (2026-07-08): POSTPONED — parked behind the Khala Code +
+business focus (MASTER_ROADMAP rev 6).** Direction retained;
+implementation resumes only when MASTER_ROADMAP sequences it or
+the owner pulls it forward. Do not route new work from it now.
+
+
 Date: 2026-07-04
 Issue: [#8278](https://github.com/OpenAgentsInc/openagents/issues/8278)
 Status: source fixture landed; no customer migration, package copy, or pricing

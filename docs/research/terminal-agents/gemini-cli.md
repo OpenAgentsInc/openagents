@@ -1,5 +1,9 @@
 # Gemini CLI tool-layer study for Khala built-in tools
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 Issue: [#6954](https://github.com/OpenAgentsInc/openagents/issues/6954)
 
 Source studied: `google-gemini/gemini-cli` at commit

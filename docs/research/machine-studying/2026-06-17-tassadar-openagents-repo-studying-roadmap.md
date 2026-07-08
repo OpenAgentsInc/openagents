@@ -1,5 +1,9 @@
 # Tassadar OpenAgents Repo Studying Audit And Roadmap
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 Date: 2026-06-17
 Status: audit / roadmap / speculation
 Scope: internal dogfood plan for pairing the current Tassadar run with machine studying over the `openagents` repository

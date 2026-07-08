@@ -1,5 +1,9 @@
 # After-Action: Fable WS-17 Desktop Fleet Closeout - 2026-07-02
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 ## Context
 
 On 2026-07-02 the owner narrowed the active Fable push to "fleet working in

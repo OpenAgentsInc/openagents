@@ -1,5 +1,9 @@
 # M13 Live Gemini Provider Gate Record
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 Date: 2026-06-12
 
 Issue: #4771

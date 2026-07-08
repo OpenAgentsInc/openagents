@@ -1,5 +1,9 @@
 # MVP-14 Baseline, Packet, And GEPA Comparison
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 Date: 2026-06-17
 Status: internal dogfood comparison, not a product claim
 

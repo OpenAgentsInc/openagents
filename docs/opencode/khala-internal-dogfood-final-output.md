@@ -4,6 +4,10 @@ Here is the full planning memo:
 
 # Planning Memo: Routing Internal Agent Work Through Khala
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 > Historical planning export from 2026-06-25. For the current OpenCode recipe,
 > use [`opencode-khala-recipe.md`](./opencode-khala-recipe.md). Older quota and
 > doubled-selector examples below are preserved as planning context, not the

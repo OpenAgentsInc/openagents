@@ -1,5 +1,9 @@
 # OpenAgents And Khala Terminal Tool Decisions
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 Date: 2026-06-29
 
 Status: decision record for the next OpenAgents-native Khala terminal-agent

@@ -1,5 +1,9 @@
 # TMAX — Synthesis & Connections
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 *Analysis — 2026-06-22. What TMAX ([paper.md](paper.md)) means for OpenAgents,
 and how it connects to the Tassadar run and the Sakana/Fugu coordinator work
 (`docs/sakana/`).*

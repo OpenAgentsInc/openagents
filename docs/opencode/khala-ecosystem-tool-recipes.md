@@ -1,5 +1,9 @@
 # Khala Ecosystem Tool Recipes
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 > Authoritative issue #6240 recipe set. Researched against current upstream docs
 > on 2026-06-25. This is repo documentation, not public marketing copy.
 >

@@ -1,5 +1,9 @@
 # Autopilot Worktree Support Audit
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 Date: 2026-06-11
 
 This note describes how OpenAgents should handle worktree-style execution for

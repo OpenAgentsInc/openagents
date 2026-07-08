@@ -1,5 +1,9 @@
 # Autopilot Coder Paid L402 Boundary
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 Payable Autopilot work uses a two-step route contract:
 
 1. `POST /api/autopilot/work` with a payable L402 request returns `402`.

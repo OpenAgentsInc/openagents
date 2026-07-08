@@ -1,5 +1,9 @@
 # Khala Ecosystem Tool Verification
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 > Per-tool verification record for issue #6306. The recipes live in
 > [`khala-ecosystem-tool-recipes.md`](./khala-ecosystem-tool-recipes.md) and, for
 > OpenCode, [`opencode-khala-recipe.md`](./opencode-khala-recipe.md). This

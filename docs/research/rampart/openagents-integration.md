@@ -1,5 +1,9 @@
 # OpenAgents Integration Notes
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 Rampart fits best as an owner-local privacy prefilter, not as an authority
 system. It can reduce accidental disclosure in chat-like paths, but OpenAgents
 must still enforce typed boundaries for traces, secrets, receipts, payments,

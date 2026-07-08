@@ -1,5 +1,9 @@
 # DSPy / RLM Python backend vs Effect reimplementation — decision audit
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 Date: 2026-06-28
 Status: research / decision record (public-safe; no secrets, no deploy)
 

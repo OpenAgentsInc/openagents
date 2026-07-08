@@ -1,5 +1,9 @@
 # Pi terminal-agent tool layer study
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 Date: 2026-06-28
 Source studied: `earendil-works/pi` public `main` branch, especially
 `packages/coding-agent` and `packages/agent`.

@@ -1,5 +1,9 @@
 # OpenCode Provider Config & Model Selector
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 > Focused note for engineers wiring `openagents/khala` in OpenCode.
 > The copy-pasteable recipe lives in
 > [`opencode-khala-recipe.md`](./opencode-khala-recipe.md).

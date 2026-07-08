@@ -1,5 +1,9 @@
 # Flue Audits
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 This directory tracks OpenAgents evaluations of the Flue framework as a possible
 agent harness, connector sidecar, and third-party event-ingress layer.
 

@@ -1,5 +1,11 @@
 # ROADMAP_AFTER — What Comes When The Machine Is Built
 
+**STATUS (2026-07-08): POSTPONED — parked behind the Khala Code +
+business focus (MASTER_ROADMAP rev 6).** Direction retained;
+implementation resumes only when MASTER_ROADMAP sequences it or
+the owner pulls it forward. Do not route new work from it now.
+
+
 > **Sequencing note (2026-07-07):** top-level execution sequencing is now
 > owned by [`docs/fable/MASTER_ROADMAP.md`](MASTER_ROADMAP.md); this document
 > remains the content authority for the market-contact (AW-*) lanes.

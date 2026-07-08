@@ -1,5 +1,9 @@
 # M9 Live Rate-Limit Rotation Gate Record
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 Date: 2026-06-12
 
 Issue: #4767

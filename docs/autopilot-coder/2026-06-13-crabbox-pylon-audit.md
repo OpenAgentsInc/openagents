@@ -1,5 +1,9 @@
 # Crabbox to Pylon Audit
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 Date: 2026-06-13
 
 External reference read: `projects/repos/crabbox` (workspace reference clone of `openclaw/crabbox`)

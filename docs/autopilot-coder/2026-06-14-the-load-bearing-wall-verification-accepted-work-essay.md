@@ -1,5 +1,9 @@
 # The Load-Bearing Wall
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 ## On Drag, Trust, and the Weight That Relocates Instead of Disappearing
 
 Date: 2026-06-14

@@ -1,5 +1,9 @@
 # 2026-06-26 Khala -> Pylon -> Codex Delegation After-Action
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 ## Status
 
 Implementation, live Pylon proof, production deploy, and live smokes are

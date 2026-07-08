@@ -1,5 +1,9 @@
 # Provider-Peer ToS-Compliance Review — OpenAI/ChatGPT-Codex, Anthropic, Google Gemini
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 Date: 2026-06-11. Rung: M13 (#4771) of
 `docs/autopilot-coder/2026-06-11-autopilot-unified-audit-roadmap.md`.
 This document is the gating deliverable for the M13 connect-flow work:

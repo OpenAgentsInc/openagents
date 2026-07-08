@@ -1,5 +1,9 @@
 # Sandbox And Workspace Boundary Audit
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 Date: 2026-06-11
 
 This is system #7 from the Bun/Effect terminal-agent systems list. It defines

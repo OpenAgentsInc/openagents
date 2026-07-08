@@ -1,5 +1,9 @@
 # Cloud + Desktop + Mobile Coding Sessions — Full-Flow Audit
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 **Date:** 2026-06-14
 **Author:** Autopilot Coder audit lane
 **Scope:** How OpenAgents Cloud (`cloud/`), the Pylon node + new Electrobun

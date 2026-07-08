@@ -1,5 +1,9 @@
 # Flue Framework Audit For OpenAgents
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 Date: 2026-06-16  
 Status: architecture audit, no implementation yet  
 Scope: Flue as a possible agent harness and third-party connector layer for

@@ -1,5 +1,9 @@
 # OpenCode tool-layer study for Khala built-in tools
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 Issue: [#6953](https://github.com/OpenAgentsInc/openagents/issues/6953)
 
 Source studied: `anomalyco/opencode` public `dev` branch at commit

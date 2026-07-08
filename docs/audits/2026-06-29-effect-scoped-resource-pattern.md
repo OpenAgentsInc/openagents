@@ -1,5 +1,9 @@
 # Effect scoped resource and retry pattern
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 Issue: #7013
 
 Date: 2026-06-29

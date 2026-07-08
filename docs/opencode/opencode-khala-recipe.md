@@ -1,5 +1,9 @@
 # OpenCode to Khala Recipe
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 > Authoritative recipe for issue #6239. This is repo documentation, not public
 > marketing copy. Public site copy still follows the Khala promise gate.
 >

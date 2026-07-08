@@ -1,5 +1,9 @@
 # Pylon Quota-Aware Account Routing & Failover
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 Date: 2026-06-13
 Status: **Planning document — no code changes.** This file specifies a design
 to be implemented under separate issues. It introduces no new runtime behavior

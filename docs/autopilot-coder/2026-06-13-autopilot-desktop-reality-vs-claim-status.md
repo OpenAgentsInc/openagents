@@ -1,5 +1,9 @@
 # Autopilot Desktop — Reality vs. Claim Status Audit
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 Date: 2026-06-13
 Status: honest status snapshot. Triggered by owner observation that the running
 Electrobun desktop app shows only a static shell ("🛩️ Autopilot Desktop …

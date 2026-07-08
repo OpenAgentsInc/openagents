@@ -1,5 +1,11 @@
 # Audit + direction: revive the old Autopilot "pro dashboard" as a new `/pro` operator UI
 
+**STATUS (2026-07-08): POSTPONED — parked behind the Khala Code +
+business focus (MASTER_ROADMAP rev 6).** Direction retained;
+implementation resumes only when MASTER_ROADMAP sequences it or
+the owner pulls it forward. Do not route new work from it now.
+
+
 > Status: **AUDIT + direction note**, 2026-06-24. **Not an implementation, not a
 > product promise, not public-claim copy.** This doc inventories the historical
 > Autopilot chat-UI / "pro dashboard" surfaces (across this repo's history and the

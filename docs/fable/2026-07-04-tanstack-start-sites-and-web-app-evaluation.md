@@ -1,5 +1,11 @@
 # TanStack Start × Autopilot Sites × openagents.com — Full Evaluation
 
+**STATUS (2026-07-08): SUPERSEDED by `docs/fable/MASTER_ROADMAP.md`
+§EN (rev 6) — the Effect Native full-conversion mandate.** Kept as
+the historical record of the earlier decision; do not implement
+from this document.
+
+
 Date: 2026-07-04
 Status: analysis/evaluation in the Fable lane. No promise state flips, no
 public copy changes, no issues filed (§10 proposes the map). This doc

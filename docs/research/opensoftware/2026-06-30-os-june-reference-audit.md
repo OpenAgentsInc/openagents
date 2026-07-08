@@ -1,5 +1,9 @@
 # os-june Reference Audit for OpenAgents
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 Date: 2026-06-30
 Status: research audit / adaptation guide, not a product promise
 Source studied: `projects/repos/os-june` at

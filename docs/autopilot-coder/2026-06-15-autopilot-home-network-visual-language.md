@@ -1,5 +1,9 @@
 # Autopilot home screen — pylon-network visual language
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 Date: 2026-06-15. Owner: product. Status: spec + iteration guide for the
 fullscreen Autopilot Desktop home screen (issue #5049, ships in the Autopilot
 v1.0-rc, #5046). This doc is the **source of truth for what every visual element

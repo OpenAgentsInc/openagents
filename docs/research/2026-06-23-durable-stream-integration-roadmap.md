@@ -1,5 +1,9 @@
 # Durable Stream integration roadmap — owned `@openagentsinc/durable-stream` on Cloudflare DO
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 **Date:** 2026-06-23
 **Status:** roadmap / phased plan (derived from the audit)
 **Author:** OpenAgents engineering

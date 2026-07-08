@@ -1,5 +1,11 @@
 # P6/P7 (#4782 / #4783) — Remaining-Work Map
 
+**STATUS (2026-07-08): POSTPONED — parked behind the Khala Code +
+business focus (MASTER_ROADMAP rev 6).** Direction retained;
+implementation resumes only when MASTER_ROADMAP sequences it or
+the owner pulls it forward. Do not route new work from it now.
+
+
 Date: 2026-06-14
 
 #4777 (P1) and #4781 (P5) are **closed with live settlements**. The reusable

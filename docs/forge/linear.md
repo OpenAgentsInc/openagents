@@ -8,6 +8,13 @@ The shortest accurate read: **Linear is not becoming a git forge like Cursor Ori
 
 # 1. What Linear Diffs is
 
+**STATUS (2026-07-08): POSTPONED — parked behind the Khala Code +
+business focus (MASTER_ROADMAP rev 6).** Direction retained;
+implementation resumes only when MASTER_ROADMAP sequences it or
+the owner pulls it forward. Do not route new work from it now.
+Forge implementation routing must respect the separate-private-repo boundary.
+
+
 Linear Diffs is a **native PR review experience inside Linear**. It pulls GitHub pull request metadata, changed files, checks, comments, review state, and conversation into Linear, then lets reviewers comment, approve, request changes, and merge without switching back to GitHub. Linear’s docs say Diffs keeps PR details, changed files, checks, and comments in sync with GitHub, and that opening a PR in Linear shows details, activity, CI checks, associated comments, and bidirectional updates. ([Linear][2])
 
 The core product idea is that code review should happen **beside the issue that caused the code**, not in a detached PR queue. Linear’s product page says each diff is tied directly to the issue it resolves, while the launch essay says code should sit next to the issue, project, and customer signal behind the change. ([Linear][3])

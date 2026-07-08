@@ -1,5 +1,9 @@
 # Autopilot Coder Current Status And Gap Audit
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 Date: 2026-06-09
 
 Status: current repo audit after the OA-AUTO P0 issue flow, the hosted Gemini

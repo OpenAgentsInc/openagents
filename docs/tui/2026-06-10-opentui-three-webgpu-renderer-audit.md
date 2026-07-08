@@ -1,5 +1,9 @@
 # OpenTUI's Three.js / WebGPU Renderer (`@opentui/three`) — Audit
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 Date: 2026-06-10
 Author: agent audit (Claude Code)
 Reference repos (read-only lanes):

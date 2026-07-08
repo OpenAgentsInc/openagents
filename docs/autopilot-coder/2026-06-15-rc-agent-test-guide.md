@@ -1,5 +1,9 @@
 # Agent test guide — Autopilot & Pylon v1.0-rc
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 Date: 2026-06-15 (rev 2). **Audience: a tester's coding/automation agent**
 (Claude Code, Codex, an Autopilot/Pylon node, etc.) — not a human. Copy-pasteable
 script to install a release candidate, exercise it headlessly, and report

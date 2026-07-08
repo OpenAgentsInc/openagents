@@ -1,5 +1,9 @@
 # Autopilot & Pylon v1.0-rc — tester install guide
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 Date: 2026-06-15. Audience: invited testers. These are **release candidates**
 (`1.0.0-rc.2`, RC/canary channel only — not the public stable release). Both
 ship **default-on auto-update**, so once you're on an RC you'll get newer RCs

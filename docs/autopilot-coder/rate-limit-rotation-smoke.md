@@ -1,5 +1,9 @@
 # Autopilot Rate-Limit Rotation Smoke (M9)
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 Run the CI-safe leg from the repository root:
 
 ```sh

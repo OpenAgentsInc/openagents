@@ -1,5 +1,9 @@
 # Machine Studying: OpenAgents Research Note
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 Source: <https://jacobxli.com/blog/2026/machine-studying/>
 
 Published: June 17, 2026

@@ -1,5 +1,9 @@
 # herdr analysis — what (if anything) to use/adapt for pylon/autopilot/agent delegation
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 Date: 2026-06-20
 Author: reference-repo audit (read-only on `projects/repos/herdr`)
 Verdict (one line): **Adapt the ideas, port one pattern, skip the binary.** Steal

@@ -1,5 +1,9 @@
 # 2026-06-29 Khala 2B Token Burn And PR Backlog Afteraction
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 Status as of `2026-06-29T13:00Z`.
 
 This report covers the roughly 8-hour high-fanout session that pushed the

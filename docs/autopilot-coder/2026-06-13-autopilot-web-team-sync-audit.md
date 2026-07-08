@@ -1,5 +1,9 @@
 # Autopilot Web UI ↔ Team & Pylon Sync — Audit
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 Date: 2026-06-13
 Status: design audit. No code/invariant changes here. Audits the existing
 `/autopilot` web surface in the `openagents.com` app and specifies what is needed

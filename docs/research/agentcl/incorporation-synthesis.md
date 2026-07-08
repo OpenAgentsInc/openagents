@@ -1,5 +1,9 @@
 # AgentCL Incorporation Synthesis
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 How much of the AgentCL evaluation framework OpenAgents should adopt, where it
 maps onto our systems, and a sequenced, issue-sized roadmap.
 

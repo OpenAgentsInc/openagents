@@ -1,5 +1,9 @@
 # Autopilot Verse Coding Agent Pane Overlay Audit
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 **Date:** 2026-06-21
 
 **Scope:** What remains to make coding agents run inside the Autopilot Desktop

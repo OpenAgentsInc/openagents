@@ -1,5 +1,9 @@
 # Forge Autopilot Coder Terminal-Agent Systems Roadmap
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 Date: 2026-06-16
 
 Parent issue: #5107.

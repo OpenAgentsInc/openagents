@@ -1,5 +1,9 @@
 # OpenAgents Terminal-Agent Systems Current State
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 Date: 2026-06-29
 
 Issue: #6965

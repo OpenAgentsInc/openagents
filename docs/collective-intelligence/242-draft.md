@@ -1,5 +1,11 @@
 # Episode 242 (DRAFT script): "Khala, Collective Intelligence"
 
+**STATUS (2026-07-08): POSTPONED — parked behind the Khala Code +
+business focus (MASTER_ROADMAP rev 6).** Direction retained;
+implementation resumes only when MASTER_ROADMAP sequences it or
+the owner pulls it forward. Do not route new work from it now.
+
+
 > **Status: draft episode script, not a recorded transcript.** A proposed plan
 > for the follow-up to Episode 241 (the Sakana Fugu review, which ended on
 > "imagine an open-source version of this, fully inspectable… so you can see

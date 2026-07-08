@@ -1,5 +1,9 @@
 # 2026-06-26 Khala GLM / OpenRouter Fallback After-Action
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 ## Status
 
 Fixed in the same change as this after-action.

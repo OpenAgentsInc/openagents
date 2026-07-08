@@ -1,5 +1,9 @@
 # IDAI -> OpenAgents Roadmap Alignment
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 Core synthesis of the 43-area IDAI map against OpenAgents' real systems, framed
 for **medium-term** prioritization. Postures: **ahead** (live, differentiated) /
 **on-par** (comparable to field) / **behind** (field ahead of us) / **absent**

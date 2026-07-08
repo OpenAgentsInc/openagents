@@ -1,5 +1,9 @@
 # QA flow — verifiable Khala-driven QA artifact (2026-06-24)
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 `run-and-post.sh <PR>` runs a Khala-driven QA session, composes a polished video
 (`apps/qa-runner compose`, ffmpeg), and posts it to the PR with **gh-attach**
 (`projects/repos/gh-attach`) — the GitHub web-upload path the REST API lacks.

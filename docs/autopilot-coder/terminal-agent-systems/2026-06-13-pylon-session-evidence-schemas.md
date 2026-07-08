@@ -1,5 +1,9 @@
 # Pylon Session Evidence Schemas
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 Date: 2026-06-13
 
 This reference enumerates the typed evidence schema ids used by the Pylon

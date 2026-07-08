@@ -1,5 +1,9 @@
 # Autopilot Coder
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 This directory records the product and implementation audit trail for the
 Autopilot coder direction: agent-first coding-work delegation, Probe/Pylon
 fanout, Autopilot Sites, MDK/L402 buyer payment, worker settlement gates, and

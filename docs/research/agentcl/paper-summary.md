@@ -1,5 +1,9 @@
 # AgentCL Paper Summary
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 ## Core Claim
 
 AgentCL is a benchmark framework for continual learning in language agents. Its

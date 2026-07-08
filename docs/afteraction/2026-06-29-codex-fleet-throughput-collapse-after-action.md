@@ -1,5 +1,9 @@
 # After-Action: Codex Fleet Throughput Collapse + Recovery — 2026-06-28/29
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 ## ⇨ HANDOFF: do this next, in priority order
 
 The single proven fact: **dispatch (create lease) and execute (`assignment

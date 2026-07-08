@@ -1,5 +1,11 @@
 # TS-2 TanStack Start Funnel Routes Receipt
 
+**STATUS (2026-07-08): SUPERSEDED by `docs/fable/MASTER_ROADMAP.md`
+§EN (rev 6) — the Effect Native full-conversion mandate.** Kept as
+the historical record of the earlier decision; do not implement
+from this document.
+
+
 Date: 2026-07-04
 Issue: #8344
 Epic: #8339

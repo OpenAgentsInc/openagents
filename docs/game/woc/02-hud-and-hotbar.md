@@ -1,5 +1,11 @@
 # WoC HUD, Hotbar, and Icon System
 
+**STATUS (2026-07-08): POSTPONED — parked behind the Khala Code +
+business focus (MASTER_ROADMAP rev 6).** Direction retained;
+implementation resumes only when MASTER_ROADMAP sequences it or
+the owner pulls it forward. Do not route new work from it now.
+
+
 Date: 2026-06-22
 Scope: `src/ui/` (HUD), `src/ui/hotbar.ts`, `src/ui/icons.ts`, unit frames, meters, tooltips, perf overlay.
 

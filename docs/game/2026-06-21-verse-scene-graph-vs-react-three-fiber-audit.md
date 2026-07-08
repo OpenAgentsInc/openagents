@@ -1,5 +1,11 @@
 # Verse Scene Graph vs. react-three-fiber — Construction Audit
 
+**STATUS (2026-07-08): POSTPONED — parked behind the Khala Code +
+business focus (MASTER_ROADMAP rev 6).** Direction retained;
+implementation resumes only when MASTER_ROADMAP sequences it or
+the owner pulls it forward. Do not route new work from it now.
+
+
 Date: 2026-06-21
 Scope: how the Autopilot desktop "Verse" 3D world builds its Three.js scene
 graph today (via `@openagentsinc/three-effect` + Foldkit), how

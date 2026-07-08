@@ -1,5 +1,9 @@
 # Machine Studying Source Map
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 Primary source: <https://jacobxli.com/blog/2026/machine-studying/>
 
 Read date: June 17, 2026

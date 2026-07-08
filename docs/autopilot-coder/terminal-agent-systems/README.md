@@ -1,5 +1,9 @@
 # Terminal Agent Systems
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 Date: 2026-06-11
 
 This directory collects OpenAgents-native audits for the Bun/Effect terminal

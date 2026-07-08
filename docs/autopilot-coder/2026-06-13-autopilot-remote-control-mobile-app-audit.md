@@ -1,5 +1,9 @@
 # Autopilot Remote Control — Mobile App Audit
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 > **⚠️ BUILD/SHIP POLICY (2026-06-13): EAS is OUT.** Native builds compile
 > locally on our Mac (`expo prebuild`→`xcodebuild`/`fastlane`), TestFlight upload
 > is Apple-native (`xcrun altool`), JS ships OTA via our own

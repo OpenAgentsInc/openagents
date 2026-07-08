@@ -1,5 +1,9 @@
 # Repository Memory And Onboarding Audit
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 Date: 2026-06-11
 
 This is system #18 from the Bun/Effect terminal-agent systems list. It defines

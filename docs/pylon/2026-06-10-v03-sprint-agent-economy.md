@@ -1,5 +1,9 @@
 # Pylon v0.3 Sprint: The Agent Economy RC
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 Date: 2026-06-10. Owner directive (Episode-235 day): the brittleness in
 today's agent flows — hand-pasting AGENTS.md into chat sessions,
 ad-hoc wallet daemons, nobody knowing which identity is doing what —

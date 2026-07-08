@@ -1,5 +1,12 @@
 # Forge OpenAgents Import Runbook
 
+**STATUS (2026-07-08): POSTPONED — parked behind the Khala Code +
+business focus (MASTER_ROADMAP rev 6).** Direction retained;
+implementation resumes only when MASTER_ROADMAP sequences it or
+the owner pulls it forward. Do not route new work from it now.
+Forge implementation routing must respect the separate-private-repo boundary.
+
+
 Issue #6793 seeds the public `OpenAgentsInc/openagents` repository into the
 Forge canonical git/ref store for dogfood visibility before SU-6 makes GitHub a
 mirror.

@@ -1,5 +1,9 @@
 # AgentCL Implications for OpenAgents
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 ## Why This Matters Here
 
 OpenAgents already has several places where agent memory, task traces, study

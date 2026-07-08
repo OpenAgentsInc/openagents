@@ -1,5 +1,9 @@
 # OpenCode/Khala Docs
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 Planning memos and session exports from the five concurrent Khala/OpenCode
 planning sessions run on 2026-06-25. These sessions were read-only planning
 rounds against the Khala inference GTM push strategy

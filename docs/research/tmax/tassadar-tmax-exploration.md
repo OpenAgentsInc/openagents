@@ -1,5 +1,9 @@
 # Tassadar × TMAX: Exploration
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 *Speculative design — 2026-06-22. An imagined episode and a 3D Verse experience
 where TMAX's terminal-agent recipe meets the Tassadar run: run TMAX-style
 environment-solving as **verified, Bitcoin-paid, watchable** work in our world,

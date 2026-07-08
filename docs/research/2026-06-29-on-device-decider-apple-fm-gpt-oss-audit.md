@@ -1,5 +1,9 @@
 # On-Device Decider Audit — Apple FM + GPT-OSS (2026-06-29)
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 Audit of the optional **on-device decider** in `clients/khala-code-desktop`: a
 small, local model the desktop app can use to make fast, private
 routing/triage/yes-no decisions without a network round trip. It selects a

@@ -1,5 +1,9 @@
 # Autonomous Execution — Infra Mismatch Audit (what happened, what I did, what's wrong)
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 **Date:** 2026-06-14
 **Author:** Autopilot Coder session (Opus)
 **Why this exists:** The owner asked for autonomous/queued coding work to run on

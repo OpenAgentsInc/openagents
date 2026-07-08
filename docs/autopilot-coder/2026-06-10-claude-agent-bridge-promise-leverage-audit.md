@@ -1,5 +1,9 @@
 # Claude Agent Bridge × The Promise Registry — Leverage Audit
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 Date: 2026-06-10 (night)
 
 Registry at audit time: `2026-06-10.24` (live at

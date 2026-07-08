@@ -1,5 +1,9 @@
 # openagents.com/stats — deep audit & spec (2026-06-26)
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 Goal: a public `openagents.com/stats` page showing (1) the **total Khala tokens
 served** count, (2) a **tokens-per-day graph in Central Time**, and (3) the
 **model / provider mix** (GLM vs Fireworks vs Codex vs …, as percentages). This

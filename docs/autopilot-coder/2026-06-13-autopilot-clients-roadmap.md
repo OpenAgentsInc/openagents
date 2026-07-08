@@ -1,5 +1,9 @@
 # Autopilot Clients Roadmap — Web, Desktop, Mobile
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 > **⚠️ BUILD/SHIP POLICY — UPDATED 2026-06-13.**
 > **We have switched OFF Expo/EAS.** Native iOS `.ipa` is compiled **locally on
 > our own Mac** (`expo prebuild` → `xcodebuild`/`fastlane`) and uploaded to

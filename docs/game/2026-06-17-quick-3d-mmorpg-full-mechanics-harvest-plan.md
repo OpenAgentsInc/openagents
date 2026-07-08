@@ -1,5 +1,11 @@
 # Quick 3D MMORPG Full Mechanics Harvest Plan
 
+**STATUS (2026-07-08): POSTPONED — parked behind the Khala Code +
+business focus (MASTER_ROADMAP rev 6).** Direction retained;
+implementation resumes only when MASTER_ROADMAP sequences it or
+the owner pulls it forward. Do not route new work from it now.
+
+
 Date: 2026-06-17
 Status: Deep audit and phased implementation plan.
 Reference repo: `/Users/christopherdavid/work/projects/repos/Quick_3D_MMORPG`

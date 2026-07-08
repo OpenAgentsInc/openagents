@@ -1,5 +1,9 @@
 # StudyBench And OpenAgents Repo-Studying Benchmark Audit
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 Date: 2026-06-17
 Status: audit / roadmap proposal, not a benchmark claim or product promise
 Scope: how the StudyBench dataset should inform the OpenAgents machine-studying,

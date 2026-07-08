@@ -1,5 +1,9 @@
 # Autopilot Desktop — App Audit
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 Date: 2026-06-13
 Status: planning/architecture audit. Defines a Bun-native, Electrobun-based
 desktop app ("Autopilot Desktop") that supplements the Pylon TUI with a rich

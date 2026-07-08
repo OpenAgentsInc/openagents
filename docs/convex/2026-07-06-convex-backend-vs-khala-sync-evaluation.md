@@ -17,6 +17,11 @@ evidence:
 
 # Convex self-hosted backend vs. Khala Sync — replacement evaluation
 
+**STATUS (2026-07-08): SUPERSEDED by the GCP/Cloud SQL + Khala Sync
+stack.** Kept as the historical record of the earlier decision; do
+not implement from this document.
+
+
 ## 0. Executive summary
 
 **Recommendation: DO NOT ADOPT Convex as a replacement for Khala Sync.**

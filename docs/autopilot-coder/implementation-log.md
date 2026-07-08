@@ -1,5 +1,9 @@
 # Autopilot Coder Implementation Log
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 This log records the sequential implementation of the Autopilot coder issue
 backlog.
 

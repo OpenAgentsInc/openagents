@@ -1,5 +1,9 @@
 # OpenCode Token Counter Attribution Plan
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 > Worker 07 of 10. Source: `docs/inference/2026-06-25-khala-inference-gtm-push.md`.
 
 ## Goal

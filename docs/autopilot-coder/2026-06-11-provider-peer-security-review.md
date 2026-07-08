@@ -1,5 +1,9 @@
 # Provider Peer Security Review
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 Date: 2026-06-11
 
 ## Scope

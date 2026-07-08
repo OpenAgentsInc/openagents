@@ -1,5 +1,9 @@
 # Machine Studying Figure And Data Capture
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 Source: <https://jacobxli.com/blog/2026/machine-studying/>
 
 This file captures the article's figure inventory and numerical measurements in

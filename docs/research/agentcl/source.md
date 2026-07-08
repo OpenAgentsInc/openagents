@@ -1,5 +1,9 @@
 # AgentCL Source Notes
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 ## Exact Source
 
 - Paper: `AgentCL: Toward Rigorous Evaluation of Continual Learning in Language

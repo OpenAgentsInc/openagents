@@ -1,5 +1,9 @@
 # OpenAgents StudyBench MVP Issue Roadmap
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 Date: 2026-06-17
 Status: implementation roadmap / issue draft
 Scope: concrete MVP work for a StudyBench-style, agentic repo-studying

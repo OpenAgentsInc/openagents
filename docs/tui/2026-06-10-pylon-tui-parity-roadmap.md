@@ -1,5 +1,9 @@
 # Pylon TUI Parity Roadmap — Evolving Toward the opencode Baseline
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 Date: 2026-06-10
 Author: agent audit (Claude Code)
 Inputs:

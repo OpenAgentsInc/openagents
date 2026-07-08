@@ -1,5 +1,9 @@
 # Pack C Change Capture And Diff Review Artifacts
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 Date: 2026-06-12
 
 ## Scope

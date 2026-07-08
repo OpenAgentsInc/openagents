@@ -1,5 +1,11 @@
 # Talk to Khala from a Verse textbox — audit & implementation status
 
+**STATUS (2026-07-08): POSTPONED — parked behind the Khala Code +
+business focus (MASTER_ROADMAP rev 6).** Direction retained;
+implementation resumes only when MASTER_ROADMAP sequences it or
+the owner pulls it forward. Do not route new work from it now.
+
+
 *2026-06-22. What's needed so a user can type a prompt into a textbox **in the
 Verse world** and talk to Khala — streamed response, with the in-world
 crackling-energy effect firing. Most of the hard parts already exist; the gap is a

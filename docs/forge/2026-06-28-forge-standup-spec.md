@@ -1,5 +1,12 @@
 # forge.openagents.com — Stand-Up Spec (operationalize the built components)
 
+**STATUS (2026-07-08): POSTPONED — parked behind the Khala Code +
+business focus (MASTER_ROADMAP rev 6).** Direction retained;
+implementation resumes only when MASTER_ROADMAP sequences it or
+the owner pulls it forward. Do not route new work from it now.
+Forge implementation routing must respect the separate-private-repo boundary.
+
+
 > Status: stand-up / operationalization spec, 2026-06-28. Owner directive:
 > stand up the owned coordination layer **immediately**. The FORGE-0 first wave
 > (#6745) is built + merged but the components are libraries, not a running

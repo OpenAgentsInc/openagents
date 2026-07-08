@@ -1,5 +1,9 @@
 # Rampart Usage Guide
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 This guide uses the NPM runtime because it wraps the Hugging Face model in the
 full redaction pipeline. The raw model is useful for experiments, but the NPM
 runtime is what chat applications should wire in.

@@ -1,5 +1,9 @@
 # "Don't Train the Model, Evolve the Harness" — Audit and Adoption Map
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 Date: 2026-07-04
 Status: research audit in the standard dated-audit lane. No promise state
 flips, no public copy changes. Source: Joel Niklaus, "Don't Train the Model,

@@ -1,5 +1,9 @@
 # How opencode Works With Claude — SDK, Auth, and TUI Rendering Audit
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 Date: 2026-06-10
 Author: agent audit (Claude Code)
 Reference repo: `projects/repos/opencode` (clone at commit `fff36b70b`, 2026-06-05; read-only reference lane)

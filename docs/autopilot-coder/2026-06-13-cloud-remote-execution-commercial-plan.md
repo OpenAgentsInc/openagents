@@ -1,5 +1,9 @@
 # OpenAgents Cloud Remote Execution — Commercial Plan
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 Date: 2026-06-13
 Status: planning document. Changes no runtime invariant and makes no public
 claim by itself. Any invariant amendment or public-copy change called for here

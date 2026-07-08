@@ -1,5 +1,9 @@
 # TUI Parity Conformance Checklist
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 Date: 2026-06-13
 Scope: M3 CL-24, openagents #4930
 

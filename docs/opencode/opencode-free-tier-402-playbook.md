@@ -1,5 +1,9 @@
 # OpenCode Free Tier 402 Playbook
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 > Khala free-tier inference: key minting, quota behavior, over-quota errors, and
 > paid fallback — what OpenCode users and operators need to know.
 

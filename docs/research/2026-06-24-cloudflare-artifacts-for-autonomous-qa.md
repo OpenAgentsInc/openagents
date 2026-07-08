@@ -1,5 +1,9 @@
 # Cloudflare Artifacts for the autonomous-QA agent — fit assessment (2026-06-24)
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 > Goal: minimize the QA agent's dependence on GitHub. This note assesses whether
 > **Cloudflare Artifacts** ([docs](https://developers.cloudflare.com/artifacts/)) helps.
 > Builds on the prior repo audit

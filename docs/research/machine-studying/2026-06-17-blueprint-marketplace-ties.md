@@ -1,5 +1,9 @@
 # Machine Studying Ties To Blueprint, Tassadar, DSPy, And Marketplaces
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 Date: 2026-06-17
 
 Status: research synthesis. This is not product copy and does not upgrade any

@@ -1,5 +1,11 @@
 # NIP Drafts
 
+**STATUS (2026-07-08): POSTPONED — parked behind the Khala Code +
+business focus (MASTER_ROADMAP rev 6).** Direction retained;
+implementation resumes only when MASTER_ROADMAP sequences it or
+the owner pulls it forward. Do not route new work from it now.
+
+
 These living draft specs were restored from the last shipped pre-Bun-rebuild
 tree at `f5919c766^:crates/nostr/nips/`. They are protocol docs, not runtime
 implementations, and restoring them does not create a new public product

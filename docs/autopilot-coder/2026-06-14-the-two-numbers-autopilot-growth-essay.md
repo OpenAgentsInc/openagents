@@ -1,5 +1,9 @@
 # The Two Numbers
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 ## On Autopilot, Accepted Code, and the Path to Compounding Weekly Growth
 
 Date: 2026-06-14

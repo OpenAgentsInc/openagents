@@ -1,5 +1,9 @@
 # Effect-native Durable Streams on Cloudflare Durable Objects — grounded audit
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 **Date:** 2026-06-23
 **Status:** research / decision-support (no code change)
 **Author:** OpenAgents research

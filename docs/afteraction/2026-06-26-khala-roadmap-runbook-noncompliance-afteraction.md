@@ -1,5 +1,9 @@
 # 2026-06-26 Khala Roadmap Runbook Non-Compliance After-Action
 
+**STATUS: HISTORICAL — point-in-time record (accurate as of its
+date). Not current direction; consult MASTER_ROADMAP.**
+
+
 ## Status
 
 This is an accountability incident report, not a product fix.

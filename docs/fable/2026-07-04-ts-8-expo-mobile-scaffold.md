@@ -1,5 +1,11 @@
 # TS-8 Expo Mobile Scaffold
 
+**STATUS (2026-07-08): SUPERSEDED by `docs/fable/MASTER_ROADMAP.md`
+§EN (rev 6) — the Effect Native full-conversion mandate.** Kept as
+the historical record of the earlier decision; do not implement
+from this document.
+
+
 Date: 2026-07-04, evidence passes 2026-07-05 (x2)
 Issue: #8350
 Status (2026-07-05, round 2): both platforms build clean, LOCAL, from zero on
