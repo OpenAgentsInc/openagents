@@ -10,6 +10,8 @@
     "./shared/*": "./src/shared/*.ts",
     "./custody": "./src/custody/index.ts",
     "./custody/*": "./src/custody/*.ts",
+    "./executor": "./src/executor/index.ts",
+    "./executor/*": "./src/executor/*.ts",
     "./rpc": "./src/rpc/index.ts"
   },
   "files": [
@@ -25,6 +27,8 @@
   },
   "dependencies": {
     "@openagentsinc/agent-runtime-schema": "workspace:*",
+    "@anthropic-ai/claude-agent-sdk": "^0.3.172",
+    "@openai/codex-sdk": "^0.139.0",
     "@noble/curves": "1.8.1",
     "@noble/hashes": "1.7.1",
     "@scure/base": "1.2.4",

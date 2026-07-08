@@ -1056,9 +1056,11 @@
       "name": "@openagentsinc/pylon-core",
       "version": "0.1.0",
       "dependencies": {
+        "@anthropic-ai/claude-agent-sdk": "^0.3.172",
         "@noble/curves": "1.8.1",
         "@noble/hashes": "1.7.1",
         "@openagentsinc/agent-runtime-schema": "workspace:*",
+        "@openai/codex-sdk": "^0.139.0",
         "@scure/base": "1.2.4",
         "@scure/bip32": "1.6.2",
         "@scure/bip39": "1.5.4",
