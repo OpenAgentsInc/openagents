@@ -19,6 +19,10 @@ This package is configured for shadcn/ui on Tailwind 4:
 - New TanStack Start route UI should prefer these primitives for buttons,
   badges, cards, and repeated panel surfaces while preserving the dark-only
   OpenAgents tokens from `src/styles.css`.
+- Phase-1 WEB-1 vendors the Launch UI homepage replica under
+  `src/components/launch-ui` with the blue glow token preset and minimal radius
+  pinned in `src/styles.css`. The MIT notice is retained in
+  `THIRD_PARTY_NOTICES.md`.
 
 ## Verify
 
@@ -75,6 +79,8 @@ Landing route budget for the first deployed staging URL:
 - SSR document must contain real landing content in the initial HTML.
 - JavaScript should stay split into React, TanStack Router, TanStack Query, and
   TanStack Start chunks.
+- The Start funnel total client JavaScript budget is 780 KiB after the WEB-1
+  phase-1 Launch UI replica added the full Launch UI section hierarchy.
 - Initial landing document should keep LCP under 2.5s on a local Lighthouse
   mobile run before promotion to a custom domain.
 

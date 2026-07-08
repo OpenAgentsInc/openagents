@@ -10,7 +10,7 @@ type Budget = Readonly<{
 const KiB = 1024
 
 const routeBudgets = [
-  { path: '/', marker: 'OpenAgents' },
+  { path: '/', marker: 'Launch UI v2 is out!' },
   { path: '/activity', marker: 'Live public activity' },
   { path: '/business', marker: 'Agents that work.' },
   { path: '/business/kpi/engagement.public.vertical_pipeline_1', marker: 'Scorekeeper' },
@@ -90,7 +90,7 @@ export async function main(): Promise<void> {
   const checks: Budget[] = [
     {
       actual: totalJs,
-      budget: 760 * KiB,
+      budget: 780 * KiB,
       label: 'total client JS across Start funnel routes',
     },
     ...routeChunks.map(entry => ({
