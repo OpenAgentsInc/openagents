@@ -43,6 +43,7 @@ import type {
   KhalaSyncHyperdriveBinding,
   MakeKhalaSyncPushSqlClient,
 } from './khala-sync-push-routes'
+import { acquireSharedPostgresClient } from './khala-sync-postgres-pool'
 import { readActiveTeamMembershipRole } from './team-repository'
 import {
   readAgentRunAccessRowAsync,
@@ -81,30 +82,19 @@ export type KhalaSyncScopeAuthDeps = Readonly<{
   makeSqlClient?: MakeKhalaSyncPushSqlClient | undefined
 }>
 
-// Same transaction-mode-safe postgres.js client discipline as the push/log/
-// bootstrap routes (SPEC §4): one connection, unnamed statements only, no
-// session state. Duplicated rather than exported so each seam's driver
-// stays independently visible and testable.
+// Same transaction-mode-safe postgres.js discipline as the push/log/
+// bootstrap routes (SPEC §4): unnamed statements only, no session state. On
+// Cloud Run this reuses the shared 'sync' pool via
+// `acquireSharedPostgresClient` instead of a fresh connection per request.
 const defaultMakeSqlClient: MakeKhalaSyncPushSqlClient = async (
   connectionString,
 ) => {
-  const mod = (await import('postgres')) as unknown as {
-    default: (
-      connectionString: string,
-      options: Record<string, unknown>,
-    ) => {
-      end: (options?: { timeout?: number }) => Promise<void>
-    }
-  }
-  const sql = mod.default(connectionString, {
-    connect_timeout: 10,
-    max: 1,
-    prepare: false,
+  const { sql, end } = await acquireSharedPostgresClient({
+    connectionString,
+    options: { connect_timeout: 10, prepare: false },
+    variant: 'sync',
   })
-  return {
-    end: () => sql.end({ timeout: 5 }),
-    sql: sql as unknown as SyncSql,
-  }
+  return { end, sql: sql as unknown as SyncSql }
 }
 
 /**

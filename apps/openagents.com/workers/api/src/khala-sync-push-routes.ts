@@ -51,6 +51,7 @@ import {
 } from '@openagentsinc/khala-sync-server'
 
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
+import { acquireSharedPostgresClient } from './khala-sync-postgres-pool'
 
 type HttpResponse = globalThis.Response
 
@@ -120,34 +121,23 @@ const syncErrorResponse = (
  * KHALA_SYNC_DB Hyperdrive binding. Exported so other Worker seams that
  * reach Khala Sync Postgres (e.g. the KS-6.1 fleet projection dual-write)
  * reuse the exact same driver discipline instead of re-deriving it.
+ *
+ * On the Cloud Run monolith this returns a SHARED pool-backed client
+ * (reused across requests/statements) via `acquireSharedPostgresClient`; on
+ * Cloudflare Workers it falls back to a fresh `max: 1` client. `prepare:
+ * false` keeps unnamed statements only (SPEC §4). postgres.js exposes the
+ * same tagged-template + `begin` surface as the engine's structural
+ * `SyncSql`; the cast is the single deliberate driver seam.
  */
 export const defaultMakeKhalaSyncSqlClient: MakeKhalaSyncPushSqlClient = async (
   connectionString,
 ) => {
-  const mod = (await import('postgres')) as unknown as {
-    default: (
-      connectionString: string,
-      options: Record<string, unknown>,
-    ) => {
-      end: (options?: { timeout?: number }) => Promise<void>
-    }
-  }
-
-  // Transaction-mode-safe client: one connection, unnamed statements only
-  // (`prepare: false`), no session state (SPEC §4; same discipline as the
-  // KS-0.2 db-smoke route). postgres.js exposes the same tagged-template +
-  // `begin` surface the engine's structural `SyncSql` types; the cast is
-  // the single deliberate driver seam.
-  const sql = mod.default(connectionString, {
-    connect_timeout: 10,
-    max: 1,
-    prepare: false,
+  const { sql, end } = await acquireSharedPostgresClient({
+    connectionString,
+    options: { connect_timeout: 10, prepare: false },
+    variant: 'sync',
   })
-
-  return {
-    end: () => sql.end({ timeout: 5 }),
-    sql: sql as unknown as SyncSql,
-  }
+  return { end, sql: sql as unknown as SyncSql }
 }
 
 /**

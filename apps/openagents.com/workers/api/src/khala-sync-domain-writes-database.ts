@@ -23,6 +23,7 @@
 // `datetime()/strftime()/json_extract()/julianday()`. Only domains whose SQL
 // avoids those are cut through this lever.
 
+import { acquireSharedPostgresClient } from './khala-sync-postgres-pool'
 import type { KhalaSyncHyperdriveBinding } from './khala-sync-push-routes'
 import {
   makePostgresD1Database,
@@ -59,34 +60,27 @@ export const parseKhalaSyncWritesMode = (
 export const defaultMakeKhalaSyncDomainD1Client = async (
   connectionString: string,
 ): Promise<PostgresD1Client> => {
-  const mod = (await import('postgres')) as unknown as {
-    default: (
-      connectionString: string,
-      options: Record<string, unknown>,
-    ) => {
-      unsafe: (
-        text: string,
-        params: Array<unknown>,
-      ) => Promise<Array<Record<string, unknown>>>
-      begin: <A>(fn: (tx: unknown) => Promise<A>) => Promise<A>
-      end: (options?: { timeout?: number }) => Promise<void>
-    }
-  }
-  const sql = mod.default(connectionString, {
-    connect_timeout: 10,
-    max: 1,
-    prepare: false,
-    types: {
-      bigint: {
-        from: [20],
-        parse: (value: string) => Number(value),
-        serialize: (value: number | bigint) => value.toString(),
-        to: 20,
+  // On Cloud Run this reuses the shared 'd1-bigint' pool (same int8→Number
+  // parser as the Khala Code product-state D1 client), instead of opening a
+  // fresh connection per D1 statement.
+  const { sql, end } = await acquireSharedPostgresClient({
+    connectionString,
+    options: {
+      connect_timeout: 10,
+      prepare: false,
+      types: {
+        bigint: {
+          from: [20],
+          parse: (value: string) => Number(value),
+          serialize: (value: number | bigint) => value.toString(),
+          to: 20,
+        },
       },
     },
+    variant: 'd1-bigint',
   })
   return {
-    end: () => sql.end({ timeout: 5 }),
+    end,
     sql: sql as unknown as PostgresD1Client['sql'],
   }
 }

@@ -52,6 +52,7 @@ import {
   DURABLE_INFERENCE_TTL_SECONDS,
 } from './durable-inference-proxy'
 import { type DurableStreamNamespace } from './durable-inference-do-transport'
+import { acquireSharedPostgresClient } from '../khala-sync-postgres-pool'
 
 // The DO addressed streams at `/v1/stream/{streamId}` (durable-stream
 // `http.ts` STREAM_URL_PREFIX). Same URL scheme here so the transport's wire
@@ -314,22 +315,18 @@ type PostgresJsClient = DurableStreamSqlTx & {
 export const makePostgresJsDurableInferenceStreamSession = async (
   connectionString: string,
 ): Promise<DurableInferenceStreamSession> => {
-  const mod = (await import('postgres')) as unknown as {
-    default: (
-      connectionString: string,
-      options: Record<string, unknown>,
-    ) => PostgresJsClient
-  }
-  const sql = mod.default(connectionString, {
-    connect_timeout: 10,
-    idle_timeout: 60,
-    max: 1,
-    prepare: false,
+  // On Cloud Run this reuses the shared 'inference' pool; `end` is a no-op
+  // there, so a finishing stream producer never tears the pool down. On
+  // Workers it stays a real per-session teardown.
+  const { sql, end } = await acquireSharedPostgresClient<PostgresJsClient>({
+    connectionString,
+    options: { connect_timeout: 10, idle_timeout: 60, prepare: false },
+    variant: 'inference',
   })
   return {
     cleanupExpired: ttlSeconds =>
       deleteExpiredStreams(sql as unknown as DurableStreamSqlTx, ttlSeconds),
-    end: () => sql.end({ timeout: 5 }),
+    end,
     // postgres.js exposes the same tagged-template + `begin` surface as Bun
     // SQL; the cast is the single deliberate driver seam, proven equivalent
     // by the oa-infra conformance suite's `postgres.js` run.

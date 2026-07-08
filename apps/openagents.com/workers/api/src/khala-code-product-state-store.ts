@@ -28,6 +28,7 @@ import {
   type KhalaSyncPushSqlClient,
   type MakeKhalaSyncPushSqlClient,
 } from './khala-sync-push-routes'
+import { acquireSharedPostgresClient } from './khala-sync-postgres-pool'
 import { logWorkerRouteWarning } from './observability'
 import {
   makePostgresD1Database,
@@ -849,33 +850,29 @@ const postgresMirrorForEnv = (
 export const defaultMakeKhalaCodeProductStateD1Client = async (
   connectionString: string,
 ): Promise<PostgresD1Client> => {
-  const mod = (await import('postgres')) as unknown as {
-    default: (
-      connectionString: string,
-      options: Record<string, unknown>,
-    ) => {
-      unsafe: (text: string, params: Array<unknown>) => Promise<Array<Record<string, unknown>>>
-      begin: <A>(fn: (tx: unknown) => Promise<A>) => Promise<A>
-      end: (options?: { timeout?: number }) => Promise<void>
-    }
-  }
-  const sql = mod.default(connectionString, {
-    connect_timeout: 10,
-    max: 1,
-    prepare: false,
-    types: {
-      // Parse int8 (oid 20) as a JS number instead of postgres.js's default
-      // string, so bigint twin columns match the D1 numeric shape.
-      bigint: {
-        from: [20],
-        parse: (value: string) => Number(value),
-        serialize: (value: number | bigint) => value.toString(),
-        to: 20,
+  const { sql, end } = await acquireSharedPostgresClient({
+    connectionString,
+    // On Cloud Run this reuses the shared 'd1-bigint' pool; its int8→Number
+    // `types` parser must never be shared with the raw-string 'sync' pool, so
+    // it keys a distinct pool variant.
+    options: {
+      connect_timeout: 10,
+      prepare: false,
+      types: {
+        // Parse int8 (oid 20) as a JS number instead of postgres.js's default
+        // string, so bigint twin columns match the D1 numeric shape.
+        bigint: {
+          from: [20],
+          parse: (value: string) => Number(value),
+          serialize: (value: number | bigint) => value.toString(),
+          to: 20,
+        },
       },
     },
+    variant: 'd1-bigint',
   })
   return {
-    end: () => sql.end({ timeout: 5 }),
+    end,
     sql: sql as unknown as PostgresD1Client['sql'],
   }
 }

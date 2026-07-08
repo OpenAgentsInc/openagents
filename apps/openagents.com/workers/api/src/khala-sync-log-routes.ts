@@ -93,6 +93,7 @@ import type {
   KhalaSyncPushSqlClient,
   MakeKhalaSyncPushSqlClient,
 } from './khala-sync-push-routes'
+import { acquireSharedPostgresClient } from './khala-sync-postgres-pool'
 import type { KhalaSyncScopeReadResolver } from './khala-sync-scope-auth'
 
 type HttpResponse = globalThis.Response
@@ -167,30 +168,19 @@ const syncErrorResponse = (
 const invalidRequest = (messageSafe: string): HttpResponse =>
   syncErrorResponse(400, 'invalid_request', messageSafe, false)
 
-// Same transaction-mode-safe postgres.js client discipline as the push
-// route (SPEC §4): one connection, unnamed statements only, no session
-// state. Duplicated rather than exported from the push route so each
-// route's driver seam stays independently visible and testable.
+// Same transaction-mode-safe postgres.js discipline as the push route
+// (SPEC §4): unnamed statements only, no session state. On Cloud Run this
+// reuses the shared 'sync' pool via `acquireSharedPostgresClient` instead of
+// opening a fresh connection per request.
 const defaultMakeSqlClient: MakeKhalaSyncPushSqlClient = async (
   connectionString,
 ) => {
-  const mod = (await import('postgres')) as unknown as {
-    default: (
-      connectionString: string,
-      options: Record<string, unknown>,
-    ) => {
-      end: (options?: { timeout?: number }) => Promise<void>
-    }
-  }
-  const sql = mod.default(connectionString, {
-    connect_timeout: 10,
-    max: 1,
-    prepare: false,
+  const { sql, end } = await acquireSharedPostgresClient({
+    connectionString,
+    options: { connect_timeout: 10, prepare: false },
+    variant: 'sync',
   })
-  return {
-    end: () => sql.end({ timeout: 5 }),
-    sql: sql as unknown as SyncSql,
-  }
+  return { end, sql: sql as unknown as SyncSql }
 }
 
 // ---------------------------------------------------------------------------

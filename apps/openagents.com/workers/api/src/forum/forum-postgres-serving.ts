@@ -52,6 +52,7 @@ import {
   type KhalaSyncPushSqlClient,
   type MakeKhalaSyncPushSqlClient,
 } from '../khala-sync-push-routes'
+import { acquireSharedPostgresClient } from '../khala-sync-postgres-pool'
 import { logWorkerRouteWarning } from '../observability'
 
 /**
@@ -546,28 +547,27 @@ export const makeForumPostgresServingDatabase = (
 export const makeForumServingSqlClient: MakeKhalaSyncPushSqlClient = async (
   connectionString,
 ) => {
-  const mod = (await import('postgres')) as unknown as {
-    default: (
-      connectionString: string,
-      options: Record<string, unknown>,
-    ) => { end: (options?: { timeout?: number }) => Promise<void> }
-  }
-  const sql = mod.default(connectionString, {
-    connect_timeout: 10,
-    max: 1,
-    prepare: false,
-    types: {
-      // Override the built-in int8 parser: return Number, not string.
-      bigint: {
-        from: [20],
-        parse: (value: string) => Number(value),
-        serialize: (value: unknown) => String(value),
-        to: 20,
+  // On Cloud Run this reuses the shared int8→Number 'd1-bigint' pool instead
+  // of a fresh connection per query.
+  const { sql, end } = await acquireSharedPostgresClient({
+    connectionString,
+    options: {
+      connect_timeout: 10,
+      prepare: false,
+      types: {
+        // Override the built-in int8 parser: return Number, not string.
+        bigint: {
+          from: [20],
+          parse: (value: string) => Number(value),
+          serialize: (value: unknown) => String(value),
+          to: 20,
+        },
       },
     },
+    variant: 'd1-bigint',
   })
   return {
-    end: () => sql.end({ timeout: 5 }),
+    end,
     sql: sql as unknown as KhalaSyncPushSqlClient['sql'],
   }
 }

@@ -33,6 +33,7 @@
 import { Effect } from 'effect'
 
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
+import { acquireSharedPostgresClient } from './khala-sync-postgres-pool'
 import { currentEpochMillis } from './runtime-primitives'
 
 type HttpResponse = globalThis.Response
@@ -96,31 +97,24 @@ export const redactConnectionDetails = (message: string): string =>
 export const defaultMakeSqlClient: MakeKhalaSyncSmokeSqlClient = async (
   connectionString,
 ) => {
-  const mod = (await import('postgres')) as unknown as {
-    default: (
-      connectionString: string,
-      options: Record<string, unknown>,
-    ) => {
-      unsafe: (
-        text: string,
-        params: ReadonlyArray<string>,
-      ) => Promise<ReadonlyArray<Record<string, unknown>>>
-      end: (options?: { timeout?: number }) => Promise<void>
-    }
-  }
-
-  // Transaction-mode-safe client: one connection, unnamed statements only
-  // (`prepare: false`), no session state. `fetch_types: false` skips the
-  // connect-time type-fetch query — this smoke only reads ints.
-  const sql = mod.default(connectionString, {
-    connect_timeout: 10,
-    fetch_types: false,
-    max: 1,
-    prepare: false,
+  // Transaction-mode-safe client: unnamed statements only (`prepare: false`),
+  // no session state. `fetch_types: false` skips the connect-time type-fetch
+  // query — this smoke only reads ints. On Cloud Run this reuses the shared
+  // 'smoke' pool instead of a fresh connection per smoke run.
+  const { sql, end } = await acquireSharedPostgresClient<{
+    unsafe: (
+      text: string,
+      params: ReadonlyArray<string>,
+    ) => Promise<ReadonlyArray<Record<string, unknown>>>
+    end: (options?: { timeout?: number }) => Promise<void>
+  }>({
+    connectionString,
+    options: { connect_timeout: 10, fetch_types: false, prepare: false },
+    variant: 'smoke',
   })
 
   return {
-    end: () => sql.end({ timeout: 5 }),
+    end,
     query: (text, params) => sql.unsafe(text, params),
   }
 }
