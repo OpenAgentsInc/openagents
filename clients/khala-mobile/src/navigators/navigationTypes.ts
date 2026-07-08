@@ -17,6 +17,7 @@ export type AppStackParamList = {
     threadId: string
   }
   ThreadMessages: {
+    createdLocally?: boolean
     threadId: string
     title?: string
   }

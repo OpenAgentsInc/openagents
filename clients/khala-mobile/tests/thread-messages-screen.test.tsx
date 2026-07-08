@@ -74,6 +74,9 @@ describe("contract khala_mobile.thread_messages.rn_component_mount_coverage.v1 â
     expect(source).toContain("Loading messages")
     expect(source).toContain("No messages yet")
     expect(source).toContain("Thread unavailable")
+    expect(source).toContain("createdLocally = false")
+    expect(source).toContain("emptyLocalDraft")
+    expect(source).toContain("scopeDenied")
     expect(source).toContain("Sync unavailable")
   })
 

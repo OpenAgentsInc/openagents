@@ -255,7 +255,7 @@ export const ThreadListScreen = ({ navigation }: ThreadListScreenProps) => {
       if (!created.ok) {
         throw new Error(created.error ?? "Could not create a new thread.")
       }
-      navigation.navigate("ThreadMessages", { threadId, title })
+      navigation.navigate("ThreadMessages", { createdLocally: true, threadId, title })
     } catch (error) {
       setNewThreadError(error instanceof Error ? error.message : String(error))
     } finally {
@@ -300,7 +300,7 @@ export const ThreadListScreen = ({ navigation }: ThreadListScreenProps) => {
         // stuck on, and it naturally never shows again once the user has any
         // thread at all.
         <OnboardingFlow
-          onThreadCreated={({ threadId, title }) => navigation.replace("ThreadMessages", { threadId, title })}
+          onThreadCreated={({ threadId, title }) => navigation.replace("ThreadMessages", { createdLocally: true, threadId, title })}
         />
       ) : (
         <FlatList

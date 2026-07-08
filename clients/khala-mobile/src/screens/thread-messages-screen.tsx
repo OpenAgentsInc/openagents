@@ -109,7 +109,7 @@ const atBottomFromScroll = (event: NativeSyntheticEvent<NativeScrollEvent>): boo
  * quote, new-thread escape hatch — is unchanged.
  */
 export const ThreadMessagesScreen = ({ navigation, route }: ThreadMessagesScreenProps) => {
-  const { threadId, title } = route.params
+  const { createdLocally = false, threadId, title } = route.params
   const { theme, themed } = useAppTheme()
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- shared scroll ref across two independently-typed FlatLists (chat vs. transcript)
   const listRef = useRef<FlatList<any>>(null)
@@ -190,7 +190,7 @@ export const ThreadMessagesScreen = ({ navigation, route }: ThreadMessagesScreen
       if (!created.ok) {
         throw new Error(created.error ?? "Could not create a new thread.")
       }
-      navigation.replace("ThreadMessages", { threadId: newThreadId, title: newTitle })
+      navigation.replace("ThreadMessages", { createdLocally: true, threadId: newThreadId, title: newTitle })
     } catch (error) {
       setNewThreadError(error instanceof Error ? error.message : String(error))
       setCreatingThread(false)
@@ -255,7 +255,14 @@ export const ThreadMessagesScreen = ({ navigation, route }: ThreadMessagesScreen
   }, [messages.length, transcriptParts.length])
 
   const status = hasRichTranscript ? runtimeState.status : chatState.status
-  const loading = status === "loading" && messages.length === 0 && transcriptParts.length === 0
+  const scopeDenied =
+    chatState.error === "Khala Sync scope access was denied" ||
+    runtimeState.error === "Khala Sync scope access was denied" ||
+    turnState.error === "Khala Sync scope access was denied" ||
+    threadEntityState.error === "Khala Sync scope access was denied"
+  const emptyLocalDraft = createdLocally && messages.length === 0 && transcriptParts.length === 0
+  const loading = !emptyLocalDraft && status === "loading" && messages.length === 0 && transcriptParts.length === 0
+  const threadUnavailable = status === "error" && !(emptyLocalDraft && scopeDenied)
 
   const repoBound = boundRepo !== undefined && boundRepo !== null
 
@@ -297,7 +304,7 @@ export const ThreadMessagesScreen = ({ navigation, route }: ThreadMessagesScreen
             <EmptyState style={$flex1Center} heading="Not signed in" content="Restart the app to sign in again." />
           ) : syncRuntimeStatus === "error" ? (
             <EmptyState style={$flex1Center} status="error" heading="Sync unavailable" content={syncRuntimeError ?? undefined} />
-          ) : status === "error" ? (
+          ) : threadUnavailable ? (
             <EmptyState
               style={$flex1Center}
               status="error"
