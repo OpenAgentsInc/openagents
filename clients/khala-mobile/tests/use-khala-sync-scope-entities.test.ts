@@ -68,6 +68,14 @@ const flush = async (ticks = 20): Promise<void> => {
   for (let i = 0; i < ticks; i++) await Promise.resolve()
 }
 
+const eventually = async (predicate: () => boolean, attempts = 20): Promise<void> => {
+  for (let index = 0; index < attempts; index++) {
+    if (predicate()) return
+    await flush(1)
+  }
+  expect(predicate()).toBe(true)
+}
+
 const expoSqliteFromBun = (): { module: ExpoSqliteModule; databases: Map<string, Database> } => {
   const databases = new Map<string, Database>()
   const open = (name: string): ExpoSqliteDatabase => {
@@ -130,6 +138,12 @@ class ScopeEntitiesFakeServer {
       }
     }
     return [...state.values()]
+  }
+
+  hasThread(ownerUserId: string, threadId: string): boolean {
+    return this.fold(personalScope(ownerUserId)).some(entry =>
+      entry.entityType === "chat_thread" && entry.entityId === threadId
+    )
   }
 
   commit(scope: SyncScope, entries: ReadonlyArray<FakeEntry>): void {
@@ -328,6 +342,7 @@ describe("useKhalaSyncScopeEntities (thread revisit local-first cache)", () => {
     if (!first.ok) return
 
     await first.runtime.createThread({ threadId: THREAD_ID, title: "Revisit test" })
+    await eventually(() => server.hasThread(OWNER_ID, THREAD_ID))
     await first.runtime.appendMessage({
       body: "message from before you closed the app",
       messageId: "chat-message.before-reopen",

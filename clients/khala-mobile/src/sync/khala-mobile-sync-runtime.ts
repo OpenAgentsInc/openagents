@@ -55,6 +55,7 @@ import {
 
 const KHALA_MOBILE_SYNC_SCHEMA_VERSION = SyncSchemaVersion.make(1)
 const DEFAULT_CHAT_LIMIT = 500
+const MOBILE_COLLECTION_ACK_TIMEOUT_MS = 30_000
 
 export type KhalaMobileSyncPhase =
   | "idle"
@@ -328,7 +329,7 @@ export const createKhalaMobileChatRuntime = (
     collections.chatThreadsCollection = createCollection(
       chatThreadKhalaSyncCollectionOptions({
         awaitMutationPollIntervalMs: 0,
-        awaitMutationTimeoutMs: 5_000,
+        awaitMutationTimeoutMs: MOBILE_COLLECTION_ACK_TIMEOUT_MS,
         createThreadMutator: input.mutators.createThread,
         id: "khala-mobile-chat-threads",
         mutationTracker: input.mutationTracker,
@@ -354,7 +355,7 @@ export const createKhalaMobileChatRuntime = (
       chatMessageKhalaSyncCollectionOptions({
         appendMessageMutator: input.mutators.appendMessage,
         awaitMutationPollIntervalMs: 0,
-        awaitMutationTimeoutMs: 5_000,
+        awaitMutationTimeoutMs: MOBILE_COLLECTION_ACK_TIMEOUT_MS,
         id: `khala-mobile-chat-messages-${threadId}`,
         mutationTracker: input.mutationTracker,
         onError: () => undefined,
@@ -472,7 +473,11 @@ export const createKhalaMobileChatRuntime = (
             updatedAt: nowIso
           })
         )
-        await tx.isPersisted.promise
+        // New thread is the user's escape hatch from a wedged/failed turn.
+        // Do not block navigation on the remote sync acknowledgement; the
+        // optimistic overlay already contains the thread, and any later server
+        // rejection is surfaced through the shared rejection ledger.
+        void tx.isPersisted.promise.catch(() => undefined)
         return { ok: true, threadId: request.threadId }
       } catch (error) {
         return { error: errorText(error), ok: false, threadId: request.threadId }

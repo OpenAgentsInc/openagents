@@ -51,6 +51,17 @@ const FIXED_TIME = "2026-07-04T20:00:00.000Z"
 
 const tick = (): Promise<void> => new Promise(resolve => setTimeout(resolve, 0))
 
+const eventually = async (
+  predicate: () => boolean,
+  attempts = 20,
+): Promise<void> => {
+  for (let index = 0; index < attempts; index++) {
+    if (predicate()) return
+    await tick()
+  }
+  expect(predicate()).toBe(true)
+}
+
 const expoSqliteFromBun = (): ExpoSqliteModule => {
   const databases = new Map<string, Database>()
   const open = (name: string): ExpoSqliteDatabase => {
@@ -390,6 +401,31 @@ describe("Khala mobile Sync runtime", () => {
     await reopened.runtime.close()
   })
 
+  test("creates a new thread locally even when remote sync later rejects it", async () => {
+    const sqlite = expoSqliteFromBun()
+    const server = new MobileChatSyncServer()
+    const opened = await openKhalaMobileSyncRuntime({
+      databaseName: "mobile-sync-new-thread-local-first",
+      now: () => new Date(FIXED_TIME),
+      ownerUserId: OWNER_ID,
+      randomId: () => "client-new-thread-local-first",
+      secureTokenLoader: async () => "oa_agent_mobile_token",
+      sleep: () => tick(),
+      sqliteLoader: async () => sqlite,
+      syncBaseUrl: "https://openagents.test",
+      transport: config => fakeTransport(server, config.authToken)
+    })
+    expect(opened.ok).toBe(true)
+    if (!opened.ok) return
+
+    server.rejectPushes = true
+    await expect(opened.runtime.createThread({
+      threadId: THREAD_ID,
+      title: "Local escape hatch"
+    })).resolves.toEqual({ ok: true, threadId: THREAD_ID })
+    await opened.runtime.close()
+  })
+
   test("returns public-safe rejection state without retaining rejected bodies", async () => {
     const sqlite = expoSqliteFromBun()
     const server = new MobileChatSyncServer()
@@ -408,6 +444,7 @@ describe("Khala mobile Sync runtime", () => {
     if (!opened.ok) return
 
     await opened.runtime.createThread({ threadId: THREAD_ID, title: "Rejected" })
+    await eventually(() => server.currentThread(THREAD_ID) !== null)
     server.rejectPushes = true
     const rejected = await opened.runtime.appendMessage({
       body: "private rejected body",
