@@ -37,6 +37,7 @@ import { Route as ArtanisIndexRouteImport } from './routes/artanis/index'
 import { Route as WorkspacesWorkspaceIdRouteImport } from './routes/workspaces/$workspaceId'
 import { Route as SitesDemoCheckoutRouteImport } from './routes/sites/demo-checkout'
 import { Route as ShareShareIdRouteImport } from './routes/share/$shareId'
+import { Route as PreviewSalesLandingRouteImport } from './routes/preview/sales-landing'
 import { Route as PreviewLandingRouteImport } from './routes/preview/landing'
 import { Route as KhalaChatSyncRouteImport } from './routes/khala/chat-sync'
 import { Route as DocsSlugRouteImport } from './routes/docs/$slug'
@@ -193,6 +194,11 @@ const ShareShareIdRoute = ShareShareIdRouteImport.update({
   path: '/share/$shareId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PreviewSalesLandingRoute = PreviewSalesLandingRouteImport.update({
+  id: '/preview/sales-landing',
+  path: '/preview/sales-landing',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PreviewLandingRoute = PreviewLandingRouteImport.update({
   id: '/preview/landing',
   path: '/preview/landing',
@@ -300,6 +306,7 @@ export interface FileRoutesByFullPath {
   '/docs/$slug': typeof DocsSlugRoute
   '/khala/chat-sync': typeof KhalaChatSyncRoute
   '/preview/landing': typeof PreviewLandingRoute
+  '/preview/sales-landing': typeof PreviewSalesLandingRoute
   '/share/$shareId': typeof ShareShareIdRoute
   '/sites/demo-checkout': typeof SitesDemoCheckoutRouteWithChildren
   '/workspaces/$workspaceId': typeof WorkspacesWorkspaceIdRoute
@@ -345,6 +352,7 @@ export interface FileRoutesByTo {
   '/docs/$slug': typeof DocsSlugRoute
   '/khala/chat-sync': typeof KhalaChatSyncRoute
   '/preview/landing': typeof PreviewLandingRoute
+  '/preview/sales-landing': typeof PreviewSalesLandingRoute
   '/share/$shareId': typeof ShareShareIdRoute
   '/sites/demo-checkout': typeof SitesDemoCheckoutRouteWithChildren
   '/workspaces/$workspaceId': typeof WorkspacesWorkspaceIdRoute
@@ -391,6 +399,7 @@ export interface FileRoutesById {
   '/docs/$slug': typeof DocsSlugRoute
   '/khala/chat-sync': typeof KhalaChatSyncRoute
   '/preview/landing': typeof PreviewLandingRoute
+  '/preview/sales-landing': typeof PreviewSalesLandingRoute
   '/share/$shareId': typeof ShareShareIdRoute
   '/sites/demo-checkout': typeof SitesDemoCheckoutRouteWithChildren
   '/workspaces/$workspaceId': typeof WorkspacesWorkspaceIdRoute
@@ -438,6 +447,7 @@ export interface FileRouteTypes {
     | '/docs/$slug'
     | '/khala/chat-sync'
     | '/preview/landing'
+    | '/preview/sales-landing'
     | '/share/$shareId'
     | '/sites/demo-checkout'
     | '/workspaces/$workspaceId'
@@ -483,6 +493,7 @@ export interface FileRouteTypes {
     | '/docs/$slug'
     | '/khala/chat-sync'
     | '/preview/landing'
+    | '/preview/sales-landing'
     | '/share/$shareId'
     | '/sites/demo-checkout'
     | '/workspaces/$workspaceId'
@@ -528,6 +539,7 @@ export interface FileRouteTypes {
     | '/docs/$slug'
     | '/khala/chat-sync'
     | '/preview/landing'
+    | '/preview/sales-landing'
     | '/share/$shareId'
     | '/sites/demo-checkout'
     | '/workspaces/$workspaceId'
@@ -574,6 +586,7 @@ export interface RootRouteChildren {
   DocsSlugRoute: typeof DocsSlugRoute
   KhalaChatSyncRoute: typeof KhalaChatSyncRoute
   PreviewLandingRoute: typeof PreviewLandingRoute
+  PreviewSalesLandingRoute: typeof PreviewSalesLandingRoute
   ShareShareIdRoute: typeof ShareShareIdRoute
   SitesDemoCheckoutRoute: typeof SitesDemoCheckoutRouteWithChildren
   WorkspacesWorkspaceIdRoute: typeof WorkspacesWorkspaceIdRoute
@@ -789,6 +802,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ShareShareIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/preview/sales-landing': {
+      id: '/preview/sales-landing'
+      path: '/preview/sales-landing'
+      fullPath: '/preview/sales-landing'
+      preLoaderRoute: typeof PreviewSalesLandingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/preview/landing': {
       id: '/preview/landing'
       path: '/preview/landing'
@@ -936,6 +956,7 @@ const rootRouteChildren: RootRouteChildren = {
   DocsSlugRoute: DocsSlugRoute,
   KhalaChatSyncRoute: KhalaChatSyncRoute,
   PreviewLandingRoute: PreviewLandingRoute,
+  PreviewSalesLandingRoute: PreviewSalesLandingRoute,
   ShareShareIdRoute: ShareShareIdRoute,
   SitesDemoCheckoutRoute: SitesDemoCheckoutRouteWithChildren,
   WorkspacesWorkspaceIdRoute: WorkspacesWorkspaceIdRoute,
