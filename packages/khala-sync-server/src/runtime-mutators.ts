@@ -1,5 +1,4 @@
 import {
-  canonicalJson,
   decodeKhalaRuntimeControlIntent,
   decodeKhalaRuntimeEvent,
   decodeRuntimeControlIntentEntity,
@@ -373,6 +372,14 @@ const insertControlIntent = async (
     ownerUserId: ctx.userId,
     status,
   })
+  // `intent_json` is jsonb: bind the OBJECT, never a pre-stringified string.
+  // Both drivers (Bun's `SQL` in tests, postgres.js over Hyperdrive in the
+  // Worker) serialize a JS object to jsonb exactly once. Passing an
+  // already-serialized string (e.g. `canonicalJson(...)`) makes the driver
+  // JSON-encode it AGAIN, storing a jsonb string SCALAR
+  // (`"{\"bodyRef\":...}"`, `jsonb_typeof = 'string'`) instead of an object,
+  // so `intent_json->>'bodyRef'` is NULL. That double-encoding broke hosted
+  // chat turn resolution; the readers stay defensive to both encodings.
   await ctx.writer.sql`
     INSERT INTO khala_sync_runtime_control_intents
       (intent_id, thread_id, turn_id, owner_user_id, kind, status,
@@ -380,7 +387,7 @@ const insertControlIntent = async (
     VALUES
       (${entity.intentId}, ${entity.threadId}, ${entity.turnId},
        ${entity.ownerUserId}, ${entity.kind}, ${entity.status},
-       ${intent.idempotencyKey}, ${canonicalJson(entity.intent)}::jsonb,
+       ${intent.idempotencyKey}, ${entity.intent}::jsonb,
        ${entity.createdAt}, ${entity.updatedAt})
   `
   await appendControlIntentEntityChanges(ctx, entity)
@@ -749,6 +756,9 @@ export const runtimeRecordEventMutator: MutatorDefinition =
         nowIso,
         ownerUserId: ctx.userId,
       })
+      // `event_json` is jsonb: bind the OBJECT (see `insertControlIntent`);
+      // a pre-stringified string would be double-encoded into a jsonb string
+      // scalar.
       await ctx.writer.sql`
         INSERT INTO khala_sync_runtime_events
           (event_id, turn_id, thread_id, owner_user_id, kind, sequence,
@@ -756,7 +766,7 @@ export const runtimeRecordEventMutator: MutatorDefinition =
         VALUES
           (${eventEntity.eventId}, ${eventEntity.turnId}, ${eventEntity.threadId},
            ${eventEntity.ownerUserId}, ${eventEntity.kind}, ${eventEntity.sequence},
-           ${eventEntity.observedAt}, ${canonicalJson(eventEntity.event)}::jsonb,
+           ${eventEntity.observedAt}, ${eventEntity.event}::jsonb,
            ${eventEntity.createdAt})
       `
       await appendRuntimeEventEntityChange(ctx, eventEntity)

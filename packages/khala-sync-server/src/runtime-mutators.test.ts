@@ -477,6 +477,72 @@ describe.skipIf(!hasLocalPostgres())(
       expect(changelogRows[0]!.serialized).not.toContain(rawPrompt)
     })
 
+    test("intent_json and event_json are stored as jsonb OBJECTS (not double-encoded string scalars)", async () => {
+      const client = freshClient()
+      const threadId = "runtime-thread.jsonb-object.1"
+      const turnId = "runtime-turn.jsonb-object.1"
+      const bodyRef = "chat_message.jsonb-object.prompt"
+
+      const response = await executePush({
+        registry,
+        request: pushRequest(client, [
+          envelope(
+            1,
+            RUNTIME_START_TURN_MUTATOR_NAME,
+            controlIntent({
+              bodyRef,
+              intentId: "runtime-intent.jsonb-object.start",
+              threadId,
+              turnId,
+              kind: "turn.start",
+            }),
+          ),
+          envelope(
+            2,
+            RUNTIME_RECORD_EVENT_MUTATOR_NAME,
+            runtimeEvent({
+              eventId: "runtime-event.jsonb-object.started",
+              kind: "turn.started",
+              sequence: 0,
+              threadId,
+              turnId,
+            }),
+          ),
+        ]),
+        sql: sql as unknown as SyncSql,
+        userId: client.userId,
+      })
+
+      expect(response.results.map((result) => result.status)).toEqual([
+        "applied",
+        "applied",
+      ])
+
+      // The regression: intent_json must be a real jsonb OBJECT so
+      // `->>'bodyRef'` resolves. A double-encoded string scalar would report
+      // `jsonb_typeof = 'string'` and a NULL extraction.
+      const intentRows: Array<{ typ: string; body_ref: string | null }> =
+        await sql`
+          SELECT jsonb_typeof(intent_json) AS typ,
+                 intent_json->>'bodyRef' AS body_ref
+          FROM khala_sync_runtime_control_intents
+          WHERE turn_id = ${turnId} AND kind = 'turn.start'
+        `
+      expect(intentRows).toHaveLength(1)
+      expect(intentRows[0]!.typ).toBe("object")
+      expect(intentRows[0]!.body_ref).toBe(bodyRef)
+
+      const eventRows: Array<{ typ: string; kind: string | null }> = await sql`
+        SELECT jsonb_typeof(event_json) AS typ,
+               event_json->>'kind' AS kind
+        FROM khala_sync_runtime_events
+        WHERE turn_id = ${turnId}
+      `
+      expect(eventRows).toHaveLength(1)
+      expect(eventRows[0]!.typ).toBe("object")
+      expect(eventRows[0]!.kind).toBe("turn.started")
+    })
+
     test("duplicate replay answers from the mutation ledger without re-executing", async () => {
       const client = freshClient()
       const turnId = "runtime-turn.duplicate.1"
