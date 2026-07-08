@@ -3,6 +3,30 @@
     {
       "colorScheme": "dark",
       "harness": "maestro-checkpoint",
+      "height": 2400,
+      "id": "khala.mobile.android.github-sign-in-interaction.pixel-8.dark",
+      "redactionCheckedAt": "2026-07-07T19:10:00.000Z",
+      "reducedMotion": "no-preference",
+      "screenshot": "screenshots/khala.mobile.android.github-sign-in-interaction.pixel-8.dark.png",
+      "sha256": "6a38f2705e42e8058bfeb7b3feb4486afd9c72ed7540b4bcd4934b8366043dbb",
+      "viewport": "pixel-8-emulator",
+      "width": 1080
+    },
+    {
+      "colorScheme": "dark",
+      "harness": "maestro-checkpoint",
+      "height": 2400,
+      "id": "khala.mobile.android.launch-fallback.pixel-8.dark",
+      "redactionCheckedAt": "2026-07-07T19:10:00.000Z",
+      "reducedMotion": "no-preference",
+      "screenshot": "screenshots/khala.mobile.android.launch-fallback.pixel-8.dark.png",
+      "sha256": "3c169b4e9374480e72ebf44d72397689c10cbfecc79ef311a29de7d25233ec7b",
+      "viewport": "pixel-8-emulator",
+      "width": 1080
+    },
+    {
+      "colorScheme": "dark",
+      "harness": "maestro-checkpoint",
       "height": 2532,
       "id": "khala.mobile.screen.thread-empty.iphone-17e.dark",
       "redactionCheckedAt": "2026-07-07T22:45:00.000Z",

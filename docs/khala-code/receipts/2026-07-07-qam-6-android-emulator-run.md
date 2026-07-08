@@ -24,6 +24,7 @@ bash clients/khala-mobile/scripts/android-emulator-test-run.sh
 - PASS: APK installed on AVD `khala_test`.
 - PASS: Maestro `LaunchFallback.yaml`.
 - PASS: Maestro `LaunchGitHubSignInInteraction.yaml`.
+- PASS: Android-keyed visual baselines blessed from emulator screencaps.
 - INCONCLUSIVE: `SignedInThreadSmoke.yaml`, skipped because public-safe signed-in
   seed environment was absent.
 
@@ -43,6 +44,22 @@ bash clients/khala-mobile/scripts/android-emulator-test-run.sh
   ]
 }
 ```
+
+## Android Visual Baselines
+
+- Baseline report:
+  `docs/khala-code/receipts/2026-07-07-qam-6-android-visual-baselines.json`
+- Baseline manifest:
+  `docs/khala-code/receipts/qam-4-baselines/manifest.json`
+- Android baseline entries:
+  - `khala.mobile.android.launch-fallback.pixel-8.dark`
+  - `khala.mobile.android.github-sign-in-interaction.pixel-8.dark`
+- Candidate captures:
+  - `docs/khala-code/receipts/qam-6-android-captures/khala.mobile.android.launch-fallback.pixel-8.dark.png`
+  - `docs/khala-code/receipts/qam-6-android-captures/khala.mobile.android.github-sign-in-interaction.pixel-8.dark.png`
+- Blessed baseline PNGs:
+  - `docs/khala-code/receipts/qam-4-baselines/screenshots/khala.mobile.android.launch-fallback.pixel-8.dark.png`
+  - `docs/khala-code/receipts/qam-4-baselines/screenshots/khala.mobile.android.github-sign-in-interaction.pixel-8.dark.png`
 
 ## Blocker
 

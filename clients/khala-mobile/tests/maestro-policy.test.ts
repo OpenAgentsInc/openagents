@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test"
 
 const mobileRoot = new URL("../", import.meta.url)
+const repoRoot = new URL("../../../", import.meta.url)
 
 const read = (path: string) => Bun.file(new URL(path, mobileRoot)).text()
+const readRepo = (path: string) => Bun.file(new URL(path, repoRoot)).text()
 
 describe("Khala mobile Maestro flows", () => {
   test("define local-only startup and smoke flows", async () => {
@@ -62,5 +64,38 @@ describe("Khala mobile Maestro flows", () => {
     expect(script).not.toContain("eas ")
     expect(script).not.toMatch(/oa_agent_[A-Za-z0-9_-]{8,}/)
     expect(script).not.toMatch(/Bearer\s+[A-Za-z0-9._-]+/)
+  })
+
+  test("records Android-keyed visual baselines from emulator screencaps", async () => {
+    const [manifestText, reportText] = await Promise.all([
+      readRepo("docs/khala-code/receipts/qam-4-baselines/manifest.json"),
+      readRepo("docs/khala-code/receipts/2026-07-07-qam-6-android-visual-baselines.json"),
+    ])
+    const manifest = JSON.parse(manifestText) as {
+      entries: Array<{ id: string; screenshot: string; viewport: string }>
+      schema: string
+    }
+    const report = JSON.parse(reportText) as {
+      ok: boolean
+      results: Array<{ id: string; status: string }>
+      schema: string
+      simulatorTruth: string
+    }
+    const androidEntries = manifest.entries.filter(entry => entry.viewport === "pixel-8-emulator")
+
+    expect(manifest.schema).toBe("openagents.khala_visual_baselines.v1")
+    expect(report.schema).toBe("openagents.khala_mobile.visual_tier_report.v1")
+    expect(report.ok).toBe(true)
+    expect(report.simulatorTruth).toBe("captured")
+    expect(report.results.map(result => result.status)).toEqual(["blessed", "blessed"])
+    expect(androidEntries.map(entry => entry.id).sort()).toEqual([
+      "khala.mobile.android.github-sign-in-interaction.pixel-8.dark",
+      "khala.mobile.android.launch-fallback.pixel-8.dark",
+    ])
+    for (const entry of androidEntries) {
+      await expect(
+        Bun.file(new URL(`docs/khala-code/receipts/qam-4-baselines/${entry.screenshot}`, repoRoot)).exists(),
+      ).resolves.toBe(true)
+    }
   })
 })

@@ -1,0 +1,41 @@
+{
+  "baselineDir": "docs/khala-code/receipts/qam-4-baselines",
+  "blessings": [],
+  "changed": [],
+  "generatedAt": "2026-07-07T19:10:00.000Z",
+  "ok": true,
+  "results": [
+    {
+      "baseline": "screenshots/khala.mobile.android.launch-fallback.pixel-8.dark.png",
+      "candidateSha256": "3c169b4e9374480e72ebf44d72397689c10cbfecc79ef311a29de7d25233ec7b",
+      "colorScheme": "dark",
+      "harness": "maestro-checkpoint",
+      "height": 2400,
+      "id": "khala.mobile.android.launch-fallback.pixel-8.dark",
+      "reducedMotion": "no-preference",
+      "schema": "openagents.khala_visual_baselines.v1",
+      "viewport": "pixel-8-emulator",
+      "width": 1080,
+      "baselineSha256": "3c169b4e9374480e72ebf44d72397689c10cbfecc79ef311a29de7d25233ec7b",
+      "ok": true,
+      "status": "blessed"
+    },
+    {
+      "baseline": "screenshots/khala.mobile.android.github-sign-in-interaction.pixel-8.dark.png",
+      "candidateSha256": "6a38f2705e42e8058bfeb7b3feb4486afd9c72ed7540b4bcd4934b8366043dbb",
+      "colorScheme": "dark",
+      "harness": "maestro-checkpoint",
+      "height": 2400,
+      "id": "khala.mobile.android.github-sign-in-interaction.pixel-8.dark",
+      "reducedMotion": "no-preference",
+      "schema": "openagents.khala_visual_baselines.v1",
+      "viewport": "pixel-8-emulator",
+      "width": 1080,
+      "baselineSha256": "6a38f2705e42e8058bfeb7b3feb4486afd9c72ed7540b4bcd4934b8366043dbb",
+      "ok": true,
+      "status": "blessed"
+    }
+  ],
+  "schema": "openagents.khala_mobile.visual_tier_report.v1",
+  "simulatorTruth": "captured"
+}
