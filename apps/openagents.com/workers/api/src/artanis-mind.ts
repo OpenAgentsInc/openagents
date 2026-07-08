@@ -101,9 +101,18 @@ const artanisMindCompleteOnce = async (input: Readonly<{
 > => {
   const body = geminiBody(input.system, input.prompt, input.maxOutputTokens)
   const attempts: Array<{ path: string; status: number; detail: string }> = []
-  const gatewayIds = input.gatewayId !== undefined
-    ? [input.gatewayId]
-    : [...ArtanisMindGatewayCandidates]
+  // Skip the Cloudflare AI Gateway entirely when no `cf-aig` token is
+  // available: the gateway 401s without it, and we are exiting Cloudflare
+  // (the account is cancelled). Going straight to the direct Google AI Studio
+  // path — which needs only the Gemini API key — avoids a guaranteed-failing
+  // round-trip and is the working inference path post-CF. An explicit
+  // `gatewayId` (with a token) still opts back in.
+  const gatewayIds =
+    input.gatewayToken === undefined || input.gatewayToken === ''
+      ? []
+      : input.gatewayId !== undefined
+        ? [input.gatewayId]
+        : [...ArtanisMindGatewayCandidates]
   let truncated = false
 
   for (const gatewayId of gatewayIds) {

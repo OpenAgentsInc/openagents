@@ -7989,9 +7989,20 @@ const runHostedRuntimeTurnDispatchForEnv = async (
       prompt,
       system,
     })
-    return 'error' in result
-      ? { detail: 'artanis_mind_unavailable', ok: false }
-      : { ok: true, text: result.text }
+    if ('error' in result) {
+      // Surface the real reason (path/status/detail) instead of an opaque
+      // 'artanis_mind_unavailable' so a broken inference path is diagnosable
+      // from the turn's failure log rather than a mystery.
+      let detail = 'artanis_mind_unavailable'
+      try {
+        detail = `artanis_mind: ${JSON.stringify(result.error).slice(0, 300)}`
+      } catch {
+        /* keep the fallback detail */
+      }
+      logWorkerRouteWarning('hosted_runtime_inference_failed', { detail })
+      return { detail, ok: false }
+    }
+    return { ok: true, text: result.text }
   }
   const client = await defaultMakeKhalaSyncSqlClient(connectionString)
   try {
