@@ -70,6 +70,36 @@ receipt-asserting bun-test
 in the normal `test:khala-mobile` sweep on every platform and keeps the contract
 covered even where the simulator step cannot run.
 
+### Android emulator lane (opt-in, QAM-6, #8541)
+
+With `OA_QA_NIGHTLY_INCLUDE_MOBILE_ANDROID=1`, the matrix appends a second
+mobile step (independent of `OA_QA_NIGHTLY_INCLUDE_MOBILE`):
+
+- `bash clients/khala-mobile/scripts/android-emulator-test-run.sh` — the Khala
+  Mobile `mobile-android-emulator-smoke` step (step id
+  `mobile-android-emulator-smoke`).
+
+This is the Android parity of the launched-app-smoke tier oracle for
+`khala_mobile.platform.launched_app_interaction_smoke.v1`. The harness creates
+and boots the `khala_test` AVD, waits for `sys.boot_completed`, builds and
+installs the app, runs the shared launch/sign-in Maestro flows
+(`LaunchFallback.yaml`, `LaunchGitHubSignInInteraction.yaml`, and — with a build
+baked to the seeded public-safe account — `SignedInThreadSmoke.yaml`), and
+captures `adb exec-out screencap -p` PNGs for the Android-keyed visual tier
+(`khala.mobile.android.*.pixel-8.dark`). It writes a public-safe JSON receipt via
+`KHALA_ANDROID_EMULATOR_RECEIPT`. Green emulator-run receipt:
+`docs/khala-code/receipts/2026-07-07-qam-6-android-emulator-run.md`.
+
+**Preconditions (why it is opt-in, not default):** a booted Android emulator, the
+Homebrew Android SDK (`/opt/homebrew/share/android-commandlinetools`), a JDK 17,
+and `maestro` on `PATH`. The `SignedInThreadSmoke` half additionally needs a
+Release build baked with the seeded AgentFlampy creds via
+`EXPO_PUBLIC_KHALA_SYNC_DEMO_*` (the app has no manual-sign-in UI, so it
+auto-signs-in from the baked demo credentials; the baked `.env.local` is always
+removed after the build so no shippable/AAB build carries the token). The
+headless Linux owned runner has none of these, so the step is only appended when
+the flag is set on a macOS runner.
+
 ### Mobile visual tier — iOS signed-in screens (QAM-4, #8539)
 
 The QAM-4 visual-regression tier drives Maestro flows that reach the signed-in
@@ -219,6 +249,7 @@ Key environment switches:
 | `OA_QA_NIGHTLY_MONKEY_RUNS` | `16` | Number of monkey runs. |
 | `OA_QA_NIGHTLY_MONKEY_STEPS` | `64` | Steps per monkey run. |
 | `OA_QA_NIGHTLY_INCLUDE_MOBILE` | unset | Append the opt-in Khala Mobile SignedInThreadSmoke step (macOS runner with a booted iOS simulator + installed Release build only). |
+| `OA_QA_NIGHTLY_INCLUDE_MOBILE_ANDROID` | unset | Append the opt-in Khala Mobile Android emulator launch/sign-in smoke step (macOS runner with a booted Android emulator + Homebrew Android SDK + JDK 17 + `maestro` only). |
 | `OA_QA_NIGHTLY_STEP_TIMEOUT_MS` | `1800000` | Per-step timeout. |
 | `OA_QA_NIGHTLY_FILE_ISSUE` | unset | File a strict-form issue on matrix failure. |
 | `OA_QA_NIGHTLY_FILE_COVERAGE_ISSUE` | unset | File a strict-form issue when a frontier class stays zero for seven consecutive coverage days. |

@@ -794,6 +794,7 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
         "clients/khala-mobile/.maestro/flows/LaunchGitHubSignInInteraction.yaml",
         "clients/khala-mobile/.maestro/flows/SignedInThreadSmoke.yaml",
         "clients/khala-mobile/scripts/signed-in-thread-smoke-run.sh",
+        "clients/khala-mobile/scripts/signed-in-thread-smoke-android-run.sh",
         "clients/khala-mobile/tests/signed-in-thread-smoke-receipt.test.ts",
         "clients/khala-mobile/README.md",
         "clients/khala-mobile/tests/maestro-policy.test.ts",
@@ -802,6 +803,7 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
         "docs/khala-mobile/2026-07-06-android-emulator-launch-smoke-receipt.md",
         "docs/khala-mobile/2026-07-06-android-build-and-upload-runbook.md",
         "docs/khala-mobile/2026-07-07-signed-in-thread-smoke-receipt.md",
+        "docs/khala-code/receipts/2026-07-07-qam-6-android-emulator-run.md",
         "docs/qa/khala-code-nightly-matrix.md",
         "docs/khala-mobile/khala-mobile-ux-contract.md",
       ],
@@ -826,7 +828,7 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
         "The built app launches and is interactable end to end beyond a bare local build: on an iOS Release-configuration simulator, with a seeded public-safe signed-in account, sign-in resolves, the thread list renders, a seeded thread opens, the composer's lane picker is visible, and a typed message sends and appears in the transcript; the same launch and GitHub sign-in handoff are independently proven on a real Android emulator.",
       surface: "khala-mobile",
       verification:
-        "Enforced by the SignedInThreadSmoke Maestro flow (clients/khala-mobile/.maestro/flows/SignedInThreadSmoke.yaml), run on an iPhone 17 Pro iOS 26.5 Release-configuration simulator and auto-signed-in as the seeded public-safe test account: it asserts the thread list, opens the seeded thread, asserts the lane picker (Send with Claude), and sends a message that renders in the transcript. Receipt: docs/khala-mobile/2026-07-07-signed-in-thread-smoke-receipt.md (PASS, two green runs; commit cd3122682c). The bun-test oracle clients/khala-mobile/tests/signed-in-thread-smoke-receipt.test.ts asserts that receipt exists and records PASS and runs in the package test glob / repo test:khala-mobile sweep; the Maestro flow itself runs as the opt-in mobile step of the QA nightly matrix (docs/qa/khala-code-nightly-matrix.md, OA_QA_NIGHTLY_INCLUDE_MOBILE=1) given a booted simulator + installed Release build via clients/khala-mobile/scripts/signed-in-thread-smoke-run.sh. Android launch + GitHub sign-in handoff are separately receipted in docs/khala-mobile/2026-07-06-android-emulator-launch-smoke-receipt.md. A real physical-iOS-device signed-in interaction pass remains future hardening tracked outside this contract.",
+        "Enforced by the SignedInThreadSmoke Maestro flow (clients/khala-mobile/.maestro/flows/SignedInThreadSmoke.yaml), run on an iPhone 17 Pro iOS 26.5 Release-configuration simulator and auto-signed-in as the seeded public-safe test account: it asserts the thread list, opens the seeded thread, asserts the lane picker (Send with Claude), and sends a message that renders in the transcript. Receipt: docs/khala-mobile/2026-07-07-signed-in-thread-smoke-receipt.md (PASS, two green runs; commit cd3122682c). The bun-test oracle clients/khala-mobile/tests/signed-in-thread-smoke-receipt.test.ts asserts that receipt exists and records PASS and runs in the package test glob / repo test:khala-mobile sweep; the Maestro flow itself runs as the opt-in mobile step of the QA nightly matrix (docs/qa/khala-code-nightly-matrix.md, OA_QA_NIGHTLY_INCLUDE_MOBILE=1) given a booted simulator + installed Release build via clients/khala-mobile/scripts/signed-in-thread-smoke-run.sh. Android launch + GitHub sign-in handoff are separately receipted in docs/khala-mobile/2026-07-06-android-emulator-launch-smoke-receipt.md, and the full SignedInThreadSmoke flow (thread opens, lane picker visible, message sends and renders) is now ALSO proven on a real Android 15 (API 35) emulator via a baked auto-sign-in Release build — two green runs, receipt docs/khala-code/receipts/2026-07-07-qam-6-android-emulator-run.md, repeatable via clients/khala-mobile/scripts/signed-in-thread-smoke-android-run.sh (QAM-6, #8541). A real physical-iOS-device signed-in interaction pass remains future hardening tracked outside this contract.",
     },
     {
       authorityBoundary:
