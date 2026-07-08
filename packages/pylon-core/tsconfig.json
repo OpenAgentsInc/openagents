@@ -8,7 +8,25 @@
     // Keep it off here so the extraction stays a faithful relocation rather
     // than a behavior-touching rewrite; the rest of root's strictness
     // (strict, noUnusedLocals, verbatimModuleSyntax) still applies.
-    "exactOptionalPropertyTypes": false
+    "exactOptionalPropertyTypes": false,
+    // apps/pylon's tsconfig does not load @effect/language-service at all, so
+    // relocated modules authored there were never subject to its lint-style
+    // diagnostics. Root's tsconfig (which this extends) does load the plugin;
+    // extending overrides the whole `plugins` array, so re-declare it and
+    // relax the one lint that a faithfully-moved module trips
+    // (`globalErrorInEffectCatch` in workspace-materializer's Effect.tryPromise
+    // catch) from the default `warning` (which fails the typecheck) down to
+    // `message` — the same informational severity the other relocated-code
+    // hints already carry. Tightening this is a follow-up code change, not an
+    // extraction step.
+    "plugins": [
+      {
+        "name": "@effect/language-service",
+        "diagnosticSeverity": {
+          "globalErrorInEffectCatch": "message"
+        }
+      }
+    ]
   },
   "include": ["src/**/*"]
 }

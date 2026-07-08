@@ -16,3 +16,4 @@
 export * from "./claude-agent.js"
 export * from "./codex-agent.js"
 export * from "./claude-turn-reporter.js"
+export * from "./workspace-materializer.js"
