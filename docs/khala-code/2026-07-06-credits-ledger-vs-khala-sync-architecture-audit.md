@@ -229,6 +229,18 @@ The mobile client's existing `scope.user.<id>` subscription (already
 wired in `khala-mobile-sync-runtime.ts` for the thread list) would just
 gain one more entity type to read.
 
+> **Scope-taxonomy caveat (#8557):** a handful of legacy `email:`-form user
+> IDs contain an `@` (and sometimes `+`), which is outside the `SyncScope`
+> entity-id charset — so they can never form a valid `scope.user.<id>` on
+> either the server or the mobile client (the same schema runs on both), and
+> are structurally outside the sync scope taxonomy. The credit-balance
+> producer and backfill pre-check with `isScopeCompatibleUserId` and treat
+> these as a distinct *skip* (`scope_incompatible_user_id` /
+> `skippedIncompatibleCount`), never a failure. Broadening the charset is
+> explicitly not the fix (it widens the protocol surface for zero mobile
+> benefit); identity migration to a `github:`/`user_` form is the only path
+> to sync these accounts, tracked separately.
+
 **(b) Ledger write authority itself moves onto Postgres/Khala Sync's own
 mutator/transaction model** — i.e., a coding turn's charge becomes a Khala
 Sync mutator instead of a D1 batch.

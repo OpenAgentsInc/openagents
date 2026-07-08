@@ -278,6 +278,30 @@ describe('recordUserCreditBalanceDeltaBestEffort', () => {
     expect(state.applied.size).toBe(0)
   })
 
+  test('a legacy email:-form user id is a quiet fail-soft skip (never throws, never logs)', async () => {
+    // The `@` in an email-form id is outside the sync scope entity-id charset,
+    // so `personalScope` would throw; the producer must pre-check and no-op.
+    const { sql, state } = makeFakePg()
+    state.balances.set('email:foo@bar.com', { balanceUsdCents: 1_000, lastEventAt: null })
+    const { calls, log } = makeLog()
+    const deps = { binding, log, makeSqlClient: async () => clientFor(sql) }
+
+    const outcome = await recordUserCreditBalanceDeltaBestEffort(deps, {
+      deltaUsdCents: 500,
+      idempotencyKey: 'evt-email-1',
+      observedAt,
+      userId: 'email:foo@bar.com',
+    })
+    expect(outcome.outcome).toBe('skipped_scope_incompatible_user_id')
+    if (outcome.outcome === 'skipped_scope_incompatible_user_id') {
+      expect(outcome.diagnostic.reason).toBe('scope_incompatible_user_id')
+    }
+    // Fail-soft: no error log, no balance mutation, no changelog append.
+    expect(calls).toHaveLength(0)
+    expect(state.balances.get('email:foo@bar.com')?.balanceUsdCents).toBe(1_000)
+    expect(state.changelogAppends).toHaveLength(0)
+  })
+
   test('one user\'s delta never touches another user\'s balance', async () => {
     const { sql, state } = makeFakePg()
     state.balances.set('user-1', { balanceUsdCents: 1_000, lastEventAt: null })
@@ -399,6 +423,7 @@ describe('backfillUserCreditBalancesBatch', () => {
         nextCursor: null,
         processedCount: 1,
         reconciledCount: 0,
+        skippedIncompatibleCount: 0,
         unchangedCount: 0,
       })
     }
@@ -433,6 +458,7 @@ describe('backfillUserCreditBalancesBatch', () => {
         nextCursor: null,
         processedCount: 2,
         reconciledCount: 1,
+        skippedIncompatibleCount: 0,
         unchangedCount: 1,
       })
     }
@@ -463,6 +489,57 @@ describe('backfillUserCreditBalancesBatch', () => {
       ok: false,
       reason: 'no_binding',
     })
+  })
+
+  test('a legacy email:-form id is skippedIncompatibleCount (not failedCount); a valid id in the same page still backfills; re-run stays failed=0', async () => {
+    const { db, ledger } = makeD1()
+    // Same page: one scope-incompatible legacy email-form id and one valid id.
+    insertUser(db, 'email:foo@bar.com')
+    insertBalance(db, 'email:foo@bar.com', 3_000_000) // would be $3.00 if it could sync
+    insertUser(db, 'github:123')
+    insertBalance(db, 'github:123', 5_000_000) // $5.00 == 500 cents
+
+    const { sql, state } = makeFakePg()
+    const { calls, log } = makeLog()
+    const deps = { binding, ledgerDb: ledger, log, makeSqlClient: async () => clientFor(sql) }
+
+    const result = await backfillUserCreditBalancesBatch(deps, { limit: 10 })
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.report).toEqual({
+        backfilledCount: 1,
+        failedCount: 0,
+        nextCursor: null,
+        processedCount: 2,
+        reconciledCount: 0,
+        skippedIncompatibleCount: 1,
+        unchangedCount: 0,
+      })
+    }
+    // The valid user got its exact projection; the email-form id got nothing.
+    expect(state.balances.get('github:123')?.balanceUsdCents).toBe(500)
+    expect(state.balances.has('email:foo@bar.com')).toBe(false)
+    // The skip is an info-level note, NOT a failure log.
+    expect(calls).toHaveLength(1)
+    expect(calls[0]?.event).toBe(
+      'khala_sync_user_credit_balance_backfill_skipped_incompatible',
+    )
+
+    // Idempotent re-run: the valid user is now unchanged, the email id is
+    // skipped again — failed stays 0, skipped stays 1.
+    const rerun = await backfillUserCreditBalancesBatch(deps, { limit: 10 })
+    expect(rerun.ok).toBe(true)
+    if (rerun.ok) {
+      expect(rerun.report).toEqual({
+        backfilledCount: 0,
+        failedCount: 0,
+        nextCursor: null,
+        processedCount: 2,
+        reconciledCount: 0,
+        skippedIncompatibleCount: 1,
+        unchangedCount: 1,
+      })
+    }
   })
 
   test('a per-user repair failure is fail-soft: other users in the page still get backfilled', async () => {

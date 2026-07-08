@@ -6,6 +6,7 @@ import {
   encodeCreditBalanceEntity,
   EntityId,
   EntityType,
+  isScopeCompatibleUserId,
   personalScope,
 } from "@openagentsinc/khala-sync"
 import { withSyncTransaction } from "./outbox-writer.js"
@@ -269,6 +270,7 @@ export interface UserCreditBalanceProjectionDiagnostic {
   /** Coarse classification for logs/metrics; never carries row values. */
   readonly reason:
     | "credit_balance_not_initialized"
+    | "scope_incompatible_user_id"
     | "invalid_input"
     | "storage_failed"
     | "projection_failed"
@@ -325,6 +327,24 @@ export const applyUserCreditBalanceDeltaBestEffort = async (
   sql: SyncSql,
   input: UserCreditBalanceDeltaInput,
 ): Promise<UserCreditBalanceProjectionOutcome> => {
+  // Legacy `email:`-form user IDs (`@`/`+` chars) can never form a valid
+  // `scope.user.<userId>` personal scope — `personalScope(userId)` would
+  // throw inside `applyUserCreditBalanceDelta`. Pre-check WITHOUT throwing and
+  // return a distinct diagnostic so the caller can skip (not fail) it quietly.
+  // These accounts are structurally outside the sync scope taxonomy (the same
+  // schema runs on the mobile client); identity migration is the only path to
+  // sync them. See #8557.
+  if (!isScopeCompatibleUserId(input.userId)) {
+    return {
+      diagnostic: {
+        messageSafe:
+          "user credit balance projection skipped: user id cannot form a " +
+          "valid personal sync scope (legacy email-form id)",
+        reason: "scope_incompatible_user_id",
+      },
+      ok: false,
+    }
+  }
   try {
     return { ok: true, result: await applyUserCreditBalanceDelta(sql, input) }
   } catch (error) {

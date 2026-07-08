@@ -25,6 +25,7 @@
 //   been charged or granted still needs an initialized $0 projection row) and
 //   seeds each to their exact current ledger balance.
 
+import { isScopeCompatibleUserId } from '@openagentsinc/khala-sync'
 import {
   applyUserCreditBalanceDeltaBestEffort,
   readUserCreditBalance,
@@ -51,7 +52,10 @@ export type { UserCreditBalanceProjectionDiagnostic }
 export type UserCreditBalanceProjectionLog = (
   event:
     | 'khala_sync_user_credit_balance_projection_failed'
-    | 'khala_sync_user_credit_balance_backfill_failed',
+    | 'khala_sync_user_credit_balance_backfill_failed'
+    // Info-level, NOT a failure: a legacy email-form user id skipped because it
+    // cannot form a valid personal sync scope (see #8557).
+    | 'khala_sync_user_credit_balance_backfill_skipped_incompatible',
   fields: Readonly<Record<string, string | number>>,
 ) => void
 
@@ -116,6 +120,13 @@ export type UserCreditBalanceProjectionOutcome =
   | { readonly outcome: 'skipped_no_binding' }
   | { readonly outcome: 'skipped_zero_delta' }
   | {
+      // A legacy `email:`-form user id that can never form a valid personal
+      // sync scope (see #8557). Fail-soft no-op, distinct from a real
+      // transient failure — NOT logged as an error.
+      readonly outcome: 'skipped_scope_incompatible_user_id'
+      readonly diagnostic: UserCreditBalanceProjectionDiagnostic
+    }
+  | {
       readonly outcome: 'failed'
       readonly diagnostic: UserCreditBalanceProjectionDiagnostic
     }
@@ -156,6 +167,14 @@ export const recordUserCreditBalanceDeltaBestEffort = async (
             outcome: 'applied',
           }
         : { outcome: 'duplicate_idempotency_key' }
+    }
+    // A scope-incompatible (legacy email-form) user id is a structural skip,
+    // not a transient failure: no error log, distinct fail-soft outcome.
+    if (result.diagnostic.reason === 'scope_incompatible_user_id') {
+      return {
+        diagnostic: result.diagnostic,
+        outcome: 'skipped_scope_incompatible_user_id',
+      }
     }
     if (result.diagnostic.reason !== 'credit_balance_not_initialized') {
       deps.log?.('khala_sync_user_credit_balance_projection_failed', {
@@ -259,6 +278,11 @@ export type UserCreditBalanceBackfillReport = Readonly<{
   backfilledCount: number
   reconciledCount: number
   unchangedCount: number
+  /** Legacy `email:`-form user IDs that cannot form a valid personal sync
+   * scope (see #8557). Counted here — NOT in `failedCount` — so a healthy
+   * backfill reaches a true steady state (0 failed) instead of looking
+   * permanently broken. Identity migration is the only path to sync these. */
+  skippedIncompatibleCount: number
   failedCount: number
   nextCursor: string | null
 }>
@@ -300,10 +324,24 @@ export const backfillUserCreditBalancesBatch = async (
   let backfilledCount = 0
   let reconciledCount = 0
   let unchangedCount = 0
+  let skippedIncompatibleCount = 0
   let failedCount = 0
 
   await withSqlClient(deps, connectionString, async client => {
     for (const candidate of candidates) {
+      // Legacy `email:`-form user IDs (the `@`/`+` chars are outside the sync
+      // scope entity-id charset) can never form a valid `scope.user.<userId>`
+      // — `repairUserCreditBalance` would throw. Pre-check WITHOUT throwing:
+      // count as a structural skip (not a failure) and emit an info-level
+      // note, never an error log. See #8557.
+      if (!isScopeCompatibleUserId(candidate.userId)) {
+        skippedIncompatibleCount += 1
+        deps.log?.(
+          'khala_sync_user_credit_balance_backfill_skipped_incompatible',
+          { reason: 'scope_incompatible_user_id', userIdLength: candidate.userId.length },
+        )
+        continue
+      }
       const exactBalanceUsdCents = msatToUsdCentsRound(candidate.balanceMsat)
       try {
         const existing = await readUserCreditBalance(client.sql, candidate.userId)
@@ -346,6 +384,7 @@ export const backfillUserCreditBalancesBatch = async (
           : (candidates[candidates.length - 1]?.userId ?? null),
       processedCount: candidates.length,
       reconciledCount,
+      skippedIncompatibleCount,
       unchangedCount,
     },
   }

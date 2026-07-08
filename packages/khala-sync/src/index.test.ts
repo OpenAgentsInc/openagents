@@ -12,6 +12,7 @@ import {
   encodeChangelogEntry,
   encodeLiveFrame,
   fleetRunScope,
+  isScopeCompatibleUserId,
   KHALA_SYNC_PROTOCOL_VERSION,
   MustRefetchFrame,
   MutationEnvelope,
@@ -41,6 +42,19 @@ describe("khala-sync scopes", () => {
   test("rejects unstructured scope strings", () => {
     expect(() => decodeScope("not-a-scope")).toThrow()
     expect(() => decodeScope("scope..x")).toThrow()
+  })
+
+  test("isScopeCompatibleUserId pre-checks personal-scope compatibility without throwing (#8557)", () => {
+    // Valid mobile-capable identity forms.
+    expect(isScopeCompatibleUserId("user_123")).toBe(true)
+    expect(isScopeCompatibleUserId("github:456")).toBe(true)
+    // Legacy email-form IDs: the `@` (and `+`) are outside the entity-id
+    // charset, so they can never form a valid `scope.user.<id>`.
+    expect(isScopeCompatibleUserId("email:chris@openagents.com")).toBe(false)
+    expect(isScopeCompatibleUserId("email:a+tag@example.com")).toBe(false)
+    // Never throws even for a valid or invalid id — it is the throw-free
+    // counterpart to `personalScope`.
+    expect(() => isScopeCompatibleUserId("email:x@y.com")).not.toThrow()
   })
 })
 

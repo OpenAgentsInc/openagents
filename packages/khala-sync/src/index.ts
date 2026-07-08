@@ -162,6 +162,24 @@ export const fleetRunScope = (fleetRunId: string): SyncScope =>
 export const publicScope = (channel: string): SyncScope =>
   scope("public", channel)
 
+const isSyncScope = S.is(SyncScope)
+
+/**
+ * True when `userId` can form a valid personal `SyncScope`
+ * (`scope.user.<userId>`) — i.e. `personalScope(userId)` will NOT throw.
+ *
+ * Legacy `email:`-form user IDs contain an `@` (and sometimes `+`) that is
+ * outside the entity-id charset (`[A-Za-z0-9._:-]`), so they are
+ * scope-incompatible: they can never subscribe to any personal scope on
+ * either the server or the mobile client (the same schema runs on both).
+ * Lets the credit-balance producer and backfill pre-check without a throw
+ * so they can skip such IDs cleanly instead of counting them as failures.
+ * See #8557. Broadening the charset is deliberately NOT the fix — identity
+ * migration is the only path to sync these accounts.
+ */
+export const isScopeCompatibleUserId = (userId: string): boolean =>
+  isSyncScope(`scope.user.${userId}`)
+
 // ---------------------------------------------------------------------------
 // Cursor
 // ---------------------------------------------------------------------------

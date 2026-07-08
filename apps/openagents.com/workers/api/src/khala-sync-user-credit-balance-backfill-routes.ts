@@ -11,10 +11,13 @@
 //   POST { limit?, cursor? } — backfills/reconciles one bounded page (human
 //     users ordered by user id), returns
 //     { processedCount, backfilledCount, reconciledCount, unchangedCount,
-//       failedCount, nextCursor }. Repeat with `nextCursor` until it is
-//     `null` to cover every user. A per-user failure never aborts the page
-//     (see `backfillUserCreditBalancesBatch`'s fail-soft loop) — the report's
-//     `failedCount` surfaces it for a retry.
+//       skippedIncompatibleCount, failedCount, nextCursor }. Repeat with
+//     `nextCursor` until it is `null` to cover every user. A per-user failure
+//     never aborts the page (see `backfillUserCreditBalancesBatch`'s fail-soft
+//     loop) — the report's `failedCount` surfaces it for a retry. Legacy
+//     `email:`-form user IDs that cannot form a valid personal sync scope are
+//     counted in `skippedIncompatibleCount`, NOT `failedCount` (see #8557), so
+//     a healthy backfill reaches a true steady state (0 failed, N skipped).
 //
 // AUTH: same admin bearer mechanism as the other internal khala-sync routes
 // (`requireAdminApiToken`, injected as `requireOperator`). Not part of the

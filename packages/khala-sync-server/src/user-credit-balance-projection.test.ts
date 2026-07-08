@@ -67,6 +67,32 @@ describe("applyUserCreditBalanceDeltaBestEffort fail-soft", () => {
       expect(outcome.diagnostic.reason).toBe("invalid_input")
     }
   })
+
+  test("a legacy email:-form user id pre-checks to scope_incompatible_user_id without touching storage (#8557)", async () => {
+    // The `@` (and `+`) in an email-form id is outside the sync scope
+    // entity-id charset, so `personalScope` would throw. The wrapper must
+    // pre-check WITHOUT throwing and never open a transaction.
+    const neverCalled = {
+      begin: async () => {
+        throw new Error("must not be reached")
+      },
+    } as unknown as SyncSql
+    for (const userId of [
+      "email:foo@bar.com",
+      "email:a+tag@example.com",
+    ]) {
+      const outcome = await applyUserCreditBalanceDeltaBestEffort(neverCalled, {
+        deltaUsdCents: 1000,
+        idempotencyKey: "evt-email",
+        observedAt: "2026-07-04T15:20:11.412Z",
+        userId,
+      })
+      expect(outcome.ok).toBe(false)
+      if (!outcome.ok) {
+        expect(outcome.diagnostic.reason).toBe("scope_incompatible_user_id")
+      }
+    }
+  })
 })
 
 // ---------------------------------------------------------------------------
