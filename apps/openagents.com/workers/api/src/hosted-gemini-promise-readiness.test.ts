@@ -20,7 +20,7 @@ const receipt = (
   ledgerState: 'paid',
   modelEvidence: {
     requested_model: 'openagents/khala',
-    served_model: 'models/gemini-2.5-flash',
+    served_model: 'models/gemini-3.5-flash',
     supply_lane: 'vertex-gemini',
     total_tokens: 321,
     worker: 'vertex-gemini',

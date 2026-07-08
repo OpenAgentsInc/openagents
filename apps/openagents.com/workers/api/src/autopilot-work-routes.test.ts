@@ -3736,7 +3736,7 @@ describe('Autopilot work routes', () => {
     const inferenceCaller: HostedGeminiInferenceCaller = async ({
       assignmentRef,
     }) => ({
-      modelRef: 'model.hosted_gemini.gemini-2.5-flash',
+      modelRef: 'model.hosted_gemini.gemini-3.5-flash',
       responseDigestRef: `digest.${assignmentRef}.sha256.deadbeef`,
       usageRef: `usage.${assignmentRef}.io_units`,
     })
@@ -3755,7 +3755,7 @@ describe('Autopilot work routes', () => {
       assignmentRefs: [assignmentRef],
       proofRefs: [
         `proof.${assignmentRef}.hosted_gemini_executor`,
-        'model.hosted_gemini.gemini-2.5-flash',
+        'model.hosted_gemini.gemini-3.5-flash',
         `digest.${assignmentRef}.sha256.deadbeef`,
       ],
       publicSafe: true,
@@ -3787,7 +3787,7 @@ describe('Autopilot work routes', () => {
     const inferenceCaller: HostedGeminiInferenceCaller = async ({
       assignmentRef,
     }) => ({
-      modelRef: 'model.hosted_gemini.gemini-2.5-flash',
+      modelRef: 'model.hosted_gemini.gemini-3.5-flash',
       responseDigestRef: `digest.${assignmentRef}.access_token.leak`,
     })
     const { paid, paidJson } = await driveHostedGeminiBinding(

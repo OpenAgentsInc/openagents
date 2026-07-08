@@ -84,7 +84,7 @@ const modelForProvider = (
     return current
   }
 
-  return 'gemini-2.5-flash-image'
+  return 'gemini-3.5-flash-image'
 }
 
 const countFromInput = (value: string, fallback: number): number => {

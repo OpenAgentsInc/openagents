@@ -1620,7 +1620,7 @@ describe("runWithHostedKhalaGateway usage extraction (#8503)", () => {
   const source = {
     adapterKind: "openagents_native" as const,
     lane: "hosted_khala" as const,
-    modelRef: "gemini-2.5-flash",
+    modelRef: "gemini-3.5-flash",
     providerRef: "vertex-gemini",
     surface: "server" as const,
   }
@@ -1641,7 +1641,7 @@ describe("runWithHostedKhalaGateway usage extraction (#8503)", () => {
       baseUrl: "https://gateway.example",
       fetchImpl,
       instructions: "describe the change",
-      model: "gemini-2.5-flash",
+      model: "gemini-3.5-flash",
       nowIso: () => "2026-07-07T00:00:00.000Z",
       signal: new AbortController().signal,
       source,

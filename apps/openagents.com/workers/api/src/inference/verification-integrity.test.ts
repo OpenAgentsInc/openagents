@@ -10,7 +10,7 @@ describe('verification integrity — model-family independence (#6423)', () => {
     expect(inferVerificationModelFamily('accounts/fireworks/models/kimi-k2p7-code')).toBe(
       'model_family.kimi',
     )
-    expect(inferVerificationModelFamily('vertex/gemini-2.5-flash')).toBe(
+    expect(inferVerificationModelFamily('vertex/gemini-3.5-flash')).toBe(
       'model_family.gemini',
     )
     expect(inferVerificationModelFamily('deterministic/browser-acceptance-runner')).toBe(
@@ -40,7 +40,7 @@ describe('verification integrity — model-family independence (#6423)', () => {
       minimumEffectiveIndependentVotes: 2,
       panel: [
         { model: 'google/gemini-2.5-pro', verifierRef: 'verifier.public.gemini.a' },
-        { model: 'vertex/gemini-2.5-flash', verifierRef: 'verifier.public.gemini.b' },
+        { model: 'vertex/gemini-3.5-flash', verifierRef: 'verifier.public.gemini.b' },
         { model: 'anthropic/claude-opus-4', verifierRef: 'verifier.public.claude.c' },
         { model: 'deepseek/deepseek-v4', verifierRef: 'verifier.public.deepseek.d' },
       ],

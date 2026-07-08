@@ -105,7 +105,7 @@ export type VertexGeminiAdapterConfig = Readonly<{
 export const KNOWN_VERTEX_GEMINI_MODEL_IDS: ReadonlyArray<string> = [
   'gemini-3.5-flash',
   'gemini-3.5-pro',
-  'gemini-2.5-flash',
+  'gemini-3.5-flash',
   'gemini-2.5-pro',
 ]
 

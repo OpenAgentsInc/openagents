@@ -81,14 +81,27 @@ class HostedRuntimeDispatchError extends Error {
 export const HOSTED_RUNTIME_LANE = 'hosted_khala'
 
 /** Default hosted model (matches `artanisMindComplete`'s own default). */
-export const DEFAULT_HOSTED_RUNTIME_MODEL = 'gemini-2.5-flash'
+export const DEFAULT_HOSTED_RUNTIME_MODEL = 'gemini-3.5-flash'
 
 /** Provider ref stamped on the runtime events' `source`/metadata. */
 export const HOSTED_RUNTIME_PROVIDER_REF = 'openagents-khala'
 
-/** Stable synthetic client group for this consumer's mutation ledger rows. */
+/** Base prefix for this consumer's mutation-ledger client group. */
 export const HOSTED_RUNTIME_DISPATCH_CLIENT_GROUP_ID =
   'server.hosted-runtime-dispatch'
+
+/**
+ * Per-OWNER client group. A Khala Sync client group never migrates between
+ * users (the mutation ledger rejects cross-user reuse with "client group is
+ * bound to a different user"). A single shared group therefore binds to the
+ * FIRST owner whose turn is dispatched and then throws for every other owner —
+ * silently orphaning their hosted chat turns (no assistant reply ever lands).
+ * Scoping the group by owner keeps each owner on their own group. (Same fix as
+ * the #8477 writeback recorder.)
+ */
+export const hostedRuntimeDispatchClientGroupIdForOwner = (
+  ownerUserId: string,
+): string => `${HOSTED_RUNTIME_DISPATCH_CLIENT_GROUP_ID}.${ownerUserId}`
 
 /** Default per-tick turn budget (bounds Postgres + inference fan-out). */
 export const DEFAULT_HOSTED_RUNTIME_DISPATCH_LIMIT = 8
@@ -302,8 +315,11 @@ export const dispatchHostedRuntimeTurn = async (
   turn: QueuedHostedTurn,
 ): Promise<'answered' | 'failed' | 'skipped'> => {
   const resolved = resolveDeps(deps)
-  const clientId = `${HOSTED_RUNTIME_DISPATCH_CLIENT_GROUP_ID}.${turn.turnId}.${resolved.uuid()}`
   const ownerId = turn.ownerUserId
+  // Owner-scoped client group so different owners never collide on one group
+  // (a shared group binds to the first owner and throws for the rest).
+  const clientGroupId = hostedRuntimeDispatchClientGroupIdForOwner(ownerId)
+  const clientId = `${clientGroupId}.${turn.turnId}.${resolved.uuid()}`
   let seq = turn.eventCount
 
   // Every event is recorded as the turn's OWNER: `runtime.recordEvent`
@@ -318,7 +334,7 @@ export const dispatchHostedRuntimeTurn = async (
     resolved.executePush({
       registry: resolved.registry,
       request: decodePushRequest({
-        clientGroupId: HOSTED_RUNTIME_DISPATCH_CLIENT_GROUP_ID,
+        clientGroupId,
         clientId,
         mutations: [
           {

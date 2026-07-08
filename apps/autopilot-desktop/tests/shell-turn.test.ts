@@ -149,11 +149,11 @@ describe("buildShellTurn — honest no-token + network behaviour", () => {
     }) as unknown as typeof fetch
     await buildShellTurn({
       prompt: "x",
-      env: { OPENAGENTS_SHELL_MODEL: "gemini-2.5-flash" },
+      env: { OPENAGENTS_SHELL_MODEL: "gemini-3.5-flash" },
       agentToken: "tok",
       fetchFn,
     })
-    expect(seenModel).toBe("gemini-2.5-flash")
+    expect(seenModel).toBe("gemini-3.5-flash")
   })
 
   test("401 maps to a clean auth message (no jargon, no fake answer)", async () => {

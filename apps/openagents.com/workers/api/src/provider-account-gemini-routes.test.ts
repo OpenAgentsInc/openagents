@@ -238,7 +238,7 @@ describe('google gemini provider account routes', () => {
       const { ctx, promises } = makeExecutionContext()
       const response = await handlers.handleGoogleGeminiGenerateContentApi(
         new Request(
-          'https://openagents.com/api/provider-accounts/google-gemini/models/gemini-2.5-flash:streamGenerateContent?alt=sse',
+          'https://openagents.com/api/provider-accounts/google-gemini/models/gemini-3.5-flash:streamGenerateContent?alt=sse',
           {
             body: JSON.stringify({ contents: [] }),
             headers: {
@@ -250,7 +250,7 @@ describe('google gemini provider account routes', () => {
         ),
         env,
         ctx,
-        'gemini-2.5-flash',
+        'gemini-3.5-flash',
       )
       const body = await response.text()
       await Promise.all(promises)
@@ -264,7 +264,7 @@ describe('google gemini provider account routes', () => {
       expect(body).toContain('"ok"')
       expect(body).not.toContain('test-gemini-key')
       expect(String(upstream.mock.calls[0]?.[0])).toBe(
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse',
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:streamGenerateContent?alt=sse',
       )
       expect(upstreamHeaders.get('x-goog-api-key')).toBe('test-gemini-key')
     } finally {
@@ -302,7 +302,7 @@ describe('google gemini provider account routes', () => {
         const { ctx, promises } = makeExecutionContext()
         const response = await handlers.handleGoogleGeminiGenerateContentApi(
           new Request(
-            'https://openagents.com/api/provider-accounts/google-gemini/models/gemini-2.5-flash:streamGenerateContent?alt=sse',
+            'https://openagents.com/api/provider-accounts/google-gemini/models/gemini-3.5-flash:streamGenerateContent?alt=sse',
             {
               body: JSON.stringify({ contents: [{ parts: [{ text: 'hi' }] }] }),
               headers: {
@@ -316,7 +316,7 @@ describe('google gemini provider account routes', () => {
           ),
           envWithDb,
           ctx,
-          'gemini-2.5-flash',
+          'gemini-3.5-flash',
         )
 
         expect(response.status).toBe(200)
@@ -332,7 +332,7 @@ describe('google gemini provider account routes', () => {
         backend_profile: 'worker_secret_gemini_api_key',
         cache_read_tokens: 20,
         input_tokens: 100,
-        model: 'gemini-2.5-flash',
+        model: 'gemini-3.5-flash',
         output_tokens: 35,
         producer_system: 'omega',
         provider: 'google_gemini',

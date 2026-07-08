@@ -1,6 +1,6 @@
 Yes. **Image generation now lives inside the same broad Google GenAI/Gemini stack**, but there are **two API shapes** you should distinguish:
 
-1. **Gemini native image generation**: use Gemini image-capable models through `generateContent`, e.g. `gemini-3.1-flash-image`, `gemini-3-pro-image`, and `gemini-2.5-flash-image`. This is best for conversational generation, editing, reference images, multimodal prompts, text + image responses, and iterative workflows. Google documents these as Gemini’s “Nano Banana” image models, with generated images carrying SynthID watermarks. ([Google AI for Developers][1])
+1. **Gemini native image generation**: use Gemini image-capable models through `generateContent`, e.g. `gemini-3.1-flash-image`, `gemini-3-pro-image`, and `gemini-3.5-flash-image`. This is best for conversational generation, editing, reference images, multimodal prompts, text + image responses, and iterative workflows. Google documents these as Gemini’s “Nano Banana” image models, with generated images carrying SynthID watermarks. ([Google AI for Developers][1])
 
 2. **Imagen 4 generation**: use specialized Imagen endpoints through `generateImages` in the SDK or `:predict` in REST, with model IDs like `imagen-4.0-generate-001`, `imagen-4.0-ultra-generate-001`, and `imagen-4.0-fast-generate-001`. This is best for fast high-quality text-to-image generation when you do not need the full Gemini multimodal/conversational editing loop. ([Google AI for Developers][2])
 
@@ -134,7 +134,7 @@ export type ImageProvider = "google-gemini" | "google-imagen"
 export type ImageModel =
   | "gemini-3.1-flash-image"
   | "gemini-3-pro-image"
-  | "gemini-2.5-flash-image"
+  | "gemini-3.5-flash-image"
   | "imagen-4.0-generate-001"
   | "imagen-4.0-fast-generate-001"
   | "imagen-4.0-ultra-generate-001"

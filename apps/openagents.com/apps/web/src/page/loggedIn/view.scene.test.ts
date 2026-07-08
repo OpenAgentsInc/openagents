@@ -1728,8 +1728,8 @@ describe('logged-in workroom sidebar', () => {
           ],
           byModel: [
             {
-              key: 'gemini-2.5-flash',
-              label: 'gemini-2.5-flash',
+              key: 'gemini-3.5-flash',
+              label: 'gemini-3.5-flash',
               inputTokens: 120,
               outputTokens: 60,
               totalTokens: 180,
@@ -2033,8 +2033,8 @@ describe('logged-in workroom sidebar', () => {
           },
           topProviderModels: [
             {
-              key: 'google_gemini:gemini-2.5-flash',
-              label: 'google_gemini / gemini-2.5-flash',
+              key: 'google_gemini:gemini-3.5-flash',
+              label: 'google_gemini / gemini-3.5-flash',
               tokenCounts,
               usageEvents: 2,
             },
@@ -2112,8 +2112,8 @@ describe('logged-in workroom sidebar', () => {
           ],
           byProviderModel: [
             {
-              key: 'google_gemini:gemini-2.5-flash',
-              label: 'google_gemini / gemini-2.5-flash',
+              key: 'google_gemini:gemini-3.5-flash',
+              label: 'google_gemini / gemini-3.5-flash',
               tokenCounts,
               usageEvents: 2,
             },
@@ -2185,7 +2185,7 @@ describe('logged-in workroom sidebar', () => {
               eventId: 'token_event_scene_1',
               idempotencyKey: 'scene:1',
               ingestedAt: '2026-06-08T12:00:00.000Z',
-              model: 'gemini-2.5-flash',
+              model: 'gemini-3.5-flash',
               observedAt: '2026-06-08T11:59:00.000Z',
               privacy: {
                 leaderboardEligible: true,
@@ -2268,7 +2268,7 @@ describe('logged-in workroom sidebar', () => {
       Scene.expect(Scene.text('Top users')).toExist(),
       Scene.expect(Scene.text('Top teams')).toExist(),
       Scene.expect(Scene.text('Provider/model leaderboard')).toExist(),
-      Scene.expect(Scene.text('google_gemini / gemini-2.5-flash')).toExist(),
+      Scene.expect(Scene.text('google_gemini / gemini-3.5-flash')).toExist(),
       Scene.expect(Scene.text('omega / omega_provider_broker')).toExist(),
       Scene.expect(Scene.text('run / probe-run:scene')).toExist(),
       Scene.expect(

@@ -48,7 +48,7 @@ const eventRecord = S.decodeUnknownSync(TokenUsageEventRecord)({
   eventId: 'token_event_route_1',
   idempotencyKey: 'route:event:1',
   ingestedAt: '2026-06-08T12:00:00.000Z',
-  model: 'gemini-2.5-flash',
+  model: 'gemini-3.5-flash',
   observedAt: '2026-06-08T11:59:00.000Z',
   privacy: {
     leaderboardEligible: true,
@@ -89,8 +89,8 @@ const aggregateResponse = S.decodeUnknownSync(TokenUsageAggregateResponse)({
   ],
   byProviderModel: [
     {
-      key: 'google_gemini:gemini-2.5-flash',
-      label: 'google_gemini / gemini-2.5-flash',
+      key: 'google_gemini:gemini-3.5-flash',
+      label: 'google_gemini / gemini-3.5-flash',
       tokenCounts: eventRecord.tokenCounts,
       usageEvents: 1,
     },
@@ -666,7 +666,7 @@ describe('token usage ledger routes', () => {
     const okResponse = await Effect.runPromise(
       admin.routes.handleTokenUsageAggregateApi(
         new Request(
-          'https://openagents.com/api/stats/token-usage/aggregate?since=2026-06-08T00:00:00.000Z&provider=google_gemini&model=gemini-2.5-flash&producerSystem=omega&sourceRoute=omega_provider_broker&actorUserId=user_chris&leaderboardEligible=true&usageTruth=exact',
+          'https://openagents.com/api/stats/token-usage/aggregate?since=2026-06-08T00:00:00.000Z&provider=google_gemini&model=gemini-3.5-flash&producerSystem=omega&sourceRoute=omega_provider_broker&actorUserId=user_chris&leaderboardEligible=true&usageTruth=exact',
         ),
         env,
         makeExecutionContext(),
@@ -687,7 +687,7 @@ describe('token usage ledger routes', () => {
       {
         actorUserId: 'user_chris',
         leaderboardEligible: 'true',
-        model: 'gemini-2.5-flash',
+        model: 'gemini-3.5-flash',
         producerSystem: 'omega',
         provider: 'google_gemini',
         since: '2026-06-08T00:00:00.000Z',

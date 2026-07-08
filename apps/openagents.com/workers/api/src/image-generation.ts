@@ -35,7 +35,7 @@ export const systemImageGenerationRuntime: ImageGenerationRuntime = {
 export const ImageProvider = S.Literals(['google-gemini', 'google-imagen'])
 export type ImageProvider = typeof ImageProvider.Type
 
-export const GeminiImageModel = S.Literals(['gemini-2.5-flash-image'])
+export const GeminiImageModel = S.Literals(['gemini-3.5-flash-image'])
 export type GeminiImageModel = typeof GeminiImageModel.Type
 
 export const ImagenImageModel = S.Literals([
@@ -192,14 +192,14 @@ const MAX_REFERENCE_IMAGE_BASE64_CHARS = 8 * 1024 * 1024
 
 const isGeminiModel = (
   model: ImageGenerationModel,
-): model is GeminiImageModel => model === 'gemini-2.5-flash-image'
+): model is GeminiImageModel => model === 'gemini-3.5-flash-image'
 
 const defaultModelForProvider = (
   provider: ImageProvider,
 ): ImageGenerationModel =>
   provider === 'google-imagen'
     ? 'imagen-4.0-generate-001'
-    : 'gemini-2.5-flash-image'
+    : 'gemini-3.5-flash-image'
 
 const selectedProvider = (input: GenerateImageRequest): ImageProvider => {
   if ((input.referenceImages?.length ?? 0) > 0) {

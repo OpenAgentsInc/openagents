@@ -77,7 +77,7 @@ used by the history endpoint and `public-activity-timeline.ts`.
 | `z-ai/glm-5.2-20260616` | `openrouter-khala-glm-fallback` | 580 | 2.44M |
 | `openai/gpt-oss-20b` | `hydralisk-vllm` | 395 | 0.85M |
 | `glm-5.2-reap-504b-g4` | `hydralisk-vllm-glm-5p2-reap-504b` | 13 | 0.017M |
-| `gemini-2.5-flash` | `google_gemini` | 1 | ~0 |
+| `gemini-3.5-flash` | `google_gemini` | 1 | ~0 |
 
 demand_kind split: `own_capacity` 141.3M · `unlabeled` 77.5M · `internal` 18.4M.
 
@@ -148,7 +148,7 @@ z-ai/glm-5.2-20260616               -> glm        (OpenRouter GLM fallback)
 accounts/fireworks/.../deepseek-v4-flash -> fireworks_deepseek
 openagents/pylon-codex              -> pylon_codex (own-capacity Codex delegation)
 openai/gpt-oss-20b / -120b          -> gpt_oss
-gemini-2.5-flash / *gemini*         -> gemini
+gemini-3.5-flash / *gemini*         -> gemini
 (unknown)                            -> other      (never drop; bucket as other)
 ```
 Keep this map server-side; the page renders labels + colors from the response.

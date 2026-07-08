@@ -7034,7 +7034,7 @@ export const ImageGenerationProvider = S.Literals([
 export type ImageGenerationProvider = typeof ImageGenerationProvider.Type
 
 export const ImageGenerationModelId = S.Literals([
-  'gemini-2.5-flash-image',
+  'gemini-3.5-flash-image',
   'imagen-4.0-generate-001',
   'imagen-4.0-fast-generate-001',
   'imagen-4.0-ultra-generate-001',
@@ -7702,7 +7702,7 @@ export const init = (route: LoggedInRoute, auth: AuthBootstrap): Model =>
     imageGenerationAspectRatio: '1:1',
     imageGenerationCount: 1,
     imageGenerationImageSize: '1K',
-    imageGenerationModel: 'gemini-2.5-flash-image',
+    imageGenerationModel: 'gemini-3.5-flash-image',
     imageGenerationPrompt: '',
     imageGenerationProvider: 'google-gemini',
     inviteCodeValue: '',

@@ -110,7 +110,7 @@ curl -s "$B/api/agents/me/balance" -H "Authorization: Bearer $TOKEN"
 ```
 
 - Free-eligible model ids: `gemini-3.5-flash` (default), `gemini`,
-  `gemini-3.5-pro`, `gemini-2.5-flash`, `gemini-2.5-pro`. **Do not use
+  `gemini-3.5-pro`, `gemini-3.5-flash`, `gemini-2.5-pro`. **Do not use
   `gemini-2.0-flash`** (not served by the configured Vertex project → provider
   404).
 - Expected: HTTP 200, real `usage` token counts, `model: gemini-3.5-flash`, a

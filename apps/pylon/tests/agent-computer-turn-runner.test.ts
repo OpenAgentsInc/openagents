@@ -30,7 +30,7 @@ const inference: InferenceConfig = {
   baseUrl: 'https://openagents-monolith-staging-ezxz4mgdsq-uc.a.run.app',
   agentToken: 'agent-secret-token-should-never-be-serialized',
   ownerUserId: 'github:300914913',
-  model: 'gemini-2.5-flash',
+  model: 'gemini-3.5-flash',
   backendProfile: 'omega-hosted-gemini',
   pylonRef: 'pylon.agent-computer.proof',
 }

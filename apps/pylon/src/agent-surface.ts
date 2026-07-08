@@ -156,7 +156,7 @@ export function resolveModelAdapter(env: Record<string, string | undefined>): Mo
 
   const geminiKey = env.GEMINI_API_KEY?.trim()
   if (geminiKey) {
-    const model = env.PYLON_GEMINI_MODEL?.trim() || "gemini-2.5-flash"
+    const model = env.PYLON_GEMINI_MODEL?.trim() || "gemini-3.5-flash"
     return {
       complete: async ({ prompt, system }) => {
         const response = await fetch(

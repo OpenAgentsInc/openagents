@@ -72,7 +72,7 @@ curl -s -X POST https://openagents-staging.openagents.workers.dev/v1/chat/comple
 ```
 
 - Free-eligible model ids: `gemini-3.5-flash` (default), `gemini`, plus the
-  other ids in `vertex-gemini-adapter.ts` (`gemini-3.5-pro`, `gemini-2.5-flash`,
+  other ids in `vertex-gemini-adapter.ts` (`gemini-3.5-pro`, `gemini-3.5-flash`,
   `gemini-2.5-pro`). **Do not use `gemini-2.0-flash`** — that id is not served
   by the configured Vertex project and returns a provider `404`.
 - Expected: `HTTP 200`, real `usage` token counts, `model: gemini-3.5-flash`,

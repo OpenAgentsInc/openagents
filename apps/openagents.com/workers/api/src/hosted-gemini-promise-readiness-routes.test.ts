@@ -17,7 +17,7 @@ const record = (
   input: Partial<InferenceReceiptRecord> = {},
 ): InferenceReceiptRecord => ({
   contextRef:
-    'inference:vertex-gemini:served:models%2Fgemini-2.5-flash:tokens:321:requested:openagents%2Fkhala',
+    'inference:vertex-gemini:served:models%2Fgemini-3.5-flash:tokens:321:requested:openagents%2Fkhala',
   createdAt: '2026-06-29T11:59:00.000Z',
   payInType: 'adjustment',
   receiptRef,

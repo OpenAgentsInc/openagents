@@ -390,7 +390,7 @@ Admin browser sessions can read aggregate Stats drilldowns:
 GET /api/stats/token-usage/aggregate
 GET /api/stats/token-usage/aggregate?since=2026-06-08T00:00:00.000Z
 GET /api/stats/token-usage/aggregate?since=...&until=...
-GET /api/stats/token-usage/aggregate?provider=google_gemini&model=gemini-2.5-flash
+GET /api/stats/token-usage/aggregate?provider=google_gemini&model=gemini-3.5-flash
 GET /api/stats/token-usage/aggregate?producerSystem=openagents&sourceRoute=openagents_provider_broker
 GET /api/stats/token-usage/aggregate?actorUserId=...&actorTeamId=...
 GET /api/stats/token-usage/aggregate?leaderboardEligible=true&usageTruth=exact

@@ -29,7 +29,7 @@ production credential for the Cloudflare Worker. It installs or locates
 `aiplatform.googleapis.com`, and tests a bearer-token call to:
 
 ```text
-https://aiplatform.googleapis.com/v1/projects/<project>/locations/global/publishers/google/models/gemini-2.5-flash:generateContent
+https://aiplatform.googleapis.com/v1/projects/<project>/locations/global/publishers/google/models/gemini-3.5-flash:generateContent
 ```
 
 The sustainable production answer is therefore:
@@ -790,7 +790,7 @@ Smoke Agent Platform REST from a local shell:
 ```sh
 PROJECT_ID=<project-id>
 LOCATION=global
-MODEL_ID=gemini-2.5-flash
+MODEL_ID=gemini-3.5-flash
 ACCESS_TOKEN="$(gcloud auth application-default print-access-token)"
 
 curl -sS -X POST \

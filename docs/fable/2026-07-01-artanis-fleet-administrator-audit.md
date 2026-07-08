@@ -43,7 +43,7 @@ prompt or a model:
   Reachable from khala-cli (`khala artanis …`, `khala --artanis`), the iOS
   app (`KhalaArtanis.swift`, one-way SSE today), and a public `/artanis` page.
 - **Autonomous cron ticks** (Worker `scheduled`, `* * * * *`): model
-  `gemini-2.5-flash` via Cloudflare AI Gateway. The tick family:
+  `gemini-3.5-flash` via Cloudflare AI Gateway. The tick family:
   `ArtanisAdmin.tick` (the one that *mutates* — one typed action/tick,
   `unpaid_smoke` dispatch, cap 4/day), `ArtanisAdmin.closeoutVerifier`
   (accept/reject with Tassadar exact-replay), `ArtanisScheduledRunner`

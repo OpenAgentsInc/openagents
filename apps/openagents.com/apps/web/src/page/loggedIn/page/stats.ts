@@ -282,7 +282,7 @@ const filterPanel = (filters: TokenUsageStatsFilters): Html => {
           filterInput(filters, 'since', 'Since', '2026-06-08T00:00:00.000Z'),
           filterInput(filters, 'until', 'Until', '2026-06-08T23:59:59.999Z'),
           filterInput(filters, 'provider', 'Provider', 'google_gemini'),
-          filterInput(filters, 'model', 'Model', 'gemini-2.5-flash'),
+          filterInput(filters, 'model', 'Model', 'gemini-3.5-flash'),
           filterSelect(filters, 'producerSystem', 'Source system', [
             ['', 'All systems'],
             ['probe', 'Probe'],

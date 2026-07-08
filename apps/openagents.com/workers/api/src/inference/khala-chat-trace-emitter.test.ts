@@ -27,7 +27,7 @@ const fakeResult = (
 ): InferenceResult => ({
   content: 'Here is the answer to your question.',
   finishReason: 'stop',
-  servedModel: 'vertex/gemini-2.5-flash',
+  servedModel: 'vertex/gemini-3.5-flash',
   usage: { promptTokens: 42, completionTokens: 17, totalTokens: 59 },
   ...overrides,
 })

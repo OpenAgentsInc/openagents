@@ -27,7 +27,7 @@ const providerOptions = [
   { label: 'Imagen', value: 'google-imagen' },
 ] as const
 
-const geminiModels = ['gemini-2.5-flash-image'] as const
+const geminiModels = ['gemini-3.5-flash-image'] as const
 
 const imagenModels = [
   'imagen-4.0-generate-001',
@@ -48,7 +48,7 @@ const modelFromValue = (
   value: string,
   fallback: ImageGenerationModelId,
 ): ImageGenerationModelId =>
-  value === 'gemini-2.5-flash-image' ||
+  value === 'gemini-3.5-flash-image' ||
   value === 'imagen-4.0-generate-001' ||
   value === 'imagen-4.0-fast-generate-001' ||
   value === 'imagen-4.0-ultra-generate-001'

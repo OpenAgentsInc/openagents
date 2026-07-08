@@ -59,7 +59,7 @@ OpenCode's "try any model" workflow.
 
 | Lane | Likely Candidate | Notes |
 |------|-----------------|-------|
-| `gemini-free` | Gemini 2.5 Flash (free tier) | Google AI Studio / Gemini API free quota |
+| `gemini-free` | Gemini 3.5 Flash (free tier) | Google AI Studio / Gemini API free quota |
 | `llama-free` | Llama 4 Scout / Instruct via Together or Groq free tier | Whichever is the default free Llama in OpenCode's provider list |
 | `qwen-free` | Qwen3 / QwQ via free API | If listed as a free option in OpenCode |
 | `mistral-free` | Mistral Small / Codestral free tier | If OpenCode lists a Mistral free option |

@@ -37,7 +37,7 @@
  *       "baseUrl": "https://<khala gateway>", // monolith base (staging for the DoD)
  *       "agentToken": "<programmatic agent bearer>",
  *       "ownerUserId": "github:<id>",          // the mobile user's owner id
- *       "model": "gemini-2.5-flash",
+ *       "model": "gemini-3.5-flash",
  *       "lane": "hosted_khala",                // ingest-accepted lane
  *       "provider": "vertex-gemini",           // optional; matches HOSTED_KHALA_RUNTIME_PROVIDER
  *       "backendProfile": "omega-hosted-gemini",

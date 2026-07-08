@@ -118,7 +118,7 @@ export const VERTEX_GEMINI_FLASH_TARGET: BenchmarkTarget = {
   engine: 'provider-native',
   profile: targetProfile({
     profileRef: 'vertex.gemini_2_5_flash.provider_native.v1',
-    modelRef: 'gemini-2.5-flash',
+    modelRef: 'gemini-3.5-flash',
     routeRole: 'fallback',
     capacityClass: 'provider_managed',
     evidenceRefs: ['docs.inference.2026_06_25.khala_cost_model'],

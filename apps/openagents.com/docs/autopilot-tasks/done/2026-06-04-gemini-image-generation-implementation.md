@@ -25,7 +25,7 @@ Foreground progress:
 - found the existing restricted `openagentsgemini` Generative Language API key
   through local ADC and installed it as the Cloudflare `GEMINI_API_KEY` secret
   without printing the secret value;
-- provider-smoked `gemini-2.5-flash-image` through the live
+- provider-smoked `gemini-3.5-flash-image` through the live
   `v1beta/models/:generateContent` endpoint and received one image part;
 - kept `/images` operator/workroom-only and tightened the API so
   `/api/images/generate` plus generated image reads require OpenAgents Core
@@ -110,7 +110,7 @@ The original spec named Gemini 3 image models, but live Google model discovery
 for the `openagentsgemini` project on 2026-06-04 exposes the current Gemini
 image model as:
 
-- default Gemini model: `gemini-2.5-flash-image`;
+- default Gemini model: `gemini-3.5-flash-image`;
 - default Imagen model: `imagen-4.0-generate-001`;
 - optional Imagen models: `imagen-4.0-fast-generate-001`,
   `imagen-4.0-ultra-generate-001`.
@@ -173,7 +173,7 @@ Request shape:
 {
   "prompt": "a clean OpenAgents mission briefing room, dark interface, table-first layout",
   "provider": "google-gemini",
-  "model": "gemini-2.5-flash-image",
+  "model": "gemini-3.5-flash-image",
   "aspectRatio": "16:9",
   "imageSize": "2K",
   "count": 1
@@ -186,12 +186,12 @@ Response shape:
 {
   "images": [
     {
-      "key": "generated-images/workspace/date/id-0-gemini-2.5-flash-image.png",
+      "key": "generated-images/workspace/date/id-0-gemini-3.5-flash-image.png",
       "url": "https://...",
       "mimeType": "image/png",
       "byteLength": 123456,
       "provider": "google-gemini",
-      "model": "gemini-2.5-flash-image",
+      "model": "gemini-3.5-flash-image",
       "prompt": "...",
       "createdAt": "2026-06-04T00:00:00.000Z"
     }
@@ -349,7 +349,7 @@ Record safe structured events for completion:
 {
   "event": "image_generation.completed",
   "provider": "google-gemini",
-  "model": "gemini-2.5-flash-image",
+  "model": "gemini-3.5-flash-image",
   "imageCount": 1,
   "latencyMs": 1000,
   "byteTotal": 123456
@@ -362,7 +362,7 @@ Record safe structured failure events:
 {
   "event": "image_generation.failed",
   "provider": "google-gemini",
-  "model": "gemini-2.5-flash-image",
+  "model": "gemini-3.5-flash-image",
   "errorTag": "ProviderRateLimited",
   "status": 429,
   "latencyMs": 1000

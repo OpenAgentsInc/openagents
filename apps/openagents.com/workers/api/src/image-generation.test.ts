@@ -47,7 +47,7 @@ class MemoryR2Bucket {
 
 const successfulGeminiFetch: typeof fetch = async (request, init) => {
   expect(String(request)).toBe(
-    'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent',
+    'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-image:generateContent',
   )
   expect(init?.method).toBe('POST')
   expect((init?.headers as Record<string, string>)['x-goog-api-key']).toBe(
@@ -194,11 +194,11 @@ describe('ImageGenerationService', () => {
     expect(result.images).toHaveLength(1)
     expect(result.images[0]).toMatchObject({
       byteLength: 68,
-      key: 'generated-images/users/2026-06-04/generated_image_test-0-gemini-2.5-flash-image.png',
+      key: 'generated-images/users/2026-06-04/generated_image_test-0-gemini-3.5-flash-image.png',
       mimeType: 'image/png',
-      model: 'gemini-2.5-flash-image',
+      model: 'gemini-3.5-flash-image',
       provider: 'google-gemini',
-      url: 'https://openagents.test/api/images/generated-images%2Fusers%2F2026-06-04%2Fgenerated_image_test-0-gemini-2.5-flash-image.png',
+      url: 'https://openagents.test/api/images/generated-images%2Fusers%2F2026-06-04%2Fgenerated_image_test-0-gemini-3.5-flash-image.png',
     })
     expect(bucket.objects.size).toBe(1)
   })

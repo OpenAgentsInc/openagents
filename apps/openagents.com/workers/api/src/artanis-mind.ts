@@ -11,7 +11,7 @@
  * approval gates hold - intelligence never upgrades authority.
  */
 
-export const ArtanisMindModelDefault = 'gemini-2.5-flash'
+export const ArtanisMindModelDefault = 'gemini-3.5-flash'
 export const ArtanisMindGatewayProvider = 'google-ai-studio'
 export const ArtanisMindAccountId = '54fac8b750a29fdda9f2fa0f0afaed90'
 export const ArtanisMindGatewayCandidates = ['openagents-ai-gateway'] as const
@@ -57,7 +57,7 @@ export const ArtanisMindEscalatedMaxOutputTokens = 8192
 const geminiBody = (system: string, prompt: string, maxOutputTokens: number) =>
   JSON.stringify({
     contents: [{ parts: [{ text: prompt }], role: 'user' }],
-    // gemini-2.5-flash spends "thinking" tokens from the same output
+    // gemini-3.5-flash spends "thinking" tokens from the same output
     // budget; without disabling it a 1024 cap leaves ~90 chars of text
     // (live truncation incident, topic 479e4480, 2026-06-10).
     generationConfig: {

@@ -7,12 +7,28 @@ import {
   DEFAULT_HOSTED_RUNTIME_SYSTEM_PROMPT,
   HOSTED_RUNTIME_DISPATCH_CLIENT_GROUP_ID,
   dispatchHostedRuntimeTurn,
+  hostedRuntimeDispatchClientGroupIdForOwner,
   readQueuedHostedTurns,
   resolveHostedTurnPrompt,
   runHostedRuntimeTurnDispatch,
   type HostedRuntimeCompleteFn,
   type QueuedHostedTurn,
 } from './khala-hosted-runtime-dispatch'
+
+// Regression for the "client group is bound to a different user" bug that
+// silently orphaned every hosted chat turn after the first owner (same class
+// as the #8477 writeback recorder). The dispatch client group MUST be
+// owner-scoped so distinct owners never collide on one mutation-ledger group.
+describe('hostedRuntimeDispatchClientGroupIdForOwner', () => {
+  test('scopes the client group per owner and stays under the base prefix', () => {
+    const a = hostedRuntimeDispatchClientGroupIdForOwner('github:300914913')
+    const b = hostedRuntimeDispatchClientGroupIdForOwner('user_b02c2298')
+    expect(a).toBe(`${HOSTED_RUNTIME_DISPATCH_CLIENT_GROUP_ID}.github:300914913`)
+    expect(a).not.toBe(b)
+    expect(a.startsWith(HOSTED_RUNTIME_DISPATCH_CLIENT_GROUP_ID)).toBe(true)
+    expect(hostedRuntimeDispatchClientGroupIdForOwner('github:300914913')).toBe(a)
+  })
+})
 
 // --------------------------------------------------------------------------
 // Fakes: a tagged-template SQL that answers the three bounded reads by

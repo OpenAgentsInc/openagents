@@ -31,7 +31,7 @@ served adapter id) is the ground truth.
 | provider        | model                                         | rows | input tok | output tok |    served | stored cost |
 | --------------- | --------------------------------------------- | ---: | --------: | ---------: | --------: | ----------: |
 | `fireworks`     | `accounts/fireworks/models/deepseek-v4-flash` |  560 |   321,065 |    810,787 | 1,131,852 |        NULL |
-| `google_gemini` | `gemini-2.5-flash`                            |    1 |         6 |          1 |         7 |        NULL |
+| `google_gemini` | `gemini-3.5-flash`                            |    1 |         6 |          1 |         7 |        NULL |
 
 The ~1.13M tokens served so far were served by **Fireworks DeepSeek V4 Flash** —
 NOT GPT-OSS-120B and NOT Gemini Flash. The owner's "Flash"/Gemini intuition maps
