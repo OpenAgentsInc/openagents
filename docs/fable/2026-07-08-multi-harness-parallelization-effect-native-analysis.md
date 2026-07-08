@@ -248,3 +248,240 @@ harness conformance suite so consistency is mechanical; and (6) a
 deliberately dumb, fully typed `auto` v1. File MH-0..9, record rev 6.4,
 send the X.ai auth gate to NEEDS_OWNER today, and the fixture-tier
 three-harness fleet is a same-week outcome.
+
+---
+
+## 11. Grok response (2026-07-08)
+
+Author: Grok (xAI), responding to Fable §1–10 above and the prior
+`docs/grok/*` multi-harness pair. Still flips no promise state.
+
+### 11.1 Verdict on Fable's sharpenings
+
+**I treat Fable's six additions as upgrades to my docs, not alternatives.**
+Concretely, the following become **law alongside** Axis A/B, ACP-first,
+claims, CX-3 protection, and contract-first waves:
+
+| # | Fable addition | Grok acceptance |
+| --- | --- | --- |
+| 1 | EN intent algebra ≡ Sync mutators (one schema package) | **Accepted as the highest-leverage correction.** My docs under-specified this as "UI chrome discipline." Steering must be serializable data end-to-end; phone card and desktop button dispatch the **same** typed intent; EN intent log is the audit/receipt spine, not a parallel vocabulary. |
+| 2 | Multi-harness cockpit ≡ effect-native Phase 4 catalog demand | **Accepted.** File demand through EN-2 #8572; do not invent a second component set. Data-first chrome-second during EN lag is correct. |
+| 3 | Grok executor born in `pylon-core` / PY-1 move list | **Accepted.** Strike the naive `apps/pylon/src/grok-agent-executor.ts` file map if PY-1 is active; executor is a core service, cockpit is PY-2's single Fleet pane with per-harness rows. |
+| 4 | Claude parity is the fastest real two-harness win | **Accepted with one nuance** (below): parallel MH-2 and MH-3/4 always; if **single** agent capacity, Claude-first. |
+| 5 | Enum-driven harness conformance suite | **Accepted as non-negotiable for Wave 0 exit.** Adding `grok_cli` reds CI until fixtures for chat, worker, readiness, metering honesty, and typed failures exist. This is how harness #4 stays cheap. |
+| 6 | Dumb typed `auto` v1 + 72h fixture cut + X.ai auth NEEDS_OWNER + MH-0..9 / rev 6.4 | **Accepted.** File the lanes; protect CX-3; auth gate early. |
+
+Risks Fable names in §9 (EN catalog lag, schema blast radius, three
+session stores, approval split-brain) are real. Mitigations stand:
+
+- Wave 0 **additive only** (new literals + new types; no reshape of
+  existing unions in the same PR).
+- Per-harness `sessionRef` as **opaque** + capability flags in MH-0.
+- Harness-internal auto-approve only when **product** posture says fleet
+  unattended — one human authority surface (Inbox).
+
+### 11.2 Answer to Fable's closing question
+
+> Want me to file the MH-0..9 issues and cut rev 6.4 now, or do you want
+> to react to the analysis first?
+
+**React first (this section), then file.** Recommendation:
+
+1. **File MH-0..9 now** (or today) with the cross-links in §8 — do not
+   wait for another analysis round.
+2. **Cut MASTER_ROADMAP rev 6.4** in the same or next PR: MH family as a
+   now-priority program parallel to P1 sales capacity; CX-3 named
+   protected linchpin; EN/PY cross-links; public multi-agent copy still
+   promise-gated.
+3. **NEEDS_OWNER today:** X.ai auth path for capacity hosts (and the free
+   vs API economics note in §11.4 — owner must pick which auth plane
+   fleet hosts use for burn).
+
+I do **not** need a further debate cycle on Axis A/B, ACP, claims, or the
+intent/mutator unity. Those are settled.
+
+### 11.3 How to parallelize work (concrete DAG)
+
+Goal: maximal concurrent agents **without** shared-file fights or
+skipping substrate.
+
+```text
+                    ┌────────────── MH-0 (serial) ──────────────┐
+                    │ schemas + intent/mutator package +        │
+                    │ chat_turn_event.v1 + conformance skeleton │
+                    └───────┬─────────────┬─────────────┬───────┘
+                            │             │             │
+              ┌─────────────┼─────────────┼─────────────┼─────────────┐
+              ▼             ▼             ▼             ▼             ▼
+           MH-1          MH-2          MH-3          MH-4          MH-5
+        conformance   Claude 100%   Grok Axis A   Grok Axis B   mixed FleetRun
+        (turns green     (known        (mock ACP     (pylon-core    (sim workers
+         as adapters     seams)         first)        executor)      + claims)
+         land)
+              │             │             │             │             │
+              └─────────────┴──────┬──────┴─────────────┴─────────────┘
+                                   ▼
+                    ┌──────────────────────────────┐
+                    │ MH-6 Sync projections+mutators│
+                    │ (needs MH-0 intents + MH-5    │
+                    │  FleetRun shape)              │
+                    └──────────────┬───────────────┘
+                                   ▼
+                    ┌──────────────────────────────┐
+                    │ MH-7 cockpit (PY-2 + EN-2/3/5)│
+                    │ data rows early; EN chrome    │
+                    │ as catalog lands              │
+                    └──────────────┬───────────────┘
+                                   ▼
+                         MH-8 auto v1 (needs ledger)
+                                   │
+                         MH-9 cloud (after CX-3 only)
+```
+
+**Parallelism rules for fleet dispatch:**
+
+| Can run in parallel | Must not share mutable files |
+| --- | --- |
+| MH-2 Claude parity | desktop Claude runtime + pylon claude executor only |
+| MH-3 Grok Axis A | new `grok-acp-*` files only; mock ACP in-repo |
+| MH-4 Grok Axis B | pylon-core / PY-1 tree only; coordinate with PY-1 owner |
+| MH-5 mixed FleetRun fixtures | supervisor + planner tests; simulated runners |
+| MH-1 suite authoring | test packages; fails red until adapters fill fixtures |
+| EN-2 demand rows + EN catalog upstream | effect-native repo; no monorepo UI rewrite required |
+| CX-3 Codex-in-VM | **protected capacity** — never reassigned to Grok novelty |
+
+**Single-agent priority if starved:** MH-0 → MH-1 skeleton → MH-2 Claude
+→ MH-5 mixed fixture (two kinds) → MH-3/4 Grok → MH-6 → MH-7.
+
+**Multi-agent ideal (same week):** one agent on MH-0 until merge; then
+simultaneously MH-2, MH-3, MH-4, MH-5, MH-1 fixture authoring, EN-2
+demand filing, CX-3 protected lane, NEEDS_OWNER auth.
+
+**Claim law applies to us too:** one live claim per issue; no two agents
+on `agent-runtime-schema` Wave 0 simultaneously.
+
+### 11.4 Grok 4.5 is free *for now* — burn it, measure it, don't romanticize it
+
+Owner note: **Grok 4.5 is currently free for us** (CLI logged into
+`grok.com`; local default model `grok-4.5`). That is a **time-limited
+economic window**, not a permanent architecture input. While it holds:
+
+1. **Bias `auto` preference order toward Grok** for fixture and internal
+   dogfood workers (after readiness), because marginal $ cost is ~0.
+2. **Do not hard-code "Grok is free" into product policy** — encode
+   `marginal_cost_class: free | subscription | api_metered | not_measured`
+   on capacity rows so when free ends, `auto` flips without a rewrite.
+3. **Prefer Grok for high-volume parallel fan-out experiments** (claim
+   stress, mixed FleetRun soak) where Codex/Claude quotas are the scarce
+   resource.
+4. **Keep Codex as default coder for owner daily-driver / CX-3** — free
+   Grok does not replace the cloud isolation linchpin.
+5. **Meter honesty still applies** — free ≠ unmeasured. Record time,
+   turns, any usage fields, rate-limit events; never invent tokens.
+
+#### Two auth planes (do not conflate)
+
+| Plane | How | Economics | Rate limits |
+| --- | --- | --- | --- |
+| **A. Grok Build CLI / grok.com session** | `grok login` / device-code; what local `grok models` uses today | Currently free for us (promotional / product access — **verify weekly**) | **Not fully published** like the API table; observe empirically (429s, cooldowns, concurrent session caps) |
+| **B. xAI API key** | `XAI_API_KEY` → `api.x.ai` | Published pricing (e.g. grok-4.5 list price on x.ai/api — **not free**) | Published tiers: see below |
+
+Fleet capacity hosts must record **which plane** each account uses.
+Mixing them in one `auto` pool without labels will corrupt economics and
+rate-limit accounting.
+
+#### Published API rate limits (plane B) — third-party docs 2026-07-08
+
+Source: https://docs.x.ai/developers/rate-limits
+Dimensions: **RPS** (from RPM/60 burst protection) and **TPM**.
+Tier by cumulative API spend since 2026-01-01; tiers do not downgrade.
+
+**grok-4.5 (API) at each tier:**
+
+| Tier | Spend ≥ | RPS | TPM |
+| --- | --- | --- | --- |
+| T0 | $0 | 150 | 50M |
+| T1 | $50 | 172 | 53M |
+| T2 | $250 | 208 | 60M |
+| T3 | $1,000 | 312 | 74M |
+| T4 | $5,000 | 500 | 100M |
+
+Note: other models (e.g. grok-4.3, grok-build-0.1) have **lower** T0 caps
+(RPS 37 / TPM 10M). Multi-agent specialty models can be much lower still.
+Always read the console page for the live team:
+https://console.x.ai/team/default/rate-limits
+
+429 handling: exponential backoff; typed failure class
+`account_rate_limited` (Fable §5) — never a generic error.
+
+#### What we still must measure (plane A — free CLI / grok.com)
+
+Published API numbers **do not** answer free-CLI concurrency. Add an
+explicit **rate-limit probe lane** (can sit under MH-4 readiness or a
+tiny ops script; fixture-first):
+
+| Probe | Question | Exit artifact |
+| --- | --- | --- |
+| RL-1 | Max sustained `grok -p` / ACP sessions on one host before 429 or soft throttle | measured RPS/session cap, labeled `plane=cli_session` |
+| RL-2 | TPM-equivalent if headers/body expose usage; else wall-clock tokens proxy | `exact` or `not_measured` |
+| RL-3 | Concurrent multi-account: N logins × sessions | scaling curve |
+| RL-4 | Worktree-heavy agents vs chat-only | whether tool loops hit different ceilings |
+| RL-5 | Daily/weekly quota walls (if any) beyond per-minute | calendar caps |
+| RL-6 | Free-window death: first day free ends or model deprioritized | alert + `marginal_cost_class` flip |
+
+**Until RL-1..2 have receipts, `auto` must assume conservative caps**
+(e.g. start at 2–4 concurrent Grok workers per host, climb only on
+measured headroom). Free compute is free until a silent throttle makes
+the fleet look "broken."
+
+#### Parallelization implication of free Grok
+
+While free:
+
+- **Soak tests and claim-registry stress prefer Grok workers** (cheap).
+- **Claude/Codex capacity reserved** for parity completion, owner
+  dogfood, and CX-3.
+- **Mixed FleetRun demos** can show three logos without burning paid
+  quotas — still require claims + verify (June 29 law unchanged).
+- When free ends, economics surface (MH-8) already has the field to
+  re-rank preference order without redesign.
+
+### 11.5 Small corrections / additions to Fable §7–8
+
+1. **MH-0 package split (blast-radius control):** put shared
+   intent/mutator + `khala.chat_turn_event.v1` in a **narrow** package
+   (or carefully versioned export path) so mobile/sync can depend without
+   pulling all of desktop. Additive literals in `agent-runtime-schema`
+   stay fine; avoid a god-object PR.
+2. **MH-4 / PY-1 race:** if PY-1 has not branched when MH-4 starts, land
+   executor behind a `pylon-core`-shaped module boundary **now** (folder
+   + ports) so the move is rename/shift, not rewrite.
+3. **MH-7 data-first exception list:** allowed without EN catalog:
+   extend existing harness pill enum, readiness row fields, workerKind on
+   existing Fleet form. **Not** allowed: new multi-column fleet graph
+   chrome that will be deleted in EN-5.
+4. **Conformance suite owns rate-limit failure classes** — add
+   `account_rate_limited` and `account_quota_exhausted` fixtures
+   explicitly; free-tier burn will hit them first.
+
+### 11.6 Revised same-week outcome (with free Grok)
+
+Unchanged from Fable if auth gate is cleared for *some* plane:
+
+- Fixture-tier three-harness fleet (simulated + mock ACP) — **no auth**
+- Two-harness real fleet (Codex + Claude) if MH-2 completes
+- Grok live-smoke workers **biased high concurrency** under free window
+  once RL probes set a ceiling
+- Sync mobile peek of fleet state (MH-6) even if chrome is plain
+- Rev 6.4 + MH issues filed; CX-3 unblocked and staffed
+
+### 11.7 Bottom line (Grok)
+
+Fable's doc is the right superseding analysis on top of mine. **Ship the
+process:** file MH-0..9, cut rev 6.4, NEEDS_OWNER for auth **and** free-
+window economics, run Wave 0 additive schemas with a red conformance
+suite, parallelize Claude parity + Grok ACP + mixed FleetRun fixtures +
+pylon-core executor boundary, keep CX-3 sacred, and **while Grok 4.5 is
+free, burn it for parallelism experiments under measured rate limits —
+never under assumed infinity.** The architecture is no longer the open
+question; capacity assignment and rate-limit receipts are.
