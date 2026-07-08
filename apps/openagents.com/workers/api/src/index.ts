@@ -359,6 +359,7 @@ import { makeD1BusinessOutreachStore } from './business-outreach'
 import { makeOperatorBusinessOutreachRoutes } from './business-outreach-routes'
 import { makeD1BusinessPipelineStore } from './business-pipeline-queue'
 import { makeOperatorBusinessPipelineRoutes } from './business-pipeline-routes'
+import { makeOperatorSarahSalesCheckoutRoutes } from './sarah-sales-checkout-routes'
 import {
   makeD1BusinessStarterCreditStore,
 } from './business-starter-credit'
@@ -10418,6 +10419,11 @@ const operatorBusinessPipelineRoutes = makeOperatorBusinessPipelineRoutes({
   requireAdminApiToken,
 })
 
+const operatorSarahSalesCheckoutRoutes = makeOperatorSarahSalesCheckoutRoutes({
+  makeDb: env => openAgentsDatabase(env),
+  requireAdminApiToken,
+})
+
 const operatorBusinessOutreachRoutes = makeOperatorBusinessOutreachRoutes({
   makeStore: env => {
     // KS-8.11 (#8322) x KS-8.14 (#8325): outreach tables ride the CRM/email
@@ -16223,6 +16229,8 @@ const routeRequest = makeWorkerRouteRequest({
     operatorBusinessOutreachRoutes.routeOperatorBusinessOutreachRequest,
   routeOperatorBusinessPipelineRequest:
     operatorBusinessPipelineRoutes.routeOperatorBusinessPipelineRequest,
+  routeOperatorSarahSalesCheckoutRequest:
+    operatorSarahSalesCheckoutRoutes.routeOperatorSarahSalesCheckoutRequest,
   routeOperatorBusinessStarterCreditRequest:
     operatorBusinessStarterCreditRoutes.routeOperatorBusinessStarterCreditRequest,
   routeOperatorPylonMarketplaceRequest:
