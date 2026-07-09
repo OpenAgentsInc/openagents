@@ -57,28 +57,22 @@ export const KhalaFleetDelegationAccountRankingHeuristic = S.Literals([
 export type KhalaFleetDelegationAccountRankingHeuristic =
   typeof KhalaFleetDelegationAccountRankingHeuristic.Type
 
+// Classic codex/claude Pylon capacity path. Grok is concrete at the FleetRun /
+// supervisor layer (MH-4) but does not use this account-provider ranking surface.
 export const KhalaFleetDelegateConcreteWorkerKind = S.Literals(["claude", "codex"])
 export type KhalaFleetDelegateConcreteWorkerKind =
   typeof KhalaFleetDelegateConcreteWorkerKind.Type
 
-export const KhalaFleetDelegateWorkerKind = S.Literals(["auto", "claude", "codex"])
+export const KhalaFleetDelegateWorkerKind = S.Literals(["auto", "claude", "codex", "grok"])
 export type KhalaFleetDelegateWorkerKind = typeof KhalaFleetDelegateWorkerKind.Type
 
-// A FleetRun may be *labeled* with any run-selection worker kind — including
-// `grok` (MH-0) — but the codex/claude delegation + executor path only
-// dispatches the concrete kinds it implements. Grok execution arrives with the
-// MH-4 Grok executor in the pylon-core boundary; until then no product surface
-// can create a grok run, so this narrows the run-selection kind to the
-// dispatchable delegate kind and fails loudly if that invariant is ever
-// violated (rather than silently dispatching grok work to codex).
+// Narrow a run-selection kind for the codex/claude delegate capacity path.
+// MH-4: `grok` is a first-class FleetRun kind and is returned as-is (callers
+// that only speak inspectCodexFleet must filter separately). Never silently
+// substitute one harness for another.
 export function narrowToDelegateWorkerKind(
   workerKind: "codex" | "claude" | "grok" | "auto",
 ): KhalaFleetDelegateWorkerKind {
-  if (workerKind === "grok") {
-    throw new Error(
-      "grok fleet dispatch is not yet available (pending the MH-4 Grok executor); a grok-labeled FleetRun cannot be delegated through the codex/claude path",
-    )
-  }
   return workerKind
 }
 

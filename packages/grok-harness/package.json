@@ -18,6 +18,7 @@
     "test": "bun test",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "rl-probe": "bun scripts/rl-probe.ts",
+    "rl4-worktree-probe": "bun scripts/rl4-worktree-probe.ts",
     "mock-acp": "bun scripts/mock-acp-stdio.ts",
     "live-acp-smoke": "bun scripts/live-acp-smoke.ts"
   },

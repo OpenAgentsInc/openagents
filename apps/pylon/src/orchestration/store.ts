@@ -24,7 +24,7 @@ import {
   type PylonDispatchFailureLane,
 } from "../dispatch-failure-taxonomy.js"
 
-export const ORCHESTRATION_SCHEMA_VERSION = 2
+export const ORCHESTRATION_SCHEMA_VERSION = 3
 
 export type OrchestrationTaskStatus =
   | "pending"
@@ -297,7 +297,11 @@ export type DispatchContextStatus =
   | "blocked"
   | "circuit_broken"
 
-export type OrchestrationRunnerKind = AgentRunnerKind | "generic"
+// `grok_cli` is the Axis-B coding-worker harness kind (MH-4). It is not an
+// AgentRunnerKind in the codex/claude Pylon registry — Grok workers dispatch
+// via the desktop/local headless executor — but durable fleet contexts and
+// task specs still need to label the runner honestly.
+export type OrchestrationRunnerKind = AgentRunnerKind | "generic" | "grok_cli"
 type StoredRunnerKind = OrchestrationRunnerKind | LegacyAgentRunnerKind
 
 export type DispatchContext = {
@@ -625,7 +629,13 @@ export function normalizeOrchestrationRunnerKind(
 }
 
 export function isStoredOrchestrationRunnerKind(kind: string): kind is StoredRunnerKind {
-  return kind === "generic" || kind === "claude" || kind === "claude_agent" || kind === "codex"
+  return (
+    kind === "generic" ||
+    kind === "claude" ||
+    kind === "claude_agent" ||
+    kind === "codex" ||
+    kind === "grok_cli"
+  )
 }
 
 type TaskRow = {
@@ -1022,7 +1032,7 @@ export class PylonOrchestrationStore {
       CREATE TABLE IF NOT EXISTS pylon_orchestration_dispatch_contexts (
         id TEXT PRIMARY KEY,
         assignee_handle TEXT NOT NULL,
-        runner_kind TEXT NOT NULL CHECK (runner_kind IN ('codex', 'claude_agent', 'claude', 'generic')),
+        runner_kind TEXT NOT NULL CHECK (runner_kind IN ('codex', 'claude_agent', 'claude', 'generic', 'grok_cli')),
         lane TEXT,
         account_ref_hash TEXT,
         worktree_id TEXT,
@@ -1162,6 +1172,7 @@ export class PylonOrchestrationStore {
     `)
     this.ensureDispatchContextBreakerColumns()
     this.ensureDispatchContextPausedColumn()
+    this.ensureDispatchContextRunnerKindAllowsGrokCli()
     this.db
       .query("INSERT OR REPLACE INTO pylon_orchestration_meta (key, value) VALUES ('schema_version', $version)")
       .run({ $version: String(ORCHESTRATION_SCHEMA_VERSION) })
@@ -1202,6 +1213,101 @@ export class PylonOrchestrationStore {
     if (!contextColumns.has("paused")) {
       this.db.exec("ALTER TABLE pylon_orchestration_dispatch_contexts ADD COLUMN paused INTEGER NOT NULL DEFAULT 0")
     }
+  }
+
+  /**
+   * MH-4: expand the dispatch-context `runner_kind` CHECK to include `grok_cli`.
+   * SQLite cannot ALTER a CHECK constraint, so existing DBs (pre schema v3)
+   * rebuild the table once. Fresh installs already get the expanded CHECK from
+   * CREATE TABLE IF NOT EXISTS above.
+   */
+  private ensureDispatchContextRunnerKindAllowsGrokCli(): void {
+    const rawVersion = this.getMeta("schema_version")
+    const version = rawVersion === null ? 0 : Number(rawVersion)
+    if (Number.isFinite(version) && version >= 3) return
+
+    // Probe: if the live CHECK already accepts grok_cli, skip rebuild.
+    try {
+      this.db.exec("SAVEPOINT probe_grok_cli_runner_kind")
+      this.db
+        .query(`
+          INSERT INTO pylon_orchestration_dispatch_contexts
+            (id, assignee_handle, runner_kind, status, failure_count, base_behind_by,
+             max_concurrent_slots, created_at, updated_at)
+          VALUES
+            ('__probe_grok_cli__', 'probe', 'grok_cli', 'idle', 0, 0, 1,
+             '1970-01-01T00:00:00.000Z', '1970-01-01T00:00:00.000Z')
+        `)
+        .run()
+      this.db.exec("ROLLBACK TO probe_grok_cli_runner_kind")
+      this.db.exec("RELEASE probe_grok_cli_runner_kind")
+      return
+    } catch {
+      try {
+        this.db.exec("ROLLBACK TO probe_grok_cli_runner_kind")
+        this.db.exec("RELEASE probe_grok_cli_runner_kind")
+      } catch {
+        // ignore nested rollback failures
+      }
+    }
+
+    const columns = this.tableColumnNames("pylon_orchestration_dispatch_contexts")
+    const hasLane = columns.has("lane")
+    const hasAccountRefHash = columns.has("account_ref_hash")
+    const hasPaused = columns.has("paused")
+
+    this.db.exec(`
+      CREATE TABLE pylon_orchestration_dispatch_contexts_v3 (
+        id TEXT PRIMARY KEY,
+        assignee_handle TEXT NOT NULL,
+        runner_kind TEXT NOT NULL CHECK (runner_kind IN ('codex', 'claude_agent', 'claude', 'generic', 'grok_cli')),
+        lane TEXT,
+        account_ref_hash TEXT,
+        worktree_id TEXT,
+        worktree_path TEXT,
+        status TEXT NOT NULL CHECK (status IN ('idle', 'dispatched', 'completed', 'failed', 'blocked', 'circuit_broken')),
+        current_task_id TEXT,
+        failure_count INTEGER NOT NULL DEFAULT 0,
+        last_heartbeat_at TEXT,
+        base_behind_by INTEGER NOT NULL DEFAULT 0,
+        max_concurrent_slots INTEGER NOT NULL DEFAULT 1,
+        paused INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      INSERT INTO pylon_orchestration_dispatch_contexts_v3 (
+        id, assignee_handle, runner_kind, lane, account_ref_hash, worktree_id, worktree_path,
+        status, current_task_id, failure_count, last_heartbeat_at, base_behind_by,
+        max_concurrent_slots, paused, created_at, updated_at
+      )
+      SELECT
+        id,
+        assignee_handle,
+        runner_kind,
+        ${hasLane ? "lane" : "NULL"},
+        ${hasAccountRefHash ? "account_ref_hash" : "NULL"},
+        worktree_id,
+        worktree_path,
+        status,
+        current_task_id,
+        failure_count,
+        last_heartbeat_at,
+        base_behind_by,
+        max_concurrent_slots,
+        ${hasPaused ? "paused" : "0"},
+        created_at,
+        updated_at
+      FROM pylon_orchestration_dispatch_contexts;
+      DROP TABLE pylon_orchestration_dispatch_contexts;
+      ALTER TABLE pylon_orchestration_dispatch_contexts_v3
+        RENAME TO pylon_orchestration_dispatch_contexts;
+      CREATE INDEX IF NOT EXISTS idx_pylon_orchestration_contexts_status
+        ON pylon_orchestration_dispatch_contexts(status, updated_at);
+      CREATE INDEX IF NOT EXISTS idx_pylon_orchestration_contexts_worktree
+        ON pylon_orchestration_dispatch_contexts(worktree_id);
+      CREATE INDEX IF NOT EXISTS idx_pylon_orchestration_contexts_account_lane
+        ON pylon_orchestration_dispatch_contexts(account_ref_hash, lane);
+    `)
   }
 
   createFleetRun(input: CreateFleetRunInput): FleetRun {

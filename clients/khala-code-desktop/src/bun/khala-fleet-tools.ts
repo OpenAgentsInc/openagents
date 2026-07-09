@@ -11,6 +11,10 @@ import {
   type PylonLifecycleWireEvent,
 } from "@openagentsinc/agent-runtime-schema"
 import {
+  createGrokHeadlessWorkerExecutor,
+  type GrokWorkerExecutorPort,
+} from "@openagentsinc/grok-harness"
+import {
   decodeKhalaFleetDelegationParameterSet,
   KhalaFleetDelegateModuleError,
   khalaFleetDelegationParametersFromEnv,
@@ -101,6 +105,8 @@ export type KhalaCodexFleetToolOptions = {
   readonly delegationParameters?: KhalaFleetDelegationParameterSet | undefined
   readonly env?: ChatEnv | undefined
   readonly fleetRunSupervisor?: KhalaFleetRunSupervisorManager | undefined
+  /** Inject for unit tests — avoids live `grok -p` in codex_spawn worker_kind=grok. */
+  readonly grokWorkerExecutor?: GrokWorkerExecutorPort | undefined
   readonly onProgress?: KhalaCodexFleetProgressSink | undefined
   readonly pylonService?: PylonServiceShape | undefined
   readonly runner?: KhalaCodexFleetCommandRunner | undefined
@@ -1309,23 +1315,64 @@ function executeCodexSpawnTool(
   options: KhalaCodexFleetToolOptions,
 ): Effect.Effect<KhalaToolResult, never> {
   return Effect.promise(async () => {
-    // Accept grok, but fail closed with a typed unavailable result instead of
-    // dispatching (no Grok executor yet; never silently downgrade to codex).
+    // MH-4: dispatch grok workers via the headless executor (never downgrade to codex).
     if (input.worker_kind === "grok") {
-      const detail =
-        "grok fleet dispatch is not yet available (pending the MH-4 Grok executor); the request was not downgraded to codex."
-      return khalaToolUnavailable({
-        modelText: detail,
+      const count = Math.max(1, Math.min(optionalInteger(input.count) ?? 1, 8))
+      const prompt = requiredString(input.prompt, "codex_spawn requires prompt")
+      const fixture = optionalBoolean(input.fixture) === true
+      const env = options.env as NodeJS.ProcessEnv | undefined
+      const executor = options.grokWorkerExecutor ?? createGrokHeadlessWorkerExecutor({
+        ...(env === undefined ? {} : { env }),
+      })
+      const results: Array<Record<string, unknown>> = []
+      let accepted = 0
+      for (let i = 0; i < count; i += 1) {
+        const claimRef = optionalString(input.claim_ref) ?? `grok-claim-${Date.now()}-${i}`
+        const closeout = await executor.runClaimedWork({
+          pin: {
+            claimRef,
+            workUnitRef: optionalString(input.issue)?.toString() ?? `spawn-${i}`,
+            runRef: "codex_spawn.grok",
+            cwd: process.cwd(),
+            ...(optionalString(input.repo) === undefined ? {} : { repo: optionalString(input.repo)! }),
+            ...(optionalString(input.commit) === undefined ? {} : { commit: optionalString(input.commit)! }),
+            ...(optionalString(input.branch) === undefined ? {} : { branch: optionalString(input.branch)! }),
+            ...(optionalString(input.verify) === undefined ? {} : { verifyCommand: optionalString(input.verify)! }),
+          },
+          prompt: fixture
+            ? `${prompt}\n\nFixture/no-spend: reply with a one-line summary only.`
+            : prompt,
+          plane: env?.XAI_API_KEY ? "api_key" : "cli_session",
+          marginalCostClass: env?.XAI_API_KEY ? "api_metered" : "free",
+        })
+        if (closeout.ok) accepted += 1
+        results.push({
+          claimRef,
+          ok: closeout.ok,
+          assignmentRef: closeout.ok ? `grok.${claimRef}` : null,
+          summary: closeout.text.slice(0, 300),
+          stopReason: closeout.stopReason,
+          failureClass: closeout.failureClass ?? null,
+          usage: closeout.usage,
+        })
+      }
+      const modelText =
+        `Grok fleet spawn: accepted ${accepted}/${count}.` +
+        (accepted === 0 ? " No Grok workers completed." : "")
+      if (accepted === 0) {
+        return khalaToolError("grok_spawn_failed", modelText)
+      }
+      return khalaToolOk({
+        modelText,
         publicSafety: "private",
-        publicSummary: "Grok worker kind is not yet available; no work was dispatched.",
+        publicSummary: modelText,
         ui: {
           kind: "codex_spawn",
-          acceptedCount: 0,
-          delegateStatus: "blocked",
+          acceptedCount: accepted,
+          delegateStatus: "accepted",
           pylonRef: null,
-          requestedCount: optionalInteger(input.count) ?? 1,
-          results: [],
-          unavailableReason: "worker_kind_unavailable",
+          requestedCount: count,
+          results,
           workerKind: "grok",
         },
       })

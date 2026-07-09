@@ -3043,22 +3043,48 @@ describe("Khala Code fleet tools", () => {
     }
   })
 
-  test("codex_spawn with worker_kind grok fails closed as typed unavailable (never downgraded to codex)", async () => {
-    const tool = createKhalaCodexFleetTools()
+  test("codex_spawn with worker_kind grok dispatches via Grok executor (never downgraded to codex)", async () => {
+    const tool = createKhalaCodexFleetTools({
+      // Deterministic unit path — never hit live `grok -p`.
+      grokWorkerExecutor: {
+        kind: "grok_cli",
+        readiness: async () => ({
+          ready: true,
+          binary: "grok-fixture",
+          plane: "cli_session",
+          models: ["grok-4"],
+        }),
+        runClaimedWork: async (input) => ({
+          ok: true,
+          claimRef: input.pin.claimRef,
+          text: "fixture-ok",
+          stopReason: "end_turn",
+          usage: {
+            metering: "not_measured" as const,
+            wallClockMs: 1,
+            plane: "cli_session" as const,
+            marginalCostClass: "free" as const,
+          },
+        }),
+      },
+    })
       .find(item => item.definition.name === "codex_spawn")
 
     const result = await Effect.runPromise(tool!.execute!({
-      prompt: "Delegate this to a grok worker.",
+      prompt: "Reply with only: fixture-ok",
       worker_kind: "grok",
+      fixture: true,
+      count: 1,
     }, {} as never))
 
-    expect(result.status).toBe("unavailable")
-    expect(result.modelOutput.text).toContain("grok fleet dispatch is not yet available")
+    // Must not be the old unavailable fail-closed path.
+    expect(result.status).toBe("ok")
+    expect(result.modelOutput.text).not.toContain("grok fleet dispatch is not yet available")
+    expect(result.modelOutput.text).toContain("Grok fleet spawn: accepted 1/1")
     expect(result.ui).toMatchObject({
       kind: "codex_spawn",
-      acceptedCount: 0,
-      delegateStatus: "blocked",
-      unavailableReason: "worker_kind_unavailable",
+      acceptedCount: 1,
+      delegateStatus: "accepted",
       workerKind: "grok",
     })
   })

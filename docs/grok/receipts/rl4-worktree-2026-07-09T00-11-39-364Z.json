@@ -1,0 +1,98 @@
+{
+  "schema": "openagents.grok_harness.rl4_worktree_probe.v1",
+  "plane": "cli_session",
+  "marginalCostClass": "free",
+  "binary": "grok",
+  "measuredAt": "2026-07-09T00:11:39.364Z",
+  "promptClass": "read_file_in_cwd_always_approve",
+  "bands": [
+    {
+      "concurrency": 1,
+      "wallClockMs": 8113,
+      "successCount": 1,
+      "failureCount": 0,
+      "rateLimitedCount": 0,
+      "workers": [
+        {
+          "index": 0,
+          "ok": true,
+          "wallClockMs": 8113,
+          "exitCode": 0,
+          "textPreview": "rl4-1-0",
+          "stderrPreview": ""
+        }
+      ]
+    },
+    {
+      "concurrency": 2,
+      "wallClockMs": 10490,
+      "successCount": 2,
+      "failureCount": 0,
+      "rateLimitedCount": 0,
+      "workers": [
+        {
+          "index": 0,
+          "ok": true,
+          "wallClockMs": 9852,
+          "exitCode": 0,
+          "textPreview": "rl4-2-0",
+          "stderrPreview": ""
+        },
+        {
+          "index": 1,
+          "ok": true,
+          "wallClockMs": 10489,
+          "exitCode": 0,
+          "textPreview": "rl4-2-1",
+          "stderrPreview": ""
+        }
+      ]
+    },
+    {
+      "concurrency": 4,
+      "wallClockMs": 40297,
+      "successCount": 4,
+      "failureCount": 0,
+      "rateLimitedCount": 0,
+      "workers": [
+        {
+          "index": 0,
+          "ok": true,
+          "wallClockMs": 8605,
+          "exitCode": 0,
+          "textPreview": "rl4-4-0",
+          "stderrPreview": ""
+        },
+        {
+          "index": 1,
+          "ok": true,
+          "wallClockMs": 9453,
+          "exitCode": 0,
+          "textPreview": "rl4-4-1",
+          "stderrPreview": ""
+        },
+        {
+          "index": 2,
+          "ok": true,
+          "wallClockMs": 40295,
+          "exitCode": 0,
+          "textPreview": "I'll read `README.md` and return only the `rl4-...` marker from it.rl4-4-2",
+          "stderrPreview": ""
+        },
+        {
+          "index": 3,
+          "ok": true,
+          "wallClockMs": 9513,
+          "exitCode": 0,
+          "textPreview": "I'll read `README.md` and return only the `rl4-...` marker from it.rl4-4-3",
+          "stderrPreview": ""
+        }
+      ]
+    }
+  ],
+  "maxFullSuccessConcurrency": 4,
+  "notes": [
+    "RL-4: concurrent workers with isolated cwd + always-approve tool path.",
+    "Harder than RL-1 plain chat; use this floor for tool-using fleet soft caps."
+  ]
+}

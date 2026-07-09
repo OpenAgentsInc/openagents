@@ -48,6 +48,10 @@ import {
   type FleetRunSupervisorPlanner,
   type FleetRunSupervisorRunner,
 } from "./fleet-run-supervisor.js"
+import {
+  createGrokHeadlessWorkerExecutor,
+  probeGrokReadiness,
+} from "@openagentsinc/grok-harness"
 import type {
   KhalaCodeDesktopFleetRunControlRequest,
   KhalaCodeDesktopFleetRunListRequest,
@@ -308,28 +312,67 @@ const plannerFor = (
 
 const capacityFor = (options: KhalaCodexFleetToolOptions | undefined): FleetRunSupervisorCapacity => ({
   accounts: async ({ run }) => {
-    const status = await inspectCodexFleet({
-      includeProcesses: false,
-      includeRateLimits: false,
-      startPylon: true,
-      workerKind: narrowToDelegateWorkerKind(run.workerKind),
-    }, options)
-    return status.accounts
-      .filter(account => !account.paused && (
-        run.workerKind === "auto" ||
-        account.provider === (run.workerKind === "claude" ? "claude_agent" : "codex")
-      ))
-      .map(account => ({
-        accountRef: account.accountRef,
-        advertisedCapacity: Math.max(0, Math.trunc(
-          account.capacity?.available ??
-          account.capacity?.ready ??
-          (account.readiness === "ready" || account.readiness === "available" ? 1 : 0),
-        )),
-        // Carry the account's concrete kind so a mixed `auto` run labels each
-        // dispatch by the harness that actually claimed the unit.
-        workerKind: account.provider === "claude_agent" ? "claude" as const : "codex" as const,
-      }))
+    const accounts: Array<{
+      accountRef: string
+      advertisedCapacity: number
+      workerKind: "codex" | "claude" | "grok"
+    }> = []
+
+    // Grok local capacity (MH-4): synthetic account when CLI is ready.
+    // Soft-cap concurrent slots so free-window soak does not thrash the host.
+    if (run.workerKind === "grok" || run.workerKind === "auto") {
+      const readiness = await probeGrokReadiness({
+        env: options?.env as NodeJS.ProcessEnv | undefined,
+      })
+      if (readiness.ready) {
+        const softCap = Math.max(
+          1,
+          Math.min(
+            24,
+            Math.trunc(run.targetConcurrency),
+          ),
+        )
+        accounts.push({
+          accountRef: "grok-local",
+          advertisedCapacity: run.workerKind === "grok" ? softCap : Math.min(softCap, 8),
+          workerKind: "grok",
+        })
+      }
+    }
+
+    // Codex/Claude capacity via existing Pylon inspect path.
+    if (run.workerKind !== "grok") {
+      const inspectKind =
+        run.workerKind === "claude" ? "claude" :
+        run.workerKind === "auto" ? "auto" :
+        "codex"
+      const status = await inspectCodexFleet({
+        includeProcesses: false,
+        includeRateLimits: false,
+        startPylon: true,
+        workerKind: inspectKind,
+      }, options)
+      for (const account of status.accounts) {
+        if (account.paused) continue
+        if (
+          run.workerKind !== "auto" &&
+          account.provider !== (run.workerKind === "claude" ? "claude_agent" : "codex")
+        ) {
+          continue
+        }
+        accounts.push({
+          accountRef: account.accountRef,
+          advertisedCapacity: Math.max(0, Math.trunc(
+            account.capacity?.available ??
+            account.capacity?.ready ??
+            (account.readiness === "ready" || account.readiness === "available" ? 1 : 0),
+          )),
+          workerKind: account.provider === "claude_agent" ? "claude" as const : "codex" as const,
+        })
+      }
+    }
+
+    return accounts
   },
 })
 
@@ -340,6 +383,44 @@ const runnerFor = (input: {
   readonly toolOptions?: KhalaCodexFleetToolOptions
 }): FleetRunSupervisorRunner => ({
   dispatch: async dispatch => {
+    // MH-4: Grok workers run locally via headless/ACP executor — not Pylon
+    // codex/claude assignment path.
+    if (dispatch.workerKind === "grok") {
+      const env = (input.env ?? input.toolOptions?.env) as NodeJS.ProcessEnv | undefined
+      const executor = createGrokHeadlessWorkerExecutor({
+        ...(env === undefined ? {} : { env }),
+      })
+      const cwd = process.cwd()
+      const objective = dispatch.workUnit.body ?? dispatch.run.objective
+      const closeout = await executor.runClaimedWork({
+        pin: {
+          claimRef: dispatch.claim.claimRef,
+          workUnitRef: dispatch.workUnit.workUnitRef,
+          runRef: dispatch.run.runRef,
+          cwd,
+          ...(dispatch.workUnit.repo === undefined ? {} : { repo: dispatch.workUnit.repo }),
+          ...(dispatch.workUnit.baseCommit === undefined ? {} : { commit: dispatch.workUnit.baseCommit }),
+          ...(dispatch.workUnit.branch === undefined ? {} : { branch: dispatch.workUnit.branch }),
+          ...(dispatch.workUnit.verify === undefined ? {} : { verifyCommand: dispatch.workUnit.verify }),
+        },
+        prompt: [
+          "You are a fleet worker. Stay in scope for this claim.",
+          objective,
+          dispatch.workUnit.kind === "fixture"
+            ? "This is a fixture/no-spend unit. Reply with a one-line completion summary only."
+            : "Complete the bounded work unit. Do not expand scope.",
+        ].join("\n\n"),
+        plane: env?.XAI_API_KEY ? "api_key" : "cli_session",
+        marginalCostClass: env?.XAI_API_KEY ? "api_metered" : "free",
+      })
+      return {
+        assignmentRef: closeout.ok ? `grok.${dispatch.claim.claimRef}` : null,
+        lifecycle: [],
+        status: closeout.ok ? "completed" as const : "failed" as const,
+        summary: closeout.text.slice(0, 500) || closeout.stopReason,
+      }
+    }
+
     const fixture = dispatch.workUnit.kind === "fixture"
     const service = input.pylonService ?? input.toolOptions?.pylonService ?? makePylonService({
       env: input.env ?? input.toolOptions?.env,
@@ -355,8 +436,8 @@ const runnerFor = (input: {
       repo: dispatch.workUnit.repo,
       verify: fixture ? undefined : dispatch.workUnit.verify ?? DEFAULT_VERIFY,
       // Use the per-account kind the supervisor resolved for THIS claim (mixed
-      // pools dispatch codex and claude side by side); grok never reaches here.
-      workerKind: dispatch.workerKind,
+      // pools dispatch codex and claude side by side).
+      workerKind: dispatch.workerKind === "claude" ? "claude" : "codex",
     }))
   },
 })
