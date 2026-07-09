@@ -2260,6 +2260,49 @@ normalizedPatchDigest | behaviorReceiptDigest)`. Exactly one accepted
 - Regression coverage for this policy lives in
   `workers/api/src/pylon-api-routes.test.ts`.
 
+## Sarah FleetRun Intake Authority
+
+- Sarah-created coding runs use the Cloud SQL Postgres authority in
+  `@openagentsinc/khala-sync-server` (`fleet-run-authority.ts` and migration
+  `0052_sarah_fleet_run_authority.sql`). A Sarah process-local JSON file, an
+  in-memory adapter, or the browser projection is never production run
+  authority.
+- Run creation persists the canonical public-safe request and normalized work
+  units, claims `scope.fleet_run.<runRef>` for the authenticated owner, and
+  appends the redacted `fleet_run` draft post-image in one Postgres
+  transaction. A reused owner/idempotency key replays only the byte-canonical
+  same request; changed input is a fixed `idempotency_conflict`, never a silent
+  replay or a second run.
+- Every accepted run carries an exact non-placeholder 40-character commit,
+  an unambiguous bounded Git branch, and a concrete bounded verifier argv that
+  the Pylon workspace executor can run immediately. Unresolved verifier refs,
+  shell-shaped commands, absolute/traversing verifier paths, and full GitHub
+  issue URLs outside the pinned repository fail closed before persistence.
+- A Pylon acquires a bounded whole-run intake lease, not a work-unit claim.
+  Work-unit claim uniqueness remains owned by the Pylon orchestration store
+  after import, so this handoff does not create a second work-claim universe.
+  The server lease serializes exact-run and oldest-eligible claim races and
+  permits replacement only after expiry or release. An exact idempotent accept
+  transition removes an imported run from the pending queue before the lease
+  can expire; an accepted intake can never be silently re-leased to a second
+  Pylon.
+- Intake requires an active, heartbeat-fresh Pylon whose registration is owned
+  directly by the run owner or by an agent with an active, unrevoked
+  `openauth_agent_links` relationship to that owner. Foreign, unlinked,
+  blocked, retired, future-dated, or stale Pylons fail closed. Owner-local
+  intake considers only `owner_local` and `auto` runs; `managed_cloud` is not
+  silently substituted onto owner capacity.
+- Request, storage, and integrity failures expose fixed typed diagnostics.
+  Owner IDs, owner idempotency keys, request fingerprints, SQL/connection
+  details, local paths, credentials, prompts beyond the bounded public-safe
+  objective, and private execution material never enter the FleetRun Sync
+  post-image or public start result.
+- Regression coverage lives in
+  `packages/khala-sync-server/src/fleet-run-authority.test.ts`, including real
+  Postgres atomicity, owner isolation, idempotency conflicts, active-link
+  revocation, stale-Pylon refusal, concurrent claim uniqueness, and lease
+  expiry.
+
 ## Khala Coding Delegation Through Pylons
 
 - Khala coding workflow delegation may use only the caller's own linked Pylon
