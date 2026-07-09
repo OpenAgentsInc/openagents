@@ -1,4 +1,4 @@
-# NEEDS-OWNER — 4 items left, ~12 minutes
+# NEEDS-OWNER — 3 items left, ~7 minutes
 
 Updated 2026-07-09 (post-GO). Archive of everything older:
 `docs/ops/2026-07-09-needs-owner-archive.md`. Full backlog
@@ -11,12 +11,13 @@ github.com/AgentFlampy/openagents (recorded on #8543; agents wire the E2E
 themselves). Sarah `/sarah` serving gates resolved (live on the monolith,
 S-12 6/6).
 
-## THE ASK — 4 items, ~12 minutes
+## THE ASK — 3 items, ~7 minutes
 
-**1. Codex connect tap-through (~5 min, phone) — closes CX-2 #8546.**
-Khala mobile → Settings → Codex accounts → Connect → complete the browser
-short-code approval → confirm `ready` → Disconnect → confirm removal.
-That's the entire exit receipt.
+**~~1. Codex connect tap-through~~ — ATTEMPTED, FAILED, back on agents.**
+Your report (stale account pile-up; Disconnect only reorders, doesn't
+remove) is recorded verbatim on #8546 with a behavior contract landing;
+an audit+fix lane is running. You'll get a fresh "try again" ping when
+the list is clean and Disconnect actually removes.
 
 **2. WEB-1 landing review (~5 min) — #8565 root cutover.** Look at the
 `/new` preview and the `/stage1` Effect Native render; say yes/no/changes
