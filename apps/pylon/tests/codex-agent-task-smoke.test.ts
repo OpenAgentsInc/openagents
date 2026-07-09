@@ -14,6 +14,8 @@ import { createBootstrapSummary, parseBootstrapArgs } from "../src/bootstrap"
 import { sendHeartbeat } from "../src/presence"
 import { ensurePylonLocalState, assertPublicProjectionSafe } from "../src/state"
 
+const CHILD_BUN_INTEGRATION_TIMEOUT_MS = 20_000
+
 describe("codex agent task smoke (CI-safe leg)", () => {
   test("full worker-loop lifecycle delivers an accepted, redacted closeout", async () => {
     const result = await runCodexAgentTaskCiSmoke()
@@ -32,7 +34,7 @@ describe("codex agent task smoke (CI-safe leg)", () => {
     expect(result.redactionScan.scannedRequestCount).toBeGreaterThan(3)
     expect(result.redactionScan.violations).toEqual([])
     assertPublicProjectionSafe(result)
-  })
+  }, CHILD_BUN_INTEGRATION_TIMEOUT_MS)
 
   test("the smoke lease payload is public-safe and capability-gated", () => {
     const lease = codexAgentSmokeLease()

@@ -25,6 +25,7 @@ import {
 import { ensurePylonLocalState } from "../src/state"
 
 const now = new Date("2026-07-03T00:00:00.000Z")
+const CHILD_BUN_INTEGRATION_TIMEOUT_MS = 20_000
 
 const definition = decodeAgentDefinition({
   schema: "openagents.agent_definition.v1",
@@ -242,7 +243,7 @@ describe("agent_harness_adapter.v1 harness adapters", () => {
         "result.public.pylon.claude_agent_task.fixture_repair_passed",
       )
     })
-  })
+  }, CHILD_BUN_INTEGRATION_TIMEOUT_MS)
 
   test("refuses non-own-pylon definitions instead of inventing a lane", async () => {
     const codexRefused = await codexAgentHarnessAdapter.start({

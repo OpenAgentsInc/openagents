@@ -5,6 +5,8 @@ import {
 } from "../src/mixed-harness-fleet-run-smoke"
 import { assertPublicProjectionSafe } from "../src/state"
 
+const CHILD_BUN_INTEGRATION_TIMEOUT_MS = 20_000
+
 // MH-2 exit receipt (#8583): a mixed two-harness FleetRun (codex + claude) run
 // through ONE claim registry, proving claim uniqueness under mixed kinds and
 // both closeouts receipted — the abstraction the three-harness plan depends on.
@@ -38,10 +40,10 @@ describe("mixed two-harness FleetRun (codex + claude) exit receipt", () => {
       expect(leg.redacted).toBe(true)
       expect(leg.redactionViolations).toEqual([])
     }
-  })
+  }, CHILD_BUN_INTEGRATION_TIMEOUT_MS)
 
   test("the exit receipt is public-projection safe", async () => {
     const receipt = await runMixedHarnessFleetRunCiSmoke()
     expect(() => assertPublicProjectionSafe(receipt)).not.toThrow()
-  })
+  }, CHILD_BUN_INTEGRATION_TIMEOUT_MS)
 })

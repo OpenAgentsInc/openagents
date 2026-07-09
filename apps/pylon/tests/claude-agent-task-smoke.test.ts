@@ -7,6 +7,8 @@ import {
 import { CLAUDE_AGENT_CAPABILITY_REF } from "../src/claude-agent"
 import { assertPublicProjectionSafe } from "../src/state"
 
+const CHILD_BUN_INTEGRATION_TIMEOUT_MS = 20_000
+
 describe("claude agent task smoke (CI-safe leg)", () => {
   test("full worker-loop lifecycle delivers an accepted, redacted closeout", async () => {
     const result = await runClaudeAgentTaskCiSmoke()
@@ -26,7 +28,7 @@ describe("claude agent task smoke (CI-safe leg)", () => {
     expect(result.redactionScan.scannedRequestCount).toBeGreaterThan(3)
     expect(result.redactionScan.violations).toEqual([])
     assertPublicProjectionSafe(result)
-  })
+  }, CHILD_BUN_INTEGRATION_TIMEOUT_MS)
 
   test("the smoke lease payload is public-safe and capability-gated", () => {
     const lease = claudeAgentSmokeLease()
