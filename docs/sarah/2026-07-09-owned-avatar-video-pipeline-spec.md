@@ -180,7 +180,10 @@ scheduler holds a small (~200 ms) jitter buffer so lips never lead the sound.
 - **OAV-2 — the render service:** LiveTalking (or a ported scheduler) on one
   L4: idle/listen/speak state machine over the clip library, MuseTalk
   backend, WebRTC egress, `speak/interrupt/listening` control API mirroring
-  the LITE cycle.
+  the LITE cycle. **Status 2026-07-09:** complete on Hydralisk; see
+  `docs/sarah/2026-07-09-oav2-render-service-closeout.md` and Hydralisk
+  `docs/evidence/2026-07-09-oav2-musetalk-gpu-smoke.md` for the empty-blocker
+  L4 simulator pass.
 - **OAV-3 — TTS ownership:** CosyVoice deployment + Sarah voice clone from
   owned reference audio; Chirp 3 HD as the managed interim behind the same
   PCM-stream seam.
