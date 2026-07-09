@@ -1,0 +1,201 @@
+import { Effect, Exit, Scope } from "effect"
+
+import {
+  startFleetRunSupervisor,
+  type FleetRunSupervisorCapacity,
+  type FleetRunSupervisorClock,
+  type FleetRunSupervisorHandle,
+  type FleetRunSupervisorObservedEvent,
+  type FleetRunSupervisorPlanner,
+  type FleetRunSupervisorRunner,
+  type FleetRunSupervisorTickResult,
+} from "./fleet-run-supervisor.js"
+import type {
+  CreateFleetRunInput,
+  FleetRun,
+  FleetRunControlVerb,
+  FleetRunState,
+  PylonOrchestrationStore,
+} from "./store.js"
+
+export type PylonFleetRunSnapshot = {
+  readonly active: boolean
+  readonly lastTick: FleetRunSupervisorTickResult | null
+  readonly lifecycle: readonly FleetRunSupervisorObservedEvent[]
+  readonly pylonRef: string | null
+  readonly run: FleetRun
+}
+
+export type PylonFleetRunControlResult = PylonFleetRunSnapshot & {
+  readonly verb: FleetRunControlVerb
+}
+
+export type StartPylonFleetRunInput = {
+  readonly capacity: FleetRunSupervisorCapacity
+  readonly clock?: Partial<FleetRunSupervisorClock> | undefined
+  readonly onLifecycle?: ((event: FleetRunSupervisorObservedEvent) => void | Promise<void>) | undefined
+  readonly planner: FleetRunSupervisorPlanner
+  readonly pylonRef: string
+  readonly run: CreateFleetRunInput
+  readonly runner: FleetRunSupervisorRunner
+  readonly startImmediately?: boolean | undefined
+  readonly tickIntervalMs?: number | undefined
+}
+
+export type PylonFleetRunManagerOptions = {
+  readonly now?: (() => Date) | undefined
+  readonly store: PylonOrchestrationStore
+}
+
+type ActiveFleetRun = {
+  readonly handle: FleetRunSupervisorHandle
+  lastTick: FleetRunSupervisorTickResult | null
+  readonly lifecycle: FleetRunSupervisorObservedEvent[]
+  readonly pylonRef: string
+  readonly scope: Scope.Scope
+}
+
+/**
+ * Pylon-owned lifecycle/composition authority for standing FleetRuns.
+ *
+ * Product hosts supply only adapters (planner, mixed capacity projection, and
+ * concrete harness runner). Pylon owns run-record mutation, the one-supervisor
+ * guard, scoped loop lifetime, retained lifecycle, control state, and cleanup.
+ * Persistence follows the injected store: the standing Pylon composition must
+ * pass its Pylon-home `orchestration.sqlite`, while tests may use memory. The
+ * retired desktop compatibility wrapper still injects memory during this
+ * extraction wave; replacing that bridge with Pylon-home construction remains
+ * an explicit FC-2 residual rather than an implied completed guarantee.
+ */
+export class PylonFleetRunManager {
+  readonly store: PylonOrchestrationStore
+  private readonly active = new Map<string, ActiveFleetRun>()
+  private readonly now: () => Date
+  private readonly retainedLifecycle = new Map<string, readonly FleetRunSupervisorObservedEvent[]>()
+  private readonly retainedPylonRefs = new Map<string, string>()
+
+  constructor(options: PylonFleetRunManagerOptions) {
+    this.store = options.store
+    this.now = options.now ?? (() => new Date())
+  }
+
+  async start(input: StartPylonFleetRunInput): Promise<PylonFleetRunSnapshot> {
+    await this.reapTerminalActives()
+    if (this.store.getFleetRun(input.run.runRef) !== null) {
+      throw new Error(`fleet run already exists: ${input.run.runRef}`)
+    }
+    const run = this.store.createFleetRun(input.run)
+    const scope = Effect.runSync(Scope.make())
+    let handle: FleetRunSupervisorHandle
+    try {
+      handle = await Effect.runPromise(Effect.provideService(
+        startFleetRunSupervisor({
+          store: this.store,
+          pylonRef: input.pylonRef,
+          runRef: run.runRef,
+          planner: input.planner,
+          runner: input.runner,
+          capacity: input.capacity,
+          ...(input.clock === undefined ? {} : { clock: input.clock }),
+          ...(input.startImmediately === undefined ? {} : { startImmediately: input.startImmediately }),
+          ...(input.tickIntervalMs === undefined ? {} : { tickIntervalMs: input.tickIntervalMs }),
+          onLifecycle: async event => {
+            const existing = this.active.get(run.runRef)
+            existing?.lifecycle.push(event)
+            await input.onLifecycle?.(event)
+            if (event.kind === "completed") void this.releaseActive(run.runRef)
+          },
+        }),
+        Scope.Scope,
+        scope,
+      ))
+    } catch (error) {
+      // A machine/startup failure must not leave a run looking live. Mark it
+      // as reconcile-stopped so a later standing process can recover it while
+      // preserving operator stop as a distinct authority source.
+      this.store.updateFleetRunState(run.runRef, "stopped", this.now(), "reconcile")
+      await Effect.runPromise(Scope.close(scope, Exit.void))
+      throw error
+    }
+
+    const active: ActiveFleetRun = {
+      handle,
+      lastTick: null,
+      lifecycle: [],
+      pylonRef: input.pylonRef,
+      scope,
+    }
+    this.active.set(run.runRef, active)
+    try {
+      active.lastTick = await Effect.runPromise(active.handle.tick())
+    } catch {
+      // The standing loop remains active; status/control retain the durable
+      // run record and later ticks may recover from a transient adapter error.
+    }
+    const reconciled = this.store.reconcileFleetRun(run.runRef)
+    if (reconciled.state === "completed" || reconciled.state === "stopped") {
+      await this.releaseActive(run.runRef)
+    }
+    return this.snapshot(run.runRef)
+  }
+
+  async status(runRef?: string): Promise<PylonFleetRunSnapshot | readonly PylonFleetRunSnapshot[]> {
+    if (runRef !== undefined) {
+      const run = this.store.reconcileFleetRun(runRef)
+      if (run.state === "completed" || run.state === "stopped") {
+        await this.releaseActive(runRef)
+      }
+      return this.snapshotForRun(runRef)
+    }
+    await this.reapTerminalActives()
+    return this.store.listFleetRuns().map(run => this.snapshotForRun(run.runRef))
+  }
+
+  async control(runRef: string, verb: FleetRunControlVerb): Promise<PylonFleetRunControlResult> {
+    const nextState: FleetRunState =
+      verb === "pause" ? "paused" :
+      verb === "resume" ? "running" :
+      verb === "drain" ? "draining" :
+      "stopped"
+    this.store.updateFleetRunState(runRef, nextState, this.now())
+    if (verb === "stop") await this.releaseActive(runRef)
+    return { ...this.snapshot(runRef), verb }
+  }
+
+  private async reapTerminalActives(): Promise<void> {
+    for (const [runRef, active] of this.active) {
+      const run = this.store.reconcileFleetRun(runRef)
+      if (run.state === "completed" || run.state === "stopped") {
+        await this.releaseActive(runRef, active)
+      }
+    }
+  }
+
+  private async releaseActive(runRef: string, knownActive?: ActiveFleetRun): Promise<void> {
+    const active = knownActive ?? this.active.get(runRef)
+    if (active === undefined) return
+    this.retainedLifecycle.set(runRef, [...active.lifecycle])
+    this.retainedPylonRefs.set(runRef, active.pylonRef)
+    this.active.delete(runRef)
+    await Effect.runPromise(Effect.exit(active.handle.stop()))
+    await Effect.runPromise(Scope.close(active.scope, Exit.void))
+  }
+
+  private snapshot(runRef: string): PylonFleetRunSnapshot {
+    const run = this.store.reconcileFleetRun(runRef)
+    return this.snapshotForRun(run.runRef)
+  }
+
+  private snapshotForRun(runRef: string): PylonFleetRunSnapshot {
+    const run = this.store.getFleetRun(runRef)
+    if (run === null) throw new Error(`unknown fleet run: ${runRef}`)
+    const active = this.active.get(runRef)
+    return {
+      active: active !== undefined,
+      lastTick: active?.lastTick ?? null,
+      lifecycle: [...(active?.lifecycle ?? this.retainedLifecycle.get(runRef) ?? [])],
+      pylonRef: active?.pylonRef ?? this.retainedPylonRefs.get(runRef) ?? null,
+      run,
+    }
+  }
+}

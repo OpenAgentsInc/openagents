@@ -4,7 +4,7 @@ import { readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises
 import { homedir } from "node:os"
 import { dirname, join, resolve } from "node:path"
 import type { Readable } from "node:stream"
-import { Effect, Exit, Scope, Stream } from "effect"
+import { Effect, Stream } from "effect"
 import {
   decodePylonLifecycleWireEvent,
   decodePylonLifecycleWireEventJson,
@@ -46,7 +46,6 @@ import {
   createPylonOrchestrationStore,
   type FleetRun,
   type FleetRunWorkSource,
-  type FleetRunState,
   type FleetRunWorkerKind,
   type PylonOrchestrationStore,
 } from "../../../../apps/pylon/src/orchestration/store.js"
@@ -63,14 +62,13 @@ import {
   type PlanDagWorkUnit,
 } from "../../../../apps/pylon/src/orchestration/work-planner.js"
 import {
-  startFleetRunSupervisor,
   type FleetRunSupervisorCapacity,
-  type FleetRunSupervisorHandle,
   type FleetRunSupervisorObservedEvent,
   type FleetRunSupervisorOptions,
   type FleetRunSupervisorRunner,
   type FleetRunSupervisorTickResult,
 } from "../../../../apps/pylon/src/orchestration/fleet-run-supervisor.js"
+import { PylonFleetRunManager } from "../../../../apps/pylon/src/orchestration/fleet-run-manager.js"
 import { khalaCodeConfigFromRuntimeEnv } from "./khala-code-config.js"
 import { fetchKhalaCodexRateLimitStatus } from "./codex-rate-limits.js"
 import { spawnKhalaProcessNodeChild, type KhalaProcessNodeChild } from "./khala-process.js"
@@ -1535,14 +1533,6 @@ type FleetRunPlanConfig = {
   readonly verify?: string | undefined
 }
 
-type ActiveFleetRun = {
-  readonly handle: FleetRunSupervisorHandle
-  lastTick: FleetRunSupervisorTickResult | null
-  readonly lifecycle: FleetRunSupervisorObservedEvent[]
-  readonly pylonRef: string
-  readonly scope: Scope.Scope
-}
-
 function fleetRunHeartbeatLooksFresh(result: KhalaCodexFleetCommandResult): boolean {
   if (result.exitCode !== 0) return false
   const payload = parseJsonObject(result.stdout)
@@ -1552,16 +1542,15 @@ function fleetRunHeartbeatLooksFresh(result: KhalaCodexFleetCommandResult): bool
 }
 
 export class DefaultKhalaFleetRunSupervisorManager implements KhalaFleetRunSupervisorManager {
+  private readonly manager: PylonFleetRunManager
   private readonly store: PylonOrchestrationStore
-  private readonly active = new Map<string, ActiveFleetRun>()
   private readonly advertisedRunEnvs = new Map<string, ChatEnv>()
   private readonly planConfigs = new Map<string, FleetRunPlanConfig>()
   private readonly pylonService: PylonServiceShape
-  private readonly retainedLifecycle = new Map<string, readonly FleetRunSupervisorObservedEvent[]>()
-  private readonly retainedPylonRefs = new Map<string, string>()
 
   constructor(private readonly options: KhalaCodexFleetToolOptions) {
     this.store = createPylonOrchestrationStore(new Database(":memory:"))
+    this.manager = new PylonFleetRunManager({ store: this.store })
     this.pylonService = options.pylonService ?? makePylonService({
       env: options.env,
       runner: options.runner,
@@ -1569,7 +1558,6 @@ export class DefaultKhalaFleetRunSupervisorManager implements KhalaFleetRunSuper
   }
 
   async start(input: KhalaFleetRunStartInput): Promise<KhalaFleetRunSnapshot> {
-    await this.reapTerminalActives()
     const now = new Date()
     const runRef = input.runRef ?? fleetRunRef(now)
     if (this.store.getFleetRun(runRef) !== null) throw new Error(`fleet run already exists: ${runRef}`)
@@ -1608,18 +1596,6 @@ export class DefaultKhalaFleetRunSupervisorManager implements KhalaFleetRunSuper
       workSource === "issue_list" ? input.issues?.length ?? 0 :
       workSource === "plan_dag" ? input.planNodes?.length ?? 0 :
       0
-    this.store.createFleetRun({
-      runRef,
-      objective: input.objective,
-      workSource,
-      targetConcurrency,
-      workerKind,
-      state: "running",
-      dispatchKind: "supervised_dispatch",
-      startedAt: now,
-      now,
-      counters: { workUnitsTotal: expectedWorkUnits },
-    })
     this.planConfigs.set(runRef, {
       baseUrl: input.baseUrl,
       branch: input.branch,
@@ -1633,97 +1609,35 @@ export class DefaultKhalaFleetRunSupervisorManager implements KhalaFleetRunSuper
     })
 
     const pylonRef = input.pylonRef ?? (await resolveLocalPylonRef(this.options)) ?? "pylon.local"
-    const scope = Effect.runSync(Scope.make())
-    let handle: FleetRunSupervisorHandle
-    try {
-      handle = await Effect.runPromise(Effect.provideService(
-        startFleetRunSupervisor({
-          store: this.store,
-          pylonRef,
-          runRef,
-          planner: this.plannerFor(runRef),
-          runner: this.runnerFor(runRef, pylonRef),
-          capacity: this.capacityFor(runRef),
-          tickIntervalMs: DEFAULT_FLEET_RUN_TICK_INTERVAL_MS,
-          startImmediately: false,
-          ...(this.options.sleep === undefined ? {} : { clock: { sleep: this.options.sleep } }),
-          onLifecycle: event => {
-            const existing = this.active.get(runRef)
-            existing?.lifecycle.push(event)
-            if (event.kind === "completed") void this.releaseActive(runRef)
-          },
-        }),
-        Scope.Scope,
-        scope,
-      ))
-    } catch (error) {
-      // Machine stop on supervisor-startup failure: stamp reconcile so a
-      // later supervisor may reopen the run; operator stop stays authority.
-      this.store.updateFleetRunState(runRef, "stopped", new Date(), "reconcile")
-      await Effect.runPromise(Scope.close(scope, Exit.void))
-      throw error
-    }
-    const active: ActiveFleetRun = {
-      handle,
-      lastTick: null,
-      lifecycle: [],
+    return this.manager.start({
       pylonRef,
-      scope,
-    }
-    this.active.set(runRef, active)
-    try {
-      active.lastTick = await Effect.runPromise(active.handle.tick())
-    } catch {
-      // The background supervisor remains active; status/control expose the run record.
-    }
-    const reconciled = this.store.reconcileFleetRun(runRef)
-    if (reconciled.state === "completed" || reconciled.state === "stopped") await this.releaseActive(runRef)
-    return this.snapshot(runRef)
+      planner: this.plannerFor(runRef),
+      runner: this.runnerFor(runRef, pylonRef),
+      capacity: this.capacityFor(runRef),
+      tickIntervalMs: DEFAULT_FLEET_RUN_TICK_INTERVAL_MS,
+      startImmediately: false,
+      ...(this.options.sleep === undefined ? {} : { clock: { sleep: this.options.sleep } }),
+      run: {
+        runRef,
+        objective: input.objective,
+        workSource,
+        targetConcurrency,
+        workerKind,
+        state: "running",
+        dispatchKind: "supervised_dispatch",
+        startedAt: now,
+        now,
+        counters: { workUnitsTotal: expectedWorkUnits },
+      },
+    })
   }
 
   async status(input: KhalaFleetRunStatusInput): Promise<KhalaFleetRunSnapshot | readonly KhalaFleetRunSnapshot[]> {
-    if (input.runRef !== undefined) {
-      const run = this.store.reconcileFleetRun(input.runRef)
-      if (run.state === "completed" || run.state === "stopped") {
-        await this.releaseActive(input.runRef)
-      }
-      return this.snapshotForRun(input.runRef)
-    }
-    await this.reapTerminalActives()
-    return this.store.listFleetRuns().map(run => this.snapshotForRun(run.runRef))
+    return this.manager.status(input.runRef)
   }
 
   async control(input: KhalaFleetRunControlInput): Promise<KhalaFleetRunControlResult> {
-    const now = new Date()
-    const nextState: FleetRunState =
-      input.verb === "pause" ? "paused" :
-      input.verb === "resume" ? "running" :
-      input.verb === "drain" ? "draining" :
-      "stopped"
-    this.store.updateFleetRunState(input.runRef, nextState, now)
-    if (input.verb === "stop") {
-      await this.releaseActive(input.runRef)
-    }
-    return { ...this.snapshot(input.runRef), verb: input.verb }
-  }
-
-  private async reapTerminalActives(): Promise<void> {
-    for (const [runRef, active] of this.active) {
-      const run = this.store.reconcileFleetRun(runRef)
-      if (run.state === "completed" || run.state === "stopped") {
-        await this.releaseActive(runRef, active)
-      }
-    }
-  }
-
-  private async releaseActive(runRef: string, knownActive?: ActiveFleetRun): Promise<void> {
-    const active = knownActive ?? this.active.get(runRef)
-    if (active === undefined) return
-    this.retainedLifecycle.set(runRef, [...active.lifecycle])
-    this.retainedPylonRefs.set(runRef, active.pylonRef)
-    this.active.delete(runRef)
-    await Effect.runPromise(Effect.exit(active.handle.stop()))
-    await Effect.runPromise(Scope.close(active.scope, Exit.void))
+    return this.manager.control(input.runRef, input.verb)
   }
 
   private plannerFor(runRef: string): FleetRunSupervisorOptions["planner"] {
@@ -1863,24 +1777,6 @@ export class DefaultKhalaFleetRunSupervisorManager implements KhalaFleetRunSuper
       if (fleetRunHeartbeatLooksFresh(lastHeartbeat)) return env
     }
     throw new Error(`fleet run capacity heartbeat failed before dispatch: ${lastHeartbeat === null ? "no heartbeat attempted" : safeFailureReason(lastHeartbeat)}`)
-  }
-
-  private snapshot(runRef: string): KhalaFleetRunSnapshot {
-    const run = this.store.reconcileFleetRun(runRef)
-    return this.snapshotForRun(run.runRef)
-  }
-
-  private snapshotForRun(runRef: string): KhalaFleetRunSnapshot {
-    const run = this.store.getFleetRun(runRef)
-    if (run === null) throw new Error(`unknown fleet run: ${runRef}`)
-    const active = this.active.get(runRef)
-    return {
-      active: active !== undefined,
-      lastTick: active?.lastTick ?? null,
-      lifecycle: [...(active?.lifecycle ?? this.retainedLifecycle.get(runRef) ?? [])],
-      pylonRef: active?.pylonRef ?? this.retainedPylonRefs.get(runRef) ?? null,
-      run,
-    }
   }
 
   private completedWorkUnitRefsFor(runRef: string): readonly string[] {
