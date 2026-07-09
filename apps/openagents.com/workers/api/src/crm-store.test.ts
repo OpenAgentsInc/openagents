@@ -326,6 +326,31 @@ describe('updateCrmOpportunityStage', () => {
     })
   })
 
+  test('falls back to an empty metadata bag when the stored JSON is malformed', async () => {
+    const db = new RecordingDb()
+    db.firstQueue = [
+      opportunityRow({ metadata_json: '{not-json' }),
+      opportunityRow({
+        stage: 'replied',
+        metadata_json: '{"sourceRef":"new_source"}',
+      }),
+    ]
+
+    await updateCrmOpportunityStage(
+      asDb(db),
+      {
+        tenantRef: 'tenant.openagents',
+        id: 'crm_opportunity_test',
+        stage: 'replied',
+        metadata: { sourceRef: 'new_source' },
+      },
+      runtime,
+    )
+
+    const update = db.runs.find(r => r.query.includes('UPDATE crm_opportunities'))
+    expect(update?.bound).toContain('{"sourceRef":"new_source"}')
+  })
+
   test('mirrors closed_lost into status=lost and non-terminal stages into status=open', async () => {
     const db = new RecordingDb()
     db.firstQueue = [

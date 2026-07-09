@@ -26,6 +26,7 @@ import {
   crmEmailAuthorityDb,
   mirrorCrmEmailRows,
 } from './crm-email-domain-store'
+import { parseJsonRecord } from './json-boundary'
 import { compactRandomId, currentIsoTimestamp } from './runtime-primitives'
 
 export class CrmStorageError extends S.TaggedErrorClass<CrmStorageError>()(
@@ -1035,7 +1036,7 @@ export const updateCrmOpportunityStage = async (
     input.metadata === undefined
       ? existing.metadataJson
       : JSON.stringify({
-          ...(JSON.parse(existing.metadataJson) as Record<string, unknown>),
+          ...(parseJsonRecord(existing.metadataJson) ?? {}),
           ...input.metadata,
         })
 
