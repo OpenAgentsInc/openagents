@@ -177,31 +177,6 @@ export async function runOwnedSarahTurn(
       reply = result.reply
       modelPath = "google_gemma_live"
       model = result.model
-      if (input.prospectRef) {
-        const shared = {
-          prospectRef: input.prospectRef,
-          sessionId: threadId,
-          threadId,
-        }
-        await recordSarahTranscriptTurn({
-          ...shared,
-          turn: {
-            modality: "text",
-            role: "user",
-            sourceEvent: "text_turn",
-            text: message,
-          },
-        })
-        await recordSarahTranscriptTurn({
-          ...shared,
-          turn: {
-            modality: "text",
-            role: "assistant",
-            sourceEvent: "text_turn",
-            text: reply,
-          },
-        })
-      }
     } else {
       modelError = result.error
       reply =
@@ -211,6 +186,24 @@ export async function runOwnedSarahTurn(
     }
   } else {
     reply = `Thanks — I heard you. (Owned runtime seed; model path not armed.) You said: ${message.slice(0, 280)}`
+  }
+
+  // Every prospect-attached turn is recorded — guard refusals and fallbacks
+  // included (owner directive 2026-07-09: save all conversation turns).
+  if (input.prospectRef && message) {
+    const shared = {
+      prospectRef: input.prospectRef,
+      sessionId: threadId,
+      threadId,
+    }
+    await recordSarahTranscriptTurn({
+      ...shared,
+      turn: { modality: "text", role: "user", sourceEvent: "text_turn", text: message },
+    })
+    await recordSarahTranscriptTurn({
+      ...shared,
+      turn: { modality: "text", role: "assistant", sourceEvent: "text_turn", text: reply },
+    })
   }
 
   return {

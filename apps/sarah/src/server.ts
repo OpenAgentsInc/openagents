@@ -32,6 +32,7 @@ import { processDueSarahFollowUps } from "./services/follow-up-scheduler.ts"
 import { enqueueSarahEmailDraft } from "./services/crm-email-rail.ts"
 import { runOwnedSarahTurn } from "./agent-runtime/owned-runtime.ts"
 import { handleSarahChatCompletions } from "./llm-openai-compat.ts"
+import { sarahTurnStoreStatus } from "./services/turn-store.ts"
 import { sarahAvatarEventStream } from "./services/avatar-event-bus.ts"
 import {
   mintSarahAvatarSession,
@@ -199,6 +200,7 @@ async function handleOperatorOps(): Promise<Response> {
     emailRail: "crm_operator_rail",
     agentRuntime: "owned_effect_seed",
     avatar: sarahAvatarStatus(),
+    turnStore: sarahTurnStoreStatus(),
     modelPath: sarahGoogleInferenceArmed()
       ? `google_gemma_live:${sarahTextModel()}`
       : "seed_echo_not_armed",
@@ -213,12 +215,22 @@ async function handleEveTurn(request: Request): Promise<Response> {
     threadId?: string
     prospectRef?: string
   }
+  // Every conversation gets a durable prospect ref so all turns are saved
+  // and attributable (owner directive 2026-07-09) — mint on first contact.
+  let prospectRef = body.prospectRef ?? readSarahProspectRef(request)
+  let mintedCookie = false
+  if (!prospectRef) {
+    prospectRef = mintSarahProspectRef()
+    mintedCookie = true
+  }
   const result = await runOwnedSarahTurn({
     message: body.message ?? "",
     threadId: body.threadId,
-    prospectRef: body.prospectRef ?? readSarahProspectRef(request) ?? undefined,
+    prospectRef,
   })
-  return json(result)
+  const response = json(result)
+  if (mintedCookie) setSarahProspectCookie(response, prospectRef)
+  return response
 }
 
 async function handleEveToolCall(request: Request): Promise<Response> {

@@ -53,6 +53,17 @@ export async function startAvatarSession(
 
   const session = new LiveAvatarSession(mint.sessionToken)
 
+  // One dedupe across BOTH transcript sources (SDK data-channel events and
+  // the brain's SSE bus) — the 2026-07-09 live test showed duplicated user
+  // lines when both fired.
+  const seenTranscripts = new Set<string>()
+  const emitTranscript = (role: "user" | "assistant", text: string) => {
+    const key = `${role}:${text.trim()}`
+    if (!text.trim() || seenTranscripts.has(key)) return
+    seenTranscripts.add(key)
+    callbacks.onTranscript(role, text.trim())
+  }
+
   const video = document.createElement("video")
   video.autoplay = true
   video.playsInline = true
@@ -78,15 +89,14 @@ export async function startAvatarSession(
   // the SSE bus below adds brain-side cards and covers pre-SDK-event gaps
   // (both paths dedupe in the surface).
   session.on(AgentEventsEnum.USER_TRANSCRIPTION, (event) => {
-    if (event.text) callbacks.onTranscript("user", event.text)
+    if (event.text) emitTranscript("user", event.text)
   })
   session.on(AgentEventsEnum.AVATAR_TRANSCRIPTION, (event) => {
-    if (event.text) callbacks.onTranscript("assistant", event.text)
+    if (event.text) emitTranscript("assistant", event.text)
   })
 
   await session.start()
 
-  const seenTranscripts = new Set<string>()
   const events = new EventSource(
     `${API}/avatar/events?ref=${encodeURIComponent(mint.conversationRef)}`,
   )
@@ -101,10 +111,7 @@ export async function startAvatarSession(
         href?: string
       }
       if (event.type === "transcript" && event.role && event.text) {
-        const dedupe = `${event.role}:${event.text}`
-        if (seenTranscripts.has(dedupe)) return
-        seenTranscripts.add(dedupe)
-        callbacks.onTranscript(event.role, event.text)
+        emitTranscript(event.role, event.text)
       } else if ((event.type === "card" || event.type === "guard_refusal") && event.title) {
         callbacks.onCard({
           title: event.title,

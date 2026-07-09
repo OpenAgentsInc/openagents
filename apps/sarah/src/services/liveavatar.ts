@@ -16,6 +16,8 @@
  */
 
 import { appendFile, mkdir } from "node:fs/promises"
+
+import { persistSarahAvatarSession } from "./turn-store.ts"
 import { dirname, join } from "node:path"
 
 const API_BASE = "https://api.liveavatar.com"
@@ -61,6 +63,15 @@ async function recordUsage(entry: Record<string, unknown>) {
     )
   } catch {
     // Usage projection is fail-soft; the LiveAvatar dashboard stays authoritative for credits.
+  }
+  if (typeof entry.event === "string" && typeof entry.sessionId === "string") {
+    await persistSarahAvatarSession({
+      event: entry.event,
+      sessionId: entry.sessionId,
+      conversationRef: String(entry.conversationRef ?? ""),
+      ...(typeof entry.sandbox === "boolean" ? { sandbox: entry.sandbox } : {}),
+      ...(typeof entry.minutes === "number" ? { minutes: entry.minutes } : {}),
+    })
   }
 }
 

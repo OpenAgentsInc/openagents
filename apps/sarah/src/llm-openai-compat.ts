@@ -17,6 +17,7 @@ import {
   generateSarahGemmaReply,
   sarahGoogleInferenceArmed,
   sarahTextModel,
+  streamSarahGemmaReply,
 } from "./services/google-inference.ts"
 import type { GemmaContent } from "./services/google-inference.ts"
 import { recordSarahTranscriptTurn } from "./services/session-index.ts"
@@ -74,28 +75,95 @@ function completionPayload(model: string, text: string) {
   }
 }
 
-function streamingResponse(model: string, text: string): Response {
-  const encoder = new TextEncoder()
+type ChunkWriter = {
+  chunk: (delta: Record<string, unknown>, finish: string | null) => string
+}
+
+function makeChunkWriter(model: string): ChunkWriter {
   const id = `chatcmpl-sarah-${crypto.randomUUID()}`
   const now = Math.floor(Date.now() / 1000)
-  const chunk = (delta: Record<string, unknown>, finish: string | null) =>
-    `data: ${JSON.stringify({
-      id,
-      object: "chat.completion.chunk",
-      created: now,
-      model,
-      choices: [{ index: 0, delta, finish_reason: finish }],
-    })}\n\n`
+  return {
+    chunk: (delta, finish) =>
+      `data: ${JSON.stringify({
+        id,
+        object: "chat.completion.chunk",
+        created: now,
+        model,
+        choices: [{ index: 0, delta, finish_reason: finish }],
+      })}\n\n`,
+  }
+}
+
+/** Stream a fixed string (guard refusals, fallbacks) as one immediate chunk. */
+function streamingResponse(model: string, text: string): Response {
+  const encoder = new TextEncoder()
+  const writer = makeChunkWriter(model)
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
-      controller.enqueue(encoder.encode(chunk({ role: "assistant" }, null)))
-      // Sentence-sized chunks keep LiveAvatar's TTS pipeline fed steadily.
-      for (const piece of text.match(/[^.!?]+[.!?]*\s*/g) ?? [text]) {
-        controller.enqueue(encoder.encode(chunk({ content: piece }, null)))
-      }
-      controller.enqueue(encoder.encode(chunk({}, "stop")))
+      controller.enqueue(encoder.encode(writer.chunk({ role: "assistant" }, null)))
+      controller.enqueue(encoder.encode(writer.chunk({ content: text }, null)))
+      controller.enqueue(encoder.encode(writer.chunk({}, "stop")))
       controller.enqueue(encoder.encode("data: [DONE]\n\n"))
       controller.close()
+    },
+  })
+  return new Response(stream, {
+    headers: {
+      "content-type": "text/event-stream",
+      "cache-control": "no-cache",
+    },
+  })
+}
+
+/**
+ * True streaming: the role chunk goes out immediately (LiveAvatar's pipeline
+ * times out waiting for a first byte — the 2026-07-09 incident showed 11-12s
+ * full-buffer responses being retried and dropped), empty-delta keepalives
+ * cover Gemma's thinking phase, and answer deltas forward as they arrive.
+ */
+function liveStreamingResponse(
+  model: string,
+  system: string,
+  contents: GemmaContent[],
+  onComplete: (fullText: string) => Promise<void>,
+): Response {
+  const encoder = new TextEncoder()
+  const writer = makeChunkWriter(model)
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const send = (frame: string) => controller.enqueue(encoder.encode(frame))
+      send(writer.chunk({ role: "assistant" }, null))
+      let sawDelta = false
+      const keepalive = setInterval(() => {
+        if (!sawDelta) send(writer.chunk({}, null))
+      }, 2000)
+      try {
+        let fullText = ""
+        let failed: string | null = null
+        for await (const event of streamSarahGemmaReply({ system, contents })) {
+          if (event.type === "delta") {
+            sawDelta = true
+            fullText += event.text
+            send(writer.chunk({ content: event.text }, null))
+          } else if (event.type === "error") {
+            failed = event.error
+          }
+        }
+        if (!sawDelta) {
+          const fallback =
+            failed === "google_inference_http_429"
+              ? "I'm handling a lot of conversations right now — give me about a minute and ask again."
+              : "I'm having trouble reaching my model right now — please try again in a moment."
+          fullText = fallback
+          send(writer.chunk({ content: fallback }, null))
+        }
+        send(writer.chunk({}, "stop"))
+        send("data: [DONE]\n\n")
+        await onComplete(fullText)
+      } finally {
+        clearInterval(keepalive)
+        controller.close()
+      }
     },
   })
   return new Response(stream, {
@@ -147,37 +215,8 @@ export async function handleSarahChatCompletions(request: Request): Promise<Resp
   const lastUserText = messageText(lastUser?.content ?? "").trim()
   const model = sarahTextModel()
 
-  let reply: string
-  if (PRICING_GUARD_PATTERN.test(lastUserText)) {
-    // The hard law holds on the voice lane too: pricing never reaches the model.
-    reply = PRICING_GUARD_REPLY
-    if (ref) {
-      publishSarahAvatarEvent(ref, {
-        type: "guard_refusal",
-        title: "Pricing guard",
-        body: "Configured deal rules only — no improvised discounts. Human handoff available.",
-      })
-    }
-  } else if (!sarahGoogleInferenceArmed()) {
-    reply =
-      "I'm having trouble reaching my model right now — please try again in a moment."
-  } else {
-    const result = await generateSarahGemmaReply({
-      system:
-        cleanSystem ||
-        "You are Sarah, OpenAgents' AI sales employee. Disclose you are an AI.",
-      contents: history.length
-        ? history
-        : [{ role: "user", parts: [{ text: lastUserText || "Hello" }] }],
-    })
-    reply = result.ok
-      ? result.reply
-      : result.error === "google_inference_http_429"
-        ? "I'm handling a lot of conversations right now — give me about a minute and ask again."
-        : "I'm having trouble reaching my model right now — please try again in a moment."
-  }
-
-  if (ref) {
+  const publishAndRecord = async (reply: string) => {
+    if (!ref) return
     if (lastUserText) {
       publishSarahAvatarEvent(ref, { type: "transcript", role: "user", text: lastUserText })
     }
@@ -195,6 +234,45 @@ export async function handleSarahChatCompletions(request: Request): Promise<Resp
     })
   }
 
-  if (body.stream) return streamingResponse(model, reply)
+  if (PRICING_GUARD_PATTERN.test(lastUserText)) {
+    // The hard law holds on the voice lane too: pricing never reaches the model.
+    const reply = PRICING_GUARD_REPLY
+    if (ref) {
+      publishSarahAvatarEvent(ref, {
+        type: "guard_refusal",
+        title: "Pricing guard",
+        body: "Configured deal rules only — no improvised discounts. Human handoff available.",
+      })
+    }
+    await publishAndRecord(reply)
+    if (body.stream) return streamingResponse(model, reply)
+    return Response.json(completionPayload(model, reply))
+  }
+
+  if (!sarahGoogleInferenceArmed()) {
+    const reply =
+      "I'm having trouble reaching my model right now — please try again in a moment."
+    await publishAndRecord(reply)
+    if (body.stream) return streamingResponse(model, reply)
+    return Response.json(completionPayload(model, reply))
+  }
+
+  const system =
+    cleanSystem || "You are Sarah, OpenAgents' AI sales employee. Disclose you are an AI."
+  const contents: GemmaContent[] = history.length
+    ? history
+    : [{ role: "user", parts: [{ text: lastUserText || "Hello" }] }]
+
+  if (body.stream) {
+    return liveStreamingResponse(model, system, contents, publishAndRecord)
+  }
+
+  const result = await generateSarahGemmaReply({ system, contents })
+  const reply = result.ok
+    ? result.reply
+    : result.error === "google_inference_http_429"
+      ? "I'm handling a lot of conversations right now — give me about a minute and ask again."
+      : "I'm having trouble reaching my model right now — please try again in a moment."
+  await publishAndRecord(reply)
   return Response.json(completionPayload(model, reply))
 }

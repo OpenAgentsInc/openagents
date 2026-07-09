@@ -1,4 +1,9 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
+
+import {
+  persistSarahProspectContact,
+  persistSarahTurn,
+} from "./turn-store.ts";
 import { dirname, join } from "node:path";
 
 export type SarahTranscriptRecord = {
@@ -127,6 +132,16 @@ export async function recordSarahTranscriptTurn({
   });
 
   await writeQueue;
+  // Durable record (the local JSON projection is ephemeral on Cloud Run).
+  await persistSarahTurn({
+    prospectRef,
+    sessionId,
+    threadId,
+    modality: turn.modality,
+    role: turn.role,
+    sourceEvent: turn.sourceEvent,
+    text: turn.text,
+  });
 }
 
 function outputValue(output: Record<string, unknown>, key: string) {
@@ -257,6 +272,12 @@ export async function recordSarahCrmContact({
   });
 
   await writeQueue;
+  await persistSarahProspectContact({
+    prospectRef,
+    contactId: contactId ?? null,
+    contactEmail: contactEmail ?? null,
+    mode: mode ?? null,
+  });
 }
 
 export async function recordSarahCrmActivity({

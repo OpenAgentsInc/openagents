@@ -1,13 +1,13 @@
 {
   "schema": "sarah.email_suppression_smoke.v1",
-  "generatedAt": "2026-07-09T03:46:37.301Z",
+  "generatedAt": "2026-07-09T04:05:03.178Z",
   "status": "passed",
   "adapterCompatibility": {
     "blockedPackage": "@resend/chat-sdk-adapter@0.2.2",
     "reason": "Adapter still pulls Chat SDK chat@4.33.0 with ai@^6.0.182 peer dependency; Sarah remains pinned to AI SDK 7 canary for realtime."
   },
   "normalApproval": {
-    "draftId": "sarah_email_draft.edb8d96b-fc21-4c23-99a1-7297055caf1a",
+    "draftId": "sarah_email_draft.58716d4d-f9f6-45a4-b680-e31df7dd08ac",
     "status": "approved_pending_send",
     "sendMode": "SARAH_EMAIL_SEND_LIVE=0"
   },
@@ -17,36 +17,12 @@
     "source": "s8-smoke"
   },
   "suppressedDraft": {
-    "draftId": "sarah_email_draft.46a86eb9-0e44-4f77-9124-31986822681b",
+    "draftId": "sarah_email_draft.210bdb4e-fc60-4d1f-91bf-2b6e92c89570",
     "status": "suppressed"
   },
   "drafts": [
     {
-      "id": "sarah_email_draft.46a86eb9-0e44-4f77-9124-31986822681b",
-      "status": "suppressed",
-      "fromEmail": "suppressed@example.com",
-      "toEmail": "suppressed@example.com",
-      "subject": "Suppressed follow up",
-      "inboundText": "Email me again.",
-      "proposedReply": "I'm Sarah, OpenAgents' AI sales employee. Following up.",
-      "bodyWithDisclosure": "I'm Sarah, OpenAgents' AI sales employee. Following up.\n\n--\nSarah is an AI sales employee for OpenAgents.\nOpenAgents, Inc.\nTo opt out of Sarah email follow-ups: https://openagents.com/sarah/unsubscribe?email=suppressed%40example.com",
-      "prospectRef": "email:suppressed@example.com",
-      "threadId": "email:suppressed@example.com:s8-suppression",
-      "messageId": "s8-suppressed-message",
-      "continuationToken": "email:suppressed@example.com:s8-suppression",
-      "optOutUrl": "https://openagents.com/sarah/unsubscribe?email=suppressed%40example.com",
-      "createdAt": "2026-07-09T03:46:37.301Z",
-      "updatedAt": "2026-07-09T03:46:37.301Z",
-      "reviewedAt": null,
-      "reviewerRef": null,
-      "reviewNote": "Suppressed by unsubscribe at 2026-07-09T03:46:37.301Z.",
-      "sentAt": null,
-      "sendError": null,
-      "providerMessageId": null,
-      "channel": "crm_operator_rail"
-    },
-    {
-      "id": "sarah_email_draft.edb8d96b-fc21-4c23-99a1-7297055caf1a",
+      "id": "sarah_email_draft.58716d4d-f9f6-45a4-b680-e31df7dd08ac",
       "status": "approved_pending_send",
       "fromEmail": "normal@example.com",
       "toEmail": "normal@example.com",
@@ -59,11 +35,35 @@
       "messageId": "s8-normal-message",
       "continuationToken": "email:normal@example.com:s8-suppression",
       "optOutUrl": "https://openagents.com/sarah/unsubscribe?email=normal%40example.com",
-      "createdAt": "2026-07-09T03:46:37.300Z",
-      "updatedAt": "2026-07-09T03:46:37.300Z",
-      "reviewedAt": "2026-07-09T03:46:37.300Z",
+      "createdAt": "2026-07-09T04:05:03.177Z",
+      "updatedAt": "2026-07-09T04:05:03.177Z",
+      "reviewedAt": "2026-07-09T04:05:03.177Z",
       "reviewerRef": "s8-smoke",
       "reviewNote": "Smoke approval with live sending disarmed.",
+      "sentAt": null,
+      "sendError": null,
+      "providerMessageId": null,
+      "channel": "crm_operator_rail"
+    },
+    {
+      "id": "sarah_email_draft.210bdb4e-fc60-4d1f-91bf-2b6e92c89570",
+      "status": "suppressed",
+      "fromEmail": "suppressed@example.com",
+      "toEmail": "suppressed@example.com",
+      "subject": "Suppressed follow up",
+      "inboundText": "Email me again.",
+      "proposedReply": "I'm Sarah, OpenAgents' AI sales employee. Following up.",
+      "bodyWithDisclosure": "I'm Sarah, OpenAgents' AI sales employee. Following up.\n\n--\nSarah is an AI sales employee for OpenAgents.\nOpenAgents, Inc.\nTo opt out of Sarah email follow-ups: https://openagents.com/sarah/unsubscribe?email=suppressed%40example.com",
+      "prospectRef": "email:suppressed@example.com",
+      "threadId": "email:suppressed@example.com:s8-suppression",
+      "messageId": "s8-suppressed-message",
+      "continuationToken": "email:suppressed@example.com:s8-suppression",
+      "optOutUrl": "https://openagents.com/sarah/unsubscribe?email=suppressed%40example.com",
+      "createdAt": "2026-07-09T04:05:03.177Z",
+      "updatedAt": "2026-07-09T04:05:03.177Z",
+      "reviewedAt": null,
+      "reviewerRef": null,
+      "reviewNote": "Suppressed by unsubscribe at 2026-07-09T04:05:03.177Z.",
       "sentAt": null,
       "sendError": null,
       "providerMessageId": null,
@@ -72,7 +72,7 @@
   ],
   "suppressions": [
     {
-      "createdAt": "2026-07-09T03:46:37.301Z",
+      "createdAt": "2026-07-09T04:05:03.177Z",
       "email": "suppressed@example.com",
       "reason": "unsubscribe",
       "source": "s8-smoke"

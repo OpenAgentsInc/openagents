@@ -144,3 +144,132 @@ export async function generateSarahGemmaReply({
     clearTimeout(timeout)
   }
 }
+
+export type GemmaStreamEvent =
+  | { type: "delta"; text: string }
+  | { type: "done"; fullText: string; usage: GemmaTurnUsage }
+  | { type: "error"; error: string }
+
+/**
+ * Streaming variant for latency-sensitive callers (the avatar brain):
+ * forwards non-thought answer deltas as Gemma produces them. Thought parts
+ * stream first and are dropped without ever being surfaced.
+ */
+export async function* streamSarahGemmaReply({
+  system,
+  contents,
+}: {
+  system: string
+  contents: ReadonlyArray<GemmaContent>
+}): AsyncGenerator<GemmaStreamEvent> {
+  const apiKey = process.env.GEMINI_API_KEY?.trim()
+  if (!apiKey) {
+    yield { type: "error", error: "google_inference_not_armed" }
+    return
+  }
+  const model = sarahTextModel()
+  const baseUrl = (
+    process.env.SARAH_GOOGLE_INFERENCE_BASE_URL?.trim() || BASE_URL_DEFAULT
+  ).replace(/\/+$/, "")
+  const maxOutputTokens = Number(process.env.SARAH_TEXT_MAX_OUTPUT_TOKENS ?? 2048)
+  const timeoutMs = Number(process.env.SARAH_TEXT_TIMEOUT_MS ?? 45_000)
+
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    let response: Response | null = null
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      response = await fetch(
+        `${baseUrl}/models/${model}:streamGenerateContent?alt=sse&key=${apiKey}`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          signal: controller.signal,
+          body: JSON.stringify({
+            systemInstruction: { parts: [{ text: system }] },
+            contents,
+            generationConfig: { maxOutputTokens },
+          }),
+        },
+      )
+      if (response.status !== 429 || attempt === 1) break
+      const retryAfter = Number(response.headers.get("retry-after"))
+      await new Promise((resolve) =>
+        setTimeout(
+          resolve,
+          Math.min(Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 4000, 8000),
+        ),
+      )
+    }
+    if (!response || !response.ok || !response.body) {
+      yield { type: "error", error: `google_inference_http_${response?.status ?? 0}` }
+      return
+    }
+
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ""
+    let fullText = ""
+    let usage: GemmaTurnUsage = {
+      promptTokens: 0,
+      outputTokens: 0,
+      thoughtTokens: 0,
+      totalTokens: 0,
+    }
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      let newlineIndex: number
+      while ((newlineIndex = buffer.indexOf("\n")) !== -1) {
+        const line = buffer.slice(0, newlineIndex).trim()
+        buffer = buffer.slice(newlineIndex + 1)
+        if (!line.startsWith("data:")) continue
+        const payload = line.slice(5).trim()
+        if (!payload || payload === "[DONE]") continue
+        try {
+          const frame = JSON.parse(payload) as {
+            candidates?: Array<{ content?: { parts?: Array<{ text?: string; thought?: boolean }> } }>
+            usageMetadata?: {
+              promptTokenCount?: number
+              candidatesTokenCount?: number
+              thoughtsTokenCount?: number
+              totalTokenCount?: number
+            }
+          }
+          const meta = frame.usageMetadata
+          if (meta) {
+            usage = {
+              promptTokens: meta.promptTokenCount ?? usage.promptTokens,
+              outputTokens: meta.candidatesTokenCount ?? usage.outputTokens,
+              thoughtTokens: meta.thoughtsTokenCount ?? usage.thoughtTokens,
+              totalTokens: meta.totalTokenCount ?? usage.totalTokens,
+            }
+          }
+          const delta = extractGemmaReply(frame.candidates?.[0]?.content?.parts ?? [])
+          if (delta) {
+            fullText += delta
+            yield { type: "delta", text: delta }
+          }
+        } catch {
+          // Skip malformed frames.
+        }
+      }
+    }
+    if (!fullText.trim()) {
+      yield { type: "error", error: "google_inference_empty_reply" }
+      return
+    }
+    yield { type: "done", fullText: fullText.trim(), usage }
+  } catch (error) {
+    yield {
+      type: "error",
+      error:
+        error instanceof Error && error.name === "AbortError"
+          ? "google_inference_timeout"
+          : "google_inference_unreachable",
+    }
+  } finally {
+    clearTimeout(timeout)
+  }
+}
