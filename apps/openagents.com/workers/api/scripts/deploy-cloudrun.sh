@@ -122,6 +122,8 @@ SET_SECRETS=(
 
 if [[ "$TARGET" == "production" ]]; then
   SET_SECRETS+=(
+    # #8600 KHS-1: Sarah gateway agent bearer (prod key)
+    "SARAH_INFERENCE_GATEWAY_TOKEN=sarah-inference-gateway-token:latest"
     # OPENROUTER_API_KEY was dropped here (owner decision 2026-07-09) — OpenRouter
     # is no longer a platform Khala lane on prod OR staging. See the common block
     # above. The BYOK caller-key path does not need this platform secret.
@@ -170,6 +172,8 @@ if [[ "$TARGET" == "production" ]]; then
 else
   # Staging-only secrets.
   SET_SECRETS+=(
+    # #8600 KHS-1: Sarah gateway agent bearer (staging key)
+    "SARAH_INFERENCE_GATEWAY_TOKEN=sarah-inference-gateway-token-staging:latest"
     # AC-1 (#8503): the org-cloud runtime no-meter shared secret. A request
     # carrying x-openagents-org-cloud-runtime-no-meter matching this value
     # bypasses metering + the customer balance(402)/spend-cap gates so the

@@ -310,7 +310,10 @@
     // Refs: ops/heartbeat/canary/Terminal-Bench key (7a6d6dab), the Artanis
     // registered agent (ed6d486e), and the Raynor agent (cae3afe7). Empty/unset
     // => no-op.
-    "INFERENCE_INTERNAL_ACCOUNT_REFS": "agent:user_7a6d6dab-b198-4ee8-b7bf-2e00385f9139,agent:user_ed6d486e-612a-4fac-a9a9-44f7e5709505,agent:user_cae3afe7-0e45-4a07-8bc9-eb80a27bb283",
+    "INFERENCE_INTERNAL_ACCOUNT_REFS": "agent:user_7a6d6dab-b198-4ee8-b7bf-2e00385f9139,agent:user_ed6d486e-612a-4fac-a9a9-44f7e5709505,agent:user_cae3afe7-0e45-4a07-8bc9-eb80a27bb283,agent:user_b2b171e7-e9c8-4756-9540-801b1b2c7667",
+    // #8600 KHS-1: Sarah's brain routes through the Khala gateway (agent bearer
+    // via Secret Manager; internal-allowlist quota exemption above).
+    "SARAH_INFERENCE_GATEWAY_URL": "https://openagents.com/api/v1",
     // Owner-controlled inference balance-gate exemption (#6180). Arms the gate
     // ONLY; it is a no-op until a verified owner key is granted into
     // `inference_operator_exemption`. Own-infra/non-premium lanes only; exempt
@@ -759,7 +762,8 @@
         // and internal testing accounts (ops/heartbeat/canary, Artanis, Raynor)
         // are free-tier quota-EXEMPT on the free Khala lane. External free keys
         // keep the unchanged daily limit.
-        "INFERENCE_INTERNAL_ACCOUNT_REFS": "agent:user_7a6d6dab-b198-4ee8-b7bf-2e00385f9139,agent:user_ed6d486e-612a-4fac-a9a9-44f7e5709505,agent:user_cae3afe7-0e45-4a07-8bc9-eb80a27bb283",
+        "INFERENCE_INTERNAL_ACCOUNT_REFS": "agent:user_7a6d6dab-b198-4ee8-b7bf-2e00385f9139,agent:user_ed6d486e-612a-4fac-a9a9-44f7e5709505,agent:user_cae3afe7-0e45-4a07-8bc9-eb80a27bb283,agent:user_674bf06b-7f0e-4388-9921-030c689c750f",
+        "SARAH_INFERENCE_GATEWAY_URL": "https://openagents-monolith-staging-ezxz4mgdsq-uc.a.run.app/api/v1",
         // Durable-stream Rank-1 resumable inference (#6058) — LIVE on staging too
         // (the DO binding + migration are added to this env below).
         "INFERENCE_DURABLE_STREAM_ENABLED": "true",
