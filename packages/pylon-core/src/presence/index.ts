@@ -27,3 +27,4 @@
 export * from "./nip90-lane-refs.js"
 export * from "./apple-fm-status.js"
 export * from "./presence-error.js"
+export * from "./presence.js"
