@@ -1,0 +1,31 @@
+{
+  "name": "@openagentsinc/openagents-mobile",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "index.tsx",
+  "scripts": {
+    "dev": "expo start",
+    "prebuild": "expo prebuild",
+    "prebuild:ios": "expo prebuild --platform ios",
+    "prebuild:android": "expo prebuild --platform android",
+    "test": "bun test",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@effect-native/core": "workspace:*",
+    "@effect-native/render-rn": "workspace:*",
+    "@effect-native/tokens": "workspace:*",
+    "expo": "57.0.2",
+    "expo-status-bar": "57.0.0",
+    "react": "19.2.7",
+    "react-native": "0.86.0",
+    "react-native-safe-area-context": "5.8.0"
+  },
+  "devDependencies": {
+    "@babel/core": "7.29.7",
+    "@types/react": "^19.2.14",
+    "babel-preset-expo": "57.0.1",
+    "typescript": "catalog:"
+  }
+}

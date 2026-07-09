@@ -1,0 +1,28 @@
+{
+  "expo": {
+    "name": "OpenAgents",
+    "slug": "openagents-mobile",
+    "scheme": "openagents",
+    "version": "0.1.0",
+    "icon": "./assets/images/icon.png",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#05070d",
+    "newArchEnabled": true,
+    "splash": {
+      "backgroundColor": "#05070d",
+      "resizeMode": "contain"
+    },
+    "ios": {
+      "appleTeamId": "HQWSG26L43",
+      "bundleIdentifier": "com.openagents.app",
+      "supportsTablet": true,
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "package": "com.openagents.app"
+    }
+  }
+}
