@@ -130,6 +130,11 @@ const approvedExactRoutePaths = [
   '/api/admin/credits/clawback',
   '/api/admin/ops/runs',
   '/api/admin/ops/health',
+  // OB-6 (#8563): daily sales ledger (admin OpenAuth).
+  '/api/admin/ops/daily-sales-ledger',
+  // OB-4 (#8561): CRM batch approval queue for Aiur ops (admin OpenAuth).
+  '/api/admin/ops/crm/batch-queue',
+  '/api/admin/ops/crm/batch-approve',
   '/api/admin/cf-browser-smoke',
   // CFG-7 (#8522): Postgres JobQueue delivery seam — admin bearer only; the
   // Cloud Run pump (apps/oa-queue-worker) posts leased oa_infra_jobs rows

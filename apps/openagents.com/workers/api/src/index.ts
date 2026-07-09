@@ -286,6 +286,11 @@ import {
   makeDailySalesLedgerRoutes,
 } from './business-outreach-daily-ledger-routes'
 import {
+  ADMIN_OPS_CRM_BATCH_APPROVE_PATH,
+  ADMIN_OPS_CRM_BATCH_QUEUE_PATH,
+  makeCrmApprovalBatchAdminRoutes,
+} from './crm-approval-batch-admin-routes'
+import {
   handleMobileAccountDeletionRequest,
   MOBILE_ACCOUNT_PATH,
 } from './mobile-account-deletion-routes'
@@ -9688,6 +9693,22 @@ const crmApprovalBatchRoutes = makeCrmApprovalBatchRoutes<WorkerBindings>({
   resolveResendDeps: resolveCrmResendDeps,
 })
 
+// OB-4 (#8561): admin/OpenAuth-gated CRM batch approval queue for the Aiur
+// ops console. Thin adapter over crm-approval-batch.ts — each command still
+// goes through approveAndExecuteCrmSendCommand one-by-one
+// (no_send_without_approval_receipt preserved). Placed here (after
+// resolveCrmResendDeps) so the factory can close over the Resend deps.
+const crmApprovalBatchAdminRoutes =
+  makeCrmApprovalBatchAdminRoutes<WorkerBindings>({
+    requireAdminCaller: async (request, env, ctx) => {
+      const session = await requireUserBearerSession(request, env, ctx)
+      if (session === undefined) return undefined
+      if (!isOpenAgentsAdminEmail(session.user.email)) return undefined
+      return { userId: session.user.userId }
+    },
+    resolveResendDeps: resolveCrmResendDeps,
+  })
+
 const crmReplyRoutes = makeCrmReplyRoutes<WorkerBindings>({
   requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
 })
@@ -13535,6 +13556,28 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     handler: (request, env, ctx) =>
       Effect.promise(() =>
         dailySalesLedgerRoutes.handleDailySalesLedgerApi(request, env, ctx),
+      ),
+  },
+  {
+    // OB-4 (#8561): admin CRM batch approval queue (Aiur ops console).
+    // Batch UX only — each send still runs approveAndExecuteCrmSendCommand
+    // one-by-one (no_send_without_approval_receipt).
+    path: ADMIN_OPS_CRM_BATCH_QUEUE_PATH,
+    handler: (request, env, ctx) =>
+      Effect.promise(() =>
+        crmApprovalBatchAdminRoutes.handleCrmBatchQueueApi(request, env, ctx),
+      ),
+  },
+  {
+    // OB-4 (#8561): admin CRM batch approve action (Aiur ops console).
+    path: ADMIN_OPS_CRM_BATCH_APPROVE_PATH,
+    handler: (request, env, ctx) =>
+      Effect.promise(() =>
+        crmApprovalBatchAdminRoutes.handleCrmBatchApproveApi(
+          request,
+          env,
+          ctx,
+        ),
       ),
   },
   {

@@ -43,6 +43,14 @@ export const AIUR_ADMIN_OPS_HEALTH_PATH = '/api/admin/ops/health'
 export const AIUR_ADMIN_OPS_DAILY_SALES_LEDGER_PATH =
   '/api/admin/ops/daily-sales-ledger'
 
+// OB-4 (#8561): CRM draft batch approval queue — same proxy, same auth
+// boundary. Upstream walks each command through
+// approveAndExecuteCrmSendCommand one-by-one (batch UX only).
+export const AIUR_ADMIN_OPS_CRM_BATCH_QUEUE_PATH =
+  '/api/admin/ops/crm/batch-queue'
+export const AIUR_ADMIN_OPS_CRM_BATCH_APPROVE_PATH =
+  '/api/admin/ops/crm/batch-approve'
+
 const PROXIED_PATHS: ReadonlySet<string> = new Set([
   AIUR_ADMIN_CREDITS_USERS_PATH,
   AIUR_ADMIN_CREDITS_BALANCE_PATH,
@@ -53,6 +61,8 @@ const PROXIED_PATHS: ReadonlySet<string> = new Set([
   AIUR_ADMIN_OPS_RUNS_PATH,
   AIUR_ADMIN_OPS_HEALTH_PATH,
   AIUR_ADMIN_OPS_DAILY_SALES_LEDGER_PATH,
+  AIUR_ADMIN_OPS_CRM_BATCH_QUEUE_PATH,
+  AIUR_ADMIN_OPS_CRM_BATCH_APPROVE_PATH,
 ])
 
 const noStoreJson = (body: unknown, status = 200): Response =>

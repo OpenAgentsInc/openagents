@@ -9,6 +9,7 @@ import {
 } from '@/components/ui/card'
 import { RecentUsersPanel } from '@/dashboard/recent-users-panel'
 
+import { CrmBatchApprovalPanel } from './crm-batch-console'
 import {
   fetchDailySalesLedger,
   fetchOpsHealth,
@@ -277,6 +278,7 @@ export function OpsConsole() {
   return (
     <div className="grid gap-6">
       <HealthStrip />
+      <CrmBatchApprovalPanel />
       <RecentUsersPanel />
       <RunsPanel />
       <DailySalesLedgerPanel />

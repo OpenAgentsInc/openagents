@@ -3,6 +3,8 @@ import { describe, expect, test } from 'vitest'
 import {
   AIUR_ADMIN_CREDITS_BALANCE_PATH,
   AIUR_ADMIN_CREDITS_GRANT_PATH,
+  AIUR_ADMIN_OPS_CRM_BATCH_APPROVE_PATH,
+  AIUR_ADMIN_OPS_CRM_BATCH_QUEUE_PATH,
   AIUR_ADMIN_OPS_HEALTH_PATH,
   AIUR_ADMIN_OPS_RUNS_PATH,
   routeAiurAdminCreditsProxyRequest,
@@ -163,5 +165,50 @@ describe('routeAiurAdminCreditsProxyRequest — fail closed', () => {
     )
     expect(response?.status).toBe(200)
     expect(forwardedUrl).toBe('https://openagents.com/api/admin/ops/health')
+  })
+
+  test('OB-4: CRM batch queue/approve paths are proxied, owner-gated the same way', async () => {
+    const queueDenied = await routeAiurAdminCreditsProxyRequest(
+      new Request(`https://aiur.openagents.com${AIUR_ADMIN_OPS_CRM_BATCH_QUEUE_PATH}`),
+      {},
+      { client: fakeDeniedClient() },
+    )
+    expect(queueDenied?.status).toBe(401)
+
+    let forwardedUrl: string | undefined
+    let forwardedMethod: string | undefined
+    let forwardedBody: string | undefined
+    const approveRequest = new Request(
+      `https://aiur.openagents.com${AIUR_ADMIN_OPS_CRM_BATCH_APPROVE_PATH}`,
+      {
+        body: JSON.stringify({ commandIds: ['crm_cmd_1'] }),
+        headers: {
+          'content-type': 'application/json',
+          cookie: `${AIUR_ACCESS_COOKIE}=validtoken`,
+        },
+        method: 'POST',
+      },
+    )
+    const response = await routeAiurAdminCreditsProxyRequest(
+      approveRequest,
+      { AIUR_OWNER_USER_IDS: 'user_owner' },
+      {
+        client: fakeOwnerClient('user_owner'),
+        fetch: async (input, init) => {
+          forwardedUrl = input
+          forwardedMethod = init?.method
+          forwardedBody = init?.body as string
+          return new Response(JSON.stringify({ ok: true }))
+        },
+      },
+    )
+    expect(response?.status).toBe(200)
+    expect(forwardedUrl).toBe(
+      'https://openagents.com/api/admin/ops/crm/batch-approve',
+    )
+    expect(forwardedMethod).toBe('POST')
+    expect(JSON.parse(forwardedBody ?? '{}')).toEqual({
+      commandIds: ['crm_cmd_1'],
+    })
   })
 })
