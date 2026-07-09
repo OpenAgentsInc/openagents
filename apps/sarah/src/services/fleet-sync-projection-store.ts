@@ -47,6 +47,7 @@ import {
   MAX_SARAH_FLEET_LOG_PAGES,
   SARAH_FLEET_CURSOR_STATE_SCHEMA,
   type SarahFleetSyncClient,
+  type SarahFleetSyncRequestOptions,
 } from "./fleet-sync-client.ts"
 
 export const SARAH_FLEET_PROJECTION_STATE_SCHEMA =
@@ -792,14 +793,18 @@ export const makeSarahFleetProjectionStore = (input: Readonly<{
   persistence: SarahFleetProjectionPersistence
   now: () => number
 }>): Readonly<{
-  open: (scope: string) => Promise<SarahFleetProjectionOpenResult>
+  open: (
+    scope: string,
+    options?: SarahFleetSyncRequestOptions,
+  ) => Promise<SarahFleetProjectionOpenResult>
 }> => ({
-  open: async (rawScope) => {
+  open: async (rawScope, options) => {
     const { scope } = exactFleetScope(rawScope)
     let loaded: unknown | null
     try {
       loaded = await input.persistence.load(scope)
-    } catch {
+    } catch (error) {
+      if (error instanceof SarahFleetProjectionReducerError) throw error
       return fail("persistence_failed")
     }
 
@@ -807,7 +812,7 @@ export const makeSarahFleetProjectionStore = (input: Readonly<{
     let state: SarahFleetProjectionState
     if (loaded === null) {
       source = "bootstrap"
-      const result = await input.client.bootstrap(scope)
+      const result = await input.client.bootstrap(scope, options)
       state = reduceSarahFleetBootstrapPages(result.pages)
       if (
         result.state.schema !== SARAH_FLEET_CURSOR_STATE_SCHEMA ||
@@ -820,11 +825,14 @@ export const makeSarahFleetProjectionStore = (input: Readonly<{
       source = "resume"
       const persisted = canonicalState(loaded)
       if (persisted.scope !== scope) return fail("foreign_scope")
-      const result = await input.client.resume({
-        schema: SARAH_FLEET_CURSOR_STATE_SCHEMA,
-        scope: persisted.scope,
-        cursor: persisted.cursor,
-      })
+      const result = await input.client.resume(
+        {
+          schema: SARAH_FLEET_CURSOR_STATE_SCHEMA,
+          scope: persisted.scope,
+          cursor: persisted.cursor,
+        },
+        options,
+      )
       state = reduceSarahFleetLogPages(persisted, result.pages)
       if (
         result.state.schema !== SARAH_FLEET_CURSOR_STATE_SCHEMA ||

@@ -178,6 +178,47 @@ describe("Sarah FC-3 Khala Sync request builders", () => {
 })
 
 describe("Sarah FC-3 bounded cursor client", () => {
+  test("propagates AbortSignal and rejects an abort during or after JSON decode", async () => {
+    for (const abortDuringDecode of [true, false]) {
+      const aborter = new AbortController()
+      let observedSignal: AbortSignal | null | undefined
+      const client = makeSarahFleetSyncClient({
+        fetch: async (_path, init) => {
+          observedSignal = init.signal
+          return {
+            ok: true,
+            json: async () => {
+              if (abortDuringDecode) {
+                await new Promise<void>((_resolve, reject) => {
+                  aborter.signal.addEventListener(
+                    "abort",
+                    () => reject(new DOMException("aborted", "AbortError")),
+                    { once: true },
+                  )
+                  aborter.abort()
+                })
+              }
+              aborter.abort()
+              return {
+                protocolVersion: KHALA_SYNC_PROTOCOL_VERSION,
+                scope,
+                entities: [],
+                cursor: 0,
+              }
+            },
+          } as Response
+        },
+        clientGroupId: "sarah.web.fc3",
+        clientId: "sarah.web.fc3.tab",
+      })
+
+      await expect(
+        client.bootstrap(scope, { signal: aborter.signal }),
+      ).rejects.toMatchObject({ reason: "request_aborted" })
+      expect(observedSignal).toBe(aborter.signal)
+    }
+  })
+
   test("drains bounded bootstrap pages and saves only the final exact cursor", async () => {
     const requests: Array<{ path: string; init: RequestInit }> = []
     const responses = [

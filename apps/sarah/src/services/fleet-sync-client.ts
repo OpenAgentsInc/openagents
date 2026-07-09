@@ -52,6 +52,7 @@ export type SarahFleetSyncClientErrorReason =
   | "invalid_cursor_state"
   | "invalid_intent"
   | "network_unavailable"
+  | "request_aborted"
   | "server_rejected"
   | "malformed_response"
   | "foreign_scope"
@@ -67,6 +68,7 @@ const ERROR_MESSAGES = {
   invalid_cursor_state: "Fleet Sync cursor state is invalid.",
   invalid_intent: "Fleet intent failed its typed target contract.",
   network_unavailable: "Fleet Sync network request failed.",
+  request_aborted: "Fleet Sync request was aborted.",
   server_rejected: "Fleet Sync server rejected the request.",
   malformed_response: "Fleet Sync response failed to decode.",
   foreign_scope: "Fleet Sync response did not match the requested scope.",
@@ -98,6 +100,10 @@ export type SarahFleetFetch = (
 export type SarahFleetHttpRequest = Readonly<{
   path: string
   init: RequestInit
+}>
+
+export type SarahFleetSyncRequestOptions = Readonly<{
+  signal?: AbortSignal
 }>
 
 type ClientIdentity = Readonly<{
@@ -401,14 +407,24 @@ const decodeCursorState = (
 }
 
 export type SarahFleetSyncClient = Readonly<{
-  bootstrap: (scope: string) => Promise<Readonly<{
-    pages: ReadonlyArray<BootstrapResponse>
-    state: SarahFleetSyncCursorState
-  }>>
-  resume: (state: SarahFleetSyncCursorState) => Promise<Readonly<{
-    pages: ReadonlyArray<LogPage>
-    state: SarahFleetSyncCursorState
-  }>>
+  bootstrap: (
+    scope: string,
+    options?: SarahFleetSyncRequestOptions,
+  ) => Promise<
+    Readonly<{
+      pages: ReadonlyArray<BootstrapResponse>
+      state: SarahFleetSyncCursorState
+    }>
+  >
+  resume: (
+    state: SarahFleetSyncCursorState,
+    options?: SarahFleetSyncRequestOptions,
+  ) => Promise<
+    Readonly<{
+      pages: ReadonlyArray<LogPage>
+      state: SarahFleetSyncCursorState
+    }>
+  >
   submitIntent: (input: Readonly<{
     scope: string
     mutationId: number
@@ -455,19 +471,33 @@ export function makeSarahFleetSyncClient(input: Readonly<{
     return fail("invalid_request")
   }
 
-  const fetchJson = async (request: SarahFleetHttpRequest): Promise<unknown> => {
+  const fetchJson = async (
+    request: SarahFleetHttpRequest,
+    options?: SarahFleetSyncRequestOptions,
+  ): Promise<unknown> => {
+    const aborted = (): boolean => options?.signal?.aborted === true
+    if (aborted()) return fail("request_aborted")
     let response: Response
     try {
-      response = await input.fetch(request.path, request.init)
+      response = await input.fetch(
+        request.path,
+        options?.signal === undefined
+          ? request.init
+          : { ...request.init, signal: options.signal },
+      )
     } catch {
+      if (aborted()) return fail("request_aborted")
       return fail("network_unavailable")
     }
+    if (aborted()) return fail("request_aborted")
     let raw: unknown
     try {
       raw = await response.json()
     } catch {
+      if (aborted()) return fail("request_aborted")
       return fail("malformed_response")
     }
+    if (aborted()) return fail("request_aborted")
     if (!response.ok) {
       try {
         const error = decodeSyncError(raw)
@@ -485,7 +515,10 @@ export function makeSarahFleetSyncClient(input: Readonly<{
     return raw
   }
 
-  const bootstrap: SarahFleetSyncClient["bootstrap"] = async (rawScope) => {
+  const bootstrap: SarahFleetSyncClient["bootstrap"] = async (
+    rawScope,
+    options,
+  ) => {
     const { scope } = exactFleetScope(rawScope)
     const pages: BootstrapResponse[] = []
     const seenTokens = new Set<string>()
@@ -496,7 +529,10 @@ export function makeSarahFleetSyncClient(input: Readonly<{
         pageSize,
         ...(pageToken === undefined ? {} : { pageToken }),
       })
-      const page = decodeBootstrapPage(await fetchJson(request), scope)
+      const page = decodeBootstrapPage(
+        await fetchJson(request, options),
+        scope,
+      )
       pages.push(page)
       if (page.nextPageToken !== undefined) {
         if (seenTokens.has(page.nextPageToken)) return fail("pagination_cycle")
@@ -517,7 +553,10 @@ export function makeSarahFleetSyncClient(input: Readonly<{
     return fail("pagination_limit")
   }
 
-  const resume: SarahFleetSyncClient["resume"] = async (rawState) => {
+  const resume: SarahFleetSyncClient["resume"] = async (
+    rawState,
+    options,
+  ) => {
     const state = decodeCursorState(rawState)
     const pages: LogPage[] = []
     let cursor = state.cursor
@@ -528,7 +567,7 @@ export function makeSarahFleetSyncClient(input: Readonly<{
         limit: pageSize,
       })
       const page = decodeLogPageForScope(
-        await fetchJson(request),
+        await fetchJson(request, options),
         state.scope,
         cursor,
       )
