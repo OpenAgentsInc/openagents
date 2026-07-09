@@ -25,6 +25,17 @@ describe("@openagentsinc/cloud-contract", () => {
     expect(value.assignmentRef).toContain("assignment.")
   })
 
+  test("placement assignment carries the singular broker auth grant ref (CX-3)", () => {
+    const value = S.decodeUnknownSync(CodexPlacementAssignmentSchema)({
+      schema: CODEX_PLACEMENT_ASSIGNMENT_VERSION,
+      assignmentRef: "assignment.cloud.place.codex",
+      workContextRef: "work_context.user.thread.repo",
+      requestedLane: "cloud_vm",
+      authGrantRef: "codex-auth-grant_fixture",
+    })
+    expect(value.authGrantRef).toBe("codex-auth-grant_fixture")
+  })
+
   test("cloud-vm handle and gce capacity schemas are ref-only", () => {
     const session = S.decodeUnknownSync(CloudVmSessionHandleSchema)({
       schema: CLOUD_VM_PROVISIONER_VERSION,
@@ -61,5 +72,23 @@ describe("@openagentsinc/cloud-contract", () => {
     expect(policy.schema).toBe(AGENT_COMPUTER_ISOLATION_POLICY_VERSION)
     expect(policy.walletAuthority).toBe("none")
     expect(policy.oneWorkContextPerComputer).toBe(true)
+  })
+
+  test("default isolation policy carries the CX-1 broker-only provider law", () => {
+    const policy = S.decodeUnknownSync(AgentComputerIsolationPolicySchema)(
+      DEFAULT_AGENT_COMPUTER_ISOLATION_POLICY,
+    )
+    expect(policy.providerCredentialPolicy).toBe("broker_only")
+    expect(policy.providerGrantsOwnerScoped).toBe(true)
+    expect(policy.subscriptionCapacityResale).toBe(false)
+  })
+
+  test("isolation policy rejects a resale-enabled subscription capacity flag", () => {
+    expect(() =>
+      S.decodeUnknownSync(AgentComputerIsolationPolicySchema)({
+        ...DEFAULT_AGENT_COMPUTER_ISOLATION_POLICY,
+        subscriptionCapacityResale: true,
+      }),
+    ).toThrow()
   })
 })

@@ -41,6 +41,14 @@ export const CodexPlacementAssignmentSchema = S.Struct({
   repositoryRef: S.optionalKey(PublicSafeRef),
   /** Refs only — never raw auth JSON. */
   grantRefs: S.optionalKey(S.Array(PublicSafeRef)),
+  /**
+   * Canonical single session grant ref from `openagents.codex_auth_grant.v1`,
+   * mirroring the Rust contract's `auth_grant_ref` field. Populated when the
+   * work context's target resolves to a connected Codex account and the grant
+   * is redeemed broker-only inside the microVM at turn start (CX-3 #8547). Ref
+   * only — never raw auth JSON.
+   */
+  authGrantRef: S.optionalKey(PublicSafeRef),
 })
 export type CodexPlacementAssignment = typeof CodexPlacementAssignmentSchema.Type
 
@@ -104,6 +112,19 @@ export const AgentComputerIsolationPolicySchema = S.Struct({
   oneWorkContextPerComputer: S.Boolean,
   noCrossContextReuse: S.Boolean,
   scmBrokerOnlyCredentials: S.Boolean,
+  /**
+   * Provider-credential law (CX-1 #8545, closed): custodied subscription
+   * credentials are broker-redeemed only, keyed to exactly one owner, injected
+   * only into that owner's own work contexts, and never pooled or resold.
+   * Mirrors the agent-computer image manifest isolation block
+   * (`providerCredentialPolicy`/`providerGrantsOwnerScoped`/
+   * `subscriptionCapacityResale`). Optional/additive so existing decoders keep
+   * working; the canonical fail-closed echo enforcement is Worker/control-plane
+   * side, this mirror only lets TS callers represent the policy.
+   */
+  providerCredentialPolicy: S.optionalKey(S.Literal("broker_only")),
+  providerGrantsOwnerScoped: S.optionalKey(S.Boolean),
+  subscriptionCapacityResale: S.optionalKey(S.Literal(false)),
   requireScratchWipeReceipt: S.Boolean,
   requireMicrovmDestroyReceipt: S.Boolean,
   walletAuthority: S.Literal("none"),
@@ -118,6 +139,9 @@ export const DEFAULT_AGENT_COMPUTER_ISOLATION_POLICY: AgentComputerIsolationPoli
     oneWorkContextPerComputer: true,
     noCrossContextReuse: true,
     scmBrokerOnlyCredentials: true,
+    providerCredentialPolicy: "broker_only",
+    providerGrantsOwnerScoped: true,
+    subscriptionCapacityResale: false,
     requireScratchWipeReceipt: true,
     requireMicrovmDestroyReceipt: true,
     walletAuthority: "none",
