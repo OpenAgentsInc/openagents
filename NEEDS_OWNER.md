@@ -13,10 +13,15 @@ context: `docs/fable/2026-07-09-open-issue-grid-assessment.md`.
    receipt on #8558). Live outbound is ON; warm-up caps enforced.
 2. **Seeded test account: AgentFlampy** + fork recorded on #8543; E2E
    wiring lane running.
-3. **CX-2 tap-through: attempted, FAILED** — your bug report (stale
-   account pile-up; Disconnect only reorders) recorded verbatim on #8546
-   with a behavior contract; audit+fix lane running. You'll get a "try
-   again" ping when it's actually fixed.
+3. **CX-2 tap-through: FIXED — READY FOR YOUR RE-TEST (~3 min).** Both
+   bugs root-caused and fixed (2bf644f994, live on main): Disconnect now
+   terminally removes (it was soft-updating status while the list showed
+   every non-deleted row — hence the "reordering"), and the list shows
+   ONLY live accounts. Your phone should now show just your 5 connected
+   accounts (was 26 rows incl. 16 dead + 5 expired). Behavior contract
+   with your words landed + 2 oracles. **Try again:** Settings → Codex
+   accounts → confirm the list is clean → Connect (short-code) → confirm
+   ready → Disconnect → confirm it's GONE. That closes #8546.
 4. **WEB-1: not ready — full Effect Native conversion mandated.** All
    landing sections convert to EN with logical components upstreamed to
    the standard catalog: effect-native #46–#51 filed (Hero/Section/
