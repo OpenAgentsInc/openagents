@@ -12,9 +12,15 @@ set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 cd "$REPO"
-MOBILE="${OA_MOBILE_APP_DIR:-clients/khala-mobile}"
+# TS-8 (#8597): the default publish target is the greenfield OpenAgents app.
+# The deprecated clients/khala-mobile app is frozen — publish for it only with
+# an explicit OA_MOBILE_APP_DIR/OA_UPDATES_OWNER/OA_UPDATES_CHANNEL override.
+MOBILE="${OA_MOBILE_APP_DIR:-apps/openagents-mobile}"
 PLATFORM="${OA_MOBILE_PLATFORM:-ios}"
-UPDATES_OWNER="${OA_UPDATES_OWNER:-khala-mobile}"
+UPDATES_OWNER="${OA_UPDATES_OWNER:-openagents-mobile}"
+# Channel doubles as the seed branch on the server (identity mapping). The
+# OpenAgents app uses its OWN channel — never the legacy khala "production".
+CHANNEL="${OA_UPDATES_CHANNEL:-openagents-production}"
 
 echo "==> computing build runtime fingerprint"
 RUNTIME="$(cd "$MOBILE" && bunx expo-updates fingerprint:generate --platform "$PLATFORM" 2>/dev/null \
@@ -32,11 +38,12 @@ echo "==> resolving public app config (embedded as manifest extra.expoClient)"
 # back to the cached/embedded update.
 ( cd "$MOBILE" && bunx expo config --type public --json > "$REPO/apps/oa-updates/dist/expo-client.json" 2>/dev/null )
 
-echo "==> deploying to Cloud Run (seed = this export, runtime $RUNTIME, branch production)"
+echo "==> deploying to Cloud Run (seed = this export, runtime $RUNTIME, branch $CHANNEL)"
 export OA_PUBLIC_URL="${OA_PUBLIC_URL:-https://oa-updates-ezxz4mgdsq-uc.a.run.app}"
 export OA_SEED_DIST="/app/dist"
 export OA_SEED_RUNTIME="$RUNTIME"
 export OA_SEED_PLATFORM="$PLATFORM"
+export OA_SEED_BRANCH="$CHANNEL"
 export OA_SEED_EXPO_CLIENT_PATH="/app/dist/expo-client.json"
 # #4949 code signing: the server signs every manifest with our private key
 # (keyid "main", rsa-v1_5-sha256) so the client's embedded
@@ -52,4 +59,4 @@ echo "    code signing: enabled (keyid main, key via Secret Manager)"
 bash "$REPO/apps/oa-updates/scripts/deploy-cloudrun.sh"
 
 echo "==> published. Verify:"
-echo "    curl -H 'expo-protocol-version: 1' -H 'expo-platform: $PLATFORM' -H \"expo-runtime-version: $RUNTIME\" -H 'expo-channel-name: production' https://updates.openagents.com/$UPDATES_OWNER/manifest"
+echo "    curl -H 'expo-protocol-version: 1' -H 'expo-platform: $PLATFORM' -H \"expo-runtime-version: $RUNTIME\" -H \"expo-channel-name: $CHANNEL\" https://updates.openagents.com/$UPDATES_OWNER/manifest"

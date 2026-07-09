@@ -24,7 +24,12 @@ const appConfig = JSON.parse(
     icon: string
     ios: { bundleIdentifier: string }
     android: { package: string }
-    updates?: unknown
+    runtimeVersion?: { policy?: string }
+    updates?: {
+      enabled?: boolean
+      url?: string
+      requestHeaders?: Record<string, string>
+    }
   }
 }
 
@@ -49,7 +54,27 @@ describe("contract openagents_mobile.identity.v1", () => {
     expect(digest).toBe(PINNED_ICON_SHA256)
   })
 
-  test("no OTA update feed is configured yet (owned oa-updates channel lands later, never a legacy Khala feed)", () => {
-    expect(appConfig.expo.updates).toBeUndefined()
+  test("OTA feed is the owned OpenAgents Updates server on the app's OWN channel", () => {
+    // The owned oa-updates server (never EAS / Expo CDN) …
+    expect(appConfig.expo.updates?.enabled).toBe(true)
+    expect(appConfig.expo.updates?.url).toBe(
+      "https://updates.openagents.com/openagents-mobile/manifest",
+    )
+    // … on a channel that belongs to THIS app.
+    expect(appConfig.expo.updates?.requestHeaders?.["expo-channel-name"]).toBe(
+      "openagents-production",
+    )
+    // Runtime compatibility is fingerprint-based, matching the publish path.
+    expect(appConfig.expo.runtimeVersion?.policy).toBe("fingerprint")
+  })
+
+  test("OTA feed is NOT any legacy channel (khala / AutopilotRemoteControl / bare production)", () => {
+    const serialized = JSON.stringify(appConfig.expo.updates).toLowerCase()
+    expect(serialized).not.toContain("khala")
+    expect(serialized).not.toContain("autopilot")
+    expect(serialized).not.toContain("u.expo.dev")
+    expect(
+      appConfig.expo.updates?.requestHeaders?.["expo-channel-name"],
+    ).not.toBe("production")
   })
 })

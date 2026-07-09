@@ -78,7 +78,11 @@ if (import.meta.main) {
       server,
       distDir: process.env.OA_SEED_DIST,
       platform: (process.env.OA_SEED_PLATFORM ?? "ios") as Platform,
-      branch: "production",
+      // Branch doubles as the channel name (channelToBranch is identity for
+      // seeded updates). "production" is the legacy khala-mobile channel; the
+      // greenfield OpenAgents app (#8597) publishes to its OWN channel via
+      // OA_SEED_BRANCH so a legacy feed can never be reused by accident.
+      branch: process.env.OA_SEED_BRANCH ?? "production",
       runtimeVersion: process.env.OA_SEED_RUNTIME,
       baseUrl: process.env.OA_PUBLIC_URL ?? `http://localhost:${port}`,
       expoClientConfig,

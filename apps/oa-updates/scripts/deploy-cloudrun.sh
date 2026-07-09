@@ -37,6 +37,10 @@ if [[ -n "${OA_SEED_DIST:-}" || -n "${OA_SEED_RUNTIME:-}" ]]; then
   if [[ -n "${OA_SEED_EXPO_CLIENT_PATH:-}" ]]; then
     env_vars+=("OA_SEED_EXPO_CLIENT_PATH=${OA_SEED_EXPO_CLIENT_PATH}")
   fi
+
+  if [[ -n "${OA_SEED_BRANCH:-}" ]]; then
+    env_vars+=("OA_SEED_BRANCH=${OA_SEED_BRANCH}")
+  fi
 fi
 
 if [[ -n "${OA_DESKTOP_RELEASES_DIST:-}" ]]; then

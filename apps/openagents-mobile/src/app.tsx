@@ -1,8 +1,11 @@
 import { khalaTheme } from "@effect-native/tokens"
 import { StatusBar } from "expo-status-bar"
+import * as Updates from "expo-updates"
+import { useEffect } from "react"
 import { SafeAreaProvider } from "react-native-safe-area-context"
 
 import { HomeScreen } from "./screens/home-screen"
+import { startOtaPolling } from "./updates/ota-polling"
 
 /**
  * OpenAgents mobile (#8597) — greenfield app shell. The application/component/
@@ -13,9 +16,25 @@ import { HomeScreen } from "./screens/home-screen"
  * vocabulary (the Protoss-blue `khalaTheme`). No NativeWind, no Tailwind class
  * strings — see docs/effect-native/2026-07-08-styling-tailwind-stylex-effect-native.md.
  */
-export const App = () => (
-  <SafeAreaProvider style={{ backgroundColor: khalaTheme.color.background }}>
-    <StatusBar style="light" />
-    <HomeScreen />
-  </SafeAreaProvider>
-)
+export const App = () => {
+  // OTA: poll the owned OpenAgents Updates server (updates.openagents.com,
+  // channel openagents-production) on the TEMPORARY aggressive 3s cadence —
+  // see src/updates/ota-polling.ts. `Updates.isEnabled` is false in Expo Go /
+  // dev, so the loop is a no-op there.
+  useEffect(() => {
+    const handle = startOtaPolling({
+      isEnabled: Updates.isEnabled,
+      checkForUpdateAsync: () => Updates.checkForUpdateAsync(),
+      fetchUpdateAsync: () => Updates.fetchUpdateAsync(),
+      reloadAsync: () => Updates.reloadAsync(),
+    })
+    return () => handle.stop()
+  }, [])
+
+  return (
+    <SafeAreaProvider style={{ backgroundColor: khalaTheme.color.background }}>
+      <StatusBar style="light" />
+      <HomeScreen />
+    </SafeAreaProvider>
+  )
+}

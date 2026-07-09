@@ -10,7 +10,8 @@
     "prebuild:ios": "expo prebuild --platform ios",
     "prebuild:android": "expo prebuild --platform android",
     "test": "bun test",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "publish:ota": "bash ../../apps/oa-updates/scripts/publish-ota.sh"
   },
   "dependencies": {
     "@effect-native/core": "workspace:*",
@@ -18,6 +19,7 @@
     "@effect-native/tokens": "workspace:*",
     "expo": "57.0.2",
     "expo-status-bar": "57.0.0",
+    "expo-updates": "57.0.6",
     "react": "19.2.7",
     "react-native": "0.86.0",
     "react-native-safe-area-context": "5.8.0"

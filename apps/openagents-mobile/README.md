@@ -77,13 +77,33 @@ bun run prebuild:android   # expo prebuild --platform android
 ```
 
 Per repo policy: builds are local (`expo prebuild` + Xcode/Gradle);
-`eas build`/`eas submit`/`eas update` are never used. OTA updates will ship
-through the owned OpenAgents Updates server (`apps/oa-updates`) on a NEW
-OpenAgents channel — deliberately not configured yet (enforced by the identity
-test) so a legacy Khala feed can never be reused by accident.
+`eas build`/`eas submit`/`eas update` are never used.
+
+### OTA updates (owned server, never EAS)
+
+JS/OTA updates ship through the owned OpenAgents Updates server
+(`apps/oa-updates`, `updates.openagents.com`) on this app's OWN channel
+`openagents-production` (identity tests enforce the URL/channel and reject any
+legacy khala/AutopilotRemoteControl feed):
+
+```sh
+cd apps/openagents-mobile
+bun run publish:ota        # = apps/oa-updates/scripts/publish-ota.sh
+# fingerprint -> expo export -> seed -> Cloud Run deploy; verify with the curl
+# line the script prints (signed manifest for this build's runtime fingerprint)
+```
+
+Bump `BUNDLE_TAG` in `src/screens/home-core.ts` before publishing so the swap
+is visible on the Home card. The installed app polls for updates on a
+**TEMPORARY aggressive 3-second cadence** (`TEMPORARY_OTA_POLL_INTERVAL_MS` in
+`src/updates/ota-polling.ts` — dial down after owner testing): a published OTA
+appears on device within ~3s, downloads, and reloads. Errors (offline etc.)
+are soft and never crash the loop. Polling is a no-op in Expo Go/dev
+(`Updates.isEnabled` false).
 
 ## What exists today
 
 The Home screen: the OpenAgents shell rendered from a typed Effect Native view
-program with one typed intent wired end-to-end. Sarah conversation, fleet
-supervision, Khala Sync continuity, auth, push, and OTA land next, per #8597.
+program with one typed intent wired end-to-end, plus owned-server OTA updates
+with the temporary fast poll. Sarah conversation, fleet supervision, Khala
+Sync continuity, auth, and push land next, per #8597.

@@ -38,6 +38,12 @@ export interface HomeState {
 
 export const initialHomeState: HomeState = { pings: 0 }
 
+/** Visible JS-bundle tag, rendered on the Home card. Bump this string when
+ * publishing an OTA so the owner can SEE the over-the-air bundle swap land
+ * (embedded build 104 ships the tag below; a published OTA with a bumped tag
+ * should appear within ~3s via the temporary poll loop and reload). */
+export const BUNDLE_TAG = "2026-07-09.embedded-104"
+
 /** One typed intent, proving the intent -> handler -> state -> re-render loop
  * runs end-to-end through the RN adapter (not just static rendering). */
 export const HomePinged = defineIntent(
@@ -113,6 +119,19 @@ export const renderHomeView = (state: HomeState): View =>
             color: "textPrimary",
           }),
           Spacer({ key: "home-card-space-2", size: "2" }),
+          Text({
+            key: "home-bundle-label",
+            content: "Bundle",
+            variant: "label",
+            color: "accent",
+          }),
+          Text({
+            key: "home-bundle-value",
+            content: BUNDLE_TAG,
+            variant: "body",
+            color: "textPrimary",
+          }),
+          Spacer({ key: "home-card-space-3", size: "2" }),
           Text({
             key: "home-pings-label",
             content: "Typed intents dispatched",
