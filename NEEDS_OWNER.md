@@ -42,3 +42,37 @@ context: `docs/fable/2026-07-09-open-issue-grid-assessment.md`.
 - **Gemma4 lane** — if the current gcloud lane turns out not to serve
   Gemma4 yet, the drop-OpenRouter agent will report exactly what a
   Gemma4 adapter needs; that may come back as one small decision.
+---
+
+# Contract-anchored owner gates (kept verbatim for QAM oracles — do not delete; update state inline)
+
+The two sections below are asserted by `clients/khala-mobile/tests/launch-readiness.test.ts` and `store-submissions.test.ts` (owner-gate-documented oracles). They stay here until their receipts flip; current state is annotated.
+
+## Khala Mobile P0.8 Launch Readiness {#khala-mobile-p08-launch-readiness}
+
+Source issue: OpenAgentsInc/openagents#8543
+
+State 2026-07-09: the test account exists (**AgentFlampy** + fork, recorded on #8543; E2E wiring lane running). Remaining actions:
+
+- Create or approve a public-safe GitHub test account for Khala Mobile launch readiness. *(DONE — AgentFlampy)*
+- Grant only the repo scopes needed for the smoke repo and writeback proof.
+- Seed a visible $10 launch credit grant and record the public-safe grant receipt ref.
+- Run the full straight-line E2E on iOS simulator and Android emulator.
+- Review the launch promises/copy pass only after both platform E2E receipts exist.
+
+## Khala Mobile P0.9 Store Submissions {#khala-mobile-p09-store-submissions}
+
+Source issue: OpenAgentsInc/openagents#8544
+
+State 2026-07-09: per the owner decision on #8544, public review submissions are deferred to broad-release readiness; artifacts (TestFlight build 20, Android APK/AAB) exist. Deferred actions:
+
+- Create or confirm the App Store Connect app record for com.openagents.khala.mobile.
+- Upload the final locally built iOS archive through Apple Transporter or Xcode Organizer.
+- Enter current App Store metadata, screenshots, privacy answers, age rating, and review notes.
+- Submit the iOS build for review and record the App Store Connect submission ID and review state.
+- Create or confirm the Play Console app record for com.openagents.khala.mobile.
+- Upload the final locally signed Android App Bundle to the intended Play track.
+- Enter current Play listing, data-safety, content-rating, tester/release notes, and review answers.
+- Submit the Play release and record the Play Console release/submission ID and review state.
+
+Consoles: https://appstoreconnect.apple.com/apps and https://play.google.com/console
