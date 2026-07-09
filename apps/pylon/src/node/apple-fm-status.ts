@@ -1,23 +1,30 @@
 import { Effect } from "effect"
 import type { BootstrapSummary } from "../bootstrap.js"
 import {
-  PROBE_APPLE_FM_BACKEND_CAPABILITY,
   reportAppleFmBackendCapability,
   type ProbeBackendCapabilityReport,
   type ProbeRunnerIdentity,
 } from "../../packages/runtime/src/index.js"
 import type { PylonAppleFmSupervisorStatus } from "./apple-fm-bridge-supervisor-status.js"
-
-export const PYLON_APPLE_FM_STATUS_SCHEMA = "openagents.pylon.apple_fm.status.v0.1" as const
-export const PYLON_APPLE_FM_CAPACITY_SERVICE = "apple_fm_bridge" as const
-
-const APPLE_FM_DERIVED_CAPABILITY_REFS = new Set([
-  PROBE_APPLE_FM_BACKEND_CAPABILITY,
-  "adapter.probe.apple_fm.blueprint_tools.v1",
-  "probe.blueprint.signature_lookup",
-  "probe.blueprint.tool_menu",
-  "probe.program_run.evidence.local_offline",
-])
+// #8578 (PY-1): the two pure capacity-ref helpers below are the single
+// source of truth in `@openagentsinc/pylon-core/presence`, which
+// `presence.ts` now depends on directly through its `appleFmStatusProbe`
+// injection seam (pylon-core cannot import `@openagentsinc/pylon-runtime` —
+// see that module's header comment for why). Re-export (don't redefine) so
+// this file and pylon-core never drift apart. This file's own
+// `PylonAppleFmStatusProjection` stays the richer, precisely-typed local
+// version (real `PylonAppleFmSupervisorStatus` for `.supervisor`); it is
+// structurally assignable into pylon-core's mirror wherever that's needed.
+export {
+  appleFmBackendCapacityRefs,
+  withAppleFmBackendCapabilities,
+  PYLON_APPLE_FM_STATUS_SCHEMA,
+  PYLON_APPLE_FM_CAPACITY_SERVICE,
+} from "@openagentsinc/pylon-core/presence/apple-fm-status"
+import {
+  PYLON_APPLE_FM_STATUS_SCHEMA,
+  PYLON_APPLE_FM_CAPACITY_SERVICE,
+} from "@openagentsinc/pylon-core/presence/apple-fm-status"
 
 export type PylonAppleFmStatusProjection = {
   readonly schema: typeof PYLON_APPLE_FM_STATUS_SCHEMA
@@ -102,41 +109,6 @@ export function pylonAppleFmStatusFromReport(
     blockerRefs: appleFmBlockerRefs(report),
     observedAt: report.observedAt,
     contentRedacted: true,
-  }
-}
-
-export function withAppleFmBackendCapabilities(
-  capabilityRefs: ReadonlyArray<string>,
-  projection: PylonAppleFmStatusProjection,
-): string[] {
-  const base = capabilityRefs.filter((ref) => !APPLE_FM_DERIVED_CAPABILITY_REFS.has(ref))
-  if (!projection.available || !projection.advertisedCapabilities.includes(PROBE_APPLE_FM_BACKEND_CAPABILITY)) {
-    return [...new Set(base)]
-  }
-  return [...new Set([...base, ...projection.advertisedCapabilities])].sort()
-}
-
-export function appleFmBackendCapacityRefs(
-  projection: PylonAppleFmStatusProjection,
-): { capacityRefs: string[]; loadRefs: string[]; healthRefs: string[] } {
-  if (!projection.available || !projection.advertisedCapabilities.includes(PROBE_APPLE_FM_BACKEND_CAPABILITY)) {
-    return { capacityRefs: [], healthRefs: [], loadRefs: [] }
-  }
-
-  return {
-    capacityRefs: [
-      `capacity.inference.${PYLON_APPLE_FM_CAPACITY_SERVICE}.ready=1`,
-      `capacity.inference.${PYLON_APPLE_FM_CAPACITY_SERVICE}.available=1`,
-    ],
-    healthRefs: [
-      `health.inference.${PYLON_APPLE_FM_CAPACITY_SERVICE}.ready`,
-      `model.inference.${PYLON_APPLE_FM_CAPACITY_SERVICE}.apple_foundation_model`,
-      `profile.inference.${PYLON_APPLE_FM_CAPACITY_SERVICE}.apple_fm_local`,
-    ],
-    loadRefs: [
-      `load.inference.${PYLON_APPLE_FM_CAPACITY_SERVICE}.busy=0`,
-      `load.inference.${PYLON_APPLE_FM_CAPACITY_SERVICE}.queued=0`,
-    ],
   }
 }
 
