@@ -424,7 +424,7 @@ describe('authenticated startup routing', () => {
     )
   })
 
-  test('renders the Tassadar replay route through the top-level view', () => {
+  test('keeps the retired Tassadar replay renderer archived', () => {
     const [model] = init(
       Flags.make({ maybeAuth: Option.none() }),
       appUrl('/tassadar/replay/first-real-settlement'),
@@ -433,8 +433,10 @@ describe('authenticated startup routing', () => {
     Scene.scene(
       { update, view },
       Scene.with(model),
-      Scene.expect(Scene.selector('oa-tassadar-proof-replay')).toExist(),
+      Scene.expect(Scene.selector('oa-tassadar-proof-replay')).not.toExist(),
       Scene.expect(Scene.selector('[data-route="tassadar-replay"]')).toExist(),
+      Scene.expect(Scene.selector('.proof-replay-archived')).toExist(),
+      Scene.expect(Scene.text('Proof replay archived')).toExist(),
       Scene.expect(Scene.role('link', { name: 'Docs' })).not.toExist(),
       Scene.expect(Scene.role('link', { name: 'Blog' })).not.toExist(),
       Scene.expect(Scene.role('link', { name: 'Log in' })).not.toExist(),
