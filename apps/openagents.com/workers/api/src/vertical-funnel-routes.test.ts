@@ -59,6 +59,7 @@ const SCHEMA = [
   '0278_business_commitment_ledger.sql',
   '0294_business_pipeline_queue.sql',
   '0299_business_pipeline_partner_routing.sql',
+  '0314_business_pipeline_subject_ref.sql',
   '0297_business_source_attribution.sql',
 ].map(migration)
 

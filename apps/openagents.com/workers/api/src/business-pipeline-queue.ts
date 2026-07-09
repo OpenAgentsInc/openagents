@@ -105,6 +105,7 @@ export const BusinessPipelineRow = S.Struct({
   sourceRef: S.String,
   stage: BusinessPipelineStage,
   stageUpdatedAt: S.String,
+  subjectRef: S.NullOr(S.String),
   updatedAt: S.String,
   vertical: S.String,
 })
@@ -257,6 +258,7 @@ export type BusinessPipelineCreateInput = Readonly<{
   receiptRefs?: ReadonlyArray<string>
   sourceRef: string
   stage?: BusinessPipelineStage
+  subjectRef?: string | null
   vertical: string
 }>
 
@@ -336,6 +338,7 @@ type BusinessPipelineD1Row = Readonly<{
   source_ref: string
   stage: BusinessPipelineStage
   stage_updated_at: string
+  subject_ref: string | null
   updated_at: string
   vertical: string
 }>
@@ -630,6 +633,7 @@ const businessPipelineRowFromD1 = (row: BusinessPipelineD1Row): BusinessPipeline
     sourceRef: row.source_ref,
     stage: S.decodeUnknownSync(BusinessPipelineStage)(row.stage),
     stageUpdatedAt: row.stage_updated_at,
+    subjectRef: row.subject_ref,
     updatedAt: row.updated_at,
     vertical: row.vertical,
   }
@@ -637,6 +641,9 @@ const businessPipelineRowFromD1 = (row: BusinessPipelineD1Row): BusinessPipeline
   assertPublicSafeRef('pipelineRef', record.pipelineRef)
   assertPublicSafeDescriptor('vertical', record.vertical)
   assertPublicSafeRef('sourceRef', record.sourceRef)
+  if (record.subjectRef !== null) {
+    assertPublicSafeRef('subjectRef', record.subjectRef)
+  }
   assertPublicSafeDescriptor('ownerRole', record.ownerRole)
   if (record.nextActionDueAt !== null) {
     assertPublicSafeDescriptor('nextActionDueAt', record.nextActionDueAt)
@@ -783,6 +790,7 @@ const pipelineRowSelect = `SELECT
   source_ref,
   stage,
   stage_updated_at,
+  subject_ref,
   updated_at,
   vertical
  FROM business_pipeline_rows`
@@ -929,6 +937,18 @@ export const makeD1BusinessPipelineStore = (db: D1Database): BusinessPipelineSto
     return row === null ? null : businessPipelineRowFromD1(row)
   }
 
+  const readPipelineRowBySubjectRef = async (
+    subjectRef: string,
+  ): Promise<BusinessPipelineRow | null> => {
+    assertPublicSafeRef('subjectRef', subjectRef)
+    const row = await db
+      .prepare(`${pipelineRowSelect} WHERE subject_ref = ?`)
+      .bind(subjectRef)
+      .first<BusinessPipelineD1Row>()
+
+    return row === null ? null : businessPipelineRowFromD1(row)
+  }
+
   const listPipelineRows = async (): Promise<ReadonlyArray<BusinessPipelineRow>> => {
     const rows = await db
       .prepare(`${pipelineRowSelect} ORDER BY updated_at DESC, pipeline_ref ASC`)
@@ -1062,6 +1082,7 @@ export const makeD1BusinessPipelineStore = (db: D1Database): BusinessPipelineSto
       const quotedBand = normalizeQuotedBand(input.quotedBand)
       const nextActionDueAt = input.nextActionDueAt?.trim() || null
       const blockerRef = normalizeNullableRef('blockerRef', input.blockerRef)
+      const subjectRef = normalizeNullableRef('subjectRef', input.subjectRef)
       const businessSignupRequestId = normalizeNullableRef(
         'businessSignupRequestId',
         input.businessSignupRequestId,
@@ -1104,6 +1125,7 @@ export const makeD1BusinessPipelineStore = (db: D1Database): BusinessPipelineSto
             business_signup_request_id,
             vertical,
             source_ref,
+            subject_ref,
             stage,
             quoted_min_usd_cents,
             quoted_max_usd_cents,
@@ -1125,13 +1147,14 @@ export const makeD1BusinessPipelineStore = (db: D1Database): BusinessPipelineSto
             created_at,
             updated_at,
             stage_updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .bind(
           pipelineRef,
           businessSignupRequestId,
           vertical,
           sourceRef,
+          subjectRef,
           stage,
           quotedBand.minUsdCents,
           quotedBand.maxUsdCents,
@@ -1157,6 +1180,23 @@ export const makeD1BusinessPipelineStore = (db: D1Database): BusinessPipelineSto
         .run()
 
       if (Number(result.meta?.changes ?? 0) === 0) {
+        const existingPipelineRow = await readPipelineRow(pipelineRef)
+        if (existingPipelineRow !== null) {
+          throw new BusinessPipelineStoreError({
+            kind: 'conflict',
+            reason: `pipeline row already exists: ${pipelineRef}`,
+          })
+        }
+        const existingSubjectRow =
+          subjectRef === null
+            ? null
+            : await readPipelineRowBySubjectRef(subjectRef)
+        if (existingSubjectRow !== null) {
+          throw new BusinessPipelineStoreError({
+            kind: 'conflict',
+            reason: `subjectRef already linked: ${subjectRef}`,
+          })
+        }
         throw new BusinessPipelineStoreError({
           kind: 'conflict',
           reason: `pipeline row already exists: ${pipelineRef}`,
@@ -1276,8 +1316,33 @@ export const makeD1BusinessPipelineStore = (db: D1Database): BusinessPipelineSto
       const unsuppressed = normalizedProspects.filter(
         prospect => !suppressedSubjectRefs.has(prospect.subjectRef),
       )
+      const waveSubjectRefs = new Set<string>()
+      const waveSubjectDuplicatePipelineRefs: Array<string> = []
+      const subjectUniqueUnsuppressed = unsuppressed.filter(prospect => {
+        if (waveSubjectRefs.has(prospect.subjectRef)) {
+          waveSubjectDuplicatePipelineRefs.push(prospect.pipelineRef)
+          return false
+        }
+        waveSubjectRefs.add(prospect.subjectRef)
+        return true
+      })
+      const existingSubjectRows = await Promise.all(
+        subjectUniqueUnsuppressed.map(async prospect => ({
+          existing: await readPipelineRowBySubjectRef(prospect.subjectRef),
+          pipelineRef: prospect.pipelineRef,
+        })),
+      )
+      const existingSubjectDuplicatePipelineRefs = existingSubjectRows.flatMap(
+        entry => entry.existing === null ? [] : [entry.pipelineRef],
+      )
+      const existingSubjectDuplicateSet = new Set(
+        existingSubjectDuplicatePipelineRefs,
+      )
+      const insertable = subjectUniqueUnsuppressed.filter(
+        prospect => !existingSubjectDuplicateSet.has(prospect.pipelineRef),
+      )
       const outcomes = await Promise.all(
-        unsuppressed.map(async prospect => {
+        insertable.map(async prospect => {
           try {
             const row = await createPipelineRow(
               {
@@ -1291,6 +1356,7 @@ export const makeD1BusinessPipelineStore = (db: D1Database): BusinessPipelineSto
                   ...(prospect.receiptRefs ?? []),
                 ],
                 sourceRef: prospect.sourceRef,
+                subjectRef: prospect.subjectRef,
                 vertical: prospect.vertical,
               },
               runtime,
@@ -1312,6 +1378,15 @@ export const makeD1BusinessPipelineStore = (db: D1Database): BusinessPipelineSto
                   pipelineRef: prospect.pipelineRef,
                 }
               }
+              const existingSubject = await readPipelineRowBySubjectRef(
+                prospect.subjectRef,
+              )
+              if (existingSubject !== null) {
+                return {
+                  kind: 'duplicate' as const,
+                  pipelineRef: prospect.pipelineRef,
+                }
+              }
             }
             throw error
           }
@@ -1323,11 +1398,16 @@ export const makeD1BusinessPipelineStore = (db: D1Database): BusinessPipelineSto
       const duplicates = outcomes.flatMap(outcome =>
         outcome.kind === 'duplicate' ? [outcome.pipelineRef] : [],
       )
+      const allDuplicates = [
+        ...waveSubjectDuplicatePipelineRefs,
+        ...existingSubjectDuplicatePipelineRefs,
+        ...duplicates,
+      ]
 
       return S.decodeUnknownSync(BusinessPipelineApolloWaveIngest)({
         acceptedCount: inserted.length,
-        duplicateCount: duplicates.length,
-        duplicates,
+        duplicateCount: allDuplicates.length,
+        duplicates: allDuplicates,
         inserted,
         schemaVersion: 'openagents.business_pipeline_apollo_wave_ingest.v1',
         segmentRef,

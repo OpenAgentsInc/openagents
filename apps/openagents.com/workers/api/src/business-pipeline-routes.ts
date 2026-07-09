@@ -151,6 +151,7 @@ const createInputFromBody = (
     receiptRefs: stringArrayFromUnknown(body.receiptRefs),
     sourceRef: optionalString(body.sourceRef) ?? '',
     ...(stage === undefined ? {} : { stage }),
+    subjectRef: optionalString(body.subjectRef) ?? null,
     vertical: optionalString(body.vertical) ?? '',
   }
 }

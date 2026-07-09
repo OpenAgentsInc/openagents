@@ -69,6 +69,7 @@ const makeDb = (): D1Database => {
   db.exec(migration('0294_business_pipeline_queue.sql'))
   db.exec(migration('0296_business_outreach_sequences.sql'))
   db.exec(migration('0299_business_pipeline_partner_routing.sql'))
+  db.exec(migration('0314_business_pipeline_subject_ref.sql'))
   db.exec(migration('0297_business_source_attribution.sql'))
   db.exec(migration('0310_agent_readiness_public_reports.sql'))
   return new SqliteD1(db) as unknown as D1Database
