@@ -96,13 +96,27 @@ describe("sarah isolation contract registry", () => {
     expect(report.ok).toBe(true)
   })
 
-  test("pending contracts carry blocker refs so they cannot be mistaken for enforced", () => {
+  test("the collective-learning contract is enforced with real oracles (KHS-4 #8603)", () => {
     const collective = sarahIsolationContractRegistry.contracts.find(
       (contract) =>
         contract.contractId === "sarah.collective_learning_owner_gated.v1",
     )
-    expect(collective?.state).toBe("pending")
-    expect(collective?.blockerRefs).toContain("#8603")
+    expect(collective?.state).toBe("enforced")
+    expect(collective?.enforcementTier).toBe("test-sweep")
+    expect(collective?.blockerRefs).toEqual([])
+    expect(collective?.oracles.length).toBeGreaterThanOrEqual(3)
+    for (const oracle of collective?.oracles ?? []) {
+      expect(oracle.kind).toBe("bun-test")
+      expect(oracle.ref).toBe(
+        "apps/sarah/src/services/collective-learning.test.ts",
+      )
+    }
+    // No contract in the registry may sit in pending without a blocker ref.
+    for (const contract of sarahIsolationContractRegistry.contracts) {
+      if (contract.state === "pending") {
+        expect(contract.blockerRefs.length).toBeGreaterThan(0)
+      }
+    }
   })
 
   test("the KHS-2 prospect-memory seam is bound by real bun-test oracles", () => {

@@ -13,9 +13,11 @@ import {
  * src/contracts/isolation-contracts.test.ts fails the sweep if an enforced
  * contract loses its oracle, so stated behavior cannot silently drift.
  *
- * The isolation law binds BEFORE any shared learning ships: KHS-4 collective
- * learning cannot land while these oracles are red or missing (epic #8599,
- * "Isolation before generalization").
+ * The isolation law binds BEFORE any shared learning: KHS-3 landed the
+ * oracles first ("Isolation before generalization", epic #8599), and KHS-4
+ * (#8603) then shipped the owner-approved collective-learning queue behind
+ * them — flipping sarah.collective_learning_owner_gated.v1 to enforced in
+ * the same change that added the first shared-knowledge read path.
  *
  * Human rendering: docs/sarah/SARAH_CONTRACTS.md (kept in sync by the same
  * test file).
@@ -81,11 +83,14 @@ export const sarahIsolationContractRegistry: BehaviorContractRegistryDocument = 
     },
     {
       authorityBoundary:
-        "This contract states the gate for shared learning; it does not build the approved store, define its schema, or authorize arming any capture path. Capture-adjacent product claims stay capped while the data.khala_free_tier_trace_capture.v1 promise family is yellow. Nothing crosses prospects without an owner-approval receipt.",
-      blockerRefs: ["#8603"],
+        "This contract binds the KHS-4 pipeline (#8603): candidates distilled from cross-prospect transcripts are PII-redacted (redact-or-drop), stored pending, and cross into shared knowledge ONLY via an owner decision on the admin-bearer-guarded operator endpoints, each writing an approval receipt; answer-bank publications carry the receipt ref as approved_by. It authorizes no capture path and makes no public 'learning from conversations' claim while the data.khala_free_tier_trace_capture.v1 promise family is yellow — this is an internal owner-approved store, framed as such. Nothing crosses prospects without an owner-approval receipt.",
+      blockerRefs: [],
       contractId: "sarah.collective_learning_owner_gated.v1",
-      enforcementTier: "unenforced",
+      enforcementTier: "test-sweep",
       evidenceRefs: [
+        "apps/sarah/src/services/collective-learning.ts",
+        "apps/sarah/src/services/semantic-answer-cache.ts",
+        "apps/sarah/src/server.ts",
         "docs/sarah/SARAH_CONTRACTS.md",
         "docs/fable/2026-07-09-sarah-khala-connection-assessment.md",
         "issue:#8603",
@@ -94,11 +99,27 @@ export const sarahIsolationContractRegistry: BehaviorContractRegistryDocument = 
       oracles: [
         {
           description:
-            "PENDING (#8603, KHS-4): when the owner-approved shared-knowledge store lands, an oracle must prove Sarah's shared-knowledge reads come ONLY from that store (never raw cross-prospect tables), that every entry carries an owner-approval receipt, and that unapproved candidate learnings are unreachable from any serve path.",
-          id: "approved_store_only.planned",
-          kind: "planned",
+            "Shared-knowledge reads come ONLY from the owner-approved store: seeds pending candidates via distillation, approves one with a receipt, and asserts listApprovedLearnings returns exclusively the approved entry (receipt attached) while pending/rejected candidates stay unreachable; the published answer-bank entry's approved_by is the approval receipt ref, so a live answer dereferences back to its receipt and redacted source turns.",
+          id: "approved_store_only.unit",
+          kind: "bun-test",
           mode: "unit",
-          ref: "apps/sarah/src/contracts/isolation-contracts.test.ts",
+          ref: "apps/sarah/src/services/collective-learning.test.ts",
+        },
+        {
+          description:
+            "Admin guard is mandatory and fails closed on the HTTP surface: with no admin token configured, GET /sarah/api/operator/learning and the distill/approve/reject POSTs return 503 (an approve without the guard is impossible); with the token armed, a missing or wrong bearer is 401 and no decision or receipt is ever written; only the exact bearer can list, distill, approve, and reject.",
+          id: "learning_admin_guard.rpc",
+          kind: "bun-test",
+          mode: "rpc",
+          ref: "apps/sarah/src/services/collective-learning.test.ts",
+        },
+        {
+          description:
+            "PII never enters candidates: seeded examples with emails, phone numbers, long digit runs, and URLs come out scrubbed; name introductions and ambiguous residue drop the example entirely (when in doubt, drop); distilled candidates are asserted free of the seeded contact data across summary, canonical question, proposed answer, and examples.",
+          id: "learning_pii_redaction.unit",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/sarah/src/services/collective-learning.test.ts",
         },
       ],
       productArea: "collective learning",
@@ -107,12 +128,12 @@ export const sarahIsolationContractRegistry: BehaviorContractRegistryDocument = 
         statedBy: "owner",
         statedOn: "2026-07-09",
       },
-      state: "pending",
+      state: "enforced",
       statement:
         "admin approval for determining what she's able to learn generally from everyone else",
       surface: "sarah",
       verification:
-        "Pending #8603 (KHS-4 owner-approved collective learning). Until the approved store exists there is no shared-knowledge read path in apps/sarah, and this contract must flip to enforced (with the planned oracle made real) in the same change that adds one.",
+        "bun test src/services/collective-learning.test.ts inside apps/sarah; runs in the package test glob, the apps/sarah oracle chain, and the repo test:sarah sweep before pushes to main.",
     },
     {
       authorityBoundary:
@@ -205,5 +226,5 @@ export const sarahIsolationContractRegistry: BehaviorContractRegistryDocument = 
     },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-09.1",
+  version: "2026-07-09.2",
 }

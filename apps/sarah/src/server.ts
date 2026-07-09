@@ -33,6 +33,14 @@ import { enqueueSarahEmailDraft } from "./services/crm-email-rail.ts"
 import { runOwnedSarahTurn } from "./agent-runtime/owned-runtime.ts"
 import { handleSarahChatCompletions } from "./llm-openai-compat.ts"
 import { sarahAnswerCacheStatus } from "./services/semantic-answer-cache.ts"
+import {
+  approveLearningCandidate,
+  distillLearningCandidates,
+  listLearningCandidates,
+  listLearningReceipts,
+  rejectLearningCandidate,
+  sarahCollectiveLearningStatus,
+} from "./services/collective-learning.ts"
 import { sarahTurnStoreStatus } from "./services/turn-store.ts"
 import { sarahAvatarEventStream } from "./services/avatar-event-bus.ts"
 import {
@@ -193,6 +201,88 @@ async function handleOperatorEmailDrafts(request: Request): Promise<Response> {
   return json(result, { status: ok ? 200 : 400 })
 }
 
+/**
+ * Admin bearer guard for the KHS-4 collective-learning operator endpoints
+ * (#8603). Same posture as the monolith's operator-write routes
+ * (OPENAGENTS_ADMIN_API_TOKEN bearer) and Sarah's own avatar-brain bearer:
+ * fail CLOSED — with no token configured the endpoints are 503 (an approve
+ * without the guard is impossible), and a missing/wrong bearer is 401.
+ * `SARAH_OPERATOR_ADMIN_TOKEN` allows a Sarah-scoped token; it falls back to
+ * the shared `OPENAGENTS_ADMIN_API_TOKEN` in the monolith deployment.
+ */
+function checkOperatorAdmin(request: Request): Response | null {
+  const token =
+    process.env.SARAH_OPERATOR_ADMIN_TOKEN?.trim() ||
+    process.env.OPENAGENTS_ADMIN_API_TOKEN?.trim()
+  if (!token) {
+    return json(
+      { error: { code: "operator_admin_not_armed" } },
+      { status: 503 },
+    )
+  }
+  const auth = request.headers.get("authorization") ?? ""
+  if (auth !== `Bearer ${token}`) {
+    return json({ error: { code: "unauthorized" } }, { status: 401 })
+  }
+  return null
+}
+
+async function handleOperatorLearning(
+  request: Request,
+  apiPath: string,
+): Promise<Response> {
+  const denied = checkOperatorAdmin(request)
+  if (denied) return denied
+
+  if (apiPath === "/api/operator/learning" && request.method === "GET") {
+    const [pending, approved, receipts] = await Promise.all([
+      listLearningCandidates("pending"),
+      listLearningCandidates("approved"),
+      listLearningReceipts(),
+    ])
+    return json({
+      pending,
+      approved,
+      receipts,
+      status: sarahCollectiveLearningStatus(),
+    })
+  }
+  if (apiPath === "/api/operator/learning/distill" && request.method === "POST") {
+    const result = await distillLearningCandidates()
+    return json(result, { status: result.ok ? 200 : 503 })
+  }
+  const decision = apiPath.match(
+    /^\/api\/operator\/learning\/([^/]+)\/(approve|reject)$/,
+  )
+  if (decision && request.method === "POST") {
+    const [, id, action] = decision
+    const body = (await request.json().catch(() => ({}))) as {
+      by?: string
+      answer?: string
+      reason?: string
+    }
+    const by = typeof body.by === "string" && body.by.trim() ? body.by : "owner"
+    const result =
+      action === "approve"
+        ? await approveLearningCandidate({
+            id: decodeURIComponent(id!),
+            by,
+            answerText: typeof body.answer === "string" ? body.answer : undefined,
+          })
+        : await rejectLearningCandidate({
+            id: decodeURIComponent(id!),
+            by,
+            reason: typeof body.reason === "string" ? body.reason : undefined,
+          })
+    if (!result.ok) {
+      const status = result.error === "candidate_not_found" ? 404 : 409
+      return json({ error: { code: result.error } }, { status })
+    }
+    return json(result)
+  }
+  return json({ error: "not_found", path: apiPath }, { status: 404 })
+}
+
 async function handleOperatorOps(): Promise<Response> {
   return json({
     service: "apps/sarah",
@@ -203,6 +293,7 @@ async function handleOperatorOps(): Promise<Response> {
     avatar: sarahAvatarStatus(),
     turnStore: sarahTurnStoreStatus(),
     answerCache: sarahAnswerCacheStatus(),
+    collectiveLearning: sarahCollectiveLearningStatus(),
     modelPath:
       sarahInferenceTransport() === "khala_gateway"
         ? `khala_gateway_live:${sarahActiveModelId()}`
@@ -401,6 +492,12 @@ export async function handleSarahRequest(request: Request): Promise<Response> {
   }
   if (apiPath === "/api/operator/email-drafts") {
     return handleOperatorEmailDrafts(request)
+  }
+  if (
+    apiPath === "/api/operator/learning" ||
+    apiPath.startsWith("/api/operator/learning/")
+  ) {
+    return handleOperatorLearning(request, apiPath)
   }
   if (apiPath === "/api/operator/ops" && request.method === "GET") {
     return handleOperatorOps()

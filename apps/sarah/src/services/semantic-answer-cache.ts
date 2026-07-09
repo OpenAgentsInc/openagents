@@ -167,6 +167,23 @@ async function geminiEmbed(
 
 let embedder: Embedder = geminiEmbed
 
+/**
+ * Shared embedding client for other Sarah modules (KHS-4 candidate grouping
+ * reuses this instead of duplicating the Gemini lane). Honors the test
+ * override; fail-soft null exactly like cache matching.
+ */
+export async function sarahEmbedText(
+  text: string,
+  taskType: EmbedTaskType,
+): Promise<number[] | null> {
+  try {
+    return await embedder(text, taskType)
+  } catch (error) {
+    lastError = error instanceof Error ? error.message : String(error)
+    return null
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Postgres bank (fail-soft, same posture as turn-store; sarah_* tables only)
 // ---------------------------------------------------------------------------
@@ -323,6 +340,52 @@ async function loadBank(): Promise<AnswerBankEntry[]> {
     }
   })()
   return bankPromise
+}
+
+/** Read-only view of the current bank (KHS-4 distillation gap check). */
+export async function listSarahAnswerBank(): Promise<AnswerBankEntry[]> {
+  return loadBank()
+}
+
+/**
+ * KHS-4 (#8603) publication seam: the ONLY sanctioned way a non-seed entry
+ * enters `sarah_answer_bank`. Callers must pass an owner-approval receipt
+ * ref as `approvedBy` (`learning_receipt:<id>`); the collective-learning
+ * approval path is the only production caller. Appends to the in-memory bank
+ * immediately (so an armed cache can serve it this process) and persists
+ * fail-soft.
+ */
+export async function addApprovedSarahAnswer(entry: {
+  id: string
+  questionCanonical: string
+  answer: string
+  approvedBy: string
+  minSimilarity?: number | null
+}): Promise<void> {
+  const bank = await loadBank()
+  if (!bank.some((existing) => existing.id === entry.id)) {
+    bank.push({
+      id: entry.id,
+      questionCanonical: entry.questionCanonical,
+      answer: entry.answer,
+      minSimilarity: entry.minSimilarity ?? null,
+      approvedBy: entry.approvedBy,
+      embedding: null,
+    })
+  }
+  const sql = client()
+  if (!sql || !(await ensureSchema(sql))) return
+  try {
+    await sql`
+      INSERT INTO sarah_answer_bank
+        (id, question_canonical, answer, min_similarity, approved_by)
+      VALUES
+        (${entry.id}, ${entry.questionCanonical}, ${entry.answer},
+         ${entry.minSimilarity ?? null}, ${entry.approvedBy})
+      ON CONFLICT (id) DO NOTHING`
+  } catch (error) {
+    lastError = error instanceof Error ? error.message : String(error)
+  }
 }
 
 async function persistEmbedding(id: string, embedding: number[]): Promise<void> {

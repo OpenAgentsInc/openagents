@@ -22,9 +22,14 @@
   `src/contracts/isolation-contracts.ts` /
   `src/contracts/isolation-contracts.test.ts`; human doc
   `docs/sarah/SARAH_CONTRACTS.md`.
-- **Collective learning is owner-receipt-gated (pending #8603):** Sarah's
-  shared knowledge may read only from an owner-approved store; nothing crosses
-  prospects without an owner-approval receipt, and prospect PII never enters
-  collective stores. There is no shared-knowledge read path in apps/sarah
-  until KHS-4 ships it behind that gate
-  (`sarah.collective_learning_owner_gated.v1`, state pending).
+- **Collective learning is owner-receipt-gated (KHS-4, #8603):** Sarah's
+  shared knowledge reads only from the owner-approved store
+  (`src/services/collective-learning.ts`): candidates distilled from
+  transcripts are PII-redacted (redact-or-drop) and sit pending until the
+  owner approves or rejects them on the admin-bearer-guarded
+  `/sarah/api/operator/learning` endpoints (unarmed → 503, wrong bearer →
+  401); every decision writes a receipt, answer-bank publications carry the
+  receipt ref as `approved_by`, and nothing crosses prospects without one.
+  Prospect PII never enters collective stores, and no public "learning from
+  conversations" claim is made — internal owner-approved store only
+  (`sarah.collective_learning_owner_gated.v1`, state enforced).

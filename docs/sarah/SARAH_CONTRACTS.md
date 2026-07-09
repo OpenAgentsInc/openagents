@@ -7,9 +7,12 @@ rendering; the coverage test in
 doc drifts from the registry, if an enforced contract loses its oracle, or if
 an oracle file drops its contract reference.
 
-Lane: KHS-3 (#8602), epic #8599 (Sarah × Khala). The isolation law lands
-BEFORE any shared learning: KHS-4 owner-approved collective learning (#8603)
-cannot ship while these oracles are red or missing.
+Lane: KHS-3 (#8602) + KHS-4 (#8603), epic #8599 (Sarah × Khala). The
+isolation law landed BEFORE any shared learning ("isolation before
+generalization"): KHS-3 enforced the cross-prospect oracles first, and KHS-4
+then shipped the owner-approved collective-learning queue behind them —
+flipping `sarah.collective_learning_owner_gated.v1` from pending to enforced
+in the same change that added the first shared-knowledge read path.
 
 ## Where the statements come from
 
@@ -26,11 +29,32 @@ cannot ship while these oracles are red or missing.
   already-existing deterministic pricing guard is bound to the same registry
   discipline.
 
+## How collective learning is gated (KHS-4, #8603)
+
+`apps/sarah/src/services/collective-learning.ts` owns the pipeline:
+deterministic distillation over recent transcripts nominates recurring
+questions, objections, and winning answers; every example is PII-redacted
+(redact-or-drop) before it can enter a `sarah_learning_candidates` row; the
+owner decides on the admin-bearer-guarded `/sarah/api/operator/learning`
+endpoints (`SARAH_OPERATOR_ADMIN_TOKEN`, falling back to
+`OPENAGENTS_ADMIN_API_TOKEN`; unarmed → 503, wrong bearer → 401); each
+decision writes a `sarah_learning_receipts` row; and question/answer
+approvals publish `sarah_answer_bank` entries whose `approved_by` is the
+receipt ref (`learning_receipt:<id>`), so a live answer dereferences back to
+its approval receipt and redacted source turns. The shared read paths
+(`listApprovedLearnings` and the KHS-6 answer bank) serve only approved
+entries. This is an internal owner-approved store; it makes no public
+"learning from conversations" claim while the
+`data.khala_free_tier_trace_capture.v1` promise family stays yellow.
+
 ## Oracle locations
 
 - `apps/sarah/src/contracts/isolation-contracts.test.ts` — registry
   validation + coverage, query-layer scoping, prospect-memory seam pins,
   avatar-brain injection probe.
+- `apps/sarah/src/services/collective-learning.test.ts` — the KHS-4 (#8603)
+  collective-learning oracles: approved-store-only shared reads, admin guard
+  fail-closed on the operator routes, PII redact-or-drop.
 - `apps/sarah/src/services/prospect-memory.test.ts` — the KHS-2 (#8601)
   memory seam suite: single-ref entry point, deterministic same-identity
   aliases (visitor refs never alias), fail-soft null without a store.
@@ -41,14 +65,13 @@ cannot ship while these oracles are red or missing.
 
 ## Pending entries (blocker-gated, never claim as guaranteed)
 
-- `sarah.collective_learning_owner_gated.v1` — **pending**, blocked on
-  **#8603** (KHS-4 owner-approved shared-knowledge store). There is no
-  shared-knowledge read path in `apps/sarah` today; the contract flips to
-  enforced in the same change that adds one.
+None. `sarah.collective_learning_owner_gated.v1` flipped pending → enforced
+with KHS-4 (#8603); all four registered contracts are enforced in the test
+sweep.
 
 ## Registry
 
-Registry version: `2026-07-09.1` (schema `openagents.behavior_contracts.v1`)
+Registry version: `2026-07-09.2` (schema `openagents.behavior_contracts.v1`)
 
 ### `sarah.cross_prospect_isolation.v1` — ENFORCED
 
@@ -62,16 +85,17 @@ Registry version: `2026-07-09.1` (schema `openagents.behavior_contracts.v1`)
 - **Verification:** bun test src/contracts/isolation-contracts.test.ts inside apps/sarah; runs in the package test glob, the apps/sarah oracle chain, and the repo test:sarah sweep before pushes to main.
 - **Authority boundary:** This contract binds Sarah's own read/serve paths (session index, turn store, avatar brain, and the KHS-2 prospect-memory seam from #8601). It does not claim collective learning exists, does not arm any capture sink, and grants no authority over the openagents.com CRM boundary, which remains the system of record. Any NEW prospect-scoped read path added to apps/sarah must gain a bun-test oracle under this contract in the same change.
 
-### `sarah.collective_learning_owner_gated.v1` — PENDING
+### `sarah.collective_learning_owner_gated.v1` — ENFORCED
 
 - **Surface:** sarah (collective learning)
 - **Stated by:** owner via sarah-production-conversation on 2026-07-09
 - **Statement:** admin approval for determining what she's able to learn generally from everyone else
-- **Enforcement tier:** unenforced
-- **Oracle** `approved_store_only.planned` (planned, unit): PENDING (#8603, KHS-4): when the owner-approved shared-knowledge store lands, an oracle must prove Sarah's shared-knowledge reads come ONLY from that store (never raw cross-prospect tables), that every entry carries an owner-approval receipt, and that unapproved candidate learnings are unreachable from any serve path. — `apps/sarah/src/contracts/isolation-contracts.test.ts`
-- **Verification:** Pending #8603 (KHS-4 owner-approved collective learning). Until the approved store exists there is no shared-knowledge read path in apps/sarah, and this contract must flip to enforced (with the planned oracle made real) in the same change that adds one.
-- **Blockers:** `#8603`
-- **Authority boundary:** This contract states the gate for shared learning; it does not build the approved store, define its schema, or authorize arming any capture path. Capture-adjacent product claims stay capped while the data.khala_free_tier_trace_capture.v1 promise family is yellow. Nothing crosses prospects without an owner-approval receipt.
+- **Enforcement tier:** test-sweep
+- **Oracle** `approved_store_only.unit` (bun-test, unit): Shared-knowledge reads come ONLY from the owner-approved store: seeds pending candidates via distillation, approves one with a receipt, and asserts listApprovedLearnings returns exclusively the approved entry (receipt attached) while pending/rejected candidates stay unreachable; the published answer-bank entry's approved_by is the approval receipt ref, so a live answer dereferences back to its receipt and redacted source turns. — `apps/sarah/src/services/collective-learning.test.ts`
+- **Oracle** `learning_admin_guard.rpc` (bun-test, rpc): Admin guard is mandatory and fails closed on the HTTP surface: with no admin token configured, GET /sarah/api/operator/learning and the distill/approve/reject POSTs return 503 (an approve without the guard is impossible); with the token armed, a missing or wrong bearer is 401 and no decision or receipt is ever written; only the exact bearer can list, distill, approve, and reject. — `apps/sarah/src/services/collective-learning.test.ts`
+- **Oracle** `learning_pii_redaction.unit` (bun-test, unit): PII never enters candidates: seeded examples with emails, phone numbers, long digit runs, and URLs come out scrubbed; name introductions and ambiguous residue drop the example entirely (when in doubt, drop); distilled candidates are asserted free of the seeded contact data across summary, canonical question, proposed answer, and examples. — `apps/sarah/src/services/collective-learning.test.ts`
+- **Verification:** bun test src/services/collective-learning.test.ts inside apps/sarah; runs in the package test glob, the apps/sarah oracle chain, and the repo test:sarah sweep before pushes to main.
+- **Authority boundary:** This contract binds the KHS-4 pipeline (#8603): candidates distilled from cross-prospect transcripts are PII-redacted (redact-or-drop), stored pending, and cross into shared knowledge ONLY via an owner decision on the admin-bearer-guarded operator endpoints, each writing an approval receipt; answer-bank publications carry the receipt ref as approved_by. It authorizes no capture path and makes no public 'learning from conversations' claim while the data.khala_free_tier_trace_capture.v1 promise family is yellow — this is an internal owner-approved store, framed as such. Nothing crosses prospects without an owner-approval receipt.
 
 ### `sarah.memory_query_scoped.v1` — ENFORCED
 
