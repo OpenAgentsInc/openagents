@@ -77,6 +77,34 @@ The immediate gaps are composition gaps:
 
 P0 fixes those seams. It does not build another fleet system.
 
+## Interim parallelism and the Codex→Sarah switch
+
+In this current Codex app runtime, the root agent plus up to three concurrently
+active subagents are available—four active agents total. This is the surfaced
+cap for this session, not a permanent Codex-wide limit. Keep the root as
+coordinator/integration owner; give every mutating lane its own clean worktree
+and bounded issue/file scope. Serialize shared schemas, migrations, generated
+catalogs, lockfiles, central route tables, and other hot files through one
+lane. Use separate Codex tabs beyond this session cap or for independently
+steered long-lived contexts; tabs on one account share its quota budget.
+Same-session subagents are Codex agents; they do not exercise the connected
+Claude or Grok accounts. Real mixed-harness fanout begins when #8633 is
+integrated.
+
+The coding cutover is staged:
+
+| Gate | When | Operating decision |
+| --- | --- | --- |
+| C0 | Now | Build #8637/#8633/#8639 through this Codex app, subagents, or explicitly partitioned tabs. Sarah is not yet the coding front door. |
+| C1 | On one pinned integrated commit, #8637 durable Sarah run + #8633 standing real mixed executor + minimum-safe #8639 named progress, typed control, and reconnect pass one Sarah→Pylon fixture E2E. | Only then send the first low-risk pinned real issue through Sarah as a canary; retain this app as observer/break-glass. |
+| C2 | #8640 Phase A clean local three-harness receipt from one pinned integrated deployment | Sarah/Khala/Pylon becomes the default entry point for new bounded owner coding work. This Codex app becomes control-plane development, independent review, and break-glass—not the routine dispatcher. |
+| C3 | #8547/#8636 exits integrated + clean #8640 Phase B receipt | Sarah may choose owner-local or managed-cloud capacity through the same run contract. |
+
+C2 is the requested coding-unblock point. It does not wait for cloud,
+presentation perfection, public-route contraction, or the complete three-app
+Effect Native conversion. Full criteria and fallback rules are in
+[`2026-07-09-codex-parallelism-and-sarah-fleet-cutover.md`](./2026-07-09-codex-parallelism-and-sarah-fleet-cutover.md).
+
 ## P0 — Sarah Fleet Command
 
 Epic: **[#8638](https://github.com/OpenAgentsInc/openagents/issues/8638)**.
@@ -140,8 +168,10 @@ Required receipt:
   manually launched assignment shells;
 - verification and closeout visible through Sarah.
 
-This is the coding-unblock milestone. Do not wait for cloud or presentation
-perfection to run it.
+This is the coding-unblock and default-owner-local cutover milestone. After its
+clean receipt, new bounded pinned backlog work starts through Sarah/Khala by
+default; this Codex app remains break-glass and control-plane development. Do
+not wait for cloud or presentation perfection to run it.
 
 ### P0.5 — add managed cloud without changing the product contract
 
@@ -154,7 +184,10 @@ and Grok cloud parity through the same contract.
 
 **[#8640 FC-5](https://github.com/OpenAgentsInc/openagents/issues/8640)**
 Phase B closes when one Sarah run executes local and managed-cloud work
-concurrently under one claim registry.
+concurrently under one claim registry: at least one owner-local unit and one
+managed Agent Computer unit both complete useful verified work, target
+selection/fallback is typed and visible, and compute/model usage truth remains
+separate.
 
 Cloud is additive. A cloud blocker never stalls the P0.4 local burn.
 
@@ -296,7 +329,8 @@ parallel presentation/app lanes carry `priority:P1-parallel`.
 2. Start #8639 as soon as the stable run/projection seam from #8637 exists;
    fixture UI/projection work may begin earlier.
 3. Run #8640 Phase A at the first honest opportunity. Fix fleet substrate bugs
-   in place until the receipt is clean.
+   in place until the receipt is clean, then flip routine bounded owner coding
+   to Sarah/Khala/Pylon by default.
 4. Run #8547 and #8636 on dedicated cloud capacity; never block Phase A.
 5. Keep #8600 and #8610 active in parallel without taking the fleet integration
    hot paths.

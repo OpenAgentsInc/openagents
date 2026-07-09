@@ -42,7 +42,9 @@ Authority: `docs/sol/MASTER_ROADMAP.md`.
 - Harness and target fallback is typed and visible, never silent.
 - Raw prompts, shell output, paths, credentials, and private repo contents stay
   on the owning private plane.
-- Exact usage and closeout evidence remain the completion truth.
+- Exact usage where measured, explicit `not_measured` otherwise, and closeout
+  evidence remain completion truth; never synthesize usage or infer it from a
+  public counter.
 
 ## Epic exit
 
@@ -50,5 +52,17 @@ From `/sarah`, the owner starts a pinned plan with at least three concurrent
 real work streams. Codex, Claude, and Grok all complete useful units under one
 run with zero duplicate claims. Sarah shows live progress, handles at least one
 steer or approval, and renders verified closeouts. A local-only pass closes the
-immediate unblock milestone; a second receipt adds at least one Agent Computer
-stream without changing the Sarah interaction contract.
+immediate unblock milestone; after #8547/#8636 integration, a second receipt
+proves at least one owner-local unit and one managed Agent Computer unit both
+complete useful verified work concurrently without changing the Sarah
+interaction contract.
+
+## Cutover posture
+
+The first real Sarah canary begins only after #8637, #8633, and the minimum
+safe #8639 progress/control/reconnect seam pass one fixture on a pinned
+integrated deployment. The owner-local workflow becomes the default for new
+bounded coding work when #8640 Phase A is clean. Managed cloud, avatar polish,
+and full application conversion do not delay that cutover. This Codex app
+remains available for break-glass, fleet-control-plane implementation, and
+independent evidence review.

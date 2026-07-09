@@ -42,6 +42,23 @@ Before recommending or implementing a roadmap slice:
 6. Choose the smallest slice that closes a real loop or removes a duplicate
    seam.
 
+## Parallel implementation before the Sarah cutover
+
+In this current Codex app runtime, Sol plus up to three concurrently active
+subagents are available. This is a session-scoped cap, not a universal Codex
+limit. Use those slots for disjoint lanes with clean worktrees and one
+integration owner; serialize shared schemas, migrations, generated catalogs,
+lockfiles, route tables, and other hot files. Use additional Codex tabs for
+greater concurrency or independently steered contexts, not as an assumption
+that one account has gained more quota.
+
+Before C1, this Codex app remains the implementation control plane. After one
+integrated C1 fixture receipt, send only low-risk pinned canaries through
+Sarah; routine dispatch remains here until #8640 Phase A cleanly satisfies C2.
+After C2, bounded owner-local work defaults to Sarah/Khala/Pylon and this app
+remains break-glass/control-plane/review. See
+[`2026-07-09-codex-parallelism-and-sarah-fleet-cutover.md`](./2026-07-09-codex-parallelism-and-sarah-fleet-cutover.md).
+
 ## Implementation-design template
 
 Every substantive Sol design should answer:

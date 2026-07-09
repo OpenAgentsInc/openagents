@@ -7,6 +7,32 @@ This repository is the new OpenAgents Bun and Effect monorepo.
 Preserve `docs/transcripts/`. It is the retained transcript archive from the
 previous repository shape.
 
+## Proactive Subagent Delegation (owner mandate)
+
+**Delegate to sub agents proactively.** In the rest of this contract they are
+called subagents. When a task contains two or more
+concrete, bounded, non-colliding lanes, use the available child-agent capacity
+without waiting for the owner to request fanout again. Examples include
+independent issue implementation, code-path audits, test/verification work,
+and documentation reconciliation that can proceed alongside the primary lane.
+
+- Keep one coordinating agent responsible for the shared plan, integration,
+  final verification, issue state, and push to `main`.
+- Give every subagent an explicit outcome, scope, owning paths, and
+  verification contract.
+- Implementation agents use separate clean worktrees. Read-only audit agents
+  may inspect the shared tree but do not mutate it.
+- Serialize shared schemas, migrations, generated catalogs, lockfiles, central
+  route tables, and other hot files unless one agent owns the integration
+  point explicitly.
+- Do not create fanout for ceremony: a tightly coupled one-file edit or task
+  whose coordination cost exceeds its parallel work stays with one agent.
+- Respect the surfaced session/thread cap and provider quota. Recursive fanout
+  still requires a separately bounded, non-colliding lane.
+- Before declaring completion, reconcile every child result against current
+  `origin/main`; a spawned agent or passing child test is not itself the final
+  integration receipt.
+
 ## Autonomous Loop: Constant Motion (owner mandate)
 
 When running the autonomous AFK loop (`/loop`, see

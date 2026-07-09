@@ -50,6 +50,10 @@ and receipts win when they do.
 - [`2026-07-09-issue-triage.md`](./2026-07-09-issue-triage.md) — exact receipt
   for the 7 rewritten issues, 8 new issues, and 23 superseded/postponed
   closures.
+- [`2026-07-09-codex-parallelism-and-sarah-fleet-cutover.md`](./2026-07-09-codex-parallelism-and-sarah-fleet-cutover.md)
+  — current same-session sub-agent capacity versus additional Codex tabs, and
+  the exact C0–C3 gates for moving routine coding from this Codex app to the
+  Sarah/Khala/Pylon workflow.
 - [`issues/README.md`](./issues/README.md) — source bodies for the canonical
   live GitHub issue set.
 - [`SUBSYSTEM_IMPLEMENTATION_IMPLICATIONS.md`](./SUBSYSTEM_IMPLEMENTATION_IMPLICATIONS.md)
