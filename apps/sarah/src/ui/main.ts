@@ -2,10 +2,14 @@
  * Sarah — the Effect Native surface at openagents.com/sarah (#8598 AV-5).
  *
  * Authored entirely in the Effect Native component set on the DOM renderer —
- * zero React, no hand-rolled DOM for the UI tree (the avatar <video> lives in
- * a sibling container managed by avatar-session.ts; `media-video` Host kind is
- * filed as upstream demand). Replaces the interim sarah.js shell and closes
- * the open SM-2 item on #8594.
+ * zero React, no hand-rolled DOM for the UI tree. The avatar pane is an EN
+ * `MediaVideo` host (catalog `media-video` kind, effect-native#67, vendored
+ * v26): the media-video driver owns the <video> attach target and
+ * avatar-session.ts only binds the live stream to it. The transcript is the
+ * EN `Transcript` primitive (effect-native#35) — keyed role-tagged messages
+ * with pin-to-end, carrying in-place partial-utterance updates once the
+ * brain emits partials. Replaces the interim sarah.js shell and closes the
+ * open SM-2 item on #8594; SQ-7 catalog gaps tracked in docs/sarah/EN-GAPS.md.
  */
 
 import {
@@ -16,10 +20,12 @@ import {
   IntentRef,
   StaticPayload,
   List,
+  MediaVideo,
   Spacer,
   Stack,
   Text,
   TextField,
+  Transcript,
   defineIntent,
   makeIntentRegistry,
   makeViewProgramFromState,
@@ -27,9 +33,10 @@ import {
   type IntentHandlers,
   type IntentReporter,
   type TextView,
+  type TranscriptMessage,
   type View,
 } from "@effect-native/core"
-import { makeDomRenderer } from "@effect-native/render-dom"
+import { makeDomRenderer, makeMediaVideoDriver } from "@effect-native/render-dom"
 import { Effect, Exit, Schema, Scope, SubscriptionRef } from "@effect-native/core/effect"
 
 import { startAvatarSession, type AvatarHandle } from "./avatar-session.ts"
@@ -61,6 +68,12 @@ type SarahSurfaceState = Readonly<{
   status: "idle" | "thinking" | "connecting" | "live" | "error"
   avatarArmed: boolean
   avatarActive: boolean
+  /**
+   * True from session start until the user ends it (or startup fails) — keeps
+   * the EN MediaVideo host mounted for the whole session lifetime, mirroring
+   * the previous imperative create-on-start / remove-on-stop element flow.
+   */
+  avatarSessionOpen: boolean
   sandbox: boolean
   input: string
   transcript: ReadonlyArray<TranscriptEntry>
@@ -73,6 +86,7 @@ const initialState: SarahSurfaceState = {
   status: "idle",
   avatarArmed: false,
   avatarActive: false,
+  avatarSessionOpen: false,
   sandbox: false,
   input: "",
   transcript: [
@@ -154,24 +168,34 @@ const accountChip = (state: SarahSurfaceState): View | null => {
   }
 }
 
-const transcriptItem = (entry: TranscriptEntry): View & { key: string } =>
-  keyed(Card(
-    {
-      key: entry.key,
-      padding: "3",
-      radius: "lg",
-      style: {
-        backgroundColor: entry.role === "user" ? "surfaceRaised" : "surface",
-        borderColor: "border",
-        borderWidth: 1,
-        width: "full",
+/**
+ * A transcript entry as an EN Transcript message (effect-native#35): keyed and
+ * role-tagged so partial-utterance text updates replace the message body in
+ * place; the Card body keeps the exact visual of the previous List+Card shell.
+ */
+const transcriptMessage = (entry: TranscriptEntry): TranscriptMessage => ({
+  key: entry.key,
+  role: entry.role,
+  body: [
+    Card(
+      {
+        key: `${entry.key}-card`,
+        padding: "3",
+        radius: "lg",
+        style: {
+          backgroundColor: entry.role === "user" ? "surfaceRaised" : "surface",
+          borderColor: "border",
+          borderWidth: 1,
+          width: "full",
+        },
       },
-    },
-    [
-      text(`${entry.key}-role`, entry.role === "user" ? "YOU" : "SARAH", "caption", "textMuted"),
-      text(`${entry.key}-text`, entry.text, "body"),
-    ],
-  ))
+      [
+        text(`${entry.key}-role`, entry.role === "user" ? "YOU" : "SARAH", "caption", "textMuted"),
+        text(`${entry.key}-text`, entry.text, "body"),
+      ],
+    ),
+  ],
+})
 
 const cardItem = (card: SarahCard): View & { key: string } =>
   keyed(Card(
@@ -242,14 +266,12 @@ export const sarahSurfaceView = (state: SarahSurfaceState): View => {
               }),
         ],
       ),
-      List(
-        {
-          key: "transcript",
-          pinToEnd: true,
-          style: { width: "full" },
-        },
-        state.transcript.map(transcriptItem),
-      ),
+      Transcript({
+        key: "transcript",
+        pinToEnd: true,
+        messages: state.transcript.map(transcriptMessage),
+        style: { width: "full" },
+      }),
       ...(state.cards.length
         ? [
             List(
@@ -281,6 +303,22 @@ export const sarahSurfaceView = (state: SarahSurfaceState): View => {
     ],
   )
 }
+
+/**
+ * The avatar pane view: the EN `MediaVideo` host is mounted for the lifetime
+ * of a session (effect-native#67). While no session is open the pane renders
+ * empty and the #sarah-avatar chrome (data-state CSS) shows the idle overlay.
+ */
+export const sarahAvatarPaneView = (state: SarahSurfaceState): View =>
+  state.avatarSessionOpen
+    ? MediaVideo({
+        key: "avatar-video",
+        fit: "cover",
+        muted: false,
+        style: { width: "full", height: "full" },
+        a11y: { label: "Sarah live avatar video" },
+      })
+    : Stack({ key: "avatar-empty", direction: "column" }, [])
 
 let entryCounter = 0
 const nextKey = (prefix: string) => `${prefix}-${entryCounter++}`
@@ -403,7 +441,30 @@ export const mountSarahSurface = (container: HTMLElement, avatarContainer: HTMLE
   Effect.gen(function* () {
     const state = yield* SubscriptionRef.make(initialState)
     const program = makeViewProgramFromState(state, sarahSurfaceView)
+    const avatarProgram = makeViewProgramFromState(state, sarahAvatarPaneView)
     const runtime = { avatar: null as AvatarHandle | null }
+
+    // The media-video host driver hands us the EN-owned <video> attach
+    // target; avatar-session awaits it through acquireVideo (the element
+    // appears when avatarSessionOpen mounts the MediaVideo node).
+    let videoElement: HTMLVideoElement | null = null
+    let videoWaiters: Array<(element: HTMLVideoElement) => void> = []
+    const mediaVideoDriver = makeMediaVideoDriver({
+      onElement: (element) => {
+        videoElement = element
+        for (const waiter of videoWaiters.splice(0)) waiter(element)
+        return () => {
+          videoElement = null
+        }
+      },
+    })
+    const acquireVideo = (): Promise<HTMLVideoElement> =>
+      videoElement
+        ? Promise.resolve(videoElement)
+        : new Promise((resolve) => {
+            videoWaiters.push(resolve)
+          })
+    const avatarPane = { container: avatarContainer, acquireVideo }
 
     const runInBackground = <A, E>(effect: Effect.Effect<A, E>) =>
       Effect.runPromise(Effect.catch(effect, () => Effect.void) as Effect.Effect<void, never>)
@@ -476,10 +537,12 @@ export const mountSarahSurface = (container: HTMLElement, avatarContainer: HTMLE
           yield* SubscriptionRef.update(state, (current): SarahSurfaceState => ({
             ...current,
             status: "connecting",
+            // Mount the EN MediaVideo host so acquireVideo can resolve.
+            avatarSessionOpen: true,
           }))
           yield* Effect.tryPromise({
             try: async () => {
-              runtime.avatar = await startAvatarSession(avatarContainer, {
+              runtime.avatar = await startAvatarSession(avatarPane, {
                 onState: (avatarState) => {
                   void runInBackground(
                     SubscriptionRef.update(state, (current): SarahSurfaceState => ({
@@ -522,6 +585,7 @@ export const mountSarahSurface = (container: HTMLElement, avatarContainer: HTMLE
                   ...current,
                   status: "error",
                   avatarActive: false,
+                  avatarSessionOpen: false,
                 }))
               }),
             ),
@@ -539,6 +603,7 @@ export const mountSarahSurface = (container: HTMLElement, avatarContainer: HTMLE
           yield* SubscriptionRef.update(state, (current): SarahSurfaceState => ({
             ...current,
             avatarActive: false,
+            avatarSessionOpen: false,
             status: "idle",
           }))
         }),
@@ -548,9 +613,14 @@ export const mountSarahSurface = (container: HTMLElement, avatarContainer: HTMLE
     const report: IntentReporter = (ref, runtimeValue) =>
       registry.dispatch(resolveIntentRef(ref, runtimeValue))
 
-    const surface = yield* makeDomRenderer({ theme: sarahEffectNativeTheme }).mount(
-      container,
-      program.viewStream,
+    const renderer = makeDomRenderer({
+      theme: sarahEffectNativeTheme,
+      hostDrivers: [mediaVideoDriver],
+    })
+    const surface = yield* renderer.mount(container, program.viewStream, report)
+    const avatarSurface = yield* renderer.mount(
+      avatarContainer,
+      avatarProgram.viewStream,
       report,
     )
 
@@ -597,7 +667,12 @@ export const mountSarahSurface = (container: HTMLElement, avatarContainer: HTMLE
       ),
     )
 
-    return { unmount: surface.unmount }
+    return {
+      unmount: Effect.gen(function* () {
+        yield* avatarSurface.unmount
+        yield* surface.unmount
+      }),
+    }
   })
 
 const boot = () => {

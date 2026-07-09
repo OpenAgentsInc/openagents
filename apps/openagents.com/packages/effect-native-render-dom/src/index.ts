@@ -44,6 +44,8 @@ import {
   decodeCodeEditorHostProps,
   type TerminalHostProps,
   decodeTerminalHostProps,
+  type MediaVideoHostProps,
+  decodeMediaVideoHostProps,
   type ContextMenuView,
   type Dimension,
   type DividerView,
@@ -277,6 +279,62 @@ export const makeStubTerminalDriver = (): DomHostDriver => ({
         disposed = true
         root.removeEventListener("keydown", onKeydown as EventListener)
         root.remove()
+      }
+    }
+  }
+})
+
+// Documented minimal MediaVideo host driver (issue #67). The reviewed
+// escape-hatch driver for `Host(kind: "media-video")`: a real, disposing
+// <video> element that honors the typed MediaVideoHostProps (fit/muted/
+// mirrored) and emits the typed MediaVideoEvent union (ready/ended/error)
+// through the Host `onEvent` intent. The live MediaStream never crosses the
+// serializable prop boundary — the app attaches its WebRTC track, capture
+// stream, or vendor-SDK sink through `onElement`, whose returned cleanup runs
+// on unmount. Playback sources (src URLs, HLS, posters) are out of scope.
+export interface MediaVideoDriverOptions {
+  // Hand the mounted <video> to the app so it can bind a live MediaStream.
+  // Return a cleanup to run when the driver unmounts.
+  readonly onElement?: (element: HTMLVideoElement) => (() => void) | void
+}
+
+export const makeMediaVideoDriver = (options: MediaVideoDriverOptions = {}): DomHostDriver => ({
+  kind: "media-video",
+  decodeProps: (props) => decodeMediaVideoHostProps(props),
+  mount: (container, props, context) => {
+    const video = context.document.createElement("video") as HTMLVideoElement
+    video.setAttribute("data-en-host-driver", "media-video")
+    video.autoplay = true
+    video.setAttribute("playsinline", "")
+    video.style.width = "100%"
+    video.style.height = "100%"
+    const applyProps = (next: MediaVideoHostProps) => {
+      video.muted = next.muted === true
+      video.style.objectFit = next.fit ?? "cover"
+      video.style.transform = next.mirrored === true ? "scaleX(-1)" : ""
+    }
+    applyProps(props as MediaVideoHostProps)
+    const onPlaying = () => context.emit({ type: "ready" })
+    const onEnded = () => context.emit({ type: "ended" })
+    const onError = () =>
+      context.emit({ type: "error", message: video.error?.message ?? "media_error" })
+    video.addEventListener("playing", onPlaying)
+    video.addEventListener("ended", onEnded)
+    video.addEventListener("error", onError)
+    container.appendChild(video)
+    const cleanup = options.onElement?.(video)
+    let disposed = false
+    return {
+      update: (next) => applyProps(next as MediaVideoHostProps),
+      unmount: () => {
+        if (disposed) return
+        disposed = true
+        if (typeof cleanup === "function") cleanup()
+        video.removeEventListener("playing", onPlaying)
+        video.removeEventListener("ended", onEnded)
+        video.removeEventListener("error", onError)
+        video.srcObject = null
+        video.remove()
       }
     }
   }

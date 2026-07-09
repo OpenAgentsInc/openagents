@@ -12,15 +12,15 @@ pieces are demand for Effect Native — tracked here and in
 4. Vendor only after catalog version bump + renderer conformance.
 5. Convert Sarah shell workarounds only after the component lands.
 
-## Active demand (SQ-7)
+## Active demand (SQ-7) — status as of 2026-07-09 (catalog v26 vendored)
 
 | Gap | Real screen demand | Upstream status | Notes |
 |---|---|---|---|
-| `Host` kind `media-video` | `/sarah` owned avatar WebRTC / LiveAvatar attach | [effect-native#66](https://github.com/OpenAgentsInc/effect-native/issues/66) | Host kinds today: `code-editor\|terminal\|canvas` only |
-| Streaming transcript primitive | `/sarah` partial-utterance live transcript | [effect-native#66](https://github.com/OpenAgentsInc/effect-native/issues/66) | Today: `List(pinToEnd)` + `Card` composition |
-| Mic state + audio level | `/sarah` push-to-talk / VAD UI | [effect-native#66](https://github.com/OpenAgentsInc/effect-native/issues/66) | Idle / live / denied + level |
-| Handoff / checkout / receipt cards | `/sarah` tool-effect cards | [effect-native#66](https://github.com/OpenAgentsInc/effect-native/issues/66) | Typed card intents, not free-form DOM |
-| First-contact AI disclosure banner | `/sarah` + landing first paint | [effect-native#66](https://github.com/OpenAgentsInc/effect-native/issues/66) | Must stay first-class, not ad hoc Text |
+| `Host` kind `media-video` | `/sarah` owned avatar WebRTC / LiveAvatar attach | **shipped** → [effect-native#67](https://github.com/OpenAgentsInc/effect-native/issues/67) (v26, upstream `941acc8`) | `hostKinds` gains `media-video`; typed `MediaVideo` + DOM `makeMediaVideoDriver` with `onElement` attach seam. **Sarah converted**: the avatar pane is an EN `MediaVideo` host; `avatar-session.ts` acquires the driver-owned `<video>` and only binds the stream. |
+| Streaming transcript primitive | `/sarah` partial-utterance live transcript | **already shipped** → [effect-native#35](https://github.com/OpenAgentsInc/effect-native/issues/35) (`Transcript`, v17) + #26 stream region | Keyed messages with the closed `thinking/streaming/failed/done` status set update in place — partial utterances are message-body replacements. **Sarah converted** off `List(pinToEnd)`+`Card` onto `Transcript` (Card bodies keep the exact visual); status wiring starts when the brain emits partial events. |
+| Mic state + audio level | `/sarah` push-to-talk / VAD UI | **waiting** → registered in upstream `GAPS.md` ([effect-native#66](https://github.com/OpenAgentsInc/effect-native/issues/66)) | Typed proposal: `MicIndicator` with closed `idle/live/denied/muted` state + 0..1 level; `Meter`/`Badge` (#39) compose an interim. Enters when Sarah actually wires PTT/level metering. |
+| Handoff / checkout / receipt cards | `/sarah` tool-effect cards | **waiting** → registered in upstream `GAPS.md` ([effect-native#66](https://github.com/OpenAgentsInc/effect-native/issues/66)) | Today honestly composed from `Card`+`Text`+`Button` (catalog-blessed composition, not a workaround). A typed card family enters on second-surface demand. |
+| First-contact AI disclosure banner | `/sarah` + landing first paint | **covered** → `StatusBanner` ([effect-native#40](https://github.com/OpenAgentsInc/effect-native/issues/40), v16) | The catalog piece exists. Sarah's disclosure currently renders as the server-page `header.sarah-disclosure` above the EN mount; moving it onto `StatusBanner` is a layout-level EN adoption step (copy unchanged), tracked with the shell, not a catalog gap. |
 
 ## Filed by AV-5 avatar surface (#8598, 2026-07-09)
 
@@ -42,6 +42,7 @@ Historical detail (kept for provenance):
 ## Links
 
 - Monorepo demand register: `docs/effect-native/DEMAND_REGISTER.md`
-- Upstream process: `OpenAgentsInc/effect-native` `GAPS.md` (catalog v25+)
+- Upstream process: `OpenAgentsInc/effect-native` `GAPS.md` (catalog v26+)
+- Vendored snapshot manifest: `apps/openagents.com/packages/effect-native-vendor.json`
 - EN-2 issue: OpenAgentsInc/openagents#8572
 - SQ-7 issue: OpenAgentsInc/openagents#8624

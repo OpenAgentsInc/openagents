@@ -85,8 +85,9 @@ export const PullToRefreshCatalogVersion = "effect-native/v22" as const
 export const SwipeableListItemCatalogVersion = "effect-native/v23" as const
 export const MobileSurfacesCatalogVersion = "effect-native/v24" as const
 export const MobileGesturesCatalogVersion = "effect-native/v25" as const
-export const PreviousCatalogVersion = MobileSurfacesCatalogVersion
-export const CatalogVersion = MobileGesturesCatalogVersion
+export const MediaVideoCatalogVersion = "effect-native/v26" as const
+export const PreviousCatalogVersion = MobileGesturesCatalogVersion
+export const CatalogVersion = MediaVideoCatalogVersion
 export const CatalogVersionSchema = Schema.Literal(CatalogVersion)
 export type CatalogVersion = typeof CatalogVersion
 export const compatibleCatalogVersions = [
@@ -115,7 +116,8 @@ export const compatibleCatalogVersions = [
   PullToRefreshCatalogVersion,
   SwipeableListItemCatalogVersion,
   MobileSurfacesCatalogVersion,
-  MobileGesturesCatalogVersion
+  MobileGesturesCatalogVersion,
+  MediaVideoCatalogVersion
 ] as const
 export type CompatibleCatalogVersion = (typeof compatibleCatalogVersions)[number]
 export const CompatibleCatalogVersionSchema = Schema.Literals(compatibleCatalogVersions)
@@ -1545,7 +1547,7 @@ export type DropPayload = Schema.Schema.Type<typeof DropPayloadSchema>
 // Closed host-kind registry for the foreign-host escape hatch (issue #23). A
 // new host kind is a reviewed catalog change with the same growth-rule bar as
 // a component — never an open plugin point.
-export const hostKinds = ["code-editor", "terminal", "canvas", "voice-input", "on-device-model"] as const
+export const hostKinds = ["code-editor", "terminal", "canvas", "voice-input", "on-device-model", "media-video"] as const
 export const HostKindSchema = Schema.Literals(hostKinds)
 export type HostKind = (typeof hostKinds)[number]
 
@@ -4422,6 +4424,60 @@ export const OnDeviceModel = (props: OnDeviceModelProps): HostView => {
     ...(interactions === undefined ? {} : { interactions }),
     kind: "on-device-model",
     props: OnDeviceModelHostPropsSchema.make(hostProps) as unknown as JsonPayload
+  })
+}
+
+// ── MediaVideo host contract (issue #67) ─────────────────────────────────────
+//
+// A live media element (WebRTC track, capture stream, or vendor-SDK attach)
+// under the reviewed `Host(kind: "media-video")` escape hatch (#23) — not a new
+// closed-catalog tag. The MediaStream itself is not serializable and never
+// enters the tree: the app binds it to the driver-owned <video> element at the
+// renderer boundary (DOM: `makeMediaVideoDriver({ onElement })`). Props stay
+// bounded and serializable; playback sources (src URLs, HLS, posters) are
+// explicitly out of scope — this host is a live attach target only.
+export const mediaVideoFits = ["cover", "contain"] as const
+export type MediaVideoFit = (typeof mediaVideoFits)[number]
+
+export interface MediaVideoHostProps {
+  readonly fit?: MediaVideoFit
+  readonly muted?: boolean
+  readonly mirrored?: boolean
+}
+export const MediaVideoHostPropsSchema: Schema.Codec<MediaVideoHostProps, MediaVideoHostProps> = Schema.Struct({
+  fit: Schema.Literals(mediaVideoFits).pipe(Schema.optionalKey),
+  muted: Schema.Boolean.pipe(Schema.optionalKey),
+  mirrored: Schema.Boolean.pipe(Schema.optionalKey)
+}) as unknown as Schema.Codec<MediaVideoHostProps, MediaVideoHostProps>
+export const decodeMediaVideoHostProps = Schema.decodeUnknownSync(MediaVideoHostPropsSchema)
+
+export type MediaVideoEvent =
+  | { readonly type: "ready" }
+  | { readonly type: "ended" }
+  | { readonly type: "error"; readonly message: string }
+export const MediaVideoEventSchema: Schema.Codec<MediaVideoEvent, MediaVideoEvent> = Schema.Union([
+  Schema.Struct({ type: Schema.Literal("ready") }),
+  Schema.Struct({ type: Schema.Literal("ended") }),
+  Schema.Struct({ type: Schema.Literal("error"), message: Schema.String })
+]) as unknown as Schema.Codec<MediaVideoEvent, MediaVideoEvent>
+
+export interface MediaVideoProps extends MediaVideoHostProps {
+  readonly key?: NodeKey
+  readonly onEvent?: IntentRef
+  readonly style?: CardStyle
+  readonly a11y?: A11y
+  readonly interactions?: Interactions
+}
+export const MediaVideo = (props: MediaVideoProps): HostView => {
+  const { key, onEvent, style, a11y, interactions, ...hostProps } = props
+  return Host({
+    ...(key === undefined ? {} : { key }),
+    ...(onEvent === undefined ? {} : { onEvent }),
+    ...(style === undefined ? {} : { style }),
+    ...(a11y === undefined ? {} : { a11y }),
+    ...(interactions === undefined ? {} : { interactions }),
+    kind: "media-video",
+    props: MediaVideoHostPropsSchema.make(hostProps) as unknown as JsonPayload
   })
 }
 

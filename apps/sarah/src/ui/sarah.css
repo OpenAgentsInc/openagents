@@ -53,6 +53,14 @@ body {
   font-size: 13px;
 }
 
+/* The EN avatar-pane surface (MediaVideo host) overlays the chrome box; the
+   idle/connecting ::after overlays stay visible beneath the transparent,
+   stream-less video until frames arrive. */
+#sarah-avatar > [data-effect-native-surface] {
+  position: absolute;
+  inset: 0;
+}
+
 #sarah-avatar video {
   width: 100%;
   height: 100%;
@@ -64,7 +72,8 @@ body {
     grid-template-columns: 1fr;
   }
   #sarah-avatar {
-    position: static;
+    /* relative (not static) keeps the absolute EN surface anchored here. */
+    position: relative;
     aspect-ratio: 16 / 10;
     max-height: 40vh;
   }

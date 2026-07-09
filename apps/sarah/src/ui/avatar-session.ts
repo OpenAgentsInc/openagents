@@ -3,10 +3,12 @@
  *
  * Owns the imperative SDK lifecycle (mint → connect → attach video → voice
  * chat) and the SSE subscription to the brain's event bus, translating both
- * into the typed callbacks the EN surface consumes. The avatar <video> mounts
- * into a dedicated sibling container (`#sarah-avatar`) — the EN Host kind set
- * is closed (code-editor|terminal|canvas) and a `media-video` host kind is
- * registered as upstream demand in docs/sarah/EN-GAPS.md.
+ * into the typed callbacks the EN surface consumes. The avatar <video> is the
+ * Effect Native `MediaVideo` host attach target (catalog `media-video` kind,
+ * effect-native#67, vendored v26) — this module never creates or removes the
+ * element; it acquires it from the EN media-video driver via the pane handle
+ * and only binds/unbinds the live stream. `pane.container` is the chrome
+ * region whose `data-state` drives the idle/connecting CSS overlays.
  */
 
 import {
@@ -19,6 +21,13 @@ export type AvatarCallbacks = {
   onState: (state: "connecting" | "live" | "ended" | "error") => void
   onTranscript: (role: "user" | "assistant", text: string) => void
   onCard: (card: { title: string; body: string; href?: string }) => void
+}
+
+export type AvatarPane = {
+  /** The #sarah-avatar chrome container — `data-state` drives CSS overlays. */
+  container: HTMLElement
+  /** Resolves the EN media-video attach target once its host driver mounts. */
+  acquireVideo: () => Promise<HTMLVideoElement>
 }
 
 export type AvatarHandle = {
@@ -43,7 +52,7 @@ type AvatarMint = {
 }
 
 export async function startAvatarSession(
-  container: HTMLElement,
+  pane: AvatarPane,
   callbacks: AvatarCallbacks,
 ): Promise<AvatarHandle> {
   callbacks.onState("connecting")
@@ -58,7 +67,7 @@ export async function startAvatarSession(
   const mint = (await mintResponse.json()) as AvatarMint
 
   if (mint.renderer === "owned") {
-    return startOwnedRendererSession(container, callbacks, mint)
+    return startOwnedRendererSession(pane, callbacks, mint)
   }
 
   const session = new LiveAvatarSession(mint.sessionToken ?? "")
@@ -74,19 +83,14 @@ export async function startAvatarSession(
     callbacks.onTranscript(role, text.trim())
   }
 
-  const video = document.createElement("video")
-  video.autoplay = true
-  video.playsInline = true
-  video.muted = false
-  video.style.width = "100%"
-  video.style.height = "100%"
-  video.style.objectFit = "cover"
-  container.replaceChildren(video)
-  container.dataset.state = "connecting"
+  // The EN media-video host driver owns the <video> element lifecycle; this
+  // session only binds the SDK stream to it (fit/mute come from typed props).
+  const video = await pane.acquireVideo()
+  pane.container.dataset.state = "connecting"
 
   session.on(SessionEvent.SESSION_STREAM_READY, () => {
     session.attach(video)
-    container.dataset.state = "live"
+    pane.container.dataset.state = "live"
     callbacks.onState("live")
     void Promise.resolve(session.voiceChat.start()).catch(() => {
       // Mic denied — the avatar still speaks; text input remains available.
@@ -141,8 +145,9 @@ export async function startAvatarSession(
     } catch {
       // Server-side stop below is the authority.
     }
-    container.replaceChildren()
-    container.dataset.state = "idle"
+    // The EN driver owns the element; only unbind the stream here.
+    video.srcObject = null
+    pane.container.dataset.state = "idle"
     await fetch(`${API}/avatar/stop`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -179,7 +184,7 @@ export async function startAvatarSession(
  * path stays LiveAvatar-only until a later lane adds owned ASR.
  */
 async function startOwnedRendererSession(
-  container: HTMLElement,
+  pane: AvatarPane,
   callbacks: AvatarCallbacks,
   mint: AvatarMint,
 ): Promise<AvatarHandle> {
@@ -197,15 +202,10 @@ async function startOwnedRendererSession(
     callbacks.onTranscript(role, text.trim())
   }
 
-  const video = document.createElement("video")
-  video.autoplay = true
-  video.playsInline = true
-  video.muted = false
-  video.style.width = "100%"
-  video.style.height = "100%"
-  video.style.objectFit = "cover"
-  container.replaceChildren(video)
-  container.dataset.state = "connecting"
+  // The EN media-video host driver owns the <video>; bind the recvonly
+  // WebRTC stream to the acquired attach target.
+  const video = await pane.acquireVideo()
+  pane.container.dataset.state = "connecting"
 
   const pc = new RTCPeerConnection()
   pc.addTransceiver("video", { direction: "recvonly" })
@@ -214,7 +214,7 @@ async function startOwnedRendererSession(
     const stream = event.streams[0]
     if (stream && video.srcObject !== stream) {
       video.srcObject = stream
-      container.dataset.state = "live"
+      pane.container.dataset.state = "live"
       callbacks.onState("live")
     }
   }
@@ -241,8 +241,8 @@ async function startOwnedRendererSession(
     })
   } catch (error) {
     pc.close()
-    container.replaceChildren()
-    container.dataset.state = "idle"
+    video.srcObject = null
+    pane.container.dataset.state = "idle"
     callbacks.onState("error")
     throw error instanceof Error ? error : new Error("avatar_owned_webrtc_failed")
   }
@@ -277,8 +277,8 @@ async function startOwnedRendererSession(
   const stop = async () => {
     events.close()
     pc.close()
-    container.replaceChildren()
-    container.dataset.state = "idle"
+    video.srcObject = null
+    pane.container.dataset.state = "idle"
     await fetch(`${API}/avatar/stop`, {
       method: "POST",
       headers: { "content-type": "application/json" },

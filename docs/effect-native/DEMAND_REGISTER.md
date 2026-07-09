@@ -13,18 +13,18 @@ catalog version bump → vendor pin → convert-and-delete.**
 
 See `apps/openagents.com/packages/effect-native-vendor.json`:
 
-- commit / catalog: tracked there (v25+ as of 2026-07-09)
+- commit / catalog: tracked there (v26 as of 2026-07-09)
 - Freshness: `bun apps/openagents.com/scripts/check-effect-native-vendor-freshness.ts`
 
 ## Open demand rows
 
 | ID | Surface | Gap | Upstream | Vendor | Consumer issue |
 |---|---|---|---|---|---|
-| D-SARAH-01 | `/sarah` avatar | Host kind `media-video` | effect-native#66 | not vendored | #8624 #8598 |
-| D-SARAH-02 | `/sarah` transcript | Streaming transcript primitive | effect-native#66 | not vendored | #8624 |
-| D-SARAH-03 | `/sarah` mic | Mic state + audio level | effect-native#66 | not vendored | #8624 |
-| D-SARAH-04 | `/sarah` cards | Handoff/checkout/receipt cards | effect-native#66 | not vendored | #8624 |
-| D-SARAH-05 | `/sarah` first paint | AI disclosure banner component | effect-native#66 | not vendored | #8624 |
+| D-SARAH-01 | `/sarah` avatar | Host kind `media-video` | shipped upstream v26 (effect-native#67) | vendored v26; `apps/sarah/src/ui` converted | #8624 #8598 |
+| D-SARAH-02 | `/sarah` transcript | Streaming transcript primitive | covered by v17 `Transcript` (effect-native#35 + #26) | vendored v26; `apps/sarah/src/ui` converted off `List`+`Card` | #8624 |
+| D-SARAH-03 | `/sarah` mic | Mic state + audio level | waiting — upstream GAPS row (effect-native#66) | n/a — enters when PTT/level metering lands | #8624 |
+| D-SARAH-04 | `/sarah` cards | Handoff/checkout/receipt cards | waiting — upstream GAPS row (effect-native#66); `Card`+`Text`+`Button` composition is the honest interim | n/a | #8624 |
+| D-SARAH-05 | `/sarah` first paint | AI disclosure banner component | covered by v16 `StatusBanner` (effect-native#40) | vendored v26; surface adoption is a shell-layout step (copy unchanged) | #8624 |
 | D-WEB-01 | `/stage1` `/landing-en` | Marketing catalog consumption | shipped upstream v20–v25 | vendored v25 | #8595 |
 | D-MB-01 | khala-mobile screens | Full mobile rewrite components | effect-native #52/#64 | vendored v25 | #8597 |
 | D-DESK-01 | Khala Code desktop | Full desktop chrome (EN-5) | Phase 4 catalog | vendored v25 | #8574 |

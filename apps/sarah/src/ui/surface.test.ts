@@ -1,0 +1,82 @@
+/**
+ * SQ-7 (#8624): the Sarah surface consumes the Effect Native catalog pieces
+ * that replaced its local workarounds — the transcript is the EN `Transcript`
+ * primitive (effect-native#35) and the avatar pane is the EN `MediaVideo`
+ * host (effect-native#67, catalog v26) mounted for the session lifetime.
+ */
+import { describe, expect, test } from "bun:test"
+
+// main.ts boots against the real page on import; give it an inert document so
+// the module loads headlessly and boot() no-ops (no #sarah-root here).
+;(globalThis as { document?: unknown }).document ??= {
+  readyState: "complete",
+  getElementById: () => null,
+  addEventListener: () => {},
+}
+
+const { sarahSurfaceView, sarahAvatarPaneView } = await import("./main.ts")
+
+type SurfaceState = Parameters<typeof sarahSurfaceView>[0]
+
+const baseState: SurfaceState = {
+  status: "idle",
+  avatarArmed: true,
+  avatarActive: false,
+  avatarSessionOpen: false,
+  sandbox: false,
+  input: "",
+  transcript: [{ key: "welcome", role: "assistant", text: "Hello from Sarah" }],
+  cards: [],
+  accountPhase: "anonymous",
+  accountEmail: null,
+}
+
+type AnyNode = { readonly _tag?: string; readonly [key: string]: unknown }
+
+const findByTag = (node: unknown, tag: string): AnyNode | null => {
+  if (node === null || typeof node !== "object") return null
+  if (Array.isArray(node)) {
+    for (const child of node) {
+      const found = findByTag(child, tag)
+      if (found) return found
+    }
+    return null
+  }
+  const record = node as AnyNode
+  if (record._tag === tag) return record
+  for (const value of Object.values(record)) {
+    const found = findByTag(value, tag)
+    if (found) return found
+  }
+  return null
+}
+
+describe("sarah surface consumes the EN catalog (SQ-7 #8624)", () => {
+  test("the transcript is the EN Transcript primitive, pinned, with keyed role-tagged messages", () => {
+    const view = sarahSurfaceView(baseState)
+    const transcript = findByTag(view, "Transcript")
+    expect(transcript).not.toBeNull()
+    expect(transcript?.pinToEnd).toBe(true)
+    const messages = transcript?.messages as ReadonlyArray<{
+      key: string
+      role: string
+      body: ReadonlyArray<{ _tag: string }>
+    }>
+    expect(messages.length).toBe(1)
+    expect(messages[0]?.key).toBe("welcome")
+    expect(messages[0]?.role).toBe("assistant")
+    // The message body keeps the Card visual of the previous List+Card shell.
+    expect(messages[0]?.body[0]?._tag).toBe("Card")
+  })
+
+  test("an open avatar session mounts the media-video host attach target", () => {
+    const pane = sarahAvatarPaneView({ ...baseState, avatarSessionOpen: true })
+    expect(pane._tag).toBe("Host")
+    expect((pane as { kind?: string }).kind).toBe("media-video")
+  })
+
+  test("with no open session the avatar pane renders empty (idle chrome shows)", () => {
+    const pane = sarahAvatarPaneView(baseState)
+    expect(pane._tag).not.toBe("Host")
+  })
+})
