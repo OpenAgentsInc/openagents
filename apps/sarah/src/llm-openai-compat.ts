@@ -30,6 +30,15 @@ import { getSarahAccountPromptLine } from "./services/account-link.ts"
 import { maybeSemanticCacheAnswer } from "./services/semantic-answer-cache.ts"
 import { maybeEcosystemGrounding } from "./services/ecosystem-tools.ts"
 import { recordSarahTranscriptTurn } from "./services/session-index.ts"
+import {
+  makeSarahVoiceStreamCoordinator,
+  type SarahTrustedVoiceInference,
+  type SarahTrustedVoicePublishAndRecord,
+  type SarahTrustedVoiceStreamScope,
+  type SarahVoiceStreamCoordinator,
+  type SarahVoiceStreamCoordinatorLease,
+} from "./services/voice-stream-coordinator.ts"
+import type { SarahConversationStreamTerminalFrame } from "./services/conversation-stream-fanout.ts"
 
 const CONVERSATION_REF_PATTERN = /\[conversation_ref:\s*([^\]\s]+)\s*\]/
 
@@ -85,21 +94,312 @@ function completionPayload(model: string, text: string) {
 }
 
 type ChunkWriter = {
-  chunk: (delta: Record<string, unknown>, finish: string | null) => string
+  chunk: (
+    delta: Record<string, unknown>,
+    finish: string | null,
+    extension?: Record<string, unknown>,
+  ) => string
 }
 
 function makeChunkWriter(model: string): ChunkWriter {
   const id = `chatcmpl-sarah-${crypto.randomUUID()}`
   const now = Math.floor(Date.now() / 1000)
   return {
-    chunk: (delta, finish) =>
+    chunk: (delta, finish, extension) =>
       `data: ${JSON.stringify({
         id,
         object: "chat.completion.chunk",
         created: now,
         model,
         choices: [{ index: 0, delta, finish_reason: finish }],
+        ...(extension ?? {}),
       })}\n\n`,
+  }
+}
+
+export type SarahVoiceStreamSseDependencies = Readonly<{
+  repeat: (
+    delayMs: number,
+    task: () => void,
+  ) => Readonly<{ cancel: () => void }>
+  keepaliveMs: number
+}>
+
+export type SarahVoiceStreamSseErrorReason =
+  | "invalid_keepalive"
+  | "scheduler_failed"
+
+const VOICE_STREAM_SSE_ERROR_MESSAGES = {
+  invalid_keepalive: "Sarah voice stream keepalive configuration is invalid.",
+  scheduler_failed: "Sarah voice stream keepalive scheduler failed.",
+} as const satisfies Record<SarahVoiceStreamSseErrorReason, string>
+
+/** Fixed transport-construction failure; scheduler payloads never escape. */
+export class SarahVoiceStreamSseError extends Error {
+  readonly _tag = "SarahVoiceStreamSseError"
+  override readonly name = "SarahVoiceStreamSseError"
+
+  constructor(readonly reason: SarahVoiceStreamSseErrorReason) {
+    super(VOICE_STREAM_SSE_ERROR_MESSAGES[reason])
+  }
+}
+
+const systemSarahVoiceStreamSseDependencies: SarahVoiceStreamSseDependencies =
+  {
+    keepaliveMs: 2_000,
+    repeat: (delayMs, task) => {
+      const handle = setInterval(task, delayMs)
+      return { cancel: () => clearInterval(handle) }
+    },
+  }
+
+const GENERIC_STREAM_FAILURE_REPLY =
+  "I'm having trouble reaching my model right now — please try again in a moment."
+const BUSY_STREAM_FAILURE_REPLY =
+  "I'm handling a lot of conversations right now — give me about a minute and ask again."
+
+const safeTerminalDescriptor = (
+  frame: SarahConversationStreamTerminalFrame,
+): Record<string, unknown> => {
+  if (frame.kind === "terminal") {
+    return { kind: frame.kind, terminal: frame.terminal }
+  }
+  if (frame.kind === "error") {
+    return { kind: frame.kind, reason: frame.reason }
+  }
+  if (frame.kind === "overflow") {
+    return { kind: frame.kind, limit: frame.limit }
+  }
+  return { kind: frame.kind }
+}
+
+type PreparedSarahVoiceStreamSse = Readonly<{
+  setTick: (tick: () => void) => void
+  cancel: () => void
+}>
+
+const prepareSarahVoiceStreamSse = (
+  dependencies: SarahVoiceStreamSseDependencies,
+): PreparedSarahVoiceStreamSse => {
+  if (
+    !Number.isSafeInteger(dependencies.keepaliveMs) ||
+    dependencies.keepaliveMs <= 0 ||
+    dependencies.keepaliveMs > 60_000
+  ) {
+    throw new SarahVoiceStreamSseError("invalid_keepalive")
+  }
+  let keepaliveTick = () => {}
+  let task: Readonly<{ cancel: () => void }>
+  try {
+    task = dependencies.repeat(
+      dependencies.keepaliveMs,
+      () => keepaliveTick(),
+    )
+  } catch {
+    throw new SarahVoiceStreamSseError("scheduler_failed")
+  }
+  let cancelled = false
+  return {
+    setTick: (tick) => {
+      keepaliveTick = tick
+    },
+    cancel: () => {
+      if (cancelled) return
+      cancelled = true
+      try {
+        task.cancel()
+      } catch {
+        // A broken scheduler cannot escape or block subscriber cleanup.
+      }
+    },
+  }
+}
+
+/**
+ * OpenAI-SSE adapter for an already authenticated, exact-scope coordinator
+ * lease. It is intentionally separate from `handleSarahChatCompletions`:
+ * today's renderer request supplies its conversation only inside model text,
+ * which is not authority. A renderer-populated signed/session identifier must
+ * bind `scope` before this entrypoint may be selected in production.
+ */
+export function sarahTrustedVoiceStreamResponse(
+  model: string,
+  lease: SarahVoiceStreamCoordinatorLease,
+  dependencies: SarahVoiceStreamSseDependencies =
+    systemSarahVoiceStreamSseDependencies,
+): Response {
+  let prepared: PreparedSarahVoiceStreamSse
+  try {
+    prepared = prepareSarahVoiceStreamSse(dependencies)
+  } catch (error) {
+    lease.subscriber.detach()
+    throw error
+  }
+  try {
+    return sarahTrustedVoiceStreamResponseWithPrepared(model, lease, prepared)
+  } catch (error) {
+    prepared.cancel()
+    lease.subscriber.detach()
+    throw error
+  }
+}
+
+const sarahTrustedVoiceStreamResponseWithPrepared = (
+  model: string,
+  lease: SarahVoiceStreamCoordinatorLease,
+  prepared: PreparedSarahVoiceStreamSse,
+): Response => {
+  const encoder = new TextEncoder()
+  const writer = makeChunkWriter(model)
+  let cancelled = false
+  let cleaned = false
+  const cleanup = () => {
+    if (cleaned) return
+    cleaned = true
+    prepared.cancel()
+    lease.subscriber.detach()
+  }
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      let sawContent = false
+      const send = (frame: string): boolean => {
+        if (cancelled) return false
+        try {
+          controller.enqueue(encoder.encode(frame))
+          return true
+        } catch {
+          cancelled = true
+          return false
+        }
+      }
+
+      // The role byte is synchronous with stream construction. Coalescing and
+      // inference remain behind this point and therefore cannot regress the
+      // LiveAvatar first-byte requirement.
+      send(writer.chunk({ role: "assistant" }, null))
+      prepared.setTick(() => {
+        if (!sawContent) send(writer.chunk({}, null))
+      })
+
+      void (async () => {
+        let terminal: Record<string, unknown> | null = null
+        try {
+          for (;;) {
+            const frame = await lease.subscriber.next()
+            if (frame.kind === "chunk") {
+              sawContent = true
+              if (!send(writer.chunk({ content: frame.chunk }, null))) break
+              continue
+            }
+            terminal = safeTerminalDescriptor(frame)
+            if (frame.kind !== "terminal" && !sawContent) {
+              sawContent = true
+              send(writer.chunk({ content: GENERIC_STREAM_FAILURE_REPLY }, null))
+            }
+            break
+          }
+        } catch {
+          terminal = { kind: "error", reason: "subscriber_failed" }
+          if (!sawContent) {
+            sawContent = true
+            send(writer.chunk({ content: GENERIC_STREAM_FAILURE_REPLY }, null))
+          }
+        } finally {
+          cleanup()
+          if (!cancelled) {
+            send(
+              writer.chunk({}, "stop", {
+                openagents: {
+                  sarah_stream: terminal ?? {
+                    kind: "error",
+                    reason: "subscriber_failed",
+                  },
+                },
+              }),
+            )
+            send("data: [DONE]\n\n")
+            controller.close()
+          }
+        }
+      })()
+    },
+    cancel() {
+      cancelled = true
+      cleanup()
+    },
+  })
+  return new Response(stream, {
+    headers: {
+      "content-type": "text/event-stream",
+      "cache-control": "no-cache",
+      "x-sarah-turn-ref": lease.turnRef,
+    },
+  })
+}
+
+/** Build the production coordinator; activation still requires trusted scope. */
+export function makeSarahTrustedVoiceStreamCoordinator(): SarahVoiceStreamCoordinator {
+  return makeSarahVoiceStreamCoordinator({
+    streamReply: (inference, signal) =>
+      streamSarahGemmaReply({
+        system: inference.system,
+        contents: inference.contents,
+        signal,
+      }),
+    fallbackReply: (error) =>
+      error !== null && isSarahInferenceBusyError(error)
+        ? BUSY_STREAM_FAILURE_REPLY
+        : GENERIC_STREAM_FAILURE_REPLY,
+  })
+}
+
+/**
+ * Narrow future route seam: callers must resolve `scope` from authenticated
+ * renderer/session state and apply pricing/cross-prospect guards before
+ * calling. Model text is deliberately absent from scope resolution here.
+ */
+export function openSarahTrustedVoiceStream(input: Readonly<{
+  coordinator: SarahVoiceStreamCoordinator
+  model: string
+  scope: SarahTrustedVoiceStreamScope
+  fragment: string
+  inference: SarahTrustedVoiceInference
+  publishAndRecord: SarahTrustedVoicePublishAndRecord
+  replayTurnRef?: string
+  afterSequence?: number
+  sseDependencies?: SarahVoiceStreamSseDependencies
+}>): Response {
+  const prepared = prepareSarahVoiceStreamSse(
+    input.sseDependencies ?? systemSarahVoiceStreamSseDependencies,
+  )
+  let lease: SarahVoiceStreamCoordinatorLease
+  try {
+    lease = input.coordinator.open({
+      scope: input.scope,
+      fragment: input.fragment,
+      inference: input.inference,
+      publishAndRecord: input.publishAndRecord,
+      ...(input.replayTurnRef !== undefined
+        ? { replayTurnRef: input.replayTurnRef }
+        : {}),
+      ...(input.afterSequence !== undefined
+        ? { afterSequence: input.afterSequence }
+        : {}),
+    })
+  } catch (error) {
+    prepared.cancel()
+    throw error
+  }
+  try {
+    return sarahTrustedVoiceStreamResponseWithPrepared(
+      input.model,
+      lease,
+      prepared,
+    )
+  } catch (error) {
+    prepared.cancel()
+    lease.subscriber.detach()
+    throw error
   }
 }
 

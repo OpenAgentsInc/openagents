@@ -110,6 +110,48 @@ describe("Sarah VAD fragment coalescer (FC-BRAIN #8600)", () => {
     ])
   })
 
+  test("acceptance receipt keeps rejected adjacent request state out of a pending group", async () => {
+    const scheduler = new ManualScheduler()
+    const batches: SarahVoiceFragmentBatch[] = []
+    const coalescer = makeSarahVoiceFragmentCoalescer({
+      config,
+      dependencies: scheduler,
+      execute: async (batch) => {
+        batches.push(batch)
+        return batch.text
+      },
+    })
+    expect(
+      coalescer.preflight({
+        conversationRef: "prospect:acceptance",
+        fragment: "   ",
+      }),
+    ).toEqual({ accepted: false, reason: "empty_fragment" })
+    expect(coalescer.snapshot().activeGroups).toBe(0)
+    expect(scheduler.scheduledTaskCount).toBe(0)
+    const accepted = coalescer.joinWithAcceptance({
+      conversationRef: "prospect:acceptance",
+      fragment: "canonical fragment",
+    })
+    const rejected = coalescer.joinWithAcceptance({
+      conversationRef: "prospect:acceptance",
+      fragment: "   ",
+    })
+
+    expect(accepted.accepted).toBe(true)
+    expect(rejected.accepted).toBe(false)
+    await expect(rejected.result).rejects.toMatchObject({
+      reason: "empty_fragment",
+    })
+    scheduler.advanceBy(config.quietWindowMs)
+    await expect(accepted.result).resolves.toBe("canonical fragment")
+    expect(batches).toHaveLength(1)
+    expect(batches[0]).toMatchObject({
+      text: "canonical fragment",
+      fragmentCount: 1,
+    })
+  })
+
   test("separate conversation refs never share groups, text, or responses", async () => {
     const scheduler = new ManualScheduler()
     const batches: SarahVoiceFragmentBatch[] = []

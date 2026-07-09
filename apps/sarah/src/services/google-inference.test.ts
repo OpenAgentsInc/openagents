@@ -320,6 +320,37 @@ describe("gateway generate", () => {
 })
 
 describe("gateway streaming", () => {
+  test("external coordinator abort propagates to the live provider request", async () => {
+    armGateway()
+    const controller = new AbortController()
+    const providerSignals: AbortSignal[] = []
+    const collected = collect(
+      streamSarahGemmaReply({
+        system: "sys",
+        contents: [{ role: "user", parts: [{ text: "hi" }] }],
+        signal: controller.signal,
+        fetchImpl: async (_url, init) => {
+          const providerSignal = init.signal as AbortSignal
+          providerSignals.push(providerSignal)
+          return await new Promise<Response>((_resolve, reject) => {
+            providerSignal.addEventListener(
+              "abort",
+              () => reject(new DOMException("aborted", "AbortError")),
+              { once: true },
+            )
+          })
+        },
+      }),
+    )
+    await Promise.resolve()
+    expect(providerSignals[0]?.aborted).toBe(false)
+    controller.abort()
+    expect(await collected).toEqual([
+      { type: "error", error: "gateway_inference_timeout" },
+    ])
+    expect(providerSignals[0]?.aborted).toBe(true)
+  })
+
   test("forwards content deltas, never reasoning_content, usage from telemetry", async () => {
     armGateway()
     const calls: RecordedCall[] = []

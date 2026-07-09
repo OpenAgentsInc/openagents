@@ -117,6 +117,20 @@ export type SarahVoiceFragmentCoalescerSnapshot = Readonly<{
   executingGroups: number
 }>
 
+export type SarahVoiceFragmentJoin<Result> = Readonly<{
+  /** True only when this call created or updated the cumulative group. */
+  accepted: boolean
+  /** The group's canonical result, shared by every accepted pending join. */
+  result: Promise<Result>
+}>
+
+export type SarahVoiceFragmentJoinPreflight =
+  | Readonly<{ accepted: true }>
+  | Readonly<{
+      accepted: false
+      reason: SarahVoiceFragmentCoalescerErrorReason
+    }>
+
 export type SarahVoiceFragmentCoalescer<Result> = Readonly<{
   /**
    * Join one cumulative VAD fragment. Callers in the same pending group receive
@@ -129,6 +143,19 @@ export type SarahVoiceFragmentCoalescer<Result> = Readonly<{
     conversationRef: string
     fragment: string
   }>) => Promise<Result>
+  /** Pure admission check; it never creates, updates, or settles a group. */
+  preflight: (input: Readonly<{
+    conversationRef: string
+    fragment: string
+  }>) => SarahVoiceFragmentJoinPreflight
+  /**
+   * Acceptance-aware form for coordinators that carry adjacent request state.
+   * They must update that state only when `accepted` is true.
+   */
+  joinWithAcceptance: (input: Readonly<{
+    conversationRef: string
+    fragment: string
+  }>) => SarahVoiceFragmentJoin<Result>
   snapshot: () => SarahVoiceFragmentCoalescerSnapshot
   close: () => void
 }>
@@ -304,57 +331,88 @@ export function makeSarahVoiceFragmentCoalescer<Result>(input: Readonly<{
     return group
   }
 
-  const join: SarahVoiceFragmentCoalescer<Result>["join"] = ({
+  const preflight: SarahVoiceFragmentCoalescer<Result>["preflight"] = ({
     conversationRef,
     fragment,
   }) => {
-    if (closed) return makeRejected("service_closed")
+    if (closed) return { accepted: false, reason: "service_closed" }
     if (
       conversationRef.length === 0 ||
       conversationRef !== conversationRef.trim() ||
       !VALID_CONVERSATION_REF.test(conversationRef)
     ) {
-      return makeRejected("invalid_conversation_ref")
+      return { accepted: false, reason: "invalid_conversation_ref" }
     }
     if (
       characterCount(conversationRef) > config.maxConversationRefCharacters
     ) {
-      return makeRejected("conversation_ref_too_large")
+      return { accepted: false, reason: "conversation_ref_too_large" }
     }
     const boundedFragment = fragment.trim()
-    if (boundedFragment.length === 0) return makeRejected("empty_fragment")
-    if (characterCount(boundedFragment) > config.maxTextCharacters) {
-      const active = activeByConversation.get(conversationRef)
-      if (active?.state === "pending") {
-        settleFailure(active, "fragment_too_large")
-        return active.result
-      }
-      return makeRejected("fragment_too_large")
+    if (boundedFragment.length === 0) {
+      return { accepted: false, reason: "empty_fragment" }
     }
-
+    if (characterCount(boundedFragment) > config.maxTextCharacters) {
+      return { accepted: false, reason: "fragment_too_large" }
+    }
     const active = activeByConversation.get(conversationRef)
     if (active?.state === "executing") {
-      return makeRejected("conversation_busy")
+      return { accepted: false, reason: "conversation_busy" }
     }
-    if (active?.state === "pending") {
-      if (active.fragmentCount >= config.maxFragmentsPerGroup) {
-        settleFailure(active, "too_many_fragments")
-        return active.result
+    if (
+      active?.state === "pending" &&
+      active.fragmentCount >= config.maxFragmentsPerGroup
+    ) {
+      return { accepted: false, reason: "too_many_fragments" }
+    }
+    if (active === undefined && activeGroups.size >= config.maxActiveGroups) {
+      return { accepted: false, reason: "too_many_active_groups" }
+    }
+    return { accepted: true }
+  }
+
+  const joinWithAcceptance: SarahVoiceFragmentCoalescer<Result>["joinWithAcceptance"] =
+    ({ conversationRef, fragment }) => {
+      const rejected = (
+        reason: SarahVoiceFragmentCoalescerErrorReason,
+      ): SarahVoiceFragmentJoin<Result> => ({
+        accepted: false,
+        result: makeRejected(reason),
+      })
+      const admission = preflight({ conversationRef, fragment })
+      if (!admission.accepted) {
+        const active = activeByConversation.get(conversationRef)
+        if (
+          active?.state === "pending" &&
+          (admission.reason === "fragment_too_large" ||
+            admission.reason === "too_many_fragments")
+        ) {
+          settleFailure(active, admission.reason)
+          return { accepted: false, result: active.result }
+        }
+        return rejected(admission.reason)
       }
-      active.fragmentCount += 1
-      active.latestText = boundedFragment
-      scheduleQuietFlush(active)
-      return active.result
+      const boundedFragment = fragment.trim()
+      const active = activeByConversation.get(conversationRef)
+      if (active?.state === "pending") {
+        active.fragmentCount += 1
+        active.latestText = boundedFragment
+        scheduleQuietFlush(active)
+        return { accepted: true, result: active.result }
+      }
+      return {
+        accepted: true,
+        result: makeGroup(conversationRef, boundedFragment).result,
+      }
     }
 
-    if (activeGroups.size >= config.maxActiveGroups) {
-      return makeRejected("too_many_active_groups")
-    }
-    return makeGroup(conversationRef, boundedFragment).result
-  }
+  const join: SarahVoiceFragmentCoalescer<Result>["join"] = (input) =>
+    joinWithAcceptance(input).result
 
   return {
     join,
+    preflight,
+    joinWithAcceptance,
     snapshot: () => {
       let executingGroups = 0
       for (const group of activeGroups) {

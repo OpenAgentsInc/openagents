@@ -458,8 +458,14 @@ async function* streamViaGateway(
   contents: ReadonlyArray<GemmaContent>,
   fetchImpl: FetchLike,
   spendAlertSink: SarahTextInferenceSpendAlertSink,
+  externalSignal?: AbortSignal,
 ): AsyncGenerator<GemmaStreamEvent> {
   const controller = new AbortController()
+  const abortFromExternal = () => controller.abort()
+  if (externalSignal?.aborted) controller.abort()
+  else {
+    externalSignal?.addEventListener("abort", abortFromExternal, { once: true })
+  }
   const timeout = setTimeout(() => controller.abort(), config.timeoutMs)
   try {
     const response = await fetchImpl(
@@ -539,6 +545,7 @@ async function* streamViaGateway(
     }
   } finally {
     clearTimeout(timeout)
+    externalSignal?.removeEventListener("abort", abortFromExternal)
   }
 }
 
@@ -671,11 +678,13 @@ export async function* streamSarahGemmaReply({
   contents,
   fetchImpl = fetch,
   spendAlertSink = defaultSarahTextSpendAlertSink,
+  signal,
 }: {
   system: string
   contents: ReadonlyArray<GemmaContent>
   fetchImpl?: FetchLike
   spendAlertSink?: SarahTextInferenceSpendAlertSink
+  signal?: AbortSignal
 }): AsyncGenerator<GemmaStreamEvent> {
   // Token cap (#8600): typed refusal BEFORE any provider call, on either
   // transport. Callers surface the canned busy reply.
@@ -696,6 +705,7 @@ export async function* streamSarahGemmaReply({
       contents,
       fetchImpl,
       spendAlertSink,
+      signal,
     )
     return
   }
@@ -713,6 +723,11 @@ export async function* streamSarahGemmaReply({
   const timeoutMs = Number(process.env.SARAH_TEXT_TIMEOUT_MS ?? 45_000)
 
   const controller = new AbortController()
+  const abortFromExternal = () => controller.abort()
+  if (signal?.aborted) controller.abort()
+  else {
+    signal?.addEventListener("abort", abortFromExternal, { once: true })
+  }
   const timeout = setTimeout(() => controller.abort(), timeoutMs)
   try {
     let response: Response | null = null
@@ -803,5 +818,6 @@ export async function* streamSarahGemmaReply({
     }
   } finally {
     clearTimeout(timeout)
+    signal?.removeEventListener("abort", abortFromExternal)
   }
 }
