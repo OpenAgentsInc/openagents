@@ -81,6 +81,8 @@ export type PublicOrchestrationTask = {
 
 export const FLEET_RUN_SCHEMA = "openagents.khala_code.fleet_run.v1" as const
 export const FLEET_RUN_OWNER_LOCAL_STATE_SCHEMA = "openagents.khala_code.fleet_runs.owner_local.v1" as const
+export const FLEET_RUN_AUTHORITY_BINDING_SCHEMA =
+  "openagents.pylon.fleet_run_authority_binding.v1" as const
 export const WORK_CLAIM_SCHEMA = "openagents.khala_code.work_claim.v1" as const
 
 export const FleetRunWorkSourceSchema = S.Literals(["github_backlog", "issue_list", "fixture", "plan_dag"])
@@ -127,12 +129,38 @@ export const FleetRunCountersSchema = S.Struct({
 })
 export type FleetRunCounters = typeof FleetRunCountersSchema.Type
 
+/**
+ * Durable import/accept journal for one server-authoritative Sarah FleetRun.
+ *
+ * This is metadata on the canonical local run record, not another run or work
+ * claim registry. The server remains authoritative for its intake lease and
+ * the existing `pylon_orchestration_work_claims` table remains authoritative
+ * for executable work-unit claims. Keeping the last server claim ref here is
+ * what makes an accept response lost across process restart safely replayable.
+ */
+export const FleetRunAuthorityBindingSchema = S.Struct({
+  schema: S.Literal(FLEET_RUN_AUTHORITY_BINDING_SCHEMA),
+  source: S.Literal("sarah_authority"),
+  authorityFingerprint: S.String.check(S.isPattern(/^[0-9a-f]{64}$/u)),
+  claimRef: S.String.check(
+    S.isPattern(/^claim\.sarah_fleet_run\.[0-9a-f]{24}$/u),
+  ),
+  pylonRef: S.String.check(
+    S.isPattern(/^[a-z0-9][a-z0-9._:-]{2,119}$/u),
+  ),
+  targetPreference: S.Literals(["owner_local", "auto"]),
+  phase: S.Literals(["imported", "accepted"]),
+})
+export type FleetRunAuthorityBinding =
+  typeof FleetRunAuthorityBindingSchema.Type
+
 export const FleetRunSchema = S.Struct({
   schema: S.Literal(FLEET_RUN_SCHEMA),
   runRef: S.String,
   objective: S.String,
   workSource: FleetRunWorkSourceSchema,
   workSourceDescriptor: S.optional(FleetRunWorkSourceDescriptorSchema),
+  authorityBinding: S.optional(FleetRunAuthorityBindingSchema),
   targetConcurrency: S.Number,
   workerKind: FleetRunWorkerKindSchema,
   refillPolicy: FleetRunRefillPolicySchema,
@@ -279,6 +307,7 @@ export type CreateFleetRunInput = {
   objective: string
   workSource: FleetRunWorkSource
   workSourceDescriptor?: FleetRunWorkSourceDescriptor
+  authorityBinding?: FleetRunAuthorityBinding
   targetConcurrency: number
   workerKind: FleetRunWorkerKind
   refillPolicy?: Partial<FleetRunRefillPolicy>
@@ -630,6 +659,9 @@ export function buildFleetRun(input: CreateFleetRunInput): FleetRun {
     ...(input.workSourceDescriptor === undefined
       ? {}
       : { workSourceDescriptor: input.workSourceDescriptor }),
+    ...(input.authorityBinding === undefined
+      ? {}
+      : { authorityBinding: input.authorityBinding }),
     targetConcurrency: input.targetConcurrency,
     workerKind: input.workerKind,
     refillPolicy: {
