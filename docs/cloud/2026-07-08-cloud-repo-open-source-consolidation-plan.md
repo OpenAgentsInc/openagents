@@ -323,6 +323,43 @@ Run these before each phase exits:
 - The owner-approved nonzero Agent Computer compute rate. The metering rail is
   ready for exact receipts, but price remains owner-gated.
 
+## Post-landing review (2026-07-08)
+
+The code move landed in `033386dc75` (openagents), with the private repo
+retired for new work and the root workspace routing updated in the same wave.
+A follow-up review against `docs/fable/MASTER_ROADMAP.md` (rev 6) confirmed
+the plan's assumptions and resolved its first open question:
+
+- **Rust vs Effect boundary (confirmed correct, now explicit).** The Effect
+  Native full-conversion mandate (§EN, rev 6) is a **UI-substrate** mandate —
+  its definition of done is "every UI surface renders from the catalog." The
+  Cloud daemons are systems infrastructure (Firecracker/vsock microVMs, GCE
+  capacity leases, managed-node lifecycle) with no UI surface, so they stay
+  Rust crates and are **not** conversion targets. TypeScript callers use the
+  Effect Schema mirrors in `packages/cloud-contract` and the documented HTTP
+  contracts; they never link the crates. Worker admission/billing/projection
+  authority and Pylon contributor/local runtime stay on Bun/Effect.
+- **Cargo-workspace rule amended.** The repo-level "do not reintroduce the
+  old Cargo workspace" rule in `AGENTS.md` predated this migration and
+  contradicted it; it is now amended to carve out the Cloud crates only
+  (Tauri stays banned; no new non-Cloud Rust surfaces without owner
+  direction).
+- **Layout question resolved:** `crates/*`, as the plan preferred.
+  `oa-cloud-run-bridge` migrated as historical (`HISTORICAL.md`), outside new
+  production paths.
+- **Residual seams closed in review:** `apps/pylon/src/cloud-control-client.ts`
+  header repointed from private-repo paths to `crates/oa-codex-control` and
+  `docs/cloud/*`; `scripts/qa-async-gce-trigger.ts` now imports its placement
+  contract version from `packages/cloud-contract` instead of re-declaring it.
+- **Still open after this review:** Phase 6 production cutover (staging
+  `OA_CLOUD_CONTROL_URL` + the #8503 DoD run, owner-gated); wider dedup of
+  manually declared contract constants in Worker/Pylon onto the mirror
+  package (e.g. `CLOUD_PLACEMENT_CONTRACT_VERSION` in the Pylon client, which
+  needs a package-dependency edge rather than a root-script relative import);
+  and a named fake control-plane loopback smoke script (the fake lifecycle is
+  currently proven by the crate test suites rather than one runnable smoke
+  entry point).
+
 ## Definition of done
 
 The migration is complete when:

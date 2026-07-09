@@ -10,8 +10,10 @@
 import { execFileSync } from "node:child_process"
 import { resolve } from "node:path"
 
+import { CODEX_PLACEMENT_ASSIGNMENT_VERSION } from "../packages/cloud-contract/src/index.js"
+
 export const QA_ASYNC_PLACEMENT_CONTRACT_VERSION =
-  "openagents.codex_placement_assignment.v1"
+  CODEX_PLACEMENT_ASSIGNMENT_VERSION
 export const QA_ASYNC_DEFAULT_LANE = "cloud-gcp"
 export const QA_ASYNC_DEFAULT_TARGET_URL = "https://openagents.com"
 export const QA_ASYNC_DEFAULT_PRO_BASE_URL = "https://openagents.com"

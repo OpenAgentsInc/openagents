@@ -4,8 +4,8 @@
 // This is the HTTP seam that turns the already-merged lane plumbing (#4998,
 // #4999) into a live loop. When a control session is spawned with a cloud lane
 // (`cloud-gcp`, `cloud-shc`, or `auto` resolving to cloud), Pylon calls the
-// private OpenAgents Cloud control plane (`oa-codex-control`) instead of
-// running the agent locally:
+// OpenAgents Cloud control plane (in-repo `crates/oa-codex-control`, #8591)
+// instead of running the agent locally:
 //
 //   1. POST /v1/placement  — lane-agnostic placement
 //      (`openagents.codex_placement_assignment.v1`) -> RunnerBinding +
@@ -20,9 +20,9 @@
 // `/sessions/:ref/events` stream is lane-transparent.
 //
 // Scope deferral: live VM provisioning, warm pools, and receipt cost-comparison
-// are the cloud repo's job. Pylon targets the documented HTTP contract only
-// (docs/control/CODEX_CONTROL_API.md,
-// docs/contracts/openagents.codex_placement_assignment.v1.md).
+// belong to the control-plane crate. Pylon targets the documented HTTP
+// contract only (docs/cloud/control/CODEX_CONTROL_API.md,
+// docs/cloud/contracts/openagents.codex_placement_assignment.v1.md).
 
 export const CLOUD_CONTROL_URL_ENV = "OA_CLOUD_CONTROL_URL" as const
 export const CLOUD_CONTROL_TOKEN_ENV = "OA_CLOUD_CONTROL_TOKEN" as const

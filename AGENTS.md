@@ -574,8 +574,19 @@ and local Codex auth out of reports.
   and you need a clean tree for tests, commits, or pushes, create a fresh
   worktree from clean `origin/main` and do the scoped work there. Leave the
   original dirty checkout intact and report the conflict or blocker honestly.
-- Do not reintroduce the old Cargo or Tauri workspace unless the user asks for
-  explicit historical compatibility work.
+- Do not reintroduce the old Tauri workspace, and do not add new Rust
+  surfaces outside the OpenAgents Cloud crates without explicit owner
+  direction. **Amended 2026-07-08 (#8591):** the repo again carries a Cargo
+  workspace, deliberately and only for the migrated Cloud infrastructure
+  (`crates/openagents-cloud-contract`, `crates/oa-codex-control`,
+  `crates/oa-node`, `crates/oa-workroomd`, historical
+  `crates/oa-cloud-run-bridge`). These daemons are systems infrastructure
+  (Firecracker/vsock microVMs, GCE capacity, managed-node lifecycle), not UI
+  or Worker logic — the Effect Native conversion mandate (§EN, MASTER_ROADMAP
+  rev 6) governs UI surfaces and does not convert them. TypeScript callers
+  never link the crates directly; they use the Effect Schema mirrors in
+  `packages/cloud-contract` and the documented HTTP contracts. Product, UI,
+  Worker, and Pylon logic stays on Bun/Effect/TypeScript.
 - **Mobile policy (owner decision, 2026-07-04 — supersedes the 2026-06-26
   no-Expo mandate for the framework):** the mobile destination is an **Expo
   React Native app** (one codebase, iOS + Android — no separate Swift and
