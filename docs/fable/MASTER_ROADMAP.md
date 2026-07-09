@@ -1,6 +1,28 @@
 # MASTER ROADMAP — Sarah-first: one front door (Khala Code MVP ships; everything else becomes what Sarah can do)
 
-Date: 2026-07-09 (rev 6.18 — SARAH-FIRST ADOPTED as the product frame)
+Date: 2026-07-09 (rev 6.19 — FAR-FORWARD PARALLEL LANES RECONCILED)
+
+**Rev 6.19 changes (execution update, 2026-07-09 — FAR-FORWARD PARALLEL
+ISSUE WORK ON `main`):** while the ordered OAV/SQ head stayed free for the
+sequential agent, parallel non-colliding slices landed on `origin/main`
+through `2aa841ffcb`. None of these closes flip the queue order (OAV-5
+still next), but residual status for EN/PY/CX/OB/WEB lanes is now current:
+
+| Issue | Commit(s) on `main` | Landed | Residual / status |
+|---|---|---|---|
+| **#8578 PY-1** | `1472a2f3c0`, `135a85d362`, `95022d2538` (+ earlier executor leaves) | Executor leaves: `dispatch-failure-taxonomy`, `effect-runtime-patterns`, `proof-redaction`, `required-artifact-gate`, `remote-verify`; shared: `ssh-target`, `execution-provider`. Package tests green (55+). | OPEN — wallet RC-binary/WASM, top-of-graph (`codex-agent-executor`/`assignment`/`khala-spawn`), RPC client consumption (PY-2), MCP consolidation |
+| **#8573 EN-4** | `38d61fc812` `/download`, `06e1381511` `/privacy` | Route inventory burn-down table + first public routes on EN DOM (`makeDomRenderer` + typed `ViewProgram`); convert-and-delete for those routes | OPEN — full burn-down (`/terms`, mid-size public, funnel batch, Foldkit `apps/web`) |
+| **#8549 CX-5** | `26c7fae5a3` mobile Connect Claude UI, `2aa841ffcb` CLI | Mobile Settings paste-token path + bearer local-auth; `pylon accounts connect claude` / `pylon auth claude` with `claude-oauth-token` (0600), public-safe projection | OPEN — live Firecracker Claude turn via `claude_pylon` + org-cloud receipt |
+| **#8561 OB-4** | `3e3cda4ccd` | Aiur batch approval operator surface; `no_send_without_approval_receipt.v1` preserved | OPEN — live Sarah S-8 reply/send at 100/day volume |
+| **#8595 WEB-1-EN** | `0625e8b291` (+ prior landing-en catalog work) | Full marketing catalog on `/landing-en` incl. `LogoRow`; catalog pin `effect-native/v26`; fail-soft tests | OPEN — owner copy sign-off + root cutover (`/` flip) |
+| **#8559 OB-2** | `4771af6560` | Fixture-tier ≥100 Apollo wave dry-run + subjectRef dedupe | **CLOSED** (completed); live Apollo production waves = operator follow-up |
+| Prior closed (already in rev 6.16–6.17) | SQ-4 `#8621`, BM-5 `#8631` + epic `#8626`, MH-4 `#8590`, SQ-1/5/6/7, EN-2 `#8572`, MH-3 `#8589`, LiveAvatar `#8598` | See those revs | — |
+
+Queue head is unchanged: **#8615 OAV-5** → **#8620 SQ-3** → **#8619 SQ-2**
+→ **#8616 OAV-6** → OAV epic closeout. Far-forward agents should continue
+preferring disjoint packages (more PY-1 leaves, next EN-4 routes after
+`/terms` or funnel batch, OB-4 reply volume, CX-5 live proof only when
+CX-3 bake-host allows).
 
 **Rev 6.18 changes (owner decision, 2026-07-09 — SARAH-FIRST):** the
 roadmap adopts `docs/fable/2026-07-09-sarah-first-product-thesis.md` in
@@ -140,7 +162,8 @@ unit suites passed after BM-4 (`bun test` in `apps/sarah`: 264 pass).
 pass.
 
 **Ordered open-issue queue (OpenAgentsInc/openagents, checked
-2026-07-09 after `26c7fae5a3`, OAV-2 closeout, and live `gh issue list`):**
+2026-07-09 after `2aa841ffcb` / rev 6.19 parallel-lane reconcile; live
+`gh issue list` ~30 open; OAV/SQ head still first):**
 
 1. **#8615 OAV-5** — pre-rendered takes for opener/cache hits, using
    the now-owned renderer path and receipts.
@@ -162,11 +185,15 @@ pass.
 9. **#8467 Khala Code Mobile-Only MVP epic** — close only after the
     P0.8 launch-readiness receipt and mobile MVP proof set are complete.
 10. **#8571 EN hosting** — host effectnative.org on OpenAgents cloud:
-    Cloud Run, DNS/TLS, redeploy script.
-11. **#8595 WEB-1-EN** — fully Effect Native landing; upstream logical
-    components instead of local React/Foldkit carryover.
-12. **#8573 EN-4** — web absorption: product routes onto the Effect
-    Native DOM renderer, deleting replaced legacy Foldkit/React.
+    Cloud Run service deployed; domain mapping still owner Google
+    Search Console verification only.
+11. **#8595 WEB-1-EN** — fully Effect Native landing. *Agent residual
+    landed (`0625e8b291`): full marketing catalog on `/landing-en`.*
+    Still open for owner copy sign-off + root cutover.
+12. **#8573 EN-4** — web absorption. *Progress: burn-down table +
+    `/download` (`38d61fc812`) + `/privacy` (`06e1381511`) on EN DOM.*
+    Continue route-by-route (`/terms` next legal twin; then mid-size
+    public / funnel batch / Foldkit tree).
 13. **#8597 MB-EN** — rewrite the Khala Code mobile app on Effect
     Native, with cross-app Khala Sync as exit proof.
 14. **#8574 EN-5** — Khala Code desktop conversion to Effect Native;
@@ -176,8 +203,10 @@ pass.
     adapter.
 16. **#8566 EN epic** — close after the EN child issues above produce
     receipts and downstream surfaces are actually on the substrate.
-17. **#8578 PY-1** — extract `pylon-core` packages and delete the
-    desktop stdout-subprocess seam.
+17. **#8578 PY-1** — extract `pylon-core`. *Progress: custody +
+    presence + large executor leaf set on `main` through `95022d2538`
+    (incl. pure leaves + remote-verify).* Residual: wallet RC-binary,
+    top-of-graph executor, RPC consumption, MCP consolidation.
 18. **#8579 PY-2** — Khala Code desktop becomes the Pylon cockpit
     (Effect Native fleet pane: online toggle, accounts/capacity/runs/
     receipts).
@@ -188,23 +217,30 @@ pass.
 21. **#8588 MH-9** — cloud parity for Grok/Claude workers on Agent
     Computers; strictly after #8547 is genuinely green.
 22. **#8546 CX-2** — mobile Codex connect: phone device-auth into token
-    custody and accounts UI.
+    custody and accounts UI. *Code-complete; owner re-test only.*
 23. **#8548 CX-4** — harness/target selection UX: execution targets,
-    per-thread pill, quota-aware auto.
-24. **#8549 CX-5** — Claude account parity through the same broker and
-    `claude_pylon` lane.
+    per-thread pill, quota-aware auto. *Code-complete; live proof
+    gated on CX-2 owner + CX-3.*
+24. **#8549 CX-5** — Claude account parity. *Agent residual advanced:
+    mobile Connect Claude UI (`26c7fae5a3`) + CLI
+    `pylon accounts connect claude` / `pylon auth claude`
+    (`2aa841ffcb`).* Residual: live Firecracker `claude_pylon` turn.
 25. **#8550 CX-6** — Codex session continuity across ephemeral
-    microVMs; thread resume survives reclaim.
+    microVMs; thread resume survives reclaim. *Fixture tier done;
+    live multi-provision proof needs CX-3.*
 26. **#8551 CX-7** — multi-account concurrency + rotation in the
-    cloud: per-account serialization and typed queueing.
+    cloud: per-account serialization and typed queueing. *Fixture tier
+    done; live dual-thread needs CX-3.*
 27. **#8552 CX-8** — daily-driver ergonomics from the phone:
     steer/interrupt/follow-up and monorepo-scale workspaces.
 28. **#8553 CX-9** — dogfood cutover: our coding runs through Khala
     Code mobile on our own Codex.
-29. **#8558 OB-1** — Sarah sending identity + deliverability foundation:
-    subdomain, auth, arming, warm-up ramp.
-30. **#8561 OB-4** — draft→approve→send loop at 100/day, batch
-    approval UX, Sarah reply handling.
+29. **#8558 OB-1** — Sarah sending identity + deliverability foundation.
+    *Owner arming + live proof send done; residual: opt-out round-trip,
+    warm-up cap refusal, deliverability webhooks → ledger.*
+30. **#8561 OB-4** — draft→approve→send at 100/day. *Batch approval
+    operator surface landed (`3e3cda4ccd`); residual: live Sarah S-8
+    reply handling at volume.*
 
 **Rev 6.13 changes (owner directive, 2026-07-09 — SARAH BLUEPRINT MAP
 SURFACE):** "I want to build a Blueprint map as Sarah is talking. Visual
@@ -408,17 +444,16 @@ didn't meet its acceptance criteria on first close. Headlines:
   a pool); fixed, staged, promoted to prod, and verified against **live
   production traffic** (the error flood confirmed stopped at the exact
   revision cut).
-- **Pylon fold (PY-1 `#8578`) — 3 sessions in, real incremental progress, not
-  yet closed:** custody (most modules), executor (leaves + workspace-
-  materializer + active-assignment-runs), and an RPC contract seed are
-  extracted into `packages/pylon-core`. The Spark wallet is **deliberately
-  still untouched** (twice now — needs RC-binary verification not available
-  headlessly; the owner's live-rail mandate is being honored, not skipped
-  for convenience). Presence extraction is blocked on a real, precisely
-  diagnosed cross-package resolution issue (not the earning-code coupling
-  the first session guessed — that turned out to be a non-blocker on
-  re-trace). MCP consolidation has a written plan, correctly not attempted
-  blind.
+- **Pylon fold (PY-1 `#8578`) — multi-session progress, not yet closed
+  (rev 6.19):** custody (most modules), presence (apple-fm injection
+  path), executor (large leaf set through `95022d2538` including
+  `dispatch-failure-taxonomy`, `effect-runtime-patterns`, pure
+  remote/artifact/redaction leaves, Claude executor, etc.), and an RPC
+  contract seed are extracted into `packages/pylon-core`. The Spark
+  wallet is **deliberately still untouched** (needs RC-binary
+  verification not available headlessly; the owner's live-rail mandate
+  is being honored). Top-of-graph `codex-agent-executor` / `assignment`
+  / `khala-spawn` and MCP consolidation remain.
 - **Cloud repo consolidation (`#8591`) landed** — the private
   `OpenAgentsInc/cloud` Rust crates (`oa-codex-control`, `oa-node`,
   `oa-workroomd`, `oa-cloud-run-bridge`, `openagents-cloud-contract`) are now
@@ -688,23 +723,26 @@ only DIRECTION:
   intake + Sarah, and root-route rollback notes. The `#8569` live-counter
   blocker is resolved.
 
-**Direction only (open; NOT started as code):**
-- **OB-1/OB-4 (`#8558`, `#8561`) outbound engine — remaining OPEN work.**
+**Direction only (open residual after rev 6.19 agent slices):**
+- **OB-1/OB-4 (`#8558`, `#8561`) outbound engine — remaining OPEN residual.**
   Sarah consolidates into `apps/sarah/` (rev 6.7, epic #8594). A pre-existing
   *operator-assisted* CRM/pipeline substrate exists in-repo
   (`business_pipeline_rows`, outreach/email plumbing). **OB-2 is CLOSED**
   at fixture-tier volume proof (`4771af6560`), **OB-3 is CLOSED**
   (`90163e2c3b`), **OB-5 is CLOSED** (`6f69317da6`/`5561280e65`), and
-  **OB-6 is CLOSED** (`c38b34869a`/`e78e95369f`). Still to build:
-  OB-1's sending identity/deliverability foundation and OB-4's
-  draft->approve->send loop at 100/day. Owner-gated: OB-1 sending
-  subdomain + DNS + Resend arming.
-- **CX-2..9 (`#8546–#8553`) "your own Codex in the cloud" — all OPEN,
-  unstarted.** The proven `#8503` microVM turn runs the **hosted Khala gateway
-  model (Gemini), not Codex**. **CX-3 (`#8547`) is the unstarted linchpin:** the
-  in-guest turn-runner has no Codex path at all (no in-VM grant redemption, no
-  `CODEX_HOME` on scratch, no `codex_app_server` lane). CX-3's control-plane half
-  lives in the private `cloud/` repo, so it cannot be fully landed from here.
+  **OB-6 is CLOSED** (`c38b34869a`/`e78e95369f`). **OB-1:** owner
+  waived dedicated subdomain and armed live Resend from
+  `Sarah <sarah@openagents.com>` (prod proof send delivered); residual
+  is opt-out round-trip, warm-up cap refusal, and deliverability
+  webhooks into the OB-6 ledger. **OB-4:** batch approval operator
+  surface landed (`3e3cda4ccd`); residual is live Sarah S-8 reply
+  handling and draft→approve→send proven at 100/day volume.
+- **CX-2..9 (`#8546–#8553`) "your own Codex in the cloud" — OPEN with
+  substantial code on `main` (rev 6.19).** Fixture/UI/CLI slices landed
+  for CX-2/4/5/6/7/8; live exit proofs still share the **CX-3**
+  bake-host / Firecracker wall. **CX-5 agent residual advanced:**
+  mobile Connect Claude + CLI setup-token connect on `main`; live
+  `claude_pylon` turn remains.
 - **`#8543` (P0.8 launch readiness) OPEN** — blocked on the owner-gated seeded
   public-safe test account, the full dual-platform straight-line E2E (the
   chat→reply→credit half is now device-proven; the pick-repo→push→writeback half
@@ -731,10 +769,13 @@ CLOSED and independently re-verified. Current recommended order:
   rootfs build script for the `agent-computer-gce-1` guest image, and
   in-VM `codex_app_server` wiring on that (separate, KVM-capable) host —
   see rev 6.6 for the control-plane-vs-execution-host distinction.
-- **CX-5 `#8549` (Claude cloud parity):** ready — MH-2 already fixed
-  the Claude-account SCM-credential false-positive tonight, so the
-  broker/lane pattern CX-3 established has a proven Claude precedent to
-  mirror.
+- **CX-5 `#8549` (Claude cloud parity) — rev 6.19 progress:** mobile
+  Connect Claude UI + bearer local-auth (`26c7fae5a3`) and CLI
+  `pylon accounts connect claude` / `pylon auth claude` with
+  setup-token custody (`2aa841ffcb`) are on `main`. Remaining exit is
+  the live Firecracker / org-cloud Claude turn on `claude_pylon` (shares
+  CX-3 bake-host wall). Do not re-dispatch agent UI/CLI work unless a
+  new residual is found.
 - **MH-7 `#8586` (multi-harness cockpit) + EN-5 `#8574` first screen:**
   DONE for the cockpit screen (2026-07-08) — a `/stage1`-style first
   Effect Native render landed as a dev-only `en-cockpit.html` page in
@@ -749,14 +790,29 @@ CLOSED and independently re-verified. Current recommended order:
   snapshot, so the cockpit composes from `Card`/`Text`/`Button` (like
   `/stage1`) and skips `GraphFigure`; swap for first-class components on the
   next re-vendor. EN-5's full desktop shell conversion remains its own scope.
-- **EN-4 `#8573` (web absorption):** start the route inventory +
-  burn-down table, then the first 1–2 real route conversions — the
-  catalog is deep enough now that this is no longer blocked on Phase 2.
-- **PY-1 `#8578` continuation:** the presence blocker has two
-  documented unblock options (make `pylon-runtime` resolvable by name
-  and verify the monorepo-install change; or inject the apple-fm
-  functions the way presence already injects its probe) — try the
-  injection option first, it's the lower-risk one.
+- **EN-4 `#8573` (web absorption) — rev 6.19 progress:** burn-down table
+  committed; `/download` (`38d61fc812`) and `/privacy` (`06e1381511`)
+  converted to Effect Native DOM with convert-and-delete. Next agent
+  slices: `/terms` (legal twin of privacy), then mid-size public routes
+  and the shared funnel-placeholder batch — catalog is deep enough; keep
+  demand gaps on EN-2, never local one-offs.
+- **PY-1 `#8578` continuation — rev 6.19 progress:** presence + custody
+  waves and a large executor leaf set are extracted (including
+  `dispatch-failure-taxonomy`, `effect-runtime-patterns`, pure leaves
+  `ssh-target` / `execution-provider` / `proof-redaction` /
+  `required-artifact-gate` / `remote-verify` through `95022d2538`).
+  Next: wallet only with RC-binary verification; top-of-graph
+  `codex-agent-executor` / `assignment` / `khala-spawn` after closure
+  re-trace; do not shove `tips` into executor just to unblock
+  `khala-dispatch`.
+- **WEB-1-EN `#8595` — rev 6.19 progress:** agent-side full marketing
+  catalog on `/landing-en` landed (`0625e8b291`, catalog v26). Remaining
+  is owner-only: copy sign-off, brand logo assets, root flip + rollback
+  notes. Do not re-dispatch agent landing conversion.
+- **OB-4 `#8561` — rev 6.19 progress:** Aiur batch approval operator
+  surface landed (`3e3cda4ccd`) with the approval-gate invariant
+  preserved. Residual: live Sarah S-8 email reply handling and the
+  draft→approve→send loop proven at volume.
 - **CX-2/CX-4 `#8546`/`#8548`:** code-complete, correctly left open —
   closing needs a real human device-auth tap-through
   (`~/work/NEEDS_OWNER.md` has the exact steps); do not re-dispatch
@@ -768,28 +824,25 @@ CLOSED and independently re-verified. Current recommended order:
   parallel lanes — this is the critical path for every conversion wave.
   Fix effect-native#44 (schema/style exactness) early — the `/stage1`
   consumer already depends on it.
-- **CV1 next steps:** `/stage1` (EN-1 first render) is landed; drive it
-  to `/new` visual parity (icon/media/hero primitives arrive via the
-  upstream catalog per EN-2 #8572 demand), replace the app-local
-  effect-native snapshot with the published packages when they
-  stabilize, then walk the owner cutover gates on `#8565` (copy
-  sign-off, pricing, CTAs, root flip + rollback notes). Start the EN-4
-  `#8573` route inventory/burn-down table in parallel (inventory needs
-  no new substrate).
+- **CV1 next steps:** `/stage1` (EN-1 first render) is landed; WEB-1-EN
+  agent catalog residual is landed on `/landing-en` (rev 6.19); walk
+  the owner cutover gates on `#8595` (copy sign-off, pricing, CTAs,
+  root flip + rollback notes). Continue EN-4 `#8573` route burn-down
+  (`/terms` and beyond) in parallel.
 - **Retired-program removal (#8577, gate lifted):** execute the
   archive-to-backroom physical removal per the PRUNE brief — heavy LOC
   reduction with archive-before-delete, production kept green. Hard
   guardrail: the Spark wallet modules are live-rail code, never removal
   candidates (rev 6.3).
-- **Pylon fold (rev 6.3, accepted):** after #8577 waves 1–2 shrink
-  `apps/pylon`, run PY-1 #8578 (pylon-core extraction, daemon, typed
-  RPC, one MCP surface), then PY-2 #8579 (desktop cockpit parity as
-  Effect Native surfaces, riding EN-5 #8574), then PY-3 #8580 (TUI
-  retirement, gated on PY-2 receipts).
-- **In parallel, non-EN:** the sales push now centers on OB-1 and OB-4
-  (OB-2/3/5/6 are closed) and P2 Codex
-  lanes (CX-2..) continue unchanged — they are mostly backend; their UI
-  surfaces are authored EN-native as their turn arrives.
+- **Pylon fold (rev 6.3, accepted; rev 6.19 progress):** PY-1 `#8578`
+  leaf extractions continue on `main`; full exit still needs wallet
+  RC-binary, top-of-graph executor, RPC consumption, then PY-2 #8579
+  (desktop cockpit parity as Effect Native surfaces, riding EN-5
+  #8574), then PY-3 #8580 (TUI retirement, gated on PY-2 receipts).
+- **In parallel, non-EN:** the sales push now centers on OB-1 residual
+  proofs and OB-4 volume/reply (OB-2 closed at fixture-tier; OB-3/5/6
+  closed) and P2 Codex lanes (CX-2..) — they are mostly backend/live
+  proof; their UI surfaces are authored EN-native as their turn arrives.
 
 **Bottom line:** the substrate is real and proven, and the first
 production surface now renders through it. Most open non-EN work still
@@ -1289,6 +1342,8 @@ identity and turns the volume knob. Issues filed: **#8558–#8563**.
   per batch with receipts) so 100/day is operable by one human.
   Replies route to Sarah's inbox (sarah repo S-8 email channel) and the
   CRM; every send/reply is a `crm_activity` + email-ledger row.
+  *Rev 6.19:* Aiur batch approval operator surface landed
+  (`3e3cda4ccd`); residual is live S-8 reply handling + volume proof.
 - **OB-5 (#8562) Close via Stripe.** Reply → Sarah conversation (email or a
   link into openagents.com/sarah) → qualification → checkout link
   (pack-priced now; deal-rules quotes when SR-2 lands) → settled
@@ -1379,9 +1434,10 @@ driver, so the lane set grows from CX-1..5 to CX-1..9. Issues filed:
 **STATUS (2026-07-08): mainline slices landed; owner proof gates remain.**
 CX-1 (`#8545`) is CLOSED (`7bd4fb2eb1`). CX-2..CX-8 have contract/UI/runtime
 slices landed on `main` (`9b963db890`, `b9b56d8e0f`, `4aa8ca37db`,
-`92dbe36614`, `ffb157415f`, `4d3506eb89`, `ecbacec2d5`) and remain open only
-where live proof is still required: real phone device-auth, rootfs/dispatch
-proof, account proof, Claude proof, multi-provision continuity, live account
+`92dbe36614` + CX-5 mobile `26c7fae5a3` + CLI `2aa841ffcb`, `ffb157415f`,
+`4d3506eb89`, `ecbacec2d5`) and remain open only where live proof is still
+required: real phone device-auth, rootfs/dispatch proof, account proof,
+live Firecracker Claude turn, multi-provision continuity, live account
 serialization/concurrency/rotation, and phone dispatch → watch → interrupt /
 steer / resume → PR plus monorepo latency numbers. CX-9 (`#8553`) has the
 cutover ledger seeded and is blocked on the owner's full dogfood-day receipt:
@@ -1420,6 +1476,9 @@ dogfood ledger. Receipt:
   substitution).
 - **CX-5 (#8549)** Claude account parity (same broker,
   `CLAUDE_CODE_OAUTH_TOKEN` delivery, `claude_pylon` lane).
+  *Rev 6.19:* mobile Connect Claude UI + bearer routes (`26c7fae5a3`)
+  and CLI `pylon accounts connect claude` / `pylon auth claude`
+  (`2aa841ffcb`) landed; residual is live Firecracker Claude proof.
 - **CX-6 (#8550)** Session continuity across ephemeral microVMs:
   durable per-thread account pin + re-prime-and-replay resume from
   Khala Sync history (persisted-home volumes deferred, recorded).
