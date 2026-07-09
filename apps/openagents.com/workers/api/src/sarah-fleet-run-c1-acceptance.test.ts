@@ -368,10 +368,12 @@ describe.skipIf(!hasLocalPostgres())(
             makeRepository: () => authority,
           })
           const sarahFetch = (request: Request): Promise<Response> =>
-            sarahRoutes.handle(
-              request,
-              { KHALA_SYNC_DB: { connectionString: pg.url } },
-              {} as ExecutionContext,
+            Effect.runPromise(
+              sarahRoutes.handle(
+                request,
+                { KHALA_SYNC_DB: { connectionString: pg.url } },
+                {} as ExecutionContext,
+              ),
             )
 
           const operatorSystems: Array<string> = []
@@ -525,13 +527,15 @@ describe.skipIf(!hasLocalPostgres())(
           expect(prospectSystems[0]).not.toContain('coding_fleet_start')
           expect(prospectAuthorityCalls).toBe(0)
 
-          const foreignObservation = await sarahRoutes.handle(
-            new Request(
-              `https://openagents.com${SARAH_FLEET_RUNS_PATH}?runRef=${startOutput.run.runRef}`,
-              { headers: { cookie: 'oa_session=foreign' } },
+          const foreignObservation = await Effect.runPromise(
+            sarahRoutes.handle(
+              new Request(
+                `https://openagents.com${SARAH_FLEET_RUNS_PATH}?runRef=${startOutput.run.runRef}`,
+                { headers: { cookie: 'oa_session=foreign' } },
+              ),
+              { KHALA_SYNC_DB: { connectionString: pg.url } },
+              {} as ExecutionContext,
             ),
-            { KHALA_SYNC_DB: { connectionString: pg.url } },
-            {} as ExecutionContext,
           )
           expect(foreignObservation.status).toBe(404)
           expect(await foreignObservation.json()).toMatchObject({
@@ -814,13 +818,15 @@ describe.skipIf(!hasLocalPostgres())(
           expect(JSON.stringify(transportBodies)).not.toContain('pylonRef')
           expect(JSON.stringify(transportBodies)).not.toContain(OWNER_TOKEN)
 
-          const observed = await sarahRoutes.handle(
-            new Request(
-              `https://openagents.com${SARAH_FLEET_RUNS_PATH}?runRef=${startOutput.run.runRef}`,
-              { headers: { cookie: 'oa_session=owner' } },
+          const observed = await Effect.runPromise(
+            sarahRoutes.handle(
+              new Request(
+                `https://openagents.com${SARAH_FLEET_RUNS_PATH}?runRef=${startOutput.run.runRef}`,
+                { headers: { cookie: 'oa_session=owner' } },
+              ),
+              { KHALA_SYNC_DB: { connectionString: pg.url } },
+              {} as ExecutionContext,
             ),
-            { KHALA_SYNC_DB: { connectionString: pg.url } },
-            {} as ExecutionContext,
           )
           expect(observed.status).toBe(200)
           const observedBody = await observed.json()

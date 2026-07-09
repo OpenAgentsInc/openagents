@@ -226,7 +226,7 @@ const makeHarness = (
       ? input.env ?? {}
       : { KHALA_SYNC_DB: { connectionString: CONNECTION_STRING } }
   const run = (request: Request) =>
-    routes.handle(request, env, {} as ExecutionContext)
+    Effect.runPromise(routes.handle(request, env, {} as ExecutionContext))
   return { calls, run }
 }
 

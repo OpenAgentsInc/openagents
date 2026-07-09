@@ -9,12 +9,15 @@ import {
 } from '@openagentsinc/khala-sync-server'
 
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
+import { parseJsonUnknown } from './json-boundary'
 import type {
   KhalaSyncHyperdriveBinding,
   KhalaSyncPushSqlClient,
   MakeKhalaSyncPushSqlClient,
 } from './khala-sync-push-routes'
 import { defaultMakeKhalaSyncSqlClient } from './khala-sync-push-routes'
+
+type HttpResponse = globalThis.Response
 
 export const SARAH_FLEET_RUNS_PATH = '/api/sarah/fleet-runs'
 export const SARAH_FLEET_RUNS_ROUTE_REF =
@@ -45,7 +48,7 @@ export type SarahFleetRunAuthenticatedOwner = Readonly<{
   userId: string
   email: string
   appendRefreshedSessionCookies?:
-    | ((response: Response) => Response)
+    | ((response: HttpResponse) => HttpResponse)
     | undefined
 }>
 
@@ -143,7 +146,7 @@ const readBoundedJson = async (request: Request): Promise<unknown> => {
     return {}
   }
   try {
-    return JSON.parse(text) as unknown
+    return parseJsonUnknown(text)
   } catch {
     throw new SarahFleetRunRequestBodyError()
   }
@@ -169,7 +172,9 @@ const authorityErrorStatus = (
   return byKind[error.kind]
 }
 
-const authorityErrorResponse = (error: FleetRunAuthorityError): Response => {
+const authorityErrorResponse = (
+  error: FleetRunAuthorityError,
+): HttpResponse => {
   const mapped = authorityErrorStatus(error)
   return noStoreJsonResponse(
     {
@@ -184,7 +189,7 @@ const authorityErrorResponse = (error: FleetRunAuthorityError): Response => {
   )
 }
 
-const serviceUnavailable = (code: string): Response =>
+const serviceUnavailable = (code: string): HttpResponse =>
   noStoreJsonResponse(
     {
       ok: false,
@@ -194,7 +199,7 @@ const serviceUnavailable = (code: string): Response =>
     { status: 503 },
   )
 
-const invalidRequest = (): Response =>
+const invalidRequest = (): HttpResponse =>
   noStoreJsonResponse(
     {
       ok: false,
@@ -206,17 +211,28 @@ const invalidRequest = (): Response =>
 
 const authorityOutcome = <A>(
   operation: Effect.Effect<A, FleetRunAuthorityError>,
-): Promise<
+): Effect.Effect<
   | Readonly<{ kind: 'failure'; error: FleetRunAuthorityError }>
   | Readonly<{ kind: 'success'; value: A }>
 > =>
-  Effect.runPromise(
-    operation.pipe(
-      Effect.match({
-        onFailure: error => ({ kind: 'failure' as const, error }),
-        onSuccess: value => ({ kind: 'success' as const, value }),
-      }),
-    ),
+  operation.pipe(
+    Effect.match({
+      onFailure: error => ({ kind: 'failure' as const, error }),
+      onSuccess: value => ({ kind: 'success' as const, value }),
+    }),
+  )
+
+const promiseOutcome = <A>(
+  operation: () => Promise<A>,
+): Effect.Effect<
+  | Readonly<{ kind: 'failure'; error: unknown }>
+  | Readonly<{ kind: 'success'; value: A }>
+> =>
+  Effect.tryPromise({ try: operation, catch: error => error }).pipe(
+    Effect.match({
+      onFailure: error => ({ kind: 'failure' as const, error }),
+      onSuccess: value => ({ kind: 'success' as const, value }),
+    }),
   )
 
 const bindingConnectionString = (
@@ -233,149 +249,159 @@ export const makeSarahFleetRunRoutes = <
 >(
   dependencies: SarahFleetRunRouteDependencies<Bindings>,
 ) => {
-  const handle = async (
+  const handle = (
     request: Request,
     env: Bindings,
     ctx: ExecutionContext,
-  ): Promise<Response> => {
-    if (request.method !== 'POST' && request.method !== 'GET') {
-      return methodNotAllowed(['GET', 'POST'])
-    }
+  ): Effect.Effect<HttpResponse> =>
+    Effect.gen(function* () {
+      if (request.method !== 'POST' && request.method !== 'GET') {
+        return methodNotAllowed(['GET', 'POST'])
+      }
 
-    const authentication = await dependencies
-      .authenticateOwner(request, env, ctx)
-      .then(
-        owner => ({ kind: 'success' as const, owner }),
-        () => ({ kind: 'failure' as const }),
+      const authentication = yield* promiseOutcome(() =>
+        dependencies.authenticateOwner(request, env, ctx),
       )
-    if (authentication.kind === 'failure') {
-      return serviceUnavailable('authentication_unavailable')
-    }
-    if (authentication.owner === undefined) {
-      return noStoreJsonResponse(
-        {
-          ok: false,
-          error: { code: 'unauthenticated', retryable: false },
-          routeRef: SARAH_FLEET_RUNS_ROUTE_REF,
-        },
-        { status: 401 },
-      )
-    }
-    const owner = authentication.owner
-    const respond = (response: Response): Response =>
-      owner.appendRefreshedSessionCookies?.(response) ?? response
-
-    const policyResult = await dependencies
-      .resolveRelationshipMode(owner, env)
-      .then(
-        mode => ({
-          kind: 'success' as const,
-          policy: sarahFleetRunPolicyForMode(
-            S.decodeUnknownSync(SarahRelationshipMode)(mode),
-          ),
-        }),
-        () => ({ kind: 'failure' as const }),
-      )
-      .catch(() => ({ kind: 'failure' as const }))
-    if (policyResult.kind === 'failure') {
-      return respond(serviceUnavailable('relationship_policy_unavailable'))
-    }
-    const policy = policyResult.policy
-    if (
-      !policy.codingFleetStartAllowed ||
-      !policy.fleetObservationAllowed
-    ) {
-      return respond(
-        noStoreJsonResponse(
+      if (authentication.kind === 'failure') {
+        return serviceUnavailable('authentication_unavailable')
+      }
+      if (authentication.value === undefined) {
+        return noStoreJsonResponse(
           {
             ok: false,
-            error: {
-              code: 'relationship_not_authorized',
-              retryable: false,
-            },
-            policy,
+            error: { code: 'unauthenticated', retryable: false },
             routeRef: SARAH_FLEET_RUNS_ROUTE_REF,
           },
-          { status: 403 },
+          { status: 401 },
+        )
+      }
+      const owner = authentication.value
+      const respond = (response: HttpResponse): HttpResponse =>
+        owner.appendRefreshedSessionCookies?.(response) ?? response
+
+      const policyResult = yield* promiseOutcome(async () =>
+        sarahFleetRunPolicyForMode(
+          S.decodeUnknownSync(SarahRelationshipMode)(
+            await dependencies.resolveRelationshipMode(owner, env),
+          ),
         ),
       )
-    }
+      if (policyResult.kind === 'failure') {
+        return respond(serviceUnavailable('relationship_policy_unavailable'))
+      }
+      const policy = policyResult.value
+      if (
+        !policy.codingFleetStartAllowed ||
+        !policy.fleetObservationAllowed
+      ) {
+        return respond(
+          noStoreJsonResponse(
+            {
+              ok: false,
+              error: {
+                code: 'relationship_not_authorized',
+                retryable: false,
+              },
+              policy,
+              routeRef: SARAH_FLEET_RUNS_ROUTE_REF,
+            },
+            { status: 403 },
+          ),
+        )
+      }
 
-    const url = new URL(request.url)
-    const allowedQueryKeys = request.method === 'GET' ? ['runRef'] : []
-    if (
-      [...url.searchParams.keys()].some(
-        key => !allowedQueryKeys.includes(key),
+      const url = new URL(request.url)
+      const allowedQueryKeys = request.method === 'GET' ? ['runRef'] : []
+      if (
+        [...url.searchParams.keys()].some(
+          key => !allowedQueryKeys.includes(key),
+        )
+      ) {
+        return respond(invalidRequest())
+      }
+
+      const connectionString = bindingConnectionString(
+        (dependencies.bindingForEnv ?? (value => value.KHALA_SYNC_DB))(env),
       )
-    ) {
-      return respond(invalidRequest())
-    }
+      if (connectionString === undefined) {
+        return respond(serviceUnavailable('storage_unavailable'))
+      }
 
-    const connectionString = bindingConnectionString(
-      (dependencies.bindingForEnv ?? (value => value.KHALA_SYNC_DB))(env),
-    )
-    if (connectionString === undefined) {
-      return respond(serviceUnavailable('storage_unavailable'))
-    }
+      const makeSqlClient =
+        dependencies.makeSqlClient ?? defaultMakeKhalaSyncSqlClient
+      const clientResult = yield* promiseOutcome(() =>
+        makeSqlClient(connectionString),
+      )
+      if (clientResult.kind === 'failure') {
+        return respond(serviceUnavailable('storage_unavailable'))
+      }
+      const client: KhalaSyncPushSqlClient = clientResult.value
+      const storageOperation = Effect.gen(function* () {
+        const repository =
+          dependencies.makeRepository?.(client.sql) ??
+          makeFleetRunAuthorityRepository({ sql: client.sql })
 
-    const makeSqlClient =
-      dependencies.makeSqlClient ?? defaultMakeKhalaSyncSqlClient
-    const client: KhalaSyncPushSqlClient | undefined = await makeSqlClient(
-      connectionString,
-    ).catch(() => undefined)
-    if (client === undefined) {
-      return respond(serviceUnavailable('storage_unavailable'))
-    }
-    try {
-      const repository =
-        dependencies.makeRepository?.(client.sql) ??
-        makeFleetRunAuthorityRepository({ sql: client.sql })
+        if (request.method === 'POST') {
+          const bodyResult = yield* promiseOutcome(() =>
+            readBoundedJson(request),
+          )
+          if (bodyResult.kind === 'failure') {
+            return respond(
+              bodyResult.error instanceof SarahFleetRunRequestBodyError
+                ? invalidRequest()
+                : serviceUnavailable('storage_unavailable'),
+            )
+          }
+          const outcome = yield* authorityOutcome(
+            repository.start({
+              ownerUserId: owner.userId,
+              request: bodyResult.value,
+            }),
+          )
+          return respond(
+            outcome.kind === 'failure'
+              ? authorityErrorResponse(outcome.error)
+              : noStoreJsonResponse({
+                  ok: true,
+                  duplicate: outcome.value.duplicate,
+                  policy,
+                  routeRef: SARAH_FLEET_RUNS_ROUTE_REF,
+                  run: publicFleetRunAuthorityRecord(outcome.value.record),
+                }),
+          )
+        }
 
-      if (request.method === 'POST') {
-        const body = await readBoundedJson(request)
-        const outcome = await authorityOutcome(
-          repository.start({ ownerUserId: owner.userId, request: body }),
+        const runRef = url.searchParams.get('runRef')
+        if (runRef === null) {
+          return respond(invalidRequest())
+        }
+        const outcome = yield* authorityOutcome(
+          repository.observe({ ownerUserId: owner.userId, runRef }),
         )
         return respond(
           outcome.kind === 'failure'
             ? authorityErrorResponse(outcome.error)
             : noStoreJsonResponse({
                 ok: true,
-                duplicate: outcome.value.duplicate,
                 policy,
                 routeRef: SARAH_FLEET_RUNS_ROUTE_REF,
                 run: publicFleetRunAuthorityRecord(outcome.value.record),
               }),
         )
-      }
+      }).pipe(
+        Effect.catchDefect(() =>
+          Effect.succeed(respond(serviceUnavailable('storage_unavailable'))),
+        ),
+        Effect.ensuring(
+          Effect.tryPromise({
+            try: () => client.end(),
+            catch: error => error,
+          }).pipe(Effect.ignore),
+        ),
+      )
 
-      const runRef = url.searchParams.get('runRef')
-      if (runRef === null) {
-        return respond(invalidRequest())
-      }
-      const outcome = await authorityOutcome(
-        repository.observe({ ownerUserId: owner.userId, runRef }),
-      )
-      return respond(
-        outcome.kind === 'failure'
-          ? authorityErrorResponse(outcome.error)
-          : noStoreJsonResponse({
-              ok: true,
-              policy,
-              routeRef: SARAH_FLEET_RUNS_ROUTE_REF,
-              run: publicFleetRunAuthorityRecord(outcome.value.record),
-            }),
-      )
-    } catch (error) {
-      return respond(
-        error instanceof SarahFleetRunRequestBodyError
-          ? invalidRequest()
-          : serviceUnavailable('storage_unavailable'),
-      )
-    } finally {
-      await client.end().catch(() => undefined)
-    }
-  }
+      return yield* storageOperation
+    })
 
   return { handle }
 }

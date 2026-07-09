@@ -33,6 +33,8 @@ import { openAgentsDatabase, scheduleBackgroundWork } from './runtime'
 import { currentIsoTimestamp } from './runtime-primitives'
 import { extractAutopilotTokenUsage } from './token-usage'
 
+type HttpResponse = globalThis.Response
+
 type ProviderAccountServiceEnv = Readonly<{
   AUTH_KV?: AuthKvStore | undefined
   KHALA_SYNC_DB?: Readonly<{ connectionString: string }> | undefined
@@ -374,7 +376,7 @@ export const makeProviderAccountServiceHandlers = <
     request: Request,
     env: RouteEnv,
     attemptId: string,
-  ): Promise<Response> => {
+  ): Promise<HttpResponse> => {
     if (request.method !== 'POST') {
       return methodNotAllowed(['POST'])
     }
@@ -438,7 +440,7 @@ export const makeProviderAccountServiceHandlers = <
     request: Request,
     env: RouteEnv,
     attemptId: string,
-  ): Promise<Response> => {
+  ): Promise<HttpResponse> => {
     if (request.method !== 'POST') {
       return methodNotAllowed(['POST'])
     }
@@ -504,7 +506,7 @@ export const makeProviderAccountServiceHandlers = <
     request: Request,
     env: RouteEnv,
     providerAccountRef: string,
-  ): Promise<Response> => {
+  ): Promise<HttpResponse> => {
     if (request.method !== 'POST') {
       return methodNotAllowed(['POST'])
     }
@@ -567,7 +569,7 @@ export const makeProviderAccountServiceHandlers = <
   handleProviderAccountGrantResolveApi: async (
     request: Request,
     env: RouteEnv,
-  ): Promise<Response> => {
+  ): Promise<HttpResponse> => {
     if (request.method !== 'POST') {
       return methodNotAllowed(['POST'])
     }
