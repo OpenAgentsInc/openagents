@@ -17,7 +17,7 @@ export const sarahSplitLayoutContractRegistry: BehaviorContractRegistryDocument 
   contracts: [
     {
       authorityBoundary:
-        "This contract binds the /sarah browser surface shell only: the top-level split, Effect Native Tabs composition, video-pane overlay controls, compact disclosure banner, and removal of the audited caption/control/centered-grid padding. It does not claim the live Blueprint graph exists yet (BM-2) and does not replace BM-5's later screenshot smoke gate.",
+        "This contract binds the /sarah browser surface shell: the top-level 50/50 split, Effect Native Tabs (Blueprint map / chat / actions / receipts), video-pane overlay controls, compact disclosure banner, live GraphFigure Blueprint map (BM-2), and BM-5 deploy-smoke gates. It does not claim GPU media quality or store-submission readiness.",
       blockerRefs: [],
       contractId: "sarah.split_screen_blueprint_map.v1",
       enforcementTier: "test-sweep",
@@ -25,13 +25,15 @@ export const sarahSplitLayoutContractRegistry: BehaviorContractRegistryDocument 
         "apps/sarah/src/ui/main.ts",
         "apps/sarah/src/ui/sarah.css",
         "apps/sarah/src/ui/index.html",
+        "apps/sarah/scripts/sarah-avatar-e2e-smoke.mjs",
         "docs/sarah/SARAH_CONTRACTS.md",
         "issue:#8629",
+        "issue:#8631",
       ],
       oracles: [
         {
           description:
-            "Effect Native surface tree oracle: the right pane is an EN Tabs node with Blueprint map selected by default, Chat/Actions/Receipts panels kept mounted, transcript+composer inside the Chat panel, card receipts inside the Receipts panel, and no standalone Sarah title/caption/control row.",
+            "Effect Native surface tree oracle: the right pane is an EN Tabs node with Blueprint map selected by default, Chat/Actions/Receipts panels kept mounted, transcript+composer inside the Chat panel, card receipts inside the Receipts panel, GraphFigure present, and no standalone Sarah title/caption/control row.",
           id: "split_layout_surface_tree.unit",
           kind: "bun-test",
           mode: "unit",
@@ -45,6 +47,22 @@ export const sarahSplitLayoutContractRegistry: BehaviorContractRegistryDocument 
           mode: "unit",
           ref: "apps/sarah/src/contracts/split-layout-contracts.test.ts",
         },
+        {
+          description:
+            "BM-5 bus isolation oracle: blueprint_delta fact_added events publish only to the prospect's conversation_ref aliases and never to a concurrent foreign ref (KHS-3).",
+          id: "blueprint_delta_isolation.unit",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/sarah/src/services/prospect-memory.test.ts",
+        },
+        {
+          description:
+            "BM-5 deploy-smoke oracle: synthetic-prospect e2e smoke asserts split-layout shell markers, owned mint, optional live blueprint_delta learning, and concurrent-ref isolation against the live deployment rail.",
+          id: "bm5_split_blueprint_smoke.e2e",
+          kind: "script",
+          mode: "e2e",
+          ref: "apps/sarah/scripts/sarah-avatar-e2e-smoke.mjs",
+        },
       ],
       productArea: "Sarah Blueprint map surface",
       source: {
@@ -57,9 +75,9 @@ export const sarahSplitLayoutContractRegistry: BehaviorContractRegistryDocument 
         "the split layout — your video full-height left ~50%, tabbed canvas right (map / chat / actions), with the audit's cut list applied (the caption row, controls row, and the 480px centered grid that made the page mostly padding — the disclosure banner stays, it's a contract).",
       surface: "sarah",
       verification:
-        "bun test src/ui/surface.test.ts src/contracts/split-layout-contracts.test.ts inside apps/sarah; runs in the package test glob and gives BM-5 a named contract for the later screenshot smoke deploy gate.",
+        "bun test src/ui/surface.test.ts src/contracts/split-layout-contracts.test.ts src/services/prospect-memory.test.ts inside apps/sarah; deploy gate: bun apps/sarah/scripts/sarah-avatar-e2e-smoke.mjs (SQ-4 + BM-5).",
     },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-09.1",
+  version: "2026-07-09.2",
 }

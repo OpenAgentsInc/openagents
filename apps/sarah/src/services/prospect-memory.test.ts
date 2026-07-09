@@ -150,6 +150,7 @@ describe("distillProspectFacts (deterministic v1)", () => {
     expect(fact!.fact).toContain('"we need')
   })
 
+  // Contract sarah.split_screen_blueprint_map.v1 oracle blueprint_delta_isolation.unit (BM-5 #8631)
   test("publishes one fact_added blueprint delta to this prospect's aliases only", async () => {
     const { sarahAvatarEventStream } = await import("./avatar-event-bus.ts")
     const raw = sarahAvatarEventStream("abc123")

@@ -183,7 +183,7 @@ Registry version: `2026-07-09.5` (schema `openagents.behavior_contracts.v1`)
 
 ## Blueprint Map Split-Screen Contract (BM-3 #8629)
 
-Registry version: `2026-07-09.1` (schema `openagents.behavior_contracts.v1`)
+Registry version: `2026-07-09.2` (schema `openagents.behavior_contracts.v1`)
 
 ### `sarah.split_screen_blueprint_map.v1` — ENFORCED
 
