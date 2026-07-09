@@ -1,12 +1,38 @@
 # MASTER ROADMAP — Khala Code MVP (Tested, Submitted) → Sarah → Codex → AI Employees → the Suite
 
-Date: 2026-07-09 (rev 6.12 — OAV quality program adopts research.md, #8610)
+Date: 2026-07-09 (rev 6.13 — Sarah Blueprint Map surface, epic #8626)
 Status: **the single consolidated execution roadmap.** This document owns
 top-level sequencing across everything designed in the 2026-07-07 strategy
 set and its predecessors. The source docs remain authoritative for their
 *content* (specs, evidence, arguments); when sequencing here and sequencing
 there disagree, **this document wins**, and new issues are filed against the
 phase lanes named here.
+
+**Rev 6.13 changes (owner directive, 2026-07-09 — SARAH BLUEPRINT MAP
+SURFACE):** "I want to build a Blueprint map as Sarah is talking. Visual
+representation of what she knows / is trying to learn from the user…
+her taking up ~half of the screen (left), other half the canvas with
+graph / buttons / code / chat etc." Epic **#8626**, lanes **BM-1..5
+(#8627–#8631)**, audit
+`docs/sarah/2026-07-09-blueprint-map-surface-audit.md`. The Blueprint
+spec's own named-but-deferred visual surface ("Blueprint Map") arrives
+as Sarah's prospect-facing graph: the KHS-9 customer Blueprint draft +
+KHS-2 distilled facts project onto the EXISTING Effect Native
+`GraphFigure` (catalog v19, effect-native#37 — the arbiter-graph model;
+the vendored v26 snapshot already includes the DOM/SVG path), streamed
+live over the AV-3 SSE bus via new typed `blueprint_delta` events, on a
+split desktop layout (video ~50vw full-height left; right pane = tabbed
+canvas: Blueprint map / chat / actions / code+receipts) that also
+settles the owner's "too much bullshit on the page" verdict (declutter
+cuts listed in the audit; the AI-disclosure banner stays, copy
+unchanged). Edges light only from real provenance
+(matchedNeedTurnIds/receipts — the arbiter law); KHS-3 isolation,
+no-improvised-pricing, and the EN demand-register discipline
+(components upstream, never local one-offs) bind every lane.
+Cross-linked to EN-6 #8575 (the same typed model moves onto the unified
+canvas contract at CV4), OAV #8610 (the left pane is the owned-renderer
+video seam), and SQ-4 #8621 (the deploy-smoke rail carries the BM-5
+gate). See the P1 "Sarah Blueprint Map surface" entry.
 
 **Rev 6.12 changes (2026-07-09 — OAV QUALITY PROGRAM adopts the owner's
 research doc):** the owned avatar video lane family (epic **#8610**,
@@ -1099,6 +1125,33 @@ smooth; the opener library v1 is rendered both ways awaiting QA;
 FLAIR/RIFE/CosyVoice-prosody/Hallo2 experiments are queued. Reference
 clones live in the workspace `projects/repos/`; papers in
 `projects/papers/`.
+
+**Sarah Blueprint Map surface (epic #8626; lanes BM-1 #8627, BM-2
+#8628, BM-3 #8629, BM-4 #8630, BM-5 #8631; rev 6.13):** the live
+per-prospect Blueprint map rendered while Sarah talks — what she knows
+about this prospect and what she is still trying to learn, plus which
+offerings the stated needs map onto. Authority:
+`docs/sarah/2026-07-09-blueprint-map-surface-audit.md` (Unit/Arbiter
+findings, data inventory, page keep/cut verdicts, layout spec,
+streaming architecture). Sequence: BM-1 typed `blueprint_delta` events
+on the existing avatar SSE bus (published from the prospect-memory
+distillation, the `customer_blueprint_draft` tool, and the KHS-7 link
+path); BM-2 the graph itself on the `/sarah` EN surface via the
+existing `GraphFigure` catalog piece with an arbiter-aligned pure
+projection (seed from the stored draft revision, animate on deltas;
+catalog gaps route upstream through the EN-2 demand register); BM-3
+the owner's split layout — video ~50vw full-height left, tabbed canvas
+right (map / chat / actions / code+receipts) — with the declutter cuts
+and the verbatim behavior contract
+`sarah.split_screen_blueprint_map.v1`; BM-4 the Actions tab
+(account link, book-a-human via `human_handoff`, checkout link when
+minted) + the draft-JSON/receipts panel; BM-5 the owner playback/QA
+gate (split-layout screenshot smoke on the SQ-4 #8621 rail, the
+contract in the sweep, and a live-learning proof: a fact spoken
+mid-session appears as a node before the session ends). Laws: KHS-3
+isolation on every read and delta, no improvised pricing, semantic
+matching only, edges light only from dereferenceable provenance, EN
+catalog components only.
 
 **P1 exit receipts:** openagents.com/sarah live and hardened (SR-0
 list complete, token route protected, spend-capped); a stranger
