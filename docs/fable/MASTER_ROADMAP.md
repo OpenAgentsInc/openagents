@@ -1,6 +1,6 @@
 # MASTER ROADMAP — Khala Code MVP (Tested, Submitted) → Sarah → Codex → AI Employees → the Suite
 
-Date: 2026-07-09 (rev 6.8 — Sarah consolidation LANDED at openagents.com/sarah; oracles hardened)
+Date: 2026-07-09 (rev 6.9 — MB-EN: full Khala mobile app rewrite on Effect Native filed (#8597) + upstream mobile epic effect-native#52; cross-app Khala Sync messaging as the exit test)
 Status: **the single consolidated execution roadmap.** This document owns
 top-level sequencing across everything designed in the 2026-07-07 strategy
 set and its predecessors. The source docs remain authoritative for their
@@ -589,7 +589,10 @@ order, and this section binds them to the product phases.
 **Issue index (updated rev 6, 2026-07-08):** epic **#8566**; lanes
 **EN-1 #8567** (production landing on the DOM renderer), **EN-2 #8572**
 (catalog demand register + version adoption), **EN-3 #8568** (RN adapter
-+ the scheduled mobile burn-down — upgraded from on-touch by rev 6),
+#1 — proved; superseded as pacing by MB-EN below), **MB-EN #8597** (rev
+6.9 — full Khala mobile app rewrite on Effect Native, iOS + Android;
+pulled by upstream mobile epic **effect-native#52** children #53–#65;
+cross-app Khala Sync messaging exit test),
 **EN-4 #8573** (web absorption route-by-route, legacy deleted), **EN-5
 #8574** (Khala Code desktop conversion; cancels the React+Tailwind shell
 rewrite), **EN-6 #8575** (canvas/Verse under the canvas contract; Foldkit
@@ -654,11 +657,25 @@ green (tests, QAM gates, behavior contracts, `check:deploy`) and
   burn-down table, legacy Foldkit/interim React deleted as replaced;
   the P4 cockpit web twin and business dashboard are authored EN-native
   when they arrive.
-- **CV3 — mobile burn-down (RN adapter first):** EN-3 #8568 wraps the
-  khala-mobile primitives as adapter #1, CX-2/CX-4's new screens author
-  the set from day one, then the ~94 existing screens convert on a
-  scheduled burn-down. Safety floor: the launch straight line, QAM
-  gates, and store-submission artifacts stay green through every PR.
+- **CV3 — mobile full rewrite (MB-EN #8597; rev 6.9 — upgraded from
+  burn-down to a full rewrite program).** EN-3 #8568 proved adapter #1
+  (vendored `render-rn` + the about-effect-native screen); MB-EN #8597
+  now rewrites **the entire Khala mobile app** on Effect Native (iOS +
+  Android), pulled by the upstream mobile epic **effect-native#52** (the
+  peer of the Phase 4 desktop epic #20): the RN renderer parity program
+  (#53, closing the desktop-first declared-subset matrix),
+  `@effect-native/platform-mobile` (#54), navigation/gesture/virtualization
+  pillars (#55–#57), RN foreign-`Host` drivers (#58), RN pixel baselines
+  (#59), and the mobile catalog (#60–#63). Convert screen-by-screen after
+  the vendor re-bump (`v5→v20`+ via the #8595 guard), deleting each legacy
+  RN/khala-primitive screen on cutover. Safety floor: `qa:mobile:gate`
+  (typecheck + depcruise + tests incl. `src/contracts/ux-contracts.ts`
+  behavior contracts + generator conformance), QAM visual baselines,
+  Maestro e2e, the P0 launch straight line, and the store-submission
+  artifacts (#8543/#8544) stay green through **every** PR; native STT +
+  Apple FM modules and the owned OTA layer are hosts/services, untouched.
+  **Exit test (owner-named):** a message travels **desktop↔mobile live over
+  Khala Sync** with both UIs rendered by Effect Native (effect-native#64).
 - **CV4 — desktop + canvas (starts as effect-native Phase 4 lanes
   land):** Khala Code desktop shell + panels (EN-5 #8574) on the desktop
   adapter, Monaco/terminal via the `Host` node, fleet/gym graphs and
@@ -1323,7 +1340,7 @@ Standing gates (carried; still open):
 | **Sarah consolidation plan (SM-0..6)** | `2026-07-09-sarah-monorepo-effect-native-consolidation-plan.md` |
 | **Multi-harness parallelization (§MH, MH-0..9, rev 6.4)** | `2026-07-08-multi-harness-parallelization-effect-native-analysis.md` (Fable §1–10 + Grok §11 + Fable §12 — consensus + dispatch plan); `docs/grok/parallel-multi-harness-asap.md` + `docs/grok/grok-cli-as-third-harness.md` (adapter design); `docs/grok-cli/` (CLI reference) |
 | **Pylon fold (PY-1..3, rev 6.3)** | `2026-07-08-pylon-into-khala-code-proposal.md` (ACCEPTED — daemon-cockpit model; lanes #8578/#8579/#8580; Spark wallet preserved by owner mandate) |
-| **Effect Native substrate (§EN, EN-*)** | `../effect-native/README.md` + the six 2026-07-08 docs (framing doc first; UI-layer analysis holds EN-0..EN-9); public framework repo `OpenAgentsInc/effect-native` (ROADMAP phases 0–6 = the substrate build order; issues: #1–#8 Phase 0/1 closed, #9–#19 Phase 2/3, #20–#43 the Phase 4 desktop/canvas epic). Internal lanes: epic #8566, EN-1 #8567, EN-2 #8572, EN-3 #8568, EN-4 #8573, EN-5 #8574, EN-6 #8575, deploys #8570/#8571 |
+| **Effect Native substrate (§EN, EN-*)** | `../effect-native/README.md` + the six 2026-07-08 docs (framing doc first; UI-layer analysis holds EN-0..EN-9); public framework repo `OpenAgentsInc/effect-native` (ROADMAP phases 0–6 = the substrate build order; issues: #1–#8 Phase 0/1 closed, #9–#19 Phase 2/3, #20–#43 the Phase 4 desktop/canvas epic; #52 + #53–#65 the mobile epic — RN full-peer renderer + mobile catalog + cross-app Khala Sync exit test). Internal lanes: epic #8566, EN-1 #8567, EN-2 #8572, EN-3 #8568, MB-EN #8597 (full mobile rewrite), EN-4 #8573, EN-5 #8574, EN-6 #8575, deploys #8570/#8571 |
 | **Landing site kit (P1 Track A, WEB-1 #8565)** | `projects/repos/launch-ui` (MIT reference; **design/tokens reference per §EN** — theme ports into `@effect-native/tokens`; the vendored React replica at `/demo`/`/new` is the visual baseline, not the forward path) |
 | **Outbound engine (P1 Track C)** | `2026-07-03-apollo-outbound-sales-plan.md` (audit-first motion, segments); SELL epic #8261 / LG-1..9 (closed substrate); blitz compliance-guardrails (binding) |
 | Web stack decision (P1 Track A) | `2026-07-04-tanstack-start-sites-and-web-app-evaluation.md` |
