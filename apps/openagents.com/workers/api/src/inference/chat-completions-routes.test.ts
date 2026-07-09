@@ -3508,12 +3508,15 @@ describe('POST /v1/chat/completions', () => {
         worker?: string
       }
     }
-    expect(body.openagents?.worker).toBe(OPENROUTER_KHALA_FALLBACK_ADAPTER_ID)
+    // Paid failover now LEADS with our Vertex Gemini (gcloud) lane — the
+    // platform OpenRouter lane was dropped from KHALA_PAID_FAILOVER_ADAPTER_PLAN
+    // (owner decision 2026-07-09).
+    expect(body.openagents?.worker).toBe(VERTEX_GEMINI_ADAPTER_ID)
     expect(body.openagents?.routing?.fallback_reason).toBe(null)
     expect(glmCalls).toBe(0)
-    expect(geminiCalls).toBe(0)
+    expect(geminiCalls).toBe(1)
     expect(fireworksCalls).toBe(0)
-    expect(openrouterCalls).toBe(1)
+    expect(openrouterCalls).toBe(0)
     expect(alerts).toEqual([
       {
         message: 'GLM own-capacity down — failover active',
@@ -3522,7 +3525,7 @@ describe('POST /v1/chat/completions', () => {
     ])
     expect(recorded).toHaveLength(1)
     expect(recorded[0]).toMatchObject({
-      adapterId: OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
+      adapterId: VERTEX_GEMINI_ADAPTER_ID,
       requestAttribution: {
         demandClient: 'stress-harness',
         demandKind: 'internal_stress',

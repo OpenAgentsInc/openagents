@@ -11659,15 +11659,19 @@ const registerOpenRouterAdapter = (
   openRouterAdaptersRegistered.add(env)
   const apiKey = env.OPENROUTER_API_KEY?.trim()
   const baseUrl = env.OPENROUTER_BASE_URL?.trim() || OPENROUTER_DEFAULT_BASE_URL
-  if (
-    apiKey === undefined ||
-    apiKey === ''
-  ) {
-    return
-  }
+  // OWNER DECISION 2026-07-09: OpenRouter is DROPPED as a platform supply lane
+  // and the prod `OPENROUTER_API_KEY` is unset. The adapter is STILL registered
+  // (even with no platform key) purely so the BYOK caller-key path keeps working
+  // — that path forces `[OPENROUTER_KHALA_FALLBACK_ADAPTER_ID]` and supplies the
+  // CALLER's own key per request (openrouter-adapter.ts uses
+  // `request.callerProviderKey` when present, never `config.apiKey`). With no
+  // platform key the constructed `config.apiKey` is empty, but that is never
+  // used: no platform Khala plan routes to this adapter anymore (see
+  // model-router.ts), so only BYOK requests — which override the key — reach it.
+  const platformKey = apiKey === undefined || apiKey === '' ? '' : apiKey
   registry.register(
     makeOpenRouterAdapter({
-      apiKey: Redacted.make(apiKey),
+      apiKey: Redacted.make(platformKey),
       baseUrl,
       id: OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
       upstreamModel: OPENROUTER_KHALA_FALLBACK_MODEL_ID,

@@ -194,56 +194,57 @@ describe('model classification', () => {
     }
   })
 
-  test('routes conversational Khala through OpenRouter Granite before Gemini, Fireworks, and GLM', () => {
+  test('routes conversational Khala through our Vertex Gemini (gcloud) lane first, then Fireworks and GLM (OpenRouter dropped 2026-07-09)', () => {
     for (const model of [KHALA_MODEL_SLUG, KHALA_MODEL_ID]) {
       expect(classifyModel(model)).toBe('open')
-      expect(selectAdapterPlan(model)).toEqual([
-        OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
+      const plan = selectAdapterPlan(model)
+      expect(plan).toEqual([
         VERTEX_GEMINI_ADAPTER_ID,
         FIREWORKS_ADAPTER_ID,
         HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
       ])
+      // The dropped platform OpenRouter lane must not appear in any prod plan.
+      expect(plan).not.toContain(OPENROUTER_KHALA_FALLBACK_ADAPTER_ID)
     }
   })
 
   test('can route the single Khala model through Fireworks DeepSeek V4 Flash by operator backing policy', () => {
     for (const model of [KHALA_MODEL_SLUG, KHALA_MODEL_ID]) {
-      expect(
-        selectAdapterPlanForKhalaBacking(
-          model,
-          KHALA_BACKING_FIREWORKS_DEEPSEEK_V4_FLASH,
-        ),
-      ).toEqual([
-        OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
+      const plan = selectAdapterPlanForKhalaBacking(
+        model,
+        KHALA_BACKING_FIREWORKS_DEEPSEEK_V4_FLASH,
+      )
+      expect(plan).toEqual([
         FIREWORKS_ADAPTER_ID,
         HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
         VERTEX_GEMINI_ADAPTER_ID,
       ])
+      expect(plan).not.toContain(OPENROUTER_KHALA_FALLBACK_ADAPTER_ID)
     }
     expect(
       makeKhalaBackedAdapterPlan(KHALA_BACKING_FIREWORKS_DEEPSEEK_V4_FLASH)(
         KHALA_MODEL_ID,
       )[0],
-    ).toBe(OPENROUTER_KHALA_FALLBACK_ADAPTER_ID)
+    ).toBe(FIREWORKS_ADAPTER_ID)
     expect(selectAdapterPlan('deepseek-v4-flash')[0]).toBe(FIREWORKS_ADAPTER_ID)
   })
 
-  test('makes OpenRouter Granite primary for conversational Khala while keeping GPT-OSS out (#6259)', () => {
+  test('makes our Vertex Gemini (gcloud) lane primary for conversational Khala while keeping GPT-OSS out (#6259)', () => {
     for (const model of [KHALA_MODEL_SLUG, KHALA_MODEL_ID]) {
       const plan = selectAdapterPlanForKhalaBacking(
         model,
         KHALA_BACKING_HYDRALISK_GPT_OSS,
       )
-      // Conversational Khala is OpenRouter-first for the current incident
-      // posture. GLM remains in the overflow chain, and GPT-OSS is NOT in this
-      // plan.
-      expect(plan[0]).toBe(OPENROUTER_KHALA_FALLBACK_ADAPTER_ID)
+      // Conversational Khala now leads with our own Google Cloud (Vertex Gemini)
+      // lane — the platform OpenRouter lane was dropped (owner 2026-07-09). GLM
+      // remains in the overflow chain, and GPT-OSS is NOT in this plan.
+      expect(plan[0]).toBe(VERTEX_GEMINI_ADAPTER_ID)
       expect(plan).toEqual([
-        OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
         VERTEX_GEMINI_ADAPTER_ID,
         FIREWORKS_ADAPTER_ID,
         HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
       ])
+      expect(plan).not.toContain(OPENROUTER_KHALA_FALLBACK_ADAPTER_ID)
       expect(plan).not.toContain(HYDRALISK_GPT_OSS_120B_ADAPTER_ID)
       expect(plan).not.toContain(HYDRALISK_ADAPTER_ID)
     }
@@ -252,41 +253,39 @@ describe('model classification', () => {
       makeKhalaBackedAdapterPlan(
         resolveKhalaBackingModel('hydralisk-glm-5.2-reap-504b'),
       )(KHALA_MODEL_ID)[0],
-    ).toBe(OPENROUTER_KHALA_FALLBACK_ADAPTER_ID)
+    ).toBe(VERTEX_GEMINI_ADAPTER_ID)
   })
 
-  test('routes tool-bearing Khala requests OpenRouter first while keeping typed fallbacks', () => {
-    expect(
-      selectAdapterPlanForKhalaToolRequest(
+  test('routes tool-bearing Khala requests to the owned GLM lane first, then Fireworks and Vertex (OpenRouter dropped)', () => {
+    const plan = selectAdapterPlanForKhalaToolRequest(
+      KHALA_MODEL_ID,
+      selectAdapterPlanForKhalaBacking(
         KHALA_MODEL_ID,
-        selectAdapterPlanForKhalaBacking(
-          KHALA_MODEL_ID,
-          KHALA_BACKING_HYDRALISK_GPT_OSS,
-        ),
+        KHALA_BACKING_HYDRALISK_GPT_OSS,
       ),
-    ).toEqual([
-      OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
+    )
+    expect(plan).toEqual([
       HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
       FIREWORKS_ADAPTER_ID,
       VERTEX_GEMINI_ADAPTER_ID,
     ])
+    expect(plan).not.toContain(OPENROUTER_KHALA_FALLBACK_ADAPTER_ID)
   })
 
-  test('routes internal strong-coding Khala requests to the frontier GLM coding lane first, with OpenRouter before Vertex', () => {
-    expect(
-      selectAdapterPlanForKhalaStrongCodingRequest(
+  test('routes internal strong-coding Khala requests to the frontier GLM coding lane first, then Fireworks and Vertex (OpenRouter dropped)', () => {
+    const plan = selectAdapterPlanForKhalaStrongCodingRequest(
+      KHALA_MODEL_ID,
+      selectAdapterPlanForKhalaBacking(
         KHALA_MODEL_ID,
-        selectAdapterPlanForKhalaBacking(
-          KHALA_MODEL_ID,
-          KHALA_BACKING_HYDRALISK_GPT_OSS,
-        ),
+        KHALA_BACKING_HYDRALISK_GPT_OSS,
       ),
-    ).toEqual([
+    )
+    expect(plan).toEqual([
       FIREWORKS_STRONG_CODING_ADAPTER_ID,
       FIREWORKS_ADAPTER_ID,
-      OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
       VERTEX_GEMINI_ADAPTER_ID,
     ])
+    expect(plan).not.toContain(OPENROUTER_KHALA_FALLBACK_ADAPTER_ID)
     // The unreliable owned GLM-REAP tool lane (#6310) is excluded from the
     // strong-coding plan on purpose.
     expect(
@@ -1350,7 +1349,7 @@ describe('dispatchWithOverflow', () => {
     expect(fireworks.calls()).toBe(1)
   })
 
-  test('conversational Khala starts on OpenRouter before Gemini/GLM and keeps GPT-OSS out of the main thread', async () => {
+  test('conversational Khala starts on our Vertex Gemini (gcloud) lane before Fireworks/GLM and keeps GPT-OSS out of the main thread', async () => {
     const glmDead = new InferenceAdapterError({
       adapterId: HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
       kind: 'transport_error',
@@ -1358,29 +1357,22 @@ describe('dispatchWithOverflow', () => {
       retryable: true,
     })
     const glm = mockAdapter(HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID, [glmDead])
-    const openRouter = mockAdapter(OPENROUTER_KHALA_FALLBACK_ADAPTER_ID, [
-      {
-        content: 'OpenRouter GLM fallback answer',
-        finishReason: 'stop',
-        servedModel: 'openrouter/glm-class',
-        usage: { completionTokens: 6, promptTokens: 4, totalTokens: 10 },
-      },
-    ])
     const gemini = mockAdapter(VERTEX_GEMINI_ADAPTER_ID, [
       {
-        content: 'Gemini warm overflow answer',
+        content: 'Gemini warm primary answer',
         finishReason: 'stop',
         servedModel: 'gemini-3.5-flash',
         usage: { completionTokens: 5, promptTokens: 4, totalTokens: 9 },
       },
     ])
+    const fireworks = mockAdapter(FIREWORKS_ADAPTER_ID, [undefined])
     const gptOss120b = mockAdapter(HYDRALISK_GPT_OSS_120B_ADAPTER_ID, [
       undefined,
     ])
     const gptOss20b = mockAdapter(HYDRALISK_ADAPTER_ID, [undefined])
     const registry = new InferenceProviderRegistry()
     registry.register(glm.adapter)
-    registry.register(openRouter.adapter)
+    registry.register(fireworks.adapter)
     registry.register(gptOss120b.adapter)
     registry.register(gptOss20b.adapter)
     registry.register(gemini.adapter)
@@ -1401,24 +1393,20 @@ describe('dispatchWithOverflow', () => {
     if (result._tag === 'Success') {
       expect(result.success.route).toMatchObject({
         fallbackReason: null,
-        primaryAdapterId: OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
-        servedAdapterId: OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
+        primaryAdapterId: VERTEX_GEMINI_ADAPTER_ID,
+        servedAdapterId: VERTEX_GEMINI_ADAPTER_ID,
       })
-      expect(result.success.value.value.content).toBe(
-        'OpenRouter GLM fallback answer',
-      )
-      expect(result.success.value.value.servedModel).toBe(
-        'openrouter/glm-class',
-      )
+      expect(result.success.value.value.content).toBe('Gemini warm primary answer')
+      expect(result.success.value.value.servedModel).toBe('gemini-3.5-flash')
     }
     expect(glm.calls()).toBe(0)
-    expect(openRouter.calls()).toBe(1)
+    expect(fireworks.calls()).toBe(0)
     expect(gptOss120b.calls()).toBe(0)
     expect(gptOss20b.calls()).toBe(0)
-    expect(gemini.calls()).toBe(0)
+    expect(gemini.calls()).toBe(1)
   })
 
-  test('conversational Khala falls through OpenRouter, Gemini, and Fireworks before trying GLM', async () => {
+  test('conversational Khala falls through Vertex Gemini and Fireworks before trying GLM', async () => {
     const glm = mockAdapter(HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID, [
       undefined,
     ])
@@ -1428,12 +1416,8 @@ describe('dispatchWithOverflow', () => {
     const fireworks = mockAdapter(FIREWORKS_ADAPTER_ID, [
       err(FIREWORKS_ADAPTER_ID, true, 503),
     ])
-    const openRouter = mockAdapter(OPENROUTER_KHALA_FALLBACK_ADAPTER_ID, [
-      err(OPENROUTER_KHALA_FALLBACK_ADAPTER_ID, true, 503),
-    ])
     const registry = new InferenceProviderRegistry()
     registry.register(glm.adapter)
-    registry.register(openRouter.adapter)
     registry.register(gemini.adapter)
     registry.register(fireworks.adapter)
 
@@ -1452,7 +1436,7 @@ describe('dispatchWithOverflow', () => {
     expect(result._tag).toBe('Success')
     if (result._tag === 'Success') {
       expect(result.success.route.primaryAdapterId).toBe(
-        OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
+        VERTEX_GEMINI_ADAPTER_ID,
       )
       expect(result.success.route.servedAdapterId).toBe(
         HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
@@ -1463,7 +1447,6 @@ describe('dispatchWithOverflow', () => {
     }
     expect(glm.calls()).toBe(1)
     expect(gemini.calls()).toBe(1)
-    expect(openRouter.calls()).toBe(1)
     expect(fireworks.calls()).toBe(1)
   })
 
@@ -1636,12 +1619,11 @@ describe('multi-lane fan-out (throughput unlock)', () => {
 
   test('fan-out plan rotates the Khala plan so successive requests start on different lanes', () => {
     const base = [
-      OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
       VERTEX_GEMINI_ADAPTER_ID,
       FIREWORKS_ADAPTER_ID,
       HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
     ]
-    const primaries = [0, 1, 2, 3, 4].map(
+    const primaries = [0, 1, 2, 3].map(
       index =>
         selectAdapterPlanForKhalaMultiLaneBurnRequest(
           KHALA_MODEL_ID,
@@ -1649,17 +1631,17 @@ describe('multi-lane fan-out (throughput unlock)', () => {
           index,
         )[0],
     )
-    // Four concurrent burn requests cover ALL four lanes (sum-of-capacity spread).
-    expect(new Set(primaries.slice(0, 4)).size).toBe(4)
+    // Three concurrent burn requests cover ALL three lanes (sum-of-capacity
+    // spread); the fourth wraps back to the primary.
+    expect(new Set(primaries.slice(0, 3)).size).toBe(3)
     expect(primaries).toEqual([
-      OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
       VERTEX_GEMINI_ADAPTER_ID,
       FIREWORKS_ADAPTER_ID,
       HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
-      OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
+      VERTEX_GEMINI_ADAPTER_ID,
     ])
     // Each rotated plan still carries the full overflow tail (fail-closed).
-    for (let index = 0; index < 4; index += 1) {
+    for (let index = 0; index < 3; index += 1) {
       expect(
         [
           ...selectAdapterPlanForKhalaMultiLaneBurnRequest(
@@ -1673,12 +1655,13 @@ describe('multi-lane fan-out (throughput unlock)', () => {
   })
 
   test('fan-out spreads only across the registered/eligible lanes it is given', () => {
-    // The route passes only the registered lanes; with GLM down, the burn spread
-    // is across OpenRouter + Vertex + Fireworks (the real paid lanes today).
+    // The route passes only the registered lanes; the burn spread is across the
+    // real paid lanes today — Vertex (gcloud) + Fireworks + GLM (OpenRouter was
+    // dropped as a platform lane, 2026-07-09).
     const registeredOnly = [
-      OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
       VERTEX_GEMINI_ADAPTER_ID,
       FIREWORKS_ADAPTER_ID,
+      HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
     ]
     const primaries = [0, 1, 2, 3].map(
       index =>
@@ -1689,7 +1672,7 @@ describe('multi-lane fan-out (throughput unlock)', () => {
         )[0],
     )
     expect(new Set(primaries.slice(0, 3)).size).toBe(3)
-    expect(primaries[3]).toBe(OPENROUTER_KHALA_FALLBACK_ADAPTER_ID)
+    expect(primaries[3]).toBe(VERTEX_GEMINI_ADAPTER_ID)
   })
 
   test('non-Khala models never fan out (default routing unchanged)', () => {

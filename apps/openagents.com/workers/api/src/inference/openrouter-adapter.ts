@@ -1,6 +1,19 @@
 // OpenRouter Khala adapter (#6313).
 //
-// OpenRouter is used as a hidden Khala supply lane. The public customer model
+// DEPRECATED AS A PLATFORM SUPPLY LANE (owner decision 2026-07-09). OpenRouter
+// has been DROPPED from every prod Khala plan in `model-router.ts` and the prod
+// `OPENROUTER_API_KEY` is no longer set — the primary lane is now our own Google
+// Cloud (Vertex) lane. See
+// docs/incidents/2026-07-08-khala-502-openrouter-credit-exhaustion-aar.md
+// ("lane dropped" note). This adapter is intentionally KEPT in the tree and
+// still REGISTERED (index.ts) for ONE reason only: the BYOK caller-key path
+// (`x-openagents-provider: openrouter` / account-attached OpenRouter keys),
+// which forces `[OPENROUTER_KHALA_FALLBACK_ADAPTER_ID]` with the CALLER's key
+// (never the platform key) — see chat-completions-routes.ts. Do NOT re-add this
+// lane to a platform plan; physical removal to backroom can follow later if the
+// BYOK path is also retired.
+//
+// OpenRouter WAS used as a hidden Khala supply lane. The public customer model
 // remains `openagents/khala`; the pinned OpenRouter upstream model id is never
 // added to the public model catalog. The adapter speaks the OpenAI-compatible
 // Chat Completions shape and normalizes back into the shared provider-adapter

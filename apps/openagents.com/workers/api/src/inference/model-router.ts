@@ -264,22 +264,27 @@ const LANE_PLAN_BY_CLASS: Readonly<
   unknown: ['passthrough'],
 }
 
+// OWNER DECISION 2026-07-09: the platform OpenRouter lane is DROPPED from the
+// prod Khala plans. It previously LED the conversational chain, so after the
+// #8565 502 fix (which made a platform-key 402 overflow instead of hard-fail)
+// every request still paid a dead-lane ~0.5s 402 hop before overflowing. The
+// primary lane is now our own Google Cloud (Vertex) lane; OpenRouter is no
+// longer a platform supply lane here (the adapter stays registered only for the
+// BYOK caller-key path — see chat-completions-routes.ts). See
+// docs/incidents/2026-07-08-khala-502-openrouter-credit-exhaustion-aar.md.
 const KHALA_CONVERSATIONAL_ADAPTER_PLAN: ReadonlyArray<string> = [
-  OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
   VERTEX_GEMINI_ADAPTER_ID,
   FIREWORKS_ADAPTER_ID,
   HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
 ]
 
 const KHALA_FIREWORKS_DEEPSEEK_ADAPTER_PLAN: ReadonlyArray<string> = [
-  OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
   FIREWORKS_ADAPTER_ID,
   HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
   VERTEX_GEMINI_ADAPTER_ID,
 ]
 
 const KHALA_AGENT_TOOL_ADAPTER_PLAN: ReadonlyArray<string> = [
-  OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
   HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
   FIREWORKS_ADAPTER_ID,
   VERTEX_GEMINI_ADAPTER_ID,
@@ -289,19 +294,18 @@ const KHALA_AGENT_TOOL_ADAPTER_PLAN: ReadonlyArray<string> = [
 // honestly-tagged frontier-coding eval load (e.g. the MirrorCode gym rung) where
 // we deliberately want the best coding model Khala can serve rather than the
 // latency-first conversational backing. The frontier GLM coding lane leads;
-// it overflows to the proven Fireworks Khala backing, then the hidden OpenRouter
-// Granite lane before Vertex Gemini. The owned GLM-5.2-REAP lane is intentionally
-// EXCLUDED here because its tool-calling is unreliable for agentic coding loops
-// (see #6310), which is exactly what dumps these runs onto a weak fallback.
+// it overflows to the proven Fireworks Khala backing, then our Vertex Gemini
+// (gcloud) lane. The owned GLM-5.2-REAP lane is intentionally EXCLUDED here
+// because its tool-calling is unreliable for agentic coding loops (see #6310),
+// which is exactly what dumps these runs onto a weak fallback. (OpenRouter
+// dropped from the platform plan — owner decision 2026-07-09.)
 const KHALA_STRONG_CODING_ADAPTER_PLAN: ReadonlyArray<string> = [
   FIREWORKS_STRONG_CODING_ADAPTER_ID,
   FIREWORKS_ADAPTER_ID,
-  OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
   VERTEX_GEMINI_ADAPTER_ID,
 ]
 
 const KHALA_PAID_FAILOVER_ADAPTER_PLAN: ReadonlyArray<string> = [
-  OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
   VERTEX_GEMINI_ADAPTER_ID,
   FIREWORKS_ADAPTER_ID,
 ]
@@ -377,7 +381,8 @@ export const makeKhalaBackedAdapterPlan =
 // ----------------------------------------------------------------------------
 //
 // The normal Khala plan is an ORDERED overflow chain: every request starts on
-// the same primary lane (OpenRouter Granite today) and only moves to the next lane
+// the same primary lane (our Vertex Gemini / gcloud lane today) and only moves
+// to the next lane
 // when the primary typed-fails retryably (429 / 503 / transport). When the
 // primary lane serves at its own rate WITHOUT 429ing, every request pins to that
 // one lane and aggregate throughput is
@@ -470,11 +475,11 @@ const selectAdapterPlanForKhalaPaidFailover = (
 export const selectAdapterPlan = (model: string): ReadonlyArray<string> => {
   const normalizedModel = normalizeKhalaModelId(model)
   if (normalizedModel === KHALA_MODEL_ID) {
-    // Conversational Khala is latency-first: start with the pinned OpenRouter
-    // Granite lane, then Vertex Gemini, Fireworks, and the owned GLM lane once
-    // warm. Tool/agentic Khala requests use
-    // `selectAdapterPlanForKhalaToolRequest`, which keeps OpenRouter primary
-    // while putting the self-hosted GLM lane before the other fallbacks.
+    // Conversational Khala leads with our Google Cloud (Vertex Gemini) lane,
+    // then Fireworks and the owned GLM lane once warm. Tool/agentic Khala
+    // requests use `selectAdapterPlanForKhalaToolRequest`, which puts the
+    // self-hosted GLM lane first. (The platform OpenRouter lane was dropped —
+    // owner decision 2026-07-09; it survives only for BYOK caller keys.)
     // Explicit raw Hydralisk model ids below keep NO Gemini/Fireworks fallback —
     // they are deliberate supply-lane requests, not the generic Khala lane.
     return KHALA_CONVERSATIONAL_ADAPTER_PLAN

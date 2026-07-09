@@ -68,13 +68,46 @@ now-stale `@openagentsinc/tassadar-executor*` ambient declares. A future
 re-prune must rewrite the 13 importing files (or archive them) BEFORE deleting
 the package — verify with the cloudrun bundle build, not just typecheck.
 
-## Outstanding (not fixed here)
+## Lane dropped (owner decision 2026-07-09)
 
-- **Owner-gated:** the OpenRouter account balance is still ~0. The gateway now
-  serves by overflowing past the dead lane; topping up (or removing the
-  OpenRouter lane from the prod plan / dropping the prod
-  `OPENROUTER_API_KEY` like staging) is an owner money/posture decision.
-  Recorded in `NEEDS_OWNER.md`.
+The owner resolved the outstanding money/posture question by **dropping
+OpenRouter as a platform Khala lane entirely** ("drop the lane … we are going to
+use Gemma 4 via our gcloud primarily"). Even with the #8565 402→overflow fix,
+every request still paid a dead-lane ~0.5s 402 hop because OpenRouter still LED
+the plan. Changes (this pass):
+
+- `model-router.ts`: `OPENROUTER_KHALA_FALLBACK_ADAPTER_ID` removed from every
+  prod Khala plan (`KHALA_CONVERSATIONAL_*`, `*_FIREWORKS_DEEPSEEK_*`,
+  `*_AGENT_TOOL_*`, `*_STRONG_CODING_*`, `*_PAID_FAILOVER_*`). The conversational
+  plan now LEADS with our own Google Cloud (Vertex Gemini) lane, then Fireworks,
+  then the owned GLM lane. Tool-bearing Khala still leads with the owned GLM
+  lane. Router/dispatch/chat-completions tests updated to match.
+- `deploy-cloudrun.sh`: `OPENROUTER_API_KEY` dropped from the **production**
+  `--set-secrets` set (staging already omitted it), so the platform lane cannot
+  silently re-lead even if a plan is later mis-edited.
+- `openrouter-adapter.ts`: deprecation note added to the header. The adapter code
+  and tests are KEPT (physical removal to backroom can follow later) and it stays
+  REGISTERED (`index.ts`) for the **BYOK caller-key path only** — that path forces
+  `[OPENROUTER_KHALA_FALLBACK_ADAPTER_ID]` and supplies the caller's OWN key per
+  request, never the platform key. `index.ts registerOpenRouterAdapter` now
+  registers the adapter even with no platform key so removing the prod secret does
+  not break BYOK.
+
+**Gemma 4 specifically is NOT yet the primary** — the current gcloud lane serves
+`gemini-3.5-flash` (Vertex `aiplatform` publishers/google endpoint, SA-token).
+A true Gemma 4 Khala lane is a FOLLOW-UP: it needs a new adapter (or a
+`google_inference` variant of the vertex lane) targeting the **Generative
+Language API** `POST https://generativelanguage.googleapis.com/v1beta/models/gemma-4-31b-it:generateContent?key=GEMINI_API_KEY`
+(the exact path `apps/sarah/src/services/google-inference.ts` proved live under
+#8594), filtering Gemma's `thought:true` scratchpad parts, mapping
+`thoughtsTokenCount` into reasoning tokens, and with NO tool-calling (Gemma has
+none, so tool-bearing Khala must stay on the GLM/Fireworks lanes). Until that
+lands, "gcloud primarily" = the Vertex Gemini lane leads.
+
+## Outstanding (superseded by "Lane dropped" above)
+
+- ~~**Owner-gated:** the OpenRouter account balance is still ~0…~~ Resolved: the
+  platform lane is dropped rather than topped up.
 - **Separate fault — FIXED (see "Connection-pool fix" below):**
   `openagents-monolith` logged a continuous flood of
   `Exceeded maximum of 100 connections per instance

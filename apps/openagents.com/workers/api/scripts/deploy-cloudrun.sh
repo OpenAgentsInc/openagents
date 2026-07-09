@@ -79,10 +79,15 @@ SET_SECRETS=(
   "OPENAGENTS_ADMIN_API_TOKEN=openagents-monolith-admin-token-${ENV_SUFFIX}:latest"
   "KHALA_SYNC_LIVE_HUB_TOKEN=khala-live-hub-token:latest"
   "GEMINI_API_KEY=openagents-gemini-api-key:latest"
-  # OPENROUTER_API_KEY is PROD-ONLY (added in the production block below).
-  # AC-1 (#8503): staging deliberately omits it so the Khala plan's OpenRouter
-  # primary (valid key, zero OpenRouter balance -> non-retryable 402) cannot
-  # shadow the working Fireworks lane; staging Khala serves on deepseek-v4-flash.
+  # OPENROUTER_API_KEY is DROPPED on BOTH staging AND production (owner decision
+  # 2026-07-09): OpenRouter is no longer a platform Khala supply lane — it was
+  # removed from every plan in model-router.ts and the primary lane is now our
+  # own Google Cloud (Vertex). Omitting the secret means the platform lane cannot
+  # silently re-lead even if a plan is later mis-edited (same staging-proven
+  # omission pattern from AC-1 #8503). The OpenRouter ADAPTER stays registered
+  # for BYOK caller keys, which supply the caller's own key per request and never
+  # need this platform secret. See
+  # docs/incidents/2026-07-08-khala-502-openrouter-credit-exhaustion-aar.md.
   "FIREWORKS_API_KEY=openagents-fireworks-api-key:latest"
   "EXA_API_KEY=openagents-exa-api-key:latest"
   "RESEND_API_KEY=openagents-resend-api-key:latest"
@@ -106,9 +111,9 @@ SET_SECRETS=(
 
 if [[ "$TARGET" == "production" ]]; then
   SET_SECRETS+=(
-    # Prod-only: OpenRouter (a general provider lane + the prod Khala plan's
-    # fallback). Deliberately absent on staging (see the common block above).
-    "OPENROUTER_API_KEY=openagents-openrouter-api-key:latest"
+    # OPENROUTER_API_KEY was dropped here (owner decision 2026-07-09) — OpenRouter
+    # is no longer a platform Khala lane on prod OR staging. See the common block
+    # above. The BYOK caller-key path does not need this platform secret.
     # CFG-15: service tokens the monolith presents to the Cloud Run MDK
     # money-path daemons (x-treasury-service-token / x-tips-buffer-service-token).
     # The matching run.app URLs are committed wrangler vars. Sidecar token is
