@@ -1,7 +1,7 @@
 # MASTER ROADMAP — Sarah Fleet Command first; three OpenAgents apps
 
 - Date: 2026-07-09
-- Revision: 4
+- Revision: 5
 - Status: canonical OpenAgents implementation roadmap
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Issue source set: [`issues/README.md`](./issues/README.md)
@@ -89,11 +89,17 @@ The coding-fleet program starts from substantial working substrate:
 - a Pylon-owned mixed-kind supervisor and manager with zero duplicate claims;
 - a canonical Pylon-home `orchestration.sqlite` runtime whose runs and claims
   survive reopen, plus typed interrupted-executor recovery;
+- bounded durable work-source descriptors and a Pylon-owned planner that can
+  reconstruct fixture, pinned-issue, pinned-backlog, and pinned-plan-DAG work
+  after restart;
 - a real-account capacity mapper that preserves Codex/Claude worker kind,
   advertised slots, readiness, and honest marginal-cost class without silently
   substituting an unsupported harness;
 - a Pylon-only standing activation seam that recovers stale work before it
   idempotently resumes and refills an existing durable run;
+- a concrete assignment/process/heartbeat liveness adapter that distinguishes
+  live, dead, and unknown recovery evidence without treating PID presence as
+  sufficient;
 - Khala Sync fleet projections and steering mutators;
 - caller-owned Khala→Pylon assignments, exact token rows, private event
   archives, and closeout proofs;
@@ -102,7 +108,13 @@ The coding-fleet program starts from substantial working substrate:
 - Sarah's owned runtime, authenticated relationship, SSE bus, Blueprint Map,
   Actions, and Code/Receipts panels;
 - Sarah owner-safe FleetRun, continuity/stall, and six-section coding-closeout
-  schemas plus a tested Effect Native receipt card;
+  schemas plus tested Effect Native supervision and receipt views;
+- a same-origin exact-scope Sync cursor client, strict bounded entity reducer,
+  serializable tombstone/version state, and exact-cursor reopen seam, with the
+  Fleet view composed into Sarah only when an explicit owner projection exists;
+- a typed media-admission projection in which text is the floor, realtime
+  queues expire to text after 30 seconds, LIVE requires admission and transport
+  leases, and cost/recovery inputs remain explicit;
 - a bounded per-conversation VAD coalescer that prevents same-conversation
   parallel model calls; its live SSE fanout boundary is not yet wired.
 
@@ -112,14 +124,15 @@ The immediate gaps are now narrower composition and live-proof gaps:
   authority that a standing Pylon can claim. A local JSON-only FC-1 proposal is
   not sufficient for this boundary.
 - `pylon node` cannot yet reconstruct a real plan and executor from a Sarah run:
-  the durable work-source descriptor, concrete Codex/Claude/Grok runner
-  composition, explicit owner-local arming intake, and ref-to-process liveness
-  adapter are not all Pylon-owned and wired.
+  work-source planning and liveness are Pylon-owned, but the concrete named-
+  account capacity source, common Codex/Claude/Grok runner composition,
+  explicit owner-local arming intake, and node activation are not all wired.
 - Grok still uses a separate spawn path rather than the same production
   supervisor path as Codex and Claude.
-- Sarah's safe FleetRun projection and receipt card are code/fixture-proven but
-  not yet fed by an authenticated cursor-resumable live client; named controls,
-  approval/steering, reconnect, and exactly-once intent receipts remain.
+- Sarah's safe FleetRun projection, cursor client, persisted reducer, and views
+  are code/fixture-proven but not yet mounted against authenticated browser
+  persistence plus the live Sync tail. Real named controls, approval/steering,
+  reconnect, and exactly-once intent receipts remain.
 - The VAD coalescer needs a bounded multi-controller SSE fanout/replay boundary
   before it can preserve immediate first byte and one `publishAndRecord` while
   sharing a model turn.
