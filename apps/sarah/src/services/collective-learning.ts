@@ -46,6 +46,9 @@
  */
 
 import { createHash } from "node:crypto"
+import { mkdir, readFile, writeFile } from "node:fs/promises"
+import { dirname } from "node:path"
+import { fileURLToPath } from "node:url"
 
 import { PRICING_GUARD_PATTERN } from "../llm-openai-compat.ts"
 import { readSarahStore, sarahTurnStoreStatus } from "./turn-store.ts"
@@ -74,6 +77,16 @@ export type LearningTaxonomy =
   | "product_mapping"
   | "bad_fit_signal"
   | "follow_up_phrasing"
+
+/** Runtime list of the taxonomy labels (operator surfaces + oracles). */
+export const LEARNING_TAXONOMIES: readonly LearningTaxonomy[] = [
+  "objection",
+  "winning_answer",
+  "pain_phrase",
+  "product_mapping",
+  "bad_fit_signal",
+  "follow_up_phrasing",
+]
 
 export type LearningCandidateStatus = "pending" | "approved" | "rejected"
 
@@ -126,13 +139,49 @@ export function taxonomyForKind(kind: LearningCandidateKind): LearningTaxonomy {
   }
 }
 
+// Content cues for the SQ-6 taxonomy labels that no distill KIND emits
+// directly (bad_fit_signal, pain_phrase, follow_up_phrasing) — without these
+// half the issue-#8623 taxonomy would be unreachable dead labels. Like the
+// nomination cues below, they only label candidates for OFFLINE owner review;
+// they never route a user-facing response, select an answer, or gate serving.
+const BAD_FIT_CUES =
+  /\b(?:not (?:a|the) (?:good |right )?fit|no use case|don(?:'|’)?t (?:really )?need (?:this|it|that)|too small for (?:this|that|us)|just browsing|no plans to|never going to buy|only looking for (?:a )?free)\b/i
+
+const PAIN_PHRASE_CUES =
+  /\b(?:struggl(?:e|es|ing)|pain(?:ful| point)?|frustrat(?:ed|ing)|wast(?:e|es|ing) (?:so much )?time|takes? (?:us )?(?:forever|hours|days|too long)|manual(?:ly)?|tedious|bottleneck|error[- ]prone|drowning in|overwhelmed|can(?:'|’)?t keep up)\b/i
+
+const FOLLOW_UP_CUES =
+  /\b(?:follow(?:ing)? up|circle back|check back|touch base|next steps?|reach (?:back )?out|send (?:me|us) (?:more|the|some|over)|schedule (?:a|another)|book a (?:call|demo|meeting)|get back to (?:me|us))\b/i
+
+/**
+ * Content-based taxonomy for a freshly distilled candidate (SQ-6).
+ * Precedence: bad-fit cues beat pain cues beat follow-up cues beat the
+ * kind-derived default, because a bad-fit signal is the strongest reviewer
+ * triage fact regardless of which distillation lane nominated the turn.
+ * A cue-less recurring question defaults to product_mapping (absent pain
+ * language it is asking how the product maps to a need); `taxonomyForKind`
+ * stays the content-free fallback for pre-SQ-6 stored rows.
+ */
+export function classifyLearningTaxonomy(
+  kind: LearningCandidateKind,
+  redactedText: string,
+): LearningTaxonomy {
+  if (BAD_FIT_CUES.test(redactedText)) return "bad_fit_signal"
+  if (PAIN_PHRASE_CUES.test(redactedText)) return "pain_phrase"
+  if (FOLLOW_UP_CUES.test(redactedText)) return "follow_up_phrasing"
+  if (kind === "question_gap") return "product_mapping"
+  return taxonomyForKind(kind)
+}
+
 /** Deterministic generalization rationale shown to the owner at review time. */
 export function buildWhyGeneralize(input: {
   kind: LearningCandidateKind
   prospectCount: number
   summary: string
+  /** Content-classified taxonomy; falls back to the kind mapping. */
+  taxonomy?: LearningTaxonomy
 }): string {
-  const tax = taxonomyForKind(input.kind)
+  const tax = input.taxonomy ?? taxonomyForKind(input.kind)
   return (
     `Taxonomy=${tax}; observed across ${input.prospectCount} prospect(s). ` +
     `Generalize only if the redacted examples share the same intent without ` +
@@ -667,14 +716,19 @@ function buildGroupCandidate(
   const redactedExamples = group.members
     .slice(0, MAX_EXAMPLES_PER_CANDIDATE)
     .map((m) => m.redacted)
+  // SQ-6: metadata + taxonomy are computed AFTER redaction by construction —
+  // group.members are the nominated turns that survived redact-or-drop, so a
+  // dropped example never counts, never moves recency, and never feeds cues.
+  const taxonomy = classifyLearningTaxonomy(kind, representative.redacted)
   return {
     id: candidateId(kind, representative.normalized),
     kind,
-    taxonomy: taxonomyForKind(kind),
+    taxonomy,
     whyGeneralize: buildWhyGeneralize({
       kind,
       prospectCount: prospects.size,
       summary,
+      taxonomy,
     }),
     exampleCount: redactedExamples.length,
     sourceRecency: computeSourceRecency(
@@ -789,14 +843,17 @@ export async function distillLearningCandidates(): Promise<DistillResult> {
       const normalized = normalizeLearningText(redactedQ)
       if (bankNormalized.has(normalized)) continue
       const summary = clip(`Winning answer to: ${redactedQ}`, 300)
+      // SQ-6: classify on the (already redacted) question text.
+      const taxonomy = classifyLearningTaxonomy("winning_answer", redactedQ)
       const candidate: LearningCandidate = {
         id: candidateId("winning_answer", normalized),
         kind: "winning_answer",
-        taxonomy: taxonomyForKind("winning_answer"),
+        taxonomy,
         whyGeneralize: buildWhyGeneralize({
           kind: "winning_answer",
           prospectCount: 1,
           summary,
+          taxonomy,
         }),
         exampleCount: 2,
         sourceRecency: computeSourceRecency([q, a, ack]),
@@ -847,6 +904,75 @@ export function listLearningRegressionFixtures(): LearningRegressionFixture[] {
 
 export function __resetLearningRegressionFixturesForTest(): void {
   memoryRegressionFixtures.length = 0
+}
+
+/**
+ * SQ-6 durable fixture sink: the in-memory list above dies with the process,
+ * so material style changes are ALSO appended to the eval-harness fixture
+ * file (evals/learning-regression-fixtures.json) as todo entries carrying the
+ * approved redacted content — that file is what future changes are
+ * regression-checked against (committed-file oracle in the test sweep).
+ * Public-safe: only redacted candidate text and owner-authored answers enter.
+ */
+const LEARNING_REGRESSION_FIXTURES_SCHEMA =
+  "sarah.learning_regression_fixtures.v1"
+
+const DEFAULT_REGRESSION_FIXTURES_PATH = fileURLToPath(
+  new URL("../../evals/learning-regression-fixtures.json", import.meta.url),
+)
+
+function learningRegressionFixturesPath(): string | null {
+  const override = process.env.SARAH_LEARNING_FIXTURES_PATH?.trim()
+  if (override) return override
+  // Hermetic test runs must never dirty the committed fixtures file; the
+  // SQ-6 persistence tests opt in with SARAH_LEARNING_FIXTURES_PATH.
+  if (process.env.NODE_ENV === "test") return null
+  return DEFAULT_REGRESSION_FIXTURES_PATH
+}
+
+/**
+ * Append a fixture entry (idempotent per receipt). Fail-soft: a read-only
+ * filesystem (prod container) must never block an owner approval — the
+ * failure is surfaced as lastError on the ops status instead.
+ */
+async function persistLearningRegressionFixture(
+  fixture: LearningRegressionFixture,
+): Promise<boolean> {
+  const path = learningRegressionFixturesPath()
+  if (!path) return false // test run without an opt-in path: deliberate skip
+  try {
+    let entries: LearningRegressionFixture[] = []
+    let note: string | undefined
+    try {
+      const parsed = JSON.parse(await readFile(path, "utf8")) as {
+        note?: unknown
+        entries?: unknown
+      }
+      if (Array.isArray(parsed.entries)) {
+        entries = parsed.entries as LearningRegressionFixture[]
+      }
+      if (typeof parsed.note === "string") note = parsed.note
+    } catch {
+      // Missing/unreadable file: start a fresh document.
+    }
+    if (entries.some((existing) => existing.receiptId === fixture.receiptId)) {
+      return true
+    }
+    entries.push(fixture)
+    await mkdir(dirname(path), { recursive: true })
+    const doc = {
+      schema: LEARNING_REGRESSION_FIXTURES_SCHEMA,
+      ...(note ? { note } : {}),
+      entries,
+    }
+    await writeFile(path, `${JSON.stringify(doc, null, 2)}\n`)
+    return true
+  } catch (error) {
+    lastError = `regression_fixture_write_failed: ${
+      error instanceof Error ? error.message : String(error)
+    }`
+    return false
+  }
 }
 
 function newReceiptId(): string {
@@ -921,6 +1047,8 @@ export async function approveLearningCandidate(input: {
           "Approved learning materially changes answer style for this question; keep as regression fixture.",
       }
       memoryRegressionFixtures.push(regressionFixture)
+      // SQ-6 durable sink (fail-soft; never blocks the approval).
+      await persistLearningRegressionFixture(regressionFixture)
     }
     await addApprovedSarahAnswer({
       id: bankEntryId,

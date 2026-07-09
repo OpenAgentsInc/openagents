@@ -1,0 +1,5 @@
+{
+  "schema": "sarah.learning_regression_fixtures.v1",
+  "note": "SQ-6 (#8623) learned-answer style-regression fixtures. When an owner approval publishes a sarah_answer_bank entry whose answer materially changes Sarah's answer style (isMaterialStyleChange in collective-learning.ts), the fixture is appended here (schema sarah.learning_style_regression.v1 per entry) in addition to the in-memory list, so the approved redacted content survives restarts and future changes are regression-checked. Convert accumulated entries into served-answer checks in scripts/sarah-eval-suite.mjs. Public-safe: only redacted candidate text and owner-authored answers may appear; never raw prospect data (enforced by the committed-file oracle in src/services/collective-learning.test.ts).",
+  "entries": []
+}

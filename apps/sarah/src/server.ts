@@ -264,10 +264,19 @@ async function handleOperatorLearning(
       listLearningCandidates("approved"),
       listLearningReceipts(),
     ])
+    // SQ-6 (#8623): candidates carry taxonomy / whyGeneralize / exampleCount
+    // / sourceRecency; the summary gives the reviewer per-taxonomy pending
+    // counts for triage at a glance.
+    const taxonomySummary: Record<string, number> = {}
+    for (const candidate of pending) {
+      taxonomySummary[candidate.taxonomy] =
+        (taxonomySummary[candidate.taxonomy] ?? 0) + 1
+    }
     return json({
       pending,
       approved,
       receipts,
+      taxonomySummary,
       status: sarahCollectiveLearningStatus(),
     })
   }

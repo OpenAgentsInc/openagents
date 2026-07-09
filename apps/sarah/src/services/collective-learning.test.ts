@@ -21,6 +21,10 @@
  */
 
 import { afterEach, beforeAll, afterAll, describe, expect, test } from "bun:test"
+import { mkdtemp, readFile, rm } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+import { fileURLToPath } from "node:url"
 
 import {
   __resetLearningRegressionFixturesForTest,
@@ -28,9 +32,11 @@ import {
   __setSarahLearningTurnsForTest,
   approveLearningCandidate,
   buildWhyGeneralize,
+  classifyLearningTaxonomy,
   computeSourceRecency,
   distillLearningCandidates,
   isMaterialStyleChange,
+  LEARNING_TAXONOMIES,
   learningReceiptRef,
   listApprovedLearnings,
   listLearningCandidates,
@@ -43,6 +49,7 @@ import {
   rejectLearningCandidate,
   sarahLearningStoreMode,
   taxonomyForKind,
+  type LearningRegressionFixture,
   type LearningTurnRow,
 } from "./collective-learning.ts"
 import {
@@ -59,6 +66,7 @@ const ENV_KEYS = [
   "SARAH_OPERATOR_ADMIN_TOKEN",
   "OPENAGENTS_ADMIN_API_TOKEN",
   "SARAH_SEMANTIC_CACHE",
+  "SARAH_LEARNING_FIXTURES_PATH",
 ] as const
 
 beforeAll(() => {
@@ -81,6 +89,7 @@ afterEach(() => {
   __resetLearningRegressionFixturesForTest()
   delete process.env.SARAH_OPERATOR_ADMIN_TOKEN
   delete process.env.OPENAGENTS_ADMIN_API_TOKEN
+  delete process.env.SARAH_LEARNING_FIXTURES_PATH
 })
 
 let turnId = 0
@@ -163,6 +172,7 @@ describe("PII redaction — redact or drop, never keep", () => {
     for (const candidate of pending) {
       const everything = [
         candidate.summary,
+        candidate.whyGeneralize,
         candidate.questionCanonical ?? "",
         candidate.proposedAnswer ?? "",
         ...candidate.redactedExamples,
@@ -472,11 +482,29 @@ describe("contract sarah.collective_learning_owner_gated.v1 — admin guard on t
     )
     expect(listRes.status).toBe(200)
     const listing = (await listRes.json()) as {
-      pending: Array<{ id: string }>
+      pending: Array<{
+        id: string
+        taxonomy: string
+        whyGeneralize: string
+        exampleCount: number
+        sourceRecency: string | null
+      }>
       approved: unknown[]
+      taxonomySummary: Record<string, number>
     }
     expect(listing.pending.length).toBe(2)
     expect(listing.approved.length).toBe(0)
+    // SQ-6: the operator list surfaces taxonomy, rationale, and example
+    // metadata on every candidate plus per-taxonomy pending counts.
+    for (const candidate of listing.pending) {
+      expect(LEARNING_TAXONOMIES).toContain(
+        candidate.taxonomy as (typeof LEARNING_TAXONOMIES)[number],
+      )
+      expect(candidate.whyGeneralize.length).toBeGreaterThan(20)
+      expect(candidate.exampleCount).toBe(2)
+      expect(candidate.sourceRecency).not.toBeNull()
+    }
+    expect(listing.taxonomySummary).toEqual({ product_mapping: 2 })
 
     const [first, second] = listing.pending
     const approveRes = await handleSarahRequest(
@@ -636,5 +664,241 @@ describe("SQ-6 learning-queue review ergonomics (#8623)", () => {
       )
     }
     expect(listLearningRegressionFixtures().length).toBe(1)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// SQ-6 follow-up (#8623) — content-based taxonomy: all six labels reachable
+// ---------------------------------------------------------------------------
+
+describe("SQ-6 content-based taxonomy — every issue label is reachable", () => {
+  test("kind-derived defaults: objection, winning_answer, product_mapping", () => {
+    expect(
+      classifyLearningTaxonomy(
+        "objection",
+        "Honestly this feels too risky for our compliance team.",
+      ),
+    ).toBe("objection")
+    expect(
+      classifyLearningTaxonomy(
+        "winning_answer",
+        "How do agents report their work back to us?",
+      ),
+    ).toBe("winning_answer")
+    // A cue-less recurring question maps the product to a need — NOT a pain
+    // phrase (taxonomyForKind stays the content-free fallback for old rows).
+    expect(
+      classifyLearningTaxonomy(
+        "question_gap",
+        "Does the Khala API integrate with Salesforce?",
+      ),
+    ).toBe("product_mapping")
+  })
+
+  test("cue-based labels: bad_fit_signal, pain_phrase, follow_up_phrasing", () => {
+    expect(
+      classifyLearningTaxonomy(
+        "objection",
+        "Honestly this is not a good fit for us right now.",
+      ),
+    ).toBe("bad_fit_signal")
+    expect(
+      classifyLearningTaxonomy(
+        "question_gap",
+        "How do we stop wasting time on manual data entry?",
+      ),
+    ).toBe("pain_phrase")
+    expect(
+      classifyLearningTaxonomy(
+        "question_gap",
+        "Can you send me more details before we schedule a demo?",
+      ),
+    ).toBe("follow_up_phrasing")
+  })
+
+  test("precedence: bad-fit beats pain beats follow-up", () => {
+    expect(
+      classifyLearningTaxonomy(
+        "question_gap",
+        "We are struggling, but honestly there is no use case for this here.",
+      ),
+    ).toBe("bad_fit_signal")
+    expect(
+      classifyLearningTaxonomy(
+        "question_gap",
+        "We are struggling with manual work — can you follow up next week?",
+      ),
+    ).toBe("pain_phrase")
+  })
+
+  test("every classification lands in the typed enum", () => {
+    for (const text of [
+      "Why is onboarding so tedious?",
+      "we already use a competitor",
+      "no use case for this",
+      "circle back next quarter",
+      "How does billing work?",
+    ]) {
+      expect(LEARNING_TAXONOMIES).toContain(
+        classifyLearningTaxonomy("question_gap", text),
+      )
+    }
+  })
+
+  test("distillation stamps content-based taxonomy and a matching rationale", async () => {
+    __setSarahAnswerBankForTest([])
+    __setSarahLearningTurnsForTest([
+      turn("prospect:a", "user", "Why does onboarding need so much manual work?"),
+      turn("prospect:b", "user", "Why does onboarding need so much manual work?"),
+      turn("prospect:c", "user", "Does the Khala API integrate with Salesforce?"),
+      turn("prospect:d", "user", "Does the Khala API integrate with Salesforce?"),
+    ])
+    await distillLearningCandidates()
+    const pending = await listLearningCandidates("pending")
+    const pain = pending.find((c) => c.summary.includes("manual work"))
+    const mapping = pending.find((c) => c.summary.includes("Salesforce"))
+    expect(pain?.taxonomy).toBe("pain_phrase")
+    expect(pain?.whyGeneralize).toContain("Taxonomy=pain_phrase")
+    expect(mapping?.taxonomy).toBe("product_mapping")
+    expect(mapping?.whyGeneralize).toContain("Taxonomy=product_mapping")
+  })
+
+  test("redaction ordering: dropped examples never count or move recency", async () => {
+    __setSarahAnswerBankForTest([])
+    const first = turn("prospect:a", "user", "How does the Khala API handle rate limits?")
+    const second = turn("prospect:b", "user", "How does the Khala API handle rate limits?")
+    // Dropped by redaction (name introduction) — recorded LATEST, so if
+    // metadata were computed before redact-or-drop it would move
+    // sourceRecency forward and inflate exampleCount.
+    const dropped = turn(
+      "prospect:c",
+      "user",
+      "I'm Chris, how does the Khala API handle rate limits?",
+    )
+    __setSarahLearningTurnsForTest([first, second, dropped])
+    await distillLearningCandidates()
+    const [candidate] = await listLearningCandidates("pending")
+    expect(candidate).toBeDefined()
+    expect(candidate!.exampleCount).toBe(2)
+    expect(candidate!.sourceRecency).toBe(second.recordedAt)
+    expect(candidate!.sourceTurnIds).not.toContain(dropped.id)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// SQ-6 follow-up (#8623) — durable regression-fixture persistence
+// ---------------------------------------------------------------------------
+
+describe("SQ-6 regression fixtures — durable eval-harness sink", () => {
+  async function seedAndGetWinner() {
+    __setSarahAnswerBankForTest([])
+    __setSarahLearningTurnsForTest([
+      turn("prospect:a", "user", "How do agents report their work back to us?"),
+      turn(
+        "prospect:a",
+        "assistant",
+        "Every agent action produces a signed receipt you can audit in the dashboard, with full traceability.",
+      ),
+      turn("prospect:a", "user", "Perfect, that helps."),
+    ])
+    await distillLearningCandidates()
+    const pending = await listLearningCandidates("pending")
+    return pending.find((c) => c.kind === "winning_answer")!
+  }
+
+  test("a material style change persists the fixture with the approved redacted content", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "sarah-lrf-"))
+    const path = join(dir, "learning-regression-fixtures.json")
+    process.env.SARAH_LEARNING_FIXTURES_PATH = path
+    try {
+      const winner = await seedAndGetWinner()
+      const approval = await approveLearningCandidate({
+        id: winner.id,
+        by: "owner:chris",
+      })
+      expect(approval.ok).toBe(true)
+      if (!approval.ok) return
+      expect(approval.regressionFixture).not.toBeNull()
+
+      const doc = JSON.parse(await readFile(path, "utf8")) as {
+        schema: string
+        entries: LearningRegressionFixture[]
+      }
+      expect(doc.schema).toBe("sarah.learning_regression_fixtures.v1")
+      expect(doc.entries.length).toBe(1)
+      const entry = doc.entries[0]!
+      expect(entry.schema).toBe("sarah.learning_style_regression.v1")
+      expect(entry.candidateId).toBe(winner.id)
+      expect(entry.receiptId).toBe(approval.receipt.id)
+      expect(entry.questionCanonical).toContain("report their work")
+      expect(entry.newAnswer).toContain("signed receipt")
+      // Public-safe: only redacted content may enter the fixture file.
+      const text = JSON.stringify(doc)
+      expect(text).not.toMatch(/[\w.+-]+@[\w-]+\.[\w-]+/)
+      expect(text).not.toMatch(/\d{6,}/)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  test("approvals that publish nothing write no fixture file", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "sarah-lrf-"))
+    const path = join(dir, "learning-regression-fixtures.json")
+    process.env.SARAH_LEARNING_FIXTURES_PATH = path
+    try {
+      __setSarahAnswerBankForTest([])
+      __setSarahLearningTurnsForTest([
+        turn("prospect:a", "user", "Honestly this feels too risky for our compliance team."),
+        turn("prospect:b", "user", "Honestly this feels too risky for our compliance team."),
+      ])
+      await distillLearningCandidates()
+      const [objection] = await listLearningCandidates("pending")
+      const approval = await approveLearningCandidate({
+        id: objection!.id,
+        by: "owner:chris",
+      })
+      expect(approval.ok).toBe(true)
+      if (!approval.ok) return
+      expect(approval.bankEntryId).toBeNull()
+      expect(approval.regressionFixture).toBeNull()
+      await expect(readFile(path, "utf8")).rejects.toThrow()
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  test("without an opt-in path, hermetic runs skip the write (repo file untouched)", async () => {
+    const winner = await seedAndGetWinner()
+    const approval = await approveLearningCandidate({
+      id: winner.id,
+      by: "owner:chris",
+    })
+    expect(approval.ok).toBe(true)
+    if (!approval.ok) return
+    // NODE_ENV=test with no SARAH_LEARNING_FIXTURES_PATH: deliberate skip of
+    // the durable sink; the in-memory fixture and the approval still land.
+    expect(approval.regressionFixture).not.toBeNull()
+    expect(listLearningRegressionFixtures().length).toBe(1)
+  })
+
+  test("the committed fixture file is schema-valid and PII-free", async () => {
+    const committedPath = fileURLToPath(
+      new URL("../../evals/learning-regression-fixtures.json", import.meta.url),
+    )
+    const doc = JSON.parse(await readFile(committedPath, "utf8")) as {
+      schema: string
+      entries: LearningRegressionFixture[]
+    }
+    expect(doc.schema).toBe("sarah.learning_regression_fixtures.v1")
+    expect(Array.isArray(doc.entries)).toBe(true)
+    for (const entry of doc.entries) {
+      expect(entry.schema).toBe("sarah.learning_style_regression.v1")
+      expect(entry.receiptId).toMatch(/^lr_/)
+      expect(entry.questionCanonical.length).toBeGreaterThan(0)
+      expect(entry.newAnswer.length).toBeGreaterThan(0)
+      const text = `${entry.questionCanonical}\n${entry.previousAnswer ?? ""}\n${entry.newAnswer}`
+      expect(text).not.toMatch(/[\w.+-]+@[\w-]+\.[\w-]+/)
+      expect(text).not.toMatch(/\d{6,}/)
+    }
   })
 })
