@@ -1,7 +1,7 @@
 # MASTER ROADMAP — Sarah Fleet Command first; three OpenAgents apps
 
 - Date: 2026-07-09
-- Revision: 9
+- Revision: 10
 - Status: canonical OpenAgents implementation roadmap
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Issue source set: [`issues/README.md`](./issues/README.md)
@@ -122,6 +122,11 @@ The coding-fleet program starts from substantial working substrate:
   work, verifier, worker, and target pins into the one local registry before
   accepting the server claim, replays acceptance after restart, replaces only
   an exactly expired lease, and activates only through node `arm`/`status`;
+- registered-Pylon bearer claim/accept routes over the Postgres authority plus
+  a strict HTTPS-or-loopback client and serialized standing-node poller: owner
+  and Pylon authority are server-derived, claim idempotency survives dropped
+  responses and local import failure, malformed/private material fails closed,
+  and a refs-only loopback status makes unattended intake observable;
 - a Pylon-only standing activation seam that recovers stale work before it
   idempotently resumes and refills an existing durable run;
 - one canonical owned standing-executor composition that opens one Pylon-home
@@ -171,12 +176,12 @@ The coding-fleet program starts from substantial working substrate:
 The immediate gaps are now narrower composition and live-proof gaps:
 
 - The Postgres authority and authenticated Sarah tool/route are code- and
-  fixture-proven, but migration `0052_sarah_fleet_run_authority.sql` is not yet
-  applied in the target deployment.
-- Pylon can import, accept, reconcile, and activate a server-authoritative run
-  through an injected typed port, but the registered-Pylon bearer HTTP
-  claim/accept client and standing node poller are not yet integrated on
-  `main`. Until then there is no unattended Sarah-to-Pylon handoff.
+  fixture-proven, and migration `0052_sarah_fleet_run_authority.sql` is applied
+  and table-verified in staging and production. The registered-Pylon bearer
+  HTTP claim/accept transport and standing node poller are also code- and
+  fixture-proven on `main`. Their remaining gap is one integrated
+  Sarah-to-standing-Pylon fixture receipt and the subsequent deployed/live
+  canary; isolated seam tests do not establish C1.
 - The exact Grok executor is code- and fixture-proven through the same standing
   supervisor and claim registry as Codex/Claude. It has not spent a live Grok
   account in this program, and Grok usage remains explicitly `not_measured`.
@@ -198,8 +203,8 @@ P0 fixes those seams. It does not build another fleet system.
 
 | Lane | Narrowest proven state on `main` | Next blocking proof |
 | --- | --- | --- |
-| #8637 FC-1 | through `7bbf9cc064`: Postgres authority plus the authenticated Sarah tool/create/observe adapter are code-landed and fixture-proven | deploy migration; Pylon bearer claim/accept transport and node poller; integrated latency receipt |
-| #8633 FC-2 | through `b56b391c6c`: one-store standing runtime, exact three-harness runners, node control, and restart-safe remote import/accept/activate seam are code-landed and fixture-proven | compose real server transport/poller; live named Codex+Claude+Grok run; exact or explicit unmeasured usage receipt |
+| #8637 FC-1 | through `03365073c0`: Postgres authority, authenticated Sarah tool/create/observe adapter, deployed migration 0052, and registered-Pylon bearer claim/accept plus standing intake are code/fixture/deployment-proven at their narrowest respective rungs | integrated operator-conversation-to-closeout fixture with prospect refusal and latency receipt; then deployed canary |
+| #8633 FC-2 | through `03365073c0`: one-store standing runtime, exact three-harness runners, node control, restart-safe remote import/accept/activate, and real server transport/poller are code-landed and fixture-proven | live named Codex+Claude+Grok run; exact or explicit unmeasured usage receipt |
 | #8639 FC-3 | through `3d87cb609b`: exact-scope projection/controls/reconnect and fail-closed media/text/Fleet continuity are code-landed and fixture-proven | start-result-to-live-scope composition, owner-cookie reconnect canary, authorized steer, and integrated closeout proof |
 | #8640 FC-5 | acceptance contract only | C1 integrated fixture, then Phase A on one pinned deployment |
 
