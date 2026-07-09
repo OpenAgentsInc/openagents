@@ -39,7 +39,8 @@ Spec: `docs/sarah/2026-07-09-owned-avatar-video-pipeline-spec.md`.
 | v1 `sarah_reply.mp4` (21.84s) | MuseTalk, old audio, ~1.0 Mbps encode | GO on identity/sync; mouth soft/mushy; audio said "eye" for AI, slurred "coding"→"Cody's", peaked -0.2 dBFS |
 | v2 `sarah_reply_hq.mp4` (23.96s) | normalized-text audio, CRF16 (2.6 Mbps) | encode softness gone; residual MuseTalk 256² teeth softness; audio defects all fixed (STT round-trip verified) |
 | v2 `sarah_reply_enhanced.mp4` | + GFPGAN per-frame on the crop | crisp teeth/lips in stills, no measured flicker — but OWNER VERDICT: choppier, plastic, less humanlike in motion |
-| LatentSync 512² take | ByteDance LatentSync 1.6 diffusion | rendering on the L4 at time of writing; quality-tier comparison |
+| v3 tamed-GFPGAN take (A2+A3) | GFPGAN alpha-blend + feathered mouth mask + temporal EMA on delta | measured SMOOTHEST take so far (jerk 0.15) — current best MuseTalk-lane recipe |
+| LatentSync 512² take (D1) | ByteDance LatentSync 1.6 diffusion | BEST articulation of any take, but a visible 16-frame chunk-boundary hitch (jerk in phases 14–15 ≈ 1.9× baseline) — needs chunk-seam smoothing before it wins outright |
 
 ## What we measured (facts to reason from)
 
@@ -86,8 +87,9 @@ Spec: `docs/sarah/2026-07-09-owned-avatar-video-pipeline-spec.md`.
 - **Temporal smoothing of the enhanced crop**: EMA across frames on the
   GFPGAN output (or on its delta vs raw) to remove mode-snapping.
 - **Temporally-consistent face-video restoration** instead of per-frame GAN:
-  KEEP (ECCV 2024), PGTFormer, BasicVSR++/RealBasicVSR. Verify licenses
-  before adoption (CodeFormer is S-Lab NON-commercial — do not ship it).
+  FLAIR (MIT — the P0 candidate, see the license table below),
+  BasicVSR++/RealBasicVSR (Apache-2.0). KEEP (ECCV 2024) and PGTFormer are
+  license-blocked; CodeFormer is S-Lab NON-commercial — do not ship it.
 - **Crop-box smoothing**: verify the paste-back bbox is fixed/smoothed, not
   re-detected per frame.
 
@@ -112,9 +114,10 @@ Spec: `docs/sarah/2026-07-09-owned-avatar-video-pipeline-spec.md`.
 
 ### D. Model tier (quality ceiling)
 
-- **LatentSync 1.6** (512², diffusion): in flight; if naturalness wins,
-  it becomes the non-realtime recording tier even at slow render speed.
-  License: verify current repo LICENSE before shipping anything.
+- **LatentSync 1.6** (512², diffusion): rendered — best articulation of
+  any take (see D1 status below); adopted as the non-realtime recording
+  tier once the 16-frame chunk-boundary hitch is smoothed. License
+  verified Apache-2.0; 18GB VRAM minimum fits the L4.
 - MuseTalk parameter passes: bbox_shift sweep, v1.5 config review.
 - Watch the space: Hallo3 / EMO-class audio-driven portrait models for a
   future quality tier; evaluate strictly with the same QA protocol.
@@ -198,19 +201,66 @@ License verdicts (commercial use):
 | GFPGAN | Apache-2.0 | yes |
 | LatentSync 1.6 | Apache-2.0 | yes (18GB VRAM fits L4; slow diffusion) |
 | BasicVSR++ / RealBasicVSR | Apache-2.0 | yes (temporally consistent VSR) |
+| FLAIR (WACV, arXiv 2311.15445) | MIT (official repo `wustl-cig/FLAIR`, pretrained models available) | yes — P0 temporal face restorer |
+| RIFE (ECCV 2022) | MIT | yes (24→48fps final pass) |
 | CosyVoice2 | Apache-2.0 | yes |
+| Hallo2 | MIT | yes (offline opener candidates) |
+| Hallo3 | code MIT; model weights derivative of CogVideo-5B | model license chain needs review |
 | CodeFormer | S-Lab non-commercial | **NO** |
 | KEEP (ECCV'24) | S-Lab non-commercial | **NO** |
 | PGTFormer | non-commercial w/o permission | **NO** |
 | StableVSR | unverified | blocked until checked |
 
-Since every good temporally-consistent face restorer is license-blocked,
-the community-standard recipe for our stack is "tame GFPGAN": alpha-blend
-~0.45 with the raw crop + feathered mouth-only mask + temporal EMA on pixels
-and bbox coords. That, plus punctuation-prosody audio (drop hard letter
-spacing; CosyVoice2 has pronunciation-inpainting and instruct modes), is the
-v3 recipe now in flight. Local PDF copies of the underlying papers live in
-the workspace root repo under `projects/papers/` (see its manifest).
+CORRECTION (2026-07-09, `research.md`): an earlier draft of this section
+claimed every good temporally-consistent face restorer is license-blocked.
+That is now wrong — **FLAIR** (arXiv 2311.15445, WACV; official repo
+`wustl-cig/FLAIR`, MIT, pretrained models available) converts an image
+diffusion restorer into a video diffusion model with recurrent refinement
+and temporal self-attention, and it is the **P0 candidate to replace
+per-frame GFPGAN**. Until FLAIR is evaluated, the community-standard recipe
+for our stack remains "tame GFPGAN": alpha-blend ~0.45 with the raw crop +
+feathered mouth-only mask + temporal EMA on pixels and bbox coords. That,
+plus punctuation-prosody audio (drop hard letter spacing; CosyVoice2 has
+pronunciation-inpainting and instruct modes), is the v3 recipe now in
+flight. Local PDF copies of the underlying papers live in the workspace
+root repo under `projects/papers/` (see its manifest).
+
+## Adopted plan (from `research.md`, 2026-07-09)
+
+The owner's prioritized research doc `docs/sarah/research.md` is now the
+experiment authority for this lane. Its triage:
+
+- **P0 implement now:** LatentSync 1.6 (Apache-2.0, offline quality tier),
+  FLAIR (MIT, temporal face restorer — GFPGAN replacement candidate),
+  RIFE (MIT, 24→48fps final pass), CosyVoice2/3 prosody variants
+  (Apache-2.0), MuseTalk 1.5 tuning (fps lock, bbox sweep, audio padding),
+  BasicVSR++/RealBasicVSR (Apache-2.0, conservative temporal VSR), and
+  GFPGAN kept ONLY tamed (alpha 0.35–0.55 + feathered mask + EMA delta).
+- **P1 prerecorded openers:** Hallo2 (MIT); Hallo3 code is MIT but the
+  model weights inherit CogVideo-5B terms — review before shipping.
+- **Research-only/blocked:** KEEP, PGTFormer, CodeFormer (non-commercial),
+  BFVR-STC (CodeFormer-derived, unclear), StableVSR (repo MIT but the
+  StableSR/SD weight chain needs review).
+
+Experiments run in the A0–F2 matrix order defined in `research.md`
+(same script, same source clip, same crop inspection, same loudnorm, same
+owner playback protocol). Empirical status:
+
+| Test | Status |
+| --- | --- |
+| A2+A3 (tamed GFPGAN — the v3 recipe) | DONE — measured smoothest take (jerk 0.15) |
+| D1 (LatentSync 1.6) | DONE — best articulation, but a 16-frame chunk-boundary hitch (jerk in phases 14–15 ≈ 1.9× baseline) |
+| B1/E1 (RIFE 48fps over best A-take / LatentSync) | queued |
+| F1 (FLAIR over raw MuseTalk / LatentSync) | queued |
+| C1 (CosyVoice prosody variants) | queued |
+| Hallo2 opener comparison | queued |
+
+Local reference clones for all of the above now exist in the workspace
+root repo under `projects/repos/`: `LatentSync`, `GFPGAN`, `ECCV2022-RIFE`,
+`Practical-RIFE`, `BasicVSR_PlusPlus`, `RealBasicVSR`, `hallo2`,
+`StableVSR` — alongside the already-present `MuseTalk`, `CosyVoice`,
+`livetalking`, and `OpenAvatarChat`. FLAIR is `wustl-cig/FLAIR` on GitHub.
+Papers are mirrored in the workspace `projects/papers/`.
 
 Host access, run scripts, and receipts: see #8610/#8611 comments and
 `docs/sarah/2026-07-09-oav1-offline-proof-receipt.md`. Do not print secrets;

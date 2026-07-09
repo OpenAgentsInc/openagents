@@ -107,7 +107,7 @@ Key decisions and why:
 
 | Slot | v1 pick | License | Measured performance | Alternates / ladder |
 |---|---|---|---|---|
-| Lip sync | **MuseTalk 1.5** ([TMElyralab/MuseTalk](https://github.com/TMElyralab/MuseTalk)) | MIT, models commercial-OK | 42 FPS @ RTX 3080Ti, 72 FPS @ 4090 inside LiveTalking (256² crop → 720p paste-back) | v2: **Ditto** (Apache-2.0, TensorRT, 385 ms first-frame, adds head motion); **SoulX-FlashHead-Lite** (Apache-2.0, 96 FPS @ 4090, 3 streams @ 25 FPS — young); **LatentSync 1.6** offline-only for marketing renders (verify its LICENSE file — sources disagree Apache vs OpenRAIL++) |
+| Lip sync | **MuseTalk 1.5** ([TMElyralab/MuseTalk](https://github.com/TMElyralab/MuseTalk)) | MIT, models commercial-OK | 42 FPS @ RTX 3080Ti, 72 FPS @ 4090 inside LiveTalking (256² crop → 720p paste-back) | v2: **Ditto** (Apache-2.0, TensorRT, 385 ms first-frame, adds head motion); **SoulX-FlashHead-Lite** (Apache-2.0, 96 FPS @ 4090, 3 streams @ 25 FPS — young); **LatentSync 1.6** = the offline quality tier for the recording lane (license verified Apache-2.0; 18GB VRAM fits the L4 — see §9) |
 | Pipeline skeleton | **LiveTalking pattern** ([lipku/livetalking](https://github.com/lipku/livetalking), Apache-2.0, 8.3k★, v2.0.4 06/2026) — adopt it directly or port its frame-scheduler/sync/idle-compositing design into an owned Bun/Effect+Python service | Apache-2.0 | Two years of production use; WebRTC+RTMP egress; pluggable lip-sync + TTS seams | [OpenAvatarChat](https://github.com/HumanAIGC-Engineering/OpenAvatarChat) as architecture reference (handler graph, ~2.2 s e2e); Duix/HeyGem rejected (offline toolkit + revenue-carve-out license) |
 | TTS | **CosyVoice 2/3** ([FunAudioLLM/CosyVoice](https://github.com/FunAudioLLM/CosyVoice)) | Apache-2.0 | ~150 ms first packet, bidirectional streaming, 24 kHz, zero-shot clone from seconds of audio; already a LiveTalking plugin | **Chatterbox/Turbo** (MIT; vendor-claimed sub-200 ms — verify ourselves); interim managed: **Google Chirp 3 HD** `streaming_synthesize` (instant custom voice is allow-list gated); Kokoro as no-clone fallback. Disqualified for cloning: F5-TTS weights (CC-BY-NC), XTTS (CPML), Fish S1-mini (NC) |
 | Voice | Clone from a curated Sarah read (we record/generate the reference audio we own) | — | — | The synthetic character means the voice is also fully ours to define |
@@ -164,8 +164,8 @@ scheduler holds a small (~200 ms) jitter buffer so lips never lead the sound.
   RTF 2.248.
 - Chatterbox latency and its ElevenLabs blind-test numbers are vendor-run;
   measure before relying on them.
-- LatentSync's license is reported inconsistently (Apache-2.0 vs OpenRAIL++)
-  — read the LICENSE in the repo at adoption time.
+- LatentSync's license question is RESOLVED (2026-07-09): the official
+  ByteDance repo is Apache-2.0; 1.6 needs 18GB VRAM, which fits the L4.
 - Known MuseTalk failure modes: teeth smearing, occasional single-frame
   jitter, chin seam under rotation — mitigated by fixed framing, and clip
   selection can avoid strong head turns during speech.
@@ -188,12 +188,52 @@ scheduler holds a small (~200 ms) jitter buffer so lips never lead the sound.
   render service consumes the brain's streaming text; SSE cards unchanged;
   A/B against LiveAvatar on staging.
 - **OAV-5 — pre-rendered takes:** KHS-6 cache hits map to pre-rendered
-  audio+video takes (zero-inference answers); opener pre-rendered.
+  audio+video takes (zero-inference answers); opener pre-rendered
+  (no-initialism scripts — §9).
 - **OAV-6 — quality ladder:** Ditto A/B (head motion), SoulX-FlashHead-Lite
-  trial, LatentSync offline renders for marketing, fine-tune evaluation on
-  our footage.
+  trial, LatentSync offline renders per the §9 recording-lane tier,
+  fine-tune evaluation on our footage.
 
 Exit for the program: a full Sarah conversation on `/sarah` rendered entirely
 by owned infrastructure — no LiveAvatar session, no per-minute platform
 credits, first frame ≤ 300 ms after first audio — with the LiveAvatar seam
 retained as a fallback until the owner retires it.
+
+## 9. Enhancement + quality-tier policy (adopted 2026-07-09 from `research.md`)
+
+The OAV-1 proof round (#8610/#8611) produced owner verdicts and
+measurements; `docs/sarah/research.md` (the prioritized paper/repo triage)
+and `docs/sarah/2026-07-09-oav-quality-strategy.md` (empirical status)
+turned them into binding pipeline policy:
+
+1. **Full-strength per-frame GFPGAN is BANNED as a default enhancer** —
+   it makes stills sharper and motion plastic/choppy (owner-verified).
+   GFPGAN may ship only tamed: alpha-blended 0.35–0.55 against the raw
+   MuseTalk crop, inside a feathered mouth/lower-face mask, with the
+   enhancement delta temporally EMA'd
+   (`final = raw + EMA(alpha * (gfpgan - raw))`) and bbox coords
+   fixed/smoothed. This tamed recipe measured the smoothest take to date
+   (jerk 0.15). Touches: OAV-1 (#8611), OAV-2 (#8612).
+2. **LatentSync 1.6 is the offline quality tier for the recording lane** —
+   512² diffusion lip-sync; best measured articulation, pending a fix for
+   its 16-frame chunk-boundary hitch. Not realtime. Touches: OAV-5,
+   OAV-6, and the opener library.
+3. **FLAIR (MIT, `wustl-cig/FLAIR`) is the P0 permissive temporal
+   restorer** to evaluate as GFPGAN's replacement: run on the stabilized
+   face crop, paste back with the existing feathered mask, measure
+   temporal boil. Touches: OAV-1 enhancement step, OAV-6.
+4. **RIFE 24→48 fps is a final-pass presentation option** (MIT, cheap,
+   reversible) after mux timing is correct; never retime audio. Touches:
+   OAV-1, OAV-5 recorded takes.
+5. **The TTS seam includes CosyVoice prosody variants + a per-segment STT
+   round-trip gate.** Spoken-form normalization already runs before
+   synthesis (hydralisk `tts/normalize.py`, commit `40b2783`); prosody
+   variants (punctuated "A.I.", paused letter-speech, instruct/speed
+   controls) are selected by ear with the STT round-trip as the hard
+   correctness gate. Touches: OAV-3 (#8613), OAV-2 (#8612).
+6. **The opener library uses no-initialism scripts** — recorded standard
+   phrases are written around "AI"/"API" entirely rather than trusting
+   letter-speech prosody. Touches: OAV-5 and the KHS-6 semantic cache.
+
+Renderer-seam note: none of this changes the OAV-4 seam (#8614, landed) —
+quality tiers swap behind `renderer: owned`.

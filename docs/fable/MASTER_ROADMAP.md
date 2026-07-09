@@ -1,12 +1,31 @@
 # MASTER ROADMAP — Khala Code MVP (Tested, Submitted) → Sarah → Codex → AI Employees → the Suite
 
-Date: 2026-07-09 (rev 6.11 — KHS: Sarah × Khala lane family filed, #8599)
+Date: 2026-07-09 (rev 6.12 — OAV quality program adopts research.md, #8610)
 Status: **the single consolidated execution roadmap.** This document owns
 top-level sequencing across everything designed in the 2026-07-07 strategy
 set and its predecessors. The source docs remain authoritative for their
 *content* (specs, evidence, arguments); when sequencing here and sequencing
 there disagree, **this document wins**, and new issues are filed against the
 phase lanes named here.
+
+**Rev 6.12 changes (2026-07-09 — OAV QUALITY PROGRAM adopts the owner's
+research doc):** the owned avatar video lane family (epic **#8610**,
+OAV-1..6 #8611–…; OAV-4 renderer seam #8614 landed) gets an explicit
+quality program driven by `docs/sarah/research.md` (the owner's
+prioritized paper/repo triage: LatentSync 1.6, FLAIR, RIFE,
+CosyVoice2/3, MuseTalk tuning, BasicVSR++/RealBasicVSR, tamed GFPGAN,
+Hallo2/3, the license-blocked set, and the A0–F2 experiment matrix) and
+recorded as policy in `docs/sarah/2026-07-09-oav-quality-strategy.md`
+(adopted plan + empirical status) and the pipeline spec's new §9
+(enhancement/quality-tier policy). Empirical state: the tamed-GFPGAN v3
+recipe (alpha-blend + feathered mask + temporal EMA) measured the
+smoothest take (jerk 0.15); LatentSync 1.6 is the articulation winner
+but shows a 16-frame chunk-boundary hitch; the opener library v1 is
+rendered both ways awaiting QA; FLAIR (MIT — corrects the earlier
+"every temporal restorer is license-blocked" claim), RIFE 48fps,
+CosyVoice prosody variants, and Hallo2 remain queued. Full-strength
+per-frame GFPGAN is banned as a default enhancer. See the P1 "OAV
+quality program" entry.
 
 **Rev 6.11 changes (owner directive, 2026-07-09 — SARAH × KHALA, KHS
 lane family):** spoken to Sarah herself in her own production surface and
@@ -1063,6 +1082,23 @@ any send class to policy-bound is a later, receipted owner decision.
 Owner gates for Track C: Resend/domain arming + DNS, the sending
 subdomain choice, daily-cap ramp sign-offs, and pricing on anything
 Sarah quotes beyond existing packs.
+
+**OAV quality program (epic #8610; lanes OAV-1 #8611, OAV-2 #8612,
+OAV-3 #8613; OAV-4 seam #8614 landed):** the owned avatar renderer's
+"beautiful audio and video" bar is run as an experiment program, not
+taste. Authority: `docs/sarah/research.md` (the owner's prioritized
+triage — P0: LatentSync 1.6 / FLAIR / RIFE / CosyVoice2/3 / MuseTalk
+tuning / BasicVSR++/RealBasicVSR / tamed-only GFPGAN; P1: Hallo2/3
+openers; blocked: KEEP/PGTFormer/CodeFormer et al. — plus the A0–F2
+matrix) + `docs/sarah/2026-07-09-oav-quality-strategy.md` (adopted plan
+and measurements) + spec §9 (binding enhancement policy — full-strength
+per-frame GFPGAN banned as a default enhancer). Empirical state: the
+tamed-GFPGAN v3 recipe measured smoothest (jerk 0.15); LatentSync 1.6
+is the articulation winner with a 16-frame chunk-boundary hitch to
+smooth; the opener library v1 is rendered both ways awaiting QA;
+FLAIR/RIFE/CosyVoice-prosody/Hallo2 experiments are queued. Reference
+clones live in the workspace `projects/repos/`; papers in
+`projects/papers/`.
 
 **P1 exit receipts:** openagents.com/sarah live and hardened (SR-0
 list complete, token route protected, spend-capped); a stranger
