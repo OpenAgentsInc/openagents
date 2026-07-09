@@ -1,9 +1,9 @@
 import { createFileRoute } from '@tanstack/react-router'
 
-import { DownloadPage } from './-download-page'
+import { DownloadEffectNativePage } from './-download-effect-native-page'
 
 export const Route = createFileRoute('/download')({
-  component: DownloadPage,
+  component: DownloadEffectNativePage,
   head: () => ({
     meta: [
       { title: 'Download Autopilot - OpenAgents' },
