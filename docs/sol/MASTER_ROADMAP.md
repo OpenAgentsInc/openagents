@@ -1,7 +1,7 @@
 # MASTER ROADMAP — Sarah Fleet Command first; three OpenAgents apps
 
 - Date: 2026-07-09
-- Revision: 5
+- Revision: 6
 - Status: canonical OpenAgents implementation roadmap
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Issue source set: [`issues/README.md`](./issues/README.md)
@@ -95,6 +95,10 @@ The coding-fleet program starts from substantial working substrate:
 - a real-account capacity mapper that preserves Codex/Claude worker kind,
   advertised slots, readiness, and honest marginal-cost class without silently
   substituting an unsupported harness;
+- a Pylon-owned named-account capacity authority over strict local registry,
+  readiness, health, quota, usage, dispatch-breaker, and durable cross-run load
+  state; default homes, duplicate refs, and unsupported Grok custody fail
+  closed with fixed diagnostics;
 - a Pylon-only standing activation seam that recovers stale work before it
   idempotently resumes and refills an existing durable run;
 - a concrete assignment/process/heartbeat liveness adapter that distinguishes
@@ -112,11 +116,17 @@ The coding-fleet program starts from substantial working substrate:
 - a same-origin exact-scope Sync cursor client, strict bounded entity reducer,
   serializable tombstone/version state, and exact-cursor reopen seam, with the
   Fleet view composed into Sarah only when an explicit owner projection exists;
+- an exact-scope browser persistence and `/api/sync/connect` controller with
+  serial delta application, abort/dispose, bounded reconnect, stale watchdog,
+  cursor-gap catch-up, and first-class MustRefetch reasons; it is not yet
+  instantiated by the retained `/sarah` host;
 - a typed media-admission projection in which text is the floor, realtime
   queues expire to text after 30 seconds, LIVE requires admission and transport
   leases, and cost/recovery inputs remain explicit;
-- a bounded per-conversation VAD coalescer that prevents same-conversation
-  parallel model calls; its live SSE fanout boundary is not yet wired.
+- a bounded per-conversation VAD coalescer plus exact owner/conversation/turn
+  streaming fanout with one canonical publish/record attempt, bounded replay,
+  slow-subscriber isolation, and honest overflow/record-timeout outcomes; the
+  production inference/SSE route does not yet compose them.
 
 The immediate gaps are now narrower composition and live-proof gaps:
 
@@ -124,18 +134,19 @@ The immediate gaps are now narrower composition and live-proof gaps:
   authority that a standing Pylon can claim. A local JSON-only FC-1 proposal is
   not sufficient for this boundary.
 - `pylon node` cannot yet reconstruct a real plan and executor from a Sarah run:
-  work-source planning and liveness are Pylon-owned, but the concrete named-
-  account capacity source, common Codex/Claude/Grok runner composition,
+  work-source planning, liveness, and named Codex/Claude capacity are
+  Pylon-owned, but the common claimed-unit runner, Grok account/custody path,
   explicit owner-local arming intake, and node activation are not all wired.
 - Grok still uses a separate spawn path rather than the same production
   supervisor path as Codex and Claude.
 - Sarah's safe FleetRun projection, cursor client, persisted reducer, and views
-  are code/fixture-proven but not yet mounted against authenticated browser
-  persistence plus the live Sync tail. Real named controls, approval/steering,
-  reconnect, and exactly-once intent receipts remain.
-- The VAD coalescer needs a bounded multi-controller SSE fanout/replay boundary
-  before it can preserve immediate first byte and one `publishAndRecord` while
-  sharing a model turn.
+  are code/fixture-proven, and the browser persistence/live-tail controller now
+  exists, but the retained `/sarah` composition does not instantiate it. Real
+  named controls, approval/steering, deployed reconnect, and exactly-once intent
+  receipts remain.
+- The VAD coalescer and bounded multi-controller fanout are fixture-proven but
+  still need production inference/SSE composition to preserve immediate first
+  byte and one `publishAndRecord` while sharing a model turn.
 - No integrated Sarah→standing-Pylon fixture has satisfied C1, and no real
   Codex+Claude+Grok burn has satisfied C2.
 - Agent Computer Codex still lacks the new live Firecracker proof.

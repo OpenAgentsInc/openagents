@@ -37,7 +37,7 @@ When documents disagree, use this order:
    status. When they move, Sol must reconcile rather than repeat stale prose.
 
 The current roadmap reset is dated 2026-07-09 and recorded in
-[`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md) rev 5. Issue state and
+[`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md) rev 6. Issue state and
 implementation status can move faster than essays; current code, issue state,
 and receipts win when they do.
 
