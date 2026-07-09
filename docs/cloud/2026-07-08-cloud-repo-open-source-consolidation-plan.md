@@ -1,7 +1,7 @@
 # Cloud repo open-source consolidation plan
 
 Date: 2026-07-08
-Status: implementation landed (code move); production cutover pending
+Status: implementation landed; Phase 6 control-plane cutover executed 2026-07-09 (see receipts/)
 Tracking: #8591
 Source commit: f87a60c3a7600ae377ec392052f8d85dcc9af421
 Scope: move the non-deprecated OpenAgents Cloud infra that still lives in the

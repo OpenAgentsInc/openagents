@@ -16,11 +16,14 @@ brokered, or provided through scoped platform identity outside the image.
 USAGE
 }
 
-repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# scripts/cloud → monorepo root
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# Default local registry name; pass a full AR path via --registry for push.
 registry="openagents-cloud"
 tag="${OPENAGENTS_CLOUD_IMAGE_TAG:-local}"
 push="false"
 load="false"
+only=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -39,6 +42,10 @@ while [[ $# -gt 0 ]]; do
     --load)
       load="true"
       shift
+      ;;
+    --only)
+      only="${2:-}"
+      shift 2
       ;;
     -h|--help)
       usage
@@ -88,7 +95,10 @@ build_image() {
   local dockerfile="$2"
   local image="${registry}/${name}:${tag}"
 
+  # Cloud GCE hosts are linux/amd64. Always target that platform even when
+  # building from Apple Silicon (avoids arm64 images that cannot start on GCE).
   "${builder[@]}" \
+    --platform linux/amd64 \
     "${output_args[@]}" \
     --build-arg "IMAGE_CREATED=${created}" \
     --build-arg "IMAGE_REVISION=${revision}" \
@@ -103,6 +113,12 @@ build_image() {
   printf '%s\n' "$image"
 }
 
-build_image oa-node docker/cloud/oa-node.Dockerfile
-build_image oa-workroomd docker/cloud/oa-workroomd.Dockerfile
-build_image oa-codex-control docker/cloud/oa-codex-control.Dockerfile
+if [[ -z "$only" || "$only" == "oa-node" ]]; then
+  build_image oa-node docker/cloud/oa-node.Dockerfile
+fi
+if [[ -z "$only" || "$only" == "oa-workroomd" ]]; then
+  build_image oa-workroomd docker/cloud/oa-workroomd.Dockerfile
+fi
+if [[ -z "$only" || "$only" == "oa-codex-control" ]]; then
+  build_image oa-codex-control docker/cloud/oa-codex-control.Dockerfile
+fi

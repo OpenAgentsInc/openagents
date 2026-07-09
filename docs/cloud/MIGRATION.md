@@ -48,7 +48,7 @@ runtime env only.
 | 3 Agent Computer VM path | code moved; live lane remains env-gated |
 | 4 workroomd | done (crate + tests + Agent Computer image staging script) |
 | 5 oa-node | done (crate + tests + authority docs rewrite) |
-| 6 production cutover | **pending** staging deploy + #8503 DoD |
+| 6 production cutover | **control plane cut over** to openagents-built image (see `docs/cloud/receipts/2026-07-09-phase6-openagents-cutover.md`); full mobile Firecracker DoD not re-run |
 
 ## Build / test
 
@@ -71,3 +71,7 @@ work lands in this monorepo. See private cloud README pointer update.
 - Agent Computer image bake references in-repo `oa-workroomd` via `apps/pylon/deploy/agent-computer/build-workroomd-for-image.sh`.
 - Named loopback smoke: `scripts/cloud/fake-control-plane-loopback-smoke.sh` (placement → events → cancel → fake GCE → fake Cloud-VM).
 - Phase 6 production cutover remains owner-gated.
+
+## Phase 6 cutover receipt
+
+See `docs/cloud/receipts/2026-07-09-phase6-openagents-cutover.md`.
