@@ -15,8 +15,6 @@
     "closeout:gpu-media": "bun scripts/gpu-media-run-closeout.mjs",
     "test:quality-scoreboard": "bun test scripts/quality-scoreboard.test.mjs",
     "scoreboard:quality": "bun scripts/quality-scoreboard.mjs",
-    "test:sales-quality": "bun test scripts/sales-quality-eval.test.mjs",
-    "eval:sales-quality": "bun scripts/sales-quality-eval.mjs",
     "smoke:s3-token-guard": "bun scripts/smoke-s3-token-guard.mjs",
     "smoke:s8-continuity": "bun scripts/sarah-s8-continuity-smoke.mjs",
     "smoke:s8-suppression": "bun scripts/sarah-s8-email-suppression-smoke.mjs",
