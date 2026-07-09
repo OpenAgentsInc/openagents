@@ -1,7 +1,7 @@
 # MASTER ROADMAP — Sarah Fleet Command first; three OpenAgents apps
 
 - Date: 2026-07-09
-- Revision: 8
+- Revision: 9
 - Status: canonical OpenAgents implementation roadmap
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Issue source set: [`issues/README.md`](./issues/README.md)
@@ -113,6 +113,15 @@ The coding-fleet program starts from substantial working substrate:
   and work-unit rows, canonical fingerprints/idempotency conflicts, pinned
   public-repository validation, active owner-linked Pylon intake leases, exact
   claim acceptance, and an owner-safe Sync draft projection;
+- the actual authenticated Sarah `coding_fleet_start` tool and
+  `POST|GET /api/sarah/fleet-runs` production adapter: human owner and
+  relationship policy are server-derived, Postgres is mandatory, response
+  envelopes are exact-schema decoded, hostile/private material is rejected,
+  and refreshed OpenAuth cookies propagate back to the browser;
+- a strict Pylon remote-intake seam that durably imports the exact server run,
+  work, verifier, worker, and target pins into the one local registry before
+  accepting the server claim, replays acceptance after restart, replaces only
+  an exactly expired lease, and activates only through node `arm`/`status`;
 - a Pylon-only standing activation seam that recovers stale work before it
   idempotently resumes and refills an existing durable run;
 - one canonical owned standing-executor composition that opens one Pylon-home
@@ -147,6 +156,11 @@ The coding-fleet program starts from substantial working substrate:
 - a typed media-admission projection in which text is the floor, realtime
   queues expire to text after 30 seconds, LIVE requires admission and transport
   leases, and cost/recovery inputs remain explicit;
+- browser media truth in which LIVE additionally requires a fresh decoded
+  frame on a live track, projection is cadence-bounded, start/stop are bounded
+  and generation-fenced, every successful mint has one coalesced authoritative
+  server cleanup, and cleanup pending/unconfirmed blocks replacement without
+  removing text or an exact-scope Fleet surface;
 - a bounded per-conversation VAD coalescer plus exact prospect/conversation/
   turn streaming coordinator and OpenAI-SSE adapter with immediate role bytes,
   keepalives, one canonical producer/publish-and-record attempt, bounded replay,
@@ -156,14 +170,13 @@ The coding-fleet program starts from substantial working substrate:
 
 The immediate gaps are now narrower composition and live-proof gaps:
 
-- The production Postgres FleetRun authority is code- and fixture-proven, but
-  its migration is not deployed and no authenticated Sarah route is composed
-  over it yet. The owner and policy-owned relationship mode must come from the
-  server auth/policy context, never client or model input.
-- `pylon node` can arm, inspect, disarm, and resume one already-known local run,
-  but it cannot yet discover a server FleetRun, acquire its intake lease,
-  idempotently import it into `orchestration.sqlite`, accept it after import,
-  and activate it without a supervising control process.
+- The Postgres authority and authenticated Sarah tool/route are code- and
+  fixture-proven, but migration `0052_sarah_fleet_run_authority.sql` is not yet
+  applied in the target deployment.
+- Pylon can import, accept, reconcile, and activate a server-authoritative run
+  through an injected typed port, but the registered-Pylon bearer HTTP
+  claim/accept client and standing node poller are not yet integrated on
+  `main`. Until then there is no unattended Sarah-to-Pylon handoff.
 - The exact Grok executor is code- and fixture-proven through the same standing
   supervisor and claim registry as Codex/Claude. It has not spent a live Grok
   account in this program, and Grok usage remains explicitly `not_measured`.
@@ -185,9 +198,9 @@ P0 fixes those seams. It does not build another fleet system.
 
 | Lane | Narrowest proven state on `main` | Next blocking proof |
 | --- | --- | --- |
-| #8637 FC-1 | `3f34c65e3f`: Postgres authority is code-landed and fixture-proven | deploy migration; authenticated Sarah adapter; Pylon import/accept bridge; integrated latency receipt |
-| #8633 FC-2 | through `9d026d313c`: one-store standing runtime, node arm/status/disarm, exact Codex/Claude runner, exact Grok runner, and deterministic three-harness fixture are code-landed and fixture-proven | server discovery/import/accept/activate; live named Codex+Claude+Grok run; exact or explicit unmeasured usage receipt |
-| #8639 FC-3 | retained `/sarah` exact-scope projection, reconnect controller, controls, approvals, and closeout views are code-landed and fixture-proven | authenticated integrated projection/control route, owner-cookie reconnect canary, authorized steer, and full text-control survival proof |
+| #8637 FC-1 | through `7bbf9cc064`: Postgres authority plus the authenticated Sarah tool/create/observe adapter are code-landed and fixture-proven | deploy migration; Pylon bearer claim/accept transport and node poller; integrated latency receipt |
+| #8633 FC-2 | through `b56b391c6c`: one-store standing runtime, exact three-harness runners, node control, and restart-safe remote import/accept/activate seam are code-landed and fixture-proven | compose real server transport/poller; live named Codex+Claude+Grok run; exact or explicit unmeasured usage receipt |
+| #8639 FC-3 | through `3d87cb609b`: exact-scope projection/controls/reconnect and fail-closed media/text/Fleet continuity are code-landed and fixture-proven | start-result-to-live-scope composition, owner-cookie reconnect canary, authorized steer, and integrated closeout proof |
 | #8640 FC-5 | acceptance contract only | C1 integrated fixture, then Phase A on one pinned deployment |
 
 These rows are implementation receipts, not issue closure. The commit named in
