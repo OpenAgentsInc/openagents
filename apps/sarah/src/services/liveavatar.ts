@@ -163,10 +163,14 @@ export async function mintSarahAvatarSession({
 
   try {
     const base = await baseContext()
+    // Context names must be unique account-wide (LiveAvatar rejects
+    // duplicates — the 2026-07-09 returning-prospect 502). Identity lives in
+    // the prompt marker, so the name just gets a per-mint suffix; contexts
+    // are deleted at session stop and GC'd by the reaper.
     const contextResponse = await liveAvatarFetch("/v1/contexts", {
       method: "POST",
       body: JSON.stringify({
-        name: `sarah-session-${conversationRef.slice(0, 60)}`,
+        name: `sarah-session-${crypto.randomUUID().slice(0, 8)}-${conversationRef.slice(0, 48)}`,
         prompt: `${base.prompt}\n\n[conversation_ref: ${conversationRef}]`,
         opening_text: base.openingText,
       }),
@@ -301,6 +305,32 @@ export function reapStaleAvatarSessions(maxAgeMs = 30 * 60_000): void {
   const cutoff = Date.now() - maxAgeMs
   for (const [, session] of activeSessions) {
     if (session.startedAt < cutoff) void stopSarahAvatarSession(session.sessionId)
+  }
+  void gcOrphanedSessionContexts()
+}
+
+/** Delete leaked sarah-session-* contexts (crashed instances, pre-GC code). */
+let lastContextGc = 0
+async function gcOrphanedSessionContexts(): Promise<void> {
+  if (Date.now() - lastContextGc < 10 * 60_000) return
+  lastContextGc = Date.now()
+  try {
+    const response = await liveAvatarFetch("/v1/contexts?page_size=100", { method: "GET" })
+    if (!response.ok) return
+    const data = (await response.json()) as {
+      data?: { results?: Array<{ id: string; name?: string; created_at?: string }> }
+    }
+    const active = new Set([...activeSessions.values()].map((s) => s.contextId))
+    const cutoff = Date.now() - 60 * 60_000
+    for (const context of data.data?.results ?? []) {
+      if (!context.name?.startsWith("sarah-session-")) continue
+      if (active.has(context.id)) continue
+      const created = context.created_at ? Date.parse(`${context.created_at}Z`) : 0
+      if (created > cutoff) continue
+      await liveAvatarFetch(`/v1/contexts/${context.id}`, { method: "DELETE" }).catch(() => {})
+    }
+  } catch {
+    // GC is hygiene, never a failure.
   }
 }
 
