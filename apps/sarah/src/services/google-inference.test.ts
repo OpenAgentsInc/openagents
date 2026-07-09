@@ -25,7 +25,10 @@ import {
   streamSarahGemmaReply,
   toGatewayMessages,
 } from "./google-inference.ts"
-import type { GemmaStreamEvent } from "./google-inference.ts"
+import type {
+  GemmaStreamEvent,
+  SarahTextInferenceSpendAlert,
+} from "./google-inference.ts"
 
 const ENV_KEYS = [
   "GEMINI_API_KEY",
@@ -33,6 +36,7 @@ const ENV_KEYS = [
   "SARAH_INFERENCE_GATEWAY_TOKEN",
   "SARAH_INFERENCE_GATEWAY_MODEL",
   "SARAH_TEXT_DAILY_TOKEN_CAP",
+  "SARAH_TEXT_SPEND_ALERT_THRESHOLD",
   "SARAH_TEXT_MODEL",
   "SARAH_TEXT_MODEL_FALLBACKS",
 ] as const
@@ -120,6 +124,8 @@ async function collect(
   for await (const event of events) out.push(event)
   return out
 }
+
+const ignoreSpendAlert = (): void => {}
 
 describe("arming / transport selection", () => {
   test("flag-off default: nothing armed without any env", () => {
@@ -442,7 +448,66 @@ describe("gateway streaming", () => {
   })
 })
 
-describe("daily token cost cap (#8600 deliverable 3)", () => {
+describe("daily token cap and spend alert (#8600)", () => {
+  test("emits one typed public-safe threshold alert before hard refusal", async () => {
+    armGateway()
+    process.env.SARAH_TEXT_DAILY_TOKEN_CAP = "250"
+    process.env.SARAH_TEXT_SPEND_ALERT_THRESHOLD = "0.5"
+    const calls: RecordedCall[] = []
+    const alerts: SarahTextInferenceSpendAlert[] = []
+    const fetchImpl = recordingFetch(() => gatewayJsonResponse(), calls)
+    const spendAlertSink = (alert: SarahTextInferenceSpendAlert): void => {
+      alerts.push(alert)
+    }
+
+    const turn = () =>
+      generateSarahGemmaReply({
+        system: "s",
+        contents: [{ role: "user" as const, parts: [{ text: "hi" }] }],
+        fetchImpl,
+        spendAlertSink,
+      })
+
+    expect((await turn()).ok).toBe(true)
+    expect(alerts).toHaveLength(0)
+
+    // The second exact 100-token receipt crosses the 125-token threshold.
+    expect((await turn()).ok).toBe(true)
+    expect(alerts).toHaveLength(1)
+    expect(alerts[0]).toMatchObject({
+      type: "sarah.text_inference_spend_alert.v1",
+      usageTruth: "provider_reported",
+      providerReportedTokens: 200,
+      dailyTokenCap: 250,
+      thresholdTokens: 125,
+    })
+    expect(Object.keys(alerts[0]!).sort()).toEqual(
+      [
+        "dailyTokenCap",
+        "day",
+        "emittedAt",
+        "providerReportedTokens",
+        "thresholdTokens",
+        "type",
+        "usageTruth",
+      ].sort(),
+    )
+    expect(JSON.stringify(alerts[0])).not.toContain("test-agent-token")
+    expect(JSON.stringify(alerts[0])).not.toContain("openagents/khala")
+
+    // Crossing the cap does not duplicate the threshold alert. The following
+    // call refuses before provider fetch, after the alert is already visible.
+    expect((await turn()).ok).toBe(true)
+    expect(alerts).toHaveLength(1)
+    const refusal = await turn()
+    expect(refusal).toEqual({
+      ok: false,
+      error: SARAH_DAILY_TOKEN_CAP_ERROR,
+    })
+    expect(alerts).toHaveLength(1)
+    expect(calls).toHaveLength(3)
+  })
+
   test("cap refusal after exact provider-reported usage crosses the cap", async () => {
     armGateway()
     process.env.SARAH_TEXT_DAILY_TOKEN_CAP = "150"
@@ -452,6 +517,7 @@ describe("daily token cost cap (#8600 deliverable 3)", () => {
       system: "s",
       contents: [{ role: "user", parts: [{ text: "hi" }] }],
       fetchImpl,
+      spendAlertSink: ignoreSpendAlert,
     })
     expect(first.ok).toBe(true)
 
@@ -460,6 +526,7 @@ describe("daily token cost cap (#8600 deliverable 3)", () => {
       system: "s",
       contents: [{ role: "user", parts: [{ text: "hi" }] }],
       fetchImpl,
+      spendAlertSink: ignoreSpendAlert,
     })
     expect(second.ok).toBe(true)
 
@@ -469,6 +536,7 @@ describe("daily token cost cap (#8600 deliverable 3)", () => {
       system: "s",
       contents: [{ role: "user", parts: [{ text: "hi" }] }],
       fetchImpl: recordingFetch(gatewayJsonResponse(), calls),
+      spendAlertSink: ignoreSpendAlert,
     })
     expect(third).toEqual({ ok: false, error: SARAH_DAILY_TOKEN_CAP_ERROR })
     expect(calls).toHaveLength(0)
@@ -483,6 +551,7 @@ describe("daily token cost cap (#8600 deliverable 3)", () => {
       system: "s",
       contents: [{ role: "user", parts: [{ text: "hi" }] }],
       fetchImpl: recordingFetch(gatewayJsonResponse(), []),
+      spendAlertSink: ignoreSpendAlert,
     })
     const calls: RecordedCall[] = []
     const events = await collect(
@@ -490,12 +559,33 @@ describe("daily token cost cap (#8600 deliverable 3)", () => {
         system: "s",
         contents: [{ role: "user", parts: [{ text: "hi" }] }],
         fetchImpl: recordingFetch(gatewayJsonResponse(), calls),
+        spendAlertSink: ignoreSpendAlert,
       }),
     )
     expect(events).toEqual([
       { type: "error", error: SARAH_DAILY_TOKEN_CAP_ERROR },
     ])
     expect(calls).toHaveLength(0)
+  })
+
+  test("absent provider usage never invents threshold progress", async () => {
+    armGateway()
+    process.env.SARAH_TEXT_DAILY_TOKEN_CAP = "1"
+    const alerts: SarahTextInferenceSpendAlert[] = []
+    const result = await generateSarahGemmaReply({
+      system: "s",
+      contents: [{ role: "user", parts: [{ text: "hi" }] }],
+      fetchImpl: recordingFetch(gatewayJsonResponse({ usage: {} }), []),
+      spendAlertSink: (alert) => {
+        alerts.push(alert)
+      },
+    })
+
+    expect(result).toMatchObject({
+      ok: true,
+      usage: { totalTokens: 0 },
+    })
+    expect(alerts).toHaveLength(0)
   })
 
   test("unset cap is a pure no-op", async () => {

@@ -148,7 +148,7 @@ export type GemmaTurnUsage = {
 }
 
 // ---------------------------------------------------------------------------
-// Per-day token cost cap (#8600 deliverable 3).
+// Per-day token cap + threshold alert (#8600).
 //
 // A cheap, process-local guard on Sarah's inference lane: when
 // `SARAH_TEXT_DAILY_TOKEN_CAP` is set (> 0), calls refuse with the typed error
@@ -158,12 +158,32 @@ export type GemmaTurnUsage = {
 // Callers map the refusal to the canned busy reply (isSarahInferenceBusyError).
 // Best-effort by design (in-memory, per-process — Sarah is a single Bun
 // server); the authoritative ledger is the gateway's `token_usage_events`.
-// Unset/invalid cap => the guard is a pure no-op.
+// A once-per-UTC-day alert fires when exact reported usage reaches the
+// configured fraction of the cap. It is deliberately denominated in tokens:
+// Sarah does not invent a currency cost from provider usage. The default sink
+// is the operations log and the event contains no model, prompt, credential,
+// provider payload, or private user material. Unset/invalid cap => both the
+// guard and alert are pure no-ops.
 // ---------------------------------------------------------------------------
 
 export const SARAH_DAILY_TOKEN_CAP_ERROR = "sarah_daily_token_cap_exceeded"
 
+export type SarahTextInferenceSpendAlert = {
+  type: "sarah.text_inference_spend_alert.v1"
+  day: string
+  usageTruth: "provider_reported"
+  providerReportedTokens: number
+  dailyTokenCap: number
+  thresholdTokens: number
+  emittedAt: string
+}
+
+export type SarahTextInferenceSpendAlertSink = (
+  alert: SarahTextInferenceSpendAlert,
+) => void | Promise<void>
+
 let dailyTokenUsage = { day: "", totalTokens: 0 }
+let spendAlertedDay = ""
 
 function utcDay(): string {
   return new Date().toISOString().slice(0, 10)
@@ -172,6 +192,11 @@ function utcDay(): string {
 export function sarahDailyTokenCap(): number | null {
   const raw = Number(process.env.SARAH_TEXT_DAILY_TOKEN_CAP ?? NaN)
   return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : null
+}
+
+export function sarahTextSpendAlertThreshold(): number {
+  const raw = Number(process.env.SARAH_TEXT_SPEND_ALERT_THRESHOLD ?? 0.8)
+  return Number.isFinite(raw) && raw > 0 && raw <= 1 ? raw : 0.8
 }
 
 export function sarahDailyTokenUsage(): { day: string; totalTokens: number } {
@@ -183,6 +208,7 @@ export function sarahDailyTokenUsage(): { day: string; totalTokens: number } {
 
 export function resetSarahDailyTokenUsageForTests(): void {
   dailyTokenUsage = { day: "", totalTokens: 0 }
+  spendAlertedDay = ""
 }
 
 function dailyTokenCapExceeded(): boolean {
@@ -191,20 +217,71 @@ function dailyTokenCapExceeded(): boolean {
   return sarahDailyTokenUsage().totalTokens >= cap
 }
 
+const defaultSarahTextSpendAlertSink: SarahTextInferenceSpendAlertSink = (
+  alert,
+) => {
+  console.warn(JSON.stringify(alert))
+}
+
+async function emitDailyTokenThresholdAlertIfDue(
+  sink: SarahTextInferenceSpendAlertSink,
+): Promise<void> {
+  const cap = sarahDailyTokenCap()
+  if (cap === null) return
+
+  const usage = sarahDailyTokenUsage()
+  const thresholdTokens = Math.max(
+    1,
+    Math.ceil(cap * sarahTextSpendAlertThreshold()),
+  )
+  if (usage.totalTokens < thresholdTokens || spendAlertedDay === usage.day) {
+    return
+  }
+
+  // Claim the day before invoking an external sink so concurrent turns cannot
+  // emit duplicates. A sink failure never relaxes the hard cap or retries with
+  // private error material.
+  spendAlertedDay = usage.day
+  const alert: SarahTextInferenceSpendAlert = {
+    type: "sarah.text_inference_spend_alert.v1",
+    day: usage.day,
+    usageTruth: "provider_reported",
+    providerReportedTokens: usage.totalTokens,
+    dailyTokenCap: cap,
+    thresholdTokens,
+    emittedAt: new Date().toISOString(),
+  }
+  try {
+    await sink(alert)
+  } catch {
+    console.error(
+      JSON.stringify({
+        type: "sarah.text_inference_spend_alert_delivery_failed.v1",
+        day: usage.day,
+        emittedAt: new Date().toISOString(),
+      }),
+    )
+  }
+}
+
 /** Record EXACT provider-reported totals only. Zero/negative => no-op. */
-function recordDailyTokenUsage(totalTokens: number): void {
+async function recordDailyTokenUsage(
+  totalTokens: number,
+  spendAlertSink: SarahTextInferenceSpendAlertSink,
+): Promise<void> {
   if (!Number.isFinite(totalTokens) || totalTokens <= 0) return
   const day = utcDay()
   if (dailyTokenUsage.day !== day) {
     dailyTokenUsage = { day, totalTokens: 0 }
   }
   dailyTokenUsage.totalTokens += totalTokens
+  await emitDailyTokenThresholdAlertIfDue(spendAlertSink)
 }
 
 /**
  * Whether a typed inference error should surface the canned "I'm handling a
  * lot of conversations" busy reply (vs the generic trouble-reaching-model
- * reply): provider/gateway rate limits and the daily cost-cap refusal.
+ * reply): provider/gateway rate limits and the daily token-cap refusal.
  */
 export function isSarahInferenceBusyError(error: string): boolean {
   return error.endsWith("_http_429") || error === SARAH_DAILY_TOKEN_CAP_ERROR
@@ -326,6 +403,7 @@ async function generateViaGateway(
   system: string,
   contents: ReadonlyArray<GemmaContent>,
   fetchImpl: FetchLike,
+  spendAlertSink: SarahTextInferenceSpendAlertSink,
 ): Promise<
   | { ok: true; reply: string; model: string; usage: GemmaTurnUsage }
   | { ok: false; error: string }
@@ -359,7 +437,7 @@ async function generateViaGateway(
     const reply = (data.choices?.[0]?.message?.content ?? "").trim()
     if (!reply) return { ok: false, error: "gateway_inference_empty_reply" }
     const usage = gatewayUsageToTurnUsage(data.usage)
-    recordDailyTokenUsage(usage.totalTokens)
+    await recordDailyTokenUsage(usage.totalTokens, spendAlertSink)
     return { ok: true, reply, model: data.model ?? config.model, usage }
   } catch (error) {
     return {
@@ -379,6 +457,7 @@ async function* streamViaGateway(
   system: string,
   contents: ReadonlyArray<GemmaContent>,
   fetchImpl: FetchLike,
+  spendAlertSink: SarahTextInferenceSpendAlertSink,
 ): AsyncGenerator<GemmaStreamEvent> {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), config.timeoutMs)
@@ -448,7 +527,7 @@ async function* streamViaGateway(
       return
     }
     const usage = gatewayTelemetryToTurnUsage(telemetry)
-    recordDailyTokenUsage(usage.totalTokens)
+    await recordDailyTokenUsage(usage.totalTokens, spendAlertSink)
     yield { type: "done", fullText: fullText.trim(), usage }
   } catch (error) {
     yield {
@@ -467,17 +546,20 @@ export async function generateSarahGemmaReply({
   system,
   contents,
   fetchImpl = fetch,
+  spendAlertSink = defaultSarahTextSpendAlertSink,
 }: {
   system: string
   contents: ReadonlyArray<GemmaContent>
   fetchImpl?: FetchLike
+  spendAlertSink?: SarahTextInferenceSpendAlertSink
 }): Promise<
   | { ok: true; reply: string; model: string; usage: GemmaTurnUsage }
   | { ok: false; error: string }
 > {
-  // Cost cap (#8600): typed refusal BEFORE any provider call, on either
+  // Token cap (#8600): typed refusal BEFORE any provider call, on either
   // transport. Callers surface the canned busy reply.
   if (dailyTokenCapExceeded()) {
+    await emitDailyTokenThresholdAlertIfDue(spendAlertSink)
     return { ok: false, error: SARAH_DAILY_TOKEN_CAP_ERROR }
   }
 
@@ -485,7 +567,13 @@ export async function generateSarahGemmaReply({
   // Google path below remains the fallback until the gateway env is set.
   const gateway = gatewayConfig()
   if (gateway !== null) {
-    return generateViaGateway(gateway, system, contents, fetchImpl)
+    return generateViaGateway(
+      gateway,
+      system,
+      contents,
+      fetchImpl,
+      spendAlertSink,
+    )
   }
 
   const apiKey = process.env.GEMINI_API_KEY?.trim()
@@ -543,7 +631,7 @@ export async function generateSarahGemmaReply({
     const reply = extractGemmaReply(parts)
     if (!reply) return { ok: false, error: "google_inference_empty_reply" }
     const usage = data.usageMetadata ?? {}
-    recordDailyTokenUsage(usage.totalTokenCount ?? 0)
+    await recordDailyTokenUsage(usage.totalTokenCount ?? 0, spendAlertSink)
     return {
       ok: true,
       reply,
@@ -582,14 +670,17 @@ export async function* streamSarahGemmaReply({
   system,
   contents,
   fetchImpl = fetch,
+  spendAlertSink = defaultSarahTextSpendAlertSink,
 }: {
   system: string
   contents: ReadonlyArray<GemmaContent>
   fetchImpl?: FetchLike
+  spendAlertSink?: SarahTextInferenceSpendAlertSink
 }): AsyncGenerator<GemmaStreamEvent> {
-  // Cost cap (#8600): typed refusal BEFORE any provider call, on either
+  // Token cap (#8600): typed refusal BEFORE any provider call, on either
   // transport. Callers surface the canned busy reply.
   if (dailyTokenCapExceeded()) {
+    await emitDailyTokenThresholdAlertIfDue(spendAlertSink)
     yield { type: "error", error: SARAH_DAILY_TOKEN_CAP_ERROR }
     return
   }
@@ -599,7 +690,13 @@ export async function* streamSarahGemmaReply({
   // brain (the gateway's pass-through stream emits frame-by-frame).
   const gateway = gatewayConfig()
   if (gateway !== null) {
-    yield* streamViaGateway(gateway, system, contents, fetchImpl)
+    yield* streamViaGateway(
+      gateway,
+      system,
+      contents,
+      fetchImpl,
+      spendAlertSink,
+    )
     return
   }
 
@@ -694,7 +791,7 @@ export async function* streamSarahGemmaReply({
       yield { type: "error", error: "google_inference_empty_reply" }
       return
     }
-    recordDailyTokenUsage(usage.totalTokens)
+    await recordDailyTokenUsage(usage.totalTokens, spendAlertSink)
     yield { type: "done", fullText: fullText.trim(), usage }
   } catch (error) {
     yield {
