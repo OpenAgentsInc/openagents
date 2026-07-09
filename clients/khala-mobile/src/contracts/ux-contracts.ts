@@ -1664,9 +1664,8 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
     },
     {
       authorityBoundary:
-        "Binds the honesty of the P0.8 launch-readiness state only: the seeded-account owner gate, the missing iOS/Android full straight-line E2E receipts, and the copy/pass no-green-without-receipts rule. It does not claim the app is launch-ready and does not enforce the older launched-app smoke as sufficient for #8543.",
+        "Binds the honesty of the P0.8 launch-readiness state only: the missing full straight-line E2E receipts and the copy/pass no-green-without-receipts rule. The seeded-account owner gate RESOLVED on 2026-07-09 (GitHub user AgentFlampy + fork AgentFlampy/openagents, recorded on #8543) so that blocker no longer appears here; the runnable legs are receipted through the typed straight-line registry (src/qa/straight-line-e2e.ts), and the still-blocked legs (repo-list/credits mobile-user-session gate, CX-3 #8547 writeback) keep this contract pending. It does not claim the app is launch-ready and does not enforce the older launched-app smoke as sufficient for #8543.",
       blockerRefs: [
-        "owner.github_seeded_public_safe_account",
         "blocker.ios.full_straight_line_e2e_missing_receipt",
         "blocker.android.full_straight_line_e2e_missing_receipt",
         "blocker.launch_copy_owner_signoff_missing",
@@ -1693,6 +1692,44 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
       surface: "khala-mobile",
       verification:
         "bun test tests/launch-readiness.test.ts inside clients/khala-mobile asserts the pending launch-readiness receipt and owner gate stay honest. The contract itself remains pending until #8543's device-only launch truth has real iOS and Android full straight-line receipts.",
+    },
+    {
+      authorityBoundary:
+        "Binds the typed-skip discipline of the #8543 unattended straight-line harness now that the seeded account exists (AgentFlampy + fork AgentFlampy/openagents, recorded on #8543 2026-07-09): every leg is either genuinely runnable with a committed fail-closed Maestro flow, or BLOCKED with a named blocker the runner records as a typed skip — never a fake pass. The repo-pick/bind and credits legs stay gated on the mobile-OpenAuth-USER-session invariant (the seeded agent token 401s those routes BY DESIGN), and the push/writeback leg stays gated on CX-3's in-VM cloud-execution lane (#8547). This contract must NOT be enforced over those blocked legs; the already-enforced khala_mobile.platform.launched_app_interaction_smoke.v1 continues to bind the runnable smoke tier and is not weakened here.",
+      blockerRefs: [
+        "blocker.khala_mobile.repo_list_requires_github_backed_mobile_session",
+        "blocker.cx3.in_vm_cloud_execution_lane_missing.openagents#8547",
+      ],
+      contractId: "khala_mobile.platform.straight_line_repo_pick_writeback.v1",
+      enforcementTier: "unenforced",
+      evidenceRefs: [
+        "clients/khala-mobile/src/qa/straight-line-e2e.ts",
+        "clients/khala-mobile/tests/straight-line-e2e.test.ts",
+        "clients/khala-mobile/scripts/straight-line-e2e-run.sh",
+        "clients/khala-mobile/scripts/build-seeded-ios.sh",
+        "clients/khala-mobile/.maestro/flows/RepoPickerReachable.yaml",
+        "clients/khala-mobile/.maestro/flows/StraightLineRepoPick.yaml",
+        "docs/khala-mobile/2026-07-09-straight-line-e2e-agentflampy-receipt.md",
+        "docs/khala-mobile/khala-mobile-ux-contract.md",
+      ],
+      // Pending contracts keep oracles: [] in this registry (the coverage
+      // checker only admits oracles on enforced contracts); the leg-registry
+      // guard tests/straight-line-e2e.test.ts runs in the normal sweep and is
+      // named in verification below. It becomes this contract's oracle when
+      // the blocked legs open and the contract moves to enforced.
+      oracles: [],
+      productArea: "app lifecycle",
+      source: {
+        channel: "khala-code-session",
+        statedBy: "operator-agent",
+        statedOn: "2026-07-09",
+      },
+      state: "pending",
+      statement:
+        "The unattended straight-line E2E targets the owner-approved seeded account (AgentFlampy) and its fork (AgentFlampy/openagents) for the repo-pick step, runs every leg that is genuinely runnable headlessly, and records the repo-bind, credits, and push/writeback legs as typed BLOCKED skips — with the writeback leg pending on CX-3's in-VM lane (#8547) — never as fake passes.",
+      surface: "khala-mobile",
+      verification:
+        "bun test tests/straight-line-e2e.test.ts inside clients/khala-mobile guards the leg registry, flow hygiene, and runner coverage in the normal sweep. The heavy runnable-leg proof is scripts/straight-line-e2e-run.sh on the seeded iOS simulator build (scripts/build-seeded-ios.sh), receipted in docs/khala-mobile/2026-07-09-straight-line-e2e-agentflampy-receipt.md. The contract stays pending until the mobile-user-session gate and CX-3 (#8547) open and the blocked legs earn real receipts.",
     },
     {
       authorityBoundary:
@@ -1823,5 +1860,5 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
     },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-09.1",
+  version: "2026-07-09.2",
 }

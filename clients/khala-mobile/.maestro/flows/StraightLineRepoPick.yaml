@@ -1,0 +1,60 @@
+# flow: Khala Mobile straight-line REPO PICK + BIND leg (issue #8543)
+# intent:
+# The gated half of the straight line's "pick repo" step: open the repo
+# picker from the seeded thread, find the owner-approved seeded fork
+# (KHALA_MAESTRO_REPO_FULL_NAME — the #8543 seed is AgentFlampy/openagents),
+# select it, and assert the thread's repo chip reflects the binding.
+#
+# FAIL-CLOSED, never silently degraded: this flow asserts the real repo row
+# IS visible and the degraded "Repositories unavailable" state is NOT, so it
+# can never "pass" against an agent-token build that only reaches the honest
+# error branch. The repo list is served by the owner-scoped,
+# mobile-USER-session-only `GET /api/mobile/repos` (agent tokens 401 by
+# documented invariant), so scripts/straight-line-e2e-run.sh probes that
+# route first and records this leg as a typed BLOCKED skip — never a fake
+# pass — until a real AgentFlampy mobile OpenAuth session exists.
+#
+# Required env (from the caller, never committed):
+# - KHALA_MAESTRO_OWNER_USER_ID / KHALA_MAESTRO_TOKEN (manual-sign-in fallback)
+# - KHALA_MAESTRO_THREAD_TITLE (the seeded thread to bind)
+# - KHALA_MAESTRO_REPO_FULL_NAME (the seeded fork, owner/name)
+#
+appId: ${MAESTRO_APP_ID}
+env:
+  KHALA_MAESTRO_REPO_FULL_NAME: "AgentFlampy/openagents"
+onFlowStart:
+  - runFlow: ../shared/_OnFlowStart.yaml
+---
+- runFlow:
+    when:
+      visible: "Sign in manually instead"
+    commands:
+      - tapOn: "Sign in manually instead"
+      - tapOn: "user_..."
+      - inputText: ${KHALA_MAESTRO_OWNER_USER_ID}
+      - tapOn: "oa_agent_..."
+      - inputText: ${KHALA_MAESTRO_TOKEN}
+      - tapOn: "Sign in"
+      - waitForAnimationToEnd
+
+- assertVisible: "Khala"
+- assertVisible: ${KHALA_MAESTRO_THREAD_TITLE}
+- tapOn: ${KHALA_MAESTRO_THREAD_TITLE}
+- assertVisible:
+    text: "${KHALA_MAESTRO_THREAD_TITLE}|Thread"
+- tapOn:
+    text: "No repo bound — tap to pick a repo|Repo bound: .*"
+- assertVisible: "Pick a repo"
+# FAIL-CLOSED: the degraded empty state must NOT be what we bind against.
+- assertNotVisible: "Repositories unavailable"
+# The seeded fork row (RepoRow announces "<fullName>, <visibility>"; the
+# #8543 seed fork is public). Bounded wait for the live GitHub-backed list.
+- extendedWaitUntil:
+    visible: "${KHALA_MAESTRO_REPO_FULL_NAME}, public"
+    timeout: 30000
+- tapOn: "${KHALA_MAESTRO_REPO_FULL_NAME}, public"
+# Selecting binds + auto-navigates back to the thread; the chip now announces
+# the binding.
+- extendedWaitUntil:
+    visible: "Repo bound: ${KHALA_MAESTRO_REPO_FULL_NAME}"
+    timeout: 15000

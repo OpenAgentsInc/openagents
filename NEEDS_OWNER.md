@@ -57,12 +57,13 @@ The two sections below are asserted by `clients/khala-mobile/tests/launch-readin
 
 Source issue: OpenAgentsInc/openagents#8543
 
-State 2026-07-09: the test account exists (**AgentFlampy** + fork, recorded on #8543; E2E wiring lane running). Remaining actions:
+State 2026-07-09 (E2E wiring landed): the test account exists (**AgentFlampy** + fork, recorded on #8543) and is wired into the unattended harness (`clients/khala-mobile/scripts/straight-line-e2e-run.sh`; typed leg registry `clients/khala-mobile/src/qa/straight-line-e2e.ts`). The runnable iOS-simulator legs are green (signed-in smoke, repo-picker reachability, dispatch → live hosted_khala reply); receipt: `docs/khala-mobile/2026-07-09-straight-line-e2e-agentflampy-receipt.md`. Remaining actions:
 
 - Create or approve a public-safe GitHub test account for Khala Mobile launch readiness. *(DONE — AgentFlampy)*
 - Grant only the repo scopes needed for the smoke repo and writeback proof.
 - Seed a visible $10 launch credit grant and record the public-safe grant receipt ref.
-- Run the full straight-line E2E on iOS simulator and Android emulator.
+- **Owner tap (~2 min, unblocks two legs): complete one GitHub sign-in as AgentFlampy** in any Khala Code mobile build, then have an agent capture that session's `{ ownerUserId, syncToken }` into `~/work/.secrets/khala-mobile-session.env` (never printed/committed; ~400-day token). The repo-list/bind and credits legs are mobile-USER-session-only by invariant (the seeded agent token 401s them by design); the harness probes the gate each run and picks the session up automatically.
+- Run the full straight-line E2E on iOS simulator and Android emulator. *(iOS runnable legs green 2026-07-09; repo-bind + credits legs wait on the session tap above; the push/writeback leg waits on CX-3 #8547.)*
 - Review the launch promises/copy pass only after both platform E2E receipts exist.
 
 ## Khala Mobile P0.9 Store Submissions {#khala-mobile-p09-store-submissions}

@@ -1,0 +1,53 @@
+# flow: Khala Mobile signed-in repo-picker REACHABILITY leg (issue #8543)
+# intent:
+# The straight-line E2E's "pick repo" step has two halves with different
+# gates. This flow is the half that is runnable with the seeded agent token
+# TODAY: from the seeded signed-in thread, the repo chip opens the real
+# RepoPickerScreen (modal) and the picker renders its own chrome (header +
+# search field). It deliberately asserts NOTHING about the repo list
+# contents: the list is served by the owner-scoped, mobile-USER-session-only
+# `GET /api/mobile/repos` (agent tokens 401 by documented invariant — see
+# docs/khala-code/receipts/2026-07-07-qam-4-populated-happy-path.md), so
+# list/selection truth belongs to StraightLineRepoPick.yaml, which the runner
+# only executes when a real mobile user session is available.
+#
+# Preconditions: identical to SignedInThreadSmoke.yaml (seeded auto-sign-in
+# build + seeded thread). Credentials come from the caller's environment and
+# are never committed.
+#
+appId: ${MAESTRO_APP_ID}
+onFlowStart:
+  - runFlow: ../shared/_OnFlowStart.yaml
+---
+- runFlow:
+    when:
+      visible: "Sign in manually instead"
+    commands:
+      - tapOn: "Sign in manually instead"
+      - tapOn: "user_..."
+      - inputText: ${KHALA_MAESTRO_OWNER_USER_ID}
+      - tapOn: "oa_agent_..."
+      - inputText: ${KHALA_MAESTRO_TOKEN}
+      - tapOn: "Sign in"
+      - waitForAnimationToEnd
+
+- assertVisible: "Khala"
+- assertVisible: ${KHALA_MAESTRO_THREAD_TITLE}
+- tapOn: ${KHALA_MAESTRO_THREAD_TITLE}
+- assertVisible:
+    text: "${KHALA_MAESTRO_THREAD_TITLE}|Thread"
+# The repo chip announces both of its states through its accessibilityLabel
+# (thread-messages-screen.tsx): unbound reads "No repo bound — tap to pick a
+# repo", bound reads "Repo bound: <owner>/<name>". Match either so the leg is
+# idempotent across runs that may have bound a repo already.
+- tapOn:
+    text: "No repo bound — tap to pick a repo|Repo bound: .*"
+# The real RepoPickerScreen (modal) rendered: its own header + search chrome.
+# The search input's accessibility element reads "Search, Search" (the Ignite
+# TextField merges the label into the input's element; the visible
+# "owner/repo" placeholder is NOT exposed as a matchable node — verified via
+# `maestro hierarchy` against the live picker on 2026-07-09), so match the
+# element with a Search-prefixed regex rather than the bare label text.
+- assertVisible: "Pick a repo"
+- assertVisible:
+    text: "Search.*"

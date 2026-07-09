@@ -88,7 +88,11 @@ if [[ ! -f "$APK" ]]; then
 fi
 
 echo "==> verifying baked creds landed in the JS bundle (no token printed)"
-if ! unzip -p "$APK" assets/index.android.bundle 2>/dev/null | grep -q "${KHALA_MAESTRO_OWNER_USER_ID}"; then
+# NOTE: pipe through `strings` — raw BSD grep on Hermes bytecode is
+# unreliable (a contiguous string the `strings` scan finds can still fail a
+# raw binary grep), which produced a false "did not inline" failure on
+# 2026-07-09 even though the bundle was correctly baked.
+if ! unzip -p "$APK" assets/index.android.bundle 2>/dev/null | strings | grep -qF "${KHALA_MAESTRO_OWNER_USER_ID}"; then
   echo "ERROR: baked creds did not inline into the bundle (metro cache?)." >&2
   exit 1
 fi
@@ -136,12 +140,40 @@ for i, turn in enumerate(active, start=1):
     print("   closed", tid, "->", res.get("results"))
 PY
 
+# Fresh per-run thread (same fix as scripts/straight-line-e2e-run.sh, issue
+# #8543): the long-lived seeded thread accumulates turn-status transcript rows
+# from every prior run/probe, which pushes the freshly sent bubble off-screen
+# and flakes the final visibility assert. Each run drives a brand-new thread.
+RUN_THREAD_TITLE="SL android $(date -u +%H%M%S)"
+echo "==> creating fresh run thread '${RUN_THREAD_TITLE}'"
+python3 - "$BASE_URL" "$KHALA_MAESTRO_TOKEN" "thread.slandroid$(date -u +%s)" "$RUN_THREAD_TITLE" <<'PY'
+import json, sys, time, urllib.request
+base, token, thread_id, title = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+req = urllib.request.Request(
+    base + "/api/sync/push",
+    data=json.dumps({
+        "protocolVersion": 1, "schemaVersion": 1,
+        "clientGroupId": "straightline-seed",
+        "clientId": "android-seed-" + str(int(time.time() * 1000)),
+        "mutations": [{"mutationId": 1, "name": "chat.createThread",
+                       "argsJson": json.dumps({"threadId": thread_id, "title": title})}],
+    }).encode(),
+    headers={"authorization": "Bearer " + token, "content-type": "application/json"},
+    method="POST")
+with urllib.request.urlopen(req) as r:
+    res = json.load(r)
+status = res.get("results", [{}])[0].get("status")
+if status != "applied":
+    raise SystemExit(f"fresh thread create failed: {res}")
+print("   created ->", status)
+PY
+
 echo "==> running SignedInThreadSmoke on ${SERIAL}"
 maestro --device "${SERIAL}" test \
   -e MAESTRO_APP_ID="${APP_ID}" \
   -e KHALA_MAESTRO_OWNER_USER_ID="${KHALA_MAESTRO_OWNER_USER_ID}" \
   -e KHALA_MAESTRO_TOKEN="${KHALA_MAESTRO_TOKEN}" \
-  -e KHALA_MAESTRO_THREAD_TITLE="${KHALA_MAESTRO_THREAD_TITLE}" \
+  -e KHALA_MAESTRO_THREAD_TITLE="${RUN_THREAD_TITLE}" \
   "${HERE}/.maestro/flows/SignedInThreadSmoke.yaml" ${MAESTRO_EXTRA_ARGS:-}
 
 adb -s "$SERIAL" exec-out screencap -p > "${ARTIFACT_DIR}/signed-in-thread-smoke.png"
