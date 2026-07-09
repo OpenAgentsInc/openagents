@@ -7,6 +7,12 @@
 - **AI disclosure:** always-on in the UI shell; never optional.
 - **Pricing:** no improvised discounts; deal-rules code + public packs only;
   owner-priced params from runtime config.
+- **Prospect memory:** reads are scoped by exact `prospect_ref` identity
+  aliases only; no cross-prospect listing, pattern scans, or prompt-side
+  filtering. Sarah must deterministically refuse requests to reveal another
+  prospect/customer's private conversation, memory, profile, contact details,
+  objections, or needs. Any fact promoted outside one prospect's private scope
+  must pass redaction and the future owner-approved collective-learning store.
 - **Email:** only via monorepo approval-gated CRM rail (`crm-email-rail`); no
   Sarah-local Resend/suppression/approval queue.
 - **UI:** zero React in `apps/sarah`. DOM shell now; Effect Native component
