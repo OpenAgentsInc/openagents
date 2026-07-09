@@ -672,7 +672,7 @@ and local Codex auth out of reports.
   destination is a new **OpenAgents** app at `apps/openagents-mobile`, built
   from scratch as one Expo React Native codebase for iOS + Android (no separate
   Swift and Kotlin apps), authored in Effect Native with
-  React Native/NativeWind as renderer/host machinery, TanStack DB +
+  React Native as renderer/host machinery and styling as typed style objects on the shared @effect-native/tokens vocabulary (NativeWind/Tailwind class strings REJECTED per docs/effect-native/2026-07-08-styling-tailwind-stylex-effect-native.md; owner-confirmed 2026-07-09), TanStack DB +
   `khala-sync-db-collection` as the data layer, and expo-modules ports of the
   native Swift pieces (voice/STT, Apple FM bridge). See
   `docs/fable/2026-07-04-tanstack-start-sites-and-web-app-evaluation.md`
