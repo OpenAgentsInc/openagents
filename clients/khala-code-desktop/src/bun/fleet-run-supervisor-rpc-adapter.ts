@@ -17,6 +17,13 @@ import {
   type PylonOrchestrationStore,
 } from "../../../../apps/pylon/src/orchestration/store.js"
 import {
+  createPylonDurableFleetRunPlanner,
+} from "../../../../apps/pylon/src/orchestration/fleet-run-durable-planner.js"
+import {
+  fleetRunWorkSourceDescriptorFrom,
+  type FleetRunWorkSourceDescriptor,
+} from "../../../../apps/pylon/src/orchestration/fleet-run-work-source.js"
+import {
   planDagWork,
   planFixtureWork,
   planGithubBacklogWork,
@@ -156,6 +163,9 @@ const normalizeWorkSource = (
     return {
       kind: "issue_list",
       repo: source.repo,
+      ...(source.branch === undefined ? {} : { branch: source.branch }),
+      ...(source.baseCommit === undefined ? {} : { baseCommit: source.baseCommit }),
+      ...(source.verify === undefined ? {} : { verify: source.verify }),
       issues: [...(source.issues ?? [])].map(issue => normalizeRpcIssueItem(issue as Parameters<typeof normalizeRpcIssueItem>[0])),
     }
   }
@@ -166,6 +176,9 @@ const normalizeWorkSource = (
     return {
       kind: "github_backlog",
       repo: source.repo,
+      ...(source.branch === undefined ? {} : { branch: source.branch }),
+      ...(source.baseCommit === undefined ? {} : { baseCommit: source.baseCommit }),
+      ...(source.verify === undefined ? {} : { verify: source.verify }),
       ...(source.limit === undefined ? {} : { limit: Math.max(1, Math.trunc(source.limit)) }),
     }
   }
@@ -290,24 +303,51 @@ const failedWorkUnitRefsForRun = (claims: readonly WorkClaim[]): readonly string
 const plannerFor = (
   store: PylonOrchestrationStore,
   sources: ReadonlyMap<string, SupervisorWorkSource>,
-): FleetRunSupervisorPlanner => ({
-  plan: async ({ run, now }): Promise<WorkPlannerOutput> => {
-    const source = sources.get(run.runRef)
-    if (source === undefined) return planFixtureWork({ kind: "fixture", count: 0 }, { now })
-    if (source.kind === "fixture") return planFixtureWork(source, { now })
-    if (source.kind === "issue_list") return planIssueListWork(source, { claimRegistry: store, now })
-    if (source.kind === "plan_dag") {
-      const claims = store.listWorkClaims({ runRef: run.runRef })
-      return planDagWork(source, {
-        claimRegistry: store,
-        completedWorkUnitRefs: completedWorkUnitRefsForRun(claims),
-        failedWorkUnitRefs: failedWorkUnitRefsForRun(claims),
-        now,
-      })
-    }
-    return planGithubBacklogWork(source, ghJson, { claimRegistry: store, now })
-  },
-})
+): FleetRunSupervisorPlanner => {
+  const durable = createPylonDurableFleetRunPlanner({ store, gh: ghJson })
+  return {
+    plan: async ({ run, now }): Promise<WorkPlannerOutput> => {
+      if (run.workSourceDescriptor !== undefined) return await durable.plan({ run, now })
+      const source = sources.get(run.runRef)
+      if (source === undefined) return planFixtureWork({ kind: "fixture", count: 0 }, { now })
+      if (source.kind === "fixture") return planFixtureWork(source, { now })
+      if (source.kind === "issue_list") return planIssueListWork(source, { claimRegistry: store, now })
+      if (source.kind === "plan_dag") {
+        const claims = store.listWorkClaims({ runRef: run.runRef })
+        return planDagWork(source, {
+          claimRegistry: store,
+          completedWorkUnitRefs: completedWorkUnitRefsForRun(claims),
+          failedWorkUnitRefs: failedWorkUnitRefsForRun(claims),
+          now,
+        })
+      }
+      return planGithubBacklogWork(source, ghJson, { claimRegistry: store, now })
+    },
+  }
+}
+
+const durableDescriptorFor = (
+  source: SupervisorWorkSource,
+): FleetRunWorkSourceDescriptor | undefined => {
+  try {
+    return fleetRunWorkSourceDescriptorFrom({
+      ...source,
+      ...((source.kind === "issue_list" || source.kind === "github_backlog") && source.branch === undefined
+        ? { branch: "main" }
+        : {}),
+    })
+  } catch (error) {
+    // Old desktop issue-list starts predated pinned checkout descriptors. Keep
+    // them on the deprecated in-memory compatibility path; every fixture and
+    // plan-DAG descriptor, and every pinned real-work descriptor, must pass the
+    // Pylon decoder or fail before run creation.
+    if (
+      (source.kind === "issue_list" || source.kind === "github_backlog") &&
+      (source.baseCommit === undefined || source.verify === undefined)
+    ) return undefined
+    throw error
+  }
+}
 
 const capacityFor = (options: KhalaCodexFleetToolOptions | undefined): FleetRunSupervisorCapacity => ({
   accounts: async ({ run }) => {
@@ -480,7 +520,7 @@ export function createKhalaCodeDesktopFleetRunSupervisorRpcAdapter(
   const projectionInput = (
     runRef: string,
   ): { readonly pylonRef: string | null; readonly workSource?: SupervisorWorkSource } => {
-    const workSource = sources.get(runRef)
+    const workSource = sources.get(runRef) ?? store.getFleetRun(runRef)?.workSourceDescriptor
     return workSource === undefined ? { pylonRef } : { pylonRef, workSource }
   }
 
@@ -647,6 +687,7 @@ export function createKhalaCodeDesktopFleetRunSupervisorRpcAdapter(
     },
     async start(request: KhalaCodeDesktopFleetRunStartRequest) {
       const workSource = normalizeWorkSource(request.workSource)
+      const workSourceDescriptor = durableDescriptorFor(workSource)
       const refillPolicy = request.refillPolicy === undefined
         ? undefined
         : {
@@ -664,8 +705,9 @@ export function createKhalaCodeDesktopFleetRunSupervisorRpcAdapter(
         targetConcurrency: request.targetConcurrency,
         workerKind: request.workerKind ?? "codex",
         workSource: workSourceKind(workSource),
+        ...(workSourceDescriptor === undefined ? {} : { workSourceDescriptor }),
       })
-      sources.set(run.runRef, workSource)
+      sources.set(run.runRef, workSourceDescriptor ?? workSource)
       const supervisorStarted = await startSupervisor(run.runRef)
       if (request.tickImmediately === true) {
         await Effect.runPromise(active.get(run.runRef)?.handle.tick() ?? Effect.void)

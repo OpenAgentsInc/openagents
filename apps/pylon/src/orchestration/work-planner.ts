@@ -97,48 +97,54 @@ export type WorkPlannerDispatchOptions = {
 export type IssueListWorkSource = {
   readonly kind: "issue_list"
   readonly repo: string
+  readonly branch?: string | undefined
+  readonly baseCommit?: string | undefined
+  readonly verify?: string | undefined
   readonly issues: readonly (number | IssueListItem)[]
-  readonly pullRequests?: readonly IssueListItem[]
+  readonly pullRequests?: readonly IssueListItem[] | undefined
 }
 
 export type IssueListItem = {
   readonly number: number
-  readonly title?: string
-  readonly state?: WorkPlannerCandidateState | "OPEN" | "CLOSED" | "MERGED"
-  readonly labels?: readonly string[]
-  readonly body?: string
-  readonly url?: string
-  readonly kind?: "issue" | "pr"
+  readonly title?: string | undefined
+  readonly state?: WorkPlannerCandidateState | "OPEN" | "CLOSED" | "MERGED" | undefined
+  readonly labels?: readonly string[] | undefined
+  readonly body?: string | undefined
+  readonly url?: string | undefined
+  readonly kind?: "issue" | "pr" | undefined
 }
 
 export type FixtureWorkSource = {
   readonly kind: "fixture"
-  readonly count?: number
-  readonly units?: readonly FixtureWorkUnit[]
+  readonly count?: number | undefined
+  readonly units?: readonly FixtureWorkUnit[] | undefined
 }
 
 export type FixtureWorkUnit = {
   readonly ref: string
-  readonly title?: string
-  readonly labels?: readonly string[]
-  readonly state?: WorkPlannerCandidateState
+  readonly title?: string | undefined
+  readonly labels?: readonly string[] | undefined
+  readonly state?: WorkPlannerCandidateState | undefined
 }
 
 export type GithubBacklogWorkSource = {
   readonly kind: "github_backlog"
   readonly repo: string
+  readonly branch?: string | undefined
+  readonly baseCommit?: string | undefined
+  readonly verify?: string | undefined
   // gh defaults to 30 items, which silently truncates a real backlog; the
   // planner must see the whole candidate set (no silent drops).
-  readonly limit?: number
+  readonly limit?: number | undefined
 }
 
 export type PlanDagWorkSource = {
   readonly kind: "plan_dag"
   readonly planRef: string
-  readonly repo?: string
-  readonly branch?: string
-  readonly baseCommit?: string
-  readonly verify?: string
+  readonly repo?: string | undefined
+  readonly branch?: string | undefined
+  readonly baseCommit?: string | undefined
+  readonly verify?: string | undefined
   readonly nodes: readonly PlanDagWorkUnit[]
 }
 
@@ -146,14 +152,14 @@ export type PlanDagWorkUnit = {
   readonly ref: string
   readonly title: string
   readonly objective: string
-  readonly dependsOn?: readonly string[]
-  readonly repo?: string
-  readonly branch?: string
-  readonly baseCommit?: string
-  readonly verify?: string
-  readonly issue?: number
-  readonly labels?: readonly string[]
-  readonly url?: string
+  readonly dependsOn?: readonly string[] | undefined
+  readonly repo?: string | undefined
+  readonly branch?: string | undefined
+  readonly baseCommit?: string | undefined
+  readonly verify?: string | undefined
+  readonly issue?: number | undefined
+  readonly labels?: readonly string[] | undefined
+  readonly url?: string | undefined
 }
 
 const PLAN_DAG_REF_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:/#-]{0,180}$/u
@@ -305,6 +311,20 @@ export const normalizeIssueListCandidate = (repo: string, item: number | IssueLi
   }
 }
 
+const withSourcePins = <Candidate extends WorkPlannerCandidate>(
+  candidate: Candidate,
+  source: {
+    readonly branch?: string
+    readonly baseCommit?: string
+    readonly verify?: string
+  },
+): Candidate => ({
+  ...candidate,
+  ...(source.branch === undefined ? {} : { branch: source.branch }),
+  ...(source.baseCommit === undefined ? {} : { baseCommit: source.baseCommit }),
+  ...(source.verify === undefined ? {} : { verify: source.verify }),
+})
+
 export const fixtureCandidates = (source: FixtureWorkSource): WorkPlannerCandidate[] => {
   const units: readonly FixtureWorkUnit[] = source.units ?? Array.from({ length: source.count ?? 10 }, (_, index) => ({
     ref: `fixture.unit.${index + 1}`,
@@ -321,8 +341,10 @@ export const fixtureCandidates = (source: FixtureWorkSource): WorkPlannerCandida
 }
 
 export const issueListCandidates = (source: IssueListWorkSource): WorkPlannerCandidate[] => [
-  ...source.issues.map((issue) => normalizeIssueListCandidate(source.repo, issue)),
-  ...(source.pullRequests ?? []).map((pr) => normalizeIssueListCandidate(source.repo, { ...pr, kind: "pr" })),
+  ...source.issues.map((issue) => withSourcePins(normalizeIssueListCandidate(source.repo, issue), source)),
+  ...(source.pullRequests ?? []).map((pr) =>
+    withSourcePins(normalizeIssueListCandidate(source.repo, { ...pr, kind: "pr" }), source)
+  ),
 ]
 
 export const planDagCandidates = (source: PlanDagWorkSource): WorkPlannerCandidate[] => {
@@ -418,6 +440,7 @@ export const githubBacklogCandidates = async (
     return parseGhJsonArray(issuesRaw, "issue list")
       .map((record) => ghIssueRecordToCandidate(source.repo, record as GhIssueRecord))
       .filter((candidate): candidate is WorkPlannerCandidate => candidate !== null)
+      .map((candidate) => withSourcePins(candidate, source))
   }
 
   // The issue list and PR list are two independent, unrelated `gh` CLI calls.
@@ -457,7 +480,7 @@ export const githubBacklogCandidates = async (
 }
 
 export const githubPullRequestCandidates = async (
-  source: Pick<GithubBacklogWorkSource, "repo" | "limit">,
+  source: Pick<GithubBacklogWorkSource, "repo" | "limit" | "branch" | "baseCommit" | "verify">,
   gh: GithubBacklogGhRunner,
 ): Promise<WorkPlannerCandidate[]> => {
   const limit = String(source.limit ?? 1000)
@@ -477,6 +500,7 @@ export const githubPullRequestCandidates = async (
   const prs = parseGhJsonArray(prsRaw, "pr list")
     .map((record) => ghPullRequestRecordToCandidate(source.repo, record as GhPullRequestRecord))
     .filter((candidate): candidate is WorkPlannerCandidate => candidate !== null)
+    .map((candidate) => withSourcePins(candidate, source))
   return prs
 }
 

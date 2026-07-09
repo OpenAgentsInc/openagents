@@ -23,6 +23,11 @@ import {
   type PylonDispatchFailureInput,
   type PylonDispatchFailureLane,
 } from "../dispatch-failure-taxonomy.js"
+import {
+  FleetRunWorkSourceDescriptorSchema,
+  decodeFleetRunWorkSourceDescriptor,
+  type FleetRunWorkSourceDescriptor,
+} from "./fleet-run-work-source.js"
 
 export const ORCHESTRATION_SCHEMA_VERSION = 3
 
@@ -127,6 +132,7 @@ export const FleetRunSchema = S.Struct({
   runRef: S.String,
   objective: S.String,
   workSource: FleetRunWorkSourceSchema,
+  workSourceDescriptor: S.optional(FleetRunWorkSourceDescriptorSchema),
   targetConcurrency: S.Number,
   workerKind: FleetRunWorkerKindSchema,
   refillPolicy: FleetRunRefillPolicySchema,
@@ -260,6 +266,7 @@ export type CreateFleetRunInput = {
   runRef: string
   objective: string
   workSource: FleetRunWorkSource
+  workSourceDescriptor?: FleetRunWorkSourceDescriptor
   targetConcurrency: number
   workerKind: FleetRunWorkerKind
   refillPolicy?: Partial<FleetRunRefillPolicy>
@@ -530,6 +537,12 @@ const isLiveWorkClaimState = (state: WorkClaimState): state is LiveWorkClaimStat
   LIVE_WORK_CLAIM_STATES.includes(state as LiveWorkClaimState)
 
 export function decodeFleetRun(input: unknown): FleetRun {
+  const rawDescriptor = typeof input === "object" && input !== null
+    ? (input as { workSourceDescriptor?: unknown }).workSourceDescriptor
+    : undefined
+  const decodedDescriptor = rawDescriptor === undefined
+    ? undefined
+    : decodeFleetRunWorkSourceDescriptor(rawDescriptor)
   const run = S.decodeUnknownSync(FleetRunSchema)(input)
   assertNonEmpty("fleet run", "runRef", run.runRef)
   assertNonEmpty("fleet run", "objective", run.objective)
@@ -550,7 +563,10 @@ export function decodeFleetRun(input: unknown): FleetRun {
   if (Number.isNaN(Date.parse(run.createdAt)) || Number.isNaN(Date.parse(run.updatedAt))) {
     throw new Error("fleet run timestamps must be ISO-compatible")
   }
-  return run
+  if (decodedDescriptor !== undefined && decodedDescriptor.kind !== run.workSource) {
+    throw new Error("fleet run workSource must match workSourceDescriptor.kind")
+  }
+  return decodedDescriptor === undefined ? run : { ...run, workSourceDescriptor: decodedDescriptor }
 }
 
 export function decodeWorkClaim(input: unknown): WorkClaim {
@@ -597,6 +613,9 @@ export function buildFleetRun(input: CreateFleetRunInput): FleetRun {
     runRef: input.runRef,
     objective: input.objective,
     workSource: input.workSource,
+    ...(input.workSourceDescriptor === undefined
+      ? {}
+      : { workSourceDescriptor: input.workSourceDescriptor }),
     targetConcurrency: input.targetConcurrency,
     workerKind: input.workerKind,
     refillPolicy: {
