@@ -53,6 +53,7 @@ import {
 } from "./node/discovery-register.js"
 import { createIntentQueue } from "./node/intent-intake.js"
 import { createApprovalQueue } from "./node/approval-queue.js"
+import { openPylonNodeFleetRunActivationService } from "./node/fleet-run-activation.js"
 import { createCoordinatorRuntime, type CoordinatorRuntime } from "./coordinator/coordinator-runtime.js"
 import { evaluateShipSpendGate } from "./coordinator/ship-spend-gate.js"
 import {
@@ -1116,6 +1117,26 @@ const runHeadlessNode = Effect.gen(function* () {
     try: () => ensurePylonLocalState(bootstrapSummary),
     catch: (error) => new Error(`failed to load Pylon Nostr identity: ${String(error)}`),
   })
+  const presenceBaseUrl = Bun.env.PYLON_OPENAGENTS_BASE_URL
+  const currentPresenceClientOptions = () =>
+    presenceClientOptionsFromEnv({
+      baseUrl: presenceBaseUrl ?? "",
+      env: Bun.env,
+    })
+  const presenceClientOptions = currentPresenceClientOptions()
+  const fleetRunActivation = yield* Effect.tryPromise({
+    try: () => openPylonNodeFleetRunActivationService({
+      summary: bootstrapSummary,
+      pylonRef: localState.identity.pylonRef,
+      baseUrl: presenceBaseUrl,
+      env: Bun.env,
+      ...(presenceClientOptions.agentToken === undefined
+        ? {}
+        : { agentToken: presenceClientOptions.agentToken }),
+    }),
+    catch: () => new Error("failed to open owner-local FleetRun activation authority"),
+  })
+  yield* Effect.addFinalizer(() => Effect.promise(() => fleetRunActivation.close()))
   // #5207: the daemon hosts the WARM Spark session — the actions pass
   // `warmSession: true` so the singleton SDK is built once and kept alive across
   // commands, and the background-sync timer (below) keeps it current.
@@ -1206,6 +1227,7 @@ const runHeadlessNode = Effect.gen(function* () {
       ),
       approvals: makeApprovalActions(localState.paths),
       coordinator: makeCoordinatorActions(headlessCoordinatorHolder),
+      fleetRuns: fleetRunActivation,
     },
     port: controlPort,
     hostname: Bun.env.PYLON_CONTROL_HOST ?? "127.0.0.1",
@@ -1239,12 +1261,6 @@ const runHeadlessNode = Effect.gen(function* () {
   // with no manual command. Best-effort, non-blocking, idempotent across reboots.
   yield* Effect.sync(() => startSparkBackupProvisioning(localState, (message, level) => logToUi(message, level)))
 
-  const presenceBaseUrl = Bun.env.PYLON_OPENAGENTS_BASE_URL
-  const currentPresenceClientOptions = () =>
-    presenceClientOptionsFromEnv({
-      baseUrl: presenceBaseUrl ?? "",
-      env: Bun.env,
-    })
   yield* forkNodeServices(runtime, {
     wallet: { classify: () => classifyPrimaryAgentWalletForState(localState) },
     telemetry: {

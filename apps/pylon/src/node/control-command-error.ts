@@ -43,3 +43,28 @@ export const controlCommandValidationReason = (error: unknown): string | null =>
   }
   return null
 }
+
+/** A fixed public-safe operational failure; unlike validation, it maps to 503. */
+export class ControlCommandOperationalError extends Error {
+  readonly _tag = "ControlCommandOperationalError"
+  readonly reason: string
+
+  constructor(reason: string, message?: string) {
+    super(message ?? reason)
+    this.name = "ControlCommandOperationalError"
+    this.reason = reason
+  }
+}
+
+export const controlCommandOperationalReason = (error: unknown): string | null => {
+  if (error instanceof ControlCommandOperationalError) return error.reason
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    (error as { _tag?: unknown })._tag === "ControlCommandOperationalError"
+  ) {
+    const reason = (error as { reason?: unknown }).reason
+    return typeof reason === "string" ? reason : "operational_error"
+  }
+  return null
+}

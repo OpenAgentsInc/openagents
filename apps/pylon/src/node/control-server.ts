@@ -12,7 +12,10 @@ import { Effect, PubSub, SubscriptionRef, type Scope } from "effect"
 import type { PylonEvent, PylonLogEntry, TelemetryPaneState, WalletPaneState } from "./state.js"
 import type { PylonNodeRuntime } from "./runtime.js"
 import { createBridgePairingService } from "./bridge-pairing-service.js"
-import { controlCommandValidationReason } from "./control-command-error.js"
+import {
+  controlCommandOperationalReason,
+  controlCommandValidationReason,
+} from "./control-command-error.js"
 import {
   CONTROL_HEALTH_CAPABILITIES,
   CONTROL_SCHEMA_TAG,
@@ -101,6 +104,12 @@ export type ControlCommand =
   | { type: "coordinator.pause" }
   | { type: "coordinator.resume" }
   | { type: "coordinator.status" }
+  // FC-2 owner-local standing FleetRun activation. These commands are more
+  // restrictive than the general control API: bearer auth AND a loopback bind
+  // are required, and the daemon supplies its own Pylon ref.
+  | { type: "fleet_run.arm"; runRef: string }
+  | { type: "fleet_run.status"; runRef?: string }
+  | { type: "fleet_run.disarm"; runRef: string }
   // CL-26 "Deploy to Cloud": a node-triggered deploy through OUR cloud pipeline.
   // Execution is gated behind OA_DEPLOY_ENABLE=1 (fail-safe). deploy.status is
   // a read-only projection of the node's last deploy.
@@ -166,6 +175,11 @@ export interface ControlCommandActions {
     pause: () => { paused: boolean }
     resume: () => { paused: boolean }
     status: () => { paused: boolean }
+  }
+  fleetRuns?: {
+    arm: (runRef: string) => Promise<unknown>
+    status: (runRef?: string) => Promise<unknown>
+    disarm: (runRef: string) => Promise<unknown>
   }
 }
 
@@ -322,6 +336,15 @@ export const startControlServer = (
         case "coordinator.status":
           if (!options.actions.coordinator) throw new Error("coordinator unavailable on this node")
           return options.actions.coordinator.status()
+        case "fleet_run.arm":
+          if (!options.actions.fleetRuns) throw new Error("fleet run activation unavailable on this node")
+          return options.actions.fleetRuns.arm(command.runRef)
+        case "fleet_run.status":
+          if (!options.actions.fleetRuns) throw new Error("fleet run activation unavailable on this node")
+          return options.actions.fleetRuns.status(command.runRef)
+        case "fleet_run.disarm":
+          if (!options.actions.fleetRuns) throw new Error("fleet run activation unavailable on this node")
+          return options.actions.fleetRuns.disarm(command.runRef)
         case "assignments.poll":
           if (!options.actions.assignmentsPoll) throw new Error("assignments unavailable on this node")
           return options.actions.assignmentsPoll()
@@ -832,6 +855,17 @@ export const startControlServer = (
               } catch {
                 return Response.json({ error: "invalid json" }, { status: 400 })
               }
+              if (
+                (command.type === "fleet_run.arm" ||
+                  command.type === "fleet_run.status" ||
+                  command.type === "fleet_run.disarm") &&
+                !isLoopbackHostname(options.hostname ?? "127.0.0.1")
+              ) {
+                return Response.json(
+                  { ok: false, error: "fleet run activation requires a loopback control server" },
+                  { status: 403 },
+                )
+              }
               try {
                 const result = await runCommand(command)
                 return Response.json({ ok: true, result: result ?? null })
@@ -846,6 +880,13 @@ export const startControlServer = (
                   return Response.json(
                     { ok: false, error: message, reason: validation },
                     { status: 400 },
+                  )
+                }
+                const operational = controlCommandOperationalReason(error)
+                if (operational !== null) {
+                  return Response.json(
+                    { ok: false, error: message, reason: operational },
+                    { status: 503 },
                   )
                 }
                 return Response.json({ ok: false, error: message }, { status: 500 })

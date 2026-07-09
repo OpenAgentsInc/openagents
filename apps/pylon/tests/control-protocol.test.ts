@@ -14,6 +14,7 @@ import {
   startControlServer,
   type PylonSnapshot,
 } from "../src/node/control-server"
+import { ControlCommandOperationalError } from "../src/node/control-command-error"
 import {
   consumeSseBuffer,
   nextBackoffMs,
@@ -161,6 +162,125 @@ describe("control protocol", () => {
     expect(() => assertControlBindSafe({ hostname: "127.0.0.1" })).not.toThrow()
     expect(() => assertControlBindSafe({ hostname: "0.0.0.0", token: "test-token" })).not.toThrow()
     expect(() => assertControlBindSafe({ hostname: "0.0.0.0" })).toThrow(/without a bearer token/)
+  })
+
+  test("FleetRun activation commands require exact bearer auth and a loopback-bound server", async () => {
+    const calls: Array<{ operation: string; runRef?: string }> = []
+    const token = "test-token-0123456789abcdef"
+    const fleetRuns = {
+      arm: async (runRef: string) => {
+        calls.push({ operation: "arm", runRef })
+        return { pylonRef: "pylon.public.control", runRef, armed: true, active: true }
+      },
+      status: async (runRef?: string) => {
+        if (runRef === "fleet_run.fc2.store_failure") {
+          throw new ControlCommandOperationalError(
+            "fleet_run_activation_authority_unavailable",
+            "fleet run activation authority unavailable",
+          )
+        }
+        calls.push({ operation: "status", ...(runRef === undefined ? {} : { runRef }) })
+        return { pylonRef: "pylon.public.control", runs: [] }
+      },
+      disarm: async (runRef: string) => {
+        calls.push({ operation: "disarm", runRef })
+        return { pylonRef: "pylon.public.control", runRef, armed: false, active: false }
+      },
+    }
+
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const runtime = yield* makePylonNodeRuntime
+          const server = yield* startControlServer(runtime, {
+            token,
+            actions: { ...stubActions([]), fleetRuns },
+            hostname: "127.0.0.1",
+            port: 0,
+          })
+          const unauthorized = yield* Effect.promise(() => fetch(`${server.url}/command`, {
+            method: "POST",
+            headers: {
+              authorization: "Bearer wrong",
+              "content-type": "application/json",
+            },
+            body: JSON.stringify({ type: "fleet_run.arm", runRef: "fleet_run.fc2.exact" }),
+          }))
+          expect(unauthorized.status).toBe(401)
+          expect(calls).toEqual([])
+
+          const authorized = yield* Effect.promise(() => fetch(`${server.url}/command`, {
+            method: "POST",
+            headers: {
+              authorization: `Bearer ${token}`,
+              "content-type": "application/json",
+            },
+            body: JSON.stringify({ type: "fleet_run.arm", runRef: "fleet_run.fc2.exact" }),
+          }))
+          expect(authorized.status).toBe(200)
+          const authorizedBody = yield* Effect.promise(() => authorized.json())
+          expect(authorizedBody).toEqual({
+            ok: true,
+            result: {
+              pylonRef: "pylon.public.control",
+              runRef: "fleet_run.fc2.exact",
+              armed: true,
+              active: true,
+            },
+          })
+          expect(calls).toEqual([{ operation: "arm", runRef: "fleet_run.fc2.exact" }])
+
+          const unavailable = yield* Effect.promise(() => fetch(`${server.url}/command`, {
+            method: "POST",
+            headers: {
+              authorization: `Bearer ${token}`,
+              "content-type": "application/json",
+            },
+            body: JSON.stringify({
+              type: "fleet_run.status",
+              runRef: "fleet_run.fc2.store_failure",
+            }),
+          }))
+          expect(unavailable.status).toBe(503)
+          const unavailableBody = yield* Effect.promise(() => unavailable.json())
+          expect(unavailableBody).toEqual({
+            ok: false,
+            error: "fleet run activation authority unavailable",
+            reason: "fleet_run_activation_authority_unavailable",
+          })
+        }),
+      ),
+    )
+
+    calls.length = 0
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const runtime = yield* makePylonNodeRuntime
+          const server = yield* startControlServer(runtime, {
+            token,
+            actions: { ...stubActions([]), fleetRuns },
+            hostname: "0.0.0.0",
+            port: 0,
+          })
+          const refused = yield* Effect.promise(() => fetch(`http://127.0.0.1:${server.port}/command`, {
+            method: "POST",
+            headers: {
+              authorization: `Bearer ${token}`,
+              "content-type": "application/json",
+            },
+            body: JSON.stringify({ type: "fleet_run.status", runRef: "fleet_run.fc2.exact" }),
+          }))
+          expect(refused.status).toBe(403)
+          const refusedBody = yield* Effect.promise(() => refused.json())
+          expect(refusedBody).toEqual({
+            ok: false,
+            error: "fleet run activation requires a loopback control server",
+          })
+          expect(calls).toEqual([])
+        }),
+      ),
+    )
   })
 
   test("token file is created once with stable content", async () => {

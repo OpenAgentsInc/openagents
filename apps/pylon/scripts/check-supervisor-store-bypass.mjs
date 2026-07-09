@@ -55,5 +55,27 @@ for (const file of files.slice(0, 3)) {
   }
 }
 
+// FC-2 node activation is durable orchestration authority too. It must keep
+// arming state in the canonical SQLite store rather than regressing to a JSON,
+// shell, or ad-hoc filesystem switch beside the supervisor state.
+const activationFile = join(root, "src/node/fleet-run-activation.ts")
+const activationSource = readFileSync(activationFile, "utf8")
+if (
+  !activationSource.includes("openPylonFleetRunRuntime") ||
+  !activationSource.includes("setFleetRunActivation") ||
+  !activationSource.includes("listFleetRunActivations")
+) {
+  console.error(
+    "supervisor-store-bypass: FleetRun activation does not route armed state through the canonical orchestration store",
+  )
+  failed = true
+}
+if (/writeFile|appendFile|fleet-run[^\n]*\.json/i.test(activationSource)) {
+  console.error(
+    "supervisor-store-bypass: FleetRun activation must not persist an armed-state filesystem sidecar",
+  )
+  failed = true
+}
+
 if (failed) process.exit(1)
 console.log("supervisor-store-bypass: OK")

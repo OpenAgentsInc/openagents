@@ -29,7 +29,7 @@ import {
   type FleetRunWorkSourceDescriptor,
 } from "./fleet-run-work-source.js"
 
-export const ORCHESTRATION_SCHEMA_VERSION = 3
+export const ORCHESTRATION_SCHEMA_VERSION = 4
 
 export type OrchestrationTaskStatus =
   | "pending"
@@ -146,6 +146,18 @@ export const FleetRunSchema = S.Struct({
   updatedAt: S.String,
 })
 export type FleetRun = typeof FleetRunSchema.Type
+
+/**
+ * Explicit owner-local permission for the standing node to keep one durable
+ * FleetRun active across node restarts. This row deliberately contains refs
+ * and the armed bit only: transport config, credentials, local paths, prompts,
+ * and executor diagnostics never enter the orchestration authority.
+ */
+export type FleetRunActivation = {
+  pylonRef: string
+  runRef: string
+  armed: boolean
+}
 
 export const FleetRunOwnerLocalStateSchema = S.Struct({
   schema: S.Literal(FLEET_RUN_OWNER_LOCAL_STATE_SCHEMA),
@@ -437,6 +449,8 @@ const DEFAULT_FLEET_RUN_REFILL_POLICY: FleetRunRefillPolicy = {
   cooldownAware: true,
   stopCondition: "backlog_empty",
 }
+
+const FLEET_RUN_ACTIVATION_REF_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:/#-]{0,180}$/u
 
 const parseJsonArray = (value: string): string[] => {
   const parsed: unknown = JSON.parse(value)
@@ -743,6 +757,12 @@ type FleetRunRow = {
   created_at: string
   updated_at: string
   started_at: string | null
+}
+
+type FleetRunActivationRow = {
+  pylon_ref: string
+  run_ref: string
+  armed: number
 }
 
 type WorkClaimRow = {
@@ -1144,6 +1164,14 @@ export class PylonOrchestrationStore {
         ON pylon_orchestration_fleet_runs(state, updated_at);
       CREATE INDEX IF NOT EXISTS idx_pylon_orchestration_fleet_runs_dispatch
         ON pylon_orchestration_fleet_runs(dispatch_kind, updated_at);
+      CREATE TABLE IF NOT EXISTS pylon_orchestration_fleet_run_activations (
+        pylon_ref TEXT NOT NULL,
+        run_ref TEXT NOT NULL,
+        armed INTEGER NOT NULL CHECK (armed IN (0, 1)),
+        PRIMARY KEY (pylon_ref, run_ref)
+      );
+      CREATE INDEX IF NOT EXISTS idx_pylon_orchestration_fleet_run_activations_armed
+        ON pylon_orchestration_fleet_run_activations(pylon_ref, armed, run_ref);
       CREATE TABLE IF NOT EXISTS pylon_orchestration_work_claims (
         claim_ref TEXT PRIMARY KEY,
         work_unit_ref TEXT NOT NULL,
@@ -1381,6 +1409,59 @@ export class PylonOrchestrationStore {
         .query("SELECT * FROM pylon_orchestration_fleet_runs WHERE state = $state ORDER BY created_at ASC")
         .all({ $state: state })
     return (rows as FleetRunRow[]).map((row) => fleetRunFromJson(row.record_json))
+  }
+
+  setFleetRunActivation(input: FleetRunActivation): FleetRunActivation {
+    if (
+      !FLEET_RUN_ACTIVATION_REF_PATTERN.test(input.pylonRef) ||
+      !FLEET_RUN_ACTIVATION_REF_PATTERN.test(input.runRef)
+    ) {
+      throw new Error("fleet run activation refs must be bounded public-safe refs")
+    }
+    this.db
+      .query(`
+        INSERT INTO pylon_orchestration_fleet_run_activations
+          (pylon_ref, run_ref, armed)
+        VALUES
+          ($pylonRef, $runRef, $armed)
+        ON CONFLICT(pylon_ref, run_ref) DO UPDATE SET
+          armed = excluded.armed
+      `)
+      .run({
+        $pylonRef: input.pylonRef,
+        $runRef: input.runRef,
+        $armed: input.armed ? 1 : 0,
+      })
+    return { ...input }
+  }
+
+  getFleetRunActivation(pylonRef: string, runRef: string): FleetRunActivation | null {
+    const row = this.db
+      .query(`
+        SELECT pylon_ref, run_ref, armed
+          FROM pylon_orchestration_fleet_run_activations
+         WHERE pylon_ref = $pylonRef AND run_ref = $runRef
+      `)
+      .get({ $pylonRef: pylonRef, $runRef: runRef }) as FleetRunActivationRow | null
+    return row === null
+      ? null
+      : { pylonRef: row.pylon_ref, runRef: row.run_ref, armed: row.armed === 1 }
+  }
+
+  listFleetRunActivations(pylonRef: string): FleetRunActivation[] {
+    const rows = this.db
+      .query(`
+        SELECT pylon_ref, run_ref, armed
+          FROM pylon_orchestration_fleet_run_activations
+         WHERE pylon_ref = $pylonRef
+         ORDER BY run_ref ASC
+      `)
+      .all({ $pylonRef: pylonRef }) as FleetRunActivationRow[]
+    return rows.map((row) => ({
+      pylonRef: row.pylon_ref,
+      runRef: row.run_ref,
+      armed: row.armed === 1,
+    }))
   }
 
   updateFleetRunState(
