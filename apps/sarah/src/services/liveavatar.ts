@@ -104,10 +104,14 @@ function todayKey() {
   return new Date().toISOString().slice(0, 10)
 }
 
-let cachedBaseContext: { prompt: string; openingText: string } | null = null
+let cachedBaseContext: { prompt: string; openingText: string; at: number } | null = null
 
 async function baseContext(): Promise<{ prompt: string; openingText: string }> {
-  if (cachedBaseContext) return cachedBaseContext
+  // 5-minute TTL so dashboard copy edits (like the opener) propagate without
+  // an instance roll.
+  if (cachedBaseContext && Date.now() - cachedBaseContext.at < 5 * 60_000) {
+    return cachedBaseContext
+  }
   const config = sarahAvatarConfig()
   const response = await liveAvatarFetch(`/v1/contexts/${config.baseContextId}`, {
     method: "GET",
@@ -118,9 +122,8 @@ async function baseContext(): Promise<{ prompt: string; openingText: string }> {
   }
   cachedBaseContext = {
     prompt: data.data?.prompt ?? "You are Sarah, OpenAgents' AI sales employee. Disclose you are an AI.",
-    openingText:
-      data.data?.opening_text ??
-      "Hey, I'm Sarah — I'm an AI, and I sell what I am: AI employees that actually do work. What's eating the most hours in your business right now?",
+    openingText: data.data?.opening_text ?? "Hello! I'm Sarah. What's on your mind today?",
+    at: Date.now(),
   }
   return cachedBaseContext
 }

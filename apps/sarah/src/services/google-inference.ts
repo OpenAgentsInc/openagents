@@ -33,6 +33,21 @@ export function sarahTextModel(): string {
   return process.env.SARAH_TEXT_MODEL?.trim() || SARAH_TEXT_MODEL_DEFAULT
 }
 
+/**
+ * Each Gemma model has its OWN per-minute quota bucket on the key, so
+ * falling back to the MoE variant on 429 roughly doubles burst capacity —
+ * the 2026-07-09 owner session showed LiveAvatar firing one inference call
+ * per VAD speech fragment, exhausting a single model's RPM in under a
+ * minute. The Khala gateway migration (KHS-1) is the durable fix.
+ */
+export function sarahTextModelChain(): string[] {
+  const fallbacks = (process.env.SARAH_TEXT_MODEL_FALLBACKS ?? "gemma-4-26b-a4b-it")
+    .split(",")
+    .map((model) => model.trim())
+    .filter(Boolean)
+  return [sarahTextModel(), ...fallbacks.filter((model) => model !== sarahTextModel())]
+}
+
 /** Concatenate answer text, dropping `thought: true` scratchpad parts. */
 export function extractGemmaReply(parts: ReadonlyArray<GemmaPart>): string {
   return parts
@@ -77,11 +92,10 @@ export async function generateSarahGemmaReply({
   const timeout = setTimeout(() => controller.abort(), timeoutMs)
   try {
     let response: Response | null = null
-    // The key's per-model Gemma RPM quota is tight; a single Retry-After
-    // respecting retry absorbs adjacent-turn collisions without queueing.
-    for (let attempt = 0; attempt < 2; attempt += 1) {
+    // Per-model RPM buckets: walk the model chain on 429 instead of waiting.
+    for (const candidateModel of sarahTextModelChain()) {
       response = await fetch(
-        `${baseUrl}/models/${model}:generateContent?key=${apiKey}`,
+        `${baseUrl}/models/${candidateModel}:generateContent?key=${apiKey}`,
         {
           method: "POST",
           headers: { "content-type": "application/json" },
@@ -93,13 +107,7 @@ export async function generateSarahGemmaReply({
           }),
         },
       )
-      if (response.status !== 429 || attempt === 1) break
-      const retryAfter = Number(response.headers.get("retry-after"))
-      const waitMs = Math.min(
-        Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 4000,
-        8000,
-      )
-      await new Promise((resolve) => setTimeout(resolve, waitMs))
+      if (response.status !== 429) break
     }
     if (!response || !response.ok) {
       // Never include the URL (it carries the key) in surfaced errors.
@@ -178,9 +186,9 @@ export async function* streamSarahGemmaReply({
   const timeout = setTimeout(() => controller.abort(), timeoutMs)
   try {
     let response: Response | null = null
-    for (let attempt = 0; attempt < 2; attempt += 1) {
+    for (const candidateModel of sarahTextModelChain()) {
       response = await fetch(
-        `${baseUrl}/models/${model}:streamGenerateContent?alt=sse&key=${apiKey}`,
+        `${baseUrl}/models/${candidateModel}:streamGenerateContent?alt=sse&key=${apiKey}`,
         {
           method: "POST",
           headers: { "content-type": "application/json" },
@@ -192,14 +200,7 @@ export async function* streamSarahGemmaReply({
           }),
         },
       )
-      if (response.status !== 429 || attempt === 1) break
-      const retryAfter = Number(response.headers.get("retry-after"))
-      await new Promise((resolve) =>
-        setTimeout(
-          resolve,
-          Math.min(Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 4000, 8000),
-        ),
-      )
+      if (response.status !== 429) break
     }
     if (!response || !response.ok || !response.body) {
       yield { type: "error", error: `google_inference_http_${response?.status ?? 0}` }
