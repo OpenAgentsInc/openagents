@@ -13,6 +13,7 @@ import type {
   WorkPlannerClaimableUnit,
   WorkPlannerOutput,
 } from "./work-planner.js"
+import { fleetRunTaskIdForClaim } from "./fleet-run-refs.js"
 
 // Keep the scheduler's policy data-driven while avoiding a dependency from the
 // published Pylon package onto the private UI-oriented fleet-intents package.
@@ -266,7 +267,9 @@ const collectActiveAssignments = (
   runRef: string,
 ): FleetRunSupervisorActiveAssignment[] => {
   const tasks = store.listTasks("dispatched").filter(task => task.spec.fleetRunRef === runRef)
-  const claims = new Map(store.listWorkClaims({ runRef }).map(claim => [taskIdFor(runRef, claim.claimRef), claim]))
+  const claims = new Map(
+    store.listWorkClaims({ runRef }).map(claim => [fleetRunTaskIdForClaim(runRef, claim.claimRef), claim]),
+  )
   return tasks.flatMap(task => {
     const claim = claims.get(task.id)
     if (claim === undefined || claim.state !== "in_progress") return []
@@ -331,9 +334,6 @@ const pickAccount = (
   return eligible[0]?.account ?? null
 }
 
-const taskIdFor = (runRef: string, claimRef: string): string =>
-  `${runRef}.task.${claimRef.replace(/[^a-zA-Z0-9_.-]/g, "_")}`
-
 const contextIdFor = (accountRef: string, taskId: string): string =>
   `${accountRef}.ctx.${taskId}`.replace(/[^a-zA-Z0-9_.-]/g, "_")
 
@@ -351,7 +351,7 @@ const dependencyTaskIdsFor = (
   )
   return workUnit.dependsOn.flatMap((depRef) => {
     const claim = claimsByWorkUnit.get(depRef)
-    return claim === undefined ? [] : [taskIdFor(runRef, claim.claimRef)]
+    return claim === undefined ? [] : [fleetRunTaskIdForClaim(runRef, claim.claimRef)]
   })
 }
 
@@ -621,7 +621,7 @@ export async function tickFleetRunSupervisor(
       workerKind === "grok" ? "grok_cli" :
       "codex"
 
-    const taskId = taskIdFor(run.runRef, claim.claimRef)
+    const taskId = fleetRunTaskIdForClaim(run.runRef, claim.claimRef)
     const contextId = contextIdFor(account.accountRef, taskId)
     if (store.getDispatchContext(contextId) === null) {
       store.createDispatchContext({
