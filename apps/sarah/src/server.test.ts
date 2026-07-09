@@ -60,6 +60,10 @@ describe("apps/sarah monorepo service", () => {
     )
   })
 
+  // Oracles for contract sarah.no_improvised_pricing.v1 (registered in
+  // src/contracts/isolation-contracts.ts; human doc docs/sarah/SARAH_CONTRACTS.md):
+  // this test and "brain endpoint holds the pricing guard before the model"
+  // below enforce the deterministic pricing guard on both lanes.
   test("pricing pressure never reaches the model path", async () => {
     const res = await handleSarahRequest(
       new Request("http://localhost/sarah/api/eve/turn", {

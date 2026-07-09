@@ -27,6 +27,9 @@ const turn = (
   recordedAt: "2026-07-08T12:00:00.000Z",
 })
 
+// Oracles for contracts sarah.cross_prospect_isolation.v1 and
+// sarah.memory_query_scoped.v1 (registered in
+// src/contracts/isolation-contracts.ts; human doc docs/sarah/SARAH_CONTRACTS.md).
 describe("prospect memory scoping (KHS-3 seam)", () => {
   test("entry point takes exactly one prospect ref", () => {
     expect(getProspectMemoryContext.length).toBe(1)

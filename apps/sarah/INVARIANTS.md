@@ -13,3 +13,18 @@
   set is the growth path (gaps via EN-2).
 - **Agent runtime:** HTTP turns use owned seed runtime; eve is not required for
   monorepo serving path.
+- **Cross-prospect isolation (KHS-3, #8602):** no data from one prospect_ref
+  may surface in another prospect's conversation. Isolation is enforced at the
+  query layer — every prospect-scoped read (session-index and the KHS-2
+  prospect-memory service, #8601) filters by exact `prospect_ref` (or its
+  deterministic same-identity aliases) — never by prompt-side instruction.
+  Contracts + oracles:
+  `src/contracts/isolation-contracts.ts` /
+  `src/contracts/isolation-contracts.test.ts`; human doc
+  `docs/sarah/SARAH_CONTRACTS.md`.
+- **Collective learning is owner-receipt-gated (pending #8603):** Sarah's
+  shared knowledge may read only from an owner-approved store; nothing crosses
+  prospects without an owner-approval receipt, and prospect PII never enters
+  collective stores. There is no shared-knowledge read path in apps/sarah
+  until KHS-4 ships it behind that gate
+  (`sarah.collective_learning_owner_gated.v1`, state pending).

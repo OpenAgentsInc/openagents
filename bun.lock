@@ -537,6 +537,7 @@
         "@effect-native/render-dom": "workspace:*",
         "@effect-native/tokens": "workspace:*",
         "@heygen/liveavatar-web-sdk": "^0.0.18",
+        "@openagentsinc/behavior-contracts": "workspace:*",
         "ai": "7.0.0-canary.176",
         "effect": "catalog:",
         "zod": "^4.4.3",
