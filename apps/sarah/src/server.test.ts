@@ -23,6 +23,51 @@ function installCodingFleetFileStoreForTest(fleetFile: string) {
   return fleetPath
 }
 
+const naturalFleetArgs = {
+  objective: "Run issue 8637 through the durable owner fleet.",
+  repository: {
+    owner: "OpenAgentsInc",
+    name: "openagents",
+    branch: "main",
+    commit: "6af4e38282e4e71882fc5fdd86ae8adadab6df50",
+  },
+  verifier: { kind: "command", command: "bun test" },
+  workSource: { kind: "issue_list", issueRefs: ["#8637"] },
+  workerPolicy: { workerKind: "auto", targetPreference: "owner_local" },
+  targetConcurrency: 2,
+  idempotencyKey: "fc1-natural-operator-1",
+}
+
+const naturalFleetSuccess = {
+  ok: true,
+  duplicate: false,
+  policy: {
+    source: "openagents_server_policy",
+    relationshipMode: "operator",
+    codingFleetStartAllowed: true,
+    fleetObservationAllowed: true,
+    retrievalScope: "owner_fleet_runs",
+    responsePosture: "state_oriented",
+    uiDensity: "dense",
+    administratorToolsAllowed: false,
+  },
+  routeRef: "route.sarah.fleet_runs.authority.v1",
+  run: {
+    runRef: "fleet_run.sarah.aaaaaaaaaaaaaaaaaaaa",
+    scope: "scope.fleet_run.fleet_run.sarah.aaaaaaaaaaaaaaaaaaaa",
+    status: "pending_executor",
+    objective: naturalFleetArgs.objective,
+    repository: naturalFleetArgs.repository,
+    verifier: naturalFleetArgs.verifier,
+    workSource: naturalFleetArgs.workSource,
+    workerPolicy: naturalFleetArgs.workerPolicy,
+    targetConcurrency: 2,
+    createdAt: "2026-07-09T12:00:00.000Z",
+    updatedAt: "2026-07-09T12:00:00.000Z",
+    privateMaterialExcluded: true,
+  },
+}
+
 describe("apps/sarah monorepo service", () => {
   afterEach(() => {
     __setSarahCodingFleetRunStoreForTest(null)
@@ -295,6 +340,175 @@ describe("apps/sarah monorepo service", () => {
       } else {
         process.env.SARAH_ACCOUNT_LINK_TEST_MODE = savedTestMode
       }
+    }
+  })
+
+  test("natural-language coding tool is invisible and non-executable for prospect/customer policy", async () => {
+    const savedTestMode = process.env.SARAH_ACCOUNT_LINK_TEST_MODE
+    const savedInstructed = process.env.SARAH_INSTRUCTED_JSON_TOOLS
+    process.env.SARAH_ACCOUNT_LINK_TEST_MODE = "1"
+    process.env.SARAH_INSTRUCTED_JSON_TOOLS = "1"
+    try {
+      for (const scenario of ["prospect", "customer"] as const) {
+        const systems: string[] = []
+        let authorityCalls = 0
+        const requestHeaders = new Headers({
+          "content-type": "application/json",
+        })
+        if (scenario === "customer") {
+          requestHeaders.set(
+            "x-sarah-test-oa-session",
+            JSON.stringify({
+              userId: "customer-natural",
+              email: "customer@example.com",
+              teams: [],
+              isAdmin: false,
+              relationshipMode: "operator",
+            }),
+          )
+        }
+        const response = await handleSarahRequest(
+          new Request("https://openagents.com/sarah/api/eve/turn", {
+            method: "POST",
+            headers: requestHeaders,
+            body: JSON.stringify({
+              message: "Start my coding fleet.",
+              prospectRef: `prospect-natural-${scenario}`,
+              relationshipMode: "administrator",
+            }),
+          }),
+          {
+            generateOwnedReply: async ({ system }) => {
+              systems.push(system)
+              return {
+                ok: true,
+                reply: JSON.stringify({
+                  sarah_tool: "coding_fleet_start",
+                  args: naturalFleetArgs,
+                }),
+                model: "fixture-gemma",
+                usage: {
+                  promptTokens: 1,
+                  outputTokens: 1,
+                  thoughtTokens: 0,
+                  totalTokens: 2,
+                },
+              }
+            },
+            fleetAuthorityFetch: () => {
+              authorityCalls += 1
+              return Promise.resolve(new Response())
+            },
+          },
+        )
+        const body = await response.json()
+        expect(body.toolResults).toEqual([])
+        expect(body.reply).toBe(
+          "Coding fleet commands are available only in authenticated owner-operator mode.",
+        )
+        expect(systems).toHaveLength(1)
+        expect(systems[0]).not.toContain("coding_fleet_start")
+        expect(authorityCalls).toBe(0)
+      }
+    } finally {
+      if (savedTestMode === undefined) delete process.env.SARAH_ACCOUNT_LINK_TEST_MODE
+      else process.env.SARAH_ACCOUNT_LINK_TEST_MODE = savedTestMode
+      if (savedInstructed === undefined) delete process.env.SARAH_INSTRUCTED_JSON_TOOLS
+      else process.env.SARAH_INSTRUCTED_JSON_TOOLS = savedInstructed
+    }
+  })
+
+  test("authenticated operator natural language starts through authority with state posture and refreshed cookie", async () => {
+    const savedTestMode = process.env.SARAH_ACCOUNT_LINK_TEST_MODE
+    const savedInstructed = process.env.SARAH_INSTRUCTED_JSON_TOOLS
+    process.env.SARAH_ACCOUNT_LINK_TEST_MODE = "1"
+    delete process.env.SARAH_INSTRUCTED_JSON_TOOLS
+    const systems: string[] = []
+    const authorityRequests: Request[] = []
+    try {
+      const response = await handleSarahRequest(
+        new Request("https://openagents.com/sarah/api/eve/turn", {
+          method: "POST",
+          headers: {
+            cookie: "oa_access=fixture-current",
+            "content-type": "application/json",
+            "x-sarah-test-oa-session": JSON.stringify({
+              userId: "operator-natural",
+              email: "operator@example.com",
+              teams: [
+                {
+                  id: "team_openagents_core",
+                  name: "OpenAgents Core Team",
+                  slug: "openagents-core-team",
+                },
+              ],
+              isAdmin: false,
+              relationshipMode: "prospect",
+            }),
+          },
+          body: JSON.stringify({
+            message: "Start the bounded coding fleet now.",
+            prospectRef: "prospect-natural-operator",
+            relationshipMode: "prospect",
+          }),
+        }),
+        {
+          generateOwnedReply: async ({ system }) => {
+            systems.push(system)
+            return {
+              ok: true,
+              reply: JSON.stringify({
+                sarah_tool: "coding_fleet_start",
+                args: naturalFleetArgs,
+              }),
+              model: "fixture-gemma",
+              usage: {
+                promptTokens: 2,
+                outputTokens: 2,
+                thoughtTokens: 0,
+                totalTokens: 4,
+              },
+            }
+          },
+          fleetAuthorityFetch: (request) => {
+            authorityRequests.push(request)
+            const headers = new Headers({ "content-type": "application/json" })
+            headers.append(
+              "set-cookie",
+              "oa_access=fixture-rotated; Path=/; HttpOnly; SameSite=Lax",
+            )
+            return Promise.resolve(
+              new Response(JSON.stringify(naturalFleetSuccess), { headers }),
+            )
+          },
+        },
+      )
+      const body = await response.json()
+      expect(authorityRequests).toHaveLength(1)
+      expect(await authorityRequests[0]!.json()).toEqual(naturalFleetArgs)
+      expect(body.toolResults).toHaveLength(1)
+      expect(body.toolResults[0]).toMatchObject({
+        toolName: "coding_fleet_start",
+        ok: true,
+        output: {
+          ok: true,
+          run: { runRef: "fleet_run.sarah.aaaaaaaaaaaaaaaaaaaa" },
+        },
+      })
+      expect(systems[0]).toContain("coding_fleet_start")
+      expect(systems[0]).toContain("owner's AI coding-fleet operator")
+      expect(systems[0]).not.toContain("AI sales employee")
+      expect(body.personaPreview).toContain("AI coding-fleet operator")
+      expect(body.personaPreview).not.toContain("AI sales employee")
+      expect(response.headers.getSetCookie()).toEqual([
+        "oa_access=fixture-rotated; Path=/; HttpOnly; SameSite=Lax",
+      ])
+      expect(JSON.stringify(body)).not.toContain("fixture-rotated")
+    } finally {
+      if (savedTestMode === undefined) delete process.env.SARAH_ACCOUNT_LINK_TEST_MODE
+      else process.env.SARAH_ACCOUNT_LINK_TEST_MODE = savedTestMode
+      if (savedInstructed === undefined) delete process.env.SARAH_INSTRUCTED_JSON_TOOLS
+      else process.env.SARAH_INSTRUCTED_JSON_TOOLS = savedInstructed
     }
   })
 

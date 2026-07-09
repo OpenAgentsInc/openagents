@@ -109,6 +109,10 @@ import {
   type SarahFleetBrowserConfig,
   type SarahFleetBrowserViewState,
 } from "../services/fleet-browser-host.ts"
+import {
+  makeSarahFleetStartConfigHandler,
+  selectSarahFleetStartConfig,
+} from "../services/fleet-start-result.ts"
 
 const API = "/sarah/api"
 
@@ -283,6 +287,7 @@ export type SarahOwnerFleetHostIntentHandlers = IntentHandlers<
 export type SarahSurfaceMountOptions = Readonly<{
   ownerFleet?: SarahOwnerFleetViewState
   ownerFleetHandlers?: SarahOwnerFleetHostIntentHandlers
+  onOwnerFleetRunStarted?: (config: SarahFleetBrowserConfig) => void
 }>
 
 const hasCompleteSarahOwnerFleetHostHandlers = (
@@ -1448,6 +1453,7 @@ const replyLooksLikeGuardRefusal = (reply: string): boolean =>
 const sendTextTurn = (
   state: SubscriptionRef.SubscriptionRef<SarahSurfaceState>,
   message: string,
+  onOwnerFleetRunStarted?: (config: SarahFleetBrowserConfig) => void,
 ) =>
   Effect.gen(function* () {
     const trimmed = message.trim()
@@ -1468,12 +1474,12 @@ const sendTextTurn = (
         const data = (await response.json()) as {
           reply?: string
           modelPath?: string
-          toolResults?: ReadonlyArray<SarahToolResult>
+          toolResults?: unknown
         }
         return {
           reply: data.reply ?? "(no reply)",
           modelPath: data.modelPath ?? null,
-          toolResults: data.toolResults ?? [],
+          toolResults: Array.isArray(data.toolResults) ? data.toolResults : [],
         }
       },
       catch: () => new Error("turn_failed"),
@@ -1482,12 +1488,23 @@ const sendTextTurn = (
       modelPath: null,
       toolResults: [],
     })))
+    const selectedFleet = selectSarahFleetStartConfig(turn.toolResults)
+    if (selectedFleet !== null && onOwnerFleetRunStarted !== undefined) {
+      yield* Effect.sync(() => {
+        try {
+          onOwnerFleetRunStarted(selectedFleet)
+        } catch {
+          // The exact Fleet result remains receipted even if browser
+          // navigation/runtime boot is temporarily unavailable.
+        }
+      })
+    }
     yield* appendTranscript(state, "assistant", turn.reply)
     yield* appendReceipts(
       state,
       [
         ...turn.toolResults.flatMap((result) => {
-          const receipt = receiptFromToolResult(result)
+          const receipt = receiptFromToolResult(result as SarahToolResult)
           return receipt ? [receipt] : []
         }),
         ...(turn.modelPath === "deterministic_guard" &&
@@ -2202,7 +2219,11 @@ export const mountSarahSurface = (
             yield* SubscriptionRef.update(state, (s2): SarahSurfaceState => ({ ...s2, input: "" }))
             return
           }
-          yield* sendTextTurn(state, trimmed)
+          yield* sendTextTurn(
+            state,
+            trimmed,
+            options.onOwnerFleetRunStarted,
+          )
         }),
       SarahOpenLink: (href) =>
         Effect.sync(() => {
@@ -2624,8 +2645,9 @@ export const mountSarahSurface = (
       ) =>
         SubscriptionRef.update(state, (current): SarahSurfaceState => {
           if (ownerFleet !== undefined) {
+            const changedScope = current.ownerFleet?.scope !== ownerFleet.scope
             const retainedLocalState =
-              current.ownerFleet?.scope === ownerFleet.scope
+              !changedScope
                 ? {
                     expandedAuditWorkUnitRefs:
                       current.ownerFleet.expandedAuditWorkUnitRefs,
@@ -2636,6 +2658,7 @@ export const mountSarahSurface = (
             return {
               ...current,
               ownerFleet: { ...ownerFleet, ...retainedLocalState },
+              activePanel: changedScope ? "fleet" : current.activePanel,
             }
           }
           const { ownerFleet: _removed, ...withoutOwnerFleet } = current
@@ -2708,6 +2731,27 @@ const boot = () => {
             state === null ? undefined : ownerFleetViewStateFromBrowser(state),
           ),
         )
+      },
+    })
+    const selectStartedFleet = makeSarahFleetStartConfigHandler({
+      coordinator: fleetCoordinator,
+      currentUrl: () => window.location.href,
+      navigate: (url) => {
+        const navigation = (
+          window as Window & {
+            navigation?: {
+              navigate: (
+                url: string,
+                options?: { history?: "push" | "replace" },
+              ) => unknown
+            }
+          }
+        ).navigation
+        if (navigation !== undefined) {
+          navigation.navigate(url, { history: "push" })
+          return
+        }
+        window.location.assign(url)
       },
     })
 
@@ -2794,6 +2838,7 @@ const boot = () => {
     void Effect.runPromise(
       Scope.provide(scope)(mountSarahSurface(root, avatar, {
         ownerFleetHandlers: handlers,
+        onOwnerFleetRunStarted: selectStartedFleet,
       })),
     )
       .then((handle) => {

@@ -2,9 +2,16 @@ import { describe, expect, test } from "bun:test"
 
 import {
   formatInstructedToolReply,
+  instructedJsonToolsArmed,
+  instructedJsonToolProtocolPrompt,
   parseInstructedJsonToolCall,
   SARAH_INSTRUCTED_JSON_TOOLS,
 } from "./instructed-json-tools.ts"
+
+const operatorPolicy = {
+  relationshipMode: "operator" as const,
+  codingFleetStartAllowed: true,
+}
 
 describe("AV-3 instructed-JSON tool calling (#8598)", () => {
   test("parses bare sarah_tool JSON", () => {
@@ -43,6 +50,47 @@ describe("AV-3 instructed-JSON tool calling (#8598)", () => {
   test("allowed list is public-safe only", () => {
     expect(SARAH_INSTRUCTED_JSON_TOOLS).not.toContain("checkout_link_create")
     expect(SARAH_INSTRUCTED_JSON_TOOLS).toContain("human_handoff")
+  })
+
+  test("coding fleet exposure is policy-owned and operator-only", () => {
+    const coding =
+      '{"sarah_tool":"coding_fleet_start","args":{"objective":"bounded"}}'
+    expect(parseInstructedJsonToolCall(coding)).toBeNull()
+    expect(
+      parseInstructedJsonToolCall(coding, {
+        relationshipMode: "customer",
+        codingFleetStartAllowed: false,
+      }),
+    ).toBeNull()
+    expect(parseInstructedJsonToolCall(coding, operatorPolicy)?.toolName).toBe(
+      "coding_fleet_start",
+    )
+    expect(instructedJsonToolProtocolPrompt()).not.toContain(
+      "coding_fleet_start",
+    )
+    expect(instructedJsonToolProtocolPrompt(operatorPolicy)).toContain(
+      "coding_fleet_start",
+    )
+    const saved = process.env.SARAH_INSTRUCTED_JSON_TOOLS
+    delete process.env.SARAH_INSTRUCTED_JSON_TOOLS
+    try {
+      expect(instructedJsonToolsArmed()).toBe(false)
+      expect(instructedJsonToolsArmed(operatorPolicy)).toBe(true)
+    } finally {
+      if (saved === undefined) delete process.env.SARAH_INSTRUCTED_JSON_TOOLS
+      else process.env.SARAH_INSTRUCTED_JSON_TOOLS = saved
+    }
+  })
+
+  test("coding fleet never extracts from prose or fences", () => {
+    const coding =
+      '{"sarah_tool":"coding_fleet_start","args":{"objective":"bounded"}}'
+    expect(
+      parseInstructedJsonToolCall(`Please run this: ${coding}`, operatorPolicy),
+    ).toBeNull()
+    expect(
+      parseInstructedJsonToolCall(`\`\`\`json\n${coding}\n\`\`\``, operatorPolicy),
+    ).toBeNull()
   })
 
   test("formatInstructedToolReply stays short", () => {

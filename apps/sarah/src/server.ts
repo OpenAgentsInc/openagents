@@ -33,7 +33,10 @@ import {
 } from "./services/session-index.ts"
 import { processDueSarahFollowUps } from "./services/follow-up-scheduler.ts"
 import { enqueueSarahEmailDraft } from "./services/crm-email-rail.ts"
-import { runOwnedSarahTurn } from "./agent-runtime/owned-runtime.ts"
+import {
+  runOwnedSarahTurn,
+  type OwnedSarahGenerateReply,
+} from "./agent-runtime/owned-runtime.ts"
 import { handleSarahChatCompletions } from "./llm-openai-compat.ts"
 import { sarahAnswerCacheStatus } from "./services/semantic-answer-cache.ts"
 import {
@@ -96,6 +99,7 @@ const PREFIX = "/sarah"
 
 export type SarahServerDependencies = Readonly<{
   fleetAuthorityFetch?: SarahFleetAuthorityFetch | undefined
+  generateOwnedReply?: OwnedSarahGenerateReply | undefined
 }>
 
 function json(data: unknown, init: ResponseInit = {}) {
@@ -471,7 +475,10 @@ async function handleOperatorOps(): Promise<Response> {
   })
 }
 
-async function handleEveTurn(request: Request): Promise<Response> {
+async function handleEveTurn(
+  request: Request,
+  dependencies: SarahServerDependencies,
+): Promise<Response> {
   // SM-4: owned runtime (eve retired as dependency for the HTTP turn path).
   const body = (await request.json().catch(() => ({}))) as {
     message?: string
@@ -486,12 +493,43 @@ async function handleEveTurn(request: Request): Promise<Response> {
     prospectRef = mintSarahProspectRef()
     mintedCookie = true
   }
+  const ownerSession = await resolveOpenAgentsSession(request)
+  const relationshipMode = ownerSession?.relationshipMode ?? "prospect"
+  const codingFleetStartAllowed =
+    relationshipMode === "operator" || relationshipMode === "administrator"
+  const refreshedSessionCookies = [
+    ...(ownerSession?.refreshedSessionCookies ?? []),
+  ]
+  const codingFleetStart =
+    codingFleetStartAllowed && !sarahCodingFleetRunStoreIsInjectedForTest()
+      ? async (args: unknown) => {
+          const authority = await startSarahCodingFleetRunThroughAuthority(
+            request,
+            args,
+            dependencies.fleetAuthorityFetch,
+          )
+          refreshedSessionCookies.push(...authority.refreshedSessionCookies)
+          return { ok: authority.ok, output: authority.output }
+        }
+      : undefined
   const result = await runOwnedSarahTurn({
     message: body.message ?? "",
     threadId: body.threadId,
     prospectRef,
+    ...(ownerSession ? { ownerRef: ownerSession.userId } : {}),
+    relationshipPolicy: {
+      relationshipMode,
+      codingFleetStartAllowed,
+    },
+    ...(codingFleetStart === undefined ? {} : { codingFleetStart }),
+    ...(dependencies.generateOwnedReply === undefined
+      ? {}
+      : { generateReply: dependencies.generateOwnedReply }),
   })
   const response = json(result)
+  for (const cookie of new Set(refreshedSessionCookies)) {
+    response.headers.append("set-cookie", cookie)
+  }
   if (mintedCookie) setSarahProspectCookie(response, prospectRef)
   return response
 }
@@ -517,6 +555,7 @@ async function handleEveToolCall(
       ? await resolveOpenAgentsSession(request)
       : null
   const refreshedSessionCookies: Array<string> = []
+  refreshedSessionCookies.push(...(ownerSession?.refreshedSessionCookies ?? []))
   const codingFleetStart =
     body.toolName === "coding_fleet_start" &&
     ownerSession !== null &&
@@ -545,7 +584,7 @@ async function handleEveToolCall(
     prospectRef,
   })
   const response = json(result)
-  refreshedSessionCookies.forEach(cookie =>
+  new Set(refreshedSessionCookies).forEach(cookie =>
     response.headers.append("set-cookie", cookie),
   )
   if (mintedCookie) setSarahProspectCookie(response, prospectRef)
@@ -861,7 +900,7 @@ export async function handleSarahRequest(
     return handleSarahChatCompletions(request)
   }
   if (apiPath === "/api/eve/turn" && request.method === "POST") {
-    return handleEveTurn(request)
+    return handleEveTurn(request, dependencies)
   }
   if (apiPath === "/api/eve/tool-call" && request.method === "POST") {
     return handleEveToolCall(request, dependencies)

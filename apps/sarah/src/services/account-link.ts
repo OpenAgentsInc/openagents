@@ -21,11 +21,19 @@ import {
 } from "./turn-store.ts"
 import { prospectRefAliases } from "./prospect-memory.ts"
 import { publishSarahBlueprintDelta } from "./avatar-event-bus.ts"
+import { Schema as S } from "effect"
+
+export type OpenAgentsRelationshipMode =
+  | "customer"
+  | "operator"
+  | "administrator"
 
 export type OpenAgentsSessionUser = {
   userId: string
   email: string | null
   name: string | null
+  relationshipMode?: OpenAgentsRelationshipMode
+  refreshedSessionCookies?: ReadonlyArray<string>
 }
 
 /** contact_id prefix marking an account link (vs a CRM contact id). */
@@ -51,15 +59,76 @@ export function sarahAccountLinkTestMode(): boolean {
   return process.env.SARAH_ACCOUNT_LINK_TEST_MODE === "1"
 }
 
+const SessionUserWire = S.Struct({
+  userId: S.String.check(S.isMinLength(1)),
+  email: S.optionalKey(S.NullOr(S.String)),
+  name: S.optionalKey(S.NullOr(S.String)),
+})
+
+const TeamSummaryWire = S.Struct({
+  id: S.String,
+  name: S.String,
+  slug: S.NullOr(S.String),
+})
+
+const SessionBootstrapWire = S.Struct({
+  session: SessionUserWire,
+  teams: S.Array(TeamSummaryWire),
+  isAdmin: S.Boolean,
+})
+
+const AuthSessionWire = S.Union([
+  S.Struct({
+    authenticated: S.Literal(true),
+    bootstrap: SessionBootstrapWire,
+  }),
+  S.Struct({ authenticated: S.Literal(false) }),
+])
+
+const TestSessionWire = S.Struct({
+  userId: S.String.check(S.isMinLength(1)),
+  email: S.optionalKey(S.NullOr(S.String)),
+  name: S.optionalKey(S.NullOr(S.String)),
+  teams: S.optionalKey(S.Array(TeamSummaryWire)),
+  isAdmin: S.optionalKey(S.Boolean),
+})
+
+const isCoreTeam = (
+  teams: ReadonlyArray<typeof TeamSummaryWire.Type>,
+): boolean =>
+  teams.some(
+    (team) =>
+      team.id === "team_openagents_core" ||
+      team.slug === "openagents-core-team" ||
+      team.name === "OpenAgents Core Team",
+  )
+
+const relationshipModeFromBootstrap = (input: Readonly<{
+  isAdmin: boolean
+  teams: ReadonlyArray<typeof TeamSummaryWire.Type>
+}>): OpenAgentsRelationshipMode =>
+  input.isAdmin ? "administrator" : isCoreTeam(input.teams) ? "operator" : "customer"
+
+const responseSessionCookies = (response: Response): ReadonlyArray<string> => {
+  const cookies = response.headers.getSetCookie()
+  if (cookies.length > 0) return cookies
+  const cookie = response.headers.get("set-cookie")
+  return cookie === null ? [] : [cookie]
+}
+
 function parseTestSessionHeader(raw: string): OpenAgentsSessionUser | null {
   try {
-    const parsed = JSON.parse(raw) as Record<string, unknown>
-    if (typeof parsed.userId !== "string" || !parsed.userId.trim()) return null
+    const parsed = S.decodeUnknownSync(TestSessionWire)(JSON.parse(raw), {
+      onExcessProperty: "ignore",
+    })
     return {
       userId: parsed.userId,
-      email:
-        typeof parsed.email === "string" && parsed.email ? parsed.email : null,
-      name: typeof parsed.name === "string" && parsed.name ? parsed.name : null,
+      email: parsed.email || null,
+      name: parsed.name || null,
+      relationshipMode: relationshipModeFromBootstrap({
+        isAdmin: parsed.isAdmin ?? false,
+        teams: parsed.teams ?? [],
+      }),
     }
   } catch {
     return null
@@ -90,25 +159,17 @@ export async function resolveOpenAgentsSession(
       signal: AbortSignal.timeout(5_000),
     })
     if (!response.ok) return null
-    const data = (await response.json()) as {
-      authenticated?: boolean
-      bootstrap?: {
-        session?: { userId?: unknown; email?: unknown; name?: unknown }
-      }
-    }
-    if (data.authenticated !== true) return null
-    const session = data.bootstrap?.session
-    if (!session || typeof session.userId !== "string" || !session.userId) {
-      return null
-    }
+    const data = S.decodeUnknownSync(AuthSessionWire)(await response.json(), {
+      onExcessProperty: "ignore",
+    })
+    if (!data.authenticated) return null
+    const session = data.bootstrap.session
     return {
       userId: session.userId,
-      email:
-        typeof session.email === "string" && session.email
-          ? session.email
-          : null,
-      name:
-        typeof session.name === "string" && session.name ? session.name : null,
+      email: session.email || null,
+      name: session.name || null,
+      relationshipMode: relationshipModeFromBootstrap(data.bootstrap),
+      refreshedSessionCookies: responseSessionCookies(response),
     }
   } catch {
     return null

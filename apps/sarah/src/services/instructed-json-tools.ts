@@ -15,8 +15,23 @@ export const SARAH_INSTRUCTED_JSON_TOOLS = [
   "human_handoff",
 ] as const
 
+export const SARAH_OPERATOR_INSTRUCTED_JSON_TOOLS = [
+  ...SARAH_INSTRUCTED_JSON_TOOLS,
+  "coding_fleet_start",
+] as const
+
 export type SarahInstructedJsonToolName =
-  (typeof SARAH_INSTRUCTED_JSON_TOOLS)[number]
+  (typeof SARAH_OPERATOR_INSTRUCTED_JSON_TOOLS)[number]
+
+export type SarahInstructedJsonToolPolicy = Readonly<{
+  codingFleetStartAllowed: boolean
+  relationshipMode: "prospect" | "customer" | "operator" | "administrator"
+}>
+
+export const SARAH_PUBLIC_INSTRUCTED_JSON_POLICY: SarahInstructedJsonToolPolicy = {
+  codingFleetStartAllowed: false,
+  relationshipMode: "prospect",
+}
 
 export type ParsedInstructedToolCall = {
   toolName: SarahInstructedJsonToolName
@@ -24,14 +39,23 @@ export type ParsedInstructedToolCall = {
   raw: string
 }
 
-const TOOL_SET = new Set<string>(SARAH_INSTRUCTED_JSON_TOOLS)
+const toolNamesForPolicy = (
+  policy: SarahInstructedJsonToolPolicy,
+): ReadonlyArray<SarahInstructedJsonToolName> =>
+  policy.codingFleetStartAllowed &&
+  (policy.relationshipMode === "operator" ||
+    policy.relationshipMode === "administrator")
+    ? SARAH_OPERATOR_INSTRUCTED_JSON_TOOLS
+    : SARAH_INSTRUCTED_JSON_TOOLS
 
 /**
  * System-prompt appendix that teaches the model the instructed-JSON protocol.
  * Appended only when the owner enables SARAH_INSTRUCTED_JSON_TOOLS=1.
  */
-export function instructedJsonToolProtocolPrompt(): string {
-  const names = SARAH_INSTRUCTED_JSON_TOOLS.join(", ")
+export function instructedJsonToolProtocolPrompt(
+  policy: SarahInstructedJsonToolPolicy = SARAH_PUBLIC_INSTRUCTED_JSON_POLICY,
+): string {
+  const names = toolNamesForPolicy(policy).join(", ")
   return [
     "Tool protocol (instructed JSON — native function calling unavailable):",
     `When you need a tool, reply with ONLY one JSON object and nothing else:`,
@@ -48,9 +72,11 @@ export function instructedJsonToolProtocolPrompt(): string {
  */
 export function parseInstructedJsonToolCall(
   text: string,
+  policy: SarahInstructedJsonToolPolicy = SARAH_PUBLIC_INSTRUCTED_JSON_POLICY,
 ): ParsedInstructedToolCall | null {
   const trimmed = text.trim()
   if (!trimmed) return null
+  const toolSet = new Set<string>(toolNamesForPolicy(policy))
 
   const candidates: string[] = []
   // Full-body JSON
@@ -78,7 +104,11 @@ export function parseInstructedJsonToolCall(
             : typeof parsed.toolName === "string"
               ? parsed.toolName
               : null
-      if (!name || !TOOL_SET.has(name)) continue
+      if (!name || !toolSet.has(name)) continue
+      // The coding tool creates durable work. Unlike the public lookup tools,
+      // it is accepted only as the complete model reply, never extracted from
+      // prose or a markdown fence that could have been quoted/injected.
+      if (name === "coding_fleet_start" && candidate !== trimmed) continue
       const argsRaw = parsed.args
       const args =
         argsRaw && typeof argsRaw === "object" && !Array.isArray(argsRaw)
@@ -94,6 +124,24 @@ export function parseInstructedJsonToolCall(
     }
   }
   return null
+}
+
+/** Detect a denied high-authority attempt without retaining or echoing args. */
+export function isDeniedCodingFleetToolAttempt(
+  text: string,
+  policy: SarahInstructedJsonToolPolicy,
+): boolean {
+  if (policy.codingFleetStartAllowed) return false
+  const trimmed = text.trim()
+  if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) return false
+  try {
+    const parsed = JSON.parse(trimmed) as Record<string, unknown>
+    return [parsed.sarah_tool, parsed.tool, parsed.toolName].includes(
+      "coding_fleet_start",
+    )
+  } catch {
+    return false
+  }
 }
 
 /** Format a tool result into a short prospect-facing reply (no secrets). */
@@ -120,6 +168,17 @@ export function formatInstructedToolReply(
   return `Here's what I found via ${toolName}: ${summary}`
 }
 
-export function instructedJsonToolsArmed(): boolean {
-  return process.env.SARAH_INSTRUCTED_JSON_TOOLS === "1"
+/**
+ * Coding command selection is always armed only after server-derived
+ * operator/administrator policy. The legacy public lookup loop keeps its
+ * explicit rollout flag, so enabling the P0 owner path does not broaden the
+ * prospect tool surface.
+ */
+export function instructedJsonToolsArmed(
+  policy: SarahInstructedJsonToolPolicy = SARAH_PUBLIC_INSTRUCTED_JSON_POLICY,
+): boolean {
+  return (
+    toolNamesForPolicy(policy).includes("coding_fleet_start") ||
+    process.env.SARAH_INSTRUCTED_JSON_TOOLS === "1"
+  )
 }

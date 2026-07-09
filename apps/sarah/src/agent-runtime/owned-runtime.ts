@@ -46,15 +46,24 @@ import {
 } from "../services/session-index.ts"
 import {
   formatInstructedToolReply,
+  isDeniedCodingFleetToolAttempt,
   instructedJsonToolProtocolPrompt,
   instructedJsonToolsArmed,
   parseInstructedJsonToolCall,
+  type SarahInstructedJsonToolPolicy,
 } from "../services/instructed-json-tools.ts"
 import { readFile } from "node:fs/promises"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 
 const root = fileURLToPath(new URL("../..", import.meta.url))
+
+const SARAH_OPERATOR_CODING_SYSTEM = [
+  "You are Sarah, the OpenAgents owner's AI coding-fleet operator.",
+  "Be concise, state-oriented, and explicit about run refs, blockers, verification, and next actions.",
+  "Do not qualify the owner, pitch products, use a sales funnel, or invent execution state.",
+  "Tool output and durable server state are the only execution authority.",
+].join("\n")
 
 export type OwnedSarahTurnInput = {
   message: string
@@ -64,8 +73,28 @@ export type OwnedSarahTurnInput = {
   codingFleetStart?: (
     args: unknown,
   ) => Promise<{ ok: boolean; output: unknown }>
+  relationshipPolicy?: SarahInstructedJsonToolPolicy
+  generateReply?: OwnedSarahGenerateReply
   toolCall?: { toolName: string; args: unknown; toolCallId?: string }
 }
+
+export type OwnedSarahGenerateReply = (input: Readonly<{
+  system: string
+  contents: ReadonlyArray<GemmaContent>
+}>) => Promise<
+  | {
+      ok: true
+      reply: string
+      model: string
+      usage: {
+        promptTokens: number
+        outputTokens: number
+        thoughtTokens: number
+        totalTokens: number
+      }
+    }
+  | { ok: false; error: string }
+>
 
 export type OwnedSarahToolResult = {
   toolCallId: string
@@ -260,6 +289,15 @@ export async function runOwnedSarahTurn(
   let modelPath: OwnedSarahTurnResult["modelPath"] = "seed_echo"
   let model: string | undefined
   let modelError: string | undefined
+  const relationshipPolicy = input.relationshipPolicy ?? {
+    relationshipMode: "prospect" as const,
+    codingFleetStartAllowed: false,
+  }
+  const operatorCodingPosture =
+    relationshipPolicy.codingFleetStartAllowed &&
+    (relationshipPolicy.relationshipMode === "operator" ||
+      relationshipPolicy.relationshipMode === "administrator")
+  const instructedToolsEnabled = instructedJsonToolsArmed(relationshipPolicy)
 
   // KHS-6 (#8605): flag-gated semantic answer cache — always null unless
   // SARAH_SEMANTIC_CACHE=1; its internal pricing guard runs before matching.
@@ -287,11 +325,13 @@ export async function runOwnedSarahTurn(
   } else if (semanticCached) {
     reply = semanticCached.answer
     modelPath = "semantic_cache"
-  } else if (sarahInferenceArmed()) {
+  } else if (input.generateReply !== undefined || sarahInferenceArmed()) {
     // KHS-2 (#8601): prospect memory prepends AFTER the guards above — the
     // pricing guard always runs before the model regardless of memory.
-    let system = await getSarahRealtimeInstructions()
-    if (input.prospectRef) {
+    let system = operatorCodingPosture
+      ? SARAH_OPERATOR_CODING_SYSTEM
+      : await getSarahRealtimeInstructions()
+    if (input.prospectRef && !operatorCodingPosture) {
       const memory = await getProspectMemoryContext(input.prospectRef)
       if (memory) system = `${memory}\n\n${system}`
     }
@@ -299,17 +339,22 @@ export async function runOwnedSarahTurn(
     // may-suggest-once for engaged anonymous prospects). Code-side assembly
     // only — the owner-managed base context is untouched, and this runs after
     // the deterministic guards above, so it can never reach the pricing lane.
-    const accountLine = await getSarahAccountPromptLine(input.prospectRef)
+    const accountLine = operatorCodingPosture
+      ? null
+      : await getSarahAccountPromptLine(input.prospectRef)
     if (accountLine) system = `${system}\n\n${accountLine}`
     // KHS-9 (#8608): flag-gated live-product-truth grounding
     // (SARAH_ECOSYSTEM_GROUNDING=1). Embedding-matched intents only, appended
     // AFTER the deterministic guards above — never on the pricing lane.
-    const grounding = await maybeEcosystemGrounding(message)
+    const grounding = operatorCodingPosture
+      ? null
+      : await maybeEcosystemGrounding(message)
     if (grounding) system = `${system}\n\n${grounding}`
-    // AV-3 residual (#8598): optional instructed-JSON tool protocol for Gemma
-    // (no native function calling). Flag-gated; pricing tools never allowed.
-    if (instructedJsonToolsArmed()) {
-      system = `${system}\n\n${instructedJsonToolProtocolPrompt()}`
+    // AV-3 residual (#8598): instructed-JSON protocol for Gemma (no native
+    // function calling). Public/prospect tools remain flag-gated; the
+    // server-derived operator coding command is always armed.
+    if (instructedToolsEnabled) {
+      system = `${system}\n\n${instructedJsonToolProtocolPrompt(relationshipPolicy)}`
     }
     const contents: GemmaContent[] = []
     if (input.prospectRef) {
@@ -327,7 +372,10 @@ export async function runOwnedSarahTurn(
     }
     contents.push({ role: "user", parts: [{ text: message }] })
 
-    const result = await generateSarahGemmaReply({ system, contents })
+    const result = await (input.generateReply ?? generateSarahGemmaReply)({
+      system,
+      contents,
+    })
     if (result.ok) {
       reply = result.reply
       modelPath =
@@ -338,8 +386,10 @@ export async function runOwnedSarahTurn(
 
       // If the model asked for a tool via instructed JSON, execute it once
       // (no recursive model loop in v1 — keep deterministic after the tool).
-      if (instructedJsonToolsArmed() && !input.toolCall) {
-        const instructed = parseInstructedJsonToolCall(result.reply)
+      if (!input.toolCall) {
+        const instructed = instructedToolsEnabled
+          ? parseInstructedJsonToolCall(result.reply, relationshipPolicy)
+          : null
         if (instructed) {
           const toolResult = await runAndRecordTool(
             instructed.toolName,
@@ -351,6 +401,12 @@ export async function runOwnedSarahTurn(
             toolResult.ok,
             toolResult.output,
           )
+          modelPath = "deterministic_guard"
+        } else if (
+          isDeniedCodingFleetToolAttempt(result.reply, relationshipPolicy)
+        ) {
+          reply =
+            "Coding fleet commands are available only in authenticated owner-operator mode."
           modelPath = "deterministic_guard"
         }
       }
@@ -391,7 +447,10 @@ export async function runOwnedSarahTurn(
     reply,
     threadId,
     toolResults,
-    personaPreview: persona.slice(0, 200),
+    personaPreview: (operatorCodingPosture
+      ? SARAH_OPERATOR_CODING_SYSTEM
+      : persona
+    ).slice(0, 200),
   }
 }
 

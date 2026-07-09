@@ -140,7 +140,46 @@ describe("KHS-7 account linking (#8606)", () => {
           }),
         }),
       ),
-    ).toEqual({ userId: "u1", email: "x@y.z", name: null })
+    ).toEqual({
+      userId: "u1",
+      email: "x@y.z",
+      name: null,
+      relationshipMode: "customer",
+    })
+  })
+
+  test("relationship mode derives from server bootstrap facts, never an asserted mode", async () => {
+    process.env.SARAH_ACCOUNT_LINK_TEST_MODE = "1"
+    const operator = await resolveOpenAgentsSession(
+      requestWith({
+        "x-sarah-test-oa-session": JSON.stringify({
+          userId: "u-operator",
+          email: "operator@example.com",
+          relationshipMode: "administrator",
+          teams: [
+            {
+              id: "team_openagents_core",
+              name: "OpenAgents Core Team",
+              slug: "openagents-core-team",
+            },
+          ],
+          isAdmin: false,
+        }),
+      }),
+    )
+    expect(operator?.relationshipMode).toBe("operator")
+
+    const administrator = await resolveOpenAgentsSession(
+      requestWith({
+        "x-sarah-test-oa-session": JSON.stringify({
+          userId: "u-admin",
+          email: "admin@example.com",
+          teams: [],
+          isAdmin: true,
+        }),
+      }),
+    )
+    expect(administrator?.relationshipMode).toBe("administrator")
   })
 
   test("without an oa_access cookie the request resolves anonymous (no network)", async () => {
