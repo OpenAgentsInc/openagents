@@ -10,6 +10,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test:deal-rules": "bun scripts/deal-rules-property-test.mjs",
     "test:s12-evals": "bun scripts/sarah-eval-suite.mjs",
+    "test:sales-quality": "bun scripts/sarah-sales-quality-suite.mjs",
     "test:gpu-media-closeout": "bun test scripts/gpu-media-run-closeout.test.mjs",
     "closeout:gpu-media": "bun scripts/gpu-media-run-closeout.mjs",
     "test:quality-scoreboard": "bun test scripts/quality-scoreboard.test.mjs",
@@ -20,7 +21,7 @@
     "smoke:s8-continuity": "bun scripts/sarah-s8-continuity-smoke.mjs",
     "smoke:s8-suppression": "bun scripts/sarah-s8-email-suppression-smoke.mjs",
     "smoke:s13": "bun scripts/sarah-s13-smoke.mjs",
-    "oracle": "bun run test && bun run test:deal-rules && bun run smoke:s8-continuity && bun run smoke:s8-suppression && bun run smoke:s13"
+    "oracle": "bun run test && bun run test:deal-rules && bun run test:sales-quality && bun run smoke:s8-continuity && bun run smoke:s8-suppression && bun run smoke:s13"
   },
   "dependencies": {
     "@ai-sdk/gateway": "4.0.0-canary.107",

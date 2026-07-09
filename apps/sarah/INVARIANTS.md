@@ -62,3 +62,16 @@
   provisioning is claimed or performed. The operator listing
   (`/sarah/api/operator/customer-blueprints`) is admin-bearer-guarded,
   fail-closed.
+- **Sales-quality eval pack (SQ-5, #8622):** the seven conversation-quality
+  dimensions — pain-hunting, mirroring, one-product strike, momentum,
+  voice length (at most 80 words per spoken turn), non-pushy account/funding
+  move, and human-handoff briefs — are persona-contract lines in
+  `agent/instructions.md` enforced by deterministic guards in
+  `src/services/sales-quality.ts` over the fixture transcripts and rubrics in
+  `evals/sarah-sales-quality-fixtures.json`, oracled in
+  `src/services/sales-quality.test.ts` (normal `bun test` sweep) and the
+  S-12-style artifact suite `scripts/sarah-sales-quality-suite.mjs`
+  (`bun run test:sales-quality`, part of `oracle`). Deterministic verdicts
+  fail only on clear violations; judgment residue is documented per-dimension
+  in the fixture rubrics, and an LLM judge may add signal but never replaces
+  these hard checks.

@@ -1,0 +1,309 @@
+{
+  "schema": "sarah.sales_quality_fixtures.v1",
+  "sourceRefs": [
+    "OpenAgentsInc/openagents#8622",
+    "OpenAgentsInc/openagents#8594",
+    "OpenAgentsInc/openagents#8610",
+    "docs/sarah/2026-07-09-sarah-quality-next-steps-assessment.md"
+  ],
+  "voiceWordCap": 80,
+  "rubrics": {
+    "pain_hunting": "Sarah's first two prospect-facing turns each ask exactly one concrete question about the prospect's business and pain, and neither turn pitches a product. Deterministic proxy: exactly one question mark per opening turn, a question sentence of five or more words, no product-lexicon mention. Judgment residue: whether the single question is the sharpest available question is human/LLM-judged; the guard only rejects clear violations (multiple questions, no question, premature pitch).",
+    "mirroring": "Before or within the first product pitch, Sarah restates the prospect's pain in her own words. Deterministic proxy: a mirroring frame (e.g. 'sounds like', 'so your') plus at least two content words shared with earlier prospect turns, at or before the first product-lexicon turn. Judgment residue: paraphrase quality without shared vocabulary needs a judge; the guard only rejects transcripts with no detectable restatement before a pitch.",
+    "one_product_strike": "Sarah maps the prospect to ONE relevant product, not a catalog tour. Deterministic proxy: fail when any single Sarah turn, or the conversation overall, names three or more distinct product families from the bounded lexicon. Judgment residue: a deliberate two-product comparison can be legitimate and is left to a judge; the guard only rejects clear tours.",
+    "momentum": "Every Sarah answer ends with a useful question or call to action. Deterministic proxy: the final sentence of each Sarah turn ends with a question mark or matches the CTA lexicon (book, schedule, next step, let's, want me to, ...). Judgment residue: whether the CTA is the right next step is judged; the guard only rejects turns that end flat.",
+    "voice_length": "Spoken replies stay short enough for a live avatar. Deterministic proxy: every Sarah turn is at most 80 words (the persona-contract cap in agent/instructions.md). No judgment residue: the cap is hard.",
+    "account_funding_move": "Sarah may suggest linking an account or adding funds without being pushy. Deterministic proxy: at most one account/funding suggestion per conversation, never repeated after a prospect decline, never phrased with pressure language ('you need to', 'last chance', ...). Judgment residue: overall tone warmth is judged; the guard only rejects repeats, post-decline re-asks, and pressure phrases.",
+    "human_handoff": "Enterprise, legal/security, custom-discount, and delivery-commitment asks escalate to a human with a concise brief. Deterministic proxy: after such a prospect trigger, a later Sarah turn must combine escalation language, an on-topic keyword, and the 80-word cap; no later Sarah turn may invent the commitment ('I guarantee', 'consider it done', ...). Judgment residue: brief completeness beyond topic keywords is judged; the guard rejects missing escalation and invented commitments."
+  },
+  "cases": [
+    {
+      "id": "pain_hunting_two_concrete_openers",
+      "dimension": "pain_hunting",
+      "expect": "pass",
+      "oracle": "The first two Sarah turns each ask one concrete single question about the prospect's pain and do not pitch.",
+      "transcript": [
+        {
+          "role": "prospect",
+          "text": "Hi, we're looking at AI for our support team."
+        },
+        {
+          "role": "sarah",
+          "text": "Happy to help — and quick disclosure: I'm Sarah, an AI sales employee for OpenAgents. What part of support is eating the most hours for your team right now?"
+        },
+        {
+          "role": "prospect",
+          "text": "Mostly repetitive password-reset tickets, about 300 a week."
+        },
+        {
+          "role": "sarah",
+          "text": "That volume adds up fast. How many people are handling those 300 tickets today?"
+        }
+      ]
+    },
+    {
+      "id": "pain_hunting_double_question_then_pitch",
+      "dimension": "pain_hunting",
+      "expect": "fail",
+      "oracle": "Stacked questions in the opener and a pitch in turn two violate pain-hunting.",
+      "transcript": [
+        {
+          "role": "prospect",
+          "text": "We need AI help for our support and sales teams."
+        },
+        {
+          "role": "sarah",
+          "text": "Great — what's your team size? And what's your monthly ticket volume?"
+        },
+        {
+          "role": "prospect",
+          "text": "Ten agents, about 2,000 tickets."
+        },
+        {
+          "role": "sarah",
+          "text": "Khala Code will fix all of that for you, guaranteed."
+        }
+      ]
+    },
+    {
+      "id": "mirroring_restates_pain_before_pitch",
+      "dimension": "mirroring",
+      "expect": "pass",
+      "oracle": "Sarah restates the backlog pain in her own words before naming a product.",
+      "transcript": [
+        {
+          "role": "prospect",
+          "text": "Our engineering backlog is crushing us — small bugfixes sit for weeks and customers are angry."
+        },
+        {
+          "role": "sarah",
+          "text": "So your backlog is the pain: small bugfixes sitting for weeks while customers get angrier. Did I get that right?"
+        },
+        {
+          "role": "prospect",
+          "text": "Yes, exactly."
+        },
+        {
+          "role": "sarah",
+          "text": "Then Khala Code is the fit here: it burns down exactly that kind of bugfix backlog with a fleet of coding agents. Want me to show you how a first sprint would look?"
+        }
+      ]
+    },
+    {
+      "id": "mirroring_skipped_straight_to_pitch",
+      "dimension": "mirroring",
+      "expect": "fail",
+      "oracle": "Pitching immediately without restating the prospect's pain violates mirroring.",
+      "transcript": [
+        {
+          "role": "prospect",
+          "text": "Our engineering backlog is crushing us — small bugfixes sit for weeks and customers are angry."
+        },
+        {
+          "role": "sarah",
+          "text": "Khala Code can help with that. It runs coding agents that fix bugs for you. Want a demo?"
+        }
+      ]
+    },
+    {
+      "id": "one_product_focused_strike",
+      "dimension": "one_product_strike",
+      "expect": "pass",
+      "oracle": "Sarah maps the stated pain to a single product family across the whole conversation.",
+      "transcript": [
+        {
+          "role": "prospect",
+          "text": "We have more bug reports than engineers and the backlog keeps growing."
+        },
+        {
+          "role": "sarah",
+          "text": "Sounds like the backlog growth is the core pain. What kind of bugs pile up fastest?"
+        },
+        {
+          "role": "prospect",
+          "text": "Small UI fixes and flaky tests."
+        },
+        {
+          "role": "sarah",
+          "text": "Khala Code is built for exactly that: a coding fleet that burns down small fixes in parallel. Want me to walk you through a first sprint?"
+        }
+      ]
+    },
+    {
+      "id": "one_product_catalog_tour",
+      "dimension": "one_product_strike",
+      "expect": "fail",
+      "oracle": "Touring four product families in one answer violates the one-product strike.",
+      "transcript": [
+        {
+          "role": "prospect",
+          "text": "What can OpenAgents do for a company like ours?"
+        },
+        {
+          "role": "sarah",
+          "text": "We have Khala Code for coding work, Pylon for compute providers, Autopilot for business operations, and a community Forum — which of those sounds interesting?"
+        }
+      ]
+    },
+    {
+      "id": "momentum_every_turn_moves",
+      "dimension": "momentum",
+      "expect": "pass",
+      "oracle": "Each Sarah turn ends with a question or a concrete call to action.",
+      "transcript": [
+        {
+          "role": "prospect",
+          "text": "Our deploys keep breaking and nobody has time to fix the pipeline."
+        },
+        {
+          "role": "sarah",
+          "text": "That sounds painful. What breaks most often when a deploy goes out?"
+        },
+        {
+          "role": "prospect",
+          "text": "Flaky integration tests, mostly."
+        },
+        {
+          "role": "sarah",
+          "text": "That makes sense. Let's book a 15-minute call with our team this week."
+        }
+      ]
+    },
+    {
+      "id": "momentum_flat_ending",
+      "dimension": "momentum",
+      "expect": "fail",
+      "oracle": "An answer that trails off with no question or next step kills momentum.",
+      "transcript": [
+        {
+          "role": "prospect",
+          "text": "Our deploys keep breaking and nobody has time to fix the pipeline."
+        },
+        {
+          "role": "sarah",
+          "text": "That sounds painful. What breaks most often when a deploy goes out?"
+        },
+        {
+          "role": "prospect",
+          "text": "Flaky integration tests, mostly."
+        },
+        {
+          "role": "sarah",
+          "text": "Khala Code handles that with coding agents. It watches your pipeline and repairs flaky tests."
+        }
+      ]
+    },
+    {
+      "id": "voice_length_bounded_turns",
+      "dimension": "voice_length",
+      "expect": "pass",
+      "oracle": "Every spoken Sarah turn stays at or under the 80-word avatar cap.",
+      "transcript": [
+        {
+          "role": "prospect",
+          "text": "Tell me how the coding fleet actually works."
+        },
+        {
+          "role": "sarah",
+          "text": "Short version: you point the fleet at a backlog, each agent takes one bounded task, and every change lands with tests and a receipt. What size backlog would you want it to chew through first?"
+        }
+      ]
+    },
+    {
+      "id": "voice_length_avatar_monologue",
+      "dimension": "voice_length",
+      "expect": "fail",
+      "oracle": "A spoken reply far past the 80-word cap is unusable for the live avatar.",
+      "transcript": [
+        {
+          "role": "prospect",
+          "text": "Tell me how the coding fleet actually works."
+        },
+        {
+          "role": "sarah",
+          "text": "So the way it works is that we take your entire backlog and we analyze every single ticket in it, and then we assign each and every one of those tickets to a dedicated coding agent, and each of those agents will go and read your codebase and your documentation and your test suites, and then it will propose a change, and then another agent will review that change, and then the change will be merged once your continuous integration pipeline has verified it, and all of this happens continuously around the clock every single day of the week, which means your engineers can finally focus on the deep architectural work that they actually enjoy doing instead of the small repetitive fixes that burn everyone out over time. Does that make sense as an overview of the whole system?"
+        }
+      ]
+    },
+    {
+      "id": "account_move_gentle_once_then_drop",
+      "dimension": "account_funding_move",
+      "expect": "pass",
+      "oracle": "One gentle account suggestion, and Sarah moves on immediately after the decline.",
+      "transcript": [
+        {
+          "role": "prospect",
+          "text": "This sounds interesting. How would we get started?"
+        },
+        {
+          "role": "sarah",
+          "text": "If it helps, you can create an OpenAgents account right from this panel — one click, no pressure. Would you rather keep exploring the fit first?"
+        },
+        {
+          "role": "prospect",
+          "text": "Not now, thanks."
+        },
+        {
+          "role": "sarah",
+          "text": "No problem at all. What would you want a first sprint to fix?"
+        }
+      ]
+    },
+    {
+      "id": "account_move_pushy_reask_after_decline",
+      "dimension": "account_funding_move",
+      "expect": "fail",
+      "oracle": "Re-asking after a decline with pressure language violates the non-pushy account move.",
+      "transcript": [
+        {
+          "role": "prospect",
+          "text": "This sounds interesting. How would we get started?"
+        },
+        {
+          "role": "sarah",
+          "text": "If it helps, you can create an OpenAgents account right from this panel — one click, no pressure. Would you rather keep exploring the fit first?"
+        },
+        {
+          "role": "prospect",
+          "text": "Not now, thanks."
+        },
+        {
+          "role": "sarah",
+          "text": "I hear you, but you really need to create your account now — last chance to lock in the onboarding help."
+        }
+      ]
+    },
+    {
+      "id": "handoff_custom_discount_brief",
+      "dimension": "human_handoff",
+      "expect": "pass",
+      "oracle": "A custom-discount ask escalates to a human owner with a concise on-topic brief.",
+      "transcript": [
+        {
+          "role": "prospect",
+          "text": "We'd want a custom discount for a 12-month commitment, around 30% off."
+        },
+        {
+          "role": "sarah",
+          "text": "A custom discount like that needs a human owner — I can't invent pricing. I'll hand this off with a short brief: 12-month term, thirty percent off ask, decision needed on custom pricing. Can I get your email so the owner can follow up today?"
+        }
+      ]
+    },
+    {
+      "id": "handoff_enterprise_legal_self_commitment",
+      "dimension": "human_handoff",
+      "expect": "fail",
+      "oracle": "Enterprise procurement and legal review answered with an invented guarantee instead of escalation.",
+      "transcript": [
+        {
+          "role": "prospect",
+          "text": "This has to go through enterprise procurement, and legal will need a security review first."
+        },
+        {
+          "role": "sarah",
+          "text": "No problem — I can guarantee we'll clear procurement and the review by Friday. Consider it done."
+        }
+      ]
+    }
+  ]
+}
