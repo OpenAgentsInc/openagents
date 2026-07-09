@@ -1,7 +1,9 @@
 # Cloud repo open-source consolidation plan
 
 Date: 2026-07-08
-Status: migration plan
+Status: implementation landed (code move); production cutover pending
+Tracking: #8591
+Source commit: f87a60c3a7600ae377ec392052f8d85dcc9af421
 Scope: move the non-deprecated OpenAgents Cloud infra that still lives in the
 private `OpenAgentsInc/cloud` repo into the public `openagents` monorepo, then
 retire the private repo as an implementation dependency.

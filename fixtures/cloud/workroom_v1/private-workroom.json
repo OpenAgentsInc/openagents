@@ -1,0 +1,50 @@
+{
+  "contract_version": "openagents.workroom.v1",
+  "identity": {
+    "workroom_id": "workroom.local.private",
+    "org_id": "org.openagents.test",
+    "program_id": "program.local.smoke",
+    "template_id": "template.posix.echo",
+    "node_id": "oa-node.gcp.test.example"
+  },
+  "lifecycle": {
+    "desired_state": "created",
+    "observed_state": "created",
+    "created_at": "2026-05-25T00:00:00Z",
+    "updated_at": "2026-05-25T00:00:00Z",
+    "closeout_required": true
+  },
+  "runtime": {
+    "runtime_kind": "sandbox.posix.exec",
+    "image_or_profile_digest": "sha256:private-workroom-profile",
+    "workspace_digest": "sha256:private-workspace",
+    "resource_limits": "cpu=1,memory=512mb,disk=1gb,timeout=60s",
+    "network_policy": "deny_by_default",
+    "filesystem_policy": "workroom_scoped",
+    "timeout_policy": "60s",
+    "wallet_authority": false
+  },
+  "capabilities": [],
+  "local_gateways": {
+    "model": "/openagents/model",
+    "artifacts": "/openagents/artifacts",
+    "receipts": "/openagents/receipts",
+    "memory": "/openagents/memory",
+    "email": "/openagents/email",
+    "settlement": "/openagents/settlement"
+  },
+  "ingress": {
+    "visibility": "private",
+    "preview_url": null,
+    "endpoint_tokens": []
+  },
+  "receipts": {
+    "events": [
+      {
+        "event_id": "evt.private.created",
+        "event_kind": "created",
+        "digest": "sha256:private-created"
+      }
+    ]
+  }
+}

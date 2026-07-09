@@ -1,0 +1,26 @@
+{
+  "id": "swe-bench-smoke",
+  "dataset": "swe-bench",
+  "version": "verified-smoke",
+  "instruction": "Apply the issue fix and run the verifier.",
+  "repo_url": "https://github.com/example/repo.git",
+  "base_commit": "1111111111111111111111111111111111111111",
+  "environment": {
+    "kind": "repo"
+  },
+  "verifier": {
+    "kind": "shell",
+    "commands": [
+      "test -f README.md",
+      "test -f solution.txt"
+    ]
+  },
+  "limits": {
+    "timeoutSeconds": 1800
+  },
+  "metadata": {
+    "sweBenchInstanceId": "swe-bench-smoke",
+    "provider": "openagents-codex",
+    "retryPolicy": "single_attempt"
+  }
+}

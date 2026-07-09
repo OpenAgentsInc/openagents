@@ -1,0 +1,57 @@
+{
+  "id": "tb2-retained-db-wal-recovery",
+  "dataset": "terminal-bench",
+  "version": "2.0",
+  "instruction": "Retained routing fixture for db-wal-recovery. Recover data through SQLite WAL/checkpoint discipline, preserve integrity-check output, and record row counts or data digests. Do not expose hidden verifier details.",
+  "environment": {
+    "kind": "codex",
+    "fixturePurpose": "signature-routing",
+    "publicSafe": true
+  },
+  "verifier": {
+    "kind": "signature-routing-fixture"
+  },
+  "limits": {
+    "timeoutSeconds": 7200
+  },
+  "metadata": {
+    "terminalBenchTaskId": "db-wal-recovery",
+    "retainedFailureFamily": "sqlite_wal_recovery",
+    "preservedRunRef": "docs/bootstrap/CND-052-shc-codex-terminal-bench-16task-preserved.md#per-task-results",
+    "sourceDoc": "docs/bootstrap/CND-052-shc-codex-terminal-bench-16task-preserved.md",
+    "taskChecksum": "c18abdc4fdc3a01bf374c55a9700708fe6a9662077d29db81abb692f0a3c5f6f",
+    "rawCodexReward": 0.0,
+    "rawCodexVerifier": "5 passed / 2 failed",
+    "provider": "probe-codex",
+    "retryPolicy": "single_attempt",
+    "sandbox": "danger-full-access",
+    "signatureRouting": {
+      "candidateSignatureIds": [
+        "coding.sqlite_wal_recovery",
+        "coding.query_optimizer_workflow",
+        "benchmark.runner_supervisor"
+      ],
+      "closeoutArtifacts": [
+        "sqlite-integrity.txt",
+        "wal-recovery-report.txt",
+        "recovered-data-digest.txt"
+      ],
+      "expectedSignatureIds": [
+        "coding.sqlite_wal_recovery"
+      ],
+      "failureFingerprints": [
+        "sqlite_wal_partial_recovery",
+        "missing_checkpoint",
+        "row_digest_mismatch"
+      ],
+      "forbiddenSignatureIds": [
+        "legal.source_grounding_trace",
+        "coding.xss_sanitizer_policy"
+      ],
+      "requiredEvidence": [
+        "sqlite_integrity_check",
+        "recovered_data_digest"
+      ]
+    }
+  }
+}

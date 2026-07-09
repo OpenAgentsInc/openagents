@@ -1,0 +1,8 @@
+[project]
+name = "openagents-bench-runner"
+version = "0.1.0"
+description = "OpenAgents Benchmark Cloud runner skeleton"
+requires-python = ">=3.9"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]

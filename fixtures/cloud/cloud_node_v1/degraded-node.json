@@ -1,0 +1,77 @@
+{
+  "contract_version": "openagents.cloud_node.v1",
+  "identity": {
+    "node_id": "oa-node.degraded.example",
+    "operator_identity": "org.openagents.test",
+    "account_or_org_binding": "org.openagents.test",
+    "signing_key_ref": "gcp-secret-manager-key-ref"
+  },
+  "host": {
+    "os": "linux",
+    "arch": "x86_64",
+    "cpu": "gce-test-vcpu",
+    "memory": "16gb",
+    "disk": "100gb",
+    "accelerator_inventory": [],
+    "site_or_power_metadata": "gcp-test"
+  },
+  "lifecycle": {
+    "desired_mode": "online",
+    "observed_status": "degraded",
+    "degradation_reason": "sandbox profile unavailable",
+    "service_manager": "systemd",
+    "update_channel": "cloud-mvp-test",
+    "last_started_at": "2026-05-25T00:00:00Z",
+    "last_heartbeat_at": "2026-05-25T00:01:00Z"
+  },
+  "capabilities": {
+    "inference_products": [],
+    "training_products": [],
+    "sandbox_profiles": [
+      {
+        "profile_id": "sandbox.posix.local",
+        "profile_digest": "sha256:degraded-sandbox-profile-fixture",
+        "execution_class": "sandbox.posix.exec",
+        "ready": false
+      }
+    ],
+    "workroom_capacity": {
+      "max_active_workrooms": 0,
+      "default_runtime_profile": "not_ready"
+    },
+    "ingress_support": {
+      "supported": true,
+      "enabled": false,
+      "ready": false,
+      "detail": "node degraded"
+    },
+    "artifact_support": {
+      "supported": true,
+      "enabled": true,
+      "ready": false,
+      "detail": "closeout blocked until sandbox profile recovers"
+    }
+  },
+  "policy": {
+    "accepted_work_policy": "forge-typed-assignment",
+    "sandbox_policy": "profile-required",
+    "network_policy": "deny-by-default",
+    "filesystem_policy": "workroom-scoped",
+    "secret_policy": "brokered-no-raw-secrets",
+    "settlement_policy": "internal_accounting"
+  },
+  "runtime": {
+    "local_admin_endpoint": "http://127.0.0.1:48171",
+    "heartbeat_endpoint": "https://nexus.openagents.com/cloud-node/heartbeat",
+    "job_intake_modes": ["forge_typed_assignment"],
+    "receipt_sink": "local-cloud-mvp-receipts",
+    "artifact_sink": "local-cloud-mvp-artifacts"
+  },
+  "evidence": {
+    "current_snapshot_digest": "sha256:degraded-fixture",
+    "health_events": ["node.degraded.sandbox_profile_unavailable"],
+    "job_receipts": [],
+    "artifact_receipts": [],
+    "payout_or_accounting_receipts": ["internal-accounting-receipt-redacted"]
+  }
+}

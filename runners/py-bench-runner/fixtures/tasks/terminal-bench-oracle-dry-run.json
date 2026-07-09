@@ -1,0 +1,18 @@
+{
+  "id": "tb2-smoke-oracle",
+  "dataset": "terminal-bench",
+  "version": "2.0",
+  "instruction": "Run the selected Terminal-Bench 2 oracle smoke task through Harbor.",
+  "environment": {
+    "kind": "harbor"
+  },
+  "verifier": {
+    "kind": "harbor"
+  },
+  "limits": {
+    "timeoutSeconds": 7200
+  },
+  "metadata": {
+    "terminalBenchTaskId": "tb2-smoke-oracle"
+  }
+}

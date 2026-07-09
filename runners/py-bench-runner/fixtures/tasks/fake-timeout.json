@@ -1,0 +1,17 @@
+{
+  "id": "fake-timeout",
+  "dataset": "openagents-fake",
+  "version": "0.1",
+  "instruction": "Run the fake timeout task.",
+  "environment": {
+    "kind": "fake",
+    "fakeBehavior": "timeout"
+  },
+  "verifier": {
+    "kind": "fake"
+  },
+  "limits": {
+    "timeoutSeconds": 1
+  },
+  "metadata": {}
+}

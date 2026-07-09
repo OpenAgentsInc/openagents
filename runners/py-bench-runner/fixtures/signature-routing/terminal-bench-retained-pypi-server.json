@@ -1,0 +1,57 @@
+{
+  "id": "tb2-retained-pypi-server-package-index",
+  "dataset": "terminal-bench",
+  "version": "2.0",
+  "instruction": "Retained routing fixture for pypi-server. Build a local PEP 503 compatible simple index, serve package artifacts, run a bounded local installer smoke, and preserve the generated index tree and server log. Do not expose hidden verifier details.",
+  "environment": {
+    "kind": "codex",
+    "fixturePurpose": "signature-routing",
+    "publicSafe": true
+  },
+  "verifier": {
+    "kind": "signature-routing-fixture"
+  },
+  "limits": {
+    "timeoutSeconds": 7200
+  },
+  "metadata": {
+    "terminalBenchTaskId": "pypi-server",
+    "retainedFailureFamily": "local_pypi_simple_index",
+    "preservedRunRef": "docs/bootstrap/CND-052-shc-codex-terminal-bench-16task-preserved.md#per-task-results",
+    "sourceDoc": "docs/bootstrap/CND-052-shc-codex-terminal-bench-16task-preserved.md",
+    "taskChecksum": "9eb21236249d5b42ee64c7229bb1e5a3b3c0be7ed5ee9801bdd0d16ca575941a",
+    "rawCodexReward": 0.0,
+    "rawCodexVerifier": "0 passed / 1 failed",
+    "provider": "probe-codex",
+    "retryPolicy": "single_attempt",
+    "sandbox": "danger-full-access",
+    "signatureRouting": {
+      "candidateSignatureIds": [
+        "coding.python_package_index",
+        "coding.service_readiness",
+        "benchmark.runner_supervisor"
+      ],
+      "closeoutArtifacts": [
+        "simple-index-tree.txt",
+        "pip-install-smoke.txt",
+        "package-index-service.log"
+      ],
+      "expectedSignatureIds": [
+        "coding.python_package_index"
+      ],
+      "failureFingerprints": [
+        "pypi_simple_api_mismatch",
+        "package_not_served",
+        "installer_smoke_failed"
+      ],
+      "forbiddenSignatureIds": [
+        "legal.citation_provenance_check",
+        "legal.answer_integrity_guard"
+      ],
+      "requiredEvidence": [
+        "pep503_index_contract",
+        "pip_install_smoke"
+      ]
+    }
+  }
+}

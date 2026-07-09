@@ -1,0 +1,42 @@
+{
+  "contract_version": "openagents.forge_assignment.v1",
+  "assignment_id": "forge.assignment.sandbox.echo",
+  "org_id": "org.openagents.test",
+  "program_id": "program.local.sandbox",
+  "workroom_id": "workroom.local.sandbox",
+  "node_id": null,
+  "assignment_kind": "worker",
+  "template": {
+    "template_id": "template.sandbox.posix.echo",
+    "runtime_profile": "sandbox.posix.local",
+    "template_digest": "sha256:template-sandbox-posix-echo"
+  },
+  "capability": {
+    "capability_id": "sandbox.posix.exec",
+    "capability_scope": "workroom:workroom.local.sandbox",
+    "required": true
+  },
+  "budget": {
+    "max_runtime_ms": 60000,
+    "max_cost_microusd": 1000000,
+    "max_artifact_bytes": 10485760
+  },
+  "sandbox": {
+    "profile_id": "sandbox.posix.local",
+    "profile_digest": "sha256:sandbox-posix-local-profile",
+    "execution_class": "sandbox.posix.exec",
+    "network_policy": "none",
+    "filesystem_policy": "workspace_only",
+    "secret_policy": "brokered_no_raw_secrets"
+  },
+  "artifacts": {
+    "artifact_sink": "local-cloud-mvp-artifacts",
+    "required_artifacts": ["stdout.txt", "receipt.json"],
+    "retention": "local-dev"
+  },
+  "receipts": {
+    "receipt_sink": "local-cloud-mvp-receipts",
+    "required_receipts": ["assignment_received", "psionic_execution_receipt"],
+    "closeout_required": true
+  }
+}

@@ -1,0 +1,72 @@
+{
+  "contract_version": "openagents.workroom.v1",
+  "identity": {
+    "workroom_id": "workroom.local.preview",
+    "org_id": "org.openagents.test",
+    "program_id": "program.local.smoke",
+    "template_id": "template.preview.echo",
+    "node_id": "oa-node.gcp.test.example"
+  },
+  "lifecycle": {
+    "desired_state": "running",
+    "observed_state": "running",
+    "created_at": "2026-05-25T00:00:00Z",
+    "updated_at": "2026-05-25T00:02:00Z",
+    "closeout_required": true
+  },
+  "runtime": {
+    "runtime_kind": "sandbox.posix.exec",
+    "image_or_profile_digest": "sha256:preview-workroom-profile",
+    "workspace_digest": "sha256:preview-workspace",
+    "resource_limits": "cpu=1,memory=512mb,disk=1gb,timeout=60s",
+    "network_policy": "deny_by_default",
+    "filesystem_policy": "workroom_scoped",
+    "timeout_policy": "60s",
+    "wallet_authority": false
+  },
+  "capabilities": [
+    {
+      "capability": "private_preview_ingress",
+      "scope": "workroom:workroom.local.preview",
+      "enabled": true,
+      "ready": true
+    }
+  ],
+  "local_gateways": {
+    "model": "/openagents/model",
+    "artifacts": "/openagents/artifacts",
+    "receipts": "/openagents/receipts",
+    "memory": "/openagents/memory",
+    "email": "/openagents/email",
+    "settlement": "/openagents/settlement"
+  },
+  "ingress": {
+    "visibility": "collaborators",
+    "preview_url": "https://preview.example.invalid/workroom.local.preview",
+    "endpoint_tokens": ["token.digest.redacted"]
+  },
+  "receipts": {
+    "events": [
+      {
+        "event_id": "evt.preview.created",
+        "event_kind": "created",
+        "digest": "sha256:preview-created"
+      },
+      {
+        "event_id": "evt.preview.capability",
+        "event_kind": "capability_attached",
+        "digest": "sha256:preview-capability"
+      },
+      {
+        "event_id": "evt.preview.exposed",
+        "event_kind": "preview_exposed",
+        "digest": "sha256:preview-exposed"
+      },
+      {
+        "event_id": "evt.preview.token",
+        "event_kind": "token_minted",
+        "digest": "sha256:preview-token"
+      }
+    ]
+  }
+}

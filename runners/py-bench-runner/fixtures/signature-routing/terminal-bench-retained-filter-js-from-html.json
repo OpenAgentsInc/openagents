@@ -1,0 +1,57 @@
+{
+  "id": "tb2-retained-filter-js-from-html-xss",
+  "dataset": "terminal-bench",
+  "version": "2.0",
+  "instruction": "Retained routing fixture for filter-js-from-html. Preserve benign HTML semantics while blocking executable vectors, and record both allowed-case and blocked-case evidence. Do not expose hidden verifier details or benchmark-local payloads.",
+  "environment": {
+    "kind": "codex",
+    "fixturePurpose": "signature-routing",
+    "publicSafe": true
+  },
+  "verifier": {
+    "kind": "signature-routing-fixture"
+  },
+  "limits": {
+    "timeoutSeconds": 7200
+  },
+  "metadata": {
+    "terminalBenchTaskId": "filter-js-from-html",
+    "retainedFailureFamily": "xss_sanitizer_policy",
+    "preservedRunRef": "docs/bootstrap/CND-051-shc-codex-terminal-bench-8task.md#failure-notes",
+    "sourceDoc": "docs/bootstrap/CND-051-shc-codex-terminal-bench-8task.md",
+    "taskChecksum": "53d156752f8706d9e88c598e0e562ddacf52ab478c7655352e939b8f44a5d13b",
+    "rawCodexReward": 0.0,
+    "rawCodexVerifier": "0 passed / 2 failed",
+    "provider": "probe-codex",
+    "retryPolicy": "single_attempt",
+    "sandbox": "danger-full-access",
+    "signatureRouting": {
+      "candidateSignatureIds": [
+        "coding.xss_sanitizer_policy",
+        "coding.gcode_parser_guard",
+        "benchmark.runner_supervisor"
+      ],
+      "closeoutArtifacts": [
+        "sanitizer-allowed-cases.txt",
+        "sanitizer-blocked-cases.txt",
+        "xss-policy-report.txt"
+      ],
+      "expectedSignatureIds": [
+        "coding.xss_sanitizer_policy"
+      ],
+      "failureFingerprints": [
+        "xss_case_missed",
+        "clean_html_over_sanitized",
+        "sanitizer_policy_regression"
+      ],
+      "forbiddenSignatureIds": [
+        "legal.citation_provenance_check",
+        "coding.python_package_index"
+      ],
+      "requiredEvidence": [
+        "clean_input_preservation",
+        "malicious_input_blocking"
+      ]
+    }
+  }
+}

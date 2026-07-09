@@ -1,0 +1,75 @@
+{
+  "contract_version": "openagents.artanis_bootstrap_assignment.v1",
+  "bootstrap_run_id": "artanis.bootstrap.pylon-launch.001",
+  "workroom_id": "workroom.artanis.pylon-launch.001",
+  "target_node_id": "oa-shc-katy-01",
+  "operator_ref": "operator.admin.openagents",
+  "organization_ref": "org.openagents",
+  "provider_account_ref": "provider-account_admin_codex",
+  "auth_grant_ref": "codex-auth-grant_artanis_admin_001",
+  "repository_refs": [
+    "OpenAgentsInc/cloud",
+    "OpenAgentsInc/vortex",
+    "OpenAgentsInc/openagents",
+    "OpenAgentsInc/psionic",
+    "OpenAgentsInc/probe"
+  ],
+  "source_refs": [
+    "workspace:agents/training-program-maintenance-agent.md",
+    "workspace:docs/2026-05-22-artanis-fake-projection-to-live-agent-gap-audit.md",
+    "vortex:docs/public-agents-artanis.md",
+    "autopilot4-deprecated:src/artanis.rs",
+    "autopilot4-deprecated:src/benchmark_release_gates.rs"
+  ],
+  "objective_id": "artanis.pylon.launch.continual-learning.v1",
+  "objective_summary": "Bootstrap the next Pylon launch by turning Artanis source policy into SHC Codex workroom artifacts, capability routing, benchmark evidence gates, and continual-learning receipts.",
+  "pylon_launch_id": "pylon.launch.next.001",
+  "settlement_intent": {
+    "artanis_run_id": "artanis.bootstrap.pylon-launch.001",
+    "artanis_assignment_id": "artanis.assignment.pylon-launch.001",
+    "settlement_intent_id": "settlement.intent.pylon-launch.001",
+    "public_receipt_id": "receipt.pylon-launch.001"
+  },
+  "pylon_capability_labels": [
+    "legal_dataset_extract",
+    "legal_eval_case",
+    "legal_validation_replay",
+    "legal_judge_calibration",
+    "qwen_legal_adapter_training",
+    "qwen_legal_adapter_eval",
+    "qwen_legal_checkpoint_validation",
+    "artifact_integrity",
+    "coding_agent_benchmark_replay",
+    "signature_trace_mining"
+  ],
+  "blueprint_signature_ids": [
+    "program.artanis.context_selector",
+    "program.artanis.work_selector",
+    "program.artanis.capability_matcher",
+    "program.artanis.dispatch_risk_classifier",
+    "program.artanis.promotion_readiness",
+    "program.artanis.next_action",
+    "coding.signature_trace_mining",
+    "benchmark.runner_supervisor"
+  ],
+  "budget": {
+    "timeout_ms": 1800000,
+    "max_attempts": 1,
+    "max_cost_microusd": 5000000
+  },
+  "retention_mode": "durable_artifacts",
+  "artifact_sink_ref": "vortex.artanis-bootstrap.dev",
+  "required_artifacts": [
+    "result.md",
+    "artanis-source-map.json",
+    "pylon-launch-plan.json",
+    "continual-learning-plan.json",
+    "signature-mining-plan.json",
+    "work-order-drafts.json",
+    "artifact-manifest.json",
+    "proof-bundle.json"
+  ],
+  "wallet_authority": false,
+  "created_at_ms": 100,
+  "audit_context": "cloud.artanis.bootstrap"
+}

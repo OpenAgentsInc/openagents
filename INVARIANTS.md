@@ -58,6 +58,26 @@ More specific invariant ledgers apply inside imported apps and packages.
   contributor-facing payment evidence.
 - `packages/probe/` owns Probe runtime code and evidence submission helpers.
 
+
+
+## OpenAgents Cloud (in-repo)
+
+- Managed Cloud infrastructure (`oa-codex-control`, `oa-node`, `oa-workroomd`,
+  `openagents-cloud-contract`) lives in this monorepo under `crates/*`.
+- The private `OpenAgentsInc/cloud` repository is historical source only and
+  must not receive new feature work; see `docs/cloud/MIGRATION.md` and issue
+  #8591.
+- Agent Computer, Cloud-VM, GCE capacity, workroom, capability, and receipt
+  code builds from public openagents source. Live secrets, topology, and host
+  paths remain runtime/Secret Manager only.
+- Cloud daemons execute and emit redacted receipts. They do not own user
+  credit ledgers, public claim promotion, or wallet/payout authority — those
+  stay on the `openagents.com` Worker and MDK/Nexus payout bridge as currently
+  active.
+- Fake GCE and fake Cloud-VM provisioners are the default. Live Firecracker
+  and live GCE lanes are explicit env-gated owner modes.
+- Detailed Cloud invariants live in `docs/cloud/INVARIANTS.md`.
+
 ## Authority Boundaries
 
 - Public UI does not own settlement, payout, runtime promotion, or accepted

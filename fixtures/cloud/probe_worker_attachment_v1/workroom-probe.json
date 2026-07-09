@@ -1,0 +1,13 @@
+{
+  "schema_version": "openagents.probe_worker_attachment.v1",
+  "workroom_id": "workroom.local.echo",
+  "program_id": "program.local.smoke",
+  "worker_id": "probe.worker.local",
+  "workspace_root": "/openagents/workrooms/workroom.local.echo/workspace",
+  "capability_names": ["repo.read", "repo.write", "shell.exec", "artifact.write"],
+  "raw_secret_access": false,
+  "secret_refs": ["brokered:probe-openai"],
+  "artifact_dir": "/openagents/workrooms/workroom.local.echo/artifacts",
+  "receipt_sink": "local-cloud-mvp-receipts",
+  "updated_at_ms": 1779680000000
+}

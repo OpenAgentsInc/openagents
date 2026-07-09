@@ -18,8 +18,9 @@ Computer.
 - Install only host prerequisites here. Private topology, kernels/rootfs paths,
   capability broker internals, control-plane tokens, SCM tokens, and user repo
   content stay out of the public repo.
-- Let the private `cloud/` repo's `oa-node` / `oa-codex-control` provisioner
-  own Firecracker lifecycle, scratch wipe, quarantine, and refs-only receipts.
+- Let in-repo `crates/oa-node` / `crates/oa-codex-control` provisioners own
+  Firecracker lifecycle, scratch wipe, quarantine, and refs-only receipts
+  (migrated from private `OpenAgentsInc/cloud`; see `docs/cloud/MIGRATION.md`).
 - Require the placement echo contract from #8476: one work-context ref per
   Agent Computer, no cross-context reuse, SCM-broker-only credentials,
   credential scanner before closeout/writeback, and reclaim receipts proving
@@ -113,17 +114,17 @@ Ranked, with the owning repo:
 
 1. ~~Baked agent-computer rootfs~~ — DONE (digest pinned in `guestImage`,
    in-microVM turn proven above).
-2. **Control-plane guest transport (`cloud/` `crates/oa-codex-control/src/cloud_vm.rs`)**
-   — port the proven vsock protocol into `guest_exec`/`guest_copy_out` and make
-   `wait_guest_ready` poll the real vsock readiness signal.
-3. **placement -> firecracker -> executor integration (`cloud/`)** — today
-   `POST /v1/placement` binds a run to a Codex runner lane, not a Firecracker
-   microVM. Add the Agent Computer placement path that boots a microVM from the
-   baked image, runs the executor for the admitted work context, streams
-   `runtime_event`s into the thread scope, and emits `cloud.gce.*` lifecycle +
-   `openagents.resource_usage_receipt.v1` receipts carrying `workContextRef`,
-   `scratchWipeReceiptRef`, and `microvmDestroyReceiptRef` (the Worker's
-   `validateAgentComputerPlacement` already requires these).
+2. **Control-plane guest transport (`crates/oa-codex-control/src/cloud_vm.rs`)**
+   — live vsock guest protocol is in-repo; keep `guest_exec`/`guest_copy_out`
+   and `wait_guest_ready` on the real vsock readiness signal (fake lane remains
+   default off-host).
+3. **placement -> firecracker -> executor integration (`crates/oa-codex-control`)**
+   — `POST /v1/placement` must bind admitted Agent Computer work contexts to the
+   Firecracker path: boot a microVM from the baked image, run the executor,
+   stream `runtime_event`s into the thread scope, and emit `cloud.gce.*`
+   lifecycle + `openagents.resource_usage_receipt.v1` receipts carrying
+   `workContextRef`, `scratchWipeReceiptRef`, and `microvmDestroyReceiptRef`
+   (the Worker's `validateAgentComputerPlacement` already requires these).
 4. **Model-token receipt** — bake a Codex/Claude OAuth login into the image (or
    route the turn through the hosted Khala gateway) so the turn produces a real
    model-token usage receipt, not just the deterministic coding step.

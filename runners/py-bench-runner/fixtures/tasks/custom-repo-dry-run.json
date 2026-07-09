@@ -1,0 +1,26 @@
+{
+  "id": "custom-repo-smoke",
+  "dataset": "custom-repo",
+  "version": "0.1",
+  "instruction": "Create a tiny patch and run the declared verifier.",
+  "repo_url": "https://github.com/OpenAgentsInc/example-private-placeholder.git",
+  "base_commit": "0000000000000000000000000000000000000000",
+  "environment": {
+    "kind": "repo"
+  },
+  "verifier": {
+    "kind": "shell",
+    "commands": [
+      "test -f README.md",
+      "test -f solution.txt"
+    ]
+  },
+  "limits": {
+    "timeoutSeconds": 1800
+  },
+  "metadata": {
+    "customTaskId": "custom-repo-smoke",
+    "provider": "openagents-codex",
+    "retryPolicy": "single_attempt"
+  }
+}

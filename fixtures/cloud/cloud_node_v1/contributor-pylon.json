@@ -1,0 +1,75 @@
+{
+  "contract_version": "openagents.cloud_node.v1",
+  "identity": {
+    "node_id": "pylon.contrib.example",
+    "operator_identity": "npub1examplecontributor",
+    "account_or_org_binding": "account.example.contributor",
+    "signing_key_ref": "pylon-local-identity"
+  },
+  "host": {
+    "os": "darwin",
+    "arch": "aarch64",
+    "cpu": "apple_silicon",
+    "memory": "32gb",
+    "disk": "1tb",
+    "accelerator_inventory": ["metal"],
+    "site_or_power_metadata": "contributor-owned"
+  },
+  "lifecycle": {
+    "desired_mode": "online",
+    "observed_status": "online",
+    "degradation_reason": null,
+    "service_manager": "pylon-tui",
+    "update_channel": "pylon-public-release",
+    "last_started_at": "2026-05-25T00:00:00Z",
+    "last_heartbeat_at": "2026-05-25T00:01:00Z"
+  },
+  "capabilities": {
+    "inference_products": [
+      {
+        "product_id": "local_gemma_inference",
+        "enabled": true,
+        "backend_ready": true,
+        "eligible": true,
+        "capability_summary": "local contributor inference"
+      }
+    ],
+    "training_products": [],
+    "sandbox_profiles": [],
+    "workroom_capacity": null,
+    "ingress_support": {
+      "supported": false,
+      "enabled": false,
+      "ready": false,
+      "detail": "public Pylon is not a managed workroom ingress node"
+    },
+    "artifact_support": {
+      "supported": true,
+      "enabled": true,
+      "ready": true,
+      "detail": "provider receipt artifacts"
+    }
+  },
+  "policy": {
+    "accepted_work_policy": "public-compute-market",
+    "sandbox_policy": "disabled_until_profiled",
+    "network_policy": "provider-declared",
+    "filesystem_policy": "provider-local",
+    "secret_policy": "no-raw-platform-secrets",
+    "settlement_policy": "contributor_wallet"
+  },
+  "runtime": {
+    "local_admin_endpoint": "http://127.0.0.1:46349",
+    "heartbeat_endpoint": "https://nexus.openagents.com/provider/heartbeat",
+    "job_intake_modes": ["pylon_provider_intake"],
+    "receipt_sink": "pylon-ledger",
+    "artifact_sink": "pylon-local-artifacts"
+  },
+  "evidence": {
+    "current_snapshot_digest": "sha256:contributor-fixture",
+    "health_events": [],
+    "job_receipts": [],
+    "artifact_receipts": [],
+    "payout_or_accounting_receipts": ["pylon-wallet-receipt-redacted"]
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "schema_version": "openagents.psionic_worker_attachment.v1",
+  "updated_at_ms": 1779680000000,
+  "workers": [
+    {
+      "product_id": "psionic.managed.inference",
+      "worker_id": "psionic.inference.local",
+      "worker_kind": "inference",
+      "ready": true,
+      "crashed": false,
+      "evidence_digest": "sha256:psionic-inference-ready",
+      "detail": "local inference worker ready"
+    },
+    {
+      "product_id": "psionic.managed.training",
+      "worker_id": "psionic.training.local",
+      "worker_kind": "training",
+      "ready": false,
+      "crashed": true,
+      "evidence_digest": "sha256:psionic-training-crash",
+      "detail": "training worker crashed during local smoke"
+    },
+    {
+      "product_id": "psionic.managed.sandbox",
+      "worker_id": "psionic.sandbox.local",
+      "worker_kind": "sandbox",
+      "ready": false,
+      "crashed": false,
+      "evidence_digest": "sha256:psionic-sandbox-not-ready",
+      "detail": "sandbox worker not attached"
+    }
+  ]
+}

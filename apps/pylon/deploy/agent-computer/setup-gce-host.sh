@@ -7,7 +7,7 @@ Usage: setup-gce-host.sh [options]
 
 Creates or updates the public, non-secret GCE host substrate for OpenAgents
 Agent Computers. This arms only the nested-virtualization host shape; the
-private cloud/ provisioner owns Firecracker lifecycle and secrets.
+in-repo crates/oa-codex-control provisioner owns Firecracker lifecycle and secrets.
 
 Options:
   --instance <name>              VM name. Default: AGENT_COMPUTER_GCE_INSTANCE or agent-computer-gce-<timestamp>
@@ -27,7 +27,7 @@ Options:
 Security:
   This script accepts no env file and no bearer token. Control-plane tokens,
   SCM credentials, user repo material, kernels/rootfs paths, and capability
-  broker internals stay in Secret Manager and the private cloud/ repo.
+  broker internals stay in Secret Manager and the openagents monorepo crates.
 USAGE
 }
 

@@ -1,0 +1,34 @@
+{
+  "contract_version": "openagents.forge_assignment.v1",
+  "assignment_id": "forge.assignment.labor.discovery",
+  "org_id": "org.openagents.test",
+  "program_id": "program.local.discovery",
+  "workroom_id": "workroom.local.discovery",
+  "node_id": null,
+  "assignment_kind": "open_ended_labor",
+  "template": {
+    "template_id": "template.probe.discovery",
+    "runtime_profile": "probe.managed.operator",
+    "template_digest": "sha256:template-probe-discovery"
+  },
+  "capability": {
+    "capability_id": "probe.open_ended_labor",
+    "capability_scope": "program:program.local.discovery",
+    "required": true
+  },
+  "budget": {
+    "max_runtime_ms": 3600000,
+    "max_cost_microusd": 25000000,
+    "max_artifact_bytes": 104857600
+  },
+  "artifacts": {
+    "artifact_sink": "forge-managed-artifacts",
+    "required_artifacts": ["plan.md", "closeout.json"],
+    "retention": "program-policy"
+  },
+  "receipts": {
+    "receipt_sink": "forge-managed-receipts",
+    "required_receipts": ["assignment_received", "operator_closeout"],
+    "closeout_required": true
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "id": "fake-pass",
+  "dataset": "openagents-fake",
+  "version": "0.1",
+  "instruction": "Run the fake passing task.",
+  "environment": {
+    "kind": "fake",
+    "fakeBehavior": "pass"
+  },
+  "verifier": {
+    "kind": "fake"
+  },
+  "limits": {
+    "timeoutSeconds": 5
+  },
+  "metadata": {}
+}

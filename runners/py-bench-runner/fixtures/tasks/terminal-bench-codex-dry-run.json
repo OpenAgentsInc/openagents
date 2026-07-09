@@ -1,0 +1,21 @@
+{
+  "id": "tb2-smoke-oracle",
+  "dataset": "terminal-bench",
+  "version": "2.0",
+  "instruction": "Run the selected Terminal-Bench 2 task with OpenAgents/Codex. Do not log token=secret-demo.",
+  "environment": {
+    "kind": "codex"
+  },
+  "verifier": {
+    "kind": "adapter-smoke"
+  },
+  "limits": {
+    "timeoutSeconds": 7200
+  },
+  "metadata": {
+    "terminalBenchTaskId": "tb2-smoke-oracle",
+    "provider": "openagents-codex",
+    "retryPolicy": "single_attempt",
+    "sandbox": "danger-full-access"
+  }
+}

@@ -1,0 +1,27 @@
+# OpenAgents Cloud Rust workspace
+# Migrated from private OpenAgentsInc/cloud (source commit recorded in
+# docs/cloud/MIGRATION.md). These crates are first-class OpenAgents Cloud
+# infrastructure: control plane, managed node daemon, workroom sidecar, and
+# shared contracts. They are independent of Pylon (contributor runtime).
+
+[workspace]
+members = [
+    "crates/openagents-cloud-contract",
+    "crates/oa-codex-control",
+    "crates/oa-node",
+    "crates/oa-workroomd",
+    "crates/oa-cloud-run-bridge",
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/OpenAgentsInc/openagents"
+
+[workspace.dependencies]
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+sysinfo = "0.37"

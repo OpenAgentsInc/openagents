@@ -1,0 +1,57 @@
+{
+  "contract_version": "openagents.training_run_assignment.v1",
+  "training_run_id": "training.run.tb2.retained.001",
+  "benchmark_run_id": "benchmark.run.tb2.retained.001",
+  "task_run_id": "taskrun.db-wal-recovery.001",
+  "target_node_id": "oa-shc-katy-01",
+  "dataset": {
+    "dataset_slug": "terminal-bench",
+    "dataset_version": "2.0",
+    "task_ref": "terminal-bench/db-wal-recovery",
+    "task_checksum": "c18abdc4fdc3a01bf374c55a9700708fe6a9662077d29db81abb692f0a3c5f6f"
+  },
+  "variants": [
+    {
+      "variant_id": "codex-baseline",
+      "agent": "codex",
+      "model": "gpt-5.5"
+    }
+  ],
+  "provider_account_ref": "provider-account_abc123",
+  "auth_grant_ref": "codex-auth-grant_123",
+  "repository_ref": "OpenAgentsInc/cloud",
+  "signature_context": {
+    "blueprint_signature_ids": [
+      "probe.signature.db-wal-recovery"
+    ],
+    "package_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000001",
+    "selector_trace_required": true
+  },
+  "codex_adapter": {
+    "adapter_id": "harbor.codex.0.135.0",
+    "package_name": "@openai/codex",
+    "package_version": "0.135.0",
+    "package_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000002"
+  },
+  "budget": {
+    "timeout_ms": 900000,
+    "max_attempts": 1,
+    "max_cost_microusd": 2500000
+  },
+  "artifacts": {
+    "retention_mode": "durable_artifacts",
+    "artifact_sink_ref": "vortex.benchmark-artifacts.dev",
+    "required_artifacts": [
+      "result.md",
+      "benchmark-result.json",
+      "artifact-manifest.json",
+      "proof-bundle.json"
+    ]
+  },
+  "callback": {
+    "callback_ref": "vortex.codex-runs.ingest",
+    "event_sequence_policy": "runner_local_then_vortex_canonical"
+  },
+  "created_at_ms": 100,
+  "audit_context": "cloud.issue.75"
+}

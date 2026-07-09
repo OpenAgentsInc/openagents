@@ -644,3 +644,27 @@ and local Codex auth out of reports.
   other committed metadata unless the user explicitly asks for a legally or
   historically required attribution. Use neutral product, team, source,
   operator, or role wording instead.
+
+
+## OpenAgents Cloud crates (in-repo)
+
+Managed Cloud infrastructure is **in this monorepo**, not the private
+`OpenAgentsInc/cloud` repo (historical only after #8591).
+
+| Path | Role |
+| --- | --- |
+| `crates/openagents-cloud-contract` | Contract validators + fixture conformance |
+| `crates/oa-codex-control` | Placement / GCE capacity / Cloud-VM control plane |
+| `crates/oa-node` | Managed node daemon |
+| `crates/oa-workroomd` | Workroom sidecar |
+| `crates/oa-cloud-run-bridge` | Historical Cloud Run bridge — not new prod paths |
+| `docs/cloud/` | Contracts, operator docs, invariants, migration receipt |
+| `fixtures/cloud/` | Public-safe Cloud contract fixtures |
+
+Start with `docs/cloud/README.md` and `docs/cloud/MIGRATION.md` before changing
+Cloud crate behavior. Read `docs/cloud/INVARIANTS.md` before node/workroom/
+capability/receipt/VM changes.
+
+Do **not** re-open private `OpenAgentsInc/cloud` for new features. Do **not**
+bury Cloud under `apps/pylon` — Pylon is contributor/local runtime; Cloud is
+first-class infra under `crates/*`.

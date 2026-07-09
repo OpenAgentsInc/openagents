@@ -1,0 +1,55 @@
+{
+  "id": "tb2-retained-gcode-to-text-parser",
+  "dataset": "terminal-bench",
+  "version": "2.0",
+  "instruction": "Retained routing fixture for gcode-to-text. Build parser state around representative G-code examples, record numeric and formatting normalization rules, and preserve golden-case output. Do not expose hidden verifier details.",
+  "environment": {
+    "kind": "codex",
+    "fixturePurpose": "signature-routing",
+    "publicSafe": true
+  },
+  "verifier": {
+    "kind": "signature-routing-fixture"
+  },
+  "limits": {
+    "timeoutSeconds": 7200
+  },
+  "metadata": {
+    "terminalBenchTaskId": "gcode-to-text",
+    "retainedFailureFamily": "gcode_parser_guard",
+    "preservedRunRef": "docs/bootstrap/CND-052-shc-codex-terminal-bench-16task-preserved.md#per-task-results",
+    "sourceDoc": "docs/bootstrap/CND-052-shc-codex-terminal-bench-16task-preserved.md",
+    "taskChecksum": "0ce9e2f5430d6cad157437ae0fc23f581c3f6ce3ee3eb9233484a554011557ed",
+    "rawCodexReward": 0.0,
+    "rawCodexVerifier": "1 passed / 1 failed",
+    "provider": "probe-codex",
+    "retryPolicy": "single_attempt",
+    "sandbox": "danger-full-access",
+    "signatureRouting": {
+      "candidateSignatureIds": [
+        "coding.gcode_parser_guard",
+        "coding.query_optimizer_workflow",
+        "benchmark.runner_supervisor"
+      ],
+      "closeoutArtifacts": [
+        "gcode-golden-cases.txt",
+        "parser-normalization-report.txt"
+      ],
+      "expectedSignatureIds": [
+        "coding.gcode_parser_guard"
+      ],
+      "failureFingerprints": [
+        "gcode_text_format_mismatch",
+        "parser_hidden_case_miss"
+      ],
+      "forbiddenSignatureIds": [
+        "coding.xss_sanitizer_policy",
+        "legal.answer_integrity_guard"
+      ],
+      "requiredEvidence": [
+        "golden_parser_examples",
+        "normalization_contract"
+      ]
+    }
+  }
+}

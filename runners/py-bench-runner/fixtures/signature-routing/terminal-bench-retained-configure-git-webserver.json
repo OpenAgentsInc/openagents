@@ -1,0 +1,57 @@
+{
+  "id": "tb2-retained-configure-git-webserver-service-readiness",
+  "dataset": "terminal-bench",
+  "version": "2.0",
+  "instruction": "Retained routing fixture for configure-git-webserver. Start the local Git web service, prove the expected endpoint is bound and healthy before verifier closeout, and preserve logs plus health checks. Do not expose hidden verifier details.",
+  "environment": {
+    "kind": "codex",
+    "fixturePurpose": "signature-routing",
+    "publicSafe": true
+  },
+  "verifier": {
+    "kind": "signature-routing-fixture"
+  },
+  "limits": {
+    "timeoutSeconds": 7200
+  },
+  "metadata": {
+    "terminalBenchTaskId": "configure-git-webserver",
+    "retainedFailureFamily": "service_readiness",
+    "preservedRunRef": "docs/bootstrap/CND-052-shc-codex-terminal-bench-16task-preserved.md#per-task-results",
+    "sourceDoc": "docs/bootstrap/CND-052-shc-codex-terminal-bench-16task-preserved.md",
+    "taskChecksum": "84d7c2fd653dad4307c7d2e9dd4f937ecbcd7ad4d1acf5d2b74c35166634178e",
+    "rawCodexReward": 0.0,
+    "rawCodexVerifier": "0 passed / 1 failed",
+    "provider": "probe-codex",
+    "retryPolicy": "single_attempt",
+    "sandbox": "danger-full-access",
+    "signatureRouting": {
+      "candidateSignatureIds": [
+        "coding.service_readiness",
+        "coding.python_package_index",
+        "benchmark.runner_supervisor"
+      ],
+      "closeoutArtifacts": [
+        "service-readiness.json",
+        "service-logs.txt",
+        "health-checks.txt"
+      ],
+      "expectedSignatureIds": [
+        "coding.service_readiness"
+      ],
+      "failureFingerprints": [
+        "port_not_ready",
+        "http_healthcheck_failed"
+      ],
+      "forbiddenSignatureIds": [
+        "legal.deliverable_file_workflow",
+        "legal.output_path_contract",
+        "legal.source_grounding_trace"
+      ],
+      "requiredEvidence": [
+        "port_probe",
+        "service_log_tail"
+      ]
+    }
+  }
+}
