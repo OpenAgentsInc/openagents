@@ -34,10 +34,7 @@ const EXPECTED_REPO_NODE_MODULES_REAL_PATH = join(
 const BUN_PACKAGE_STORE = join(REPO_NODE_MODULES, '.bun')
 
 const EXPECTED_EFFECT_NATIVE_PACKAGES = new Map([
-  [
-    'apps/openagents.com/packages/effect-native-core',
-    '@effect-native/core',
-  ],
+  ['apps/openagents.com/packages/effect-native-core', '@effect-native/core'],
   [
     'apps/openagents.com/packages/effect-native-render-dom',
     '@effect-native/render-dom',
@@ -68,7 +65,9 @@ const isPathWithin = (parent, candidate) => {
   return (
     pathFromParent !== '' &&
     pathFromParent !== '..' &&
-    !pathFromParent.startsWith(`..${process.platform === 'win32' ? '\\' : '/'}`) &&
+    !pathFromParent.startsWith(
+      `..${process.platform === 'win32' ? '\\' : '/'}`,
+    ) &&
     !isAbsolute(pathFromParent)
   )
 }
@@ -79,7 +78,12 @@ const pathContainmentPolicyCases = [
     shouldAllow: true,
   },
   {
-    candidate: join(dirname(REPO_ROOT), 'node_modules', 'effect', 'package.json'),
+    candidate: join(
+      dirname(REPO_ROOT),
+      'node_modules',
+      'effect',
+      'package.json',
+    ),
     shouldAllow: false,
   },
 ]
@@ -199,7 +203,9 @@ const expectedEffectNativePackagePaths = new Set(
 const effectNativeManifestProblems = [
   ...[...expectedEffectNativePackagePaths]
     .filter(path => !declaredEffectNativePackages.has(path))
-    .map(path => `Effect Native vendor manifest is missing exact package ${path}`),
+    .map(
+      path => `Effect Native vendor manifest is missing exact package ${path}`,
+    ),
   ...[...declaredEffectNativePackages]
     .filter(path => !expectedEffectNativePackagePaths.has(path))
     .map(
@@ -254,20 +260,6 @@ const directCompanionVersionProblems = dependencyEntries
       `${repoRelative(entry.path)} ${entry.section}.${entry.name} is ${entry.version}; expected ${expectedExactVersions.get(entry.name)}`,
   )
 
-const isolatedNostrRelayPackageJsonPath = join(
-  REPO_ROOT,
-  'apps',
-  'nostr-relay',
-  'package.json',
-)
-const isolatedNostrRelayPullerProblems = dependencyEntries
-  .filter(entry => entry.name === 'nostr-effect' && entry.version === '0.0.12')
-  .filter(entry => entry.path !== isolatedNostrRelayPackageJsonPath)
-  .map(
-    entry =>
-      `${repoRelative(entry.path)} unexpectedly pulls isolated nostr-effect@0.0.12; only apps/nostr-relay/package.json may pull that Effect 3 line`,
-  )
-
 const effectVitestReferences = dependencyEntries.filter(
   entry => entry.name === '@effect/vitest',
 )
@@ -279,7 +271,10 @@ const unexpectedEffectVitestReferences = effectVitestReferences.filter(
 const findOwningPackageJson = (entryPath, expectedPackageName) => {
   let directory = dirname(entryPath)
 
-  while (directory.startsWith(REPO_ROOT) || directory.includes('node_modules')) {
+  while (
+    directory.startsWith(REPO_ROOT) ||
+    directory.includes('node_modules')
+  ) {
     const candidate = join(directory, 'package.json')
     if (existsSync(candidate)) {
       const candidateJson = readJson(candidate)
@@ -300,7 +295,10 @@ const findOwningPackageJson = (entryPath, expectedPackageName) => {
   )
 }
 
-const resolveDependencyPackageJson = (contextPackageJsonPath, dependencyName) => {
+const resolveDependencyPackageJson = (
+  contextPackageJsonPath,
+  dependencyName,
+) => {
   const contextRequire = createRequire(contextPackageJsonPath)
 
   try {
@@ -430,6 +428,250 @@ const ISOLATED_NOSTR_EXTERNAL_EFFECT_PULLERS = new Set([
   '@effect/platform@0.93.5',
   '@effect/schema@0.75.5',
 ])
+const ISOLATED_NOSTR_DEPENDENCY_NAMES = new Set([
+  'nostr-effect',
+  '@effect/platform',
+  '@effect/schema',
+])
+const ISOLATED_NOSTR_SOURCE_EDGE =
+  'apps/nostr-relay/package.json -> nostr-effect@0.0.12'
+const REQUIRED_ISOLATED_NOSTR_EXTERNAL_EDGES = new Map([
+  ['@effect/platform@0.93.5', 'nostr-effect@0.0.12'],
+  ['@effect/schema@0.75.5', 'nostr-effect@0.0.12'],
+])
+
+const isIsolatedNostrDependency = ({
+  dependencyEffectVersion,
+  dependencyPackageRef,
+}) =>
+  dependencyEffectVersion === ISOLATED_NOSTR_RELAY_EFFECT_VERSION &&
+  ISOLATED_NOSTR_EXTERNAL_EFFECT_PULLERS.has(dependencyPackageRef)
+
+const sourceIsolatedNostrEdgePolicyProblem = ({
+  declaredDependencyVersion,
+  dependencyEffectVersion,
+  dependencyPackageRef,
+  parentPackagePath,
+}) => {
+  if (
+    !isIsolatedNostrDependency({
+      dependencyEffectVersion,
+      dependencyPackageRef,
+    })
+  ) {
+    return null
+  }
+
+  if (
+    parentPackagePath === 'apps/nostr-relay/package.json' &&
+    dependencyPackageRef === 'nostr-effect@0.0.12' &&
+    declaredDependencyVersion === '0.0.12'
+  ) {
+    return null
+  }
+
+  return `${parentPackagePath} unexpectedly pulls isolated ${dependencyPackageRef} on effect@${dependencyEffectVersion} via manifest spec ${String(declaredDependencyVersion)}; the only source edge into Effect 3 is exact ${ISOLATED_NOSTR_SOURCE_EDGE}`
+}
+
+const sourceIsolatedNostrEdgePolicyCases = [
+  {
+    input: {
+      declaredDependencyVersion: '0.0.12',
+      dependencyEffectVersion: ISOLATED_NOSTR_RELAY_EFFECT_VERSION,
+      dependencyPackageRef: 'nostr-effect@0.0.12',
+      parentPackagePath: 'apps/nostr-relay/package.json',
+    },
+    shouldAllow: true,
+  },
+  {
+    input: {
+      declaredDependencyVersion: '^0.0.12',
+      dependencyEffectVersion: ISOLATED_NOSTR_RELAY_EFFECT_VERSION,
+      dependencyPackageRef: 'nostr-effect@0.0.12',
+      parentPackagePath: 'apps/nostr-relay/package.json',
+    },
+    shouldAllow: false,
+  },
+  {
+    input: {
+      declaredDependencyVersion: '0.0.12',
+      dependencyEffectVersion: ISOLATED_NOSTR_RELAY_EFFECT_VERSION,
+      dependencyPackageRef: 'nostr-effect@0.0.12',
+      parentPackagePath: 'apps/openagents.com/workers/api/package.json',
+    },
+    shouldAllow: false,
+  },
+  {
+    input: {
+      declaredDependencyVersion: '0.93.5',
+      dependencyEffectVersion: ISOLATED_NOSTR_RELAY_EFFECT_VERSION,
+      dependencyPackageRef: '@effect/platform@0.93.5',
+      parentPackagePath: 'apps/openagents.com/workers/api/package.json',
+    },
+    shouldAllow: false,
+  },
+  {
+    input: {
+      declaredDependencyVersion: 'github:OpenAgentsInc/nostr-effect#4c52847',
+      dependencyEffectVersion: OMEGA_EFFECT_VERSION,
+      dependencyPackageRef: 'nostr-effect@0.0.12',
+      parentPackagePath: 'apps/openagents.com/workers/api/package.json',
+    },
+    shouldAllow: true,
+  },
+]
+
+const sourceIsolatedNostrEdgePolicyTestProblems =
+  sourceIsolatedNostrEdgePolicyCases.flatMap(({ input, shouldAllow }) => {
+    const allowed = sourceIsolatedNostrEdgePolicyProblem(input) === null
+    return allowed === shouldAllow
+      ? []
+      : [
+          `Internal source dependency-edge policy regression for ${input.parentPackagePath} -> ${input.dependencyPackageRef} on effect@${input.dependencyEffectVersion}: expected ${shouldAllow ? 'allow' : 'deny'}`,
+        ]
+  })
+
+const sourceIsolatedNostrEdgeProblems = []
+const observedIsolatedNostrSourceEdges = new Set()
+
+for (const { json, path } of packageJsons) {
+  const isolatedDependencyEntries = dependencySections(json).flatMap(
+    ([section, dependencies]) =>
+      Object.entries(dependencies)
+        .filter(([dependencyName]) =>
+          ISOLATED_NOSTR_DEPENDENCY_NAMES.has(dependencyName),
+        )
+        .map(([dependencyName, declaredDependencyVersion]) => ({
+          declaredDependencyVersion,
+          dependencyName,
+          section,
+        })),
+  )
+
+  for (const {
+    declaredDependencyVersion,
+    dependencyName,
+    section,
+  } of isolatedDependencyEntries) {
+    try {
+      const dependencyPackageJsonPath = resolveDependencyPackageJson(
+        path,
+        dependencyName,
+      )
+      const dependencyPackageJson = readJson(dependencyPackageJsonPath)
+      const dependencyEffect = resolveEffectFromPackage(
+        dependencyPackageJsonPath,
+      )
+      const dependencyPackageRef = `${dependencyPackageJson.name}@${String(dependencyPackageJson.version)}`
+      const parentPackagePath = repoRelative(path)
+      const policyProblem = sourceIsolatedNostrEdgePolicyProblem({
+        declaredDependencyVersion,
+        dependencyEffectVersion: dependencyEffect.version,
+        dependencyPackageRef,
+        parentPackagePath,
+      })
+
+      if (policyProblem !== null) {
+        sourceIsolatedNostrEdgeProblems.push(policyProblem)
+      } else if (
+        parentPackagePath === 'apps/nostr-relay/package.json' &&
+        declaredDependencyVersion === '0.0.12' &&
+        dependencyPackageRef === 'nostr-effect@0.0.12' &&
+        dependencyEffect.version === ISOLATED_NOSTR_RELAY_EFFECT_VERSION
+      ) {
+        observedIsolatedNostrSourceEdges.add(
+          `${parentPackagePath} -> ${dependencyPackageRef}`,
+        )
+      }
+    } catch (error) {
+      sourceIsolatedNostrEdgeProblems.push(
+        `${repoRelative(path)} ${section}.${dependencyName} could not resolve its installed dependency edge: ${error instanceof Error ? error.message : String(error)}`,
+      )
+    }
+  }
+}
+
+if (!observedIsolatedNostrSourceEdges.has(ISOLATED_NOSTR_SOURCE_EDGE)) {
+  sourceIsolatedNostrEdgeProblems.push(
+    `Isolated Nostr Effect 3 graph is missing required source edge ${ISOLATED_NOSTR_SOURCE_EDGE}`,
+  )
+}
+
+const installedIsolatedNostrEdgePolicyProblem = ({
+  dependencyEffectVersion,
+  dependencyPackageRef,
+  parentEffectVersion,
+  parentPackageRef,
+}) => {
+  if (
+    !isIsolatedNostrDependency({
+      dependencyEffectVersion,
+      dependencyPackageRef,
+    })
+  ) {
+    return null
+  }
+
+  const expectedParent =
+    REQUIRED_ISOLATED_NOSTR_EXTERNAL_EDGES.get(dependencyPackageRef)
+  if (
+    expectedParent === parentPackageRef &&
+    parentEffectVersion === ISOLATED_NOSTR_RELAY_EFFECT_VERSION
+  ) {
+    return null
+  }
+
+  return `${parentPackageRef} unexpectedly pulls isolated ${dependencyPackageRef} on effect@${dependencyEffectVersion}; expected only ${expectedParent ?? 'the apps/nostr-relay source workspace'} on the isolated effect@${ISOLATED_NOSTR_RELAY_EFFECT_VERSION} chain`
+}
+
+const installedIsolatedNostrEdgePolicyCases = [
+  {
+    input: {
+      dependencyEffectVersion: ISOLATED_NOSTR_RELAY_EFFECT_VERSION,
+      dependencyPackageRef: '@effect/platform@0.93.5',
+      parentEffectVersion: ISOLATED_NOSTR_RELAY_EFFECT_VERSION,
+      parentPackageRef: 'nostr-effect@0.0.12',
+    },
+    shouldAllow: true,
+  },
+  {
+    input: {
+      dependencyEffectVersion: ISOLATED_NOSTR_RELAY_EFFECT_VERSION,
+      dependencyPackageRef: '@effect/platform@0.93.5',
+      parentEffectVersion: null,
+      parentPackageRef: 'external-main-app-helper@1.0.0',
+    },
+    shouldAllow: false,
+  },
+  {
+    input: {
+      dependencyEffectVersion: ISOLATED_NOSTR_RELAY_EFFECT_VERSION,
+      dependencyPackageRef: '@effect/schema@0.75.5',
+      parentEffectVersion: OMEGA_EFFECT_VERSION,
+      parentPackageRef: 'nostr-effect@0.0.12',
+    },
+    shouldAllow: false,
+  },
+  {
+    input: {
+      dependencyEffectVersion: ISOLATED_NOSTR_RELAY_EFFECT_VERSION,
+      dependencyPackageRef: 'nostr-effect@0.0.12',
+      parentEffectVersion: OMEGA_EFFECT_VERSION,
+      parentPackageRef: 'external-main-app-helper@1.0.0',
+    },
+    shouldAllow: false,
+  },
+]
+
+const installedIsolatedNostrEdgePolicyTestProblems =
+  installedIsolatedNostrEdgePolicyCases.flatMap(({ input, shouldAllow }) => {
+    const allowed = installedIsolatedNostrEdgePolicyProblem(input) === null
+    return allowed === shouldAllow
+      ? []
+      : [
+          `Internal installed dependency-edge policy regression for ${input.parentPackageRef} -> ${input.dependencyPackageRef} on effect@${input.dependencyEffectVersion}: expected ${shouldAllow ? 'allow' : 'deny'}`,
+        ]
+  })
 
 const installedExternalPullerPolicyProblem = ({
   effectVersion,
@@ -502,8 +744,11 @@ const installedExternalPullerPolicyTestProblems =
 
 const installedExternalEffectPullers = []
 const installedExternalEffectProblems = []
+const installedIsolatedNostrEdgeProblems = []
 const observedIsolatedNostrExternalPullers = new Set()
-const installedPackageJsonPaths = collectInstalledPackageJsonPaths(BUN_PACKAGE_STORE)
+const observedIsolatedNostrExternalEdges = new Set()
+const installedPackageJsonPaths =
+  collectInstalledPackageJsonPaths(BUN_PACKAGE_STORE)
 
 if (installedPackageJsonPaths.length === 0) {
   localInstallProblems.push(
@@ -513,45 +758,106 @@ if (installedPackageJsonPaths.length === 0) {
 
 for (const packageJsonPath of installedPackageJsonPaths) {
   const packageJson = readJson(packageJsonPath)
+  const packageRef = `${packageJson.name ?? repoRelative(packageJsonPath)}@${String(packageJson.version)}`
   // Published devDependencies are build metadata, not an installed runtime
   // edge. Only installed dependency and peer declarations are pullers.
-  const declaresEffect = [
+  const runtimeDependencySections = [
     packageJson.dependencies ?? {},
     packageJson.peerDependencies ?? {},
     packageJson.optionalDependencies ?? {},
-  ].some(dependencies => Object.hasOwn(dependencies, 'effect'))
-  if (!declaresEffect || packageJson.name === 'effect') {
-    continue
-  }
+  ]
+  const declaresEffect = runtimeDependencySections.some(dependencies =>
+    Object.hasOwn(dependencies, 'effect'),
+  )
+  let parentEffectVersion = null
 
-  try {
-    const resolvedEffect = resolveEffectFromPackage(packageJsonPath)
-    installedExternalEffectPullers.push({
-      effectVersion: resolvedEffect.version,
-      packageName: packageJson.name ?? repoRelative(packageJsonPath),
-      packageVersion: packageJson.version,
-    })
+  if (declaresEffect && packageJson.name !== 'effect') {
+    try {
+      const resolvedEffect = resolveEffectFromPackage(packageJsonPath)
+      parentEffectVersion = resolvedEffect.version
+      installedExternalEffectPullers.push({
+        effectVersion: resolvedEffect.version,
+        packageName: packageJson.name ?? repoRelative(packageJsonPath),
+        packageVersion: packageJson.version,
+      })
 
-    const policyProblem = installedExternalPullerPolicyProblem({
-      effectVersion: resolvedEffect.version,
-      packageName: packageJson.name ?? repoRelative(packageJsonPath),
-      packageVersion: packageJson.version,
-    })
-    if (policyProblem !== null) {
-      installedExternalEffectProblems.push(policyProblem)
-    }
+      const policyProblem = installedExternalPullerPolicyProblem({
+        effectVersion: resolvedEffect.version,
+        packageName: packageJson.name ?? repoRelative(packageJsonPath),
+        packageVersion: packageJson.version,
+      })
+      if (policyProblem !== null) {
+        installedExternalEffectProblems.push(policyProblem)
+      }
 
-    if (resolvedEffect.version === ISOLATED_NOSTR_RELAY_EFFECT_VERSION) {
-      observedIsolatedNostrExternalPullers.add(
-        `${packageJson.name}@${String(packageJson.version)}`,
+      if (resolvedEffect.version === ISOLATED_NOSTR_RELAY_EFFECT_VERSION) {
+        observedIsolatedNostrExternalPullers.add(packageRef)
+      }
+    } catch (error) {
+      installedExternalEffectProblems.push(
+        `${packageJson.name ?? repoRelative(packageJsonPath)} declares Effect but its installed package context could not resolve effect/package.json: ${error instanceof Error ? error.message : String(error)}`,
       )
     }
-  } catch (error) {
-    installedExternalEffectProblems.push(
-      `${packageJson.name ?? repoRelative(packageJsonPath)} declares Effect but its installed package context could not resolve effect/package.json: ${error instanceof Error ? error.message : String(error)}`,
-    )
+  }
+
+  const isolatedDependencyNames = new Set(
+    runtimeDependencySections
+      .flatMap(dependencies => Object.keys(dependencies))
+      .filter(dependencyName =>
+        ISOLATED_NOSTR_DEPENDENCY_NAMES.has(dependencyName),
+      ),
+  )
+
+  for (const dependencyName of isolatedDependencyNames) {
+    try {
+      const dependencyPackageJsonPath = resolveDependencyPackageJson(
+        packageJsonPath,
+        dependencyName,
+      )
+      const dependencyPackageJson = readJson(dependencyPackageJsonPath)
+      const dependencyEffect = resolveEffectFromPackage(
+        dependencyPackageJsonPath,
+      )
+      const dependencyPackageRef = `${dependencyPackageJson.name}@${String(dependencyPackageJson.version)}`
+      const policyProblem = installedIsolatedNostrEdgePolicyProblem({
+        dependencyEffectVersion: dependencyEffect.version,
+        dependencyPackageRef,
+        parentEffectVersion,
+        parentPackageRef: packageRef,
+      })
+
+      if (policyProblem !== null) {
+        installedIsolatedNostrEdgeProblems.push(policyProblem)
+      } else if (
+        dependencyEffect.version === ISOLATED_NOSTR_RELAY_EFFECT_VERSION &&
+        REQUIRED_ISOLATED_NOSTR_EXTERNAL_EDGES.get(dependencyPackageRef) ===
+          packageRef &&
+        parentEffectVersion === ISOLATED_NOSTR_RELAY_EFFECT_VERSION
+      ) {
+        observedIsolatedNostrExternalEdges.add(
+          `${packageRef} -> ${dependencyPackageRef}`,
+        )
+      }
+    } catch (error) {
+      installedIsolatedNostrEdgeProblems.push(
+        `${packageRef} declares ${dependencyName} but its installed dependency edge could not be resolved: ${error instanceof Error ? error.message : String(error)}`,
+      )
+    }
   }
 }
+
+const missingIsolatedNostrExternalEdgeProblems = [
+  ...REQUIRED_ISOLATED_NOSTR_EXTERNAL_EDGES,
+]
+  .map(
+    ([dependencyPackageRef, parentPackageRef]) =>
+      `${parentPackageRef} -> ${dependencyPackageRef}`,
+  )
+  .filter(edge => !observedIsolatedNostrExternalEdges.has(edge))
+  .map(
+    edge =>
+      `Isolated Nostr Effect 3 graph is missing required installed dependency edge ${edge}`,
+  )
 
 const missingIsolatedNostrExternalPullerProblems = [
   ...ISOLATED_NOSTR_EXTERNAL_EFFECT_PULLERS,
@@ -562,7 +868,10 @@ const missingIsolatedNostrExternalPullerProblems = [
       `Isolated Nostr Effect 3 chain is missing expected installed puller ${puller}`,
   )
 
-for (const [packagePath, expectedPackageName] of EXPECTED_EFFECT_NATIVE_PACKAGES) {
+for (const [
+  packagePath,
+  expectedPackageName,
+] of EXPECTED_EFFECT_NATIVE_PACKAGES) {
   const packageJsonPath = join(REPO_ROOT, packagePath, 'package.json')
   if (!existsSync(packageJsonPath)) {
     effectNativeManifestProblems.push(
@@ -711,7 +1020,10 @@ const trackedInstalledVersions = [
     'isolated @openagentsinc/nostr-relay effect line',
     `${ISOLATED_NOSTR_RELAY_EFFECT_VERSION} via nostr-effect@0.0.12 only`,
   ],
-  ['@effect/vitest', `${EFFECT_VITEST_VERSION} where Effect service tests use it.effect`],
+  [
+    '@effect/vitest',
+    `${EFFECT_VITEST_VERSION} where Effect service tests use it.effect`,
+  ],
 ]
 
 const bunLock = readFileSync(BUN_LOCK_PATH, 'utf8')
@@ -750,10 +1062,14 @@ const problems = [
   ...rootCatalogProblems,
   ...directEffectVersionProblems,
   ...directCompanionVersionProblems,
-  ...isolatedNostrRelayPullerProblems,
   ...resolvedEffectProblems,
+  ...sourceIsolatedNostrEdgePolicyTestProblems,
+  ...sourceIsolatedNostrEdgeProblems,
   ...installedExternalPullerPolicyTestProblems,
   ...installedExternalEffectProblems,
+  ...installedIsolatedNostrEdgePolicyTestProblems,
+  ...installedIsolatedNostrEdgeProblems,
+  ...missingIsolatedNostrExternalEdgeProblems,
   ...missingIsolatedNostrExternalPullerProblems,
   ...criticalResolutionProblems,
   ...lockProblems,
@@ -798,6 +1114,12 @@ criticalResolutionRows.forEach(row =>
 )
 console.log(
   `- installed external Effect pullers checked: ${installedExternalEffectPullers.length} (beta.70 or the exact three-package Nostr beta3 chain; none may resolve vendored beta.94)`,
+)
+console.log(
+  `- isolated Nostr source edge checked: ${ISOLATED_NOSTR_SOURCE_EDGE}`,
+)
+console.log(
+  `- isolated Nostr installed edges checked: ${[...observedIsolatedNostrExternalEdges].sort().join(', ')}`,
 )
 console.log('')
 console.log(
