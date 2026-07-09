@@ -77,8 +77,7 @@ try {
   // while a human is mid-conversation.
   if (mintResponse.status === 429) {
     record("mint-owned", true, "slot held by a watched live session — checks skipped")
-    console.log("
-sarah-avatar-e2e-smoke: live session in progress; session checks skipped")
+    console.log("\nsarah-avatar-e2e-smoke: live session in progress; session checks skipped")
     process.exit(0)
   }
   const mintOk =
