@@ -28,35 +28,37 @@ existing consumers keep compiling.
 - [x] Step 1 — package scaffold
 - [x] Shared foundation (`shared/`) — version, wsl-host-detect, bootstrap,
   nostr-identity, inventory, state (linchpin the higher layers depend on)
-- [~] Step 2 — custody: **wave 1** (account-registry, account-quota,
+- [x] Step 2 — custody: **wave 1** (account-registry, account-quota,
   codex-account-health, codex-custody-reprime) + **wave 2** (account-quota-
   ledger, codex-account-health-ledger) + **wave 3** (account-usage,
-  account-status — unblocked once the executor agent leaves landed in step 5)
-  done. **Still in `apps/pylon`:** account-connect (→ presence),
-  codex-account-auth-health (→ account-connect).
-- [ ] Step 3 — presence (blocked). Fresh trace of `presence.ts`'s closure
-  narrowed the four out-of-package deps to their real status:
-  - `active-assignment-runs` — **clean leaf, extracted** (see Step 5 below).
-  - `provider-nip90` (P6 earning) — **NOT a blocker.** Presence uses only 4
-    lightweight symbols (`PYLON_NIP90_PROVIDER_CAPABILITY_REF`,
-    `OPENAGENTS_MARKET_RELAY_URL`, `providerNip90LaneRefs`, `relaysFromEnv`)
-    that depend only on `KIND_JOB_*` from `@openagentsinc/nip90` — zero
-    coupling to the retired `labor-market`/`labor`/`wallet` earning rail.
-    Clean split: extract those into a small `presence/nip90-lane-refs.ts`; the
-    heavy `provider-nip90.ts` earning body stays in the app.
-  - `wallet` — **NOT a blocker.** Type-only (`Pick<WalletStatusProjection,
-    "configured"|"daemonOnline"|"receiveReady"|"sendReady">`, all boolean);
-    replace with a standalone structural interface — a full
-    `WalletStatusProjection` stays assignable; wallet.ts is never touched.
-  - `node/apple-fm-status` — **THE blocker.** presence calls
-    `collectPylonAppleFmStatus` and its `PylonAppleFmStatusProjection` type
-    structurally embeds `@openagentsinc/pylon-runtime`'s
-    `ProbeBackendCapabilityReport`. pylon-runtime (`apps/pylon/packages/runtime`)
-    is a NESTED workspace package imported only by relative path and not
-    symlinked, so pylon-core can't import it by name without a monorepo
-    install/lockfile change (unverifiable headlessly). Unblock next session by
-    either making pylon-runtime resolvable by name + verifying runtime
-    resolution, or injecting the apple-fm functions into presence.
+  account-status) + **wave 4** (account-connect, codex-account-auth-health —
+  unblocked once presence landed) done. `defaultCodexAuthValidityProbe`
+  (account-connect's real Codex-CLI probe implementation, coupled to
+  `codex-composer.ts`) stays app-side by design; both moved modules take it
+  as an injected `probe` and the `apps/pylon` shims default-wire the real one
+  so production behavior is unchanged — see those files' header comments.
+- [x] Step 3 — presence (`presence/`) — **landed.** The apple-fm blocker
+  (presence directly called `collectPylonAppleFmStatus`, whose
+  `PylonAppleFmStatusProjection` type structurally embeds
+  `@openagentsinc/pylon-runtime`'s `ProbeBackendCapabilityReport` — a nested
+  workspace package never resolvable by name from a sibling package) was
+  resolved via **option B, dependency injection** (the lower-risk path):
+  `presence/apple-fm-status.ts` defines a structural mirror of
+  `PylonAppleFmStatusProjection` (every `ProbeBackendCapabilityReport["field"]`
+  reference inlined as its literal type) plus the two pure capacity-ref
+  helpers; presence's existing (previously test-only) `appleFmStatusProbe`
+  injection seam is now load-bearing, defaulting to
+  `NOT_PROBED_APPLE_FM_STATUS` (no contribution, no blocker) when omitted.
+  `apps/pylon/src/presence.ts` is now a wrapper (not a pure re-export): its
+  `sendHeartbeat` always injects the real `collectPylonAppleFmStatus` probe
+  by default when a caller doesn't supply one — every current production
+  call site — so production heartbeat behavior is unchanged. The other two
+  couplings resolved the same session: `presence/nip90-lane-refs.ts` (the 4
+  lane-ref/relay/capability symbols presence needs, depending only on
+  `@openagentsinc/nip90`) and a standalone `HeartbeatWalletProbe` structural
+  type (4 booleans) replacing `Pick<WalletStatusProjection, ...>` — wallet.ts
+  itself is untouched. `active-assignment-runs` (a clean leaf of presence's
+  closure) was already extracted into `executor/` in a prior session.
 - [ ] Step 4 — wallet (Spark): **attempted & deferred.** Clean static set
   EXCEPT `spark-backup-helper.ts` statically imports `spark-wasm-runtime.ts`,
   which resolves the Breez WASM via `./generated/spark-wasm-b64.js` produced
@@ -79,9 +81,10 @@ existing consumers keep compiling.
     it is MH-2's actively-contested file (#8583 / Claude worker-executor
     parity); left in place to avoid a whole-file move-conflict with their
     in-flight work. Extract in a window when MH-2 is idle, pushing fast.
-  - `codex-agent-executor`, `assignment`, `khala-spawn` — TOP of the graph:
-    they import `account-connect` (→ presence) and/or `presence`/`assignment`,
-    so they need step 3 (presence) resolved first.
+  - `codex-agent-executor`, `assignment`, `khala-spawn` — now unblocked
+    dependency-wise on `presence`/`account-connect` (both landed), but not
+    yet traced/attempted this session; next session should re-verify their
+    full closures (they're large, top-of-graph files) before moving.
   - `khala-requester`, `khala-dispatch` — extractable dependency-wise, but
     their leaf closure includes `tips` (Spark-tipping / payment-adjacent,
     semantically an earning/wallet-boundary module, NOT executor) and
