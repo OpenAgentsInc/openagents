@@ -1,9 +1,9 @@
 #!/usr/bin/env bun
 
 import { spawnSync } from 'node:child_process'
-import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, realpathSync } from 'node:fs'
 import { createRequire } from 'node:module'
-import { dirname, join, relative, resolve } from 'node:path'
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const OMEGA_EFFECT_VERSION = '4.0.0-beta.70'
@@ -18,6 +18,7 @@ const EFFECT_VITEST_DEFERRED_NOTE =
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url))
 const APP_ROOT = resolve(SCRIPT_DIR, '..')
 const REPO_ROOT = resolve(APP_ROOT, '..', '..')
+const REPO_ROOT_REAL_PATH = realpathSync(REPO_ROOT)
 const ROOT_PACKAGE_JSON_PATH = join(REPO_ROOT, 'package.json')
 const BUN_LOCK_PATH = join(REPO_ROOT, 'bun.lock')
 const EFFECT_NATIVE_VENDOR_PATH = join(
@@ -25,7 +26,12 @@ const EFFECT_NATIVE_VENDOR_PATH = join(
   'packages',
   'effect-native-vendor.json',
 )
-const BUN_PACKAGE_STORE = join(REPO_ROOT, 'node_modules', '.bun')
+const REPO_NODE_MODULES = join(REPO_ROOT, 'node_modules')
+const EXPECTED_REPO_NODE_MODULES_REAL_PATH = join(
+  REPO_ROOT_REAL_PATH,
+  'node_modules',
+)
+const BUN_PACKAGE_STORE = join(REPO_NODE_MODULES, '.bun')
 
 const EXPECTED_EFFECT_NATIVE_PACKAGES = new Map([
   [
@@ -57,6 +63,83 @@ const SKIPPED_PACKAGE_SCAN_DIRECTORIES = new Set([
 
 const readJson = path => JSON.parse(readFileSync(path, 'utf8'))
 const repoRelative = path => relative(REPO_ROOT, path)
+const isPathWithin = (parent, candidate) => {
+  const pathFromParent = relative(parent, candidate)
+  return (
+    pathFromParent !== '' &&
+    pathFromParent !== '..' &&
+    !pathFromParent.startsWith(`..${process.platform === 'win32' ? '\\' : '/'}`) &&
+    !isAbsolute(pathFromParent)
+  )
+}
+
+const pathContainmentPolicyCases = [
+  {
+    candidate: join(REPO_NODE_MODULES, '.bun', 'effect', 'package.json'),
+    shouldAllow: true,
+  },
+  {
+    candidate: join(dirname(REPO_ROOT), 'node_modules', 'effect', 'package.json'),
+    shouldAllow: false,
+  },
+]
+const pathContainmentPolicyTestProblems = pathContainmentPolicyCases.flatMap(
+  ({ candidate, shouldAllow }) => {
+    const allowed = isPathWithin(REPO_NODE_MODULES, candidate)
+    return allowed === shouldAllow
+      ? []
+      : [
+          `Internal local-install containment policy regression for ${candidate}: expected ${shouldAllow ? 'allow' : 'deny'}`,
+        ]
+  },
+)
+
+const localInstallProblems = []
+let localNodeModulesRealPath = null
+
+if (!existsSync(REPO_NODE_MODULES)) {
+  localInstallProblems.push(
+    `Missing local ${repoRelative(REPO_NODE_MODULES)}; run bun install --frozen-lockfile in this checkout before checking Effect topology`,
+  )
+} else {
+  localNodeModulesRealPath = realpathSync(REPO_NODE_MODULES)
+  if (localNodeModulesRealPath !== EXPECTED_REPO_NODE_MODULES_REAL_PATH) {
+    localInstallProblems.push(
+      `${repoRelative(REPO_NODE_MODULES)} resolves outside this checkout to ${localNodeModulesRealPath}; ancestor or shared installs are not topology evidence`,
+    )
+  }
+}
+
+if (!existsSync(BUN_PACKAGE_STORE)) {
+  localInstallProblems.push(
+    `Missing local ${repoRelative(BUN_PACKAGE_STORE)} package store; a guard run without this checkout's frozen install is invalid`,
+  )
+} else if (localNodeModulesRealPath !== null) {
+  const packageStoreRealPath = realpathSync(BUN_PACKAGE_STORE)
+  if (
+    !isPathWithin(EXPECTED_REPO_NODE_MODULES_REAL_PATH, packageStoreRealPath)
+  ) {
+    localInstallProblems.push(
+      `${repoRelative(BUN_PACKAGE_STORE)} resolves outside this checkout to ${packageStoreRealPath}`,
+    )
+  }
+}
+
+const requireLocalInstalledPackagePath = (path, dependencyName) => {
+  if (localNodeModulesRealPath === null) {
+    throw new Error(
+      `Cannot validate ${dependencyName}: this checkout has no local node_modules`,
+    )
+  }
+
+  const installedRealPath = realpathSync(path)
+  if (!isPathWithin(EXPECTED_REPO_NODE_MODULES_REAL_PATH, installedRealPath)) {
+    throw new Error(
+      `${dependencyName} resolved outside this checkout's node_modules to ${installedRealPath}`,
+    )
+  }
+  return path
+}
 
 const collectPackageJsonPaths = root => {
   const packageJsonPaths = []
@@ -221,11 +304,17 @@ const resolveDependencyPackageJson = (contextPackageJsonPath, dependencyName) =>
   const contextRequire = createRequire(contextPackageJsonPath)
 
   try {
-    return contextRequire.resolve(`${dependencyName}/package.json`)
+    return requireLocalInstalledPackagePath(
+      contextRequire.resolve(`${dependencyName}/package.json`),
+      dependencyName,
+    )
   } catch (packageJsonError) {
     try {
-      return findOwningPackageJson(
-        contextRequire.resolve(dependencyName),
+      return requireLocalInstalledPackagePath(
+        findOwningPackageJson(
+          contextRequire.resolve(dependencyName),
+          dependencyName,
+        ),
         dependencyName,
       )
     } catch {
@@ -336,14 +425,93 @@ const collectInstalledPackageJsonPaths = root => {
   return packageJsonPaths
 }
 
-const allowedInstalledEffectVersions = new Set([
-  OMEGA_EFFECT_VERSION,
-  ISOLATED_NOSTR_RELAY_EFFECT_VERSION,
+const ISOLATED_NOSTR_EXTERNAL_EFFECT_PULLERS = new Set([
+  'nostr-effect@0.0.12',
+  '@effect/platform@0.93.5',
+  '@effect/schema@0.75.5',
 ])
+
+const installedExternalPullerPolicyProblem = ({
+  effectVersion,
+  packageName,
+  packageVersion,
+}) => {
+  const packageRef = `${packageName}@${String(packageVersion)}`
+
+  if (effectVersion === OMEGA_EFFECT_VERSION) {
+    return null
+  }
+
+  if (effectVersion === EFFECT_NATIVE_EFFECT_VERSION) {
+    return `${packageRef} unexpectedly resolves vendored Effect Native's effect@${EFFECT_NATIVE_EFFECT_VERSION}; only the exact four source-vendored @effect-native/* workspaces may pull that line`
+  }
+
+  if (effectVersion === ISOLATED_NOSTR_RELAY_EFFECT_VERSION) {
+    return ISOLATED_NOSTR_EXTERNAL_EFFECT_PULLERS.has(packageRef)
+      ? null
+      : `${packageRef} unexpectedly resolves isolated effect@${ISOLATED_NOSTR_RELAY_EFFECT_VERSION}; only the exact nostr-effect@0.0.12 dependency chain may pull that line`
+  }
+
+  return `${packageRef} resolves unexpected installed Effect runtime line ${effectVersion}`
+}
+
+const installedExternalPullerPolicyCases = [
+  {
+    input: {
+      effectVersion: OMEGA_EFFECT_VERSION,
+      packageName: 'effect-cf',
+      packageVersion: EFFECT_CF_VERSION,
+    },
+    shouldAllow: true,
+  },
+  {
+    input: {
+      effectVersion: ISOLATED_NOSTR_RELAY_EFFECT_VERSION,
+      packageName: 'nostr-effect',
+      packageVersion: '0.0.12',
+    },
+    shouldAllow: true,
+  },
+  {
+    input: {
+      effectVersion: ISOLATED_NOSTR_RELAY_EFFECT_VERSION,
+      packageName: 'unrelated-effect3-consumer',
+      packageVersion: '1.0.0',
+    },
+    shouldAllow: false,
+  },
+  {
+    input: {
+      effectVersion: EFFECT_NATIVE_EFFECT_VERSION,
+      packageName: 'external-effect-native-consumer',
+      packageVersion: '1.0.0',
+    },
+    shouldAllow: false,
+  },
+]
+
+const installedExternalPullerPolicyTestProblems =
+  installedExternalPullerPolicyCases.flatMap(({ input, shouldAllow }) => {
+    const allowed = installedExternalPullerPolicyProblem(input) === null
+    return allowed === shouldAllow
+      ? []
+      : [
+          `Internal installed-puller policy regression for ${input.packageName}@${input.packageVersion} on effect@${input.effectVersion}: expected ${shouldAllow ? 'allow' : 'deny'}`,
+        ]
+  })
+
 const installedExternalEffectPullers = []
 const installedExternalEffectProblems = []
+const observedIsolatedNostrExternalPullers = new Set()
+const installedPackageJsonPaths = collectInstalledPackageJsonPaths(BUN_PACKAGE_STORE)
 
-for (const packageJsonPath of collectInstalledPackageJsonPaths(BUN_PACKAGE_STORE)) {
+if (installedPackageJsonPaths.length === 0) {
+  localInstallProblems.push(
+    `Local ${repoRelative(BUN_PACKAGE_STORE)} contains no installed package manifests; ancestor resolution is not accepted`,
+  )
+}
+
+for (const packageJsonPath of installedPackageJsonPaths) {
   const packageJson = readJson(packageJsonPath)
   // Published devDependencies are build metadata, not an installed runtime
   // edge. Only installed dependency and peer declarations are pullers.
@@ -364,13 +532,18 @@ for (const packageJsonPath of collectInstalledPackageJsonPaths(BUN_PACKAGE_STORE
       packageVersion: packageJson.version,
     })
 
-    if (resolvedEffect.version === EFFECT_NATIVE_EFFECT_VERSION) {
-      installedExternalEffectProblems.push(
-        `${packageJson.name}@${String(packageJson.version)} unexpectedly resolves vendored Effect Native's effect@${EFFECT_NATIVE_EFFECT_VERSION}; only the exact four source-vendored @effect-native/* workspaces may pull that line`,
-      )
-    } else if (!allowedInstalledEffectVersions.has(resolvedEffect.version)) {
-      installedExternalEffectProblems.push(
-        `${packageJson.name}@${String(packageJson.version)} resolves unexpected installed Effect runtime line ${resolvedEffect.version}`,
+    const policyProblem = installedExternalPullerPolicyProblem({
+      effectVersion: resolvedEffect.version,
+      packageName: packageJson.name ?? repoRelative(packageJsonPath),
+      packageVersion: packageJson.version,
+    })
+    if (policyProblem !== null) {
+      installedExternalEffectProblems.push(policyProblem)
+    }
+
+    if (resolvedEffect.version === ISOLATED_NOSTR_RELAY_EFFECT_VERSION) {
+      observedIsolatedNostrExternalPullers.add(
+        `${packageJson.name}@${String(packageJson.version)}`,
       )
     }
   } catch (error) {
@@ -379,6 +552,15 @@ for (const packageJsonPath of collectInstalledPackageJsonPaths(BUN_PACKAGE_STORE
     )
   }
 }
+
+const missingIsolatedNostrExternalPullerProblems = [
+  ...ISOLATED_NOSTR_EXTERNAL_EFFECT_PULLERS,
+]
+  .filter(puller => !observedIsolatedNostrExternalPullers.has(puller))
+  .map(
+    puller =>
+      `Isolated Nostr Effect 3 chain is missing expected installed puller ${puller}`,
+  )
 
 for (const [packagePath, expectedPackageName] of EXPECTED_EFFECT_NATIVE_PACKAGES) {
   const packageJsonPath = join(REPO_ROOT, packagePath, 'package.json')
@@ -562,13 +744,17 @@ const lockProblems = lockExpectations
   .map(expectation => `bun.lock is missing ${expectation.description}`)
 
 const problems = [
+  ...pathContainmentPolicyTestProblems,
+  ...localInstallProblems,
   ...effectNativeManifestProblems,
   ...rootCatalogProblems,
   ...directEffectVersionProblems,
   ...directCompanionVersionProblems,
   ...isolatedNostrRelayPullerProblems,
   ...resolvedEffectProblems,
+  ...installedExternalPullerPolicyTestProblems,
   ...installedExternalEffectProblems,
+  ...missingIsolatedNostrExternalPullerProblems,
   ...criticalResolutionProblems,
   ...lockProblems,
   ...unexpectedEffectVitestReferences.map(
@@ -611,7 +797,7 @@ criticalResolutionRows.forEach(row =>
   ),
 )
 console.log(
-  `- installed external Effect pullers checked: ${installedExternalEffectPullers.length} (none may resolve the vendored beta.94 line)`,
+  `- installed external Effect pullers checked: ${installedExternalEffectPullers.length} (beta.70 or the exact three-package Nostr beta3 chain; none may resolve vendored beta.94)`,
 )
 console.log('')
 console.log(
