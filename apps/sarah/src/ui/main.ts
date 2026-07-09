@@ -17,6 +17,7 @@ import {
   Button,
   Card,
   ComponentValueBinding,
+  GraphFigure,
   IntentRef,
   StaticPayload,
   List,
@@ -41,7 +42,15 @@ import { makeDomRenderer, makeMediaVideoDriver } from "@effect-native/render-dom
 import { Effect, Exit, Schema, Scope, SubscriptionRef } from "@effect-native/core/effect"
 
 import { startAvatarSession, type AvatarHandle } from "./avatar-session.ts"
+import {
+  blueprintMapFactFromDelta,
+  blueprintMapFactFromProfileFact,
+  blueprintMapProjection,
+  type BlueprintMapFact,
+} from "./blueprint-map-projection.ts"
 import { sarahEffectNativeTheme } from "./theme.ts"
+import type { SarahBlueprintDelta } from "../services/avatar-event-bus.ts"
+import type { CustomerBlueprintDraft } from "../services/customer-blueprint.ts"
 
 const API = "/sarah/api"
 
@@ -85,6 +94,10 @@ type SarahSurfaceState = Readonly<{
   accountPhase: AccountPhase
   accountEmail: string | null
   activePanel: SarahPanelId
+  blueprintProspectRef: string | null
+  blueprintDraft: CustomerBlueprintDraft | null
+  blueprintFacts: ReadonlyArray<BlueprintMapFact>
+  blueprintContactEmail: string | null
 }>
 
 const initialState: SarahSurfaceState = {
@@ -105,6 +118,10 @@ const initialState: SarahSurfaceState = {
   accountPhase: "unknown",
   accountEmail: null,
   activePanel: "blueprint",
+  blueprintProspectRef: null,
+  blueprintDraft: null,
+  blueprintFacts: [],
+  blueprintContactEmail: null,
 }
 
 const InputChanged = defineIntent("SarahInputChanged", Schema.String)
@@ -250,27 +267,15 @@ const cardItem = (card: SarahCard): View & { key: string } =>
     ],
   ))
 
-const blueprintNode = (key: string, label: string, body: string): View =>
-  Card(
-    {
-      key,
-      padding: "3",
-      radius: "lg",
-      style: {
-        backgroundColor: "surfaceRaised",
-        borderColor: "border",
-        borderWidth: 1,
-        width: "full",
-      },
-    },
-    [
-      text(`${key}-label`, label, "caption", "focus"),
-      text(`${key}-body`, body, "body"),
-    ],
-  )
-
-const blueprintMapPanel = (): View =>
-  Stack(
+const blueprintMapPanel = (state: SarahSurfaceState): View => {
+  const projection = blueprintMapProjection({
+    draft: state.blueprintDraft,
+    facts: state.blueprintFacts,
+    contactEmail: state.blueprintContactEmail,
+    accountLinked: state.accountPhase === "linked",
+    live: state.status === "live" || state.status === "thinking",
+  })
+  return Stack(
     {
       key: "blueprint-map-panel",
       direction: "column",
@@ -278,33 +283,27 @@ const blueprintMapPanel = (): View =>
       style: { width: "full", height: "full", minHeight: 0 },
     },
     [
-      Stack(
-        {
-          key: "blueprint-map",
-          direction: { base: "column", lg: "row" },
-          gap: "3",
-          style: { width: "full" },
+      GraphFigure({
+        key: "blueprint-map-graph",
+        nodes: projection.nodes,
+        edges: projection.edges,
+        layout: "precomputed",
+        width: 760,
+        height: 430,
+        style: {
+          width: "full",
+          flex: 1,
+          minHeight: 0,
+          backgroundColor: "surface",
+          borderColor: "border",
+          borderWidth: 1,
+          borderRadius: "lg",
         },
-        [
-          blueprintNode("blueprint-node-identity", "Identity", "OpenAgents AI sales employee"),
-          blueprintNode("blueprint-node-conversation", "Conversation", "Discovery, fit, next step"),
-        ],
-      ),
-      Stack(
-        {
-          key: "blueprint-map-lower",
-          direction: { base: "column", lg: "row" },
-          gap: "3",
-          style: { width: "full" },
-        },
-        [
-          blueprintNode("blueprint-node-rules", "Rules", "Public packs, approved deal paths"),
-          blueprintNode("blueprint-node-handoff", "Handoff", "Human follow-up when needed"),
-        ],
-      ),
-      Spacer({ key: "blueprint-map-fill", flex: true }),
+        a11y: { label: "Sarah Blueprint map" },
+      }),
     ],
   )
+}
 
 const composerView = (state: SarahSurfaceState): View =>
   Stack(
@@ -420,7 +419,7 @@ export const sarahSurfaceView = (state: SarahSurfaceState): View => {
           { id: "receipts", label: "Receipts" },
         ],
         panels: [
-          { id: "blueprint", content: blueprintMapPanel() },
+          { id: "blueprint", content: blueprintMapPanel(state) },
           { id: "chat", content: chatPanel(state) },
           { id: "actions", content: actionsPanel(state) },
           { id: "receipts", content: receiptsPanel(state) },
@@ -516,6 +515,7 @@ const sendTextTurn = (
       catch: () => new Error("turn_failed"),
     }).pipe(Effect.catch(() => Effect.succeed("I hit a connection problem — try that again in a moment.")))
     yield* appendTranscript(state, "assistant", reply)
+    yield* loadBlueprintMapSeed(state)
     yield* SubscriptionRef.update(state, (current): SarahSurfaceState => ({
       ...current,
       status: current.avatarActive ? current.status : "idle",
@@ -584,6 +584,115 @@ const connectOpenAgentsAccount = async (): Promise<string | null> => {
   if (data.linked !== true) throw new Error("link_not_confirmed")
   return data.email ?? null
 }
+
+type BlueprintSeedResponse = Readonly<{
+  prospect?: boolean
+  prospectRef?: string
+  draft?: CustomerBlueprintDraft | null
+  facts?: ReadonlyArray<{ fact?: string; sourceTurnId?: string; at?: string }>
+  contact?: { email?: string | null; contactId?: string | null } | null
+  storeConfigured?: boolean
+}>
+
+const mergeBlueprintFacts = (
+  current: ReadonlyArray<BlueprintMapFact>,
+  next: ReadonlyArray<BlueprintMapFact>,
+): ReadonlyArray<BlueprintMapFact> => {
+  const byKey = new Map<string, BlueprintMapFact>()
+  for (const fact of [...current, ...next]) {
+    byKey.set(`${fact.label}\u0000${fact.sourceTurnId}\u0000${fact.text}`, fact)
+  }
+  return [...byKey.values()].slice(-40)
+}
+
+const blueprintFactsFromSeed = (
+  facts: BlueprintSeedResponse["facts"],
+): ReadonlyArray<BlueprintMapFact> =>
+  (facts ?? []).flatMap((fact) =>
+    typeof fact.fact === "string" && typeof fact.sourceTurnId === "string"
+      ? [blueprintMapFactFromProfileFact({
+          fact: fact.fact,
+          sourceTurnId: fact.sourceTurnId,
+        })]
+      : [],
+  )
+
+const applyBlueprintSeed = (
+  state: SarahSurfaceState,
+  seed: BlueprintSeedResponse,
+): SarahSurfaceState => {
+  if (seed.prospect === false) {
+    return {
+      ...state,
+      blueprintProspectRef: null,
+      blueprintDraft: null,
+      blueprintFacts: [],
+      blueprintContactEmail: null,
+    }
+  }
+  const prospectRef =
+    typeof seed.prospectRef === "string" ? seed.prospectRef : state.blueprintProspectRef
+  const nextFacts = blueprintFactsFromSeed(seed.facts)
+  const facts =
+    prospectRef !== null && prospectRef === state.blueprintProspectRef
+      ? mergeBlueprintFacts(state.blueprintFacts, nextFacts)
+      : nextFacts
+  const contactEmail = seed.contact?.email ?? seed.draft?.contacts.email ?? null
+  return {
+    ...state,
+    blueprintProspectRef: prospectRef,
+    blueprintDraft: seed.draft ?? null,
+    blueprintFacts: facts,
+    blueprintContactEmail: contactEmail,
+  }
+}
+
+const applyBlueprintDelta = (
+  state: SarahSurfaceState,
+  delta: SarahBlueprintDelta,
+): SarahSurfaceState => {
+  const fact = blueprintMapFactFromDelta(delta)
+  if (fact) {
+    return {
+      ...state,
+      blueprintFacts: mergeBlueprintFacts(state.blueprintFacts, [fact]),
+    }
+  }
+  if (delta.kind === "contact_linked") {
+    return {
+      ...state,
+      blueprintContactEmail: delta.email ?? state.blueprintContactEmail,
+    }
+  }
+  if (delta.kind === "account_linked") {
+    return {
+      ...state,
+      accountPhase: "linked",
+      accountEmail: delta.email ?? state.accountEmail,
+      blueprintContactEmail: delta.email ?? state.blueprintContactEmail,
+    }
+  }
+  return state
+}
+
+const loadBlueprintMapSeed = (
+  state: SubscriptionRef.SubscriptionRef<SarahSurfaceState>,
+) =>
+  Effect.tryPromise({
+    try: async () => {
+      const response = await fetch(`${API}/customer-blueprint/current`)
+      if (!response.ok) throw new Error(`blueprint_seed_${response.status}`)
+      return (await response.json()) as BlueprintSeedResponse
+    },
+    catch: (error) => (error instanceof Error ? error : new Error(String(error))),
+  }).pipe(
+    Effect.flatMap((seed) =>
+      SubscriptionRef.update(state, (current): SarahSurfaceState =>
+        applyBlueprintSeed(current, seed),
+      ),
+    ),
+    Effect.catch(() => Effect.void),
+  )
 
 export const mountSarahSurface = (container: HTMLElement, avatarContainer: HTMLElement) =>
   Effect.gen(function* () {
@@ -719,6 +828,20 @@ export const mountSarahSurface = (container: HTMLElement, avatarContainer: HTMLE
                 onCard: (card) => {
                   void runInBackground(appendCard(state, card))
                 },
+                onBlueprintDelta: (delta) => {
+                  void runInBackground(
+                    Effect.gen(function* () {
+                      yield* SubscriptionRef.update(
+                        state,
+                        (current): SarahSurfaceState =>
+                          applyBlueprintDelta(current, delta),
+                      )
+                      if (delta.kind === "draft_revision") {
+                        yield* loadBlueprintMapSeed(state)
+                      }
+                    }),
+                  )
+                },
               })
             },
             catch: (error) => (error instanceof Error ? error : new Error(String(error))),
@@ -810,6 +933,10 @@ export const mountSarahSurface = (container: HTMLElement, avatarContainer: HTMLE
           ...current,
           accountPhase: status.linked === true ? "linked" : "anonymous",
           accountEmail: status.linked === true ? (status.email ?? null) : null,
+          blueprintContactEmail:
+            status.linked === true
+              ? (status.email ?? current.blueprintContactEmail)
+              : current.blueprintContactEmail,
         })),
       ),
       Effect.catch(() =>
@@ -819,6 +946,8 @@ export const mountSarahSurface = (container: HTMLElement, avatarContainer: HTMLE
         })),
       ),
     )
+
+    yield* loadBlueprintMapSeed(state)
 
     return {
       unmount: Effect.gen(function* () {

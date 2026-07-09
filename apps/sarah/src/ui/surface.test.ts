@@ -30,6 +30,10 @@ const baseState: SurfaceState = {
   accountPhase: "anonymous",
   accountEmail: null,
   activePanel: "blueprint",
+  blueprintProspectRef: null,
+  blueprintDraft: null,
+  blueprintFacts: [],
+  blueprintContactEmail: null,
 }
 
 type AnyNode = { readonly _tag?: string; readonly [key: string]: unknown }
@@ -139,6 +143,12 @@ describe("contract sarah.split_screen_blueprint_map.v1 (BM-3 #8629)", () => {
       "actions",
       "receipts",
     ])
+    const graph = findByTag(view, "GraphFigure") as
+      | { nodes?: ReadonlyArray<{ id: string }>; edges?: ReadonlyArray<{ id: string }> }
+      | null
+    expect(graph).not.toBeNull()
+    expect(graph?.nodes?.some((node) => node.id === "prospect")).toBe(true)
+    expect(graph?.edges?.some((edge) => edge.id === "edge:prospect:account")).toBe(true)
   })
 
   test("the cut list is absent from the EN surface tree", () => {

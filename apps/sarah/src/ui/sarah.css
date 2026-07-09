@@ -157,6 +157,18 @@ body {
   overflow: auto;
 }
 
+#sarah-root [data-en-role="graph-figure"] {
+  overflow: hidden;
+}
+
+#sarah-root [data-en-role="graph-figure"] svg {
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  min-height: 320px;
+  display: block;
+}
+
 .sarah-disclosure {
   margin: 0;
   padding: 8px 12px;

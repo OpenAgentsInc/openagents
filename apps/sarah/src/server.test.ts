@@ -1,6 +1,12 @@
 import { describe, expect, test } from "bun:test"
 import { handleSarahRequest } from "./server.ts"
 import { SARAH_OWNED_TOOL_INVENTORY } from "./agent-runtime/owned-runtime.ts"
+import {
+  __resetCustomerBlueprintForTest,
+  __setCustomerBlueprintLatestDraftReaderForTest,
+  __setCustomerBlueprintStoreReaderForTest,
+  CUSTOMER_BLUEPRINT_SCHEMA,
+} from "./services/customer-blueprint.ts"
 
 describe("apps/sarah monorepo service", () => {
   test("ops endpoint describes /sarah mount and rails", async () => {
@@ -81,6 +87,77 @@ describe("apps/sarah monorepo service", () => {
     // honestly instead of failing the route.
     expect(body.storeConfigured).toBe(false)
     delete process.env.SARAH_OPERATOR_ADMIN_TOKEN
+  })
+
+  test("customer blueprint current route seeds the active prospect only", async () => {
+    __resetCustomerBlueprintForTest()
+    __setCustomerBlueprintStoreReaderForTest(async (aliases) => {
+      expect(aliases).toContain("prospect-a")
+      return {
+        profileFacts: [
+          {
+            fact: 'company: "Acme Retail"',
+            sourceTurnId: "turn-company",
+            at: "2026-07-09T16:00:00.000Z",
+          },
+        ],
+        contact: { email: "buyer@example.com", contactId: "oa_user:buyer" },
+        turns: [],
+        latestRevision: 4,
+      }
+    })
+    __setCustomerBlueprintLatestDraftReaderForTest(async (aliases) => {
+      expect(aliases).toContain("prospect-a")
+      return {
+        schema: CUSTOMER_BLUEPRINT_SCHEMA,
+        prospectRef: "prospect-a",
+        revision: 4,
+        createdAt: "2026-07-09T16:00:00.000Z",
+        business: { facts: [] },
+        contacts: { email: "buyer@example.com", contactId: "oa_user:buyer" },
+        needs: [],
+        suggestedModules: [],
+        sources: {
+          turnIds: [],
+          factCount: 1,
+          provenance:
+            "sarah_prospect_profile + sarah_transcript_turns (per-fact source turn ids)",
+        },
+        handoff: {
+          pipeline: "operator_assisted_business_workspace",
+          automatedProvisioning: false,
+          convergesWith:
+            "CB-1.4 prefill pipeline (intake -> public-data research -> seeded workspace)",
+          note: "Draft only.",
+        },
+      }
+    })
+    try {
+      const seeded = await handleSarahRequest(
+        new Request("http://localhost/sarah/api/customer-blueprint/current", {
+          headers: { cookie: "sarah_prospect_ref=prospect-a" },
+        }),
+      )
+      expect(seeded.status).toBe(200)
+      const body = await seeded.json()
+      expect(body.prospect).toBe(true)
+      expect(body.draft.revision).toBe(4)
+      expect(body.facts[0].fact).toBe('company: "Acme Retail"')
+      expect(body.contact.email).toBe("buyer@example.com")
+
+      const anonymous = await handleSarahRequest(
+        new Request("http://localhost/sarah/api/customer-blueprint/current"),
+      )
+      expect(await anonymous.json()).toEqual({
+        prospect: false,
+        draft: null,
+        facts: [],
+        contact: null,
+        storeConfigured: false,
+      })
+    } finally {
+      __resetCustomerBlueprintForTest()
+    }
   })
 
   test("text turn uses owned runtime", async () => {

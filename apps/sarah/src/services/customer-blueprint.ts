@@ -435,6 +435,14 @@ const defaultWriter: BlueprintWriter = async (prospectRef, revision, draft) => {
 
 let writer: BlueprintWriter = defaultWriter
 
+export type CustomerBlueprintMapSeed = {
+  prospectRef: string
+  draft: CustomerBlueprintDraft | null
+  facts: SarahProspectFact[]
+  contact: { email: string | null; contactId: string | null } | null
+  storeConfigured: boolean
+}
+
 export type BuildCustomerBlueprintResult =
   | {
       ok: true
@@ -515,6 +523,60 @@ export async function buildCustomerBlueprintDraft(
   return { ok: true, draft, stored, revision }
 }
 
+type BlueprintLatestDraftReader = (
+  aliases: string[],
+) => Promise<CustomerBlueprintDraft | null>
+
+const defaultLatestDraftReader: BlueprintLatestDraftReader = async (
+  aliases: string[],
+) => {
+  if (!(await ensureBlueprintSchema())) return null
+  const rows = await readSarahStore(async (sql) => {
+    return (await sql`
+      SELECT draft
+      FROM sarah_customer_blueprints
+      WHERE prospect_ref IN ${sql(aliases)}
+      ORDER BY revision DESC, created_at DESC, id DESC
+      LIMIT 1
+    `) as Array<Record<string, unknown>>
+  })
+  const raw = rows?.[0]?.draft
+  if (raw === undefined) return null
+  return (typeof raw === "string" ? JSON.parse(raw) : raw) as CustomerBlueprintDraft
+}
+
+let latestDraftReader: BlueprintLatestDraftReader = defaultLatestDraftReader
+
+/**
+ * Prospect-facing read for the BM-2 Blueprint map seed. This returns only the
+ * current prospect's latest stored draft and distilled facts, using the same
+ * exact-alias KHS-3 reader as buildCustomerBlueprintDraft. No write occurs.
+ */
+export async function getCurrentCustomerBlueprintMapSeed(
+  prospectRef: string,
+): Promise<CustomerBlueprintMapSeed | null> {
+  const aliases = prospectRefAliases(prospectRef)
+  if (aliases.length === 0) return null
+  const inputs = await storeReader(aliases)
+  if (!inputs) {
+    return {
+      prospectRef: aliases[0]!,
+      draft: null,
+      facts: [],
+      contact: null,
+      storeConfigured: false,
+    }
+  }
+  const draft = await latestDraftReader(aliases)
+  return {
+    prospectRef: aliases[0]!,
+    draft,
+    facts: inputs.profileFacts,
+    contact: inputs.contact,
+    storeConfigured: true,
+  }
+}
+
 /**
  * Owner/operator listing (admin-bearer-guarded at the route). Intentionally
  * cross-prospect: owner-facing only, never feeds a prospect-facing serve path
@@ -571,9 +633,16 @@ export function __setCustomerBlueprintWriterForTest(
   writer = fn ?? defaultWriter
 }
 
+export function __setCustomerBlueprintLatestDraftReaderForTest(
+  fn: BlueprintLatestDraftReader | null,
+): void {
+  latestDraftReader = fn ?? defaultLatestDraftReader
+}
+
 export function __resetCustomerBlueprintForTest(): void {
   storeReader = defaultStoreReader
   writer = defaultWriter
+  latestDraftReader = defaultLatestDraftReader
   offeringEmbeddings.clear()
   blueprintSchemaReady = null
 }

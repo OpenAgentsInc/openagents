@@ -20,6 +20,7 @@ import {
 import { prospectRefAliases, type SarahProspectFact } from "./prospect-memory.ts"
 import {
   __resetCustomerBlueprintForTest,
+  __setCustomerBlueprintLatestDraftReaderForTest,
   __setCustomerBlueprintStoreReaderForTest,
   __setCustomerBlueprintWriterForTest,
   blueprintOfferings,
@@ -27,6 +28,7 @@ import {
   composeCustomerBlueprintDraft,
   CUSTOMER_BLUEPRINT_SCHEMA,
   factLabel,
+  getCurrentCustomerBlueprintMapSeed,
   matchNeedsToOfferings,
   type CustomerBlueprintDraft,
   type CustomerBlueprintNeed,
@@ -358,6 +360,28 @@ describe("buildCustomerBlueprintDraft scoping (KHS-3 single-ref seam)", () => {
 
     await rawReader.cancel()
     await aliasReader.cancel()
+  })
+
+  test("BM-2 current map seed reads the latest draft and facts for one prospect", async () => {
+    __setCustomerBlueprintLatestDraftReaderForTest(async (aliases) => {
+      const refs = new Set(aliases)
+      return storedDrafts
+        .filter((row) => refs.has(row.prospectRef))
+        .sort((a, b) => b.revision - a.revision)[0]?.draft ?? null
+    })
+
+    const built = await buildCustomerBlueprintDraft("prospect-a")
+    expect(built.ok).toBe(true)
+    const seed = await getCurrentCustomerBlueprintMapSeed("prospect-a")
+    expect(seed?.storeConfigured).toBe(true)
+    expect(seed?.draft?.revision).toBe(1)
+    expect(seed?.facts.map((entry) => entry.fact)).toContain(
+      'company: "Acme Retail, ALPHA-ONLY-DETAIL-77"',
+    )
+    expect(seed?.contact?.email).toBe("alpha@example.com")
+
+    const unknown = await getCurrentCustomerBlueprintMapSeed("")
+    expect(unknown).toBeNull()
   })
 
   test("an empty ref refuses instead of reading unscoped", async () => {

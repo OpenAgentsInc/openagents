@@ -17,10 +17,13 @@ import {
   SessionEvent,
 } from "@heygen/liveavatar-web-sdk"
 
+import type { SarahBlueprintDelta } from "../services/avatar-event-bus.ts"
+
 export type AvatarCallbacks = {
   onState: (state: "connecting" | "live" | "ended" | "error") => void
   onTranscript: (role: "user" | "assistant", text: string) => void
   onCard: (card: { title: string; body: string; href?: string }) => void
+  onBlueprintDelta?: (delta: SarahBlueprintDelta) => void
 }
 
 export type AvatarPane = {
@@ -123,6 +126,7 @@ export async function startAvatarSession(
         title?: string
         body?: string
         href?: string
+        delta?: SarahBlueprintDelta
       }
       if (event.type === "transcript" && event.role && event.text) {
         emitTranscript(event.role, event.text)
@@ -132,6 +136,8 @@ export async function startAvatarSession(
           body: event.body ?? "",
           ...(event.href ? { href: event.href } : {}),
         })
+      } else if (event.type === "blueprint_delta" && event.delta) {
+        callbacks.onBlueprintDelta?.(event.delta)
       }
     } catch {
       // Ignore malformed frames.
@@ -261,6 +267,7 @@ async function startOwnedRendererSession(
         title?: string
         body?: string
         href?: string
+        delta?: SarahBlueprintDelta
       }
       if (event.type === "transcript" && event.role && event.text) {
         emitTranscript(event.role, event.text)
@@ -270,6 +277,8 @@ async function startOwnedRendererSession(
           body: event.body ?? "",
           ...(event.href ? { href: event.href } : {}),
         })
+      } else if (event.type === "blueprint_delta" && event.delta) {
+        callbacks.onBlueprintDelta?.(event.delta)
       }
     } catch {
       // Ignore malformed frames.

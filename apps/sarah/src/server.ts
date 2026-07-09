@@ -43,7 +43,10 @@ import {
 } from "./services/collective-learning.ts"
 import { sarahTurnStoreStatus } from "./services/turn-store.ts"
 import { sarahEcosystemStatus } from "./services/ecosystem-tools.ts"
-import { listCustomerBlueprintsForOperator } from "./services/customer-blueprint.ts"
+import {
+  getCurrentCustomerBlueprintMapSeed,
+  listCustomerBlueprintsForOperator,
+} from "./services/customer-blueprint.ts"
 import {
   addSarahBlueprintFact,
   loadSarahBlueprint,
@@ -513,6 +516,30 @@ async function handleAccountStatus(request: Request): Promise<Response> {
   })
 }
 
+async function handleCustomerBlueprintCurrent(request: Request): Promise<Response> {
+  const prospectRef = readSarahProspectRef(request)
+  if (!prospectRef) {
+    return json({
+      prospect: false,
+      draft: null,
+      facts: [],
+      contact: null,
+      storeConfigured: false,
+    })
+  }
+  const seed = await getCurrentCustomerBlueprintMapSeed(prospectRef)
+  return json({
+    prospect: true,
+    ...(seed ?? {
+      prospectRef,
+      draft: null,
+      facts: [],
+      contact: null,
+      storeConfigured: false,
+    }),
+  })
+}
+
 /**
  * KHS-7 (#8606): link the anonymous prospect_ref to the authenticated
  * openagents.com user. Identity comes ONLY from the first-party OpenAuth
@@ -657,6 +684,9 @@ export async function handleSarahRequest(request: Request): Promise<Response> {
   }
   if (apiPath === "/api/account/link" && request.method === "POST") {
     return handleAccountLink(request)
+  }
+  if (apiPath === "/api/customer-blueprint/current" && request.method === "GET") {
+    return handleCustomerBlueprintCurrent(request)
   }
   if (apiPath === "/api/realtime/token" && request.method === "POST") {
     return handleRealtimeToken(request)
