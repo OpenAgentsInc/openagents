@@ -42,6 +42,12 @@ import {
   getSarahSessionTranscript,
   recordSarahTranscriptTurn,
 } from "../services/session-index.ts"
+import {
+  formatInstructedToolReply,
+  instructedJsonToolProtocolPrompt,
+  instructedJsonToolsArmed,
+  parseInstructedJsonToolCall,
+} from "../services/instructed-json-tools.ts"
 import { readFile } from "node:fs/promises"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
@@ -241,6 +247,11 @@ export async function runOwnedSarahTurn(
     // AFTER the deterministic guards above — never on the pricing lane.
     const grounding = await maybeEcosystemGrounding(message)
     if (grounding) system = `${system}\n\n${grounding}`
+    // AV-3 residual (#8598): optional instructed-JSON tool protocol for Gemma
+    // (no native function calling). Flag-gated; pricing tools never allowed.
+    if (instructedJsonToolsArmed()) {
+      system = `${system}\n\n${instructedJsonToolProtocolPrompt()}`
+    }
     const contents: GemmaContent[] = []
     if (input.prospectRef) {
       const history = await getSarahSessionTranscript({
@@ -265,6 +276,34 @@ export async function runOwnedSarahTurn(
           ? "khala_gateway_live"
           : "google_gemma_live"
       model = result.model
+
+      // If the model asked for a tool via instructed JSON, execute it once
+      // (no recursive model loop in v1 — keep deterministic after the tool).
+      if (instructedJsonToolsArmed() && !input.toolCall) {
+        const instructed = parseInstructedJsonToolCall(result.reply)
+        if (instructed) {
+          const toolResult = await runTool(
+            instructed.toolName,
+            instructed.args,
+            {
+              ...(input.prospectRef
+                ? { prospectRef: input.prospectRef }
+                : {}),
+            },
+          )
+          toolResults.push({
+            toolName: instructed.toolName,
+            ok: toolResult.ok,
+            output: toolResult.output,
+          })
+          reply = formatInstructedToolReply(
+            instructed.toolName,
+            toolResult.ok,
+            toolResult.output,
+          )
+          modelPath = "deterministic_guard"
+        }
+      }
     } else {
       modelError = result.error
       reply = isSarahInferenceBusyError(result.error)

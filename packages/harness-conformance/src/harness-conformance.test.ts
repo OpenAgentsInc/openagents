@@ -4,8 +4,8 @@
  * This is the enum-driven gate. It:
  *   1. Asserts the harness-kind classification and registry stay aligned with
  *      the shared enums (a new coding kind must be classified AND registered).
- *   2. Asserts `grok_cli` is red-by-design (pending, on the known allowlist)
- *      and that codex + claude_code are proven.
+ *   2. Asserts all coding-worker harnesses (codex, claude_code, grok_cli)
+ *      are proven with real fixtures.
  *   3. Runs the full five-capability suite for every proven kind (green) and
  *      emits `test.todo` for every pending kind (visible red, sweep stays green).
  */
@@ -60,18 +60,10 @@ describe("MH-1 harness conformance coverage gate", () => {
     }
   })
 
-  test("codex and claude_code are proven with real fixtures", () => {
+  test("codex, claude_code, and grok_cli are proven with real fixtures", () => {
     expect(harnessConformanceRegistry.codex.status).toBe("proven")
     expect(harnessConformanceRegistry.claude_code.status).toBe("proven")
-  })
-
-  test("grok_cli is red-by-design (pending, owned by the Grok lane)", () => {
-    const entry = harnessConformanceRegistry.grok_cli
-    expect(entry.status).toBe("pending")
-    if (entry.status === "pending") {
-      expect(entry.reasonRef.length).toBeGreaterThan(0)
-      expect(entry.ownerLane).toContain("Grok")
-    }
+    expect(harnessConformanceRegistry.grok_cli.status).toBe("proven")
   })
 
   test("no unexpected pending coding harness (a new pending kind reds the sweep)", () => {
