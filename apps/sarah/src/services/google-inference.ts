@@ -344,21 +344,29 @@ const defaultLaneFallbackSink: SarahGatewayLaneFallbackSink = (event) => {
   console.warn(JSON.stringify(event))
 }
 
-type GatewayTelemetryLaneFields = {
-  provider?: string
-  servedModel?: string
-  fallbackReason?: string | null
+/**
+ * The lane identity fields on the wire `openagents` receipt block (verified
+ * live on staging 2026-07-09): the serving adapter rides `worker`, the
+ * concrete backing model rides `served_model`, and the router's public-safe
+ * fallback reason rides `routing.fallback_reason` (null when the primary lane
+ * served). The `telemetry` sub-block is the token/latency summary only.
+ */
+type GatewayReceiptWire = {
+  worker?: string
+  served_model?: string
+  routing?: { fallback_reason?: string | null }
+  telemetry?: GatewayTelemetryTokens
 }
 
 /** Emit the typed lane-fallback event when the turn left the primary lane. */
 async function emitLaneFallbackIfOffPrimary(
   requestedModel: string,
-  telemetry: GatewayTelemetryLaneFields | undefined,
+  receipt: GatewayReceiptWire | undefined,
   sink: SarahGatewayLaneFallbackSink,
 ): Promise<void> {
-  if (telemetry === undefined) return
-  const provider = telemetry.provider ?? ""
-  const fallbackReason = telemetry.fallbackReason ?? null
+  if (receipt === undefined) return
+  const provider = receipt.worker ?? ""
+  const fallbackReason = receipt.routing?.fallback_reason ?? null
   const offPrimary =
     fallbackReason !== null ||
     (provider !== "" && provider !== SARAH_GATEWAY_PRIMARY_PROVIDER)
@@ -367,7 +375,7 @@ async function emitLaneFallbackIfOffPrimary(
     type: "sarah.gateway_lane_fallback.v1",
     requestedModel,
     provider,
-    servedModel: telemetry.servedModel ?? "",
+    servedModel: receipt.served_model ?? "",
     fallbackReason,
     emittedAt: new Date().toISOString(),
   }
@@ -465,7 +473,7 @@ export function gatewayUsageToTurnUsage(
 
 const NOT_MEASURED = "not_measured"
 
-type GatewayTelemetryTokens = GatewayTelemetryLaneFields & {
+type GatewayTelemetryTokens = {
   promptTokens?: number | typeof NOT_MEASURED
   completionTokens?: number | typeof NOT_MEASURED
   totalTokens?: number | typeof NOT_MEASURED
@@ -523,7 +531,7 @@ async function generateViaGateway(
       model?: string
       choices?: Array<{ message?: { content?: string } }>
       usage?: GatewayUsageWire
-      openagents?: { telemetry?: GatewayTelemetryTokens }
+      openagents?: GatewayReceiptWire
     }
     // Only `message.content` is read — the gateway routes thinking-model
     // scratchpad to `reasoning_content`, which is deliberately ignored here.
@@ -535,7 +543,7 @@ async function generateViaGateway(
     // gateway served this turn off the primary Gemma lane.
     await emitLaneFallbackIfOffPrimary(
       config.model,
-      data.openagents?.telemetry,
+      data.openagents,
       laneFallbackSink,
     )
     return { ok: true, reply, model: data.model ?? config.model, usage }
@@ -594,7 +602,7 @@ async function* streamViaGateway(
     const decoder = new TextDecoder()
     let buffer = ""
     let fullText = ""
-    let telemetry: GatewayTelemetryTokens | undefined
+    let receipt: GatewayReceiptWire | undefined
     for (;;) {
       const { done, value } = await reader.read()
       if (done) break
@@ -614,10 +622,10 @@ async function* streamViaGateway(
               // surfaced (the thought-filtering law on the gateway transport).
               delta?: { content?: string; reasoning_content?: string }
             }>
-            openagents?: { telemetry?: GatewayTelemetryTokens }
+            openagents?: GatewayReceiptWire
           }
-          if (frame.openagents?.telemetry !== undefined) {
-            telemetry = frame.openagents.telemetry
+          if (frame.openagents !== undefined) {
+            receipt = frame.openagents
           }
           const delta = frame.choices?.[0]?.delta?.content ?? ""
           if (delta) {
@@ -633,11 +641,11 @@ async function* streamViaGateway(
       yield { type: "error", error: "gateway_inference_empty_reply" }
       return
     }
-    const usage = gatewayTelemetryToTurnUsage(telemetry)
+    const usage = gatewayTelemetryToTurnUsage(receipt?.telemetry)
     await recordDailyTokenUsage(usage.totalTokens, spendAlertSink)
     // Typed lane-fallback visibility (#8600): one public-safe event when the
     // gateway served this turn off the primary Gemma lane.
-    await emitLaneFallbackIfOffPrimary(config.model, telemetry, laneFallbackSink)
+    await emitLaneFallbackIfOffPrimary(config.model, receipt, laneFallbackSink)
     yield { type: "done", fullText: fullText.trim(), usage }
   } catch (error) {
     yield {

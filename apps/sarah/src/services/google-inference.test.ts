@@ -737,10 +737,13 @@ describe("persona-neutral internal lane (#8600)", () => {
 })
 
 describe("typed gateway lane-fallback events (#8600)", () => {
-  function gatewayJsonResponseWithTelemetry(telemetry: {
-    provider?: string
-    servedModel?: string
-    fallbackReason?: string | null
+  // The wire receipt shape verified live on staging 2026-07-09: adapter id
+  // rides `worker`, backing model rides `served_model`, fallback reason rides
+  // `routing.fallback_reason`; `telemetry` is the token/latency summary only.
+  function gatewayJsonResponseWithReceipt(receipt: {
+    worker?: string
+    served_model?: string
+    fallback_reason?: string | null
   }): Response {
     return Response.json({
       id: "chatcmpl-test",
@@ -754,11 +757,13 @@ describe("typed gateway lane-fallback events (#8600)", () => {
       ],
       usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 20 },
       openagents: {
+        worker: receipt.worker,
+        served_model: receipt.served_model,
+        routing: { fallback_reason: receipt.fallback_reason ?? null },
         telemetry: {
           promptTokens: 10,
           completionTokens: 5,
           totalTokens: 20,
-          ...telemetry,
         },
       },
     })
@@ -771,10 +776,10 @@ describe("typed gateway lane-fallback events (#8600)", () => {
       system: "s",
       contents: [{ role: "user", parts: [{ text: "hi" }] }],
       fetchImpl: recordingFetch(
-        gatewayJsonResponseWithTelemetry({
-          provider: "vertex-gemini",
-          servedModel: "gemini-3.5-flash",
-          fallbackReason: "primary_lane_429",
+        gatewayJsonResponseWithReceipt({
+          worker: "vertex-gemini",
+          served_model: "gemini-3.5-flash",
+          fallback_reason: "primary_lane_429",
         }),
         [],
       ),
@@ -802,10 +807,10 @@ describe("typed gateway lane-fallback events (#8600)", () => {
       system: "s",
       contents: [{ role: "user", parts: [{ text: "hi" }] }],
       fetchImpl: recordingFetch(
-        gatewayJsonResponseWithTelemetry({
-          provider: "google-gemma4",
-          servedModel: "gemma-4-31b-it",
-          fallbackReason: null,
+        gatewayJsonResponseWithReceipt({
+          worker: "google-gemma4",
+          served_model: "gemma-4-31b-it",
+          fallback_reason: null,
         }),
         [],
       ),
@@ -823,7 +828,7 @@ describe("typed gateway lane-fallback events (#8600)", () => {
     const frames = [
       'data: {"choices":[{"delta":{"content":"Hel"}}]}\n',
       'data: {"choices":[{"delta":{"content":"lo"}}]}\n',
-      'data: {"choices":[{"delta":{"content":""}}],"openagents":{"telemetry":{"promptTokens":10,"completionTokens":2,"totalTokens":12,"provider":"fireworks","servedModel":"deepseek-v4-flash","fallbackReason":"primary_lane_timeout"}}}\n',
+      'data: {"choices":[{"delta":{"content":""}}],"openagents":{"worker":"fireworks","served_model":"deepseek-v4-flash","routing":{"fallback_reason":"primary_lane_timeout"},"telemetry":{"promptTokens":10,"completionTokens":2,"totalTokens":12}}}\n',
       "data: [DONE]\n",
     ]
     const collected = await collect(
@@ -852,9 +857,9 @@ describe("typed gateway lane-fallback events (#8600)", () => {
       system: "s",
       contents: [{ role: "user", parts: [{ text: "hi" }] }],
       fetchImpl: recordingFetch(
-        gatewayJsonResponseWithTelemetry({
-          provider: "vertex-gemini",
-          fallbackReason: "primary_lane_429",
+        gatewayJsonResponseWithReceipt({
+          worker: "vertex-gemini",
+          fallback_reason: "primary_lane_429",
         }),
         [],
       ),
