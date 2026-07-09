@@ -7,13 +7,15 @@ archived verbatim at `docs/ops/2026-07-09-needs-owner-archive.md`.
 
 ## THE ASK — one sitting, highest value-per-minute first
 
-**1. Arm the sales pipe (~10 min)** — the entire outbound track (OB-1
-#8558 → OB-4 #8561 / OB-6 #8563 live loop) is parked behind this single
-gate. Pick Sarah's sending subdomain (suggested `mail.openagents.com`),
-add the SPF/DKIM/DMARC records Resend shows for it, and set prod secrets
-`CRM_RESEND_SEND_ENABLED=1` + `RESEND_API_KEY` + `RESEND_FROM_EMAIL`
-(secret flow per `docs/DEPLOYMENT.md`). Everything downstream is built and
-tested; it starts accruing the moment this arms.
+**1. ✅→ Say "GO" to arm sending (~10 seconds).** DONE 2026-07-09: owner
+"use what's in Resend now" call taken — no subdomain, no DNS. Live proof:
+`Sarah <sarah@openagents.com>` delivered via the verified root domain
+(Resend id `0404823c`, receipt on #8558). Prod already holds the API key.
+The ONLY remaining step is the owner saying **"GO, arm sends"** — an
+agent then flips `CRM_RESEND_SEND_ENABLED=1` on the prod monolith and
+points the CRM sender at Sarah's identity (without changing the Sites
+transactional sender). The 100/day loop, ledger, ramp, and opt-out
+machinery start proving out immediately after.
 
 **2. Codex connect tap-through (~5 min, phone)** — closes CX-2 #8546.
 Khala mobile → Settings → Codex accounts → Connect → complete the browser
