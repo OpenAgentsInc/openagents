@@ -387,6 +387,9 @@ function accountProvidersForRequestedWorkerKind(
   workerKind: KhalaFleetDelegateWorkerKind,
 ): readonly AccountProvider[] {
   if (workerKind === "auto") return ["codex", "claude_agent"]
+  // MH-4/MH-5: grok has no Pylon account provider on this codex/claude
+  // account-ranking surface (never silently downgrade to codex).
+  if (workerKind === "grok") return []
   return [accountProviderForWorkerKind(workerKind)]
 }
 
@@ -1770,6 +1773,15 @@ export class DefaultKhalaFleetRunSupervisorManager implements KhalaFleetRunSuper
       dispatch: async ({ accountRef, run, workUnit }) => {
         const config = this.planConfigs.get(runRef)
         if (config === undefined) throw new Error(`missing fleet run plan config: ${runRef}`)
+        if (run.workerKind === "grok") {
+          // MH-4/MH-5: this manager has no grok executor and its capacityFor()
+          // never advertises grok-labeled Pylon accounts, so dispatch should
+          // be unreachable for a grok-labeled run. Fail loud rather than
+          // silently routing the run onto a real codex/claude Pylon account.
+          throw new Error(
+            `fleet run ${run.runRef} is grok-labeled; DefaultKhalaFleetRunSupervisorManager has no grok executor and must never dispatch it onto a Pylon codex/claude account`,
+          )
+        }
         const fixture = run.workSource === "fixture"
         const selectedAccountRef = commandAccountRef(accountRef)
         if (!fixture && selectedAccountRef === undefined) {
@@ -1790,7 +1802,7 @@ export class DefaultKhalaFleetRunSupervisorManager implements KhalaFleetRunSuper
           repo: fixture ? undefined : workUnit.repo ?? config.repo,
           timeoutMs: config.timeoutMs,
           verify: fixture ? undefined : workUnit.verify ?? config.verify,
-          workerKind: narrowToDelegateWorkerKind(run.workerKind),
+          workerKind: run.workerKind,
         }))
       },
     }

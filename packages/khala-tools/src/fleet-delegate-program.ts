@@ -841,6 +841,15 @@ export function resolveKhalaFleetDelegateWorkerKind(
 ): KhalaFleetDelegateConcreteWorkerKind {
   const resolved = resolveKhalaFleetDelegationParameters(parameters)
   const requested = resolved.delegationTarget?.workerKind ?? "codex"
+  if (requested === "grok") {
+    // Grok is concrete at the FleetRun/supervisor layer (MH-4) but never
+    // uses this classic codex/claude account-provider ranking surface.
+    // Fail loud rather than silently routing a grok request onto a real
+    // codex/claude Pylon account.
+    throw new Error(
+      "resolveKhalaFleetDelegateWorkerKind: grok is not a valid target for the codex/claude Pylon account-provider ranking surface; route grok dispatch through the FleetRun supervisor's grok executor instead",
+    )
+  }
   if (requested !== "auto") return requested
   return scoreKhalaFleetDelegateAutoWorkerKind(accounts, resolved, workflowClassification)
 }

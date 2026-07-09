@@ -37,7 +37,6 @@ import {
   type KhalaCodexFleetToolOptions,
 } from "./khala-fleet-tools.js"
 import { collectKhalaProcessText, spawnKhalaProcess } from "./khala-process.js"
-import { narrowToDelegateWorkerKind } from "@openagentsinc/khala-tools"
 import { makePylonService, type PylonServiceShape } from "./pylon-service.js"
 import {
   startFleetRunSupervisor,
@@ -321,8 +320,9 @@ const capacityFor = (options: KhalaCodexFleetToolOptions | undefined): FleetRunS
     // Grok local capacity (MH-4): synthetic account when CLI is ready.
     // Soft-cap concurrent slots so free-window soak does not thrash the host.
     if (run.workerKind === "grok" || run.workerKind === "auto") {
+      const grokEnv = options?.env as NodeJS.ProcessEnv | undefined
       const readiness = await probeGrokReadiness({
-        env: options?.env as NodeJS.ProcessEnv | undefined,
+        ...(grokEnv === undefined ? {} : { env: grokEnv }),
       })
       if (readiness.ready) {
         const softCap = Math.max(
