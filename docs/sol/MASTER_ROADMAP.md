@@ -1,7 +1,7 @@
 # MASTER ROADMAP — Sarah Fleet Command first; three OpenAgents apps
 
 - Date: 2026-07-09
-- Revision: 6
+- Revision: 7
 - Status: canonical OpenAgents implementation roadmap
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Issue source set: [`issues/README.md`](./issues/README.md)
@@ -99,8 +99,17 @@ The coding-fleet program starts from substantial working substrate:
   readiness, health, quota, usage, dispatch-breaker, and durable cross-run load
   state; default homes, duplicate refs, and unsupported Grok custody fail
   closed with fixed diagnostics;
+- a Pylon-owned exact claimed-work runner that converts one durable claim into
+  one exact named Codex/Claude Khala assignment, verifies the delegation,
+  account hash, strict assignment ref, and no-spend closeout, suppresses
+  duplicate dispatch, and reconciles restart state by inspection rather than
+  rerunning;
 - a Pylon-only standing activation seam that recovers stale work before it
   idempotently resumes and refills an existing durable run;
+- one canonical owned standing-executor composition that opens one Pylon-home
+  runtime/store, constructs planner, named capacity, liveness, exact runner,
+  recovery, and refill against that same store, and closes the runtime on any
+  construction/recovery/resume failure;
 - a concrete assignment/process/heartbeat liveness adapter that distinguishes
   live, dead, and unknown recovery evidence without treating PID presence as
   sufficient;
@@ -118,35 +127,41 @@ The coding-fleet program starts from substantial working substrate:
   Fleet view composed into Sarah only when an explicit owner projection exists;
 - an exact-scope browser persistence and `/api/sync/connect` controller with
   serial delta application, abort/dispose, bounded reconnect, stale watchdog,
-  cursor-gap catch-up, and first-class MustRefetch reasons; it is not yet
-  instantiated by the retained `/sarah` host;
+  cursor-gap catch-up, and first-class MustRefetch reasons, now instantiated by
+  retained `/sarah` only when one strict `fleet_run` URL ref derives the scope;
+- retained `/sarah` loading/live/reconnecting/MustRefetch/failed/stopped Fleet
+  rendering plus exact run controls, approval decisions, local evidence/
+  receipt navigation, and a bounded per-page idempotent command ledger; no
+  scope preserves the Blueprint-first surface;
 - a typed media-admission projection in which text is the floor, realtime
   queues expire to text after 30 seconds, LIVE requires admission and transport
   leases, and cost/recovery inputs remain explicit;
-- a bounded per-conversation VAD coalescer plus exact owner/conversation/turn
-  streaming fanout with one canonical publish/record attempt, bounded replay,
-  slow-subscriber isolation, and honest overflow/record-timeout outcomes; the
-  production inference/SSE route does not yet compose them.
+- a bounded per-conversation VAD coalescer plus exact prospect/conversation/
+  turn streaming coordinator and OpenAI-SSE adapter with immediate role bytes,
+  keepalives, one canonical producer/publish-and-record attempt, bounded replay,
+  disconnect isolation, abort propagation, and honest overflow/record-timeout
+  outcomes; the current renderer-wide bearer route remains byte-compatible and
+  deliberately does not arm this trusted-context entrypoint.
 
 The immediate gaps are now narrower composition and live-proof gaps:
 
 - Sarah still lacks a merged production-durable, owner-scoped FleetRun creation
   authority that a standing Pylon can claim. A local JSON-only FC-1 proposal is
   not sufficient for this boundary.
-- `pylon node` cannot yet reconstruct a real plan and executor from a Sarah run:
-  work-source planning, liveness, and named Codex/Claude capacity are
-  Pylon-owned, but the common claimed-unit runner, Grok account/custody path,
-  explicit owner-local arming intake, and node activation are not all wired.
+- `pylon node` cannot yet discover and claim a production-durable Sarah run:
+  work-source planning, liveness, named Codex/Claude capacity, exact claimed-
+  unit execution, and one-store standing composition are Pylon-owned, but the
+  explicit owner-local arming/intake and node activation are not wired.
 - Grok still uses a separate spawn path rather than the same production
   supervisor path as Codex and Claude.
-- Sarah's safe FleetRun projection, cursor client, persisted reducer, and views
-  are code/fixture-proven, and the browser persistence/live-tail controller now
-  exists, but the retained `/sarah` composition does not instantiate it. Real
-  named controls, approval/steering, deployed reconnect, and exactly-once intent
-  receipts remain.
-- The VAD coalescer and bounded multi-controller fanout are fixture-proven but
-  still need production inference/SSE composition to preserve immediate first
-  byte and one `publishAndRecord` while sharing a model turn.
+- Sarah's safe FleetRun projection, persisted exact-cursor live session, views,
+  run controls, and approval decisions are code/fixture-proven in retained
+  `/sarah`; a deployed owner-cookie WebSocket reconnect canary and a projection-
+  authorized steer affordance remain. The private-body-safe typed steer client
+  exists, but the UI does not invent authority absent from the projection.
+- The trusted-context voice coordinator/SSE adapter is fixture-proven but stays
+  unarmed until renderer-authenticated conversation/session metadata carries
+  the server-minted conversation ref; model/system text is not scope authority.
 - No integrated Sarah→standing-Pylon fixture has satisfied C1, and no real
   Codex+Claude+Grok burn has satisfied C2.
 - Agent Computer Codex still lacks the new live Firecracker proof.
