@@ -1,12 +1,112 @@
 # MASTER ROADMAP — Khala Code MVP (Tested, Submitted) → Sarah → Codex → AI Employees → the Suite
 
-Date: 2026-07-09 (rev 6.13 — Sarah Blueprint Map surface, epic #8626)
+Date: 2026-07-09 (rev 6.14 — Sarah Blueprint Map implementation status + ordered open-issue queue)
 Status: **the single consolidated execution roadmap.** This document owns
 top-level sequencing across everything designed in the 2026-07-07 strategy
 set and its predecessors. The source docs remain authoritative for their
 *content* (specs, evidence, arguments); when sequencing here and sequencing
 there disagree, **this document wins**, and new issues are filed against the
 phase lanes named here.
+
+**Rev 6.14 changes (execution update, 2026-07-09 — BM-1..4 LANDED,
+STOP POINT ORDERED):** open PR review found PR **#8632** carrying BM-1
+(`blueprint_delta` SSE events). It was patched before merge so profile
+refreshes publish only newly distilled facts, then landed on `main` as
+`7838a9a1ca`. The Sarah Blueprint Map implementation now has BM-1..4
+complete on `main`: BM-3 split layout + declutter + the verbatim
+`sarah.split_screen_blueprint_map.v1` contract (`4fb1ec6ba7`), BM-2
+the live Effect Native `GraphFigure` Blueprint map with prospect-scoped
+seed reads and delta updates (`9ee02315f5`), and BM-4 the Effect Native
+Actions tab plus Code/Receipts panel (`dc0c67948c`). BM-4 also records
+owned tool results into Sarah's existing session-index receipt model,
+adds the active-prospect `/sarah/api/session/receipts/current` read, and
+extends the KHS-3 isolation oracle to cover tool receipts. All Sarah
+unit suites passed after BM-4 (`bun test` in `apps/sarah`: 264 pass).
+`bun run typecheck` remains blocked only by the pre-existing
+`src/contracts/avatar-ux-contracts.ts` enum literal issue
+(`"script"` / `"e2e"` / `"smoke"`). Open PR list is empty after this
+pass.
+
+**Ordered open-issue queue (OpenAgentsInc/openagents, checked
+2026-07-09 after `dc0c67948c`):**
+
+1. **#8621 SQ-4** — finish the owned realtime renderer hardening and
+   deploy-smoke rail first; BM-5 rides this rail, and deploys stay
+   frozen until the real-session simulator proof is recorded.
+2. **#8631 BM-5** — owner playback/QA gate: desktop + mobile split
+   screenshots, `sarah.split_screen_blueprint_map.v1` sweep, live
+   `blueprint_delta` node-appears proof, and concurrent-ref isolation.
+3. **#8626 Sarah Blueprint Map epic** — close only after #8631 passes;
+   BM-1..4 are complete.
+4. **#8612 OAV-2** — close or finish the render-service state machine,
+   MuseTalk/WebRTC service evidence, and hydralisk receipts so the
+   live renderer's base service is not half-accounted.
+5. **#8615 OAV-5** — pre-rendered takes for opener/cache hits, using
+   the now-owned renderer path and receipts.
+6. **#8620 SQ-3** — perfect opener library: repair v1 defects, add
+   missing scripts, integrate via owned renderer + KHS-6.
+7. **#8619 SQ-2** — run the OAV experiment matrix to completion with
+   tightened exit conditions.
+8. **#8616 OAV-6** — quality ladder: Ditto A/B, SoulX-FlashHead,
+   LatentSync offline renders, then choose the next production recipe.
+9. **#8610 OAV epic** — close after OAV-2/5/6 and the SQ quality lanes
+   above have receipts.
+10. **#8600 KHS-1** — Sarah inference through Khala gateway: receipts,
+    cost caps, quota fallback lanes; reconcile current production state
+    with the issue and close only with proof.
+11. **#8607 KHS-8** — in-conversation payments: card attach + pay in
+    chat, after the no-improvised-pricing/receipt path remains green.
+12. **#8543 P0.8** — launch readiness: seeded test account,
+    unattended straight-line E2E, promises/copy pass.
+13. **#8467 Khala Code Mobile-Only MVP epic** — close only after the
+    P0.8 launch-readiness receipt and mobile MVP proof set are complete.
+14. **#8571 EN hosting** — host effectnative.org on OpenAgents cloud:
+    Cloud Run, DNS/TLS, redeploy script.
+15. **#8595 WEB-1-EN** — fully Effect Native landing; upstream logical
+    components instead of local React/Foldkit carryover.
+16. **#8573 EN-4** — web absorption: product routes onto the Effect
+    Native DOM renderer, deleting replaced legacy Foldkit/React.
+17. **#8597 MB-EN** — rewrite the Khala Code mobile app on Effect
+    Native, with cross-app Khala Sync as exit proof.
+18. **#8574 EN-5** — Khala Code desktop conversion to Effect Native;
+    this is also the substrate for PY-2.
+19. **#8575 EN-6** — canvas/Verse under the Effect Native canvas
+    contract; fold in the three-effect kernel and retire the Foldkit
+    adapter.
+20. **#8566 EN epic** — close after the EN child issues above produce
+    receipts and downstream surfaces are actually on the substrate.
+21. **#8578 PY-1** — extract `pylon-core` packages and delete the
+    desktop stdout-subprocess seam.
+22. **#8579 PY-2** — Khala Code desktop becomes the Pylon cockpit
+    (Effect Native fleet pane: online toggle, accounts/capacity/runs/
+    receipts).
+23. **#8580 PY-3** — retire the Pylon OpenTUI surface only after PY-2
+    cockpit-parity receipts and owner-gated exit proof.
+24. **#8590 MH-4** — Grok Axis B worker executor + RL-1..6 probes.
+25. **#8547 CX-3** — Codex inside the Agent Computer: broker
+    redemption, scratch `CODEX_HOME`, `codex_app_server` org-cloud proof.
+26. **#8588 MH-9** — cloud parity for Grok/Claude workers on Agent
+    Computers; strictly after #8547 is genuinely green.
+27. **#8546 CX-2** — mobile Codex connect: phone device-auth into token
+    custody and accounts UI.
+28. **#8548 CX-4** — harness/target selection UX: execution targets,
+    per-thread pill, quota-aware auto.
+29. **#8549 CX-5** — Claude account parity through the same broker and
+    `claude_pylon` lane.
+30. **#8550 CX-6** — Codex session continuity across ephemeral
+    microVMs; thread resume survives reclaim.
+31. **#8551 CX-7** — multi-account concurrency + rotation in the
+    cloud: per-account serialization and typed queueing.
+32. **#8552 CX-8** — daily-driver ergonomics from the phone:
+    steer/interrupt/follow-up and monorepo-scale workspaces.
+33. **#8553 CX-9** — dogfood cutover: our coding runs through Khala
+    Code mobile on our own Codex.
+34. **#8558 OB-1** — Sarah sending identity + deliverability foundation:
+    subdomain, auth, arming, warm-up ramp.
+35. **#8559 OB-2** — Apollo sourcing at volume into
+    `business_pipeline_rows`.
+36. **#8561 OB-4** — draft→approve→send loop at 100/day, batch
+    approval UX, Sarah reply handling.
 
 **Rev 6.13 changes (owner directive, 2026-07-09 — SARAH BLUEPRINT MAP
 SURFACE):** "I want to build a Blueprint map as Sarah is talking. Visual
@@ -1133,25 +1233,23 @@ about this prospect and what she is still trying to learn, plus which
 offerings the stated needs map onto. Authority:
 `docs/sarah/2026-07-09-blueprint-map-surface-audit.md` (Unit/Arbiter
 findings, data inventory, page keep/cut verdicts, layout spec,
-streaming architecture). Sequence: BM-1 typed `blueprint_delta` events
-on the existing avatar SSE bus (published from the prospect-memory
-distillation, the `customer_blueprint_draft` tool, and the KHS-7 link
-path); BM-2 the graph itself on the `/sarah` EN surface via the
-existing `GraphFigure` catalog piece with an arbiter-aligned pure
-projection (seed from the stored draft revision, animate on deltas;
-catalog gaps route upstream through the EN-2 demand register); BM-3
-the owner's split layout — video ~50vw full-height left, tabbed canvas
-right (map / chat / actions / code+receipts) — with the declutter cuts
-and the verbatim behavior contract
-`sarah.split_screen_blueprint_map.v1`; BM-4 the Actions tab
-(account link, book-a-human via `human_handoff`, checkout link when
-minted) + the draft-JSON/receipts panel; BM-5 the owner playback/QA
-gate (split-layout screenshot smoke on the SQ-4 #8621 rail, the
-contract in the sweep, and a live-learning proof: a fact spoken
-mid-session appears as a node before the session ends). Laws: KHS-3
-isolation on every read and delta, no improvised pricing, semantic
-matching only, edges light only from dereferenceable provenance, EN
-catalog components only.
+streaming architecture). **Status after rev 6.14:** BM-1 is landed via
+PR #8632 plus `7838a9a1ca`, BM-2 is landed in `9ee02315f5`, BM-3 is
+landed in `4fb1ec6ba7`, and BM-4 is landed in `dc0c67948c`. The
+implementation now has typed `blueprint_delta` events on the existing
+avatar SSE bus, an Effect Native `GraphFigure` Blueprint map seeded
+from the stored draft and animated from deltas, the owner's split
+layout with the verbatim `sarah.split_screen_blueprint_map.v1`
+contract, and the Effect Native Actions + Code/Receipts panel (account
+link, book-a-human through `human_handoff`, checkout opener when a
+recorded checkout receipt exists, current Blueprint draft JSON, and
+prospect-scoped tool/account/card/guard receipts). BM-5 remains: the
+owner playback/QA gate (split-layout screenshot smoke on the SQ-4
+#8621 rail, the contract in the sweep, and a live-learning proof that a
+fact spoken mid-session appears as a node before the session ends).
+Laws: KHS-3 isolation on every read, receipt, and delta; no improvised
+pricing; semantic matching only; edges light only from dereferenceable
+provenance; EN catalog components only.
 
 **P1 exit receipts:** openagents.com/sarah live and hardened (SR-0
 list complete, token route protected, spend-capped); a stranger
