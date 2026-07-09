@@ -362,7 +362,10 @@ export async function handleSarahRequest(request: Request): Promise<Response> {
       prospectRef: readSarahProspectRef(request) ?? undefined,
     })
     if (!result.ok) {
-      return json({ error: { code: result.error } }, { status: result.status })
+      return json(
+        { error: { code: result.error, detail: result.detail } },
+        { status: result.status },
+      )
     }
     return json(result)
   }

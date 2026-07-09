@@ -359,12 +359,23 @@ export const mountSarahSurface = (container: HTMLElement, avatarContainer: HTMLE
             },
             catch: (error) => (error instanceof Error ? error : new Error(String(error))),
           }).pipe(
-            Effect.catch(() =>
-              SubscriptionRef.update(state, (current): SarahSurfaceState => ({
-                ...current,
-                status: "error",
-                avatarActive: false,
-              })),
+            Effect.catch((error) =>
+              Effect.gen(function* () {
+                const busy =
+                  error instanceof Error && /busy|429|502/.test(error.message)
+                yield* appendTranscript(
+                  state,
+                  "assistant",
+                  busy
+                    ? "My avatar line is busy right now — give it a minute and try again, or just type below and I'll answer here."
+                    : "I couldn't start the avatar session — type below and I'll answer here while it recovers.",
+                )
+                yield* SubscriptionRef.update(state, (current): SarahSurfaceState => ({
+                  ...current,
+                  status: "error",
+                  avatarActive: false,
+                }))
+              }),
             ),
           )
         }),

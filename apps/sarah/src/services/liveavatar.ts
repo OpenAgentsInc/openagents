@@ -92,6 +92,7 @@ type ActiveSession = {
   sessionId: string
   sessionToken: string
   conversationRef: string
+  contextId: string
   startedAt: number
 }
 
@@ -133,7 +134,7 @@ export type MintResult =
       sandbox: boolean
       brainConfigured: boolean
     }
-  | { ok: false; error: string; status: number }
+  | { ok: false; error: string; status: number; detail?: string }
 
 export async function mintSarahAvatarSession({
   prospectRef,
@@ -171,9 +172,11 @@ export async function mintSarahAvatarSession({
       }),
     })
     if (!contextResponse.ok) {
+      const detail = (await contextResponse.text().catch(() => "")).slice(0, 200)
       return {
         ok: false,
         error: `avatar_context_http_${contextResponse.status}`,
+        detail,
         status: 502,
       }
     }
@@ -181,27 +184,43 @@ export async function mintSarahAvatarSession({
     const contextId = contextData.data?.id
     if (!contextId) return { ok: false, error: "avatar_context_missing_id", status: 502 }
 
-    const tokenResponse = await liveAvatarFetch("/v1/sessions/token", {
-      method: "POST",
-      body: JSON.stringify({
-        mode: "FULL",
-        avatar_id: config.avatarId,
-        ...(config.sandbox ? { is_sandbox: true } : {}),
-        ...(config.llmConfigurationId
-          ? { llm_configuration_id: config.llmConfigurationId }
-          : {}),
-        avatar_persona: {
-          context_id: contextId,
-          language: "en",
-          ...(config.voiceId ? { voice_id: config.voiceId } : {}),
-        },
-      }),
-    })
+    const mintToken = () =>
+      liveAvatarFetch("/v1/sessions/token", {
+        method: "POST",
+        body: JSON.stringify({
+          mode: "FULL",
+          avatar_id: config.avatarId,
+          ...(config.sandbox ? { is_sandbox: true } : {}),
+          ...(config.llmConfigurationId
+            ? { llm_configuration_id: config.llmConfigurationId }
+            : {}),
+          avatar_persona: {
+            context_id: contextId,
+            language: "en",
+            ...(config.voiceId ? { voice_id: config.voiceId } : {}),
+          },
+        }),
+      })
+    let tokenResponse = await mintToken()
+    if (!tokenResponse.ok && tokenResponse.status < 500) {
+      // Most 4xx here are LiveAvatar-side concurrency/plan limits (their
+      // sessions self-expire after ~5 idle minutes — the 2026-07-09 owner
+      // 502). Force-stop anything stale we still track, then retry once.
+      await Promise.all(
+        [...activeSessions.values()]
+          .filter((session) => Date.now() - session.startedAt > 3 * 60_000)
+          .map((session) => stopSarahAvatarSession(session.sessionId)),
+      )
+      tokenResponse = await mintToken()
+    }
     if (!tokenResponse.ok) {
+      const detail = (await tokenResponse.text().catch(() => "")).slice(0, 200)
+      const busy = tokenResponse.status < 500
       return {
         ok: false,
-        error: `avatar_token_http_${tokenResponse.status}`,
-        status: 502,
+        error: busy ? "avatar_upstream_busy" : `avatar_token_http_${tokenResponse.status}`,
+        detail,
+        status: busy ? 429 : 502,
       }
     }
     const tokenData = (await tokenResponse.json()) as {
@@ -217,6 +236,7 @@ export async function mintSarahAvatarSession({
       sessionId,
       sessionToken,
       conversationRef,
+      contextId,
       startedAt: Date.now(),
     })
     dailyCount += 1
@@ -261,6 +281,12 @@ export async function stopSarahAvatarSession(sessionId: string): Promise<{
   } catch {
     // The 5-minute inactivity timeout is the backstop.
   }
+  // Per-session contexts are disposable — delete to keep the account tidy.
+  try {
+    await liveAvatarFetch("/v1/contexts/" + session.contextId, { method: "DELETE" })
+  } catch {
+    // Context GC is hygiene, never a failure.
+  }
   await recordUsage({
     event: "session_stopped",
     sessionId,
@@ -270,11 +296,11 @@ export async function stopSarahAvatarSession(sessionId: string): Promise<{
   return { ok: true, minutes }
 }
 
-/** Expire stale registry entries so caps do not wedge (sessions self-timeout server-side). */
+/** Stop stale sessions for real (upstream + registry) so caps never wedge. */
 export function reapStaleAvatarSessions(maxAgeMs = 30 * 60_000): void {
   const cutoff = Date.now() - maxAgeMs
-  for (const [id, session] of activeSessions) {
-    if (session.startedAt < cutoff) activeSessions.delete(id)
+  for (const [, session] of activeSessions) {
+    if (session.startedAt < cutoff) void stopSarahAvatarSession(session.sessionId)
   }
 }
 

@@ -59,7 +59,22 @@ function client(): SQL | null {
     return null
   }
   try {
-    sqlClient = new SQL(url)
+    // Cloud SQL Auth Connector environments use a host-less DSN plus PG*
+    // envs with a unix-socket PGHOST (/cloudsql/<instance>). Build explicit
+    // options for that shape; plain host-carrying DSNs pass straight through.
+    const parsed = new URL(url)
+    const pgHost = process.env.PGHOST?.trim()
+    if (!parsed.hostname && pgHost) {
+      const database = parsed.pathname.slice(1)
+      const username = parsed.username || process.env.PGUSER?.trim() || "postgres"
+      const password = parsed.password || process.env.PGPASSWORD || ""
+      const options = pgHost.startsWith("/")
+        ? { path: pgHost + "/.s.PGSQL.5432", database, username, password, max: 3 }
+        : { hostname: pgHost, database, username, password, max: 3 }
+      sqlClient = new SQL(options as unknown as string)
+    } else {
+      sqlClient = new SQL(url)
+    }
   } catch (error) {
     lastError = error instanceof Error ? error.message : String(error)
     sqlClient = null
