@@ -15,8 +15,9 @@
 import { publishSarahAvatarEvent } from "./services/avatar-event-bus.ts"
 import {
   generateSarahGemmaReply,
-  sarahGoogleInferenceArmed,
-  sarahTextModel,
+  isSarahInferenceBusyError,
+  sarahActiveModelId,
+  sarahInferenceArmed,
   streamSarahGemmaReply,
 } from "./services/google-inference.ts"
 import type { GemmaContent } from "./services/google-inference.ts"
@@ -153,7 +154,7 @@ function liveStreamingResponse(
         }
         if (!sawDelta) {
           const fallback =
-            failed === "google_inference_http_429"
+            failed !== null && isSarahInferenceBusyError(failed)
               ? "I'm handling a lot of conversations right now — give me about a minute and ask again."
               : "I'm having trouble reaching my model right now — please try again in a moment."
           fullText = fallback
@@ -215,7 +216,7 @@ export async function handleSarahChatCompletions(request: Request): Promise<Resp
     .reverse()
     .find((message) => message.role === "user")
   const lastUserText = messageText(lastUser?.content ?? "").trim()
-  const model = sarahTextModel()
+  const model = sarahActiveModelId()
 
   const publishAndRecord = async (reply: string) => {
     if (!ref) return
@@ -263,7 +264,7 @@ export async function handleSarahChatCompletions(request: Request): Promise<Resp
     return Response.json(completionPayload(model, cached.answer))
   }
 
-  if (!sarahGoogleInferenceArmed()) {
+  if (!sarahInferenceArmed()) {
     const reply =
       "I'm having trouble reaching my model right now — please try again in a moment."
     await publishAndRecord(reply)
@@ -288,7 +289,7 @@ export async function handleSarahChatCompletions(request: Request): Promise<Resp
   const result = await generateSarahGemmaReply({ system, contents })
   const reply = result.ok
     ? result.reply
-    : result.error === "google_inference_http_429"
+    : isSarahInferenceBusyError(result.error)
       ? "I'm handling a lot of conversations right now — give me about a minute and ask again."
       : "I'm having trouble reaching my model right now — please try again in a moment."
   await publishAndRecord(reply)

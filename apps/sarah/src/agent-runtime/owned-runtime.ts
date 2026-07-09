@@ -18,7 +18,9 @@ import {
 import { evaluateDealRules } from "../services/deal-rules.ts"
 import {
   generateSarahGemmaReply,
-  sarahGoogleInferenceArmed,
+  isSarahInferenceBusyError,
+  sarahInferenceArmed,
+  sarahInferenceTransport,
 } from "../services/google-inference.ts"
 import type { GemmaContent } from "../services/google-inference.ts"
 import { getProspectMemoryContext } from "../services/prospect-memory.ts"
@@ -43,8 +45,16 @@ export type OwnedSarahTurnInput = {
 
 export type OwnedSarahTurnResult = {
   runtime: "owned_effect_seed"
-  /** "google_gemma_live" when a real model produced the reply. */
-  modelPath: "google_gemma_live" | "seed_echo" | "deterministic_guard" | "semantic_cache"
+  /**
+   * "khala_gateway_live" (KHS-1) or "google_gemma_live" when a real model
+   * produced the reply; "semantic_cache" for KHS-6 cache hits.
+   */
+  modelPath:
+    | "khala_gateway_live"
+    | "google_gemma_live"
+    | "seed_echo"
+    | "deterministic_guard"
+    | "semantic_cache"
   model?: string
   modelError?: string
   ok: boolean
@@ -164,7 +174,7 @@ export async function runOwnedSarahTurn(
   } else if (semanticCached) {
     reply = semanticCached.answer
     modelPath = "semantic_cache"
-  } else if (sarahGoogleInferenceArmed()) {
+  } else if (sarahInferenceArmed()) {
     // KHS-2 (#8601): prospect memory prepends AFTER the guards above — the
     // pricing guard always runs before the model regardless of memory.
     let system = await getSarahRealtimeInstructions()
@@ -191,14 +201,16 @@ export async function runOwnedSarahTurn(
     const result = await generateSarahGemmaReply({ system, contents })
     if (result.ok) {
       reply = result.reply
-      modelPath = "google_gemma_live"
+      modelPath =
+        sarahInferenceTransport() === "khala_gateway"
+          ? "khala_gateway_live"
+          : "google_gemma_live"
       model = result.model
     } else {
       modelError = result.error
-      reply =
-        result.error === "google_inference_http_429"
-          ? "I'm handling a lot of conversations right now — give me about a minute and ask again, or leave your email and I'll follow up."
-          : "I'm having trouble reaching my model right now — please try again in a moment, or leave your email and I'll follow up."
+      reply = isSarahInferenceBusyError(result.error)
+        ? "I'm handling a lot of conversations right now — give me about a minute and ask again, or leave your email and I'll follow up."
+        : "I'm having trouble reaching my model right now — please try again in a moment, or leave your email and I'll follow up."
     }
   } else {
     reply = `Thanks — I heard you. (Owned runtime seed; model path not armed.) You said: ${message.slice(0, 280)}`

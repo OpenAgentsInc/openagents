@@ -55,9 +55,12 @@ describe("apps/sarah monorepo service", () => {
     const body = await res.json()
     expect(body.runtime).toBe("owned_effect_seed")
     expect(body.reply).toBeTruthy()
-    expect(["google_gemma_live", "seed_echo", "deterministic_guard"]).toContain(
-      body.modelPath,
-    )
+    expect([
+      "khala_gateway_live",
+      "google_gemma_live",
+      "seed_echo",
+      "deterministic_guard",
+    ]).toContain(body.modelPath)
   })
 
   // Oracles for contract sarah.no_improvised_pricing.v1 (registered in

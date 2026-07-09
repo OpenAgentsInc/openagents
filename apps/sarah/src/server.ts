@@ -17,8 +17,8 @@ import {
 } from "./services/realtime-token-guard.ts"
 import { getSarahRealtimeToolDefinitions } from "./services/realtime-tools.ts"
 import {
-  sarahGoogleInferenceArmed,
-  sarahTextModel,
+  sarahActiveModelId,
+  sarahInferenceTransport,
 } from "./services/google-inference.ts"
 import {
   mintSarahProspectRef,
@@ -203,9 +203,12 @@ async function handleOperatorOps(): Promise<Response> {
     avatar: sarahAvatarStatus(),
     turnStore: sarahTurnStoreStatus(),
     answerCache: sarahAnswerCacheStatus(),
-    modelPath: sarahGoogleInferenceArmed()
-      ? `google_gemma_live:${sarahTextModel()}`
-      : "seed_echo_not_armed",
+    modelPath:
+      sarahInferenceTransport() === "khala_gateway"
+        ? `khala_gateway_live:${sarahActiveModelId()}`
+        : sarahInferenceTransport() === "google_direct"
+          ? `google_gemma_live:${sarahActiveModelId()}`
+          : "seed_echo_not_armed",
     ui: "effect_native_dom_zero_react",
   })
 }
