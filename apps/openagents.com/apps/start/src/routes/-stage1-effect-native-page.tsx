@@ -1,23 +1,31 @@
 import {
+  Accordion,
+  AnnouncementBadge,
   Button,
   Card,
+  ComponentValueBinding,
+  CtaSection,
+  Footer,
+  Glow,
+  Hero,
   IntentRef,
-  List,
-  Spacer,
+  LogoRow,
+  MockupFrame,
+  NavBar,
+  PricingColumn,
+  PricingTable,
+  Section,
   Stack,
   StaticPayload,
+  StatsBand,
   Text,
   defineIntent,
   makeIntentRegistry,
   makeViewProgramFromState,
   resolveIntentRef,
   type ButtonView,
-  type CardView,
   type IntentHandlers,
   type IntentReporter,
-  type KeyedView,
-  type StackView,
-  type TextView,
   type View,
 } from '@effect-native/core'
 import { makeDomRenderer } from '@effect-native/render-dom'
@@ -38,6 +46,12 @@ import {
 } from './-pylon-network'
 import { stage1EffectNativeTheme } from './-stage1-effect-native-theme'
 
+// WEB-1-EN (#8595): full landing authored from the marketing catalog (v20+),
+// not a grey-box Stack/Card approximation. Section order mirrors the React
+// launch-ui replica at `/new`. Decorative copy is preserved from that
+// replica; live counters + plan columns bind real public projections (never
+// fabricated static marketing numbers).
+
 type Stage1Stat = Readonly<{
   key: string
   label: string
@@ -53,6 +67,7 @@ type Stage1Plan = Readonly<{
   cta: string
   href: string
   terms: ReadonlyArray<string>
+  highlighted: boolean
 }>
 
 export type Stage1LandingState = Readonly<{
@@ -60,6 +75,8 @@ export type Stage1LandingState = Readonly<{
   pricingState: 'pending' | 'ready' | 'unavailable'
   planSummary: string
   plans: ReadonlyArray<Stage1Plan>
+  expandedFaqIds: ReadonlyArray<string>
+  navCollapsed: boolean
 }>
 
 class Stage1PublicSnapshotError extends Schema.TaggedErrorClass<Stage1PublicSnapshotError>()(
@@ -72,7 +89,11 @@ const Navigated = defineIntent(
   Schema.Struct({ href: Schema.String }),
 )
 
-const stage1Intents = [Navigated] as const
+const FaqToggled = defineIntent('Stage1FaqToggled', Schema.String)
+
+const MenuToggled = defineIntent('Stage1MenuToggled', Schema.Null)
+
+const stage1Intents = [Navigated, FaqToggled, MenuToggled] as const
 
 const emptyStats = (): ReadonlyArray<Stage1Stat> => [
   {
@@ -107,10 +128,13 @@ export const initialStage1LandingState: Stage1LandingState = {
   planSummary:
     'Live plan catalog loads from the public Khala Code plans projection.',
   plans: [],
+  expandedFaqIds: [],
+  navCollapsed: false,
 }
 
 const planFromProjection = (
   plan: KhalaCodePlanCatalogProjection['plans'][number],
+  index: number,
 ): Stage1Plan => ({
   key: plan.planId,
   label: plan.label,
@@ -126,14 +150,18 @@ const planFromProjection = (
     plan.kind === 'free'
       ? SALES_LANDING_LINKS.khala
       : SALES_LANDING_LINKS.businessIntake,
-  terms: plan.terms.slice(0, 3),
+  terms: plan.terms.slice(0, 4),
+  highlighted: plan.isDefault === true || index === 1,
 })
 
 export const stage1StateFromPublicSnapshots = (
   tokens: Awaited<ReturnType<typeof fetchKhalaTokensServed>>,
   pylons: PylonStatsSnapshot | null,
   catalog: KhalaCodePlanCatalogProjection | null,
-): Stage1LandingState => ({
+): Pick<
+  Stage1LandingState,
+  'stats' | 'pricingState' | 'planSummary' | 'plans'
+> => ({
   stats: [
     {
       key: 'tokens',
@@ -170,40 +198,6 @@ export const stage1StateFromPublicSnapshots = (
 const navigateIntent = (href: string) =>
   IntentRef('Stage1Navigated', StaticPayload({ href }))
 
-const keyed = <V extends View>(view: V): V & KeyedView => view as V & KeyedView
-
-const text = (
-  key: string,
-  content: string,
-  variant: TextView['variant'] = 'body',
-  color: TextView['color'] = 'textPrimary',
-): TextView =>
-  Text({
-    key,
-    content,
-    variant,
-    color,
-    style: {
-      width: 'full',
-    },
-  })
-
-const section = (key: string, children: ReadonlyArray<View>): StackView =>
-  Stack(
-    {
-      key,
-      direction: 'column',
-      gap: '6',
-      padding: '6',
-      style: {
-        width: 'full',
-        maxWidth: 1280,
-        alignSelf: 'center',
-      },
-    },
-    children,
-  )
-
 const actionButton = (
   key: string,
   label: string,
@@ -230,203 +224,115 @@ const actionButton = (
     },
   })
 
-const statCard = (stat: Stage1Stat): CardView =>
-  Card(
-    {
-      key: `stat-${stat.key}`,
-      padding: '4',
-      radius: 'lg',
-      style: {
-        backgroundColor: 'surface',
-        borderColor: 'border',
-        borderWidth: 1,
-        flex: 1,
-        minWidth: 'sm',
-      },
-    },
-    [
-      text(`stat-${stat.key}-value`, stat.value, 'title', 'textPrimary'),
-      text(`stat-${stat.key}-label`, stat.label, 'label', 'accent'),
-      text(`stat-${stat.key}-description`, stat.description, 'caption', 'textMuted'),
-    ],
-  )
-
-const suiteCards: ReadonlyArray<CardView> = [
-  Card(
-    {
-      key: 'suite-khala-code',
-      padding: '4',
-      radius: 'lg',
-      style: {
-        backgroundColor: 'surface',
-        borderColor: 'border',
-        borderWidth: 1,
-        flex: 1,
-        minWidth: 'md',
-      },
-    },
-    [
-      text('suite-khala-code-title', 'Khala Code', 'title'),
-      text(
-        'suite-khala-code-copy',
-        'Open-source coding console, one inbox, exact token accounting, and swarm delegation.',
-        'body',
-        'textMuted',
-      ),
-    ],
-  ),
-  Card(
-    {
-      key: 'suite-business',
-      padding: '4',
-      radius: 'lg',
-      style: {
-        backgroundColor: 'surface',
-        borderColor: 'border',
-        borderWidth: 1,
-        flex: 1,
-        minWidth: 'md',
-      },
-    },
-    [
-      text('suite-business-title', 'Business work', 'title'),
-      text(
-        'suite-business-copy',
-        'Bounded software outcomes scoped as quick wins, reviewed by humans before publish, send, or spend.',
-        'body',
-        'textMuted',
-      ),
-    ],
-  ),
-  Card(
-    {
-      key: 'suite-network',
-      padding: '4',
-      radius: 'lg',
-      style: {
-        backgroundColor: 'surface',
-        borderColor: 'border',
-        borderWidth: 1,
-        flex: 1,
-        minWidth: 'md',
-      },
-    },
-    [
-      text('suite-network-title', 'Network evidence', 'title'),
-      text(
-        'suite-network-copy',
-        'Pylons, Forum activity, receipts, and stats stay public-safe and explicit about what is unavailable.',
-        'body',
-        'textMuted',
-      ),
-    ],
-  ),
-  Card(
-    {
-      key: 'suite-promises',
-      padding: '4',
-      radius: 'lg',
-      style: {
-        backgroundColor: 'surface',
-        borderColor: 'border',
-        borderWidth: 1,
-        flex: 1,
-        minWidth: 'md',
-      },
-    },
-    [
-      text('suite-promises-title', 'Product promises', 'title'),
-      text(
-        'suite-promises-copy',
-        'Claims route through the promise registry: green, operator-assisted, or roadmap-labeled.',
-        'body',
-        'textMuted',
-      ),
-    ],
-  ),
+// Feature items — launch-ui sections/items/default.tsx DEFAULT_ITEMS titles +
+// descriptions (copy freeze for WEB-1). There is no dedicated Items catalog
+// tag; Section + Card is the honest composition over the marketing primitives.
+const FEATURE_ITEMS: ReadonlyArray<Readonly<{ id: string; title: string; description: string }>> = [
+  {
+    id: 'a11y',
+    title: 'Accessibility first',
+    description: 'Fully WCAG 2.0 compliant, made with best a11y practices',
+  },
+  {
+    id: 'responsive',
+    title: 'Responsive design',
+    description: 'Looks and works great on any device and screen size',
+  },
+  {
+    id: 'themes',
+    title: 'Light and dark mode',
+    description: 'Seamless switching between color schemes, 6 themes included',
+  },
+  {
+    id: 'customize',
+    title: 'Easy to customize',
+    description: 'Flexible options to match your product or brand',
+  },
+  {
+    id: 'perf',
+    title: 'Top-level performance',
+    description: 'Made for lightning-fast load times and smooth interactions',
+  },
+  {
+    id: 'prod',
+    title: 'Production ready',
+    description: 'Thoroughly tested and launch-prepared',
+  },
+  {
+    id: 'i18n',
+    title: 'Made for localization',
+    description: 'Easy to implement support for multiple languages and regions',
+  },
+  {
+    id: 'cms',
+    title: 'CMS friendly',
+    description: 'Built to work with any headless content management system',
+  },
 ]
 
-const planCard = (plan: Stage1Plan): CardView =>
-  Card(
-    {
-      key: `plan-${plan.key}`,
-      padding: '4',
-      radius: 'lg',
-      style: {
-        backgroundColor: 'surface',
-        borderColor: 'border',
-        borderWidth: 1,
-        flex: 1,
-        minWidth: 'md',
-      },
-    },
-    [
-      text(`plan-${plan.key}-label`, plan.label, 'title'),
-      text(`plan-${plan.key}-tagline`, plan.tagline, 'body', 'textMuted'),
-      text(`plan-${plan.key}-price`, plan.priceLabel, 'heading', 'accent'),
-      List(
-        {
-          key: `plan-${plan.key}-terms`,
-          style: {
-            backgroundColor: 'surface',
-            borderColor: 'surface',
-            borderWidth: 0,
-            gap: '2',
-          },
-        },
-        plan.terms.map((term, index) =>
-          keyed(
-            Text({
-              key: `plan-${plan.key}-term-${index}`,
-              content: term,
-              variant: 'caption',
-              color: 'textMuted',
-            }),
-          ),
-        ),
-      ),
-      actionButton(`plan-${plan.key}-cta`, plan.cta, plan.href, 'secondary'),
-    ],
-  )
-
-const faqItems: ReadonlyArray<CardView> = [
-  Card(
-    {
-      key: 'faq-build',
-      padding: '4',
-      radius: 'lg',
-      style: {
-        backgroundColor: 'surface',
-        borderColor: 'border',
-        borderWidth: 1,
-        flex: 1,
-        minWidth: 'md',
-      },
-    },
-    [
-      text('faq-build-q', 'TODO(owner-copy): How does OpenAgents build software?', 'label'),
-      text('faq-build-a', 'TODO(owner-copy) - placeholder pending owner copy sign-off (#8565).', 'body', 'textMuted'),
-    ],
-  ),
-  Card(
-    {
-      key: 'faq-price',
-      padding: '4',
-      radius: 'lg',
-      style: {
-        backgroundColor: 'surface',
-        borderColor: 'border',
-        borderWidth: 1,
-        flex: 1,
-        minWidth: 'md',
-      },
-    },
-    [
-      text('faq-price-q', 'TODO(owner-copy): What do I pay, and how?', 'label'),
-      text('faq-price-a', 'TODO(owner-copy) - placeholder pending owner copy sign-off (#8565).', 'body', 'textMuted'),
-    ],
-  ),
+// FAQ copy from launch-ui sections/faq/default.tsx (plain-text extraction).
+const FAQ_ITEMS: ReadonlyArray<Readonly<{ id: string; question: string; answer: string }>> = [
+  {
+    id: 'why-landing',
+    question: 'Why is building a great landing page critical for your business?',
+    answer:
+      "In today's AI-driven world, standing out is harder than ever. While anyone can build a product, a professional landing page makes the difference between success and failure. Launch UI helps you ship faster without compromising on quality.",
+  },
+  {
+    id: 'why-not-nocode',
+    question: 'Why use Launch UI instead of a no-code tool?',
+    answer:
+      'No-code tools lock you into their ecosystem with recurring fees and limited control. Launch UI gives you full control of your code while maintaining professional quality.',
+  },
+  {
+    id: 'how-different',
+    question:
+      'How is Launch UI different from other component libraries and templates?',
+    answer:
+      'Launch UI stands out with premium design quality and delightful touches of custom animations and illustrations. All components are carefully crafted to help position your product as a professional tool.',
+  },
+  {
+    id: 'code-yours',
+    question: 'What exactly does it mean that "The code is yours"?',
+    answer:
+      'The basic version of Launch UI is open-source and free forever, under a do-whatever-you-want license. The pro version is a one-time purchase with lifetime access — no recurring fees or restrictions.',
+  },
+  {
+    id: 'figma',
+    question: 'Are Figma files included?',
+    answer:
+      'Yes! The complete Launch UI template is available for free on the Figma community.',
+  },
+  {
+    id: 'discount',
+    question: 'Can I get a discount?',
+    answer:
+      "Actually, yes! I'm always actively looking for beta testers of new features. If you are interested in exchanging feedback for a discount, please contact via email.",
+  },
 ]
+
+// LogoRow.source is schema-gated as a URI (`^[a-z][a-z0-9+.-]*:`). Use
+// https placeholders for the tool names; real asset URLs can replace these
+// without changing the typed tree shape.
+const LOGO_ITEMS = [
+  { id: 'figma', source: 'https://cdn.simpleicons.org/figma/A259FF', alt: 'Figma' },
+  { id: 'react', source: 'https://cdn.simpleicons.org/react/61DAFB', alt: 'React' },
+  {
+    id: 'typescript',
+    source: 'https://cdn.simpleicons.org/typescript/3178C6',
+    alt: 'TypeScript',
+  },
+  {
+    id: 'shadcn',
+    source: 'https://cdn.simpleicons.org/shadcnui/FFFFFF',
+    alt: 'Shadcn/ui',
+  },
+  {
+    id: 'tailwind',
+    source: 'https://cdn.simpleicons.org/tailwindcss/06B6D4',
+    alt: 'Tailwind',
+  },
+] as const
 
 export const stage1LandingView = (state: Stage1LandingState): View =>
   Stack(
@@ -441,186 +347,426 @@ export const stage1LandingView = (state: Stage1LandingState): View =>
       },
     },
     [
-      Stack(
+      Section(
         {
-          key: 'stage1-banner',
-          direction: 'row',
-          justify: 'center',
-          padding: '2',
-          style: {
-            backgroundColor: 'surface',
-            borderColor: 'border',
-            borderWidth: 1,
-            width: 'full',
-          },
+          key: 'stage1-banner-section',
+          width: 'full',
+          paddingY: '2',
+          background: 'surface',
         },
         [
-          text(
-            'stage1-banner-copy',
-            'stage1 - Effect Native surface, not the live homepage - copy pending owner sign-off (#8565)',
-            'caption',
-            'textMuted',
+          Text({
+            key: 'stage1-banner-copy',
+            content:
+              'stage1 — Effect Native marketing-catalog landing (WEB-1-EN #8595), not the live homepage',
+            variant: 'caption',
+            color: 'textMuted',
+            style: { width: 'full' },
+          }),
+        ],
+      ),
+
+      // 1. Navbar
+      NavBar({
+        key: 'stage1-navbar',
+        brand: Text({
+          key: 'stage1-brand',
+          content: 'Launch UI',
+          variant: 'title',
+        }),
+        links: [
+          {
+            id: 'docs',
+            label: 'Docs',
+            onPress: navigateIntent(SALES_LANDING_LINKS.docs),
+          },
+          {
+            id: 'promises',
+            label: 'Promises',
+            onPress: navigateIntent(SALES_LANDING_LINKS.promises),
+          },
+          {
+            id: 'stats',
+            label: 'Stats',
+            onPress: navigateIntent(SALES_LANDING_LINKS.stats),
+          },
+          {
+            id: 'github',
+            label: 'GitHub',
+            onPress: navigateIntent(SALES_LANDING_LINKS.github),
+          },
+        ],
+        sticky: true,
+        collapsed: state.navCollapsed,
+        onToggleMenu: IntentRef('Stage1MenuToggled', StaticPayload(null)),
+        actions: [
+          actionButton(
+            'stage1-nav-cta',
+            'Get Started',
+            SALES_LANDING_LINKS.khala,
+            'primary',
+          ),
+        ],
+      }),
+
+      // 2–3. Announcement + Hero (+ mockup/glow centerpiece)
+      Section(
+        {
+          key: 'stage1-hero-section',
+          width: 'contained',
+          paddingY: '8',
+          background: 'background',
+        },
+        [
+          AnnouncementBadge({
+            key: 'stage1-announce',
+            label: 'Launch UI v2 is out!',
+            actionLabel: 'Read more',
+            onPress: navigateIntent(SALES_LANDING_LINKS.docs),
+          }),
+          Hero({
+            key: 'stage1-hero',
+            align: 'center',
+            headline: 'Give your big idea the design it deserves',
+            subhead:
+              'Professionally designed blocks and templates built with React, Shadcn/ui and Tailwind that will help your product stand out.',
+            headlineTone: 'gradient',
+            actions: [
+              actionButton(
+                'stage1-hero-primary',
+                'Get Started',
+                SALES_LANDING_LINKS.khala,
+                'primary',
+              ),
+              actionButton(
+                'stage1-hero-github',
+                'Github',
+                SALES_LANDING_LINKS.github,
+                'secondary',
+              ),
+            ],
+            media: MockupFrame(
+              { key: 'stage1-hero-mockup', variant: 'browser', tilt: 'left' },
+              [
+                Glow({ key: 'stage1-hero-glow', intensity: 'md' }, [
+                  Text({
+                    key: 'stage1-hero-mockup-label',
+                    content: 'Launch UI app screenshot',
+                    variant: 'body',
+                    color: 'textMuted',
+                  }),
+                ]),
+              ],
+            ),
+          }),
+        ],
+      ),
+
+      // 4. Logos
+      Section(
+        {
+          key: 'stage1-logos-section',
+          width: 'contained',
+          paddingY: '6',
+        },
+        [
+          Text({
+            key: 'stage1-logos-title',
+            content: 'Built with industry-standard tools and best practices',
+            variant: 'title',
+            style: { width: 'full' },
+          }),
+          LogoRow({
+            key: 'stage1-logos',
+            logos: LOGO_ITEMS.map((logo) => ({ ...logo })),
+          }),
+        ],
+      ),
+
+      // 5. Items / features
+      Section(
+        {
+          key: 'stage1-items-section',
+          width: 'contained',
+          paddingY: '6',
+        },
+        [
+          Text({
+            key: 'stage1-items-title',
+            content: "Everything you need. Nothing you don't.",
+            variant: 'heading',
+            style: { width: 'full' },
+          }),
+          Stack(
+            {
+              key: 'stage1-items-grid',
+              direction: 'row',
+              gap: '3',
+              style: { width: 'full' },
+            },
+            FEATURE_ITEMS.map((item) =>
+              Card(
+                {
+                  key: `feature-${item.id}`,
+                  padding: '4',
+                  radius: 'lg',
+                  style: {
+                    backgroundColor: 'surface',
+                    borderColor: 'border',
+                    borderWidth: 1,
+                    flex: 1,
+                    minWidth: 'sm',
+                  },
+                },
+                [
+                  Text({
+                    key: `feature-${item.id}-title`,
+                    content: item.title,
+                    variant: 'label',
+                  }),
+                  Text({
+                    key: `feature-${item.id}-body`,
+                    content: item.description,
+                    variant: 'body',
+                    color: 'textMuted',
+                  }),
+                ],
+              ),
+            ),
           ),
         ],
       ),
-      section('stage1-nav', [
-        Stack(
-          {
-            key: 'stage1-nav-row',
-            direction: 'row',
-            align: 'center',
-            justify: 'between',
-            gap: '4',
+
+      // 6. Stats — live public projections (standing rule: never static fakes)
+      Section(
+        {
+          key: 'stage1-stats-section',
+          width: 'contained',
+          paddingY: '6',
+        },
+        [
+          Text({
+            key: 'stage1-stats-title',
+            content: 'Live network activity',
+            variant: 'title',
             style: { width: 'full' },
-          },
-          [
-            text('stage1-brand', 'OpenAgents', 'title'),
-            Stack(
-              {
-                key: 'stage1-nav-actions',
-                direction: 'row',
-                align: 'center',
-                gap: '2',
-              },
-              [
-                actionButton('stage1-nav-promises', 'Promises', SALES_LANDING_LINKS.promises, 'ghost'),
-                actionButton('stage1-nav-stats', 'Stats', SALES_LANDING_LINKS.stats, 'ghost'),
-                actionButton('stage1-nav-sarah', 'Talk to Sarah', SALES_LANDING_LINKS.talkToSarah, 'primary'),
-              ],
-            ),
-          ],
-        ),
-      ]),
-      section('stage1-hero', [
-        text('stage1-hero-title', 'Software, built by agents.', 'heading'),
-        text(
-          'stage1-hero-copy',
-          'One open network where coding agents do real work - yours, or ours. Every outcome lands with verifiable receipts.',
-          'body',
-          'textMuted',
-        ),
-        Stack(
-          {
-            key: 'stage1-hero-actions',
-            direction: 'row',
-            gap: '3',
+          }),
+          Text({
+            key: 'stage1-stats-copy',
+            content:
+              'Public projections load client-side; pending or unavailable values stay explicit.',
+            variant: 'body',
+            color: 'textMuted',
             style: { width: 'full' },
-          },
-          [
-            actionButton('stage1-hero-sarah', 'Talk to Sarah', SALES_LANDING_LINKS.talkToSarah, 'primary'),
-            actionButton('stage1-hero-business', 'Start a project', SALES_LANDING_LINKS.businessIntake, 'secondary'),
-          ],
-        ),
-      ]),
-      section('stage1-stats', [
-        text('stage1-stats-title', 'Live network activity', 'title'),
-        text(
-          'stage1-stats-copy',
-          'Public projections load client-side; pending or unavailable values stay explicit.',
-          'body',
-          'textMuted',
-        ),
-        Stack(
-          {
-            key: 'stage1-stat-grid',
-            direction: 'row',
-            gap: '3',
+          }),
+          StatsBand({
+            key: 'stage1-stats',
+            stats: state.stats.map((stat) => ({
+              id: stat.key,
+              label: `${stat.label} — ${stat.description}`,
+              value: stat.value,
+              tone: 'info' as const,
+            })),
+          }),
+        ],
+      ),
+
+      // 7. Pricing — live Khala Code plan catalog
+      Section(
+        {
+          key: 'stage1-pricing-section',
+          width: 'contained',
+          paddingY: '6',
+        },
+        [
+          Text({
+            key: 'stage1-pricing-title',
+            content: 'Build your dream landing page, today.',
+            variant: 'heading',
             style: { width: 'full' },
-          },
-          state.stats.map(statCard),
-        ),
-      ]),
-      section('stage1-suite', [
-        text('stage1-suite-title', 'Four work surfaces, one receipt discipline', 'title'),
-        Stack(
-          {
-            key: 'stage1-suite-grid',
-            direction: 'row',
-            gap: '3',
+          }),
+          Text({
+            key: 'stage1-pricing-summary',
+            content: state.planSummary,
+            variant: 'body',
+            color: 'textMuted',
             style: { width: 'full' },
-          },
-          suiteCards,
-        ),
-      ]),
-      section('stage1-pricing', [
-        text('stage1-pricing-title', 'Plans', 'title'),
-        text('stage1-pricing-summary', state.planSummary, 'body', 'textMuted'),
-        Stack(
-          {
-            key: 'stage1-pricing-grid',
-            direction: 'row',
-            gap: '3',
-            style: { width: 'full' },
-          },
-          state.pricingState === 'ready'
-            ? state.plans.map(planCard)
-            : [
-                Card(
-                  {
-                    key: 'stage1-pricing-pending',
-                    padding: '4',
-                    radius: 'lg',
-                    style: {
-                      backgroundColor: 'surface',
-                      borderColor: 'border',
-                      borderWidth: 1,
-                      width: 'full',
-                    },
+          }),
+          state.pricingState === 'ready' && state.plans.length > 0
+            ? PricingTable({
+                key: 'stage1-pricing-table',
+                columns: state.plans.map((plan) =>
+                  PricingColumn({
+                    key: `plan-${plan.key}`,
+                    name: plan.label,
+                    price: plan.priceLabel,
+                    features: plan.terms.map((term, index) => ({
+                      id: `${plan.key}-term-${index}`,
+                      label: term,
+                      included: true,
+                    })),
+                    highlighted: plan.highlighted,
+                    ctaLabel: plan.cta,
+                    onCta: navigateIntent(plan.href),
+                  }),
+                ),
+              })
+            : Card(
+                {
+                  key: 'stage1-pricing-pending',
+                  padding: '4',
+                  radius: 'lg',
+                  style: {
+                    backgroundColor: 'surface',
+                    borderColor: 'border',
+                    borderWidth: 1,
+                    width: 'full',
                   },
-                  [
-                    text(
-                      'stage1-pricing-pending-copy',
+                },
+                [
+                  Text({
+                    key: 'stage1-pricing-pending-copy',
+                    content:
                       state.pricingState === 'pending'
                         ? `${LIVE_VALUE_PENDING} loading live plan catalog...`
                         : 'Plan catalog unavailable.',
-                      'body',
-                      'textMuted',
-                    ),
-                  ],
-                ),
+                    variant: 'body',
+                    color: 'textMuted',
+                  }),
+                ],
+              ),
+        ],
+      ),
+
+      // 8. FAQ
+      Section(
+        {
+          key: 'stage1-faq-section',
+          width: 'contained',
+          paddingY: '6',
+        },
+        [
+          Text({
+            key: 'stage1-faq-title',
+            content: 'Questions and Answers',
+            variant: 'heading',
+            style: { width: 'full' },
+          }),
+          Accordion({
+            key: 'stage1-faq',
+            mode: 'single',
+            expandedIds: state.expandedFaqIds,
+            onToggle: IntentRef('Stage1FaqToggled', ComponentValueBinding()),
+            items: FAQ_ITEMS.map((item) => ({
+              id: item.id,
+              header: item.question,
+              content: [
+                Text({
+                  key: `faq-${item.id}-body`,
+                  content: item.answer,
+                  variant: 'body',
+                  color: 'textMuted',
+                }),
               ],
-        ),
-      ]),
-      section('stage1-faq', [
-        text('stage1-faq-title', 'Questions and answers', 'title'),
-        Stack(
+            })),
+          }),
+        ],
+      ),
+
+      // 9. CTA
+      CtaSection({
+        key: 'stage1-cta',
+        headline: 'Start building',
+        body: 'Get started with professionally designed blocks and templates.',
+        tone: 'info',
+        actions: [
+          actionButton(
+            'stage1-cta-primary',
+            'Get Started',
+            SALES_LANDING_LINKS.khala,
+            'primary',
+          ),
+          actionButton(
+            'stage1-cta-secondary',
+            'Talk to Sarah',
+            SALES_LANDING_LINKS.talkToSarah,
+            'secondary',
+          ),
+        ],
+      }),
+
+      // 10. Footer
+      Footer({
+        key: 'stage1-footer',
+        brand: Text({
+          key: 'stage1-footer-brand',
+          content: 'Launch UI',
+          variant: 'title',
+        }),
+        columns: [
           {
-            key: 'stage1-faq-grid',
-            direction: 'row',
-            gap: '3',
-            style: { width: 'full' },
+            id: 'product',
+            title: 'Product',
+            links: [
+              actionButton(
+                'footer-docs',
+                'Documentation',
+                SALES_LANDING_LINKS.docs,
+                'ghost',
+              ),
+              actionButton(
+                'footer-promises',
+                'Promises',
+                SALES_LANDING_LINKS.promises,
+                'ghost',
+              ),
+            ],
           },
-          faqItems,
-        ),
-      ]),
-      section('stage1-cta', [
-        text(
-          'stage1-cta-title',
-          'TODO(owner-copy): closing call-to-action headline',
-          'title',
-        ),
-        Stack(
           {
-            key: 'stage1-cta-actions',
-            direction: 'row',
-            gap: '3',
-            style: { width: 'full' },
+            id: 'company',
+            title: 'Company',
+            links: [
+              actionButton(
+                'footer-stats',
+                'Stats',
+                SALES_LANDING_LINKS.stats,
+                'ghost',
+              ),
+              actionButton(
+                'footer-forum',
+                'Forum',
+                SALES_LANDING_LINKS.forum,
+                'ghost',
+              ),
+            ],
           },
-          [
-            actionButton('stage1-cta-sarah', 'Talk to Sarah', SALES_LANDING_LINKS.talkToSarah, 'primary'),
-            actionButton('stage1-cta-business', 'Start a project', SALES_LANDING_LINKS.businessIntake, 'secondary'),
-          ],
-        ),
-      ]),
-      section('stage1-footer', [
-        text(
-          'stage1-footer-copy',
-          'OpenAgents - Product promises, Forum, stats, privacy, and terms remain the canonical public surfaces.',
-          'caption',
-          'textMuted',
-        ),
-      ]),
-      Spacer({ key: 'stage1-bottom-space', size: '6' }),
+          {
+            id: 'contact',
+            title: 'Contact',
+            links: [
+              actionButton(
+                'footer-github',
+                'GitHub',
+                SALES_LANDING_LINKS.github,
+                'ghost',
+              ),
+              actionButton(
+                'footer-sarah',
+                'Talk to Sarah',
+                SALES_LANDING_LINKS.talkToSarah,
+                'ghost',
+              ),
+            ],
+          },
+        ],
+        legal: Text({
+          key: 'stage1-footer-legal',
+          content:
+            '© 2026 OpenAgents. Stage1 Effect Native surface — not the live homepage.',
+          variant: 'caption',
+          color: 'textMuted',
+        }),
+      }),
     ],
   )
 
@@ -643,7 +789,12 @@ const updatePublicSnapshot = (
   })
 
   return fetchSnapshot.pipe(
-    Effect.flatMap((next) => SubscriptionRef.set(state, next)),
+    Effect.flatMap((next) =>
+      SubscriptionRef.update(state, (current) => ({
+        ...current,
+        ...next,
+      })),
+    ),
   )
 }
 
@@ -656,6 +807,20 @@ export const mountStage1EffectNativeSurface = (container: HTMLElement) =>
         Effect.sync(() => {
           window.location.assign(href)
         }),
+      Stage1FaqToggled: (id) =>
+        SubscriptionRef.update(state, (current) => {
+          const open = current.expandedFaqIds.includes(id)
+          return {
+            ...current,
+            // single-mode accordion: open only the toggled id, or close all
+            expandedFaqIds: open ? [] : [id],
+          }
+        }),
+      Stage1MenuToggled: () =>
+        SubscriptionRef.update(state, (current) => ({
+          ...current,
+          navCollapsed: !current.navCollapsed,
+        })),
     }
     const registry = yield* makeIntentRegistry(stage1Intents, handlers)
     const report: IntentReporter = (ref, runtimeValue) =>
@@ -712,6 +877,7 @@ export function Stage1EffectNativePage() {
       className="stage1-effect-native-host"
       data-route="stage1-effect-native"
       data-stage1-effect-native=""
+      data-web1-en-marketing-catalog=""
     >
       <div ref={rootRef} data-stage1-effect-native-root="" />
     </main>
