@@ -1,0 +1,3 @@
+# Build artifact staged by scripts/deploy-cloudrun.sh (from
+# effect-native `bun run gallery:build`); never committed.
+/gallery/
