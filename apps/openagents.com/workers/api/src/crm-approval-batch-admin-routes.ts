@@ -27,10 +27,7 @@ import {
   listCrmApprovalQueue,
 } from './crm-approval-batch'
 import { CrmCommandError } from './crm-command'
-import {
-  type CrmEmailDatabase,
-  makeCrmEmailDatabaseForEnv,
-} from './crm-email-domain-store'
+import { type CrmEmailDatabase } from './crm-email-domain-store'
 import { type CrmResendDeps } from './crm-resend'
 import { DEFAULT_CRM_TENANT_REF } from './crm-store'
 import {
@@ -42,26 +39,20 @@ import { isRecord, stringArrayFromUnknown } from './json-boundary'
 
 type HttpResponse = globalThis.Response
 
-export const ADMIN_OPS_CRM_BATCH_QUEUE_PATH =
-  '/api/admin/ops/crm/batch-queue'
+export const ADMIN_OPS_CRM_BATCH_QUEUE_PATH = '/api/admin/ops/crm/batch-queue'
 export const ADMIN_OPS_CRM_BATCH_APPROVE_PATH =
   '/api/admin/ops/crm/batch-approve'
 
 export type AdminCaller = Readonly<{ userId: string }>
 
-type CrmApprovalBatchAdminEnv = Readonly<{ OPENAGENTS_DB: D1Database }>
-
-export type CrmApprovalBatchAdminRouteDependencies<
-  Bindings extends CrmApprovalBatchAdminEnv,
-> = Readonly<{
+export type CrmApprovalBatchAdminRouteDependencies<Bindings> = Readonly<{
+  db: (env: Bindings) => CrmEmailDatabase
   requireAdminCaller: (
     request: Request,
     env: Bindings,
     ctx: ExecutionContext,
   ) => Promise<AdminCaller | undefined>
   resolveResendDeps: (env: Bindings) => CrmResendDeps
-  /** Injectable DB factory for tests. Default: env.OPENAGENTS_DB mirror. */
-  db?: (env: Bindings) => CrmEmailDatabase
 }>
 
 const tenantOf = (url: URL, bodyTenant?: unknown): string => {
@@ -74,17 +65,12 @@ const tenantOf = (url: URL, bodyTenant?: unknown): string => {
     : value.trim()
 }
 
-const resolveDb = <Bindings extends CrmApprovalBatchAdminEnv>(
+const resolveDb = <Bindings>(
   dependencies: CrmApprovalBatchAdminRouteDependencies<Bindings>,
   env: Bindings,
-): CrmEmailDatabase =>
-  dependencies.db !== undefined
-    ? dependencies.db(env)
-    : makeCrmEmailDatabaseForEnv(env)
+): CrmEmailDatabase => dependencies.db(env)
 
-export const makeCrmApprovalBatchAdminRoutes = <
-  Bindings extends CrmApprovalBatchAdminEnv,
->(
+export const makeCrmApprovalBatchAdminRoutes = <Bindings>(
   dependencies: CrmApprovalBatchAdminRouteDependencies<Bindings>,
 ) => {
   const handleQueue = async (
@@ -128,9 +114,10 @@ export const makeCrmApprovalBatchAdminRoutes = <
   ): Promise<HttpResponse> => {
     if (request.method !== 'POST') return methodNotAllowed(['POST'])
     const url = new URL(request.url)
-    const body = (await request.json().catch(() => null)) as
-      | Record<string, unknown>
-      | null
+    const body = (await request.json().catch(() => null)) as Record<
+      string,
+      unknown
+    > | null
     if (!isRecord(body)) {
       return noStoreJsonResponse(
         { messageSafe: 'json body required', ok: false },

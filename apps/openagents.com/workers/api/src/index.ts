@@ -9752,6 +9752,7 @@ const crmApprovalBatchRoutes = makeCrmApprovalBatchRoutes<WorkerBindings>({
 // resolveCrmResendDeps) so the factory can close over the Resend deps.
 const crmApprovalBatchAdminRoutes =
   makeCrmApprovalBatchAdminRoutes<WorkerBindings>({
+    db: env => makeCrmEmailDatabaseForEnv(env),
     requireAdminCaller: async (request, env, ctx) => {
       const session = await requireUserBearerSession(request, env, ctx)
       if (session === undefined) return undefined
@@ -9767,6 +9768,7 @@ const crmReplyRoutes = makeCrmReplyRoutes<WorkerBindings>({
 
 // OB-5 (#8562): pack-priced CRM/Sarah checkout-link issuance.
 const crmSalesCheckoutRoutes = makeCrmSalesCheckoutRoutes<WorkerBindings>({
+  database: env => openAgentsDatabase(env),
   requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
 })
 

@@ -12,24 +12,31 @@
  */
 import { Effect } from 'effect'
 
+import type { BillingSyncEnv } from './billing-store'
 import { CrmSalesCheckoutError } from './crm-sales-checkout'
 import { DEFAULT_CRM_TENANT_REF } from './crm-store'
-import { isRecord } from './json-boundary'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
+import { isRecord } from './json-boundary'
 import {
-  makeStripeCheckoutServiceForRoutes,
   type StripeBillingEnv,
+  makeStripeCheckoutServiceForRoutes,
 } from './stripe-billing'
-import type { BillingSyncEnv } from './billing-store'
 
 type HttpResponse = globalThis.Response
 
-type CrmSalesCheckoutEnv = StripeBillingEnv &
-  BillingSyncEnv &
-  Readonly<{ OPENAGENTS_DB: D1Database }>
+type CrmSalesCheckoutEnv = StripeBillingEnv & BillingSyncEnv
+
+type CrmSalesCheckoutService = Pick<
+  ReturnType<typeof makeStripeCheckoutServiceForRoutes>,
+  'createCrmSalesCheckoutLink'
+>
 
 type CrmSalesCheckoutRouteDependencies<Bindings extends CrmSalesCheckoutEnv> =
   Readonly<{
+    database: (env: Bindings) => D1Database
+    makeCheckoutService?:
+      | ((env: Bindings) => CrmSalesCheckoutService)
+      | undefined
     requireAdminApiToken: (request: Request, env: Bindings) => Promise<boolean>
   }>
 
@@ -131,10 +138,11 @@ export const makeCrmSalesCheckoutRoutes = <
           const sourceRef =
             typeof body.sourceRef === 'string' ? body.sourceRef : undefined
 
-          const link = await makeStripeCheckoutServiceForRoutes(
-            env,
-          ).createCrmSalesCheckoutLink({
-            db: env.OPENAGENTS_DB,
+          const checkoutService =
+            dependencies.makeCheckoutService?.(env) ??
+            makeStripeCheckoutServiceForRoutes(env)
+          const link = await checkoutService.createCrmSalesCheckoutLink({
+            db: dependencies.database(env),
             tenantRef: tenantOf(body.tenant),
             contactId,
             packageId,

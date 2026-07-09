@@ -28,11 +28,13 @@ const makeDb = (): D1Database =>
 
 const routesFor = (admin: boolean, env: Env) => {
   const routes = makeCrmSalesCheckoutRoutes<Env>({
+    database: bindings => bindings.OPENAGENTS_DB,
     requireAdminApiToken: () => Promise.resolve(admin),
   })
   return (request: Request): Promise<Response> => {
     const effect = routes.routeCrmSalesCheckoutRequest(request, env, ctx)
-    if (effect === undefined) throw new Error(`route did not match: ${request.url}`)
+    if (effect === undefined)
+      throw new Error(`route did not match: ${request.url}`)
     return Effect.runPromise(effect)
   }
 }
@@ -76,13 +78,16 @@ describe('CRM sales checkout routes (OB-5, #8562)', () => {
   test('405 on GET', async () => {
     const run = routesFor(true, { OPENAGENTS_DB: makeDb() })
     const res = await run(
-      new Request(`${base}/api/operator/crm/sales/checkout-link`, { method: 'GET' }),
+      new Request(`${base}/api/operator/crm/sales/checkout-link`, {
+        method: 'GET',
+      }),
     )
     expect(res.status).toBe(405)
   })
 
   test('non-matching path passes through', () => {
     const routes = makeCrmSalesCheckoutRoutes<Env>({
+      database: bindings => bindings.OPENAGENTS_DB,
       requireAdminApiToken: () => Promise.resolve(true),
     })
     const effect = routes.routeCrmSalesCheckoutRequest(
