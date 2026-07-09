@@ -36,11 +36,13 @@ export const sarahIsolationContractRegistry: BehaviorContractRegistryDocument = 
         "apps/sarah/src/services/session-index.ts",
         "apps/sarah/src/services/turn-store.ts",
         "apps/sarah/src/services/prospect-memory.ts",
+        "apps/sarah/src/services/customer-blueprint.ts",
         "apps/sarah/src/llm-openai-compat.ts",
         "docs/sarah/SARAH_CONTRACTS.md",
         "docs/fable/2026-07-09-sarah-khala-connection-assessment.md",
         "issue:#8602",
         "issue:#8599",
+        "issue:#8608",
       ],
       oracles: [
         {
@@ -66,6 +68,14 @@ export const sarahIsolationContractRegistry: BehaviorContractRegistryDocument = 
           kind: "bun-test",
           mode: "unit",
           ref: "apps/sarah/src/services/prospect-memory.test.ts",
+        },
+        {
+          description:
+            "KHS-9 customer-blueprint seam (#8608): buildCustomerBlueprintDraft takes exactly one prospectRef and every store read is bound to prospectRefAliases(prospectRef) (the exact identity's re-encodings, asserted via the injected reader seam); drafts composed for two prospects sharing seeded data never carry the other prospect's facts, needs, turn ids, or contact; an empty ref refuses instead of reading unscoped.",
+          id: "customer_blueprint_prospect_scoping.unit",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/sarah/src/services/customer-blueprint.test.ts",
         },
       ],
       productArea: "prospect memory + conversation serving",
@@ -332,5 +342,5 @@ export const sarahIsolationContractRegistry: BehaviorContractRegistryDocument = 
     },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-09.4",
+  version: "2026-07-09.5",
 }

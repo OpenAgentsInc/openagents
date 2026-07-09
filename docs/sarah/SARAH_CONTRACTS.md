@@ -67,6 +67,10 @@ entries. This is an internal owner-approved store; it makes no public
   aliases (visitor refs never alias), fail-soft null without a store.
 - `apps/sarah/src/server.test.ts` — the pricing-guard oracles (text lane +
   avatar brain) and the KHS-7 (#8606) account-link route oracles.
+- `apps/sarah/src/services/customer-blueprint.test.ts` — the KHS-9 (#8608)
+  customer-blueprint seam suite: single-ref entry point bound to the exact
+  identity aliases, two-prospect draft isolation, provenance turn ids on
+  every need, verbatim pricingStatus (no prices).
 - `apps/sarah/src/services/account-link.test.ts` — the KHS-7 (#8606)
   account-link seam units: contact-row shape, single never-pushy prompt line,
   test-mode session parsing, anonymous fast path.
@@ -89,7 +93,7 @@ enforced in the test sweep.
 
 ## Registry
 
-Registry version: `2026-07-09.4` (schema `openagents.behavior_contracts.v1`)
+Registry version: `2026-07-09.5` (schema `openagents.behavior_contracts.v1`)
 
 ### `sarah.cross_prospect_isolation.v1` — ENFORCED
 
@@ -100,6 +104,7 @@ Registry version: `2026-07-09.4` (schema `openagents.behavior_contracts.v1`)
 - **Oracle** `cross_prospect_query_scoping.unit` (bun-test, unit): Query-layer scoping: seeds transcript turns, CRM projections, and tool receipts for two different prospect refs (sharing a session id to prove prospect_ref is the filter, not session id), then reads each prospect back through every prospect-scoped read helper in session-index and asserts zero rows, markers, or CRM fields from the other prospect appear. — `apps/sarah/src/contracts/isolation-contracts.test.ts`
 - **Oracle** `cross_prospect_injection_probe.rpc` (bun-test, rpc): Injection probe on the avatar brain endpoint: seeds a distinctive secret into prospect B's persisted turns, then POSTs /sarah/api/llm/chat/completions (bearer-armed, model deliberately unarmed so only the deterministic layers answer) with a conversation_ref for prospect A and a user message asking what the last customer said. Asserts the reply and prospect A's recorded transcript contain nothing from prospect B. — `apps/sarah/src/contracts/isolation-contracts.test.ts`
 - **Oracle** `prospect_memory_isolation.unit` (bun-test, unit): KHS-2 memory seam (#8601, merged): getProspectMemoryContext takes exactly one prospectRef; prospectRefAliases only re-encodes that same identity (visitor: refs never alias); an empty ref yields no aliases so no unscoped query is possible; and without a durable store memory fails soft to null instead of falling back to any cross-prospect source. Asserted both in the KHS-2 seam suite and in the isolation contract suite. — `apps/sarah/src/services/prospect-memory.test.ts`
+- **Oracle** `customer_blueprint_prospect_scoping.unit` (bun-test, unit): KHS-9 customer-blueprint seam (#8608): buildCustomerBlueprintDraft takes exactly one prospectRef and every store read is bound to prospectRefAliases(prospectRef) (the exact identity's re-encodings, asserted via the injected reader seam); drafts composed for two prospects sharing seeded data never carry the other prospect's facts, needs, turn ids, or contact; an empty ref refuses instead of reading unscoped. — `apps/sarah/src/services/customer-blueprint.test.ts`
 - **Verification:** bun test src/contracts/isolation-contracts.test.ts inside apps/sarah; runs in the package test glob, the apps/sarah oracle chain, and the repo test:sarah sweep before pushes to main.
 - **Authority boundary:** This contract binds Sarah's own read/serve paths (session index, turn store, avatar brain, and the KHS-2 prospect-memory seam from #8601). It does not claim collective learning exists, does not arm any capture sink, and grants no authority over the openagents.com CRM boundary, which remains the system of record. Any NEW prospect-scoped read path added to apps/sarah must gain a bun-test oracle under this contract in the same change.
 

@@ -42,6 +42,8 @@ import {
   sarahCollectiveLearningStatus,
 } from "./services/collective-learning.ts"
 import { sarahTurnStoreStatus } from "./services/turn-store.ts"
+import { sarahEcosystemStatus } from "./services/ecosystem-tools.ts"
+import { listCustomerBlueprintsForOperator } from "./services/customer-blueprint.ts"
 import {
   addSarahBlueprintFact,
   loadSarahBlueprint,
@@ -419,6 +421,7 @@ async function handleOperatorOps(): Promise<Response> {
     answerCache: sarahAnswerCacheStatus(),
     collectiveLearning: sarahCollectiveLearningStatus(),
     blueprint: sarahBlueprintStatus(),
+    ecosystem: sarahEcosystemStatus(),
     modelPath:
       sarahInferenceTransport() === "khala_gateway"
         ? `khala_gateway_live:${sarahActiveModelId()}`
@@ -694,6 +697,16 @@ export async function handleSarahRequest(request: Request): Promise<Response> {
     apiPath.startsWith("/api/operator/blueprint/")
   ) {
     return handleOperatorBlueprint(request, apiPath)
+  }
+  // KHS-9 (#8608): operator handoff view for customer Blueprint drafts —
+  // admin-bearer-guarded (same fail-closed posture as the learning routes).
+  if (
+    apiPath === "/api/operator/customer-blueprints" &&
+    request.method === "GET"
+  ) {
+    const denied = checkOperatorAdmin(request)
+    if (denied) return denied
+    return json(await listCustomerBlueprintsForOperator())
   }
   if (apiPath === "/api/operator/ops" && request.method === "GET") {
     return handleOperatorOps()

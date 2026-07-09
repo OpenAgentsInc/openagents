@@ -24,6 +24,7 @@ import type { GemmaContent } from "./services/google-inference.ts"
 import { getProspectMemoryContext } from "./services/prospect-memory.ts"
 import { getSarahAccountPromptLine } from "./services/account-link.ts"
 import { maybeSemanticCacheAnswer } from "./services/semantic-answer-cache.ts"
+import { maybeEcosystemGrounding } from "./services/ecosystem-tools.ts"
 import { recordSarahTranscriptTurn } from "./services/session-index.ts"
 
 const CONVERSATION_REF_PATTERN = /\[conversation_ref:\s*([^\]\s]+)\s*\]/
@@ -281,7 +282,11 @@ export async function handleSarahChatCompletions(request: Request): Promise<Resp
   // KHS-7 (#8606): same single account-awareness line as the text lane —
   // appended code-side, after the pricing guard, base context untouched.
   const accountLine = ref ? await getSarahAccountPromptLine(ref) : null
-  const system = [memory, baseSystem, accountLine]
+  // KHS-9 (#8608): flag-gated live-product-truth grounding
+  // (SARAH_ECOSYSTEM_GROUNDING=1) — embedding-matched intents only, after the
+  // pricing guard above; null (no behavior change) until the owner arms it.
+  const grounding = await maybeEcosystemGrounding(lastUserText)
+  const system = [memory, baseSystem, accountLine, grounding]
     .filter((part): part is string => Boolean(part))
     .join("\n\n")
   const contents: GemmaContent[] = history.length

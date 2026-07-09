@@ -28,18 +28,59 @@ describe("apps/sarah monorepo service", () => {
     expect(res.headers.get("set-cookie") || "").toContain("sarah_prospect_ref")
   })
 
-  test("owned runtime tool inventory matches SM-4 seed", () => {
+  test("owned runtime tool inventory matches SM-4 seed + KHS-9 ecosystem tools", () => {
     expect([...SARAH_OWNED_TOOL_INVENTORY].map(String).sort()).toEqual(
       [
         "checkout_link_create",
         "crm_activity_append",
         "crm_contact_upsert",
+        "customer_blueprint_draft",
         "deal_rules_evaluate",
         "demo_sales_context",
         "human_handoff",
         "intake_capture",
+        "live_stats",
+        "plan_catalog",
+        "promise_lookup",
       ].sort(),
     )
+  })
+
+  // KHS-9 (#8608): the operator handoff view for customer Blueprint drafts is
+  // admin-bearer-guarded with the same fail-closed posture as the learning
+  // routes — unarmed 503, wrong bearer 401, exact bearer 200.
+  test("customer-blueprints operator route fails closed without an admin token", async () => {
+    delete process.env.SARAH_OPERATOR_ADMIN_TOKEN
+    delete process.env.OPENAGENTS_ADMIN_API_TOKEN
+    const res = await handleSarahRequest(
+      new Request("http://localhost/sarah/api/operator/customer-blueprints"),
+    )
+    expect(res.status).toBe(503)
+    const body = await res.json()
+    expect(body.error.code).toBe("operator_admin_not_armed")
+  })
+
+  test("customer-blueprints operator route refuses a wrong bearer, serves the exact one", async () => {
+    process.env.SARAH_OPERATOR_ADMIN_TOKEN = "khs9-test-admin"
+    const wrong = await handleSarahRequest(
+      new Request("http://localhost/sarah/api/operator/customer-blueprints", {
+        headers: { authorization: "Bearer nope" },
+      }),
+    )
+    expect(wrong.status).toBe(401)
+
+    const right = await handleSarahRequest(
+      new Request("http://localhost/sarah/api/operator/customer-blueprints", {
+        headers: { authorization: "Bearer khs9-test-admin" },
+      }),
+    )
+    expect(right.status).toBe(200)
+    const body = await right.json()
+    expect(Array.isArray(body.blueprints)).toBe(true)
+    // No database in unit tests: the store reports itself unconfigured
+    // honestly instead of failing the route.
+    expect(body.storeConfigured).toBe(false)
+    delete process.env.SARAH_OPERATOR_ADMIN_TOKEN
   })
 
   test("text turn uses owned runtime", async () => {

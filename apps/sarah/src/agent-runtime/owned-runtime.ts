@@ -26,6 +26,13 @@ import type { GemmaContent } from "../services/google-inference.ts"
 import { getProspectMemoryContext } from "../services/prospect-memory.ts"
 import { getSarahAccountPromptLine } from "../services/account-link.ts"
 import { maybeSemanticCacheAnswer } from "../services/semantic-answer-cache.ts"
+import {
+  liveStats,
+  maybeEcosystemGrounding,
+  planCatalog,
+  promiseLookup,
+} from "../services/ecosystem-tools.ts"
+import { buildCustomerBlueprintDraft } from "../services/customer-blueprint.ts"
 import { getSarahRealtimeInstructions } from "../services/sarah-instructions.ts"
 import {
   getSarahSessionTranscript,
@@ -76,6 +83,7 @@ async function loadPersona(): Promise<string> {
 async function runTool(
   toolName: string,
   args: unknown,
+  context: { prospectRef?: string } = {},
 ): Promise<{ ok: boolean; output: unknown }> {
   try {
     switch (toolName) {
@@ -111,6 +119,35 @@ async function runTool(
             publicSafe: true,
           },
         }
+      // KHS-9 (#8608) live ecosystem product-truth tools — public
+      // openagents.com surfaces, fail-soft, registry safe-copy only.
+      case "promise_lookup": {
+        const query =
+          typeof (args as { query?: unknown })?.query === "string"
+            ? (args as { query: string }).query
+            : ""
+        const result = await promiseLookup(query)
+        return { ok: result.ok, output: result }
+      }
+      case "live_stats": {
+        const result = await liveStats()
+        return { ok: result.ok, output: result }
+      }
+      case "plan_catalog": {
+        const result = await planCatalog()
+        return { ok: result.ok, output: result }
+      }
+      // KHS-9 (#8608) customer Blueprint draft — per-prospect scoped (the
+      // ref comes from the request context, never another prospect's args).
+      case "customer_blueprint_draft": {
+        const prospectRef =
+          context.prospectRef ??
+          (typeof (args as { prospectRef?: unknown })?.prospectRef === "string"
+            ? (args as { prospectRef: string }).prospectRef
+            : "")
+        const result = await buildCustomerBlueprintDraft(prospectRef)
+        return { ok: result.ok, output: result }
+      }
       default:
         return {
           ok: false,
@@ -139,7 +176,9 @@ export async function runOwnedSarahTurn(
   const toolResults: OwnedSarahTurnResult["toolResults"] = []
 
   if (input.toolCall?.toolName) {
-    const result = await runTool(input.toolCall.toolName, input.toolCall.args)
+    const result = await runTool(input.toolCall.toolName, input.toolCall.args, {
+      ...(input.prospectRef ? { prospectRef: input.prospectRef } : {}),
+    })
     toolResults.push({
       toolName: input.toolCall.toolName,
       ok: result.ok,
@@ -189,6 +228,11 @@ export async function runOwnedSarahTurn(
     // the deterministic guards above, so it can never reach the pricing lane.
     const accountLine = await getSarahAccountPromptLine(input.prospectRef)
     if (accountLine) system = `${system}\n\n${accountLine}`
+    // KHS-9 (#8608): flag-gated live-product-truth grounding
+    // (SARAH_ECOSYSTEM_GROUNDING=1). Embedding-matched intents only, appended
+    // AFTER the deterministic guards above — never on the pricing lane.
+    const grounding = await maybeEcosystemGrounding(message)
+    if (grounding) system = `${system}\n\n${grounding}`
     const contents: GemmaContent[] = []
     if (input.prospectRef) {
       const history = await getSarahSessionTranscript({
@@ -262,4 +306,9 @@ export const SARAH_OWNED_TOOL_INVENTORY = [
   "human_handoff",
   "checkout_link_create",
   "demo_sales_context",
+  // KHS-9 (#8608): live ecosystem product truth + customer Blueprint drafts.
+  "promise_lookup",
+  "live_stats",
+  "plan_catalog",
+  "customer_blueprint_draft",
 ] as const

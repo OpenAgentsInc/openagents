@@ -33,3 +33,26 @@
   Prospect PII never enters collective stores, and no public "learning from
   conversations" claim is made — internal owner-approved store only
   (`sarah.collective_learning_owner_gated.v1`, state enforced).
+- **Live ecosystem truth is state-capped and flag-gated (KHS-9, #8608):**
+  the ecosystem tools (`src/services/ecosystem-tools.ts`) read ONLY public
+  openagents.com surfaces (promise registry, tokens-served, pylon stats,
+  Khala Code plan catalog), fail-soft with a 60s cache, and serve registry
+  `safeCopy` only — a record's state caps every claim (yellow always ships
+  operator-assisted caveat wording; non-green ships do-not-pitch wording).
+  Promise lookup and the grounding intent match are embedding/cosine via the
+  shared `sarahEmbedText` lane — never keyword routing; no embedder means an
+  honest miss. The grounding hook on both brain lanes is a no-op unless
+  `SARAH_ECOSYSTEM_GROUNDING=1` and always runs AFTER the deterministic
+  pricing guard.
+- **Customer Blueprint drafts are per-prospect, provenance-carrying, and
+  operator-handed (KHS-9, #8608):** `src/services/customer-blueprint.ts`
+  composes a draft from ONE prospect's profile facts, contact, and stated
+  needs (every need cites its source turn id), bound to
+  `prospectRefAliases(prospectRef)` at the query layer (oracled in
+  `src/services/customer-blueprint.test.ts`). Suggested modules carry the
+  deal-rules `pricingStatus` verbatim (`owner_pricing_required` passes
+  through) and never a price. The draft is a DRAFT for the operator-assisted
+  business-workspace pipeline (CB-1.4 convergence) — no automated workspace
+  provisioning is claimed or performed. The operator listing
+  (`/sarah/api/operator/customer-blueprints`) is admin-bearer-guarded,
+  fail-closed.
