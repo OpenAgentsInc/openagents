@@ -13,7 +13,7 @@ scrub, move, converge, cut over, retire
 ## 0. Executive decision
 
 Sarah stops being a separate codebase. The private `OpenAgentsInc/sarah` repo
-(Next.js 16 + Vercel AI SDK canary + eve, deploying to sarah.openagents.com)
+(Next.js 16 + Vercel AI SDK canary + eve, deploying to openagents.com/sarah)
 moves into the openagents monorepo as `apps/sarah/`, and every Sarah surface
 converges on the standing owner mandates:
 
@@ -63,7 +63,7 @@ below and the sarah issues are closed with pointers.
 ## 2. Target layout
 
 ```text
-apps/sarah/                      # Bun/Effect service, own Cloud Run service, sarah.openagents.com
+apps/sarah/                      # Bun/Effect service mounted at openagents.com/sarah
   src/routes/                    # ported API routes (prospect, realtime token/config, tool-call, operator, unsubscribe)
   src/services/                  # the lib/ services as Effect services (Context.Service + Layer)
   src/ui/                        # Effect Native component tree (DOM renderer) — the voice surface
@@ -134,7 +134,7 @@ Exit: local `apps/sarah` passes every ported smoke + the S-12 suite;
    visual baseline captured against the current production page.
 
 Exit: the Sarah surface renders entirely from the component set; zero React
-in `apps/sarah`; sarah.openagents.com and openagents.com are one component
+in `apps/sarah`; openagents.com/sarah and openagents.com are one component
 system by construction (the WEB-1 synergy, now literal).
 
 ### SM-3 — email + CRM convergence (delete the parallel stack)
@@ -176,7 +176,7 @@ re-receipted by the owner).
 
 ### SM-5 — production cutover
 
-1. sarah.openagents.com served by the monorepo-built Cloud Run service
+1. openagents.com/sarah served by the monorepo-built Cloud Run service
    (image from `openagents` source only); DNS/env/model-pin/cost-caps owner
    actions via NEEDS_OWNER (absorbs S-11).
 2. S-12 suite + smokes green against the live deployment; the S-13
@@ -258,5 +258,5 @@ lives and what renders her, not what she must prove.
 No production Sarah behavior builds from `OpenAgentsInc/sarah`; the app is
 Bun/Effect with an Effect Native UI and no React/Next/eve dependencies;
 email flows through the single monorepo rail; the S-12 suite guards it all in
-the normal sweep; sarah.openagents.com serves from monorepo-built images on
+the normal sweep; openagents.com/sarah serves from monorepo-built images on
 our cloud; the old repo is read-only historical.

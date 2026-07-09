@@ -698,3 +698,14 @@ rationale in `docs/fable/2026-07-08-productspec-adoption-analysis.md` (#8593).
   accidental behavior never silently becomes intent.
 - `tool_metadata` is stripped on public export; no secrets, customer data, or
   private pricing in this tree (private engagement specs live in private repos).
+
+
+## Sarah (`apps/sarah`, #8594)
+
+- Public surface: **`openagents.com/sarah`** (path under the main product — no
+  `sarah.openagents.com` subdomain).
+- Implementation: `apps/sarah/` Bun service + zero-React DOM UI.
+- Authority: openagents.com Worker CRM/credits/checkout APIs remain system of
+  record; Sarah is a client.
+- Email: monorepo CRM approval rail only (`crm-email-rail`).
+- Private `OpenAgentsInc/sarah` is historical after SM-6.

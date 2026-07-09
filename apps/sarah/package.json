@@ -1,0 +1,22 @@
+{
+  "name": "@openagentsinc/sarah",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun --watch src/server.ts",
+    "start": "bun src/server.ts",
+    "test": "bun test",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@ai-sdk/gateway": "4.0.0-canary.107",
+    "ai": "7.0.0-canary.176",
+    "effect": "catalog:",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "bun-types": "^1.0.0",
+    "typescript": "catalog:"
+  }
+}

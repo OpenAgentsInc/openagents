@@ -25,7 +25,7 @@
  * read as an opt-out, this route (1) mints a Sarah handoff link
  * (crm-sarah-handoff.ts) so the response — and any future email-reply
  * continuation Sarah's own channel sends — can carry a personal link back
- * into sarah.openagents.com that keeps the prospect_ref/CRM-contact context,
+ * into openagents.com/sarah that keeps the prospect_ref/CRM-contact context,
  * and (2) finds (or opens) the contact's open sales opportunity and advances
  * its `crm_opportunities.stage` to `replied` (never regressing a deal that
  * has already moved further — see `advanceCrmOpportunityStage`). Both are
@@ -62,7 +62,7 @@ type HttpResponse = globalThis.Response
 type CrmReplyEnv = Readonly<{
   OPENAGENTS_DB: D1Database
   /** Base URL for prospect-facing Sarah handoff links. Defaults to the
-   * production `sarah.openagents.com` app (CRM_SARAH_HANDOFF_DEFAULT_BASE_URL)
+   * production `openagents.com/sarah` app (CRM_SARAH_HANDOFF_DEFAULT_BASE_URL)
    * when unset — useful for staging/local without requiring config. */
   SARAH_APP_URL?: string | undefined
 }>

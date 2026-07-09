@@ -98,9 +98,9 @@ export const formatCount = (value: number | null | undefined): string =>
 
 // --- Approved-reuse CTA + link targets --------------------------------------
 // Reused from existing, already-in-repo approved surfaces. `talkToSarah` is the
-// direction named in issue #8565 (sarah.openagents.com; embedded later).
+// direction named in issue #8565 (openagents.com/sarah; embedded later).
 export const SALES_LANDING_LINKS = {
-  talkToSarah: 'https://sarah.openagents.com',
+  talkToSarah: 'https://openagents.com/sarah',
   businessIntake: '/business#business-intake',
   khala: '/khala',
   promises: '/docs/product-promises',

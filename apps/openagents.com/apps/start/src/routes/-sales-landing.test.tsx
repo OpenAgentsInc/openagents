@@ -22,7 +22,7 @@ describe('WEB-1 sales-landing preview route', () => {
     expect(html).toContain('Software, built by agents.')
 
     // The two named CTAs are wired.
-    expect(html).toContain('https://sarah.openagents.com')
+    expect(html).toContain('https://openagents.com/sarah')
     expect(html).toContain('/business#business-intake')
     expect(html).toContain('Talk to Sarah')
 

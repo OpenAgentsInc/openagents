@@ -106,11 +106,11 @@ describe('crm-sarah-handoff (OB-5, #8562)', () => {
 
     const issued = await store.issueHandoffLink(
       { tenantRef: 'tenant.openagents', contactId: 'crm_contact_1' },
-      'https://staging.sarah.openagents.com/',
+      'https://staging.openagents.com/sarah/',
       runtime,
     )
 
-    expect(issued.url).toBe('https://staging.sarah.openagents.com/continue/sh_test_2')
+    expect(issued.url).toBe('https://staging.openagents.com/sarah/continue/sh_test_2')
     expect(issued.sourceRef).toBe('direct')
   })
 
@@ -159,8 +159,8 @@ describe('crm-sarah-handoff (OB-5, #8562)', () => {
   })
 
   test('buildSarahHandoffUrl trims trailing slashes and falls back to the default origin', () => {
-    expect(buildSarahHandoffUrl('https://sarah.openagents.com/', 'tok')).toBe(
-      'https://sarah.openagents.com/continue/tok',
+    expect(buildSarahHandoffUrl('https://openagents.com/sarah/', 'tok')).toBe(
+      'https://openagents.com/sarah/continue/tok',
     )
     expect(buildSarahHandoffUrl('', 'tok')).toBe(
       `${CRM_SARAH_HANDOFF_DEFAULT_BASE_URL}/continue/tok`,

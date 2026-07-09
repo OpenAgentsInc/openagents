@@ -111,8 +111,8 @@ describe('CRM reply routes', () => {
     expect(result.optOut).toBe(false)
     expect(result.contactId).toBe('crm_contact_1')
     // OB-5 (#8562): a matched, non-opt-out reply gets a personal handoff link
-    // into sarah.openagents.com carrying the prospect/CRM-contact context.
-    expect(sarahHandoff?.url).toContain('sarah.openagents.com/continue/')
+    // into openagents.com/sarah carrying the prospect/CRM-contact context.
+    expect(sarahHandoff?.url).toContain('openagents.com/sarah/continue/')
     expect(sarahHandoff?.handoffToken).toBeTruthy()
 
     const listRes = await run(new Request(`${base}/api/operator/crm/replies`))

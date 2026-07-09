@@ -106,7 +106,7 @@ describe('CRM reply route opportunity-funnel advance (OB-5, #8562)', () => {
       sarahHandoff?: { url: string }
     }
     expect(body.opportunity?.stage).toBe('replied')
-    expect(body.sarahHandoff?.url).toContain('sarah.openagents.com/continue/')
+    expect(body.sarahHandoff?.url).toContain('openagents.com/sarah/continue/')
 
     const stored = await db
       .prepare('SELECT * FROM crm_opportunities WHERE id = ?')

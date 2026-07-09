@@ -10,6 +10,7 @@ import {
 import { routeSiteCrawlSurfaceRequest } from '../../../workers/api/src/site-crawl-surfaces-routes'
 import { routeWellKnownAgentSurfaceRequest } from '../../../workers/api/src/well-known-agent-surfaces-routes'
 import { routeKhalaSyncProxyRequest } from './khala-sync-proxy'
+import { handleSarahRequest } from '../../../../sarah/src/server.ts'
 
 type StartWorkerEnv = Record<string, unknown>
 
@@ -22,7 +23,7 @@ export const SECURITY_HEADERS = {
   'X-Content-Type-Options': 'nosniff',
   'X-XSS-Protection': '1; mode=block',
   'Referrer-Policy': 'strict-origin-when-cross-origin',
-  'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
+  'Permissions-Policy': 'camera=(), microphone=(self), geolocation=()',
   'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
 } as const
 
@@ -44,6 +45,13 @@ export async function routeSharedAgentSurface(
   request: Request,
 ): Promise<Response | undefined> {
   const path = new URL(request.url).pathname
+
+  // #8594: Sarah lives at openagents.com/sarah (no separate subdomain).
+  // API under /sarah/api/*; static UI is served from Start public/sarah/.
+  if (path === '/sarah/api' || path.startsWith('/sarah/api/')) {
+    return handleSarahRequest(request)
+  }
+
   const crawlSurface = routeSiteCrawlSurfaceRequest(request)
   if (crawlSurface !== undefined) {
     return Effect.runPromise(crawlSurface)
