@@ -390,6 +390,46 @@ export function splitSpeakableSentences(text: string, minChars = 40): string[] {
   return groups
 }
 
+// --- the spoken greeting (owner requirement 2026-07-09: the session must
+// never sit silent after connect — Sarah greets first, audibly) ---------------
+
+export const SARAH_OWNED_GREETING = "Hello! I'm Sarah. What's on your mind today?"
+
+/**
+ * Speak the fixed greeting on a fresh owned session — no brain turn, just
+ * TTS + the speak API — and feed the SSE transcript so the surface shows it.
+ * Fail-soft: a TTS/render hiccup must not break the session; the greeting
+ * still lands as a transcript line.
+ */
+export async function speakOwnedGreeting(sessionId: string): Promise<void> {
+  const session = activeSessions.get(sessionId)
+  if (!session) return
+  publishSarahAvatarEvent(session.conversationRef, {
+    type: "transcript",
+    role: "assistant",
+    text: SARAH_OWNED_GREETING,
+  })
+  const speech = await synthesizeSpeechPcm(SARAH_OWNED_GREETING)
+  if (!speech.ok) return
+  const eventId = crypto.randomUUID()
+  session.speakingEventId = eventId
+  try {
+    for (const audioB64 of chunkPcmBase64(speech.pcm)) {
+      if (session.speakingEventId !== eventId) return
+      await sendControl(sessionId, {
+        type: "speak",
+        event_id: eventId,
+        audio_b64: audioB64,
+      })
+    }
+    await sendControl(sessionId, { type: "speak_end", event_id: eventId })
+  } catch {
+    // Fail-soft: greeting audio is best-effort; the transcript line landed.
+  } finally {
+    if (session.speakingEventId === eventId) session.speakingEventId = null
+  }
+}
+
 // --- the speaking bridge (owned-path turn loop) -------------------------------
 
 async function sendControl(

@@ -180,8 +180,10 @@ export async function startAvatarSession(
  * wrapper (no vendor SDK). The browser attaches recvonly audio/video via the
  * WHEP-style `webrtc.offer_url` from the mint; transcripts and cards arrive on
  * the same SSE bus, fed by the server-side owned turn loop; typed messages go
- * to the speak bridge. Honest v1 scope: text-driven speech only — the user-mic
- * path stays LiveAvatar-only until a later lane adds owned ASR.
+ * to the speak bridge. The user mic rides the browser's Web Speech API
+ * (SpeechRecognition): final utterances post to the speak bridge, so Sarah
+ * HEARS on the owned path too (owner-reported failure 2026-07-09; a native
+ * owned-ASR lane can replace this without changing the surface contract).
  */
 async function startOwnedRendererSession(
   pane: AvatarPane,
@@ -274,7 +276,74 @@ async function startOwnedRendererSession(
     }
   }
 
+  // --- user mic: browser speech recognition -> speak bridge ------------------
+  type SpeechRecognitionLike = {
+    lang: string
+    continuous: boolean
+    interimResults: boolean
+    start: () => void
+    stop: () => void
+    onresult: ((event: any) => void) | null
+    onend: (() => void) | null
+    onerror: ((event: any) => void) | null
+  }
+  const RecognitionCtor = (window as any).SpeechRecognition ??
+    (window as any).webkitSpeechRecognition
+  let recognition: SpeechRecognitionLike | null = null
+  let recognitionActive = false
+  let speakInFlight = Promise.resolve()
+  if (typeof RecognitionCtor === "function") {
+    recognition = new RecognitionCtor() as SpeechRecognitionLike
+    recognition.lang = "en-US"
+    recognition.continuous = true
+    recognition.interimResults = false
+    recognition.onresult = (event: any) => {
+      for (let i = event.resultIndex; i < event.results.length; i += 1) {
+        const result = event.results[i]
+        if (!result.isFinal) continue
+        const text = String(result[0]?.transcript ?? "").trim()
+        if (!text) continue
+        // Serialize turns: a fast talker must not interleave speak calls.
+        speakInFlight = speakInFlight.then(() =>
+          fetch(`${API}/avatar/speak`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ sessionId: mint.sessionId, message: text }),
+          }).then(() => {}, () => {}),
+        )
+      }
+    }
+    recognition.onend = () => {
+      // Chrome ends recognition periodically; keep listening for the session.
+      if (recognitionActive) {
+        try { recognition?.start() } catch { /* already started */ }
+      }
+    }
+    recognition.onerror = (event: any) => {
+      if (event?.error === "not-allowed" || event?.error === "service-not-allowed") {
+        recognitionActive = false
+        callbacks.onCard({
+          title: "Microphone unavailable",
+          body: "Sarah can't hear you — allow microphone access or type below.",
+        })
+      }
+    }
+    try {
+      recognition.start()
+      recognitionActive = true
+    } catch {
+      recognition = null
+    }
+  } else {
+    callbacks.onCard({
+      title: "Voice input not supported here",
+      body: "This browser lacks speech recognition — type below and Sarah will speak her replies.",
+    })
+  }
+
   const stop = async () => {
+    recognitionActive = false
+    try { recognition?.stop() } catch { /* already stopped */ }
     events.close()
     pc.close()
     video.srcObject = null

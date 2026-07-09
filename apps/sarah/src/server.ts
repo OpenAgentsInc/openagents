@@ -71,6 +71,7 @@ import {
   reapStaleOwnedSessions,
   sarahAvatarRenderer,
   speakOwnedAvatarTurn,
+  speakOwnedGreeting,
   stopOwnedAvatarSession,
 } from "./services/owned-renderer.ts"
 
@@ -686,6 +687,13 @@ export async function handleSarahRequest(request: Request): Promise<Response> {
           { status: owned.status },
         )
       }
+      // Owner requirement (2026-07-09): Sarah greets first, audibly — a
+      // fresh session must never sit silent. Delayed fire-and-forget so the
+      // browser WebRTC connect (typically <2s) lands before the audio.
+      const greetDelayMs = Number(process.env.SARAH_AVATAR_GREETING_DELAY_MS ?? 2500)
+      setTimeout(() => {
+        void speakOwnedGreeting(owned.sessionId)
+      }, greetDelayMs)
       return json(owned)
     }
     reapStaleAvatarSessions()
