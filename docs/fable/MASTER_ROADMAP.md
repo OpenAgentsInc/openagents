@@ -1,12 +1,31 @@
 # MASTER ROADMAP — Khala Code MVP (Tested, Submitted) → Sarah → Codex → AI Employees → the Suite
 
-Date: 2026-07-09 (rev 6.15 — future-agent issue execution instructions)
+Date: 2026-07-09 (rev 6.16 — recent closure reconciliation)
 Status: **the single consolidated execution roadmap.** This document owns
 top-level sequencing across everything designed in the 2026-07-07 strategy
 set and its predecessors. The source docs remain authoritative for their
 *content* (specs, evidence, arguments); when sequencing here and sequencing
 there disagree, **this document wins**, and new issues are filed against the
 phase lanes named here.
+
+**Rev 6.16 changes (execution update, 2026-07-09 — RECENT CLOSED
+ISSUES REVIEWED):** reconciled the roadmap against the live GitHub issue
+state after `origin/main` reached `1472a2f3c0`. Four entries from the
+previous ordered queue are now closed and removed from the remaining-work
+list: **#8621 SQ-4** (owned renderer hardening: LiveAvatar fallback,
+MuseTalk invalid-bbox fail-closed, honest-fps labeling, deploy e2e smoke,
+and real-session simulator; openagents `d191755080`, hydralisk
+`8c08dad37`, receipt `docs/sarah/2026-07-09-sq4-hardening-receipt.md`),
+**#8631 BM-5** (split-layout deploy-smoke rail, `blueprint_delta` live
+proof, concurrent-ref isolation, and
+`sarah.split_screen_blueprint_map.v1` contract registry version
+`2026-07-09.2`; `b3048b7a0b`), **#8626 Sarah Blueprint Map epic**
+(BM-1..5 complete; owner visual review remains welcome but implementation
+gates are enforced), and **#8590 MH-4** (Grok Axis B worker executor plus
+RL-3/RL-5/RL-6 extended matrix; `a5754786d2`, `bun test` in
+`packages/grok-harness` → 11 pass). The live open issue list is now 32
+items. The next coding agent should start at **#8612 OAV-2**, then move
+through the OAV/SQ quality lanes before KHS, P0, EN, PY, CX/MH-9, and OB.
 
 **Rev 6.15 changes (owner directive, 2026-07-09 — HOW FUTURE CODING
 AGENTS MOVE THROUGH THE QUEUE):** this roadmap now carries the execution
@@ -83,84 +102,75 @@ unit suites passed after BM-4 (`bun test` in `apps/sarah`: 264 pass).
 pass.
 
 **Ordered open-issue queue (OpenAgentsInc/openagents, checked
-2026-07-09 after `dc0c67948c`):**
+2026-07-09 after `1472a2f3c0` and live `gh issue list`):**
 
-1. **#8621 SQ-4** — finish the owned realtime renderer hardening and
-   deploy-smoke rail first; BM-5 rides this rail, and deploys stay
-   frozen until the real-session simulator proof is recorded.
-2. **#8631 BM-5** — owner playback/QA gate: desktop + mobile split
-   screenshots, `sarah.split_screen_blueprint_map.v1` sweep, live
-   `blueprint_delta` node-appears proof, and concurrent-ref isolation.
-3. **#8626 Sarah Blueprint Map epic** — close only after #8631 passes;
-   BM-1..4 are complete.
-4. **#8612 OAV-2** — close or finish the render-service state machine,
+1. **#8612 OAV-2** — close or finish the render-service state machine,
    MuseTalk/WebRTC service evidence, and hydralisk receipts so the
    live renderer's base service is not half-accounted.
-5. **#8615 OAV-5** — pre-rendered takes for opener/cache hits, using
+2. **#8615 OAV-5** — pre-rendered takes for opener/cache hits, using
    the now-owned renderer path and receipts.
-6. **#8620 SQ-3** — perfect opener library: repair v1 defects, add
+3. **#8620 SQ-3** — perfect opener library: repair v1 defects, add
    missing scripts, integrate via owned renderer + KHS-6.
-7. **#8619 SQ-2** — run the OAV experiment matrix to completion with
+4. **#8619 SQ-2** — run the OAV experiment matrix to completion with
    tightened exit conditions.
-8. **#8616 OAV-6** — quality ladder: Ditto A/B, SoulX-FlashHead,
+5. **#8616 OAV-6** — quality ladder: Ditto A/B, SoulX-FlashHead,
    LatentSync offline renders, then choose the next production recipe.
-9. **#8610 OAV epic** — close after OAV-2/5/6 and the SQ quality lanes
+6. **#8610 OAV epic** — close after OAV-2/5/6 and the SQ quality lanes
    above have receipts.
-10. **#8600 KHS-1** — Sarah inference through Khala gateway: receipts,
-    cost caps, quota fallback lanes; reconcile current production state
-    with the issue and close only with proof.
-11. **#8607 KHS-8** — in-conversation payments: card attach + pay in
-    chat, after the no-improvised-pricing/receipt path remains green.
-12. **#8543 P0.8** — launch readiness: seeded test account,
-    unattended straight-line E2E, promises/copy pass.
-13. **#8467 Khala Code Mobile-Only MVP epic** — close only after the
+7. **#8600 KHS-1** — Sarah inference through Khala gateway: receipts,
+   cost caps, quota fallback lanes; reconcile current production state
+   with the issue and close only with proof.
+8. **#8607 KHS-8** — in-conversation payments: card attach + pay in
+   chat, after the no-improvised-pricing/receipt path remains green.
+9. **#8543 P0.8** — launch readiness: seeded test account,
+   unattended straight-line E2E, promises/copy pass.
+10. **#8467 Khala Code Mobile-Only MVP epic** — close only after the
     P0.8 launch-readiness receipt and mobile MVP proof set are complete.
-14. **#8571 EN hosting** — host effectnative.org on OpenAgents cloud:
+11. **#8571 EN hosting** — host effectnative.org on OpenAgents cloud:
     Cloud Run, DNS/TLS, redeploy script.
-15. **#8595 WEB-1-EN** — fully Effect Native landing; upstream logical
+12. **#8595 WEB-1-EN** — fully Effect Native landing; upstream logical
     components instead of local React/Foldkit carryover.
-16. **#8573 EN-4** — web absorption: product routes onto the Effect
+13. **#8573 EN-4** — web absorption: product routes onto the Effect
     Native DOM renderer, deleting replaced legacy Foldkit/React.
-17. **#8597 MB-EN** — rewrite the Khala Code mobile app on Effect
+14. **#8597 MB-EN** — rewrite the Khala Code mobile app on Effect
     Native, with cross-app Khala Sync as exit proof.
-18. **#8574 EN-5** — Khala Code desktop conversion to Effect Native;
+15. **#8574 EN-5** — Khala Code desktop conversion to Effect Native;
     this is also the substrate for PY-2.
-19. **#8575 EN-6** — canvas/Verse under the Effect Native canvas
+16. **#8575 EN-6** — canvas/Verse under the Effect Native canvas
     contract; fold in the three-effect kernel and retire the Foldkit
     adapter.
-20. **#8566 EN epic** — close after the EN child issues above produce
+17. **#8566 EN epic** — close after the EN child issues above produce
     receipts and downstream surfaces are actually on the substrate.
-21. **#8578 PY-1** — extract `pylon-core` packages and delete the
+18. **#8578 PY-1** — extract `pylon-core` packages and delete the
     desktop stdout-subprocess seam.
-22. **#8579 PY-2** — Khala Code desktop becomes the Pylon cockpit
+19. **#8579 PY-2** — Khala Code desktop becomes the Pylon cockpit
     (Effect Native fleet pane: online toggle, accounts/capacity/runs/
     receipts).
-23. **#8580 PY-3** — retire the Pylon OpenTUI surface only after PY-2
+20. **#8580 PY-3** — retire the Pylon OpenTUI surface only after PY-2
     cockpit-parity receipts and owner-gated exit proof.
-24. **#8590 MH-4** — Grok Axis B worker executor + RL-1..6 probes.
-25. **#8547 CX-3** — Codex inside the Agent Computer: broker
+21. **#8547 CX-3** — Codex inside the Agent Computer: broker
     redemption, scratch `CODEX_HOME`, `codex_app_server` org-cloud proof.
-26. **#8588 MH-9** — cloud parity for Grok/Claude workers on Agent
+22. **#8588 MH-9** — cloud parity for Grok/Claude workers on Agent
     Computers; strictly after #8547 is genuinely green.
-27. **#8546 CX-2** — mobile Codex connect: phone device-auth into token
+23. **#8546 CX-2** — mobile Codex connect: phone device-auth into token
     custody and accounts UI.
-28. **#8548 CX-4** — harness/target selection UX: execution targets,
+24. **#8548 CX-4** — harness/target selection UX: execution targets,
     per-thread pill, quota-aware auto.
-29. **#8549 CX-5** — Claude account parity through the same broker and
+25. **#8549 CX-5** — Claude account parity through the same broker and
     `claude_pylon` lane.
-30. **#8550 CX-6** — Codex session continuity across ephemeral
+26. **#8550 CX-6** — Codex session continuity across ephemeral
     microVMs; thread resume survives reclaim.
-31. **#8551 CX-7** — multi-account concurrency + rotation in the
+27. **#8551 CX-7** — multi-account concurrency + rotation in the
     cloud: per-account serialization and typed queueing.
-32. **#8552 CX-8** — daily-driver ergonomics from the phone:
+28. **#8552 CX-8** — daily-driver ergonomics from the phone:
     steer/interrupt/follow-up and monorepo-scale workspaces.
-33. **#8553 CX-9** — dogfood cutover: our coding runs through Khala
+29. **#8553 CX-9** — dogfood cutover: our coding runs through Khala
     Code mobile on our own Codex.
-34. **#8558 OB-1** — Sarah sending identity + deliverability foundation:
+30. **#8558 OB-1** — Sarah sending identity + deliverability foundation:
     subdomain, auth, arming, warm-up ramp.
-35. **#8559 OB-2** — Apollo sourcing at volume into
+31. **#8559 OB-2** — Apollo sourcing at volume into
     `business_pipeline_rows`.
-36. **#8561 OB-4** — draft→approve→send loop at 100/day, batch
+32. **#8561 OB-4** — draft→approve→send loop at 100/day, batch
     approval UX, Sarah reply handling.
 
 **Rev 6.13 changes (owner directive, 2026-07-09 — SARAH BLUEPRINT MAP
