@@ -66,8 +66,8 @@ component only (the conversion unit), not the thin route file.
 | `/pylon/codex/assignments/$assignmentRef` | `-pylon-codex-assignment-status-page.tsx` | React | 108 | Public, live data (assignment status). | TODO |
 | `preview/landing` | `-landing-preview-page.tsx` | React | 127 | Internal preview route, not linked from nav. | TODO |
 | `/activity` | `-activity-page.tsx` | React | 146 | `clientOnly` in the Foldkit table (not server-admitted there either). | TODO |
-| `/download` | `-download-page.tsx` | React | 153 | Public, static-ish info page. **Good next candidate** (similar shape to khala/tassadar). | TODO — recommended next |
-| `/privacy` | `-privacy-page.tsx` | React | 172 | **Canonical public surface** (named alongside terms/stats/promises in the stage1 footer copy). Static legal prose, but rich inline formatting (bold spans, links inside paragraphs) — Effect Native's `Text` view is flat-content only, so this needs either a "paragraph with inline runs" catalog capability (file against EN-2 if missing) or a structural rework into one `Text` node per run. Convert only after `/download`-style pages prove the pattern further. | TODO |
+| `/download` | `-download-effect-native-page.tsx` | **Effect Native** | ~370 | Public, static-ish info page. Converted with typed ViewProgram (Stack/Card/Text/Link); one-click auto-onboarding remains gated. | **DONE** |
+| `/privacy` | `-privacy-effect-native-page.tsx` | **Effect Native** | 443 | **Canonical public surface**. Static legal prose converted via structural rework (one Text/Link view per run under Stack — no new catalog components). Copy preserved verbatim; PENDING OWNER / LEGAL REVIEW unchanged. | **DONE** |
 | `/clients-preview` | `-clients-preview-page.tsx` | React | 202 | Internal/preview. | TODO |
 | `/business/kpi/$engagementRef` | `-business-kpi-page.tsx` | React | 214 | Public. | TODO |
 | `/artanis/traces` | `-artanis-traces-page.tsx` | React | 215 | Public. | TODO |
@@ -154,19 +154,15 @@ until a serving-cutover plan exists (see Architecture context above).
 ## Recommendation for the next session
 
 1. Stay in `apps/start` (zero production risk) and continue down Part A in
-   the listed order: `/download` next (153 LOC, same shape as this session's
-   `/khala`/`/tassadar` conversions — static info cards, no auth, no payment,
-   no promise-registry citation), then `/pylon/codex/assignments/{ref}`,
-   `/artanis/accounts`, `/gym`, `/pylons`, `/artanis/traces`,
-   `/business/kpi/{ref}`, `/clients-preview`, `/mirrorcode` roughly in LOC
-   order.
-2. Before converting `/terms` or `/privacy`, resolve the inline-rich-text gap:
-   Effect Native's `Text` view takes flat `content: string` with no inline
-   runs (bold-within-paragraph, link-within-paragraph). The legal copy in
-   both pages relies heavily on this. File the concrete need against EN-2
-   (`#8572`) with the exact shape needed (a `TextRun`/rich-`Text` children
-   capability, or a documented "one `Text` node per run + inline `Link`
-   sequence" composition pattern) before spending conversion effort there.
+   the listed order. `/download` and `/privacy` are DONE (structural rework
+   for flat `Text` proved out on privacy). Next good candidates:
+   `/pylon/codex/assignments/{ref}`, `/artanis/accounts`, `/gym`, `/pylons`,
+   `/artanis/traces`, `/business/kpi/{ref}`, `/clients-preview`, `/mirrorcode`
+   roughly in LOC order; `/terms` can follow the same privacy structural
+   rework pattern (one Text/Link per run).
+2. `/terms` uses the same legal-prose structural rework as `/privacy` (flat
+   `Text` + Stack + Link runs). No new catalog component is required for the
+   conversion; optional EN-2 rich-text remains a polish item, not a blocker.
 3. `/promises` (`apps/start` and, later, the live Foldkit `/promises`) needs
    an explicit pass coordinated with `docs/promises/` conventions — not a
    drive-by conversion. Treat as its own small task.
