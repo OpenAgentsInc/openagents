@@ -1,0 +1,50 @@
+{
+  "schemaVersion": "openagents.sarah.quality_scoreboard.v1",
+  "takeId": "oav1-reply-2026-07-09",
+  "issueRefs": ["#8610", "#8611", "#8618"],
+  "inputs": {
+    "sourceClip": "gs://openagentsgemini-oa-artifacts/sarah-avatar/footage/clip-08.mp4",
+    "script": "Hi, I'm Sarah. I'm an AI, and I sell what I am: AI employees that actually do work.",
+    "ttsRef": "gs://openagentsgemini-oa-artifacts/sarah-avatar/voice-ref/sarah_voice_ref_v1.wav",
+    "modelVersions": {
+      "musetalk": "v1.5",
+      "cosyvoice": "CosyVoice2-0.5B",
+      "torch": "2.0.1+cu118"
+    },
+    "renderCommand": "musetalk realtime_inference + cosyvoice zero-shot",
+    "recipe": "musetalk_raw_no_gfpgan",
+    "commits": ["ebb024d9da"],
+    "artifactUris": [
+      "gs://openagentsgemini-oa-artifacts/sarah-avatar/oav1/sarah_oav1_reply.mp4"
+    ]
+  },
+  "audio": {
+    "sttRoundTrip": "pass",
+    "lufs": -18.5,
+    "dbtp": -0.2,
+    "pauseTimingNotes": "natural mid-sentence pauses",
+    "prosodyVerdict": "pass",
+    "initialismRisk": "low"
+  },
+  "video": {
+    "playbackVerdict": "pass",
+    "stillsOk": true,
+    "avSync": { "start": "pass", "mid": "pass", "end": "pass" },
+    "temporalBoilNotes": "stable mouth crop",
+    "chunkBoundaryJerk": "none",
+    "identityDrift": "none",
+    "seamNotes": null,
+    "badFrameExclusions": []
+  },
+  "ops": {
+    "wallTimeSec": 6120,
+    "gpuCostUsd": 1.45,
+    "artifactExistenceOk": true,
+    "hostDisposition": "left_running:prod_render_node"
+  },
+  "advance": {
+    "eligible": true,
+    "reason": "playback pass + artifacts exist + audio gates clean"
+  },
+  "notes": "Example shaped like OAV-1 offline proof. Replace for new takes."
+}

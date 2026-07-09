@@ -1,26 +1,47 @@
-# Effect Native gaps filed by Sarah SM-2
+# Effect Native gaps filed by Sarah (SQ-7 / #8624 · EN-2 / #8572)
 
-Sarah's voice shell currently ships as a zero-React DOM implementation under
-`apps/sarah/src/ui` while Effect Native component inventory catches up.
+Sarah's surfaces must **not** invent a parallel design system. Missing catalog
+pieces are demand for Effect Native — tracked here and in
+`docs/effect-native/DEMAND_REGISTER.md`.
 
-Demand for EN-2 (#8572) / GAPS.md:
+## Demand discipline
 
-- mic capture button with live/idle/denied states
-- audio level meter (VAD-adjacent)
-- streaming transcript list (user/assistant/modality)
-- AI disclosure banner as first-class component
-- handoff / checkout card primitives
+1. Name the real screen (public-safe).
+2. Record the gap here + in the monorepo demand register.
+3. File/update upstream `OpenAgentsInc/effect-native` GAPS / issues.
+4. Vendor only after catalog version bump + renderer conformance.
+5. Convert Sarah shell workarounds only after the component lands.
 
-Until those exist in the EN catalog, Sarah must not invent parallel React UI.
+## Active demand (SQ-7)
 
-## Filed by the AV-5 avatar surface (#8598, 2026-07-09)
+| Gap | Real screen demand | Upstream status | Notes |
+|---|---|---|---|
+| `Host` kind `media-video` | `/sarah` owned avatar WebRTC / LiveAvatar attach | [effect-native#66](https://github.com/OpenAgentsInc/effect-native/issues/66) | Host kinds today: `code-editor\|terminal\|canvas` only |
+| Streaming transcript primitive | `/sarah` partial-utterance live transcript | [effect-native#66](https://github.com/OpenAgentsInc/effect-native/issues/66) | Today: `List(pinToEnd)` + `Card` composition |
+| Mic state + audio level | `/sarah` push-to-talk / VAD UI | [effect-native#66](https://github.com/OpenAgentsInc/effect-native/issues/66) | Idle / live / denied + level |
+| Handoff / checkout / receipt cards | `/sarah` tool-effect cards | [effect-native#66](https://github.com/OpenAgentsInc/effect-native/issues/66) | Typed card intents, not free-form DOM |
+| First-contact AI disclosure banner | `/sarah` + landing first paint | [effect-native#66](https://github.com/OpenAgentsInc/effect-native/issues/66) | Must stay first-class, not ad hoc Text |
 
-- `Host` kind `media-video`: a catalog-blessed host kind for live media
-  elements (WebRTC/`<video>` attach targets). The avatar video currently
-  mounts in a sibling container outside the EN tree because the host-kind
-  set is closed (`code-editor|terminal|canvas`).
-- Streaming transcript primitive: role-tagged, auto-pinned message list with
-  live-append semantics (built today from `List(pinToEnd)` + `Card`; a typed
-  transcript component would carry chunked/partial-utterance updates).
-- Audio/level indicator (mic state, speaking state) — needed once push-to-talk
-  or level metering lands on the avatar surface.
+## Filed by AV-5 avatar surface (#8598, 2026-07-09)
+
+Historical detail (kept for provenance):
+
+- `Host` kind `media-video`: catalog-blessed host for live media elements
+  (WebRTC/`<video>`). Avatar video currently mounts in a sibling container
+  outside the EN tree.
+- Streaming transcript: role-tagged, auto-pinned, chunked/partial updates.
+- Audio/level indicator once PTT lands on the avatar surface.
+
+## Non-goals
+
+- No Sarah-local React component library.
+- No unversioned one-off primitives in monorepo vendored EN packages.
+- No closing SQ-7 until these are **filed upstream** and linked here (component
+  implementation may remain open upstream).
+
+## Links
+
+- Monorepo demand register: `docs/effect-native/DEMAND_REGISTER.md`
+- Upstream process: `OpenAgentsInc/effect-native` `GAPS.md` (catalog v25+)
+- EN-2 issue: OpenAgentsInc/openagents#8572
+- SQ-7 issue: OpenAgentsInc/openagents#8624

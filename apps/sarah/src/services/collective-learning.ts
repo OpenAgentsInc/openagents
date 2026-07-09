@@ -60,12 +60,34 @@ export type LearningCandidateKind =
   | "question_gap"
   | "objection"
   | "winning_answer"
+  // SQ-6 taxonomy expansions (distill may not yet emit all of these):
+  | "pain_phrase"
+  | "product_mapping"
+  | "bad_fit_signal"
+  | "follow_up_phrasing"
+
+/** Owner-facing taxonomy labels for the learning queue (SQ-6 / #8623). */
+export type LearningTaxonomy =
+  | "objection"
+  | "winning_answer"
+  | "pain_phrase"
+  | "product_mapping"
+  | "bad_fit_signal"
+  | "follow_up_phrasing"
 
 export type LearningCandidateStatus = "pending" | "approved" | "rejected"
 
 export type LearningCandidate = {
   id: string
   kind: LearningCandidateKind
+  /** SQ-6 review taxonomy (maps from kind; stable for operator UX). */
+  taxonomy: LearningTaxonomy
+  /** Deterministic "why this should generalize" rationale for owner review. */
+  whyGeneralize: string
+  /** Count of redacted examples after PII scrub. */
+  exampleCount: number
+  /** ISO timestamp of the newest source turn (source recency). */
+  sourceRecency: string | null
   summary: string
   /** PII-scrubbed verbatim examples; every entry passed redaction. */
   redactedExamples: string[]
@@ -81,6 +103,86 @@ export type LearningCandidate = {
   /** Approval/rejection receipt id once decided. */
   receiptId: string | null
   createdAt: string
+}
+
+/** Map storage/distill kind → operator taxonomy (SQ-6). */
+export function taxonomyForKind(kind: LearningCandidateKind): LearningTaxonomy {
+  switch (kind) {
+    case "question_gap":
+    case "pain_phrase":
+      return "pain_phrase"
+    case "objection":
+      return "objection"
+    case "winning_answer":
+      return "winning_answer"
+    case "product_mapping":
+      return "product_mapping"
+    case "bad_fit_signal":
+      return "bad_fit_signal"
+    case "follow_up_phrasing":
+      return "follow_up_phrasing"
+    default:
+      return "pain_phrase"
+  }
+}
+
+/** Deterministic generalization rationale shown to the owner at review time. */
+export function buildWhyGeneralize(input: {
+  kind: LearningCandidateKind
+  prospectCount: number
+  summary: string
+}): string {
+  const tax = taxonomyForKind(input.kind)
+  return (
+    `Taxonomy=${tax}; observed across ${input.prospectCount} prospect(s). ` +
+    `Generalize only if the redacted examples share the same intent without ` +
+    `prospect-specific facts. Candidate: ${clip(input.summary, 160)}`
+  )
+}
+
+/** Newest source-turn timestamp (ISO), or null when unknown. */
+export function computeSourceRecency(
+  turns: ReadonlyArray<{ recordedAt: string }>,
+): string | null {
+  if (turns.length === 0) return null
+  return turns
+    .map((t) => t.recordedAt)
+    .filter(Boolean)
+    .sort()
+    .at(-1) ?? null
+}
+
+/**
+ * True when a newly approved answer would materially change style vs an
+ * existing bank answer for the same normalized question (SQ-6 regression gate).
+ */
+export function isMaterialStyleChange(
+  existingAnswer: string | null | undefined,
+  newAnswer: string,
+): boolean {
+  if (!existingAnswer) return true
+  const a = normalizeLearningText(existingAnswer)
+  const b = normalizeLearningText(newAnswer)
+  if (a === b) return false
+  // >30% token edit distance proxy: different length band or low overlap
+  const aTok = new Set(a.split(" ").filter(Boolean))
+  const bTok = new Set(b.split(" ").filter(Boolean))
+  if (aTok.size === 0 || bTok.size === 0) return true
+  let inter = 0
+  for (const t of aTok) if (bTok.has(t)) inter += 1
+  const overlap = inter / Math.max(aTok.size, bTok.size)
+  return overlap < 0.7
+}
+
+export type LearningRegressionFixture = {
+  schema: "sarah.learning_style_regression.v1"
+  createdAt: string
+  candidateId: string
+  receiptId: string
+  questionCanonical: string
+  previousAnswer: string | null
+  newAnswer: string
+  reason: string
 }
 
 export type LearningReceipt = {
@@ -272,6 +374,11 @@ async function ensureLearningSchema(): Promise<boolean> {
           receipt_id TEXT,
           created_at TIMESTAMPTZ NOT NULL DEFAULT now()
         )`
+      // SQ-6 review ergonomics columns (additive; fail-soft if already present)
+      await sql`ALTER TABLE sarah_learning_candidates ADD COLUMN IF NOT EXISTS taxonomy TEXT`
+      await sql`ALTER TABLE sarah_learning_candidates ADD COLUMN IF NOT EXISTS why_generalize TEXT`
+      await sql`ALTER TABLE sarah_learning_candidates ADD COLUMN IF NOT EXISTS example_count INTEGER`
+      await sql`ALTER TABLE sarah_learning_candidates ADD COLUMN IF NOT EXISTS source_recency TIMESTAMPTZ`
       await sql`
         CREATE TABLE IF NOT EXISTS sarah_learning_receipts (
           id TEXT PRIMARY KEY,
@@ -300,11 +407,36 @@ function rowToCandidate(row: Record<string, unknown>): LearningCandidate {
       : value instanceof Date
         ? value.toISOString()
         : String(value)
+  const kind = String(row.kind) as LearningCandidateKind
+  const redactedExamples = jsonArray(row.redacted_examples)
+  const summary = String(row.summary)
+  const taxonomy =
+    row.taxonomy == null
+      ? taxonomyForKind(kind)
+      : (String(row.taxonomy) as LearningTaxonomy)
+  const exampleCount =
+    row.example_count == null
+      ? redactedExamples.length
+      : Number(row.example_count)
   return {
     id: String(row.id),
-    kind: String(row.kind) as LearningCandidateKind,
-    summary: String(row.summary),
-    redactedExamples: jsonArray(row.redacted_examples),
+    kind,
+    taxonomy,
+    whyGeneralize:
+      row.why_generalize == null
+        ? buildWhyGeneralize({
+            kind,
+            prospectCount: Math.max(2, redactedExamples.length),
+            summary,
+          })
+        : String(row.why_generalize),
+    exampleCount: Number.isFinite(exampleCount)
+      ? exampleCount
+      : redactedExamples.length,
+    sourceRecency:
+      row.source_recency == null ? null : iso(row.source_recency),
+    summary,
+    redactedExamples,
     sourceTurnIds: jsonArray(row.source_turn_ids),
     questionCanonical:
       row.question_canonical == null ? null : String(row.question_canonical),
@@ -331,10 +463,14 @@ async function insertCandidateIfNew(
   const inserted = await readSarahStore(async (sql) => {
     const rows = (await sql`
       INSERT INTO sarah_learning_candidates
-        (id, kind, summary, redacted_examples, source_turn_ids,
+        (id, kind, taxonomy, why_generalize, example_count, source_recency,
+         summary, redacted_examples, source_turn_ids,
          question_canonical, proposed_answer, status)
       VALUES
-        (${candidate.id}, ${candidate.kind}, ${candidate.summary},
+        (${candidate.id}, ${candidate.kind}, ${candidate.taxonomy},
+         ${candidate.whyGeneralize}, ${candidate.exampleCount},
+         ${candidate.sourceRecency},
+         ${candidate.summary},
          ${candidate.redactedExamples}, ${candidate.sourceTurnIds},
          ${candidate.questionCanonical}, ${candidate.proposedAnswer},
          ${candidate.status})
@@ -528,13 +664,24 @@ function buildGroupCandidate(
     kind === "question_gap"
       ? `Recurring prospect question (${prospects.size} prospects): ${representative.redacted}`
       : `Recurring objection (${prospects.size} prospects): ${representative.redacted}`
+  const redactedExamples = group.members
+    .slice(0, MAX_EXAMPLES_PER_CANDIDATE)
+    .map((m) => m.redacted)
   return {
     id: candidateId(kind, representative.normalized),
     kind,
+    taxonomy: taxonomyForKind(kind),
+    whyGeneralize: buildWhyGeneralize({
+      kind,
+      prospectCount: prospects.size,
+      summary,
+    }),
+    exampleCount: redactedExamples.length,
+    sourceRecency: computeSourceRecency(
+      group.members.map((m) => m.turn),
+    ),
     summary: clip(summary, 300),
-    redactedExamples: group.members
-      .slice(0, MAX_EXAMPLES_PER_CANDIDATE)
-      .map((m) => m.redacted),
+    redactedExamples,
     sourceTurnIds: group.members.map((m) => m.turn.id),
     questionCanonical:
       kind === "question_gap" ? representative.redacted : null,
@@ -641,10 +788,19 @@ export async function distillLearningCandidates(): Promise<DistillResult> {
       if (!redactedQ || !redactedA) continue
       const normalized = normalizeLearningText(redactedQ)
       if (bankNormalized.has(normalized)) continue
+      const summary = clip(`Winning answer to: ${redactedQ}`, 300)
       const candidate: LearningCandidate = {
         id: candidateId("winning_answer", normalized),
         kind: "winning_answer",
-        summary: clip(`Winning answer to: ${redactedQ}`, 300),
+        taxonomy: taxonomyForKind("winning_answer"),
+        whyGeneralize: buildWhyGeneralize({
+          kind: "winning_answer",
+          prospectCount: 1,
+          summary,
+        }),
+        exampleCount: 2,
+        sourceRecency: computeSourceRecency([q, a, ack]),
+        summary,
         redactedExamples: [redactedQ, redactedA],
         sourceTurnIds: [q.id, a.id, ack.id],
         questionCanonical: redactedQ,
@@ -677,8 +833,21 @@ export type ApproveResult =
       candidate: LearningCandidate
       receipt: LearningReceipt
       bankEntryId: string | null
+      /** SQ-6: set when the approval materially changes answer style. */
+      regressionFixture: LearningRegressionFixture | null
     }
   | { ok: false; error: string }
+
+/** In-memory regression fixtures for tests / ops (not a serve path). */
+const memoryRegressionFixtures: LearningRegressionFixture[] = []
+
+export function listLearningRegressionFixtures(): LearningRegressionFixture[] {
+  return [...memoryRegressionFixtures]
+}
+
+export function __resetLearningRegressionFixturesForTest(): void {
+  memoryRegressionFixtures.length = 0
+}
 
 function newReceiptId(): string {
   return `lr_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`
@@ -730,7 +899,29 @@ export async function approveLearningCandidate(input: {
     return { ok: false, error: "store_write_failed" }
   }
 
+  let regressionFixture: LearningRegressionFixture | null = null
   if (publishToBank && bankEntryId) {
+    const bank = await listSarahAnswerBank()
+    const prior = bank.find(
+      (e) =>
+        normalizeLearningText(e.questionCanonical) ===
+        normalizeLearningText(candidate.questionCanonical!),
+    )
+    const previousAnswer = prior?.answer ?? null
+    if (isMaterialStyleChange(previousAnswer, answer!)) {
+      regressionFixture = {
+        schema: "sarah.learning_style_regression.v1",
+        createdAt: decided.decidedAt!,
+        candidateId: candidate.id,
+        receiptId,
+        questionCanonical: candidate.questionCanonical!,
+        previousAnswer,
+        newAnswer: answer!,
+        reason:
+          "Approved learning materially changes answer style for this question; keep as regression fixture.",
+      }
+      memoryRegressionFixtures.push(regressionFixture)
+    }
     await addApprovedSarahAnswer({
       id: bankEntryId,
       questionCanonical: candidate.questionCanonical!,
@@ -739,7 +930,13 @@ export async function approveLearningCandidate(input: {
     })
   }
 
-  return { ok: true, candidate: decided, receipt, bankEntryId }
+  return {
+    ok: true,
+    candidate: decided,
+    receipt,
+    bankEntryId,
+    regressionFixture,
+  }
 }
 
 export async function rejectLearningCandidate(input: {
@@ -774,7 +971,13 @@ export async function rejectLearningCandidate(input: {
   if (!(await writeDecision(decided, receipt))) {
     return { ok: false, error: "store_write_failed" }
   }
-  return { ok: true, candidate: decided, receipt, bankEntryId: null }
+  return {
+    ok: true,
+    candidate: decided,
+    receipt,
+    bankEntryId: null,
+    regressionFixture: null,
+  }
 }
 
 // ---------------------------------------------------------------------------

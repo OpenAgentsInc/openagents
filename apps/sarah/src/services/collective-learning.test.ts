@@ -23,20 +23,26 @@
 import { afterEach, beforeAll, afterAll, describe, expect, test } from "bun:test"
 
 import {
+  __resetLearningRegressionFixturesForTest,
   __resetSarahCollectiveLearningForTest,
   __setSarahLearningTurnsForTest,
   approveLearningCandidate,
+  buildWhyGeneralize,
+  computeSourceRecency,
   distillLearningCandidates,
+  isMaterialStyleChange,
   learningReceiptRef,
   listApprovedLearnings,
   listLearningCandidates,
   listLearningReceipts,
+  listLearningRegressionFixtures,
   looksLikeObjection,
   looksLikeQuestion,
   normalizeLearningText,
   redactLearningExample,
   rejectLearningCandidate,
   sarahLearningStoreMode,
+  taxonomyForKind,
   type LearningTurnRow,
 } from "./collective-learning.ts"
 import {
@@ -72,6 +78,7 @@ afterAll(() => {
 afterEach(() => {
   __resetSarahCollectiveLearningForTest()
   __resetSarahAnswerCacheForTest()
+  __resetLearningRegressionFixturesForTest()
   delete process.env.SARAH_OPERATOR_ADMIN_TOKEN
   delete process.env.OPENAGENTS_ADMIN_API_TOKEN
 })
@@ -513,5 +520,121 @@ describe("contract sarah.collective_learning_owner_gated.v1 — admin guard on t
         )
       ).status,
     ).toBe(409)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// SQ-6 / #8623 — learning-queue review ergonomics
+// ---------------------------------------------------------------------------
+
+describe("SQ-6 learning-queue review ergonomics (#8623)", () => {
+  test("taxonomy maps kinds for owner review", () => {
+    expect(taxonomyForKind("question_gap")).toBe("pain_phrase")
+    expect(taxonomyForKind("objection")).toBe("objection")
+    expect(taxonomyForKind("winning_answer")).toBe("winning_answer")
+  })
+
+  test("whyGeneralize is deterministic and non-empty", () => {
+    const why = buildWhyGeneralize({
+      kind: "objection",
+      prospectCount: 3,
+      summary: "too expensive for us",
+    })
+    expect(why).toContain("Taxonomy=objection")
+    expect(why).toContain("3 prospect")
+  })
+
+  test("sourceRecency picks newest turn", () => {
+    expect(
+      computeSourceRecency([
+        { recordedAt: "2026-07-01T00:00:00.000Z" },
+        { recordedAt: "2026-07-09T12:00:00.000Z" },
+        { recordedAt: "2026-07-05T00:00:00.000Z" },
+      ]),
+    ).toBe("2026-07-09T12:00:00.000Z")
+  })
+
+  test("material style change detects low token overlap", () => {
+    expect(isMaterialStyleChange(null, "new answer")).toBe(true)
+    expect(
+      isMaterialStyleChange(
+        "We help teams ship coding agents from their phone.",
+        "We help teams ship coding agents from their phone.",
+      ),
+    ).toBe(false)
+    expect(
+      isMaterialStyleChange(
+        "We help teams ship coding agents from their phone.",
+        "Totally different enterprise consulting pitch with MSA language.",
+      ),
+    ).toBe(true)
+  })
+
+  test("distilled candidates carry taxonomy, whyGeneralize, exampleCount", async () => {
+    // Identical text across prospects so exact-normalized grouping works when
+    // the embedder is unarmed in hermetic tests.
+    __setSarahAnswerBankForTest([])
+    __setSarahLearningTurnsForTest([
+      turn(
+        "prospect:a",
+        "user",
+        "Honestly this feels too risky for our compliance team.",
+      ),
+      turn(
+        "prospect:b",
+        "user",
+        "Honestly this feels too risky for our compliance team.",
+      ),
+    ])
+    await distillLearningCandidates()
+    const pending = await listLearningCandidates("pending")
+    const objection = pending.find((c) => c.kind === "objection")
+    expect(objection).toBeDefined()
+    expect(objection!.taxonomy).toBe("objection")
+    expect(objection!.whyGeneralize.length).toBeGreaterThan(20)
+    expect(objection!.exampleCount).toBeGreaterThanOrEqual(2)
+    expect(objection!.sourceRecency).not.toBeNull()
+  })
+
+  test("approve of material style change records regression fixture", async () => {
+    __setSarahAnswerBankForTest([])
+    __setSarahLearningTurnsForTest([
+      turn("prospect:a", "user", "How do agents report their work back to us?"),
+      turn(
+        "prospect:a",
+        "assistant",
+        "Every agent action produces a signed receipt you can audit in the dashboard, with full traceability.",
+      ),
+      turn("prospect:a", "user", "That makes sense, thanks!"),
+    ])
+    await distillLearningCandidates()
+    const pending = await listLearningCandidates("pending")
+    const win = pending.find((c) => c.kind === "winning_answer")
+    expect(win).toBeDefined()
+    // Inject a prior bank answer with different style for the same question
+    // AFTER distill so the candidate is still created.
+    __setSarahAnswerBankForTest([
+      {
+        id: "seed_style",
+        questionCanonical: win!.questionCanonical!,
+        answer:
+          "Totally different enterprise consulting pitch with MSA language only.",
+        approvedBy: "seed",
+        minSimilarity: null,
+        embedding: null,
+      },
+    ])
+    const result = await approveLearningCandidate({
+      id: win!.id,
+      by: "owner@openagents.com",
+    })
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.regressionFixture).not.toBeNull()
+      expect(result.regressionFixture!.schema).toBe(
+        "sarah.learning_style_regression.v1",
+      )
+    }
+    expect(listLearningRegressionFixtures().length).toBe(1)
   })
 })
