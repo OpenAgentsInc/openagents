@@ -7,12 +7,14 @@ rendering; the coverage test in
 doc drifts from the registry, if an enforced contract loses its oracle, or if
 an oracle file drops its contract reference.
 
-Lane: KHS-3 (#8602) + KHS-4 (#8603), epic #8599 (Sarah × Khala). The
-isolation law landed BEFORE any shared learning ("isolation before
-generalization"): KHS-3 enforced the cross-prospect oracles first, and KHS-4
-then shipped the owner-approved collective-learning queue behind them —
+Lane: KHS-3 (#8602) + KHS-4 (#8603) + KHS-5 (#8604), epic #8599 (Sarah ×
+Khala). The isolation law landed BEFORE any shared learning ("isolation
+before generalization"): KHS-3 enforced the cross-prospect oracles first,
+KHS-4 then shipped the owner-approved collective-learning queue behind them —
 flipping `sarah.collective_learning_owner_gated.v1` from pending to enforced
-in the same change that added the first shared-knowledge read path.
+in the same change that added the first shared-knowledge read path — and
+KHS-5 moved Sarah's knowledge itself onto a typed, versioned Blueprint with
+per-fact provenance (`sarah.blueprint_versioned_provenance.v1`).
 
 ## Where the statements come from
 
@@ -28,6 +30,11 @@ in the same change that added the first shared-knowledge read path.
   2026-07-07; `apps/sarah/INVARIANTS.md`) and is registered here so the
   already-existing deterministic pricing guard is bound to the same registry
   discipline.
+- `sarah.blueprint_versioned_provenance.v1` records the owner's directive
+  verbatim ("I want her to have that Blueprint of her own" — owner, spoken to
+  Sarah in production, 2026-07-09, relayed in epic #8599): her knowledge is a
+  typed object with per-fact provenance and receipted revisions, not a flat
+  pasted document.
 
 ## How collective learning is gated (KHS-4, #8603)
 
@@ -63,19 +70,26 @@ entries. This is an internal owner-approved store; it makes no public
 - `apps/sarah/src/services/account-link.test.ts` — the KHS-7 (#8606)
   account-link seam units: contact-row shape, single never-pushy prompt line,
   test-mode session parsing, anonymous fast path.
+- `apps/sarah/src/services/sarah-blueprint.test.ts` — the KHS-5 (#8604)
+  blueprint oracles: seed→compile roundtrip stability (the KB doc IS the
+  compiled output), revision immutability (retire ≠ delete), provenance
+  required on every fact (including the `learning_receipt:<id>` promotion
+  seam from KHS-4), flag-off rollout safety, admin guard fail-closed + a full
+  HTTP revision cycle.
 - All run in `bun test` inside `apps/sarah`, in the `apps/sarah` `oracle`
   chain, and in the repo `test:sarah` sweep before pushes to main.
 
 ## Pending entries (blocker-gated, never claim as guaranteed)
 
 None. `sarah.collective_learning_owner_gated.v1` flipped pending → enforced
-with KHS-4 (#8603); all five registered contracts (including the KHS-7
-`sarah.in_chat_account_linking.v1` account-link seam, #8606) are enforced in
-the test sweep.
+with KHS-4 (#8603); all six registered contracts (including the KHS-7
+`sarah.in_chat_account_linking.v1` account-link seam, #8606, and the KHS-5
+`sarah.blueprint_versioned_provenance.v1` knowledge object, #8604) are
+enforced in the test sweep.
 
 ## Registry
 
-Registry version: `2026-07-09.3` (schema `openagents.behavior_contracts.v1`)
+Registry version: `2026-07-09.4` (schema `openagents.behavior_contracts.v1`)
 
 ### `sarah.cross_prospect_isolation.v1` — ENFORCED
 
@@ -133,3 +147,16 @@ Registry version: `2026-07-09.3` (schema `openagents.behavior_contracts.v1`)
 - **Oracle** `account_link_seam.unit` (bun-test, unit): Link seam units: the pure contact-row shape (oa_user: prefix, account_link mode), the single account-awareness prompt line (may suggest once, never pushy, null when the store cannot persist a link so Sarah never pitches a link that would not stick), test-mode session parsing, and the no-oa_access-cookie anonymous fast path. — `apps/sarah/src/services/account-link.test.ts`
 - **Verification:** bun test src/server.test.ts and src/services/account-link.test.ts inside apps/sarah; runs in the package test glob, the apps/sarah oracle chain, and the repo test:sarah sweep before pushes to main.
 - **Authority boundary:** This contract binds the account-linking seam only (KHS-7, #8606): the openagents.com API remains the identity and credit authority; sign-in happens on the existing /login + OpenAuth rails (apps/sarah never touches password/OAuth internals and never mints sessions); identity for a link comes ONLY from the first-party session cookie verified against GET /api/auth/session, never from a request body; and the linked identity (user ref + email) lands only in sarah_prospect_contacts. The payment half of the owner's directive (attaching a card, paying in-chat) is KHS-8 (epic #8599) and must gain its own contract when it lands.
+
+### `sarah.blueprint_versioned_provenance.v1` — ENFORCED
+
+- **Surface:** sarah (knowledge object + persona compilation)
+- **Stated by:** owner via sarah-production-conversation on 2026-07-09
+- **Statement:** I want her to have that Blueprint of her own
+- **Enforcement tier:** test-sweep
+- **Oracle** `blueprint_compile_roundtrip.unit` (bun-test, unit): Seed → compile roundtrip stability: the checked-in seed loads as revision 1 with typed facts in every section; the committed KB doc is byte-identical to the compiled blueprint output (generated, not hand-edited); parse→render→parse is a fixpoint; and the compiled system prompt preserves Section A ordering (identity → engine → hard rules → knowledge). — `apps/sarah/src/services/sarah-blueprint.test.ts`
+- **Oracle** `blueprint_revision_immutability.unit` (bun-test, unit): Revision immutability: adding and retiring facts each create a new receipted revision (changed_by + change_note); the retired fact row remains with revision_retired stamped — never deleted — while leaving the compiled surfaces; retiring twice is a conflict; every fact references the revision that added it. — `apps/sarah/src/services/sarah-blueprint.test.ts`
+- **Oracle** `blueprint_provenance_required.unit` (bun-test, unit): Provenance required on every fact: all seed facts carry owner_kb_v2 with ref + timestamp; adds with an empty or unknown source (or no change note, or an invalid section) are rejected; typed pricing facts carry dealRuleRefs into the deal-rule config and product facts carry promiseIds into the public registry; an approved winning_answer learning promotes to a playbook fact whose provenance source is the KHS-4 approval receipt ref (learning_receipt:<id>), and pending candidates cannot be promoted. — `apps/sarah/src/services/sarah-blueprint.test.ts`
+- **Oracle** `blueprint_admin_guard.rpc` (bun-test, rpc): Safe rollout + fail-closed guard: with SARAH_BLUEPRINT unset the file-based instructions path is unchanged (no compiled sections leak in); armed, the compiled blueprint leads while the tool protocol stays; the operator endpoints are admin-bearer-guarded (unarmed → 503, missing/wrong bearer → 401 with nothing written) and a full receipted revision cycle (add → retire → read back) works only with the exact bearer. — `apps/sarah/src/services/sarah-blueprint.test.ts`
+- **Verification:** bun test src/services/sarah-blueprint.test.ts inside apps/sarah; runs in the package test glob, the apps/sarah oracle chain, and the repo test:sarah sweep before pushes to main.
+- **Authority boundary:** This contract binds Sarah's knowledge object (KHS-5, #8604): her persona/playbook/knowledge live in a typed Blueprint — facts with per-fact provenance ({source, ref, at}; owner_kb_v2 | owner_directive | promise_registry | deal_rules | learning_receipt:<id>), versioned revisions (retire is a new revision, never a delete), and admin-guarded operator writes with a change note. The KB doc is GENERATED from the blueprint (render-kb-from-blueprint.ts), not hand-edited. Consumption is flag-armed (SARAH_BLUEPRINT=1); flag-off keeps the file-based path unchanged. It grants no authority: deal-rules code remains the only pricing authority and the openagents.com API the system of record — blueprint facts inform language, never prices.

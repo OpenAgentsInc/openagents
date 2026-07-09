@@ -269,7 +269,68 @@ export const sarahIsolationContractRegistry: BehaviorContractRegistryDocument = 
       verification:
         "bun test src/server.test.ts and src/services/account-link.test.ts inside apps/sarah; runs in the package test glob, the apps/sarah oracle chain, and the repo test:sarah sweep before pushes to main.",
     },
+    {
+      authorityBoundary:
+        "This contract binds Sarah's knowledge object (KHS-5, #8604): her persona/playbook/knowledge live in a typed Blueprint — facts with per-fact provenance ({source, ref, at}; owner_kb_v2 | owner_directive | promise_registry | deal_rules | learning_receipt:<id>), versioned revisions (retire is a new revision, never a delete), and admin-guarded operator writes with a change note. The KB doc is GENERATED from the blueprint (render-kb-from-blueprint.ts), not hand-edited. Consumption is flag-armed (SARAH_BLUEPRINT=1); flag-off keeps the file-based path unchanged. It grants no authority: deal-rules code remains the only pricing authority and the openagents.com API the system of record — blueprint facts inform language, never prices.",
+      blockerRefs: [],
+      contractId: "sarah.blueprint_versioned_provenance.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "apps/sarah/src/services/sarah-blueprint.ts",
+        "apps/sarah/config/blueprint-seed.json",
+        "apps/sarah/scripts/render-kb-from-blueprint.ts",
+        "docs/sarah/SARAH_KNOWLEDGE_BASE.md",
+        "docs/fable/2026-07-09-sarah-khala-connection-assessment.md",
+        "issue:#8604",
+        "issue:#8599",
+      ],
+      oracles: [
+        {
+          description:
+            "Seed → compile roundtrip stability: the checked-in seed loads as revision 1 with typed facts in every section; the committed KB doc is byte-identical to the compiled blueprint output (generated, not hand-edited); parse→render→parse is a fixpoint; and the compiled system prompt preserves Section A ordering (identity → engine → hard rules → knowledge).",
+          id: "blueprint_compile_roundtrip.unit",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/sarah/src/services/sarah-blueprint.test.ts",
+        },
+        {
+          description:
+            "Revision immutability: adding and retiring facts each create a new receipted revision (changed_by + change_note); the retired fact row remains with revision_retired stamped — never deleted — while leaving the compiled surfaces; retiring twice is a conflict; every fact references the revision that added it.",
+          id: "blueprint_revision_immutability.unit",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/sarah/src/services/sarah-blueprint.test.ts",
+        },
+        {
+          description:
+            "Provenance required on every fact: all seed facts carry owner_kb_v2 with ref + timestamp; adds with an empty or unknown source (or no change note, or an invalid section) are rejected; typed pricing facts carry dealRuleRefs into the deal-rule config and product facts carry promiseIds into the public registry; an approved winning_answer learning promotes to a playbook fact whose provenance source is the KHS-4 approval receipt ref (learning_receipt:<id>), and pending candidates cannot be promoted.",
+          id: "blueprint_provenance_required.unit",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/sarah/src/services/sarah-blueprint.test.ts",
+        },
+        {
+          description:
+            "Safe rollout + fail-closed guard: with SARAH_BLUEPRINT unset the file-based instructions path is unchanged (no compiled sections leak in); armed, the compiled blueprint leads while the tool protocol stays; the operator endpoints are admin-bearer-guarded (unarmed → 503, missing/wrong bearer → 401 with nothing written) and a full receipted revision cycle (add → retire → read back) works only with the exact bearer.",
+          id: "blueprint_admin_guard.rpc",
+          kind: "bun-test",
+          mode: "rpc",
+          ref: "apps/sarah/src/services/sarah-blueprint.test.ts",
+        },
+      ],
+      productArea: "knowledge object + persona compilation",
+      source: {
+        channel: "sarah-production-conversation",
+        statedBy: "owner",
+        statedOn: "2026-07-09",
+      },
+      state: "enforced",
+      statement: "I want her to have that Blueprint of her own",
+      surface: "sarah",
+      verification:
+        "bun test src/services/sarah-blueprint.test.ts inside apps/sarah; runs in the package test glob, the apps/sarah oracle chain, and the repo test:sarah sweep before pushes to main.",
+    },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-09.3",
+  version: "2026-07-09.4",
 }

@@ -43,6 +43,14 @@ import {
 } from "./services/collective-learning.ts"
 import { sarahTurnStoreStatus } from "./services/turn-store.ts"
 import {
+  addSarahBlueprintFact,
+  loadSarahBlueprint,
+  promoteLearningToBlueprintFact,
+  retireSarahBlueprintFact,
+  sarahBlueprintStatus,
+  type BlueprintFactFormat,
+} from "./services/sarah-blueprint.ts"
+import {
   getSarahAccountLinkStatus,
   linkSarahProspectAccount,
   resolveOpenAgentsSession,
@@ -288,6 +296,117 @@ async function handleOperatorLearning(
   return json({ error: "not_found", path: apiPath }, { status: 404 })
 }
 
+/**
+ * KHS-5 (#8604) Sarah's Blueprint operator endpoints. Same fail-closed admin
+ * posture as the KHS-4 learning routes: unarmed → 503, wrong bearer → 401.
+ * Every write goes through a receipted revision (add/retire with a change
+ * note); retiring never deletes. The KHS-4 seam: POST .../promote turns an
+ * owner-APPROVED winning_answer learning into a playbook fact whose
+ * provenance is the approval receipt (learning_receipt:<id>).
+ */
+async function handleOperatorBlueprint(
+  request: Request,
+  apiPath: string,
+): Promise<Response> {
+  const denied = checkOperatorAdmin(request)
+  if (denied) return denied
+
+  if (apiPath === "/api/operator/blueprint" && request.method === "GET") {
+    const blueprint = await loadSarahBlueprint()
+    return json({ ...blueprint, status: sarahBlueprintStatus() })
+  }
+  if (
+    apiPath === "/api/operator/blueprint/facts" &&
+    request.method === "POST"
+  ) {
+    const body = (await request.json().catch(() => ({}))) as {
+      action?: string
+      factId?: string
+      section?: string
+      statement?: string
+      heading?: string
+      format?: string
+      source?: string
+      ref?: string
+      dealRuleRefs?: unknown
+      promiseIds?: unknown
+      by?: string
+      changeNote?: string
+    }
+    const by = typeof body.by === "string" && body.by.trim() ? body.by : "owner"
+    const changeNote =
+      typeof body.changeNote === "string" ? body.changeNote : ""
+    const stringArray = (value: unknown): string[] =>
+      Array.isArray(value) ? value.filter((v) => typeof v === "string") : []
+    const result =
+      body.action === "retire"
+        ? await retireSarahBlueprintFact({
+            factId: typeof body.factId === "string" ? body.factId : "",
+            by,
+            changeNote,
+          })
+        : await addSarahBlueprintFact({
+            section: typeof body.section === "string" ? body.section : "",
+            statement:
+              typeof body.statement === "string" ? body.statement : "",
+            heading: typeof body.heading === "string" ? body.heading : null,
+            format:
+              typeof body.format === "string"
+                ? (body.format as BlueprintFactFormat)
+                : undefined,
+            source:
+              typeof body.source === "string" ? body.source : "owner_directive",
+            ref: typeof body.ref === "string" ? body.ref : null,
+            dealRuleRefs: stringArray(body.dealRuleRefs),
+            promiseIds: stringArray(body.promiseIds),
+            by,
+            changeNote,
+          })
+    if (!result.ok) {
+      const status =
+        result.error === "fact_not_found"
+          ? 404
+          : result.error === "already_retired" ||
+              result.error === "fact_already_exists"
+            ? 409
+            : result.error === "store_write_failed" ||
+                result.error === "blueprint_store_unavailable"
+              ? 503
+              : 400
+      return json({ error: { code: result.error } }, { status })
+    }
+    return json(result)
+  }
+  if (
+    apiPath === "/api/operator/blueprint/promote" &&
+    request.method === "POST"
+  ) {
+    const body = (await request.json().catch(() => ({}))) as {
+      candidateId?: string
+      by?: string
+      changeNote?: string
+    }
+    const result = await promoteLearningToBlueprintFact({
+      candidateId: typeof body.candidateId === "string" ? body.candidateId : "",
+      by:
+        typeof body.by === "string" && body.by.trim() ? body.by : "owner",
+      changeNote:
+        typeof body.changeNote === "string" ? body.changeNote : undefined,
+    })
+    if (!result.ok) {
+      const status =
+        result.error === "approved_candidate_not_found"
+          ? 404
+          : result.error === "fact_already_exists"
+            ? 409
+            : 400
+      return json({ error: { code: result.error } }, { status })
+    }
+    return json(result)
+  }
+  return json({ error: "not_found", path: apiPath }, { status: 404 })
+}
+
 async function handleOperatorOps(): Promise<Response> {
   return json({
     service: "apps/sarah",
@@ -299,6 +418,7 @@ async function handleOperatorOps(): Promise<Response> {
     turnStore: sarahTurnStoreStatus(),
     answerCache: sarahAnswerCacheStatus(),
     collectiveLearning: sarahCollectiveLearningStatus(),
+    blueprint: sarahBlueprintStatus(),
     modelPath:
       sarahInferenceTransport() === "khala_gateway"
         ? `khala_gateway_live:${sarahActiveModelId()}`
@@ -568,6 +688,12 @@ export async function handleSarahRequest(request: Request): Promise<Response> {
     apiPath.startsWith("/api/operator/learning/")
   ) {
     return handleOperatorLearning(request, apiPath)
+  }
+  if (
+    apiPath === "/api/operator/blueprint" ||
+    apiPath.startsWith("/api/operator/blueprint/")
+  ) {
+    return handleOperatorBlueprint(request, apiPath)
   }
   if (apiPath === "/api/operator/ops" && request.method === "GET") {
     return handleOperatorOps()

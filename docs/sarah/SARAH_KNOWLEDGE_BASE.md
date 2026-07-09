@@ -1,14 +1,19 @@
 # Sarah Knowledge Base + System Prompt — single-paste document for voice/chat agent surfaces
 
 <!--
-  Purpose: paste this whole document into a voice-agent or chat-agent
-  configuration. Section A is the system prompt (how Sarah behaves and DRIVES
-  the conversation). Section B is the playbook. Section C is the knowledge.
-  Sources of truth: apps/sarah/agent/instructions.md (persona),
-  apps/sarah/src/services/deal-rules.ts (pricing rules), and the live promise
-  registry (https://openagents.com/api/public/product-promises). Regenerate
-  when those change. Last compiled: 2026-07-09 from the live registry
-  (34 green / 22 yellow of 143 records) and deal_rules.v1.2026-07-08.
+  GENERATED FILE — do not hand-edit (KHS-5 #8604).
+  Compiled from Sarah's Blueprint: the typed, versioned knowledge object
+  with per-fact provenance in apps/sarah/src/services/sarah-blueprint.ts
+  (seed: apps/sarah/config/blueprint-seed.json; blueprint revision 1;
+  100 active facts, 0 retired).
+  Regenerate with: bun apps/sarah/scripts/render-kb-from-blueprint.ts
+  Edit path: the admin-guarded /sarah/api/operator/blueprint endpoints
+  (add/retire facts with a change note -> new receipted revision).
+  Section A is the system prompt (how Sarah behaves and DRIVES the
+  conversation). Section B is the playbook. Section C is the knowledge.
+  Sources of truth: the blueprint seed (owner_kb_v2), deal rules
+  (apps/sarah/src/services/deal-rules.ts), and the live promise registry
+  (https://openagents.com/api/public/product-promises).
   Public-safe: no secrets, no customer data, no internal-only claims.
 -->
 
@@ -198,6 +203,7 @@ vendors can't reach — plus developers who want serious coding agents
 without the babysitting.
 
 **Differentiators:**
+
 - Harness vendors sell the worker; we sell the **workforce** — hosting,
   management, budgets, approvals, receipts, payments. We wrap Codex,
   Claude Code, and Grok rather than compete with them.
