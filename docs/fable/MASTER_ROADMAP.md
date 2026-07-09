@@ -1,12 +1,32 @@
 # MASTER ROADMAP — Khala Code MVP (Tested, Submitted) → Sarah → Codex → AI Employees → the Suite
 
-Date: 2026-07-09 (rev 6.10 — Sarah gets a face: LiveAvatar surface on Effect Native, epic #8598)
+Date: 2026-07-09 (rev 6.11 — KHS: Sarah × Khala lane family filed, #8599)
 Status: **the single consolidated execution roadmap.** This document owns
 top-level sequencing across everything designed in the 2026-07-07 strategy
 set and its predecessors. The source docs remain authoritative for their
 *content* (specs, evidence, arguments); when sequencing here and sequencing
 there disagree, **this document wins**, and new issues are filed against the
 phase lanes named here.
+
+**Rev 6.11 changes (owner directive, 2026-07-09 — SARAH × KHALA, KHS
+lane family):** spoken to Sarah herself in her own production surface and
+executed the same night. Epic **#8599**, lanes **KHS-1..9 (#8600–#8608)**,
+grounded in `2026-07-09-sarah-khala-connection-assessment.md`: gateway
+inference migration first (the owner's own session — 54 persisted turns —
+was degraded by a per-VAD-fragment 429 quota storm on the raw key; an
+interim per-model fallback chain shipped same night), then prospect
+memory ("she learns the user she's talking to"), the cross-prospect
+isolation law BEFORE owner-approved collective learning (the admin
+approval queue for anything she learns generally), Sarah's own Blueprint
+(the P4 `ai_employee.v1` seed as data migration), the semantic answer
+cache (embedding-matched non-LLM responses; pre-recorded audio gated on
+the LITE lane), and in-conversation account creation + payments (sign
+up, log in, attach a card, and pay without leaving the chat). Sequenced
+under P1/P4; the semantic-routing invariant, registry honesty, and
+no-improvised-pricing bind every lane. Also same night: the avatar
+opener simplified by owner copy edit ("Hello! I'm Sarah. What's on your
+mind today?") with a base-context cache TTL so copy edits propagate
+without instance rolls.
 
 **Rev 6.10 changes (owner directive, 2026-07-09 — SARAH AVATAR ON EFFECT
 NATIVE):** Sarah gets a real-time avatar face at openagents.com/sarah,
