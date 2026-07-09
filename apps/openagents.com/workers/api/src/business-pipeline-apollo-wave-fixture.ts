@@ -11,8 +11,15 @@
  * Apollo remains a mirror; the pipeline is the system of record (BF-9.2).
  */
 
+import { Schema as S } from 'effect'
+
 export const OB2_APOLLO_WAVE_FIXTURE_MIN_COUNT = 100 as const
 export const OB2_APOLLO_WAVE_FIXTURE_MAX_COUNT = 500 as const
+
+export class Ob2ApolloWaveFixtureValidationError extends S.TaggedErrorClass<Ob2ApolloWaveFixtureValidationError>()(
+  'Ob2ApolloWaveFixtureValidationError',
+  { message: S.String },
+) {}
 
 export type Ob2ApolloWaveSegmentKey =
   | 'agencies_seo'
@@ -148,9 +155,9 @@ const assertCount = (count: number): number => {
     count < 1 ||
     count > OB2_APOLLO_WAVE_FIXTURE_MAX_COUNT
   ) {
-    throw new Error(
-      `apollo wave fixture count must be an integer 1-${OB2_APOLLO_WAVE_FIXTURE_MAX_COUNT}`,
-    )
+    throw new Ob2ApolloWaveFixtureValidationError({
+      message: `apollo wave fixture count must be an integer 1-${OB2_APOLLO_WAVE_FIXTURE_MAX_COUNT}`,
+    })
   }
   return count
 }

@@ -54,6 +54,10 @@ import {
   segmentFromVertical,
   type BusinessOutreachSegmentRef,
 } from './business-outreach'
+import {
+  calendarDayKeyAfter,
+  currentIsoTimestamp,
+} from './runtime-primitives'
 
 export const DAILY_SALES_LEDGER_SEGMENT_REFS: ReadonlyArray<BusinessOutreachSegmentRef> =
   [...new Set(BUSINESS_OUTREACH_TEMPLATE_VERSIONS.map(template => template.segmentRef))]
@@ -241,7 +245,7 @@ export class DailySalesLedgerValidationError extends Error {}
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
 
 const assertDate = (field: string, value: string): void => {
-  if (!DATE_PATTERN.test(value)) {
+  if (!DATE_PATTERN.test(value) || calendarDayKeyAfter(value, 0) === undefined) {
     throw new DailySalesLedgerValidationError(`${field} must be an ISO date (YYYY-MM-DD)`)
   }
 }
@@ -253,19 +257,25 @@ export const dateRangeInclusive = (since: string, until: string): ReadonlyArray<
   if (since > until) {
     throw new DailySalesLedgerValidationError('since must not be after until')
   }
-  const days: Array<string> = []
-  let cursor = new Date(`${since}T00:00:00.000Z`)
-  const end = new Date(`${until}T00:00:00.000Z`)
-  while (cursor.getTime() <= end.getTime()) {
-    days.push(cursor.toISOString().slice(0, 10))
+  const appendDates = (
+    cursor: string,
+    days: ReadonlyArray<string>,
+  ): ReadonlyArray<string> => {
     if (days.length > DAILY_SALES_LEDGER_MAX_WINDOW_DAYS) {
       throw new DailySalesLedgerValidationError(
         `window exceeds DAILY_SALES_LEDGER_MAX_WINDOW_DAYS (${DAILY_SALES_LEDGER_MAX_WINDOW_DAYS})`,
       )
     }
-    cursor = new Date(cursor.getTime() + 24 * 60 * 60 * 1000)
+    if (cursor === until) {
+      return days
+    }
+    const next = calendarDayKeyAfter(cursor, 1)
+    if (next === undefined) {
+      throw new DailySalesLedgerValidationError('date range contains an invalid ISO date')
+    }
+    return appendDates(next, [...days, next])
   }
-  return days
+  return appendDates(since, [since])
 }
 
 type CountByDaySegmentRow = Readonly<{ day: string; segment_key: string; count: number }>
@@ -443,7 +453,7 @@ export const computeDailySalesLedger = async (
   const since = input.since
   const until = input.until
   const dates = dateRangeInclusive(since, until)
-  const nowIso = input.nowIso?.() ?? new Date().toISOString()
+  const nowIso = (input.nowIso ?? currentIsoTimestamp)()
 
   const [
     sourcedRows,

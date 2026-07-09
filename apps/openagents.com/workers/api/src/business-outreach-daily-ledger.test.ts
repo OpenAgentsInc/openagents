@@ -167,6 +167,14 @@ describe('dateRangeInclusive', () => {
     ])
   })
 
+  test('walks UTC calendar boundaries without raw date arithmetic', () => {
+    expect(dateRangeInclusive('2024-02-28', '2024-03-01')).toEqual([
+      '2024-02-28',
+      '2024-02-29',
+      '2024-03-01',
+    ])
+  })
+
   test('rejects since after until', () => {
     expect(() => dateRangeInclusive('2026-07-05', '2026-07-01')).toThrow(
       DailySalesLedgerValidationError,
@@ -175,6 +183,12 @@ describe('dateRangeInclusive', () => {
 
   test('rejects a malformed date', () => {
     expect(() => dateRangeInclusive('not-a-date', '2026-07-01')).toThrow(
+      DailySalesLedgerValidationError,
+    )
+  })
+
+  test('rejects an impossible calendar date', () => {
+    expect(() => dateRangeInclusive('2026-02-30', '2026-03-01')).toThrow(
       DailySalesLedgerValidationError,
     )
   })

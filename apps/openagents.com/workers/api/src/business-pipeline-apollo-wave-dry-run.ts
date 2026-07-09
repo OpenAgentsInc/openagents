@@ -10,6 +10,8 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { Schema as S } from 'effect'
+
 import {
   buildOb2ApolloWaveFixture,
   expectedFirstPassApolloWaveCounts,
@@ -23,6 +25,21 @@ import {
   type BusinessPipelineRuntime,
 } from './business-pipeline-queue'
 import { makeSqliteD1 } from './test/sqlite-d1'
+
+export class Ob2ApolloWaveDryRunError extends S.TaggedErrorClass<Ob2ApolloWaveDryRunError>()(
+  'Ob2ApolloWaveDryRunError',
+  {
+    gate: S.Literals([
+      'count',
+      'first_pass',
+      'replay',
+      'subject_dedupe',
+      'row_count',
+      'suppression',
+    ]),
+    message: S.String,
+  },
+) {}
 
 const migrationsDir = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -132,7 +149,10 @@ export const runOb2ApolloWaveDryRun = async (
   count: number = 100,
 ): Promise<Ob2ApolloWaveDryRunReceipt> => {
   if (!Number.isInteger(count) || count < 1 || count > 500) {
-    throw new Error('dry-run count must be an integer 1-500')
+    throw new Ob2ApolloWaveDryRunError({
+      gate: 'count',
+      message: 'dry-run count must be an integer 1-500',
+    })
   }
 
   const sqlite = bootstrapPipelineDb()
@@ -165,9 +185,10 @@ export const runOb2ApolloWaveDryRun = async (
         firstPass.duplicateCount !== firstExpected.duplicateCount ||
         firstPass.suppressedCount !== firstExpected.suppressedCount
       ) {
-        throw new Error(
-          `first-pass mismatch for ${segmentKey}: got ${JSON.stringify(summarizeWave(firstPass))}, expected ${JSON.stringify(firstExpected)}`,
-        )
+        throw new Ob2ApolloWaveDryRunError({
+          gate: 'first_pass',
+          message: `first-pass mismatch for ${segmentKey}: got ${JSON.stringify(summarizeWave(firstPass))}, expected ${JSON.stringify(firstExpected)}`,
+        })
       }
 
       const replay = await store.ingestApolloWave(
@@ -185,9 +206,10 @@ export const runOb2ApolloWaveDryRun = async (
         replay.duplicateCount !== replayExpected.duplicateCount ||
         replay.suppressedCount !== replayExpected.suppressedCount
       ) {
-        throw new Error(
-          `replay mismatch for ${segmentKey}: got ${JSON.stringify(summarizeWave(replay))}, expected ${JSON.stringify(replayExpected)}`,
-        )
+        throw new Ob2ApolloWaveDryRunError({
+          gate: 'replay',
+          message: `replay mismatch for ${segmentKey}: got ${JSON.stringify(summarizeWave(replay))}, expected ${JSON.stringify(replayExpected)}`,
+        })
       }
 
       const second = buildOb2ApolloWaveFixture({
@@ -211,9 +233,10 @@ export const runOb2ApolloWaveDryRun = async (
         subjectDedupe.duplicateCount !== subjectExpected.duplicateCount ||
         subjectDedupe.suppressedCount !== subjectExpected.suppressedCount
       ) {
-        throw new Error(
-          `subject-dedupe mismatch for ${segmentKey}: got ${JSON.stringify(summarizeWave(subjectDedupe))}, expected ${JSON.stringify(subjectExpected)}`,
-        )
+        throw new Ob2ApolloWaveDryRunError({
+          gate: 'subject_dedupe',
+          message: `subject-dedupe mismatch for ${segmentKey}: got ${JSON.stringify(summarizeWave(subjectDedupe))}, expected ${JSON.stringify(subjectExpected)}`,
+        })
       }
 
       segments.push({
@@ -239,15 +262,19 @@ export const runOb2ApolloWaveDryRun = async (
     )
 
     if (rows.length !== expectedTotalRows) {
-      throw new Error(
-        `row count mismatch: got ${rows.length}, expected ${expectedTotalRows}`,
-      )
+      throw new Ob2ApolloWaveDryRunError({
+        gate: 'row_count',
+        message: `row count mismatch: got ${rows.length}, expected ${expectedTotalRows}`,
+      })
     }
 
     for (const segment of segments) {
       for (const subjectRef of segment.suppressedSubjectRefs) {
         if (rows.some(row => row.subjectRef === subjectRef)) {
-          throw new Error(`suppressed subject entered queue: ${subjectRef}`)
+          throw new Ob2ApolloWaveDryRunError({
+            gate: 'suppression',
+            message: `suppressed subject entered queue: ${subjectRef}`,
+          })
         }
       }
     }

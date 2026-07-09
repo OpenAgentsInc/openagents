@@ -10,7 +10,7 @@ import {
 } from './business-outreach-daily-ledger'
 import { methodNotAllowed, noStoreJsonResponse, unauthorized } from './http/responses'
 import { defaultMakeSqlClient } from './khala-sync-db-smoke-routes'
-import { currentIsoTimestamp } from './runtime-primitives'
+import { calendarDayKeyAfter, currentIsoTimestamp } from './runtime-primitives'
 
 type HttpResponse = globalThis.Response
 
@@ -41,9 +41,11 @@ export type DailySalesLedgerRouteDependencies<Bindings> = Readonly<{
 }>
 
 const isoDateNDaysAgo = (nowIso: string, days: number): string => {
-  const date = new Date(nowIso)
-  date.setUTCDate(date.getUTCDate() - days)
-  return date.toISOString().slice(0, 10)
+  const date = calendarDayKeyAfter(nowIso.slice(0, 10), -days)
+  if (date === undefined) {
+    throw new DailySalesLedgerValidationError('nowIso must contain a valid ISO date')
+  }
+  return date
 }
 
 const routeDailySalesLedger = async <Bindings>(

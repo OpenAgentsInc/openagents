@@ -1,6 +1,10 @@
 import { describe, expect, test } from 'vitest'
+import { Schema as S } from 'effect'
 
-import { runOb2ApolloWaveDryRun } from './business-pipeline-apollo-wave-dry-run'
+import {
+  Ob2ApolloWaveDryRunError,
+  runOb2ApolloWaveDryRun,
+} from './business-pipeline-apollo-wave-dry-run'
 import {
   apolloWaveIngestBodyFromFixture,
   buildOb2ApolloWaveFixture,
@@ -9,6 +13,7 @@ import {
   expectedSubjectDedupeApolloWaveCounts,
   OB2_APOLLO_WAVE_FIXTURE_MIN_COUNT,
   OB2_LIVE_WAVE_SEGMENT_PAIR,
+  Ob2ApolloWaveFixtureValidationError,
 } from './business-pipeline-apollo-wave-fixture'
 import {
   makeD1BusinessPipelineStore,
@@ -56,6 +61,36 @@ const storeProspectsFromFixture = (
   }))
 
 describe('OB-2 Apollo wave fixture (≥100 synthetic prospects)', () => {
+  test('returns serializable typed validation errors without changing messages', async () => {
+    const fixtureError = (() => {
+      try {
+        buildOb2ApolloWaveFixture({ count: 501, segmentKey: 'agencies_seo' })
+      } catch (error) {
+        return error
+      }
+    })()
+    expect(fixtureError).toBeInstanceOf(Ob2ApolloWaveFixtureValidationError)
+    if (fixtureError instanceof Ob2ApolloWaveFixtureValidationError) {
+      expect(S.encodeSync(Ob2ApolloWaveFixtureValidationError)(fixtureError)).toEqual({
+        _tag: 'Ob2ApolloWaveFixtureValidationError',
+        message: 'apollo wave fixture count must be an integer 1-500',
+      })
+    }
+
+    const dryRunError = await runOb2ApolloWaveDryRun(0).then(
+      () => undefined,
+      error => error,
+    )
+    expect(dryRunError).toBeInstanceOf(Ob2ApolloWaveDryRunError)
+    if (dryRunError instanceof Ob2ApolloWaveDryRunError) {
+      expect(S.encodeSync(Ob2ApolloWaveDryRunError)(dryRunError)).toEqual({
+        _tag: 'Ob2ApolloWaveDryRunError',
+        gate: 'count',
+        message: 'dry-run count must be an integer 1-500',
+      })
+    }
+  })
+
   test('builds two ≥100-prospect segment waves with public-safe refs only', () => {
     for (const segmentKey of OB2_LIVE_WAVE_SEGMENT_PAIR) {
       const fixture = buildOb2ApolloWaveFixture({
