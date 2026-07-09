@@ -2331,8 +2331,13 @@ CREATE TABLE IF NOT EXISTS business_pipeline_rows (
   partner_due_window_ref       TEXT,
   partner_budget_range_ref     TEXT,
   partner_privacy_tier_ref     TEXT,
-  partner_route_updated_at     TEXT
+  partner_route_updated_at     TEXT,
+  subject_ref                  TEXT
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_business_pipeline_rows_subject_ref
+  ON business_pipeline_rows(subject_ref)
+  WHERE subject_ref IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS business_starter_credit_grants (
   grant_ref                    TEXT NOT NULL PRIMARY KEY,

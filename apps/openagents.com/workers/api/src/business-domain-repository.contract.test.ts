@@ -86,6 +86,10 @@ const MIGRATION_0022 = path.resolve(
   import.meta.dirname,
   '../../../../../packages/khala-sync-server/migrations/0023_business_funnel.sql',
 )
+const MIGRATION_0051 = path.resolve(
+  import.meta.dirname,
+  '../../../../../packages/khala-sync-server/migrations/0051_business_pipeline_subject_ref.sql',
+)
 
 type PgClient = {
   end: (options?: { timeout?: number }) => Promise<void>
@@ -861,8 +865,10 @@ describe.skipIf(!hasLocalPostgres())(
       await admin.unsafe('CREATE DATABASE business_contract')
       pgUrl = pg.urlFor('business_contract')
       const migration = readFileSync(MIGRATION_0022, 'utf8')
+      const pipelineSubjectMigration = readFileSync(MIGRATION_0051, 'utf8')
       const target = postgres(pgUrl, { max: 1, prepare: false })
       await target.unsafe(migration)
+      await target.unsafe(pipelineSubjectMigration)
       await target.end({ timeout: 5 })
     }, 120_000)
 
@@ -960,6 +966,7 @@ describe.skipIf(!hasLocalPostgres())(
         source_ref: 'direct',
         stage: 'intake_received',
         stage_updated_at: '2026-07-04T00:00:00.000Z',
+        subject_ref: null,
         updated_at: '2026-07-04T00:00:00.000Z',
         vertical: 'vertical.test',
       }

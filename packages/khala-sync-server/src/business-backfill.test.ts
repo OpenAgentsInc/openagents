@@ -127,6 +127,7 @@ const pipelineRow = (
   source_ref: "direct",
   stage: "intake_received",
   stage_updated_at: `2026-07-01T0${n}:00:00.000Z`,
+  subject_ref: null,
   updated_at: `2026-07-01T0${n}:00:00.000Z`,
   vertical: "vertical.test",
   ...overrides,

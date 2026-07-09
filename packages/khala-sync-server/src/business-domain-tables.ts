@@ -315,6 +315,7 @@ export const BUSINESS_DOMAIN_TABLE_SPECS: Readonly<
       "partner_budget_range_ref",
       "partner_privacy_tier_ref",
       "partner_route_updated_at",
+      "subject_ref",
     ],
     keyColumns: ["pipeline_ref"],
     lookupColumns: [],

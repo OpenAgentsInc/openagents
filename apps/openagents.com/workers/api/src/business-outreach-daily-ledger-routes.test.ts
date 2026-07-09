@@ -58,6 +58,7 @@ const makeDb = (): D1Database => {
   db.exec(migration('0294_business_pipeline_queue.sql'))
   db.exec('ALTER TABLE business_pipeline_rows ADD COLUMN business_signup_request_id TEXT;')
   db.exec(migration('0299_business_pipeline_partner_routing.sql'))
+  db.exec(migration('0314_business_pipeline_subject_ref.sql'))
   db.exec(migration('0296_business_outreach_sequences.sql'))
   db.exec(migration('0026_email_ledger.sql'))
   db.exec(migration('0063_email_campaign_records.sql'))
