@@ -51,6 +51,7 @@ import {
   MODEL_PRICING_TABLE,
   type SupplyLane,
   blendedCostPerMtok,
+  isInternalNeutralModel,
   lookupModel,
   normalizeKhalaModelId,
 } from './pricing'
@@ -209,7 +210,11 @@ const isOpenModel = (model: string): boolean => {
 }
 
 export const classifyModel = (model: string): ModelClass => {
-  const normalizedModel = normalizeKhalaModelId(model)
+  // The persona-neutral internal lane (#8600) classifies exactly like the
+  // public Khala alias it routes as — never `unknown`/premium.
+  const normalizedModel = isInternalNeutralModel(model)
+    ? KHALA_MODEL_ID
+    : normalizeKhalaModelId(model)
   if (isClaudeModel(normalizedModel)) {
     return 'claude'
   }
@@ -342,7 +347,12 @@ export const selectAdapterPlanForKhalaBacking = (
   khalaBacking: KhalaBackingModel = KHALA_BACKING_HYDRALISK_GPT_OSS,
 ): ReadonlyArray<string> => {
   const normalizedModel = normalizeKhalaModelId(model)
-  if (normalizedModel === KHALA_MODEL_ID) {
+  // The persona-neutral internal lane (#8600) takes EXACTLY the khala plan —
+  // same lanes, same backing switch — with zero persona conditioning upstream.
+  if (
+    normalizedModel === KHALA_MODEL_ID ||
+    isInternalNeutralModel(normalizedModel)
+  ) {
     return khalaBacking === KHALA_BACKING_FIREWORKS_DEEPSEEK_V4_FLASH
       ? KHALA_FIREWORKS_DEEPSEEK_ADAPTER_PLAN
       : KHALA_CONVERSATIONAL_ADAPTER_PLAN
@@ -355,7 +365,10 @@ export const selectAdapterPlanForKhalaToolRequest = (
   basePlan: ReadonlyArray<string> = selectAdapterPlan(model),
 ): ReadonlyArray<string> => {
   const normalizedModel = normalizeKhalaModelId(model)
-  if (normalizedModel !== KHALA_MODEL_ID) {
+  if (
+    normalizedModel !== KHALA_MODEL_ID &&
+    !isInternalNeutralModel(normalizedModel)
+  ) {
     return basePlan
   }
   return dedupeAdapterPlan([
@@ -492,7 +505,11 @@ const selectAdapterPlanForKhalaPaidFailover = (
 // (cheapest viable first, then overflow fallbacks). Deterministic + pure.
 export const selectAdapterPlan = (model: string): ReadonlyArray<string> => {
   const normalizedModel = normalizeKhalaModelId(model)
-  if (normalizedModel === KHALA_MODEL_ID) {
+  if (
+    normalizedModel === KHALA_MODEL_ID ||
+    // Persona-neutral internal lane (#8600): identical conversational plan.
+    isInternalNeutralModel(normalizedModel)
+  ) {
     // Conversational Khala leads with our Google Cloud (Vertex Gemini) lane,
     // then Fireworks and the owned GLM lane once warm. Tool/agentic Khala
     // requests use `selectAdapterPlanForKhalaToolRequest`, which puts the

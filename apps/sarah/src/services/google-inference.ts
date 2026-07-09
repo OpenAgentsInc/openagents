@@ -7,18 +7,31 @@
  *    `SARAH_INFERENCE_GATEWAY_URL` + `SARAH_INFERENCE_GATEWAY_TOKEN` are set,
  *    turns go through the OpenAI-compatible Khala gateway
  *    (`POST {url}/chat/completions`, e.g. `https://openagents.com/api/v1`)
- *    with the agent bearer token. The requested model is the public Khala
- *    alias (`openagents/khala`): its conversational adapter plan LEADS with
- *    the same Gemma 4 gcloud lane Sarah uses today
- *    (`model-router.ts` KHALA_CONVERSATIONAL_ADAPTER_PLAN, owner decision
- *    2026-07-09) and overflows to Vertex Gemini / Fireworks / GLM instead of
- *    Sarah hand-rolling a 429 model chain. Every turn lands an exact
+ *    with the agent bearer token. The requested model is the PERSONA-NEUTRAL
+ *    internal lane (`openagents/internal-neutral`, #8600 FC-BRAIN): it routes
+ *    over EXACTLY the khala conversational adapter plan — LEADS with the same
+ *    Gemma 4 gcloud lane Sarah uses today (`model-router.ts`
+ *    KHALA_CONVERSATIONAL_ADAPTER_PLAN, owner decision 2026-07-09) and
+ *    overflows to Vertex Gemini / Fireworks / GLM instead of Sarah
+ *    hand-rolling a 429 model chain — but the gateway injects ZERO persona /
+ *    collective-identity conditioning and applies NO Khala signature guard,
+ *    so Sarah's OWN system prompt is the only conditioning the provider sees.
+ *    (The prior `openagents/khala` routing intermittently answered "We are
+ *    Khala" over Sarah's prompt on short turns — the 2026-07-09 live finding
+ *    that forced the prod rollback. The neutral lane closes that class.)
+ *    The lane is internal-allowlist-only (`INFERENCE_INTERNAL_ACCOUNT_REFS`)
+ *    and never listed publicly. Every turn lands an exact
  *    `token_usage_events` row; the request self-attributes as internal demand
  *    via `x-openagents-demand-kind: internal` / `x-openagents-demand-source:
  *    sarah` (the same header rail heartbeat/canary use — see
  *    `chat-completions-routes.ts` `requestAttributionFromHeaders` and
  *    `inference-internal-account.ts`). NEVER the org-cloud no-meter header:
  *    Sarah's demand is metered own/internal usage with receipts, not a bypass.
+ *    Lane overflow is VISIBLE: when the gateway receipt shows the turn was
+ *    served off the primary Gemma lane (a non-null `fallbackReason` or a
+ *    non-Gemma provider adapter), a typed public-safe
+ *    `sarah.gateway_lane_fallback.v1` event is emitted — the typed
+ *    replacement for the old silent hand-written model-chain fallback.
  *
  * 2. DIRECT GOOGLE (legacy fallback while the gateway env is absent). Talks
  *    to the Generative Language API (project openagentsgemini) with a Gemma 4
@@ -42,8 +55,12 @@
 
 export const SARAH_TEXT_MODEL_DEFAULT = "gemma-4-31b-it"
 
-/** Public Khala alias whose conversational plan leads with the Gemma 4 lane. */
-export const SARAH_GATEWAY_MODEL_DEFAULT = "openagents/khala"
+/**
+ * Persona-neutral internal lane (#8600): the khala conversational plan
+ * (Gemma-4-led) with ZERO gateway persona conditioning — Sarah's own system
+ * prompt is the only conditioning. Internal-allowlist-only, never public.
+ */
+export const SARAH_GATEWAY_MODEL_DEFAULT = "openagents/internal-neutral"
 
 const BASE_URL_DEFAULT = "https://generativelanguage.googleapis.com/v1beta"
 
@@ -281,10 +298,84 @@ async function recordDailyTokenUsage(
 /**
  * Whether a typed inference error should surface the canned "I'm handling a
  * lot of conversations" busy reply (vs the generic trouble-reaching-model
- * reply): provider/gateway rate limits and the daily token-cap refusal.
+ * reply): provider/gateway rate limits, the process-local daily token-cap
+ * refusal, and the gateway's authoritative per-account daily cap (#8600 —
+ * over Sarah's `INFERENCE_INTERNAL_ACCOUNT_DAILY_TOKEN_CAPS` ceiling the
+ * gateway's balance gate answers 402; that is a capacity refusal for Sarah,
+ * not a broken-model condition).
  */
 export function isSarahInferenceBusyError(error: string): boolean {
-  return error.endsWith("_http_429") || error === SARAH_DAILY_TOKEN_CAP_ERROR
+  return (
+    error.endsWith("_http_429") ||
+    error === "gateway_inference_http_402" ||
+    error === SARAH_DAILY_TOKEN_CAP_ERROR
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Typed gateway lane-fallback visibility (#8600).
+//
+// The old direct transport walked a hand-written model chain on 429 SILENTLY.
+// On the gateway transport, lane overflow is the router's job — and it is
+// VISIBLE: every gateway receipt discloses the serving adapter (`provider`),
+// the served model, and a `fallbackReason` when the router had to leave the
+// primary lane. When a turn is served off the primary Gemma lane, Sarah emits
+// one typed public-safe event per turn. The event carries bounded refs only —
+// no prompt, credential, or provider payload material.
+// ---------------------------------------------------------------------------
+
+/** The gateway's primary conversational adapter id (the Gemma 4 gcloud lane). */
+export const SARAH_GATEWAY_PRIMARY_PROVIDER = "google-gemma4"
+
+export type SarahGatewayLaneFallbackEvent = {
+  type: "sarah.gateway_lane_fallback.v1"
+  requestedModel: string
+  provider: string
+  servedModel: string
+  fallbackReason: string | null
+  emittedAt: string
+}
+
+export type SarahGatewayLaneFallbackSink = (
+  event: SarahGatewayLaneFallbackEvent,
+) => void | Promise<void>
+
+const defaultLaneFallbackSink: SarahGatewayLaneFallbackSink = (event) => {
+  console.warn(JSON.stringify(event))
+}
+
+type GatewayTelemetryLaneFields = {
+  provider?: string
+  servedModel?: string
+  fallbackReason?: string | null
+}
+
+/** Emit the typed lane-fallback event when the turn left the primary lane. */
+async function emitLaneFallbackIfOffPrimary(
+  requestedModel: string,
+  telemetry: GatewayTelemetryLaneFields | undefined,
+  sink: SarahGatewayLaneFallbackSink,
+): Promise<void> {
+  if (telemetry === undefined) return
+  const provider = telemetry.provider ?? ""
+  const fallbackReason = telemetry.fallbackReason ?? null
+  const offPrimary =
+    fallbackReason !== null ||
+    (provider !== "" && provider !== SARAH_GATEWAY_PRIMARY_PROVIDER)
+  if (!offPrimary) return
+  const event: SarahGatewayLaneFallbackEvent = {
+    type: "sarah.gateway_lane_fallback.v1",
+    requestedModel,
+    provider,
+    servedModel: telemetry.servedModel ?? "",
+    fallbackReason,
+    emittedAt: new Date().toISOString(),
+  }
+  try {
+    await sink(event)
+  } catch {
+    // Visibility is best-effort; a sink failure never affects the turn.
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -374,7 +465,7 @@ export function gatewayUsageToTurnUsage(
 
 const NOT_MEASURED = "not_measured"
 
-type GatewayTelemetryTokens = {
+type GatewayTelemetryTokens = GatewayTelemetryLaneFields & {
   promptTokens?: number | typeof NOT_MEASURED
   completionTokens?: number | typeof NOT_MEASURED
   totalTokens?: number | typeof NOT_MEASURED
@@ -404,6 +495,7 @@ async function generateViaGateway(
   contents: ReadonlyArray<GemmaContent>,
   fetchImpl: FetchLike,
   spendAlertSink: SarahTextInferenceSpendAlertSink,
+  laneFallbackSink: SarahGatewayLaneFallbackSink,
 ): Promise<
   | { ok: true; reply: string; model: string; usage: GemmaTurnUsage }
   | { ok: false; error: string }
@@ -431,6 +523,7 @@ async function generateViaGateway(
       model?: string
       choices?: Array<{ message?: { content?: string } }>
       usage?: GatewayUsageWire
+      openagents?: { telemetry?: GatewayTelemetryTokens }
     }
     // Only `message.content` is read — the gateway routes thinking-model
     // scratchpad to `reasoning_content`, which is deliberately ignored here.
@@ -438,6 +531,13 @@ async function generateViaGateway(
     if (!reply) return { ok: false, error: "gateway_inference_empty_reply" }
     const usage = gatewayUsageToTurnUsage(data.usage)
     await recordDailyTokenUsage(usage.totalTokens, spendAlertSink)
+    // Typed lane-fallback visibility (#8600): one public-safe event when the
+    // gateway served this turn off the primary Gemma lane.
+    await emitLaneFallbackIfOffPrimary(
+      config.model,
+      data.openagents?.telemetry,
+      laneFallbackSink,
+    )
     return { ok: true, reply, model: data.model ?? config.model, usage }
   } catch (error) {
     return {
@@ -458,6 +558,7 @@ async function* streamViaGateway(
   contents: ReadonlyArray<GemmaContent>,
   fetchImpl: FetchLike,
   spendAlertSink: SarahTextInferenceSpendAlertSink,
+  laneFallbackSink: SarahGatewayLaneFallbackSink,
   externalSignal?: AbortSignal,
 ): AsyncGenerator<GemmaStreamEvent> {
   const controller = new AbortController()
@@ -534,6 +635,9 @@ async function* streamViaGateway(
     }
     const usage = gatewayTelemetryToTurnUsage(telemetry)
     await recordDailyTokenUsage(usage.totalTokens, spendAlertSink)
+    // Typed lane-fallback visibility (#8600): one public-safe event when the
+    // gateway served this turn off the primary Gemma lane.
+    await emitLaneFallbackIfOffPrimary(config.model, telemetry, laneFallbackSink)
     yield { type: "done", fullText: fullText.trim(), usage }
   } catch (error) {
     yield {
@@ -554,11 +658,13 @@ export async function generateSarahGemmaReply({
   contents,
   fetchImpl = fetch,
   spendAlertSink = defaultSarahTextSpendAlertSink,
+  laneFallbackSink = defaultLaneFallbackSink,
 }: {
   system: string
   contents: ReadonlyArray<GemmaContent>
   fetchImpl?: FetchLike
   spendAlertSink?: SarahTextInferenceSpendAlertSink
+  laneFallbackSink?: SarahGatewayLaneFallbackSink
 }): Promise<
   | { ok: true; reply: string; model: string; usage: GemmaTurnUsage }
   | { ok: false; error: string }
@@ -580,6 +686,7 @@ export async function generateSarahGemmaReply({
       contents,
       fetchImpl,
       spendAlertSink,
+      laneFallbackSink,
     )
   }
 
@@ -678,12 +785,14 @@ export async function* streamSarahGemmaReply({
   contents,
   fetchImpl = fetch,
   spendAlertSink = defaultSarahTextSpendAlertSink,
+  laneFallbackSink = defaultLaneFallbackSink,
   signal,
 }: {
   system: string
   contents: ReadonlyArray<GemmaContent>
   fetchImpl?: FetchLike
   spendAlertSink?: SarahTextInferenceSpendAlertSink
+  laneFallbackSink?: SarahGatewayLaneFallbackSink
   signal?: AbortSignal
 }): AsyncGenerator<GemmaStreamEvent> {
   // Token cap (#8600): typed refusal BEFORE any provider call, on either
@@ -705,6 +814,7 @@ export async function* streamSarahGemmaReply({
       contents,
       fetchImpl,
       spendAlertSink,
+      laneFallbackSink,
       signal,
     )
     return

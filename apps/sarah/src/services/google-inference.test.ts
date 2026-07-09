@@ -238,7 +238,7 @@ describe("gateway generate", () => {
       max_tokens: number
       messages: Array<{ role: string; content: string }>
     }
-    expect(body.model).toBe("openagents/khala")
+    expect(body.model).toBe("openagents/internal-neutral")
     expect(body.stream).toBe(false)
     expect(body.max_tokens).toBe(2048)
     expect(body.messages).toEqual([
@@ -251,7 +251,7 @@ describe("gateway generate", () => {
     expect(result).toEqual({
       ok: true,
       reply: "Hi! I'm Sarah.",
-      model: "openagents/khala",
+      model: "openagents/internal-neutral",
       usage: {
         promptTokens: 40,
         outputTokens: 50,
@@ -524,7 +524,7 @@ describe("daily token cap and spend alert (#8600)", () => {
       ].sort(),
     )
     expect(JSON.stringify(alerts[0])).not.toContain("test-agent-token")
-    expect(JSON.stringify(alerts[0])).not.toContain("openagents/khala")
+    expect(JSON.stringify(alerts[0])).not.toContain("openagents/internal-neutral")
 
     // Crossing the cap does not duplicate the threshold alert. The following
     // call refuses before provider fetch, after the alert is already visible.
@@ -681,5 +681,187 @@ describe("usage mapping helpers", () => {
       "x-openagents-demand-source": "sarah",
       "x-openagents-client": "sarah-server",
     })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// FC-BRAIN #8600: persona-neutral internal lane + typed lane-fallback events
+// ---------------------------------------------------------------------------
+
+describe("persona-neutral internal lane (#8600)", () => {
+  test("the default gateway model is the persona-neutral internal id, env-overridable", () => {
+    expect(SARAH_GATEWAY_MODEL_DEFAULT).toBe("openagents/internal-neutral")
+    armGateway()
+    expect(sarahActiveModelId()).toBe("openagents/internal-neutral")
+    process.env.SARAH_INFERENCE_GATEWAY_MODEL = "openagents/custom"
+    expect(sarahActiveModelId()).toBe("openagents/custom")
+    delete process.env.SARAH_INFERENCE_GATEWAY_MODEL
+  })
+
+  test("PERSONA PROBES: short identity turns carry ONLY Sarah's system prompt and the reply is verbatim", async () => {
+    armGateway()
+    const probes = ["who are you", "what are you", "hi", "you?"]
+    for (const probe of probes) {
+      const calls: RecordedCall[] = []
+      const result = await generateSarahGemmaReply({
+        system: "You are Sarah, the OpenAgents relationship agent.",
+        contents: [{ role: "user", parts: [{ text: probe }] }],
+        fetchImpl: recordingFetch(
+          gatewayJsonResponse({ content: "I'm Sarah. How can I help?" }),
+          calls,
+        ),
+      })
+      const body = JSON.parse(String(calls[0]!.init.body)) as {
+        model: string
+        messages: Array<{ role: string; content: string }>
+      }
+      // The neutral lane is requested and the ONLY conditioning sent is
+      // Sarah's own system prompt — nothing for a collective identity to win
+      // over, and the reply passes through verbatim.
+      expect(body.model).toBe("openagents/internal-neutral")
+      expect(body.messages).toEqual([
+        {
+          role: "system",
+          content: "You are Sarah, the OpenAgents relationship agent.",
+        },
+        { role: "user", content: probe },
+      ])
+      expect(result).toMatchObject({ ok: true, reply: "I'm Sarah. How can I help?" })
+    }
+  })
+
+  test("the gateway per-account daily-cap 402 maps to the busy reply class", () => {
+    expect(isSarahInferenceBusyError("gateway_inference_http_402")).toBe(true)
+    expect(isSarahInferenceBusyError("google_inference_http_402")).toBe(false)
+  })
+})
+
+describe("typed gateway lane-fallback events (#8600)", () => {
+  function gatewayJsonResponseWithTelemetry(telemetry: {
+    provider?: string
+    servedModel?: string
+    fallbackReason?: string | null
+  }): Response {
+    return Response.json({
+      id: "chatcmpl-test",
+      model: "openagents/internal-neutral",
+      choices: [
+        {
+          index: 0,
+          message: { role: "assistant", content: "Answer." },
+          finish_reason: "stop",
+        },
+      ],
+      usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 20 },
+      openagents: {
+        telemetry: {
+          promptTokens: 10,
+          completionTokens: 5,
+          totalTokens: 20,
+          ...telemetry,
+        },
+      },
+    })
+  }
+
+  test("non-streaming: a turn served OFF the primary Gemma lane emits one typed event", async () => {
+    armGateway()
+    const events: unknown[] = []
+    const result = await generateSarahGemmaReply({
+      system: "s",
+      contents: [{ role: "user", parts: [{ text: "hi" }] }],
+      fetchImpl: recordingFetch(
+        gatewayJsonResponseWithTelemetry({
+          provider: "vertex-gemini",
+          servedModel: "gemini-3.5-flash",
+          fallbackReason: "primary_lane_429",
+        }),
+        [],
+      ),
+      laneFallbackSink: (event) => {
+        events.push(event)
+      },
+    })
+    expect(result.ok).toBe(true)
+    expect(events).toHaveLength(1)
+    expect(events[0]).toMatchObject({
+      type: "sarah.gateway_lane_fallback.v1",
+      requestedModel: "openagents/internal-neutral",
+      provider: "vertex-gemini",
+      servedModel: "gemini-3.5-flash",
+      fallbackReason: "primary_lane_429",
+    })
+    // Public-safe: bounded refs only — never the bearer token.
+    expect(JSON.stringify(events[0])).not.toContain("test-agent-token")
+  })
+
+  test("non-streaming: a turn served on the primary Gemma lane emits NO event", async () => {
+    armGateway()
+    const events: unknown[] = []
+    const result = await generateSarahGemmaReply({
+      system: "s",
+      contents: [{ role: "user", parts: [{ text: "hi" }] }],
+      fetchImpl: recordingFetch(
+        gatewayJsonResponseWithTelemetry({
+          provider: "google-gemma4",
+          servedModel: "gemma-4-31b-it",
+          fallbackReason: null,
+        }),
+        [],
+      ),
+      laneFallbackSink: (event) => {
+        events.push(event)
+      },
+    })
+    expect(result.ok).toBe(true)
+    expect(events).toHaveLength(0)
+  })
+
+  test("streaming: the terminal telemetry frame drives the same typed event", async () => {
+    armGateway()
+    const events: unknown[] = []
+    const frames = [
+      'data: {"choices":[{"delta":{"content":"Hel"}}]}\n',
+      'data: {"choices":[{"delta":{"content":"lo"}}]}\n',
+      'data: {"choices":[{"delta":{"content":""}}],"openagents":{"telemetry":{"promptTokens":10,"completionTokens":2,"totalTokens":12,"provider":"fireworks","servedModel":"deepseek-v4-flash","fallbackReason":"primary_lane_timeout"}}}\n',
+      "data: [DONE]\n",
+    ]
+    const collected = await collect(
+      streamSarahGemmaReply({
+        system: "s",
+        contents: [{ role: "user", parts: [{ text: "hi" }] }],
+        fetchImpl: recordingFetch(sseResponse(frames), []),
+        laneFallbackSink: (event) => {
+          events.push(event)
+        },
+      }),
+    )
+    expect(collected.at(-1)).toMatchObject({ type: "done", fullText: "Hello" })
+    expect(events).toHaveLength(1)
+    expect(events[0]).toMatchObject({
+      type: "sarah.gateway_lane_fallback.v1",
+      provider: "fireworks",
+      servedModel: "deepseek-v4-flash",
+      fallbackReason: "primary_lane_timeout",
+    })
+  })
+
+  test("a lane-fallback sink failure never affects the turn", async () => {
+    armGateway()
+    const result = await generateSarahGemmaReply({
+      system: "s",
+      contents: [{ role: "user", parts: [{ text: "hi" }] }],
+      fetchImpl: recordingFetch(
+        gatewayJsonResponseWithTelemetry({
+          provider: "vertex-gemini",
+          fallbackReason: "primary_lane_429",
+        }),
+        [],
+      ),
+      laneFallbackSink: () => {
+        throw new Error("sink down")
+      },
+    })
+    expect(result.ok).toBe(true)
   })
 })

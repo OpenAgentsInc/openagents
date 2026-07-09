@@ -116,6 +116,16 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   // pure no-op (everything resolves exactly as before). The ops account ref is
   // NOT hardcoded in source; it lives in the worker `vars`.
   INFERENCE_INTERNAL_ACCOUNT_REFS?: string | undefined
+  // Per-internal-account daily served-token ceilings (#8600 FC-BRAIN). Format
+  // `accountRef=tokens,accountRef=tokens`. A listed internal account keeps the
+  // free-tier quota exemption only while its exact accrued tokens for the UTC
+  // day are UNDER its cap; at/over the cap requests fall through to the normal
+  // balance gate (402). Accounts without an entry keep the unbounded exemption
+  // (heartbeat/canary unchanged). This is the AUTHORITATIVE gateway-side bound
+  // on a conversational internal consumer's volume (Sarah); the client-side
+  // `SARAH_TEXT_DAILY_TOKEN_CAP` remains a best-effort process-local guard.
+  // Unset/blank => empty map => pure no-op.
+  INFERENCE_INTERNAL_ACCOUNT_DAILY_TOKEN_CAPS?: string | undefined
   // AES-GCM key for owner-scoped ChatGPT/Codex refresh-token custody (#8198).
   // Set as a Worker secret/var containing exactly 32 bytes encoded as base64 or
   // base64url. Missing/malformed values fail provider-account materialization

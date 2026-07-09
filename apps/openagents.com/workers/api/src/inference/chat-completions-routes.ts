@@ -165,7 +165,9 @@ import {
   KHALA_CODE_MODEL_ID,
   KHALA_MODEL_ID,
   type SupplyLane,
+  isInternalNeutralModel,
   isKhalaModel,
+  isKhalaRoutedModel,
   lookupModel,
   normalizeKhalaModelId,
 } from './pricing'
@@ -485,7 +487,9 @@ export const isToolBearingKhalaRequest = (
     requestedModel: string
   }>,
 ): boolean => {
-  if (!isKhalaModel(input.requestedModel)) {
+  // Khala-ROUTED: the public khala alias and the persona-neutral internal lane
+  // share the tool-plan split (Gemma has no tool calling on either).
+  if (!isKhalaRoutedModel(input.requestedModel)) {
     return false
   }
 
@@ -1560,7 +1564,11 @@ export const khalaRequestForAdapter = (
   request: InferenceRequest,
   adapterId: string,
 ): InferenceRequest => {
-  if (normalizeKhalaModelId(request.model) !== KHALA_MODEL_ID) {
+  const normalized = normalizeKhalaModelId(request.model)
+  // The persona-neutral internal lane (#8600) needs the SAME per-adapter
+  // backing-model rewrite as the khala alias — the Vertex Gemini / Fireworks /
+  // GLM adapters reject unknown alias ids.
+  if (normalized !== KHALA_MODEL_ID && !isInternalNeutralModel(normalized)) {
     return request
   }
   switch (adapterId) {
@@ -1586,7 +1594,7 @@ export const khalaStrongCodingRequestForAdapter = (
 ): InferenceRequest => {
   if (
     adapterId === FIREWORKS_STRONG_CODING_ADAPTER_ID &&
-    normalizeKhalaModelId(request.model) === KHALA_MODEL_ID
+    isKhalaRoutedModel(request.model)
   ) {
     return { ...request, model: KHALA_STRONG_CODING_FIREWORKS_MODEL_ID }
   }
@@ -1784,7 +1792,11 @@ const openAgentsReceiptForResult = (
     lookupModel(input.result.servedModel)?.lane ??
     supplyLaneForAdapterId(input.adapterId) ??
     lookupModel(input.requestedModel)?.lane
-  const isKhala = isKhalaModel(input.requestedModel)
+  // Khala-ROUTED (public khala alias + persona-neutral internal lane, #8600):
+  // both carry the full `openagents` receipt/telemetry block — the internal
+  // lane's streaming consumers (Sarah) read exact usage from the terminal
+  // frame's telemetry, so the receipt must not be khala-persona-gated.
+  const isKhala = isKhalaRoutedModel(input.requestedModel)
   if (!isKhala && supplyLane !== 'hydralisk') {
     return undefined
   }
@@ -2622,7 +2634,8 @@ export const handleChatCompletions = (
     // echo, and metering.
     const rawRequestedModel = resolveRequestedModel(body.model)
     const fineTunedModelResolution =
-      deps.resolveFineTunedModel === undefined || isKhalaModel(rawRequestedModel)
+      deps.resolveFineTunedModel === undefined ||
+      isKhalaRoutedModel(rawRequestedModel)
         ? undefined
         : yield* Effect.promise(() =>
             deps.resolveFineTunedModel!({
@@ -2646,8 +2659,28 @@ export const handleChatCompletions = (
         { status: 400 },
       )
     }
+    // PERSONA-NEUTRAL INTERNAL LANE (#8600 FC-BRAIN). `openagents/
+    // internal-neutral` routes exactly like the khala conversational lane but
+    // with ZERO gateway persona conditioning (no identity/refusal/discipline
+    // system prompts, no signature guard) — the caller's own system prompt is
+    // the only conditioning. INTERNAL-ONLY: served exclusively to accounts on
+    // the `INFERENCE_INTERNAL_ACCOUNT_REFS` allowlist; every other account gets
+    // the SAME `model_unavailable` an unknown id gets (the lane is deliberately
+    // indistinguishable from a nonexistent model to external callers, and it is
+    // never listed in `/v1/models`).
+    const internalNeutralRequest = isInternalNeutralModel(requestedModel)
+    if (
+      internalNeutralRequest &&
+      !(deps.internalAccountRefs ?? new Set<string>()).has(session.accountRef)
+    ) {
+      return noStoreJsonResponse(
+        { error: 'model_unavailable', model: rawRequestedModel },
+        { status: 400 },
+      )
+    }
     if (
       !isKhalaModel(requestedModel) &&
+      !internalNeutralRequest &&
       fineTunedModelResolution === undefined
     ) {
       return noStoreJsonResponse(
@@ -2895,7 +2928,13 @@ export const handleChatCompletions = (
     if (
       deps.laneArming !== undefined &&
       fineTunedModelResolution === undefined &&
-      resolveNamedModelServability(requestedModel, deps.laneArming) === false
+      // The internal-neutral lane serves over the SAME khala backing, so its
+      // servability IS khala's; the id itself stays non-public (never
+      // advertised/quoted), which is why it is mapped rather than listed.
+      resolveNamedModelServability(
+        internalNeutralRequest ? KHALA_MODEL_ID : requestedModel,
+        deps.laneArming,
+      ) === false
     ) {
       return noStoreJsonResponse(
         { error: 'model_unavailable', model: requestedModel },
@@ -3134,7 +3173,7 @@ export const handleChatCompletions = (
     // the provider session-affinity passthrough params (for replica pinning).
     // Only Khala models get gateway-managed affinity; non-Khala requests carry no
     // affinity key (empty params) so their behavior is byte-identical to before.
-    const affinity = isKhalaModel(requestedModel)
+    const affinity = isKhalaRoutedModel(requestedModel)
       ? resolveCacheAffinity(session.accountRef, rawBody, request)
       : { hash: null as string | null, params: {}, rawKey: undefined }
 

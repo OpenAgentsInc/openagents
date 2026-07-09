@@ -47,7 +47,7 @@ import type {
 import { workerLogEntry } from '../observability'
 import { currentIsoTimestamp } from '../runtime-primitives'
 import { isPremiumModel } from './inference-premium-allowlist'
-import { isKhalaModel } from './pricing'
+import { isKhalaRoutedModel } from './pricing'
 import {
   type MeteringContext,
   type MeteringHook,
@@ -171,6 +171,42 @@ export type FreeTierQuota = Readonly<{
   maxTokensPerDay: number
 }>
 
+// ----------------------------------------------------------------------------
+// Per-internal-account daily token caps (#8600 FC-BRAIN, Sarah-specific caps).
+// ----------------------------------------------------------------------------
+//
+// The internal-account allowlist exemption below is UNBOUNDED by default —
+// fine for the tiny heartbeat/canary lanes, but a conversational internal
+// consumer (Sarah's avatar brain) can draw real third-party volume. This
+// env-configured map (`INFERENCE_INTERNAL_ACCOUNT_DAILY_TOKEN_CAPS`, format
+// `accountRef=tokens,accountRef=tokens`) gives a listed internal account an
+// AUTHORITATIVE gateway-side per-UTC-day served-token ceiling: under the cap
+// the account keeps the quota-exempt zero-debit free path; at/over the cap the
+// request falls through to the normal balance gate (402) exactly like an
+// over-quota external free key. Accounts NOT in the map keep today's
+// unbounded exemption (heartbeat/canary unchanged). Unset/blank => empty map
+// => pure no-op.
+export const parseInternalAccountDailyTokenCaps = (
+  value: string | undefined,
+): ReadonlyMap<string, number> => {
+  const caps = new Map<string, number>()
+  if (value === undefined) {
+    return caps
+  }
+  for (const pair of value.split(',')) {
+    const [rawRef, rawCap] = pair.split('=')
+    const ref = rawRef?.trim()
+    const cap = Number.parseInt((rawCap ?? '').trim(), 10)
+    if (ref !== undefined && ref !== '' && Number.isInteger(cap) && cap > 0) {
+      caps.set(ref, cap)
+    }
+  }
+  return caps
+}
+
+export const FREE_TIER_QUOTA_REASON_INTERNAL_DAILY_CAP_EXCEEDED =
+  'reason.inference_free_tier.internal_account_daily_cap_exceeded' as const
+
 export const DEFAULT_FREE_TIER_QUOTA: FreeTierQuota = {
   maxRequestsPerDay: FREE_TIER_MAX_REQUESTS_PER_DAY,
   maxTokensPerDay: FREE_TIER_MAX_TOKENS_PER_DAY,
@@ -196,12 +232,16 @@ export const FREE_TIER_REASON_NOT_FREE_LANE =
 export const FREE_TIER_REASON_PREMIUM_DENIED =
   'reason.inference_free_tier.premium_never_free' as const
 
-// Whether a requested model is on the FREE lane: it must be the single public
-// Khala model AND not a premium class (defense in depth — Khala classifies as
-// `open`, never premium, so the premium check can only ever protect against a
-// future reclassification). Bounded id/class check, never an intent parser.
+// Whether a requested model is on the FREE lane: it must be a Khala-ROUTED
+// model (the single public Khala alias, or the persona-neutral internal lane
+// `openagents/internal-neutral` (#8600) which routes over the SAME supply) AND
+// not a premium class (defense in depth — both classify `open`, never premium,
+// so the premium check can only ever protect against a future
+// reclassification). Bounded id/class check, never an intent parser. The
+// internal-neutral id is additionally ACCOUNT-gated at the chat route
+// (internal allowlist only), so an external free key can never reach it here.
 export const isFreeTierLaneModel = (model: string): boolean =>
-  isKhalaModel(model) && !isPremiumModel(model)
+  isKhalaRoutedModel(model) && !isPremiumModel(model)
 
 export type FreeTierLaneDecision = Readonly<{
   freeLane: boolean
@@ -219,7 +259,7 @@ export const decideFreeTierLane = (model: string): FreeTierLaneDecision => {
       reasonRef: FREE_TIER_REASON_PREMIUM_DENIED,
     }
   }
-  if (isKhalaModel(model)) {
+  if (isKhalaRoutedModel(model)) {
     return {
       freeLane: true,
       premium: false,
@@ -634,6 +674,11 @@ export type FreeTierGateDeps = Readonly<{
   // 2,000-request daily limit. Default empty/undefined => pure no-op (external
   // behavior is byte-for-byte unchanged).
   internalAccountRefs?: ReadonlySet<string> | undefined
+  // Per-internal-account daily served-token ceilings (#8600). An internal
+  // account WITH a cap entry stays free only while today's tokens are under
+  // its cap; over-cap falls through to the balance gate. Accounts without an
+  // entry keep the unbounded exemption. Default empty => no-op.
+  internalAccountDailyTokenCaps?: ReadonlyMap<string, number> | undefined
   // KS-8.9 (#8320): routed enforcement reads (compare/postgres modes).
   // Absent => the untouched inline D1 reads (zero added hot-path latency).
   gateReads?:
@@ -661,6 +706,8 @@ export const makeFreeTierGate = (deps: FreeTierGateDeps): FreeTierGate => {
   const nowIso = deps.nowIso ?? currentIsoTimestamp
   const internalAccountRefs =
     deps.internalAccountRefs ?? new Set<string>()
+  const internalAccountDailyTokenCaps =
+    deps.internalAccountDailyTokenCaps ?? new Map<string, number>()
   // KS-8.9 (#8320): route through the migration seam when wired; the
   // default stays the inline D1 reads.
   const readKeyMembership =
@@ -683,11 +730,26 @@ export const makeFreeTierGate = (deps: FreeTierGateDeps): FreeTierGate => {
         }
       }
       // INTERNAL-ACCOUNT QUOTA EXEMPTION. A free-tier key on the internal/ops
-      // allowlist is free on the free Khala lane WITHOUT a daily-quota check, so
-      // sustained internal testing never exhausts the per-key quota and never
-      // falls through to the 402. Scoped to the explicit allowlist only; external
-      // free keys still take the quota path below unchanged.
+      // allowlist is free on the free Khala lane WITHOUT the shared per-key
+      // daily quota, so sustained internal testing never exhausts it and never
+      // falls through to the 402 on shared-quota grounds. Scoped to the
+      // explicit allowlist only; external free keys still take the quota path
+      // below unchanged. #8600: an internal account with a PER-ACCOUNT daily
+      // token cap configured is exempt only while under ITS OWN cap — the
+      // authoritative gateway-side bound on a conversational internal
+      // consumer's third-party volume (Sarah).
       if (internalAccountRefs.has(accountRef)) {
+        const internalCap = internalAccountDailyTokenCaps.get(accountRef)
+        if (internalCap !== undefined) {
+          const usageDay = freeTierUsageDay(nowIso())
+          const usage = await readUsage(accountRef, usageDay)
+          if (usage.tokensToday >= internalCap) {
+            return {
+              free: false,
+              reasonRef: FREE_TIER_QUOTA_REASON_INTERNAL_DAILY_CAP_EXCEEDED,
+            }
+          }
+        }
         return {
           free: true,
           reasonRef: FREE_TIER_QUOTA_REASON_INTERNAL_EXEMPT,
@@ -736,6 +798,9 @@ export type FreeTierMeteringDeps = Readonly<{
   // accrues usage for visibility, it just never goes over-quota -> charge). An
   // external (non-allowlist) free key is unaffected. Default empty => no-op.
   internalAccountRefs?: ReadonlySet<string> | undefined
+  // Per-internal-account daily served-token ceilings (#8600). MUST match the
+  // gate's map so the bypass and the zero-debit accrual agree on the cap.
+  internalAccountDailyTokenCaps?: ReadonlyMap<string, number> | undefined
   // KS-8.9 (#8320): routed enforcement reads + fire-safe dual-write
   // mirror. Absent => untouched D1-only behavior.
   gateReads?:
@@ -774,6 +839,8 @@ export const withFreeTierKhala = (
 ): MeteringHook => {
   const nowIso = deps.nowIso ?? currentIsoTimestamp
   const internalAccountRefs = deps.internalAccountRefs ?? new Set<string>()
+  const internalAccountDailyTokenCaps =
+    deps.internalAccountDailyTokenCaps ?? new Map<string, number>()
   return (context: MeteringContext) =>
     Effect.gen(function* () {
       // Only the free Khala lane is ever free here; premium / non-Khala meter.
@@ -803,9 +870,25 @@ export const withFreeTierKhala = (
           )
           const quota = decideFreeTierQuota({ quota: deps.quota, usage })
           // INTERNAL-ACCOUNT QUOTA EXEMPTION. An internal/ops free-tier key is
-          // free regardless of the daily quota (mirrors the gate); it still
-          // accrues usage for visibility but never goes over-quota -> charge.
-          const internalExempt = internalAccountRefs.has(context.accountRef)
+          // free regardless of the SHARED daily quota (mirrors the gate); it
+          // still accrues usage for visibility but never goes over-quota ->
+          // charge. #8600: an internal account with a PER-ACCOUNT daily token
+          // cap is exempt only while under its own cap (mirrors the gate) and
+          // NEVER falls back to the shared external quota path — over its cap
+          // it meters normally, so the zero-debit grant and the bypass agree
+          // on the authoritative bound.
+          const isInternalAccount = internalAccountRefs.has(context.accountRef)
+          const internalCap = internalAccountDailyTokenCaps.get(
+            context.accountRef,
+          )
+          if (
+            isInternalAccount &&
+            internalCap !== undefined &&
+            usage.tokensToday >= internalCap
+          ) {
+            return { accrued: false, free: false as const }
+          }
+          const internalExempt = isInternalAccount
           if (!internalExempt && !quota.withinQuota) {
             return { accrued: false, free: false as const }
           }

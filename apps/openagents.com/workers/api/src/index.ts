@@ -686,6 +686,7 @@ import {
   isFreeTierEnabled,
   makeFreeTierGate,
   markAccountFreeTierAsync,
+  parseInternalAccountDailyTokenCaps,
   readAccountFreeTier,
   readFreeKeyMintsToday,
   recordFreeKeyMintAsync,
@@ -15283,6 +15284,12 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       const internalAccountRefs = parseInternalAccountRefs(
         env.INFERENCE_INTERNAL_ACCOUNT_REFS,
       )
+      // Per-internal-account daily served-token ceilings (#8600 FC-BRAIN).
+      // Parsed ONCE so the balance-gate bypass and the zero-debit metering
+      // wrapper agree on the authoritative cap (Sarah's gateway-side bound).
+      const internalAccountDailyTokenCaps = parseInternalAccountDailyTokenCaps(
+        env.INFERENCE_INTERNAL_ACCOUNT_DAILY_TOKEN_CAPS,
+      )
       const laneArming = resolveSupplyLaneArming(env)
       const routeAdmission = hydraliskGlm52RouteAdmissionForEnv(env)
       // KS-8.9 (#8320): entitlements migration seam. Default flags (dual-write
@@ -15359,6 +15366,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
                     mirror: entitlementsRouting?.mirror,
                     quota: freeTierQuota,
                     internalAccountRefs,
+                    internalAccountDailyTokenCaps,
                   })
                 : innerHook)(
               withReferralAccrual(
@@ -15621,6 +15629,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
                 gateReads: entitlementsRouting?.gateReads,
                 quota: freeTierQuota,
                 internalAccountRefs,
+                internalAccountDailyTokenCaps,
               }),
             }
           : {}),

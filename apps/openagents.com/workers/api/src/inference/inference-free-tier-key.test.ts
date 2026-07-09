@@ -561,6 +561,66 @@ describe('makeFreeTierGate (balance-gate bypass)', () => {
     expect(d.free).toBe(false)
     expect(d.reasonRef).toBe('reason.inference_free_tier.account_not_free_tier')
   })
+
+  test('#8600: an internal account WITH a per-account daily token cap is exempt only UNDER the cap', async () => {
+    const db = makeDb()
+    await markAccountFreeTierAsync(db, {
+      accountRef: 'agent:sarah',
+      nowIso: fixedNow(),
+    })
+    const internalAccountRefs = new Set(['agent:sarah'])
+    const internalAccountDailyTokenCaps = new Map([['agent:sarah', 20]])
+    const gate = makeFreeTierGate({
+      db,
+      nowIso: fixedNow,
+      internalAccountRefs,
+      internalAccountDailyTokenCaps,
+    })
+    // Under the cap: exempt/free.
+    const under = await gate('agent:sarah', KHALA_MODEL_ID)
+    expect(under.free).toBe(true)
+    expect(under.reasonRef).toBe(FREE_TIER_QUOTA_REASON_INTERNAL_EXEMPT)
+    // Accrue two 15-token turns -> 30 >= 20 cap.
+    const inner = makeInnerSpy()
+    const wrapped = withFreeTierKhala(inner.hook, {
+      db,
+      nowIso: fixedNow,
+      internalAccountRefs,
+      internalAccountDailyTokenCaps,
+    })
+    await run(
+      wrapped(meteringContext({ accountRef: 'agent:sarah', requestId: 's1' })),
+    )
+    await run(
+      wrapped(meteringContext({ accountRef: 'agent:sarah', requestId: 's2' })),
+    )
+    const over = await gate('agent:sarah', KHALA_MODEL_ID)
+    expect(over.free).toBe(false)
+    expect(over.reasonRef).toBe(
+      'reason.inference_free_tier.internal_account_daily_cap_exceeded',
+    )
+    // The metering wrapper agrees: over ITS cap the account meters normally
+    // and never falls back to the shared external quota path.
+    const outcome = await run(
+      wrapped(meteringContext({ accountRef: 'agent:sarah', requestId: 's3' })),
+    )
+    expect(outcome.metered).toBe(true)
+    expect(inner.calls()).toBe(1)
+    // Internal accounts WITHOUT a cap entry keep the unbounded exemption.
+    await markAccountFreeTierAsync(db, {
+      accountRef: 'agent:internal-ops',
+      nowIso: fixedNow(),
+    })
+    const gateNoCap = makeFreeTierGate({
+      db,
+      nowIso: fixedNow,
+      internalAccountRefs: new Set(['agent:internal-ops', 'agent:sarah']),
+      internalAccountDailyTokenCaps,
+    })
+    const opsDecision = await gateNoCap('agent:internal-ops', KHALA_MODEL_ID)
+    expect(opsDecision.free).toBe(true)
+    expect(opsDecision.reasonRef).toBe(FREE_TIER_QUOTA_REASON_INTERNAL_EXEMPT)
+  })
 })
 
 // ----------------------------------------------------------------------------

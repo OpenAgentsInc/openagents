@@ -587,6 +587,42 @@ This is the invariant ledger for `openagents`.
   `workers/api/src/inference/fireworks-adapter.test.ts`,
   `workers/api/src/khala-chat-routes.test.ts`, and
   `clients/khala-cli/src/sse.test.ts`.
+- "The whole Khala lane" above means the PUBLIC `openagents/khala` id. The
+  persona-neutral internal lane below is the single deliberate exception.
+
+## Persona-Neutral Internal Inference Lane (`openagents/internal-neutral`)
+
+- `openagents/internal-neutral` (#8600 FC-BRAIN) routes over EXACTLY the khala
+  conversational machinery — same adapter plan (Gemma-4-led, Vertex Gemini /
+  Fireworks / GLM overflow), same per-adapter backing-model rewrite, same
+  exact `token_usage_events` receipts, same free-tier/caps machinery — but the
+  gateway injects ZERO persona or collective-identity conditioning (no
+  identity / refusal-posture / response-discipline / capability-truth system
+  prompts) and applies NO Khala signature guard. The caller's own system
+  prompt is the only conditioning the provider sees, and the completion is
+  returned verbatim. This exists because the shared khala lane's collective
+  identity intermittently beat Sarah's system prompt on short turns
+  (2026-07-09 live finding, prod rollback); named-employee agents ride this
+  lane so their persona can never be contested by Khala's.
+- The lane is INTERNAL-ONLY: the chat route serves the id exclusively to
+  accounts on `INFERENCE_INTERNAL_ACCOUNT_REFS`; any other account receives
+  the same `model_unavailable` an unknown id gets. The id must never appear in
+  the public catalog (`/v1/models`), the quote surface, or the pricing table.
+- Persona decisions must key on `isKhalaModel`; routing/receipt/usage/free-
+  tier decisions on `isKhalaRoutedModel` (`workers/api/src/inference/
+  pricing.ts`). Do not widen `isKhalaModel` to cover the neutral id — that
+  recreates the persona bleed by construction.
+- Internal accounts may carry an AUTHORITATIVE per-account daily served-token
+  ceiling via `INFERENCE_INTERNAL_ACCOUNT_DAILY_TOKEN_CAPS`
+  (`accountRef=tokens,...`): under the cap the account keeps the zero-debit
+  internal exemption; at/over the cap requests fall through to the normal
+  balance gate, never to the shared external free-tier quota. Accounts without
+  a cap entry keep the unbounded exemption.
+- Regression coverage (the persona probe fixture suite) lives in
+  `workers/api/src/inference/internal-neutral-lane.test.ts` and
+  `workers/api/src/inference/inference-free-tier-key.test.ts`; the Sarah-side
+  probes and typed lane-fallback events live in
+  `apps/sarah/src/services/google-inference.test.ts`.
 
 ## Default-On Free-Tier Trace Capture (redacted, private-by-default)
 

@@ -102,3 +102,47 @@ the canned busy reply. Best-effort by design — the authoritative ledger is
 
 Rollback at any point: unset the two `SARAH_INFERENCE_GATEWAY_*` vars — the
 direct-Google path resumes unchanged.
+
+## FC-BRAIN addendum (2026-07-09, #8600): the persona-neutral internal lane
+
+The first prod arming (model `openagents/khala`) was rolled back minutes after
+going live: the gateway-injected Khala collective identity ("We are Khala")
+intermittently WON over Sarah's system prompt on short turns, and answers came
+off the open lane's Gemini backing instead of Gemma. Staging stayed armed as
+the bench.
+
+The durable fix is the **persona-neutral internal model id**
+`openagents/internal-neutral` (workers/api `pricing.ts` /
+`chat-completions-routes.ts`):
+
+- **Same routing** as `openagents/khala` — the Gemma-4-led conversational
+  adapter plan, the same per-adapter backing rewrite, the same
+  receipts/free-tier/caps machinery (`isKhalaRoutedModel`).
+- **Zero persona conditioning** — no identity / refusal-posture /
+  response-discipline / capability-truth system prompts are injected, and the
+  Khala signature guard never runs. Sarah's own system prompt is the only
+  conditioning; the completion returns verbatim (`isKhalaModel` keeps gating
+  persona; the neutral id is deliberately outside it).
+- **Internal-only** — served exclusively to `INFERENCE_INTERNAL_ACCOUNT_REFS`
+  accounts; everyone else gets `model_unavailable`. Never listed in
+  `/v1/models`, never quotable, absent from the pricing table.
+- **Authoritative caps** — `INFERENCE_INTERNAL_ACCOUNT_DAILY_TOKEN_CAPS`
+  (`accountRef=tokens`) bounds Sarah's per-UTC-day served tokens gateway-side
+  (5M/day on both envs); over the cap the balance gate answers 402, which
+  Sarah maps to the busy reply. The process-local
+  `SARAH_TEXT_DAILY_TOKEN_CAP` stays a best-effort client guard.
+- **Typed fallback visibility** — the gateway receipt's
+  `openagents.telemetry` (`provider` / `servedModel` / `fallbackReason`) now
+  drives a typed public-safe `sarah.gateway_lane_fallback.v1` event whenever a
+  turn is served off the primary Gemma lane, replacing the old silent
+  hand-written model-chain fallback for good.
+- **Persona probe fixtures** — short-turn identity probes ("who are you",
+  "what are you", one-word turns) assert byte-identical prompt pass-through
+  and verbatim completions on the neutral lane, with the khala lane as the
+  injected/guarded CONTRAST:
+  `workers/api/src/inference/internal-neutral-lane.test.ts`, plus the
+  Sarah-side probes in `apps/sarah/src/services/google-inference.test.ts`.
+
+Arming: `SARAH_INFERENCE_GATEWAY_MODEL=openagents/internal-neutral` (now the
+code default) with the existing `SARAH_INFERENCE_GATEWAY_URL` / `_TOKEN`.
+Rollback remains: unset `SARAH_INFERENCE_GATEWAY_URL`.

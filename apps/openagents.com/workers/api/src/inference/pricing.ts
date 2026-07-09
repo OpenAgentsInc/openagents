@@ -268,6 +268,19 @@ export const HYDRALISK_GPT_OSS_120B_MODEL_ID = 'openai/gpt-oss-120b'
 export const KHALA_PYLON_MINI_MODEL_ID = 'openagents/khala-pylon-mini'
 export const AUTOPILOT_CONCIERGE_MODEL_ID = 'openagents/autopilot-concierge'
 
+// Persona-neutral INTERNAL model id (#8600 FC-BRAIN). Routes EXACTLY like the
+// public `openagents/khala` conversational lane (same adapter plan, receipts,
+// free-tier/caps machinery) but the gateway injects ZERO persona /
+// collective-identity conditioning and applies NO Khala signature guard: the
+// caller's own system prompt is the only conditioning the provider sees. Built
+// for internal named-employee agents (Sarah first) whose OWN persona must never
+// compete with the Khala collective identity — the 2026-07-09 live finding was
+// the shared khala lane intermittently answering "We are Khala" over Sarah's
+// system prompt on short turns. INTERNAL-ONLY: the chat route serves this id
+// exclusively to accounts on `INFERENCE_INTERNAL_ACCOUNT_REFS`; it is never
+// listed in the public catalog (`/v1/models`) and never quotable.
+export const INTERNAL_NEUTRAL_MODEL_ID = 'openagents/internal-neutral'
+
 // True when the requested id is the one public OpenAgents Khala virtual model.
 // Bounded id check, not an intent parser.
 export const normalizeKhalaModelId = (model: string): string => {
@@ -277,6 +290,19 @@ export const normalizeKhalaModelId = (model: string): string => {
 
 export const isKhalaModel = (model: string): boolean =>
   normalizeKhalaModelId(model) === KHALA_MODEL_ID
+
+// True when the requested id is the persona-neutral internal lane. Bounded id
+// check (exact id, case/whitespace-insensitive), not an intent parser.
+export const isInternalNeutralModel = (model: string): boolean =>
+  model.trim().toLowerCase() === INTERNAL_NEUTRAL_MODEL_ID
+
+// True when the requested id ROUTES over the Khala conversational machinery —
+// the public khala alias OR the persona-neutral internal lane. Use this for
+// ROUTING / receipts / usage / free-tier decisions. PERSONA decisions (identity
+// prompt injection, signature guard, component channel) must keep using
+// `isKhalaModel` so the neutral lane stays conditioning-free by construction.
+export const isKhalaRoutedModel = (model: string): boolean =>
+  isKhalaModel(model) || isInternalNeutralModel(model)
 
 // Unknown-model fallback cost. Conservative: priced like a mid open model so an
 // un-tabled model is never under-charged below plausible cost (docs edge:
