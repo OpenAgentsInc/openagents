@@ -1,5 +1,6 @@
 import { Container, getContainer } from '@cloudflare/containers'
 import {
+  FleetRunAuthorityError,
   makeFleetRunAuthorityRepository,
   type FleetRunAuthorityRepositoryShape,
 } from '@openagentsinc/khala-sync-server'
@@ -2051,9 +2052,12 @@ const fetchMdkTipsBufferPath = (
     )
 }
 
+const runWorkerEffect = <A, E>(effect: Effect.Effect<A, E>): Promise<A> =>
+  Effect.runPromise(effect)
+
 const runArtanisForumRouteEffect = async (
   effect: ReturnType<typeof forumRoutes.routeForumRequest> | undefined,
-) => (effect === undefined ? undefined : Effect.runPromise(effect))
+) => (effect === undefined ? undefined : runWorkerEffect(effect))
 
 const artanisComposerForumPostForEnv =
   (environment: Env) =>
@@ -10854,7 +10858,10 @@ const withFleetRunAuthority = async <A>(
 ): Promise<A> => {
   const connectionString = env.KHALA_SYNC_DB?.connectionString
   if (connectionString === undefined || connectionString.trim() === '') {
-    throw new Error('fleet run authority storage is unavailable')
+    throw new FleetRunAuthorityError({
+      kind: 'storage_unavailable',
+      reason: 'fleet run authority storage is unavailable',
+    })
   }
   const client = await defaultMakeKhalaSyncSqlClient(connectionString)
   try {
@@ -10870,11 +10877,11 @@ const pylonApiRoutes = makePylonApiRoutes<WorkerBindings>({
   fleetRunAuthority: {
     claim: (env, input) =>
       withFleetRunAuthority(env, repository =>
-        Effect.runPromise(repository.claim(input)),
+        runWorkerEffect(repository.claim(input)),
       ),
     acceptClaim: (env, input) =>
       withFleetRunAuthority(env, repository =>
-        Effect.runPromise(repository.acceptClaim(input)),
+        runWorkerEffect(repository.acceptClaim(input)),
       ),
   },
   // #5252: private operator-only store for raw Spark payout targets.
