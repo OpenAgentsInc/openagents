@@ -4,7 +4,8 @@
   "private": false,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./worker-executor": "./src/worker-executor.ts"
   },
   "files": [
     "src",

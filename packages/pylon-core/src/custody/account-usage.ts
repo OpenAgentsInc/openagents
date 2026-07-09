@@ -3,8 +3,13 @@ import { mkdir, readFile, stat, writeFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import { join } from "node:path"
 import {
+  probeGrokReadiness,
+  type GrokReadiness,
+} from "@openagentsinc/grok-harness/worker-executor"
+import {
   hashPylonAccountRef,
   discoverPylonSiblingAccountHomes,
+  isDefaultGrokAccountHome,
   loadPylonAccountRegistry,
   pylonClaudeAccountHomeHasAuth,
   pylonAccountEnvironment,
@@ -107,6 +112,32 @@ export type PylonAccountUsageStore = {
 export type PylonAccountReadiness =
   | { provider: "codex"; readiness: CodexAgentReadiness }
   | { provider: "claude_agent"; readiness: ClaudeAgentReadiness }
+  | { provider: "grok"; readiness: PylonGrokAccountReadiness }
+
+export type PylonGrokAccountReadinessState =
+  | "ready"
+  | "account_exhausted"
+  | "account_rate_limited"
+  | "account_quota_exhausted"
+  | "auth_required"
+  | "binary_missing"
+  | "timeout"
+  | "unknown"
+
+export type PylonGrokAccountReadiness = {
+  schema: "openagents.pylon.grok_account_readiness.v0.1"
+  state: PylonGrokAccountReadinessState
+  enabled: boolean
+  capabilityRefs: string[]
+  blockerRefs: string[]
+  credentialSourceRef: string | null
+  usageTruth: "not_measured"
+}
+
+export type PylonGrokAccountReadinessProbe = (input: {
+  readonly env: NodeJS.ProcessEnv
+  readonly timeoutMs: number
+}) => Promise<Pick<GrokReadiness, "failureClass" | "plane" | "ready">>
 
 export type PylonAccountListEntry = {
   provider: PylonAccountProvider
@@ -302,12 +333,13 @@ type AccountUsageObservation = {
 const ACCOUNT_USAGE_STALE_SECONDS = 15 * 60
 const LOCAL_SESSION_USAGE_HISTORY_LIMIT = 256
 const costStatement =
-  "pylon accounts usage --refresh runs one minimal bounded provider inference per selected account and may consume paid provider tokens."
+  "pylon accounts usage --refresh runs one minimal bounded provider inference per selected Codex or Claude account and may consume paid provider tokens; Grok remains not_measured and is never inferred."
 
 function providerSelectorFrom(value: string): PylonAccountProvider | null {
   const normalized = value.trim().toLowerCase().replaceAll("-", "_")
   if (normalized === "codex" || normalized === "chatgpt" || normalized === "openai") return "codex"
   if (normalized === "claude" || normalized === "claude_agent" || normalized === "anthropic") return "claude_agent"
+  if (normalized === "grok" || normalized === "xai") return "grok"
   return null
 }
 
@@ -324,8 +356,11 @@ function defaultHome(provider: PylonAccountProvider, env: Record<string, string 
     const configured = (env.CODEX_HOME ?? "").trim()
     return configured.length > 0 ? configured : join(homedir(), ".codex")
   }
-  const configured = (env.CLAUDE_CONFIG_DIR ?? "").trim()
-  return configured.length > 0 ? configured : join(homedir(), ".claude")
+  if (provider === "claude_agent") {
+    const configured = (env.CLAUDE_CONFIG_DIR ?? "").trim()
+    return configured.length > 0 ? configured : join(homedir(), ".claude")
+  }
+  throw new Error("Default Grok homes are not account custody targets")
 }
 
 function accountIdentity(
@@ -454,7 +489,7 @@ function creditsFromUnknown(value: unknown): PylonCreditsSnapshot | null {
 function snapshotFromUnknown(
   provider: PylonAccountProvider,
   value: unknown,
-  fallbackLimitId = provider === "codex" ? "codex" : "claude_agent",
+  fallbackLimitId: string = provider,
 ): PylonProviderRateLimitSnapshot | null {
   const source = record(value)
   if (!source) return null
@@ -480,6 +515,9 @@ export function providerRateLimitSnapshotsFromEvent(
   provider: PylonAccountProvider,
   value: unknown,
 ): PylonProviderRateLimitSnapshot[] {
+  // Grok usage is explicitly not measured in this custody slice. Never parse
+  // arbitrary CLI output into synthetic provider truth.
+  if (provider === "grok") return []
   const source = record(value)
   if (!source) return []
   const snapshots: PylonProviderRateLimitSnapshot[] = []
@@ -621,6 +659,11 @@ export async function recordPylonAccountUsageObservation(
   summary: Pick<BootstrapSummary, "paths">,
   observation: AccountUsageObservation,
 ) {
+  if (observation.provider === "grok") {
+    throw new Error(
+      "Grok provider and local-session usage truth is not measured",
+    )
+  }
   const observedAt = (observation.observedAt ?? new Date()).toISOString()
   const identity = accountIdentity(observation.provider, observation.account)
   const store = await loadAccountUsageStore(summary)
@@ -674,9 +717,9 @@ export function parsePylonAccountsUsageArgs(args: string[]): PylonAccountsUsageA
       index += 1
     } else if (arg === "--provider") {
       const value = args[index + 1]
-      if (!value || value.startsWith("--")) throw new Error("--provider requires codex or claude_agent")
+      if (!value || value.startsWith("--")) throw new Error("--provider requires codex, claude_agent, or grok")
       const provider = providerSelectorFrom(value)
-      if (!provider) throw new Error("--provider must be codex or claude_agent")
+      if (!provider) throw new Error("--provider must be codex, claude_agent, or grok")
       parsed.provider = provider
       index += 1
     } else {
@@ -726,9 +769,9 @@ export function parsePylonAccountsStatusArgs(args: string[]): PylonAccountsStatu
       index += 1
     } else if (arg === "--provider") {
       const value = args[index + 1]
-      if (!value || value.startsWith("--")) throw new Error("--provider requires codex or claude_agent")
+      if (!value || value.startsWith("--")) throw new Error("--provider requires codex, claude_agent, or grok")
       const provider = providerSelectorFrom(value)
-      if (!provider) throw new Error("--provider must be codex or claude_agent")
+      if (!provider) throw new Error("--provider must be codex, claude_agent, or grok")
       parsed.provider = provider
       index += 1
     } else {
@@ -739,6 +782,40 @@ export function parsePylonAccountsStatusArgs(args: string[]): PylonAccountsStatu
   if (selectorCount > 1) throw new Error("Use only one of --account, --provider, or --all")
   if (parsed.reset && !parsed.accountRef) throw new Error("accounts status --reset requires --account <ref>")
   return parsed
+}
+
+const grokReadinessTimeoutMs = (
+  env: Record<string, string | undefined>,
+): number => {
+  const parsed = Number.parseInt(
+    (env.PYLON_GROK_READINESS_TIMEOUT_MS ?? "").trim(),
+    10,
+  )
+  return Number.isFinite(parsed)
+    ? Math.max(100, Math.min(60_000, parsed))
+    : 10_000
+}
+
+const pylonGrokReadiness = (
+  result: Pick<GrokReadiness, "failureClass" | "plane" | "ready">,
+): PylonGrokAccountReadiness => {
+  const ready = result.ready && result.plane === "cli_session"
+  const state: PylonGrokAccountReadinessState = ready
+    ? "ready"
+    : result.ready
+      ? "auth_required"
+      : result.failureClass ?? "unknown"
+  return {
+    schema: "openagents.pylon.grok_account_readiness.v0.1",
+    state,
+    enabled: true,
+    capabilityRefs: ready ? ["capability.pylon.grok_custody_ready"] : [],
+    blockerRefs: ready ? [] : [`blocker.pylon.grok_account.${state}`],
+    credentialSourceRef: ready
+      ? "credential.source.grok.isolated_cli_session"
+      : null,
+    usageTruth: "not_measured",
+  }
 }
 
 /**
@@ -755,6 +832,9 @@ export async function readinessForTarget(
   summary: Pick<BootstrapSummary, "paths">,
   target: AccountDiscoveryTarget,
   env: Record<string, string | undefined>,
+  options: {
+    grokReadinessProbe?: PylonGrokAccountReadinessProbe
+  } = {},
 ): Promise<PylonAccountReadiness> {
   const effectiveEnv = target.account ? pylonAccountEnvironment(env, target.account) : env
   if (target.provider === "codex") {
@@ -800,6 +880,19 @@ export async function readinessForTarget(
       readiness: baseReadiness,
     }
   }
+  if (target.provider === "grok") {
+    const result = await (
+      options.grokReadinessProbe ??
+      ((input) => probeGrokReadiness(input))
+    )({
+      env: effectiveEnv,
+      timeoutMs: grokReadinessTimeoutMs(effectiveEnv),
+    })
+    return {
+      provider: "grok",
+      readiness: pylonGrokReadiness(result),
+    }
+  }
   const config = await loadClaudeAgentConfig(summary)
   return {
     provider: "claude_agent",
@@ -827,6 +920,9 @@ async function discoverAccountTargets(
   }
 
   for (const entry of await loadPylonAccountRegistry(summary)) {
+    if (entry.provider === "grok" && isDefaultGrokAccountHome(entry.home, env)) {
+      continue
+    }
     addTarget({
       provider: entry.provider,
       selector: "registry_ref",
@@ -906,7 +1002,12 @@ async function selectAccountUsageTargets(
 ): Promise<AccountDiscoveryTarget[]> {
   const targets = (await discoverAccountTargets(summary, env)).filter((target) => {
     if (args.accountRef) return target.accountRef === args.accountRef
-    if (args.provider) return target.provider === args.provider && target.selector === "default_home"
+    if (args.provider) {
+      return target.provider === args.provider &&
+        (args.provider === "grok"
+          ? target.selector === "registry_ref"
+          : target.selector === "default_home")
+    }
     if (args.all) return true
     return target.selector === "default_home"
   })
@@ -914,7 +1015,10 @@ async function selectAccountUsageTargets(
     const provider = providerSelectorFrom(args.accountRef)
     if (provider) {
       return (await discoverAccountTargets(summary, env)).filter(
-        (target) => target.provider === provider && target.selector === "default_home",
+        (target) => target.provider === provider &&
+          (provider === "grok"
+            ? target.selector === "registry_ref"
+            : target.selector === "default_home"),
       )
     }
     throw new Error(`unknown account ref or provider selector: ${args.accountRef}`)
@@ -924,13 +1028,21 @@ async function selectAccountUsageTargets(
 
 export async function collectPylonAccountsList(
   summary: Pick<BootstrapSummary, "paths">,
-  options: { env?: Record<string, string | undefined>; now?: Date } = {},
+  options: {
+    env?: Record<string, string | undefined>
+    now?: Date
+    grokReadinessProbe?: PylonGrokAccountReadinessProbe
+  } = {},
 ): Promise<PylonAccountsListProjection> {
   const env = options.env ?? (Bun.env as Record<string, string | undefined>)
   const observedAt = (options.now ?? new Date()).toISOString()
   const accounts: PylonAccountListEntry[] = []
   for (const target of await discoverAccountTargets(summary, env)) {
-    const probed = await readinessForTarget(summary, target, env)
+    const probed = await readinessForTarget(summary, target, env, {
+      ...(options.grokReadinessProbe === undefined
+        ? {}
+        : { grokReadinessProbe: options.grokReadinessProbe }),
+    })
     const homePresent = await pathIsDirectory(target.home)
     accounts.push({
       provider: target.provider,
@@ -1268,7 +1380,11 @@ export function quotaStateFrom(record: QuotaRecord | null, now: Date): {
 export async function collectPylonAccountsStatus(
   summary: Pick<BootstrapSummary, "paths">,
   args: PylonAccountsStatusArgs,
-  options: { env?: Record<string, string | undefined>; now?: Date } = {},
+  options: {
+    env?: Record<string, string | undefined>
+    now?: Date
+    grokReadinessProbe?: PylonGrokAccountReadinessProbe
+  } = {},
 ): Promise<PylonAccountsStatusProjection> {
   const env = options.env ?? (Bun.env as Record<string, string | undefined>)
   const now = options.now ?? new Date()
@@ -1278,7 +1394,13 @@ export async function collectPylonAccountsStatus(
   const accounts: PylonAccountsStatusProjection["accounts"] = []
 
   for (const target of targets) {
-    const readiness = (await readinessForTarget(summary, target, env)).readiness
+    const readiness = (
+      await readinessForTarget(summary, target, env, {
+        ...(options.grokReadinessProbe === undefined
+          ? {}
+          : { grokReadinessProbe: options.grokReadinessProbe }),
+      })
+    ).readiness
     const quotaRecordBeforeReset = await loadQuotaRecord(summary, target.accountRefHash)
     const quotaStateBeforeReset = quotaStateFrom(quotaRecordBeforeReset, now)
     let resetPerformed = false
@@ -1372,7 +1494,11 @@ export async function collectPylonAccountsStatus(
 export async function collectPylonAccountsUsage(
   summary: Pick<BootstrapSummary, "paths">,
   args: PylonAccountsUsageArgs,
-  options: { env?: Record<string, string | undefined>; now?: Date } = {},
+  options: {
+    env?: Record<string, string | undefined>
+    now?: Date
+    grokReadinessProbe?: PylonGrokAccountReadinessProbe
+  } = {},
 ): Promise<PylonAccountsUsageProjection> {
   const env = options.env ?? (Bun.env as Record<string, string | undefined>)
   const now = options.now ?? new Date()
@@ -1382,7 +1508,13 @@ export async function collectPylonAccountsUsage(
   const platform = await sharedPlatformTruth(env, now)
   const accounts: PylonAccountsUsageProjection["accounts"] = []
   for (const target of targets) {
-    const readiness = (await readinessForTarget(summary, target, env)).readiness
+    const readiness = (
+      await readinessForTarget(summary, target, env, {
+        ...(options.grokReadinessProbe === undefined
+          ? {}
+          : { grokReadinessProbe: options.grokReadinessProbe }),
+      })
+    ).readiness
     const entry = store.accounts[target.accountRefHash]
     const provider = providerTruth(entry, now)
     const local = localSessionTruth(entry, now)

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
 import { join } from "node:path"
-import { tmpdir } from "node:os"
+import { homedir, tmpdir } from "node:os"
 import { Effect } from "effect"
 
 import {
@@ -49,8 +49,10 @@ describe("pylon account registry", () => {
     await withHome(async (home) => {
       const codexHome = join(home, "codex-a")
       const claudeHome = join(home, "claude-a")
+      const grokHome = join(home, "grok-a")
       await mkdir(codexHome, { recursive: true })
       await mkdir(claudeHome, { recursive: true })
+      await mkdir(grokHome, { recursive: true })
       const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), { PYLON_HOME: home })
       await writeFile(
         summary.paths.config,
@@ -66,6 +68,8 @@ describe("pylon account registry", () => {
                   openAgentsProviderAccountRef: "provider_account.public.codex.a",
                 },
                 { ref: "claude-a", provider: "claude_agent", home: claudeHome },
+                { ref: "grok-a", provider: "grok", home: grokHome },
+                { ref: "grok-default-must-not-load", provider: "grok", home: join(homedir(), ".grok") },
                 { ref: "bad provider", provider: "codex", home: "/ignored" },
               ],
             },
@@ -79,14 +83,16 @@ describe("pylon account registry", () => {
       expect(entries.map(entry => `${entry.provider}:${entry.ref}`)).toEqual([
         "codex:codex-a",
         "claude_agent:claude-a",
+        "grok:grok-a",
       ])
       // MH-8 (#8587): absent marginalCostClass defaults to the honest
       // "not_measured" value — never inferred from provider/ref by name.
       expect(entries.map(entry => entry.marginalCostClass)).toEqual([
         "not_measured",
         "not_measured",
+        "not_measured",
       ])
-      expect(entries.map(entry => entry.paused ?? false)).toEqual([true, false])
+      expect(entries.map(entry => entry.paused ?? false)).toEqual([true, false, false])
 
       const resolved = await resolvePylonAccountSelection(summary, {
         provider: "codex",
@@ -154,6 +160,54 @@ describe("pylon account registry", () => {
       expect(publicPylonAccountSelection(resolved)?.accountRefHash).toBe(
         hashPylonAccountRef("claude_agent", home),
       )
+    })
+  })
+
+  test("isolates named Grok homes and strips shared API-key aliases", async () => {
+    await withHome(async (home) => {
+      const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), {
+        PYLON_HOME: home,
+      })
+      const resolved = await resolvePylonAccountSelection(summary, {
+        provider: "grok",
+        accountHome: home,
+      })
+      const env = pylonAccountEnvironment(
+        {
+          PATH: "/bin",
+          HOME: "/owner-home",
+          GROK_HOME: "/owner-home/.grok",
+          XAI_API_KEY: "shared-api-key",
+          GROK_CODE_XAI_API_KEY: "shared-code-key",
+          GROK_AUTH_PROVIDER_COMMAND: "shared-auth-command",
+          GROK_AUTH_PROVIDER_LABEL: "shared-auth-label",
+          GROK_AUTH: "shared-auth-token",
+          GROK_AUTH_PATH: "/owner-home/shared-auth",
+          GROK_LOCAL_AUTH: "1",
+          GROK_OIDC_CLIENT_ID: "shared-oidc-client",
+        },
+        resolved,
+      )
+      expect(env).toMatchObject({
+        PATH: "/bin",
+        HOME: "/owner-home",
+        GROK_HOME: home,
+      })
+      expect(env.XAI_API_KEY).toBeUndefined()
+      expect(env.GROK_CODE_XAI_API_KEY).toBeUndefined()
+      expect(env.GROK_AUTH_PROVIDER_COMMAND).toBeUndefined()
+      expect(env.GROK_AUTH_PROVIDER_LABEL).toBeUndefined()
+      expect(env.GROK_AUTH).toBeUndefined()
+      expect(env.GROK_AUTH_PATH).toBeUndefined()
+      expect(env.GROK_LOCAL_AUTH).toBeUndefined()
+      expect(env.GROK_OIDC_CLIENT_ID).toBeUndefined()
+      expect(env.CODEX_HOME).toBeUndefined()
+      expect(env.CLAUDE_CONFIG_DIR).toBeUndefined()
+      expect(publicPylonAccountSelection(resolved)).toEqual({
+        provider: "grok",
+        selector: "direct_home",
+        accountRefHash: hashPylonAccountRef("grok", home),
+      })
     })
   })
 

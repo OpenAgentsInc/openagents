@@ -39,7 +39,7 @@ export type PylonRpcWorkerKind = typeof PylonRpcWorkerKind.Type
 export const PylonAssignmentRunStatus = S.Literals(["accepted", "blocked", "failed", "completed"])
 export type PylonAssignmentRunStatus = typeof PylonAssignmentRunStatus.Type
 
-export const PylonAccountProvider = S.Literals(["codex", "claude_agent"])
+export const PylonAccountProvider = S.Literals(["codex", "claude_agent", "grok"])
 export type PylonAccountProvider = typeof PylonAccountProvider.Type
 
 /** Public-safe account summary (hashed ref only — never a raw account path). */

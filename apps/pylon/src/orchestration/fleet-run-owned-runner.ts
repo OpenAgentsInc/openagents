@@ -139,7 +139,7 @@ const pylonRefPattern = /^[a-z0-9][a-z0-9_.:-]{2,119}$/u
 
 const providerForWorker = (
   workerKind: FleetRunSupervisorDispatchInput["workerKind"],
-): PylonAccountProvider | null =>
+): Exclude<PylonAccountProvider, "grok"> | null =>
   workerKind === "codex" ? "codex" : workerKind === "claude" ? "claude_agent" : null
 
 const workflowForWorker = (
@@ -281,7 +281,7 @@ const exactRegistryAccount = (
   input: {
     readonly accountRef: string
     readonly defaultHomes: { readonly claudeAgent: string; readonly codex: string }
-    readonly provider: PylonAccountProvider
+    readonly provider: Exclude<PylonAccountProvider, "grok">
   },
 ): PylonAccountRegistryEntry | null => {
   // Bare account refs are supervisor authority keys. A duplicate anywhere in
@@ -291,7 +291,9 @@ const exactRegistryAccount = (
   if (bareRefMatches.length !== 1) return null
   const account = bareRefMatches[0]
   if (account.provider !== input.provider || account.paused === true) return null
-  const defaultHome = input.provider === "codex" ? input.defaultHomes.codex : input.defaultHomes.claudeAgent
+  const defaultHome = input.provider === "codex"
+    ? input.defaultHomes.codex
+    : input.defaultHomes.claudeAgent
   if (/^(?:\(default\)|default)$/iu.test(account.ref.trim())) return null
   if (normalizeAccountHome(account.home) === normalizeAccountHome(defaultHome)) return null
   return account

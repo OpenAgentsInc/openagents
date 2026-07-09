@@ -29,7 +29,12 @@ import type {
 
 export type PylonOwnedStandingFleetRunCapacityOptions = Omit<
   CreatePylonOwnedFleetRunSupervisorCapacityInput,
-  "defaultHomes" | "env" | "loadRegistry" | "store" | "summary"
+  | "defaultHomes"
+  | "env"
+  | "grokExecutionAvailable"
+  | "loadRegistry"
+  | "store"
+  | "summary"
 >
 
 export type PylonOwnedStandingFleetRunRunnerOptions = Omit<
@@ -55,6 +60,7 @@ export type PylonOwnedStandingFleetRunAdapterOptions = {
   readonly defaultHomes?: {
     readonly claudeAgent: string
     readonly codex: string
+    readonly grok?: string | undefined
   } | undefined
   readonly capacity?: PylonOwnedStandingFleetRunCapacityOptions | undefined
   readonly runner?: PylonOwnedStandingFleetRunRunnerOptions | undefined
@@ -113,6 +119,10 @@ export async function openPylonOwnedStandingFleetRunExecutor(
         store,
         summary,
         env,
+        // Custody/readiness lands before the claimed-work executor. Keep the
+        // canonical standing scheduler closed even if Grok account rows are
+        // present; the future executor composition owns opening this gate.
+        grokExecutionAvailable: false,
         ...(options.defaultHomes === undefined ? {} : { defaultHomes: options.defaultHomes }),
         ...(options.loadRegistry === undefined ? {} : { loadRegistry: options.loadRegistry }),
       }),

@@ -22,9 +22,10 @@ export type PublicSafePylonFleetCapacityAccount = {
 
 export type MapPylonFleetSupervisorCapacityOptions = {
   readonly allowDefaultAccount?: boolean | undefined
+  readonly grokExecutionAvailable?: boolean | undefined
 }
 
-const supportedProviders = new Set(["codex", "claude_agent"])
+const supportedProviders = new Set(["codex", "claude_agent", "grok"])
 const readyStates = new Set(["ready", "available"])
 
 export function parsePylonFleetMarginalCostClass(value: unknown): PylonAccountMarginalCostClass | null {
@@ -51,25 +52,36 @@ const availableSlots = (account: PublicSafePylonFleetCapacityAccount): number =>
  * Provider is used only for the explicit harness mapping. Cost is always read
  * from the row and invalid/absent values become the honest `not_measured`;
  * provider names and account refs never influence economics. Unsupported
- * providers (including Grok until it has a Pylon account row) are skipped
- * rather than silently substituted onto Codex.
+ * Unknown providers are skipped rather than silently substituted onto Codex.
+ * Named Grok custody maps to an explicit Grok row, but its capacity remains
+ * zero until the claimed-work executor is composed through a separate gate.
  */
 export function mapPylonFleetSupervisorCapacity(
   accounts: readonly PublicSafePylonFleetCapacityAccount[],
   options: MapPylonFleetSupervisorCapacityOptions = {},
 ): readonly FleetRunSupervisorAccount[] {
   const allowDefaultAccount = options.allowDefaultAccount ?? true
+  const grokExecutionAvailable = options.grokExecutionAvailable ?? false
   return accounts.flatMap((account): FleetRunSupervisorAccount[] => {
     if (!supportedProviders.has(account.provider)) return []
     if (!readyStates.has(account.readiness) || account.paused) return []
     if (!allowDefaultAccount && account.isDefaultAccount === true) return []
     const accountRef = account.accountRef.trim()
     if (accountRef.length === 0) return []
+    const workerKind =
+      account.provider === "claude_agent"
+        ? "claude" as const
+        : account.provider === "grok"
+          ? "grok" as const
+          : "codex" as const
     return [{
       accountRef,
-      advertisedCapacity: availableSlots(account),
+      advertisedCapacity:
+        workerKind === "grok" && !grokExecutionAvailable
+          ? 0
+          : availableSlots(account),
       marginalCostClass: normalizePylonFleetMarginalCostClass(account.marginalCostClass),
-      workerKind: account.provider === "claude_agent" ? "claude" : "codex",
+      workerKind,
     }]
   })
 }

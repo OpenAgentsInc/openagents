@@ -28,7 +28,7 @@ const summary = {
 
 const account = (
   ref: string,
-  provider: "claude_agent" | "codex",
+  provider: "claude_agent" | "codex" | "grok",
   input: { readonly home?: string; readonly paused?: boolean; readonly marginalCostClass?: PylonAccountRegistryEntry["marginalCostClass"] } = {},
 ): PylonAccountRegistryEntry => ({
   ref,
@@ -103,6 +103,7 @@ const capacityFixture = (input: {
   readonly usage?: PylonAccountUsageStore
   readonly readiness?: (account: PylonAccountRegistryEntry) => string | Promise<string>
   readonly slots?: (account: PylonAccountRegistryEntry) => number | null
+  readonly grokExecutionAvailable?: boolean
 }) => {
   const store = input.store ?? createPylonOrchestrationStore(new Database(":memory:"))
   const capacity = createPylonOwnedFleetRunSupervisorCapacity({
@@ -111,7 +112,9 @@ const capacityFixture = (input: {
     defaultHomes: {
       codex: "/private/default/.codex",
       claudeAgent: "/private/default/.claude",
+      grok: "/private/default/.grok",
     },
+    grokExecutionAvailable: input.grokExecutionAvailable,
     loadRegistry: async () => input.registry,
     loadUsage: async () => input.usage ?? emptyUsage(),
     probeReadiness: async ({ account }) => await (input.readiness?.(account) ?? "ready"),
@@ -144,35 +147,84 @@ describe("Pylon-owned FleetRun account capacity", () => {
         workerKind: "claude",
       },
     ])
-    expect(capacity.diagnostics()).toEqual([{
-      schema: PYLON_FLEET_CAPACITY_DIAGNOSTIC_SCHEMA,
-      kind: "grok_account_inspection_unavailable",
-      blockerRefs: ["blocker.pylon.fleet_capacity.grok_account_inspection_unavailable"],
-    }])
+    expect(capacity.diagnostics()).toEqual([])
   })
 
-  test("omits Grok with a typed diagnostic and never substitutes a Codex account", async () => {
+  test("reports named ready Grok custody but admits zero work until its executor is composed", async () => {
     let registryReads = 0
     const store = createPylonOrchestrationStore(new Database(":memory:"))
     const capacity = createPylonOwnedFleetRunSupervisorCapacity({
       store,
       summary,
+      defaultHomes: {
+        codex: "/private/default/.codex",
+        claudeAgent: "/private/default/.claude",
+        grok: "/private/default/.grok",
+      },
       loadRegistry: async () => {
         registryReads += 1
-        return [account("codex-must-not-substitute", "codex")]
+        return [
+          account("grok-owner", "grok"),
+          account("codex-must-not-substitute", "codex"),
+        ]
       },
       loadUsage: async () => emptyUsage(),
       probeReadiness: async () => "ready",
+      advertisedSlotsForAccount: () => 3,
     })
     const run = createRun(store, "fleet_run.capacity.grok_unavailable", "grok")
 
-    expect(await capacity.accounts({ run, now: fixedNow })).toEqual([])
-    expect(registryReads).toBe(0)
+    expect(await capacity.accounts({ run, now: fixedNow })).toEqual([{
+      accountRef: "grok-owner",
+      advertisedCapacity: 0,
+      marginalCostClass: "not_measured",
+      workerKind: "grok",
+    }])
+    expect(registryReads).toBe(1)
     expect(capacity.diagnostics()).toEqual([{
       schema: PYLON_FLEET_CAPACITY_DIAGNOSTIC_SCHEMA,
-      kind: "grok_account_inspection_unavailable",
-      blockerRefs: ["blocker.pylon.fleet_capacity.grok_account_inspection_unavailable"],
+      kind: "grok_executor_unavailable",
+      blockerRefs: ["blocker.pylon.fleet_capacity.grok_executor_unavailable"],
     }])
+  })
+
+  test("maps exact bounded Grok slots only through the explicit executor gate", async () => {
+    const grok = account("grok-owner", "grok", {
+      marginalCostClass: "api_metered",
+    })
+    const { capacity, store } = capacityFixture({
+      registry: [grok],
+      grokExecutionAvailable: true,
+      slots: () => 65_000,
+    })
+    const run = createRun(store, "fleet_run.capacity.grok_composed", "grok")
+
+    expect(await capacity.accounts({ run, now: fixedNow })).toEqual([{
+      accountRef: "grok-owner",
+      advertisedCapacity: 64,
+      marginalCostClass: "api_metered",
+      workerKind: "grok",
+    }])
+    expect(capacity.diagnostics()).toEqual([])
+  })
+
+  test("excludes a default Grok home and never probes it", async () => {
+    const defaultGrok = account("grok-default", "grok", {
+      home: "/private/default/.grok",
+    })
+    let probes = 0
+    const { capacity, store } = capacityFixture({
+      registry: [defaultGrok],
+      grokExecutionAvailable: true,
+      readiness: () => {
+        probes += 1
+        return "ready"
+      },
+    })
+    const run = createRun(store, "fleet_run.capacity.grok_default", "grok")
+
+    expect(await capacity.accounts({ run, now: fixedNow })).toEqual([])
+    expect(probes).toBe(0)
   })
 
   test("subtracts external durable load while leaving current-run subtraction to the supervisor", async () => {
@@ -316,7 +368,6 @@ describe("Pylon-owned FleetRun account capacity", () => {
 
     expect(await capacity.accounts({ run, now: fixedNow })).toEqual([])
     expect(capacity.diagnostics()).toEqual([
-      expect.objectContaining({ kind: "grok_account_inspection_unavailable" }),
       expect.objectContaining({ kind: "duplicate_account_ref" }),
     ])
   })

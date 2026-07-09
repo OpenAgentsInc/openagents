@@ -954,10 +954,25 @@ function codexComposerWorkingDirectory() {
 async function runAccountsUsageRefresh(
   summary: ReturnType<typeof createBootstrapSummary>,
   options: PylonAccountsUsageArgs,
-) {
+): Promise<{
+  readonly attemptedCount: number
+  readonly blockerRefs: readonly string[]
+}> {
   const targets = await resolvePylonAccountUsageRefreshTargets(summary, options, { env: Bun.env })
+  if (targets.length > 0 && targets.every((target) => target.provider === "grok")) {
+    throw new Error(
+      "Grok account usage refresh is unavailable; Grok usage truth remains not_measured",
+    )
+  }
+  let attemptedCount = 0
+  let skippedGrok = false
   const prompt = "Reply with exactly: ok."
   for (const target of targets) {
+    if (target.provider === "grok") {
+      skippedGrok = true
+      continue
+    }
+    attemptedCount += 1
     try {
       if (target.provider === "codex") {
         const config = await loadCodexAgentConfig(summary)
@@ -984,7 +999,7 @@ async function runAccountsUsageRefresh(
             usageStateSummary: summary,
           },
         )
-      } else {
+      } else if (target.provider === "claude_agent") {
         const config = await loadClaudeAgentConfig(summary)
         await runClaudeComposerStream(
           prompt,
@@ -1006,6 +1021,12 @@ async function runAccountsUsageRefresh(
       // Readiness and missing provider snapshots are reported in the final
       // JSON truth tiers; refresh failure must not leak raw provider errors.
     }
+  }
+  return {
+    attemptedCount,
+    blockerRefs: skippedGrok
+      ? ["blocker.pylon.accounts_usage.grok_refresh_not_measured"]
+      : [],
   }
 }
 
@@ -3391,10 +3412,11 @@ async function main() {
     }
   }
 
+  const codexAccountsAlias = args[0] === "codex" && args[1] === "accounts"
   const accountCommandArgs =
     args[0] === "accounts"
       ? args.slice(1)
-      : args[0] === "codex" && args[1] === "accounts"
+      : codexAccountsAlias
         ? args.slice(2)
         : null
 
@@ -3429,15 +3451,35 @@ async function main() {
           process.stdout.write(`${JSON.stringify(projection, null, 2)}\n`)
           return
         }
-        // Human-readable view: connected Codex accounts with email + last linked.
+        if (!codexAccountsAlias) {
+          const projection = await collectPylonAccountsList(summary, {
+            env: Bun.env,
+          })
+          const present = projection.accounts.filter(
+            (account) => account.homeState === "present",
+          )
+          if (present.length === 0) {
+            process.stdout.write("No connected Pylon accounts.\n")
+            return
+          }
+          process.stdout.write(`Connected Pylon accounts (${present.length}):\n`)
+          for (const account of present) {
+            const ref = account.accountRef ?? "(default)"
+            process.stdout.write(
+              `  ${account.provider.padEnd(14)} ${ref.padEnd(18)} ${account.readiness.state}\n`,
+            )
+          }
+          return
+        }
+        // The Codex namespace alias retains its local-only email/linked-at view.
         const codex = await collectPylonCodexAccountsLocal(summary, { env: Bun.env })
-        const present = codex.filter((account) => account.homeState === "present")
-        if (present.length === 0) {
+        const presentCodex = codex.filter((account) => account.homeState === "present")
+        if (presentCodex.length === 0) {
           process.stdout.write("No connected Codex accounts.\n")
           return
         }
-        process.stdout.write(`Connected Codex accounts (${present.length}):\n`)
-        for (const account of present) {
+        process.stdout.write(`Connected Codex accounts (${presentCodex.length}):\n`)
+        for (const account of presentCodex) {
           const ref = account.accountRef ?? "(default)"
           const email = account.email ?? "(email unavailable)"
           const when = account.lastLinkedAt
@@ -3453,13 +3495,9 @@ async function main() {
           throw new Error("usage: pylon accounts usage [--account <ref-or-provider>|--provider <codex|claude_agent>|--all] [--refresh] [--report-local-codex-usage] --json")
         }
         const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
-        if (options.refresh) {
-          // The expensive refresh contract is intentionally opt-in. The
-          // current SDK stream exposes local session usage and captures
-          // provider snapshots when the underlying event stream includes
-          // Codex/Claude rate-limit payloads.
-          await runAccountsUsageRefresh(summary, options)
-        }
+        const refreshResult = options.refresh
+          ? await runAccountsUsageRefresh(summary, options)
+          : { attemptedCount: 0, blockerRefs: [] }
         const directLocalCodexReport = await reportDirectLocalCodexUsage(
           summary,
           options,
@@ -3470,9 +3508,17 @@ async function main() {
           ...projection,
           refresh: {
             ...projection.refresh,
-            performed: options.refresh,
+            performed: options.refresh && refreshResult.attemptedCount > 0,
             directLocalCodexReport,
+            blockerRefs: [
+              ...projection.refresh.blockerRefs,
+              ...refreshResult.blockerRefs,
+            ],
           },
+          blockerRefs: [
+            ...projection.blockerRefs,
+            ...refreshResult.blockerRefs,
+          ],
         }, null, 2)}\n`)
         return
       }
@@ -3490,7 +3536,7 @@ async function main() {
         const options = parsePylonAccountsConnectArgs(accountCommandArgs.slice(1))
         if (!options.json) {
           throw new Error(
-            "usage: pylon accounts connect codex|claude --account <ref> [--home <path>] [--token <setup-token>] [--openagents-link|--openagents-attempt-id <id>] --json",
+            "usage: pylon accounts connect codex|claude|grok --account <ref> [provider-specific options] --json",
           )
         }
         const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)

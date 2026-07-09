@@ -80,7 +80,7 @@ describe("mapPylonFleetSupervisorCapacity", () => {
     }])
   })
 
-  test("does not silently map Grok or another unsupported provider onto Codex", () => {
+  test("keeps Grok fail-closed at zero until execution is explicitly composed", () => {
     expect(mapPylonFleetSupervisorCapacity([
       {
         accountRef: "grok-owner",
@@ -97,7 +97,30 @@ describe("mapPylonFleetSupervisorCapacity", () => {
         provider: "unknown",
         readiness: "ready",
       },
-    ])).toEqual([])
+    ])).toEqual([{
+      accountRef: "grok-owner",
+      advertisedCapacity: 0,
+      marginalCostClass: "api_metered",
+      workerKind: "grok",
+    }])
+  })
+
+  test("maps exact bounded Grok slots only when execution is explicitly available", () => {
+    expect(mapPylonFleetSupervisorCapacity([
+      {
+        accountRef: "grok-owner",
+        capacity: { available: 3, ready: 3 },
+        marginalCostClass: "not_measured",
+        paused: false,
+        provider: "grok",
+        readiness: "ready",
+      },
+    ], { grokExecutionAvailable: true })).toEqual([{
+      accountRef: "grok-owner",
+      advertisedCapacity: 3,
+      marginalCostClass: "not_measured",
+      workerKind: "grok",
+    }])
   })
 
   test("fails unknown capacity closed to zero instead of inventing one slot", () => {

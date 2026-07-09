@@ -65,6 +65,7 @@ async function runWorker(input: {
     })
     proc.on("close", (code) => {
       const exitCode = code ?? 1
+      const failureClass = classify(stderr + stdout, exitCode)
       resolvePromise({
         index: input.index,
         ok: exitCode === 0 && stdout.trim().length > 0,
@@ -72,9 +73,9 @@ async function runWorker(input: {
         exitCode,
         textPreview: stdout.trim().slice(0, 200),
         stderrPreview: stderr.slice(0, 300),
-        ...(classify(stderr + stdout, exitCode)
-          ? { failureClass: classify(stderr + stdout, exitCode) }
-          : {}),
+        ...(failureClass === undefined
+          ? {}
+          : { failureClass }),
       })
     })
   })

@@ -21,6 +21,11 @@
 import { existsSync } from "node:fs"
 import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises"
 import { dirname, join } from "node:path"
+import {
+  isolateGrokCliEnvironment,
+  probeGrokReadiness,
+  type GrokReadiness,
+} from "@openagentsinc/grok-harness/worker-executor"
 
 import {
   hashPylonAccountRef,
@@ -64,6 +69,14 @@ export type PylonCodexDeviceLoginRunner = (input: {
   env: Record<string, string | undefined>
   home: string
 }) => Promise<{ exitCode: number }>
+
+export type PylonGrokDeviceLoginRunner = PylonCodexDeviceLoginRunner
+
+export type PylonGrokReadinessProbe = (input: {
+  env: Record<string, string | undefined>
+  home: string
+  timeoutMs: number
+}) => Promise<Pick<GrokReadiness, "failureClass" | "plane" | "ready">>
 
 /**
  * Reasons a stored Codex `auth.json` can be present-but-unusable. These are
@@ -153,7 +166,7 @@ function readRequiredValue(args: string[], index: number, option: string): strin
 }
 
 const ACCOUNTS_CONNECT_USAGE =
-  "usage: pylon accounts connect codex|claude --account <ref> [--home <path>] [--token <setup-token>] [--openagents-link|--openagents-attempt-id <id>] --json"
+  "usage: pylon accounts connect codex|claude|grok --account <ref> [--home <path>] [--token <setup-token>] [--openagents-link|--openagents-attempt-id <id>] --json"
 
 /**
  * Normalize CLI provider aliases to the registry provider id.
@@ -162,6 +175,7 @@ const ACCOUNTS_CONNECT_USAGE =
 export function normalizeAccountsConnectProvider(raw: string | undefined): PylonAccountProvider | null {
   if (raw === "codex") return "codex"
   if (raw === "claude" || raw === "claude_agent") return "claude_agent"
+  if (raw === "grok") return "grok"
   return null
 }
 
@@ -202,7 +216,13 @@ export function parsePylonAccountsConnectArgs(args: string[]): PylonAccountsConn
     } else if (arg === "--base-url") {
       parsed.baseUrl = readRequiredValue(args, index, arg).trim()
       index += 1
-    } else if (arg === "--home" || arg === "--codex-home" || arg === "--claude-home" || arg === "--claude-config-dir") {
+    } else if (
+      arg === "--home" ||
+      arg === "--codex-home" ||
+      arg === "--claude-home" ||
+      arg === "--claude-config-dir" ||
+      arg === "--grok-home"
+    ) {
       parsed.home = readRequiredValue(args, index, arg)
       index += 1
     } else if (arg === "--token" || arg === "--setup-token") {
@@ -247,7 +267,23 @@ export function parsePylonAccountsConnectArgs(args: string[]): PylonAccountsConn
       )
     }
   }
-  if (parsed.provider === "codex" && parsed.setupToken !== null) {
+  if (parsed.provider === "grok") {
+    if (parsed.home !== null) {
+      throw new Error(
+        "Grok connect always uses the isolated <pylon home>/accounts/grok/<ref> home; --home / --grok-home is not accepted",
+      )
+    }
+    if (
+      parsed.openAgentsLink ||
+      parsed.openAgentsAttemptId !== null ||
+      parsed.providerAccountRef !== null
+    ) {
+      throw new Error(
+        "Grok connect does not support the Codex OpenAgents provider-account link flow",
+      )
+    }
+  }
+  if (parsed.provider !== "claude_agent" && parsed.setupToken !== null) {
     throw new Error("--token / --setup-token is only valid for pylon accounts connect claude")
   }
 
@@ -392,6 +428,40 @@ const defaultCodexDeviceLoginRunner: PylonCodexDeviceLoginRunner = async input =
   })
   return { exitCode: await child.exited }
 }
+
+const defaultGrokDeviceLoginRunner: PylonGrokDeviceLoginRunner = async input => {
+  const env = isolateGrokCliEnvironment({
+    ...process.env,
+    ...input.env,
+  }, input.home)
+  const child = Bun.spawn(["grok", "login", "--device-auth"], {
+    env,
+    stdin: "inherit",
+    stdout: "inherit",
+    stderr: "inherit",
+  })
+  return { exitCode: await child.exited }
+}
+
+const GROK_READINESS_TIMEOUT_DEFAULT_MS = 10_000
+
+const grokReadinessTimeoutMs = (
+  env: Record<string, string | undefined>,
+): number => {
+  const parsed = Number.parseInt(
+    (env.PYLON_GROK_READINESS_TIMEOUT_MS ?? "").trim(),
+    10,
+  )
+  return Number.isFinite(parsed)
+    ? Math.max(100, Math.min(60_000, parsed))
+    : GROK_READINESS_TIMEOUT_DEFAULT_MS
+}
+
+const defaultGrokReadinessProbe: PylonGrokReadinessProbe = async input =>
+  probeGrokReadiness({
+    env: input.env,
+    timeoutMs: input.timeoutMs,
+  })
 
 /**
  * Classifies the output of a bounded Codex credential probe. Recognized
@@ -592,11 +662,29 @@ export async function runPylonAccountsConnect(
     env?: Record<string, string | undefined>
     fetcher?: PylonAccountsConnectFetcher
     runCodexDeviceLogin?: PylonCodexDeviceLoginRunner
+    runGrokDeviceLogin?: PylonGrokDeviceLoginRunner
     codexAuthValidityProbe?: PylonCodexAuthValidityProbe
+    grokReadinessProbe?: PylonGrokReadinessProbe
   } = {},
 ): Promise<PylonAccountConnectProjection> {
   const env = options.env ?? (Bun.env as Record<string, string | undefined>)
-  const home = normalizeAccountHome(args.home ?? defaultAccountHome(summary, args.provider, args.accountRef))
+  if (
+    args.provider === "grok" &&
+    (args.home !== null ||
+      args.setupToken !== null ||
+      args.openAgentsLink ||
+      args.openAgentsAttemptId !== null ||
+      args.providerAccountRef !== null)
+  ) {
+    throw new Error(
+      "Grok connect accepts only an isolated named device-login account",
+    )
+  }
+  const home = normalizeAccountHome(
+    args.provider === "grok"
+      ? defaultAccountHome(summary, "grok", args.accountRef)
+      : args.home ?? defaultAccountHome(summary, args.provider, args.accountRef),
+  )
   await mkdir(home, { recursive: true })
 
   let deviceLoginStatus: PylonAccountConnectProjection["deviceLogin"]["status"] = "skipped_by_flag"
@@ -651,6 +739,39 @@ export async function runPylonAccountsConnect(
         throw new Error("codex login --device-auth completed but auth.json was not written in the account home")
       }
       deviceLoginStatus = "completed"
+    }
+  } else if (args.provider === "grok") {
+    const grokEnv = isolateGrokCliEnvironment(env, home)
+    const inspect = () =>
+      (options.grokReadinessProbe ?? defaultGrokReadinessProbe)({
+        env: grokEnv,
+        home,
+        timeoutMs: grokReadinessTimeoutMs(env),
+      })
+    if (args.skipDeviceLogin) {
+      deviceLoginStatus = "skipped_by_flag"
+    } else {
+      const existing = args.forceDeviceLogin ? null : await inspect()
+      if (existing?.ready === true && existing.plane === "cli_session") {
+        deviceLoginStatus = "skipped_existing_auth"
+        deviceLoginReason = "existing_grok_cli_session"
+      } else {
+        const result = await (
+          options.runGrokDeviceLogin ?? defaultGrokDeviceLoginRunner
+        )({ env: grokEnv, home })
+        if (result.exitCode !== 0) {
+          throw new Error(
+            `grok login --device-auth exited with status ${result.exitCode}`,
+          )
+        }
+        const readiness = await inspect()
+        if (!readiness.ready || readiness.plane !== "cli_session") {
+          throw new Error(
+            "grok login --device-auth completed but isolated account readiness was not confirmed",
+          )
+        }
+        deviceLoginStatus = "completed"
+      }
     }
   } else if (args.provider === "claude_agent") {
     // Claude custody is paste/setup-token file storage (not device-login). Token

@@ -188,6 +188,37 @@ describe("pylon account usage", () => {
     ])
   })
 
+  test("never interprets Grok payloads as measured provider truth", async () => {
+    const hostilePayload = {
+      provider: "grok",
+      rate_limits: {
+        primary: { used_percent: 100, window_minutes: 300 },
+      },
+      usage: { input_tokens: 999, output_tokens: 999 },
+    }
+    expect(providerRateLimitSnapshotsFromEvent("grok", hostilePayload)).toEqual([])
+
+    await withHome(async (home) => {
+      const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), {
+        PYLON_HOME: home,
+      })
+      await expect(recordPylonAccountUsageObservation(summary, {
+        provider: "grok",
+        providerSnapshots: [{
+          provider: "grok",
+          limitId: "synthetic",
+          limitName: null,
+          primary: null,
+          secondary: null,
+          credits: { hasCredits: true, unlimited: false, balance: "999" },
+          planType: null,
+          rateLimitReachedType: null,
+        }],
+      })).rejects.toThrow(/not measured/)
+      expect(await Bun.file(join(home, "account-usage.json")).exists()).toBe(false)
+    })
+  })
+
   test("infers cooldown versus weekly exhaustion from Codex quota windows", () => {
     expect(inferCodexQuotaBlockKindFromProviderSnapshots(parseCodexRateLimitHeaders({
       "x-codex-primary-used-percent": "100",
@@ -395,6 +426,107 @@ describe("pylon account usage", () => {
     })
   })
 
+  test("lists only named isolated Grok custody with bounded not-measured readiness", async () => {
+    await withHome(async (home) => {
+      const grokHome = join(home, "accounts", "grok", "grok-owner")
+      const defaultGrokHome = join(home, "default-grok-must-not-be-discovered")
+      await mkdir(grokHome, { recursive: true })
+      await mkdir(defaultGrokHome, { recursive: true })
+      const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), {
+        PYLON_HOME: home,
+      })
+      await writeFile(
+        summary.paths.config,
+        `${JSON.stringify({
+          dev: {
+            accounts: [
+              { ref: "grok-owner", provider: "grok", home: grokHome },
+              { ref: "grok-default", provider: "grok", home: defaultGrokHome },
+            ],
+          },
+        })}\n`,
+      )
+      const captured: Array<Record<string, string | undefined>> = []
+      const projection = await collectPylonAccountsList(summary, {
+        env: {
+          CODEX_HOME: join(home, "codex-default"),
+          CLAUDE_CONFIG_DIR: join(home, "claude-default"),
+          GROK_HOME: defaultGrokHome,
+          HOME: home,
+          PYLON_ACCOUNT_HOME_ROOT: join(home, "no-sibling-scan"),
+          XAI_API_KEY: "shared-key-must-not-be-used",
+          GROK_CODE_XAI_API_KEY: "shared-code-key-must-not-be-used",
+        },
+        now: new Date("2026-07-09T12:00:00.000Z"),
+        grokReadinessProbe: async ({ env }) => {
+          captured.push(env)
+          return { ready: true, plane: "cli_session" }
+        },
+      })
+
+      const grok = projection.accounts.filter((entry) => entry.provider === "grok")
+      expect(grok).toHaveLength(1)
+      expect(grok[0]).toMatchObject({
+        provider: "grok",
+        selector: "registry_ref",
+        accountRef: "grok-owner",
+        accountRefHash: hashPylonAccountRef("grok", "grok-owner"),
+        homeState: "present",
+        readiness: {
+          schema: "openagents.pylon.grok_account_readiness.v0.1",
+          state: "ready",
+          usageTruth: "not_measured",
+          credentialSourceRef: "credential.source.grok.isolated_cli_session",
+        },
+        blockerRefs: [],
+      })
+      expect(captured).toHaveLength(1)
+      expect(captured[0]?.GROK_HOME).toBe(grokHome)
+      expect(captured[0]?.HOME).toBe(home)
+      expect(captured[0]?.XAI_API_KEY).toBeUndefined()
+      expect(captured[0]?.GROK_CODE_XAI_API_KEY).toBeUndefined()
+      expect(JSON.stringify(projection)).not.toContain(home)
+      expect(JSON.stringify(projection)).not.toContain("shared-key")
+      assertPublicProjectionSafe(projection)
+    })
+  })
+
+  test("refuses Grok usage refresh before any provider inference", async () => {
+    await withHome(async (home) => {
+      const grokHome = join(home, "accounts", "grok", "grok-owner")
+      await mkdir(grokHome, { recursive: true })
+      await writeFile(
+        join(home, "config.json"),
+        `${JSON.stringify({
+          dev: {
+            accounts: [{ ref: "grok-owner", provider: "grok", home: grokHome }],
+          },
+        })}\n`,
+      )
+
+      const proc = await runPylonCli(
+        ["accounts", "usage", "--provider", "grok", "--refresh", "--json"],
+        {
+          ...Bun.env,
+          PYLON_HOME: home,
+          CODEX_HOME: join(home, "codex-default"),
+          CLAUDE_CONFIG_DIR: join(home, "claude-default"),
+          GROK_HOME: join(home, "default-grok-must-not-be-used"),
+          PYLON_ACCOUNT_HOME_ROOT: join(home, "no-sibling-scan"),
+          XAI_API_KEY: "shared-key-must-not-be-used",
+        },
+      )
+
+      expect(proc.exitCode).toBe(1)
+      expect(proc.stdout).toBe("")
+      expect(proc.stderr).toContain(
+        "Grok account usage refresh is unavailable; Grok usage truth remains not_measured",
+      )
+      expect(proc.stderr).not.toContain(home)
+      expect(await Bun.file(join(home, "account-usage.json")).exists()).toBe(false)
+    })
+  })
+
   test("parses refresh gates explicitly", () => {
     expect(parsePylonAccountsUsageArgs(["--json"])).toMatchObject({
       all: false,
@@ -425,6 +557,12 @@ describe("pylon account usage", () => {
     expect(parsePylonAccountsUsageArgs(["--provider", "claude", "--json"])).toMatchObject({
       provider: "claude_agent",
       all: false,
+      json: true,
+    })
+    expect(parsePylonAccountsUsageArgs(["--provider", "grok", "--json"])).toMatchObject({
+      provider: "grok",
+      all: false,
+      refresh: false,
       json: true,
     })
     expect(() => parsePylonAccountsUsageArgs(["--all", "--account", "codex-a", "--json"])).toThrow(

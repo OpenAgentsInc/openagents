@@ -616,6 +616,27 @@ export function claudePerAccountConcurrency(
   return nonNegativeEnvInteger(env, "OPENAGENTS_PYLON_CLAUDE_CONCURRENCY", 1)
 }
 
+export const DEFAULT_GROK_PER_ACCOUNT_CONCURRENCY = 1
+export const MAX_GROK_PER_ACCOUNT_CONCURRENCY = 64
+
+/**
+ * Declared named-Grok account slots. This is capacity truth only; scheduler
+ * admission remains separately gated until a Grok claimed-work port is
+ * composed by the Pylon standing executor.
+ */
+export function grokPerAccountConcurrency(
+  env: NodeJS.ProcessEnv = process.env,
+): number {
+  const raw = env.OPENAGENTS_PYLON_GROK_ACCOUNT_CONCURRENCY?.trim()
+  if (raw === undefined || raw === "") {
+    return DEFAULT_GROK_PER_ACCOUNT_CONCURRENCY
+  }
+  const parsed = Number.parseInt(raw, 10)
+  return Number.isSafeInteger(parsed) && parsed >= 0
+    ? Math.min(parsed, MAX_GROK_PER_ACCOUNT_CONCURRENCY)
+    : DEFAULT_GROK_PER_ACCOUNT_CONCURRENCY
+}
+
 // Build the per-account Claude capacity for the heartbeat from live readiness
 // and active-run busy load. Returns [] when the node is not Claude-capable.
 export async function localClaudeAccountCapacities(

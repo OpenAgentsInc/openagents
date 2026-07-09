@@ -3,9 +3,10 @@ import { readFileSync } from "node:fs"
 import { readdir, readFile, stat } from "node:fs/promises"
 import { homedir } from "node:os"
 import { join, resolve } from "node:path"
+import { isolateGrokCliEnvironment } from "@openagentsinc/grok-harness/worker-executor"
 import { Context, Data, Effect, Layer } from "effect"
 
-export type PylonAccountProvider = "codex" | "claude_agent"
+export type PylonAccountProvider = "codex" | "claude_agent" | "grok"
 export type PylonAccountSelectorKind = "registry_ref" | "direct_home"
 
 // Per-account marginal cost class (MH-8, #8587). Mirrors
@@ -100,7 +101,9 @@ function accountRefIsValid(value: unknown): value is string {
 }
 
 function providerFrom(value: unknown): PylonAccountProvider | null {
-  return value === "codex" || value === "claude_agent" ? value : null
+  return value === "codex" || value === "claude_agent" || value === "grok"
+    ? value
+    : null
 }
 
 function marginalCostClassFrom(value: unknown): PylonAccountMarginalCostClass {
@@ -140,6 +143,18 @@ export function normalizeAccountHome(value: string): string {
   if (trimmed === "~") return homedir()
   if (trimmed.startsWith("~/")) return resolve(homedir(), trimmed.slice(2))
   return resolve(trimmed)
+}
+
+export function isDefaultGrokAccountHome(
+  value: string,
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  const configured = env.GROK_HOME?.trim()
+  const configuredDefault = configured && configured.length > 0
+    ? normalizeAccountHome(configured)
+    : join(homedir(), ".grok")
+  const normalized = normalizeAccountHome(value)
+  return normalized === configuredDefault || normalized === join(homedir(), ".grok")
 }
 
 export function hashPylonAccountRef(provider: PylonAccountProvider, value: string): string {
@@ -190,6 +205,7 @@ export function loadPylonAccountRegistryEffect(
       if (!provider || !accountRefIsValid(record.ref) || typeof record.home !== "string") continue
       const home = record.home.trim()
       if (home.length === 0) continue
+      if (provider === "grok" && isDefaultGrokAccountHome(home, {})) continue
       entries.push({
         provider,
         ref: record.ref,
@@ -369,6 +385,12 @@ export function pylonAccountEnvironment(
   if (!account) return { ...baseEnv }
   if (account.provider === "codex") {
     return { ...baseEnv, CODEX_HOME: account.home }
+  }
+  if (account.provider === "grok") {
+    const env = isolateGrokCliEnvironment(baseEnv, account.home)
+    // Named Grok custody is the isolated CLI session in GROK_HOME. A process
+    // level API key would collapse every named account onto one shared plane.
+    return env
   }
   // claude_agent: isolate the SDK config per account home, and when that home
   // carries a pooled OAuth token, authenticate as that account through

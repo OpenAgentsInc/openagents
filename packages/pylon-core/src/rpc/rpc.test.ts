@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test"
 import {
+  decodePylonRpcReply,
   decodePylonRpcReplyEnvelopeJson,
   decodePylonRpcRequestEnvelope,
   decodePylonRpcRequestEnvelopeJson,
@@ -11,6 +12,34 @@ import {
 // The RPC contract is an unconsumed seed (PY-2 wires it), so its tests assert
 // the schema round-trips and rejects malformed envelopes end to end.
 describe("pylon RPC contract", () => {
+  it("preserves Grok account kind without enabling Grok assignment execution", () => {
+    const reply = decodePylonRpcReply({
+      _tag: "ListAccounts",
+      accounts: [
+        {
+          accountRefHash: "account.pylon.grok.aaaaaaaaaaaaaaaaaaaaaaaa",
+          provider: "grok",
+          available: true,
+        },
+      ],
+    })
+    expect(reply).toMatchObject({
+      _tag: "ListAccounts",
+      accounts: [{ provider: "grok", available: true }],
+    })
+    expect(() =>
+      decodePylonRpcRequestEnvelope({
+        schema: PylonRpcSchemaLiteral,
+        id: "grok-execution-not-landed",
+        request: {
+          _tag: "RunAssignment",
+          objective: "must fail schema",
+          workerKind: "grok",
+        },
+      }),
+    ).toThrow()
+  })
+
   it("round-trips a RunAssignment request envelope through JSON", () => {
     const envelope = {
       schema: PylonRpcSchemaLiteral,

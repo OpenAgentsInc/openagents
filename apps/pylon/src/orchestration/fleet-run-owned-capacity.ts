@@ -5,6 +5,7 @@ import { Effect } from "effect"
 
 import {
   hashPylonAccountRef,
+  isDefaultGrokAccountHome,
   loadPylonAccountRegistryEffect,
   normalizeAccountHome,
   PylonAccountRegistryError,
@@ -18,7 +19,12 @@ import {
   type PylonAccountUsageStore,
   type PylonAccountUsageStoreEntry,
 } from "../account-usage.js"
-import { claudePerAccountConcurrency, codexPerAccountConcurrency } from "../presence.js"
+import {
+  claudePerAccountConcurrency,
+  codexPerAccountConcurrency,
+  grokPerAccountConcurrency,
+  MAX_GROK_PER_ACCOUNT_CONCURRENCY,
+} from "../presence.js"
 import { assertPublicProjectionSafe } from "../state.js"
 import type { BootstrapSummary } from "../bootstrap.js"
 import {
@@ -40,6 +46,7 @@ export type PylonFleetCapacityDiagnosticKind =
   | "account_usage_unavailable"
   | "duplicate_account_ref"
   | "grok_account_inspection_unavailable"
+  | "grok_executor_unavailable"
 
 export type PylonFleetCapacityDiagnostic = {
   readonly schema: typeof PYLON_FLEET_CAPACITY_DIAGNOSTIC_SCHEMA
@@ -65,7 +72,9 @@ export type CreatePylonOwnedFleetRunSupervisorCapacityInput = {
   readonly defaultHomes?: {
     readonly claudeAgent: string
     readonly codex: string
+    readonly grok?: string | undefined
   } | undefined
+  readonly grokExecutionAvailable?: boolean | undefined
   readonly advertisedSlotsForAccount?: ((account: PylonAccountRegistryEntry) => number | null) | undefined
   readonly loadRegistry?: (() => Promise<readonly PylonAccountRegistryEntry[]>) | undefined
   readonly loadUsage?: (() => Promise<PylonAccountUsageStore>) | undefined
@@ -79,6 +88,7 @@ const diagnosticBlockerRefs: Readonly<Record<PylonFleetCapacityDiagnosticKind, s
   account_usage_unavailable: "blocker.pylon.fleet_capacity.account_usage_unavailable",
   duplicate_account_ref: "blocker.pylon.fleet_capacity.duplicate_account_ref",
   grok_account_inspection_unavailable: "blocker.pylon.fleet_capacity.grok_account_inspection_unavailable",
+  grok_executor_unavailable: "blocker.pylon.fleet_capacity.grok_executor_unavailable",
 }
 
 const diagnostic = (kind: PylonFleetCapacityDiagnosticKind): PylonFleetCapacityDiagnostic => {
@@ -213,19 +223,38 @@ const usageBlocksCapacity = (entry: PylonAccountUsageStoreEntry | undefined): bo
     )
   })
 
-const laneForProvider = (provider: PylonAccountProvider): "claude_agent" | "codex" =>
-  provider === "claude_agent" ? "claude_agent" : "codex"
+const laneForProvider = (
+  provider: PylonAccountProvider,
+): "claude_agent" | "codex" | null =>
+  provider === "claude_agent"
+    ? "claude_agent"
+    : provider === "codex"
+      ? "codex"
+      : null
 
 const workerKindForProvider = (provider: PylonAccountProvider): FleetRunSupervisorConcreteWorkerKind =>
-  provider === "claude_agent" ? "claude" : "codex"
+  provider === "claude_agent"
+    ? "claude"
+    : provider === "grok"
+      ? "grok"
+      : "codex"
 
 const runAcceptsProvider = (run: FleetRun, provider: PylonAccountProvider): boolean =>
   run.workerKind === "auto" || workerKindForProvider(provider) === run.workerKind
 
-const boundedSlots = (value: number | null): number | null =>
+const boundedSlots = (
+  value: number | null,
+  provider: PylonAccountProvider,
+): number | null =>
   value === null || !Number.isFinite(value)
     ? null
-    : Math.max(0, Math.min(10_000, Math.trunc(value)))
+    : Math.max(
+        0,
+        Math.min(
+          provider === "grok" ? MAX_GROK_PER_ACCOUNT_CONCURRENCY : 10_000,
+          Math.trunc(value),
+        ),
+      )
 
 /**
  * Connected-account capacity for the standing Pylon FleetRun supervisor.
@@ -242,15 +271,23 @@ export function createPylonOwnedFleetRunSupervisorCapacity(
   const defaultHomes = {
     codex: normalizeAccountHome(input.defaultHomes?.codex ?? join(homedir(), ".codex")),
     claudeAgent: normalizeAccountHome(input.defaultHomes?.claudeAgent ?? join(homedir(), ".claude")),
+    grok: normalizeAccountHome(
+      input.defaultHomes?.grok ?? env.GROK_HOME ?? join(homedir(), ".grok"),
+    ),
   }
+  const grokExecutionAvailable = input.grokExecutionAvailable ?? false
   const loadRegistry = input.loadRegistry ?? (() => strictLoadRegistry(input.summary))
   const loadUsage = input.loadUsage ?? (() => strictLoadUsageStore(input.summary))
   const probeReadiness = input.probeReadiness ?? defaultReadinessProbe
-  const advertisedSlotsForAccount = input.advertisedSlotsForAccount ?? ((account) =>
-    account.provider === "claude_agent"
-      ? claudePerAccountConcurrency(env as NodeJS.ProcessEnv)
-      : codexPerAccountConcurrency(env as NodeJS.ProcessEnv)
-  )
+  const advertisedSlotsForAccount = input.advertisedSlotsForAccount ?? ((account) => {
+    if (account.provider === "claude_agent") {
+      return claudePerAccountConcurrency(env as NodeJS.ProcessEnv)
+    }
+    if (account.provider === "grok") {
+      return grokPerAccountConcurrency(env as NodeJS.ProcessEnv)
+    }
+    return codexPerAccountConcurrency(env as NodeJS.ProcessEnv)
+  })
   let latestDiagnostics: readonly PylonFleetCapacityDiagnostic[] = []
   let serialized = Promise.resolve()
 
@@ -268,14 +305,6 @@ export function createPylonOwnedFleetRunSupervisorCapacity(
             // Diagnostic observers are telemetry only and never capacity authority.
           }
         }
-      }
-
-      if (request.run.workerKind === "auto" || request.run.workerKind === "grok") {
-        await addDiagnostic("grok_account_inspection_unavailable")
-      }
-      if (request.run.workerKind === "grok") {
-        latestDiagnostics = diagnostics
-        return []
       }
 
       let registry: readonly PylonAccountRegistryEntry[]
@@ -315,7 +344,20 @@ export function createPylonOwnedFleetRunSupervisorCapacity(
         if (!runAcceptsProvider(request.run, account.provider)) continue
         const home = normalizeAccountHome(account.home)
         const isDefaultAccount = /^(?:\(default\)|default)$/iu.test(account.ref.trim()) ||
-          home === (account.provider === "claude_agent" ? defaultHomes.claudeAgent : defaultHomes.codex)
+          home === (
+            account.provider === "claude_agent"
+              ? defaultHomes.claudeAgent
+              : account.provider === "grok"
+                ? defaultHomes.grok
+                : defaultHomes.codex
+          ) || (account.provider === "grok" && isDefaultGrokAccountHome(home, env))
+        // Default Grok state is outside named account custody. Do not even
+        // probe it: only registry-named isolated GROK_HOME accounts can
+        // become owned fleet capacity.
+        if (account.provider === "grok" && isDefaultAccount) continue
+        if (account.provider === "grok" && !grokExecutionAvailable) {
+          await addDiagnostic("grok_executor_unavailable")
+        }
         const accountRefHash = hashPylonAccountRef(account.provider, account.ref)
         let readiness: string
         try {
@@ -326,11 +368,15 @@ export function createPylonOwnedFleetRunSupervisorCapacity(
             summary: input.summary,
           })
         } catch {
-          await addDiagnostic("account_inspection_unavailable")
+          await addDiagnostic(
+            account.provider === "grok"
+              ? "grok_account_inspection_unavailable"
+              : "account_inspection_unavailable",
+          )
           continue
         }
         const lane = laneForProvider(account.provider)
-        const circuitOpen = activeBreakers.some((breaker) =>
+        const circuitOpen = lane !== null && activeBreakers.some((breaker) =>
           breaker.lane === lane &&
           (breaker.accountRefHash === accountRefHash ||
             (breaker.accountRefHash === null && breaker.contextId === null))
@@ -339,7 +385,10 @@ export function createPylonOwnedFleetRunSupervisorCapacity(
         if (circuitOpen) readiness = "circuit_open"
         let ready: number | null
         try {
-          ready = boundedSlots(advertisedSlotsForAccount(account))
+          ready = boundedSlots(
+            advertisedSlotsForAccount(account),
+            account.provider,
+          )
         } catch {
           await addDiagnostic("account_inspection_unavailable")
           continue
@@ -359,7 +408,10 @@ export function createPylonOwnedFleetRunSupervisorCapacity(
       }
 
       latestDiagnostics = diagnostics
-      return mapPylonFleetSupervisorCapacity(rows, { allowDefaultAccount: false })
+      return mapPylonFleetSupervisorCapacity(rows, {
+        allowDefaultAccount: false,
+        grokExecutionAvailable,
+      })
     }
 
     const inspected = serialized.then(operation, operation)

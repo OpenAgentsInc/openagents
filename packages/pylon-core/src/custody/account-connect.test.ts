@@ -96,3 +96,177 @@ describe("pylon-core accounts connect claude", () => {
     })
   })
 })
+
+describe("pylon-core accounts connect grok", () => {
+  test("accepts only named isolated Grok device-login custody", () => {
+    expect(
+      parsePylonAccountsConnectArgs([
+        "grok",
+        "--account",
+        "grok-owner",
+        "--json",
+      ]),
+    ).toMatchObject({
+      provider: "grok",
+      accountRef: "grok-owner",
+      home: null,
+    })
+    expect(() =>
+      parsePylonAccountsConnectArgs([
+        "grok",
+        "--account",
+        "grok-owner",
+        "--grok-home",
+        "~/.grok",
+      ]),
+    ).toThrow(/always uses the isolated/)
+    expect(() =>
+      parsePylonAccountsConnectArgs([
+        "grok",
+        "--account",
+        "grok-owner",
+        "--openagents-link",
+      ]),
+    ).toThrow(/does not support the Codex/)
+    expect(() =>
+      parsePylonAccountsConnectArgs([
+        "grok",
+        "--account",
+        "grok-owner",
+        "--token",
+        "not-valid-for-grok",
+      ]),
+    ).toThrow(/only valid.*claude/)
+  })
+
+  test("runs login and readiness only inside the derived GROK_HOME", async () => {
+    await withHome(async home => {
+      const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), {
+        PYLON_HOME: home,
+      })
+      const defaultHome = join(home, "owner-default-grok-must-not-be-used")
+      const expectedHome = join(home, "accounts", "grok", "grok-owner")
+      const originalProcessHome = process.env.GROK_HOME
+      let probes = 0
+      let logins = 0
+      const projection = await runPylonAccountsConnect(
+        summary,
+        parsePylonAccountsConnectArgs([
+          "grok",
+          "--account",
+          "grok-owner",
+          "--json",
+        ]),
+        {
+          env: {
+            HOME: home,
+            GROK_HOME: defaultHome,
+            XAI_API_KEY: "shared-key-must-not-alias-accounts",
+            GROK_CODE_XAI_API_KEY: "shared-code-key-must-not-alias-accounts",
+            GROK_AUTH_PROVIDER_COMMAND: "shared-auth-must-not-alias-accounts",
+            GROK_AUTH_PROVIDER_LABEL: "shared-auth-label-must-not-alias-accounts",
+            GROK_AUTH: "shared-auth-token-must-not-alias-accounts",
+            GROK_AUTH_PATH: "/shared/auth/must-not-alias-accounts",
+            GROK_LOCAL_AUTH: "1",
+          },
+          grokReadinessProbe: async input => {
+            probes += 1
+            expect(input.home).toBe(expectedHome)
+            expect(input.env.GROK_HOME).toBe(expectedHome)
+            expect(input.env.HOME).toBe(home)
+            expect(input.env.XAI_API_KEY).toBeUndefined()
+            expect(input.env.GROK_CODE_XAI_API_KEY).toBeUndefined()
+            expect(input.env.GROK_AUTH_PROVIDER_COMMAND).toBeUndefined()
+            expect(input.env.GROK_AUTH_PROVIDER_LABEL).toBeUndefined()
+            expect(input.env.GROK_AUTH).toBeUndefined()
+            expect(input.env.GROK_AUTH_PATH).toBeUndefined()
+            expect(input.env.GROK_LOCAL_AUTH).toBeUndefined()
+            expect(input.timeoutMs).toBe(10_000)
+            return probes === 1
+              ? { ready: false, plane: "cli_session", failureClass: "auth_required" }
+              : { ready: true, plane: "cli_session" }
+          },
+          runGrokDeviceLogin: async input => {
+            logins += 1
+            expect(input.home).toBe(expectedHome)
+            expect(input.env.GROK_HOME).toBe(expectedHome)
+            expect(input.env.XAI_API_KEY).toBeUndefined()
+            expect(input.env.GROK_CODE_XAI_API_KEY).toBeUndefined()
+            expect(input.env.GROK_AUTH_PROVIDER_COMMAND).toBeUndefined()
+            expect(input.env.GROK_AUTH_PROVIDER_LABEL).toBeUndefined()
+            expect(input.env.GROK_AUTH).toBeUndefined()
+            expect(input.env.GROK_AUTH_PATH).toBeUndefined()
+            expect(input.env.GROK_LOCAL_AUTH).toBeUndefined()
+            return { exitCode: 0 }
+          },
+        },
+      )
+
+      expect({ probes, logins }).toEqual({ probes: 2, logins: 1 })
+      expect(process.env.GROK_HOME).toBe(originalProcessHome)
+      expect(projection).toMatchObject({
+        schema: "pylon.accounts.connect.v1",
+        provider: "grok",
+        accountRef: "grok-owner",
+        accountRefHash: hashPylonAccountRef("grok", "grok-owner"),
+        codexCredentialStore: "not_applicable",
+        registry: { status: "created" },
+        deviceLogin: { status: "completed" },
+      })
+      const serialized = JSON.stringify(projection)
+      expect(serialized).not.toContain(home)
+      expect(serialized).not.toContain("shared-key")
+      assertPublicProjectionSafe(projection)
+
+      const config = JSON.parse(await readFile(summary.paths.config, "utf8")) as {
+        dev?: { accounts?: Array<{ ref: string; provider: string; home: string }> }
+      }
+      expect(config.dev?.accounts).toEqual([
+        { ref: "grok-owner", provider: "grok", home: expectedHome },
+      ])
+    })
+  })
+
+  test("reuses ready isolated custody and fails closed when post-login readiness is absent", async () => {
+    await withHome(async home => {
+      const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), {
+        PYLON_HOME: home,
+      })
+      const args = parsePylonAccountsConnectArgs([
+        "grok",
+        "--account",
+        "grok-ready",
+        "--json",
+      ])
+      const reused = await runPylonAccountsConnect(summary, args, {
+        grokReadinessProbe: async () => ({
+          ready: true,
+          plane: "cli_session",
+        }),
+        runGrokDeviceLogin: async () => {
+          throw new Error("ready Grok custody must not re-login")
+        },
+      })
+      expect(reused.deviceLogin).toEqual({
+        status: "skipped_existing_auth",
+        reason: "existing_grok_cli_session",
+      })
+
+      const blockedSummary = createBootstrapSummary(
+        parseBootstrapArgs(["--json"]),
+        { PYLON_HOME: join(home, "blocked") },
+      )
+      await expect(
+        runPylonAccountsConnect(blockedSummary, args, {
+          grokReadinessProbe: async () => ({
+            ready: false,
+            plane: "cli_session",
+            failureClass: "auth_required",
+          }),
+          runGrokDeviceLogin: async () => ({ exitCode: 0 }),
+        }),
+      ).rejects.toThrow(/isolated account readiness was not confirmed/)
+      expect(await Bun.file(blockedSummary.paths.config).exists()).toBe(false)
+    })
+  })
+})
