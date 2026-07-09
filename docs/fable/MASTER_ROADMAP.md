@@ -1,12 +1,51 @@
 # MASTER ROADMAP — Khala Code MVP (Tested, Submitted) → Sarah → Codex → AI Employees → the Suite
 
-Date: 2026-07-09 (rev 6.5 — overnight parallel burn-down: MH wave complete, PRUNE archived, CX-3 blocker resolved, cloud in-repo)
+Date: 2026-07-09 (rev 6.6 — Phase 6 live cutover: production control plane now openagents-built)
 Status: **the single consolidated execution roadmap.** This document owns
 top-level sequencing across everything designed in the 2026-07-07 strategy
 set and its predecessors. The source docs remain authoritative for their
 *content* (specs, evidence, arguments); when sequencing here and sequencing
 there disagree, **this document wins**, and new issues are filed against the
 phase lanes named here.
+
+**Rev 6.6 changes (2026-07-08 night, owner-directed live execution — Phase
+6 cutover, `546e3cf840`):** the owner directly authorized a live production
+deploy of the `#8591` cloud consolidation ("Phase 6"), executed same-night:
+linux/amd64 images for `oa-codex-control`/`oa-workroomd`/`oa-node` built and
+pushed from **this monorepo** to Artifact Registry
+(`us-central1-docker.pkg.dev/openagentsgemini/oa-cloud`, tag
+`openagents-main-a82a8dd358e0`); production instance `oa-codex-control-1`
+redeployed onto that image and confirmed live (`GET /healthz` → 200); a real
+live smoke sequence passed against it (`cloud-gcp` placement →
+`cloud.gce.provisioned` + `cloud.gce.resource_usage_receipt`, cancel 202,
+fake Cloud-VM lifecycle ok); `oa-workroomd` staged for guest bake on
+`agent-computer-gce-1`. Full receipt:
+`docs/cloud/receipts/2026-07-09-phase6-openagents-cutover.md`.
+
+**This confirms and sharpens rev 6.5's CX-3 finding, with one important
+architectural correction:** the control host (`oa-codex-control-1`,
+`e2-small`) has **no `/dev/kvm`** and by design never runs real Firecracker
+— its Cloud-VM provisioner is intentionally `fake`. The real nested-virt
+microVM lane is the **separate** host `agent-computer-gce-1`. Do not
+conflate "the control plane is live" with "in-VM Codex execution is
+proven" — they are different hosts and different proofs. Per the
+receipt's own #8503 DoD table: control-plane-from-monorepo, live
+placement+receipts, and fake-VM lifecycle are **done**; the full
+mobile-dispatched Firecracker turn with writeback + exact token receipt is
+**not re-run this pass** — prior substrate proofs exist on
+`agent-computer-gce-1`, but a fresh one still needs `work_context` armed +
+a live Cloud-VM run on that nested-virt host with the agent-computer
+rootfs. This is the same "no source-controlled rootfs build script"
+wall the rev 6.5 CX-3 assessment already identified — now pinned to the
+correct host.
+
+**Also flagged, not yet resolved — a live security exposure:** the receipt
+records the control-plane firewall temporarily allowing `0.0.0.0/0` on
+port 8787 for this cutover's smoke testing, with its own note to tighten
+to IAP + office egress "when not actively testing." This is now recorded
+to `NEEDS_OWNER.md` (rev 6.6) — an agent should not unilaterally narrow a
+firewall rule on a just-cut-over live host without confirming testing has
+concluded, but this should not sit open indefinitely either.
 
 **Rev 6.5 changes (2026-07-08 night → 2026-07-09, overnight parallel fleet
 burn-down — status + unblocks, no new policy):** a sustained multi-agent
@@ -356,11 +395,15 @@ CLOSED and independently re-verified. Current recommended order:
   single serial lane against `packages/core/src/index.ts` — do not
   fan multiple agents across that file.
 - **CX-3 `#8547` — resume implementation, not just assessment:** the
-  private-repo blocker is resolved (`#8591` landed the crates in-repo).
-  Safe next slice: thread `provider_credential_policy: broker_only`
-  into `crates/oa-node`/`crates/oa-codex-control` (source-only, no live
-  infra) — the rootfs-build-script gap and in-VM `codex_app_server`
-  wiring are the genuine remaining wall and need a real bake host.
+  private-repo blocker is resolved (`#8591` landed the crates in-repo) AND
+  the control plane is now live in production from those crates (rev 6.6
+  Phase 6 cutover, `546e3cf840`). Safe next slice: thread
+  `provider_credential_policy: broker_only` into
+  `crates/oa-node`/`crates/oa-codex-control` (source-only, no live infra).
+  The genuine remaining wall, now pinned precisely: no source-controlled
+  rootfs build script for the `agent-computer-gce-1` guest image, and
+  in-VM `codex_app_server` wiring on that (separate, KVM-capable) host —
+  see rev 6.6 for the control-plane-vs-execution-host distinction.
 - **CX-5 `#8549` (Claude cloud parity):** ready — MH-2 already fixed
   the Claude-account SCM-credential false-positive tonight, so the
   broker/lane pattern CX-3 established has a proven Claude precedent to
