@@ -1,7 +1,7 @@
 # MASTER ROADMAP — Sarah Fleet Command first; three OpenAgents apps
 
 - Date: 2026-07-09
-- Revision: 7
+- Revision: 8
 - Status: canonical OpenAgents implementation roadmap
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Issue source set: [`issues/README.md`](./issues/README.md)
@@ -92,18 +92,27 @@ The coding-fleet program starts from substantial working substrate:
 - bounded durable work-source descriptors and a Pylon-owned planner that can
   reconstruct fixture, pinned-issue, pinned-backlog, and pinned-plan-DAG work
   after restart;
-- a real-account capacity mapper that preserves Codex/Claude worker kind,
+- a real-account capacity mapper that preserves Codex/Claude/Grok worker kind,
   advertised slots, readiness, and honest marginal-cost class without silently
-  substituting an unsupported harness;
+  substituting another harness;
 - a Pylon-owned named-account capacity authority over strict local registry,
   readiness, health, quota, usage, dispatch-breaker, and durable cross-run load
-  state; default homes, duplicate refs, and unsupported Grok custody fail
-  closed with fixed diagnostics;
+  state; Grok custody is restricted to one exact, isolated, Pylon-owned named
+  home, while default homes, duplicate refs, global credentials, and unsafe
+  config sources fail closed with fixed diagnostics;
 - a Pylon-owned exact claimed-work runner that converts one durable claim into
   one exact named Codex/Claude Khala assignment, verifies the delegation,
   account hash, strict assignment ref, and no-spend closeout, suppresses
   duplicate dispatch, and reconciles restart state by inspection rather than
   rerunning;
+- a direct exact named-Grok claimed-work adapter over the real Grok harness,
+  with pinned checkout and argv verification, bounded execution, one canonical
+  claim registry, durable refs-only receipts, restart reconciliation, no
+  provider substitution, and honestly `not_measured` usage;
+- production Cloud SQL/Postgres FleetRun intake authority with owner-scoped run
+  and work-unit rows, canonical fingerprints/idempotency conflicts, pinned
+  public-repository validation, active owner-linked Pylon intake leases, exact
+  claim acceptance, and an owner-safe Sync draft projection;
 - a Pylon-only standing activation seam that recovers stale work before it
   idempotently resumes and refills an existing durable run;
 - one canonical owned standing-executor composition that opens one Pylon-home
@@ -117,7 +126,9 @@ The coding-fleet program starts from substantial working substrate:
 - caller-owned Khala→Pylon assignments, exact token rows, private event
   archives, and closeout proofs;
 - a headless Pylon node with account registry, presence, assignment polling,
-  session execution, and a local coordinator;
+  session execution, and a local coordinator, plus explicit owner-local
+  `arm`/`status`/`disarm` control for one already-known durable FleetRun and
+  fail-closed resume after node restart;
 - Sarah's owned runtime, authenticated relationship, SSE bus, Blueprint Map,
   Actions, and Code/Receipts panels;
 - Sarah owner-safe FleetRun, continuity/stall, and six-section coding-closeout
@@ -145,15 +156,17 @@ The coding-fleet program starts from substantial working substrate:
 
 The immediate gaps are now narrower composition and live-proof gaps:
 
-- Sarah still lacks a merged production-durable, owner-scoped FleetRun creation
-  authority that a standing Pylon can claim. A local JSON-only FC-1 proposal is
-  not sufficient for this boundary.
-- `pylon node` cannot yet discover and claim a production-durable Sarah run:
-  work-source planning, liveness, named Codex/Claude capacity, exact claimed-
-  unit execution, and one-store standing composition are Pylon-owned, but the
-  explicit owner-local arming/intake and node activation are not wired.
-- Grok still uses a separate spawn path rather than the same production
-  supervisor path as Codex and Claude.
+- The production Postgres FleetRun authority is code- and fixture-proven, but
+  its migration is not deployed and no authenticated Sarah route is composed
+  over it yet. The owner and policy-owned relationship mode must come from the
+  server auth/policy context, never client or model input.
+- `pylon node` can arm, inspect, disarm, and resume one already-known local run,
+  but it cannot yet discover a server FleetRun, acquire its intake lease,
+  idempotently import it into `orchestration.sqlite`, accept it after import,
+  and activate it without a supervising control process.
+- The exact Grok executor is code- and fixture-proven through the same standing
+  supervisor and claim registry as Codex/Claude. It has not spent a live Grok
+  account in this program, and Grok usage remains explicitly `not_measured`.
 - Sarah's safe FleetRun projection, persisted exact-cursor live session, views,
   run controls, and approval decisions are code/fixture-proven in retained
   `/sarah`; a deployed owner-cookie WebSocket reconnect canary and a projection-
@@ -167,6 +180,19 @@ The immediate gaps are now narrower composition and live-proof gaps:
 - Agent Computer Codex still lacks the new live Firecracker proof.
 
 P0 fixes those seams. It does not build another fleet system.
+
+### Current P0 integration ledger
+
+| Lane | Narrowest proven state on `main` | Next blocking proof |
+| --- | --- | --- |
+| #8637 FC-1 | `3f34c65e3f`: Postgres authority is code-landed and fixture-proven | deploy migration; authenticated Sarah adapter; Pylon import/accept bridge; integrated latency receipt |
+| #8633 FC-2 | through `9d026d313c`: one-store standing runtime, node arm/status/disarm, exact Codex/Claude runner, exact Grok runner, and deterministic three-harness fixture are code-landed and fixture-proven | server discovery/import/accept/activate; live named Codex+Claude+Grok run; exact or explicit unmeasured usage receipt |
+| #8639 FC-3 | retained `/sarah` exact-scope projection, reconnect controller, controls, approvals, and closeout views are code-landed and fixture-proven | authenticated integrated projection/control route, owner-cookie reconnect canary, authorized steer, and full text-control survival proof |
+| #8640 FC-5 | acceptance contract only | C1 integrated fixture, then Phase A on one pinned deployment |
+
+These rows are implementation receipts, not issue closure. The commit named in
+one row does not imply deployment or live proof, and later commits inherit the
+landed substrate only when their relevant verification stays green.
 
 ## Proof status is six distinct rungs
 
@@ -196,8 +222,9 @@ catalogs, lockfiles, central route tables, and other hot files through one
 lane. Use separate Codex tabs beyond this session cap or for independently
 steered long-lived contexts; tabs on one account share its quota budget.
 Same-session subagents are Codex agents; they do not exercise the connected
-Claude or Grok accounts. Real mixed-harness fanout begins when #8633 is
-integrated.
+Claude or Grok accounts. The #8633 three-harness path is now code- and fixture-
+proven, but real mixed-account fanout begins only with the C1/C2 pinned live
+receipts below.
 
 The coding cutover is staged:
 
@@ -501,9 +528,11 @@ their milestone or tripwire fires.
 
 ## Execution order
 
-1. Start #8637 and #8633 immediately on disjoint paths.
-2. Start #8639 as soon as the stable run/projection seam from #8637 exists;
-   fixture UI/projection work may begin earlier.
+1. Finish #8637 authenticated Sarah composition and the #8633 Pylon
+   discovery/import/accept/activate bridge on disjoint paths; serialize their
+   shared intake contract.
+2. Compose #8639 against the stable owner-safe run projection while retaining
+   text/fleet control under media failure; do not infer authority in the UI.
 3. Run #8640 Phase A at the first honest opportunity. Fix fleet substrate bugs
    in place until the receipt is clean, then flip routine bounded owner coding
    to Sarah/Khala/Pylon by default.

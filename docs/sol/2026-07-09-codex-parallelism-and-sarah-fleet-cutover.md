@@ -2,8 +2,9 @@
 
 - Date: 2026-07-09
 - Status: operational companion to [`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md)
-- Original source snapshot: `origin/main` at `5c4ec13dc7`; reconciled with
-  master roadmap rev 3 and the 17-issue set on 2026-07-09
+- Original source snapshot: `origin/main` at `5c4ec13dc7`; current status
+  reconciled through `9d026d313c`, master roadmap rev 8, and the 17-issue set
+  on 2026-07-09
 
 ## What can be parallelized in this Codex session now
 
@@ -62,11 +63,15 @@ optional capacity, not a prerequisite.
 ## Current cutover status
 
 The Sarah/Khala fleet workflow is **not yet the honest primary coding path**.
-Sarah cannot currently create a durable FleetRun, the live mixed-harness
-manager is not yet the standing durable executor, and Sarah does not yet expose
-the minimum named-stream progress and control seam. Until those land, this
-Codex app—using coordinated subagents or explicitly separated tabs—is the
-implementation control plane for building the replacement.
+Production Postgres run/claim authority, owner-local node arming, exact named
+Codex/Claude execution, and direct exact named-Grok execution are code- and
+fixture-proven. They are not yet one deployed path: Sarah lacks the
+authenticated production adapter; Pylon lacks server discovery plus
+import-before-accept activation; the migration is not deployed; and the
+minimum integrated named-stream progress/control/reconnect proof is absent.
+Until those seams and the C1 receipt land, this Codex app—using coordinated
+subagents or explicitly separated tabs—is the implementation control plane for
+building the replacement.
 
 ## Cutover gates
 
