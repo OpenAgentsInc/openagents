@@ -1,12 +1,31 @@
 # MASTER ROADMAP — Khala Code MVP (Tested, Submitted) → Sarah → Codex → AI Employees → the Suite
 
-Date: 2026-07-09 (rev 6.6 — Phase 6 live cutover: production control plane now openagents-built)
+Date: 2026-07-09 (rev 6.7 — Sarah consolidates into the monorepo on Effect Native)
 Status: **the single consolidated execution roadmap.** This document owns
 top-level sequencing across everything designed in the 2026-07-07 strategy
 set and its predecessors. The source docs remain authoritative for their
 *content* (specs, evidence, arguments); when sequencing here and sequencing
 there disagree, **this document wins**, and new issues are filed against the
 phase lanes named here.
+
+**Rev 6.7 changes (owner directive, 2026-07-09 — SARAH IN-REPO, EFFECT
+NATIVE):** "All Sarah shit must be ported to Effect Native, moved into
+this codebase — no more separate sarah repo." The 2026-07-07
+separate-repo posture is **reversed**: `OpenAgentsInc/sarah` consolidates
+into this monorepo as `apps/sarah/` (Bun/Effect service, Effect Native
+UI on the DOM renderer, Cloud Run from monorepo-built images), following
+the Cloud-consolidation pattern (#8591). Plan:
+`2026-07-09-sarah-monorepo-effect-native-consolidation-plan.md`; epic
+**#8594** (lanes SM-0..6: freeze/scrub → port-as-move → EN voice surface
+→ email/CRM convergence onto the one approval-gated rail → owned Effect
+agent runtime replacing eve → cutover → repo retirement). Superseded:
+sarah#14 (Next lift-and-shift) and sarah#15 (TanStack port); remaining
+sarah S-6/S-7/S-8/S-11 scope absorbs into the SM lanes. Authority is
+unchanged (the openagents.com API stays the system of record; in-repo
+Sarah calls
+its public APIs), and the P1 SR exit receipts are unchanged — this
+moves where Sarah lives and what renders her, not what she must prove.
+Track C (OB-*) never blocks on the epic.
 
 **Rev 6.6 changes (2026-07-08 night, owner-directed live execution — Phase
 6 cutover, `546e3cf840`):** the owner directly authorized a live production
@@ -363,7 +382,7 @@ only DIRECTION:
 
 **Direction only (open; NOT started as code):**
 - **OB-1..6 (`#8558–#8563`) outbound engine — all OPEN; first code landed.**
-  Sarah lives in the separate `OpenAgentsInc/sarah` repo. A pre-existing
+  Sarah consolidates into `apps/sarah/` (rev 6.7, epic #8594). A pre-existing
   *operator-assisted* CRM/pipeline substrate exists in-repo
   (`business_pipeline_rows`, outreach/email plumbing), and **OB-2's Apollo
   wave-ingest path is now on main** (`6c7b9cdfe4`:
@@ -566,7 +585,7 @@ starts; a wave starts the moment its substrate dependency lands.
 | # | Effect Native piece (public repo phase) | Internal lane | Unlocks (the next OpenAgents surface on the substrate) | Rides inside |
 |---|---|---|---|---|
 | 1 | **Phase 0 — the core**: catalog v0 (~8 components), typed intent algebra, Effect runtime, `@effect-native/tokens` (Protoss blue; launch-ui's Tailwind theme — already vendored in the WEB-1 Phase 1 replica — ported as typed token *values*) | EN-0 | Everything below — gates all adoption; exit = one screen, two renderers, snapshot-tested | P1 Track A (a focused sprint on WEB-1's critical path) |
-| 2 | **Phase 1 — DOM renderer** (no React) | EN-0/EN-1 | **WEB-1 #8565 forward work**: the production root-cutover landing is the first Effect Native surface (the landed React replica at `/demo`/`/new` stays as the visual baseline it's compared against); then **Sarah's branded UI** (sarah#15 / S-10) — sarah.openagents.com and openagents.com become one component system *by construction* | P1 Track A / SR-0.5 |
+| 2 | **Phase 1 — DOM renderer** (no React) | EN-0/EN-1 | **WEB-1 #8565 forward work**: the production root-cutover landing is the first Effect Native surface (the landed React replica at `/demo`/`/new` stays as the visual baseline it's compared against); then **Sarah's branded UI** (SM-2 #8594, was sarah#15 / S-10) — sarah.openagents.com and openagents.com become one component system *by construction* | P1 Track A / SR-0.5 |
 | 3 | **Phase 1 — RN renderer** (wrapping the ~94 shipping khala-mobile primitives as adapter #1; zero new native work) | EN-0/EN-3 | New/changed mobile screens author the component set from then on — the P2 surfaces (CX-2 accounts UI, CX-4 harness pill) are the first candidates; existing screens convert on the **scheduled burn-down** (rev 6 — was on-touch), with the safety floor that the launch straight line and store artifacts stay green through every PR | P2 (CX-2/CX-4) |
 | 4 | **Phase 2 — catalog growth**: forms/validation, virtualized + section lists, modals/sheets/tabs, images/media, **typed navigation intent**, typed variants (state/platform/breakpoint) | EN-2 | **P4 phone-cockpit web twin + Agents panel (AE-2.3)** and the business-dashboard build-out; the deeper mobile migration; demand-driven — a component enters the catalog when one of these screens needs it | P4 (AE-2.3) |
 | 5 | **Phase 3 — DX**: DevTools (view-tree inspection, intent log/replay, time-travel), deterministic snapshot + intent-driven testing, visual baselines per renderer | EN-2/EN-9 | The QAM discipline extended natively to Effect Native surfaces; **agent-authored UI validated against the catalog by construction** (the substrate's whole point at 1000 edits/day) | parallel with #4 |
@@ -598,7 +617,7 @@ green (tests, QAM gates, behavior contracts, `check:deploy`) and
   through EN-2 #8572 into `GAPS.md` under the growth rule.
 - **CV1 — web greenfield (unblocked NOW; DOM renderer shipped):** the
   WEB-1 root landing authored in EN (EN-1 #8567), Sarah's branded UI
-  (sarah#15 / S-10), the component gallery deploy (#8570), and
+  (SM-2 #8594, was sarah#15 / S-10), the component gallery deploy (#8570), and
   effectnative.org (#8571).
 - **CV2 — web absorption (starts as Phase 2 catalog pieces land):**
   every product route converted route-by-route on the EN-4 #8573
@@ -732,9 +751,24 @@ store submissions recorded** (submission IDs + review states in the
 registry evidence); QAM-7 (#8542) fixture-first suites authored (red/waived) for
 every P1+ feature named below.
 
-## P1 — Sarah: inbound + OUTBOUND sales (repo: OpenAgentsInc/sarah + the LG engine)
+## P1 — Sarah: inbound + OUTBOUND sales (in-repo `apps/sarah` + the LG engine)
 
-**P1 STATUS (2026-07-07 night, owner decision):** Sarah lives in a
+**P1 REPO/STACK UPDATE (2026-07-09, owner directive — rev 6.7):** the
+separate-repo posture below is **reversed**. Sarah consolidates into
+this monorepo as `apps/sarah/` — Bun/Effect service, **Effect Native UI**
+on the DOM renderer, the eve brain retained only through the move and
+replaced by an owned Effect agent runtime (converging with
+`agent_definition.v1` / P4 `ai_employee.v1`, since Sarah is the
+generalization seed), email folded onto the one approval-gated CRM send
+rail, Cloud Run serving from monorepo-built images, and
+`OpenAgentsInc/sarah` retired read-only historical at cutover. Plan:
+`2026-07-09-sarah-monorepo-effect-native-consolidation-plan.md`; epic
+**#8594** (SM-0..6). sarah#14/#15 are superseded; open sarah S-lane
+scope absorbs into SM. The two paragraphs below are retained as the
+decision history they are.
+
+**P1 STATUS (2026-07-07 night, owner decision — repo posture SUPERSEDED
+by rev 6.7 above):** Sarah lives in a
 **separate private repo, `OpenAgentsInc/sarah`**, built on the standard
 Vercel + AI SDK stack (Next.js 16, `ai`/`@ai-sdk/react`/
 `@ai-sdk/gateway` canary realtime), deploying to
@@ -742,7 +776,10 @@ Vercel + AI SDK stack (Next.js 16, `ai`/`@ai-sdk/react`/
 unmodified before any monorepo integration; a later merge into the
 monorepo is possible but not assumed.
 
-**Hosting update (2026-07-08, owner decision):** the Vercel deployment
+**Hosting update (2026-07-08, owner decision — the sarah#14/#15 filings
+here are SUPERSEDED by rev 6.7: still Cloud Run, but via the SM-1
+Bun/Effect port-as-move and the SM-2 Effect Native UI, #8594):** the
+Vercel deployment
 was a bootstrap, not the home. Sarah moves to **our own infrastructure
 (Cloud Run)** — eve officially self-hosts (`eve build && eve start`,
 workflow state on `@workflow/world-postgres` against our Cloud SQL;
@@ -805,8 +842,8 @@ TanStack Start app remains the serving shell/host (routing, SSR entry)
 — a host, not the architecture. Everything else stands: owner copy
 sign-off, live counters, credit-tier pricing, production CTAs, and
 owner-approved root cutover remain the open items, now landing on the
-Effect Native surface. sarah#15 folds into "render Sarah's UI via the
-Effect Native web renderer" (same catalog, same tokens) — the
+Effect Native surface. sarah#15 is superseded by SM-2 #8594: Sarah's UI is authored in the
+Effect Native web renderer in-repo (same catalog, same tokens) — the
 one-component-system synergy becomes true by construction. Rescope to
 be recorded on #8565.
 
@@ -827,12 +864,15 @@ order):**
    fallback) replacing the quickstart surface.
 6. Production wiring: sarah.openagents.com DNS + env + model pin +
    cost caps (owner/infra actions → NEEDS_OWNER as they arise) — target
-   is **Cloud Run per sarah#14**; the interim Vercel deploy is
+   is **Cloud Run per SM-5 #8594 (was sarah#14)**; the interim Vercel deploy is
    decommissioned at cutover.
 7. The Sarah Eval Suite (authored under QAM-7 #8542) pointed at the
    deployment; discount-pressure/honesty/injection probes green.
 
-**Framework — eve (DECIDED, owner 2026-07-07):** Sarah's brain is
+**Framework — eve (DECIDED owner 2026-07-07; rev 6.7: retained only
+through the SM-1..3 move, then replaced by the owned Effect agent
+runtime in SM-4 #8594, S-12 suite as the conformance oracle):**
+Sarah's brain is
 vercel/eve (filesystem-first durable agents; reference clone
 `projects/repos/eve`) — durable sessions, `instructions.md` persona,
 typed tools, cron schedules, and channels including the Chat SDK
@@ -1247,7 +1287,8 @@ Standing gates (carried; still open):
 | Agent Computers strategy | `../khala-code/2026-07-06-agent-computers-strategy.md` |
 | Mobile testing system (P0) | `../khala-code/2026-07-07-mobile-testing-audit-and-plan.md` |
 | **Sarah (P1, SR-*)** | `2026-07-07-sarah-sales-agent-spec.md` |
-| **Sarah implementation repo** | private `OpenAgentsInc/sarah` (Vercel + AI SDK realtime → sarah.openagents.com; see its README) |
+| **Sarah implementation home** | `apps/sarah/` in this monorepo (rev 6.7, epic #8594; private `OpenAgentsInc/sarah` freezes at SM-0, retired at SM-6) |
+| **Sarah consolidation plan (SM-0..6)** | `2026-07-09-sarah-monorepo-effect-native-consolidation-plan.md` |
 | **Multi-harness parallelization (§MH, MH-0..9, rev 6.4)** | `2026-07-08-multi-harness-parallelization-effect-native-analysis.md` (Fable §1–10 + Grok §11 + Fable §12 — consensus + dispatch plan); `docs/grok/parallel-multi-harness-asap.md` + `docs/grok/grok-cli-as-third-harness.md` (adapter design); `docs/grok-cli/` (CLI reference) |
 | **Pylon fold (PY-1..3, rev 6.3)** | `2026-07-08-pylon-into-khala-code-proposal.md` (ACCEPTED — daemon-cockpit model; lanes #8578/#8579/#8580; Spark wallet preserved by owner mandate) |
 | **Effect Native substrate (§EN, EN-*)** | `../effect-native/README.md` + the six 2026-07-08 docs (framing doc first; UI-layer analysis holds EN-0..EN-9); public framework repo `OpenAgentsInc/effect-native` (ROADMAP phases 0–6 = the substrate build order; issues: #1–#8 Phase 0/1 closed, #9–#19 Phase 2/3, #20–#43 the Phase 4 desktop/canvas epic). Internal lanes: epic #8566, EN-1 #8567, EN-2 #8572, EN-3 #8568, EN-4 #8573, EN-5 #8574, EN-6 #8575, deploys #8570/#8571 |
