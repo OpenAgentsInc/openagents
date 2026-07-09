@@ -103,6 +103,6 @@ build_image() {
   printf '%s\n' "$image"
 }
 
-build_image oa-node docker/oa-node.Dockerfile
-build_image oa-workroomd docker/oa-workroomd.Dockerfile
-build_image oa-codex-control docker/oa-codex-control.Dockerfile
+build_image oa-node docker/cloud/oa-node.Dockerfile
+build_image oa-workroomd docker/cloud/oa-workroomd.Dockerfile
+build_image oa-codex-control docker/cloud/oa-codex-control.Dockerfile
