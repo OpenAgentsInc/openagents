@@ -40,6 +40,8 @@ import {
   makeSyncBridgeWebSocketHandlers,
   withoutUpgradeHeaders,
 } from './sync-connect-bridge'
+// #8594 SM-5: Sarah mounts at openagents.com/sarah on this monolith (no subdomain).
+import { handleSarahRequest } from '../../../../../sarah/src/server.ts'
 
 const log = (event: string, detail: Record<string, unknown> = {}): void => {
   console.log(
@@ -101,6 +103,12 @@ const main = async (): Promise<void> => {
 
       if (url.pathname === '/internal/healthz') {
         return Response.json({ ok: true, service: 'openagents-monolith' })
+      }
+
+      // #8594: Sarah lives at openagents.com/sarah (path mount, not subdomain).
+      // Intercept before the Worker SPA unknown-document 302-to-home.
+      if (url.pathname === '/sarah' || url.pathname.startsWith('/sarah/')) {
+        return handleSarahRequest(request)
       }
 
       // Public-site homepage placeholder (owner request): openagents.com/www

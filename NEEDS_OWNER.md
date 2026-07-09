@@ -52,3 +52,20 @@ balance, or say "drop the lane" and an agent reorders the plan.
 - **Sarah `/sarah` serving cutover (#8594)** — owner gates RESOLVED
   (path confirmed `openagents.com/sarah`, no subdomain); remaining mount
   + smoke work is agent-owned, nothing from you.
+
+## Sarah consolidation SM-5 / serving (#8594)
+
+**Serving amendment CONFIRMED (owner, 2026-07-09):** public path is
+`https://openagents.com/sarah` only — **no** `sarah.openagents.com` subdomain.
+Attribution in `docs/sarah/MIGRATION.md` and MASTER_ROADMAP rev 6.8 is correct.
+
+Agent-owned SM-5 work (shipped or shipping with this change):
+- Mount `/sarah` on `openagents-monolith` Cloud Run via `handleSarahRequest`.
+- Live S-12 / production smokes against `https://openagents.com/sarah`.
+- Vercel project teardown after live `/sarah` oracles are green (DNS for the
+  old subdomain already does not resolve).
+
+**Obsolete:** any older framing of Sarah as a Cloudflare D1-quota host or
+separate-subdomain deploy problem. Monorepo Sarah does not hold D1; Worker API
+authority stays over public HTTP contracts. D1 free-tier quota remains a
+general monolith CFG-4 concern only.

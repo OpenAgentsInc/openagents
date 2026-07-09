@@ -105,6 +105,13 @@ const liveHubUrl =
 Object.assign(vars, {
   KHALA_SYNC_LIVE_HUB_URL: liveHubUrl,
   OPENAGENTS_RUNTIME: 'cloudrun-monolith',
+  // #8594: Sarah path mount on this monolith (assets copied into the image).
+  SARAH_UI_DIR: '/app/sarah-ui',
+  SARAH_AGENT_DIR: '/app/sarah-agent',
+  SARAH_PUBLIC_BASE_URL:
+    target === 'production'
+      ? 'https://openagents.com/sarah'
+      : 'https://openagents.com/sarah',
   // D1-over-HTTP bridge coordinates for the not-yet-migrated CFG-4 domains
   // (the token itself is a Secret Manager secret; these two are public ids).
   ...(target === 'production'

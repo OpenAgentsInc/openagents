@@ -15,8 +15,14 @@ WORKDIR /app
 COPY dist-cloudrun/server.js ./dist-cloudrun/server.js
 COPY dist-cloudrun/preload.js ./dist-cloudrun/preload.js
 COPY dist-cloudrun/web-dist ./web-dist
+# #8594: Sarah path-mount assets (UI + agent persona) for openagents.com/sarah
+COPY dist-cloudrun/sarah-ui ./sarah-ui
+COPY dist-cloudrun/sarah-agent ./sarah-agent
 
 ENV OPENAGENTS_WEB_DIST=/app/web-dist
+ENV SARAH_UI_DIR=/app/sarah-ui
+ENV SARAH_AGENT_DIR=/app/sarah-agent
+ENV SARAH_PUBLIC_BASE_URL=https://openagents.com/sarah
 
 EXPOSE 8080
 

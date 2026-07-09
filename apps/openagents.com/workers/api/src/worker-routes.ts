@@ -202,7 +202,10 @@ export const shouldRedirectUnknownDocumentToHome = (
     pathname.startsWith('/assets/') ||
     pathname.startsWith('/auth/') ||
     pathname.startsWith('/checkout') ||
-    pathname.startsWith('/openagents-agent-claim')
+    pathname.startsWith('/openagents-agent-claim') ||
+    // #8594: Sarah is a Cloud Run path-mount (apps/sarah), not Foldkit SPA.
+    pathname === '/sarah' ||
+    pathname.startsWith('/sarah/')
   ) {
     return false
   }

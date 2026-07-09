@@ -1,15 +1,24 @@
 
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { getPromiseRegistryGrounding } from "./promise-registry";
 
 let instructionsPromise: Promise<string> | null = null;
 
-export function getSarahInstructions() {
-  const agentPath = path.join(
-    path.dirname(new URL(import.meta.url).pathname),
+function agentInstructionsPath() {
+  const configured = process.env.SARAH_AGENT_DIR?.trim();
+  if (configured) {
+    return path.join(configured, "instructions.md");
+  }
+  return path.join(
+    path.dirname(fileURLToPath(import.meta.url)),
     "../../agent/instructions.md",
   );
+}
+
+export function getSarahInstructions() {
+  const agentPath = agentInstructionsPath();
   instructionsPromise ??= readFile(agentPath, "utf8").then((instructions) =>
     instructions.trim(),
   );

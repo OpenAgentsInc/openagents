@@ -41,8 +41,8 @@ Handoffs and CTAs point at `/sarah` (and continue tokens under `/sarah/continue/
 | SM-2 voice UI zero-React DOM | done (`src/ui/*`); EN component promotion is follow-on via EN-2 gaps |
 | SM-3 email/CRM rail convergence | done (`crm-email-rail.ts` — CRM rail client + local dry-run draft/opt-out projection; no Resend) |
 | SM-4 owned agent runtime | done seed (`owned-runtime.ts`; eve not a runtime dep for HTTP turns) |
-| SM-5 cutover to openagents.com/sarah | in progress — Start route + `/sarah/continue/<token>` handoff; Vercel decommission operator-armed |
-| SM-6 retire private repo | README historical pointer |
+| SM-5 cutover to openagents.com/sarah | **serving path confirmed owner-directed** — Cloud Run monolith mounts `handleSarahRequest` for `/sarah*`; live deploy + S-12 against prod is the remaining gate |
+| SM-6 retire private repo | README historical pointer; Vercel teardown once live oracles green |
 
 ## Oracle receipt (local monorepo)
 

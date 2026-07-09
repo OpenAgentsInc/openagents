@@ -11,8 +11,12 @@ import { join } from "node:path";
 // file. A fresh process means fresh in-memory counters, so the smoke is
 // idempotent — pointing it at a long-lived shared server exhausts the daily
 // cap across reruns and is only correct for deployment-pointed runs with an
-// explicit URL. A live AI_GATEWAY_API_KEY must be in the environment for the
-// mint to succeed; without it the failure is a typed gateway_unavailable.
+// explicit URL.
+//
+// Self-spawned servers default to SARAH_REALTIME_TOKEN_TEST_MODE=1 so the
+// hardening oracle is offline-green without a Vercel AI Gateway key. Set
+// SARAH_S3_SMOKE_LIVE_GATEWAY=1 (and AI_GATEWAY_API_KEY) to exercise the real
+// mint path on the self-spawned server.
 let serverChild = null;
 let baseUrlRaw = process.env.SARAH_S3_SMOKE_BASE_URL;
 let alertFile = process.env.SARAH_REALTIME_SPEND_ALERT_FILE;
@@ -21,14 +25,20 @@ if (!baseUrlRaw) {
   const port = Number(process.env.SARAH_S3_SMOKE_PORT ?? 8793);
   alertFile = alertFile ?? join(tmpdir(), `sarah-s3-alerts-${process.pid}.jsonl`);
   rmSync(alertFile, { force: true });
+  const liveGateway = process.env.SARAH_S3_SMOKE_LIVE_GATEWAY === "1";
   serverChild = spawn("bun", ["src/server.ts"], {
     env: {
       ...process.env,
       SARAH_PORT: String(port),
       SARAH_REALTIME_MAX_ACTIVE_SESSIONS_PER_PROSPECT: "1",
       SARAH_REALTIME_DAILY_TOKEN_CAP: "3",
-      SARAH_REALTIME_SPEND_ALERT_THRESHOLD: "2",
+      // Ratio of daily cap (0–1) at which spend alerts fire; 0.5 ⇒ mint #2.
+      SARAH_REALTIME_SPEND_ALERT_THRESHOLD: "0.5",
       SARAH_REALTIME_SPEND_ALERT_FILE: alertFile,
+      // Prefer test mode unless live gateway is explicitly armed.
+      SARAH_REALTIME_TOKEN_TEST_MODE: liveGateway
+        ? process.env.SARAH_REALTIME_TOKEN_TEST_MODE ?? "0"
+        : "1",
     },
     stdio: "ignore",
   });

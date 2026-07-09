@@ -29,7 +29,9 @@ import { enqueueSarahEmailDraft } from "./services/crm-email-rail.ts"
 import { runOwnedSarahTurn } from "./agent-runtime/owned-runtime.ts"
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url))
-const UI_DIR = join(__dirname, "ui")
+/** Overridable for Cloud Run monolith bundle (UI copied beside server.js). */
+const UI_DIR =
+  process.env.SARAH_UI_DIR?.trim() || join(__dirname, "ui")
 const PREFIX = "/sarah"
 
 function json(data: unknown, init: ResponseInit = {}) {

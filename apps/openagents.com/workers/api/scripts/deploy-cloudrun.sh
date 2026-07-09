@@ -64,6 +64,11 @@ bun build src/cloudrun/server.ts --target bun --outdir dist-cloudrun \
   --external cloudflare:workers --external '@cloudflare/playwright' >/dev/null
 bun build src/cloudrun/preload.ts --target bun --outdir dist-cloudrun >/dev/null
 cp -R "$APP_DIR/apps/web/dist" dist-cloudrun/web-dist
+# #8594 SM-5: Sarah UI + agent persona ride beside the monolith bundle.
+REPO_ROOT="$(cd "$APP_DIR/../.." && pwd)"
+mkdir -p dist-cloudrun/sarah-ui dist-cloudrun/sarah-agent
+cp -R "$REPO_ROOT/apps/sarah/src/ui/." dist-cloudrun/sarah-ui/
+cp -R "$REPO_ROOT/apps/sarah/agent/." dist-cloudrun/sarah-agent/
 
 echo "==> Rendering env vars from wrangler.jsonc ($TARGET)"
 bun scripts/cloudrun/render-env-yaml.ts "$TARGET"

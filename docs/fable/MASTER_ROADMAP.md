@@ -27,9 +27,9 @@ its own isolated capped server and redacts tokens; S-12 re-verified
 6/6 live). **Honest SM-2 status:** the shipped surface is a zero-React
 DOM shell with EN demand recorded in `docs/sarah/EN-GAPS.md`; authoring
 it in actual Effect Native components remains OPEN on #8594 — the
-mandate is not satisfied by the interim shell. Still open: SM-5
-production traffic cut + live-deployment oracles + Vercel teardown
-(operator), then SM-6 final retirement receipts.
+mandate is not satisfied by the interim shell. SM-5 mount on openagents-monolith ships with the path cutover
+(`/sarah` → handleSarahRequest); live S-12 + Vercel teardown complete the
+lane, then SM-6 final retirement receipts.
 
 **Rev 6.7 changes (owner directive, 2026-07-09 — SARAH IN-REPO, EFFECT
 NATIVE):** "All Sarah shit must be ported to Effect Native, moved into

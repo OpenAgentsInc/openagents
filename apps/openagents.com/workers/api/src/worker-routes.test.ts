@@ -61,6 +61,24 @@ describe('Worker document route fallback', () => {
     ).toBe(false)
   })
 
+  test('does not 302 Sarah path-mount routes to home (#8594 SM-5)', () => {
+    expect(
+      shouldRedirectUnknownDocumentToHome(requestFor('/sarah'), '/sarah'),
+    ).toBe(false)
+    expect(
+      shouldRedirectUnknownDocumentToHome(
+        requestFor('/sarah/api/operator/ops'),
+        '/sarah/api/operator/ops',
+      ),
+    ).toBe(false)
+    expect(
+      shouldRedirectUnknownDocumentToHome(
+        requestFor('/sarah/continue/tok'),
+        '/sarah/continue/tok',
+      ),
+    ).toBe(false)
+  })
+
   test('keeps autopilot onboarding and its legal vertical in the app shell', () => {
     expect(
       shouldRedirectUnknownDocumentToHome(
