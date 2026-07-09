@@ -46,7 +46,7 @@ import {
   type FleetRunSupervisorObservedEvent,
   type FleetRunSupervisorPlanner,
   type FleetRunSupervisorRunner,
-} from "./fleet-run-supervisor.js"
+} from "../../../../apps/pylon/src/orchestration/fleet-run-supervisor.js"
 import {
   createGrokHeadlessWorkerExecutor,
   probeGrokReadiness,

@@ -70,7 +70,7 @@ import {
   type FleetRunSupervisorOptions,
   type FleetRunSupervisorRunner,
   type FleetRunSupervisorTickResult,
-} from "./fleet-run-supervisor.js"
+} from "../../../../apps/pylon/src/orchestration/fleet-run-supervisor.js"
 import { khalaCodeConfigFromRuntimeEnv } from "./khala-code-config.js"
 import { fetchKhalaCodexRateLimitStatus } from "./codex-rate-limits.js"
 import { spawnKhalaProcessNodeChild, type KhalaProcessNodeChild } from "./khala-process.js"
