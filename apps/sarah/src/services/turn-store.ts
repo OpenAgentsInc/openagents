@@ -179,6 +179,28 @@ export async function persistSarahAvatarSession(
   )
 }
 
+/**
+ * Additive fail-soft READ runner (KHS-2 #8601). Reuses the same client +
+ * schema-ensure path as the writers so reads never race table creation.
+ * Returns null when the store is unconfigured or the query fails — callers
+ * (prospect memory) must treat null as "no memory", never as an error page.
+ */
+export async function readSarahStore<T>(
+  run: (sql: SQL) => Promise<T>,
+): Promise<T | null> {
+  const sql = client()
+  if (!sql) return null
+  if (!(await ensureSchema(sql))) return null
+  try {
+    const result = await run(sql)
+    lastError = null
+    return result
+  } catch (error) {
+    lastError = error instanceof Error ? error.message : String(error)
+    return null
+  }
+}
+
 export function sarahTurnStoreStatus() {
   return {
     configured: Boolean(databaseUrl()),

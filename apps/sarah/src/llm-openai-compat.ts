@@ -20,6 +20,7 @@ import {
   streamSarahGemmaReply,
 } from "./services/google-inference.ts"
 import type { GemmaContent } from "./services/google-inference.ts"
+import { getProspectMemoryContext } from "./services/prospect-memory.ts"
 import { recordSarahTranscriptTurn } from "./services/session-index.ts"
 
 const CONVERSATION_REF_PATTERN = /\[conversation_ref:\s*([^\]\s]+)\s*\]/
@@ -257,8 +258,12 @@ export async function handleSarahChatCompletions(request: Request): Promise<Resp
     return Response.json(completionPayload(model, reply))
   }
 
-  const system =
+  // KHS-2 (#8601): prospect memory prepends AFTER the pricing guard above —
+  // the guard always runs before the model regardless of memory.
+  const memory = ref ? await getProspectMemoryContext(ref) : null
+  const baseSystem =
     cleanSystem || "You are Sarah, OpenAgents' AI sales employee. Disclose you are an AI."
+  const system = memory ? `${memory}\n\n${baseSystem}` : baseSystem
   const contents: GemmaContent[] = history.length
     ? history
     : [{ role: "user", parts: [{ text: lastUserText || "Hello" }] }]

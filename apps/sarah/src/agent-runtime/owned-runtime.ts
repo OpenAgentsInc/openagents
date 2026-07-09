@@ -21,6 +21,7 @@ import {
   sarahGoogleInferenceArmed,
 } from "../services/google-inference.ts"
 import type { GemmaContent } from "../services/google-inference.ts"
+import { getProspectMemoryContext } from "../services/prospect-memory.ts"
 import { getSarahRealtimeInstructions } from "../services/sarah-instructions.ts"
 import {
   getSarahSessionTranscript,
@@ -155,7 +156,13 @@ export async function runOwnedSarahTurn(
       "I only quote public pack prices and owner-approved parameters — I won't improvise discounts. I can evaluate deal rules or open a human handoff."
     modelPath = "deterministic_guard"
   } else if (sarahGoogleInferenceArmed()) {
-    const system = await getSarahRealtimeInstructions()
+    // KHS-2 (#8601): prospect memory prepends AFTER the guards above — the
+    // pricing guard always runs before the model regardless of memory.
+    let system = await getSarahRealtimeInstructions()
+    if (input.prospectRef) {
+      const memory = await getProspectMemoryContext(input.prospectRef)
+      if (memory) system = `${memory}\n\n${system}`
+    }
     const contents: GemmaContent[] = []
     if (input.prospectRef) {
       const history = await getSarahSessionTranscript({
