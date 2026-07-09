@@ -679,3 +679,22 @@ capability/receipt/VM changes.
 Do **not** re-open private `OpenAgentsInc/cloud` for new features. Do **not**
 bury Cloud under `apps/pylon` — Pylon is contributor/local runtime; Cloud is
 first-class infra under `crates/*`.
+
+## Product Specs (`specs/`)
+
+`specs/` holds `.product-spec.md` intent artifacts in the ProductSpec open
+format (v0.1) — the durable what/why for consequential product work, upstream
+of MASTER_ROADMAP sequencing, epics, behavior contracts, Eval Suites, and the
+promise registry. Read `specs/CONVENTIONS.md` before adding or editing one;
+rationale in `docs/fable/2026-07-08-productspec-adoption-analysis.md` (#8593).
+
+- Validate with `bun packages/product-spec/src/cli.ts validate --specs-root specs`
+  (also enforced by `bun test packages/product-spec` in the normal sweep);
+  scaffold with `... init specs/<area>/<name>.product-spec.md`.
+- Specs declare, registries enforce: link behavior-contract IDs, Eval Suite
+  names, and promise IDs — never duplicate their content, and never treat a
+  spec as authority for public claims.
+- Never edit a spec to match implementation without a `spec_revision` bump —
+  accidental behavior never silently becomes intent.
+- `tool_metadata` is stripped on public export; no secrets, customer data, or
+  private pricing in this tree (private engagement specs live in private repos).
