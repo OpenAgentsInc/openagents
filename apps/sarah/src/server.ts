@@ -187,7 +187,7 @@ async function handleOperatorOps(): Promise<Response> {
   return json({
     service: "apps/sarah",
     mount: "/sarah",
-    authority: "openagents.com Worker APIs",
+    authority: "openagents.com API",
     emailRail: "crm_operator_rail",
     agentRuntime: "owned_effect_seed",
     modelPath: sarahGoogleInferenceArmed()
