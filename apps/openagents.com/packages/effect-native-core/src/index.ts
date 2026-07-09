@@ -22,7 +22,12 @@ import {
   SpacingTokenSchema,
   TypeScaleTokenSchema,
   breakpointTokens,
+  colorTokens,
   defaultTheme,
+  dimensionTokens,
+  radiusTokens,
+  spacingTokens,
+  typeScaleTokens,
   type BreakpointTheme,
   type BreakpointToken,
   type ColorToken,
@@ -79,8 +84,14 @@ export const FeedbackCatalogVersion = "effect-native/v16" as const
 export const TranscriptCatalogVersion = "effect-native/v17" as const
 export const CodeBlockCatalogVersion = "effect-native/v18" as const
 export const GraphCatalogVersion = "effect-native/v19" as const
-export const PreviousCatalogVersion = CodeBlockCatalogVersion
-export const CatalogVersion = GraphCatalogVersion
+export const MarketingCatalogVersion = "effect-native/v20" as const
+export const PagerCatalogVersion = "effect-native/v21" as const
+export const PullToRefreshCatalogVersion = "effect-native/v22" as const
+export const SwipeableListItemCatalogVersion = "effect-native/v23" as const
+export const MobileSurfacesCatalogVersion = "effect-native/v24" as const
+export const MobileGesturesCatalogVersion = "effect-native/v25" as const
+export const PreviousCatalogVersion = MobileSurfacesCatalogVersion
+export const CatalogVersion = MobileGesturesCatalogVersion
 export const CatalogVersionSchema = Schema.Literal(CatalogVersion)
 export type CatalogVersion = typeof CatalogVersion
 export const compatibleCatalogVersions = [
@@ -102,8 +113,14 @@ export const compatibleCatalogVersions = [
   SettingsControlsCatalogVersion,
   FeedbackCatalogVersion,
   TranscriptCatalogVersion,
-  PreviousCatalogVersion,
-  CatalogVersion
+  CodeBlockCatalogVersion,
+  GraphCatalogVersion,
+  MarketingCatalogVersion,
+  PagerCatalogVersion,
+  PullToRefreshCatalogVersion,
+  SwipeableListItemCatalogVersion,
+  MobileSurfacesCatalogVersion,
+  MobileGesturesCatalogVersion
 ] as const
 export type CompatibleCatalogVersion = (typeof compatibleCatalogVersions)[number]
 export const CompatibleCatalogVersionSchema = Schema.Literals(compatibleCatalogVersions)
@@ -156,7 +173,27 @@ export const componentTags = [
   "CodeBlock",
   "DiffView",
   "GraphFigure",
-  "Timeline"
+  "Timeline",
+  "Section",
+  "Hero",
+  "AnnouncementBadge",
+  "CtaSection",
+  "Footer",
+  "NavBar",
+  "Accordion",
+  "PricingColumn",
+  "PricingTable",
+  "LogoRow",
+  "StatsBand",
+  "Glow",
+  "MockupFrame",
+  "Pager",
+  "SwipeableListItem",
+  "BackgroundGradient",
+  "Wallpaper",
+  "Spotlight",
+  "Frame",
+  "BlurredPopup"
 ] as const
 export type ComponentTag = (typeof componentTags)[number]
 
@@ -1410,6 +1447,11 @@ export const KeyBindingSchema: Schema.Codec<KeyBinding, KeyBinding> = exactStruc
   intent: IntentRefSchema
 }) as unknown as Schema.Codec<KeyBinding, KeyBinding>
 
+// Swipe direction set for mobile gesture expansion (#56).
+export const swipeDirections = ["left", "right", "up", "down"] as const
+export const SwipeDirectionSchema = Schema.Literals(swipeDirections)
+export type SwipeDirection = (typeof swipeDirections)[number]
+
 export interface Interactions {
   readonly onKey?: ReadonlyArray<KeyBinding>
   readonly onFocus?: IntentRef
@@ -1420,6 +1462,12 @@ export interface Interactions {
   readonly onDragEnter?: IntentRef
   readonly onDragLeave?: IntentRef
   readonly onDrop?: IntentRef
+  /** Mobile long-press; payload is optional pointer position as data. */
+  readonly onLongPress?: IntentRef
+  /** Mobile swipe commit (direction carried as runtime payload by the renderer). */
+  readonly onSwipe?: IntentRef
+  /** Mobile pull-to-refresh when not owned by List.onRefresh. */
+  readonly onPullToRefresh?: IntentRef
 }
 export const InteractionsSchema: Schema.Codec<Interactions, Interactions> = exactStruct({
   onKey: Schema.Array(KeyBindingSchema).pipe(Schema.optionalKey),
@@ -1430,7 +1478,10 @@ export const InteractionsSchema: Schema.Codec<Interactions, Interactions> = exac
   onPaste: IntentRefSchema.pipe(Schema.optionalKey),
   onDragEnter: IntentRefSchema.pipe(Schema.optionalKey),
   onDragLeave: IntentRefSchema.pipe(Schema.optionalKey),
-  onDrop: IntentRefSchema.pipe(Schema.optionalKey)
+  onDrop: IntentRefSchema.pipe(Schema.optionalKey),
+  onLongPress: IntentRefSchema.pipe(Schema.optionalKey),
+  onSwipe: IntentRefSchema.pipe(Schema.optionalKey),
+  onPullToRefresh: IntentRefSchema.pipe(Schema.optionalKey)
 }) as unknown as Schema.Codec<Interactions, Interactions>
 
 // Bounded ARIA roles the renderers honor for roving-focus / combobox patterns.
@@ -1499,7 +1550,7 @@ export type DropPayload = Schema.Schema.Type<typeof DropPayloadSchema>
 // Closed host-kind registry for the foreign-host escape hatch (issue #23). A
 // new host kind is a reviewed catalog change with the same growth-rule bar as
 // a component — never an open plugin point.
-export const hostKinds = ["code-editor", "terminal", "canvas"] as const
+export const hostKinds = ["code-editor", "terminal", "canvas", "voice-input", "on-device-model"] as const
 export const HostKindSchema = Schema.Literals(hostKinds)
 export type HostKind = (typeof hostKinds)[number]
 
@@ -1774,6 +1825,10 @@ export interface ListView extends NodeBase {
   readonly endReachedThreshold?: number
   readonly pinToEnd?: boolean
   readonly onPinnedChange?: IntentRef
+  /** Pull-to-refresh state (data). When true, the list shows a refreshing control. */
+  readonly refreshing?: boolean
+  /** Fired when the user pulls to refresh (or activates the DOM refresh affordance). */
+  readonly onRefresh?: IntentRef
   readonly items: ReadonlyArray<View & { readonly key: NodeKey }>
 }
 
@@ -1791,6 +1846,10 @@ export interface SectionListView extends NodeBase {
   readonly onEndReached?: IntentRef
   readonly endReachedThreshold?: number
   readonly stickyHeaders?: boolean
+  /** Pull-to-refresh state (data). When true, the list shows a refreshing control. */
+  readonly refreshing?: boolean
+  /** Fired when the user pulls to refresh (or activates the DOM refresh affordance). */
+  readonly onRefresh?: IntentRef
   readonly sections: ReadonlyArray<SectionListSection>
 }
 
@@ -2509,6 +2568,260 @@ export interface TranscriptView extends NodeBase {
   readonly style?: ListStyle
 }
 
+
+// ---------------------------------------------------------------------------
+// Marketing catalog (issues #46–#51, v20) — openagents.com landing demand
+// ---------------------------------------------------------------------------
+
+export type SectionWidth = "full" | "contained"
+export type HeroAlign = "start" | "center"
+export type AccordionMode = "single" | "multi"
+export type MockupVariant = "browser" | "device" | "plain"
+export type MockupTilt = "none" | "left" | "right"
+export type GlowIntensity = "sm" | "md" | "lg"
+
+export interface SectionView extends NodeBase {
+  readonly _tag: "Section"
+  readonly width?: SectionWidth
+  readonly paddingY?: SpacingToken
+  readonly background?: ColorToken
+  readonly children: ReadonlyArray<View>
+  readonly style?: CardStyle
+}
+
+export interface HeroView extends NodeBase {
+  readonly _tag: "Hero"
+  readonly align?: HeroAlign
+  readonly headline: Bound<string>
+  readonly subhead?: Bound<string>
+  readonly headlineTone?: "default" | "gradient"
+  readonly actions: ReadonlyArray<View>
+  readonly media?: View
+  readonly style?: CardStyle
+}
+
+export interface AnnouncementBadgeView extends NodeBase {
+  readonly _tag: "AnnouncementBadge"
+  readonly label: string
+  readonly actionLabel?: string
+  readonly onPress?: IntentRef
+  readonly style?: CardStyle
+}
+
+export interface CtaSectionView extends NodeBase {
+  readonly _tag: "CtaSection"
+  readonly headline: Bound<string>
+  readonly body?: Bound<string>
+  readonly tone?: Tone
+  readonly actions: ReadonlyArray<View>
+  readonly style?: CardStyle
+}
+
+export interface FooterColumn {
+  readonly id: string
+  readonly title?: string
+  readonly links: ReadonlyArray<View>
+}
+
+export interface FooterView extends NodeBase {
+  readonly _tag: "Footer"
+  readonly brand?: View
+  readonly columns: ReadonlyArray<FooterColumn>
+  readonly legal?: View
+  readonly style?: CardStyle
+}
+
+export interface NavBarLink {
+  readonly id: string
+  readonly label: string
+  readonly onPress: IntentRef
+}
+
+export interface NavBarView extends NodeBase {
+  readonly _tag: "NavBar"
+  readonly brand: View
+  readonly links: ReadonlyArray<NavBarLink>
+  readonly actions?: ReadonlyArray<View>
+  readonly sticky?: boolean
+  readonly collapsed?: boolean
+  readonly onToggleMenu?: IntentRef
+  readonly style?: CardStyle
+}
+
+export interface AccordionItem {
+  readonly id: string
+  readonly header: string
+  readonly content: ReadonlyArray<View>
+}
+
+export interface AccordionView extends NodeBase {
+  readonly _tag: "Accordion"
+  readonly items: ReadonlyArray<AccordionItem>
+  readonly mode?: AccordionMode
+  readonly expandedIds: ReadonlyArray<string>
+  readonly onToggle: IntentRef
+  readonly style?: CardStyle
+}
+
+export interface PricingFeature {
+  readonly id: string
+  readonly label: string
+  readonly included: boolean
+}
+
+export interface PricingColumnView extends NodeBase {
+  readonly _tag: "PricingColumn"
+  readonly name: string
+  readonly price: string
+  readonly period?: string
+  readonly features: ReadonlyArray<PricingFeature>
+  readonly highlighted?: boolean
+  readonly ctaLabel: string
+  readonly onCta: IntentRef
+  readonly style?: CardStyle
+}
+
+export interface PricingTableView extends NodeBase {
+  readonly _tag: "PricingTable"
+  readonly columns: ReadonlyArray<PricingColumnView>
+  readonly style?: CardStyle
+}
+
+export interface LogoRowItem {
+  readonly id: string
+  readonly source: string
+  readonly alt: string
+  readonly onPress?: IntentRef
+}
+
+export interface LogoRowView extends NodeBase {
+  readonly _tag: "LogoRow"
+  readonly logos: ReadonlyArray<LogoRowItem>
+  readonly style?: CardStyle
+}
+
+export interface StatsBandItem {
+  readonly id: string
+  readonly label: string
+  readonly value: Bound<string>
+  readonly tone?: Tone
+}
+
+export interface StatsBandView extends NodeBase {
+  readonly _tag: "StatsBand"
+  readonly stats: ReadonlyArray<StatsBandItem>
+  readonly style?: CardStyle
+}
+
+export interface GlowView extends NodeBase {
+  readonly _tag: "Glow"
+  readonly intensity?: GlowIntensity
+  readonly children: ReadonlyArray<View>
+  readonly style?: CardStyle
+}
+
+export interface MockupFrameView extends NodeBase {
+  readonly _tag: "MockupFrame"
+  readonly variant?: MockupVariant
+  readonly tilt?: MockupTilt
+  readonly children: ReadonlyArray<View>
+  readonly style?: CardStyle
+}
+
+// Linear onboarding stepper (issue #62) — distinct from Tabs peer selection.
+export interface PagerStep {
+  readonly id: string
+  readonly label: string
+}
+
+export interface PagerPanel {
+  readonly id: string
+  readonly content: View
+}
+
+export type PagerProgress = "dots" | "bar" | "none"
+
+export interface PagerView extends NodeBase {
+  readonly _tag: "Pager"
+  readonly steps: ReadonlyArray<PagerStep>
+  readonly panels: ReadonlyArray<PagerPanel>
+  readonly activeStepId: string
+  readonly progress?: PagerProgress
+  readonly canGoBack?: boolean
+  readonly canAdvance?: boolean
+  readonly keepMounted?: boolean
+  readonly onStepChange: IntentRef
+  readonly onBack?: IntentRef
+  readonly onAdvance?: IntentRef
+  readonly onComplete?: IntentRef
+  readonly style?: CardStyle
+}
+
+
+// Swipe-action list row (issue #60) — composition target for List renderItem.
+export interface SwipeableListAction {
+  readonly id: string
+  readonly label: string
+  readonly icon?: IconName
+  readonly tone?: Tone
+  readonly destructive?: boolean
+}
+
+export interface SwipeableListItemView extends NodeBase {
+  readonly _tag: "SwipeableListItem"
+  readonly child: View
+  readonly leadingActions?: ReadonlyArray<SwipeableListAction>
+  readonly trailingActions?: ReadonlyArray<SwipeableListAction>
+  readonly fullSwipeActionId?: string
+  readonly onAction: IntentRef
+  readonly style?: CardStyle
+}
+
+
+// Mobile surface treatments (issue #63) — arcade visual identity as catalog data.
+export type GradientDirection = "vertical" | "horizontal" | "radial"
+export type WallpaperVariant = "plain" | "city" | "mesh"
+export type FrameVariant = "square" | "rounded" | "arcade"
+export type SpotlightIntensity = "sm" | "md" | "lg"
+
+export interface BackgroundGradientView extends NodeBase {
+  readonly _tag: "BackgroundGradient"
+  readonly direction?: GradientDirection
+  readonly from?: ColorToken
+  readonly to?: ColorToken
+  readonly children: ReadonlyArray<View>
+  readonly style?: CardStyle
+}
+
+export interface WallpaperView extends NodeBase {
+  readonly _tag: "Wallpaper"
+  readonly variant?: WallpaperVariant
+  readonly children: ReadonlyArray<View>
+  readonly style?: CardStyle
+}
+
+export interface SpotlightView extends NodeBase {
+  readonly _tag: "Spotlight"
+  readonly intensity?: SpotlightIntensity
+  readonly children: ReadonlyArray<View>
+  readonly style?: CardStyle
+}
+
+export interface FrameView extends NodeBase {
+  readonly _tag: "Frame"
+  readonly variant?: FrameVariant
+  readonly children: ReadonlyArray<View>
+  readonly style?: CardStyle
+}
+
+export interface BlurredPopupView extends NodeBase {
+  readonly _tag: "BlurredPopup"
+  readonly open: boolean
+  readonly onDismiss: IntentRef
+  readonly children: ReadonlyArray<View>
+  readonly style?: CardStyle
+}
+
 export type View =
   | StackView
   | TextView
@@ -2558,6 +2871,26 @@ export type View =
   | DiffViewView
   | GraphFigureView
   | TimelineView
+  | SectionView
+  | HeroView
+  | AnnouncementBadgeView
+  | CtaSectionView
+  | FooterView
+  | NavBarView
+  | AccordionView
+  | PricingColumnView
+  | PricingTableView
+  | LogoRowView
+  | StatsBandView
+  | GlowView
+  | MockupFrameView
+  | PagerView
+  | SwipeableListItemView
+  | BackgroundGradientView
+  | WallpaperView
+  | SpotlightView
+  | FrameView
+  | BlurredPopupView
 
 export type KeyedView = View & { readonly key: NodeKey }
 
@@ -2605,7 +2938,10 @@ const childViewEntries = (
     case "CommandPalette":
       return [{ path: ["combobox"], view: view.combobox }]
     case "Tabs":
+    case "Pager":
       return view.panels.map((panel, index) => ({ path: ["panels", index, "content"], view: panel.content }))
+    case "SwipeableListItem":
+      return [{ path: ["child"], view: view.child }]
     case "Composer":
       return view.autocomplete === undefined
         ? []
@@ -2618,6 +2954,47 @@ const childViewEntries = (
           path: ["messages", messageIndex, "body", bodyIndex],
           view: child
         })))
+    case "Section":
+    case "Glow":
+    case "MockupFrame":
+    case "BackgroundGradient":
+    case "Wallpaper":
+    case "Spotlight":
+    case "Frame":
+    case "BlurredPopup":
+      return view.children.map((child, index) => ({ path: ["children", index], view: child }))
+    case "Hero":
+      return [
+        ...view.actions.map((child, index) => ({ path: ["actions", index], view: child })),
+        ...(view.media === undefined ? [] : [{ path: ["media"] as const, view: view.media }])
+      ]
+    case "CtaSection":
+      return view.actions.map((child, index) => ({ path: ["actions", index], view: child }))
+    case "Footer":
+      return [
+        ...(view.brand === undefined ? [] : [{ path: ["brand"] as const, view: view.brand }]),
+        ...view.columns.flatMap((column, columnIndex) =>
+          column.links.map((child, linkIndex) => ({
+            path: ["columns", columnIndex, "links", linkIndex] as const,
+            view: child
+          }))
+        ),
+        ...(view.legal === undefined ? [] : [{ path: ["legal"] as const, view: view.legal }])
+      ]
+    case "NavBar":
+      return [
+        { path: ["brand"], view: view.brand },
+        ...(view.actions ?? []).map((child, index) => ({ path: ["actions", index], view: child }))
+      ]
+    case "Accordion":
+      return view.items.flatMap((item, itemIndex) =>
+        item.content.map((child, contentIndex) => ({
+          path: ["items", itemIndex, "content", contentIndex],
+          view: child
+        }))
+      )
+    case "PricingTable":
+      return view.columns.map((child, index) => ({ path: ["columns", index], view: child }))
     default:
       return []
   }
@@ -2786,6 +3163,8 @@ export const ListSchema: Schema.Codec<ListView, ListView> = Schema.TaggedStruct(
   ...VirtualizationFields,
   pinToEnd: Schema.Boolean.pipe(Schema.optionalKey),
   onPinnedChange: IntentRefSchema.pipe(Schema.optionalKey),
+  refreshing: Schema.Boolean.pipe(Schema.optionalKey),
+  onRefresh: IntentRefSchema.pipe(Schema.optionalKey),
   items: KeyedViewArraySchema
 }).check(VirtualizationFilter)
 
@@ -2802,6 +3181,8 @@ export const SectionListSchema: Schema.Codec<SectionListView, SectionListView> =
     style: ListStyleSchema.pipe(Schema.optionalKey),
     ...VirtualizationFields,
     stickyHeaders: Schema.Boolean.pipe(Schema.optionalKey),
+    refreshing: Schema.Boolean.pipe(Schema.optionalKey),
+    onRefresh: IntentRefSchema.pipe(Schema.optionalKey),
     sections: Schema.Array(SectionListSectionSchema)
   }).check(VirtualizationFilter)
 
@@ -3438,6 +3819,266 @@ export const TranscriptSchema: Schema.Codec<TranscriptView, TranscriptView> = Sc
   style: ListStyleSchema.pipe(Schema.optionalKey)
 })
 
+
+export const SectionWidthSchema = Schema.Literals(["full", "contained"] as const)
+export const HeroAlignSchema = Schema.Literals(["start", "center"] as const)
+export const AccordionModeSchema = Schema.Literals(["single", "multi"] as const)
+export const MockupVariantSchema = Schema.Literals(["browser", "device", "plain"] as const)
+export const MockupTiltSchema = Schema.Literals(["none", "left", "right"] as const)
+export const GlowIntensitySchema = Schema.Literals(["sm", "md", "lg"] as const)
+
+export const SectionSchema: Schema.Codec<SectionView, SectionView> = Schema.TaggedStruct("Section", {
+  ...CommonFields,
+  width: SectionWidthSchema.pipe(Schema.optionalKey),
+  paddingY: SpacingTokenSchema.pipe(Schema.optionalKey),
+  background: ColorTokenSchema.pipe(Schema.optionalKey),
+  children: Schema.Array(ViewSelf),
+  style: CardStyleSchema.pipe(Schema.optionalKey)
+})
+
+export const HeroSchema: Schema.Codec<HeroView, HeroView> = Schema.TaggedStruct("Hero", {
+  ...CommonFields,
+  align: HeroAlignSchema.pipe(Schema.optionalKey),
+  headline: BoundStringSchema,
+  subhead: BoundStringSchema.pipe(Schema.optionalKey),
+  headlineTone: Schema.Literals(["default", "gradient"] as const).pipe(Schema.optionalKey),
+  actions: Schema.Array(ViewSelf),
+  media: ViewSelf.pipe(Schema.optionalKey),
+  style: CardStyleSchema.pipe(Schema.optionalKey)
+})
+
+export const AnnouncementBadgeSchema: Schema.Codec<AnnouncementBadgeView, AnnouncementBadgeView> =
+  Schema.TaggedStruct("AnnouncementBadge", {
+    ...CommonFields,
+    label: Schema.String,
+    actionLabel: Schema.String.pipe(Schema.optionalKey),
+    onPress: IntentRefSchema.pipe(Schema.optionalKey),
+    style: CardStyleSchema.pipe(Schema.optionalKey)
+  })
+
+export const CtaSectionSchema: Schema.Codec<CtaSectionView, CtaSectionView> = Schema.TaggedStruct("CtaSection", {
+  ...CommonFields,
+  headline: BoundStringSchema,
+  body: BoundStringSchema.pipe(Schema.optionalKey),
+  tone: ToneSchema.pipe(Schema.optionalKey),
+  actions: Schema.Array(ViewSelf),
+  style: CardStyleSchema.pipe(Schema.optionalKey)
+})
+
+export const FooterColumnSchema: Schema.Codec<FooterColumn, FooterColumn> = Schema.Struct({
+  id: Schema.NonEmptyString,
+  title: Schema.String.pipe(Schema.optionalKey),
+  links: Schema.Array(ViewSelf)
+})
+
+export const FooterSchema: Schema.Codec<FooterView, FooterView> = Schema.TaggedStruct("Footer", {
+  ...CommonFields,
+  brand: ViewSelf.pipe(Schema.optionalKey),
+  columns: Schema.Array(FooterColumnSchema),
+  legal: ViewSelf.pipe(Schema.optionalKey),
+  style: CardStyleSchema.pipe(Schema.optionalKey)
+})
+
+export const NavBarLinkSchema: Schema.Codec<NavBarLink, NavBarLink> = Schema.Struct({
+  id: Schema.NonEmptyString,
+  label: Schema.String,
+  onPress: IntentRefSchema
+})
+
+export const NavBarSchema: Schema.Codec<NavBarView, NavBarView> = Schema.TaggedStruct("NavBar", {
+  ...CommonFields,
+  brand: ViewSelf,
+  links: Schema.Array(NavBarLinkSchema),
+  actions: Schema.Array(ViewSelf).pipe(Schema.optionalKey),
+  sticky: Schema.Boolean.pipe(Schema.optionalKey),
+  collapsed: Schema.Boolean.pipe(Schema.optionalKey),
+  onToggleMenu: IntentRefSchema.pipe(Schema.optionalKey),
+  style: CardStyleSchema.pipe(Schema.optionalKey)
+})
+
+export const AccordionItemSchema: Schema.Codec<AccordionItem, AccordionItem> = Schema.Struct({
+  id: Schema.NonEmptyString,
+  header: Schema.String,
+  content: Schema.Array(ViewSelf)
+})
+
+export const AccordionSchema: Schema.Codec<AccordionView, AccordionView> = Schema.TaggedStruct("Accordion", {
+  ...CommonFields,
+  items: Schema.Array(AccordionItemSchema),
+  mode: AccordionModeSchema.pipe(Schema.optionalKey),
+  expandedIds: Schema.Array(Schema.NonEmptyString),
+  onToggle: IntentRefSchema,
+  style: CardStyleSchema.pipe(Schema.optionalKey)
+})
+
+export const PricingFeatureSchema: Schema.Codec<PricingFeature, PricingFeature> = Schema.Struct({
+  id: Schema.NonEmptyString,
+  label: Schema.String,
+  included: Schema.Boolean
+})
+
+export const PricingColumnSchema: Schema.Codec<PricingColumnView, PricingColumnView> = Schema.TaggedStruct(
+  "PricingColumn",
+  {
+    ...CommonFields,
+    name: Schema.String,
+    price: Schema.String,
+    period: Schema.String.pipe(Schema.optionalKey),
+    features: Schema.Array(PricingFeatureSchema),
+    highlighted: Schema.Boolean.pipe(Schema.optionalKey),
+    ctaLabel: Schema.String,
+    onCta: IntentRefSchema,
+    style: CardStyleSchema.pipe(Schema.optionalKey)
+  }
+)
+
+export const PricingTableSchema: Schema.Codec<PricingTableView, PricingTableView> = Schema.TaggedStruct(
+  "PricingTable",
+  {
+    ...CommonFields,
+    columns: Schema.Array(PricingColumnSchema),
+    style: CardStyleSchema.pipe(Schema.optionalKey)
+  }
+)
+
+export const LogoRowItemSchema: Schema.Codec<LogoRowItem, LogoRowItem> = Schema.Struct({
+  id: Schema.NonEmptyString,
+  source: UriStringSchema,
+  alt: Schema.String,
+  onPress: IntentRefSchema.pipe(Schema.optionalKey)
+})
+
+export const LogoRowSchema: Schema.Codec<LogoRowView, LogoRowView> = Schema.TaggedStruct("LogoRow", {
+  ...CommonFields,
+  logos: Schema.Array(LogoRowItemSchema),
+  style: CardStyleSchema.pipe(Schema.optionalKey)
+})
+
+export const StatsBandItemSchema: Schema.Codec<StatsBandItem, StatsBandItem> = Schema.Struct({
+  id: Schema.NonEmptyString,
+  label: Schema.String,
+  value: BoundStringSchema,
+  tone: ToneSchema.pipe(Schema.optionalKey)
+})
+
+export const StatsBandSchema: Schema.Codec<StatsBandView, StatsBandView> = Schema.TaggedStruct("StatsBand", {
+  ...CommonFields,
+  stats: Schema.Array(StatsBandItemSchema),
+  style: CardStyleSchema.pipe(Schema.optionalKey)
+})
+
+export const GlowSchema: Schema.Codec<GlowView, GlowView> = Schema.TaggedStruct("Glow", {
+  ...CommonFields,
+  intensity: GlowIntensitySchema.pipe(Schema.optionalKey),
+  children: Schema.Array(ViewSelf),
+  style: CardStyleSchema.pipe(Schema.optionalKey)
+})
+
+export const MockupFrameSchema: Schema.Codec<MockupFrameView, MockupFrameView> = Schema.TaggedStruct(
+  "MockupFrame",
+  {
+    ...CommonFields,
+    variant: MockupVariantSchema.pipe(Schema.optionalKey),
+    tilt: MockupTiltSchema.pipe(Schema.optionalKey),
+    children: Schema.Array(ViewSelf),
+    style: CardStyleSchema.pipe(Schema.optionalKey)
+  }
+)
+
+export const PagerStepSchema: Schema.Codec<PagerStep, PagerStep> = Schema.Struct({
+  id: Schema.NonEmptyString,
+  label: Schema.String
+})
+
+export const PagerPanelSchema: Schema.Codec<PagerPanel, PagerPanel> = Schema.Struct({
+  id: Schema.NonEmptyString,
+  content: ViewSelf
+})
+
+export const PagerProgressSchema = Schema.Literals(["dots", "bar", "none"] as const)
+
+export const PagerSchema: Schema.Codec<PagerView, PagerView> = Schema.TaggedStruct("Pager", {
+  ...CommonFields,
+  steps: Schema.Array(PagerStepSchema).check(Schema.isMinLength(1, { title: "NonEmptyPagerSteps" })),
+  panels: Schema.Array(PagerPanelSchema),
+  activeStepId: Schema.NonEmptyString,
+  progress: PagerProgressSchema.pipe(Schema.optionalKey),
+  canGoBack: Schema.Boolean.pipe(Schema.optionalKey),
+  canAdvance: Schema.Boolean.pipe(Schema.optionalKey),
+  keepMounted: Schema.Boolean.pipe(Schema.optionalKey),
+  onStepChange: IntentRefSchema,
+  onBack: IntentRefSchema.pipe(Schema.optionalKey),
+  onAdvance: IntentRefSchema.pipe(Schema.optionalKey),
+  onComplete: IntentRefSchema.pipe(Schema.optionalKey),
+  style: CardStyleSchema.pipe(Schema.optionalKey)
+})
+
+
+export const SwipeableListActionSchema: Schema.Codec<SwipeableListAction, SwipeableListAction> = Schema.Struct({
+  id: Schema.NonEmptyString,
+  label: Schema.String,
+  icon: IconNameSchema.pipe(Schema.optionalKey),
+  tone: ToneSchema.pipe(Schema.optionalKey),
+  destructive: Schema.Boolean.pipe(Schema.optionalKey)
+})
+
+export const SwipeableListItemSchema: Schema.Codec<SwipeableListItemView, SwipeableListItemView> =
+  Schema.TaggedStruct("SwipeableListItem", {
+    ...CommonFields,
+    child: ViewSelf,
+    leadingActions: Schema.Array(SwipeableListActionSchema).pipe(Schema.optionalKey),
+    trailingActions: Schema.Array(SwipeableListActionSchema).pipe(Schema.optionalKey),
+    fullSwipeActionId: Schema.NonEmptyString.pipe(Schema.optionalKey),
+    onAction: IntentRefSchema,
+    style: CardStyleSchema.pipe(Schema.optionalKey)
+  })
+
+
+export const GradientDirectionSchema = Schema.Literals(["vertical", "horizontal", "radial"] as const)
+export const WallpaperVariantSchema = Schema.Literals(["plain", "city", "mesh"] as const)
+export const FrameVariantSchema = Schema.Literals(["square", "rounded", "arcade"] as const)
+export const SpotlightIntensitySchema = Schema.Literals(["sm", "md", "lg"] as const)
+
+export const BackgroundGradientSchema: Schema.Codec<BackgroundGradientView, BackgroundGradientView> =
+  Schema.TaggedStruct("BackgroundGradient", {
+    ...CommonFields,
+    direction: GradientDirectionSchema.pipe(Schema.optionalKey),
+    from: ColorTokenSchema.pipe(Schema.optionalKey),
+    to: ColorTokenSchema.pipe(Schema.optionalKey),
+    children: Schema.Array(ViewSelf),
+    style: CardStyleSchema.pipe(Schema.optionalKey)
+  })
+
+export const WallpaperSchema: Schema.Codec<WallpaperView, WallpaperView> = Schema.TaggedStruct("Wallpaper", {
+  ...CommonFields,
+  variant: WallpaperVariantSchema.pipe(Schema.optionalKey),
+  children: Schema.Array(ViewSelf),
+  style: CardStyleSchema.pipe(Schema.optionalKey)
+})
+
+export const SpotlightSchema: Schema.Codec<SpotlightView, SpotlightView> = Schema.TaggedStruct("Spotlight", {
+  ...CommonFields,
+  intensity: SpotlightIntensitySchema.pipe(Schema.optionalKey),
+  children: Schema.Array(ViewSelf),
+  style: CardStyleSchema.pipe(Schema.optionalKey)
+})
+
+export const FrameSchema: Schema.Codec<FrameView, FrameView> = Schema.TaggedStruct("Frame", {
+  ...CommonFields,
+  variant: FrameVariantSchema.pipe(Schema.optionalKey),
+  children: Schema.Array(ViewSelf),
+  style: CardStyleSchema.pipe(Schema.optionalKey)
+})
+
+export const BlurredPopupSchema: Schema.Codec<BlurredPopupView, BlurredPopupView> =
+  Schema.TaggedStruct("BlurredPopup", {
+    ...CommonFields,
+    open: Schema.Boolean,
+    onDismiss: IntentRefSchema,
+    children: Schema.Array(ViewSelf),
+    style: CardStyleSchema.pipe(Schema.optionalKey)
+  })
+
 export const ViewSchema: Schema.Codec<View, View> = Schema.suspend(() =>
   Schema.Union([
     StackSchema,
@@ -3487,7 +4128,27 @@ export const ViewSchema: Schema.Codec<View, View> = Schema.suspend(() =>
     CodeBlockSchema,
     DiffViewSchema,
     GraphFigureSchema,
-    TimelineSchema
+    TimelineSchema,
+    SectionSchema,
+    HeroSchema,
+    AnnouncementBadgeSchema,
+    CtaSectionSchema,
+    FooterSchema,
+    NavBarSchema,
+    AccordionSchema,
+    PricingColumnSchema,
+    PricingTableSchema,
+    LogoRowSchema,
+    StatsBandSchema,
+    GlowSchema,
+    MockupFrameSchema,
+    PagerSchema,
+    SwipeableListItemSchema,
+    BackgroundGradientSchema,
+    WallpaperSchema,
+    SpotlightSchema,
+    FrameSchema,
+    BlurredPopupSchema
   ]).check(OverlayStackFilter)
 )
 
@@ -3683,6 +4344,94 @@ export const Terminal = (props: TerminalProps): HostView => {
   })
 }
 
+// ── Voice / on-device model host contracts (issue #58) ────────────────────────
+export interface VoiceInputHostProps {
+  readonly listening?: boolean
+  readonly locale?: string
+  readonly partialTranscript?: string
+}
+export const VoiceInputHostPropsSchema: Schema.Codec<VoiceInputHostProps, VoiceInputHostProps> = Schema.Struct({
+  listening: Schema.Boolean.pipe(Schema.optionalKey),
+  locale: Schema.String.pipe(Schema.optionalKey),
+  partialTranscript: Schema.String.pipe(Schema.optionalKey)
+}) as unknown as Schema.Codec<VoiceInputHostProps, VoiceInputHostProps>
+export const decodeVoiceInputHostProps = Schema.decodeUnknownSync(VoiceInputHostPropsSchema)
+
+export type VoiceInputEvent =
+  | { readonly type: "partial"; readonly text: string }
+  | { readonly type: "final"; readonly text: string }
+  | { readonly type: "error"; readonly message: string }
+export const VoiceInputEventSchema: Schema.Codec<VoiceInputEvent, VoiceInputEvent> = Schema.Union([
+  Schema.Struct({ type: Schema.Literal("partial"), text: Schema.String }),
+  Schema.Struct({ type: Schema.Literal("final"), text: Schema.String }),
+  Schema.Struct({ type: Schema.Literal("error"), message: Schema.String })
+]) as unknown as Schema.Codec<VoiceInputEvent, VoiceInputEvent>
+
+export interface VoiceInputProps extends VoiceInputHostProps {
+  readonly key?: NodeKey
+  readonly onEvent?: IntentRef
+  readonly style?: CardStyle
+  readonly a11y?: A11y
+  readonly interactions?: Interactions
+}
+export const VoiceInput = (props: VoiceInputProps): HostView => {
+  const { key, onEvent, style, a11y, interactions, ...hostProps } = props
+  return Host({
+    ...(key === undefined ? {} : { key }),
+    ...(onEvent === undefined ? {} : { onEvent }),
+    ...(style === undefined ? {} : { style }),
+    ...(a11y === undefined ? {} : { a11y }),
+    ...(interactions === undefined ? {} : { interactions }),
+    kind: "voice-input",
+    props: VoiceInputHostPropsSchema.make(hostProps) as unknown as JsonPayload
+  })
+}
+
+export interface OnDeviceModelHostProps {
+  readonly modelId?: string
+  readonly prompt?: string
+  readonly status?: "idle" | "loading" | "ready" | "error"
+}
+export const OnDeviceModelHostPropsSchema: Schema.Codec<OnDeviceModelHostProps, OnDeviceModelHostProps> =
+  Schema.Struct({
+    modelId: Schema.String.pipe(Schema.optionalKey),
+    prompt: Schema.String.pipe(Schema.optionalKey),
+    status: Schema.Literals(["idle", "loading", "ready", "error"] as const).pipe(Schema.optionalKey)
+  }) as unknown as Schema.Codec<OnDeviceModelHostProps, OnDeviceModelHostProps>
+export const decodeOnDeviceModelHostProps = Schema.decodeUnknownSync(OnDeviceModelHostPropsSchema)
+
+export type OnDeviceModelEvent =
+  | { readonly type: "token"; readonly text: string }
+  | { readonly type: "done"; readonly text: string }
+  | { readonly type: "error"; readonly message: string }
+export const OnDeviceModelEventSchema: Schema.Codec<OnDeviceModelEvent, OnDeviceModelEvent> = Schema.Union([
+  Schema.Struct({ type: Schema.Literal("token"), text: Schema.String }),
+  Schema.Struct({ type: Schema.Literal("done"), text: Schema.String }),
+  Schema.Struct({ type: Schema.Literal("error"), message: Schema.String })
+]) as unknown as Schema.Codec<OnDeviceModelEvent, OnDeviceModelEvent>
+
+export interface OnDeviceModelProps extends OnDeviceModelHostProps {
+  readonly key?: NodeKey
+  readonly onEvent?: IntentRef
+  readonly style?: CardStyle
+  readonly a11y?: A11y
+  readonly interactions?: Interactions
+}
+export const OnDeviceModel = (props: OnDeviceModelProps): HostView => {
+  const { key, onEvent, style, a11y, interactions, ...hostProps } = props
+  return Host({
+    ...(key === undefined ? {} : { key }),
+    ...(onEvent === undefined ? {} : { onEvent }),
+    ...(style === undefined ? {} : { style }),
+    ...(a11y === undefined ? {} : { a11y }),
+    ...(interactions === undefined ? {} : { interactions }),
+    kind: "on-device-model",
+    props: OnDeviceModelHostPropsSchema.make(hostProps) as unknown as JsonPayload
+  })
+}
+
+
+
 export type IconProps = WithoutTagAndVersion<IconView>
 export const Icon = (props: IconProps): IconView =>
   IconSchema.make({ _tag: "Icon", catalogVersion: CatalogVersion, ...props })
@@ -3822,6 +4571,122 @@ export const GraphFigure = (props: GraphFigureProps): GraphFigureView =>
 export type TimelineProps = WithoutTagAndVersion<TimelineView>
 export const Timeline = (props: TimelineProps): TimelineView =>
   TimelineSchema.make({ _tag: "Timeline", catalogVersion: CatalogVersion, ...props })
+
+export type SectionProps = Omit<WithoutTagAndVersion<SectionView>, "children">
+export const Section = (props: SectionProps, children: ReadonlyArray<View> = []): SectionView =>
+  SectionSchema.make({ _tag: "Section", catalogVersion: CatalogVersion, ...props, children })
+
+export type HeroProps = Omit<WithoutTagAndVersion<HeroView>, "actions" | "media">
+export const Hero = (
+  props: HeroProps & { readonly actions?: ReadonlyArray<View>; readonly media?: View }
+): HeroView =>
+  HeroSchema.make({
+    _tag: "Hero",
+    catalogVersion: CatalogVersion,
+    actions: props.actions ?? [],
+    ...props
+  })
+
+export type AnnouncementBadgeProps = WithoutTagAndVersion<AnnouncementBadgeView>
+export const AnnouncementBadge = (props: AnnouncementBadgeProps): AnnouncementBadgeView =>
+  AnnouncementBadgeSchema.make({ _tag: "AnnouncementBadge", catalogVersion: CatalogVersion, ...props })
+
+export type CtaSectionProps = Omit<WithoutTagAndVersion<CtaSectionView>, "actions">
+export const CtaSection = (
+  props: CtaSectionProps & { readonly actions?: ReadonlyArray<View> }
+): CtaSectionView =>
+  CtaSectionSchema.make({
+    _tag: "CtaSection",
+    catalogVersion: CatalogVersion,
+    actions: props.actions ?? [],
+    ...props
+  })
+
+export type FooterProps = WithoutTagAndVersion<FooterView>
+export const Footer = (props: FooterProps): FooterView =>
+  FooterSchema.make({ _tag: "Footer", catalogVersion: CatalogVersion, ...props })
+
+export type NavBarProps = WithoutTagAndVersion<NavBarView>
+export const NavBar = (props: NavBarProps): NavBarView =>
+  NavBarSchema.make({ _tag: "NavBar", catalogVersion: CatalogVersion, ...props })
+
+export type AccordionProps = WithoutTagAndVersion<AccordionView>
+export const Accordion = (props: AccordionProps): AccordionView =>
+  AccordionSchema.make({ _tag: "Accordion", catalogVersion: CatalogVersion, ...props })
+
+export type PricingColumnProps = WithoutTagAndVersion<PricingColumnView>
+export const PricingColumn = (props: PricingColumnProps): PricingColumnView =>
+  PricingColumnSchema.make({ _tag: "PricingColumn", catalogVersion: CatalogVersion, ...props })
+
+export type PricingTableProps = WithoutTagAndVersion<PricingTableView>
+export const PricingTable = (props: PricingTableProps): PricingTableView =>
+  PricingTableSchema.make({ _tag: "PricingTable", catalogVersion: CatalogVersion, ...props })
+
+export type LogoRowProps = WithoutTagAndVersion<LogoRowView>
+export const LogoRow = (props: LogoRowProps): LogoRowView =>
+  LogoRowSchema.make({ _tag: "LogoRow", catalogVersion: CatalogVersion, ...props })
+
+export type StatsBandProps = WithoutTagAndVersion<StatsBandView>
+export const StatsBand = (props: StatsBandProps): StatsBandView =>
+  StatsBandSchema.make({ _tag: "StatsBand", catalogVersion: CatalogVersion, ...props })
+
+export type GlowProps = Omit<WithoutTagAndVersion<GlowView>, "children">
+export const Glow = (props: GlowProps, children: ReadonlyArray<View> = []): GlowView =>
+  GlowSchema.make({ _tag: "Glow", catalogVersion: CatalogVersion, ...props, children })
+
+export type MockupFrameProps = Omit<WithoutTagAndVersion<MockupFrameView>, "children">
+export const MockupFrame = (
+  props: MockupFrameProps,
+  children: ReadonlyArray<View> = []
+): MockupFrameView =>
+  MockupFrameSchema.make({ _tag: "MockupFrame", catalogVersion: CatalogVersion, ...props, children })
+
+export type PagerProps = WithoutTagAndVersion<PagerView>
+export const Pager = (props: PagerProps): PagerView =>
+  PagerSchema.make({ _tag: "Pager", catalogVersion: CatalogVersion, ...props })
+
+export type SwipeableListItemProps = WithoutTagAndVersion<SwipeableListItemView>
+export const SwipeableListItem = (props: SwipeableListItemProps): SwipeableListItemView =>
+  SwipeableListItemSchema.make({ _tag: "SwipeableListItem", catalogVersion: CatalogVersion, ...props })
+
+export type BackgroundGradientProps = Omit<WithoutTagAndVersion<BackgroundGradientView>, "children">
+export const BackgroundGradient = (
+  props: BackgroundGradientProps,
+  children: ReadonlyArray<View> = []
+): BackgroundGradientView =>
+  BackgroundGradientSchema.make({ _tag: "BackgroundGradient", catalogVersion: CatalogVersion, ...props, children })
+
+export type WallpaperProps = Omit<WithoutTagAndVersion<WallpaperView>, "children">
+export const Wallpaper = (
+  props: WallpaperProps,
+  children: ReadonlyArray<View> = []
+): WallpaperView =>
+  WallpaperSchema.make({ _tag: "Wallpaper", catalogVersion: CatalogVersion, ...props, children })
+
+export type SpotlightProps = Omit<WithoutTagAndVersion<SpotlightView>, "children">
+export const Spotlight = (
+  props: SpotlightProps,
+  children: ReadonlyArray<View> = []
+): SpotlightView =>
+  SpotlightSchema.make({ _tag: "Spotlight", catalogVersion: CatalogVersion, ...props, children })
+
+export type FrameProps = Omit<WithoutTagAndVersion<FrameView>, "children">
+export const Frame = (
+  props: FrameProps,
+  children: ReadonlyArray<View> = []
+): FrameView =>
+  FrameSchema.make({ _tag: "Frame", catalogVersion: CatalogVersion, ...props, children })
+
+export type BlurredPopupProps = Omit<WithoutTagAndVersion<BlurredPopupView>, "children">
+export const BlurredPopup = (
+  props: BlurredPopupProps,
+  children: ReadonlyArray<View> = []
+): BlurredPopupView =>
+  BlurredPopupSchema.make({ _tag: "BlurredPopup", catalogVersion: CatalogVersion, ...props, children })
+
+
+
+
 
 // Deterministic 2D layout for a graph figure: precomputed positions when given,
 // otherwise a bounded named layout (a stable circle for "force", a simple
@@ -4026,9 +4891,98 @@ export const resolveView = (view: View, input: ViewResolution = {}): View => {
     case "DiffView":
     case "GraphFigure":
     case "Timeline":
+    case "AnnouncementBadge":
+    case "LogoRow":
+    case "PricingColumn":
       return {
         ...view,
         ...(view.style === undefined ? {} : { style: resolveStyle(view.style, resolution) })
+      }
+    case "Section":
+    case "Glow":
+    case "MockupFrame":
+    case "BackgroundGradient":
+    case "Wallpaper":
+    case "Spotlight":
+    case "Frame":
+    case "BlurredPopup":
+      return {
+        ...view,
+        ...(view.style === undefined ? {} : { style: resolveStyle(view.style, resolution) }),
+        children: view.children.map((child) => resolveView(child, input))
+      }
+    case "Hero":
+      return {
+        ...view,
+        headline: input.state === undefined ? view.headline : resolveBoundText(view.headline, input.state),
+        ...(view.subhead === undefined
+          ? {}
+          : {
+              subhead:
+                input.state === undefined
+                  ? view.subhead
+                  : resolveBoundText(view.subhead, input.state)
+            }),
+        ...(view.style === undefined ? {} : { style: resolveStyle(view.style, resolution) }),
+        actions: view.actions.map((child) => resolveView(child, input)),
+        ...(view.media === undefined ? {} : { media: resolveView(view.media, input) })
+      }
+    case "CtaSection":
+      return {
+        ...view,
+        headline: input.state === undefined ? view.headline : resolveBoundText(view.headline, input.state),
+        ...(view.body === undefined
+          ? {}
+          : {
+              body:
+                input.state === undefined ? view.body : resolveBoundText(view.body, input.state)
+            }),
+        ...(view.style === undefined ? {} : { style: resolveStyle(view.style, resolution) }),
+        actions: view.actions.map((child) => resolveView(child, input))
+      }
+    case "Footer":
+      return {
+        ...view,
+        ...(view.style === undefined ? {} : { style: resolveStyle(view.style, resolution) }),
+        ...(view.brand === undefined ? {} : { brand: resolveView(view.brand, input) }),
+        ...(view.legal === undefined ? {} : { legal: resolveView(view.legal, input) }),
+        columns: view.columns.map((column) => ({
+          ...column,
+          links: column.links.map((child) => resolveView(child, input))
+        }))
+      }
+    case "NavBar":
+      return {
+        ...view,
+        ...(view.style === undefined ? {} : { style: resolveStyle(view.style, resolution) }),
+        brand: resolveView(view.brand, input),
+        ...(view.actions === undefined
+          ? {}
+          : { actions: view.actions.map((child) => resolveView(child, input)) })
+      }
+    case "Accordion":
+      return {
+        ...view,
+        ...(view.style === undefined ? {} : { style: resolveStyle(view.style, resolution) }),
+        items: view.items.map((item) => ({
+          ...item,
+          content: item.content.map((child) => resolveView(child, input))
+        }))
+      }
+    case "PricingTable":
+      return {
+        ...view,
+        ...(view.style === undefined ? {} : { style: resolveStyle(view.style, resolution) }),
+        columns: view.columns.map((column) => resolveView(column, input) as PricingColumnView)
+      }
+    case "StatsBand":
+      return {
+        ...view,
+        ...(view.style === undefined ? {} : { style: resolveStyle(view.style, resolution) }),
+        stats: view.stats.map((stat) => ({
+          ...stat,
+          value: input.state === undefined ? stat.value : resolveBoundText(stat.value, input.state)
+        }))
       }
     case "RecoveryOverlay":
       return {
@@ -4091,10 +5045,17 @@ export const resolveView = (view: View, input: ViewResolution = {}): View => {
         combobox: resolveView(view.combobox, input) as ComboboxView
       }
     case "Tabs":
+    case "Pager":
       return {
         ...view,
         ...(view.style === undefined ? {} : { style: resolveStyle(view.style, resolution) }),
         panels: view.panels.map((panel) => ({ ...panel, content: resolveView(panel.content, input) }))
+      }
+    case "SwipeableListItem":
+      return {
+        ...view,
+        ...(view.style === undefined ? {} : { style: resolveStyle(view.style, resolution) }),
+        child: resolveView(view.child, input)
       }
     case "Composer":
       return {
@@ -4146,7 +5107,75 @@ export const resolveBindings = <State>(view: View, state: State): View => {
     case "DiffView":
     case "GraphFigure":
     case "Timeline":
+    case "AnnouncementBadge":
+    case "LogoRow":
+    case "PricingColumn":
       return view
+    case "Section":
+    case "Glow":
+    case "MockupFrame":
+      return {
+        ...view,
+        children: view.children.map((child) => resolveBindings(child, state))
+      }
+    case "Hero":
+      return {
+        ...view,
+        headline: resolveBoundText(view.headline, state),
+        ...(view.subhead === undefined
+          ? {}
+          : { subhead: resolveBoundText(view.subhead, state) }),
+        actions: view.actions.map((child) => resolveBindings(child, state)),
+        ...(view.media === undefined ? {} : { media: resolveBindings(view.media, state) })
+      }
+    case "CtaSection":
+      return {
+        ...view,
+        headline: resolveBoundText(view.headline, state),
+        ...(view.body === undefined ? {} : { body: resolveBoundText(view.body, state) }),
+        actions: view.actions.map((child) => resolveBindings(child, state))
+      }
+    case "Footer":
+      return {
+        ...view,
+        ...(view.brand === undefined ? {} : { brand: resolveBindings(view.brand, state) }),
+        ...(view.legal === undefined ? {} : { legal: resolveBindings(view.legal, state) }),
+        columns: view.columns.map((column) => ({
+          ...column,
+          links: column.links.map((child) => resolveBindings(child, state))
+        }))
+      }
+    case "NavBar":
+      return {
+        ...view,
+        brand: resolveBindings(view.brand, state),
+        ...(view.actions === undefined
+          ? {}
+          : { actions: view.actions.map((child) => resolveBindings(child, state)) })
+      }
+    case "Accordion":
+      return {
+        ...view,
+        items: view.items.map((item) => ({
+          ...item,
+          content: item.content.map((child) => resolveBindings(child, state))
+        }))
+      }
+    case "PricingTable":
+      return {
+        ...view,
+        columns: view.columns.map(
+          (column) => resolveBindings(column, state) as PricingColumnView
+        )
+      }
+    case "StatsBand":
+      return {
+        ...view,
+        stats: view.stats.map((stat) => ({
+          ...stat,
+          value: resolveBoundText(stat.value, state)
+        }))
+      }
     case "RecoveryOverlay":
       return {
         ...view,
@@ -4203,9 +5232,24 @@ export const resolveBindings = <State>(view: View, state: State): View => {
         combobox: resolveBindings(view.combobox, state) as ComboboxView
       }
     case "Tabs":
+    case "Pager":
       return {
         ...view,
         panels: view.panels.map((panel) => ({ ...panel, content: resolveBindings(panel.content, state) }))
+      }
+    case "SwipeableListItem":
+      return {
+        ...view,
+        child: resolveBindings(view.child, state)
+      }
+    case "BackgroundGradient":
+    case "Wallpaper":
+    case "Spotlight":
+    case "Frame":
+    case "BlurredPopup":
+      return {
+        ...view,
+        children: view.children.map((child) => resolveBindings(child, state))
       }
     case "Composer":
       return view.autocomplete === undefined
@@ -4323,9 +5367,24 @@ export const redactSecureView = (view: View): View => {
         children: view.children.map(redactSecureView)
       }
     case "Tabs":
+    case "Pager":
       return {
         ...view,
         panels: view.panels.map((panel) => ({ ...panel, content: redactSecureView(panel.content) }))
+      }
+    case "SwipeableListItem":
+      return {
+        ...view,
+        child: redactSecureView(view.child)
+      }
+    case "BackgroundGradient":
+    case "Wallpaper":
+    case "Spotlight":
+    case "Frame":
+    case "BlurredPopup":
+      return {
+        ...view,
+        children: view.children.map(redactSecureView)
       }
     case "FieldRow":
       return {

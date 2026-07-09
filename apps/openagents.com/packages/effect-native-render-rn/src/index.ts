@@ -16,6 +16,26 @@ import {
   type GraphStatus,
   graphStatusColorToken,
   type TimelineView,
+  type SectionView,
+  type HeroView,
+  type AnnouncementBadgeView,
+  type CtaSectionView,
+  type FooterView,
+  type NavBarView,
+  type AccordionView,
+  type PricingColumnView,
+  type PricingTableView,
+  type LogoRowView,
+  type StatsBandView,
+  type GlowView,
+  type MockupFrameView,
+  type PagerView,
+  type SwipeableListItemView,
+  type BackgroundGradientView,
+  type WallpaperView,
+  type SpotlightView,
+  type FrameView,
+  type BlurredPopupView,
   type ComboboxOption,
   type ComboboxView,
   type CommandPaletteView,
@@ -135,6 +155,8 @@ export interface ReactNativeRuntime {
   readonly SectionList: unknown
   readonly Image: unknown
   readonly Modal: unknown
+  /** Optional — present on real RN; headless tests may omit and still declare onRefresh. */
+  readonly RefreshControl?: unknown
   readonly Dimensions?: ReactNativeDimensions
   readonly StyleSheet?: {
     readonly create: <Styles extends Record<string, ReactNativeStyle>>(styles: Styles) => Styles
@@ -399,6 +421,32 @@ const accessibilityProps = (view: View): Record<string, unknown> => {
   if (a11y.disabled !== undefined) stateEntries["disabled"] = a11y.disabled
   if (Object.keys(stateEntries).length > 0) props["accessibilityState"] = stateEntries
   return props
+}
+
+const mobileGestureProps = (
+  view: View,
+  report: IntentReporter
+): Record<string, unknown> => {
+  const interactions = "interactions" in view ? view.interactions : undefined
+  if (interactions === undefined) return {}
+  return {
+    ...(interactions.onLongPress === undefined
+      ? {}
+      : {
+          onLongPress: () => runReportedIntent(report, interactions.onLongPress!)
+        }),
+    ...(interactions.onSwipe === undefined
+      ? {}
+      : {
+          // Commit swipe via accessibility action until gesture-handler is host-injected (#56).
+          accessibilityActions: [{ name: "swipeLeft" }, { name: "swipeRight" }],
+          onAccessibilityAction: (event: { readonly nativeEvent: { readonly actionName: string } }) => {
+            const name = event.nativeEvent.actionName
+            const direction = name === "swipeLeft" ? "left" : name === "swipeRight" ? "right" : "up"
+            runReportedIntent(report, interactions.onSwipe!, direction)
+          }
+        })
+  }
 }
 
 const baseProps = (view: View, style: ReactNativeStyle): Record<string, unknown> => ({
@@ -740,15 +788,40 @@ const estimatedItemLength = (
 const nativeCollectionProps = (
   view: ListView | SectionListView,
   report: IntentReporter,
-  options: ReactNativeRenderOptions
+  options: ReactNativeRenderOptions,
+  dependencies: ReactNativeDependencies
 ): Record<string, unknown> => {
   const itemLength = estimatedItemLength(view, options)
+  const refreshControl =
+    view.onRefresh === undefined
+      ? undefined
+      : dependencies.ReactNative.RefreshControl === undefined
+        ? undefined
+        : createElement(dependencies, dependencies.ReactNative.RefreshControl, {
+            refreshing: view.refreshing === true,
+            tintColor: colorValue(options.theme ?? defaultTheme, "accent"),
+            onRefresh: () => runReportedIntent(report, view.onRefresh!)
+          })
+  // Production-scale virtualization defaults (#57): windowing + end-reach wiring.
+  // FlatList always owns the data path (never eager-map all children).
   return {
+    windowSize: 10,
+    initialNumToRender: 12,
+    maxToRenderPerBatch: 10,
+    updateCellsBatchingPeriod: 50,
+    removeClippedSubviews: true,
     ...(view.onEndReached === undefined
       ? {}
       : {
           onEndReached: () => runReportedIntent(report, view.onEndReached!),
           onEndReachedThreshold: view.endReachedThreshold ?? 0.5
+        }),
+    ...(view.onRefresh === undefined
+      ? {}
+      : {
+          refreshing: view.refreshing === true,
+          onRefresh: () => runReportedIntent(report, view.onRefresh!),
+          ...(refreshControl === undefined ? {} : { refreshControl })
         }),
     ...(view.virtualize === true && itemLength !== undefined
       ? {
@@ -777,7 +850,7 @@ const renderList = (
       keyExtractor: (item: View & { readonly key: string }) => item.key,
       renderItem: ({ item }: { readonly item: View }) =>
         renderResolvedReactNativeView(item, dependencies, report, options),
-      ...nativeCollectionProps(view, report, options)
+      ...nativeCollectionProps(view, report, options, dependencies)
     }
   )
 }
@@ -806,7 +879,7 @@ const renderSectionList = (
       renderSectionHeader: ({ section }: { readonly section: { readonly header: View } }) =>
         renderResolvedReactNativeView(section.header, dependencies, report, options),
       stickySectionHeadersEnabled: view.stickyHeaders === true,
-      ...nativeCollectionProps(view, report, options)
+      ...nativeCollectionProps(view, report, options, dependencies)
     }
   )
 }
@@ -859,17 +932,51 @@ const renderSpacer = (
   )
 }
 
-// Foreign-host escape hatch on React Native (issue #23). The React Native
-// renderer ships no host drivers: Monaco, xterm, and canvas are DOM/webview
-// widgets with no faithful RN host mapping. Rather than silently no-op, every
-// Host kind renders a loud unsupported marker (testID + accessibilityLabel) so
-// the conformance suite fails visibly for any host kind on this renderer.
+// Foreign-host escape hatch on React Native (issue #23/#58). Desktop host kinds
+// (code-editor/terminal/canvas) remain loud unsupported markers. Mobile kinds
+// voice-input / on-device-model ship a minimal structural surface so apps can
+// swap in real native modules under the same Host contract.
 const renderHost = (
   view: HostView,
   dependencies: ReactNativeDependencies,
   options: ReactNativeRenderOptions
-): ReactElementLike =>
-  createElement(
+): ReactElementLike => {
+  const theme = options.theme ?? defaultTheme
+  if (view.kind === "voice-input" || view.kind === "on-device-model") {
+    const props = typeof view.props === "object" && view.props !== null && !Array.isArray(view.props)
+      ? view.props as Record<string, unknown>
+      : {}
+    const status =
+      view.kind === "voice-input"
+        ? props.listening === true
+          ? "listening"
+          : "idle"
+        : typeof props.status === "string"
+          ? props.status
+          : "idle"
+    return createElement(
+      dependencies,
+      dependencies.ReactNative.View,
+      {
+        ...baseProps(view, mergeNativeStyles({
+          padding: spacingValue(theme, "3"),
+          borderWidth: 1,
+          borderColor: colorValue(theme, "border"),
+          backgroundColor: colorValue(theme, "surface")
+        }, viewStyle(view, options))),
+        testID: `en-host:${view.kind}`,
+        accessibilityLabel: `${view.kind} host (${status})`,
+        accessibilityRole: "none"
+      },
+      createElement(
+        dependencies,
+        dependencies.ReactNative.Text,
+        { key: "kind" },
+        `${view.kind}: ${status}`
+      )
+    )
+  }
+  return createElement(
     dependencies,
     dependencies.ReactNative.View,
     {
@@ -878,6 +985,7 @@ const renderHost = (
       accessibilityLabel: `Unsupported host kind on React Native: ${view.kind}`
     }
   )
+}
 
 // Icon on React Native (issue #31). The closed IconName set is the contract;
 // RN renders each glyph from a bounded font-glyph registry (sized from tokens,
@@ -946,14 +1054,16 @@ const renderDivider = (
 ): ReactElementLike => {
   const theme = options.theme ?? defaultTheme
   const orientation = view.orientation ?? "horizontal"
+  // Faithful hairline (#53): 1px border-token rule; style contract owns inset.
   const style = mergeNativeStyles(
     orientation === "vertical"
       ? { width: 1, alignSelf: "stretch", backgroundColor: colorValue(theme, "border") }
-      : { height: 1, backgroundColor: colorValue(theme, "border") },
+      : { height: 1, alignSelf: "stretch", backgroundColor: colorValue(theme, "border") },
     viewStyle(view, options)
   )
   return createElement(dependencies, dependencies.ReactNative.View, {
     ...baseProps(view, style),
+    testID: `en-divider:${orientation}`,
     accessibilityRole: "none"
   })
 }
@@ -1104,10 +1214,10 @@ const renderTable = (
 const rnAlignItems = (align: "start" | "center" | "end" | undefined): "flex-start" | "center" | "flex-end" =>
   align === "center" ? "center" : align === "end" ? "flex-end" : "flex-start"
 
-// App shell components (issue #27) on React Native. Divider drag-to-resize has
-// no faithful RN host mapping and is declared unsupported (dividers render as
-// static separators, sizes are honored). NavRail maps to a stacked selectable
-// list; Workbench renders the active pane (hidden-but-mounted when keepMounted).
+// App shell components (issue #27) on React Native. Divider resize (#53) steps
+// pane size via pressable +/- on the divider (fires typed onResize); continuous
+// drag remains optional when gesture-handler is host-injected. NavRail maps to a
+// stacked selectable list; Workbench renders the active pane (keepMounted ok).
 const renderSplitPane = (
   view: SplitPaneView,
   dependencies: ReactNativeDependencies,
@@ -1136,16 +1246,67 @@ const renderSplitPane = (
       )
     )
     if (index < view.panes.length - 1) {
+      const left = pane
+      const currentSize = typeof left.size === "number" ? left.size : 200
+      const step = 24
+      const min = typeof left.min === "number" ? left.min : 80
+      const max = typeof left.max === "number" ? left.max : 480
+      const clamp = (n: number) => Math.min(max, Math.max(min, n))
       children.push(
-        createElement(dependencies, dependencies.ReactNative.View, {
-          key: `divider-${index}`,
-          testID: "en-split-divider",
-          accessibilityRole: "none",
-          style: {
-            [sizeField]: 1,
-            backgroundColor: colorValue(theme, "border")
-          }
-        })
+        createElement(
+          dependencies,
+          dependencies.ReactNative.View,
+          {
+            key: `divider-${index}`,
+            testID: "en-split-divider",
+            accessibilityRole: "adjustable",
+            accessibilityLabel: `Resize ${left.id}`,
+            style: {
+              [sizeField]: 12,
+              backgroundColor: colorValue(theme, "border"),
+              flexDirection: view.orientation === "row" ? "column" : "row",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 2
+            }
+          },
+          createElement(
+            dependencies,
+            dependencies.ReactNative.Pressable,
+            {
+              key: "grow",
+              testID: `en-split-resize-grow:${left.id}`,
+              ...(view.onResize === undefined
+                ? {}
+                : {
+                    onPress: () =>
+                      runReportedIntent(report, view.onResize!, {
+                        paneId: left.id,
+                        size: clamp(currentSize + step)
+                      })
+                  })
+            },
+            createElement(dependencies, dependencies.ReactNative.Text, { key: "g" }, "+")
+          ),
+          createElement(
+            dependencies,
+            dependencies.ReactNative.Pressable,
+            {
+              key: "shrink",
+              testID: `en-split-resize-shrink:${left.id}`,
+              ...(view.onResize === undefined
+                ? {}
+                : {
+                    onPress: () =>
+                      runReportedIntent(report, view.onResize!, {
+                        paneId: left.id,
+                        size: clamp(currentSize - step)
+                      })
+                  })
+            },
+            createElement(dependencies, dependencies.ReactNative.Text, { key: "s" }, "−")
+          )
+        )
       )
     }
   })
@@ -1232,10 +1393,10 @@ const renderWorkbench = (
   return createElement(dependencies, dependencies.ReactNative.View, baseProps(view, style), ...children)
 }
 
-// Anchored overlay family (issue #28) on React Native. Placement/positioning
-// and collision have no faithful RN mapping and are declared unsupported
-// (recorded via testID). Menus render as pressable rows with a typed onSelect;
-// Tooltip maps to an accessibilityHint on its single target (no hover surface).
+// Anchored overlay family (issue #28/#53) on React Native. Open surfaces use
+// RN Modal (back-button dismiss) with placement encoded in testID/a11y. Menus
+// are pressable rows with typed onSelect; ContextMenu includes pointer origin.
+// Tooltip maps content to accessibilityHint + optional label bubble when open.
 const renderMenuRows = (
   items: ReadonlyArray<MenuItem>,
   depth: number,
@@ -1291,16 +1452,68 @@ const renderPopover = (
   options: ReactNativeRenderOptions
 ): ReactElementLike => {
   const open = view.open === true
-  const style = mergeNativeStyles({ display: open ? "flex" : "none" }, viewStyle(view, options))
-  return createElement(
-    dependencies,
-    dependencies.ReactNative.View,
-    {
-      ...baseProps(view, style),
+  const theme = options.theme ?? defaultTheme
+  if (!open) {
+    return createElement(dependencies, dependencies.ReactNative.View, {
+      ...baseProps(view, viewStyle(view, options)),
       testID: `en-popover:${view.placement.side}:${view.placement.align}`,
       accessibilityRole: "none"
+    })
+  }
+  return createElement(
+    dependencies,
+    dependencies.ReactNative.Modal,
+    {
+      ...baseProps(view, viewStyle(view, options)),
+      testID: `en-popover:${view.placement.side}:${view.placement.align}`,
+      transparent: true,
+      visible: true,
+      accessibilityViewIsModal: true,
+      accessibilityLabel: `Popover ${view.placement.side} ${view.placement.align}`,
+      onRequestClose: () => {
+        if (view.onDismiss !== undefined) runReportedIntent(report, view.onDismiss)
+      }
     },
-    ...(open ? view.children.map((child) => renderResolvedReactNativeView(child, dependencies, report, options)) : [])
+    createElement(
+      dependencies,
+      dependencies.ReactNative.Pressable,
+      {
+        key: "backdrop",
+        testID: "en-popover-backdrop",
+        onPress: () => {
+          if (view.onDismiss !== undefined) runReportedIntent(report, view.onDismiss)
+        },
+        style: {
+          flex: 1,
+          justifyContent:
+            view.placement.side === "top"
+              ? "flex-start"
+              : view.placement.side === "bottom"
+                ? "flex-end"
+                : "center",
+          alignItems:
+            view.placement.align === "start"
+              ? "flex-start"
+              : view.placement.align === "end"
+                ? "flex-end"
+                : "center",
+          backgroundColor: "rgba(0,0,0,0.35)",
+          padding: spacingValue(theme, "4")
+        }
+      },
+      createElement(
+        dependencies,
+        dependencies.ReactNative.View,
+        {
+          key: "panel",
+          testID: "en-popover-panel",
+          style: { backgroundColor: colorValue(theme, "surface"), padding: spacingValue(theme, "3") }
+        },
+        ...view.children.map((child) =>
+          renderResolvedReactNativeView(child, dependencies, report, options)
+        )
+      )
+    )
   )
 }
 
@@ -1312,12 +1525,58 @@ const renderDropdownMenu = (
 ): ReactElementLike => {
   const theme = options.theme ?? defaultTheme
   const open = view.open === true
-  const style = mergeNativeStyles({ display: open ? "flex" : "none", flexDirection: "column" }, viewStyle(view, options))
+  if (!open) {
+    return createElement(dependencies, dependencies.ReactNative.View, {
+      ...baseProps(view, viewStyle(view, options)),
+      testID: `en-dropdown-menu:${view.placement.side}:${view.placement.align}`,
+      accessibilityRole: "menu"
+    })
+  }
   return createElement(
     dependencies,
-    dependencies.ReactNative.View,
-    { ...baseProps(view, style), testID: `en-dropdown-menu:${view.placement.side}:${view.placement.align}`, accessibilityRole: "menu" },
-    ...(open ? renderMenuRows(view.items, 0, dependencies, theme, view.onSelect, view.onDismiss, report) : [])
+    dependencies.ReactNative.Modal,
+    {
+      ...baseProps(view, viewStyle(view, options)),
+      testID: `en-dropdown-menu:${view.placement.side}:${view.placement.align}`,
+      transparent: true,
+      visible: true,
+      accessibilityViewIsModal: true,
+      accessibilityRole: "menu",
+      onRequestClose: () => {
+        if (view.onDismiss !== undefined) runReportedIntent(report, view.onDismiss)
+      }
+    },
+    createElement(
+      dependencies,
+      dependencies.ReactNative.Pressable,
+      {
+        key: "backdrop",
+        testID: "en-dropdown-backdrop",
+        onPress: () => {
+          if (view.onDismiss !== undefined) runReportedIntent(report, view.onDismiss)
+        },
+        style: {
+          flex: 1,
+          justifyContent: "center",
+          backgroundColor: "rgba(0,0,0,0.35)",
+          padding: spacingValue(theme, "4")
+        }
+      },
+      createElement(
+        dependencies,
+        dependencies.ReactNative.View,
+        {
+          key: "menu",
+          testID: "en-dropdown-panel",
+          style: {
+            backgroundColor: colorValue(theme, "surface"),
+            flexDirection: "column",
+            padding: spacingValue(theme, "2")
+          }
+        },
+        ...renderMenuRows(view.items, 0, dependencies, theme, view.onSelect, view.onDismiss, report)
+      )
+    )
   )
 }
 
@@ -1329,12 +1588,57 @@ const renderContextMenu = (
 ): ReactElementLike => {
   const theme = options.theme ?? defaultTheme
   const open = view.open === true
-  const style = mergeNativeStyles({ display: open ? "flex" : "none", flexDirection: "column" }, viewStyle(view, options))
+  if (!open) {
+    return createElement(dependencies, dependencies.ReactNative.View, {
+      ...baseProps(view, viewStyle(view, options)),
+      testID: `en-context-menu:${view.x}:${view.y}`,
+      accessibilityRole: "menu"
+    })
+  }
   return createElement(
     dependencies,
-    dependencies.ReactNative.View,
-    { ...baseProps(view, style), testID: `en-context-menu:${view.x}:${view.y}`, accessibilityRole: "menu" },
-    ...(open ? renderMenuRows(view.items, 0, dependencies, theme, view.onSelect, view.onDismiss, report) : [])
+    dependencies.ReactNative.Modal,
+    {
+      ...baseProps(view, viewStyle(view, options)),
+      testID: `en-context-menu:${view.x}:${view.y}`,
+      transparent: true,
+      visible: true,
+      accessibilityViewIsModal: true,
+      accessibilityRole: "menu",
+      accessibilityLabel: `Context menu at ${view.x},${view.y}`,
+      onRequestClose: () => {
+        if (view.onDismiss !== undefined) runReportedIntent(report, view.onDismiss)
+      }
+    },
+    createElement(
+      dependencies,
+      dependencies.ReactNative.Pressable,
+      {
+        key: "backdrop",
+        testID: "en-context-backdrop",
+        onPress: () => {
+          if (view.onDismiss !== undefined) runReportedIntent(report, view.onDismiss)
+        },
+        style: { flex: 1, backgroundColor: "rgba(0,0,0,0.35)" }
+      },
+      createElement(
+        dependencies,
+        dependencies.ReactNative.View,
+        {
+          key: "menu",
+          testID: "en-context-panel",
+          style: {
+            position: "absolute",
+            left: view.x,
+            top: view.y,
+            backgroundColor: colorValue(theme, "surface"),
+            flexDirection: "column",
+            padding: spacingValue(theme, "2")
+          }
+        },
+        ...renderMenuRows(view.items, 0, dependencies, theme, view.onSelect, view.onDismiss, report)
+      )
+    )
   )
 }
 
@@ -1344,20 +1648,34 @@ const renderTooltip = (
   report: IntentReporter,
   options: ReactNativeRenderOptions
 ): ReactElementLike => {
+  const theme = options.theme ?? defaultTheme
   const target = renderResolvedReactNativeView(view.children[0]!, dependencies, report, options)
   return createElement(
     dependencies,
     dependencies.ReactNative.View,
-    { ...baseProps(view, viewStyle(view, options)), testID: "en-tooltip", accessibilityHint: view.content },
-    target
+    {
+      ...baseProps(view, mergeNativeStyles({ flexDirection: "column" }, viewStyle(view, options))),
+      testID: "en-tooltip",
+      accessibilityHint: view.content,
+      accessibilityLabel: view.content
+    },
+    target,
+    createElement(
+      dependencies,
+      dependencies.ReactNative.Text,
+      {
+        key: "tip",
+        testID: "en-tooltip-content",
+        style: { color: colorValue(theme, "textMuted"), fontSize: 12 }
+      },
+      view.content
+    )
   )
 }
 
-// Command palette + Combobox (issue #29) on React Native. Filtering stays
-// app-supplied. TextInput + pressable options map faithfully; roving
-// aria-activedescendant has no RN equivalent (highlight is reflected via
-// accessibilityState.selected). CommandPalette renders its combobox inside a
-// modal-styled container when open.
+// Command palette + Combobox (issue #29/#53) on React Native. Filtering stays
+// app-supplied. FlatList listbox + selected option a11y; highlight via
+// onPressIn → onHighlight. CommandPalette mounts in RN Modal when open.
 const renderComboboxOption = (
   option: ComboboxOption,
   view: ComboboxView,
@@ -1389,11 +1707,18 @@ const renderComboboxOption = (
     {
       key: `option-${option.id}`,
       testID: `en-combobox-option:${option.id}`,
-      accessibilityRole: "menuitem",
+      accessibilityRole: "button",
       accessibilityState: { selected: view.highlightedId === option.id, disabled: option.disabled === true },
       disabled: option.disabled === true,
       style: { flexDirection: "row", gap: spacingValue(theme, "2") },
-      ...(option.disabled === true ? {} : { onPress: () => runReportedIntent(report, view.onSelect, option.id) })
+      ...(option.disabled === true
+        ? {}
+        : {
+            onPressIn: () => {
+              if (view.onHighlight !== undefined) runReportedIntent(report, view.onHighlight, option.id)
+            },
+            onPress: () => runReportedIntent(report, view.onSelect, option.id)
+          })
     },
     ...parts
   )
@@ -1410,53 +1735,46 @@ const renderCombobox = (
     key: "control",
     testID: "en-combobox-input",
     accessibilityRole: "search",
+    accessibilityLabel: view.placeholder ?? "Search",
     placeholder: view.placeholder,
     value: view.query,
     ...(view.onQueryChange === undefined
       ? {}
-      : { onChangeText: (value: string) => runReportedIntent(report, view.onQueryChange!, value) })
-  })
-  const listChildren: Array<ReactElementLike> = []
-  if (view.options.length === 0) {
-    listChildren.push(
-      createElement(
-        dependencies,
-        dependencies.ReactNative.Text,
-        { key: "empty", testID: "en-combobox-empty", accessibilityRole: "text" },
-        view.loading === true ? "" : (view.emptyLabel ?? "No results")
-      )
-    )
-  } else {
-    let currentGroup: string | undefined
-    let started = false
-    for (const option of view.options) {
-      if (!started || option.group !== currentGroup) {
-        currentGroup = option.group
-        started = true
-        if (option.group !== undefined) {
-          listChildren.push(
-            createElement(
-              dependencies,
-              dependencies.ReactNative.Text,
-              { key: `group-${option.group}`, testID: `en-combobox-group:${option.group}` },
-              option.group
-            )
-          )
-        }
+      : { onChangeText: (value: string) => runReportedIntent(report, view.onQueryChange!, value) }),
+    onSubmitEditing: () => {
+      if (view.highlightedId !== undefined) {
+        runReportedIntent(report, view.onSelect, view.highlightedId)
       }
-      listChildren.push(renderComboboxOption(option, view, dependencies, theme, report))
     }
-  }
-  const listbox = createElement(
-    dependencies,
-    dependencies.ReactNative.View,
-    { key: "listbox", accessibilityRole: "list", ...(view.loading === true ? { "aria-busy": true } : {}) },
-    ...listChildren
-  )
+  })
+  const listbox =
+    view.options.length === 0
+      ? createElement(
+          dependencies,
+          dependencies.ReactNative.Text,
+          { key: "empty", testID: "en-combobox-empty", accessibilityRole: "text" },
+          view.loading === true ? "Loading…" : (view.emptyLabel ?? "No results")
+        )
+      : createElement(dependencies, dependencies.ReactNative.FlatList, {
+          key: "listbox",
+          testID: "en-combobox-listbox",
+          accessibilityRole: "list",
+          data: view.options,
+          keyExtractor: (option: ComboboxOption) => option.id,
+          keyboardShouldPersistTaps: "handled",
+          initialNumToRender: 12,
+          windowSize: 8,
+          renderItem: ({ item: option }: { readonly item: ComboboxOption }) =>
+            renderComboboxOption(option, view, dependencies, theme, report)
+        })
   return createElement(
     dependencies,
     dependencies.ReactNative.View,
-    { ...baseProps(view, mergeNativeStyles({ flexDirection: "column" }, viewStyle(view, options))), accessibilityRole: "none" },
+    {
+      ...baseProps(view, mergeNativeStyles({ flexDirection: "column" }, viewStyle(view, options))),
+      accessibilityRole: "none",
+      testID: "en-combobox"
+    },
     input,
     listbox
   )
@@ -1469,27 +1787,70 @@ const renderCommandPalette = (
   options: ReactNativeRenderOptions
 ): ReactElementLike => {
   const open = view.open === true
+  const theme = options.theme ?? defaultTheme
+  if (!open) {
+    return createElement(dependencies, dependencies.ReactNative.View, {
+      ...baseProps(view, {}),
+      testID: "en-command-palette",
+      accessibilityRole: "none"
+    })
+  }
   const children: Array<ReactElementLike> = []
   if (view.title !== undefined) {
     children.push(createElement(dependencies, dependencies.ReactNative.Text, { key: "title" }, view.title))
   }
-  if (open) children.push(renderCombobox(view.combobox, dependencies, report, options))
+  children.push(renderCombobox(view.combobox, dependencies, report, options))
   return createElement(
     dependencies,
-    dependencies.ReactNative.View,
+    dependencies.ReactNative.Modal,
     {
-      ...baseProps(view, mergeNativeStyles({ display: open ? "flex" : "none", flexDirection: "column" }, {})),
+      ...baseProps(view, {}),
       testID: "en-command-palette",
+      transparent: true,
+      visible: true,
       accessibilityViewIsModal: true,
-      accessibilityRole: "none"
+      accessibilityRole: "none",
+      onRequestClose: () => {
+        if (view.onDismiss !== undefined) runReportedIntent(report, view.onDismiss)
+      }
     },
-    ...children
+    createElement(
+      dependencies,
+      dependencies.ReactNative.Pressable,
+      {
+        key: "backdrop",
+        testID: "en-command-palette-backdrop",
+        onPress: () => {
+          if (view.onDismiss !== undefined) runReportedIntent(report, view.onDismiss)
+        },
+        style: {
+          flex: 1,
+          justifyContent: "flex-start",
+          backgroundColor: "rgba(0,0,0,0.45)",
+          padding: spacingValue(theme, "6")
+        }
+      },
+      createElement(
+        dependencies,
+        dependencies.ReactNative.View,
+        {
+          key: "panel",
+          testID: "en-command-palette-panel",
+          style: {
+            backgroundColor: colorValue(theme, "surface"),
+            flexDirection: "column",
+            padding: spacingValue(theme, "3"),
+            gap: spacingValue(theme, "2")
+          }
+        },
+        ...children
+      )
+    )
   )
 }
 
-// Tabs (issue #30) on React Native — a segmented tab bar of pressable tabs
-// plus the active panel. Roving-tabindex/arrow-key nav has no RN mapping (touch
-// selection only); vertical orientation is honored via layout direction.
+// Tabs (issue #30/#53) — segmented tab bar + active panel; swipe-between via
+// accessibility actions prev/next (touch selection remains primary).
 const renderTabs = (
   view: TabsView,
   dependencies: ReactNativeDependencies,
@@ -1498,12 +1859,24 @@ const renderTabs = (
 ): ReactElementLike => {
   const theme = options.theme ?? defaultTheme
   const orientation = view.orientation ?? "horizontal"
+  const enabledIds = view.tabs.filter((tab) => tab.disabled !== true).map((tab) => tab.id)
+  const move = (direction: 1 | -1) => {
+    if (enabledIds.length === 0) return
+    const index = enabledIds.indexOf(view.selectedId)
+    const next = enabledIds[(index + direction + enabledIds.length) % enabledIds.length]!
+    runReportedIntent(report, view.onSelect, next)
+  }
   const tabBar = createElement(
     dependencies,
     dependencies.ReactNative.View,
     {
       key: "tablist",
       accessibilityRole: "tablist",
+      accessibilityActions: [{ name: "increment" }, { name: "decrement" }],
+      onAccessibilityAction: (event: { readonly nativeEvent: { readonly actionName: string } }) => {
+        if (event.nativeEvent.actionName === "increment") move(1)
+        if (event.nativeEvent.actionName === "decrement") move(-1)
+      },
       style: { flexDirection: orientation === "vertical" ? "column" : "row", gap: spacingValue(theme, "1") }
     },
     ...view.tabs.map((tab) => {
@@ -1555,7 +1928,7 @@ const renderTabs = (
 
 // Rich composer (issue #32) on React Native — a multiline TextInput bound to
 // the same typed document (flattened to plaintext via composerPlainText; inline
-// mention chips are declared unsupported and render as their label text).
+// mention chips render as a typed chip strip above the flattened TextInput (#53 parity).
 // Enter submit-vs-newline and history nav map to onSubmitEditing / typed key
 // commands; the autocomplete combobox renders below.
 const renderComposer = (
@@ -1579,6 +1952,24 @@ const renderComposer = (
     }
   })
   const children: Array<ReactElementLike> = [input]
+  const mentionChips = view.doc.filter((run): run is { readonly kind: "mention"; readonly id: string; readonly label: string } => run.kind === "mention")
+  if (mentionChips.length > 0) {
+    children.push(
+      createElement(
+        dependencies,
+        dependencies.ReactNative.View,
+        { key: "mentions", testID: "en-composer-mentions", style: { flexDirection: "row", flexWrap: "wrap", gap: spacingValue(theme, "1") } },
+        ...mentionChips.map((chip) =>
+          createElement(
+            dependencies,
+            dependencies.ReactNative.Text,
+            { key: `mention-${chip.id}`, testID: `en-composer-mention:${chip.id}`, style: { color: colorValue(theme, "accent") } },
+            chip.label
+          )
+        )
+      )
+    )
+  }
   if (view.attachments !== undefined && view.attachments.length > 0) {
     children.push(
       createElement(
@@ -1737,18 +2128,58 @@ const renderRadioGroup = (
 const renderSlider = (
   view: SliderView,
   dependencies: ReactNativeDependencies,
+  report: IntentReporter,
   options: ReactNativeRenderOptions
-): ReactElementLike =>
-  // No RN core Slider; expose the value/range as an accessible adjustable and
-  // reflect the current value. Drag-to-change is declared unsupported (a
-  // community Slider lib is an app-level swap).
-  createElement(dependencies, dependencies.ReactNative.View, {
-    ...baseProps(view, viewStyle(view, options)),
-    testID: "en-slider",
-    accessibilityRole: "adjustable",
-    accessibilityLabel: view.label,
-    accessibilityValue: { min: view.min, max: view.max, now: view.value }
-  })
+): ReactElementLike => {
+  // Faithful subset (#53): step via +/- pressables + adjustable a11y (drag still optional via host).
+  const theme = options.theme ?? defaultTheme
+  const onChange = controlChangeIntent(view)
+  const step = view.step ?? 1
+  const clamp = (n: number) => Math.min(view.max, Math.max(view.min, n))
+  return createElement(
+    dependencies,
+    dependencies.ReactNative.View,
+    {
+      ...baseProps(view, mergeNativeStyles({ flexDirection: "row", alignItems: "center", gap: spacingValue(theme, "2") }, viewStyle(view, options))),
+      testID: "en-slider",
+      accessibilityRole: "adjustable",
+      accessibilityLabel: view.label,
+      accessibilityValue: { min: view.min, max: view.max, now: view.value }
+    },
+    createElement(
+      dependencies,
+      dependencies.ReactNative.Pressable,
+      {
+        key: "dec",
+        testID: "en-slider-dec",
+        disabled: view.disabled === true,
+        ...(onChange === undefined || view.disabled === true
+          ? {}
+          : { onPress: () => runReportedIntent(report, onChange, clamp(view.value - step)) })
+      },
+      createElement(dependencies, dependencies.ReactNative.Text, { key: "dec-label" }, "−")
+    ),
+    createElement(
+      dependencies,
+      dependencies.ReactNative.Text,
+      { key: "value", testID: "en-slider-value" },
+      String(view.value)
+    ),
+    createElement(
+      dependencies,
+      dependencies.ReactNative.Pressable,
+      {
+        key: "inc",
+        testID: "en-slider-inc",
+        disabled: view.disabled === true,
+        ...(onChange === undefined || view.disabled === true
+          ? {}
+          : { onPress: () => runReportedIntent(report, onChange, clamp(view.value + step)) })
+      },
+      createElement(dependencies, dependencies.ReactNative.Text, { key: "inc-label" }, "+")
+    )
+  )
+}
 
 const renderNumberField = (
   view: NumberFieldView,
@@ -1869,6 +2300,18 @@ const renderNotificationCard = (
   )
 }
 
+const scheduleToastAutoDismiss = (
+  notification: { readonly id: string; readonly autoDismissMillis?: number },
+  onDismiss: IntentRef,
+  report: IntentReporter
+): void => {
+  if (notification.autoDismissMillis === undefined || notification.autoDismissMillis <= 0) return
+  // Renderer-scheduled auto-dismiss (#53): fires typed onDismiss with the toast id.
+  setTimeout(() => {
+    runReportedIntent(report, onDismiss, notification.id)
+  }, notification.autoDismissMillis)
+}
+
 const renderToast = (
   view: ToastView,
   dependencies: ReactNativeDependencies,
@@ -1876,6 +2319,7 @@ const renderToast = (
   options: ReactNativeRenderOptions
 ): ReactElementLike => {
   const theme = options.theme ?? defaultTheme
+  scheduleToastAutoDismiss(view.notification, view.onDismiss, report)
   return createElement(
     dependencies,
     dependencies.ReactNative.View,
@@ -1891,6 +2335,9 @@ const renderToastRegion = (
   options: ReactNativeRenderOptions
 ): ReactElementLike => {
   const theme = options.theme ?? defaultTheme
+  for (const notification of view.notifications) {
+    scheduleToastAutoDismiss(notification, view.onDismiss, report)
+  }
   return createElement(
     dependencies,
     dependencies.ReactNative.View,
@@ -2054,24 +2501,65 @@ const renderTranscript = (
   dependencies: ReactNativeDependencies,
   report: IntentReporter,
   options: ReactNativeRenderOptions
-): ReactElementLike =>
-  createElement(
+): ReactElementLike => {
+  // Production-scale transcript (#57): FlatList-backed with pin-to-end and
+  // maintainVisibleContentPosition so streaming append stays O(new).
+  const theme = options.theme ?? defaultTheme
+  return createElement(
     dependencies,
-    dependencies.ReactNative.View,
-    { ...baseProps(view, mergeNativeStyles({ flexDirection: "column" }, viewStyle(view, options))), testID: "en-transcript", accessibilityLiveRegion: "polite" },
-    ...view.messages.map((message) =>
-      createElement(
-        dependencies,
-        dependencies.ReactNative.View,
-        {
-          key: `message-${message.key}`,
-          testID: `en-message:${message.key}`,
-          nativeID: `effect-native-message:${message.role}`,
-          ...(message.status === undefined ? {} : { accessibilityState: { busy: message.status === "streaming" || message.status === "thinking" } })
-        },
-        ...message.body.map((child) => renderResolvedReactNativeView(child, dependencies, report, options))
-      ))
+    dependencies.ReactNative.FlatList,
+    {
+      ...baseProps(view, mergeNativeStyles({ flexDirection: "column" }, viewStyle(view, options))),
+      testID: "en-transcript",
+      accessibilityLiveRegion: "polite",
+      data: view.messages,
+      keyExtractor: (message: { readonly key: string }) => message.key,
+      windowSize: 12,
+      initialNumToRender: 16,
+      maxToRenderPerBatch: 8,
+      removeClippedSubviews: true,
+      ...(view.pinToEnd === true
+        ? {
+            maintainVisibleContentPosition: { minIndexForVisible: 0 },
+            onContentSizeChange: () => {
+              // Host list ref scroll-to-end is adapter-owned; mark pin intent for apps.
+              if (view.onPinnedChange !== undefined) {
+                runReportedIntent(report, view.onPinnedChange, true)
+              }
+            }
+          }
+        : {}),
+      renderItem: ({ item: message }: {
+        readonly item: {
+          readonly key: string
+          readonly role: string
+          readonly status?: string
+          readonly body: ReadonlyArray<View>
+        }
+      }) =>
+        createElement(
+          dependencies,
+          dependencies.ReactNative.View,
+          {
+            key: `message-${message.key}`,
+            testID: `en-message:${message.key}`,
+            nativeID: `effect-native-message:${message.role}`,
+            style: { gap: spacingValue(theme, "1") },
+            ...(message.status === undefined
+              ? {}
+              : {
+                  accessibilityState: {
+                    busy: message.status === "streaming" || message.status === "thinking"
+                  }
+                })
+          },
+          ...message.body.map((child) =>
+            renderResolvedReactNativeView(child, dependencies, report, options)
+          )
+        )
+    }
   )
+}
 
 // CodeBlock + unified diff (issue #36) on React Native. Pre-tokenized lines and
 // pre-parsed diff rows map to colored Text runs; no highlighter/parser. The
@@ -2199,10 +2687,9 @@ const renderDiffView = (
   )
 }
 
-// GraphFigure + Timeline (issue #37) on React Native — a read-only subset. RN
-// has no core SVG/canvas, so the graph renders as a selectable node list with
-// status colors (edges + pan/zoom declared unsupported); Timeline maps to a
-// list of status-tagged rows.
+// GraphFigure + Timeline (issue #37/#53) on React Native. Nodes + edges +
+// camera step controls (pan/zoom intents). Continuous gesture pan is optional
+// when a canvas/Skia host is registered; Timeline stays a status-tagged list.
 const renderGraphFigure = (
   view: GraphFigureView,
   dependencies: ReactNativeDependencies,
@@ -2211,24 +2698,88 @@ const renderGraphFigure = (
 ): ReactElementLike => {
   const theme = options.theme ?? defaultTheme
   const statusColor = (status: GraphStatus | undefined) => colorValue(theme, graphStatusColorToken[status ?? "idle"])
+  const camera = view.camera ?? { x: 0, y: 0, zoom: 1 }
+  const cameraControls =
+    view.onCameraChange === undefined
+      ? []
+      : [
+          createElement(
+            dependencies,
+            dependencies.ReactNative.View,
+            {
+              key: "camera",
+              testID: "en-graph-camera",
+              style: { flexDirection: "row", gap: spacingValue(theme, "2") }
+            },
+            ...(["pan-left", "pan-right", "zoom-in", "zoom-out"] as const).map((action) =>
+              createElement(
+                dependencies,
+                dependencies.ReactNative.Pressable,
+                {
+                  key: action,
+                  testID: `en-graph-camera:${action}`,
+                  onPress: () => {
+                    const next =
+                      action === "pan-left"
+                        ? { ...camera, x: camera.x - 20 }
+                        : action === "pan-right"
+                          ? { ...camera, x: camera.x + 20 }
+                          : action === "zoom-in"
+                            ? { ...camera, zoom: Math.min(4, camera.zoom + 0.1) }
+                            : { ...camera, zoom: Math.max(0.25, camera.zoom - 0.1) }
+                    runReportedIntent(report, view.onCameraChange!, next)
+                  }
+                },
+                createElement(dependencies, dependencies.ReactNative.Text, { key: "l" }, action)
+              )
+            )
+          )
+        ]
   return createElement(
     dependencies,
     dependencies.ReactNative.View,
-    { ...baseProps(view, mergeNativeStyles({ flexDirection: "column" }, viewStyle(view, options))), testID: "en-graph-figure", accessibilityLabel: view.a11y?.label },
-    ...view.nodes.map((node) => {
-      const dot = createElement(dependencies, dependencies.ReactNative.View, { key: "dot", style: { width: 8, height: 8, borderRadius: 999, backgroundColor: statusColor(node.status) } })
-      const label = createElement(dependencies, dependencies.ReactNative.Text, { key: "label" }, node.label)
-      const props: Record<string, unknown> = {
-        key: `node-${node.id}`,
-        testID: `en-graph-node:${node.id}`,
-        style: { flexDirection: "row", gap: spacingValue(theme, "2") }
-      }
-      if (view.onNodeSelect !== undefined) {
-        const onNodeSelect = view.onNodeSelect
-        return createElement(dependencies, dependencies.ReactNative.Pressable, { ...props, onPress: () => runReportedIntent(report, onNodeSelect, node.id) }, dot, label)
-      }
-      return createElement(dependencies, dependencies.ReactNative.View, props, dot, label)
-    })
+    {
+      ...baseProps(view, mergeNativeStyles({ flexDirection: "column" }, viewStyle(view, options))),
+      testID: "en-graph-figure",
+      accessibilityLabel: view.a11y?.label
+    },
+    ...cameraControls,
+    createElement(
+      dependencies,
+      dependencies.ReactNative.View,
+      { key: "nodes", testID: "en-graph-nodes", style: { flexDirection: "column", gap: spacingValue(theme, "1") } },
+      ...view.nodes.map((node) => {
+        const dot = createElement(dependencies, dependencies.ReactNative.View, { key: "dot", style: { width: 8, height: 8, borderRadius: 999, backgroundColor: statusColor(node.status) } })
+        const label = createElement(dependencies, dependencies.ReactNative.Text, { key: "label" }, node.label)
+        const props: Record<string, unknown> = {
+          key: `node-${node.id}`,
+          testID: `en-graph-node:${node.id}`,
+          style: { flexDirection: "row", gap: spacingValue(theme, "2") }
+        }
+        if (view.onNodeSelect !== undefined) {
+          const onNodeSelect = view.onNodeSelect
+          return createElement(dependencies, dependencies.ReactNative.Pressable, { ...props, onPress: () => runReportedIntent(report, onNodeSelect, node.id) }, dot, label)
+        }
+        return createElement(dependencies, dependencies.ReactNative.View, props, dot, label)
+      })
+    ),
+    createElement(
+      dependencies,
+      dependencies.ReactNative.View,
+      { key: "edges", testID: "en-graph-edges", style: { flexDirection: "column", gap: spacingValue(theme, "1") } },
+      ...view.edges.map((edge) =>
+        createElement(
+          dependencies,
+          dependencies.ReactNative.Text,
+          {
+            key: `edge-${edge.id}`,
+            testID: `en-graph-edge:${edge.id}`,
+            style: { color: colorValue(theme, "textMuted") }
+          },
+          `${edge.from} → ${edge.to}`
+        )
+      )
+    )
   )
 }
 
@@ -2258,6 +2809,161 @@ const renderTimeline = (
       return createElement(dependencies, dependencies.ReactNative.View, props, ...parts)
     })
   )
+}
+
+
+// Marketing catalog (#46–#51) — structural RN subset
+const renderMarketingShell = (
+  view: View,
+  dependencies: ReactNativeDependencies,
+  report: IntentReporter,
+  options: ReactNativeRenderOptions
+): ReactElementLike => {
+  const theme = options.theme ?? defaultTheme
+  const box = (testID: string, children: ReadonlyArray<ReactElementLike>) =>
+    createElement(
+      dependencies,
+      dependencies.ReactNative.View,
+      {
+        ...baseProps(view, mergeNativeStyles({ flexDirection: "column", gap: spacingValue(theme, "2") }, viewStyle(view as never, options))),
+        testID
+      },
+      ...children
+    )
+  const text = (value: string, key: string) =>
+    createElement(dependencies, dependencies.ReactNative.Text, { key }, value)
+  const press = (label: string, intent: IntentRef, key: string) =>
+    createElement(
+      dependencies,
+      dependencies.ReactNative.Pressable,
+      {
+        key,
+        testID: `en-mkt-press-${key}`,
+        onPress: () => runReportedIntent(report, intent)
+      },
+      text(label, `${key}-label`)
+    )
+
+  switch (view._tag) {
+    case "Section":
+    case "Glow":
+    case "MockupFrame":
+      return box(
+        `en-${view._tag}`,
+        view.children.map((child, index) =>
+          renderResolvedReactNativeView(child, dependencies, report, options)
+        ) as ReactElementLike[]
+      )
+    case "Hero": {
+      const kids: Array<ReactElementLike> = [
+        text(typeof view.headline === "string" ? view.headline : "", "headline")
+      ]
+      if (typeof view.subhead === "string") kids.push(text(view.subhead, "subhead"))
+      for (const child of view.actions) kids.push(renderResolvedReactNativeView(child, dependencies, report, options))
+      if (view.media !== undefined) kids.push(renderResolvedReactNativeView(view.media, dependencies, report, options))
+      return box("en-Hero", kids)
+    }
+    case "AnnouncementBadge": {
+      const label =
+        view.actionLabel === undefined ? view.label : `${view.label} · ${view.actionLabel}`
+      if (view.onPress === undefined) {
+        return box("en-AnnouncementBadge", [text(view.label, "label")])
+      }
+      return createElement(
+        dependencies,
+        dependencies.ReactNative.Pressable,
+        {
+          ...baseProps(view, mergeNativeStyles(
+            { flexDirection: "row", alignItems: "center", gap: spacingValue(theme, "2") },
+            viewStyle(view as never, options)
+          )),
+          testID: "en-AnnouncementBadge",
+          onPress: () => runReportedIntent(report, view.onPress!)
+        },
+        text(label, "label")
+      )
+    }
+    case "CtaSection": {
+      const kids: Array<ReactElementLike> = [
+        text(typeof view.headline === "string" ? view.headline : "", "headline")
+      ]
+      if (typeof view.body === "string") kids.push(text(view.body, "body"))
+      for (const child of view.actions) kids.push(renderResolvedReactNativeView(child, dependencies, report, options))
+      return box("en-CtaSection", kids)
+    }
+    case "Footer": {
+      const kids: Array<ReactElementLike> = []
+      if (view.brand !== undefined) kids.push(renderResolvedReactNativeView(view.brand, dependencies, report, options))
+      for (const column of view.columns) {
+        for (const link of column.links) kids.push(renderResolvedReactNativeView(link, dependencies, report, options))
+      }
+      if (view.legal !== undefined) kids.push(renderResolvedReactNativeView(view.legal, dependencies, report, options))
+      return box("en-Footer", kids)
+    }
+    case "NavBar": {
+      const kids: Array<ReactElementLike> = [
+        renderResolvedReactNativeView(view.brand, dependencies, report, options)
+      ]
+      for (const link of view.links) kids.push(press(link.label, link.onPress, link.id))
+      for (const child of view.actions ?? []) kids.push(renderResolvedReactNativeView(child, dependencies, report, options))
+      return box("en-NavBar", kids)
+    }
+    case "Accordion": {
+      const kids: Array<ReactElementLike> = []
+      for (const item of view.items) {
+        kids.push(press(item.header, view.onToggle, item.id))
+        if (view.expandedIds.includes(item.id)) {
+          for (const child of item.content) kids.push(renderResolvedReactNativeView(child, dependencies, report, options))
+        }
+      }
+      return box("en-Accordion", kids)
+    }
+    case "PricingColumn": {
+      const kids: Array<ReactElementLike> = [
+        text(view.name, "name"),
+        text(view.period === undefined ? view.price : `${view.price} / ${view.period}`, "price")
+      ]
+      for (const feature of view.features) {
+        kids.push(text(`${feature.included ? "yes" : "no"}: ${feature.label}`, feature.id))
+      }
+      kids.push(press(view.ctaLabel, view.onCta, "cta"))
+      return box("en-PricingColumn", kids)
+    }
+    case "PricingTable":
+      return box(
+        "en-PricingTable",
+        view.columns.map((column) =>
+          renderResolvedReactNativeView(column, dependencies, report, options)
+        ) as ReactElementLike[]
+      )
+    case "LogoRow":
+      return box(
+        "en-LogoRow",
+        view.logos.map((logo) =>
+          createElement(dependencies, dependencies.ReactNative.Image, {
+            key: logo.id,
+            source: { uri: logo.source },
+            accessibilityLabel: logo.alt,
+            style: { width: 72, height: 28 }
+          })
+        )
+      )
+    case "StatsBand":
+      return box(
+        "en-StatsBand",
+        view.stats.map((stat) =>
+          createElement(
+            dependencies,
+            dependencies.ReactNative.View,
+            { key: stat.id },
+            text(typeof stat.value === "string" ? stat.value : "", `${stat.id}-v`),
+            text(stat.label, `${stat.id}-l`)
+          )
+        )
+      )
+    default:
+      return box(`en-${view._tag}`, [])
+  }
 }
 
 const renderResolvedReactNativeView = (
@@ -2338,7 +3044,7 @@ const renderResolvedReactNativeView = (
     case "RadioGroup":
       return renderRadioGroup(view, dependencies, report, options)
     case "Slider":
-      return renderSlider(view, dependencies, options)
+      return renderSlider(view, dependencies, report, options)
     case "NumberField":
       return renderNumberField(view, dependencies, report, options)
     case "FieldRow":
@@ -2363,7 +3069,293 @@ const renderResolvedReactNativeView = (
       return renderGraphFigure(view, dependencies, report, options)
     case "Timeline":
       return renderTimeline(view, dependencies, report, options)
+    case "Section":
+    case "Hero":
+    case "AnnouncementBadge":
+    case "CtaSection":
+    case "Footer":
+    case "NavBar":
+    case "Accordion":
+    case "PricingColumn":
+    case "PricingTable":
+    case "LogoRow":
+    case "StatsBand":
+    case "Glow":
+    case "MockupFrame":
+      return renderMarketingShell(view, dependencies, report, options)
+    case "Pager":
+      return renderPager(view, dependencies, report, options)
+    case "SwipeableListItem":
+      return renderSwipeableListItem(view, dependencies, report, options)
+    case "BackgroundGradient":
+    case "Wallpaper":
+    case "Spotlight":
+    case "Frame":
+    case "BlurredPopup":
+      return renderMobileSurfaceShell(view, dependencies, report, options)
   }
+}
+
+const renderMobileSurfaceShell = (
+  view: BackgroundGradientView | WallpaperView | SpotlightView | FrameView | BlurredPopupView,
+  dependencies: ReactNativeDependencies,
+  report: IntentReporter,
+  options: ReactNativeRenderOptions
+): ReactElementLike => {
+  const theme = options.theme ?? defaultTheme
+  if (view._tag === "BlurredPopup") {
+    if (!view.open) {
+      return createElement(dependencies, dependencies.ReactNative.View, {
+        ...baseProps(view, viewStyle(view as never, options)),
+        testID: "en-BlurredPopup-closed"
+      })
+    }
+    return createElement(
+      dependencies,
+      dependencies.ReactNative.Modal,
+      {
+        ...baseProps(view, viewStyle(view as never, options)),
+        testID: "en-BlurredPopup",
+        transparent: true,
+        visible: true,
+        onRequestClose: () => runReportedIntent(report, view.onDismiss)
+      },
+      createElement(
+        dependencies,
+        dependencies.ReactNative.Pressable,
+        {
+          key: "backdrop",
+          testID: "en-BlurredPopup-backdrop",
+          onPress: () => runReportedIntent(report, view.onDismiss),
+          style: { flex: 1, justifyContent: "center", backgroundColor: "rgba(0,0,0,0.45)" }
+        },
+        createElement(
+          dependencies,
+          dependencies.ReactNative.View,
+          { key: "panel", testID: "en-BlurredPopup-panel", style: { margin: spacingValue(theme, "4"), padding: spacingValue(theme, "3"), backgroundColor: colorValue(theme, "surface") } },
+          ...view.children.map((child) => renderResolvedReactNativeView(child, dependencies, report, options))
+        )
+      )
+    )
+  }
+  return createElement(
+    dependencies,
+    dependencies.ReactNative.View,
+    baseProps(
+      view,
+      mergeNativeStyles(
+        {
+          flexDirection: "column",
+          ...(view._tag === "Frame"
+            ? { borderWidth: 1, borderColor: colorValue(theme, "accent"), padding: spacingValue(theme, "3") }
+            : {}),
+          ...(view._tag === "Spotlight"
+            ? { shadowColor: colorValue(theme, "accent"), shadowOpacity: 0.45, shadowRadius: 16 }
+            : {}),
+          ...(view._tag === "BackgroundGradient" || view._tag === "Wallpaper"
+            ? { backgroundColor: colorValue(theme, "surface") }
+            : {})
+        },
+        viewStyle(view as never, options)
+      )
+    ),
+    ...view.children.map((child) => renderResolvedReactNativeView(child, dependencies, report, options))
+  )
+}
+
+
+const renderSwipeableListItem = (
+  view: SwipeableListItemView,
+  dependencies: ReactNativeDependencies,
+  report: IntentReporter,
+  options: ReactNativeRenderOptions
+): ReactElementLike => {
+  const theme = options.theme ?? defaultTheme
+  const actionButtons = (
+    side: "leading" | "trailing",
+    items: ReadonlyArray<{
+      readonly id: string
+      readonly label: string
+      readonly destructive?: boolean
+    }>
+  ) =>
+    items.map((action) =>
+      createElement(
+        dependencies,
+        dependencies.ReactNative.Pressable,
+        {
+          key: `${side}-${action.id}`,
+          testID: `en-swipe-action:${action.id}`,
+          onPress: () => runReportedIntent(report, view.onAction, action.id),
+          style: {
+            paddingHorizontal: spacingValue(theme, "2"),
+            justifyContent: "center",
+            backgroundColor: action.destructive === true
+              ? colorValue(theme, "danger")
+              : colorValue(theme, "surface")
+          }
+        },
+        createElement(dependencies, dependencies.ReactNative.Text, { key: "label" }, action.label)
+      )
+    )
+
+  return createElement(
+    dependencies,
+    dependencies.ReactNative.View,
+    baseProps(
+      view,
+      mergeNativeStyles(
+        { flexDirection: "row", alignItems: "stretch", gap: spacingValue(theme, "1") },
+        viewStyle(view as never, options)
+      )
+    ),
+    ...actionButtons("leading", view.leadingActions ?? []),
+    createElement(
+      dependencies,
+      dependencies.ReactNative.View,
+      { key: "body", testID: "en-swipe-body", style: { flex: 1 } },
+      renderResolvedReactNativeView(view.child, dependencies, report, options)
+    ),
+    ...actionButtons("trailing", view.trailingActions ?? [])
+  )
+}
+
+const renderPager = (
+  view: PagerView,
+  dependencies: ReactNativeDependencies,
+  report: IntentReporter,
+  options: ReactNativeRenderOptions
+): ReactElementLike => {
+  const theme = options.theme ?? defaultTheme
+  const stepIds = view.steps.map((step) => step.id)
+  const activeIndex = Math.max(0, stepIds.indexOf(view.activeStepId))
+  const canBack = view.canGoBack !== false && activeIndex > 0
+  const canAdvance = view.canAdvance !== false && activeIndex < stepIds.length - 1
+  const isLast = activeIndex >= stepIds.length - 1
+  const progress = view.progress ?? "dots"
+
+  const progressKids: Array<ReactElementLike> = []
+  if (progress === "dots") {
+    for (const [index, step] of view.steps.entries()) {
+      progressKids.push(
+        createElement(
+          dependencies,
+          dependencies.ReactNative.Pressable,
+          {
+            key: `dot-${step.id}`,
+            testID: `en-pager-dot:${step.id}`,
+            onPress: () => runReportedIntent(report, view.onStepChange, step.id),
+            style: {
+              width: 8,
+              height: 8,
+              borderRadius: 999,
+              backgroundColor: index === activeIndex
+                ? colorValue(theme, "accent")
+                : colorValue(theme, "border")
+            }
+          }
+        )
+      )
+    }
+  }
+
+  const panels = (view.keepMounted === true
+    ? view.panels
+    : view.panels.filter((panel) => panel.id === view.activeStepId)
+  ).map((panel) =>
+    createElement(
+      dependencies,
+      dependencies.ReactNative.View,
+      {
+        key: `panel-${panel.id}`,
+        testID: `en-pager-panel:${panel.id}`,
+        style: { display: panel.id === view.activeStepId ? "flex" : "none" }
+      },
+      renderResolvedReactNativeView(panel.content, dependencies, report, options)
+    )
+  )
+
+  const back = createElement(
+    dependencies,
+    dependencies.ReactNative.Pressable,
+    {
+      key: "back",
+      testID: "en-pager-back",
+      disabled: !canBack,
+      ...(canBack
+        ? {
+            onPress: () => {
+              const prev = stepIds[activeIndex - 1]!
+              if (view.onBack !== undefined) runReportedIntent(report, view.onBack, prev)
+              runReportedIntent(report, view.onStepChange, prev)
+            }
+          }
+        : {}),
+      style: { opacity: canBack ? 1 : 0.4 }
+    },
+    createElement(dependencies, dependencies.ReactNative.Text, { key: "back-label" }, "Back")
+  )
+
+  const next = createElement(
+    dependencies,
+    dependencies.ReactNative.Pressable,
+    {
+      key: "next",
+      testID: "en-pager-next",
+      onPress: () => {
+        if (isLast) {
+          if (view.onComplete !== undefined) {
+            runReportedIntent(report, view.onComplete, view.activeStepId)
+          }
+          return
+        }
+        if (!canAdvance) return
+        const nxt = stepIds[activeIndex + 1]!
+        if (view.onAdvance !== undefined) runReportedIntent(report, view.onAdvance, nxt)
+        runReportedIntent(report, view.onStepChange, nxt)
+      }
+    },
+    createElement(
+      dependencies,
+      dependencies.ReactNative.Text,
+      { key: "next-label" },
+      isLast ? "Done" : "Continue"
+    )
+  )
+
+  return createElement(
+    dependencies,
+    dependencies.ReactNative.View,
+    baseProps(
+      view,
+      mergeNativeStyles(
+        { flexDirection: "column", gap: spacingValue(theme, "3") },
+        viewStyle(view as never, options)
+      )
+    ),
+    createElement(
+      dependencies,
+      dependencies.ReactNative.View,
+      {
+        key: "progress",
+        testID: "en-pager-progress",
+        style: { flexDirection: "row", gap: spacingValue(theme, "2"), justifyContent: "center" }
+      },
+      ...progressKids
+    ),
+    ...panels,
+    createElement(
+      dependencies,
+      dependencies.ReactNative.View,
+      {
+        key: "nav",
+        testID: "en-pager-nav",
+        style: { flexDirection: "row", justifyContent: "space-between", gap: spacingValue(theme, "2") }
+      },
+      back,
+      next
+    )
+  )
 }
 
 export const renderReactNativeView = (
@@ -2560,6 +3552,21 @@ export const viewStructure = (view: View): ReactNativeStructure => {
           ? view.panels
           : view.panels.filter((panel) => panel.id === view.selectedId)
         ).map((panel) => viewStructure(panel.content))
+      }
+    case "Pager":
+      return {
+        tag: "Pager",
+        ...(view.key === undefined ? {} : { key: view.key }),
+        children: (view.keepMounted === true
+          ? view.panels
+          : view.panels.filter((panel) => panel.id === view.activeStepId)
+        ).map((panel) => viewStructure(panel.content))
+      }
+    case "SwipeableListItem":
+      return {
+        tag: "SwipeableListItem",
+        ...(view.key === undefined ? {} : { key: view.key }),
+        children: [viewStructure(view.child)]
       }
     default:
       return {

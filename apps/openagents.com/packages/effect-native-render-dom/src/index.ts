@@ -16,6 +16,39 @@ import {
   graphStatusColorToken,
   layoutGraphNodes,
   type TimelineView,
+  type SectionView,
+  type HeroView,
+  type AnnouncementBadgeView,
+  type CtaSectionView,
+  type FooterView,
+  type NavBarView,
+  type AccordionView,
+  type PricingColumnView,
+  type PricingTableView,
+  type LogoRowView,
+  type StatsBandView,
+  type GlowView,
+  type MockupFrameView,
+  type PagerView,
+  type SwipeableListItemView,
+  type BackgroundGradientView,
+  type WallpaperView,
+  type SpotlightView,
+  type FrameView,
+  type BlurredPopupView,
+  Section,
+  Hero,
+  AnnouncementBadge,
+  CtaSection,
+  Footer,
+  NavBar,
+  Accordion,
+  PricingColumn,
+  PricingTable,
+  LogoRow,
+  StatsBand,
+  Glow,
+  MockupFrame,
   type ComboboxOption,
   type ComboboxView,
   type CommandPaletteView,
@@ -1326,6 +1359,28 @@ const resetCollectionStyle = (element: HTMLElement): void => {
   element.style.height = ""
 }
 
+const renderRefreshAffordance = (
+  host: HTMLElement,
+  view: ListView | SectionListView,
+  state: DomRendererState,
+  report: IntentReporter
+): void => {
+  if (view.onRefresh === undefined) return
+  host.setAttribute("data-en-refreshing", view.refreshing === true ? "true" : "false")
+  const existing = host.querySelector('[data-en-role="refresh"]')
+  if (existing !== null) existing.remove()
+  const button = host.ownerDocument.createElement("button")
+  button.type = "button"
+  button.setAttribute("data-en-role", "refresh")
+  button.textContent = view.refreshing === true ? "Refreshing…" : "Refresh"
+  button.disabled = view.refreshing === true
+  button.style.display = "block"
+  button.style.width = "100%"
+  button.style.marginBottom = "var(--en-spacing-2)"
+  state.addListener(button, "click", () => runReportedIntent(report, view.onRefresh!))
+  host.insertBefore(button, host.firstChild)
+}
+
 const renderList = (view: ListView, state: DomRendererState, report: IntentReporter): HTMLElement => {
   const element = state.keyedElement(view, "ul")
   state.resetListeners(element)
@@ -1352,6 +1407,7 @@ const renderList = (view: ListView, state: DomRendererState, report: IntentRepor
           ...rows,
           virtualSpacer(element.ownerDocument, (view.items.length - end) * itemSize, "li")
         )
+        renderRefreshAffordance(element, view, state, report)
       }
     )
   } else {
@@ -1359,6 +1415,7 @@ const renderList = (view: ListView, state: DomRendererState, report: IntentRepor
     element.replaceChildren(...view.items.map((item) => renderListItem(element, item, state, report)))
   }
 
+  renderRefreshAffordance(element, view, state, report)
   applyBaseStyle(element, view, state)
   applyA11y(element, view)
   applyInteractions(element, view, state, report)
@@ -1446,6 +1503,7 @@ const renderSectionList = (
           ...renderedRows,
           virtualSpacer(element.ownerDocument, (rows.length - end) * itemSize, "div")
         )
+        renderRefreshAffordance(element, view, state, report)
       }
     )
   } else {
@@ -1455,6 +1513,7 @@ const renderSectionList = (
     )
   }
 
+  renderRefreshAffordance(element, view, state, report)
   applyBaseStyle(element, view, state)
   return element
 }
@@ -3626,6 +3685,43 @@ const renderView = (view: View, state: DomRendererState, report: IntentReporter)
       return renderGraphFigure(view, state, report)
     case "Timeline":
       return renderTimeline(view, state, report)
+    case "Section":
+      return renderSection(view, state, report)
+    case "Hero":
+      return renderHero(view, state, report)
+    case "AnnouncementBadge":
+      return renderAnnouncementBadge(view, state, report)
+    case "CtaSection":
+      return renderCtaSection(view, state, report)
+    case "Footer":
+      return renderFooter(view, state, report)
+    case "NavBar":
+      return renderNavBar(view, state, report)
+    case "Accordion":
+      return renderAccordion(view, state, report)
+    case "PricingColumn":
+      return renderPricingColumn(view, state, report)
+    case "PricingTable":
+      return renderPricingTable(view, state, report)
+    case "LogoRow":
+      return renderLogoRow(view, state, report)
+    case "StatsBand":
+      return renderStatsBand(view, state, report)
+    case "Glow":
+      return renderGlow(view, state, report)
+    case "MockupFrame":
+      return renderMockupFrame(view, state, report)
+    case "Pager":
+      return renderPager(view, state, report)
+    case "SwipeableListItem":
+      return renderSwipeableListItem(view, state, report)
+    case "BackgroundGradient":
+    case "Wallpaper":
+    case "Spotlight":
+    case "Frame":
+      return renderMobileSurfaceShell(view, state, report)
+    case "BlurredPopup":
+      return renderBlurredPopup(view, state, report)
   }
 }
 
@@ -3792,6 +3888,21 @@ export const viewStructure = (view: View): DomStructure => {
           : view.panels.filter((panel) => panel.id === view.selectedId)
         ).map((panel) => viewStructure(panel.content))
       }
+    case "Pager":
+      return {
+        tag: "Pager",
+        ...(view.key === undefined ? {} : { key: view.key }),
+        children: (view.keepMounted === true
+          ? view.panels
+          : view.panels.filter((panel) => panel.id === view.activeStepId)
+        ).map((panel) => viewStructure(panel.content))
+      }
+    case "SwipeableListItem":
+      return {
+        tag: "SwipeableListItem",
+        ...(view.key === undefined ? {} : { key: view.key }),
+        children: [viewStructure(view.child)]
+      }
     case "FieldRow":
       return {
         tag: "FieldRow",
@@ -3876,3 +3987,604 @@ export const makeDomRenderer = (options: DomRendererOptions = {}): RendererAdapt
       }))
     })
 })
+
+// Marketing catalog (#46–#51)
+const renderSection = (view: SectionView, state: DomRendererState, report: IntentReporter): HTMLElement => {
+  const el = state.keyedElement(view, "section")
+  state.resetListeners(el)
+  el.setAttribute("data-en-section-width", view.width ?? "contained")
+  if (view.background !== undefined) el.style.background = `var(--en-color-${view.background})`
+  if (view.paddingY !== undefined) {
+    el.style.paddingTop = `var(--en-spacing-${view.paddingY})`
+    el.style.paddingBottom = `var(--en-spacing-${view.paddingY})`
+  }
+  el.style.maxWidth = view.width === "full" ? "none" : "72rem"
+  el.style.marginInline = "auto"
+  el.replaceChildren(...view.children.map((child) => renderView(child, state, report)))
+  applyBaseStyle(el, view, state)
+  applyA11y(el, view)
+  return el
+}
+
+const renderHero = (view: HeroView, state: DomRendererState, report: IntentReporter): HTMLElement => {
+  const el = state.keyedElement(view, "header")
+  state.resetListeners(el)
+  el.setAttribute("data-en-hero-align", view.align ?? "start")
+  el.style.display = "flex"
+  el.style.flexDirection = "column"
+  el.style.alignItems = view.align === "center" ? "center" : "flex-start"
+  el.style.gap = "var(--en-spacing-4)"
+  el.style.textAlign = view.align === "center" ? "center" : "start"
+  const h = el.ownerDocument.createElement("h1")
+  h.setAttribute("data-en-role", "headline")
+  h.textContent = typeof view.headline === "string" ? view.headline : ""
+  if (view.headlineTone === "gradient") h.setAttribute("data-en-headline-tone", "gradient")
+  el.appendChild(h)
+  if (typeof view.subhead === "string" && view.subhead.length > 0) {
+    const p = el.ownerDocument.createElement("p")
+    p.setAttribute("data-en-role", "subhead")
+    p.textContent = view.subhead
+    el.appendChild(p)
+  }
+  const actions = el.ownerDocument.createElement("div")
+  actions.setAttribute("data-en-role", "actions")
+  actions.style.display = "flex"
+  actions.style.gap = "var(--en-spacing-2)"
+  for (const child of view.actions) actions.appendChild(renderView(child, state, report))
+  el.appendChild(actions)
+  if (view.media !== undefined) {
+    const media = el.ownerDocument.createElement("div")
+    media.setAttribute("data-en-role", "media")
+    media.appendChild(renderView(view.media, state, report))
+    el.appendChild(media)
+  }
+  applyBaseStyle(el, view, state)
+  applyA11y(el, view)
+  return el
+}
+
+const renderAnnouncementBadge = (
+  view: AnnouncementBadgeView,
+  state: DomRendererState,
+  report: IntentReporter
+): HTMLElement => {
+  const el = state.keyedElement(view, view.onPress === undefined ? "div" : "button")
+  state.resetListeners(el)
+  el.setAttribute("data-en-announcement", "true")
+  el.style.display = "inline-flex"
+  el.style.alignItems = "center"
+  el.style.gap = "var(--en-spacing-2)"
+  el.style.border = "1px solid var(--en-color-border)"
+  el.style.borderRadius = "999px"
+  el.style.padding = "var(--en-spacing-1) var(--en-spacing-3)"
+  const label = el.ownerDocument.createElement("span")
+  label.textContent = view.label
+  el.appendChild(label)
+  if (view.actionLabel !== undefined) {
+    const action = el.ownerDocument.createElement("span")
+    action.setAttribute("data-en-role", "action")
+    action.textContent = view.actionLabel
+    el.appendChild(action)
+  }
+  if (view.onPress !== undefined) {
+    const intent = view.onPress
+    state.addListener(el, "click", () => runReportedIntent(report, intent))
+  }
+  applyBaseStyle(el, view, state)
+  applyA11y(el, view)
+  return el
+}
+
+const renderCtaSection = (view: CtaSectionView, state: DomRendererState, report: IntentReporter): HTMLElement => {
+  const el = state.keyedElement(view, "section")
+  state.resetListeners(el)
+  el.setAttribute("data-en-cta", "true")
+  if (view.tone !== undefined) el.setAttribute("data-en-tone", view.tone)
+  const h = el.ownerDocument.createElement("h2")
+  h.textContent = typeof view.headline === "string" ? view.headline : ""
+  el.appendChild(h)
+  if (typeof view.body === "string") {
+    const p = el.ownerDocument.createElement("p")
+    p.textContent = view.body
+    el.appendChild(p)
+  }
+  const actions = el.ownerDocument.createElement("div")
+  actions.style.display = "flex"
+  actions.style.gap = "var(--en-spacing-2)"
+  for (const child of view.actions) actions.appendChild(renderView(child, state, report))
+  el.appendChild(actions)
+  applyBaseStyle(el, view, state)
+  applyA11y(el, view)
+  return el
+}
+
+const renderFooter = (view: FooterView, state: DomRendererState, report: IntentReporter): HTMLElement => {
+  const el = state.keyedElement(view, "footer")
+  state.resetListeners(el)
+  el.style.display = "grid"
+  el.style.gap = "var(--en-spacing-4)"
+  if (view.brand !== undefined) el.appendChild(renderView(view.brand, state, report))
+  const cols = el.ownerDocument.createElement("div")
+  cols.style.display = "flex"
+  cols.style.flexWrap = "wrap"
+  cols.style.gap = "var(--en-spacing-6)"
+  for (const column of view.columns) {
+    const col = el.ownerDocument.createElement("div")
+    col.setAttribute("data-en-footer-col", column.id)
+    if (column.title !== undefined) {
+      const title = el.ownerDocument.createElement("h3")
+      title.textContent = column.title
+      col.appendChild(title)
+    }
+    for (const link of column.links) col.appendChild(renderView(link, state, report))
+    cols.appendChild(col)
+  }
+  el.appendChild(cols)
+  if (view.legal !== undefined) el.appendChild(renderView(view.legal, state, report))
+  applyBaseStyle(el, view, state)
+  applyA11y(el, view)
+  return el
+}
+
+const renderNavBar = (view: NavBarView, state: DomRendererState, report: IntentReporter): HTMLElement => {
+  const el = state.keyedElement(view, "nav")
+  state.resetListeners(el)
+  el.setAttribute("data-en-navbar", "true")
+  if (view.sticky === true) el.style.position = "sticky"
+  el.style.display = "flex"
+  el.style.alignItems = "center"
+  el.style.gap = "var(--en-spacing-3)"
+  el.appendChild(renderView(view.brand, state, report))
+  const links = el.ownerDocument.createElement("div")
+  links.setAttribute("data-en-navbar-links", view.collapsed === true ? "collapsed" : "open")
+  links.style.display = view.collapsed === true ? "none" : "flex"
+  links.style.gap = "var(--en-spacing-3)"
+  for (const link of view.links) {
+    const btn = el.ownerDocument.createElement("button")
+    btn.type = "button"
+    btn.textContent = link.label
+    btn.setAttribute("data-en-nav-link", link.id)
+    state.addListener(btn, "click", () => runReportedIntent(report, link.onPress))
+    links.appendChild(btn)
+  }
+  el.appendChild(links)
+  if (view.onToggleMenu !== undefined) {
+    const toggle = el.ownerDocument.createElement("button")
+    toggle.type = "button"
+    toggle.setAttribute("data-en-navbar-toggle", "true")
+    toggle.setAttribute("aria-expanded", view.collapsed === true ? "false" : "true")
+    toggle.textContent = "Menu"
+    const intent = view.onToggleMenu
+    state.addListener(toggle, "click", () => runReportedIntent(report, intent))
+    el.appendChild(toggle)
+  }
+  if (view.actions !== undefined) {
+    const actions = el.ownerDocument.createElement("div")
+    actions.setAttribute("data-en-navbar-actions", "true")
+    for (const child of view.actions) actions.appendChild(renderView(child, state, report))
+    el.appendChild(actions)
+  }
+  applyBaseStyle(el, view, state)
+  applyA11y(el, view)
+  return el
+}
+
+const renderAccordion = (view: AccordionView, state: DomRendererState, report: IntentReporter): HTMLElement => {
+  const el = state.keyedElement(view, "div")
+  state.resetListeners(el)
+  el.setAttribute("data-en-accordion-mode", view.mode ?? "single")
+  for (const item of view.items) {
+    const open = view.expandedIds.includes(item.id)
+    const itemEl = el.ownerDocument.createElement("div")
+    itemEl.setAttribute("data-en-accordion-item", item.id)
+    const header = el.ownerDocument.createElement("button")
+    header.type = "button"
+    header.setAttribute("aria-expanded", open ? "true" : "false")
+    header.textContent = item.header
+    state.addListener(header, "click", () => runReportedIntent(report, view.onToggle, item.id))
+    itemEl.appendChild(header)
+    const region = el.ownerDocument.createElement("div")
+    region.setAttribute("role", "region")
+    region.hidden = !open
+    for (const child of item.content) region.appendChild(renderView(child, state, report))
+    itemEl.appendChild(region)
+    el.appendChild(itemEl)
+  }
+  applyBaseStyle(el, view, state)
+  applyA11y(el, view)
+  return el
+}
+
+const renderPricingColumn = (
+  view: PricingColumnView,
+  state: DomRendererState,
+  report: IntentReporter
+): HTMLElement => {
+  const el = state.keyedElement(view, "article")
+  state.resetListeners(el)
+  el.setAttribute("data-en-pricing-column", view.highlighted === true ? "highlighted" : "default")
+  const name = el.ownerDocument.createElement("h3")
+  name.textContent = view.name
+  el.appendChild(name)
+  const price = el.ownerDocument.createElement("p")
+  price.setAttribute("data-en-role", "price")
+  price.textContent = view.period === undefined ? view.price : `${view.price} / ${view.period}`
+  el.appendChild(price)
+  const list = el.ownerDocument.createElement("ul")
+  for (const feature of view.features) {
+    const li = el.ownerDocument.createElement("li")
+    li.setAttribute("data-en-included", feature.included ? "true" : "false")
+    li.textContent = feature.label
+    list.appendChild(li)
+  }
+  el.appendChild(list)
+  const cta = el.ownerDocument.createElement("button")
+  cta.type = "button"
+  cta.textContent = view.ctaLabel
+  state.addListener(cta, "click", () => runReportedIntent(report, view.onCta))
+  el.appendChild(cta)
+  applyBaseStyle(el, view, state)
+  applyA11y(el, view)
+  return el
+}
+
+const renderPricingTable = (
+  view: PricingTableView,
+  state: DomRendererState,
+  report: IntentReporter
+): HTMLElement => {
+  const el = state.keyedElement(view, "div")
+  state.resetListeners(el)
+  el.style.display = "flex"
+  el.style.flexWrap = "wrap"
+  el.style.gap = "var(--en-spacing-4)"
+  for (const column of view.columns) el.appendChild(renderPricingColumn(column, state, report))
+  applyBaseStyle(el, view, state)
+  applyA11y(el, view)
+  return el
+}
+
+const renderLogoRow = (view: LogoRowView, state: DomRendererState, report: IntentReporter): HTMLElement => {
+  const el = state.keyedElement(view, "div")
+  state.resetListeners(el)
+  el.style.display = "flex"
+  el.style.flexWrap = "wrap"
+  el.style.alignItems = "center"
+  el.style.gap = "var(--en-spacing-4)"
+  el.style.opacity = "0.85"
+  for (const logo of view.logos) {
+    const img = el.ownerDocument.createElement("img")
+    img.src = logo.source
+    img.alt = logo.alt
+    img.setAttribute("data-en-logo", logo.id)
+    img.style.height = "2rem"
+    img.style.objectFit = "contain"
+    if (logo.onPress !== undefined) {
+      const intent = logo.onPress
+      const btn = el.ownerDocument.createElement("button")
+      btn.type = "button"
+      btn.appendChild(img)
+      state.addListener(btn, "click", () => runReportedIntent(report, intent))
+      el.appendChild(btn)
+    } else {
+      el.appendChild(img)
+    }
+  }
+  applyBaseStyle(el, view, state)
+  applyA11y(el, view)
+  return el
+}
+
+const renderStatsBand = (view: StatsBandView, state: DomRendererState, report: IntentReporter): HTMLElement => {
+  const el = state.keyedElement(view, "div")
+  state.resetListeners(el)
+  el.style.display = "flex"
+  el.style.flexWrap = "wrap"
+  el.style.gap = "var(--en-spacing-6)"
+  for (const stat of view.stats) {
+    const tile = el.ownerDocument.createElement("div")
+    tile.setAttribute("data-en-stat", stat.id)
+    if (stat.tone !== undefined) tile.setAttribute("data-en-tone", stat.tone)
+    const value = el.ownerDocument.createElement("div")
+    value.setAttribute("data-en-role", "value")
+    value.style.fontSize = "2rem"
+    value.textContent = typeof stat.value === "string" ? stat.value : ""
+    const label = el.ownerDocument.createElement("div")
+    label.setAttribute("data-en-role", "label")
+    label.textContent = stat.label
+    tile.append(value, label)
+    el.appendChild(tile)
+  }
+  applyBaseStyle(el, view, state)
+  applyA11y(el, view)
+  return el
+}
+
+const renderGlow = (view: GlowView, state: DomRendererState, report: IntentReporter): HTMLElement => {
+  const el = state.keyedElement(view, "div")
+  state.resetListeners(el)
+  el.setAttribute("data-en-glow", view.intensity ?? "md")
+  el.style.position = "relative"
+  el.style.display = "inline-flex"
+  const aura = el.ownerDocument.createElement("div")
+  aura.setAttribute("aria-hidden", "true")
+  aura.setAttribute("data-en-role", "glow-aura")
+  aura.style.position = "absolute"
+  aura.style.inset = "-20%"
+  aura.style.background = "radial-gradient(circle, var(--en-color-accent) 0%, transparent 70%)"
+  aura.style.opacity = view.intensity === "sm" ? "0.35" : view.intensity === "lg" ? "0.75" : "0.55"
+  aura.style.pointerEvents = "none"
+  el.appendChild(aura)
+  const content = el.ownerDocument.createElement("div")
+  content.style.position = "relative"
+  for (const child of view.children) content.appendChild(renderView(child, state, report))
+  el.appendChild(content)
+  applyBaseStyle(el, view, state)
+  applyA11y(el, view)
+  return el
+}
+
+const renderMockupFrame = (
+  view: MockupFrameView,
+  state: DomRendererState,
+  report: IntentReporter
+): HTMLElement => {
+  const el = state.keyedElement(view, "div")
+  state.resetListeners(el)
+  el.setAttribute("data-en-mockup", view.variant ?? "browser")
+  el.setAttribute("data-en-tilt", view.tilt ?? "none")
+  el.style.border = "1px solid var(--en-color-border)"
+  el.style.borderRadius = "var(--en-radius-lg)"
+  el.style.overflow = "hidden"
+  el.style.background = "var(--en-color-surface)"
+  if (view.tilt === "left") el.style.transform = "perspective(1200px) rotateY(8deg)"
+  if (view.tilt === "right") el.style.transform = "perspective(1200px) rotateY(-8deg)"
+  if ((view.variant ?? "browser") === "browser") {
+    const chrome = el.ownerDocument.createElement("div")
+    chrome.setAttribute("data-en-role", "browser-chrome")
+    chrome.style.height = "1.5rem"
+    chrome.style.background = "var(--en-color-surfaceRaised)"
+    el.appendChild(chrome)
+  }
+  for (const child of view.children) el.appendChild(renderView(child, state, report))
+  applyBaseStyle(el, view, state)
+  applyA11y(el, view)
+  return el
+}
+
+const renderPager = (view: PagerView, state: DomRendererState, report: IntentReporter): HTMLElement => {
+  const el = state.keyedElement(view, "div")
+  state.resetListeners(el)
+  el.setAttribute("data-en-pager", "true")
+  el.setAttribute("data-en-active-step", view.activeStepId)
+  el.style.display = "flex"
+  el.style.flexDirection = "column"
+  el.style.gap = "var(--en-spacing-4)"
+
+  const stepIds = view.steps.map((step) => step.id)
+  const activeIndex = Math.max(0, stepIds.indexOf(view.activeStepId))
+  const canBack = view.canGoBack !== false && activeIndex > 0
+  const canAdvance = view.canAdvance !== false && activeIndex < stepIds.length - 1
+  const isLast = activeIndex >= stepIds.length - 1
+
+  const progress = view.progress ?? "dots"
+  if (progress !== "none") {
+    const progressEl = el.ownerDocument.createElement("div")
+    progressEl.setAttribute("data-en-role", "progress")
+    progressEl.setAttribute("data-en-progress", progress)
+    progressEl.style.display = "flex"
+    progressEl.style.gap = "var(--en-spacing-2)"
+    progressEl.style.justifyContent = "center"
+    if (progress === "bar") {
+      const bar = el.ownerDocument.createElement("div")
+      bar.setAttribute("role", "progressbar")
+      bar.setAttribute("aria-valuemin", "0")
+      bar.setAttribute("aria-valuemax", String(stepIds.length))
+      bar.setAttribute("aria-valuenow", String(activeIndex + 1))
+      bar.style.height = "0.35rem"
+      bar.style.flex = "1"
+      bar.style.background = "var(--en-color-border)"
+      const fill = el.ownerDocument.createElement("div")
+      fill.style.height = "100%"
+      fill.style.width = `${((activeIndex + 1) / stepIds.length) * 100}%`
+      fill.style.background = "var(--en-color-accent)"
+      bar.appendChild(fill)
+      progressEl.appendChild(bar)
+    } else {
+      for (const [index, step] of view.steps.entries()) {
+        const dot = el.ownerDocument.createElement("button")
+        dot.type = "button"
+        dot.setAttribute("data-en-step-dot", step.id)
+        dot.setAttribute("aria-label", step.label)
+        dot.setAttribute("aria-current", index === activeIndex ? "step" : "false")
+        dot.style.width = "0.55rem"
+        dot.style.height = "0.55rem"
+        dot.style.borderRadius = "999px"
+        dot.style.border = "none"
+        dot.style.background =
+          index === activeIndex ? "var(--en-color-accent)" : "var(--en-color-border)"
+        state.addListener(dot, "click", () => runReportedIntent(report, view.onStepChange, step.id))
+        progressEl.appendChild(dot)
+      }
+    }
+    el.appendChild(progressEl)
+  }
+
+  const panels = view.keepMounted === true
+    ? view.panels
+    : view.panels.filter((panel) => panel.id === view.activeStepId)
+  for (const panel of panels) {
+    const region = el.ownerDocument.createElement("div")
+    region.setAttribute("data-en-pager-panel", panel.id)
+    region.hidden = panel.id !== view.activeStepId
+    region.appendChild(renderView(panel.content, state, report))
+    el.appendChild(region)
+  }
+
+  const nav = el.ownerDocument.createElement("div")
+  nav.setAttribute("data-en-role", "pager-nav")
+  nav.style.display = "flex"
+  nav.style.justifyContent = "space-between"
+  nav.style.gap = "var(--en-spacing-2)"
+
+  const back = el.ownerDocument.createElement("button")
+  back.type = "button"
+  back.textContent = "Back"
+  back.disabled = !canBack
+  back.setAttribute("data-en-pager-back", "true")
+  if (canBack) {
+    state.addListener(back, "click", () => {
+      const prev = stepIds[activeIndex - 1]!
+      if (view.onBack !== undefined) runReportedIntent(report, view.onBack, prev)
+      runReportedIntent(report, view.onStepChange, prev)
+    })
+  }
+  nav.appendChild(back)
+
+  const next = el.ownerDocument.createElement("button")
+  next.type = "button"
+  next.textContent = isLast ? "Done" : "Continue"
+  next.disabled = isLast ? view.onComplete === undefined && !canAdvance : !canAdvance
+  next.setAttribute("data-en-pager-next", "true")
+  state.addListener(next, "click", () => {
+    if (isLast) {
+      if (view.onComplete !== undefined) runReportedIntent(report, view.onComplete, view.activeStepId)
+      return
+    }
+    const nxt = stepIds[activeIndex + 1]!
+    if (view.onAdvance !== undefined) runReportedIntent(report, view.onAdvance, nxt)
+    runReportedIntent(report, view.onStepChange, nxt)
+  })
+  nav.appendChild(next)
+  el.appendChild(nav)
+
+  applyBaseStyle(el, view, state)
+  applyA11y(el, view)
+  return el
+}
+
+
+const renderSwipeableListItem = (
+  view: SwipeableListItemView,
+  state: DomRendererState,
+  report: IntentReporter
+): HTMLElement => {
+  const el = state.keyedElement(view, "div")
+  state.resetListeners(el)
+  el.setAttribute("data-en-swipeable", "true")
+  if (view.fullSwipeActionId !== undefined) {
+    el.setAttribute("data-en-full-swipe", view.fullSwipeActionId)
+  }
+  el.style.display = "flex"
+  el.style.alignItems = "stretch"
+  el.style.gap = "var(--en-spacing-2)"
+
+  const actions = (
+    side: "leading" | "trailing",
+    items: ReadonlyArray<{
+      readonly id: string
+      readonly label: string
+      readonly destructive?: boolean
+      readonly tone?: string
+    }>
+  ) => {
+    if (items.length === 0) return
+    const group = el.ownerDocument.createElement("div")
+    group.setAttribute("data-en-swipe-actions", side)
+    group.style.display = "flex"
+    group.style.gap = "var(--en-spacing-1)"
+    for (const action of items) {
+      const btn = el.ownerDocument.createElement("button")
+      btn.type = "button"
+      btn.textContent = action.label
+      btn.setAttribute("data-en-swipe-action", action.id)
+      if (action.destructive === true) btn.setAttribute("data-en-destructive", "true")
+      if (action.tone !== undefined) btn.setAttribute("data-en-tone", action.tone)
+      state.addListener(btn, "click", () => runReportedIntent(report, view.onAction, action.id))
+      group.appendChild(btn)
+    }
+    el.appendChild(group)
+  }
+
+  actions("leading", view.leadingActions ?? [])
+  const body = el.ownerDocument.createElement("div")
+  body.setAttribute("data-en-role", "swipe-body")
+  body.style.flex = "1"
+  body.appendChild(renderView(view.child, state, report))
+  el.appendChild(body)
+  actions("trailing", view.trailingActions ?? [])
+
+  applyBaseStyle(el, view, state)
+  applyA11y(el, view)
+  return el
+}
+
+const renderMobileSurfaceShell = (
+  view: BackgroundGradientView | WallpaperView | SpotlightView | FrameView,
+  state: DomRendererState,
+  report: IntentReporter
+): HTMLElement => {
+  const el = state.keyedElement(view, "div")
+  state.resetListeners(el)
+  el.setAttribute("data-en-mobile-surface", view._tag)
+  if (view._tag === "BackgroundGradient") {
+    const from = view.from ?? "background"
+    const to = view.to ?? "accent"
+    const dir = view.direction ?? "vertical"
+    el.style.background =
+      dir === "radial"
+        ? `radial-gradient(circle, var(--en-color-${from}) 0%, var(--en-color-${to}) 70%)`
+        : dir === "horizontal"
+          ? `linear-gradient(90deg, var(--en-color-${from}), var(--en-color-${to}))`
+          : `linear-gradient(180deg, var(--en-color-${from}), var(--en-color-${to}))`
+  }
+  if (view._tag === "Wallpaper") {
+    el.setAttribute("data-en-wallpaper", view.variant ?? "plain")
+    el.style.background = "var(--en-color-surface)"
+  }
+  if (view._tag === "Spotlight") {
+    el.setAttribute("data-en-spotlight", view.intensity ?? "md")
+    el.style.boxShadow = "0 0 40px var(--en-color-accent)"
+  }
+  if (view._tag === "Frame") {
+    el.setAttribute("data-en-frame", view.variant ?? "square")
+    el.style.border = "1px solid var(--en-color-accent)"
+    el.style.borderRadius =
+      view.variant === "rounded" || view.variant === "arcade" ? "var(--en-radius-lg)" : "0"
+    el.style.padding = "var(--en-spacing-3)"
+  }
+  el.replaceChildren(...view.children.map((child) => renderView(child, state, report)))
+  applyBaseStyle(el, view, state)
+  applyA11y(el, view)
+  return el
+}
+
+const renderBlurredPopup = (
+  view: BlurredPopupView,
+  state: DomRendererState,
+  report: IntentReporter
+): HTMLElement => {
+  const el = state.keyedElement(view, "div")
+  state.resetListeners(el)
+  el.setAttribute("data-en-blurred-popup", view.open ? "open" : "closed")
+  el.hidden = !view.open
+  if (view.open) {
+    el.style.position = "fixed"
+    el.style.inset = "0"
+    el.style.display = "flex"
+    el.style.alignItems = "center"
+    el.style.justifyContent = "center"
+    el.style.background = "color-mix(in srgb, var(--en-color-background) 55%, transparent)"
+    el.style.backdropFilter = "blur(8px)"
+    const panel = el.ownerDocument.createElement("div")
+    panel.setAttribute("data-en-role", "popup-panel")
+    for (const child of view.children) panel.appendChild(renderView(child, state, report))
+    el.appendChild(panel)
+    state.addListener(el, "click", (event) => {
+      if (event.target === el) runReportedIntent(report, view.onDismiss)
+    })
+  }
+  applyBaseStyle(el, view, state)
+  applyA11y(el, view)
+  return el
+}

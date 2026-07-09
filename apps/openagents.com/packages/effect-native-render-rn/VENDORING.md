@@ -21,8 +21,8 @@ so swapping to the real published dependency later is a package.json-only change
 ## Provenance
 
 - Upstream repo: `OpenAgentsInc/effect-native`
-- Upstream commit: `1aa6e364d9fc67cd22d493db9bf223bb0080bb0e` (catalog `v19`, 48 components)
-- Vendored: 2026-07-09 (bumped from `e32b97e`, catalog `v5`)
+- Upstream commit: `eb9685b64129a7335641106d298ff7c1b6805ad8` (catalog `v25`)
+- Vendored: 2026-07-08 (bumped from `1aa6e364`, catalog `v19`; earlier `e32b97e`, catalog `v5`)
 - Files copied verbatim: `packages/render-rn/src/**`
 
 ### Single source of truth + anti-staleness guard (2026-07-09)
@@ -43,7 +43,7 @@ To re-vendor: fetch upstream, re-copy each package's `src/**`, then bump the
 commit + catalogVersion in `effect-native-vendor.json` AND every vendored
 `package.json` `effectNativeVendor.commit`.
 
-### Monorepo build deltas vs. verbatim upstream (v19 bump)
+### Monorepo build deltas vs. verbatim upstream (v25 bump)
 
 The four packages are copied verbatim EXCEPT for the minimal edits the monorepo
 strict tsconfig forces (upstream compiles under a laxer config):
@@ -51,11 +51,11 @@ strict tsconfig forces (upstream compiles under a laxer config):
 - `effect-native-core/src/effect.ts` — monorepo-only "effect version bridge"
   re-export (`@effect-native/core/effect`) so consumers unify Effect versions.
   Not an upstream file.
-- `effect-native-core/src/index.ts` — removed 5 unused token imports
-  (`colorTokens`/`dimensionTokens`/`radiusTokens`/`spacingTokens`/`typeScaleTokens`,
-  still re-exported) and the dead `formatUnknown` helper to satisfy
-  `noUnusedLocals`. The EN-1 local `exactStruct` workaround (effect-native#44)
-  is gone — upstream's annotate-based fix is now the vendored code.
+- `effect-native-core/src/index.ts` — removed the dead `formatUnknown` helper to
+  satisfy `noUnusedLocals`. (At v25 the 5 token imports
+  `colorTokens`/`dimensionTokens`/`radiusTokens`/`spacingTokens`/`typeScaleTokens`
+  are now re-exported upstream, i.e. used, so they are kept verbatim — unlike the
+  v19 bump where they were removed as unused.)
 
 The upstream `@effect-native/render-canvas` package (Three.js scene-graph
 renderer) is NOT vendored: no monorepo consumer imports it yet. See the manifest
