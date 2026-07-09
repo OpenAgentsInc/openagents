@@ -1,0 +1,110 @@
+{
+  "schemaVersion": "sarah-take-scoreboard.v1",
+  "takeId": "sarah-reply-enhanced",
+  "title": "sarah_reply_enhanced — hq + full-strength per-frame GFPGAN",
+  "date": "2026-07-09",
+  "issueRefs": [
+    "#8610",
+    "#8618"
+  ],
+  "inputRefs": {
+    "sourceClip": "footage clip 8 (v2_traced-df7d3b47…, 720p24), trimmed to frames 0-184 (7.71 s), cycled forward+reverse",
+    "script": "OAV-1 Sarah reply (opener + C.1 product answer), same normalized-text audio as hq, 23.96 s",
+    "ttsReference": "gs://openagentsgemini-oa-artifacts/sarah-avatar/voice-ref/sarah_voice_ref_v1.wav (clip 4, 5.40 s, STT confidence 1.00)",
+    "modelVersions": {
+      "musetalk": "1.5 (256^2 mouth inpaint, fp16, batch 20)",
+      "cosyvoice": "CosyVoice2-0.5B zero-shot + spoken-form normalizer",
+      "gfpgan": "v1.4 full-strength per-frame on the 256^2 crop pre-paste-back",
+      "encode": "libx264 CRF16 preset slow + loudnorm"
+    },
+    "recipe": "hq + GFPGAN v1.4 full-strength per-frame on the synthesized 256^2 crop before paste-back",
+    "commits": [
+      "hydralisk 40b2783 (spoken-form TTS normalizer)"
+    ],
+    "artifactUris": [
+      "gs://openagentsgemini-oa-artifacts/sarah-avatar/oav1/sarah_reply_enhanced.mp4",
+      "gs://openagentsgemini-oa-artifacts/sarah-avatar/oav1/qa2/"
+    ]
+  },
+  "audioGates": {
+    "sttRoundTrip": {
+      "status": "pass",
+      "perSegment": false,
+      "transcriber": "Gemini (same audio as hq)",
+      "notes": "'A I' letters 3/3; 'coding agents' correct"
+    },
+    "loudnessLufs": -18.4,
+    "truePeakDbtp": -2.9,
+    "pauseTiming": {
+      "status": "watch",
+      "notes": "staccato letter-speech pacing (same audio as hq)"
+    },
+    "prosody": {
+      "humanVerdict": "watch",
+      "notes": "same staccato letter-spaced audio as hq; clipped audio likely amplified the clipped-viseme percept"
+    },
+    "initialismRisk": "normalizer letter-spacing 'A I' — correct words, robotic rhythm"
+  },
+  "videoGates": {
+    "ownerPlaybackVerdict": {
+      "status": "fail",
+      "notes": "OWNER VERDICT: choppier, plastic, way less humanlike in motion — after passing stills QA (crisp teeth, no measured flicker, invisible seam)"
+    },
+    "avSync": {
+      "start": "not_run",
+      "middle": "not_run",
+      "end": "not_run",
+      "notes": "not separately re-measured; frame inspection surfaced no offset"
+    },
+    "cropSharpness": {
+      "status": "pass",
+      "notes": "individual tooth definition, crisp lip edges — in stills; the sharpness is the problem in motion"
+    },
+    "temporalBoil": {
+      "status": "watch",
+      "notes": "no measured boil at sampled 24-frame windows (2.92 vs hq 2.82 mean diff at t=8 s) — but playback percept is per-frame GAN mode-snapping, invisible to frame-diff statistics"
+    },
+    "chunkBoundaryJerk": {
+      "status": "pass",
+      "metrics": {
+        "frames": 575,
+        "fps": 24,
+        "motionMean": 1.43,
+        "motionP95": 2.44,
+        "jerkMean": 0.21,
+        "jerkP95": 0.56
+      },
+      "notes": "metrics statistically identical to the original — the owner-perceived choppiness is per-frame GAN restoration, not gross frame-level jitter"
+    },
+    "identityDrift": {
+      "status": "watch",
+      "notes": "no drift in stills; over-restored skin/teeth texture reads uncanny/plastic in motion"
+    },
+    "pasteBackSeam": {
+      "status": "pass",
+      "notes": "seam invisible in every sampled crop"
+    },
+    "badFrameExclusions": [
+      "clip 8 trimmed to frames 0-184 (no-face tail)"
+    ],
+    "notes": "The stills-vs-motion split that created the playback-first law: per-frame GFPGAN has no temporal model, so every frame is pulled toward its own restored mode."
+  },
+  "operationalGates": {
+    "renderWallSeconds": 254,
+    "gpuType": "GCE g2-standard-8, 1x NVIDIA L4 24 GB (us-central1-b)",
+    "costEstimateUsd": 0.06,
+    "costNotes": "254 s render at ~$0.85/h",
+    "artifactExistenceCheck": {
+      "status": "pass",
+      "method": "object_exists"
+    },
+    "hostDisposition": {
+      "status": "left_running",
+      "reason": "prod_render_node — sarah-avatar-gpu-1 is the permanent OAV render node after the 2026-07-09 /sarah flip (~$0.85/h)"
+    },
+    "gcsIndexUpdated": true,
+    "noSecretsInArtifacts": true
+  },
+  "advance": false,
+  "verdictSummary": "OWNER PLAYBACK FAIL: choppier, plastic, less humanlike in motion — after passing stills QA. Full-strength per-frame GFPGAN is banned as a default; tamed recipe (v3) replaces it."
+}

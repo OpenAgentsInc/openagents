@@ -100,7 +100,10 @@ bun run test:gpu-media-closeout
 ## Relationship to other SQ issues
 
 - **SQ-1** scoreboard sits *beside* the media artifact; closeout proves the
-  artifact exists and the host/cost state is honest.
+  artifact exists and the host/cost state is honest. The scoreboard's
+  operational-gates section embeds this checklist: schema/CLI in
+  `packages/sarah-take-scoreboard` (`score-take`), records under
+  `docs/sarah/scoreboards/`.
 - **SQ-4** hardens the live renderer; closeout still applies to every offline
   bake and experiment matrix run (SQ-2).
 - **OAV-1 receipt** (`2026-07-09-oav1-offline-proof-receipt.md`) is the

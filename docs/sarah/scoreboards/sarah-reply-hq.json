@@ -1,0 +1,99 @@
+{
+  "schemaVersion": "sarah-take-scoreboard.v1",
+  "takeId": "sarah-reply-hq",
+  "title": "sarah_reply_hq (v2) — normalized-text audio + CRF16 encode",
+  "date": "2026-07-09",
+  "issueRefs": [
+    "#8610",
+    "#8618"
+  ],
+  "inputRefs": {
+    "sourceClip": "footage clip 8 (v2_traced-df7d3b47…, 720p24), trimmed to frames 0-184 (7.71 s), cycled forward+reverse",
+    "script": "OAV-1 Sarah reply (opener + C.1 product answer), re-synthesized with spoken-form normalization, 23.96 s",
+    "ttsReference": "gs://openagentsgemini-oa-artifacts/sarah-avatar/voice-ref/sarah_voice_ref_v1.wav (clip 4, 5.40 s, STT confidence 1.00)",
+    "modelVersions": {
+      "musetalk": "1.5 (256^2 mouth inpaint, fp16, batch 20)",
+      "cosyvoice": "CosyVoice2-0.5B zero-shot + spoken-form normalizer",
+      "encode": "libx264 CRF16 preset slow (2.6 Mbps) + loudnorm"
+    },
+    "recipe": "raw MuseTalk paste-back, no enhancement; normalized-text audio re-synthesis; CRF16 encode",
+    "commits": [
+      "hydralisk 40b2783 (spoken-form TTS normalizer: initialism lexicon + all-caps heuristic)"
+    ],
+    "artifactUris": [
+      "gs://openagentsgemini-oa-artifacts/sarah-avatar/oav1/sarah_reply_hq.mp4",
+      "gs://openagentsgemini-oa-artifacts/sarah-avatar/oav1/qa2/"
+    ]
+  },
+  "audioGates": {
+    "sttRoundTrip": {
+      "status": "pass",
+      "perSegment": false,
+      "transcriber": "Gemini (independent round-trip on the final mux)",
+      "notes": "'A I' spoken as letters 3/3; 'coding agents' correct; all v1 defects fixed"
+    },
+    "loudnessLufs": -18.4,
+    "truePeakDbtp": -2.9,
+    "pauseTiming": {
+      "status": "watch",
+      "notes": "staccato letter-speech pacing from hard 'A I' letter-spacing"
+    },
+    "prosody": {
+      "humanVerdict": "watch",
+      "notes": "letter-spaced 'A I … A P I' reads staccato; punctuation-prosody variant ('A.I.') adopted in v3"
+    },
+    "initialismRisk": "normalizer letter-spacing 'A I' — correct words, robotic rhythm"
+  },
+  "videoGates": {
+    "ownerPlaybackVerdict": {
+      "status": "pending",
+      "notes": "no owner in-motion verdict recorded for hq alone; owner watched the enhanced derivative"
+    },
+    "avSync": {
+      "start": "not_run",
+      "middle": "not_run",
+      "end": "not_run",
+      "notes": "not separately re-measured; QA2 frame inspection surfaced no offset"
+    },
+    "cropSharpness": {
+      "status": "watch",
+      "notes": "encode softness gone at CRF16; residual MuseTalk 256^2 teeth softness remains"
+    },
+    "temporalBoil": {
+      "status": "pass",
+      "notes": "no flicker in QA2 sampled windows"
+    },
+    "chunkBoundaryJerk": {
+      "status": "pass",
+      "notes": "whole-timeline mouth-region mean |diff| 8.88 vs original 8.77 (statistically identical); native-fps jerk metrics not computed for this take"
+    },
+    "identityDrift": {
+      "status": "pass"
+    },
+    "pasteBackSeam": {
+      "status": "pass",
+      "notes": "blend seam invisible in every sampled crop"
+    },
+    "badFrameExclusions": [
+      "clip 8 trimmed to frames 0-184 (no-face tail)"
+    ]
+  },
+  "operationalGates": {
+    "renderWallSeconds": 108,
+    "gpuType": "GCE g2-standard-8, 1x NVIDIA L4 24 GB (us-central1-b)",
+    "costEstimateUsd": 0.03,
+    "costNotes": "108 s render at ~$0.85/h",
+    "artifactExistenceCheck": {
+      "status": "pass",
+      "method": "object_exists"
+    },
+    "hostDisposition": {
+      "status": "left_running",
+      "reason": "prod_render_node — sarah-avatar-gpu-1 is the permanent OAV render node after the 2026-07-09 /sarah flip (~$0.85/h)"
+    },
+    "gcsIndexUpdated": true,
+    "noSecretsInArtifacts": true
+  },
+  "advance": false,
+  "verdictSummary": "Audio defects from v1 all fixed (STT-verified); encode softness gone; residual MuseTalk 256^2 teeth softness. Baseline for the enhancement variants; no standalone owner playback verdict."
+}

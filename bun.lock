@@ -1168,6 +1168,20 @@
         "typescript": "catalog:",
       },
     },
+    "packages/sarah-take-scoreboard": {
+      "name": "@openagentsinc/sarah-take-scoreboard",
+      "version": "0.1.0",
+      "bin": {
+        "score-take": "./src/cli.ts",
+      },
+      "dependencies": {
+        "effect": "catalog:",
+      },
+      "devDependencies": {
+        "bun-types": "^1.0.0",
+        "typescript": "catalog:",
+      },
+    },
     "packages/tassadar-executor": {
       "name": "@openagentsinc/tassadar-executor",
       "version": "0.1.0",
@@ -1974,6 +1988,8 @@
     "@openagentsinc/reactor-contracts": ["@openagentsinc/reactor-contracts@workspace:packages/reactor-contracts"],
 
     "@openagentsinc/sarah": ["@openagentsinc/sarah@workspace:apps/sarah"],
+
+    "@openagentsinc/sarah-take-scoreboard": ["@openagentsinc/sarah-take-scoreboard@workspace:packages/sarah-take-scoreboard"],
 
     "@openagentsinc/sync-client": ["@openagentsinc/sync-client@workspace:apps/openagents.com/packages/sync-client"],
 
@@ -4692,6 +4708,8 @@
     "@openagentsinc/sarah/effect": ["effect@4.0.0-beta.70", "", { "dependencies": { "@standard-schema/spec": "^1.1.0", "fast-check": "^4.8.0", "find-my-way-ts": "^0.1.6", "ini": "^7.0.0", "kubernetes-types": "^1.30.0", "msgpackr": "^2.0.1", "multipasta": "^0.2.7", "toml": "^4.1.1", "uuid": "^14.0.0", "yaml": "^2.9.0" } }, "sha512-8AwGTRiNriirHGEYHrOS0E9fzdhIqCdZjiHP1YXmNo2UyPGS43ILsymsSHT7V0DJS+8dvlKq2RxnrDBUhDNZHg=="],
 
     "@openagentsinc/sarah/zod": ["zod@4.4.3", "", {}, "sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ=="],
+
+    "@openagentsinc/sarah-take-scoreboard/effect": ["effect@4.0.0-beta.70", "", { "dependencies": { "@standard-schema/spec": "^1.1.0", "fast-check": "^4.8.0", "find-my-way-ts": "^0.1.6", "ini": "^7.0.0", "kubernetes-types": "^1.30.0", "msgpackr": "^2.0.1", "multipasta": "^0.2.7", "toml": "^4.1.1", "uuid": "^14.0.0", "yaml": "^2.9.0" } }, "sha512-8AwGTRiNriirHGEYHrOS0E9fzdhIqCdZjiHP1YXmNo2UyPGS43ILsymsSHT7V0DJS+8dvlKq2RxnrDBUhDNZHg=="],
 
     "@openagentsinc/sync-client/effect": ["effect@4.0.0-beta.70", "", { "dependencies": { "@standard-schema/spec": "^1.1.0", "fast-check": "^4.8.0", "find-my-way-ts": "^0.1.6", "ini": "^7.0.0", "kubernetes-types": "^1.30.0", "msgpackr": "^2.0.1", "multipasta": "^0.2.7", "toml": "^4.1.1", "uuid": "^14.0.0", "yaml": "^2.9.0" } }, "sha512-8AwGTRiNriirHGEYHrOS0E9fzdhIqCdZjiHP1YXmNo2UyPGS43ILsymsSHT7V0DJS+8dvlKq2RxnrDBUhDNZHg=="],
 

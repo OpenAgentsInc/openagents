@@ -1,0 +1,100 @@
+{
+  "schemaVersion": "sarah-take-scoreboard.v1",
+  "takeId": "sarah-openers-v1",
+  "title": "Opener library v1 — 5 scripts x v3/LatentSync (10 clips)",
+  "date": "2026-07-09",
+  "issueRefs": [
+    "#8610",
+    "#8618"
+  ],
+  "inputRefs": {
+    "sourceClip": "clips 4, 5, 0, 3, 8-trim per script (01-hello, 02-welcome-back, 03-good-question, 04-got-it, 05-show-you); see openers/manifest.json",
+    "script": "5 opener scripts, 3.6-5.8 s each: hello / welcome-back / good-question / got-it / show-you",
+    "ttsReference": "gs://openagentsgemini-oa-artifacts/sarah-avatar/voice-ref/sarah_voice_ref_v1.wav (clip 4); CosyVoice2 seed 1986 first-pass on all five",
+    "modelVersions": {
+      "musetalk": "1.5 + tamed-GFPGAN v3 recipe (per-clip -v3 variants)",
+      "latentsync": "1.6 (per-clip -ls variants, full-band 24 kHz re-mux + CRF16 slow)",
+      "cosyvoice": "CosyVoice2-0.5B zero-shot, seed 1986, loudnorm"
+    },
+    "recipe": "per script: one gated CosyVoice2 audio (seed 1986, loudnorm, per-segment whisper STT gate) rendered on BOTH the v3 recipe and LatentSync 1.6",
+    "commits": [
+      "hydralisk 40b2783 (spoken-form TTS normalizer)"
+    ],
+    "artifactUris": [
+      "gs://openagentsgemini-oa-artifacts/sarah-avatar/openers/ (10 MP4s + gated wavs + manifest.json)"
+    ]
+  },
+  "audioGates": {
+    "sttRoundTrip": {
+      "status": "pass",
+      "perSegment": true,
+      "transcriber": "whisper (batch gate) + Gemini (spot checks)",
+      "notes": "word-level pass on all 10 clips — and still insufficient: the opener-01 'Hello?' rising-intonation defect passes word-level STT"
+    },
+    "loudnessLufs": -16,
+    "truePeakDbtp": -3,
+    "pauseTiming": {
+      "status": "fail",
+      "notes": "robotic pacing on short scripts; zero-shot prosody instability dominates 4-6 s clips"
+    },
+    "prosody": {
+      "humanVerdict": "fail",
+      "notes": "opener-01 rises ('Hello?') on the single most important word in the library; wrong intonation / robotic pacing / flat affect across the set — an opener IS its prosody. LLM audio judge (Gemini 1-10) adopted for the openers-v2 bake-off."
+    },
+    "initialismRisk": "opener scripts avoid initialisms by design"
+  },
+  "videoGates": {
+    "ownerPlaybackVerdict": {
+      "status": "fail",
+      "notes": "OWNER VERDICT: ALL 10 clips fail playback — despite passing stills, jerk metrics, and word-level STT"
+    },
+    "avSync": {
+      "start": "not_run",
+      "middle": "not_run",
+      "end": "not_run",
+      "notes": "per-clip sync not separately measured; frame inspection surfaced no offset"
+    },
+    "cropSharpness": {
+      "status": "watch",
+      "notes": "02/03/04 clean on inspection; opener-05 v3 motion (1.19) and jerk (0.14) suspiciously low for 4 s of continuous speech — possible under-articulation"
+    },
+    "temporalBoil": {
+      "status": "pass",
+      "notes": "no boil flagged in per-clip frame inspection"
+    },
+    "chunkBoundaryJerk": {
+      "status": "watch",
+      "notes": "per-clip mouth-crop jerk: v3 variants 0.14-0.80 vs LatentSync 0.34-1.27 (v3 smoother on every script); LS variants inherit the 16-frame chunk hitch; openers 01/02 jerk inflated by real source motion, not artifacts"
+    },
+    "identityDrift": {
+      "status": "pass",
+      "notes": "clean identity on inspected clips"
+    },
+    "pasteBackSeam": {
+      "status": "pass"
+    },
+    "badFrameExclusions": [
+      "openers 01/02 used high-motion big-smile source clips (mouth-region motion 3.7-4.2 vs 1.2 on the long take) — source-motion conflict; calm-clip rule (<1.5 mouth motion) adopted for openers-v2"
+    ],
+    "notes": "Ranked failure hypotheses: zero-shot TTS prosody instability on short texts; source-motion conflict (synthesized mouth vs smiling cheeks/eyes); model-tier ceiling on expressiveness (neither MuseTalk nor LatentSync generates greeting-appropriate head/face motion)."
+  },
+  "operationalGates": {
+    "renderWallSeconds": 1324,
+    "gpuType": "GCE g2-standard-8, 1x NVIDIA L4 24 GB (us-central1-b)",
+    "costEstimateUsd": 0.35,
+    "costNotes": "sum of per-clip renders: v3 443 s + LatentSync 881 s at ~$0.85/h, plus TTS",
+    "artifactExistenceCheck": {
+      "status": "pass",
+      "method": "object_exists",
+      "notes": "10 MP4s + wavs + manifest.json verified in gs://…/sarah-avatar/openers/"
+    },
+    "hostDisposition": {
+      "status": "left_running",
+      "reason": "prod_render_node — sarah-avatar-gpu-1 is the permanent OAV render node after the 2026-07-09 /sarah flip (~$0.85/h)"
+    },
+    "gcsIndexUpdated": true,
+    "noSecretsInArtifacts": true
+  },
+  "advance": false,
+  "verdictSummary": "OWNER PLAYBACK FAIL on ALL 10 clips despite passing stills, jerk metrics, and word-level STT. Hardened rules: playback + prosody judgment gate every take; short clips are the HARDER problem. Successors: openers-v2 audio bake-off (LLM judge), calm-clip re-render, Hallo2 still-animation tier."
+}

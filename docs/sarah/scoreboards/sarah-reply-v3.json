@@ -1,0 +1,107 @@
+{
+  "schemaVersion": "sarah-take-scoreboard.v1",
+  "takeId": "sarah-reply-v3",
+  "title": "sarah_reply_v3 — tamed GFPGAN + punctuation-prosody audio",
+  "date": "2026-07-09",
+  "issueRefs": [
+    "#8610",
+    "#8618"
+  ],
+  "inputRefs": {
+    "sourceClip": "footage clip 8 (v2_traced-df7d3b47…, 720p24), trimmed to frames 0-184 (7.71 s), cycled forward+reverse",
+    "script": "OAV-1 Sarah reply (opener + C.1 product answer), punctuation-prosody audio ('A.I.' replaces hard letter-spacing)",
+    "ttsReference": "gs://openagentsgemini-oa-artifacts/sarah-avatar/voice-ref/sarah_voice_ref_v1.wav (clip 4, 5.40 s, STT confidence 1.00)",
+    "modelVersions": {
+      "musetalk": "1.5 (256^2 mouth inpaint, audio_padding 3/3)",
+      "cosyvoice": "CosyVoice2-0.5B zero-shot + punctuation-prosody normalization",
+      "gfpgan": "v1.4 tamed: alpha-blend 0.45 + feathered mouth-only mask + temporal EMA (pixels + bbox)",
+      "encode": "libx264 CRF16 preset slow + loudnorm"
+    },
+    "recipe": "tamed GFPGAN (A2+A3): alpha 0.45 + feathered mouth mask + temporal EMA on the delta + audio_padding 3/3 + punctuation-prosody audio",
+    "commits": [
+      "hydralisk 40b2783 (spoken-form TTS normalizer)"
+    ],
+    "artifactUris": [
+      "gs://openagentsgemini-oa-artifacts/sarah-avatar/oav1/sarah_reply_v3.mp4",
+      "gs://openagentsgemini-oa-artifacts/sarah-avatar/oav1/qa3/"
+    ]
+  },
+  "audioGates": {
+    "sttRoundTrip": {
+      "status": "pass",
+      "perSegment": true,
+      "transcriber": "per-segment STT",
+      "notes": "all four 'A.I.' occurrences transcribe cleanly per-segment; whole-clip artifacts ('a AI', 'I.I.') were transcriber noise; 'coding agents' correct"
+    },
+    "loudnessLufs": -18.4,
+    "truePeakDbtp": -3,
+    "pauseTiming": {
+      "status": "watch",
+      "notes": "improved rhythm via punctuation prosody; owner ear verdict pending"
+    },
+    "prosody": {
+      "humanVerdict": "pending",
+      "notes": "punctuation-prosody 'A.I.' variant; owner ear verdict pending with the playback head-to-head"
+    },
+    "initialismRisk": "punctuation form 'A.I.' — natural rhythm, verified per-segment"
+  },
+  "videoGates": {
+    "ownerPlaybackVerdict": {
+      "status": "pending",
+      "notes": "head-to-head vs sarah_reply_latentsync on the owner's Desktop pending"
+    },
+    "avSync": {
+      "start": "not_run",
+      "middle": "not_run",
+      "end": "not_run",
+      "notes": "not separately re-measured; frame inspection surfaced no offset"
+    },
+    "cropSharpness": {
+      "status": "pass",
+      "notes": "teeth defined but natural — clearly between raw MuseTalk softness and plastic full-GFPGAN"
+    },
+    "temporalBoil": {
+      "status": "pass",
+      "notes": "consecutive frames at t=8 s smooth, no boil"
+    },
+    "chunkBoundaryJerk": {
+      "status": "pass",
+      "metrics": {
+        "frames": 565,
+        "fps": 24,
+        "motionMean": 1.26,
+        "motionP95": 2.13,
+        "jerkMean": 0.15,
+        "jerkP95": 0.44
+      },
+      "notes": "measures smoother than every other take INCLUDING the original — the EMA + 0.45 blend + feathered mask recipe delivered"
+    },
+    "identityDrift": {
+      "status": "pass"
+    },
+    "pasteBackSeam": {
+      "status": "pass"
+    },
+    "badFrameExclusions": [
+      "clip 8 trimmed to frames 0-184 (no-face tail)"
+    ]
+  },
+  "operationalGates": {
+    "renderWallSeconds": 252,
+    "gpuType": "GCE g2-standard-8, 1x NVIDIA L4 24 GB (us-central1-b)",
+    "costEstimateUsd": 0.06,
+    "costNotes": "252 s render at ~$0.85/h (~3x faster than LatentSync)",
+    "artifactExistenceCheck": {
+      "status": "pass",
+      "method": "object_exists"
+    },
+    "hostDisposition": {
+      "status": "left_running",
+      "reason": "prod_render_node — sarah-avatar-gpu-1 is the permanent OAV render node after the 2026-07-09 /sarah flip (~$0.85/h)"
+    },
+    "gcsIndexUpdated": true,
+    "noSecretsInArtifacts": true
+  },
+  "advance": false,
+  "verdictSummary": "Measured smoothest take of all (jerk mean 0.15, beating even the original); current best MuseTalk-lane recipe. Owner playback pending — cannot advance on metrics alone."
+}
