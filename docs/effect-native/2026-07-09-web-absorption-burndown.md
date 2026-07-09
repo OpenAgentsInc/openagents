@@ -181,3 +181,33 @@ until a serving-cutover plan exists (see Architecture context above).
    `loggedIn/autopilot-work` (~43k LOC across ~62 files) is large enough that
    it should get its own dedicated EN-4 sub-lane/issue rather than being one
    row in this table once real work starts there.
+
+## Vendored effect-native freshness (2026-07-09)
+
+The four vendored `@effect-native/*` packages under
+`apps/openagents.com/packages/` are a snapshot of the public
+`OpenAgentsInc/effect-native` repo (unbuilt TS, not on npm). They were bumped
+from catalog `v5` (commit `e32b97e`) to catalog `v19` / 48 components (commit
+`1aa6e364d9fc67cd22d493db9bf223bb0080bb0e`) so the web/mobile/desktop EN
+surfaces track upstream instead of silently rotting.
+
+Single source of truth: `apps/openagents.com/packages/effect-native-vendor.json`
+(`commit`, `catalogVersion`, `vendoredPackages`). Each vendored `package.json`
+also records the commit under `effectNativeVendor`.
+
+Two mechanical guards keep the snapshot honest:
+
+- **Hard test (in `check:deploy`):**
+  `bun run --cwd apps/openagents.com test:effect-native-vendor-guard`. A
+  partial bump (one package left at a stale commit) or a core `CatalogVersion`
+  literal that disagrees with the manifest is a RED test — you cannot ship a
+  half-vendored tree.
+- **Freshness warning (never fatal):**
+  `bun run --cwd apps/openagents.com check:effect-native-vendor` compares the
+  manifest commit to the sibling `~/work/effect-native` `origin/main` tip and
+  prints how many commits behind the vendor is. Upstream moves fast, so
+  staleness is a warning, not a failure; only mismatch/partial-vendor is hard.
+
+`@effect-native/render-canvas` (upstream's Three.js scene-graph renderer) is
+intentionally NOT vendored yet — no monorepo consumer imports it. When a surface
+needs it, vendor it as a fifth package and add it to the manifest.
