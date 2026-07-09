@@ -43,6 +43,7 @@ import {
   Footer,
   Glow,
   Hero,
+  LogoRow,
   MockupFrame,
   NavBar,
   PricingColumn,
@@ -427,6 +428,32 @@ const footerColumns: ReadonlyArray<FooterColumn> = [
   },
 ]
 
+// LogoRow.source is schema-gated as a URI (`^[a-z][a-z0-9+.-]*:`). Use
+// https placeholders for the four work-surface names; real brand asset URLs
+// can replace these without changing the typed tree shape (stage1 pattern).
+const LOGO_ITEMS = [
+  {
+    id: 'khala-code',
+    source: 'https://cdn.simpleicons.org/visualstudiocode/007ACC',
+    alt: 'Khala Code',
+  },
+  {
+    id: 'business-work',
+    source: 'https://cdn.simpleicons.org/nodedotjs/339933',
+    alt: 'Business work',
+  },
+  {
+    id: 'network-evidence',
+    source: 'https://cdn.simpleicons.org/cloudflare/F38020',
+    alt: 'Network evidence',
+  },
+  {
+    id: 'product-promises',
+    source: 'https://cdn.simpleicons.org/shieldsdotio/000000',
+    alt: 'Product promises',
+  },
+] as const
+
 // ---------------------------------------------------------------------------
 // Root view
 // ---------------------------------------------------------------------------
@@ -572,11 +599,13 @@ export const landingEnView = (state: LandingEnState): View =>
       ),
 
       // Logos / "built on" trust band.
-      // NOTE(content-gap): the launch-ui logos row uses tech-logo image assets;
-      // OpenAgents has no vetted partner/tech logo image set, so this renders a
-      // text surface strip. Swapping in the LogoRow catalog component is a
-      // pure content/asset task once real logo assets are approved (not a code
-      // gap — LogoRow is vendored and renderer-ready).
+      // LogoRow.source is schema-gated as a URI (`^[a-z][a-z0-9+.-]*:`), so
+      // same-origin relative assets are blocked (EN-2 gap #8572). Stage1 proved
+      // the catalog path with https CDN placeholders; we use the same pattern
+      // here so the landing is authored from LogoRow (full marketing catalog)
+      // rather than a text strip. Alts keep the existing OpenAgents surface
+      // names verbatim; swap sources for owner-approved brand assets later
+      // without changing the typed tree shape.
       bandSection('landing-en-logos', [
         text(
           'landing-en-logos-title',
@@ -584,21 +613,11 @@ export const landingEnView = (state: LandingEnState): View =>
           'title',
           'textMuted',
         ),
-        Stack(
-          {
-            key: 'landing-en-logos-row',
-            direction: 'row',
-            gap: '6',
-            align: 'center',
-            style: { width: 'full' },
-          },
-          [
-            text('landing-en-logo-khala', 'Khala Code', 'label', 'textMuted'),
-            text('landing-en-logo-business', 'Business work', 'label', 'textMuted'),
-            text('landing-en-logo-network', 'Network evidence', 'label', 'textMuted'),
-            text('landing-en-logo-promises', 'Product promises', 'label', 'textMuted'),
-          ],
-        ),
+        LogoRow({
+          key: 'landing-en-logos-row',
+          logos: LOGO_ITEMS.map((logo) => ({ ...logo })),
+          style: { width: 'full' },
+        }),
       ]),
 
       // Items / features.
