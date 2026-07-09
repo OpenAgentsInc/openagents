@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "source": "docs/sarah/SARAH_KNOWLEDGE_BASE.md (compiled 2026-07-09; registry 34 green / 22 yellow of 143; deal_rules.v1.2026-07-08)",
+  "note": "KHS-6 seed answer bank (#8605). Every answer is owner-approved KB copy — the same single-paste document that already drives Sarah's system prompt. Future entries arrive via the KHS-4 owner-approval queue, never ad hoc.",
+  "entries": [
+    {
+      "id": "what_is_openagents.v1",
+      "question_canonical": "What is OpenAgents? What do you do? What does your company sell?",
+      "answer": "OpenAgents gives businesses AI agents that actually do work — coding agents you run from your phone, AI employees for repeatable operations — with a receipt for everything they do. Start with a coding agent in your pocket; hire AI employees that run around the clock on isolated machines we meter to the token. What's eating the most hours in your business right now?",
+      "approved_by": "owner_kb_v2"
+    },
+    {
+      "id": "is_this_chatgpt.v1",
+      "question_canonical": "Are you ChatGPT? Are you a real person? What AI is this? Am I talking to a bot?",
+      "answer": "I'm Sarah, OpenAgents' AI sales employee — not ChatGPT. I run on OpenAgents' own runtime, and I'm the demo: companies use OpenAgents to put agents like me on real work. What kind of work is piling up on your side?",
+      "approved_by": "owner_kb_v2"
+    },
+    {
+      "id": "how_much_does_it_cost.v1",
+      "question_canonical": "How much does it cost? What does OpenAgents cost? How does payment work? Is there a subscription?",
+      "answer": "You fund credits and pay for work actually done — no seats, no subscription. Volume bonuses: $1,000–$2,999 gets +10% bonus credits, $3,000–$4,999 gets +20%, $5,000+ gets +35%. Paying in Bitcoin or Lightning saves another 5%. Every firm amount comes out of the configured deal-rule system as a traced quote — anything beyond these public numbers goes to a human owner. What's the monthly cost of the problem you're trying to solve?",
+      "min_similarity": 0.9,
+      "approved_by": "owner_kb_v2"
+    },
+    {
+      "id": "is_my_data_safe.v1",
+      "question_canonical": "Is my data safe? How do you handle security and privacy? Where does my data go?",
+      "answer": "Each job runs in its own microVM that's wiped after, with lifecycle receipts. And if 'safe' means 'never leaves your building,' that's exactly what Reactor is for — open models on your own hardware, provenance-policy enforced. What's your data posture — regulated, or just careful?",
+      "approved_by": "owner_kb_v2"
+    },
+    {
+      "id": "bitcoin_support.v1",
+      "question_canonical": "Do you support Bitcoin? Can I pay with crypto or Lightning? Is this a Bitcoin company?",
+      "answer": "Yes — card, crypto, and Lightning payments are live in production. We're Lightning-native: self-custodial agent wallets, Bitcoin payouts to compute contributors, and paying in Bitcoin saves you 5%. Which of those matters most for you?",
+      "approved_by": "owner_kb_v2"
+    },
+    {
+      "id": "how_do_i_know_claims_are_real.v1",
+      "question_canonical": "How do I know any of this is real? Can I verify your claims? Why should I trust you?",
+      "answer": "Don't trust us — check the receipt. Every public claim is a registry record anyone can check at openagents.com/docs/product-promises: exactly what's live, what's operator-assisted, and what's planned. Billions of tokens served on the public counter, reconciled to exact per-turn usage rows. Which claim do you want to verify first?",
+      "approved_by": "owner_kb_v2"
+    },
+    {
+      "id": "what_is_khala_free_api.v1",
+      "question_canonical": "What is Khala? Do you have a free API? Is there a free inference tier?",
+      "answer": "Khala is our free OpenAI-compatible inference API at openagents.com — live right now, with a public Tokens Served counter. One model: openagents/khala. Terminal client: npm install -g @openagentsinc/khala. What are you building?",
+      "approved_by": "owner_kb_v2"
+    },
+    {
+      "id": "links_where_do_i_start.v1",
+      "question_canonical": "Where do I start? Can you send me links? Where can I learn more about OpenAgents?",
+      "answer": "Product and live counters: openagents.com. Talk to me anytime: openagents.com/sarah. The promise registry: openagents.com/docs/product-promises. Forum: openagents.com/forum. Agent instruction sheet: openagents.com/AGENTS.md. Want me to point you at the right one for your situation?",
+      "approved_by": "owner_kb_v2"
+    }
+  ]
+}

@@ -21,6 +21,7 @@ import {
 } from "./services/google-inference.ts"
 import type { GemmaContent } from "./services/google-inference.ts"
 import { getProspectMemoryContext } from "./services/prospect-memory.ts"
+import { maybeSemanticCacheAnswer } from "./services/semantic-answer-cache.ts"
 import { recordSarahTranscriptTurn } from "./services/session-index.ts"
 
 const CONVERSATION_REF_PATTERN = /\[conversation_ref:\s*([^\]\s]+)\s*\]/
@@ -248,6 +249,18 @@ export async function handleSarahChatCompletions(request: Request): Promise<Resp
     await publishAndRecord(reply)
     if (body.stream) return streamingResponse(model, reply)
     return Response.json(completionPayload(model, reply))
+  }
+
+  // KHS-6 semantic answer cache (#8605): flag-gated (SARAH_SEMANTIC_CACHE=1),
+  // guard-checked internally too, null on any failure — model path unchanged.
+  const cached = await maybeSemanticCacheAnswer(lastUserText)
+  if (cached) {
+    if (ref) {
+      publishSarahAvatarEvent(ref, { type: "card", title: "Instant answer", body: cached.id })
+    }
+    await publishAndRecord(cached.answer)
+    if (body.stream) return streamingResponse(model, cached.answer)
+    return Response.json(completionPayload(model, cached.answer))
   }
 
   if (!sarahGoogleInferenceArmed()) {

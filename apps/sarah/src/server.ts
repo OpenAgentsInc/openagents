@@ -32,6 +32,7 @@ import { processDueSarahFollowUps } from "./services/follow-up-scheduler.ts"
 import { enqueueSarahEmailDraft } from "./services/crm-email-rail.ts"
 import { runOwnedSarahTurn } from "./agent-runtime/owned-runtime.ts"
 import { handleSarahChatCompletions } from "./llm-openai-compat.ts"
+import { sarahAnswerCacheStatus } from "./services/semantic-answer-cache.ts"
 import { sarahTurnStoreStatus } from "./services/turn-store.ts"
 import { sarahAvatarEventStream } from "./services/avatar-event-bus.ts"
 import {
@@ -201,6 +202,7 @@ async function handleOperatorOps(): Promise<Response> {
     agentRuntime: "owned_effect_seed",
     avatar: sarahAvatarStatus(),
     turnStore: sarahTurnStoreStatus(),
+    answerCache: sarahAnswerCacheStatus(),
     modelPath: sarahGoogleInferenceArmed()
       ? `google_gemma_live:${sarahTextModel()}`
       : "seed_echo_not_armed",

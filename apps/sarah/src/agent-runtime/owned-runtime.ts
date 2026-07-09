@@ -22,6 +22,7 @@ import {
 } from "../services/google-inference.ts"
 import type { GemmaContent } from "../services/google-inference.ts"
 import { getProspectMemoryContext } from "../services/prospect-memory.ts"
+import { maybeSemanticCacheAnswer } from "../services/semantic-answer-cache.ts"
 import { getSarahRealtimeInstructions } from "../services/sarah-instructions.ts"
 import {
   getSarahSessionTranscript,
@@ -43,7 +44,7 @@ export type OwnedSarahTurnInput = {
 export type OwnedSarahTurnResult = {
   runtime: "owned_effect_seed"
   /** "google_gemma_live" when a real model produced the reply. */
-  modelPath: "google_gemma_live" | "seed_echo" | "deterministic_guard"
+  modelPath: "google_gemma_live" | "seed_echo" | "deterministic_guard" | "semantic_cache"
   model?: string
   modelError?: string
   ok: boolean
@@ -141,6 +142,11 @@ export async function runOwnedSarahTurn(
   let model: string | undefined
   let modelError: string | undefined
 
+  // KHS-6 (#8605): flag-gated semantic answer cache — always null unless
+  // SARAH_SEMANTIC_CACHE=1; its internal pricing guard runs before matching.
+  const semanticCached =
+    !input.toolCall && message ? await maybeSemanticCacheAnswer(message) : null
+
   if (toolResults.length > 0) {
     reply = `Tool ${toolResults[0]!.toolName} ${toolResults[0]!.ok ? "completed" : "failed"}.`
     modelPath = "deterministic_guard"
@@ -155,6 +161,9 @@ export async function runOwnedSarahTurn(
     reply =
       "I only quote public pack prices and owner-approved parameters — I won't improvise discounts. I can evaluate deal rules or open a human handoff."
     modelPath = "deterministic_guard"
+  } else if (semanticCached) {
+    reply = semanticCached.answer
+    modelPath = "semantic_cache"
   } else if (sarahGoogleInferenceArmed()) {
     // KHS-2 (#8601): prospect memory prepends AFTER the guards above — the
     // pricing guard always runs before the model regardless of memory.
