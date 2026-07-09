@@ -11,8 +11,16 @@ context: `docs/fable/2026-07-09-open-issue-grid-assessment.md`.
    untouched), and a real CRM-route proof send delivered from
    `Sarah <sarah@openagents.com>` to your inbox (Resend `ccf31693`,
    receipt on #8558). Live outbound is ON; warm-up caps enforced.
-2. **Seeded test account: AgentFlampy** + fork recorded on #8543; E2E
-   wiring lane running.
+2. **Seeded test account: AgentFlampy → E2E WIRED, both platforms green
+   on all runnable legs.** iOS sim + Android emulator both pass sign-in →
+   repo-picker → live dispatch/reply (591bc110be). Blocked legs are typed
+   skips, never faked: push/writeback waits on CX-3, and ONE optional
+   human step remains for the fork-bind+credits legs — a single GitHub
+   sign-in as AgentFlampy (agent tokens can't do user-session routes by
+   design). Not urgent; the runner auto-detects the session when captured.
+   (Side win: this lane found + fixed prod chat Send 500ing for ALL
+   accounts — Cloud SQL was missing khala-sync migrations 0047–0050; now
+   applied, `chat.appendMessage` → 200 verified.)
 3. **CX-2 tap-through: FIXED — READY FOR YOUR RE-TEST (~3 min).** Both
    bugs root-caused and fixed (2bf644f994, live on main): Disconnect now
    terminally removes (it was soft-updating status while the list showed
