@@ -1,7 +1,7 @@
 # MASTER ROADMAP — Sarah Fleet Command first; three OpenAgents apps
 
 - Date: 2026-07-09
-- Revision: 3
+- Revision: 4
 - Status: canonical OpenAgents implementation roadmap
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Issue source set: [`issues/README.md`](./issues/README.md)
@@ -86,27 +86,45 @@ The coding-fleet program starts from substantial working substrate:
   stop, approvals, and steering;
 - Codex, Claude, and Grok chat plus worker adapters;
 - harness-conformance fixtures and honest usage/failure classes;
-- a fixture-proven mixed-kind supervisor with zero duplicate claims;
+- a Pylon-owned mixed-kind supervisor and manager with zero duplicate claims;
+- a canonical Pylon-home `orchestration.sqlite` runtime whose runs and claims
+  survive reopen, plus typed interrupted-executor recovery;
+- a real-account capacity mapper that preserves Codex/Claude worker kind,
+  advertised slots, readiness, and honest marginal-cost class without silently
+  substituting an unsupported harness;
+- a Pylon-only standing activation seam that recovers stale work before it
+  idempotently resumes and refills an existing durable run;
 - Khala Sync fleet projections and steering mutators;
 - caller-owned Khala→Pylon assignments, exact token rows, private event
   archives, and closeout proofs;
 - a headless Pylon node with account registry, presence, assignment polling,
   session execution, and a local coordinator;
 - Sarah's owned runtime, authenticated relationship, SSE bus, Blueprint Map,
-  Actions, and Code/Receipts panels.
+  Actions, and Code/Receipts panels;
+- Sarah owner-safe FleetRun, continuity/stall, and six-section coding-closeout
+  schemas plus a tested Effect Native receipt card;
+- a bounded per-conversation VAD coalescer that prevents same-conversation
+  parallel model calls; its live SSE fanout boundary is not yet wired.
 
-The immediate gaps are composition gaps:
+The immediate gaps are now narrower composition and live-proof gaps:
 
-- Sarah cannot create a FleetRun.
-- The production FleetRun manager is process-local/in-memory and reachable only
-  through desktop tooling.
-- Real capacity inspection still narrows to one provider at a time and drops
-  the mixed-pool worker kind on its account mapping.
-- Grok uses a separate spawn path rather than the same production supervisor.
-- The standing remote assignment worker is serial rather than a refillable
-  parallel run executor.
-- Sarah does not yet receive durable work-unit progress or emit the existing
-  typed fleet controls.
+- Sarah still lacks a merged production-durable, owner-scoped FleetRun creation
+  authority that a standing Pylon can claim. A local JSON-only FC-1 proposal is
+  not sufficient for this boundary.
+- `pylon node` cannot yet reconstruct a real plan and executor from a Sarah run:
+  the durable work-source descriptor, concrete Codex/Claude/Grok runner
+  composition, explicit owner-local arming intake, and ref-to-process liveness
+  adapter are not all Pylon-owned and wired.
+- Grok still uses a separate spawn path rather than the same production
+  supervisor path as Codex and Claude.
+- Sarah's safe FleetRun projection and receipt card are code/fixture-proven but
+  not yet fed by an authenticated cursor-resumable live client; named controls,
+  approval/steering, reconnect, and exactly-once intent receipts remain.
+- The VAD coalescer needs a bounded multi-controller SSE fanout/replay boundary
+  before it can preserve immediate first byte and one `publishAndRecord` while
+  sharing a model turn.
+- No integrated Sarah→standing-Pylon fixture has satisfied C1, and no real
+  Codex+Claude+Grok burn has satisfied C2.
 - Agent Computer Codex still lacks the new live Firecracker proof.
 
 P0 fixes those seams. It does not build another fleet system.
