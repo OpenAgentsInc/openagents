@@ -1,75 +1,48 @@
-# NEEDS_OWNER — one session, ~30 minutes, clears 8 issues
+# NEEDS-OWNER — 4 items left, ~12 minutes
 
-Rewritten 2026-07-09 after the overnight burn-down (28+ issues closed, 3
-production incidents fixed — full context:
-`docs/fable/2026-07-09-open-issue-grid-assessment.md`). Prior content is
-archived verbatim at `docs/ops/2026-07-09-needs-owner-archive.md`.
+Updated 2026-07-09 (post-GO). Archive of everything older:
+`docs/ops/2026-07-09-needs-owner-archive.md`. Full backlog
+context: `docs/fable/2026-07-09-open-issue-grid-assessment.md`.
 
-## THE ASK — one sitting, highest value-per-minute first
+**Resolved this session:** sales-pipe GO given → an agent is arming prod
+CRM sends now (Sarah identity, Sites sender untouched; receipt will land
+on #8558). Seeded test account confirmed: **AgentFlampy** +
+github.com/AgentFlampy/openagents (recorded on #8543; agents wire the E2E
+themselves). Sarah `/sarah` serving gates resolved (live on the monolith,
+S-12 6/6).
 
-**1. ✅→ Say "GO" to arm sending (~10 seconds).** DONE 2026-07-09: owner
-"use what's in Resend now" call taken — no subdomain, no DNS. Live proof:
-`Sarah <sarah@openagents.com>` delivered via the verified root domain
-(Resend id `0404823c`, receipt on #8558). Prod already holds the API key.
-The ONLY remaining step is the owner saying **"GO, arm sends"** — an
-agent then flips `CRM_RESEND_SEND_ENABLED=1` on the prod monolith and
-points the CRM sender at Sarah's identity (without changing the Sites
-transactional sender). The 100/day loop, ledger, ramp, and opt-out
-machinery start proving out immediately after.
+## THE ASK — 4 items, ~12 minutes
 
-**2. Codex connect tap-through (~5 min, phone)** — closes CX-2 #8546.
+**1. Codex connect tap-through (~5 min, phone) — closes CX-2 #8546.**
 Khala mobile → Settings → Codex accounts → Connect → complete the browser
 short-code approval → confirm `ready` → Disconnect → confirm removal.
 That's the entire exit receipt.
 
-**3. Seeded test account (~5 min)** — unblocks P0.8 #8543's unattended
-E2E. Create a public-safe throwaway GitHub account (no real repos/PII)
-and hand any agent the handle; we wire it in ourselves.
+**2. WEB-1 landing review (~5 min) — #8565 root cutover.** Look at the
+`/new` preview and the `/stage1` Effect Native render; say yes/no/changes
+on the sales copy and whether to flip the root route. Structure is done;
+only your words + the flip decision remain.
 
-**4. WEB-1 landing review (~5 min)** — #8565. Review the `/new` preview +
-the `/stage1` Effect Native render; give copy sign-off and the root-flip
-yes/no. Structure is done; only your words and the flip remain.
+**3. Firewall confirmation (~1 min) — #8591 residue.** The Phase 6
+control plane has `0.0.0.0/0` open on port 8787 (`oa-codex-control-1`,
+`35.223.189.76`) from cutover smoke. Say "testing done, tighten it" and
+an agent narrows it same-day.
 
-**5. Firewall confirmation (~1 min)** — #8591 Phase 6 residue: the
-control plane deployed tonight has `0.0.0.0/0` open on port 8787
-(`oa-codex-control-1`) for cutover smoke, per its own receipt. Say
-"testing done, tighten" and an agent narrows it same-day.
-
-**6. OpenRouter decision (~1 min)** — the Khala 502 fix is live; each
-request now wastes one dead-lane 402 hop (~0.5s). Top up the OpenRouter
+**4. OpenRouter decision (~1 min).** The Khala 502 fix is live; each
+request wastes one dead-lane 402 hop (~0.5s). Top up the OpenRouter
 balance, or say "drop the lane" and an agent reorders the plan.
 
 ## Deferred / standing (no action needed now)
 
-- **effectnative.org verification** — verify the domain in the Google
-  account owning project `openagentsgemini`; agents rerun the Cloud Run
-  domain mapping (#8571). Whenever convenient.
+- **effectnative.org domain verification** — verify the domain in the
+  Google account owning `openagentsgemini`, then agents rerun the Cloud
+  Run domain mapping (#8571). Whenever convenient.
 - **Grok free-window check (weekly)** — confirm Grok 4.5 is still free on
-  the CLI session; on expiry, say so and `auto` re-ranks (no code change).
-- **CX-3 bake host** — one infra task (rootfs build on the KVM host)
-  behind five issues' live exits; agents attempt it next KVM-capable
-  session, nothing from you unless we hit a wall.
-- **`apps/web` legacy-SPA cutover posture** — EN-4 #8573 converts safe
+  the CLI session; on expiry say so and `auto` re-ranks itself.
+- **CX-3 bake host** — the one infra task behind five issues' live exits
+  (rootfs build on `agent-computer-gce-1`). Agents attempt it next
+  KVM-capable session; nothing from you unless we hit a wall.
+- **`apps/web` legacy-SPA cutover posture** — EN-4 (#8573) converts safe
   routes now; the live Foldkit SPA conversion waits on your serving call.
-- **Sarah `/sarah` serving cutover (#8594)** — owner gates RESOLVED
-  (path confirmed `openagents.com/sarah`, no subdomain); remaining mount
-  + smoke work is agent-owned, nothing from you.
-
-## Sarah consolidation SM-5 / serving (#8594)
-
-**Serving amendment CONFIRMED (owner, 2026-07-09):** public path is
-`https://openagents.com/sarah` only — **no** `sarah.openagents.com` subdomain.
-Attribution in `docs/sarah/MIGRATION.md` and MASTER_ROADMAP rev 6.8 is correct.
-
-**Shipped 2026-07-09:** `/sarah` mounted on `openagents-monolith`
-(`openagents-monolith-00046-pgq`); live S-12 **6/6 CONFIRMED** on
-`https://openagents.com/sarah`. Receipt: `docs/sarah/MIGRATION.md`.
-
-**Residual (optional operator cleanup):** Vercel project teardown for the
-private-sarah interim deploy — DNS for `sarah.openagents.com` is already
-NXDOMAIN; no production traffic remains on that hostname.
-
-**Obsolete:** any older framing of Sarah as a Cloudflare D1-quota host or
-separate-subdomain deploy problem. Monorepo Sarah does not hold D1; Worker API
-authority stays over public HTTP contracts. D1 free-tier quota remains a
-general monolith CFG-4 concern only.
+- **Optional Vercel teardown** — old Sarah project; `sarah.openagents.com`
+  already NXDOMAIN, teardown is cleanup only.
