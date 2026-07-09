@@ -66,7 +66,7 @@ existing consumers keep compiling.
   (#5166/#5404). Moving it needs the generator relocated + an **RC-binary
   build verification** (can't be done source-only). Do this in a session that
   can build+run the packaged binary.
-- [~] Step 5 — executor (`executor/`): **leaf wave done** — the
+- [~] Step 5 — executor (`executor/`): **leaf wave + Claude executor done** — the
   dependency-closed leaves `claude-agent`, `codex-agent`, `claude-turn-reporter`
   and (built on the first two) `workspace-materializer` are relocated with
   shims. That unblocked the custody `account-usage → account-status` wave
@@ -76,11 +76,9 @@ existing consumers keep compiling.
   for capacity refs and that `assignment.ts` also consumes, so it homes in
   `executor/`, not a `presence/` folder built around a leaf while presence.ts
   itself can't yet move. Added `@openagentsinc/effect-boundary` as a pylon-core
-  dep for it. **Still in `apps/pylon`:**
-  - `claude-agent-executor` — extractable now (all real deps in-package), but
-    it is MH-2's actively-contested file (#8583 / Claude worker-executor
-    parity); left in place to avoid a whole-file move-conflict with their
-    in-flight work. Extract in a window when MH-2 is idle, pushing fast.
+  dep for it. `claude-agent-executor` is now relocated too (after the MH-2
+  collision cleared), with the app path reduced to a thin re-export shim.
+  **Still in `apps/pylon`:**
   - `codex-agent-executor`, `assignment`, `khala-spawn` — now unblocked
     dependency-wise on `presence`/`account-connect` (both landed), but not
     yet traced/attempted this session; next session should re-verify their

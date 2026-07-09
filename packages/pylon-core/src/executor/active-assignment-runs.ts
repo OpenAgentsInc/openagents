@@ -63,14 +63,6 @@ const activeRunFilename = (runRef: string) =>
 const activeRunPath = (paths: PylonPaths, runRef: string) =>
   join(paths.activeAssignmentRuns, activeRunFilename(runRef))
 
-const activeRunFromUnknown = (value: unknown): PylonActiveAssignmentRun | null => {
-  try {
-    return S.decodeUnknownSync(PylonActiveAssignmentRunSchema)(value)
-  } catch {
-    return null
-  }
-}
-
 const readActiveRunFile = async (
   path: string,
 ): Promise<PylonActiveAssignmentRun | null> =>
