@@ -69,7 +69,8 @@ existing consumers keep compiling.
 - [~] Step 5 — executor (`executor/`): **leaf wave + Claude executor done** — the
   dependency-closed leaves `claude-agent`, `codex-agent`, `claude-turn-reporter`,
   `agent-status-reporter`, `codex-turn-reporter`, `codex-rg-guard`,
-  `session-error-class`, `dispatch-failure-taxonomy`, `claude-second-pass-reviewer`, and (built on the first
+  `session-error-class`, `dispatch-failure-taxonomy`, `effect-runtime-patterns`,
+  `claude-second-pass-reviewer`, and (built on the first
   two) `workspace-materializer` are relocated with shims. That unblocked the custody `account-usage →
   account-status` wave
   above. Also relocated `active-assignment-runs` (+ its test) here: a clean
@@ -80,6 +81,10 @@ existing consumers keep compiling.
   itself can't yet move. Added `@openagentsinc/effect-boundary` as a pylon-core
   dep for it. `claude-agent-executor` is now relocated too (after the MH-2
   collision cleared), with the app path reduced to a thin re-export shim.
+  `effect-runtime-patterns` (`scopedTimeout`, `PylonRuntimeRetrySchedules`) is a
+  pure `effect`-only leaf used by codex/claude agent runners; extracted in
+  preference to `forge-dispatch-protocol`, which is blocked by type-only
+  coupling to top-of-graph `assignment.ts` plus `@openagentsinc/forge-protocol`.
   **Still in `apps/pylon`:**
   - `codex-agent-executor`, `assignment`, `khala-spawn` — now unblocked
     dependency-wise on `presence`/`account-connect` (both landed), but not
@@ -90,6 +95,10 @@ existing consumers keep compiling.
     semantically an earning/wallet-boundary module, NOT executor) and
     `work-requester`. Deferred pending a boundary decision on where `tips`
     lives; do not shove `tips` into `executor/` just to satisfy the move.
+  - `forge-dispatch-protocol` — pure adapter logic, but type-coupled to
+    `assignment.ts` lease/closeout shapes; extract once those types (or a
+    structural subset) live in-package, with `@openagentsinc/forge-protocol`
+    added as a pylon-core dependency.
 - [x] Step 6 — typed RPC contract (`rpc/`) — **unconsumed seed**; PY-2 (#8579)
   wires it and deletes the desktop stdout seam.
 - [ ] MCP consolidation — **design decision, not a mechanical move; plan
