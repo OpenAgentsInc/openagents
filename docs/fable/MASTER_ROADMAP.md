@@ -1,12 +1,89 @@
 # MASTER ROADMAP — Khala Code MVP (Tested, Submitted) → Sarah → Codex → AI Employees → the Suite
 
-Date: 2026-07-08 (rev 6.4 — multi-harness parallelization is a now-priority program)
+Date: 2026-07-09 (rev 6.5 — overnight parallel burn-down: MH wave complete, PRUNE archived, CX-3 blocker resolved, cloud in-repo)
 Status: **the single consolidated execution roadmap.** This document owns
 top-level sequencing across everything designed in the 2026-07-07 strategy
 set and its predecessors. The source docs remain authoritative for their
 *content* (specs, evidence, arguments); when sequencing here and sequencing
 there disagree, **this document wins**, and new issues are filed against the
 phase lanes named here.
+
+**Rev 6.5 changes (2026-07-08 night → 2026-07-09, overnight parallel fleet
+burn-down — status + unblocks, no new policy):** a sustained multi-agent
+parallel push closed **28 issues** across `openagents` + public
+`effect-native`, fixed **3 live production incidents**, merged **1 PR**, and
+correctly reopened **1** issue after independent re-verification found it
+didn't meet its acceptance criteria on first close. Headlines:
+
+- **The full MH wave (§MH) is COMPLETE**: MH-0 `#8581` → MH-1 `#8582` → MH-2
+  `#8583` → MH-5 `#8584` → MH-6 `#8585` → MH-8 `#8587`, every one
+  independently re-verified (fresh worktree, real test run, not just trusted
+  self-report) after landing. MH-2 found and fixed a real bug blocking every
+  real Claude-account run (the account's own OAuth token was mis-flagged as a
+  leaked SCM credential). Grok's own MH-3 `#8589` / MH-4 `#8590` lane is
+  progressing in parallel (their exclusive scope, not touched here).
+- **PRUNE (`#8577`) executed**: the retired Tassadar/Psionic surfaces were
+  physically removed — **−337,581 LOC**, archived to
+  `backroom/openagents-prune-20260708-tassadar-psionic` (commit `a56fd270`)
+  before deletion. A dangling-reference regression the prune left behind
+  (`replay-signatures.ts` fixtures not schema-conformant) was found and fixed
+  same-night (`473300f4b5`).
+- **Three live production incidents fixed, all independently verified:**
+  (1) Khala completions had been returning 502 **since 2026-07-05** — root
+  cause was an exhausted OpenRouter platform credit balance whose 402 was
+  misclassified non-retryable, so requests never overflowed to the healthy
+  Vertex/Fireworks lanes; fixed + deployed
+  (`docs/incidents/2026-07-08-khala-502-openrouter-credit-exhaustion-aar.md`).
+  (2) That same investigation found a **latent deploy blocker** (dangling
+  imports from the PRUNE) that would have blocked any deploy from `main` —
+  fixed in the same pass. (3) `khala-sync-pg` had been hitting its
+  100-connections-per-instance cap since ~2026-07-07 (10 call sites
+  constructing a fresh `postgres.js` client per statement instead of sharing
+  a pool); fixed, staged, promoted to prod, and verified against **live
+  production traffic** (the error flood confirmed stopped at the exact
+  revision cut).
+- **Pylon fold (PY-1 `#8578`) — 3 sessions in, real incremental progress, not
+  yet closed:** custody (most modules), executor (leaves + workspace-
+  materializer + active-assignment-runs), and an RPC contract seed are
+  extracted into `packages/pylon-core`. The Spark wallet is **deliberately
+  still untouched** (twice now — needs RC-binary verification not available
+  headlessly; the owner's live-rail mandate is being honored, not skipped
+  for convenience). Presence extraction is blocked on a real, precisely
+  diagnosed cross-package resolution issue (not the earning-code coupling
+  the first session guessed — that turned out to be a non-blocker on
+  re-trace). MCP consolidation has a written plan, correctly not attempted
+  blind.
+- **Cloud repo consolidation (`#8591`) landed** — the private
+  `OpenAgentsInc/cloud` Rust crates (`oa-codex-control`, `oa-node`,
+  `oa-workroomd`, `oa-cloud-run-bridge`, `openagents-cloud-contract`) are now
+  **in this monorepo** under `crates/*`, with Effect Schema mirrors in
+  `packages/cloud-contract`. This resolves CX-3 `#8547`'s stated blocker
+  ("control-plane half lives in the private repo") — reassessed and
+  confirmed: most of CX-3 was **already landed** (in-VM broker redemption,
+  `CODEX_HOME`-on-scratch, org-capacity billing, the owner-local
+  `codex_app_server` dispatch lane). The real remaining wall: no
+  source-controlled rootfs build script exists yet (hand-`debootstrap`ped on
+  the GCE host), and `provider_credential_policy: broker_only` isn't yet
+  threaded into the Rust crates. A #8591 residual bug (a build script
+  pointing at pre-move Dockerfile paths that would have broken the image
+  build) was found and fixed in the same pass; a second #8591 residual (a
+  smoke script landing non-executable) was fixed via PR `#8592`, reviewed
+  and merged same night.
+- **EN-1 → EN-3, Effect Native landing/mobile proofs**: the `/stage1` web
+  route (EN-1) is the first production-adjacent Effect Native render; EN-3
+  `#8568` proved the React Native adapter on one new (not migrated) mobile
+  screen — discovering along the way that the premise "desktop already
+  consumes effect-native" was false (only the web app did), and that landing
+  required bumping the web app's vendored `core`/`render-dom` snapshot from
+  v0 to v5 — verified independently to NOT regress `/stage1`.
+- **Public `effect-native` repo**: Phase 2 is fully complete; Phase 3 is
+  4/5 (DevTools, gallery, testkit, the guide — the guide was caught mid-close
+  on a premature merge and correctly reopened, then genuinely completed on a
+  second pass); Phase 4 (`#20` epic) is deep in progress — 12 of ~22 child
+  issues closed in two large sequential batches (a monolith-file collision
+  pattern: `packages/core/src/index.ts` is shared by every catalog issue, so
+  one agent works the queue serially rather than many agents racing the same
+  file), catalog now well past `v9`.
 
 **Rev 6.4 changes (owner priority, 2026-07-08 night — MULTI-HARNESS
 PARALLELIZATION):** Khala Code (mobile + desktop) parallelizing coding
@@ -269,14 +346,44 @@ only DIRECTION:
 - **`#8467` (Khala Code Mobile MVP epic) OPEN** — the live multi-workstream P0
   program that `#8543` gates.
 
-**Review addendum / recommended next work (updated rev 6.4, 2026-07-08
-night):** current recommended order:
+**Review addendum / recommended next work (updated rev 6.5, 2026-07-09
+early morning):** MH-0 through MH-8 (except Grok's own MH-3/MH-4) are
+CLOSED and independently re-verified. Current recommended order:
 
-- **MH program (now-priority, §MH):** dispatch WP-A (MH-0 `#8581`,
-  serial, one agent) immediately; on merge, fan out Batch 1 — MH-1/2/5,
-  Grok's MH-3/MH-4, effect-native#44, EN-2 demand rows — as parallel
-  subagent lanes on disjoint paths; then MH-6/7/8. CX-3 keeps its own
-  dedicated capacity in parallel.
+- **effect-native Phase 4 catalog (continuous, one sequential agent —
+  file-collision constraint):** 12 of ~22 issues closed; the remaining
+  queue (`#35`/`#36`/`#37` next, then `#42` proof, `#43` docs) stays a
+  single serial lane against `packages/core/src/index.ts` — do not
+  fan multiple agents across that file.
+- **CX-3 `#8547` — resume implementation, not just assessment:** the
+  private-repo blocker is resolved (`#8591` landed the crates in-repo).
+  Safe next slice: thread `provider_credential_policy: broker_only`
+  into `crates/oa-node`/`crates/oa-codex-control` (source-only, no live
+  infra) — the rootfs-build-script gap and in-VM `codex_app_server`
+  wiring are the genuine remaining wall and need a real bake host.
+- **CX-5 `#8549` (Claude cloud parity):** ready — MH-2 already fixed
+  the Claude-account SCM-credential false-positive tonight, so the
+  broker/lane pattern CX-3 established has a proven Claude precedent to
+  mirror.
+- **MH-7 `#8586` (multi-harness cockpit) + EN-5 `#8574` first screen:**
+  the catalog components MH-7 needs (app shell, overlays, command
+  palette, tabs, composer, forms, feedback, hotkey) are now ALL closed
+  upstream. The natural next step is a `/stage1`-style first EN render
+  inside Khala Code desktop (via the landed `platform-desktop` adapter,
+  `#21`) — scope it as the fleet cockpit directly, since that's the
+  Phase 4 proof screen's (`effect-native#42`) own target content.
+- **EN-4 `#8573` (web absorption):** start the route inventory +
+  burn-down table, then the first 1–2 real route conversions — the
+  catalog is deep enough now that this is no longer blocked on Phase 2.
+- **PY-1 `#8578` continuation:** the presence blocker has two
+  documented unblock options (make `pylon-runtime` resolvable by name
+  and verify the monorepo-install change; or inject the apple-fm
+  functions the way presence already injects its probe) — try the
+  injection option first, it's the lower-risk one.
+- **CX-2/CX-4 `#8546`/`#8548`:** code-complete, correctly left open —
+  closing needs a real human device-auth tap-through
+  (`~/work/NEEDS_OWNER.md` has the exact steps); do not re-dispatch
+  agent work here, this is an owner action.
 
 - **CV0 substrate lanes (continuous, fleet-parallel):** effect-native
   Phase 0/1 (`#1–#8`) are CLOSED; work the open Phase 2/3 set
