@@ -15,10 +15,11 @@ Ownership rule (current):
 - `openagents`-only rows protect public contributor Pylon (`apps/pylon`).
 - Forge and Probe remain their own authorities; Cloud integrates through typed
   adapters.
-- **Deprecated:** do not treat Worker/Khala Sync, Autopilot-as-Cloud-control, Treasury
-  product, or Nexus-as-registry as current owners. Customer credits live on the
-  Worker; outbound payout/custody uses the **MDK/Nexus payout bridge** only
-  where that path is still active.
+- **Deprecated:** do not treat Vortex, Autopilot-as-Cloud-control, Treasury
+  product, or Nexus-as-registry as current owners. Current product/durable
+  state lives on the `openagents.com` Worker and Khala Sync. Customer credits
+  live on the Worker; outbound payout/custody uses the **MDK/Nexus payout
+  bridge** only where that path is still active.
 
 Historical intro (kept for archaeology):
 

@@ -253,7 +253,9 @@ Cloud issues:
   account-backed Codex.
 - CND-050: resource/device and model token usage receipts for every run.
 
-Product-surface companion issues (Worker / Khala Code):
+Historical product-surface companion issues (filed in the deprecated Vortex
+repo; the current product surface is the `openagents.com` Worker + Khala Sync
+/ Khala Code — route any new companion work to `openagents`):
 
 - OpenAgentsInc/vortex#91: Benchmark Cloud Convex state and Effect control
   service.
