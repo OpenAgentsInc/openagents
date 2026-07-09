@@ -48,14 +48,22 @@ commit + catalogVersion in `effect-native-vendor.json` AND every vendored
 The four packages are copied verbatim EXCEPT for the minimal edits the monorepo
 strict tsconfig forces (upstream compiles under a laxer config):
 
+Consumers (e.g. `apps/start`) import the vendored `./src/index.ts` directly and
+typecheck it under the strict base tsconfig (`noUnusedLocals: true`), so any
+unused import/local in the vendored source is a consumer RED. The deltas:
+
 - `effect-native-core/src/effect.ts` — monorepo-only "effect version bridge"
   re-export (`@effect-native/core/effect`) so consumers unify Effect versions.
   Not an upstream file.
-- `effect-native-core/src/index.ts` — removed the dead `formatUnknown` helper to
-  satisfy `noUnusedLocals`. (At v25 the 5 token imports
+- `effect-native-core/src/index.ts` — removed the dead `formatUnknown` helper and
+  the 5 unused value imports
   `colorTokens`/`dimensionTokens`/`radiusTokens`/`spacingTokens`/`typeScaleTokens`
-  are now re-exported upstream, i.e. used, so they are kept verbatim — unlike the
-  v19 bump where they were removed as unused.)
+  (upstream re-exports these directly via `export { … } from "@effect-native/tokens"`,
+  so the local import bindings are unused).
+- `effect-native-render-dom/src/index.ts` — removed 13 unused marketing-component
+  value imports (`Section`/`Hero`/`AnnouncementBadge`/`CtaSection`/`Footer`/`NavBar`/
+  `Accordion`/`PricingColumn`/`PricingTable`/`LogoRow`/`StatsBand`/`Glow`/`MockupFrame`).
+  The DOM renderer consumes only the `*View` types, not the factory functions.
 
 The upstream `@effect-native/render-canvas` package (Three.js scene-graph
 renderer) is NOT vendored: no monorepo consumer imports it yet. See the manifest
