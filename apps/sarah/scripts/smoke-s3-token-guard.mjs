@@ -1,16 +1,60 @@
 #!/usr/bin/env node
 
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { spawn } from "node:child_process";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
-const baseUrl = (
-  process.env.SARAH_S3_SMOKE_BASE_URL ?? "http://127.0.0.1:8790/sarah"
-).replace(/\/+$/, "");
+// Self-contained by default: without an explicit SARAH_S3_SMOKE_BASE_URL the
+// smoke spawns its own isolated server with the caps this scenario needs
+// (active-session cap 1, daily cap 3, alert threshold 2) and a per-run alert
+// file. A fresh process means fresh in-memory counters, so the smoke is
+// idempotent — pointing it at a long-lived shared server exhausts the daily
+// cap across reruns and is only correct for deployment-pointed runs with an
+// explicit URL. A live AI_GATEWAY_API_KEY must be in the environment for the
+// mint to succeed; without it the failure is a typed gateway_unavailable.
+let serverChild = null;
+let baseUrlRaw = process.env.SARAH_S3_SMOKE_BASE_URL;
+let alertFile = process.env.SARAH_REALTIME_SPEND_ALERT_FILE;
+
+if (!baseUrlRaw) {
+  const port = Number(process.env.SARAH_S3_SMOKE_PORT ?? 8793);
+  alertFile = alertFile ?? join(tmpdir(), `sarah-s3-alerts-${process.pid}.jsonl`);
+  rmSync(alertFile, { force: true });
+  serverChild = spawn("bun", ["src/server.ts"], {
+    env: {
+      ...process.env,
+      SARAH_PORT: String(port),
+      SARAH_REALTIME_MAX_ACTIVE_SESSIONS_PER_PROSPECT: "1",
+      SARAH_REALTIME_DAILY_TOKEN_CAP: "3",
+      SARAH_REALTIME_SPEND_ALERT_THRESHOLD: "2",
+      SARAH_REALTIME_SPEND_ALERT_FILE: alertFile,
+    },
+    stdio: "ignore",
+  });
+  baseUrlRaw = `http://127.0.0.1:${port}/sarah`;
+  const deadline = Date.now() + 15_000;
+  for (;;) {
+    try {
+      const response = await fetch(`${baseUrlRaw}/`);
+      if (response.status < 500) break;
+    } catch {
+      // Server not up yet.
+    }
+    if (Date.now() > deadline) {
+      serverChild.kill();
+      throw new Error("S-3 smoke server did not come up in time.");
+    }
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+}
+
+const baseUrl = baseUrlRaw.replace(/\/+$/, "");
 // Origin must be scheme+host(+port) only — not the /sarah path mount.
 const defaultOrigin =
   process.env.SARAH_S3_SMOKE_ORIGIN ?? new URL(baseUrl).origin;
 const scenario = process.env.SARAH_S3_SMOKE_SCENARIO ?? "session-daily";
 const evidencePath = process.env.SARAH_S3_EVIDENCE_OUT;
-const alertFile = process.env.SARAH_REALTIME_SPEND_ALERT_FILE;
 
 function cookieFrom(response) {
   return response.headers.get("set-cookie")?.split(";")[0] ?? null;
@@ -104,8 +148,30 @@ async function runSessionDailyScenario() {
   };
 }
 
-const result =
-  scenario === "rate" ? await runRateScenario() : await runSessionDailyScenario();
+// Never print or persist minted client secrets — even ephemeral ones.
+function redactTokens(value) {
+  if (Array.isArray(value)) return value.map(redactTokens);
+  if (value && typeof value === "object") {
+    const clean = {};
+    for (const [key, entry] of Object.entries(value)) {
+      clean[key] =
+        key === "token" && typeof entry === "string"
+          ? "[redacted-ephemeral-client-token]"
+          : redactTokens(entry);
+    }
+    return clean;
+  }
+  return value;
+}
+
+let result;
+try {
+  result =
+    scenario === "rate" ? await runRateScenario() : await runSessionDailyScenario();
+} finally {
+  serverChild?.kill();
+}
+result = redactTokens(result);
 
 if (evidencePath) {
   writeFileSync(evidencePath, `${JSON.stringify(result, null, 2)}\n`);

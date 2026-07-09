@@ -1,12 +1,35 @@
 # MASTER ROADMAP — Khala Code MVP (Tested, Submitted) → Sarah → Codex → AI Employees → the Suite
 
-Date: 2026-07-09 (rev 6.7 — Sarah consolidates into the monorepo on Effect Native)
+Date: 2026-07-09 (rev 6.8 — Sarah consolidation LANDED at openagents.com/sarah; oracles hardened)
 Status: **the single consolidated execution roadmap.** This document owns
 top-level sequencing across everything designed in the 2026-07-07 strategy
 set and its predecessors. The source docs remain authoritative for their
 *content* (specs, evidence, arguments); when sequencing here and sequencing
 there disagree, **this document wins**, and new issues are filed against the
 phase lanes named here.
+
+**Rev 6.8 changes (2026-07-09 — Sarah consolidation landed + review):**
+the SM epic #8594 executed same-night (`974490e7ba`, `31921bb3ab`):
+`apps/sarah/` is live in-repo (Bun service, zero React, eve dependency
+removed, CRM email rail replacing the local Resend/suppression stack,
+migration receipt + redaction audit in `docs/sarah/MIGRATION.md`), and
+the private repo is marked historical. **Serving amendment recorded
+during execution:** no `sarah.openagents.com` subdomain — Sarah mounts
+at **`openagents.com/sarah`** (`/sarah/api/*`; recorded as
+owner-directed in `docs/sarah/MIGRATION.md` — flag to the owner if that
+attribution is wrong). Forward references below are updated to the
+`/sarah` path; historical paragraphs keep the subdomain as written.
+A post-landing review re-ran every oracle from a clean checkout and
+hardened two: the S-13 smoke was non-idempotent (state accumulation
+under `.sarah/` failed reruns) and S-3 required a hand-configured
+server and printed minted client tokens — both fixed (S-3 now spawns
+its own isolated capped server and redacts tokens; S-12 re-verified
+6/6 live). **Honest SM-2 status:** the shipped surface is a zero-React
+DOM shell with EN demand recorded in `docs/sarah/EN-GAPS.md`; authoring
+it in actual Effect Native components remains OPEN on #8594 — the
+mandate is not satisfied by the interim shell. Still open: SM-5
+production traffic cut + live-deployment oracles + Vercel teardown
+(operator), then SM-6 final retirement receipts.
 
 **Rev 6.7 changes (owner directive, 2026-07-09 — SARAH IN-REPO, EFFECT
 NATIVE):** "All Sarah shit must be ported to Effect Native, moved into
@@ -592,7 +615,7 @@ starts; a wave starts the moment its substrate dependency lands.
 | # | Effect Native piece (public repo phase) | Internal lane | Unlocks (the next OpenAgents surface on the substrate) | Rides inside |
 |---|---|---|---|---|
 | 1 | **Phase 0 — the core**: catalog v0 (~8 components), typed intent algebra, Effect runtime, `@effect-native/tokens` (Protoss blue; launch-ui's Tailwind theme — already vendored in the WEB-1 Phase 1 replica — ported as typed token *values*) | EN-0 | Everything below — gates all adoption; exit = one screen, two renderers, snapshot-tested | P1 Track A (a focused sprint on WEB-1's critical path) |
-| 2 | **Phase 1 — DOM renderer** (no React) | EN-0/EN-1 | **WEB-1 #8565 forward work**: the production root-cutover landing is the first Effect Native surface (the landed React replica at `/demo`/`/new` stays as the visual baseline it's compared against); then **Sarah's branded UI** (SM-2 #8594, was sarah#15 / S-10) — sarah.openagents.com and openagents.com become one component system *by construction* | P1 Track A / SR-0.5 |
+| 2 | **Phase 1 — DOM renderer** (no React) | EN-0/EN-1 | **WEB-1 #8565 forward work**: the production root-cutover landing is the first Effect Native surface (the landed React replica at `/demo`/`/new` stays as the visual baseline it's compared against); then **Sarah's branded UI** (SM-2 #8594, was sarah#15 / S-10) — the `/sarah` surface and the landing are one component system *by construction* (rev 6.8: interim DOM shell shipped; EN authoring open) | P1 Track A / SR-0.5 |
 | 3 | **Phase 1 — RN renderer** (wrapping the ~94 shipping khala-mobile primitives as adapter #1; zero new native work) | EN-0/EN-3 | New/changed mobile screens author the component set from then on — the P2 surfaces (CX-2 accounts UI, CX-4 harness pill) are the first candidates; existing screens convert on the **scheduled burn-down** (rev 6 — was on-touch), with the safety floor that the launch straight line and store artifacts stay green through every PR | P2 (CX-2/CX-4) |
 | 4 | **Phase 2 — catalog growth**: forms/validation, virtualized + section lists, modals/sheets/tabs, images/media, **typed navigation intent**, typed variants (state/platform/breakpoint) | EN-2 | **P4 phone-cockpit web twin + Agents panel (AE-2.3)** and the business-dashboard build-out; the deeper mobile migration; demand-driven — a component enters the catalog when one of these screens needs it | P4 (AE-2.3) |
 | 5 | **Phase 3 — DX**: DevTools (view-tree inspection, intent log/replay, time-travel), deterministic snapshot + intent-driven testing, visual baselines per renderer | EN-2/EN-9 | The QAM discipline extended natively to Effect Native surfaces; **agent-authored UI validated against the catalog by construction** (the substrate's whole point at 1000 edits/day) | parallel with #4 |
@@ -832,9 +855,10 @@ promise-registry gates with owner sign-off before the switch. The new landing
 serves through the production Cloud Run monolith; existing product routes stay
 on their current Cloud Run monolith paths until absorbed route-by-route. Filed as
 **#8565**. Synergy: sarah#15's TanStack port shares the same
-launch-ui/shadcn base, so sarah.openagents.com and openagents.com become
-one component system. Sarah's home remains sarah.openagents.com (her
-repo); the dashboard shell still lands with P4.
+launch-ui/shadcn base, so the Sarah surface and openagents.com become
+one component system. (Rev 6.8: Sarah's home is now
+**openagents.com/sarah** in this repo — no subdomain; the dashboard
+shell still lands with P4.)
 
 **Track A rescope (2026-07-08, Effect Native — §EN):** the landed
 Phase 1 React replica is a legitimate milestone and **stays as the
@@ -869,9 +893,10 @@ order):**
    capture → business-pipeline API, pack-priced checkout link.
 5. Branded Sarah UI (Protoss blue, disclosure, mic states, text
    fallback) replacing the quickstart surface.
-6. Production wiring: sarah.openagents.com DNS + env + model pin +
-   cost caps (owner/infra actions → NEEDS_OWNER as they arise) — target
-   is **Cloud Run per SM-5 #8594 (was sarah#14)**; the interim Vercel deploy is
+6. Production wiring: the `/sarah` mount on the production Cloud Run
+   monolith (no DNS needed — rev 6.8 serving amendment) + env + model
+   pin + cost caps (owner/infra actions → NEEDS_OWNER as they arise) —
+   **SM-5 #8594 (was sarah#14)**; the interim Vercel deploy is
    decommissioned at cutover.
 7. The Sarah Eval Suite (authored under QAM-7 #8542) pointed at the
    deployment; discount-pressure/honesty/injection probes green.
@@ -961,7 +986,7 @@ identity and turns the volume knob. Issues filed: **#8558–#8563**.
   Replies route to Sarah's inbox (sarah repo S-8 email channel) and the
   CRM; every send/reply is a `crm_activity` + email-ledger row.
 - **OB-5 (#8562) Close via Stripe.** Reply → Sarah conversation (email or a
-  link into sarah.openagents.com) → qualification → checkout link
+  link into openagents.com/sarah) → qualification → checkout link
   (pack-priced now; deal-rules quotes when SR-2 lands) → settled
   Stripe receipt → provision; pipeline states tracked on
   `crm_opportunities`; funnel counters per LG-6 attribution.
@@ -980,7 +1005,7 @@ Owner gates for Track C: Resend/domain arming + DNS, the sending
 subdomain choice, daily-cap ramp sign-offs, and pricing on anything
 Sarah quotes beyond existing packs.
 
-**P1 exit receipts:** sarah.openagents.com live and hardened (SR-0
+**P1 exit receipts:** openagents.com/sarah live and hardened (SR-0
 list complete, token route protected, spend-capped); a stranger
 completes qualification → quote → settled starter credit purchase
 entirely with Sarah (voice or text); a composed multi-module quote with

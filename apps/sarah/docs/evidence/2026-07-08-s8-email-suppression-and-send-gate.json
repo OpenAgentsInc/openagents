@@ -1,0 +1,81 @@
+{
+  "schema": "sarah.email_suppression_smoke.v1",
+  "generatedAt": "2026-07-09T01:57:29.595Z",
+  "status": "passed",
+  "adapterCompatibility": {
+    "blockedPackage": "@resend/chat-sdk-adapter@0.2.2",
+    "reason": "Adapter still pulls Chat SDK chat@4.33.0 with ai@^6.0.182 peer dependency; Sarah remains pinned to AI SDK 7 canary for realtime."
+  },
+  "normalApproval": {
+    "draftId": "sarah_email_draft.600b44ec-d092-4827-9df5-04293ff4d22b",
+    "status": "approved_pending_send",
+    "sendMode": "SARAH_EMAIL_SEND_LIVE=0"
+  },
+  "suppression": {
+    "email": "suppressed@example.com",
+    "reason": "unsubscribe",
+    "source": "s8-smoke"
+  },
+  "suppressedDraft": {
+    "draftId": "sarah_email_draft.c33a4f7e-a84d-4dff-abdd-15ed5768a599",
+    "status": "suppressed"
+  },
+  "drafts": [
+    {
+      "id": "sarah_email_draft.c33a4f7e-a84d-4dff-abdd-15ed5768a599",
+      "status": "suppressed",
+      "fromEmail": "suppressed@example.com",
+      "toEmail": "suppressed@example.com",
+      "subject": "Suppressed follow up",
+      "inboundText": "Email me again.",
+      "proposedReply": "I'm Sarah, OpenAgents' AI sales employee. Following up.",
+      "bodyWithDisclosure": "I'm Sarah, OpenAgents' AI sales employee. Following up.\n\n--\nSarah is an AI sales employee for OpenAgents.\nOpenAgents, Inc.\nTo opt out of Sarah email follow-ups: https://openagents.com/sarah/unsubscribe?email=suppressed%40example.com",
+      "prospectRef": "email:suppressed@example.com",
+      "threadId": "email:suppressed@example.com:s8-suppression",
+      "messageId": "s8-suppressed-message",
+      "continuationToken": "email:suppressed@example.com:s8-suppression",
+      "optOutUrl": "https://openagents.com/sarah/unsubscribe?email=suppressed%40example.com",
+      "createdAt": "2026-07-09T01:57:29.595Z",
+      "updatedAt": "2026-07-09T01:57:29.595Z",
+      "reviewedAt": null,
+      "reviewerRef": null,
+      "reviewNote": "Suppressed by unsubscribe at 2026-07-09T01:57:29.595Z.",
+      "sentAt": null,
+      "sendError": null,
+      "providerMessageId": null,
+      "channel": "crm_operator_rail"
+    },
+    {
+      "id": "sarah_email_draft.600b44ec-d092-4827-9df5-04293ff4d22b",
+      "status": "approved_pending_send",
+      "fromEmail": "normal@example.com",
+      "toEmail": "normal@example.com",
+      "subject": "OpenAgents follow up",
+      "inboundText": "Please follow up with me.",
+      "proposedReply": "I'm Sarah, OpenAgents' AI sales employee. Happy to help.",
+      "bodyWithDisclosure": "I'm Sarah, OpenAgents' AI sales employee. Happy to help.\n\n--\nSarah is an AI sales employee for OpenAgents.\nOpenAgents, Inc.\nTo opt out of Sarah email follow-ups: https://openagents.com/sarah/unsubscribe?email=normal%40example.com",
+      "prospectRef": "email:normal@example.com",
+      "threadId": "email:normal@example.com:s8-suppression",
+      "messageId": "s8-normal-message",
+      "continuationToken": "email:normal@example.com:s8-suppression",
+      "optOutUrl": "https://openagents.com/sarah/unsubscribe?email=normal%40example.com",
+      "createdAt": "2026-07-09T01:57:29.594Z",
+      "updatedAt": "2026-07-09T01:57:29.595Z",
+      "reviewedAt": "2026-07-09T01:57:29.595Z",
+      "reviewerRef": "s8-smoke",
+      "reviewNote": "Smoke approval with live sending disarmed.",
+      "sentAt": null,
+      "sendError": null,
+      "providerMessageId": null,
+      "channel": "crm_operator_rail"
+    }
+  ],
+  "suppressions": [
+    {
+      "createdAt": "2026-07-09T01:57:29.595Z",
+      "email": "suppressed@example.com",
+      "reason": "unsubscribe",
+      "source": "s8-smoke"
+    }
+  ]
+}

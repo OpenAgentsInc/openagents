@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import {
   listSarahFollowUps,
@@ -16,6 +16,17 @@ import {
 process.env.SARAH_FOLLOW_UP_QUEUE_PATH = "s13-smoke-follow-ups.json";
 process.env.SARAH_EMAIL_APPROVAL_QUEUE_PATH = "s13-smoke-email-queue.json";
 process.env.SARAH_SESSION_INDEX_PATH = "s13-smoke-session-index.json";
+
+// The smoke must be idempotent: it uses fixed prospect/session ids, so state
+// left under .sarah/ by a previous run accumulates transcript turns and refs
+// and the receipt asserts fail on rerun. Start from a clean slate every time.
+for (const stateFile of [
+  process.env.SARAH_FOLLOW_UP_QUEUE_PATH,
+  process.env.SARAH_EMAIL_APPROVAL_QUEUE_PATH,
+  process.env.SARAH_SESSION_INDEX_PATH,
+]) {
+  await rm(join(process.cwd(), ".sarah", stateFile), { force: true });
+}
 
 function assert(condition, message, evidence) {
   if (!condition) {
