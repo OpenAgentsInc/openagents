@@ -172,6 +172,46 @@ A take passes only if ALL of:
 - Is there a permissive temporally-consistent restorer (KEEP et al.) that
   runs at acceptable speed on L4 for 600-frame clips?
 
+## Research addendum (2026-07-09, web-verified)
+
+Root causes confirmed against literature and upstream repos:
+
+- Per-frame single-image restorers on video cause "severe identity
+  flickering" and boil (KEEP paper, arXiv 2408.05205); GFPGAN hallucinates
+  different high-frequency detail every frame — looks sharper in stills,
+  boils in motion. Matches the owner's report exactly.
+- MuseTalk's own README admits "there exists some jitter as the current
+  pipeline adopts single-frame generation" — no temporal module in 1.0/1.5.
+  The un-enhanced soft output was acting as anti-jitter blur.
+- "Mechanical mouth": per-phoneme pose targeting from clipped/letter-spaced
+  audio reads as robotic; MuseTalk conditions on a short Whisper window
+  (`--audio_padding_length_left/right`, default 2 — raise to 3–4 for more
+  coarticulation).
+- fps: MuseTalk trains at 25fps and recommends 25fps input; our footage is
+  24fps — ensure `--fps 24` is explicit end-to-end or resample.
+
+License verdicts (commercial use):
+
+| Model | License | Usable? |
+| --- | --- | --- |
+| MuseTalk | MIT | yes |
+| GFPGAN | Apache-2.0 | yes |
+| LatentSync 1.6 | Apache-2.0 | yes (18GB VRAM fits L4; slow diffusion) |
+| BasicVSR++ / RealBasicVSR | Apache-2.0 | yes (temporally consistent VSR) |
+| CosyVoice2 | Apache-2.0 | yes |
+| CodeFormer | S-Lab non-commercial | **NO** |
+| KEEP (ECCV'24) | S-Lab non-commercial | **NO** |
+| PGTFormer | non-commercial w/o permission | **NO** |
+| StableVSR | unverified | blocked until checked |
+
+Since every good temporally-consistent face restorer is license-blocked,
+the community-standard recipe for our stack is "tame GFPGAN": alpha-blend
+~0.45 with the raw crop + feathered mouth-only mask + temporal EMA on pixels
+and bbox coords. That, plus punctuation-prosody audio (drop hard letter
+spacing; CosyVoice2 has pronunciation-inpainting and instruct modes), is the
+v3 recipe now in flight. Local PDF copies of the underlying papers live in
+the workspace root repo under `projects/papers/` (see its manifest).
+
 Host access, run scripts, and receipts: see #8610/#8611 comments and
 `docs/sarah/2026-07-09-oav1-offline-proof-receipt.md`. Do not print secrets;
 host is billed hourly — coordinate before stopping it.
