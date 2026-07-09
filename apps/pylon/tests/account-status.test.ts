@@ -38,6 +38,7 @@ describe("pylon operator account status", () => {
                   hourlyCap: 1_000,
                   weeklyCap: 10_000,
                   manualResetsRemaining: 2,
+                  marginalCostClass: "subscription",
                 },
               ],
             },
@@ -108,10 +109,59 @@ describe("pylon operator account status", () => {
           weeklyUsage: 4_000,
           manualResetsRemaining: 2,
           resetAllowed: false,
+          marginalCostClass: "subscription",
         },
       ])
       expect(JSON.stringify(projection)).not.toContain(codexHome)
       assertPublicProjectionSafe(projection)
+    })
+  })
+
+  test("defaults marginalCostClass to not_measured when the registry entry omits it (MH-8, #8587)", async () => {
+    await withHome(async (home) => {
+      const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), { PYLON_HOME: home })
+      const codexHome = join(home, "codex-a")
+      await mkdir(codexHome, { recursive: true })
+      await writeFile(
+        summary.paths.config,
+        JSON.stringify({
+          dev: {
+            accounts: [{ ref: "codex-a", provider: "codex", home: codexHome }],
+          },
+        }),
+      )
+
+      const projection = await collectPylonOperatorAccountStatus(summary, {
+        now: new Date("2026-06-28T01:10:00.000Z"),
+      })
+      expect(projection.accounts[0]?.marginalCostClass).toBe("not_measured")
+      assertPublicProjectionSafe(projection)
+    })
+  })
+
+  test("rejects an unknown marginalCostClass value and falls back to not_measured, never invents free", async () => {
+    await withHome(async (home) => {
+      const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), { PYLON_HOME: home })
+      const codexHome = join(home, "codex-a")
+      await mkdir(codexHome, { recursive: true })
+      await writeFile(
+        summary.paths.config,
+        JSON.stringify({
+          dev: {
+            accounts: [{
+              ref: "codex-a",
+              provider: "codex",
+              home: codexHome,
+              marginalCostClass: "totally_free_trust_me",
+            }],
+          },
+        }),
+      )
+
+      const projection = await collectPylonOperatorAccountStatus(summary, {
+        now: new Date("2026-06-28T01:10:00.000Z"),
+      })
+      expect(projection.accounts[0]?.marginalCostClass).toBe("not_measured")
     })
   })
 

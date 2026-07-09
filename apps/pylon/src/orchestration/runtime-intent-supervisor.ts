@@ -182,6 +182,9 @@ const registryWithSiblingAccounts = async (): Promise<ReadonlyArray<PylonAccount
       hourlyCap: null,
       weeklyCap: null,
       manualResetsRemaining: null,
+      // Sibling-discovered accounts carry no registry config entry, so no
+      // measured/declared cost class is available.
+      marginalCostClass: "not_measured" as const,
     }))
   return [...registry, ...siblingEntries]
 }

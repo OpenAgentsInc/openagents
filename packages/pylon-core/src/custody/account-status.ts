@@ -1,6 +1,7 @@
 import {
   hashPylonAccountRef,
   loadPylonAccountRegistry,
+  type PylonAccountMarginalCostClass,
   type PylonAccountProvider,
 } from "./account-registry.js"
 import {
@@ -34,6 +35,11 @@ export type PylonOperatorAccountStatusEntry = {
   weeklyUsage: number | null
   manualResetsRemaining: number | null
   resetAllowed: boolean
+  // MH-8 (#8587) economics wiring: the account's DATA-DRIVEN marginal cost
+  // class, read straight from the account registry entry. Makes the `auto`
+  // preference order inspectable/auditable via `pylon accounts status --json`
+  // instead of a black box — never inferred from `provider` by name.
+  marginalCostClass: PylonAccountMarginalCostClass
 }
 
 export type PylonOperatorAccountStatusProjection = {
@@ -124,6 +130,7 @@ export async function collectPylonOperatorAccountStatus(
       weeklyUsage: usageFor(usageEntry, "weekly", account.weeklyCap, now),
       manualResetsRemaining: resetRecord.manualResetsRemaining,
       resetAllowed: quotaState.state === "weekly_exhausted",
+      marginalCostClass: account.marginalCostClass,
     })
   }
 

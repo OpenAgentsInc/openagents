@@ -1,5 +1,6 @@
 import { Effect, Scope } from "effect"
 import type { PylonAssignmentRunLifecycleEvent } from "@openagentsinc/agent-runtime-schema"
+import { marginalCostClassRank, type MarginalCostClass } from "@openagentsinc/khala-fleet-intents"
 
 import type {
   FleetRun,
@@ -46,6 +47,11 @@ export type FleetRunSupervisorAccount = {
   // MIXED pool (e.g. codex + claude + grok accounts under an `auto` run); when
   // absent the account inherits the run's concrete kind.
   readonly workerKind?: FleetRunSupervisorWorkerKind
+  // MH-8 (#8587): DATA-DRIVEN marginal cost class carried on the capacity row.
+  // Absent/omitted accounts are treated as `"not_measured"` in `pickAccount`
+  // below, which preserves prior free-slot-only ordering exactly when no
+  // caller supplies cost data. Never inferred from `accountRef`/`workerKind`.
+  readonly marginalCostClass?: MarginalCostClass
 }
 
 export type FleetRunSupervisorLifecycleEvent = PylonAssignmentRunLifecycleEvent
@@ -284,6 +290,13 @@ const resolveAccountWorkerKind = (
 ): FleetRunSupervisorWorkerKindResolution =>
   resolveSupervisorWorkerKind(account.workerKind ?? run.workerKind)
 
+// MH-8 (#8587): cheapest-`marginalCostClass`-first is the PRIMARY sort key,
+// ahead of free-slot count. This is what makes `auto` "re-rank without a
+// redesign" when cost data changes (analysis §11.4 / §6) — the algorithm
+// never checks an account's kind or ref by name, only its cost-class field.
+// When callers do not supply `marginalCostClass` (the common case today),
+// every account ranks as `"not_measured"` and this sort key is a no-op tie,
+// so existing free-desc/accountRef-asc ordering is preserved byte-for-byte.
 const pickAccount = (
   accounts: readonly FleetRunSupervisorAccount[],
   activeCounts: Map<string, number>,
@@ -295,10 +308,15 @@ const pickAccount = (
     .filter(account => !isCoolingDown(account, now))
     .map(account => ({
       account,
+      costRank: marginalCostClassRank[account.marginalCostClass ?? "not_measured"],
       free: Math.max(0, account.advertisedCapacity - (activeCounts.get(account.accountRef) ?? 0)),
     }))
     .filter(entry => entry.free > 0)
-    .sort((a, b) => b.free - a.free || a.account.accountRef.localeCompare(b.account.accountRef))
+    .sort((a, b) =>
+      a.costRank - b.costRank ||
+      b.free - a.free ||
+      a.account.accountRef.localeCompare(b.account.accountRef)
+    )
   return eligible[0]?.account ?? null
 }
 

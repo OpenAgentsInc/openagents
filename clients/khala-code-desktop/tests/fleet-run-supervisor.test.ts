@@ -467,6 +467,54 @@ describe("FleetRunSupervisor", () => {
     ])
   })
 
+  test("MH-8 (#8587): prefers the cheaper marginalCostClass account over raw free-slot count", async () => {
+    const { store, run } = createStoreWithRun({ targetConcurrency: 1, workUnits: 1 })
+
+    const result = await tickFleetRunSupervisor({
+      store,
+      pylonRef: "pylon.owner",
+      runRef: run.runRef,
+      planner: fixturePlannerWithClaims(store, 1),
+      runner: acceptingRunner(),
+      capacity: capacity([
+        // codex-metered has MORE free capacity, but codex-free is cheaper —
+        // cost class wins over free-slot count (data-driven, not a name check).
+        { accountRef: "codex-metered", advertisedCapacity: 5, marginalCostClass: "api_metered" },
+        { accountRef: "codex-free", advertisedCapacity: 1, marginalCostClass: "free" },
+      ]),
+      clock: { now: () => fixedNow },
+    })
+
+    expect(result.dispatched).toBe(1)
+    expect(store.listWorkClaims({ runRef: run.runRef }).map(claim => claim.workerAccountRef)).toEqual([
+      "codex-free",
+    ])
+  })
+
+  test("MH-8 (#8587): accounts with no marginalCostClass keep the prior free-desc ordering unchanged", async () => {
+    const { store, run } = createStoreWithRun({ targetConcurrency: 1, workUnits: 1 })
+
+    const result = await tickFleetRunSupervisor({
+      store,
+      pylonRef: "pylon.owner",
+      runRef: run.runRef,
+      planner: fixturePlannerWithClaims(store, 1),
+      runner: acceptingRunner(),
+      capacity: capacity([
+        { accountRef: "codex-a", advertisedCapacity: 1 },
+        { accountRef: "codex-b", advertisedCapacity: 3 },
+      ]),
+      clock: { now: () => fixedNow },
+    })
+
+    expect(result.dispatched).toBe(1)
+    // Untouched accounts (no marginalCostClass) all rank `not_measured` and
+    // tie on the cost key, so free-desc ordering still wins — codex-b.
+    expect(store.listWorkClaims({ runRef: run.runRef }).map(claim => claim.workerAccountRef)).toEqual([
+      "codex-b",
+    ])
+  })
+
   test("never claims a paused ready account during a supervisor tick", async () => {
     const { store, run } = createStoreWithRun({ targetConcurrency: 2, workUnits: 2 })
 

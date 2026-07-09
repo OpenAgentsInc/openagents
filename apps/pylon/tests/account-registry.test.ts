@@ -79,6 +79,12 @@ describe("pylon account registry", () => {
         "codex:codex-a",
         "claude_agent:claude-a",
       ])
+      // MH-8 (#8587): absent marginalCostClass defaults to the honest
+      // "not_measured" value — never inferred from provider/ref by name.
+      expect(entries.map(entry => entry.marginalCostClass)).toEqual([
+        "not_measured",
+        "not_measured",
+      ])
 
       const resolved = await resolvePylonAccountSelection(summary, {
         provider: "codex",
@@ -101,6 +107,31 @@ describe("pylon account registry", () => {
       const retainedProofFragment = JSON.stringify({ account: publicSelection })
       expect(retainedProofFragment).toContain("account.pylon.codex.")
       expect(retainedProofFragment).not.toContain(codexHome)
+    })
+  })
+
+  test("reads a declared marginalCostClass and rejects unknown values (MH-8, #8587)", async () => {
+    await withHome(async (home) => {
+      const freeHome = join(home, "grok-free")
+      const badHome = join(home, "grok-bad")
+      await mkdir(freeHome, { recursive: true })
+      await mkdir(badHome, { recursive: true })
+      const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), { PYLON_HOME: home })
+      await writeFile(
+        summary.paths.config,
+        JSON.stringify({
+          dev: {
+            accounts: [
+              { ref: "codex-free", provider: "codex", home: freeHome, marginalCostClass: "free" },
+              // snake_case is accepted too, mirroring hourly_cap/weekly_cap.
+              { ref: "codex-metered", provider: "codex", home: badHome, marginal_cost_class: "api_metered" },
+            ],
+          },
+        }),
+      )
+
+      const entries = await loadPylonAccountRegistry(summary)
+      expect(entries.map(entry => entry.marginalCostClass)).toEqual(["free", "api_metered"])
     })
   })
 

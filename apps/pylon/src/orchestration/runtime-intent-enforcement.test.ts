@@ -33,7 +33,7 @@ describe("candidateAccountsFromRegistry", () => {
   test("projects codex registry entries into ready, one-slot FleetAccountEntity rows (naive mode: no summary given)", async () => {
     const candidates = await candidateAccountsFromRegistry(
       [
-        { home: "/tmp/acct-1", hourlyCap: null, manualResetsRemaining: null, openAgentsProviderAccountRef: null, provider: "codex", ref: "acct-1", weeklyCap: null },
+        { home: "/tmp/acct-1", hourlyCap: null, manualResetsRemaining: null, marginalCostClass: "not_measured", openAgentsProviderAccountRef: null, provider: "codex", ref: "acct-1", weeklyCap: null },
       ],
       { now: new Date("2026-07-05T12:00:00.000Z") },
     )
@@ -46,7 +46,7 @@ describe("candidateAccountsFromRegistry", () => {
 
   test("projects claude_agent registry entries into ready, one-slot FleetAccountEntity rows (#8404)", async () => {
     const candidates = await candidateAccountsFromRegistry([
-      { home: "/tmp/acct-2", hourlyCap: null, manualResetsRemaining: null, openAgentsProviderAccountRef: null, provider: "claude_agent", ref: "acct-2", weeklyCap: null },
+      { home: "/tmp/acct-2", hourlyCap: null, manualResetsRemaining: null, marginalCostClass: "not_measured", openAgentsProviderAccountRef: null, provider: "claude_agent", ref: "acct-2", weeklyCap: null },
     ])
     expect(candidates).toHaveLength(1)
     expect(candidates[0]!.fleetAccount.readiness).toBe("ready")
@@ -56,8 +56,8 @@ describe("candidateAccountsFromRegistry", () => {
 
   test("projects both providers together from a mixed registry", async () => {
     const candidates = await candidateAccountsFromRegistry([
-      { home: "/tmp/acct-1", hourlyCap: null, manualResetsRemaining: null, openAgentsProviderAccountRef: null, provider: "codex", ref: "acct-1", weeklyCap: null },
-      { home: "/tmp/acct-2", hourlyCap: null, manualResetsRemaining: null, openAgentsProviderAccountRef: null, provider: "claude_agent", ref: "acct-2", weeklyCap: null },
+      { home: "/tmp/acct-1", hourlyCap: null, manualResetsRemaining: null, marginalCostClass: "not_measured", openAgentsProviderAccountRef: null, provider: "codex", ref: "acct-1", weeklyCap: null },
+      { home: "/tmp/acct-2", hourlyCap: null, manualResetsRemaining: null, marginalCostClass: "not_measured", openAgentsProviderAccountRef: null, provider: "claude_agent", ref: "acct-2", weeklyCap: null },
     ])
     expect(candidates.map((c) => c.fleetAccount.provider)).toEqual(["codex", "claude_agent"])
   })
@@ -68,7 +68,7 @@ describe("candidateAccountsFromRegistry", () => {
       const summary = { paths: { cache: join(workspaceRoot, "cache"), config: join(workspaceRoot, "config.json"), home: workspaceRoot, releases: join(workspaceRoot, "releases") } }
       const candidates = await candidateAccountsFromRegistry(
         [
-          { home: join(workspaceRoot, "accounts", "codex", "no-login"), hourlyCap: null, manualResetsRemaining: null, openAgentsProviderAccountRef: null, provider: "codex", ref: "no-login", weeklyCap: null },
+          { home: join(workspaceRoot, "accounts", "codex", "no-login"), hourlyCap: null, manualResetsRemaining: null, marginalCostClass: "not_measured", openAgentsProviderAccountRef: null, provider: "codex", ref: "no-login", weeklyCap: null },
         ],
         { env: {}, summary },
       )
@@ -338,6 +338,7 @@ const baseAccount = {
   home: "/tmp/pylon-account-1",
   hourlyCap: null,
   manualResetsRemaining: null,
+  marginalCostClass: "not_measured" as const,
   openAgentsProviderAccountRef: null,
   provider: "codex" as const,
   ref: "acct-1",
@@ -348,6 +349,7 @@ const claudeBaseAccount = {
   home: "/tmp/pylon-account-claude-1",
   hourlyCap: null,
   manualResetsRemaining: null,
+  marginalCostClass: "not_measured" as const,
   openAgentsProviderAccountRef: null,
   provider: "claude_agent" as const,
   ref: "acct-claude-1",
@@ -1498,6 +1500,7 @@ const twoTiedCodexAccounts = (unhealthyRef?: "acct-pin-a" | "acct-pin-b"): Candi
         home: `/tmp/${ref}`,
         hourlyCap: null,
         manualResetsRemaining: null,
+        marginalCostClass: "not_measured" as const,
         openAgentsProviderAccountRef: null,
         provider: "codex" as const,
         ref,

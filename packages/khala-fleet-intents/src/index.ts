@@ -93,6 +93,184 @@ export const FleetAutoPolicy = S.Struct({
 })
 export type FleetAutoPolicy = typeof FleetAutoPolicy.Type
 
+// The compiled-default `auto` policy (MH-8 v1): Codex first, matching the
+// analysis doc's "Codex stays default coder for owner daily-driver / CX-3 —
+// free Grok does not replace the cloud isolation linchpin" (§11.4 point 4).
+// No cost ceiling by default. This is DATA, not a special-cased branch — a
+// caller that wants a different fixed order (e.g. a fixture/dogfood fan-out
+// run) constructs a different `FleetAutoPolicy` value, optionally via
+// `rankFleetHarnessesByCostClass` below.
+export const defaultFleetAutoPolicy: FleetAutoPolicy = {
+  schema: FleetAutoPolicySchemaLiteral,
+  preferenceOrder: ["codex", "claude", "grok"],
+}
+
+// Rank used to compare `MarginalCostClass` values cheapest-first. Exported so
+// callers (e.g. the fleet capacity/account-selection surface) can apply the
+// same cheapest-first ordering to concrete accounts within one harness
+// without duplicating the rank table.
+export const marginalCostClassRank: Readonly<Record<MarginalCostClass, number>> = {
+  free: 0,
+  subscription: 1,
+  api_metered: 2,
+  not_measured: 3,
+}
+
+/**
+ * Build a harness preference order from MEASURED cost-class data rather than
+ * a hard-coded harness name. `baseOrder` (typically `fleetHarnessKinds`) is
+ * stably re-sorted cheapest-`marginalCostClass`-first; a harness missing from
+ * `costClassByHarness` is treated as `not_measured` (never assumed free).
+ * This is how "bias toward Grok while it's free" is expressed as DATA: when
+ * the free window ends, the caller re-measures cost class and this function
+ * produces a different order — no code change (analysis §11.4 / §6).
+ */
+export const rankFleetHarnessesByCostClass = (
+  input: Readonly<{
+    baseOrder: ReadonlyArray<FleetHarnessKind>
+    costClassByHarness: Readonly<Partial<Record<FleetHarnessKind, MarginalCostClass>>>
+  }>,
+): ReadonlyArray<FleetHarnessKind> =>
+  input.baseOrder
+    .map((harnessKind, index) => ({ harnessKind, index }))
+    .sort((a, b) => {
+      const rankA = marginalCostClassRank[input.costClassByHarness[a.harnessKind] ?? "not_measured"]
+      const rankB = marginalCostClassRank[input.costClassByHarness[b.harnessKind] ?? "not_measured"]
+      return rankA !== rankB ? rankA - rankB : a.index - b.index
+    })
+    .map(({ harnessKind }) => harnessKind)
+
+// --- v1 typed `auto` policy resolution (MH-8, deliberately dumb) ----------
+//
+// Mirrors CX-4's `resolveAutoExecutionTarget`
+// (apps/openagents.com/workers/api/src/inference/model-preference-store.ts,
+// #8548 — explicitly built "reusable for MH-8, not competing with it"): walk
+// a FIXED typed preference order, return the first ready candidate, and emit
+// one typed fallback event per skip. NEVER a silent substitution and NEVER
+// keyword/vibes routing (workspace semantic-routing rule). The one addition
+// over CX-4's target-id version is the harness/account shape plus the cost
+// ceiling from `FleetAutoPolicy.maxMarginalCostClass`.
+
+export const FleetAutoTargetSkipReason = S.Literals([
+  "account_exhausted",
+  "account_rate_limited",
+  "account_requires_reauth",
+  "account_unavailable",
+  "cost_ceiling_exceeded",
+])
+export type FleetAutoTargetSkipReason = typeof FleetAutoTargetSkipReason.Type
+
+export type FleetAutoTargetCandidate = Readonly<{
+  harnessKind: FleetHarnessKind
+  accountRef: string
+  ready: boolean
+  // Cost class as DATA on the candidate row (MH-8 economics wiring). Callers
+  // that have no measured cost class must pass `"not_measured"` explicitly —
+  // never invent a class.
+  marginalCostClass: MarginalCostClass
+  // Only meaningful when `ready` is false; a not-ready candidate with no
+  // reason falls back to `account_unavailable`.
+  reason?: FleetAutoTargetSkipReason
+}>
+
+export type FleetAutoTargetFallbackEvent = Readonly<{
+  type: FleetAutoTargetSkipReason
+  harnessKind: FleetHarnessKind
+  accountRef: string
+  nextHarnessKind: FleetHarnessKind | null
+  nextAccountRef: string | null
+}>
+
+export type FleetAutoTargetSelection = Readonly<{
+  harnessKind: FleetHarnessKind
+  accountRef: string
+  marginalCostClass: MarginalCostClass
+}>
+
+export type FleetAutoTargetResolution = Readonly<{
+  // The concrete (harnessKind, accountRef) `auto` resolves to right now, or
+  // `null` when every candidate was skipped (the whole policy exhausted).
+  selection: FleetAutoTargetSelection | null
+  // True whenever the resolution did NOT land on the very first candidate in
+  // evaluation order — i.e. at least one skip happened.
+  usedFallback: boolean
+  // One typed event per skipped candidate, in evaluation order. NEVER empty
+  // when `usedFallback` is true — every skip is named, never a silent swap.
+  events: ReadonlyArray<FleetAutoTargetFallbackEvent>
+}>
+
+/**
+ * Pure, typed `auto` policy resolver (MH-8 v1). Walks `policy.preferenceOrder`
+ * one harness at a time; within a harness, candidates are evaluated
+ * cheapest-`marginalCostClass`-first (data-driven bias toward free/cheap
+ * accounts, never a hard-coded harness check), preserving input order as a
+ * stable tiebreak. Returns the first `ready` candidate whose cost class is at
+ * or under `policy.maxMarginalCostClass` (when set), and emits one typed
+ * `FleetAutoTargetFallbackEvent` for every candidate skipped along the way —
+ * whether skipped for readiness (`account_exhausted` etc, caller-supplied via
+ * `reason`) or for exceeding the cost ceiling (`cost_ceiling_exceeded`).
+ * Candidates for harnesses not present in `policy.preferenceOrder` are never
+ * evaluated and never reported (out of policy scope, not a skip).
+ */
+export const resolveFleetAutoTarget = (
+  input: Readonly<{
+    policy: FleetAutoPolicy
+    candidates: ReadonlyArray<FleetAutoTargetCandidate>
+  }>,
+): FleetAutoTargetResolution => {
+  const ceilingRank = input.policy.maxMarginalCostClass === undefined
+    ? undefined
+    : marginalCostClassRank[input.policy.maxMarginalCostClass]
+
+  const evaluationOrder: FleetAutoTargetCandidate[] = []
+  for (const harnessKind of input.policy.preferenceOrder) {
+    const group = input.candidates
+      .map((candidate, index) => ({ candidate, index }))
+      .filter(({ candidate }) => candidate.harnessKind === harnessKind)
+      .sort((a, b) => {
+        const rankDiff =
+          marginalCostClassRank[a.candidate.marginalCostClass] -
+          marginalCostClassRank[b.candidate.marginalCostClass]
+        return rankDiff !== 0 ? rankDiff : a.index - b.index
+      })
+      .map(({ candidate }) => candidate)
+    evaluationOrder.push(...group)
+  }
+
+  const events: FleetAutoTargetFallbackEvent[] = []
+
+  for (let i = 0; i < evaluationOrder.length; i++) {
+    const candidate = evaluationOrder[i]
+    if (candidate === undefined) continue
+
+    const overCeiling = ceilingRank !== undefined &&
+      marginalCostClassRank[candidate.marginalCostClass] > ceilingRank
+
+    if (candidate.ready && !overCeiling) {
+      return {
+        events,
+        selection: {
+          accountRef: candidate.accountRef,
+          harnessKind: candidate.harnessKind,
+          marginalCostClass: candidate.marginalCostClass,
+        },
+        usedFallback: events.length > 0,
+      }
+    }
+
+    const next = evaluationOrder[i + 1] ?? null
+    events.push({
+      accountRef: candidate.accountRef,
+      harnessKind: candidate.harnessKind,
+      nextAccountRef: next?.accountRef ?? null,
+      nextHarnessKind: next?.harnessKind ?? null,
+      type: overCeiling ? "cost_ceiling_exceeded" : (candidate.reason ?? "account_unavailable"),
+    })
+  }
+
+  return { events, selection: null, usedFallback: true }
+}
+
 // --- Intent value objects --------------------------------------------------
 
 export const FleetRunControlAction = S.Literals([

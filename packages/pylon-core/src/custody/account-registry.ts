@@ -8,6 +8,26 @@ import { Context, Data, Effect, Layer } from "effect"
 export type PylonAccountProvider = "codex" | "claude_agent"
 export type PylonAccountSelectorKind = "registry_ref" | "direct_home"
 
+// Per-account marginal cost class (MH-8, #8587). Mirrors
+// `@openagentsinc/khala-fleet-intents` `MarginalCostClass` — kept as an
+// independent literal union here (rather than a cross-package import)
+// because `pylon-core` is a published npm package while
+// `khala-fleet-intents` is a private workspace-only package. `not_measured`
+// is the honest default when a registry entry does not set the field —
+// NEVER assume `free` or any other class without measured/declared data.
+export type PylonAccountMarginalCostClass =
+  | "free"
+  | "subscription"
+  | "api_metered"
+  | "not_measured"
+
+export const pylonAccountMarginalCostClasses: ReadonlyArray<PylonAccountMarginalCostClass> = [
+  "free",
+  "subscription",
+  "api_metered",
+  "not_measured",
+]
+
 export type PylonAccountRegistryEntry = {
   ref: string
   provider: PylonAccountProvider
@@ -16,6 +36,10 @@ export type PylonAccountRegistryEntry = {
   hourlyCap: number | null
   weeklyCap: number | null
   manualResetsRemaining: number | null
+  // DATA-DRIVEN cost class read from the account registry config
+  // (`dev.accounts[].marginalCostClass`), never inferred from `provider` or
+  // `ref` by name. Defaults to `"not_measured"` when absent or invalid.
+  marginalCostClass: PylonAccountMarginalCostClass
 }
 
 export type PylonAccountSelectionInput = {
@@ -76,6 +100,13 @@ function accountRefIsValid(value: unknown): value is string {
 
 function providerFrom(value: unknown): PylonAccountProvider | null {
   return value === "codex" || value === "claude_agent" ? value : null
+}
+
+function marginalCostClassFrom(value: unknown): PylonAccountMarginalCostClass {
+  return typeof value === "string" &&
+      (pylonAccountMarginalCostClasses as ReadonlyArray<string>).includes(value)
+    ? (value as PylonAccountMarginalCostClass)
+    : "not_measured"
 }
 
 function nonNegativeNumberOrNull(value: unknown): number | null {
@@ -170,6 +201,9 @@ export function loadPylonAccountRegistryEffect(
         weeklyCap: nonNegativeNumberOrNull(record.weeklyCap ?? record.weekly_cap),
         manualResetsRemaining: nonNegativeNumberOrNull(
           record.manualResetsRemaining ?? record.manual_resets_remaining,
+        ),
+        marginalCostClass: marginalCostClassFrom(
+          record.marginalCostClass ?? record.marginal_cost_class,
         ),
       })
     }
