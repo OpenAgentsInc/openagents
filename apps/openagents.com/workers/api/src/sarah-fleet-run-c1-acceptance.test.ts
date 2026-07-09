@@ -684,27 +684,33 @@ describe.skipIf(!hasLocalPostgres())(
             agentToken: OWNER_TOKEN,
             baseUrl: 'https://openagents.test',
             makeId: () => 'c1-standing-claim-0001',
-            fetchImpl: async (input, init) => {
-              const request = new Request(input, init)
-              const body = await request.clone().json()
-              transportBodies.push(body)
-              if (request.url.endsWith('/claim')) {
-                timeline.advance(4_000)
-              } else {
-                const imported = await openPylonFleetRunRuntime({
-                  bootstrap: summary,
-                })
-                try {
-                  importedBeforeAccept =
-                    imported.store.getFleetRun(startOutput.run.runRef)
-                      ?.authorityBinding?.phase === 'imported'
-                } finally {
-                  await imported.close()
+            fetchImpl: Object.assign(
+              async (
+                input: Parameters<typeof fetch>[0],
+                init?: Parameters<typeof fetch>[1],
+              ): Promise<Response> => {
+                const request = new Request(input, init)
+                const body = await request.clone().json()
+                transportBodies.push(body)
+                if (request.url.endsWith('/claim')) {
+                  timeline.advance(4_000)
+                } else {
+                  const imported = await openPylonFleetRunRuntime({
+                    bootstrap: summary,
+                  })
+                  try {
+                    importedBeforeAccept =
+                      imported.store.getFleetRun(startOutput.run.runRef)
+                        ?.authorityBinding?.phase === 'imported'
+                  } finally {
+                    await imported.close()
+                  }
+                  timeline.advance(500)
                 }
-                timeline.advance(500)
-              }
-              return routePylon(request)
-            },
+                return routePylon(request)
+              },
+              { preconnect: fetch.preconnect },
+            ),
           })
           const intake = await openPylonFleetRunRemoteIntakeService({
             activation,
