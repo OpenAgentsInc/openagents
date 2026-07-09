@@ -5,6 +5,10 @@ import { DatabaseSync } from 'node:sqlite'
 import { describe, expect, test } from 'vitest'
 
 import {
+  apolloWaveIngestBodyFromFixture,
+  buildOb2ApolloWaveFixture,
+} from './business-pipeline-apollo-wave-fixture'
+import {
   makeD1BusinessPipelineStore,
   type BusinessPipelineRuntime,
 } from './business-pipeline-queue'
@@ -130,26 +134,20 @@ const runRoute = async (db: D1Database, request: Request): Promise<Response> => 
   return Effect.runPromise(routed)
 }
 
-const waveProspects = (
-  prefix: string,
-  count: number,
-  vertical: string,
-): ReadonlyArray<Record<string, unknown>> =>
-  Array.from({ length: count }, (_, index) => {
-    const n = String(index + 1).padStart(3, '0')
-    return {
-      pipelineRef: `biz-pipe-${prefix}-${n}`,
-      quotedBandLabel: 'audit first',
-      quotedMaxUsdCents: 500_000,
-      quotedMinUsdCents: 150_000,
-      subjectRef: `prospect.${prefix}.${n}`,
-      vertical,
-    }
-  })
-
 describe('business pipeline queue routes', () => {
   test('ingests Apollo waves at volume with source attribution, suppression, and idempotent replays', async () => {
     const db = makeDb()
+    const agencyFixture = buildOb2ApolloWaveFixture({
+      count: 100,
+      segmentKey: 'agencies_seo',
+      waveId: '20260708a',
+    })
+    const legalFixture = buildOb2ApolloWaveFixture({
+      count: 100,
+      segmentKey: 'legal_small_firm',
+      suppressIndexes: [],
+      waveId: '20260708a',
+    })
     await db
       .prepare(
         `INSERT INTO business_outreach_suppressions (
@@ -162,7 +160,7 @@ describe('business pipeline queue routes', () => {
       )
       .bind(
         'business.outreach.suppression.agency_050',
-        'prospect.agency.050',
+        agencyFixture.suppressedSubjectRefs[0],
         'crm.suppression.20260708',
         runtime.nowIso(),
       )
@@ -171,12 +169,7 @@ describe('business pipeline queue routes', () => {
     const agencyWave = await runRoute(
       db,
       operatorRequest('/api/operator/business/pipeline/apollo-waves', {
-        body: JSON.stringify({
-          prospects: waveProspects('agency', 100, 'agency'),
-          segmentRef: 'segment.apollo.agencies_seo',
-          sourceRef: 'apollo_agent_readiness_agency',
-          waveRef: 'apollo.wave.agencies_seo.20260708a',
-        }),
+        body: JSON.stringify(apolloWaveIngestBodyFromFixture(agencyFixture)),
         method: 'POST',
       }),
     )
@@ -221,12 +214,7 @@ describe('business pipeline queue routes', () => {
     const legalWave = await runRoute(
       db,
       operatorRequest('/api/operator/business/pipeline/apollo-waves', {
-        body: JSON.stringify({
-          prospects: waveProspects('legal', 100, 'regulated legal'),
-          segmentRef: 'segment.apollo.legal_small_firm',
-          sourceRef: 'apollo_model_custody',
-          waveRef: 'apollo.wave.legal_small_firm.20260708a',
-        }),
+        body: JSON.stringify(apolloWaveIngestBodyFromFixture(legalFixture)),
         method: 'POST',
       }),
     )
@@ -243,12 +231,7 @@ describe('business pipeline queue routes', () => {
     const replay = await runRoute(
       db,
       operatorRequest('/api/operator/business/pipeline/apollo-waves', {
-        body: JSON.stringify({
-          prospects: waveProspects('agency', 100, 'agency'),
-          segmentRef: 'segment.apollo.agencies_seo',
-          sourceRef: 'apollo_agent_readiness_agency',
-          waveRef: 'apollo.wave.agencies_seo.20260708a',
-        }),
+        body: JSON.stringify(apolloWaveIngestBodyFromFixture(agencyFixture)),
         method: 'POST',
       }),
     )
@@ -271,34 +254,43 @@ describe('business pipeline queue routes', () => {
     expect(replayBody.wave.duplicates).toContain('biz-pipe-agency-001')
     expect(replayBody.wave.duplicates).not.toContain('biz-pipe-agency-050')
 
+    const agencySubjectDedupe = buildOb2ApolloWaveFixture({
+      count: 100,
+      distinctPipelineRefs: true,
+      segmentKey: 'agencies_seo',
+      waveId: '20260708b',
+    })
     const sameSubjectSecondWave = await runRoute(
       db,
       operatorRequest('/api/operator/business/pipeline/apollo-waves', {
-        body: JSON.stringify({
-          prospects: [{
-            pipelineRef: 'biz-pipe-agency-followup-001',
-            quotedBandLabel: 'audit first',
-            quotedMaxUsdCents: 500_000,
-            quotedMinUsdCents: 150_000,
-            subjectRef: 'prospect.agency.001',
-            vertical: 'agency',
-          }],
-          segmentRef: 'segment.apollo.agencies_seo',
-          sourceRef: 'apollo_agent_readiness_agency',
-          waveRef: 'apollo.wave.agencies_seo.20260708b',
-        }),
+        body: JSON.stringify(
+          apolloWaveIngestBodyFromFixture(agencySubjectDedupe),
+        ),
         method: 'POST',
       }),
     )
     expect(sameSubjectSecondWave.status).toBe(201)
-    expect(await sameSubjectSecondWave.json()).toMatchObject({
+    const subjectDedupeBody = await sameSubjectSecondWave.json() as {
+      wave: {
+        acceptedCount: number
+        duplicateCount: number
+        duplicates: ReadonlyArray<string>
+        suppressedCount: number
+      }
+    }
+    expect(subjectDedupeBody).toMatchObject({
       wave: {
         acceptedCount: 0,
-        duplicateCount: 1,
-        duplicates: ['biz-pipe-agency-followup-001'],
-        suppressedCount: 0,
+        duplicateCount: 99,
+        suppressedCount: 1,
       },
     })
+    expect(subjectDedupeBody.wave.duplicates).toContain(
+      'biz-pipe-agency-001-20260708b',
+    )
+    expect(subjectDedupeBody.wave.duplicates).not.toContain(
+      'biz-pipe-agency-050-20260708b',
+    )
 
     const list = await runRoute(
       db,
