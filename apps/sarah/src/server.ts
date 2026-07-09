@@ -64,6 +64,15 @@ import {
   sarahAvatarStatus,
   stopSarahAvatarSession,
 } from "./services/liveavatar.ts"
+import {
+  isOwnedAvatarSession,
+  mintOwnedAvatarSession,
+  ownedRendererStatus,
+  reapStaleOwnedSessions,
+  sarahAvatarRenderer,
+  speakOwnedAvatarTurn,
+  stopOwnedAvatarSession,
+} from "./services/owned-renderer.ts"
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url))
 /** Overridable for Cloud Run monolith bundle (UI copied beside server.js). */
@@ -416,7 +425,10 @@ async function handleOperatorOps(): Promise<Response> {
     authority: "openagents.com API",
     emailRail: "crm_operator_rail",
     agentRuntime: "owned_effect_seed",
-    avatar: sarahAvatarStatus(),
+    avatar:
+      sarahAvatarRenderer() === "owned"
+        ? { renderer: "owned", ...ownedRendererStatus() }
+        : { renderer: "liveavatar", ...sarahAvatarStatus() },
     turnStore: sarahTurnStoreStatus(),
     answerCache: sarahAnswerCacheStatus(),
     collectiveLearning: sarahCollectiveLearningStatus(),
@@ -643,25 +655,67 @@ export async function handleSarahRequest(request: Request): Promise<Response> {
     return handleSessionConfig()
   }
   if (apiPath === "/api/avatar/status" && request.method === "GET") {
-    return json(sarahAvatarStatus())
+    // OAV-4 (#8614): status reports the configured renderer. Flag-off default
+    // is LiveAvatar with its status shape unchanged.
+    const renderer = sarahAvatarRenderer()
+    return json(
+      renderer === "owned"
+        ? { renderer, ...ownedRendererStatus() }
+        : { renderer, ...sarahAvatarStatus() },
+    )
   }
   if (apiPath === "/api/avatar/session" && request.method === "POST") {
+    // OAV-4 (#8614) renderer seam: SARAH_AVATAR_RENDERER=owned mints on the
+    // owned render service (webrtc join info instead of a LiveAvatar token).
+    const prospectRef = readSarahProspectRef(request) ?? undefined
+    if (sarahAvatarRenderer() === "owned") {
+      reapStaleOwnedSessions()
+      const owned = await mintOwnedAvatarSession({ prospectRef })
+      if (!owned.ok) {
+        return json(
+          { error: { code: owned.error, detail: owned.detail } },
+          { status: owned.status },
+        )
+      }
+      return json(owned)
+    }
     reapStaleAvatarSessions()
-    const result = await mintSarahAvatarSession({
-      prospectRef: readSarahProspectRef(request) ?? undefined,
-    })
+    const result = await mintSarahAvatarSession({ prospectRef })
     if (!result.ok) {
       return json(
         { error: { code: result.error, detail: result.detail } },
         { status: result.status },
       )
     }
-    return json(result)
+    return json({ renderer: "liveavatar", ...result })
   }
   if (apiPath === "/api/avatar/stop" && request.method === "POST") {
     const body = (await request.json().catch(() => ({}))) as { sessionId?: string }
     if (!body.sessionId) return json({ error: { code: "missing_session_id" } }, { status: 400 })
+    // Stop routes to whichever backend owns the session id — a browser may
+    // stop a session minted before a renderer flag flip.
+    if (isOwnedAvatarSession(body.sessionId)) {
+      return json(await stopOwnedAvatarSession(body.sessionId))
+    }
     return json(await stopSarahAvatarSession(body.sessionId))
+  }
+  if (apiPath === "/api/avatar/speak" && request.method === "POST") {
+    // OAV-4 speaking bridge (owned renderer only): a text turn during an owned
+    // avatar session runs the owned brain server-side and streams TTS PCM to
+    // the render service. v1 is text-driven — mic ASR is a later lane.
+    const body = (await request.json().catch(() => ({}))) as {
+      sessionId?: string
+      message?: string
+    }
+    if (!body.sessionId) return json({ error: { code: "missing_session_id" } }, { status: 400 })
+    const spoken = await speakOwnedAvatarTurn({
+      sessionId: body.sessionId,
+      message: body.message ?? "",
+    })
+    if (!spoken.ok) {
+      return json({ error: { code: spoken.error } }, { status: spoken.status })
+    }
+    return json(spoken)
   }
   if (apiPath === "/api/avatar/events" && request.method === "GET") {
     const ref = url.searchParams.get("ref")
