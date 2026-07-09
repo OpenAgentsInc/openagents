@@ -6,6 +6,14 @@
  */
 import { describe, expect, test } from "bun:test"
 import { readFileSync } from "node:fs"
+import { Schema } from "effect"
+import { Effect as NativeEffect } from "@effect-native/core/effect"
+
+import {
+  projectSarahCodingCloseoutReceipts,
+} from "../contracts/coding-closeout-receipt.ts"
+import { SarahFleetOwnerProjection } from "../contracts/fleet-owner-projection.ts"
+import type { SarahOwnerFleetHostIntentHandlers } from "./main.ts"
 
 // main.ts boots against the real page on import; give it an inert document so
 // the module loads headlessly and boot() no-ops (no #sarah-root here).
@@ -15,7 +23,12 @@ import { readFileSync } from "node:fs"
   addEventListener: () => {},
 }
 
-const { sarahSurfaceView, sarahAvatarPaneView } = await import("./main.ts")
+const {
+  sarahSurfaceView,
+  sarahAvatarPaneView,
+  sarahOwnerFleetInteractionMode,
+  sarahOwnerFleetHostIntents,
+} = await import("./main.ts")
 const { sarahEffectNativeTheme } = await import("./theme.ts")
 const sarahCss = readFileSync(new URL("./sarah.css", import.meta.url), "utf8")
 
@@ -40,6 +53,144 @@ const baseState: SurfaceState = {
   blueprintContactEmail: null,
   receiptsProspectRef: null,
   receipts: [],
+}
+
+const fleetProjection = Schema.decodeUnknownSync(SarahFleetOwnerProjection)({
+  schema: "sarah.fleet_owner_projection.v1",
+  run: {
+    runRef: "fleet.run.surface",
+    name: "Fleet run",
+    status: "running",
+    desiredSlots: 1,
+    workerKind: "auto",
+    startedAt: "2026-07-09T19:30:00.000Z",
+    counters: {
+      workUnitsTotal: 1,
+      activeAssignments: 0,
+      completedAssignments: 1,
+      failedAssignments: 0,
+      blockedAssignments: 0,
+    },
+    updatedAt: "2026-07-09T20:00:00.000Z",
+    availableControls: ["pause", "drain", "stop"],
+    blockers: [],
+  },
+  workUnits: [
+    {
+      workUnitRef: "#8639",
+      assignmentRef: "assignment.surface.grok",
+      name: "#8639",
+      assignmentStatus: "accepted_work",
+      workerRef: "worker.surface.grok",
+      progress: {
+        status: "completed",
+        phase: "completed",
+        observedAt: "2026-07-09T20:00:00.000Z",
+        summary: "Grok worker completed",
+      },
+      approvalRefs: [],
+      verification: {
+        status: "ready",
+        verificationRef: "assignment.surface.grok",
+        summary: "Verification available",
+      },
+      closeout: {
+        status: "accepted",
+        closeoutRef: "assignment.surface.grok",
+        closeoutClass: "accepted_work",
+        summary: "Closeout accepted",
+      },
+      summary: "Work unit accepted work",
+      updatedAt: "2026-07-09T20:00:00.000Z",
+    },
+  ],
+  workers: [
+    {
+      workerRef: "worker.surface.grok",
+      name: "Grok worker",
+      phase: "completed",
+      harnessKind: "grok",
+      workUnitRef: "#8639",
+      accountRefHash: "account.pylon.grok.33333333",
+      progress: {
+        status: "completed",
+        phase: "completed",
+        observedAt: "2026-07-09T20:00:00.000Z",
+        summary: "Grok worker completed",
+      },
+      approvalRefs: [],
+      updatedAt: "2026-07-09T20:00:00.000Z",
+    },
+  ],
+  approvals: [],
+  projectedAt: "2026-07-09T20:00:00.000Z",
+})
+
+const [fleetCloseoutReceipt] = projectSarahCodingCloseoutReceipts({
+  projection: fleetProjection,
+  evidence: [
+    {
+      assignmentRef: "assignment.surface.grok",
+      verification: {
+        status: "passed",
+        verificationRef: "verification.surface.grok",
+      },
+      changes: {
+        changeClass: "source_and_tests",
+        artifactRef: "artifact.public.surface.grok",
+      },
+      capacity: {
+        capacityClass: "owner_local",
+        marginalCostClass: "not_measured",
+      },
+      authority: {
+        authorityClass: "coding_session_control",
+        authorityRef: "authority.owner.surface.grok",
+      },
+    },
+  ],
+})
+
+if (fleetCloseoutReceipt === undefined) {
+  throw new Error("expected fleet closeout fixture")
+}
+
+const fleetProjectionWithApproval = Schema.decodeUnknownSync(
+  SarahFleetOwnerProjection,
+)({
+  ...fleetProjection,
+  approvals: [
+    {
+      approvalRef: "approval.surface.grok",
+      status: "pending",
+      workerRef: "worker.surface.grok",
+      workUnitRef: "#8639",
+      toolClass: "write_file",
+      openedAt: "2026-07-09T19:59:00.000Z",
+      decidedAt: null,
+      availableDecisions: ["allow", "deny"],
+      summary: "Approval pending",
+      updatedAt: "2026-07-09T20:00:00.000Z",
+    },
+  ],
+})
+
+const ownerFleetState = (
+  closeouts: NonNullable<SurfaceState["ownerFleet"]>["closeouts"],
+  projection: typeof fleetProjection = fleetProjection,
+): NonNullable<SurfaceState["ownerFleet"]> => ({
+  projection,
+  closeouts,
+  expandedAuditWorkUnitRefs: [],
+  expandedReceiptCardRefs: [],
+})
+
+const ownerFleetHandlers: SarahOwnerFleetHostIntentHandlers = {
+  SarahFleetRunControlRequested: () => NativeEffect.void,
+  SarahFleetWorkUnitOpened: () => NativeEffect.void,
+  SarahFleetApprovalDecisionRequested: () => NativeEffect.void,
+  SarahFleetEvidenceOpened: () => NativeEffect.void,
+  SarahCodingReceiptAction: () => NativeEffect.void,
 }
 
 type AnyNode = { readonly _tag?: string; readonly [key: string]: unknown }
@@ -88,6 +239,23 @@ const findByKey = (node: unknown, key: string): AnyNode | null => {
     if (found) return found
   }
   return null
+}
+
+const visibleTextOutsideAccordion = (node: unknown): ReadonlyArray<string> => {
+  if (node === null || typeof node !== "object") return []
+  if (Array.isArray(node)) {
+    return node.flatMap((child) => visibleTextOutsideAccordion(child))
+  }
+  const record = node as AnyNode
+  if (record._tag === "Accordion") return []
+  return [
+    ...(record._tag === "Text" && typeof record.content === "string"
+      ? [record.content]
+      : []),
+    ...Object.values(record).flatMap((value) =>
+      visibleTextOutsideAccordion(value),
+    ),
+  ]
 }
 
 const relativeLuminance = (hex: string): number => {
@@ -178,6 +346,217 @@ describe("sarah surface consumes the EN catalog (SQ-7 #8624)", () => {
     const pane = sarahAvatarPaneView(baseState)
     expect(findByTag(pane, "Host")).toBeNull()
     expect(findByKey(pane, "avatar-start-overlay")).not.toBeNull()
+  })
+})
+
+describe("FC-3 owner fleet surface integration", () => {
+  test("keeps Fleet absent and Blueprint selected without an exact owner projection", () => {
+    const staleFleetSelection = sarahSurfaceView({
+      ...baseState,
+      activePanel: "fleet",
+    })
+    const tabs = findByTag(staleFleetSelection, "Tabs") as {
+      selectedId?: string
+      tabs?: ReadonlyArray<{ id: string; label: string }>
+      panels?: ReadonlyArray<{ id: string }>
+    } | null
+
+    expect(tabs?.selectedId).toBe("blueprint")
+    expect(tabs?.tabs?.map((tab) => tab.id)).toEqual([
+      "blueprint",
+      "chat",
+      "actions",
+      "receipts",
+    ])
+    expect(tabs?.panels?.map((panel) => panel.id)).toEqual([
+      "blueprint",
+      "chat",
+      "actions",
+      "receipts",
+    ])
+    expect(findByKey(staleFleetSelection, "fleet-panel")).toBeNull()
+    expect(
+      findByKey(staleFleetSelection, "fleet-closeouts-not_reported"),
+    ).toBeNull()
+  })
+
+  test("adds one Fleet tab after Blueprint only when the projection exists", () => {
+    const view = sarahSurfaceView({
+      ...baseState,
+      ownerFleet: ownerFleetState({ status: "not_reported" }),
+    })
+    const tabs = findByTag(view, "Tabs") as {
+      selectedId?: string
+      tabs?: ReadonlyArray<{ id: string; label: string }>
+      panels?: ReadonlyArray<{ id: string }>
+    } | null
+
+    expect(tabs?.selectedId).toBe("blueprint")
+    expect(tabs?.tabs?.map((tab) => tab.label)).toEqual([
+      "Blueprint map",
+      "Fleet",
+      "Chat",
+      "Actions",
+      "Receipts",
+    ])
+    expect(tabs?.panels?.map((panel) => panel.id)).toEqual([
+      "blueprint",
+      "fleet",
+      "chat",
+      "actions",
+      "receipts",
+    ])
+    expect(findByKey(view, "fleet-panel")).not.toBeNull()
+    expect(
+      findByKey(view, "fleet-supervision-fleet.run.surface"),
+    ).not.toBeNull()
+    expect(findByKey(view, "fleet-closeouts-not_reported")).toMatchObject({
+      a11y: {
+        role: "group",
+        label:
+          "Closeouts not reported. Coding closeout receipts have not been reported.",
+      },
+    })
+    expect(findByKey(view, "fleet-panel-list")?.style).toMatchObject({
+      width: "full",
+      flex: 1,
+      minHeight: 0,
+    })
+  })
+
+  test("renders loading, error, and not-reported closeouts only from explicit variants", () => {
+    for (const status of ["loading", "error", "not_reported"] as const) {
+      const view = sarahSurfaceView({
+        ...baseState,
+        activePanel: "fleet",
+        ownerFleet: ownerFleetState({ status }),
+      })
+      expect(findByKey(view, `fleet-closeouts-${status}`)).not.toBeNull()
+      for (const other of ["loading", "error", "not_reported"] as const) {
+        if (other === status) continue
+        expect(findByKey(view, `fleet-closeouts-${other}`)).toBeNull()
+      }
+    }
+  })
+
+  test("composes ready coding closeouts without promoting raw refs into primary copy", () => {
+    const view = sarahSurfaceView({
+      ...baseState,
+      activePanel: "fleet",
+      ownerFleet: ownerFleetState({
+        status: "ready",
+        receipts: [fleetCloseoutReceipt],
+      }),
+    })
+    const receiptKey = `coding-receipt-${fleetCloseoutReceipt.cardRef}`
+    const primaryCopy = visibleTextOutsideAccordion(
+      findByKey(view, "fleet-panel"),
+    ).join(" ")
+
+    expect(findByKey(view, receiptKey)).not.toBeNull()
+    expect(primaryCopy).toContain("Run identity: fleet.run.surface")
+    for (const ref of [
+      "assignment.surface.grok",
+      "worker.surface.grok",
+      "verification.surface.grok",
+      "artifact.public.surface.grok",
+      "authority.owner.surface.grok",
+      fleetCloseoutReceipt.cardRef,
+    ]) {
+      expect(primaryCopy).not.toContain(ref)
+    }
+    expect(findByKey(view, `${receiptKey}-evidence`)?.expandedIds).toEqual([])
+  })
+
+  test("mount state without handlers is read-only while evidence disclosures remain local", () => {
+    const interactionMode = sarahOwnerFleetInteractionMode(undefined)
+    const partialHandlers = {
+      SarahFleetRunControlRequested:
+        ownerFleetHandlers.SarahFleetRunControlRequested,
+    } as unknown as SarahOwnerFleetHostIntentHandlers
+    const view = sarahSurfaceView(
+      {
+        ...baseState,
+        activePanel: "fleet",
+        ownerFleet: ownerFleetState(
+          { status: "ready", receipts: [fleetCloseoutReceipt] },
+          fleetProjectionWithApproval,
+        ),
+      },
+      interactionMode,
+    )
+    const receiptKey = `coding-receipt-${fleetCloseoutReceipt.cardRef}`
+
+    expect(interactionMode).toBe("read_only")
+    expect(sarahOwnerFleetInteractionMode(partialHandlers)).toBe("read_only")
+    expect(findByKey(view, "fleet-controls-unavailable")).toMatchObject({
+      a11y: {
+        role: "group",
+        label:
+          "Fleet controls unavailable. This surface is read-only; fleet state and evidence references remain visible.",
+      },
+    })
+    for (const key of [
+      "fleet-supervision-fleet.run.surface-control-pause",
+      "fleet-supervision-assignment.surface.grok-open",
+      "fleet-supervision-assignment.surface.grok-verification",
+      "fleet-supervision-approval.surface.grok-allow",
+      `${receiptKey}-next-action`,
+    ]) {
+      expect(findByKey(view, key)).toBeNull()
+    }
+    expect(
+      (findByKey(
+        view,
+        "fleet-supervision-assignment.surface.grok-audit",
+      )?.onToggle as { name?: string })?.name,
+    ).toBe("SarahFleetAuditToggled")
+    expect(
+      (findByKey(view, `${receiptKey}-evidence`)?.onToggle as {
+        name?: string
+      })?.name,
+    ).toBe("SarahCodingReceiptEvidenceToggle")
+  })
+
+  test("mount state with every host handler exposes only typed host-bound actions", () => {
+    expect(sarahOwnerFleetHostIntents.map((intent) => intent.name)).toEqual([
+      "SarahFleetRunControlRequested",
+      "SarahFleetWorkUnitOpened",
+      "SarahFleetApprovalDecisionRequested",
+      "SarahFleetEvidenceOpened",
+      "SarahCodingReceiptAction",
+    ])
+    const interactionMode = sarahOwnerFleetInteractionMode(ownerFleetHandlers)
+    const view = sarahSurfaceView(
+      {
+        ...baseState,
+        ownerFleet: ownerFleetState(
+          { status: "ready", receipts: [fleetCloseoutReceipt] },
+          fleetProjectionWithApproval,
+        ),
+      },
+      interactionMode,
+    )
+    expect(interactionMode).toBe("interactive")
+    expect(findByKey(view, "fleet-controls-unavailable")).toBeNull()
+    expect(
+      (findByKey(
+        view,
+        "fleet-supervision-fleet.run.surface-control-pause",
+      )?.onPress as { name?: string })?.name,
+    ).toBe("SarahFleetRunControlRequested")
+    expect(
+      (findByKey(
+        view,
+        "fleet-supervision-approval.surface.grok-allow",
+      )?.onPress as { name?: string })?.name,
+    ).toBe("SarahFleetApprovalDecisionRequested")
+    expect(
+      (findByKey(
+        view,
+        `coding-receipt-${fleetCloseoutReceipt.cardRef}-next-action`,
+      )?.onPress as { name?: string })?.name,
+    ).toBe("SarahCodingReceiptAction")
   })
 })
 

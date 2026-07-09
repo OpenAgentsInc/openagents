@@ -19,6 +19,11 @@ import type {
   SarahFleetOwnerProjection,
   SarahFleetProgress,
 } from "../contracts/fleet-owner-projection.ts"
+import {
+  SARAH_OWNER_FLEET_INTERACTIVE,
+  SARAH_OWNER_FLEET_READ_ONLY,
+  type SarahOwnerFleetInteractionMode,
+} from "./owner-fleet-interaction.ts"
 
 // The domain packages and vendored Effect Native core currently resolve
 // different Effect v4 beta builds. Intent schemas stay on the EN runtime and
@@ -108,6 +113,7 @@ export const sarahFleetSupervisionIntents = [
 
 export type SarahFleetSupervisionViewOptions = Readonly<{
   expandedAuditWorkUnitRefs?: ReadonlyArray<string>
+  interactionMode?: SarahOwnerFleetInteractionMode
 }>
 
 type FleetWorkUnit = SarahFleetOwnerProjection["workUnits"][number]
@@ -264,7 +270,11 @@ const supervisionGraph = (projection: SarahFleetOwnerProjection): View => {
   })
 }
 
-const runControls = (projection: SarahFleetOwnerProjection): View => {
+const runControls = (
+  projection: SarahFleetOwnerProjection,
+  interactionMode: SarahOwnerFleetInteractionMode,
+): View => {
+  const interactive = interactionMode === SARAH_OWNER_FLEET_INTERACTIVE
   const controls = projection.run.availableControls.map((action) =>
     Button({
       key: `fleet-supervision-${projection.run.runRef}-control-${action}`,
@@ -298,7 +308,16 @@ const runControls = (projection: SarahFleetOwnerProjection): View => {
         "Run controls",
         "label",
       ),
-      ...(controls.length === 0
+      ...(!interactive
+        ? [
+            text(
+              `fleet-supervision-${projection.run.runRef}-controls-unavailable`,
+              "Controls unavailable in this surface. Run state remains visible and no authority is inferred.",
+              "caption",
+              "textMuted",
+            ),
+          ]
+        : controls.length === 0
         ? [
             text(
               `fleet-supervision-${projection.run.runRef}-controls-empty`,
@@ -321,7 +340,9 @@ const runControls = (projection: SarahFleetOwnerProjection): View => {
           ]),
       text(
         `fleet-supervision-${projection.run.runRef}-control-authority`,
-        "Availability reflects durable run state. Authorization is checked when submitted.",
+        interactive
+          ? "Availability reflects durable run state. Authorization is checked when submitted."
+          : "This surface is not connected to fleet control actions. The server must still recheck authority wherever actions are submitted.",
         "caption",
         "textMuted",
       ),
@@ -453,6 +474,7 @@ const workUnitRow = (
   workUnit: FleetWorkUnit,
   worker: FleetWorker | undefined,
   expanded: boolean,
+  interactionMode: SarahOwnerFleetInteractionMode,
 ): View => {
   const workerLabel =
     worker === undefined
@@ -559,44 +581,48 @@ const workUnitRow = (
           }),
         ],
       ),
-      Stack(
-        {
-          key: `fleet-supervision-${workUnit.assignmentRef}-actions`,
-          direction: { base: "column", sm: "row" },
-          gap: "2",
-          align: "start",
-          style: { width: "full" },
-        },
-        [
-          Button({
-            key: `fleet-supervision-${workUnit.assignmentRef}-open`,
-            label: "Open work unit",
-            variant: "secondary",
-            onPress: IntentRef(
-              SarahFleetWorkUnitOpened.name,
-              StaticPayload({
-                runRef: projection.run.runRef,
-                workUnitRef: workUnit.workUnitRef,
-                assignmentRef: workUnit.assignmentRef,
-                workerRef: workUnit.workerRef,
-              }),
+      ...(interactionMode === SARAH_OWNER_FLEET_INTERACTIVE
+        ? [
+            Stack(
+              {
+                key: `fleet-supervision-${workUnit.assignmentRef}-actions`,
+                direction: { base: "column", sm: "row" },
+                gap: "2",
+                align: "start",
+                style: { width: "full" },
+              },
+              [
+                Button({
+                  key: `fleet-supervision-${workUnit.assignmentRef}-open`,
+                  label: "Open work unit",
+                  variant: "secondary",
+                  onPress: IntentRef(
+                    SarahFleetWorkUnitOpened.name,
+                    StaticPayload({
+                      runRef: projection.run.runRef,
+                      workUnitRef: workUnit.workUnitRef,
+                      assignmentRef: workUnit.assignmentRef,
+                      workerRef: workUnit.workerRef,
+                    }),
+                  ),
+                  a11y: { label: `Open work unit ${workUnit.name}` },
+                }),
+                ...evidenceButton(
+                  projection,
+                  workUnit,
+                  "verification",
+                  workUnit.verification.verificationRef,
+                ),
+                ...evidenceButton(
+                  projection,
+                  workUnit,
+                  "closeout",
+                  workUnit.closeout.closeoutRef,
+                ),
+              ],
             ),
-            a11y: { label: `Open work unit ${workUnit.name}` },
-          }),
-          ...evidenceButton(
-            projection,
-            workUnit,
-            "verification",
-            workUnit.verification.verificationRef,
-          ),
-          ...evidenceButton(
-            projection,
-            workUnit,
-            "closeout",
-            workUnit.closeout.closeoutRef,
-          ),
-        ],
-      ),
+          ]
+        : []),
       auditDisclosure(projection, workUnit, expanded),
     ],
   )
@@ -605,6 +631,7 @@ const workUnitRow = (
 const approvalRow = (
   projection: SarahFleetOwnerProjection,
   approval: FleetApproval,
+  interactionMode: SarahOwnerFleetInteractionMode,
 ): View => {
   const target =
     approval.workUnitRef === null
@@ -680,7 +707,16 @@ const approvalRow = (
         "body",
         "textMuted",
       ),
-      ...(decisions.length === 0
+      ...(interactionMode === SARAH_OWNER_FLEET_READ_ONLY
+        ? [
+            text(
+              `fleet-supervision-${approval.approvalRef}-decisions-unavailable`,
+              "Controls unavailable in this surface. This approval remains pending and no decision was submitted.",
+              "caption",
+              "textMuted",
+            ),
+          ]
+        : decisions.length === 0
         ? [
             text(
               `fleet-supervision-${approval.approvalRef}-decisions-empty`,
@@ -726,6 +762,8 @@ export function sarahFleetRunSupervisionView(
   projection: SarahFleetOwnerProjection,
   options: SarahFleetSupervisionViewOptions = {},
 ): View {
+  const interactionMode =
+    options.interactionMode ?? SARAH_OWNER_FLEET_READ_ONLY
   const workerByRef = new Map(
     projection.workers.map((worker) => [worker.workerRef, worker]),
   )
@@ -798,7 +836,7 @@ export function sarahFleetRunSupervisionView(
         "textMuted",
       ),
       supervisionGraph(projection),
-      runControls(projection),
+      runControls(projection, interactionMode),
       Stack(
         {
           key: `fleet-supervision-${projection.run.runRef}-work-units`,
@@ -830,6 +868,7 @@ export function sarahFleetRunSupervisionView(
                     ? undefined
                     : workerByRef.get(workUnit.workerRef),
                   expanded.has(workUnit.workUnitRef),
+                  interactionMode,
                 ),
               )),
         ],
@@ -858,7 +897,7 @@ export function sarahFleetRunSupervisionView(
                 ),
               ]
             : pendingApprovals.map((approval) =>
-                approvalRow(projection, approval),
+                approvalRow(projection, approval, interactionMode),
               )),
         ],
       ),

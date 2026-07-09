@@ -17,6 +17,9 @@ import {
   SarahFleetWorkUnitOpened,
   sarahFleetRunSupervisionView,
 } from "./fleet-supervision-view.ts"
+import { SARAH_OWNER_FLEET_INTERACTIVE } from "./owner-fleet-interaction.ts"
+
+const interactive = { interactionMode: SARAH_OWNER_FLEET_INTERACTIVE } as const
 
 const NOW = Date.parse("2026-07-09T20:00:00.000Z")
 
@@ -154,7 +157,7 @@ const payloadOf = (node: AnyNode | null): unknown =>
 
 describe("FC-3 Effect Native fleet supervision view", () => {
   test("renders a valid accessible run card and stable run/work-unit/worker canvas", () => {
-    const view = sarahFleetRunSupervisionView(projection)
+    const view = sarahFleetRunSupervisionView(projection, interactive)
     expect(Schema.decodeUnknownSync(ViewSchema)(view)).toEqual(view)
     expect(view).toMatchObject({
       _tag: "Card",
@@ -219,7 +222,7 @@ describe("FC-3 Effect Native fleet supervision view", () => {
   })
 
   test("renders only projection-supplied run controls with exact typed refs", () => {
-    const view = sarahFleetRunSupervisionView(projection)
+    const view = sarahFleetRunSupervisionView(projection, interactive)
     const pause = findByKey(
       view,
       "fleet-supervision-fleet.run.sarah.8639-control-pause",
@@ -237,14 +240,17 @@ describe("FC-3 Effect Native fleet supervision view", () => {
       }),
     ).toThrow()
 
-    const resumeOnly = sarahFleetRunSupervisionView({
-      ...projection,
-      run: {
-        ...projection.run,
-        status: "paused",
-        availableControls: ["resume"],
+    const resumeOnly = sarahFleetRunSupervisionView(
+      {
+        ...projection,
+        run: {
+          ...projection.run,
+          status: "paused",
+          availableControls: ["resume"],
+        },
       },
-    })
+      interactive,
+    )
     expect(
       findByKey(
         resumeOnly,
@@ -287,10 +293,13 @@ describe("FC-3 Effect Native fleet supervision view", () => {
       availableDecisions: [] as const,
       summary: "Approval allowed",
     }
-    const view = sarahFleetRunSupervisionView({
-      ...projection,
-      approvals: [...projection.approvals, resolvedApproval],
-    })
+    const view = sarahFleetRunSupervisionView(
+      {
+        ...projection,
+        approvals: [...projection.approvals, resolvedApproval],
+      },
+      interactive,
+    )
 
     const allow = findByKey(view, "fleet-supervision-approval.fc3.claude-allow")
     const deny = findByKey(view, "fleet-supervision-approval.fc3.claude-deny")
@@ -322,7 +331,7 @@ describe("FC-3 Effect Native fleet supervision view", () => {
   })
 
   test("keeps audit refs secondary and never invents verification evidence", () => {
-    const view = sarahFleetRunSupervisionView(projection)
+    const view = sarahFleetRunSupervisionView(projection, interactive)
     const codexAudit = findByKey(
       view,
       "fleet-supervision-assignment.fc3.codex-audit",
@@ -382,6 +391,7 @@ describe("FC-3 Effect Native fleet supervision view", () => {
 
     const expandedView = sarahFleetRunSupervisionView(projection, {
       expandedAuditWorkUnitRefs: ["#8639"],
+      interactionMode: SARAH_OWNER_FLEET_INTERACTIVE,
     })
     const expandedAudit = findByKey(
       expandedView,

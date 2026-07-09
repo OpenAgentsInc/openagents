@@ -49,8 +49,30 @@ import {
   type BlueprintMapFact,
 } from "./blueprint-map-projection.ts"
 import { sarahEffectNativeTheme } from "./theme.ts"
+import {
+  SarahCodingReceiptAction,
+  SarahCodingReceiptEvidenceToggle,
+  sarahCodingCloseoutReceiptView,
+  sarahCodingReceiptIntents,
+} from "./coding-closeout-receipt-view.ts"
+import {
+  SarahFleetApprovalDecisionRequested,
+  SarahFleetAuditToggled,
+  SarahFleetEvidenceOpened,
+  SarahFleetRunControlRequested,
+  SarahFleetWorkUnitOpened,
+  sarahFleetRunSupervisionView,
+  sarahFleetSupervisionIntents,
+} from "./fleet-supervision-view.ts"
 import type { SarahBlueprintDelta } from "../services/avatar-event-bus.ts"
 import type { CustomerBlueprintDraft } from "../services/customer-blueprint.ts"
+import type { SarahCodingCloseoutReceipt } from "../contracts/coding-closeout-receipt.ts"
+import {
+  SARAH_OWNER_FLEET_INTERACTIVE,
+  SARAH_OWNER_FLEET_READ_ONLY,
+  type SarahOwnerFleetInteractionMode,
+} from "./owner-fleet-interaction.ts"
+import type { SarahFleetOwnerProjection } from "../contracts/fleet-owner-projection.ts"
 
 const API = "/sarah/api"
 
@@ -79,8 +101,31 @@ type SarahReceipt = Readonly<{
   ok?: boolean
 }>
 
-const sarahPanelIds = ["blueprint", "chat", "actions", "receipts"] as const
+const sarahPanelIds = ["blueprint", "fleet", "chat", "actions", "receipts"] as const
 type SarahPanelId = (typeof sarahPanelIds)[number]
+
+export type SarahOwnerFleetCloseoutState =
+  | Readonly<{ status: "loading" }>
+  | Readonly<{ status: "error" }>
+  | Readonly<{ status: "not_reported" }>
+  | Readonly<{
+      status: "ready"
+      receipts: ReadonlyArray<SarahCodingCloseoutReceipt>
+    }>
+
+/**
+ * Optional owner-scoped Fleet tab input. Presence means an exact decoded
+ * projection exists; loading/error/not-reported only describe the separate
+ * closeout receipt lane and are never inferred from an absent projection.
+ */
+export type SarahOwnerFleetViewState = Readonly<{
+  projection: SarahFleetOwnerProjection
+  closeouts: SarahOwnerFleetCloseoutState
+  expandedAuditWorkUnitRefs: ReadonlyArray<
+    SarahFleetOwnerProjection["workUnits"][number]["workUnitRef"]
+  >
+  expandedReceiptCardRefs: ReadonlyArray<string>
+}>
 
 /**
  * KHS-7 (#8606) in-conversation account linking:
@@ -89,7 +134,7 @@ type SarahPanelId = (typeof sarahPanelIds)[number]
  */
 type AccountPhase = "unknown" | "anonymous" | "linking" | "linked"
 
-type SarahSurfaceState = Readonly<{
+export type SarahSurfaceState = Readonly<{
   status: "idle" | "thinking" | "connecting" | "live" | "error"
   avatarArmed: boolean
   avatarActive: boolean
@@ -113,6 +158,7 @@ type SarahSurfaceState = Readonly<{
   blueprintContactEmail: string | null
   receiptsProspectRef: string | null
   receipts: ReadonlyArray<SarahReceipt>
+  ownerFleet?: SarahOwnerFleetViewState
 }>
 
 const initialState: SarahSurfaceState = {
@@ -151,7 +197,7 @@ const ConnectAccount = defineIntent("SarahConnectAccount", Schema.Null)
 const BookHumanHandoff = defineIntent("SarahBookHumanHandoff", Schema.Null)
 const SelectPanel = defineIntent("SarahSelectPanel", Schema.Literals(sarahPanelIds))
 
-const sarahIntents = [
+const baseSarahIntents = [
   InputChanged,
   SendText,
   StartAvatar,
@@ -160,6 +206,46 @@ const sarahIntents = [
   ConnectAccount,
   BookHumanHandoff,
   SelectPanel,
+] as const
+
+export const sarahOwnerFleetHostIntents = [
+  SarahFleetRunControlRequested,
+  SarahFleetWorkUnitOpened,
+  SarahFleetApprovalDecisionRequested,
+  SarahFleetEvidenceOpened,
+  SarahCodingReceiptAction,
+] as const
+export type SarahOwnerFleetHostIntentHandlers = IntentHandlers<
+  typeof sarahOwnerFleetHostIntents
+>
+
+export type SarahSurfaceMountOptions = Readonly<{
+  ownerFleet?: SarahOwnerFleetViewState
+  ownerFleetHandlers?: SarahOwnerFleetHostIntentHandlers
+}>
+
+const hasCompleteSarahOwnerFleetHostHandlers = (
+  handlers: SarahOwnerFleetHostIntentHandlers | undefined,
+): handlers is SarahOwnerFleetHostIntentHandlers =>
+  handlers !== undefined &&
+  typeof handlers.SarahFleetRunControlRequested === "function" &&
+  typeof handlers.SarahFleetWorkUnitOpened === "function" &&
+  typeof handlers.SarahFleetApprovalDecisionRequested === "function" &&
+  typeof handlers.SarahFleetEvidenceOpened === "function" &&
+  typeof handlers.SarahCodingReceiptAction === "function"
+
+/** Mount-safe mode: projection presence never enables host-bound actions. */
+export const sarahOwnerFleetInteractionMode = (
+  handlers: SarahOwnerFleetHostIntentHandlers | undefined,
+): SarahOwnerFleetInteractionMode =>
+  hasCompleteSarahOwnerFleetHostHandlers(handlers)
+    ? SARAH_OWNER_FLEET_INTERACTIVE
+    : SARAH_OWNER_FLEET_READ_ONLY
+
+const sarahIntents = [
+  ...baseSarahIntents,
+  ...sarahFleetSupervisionIntents,
+  ...sarahCodingReceiptIntents,
 ] as const
 
 const keyed = <V extends View>(view: V): V & { key: string } =>
@@ -627,8 +713,175 @@ const receiptsPanel = (state: SarahSurfaceState): View => {
   )
 }
 
-export const sarahSurfaceView = (state: SarahSurfaceState): View => {
+const ownerFleetCloseoutViews = (
+  ownerFleet: SarahOwnerFleetViewState,
+  interactionMode: SarahOwnerFleetInteractionMode,
+): ReadonlyArray<View> => {
+  const closeouts = ownerFleet.closeouts
+  if (closeouts.status === "ready") {
+    if (closeouts.receipts.length === 0) {
+      return [
+        text(
+          "fleet-closeouts-empty",
+          "No coding closeouts in this projection.",
+          "body",
+          "textMuted",
+        ),
+      ]
+    }
+    const expanded = new Set(ownerFleet.expandedReceiptCardRefs)
+    return closeouts.receipts.map((receipt) =>
+      sarahCodingCloseoutReceiptView(receipt, {
+        evidenceExpanded: expanded.has(receipt.cardRef),
+        interactionMode,
+      }),
+    )
+  }
+
+  const presentation =
+    closeouts.status === "loading"
+      ? {
+          label: "Closeouts loading",
+          tone: "info" as const,
+          message: "Coding closeout receipts are loading.",
+        }
+      : closeouts.status === "error"
+        ? {
+            label: "Closeouts unavailable",
+            tone: "danger" as const,
+            message: "Coding closeout receipts are unavailable.",
+          }
+        : {
+            label: "Closeouts not reported",
+            tone: "neutral" as const,
+            message: "Coding closeout receipts have not been reported.",
+          }
+
+  return [
+    Stack(
+      {
+        key: `fleet-closeouts-${closeouts.status}`,
+        direction: "column",
+        gap: "2",
+        a11y: {
+          role: "group",
+          label: `${presentation.label}. ${presentation.message}`,
+        },
+        style: { width: "full" },
+      },
+      [
+        Badge({
+          key: `fleet-closeouts-${closeouts.status}-badge`,
+          label: presentation.label,
+          tone: presentation.tone,
+        }),
+        text(
+          `fleet-closeouts-${closeouts.status}-message`,
+          presentation.message,
+          "body",
+          "textMuted",
+        ),
+      ],
+    ),
+  ]
+}
+
+const fleetPanel = (
+  ownerFleet: SarahOwnerFleetViewState,
+  interactionMode: SarahOwnerFleetInteractionMode,
+): View =>
+  Stack(
+    {
+      key: "fleet-panel",
+      direction: "column",
+      gap: "3",
+      style: { width: "full", height: "full", minHeight: 0 },
+    },
+    [
+      List(
+        {
+          key: "fleet-panel-list",
+          style: { width: "full", flex: 1, minHeight: 0 },
+        },
+        [
+          ...(interactionMode === SARAH_OWNER_FLEET_READ_ONLY
+            ? [
+                keyed(
+                  Stack(
+                    {
+                      key: "fleet-controls-unavailable",
+                      direction: "column",
+                      gap: "1",
+                      padding: "2",
+                      a11y: {
+                        role: "group",
+                        label:
+                          "Fleet controls unavailable. This surface is read-only; fleet state and evidence references remain visible.",
+                      },
+                      style: { width: "full" },
+                    },
+                    [
+                      Badge({
+                        key: "fleet-controls-unavailable-badge",
+                        label: "Read-only",
+                        tone: "neutral",
+                      }),
+                      text(
+                        "fleet-controls-unavailable-copy",
+                        "Fleet controls unavailable in this surface. State and evidence references remain read-only.",
+                        "caption",
+                        "textMuted",
+                      ),
+                    ],
+                  ),
+                ),
+              ]
+            : []),
+          keyed(
+            sarahFleetRunSupervisionView(ownerFleet.projection, {
+              expandedAuditWorkUnitRefs:
+                ownerFleet.expandedAuditWorkUnitRefs,
+              interactionMode,
+            }),
+          ),
+          keyed(
+            Stack(
+              {
+                key: "fleet-closeouts",
+                direction: "column",
+                gap: "3",
+                a11y: {
+                  role: "region",
+                  label: "Fleet coding closeouts",
+                },
+                style: { width: "full" },
+              },
+              [
+                text(
+                  "fleet-closeouts-title",
+                  "Coding closeouts",
+                  "title",
+                ),
+                ...ownerFleetCloseoutViews(ownerFleet, interactionMode),
+              ],
+            ),
+          ),
+        ],
+      ),
+    ],
+  )
+
+export const sarahSurfaceView = (
+  state: SarahSurfaceState,
+  interactionMode: SarahOwnerFleetInteractionMode =
+    SARAH_OWNER_FLEET_READ_ONLY,
+): View => {
   const account = accountChip(state)
+  const ownerFleet = state.ownerFleet
+  const selectedPanel =
+    state.activePanel === "fleet" && ownerFleet === undefined
+      ? "blueprint"
+      : state.activePanel
   return Stack(
     {
       key: "sarah-root",
@@ -650,17 +903,21 @@ export const sarahSurfaceView = (state: SarahSurfaceState): View => {
         key: "sarah-tabs",
         tabs: [
           { id: "blueprint", label: "Blueprint map" },
+          ...(ownerFleet === undefined ? [] : [{ id: "fleet", label: "Fleet" }]),
           { id: "chat", label: "Chat" },
           { id: "actions", label: "Actions" },
           { id: "receipts", label: "Receipts" },
         ],
         panels: [
           { id: "blueprint", content: blueprintMapPanel(state) },
+          ...(ownerFleet === undefined
+            ? []
+            : [{ id: "fleet", content: fleetPanel(ownerFleet, interactionMode) }]),
           { id: "chat", content: chatPanel(state) },
           { id: "actions", content: actionsPanel(state) },
           { id: "receipts", content: receiptsPanel(state) },
         ],
-        selectedId: state.activePanel,
+        selectedId: selectedPanel,
         keepMounted: true,
         onSelect: IntentRef("SarahSelectPanel", ComponentValueBinding()),
         style: { width: "full", flex: 1, minHeight: 0 },
@@ -1046,10 +1303,34 @@ const humanHandoffArgs = (state: SarahSurfaceState) => {
   }
 }
 
-export const mountSarahSurface = (container: HTMLElement, avatarContainer: HTMLElement) =>
+const toggledRefList = (
+  refs: ReadonlyArray<string>,
+  ref: string,
+): ReadonlyArray<string> =>
+  refs.includes(ref) ? refs.filter((candidate) => candidate !== ref) : [...refs, ref]
+
+export const mountSarahSurface = (
+  container: HTMLElement,
+  avatarContainer: HTMLElement,
+  options: SarahSurfaceMountOptions = {},
+) =>
   Effect.gen(function* () {
-    const state = yield* SubscriptionRef.make(initialState)
-    const program = makeViewProgramFromState(state, sarahSurfaceView)
+    const interactionMode = sarahOwnerFleetInteractionMode(
+      options.ownerFleetHandlers,
+    )
+    const ownerFleetHandlers = hasCompleteSarahOwnerFleetHostHandlers(
+      options.ownerFleetHandlers,
+    )
+      ? options.ownerFleetHandlers
+      : undefined
+    const state = yield* SubscriptionRef.make<SarahSurfaceState>(
+      options.ownerFleet === undefined
+        ? initialState
+        : { ...initialState, ownerFleet: options.ownerFleet },
+    )
+    const program = makeViewProgramFromState(state, (current) =>
+      sarahSurfaceView(current, interactionMode),
+    )
     const avatarProgram = makeViewProgramFromState(state, sarahAvatarPaneView)
     const runtime = { avatar: null as AvatarHandle | null }
 
@@ -1209,8 +1490,76 @@ export const mountSarahSurface = (container: HTMLElement, avatarContainer: HTMLE
       SarahSelectPanel: (panel) =>
         SubscriptionRef.update(state, (current): SarahSurfaceState => ({
           ...current,
-          activePanel: panel,
+          activePanel:
+            panel === "fleet" && current.ownerFleet === undefined
+              ? current.activePanel
+              : panel,
         })),
+      SarahFleetRunControlRequested: (payload, intent) =>
+        ownerFleetHandlers?.SarahFleetRunControlRequested(
+          payload,
+          intent,
+        ) ?? Effect.void,
+      SarahFleetWorkUnitOpened: (payload, intent) =>
+        ownerFleetHandlers?.SarahFleetWorkUnitOpened(payload, intent) ??
+        Effect.void,
+      SarahFleetApprovalDecisionRequested: (payload, intent) =>
+        ownerFleetHandlers?.SarahFleetApprovalDecisionRequested(
+          payload,
+          intent,
+        ) ?? Effect.void,
+      SarahFleetEvidenceOpened: (payload, intent) =>
+        ownerFleetHandlers?.SarahFleetEvidenceOpened(payload, intent) ??
+        Effect.void,
+      SarahCodingReceiptAction: (payload, intent) =>
+        ownerFleetHandlers?.SarahCodingReceiptAction(payload, intent) ??
+        Effect.void,
+      SarahFleetAuditToggled: ({ runRef, workUnitRef }) =>
+        SubscriptionRef.update(state, (current): SarahSurfaceState => {
+          const ownerFleet = current.ownerFleet
+          if (
+            ownerFleet === undefined ||
+            ownerFleet.projection.run.runRef !== runRef ||
+            !ownerFleet.projection.workUnits.some(
+              (workUnit) => workUnit.workUnitRef === workUnitRef,
+            )
+          ) {
+            return current
+          }
+          return {
+            ...current,
+            ownerFleet: {
+              ...ownerFleet,
+              expandedAuditWorkUnitRefs: toggledRefList(
+                ownerFleet.expandedAuditWorkUnitRefs,
+                workUnitRef,
+              ),
+            },
+          }
+        }),
+      SarahCodingReceiptEvidenceToggle: ({ cardRef }) =>
+        SubscriptionRef.update(state, (current): SarahSurfaceState => {
+          const ownerFleet = current.ownerFleet
+          if (
+            ownerFleet === undefined ||
+            ownerFleet.closeouts.status !== "ready" ||
+            !ownerFleet.closeouts.receipts.some(
+              (receipt) => receipt.cardRef === cardRef,
+            )
+          ) {
+            return current
+          }
+          return {
+            ...current,
+            ownerFleet: {
+              ...ownerFleet,
+              expandedReceiptCardRefs: toggledRefList(
+                ownerFleet.expandedReceiptCardRefs,
+                cardRef,
+              ),
+            },
+          }
+        }),
       SarahStartAvatar: () =>
         Effect.gen(function* () {
           yield* SubscriptionRef.update(state, (current): SarahSurfaceState => ({
@@ -1368,6 +1717,20 @@ export const mountSarahSurface = (container: HTMLElement, avatarContainer: HTMLE
     yield* loadCurrentReceipts(state)
 
     return {
+      setOwnerFleetViewState: (
+        ownerFleet: SarahOwnerFleetViewState | undefined,
+      ) =>
+        SubscriptionRef.update(state, (current): SarahSurfaceState => {
+          if (ownerFleet !== undefined) {
+            return { ...current, ownerFleet }
+          }
+          const { ownerFleet: _removed, ...withoutOwnerFleet } = current
+          return {
+            ...withoutOwnerFleet,
+            activePanel:
+              current.activePanel === "fleet" ? "blueprint" : current.activePanel,
+          }
+        }),
       unmount: Effect.gen(function* () {
         yield* avatarSurface.unmount
         yield* surface.unmount

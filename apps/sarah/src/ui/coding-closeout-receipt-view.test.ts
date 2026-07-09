@@ -1,12 +1,16 @@
 import { describe, expect, test } from "bun:test"
+import { Schema as NativeSchema } from "@effect-native/core/effect"
 import { Schema } from "effect"
 
 import { SarahCodingCloseoutReceipt } from "../contracts/coding-closeout-receipt.ts"
 import {
   SARAH_CODING_RECEIPT_ACTION_INTENT,
   SARAH_CODING_RECEIPT_EVIDENCE_TOGGLE_INTENT,
+  SarahCodingReceiptAction,
+  SarahCodingReceiptEvidenceToggle,
   sarahCodingCloseoutReceiptView,
 } from "./coding-closeout-receipt-view.ts"
+import { SARAH_OWNER_FLEET_INTERACTIVE } from "./owner-fleet-interaction.ts"
 
 type AnyNode = { readonly _tag?: string; readonly [key: string]: unknown }
 
@@ -248,7 +252,9 @@ describe("FC-3 Sarah coding closeout receipt view", () => {
   })
 
   test("emits the closed next-action payload behind one accessible control", () => {
-    const view = sarahCodingCloseoutReceiptView(receipt)
+    const view = sarahCodingCloseoutReceiptView(receipt, {
+      interactionMode: SARAH_OWNER_FLEET_INTERACTIVE,
+    })
     const button = findByKey(view, `${keyBase}-next-action`)
 
     expect(button).toMatchObject({
@@ -266,6 +272,30 @@ describe("FC-3 Sarah coding closeout receipt view", () => {
         },
       },
     })
+    const decodedAction = NativeSchema.decodeUnknownSync(
+      SarahCodingReceiptAction.payloadSchema,
+    )(receipt.sections[5].next)
+    expect(decodedAction).toEqual({
+      action: "open_artifact",
+      targetRef: "artifact.public.receipt.codex",
+    })
+    expect(() =>
+      NativeSchema.decodeUnknownSync(SarahCodingReceiptAction.payloadSchema)({
+        action: "open_artifact",
+        targetRef: "/Users/alice/private/repo",
+      }),
+    ).toThrow()
+    expect(() =>
+      NativeSchema.decodeUnknownSync(SarahCodingReceiptAction.payloadSchema)({
+        action: "none",
+        targetRef: null,
+      }),
+    ).toThrow()
+    expect(() =>
+      NativeSchema.decodeUnknownSync(
+        SarahCodingReceiptEvidenceToggle.payloadSchema,
+      )({ cardRef: "owner@example.com" }),
+    ).toThrow()
   })
 
   test("states missing verdicts and measurements without implying success", () => {

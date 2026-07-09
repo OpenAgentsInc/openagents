@@ -7,21 +7,75 @@ import {
   Stack,
   StaticPayload,
   Text,
+  defineIntent,
   type ButtonVariant,
   type TextView,
   type Tone,
   type View,
 } from "@effect-native/core"
+import { Schema } from "@effect-native/core/effect"
 
 import type { SarahCodingCloseoutReceipt } from "../contracts/coding-closeout-receipt.ts"
+import {
+  SARAH_OWNER_FLEET_INTERACTIVE,
+  SARAH_OWNER_FLEET_READ_ONLY,
+  type SarahOwnerFleetInteractionMode,
+} from "./owner-fleet-interaction.ts"
 
 export const SARAH_CODING_RECEIPT_ACTION_INTENT =
   "SarahCodingReceiptAction" as const
 export const SARAH_CODING_RECEIPT_EVIDENCE_TOGGLE_INTENT =
   "SarahCodingReceiptEvidenceToggle" as const
 
+// Keep receipt interaction decoding on the Effect Native runtime. These
+// constraints mirror the owner-safe receipt contract while the domain and EN
+// workspaces resolve different Effect v4 beta builds.
+const SarahCodingReceiptPublicRef = Schema.String.check(
+  Schema.isMinLength(1),
+  Schema.isMaxLength(256),
+  Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9._:-]*$/),
+)
+const SarahCodingReceiptNextAction = Schema.Union([
+  Schema.Struct({
+    action: Schema.Literal("resolve_approval"),
+    targetRef: SarahCodingReceiptPublicRef,
+    decisions: Schema.Array(Schema.Literals(["allow", "deny"])),
+  }),
+  Schema.Struct({
+    action: Schema.Literal("open_artifact"),
+    targetRef: SarahCodingReceiptPublicRef,
+  }),
+  Schema.Struct({
+    action: Schema.Literal("open_verification"),
+    targetRef: SarahCodingReceiptPublicRef,
+  }),
+  Schema.Struct({
+    action: Schema.Literal("open_closeout"),
+    targetRef: SarahCodingReceiptPublicRef,
+  }),
+  Schema.Struct({
+    action: Schema.Literal("control_run"),
+    targetRef: SarahCodingReceiptPublicRef,
+    runControl: Schema.Literals(["pause", "resume", "drain", "stop"]),
+  }),
+])
+
+export const SarahCodingReceiptAction = defineIntent(
+  SARAH_CODING_RECEIPT_ACTION_INTENT,
+  SarahCodingReceiptNextAction,
+)
+export const SarahCodingReceiptEvidenceToggle = defineIntent(
+  SARAH_CODING_RECEIPT_EVIDENCE_TOGGLE_INTENT,
+  Schema.Struct({ cardRef: SarahCodingReceiptPublicRef }),
+)
+export const sarahCodingReceiptIntents = [
+  SarahCodingReceiptAction,
+  SarahCodingReceiptEvidenceToggle,
+] as const
+
 export type SarahCodingCloseoutReceiptViewOptions = Readonly<{
   evidenceExpanded?: boolean
+  interactionMode?: SarahOwnerFleetInteractionMode
 }>
 
 type ReceiptSection = SarahCodingCloseoutReceipt["sections"][number]
@@ -212,7 +266,7 @@ const nextActionButton = (
       label: presentation.label,
       variant: presentation.variant,
       onPress: IntentRef(
-        SARAH_CODING_RECEIPT_ACTION_INTENT,
+        SarahCodingReceiptAction.name,
         StaticPayload(next),
       ),
       a11y: { label: presentation.accessibleLabel },
@@ -291,7 +345,7 @@ const evidenceDisclosure = (
     mode: "single",
     expandedIds: expanded ? ["references"] : [],
     onToggle: IntentRef(
-      SARAH_CODING_RECEIPT_EVIDENCE_TOGGLE_INTENT,
+      SarahCodingReceiptEvidenceToggle.name,
       StaticPayload({ cardRef: receipt.cardRef }),
     ),
     items: [
@@ -335,6 +389,8 @@ export function sarahCodingCloseoutReceiptView(
   const [outcome, verification, changes, capacity, approval, nextAction] =
     receipt.sections
   const action = nextActionPresentation(nextAction.next)
+  const interactionMode =
+    options.interactionMode ?? SARAH_OWNER_FLEET_READ_ONLY
   const keyBase = `coding-receipt-${receipt.cardRef}`
   const capacityContext =
     capacity.harnessKind === null
@@ -509,7 +565,16 @@ export function sarahCodingCloseoutReceiptView(
                     "textMuted",
                   ),
                 ]
-              : nextActionButton(keyBase, nextAction.next),
+              : interactionMode === SARAH_OWNER_FLEET_INTERACTIVE
+                ? nextActionButton(keyBase, nextAction.next)
+                : [
+                    text(
+                      `${keyBase}-next-action-read-only`,
+                      "Controls unavailable in this surface. The reported next action cannot be submitted here.",
+                      "caption",
+                      "textMuted",
+                    ),
+                  ],
           ),
         ],
       ),
