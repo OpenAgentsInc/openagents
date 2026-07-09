@@ -37,16 +37,17 @@ When documents disagree, use this order:
    status. When they move, Sol must reconcile rather than repeat stale prose.
 
 The current roadmap reset is dated 2026-07-09 and recorded in
-[`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md) rev 2. Issue state and
+[`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md) rev 3. Issue state and
 implementation status can move faster than essays; current code, issue state,
 and receipts win when they do.
 
 ## Start here
 
 - [`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md) — the unified roadmap: Sarah Fleet
-  Command is P0, presentation is parallel, the issue set is reduced from 30 to
-  15, most public pages retire, and the product becomes three Effect Native
-  OpenAgents applications.
+  Command is P0, presentation is parallel, 15 active issues plus two gated P2
+  issues replace the old 30-item queue, most public pages retire, and the
+  product becomes three Effect Native OpenAgents applications over one
+  seven-layer relationship loop.
 - [`2026-07-09-greenfield-mobile-desktop-decision.md`](./2026-07-09-greenfield-mobile-desktop-decision.md)
   — binding implementation decision for the new React Native mobile and
   Electron desktop apps, legacy freezes, mobile identity/icon, and extraction
@@ -67,6 +68,10 @@ and receipts win when they do.
 - [`OPERATING_MODEL.md`](./OPERATING_MODEL.md) — how Sol should be used day to
   day: inspect live state, select a slice, write the implementation contract,
   land code with its tests and receipts, and reconcile the roadmap.
+- [`CLAIM_PROTOCOL.md`](./CLAIM_PROTOCOL.md) — same-session coordination and
+  the cross-session GitHub CLAIM/staleness/hot-contract protocol.
+- [`CHALLENGE_LEDGER.md`](./CHALLENGE_LEDGER.md) — Fable challenges, Sol
+  dispositions, falsifiers, tripwires, and revisit points.
 - [`2026-07-09-roadmap-system-model.md`](./2026-07-09-roadmap-system-model.md)
   — my compact model of the entire roadmap: one relationship surface over a
   typed, receipt-bearing work system. It maps the major layers and explains

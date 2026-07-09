@@ -18,6 +18,12 @@ backlog across multiple coding streams.
 - Zero duplicate claims, default account homes, silent harness substitutions,
   or manually launched per-assignment shells.
 - Exact provider usage where available; explicit `not_measured` otherwise.
+- Measure and report Sarah acknowledgment/run-ref latency, first capacity state,
+  first executor progress/blocker, and heartbeat freshness against the FC
+  budgets; do not hide misses behind an aggregate pass.
+- Record the proof rung for each acceptance item: code-landed, fixture-proven,
+  deployed, live-proven, owner-accepted, or closed. No earlier rung implies a
+  later one.
 
 ## Phase B — hybrid proof
 
@@ -63,7 +69,13 @@ substitution.
   could-not-prove.
 - Claim-uniqueness and concurrency report.
 - Before/after operator-minutes and a friction ledger.
+- Latency distribution and stall/reconnect events against the named budgets.
 - Could-not-prove list.
+
+The #8610 paired text/audio/realtime-video/pre-rendered-opener crossover should
+run alongside the first canary cohort when capacity permits, using the same
+bounded task classes. Its presentation result does not block C2 unless it
+reveals an availability lie or loss of text/fleet control.
 
 ## Exit
 

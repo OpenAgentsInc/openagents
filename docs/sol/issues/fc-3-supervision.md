@@ -28,7 +28,23 @@ Code/Receipts panels. This issue composes them.
    projections carry refs and summaries.
 6. Make reconnect/resume normal: a new browser or mobile session reconstructs
    current state from durable projections.
-7. Add useful degradation behavior when avatar video is unavailable.
+7. Model conversation and media separately. Conversation states are at least
+   `idle | connecting | text_live | busy | reconnecting | ended | failed`;
+   media states are at least `not_requested | queued | connecting | live |
+   stale | unavailable | evicted | ended`. `media=live` requires a fresh frame/
+   transport lease. `media=stale + conversation=text_live` renders an explicit
+   text-continuation/reconnect state and can never render a frozen LIVE badge.
+8. Keep the FC latency contract visible: first executor progress or typed
+   blocker p95 <= 30 seconds; active progress/heartbeat at least every 15
+   seconds; after 30 seconds without freshness, show `stalled` or
+   `reconnecting`, never indefinite live/running.
+9. Render the first one-minute-readable receipt card for coding closeout. In
+   order it answers: what happened; whether verification passed and what
+   verified it; what changed and where the safe artifact is; account/capacity
+   class and cost or `not_measured`; applicable approval/authority; and the next
+   available action. Exact refs remain expandable audit detail.
+10. Apply the FC-1 typed relationship posture to response density and controls;
+    the UI never derives operator/admin authority from tone.
 
 ## Exit
 
@@ -36,4 +52,7 @@ From `/sarah`, an owner starts or opens a three-stream fixture run, pauses and
 resumes it, steers one named work unit, resolves one approval, reconnects the
 browser, and sees the same state. Every transition is idempotent and receipted;
 no raw prompt, command, output, credential, or path appears in the Sarah
-projection.
+projection. Simulator tests expire the media lease without killing text/fleet
+control, make the frozen-frame LIVE combination unrepresentable, and exercise
+the 30-second stall transition. The coding closeout passes the one-minute
+non-developer comprehension test.

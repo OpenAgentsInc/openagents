@@ -24,8 +24,9 @@ There are three product applications, all authored through Effect Native:
 | **OpenAgents Desktop** | Sarah plus the deep fleet, approval, code, terminal, and diagnostics cockpit | new `apps/openagents-desktop` (greenfield Effect Native + Electron, starting from `LuanRoger/electron-shadcn`) |
 
 Khala Code, Autopilot, Sites, Pylon cockpit, and similar earlier product ideas
-do not remain separate product applications. Useful capabilities fold into
-these three apps; obsolete surfaces are deleted. The old Khala Code mobile,
+do not remain separate product applications. Their product ideas fold into
+these three apps or shared engines; only superseded implementations and
+surfaces are deleted. The old Khala Code mobile,
 Swift companion, and Electrobun desktop clients are deprecated reference trees,
 not foundations that will be renamed in place.
 
@@ -38,6 +39,9 @@ The canonical implementation roadmap is
 [`docs/sol/MASTER_ROADMAP.md`](docs/sol/MASTER_ROADMAP.md). Sol owns sequencing
 and the live issue set. The former Fable master roadmap is retained only as
 historical strategy.
+Its “one relationship loop, three applications” diagram is the canonical
+product shape: web, mobile, and Desktop are projections over the same typed
+state, authority, execution, evidence, and continuity—not separate realities.
 
 ## Priority zero: Sarah Fleet Command
 

@@ -32,6 +32,11 @@ and documentation reconciliation that can proceed alongside the primary lane.
 - Before declaring completion, reconcile every child result against current
   `origin/main`; a spawned agent or passing child test is not itself the final
   integration receipt.
+- Across independent Codex tabs/sessions, the live Sol GitHub issue is the
+  claim ledger. Post the `CLAIM` contract from `docs/sol/CLAIM_PROTOCOL.md`
+  before mutation, including hot files **and hot contracts**; a claim becomes
+  stale only after 90 minutes without evidence plus an explicit process/
+  worktree audit. Same-session claims remain owned by the root coordinator.
 
 ## Autonomous Loop: Constant Motion (owner mandate)
 

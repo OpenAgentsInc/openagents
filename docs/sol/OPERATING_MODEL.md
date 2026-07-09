@@ -48,9 +48,17 @@ In this current Codex app runtime, Sol plus up to three concurrently active
 subagents are available. This is a session-scoped cap, not a universal Codex
 limit. Use those slots for disjoint lanes with clean worktrees and one
 integration owner; serialize shared schemas, migrations, generated catalogs,
-lockfiles, route tables, and other hot files. Use additional Codex tabs for
+behavior-contract registries, package-script keys, lockfiles, route tables, and
+other hot files/contracts. Use additional Codex tabs for
 greater concurrency or independently steered contexts, not as an assumption
 that one account has gained more quota.
+
+The root coordinator owns same-session claims. Every independent mutating tab
+or session posts a GitHub `CLAIM` before implementation and follows the
+90-minute-plus-process-audit staleness rule in
+[`CLAIM_PROTOCOL.md`](./CLAIM_PROTOCOL.md). File-disjoint work may still collide
+on a schema name, catalog version, registry, or package key; those name one
+integration owner explicitly.
 
 Before C1, this Codex app remains the implementation control plane. After one
 integrated C1 fixture receipt, send only low-risk pinned canaries through
@@ -165,8 +173,9 @@ After a material commit:
 5. Keep issue state distinctions precise:
    - code landed;
    - fixture-proven;
+   - deployed;
    - live-proven;
-   - owner-approved;
+   - owner-accepted;
    - closed.
 6. Remove stale recommendations rather than stacking contradictory revision
    notes.
@@ -195,3 +204,22 @@ once:
 The measure of Sol's usefulness is not document volume. It is whether a daily
 agent can select the right slice, implement it without violating a hidden
 boundary, prove it, and leave the roadmap more accurate than before.
+
+## Challenge and refresh discipline
+
+Fable is the standing adversarial strategy reviewer; Sol still owns the queue.
+A material disagreement is recorded in
+[`CHALLENGE_LEDGER.md`](./CHALLENGE_LEDGER.md) with Sol's disposition, an owning
+issue, a falsifier/tripwire, and a review point. A deferred or overruled
+challenge must remain testable instead of disappearing.
+
+Refresh horizons:
+
+- `MASTER_ROADMAP.md` and live issue bodies: after every material landing,
+  owner-priority change, issue disposition, or challenge decision;
+- execution/cutover/operating docs: whenever the critical path changes and at
+  least weekly during active P0 burn;
+- subsystem, authority, and Effect Native architecture: on boundary change and
+  at least monthly while actively cited;
+- dated analyses: historical by default; append a response or add a superseded
+  banner rather than silently rewriting the original argument.

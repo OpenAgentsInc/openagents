@@ -3,6 +3,11 @@
 - Date: 2026-07-09
 - Before: 30 open issues from the pre-Sarah-Fleet-Command roadmap
 - After: 15 open issues under [`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md)
+
+> Reconciliation note: this audit records the initial reset exactly. Master
+> roadmap rev 3 later added two dependency-held P2 issues (#8642/#8643) from
+> the Fable/Sol follow-up review; the active total is therefore 17 without
+> changing this audit's original 15-issue disposition receipt.
 - GitHub label: `roadmap:sol`
 
 ## Triage rules

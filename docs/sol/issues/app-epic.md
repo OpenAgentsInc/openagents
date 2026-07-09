@@ -15,6 +15,16 @@ separate products.
 
 Authority: `docs/sol/MASTER_ROADMAP.md`.
 
+## Canonical one-page shape
+
+Maintain one compact diagram in the master roadmap showing the three apps as
+authorized projections over the same seven-layer loop:
+
+`relationship -> comprehension -> control -> orchestration -> execution -> evidence -> continuity`
+
+Web and mobile are relationship-first projections; Desktop adds the specialist
+cockpit. None owns a separate run, authority, memory, or evidence reality.
+
 ## Child lanes
 
 - #8634 — one web host + aggressive public-route retirement.
@@ -61,3 +71,6 @@ conversation/fleet state through typed services and Khala Sync, and have no
 separate Khala Code, Electrobun, or Pylon UI architecture left. The old mobile
 and desktop packages have either been deleted or archived as non-shipping
 historical evidence after their applicable contracts and services are ported.
+The canonical one-page diagram remains linked from the master roadmap and root
+product documentation so alternate projections cannot drift into alternate
+authority/state/evidence models.

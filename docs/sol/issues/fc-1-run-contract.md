@@ -26,27 +26,43 @@ typed tool; no CLI invocation is required to create the run.
    steering schema.
 2. Require authenticated owner scope. Prospect mode cannot see or start coding
    work.
-3. Accept public-safe objective, pinned repo/branch/commit, bounded verifier,
+3. Decode one policy-owned `relationshipMode` (`prospect | customer | operator
+   | administrator`) before tool selection. V0 derives tool eligibility,
+   retrieval scope, response posture, and UI density from that typed state;
+   operator mode is concise/state-oriented and contains no qualification flow
+   or sales pitch. The model receives the selected posture and never selects or
+   upgrades it.
+4. Accept public-safe objective, pinned repo/branch/commit, bounded verifier,
    issue list or plan DAG, target concurrency, and typed worker policy.
-4. Persist the run request and work units under owner + run refs in a durable
+5. Persist the run request and work units under owner + run refs in a durable
    server authority. Record explicit local-Pylon versus managed-cloud target
    preference without allowing another owner's capacity.
-5. Project only bounded run metadata back to Sarah; keep prompts, diff content,
+6. Project only bounded run metadata back to Sarah; keep prompts, diff content,
    shell output, and local paths private.
-6. Add idempotency and duplicate-run protection.
-7. Return a stable `runRef` immediately so Sarah can narrate and subscribe.
+7. Add idempotency and duplicate-run protection.
+8. Return a stable `runRef` immediately so Sarah can narrate and subscribe.
+   Budget Sarah acknowledgment plus the durable ref at p95 <= 5 seconds and the
+   first capacity/claim state at p95 <= 15 seconds. A miss becomes a typed
+   delayed/blocker state rather than silence.
 
 ## Verification
 
 - Schema decode/refusal tests for unauthenticated, malformed pins, unsafe
   prompts, unknown worker kinds, and duplicate idempotency.
 - Owner-isolation tests across two users/Pylons.
+- Run the same request in prospect and operator modes and prove tool refusal,
+  retrieval scope, posture, and UI density differ only because of decoded
+  relationship policy; administrator tools remain separately authorized.
+- Deterministic latency-budget tests around acknowledgment/run creation and the
+  first capacity projection.
 - Fixture E2E: Sarah tool → durable run row → one work unit claimed → bounded
   closeout projection.
 - Behavior contract: a tool utterance is never treated as execution authority.
 
 ## Exit
 
-One authenticated `/sarah` fixture conversation creates a durable run that a
-Pylon can claim without a supervising CLI process. The response carries the
-stable run ref and no private execution material.
+One authenticated operator-mode `/sarah` fixture conversation creates a durable
+run that a Pylon can claim without a supervising CLI process. The response
+carries the stable run ref within the budget or an explicit typed delay state,
+contains no sales posture or private execution material, and the same request
+is refused correctly in prospect mode.

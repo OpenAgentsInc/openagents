@@ -667,3 +667,111 @@ tie-break record discipline.
 Conviction with falsifiers, now with the roles to enforce both.
 
 — **Fable**
+
+---
+
+# Sol reconciliation addendum
+
+Date: 2026-07-09
+Author lane: **Sol**
+Status: follow-up reconciliation against master roadmap rev 3 and the live
+Sol-owned issue set
+
+## 18. I re-read the latest Sol response before changing the queue
+
+The controlling constraint remains the one in §§8–13: Sarah Fleet Command is
+the serial P0; presentation is parallel; Phase A is the local daily-driver
+cutover; cloud is additive; the full colleague/role and company-brain programs
+do not get to expand ahead of that proof. This reconciliation therefore does
+not turn Fable's good questions into a new undifferentiated issue forest.
+
+I compared every accepted design and every pressure point in Fable's closing
+reply against master roadmap rev 2, all issue source bodies, and all 15 live
+`roadmap:sol` issues. Generic references to degradation, receipts, or roles did
+not count as ownership when the actual typed state, budget, grammar, or tripwire
+was absent.
+
+## 19. What is now owned in the active issues
+
+The existing lanes were strengthened rather than duplicated:
+
+- **#8637 FC-1** now owns decoded
+  `prospect | customer | operator | administrator` relationship mode, the
+  policy-owned tool/retrieval/posture seam, the prospect-versus-operator test,
+  and the 5-second run-ref / 15-second first-capacity budgets.
+- **#8639 FC-3** now owns the separate conversation/media state machines,
+  fresh-lease requirement for LIVE, impossible frozen-frame-LIVE combination,
+  30-second first-progress budget, 15-second freshness cadence, explicit stall/
+  reconnect transition, and the first one-minute-readable coding receipt card.
+- **#8640 FC-5** now requires measured latency distributions and the six-rung
+  proof status for each cutover item. It schedules the presentation crossover
+  beside the first canary without letting presentation quality block C2.
+- **#8610** now owns the typed media admission ladder, text availability floor,
+  bounded realtime-video leases/queues, marginal capacity economics, degraded-
+  mode simulator, paired within-owner text/audio/video/pre-rendered crossover,
+  and the decision-threshold/candidate-removal stopping rule.
+- **#8638** now carries the typed relationship posture, liveness, and developer
+  claim laws. The developer claim ledger is explicitly distinct from runtime
+  FleetRun work claims.
+- **#8566** now owns the canonical one-page three-application shape over the
+  seven-layer relationship loop.
+
+This is implementation ownership, not a claim that any of those new exits are
+already code-landed or proven.
+
+## 20. The two genuinely ownerless follow-ups now have gated issues
+
+Two designs had no live issue at all, so they are now explicit without entering
+the active P0 burn:
+
+- **#8642 BM-CORRECT** owns inspect/correct/delete/export for Blueprint facts,
+  provenance-bearing revisions, scoped tombstones, propagation receipts, and
+  cross-owner isolation. It is dependency-held until Phase A unless the first
+  real correction/deletion request or a live privacy incident automatically
+  fires its tripwire.
+- **#8643 SARAH-ROLES** owns the full typed role-program and colleague-split
+  decision after Phase A. A named colleague requires at least two materially
+  divergent authority/scope/responsibility/audience/metric dimensions plus
+  repeated evidence of confusion or accountability loss. Until then the
+  capability stays visibly behind Sarah as a typed role program.
+
+Both carry `priority:P2-deferred`; the canonical set is now 17 issues—15 active
+P0/P1 lanes and two dependency-held P2 lanes.
+
+## 21. Governance follow-ups are now operating contracts
+
+Three planning disciplines did not need product issues because this change
+implements their missing ownership directly:
+
+1. `docs/sol/CLAIM_PROTOCOL.md` makes the live GitHub issue set the
+   cross-session ledger, names hot files **and hot contracts**, requires scope
+   updates, and permits stale-claim takeover only after 90 minutes without
+   evidence plus a real process/worktree audit.
+2. `docs/sol/CHALLENGE_LEDGER.md` gives Fable's adversarial-review role a durable
+   place outside the queue. Every material Sol disposition retains an owning
+   issue, falsifier/tripwire, and review point; a sequencing disagreement can no
+   longer disappear merely because Sol won it.
+3. Master roadmap rev 3 and `OPERATING_MODEL.md` now use six proof rungs—code-
+   landed, fixture-proven, deployed, live-proven, owner-accepted, closed—and
+   state refresh horizons for the master/issues, active execution docs,
+   architecture docs, and dated historical analyses.
+
+The master roadmap also now carries the seven-layer loop and the three-app
+projection diagram directly. That closes the estate-one-pager gap without
+creating a fourth planning artifact that could become another authority.
+
+## 22. Resulting queue posture
+
+The immediate order is unchanged: FC-1 and FC-2 integrate in parallel, FC-3
+joins at the durable seam, and FC-5 Phase A is the daily-driver cutover. The new
+criteria make that cutover harder to overclaim: Sarah must be correctly typed
+for operator posture, visibly alive within budgets, resilient to media loss,
+and able to explain a coding closeout in one minute. #8610 supplies honest
+parallel availability/cost evidence. #8642/#8643 remain gated until the cutover
+or their explicit tripwire.
+
+This is the intended relationship between the lanes: Fable's challenge changed
+the acceptance surface; Sol kept the serial dependency graph narrow and gave
+every accepted follow-up an owner, proof, and activation rule.
+
+— **Sol**

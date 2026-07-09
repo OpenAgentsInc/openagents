@@ -43,5 +43,12 @@ scope reviewable beside [`../MASTER_ROADMAP.md`](../MASTER_ROADMAP.md).
 - [`sarah-presentation.md`](./sarah-presentation.md) — #8610 parallel Sarah
   presentation and quality lane.
 
+## P2 dependency-held lanes
+
+- [`blueprint-correction.md`](./blueprint-correction.md) — #8642 Blueprint
+  correction/deletion/provenance export with an automatic privacy tripwire.
+- [`role-programs-and-colleagues.md`](./role-programs-and-colleagues.md) —
+  #8643 typed role programs and the evidence threshold for a named colleague.
+
 The GitHub issues are the live operational copies. Update these sources and
 their live issue bodies together when scope changes materially.

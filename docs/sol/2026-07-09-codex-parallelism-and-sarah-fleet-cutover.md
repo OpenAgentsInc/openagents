@@ -2,7 +2,8 @@
 
 - Date: 2026-07-09
 - Status: operational companion to [`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md)
-- Current source snapshot: `origin/main` at `5c4ec13dc7`
+- Original source snapshot: `origin/main` at `5c4ec13dc7`; reconciled with
+  master roadmap rev 3 and the 17-issue set on 2026-07-09
 
 ## What can be parallelized in this Codex session now
 
@@ -18,8 +19,9 @@ therefore uses:
 
 - one clean worktree per implementation lane;
 - one issue or explicitly disjoint file set per agent;
-- serialized changes to shared schemas, generated catalogs, lockfiles,
-  migrations, route tables, and other hot files;
+- serialized changes to shared schemas, generated catalogs, behavior-contract
+  registries, package-script keys, lockfiles, migrations, route tables, and
+  other hot files/contracts;
 - one coordinating agent to reconcile tests, issue state, rebases, and pushes
   to `main`;
 - no stash, reset, checkout, or cleanup of another agent's work.
@@ -45,6 +47,9 @@ not create a new account quota or rate budget. Tabs or workers backed by
 different connected accounts can add real provider capacity. Every tab still
 needs an explicit issue, worktree, ownership boundary, and integration owner;
 otherwise coordination cost and collision risk erase the extra throughput.
+Before mutation it posts the cross-session `CLAIM` defined in
+[`CLAIM_PROTOCOL.md`](./CLAIM_PROTOCOL.md), including hot contracts; same-
+session subagent claims remain coordinated by the root.
 Using Claude or Grok before FC-2 requires their own explicitly operated client
 or harness path; opening another Codex tab does not turn it into a Claude or
 Grok worker.
@@ -78,7 +83,8 @@ are true on one pinned integrated commit and deployment:
 
 1. **#8637:** an authenticated Sarah tool creates one durable owner-scoped run
    with pinned repository, commit, work units, verifier, idempotency key, and a
-   stable `runRef`.
+   stable `runRef`; decoded operator mode—not model inference—selects concise
+   non-commercial posture and fleet-tool policy.
 2. **#8633:** one standing Pylon claims the run without a supervising Codex/CLI
    process and executes through named isolated real accounts using the shared
    claim registry.
@@ -89,6 +95,9 @@ are true on one pinned integrated commit and deployment:
 4. The Sarah→durable run→Pylon claim→worker→verification→closeout fixture passes
    with owner isolation, duplicate-claim, refusal, reconnect, and redaction
    checks.
+5. Acknowledgment/run ref, first capacity, first progress/blocker, and heartbeat
+   freshness meet the 5s/15s/30s/15s budgets or visibly enter typed delayed/
+   stalled/reconnecting states; media failure cannot remove text/fleet control.
 
 At C1, move one low-risk, pinned, public-repository task through Sarah as a
 canary. Keep this Codex app available as observer and break-glass debugger. C1
@@ -106,7 +115,10 @@ work** immediately after #8640 Phase A produces a clean receipt proving:
 - one named steer or approval round trip and one reconnect;
 - zero duplicate claims, default provider homes, silent substitutions, or
   manually launched per-assignment shells;
-- honest usage truth, verification, and closeout visible through Sarah.
+- honest usage truth, verification, and closeout visible through Sarah;
+- the measured latency distribution and one-minute coding-closeout receipt meet
+  the FC-1/FC-3 contract, with every acceptance item labeled by its six-rung
+  proof state.
 
 After C2, do not open routine pinned backlog work directly in this Codex app by
 default. Use Sarah/Khala/Pylon. Retain the Codex app for:

@@ -45,6 +45,15 @@ Authority: `docs/sol/MASTER_ROADMAP.md`.
 - Exact usage where measured, explicit `not_measured` otherwise, and closeout
   evidence remain completion truth; never synthesize usage or infer it from a
   public counter.
+- Relationship mode is decoded policy state. Prospect/customer/operator/admin
+  posture changes tools, retrieval, copy, and density but never grants its own
+  authority; operator fleet work contains no sales qualification flow.
+- Every cross-session mutating lane follows `docs/sol/CLAIM_PROTOCOL.md`,
+  including hot-contract ownership and the 90-minute-plus-process-audit stale
+  claim rule. This developer coordination ledger is distinct from runtime
+  FleetRun work claims.
+- Fleet liveness is budgeted and typed: delayed/stalled/reconnecting is visible,
+  and avatar/media failure cannot remove text-first fleet control.
 
 ## Epic exit
 

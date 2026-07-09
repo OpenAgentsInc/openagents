@@ -1,7 +1,7 @@
 # MASTER ROADMAP — Sarah Fleet Command first; three OpenAgents apps
 
 - Date: 2026-07-09
-- Revision: 2
+- Revision: 3
 - Status: canonical OpenAgents implementation roadmap
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Issue source set: [`issues/README.md`](./issues/README.md)
@@ -49,6 +49,34 @@ Khala is the inference, routing, and Sync engine. Pylon and Agent Computers are
 execution. Blueprint is legible memory and work state. Effect Native is the
 shared application grammar. Receipts are completion truth.
 
+## One relationship loop, three applications
+
+```text
+relationship -> comprehension -> control -> orchestration
+      ^                                      |
+      |                                      v
+continuity   <-    evidence    <-         execution
+
+       OpenAgents web  |  OpenAgents mobile  |  OpenAgents Desktop
+       relationship       relationship          relationship + cockpit
+               \________ same typed state, authority, and receipts ________/
+```
+
+| Layer | Canonical responsibility |
+| --- | --- |
+| Relationship | Sarah's persistent authenticated/prospect relationship across text, voice, and UI |
+| Comprehension | Khala inference, typed tools, semantic selectors, and Blueprint drafts |
+| Control | Owner scope, policy, budget, approval posture, and typed intents |
+| Orchestration | Fleet planning, routing, claims, Pylon, and harness selection |
+| Execution | Codex/Claude/Grok workers on owner-local Pylons or Agent Computers |
+| Evidence | Verification, exact or explicitly unmeasured usage, and closeout receipts |
+| Continuity | Khala Sync, Blueprint, provenance-bearing memory, and the next conversation |
+
+Web and mobile are relationship-first projections. Desktop adds the specialist
+Fleet/code/terminal cockpit. They may emphasize different layers but never own
+different run, authority, memory, or evidence realities. This one-page shape is
+the acceptance artifact owned by #8566.
+
 ## Current implementation truth
 
 The coding-fleet program starts from substantial working substrate:
@@ -82,6 +110,23 @@ The immediate gaps are composition gaps:
 - Agent Computer Codex still lacks the new live Firecracker proof.
 
 P0 fixes those seams. It does not build another fleet system.
+
+## Proof status is six distinct rungs
+
+Every roadmap claim uses the narrowest true state:
+
+1. **code-landed** — source is on `main`;
+2. **fixture-proven** — bounded deterministic tests/fixtures pass;
+3. **deployed** — the intended artifact/config is verifiably present in the
+   target environment;
+4. **live-proven** — a real production path produced the named receipt;
+5. **owner-accepted** — the owner reviewed the live behavior and accepted it;
+6. **closed** — issue exit, residuals, docs, and duplicate-path deletion are
+   reconciled.
+
+No rung implies the next. In particular, Blueprint code and fixtures are not
+described as live/accepted merely because the surface exists in source. #8640
+must report the rung of every cutover criterion.
 
 ## Interim parallelism and the Codex→Sarah switch
 
@@ -126,6 +171,11 @@ Exit:
 - pinned public repository/work plan and bounded verifier;
 - one durable owner-scoped `runRef` with idempotency;
 - Pylon can claim it without a supervising CLI process;
+- typed `prospect | customer | operator | administrator` relationship mode
+  selects policy-owned tool/retrieval/posture/UI behavior; the model cannot
+  select or upgrade it, and operator coding posture contains no sales flow;
+- acknowledgment plus durable `runRef` p95 <= 5 seconds and first capacity/
+  claim state p95 <= 15 seconds, otherwise an explicit typed delay/blocker;
 - no raw prompts, shell output, paths, or credentials in Sarah's projection.
 
 ### P0.2 — run a real mixed local fleet
@@ -156,7 +206,15 @@ Exit:
 - pause/resume/drain/stop, steer, and approval actions;
 - evidence-backed plan→claim→assignment→verification→closeout edges;
 - browser reconnect reconstructs current state;
-- avatar failure leaves full text/fleet control available.
+- avatar failure leaves full text/fleet control available;
+- first executor progress/blocker p95 <= 30 seconds, progress freshness at
+  least every 15 seconds, and 30 seconds without freshness becomes typed
+  `stalled`/`reconnecting`, never indefinite live;
+- conversation and media have separate state machines; media LIVE requires a
+  fresh lease and stale video cannot render a frozen LIVE badge;
+- the first coding closeout card passes the one-minute comprehension grammar:
+  outcome, verification/verifier, safe artifact, account/cost truth,
+  approval/authority, next action.
 
 ### P0.4 — live local dogfood unblock
 
@@ -172,7 +230,8 @@ Required receipt:
 - exact usage or explicit `not_measured` per turn;
 - zero duplicate claims, silent substitution, default provider homes, or
   manually launched assignment shells;
-- verification and closeout visible through Sarah.
+- verification and closeout visible through Sarah;
+- measured FC latency distribution and proof rung for every acceptance item.
 
 This is the coding-unblock and default-owner-local cutover milestone. After its
 clean receipt, new bounded pinned backlog work starts through Sarah/Khala by
@@ -217,11 +276,26 @@ Scope:
 - one selected real-time and one selected offline rendering recipe;
 - audio/prosody, ASR, turn latency, fallback, motion, responsive UI,
   accessibility, and Blueprint readability;
-- deploy simulator and text-only degradation.
+- deploy simulator and text-only degradation;
+- typed admission: text is the floor, pre-rendered media never delays input,
+  realtime video is a leased `available | queued | text_only | unavailable`
+  enhancement, and bounded queue expiry returns to text;
+- separate conversation/media health with a fresh-frame lease for LIVE and an
+  unrepresentable frozen-frame-LIVE state;
+- cost/admission telemetry: marginal cost per active minute, utilization,
+  queue time, abandonment, recovery, and fallback;
+- paired within-owner crossover at the first canary window across text, audio,
+  realtime video, and pre-rendered opener + text, measuring scoped-action time,
+  verified-outcome time, interventions, state comprehension, repeat-use
+  preference after receipts, and marginal cost.
 
 This lane runs continuously on separate paths/capacity. It may fix a live
 front-door outage immediately, but subjective or offline quality work does not
 preempt P0 fleet integration.
+
+No experiment enters without the production decision/threshold it can change
+and the candidate it will remove afterward. Tiny-N results publish medians and
+bounded raw trials, not false population confidence.
 
 ## P1 — three OpenAgents applications
 
@@ -313,8 +387,20 @@ clean-deploy claim.
 
 ## P2 — after the coding loop is real
 
-The following directions remain, but have no active issue until P0 evidence
-pulls a bounded next slice:
+The following directions remain dependency-held until P0 evidence pulls a
+bounded next slice:
+
+- **[#8642 BM-CORRECT](https://github.com/OpenAgentsInc/openagents/issues/8642):**
+  inspect/correct/delete/export Blueprint facts through provenance-bearing
+  revisions, scoped tombstones, authorized propagation, and receipts. It
+  activates after #8640 Phase A or immediately when the first real user asks
+  Sarah to correct/delete remembered information or a live privacy incident
+  fires the tripwire.
+- **[#8643 SARAH-ROLES](https://github.com/OpenAgentsInc/openagents/issues/8643):**
+  generalize the FC relationship-mode seam into typed role programs and create
+  a named colleague only when at least two authority/scope/responsibility/
+  audience/metric dimensions diverge and repeated mode-switch tests show
+  confusion or accountability loss.
 
 - Sarah-held standing responsibilities using `agent_definition.v1`;
 - Blueprint Map maturation into the company brain;
@@ -328,7 +414,8 @@ apps. It does not begin as a fourth product surface.
 
 ## Canonical open issue set
 
-The issue reset leaves **15 open roadmap issues**:
+The issue reset plus this Fable/Sol reconciliation leaves **17 open roadmap
+issues**: 15 active P0/P1 lanes and two explicitly dependency-held P2 lanes.
 
 | Priority | Issue | Purpose |
 | --- | --- | --- |
@@ -347,9 +434,13 @@ The issue reset leaves **15 open roadmap issues**:
 | P1 | #8595 | Retained landing/root cutover |
 | P1 | #8597 | Greenfield OpenAgents mobile (`com.openagents.app`) |
 | P1 | #8574 | Greenfield Electron OpenAgents Desktop |
+| P2 deferred | #8642 | Blueprint correction/deletion/provenance export + privacy tripwire |
+| P2 deferred | #8643 | Typed role programs + evidence-based colleague split |
 
 Every open issue carries `roadmap:sol`. P0 fleet issues carry `priority:P0`;
-parallel presentation/app lanes carry `priority:P1-parallel`.
+parallel presentation/app lanes carry `priority:P1-parallel`; dependency-held
+future lanes carry `priority:P2-deferred` and do not enter the active burn until
+their milestone or tripwire fires.
 
 ## Execution order
 
@@ -364,6 +455,9 @@ parallel presentation/app lanes carry `priority:P1-parallel`.
    hot paths.
 6. Run #8634 route inventory/retirement and #8635 Forum work in parallel with
    app conversion; landing/mobile/desktop slices follow their substrate.
+7. Keep #8642/#8643 dependency-held until Phase A, except that #8642's first
+   real correction/deletion request or privacy-incident receipt activates it
+   immediately.
 
 ## Implementation laws
 
@@ -383,6 +477,16 @@ parallel presentation/app lanes carry `priority:P1-parallel`.
    desktop unless an owner decision changes the three-app rule.
 8. **Constant motion with integration bias.** Owner/cloud blockers cause work
    to shift to another P0 slice, not to presentation scope by default.
+9. **Developer claims are explicit.** The live Sol GitHub issue set is the
+   cross-session claim ledger; same-session coordination belongs to the root.
+   Follow [`CLAIM_PROTOCOL.md`](./CLAIM_PROTOCOL.md), name hot files and hot
+   contracts, and never steal a claim on elapsed time alone.
+10. **Proof rungs never collapse.** Code-landed, fixture-proven, deployed,
+    live-proven, owner-accepted, and closed remain distinct in issue bodies and
+    reports.
+11. **Challenges retain falsifiers.** Fable reviews from outside the queue; Sol
+    records material dispositions, tripwires, and revisit conditions in
+    [`CHALLENGE_LEDGER.md`](./CHALLENGE_LEDGER.md).
 
 ## Completion reporting
 
@@ -395,6 +499,20 @@ Every issue closeout reports:
 - legacy code or duplicate path deleted;
 - residual could-not-prove list;
 - next ready issue in this roadmap.
+
+Every acceptance item names its current proof rung. A fixture or deployment is
+never reported as live/owner acceptance.
+
+## Reconciliation cadence
+
+- Master roadmap and live issue bodies: after each material landing, owner
+  priority change, issue disposition, or challenge decision.
+- Execution/cutover/operating docs: when the critical path changes and at least
+  weekly during active P0 burn.
+- Subsystem, authority, and Effect Native architecture: on boundary change and
+  at least monthly while actively cited.
+- Dated analyses: immutable historical argument by default; append a response
+  or mark superseded rather than silently changing the original analysis.
 
 This file is reconciled in place after material landings. Do not grow a long
 revision diary or restore the old 30-item phase queue.
