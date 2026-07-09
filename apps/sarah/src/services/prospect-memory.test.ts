@@ -12,6 +12,7 @@ import {
   formatMemoryContext,
   getProspectMemoryContext,
   isCrossProspectMemoryProbe,
+  newlyDistilledFactsForBlueprintDelta,
   PROSPECT_MEMORY_MAX_CHARS,
   publishProspectFactBlueprintDeltas,
   prospectRefAliases,
@@ -196,6 +197,44 @@ describe("distillProspectFacts (deterministic v1)", () => {
     await rawReader.cancel()
     await aliasReader.cancel()
     await otherReader.cancel()
+  })
+
+  test("profile refresh deltas include only newly distilled facts", () => {
+    const [oldFact, newFact] = distillProspectFacts([
+      turn("turn-company", "user", "I work at Nimbus Robotics"),
+      turn("turn-need", "user", "We need intake help"),
+    ])
+
+    expect(
+      newlyDistilledFactsForBlueprintDelta(
+        [
+          {
+            fact: oldFact!.fact,
+            source_turn_id: oldFact!.sourceTurnId,
+            at: oldFact!.at,
+          },
+        ],
+        [oldFact!, newFact!],
+      ),
+    ).toEqual([newFact])
+
+    expect(
+      newlyDistilledFactsForBlueprintDelta(
+        JSON.stringify([
+          {
+            fact: oldFact!.fact,
+            source_turn_id: oldFact!.sourceTurnId,
+            at: oldFact!.at,
+          },
+          {
+            fact: newFact!.fact,
+            source_turn_id: newFact!.sourceTurnId,
+            at: newFact!.at,
+          },
+        ]),
+        [oldFact!, newFact!],
+      ),
+    ).toEqual([])
   })
 })
 

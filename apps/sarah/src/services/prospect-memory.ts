@@ -242,6 +242,43 @@ export function formatMemoryContext(input: {
 
 type ProfileFactJson = { fact: string; source_turn_id: string; at: string }
 
+function asProfileFactJsonArray(value: unknown): ProfileFactJson[] {
+  const parsed =
+    typeof value === "string"
+      ? (() => {
+          try {
+            return JSON.parse(value) as unknown
+          } catch {
+            return []
+          }
+        })()
+      : value
+  if (!Array.isArray(parsed)) return []
+  return parsed.flatMap((item) => {
+    if (!item || typeof item !== "object") return []
+    const record = item as Record<string, unknown>
+    const fact = String(record.fact ?? "")
+    const sourceTurnId = String(record.source_turn_id ?? "")
+    const at = String(record.at ?? "")
+    if (!fact || !sourceTurnId) return []
+    return [{ fact, source_turn_id: sourceTurnId, at }]
+  })
+}
+
+export function newlyDistilledFactsForBlueprintDelta(
+  previous: unknown,
+  facts: SarahProspectFact[],
+): SarahProspectFact[] {
+  const seen = new Set(
+    asProfileFactJsonArray(previous).map(
+      (fact) => `${fact.source_turn_id}\u0000${fact.fact}`,
+    ),
+  )
+  return facts.filter(
+    (fact) => !seen.has(`${fact.sourceTurnId}\u0000${fact.fact}`),
+  )
+}
+
 const FACT_DELTA_LABELS = new Set([
   "company",
   "role",
@@ -313,7 +350,17 @@ async function upsertProspectProfile(
     source_turn_id: fact.sourceTurnId,
     at: fact.at,
   }))
-  const stored = await readSarahStore(async (sql) => {
+  const newFacts = await readSarahStore(async (sql) => {
+    const existingRows = (await sql`
+      SELECT facts
+      FROM sarah_prospect_profile
+      WHERE prospect_ref = ${prospectRef}
+      LIMIT 1
+    `) as Array<Record<string, unknown>>
+    const newlyDistilled = newlyDistilledFactsForBlueprintDelta(
+      existingRows[0]?.facts,
+      facts,
+    )
     // Bun SQL: bind the JS array directly — a stringified param lands as a
     // jsonb *string*, not an array (verified against Postgres 16).
     await sql`
@@ -323,9 +370,9 @@ async function upsertProspectProfile(
         facts = EXCLUDED.facts,
         updated_at = now()
     `
-    return true
+    return newlyDistilled
   })
-  if (stored) publishProspectFactBlueprintDeltas(prospectRef, facts)
+  if (newFacts?.length) publishProspectFactBlueprintDeltas(prospectRef, newFacts)
 }
 
 function asMemoryTurnRow(row: Record<string, unknown>): SarahMemoryTurnRow {
