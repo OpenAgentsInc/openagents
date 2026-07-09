@@ -21,7 +21,11 @@ import {
   streamSarahGemmaReply,
 } from "./services/google-inference.ts"
 import type { GemmaContent } from "./services/google-inference.ts"
-import { getProspectMemoryContext } from "./services/prospect-memory.ts"
+import {
+  CROSS_PROSPECT_MEMORY_REFUSAL_REPLY,
+  getProspectMemoryContext,
+  isCrossProspectMemoryProbe,
+} from "./services/prospect-memory.ts"
 import { getSarahAccountPromptLine } from "./services/account-link.ts"
 import { maybeSemanticCacheAnswer } from "./services/semantic-answer-cache.ts"
 import { recordSarahTranscriptTurn } from "./services/session-index.ts"
@@ -236,6 +240,21 @@ export async function handleSarahChatCompletions(request: Request): Promise<Resp
       ...shared,
       turn: { modality: "voice", role: "assistant", sourceEvent: "avatar_turn", text: reply },
     })
+  }
+
+  if (isCrossProspectMemoryProbe(lastUserText)) {
+    // KHS-3: cross-prospect memory probes never reach the model.
+    const reply = CROSS_PROSPECT_MEMORY_REFUSAL_REPLY
+    if (ref) {
+      publishSarahAvatarEvent(ref, {
+        type: "guard_refusal",
+        title: "Cross-prospect isolation",
+        body: "Sarah can only use this prospect's own memory plus approved public context.",
+      })
+    }
+    await publishAndRecord(reply)
+    if (body.stream) return streamingResponse(model, reply)
+    return Response.json(completionPayload(model, reply))
   }
 
   if (PRICING_GUARD_PATTERN.test(lastUserText)) {

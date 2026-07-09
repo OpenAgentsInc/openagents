@@ -52,12 +52,42 @@ export type SarahProspectFact = {
 
 /** Max characters for the whole memory block — prompts stay lean. */
 export const PROSPECT_MEMORY_MAX_CHARS = 1200
+export const CROSS_PROSPECT_MEMORY_REFUSAL_REPLY =
+  "I can't share another prospect or customer's private conversation, memory, or profile. I can only use your own context and approved public OpenAgents information."
 
 const RECENT_TURNS_QUERY_LIMIT = 40
 const RECAP_TURNS = 6
 const MAX_FACTS = 6
 const FACT_QUOTE_MAX = 140
 const RECAP_QUOTE_MAX = 110
+const CROSS_SCOPE_EMAIL_PATTERN =
+  /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi
+const CROSS_SCOPE_PHONE_PATTERN =
+  /(?<![A-Z0-9])(?:\+?\d[\d\s().-]{7,}\d)(?![A-Z0-9])/gi
+const CROSS_PROSPECT_MEMORY_PROBE_PATTERN =
+  /\b(?:what|tell|show|share|summarize|quote|repeat|reveal)\b[\s\S]{0,90}\b(?:last|previous|other|another|different)\s+(?:customer|prospect|user|client|visitor|person|company)\b[\s\S]{0,90}\b(?:said|say|asked|told|shared|conversation|memory|profile|data|objection|need|pain)\b/i
+
+/**
+ * KHS-3 deterministic injection probe guard. This catches requests to reveal
+ * another prospect/customer's private memory before either brain can call a
+ * model. Public aggregate questions should go through normal public-claim
+ * grounding; private cross-prospect recall never does.
+ */
+export function isCrossProspectMemoryProbe(text: string): boolean {
+  return CROSS_PROSPECT_MEMORY_PROBE_PATTERN.test(text.replace(/\s+/g, " "))
+}
+
+/**
+ * KHS-3 redaction gate for any future fact promotion beyond one prospect's
+ * private scope (for example KHS-4 owner-approved collective learning). The
+ * prospect-memory path itself remains prospect-scoped; this pure function is
+ * the oracleable boundary for data that wants to leave that scope.
+ */
+export function redactProspectFactForCrossScope(text: string): string {
+  return text
+    .replace(CROSS_SCOPE_EMAIL_PATTERN, "[redacted-email]")
+    .replace(CROSS_SCOPE_PHONE_PATTERN, "[redacted-phone]")
+}
 
 /**
  * Deterministic encodings of ONE prospect identity. The text lane stores the

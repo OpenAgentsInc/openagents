@@ -23,7 +23,11 @@ import {
   sarahInferenceTransport,
 } from "../services/google-inference.ts"
 import type { GemmaContent } from "../services/google-inference.ts"
-import { getProspectMemoryContext } from "../services/prospect-memory.ts"
+import {
+  CROSS_PROSPECT_MEMORY_REFUSAL_REPLY,
+  getProspectMemoryContext,
+  isCrossProspectMemoryProbe,
+} from "../services/prospect-memory.ts"
 import { getSarahAccountPromptLine } from "../services/account-link.ts"
 import { maybeSemanticCacheAnswer } from "../services/semantic-answer-cache.ts"
 import { getSarahRealtimeInstructions } from "../services/sarah-instructions.ts"
@@ -164,6 +168,10 @@ export async function runOwnedSarahTurn(
   } else if (!message) {
     reply =
       "I'm Sarah, an AI sales assistant for OpenAgents. How can I help you evaluate OpenAgents?"
+    modelPath = "deterministic_guard"
+  } else if (isCrossProspectMemoryProbe(message)) {
+    // KHS-3: cross-prospect memory probes never reach the model.
+    reply = CROSS_PROSPECT_MEMORY_REFUSAL_REPLY
     modelPath = "deterministic_guard"
   } else if (/price|discount|deal/i.test(message)) {
     // Hard no-improvised-pricing law: Gemma's text lane has no native tool
