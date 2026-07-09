@@ -62,14 +62,14 @@ type ActiveFleetRun = {
  * concrete harness runner). Pylon owns run-record mutation, the one-supervisor
  * guard, scoped loop lifetime, retained lifecycle, control state, and cleanup.
  * Persistence follows the injected store: the standing Pylon composition must
- * pass its Pylon-home `orchestration.sqlite`, while tests may use memory. The
- * retired desktop compatibility wrapper still injects memory during this
- * extraction wave; replacing that bridge with Pylon-home construction remains
- * an explicit FC-2 residual rather than an implied completed guarantee.
+ * pass its Pylon-home `orchestration.sqlite`, while focused unit tests may use
+ * memory. `openPylonFleetRunRuntime` owns the durable construction seam; wiring
+ * every standing caller to it remains a separate FC-2 integration step.
  */
 export class PylonFleetRunManager {
   readonly store: PylonOrchestrationStore
   private readonly active = new Map<string, ActiveFleetRun>()
+  private closed = false
   private readonly now: () => Date
   private readonly retainedLifecycle = new Map<string, readonly FleetRunSupervisorObservedEvent[]>()
   private readonly retainedPylonRefs = new Map<string, string>()
@@ -79,7 +79,12 @@ export class PylonFleetRunManager {
     this.now = options.now ?? (() => new Date())
   }
 
+  private assertOpen(): void {
+    if (this.closed) throw new Error("fleet run manager is closed")
+  }
+
   async start(input: StartPylonFleetRunInput): Promise<PylonFleetRunSnapshot> {
+    this.assertOpen()
     await this.reapTerminalActives()
     if (this.store.getFleetRun(input.run.runRef) !== null) {
       throw new Error(`fleet run already exists: ${input.run.runRef}`)
@@ -140,6 +145,7 @@ export class PylonFleetRunManager {
   }
 
   async status(runRef?: string): Promise<PylonFleetRunSnapshot | readonly PylonFleetRunSnapshot[]> {
+    this.assertOpen()
     if (runRef !== undefined) {
       const run = this.store.reconcileFleetRun(runRef)
       if (run.state === "completed" || run.state === "stopped") {
@@ -152,6 +158,7 @@ export class PylonFleetRunManager {
   }
 
   async control(runRef: string, verb: FleetRunControlVerb): Promise<PylonFleetRunControlResult> {
+    this.assertOpen()
     const nextState: FleetRunState =
       verb === "pause" ? "paused" :
       verb === "resume" ? "running" :
@@ -160,6 +167,22 @@ export class PylonFleetRunManager {
     this.store.updateFleetRunState(runRef, nextState, this.now())
     if (verb === "stop") await this.releaseActive(runRef)
     return { ...this.snapshot(runRef), verb }
+  }
+
+  /**
+   * Stop owned supervisor loops and release their scopes.
+   *
+   * This does not claim to drain runner work already launched by a tick: the
+   * supervisor dispatch path records that bookkeeping asynchronously. Runtime
+   * owners must drain/reconcile in-flight work before closing SQLite; an
+   * await-idle shutdown handshake remains an explicit FC-2 wiring residual.
+   */
+  async close(): Promise<void> {
+    if (this.closed) return
+    this.closed = true
+    for (const [runRef, active] of [...this.active]) {
+      await this.releaseActive(runRef, active)
+    }
   }
 
   private async reapTerminalActives(): Promise<void> {

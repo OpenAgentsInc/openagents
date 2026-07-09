@@ -545,7 +545,7 @@ describe("Pylon assignment lease flow", () => {
       const cliLease = lease({
         assignmentRef: "assignment.public.no_spend.cli_status",
         leaseRef: "lease.public.no_spend.cli_status",
-        expiresAt: "2026-07-09T01:00:00.000Z",
+        expiresAt: new Date(Date.now() + 60 * 60 * 1_000).toISOString(),
       })
       const fake = fakeAssignmentServer({
         leases: [cliLease],
