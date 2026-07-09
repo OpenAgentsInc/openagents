@@ -454,6 +454,7 @@ import { makeCrmCommandRoutes } from './crm-command-routes'
 import { makeCrmEmailRoutes } from './crm-email-routes'
 import { makeCrmImportRoutes } from './crm-import-routes'
 import { makeCrmReplyRoutes } from './crm-reply-routes'
+import { makeCrmSalesCheckoutRoutes } from './crm-sales-checkout-routes'
 import { makeCrmMcpCatalog } from './crm-mcp'
 import { makeCrmMcpDiscoveryRoutes } from './crm-mcp-discovery-routes'
 import {
@@ -9624,6 +9625,11 @@ const crmReplyRoutes = makeCrmReplyRoutes<WorkerBindings>({
   requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
 })
 
+// OB-5 (#8562): pack-priced CRM/Sarah checkout-link issuance.
+const crmSalesCheckoutRoutes = makeCrmSalesCheckoutRoutes<WorkerBindings>({
+  requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
+})
+
 const makeKhalaMcpServedTokensRecorder = (
   db: D1Database,
   options: Readonly<{
@@ -16224,6 +16230,7 @@ const routeRequest = makeWorkerRouteRequest({
     crmBatchRoutes.routeCrmBatchRequest(request, env, ctx) ??
     crmApprovalBatchRoutes.routeCrmApprovalBatchRequest(request, env, ctx) ??
     crmReplyRoutes.routeCrmReplyRequest(request, env, ctx) ??
+    crmSalesCheckoutRoutes.routeCrmSalesCheckoutRequest(request, env, ctx) ??
     crmMcpDiscoveryRoutes.routeCrmMcpDiscoveryRequest(request, env, ctx) ??
     crmMcpGrantRoutes.routeCrmMcpGrantRequest(request, env, ctx) ??
     crmMcpRoutes.routeCrmMcpRequest(request, env, ctx) ??

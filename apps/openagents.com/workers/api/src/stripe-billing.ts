@@ -24,6 +24,12 @@ import { recordPartnerPayoutForPaidEvent } from './partner-payout-feed'
 import { provisionBusinessCheckoutKickoff } from './business-checkout-kickoff'
 import { recordBusinessReferralEngagement } from './business-referral-engagement-feed'
 import {
+  CRM_SALES_CHECKOUT_STRIPE_PRODUCT,
+  createCrmSalesCheckoutLink,
+  fulfillCrmSalesCheckoutSession,
+  type CreateCrmSalesCheckoutLinkInput,
+} from './crm-sales-checkout'
+import {
   makeSupervisionLongtailMirrorForEnv,
   type SupervisionLongtailMirror,
 } from './supervision-longtail-domain-store'
@@ -705,7 +711,11 @@ const ensureStripeCustomer = async (
   return StripeCustomerId.make(customer.id)
 }
 
-const packageForId = (
+// OB-5 (#8562): exported so `crm-sales-checkout.ts` can resolve the SAME
+// pack-priced catalog (STRIPE_CREDIT_PACKAGES_JSON) for CRM/Sarah-issued
+// checkout links — "pack-priced checkout only, no improvised pricing" reuses
+// this lookup rather than duplicating or widening it.
+export const packageForId = (
   config: StripeConfigShape,
   packageId: string,
 ): StripeCreditPackage => {
@@ -1674,6 +1684,16 @@ const processStripeWebhook = async (
       runtime: input.runtime,
       sessionId: maybeSessionId,
     })
+  } else if (session.metadata?.product === CRM_SALES_CHECKOUT_STRIPE_PRODUCT) {
+    // OB-5 (#8562): the CRM/Sarah-issued pack-priced checkout branch — does
+    // NOT touch the authenticated-user billing ledger; it reflects the
+    // settled/failed outcome into `crm_opportunities` stage transitions
+    // instead (see crm-sales-checkout.ts).
+    await fulfillCrmSalesCheckoutSession(stripeClient, {
+      db: input.db,
+      eventType: event.type,
+      sessionId: maybeSessionId,
+    })
   } else {
     await fulfillCheckoutSession(config, stripeClient, {
       db: input.db,
@@ -1759,6 +1779,11 @@ export const makeStripeCheckoutServiceForRoutes = (
         ...input,
         runtime: billingRuntime,
       }),
+    // OB-5 (#8562): pack-priced CRM/Sarah checkout-link issuance. Distinct
+    // service surface from `createCreditCheckout` above — CRM prospects are
+    // not authenticated `users` rows (see crm-sales-checkout.ts header).
+    createCrmSalesCheckoutLink: (input: CreateCrmSalesCheckoutLinkInput) =>
+      createCrmSalesCheckoutLink(config, stripeClient, input),
     fulfillCheckoutSession: (input: { db: D1Database; sessionId: string }) =>
       fulfillCheckoutSession(config, stripeClient, {
         ...input,

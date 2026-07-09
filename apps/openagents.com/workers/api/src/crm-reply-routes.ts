@@ -1,10 +1,11 @@
 /**
  * OB-4 (#8561): Sarah reply routing routes — CRM-side plumbing.
+ * OB-5 (#8562): the inbound route also issues a Sarah handoff link (§ below).
  *
  *   POST /api/operator/crm/replies/inbound
  *     { fromEmail, subject?, bodyText?, inReplyToRef?, provider?,
- *       providerEventId? }
- *     -> { result: CrmReplyEventResult }
+ *       providerEventId?, sourceRef? }
+ *     -> { result: CrmReplyEventResult, sarahHandoff?: { url, handoffToken } }
  *
  *   GET  /api/operator/crm/replies?contactId=&limit=
  *     -> { replies: CrmReplyEvent[] }
@@ -16,22 +17,43 @@
  * provider is wired, that integration should bring its OWN signature/secret
  * verification (matching the `resend-webhooks.ts` svix pattern) rather than
  * sharing the operator token with an external system.
+ *
+ * OB-5 handoff: when a reply matches an existing CRM contact and does NOT
+ * read as an opt-out, this route mints a Sarah handoff link
+ * (crm-sarah-handoff.ts) so the response — and any future email-reply
+ * continuation Sarah's own channel sends — can carry a personal link back
+ * into sarah.openagents.com that keeps the prospect_ref/CRM-contact context.
+ * Best-effort: a handoff-issuance failure never fails the reply-recording
+ * request (the reply and any opt-out suppression are already durable by the
+ * time this runs).
  */
 import { Effect } from 'effect'
 
+import { decodeBusinessSourceRef } from './business-source-attribution'
 import {
+  crmEmailAuthorityDb,
   type CrmEmailDatabase,
   makeCrmEmailDatabaseForEnv,
 } from './crm-email-domain-store'
 import { CrmCommandError } from './crm-command'
 import { listCrmReplyEvents, recordCrmReplyEvent } from './crm-reply'
+import {
+  CRM_SARAH_HANDOFF_DEFAULT_BASE_URL,
+  makeD1CrmSarahHandoffStore,
+} from './crm-sarah-handoff'
 import { DEFAULT_CRM_TENANT_REF } from './crm-store'
 import { isRecord } from './json-boundary'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
 
 type HttpResponse = globalThis.Response
 
-type CrmReplyEnv = Readonly<{ OPENAGENTS_DB: D1Database }>
+type CrmReplyEnv = Readonly<{
+  OPENAGENTS_DB: D1Database
+  /** Base URL for prospect-facing Sarah handoff links. Defaults to the
+   * production `sarah.openagents.com` app (CRM_SARAH_HANDOFF_DEFAULT_BASE_URL)
+   * when unset — useful for staging/local without requiring config. */
+  SARAH_APP_URL?: string | undefined
+}>
 
 type CrmReplyRouteDependencies<Bindings extends CrmReplyEnv> = Readonly<{
   requireAdminApiToken: (request: Request, env: Bindings) => Promise<boolean>
@@ -119,6 +141,7 @@ export const makeCrmReplyRoutes = <Bindings extends CrmReplyEnv>(
             typeof body.provider === 'string' && body.provider.trim() !== ''
               ? body.provider.trim()
               : undefined
+          const tenantRef = tenantOf(url, body.tenant)
           const result = await recordCrmReplyEvent(db, {
             bodyText: typeof body.bodyText === 'string' ? body.bodyText : null,
             fromEmail,
@@ -127,9 +150,42 @@ export const makeCrmReplyRoutes = <Bindings extends CrmReplyEnv>(
             providerEventId:
               typeof body.providerEventId === 'string' ? body.providerEventId : null,
             subject: typeof body.subject === 'string' ? body.subject : null,
-            tenantRef: tenantOf(url, body.tenant),
+            tenantRef,
           })
-          return noStoreJsonResponse({ result }, { status: 201 })
+
+          // OB-5 (#8562): best-effort handoff-link issuance. Never fails the
+          // reply-recording request — the reply row (and any opt-out
+          // suppression) is already durable above.
+          let sarahHandoff: Readonly<{ url: string; handoffToken: string }> | undefined
+          if (result.contactId !== null && !result.optOut) {
+            try {
+              const sourceRefDecode = decodeBusinessSourceRef(body.sourceRef)
+              const sourceRef =
+                'sourceRef' in sourceRefDecode ? sourceRefDecode.sourceRef : undefined
+              const handoffStore = makeD1CrmSarahHandoffStore(
+                crmEmailAuthorityDb(db),
+              )
+              const issued = await handoffStore.issueHandoffLink(
+                {
+                  tenantRef,
+                  contactId: result.contactId,
+                  replyEventId: result.replyEventId,
+                  ...(sourceRef !== undefined ? { sourceRef } : {}),
+                },
+                env.SARAH_APP_URL ?? CRM_SARAH_HANDOFF_DEFAULT_BASE_URL,
+              )
+              sarahHandoff = { url: issued.url, handoffToken: issued.handoffToken }
+            } catch {
+              // Swallow: handoff-link issuance is non-authoritative for reply
+              // recording; buildSarahHandoffUrl/issueHandoffLink failures
+              // (e.g. token collision exhaustion) never block the reply.
+            }
+          }
+
+          return noStoreJsonResponse(
+            { result, ...(sarahHandoff !== undefined ? { sarahHandoff } : {}) },
+            { status: 201 },
+          )
         })
       }
 

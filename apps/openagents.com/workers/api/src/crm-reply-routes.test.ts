@@ -104,9 +104,16 @@ describe('CRM reply routes', () => {
       }),
     )
     expect(inboundRes.status).toBe(201)
-    const { result } = (await inboundRes.json()) as { result: { optOut: boolean; contactId: string | null } }
+    const { result, sarahHandoff } = (await inboundRes.json()) as {
+      result: { optOut: boolean; contactId: string | null }
+      sarahHandoff?: { url: string; handoffToken: string }
+    }
     expect(result.optOut).toBe(false)
     expect(result.contactId).toBe('crm_contact_1')
+    // OB-5 (#8562): a matched, non-opt-out reply gets a personal handoff link
+    // into sarah.openagents.com carrying the prospect/CRM-contact context.
+    expect(sarahHandoff?.url).toContain('sarah.openagents.com/continue/')
+    expect(sarahHandoff?.handoffToken).toBeTruthy()
 
     const listRes = await run(new Request(`${base}/api/operator/crm/replies`))
     expect(listRes.status).toBe(200)
@@ -122,8 +129,14 @@ describe('CRM reply routes', () => {
         fromEmail: 'ada@example.com',
       }),
     )
-    const { result } = (await res.json()) as { result: { optOut: boolean } }
+    const { result, sarahHandoff } = (await res.json()) as {
+      result: { optOut: boolean }
+      sarahHandoff?: { url: string }
+    }
     expect(result.optOut).toBe(true)
+    // OB-5 (#8562): an opt-out reply never gets a handoff link — suppression
+    // wins, no further contact.
+    expect(sarahHandoff).toBeUndefined()
   })
 
   test('inbound without fromEmail => 400', async () => {

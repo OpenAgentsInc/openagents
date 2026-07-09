@@ -148,6 +148,9 @@ export type CrmOpportunity = Readonly<{
   convictionProbability: number | null
   targetCloseDate: string | null
   summary: string | null
+  /** Opaque JSON bag (e.g. OB-5 `{ sourceRef, pipelineRef }` attribution
+   * refs). Callers that need typed access should decode this themselves. */
+  metadataJson: string
   createdAt: string
   updatedAt: string
 }>
@@ -279,6 +282,7 @@ const decodeOpportunity = (row: Record<string, unknown>): CrmOpportunity => ({
   convictionProbability: nullableNum(row.conviction_probability),
   targetCloseDate: nullableStr(row.target_close_date),
   summary: nullableStr(row.summary),
+  metadataJson: str(row.metadata_json) === '' ? '{}' : str(row.metadata_json),
   createdAt: str(row.created_at),
   updatedAt: str(row.updated_at),
 })
@@ -900,6 +904,200 @@ export const getCrmOpportunityById = (
       .bind(tenantRef, id),
     decodeOpportunity,
   )
+
+// OB-5 (#8562): the reply -> conversation -> checkout -> settled-receipt
+// pipeline stage vocabulary tracked on `crm_opportunities.stage`. The column
+// has no CHECK constraint (free TEXT), so this is an application-level
+// contract, not a schema one — `assertCrmSalesStage` below enforces it at the
+// write boundary.
+export const CRM_SALES_OPPORTUNITY_STAGES = [
+  'sourced',
+  'replied',
+  'conversed',
+  'quoted',
+  'closed_won',
+  'closed_lost',
+] as const
+export type CrmSalesOpportunityStage =
+  (typeof CRM_SALES_OPPORTUNITY_STAGES)[number]
+
+export const isCrmSalesOpportunityStage = (
+  value: string,
+): value is CrmSalesOpportunityStage =>
+  (CRM_SALES_OPPORTUNITY_STAGES as ReadonlyArray<string>).includes(value)
+
+const assertCrmSalesStage = (stage: string): CrmSalesOpportunityStage => {
+  if (!isCrmSalesOpportunityStage(stage)) {
+    throw new CrmStorageError({
+      operation: `crm.opportunity: invalid sales stage "${stage}"`,
+    })
+  }
+  return stage
+}
+
+export type CreateCrmOpportunityInput = Readonly<{
+  tenantRef: string
+  name: string
+  accountId?: string | null
+  stage?: CrmSalesOpportunityStage
+  targetAmountCents?: number | null
+  expectedAmountCents?: number | null
+  summary?: string | null
+  /** Opaque bag merged into `metadata_json` — OB-5 carries `{ sourceRef,
+   * pipelineRef }` here so the LG-6 attribution chain dereferences from the
+   * opportunity back to the segment/pipeline row that sourced it. */
+  metadata?: Readonly<Record<string, unknown>>
+}>
+
+/** Create a fresh sales opportunity. Unlike `upsertCrmContact`, this always
+ * inserts — callers that want find-or-create-by-name semantics should query
+ * first (opportunities are per-deal, not per-entity, so there is no natural
+ * dedupe key). */
+export const createCrmOpportunity = async (
+  db: CrmEmailDatabase,
+  input: CreateCrmOpportunityInput,
+  runtime: CrmRuntime = defaultCrmRuntime,
+): Promise<CrmOpportunity> => {
+  const now = runtime.nowIso()
+  const id = runtime.makeId('crm_opportunity')
+  const stage = assertCrmSalesStage(input.stage ?? 'sourced')
+  const metadataJson = JSON.stringify(input.metadata ?? {})
+
+  await runWrite('crm.createOpportunity', () =>
+    crmEmailAuthorityDb(db)
+      .prepare(
+        `INSERT INTO crm_opportunities (
+           id, tenant_ref, account_id, name, round_name, stage, status,
+           target_amount_cents, expected_amount_cents, conviction_probability,
+           target_close_date, summary, metadata_json, created_at, updated_at
+         ) VALUES (?, ?, ?, ?, NULL, ?, 'open', ?, ?, NULL, NULL, ?, ?, ?, ?)`,
+      )
+      .bind(
+        id,
+        input.tenantRef,
+        input.accountId ?? null,
+        input.name,
+        stage,
+        input.targetAmountCents ?? null,
+        input.expectedAmountCents ?? null,
+        input.summary ?? null,
+        metadataJson,
+        now,
+        now,
+      )
+      .run(),
+  )
+  await mirrorCrmEmailRows(db, 'crm_opportunities', 'id', [id])
+
+  const created = await getCrmOpportunityById(db, input.tenantRef, id)
+  if (created === null) {
+    throw new CrmStorageError({
+      operation: 'crm.createOpportunity: row vanished after insert',
+    })
+  }
+  return created
+}
+
+export type UpdateCrmOpportunityStageInput = Readonly<{
+  tenantRef: string
+  id: string
+  stage: CrmSalesOpportunityStage
+  /** Merged (shallow) into the existing `metadata_json` bag. */
+  metadata?: Readonly<Record<string, unknown>>
+}>
+
+const CRM_SALES_STAGE_TERMINAL_STATUS: Readonly<
+  Partial<Record<CrmSalesOpportunityStage, 'won' | 'lost'>>
+> = {
+  closed_won: 'won',
+  closed_lost: 'lost',
+}
+
+/** Advance (or set) a sales opportunity's OB-5 stage. `status` mirrors
+ * `closed_won`/`closed_lost` into the existing `open`/`won`/`lost` column so
+ * older readers of `crm_opportunities.status` keep working unchanged. */
+export const updateCrmOpportunityStage = async (
+  db: CrmEmailDatabase,
+  input: UpdateCrmOpportunityStageInput,
+  runtime: CrmRuntime = defaultCrmRuntime,
+): Promise<CrmOpportunity> => {
+  const stage = assertCrmSalesStage(input.stage)
+  const existing = await getCrmOpportunityById(db, input.tenantRef, input.id)
+  if (existing === null) {
+    throw new CrmStorageError({
+      operation: `crm.updateOpportunityStage: not found ${input.id}`,
+    })
+  }
+
+  const now = runtime.nowIso()
+  const status = CRM_SALES_STAGE_TERMINAL_STATUS[stage] ?? 'open'
+  const mergedMetadata =
+    input.metadata === undefined
+      ? existing.metadataJson
+      : JSON.stringify({
+          ...(JSON.parse(existing.metadataJson) as Record<string, unknown>),
+          ...input.metadata,
+        })
+
+  await runWrite('crm.updateOpportunityStage', () =>
+    crmEmailAuthorityDb(db)
+      .prepare(
+        `UPDATE crm_opportunities
+            SET stage = ?, status = ?, metadata_json = ?, updated_at = ?
+          WHERE id = ? AND tenant_ref = ?`,
+      )
+      .bind(stage, status, mergedMetadata, now, input.id, input.tenantRef)
+      .run(),
+  )
+  await mirrorCrmEmailRows(db, 'crm_opportunities', 'id', [input.id])
+
+  const updated = await getCrmOpportunityById(db, input.tenantRef, input.id)
+  if (updated === null) {
+    throw new CrmStorageError({
+      operation: 'crm.updateOpportunityStage: row vanished after update',
+    })
+  }
+  return updated
+}
+
+/** Idempotently attach a contact to an opportunity (e.g. the prospect who
+ * replied and is now the opportunity's primary contact). */
+export const upsertCrmOpportunityContactRole = async (
+  db: CrmEmailDatabase,
+  input: Readonly<{
+    tenantRef: string
+    opportunityId: string
+    contactId: string
+    roleType?: string
+  }>,
+  runtime: CrmRuntime = defaultCrmRuntime,
+): Promise<void> => {
+  const now = runtime.nowIso()
+  await runWrite('crm.upsertOpportunityContactRole', () =>
+    crmEmailAuthorityDb(db)
+      .prepare(
+        `INSERT INTO crm_opportunity_contact_roles (
+           id, tenant_ref, opportunity_id, contact_id, role_type, status,
+           notes, created_at, updated_at
+         ) VALUES (?, ?, ?, ?, ?, 'active', NULL, ?, ?)
+         ON CONFLICT(opportunity_id, contact_id) DO UPDATE SET
+           role_type = excluded.role_type, status = 'active', updated_at = excluded.updated_at`,
+      )
+      .bind(
+        runtime.makeId('crm_opp_role'),
+        input.tenantRef,
+        input.opportunityId,
+        input.contactId,
+        input.roleType ?? 'primary',
+        now,
+        now,
+      )
+      .run(),
+  )
+  await mirrorCrmEmailRows(db, 'crm_opportunity_contact_roles', 'opportunity_id', [
+    input.opportunityId,
+  ])
+}
 
 // ---------------------------------------------------------------------------
 // Import-run audit
