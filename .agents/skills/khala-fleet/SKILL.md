@@ -241,24 +241,50 @@ script.
 ### The token-accounting gap (be honest about this, do not paper over it)
 
 Every Grok closeout reports `usage.metering: "not_measured"` — by design,
-per the metering-honesty law (never synthesize/invent tokens). **No code
-path today posts a Grok closeout into `token_usage_events`.** This means:
+per the metering-honesty law (never synthesize/invent tokens).
 
-- Grok work does **not** move the public `khala-tokens-served` counter.
-- Grok work does **not** currently produce ANY row in `token_usage_events`
-  — not even a `not_measured`-truth row — so there is no accounting-side
-  audit trail for Grok fleet activity yet (only the closeout's own `text`/
-  `stopReason`/`wallClockMs`, which the caller must capture itself).
+**Groundwork landed (2026-07-09):** `not_measured` is now a first-class
+`usage_truth` value in the ledger schema (`@openagentsinc/sync-schema`
+`TokenUsageTruth`), and the public `khala-tokens-served` counter EXCLUDES
+`usage_truth = 'not_measured'` rows explicitly — both the read-side SUM /
+exact-total reconcile source and the write-side daily/model/channel rollups
+skip them (`workers/api/src/token-usage-ledger.ts`,
+`publicTokensServedDemandWhere`). So a `not_measured`-truth Grok row can exist
+as an honest zero-token accounting trail WITHOUT ever polluting the exact
+public served-token total. The exact-only counter law is preserved.
+
+**Still unbuilt — the producer:** **no code path yet posts a Grok closeout
+into `token_usage_events`.** The two dispatch sites
+(`clients/khala-code-desktop/src/bun/khala-fleet-tools.ts` `codex_spawn
+worker_kind=grok`, and `fleet-run-supervisor-rpc-adapter.ts`) run the `grok`
+CLI **locally in the desktop** and return a real `WorkerCloseout`, but do not
+emit a ledger row. This means:
+
+- Grok work does **not** move the public `khala-tokens-served` counter
+  (correct — `not_measured` never would), and produces **no** row in
+  `token_usage_events` yet, so there is still no accounting-side audit trail
+  for Grok fleet activity (only the closeout's own `text` / `stopReason` /
+  `wallClockMs`, which the caller must capture itself).
+- The blocker is auth/route, not schema: the canonical ledger ingest route
+  (`POST` handled by `handleTokenUsageEventsApi`) requires an **admin API
+  token** the desktop does not hold. Codex/Claude fleet tokens reach the
+  ledger via a Pylon **registered-agent** route (`POST /api/pylon/codex/turns`,
+  `requireAgent` bearer); Grok runs outside Pylon and has no analogous
+  registered-agent ingest route. Closing the trail = building that
+  server-side registered-agent Grok ingest route (which inserts a
+  `not_measured`-truth, zero-token row with `provider:
+  "grok-cli-own-capacity"`, `demand_kind: "own_capacity"`, and
+  wall-clock/plane/marginal-cost in `safeMetadata`) plus the desktop client
+  that posts to it with the agent token — NOT wiring an admin POST from the
+  desktop.
 - Rate-limit probes (RL-1..6, part of MH-4 `#8590`, still open) are the
   next piece that turns wall-clock + failure-class data into something the
   `auto` policy (MH-8, closed) can actually rank Grok against Codex/Claude
-  on cost. Until then, treat Grok capacity as "real but unmetered."
+  on cost. Until the producer route lands, treat Grok capacity as "real but
+  unmetered."
 
-If a task specifically needs Grok fleet activity to show up in exact
-accounting, that is new work (wiring a `not_measured`-truth
-`token_usage_events` row from the closeout, or a Grok-specific ingest
-route) — not something already built. Say so plainly rather than
-implying the counter already tracks it.
+Say this plainly rather than implying the counter already tracks Grok, or
+that the row-posting is already built.
 
 ## Hard guardrails (never violate, even under time pressure)
 
