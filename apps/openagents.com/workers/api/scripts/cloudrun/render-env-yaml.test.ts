@@ -1,0 +1,62 @@
+import { describe, expect, test } from 'bun:test'
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
+
+const script = path.resolve(import.meta.dir, 'render-env-yaml.ts')
+
+const parseRenderedEnvironment = (source: string): Record<string, string> =>
+  Object.fromEntries(
+    source
+      .trim()
+      .split('\n')
+      .map(line => {
+        const separator = line.indexOf(': ')
+        return [
+          line.slice(0, separator),
+          JSON.parse(line.slice(separator + 2)) as string,
+        ]
+      }),
+  )
+
+const renderEnvironment = async (
+  target: 'production' | 'staging',
+): Promise<Record<string, string>> => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'openagents-cloudrun-env-'))
+  const output = path.join(directory, `${target}.yaml`)
+  try {
+    const rendered = Bun.spawnSync(['bun', script, target, output], {
+      stderr: 'pipe',
+      stdout: 'pipe',
+    })
+    expect(new TextDecoder().decode(rendered.stderr)).toBe('')
+    expect(rendered.exitCode).toBe(0)
+    return parseRenderedEnvironment(await readFile(output, 'utf8'))
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+}
+
+describe('Cloud Run Sarah origin rendering', () => {
+  test('production keeps Sarah authority and public links on openagents.com', async () => {
+    const environment = await renderEnvironment('production')
+
+    expect(environment.SARAH_OPENAGENTS_BASE_URL).toBe(
+      'https://openagents.com',
+    )
+    expect(environment.SARAH_PUBLIC_BASE_URL).toBe(
+      'https://openagents.com/sarah',
+    )
+  })
+
+  test('staging keeps Sarah authority and public links inside the staging monolith', async () => {
+    const environment = await renderEnvironment('staging')
+
+    expect(environment.SARAH_OPENAGENTS_BASE_URL).toBe(
+      'https://openagents-monolith-staging-ezxz4mgdsq-uc.a.run.app',
+    )
+    expect(environment.SARAH_PUBLIC_BASE_URL).toBe(
+      'https://openagents-monolith-staging-ezxz4mgdsq-uc.a.run.app/sarah',
+    )
+  })
+})
