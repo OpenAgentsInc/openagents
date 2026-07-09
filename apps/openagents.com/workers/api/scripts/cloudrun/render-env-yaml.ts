@@ -118,6 +118,17 @@ Object.assign(vars, {
     ? {
         CLOUDFLARE_ACCOUNT_ID: '54fac8b750a29fdda9f2fa0f0afaed90',
         CLOUDFLARE_D1_DATABASE_ID: '9644ea09-f682-4971-98de-e0c791cb67fb',
+        // OB-1 (#8558): armed live CRM/Sarah sending on PROD ONLY (owner GO).
+        // CRM_RESEND_SEND_ENABLED flips the send gate; the CRM-specific sender
+        // identity keeps Sarah's outbound distinct from the shared Sites
+        // transactional RESEND_FROM_EMAIL (OpenAgents <chris+sites@…>), which
+        // stays untouched. Durable across redeploys — do not rely on
+        // live-revision arming. STAGING deliberately omits these (no live CRM
+        // sends off staging). The warm-up cap machinery in the send path stays
+        // enforced; this only opens the gate.
+        CRM_RESEND_SEND_ENABLED: '1',
+        CRM_RESEND_FROM_EMAIL: 'Sarah <sarah@openagents.com>',
+        CRM_RESEND_REPLY_TO_EMAIL: 'sarah@openagents.com',
       }
     : {}),
   // The CFG-10 LB (and staging smoke tooling) forwards the original host in
