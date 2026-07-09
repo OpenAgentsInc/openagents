@@ -1,0 +1,58 @@
+{
+  "schemaVersion": "openagents.sarah.gpu_media_run_closeout.v1",
+  "runId": "oav1-2026-07-09-offline-proof",
+  "issueRefs": ["#8610", "#8611", "#8625"],
+  "startedAt": "2026-07-09T05:47:00.000Z",
+  "endedAt": "2026-07-09T07:30:00.000Z",
+  "host": {
+    "name": "sarah-avatar-gpu-1",
+    "project": "openagentsgemini",
+    "zone": "us-central1-b",
+    "machineType": "g2-standard-8",
+    "gpu": "nvidia-l4"
+  },
+  "hostDisposition": {
+    "status": "left_running",
+    "reason": "prod_render_node"
+  },
+  "artifacts": [
+    {
+      "uri": "gs://openagentsgemini-oa-artifacts/sarah-avatar/oav1/sarah_oav1_reply.mp4",
+      "kind": "render_video",
+      "bytes": 12400000
+    },
+    {
+      "uri": "gs://openagentsgemini-oa-artifacts/sarah-avatar/oav1/sarah_reply.wav",
+      "kind": "tts_audio"
+    }
+  ],
+  "artifactChecks": [
+    {
+      "uri": "gs://openagentsgemini-oa-artifacts/sarah-avatar/oav1/sarah_oav1_reply.mp4",
+      "method": "object_exists"
+    },
+    {
+      "uri": "gs://openagentsgemini-oa-artifacts/sarah-avatar/oav1/sarah_reply.wav",
+      "method": "object_exists"
+    }
+  ],
+  "gcsIndex": {
+    "updated": true,
+    "indexUri": "gs://openagentsgemini-oa-artifacts/sarah-avatar/oav1/manifest.json",
+    "entries": [
+      "gs://openagentsgemini-oa-artifacts/sarah-avatar/oav1/sarah_oav1_reply.mp4",
+      "gs://openagentsgemini-oa-artifacts/sarah-avatar/oav1/sarah_reply.wav"
+    ]
+  },
+  "costEstimate": {
+    "currency": "USD",
+    "gpuHours": 1.7,
+    "estimatedUsd": 1.45,
+    "notes": "g2-standard-8 + L4 approx; wall includes MuseTalk prep + CosyVoice2 + encode"
+  },
+  "privacy": {
+    "attestation": "no_secrets_no_prospect_pii",
+    "notes": "Public-safe reply script only; no prospect emails or API keys in artifacts"
+  },
+  "notes": "Example receipt shaped like the OAV-1 offline proof. Replace uris/bytes for new runs."
+}
