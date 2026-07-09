@@ -8,6 +8,8 @@ import { describe, expect, test } from "bun:test"
 
 import { createBootstrapSummary, parseBootstrapArgs } from "../src/bootstrap.js"
 import { openPylonNodeFleetRunActivationService } from "../src/node/fleet-run-activation.js"
+import { openPylonFleetRunIntakePoller } from "../src/node/fleet-run-intake-poller.js"
+import { makePylonFleetRunHttpIntake } from "../src/orchestration/fleet-run-http-intake.js"
 import type {
   PylonFleetRunActivationPort,
   PylonFleetRunRemoteIntakePort,
@@ -303,6 +305,65 @@ describe("Pylon Sarah FleetRun remote intake", () => {
         active: true,
       })
       await service.close()
+      await activation.close()
+    })
+  })
+
+  test("standing poller carries an authenticated HTTP fixture through the real activation opener", async () => {
+    await fixture(async ({ summary }) => {
+      const claimed = claimResult()
+      const operations: string[] = []
+      const opened: string[] = []
+      const activation = await openPylonNodeFleetRunActivationService({
+        summary,
+        pylonRef,
+        baseUrl: "https://openagents.test",
+        openExecutor: async input => {
+          opened.push(input.runRef)
+          return { close: () => Promise.resolve() }
+        },
+      })
+      const remote = makePylonFleetRunHttpIntake({
+        agentToken: "oa_agent_private_fixture",
+        baseUrl: "https://openagents.test",
+        makeId: () => "standing-fixture-one",
+        fetchImpl: async (input, init) => {
+          const request = new Request(input, init)
+          expect(request.headers.get("authorization")).toBe(
+            "Bearer oa_agent_private_fixture",
+          )
+          const operation = request.url.endsWith("/claim") ? "claim" : "accept"
+          operations.push(operation)
+          return new Response(JSON.stringify({
+            schema: "openagents.pylon.fleet_run_transport.v1",
+            operation,
+            result: operation === "claim" ? claimed : acceptedResult(claimed),
+          }), {
+            headers: { "content-type": "application/json" },
+            status: 200,
+          })
+        },
+      })
+      const intake = await openPylonFleetRunRemoteIntakeService({
+        activation,
+        bootstrap: summary,
+        pylonRef,
+        remote,
+      })
+      const poller = openPylonFleetRunIntakePoller({
+        intake,
+        intervalMs: 300_000,
+      })
+      for (let attempt = 0; attempt < 100 && opened.length === 0; attempt += 1) {
+        await new Promise(resolve => setTimeout(resolve, 5))
+      }
+      expect(operations).toEqual(["claim", "accept"])
+      expect(opened).toEqual([runRef])
+      expect(poller.status().lastProjection).toMatchObject({
+        state: "active",
+        runRef,
+      })
+      await poller.close()
       await activation.close()
     })
   })

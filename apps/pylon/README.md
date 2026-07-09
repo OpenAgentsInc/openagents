@@ -527,6 +527,24 @@ Assignment workers execute from the Pylon app path, so app-local verification
 paths such as `bun test tests/fleet-run-live-smoke.test.ts` are preferred over
 repo-root-prefixed paths.
 
+The standing Sarah FleetRun intake loop is operator-visible without exposing
+its bearer, owner identity, prompt, or local paths:
+
+```sh
+pylon node fleet-run-intake-status --json
+```
+
+The command reads the authenticated loopback node projection. `disabled` plus
+`blocker.pylon.fleet_run_intake.transport_not_configured` means the node lacks
+the base URL or agent bearer; `polling` distinguishes an in-flight tick;
+`idle`/`closed`, `pollCount`, the last fixed intake projection, and fixed
+blocker refs make a slow or failed standing loop distinguishable from silence.
+Claim idempotency survives a lost response or failed local import while the
+node process remains alive and rotates only after server acceptance. If the
+daemon exits after the server commits a claim but before canonical local
+import, there is no false immediate-restart guarantee: the fixed 60-second
+server intake lease expires, then the standing poll reclaims the pending run.
+
 `bun run --cwd apps/pylon smoke:fleet-run-sustained` uses the same evidence
 chain behind `PYLON_FLEET_RUN_SUSTAINED_ARM=1`. Defaults are target 5,
 duration 30 minutes, minimum 2 refills, and at least 7 distinct issue numbers

@@ -1,5 +1,9 @@
 import { Container, getContainer } from '@cloudflare/containers'
 import {
+  makeFleetRunAuthorityRepository,
+  type FleetRunAuthorityRepositoryShape,
+} from '@openagentsinc/khala-sync-server'
+import {
   type WorkerBindings,
   badRequest,
   cursorGap,
@@ -10843,9 +10847,35 @@ const nexusPylonVisibilityRoutes = makeNexusPylonVisibilityRoutes({
   requireBrowserSession,
 })
 
+const withFleetRunAuthority = async <A>(
+  env: WorkerBindings,
+  operation: (repository: FleetRunAuthorityRepositoryShape) => Promise<A>,
+): Promise<A> => {
+  const connectionString = env.KHALA_SYNC_DB?.connectionString
+  if (connectionString === undefined || connectionString.trim() === '') {
+    throw new Error('fleet run authority storage is unavailable')
+  }
+  const client = await defaultMakeKhalaSyncSqlClient(connectionString)
+  try {
+    return await operation(makeFleetRunAuthorityRepository({ sql: client.sql }))
+  } finally {
+    await client.end().catch(() => undefined)
+  }
+}
+
 const pylonApiRoutes = makePylonApiRoutes<WorkerBindings>({
   agentStore: env => makeAgentRegistrationStoreForEnv(env),
   makeStore: env => makePylonApiStoreForEnv(env),
+  fleetRunAuthority: {
+    claim: (env, input) =>
+      withFleetRunAuthority(env, repository =>
+        Effect.runPromise(repository.claim(input)),
+      ),
+    acceptClaim: (env, input) =>
+      withFleetRunAuthority(env, repository =>
+        Effect.runPromise(repository.acceptClaim(input)),
+      ),
+  },
   // #5252: private operator-only store for raw Spark payout targets.
   makeSparkPayoutTargetStore: env =>
     makePylonSparkPayoutTargetStoreForEnv(env),

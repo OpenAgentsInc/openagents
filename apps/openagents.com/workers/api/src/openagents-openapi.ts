@@ -2323,6 +2323,12 @@ const schemaComponents = (): JsonSchema => ({
   PylonApiAssignmentWriteResponse: objectSummary(
     'Pylon assignment create or closeout response with a public-safe assignment projection, controlled dispatch gate metadata on create, and idempotency flag when applicable.',
   ),
+  PylonFleetRunTransportResponse: objectSummary(
+    'Owner-private Pylon FleetRun intake envelope with schema, operation, and the exact Postgres authority claim/run result. The authenticated Pylon uses this only to integrity-check and durably import a Sarah-created run. Bearer credentials, private paths, raw prompts, command output, and provider payloads are never returned.',
+  ),
+  PylonFleetRunTransportError: objectSummary(
+    'Fixed Pylon FleetRun intake error envelope. Codes are invalid_request, not_authorized, claim_conflict, claim_expired, or unavailable with a retryable flag. Database text, owner identifiers, keys, fingerprints, credentials, prompts, and paths are never included.',
+  ),
   PylonOperatorQuarantineResponse: objectSummary(
     'Operator Pylon quarantine response with the public-safe quarantine projection: active/released state, quarantine ref, public reason/source/action refs, and optional expiry. No wallet material, private telemetry, raw runner data, payout, or settlement state.',
   ),
@@ -5249,6 +5255,42 @@ const requestSchemas = (): JsonSchema => ({
   PylonHeartbeatRequest: objectSummary(
     'Registered Pylon heartbeat with status, resourceMode, healthRefs, loadRefs, and capacityRefs, plus optional provider discovery fields (providerNostrPubkey, providerNostrNpub, providerMarketRelayRefs, providerNip90LaneRefs) that refresh the registration projection. Raw telemetry, private paths, and raw timestamps are rejected.',
   ),
+  PylonFleetRunClaimRequest: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['schema'],
+    properties: {
+      schema: {
+        type: 'string',
+        enum: ['openagents.pylon.fleet_run_claim.request.v1'],
+      },
+      runRef: {
+        type: 'string',
+        pattern: '^fleet_run\\.sarah\\.[0-9a-f]{20}$',
+        description:
+          'Optional exact retry target after an imported intake lease expires. Omit to claim the oldest eligible owner-local run.',
+      },
+    },
+  },
+  PylonFleetRunAcceptRequest: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['schema', 'runRef', 'claimRef'],
+    properties: {
+      schema: {
+        type: 'string',
+        enum: ['openagents.pylon.fleet_run_accept.request.v1'],
+      },
+      runRef: {
+        type: 'string',
+        pattern: '^fleet_run\\.sarah\\.[0-9a-f]{20}$',
+      },
+      claimRef: {
+        type: 'string',
+        pattern: '^claim\\.sarah_fleet_run\\.[0-9a-f]{24}$',
+      },
+    },
+  },
   PylonWalletReadinessRequest: objectSummary(
     'Registered Pylon wallet readiness report with walletReady, walletRef, readinessRefs, balanceRefs, and liquidityRefs. Raw invoices, mnemonics, payment hashes, preimages, and wallet state are rejected.',
   ),
@@ -8478,6 +8520,54 @@ const paths = (): JsonSchema => ({
         '201': okJson(
           'Pylon heartbeat write response.',
           '#/components/schemas/PylonApiWriteResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/pylons/{pylonRef}/fleet-runs/claim': {
+    post: operation({
+      operationId: 'claimSarahFleetRunForPylon',
+      summary: 'Claim next Sarah FleetRun for owned Pylon',
+      description:
+        'Bearer-only standing-node intake. The server derives owner scope from the programmatic-agent session and Pylon identity from the owned path registration, then claims one eligible owner_local or auto Sarah FleetRun from Postgres. Owner or Pylon refs in the body are rejected. The scoped Idempotency-Key is retained by Pylon until acceptance so a committed lease is promptly replayed after a lost response or local import failure. This grants no human-session, cross-owner, managed-cloud, payment, or settlement authority.',
+      tags: ['Pylon'],
+      security: agentBearer,
+      parameters: [
+        pathParam('pylonRef', 'Owned Pylon ref.'),
+        requiredIdempotencyHeader(
+          'Stable private request key retained through claim import and acceptance.',
+        ),
+      ],
+      requestBody: jsonContent(
+        '#/components/schemas/PylonFleetRunClaimRequest',
+      ),
+      responses: {
+        '200': okJson(
+          'Exact FleetRun intake claim and authority record.',
+          '#/components/schemas/PylonFleetRunTransportResponse',
+        ),
+        '204': { description: 'No eligible owner-local FleetRun is pending.' },
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/pylons/{pylonRef}/fleet-runs/accept': {
+    post: operation({
+      operationId: 'acceptSarahFleetRunForPylon',
+      summary: 'Accept imported Sarah FleetRun for owned Pylon',
+      description:
+        'Bearer-only standing-node acknowledgment after the exact claimed authority has been durably imported into the canonical Pylon orchestration store. The server derives owner and Pylon authority, atomically accepts the Postgres intake lease, and advances the run to claimed_by_pylon before local activation. Browser cookies, body owner refs, foreign Pylons, D1 fallback, payment, and settlement authority are not accepted.',
+      tags: ['Pylon'],
+      security: agentBearer,
+      parameters: [pathParam('pylonRef', 'Owned Pylon ref.')],
+      requestBody: jsonContent(
+        '#/components/schemas/PylonFleetRunAcceptRequest',
+      ),
+      responses: {
+        '200': okJson(
+          'Accepted FleetRun intake claim and authority record.',
+          '#/components/schemas/PylonFleetRunTransportResponse',
         ),
         ...errorResponses(),
       },

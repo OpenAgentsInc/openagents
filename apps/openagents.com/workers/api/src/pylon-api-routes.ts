@@ -1,5 +1,10 @@
 import { notFound } from '@openagentsinc/sync-worker'
 import { Effect, Match as M, Schema as S } from 'effect'
+import {
+  FleetRunAuthorityError,
+  type FleetRunAuthorityAcceptClaimResult,
+  type FleetRunAuthorityClaimResult,
+} from '@openagentsinc/khala-sync-server'
 
 import {
   AGENT_TOKEN_PREFIX,
@@ -82,6 +87,32 @@ type PylonApiRouteDependencies<Bindings> = Readonly<{
   agentStore: (env: Bindings) => AgentRegistrationStore
   makeId?: () => string
   makeStore: (env: Bindings) => PylonApiStore
+  /**
+   * Postgres-only Sarah FleetRun intake authority. This is deliberately a
+   * narrow injected seam: the route authenticates and derives owner/Pylon
+   * authority before either operation receives input.
+   */
+  fleetRunAuthority?: Readonly<{
+    claim: (
+      env: Bindings,
+      input: Readonly<{
+        ownerUserId: string
+        pylonRef: string
+        runRef?: string | undefined
+        claimIdempotencyKey: string
+        leaseDurationMs: number
+      }>,
+    ) => Promise<FleetRunAuthorityClaimResult>
+    acceptClaim: (
+      env: Bindings,
+      input: Readonly<{
+        ownerUserId: string
+        pylonRef: string
+        runRef: string
+        claimRef: string
+      }>,
+    ) => Promise<FleetRunAuthorityAcceptClaimResult>
+  }>
   // #5252: private operator-only store for raw Spark payout targets. Optional so
   // existing route wiring/tests stay valid; the spark-payout-target route fails
   // closed (501) when it is not wired.
@@ -127,6 +158,47 @@ type PylonApiBrowserSession = Readonly<{
     userId: string
   }>
 }>
+
+export const PYLON_FLEET_RUN_CLAIM_ROUTE_PATTERN =
+  '/api/pylons/:pylonRef/fleet-runs/claim' as const
+export const PYLON_FLEET_RUN_ACCEPT_ROUTE_PATTERN =
+  '/api/pylons/:pylonRef/fleet-runs/accept' as const
+
+const PYLON_FLEET_RUN_TRANSPORT_SCHEMA =
+  'openagents.pylon.fleet_run_transport.v1' as const
+const FLEET_RUN_LEASE_DURATION_MS = 60_000
+
+const FleetRunRef = S.Trim.check(
+  S.isPattern(/^fleet_run\.sarah\.[0-9a-f]{20}$/u),
+)
+const FleetRunClaimRef = S.Trim.check(
+  S.isPattern(/^claim\.sarah_fleet_run\.[0-9a-f]{24}$/u),
+)
+const FleetRunClaimBody = S.Struct({
+  schema: S.Literal('openagents.pylon.fleet_run_claim.request.v1'),
+  runRef: S.optionalKey(FleetRunRef),
+})
+const FleetRunAcceptBody = S.Struct({
+  schema: S.Literal('openagents.pylon.fleet_run_accept.request.v1'),
+  runRef: FleetRunRef,
+  claimRef: FleetRunClaimRef,
+})
+
+const decodeStrictFleetRunBody = <A>(
+  request: Request,
+  schema: S.Decoder<A>,
+): Effect.Effect<A, PylonApiStoreError> =>
+  Effect.tryPromise({
+    try: async () =>
+      S.decodeUnknownSync(schema)(await readJsonObject(request), {
+        onExcessProperty: 'error',
+      }),
+    catch: () =>
+      new PylonApiStoreError({
+        kind: 'validation_error',
+        reason: 'FleetRun transport request failed validation.',
+      }),
+  })
 
 const LinkOpenAuthAgentRequest = S.Struct({
   agentToken: S.Trim.check(
@@ -1024,6 +1096,210 @@ const requireOwnedRegistration = <Bindings extends PylonApiRouteEnv>(
 
       return Effect.succeed(registration)
     },
+  )
+
+type FleetRunTransportOperation = 'accept' | 'claim'
+
+const fleetRunTransportErrorResponse = (
+  error: unknown,
+  operation: FleetRunTransportOperation,
+  exactRunRequested: boolean,
+): HttpResponse => {
+  if (error instanceof PylonApiUnauthorized) {
+    return noStoreJsonResponse(
+      {
+        schema: PYLON_FLEET_RUN_TRANSPORT_SCHEMA,
+        error: { code: 'not_authorized', retryable: false },
+      },
+      { headers: { 'www-authenticate': 'Bearer' }, status: 401 },
+    )
+  }
+
+  if (error instanceof PylonApiStoreError) {
+    const validation = error.kind === 'validation_error'
+    const unavailable = error.kind === 'storage_error'
+    return noStoreJsonResponse(
+      {
+        schema: PYLON_FLEET_RUN_TRANSPORT_SCHEMA,
+        error: {
+          code: validation
+            ? 'invalid_request'
+            : unavailable
+              ? 'unavailable'
+              : 'not_authorized',
+          retryable: unavailable,
+        },
+      },
+      { status: validation ? 400 : unavailable ? 503 : 403 },
+    )
+  }
+
+  if (error instanceof FleetRunAuthorityError) {
+    if (
+      operation === 'claim' &&
+      error.kind === 'run_not_found' &&
+      !exactRunRequested
+    ) {
+      return new Response(null, { status: 204 })
+    }
+    const code =
+      error.kind === 'pylon_not_authorized'
+        ? 'not_authorized'
+        : error.kind === 'claim_expired'
+          ? 'claim_expired'
+          : error.kind === 'claim_conflict' ||
+              error.kind === 'claim_not_found' ||
+              error.kind === 'idempotency_conflict' ||
+              error.kind === 'run_not_found'
+            ? 'claim_conflict'
+            : error.kind === 'invalid_request'
+              ? 'invalid_request'
+              : 'unavailable'
+    const retryable =
+      error.kind === 'pylon_unavailable' ||
+      error.kind === 'storage_unavailable'
+    const status =
+      code === 'not_authorized'
+        ? 403
+        : code === 'invalid_request'
+          ? 400
+          : code === 'claim_conflict' || code === 'claim_expired'
+            ? 409
+            : 503
+    return noStoreJsonResponse(
+      {
+        schema: PYLON_FLEET_RUN_TRANSPORT_SCHEMA,
+        error: { code, retryable },
+      },
+      { status },
+    )
+  }
+
+  return noStoreJsonResponse(
+    {
+      schema: PYLON_FLEET_RUN_TRANSPORT_SCHEMA,
+      error: { code: 'unavailable', retryable: true },
+    },
+    { status: 503 },
+  )
+}
+
+const fleetRunOwnerUserId = (session: ProgrammaticAgentSession): string => {
+  const openauthUserId = session.credential.openauthUserId?.trim()
+  return openauthUserId === undefined || openauthUserId === ''
+    ? session.user.id
+    : openauthUserId
+}
+
+const routeFleetRunClaim = <Bindings extends PylonApiRouteEnv>(
+  dependencies: PylonApiRouteDependencies<Bindings>,
+  request: Request,
+  env: Bindings,
+  pylonRef: string,
+): Effect.Effect<HttpResponse> => {
+  let exactRunRequested = false
+  return Effect.gen(function* () {
+    const authority = dependencies.fleetRunAuthority
+    if (authority === undefined) {
+      return fleetRunTransportErrorResponse(
+        new FleetRunAuthorityError({
+          kind: 'storage_unavailable',
+          reason: 'fleet run authority is unavailable',
+        }),
+        'claim',
+        false,
+      )
+    }
+    const session = yield* requireAgent(dependencies, request, env)
+    yield* requireOwnedRegistration(dependencies, env, pylonRef, session)
+    const body = yield* decodeStrictFleetRunBody(request, FleetRunClaimBody)
+    exactRunRequested = body.runRef !== undefined
+    const ownerUserId = fleetRunOwnerUserId(session)
+    const claimIdempotencyKey = yield* requireScopedIdempotencyHash(request, [
+      'sarah_fleet_run_claim_v1',
+      ownerUserId,
+      pylonRef,
+      body.runRef ?? 'next',
+    ])
+    const result = yield* Effect.tryPromise({
+      try: () =>
+        authority.claim(env, {
+          ownerUserId,
+          pylonRef,
+          ...(body.runRef === undefined ? {} : { runRef: body.runRef }),
+          claimIdempotencyKey,
+          leaseDurationMs: FLEET_RUN_LEASE_DURATION_MS,
+        }),
+      catch: (error): FleetRunAuthorityError =>
+        error instanceof FleetRunAuthorityError
+          ? error
+          : new FleetRunAuthorityError({
+              kind: 'storage_unavailable',
+              reason: 'fleet run authority is unavailable',
+            }),
+    })
+    return noStoreJsonResponse({
+      schema: PYLON_FLEET_RUN_TRANSPORT_SCHEMA,
+      operation: 'claim',
+      result,
+    })
+  }).pipe(
+    Effect.catch(error =>
+      Effect.succeed(
+        fleetRunTransportErrorResponse(error, 'claim', exactRunRequested),
+      ),
+    ),
+  )
+}
+
+const routeFleetRunAccept = <Bindings extends PylonApiRouteEnv>(
+  dependencies: PylonApiRouteDependencies<Bindings>,
+  request: Request,
+  env: Bindings,
+  pylonRef: string,
+): Effect.Effect<HttpResponse> =>
+  Effect.gen(function* () {
+    const authority = dependencies.fleetRunAuthority
+    if (authority === undefined) {
+      return fleetRunTransportErrorResponse(
+        new FleetRunAuthorityError({
+          kind: 'storage_unavailable',
+          reason: 'fleet run authority is unavailable',
+        }),
+        'accept',
+        true,
+      )
+    }
+    const session = yield* requireAgent(dependencies, request, env)
+    yield* requireOwnedRegistration(dependencies, env, pylonRef, session)
+    const body = yield* decodeStrictFleetRunBody(request, FleetRunAcceptBody)
+    const result = yield* Effect.tryPromise({
+      try: () =>
+        authority.acceptClaim(env, {
+          ownerUserId: fleetRunOwnerUserId(session),
+          pylonRef,
+          runRef: body.runRef,
+          claimRef: body.claimRef,
+        }),
+      catch: (error): FleetRunAuthorityError =>
+        error instanceof FleetRunAuthorityError
+          ? error
+          : new FleetRunAuthorityError({
+              kind: 'storage_unavailable',
+              reason: 'fleet run authority is unavailable',
+            }),
+    })
+    return noStoreJsonResponse({
+      schema: PYLON_FLEET_RUN_TRANSPORT_SCHEMA,
+      operation: 'accept',
+      result,
+    })
+  }).pipe(
+    Effect.catch(error =>
+      Effect.succeed(
+        fleetRunTransportErrorResponse(error, 'accept', true),
+      ),
+    ),
   )
 
 const requireOwnedAssignment = <Bindings extends PylonApiRouteEnv>(
@@ -2644,6 +2920,38 @@ export const makePylonApiRoutes = <Bindings extends PylonApiRouteEnv>(
         env,
         decodeURIComponent(assignmentListMatch[1]!),
       ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
+    }
+
+    const fleetRunTransportMatch =
+      /^\/api\/pylons\/([^/]+)\/fleet-runs\/(claim|accept)$/.exec(
+        url.pathname,
+      )
+
+    if (fleetRunTransportMatch !== null) {
+      if (request.method !== 'POST') {
+        return Effect.succeed(methodNotAllowed(['POST']))
+      }
+      const operation =
+        fleetRunTransportMatch[2] === 'claim' ? 'claim' : 'accept'
+      return Effect.try({
+        try: () => decodeURIComponent(fleetRunTransportMatch[1]!),
+        catch: () =>
+          new PylonApiStoreError({
+            kind: 'validation_error',
+            reason: 'FleetRun transport path failed validation.',
+          }),
+      }).pipe(
+        Effect.flatMap(pylonRef =>
+          operation === 'claim'
+            ? routeFleetRunClaim(dependencies, request, env, pylonRef)
+            : routeFleetRunAccept(dependencies, request, env, pylonRef),
+        ),
+        Effect.catch(error =>
+          Effect.succeed(
+            fleetRunTransportErrorResponse(error, operation, false),
+          ),
+        ),
+      )
     }
 
     const readMatch = /^\/api\/pylons\/([^/]+)$/.exec(url.pathname)

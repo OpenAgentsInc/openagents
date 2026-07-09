@@ -194,7 +194,17 @@ describe("control protocol", () => {
           const runtime = yield* makePylonNodeRuntime
           const server = yield* startControlServer(runtime, {
             token,
-            actions: { ...stubActions([]), fleetRuns },
+            actions: {
+              ...stubActions([]),
+              fleetRuns,
+              fleetRunIntakeStatus: async () => ({
+                schema: "openagents.pylon.fleet_run_intake_poller.v1",
+                state: "idle",
+                pollCount: 7,
+                lastProjection: null,
+                blockerRefs: [],
+              }),
+            },
             hostname: "127.0.0.1",
             port: 0,
           })
@@ -229,6 +239,26 @@ describe("control protocol", () => {
             },
           })
           expect(calls).toEqual([{ operation: "arm", runRef: "fleet_run.fc2.exact" }])
+
+          const intakeStatus = yield* Effect.promise(() => fetch(`${server.url}/command`, {
+            method: "POST",
+            headers: {
+              authorization: `Bearer ${token}`,
+              "content-type": "application/json",
+            },
+            body: JSON.stringify({ type: "fleet_run.intake_status" }),
+          }))
+          expect(intakeStatus.status).toBe(200)
+          expect(yield* Effect.promise(() => intakeStatus.json())).toEqual({
+            ok: true,
+            result: {
+              schema: "openagents.pylon.fleet_run_intake_poller.v1",
+              state: "idle",
+              pollCount: 7,
+              lastProjection: null,
+              blockerRefs: [],
+            },
+          })
 
           const unavailable = yield* Effect.promise(() => fetch(`${server.url}/command`, {
             method: "POST",

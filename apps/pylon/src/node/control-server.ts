@@ -109,6 +109,7 @@ export type ControlCommand =
   // are required, and the daemon supplies its own Pylon ref.
   | { type: "fleet_run.arm"; runRef: string }
   | { type: "fleet_run.status"; runRef?: string }
+  | { type: "fleet_run.intake_status" }
   | { type: "fleet_run.disarm"; runRef: string }
   // CL-26 "Deploy to Cloud": a node-triggered deploy through OUR cloud pipeline.
   // Execution is gated behind OA_DEPLOY_ENABLE=1 (fail-safe). deploy.status is
@@ -181,6 +182,7 @@ export interface ControlCommandActions {
     status: (runRef?: string) => Promise<unknown>
     disarm: (runRef: string) => Promise<unknown>
   }
+  fleetRunIntakeStatus?: () => Promise<unknown>
 }
 
 export async function ensureControlToken(homeDir: string): Promise<string> {
@@ -342,6 +344,9 @@ export const startControlServer = (
         case "fleet_run.status":
           if (!options.actions.fleetRuns) throw new Error("fleet run activation unavailable on this node")
           return options.actions.fleetRuns.status(command.runRef)
+        case "fleet_run.intake_status":
+          if (!options.actions.fleetRunIntakeStatus) throw new Error("fleet run intake unavailable on this node")
+          return options.actions.fleetRunIntakeStatus()
         case "fleet_run.disarm":
           if (!options.actions.fleetRuns) throw new Error("fleet run activation unavailable on this node")
           return options.actions.fleetRuns.disarm(command.runRef)
@@ -858,6 +863,7 @@ export const startControlServer = (
               if (
                 (command.type === "fleet_run.arm" ||
                   command.type === "fleet_run.status" ||
+                  command.type === "fleet_run.intake_status" ||
                   command.type === "fleet_run.disarm") &&
                 !isLoopbackHostname(options.hostname ?? "127.0.0.1")
               ) {

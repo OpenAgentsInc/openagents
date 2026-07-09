@@ -1,5 +1,10 @@
 import { Effect } from 'effect'
 import { describe, expect, test } from 'vitest'
+import {
+  FleetRunAuthorityError,
+  type FleetRunAuthorityAcceptClaimResult,
+  type FleetRunAuthorityClaimResult,
+} from '@openagentsinc/khala-sync-server'
 
 import {
   type AgentRegistrationStore,
@@ -790,6 +795,27 @@ const route = async (
     nowIso?: string
     linkedAgentUserIds?: ReadonlyArray<string>
     openauthUserId?: string | null
+    fleetRunAuthority?: Readonly<{
+      claim: (
+        env: Readonly<Record<string, unknown>>,
+        input: Readonly<{
+          ownerUserId: string
+          pylonRef: string
+          runRef?: string | undefined
+          claimIdempotencyKey: string
+          leaseDurationMs: number
+        }>,
+      ) => Promise<FleetRunAuthorityClaimResult>
+      acceptClaim: (
+        env: Readonly<Record<string, unknown>>,
+        input: Readonly<{
+          ownerUserId: string
+          pylonRef: string
+          runRef: string
+          claimRef: string
+        }>,
+      ) => Promise<FleetRunAuthorityAcceptClaimResult>
+    }>
     // KS-6.1 (#8302): optional fail-soft fleet cockpit projection spy.
     projectFleetAssignment?: (
       env: Readonly<Record<string, unknown>>,
@@ -834,6 +860,9 @@ const route = async (
       agentStoreFor(options.tokenUserId ?? 'agent-one', agentStoreOptions),
     makeId: () => `test-${++counter}`,
     makeStore: () => store,
+    ...(options.fleetRunAuthority === undefined
+      ? {}
+      : { fleetRunAuthority: options.fleetRunAuthority }),
     nowIso: () => options.nowIso ?? '2026-06-07T00:10:00.000Z',
     ...(options.projectFleetAssignment === undefined
       ? {}
@@ -4102,6 +4131,241 @@ describe('Pylon API routes', () => {
 
     expect(response.status).toBe(400)
     expect(body.error).toBe('pylon_api_validation_error')
+  })
+})
+
+describe('Pylon Sarah FleetRun transport', () => {
+  const runRef = 'fleet_run.sarah.0123456789abcdef0123'
+  const claimRef = 'claim.sarah_fleet_run.0123456789abcdef01234567'
+  const claimed = {
+    duplicate: false,
+    claim: { claimRef },
+    run: { runRef },
+  } as unknown as FleetRunAuthorityClaimResult
+  const accepted = {
+    duplicate: false,
+    claim: { claimRef, state: 'accepted' },
+    run: { runRef, status: 'claimed_by_pylon' },
+  } as unknown as FleetRunAuthorityAcceptClaimResult
+
+  test('derives owner and Pylon authority server-side with canonical idempotency', async () => {
+    const store = new MemoryPylonApiStore()
+    await registerPylon(store, { tokenUserId: 'agent-one' })
+    const claims: Array<Record<string, unknown>> = []
+    const authority = {
+      claim: async (_env: Readonly<Record<string, unknown>>, input: Record<string, unknown>) => {
+        claims.push(input)
+        return claimed
+      },
+      acceptClaim: async () => accepted,
+    }
+    const request = {
+      body: {
+        schema: 'openagents.pylon.fleet_run_claim.request.v1',
+        runRef,
+      },
+      fleetRunAuthority: authority,
+      idempotencyKey: 'private-client-request-one',
+      method: 'POST',
+      openauthUserId: 'openauth-user-one',
+      tokenUserId: 'agent-one',
+    } as const
+    const first = await route(
+      store,
+      '/api/pylons/pylon.test.one/fleet-runs/claim',
+      request,
+    )
+    const replay = await route(
+      store,
+      '/api/pylons/pylon.test.one/fleet-runs/claim',
+      request,
+    )
+    const body = await responseJson<Record<string, unknown>>(first)
+
+    expect(first.status).toBe(200)
+    expect(replay.status).toBe(200)
+    expect(body).toEqual({
+      schema: 'openagents.pylon.fleet_run_transport.v1',
+      operation: 'claim',
+      result: claimed,
+    })
+    expect(claims).toHaveLength(2)
+    expect(claims[0]).toMatchObject({
+      ownerUserId: 'openauth-user-one',
+      pylonRef: 'pylon.test.one',
+      runRef,
+      leaseDurationMs: 60_000,
+    })
+    expect(claims[0]!.claimIdempotencyKey).toMatch(/^[0-9a-f]{64}$/u)
+    expect(claims[1]!.claimIdempotencyKey).toBe(
+      claims[0]!.claimIdempotencyKey,
+    )
+    expect(JSON.stringify(body)).not.toContain('private-client-request-one')
+  })
+
+  test('accepts only strict claim refs and never accepts owner or Pylon body fields', async () => {
+    const store = new MemoryPylonApiStore()
+    await registerPylon(store)
+    const accepts: Array<Record<string, unknown>> = []
+    const authority = {
+      claim: async () => claimed,
+      acceptClaim: async (_env: Readonly<Record<string, unknown>>, input: Record<string, unknown>) => {
+        accepts.push(input)
+        return accepted
+      },
+    }
+    const response = await route(
+      store,
+      '/api/pylons/pylon.test.one/fleet-runs/accept',
+      {
+        body: {
+          schema: 'openagents.pylon.fleet_run_accept.request.v1',
+          runRef,
+          claimRef,
+        },
+        fleetRunAuthority: authority,
+        method: 'POST',
+        tokenUserId: 'agent-one',
+      },
+    )
+    expect(response.status).toBe(200)
+    expect(accepts).toEqual([
+      { ownerUserId: 'agent-one', pylonRef: 'pylon.test.one', runRef, claimRef },
+    ])
+
+    const injected = await route(
+      store,
+      '/api/pylons/pylon.test.one/fleet-runs/claim',
+      {
+        body: {
+          schema: 'openagents.pylon.fleet_run_claim.request.v1',
+          ownerUserId: 'user-foreign',
+          pylonRef: 'pylon.foreign',
+        },
+        fleetRunAuthority: authority,
+        idempotencyKey: 'claim-body-injection',
+        method: 'POST',
+        tokenUserId: 'agent-one',
+      },
+    )
+    expect(injected.status).toBe(400)
+    expect(await responseJson(injected)).toEqual({
+      schema: 'openagents.pylon.fleet_run_transport.v1',
+      error: { code: 'invalid_request', retryable: false },
+    })
+  })
+
+  test('requires the owning agent bearer and has no browser-cookie fallback', async () => {
+    const store = new MemoryPylonApiStore()
+    await registerPylon(store, { tokenUserId: 'agent-one' })
+    let called = 0
+    const authority = {
+      claim: async () => {
+        called += 1
+        return claimed
+      },
+      acceptClaim: async () => accepted,
+    }
+    const missing = await route(
+      store,
+      '/api/pylons/pylon.test.one/fleet-runs/claim',
+      {
+        body: { schema: 'openagents.pylon.fleet_run_claim.request.v1' },
+        fleetRunAuthority: authority,
+        idempotencyKey: 'missing-bearer-claim',
+        method: 'POST',
+      },
+    )
+    const foreign = await route(
+      store,
+      '/api/pylons/pylon.test.one/fleet-runs/claim',
+      {
+        body: { schema: 'openagents.pylon.fleet_run_claim.request.v1' },
+        fleetRunAuthority: authority,
+        idempotencyKey: 'foreign-bearer-claim',
+        method: 'POST',
+        openauthUserId: 'openauth-user-two',
+        tokenUserId: 'agent-two',
+      },
+    )
+    expect(missing.status).toBe(401)
+    expect(foreign.status).toBe(403)
+    expect(called).toBe(0)
+    expect(await responseJson(missing)).toEqual({
+      schema: 'openagents.pylon.fleet_run_transport.v1',
+      error: { code: 'not_authorized', retryable: false },
+    })
+  })
+
+  test('rejects malformed percent-encoding inside the Effect error boundary', async () => {
+    const response = await route(
+      new MemoryPylonApiStore(),
+      '/api/pylons/pylon%ZZ/fleet-runs/claim',
+      {
+        body: { schema: 'openagents.pylon.fleet_run_claim.request.v1' },
+        idempotencyKey: 'malformed-path-claim',
+        method: 'POST',
+        tokenUserId: 'agent-one',
+      },
+    )
+
+    expect(response.status).toBe(400)
+    expect(await responseJson(response)).toEqual({
+      schema: 'openagents.pylon.fleet_run_transport.v1',
+      error: { code: 'invalid_request', retryable: false },
+    })
+  })
+
+  test('uses fixed empty-queue and typed lease error envelopes', async () => {
+    const store = new MemoryPylonApiStore()
+    await registerPylon(store)
+    const empty = await route(
+      store,
+      '/api/pylons/pylon.test.one/fleet-runs/claim',
+      {
+        body: { schema: 'openagents.pylon.fleet_run_claim.request.v1' },
+        fleetRunAuthority: {
+          claim: () => Promise.reject(new FleetRunAuthorityError({
+            kind: 'run_not_found',
+            reason: 'private detail must not escape',
+          })),
+          acceptClaim: async () => accepted,
+        },
+        idempotencyKey: 'empty-queue-claim',
+        method: 'POST',
+        tokenUserId: 'agent-one',
+      },
+    )
+    expect(empty.status).toBe(204)
+    expect(await empty.text()).toBe('')
+
+    const expired = await route(
+      store,
+      '/api/pylons/pylon.test.one/fleet-runs/accept',
+      {
+        body: {
+          schema: 'openagents.pylon.fleet_run_accept.request.v1',
+          runRef,
+          claimRef,
+        },
+        fleetRunAuthority: {
+          claim: async () => claimed,
+          acceptClaim: () => Promise.reject(new FleetRunAuthorityError({
+            kind: 'claim_expired',
+            reason: 'postgres://private-host',
+          })),
+        },
+        method: 'POST',
+        tokenUserId: 'agent-one',
+      },
+    )
+    expect(expired.status).toBe(409)
+    const expiredBody = await responseJson(expired)
+    expect(expiredBody).toEqual({
+      schema: 'openagents.pylon.fleet_run_transport.v1',
+      error: { code: 'claim_expired', retryable: false },
+    })
+    expect(JSON.stringify(expiredBody)).not.toContain('private-host')
   })
 })
 

@@ -1179,6 +1179,27 @@ describe('OpenAgents OpenAPI route', () => {
       operationAt(body, '/api/pylons/{pylonRef}/heartbeat', 'post').description,
     ).toContain('does not grant Forum speech')
     expect(
+      operationAt(
+        body,
+        '/api/pylons/{pylonRef}/fleet-runs/claim',
+        'post',
+      ).security,
+    ).toEqual([{ agentBearer: [] }])
+    expect(
+      operationAt(
+        body,
+        '/api/pylons/{pylonRef}/fleet-runs/claim',
+        'post',
+      ).description,
+    ).toContain('derives owner scope')
+    expect(
+      operationAt(
+        body,
+        '/api/pylons/{pylonRef}/fleet-runs/accept',
+        'post',
+      ).description,
+    ).toContain('canonical Pylon orchestration store')
+    expect(
       operationAt(body, '/api/forum/posts/{postId}/rewards', 'post').security,
     ).toEqual([{ agentBearer: [] }])
     expect(

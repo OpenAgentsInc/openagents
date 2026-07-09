@@ -54,6 +54,12 @@ import {
 import { createIntentQueue } from "./node/intent-intake.js"
 import { createApprovalQueue } from "./node/approval-queue.js"
 import { openPylonNodeFleetRunActivationService } from "./node/fleet-run-activation.js"
+import {
+  disabledPylonFleetRunIntakePollerStatus,
+  openPylonFleetRunIntakePoller,
+} from "./node/fleet-run-intake-poller.js"
+import { makePylonFleetRunHttpIntake } from "./orchestration/fleet-run-http-intake.js"
+import { openPylonFleetRunRemoteIntakeService } from "./orchestration/fleet-run-remote-intake.js"
 import { createCoordinatorRuntime, type CoordinatorRuntime } from "./coordinator/coordinator-runtime.js"
 import { evaluateShipSpendGate } from "./coordinator/ship-spend-gate.js"
 import {
@@ -1158,6 +1164,41 @@ const runHeadlessNode = Effect.gen(function* () {
     catch: () => new Error("failed to open owner-local FleetRun activation authority"),
   })
   yield* Effect.addFinalizer(() => Effect.promise(() => fleetRunActivation.close()))
+  const fleetRunIntakePoller = yield* Effect.tryPromise({
+    try: async () => {
+      const agentToken = presenceClientOptions.agentToken
+      if (agentToken === undefined || presenceBaseUrl === undefined) return null
+      const configuredInterval = Number(
+        Bun.env.PYLON_FLEET_RUN_INTAKE_POLL_INTERVAL_MS ?? 5_000,
+      )
+      const intervalMs =
+        Number.isInteger(configuredInterval) &&
+        configuredInterval >= 250 &&
+        configuredInterval <= 300_000
+          ? configuredInterval
+          : 5_000
+      const remote = makePylonFleetRunHttpIntake({
+        agentToken,
+        baseUrl: presenceBaseUrl,
+      })
+      const intake = await openPylonFleetRunRemoteIntakeService({
+        activation: fleetRunActivation,
+        bootstrap: bootstrapSummary,
+        env: Bun.env,
+        pylonRef: localState.identity.pylonRef,
+        remote,
+      })
+      return openPylonFleetRunIntakePoller({ intake, intervalMs })
+    },
+    catch: () => new Error("failed to configure standing FleetRun intake"),
+  })
+  if (fleetRunIntakePoller !== null) {
+    // Registered after activation so scoped LIFO shutdown stops new intake,
+    // drains the current poll, then closes active executors.
+    yield* Effect.addFinalizer(() =>
+      Effect.promise(() => fleetRunIntakePoller.close()),
+    )
+  }
   // #5207: the daemon hosts the WARM Spark session — the actions pass
   // `warmSession: true` so the singleton SDK is built once and kept alive across
   // commands, and the background-sync timer (below) keeps it current.
@@ -1249,6 +1290,9 @@ const runHeadlessNode = Effect.gen(function* () {
       approvals: makeApprovalActions(localState.paths),
       coordinator: makeCoordinatorActions(headlessCoordinatorHolder),
       fleetRuns: fleetRunActivation,
+      fleetRunIntakeStatus: async () =>
+        fleetRunIntakePoller?.status() ??
+        disabledPylonFleetRunIntakePollerStatus(),
     },
     port: controlPort,
     hostname: Bun.env.PYLON_CONTROL_HOST ?? "127.0.0.1",
@@ -5531,6 +5575,30 @@ async function main() {
   }
 
   if (args[0] === "node") {
+    if (args[1] === "fleet-run-intake-status") {
+      try {
+        const summary = createBootstrapSummary(
+          parseBootstrapArgs(["--json"]),
+          Bun.env,
+        )
+        const state = await ensurePylonLocalState(summary)
+        const probe = await probeRunningNode(state, Bun.env)
+        const status = await readControlCommand(probe, {
+          type: "fleet_run.intake_status",
+        })
+        if (status === null) {
+          throw new Error("running Pylon node intake status is unavailable")
+        }
+        process.stdout.write(`${JSON.stringify(status, null, 2)}\n`)
+        return
+      } catch (error) {
+        process.stderr.write(
+          `Pylon FleetRun intake status failed: ${error instanceof Error ? error.message : String(error)}\n`,
+        )
+        process.exitCode = 1
+        return
+      }
+    }
     try {
       rejectCodexLocalDangerForPublicPath(args.slice(1), "pylon node")
       rejectClaudeLocalDangerForPublicPath(args.slice(1), "pylon node")
