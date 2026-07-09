@@ -242,7 +242,7 @@ describe('OpenRouter Khala fallback adapter', () => {
     const adapter = makeOpenRouterAdapter(adapterConfig(fetchImpl))
 
     const result = await runResult(
-      adapter.streamSse(request({ stream: true })),
+      adapter.streamSse!(request({ stream: true })),
     )
 
     expect(result._tag).toBe('Failure')

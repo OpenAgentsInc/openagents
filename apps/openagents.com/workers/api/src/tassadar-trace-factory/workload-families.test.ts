@@ -99,9 +99,7 @@ describe('workload families v0.1', () => {
       stepCount: 8,
     })
     if (!built.ok) throw new globalThis.Error(built.failure.detail)
-    const keys = built.workload.model.seed_writes.map(
-      ([, key]: [unknown, number]) => key,
-    )
+    const keys = built.workload.model.seed_writes.map(([, key]) => key)
     const adjacentPairs = keys.filter((key: number) =>
       keys.includes(key + 1),
     ).length

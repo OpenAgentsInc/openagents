@@ -151,8 +151,9 @@ const makeDb = () => {
 }
 
 const fakeResend: CrmResendDeps = {
+  enabled: true,
   fromEmail: 'outreach@openagents.com',
-  send: async () => ({ id: 'resend_1' }),
+  sender: async () => ({ ok: true, providerMessageId: 'resend_1' }),
 }
 
 type Env = Readonly<{ OPENAGENTS_DB: D1Database }>

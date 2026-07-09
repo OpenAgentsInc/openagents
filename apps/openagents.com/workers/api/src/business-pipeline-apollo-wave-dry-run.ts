@@ -138,7 +138,9 @@ export const runOb2ApolloWaveDryRun = async (
   const sqlite = bootstrapPipelineDb()
   try {
     const store = makeD1BusinessPipelineStore(sqlite.db)
-    const segments: Ob2ApolloWaveDryRunReceipt['segments'] = []
+    const segments: Array<
+      Ob2ApolloWaveDryRunReceipt['segments'][number]
+    > = []
 
     for (const segmentKey of OB2_LIVE_WAVE_SEGMENT_PAIR) {
       const first = buildOb2ApolloWaveFixture({

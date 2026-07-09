@@ -18,7 +18,7 @@ import {
 type FakeClient = {
   id: number
   optionsSeen: Record<string, unknown>
-  end: ReturnType<typeof vi.fn>
+  end: (options?: { timeout?: number }) => Promise<void>
 }
 
 const makeFactory = () => {
@@ -29,7 +29,7 @@ const makeFactory = () => {
     options: Record<string, unknown>,
   ): FakeClient => {
     const client: FakeClient = {
-      end: vi.fn(async () => undefined),
+      end: vi.fn(async (_options?: { timeout?: number }) => undefined),
       id: next++,
       optionsSeen: options,
     }

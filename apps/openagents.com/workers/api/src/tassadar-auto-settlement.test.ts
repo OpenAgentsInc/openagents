@@ -480,9 +480,7 @@ describe('autoSettleVerifiedCompiledModuleConstruction (#5326)', () => {
         denseModule: tassadarLinkedDenseProgramFixture.linkedModule
           .composedDenseModule as unknown as Record<string, unknown>,
         model: {},
-        steps: tassadarLinkedDenseProgramFixture.steps.map((step: unknown[]) => [
-          ...step,
-        ]),
+        steps: tassadarLinkedDenseProgramFixture.steps.map(step => [...step]),
       },
     })
 
