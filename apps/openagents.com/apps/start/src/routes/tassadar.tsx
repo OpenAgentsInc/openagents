@@ -1,9 +1,9 @@
 import { createFileRoute } from '@tanstack/react-router'
 
-import { TassadarInfoPage } from './-app-shell-routes'
+import { TassadarEffectNativePage } from './-tassadar-effect-native-page'
 
 export const Route = createFileRoute('/tassadar')({
-  component: TassadarInfoPage,
+  component: TassadarEffectNativePage,
   head: () => ({
     meta: [
       { title: 'Tassadar - OpenAgents' },
