@@ -6,7 +6,7 @@ import {
   runClaudeSecondPassReview,
 } from "./claude-second-pass-reviewer.js"
 import { CLAUDE_AGENT_SDK_PACKAGE } from "./claude-agent.js"
-import type { ResolvedPylonAccountSelection } from "./account-registry.js"
+import type { ResolvedPylonAccountSelection } from "../custody/account-registry.js"
 
 const claudeAccount: ResolvedPylonAccountSelection = {
   provider: "claude_agent",
