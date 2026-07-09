@@ -47,6 +47,44 @@ export function sarahAvatarRenderer(): SarahAvatarRenderer {
     : "liveavatar"
 }
 
+/**
+ * SQ-4 (#8621): when the owned renderer is preferred but mint fails upstream
+ * (busy/502), fall back to LiveAvatar if armed — so a cold GPU or full slot
+ * never takes the surface offline. Local policy caps (our session/daily caps)
+ * do NOT fall through: those are intentional load-shedding.
+ *
+ * Default ON when LiveAvatar is armed (`SARAH_AVATAR_OWNED_FALLBACK` unset).
+ * Set `SARAH_AVATAR_OWNED_FALLBACK=off` to fail hard on owned mint errors.
+ */
+export function ownedMintFallsBackToLiveAvatar(): boolean {
+  const raw = process.env.SARAH_AVATAR_OWNED_FALLBACK?.trim().toLowerCase()
+  if (raw === "off" || raw === "0" || raw === "false" || raw === "none") {
+    return false
+  }
+  if (raw === "liveavatar" || raw === "on" || raw === "1" || raw === "true") {
+    return true
+  }
+  // Default: fall back when LiveAvatar can actually mint.
+  return Boolean(process.env.LIVEAVATAR_API_KEY?.trim())
+}
+
+/** Errors where falling back to LiveAvatar is honest and useful. */
+export function ownedMintErrorIsFallbackable(error: string): boolean {
+  if (
+    error === "avatar_session_cap_exceeded" ||
+    error === "avatar_daily_cap_exceeded"
+  ) {
+    return false
+  }
+  return (
+    error === "avatar_upstream_busy" ||
+    error === "avatar_not_armed" ||
+    error.startsWith("avatar_render_http_") ||
+    error === "avatar_render_unreachable" ||
+    error === "avatar_mint_failed"
+  )
+}
+
 function renderServiceUrl(): string | null {
   const url = process.env.SARAH_RENDER_SERVICE_URL?.trim()
   return url ? url.replace(/\/+$/, "") : null

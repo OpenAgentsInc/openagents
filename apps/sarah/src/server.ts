@@ -73,6 +73,8 @@ import {
 import {
   isOwnedAvatarSession,
   mintOwnedAvatarSession,
+  ownedMintErrorIsFallbackable,
+  ownedMintFallsBackToLiveAvatar,
   ownedRendererStatus,
   reapStaleOwnedSessions,
   sarahAvatarRenderer,
@@ -740,6 +742,23 @@ export async function handleSarahRequest(request: Request): Promise<Response> {
       reapStaleOwnedSessions()
       const owned = await mintOwnedAvatarSession({ prospectRef })
       if (!owned.ok) {
+        // SQ-4 (#8621): LiveAvatar instant-fallback when owned mint is
+        // upstream-busy / unarmed — never when our own caps refuse the mint.
+        if (
+          ownedMintFallsBackToLiveAvatar() &&
+          ownedMintErrorIsFallbackable(owned.error)
+        ) {
+          reapStaleAvatarSessions()
+          const live = await mintSarahAvatarSession({ prospectRef })
+          if (live.ok) {
+            return json({
+              renderer: "liveavatar",
+              fallbackFrom: "owned",
+              fallbackReason: owned.error,
+              ...live,
+            })
+          }
+        }
         return json(
           { error: { code: owned.error, detail: owned.detail } },
           { status: owned.status },

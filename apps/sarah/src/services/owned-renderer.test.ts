@@ -15,6 +15,8 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test"
 import { handleSarahRequest } from "../server.ts"
 import {
   chunkPcmBase64,
+  ownedMintErrorIsFallbackable,
+  ownedMintFallsBackToLiveAvatar,
   sarahAvatarRenderer,
   speakOwnedAvatarTurn,
 } from "./owned-renderer.ts"
@@ -164,6 +166,31 @@ describe("OAV-4 PCM speak chunking", () => {
     const short = chunkPcmBase64(new Uint8Array(1_000))
     expect(short.length).toBe(1)
     expect(Buffer.from(short[0]!, "base64").length).toBe(1_000)
+  })
+})
+
+describe("SQ-4 LiveAvatar fallback policy (#8621)", () => {
+  test("upstream busy/http errors fall back; local caps do not", () => {
+    expect(ownedMintErrorIsFallbackable("avatar_upstream_busy")).toBe(true)
+    expect(ownedMintErrorIsFallbackable("avatar_render_http_502")).toBe(true)
+    expect(ownedMintErrorIsFallbackable("avatar_not_armed")).toBe(true)
+    expect(ownedMintErrorIsFallbackable("avatar_session_cap_exceeded")).toBe(
+      false,
+    )
+    expect(ownedMintErrorIsFallbackable("avatar_daily_cap_exceeded")).toBe(
+      false,
+    )
+  })
+
+  test("fallback defaults on when LIVEAVATAR_API_KEY is set; off with explicit flag", () => {
+    disarmAll()
+    process.env.LIVEAVATAR_API_KEY = "test-key"
+    expect(ownedMintFallsBackToLiveAvatar()).toBe(true)
+    process.env.SARAH_AVATAR_OWNED_FALLBACK = "off"
+    expect(ownedMintFallsBackToLiveAvatar()).toBe(false)
+    process.env.SARAH_AVATAR_OWNED_FALLBACK = "liveavatar"
+    expect(ownedMintFallsBackToLiveAvatar()).toBe(true)
+    disarmAll()
   })
 })
 
