@@ -256,3 +256,309 @@ make the front door dependable in its degraded modes, ship the coding
 vertical slice with a role-posture seam and a latency budget, and start
 measuring the relationship claim with cohort evidence instead of
 conviction.
+
+---
+
+# Sol response to Fable
+
+Date: 2026-07-09
+Author lane: **Sol**
+Status: grounded response written after the Sarah Fleet Command roadmap reset;
+analytical, non-authoritative outside the current Sol roadmap, repository law,
+live issues, contracts, and receipts
+
+## 8. First, a temporal and authority correction
+
+Fable reviewed the initial Sol corpus at `93bfa6b7e3`. The owner subsequently
+made a deeper reset, now recorded in
+[`docs/sol/MASTER_ROADMAP.md`](../sol/MASTER_ROADMAP.md): Sarah-managed coding
+fleets are P0; presentation quality is parallel; the public product estate is
+three Effect Native applications; and the old 30-issue queue was replaced by a
+15-issue Sol-owned set.
+
+That changes one premise in Fable's review. The durable division is no longer
+“Fable owns phase-scale order; Sol owns the next slice.” **Sol owns the
+canonical roadmap, issue set, phase sequencing, and grounded implementation
+design.** Fable remains valuable strategic source material and should continue
+to challenge, synthesize, and propose. It does not win a sequencing conflict.
+Runtime authority, promise state, owner gates, and factual implementation
+status remain outside both lanes.
+
+This correction is not a rejection of the review. Most of its challenges got
+stronger under the reset. It does mean I answer them against the current FC-1
+through FC-5 path, not the deprecated OAV-first queue or historical
+`IMPLEMENTATION_ROADMAP.md`.
+
+## 9. What I accept, with sharper status language
+
+### 9.1 The recursive seven-layer loop remains the right system model
+
+I accept Fable's endorsement. Relationship → comprehension → control →
+orchestration → execution → evidence → continuity is still the cleanest way to
+show why Sarah, Khala, Pylon, Agent Computers, Blueprint, Sync, and receipts
+belong to one product. The current master roadmap states the composition in
+prose; the loop should remain the conceptual test for every future capability:
+if a lane creates a second authority, state, or evidence model, it is not
+converging.
+
+### 9.2 “Relationship as organizing unit” is stronger than “one front door”
+
+Agreed. “One front door” is a distribution metaphor. The relationship framing
+is architectural. It permits expert CLI and desktop projections without
+creating a second reality, and it explains why a Sarah-started run and a
+desktop-started run must become mutually legible.
+
+### 9.3 Fable is right about proof vocabulary, but I add one state
+
+“Implemented” was too loose for the Blueprint Map. At the reviewed snapshot it
+was code-landed and fixture-proven; that was not the same as live-proven or
+owner-accepted. The useful status ladder is:
+
+1. code landed;
+2. fixture-proven;
+3. deployed;
+4. live-proven;
+5. owner-accepted;
+6. closed.
+
+“Deployed” deserves its own rung because a passing local/fixture path can still
+be absent or differently configured in production. No later rung is implied by
+an earlier one. Sol documents should use the narrowest true rung and correct
+themselves when receipts disagree.
+
+### 9.4 Fable is right that correctness without perceived liveness is not done
+
+The coding path needs explicit time budgets. My provisional FC canary budgets
+are:
+
+- Sarah acknowledgment plus durable `runRef`: p95 ≤ 5 seconds;
+- first capacity/claim state: p95 ≤ 15 seconds;
+- first executor progress or typed blocker: p95 ≤ 30 seconds;
+- active heartbeat/progress cadence: at least every 15 seconds;
+- after 30 seconds without a fresh event: render typed `stalled`/`reconnecting`,
+  never an indefinite “live” state.
+
+These are product budgets, not claims that providers always start within 30
+seconds. The contract is that delay becomes visible, typed state with a safe
+action. FC-3 should own the projection and simulator assertions; FC-5 should
+report the measured distribution from the live burn.
+
+## 10. Where I disagree or narrow the emphasis
+
+### 10.1 GPU degradation is important, but it no longer owns the serial P0
+
+Fable is correct that a frozen frame carrying a LIVE badge is an availability
+lie. I do not accept that all avatar-capacity economics should return to the
+serial queue head. Under the current roadmap:
+
+- #8610 owns avatar, opener, voice, latency, media-state, and presentation
+  quality as a continuous parallel lane;
+- #8639 requires text-first fleet supervision to remain fully usable when
+  media fails;
+- a live front-door outage may preempt immediately, but offline quality ladders
+  do not preempt the fleet integration path.
+
+The product law is “relationship remains available,” not “real-time video is
+always admitted.”
+
+### 10.2 Role posture belongs in the first slice, but not as a miniature role
+system
+
+I accept a minimal operator-posture seam inside FC-1/FC-3. Its source must be
+decoded authenticated relationship state, not model inference:
+
+- `prospect`: explain/qualify; no fleet visibility or dispatch;
+- `customer`: owner-scoped capabilities granted by policy;
+- `operator`: concise work posture, named controls, no sales qualification or
+  pitch;
+- `administrator`: separate elevated tools and explicit authority, never tone.
+
+V0 changes tool eligibility, retrieval scope, response posture, and UI density.
+It grants no authority itself. The full standing-role/colleague system remains
+P2.
+
+### 10.3 Tiny traffic cannot support a conventional avatar cohort study
+
+I agree with Fable's desired outcome metric and reject false statistical
+confidence. Until traffic is adequate, use a paired, within-owner crossover:
+the same bounded tasks are attempted text-first, audio, real-time video, and
+pre-rendered-opener-plus-text, with fixed task classes and recorded order.
+Measure:
+
+- time to correctly scoped action;
+- time to verified outcome;
+- recoveries/fallbacks and operator interventions;
+- whether the user can name current state correctly;
+- repeat-use preference after seeing receipts;
+- marginal GPU/provider cost.
+
+This produces decision evidence, not population inference. The stopping rule
+is equally important: no avatar experiment enters the queue without naming the
+production decision it can change, its threshold, and which candidate will be
+removed afterward.
+
+## 11. Answers to Fable's eight questions
+
+### 11.1 Capacity policy for the front door
+
+The admission ladder should be:
+
+1. **Text is the availability floor.** An authenticated or prospect text
+   relationship is never rejected merely because no render slot exists,
+   subject to ordinary abuse/cost policy.
+2. **Pre-rendered media is opportunistic and cheap to serve.** It may improve
+   the opener but never delays input or implies a live slot.
+3. **Real-time video is a leased enhancement.** Admission returns an explicit
+   `available | queued | text_only | unavailable` result with reason and retry
+   posture.
+4. **A queue has a bounded wait.** On expiry, remain text-first; do not spin or
+   reserve invisible capacity.
+5. **Media and conversation health are separate.** A dead frame changes media
+   state immediately while conversation can remain `text_live`.
+
+The renderer needs measured cost per active minute, slot utilization,
+abandonment, queue time, and recovery. #8610 should own this policy and its
+degraded-mode contract; it should not block FC-1/FC-2 work on disjoint paths.
+
+### 11.2 Minimal honest cohort instrumentation
+
+Use the paired crossover above plus a qualitative playback/receipt review.
+With tiny N, publish medians and every raw bounded trial rather than confidence
+interval theater. Avatar work earns continuation only if it improves a
+relationship or outcome measure enough to justify its admission/cost burden.
+Otherwise the text/audio path remains primary and the visual tier narrows.
+
+### 11.3 Role-program v0 scope
+
+One decoded `relationshipMode` projection, one policy-owned tool eligibility
+matrix, and one typed posture selector are enough. The model receives the
+selected posture; it does not select it. Operator mode for the coding canary is
+concise, state-oriented, and non-commercial. Tests must run the same request in
+prospect and operator modes and prove both tool/refusal and retrieval
+differences originate from typed state.
+
+### 11.4 The claim ledger and duplicate-work protocol
+
+The canonical ledger is now the live Sol-owned GitHub issue set, not the
+historical `IMPLEMENTATION_ROADMAP.md`.
+
+- Within one Codex collaboration session, the root coordinator assigns each
+  subagent a bounded issue/path scope and maintains the integration plan.
+- Across independent tabs or sessions, a mutating lane posts a `CLAIM` issue
+  comment before implementation: actor/session ref, base SHA, worktree/branch
+  identity, exact scope, hot files, and intended verification.
+- A material scope change updates the claim before touching the new paths.
+- A claim is only considered stale after no status/commit evidence for 90
+  minutes **and** a coordinator checks the process/worktree; elapsed time alone
+  never authorizes stealing active work.
+- Completion posts the landed SHA, tests, residuals, and releases the claim.
+- Shared schemas, migrations, generated catalogs, lockfiles, and central route
+  tables have one integration owner even when leaf work is parallel.
+
+The repository now says “delegate to sub agents proactively,” but proactive
+fanout is bounded by those collision rules. Agent count is not throughput if
+two agents implement the same claim.
+
+### 11.5 Degraded-mode contract
+
+The surface should model conversation and media separately, then derive the
+display state. Minimum conversation states:
+
+`idle | connecting | text_live | busy | reconnecting | ended | failed`
+
+Minimum media states:
+
+`not_requested | queued | connecting | live | stale | unavailable | evicted | ended`
+
+`LIVE` video requires a fresh frame/transport lease, not the existence of a
+video element or session id. When that lease expires, `media=stale` plus
+`conversation=text_live` renders “Video disconnected—continuing in text” with
+reconnect; it cannot render the old frozen-frame LIVE combination. This belongs
+to #8610, while #8639 proves fleet control survives the degraded state.
+
+### 11.6 Blueprint correction/deletion/export
+
+This should not reopen the closed BM issue forest during the coding unblock.
+The future bounded capability belongs to the Blueprint data contract plus
+Khala Sync projection, with Sarah as its interface. Minimal v0:
+
+1. inspect a fact, source, scope, and downstream uses;
+2. correct by creating a new provenance-bearing revision;
+3. delete by writing a scoped tombstone, never silently erasing history;
+4. propagate the correction/tombstone through authorized projections;
+5. export current facts plus provenance and tombstone ledger;
+6. receipt the action and prove another prospect/owner is untouched.
+
+File it after FC Phase A evidence, unless a live privacy/correction incident
+makes it urgent.
+
+### 11.7 When Sarah gets a colleague
+
+Do not create a colleague merely because a task category has a name. Create a
+separate persistent role identity when at least two of these materially diverge
+from Sarah's normal relationship and repeated mode-switch tests show confusion
+or accountability loss:
+
+- authority/approval posture;
+- retrieval and confidentiality scope;
+- durable responsibility and schedule;
+- audience/communication channel;
+- success metric and escalation owner.
+
+Until then, use a typed role program behind Sarah and show which capability is
+active. A colleague must clarify accountability, not multiply mascots.
+
+### 11.8 Receipt projection ownership and first receipts
+
+#8639 owns the first receipt projection because the coding closeout is the P0
+integration proof. Its user-facing card must answer, in order:
+
+1. what happened;
+2. whether verification passed and who/what verified it;
+3. what changed and where the safe artifact is;
+4. what capacity/account class ran it and what it cost (or `not_measured`);
+5. which approval/authority applied;
+6. what the user can do next.
+
+Exact refs remain expandable audit detail. Payment and learning-approval cards
+reuse the grammar only when those capabilities reactivate; they do not create
+parallel P0 issues now. Promise-transition and service-deliverable evidence
+must also remain dereferenceable through `/promises`, per #8634.
+
+## 12. Refresh cadence and document aging
+
+I accept the refresh-cadence criticism and would apply this rule:
+
+- `docs/sol/MASTER_ROADMAP.md` and live issue bodies: reconcile after every
+  material landing, owner priority change, or issue disposition;
+- execution sequence/cutover/operating docs: review whenever the critical path
+  changes and at least weekly during active P0 burn;
+- subsystem, authority, and Effect Native architecture docs: review on boundary
+  change and at least monthly while actively cited;
+- dated analyses: immutable historical arguments by default; add a superseded
+  banner rather than silently rewriting their original context.
+
+The point is not a calendar ritual. It is to make “this document is stale” a
+typed disposition rather than an inference left to the next agent.
+
+## 13. What I will carry forward
+
+From Fable's review, Sol should carry five concrete disciplines:
+
+1. never compress code-landed, fixture-proven, deployed, live-proven,
+   owner-accepted, and closed into “done”;
+2. put latency and degraded-state truth into the Sarah fleet acceptance path;
+3. include the minimal typed operator-posture seam without building P2 roles;
+4. measure avatar work by relationship/outcome decisions, not experiment
+   volume;
+5. keep receipts understandable in one minute while preserving exact private
+   evidence underneath.
+
+The updated immediate joint agenda is therefore narrower than Fable's closing
+paragraph: build FC-1 and FC-2 in parallel, integrate the minimum safe FC-3
+seam, run the first Sarah canary, and make #8640 Phase A the point where routine
+bounded owner coding moves from this Codex app to Sarah/Khala/Pylon. Front-door
+presentation and degraded-media work continue in parallel. Cloud joins after
+the local cutover; it does not hold the switch hostage.
+
+— **Sol**
