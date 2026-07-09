@@ -22,6 +22,7 @@ import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as NewRouteImport } from './routes/new'
 import { Route as MirrorcodeRouteImport } from './routes/mirrorcode'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as LandingEnRouteImport } from './routes/landing-en'
 import { Route as GymRouteImport } from './routes/gym'
 import { Route as DownloadRouteImport } from './routes/download'
 import { Route as ClientsPreviewRouteImport } from './routes/clients-preview'
@@ -119,6 +120,11 @@ const MirrorcodeRoute = MirrorcodeRouteImport.update({
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LandingEnRoute = LandingEnRouteImport.update({
+  id: '/landing-en',
+  path: '/landing-en',
   getParentRoute: () => rootRouteImport,
 } as any)
 const GymRoute = GymRouteImport.update({
@@ -297,6 +303,7 @@ export interface FileRoutesByFullPath {
   '/clients-preview': typeof ClientsPreviewRoute
   '/download': typeof DownloadRoute
   '/gym': typeof GymRoute
+  '/landing-en': typeof LandingEnRoute
   '/login': typeof LoginRoute
   '/mirrorcode': typeof MirrorcodeRoute
   '/new': typeof NewRoute
@@ -345,6 +352,7 @@ export interface FileRoutesByTo {
   '/clients-preview': typeof ClientsPreviewRoute
   '/download': typeof DownloadRoute
   '/gym': typeof GymRoute
+  '/landing-en': typeof LandingEnRoute
   '/login': typeof LoginRoute
   '/mirrorcode': typeof MirrorcodeRoute
   '/new': typeof NewRoute
@@ -394,6 +402,7 @@ export interface FileRoutesById {
   '/clients-preview': typeof ClientsPreviewRoute
   '/download': typeof DownloadRoute
   '/gym': typeof GymRoute
+  '/landing-en': typeof LandingEnRoute
   '/login': typeof LoginRoute
   '/mirrorcode': typeof MirrorcodeRoute
   '/new': typeof NewRoute
@@ -444,6 +453,7 @@ export interface FileRouteTypes {
     | '/clients-preview'
     | '/download'
     | '/gym'
+    | '/landing-en'
     | '/login'
     | '/mirrorcode'
     | '/new'
@@ -492,6 +502,7 @@ export interface FileRouteTypes {
     | '/clients-preview'
     | '/download'
     | '/gym'
+    | '/landing-en'
     | '/login'
     | '/mirrorcode'
     | '/new'
@@ -540,6 +551,7 @@ export interface FileRouteTypes {
     | '/clients-preview'
     | '/download'
     | '/gym'
+    | '/landing-en'
     | '/login'
     | '/mirrorcode'
     | '/new'
@@ -589,6 +601,7 @@ export interface RootRouteChildren {
   ClientsPreviewRoute: typeof ClientsPreviewRoute
   DownloadRoute: typeof DownloadRoute
   GymRoute: typeof GymRoute
+  LandingEnRoute: typeof LandingEnRoute
   LoginRoute: typeof LoginRoute
   MirrorcodeRoute: typeof MirrorcodeRoute
   NewRoute: typeof NewRoute
@@ -721,6 +734,13 @@ declare module '@tanstack/react-router' {
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/landing-en': {
+      id: '/landing-en'
+      path: '/landing-en'
+      fullPath: '/landing-en'
+      preLoaderRoute: typeof LandingEnRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/gym': {
@@ -975,6 +995,7 @@ const rootRouteChildren: RootRouteChildren = {
   ClientsPreviewRoute: ClientsPreviewRoute,
   DownloadRoute: DownloadRoute,
   GymRoute: GymRoute,
+  LandingEnRoute: LandingEnRoute,
   LoginRoute: LoginRoute,
   MirrorcodeRoute: MirrorcodeRoute,
   NewRoute: NewRoute,
