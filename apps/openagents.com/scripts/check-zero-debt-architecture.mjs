@@ -948,9 +948,10 @@ const publicLandingCompositionChecks = [
 // is the projection-surface ledger; the enforced rules are:
 //   1. Every `/api/public/...` route literal discovered in route
 //      modules must be covered by a ledger row — a NEW public
-//      projection route fails this check until it is added here, and
-//      it can only be added as `staleness_declared`; the former legacy
-//      budget is now zero.
+//      projection route fails this check until it is added here. Mutable
+//      state projections must be `staleness_declared`; static contracts,
+//      immutable stored artifacts, and archived stable-path tombstones may
+//      be `static_contract_exempt`. The former legacy budget is now zero.
 //   2. Every `staleness_declared` row's payload module must actually
 //      reference the shared staleness contract (the grep token is
 //      `maxStalenessSeconds` or the module import path).
@@ -1287,6 +1288,13 @@ const publicProjectionSurfaces = [
     status: 'staleness_declared',
   },
   {
+    // OB-3 (#8560): created-once, token-addressed report artifact. Public
+    // report fields never change; reads update only private click metadata.
+    module: 'workers/api/src/agent-readiness-public-report-routes.ts',
+    route: '/api/public/agent-readiness/reports/{reportToken}',
+    status: 'static_contract_exempt',
+  },
+  {
     module: 'workers/api/src/training-run-window-routes.ts',
     route: '/api/public/training/runs/{trainingRunRef}',
     status: 'staleness_declared',
@@ -1319,22 +1327,12 @@ const publicProjectionSurfaces = [
   {
     module: 'workers/api/src/public-proof-replay-routes.ts',
     route: '/api/public/proof-replays',
-    status: 'staleness_declared',
+    status: 'static_contract_exempt',
   },
   {
     module: 'workers/api/src/public-proof-replay-routes.ts',
     route: '/api/public/tassadar-replays/first-real-settlement',
-    status: 'staleness_declared',
-  },
-  {
-    module: 'workers/api/src/replay-clip-job-routes.ts',
-    route: '/api/public/replay-clips',
-    status: 'staleness_declared',
-  },
-  {
-    module: 'workers/api/src/replay-clip-job-routes.ts',
-    route: '/api/public/replay-clips/{jobRef}',
-    status: 'staleness_declared',
+    status: 'static_contract_exempt',
   },
   {
     module: 'workers/api/src/site-referral-payout-public-projection.ts',
@@ -1550,9 +1548,10 @@ const publicProjectionProblems = [
     .map(
       route =>
         `public projection route ${route} is not in the projection-surface ledger. ` +
-        'New public projections must declare generatedAt plus the staleness contract from ' +
-        'workers/api/src/public-projection-staleness.ts, be added to this ledger as ' +
-        "'staleness_declared', and be added to the inventory in INVARIANTS.md (epic #4751).",
+        'Mutable state projections must declare generatedAt plus the staleness contract from ' +
+        'workers/api/src/public-projection-staleness.ts and be added as staleness_declared. ' +
+        'Only static contracts, immutable stored artifacts, and archived stable-path tombstones ' +
+        'may be static_contract_exempt. Add the same classification to INVARIANTS.md (epic #4751).',
     ),
   ...publicProjectionSurfaces
     .filter(surface => surface.status === 'staleness_declared')

@@ -21,6 +21,7 @@ import {
   AgentReadinessGrade,
 } from '@openagentsinc/agent-readiness'
 
+import { parseJsonWithSchema } from './json-boundary'
 import { compactRandomId, currentIsoTimestamp } from './runtime-primitives'
 
 export const AGENT_READINESS_PUBLIC_REPORT_SCHEMA_VERSION =
@@ -131,10 +132,10 @@ const assertReportToken = (value: string): void => {
   }
 }
 
-const decodeAssessment = (json: string): AgentReadinessFifteenStepAssessment =>
-  S.decodeUnknownSync(AgentReadinessFifteenStepAssessmentSchema)(
-    JSON.parse(json) as unknown,
-  )
+const parseAssessmentJson = (
+  json: string,
+): AgentReadinessFifteenStepAssessment =>
+  parseJsonWithSchema(AgentReadinessFifteenStepAssessmentSchema, json)
 
 const projectionFromD1Row = (
   row: AgentReadinessPublicReportD1Row,
@@ -146,7 +147,7 @@ const projectionFromD1Row = (
     score: row.score,
     grade: row.grade,
     createdAt: row.created_at,
-    assessment: decodeAssessment(row.assessment_json),
+    assessment: parseAssessmentJson(row.assessment_json),
   })
 
 export const makeD1AgentReadinessPublicReportStore = (

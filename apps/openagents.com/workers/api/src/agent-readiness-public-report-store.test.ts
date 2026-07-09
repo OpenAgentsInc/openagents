@@ -138,6 +138,37 @@ describe('agent-readiness-public-report-store (OB-3, #8560)', () => {
     expect(await store.readPublicReportByToken('../etc/passwd')).toBeNull()
   })
 
+  test('rejects persisted assessment JSON that does not satisfy the report schema', async () => {
+    const db = makeDb()
+    const store = makeD1AgentReadinessPublicReportStore(db)
+    const assessment = await makeAssessment()
+    const created = await store.createPublicReport(
+      {
+        pipelineRef: 'biz-pipe-invalid-assessment',
+        sourceRef: 'apollo_agent_readiness_ecommerce',
+        domain: assessment.domain,
+        assessment,
+      },
+      runtime,
+    )
+
+    await db
+      .prepare(
+        `UPDATE agent_readiness_public_reports
+            SET assessment_json = ?
+          WHERE report_token = ?`,
+      )
+      .bind(
+        JSON.stringify({ overallScore: 'not-a-number' }),
+        created.reportToken,
+      )
+      .run()
+
+    await expect(
+      store.readPublicReportByToken(created.reportToken),
+    ).rejects.toThrow()
+  })
+
   test('recordReportClick increments the counter and returns the internal sourceRef for funnel attribution', async () => {
     const db = makeDb()
     const store = makeD1AgentReadinessPublicReportStore(db)

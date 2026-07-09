@@ -1,6 +1,8 @@
+type HttpResponse = globalThis.Response
+
 export const handlePublicProofReplayBundleRequest = async (
   ..._args: unknown[]
-): Promise<Response> =>
+): Promise<HttpResponse> =>
   Response.json(
     {
       archived: true,

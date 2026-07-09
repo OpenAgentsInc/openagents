@@ -3005,6 +3005,10 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
   route literals, fails any route missing from its projection-surface ledger,
   greps `staleness_declared` modules for the shared contract, and enforces the
   legacy retrofit budget at zero.
+- `static_contract_exempt` is limited to static contracts, created-once
+  immutable stored artifacts, and archived stable-path tombstones whose
+  payloads make no current-state claim. Exempt payloads stay inventoried and
+  must not fabricate a read-time generation timestamp to resemble freshness.
 - Projection inventory (staleness mode → compliance as of epic #4751):
   - `GET /api/public/forum-activity` — live at read over public forum topics/posts, rebuilt on forum topic/post writes — compliant (`generatedAt`, `live_at_read` contract). Public-safe forum→Verse reflection source (epic #5897, BF-1). `staleness_declared`.
   - `GET /api/public/labor-earnings` — live at read over labor escrow receipts — compliant (`generatedAt`, `live_at_read` contract). `staleness_declared`.
@@ -3030,6 +3034,16 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     payment totals, source refs, and privacy decision refs. The route grants no
     delivery completion, payout, settlement, self-serve, customer identity, or
     green-claim authority. `staleness_declared`.
+  - `GET /api/public/agent-readiness/reports/{reportToken}` — created-once,
+    token-addressed agent-readiness report artifact —
+    `static_contract_exempt`. The public payload is immutable after creation;
+    successful reads update only private click-attribution metadata. Its
+    `createdAt` records when the assessment artifact was created and is not a
+    read-freshness claim. The payload contains the prospect's own public domain
+    assessment but never pipeline/source refs, private enrichment, spend,
+    settlement, or promise-green authority. Regression coverage:
+    `workers/api/src/agent-readiness-public-report-store.test.ts` and
+    `workers/api/src/agent-readiness-public-report-routes.test.ts`.
   - `GET /api/public/gym/mutalisk-khala-delegation/runs` — live at read over
     the Mutalisk Khala-delegation Gym workflow store — compliant
     (`generatedAt`, `staleness` contract `projection_staleness.v1`
@@ -3427,29 +3441,14 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     listing, source-bank replay/conformance refs, psionic link-compatibility
     receipt refs, purchase/settlement blockers, and explicit no mutation/no
     real-settlement authority).
-  - `GET /api/public/proof-replays` — live at read proof replay resolver over
-    public Worker-authoritative proof, run, pylon, and settlement refs —
-    compliant (`generatedAt`, top-level contract, public-safe source refs,
-    replay bundle claim scope, explicit gaps/caveats, and no wallet material,
-    raw logs, service tokens, payment preimages, or private operator payloads).
-  - `GET /api/public/tassadar-replays/first-real-settlement` — live at read
-    compatibility replay bundle for the first real Tassadar settlement —
-    compliant (`generatedAt`, top-level contract, public-safe first-settlement
-    proof/payment refs, failed-closed markers, simulation-vs-real payment
-    distinction, and no wallet material, raw logs, service tokens, payment
-    preimages, or private operator payloads).
-  - `POST|GET /api/public/replay-clips` and
-    `GET /api/public/replay-clips/{jobRef}` — live at read over the
-    `replay_clip_jobs` D1 store (EPIC #5411, issue #5432) — compliant
-    (`generatedAt`, top-level `projection_staleness.v1` `live_at_read`
-    contract, public-safe job projection with claim scope
-    `evidence_presentation_only`, public source/caveat/blocker refs, and the
-    finished manifest URL only). The Worker creates `queued` jobs and reads
-    records only; it never renders frames or runs native binaries (rendering
-    is the owned render box's job, issue #5431). Grants no settlement, payout,
-    deployment, accepted-work, provider, wallet, or public-claim authority.
-    Regression coverage:
-    `workers/api/src/replay-clip-job-routes.test.ts`.
+  - `GET /api/public/proof-replays` and
+    `GET /api/public/tassadar-replays/first-real-settlement` — archived
+    stable-path tombstones — `static_contract_exempt`. Both paths remain
+    dereferenceable and return the fixed 410 archive payload with the backroom
+    path and blocker ref. They expose no mutable state or currentness claim, so
+    they do not fabricate `generatedAt` or a staleness contract. Regression
+    coverage: `workers/api/src/public-proof-replay-routes.test.ts` and
+    `workers/api/src/worker-exact-routes.test.ts`.
   - `GET /api/public/site-referral-payouts` — live at read over the latest
     non-archived RL-1 Sites referral payout ledger entry per payout ref (#5458)
     — compliant (`generatedAt`, top-level `projection_staleness.v1`
