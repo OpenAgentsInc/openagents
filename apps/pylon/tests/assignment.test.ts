@@ -1049,14 +1049,15 @@ describe("Pylon assignment lease flow", () => {
     })
   })
 
-  test("can target a single no-spend lease when older offers are still visible", async () => {
+  test("can strictly target one assignment without treating another lease ref as an alias", async () => {
     await withTempHome(async (home) => {
+      const targetAssignmentRef = "assignment.public.no_spend.target"
       const oldLease = lease({
         assignmentRef: "assignment.public.no_spend.old_visible",
-        leaseRef: "lease.public.no_spend.old_visible",
+        leaseRef: targetAssignmentRef,
       })
       const targetLease = lease({
-        assignmentRef: "assignment.public.no_spend.target",
+        assignmentRef: targetAssignmentRef,
         leaseRef: "lease.public.no_spend.target",
       })
       const fake = fakeAssignmentServer({ leases: [oldLease, targetLease] })
@@ -1070,6 +1071,7 @@ describe("Pylon assignment lease flow", () => {
         assignmentRef: targetLease.assignmentRef,
         baseUrl: fake.baseUrl,
         now: () => new Date("2026-06-09T00:00:30.000Z"),
+        strictAssignmentRef: true,
       })
 
       expect(result.ok).toBe(true)
@@ -1081,6 +1083,31 @@ describe("Pylon assignment lease flow", () => {
       expect(acceptPaths).toEqual([
         `/api/pylons/${encodeURIComponent(fake.requests[0].body.pylonRef)}/assignments/${encodeURIComponent(targetLease.leaseRef)}/accept`,
       ])
+    })
+  })
+
+  test("preserves the legacy lease-ref selector alias when strict assignment custody is not requested", async () => {
+    await withTempHome(async (home) => {
+      const targetLease = lease({
+        assignmentRef: "assignment.public.no_spend.legacy_lease_alias",
+        leaseRef: "lease.public.no_spend.legacy_lease_alias",
+      })
+      const fake = fakeAssignmentServer({ leases: [targetLease] })
+      const summary = await readySummary(home)
+      await sendHeartbeat(summary, {
+        baseUrl: fake.baseUrl,
+        now: () => new Date("2026-06-09T00:00:00.000Z"),
+      })
+
+      const result = await runNoSpendAssignment(summary, {
+        assignmentRef: targetLease.leaseRef,
+        baseUrl: fake.baseUrl,
+        now: () => new Date("2026-06-09T00:00:30.000Z"),
+      })
+
+      expect(result.ok).toBe(true)
+      if (!result.ok) throw new Error("expected legacy lease-ref selector alias to remain accepted")
+      expect(result.lease.assignmentRef).toBe(targetLease.assignmentRef)
     })
   })
 

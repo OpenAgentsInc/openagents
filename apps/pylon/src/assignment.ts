@@ -206,6 +206,11 @@ export type AssignmentClientOptions = {
   accountHome?: string
   accountRef?: string
   assignmentRef?: string
+  // Fleet custody supplies an assignment ref, never a lease ref. Keep the
+  // legacy CLI lease-ref alias available by default, but let durable claimed
+  // work fail closed instead of accepting a different assignment whose
+  // leaseRef happens to equal the requested assignmentRef.
+  strictAssignmentRef?: boolean
   baseUrl: string
   fetch?: typeof fetch
   now?: () => Date
@@ -2026,7 +2031,7 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
     candidate.paymentMode === "no-spend" &&
     (options.assignmentRef === undefined ||
       candidate.assignmentRef === options.assignmentRef ||
-      candidate.leaseRef === options.assignmentRef) &&
+      (options.strictAssignmentRef !== true && candidate.leaseRef === options.assignmentRef)) &&
     !isExpired(candidate, observedAtDate) &&
     !localLeaseIsTerminal(store, candidate.leaseRef)
   )
