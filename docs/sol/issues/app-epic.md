@@ -4,7 +4,8 @@
 
 The product surface collapses to three applications:
 
-1. **OpenAgents web** — `openagents.com`, `/sarah`, and `/forum*`.
+1. **OpenAgents web** — `openagents.com`, `/sarah`, `/forum*`, and the retained
+   `/promises` assurance surface.
 2. **OpenAgents mobile** — one iOS/Android app, Sarah at home.
 3. **OpenAgents Desktop** — Sarah plus the deep coding-fleet cockpit.
 

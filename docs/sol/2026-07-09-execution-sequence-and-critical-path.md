@@ -93,8 +93,9 @@ real local streams. Managed cloud is additive and must not block that burn.
 Once the immediate fleet loop works, packaging converges without creating more
 destinations:
 
-- production web retains only `/`, `/sarah`, `/forum*`, plus explicit legal,
-  auth, API, asset, health, manifest, and receipt exceptions;
+- production web retains `/`, `/sarah`, `/forum*`, `/promises`, plus explicit
+  legal, auth, API, asset, health, manifest, and receipt exceptions; promise and
+  service-deliverable integrity refs remain dereferenceable;
 - the mobile product becomes OpenAgents with Sarah as home;
 - the desktop product becomes OpenAgents Desktop with the deep fleet cockpit;
 - the existing mobile straight line, Forum authority, auth, receipts, and

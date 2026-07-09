@@ -5,9 +5,12 @@
 This directory is converging on the single OpenAgents web app described by
 [`docs/sol/MASTER_ROADMAP.md`](../../docs/sol/MASTER_ROADMAP.md). Retained
 human-facing product routes are `/`, `/sarah`, `/forum`, and required Forum
-descendants. Legal, auth, API, asset, health, manifest, and receipt routes are
-infrastructure exceptions. Other human-facing pages are retirement sources,
-not surfaces to grow or port.
+descendants, plus `/promises`. Preserve `/docs/product-promises` as a stable
+document or alias and preserve the registry, transition, audit, readiness,
+report, receipt, verification, and evidence chain required to substantiate
+product promises and service deliverables. Legal, auth, other API, asset,
+health, manifest, and receipt routes are infrastructure exceptions. Other
+human-facing pages are retirement sources, not surfaces to grow or port.
 
 New and converted retained UI is authored in Effect Native. The existing
 Foldkit/Tailwind application remains legacy maintenance code until each

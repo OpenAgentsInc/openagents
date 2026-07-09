@@ -29,10 +29,14 @@ iteration), the **top operating rule is CONSTANT MOTION**:
 ## Repo Layout
 
 - `apps/openagents.com/` owns the single OpenAgents web app. The retained
-  public product routes are `/`, `/sarah`, `/forum`, and required Forum
-  descendants; legal, authentication, machine-readable API, asset, and
-  operational endpoints are infrastructure exceptions. Autopilot, Sites, and
-  other legacy pages are retirement sources, not product surfaces to grow.
+  public product routes are `/`, `/sarah`, `/forum`, required Forum
+  descendants, and `/promises`; legal, authentication, machine-readable API,
+  asset, and operational endpoints are infrastructure exceptions. Preserve the
+  complete product-promise and service-deliverable integrity chain—including
+  stable docs/report paths, registry/transition/audit/readiness APIs,
+  transition authority, and dereferenceable receipt/verification/evidence
+  refs. Autopilot, Sites, and other legacy pages are retirement sources, not
+  product surfaces to grow.
 - `apps/openagents-world/` is the Cloudflare Worker + Region Durable Object
   home for live Verse world projection, presence, local interaction,
   interest-scoped fanout, world WebSocket transport, D1 projection rows, queue
@@ -84,6 +88,7 @@ iteration), the **top operating rule is CONSTANT MOTION**:
 ## Live Public Reference Surfaces
 
 - Agent onboarding instructions: <https://openagents.com/AGENTS.md>
+- Product promises: <https://openagents.com/promises>
 - Agent-readable promise registry:
   <https://openagents.com/api/public/product-promises>
 - Product Promises Forum:
@@ -556,14 +561,14 @@ and local Codex auth out of reports.
   flag the rest** (in the report, and a tracking issue if it will persist) — never
   silently leave a red, and never describe a partially-green run as clean.
 - **Product shape (owner decision, 2026-07-09):** there are three product apps:
-  the OpenAgents web app (`/`, `/sarah`, and `/forum`), the **OpenAgents**
-  mobile app, and **OpenAgents Desktop**. Sarah is the relationship and fleet-
-  command surface in all three. Khala Code, Autopilot, Pylon cockpit, Sites,
-  and other prior product ideas are capabilities, engine-room services, or
-  migration sources—not additional product apps. P0 is Sarah-managed parallel
-  coding across Codex, Claude, and Grok accounts on owner-local Pylons, with
-  cloud capacity additive after the local path works. The canonical order and
-  issue set live in `docs/sol/MASTER_ROADMAP.md`.
+  the OpenAgents web app (`/`, `/sarah`, `/forum`, and `/promises`), the
+  **OpenAgents** mobile app, and **OpenAgents Desktop**. Sarah is the
+  relationship and fleet-command surface in all three. Khala Code, Autopilot,
+  Pylon cockpit, Sites, and other prior product ideas are capabilities,
+  engine-room services, or migration sources—not additional product apps. P0
+  is Sarah-managed parallel coding across Codex, Claude, and Grok accounts on
+  owner-local Pylons, with cloud capacity additive after the local path works.
+  The canonical order and issue set live in `docs/sol/MASTER_ROADMAP.md`.
 - Keep new TypeScript implementation work on Bun, Effect, and Effect Schema.
   **UI layer (owner decision, 2026-07-08 — supersedes the 2026-07-04
   React+Tailwind clause): the entire repo converts to Effect Native, ASAP**

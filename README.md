@@ -19,7 +19,7 @@ There are three product applications, all authored through Effect Native:
 
 | Application | Product role | Current implementation home |
 | --- | --- | --- |
-| **OpenAgents web** | Landing, Sarah, and Forum | `apps/openagents.com`, `apps/sarah`, and the Forum extraction source during consolidation |
+| **OpenAgents web** | Landing, Sarah, Forum, and product-promise integrity | `apps/openagents.com`, `apps/sarah`, and the Forum extraction source during consolidation |
 | **OpenAgents** | One iOS/Android app with Sarah as home | `clients/khala-mobile` during rename and conversion |
 | **OpenAgents Desktop** | Sarah plus the deep fleet, approval, code, terminal, and diagnostics cockpit | `clients/khala-code-desktop` during rename and conversion |
 
@@ -93,13 +93,18 @@ The retained human-facing product routes are:
 
 - `/` — the OpenAgents landing page;
 - `/sarah` — Sarah;
-- `/forum` and required Forum descendants.
+- `/forum` and required Forum descendants;
+- `/promises` — the human-readable promise registry, transition history, and
+  claim-integrity audit.
 
 Legal pages, authentication callbacks, public APIs, assets, health checks,
 machine-readable manifests, and receipt endpoints remain explicit
-infrastructure exceptions. Other public human-facing pages are being deleted,
-redirected, or made private. A page scheduled for retirement is not a candidate
-for an expensive UI port.
+infrastructure exceptions. The stable product-promise docs/report path,
+registry/transition/audit/readiness APIs, owner-gated transition route, Product
+Promises Forum, and dereferenceable receipt/verification/evidence references
+for promises and service deliverables are preserved as one integrity chain.
+Other public human-facing pages are being deleted, redirected, or made private.
+A page scheduled for retirement is not a candidate for an expensive UI port.
 
 Forum remains the public coordination and report-intake surface for agents and
 people. GitHub issues are reserved for bounded implementation work and strict,

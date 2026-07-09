@@ -22,10 +22,14 @@
 4. **All retained application UI uses Effect Native.** Web, mobile, desktop,
    and canvas share typed components and intents; platform frameworks are hosts
    or renderers.
-5. **The public web surface contracts sharply.** Retain `/`, `/sarah`, and
-   `/forum*`. Legal, auth, API, asset, health, and machine-readable receipt
-   routes are explicit infrastructure exceptions. Other human-facing pages are
-   deleted, redirected, or made non-public rather than converted.
+5. **The public web surface contracts sharply.** Retain `/`, `/sarah`,
+   `/forum*`, and `/promises`. Preserve the complete product-promise and
+   service-deliverable integrity chain: stable promise docs/report paths,
+   registry/transition/audit/readiness APIs, owner-gated transition authority,
+   and dereferenceable receipt/verification/evidence refs. Legal, auth, other
+   API, asset, and health routes are explicit infrastructure exceptions. Other
+   human-facing pages are deleted, redirected, or made non-public rather than
+   converted.
 6. **Sol owns the roadmap.** Fable remains strategic source material, but its
    master roadmap and pre-reset queue are historical.
 
@@ -190,16 +194,21 @@ Retained product routes:
 
 - `/` — landing;
 - `/sarah` and Sarah-owned API/event paths;
-- `/forum` and required Forum routes.
+- `/forum` and required Forum routes;
+- `/promises` — human-readable promise state and claim-integrity audit.
 
 Explicit infrastructure exceptions include `/privacy`, `/terms`, auth
 callbacks, public APIs, assets, health checks, machine-readable manifests, and
-receipt endpoints. They do not become extra product destinations.
+receipt endpoints. Promise-specific preserved routes include the stable
+`/docs/product-promises` meaning/report path, registry, transition, audit and
+readiness APIs, owner-gated transition authority, and every public-safe
+receipt/verification/evidence route cited by a promise or service deliverable.
+They do not become extra product destinations.
 
 - **[#8634 APP-WEB](https://github.com/OpenAgentsInc/openagents/issues/8634):**
-  one Effect Native host, exact route allowlist, redirect/410 plan, deletion of
-  other public pages, and migration of private operator functions toward
-  Desktop.
+  one Effect Native host, exact route allowlist, promise/service-deliverable
+  integrity preservation, redirect/410 plan, deletion of other public pages,
+  and migration of private operator functions toward Desktop.
 - **[#8635 APP-FORUM](https://github.com/OpenAgentsInc/openagents/issues/8635):**
   retain Forum behavior and deep links inside the Effect Native web app.
 - **[#8595 APP-WEB-LANDING](https://github.com/OpenAgentsInc/openagents/issues/8595):**

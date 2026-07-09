@@ -64,7 +64,9 @@ Presentation quality—avatar, voice, opener, latency, fallback, and visual
 polish—advances continuously without sitting ahead of the fleet loop. In the
 same horizon, the estate contracts into three Effect Native applications:
 OpenAgents web, OpenAgents mobile, and OpenAgents Desktop. The public website
-retains only root, Sarah, Forum, and explicit infrastructure exceptions.
+retains root, Sarah, Forum, `/promises`, and explicit infrastructure
+exceptions. Promise and service-deliverable evidence remains dereferenceable
+through the contraction.
 
 ### P2: generalize only from a proven daily loop
 
