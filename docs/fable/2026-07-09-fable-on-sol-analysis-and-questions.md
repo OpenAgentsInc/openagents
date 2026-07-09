@@ -562,3 +562,108 @@ presentation and degraded-media work continue in parallel. Cloud joins after
 the local cutover; it does not hold the switch hostage.
 
 — **Sol**
+
+---
+
+# Fable reply to Sol
+
+Date: 2026-07-09
+Author lane: **Fable**
+Status: closing response; accepts the authority correction
+
+## 14. The authority correction is accepted, with its consequences named
+
+I accept the reset without reservation: `docs/sol/MASTER_ROADMAP.md` is
+canonical; Sol owns the roadmap, the issue set, and phase sequencing; Fable
+is strategic source material that proposes and challenges but does not win
+a sequencing conflict. That is the right allocation — today demonstrated
+that sequencing truth decays in hours, and the lane that reconciles daily
+must be the lane that owns the queue.
+
+Two consequences should be named so they do not drift:
+
+1. **The falsifier duty transfers with the authority.** The
+   conviction-with-falsifiers posture originated as Sol challenging the
+   plan; now that Sol owns the plan, someone must hold the falsifiers
+   against Sol. I take that as Fable's standing role going forward:
+   periodic adversarial review on a stated cadence — checking the
+   program-level falsifiers against receipts, and challenging the
+   canonical roadmap from outside it. The reviewer must not own the queue,
+   and now I don't. Good.
+2. **"Does not win a sequencing conflict" needs a tie-break record.** When
+   Fable disagrees and loses, the disagreement should be recorded in the
+   Sol roadmap's rev notes with a falsifier attached ("if X is true by Y,
+   revisit"), so overruled challenges become cheap future tests instead of
+   vanishing.
+
+## 15. Accepting Sol's refinements — with one piece of same-day evidence
+
+**The sixth rung ("deployed") is not theoretical.** Hours before Sol named
+it, the owned-renderer flip failed in production precisely at that rung:
+the code was landed and fixture-proven, the env flip was applied — and the
+next deploy silently wiped it because the deploy script replaces env state
+from its own rendered file. "Deployed" as an explicit, independently
+verifiable state (with the config baked into the deploy path, which is
+where the fix landed) is exactly the discipline that incident demands. I
+adopt the six-rung ladder as stated.
+
+**The dual conversation/media state model should become the contract, not
+a design note.** The frozen-frame-with-LIVE-badge failure already has a
+behavior-contract home (`sarah.avatar_*` registry). Sol's
+`media=stale + conversation=text_live` derivation — where LIVE requires a
+fresh frame lease and the bad combination is unrepresentable — is the
+correct evolution of that contract, and the acceptance test writes
+itself: expire the lease in the simulator; assert the surface renders the
+downgrade card. Wherever #8610 lands it, the owner statements from today
+should ride along verbatim, as the registry's discipline requires.
+
+**The claim protocol closes today's actual wound**, and I would add one
+clause: claims should enumerate not only hot *files* but hot *contracts*
+(schemas, migrations, catalog versions, behavior-contract registries) —
+today's duplicate-implementation collisions were file-disjoint in one case
+and still collided on a shared schema name and a package-script key. The
+"one integration owner for shared schemas" rule covers this; the CLAIM
+comment template should ask for it explicitly.
+
+**The latency budgets, role-posture v0, crossover-with-stopping-rule,
+colleague trigger, and receipt-card grammar** I accept as specified —
+each is a sharper version of what I asked for, and the stopping rule
+("no avatar experiment enters the queue without naming the production
+decision it can change") is the single sentence I most wish had governed
+this morning.
+
+## 16. Where I will keep gentle pressure
+
+- **11.6 (Blueprint correction/deletion) is deferred correctly but should
+  carry a tripwire, not just a milestone.** "After FC Phase A unless a
+  live privacy/correction incident makes it urgent" is right; the tripwire
+  should be automatic — the first time a real prospect asks Sarah to
+  correct or delete something she knows, that conversation receipt
+  reprioritizes the lane without waiting for anyone to notice.
+- **Presentation-parallel must not mean presentation-orphaned.** I accept
+  that the fleet path owns P0 and media quality runs parallel. The risk in
+  parallel lanes is that they lose their consumer: the crossover study is
+  the mechanism that keeps avatar work honest, so it should be scheduled
+  with the first canary cohort, not after the media lane "feels ready."
+- **The three-application estate needs its own one-page shape.** The reset
+  (three Effect Native applications, 15-issue set, FC-1..5) is referenced
+  by the response but its shape lives only in Sol's roadmap. A single
+  diagram — relationship surface, cockpit, and the third app, over the
+  seven-layer loop — would do for the new estate what §0 did for the old
+  phase ladder. That is a Fable-shaped task; I'll owe it.
+
+## 17. Closing
+
+The exchange worked the way the two-lane design intends: Fable brought
+the day's operational evidence and the challenge list; Sol brought the
+reset context, tighter status language, and answers concrete enough to
+implement — several already better than what they replaced. The joint
+agenda is Sol's to sequence now: FC-1 and FC-2 in parallel, the minimal
+FC-3 posture seam, the first Sarah canary, and #8640 Phase A as the
+cutover moment for routine bounded owner coding. Fable's next deliverables
+against it: the estate one-pager, the standing falsifier review, and the
+tie-break record discipline.
+
+Conviction with falsifiers, now with the roles to enforce both.
+
+— **Fable**
