@@ -1771,7 +1771,57 @@ export const khalaMobileUxContractRegistry: BehaviorContractRegistryDocument = {
       verification:
         "bun test tests/demo-login-mode.test.ts inside clients/khala-mobile asserts the sign-in button wires onLongPress to demo mode, the auth state machine's demo_sign_in_started event lands a signed-in reviewer session, and the credits/repos/model-preference clients plus the sync scope-entity gate all serve hardcoded example fixtures with no network for the demo sentinel token.",
     },
+    {
+      authorityBoundary:
+        "Binds the Settings → Codex accounts list projection and the disconnect action's removal semantics (client + server). It does not change how an account is connected in the first place, nor the underlying token-custody/grant-revocation authority (CX-2's audited custody deletion and grant revocation remain authoritative). \"Removed from the visible list\" means the account no longer appears in GET /api/mobile/codex-accounts and is not rendered by the Settings screen; a disconnected account is terminal (reconnecting is a fresh device login), not a paused row.",
+      blockerRefs: [],
+      contractId: "khala_mobile.settings.disconnect_removes_account_and_hides_stale.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "clients/khala-mobile/src/sync/khala-mobile-codex-accounts-core.ts",
+        "clients/khala-mobile/src/sync/khala-mobile-codex-accounts-api.ts",
+        "clients/khala-mobile/src/screens/settings-screen.tsx",
+        "clients/khala-mobile/tests/khala-mobile-codex-accounts-core.test.ts",
+        "clients/khala-mobile/tests/khala-mobile-codex-accounts-api.test.ts",
+        "apps/openagents.com/workers/api/src/provider-account-domain.ts",
+        "apps/openagents.com/workers/api/src/provider-account-repository.ts",
+        "apps/openagents.com/workers/api/src/provider-account-mobile-routes.ts",
+        "apps/openagents.com/workers/api/src/provider-accounts.test.ts",
+        "apps/openagents.com/workers/api/src/provider-account-mobile-routes.test.ts",
+        "docs/khala-mobile/khala-mobile-ux-contract.md",
+      ],
+      oracles: [
+        {
+          description:
+            "The mobile list projection keeps only connected and in-progress (non-expired) pending accounts; disconnected/denied/expired/unhealthy residue is dropped, so a stale row is never rendered as a connected account (isVisibleCodexAccount / visibleCodexAccounts).",
+          id: "codex_stale_accounts_never_shown.unit",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "clients/khala-mobile/tests/khala-mobile-codex-accounts-core.test.ts",
+        },
+        {
+          description:
+            "A disconnect round-trip through the mobile bearer routes removes the account from a subsequent list refetch (server soft-deletes + filters it), and the client bundle parser hides any dead rows a legacy server still returns.",
+          id: "codex_disconnect_removes_from_list.unit",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "clients/khala-mobile/tests/khala-mobile-codex-accounts-api.test.ts",
+        },
+      ],
+      productArea: "settings",
+      source: {
+        channel: "khala-code-session",
+        statedBy: "owner",
+        statedOn: "2026-07-09",
+      },
+      state: "enforced",
+      statement:
+        "Owner report (2026-07-09): \"i have a ton of stale old ones, disconnect is just like reordering the list not really removing any. this whole thing is super fucked up and needs auditing.\" Disconnecting a Codex account removes it from the visible accounts list immediately and permanently; stale/dead accounts (disconnected, denied, expired, or unhealthy) are never displayed as connected.",
+      surface: "khala-mobile",
+      verification:
+        "bun test tests/khala-mobile-codex-accounts-core.test.ts tests/khala-mobile-codex-accounts-api.test.ts inside clients/khala-mobile (mobile-core projection filter + disconnect round-trip); server side bun run --cwd apps/openagents.com/workers/api test -- src/provider-accounts.test.ts src/provider-account-mobile-routes.test.ts (disconnect soft-deletes the row so listProviderAccountsForUser no longer returns it, and filterMobileVisibleProviderAccountBundle drops dead residue). All run in the package/repo test sweeps before pushes to main.",
+    },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-08.1",
+  version: "2026-07-09.1",
 }

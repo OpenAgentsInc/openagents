@@ -269,6 +269,7 @@ class MemoryProviderAccountRepository implements ProviderAccountRepository {
 
     const updated: ProviderAccountRecord = {
       ...previous,
+      deletedAt: now,
       disconnectedAt: now,
       health: 'requires_reauth',
       lastStatusAt: now,
@@ -971,6 +972,42 @@ describe('provider account service', () => {
     expect(account?.hasSecretRef).toBe(false)
     expect(repository.accounts[0]?.secretRef).toBeNull()
     expect(repository.grants[0]?.status).toBe('revoked')
+  })
+
+  test('disconnect removes the account from the user-visible list (#8546)', async () => {
+    const repository = new MemoryProviderAccountRepository()
+    repository.accounts.push(makeAccount({}))
+
+    const before = await listProviderAccountsForUser(
+      repository,
+      'github:1',
+      new Date('2026-06-02T19:05:00.000Z'),
+    )
+    expect(before.accounts.map(account => account.providerAccountRef)).toEqual([
+      'provider-account_1',
+    ])
+
+    const disconnected = await disconnectProviderAccountForUser(
+      repository,
+      'github:1',
+      'provider-account_1',
+      {
+        makeId: makeIdFactory(['disconnect_event']),
+        now: () => new Date('2026-06-02T19:10:00.000Z'),
+      },
+    )
+    // The disconnect still returns the account as its confirmation payload...
+    expect(disconnected?.providerAccountRef).toBe('provider-account_1')
+
+    // ...but a subsequent list must NOT include it (soft-deleted), so the phone
+    // sees the account actually gone rather than merely reordered to the top.
+    const after = await listProviderAccountsForUser(
+      repository,
+      'github:1',
+      new Date('2026-06-02T19:11:00.000Z'),
+    )
+    expect(after.accounts).toEqual([])
+    expect(repository.accounts[0]?.deletedAt).toBe('2026-06-02T19:10:00.000Z')
   })
 
   test('broker connected callback records account and attempt state idempotently', async () => {

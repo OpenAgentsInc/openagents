@@ -164,7 +164,30 @@ const CodexAccountsSection = () => {
   const handleDisconnect = async (providerAccountRef: string) => {
     if (working) return
     setWorking(true)
-    await disconnectKhalaMobileCodexAccount(baseUrl, token, providerAccountRef)
+    const result = await disconnectKhalaMobileCodexAccount(baseUrl, token, providerAccountRef)
+    // On success remove the row from local state immediately (optimistic), so
+    // the account visibly disappears rather than lingering while the refetch
+    // runs; the refetch then reconciles against server truth. A not_found also
+    // means the account is already gone, so treat it the same. Only a real
+    // transport/unknown failure leaves the row for the refetch to re-confirm
+    // (issue #8546).
+    if (result.ok || (!result.ok && result.kind === "not_found")) {
+      setState(current =>
+        current.status === "ready"
+          ? {
+              bundle: {
+                accounts: current.bundle.accounts.filter(
+                  account => account.providerAccountRef !== providerAccountRef,
+                ),
+                attempts: current.bundle.attempts.filter(
+                  attempt => attempt.providerAccountRef !== providerAccountRef,
+                ),
+              },
+              status: "ready",
+            }
+          : current,
+      )
+    }
     await refreshAccounts()
     setWorking(false)
   }

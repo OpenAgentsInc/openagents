@@ -2,6 +2,7 @@ import { isDemoToken } from "../demo/demo-fixtures"
 
 import {
   codexReadinessForAccount,
+  isVisibleCodexAccount,
   type KhalaMobileCodexAccountFailure,
   type KhalaMobileCodexAccountView,
   type KhalaMobileCodexQuotaState,
@@ -161,9 +162,16 @@ const parseBundle = (body: unknown): KhalaMobileCodexAccountsBundle | null => {
   const accounts = record.accounts.map(parseAccount)
   const attempts = record.attempts.map(parseAttempt)
   if (accounts.some(account => account === null) || attempts.some(attempt => attempt === null)) return null
+  // Defense-in-depth mirror of the server projection: never render stale/dead
+  // residue (disconnected/denied/expired/unhealthy) as a connected account,
+  // and drop any attempts that referenced a now-hidden account (issue #8546).
+  const visible = (accounts as ReadonlyArray<KhalaMobileCodexAccountView>).filter(isVisibleCodexAccount)
+  const visibleRefs = new Set(visible.map(account => account.providerAccountRef))
   return {
-    accounts: accounts as ReadonlyArray<KhalaMobileCodexAccountView>,
-    attempts: attempts as ReadonlyArray<KhalaMobileCodexAttempt>,
+    accounts: visible,
+    attempts: (attempts as ReadonlyArray<KhalaMobileCodexAttempt>).filter(attempt =>
+      visibleRefs.has(attempt.providerAccountRef),
+    ),
   }
 }
 

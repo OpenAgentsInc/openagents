@@ -107,3 +107,20 @@ export const codexAccountTitle = (account: KhalaMobileCodexAccountView): string 
   account.accountLabel?.trim() ||
   account.planType?.trim() ||
   account.providerAccountRef
+
+/**
+ * A Codex account is visible in the mobile list only if it is a real, current
+ * account: connected, or an in-progress (non-expired) device login. The server
+ * sends `publicStatus` as the account's `status`, so a pending login whose codes
+ * expired already arrives as `expired` and is dropped here too. Terminal/dead
+ * residue (disconnected/denied/expired/unhealthy) is never rendered as
+ * connected. Client-side mirror of the server projection filter so a stale row
+ * never shows even against an older server build (issue #8546: "disconnect is
+ * just like reordering the list not really removing any... needs auditing").
+ */
+export const isVisibleCodexAccount = (account: KhalaMobileCodexAccountView): boolean =>
+  account.status === "connected" || account.status === "pending"
+
+export const visibleCodexAccounts = (
+  accounts: ReadonlyArray<KhalaMobileCodexAccountView>,
+): ReadonlyArray<KhalaMobileCodexAccountView> => accounts.filter(isVisibleCodexAccount)

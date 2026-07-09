@@ -8,6 +8,7 @@ import {
   type StoreConnectedCodexAuth,
   type StoreStartedCodexDeviceLogin,
   disconnectProviderAccountForUser,
+  filterMobileVisibleProviderAccountBundle,
   listProviderAccountsForUser,
   makeD1ProviderAccountRepository,
   pollOpenAiCodexDeviceLogin,
@@ -99,7 +100,12 @@ export const makeProviderAccountMobileHandlers = <
         ownerUserId,
       )
 
-      return noStoreJsonResponse(bundle)
+      // Only project live accounts to the phone: connected accounts and
+      // in-progress (non-expired) device logins. Disconnected/denied/expired/
+      // unhealthy residue is never shown as connected (issue #8546).
+      return noStoreJsonResponse(
+        filterMobileVisibleProviderAccountBundle(bundle),
+      )
     },
 
     handleMobileCodexDeviceLoginStartApi: async (

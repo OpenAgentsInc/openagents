@@ -738,6 +738,15 @@ export const makeD1ProviderAccountRepository = (
     await db.batch([
       db
         .prepare(
+          // Disconnect is terminal removal, not a pause: CX-2 already revokes
+          // grants and deletes token custody here, so the registry row must
+          // leave every `deleted_at IS NULL` projection (mobile/browser/
+          // operator list). Setting `deleted_at` is what actually removes the
+          // account from the user-visible list; without it the row only
+          // changed status and bumped `updated_at`, so an `ORDER BY updated_at`
+          // list merely reordered it to the top (issue #8546). The final
+          // `WHERE id = ?` re-select below is unfiltered, so this still returns
+          // the disconnected account as the route's confirmation payload.
           `UPDATE provider_accounts
            SET secret_ref = NULL,
                status = 'disconnected',
@@ -745,11 +754,12 @@ export const makeD1ProviderAccountRepository = (
                disconnected_at = ?,
                last_status_at = ?,
                metadata_json = ?,
-               updated_at = ?
+               updated_at = ?,
+               deleted_at = ?
            WHERE id = ?
              AND user_id = ?`,
         )
-        .bind(now, now, metadataJson, now, account.id, userId),
+        .bind(now, now, metadataJson, now, now, account.id, userId),
       db
         .prepare(
           `UPDATE provider_account_auth_grants

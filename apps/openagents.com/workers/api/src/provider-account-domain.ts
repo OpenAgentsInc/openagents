@@ -1010,6 +1010,40 @@ export const makeProviderAccountBundle = (
   }
 }
 
+/**
+ * A "live" mobile-visible Codex account is one the phone should list as a real,
+ * current account: either connected, or an in-progress device login that has
+ * not yet expired (publicStatus 'pending'). Terminal/dead residue — disconnected
+ * rows, denied rows, pending logins whose device codes all expired
+ * (publicStatus 'expired'), and 'unhealthy' rows — must never be shown as if
+ * connected. This is the projection half of the CX-2 exit-receipt audit
+ * (#8546): the owner reported "a ton of stale old ones" and that disconnect
+ * "is just like reordering the list not really removing any". New disconnects
+ * now also soft-delete the row (see repository.disconnectAccount), so this
+ * filter primarily hides pre-existing stale residue and any legacy disconnected
+ * rows that predate the soft-delete fix.
+ */
+export const isMobileVisibleProviderAccount = (
+  account: PublicProviderAccount,
+): boolean =>
+  account.publicStatus === 'connected' || account.publicStatus === 'pending'
+
+export const filterMobileVisibleProviderAccountBundle = (
+  bundle: ProviderAccountBundle,
+): ProviderAccountBundle => {
+  const accounts = bundle.accounts.filter(isMobileVisibleProviderAccount)
+  const visibleRefs = new Set(
+    accounts.map(account => account.providerAccountRef),
+  )
+
+  return {
+    accounts,
+    attempts: bundle.attempts.filter(attempt =>
+      visibleRefs.has(attempt.providerAccountRef),
+    ),
+  }
+}
+
 export const normalizeAccountLabel = (
   value: string | undefined,
 ): string | null => sanitizeProviderAccountText(value, 120) ?? null

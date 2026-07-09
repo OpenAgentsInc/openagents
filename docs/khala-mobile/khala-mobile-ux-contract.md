@@ -93,7 +93,7 @@ top follow-up item for whoever picks this up next.
 
 ## Registry
 
-Registry version: `2026-07-08.1` (schema `openagents.behavior_contracts.v1`)
+Registry version: `2026-07-09.1` (schema `openagents.behavior_contracts.v1`)
 
 ### `khala_mobile.auth.tailnet_auto_discovery_before_manual_login.v1` — RETIRED
 
@@ -565,3 +565,14 @@ Registry version: `2026-07-08.1` (schema `openagents.behavior_contracts.v1`)
 - **Oracle** `demo_login_example_data.unit` (bun-test, unit): A deliberate ~1s long-press on the Sign in with GitHub button establishes a signed-in synthetic reviewer session (normal tap still starts real GitHub OAuth), and every product data source (threads, messages, credits, repos, model preference) serves hardcoded, offline, public-safe example fixtures for it. — `clients/khala-mobile/tests/demo-login-mode.test.ts`
 - **Verification:** bun test tests/demo-login-mode.test.ts inside clients/khala-mobile asserts the sign-in button wires onLongPress to demo mode, the auth state machine's demo_sign_in_started event lands a signed-in reviewer session, and the credits/repos/model-preference clients plus the sync scope-entity gate all serve hardcoded example fixtures with no network for the demo sentinel token.
 - **Authority boundary:** Binds only the signed-out sign-in surface and the client-side demo session. The demo session is a synthetic, offline, in-app session with a fake sentinel token that no server accepts; it grants no real account, repo, spend, payout, or admin authority, and every data source serves hardcoded example fixtures for it.
+
+### `khala_mobile.settings.disconnect_removes_account_and_hides_stale.v1` — ENFORCED
+
+- **Surface:** khala-mobile (settings)
+- **Stated by:** owner via khala-code-session on 2026-07-09
+- **Statement:** Owner report (2026-07-09): "i have a ton of stale old ones, disconnect is just like reordering the list not really removing any. this whole thing is super fucked up and needs auditing." Disconnecting a Codex account removes it from the visible accounts list immediately and permanently; stale/dead accounts (disconnected, denied, expired, or unhealthy) are never displayed as connected.
+- **Enforcement tier:** test-sweep
+- **Oracle** `codex_stale_accounts_never_shown.unit` (bun-test, unit): The mobile list projection keeps only connected and in-progress (non-expired) pending accounts; disconnected/denied/expired/unhealthy residue is dropped, so a stale row is never rendered as a connected account (isVisibleCodexAccount / visibleCodexAccounts). — `clients/khala-mobile/tests/khala-mobile-codex-accounts-core.test.ts`
+- **Oracle** `codex_disconnect_removes_from_list.unit` (bun-test, unit): A disconnect round-trip through the mobile bearer routes removes the account from a subsequent list refetch (server soft-deletes + filters it), and the client bundle parser hides any dead rows a legacy server still returns. — `clients/khala-mobile/tests/khala-mobile-codex-accounts-api.test.ts`
+- **Verification:** bun test tests/khala-mobile-codex-accounts-core.test.ts tests/khala-mobile-codex-accounts-api.test.ts inside clients/khala-mobile (mobile-core projection filter + disconnect round-trip); server side bun run --cwd apps/openagents.com/workers/api test -- src/provider-accounts.test.ts src/provider-account-mobile-routes.test.ts (disconnect soft-deletes the row so listProviderAccountsForUser no longer returns it, and filterMobileVisibleProviderAccountBundle drops dead residue). All run in the package/repo test sweeps before pushes to main.
+- **Authority boundary:** Binds the Settings → Codex accounts list projection and the disconnect action's removal semantics (client + server). It does not change how an account is connected in the first place, nor the underlying token-custody/grant-revocation authority (CX-2's audited custody deletion and grant revocation remain authoritative). "Removed from the visible list" means the account no longer appears in GET /api/mobile/codex-accounts and is not rendered by the Settings screen; a disconnected account is terminal (reconnecting is a fresh device login), not a paused row.
