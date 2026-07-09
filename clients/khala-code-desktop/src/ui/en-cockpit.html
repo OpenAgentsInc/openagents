@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Khala Code — Effect Native Fleet Cockpit (dev)</title>
+    <style>
+      :root { color-scheme: dark; }
+      html, body { margin: 0; background: #02040a; }
+      .en-cockpit-dev-banner {
+        font: 500 12px/1.4 system-ui, sans-serif;
+        color: #8fa6cc;
+        padding: 8px 20px;
+        border-bottom: 1px solid #17315f;
+      }
+      .en-cockpit-intent-log {
+        font: 400 12px/1.5 ui-monospace, monospace;
+        color: #4fd0ff;
+        padding: 8px 20px;
+        max-height: 160px;
+        overflow: auto;
+        border-top: 1px solid #17315f;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="en-cockpit-dev-banner">
+      Effect Native fleet cockpit (MH-7 / EN-5) — dev-only proof surface, live-shaped fixture. Not a shipped screen.
+    </div>
+    <div id="en-cockpit-root" data-en-cockpit-root=""></div>
+    <div id="en-cockpit-intent-log" aria-label="dispatched fleet intents" data-en-cockpit-intent-log=""></div>
+    <script type="module" src="./en-cockpit/dev-entry.ts"></script>
+  </body>
+</html>

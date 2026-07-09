@@ -428,12 +428,19 @@ CLOSED and independently re-verified. Current recommended order:
   broker/lane pattern CX-3 established has a proven Claude precedent to
   mirror.
 - **MH-7 `#8586` (multi-harness cockpit) + EN-5 `#8574` first screen:**
-  the catalog components MH-7 needs (app shell, overlays, command
-  palette, tabs, composer, forms, feedback, hotkey) are now ALL closed
-  upstream. The natural next step is a `/stage1`-style first EN render
-  inside Khala Code desktop (via the landed `platform-desktop` adapter,
-  `#21`) — scope it as the fleet cockpit directly, since that's the
-  Phase 4 proof screen's (`effect-native#42`) own target content.
+  DONE for the cockpit screen (2026-07-08) — a `/stage1`-style first
+  Effect Native render landed as a dev-only `en-cockpit.html` page in
+  Khala Code desktop (chip strip + per-harness readiness rows + worker/run
+  list + pause/resume/drain/stop + approvals), bound to the existing
+  `KhalaCodeDesktopFleetStatus` data via a pure adapter, dispatching typed
+  `@openagentsinc/khala-fleet-intents` values. Mounted via the DOM renderer
+  (not `platform-desktop` — that adapter isn't in the vendored EN snapshot
+  and `DesktopBridge` doesn't fit Electrobun's `Electroview` bridge; see
+  `docs/fable/2026-07-08-mh7-en-cockpit-desktop-receipt.md`). Phase 4
+  data-display/chip/tabs + shared `khalaTheme` were NOT yet in the vendored
+  snapshot, so the cockpit composes from `Card`/`Text`/`Button` (like
+  `/stage1`) and skips `GraphFigure`; swap for first-class components on the
+  next re-vendor. EN-5's full desktop shell conversion remains its own scope.
 - **EN-4 `#8573` (web absorption):** start the route inventory +
   burn-down table, then the first 1–2 real route conversions — the
   catalog is deep enough now that this is no longer blocked on Phase 2.
