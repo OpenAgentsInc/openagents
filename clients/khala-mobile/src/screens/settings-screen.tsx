@@ -13,12 +13,23 @@ import {
 
 import { useKhalaAuth } from "../auth/khala-auth-context"
 import { KHALA_ACCOUNT_DELETION_POLICY_COPY } from "../auth/mobile-openauth"
-import { Button, Card, Header, ListItem, Screen, Text, useAppTheme } from "../ignite"
+import { Button, Card, Header, ListItem, Screen, Text, TextField, useAppTheme } from "../ignite"
 import type { ThemedStyle } from "../ignite"
 import type { AppDrawerScreenProps } from "../navigators/navigationTypes"
 import type { OnDeviceReadinessRow } from "../native/on-device-readiness-core"
 import { useOnDeviceReadiness } from "../native/use-on-device-readiness"
 import { registerForPushNotificationsAsync } from "../push/push-notifications-client"
+import {
+  disconnectKhalaMobileClaudeAccount,
+  fetchKhalaMobileClaudeAccounts,
+  importKhalaMobileClaudeLocalAuth,
+  type KhalaMobileClaudeAccountsBundle,
+} from "../sync/khala-mobile-claude-accounts-api"
+import {
+  claudeAccountTitle,
+  claudeQuotaLabel,
+  claudeReadinessLabel,
+} from "../sync/khala-mobile-claude-accounts-core"
 import {
   disconnectKhalaMobileCodexAccount,
   fetchKhalaMobileCodexAccounts,
@@ -238,6 +249,187 @@ const CodexAccountsSection = () => {
             </View>
           )}
           <Button preset="filled" text="Connect Codex" disabled={working} onPress={() => void handleConnect()} />
+          <Button preset="default" text="Refresh" disabled={working} onPress={() => void handleRefresh()} />
+        </>
+      )}
+    </SectionCard>
+  )
+}
+
+type ClaudeAccountsState =
+  | Readonly<{ status: "loading" }>
+  | Readonly<{ status: "ready"; bundle: KhalaMobileClaudeAccountsBundle }>
+  | Readonly<{ status: "unavailable" }>
+
+/**
+ * CX-5 (#8549): Connect Claude account — paste-token variant of Codex
+ * device-login. The owner runs `claude setup-token` on a computer, pastes the
+ * long-lived CLAUDE_CODE_OAUTH_TOKEN here, and the Worker stores it under
+ * custody for the Agent Computer broker. Token lives only in ephemeral field
+ * state during import; never Keychain / nonsecret prefs.
+ */
+const ClaudeAccountsSection = () => {
+  const { baseUrl, token } = useKhalaAuth()
+  const { theme, themed } = useAppTheme()
+  const [state, setState] = useState<ClaudeAccountsState>({ status: "loading" })
+  const [tokenDraft, setTokenDraft] = useState("")
+  const [labelDraft, setLabelDraft] = useState("")
+  const [working, setWorking] = useState(false)
+  const [importError, setImportError] = useState<string | null>(null)
+
+  const refreshAccounts = async () => {
+    const result = await fetchKhalaMobileClaudeAccounts(baseUrl, token)
+    setState(result.ok ? { bundle: result.value, status: "ready" } : { status: "unavailable" })
+  }
+
+  useEffect(() => {
+    void refreshAccounts()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const handleConnect = async () => {
+    if (working) return
+    const authContentValue = tokenDraft.trim()
+    if (authContentValue === "") {
+      setImportError("Paste the token from claude setup-token first.")
+      return
+    }
+    setWorking(true)
+    setImportError(null)
+    const result = await importKhalaMobileClaudeLocalAuth(baseUrl, token, {
+      authContentValue,
+      ...(labelDraft.trim() === "" ? {} : { accountLabel: labelDraft.trim() }),
+    })
+    setWorking(false)
+    if (!result.ok) {
+      setImportError(
+        result.kind === "unauthorized"
+          ? "Session expired. Sign in again."
+          : "Could not connect Claude. Check the token and try again.",
+      )
+      if (result.kind === "unavailable" || result.kind === "unauthorized") {
+        setState({ status: "unavailable" })
+      }
+      return
+    }
+    // Clear the secret from the field as soon as custody accepts it.
+    setTokenDraft("")
+    setLabelDraft("")
+    setState(current =>
+      current.status === "ready"
+        ? {
+            bundle: {
+              accounts: [result.value.account, ...current.bundle.accounts],
+              attempts: current.bundle.attempts,
+            },
+            status: "ready",
+          }
+        : { bundle: { accounts: [result.value.account], attempts: [] }, status: "ready" },
+    )
+    await refreshAccounts()
+  }
+
+  const handleRefresh = async () => {
+    if (working) return
+    setWorking(true)
+    setImportError(null)
+    await refreshAccounts()
+    setWorking(false)
+  }
+
+  const handleDisconnect = async (providerAccountRef: string) => {
+    if (working) return
+    setWorking(true)
+    const result = await disconnectKhalaMobileClaudeAccount(baseUrl, token, providerAccountRef)
+    if (result.ok || (!result.ok && result.kind === "not_found")) {
+      setState(current =>
+        current.status === "ready"
+          ? {
+              bundle: {
+                accounts: current.bundle.accounts.filter(
+                  account => account.providerAccountRef !== providerAccountRef,
+                ),
+                attempts: current.bundle.attempts,
+              },
+              status: "ready",
+            }
+          : current,
+      )
+    }
+    await refreshAccounts()
+    setWorking(false)
+  }
+
+  return (
+    <SectionCard heading="Claude accounts">
+      {state.status === "loading" ? (
+        <Text size="xs" style={themed($dim)} text="Loading Claude accounts…" />
+      ) : state.status === "unavailable" ? (
+        <>
+          <Text size="xs" style={themed($dim)} text="Claude account status is unavailable." />
+          <Button preset="filled" text="Retry" disabled={working} onPress={() => void handleRefresh()} />
+        </>
+      ) : (
+        <>
+          {state.bundle.accounts.length === 0 ? (
+            <Text size="xs" style={themed($dim)} text="No Claude account connected." />
+          ) : (
+            state.bundle.accounts.map(account => (
+              <View key={account.providerAccountRef} style={themed($codexAccountRow)}>
+                <View style={themed($codexAccountText)}>
+                  <Text size="sm" text={claudeAccountTitle(account)} />
+                  <Text
+                    size="xs"
+                    style={
+                      account.readiness === "ready"
+                        ? themed($success)
+                        : account.readiness === "account_exhausted" || account.readiness === "account_rate_limited"
+                          ? { color: theme.colors.error }
+                          : themed($dim)
+                    }
+                    text={`${claudeReadinessLabel(account.readiness)} · ${claudeQuotaLabel(account.quotaState)}`}
+                  />
+                </View>
+                <Button
+                  preset="default"
+                  text="Disconnect"
+                  disabled={working}
+                  onPress={() => void handleDisconnect(account.providerAccountRef)}
+                />
+              </View>
+            ))
+          )}
+          <Text
+            size="xs"
+            style={themed($faint)}
+            text="On a computer run claude setup-token, then paste the token below."
+          />
+          <TextField
+            autoCapitalize="none"
+            autoCorrect={false}
+            label="Claude token"
+            onChangeText={setTokenDraft}
+            placeholder="CLAUDE_CODE_OAUTH_TOKEN"
+            secureTextEntry
+            value={tokenDraft}
+          />
+          <TextField
+            autoCapitalize="none"
+            autoCorrect={false}
+            label="Label (optional)"
+            onChangeText={setLabelDraft}
+            placeholder="Personal Claude"
+            value={labelDraft}
+          />
+          {importError === null ? null : (
+            <Text size="xs" style={{ color: theme.colors.error }} text={importError} />
+          )}
+          <Button
+            preset="filled"
+            text="Connect Claude"
+            disabled={working || tokenDraft.trim() === ""}
+            onPress={() => void handleConnect()}
+          />
           <Button preset="default" text="Refresh" disabled={working} onPress={() => void handleRefresh()} />
         </>
       )}
@@ -601,6 +793,7 @@ export const SettingsScreen = ({ navigation }: SettingsScreenProps) => {
       <View style={themed($body)}>
         <AccountSection />
         <CodexAccountsSection />
+        <ClaudeAccountsSection />
         <CreditsSection onViewHistory={() => navigation.navigate("Main", { screen: "CreditsHistory" })} />
         <ModelsSection />
         <NotificationsSection />

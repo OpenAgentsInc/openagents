@@ -520,6 +520,10 @@ describe('provider api key connect route dispatch', () => {
         'mobileCodexDeviceStatus',
         calls,
       ),
+      handleMobileClaudeAccountDisconnectApi: stub(
+        'mobileClaudeDisconnect',
+        calls,
+      ),
     })
 
   const ctx = {
@@ -683,5 +687,25 @@ describe('provider api key connect route dispatch', () => {
       'mobileCodexDeviceStatus',
       'mobileCodexDisconnect',
     ])
+  })
+
+  test('routes mobile Claude account disconnect path to mobile handlers (CX-5)', async () => {
+    const calls: Array<string> = []
+    const router = makeRouter(calls)
+
+    const effect = router.routeProviderAccountRequest(
+      new Request(
+        'https://openagents.com/api/mobile/claude-accounts/provider-account_claude/disconnect',
+        { method: 'POST' },
+      ),
+      {},
+      ctx,
+    )
+
+    expect(effect).toBeDefined()
+    if (effect !== undefined) {
+      await Effect.runPromise(effect)
+    }
+    expect(calls).toEqual(['mobileClaudeDisconnect'])
   })
 })

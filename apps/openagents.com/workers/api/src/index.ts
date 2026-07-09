@@ -250,6 +250,8 @@ import {
 } from './mobile-credits-routes'
 import {
   makeProviderAccountMobileHandlers,
+  MOBILE_CLAUDE_ACCOUNTS_PATH,
+  MOBILE_CLAUDE_LOCAL_AUTH_IMPORT_PATH,
   MOBILE_CODEX_ACCOUNTS_PATH,
   MOBILE_CODEX_DEVICE_LOGIN_START_PATH,
 } from './provider-account-mobile-routes'
@@ -7451,6 +7453,27 @@ const storeConnectedClaudeAuth =
 const storeConnectedClaudeAuthForWorkerEnv = (env: OpenAgentsWorkerEnv) =>
   storeConnectedClaudeAuth(env)
 
+const deleteConnectedClaudeAuth = async (
+  env: AuthKvEnv,
+  input: Readonly<{
+    ownerUserId: string
+    providerAccountRef: string
+  }>,
+): Promise<boolean> => {
+  await authKvStoreForEnv(env).delete(
+    providerAuthSecretKey(input.providerAccountRef),
+  )
+  return true
+}
+
+const deleteConnectedClaudeAuthForWorkerEnv = (
+  env: OpenAgentsWorkerEnv,
+  input: Readonly<{
+    ownerUserId: string
+    providerAccountRef: string
+  }>,
+) => deleteConnectedClaudeAuth(env, input)
+
 type ProviderAccountTokenCustodyEnv = AuthKvEnv &
   ProviderTokenCustodyKeyEnv &
   Readonly<{
@@ -8824,10 +8847,12 @@ const providerAccountPylonHandlers =
   })
 
 const providerAccountMobileHandlers = makeProviderAccountMobileHandlers({
+  deleteConnectedClaudeAuth: deleteConnectedClaudeAuthForWorkerEnv,
   deleteConnectedCodexAuth: deleteConnectedCodexAuthForWorkerEnv,
   deleteStartedCodexDeviceLogin,
   readStartedCodexDeviceLogin,
   requireUserBearerSession,
+  storeConnectedClaudeAuth: storeConnectedClaudeAuthForWorkerEnv,
   storeConnectedCodexAuth: storeConnectedCodexAuthForWorkerEnv,
   storeStartedCodexDeviceLogin,
   userIdFromSession: session => session.user.userId,
@@ -9046,6 +9071,20 @@ const providerAccountRoutes = makeProviderAccountRoutes({
         env,
         ctx,
         attemptId,
+      ),
+    ),
+  handleMobileClaudeAccountDisconnectApi: (
+    request,
+    env,
+    ctx,
+    providerAccountRef,
+  ) =>
+    routeEffect('handle_mobile_claude_account_disconnect_api', () =>
+      providerAccountMobileHandlers.handleMobileClaudeAccountDisconnectApi(
+        request,
+        env,
+        ctx,
+        providerAccountRef,
       ),
     ),
   handlePylonProviderDeviceLoginStartApi: (request, env) =>
@@ -13307,6 +13346,30 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     handler: (request, env, ctx) =>
       Effect.promise(() =>
         providerAccountMobileHandlers.handleMobileCodexDeviceLoginStartApi(
+          request,
+          env,
+          ctx,
+        ),
+      ),
+  },
+  {
+    // CX-5 (#8549): mobile Claude accounts list (anthropic_claude only).
+    path: MOBILE_CLAUDE_ACCOUNTS_PATH,
+    handler: (request, env, ctx) =>
+      Effect.promise(() =>
+        providerAccountMobileHandlers.handleMobileClaudeAccountsListApi(
+          request,
+          env,
+          ctx,
+        ),
+      ),
+  },
+  {
+    // CX-5 (#8549): mobile paste-token import of CLAUDE_CODE_OAUTH_TOKEN.
+    path: MOBILE_CLAUDE_LOCAL_AUTH_IMPORT_PATH,
+    handler: (request, env, ctx) =>
+      Effect.promise(() =>
+        providerAccountMobileHandlers.handleMobileClaudeLocalAuthImportApi(
           request,
           env,
           ctx,

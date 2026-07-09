@@ -154,6 +154,12 @@ type ProviderAccountRouteDependencies<Bindings = OpenAgentsEnv> = Readonly<{
     ctx: ExecutionContext,
     attemptId: string,
   ) => RouteEffect
+  handleMobileClaudeAccountDisconnectApi: (
+    request: Request,
+    env: Bindings,
+    ctx: ExecutionContext,
+    providerAccountRef: string,
+  ) => RouteEffect
 }>
 
 export const makeProviderAccountRoutes = <Bindings = OpenAgentsEnv>(
@@ -472,6 +478,26 @@ export const makeProviderAccountRoutes = <Bindings = OpenAgentsEnv>(
       if (providerAccountRef !== undefined) {
         return routeEffectOrResponse(
           dependencies.handleMobileCodexAccountDisconnectApi(
+            request,
+            env,
+            ctx,
+            providerAccountRef,
+          ),
+        )
+      }
+    }
+
+    const mobileClaudeAccountDisconnectMatch =
+      /^\/api\/mobile\/claude-accounts\/([^/]+)\/disconnect$/.exec(
+        url.pathname,
+      )
+
+    if (mobileClaudeAccountDisconnectMatch !== null) {
+      const providerAccountRef = mobileClaudeAccountDisconnectMatch[1]
+
+      if (providerAccountRef !== undefined) {
+        return routeEffectOrResponse(
+          dependencies.handleMobileClaudeAccountDisconnectApi(
             request,
             env,
             ctx,

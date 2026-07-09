@@ -1044,6 +1044,20 @@ export const filterMobileVisibleProviderAccountBundle = (
   }
 }
 
+/**
+ * CX-5 (#8549): provider-scoped mobile list projection. Codex and Claude share
+ * the same visibility rules (connected / in-progress pending only) but must
+ * never render each other's accounts in the wrong Settings section.
+ */
+export const filterMobileProviderAccountBundleForProvider = (
+  bundle: ProviderAccountBundle,
+  provider: ProviderAccountProvider,
+): ProviderAccountBundle =>
+  filterMobileVisibleProviderAccountBundle({
+    accounts: bundle.accounts.filter(account => account.provider === provider),
+    attempts: bundle.attempts.filter(attempt => attempt.provider === provider),
+  })
+
 export const normalizeAccountLabel = (
   value: string | undefined,
 ): string | null => sanitizeProviderAccountText(value, 120) ?? null

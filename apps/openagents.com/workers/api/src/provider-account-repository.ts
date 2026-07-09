@@ -721,11 +721,13 @@ export const makeD1ProviderAccountRepository = (
   ) => {
     const account = await db
       .prepare(
+        // CX-5 (#8549): disconnect is provider-agnostic. Ownership is scoped by
+        // user_id + provider_account_ref; filtering to chatgpt_codex alone
+        // blocked Claude (and any non-Codex) mobile/browser disconnect.
         `SELECT *
          FROM provider_accounts
          WHERE user_id = ?
            AND provider_account_ref = ?
-           AND provider = 'chatgpt_codex'
            AND deleted_at IS NULL`,
       )
       .bind(userId, providerAccountRef)

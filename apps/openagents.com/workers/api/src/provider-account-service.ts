@@ -905,11 +905,10 @@ export const connectClaudeLocalAuthForUser = async (
     })
   }
 
-  const reusableAccount =
-    requestedProviderAccountRef !== undefined || input.createNew === true
-      ? undefined
-      : await repository.findReusableAccount(input.userId)
-  const previous = explicitAccount ?? reusableAccount
+  // Claude does not share the Codex reusable-slot query (`findReusableAccount`
+  // is still chatgpt_codex-only). Reuse only an explicit Claude ref; otherwise
+  // always mint a new account so we never re-label a Codex row as Claude.
+  const previous = explicitAccount
   const providerAccountRef =
     previous?.providerAccountRef ?? `provider-account_${makeId('ref')}`
   const secretRef = await storeConnectedAuth({
