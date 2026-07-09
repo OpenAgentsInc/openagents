@@ -36,6 +36,7 @@ import {
   planCatalog,
   promiseLookup,
 } from "../services/ecosystem-tools.ts"
+import { startSarahCodingFleetRun } from "../services/coding-fleet.ts"
 import { buildCustomerBlueprintDraft } from "../services/customer-blueprint.ts"
 import { getSarahRealtimeInstructions } from "../services/sarah-instructions.ts"
 import {
@@ -59,6 +60,7 @@ export type OwnedSarahTurnInput = {
   message: string
   threadId?: string
   prospectRef?: string
+  ownerRef?: string
   toolCall?: { toolName: string; args: unknown; toolCallId?: string }
 }
 
@@ -101,7 +103,7 @@ async function loadPersona(): Promise<string> {
 async function runTool(
   toolName: string,
   args: unknown,
-  context: { prospectRef?: string } = {},
+  context: { ownerRef?: string; prospectRef?: string } = {},
 ): Promise<{ ok: boolean; output: unknown }> {
   try {
     switch (toolName) {
@@ -166,6 +168,15 @@ async function runTool(
         const result = await buildCustomerBlueprintDraft(prospectRef)
         return { ok: result.ok, output: result }
       }
+      // FC-1A (#8637): authenticated owner-only coding fleet admission
+      // contract. The production route validates public-safe args but fails
+      // closed until a real durable fleet-run authority is injected.
+      case "coding_fleet_start": {
+        const result = await startSarahCodingFleetRun(args, {
+          ownerRef: context.ownerRef,
+        })
+        return { ok: result.ok, output: result }
+      }
       default:
         return {
           ok: false,
@@ -198,6 +209,7 @@ export async function runOwnedSarahTurn(
     toolCallId = `tool.${crypto.randomUUID()}`,
   ) => {
     const result = await runTool(toolName, args, {
+      ...(input.ownerRef ? { ownerRef: input.ownerRef } : {}),
       ...(input.prospectRef ? { prospectRef: input.prospectRef } : {}),
     })
     const recorded = {
@@ -381,4 +393,5 @@ export const SARAH_OWNED_TOOL_INVENTORY = [
   "live_stats",
   "plan_catalog",
   "customer_blueprint_draft",
+  "coding_fleet_start",
 ] as const

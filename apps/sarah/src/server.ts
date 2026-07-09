@@ -500,6 +500,10 @@ async function handleEveToolCall(request: Request): Promise<Response> {
     prospectRef = mintSarahProspectRef()
     mintedCookie = true
   }
+  const ownerSession =
+    body.toolName === "coding_fleet_start"
+      ? await resolveOpenAgentsSession(request)
+      : null
   const result = await runOwnedSarahTurn({
     message: "",
     toolCall: {
@@ -507,6 +511,7 @@ async function handleEveToolCall(request: Request): Promise<Response> {
       args: body.args ?? {},
       toolCallId: body.toolCallId,
     },
+    ...(ownerSession ? { ownerRef: ownerSession.userId } : {}),
     prospectRef,
   })
   const response = json(result)
