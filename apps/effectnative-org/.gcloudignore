@@ -1,0 +1,7 @@
+# Explicit .gcloudignore so `gcloud run deploy --source` does NOT fall back
+# to .gitignore (which excludes site/ — the artifact we must upload).
+.gcloudignore
+.git
+.gitignore
+scripts/
+README.md
