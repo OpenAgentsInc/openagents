@@ -26,4 +26,5 @@
 export * as Shared from "./shared/index.js"
 export * as Custody from "./custody/index.js"
 export * as Executor from "./executor/index.js"
+export * as Presence from "./presence/index.js"
 export * as Rpc from "./rpc/index.js"

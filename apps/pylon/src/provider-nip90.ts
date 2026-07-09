@@ -51,10 +51,21 @@ import {
   type LaborRuntime,
   type LaborWorkspace,
 } from "./labor.js"
+// #8578 (PY-1): the lane-ref/relay/capability-ref helpers below are the
+// single source of truth in `@openagentsinc/pylon-core/presence`, which
+// `presence.ts` depends on directly. Re-export (don't redefine) so both
+// modules stay in sync.
+import {
+  OPENAGENTS_MARKET_RELAY_URL,
+  PYLON_NIP90_PROVIDER_CAPABILITY_REF,
+  providerNip90LaneRefs,
+  providerSupportedKinds,
+  relaysFromEnv,
+} from "@openagentsinc/pylon-core/presence/nip90-lane-refs"
+
+export { OPENAGENTS_MARKET_RELAY_URL, PYLON_NIP90_PROVIDER_CAPABILITY_REF, providerNip90LaneRefs, relaysFromEnv }
 
 export const NIP89_HANDLER_INFO_KIND = 31990
-export const OPENAGENTS_MARKET_RELAY_URL = "wss://relay.openagents.com"
-export const PYLON_NIP90_PROVIDER_CAPABILITY_REF = "capability.public.pylon.nip90.text_inference.v0.3"
 export const DEFAULT_PROVIDER_PRICE_MSATS = 1_000
 export const DEFAULT_PROVIDER_REQUEST_TTL_SECONDS = 365 * 24 * 60 * 60
 export const DEFAULT_PROVIDER_MAX_INFLIGHT = 1
@@ -327,31 +338,6 @@ export function buildProviderReqFilters(input: {
       limit: input.limit ?? 64,
     },
   ]
-}
-
-function providerSupportedKinds() {
-  return [
-    KIND_JOB_TEXT_GENERATION,
-    KIND_JOB_LABOR_CODE_TASK,
-    KIND_JOB_LABOR_REVIEW,
-    KIND_JOB_LABOR_DOCUMENT_WORK,
-  ] as const
-}
-
-const providerNip90LaneLabels: Record<number, string> = {
-  [KIND_JOB_TEXT_GENERATION]: "text_generation",
-  [KIND_JOB_LABOR_CODE_TASK]: "labor_code_task",
-  [KIND_JOB_LABOR_REVIEW]: "labor_review",
-  [KIND_JOB_LABOR_DOCUMENT_WORK]: "labor_document_work",
-}
-
-// #4864: the public-safe lane refs this provider declares in registration
-// and heartbeat presence writes, matching the NIP-90 kinds the provider
-// loop subscribes to and announces via NIP-89 handler info.
-export function providerNip90LaneRefs(): string[] {
-  return providerSupportedKinds().map(
-    (kind) => `lane.public.nip90.${kind}.${providerNip90LaneLabels[kind]}`,
-  )
 }
 
 function firstTagValue(tags: ReadonlyArray<readonly string[]>, name: string) {
@@ -1043,11 +1029,6 @@ async function makeAppleFmProviderRuntime(): Promise<ProviderTextRuntime> {
       }
     },
   }
-}
-
-export function relaysFromEnv(env: NodeJS.ProcessEnv = process.env): string[] {
-  const raw = env.PYLON_NIP90_RELAYS ?? env.OPENAGENTS_MARKET_RELAY_URL ?? OPENAGENTS_MARKET_RELAY_URL
-  return raw.split(",").map((relay) => relay.trim()).filter(Boolean)
 }
 
 export function policyFromEnv(env: NodeJS.ProcessEnv = process.env): ProviderAdmissionPolicy {
