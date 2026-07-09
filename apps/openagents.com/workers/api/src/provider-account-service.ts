@@ -31,6 +31,7 @@ import {
   type ResolvedProviderAccountGrant,
   type StartCodexDeviceLogin,
   type StartDeviceLoginInput,
+  type StoreConnectedClaudeAuth,
   type StoreConnectedCodexAuth,
   type StoreStartedCodexDeviceLogin,
   addMilliseconds,
@@ -812,6 +813,175 @@ export const connectChatGptCodexLocalAuthForUser = async (
     targetRef: providerAccountRef,
     metadata: {
       source: 'pylon_local_codex_auth',
+      status: 'connected',
+    },
+    actorId: input.userId,
+    sourceRefs: [`actor:${input.userId}`, `attempt:${attempt.id}`],
+    createdAt: now,
+  })
+
+  await repository.saveStartedDeviceLogin(account, attempt, event, previous !== undefined)
+
+  return {
+    account: toPublicProviderAccount(account, [attempt], nowDate),
+    attempt: toPublicProviderConnectionAttempt(attempt, account, nowDate),
+    providerAccountRef,
+    generatedAt: now,
+  }
+}
+
+/**
+ * CX-5 (#8549): local-auth/import custody write for a Claude subscription
+ * account — the write-side counterpart to `handlePylonProviderClaudeAuthMaterialApi`
+ * (the broker READ that CX-5's first pass landed). Mirrors
+ * `connectChatGptCodexLocalAuthForUser` exactly, generalized for Claude Code's
+ * simpler credential shape: the owner runs `claude setup-token` locally
+ * (never `claude login` against a live default session — same custody
+ * discipline as Codex's `codex login --device-auth`) and imports the
+ * resulting long-lived `CLAUDE_CODE_OAUTH_TOKEN` bearer string, which has no
+ * access/refresh/expires triple to normalize or refresh, unlike
+ * `CodexOAuthAuth`.
+ */
+export const connectClaudeLocalAuthForUser = async (
+  repository: ProviderAccountRepository,
+  input: Readonly<{
+    userId: string
+    authContentValue: string
+    accountLabel?: string | undefined
+    createNew?: boolean | undefined
+    providerAccountRef?: string | undefined
+  }>,
+  storeConnectedAuth: StoreConnectedClaudeAuth,
+  options: Readonly<{
+    now?: () => Date
+    makeId?: IdFactory
+  }> = {},
+): Promise<
+  Readonly<{
+    account: PublicProviderAccount
+    attempt: PublicProviderConnectionAttempt
+    providerAccountRef: string
+    generatedAt: string
+  }>
+> => {
+  const authContentValue = input.authContentValue.trim()
+  if (authContentValue === '') {
+    throw new ProviderAccountCredentialMaterial({
+      fieldName: 'auth.authContentValue',
+      message: 'Claude local auth material is missing a required field.',
+    })
+  }
+
+  const runtime = { ...systemProviderAccountRuntime, ...options }
+  const nowDate = runtime.now()
+  const now = nowDate.toISOString()
+  const makeId = runtime.makeId
+  const requestedProviderAccountRef = normalizeProviderAccountRef(
+    input.providerAccountRef,
+  )
+  const explicitAccount =
+    requestedProviderAccountRef === undefined
+      ? undefined
+      : await repository.findAccountByRef(
+          input.userId,
+          requestedProviderAccountRef,
+        )
+
+  if (
+    requestedProviderAccountRef !== undefined &&
+    explicitAccount === undefined
+  ) {
+    throw new ProviderAccountNotFound({
+      message: 'Provider account not found.',
+    })
+  }
+
+  if (
+    explicitAccount !== undefined &&
+    explicitAccount.provider !== ANTHROPIC_CLAUDE_PROVIDER
+  ) {
+    throw new ProviderAccountRefMismatch({
+      message: 'Provider account ref belongs to a different provider.',
+    })
+  }
+
+  const reusableAccount =
+    requestedProviderAccountRef !== undefined || input.createNew === true
+      ? undefined
+      : await repository.findReusableAccount(input.userId)
+  const previous = explicitAccount ?? reusableAccount
+  const providerAccountRef =
+    previous?.providerAccountRef ?? `provider-account_${makeId('ref')}`
+  const secretRef = await storeConnectedAuth({
+    ownerUserId: input.userId,
+    providerAccountRef,
+    authContentValue,
+  })
+  const accountLabel =
+    normalizeAccountLabel(input.accountLabel) ?? previous?.accountLabel ?? null
+  const account: ProviderAccountRecord = {
+    id: previous?.id ?? makeId('provider_account'),
+    userId: input.userId,
+    teamId: previous?.teamId ?? null,
+    provider: ANTHROPIC_CLAUDE_PROVIDER,
+    authMode: 'claude_local_auth',
+    status: 'connected',
+    health: 'healthy',
+    providerAccountRef,
+    secretRef,
+    accountLabel,
+    planType: previous?.planType ?? null,
+    connectedAt: now,
+    disconnectedAt: null,
+    deniedAt: null,
+    lastStatusAt: now,
+    metadataJson: providerAccountPublicMetadataJson({
+      providerAccountRef,
+      source: 'pylon_local_claude_auth',
+      status: 'connected',
+      ...(accountLabel === null ? {} : { accountLabel }),
+      ...(previous?.planType === null || previous?.planType === undefined
+        ? {}
+        : { planType: previous.planType }),
+    }),
+    createdAt: previous?.createdAt ?? now,
+    updatedAt: now,
+    deletedAt: null,
+  }
+  const attempt: ProviderConnectionAttemptRecord = {
+    id: makeId('provider_attempt'),
+    providerAccountId: account.id,
+    userId: input.userId,
+    teamId: account.teamId,
+    provider: ANTHROPIC_CLAUDE_PROVIDER,
+    method: 'claude_local_auth',
+    source: 'pylon_local_claude_auth',
+    loginRef: null,
+    verificationUrl: null,
+    userCode: null,
+    status: 'connected',
+    expiresAt: now,
+    completedAt: now,
+    failedAt: null,
+    metadataJson: providerAccountPublicMetadataJson({
+      providerAccountRef,
+      source: 'pylon_local_claude_auth',
+      status: 'connected',
+    }),
+    createdAt: now,
+    updatedAt: now,
+  }
+  const event = makeEvent({
+    id: makeId('provider_event'),
+    kind: 'login_connected',
+    providerAccountId: account.id,
+    userId: input.userId,
+    teamId: account.teamId,
+    summary:
+      'Anthropic Claude account connected from a linked Pylon local Claude login.',
+    targetRef: providerAccountRef,
+    metadata: {
+      source: 'pylon_local_claude_auth',
       status: 'connected',
     },
     actorId: input.userId,

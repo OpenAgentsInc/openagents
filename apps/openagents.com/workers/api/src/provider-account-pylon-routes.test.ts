@@ -703,4 +703,142 @@ describe('provider account Pylon device-login routes', () => {
     expect(responseText).not.toContain('refresh-secret')
     expect(responseText).not.toContain('id-secret')
   })
+
+  test('imports local Claude auth under the linked OpenAuth owner without echoing credentials', async () => {
+    const token = 'oa_agent_claude_import_token'
+    const repository = new MemoryProviderAccountRepository()
+    const connectedAuth: Array<{
+      authContentValue: string
+      providerAccountRef: string
+    }> = []
+    const handlers = makeProviderAccountPylonHandlers({
+      agentStore: () => agentStoreFor(token, 'openauth-user-owner'),
+      deleteStartedCodexDeviceLogin: () => () => Promise.resolve(),
+      makeProviderAccountRepository: () => repository,
+      nowIso: () => '2026-06-25T12:00:00.000Z',
+      readConnectedCodexAuthMaterial: () => Promise.resolve(undefined),
+      readStartedCodexDeviceLogin: () => () => Promise.resolve(undefined),
+      storeConnectedClaudeAuth: () => input => {
+        connectedAuth.push(input)
+
+        return Promise.resolve(
+          `provider-account://anthropic-claude/user-oauth-token/${input.providerAccountRef}`,
+        )
+      },
+      storeConnectedCodexAuth: () => () => Promise.resolve('codex-auth://unused'),
+      storeStartedCodexDeviceLogin: () => () => Promise.resolve(),
+    })
+
+    const response =
+      await handlers.handlePylonProviderLocalClaudeAuthImportApi(
+        new Request(
+          'https://openagents.com/api/pylon/provider-accounts/anthropic-claude/local-auth/import',
+          {
+            method: 'POST',
+            headers: {
+              authorization: `Bearer ${token}`,
+              'content-type': 'application/json',
+            },
+            body: JSON.stringify({
+              accountLabel: 'claude',
+              createNew: true,
+              authContentValue: 'sk-ant-oat-claude-secret',
+            }),
+          },
+        ),
+        env(),
+      )
+    const body = (await response.json()) as {
+      account: { providerAccountRef: string; status: string }
+      attempt: { id: string; status: string }
+      pylonLink: { owner: string; status: string }
+    }
+    const responseText = JSON.stringify(body)
+
+    expect(response.status).toBe(201)
+    expect(body.account.status).toBe('connected')
+    expect(body.attempt.status).toBe('connected')
+    expect(body.pylonLink).toEqual({ owner: 'openauth', status: 'linked' })
+    expect(repository.accounts[0]?.userId).toBe('openauth-user-owner')
+    expect(repository.accounts[0]?.provider).toBe('anthropic_claude')
+    expect(repository.accounts[0]?.authMode).toBe('claude_local_auth')
+    expect(repository.accounts[0]?.status).toBe('connected')
+    expect(repository.attempts[0]?.method).toBe('claude_local_auth')
+    expect(repository.attempts[0]?.source).toBe('pylon_local_claude_auth')
+    expect(connectedAuth).toHaveLength(1)
+    expect(connectedAuth[0]?.providerAccountRef).toBe(
+      body.account.providerAccountRef,
+    )
+    expect(connectedAuth[0]?.authContentValue).toBe('sk-ant-oat-claude-secret')
+    expect(responseText).not.toContain('sk-ant-oat-claude-secret')
+  })
+
+  test('rejects local Claude auth import missing the OAuth token', async () => {
+    const token = 'oa_agent_claude_import_missing_token'
+    const repository = new MemoryProviderAccountRepository()
+    const handlers = makeProviderAccountPylonHandlers({
+      agentStore: () => agentStoreFor(token, 'openauth-user-owner'),
+      deleteStartedCodexDeviceLogin: () => () => Promise.resolve(),
+      makeProviderAccountRepository: () => repository,
+      readConnectedCodexAuthMaterial: () => Promise.resolve(undefined),
+      readStartedCodexDeviceLogin: () => () => Promise.resolve(undefined),
+      storeConnectedClaudeAuth: () => () =>
+        Promise.resolve('provider-account://anthropic-claude/user-oauth-token/unused'),
+      storeConnectedCodexAuth: () => () => Promise.resolve('codex-auth://unused'),
+      storeStartedCodexDeviceLogin: () => () => Promise.resolve(),
+    })
+
+    const response =
+      await handlers.handlePylonProviderLocalClaudeAuthImportApi(
+        new Request(
+          'https://openagents.com/api/pylon/provider-accounts/anthropic-claude/local-auth/import',
+          {
+            method: 'POST',
+            headers: {
+              authorization: `Bearer ${token}`,
+              'content-type': 'application/json',
+            },
+            body: JSON.stringify({}),
+          },
+        ),
+        env(),
+      )
+    const body = (await response.json()) as { error: string }
+
+    expect(response.status).toBe(400)
+    expect(body.error).toBe('provider_local_claude_auth_import_failed')
+    expect(repository.accounts).toHaveLength(0)
+  })
+
+  test('fails closed when Claude local auth import is not configured', async () => {
+    const token = 'oa_agent_claude_import_not_configured'
+    const handlers = makeProviderAccountPylonHandlers({
+      agentStore: () => agentStoreFor(token, 'openauth-user-owner'),
+      deleteStartedCodexDeviceLogin: () => () => Promise.resolve(),
+      readConnectedCodexAuthMaterial: () => Promise.resolve(undefined),
+      readStartedCodexDeviceLogin: () => () => Promise.resolve(undefined),
+      storeConnectedCodexAuth: () => () => Promise.resolve('codex-auth://unused'),
+      storeStartedCodexDeviceLogin: () => () => Promise.resolve(),
+    })
+
+    const response =
+      await handlers.handlePylonProviderLocalClaudeAuthImportApi(
+        new Request(
+          'https://openagents.com/api/pylon/provider-accounts/anthropic-claude/local-auth/import',
+          {
+            method: 'POST',
+            headers: {
+              authorization: `Bearer ${token}`,
+              'content-type': 'application/json',
+            },
+            body: JSON.stringify({ authContentValue: 'sk-ant-oat-unused' }),
+          },
+        ),
+        env(),
+      )
+    const body = (await response.json()) as { error: string }
+
+    expect(response.status).toBe(501)
+    expect(body.error).toBe('claude_local_auth_import_not_configured')
+  })
 })

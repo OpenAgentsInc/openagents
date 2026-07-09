@@ -72,6 +72,7 @@ export const ProviderAccountAuthMode = S.Literals([
   'codex_device_auth',
   'manual_secret_ref',
   'api_key',
+  'claude_local_auth',
 ])
 export type ProviderAccountAuthMode = typeof ProviderAccountAuthMode.Type
 
@@ -79,6 +80,7 @@ export const ProviderConnectionAttemptMethod = S.Literals([
   'chatgpt_device_code',
   'codex_device_auth',
   'provider_api_key',
+  'claude_local_auth',
 ])
 export type ProviderConnectionAttemptMethod =
   typeof ProviderConnectionAttemptMethod.Type
@@ -89,6 +91,7 @@ export const ProviderConnectionAttemptSource = S.Literals([
   'manual_placeholder',
   'browser_api_key',
   'pylon_local_codex_auth',
+  'pylon_local_claude_auth',
 ])
 export type ProviderConnectionAttemptSource =
   typeof ProviderConnectionAttemptSource.Type

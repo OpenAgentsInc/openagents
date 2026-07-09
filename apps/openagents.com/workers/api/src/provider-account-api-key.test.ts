@@ -484,6 +484,10 @@ describe('provider api key connect route dispatch', () => {
         'pylonLocalCodexAuthImport',
         calls,
       ),
+      handlePylonProviderLocalClaudeAuthImportApi: stub(
+        'pylonLocalClaudeAuthImport',
+        calls,
+      ),
       handlePylonOpenAgentsAuthStartApi: stub(
         'pylonOpenAgentsAuthStart',
         calls,

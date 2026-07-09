@@ -21,9 +21,11 @@ import {
   type ProviderAccountRepository,
   type ReadStartedCodexDeviceLogin,
   type StartCodexDeviceLogin,
+  type StoreConnectedClaudeAuth,
   type StoreConnectedCodexAuth,
   type StoreStartedCodexDeviceLogin,
   connectChatGptCodexLocalAuthForUser,
+  connectClaudeLocalAuthForUser,
   makeD1ProviderAccountRepository,
   pollOpenAiCodexDeviceLogin,
   refreshChatGptCodexDeviceLoginForUser,
@@ -82,6 +84,14 @@ type ProviderAccountPylonDependencies<
   readStartedCodexDeviceLogin: (kv: AuthKvStore) => ReadStartedCodexDeviceLogin
   startDeviceLogin?: StartCodexDeviceLogin
   storeConnectedCodexAuth: (env: Bindings) => StoreConnectedCodexAuth
+  /**
+   * CX-5 (#8549): optional so existing (pre-CX-5) callers/tests that never
+   * touch the Claude local-auth/import route keep compiling unchanged —
+   * mirrors how `readConnectedClaudeAuthMaterial` was landed optional above.
+   * `handlePylonProviderLocalClaudeAuthImportApi` fails closed with a typed
+   * `claude_local_auth_import_not_configured` response when this is absent.
+   */
+  storeConnectedClaudeAuth?: (env: Bindings) => StoreConnectedClaudeAuth
   storeStartedCodexDeviceLogin: (
     kv: AuthKvStore,
   ) => StoreStartedCodexDeviceLogin
@@ -163,6 +173,20 @@ const optionalSecretString = (
   return typeof value === 'string' && value.trim() !== ''
     ? value
     : undefined
+}
+
+/** CX-5 (#8549): Claude's single-string bearer analogue of `requiredSecretString`. */
+const requiredClaudeAuthContentValue = (
+  record: Record<string, unknown>,
+): string => {
+  const value = record.authContentValue
+  if (typeof value !== 'string' || value.trim() === '') {
+    throw new ProviderAccountCredentialMaterial({
+      fieldName: 'authContentValue',
+      message: 'Claude local auth material is missing a required field.',
+    })
+  }
+  return value
 }
 
 const codexOAuthAuthFromBody = (
@@ -525,6 +549,90 @@ export const makeProviderAccountPylonHandlers = <
       return noStoreJsonResponse(
         {
           error: 'provider_local_codex_auth_import_failed',
+          message: providerAccountRouteErrorMessage(error),
+        },
+        { status: providerAccountRouteErrorStatus(error, 400) },
+      )
+    }
+  },
+
+  /**
+   * CX-5 (#8549): the write-side counterpart to
+   * `handlePylonProviderClaudeAuthMaterialApi` (the broker read CX-5's first
+   * pass landed). Imports a `CLAUDE_CODE_OAUTH_TOKEN` the owner obtained
+   * locally via `claude setup-token` — never a live `~/.claude` session read
+   * or a `claude login` invocation from this route — mirroring
+   * `handlePylonProviderLocalCodexAuthImportApi`'s local-auth/import shape
+   * for Codex, generalized to Claude's single-secret credential.
+   */
+  handlePylonProviderLocalClaudeAuthImportApi: async (
+    request: Request,
+    env: Bindings,
+  ) => {
+    if (request.method !== 'POST') {
+      return methodNotAllowed(['POST'])
+    }
+
+    const session = await requireAgent(dependencies, request, env)
+    if (session === undefined) {
+      return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
+    }
+
+    const userId = linkedOpenAuthOwnerUserId(session)
+    if (userId === undefined) {
+      return pylonAgentNotLinkedResponse()
+    }
+
+    if (dependencies.storeConnectedClaudeAuth === undefined) {
+      return noStoreJsonResponse(
+        {
+          error: 'claude_local_auth_import_not_configured',
+          message:
+            'Claude local auth import is not configured on this deployment.',
+        },
+        { status: 501 },
+      )
+    }
+
+    const body = await readJsonObject(request).catch(
+      (): Record<string, unknown> => ({}),
+    )
+    const accountLabel = optionalString(body.accountLabel)
+    const createNew = optionalBoolean(body.createNew)
+    const providerAccountRef = optionalString(body.providerAccountRef)
+    const repository = routeProviderAccountRepository(dependencies, env)
+    const storeConnectedClaudeAuth = dependencies.storeConnectedClaudeAuth
+
+    try {
+      const result = await observedPromise(
+        'ProviderAccountPylon.connectClaudeLocalAuthForUser',
+        () =>
+          connectClaudeLocalAuthForUser(
+            repository,
+            {
+              userId,
+              authContentValue: requiredClaudeAuthContentValue(body),
+              ...(accountLabel === undefined ? {} : { accountLabel }),
+              ...(createNew === undefined ? {} : { createNew }),
+              ...(providerAccountRef === undefined
+                ? {}
+                : { providerAccountRef }),
+            },
+            storeConnectedClaudeAuth(env),
+          ),
+      )
+
+      return noStoreJsonResponse(withPylonLinkMetadata(result), { status: 201 })
+    } catch (error) {
+      logWorkerRouteError('pylon_provider_local_claude_auth_import_failed', error, {
+        createNew,
+        errorName: providerAccountRouteErrorName(error),
+        providerAccountRef,
+      })
+
+      return noStoreJsonResponse(
+        {
+          error: 'provider_local_claude_auth_import_failed',
           message: providerAccountRouteErrorMessage(error),
         },
         { status: providerAccountRouteErrorStatus(error, 400) },

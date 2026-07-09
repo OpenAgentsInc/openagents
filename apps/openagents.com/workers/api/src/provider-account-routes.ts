@@ -110,6 +110,10 @@ type ProviderAccountRouteDependencies<Bindings = OpenAgentsEnv> = Readonly<{
     request: Request,
     env: Bindings,
   ) => RouteEffect
+  handlePylonProviderLocalClaudeAuthImportApi: (
+    request: Request,
+    env: Bindings,
+  ) => RouteEffect
   handlePylonOpenAgentsAuthStartApi: (
     request: Request,
     env: Bindings,
@@ -206,6 +210,15 @@ export const makeProviderAccountRoutes = <Bindings = OpenAgentsEnv>(
     ) {
       return routeEffectOrResponse(
         dependencies.handlePylonProviderLocalCodexAuthImportApi(request, env),
+      )
+    }
+
+    if (
+      url.pathname ===
+      '/api/pylon/provider-accounts/anthropic-claude/local-auth/import'
+    ) {
+      return routeEffectOrResponse(
+        dependencies.handlePylonProviderLocalClaudeAuthImportApi(request, env),
       )
     }
 

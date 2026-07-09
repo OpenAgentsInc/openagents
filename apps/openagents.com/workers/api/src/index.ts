@@ -7399,6 +7399,45 @@ const storeConnectedProviderApiKey =
     )
   }
 
+/**
+ * CX-5 (#8549): local-auth/import custody write for a Claude subscription
+ * account's `CLAUDE_CODE_OAUTH_TOKEN`. Reuses the same plain-KV storage shape
+ * `readConnectedClaudeAuthMaterial` already reads (`{ anthropic: { type,
+ * key } }`, the same JSON blob `storeConnectedProviderApiKey` writes for the
+ * unrelated direct-Anthropic-API-key connect flow) — deliberately, since both
+ * are single opaque bearer secrets scoped to one `providerAccountRef`. This
+ * is the WRITE-side counterpart CX-5's first pass left open: it lets a real
+ * connected Claude account exist for `handlePylonProviderClaudeAuthMaterialApi`
+ * (the broker READ) to ever find. Unlike Codex's encrypted, refreshable
+ * token-custody vault (`storeConnectedCodexAuthInCustody`), Claude Code's
+ * long-lived OAuth token has nothing to refresh, so plain KV custody (already
+ * used for the sibling API-key providers) is sufficient here.
+ */
+const storeConnectedClaudeAuth =
+  (env: AuthKvEnv) =>
+  async (
+    input: Readonly<{
+      ownerUserId: string
+      providerAccountRef: string
+      authContentValue: string
+    }>,
+  ): Promise<string> => {
+    const kv = authKvStoreForEnv(env)
+    await kv.put(
+      providerAuthSecretKey(input.providerAccountRef),
+      JSON.stringify({
+        anthropic: {
+          type: 'api_key',
+          key: input.authContentValue,
+        },
+      }),
+    )
+    return `provider-account://anthropic-claude/user-oauth-token/${input.providerAccountRef}`
+  }
+
+const storeConnectedClaudeAuthForWorkerEnv = (env: OpenAgentsWorkerEnv) =>
+  storeConnectedClaudeAuth(env)
+
 type ProviderAccountTokenCustodyEnv = AuthKvEnv &
   ProviderTokenCustodyKeyEnv &
   Readonly<{
@@ -8766,6 +8805,7 @@ const providerAccountPylonHandlers =
     readConnectedClaudeAuthMaterial(authKvStoreForEnv(env), providerAccountRef),
   readConnectedCodexAuthMaterial: readConnectedCodexAuthMaterialForWorkerEnv,
   readStartedCodexDeviceLogin,
+  storeConnectedClaudeAuth: storeConnectedClaudeAuthForWorkerEnv,
   storeConnectedCodexAuth,
   storeStartedCodexDeviceLogin,
   })
@@ -9027,6 +9067,13 @@ const providerAccountRoutes = makeProviderAccountRoutes({
   handlePylonProviderLocalCodexAuthImportApi: (request, env) =>
     routeEffect('handle_pylon_provider_local_codex_auth_import_api', () =>
       providerAccountPylonHandlers.handlePylonProviderLocalCodexAuthImportApi(
+        request,
+        env,
+      ),
+    ),
+  handlePylonProviderLocalClaudeAuthImportApi: (request, env) =>
+    routeEffect('handle_pylon_provider_local_claude_auth_import_api', () =>
+      providerAccountPylonHandlers.handlePylonProviderLocalClaudeAuthImportApi(
         request,
         env,
       ),

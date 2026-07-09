@@ -70,6 +70,7 @@ export type ProviderAccountAuthMode =
   | 'codex_device_auth'
   | 'manual_secret_ref'
   | 'api_key'
+  | 'claude_local_auth'
 
 export type ProviderAccountProvider =
   | typeof CHATGPT_CODEX_PROVIDER
@@ -108,11 +109,13 @@ export type ProviderConnectionAttemptSource =
   | 'manual_placeholder'
   | 'browser_api_key'
   | 'pylon_local_codex_auth'
+  | 'pylon_local_claude_auth'
 
 export type ProviderConnectionAttemptMethod =
   | 'chatgpt_device_code'
   | 'codex_device_auth'
   | 'provider_api_key'
+  | 'claude_local_auth'
 
 export type ProviderAccountEventKind =
   | 'login_connected'
@@ -406,6 +409,21 @@ export type StoreConnectedCodexAuth = (
     ownerUserId: string
     providerAccountRef: string
     auth: CodexOAuthAuth
+  }>,
+) => Promise<string>
+
+/**
+ * CX-5 (#8549): local-auth/import custody write for a `CLAUDE_CODE_OAUTH_TOKEN`
+ * obtained by the owner running `claude setup-token` on their own machine —
+ * the Claude equivalent of `StoreConnectedCodexAuth`. Unlike Codex's
+ * access/refresh/expires triple, Claude Code's long-lived OAuth token is a
+ * single opaque bearer string; there is nothing else to normalize or refresh.
+ */
+export type StoreConnectedClaudeAuth = (
+  input: Readonly<{
+    ownerUserId: string
+    providerAccountRef: string
+    authContentValue: string
   }>,
 ) => Promise<string>
 
