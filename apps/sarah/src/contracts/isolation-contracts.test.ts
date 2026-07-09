@@ -28,10 +28,12 @@ import {
   sarahIsolationContractRegistry,
 } from "./isolation-contracts.ts"
 import {
+  getSarahProspectToolReceipts,
   getSarahProspectCrmProjection,
   getSarahSessionTranscript,
   findSarahProspectByContactEmail,
   recordSarahCrmContact,
+  recordSarahToolReceipt,
   recordSarahTranscriptTurn,
 } from "../services/session-index.ts"
 
@@ -206,6 +208,62 @@ describe("contract sarah.memory_query_scoped.v1 — query-layer scoping", () => 
     expect(transcriptB.map((turn) => turn.text).join("\n")).not.toContain(
       markerA,
     )
+  })
+
+  test("tool receipt reads return only the requested prospect's receipts", async () => {
+    await recordSarahToolReceipt({
+      prospectRef: refA,
+      sessionId: sharedSessionId,
+      threadId: `thread:${refA}`,
+      toolCallId: "tool-alpha",
+      toolName: "human_handoff",
+      result: {
+        ok: true,
+        output: {
+          mode: "dry_run",
+          handoffRef: `sarah.handoff.${markerA}`,
+          message: `Prepared handoff for ${markerA}.`,
+        },
+      },
+    })
+    await recordSarahToolReceipt({
+      prospectRef: refB,
+      sessionId: sharedSessionId,
+      threadId: `thread:${refB}`,
+      toolCallId: "tool-bravo",
+      toolName: "checkout_link_create",
+      result: {
+        ok: true,
+        output: {
+          mode: "dry_run",
+          checkoutRef: `sarah.checkout.${markerB}`,
+          checkoutUrl: "https://openagents.com/business",
+          message: `Prepared checkout for ${markerB}.`,
+        },
+      },
+    })
+
+    const receiptsA = await getSarahProspectToolReceipts({
+      prospectRef: refA,
+      limit: 50,
+    })
+    const textA = JSON.stringify(receiptsA)
+    expect(textA).toContain(markerA)
+    expect(textA).not.toContain(markerB)
+
+    const receiptsB = await getSarahProspectToolReceipts({
+      prospectRef: refB,
+      limit: 50,
+    })
+    const textB = JSON.stringify(receiptsB)
+    expect(textB).toContain(markerB)
+    expect(textB).not.toContain(markerA)
+
+    const unknown = await getSarahProspectToolReceipts({
+      prospectRef: "prospect:iso-unknown",
+      limit: 50,
+    })
+    expect(unknown).toEqual([])
   })
 
   test("an unknown prospect ref returns empty, never another prospect's rows", async () => {

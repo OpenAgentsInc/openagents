@@ -23,7 +23,7 @@ See `apps/openagents.com/packages/effect-native-vendor.json`:
 | D-SARAH-01 | `/sarah` avatar | Host kind `media-video` | shipped upstream v26 (effect-native#67) | vendored v26; `apps/sarah/src/ui` converted | #8624 #8598 |
 | D-SARAH-02 | `/sarah` transcript | Streaming transcript primitive | covered by v17 `Transcript` (effect-native#35 + #26) | vendored v26; `apps/sarah/src/ui` converted off `List`+`Card` | #8624 |
 | D-SARAH-03 | `/sarah` mic | Mic state + audio level | waiting — upstream GAPS row (effect-native#66) | n/a — enters when PTT/level metering lands | #8624 |
-| D-SARAH-04 | `/sarah` cards | Handoff/checkout/receipt cards | waiting — upstream GAPS row (effect-native#66); `Card`+`Text`+`Button` composition is the honest interim | n/a | #8624 |
+| D-SARAH-04 | `/sarah` cards | Handoff/checkout/receipt cards | waiting — upstream GAPS row (effect-native#66); `Card`+`Text`+`Button` composition is the honest interim and BM-4 uses it for Actions + Code/Receipts | n/a | #8624 #8630 |
 | D-SARAH-05 | `/sarah` first paint | AI disclosure banner component | covered by v16 `StatusBanner` (effect-native#40) | vendored v26; surface adoption is a shell-layout step (copy unchanged) | #8624 |
 | D-SARAH-06 | `/sarah` Blueprint map | GraphFigure semantic affordances: badge/accent slot, entry animation, provenance chips, `evidence_backed` edge status | waiting — upstream effect-native#68 | n/a — BM-2 uses existing `GraphFigure` v26 model | #8628 #8575 |
 | D-WEB-01 | `/stage1` `/landing-en` | Marketing catalog consumption | shipped upstream v20–v25 | vendored v25 | #8595 |

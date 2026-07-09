@@ -162,7 +162,7 @@ export const sarahIsolationContractRegistry: BehaviorContractRegistryDocument = 
       oracles: [
         {
           description:
-            "Every prospect-scoped read helper that exists today (getSarahSessionTranscript, getSarahProspectCrmProjection, findSarahProspectByContactEmail) takes an exact prospect ref (or resolves to exactly one) and returns only that prospect's rows; an unknown ref returns empty, never a fallback to another prospect's data.",
+            "Every prospect-scoped read helper that exists today (getSarahSessionTranscript, getSarahProspectToolReceipts, getSarahProspectCrmProjection, findSarahProspectByContactEmail) takes an exact prospect ref (or resolves to exactly one) and returns only that prospect's rows; an unknown ref returns empty, never a fallback to another prospect's data.",
           id: "memory_query_scoping.unit",
           kind: "bun-test",
           mode: "unit",

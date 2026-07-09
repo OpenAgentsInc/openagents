@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test"
+import { unlink } from "node:fs/promises"
+import { join } from "node:path"
 import { handleSarahRequest } from "./server.ts"
 import { SARAH_OWNED_TOOL_INVENTORY } from "./agent-runtime/owned-runtime.ts"
 import {
@@ -157,6 +159,52 @@ describe("apps/sarah monorepo service", () => {
       })
     } finally {
       __resetCustomerBlueprintForTest()
+    }
+  })
+
+  test("actions tool-call route mints a prospect cookie and exposes current receipts", async () => {
+    const savedIndexPath = process.env.SARAH_SESSION_INDEX_PATH
+    const indexFile = `server-bm4-receipts-${process.pid}.json`
+    process.env.SARAH_SESSION_INDEX_PATH = indexFile
+    try {
+      const action = await handleSarahRequest(
+        new Request("http://localhost/sarah/api/eve/tool-call", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            toolName: "human_handoff",
+            toolCallId: "bm4-handoff-test",
+            args: {
+              reason: "prospect_requested_human_handoff",
+              summary: "Prospect asked to book a human from the Actions tab.",
+            },
+          }),
+        }),
+      )
+      expect(action.status).toBe(200)
+      expect(action.headers.get("set-cookie") || "").toContain("sarah_prospect_ref")
+      const actionBody = await action.json()
+      expect(actionBody.toolResults[0].toolCallId).toBe("bm4-handoff-test")
+      expect(actionBody.toolResults[0].toolName).toBe("human_handoff")
+      expect(actionBody.toolResults[0].ok).toBe(true)
+
+      const cookie = (action.headers.get("set-cookie") || "").split(";")[0]!
+      const receipts = await handleSarahRequest(
+        new Request("http://localhost/sarah/api/session/receipts/current", {
+          headers: { cookie },
+        }),
+      )
+      expect(receipts.status).toBe(200)
+      const receiptBody = await receipts.json()
+      expect(receiptBody.prospect).toBe(true)
+      expect(receiptBody.receipts).toHaveLength(1)
+      expect(receiptBody.receipts[0].toolCallId).toBe("bm4-handoff-test")
+      expect(receiptBody.receipts[0].toolName).toBe("human_handoff")
+      expect(receiptBody.receipts[0].handoffRef).toStartWith("sarah.handoff.")
+    } finally {
+      if (savedIndexPath === undefined) delete process.env.SARAH_SESSION_INDEX_PATH
+      else process.env.SARAH_SESSION_INDEX_PATH = savedIndexPath
+      await unlink(join(process.cwd(), ".sarah", indexFile)).catch(() => {})
     }
   })
 

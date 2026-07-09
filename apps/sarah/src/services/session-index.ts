@@ -24,10 +24,17 @@ export type SarahToolReceipt = {
   ok: boolean | null;
   quoteRef: string | null;
   checkoutRef: string | null;
+  checkoutUrl: string | null;
   handoffRef: string | null;
   dealRuleRefs: string[];
   escalationReason: string | null;
   summary: string;
+};
+
+export type SarahProspectToolReceipt = SarahToolReceipt & {
+  prospectRef: string;
+  sessionId: string;
+  threadId: string;
 };
 
 export type SarahSessionRecord = {
@@ -228,6 +235,7 @@ export async function recordSarahToolReceipt({
       ok: typeof resultRecord.ok === "boolean" ? resultRecord.ok : null,
       quoteRef: outputValue(output, "quoteRef"),
       checkoutRef: outputValue(output, "checkoutRef"),
+      checkoutUrl: outputValue(output, "checkoutUrl") ?? outputValue(output, "url"),
       handoffRef: outputValue(output, "handoffRef"),
       dealRuleRefs: outputStringArray(output, "dealRuleRefs").concat(
         outputStringArray(output, "ruleRefs"),
@@ -242,6 +250,37 @@ export async function recordSarahToolReceipt({
   });
 
   await writeQueue;
+}
+
+export async function getSarahProspectToolReceipts({
+  prospectRef,
+  limit = 20,
+}: {
+  prospectRef: string;
+  limit?: number;
+}): Promise<SarahProspectToolReceipt[]> {
+  const aliases = prospectRefAliases(prospectRef);
+  if (aliases.length === 0) return [];
+  const index = await readIndex();
+  const receipts: SarahProspectToolReceipt[] = [];
+  for (const alias of aliases) {
+    const prospect = index.prospects[alias];
+    if (!prospect) continue;
+    for (const session of Object.values(prospect.sessions)) {
+      for (const tool of session.tools ?? []) {
+        receipts.push({
+          ...tool,
+          checkoutUrl: tool.checkoutUrl ?? null,
+          prospectRef: alias,
+          sessionId: session.sessionId,
+          threadId: session.threadId,
+        });
+      }
+    }
+  }
+  return receipts
+    .sort((a, b) => b.recordedAt.localeCompare(a.recordedAt))
+    .slice(0, limit);
 }
 
 export async function recordSarahCrmContact({

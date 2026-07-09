@@ -27,7 +27,10 @@ import {
   threadIdForProspectRef,
 } from "./services/prospect-session.ts"
 import { getSarahRealtimeInstructions } from "./services/sarah-instructions.ts"
-import { listSarahProspectSessions } from "./services/session-index.ts"
+import {
+  getSarahProspectToolReceipts,
+  listSarahProspectSessions,
+} from "./services/session-index.ts"
 import { processDueSarahFollowUps } from "./services/follow-up-scheduler.ts"
 import { enqueueSarahEmailDraft } from "./services/crm-email-rail.ts"
 import { runOwnedSarahTurn } from "./agent-runtime/owned-runtime.ts"
@@ -487,16 +490,26 @@ async function handleEveToolCall(request: Request): Promise<Response> {
     toolName?: string
     args?: unknown
     prospectRef?: string
+    toolCallId?: string
+  }
+  let prospectRef = body.prospectRef ?? readSarahProspectRef(request)
+  let mintedCookie = false
+  if (!prospectRef) {
+    prospectRef = mintSarahProspectRef()
+    mintedCookie = true
   }
   const result = await runOwnedSarahTurn({
     message: "",
     toolCall: {
       toolName: body.toolName ?? "",
       args: body.args ?? {},
+      toolCallId: body.toolCallId,
     },
-    prospectRef: body.prospectRef ?? readSarahProspectRef(request) ?? undefined,
+    prospectRef,
   })
-  return json(result)
+  const response = json(result)
+  if (mintedCookie) setSarahProspectCookie(response, prospectRef)
+  return response
 }
 
 /**
@@ -537,6 +550,18 @@ async function handleCustomerBlueprintCurrent(request: Request): Promise<Respons
       contact: null,
       storeConfigured: false,
     }),
+  })
+}
+
+async function handleCurrentProspectReceipts(request: Request): Promise<Response> {
+  const prospectRef = readSarahProspectRef(request)
+  if (!prospectRef) {
+    return json({ prospect: false, prospectRef: null, receipts: [] })
+  }
+  return json({
+    prospect: true,
+    prospectRef,
+    receipts: await getSarahProspectToolReceipts({ prospectRef, limit: 30 }),
   })
 }
 
@@ -687,6 +712,9 @@ export async function handleSarahRequest(request: Request): Promise<Response> {
   }
   if (apiPath === "/api/customer-blueprint/current" && request.method === "GET") {
     return handleCustomerBlueprintCurrent(request)
+  }
+  if (apiPath === "/api/session/receipts/current" && request.method === "GET") {
+    return handleCurrentProspectReceipts(request)
   }
   if (apiPath === "/api/realtime/token" && request.method === "POST") {
     return handleRealtimeToken(request)

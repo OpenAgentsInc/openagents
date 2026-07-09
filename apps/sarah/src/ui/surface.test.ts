@@ -30,10 +30,13 @@ const baseState: SurfaceState = {
   accountPhase: "anonymous",
   accountEmail: null,
   activePanel: "blueprint",
+  pendingAction: null,
   blueprintProspectRef: null,
   blueprintDraft: null,
   blueprintFacts: [],
   blueprintContactEmail: null,
+  receiptsProspectRef: null,
+  receipts: [],
 }
 
 type AnyNode = { readonly _tag?: string; readonly [key: string]: unknown }
@@ -167,9 +170,60 @@ describe("contract sarah.split_screen_blueprint_map.v1 (BM-3 #8629)", () => {
     expect(findByKey(view, "chat-panel")).not.toBeNull()
     expect(findByKey(view, "composer")).not.toBeNull()
     expect(findByKey(view, "actions-panel")).not.toBeNull()
+    expect(findByKey(view, "actions-book-human")).not.toBeNull()
+    expect(findByKey(view, "actions-checkout-empty")).not.toBeNull()
     expect(findByKey(view, "receipts-panel")).not.toBeNull()
     expect(findByKey(view, "receipts-cards")).not.toBeNull()
     expect(findByKey(view, "cards")).toBeNull()
     expect(findAllByTag(view, "List").length).toBe(1)
+  })
+
+  test("BM-4 actions expose recorded checkout and receipts show Blueprint code", () => {
+    const view = sarahSurfaceView({
+      ...baseState,
+      accountPhase: "linked",
+      accountEmail: "buyer@example.com",
+      activePanel: "receipts",
+      blueprintDraft: {
+        schema: "sarah.customer_blueprint_draft.v1",
+        prospectRef: "prospect-actions",
+        revision: 7,
+        createdAt: "2026-07-09T17:00:00.000Z",
+        business: { facts: [] },
+        contacts: { email: "buyer@example.com", contactId: "oa_user:buyer" },
+        needs: [],
+        suggestedModules: [],
+        sources: {
+          turnIds: [],
+          factCount: 0,
+          provenance:
+            "sarah_prospect_profile + sarah_transcript_turns (per-fact source turn ids)",
+        },
+        handoff: {
+          pipeline: "operator_assisted_business_workspace",
+          automatedProvisioning: false,
+          convergesWith:
+            "CB-1.4 prefill pipeline (intake -> public-data research -> seeded workspace)",
+          note: "Draft only.",
+        },
+      },
+      receipts: [
+        {
+          id: "tool:sarah.checkout.test",
+          key: "receipt-tool-sarah.checkout.test",
+          title: "Checkout link recorded",
+          body: "Prepared a test-mode checkout quote.",
+          href: "https://openagents.com/business",
+          toolName: "checkout_link_create",
+          receiptRef: "sarah.checkout.test",
+          mode: "dry_run",
+          ok: true,
+        },
+      ],
+    })
+    expect(findByKey(view, "actions-account-linked")).not.toBeNull()
+    expect(findByKey(view, "actions-open-checkout")).not.toBeNull()
+    expect(findByKey(view, "receipts-blueprint-code")).not.toBeNull()
+    expect(JSON.stringify(view)).toContain("sarah.customer_blueprint_draft.v1")
   })
 })

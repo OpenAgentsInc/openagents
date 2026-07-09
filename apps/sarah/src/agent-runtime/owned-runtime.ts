@@ -40,6 +40,7 @@ import { buildCustomerBlueprintDraft } from "../services/customer-blueprint.ts"
 import { getSarahRealtimeInstructions } from "../services/sarah-instructions.ts"
 import {
   getSarahSessionTranscript,
+  recordSarahToolReceipt,
   recordSarahTranscriptTurn,
 } from "../services/session-index.ts"
 import {
@@ -58,7 +59,14 @@ export type OwnedSarahTurnInput = {
   message: string
   threadId?: string
   prospectRef?: string
-  toolCall?: { toolName: string; args: unknown }
+  toolCall?: { toolName: string; args: unknown; toolCallId?: string }
+}
+
+export type OwnedSarahToolResult = {
+  toolCallId: string
+  toolName: string
+  ok: boolean
+  output: unknown
 }
 
 export type OwnedSarahTurnResult = {
@@ -78,7 +86,7 @@ export type OwnedSarahTurnResult = {
   ok: boolean
   reply: string
   threadId: string
-  toolResults: Array<{ toolName: string; ok: boolean; output: unknown }>
+  toolResults: OwnedSarahToolResult[]
   personaPreview: string
 }
 
@@ -184,16 +192,40 @@ export async function runOwnedSarahTurn(
       ? `prospect:${input.prospectRef}`
       : `thread:${crypto.randomUUID()}`)
   const toolResults: OwnedSarahTurnResult["toolResults"] = []
-
-  if (input.toolCall?.toolName) {
-    const result = await runTool(input.toolCall.toolName, input.toolCall.args, {
+  const runAndRecordTool = async (
+    toolName: string,
+    args: unknown,
+    toolCallId = `tool.${crypto.randomUUID()}`,
+  ) => {
+    const result = await runTool(toolName, args, {
       ...(input.prospectRef ? { prospectRef: input.prospectRef } : {}),
     })
-    toolResults.push({
-      toolName: input.toolCall.toolName,
+    const recorded = {
+      toolCallId,
+      toolName,
       ok: result.ok,
       output: result.output,
-    })
+    }
+    toolResults.push(recorded)
+    if (input.prospectRef) {
+      await recordSarahToolReceipt({
+        prospectRef: input.prospectRef,
+        sessionId: threadId,
+        threadId,
+        toolCallId,
+        toolName,
+        result: { ok: result.ok, output: result.output },
+      })
+    }
+    return result
+  }
+
+  if (input.toolCall?.toolName) {
+    await runAndRecordTool(
+      input.toolCall.toolName,
+      input.toolCall.args,
+      input.toolCall.toolCallId,
+    )
   }
 
   const message = input.message.trim()
@@ -282,20 +314,11 @@ export async function runOwnedSarahTurn(
       if (instructedJsonToolsArmed() && !input.toolCall) {
         const instructed = parseInstructedJsonToolCall(result.reply)
         if (instructed) {
-          const toolResult = await runTool(
+          const toolResult = await runAndRecordTool(
             instructed.toolName,
             instructed.args,
-            {
-              ...(input.prospectRef
-                ? { prospectRef: input.prospectRef }
-                : {}),
-            },
+            `tool.${crypto.randomUUID()}`,
           )
-          toolResults.push({
-            toolName: instructed.toolName,
-            ok: toolResult.ok,
-            output: toolResult.output,
-          })
           reply = formatInstructedToolReply(
             instructed.toolName,
             toolResult.ok,

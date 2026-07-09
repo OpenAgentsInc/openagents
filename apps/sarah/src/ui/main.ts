@@ -67,6 +67,18 @@ type SarahCard = Readonly<{
   href?: string
 }>
 
+type SarahReceipt = Readonly<{
+  id: string
+  key: string
+  title: string
+  body: string
+  href?: string
+  toolName?: string
+  receiptRef?: string
+  mode?: "dry_run" | "live"
+  ok?: boolean
+}>
+
 const sarahPanelIds = ["blueprint", "chat", "actions", "receipts"] as const
 type SarahPanelId = (typeof sarahPanelIds)[number]
 
@@ -94,10 +106,13 @@ type SarahSurfaceState = Readonly<{
   accountPhase: AccountPhase
   accountEmail: string | null
   activePanel: SarahPanelId
+  pendingAction: "human_handoff" | null
   blueprintProspectRef: string | null
   blueprintDraft: CustomerBlueprintDraft | null
   blueprintFacts: ReadonlyArray<BlueprintMapFact>
   blueprintContactEmail: string | null
+  receiptsProspectRef: string | null
+  receipts: ReadonlyArray<SarahReceipt>
 }>
 
 const initialState: SarahSurfaceState = {
@@ -118,10 +133,13 @@ const initialState: SarahSurfaceState = {
   accountPhase: "unknown",
   accountEmail: null,
   activePanel: "blueprint",
+  pendingAction: null,
   blueprintProspectRef: null,
   blueprintDraft: null,
   blueprintFacts: [],
   blueprintContactEmail: null,
+  receiptsProspectRef: null,
+  receipts: [],
 }
 
 const InputChanged = defineIntent("SarahInputChanged", Schema.String)
@@ -130,6 +148,7 @@ const StartAvatar = defineIntent("SarahStartAvatar", Schema.Null)
 const StopAvatar = defineIntent("SarahStopAvatar", Schema.Null)
 const OpenLink = defineIntent("SarahOpenLink", Schema.String)
 const ConnectAccount = defineIntent("SarahConnectAccount", Schema.Null)
+const BookHumanHandoff = defineIntent("SarahBookHumanHandoff", Schema.Null)
 const SelectPanel = defineIntent("SarahSelectPanel", Schema.Literals(sarahPanelIds))
 
 const sarahIntents = [
@@ -139,6 +158,7 @@ const sarahIntents = [
   StopAvatar,
   OpenLink,
   ConnectAccount,
+  BookHumanHandoff,
   SelectPanel,
 ] as const
 
@@ -267,6 +287,161 @@ const cardItem = (card: SarahCard): View & { key: string } =>
     ],
   ))
 
+const asRecord = (value: unknown): Record<string, unknown> =>
+  typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {}
+
+const optionalString = (value: unknown): string | null =>
+  typeof value === "string" && value.trim() ? value : null
+
+const toolDisplayName = (toolName: string): string => {
+  switch (toolName) {
+    case "human_handoff":
+      return "Human handoff"
+    case "checkout_link_create":
+      return "Checkout link"
+    case "deal_rules_evaluate":
+      return "Deal rules"
+    case "account_link":
+      return "Account link"
+    default:
+      return toolName.replaceAll("_", " ")
+  }
+}
+
+type SarahToolResult = Readonly<{
+  toolCallId?: string
+  toolName?: string
+  ok?: boolean
+  output?: unknown
+}>
+
+const receiptFromToolResult = (result: SarahToolResult): SarahReceipt | null => {
+  const toolName = optionalString(result.toolName)
+  if (!toolName) return null
+  const output = asRecord(result.output)
+  const receiptRef =
+    optionalString(output.checkoutRef) ??
+    optionalString(output.handoffRef) ??
+    optionalString(output.quoteRef) ??
+    optionalString(result.toolCallId) ??
+    `${toolName}:${JSON.stringify(output).slice(0, 80)}`
+  const href = optionalString(output.checkoutUrl) ?? optionalString(output.url)
+  const mode = output.mode === "live" || output.mode === "dry_run" ? output.mode : undefined
+  const title = `${toolDisplayName(toolName)} ${result.ok === false ? "failed" : "recorded"}`
+  const body =
+    optionalString(output.message) ??
+    optionalString(output.error) ??
+    `${toolDisplayName(toolName)} receipt recorded.`
+  return {
+    id: `tool:${receiptRef}`,
+    key: `receipt-tool-${receiptRef}`,
+    title,
+    body,
+    ...(href ? { href } : {}),
+    toolName,
+    receiptRef,
+    ...(mode ? { mode } : {}),
+    ...(typeof result.ok === "boolean" ? { ok: result.ok } : {}),
+  }
+}
+
+const receiptFromStoredTool = (tool: Record<string, unknown>): SarahReceipt | null =>
+  receiptFromToolResult({
+    toolCallId: optionalString(tool.toolCallId) ?? undefined,
+    toolName: optionalString(tool.toolName) ?? undefined,
+    ok: typeof tool.ok === "boolean" ? tool.ok : undefined,
+    output: {
+      checkoutRef: optionalString(tool.checkoutRef),
+      checkoutUrl: optionalString(tool.checkoutUrl),
+      handoffRef: optionalString(tool.handoffRef),
+      quoteRef: optionalString(tool.quoteRef),
+      mode: tool.mode,
+      message: optionalString(tool.summary),
+    },
+  })
+
+const accountLinkReceipt = (email: string | null): SarahReceipt => ({
+  id: `account_link:${email ?? "linked"}`,
+  key: `receipt-account-${email ?? "linked"}`,
+  title: "Account link recorded",
+  body: email
+    ? `Conversation history and credits are linked to ${email}.`
+    : "Conversation history and credits are linked to this OpenAgents account.",
+  toolName: "account_link",
+  receiptRef: "sarah.account_link.v1",
+  ok: true,
+})
+
+const guardReceipt = (reply: string): SarahReceipt => ({
+  id: `guard:${reply.slice(0, 96)}`,
+  key: `receipt-guard-${Math.abs(reply.split("").reduce((sum, char) => sum + char.charCodeAt(0), 0))}`,
+  title: "Guard refusal recorded",
+  body: reply,
+  receiptRef: "sarah.guard_refusal.v1",
+  ok: true,
+})
+
+const cardReceipt = (card: Omit<SarahCard, "key">): SarahReceipt => ({
+  id: `card:${card.title}:${card.body}:${card.href ?? ""}`,
+  key: `receipt-card-${Math.abs(`${card.title}:${card.body}:${card.href ?? ""}`.split("").reduce((sum, char) => sum + char.charCodeAt(0), 0))}`,
+  title: card.title,
+  body: card.body,
+  ...(card.href ? { href: card.href } : {}),
+  receiptRef: "sarah.card_event.v1",
+})
+
+const mergeReceipts = (
+  current: ReadonlyArray<SarahReceipt>,
+  next: ReadonlyArray<SarahReceipt>,
+): ReadonlyArray<SarahReceipt> => {
+  const byId = new Map<string, SarahReceipt>()
+  for (const receipt of [...current, ...next]) byId.set(receipt.id, receipt)
+  return [...byId.values()].slice(-30)
+}
+
+const receiptItem = (receipt: SarahReceipt): View & { key: string } =>
+  keyed(Card(
+    {
+      key: receipt.key,
+      padding: "3",
+      radius: "lg",
+      style: {
+        backgroundColor: "surfaceRaised",
+        borderColor: "border",
+        borderWidth: 1,
+        width: "full",
+      },
+    },
+    [
+      Stack(
+        { key: `${receipt.key}-head`, direction: "row", gap: "2", align: "center", style: { width: "full" } },
+        [
+          text(`${receipt.key}-title`, receipt.title, "label", "focus"),
+          ...(receipt.mode ? [Badge({ key: `${receipt.key}-mode`, label: receipt.mode, tone: receipt.mode === "live" ? "success" : "neutral" })] : []),
+        ],
+      ),
+      text(`${receipt.key}-body`, receipt.body, "body"),
+      ...(receipt.receiptRef
+        ? [text(`${receipt.key}-ref`, receipt.receiptRef, "caption", "textMuted")]
+        : []),
+      ...(receipt.href
+        ? [
+            Button({
+              key: `${receipt.key}-open`,
+              label: receipt.toolName === "checkout_link_create" ? "Open checkout" : "Open",
+              variant: "secondary",
+              onPress: IntentRef("SarahOpenLink", StaticPayload(receipt.href)),
+            }),
+          ]
+        : []),
+    ],
+  ))
+
+const latestCheckoutReceipt = (state: SarahSurfaceState): SarahReceipt | null =>
+  [...state.receipts]
+    .reverse()
+    .find((receipt) => receipt.toolName === "checkout_link_create" && receipt.href) ?? null
+
 const blueprintMapPanel = (state: SarahSurfaceState): View => {
   const projection = blueprintMapProjection({
     draft: state.blueprintDraft,
@@ -347,6 +522,7 @@ const chatPanel = (state: SarahSurfaceState): View =>
   )
 
 const actionsPanel = (state: SarahSurfaceState): View => {
+  const checkout = latestCheckoutReceipt(state)
   const accountAction =
     state.accountPhase === "linked"
       ? Badge({
@@ -369,27 +545,75 @@ const actionsPanel = (state: SarahSurfaceState): View => {
       gap: "3",
       style: { width: "full", height: "full", minHeight: 0 },
     },
-    [accountAction, Spacer({ key: "actions-fill", flex: true })],
+    [
+      accountAction,
+      Button({
+        key: "actions-book-human",
+        label: state.pendingAction === "human_handoff" ? "Booking…" : "Book a human",
+        variant: "primary",
+        disabled: state.pendingAction !== null,
+        onPress: IntentRef("SarahBookHumanHandoff"),
+      }),
+      checkout
+        ? Button({
+            key: "actions-open-checkout",
+            label: "Open checkout",
+            variant: "secondary",
+            onPress: IntentRef("SarahOpenLink", StaticPayload(checkout.href ?? "")),
+          })
+        : Badge({ key: "actions-checkout-empty", label: "No checkout link yet", tone: "neutral" }),
+      Spacer({ key: "actions-fill", flex: true }),
+    ],
   )
 }
 
-const receiptsPanel = (state: SarahSurfaceState): View =>
-  Stack(
+const blueprintDraftCodeCard = (draft: CustomerBlueprintDraft): View & { key: string } =>
+  keyed(Card(
+    {
+      key: "receipts-blueprint-code",
+      padding: "3",
+      radius: "lg",
+      style: {
+        backgroundColor: "surfaceRaised",
+        borderColor: "border",
+        borderWidth: 1,
+        width: "full",
+      },
+    },
+    [
+      text("receipts-blueprint-code-title", `Blueprint draft v${draft.revision}`, "label", "focus"),
+      text(
+        "receipts-blueprint-json",
+        JSON.stringify(draft, null, 2),
+        "caption",
+        "textPrimary",
+      ),
+    ],
+  ))
+
+const receiptsPanel = (state: SarahSurfaceState): View => {
+  const items: Array<View & { key: string }> = [
+    ...(state.blueprintDraft ? [blueprintDraftCodeCard(state.blueprintDraft)] : []),
+    ...state.receipts.map(receiptItem),
+    ...(state.receipts.length === 0 ? state.cards.map(cardItem) : []),
+  ]
+  return Stack(
     {
       key: "receipts-panel",
       direction: "column",
       gap: "3",
       style: { width: "full", height: "full", minHeight: 0 },
     },
-    state.cards.length
+    items.length
       ? [
           List(
             { key: "receipts-cards", style: { width: "full", flex: 1, minHeight: 0 } },
-            state.cards.map(cardItem),
+            items,
           ),
         ]
       : [text("receipts-empty", "No receipts yet.", "body", "textMuted")],
   )
+}
 
 export const sarahSurfaceView = (state: SarahSurfaceState): View => {
   const account = accountChip(state)
@@ -480,14 +704,31 @@ const appendTranscript = (
     transcript: [...current.transcript, { key: nextKey("t"), role, text: textValue }].slice(-200),
   }))
 
-const appendCard = (
+const appendCardReceipt = (
   state: SubscriptionRef.SubscriptionRef<SarahSurfaceState>,
   card: Omit<SarahCard, "key">,
 ) =>
   SubscriptionRef.update(state, (current): SarahSurfaceState => ({
     ...current,
     cards: [...current.cards, { key: nextKey("c"), ...card }].slice(-20),
+    receipts: mergeReceipts(current.receipts, [cardReceipt(card)]),
   }))
+
+const appendReceipts = (
+  state: SubscriptionRef.SubscriptionRef<SarahSurfaceState>,
+  receipts: ReadonlyArray<SarahReceipt>,
+) =>
+  receipts.length === 0
+    ? Effect.void
+    : SubscriptionRef.update(state, (current): SarahSurfaceState => ({
+        ...current,
+        receipts: mergeReceipts(current.receipts, receipts),
+      }))
+
+const replyLooksLikeGuardRefusal = (reply: string): boolean =>
+  reply.includes("won't improvise discounts") ||
+  reply.includes("can't share another prospect") ||
+  reply.includes("need a human owner")
 
 const sendTextTurn = (
   state: SubscriptionRef.SubscriptionRef<SarahSurfaceState>,
@@ -502,19 +743,45 @@ const sendTextTurn = (
       input: "",
       status: current.avatarActive ? current.status : "thinking",
     }))
-    const reply = yield* Effect.tryPromise({
+    const turn = yield* Effect.tryPromise({
       try: async () => {
         const response = await fetch(`${API}/eve/turn`, {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ message: trimmed }),
         })
-        const data = (await response.json()) as { reply?: string }
-        return data.reply ?? "(no reply)"
+        const data = (await response.json()) as {
+          reply?: string
+          modelPath?: string
+          toolResults?: ReadonlyArray<SarahToolResult>
+        }
+        return {
+          reply: data.reply ?? "(no reply)",
+          modelPath: data.modelPath ?? null,
+          toolResults: data.toolResults ?? [],
+        }
       },
       catch: () => new Error("turn_failed"),
-    }).pipe(Effect.catch(() => Effect.succeed("I hit a connection problem — try that again in a moment.")))
-    yield* appendTranscript(state, "assistant", reply)
+    }).pipe(Effect.catch(() => Effect.succeed({
+      reply: "I hit a connection problem — try that again in a moment.",
+      modelPath: null,
+      toolResults: [],
+    })))
+    yield* appendTranscript(state, "assistant", turn.reply)
+    yield* appendReceipts(
+      state,
+      [
+        ...turn.toolResults.flatMap((result) => {
+          const receipt = receiptFromToolResult(result)
+          return receipt ? [receipt] : []
+        }),
+        ...(turn.modelPath === "deterministic_guard" &&
+        turn.toolResults.length === 0 &&
+        replyLooksLikeGuardRefusal(turn.reply)
+          ? [guardReceipt(turn.reply)]
+          : []),
+      ],
+    )
     yield* loadBlueprintMapSeed(state)
     yield* SubscriptionRef.update(state, (current): SarahSurfaceState => ({
       ...current,
@@ -592,6 +859,12 @@ type BlueprintSeedResponse = Readonly<{
   facts?: ReadonlyArray<{ fact?: string; sourceTurnId?: string; at?: string }>
   contact?: { email?: string | null; contactId?: string | null } | null
   storeConfigured?: boolean
+}>
+
+type ReceiptSeedResponse = Readonly<{
+  prospect?: boolean
+  prospectRef?: string | null
+  receipts?: ReadonlyArray<Record<string, unknown>>
 }>
 
 const mergeBlueprintFacts = (
@@ -694,6 +967,73 @@ const loadBlueprintMapSeed = (
     Effect.catch(() => Effect.void),
   )
 
+const applyReceiptSeed = (
+  state: SarahSurfaceState,
+  seed: ReceiptSeedResponse,
+): SarahSurfaceState => {
+  if (seed.prospect === false) {
+    return {
+      ...state,
+      receiptsProspectRef: null,
+      receipts: [],
+    }
+  }
+  const prospectRef =
+    typeof seed.prospectRef === "string" ? seed.prospectRef : state.receiptsProspectRef
+  const receipts = (seed.receipts ?? []).flatMap((tool) => {
+    const receipt = receiptFromStoredTool(tool)
+    return receipt ? [receipt] : []
+  })
+  return {
+    ...state,
+    receiptsProspectRef: prospectRef,
+    receipts:
+      prospectRef !== null && prospectRef === state.receiptsProspectRef
+        ? mergeReceipts(state.receipts, receipts)
+        : receipts,
+  }
+}
+
+const loadCurrentReceipts = (
+  state: SubscriptionRef.SubscriptionRef<SarahSurfaceState>,
+) =>
+  Effect.tryPromise({
+    try: async () => {
+      const response = await fetch(`${API}/session/receipts/current`)
+      if (!response.ok) throw new Error(`receipt_seed_${response.status}`)
+      return (await response.json()) as ReceiptSeedResponse
+    },
+    catch: (error) => (error instanceof Error ? error : new Error(String(error))),
+  }).pipe(
+    Effect.flatMap((seed) =>
+      SubscriptionRef.update(state, (current): SarahSurfaceState =>
+        applyReceiptSeed(current, seed),
+      ),
+    ),
+    Effect.catch(() => Effect.void),
+  )
+
+const validEmail = (value: string | null): string | null =>
+  value && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) ? value : null
+
+const humanHandoffArgs = (state: SarahSurfaceState) => {
+  const summary = state.transcript
+    .slice(-8)
+    .map((entry) => `${entry.role}: ${entry.text}`)
+    .join("\n")
+    .slice(0, 1800)
+  return {
+    reason: "prospect_requested_human_handoff",
+    summary: summary || "The prospect requested an operator handoff from the Sarah Actions tab.",
+    urgency: "normal",
+    prospectName: null,
+    contactEmail: validEmail(state.accountEmail ?? state.blueprintContactEmail),
+    company: null,
+    nextStep: "OpenAgents operator should review the Sarah conversation and follow up.",
+    sourceRef: "sarah.actions_tab.v1",
+  }
+}
+
 export const mountSarahSurface = (container: HTMLElement, avatarContainer: HTMLElement) =>
   Effect.gen(function* () {
     const state = yield* SubscriptionRef.make(initialState)
@@ -768,10 +1108,11 @@ export const mountSarahSurface = (container: HTMLElement, avatarContainer: HTMLE
                   accountPhase: "linked",
                   accountEmail: email,
                 }))
-                yield* appendCard(state, {
+                yield* appendCardReceipt(state, {
                   title: "Account linked",
                   body: "Your conversation history and credits now follow you.",
                 })
+                yield* appendReceipts(state, [accountLinkReceipt(email)])
               }),
             ),
             Effect.catch(() =>
@@ -785,6 +1126,70 @@ export const mountSarahSurface = (container: HTMLElement, avatarContainer: HTMLE
                   "assistant",
                   "Sign-in didn't complete — no problem. The Create account button is here whenever you want your history and credits to follow you.",
                 )
+              }),
+            ),
+          )
+        }),
+      SarahBookHumanHandoff: () =>
+        Effect.gen(function* () {
+          const current = yield* SubscriptionRef.get(state)
+          if (current.pendingAction !== null) return
+          yield* SubscriptionRef.update(state, (s2): SarahSurfaceState => ({
+            ...s2,
+            pendingAction: "human_handoff",
+          }))
+          yield* Effect.tryPromise({
+            try: async () => {
+              const response = await fetch(`${API}/eve/tool-call`, {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({
+                  toolName: "human_handoff",
+                  toolCallId: `ui.handoff.${crypto.randomUUID()}`,
+                  args: humanHandoffArgs(current),
+                }),
+              })
+              if (!response.ok) throw new Error(`handoff_${response.status}`)
+              return (await response.json()) as {
+                reply?: string
+                toolResults?: ReadonlyArray<SarahToolResult>
+              }
+            },
+            catch: (error) => (error instanceof Error ? error : new Error(String(error))),
+          }).pipe(
+            Effect.flatMap((result) =>
+              Effect.gen(function* () {
+                yield* appendTranscript(
+                  state,
+                  "assistant",
+                  result.reply ?? "Human handoff recorded.",
+                )
+                yield* appendReceipts(
+                  state,
+                  (result.toolResults ?? []).flatMap((tool) => {
+                    const receipt = receiptFromToolResult(tool)
+                    return receipt ? [receipt] : []
+                  }),
+                )
+                yield* loadCurrentReceipts(state)
+                yield* SubscriptionRef.update(state, (s2): SarahSurfaceState => ({
+                  ...s2,
+                  pendingAction: null,
+                  activePanel: "receipts",
+                }))
+              }),
+            ),
+            Effect.catch(() =>
+              Effect.gen(function* () {
+                yield* appendTranscript(
+                  state,
+                  "assistant",
+                  "I couldn't book the human handoff from here. Keep chatting and I'll try again when the tool rail recovers.",
+                )
+                yield* SubscriptionRef.update(state, (s2): SarahSurfaceState => ({
+                  ...s2,
+                  pendingAction: null,
+                }))
               }),
             ),
           )
@@ -826,7 +1231,7 @@ export const mountSarahSurface = (container: HTMLElement, avatarContainer: HTMLE
                   void runInBackground(appendTranscript(state, role, textValue))
                 },
                 onCard: (card) => {
-                  void runInBackground(appendCard(state, card))
+                  void runInBackground(appendCardReceipt(state, card))
                 },
                 onBlueprintDelta: (delta) => {
                   void runInBackground(
@@ -948,6 +1353,7 @@ export const mountSarahSurface = (container: HTMLElement, avatarContainer: HTMLE
     )
 
     yield* loadBlueprintMapSeed(state)
+    yield* loadCurrentReceipts(state)
 
     return {
       unmount: Effect.gen(function* () {
