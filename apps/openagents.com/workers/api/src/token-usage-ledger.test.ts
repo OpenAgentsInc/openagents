@@ -8,6 +8,7 @@ import {
   utcStartOfDayIsoTimestamp,
 } from './runtime-primitives'
 import {
+  readPublicTokensServedExactTotal,
   type TokenUsageHistoryFilters,
   type TokenUsageIngestResult,
   TokenUsageLedger,
@@ -1245,6 +1246,107 @@ describe('token usage ledger', () => {
     const aggregate = await runLedger(db, tokensServedAggregate())
 
     expect(aggregate.tokensServed).toBe(2_055)
+  })
+
+  test('accepts a not_measured-truth zero-token row (honest Grok-style accounting trail)', async () => {
+    const db = makeMemoryD1()
+
+    const result = await runLedger(
+      db,
+      ingest({
+        ...validProbeEvent,
+        demand: {
+          demandKind: 'own_capacity',
+          demandSource: 'khala_coding_delegation',
+        },
+        eventId: 'token_event_grok_not_measured',
+        idempotencyKey: 'grok:closeout:1',
+        model: 'grok-cli',
+        producerSystem: 'pylon',
+        provider: 'grok-cli-own-capacity',
+        safeMetadata: {
+          metering: 'not_measured',
+          wallClockMs: 9_540,
+          plane: 'cli_session',
+          marginalCostClass: 'free',
+        },
+        sourceRoute: 'pylon_codex_direct_local',
+        // A not_measured row NEVER carries a synthesized token count.
+        tokenCounts: {
+          cacheReadTokens: 0,
+          cacheWrite1hTokens: 0,
+          cacheWrite5mTokens: 0,
+          inputTokens: 0,
+          outputTokens: 0,
+          reasoningTokens: 0,
+          totalTokens: 0,
+        },
+        usageTruth: 'not_measured',
+      }),
+    )
+
+    // The schema now accepts `not_measured`, and the row round-trips through
+    // ingest → store → record decode without loss.
+    expect(result.inserted).toBe(true)
+    expect(result.event.usageTruth).toBe('not_measured')
+    expect(result.event.tokenCounts.totalTokens).toBe(0)
+    expect(result.event.provider).toBe('grok-cli-own-capacity')
+    expect(result.event.safeMetadata.wallClockMs).toBe(9_540)
+  })
+
+  test('public tokens-served counter EXCLUDES not_measured rows (exact-only law)', async () => {
+    const queryLog: Array<string> = []
+    const db = makeMemoryD1({ preferences: [], rows: [] }, { queryLog })
+
+    await runLedger(
+      db,
+      Effect.gen(function* () {
+        // A real, measured served-token row.
+        yield* ingest({
+          ...validProbeEvent,
+          eventId: 'token_event_measured_exact',
+          idempotencyKey: 'measured:exact:1',
+          tokenCounts: {
+            ...validProbeEvent.tokenCounts,
+            inputTokens: 60,
+            outputTokens: 40,
+            totalTokens: 100,
+          },
+          usageTruth: 'exact',
+        })
+        // A Grok-style not_measured row: honest accounting trail, zero tokens.
+        yield* ingest({
+          ...validProbeEvent,
+          eventId: 'token_event_measured_not_measured',
+          idempotencyKey: 'measured:not-measured:1',
+          provider: 'grok-cli-own-capacity',
+          tokenCounts: {
+            cacheReadTokens: 0,
+            cacheWrite1hTokens: 0,
+            cacheWrite5mTokens: 0,
+            inputTokens: 0,
+            outputTokens: 0,
+            reasoningTokens: 0,
+            totalTokens: 0,
+          },
+          usageTruth: 'not_measured',
+        })
+      }),
+    )
+
+    // The scalar the homepage/stats counter projects from must count ONLY the
+    // exact measured row — the not_measured row contributes nothing.
+    const aggregate = await runLedger(db, tokensServedAggregate())
+    expect(aggregate.tokensServed).toBe(100)
+
+    // And the exact-total reconcile source (the value the public projection
+    // must equal) also excludes the not_measured row, with the exclusion
+    // applied EXPLICITLY in SQL — not merely by the row's zero token count.
+    const exactTotal = await readPublicTokensServedExactTotal(db)
+    expect(exactTotal).toBe(100)
+    expect(
+      queryLog.some(query => query.includes("usage_truth != 'not_measured'")),
+    ).toBe(true)
   })
 
   test('rejects unsafe prompt, provider payload, private path, and bearer material', async () => {

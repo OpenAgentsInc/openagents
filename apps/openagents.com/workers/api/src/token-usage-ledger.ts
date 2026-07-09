@@ -313,11 +313,22 @@ export const demandChannelFromText = (
   return normalized === 'direct_local' ? 'direct_local' : 'khala_api'
 }
 
-// Public Khala token counters are total-only: every real served-token ledger
-// row counts, including internal dogfood, `internal_stress`, `own_capacity`,
-// external, and unlabeled demand. The public projection stays safe by returning
-// aggregate numbers only, never demand labels, accounts, prompts, or providers.
-const publicTokensServedDemandWhere = `1 = 1`
+// Public Khala token counters are total-only across DEMAND: every real
+// served-token ledger row counts, including internal dogfood, `internal_stress`,
+// `own_capacity`, external, and unlabeled demand. The public projection stays
+// safe by returning aggregate numbers only, never demand labels, accounts,
+// prompts, or providers.
+//
+// The ONE exclusion is by usage-truth, not demand: `usage_truth = 'not_measured'`
+// rows are honest placeholders for work whose token usage the harness cannot
+// measure (e.g. a Grok CLI worker — wall-clock only, zero token counts). They
+// exist for the accounting trail but MUST NEVER contribute to the public
+// served-token total. Because they always carry zero token counts they add
+// nothing to the SUM anyway; this predicate makes the exclusion explicit and
+// robust — a stray non-zero `not_measured` row can never leak into the counter,
+// and such rows never register as a "day/provider/channel with activity".
+const NOT_MEASURED_USAGE_TRUTH = 'not_measured' as const
+const publicTokensServedDemandWhere = `usage_truth != '${NOT_MEASURED_USAGE_TRUTH}'`
 const publicTokensServedSqlExpression = `CASE
   WHEN COALESCE(input_tokens, 0) + COALESCE(output_tokens, 0) > 0
     THEN COALESCE(input_tokens, 0) + COALESCE(output_tokens, 0)
@@ -1946,10 +1957,18 @@ const publicTokensServedMixRollupStatements = (
 const publicTokensServedRollupStatements = (
   db: D1Database,
   row: TokenUsageEventRow,
-): ReadonlyArray<D1PreparedStatement> => [
-  ...publicTokensServedDailyRollupStatements(db, row),
-  ...publicTokensServedMixRollupStatements(db, row),
-]
+): ReadonlyArray<D1PreparedStatement> =>
+  // `not_measured` rows are excluded from every public served-token surface
+  // (see `publicTokensServedDemandWhere`); do not upsert the daily/model/
+  // channel rollups for them either, so they never register a phantom
+  // day/provider/channel with `usage_events = 1` and zero tokens. This keeps
+  // the write-side rollups reconciled with the read-side exclusion.
+  row.usage_truth === NOT_MEASURED_USAGE_TRUTH
+    ? []
+    : [
+        ...publicTokensServedDailyRollupStatements(db, row),
+        ...publicTokensServedMixRollupStatements(db, row),
+      ]
 
 const aggregateWhere = (
   filters: TokenUsageLedgerFilters,
