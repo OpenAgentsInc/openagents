@@ -211,13 +211,41 @@ builds (the real deploy gate).
 
 ### Deploy + verification (2026-07-09)
 
-Commit on `main`: `PENDING-COMMIT`. Deployed via the sanctioned monolith path
+Commit on `main`: `171c85f069`. Deployed via the sanctioned monolith path
 (`apps/openagents.com/workers/api/scripts/deploy-cloudrun.sh`, automation SA):
-staging revision `PENDING`, then production revision `PENDING`. Rollback target if
-the canary goes red post-deploy: `openagents-monolith-00049-jpc`.
+staging revision `openagents-monolith-staging-00028-vg9` (healthz 200), then
+production revision `openagents-monolith-00050-7sp` (healthz 200, serving 100%).
+The existing `GEMINI_API_KEY` secret was already mounted on prod — no secret
+change. Rollback target had the canary gone red: `openagents-monolith-00049-jpc`.
 
 Verification (prod, authenticated `POST /api/v1/chat/completions`,
-`openagents/khala`): `PENDING`.
+`openagents/khala`) — all green:
+
+- **Normal completion** (`max_tokens=64`) serves `worker=google-gemma4`,
+  `served_model=gemma-4-31b-it`, `fallback_reason=null`, `finish=STOP`,
+  non-empty content. Usage `prompt=831, completion=10, total=1106` — the
+  ~265-token gap over prompt+completion is Gemma's thoughts, counted into total
+  and captured exactly as `reasoning_tokens` (not visible in the answer).
+- **Tiny budget** (`max_tokens=8`, the canary shape) now STAYS on
+  `worker=google-gemma4` with `fallback_reason=null` and emits visible text
+  (`finish=STOP`, content "OK") — the min-output floor resolves the AAR's
+  `empty_assistant_content`-overflow caveat: the old Vertex primary overflowed
+  tiny budgets to Fireworks; Gemma with the 512 floor does not.
+- **Tool-bearing request** (a `get_weather` function tool) routes to the GLM
+  lane, NOT Gemma: the error names `hydralisk rejected request (400)` — proving
+  the no-tools guard (Gemma is excluded from the tool plan; the request reached
+  the GLM lane). The GLM 400 is the pre-existing GLM-REAP tool-calling
+  unreliability (#6310) on the UNCHANGED tool plan, not a regression from this
+  change (the conversational Gemma lead does not touch tool routing).
+- **Official canary** (`scripts/khala-canary.sh`) run twice post-deploy:
+  `state=up, http=200, counterDelta=841` then `842` (exit 0 both), public counter
+  movement required + observed.
+
+Minor cosmetic follow-up: the receipt's `supply_lane` label reads `hydralisk` for
+Gemma turns because `gemma-4-31b-it` is not in the pricing table's lane map (the
+`worker=google-gemma4` and `lane=open` fields are correct). Harmless — a pricing
+`supply_lane` label entry can be added later; token accounting is exact and
+independent of this label.
 
 ## Outstanding (superseded by "Lane dropped" above)
 
