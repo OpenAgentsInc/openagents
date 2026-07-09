@@ -375,9 +375,14 @@ export async function enqueueSarahEmailDraft(
     }
   }
 
-  // Rich internal shape (follow-ups, email channel, smokes)
+  // Rich internal shape (follow-ups, email channel, smokes). The early
+  // return above handled the thin shape, so re-assert the guard for TS.
+  const rich = input as Record<string, unknown>
+  if (!isRichEnqueue(rich)) {
+    throw new Error("unreachable: thin enqueue shape already handled")
+  }
   return persistLocalDraft({
-    ...input,
+    ...rich,
     forcedStatus: undefined,
   })
 }

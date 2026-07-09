@@ -17,6 +17,10 @@ import {
 } from "./services/realtime-token-guard.ts"
 import { getSarahRealtimeToolDefinitions } from "./services/realtime-tools.ts"
 import {
+  sarahGoogleInferenceArmed,
+  sarahTextModel,
+} from "./services/google-inference.ts"
+import {
   mintSarahProspectRef,
   readSarahProspectRef,
   setSarahProspectCookie,
@@ -172,8 +176,11 @@ async function handleOperatorEmailDrafts(request: Request): Promise<Response> {
     prospectRef:
       typeof body.prospectRef === "string" ? body.prospectRef : undefined,
     contactId: typeof body.contactId === "string" ? body.contactId : undefined,
+    sourceRef:
+      typeof body.sourceRef === "string" ? body.sourceRef : "operator_http",
   })
-  return json(result, { status: result.ok ? 200 : 400 })
+  const ok = "ok" in result ? result.ok : true
+  return json(result, { status: ok ? 200 : 400 })
 }
 
 async function handleOperatorOps(): Promise<Response> {
@@ -183,6 +190,9 @@ async function handleOperatorOps(): Promise<Response> {
     authority: "openagents.com Worker APIs",
     emailRail: "crm_operator_rail",
     agentRuntime: "owned_effect_seed",
+    modelPath: sarahGoogleInferenceArmed()
+      ? `google_gemma_live:${sarahTextModel()}`
+      : "seed_echo_not_armed",
     ui: "effect_native_dom_zero_react",
   })
 }

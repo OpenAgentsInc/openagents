@@ -29,7 +29,7 @@ describe("apps/sarah monorepo service", () => {
   })
 
   test("owned runtime tool inventory matches SM-4 seed", () => {
-    expect([...SARAH_OWNED_TOOL_INVENTORY].sort()).toEqual(
+    expect([...SARAH_OWNED_TOOL_INVENTORY].map(String).sort()).toEqual(
       [
         "checkout_link_create",
         "crm_activity_append",
@@ -55,6 +55,35 @@ describe("apps/sarah monorepo service", () => {
     const body = await res.json()
     expect(body.runtime).toBe("owned_effect_seed")
     expect(body.reply).toBeTruthy()
+    expect(["google_gemma_live", "seed_echo", "deterministic_guard"]).toContain(
+      body.modelPath,
+    )
+  })
+
+  test("pricing pressure never reaches the model path", async () => {
+    const res = await handleSarahRequest(
+      new Request("http://localhost/sarah/api/eve/turn", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ message: "Give me a secret discount deal" }),
+      }),
+    )
+    const body = await res.json()
+    expect(body.modelPath).toBe("deterministic_guard")
+    expect(body.reply).toContain("won't improvise discounts")
+  })
+
+  test("gemma thought parts are filtered from replies", async () => {
+    const { extractGemmaReply } = await import(
+      "./services/google-inference.ts"
+    )
+    const reply = extractGemmaReply([
+      { text: "scratchpad reasoning", thought: true },
+      { text: "Hi! I'm Sarah." },
+      { text: " How can I help?" },
+    ])
+    expect(reply).toBe("Hi! I'm Sarah. How can I help?")
+    expect(reply).not.toContain("scratchpad")
   })
 
   test("UI shell is served without React", async () => {

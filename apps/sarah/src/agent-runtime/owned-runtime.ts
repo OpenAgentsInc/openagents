@@ -16,6 +16,16 @@ import {
   upsertOpenAgentsCrmContact,
 } from "../services/openagents-crm-client.ts"
 import { evaluateDealRules } from "../services/deal-rules.ts"
+import {
+  generateSarahGemmaReply,
+  sarahGoogleInferenceArmed,
+} from "../services/google-inference.ts"
+import type { GemmaContent } from "../services/google-inference.ts"
+import { getSarahRealtimeInstructions } from "../services/sarah-instructions.ts"
+import {
+  getSarahSessionTranscript,
+  recordSarahTranscriptTurn,
+} from "../services/session-index.ts"
 import { readFile } from "node:fs/promises"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
@@ -31,6 +41,10 @@ export type OwnedSarahTurnInput = {
 
 export type OwnedSarahTurnResult = {
   runtime: "owned_effect_seed"
+  /** "google_gemma_live" when a real model produced the reply. */
+  modelPath: "google_gemma_live" | "seed_echo" | "deterministic_guard"
+  model?: string
+  modelError?: string
   ok: boolean
   reply: string
   threadId: string
@@ -122,20 +136,88 @@ export async function runOwnedSarahTurn(
 
   const message = input.message.trim()
   let reply: string
+  let modelPath: OwnedSarahTurnResult["modelPath"] = "seed_echo"
+  let model: string | undefined
+  let modelError: string | undefined
+
   if (toolResults.length > 0) {
     reply = `Tool ${toolResults[0]!.toolName} ${toolResults[0]!.ok ? "completed" : "failed"}.`
+    modelPath = "deterministic_guard"
   } else if (!message) {
     reply =
       "I'm Sarah, an AI sales assistant for OpenAgents. How can I help you evaluate OpenAgents?"
+    modelPath = "deterministic_guard"
   } else if (/price|discount|deal/i.test(message)) {
+    // Hard no-improvised-pricing law: Gemma's text lane has no native tool
+    // calling, so pricing never reaches the model here. Deal-rule evaluation,
+    // checkout tracing, and handoff stay on the tool/voice paths.
     reply =
       "I only quote public pack prices and owner-approved parameters — I won't improvise discounts. I can evaluate deal rules or open a human handoff."
+    modelPath = "deterministic_guard"
+  } else if (sarahGoogleInferenceArmed()) {
+    const system = await getSarahRealtimeInstructions()
+    const contents: GemmaContent[] = []
+    if (input.prospectRef) {
+      const history = await getSarahSessionTranscript({
+        prospectRef: input.prospectRef,
+        sessionId: threadId,
+      })
+      for (const turn of history) {
+        if (!turn.text.trim()) continue
+        contents.push({
+          role: turn.role === "assistant" ? "model" : "user",
+          parts: [{ text: turn.text }],
+        })
+      }
+    }
+    contents.push({ role: "user", parts: [{ text: message }] })
+
+    const result = await generateSarahGemmaReply({ system, contents })
+    if (result.ok) {
+      reply = result.reply
+      modelPath = "google_gemma_live"
+      model = result.model
+      if (input.prospectRef) {
+        const shared = {
+          prospectRef: input.prospectRef,
+          sessionId: threadId,
+          threadId,
+        }
+        await recordSarahTranscriptTurn({
+          ...shared,
+          turn: {
+            modality: "text",
+            role: "user",
+            sourceEvent: "text_turn",
+            text: message,
+          },
+        })
+        await recordSarahTranscriptTurn({
+          ...shared,
+          turn: {
+            modality: "text",
+            role: "assistant",
+            sourceEvent: "text_turn",
+            text: reply,
+          },
+        })
+      }
+    } else {
+      modelError = result.error
+      reply =
+        result.error === "google_inference_http_429"
+          ? "I'm handling a lot of conversations right now — give me about a minute and ask again, or leave your email and I'll follow up."
+          : "I'm having trouble reaching my model right now — please try again in a moment, or leave your email and I'll follow up."
+    }
   } else {
-    reply = `Thanks — I heard you. (Owned runtime seed; full model provider path is env-armed.) You said: ${message.slice(0, 280)}`
+    reply = `Thanks — I heard you. (Owned runtime seed; model path not armed.) You said: ${message.slice(0, 280)}`
   }
 
   return {
     runtime: "owned_effect_seed",
+    modelPath,
+    ...(model ? { model } : {}),
+    ...(modelError ? { modelError } : {}),
     ok: true,
     reply,
     threadId,

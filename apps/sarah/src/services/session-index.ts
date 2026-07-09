@@ -141,6 +141,21 @@ function outputStringArray(output: Record<string, unknown>, key: string) {
     : [];
 }
 
+export async function getSarahSessionTranscript({
+  prospectRef,
+  sessionId,
+  limit = 12,
+}: {
+  prospectRef: string;
+  sessionId: string;
+  limit?: number;
+}): Promise<SarahTranscriptRecord[]> {
+  const index = await readIndex();
+  const transcript =
+    index.prospects[prospectRef]?.sessions[sessionId]?.transcript ?? [];
+  return transcript.slice(-limit);
+}
+
 export async function recordSarahToolReceipt({
   prospectRef,
   sessionId,

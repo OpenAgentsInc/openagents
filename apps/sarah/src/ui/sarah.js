@@ -96,11 +96,17 @@ async function sendText(message) {
     text: data.reply || data.error || "No reply",
     modality: "text",
   })
-  if (data.runtime) {
+  if (data.modelPath === "google_gemma_live") {
     dispatch({
       type: "ui/card",
       title: "Runtime",
-      body: `Owned seed runtime: ${data.runtime}`,
+      body: `Owned runtime · live model: ${data.model || "gemma-4"}`,
+    })
+  } else if (data.runtime && data.modelPath === "seed_echo") {
+    dispatch({
+      type: "ui/card",
+      title: "Runtime",
+      body: `Owned runtime · model not armed (${data.modelError || "seed echo"})`,
     })
   }
   dispatch({ type: "ui/status", state: state.live ? "live" : "idle" })

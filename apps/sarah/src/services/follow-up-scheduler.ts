@@ -150,10 +150,12 @@ export async function suppressSarahFollowUps(input: {
   return updated;
 }
 
-export async function processDueSarahFollowUps(options: {
-  now?: Date;
-  limit?: number;
-}) {
+export async function processDueSarahFollowUps(
+  options: {
+    now?: Date;
+    limit?: number;
+  } = {},
+) {
   const now = options.now ?? new Date();
   const claimed: SarahFollowUpJob[] = [];
   const queued: Array<{ job: SarahFollowUpJob; draftId: string }> = [];
@@ -184,9 +186,10 @@ export async function processDueSarahFollowUps(options: {
         toEmail: job.toEmail,
       });
       job.status = "queued_for_approval";
-      job.draftId = draft.id;
+      const draftId = "id" in draft ? draft.id : draft.draftRef;
+      job.draftId = draftId;
       job.updatedAt = now.toISOString();
-      queued.push({ job: { ...job }, draftId: draft.id });
+      queued.push({ job: { ...job }, draftId });
     }
 
     await writeFollowUpQueue(queue);
