@@ -69,7 +69,7 @@ existing consumers keep compiling.
 - [~] Step 5 — executor (`executor/`): **leaf wave + Claude executor done** — the
   dependency-closed leaves `claude-agent`, `codex-agent`, `claude-turn-reporter`,
   `agent-status-reporter`, `codex-turn-reporter`, `codex-rg-guard`,
-  `session-error-class`, `claude-second-pass-reviewer`, and (built on the first
+  `session-error-class`, `dispatch-failure-taxonomy`, `claude-second-pass-reviewer`, and (built on the first
   two) `workspace-materializer` are relocated with shims. That unblocked the custody `account-usage →
   account-status` wave
   above. Also relocated `active-assignment-runs` (+ its test) here: a clean
