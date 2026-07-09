@@ -3,7 +3,11 @@
 Date: 2026-07-08
 Status: Grok analysis / opinion (flips no promise state)
 Audience: owner + fleet implementers
-Primary spine: `docs/fable/MASTER_ROADMAP.md` rev 6.3
+Historical source: `docs/fable/MASTER_ROADMAP.md` rev 6.3
+
+> Superseded for dispatch by `docs/sol/MASTER_ROADMAP.md`. Its multi-harness
+> analysis informed FC-1 through FC-5, but its phase order and Khala Code
+> product-surface framing are no longer current.
 
 ## 0. The ask, restated
 

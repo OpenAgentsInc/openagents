@@ -3,7 +3,7 @@
 - Date: 2026-07-09
 - Status: grounded design map; implementation must still follow owning
   contracts and invariants
-- Companion: [`IMPLEMENTATION_ROADMAP.md`](./IMPLEMENTATION_ROADMAP.md)
+- Companion: [`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md)
 
 ## Purpose
 
@@ -37,7 +37,8 @@ Do not:
   transcript/Blueprint projections;
 - build a Sarah-only assignment store or approval system.
 
-Nearest proof: `SARAH-CODE-1`, then #8600 and #8607.
+Nearest proofs: #8637, #8633, #8639, and the #8640 dogfood burn. #8600 runs
+in parallel for persona-neutral Sarah inference.
 
 ## 2. Khala inference and routing
 
@@ -112,7 +113,8 @@ Do not:
 - introduce a conversation-specific runner;
 - use a public stream as the canonical raw event archive.
 
-Nearest proof: `SARAH-CODE-1` fixture and live dogfood runs.
+Nearest proofs: #8637 contract fixtures, #8633 mixed-harness execution, and
+#8640 live dogfood runs.
 
 ## 5. Pylon and `pylon-core`
 
@@ -135,7 +137,8 @@ Do not:
 - merge owner-local capacity with org-cloud custody;
 - extract wallet code without the required binary/WASM verification.
 
-Nearest proof: #8578 exit followed by #8579 cockpit consumption.
+Nearest proof: #8633 standing mixed-harness execution, followed by #8574
+OpenAgents Desktop consumption.
 
 ## 6. Agent Computers and Cloud
 
@@ -159,7 +162,7 @@ Do not:
 - place raw credentials or topology in Sarah-visible receipts;
 - add Claude/Grok cloud variants before the Codex contract works end to end.
 
-Nearest proof: #8547, then #8549/#8588.
+Nearest proof: #8547, then hybrid-policy integration under #8636.
 
 ## 7. Mobile
 
@@ -186,7 +189,8 @@ Do not:
   conversion;
 - weaken mobile behavior contracts to simplify the port.
 
-Nearest proofs: #8543 existing-app E2E; #8597 cross-app Sarah continuation.
+Nearest proof: #8597 cross-app Sarah continuation while the existing dogfood
+straight line stays green.
 
 ## 8. Desktop cockpit
 
@@ -209,7 +213,7 @@ Do not:
 - reintroduce a React/Tailwind shell architecture;
 - retire OpenTUI before cockpit parity and owner proof.
 
-Nearest proofs: #8574 + #8579, then #8580.
+Nearest proof: #8574, consuming the same #8637/#8639 run and intent contracts.
 
 ## 9. Effect Native
 
@@ -234,7 +238,8 @@ Do not:
 - equate visual parity with semantic parity;
 - let broad route conversion delay the first Sarah-to-outcome integration.
 
-Nearest proofs: #8597, #8574, and #8575; #8573 remains useful parallel burn.
+Nearest proofs: #8597, #8574, #8634, and #8635 against the shared catalog and
+intent model.
 
 ## 10. Khala Sync and data projections
 
@@ -279,7 +284,8 @@ Do not:
 - allow “reply as Sarah” to bypass continuation approval;
 - call a checkout link a sale before settlement.
 
-Nearest proofs: #8558, #8561, and #8607.
+No active P0/P1 issue owns sales, outbound, or in-conversation payment work.
+Re-file a bounded capability only after the fleet-command loop is routine.
 
 ## 12. QA, behavior contracts, receipts, and promises
 
@@ -301,7 +307,7 @@ Do not:
 - treat a worker closeout as independent verification;
 - let Sol analysis flip a promise state.
 
-Nearest proof: the fixture and live receipt bundle for `SARAH-CODE-1`.
+Nearest proof: the fixture and live receipt bundle for #8640.
 
 ## 13. Operations and observability
 

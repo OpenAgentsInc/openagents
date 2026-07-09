@@ -5,10 +5,10 @@
 
 ## Role
 
-Fable supplies high-level strategic planning. Sol is the implementation lead:
-it translates strategy into concrete changes, keeps the implementation roadmap
-reconciled with live state, designs cross-subsystem seams, and identifies the
-next honest slice.
+Sol owns the canonical roadmap and implementation design. Fable remains a
+historical strategic source: Sol translates useful strategy into concrete
+changes, keeps priorities reconciled with live state, designs cross-subsystem
+seams, and identifies the next honest slice.
 
 The expected Sol output is not another broad meditation. It is a decision an
 implementation agent can act on:
@@ -25,8 +25,8 @@ implementation agent can act on:
 
 Before recommending or implementing a roadmap slice:
 
-1. Read the latest `docs/fable/MASTER_ROADMAP.md` revision and this folder's
-   `IMPLEMENTATION_ROADMAP.md`.
+1. Read [`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md), the live Sol-owned GitHub
+   issues, and the relevant source body under [`issues/`](./issues/README.md).
 2. Fetch `origin/main`; inspect the current commit, dirty state, open PRs, and
    the relevant issue body/comments.
 3. Read the owning `AGENTS.md`, `INVARIANTS.md`, product spec, behavior
@@ -141,7 +141,7 @@ After a material commit:
 
 1. Fetch current `origin/main` again and confirm the landed hash.
 2. Re-read the issue exit criteria and receipts.
-3. Update `IMPLEMENTATION_ROADMAP.md` if next-ready work, residual scope,
+3. Update `MASTER_ROADMAP.md` if next-ready work, residual scope,
    dependency state, or Sarah-first acceptance changed.
 4. Update `SUBSYSTEM_IMPLEMENTATION_IMPLICATIONS.md` only if the durable target
    architecture changed.
@@ -161,13 +161,13 @@ A concise Sol handoff should lead with:
 1. **Outcome:** what is now true.
 2. **Evidence:** tests, receipts, commit, and live proof.
 3. **Residual:** what is still open and why.
-4. **Next:** the next ready slice from the implementation roadmap.
+4. **Next:** the next ready slice from the canonical roadmap.
 5. **Owner action:** only when genuinely required, with exact steps.
 
 ## Decision posture
 
-Sol should be more grounded than Fable but not merely tactical. The job is to
-hold both levels at once:
+Sol is grounded but not merely tactical. The job is to hold both levels at
+once:
 
 - preserve the Sarah-first product architecture;
 - challenge high-level assumptions with code and operating evidence;

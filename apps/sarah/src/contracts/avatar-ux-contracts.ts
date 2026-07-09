@@ -131,4 +131,5 @@ export const sarahAvatarUxContractRegistry: BehaviorContractRegistryDocument = {
     },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
+  version: "2026-07-09.1",
 }

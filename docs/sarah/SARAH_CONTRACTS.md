@@ -1,7 +1,8 @@
 # Sarah Behavior Contracts
 
 Machine sources of truth: `apps/sarah/src/contracts/isolation-contracts.ts`,
-`apps/sarah/src/contracts/split-layout-contracts.ts`, and the Sarah avatar UX
+`apps/sarah/src/contracts/split-layout-contracts.ts`,
+`apps/sarah/src/contracts/fleet-command-contracts.ts`, and the Sarah avatar UX
 registry in `apps/sarah/src/contracts/avatar-ux-contracts.ts` (schema:
 `@openagentsinc/behavior-contracts`). This document is the human rendering;
 the coverage tests under `apps/sarah/src/contracts/` fail the sweep if a doc
@@ -44,6 +45,11 @@ provenance (`sarah.blueprint_versioned_provenance.v1`).
   mostly padding — the disclosure banner stays, it's a contract)." — owner,
   Codex thread, 2026-07-09): the `/sarah` shell is a full-height split with
   the Effect Native tabbed canvas on the right.
+- `sarah.fleet_command_multi_harness.v1` records the owner's 2026-07-09
+  priority verbatim: Sarah must manage several concurrent Codex, Claude, and
+  Grok work streams across desktop/local and optional cloud capacity. It is
+  pending until the FC-1/FC-2/FC-3 integration and FC-5 live dogfood oracle
+  land.
 
 ## How collective learning is gated (KHS-4, #8603)
 
@@ -102,9 +108,9 @@ entries. This is an internal owner-approved store; it makes no public
 
 ## Pending entries (blocker-gated, never claim as guaranteed)
 
-None. `sarah.collective_learning_owner_gated.v1` flipped pending → enforced
-with KHS-4 (#8603); the Sarah behavior contracts listed here are enforced in
-the test sweep unless a future section explicitly marks one pending.
+- `sarah.fleet_command_multi_harness.v1` is blocked on #8637, #8633, #8639,
+  and the #8640 Phase A live dogfood receipt. The fleet substrate is real, but
+  Sarah does not yet compose and supervise the complete multi-harness run.
 
 ## Registry
 
@@ -196,7 +202,23 @@ Registry version: `2026-07-09.2` (schema `openagents.behavior_contracts.v1`)
 - **Verification:** bun test src/ui/surface.test.ts src/contracts/split-layout-contracts.test.ts inside apps/sarah; runs in the package test glob and gives BM-5 a named contract for the later screenshot smoke deploy gate.
 - **Authority boundary:** This contract binds the /sarah browser surface shell only: the top-level split, Effect Native Tabs composition, video-pane overlay controls, compact disclosure banner, and removal of the audited caption/control/centered-grid padding. It does not claim the live Blueprint graph exists yet (BM-2) and does not replace BM-5's later screenshot smoke gate.
 
+## Sarah Fleet Command Contract
+
+Registry version: `2026-07-09.1` (schema `openagents.behavior_contracts.v1`)
+
+### `sarah.fleet_command_multi_harness.v1` — PENDING
+
+- **Surface:** sarah (Sarah Fleet Command)
+- **Stated by:** owner via openagents-codex-thread on 2026-07-09
+- **Statement:** I should clarify that my top priority is having Sarah able to manage coding fleets more or less immediately, like all of our previous fleet ideas using Khala and the clients and such. I need those updated to the point where we can start delegating out via Sarah multiple streams of work using the different Codex, Claude, and Grok accounts, some of which will be on my desktop, some of which may be in the cloud, but I need to unblock our coding right now.
+- **Enforcement tier:** unenforced
+- **Blockers:** `issue:#8637`, `issue:#8633`, `issue:#8639`, `issue:#8640`
+- **Verification:** Pending #8637/#8633/#8639 and the #8640 Phase A live dogfood receipt: Sarah starts and manages at least three simultaneous pinned real work units across Codex, Claude, and Grok, including a steer or approval round trip, with zero duplicate claims or default-home execution and verified closeouts visible after reconnect.
+- **Authority boundary:** This contract binds the owner-facing Sarah fleet-management outcome: named Codex, Claude, and Grok work streams may use owner-local or managed-cloud capacity, but all authority remains in authenticated owner scope, typed run/claim/approval services, named isolated provider accounts, and independent closeout evidence. It does not authorize pooled third-party subscriptions, default provider homes, raw-event publication, spend, deployment, or repository mutation outside the bounded approved plan.
+
 ## Avatar UX contracts (SQ-4 #8621)
+
+Registry version: `2026-07-09.1` (schema `openagents.behavior_contracts.v1`)
 
 Owner live-failure statements from 2026-07-09 are enforced in
 `apps/sarah/src/contracts/avatar-ux-contracts.ts`: the session greets first

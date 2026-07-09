@@ -21,17 +21,20 @@ export type BehaviorContractState = "enforced" | "pending" | "retired"
 /**
  * Where the oracle runs. `test-sweep` means the normal per-package test run
  * (`bun test`, package `verify`, repo `test:*` chain) that gates pushes to
- * main. `nightly` and `manual` are weaker tiers; `unenforced` is an explicit
+ * main. `smoke` is enforced by a named deploy/live smoke rather than the unit
+ * sweep; `nightly` and `manual` are weaker tiers; `unenforced` is an explicit
  * admission that nothing runs.
  */
 export const BehaviorContractEnforcementTier = S.Literals([
   "test-sweep",
+  "smoke",
   "nightly",
   "manual",
   "unenforced",
 ])
 export type BehaviorContractEnforcementTier =
   | "test-sweep"
+  | "smoke"
   | "nightly"
   | "manual"
   | "unenforced"
@@ -40,6 +43,7 @@ export const BehaviorContractOracleKind = S.Literals([
   "bun-test",
   "qa-scenario",
   "visual-smoke",
+  "script",
   "manual-check",
   "planned",
 ])
@@ -47,6 +51,7 @@ export type BehaviorContractOracleKind =
   | "bun-test"
   | "qa-scenario"
   | "visual-smoke"
+  | "script"
   | "manual-check"
   | "planned"
 
@@ -57,8 +62,15 @@ export const BehaviorContractOracleMode = S.Literals([
   "rpc",
   "vision",
   "headless",
+  "e2e",
 ])
-export type BehaviorContractOracleMode = "unit" | "dom" | "rpc" | "vision" | "headless"
+export type BehaviorContractOracleMode =
+  | "unit"
+  | "dom"
+  | "rpc"
+  | "vision"
+  | "headless"
+  | "e2e"
 
 export const BehaviorContractOracle = S.Struct({
   description: S.String,

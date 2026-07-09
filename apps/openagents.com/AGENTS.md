@@ -1,6 +1,21 @@
 # Agent Development Notes
 
-This is a Foldkit app, a framework built on Effect-TS, architected like Elm.
+## 2026-07-09 product and UI override
+
+This directory is converging on the single OpenAgents web app described by
+[`docs/sol/MASTER_ROADMAP.md`](../../docs/sol/MASTER_ROADMAP.md). Retained
+human-facing product routes are `/`, `/sarah`, `/forum`, and required Forum
+descendants. Legal, auth, API, asset, health, manifest, and receipt routes are
+infrastructure exceptions. Other human-facing pages are retirement sources,
+not surfaces to grow or port.
+
+New and converted retained UI is authored in Effect Native. The existing
+Foldkit/Tailwind application remains legacy maintenance code until each
+retained route is converted and its old implementation deleted. The Foldkit
+instructions below apply only when repairing that legacy implementation; they
+do not override the repository-wide Effect Native mandate or justify new
+Foldkit components/routes. React, TanStack Start, and DOM remain renderer/host
+machinery, not the product architecture.
 
 <!-- effect-solutions:start -->
 
@@ -46,9 +61,10 @@ If `foldkit-skills` is installed as a Claude Code plugin, the `generate-program`
 
 ## Project Conventions
 
-- Read `DESIGN.md` before changing UI. OpenAgents Autopilot uses the Vortex dark,
-  mono, operational design direction; do not introduce light mode, decorative
-  gradients, card-heavy marketing shells, or generic chat-first framing.
+- Read `DESIGN.md` when maintaining legacy UI, and read the Effect Native
+  design docs plus the Sol master roadmap for retained/new UI. Do not preserve
+  an Autopilot-specific visual rule when it conflicts with the unified
+  OpenAgents/Sarah product direction.
 - When writing GitHub issue comments with `gh`, never pass Markdown containing
   escaped `\n` sequences in a quoted `--body` string. Use real newlines via
   `--body-file -`, a heredoc/stdin body, or a body variable populated from a

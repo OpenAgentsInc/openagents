@@ -1,9 +1,13 @@
-# Sol implementation roadmap — Sarah-first, grounded in current `main`
+# SUPERSEDED — Sol implementation roadmap rev 1
+
+> Superseded on 2026-07-09 by the canonical
+> [`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md). The 30-issue snapshot, OAV queue
+> head, and `SARAH-CODE-1` placeholder below are retained as a historical
+> implementation audit. Do not dispatch from this document.
 
 - Date: 2026-07-09
 - Revision: 1
-- Status: day-to-day implementation companion to
-  [`MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md) rev 6.19
+- Status: historical snapshot; not an active queue
 - Source snapshot: `origin/main` at `93bfa6b7e3`; live GitHub audit: 30 open
   roadmap issues, no open PRs at inspection time
 - Verification note: `bun run check:deploy` is not green at this snapshot. It
@@ -15,9 +19,9 @@
 
 ## Mandate
 
-Fable owns high-level strategic planning. Sol owns the grounded implementation
-translation: current-state reconciliation, subsystem design, dependency-aware
-slice selection, and the day-to-day roadmap beneath the strategic plan.
+At this historical snapshot, Fable owned high-level strategic planning and Sol
+owned its grounded implementation translation. The 2026-07-09 reset moved both
+roadmap and implementation authority to Sol.
 
 This document does not weaken issue acceptance criteria, invariants, product
 promise gates, or owner-only actions. It does make Sarah-first operational by

@@ -1,7 +1,8 @@
 # Sarah-first as product architecture
 
 - Date: 2026-07-09
-- Status: Sol analysis; interpretive, non-authoritative
+- Status: Sol analysis; architectural companion to
+  [`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md)
 - Primary sources:
   [`Sarah-first thesis`](../fable/2026-07-09-sarah-first-product-thesis.md),
   [`Sarah–Khala assessment`](../fable/2026-07-09-sarah-khala-connection-assessment.md),
@@ -105,12 +106,13 @@ from authenticated policy, not because the model infers that the person
 ## The first decisive vertical slice
 
 The Blueprint Map is now implemented. The highest-value next proof of the
-Sarah-first thesis is narrower than “put all of Khala Code inside Sarah”:
+Sarah-first thesis is not “put all of Khala Code inside Sarah”:
 
-> An authenticated owner asks Sarah to run one bounded public issue on their
-> linked fleet, sees the typed plan and target, watches resumable progress,
-> receives the verified closeout in the canvas, and can ask a follow-up from
-> the same conversation.
+> An authenticated owner asks Sarah to run a bounded pinned plan across their
+> linked fleet; at least three Codex, Claude, and Grok streams execute
+> concurrently on owner-local capacity; the owner sees typed targets and
+> resumable progress, steers or approves one named unit, receives verified
+> closeouts in the canvas, and can follow up in the same conversation.
 
 The slice is successful only if it proves all of the following:
 
@@ -124,6 +126,8 @@ The slice is successful only if it proves all of the following:
   events or private prompts.
 - Failure is typed and actionable; a text-only path remains usable if video
   degrades.
+- Managed Agent Computers can join through the same run and claim contracts,
+  but cloud readiness does not delay the first local acceptance burn.
 
 That is the smallest loop that turns Sarah-first from a framing decision into
 a product fact.

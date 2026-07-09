@@ -28,9 +28,11 @@ iteration), the **top operating rule is CONSTANT MOTION**:
 
 ## Repo Layout
 
-- `apps/openagents.com/` owns the `openagents.com` product surface, including
-  the current Autopilot, Forum, Sites, and public proof implementation
-  material.
+- `apps/openagents.com/` owns the single OpenAgents web app. The retained
+  public product routes are `/`, `/sarah`, `/forum`, and required Forum
+  descendants; legal, authentication, machine-readable API, asset, and
+  operational endpoints are infrastructure exceptions. Autopilot, Sites, and
+  other legacy pages are retirement sources, not product surfaces to grow.
 - `apps/openagents-world/` is the Cloudflare Worker + Region Durable Object
   home for live Verse world projection, presence, local interaction,
   interest-scoped fanout, world WebSocket transport, D1 projection rows, queue
@@ -50,9 +52,8 @@ iteration), the **top operating rule is CONSTANT MOTION**:
   `openagents.com/forum`. The live Forum routes stay inside the
   `openagents.com` Worker for now because they share auth, D1, payment
   receipt, and public projection boundaries.
-- `apps/forge/` owns the separate `forge.openagents.com` UI app. It reuses
-  shared `@openagentsinc/ui` primitives/tokens but does not route through the
-  main `openagents.com` logged-in page tree.
+- `apps/forge/` is a legacy/postponed implementation source. Do not treat it as
+  a fourth product app or grow its public surface under the three-app plan.
 - `apps/pylon/` owns the Pylon contributor app imported from the standalone
   Pylon repository. It bundles the former Probe runtime as
   `@openagentsinc/pylon-runtime`.
@@ -72,19 +73,17 @@ iteration), the **top operating rule is CONSTANT MOTION**:
   LLM computers and verification by replay.
 - `docs/autopilot-coder/` owns Autopilot Coder status audits, smoke runbooks,
   and the paid L402 boundary notes.
-- `docs/fable/` owns high-level strategic synthesis and the master program
-  roadmap. `docs/sol/` owns the grounded implementation translation: current-
-  state reconciliation, subsystem designs, day-to-day slice ordering, and the
-  Sarah-first implementation roadmap. Read both before changing roadmap
-  sequencing; current code, issue state, contracts, and receipts remain the
-  factual status authorities.
+- `docs/sol/` owns the canonical master roadmap, live issue set, grounded
+  implementation design, subsystem implications, and day-to-day slice
+  ordering. `docs/fable/` is retained historical strategy and no longer owns
+  sequencing. Start with `docs/sol/MASTER_ROADMAP.md`; current code, issue
+  state, contracts, and receipts remain the factual status authorities.
 - `docs/forum/`, `docs/nostr/`, and `docs/research/` own dated audits for
   those areas.
 
 ## Live Public Reference Surfaces
 
 - Agent onboarding instructions: <https://openagents.com/AGENTS.md>
-- Product promises page: <https://openagents.com/docs/product-promises>
 - Agent-readable promise registry:
   <https://openagents.com/api/public/product-promises>
 - Product Promises Forum:
@@ -530,7 +529,8 @@ and local Codex auth out of reports.
 
 - **`docs/DEPLOYMENT.md` is the single hub for every deploy / publish / release.**
   Read it first for any of: deploying the `openagents.com` Cloudflare Worker,
-  publishing Pylon to npm, cutting a Pylon or Autopilot Desktop release (incl. the
+  publishing Pylon to npm, cutting an OpenAgents Desktop release from its
+  current desktop source path (incl. the
   signed/notarized macOS DMG), the `updates.openagents.com` OTA feed, or the mobile
   app. It indexes the per-surface runbooks (the sources of truth), the one-line
   recipe for each, the GitHub release-tag convention, and where the signing
@@ -555,22 +555,31 @@ and local Codex auth out of reports.
   too large or out of scope for the current change, fix what is cheap and **explicitly
   flag the rest** (in the report, and a tracking issue if it will persist) — never
   silently leave a red, and never describe a partially-green run as clean.
+- **Product shape (owner decision, 2026-07-09):** there are three product apps:
+  the OpenAgents web app (`/`, `/sarah`, and `/forum`), the **OpenAgents**
+  mobile app, and **OpenAgents Desktop**. Sarah is the relationship and fleet-
+  command surface in all three. Khala Code, Autopilot, Pylon cockpit, Sites,
+  and other prior product ideas are capabilities, engine-room services, or
+  migration sources—not additional product apps. P0 is Sarah-managed parallel
+  coding across Codex, Claude, and Grok accounts on owner-local Pylons, with
+  cloud capacity additive after the local path works. The canonical order and
+  issue set live in `docs/sol/MASTER_ROADMAP.md`.
 - Keep new TypeScript implementation work on Bun, Effect, and Effect Schema.
   **UI layer (owner decision, 2026-07-08 — supersedes the 2026-07-04
   React+Tailwind clause): the entire repo converts to Effect Native, ASAP**
   — one typed Effect-Schema component set with typed intents, an Effect v4
   runtime, and thin swappable renderers, per
-  `docs/fable/MASTER_ROADMAP.md` §EN (rev 6, the conversion program CV0–CV5)
-  and the `docs/effect-native/` design docs; the framework is public at
+  `docs/sol/MASTER_ROADMAP.md` and the `docs/effect-native/` design docs; the
+  framework is public at
   `OpenAgentsInc/effect-native` (workspace sibling `~/work/effect-native`).
   New UI anywhere authors the Effect Native component set wherever a
   renderer exists for that surface; React/TanStack Start and React Native
   are renderer adapters and serving hosts only — never the architecture.
   Effect remains the services/logic substrate everywhere. Existing Foldkit
-  surfaces in `apps/openagents.com/apps/web` are legacy, converted and
-  deleted route-by-route under EN-4 (#8573) — never grown. The Khala Code
-  desktop shell target is **Effect Native** (EN-5 #8574 on the
-  effect-native Phase 4 epic #20/#21–#43); the previously planned
+  surfaces in `apps/openagents.com/apps/web` are legacy; retained routes are
+  converted under #8634/#8635 and all other public pages retired. The
+  OpenAgents Desktop target is **Effect Native** (#8574 on the effect-native
+  Phase 4 epic #20/#21–#43); the previously planned
   React+Tailwind desktop shell rewrite is cancelled. Every conversion PR
   keeps its surface's tests/QAM gates/behavior contracts green and deletes
   the legacy surface it replaces; component gaps go upstream through the
@@ -588,17 +597,18 @@ and local Codex auth out of reports.
   `crates/oa-node`, `crates/oa-workroomd`, historical
   `crates/oa-cloud-run-bridge`). These daemons are systems infrastructure
   (Firecracker/vsock microVMs, GCE capacity, managed-node lifecycle), not UI
-  or Worker logic — the Effect Native conversion mandate (§EN, MASTER_ROADMAP
-  rev 6) governs UI surfaces and does not convert them. TypeScript callers
+  or Worker logic — the Effect Native conversion mandate in the Sol master
+  roadmap governs UI surfaces and does not convert them. TypeScript callers
   never link the crates directly; they use the Effect Schema mirrors in
   `packages/cloud-contract` and the documented HTTP contracts. Product, UI,
   Worker, and Pylon logic stays on Bun/Effect/TypeScript.
 - **Mobile policy (owner decision, 2026-07-04 — supersedes the 2026-06-26
-  no-Expo mandate for the framework):** the mobile destination is an **Expo
-  React Native app** (one codebase, iOS + Android — no separate Swift and
-  Kotlin apps), with TanStack DB + `khala-sync-db-collection` as the data
-  layer, NativeWind on the shared design tokens, and expo-modules ports of
-  the native Swift pieces (voice/STT, Apple FM bridge). See
+  no-Expo mandate for the framework; amended 2026-07-09):** the mobile
+  destination is the **OpenAgents** Expo React Native app (one codebase, iOS +
+  Android—no separate Swift and Kotlin apps), authored in Effect Native with
+  React Native/NativeWind as renderer/host machinery, TanStack DB +
+  `khala-sync-db-collection` as the data layer, and expo-modules ports of the
+  native Swift pieces (voice/STT, Apple FM bridge). See
   `docs/fable/2026-07-04-tanstack-start-sites-and-web-app-evaluation.md`
   §6.2–6.4. Build/ship posture stays **local-first**: `expo prebuild` +
   local Xcode/Gradle, archive with `xcodebuild`, upload to TestFlight with
@@ -629,7 +639,8 @@ and local Codex auth out of reports.
   in the owning surface's behavior-contract registry in the same change —
   statement verbatim, source recorded, oracle test written (or an explicit
   `pending` entry with blocker refs). Never leave a stated expectation only
-  in conversation. For Khala Code desktop the registry is
+  in conversation. During the OpenAgents Desktop path/name migration the
+  registry remains
   `clients/khala-code-desktop/src/contracts/ux-contracts.ts` with the human
   doc at `docs/khala-code/khala-code-ux-contract.md`; the shared schema and
   coverage checker live in `packages/behavior-contracts`

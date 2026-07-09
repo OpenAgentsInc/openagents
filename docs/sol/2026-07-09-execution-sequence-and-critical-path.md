@@ -1,15 +1,17 @@
 # Execution sequence and critical path
 
 - Date: 2026-07-09
-- Status: Sol analysis; explanatory companion
-- Strategic source: [`MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
-- Day-to-day plan: [`IMPLEMENTATION_ROADMAP.md`](./IMPLEMENTATION_ROADMAP.md)
+- Status: Sol analysis; explanatory companion to the canonical roadmap
+- Canonical source: [`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md)
+
+> Priority note: the old avatar-first queue described below has been
+> superseded. Sarah Fleet Command is P0; Sarah presentation quality is a
+> parallel P1 lane. Use the canonical roadmap for dispatch order.
 
 ## Purpose
 
-The master roadmap contains the high-level strategic order and its latest
-issue snapshot. The Sol implementation roadmap reconciles day-to-day state.
-This document extracts the dependency logic beneath both so work can be
+The Sol master roadmap contains the strategic order and live issue set. This
+document extracts the dependency logic beneath it so work can be
 evaluated by the product loop it unlocks, not only by its issue number.
 
 ## The critical-path graph
@@ -21,7 +23,7 @@ conversation reliability + persona-neutral inference
 authenticated Sarah relationship + live Blueprint canvas
                          |
                          v
-first typed Sarah -> Khala -> Pylon -> worker delegation
+Sarah -> durable FleetRun -> mixed Codex / Claude / Grok delegation
                          |
                          v
 resumable progress + verification + exact receipt in canvas
@@ -48,9 +50,9 @@ There are supporting critical paths beneath it:
 
 ## Convergence milestone 1: Sarah is dependable
 
-The current queue correctly puts owned-avatar quality and hardening first.
-Under Sarah-first, video, audio, turn latency, and fallback are not cosmetic.
-They determine whether the front door is available.
+Owned-avatar quality and hardening remain important parallel work. Under
+Sarah-first, video, audio, turn latency, and fallback are not cosmetic, but
+they do not block the first Sarah-managed coding fleet burn.
 
 The milestone is not “best benchmark score.” It is:
 
@@ -65,41 +67,43 @@ The milestone is not “best benchmark score.” It is:
 Offline quality exploration should continue, but it must not indefinitely
 delay a reliable, honest interaction tier.
 
-## Convergence milestone 2: Sarah performs one real bounded job
+## Convergence milestone 2: Sarah manages a real mixed coding fleet
 
-With the Blueprint Map complete, the next architectural proof is the coding
-vertical slice described in the Sarah-first thesis. It should be filed and
-tracked explicitly if it does not already have a concrete lane; otherwise a
-load-bearing product step can hide between epics.
+With the Blueprint Map complete, the next architectural proof is the
+multi-stream coding slice owned by #8637, #8633, #8639, and #8640. It composes
+the existing fleet substrate rather than creating another executor.
 
 The bounded sequence is:
 
 1. Authenticate and resolve the owner's linked capacity.
-2. Convert “run issue N” into the existing typed coding workflow.
-3. Show the proposed target, repository ref, and verification command.
-4. Dispatch without exposing or copying credentials.
-5. Stream durable progress to Sarah's canvas.
-6. Render typed failures or the verified closeout.
-7. Reconcile exact token and lifecycle evidence.
-8. Accept a follow-up in the same conversation.
+2. Convert a pinned issue list or plan DAG into one durable FleetRun.
+3. Show named work units, target classes, repository refs, and verifiers.
+4. Dispatch concurrently across named Codex, Claude, and Grok accounts without
+   exposing or copying credentials.
+5. Stream durable progress to Sarah's canvas and accept steer/approval intents.
+6. Render typed failures or verified closeouts per work unit.
+7. Reconcile claim uniqueness, exact token truth, and lifecycle evidence.
+8. Accept a follow-up in the same conversation after reconnect.
 
-This slice should use a public-safe fixture or bounded public issue first. It
-is product integration, not a new executor.
+The fixture proves the seam; the #8640 Phase A receipt requires three useful
+real local streams. Managed cloud is additive and must not block that burn.
 
-## Convergence milestone 3: launch and transact
+## Convergence milestone 3: contract the product into three applications
 
-Sarah cannot be the commercial front door while checkout, account creation,
-or launch readiness require an unrelated manual journey. The next closure is:
+Once the immediate fleet loop works, packaging converges without creating more
+destinations:
 
-- in-conversation account and payment paths remain code-priced and
-  receipt-backed;
-- the seeded test account and unattended mobile straight line pass;
-- public copy stays within promise state;
-- the mobile product opens into Sarah and can resume the relationship;
-- store artifacts and owner-gated submissions retain their explicit status.
+- production web retains only `/`, `/sarah`, `/forum*`, plus explicit legal,
+  auth, API, asset, health, manifest, and receipt exceptions;
+- the mobile product becomes OpenAgents with Sarah as home;
+- the desktop product becomes OpenAgents Desktop with the deep fleet cockpit;
+- the existing mobile straight line, Forum authority, auth, receipts, and
+  release gates stay green;
+- retired public pages and replaced UI are deleted rather than carried as a
+  fourth product.
 
-This milestone converts the architecture into a usable acquisition and
-activation loop.
+Payment, outbound, and broader standing-employee capabilities are re-filed as
+bounded Sarah capabilities after the fleet loop is routine.
 
 ## Convergence milestone 4: one application grammar
 
@@ -161,7 +165,6 @@ files or owner gates:
 - Effect Native upstream catalog work versus scoped consumer conversions;
 - backend account/broker work versus UI projection work built against stable
   schemas;
-- outbound deliverability preparation versus Sarah-to-coding integration;
 - docs, eval fixtures, and behavior contracts ahead of implementation;
 - cloud source hardening that does not mutate live infrastructure.
 
@@ -199,7 +202,7 @@ Execution should therefore reconcile four things before closeout:
 - the lane's explicit exit receipt;
 - any owner-only proof or production action.
 
-The strategic sequence is stable even when issue numbers move: make Sarah
-dependable, prove one real job through her, close the transaction and launch
-loop, unify the application surfaces, make execution durable, then generalize
-into roles and a brain.
+The strategic sequence is stable even when issue numbers move: make Sarah run
+the real mixed local fleet, add managed cloud without changing the contract,
+unify the three application surfaces, then generalize proven execution into
+roles and a brain.

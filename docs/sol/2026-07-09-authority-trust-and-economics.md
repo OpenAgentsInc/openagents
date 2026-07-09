@@ -3,7 +3,7 @@
 - Date: 2026-07-09
 - Status: Sol analysis; no authority or pricing change
 - Governing sources: [`INVARIANTS.md`](../../INVARIANTS.md),
-  [`MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md), and owning-surface
+  [`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md), and owning-surface
   contracts
 
 ## The central law

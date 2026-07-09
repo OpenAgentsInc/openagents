@@ -4,7 +4,7 @@
 - Status: Sol analysis; interpretive, non-authoritative
 - Primary sources: [`Effect Native README`](../effect-native/README.md),
   [`framework framing`](../effect-native/2026-07-08-effect-native-is-a-framework-for-native-apps-using-effect.md),
-  and [`MASTER_ROADMAP §EN`](../fable/MASTER_ROADMAP.md#en--the-effect-native-substrate-cross-phase-lane-family)
+  and [`MASTER_ROADMAP`](./MASTER_ROADMAP.md)
 
 ## Thesis
 

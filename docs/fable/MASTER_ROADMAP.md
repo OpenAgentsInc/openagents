@@ -1,4 +1,16 @@
-# MASTER ROADMAP — Sarah-first: one front door (Khala Code MVP ships; everything else becomes what Sarah can do)
+# DEPRECATED — Fable master roadmap rev 6.19
+
+> **Superseded on 2026-07-09 by
+> [`docs/sol/MASTER_ROADMAP.md`](../sol/MASTER_ROADMAP.md).** Sol now owns the
+> unified roadmap, implementation design, and live GitHub issue set. The queue
+> and issue dispositions below predate the Sarah Fleet Command reset and must
+> not be used to dispatch work. This file remains as historical strategic
+> context only.
+
+## Historical title
+
+Sarah-first: one front door (Khala Code MVP ships; everything else becomes
+what Sarah can do)
 
 Date: 2026-07-09 (rev 6.19 — FAR-FORWARD PARALLEL LANES RECONCILED)
 
@@ -41,12 +53,10 @@ work. Prerequisite chain for the first vertical slice: BM-1..5
 (#8627-#8631) → authenticated "run issue N on my fleet" through Sarah's
 conversation over the existing typed Khala→Pylon→Codex rail (dogfood,
 operator exemption) → #8600 persona-neutral model id for prod.
-Status: **the single consolidated execution roadmap.** This document owns
-top-level sequencing across everything designed in the 2026-07-07 strategy
-set and its predecessors. The source docs remain authoritative for their
-*content* (specs, evidence, arguments); when sequencing here and sequencing
-there disagree, **this document wins**, and new issues are filed against the
-phase lanes named here.
+Historical status at rev 6.19: this was the consolidated execution roadmap for
+the 2026-07-07 strategy set. That authority ended with the 2026-07-09 Sol reset;
+the queue below no longer wins sequencing conflicts and must not receive new
+issues.
 
 **Rev 6.17 changes (execution update, 2026-07-09 — OAV-2 CLOSED AND
 QUEUE REFRESHED):** completed **#8612 OAV-2** on Hydralisk and reconciled

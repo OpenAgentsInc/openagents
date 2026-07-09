@@ -1,9 +1,9 @@
 # OpenAgents roadmap: a system model
 
 - Date: 2026-07-09
-- Status: Sol analysis; interpretive, non-authoritative
-- Source snapshot: `origin/main` at `93bfa6b7e3`,
-  [`MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md) rev 6.19
+- Status: Sol analysis; conceptual companion, not a dispatch queue
+- Canonical roadmap: [`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md)
+- Historical source snapshot: `origin/main` at `93bfa6b7e3`
 
 ## Thesis
 
@@ -47,56 +47,32 @@ Effect Native spans these layers vertically. It is how control state,
 streaming state, evidence, and memory become one typed interface on web,
 mobile, desktop, and canvas.
 
-## What the phase ladder is really doing
+## What the active phase ladder is doing
 
-The roadmap's P0–P7 phases accumulate five properties.
+### P0: make Sarah Fleet Command operational
 
-### P0: prove the closed work loop
+An authenticated owner creates one durable FleetRun through Sarah, and a
+standing Pylon executes several pinned work units concurrently across named
+Codex, Claude, and Grok accounts. Sarah projects resumable progress, handles
+steering and approvals, and renders verified closeouts. The first acceptance
+burn is owner-local; managed Agent Computers join through the same claim
+contract without blocking it.
 
-Khala Code mobile must prove that a person can authenticate, select work,
-dispatch it to owned infrastructure, observe it, receive writeback, and be
-charged correctly. The importance of the mobile MVP is not the app shell. It
-is the first end-to-end proof that the system can turn a human request into a
-verified result without hidden operator repair.
+### P1 parallel: improve the relationship and consolidate its applications
 
-### P1: establish the relationship
+Presentation quality—avatar, voice, opener, latency, fallback, and visual
+polish—advances continuously without sitting ahead of the fleet loop. In the
+same horizon, the estate contracts into three Effect Native applications:
+OpenAgents web, OpenAgents mobile, and OpenAgents Desktop. The public website
+retains only root, Sarah, Forum, and explicit infrastructure exceptions.
 
-Sarah adds the persistent human-facing identity, conversational intake,
-qualification, memory, and sales loop. Under the Sarah-first revision, this
-is no longer a temporary acquisition layer. It becomes the product surface
-through which later capabilities arrive.
+### P2: generalize only from a proven daily loop
 
-### P2: make delegated coding a daily capability
-
-The Codex lanes move from a single cloud proof to an everyday workflow:
-account custody, brokered credentials, target selection, session continuity,
-multi-account concurrency, steer/interrupt/resume, and real repository
-writeback. Sarah-first changes the entry point, not these mechanics.
-
-### P3: make work persistent
-
-Standing employees add triggers, durable definitions, schedules, budgets, and
-unattended operation. The crucial transition is from “run this task” to “hold
-this responsibility,” while preserving the same admission and evidence rails.
-
-### P4: make context and authority durable
-
-The Blueprint Map matures from a per-conversation model into the company
-brain. Sarah becomes the first formal `ai_employee.v1`, with typed authority
-states, identity bindings, provenance-bearing memory, and role-scoped slices.
-
-### P5: make the system repeatable
-
-Templates and integrations turn successful configurations into installable
-products. The roadmap correctly requires external outcome receipts before a
-template can be marketed as proven.
-
-### P6–P7: make the system governable and scalable
-
-The trust layer adds audited skills, input ceilings, canaries, and data
-posture. The final phase expands distribution, assurance tiers, the business
-dashboard, partner fulfillment, and network effects without discarding the
-receipt and authority model built earlier.
+Standing responsibilities, the company brain, templates, payments, outbound
+work, assurance, and broader distribution remain directions rather than an
+active issue forest. Each returns as a bounded Sarah capability after the
+multi-harness fleet is routine, with the same admission, authority, Sync, and
+evidence rails.
 
 ## The deep unification
 
@@ -148,10 +124,10 @@ The source material shows real substrate, not a paper architecture:
   direction, with the full conversion still underway.
 
 But “substrate exists” is not the same as “product loop is closed.” The
-remaining strategic proof is an ordinary authenticated relationship in which
-a person asks Sarah for meaningful work, watches it happen, approves where
-needed, receives a verified outcome, and can resume from another surface
-without an operator stitching the experience together.
+remaining strategic proof is an authenticated owner asking Sarah for a pinned
+plan, watching several real harness streams run concurrently, steering or
+approving a named unit, receiving verified closeouts, and resuming from another
+surface without an operator stitching the experience together.
 
 ## My concise reading
 

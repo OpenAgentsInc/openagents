@@ -2,6 +2,11 @@
 
 Grok's analysis sandbox inside the OpenAgents monorepo.
 
+> **Roadmap note (2026-07-09):** dispatch only from
+> [`docs/sol/MASTER_ROADMAP.md`](../sol/MASTER_ROADMAP.md). Fable rev 6 and the
+> phase/issue order recorded in this sandbox are historical inputs after the
+> Sarah Fleet Command reset.
+
 Purpose: independent orientation, critique, and theme exploration after
 reading `docs/fable/` and related product code. These notes **flip no
 promise state**, change no runtime authority, and broaden no public copy.
@@ -47,8 +52,9 @@ CLI operator reference (separate folder): `docs/grok-cli/`.
 
 Strategic spine:
 
+- `docs/sol/MASTER_ROADMAP.md` (current canonical roadmap and issue set)
 - `docs/fable/README.md`
-- `docs/fable/MASTER_ROADMAP.md` (rev 6.x — Effect Native full conversion, Pylon fold)
+- `docs/fable/MASTER_ROADMAP.md` (deprecated rev 6.x historical source)
 - `docs/fable/2026-07-07-what-openagents-is-essay-and-talking-points.md`
 - `docs/fable/2026-07-07-overarching-roadmap-khala-code-agent-computers-ai-employees.md`
 - `docs/fable/2026-07-07-product-suite-khala-code-openagents-com-reactor.md`

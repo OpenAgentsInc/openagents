@@ -4,10 +4,10 @@ Grounded implementation analysis written from the Sol lane: implementation
 designs, subsystem consequences, current-state reconciliation, critical-path
 reasoning, and explicit counterarguments for OpenAgents.
 
-Sol is complementary to [`docs/fable`](../fable/README.md), not a replacement
-for it. **Fable is the high-level strategic planner. Sol turns that strategy
-into grounded implementation design and the day-to-day execution roadmap.**
-Sol asks a more operational set of questions:
+**Sol now owns the canonical OpenAgents roadmap.** Fable remains high-level
+strategic source material, but its master roadmap is superseded. Sol turns
+strategy and owner decisions into grounded implementation design and the
+day-to-day issue set. Sol asks an operational set of questions:
 
 - What must change in each subsystem for the strategy to become true?
 - What is already implemented, what is only partially landed, and what proof
@@ -29,26 +29,29 @@ When documents disagree, use this order:
    for repository law and authority boundaries.
 2. Product specs, behavior contracts, promise records, and owning-surface
    invariants for durable intent and enforceable claims.
-3. [`MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md) for high-level strategy,
-   program constraints, and the current ordered queue head.
-4. [`IMPLEMENTATION_ROADMAP.md`](./IMPLEMENTATION_ROADMAP.md) for grounded
-   day-to-day sequencing, residual work, and Sarah-first reconciliation inside
-   those strategic constraints.
+3. [`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md) for canonical program direction,
+   priority, issue set, and execution order.
+4. Fable analyses for historical strategy and arguments, never current queue
+   authority.
 5. Current code, issue state, tests, and implementation receipts for factual
    status. When they move, Sol must reconcile rather than repeat stale prose.
 
-The initial Sol corpus is based on `origin/main` at `93bfa6b7e3` and
-`MASTER_ROADMAP.md` rev 6.19, dated 2026-07-09. Issue state and implementation
-status can move faster than these essays; current code, issue state, and
-receipts win when they do.
+The current roadmap reset is dated 2026-07-09 and recorded in
+[`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md) rev 1. Issue state and
+implementation status can move faster than essays; current code, issue state,
+and receipts win when they do.
 
 ## Start here
 
-- [`IMPLEMENTATION_ROADMAP.md`](./IMPLEMENTATION_ROADMAP.md) — the grounded
-  Sarah-first execution plan. It preserves the OAV queue head, promotes the
-  missing Sarah→coding vertical slice, reclassifies all 30 open roadmap items,
-  and identifies which work is active, parallel, owner-gated, or dependency-
-  held.
+- [`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md) — the unified roadmap: Sarah Fleet
+  Command is P0, presentation is parallel, the issue set is reduced from 30 to
+  15, most public pages retire, and the product becomes three Effect Native
+  OpenAgents applications.
+- [`2026-07-09-issue-triage.md`](./2026-07-09-issue-triage.md) — exact receipt
+  for the 7 rewritten issues, 8 new issues, and 23 superseded/postponed
+  closures.
+- [`issues/README.md`](./issues/README.md) — source bodies for the canonical
+  live GitHub issue set.
 - [`SUBSYSTEM_IMPLEMENTATION_IMPLICATIONS.md`](./SUBSYSTEM_IMPLEMENTATION_IMPLICATIONS.md)
   — what Sarah-first concretely requires from Sarah, Khala, Blueprint, Pylon,
   Agent Computers, mobile, desktop, Effect Native, Sync/data, commercial
@@ -80,6 +83,12 @@ receipts win when they do.
   — the strongest objections to the current plan, early warning signals, and
   tests that should cause the team to narrow, reorder, or revise it.
 
+Historical Sol snapshot:
+
+- [`IMPLEMENTATION_ROADMAP.md`](./IMPLEMENTATION_ROADMAP.md) — superseded rev 1
+  reconciliation of the old Fable 30-item queue. Retained only to show why the
+  deeper reset became necessary.
+
 ## Working method
 
 New Sol analysis should:
@@ -93,10 +102,9 @@ New Sol analysis should:
 6. Name counterarguments and failure conditions, not just the preferred case.
 7. Treat receipts, promise state, and authority boundaries as harder than
    prose.
-8. Update the implementation roadmap when a landing changes residual work or
+8. Update the master roadmap when a landing changes residual work or
    Sarah-first sequencing.
 9. Update this README whenever a new Sol document lands.
 
-The short version: **Fable sets the strategic direction; Sol is the grounded
-implementation lead that turns it into subsystem designs, next slices, tests,
-and receipts—and keeps that plan current day to day.**
+The short version: **Sol owns the roadmap and grounded implementation design;
+Fable remains strategic source material.**
