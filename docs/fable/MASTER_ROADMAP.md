@@ -1,12 +1,67 @@
 # MASTER ROADMAP — Khala Code MVP (Tested, Submitted) → Sarah → Codex → AI Employees → the Suite
 
-Date: 2026-07-09 (rev 6.14 — Sarah Blueprint Map implementation status + ordered open-issue queue)
+Date: 2026-07-09 (rev 6.15 — future-agent issue execution instructions)
 Status: **the single consolidated execution roadmap.** This document owns
 top-level sequencing across everything designed in the 2026-07-07 strategy
 set and its predecessors. The source docs remain authoritative for their
 *content* (specs, evidence, arguments); when sequencing here and sequencing
 there disagree, **this document wins**, and new issues are filed against the
 phase lanes named here.
+
+**Rev 6.15 changes (owner directive, 2026-07-09 — HOW FUTURE CODING
+AGENTS MOVE THROUGH THE QUEUE):** this roadmap now carries the execution
+instructions for any future coding agent burning down the ordered
+open-issue list below. The loop is: read the repo and issue context,
+work from a clean worktree, land directly on `main`, push with
+`--no-verify` after local validation, comment/close the issue, clean up
+only the worktree/branch the agent created, then continue to the next
+listed issue unless the owner tells the agent to stop.
+
+**Future coding-agent runbook for this issue queue:**
+
+1. Start by reading `/Users/christopherdavid/work/AGENTS.md`,
+   `/Users/christopherdavid/work/INVARIANTS.md`,
+   `openagents/AGENTS.md`, `openagents/INVARIANTS.md`, the issue body,
+   any linked PR, and the relevant local docs before editing. If the
+   work touches a child invariant surface, read that surface's
+   `INVARIANTS.md` too.
+2. Review open PRs before starting the next issue. If a PR already
+   implements the issue, inspect it, fix it if needed, merge/land it on
+   `main`, comment with the verification, and close the issue.
+3. Never work in the normal checkout if it is dirty, behind, or contains
+   another agent's files. Create a fresh detached worktree from current
+   `origin/main`, for example:
+   `git fetch origin main && git worktree add --detach /Users/christopherdavid/work/openagents-worktrees/codex-issue-<issue>-<date> origin/main`.
+4. Work the ordered list below from top to bottom. Parent epics are
+   closeout steps: do not close an epic until its child issues and proof
+   gates are actually complete.
+5. Keep changes scoped to the issue. For UI work, build through Effect
+   Native and upstream/register component demand instead of inventing
+   local React/Foldkit/DOM one-offs. Preserve the Sarah/OpenAgents
+   authority boundaries: no prompt-side filtering, no improvised
+   pricing, no public claim without the proper receipt.
+6. Update docs, behavior contracts, invariant ledgers, tests, smoke
+   gates, and demand registers in the same change whenever the issue
+   changes a contract, proof surface, public promise, or Effect Native
+   demand.
+7. Run the targeted tests first, then the smallest relevant full suite.
+   A `--no-verify` push is not permission to skip validation; it is only
+   the owner-mandated push mechanism for this queue. If a known
+   pre-existing check still fails, report the exact file/error in the
+   issue closeout.
+8. Commit only scoped files from the worktree. Before pushing, fetch
+   `origin/main`; if main moved, rebase or replay the scoped commit onto
+   the new head without stashing or moving other agents' work.
+9. Push the finished commit directly to `main` with:
+   `git push --no-verify origin HEAD:main`.
+10. After the push succeeds, comment on the issue with the commit hash,
+    summary, docs updated, tests/smokes run, and any residual known
+    blocker. Then close the issue with that comment.
+11. Remove only the worktrees or branches created by that agent for that
+    issue. Never clean up, stash, reset, or delete another agent's
+    worktree, branch, or uncommitted files.
+12. Continue immediately to the next open issue in this roadmap unless
+    the owner gives a newer instruction to pause, stop, or reorder.
 
 **Rev 6.14 changes (execution update, 2026-07-09 — BM-1..4 LANDED,
 STOP POINT ORDERED):** open PR review found PR **#8632** carrying BM-1
