@@ -216,4 +216,42 @@ describe("GrokHeadlessWorkerExecutor", () => {
     expect(closeout.ok).toBe(false)
     expect(closeout.failureClass).toBe("account_rate_limited")
   })
+
+  test("kills a worker that exceeds its bounded execution deadline", async () => {
+    const home = await mkdtemp(join(tmpdir(), "grok-worker-timeout-"))
+    try {
+      const binary = join(home, "ignore-term")
+      await writeFile(binary, "#!/bin/sh\ntrap '' TERM\nwhile :; do :; done\n")
+      await chmod(binary, 0o700)
+      const executor = createGrokHeadlessWorkerExecutor({
+        binary,
+        env: { GROK_HOME: home },
+      })
+      const startedAt = Date.now()
+      const closeout = await executor.runClaimedWork({
+        pin: {
+          claimRef: "claim-timeout",
+          workUnitRef: "work-timeout",
+          runRef: "run-timeout",
+          cwd: home,
+        },
+        prompt: "Stay bounded.",
+        timeoutMs: 100,
+        plane: "cli_session",
+        marginalCostClass: "subscription",
+      })
+
+      expect(Date.now() - startedAt).toBeLessThan(900)
+      expect(closeout).toMatchObject({
+        ok: false,
+        claimRef: "claim-timeout",
+        stopReason: "timeout",
+        failureClass: "timeout",
+        usage: { metering: "not_measured" },
+      })
+      expect(closeout.text).toBe("")
+    } finally {
+      await rm(home, { force: true, recursive: true })
+    }
+  })
 })

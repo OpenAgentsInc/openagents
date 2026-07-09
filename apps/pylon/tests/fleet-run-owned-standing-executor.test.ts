@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { existsSync } from "node:fs"
-import { mkdtemp, rm } from "node:fs/promises"
+import { mkdir, mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
@@ -33,9 +33,13 @@ const waitUntil = async (predicate: () => boolean): Promise<void> => {
   throw new Error("timed out waiting for owned standing FleetRun closeout")
 }
 
-const registryAccount = (ref: string, home: string): PylonAccountRegistryEntry => ({
+const registryAccount = (
+  ref: string,
+  home: string,
+  provider: PylonAccountRegistryEntry["provider"] = "codex",
+): PylonAccountRegistryEntry => ({
   ref,
-  provider: "codex",
+  provider,
   home,
   openAgentsProviderAccountRef: `provider_account.public.${ref}`,
   hourlyCap: null,
@@ -62,6 +66,158 @@ const requestReceipt = (request: PylonKhalaRequestInput, assignmentRef: string) 
 })
 
 describe("canonical Pylon-owned standing FleetRun composition", () => {
+  test("dispatches one mixed standing wave across exact Codex, Claude, and Grok accounts", async () => {
+    const root = await mkdtemp(join(tmpdir(), "pylon-owned-standing-three-harness-"))
+    const pylonHome = join(root, "pylon-home")
+    const env = { PYLON_HOME: pylonHome } as NodeJS.ProcessEnv
+    const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), env)
+    const runRef = "fleet_run.fc2.three_harness"
+    const accounts = [
+      registryAccount("codex-a", join(pylonHome, "accounts", "codex", "codex-a"), "codex"),
+      registryAccount("claude-a", join(pylonHome, "accounts", "claude_agent", "claude-a"), "claude_agent"),
+      registryAccount("grok-a", join(pylonHome, "accounts", "grok", "grok-a"), "grok"),
+    ]
+    for (const account of accounts) await mkdir(account.home, { recursive: true })
+    const requestKinds: string[] = []
+    const assignmentKinds: string[] = []
+    let grokRuns = 0
+
+    try {
+      const seed = await openPylonFleetRunRuntime({ bootstrap: summary, now: () => fixedNow })
+      seed.store.createFleetRun({
+        runRef,
+        objective: "Run one deterministic fixture on every named local harness.",
+        workSource: "fixture",
+        workSourceDescriptor: {
+          schema: "openagents.pylon.fleet_run_work_source.v1",
+          kind: "fixture",
+          units: [
+            { ref: "three-harness.one", title: "Three harness one" },
+            { ref: "three-harness.two", title: "Three harness two" },
+            { ref: "three-harness.three", title: "Three harness three" },
+          ],
+        },
+        targetConcurrency: 3,
+        workerKind: "auto",
+        state: "running",
+        now: fixedNow,
+      })
+      await seed.close()
+
+      const standing = await openPylonOwnedStandingFleetRunExecutor({
+        summary,
+        env,
+        now: () => fixedNow,
+        baseUrl: "https://openagents.test",
+        pylonRef,
+        runRef,
+        clock: { now: () => fixedNow, sleep: () => new Promise<void>(() => {}) },
+        startImmediately: false,
+        options: {
+          loadRegistry: async () => accounts,
+          capacity: {
+            advertisedSlotsForAccount: () => 1,
+            loadUsage: async () => ({
+              schema: "openagents.pylon.account_usage_store.v0.3",
+              accounts: {},
+              updatedAt: fixedNow.toISOString(),
+            }),
+            probeReadiness: async () => "ready",
+          },
+          runner: {
+            request: async request => {
+              requestKinds.push(request.workflow)
+              return requestReceipt(request, `assignment.public.${request.workflow}`)
+            },
+            runAssignment: async request => {
+              const provider = request.accountRef.startsWith("claude") ? "claude_agent" : "codex"
+              assignmentKinds.push(provider)
+              const accountRefHash = hashPylonAccountRef(provider, request.accountRef)
+              return {
+                accountRefHash,
+                assignmentRef: request.assignmentRef,
+                closeout: {
+                  paymentMode: "no-spend",
+                  payoutClaimAllowed: false,
+                  settlementState: "not_applicable",
+                  status: "accepted",
+                },
+                lifecycle: [{
+                  schema: "openagents.pylon.assignment_run_lifecycle_event.v0.1",
+                  event: "assignment_run.completed",
+                  observedAt: fixedNow.toISOString(),
+                  assignmentRef: request.assignmentRef,
+                  accountRefHash,
+                  status: "closed",
+                }],
+                ok: true,
+              }
+            },
+          },
+          grok: {
+            createExecutor: ({ env: grokEnv }) => {
+              expect(grokEnv.GROK_HOME).toBe(accounts[2]!.home)
+              return {
+                kind: "grok_cli",
+                readiness: async () => ({
+                  ready: true,
+                  binary: "grok",
+                  plane: "cli_session",
+                  models: ["grok-code-fast-1"],
+                }),
+                runClaimedWork: async input => {
+                  grokRuns += 1
+                  return {
+                    ok: true,
+                    claimRef: input.pin.claimRef,
+                    stopReason: "end_turn",
+                    text: "private local Grok fixture output",
+                    usage: {
+                      metering: "not_measured",
+                      wallClockMs: 10,
+                      plane: "cli_session",
+                      marginalCostClass: "subscription",
+                    },
+                  }
+                },
+              }
+            },
+            materializeWorkspace: async request => ({
+              checkout: null,
+              verificationArgs: null,
+              workingDirectory: join(root, request.assignmentRef),
+              workspaceRef: `workspace.public.${request.assignmentRef}`,
+            }),
+          },
+        },
+      })
+
+      try {
+        await waitUntil(() =>
+          standing.runtime.store.listWorkClaims({ runRef }).filter(claim => claim.state === "closeout").length === 3
+        )
+        const claims = standing.runtime.store.listWorkClaims({ runRef })
+        expect(claims).toHaveLength(3)
+        expect(new Set(claims.map(claim => claim.workerAccountRef))).toEqual(
+          new Set(["codex-a", "claude-a", "grok-a"]),
+        )
+        expect(claims.filter(claim => claim.assignmentRef?.startsWith("assignment.pylon.grok.")).length).toBe(1)
+        expect(requestKinds.sort()).toEqual(["claude_agent_task", "codex_agent_task"])
+        expect(assignmentKinds.sort()).toEqual(["claude_agent", "codex"])
+        expect(grokRuns).toBe(1)
+        expect(standing.runtime.store.listDispatchContexts().map(context => context.runnerKind).sort()).toEqual([
+          "claude_agent",
+          "codex",
+          "grok_cli",
+        ])
+      } finally {
+        await standing.close()
+      }
+    } finally {
+      await rm(root, { force: true, recursive: true })
+    }
+  })
+
   test("reopens one persisted descriptor and dispatches it once through one named isolated account", async () => {
     const root = await mkdtemp(join(tmpdir(), "pylon-owned-standing-composition-"))
     const pylonHome = join(root, "pylon-home")

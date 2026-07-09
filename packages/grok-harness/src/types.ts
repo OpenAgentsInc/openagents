@@ -94,6 +94,8 @@ export type WorkerClaimPin = {
   readonly claimRef: string
   readonly workUnitRef: string
   readonly runRef: string
+  /** Public-safe digest of the exact named Pylon account selected for this claim. */
+  readonly accountRefHash?: string
   readonly repo?: string
   readonly commit?: string
   readonly branch?: string

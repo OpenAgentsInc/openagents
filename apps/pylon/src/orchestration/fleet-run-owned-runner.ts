@@ -38,6 +38,7 @@ import type {
   FleetRunSupervisorReconcileResult,
   FleetRunSupervisorRunner,
 } from "./fleet-run-supervisor.js"
+import type { FleetRunOwnerLocalLiveness } from "./fleet-run-recovery.js"
 
 export const PYLON_OWNED_FLEET_RUNNER_BLOCKERS = {
   accountMismatch: "blocker.pylon.fleet_runner.account_mismatch",
@@ -84,16 +85,18 @@ export type PylonOwnedFleetRunInspectionPort = (
   assignmentRef: string,
 ) => Promise<PylonKhalaAssignmentTraceStatusResult>
 
-/**
- * Grok custody is deliberately a separate Pylon-owned port. The current Pylon
- * registry has no durable, named Grok-account custody contract, so the default
- * adapter reports a typed unavailable result and never fabricates capacity or
- * silently runs the claim on Codex/Claude.
- */
+/** Grok stays a separate local claimed-work port because it has no Khala assignment wire kind. */
 export type PylonOwnedGrokClaimedWorkPort = {
   readonly dispatch: (
     input: FleetRunSupervisorDispatchInput,
   ) => Promise<FleetRunSupervisorDispatchResult>
+  readonly reconcile: (input: {
+    readonly active: FleetRunSupervisorActiveAssignment
+    readonly now: Date
+    readonly runRef: string
+  }) => Promise<FleetRunSupervisorReconcileResult>
+  /** Terminal local receipts remain available for supervisor reconciliation after restart. */
+  readonly probeLiveness: (assignmentRef: string) => Promise<FleetRunOwnerLocalLiveness>
 }
 
 type AssignmentOptionOverrides = Omit<
@@ -781,6 +784,35 @@ export function createPylonOwnedFleetRunSupervisorRunner(
           null,
         ),
         taskId: active.taskId,
+      }
+    }
+    if (assignmentRef.startsWith("assignment.pylon.grok.")) {
+      if (input.grok === undefined) {
+        return {
+          ...fail(
+            "failed",
+            "The exact Grok claimed-work port is unavailable during reconciliation.",
+            PYLON_OWNED_FLEET_RUNNER_BLOCKERS.grokCustodyUnavailable,
+            assignmentRef,
+          ),
+          taskId: active.taskId,
+        }
+      }
+      try {
+        const result = await input.grok.reconcile({ active, now, runRef })
+        if (result.taskId !== active.taskId) throw new Error("Grok reconcile task mismatch")
+        assertPublicProjectionSafe(result, "pylonOwnedGrokFleetRunReconcileResult")
+        return result
+      } catch {
+        return {
+          ...fail(
+            "failed",
+            "The exact Grok claimed-work receipt could not be reconciled safely.",
+            PYLON_OWNED_FLEET_RUNNER_BLOCKERS.runFailed,
+            assignmentRef,
+          ),
+          taskId: active.taskId,
+        }
       }
     }
     let trace: PylonKhalaAssignmentTraceStatusResult

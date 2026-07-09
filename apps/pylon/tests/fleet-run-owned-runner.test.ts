@@ -590,6 +590,13 @@ describe("Pylon-owned FleetRun runner", () => {
           grokCalls += 1
           return { assignmentRef: null, lifecycle: [], status: "accepted" }
         },
+        reconcile: async ({ active }) => ({
+          assignmentRef: active.claim.assignmentRef,
+          lifecycle: [],
+          status: "accepted",
+          taskId: active.taskId,
+        }),
+        probeLiveness: async () => "unknown",
       },
     })
     const grokInput = dispatchInput("grok", "grok-a", 43, "fixture")

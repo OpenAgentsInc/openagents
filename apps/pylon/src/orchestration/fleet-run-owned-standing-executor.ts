@@ -16,8 +16,13 @@ import {
 } from "./fleet-run-owned-capacity.js"
 import {
   createPylonOwnedFleetRunSupervisorRunner,
+  type PylonOwnedGrokClaimedWorkPort,
   type CreatePylonOwnedFleetRunSupervisorRunnerInput,
 } from "./fleet-run-owned-runner.js"
+import {
+  createPylonOwnedGrokClaimedWorkPort,
+  type CreatePylonOwnedGrokClaimedWorkPortInput,
+} from "./fleet-run-owned-grok-runner.js"
 import {
   openPylonStandingFleetRunExecutor,
   type PylonStandingFleetRunExecutor,
@@ -47,6 +52,12 @@ export type PylonOwnedStandingFleetRunRunnerOptions = Omit<
   | "now"
   | "pylonRef"
   | "summary"
+  | "grok"
+>
+
+export type PylonOwnedStandingFleetRunGrokOptions = Omit<
+  CreatePylonOwnedGrokClaimedWorkPortInput,
+  "env" | "loadRegistry" | "now" | "store" | "summary"
 >
 
 export type PylonOwnedStandingFleetRunLivenessOptions = Omit<
@@ -64,6 +75,8 @@ export type PylonOwnedStandingFleetRunAdapterOptions = {
   } | undefined
   readonly capacity?: PylonOwnedStandingFleetRunCapacityOptions | undefined
   readonly runner?: PylonOwnedStandingFleetRunRunnerOptions | undefined
+  /** `false` is a test/diagnostic fail-closed mode; production composes the exact adapter. */
+  readonly grok?: PylonOwnedStandingFleetRunGrokOptions | PylonOwnedGrokClaimedWorkPort | false | undefined
   readonly liveness?: PylonOwnedStandingFleetRunLivenessOptions | undefined
   readonly planner?: Omit<CreatePylonDurableFleetRunPlannerInput, "store"> | undefined
 }
@@ -113,39 +126,57 @@ export async function openPylonOwnedStandingFleetRunExecutor(
     runRef: input.runRef,
     ...(input.startImmediately === undefined ? {} : { startImmediately: input.startImmediately }),
     ...(input.tickIntervalMs === undefined ? {} : { tickIntervalMs: input.tickIntervalMs }),
-    adapterFactory: ({ store }) => ({
-      capacity: createPylonOwnedFleetRunSupervisorCapacity({
-        ...options.capacity,
-        store,
-        summary,
-        env,
-        // Custody/readiness lands before the claimed-work executor. Keep the
-        // canonical standing scheduler closed even if Grok account rows are
-        // present; the future executor composition owns opening this gate.
-        grokExecutionAvailable: false,
-        ...(options.defaultHomes === undefined ? {} : { defaultHomes: options.defaultHomes }),
-        ...(options.loadRegistry === undefined ? {} : { loadRegistry: options.loadRegistry }),
-      }),
-      livenessProbe: createPylonAssignmentFleetRunOwnerLocalLivenessProbe({
-        ...options.liveness,
-        assignmentStatePath: statePaths.assignmentState,
-        ...(input.now === undefined ? {} : { now: input.now }),
-      }),
-      planner: createPylonDurableFleetRunPlanner({
-        ...options.planner,
-        store,
-      }),
-      runner: createPylonOwnedFleetRunSupervisorRunner({
-        ...options.runner,
-        summary,
-        pylonRef: input.pylonRef,
-        baseUrl: input.baseUrl,
-        ...(input.agentToken === undefined ? {} : { agentToken: input.agentToken }),
-        ...(input.fetch === undefined ? {} : { fetch: input.fetch }),
-        ...(input.now === undefined ? {} : { now: input.now }),
-        ...(options.defaultHomes === undefined ? {} : { defaultHomes: options.defaultHomes }),
-        ...(options.loadRegistry === undefined ? {} : { loadRegistry: options.loadRegistry }),
-      }),
-    }),
+    adapterFactory: ({ store }) => {
+      const grok = options.grok === false
+        ? undefined
+        : options.grok !== undefined && "dispatch" in options.grok && "reconcile" in options.grok
+          ? options.grok
+          : createPylonOwnedGrokClaimedWorkPort({
+              ...(options.grok ?? {}),
+              summary,
+              env,
+              store,
+              ...(input.now === undefined ? {} : { now: input.now }),
+              ...(options.loadRegistry === undefined ? {} : { loadRegistry: options.loadRegistry }),
+            })
+      return {
+        capacity: createPylonOwnedFleetRunSupervisorCapacity({
+          ...options.capacity,
+          store,
+          summary,
+          env,
+          grokExecutionAvailable: grok !== undefined,
+          ...(options.defaultHomes === undefined ? {} : { defaultHomes: options.defaultHomes }),
+          ...(options.loadRegistry === undefined ? {} : { loadRegistry: options.loadRegistry }),
+        }),
+        livenessProbe: (() => {
+          const assignmentProbe = createPylonAssignmentFleetRunOwnerLocalLivenessProbe({
+            ...options.liveness,
+            assignmentStatePath: statePaths.assignmentState,
+            ...(input.now === undefined ? {} : { now: input.now }),
+          })
+          return async (evidence) =>
+            evidence.runnerKind === "grok_cli" && grok !== undefined && evidence.assignmentRef !== null
+              ? await grok.probeLiveness(evidence.assignmentRef)
+              : await assignmentProbe(evidence)
+        })(),
+        planner: createPylonDurableFleetRunPlanner({
+          ...options.planner,
+          store,
+        }),
+        runner: createPylonOwnedFleetRunSupervisorRunner({
+          ...options.runner,
+          summary,
+          pylonRef: input.pylonRef,
+          baseUrl: input.baseUrl,
+          ...(input.agentToken === undefined ? {} : { agentToken: input.agentToken }),
+          ...(input.fetch === undefined ? {} : { fetch: input.fetch }),
+          ...(input.now === undefined ? {} : { now: input.now }),
+          ...(options.defaultHomes === undefined ? {} : { defaultHomes: options.defaultHomes }),
+          ...(options.loadRegistry === undefined ? {} : { loadRegistry: options.loadRegistry }),
+          ...(grok === undefined ? {} : { grok }),
+        }),
+      }
+    },
   })
 }

@@ -55,6 +55,9 @@ export const DEFAULT_GROK_READINESS_TIMEOUT_MS = 10_000
 export const MAX_GROK_READINESS_TIMEOUT_MS = 60_000
 export const MAX_GROK_READINESS_OUTPUT_BYTES = 65_536
 export const MAX_GROK_READINESS_MODELS = 256
+export const DEFAULT_GROK_WORKER_TIMEOUT_MS = 30 * 60 * 1_000
+export const MAX_GROK_WORKER_TIMEOUT_MS = 4 * 60 * 60 * 1_000
+export const MAX_GROK_WORKER_OUTPUT_BYTES = 1_048_576
 const GROK_READINESS_FORCE_KILL_GRACE_MS = 250
 const GROK_CONFIG_SCAN_MAX_BYTES = 1_048_576
 const GROK_CONFIG_SCAN_CHUNK_BYTES = 65_536
@@ -113,6 +116,14 @@ const readBoundedStream = async (
 
 const probeOutputIsBounded = (value: string): boolean =>
   new TextEncoder().encode(value).byteLength <= MAX_GROK_READINESS_OUTPUT_BYTES
+
+const workerOutputIsBounded = (value: string): boolean =>
+  new TextEncoder().encode(value).byteLength <= MAX_GROK_WORKER_OUTPUT_BYTES
+
+const boundedWorkerTimeout = (value: number | undefined): number => {
+  if (value === undefined || !Number.isFinite(value)) return DEFAULT_GROK_WORKER_TIMEOUT_MS
+  return Math.max(100, Math.min(MAX_GROK_WORKER_TIMEOUT_MS, Math.trunc(value)))
+}
 
 function classifyError(text: string, code: number | null): GrokFailureClass {
   const lower = text.toLowerCase()
@@ -439,19 +450,21 @@ export function createGrokHeadlessWorkerExecutor(options: {
   readonly binary?: string
   readonly env?: NodeJS.ProcessEnv
   /** Inject for tests */
-  readonly runCommand?: (argv: string[], cwd: string) => Promise<{
+  readonly runCommand?: (argv: string[], cwd: string, timeoutMs: number) => Promise<{
     code: number
     stdout: string
     stderr: string
     wallClockMs: number
+    timedOut?: boolean
   }>
 } = {}): GrokWorkerExecutorPort {
   const binary = options.binary ?? "grok"
 
   const runCommand =
     options.runCommand ??
-    (async (argv, cwd) => {
+    (async (argv, cwd, requestedTimeoutMs) => {
       const started = Date.now()
+      const timeoutMs = boundedWorkerTimeout(requestedTimeoutMs)
       const proc = spawn(argv[0]!, argv.slice(1), {
         cwd,
         env: options.env ?? process.env,
@@ -459,16 +472,57 @@ export function createGrokHeadlessWorkerExecutor(options: {
       })
       let stdout = ""
       let stderr = ""
+      let outputBytes = 0
+      let outputExceeded = false
+      let timedOut = false
+      let forceKillTimer: ReturnType<typeof setTimeout> | undefined
+      const terminate = () => {
+        try {
+          proc.kill("SIGTERM")
+        } catch {
+          // The process already exited.
+        }
+        forceKillTimer ??= setTimeout(() => {
+          try {
+            proc.kill("SIGKILL")
+          } catch {
+            // The process already exited.
+          }
+        }, GROK_READINESS_FORCE_KILL_GRACE_MS)
+      }
+      const append = (current: string, chunk: unknown): string => {
+        const bytes = Buffer.from(String(chunk))
+        outputBytes += bytes.byteLength
+        if (outputBytes > MAX_GROK_WORKER_OUTPUT_BYTES) {
+          outputExceeded = true
+          terminate()
+          return current
+        }
+        return current + bytes.toString("utf8")
+      }
       proc.stdout.on("data", (c) => {
-        stdout += String(c)
+        stdout = append(stdout, c)
       })
       proc.stderr.on("data", (c) => {
-        stderr += String(c)
+        stderr = append(stderr, c)
       })
+      const timeout = setTimeout(() => {
+        timedOut = true
+        terminate()
+      }, timeoutMs)
       const code: number = await new Promise((resolve) => {
         proc.on("close", (c) => resolve(c ?? 1))
+        proc.on("error", () => resolve(127))
       })
-      return { code, stdout, stderr, wallClockMs: Date.now() - started }
+      clearTimeout(timeout)
+      if (forceKillTimer !== undefined) clearTimeout(forceKillTimer)
+      return {
+        code: timedOut || outputExceeded ? 1 : code,
+        stdout: outputExceeded ? "" : stdout,
+        stderr: outputExceeded ? "Grok worker output exceeded its bound." : stderr,
+        wallClockMs: Date.now() - started,
+        timedOut,
+      }
     })
 
   return {
@@ -488,6 +542,7 @@ export function createGrokHeadlessWorkerExecutor(options: {
         `claimRef=${input.pin.claimRef}`,
         `workUnitRef=${input.pin.workUnitRef}`,
         `runRef=${input.pin.runRef}`,
+        input.pin.accountRefHash ? `accountRefHash=${input.pin.accountRefHash}` : null,
         input.pin.repo ? `repo=${input.pin.repo}` : null,
         input.pin.commit ? `commit=${input.pin.commit}` : null,
         input.pin.branch ? `branch=${input.pin.branch}` : null,
@@ -512,10 +567,24 @@ export function createGrokHeadlessWorkerExecutor(options: {
         ...(input.model ? ["-m", input.model] : []),
       ]
 
-      const result = await runCommand(argv, input.pin.cwd)
+      let result: Awaited<ReturnType<typeof runCommand>>
+      try {
+        result = await runCommand(argv, input.pin.cwd, boundedWorkerTimeout(input.timeoutMs))
+      } catch {
+        result = {
+          code: 1,
+          stdout: "",
+          stderr: "",
+          wallClockMs: 0,
+        }
+      }
       const combined = `${result.stdout}\n${result.stderr}`
       const failureClass =
-        result.code === 0 ? undefined : classifyError(combined, result.code)
+        result.code === 0
+          ? undefined
+          : result.timedOut === true
+            ? "timeout"
+            : classifyError(combined, result.code)
 
       const usage: GrokUsageSnapshot = {
         metering: "not_measured",
@@ -526,10 +595,10 @@ export function createGrokHeadlessWorkerExecutor(options: {
       }
 
       return {
-        ok: result.code === 0,
+        ok: result.code === 0 && workerOutputIsBounded(result.stdout) && workerOutputIsBounded(result.stderr),
         claimRef: input.pin.claimRef,
-        stopReason: result.code === 0 ? "end_turn" : `exit_${result.code}`,
-        text: result.stdout.trim(),
+        stopReason: result.code === 0 ? "end_turn" : result.timedOut === true ? "timeout" : `exit_${result.code}`,
+        text: workerOutputIsBounded(result.stdout) ? result.stdout.trim() : "",
         usage,
         ...(failureClass ? { failureClass } : {}),
       }
