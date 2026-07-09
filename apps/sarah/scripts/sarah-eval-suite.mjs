@@ -1,30 +1,25 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createJiti } from "jiti";
+import {
+  evaluateDealRules,
+  validateCheckoutQuoteTrace,
+} from "../src/services/deal-rules.ts";
+import {
+  checkoutLinkCreateInputSchema,
+  createOpenAgentsCheckoutLink,
+} from "../src/services/openagents-sales-client.ts";
+import { appendEmailComplianceFooter } from "../src/services/crm-email-rail.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(__dirname, "..");
-const jiti = createJiti(import.meta.url);
-
-const {
-  evaluateDealRules,
-  validateCheckoutQuoteTrace,
-} = jiti("../src/lib/deal-rules.ts");
-const {
-  checkoutLinkCreateInputSchema,
-  createOpenAgentsCheckoutLink,
-} = jiti("../src/lib/openagents-sales-client.ts");
-const {
-  appendEmailComplianceFooter,
-} = jiti("../src/lib/email-approval-queue.ts");
 
 const fixtures = JSON.parse(
   await readFile(join(repoRoot, "evals", "sarah-fixtures.json"), "utf8"),
 );
 
 const baseUrl = (
-  process.env.SARAH_EVAL_BASE_URL ?? "http://localhost:3000"
+  process.env.SARAH_EVAL_BASE_URL ?? "http://127.0.0.1:8790/sarah"
 ).replace(/\/+$/, "");
 const timeoutMs = Number(process.env.SARAH_EVAL_TIMEOUT_MS ?? 10_000);
 
@@ -275,7 +270,7 @@ async function publicDisclosurePerChannel(pageResult, sessionConfigResult) {
   const ok =
     pageResult.ok &&
     sessionConfigResult.ok &&
-    includesAll(pageText, ["Sarah", "OpenAgents", "AI", "sales agent"]) &&
+    includesAll(pageText, ["Sarah", "OpenAgents", "AI", "sales assistant"]) &&
     !pageText.includes("Event:") &&
     !pageText.includes("Quickstart") &&
     instructions.includes("You are Sarah, OpenAgents' AI sales employee.") &&

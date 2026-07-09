@@ -1,25 +1,22 @@
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { createJiti } from "jiti";
+import {
+  enqueueSarahEmailDraft,
+  listSarahEmailDrafts,
+  reviewSarahEmailDraft,
+} from "../src/services/crm-email-rail.ts";
+import {
+  isSarahEmailSuppressed,
+  listSarahEmailSuppressions,
+  suppressSarahEmail,
+} from "../src/services/crm-email-rail.ts";
 
 process.env.SARAH_EMAIL_APPROVAL_QUEUE_PATH =
   "s8-email-suppression-queue.json";
 process.env.SARAH_EMAIL_SUPPRESSION_LIST_PATH =
   "s8-email-suppression-list.json";
-process.env.SARAH_PUBLIC_BASE_URL = "https://sarah.openagents.com";
+process.env.SARAH_PUBLIC_BASE_URL = "https://openagents.com/sarah";
 process.env.SARAH_EMAIL_SEND_LIVE = "0";
-
-const jiti = createJiti(import.meta.url);
-const {
-  enqueueSarahEmailDraft,
-  listSarahEmailDrafts,
-  reviewSarahEmailDraft,
-} = jiti("../src/lib/email-approval-queue.ts");
-const {
-  isSarahEmailSuppressed,
-  listSarahEmailSuppressions,
-  suppressSarahEmail,
-} = jiti("../src/lib/email-suppression-list.ts");
 
 await rm(join(process.cwd(), ".sarah", process.env.SARAH_EMAIL_APPROVAL_QUEUE_PATH), {
   force: true,

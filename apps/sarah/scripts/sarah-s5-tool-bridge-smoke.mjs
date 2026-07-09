@@ -1,4 +1,4 @@
-const baseUrl = (process.env.SARAH_S5_SMOKE_BASE_URL ?? "http://localhost:3000").replace(
+const baseUrl = (process.env.SARAH_S5_SMOKE_BASE_URL ?? "http://127.0.0.1:8790/sarah").replace(
   /\/+$/,
   "",
 );

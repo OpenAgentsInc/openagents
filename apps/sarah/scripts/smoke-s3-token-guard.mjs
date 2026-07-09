@@ -2,7 +2,12 @@
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 
-const baseUrl = process.env.SARAH_S3_SMOKE_BASE_URL ?? "http://localhost:3000";
+const baseUrl = (
+  process.env.SARAH_S3_SMOKE_BASE_URL ?? "http://127.0.0.1:8790/sarah"
+).replace(/\/+$/, "");
+// Origin must be scheme+host(+port) only — not the /sarah path mount.
+const defaultOrigin =
+  process.env.SARAH_S3_SMOKE_ORIGIN ?? new URL(baseUrl).origin;
 const scenario = process.env.SARAH_S3_SMOKE_SCENARIO ?? "session-daily";
 const evidencePath = process.env.SARAH_S3_EVIDENCE_OUT;
 const alertFile = process.env.SARAH_REALTIME_SPEND_ALERT_FILE;
@@ -11,7 +16,7 @@ function cookieFrom(response) {
   return response.headers.get("set-cookie")?.split(";")[0] ?? null;
 }
 
-async function tokenPost({ origin = baseUrl, cookie } = {}) {
+async function tokenPost({ origin = defaultOrigin, cookie } = {}) {
   const headers = { "content-type": "application/json" };
   if (origin) headers.origin = origin;
   if (cookie) headers.cookie = cookie;

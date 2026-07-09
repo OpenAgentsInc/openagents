@@ -1,5 +1,5 @@
 const baseUrl = (
-  process.env.SARAH_PRODUCTION_BASE_URL ?? "https://sarah.openagents.com"
+  process.env.SARAH_PRODUCTION_BASE_URL ?? "https://openagents.com/sarah"
 ).replace(/\/+$/, "");
 const mintRealtimeToken =
   process.env.SARAH_PRODUCTION_SMOKE_MINT_TOKEN === "1";

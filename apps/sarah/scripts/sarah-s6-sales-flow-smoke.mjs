@@ -1,4 +1,9 @@
-import { createJiti } from "jiti";
+import { evaluateDealRules } from "../src/services/deal-rules.ts";
+import {
+  captureOpenAgentsIntake,
+  createOpenAgentsCheckoutLink,
+  createOpenAgentsHumanHandoff,
+} from "../src/services/openagents-sales-client.ts";
 
 const allowPartial = process.env.SARAH_S6_ALLOW_PARTIAL === "1";
 const liveWrites = process.env.SARAH_OPENAGENTS_LIVE_WRITES === "1";
@@ -29,14 +34,6 @@ function blocked(reason, details = {}) {
 if (!liveWrites) {
   blocked("live_writes_not_armed");
 } else {
-  const jiti = createJiti(import.meta.url);
-  const { evaluateDealRules } = jiti("../src/lib/deal-rules.ts");
-  const {
-    captureOpenAgentsIntake,
-    createOpenAgentsCheckoutLink,
-    createOpenAgentsHumanHandoff,
-  } = jiti("../src/lib/openagents-sales-client.ts");
-
   const runId = `s6-live-${Date.now()}`;
   const contactEmail = `${runId}@example.com`;
   const businessName = "Sarah S6 Live Smoke";

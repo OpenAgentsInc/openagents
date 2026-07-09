@@ -1,17 +1,15 @@
-import { createJiti } from "jiti";
-
-process.env.SARAH_SESSION_INDEX_PATH = "s8-continuity-session-index.json";
-process.env.SARAH_EMAIL_APPROVAL_QUEUE_PATH = "s8-continuity-email-queue.json";
-
-const jiti = createJiti(import.meta.url);
-const {
+import {
   findSarahProspectByContactEmail,
   recordSarahCrmContact,
   recordSarahTranscriptTurn,
-} = jiti("../src/lib/session-index.ts");
-const { enqueueSarahEmailDraft, listSarahEmailDrafts } = jiti(
-  "../src/lib/email-approval-queue.ts",
-);
+} from "../src/services/session-index.ts";
+import {
+  enqueueSarahEmailDraft,
+  listSarahEmailDrafts,
+} from "../src/services/crm-email-rail.ts";
+
+process.env.SARAH_SESSION_INDEX_PATH = "s8-continuity-session-index.json";
+process.env.SARAH_EMAIL_APPROVAL_QUEUE_PATH = "s8-continuity-email-queue.json";
 
 function assert(condition, message, evidence) {
   if (!condition) {

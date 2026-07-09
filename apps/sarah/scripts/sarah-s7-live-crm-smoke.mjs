@@ -1,4 +1,14 @@
-import { createJiti } from "jiti";
+import {
+  appendOpenAgentsCrmActivity,
+  readOpenAgentsCrmContext,
+  upsertOpenAgentsCrmContact,
+} from "../src/services/openagents-crm-client.ts";
+import {
+  getSarahProspectCrmProjection,
+  recordSarahCrmActivity,
+  recordSarahCrmContact,
+  recordSarahTranscriptTurn,
+} from "../src/services/session-index.ts";
 
 const allowBlocked = process.env.SARAH_S7_ALLOW_BLOCKED === "1";
 const liveWrites = process.env.SARAH_OPENAGENTS_LIVE_WRITES === "1";
@@ -33,19 +43,6 @@ if (!liveWrites) {
 } else {
   process.env.SARAH_SESSION_INDEX_PATH =
     process.env.SARAH_SESSION_INDEX_PATH ?? "s7-live-crm-session-index.json";
-
-  const jiti = createJiti(import.meta.url);
-  const {
-    appendOpenAgentsCrmActivity,
-    readOpenAgentsCrmContext,
-    upsertOpenAgentsCrmContact,
-  } = jiti("../src/lib/openagents-crm-client.ts");
-  const {
-    getSarahProspectCrmProjection,
-    recordSarahCrmActivity,
-    recordSarahCrmContact,
-    recordSarahTranscriptTurn,
-  } = jiti("../src/lib/session-index.ts");
 
   const runId = `s7-live-${Date.now()}`;
   const prospectRef = `prospect.${runId}`;

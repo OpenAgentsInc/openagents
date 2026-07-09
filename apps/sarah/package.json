@@ -7,7 +7,14 @@
     "dev": "bun --watch src/server.ts",
     "start": "bun src/server.ts",
     "test": "bun test",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test:deal-rules": "bun scripts/deal-rules-property-test.mjs",
+    "test:s12-evals": "bun scripts/sarah-eval-suite.mjs",
+    "smoke:s3-token-guard": "SARAH_S3_SMOKE_BASE_URL=http://127.0.0.1:8790/sarah SARAH_REALTIME_SPEND_ALERT_FILE=${SARAH_REALTIME_SPEND_ALERT_FILE:-/tmp/sarah-s3-alerts.jsonl} bun scripts/smoke-s3-token-guard.mjs",
+    "smoke:s8-continuity": "bun scripts/sarah-s8-continuity-smoke.mjs",
+    "smoke:s8-suppression": "bun scripts/sarah-s8-email-suppression-smoke.mjs",
+    "smoke:s13": "bun scripts/sarah-s13-smoke.mjs",
+    "oracle": "bun run test && bun run test:deal-rules && bun run smoke:s8-continuity && bun run smoke:s8-suppression && bun run smoke:s13"
   },
   "dependencies": {
     "@ai-sdk/gateway": "4.0.0-canary.107",

@@ -67,4 +67,29 @@ describe("apps/sarah monorepo service", () => {
     expect(html).not.toContain("react")
     expect(html).toContain("/sarah/sarah.js")
   })
+
+  test("continue handoff mints prospect cookie", async () => {
+    const res = await handleSarahRequest(
+      new Request("http://localhost/sarah/continue/handoff-token-demo", {
+        headers: { accept: "application/json" },
+      }),
+    )
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.ok).toBe(true)
+    expect(body.handoffToken).toBe("handoff-token-demo")
+    expect(body.prospectRef).toBeTruthy()
+    expect(body.next).toBe("/sarah/")
+    expect(res.headers.get("set-cookie") || "").toContain("sarah_prospect_ref")
+  })
+
+  test("email compliance footer includes AI disclosure + path-mount opt-out", async () => {
+    const { appendEmailComplianceFooter } = await import(
+      "./services/crm-email-rail.ts"
+    )
+    const footer = appendEmailComplianceFooter("Thanks.", "buyer@example.com")
+    expect(footer).toContain("Sarah is an AI sales employee for OpenAgents.")
+    expect(footer).toContain("https://openagents.com/sarah/unsubscribe")
+    expect(footer).toContain("buyer%40example.com")
+  })
 })

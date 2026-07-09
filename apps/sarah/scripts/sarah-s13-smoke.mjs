@@ -1,24 +1,21 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { createJiti } from "jiti";
-
-process.env.SARAH_FOLLOW_UP_QUEUE_PATH = "s13-smoke-follow-ups.json";
-process.env.SARAH_EMAIL_APPROVAL_QUEUE_PATH = "s13-smoke-email-queue.json";
-process.env.SARAH_SESSION_INDEX_PATH = "s13-smoke-session-index.json";
-
-const jiti = createJiti(import.meta.url);
-const {
+import {
   listSarahFollowUps,
   processDueSarahFollowUps,
   scheduleSarahFollowUp,
   suppressSarahFollowUps,
-} = jiti("../src/lib/follow-up-scheduler.ts");
-const { listSarahEmailDrafts } = jiti("../src/lib/email-approval-queue.ts");
-const {
+} from "../src/services/follow-up-scheduler.ts";
+import { listSarahEmailDrafts } from "../src/services/crm-email-rail.ts";
+import {
   listSarahSessionReceipts,
   recordSarahToolReceipt,
   recordSarahTranscriptTurn,
-} = jiti("../src/lib/session-index.ts");
+} from "../src/services/session-index.ts";
+
+process.env.SARAH_FOLLOW_UP_QUEUE_PATH = "s13-smoke-follow-ups.json";
+process.env.SARAH_EMAIL_APPROVAL_QUEUE_PATH = "s13-smoke-email-queue.json";
+process.env.SARAH_SESSION_INDEX_PATH = "s13-smoke-session-index.json";
 
 function assert(condition, message, evidence) {
   if (!condition) {

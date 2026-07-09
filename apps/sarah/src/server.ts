@@ -220,13 +220,22 @@ async function handleEveToolCall(request: Request): Promise<Response> {
 async function handleUnsubscribe(request: Request): Promise<Response> {
   const url = new URL(request.url)
   const email = url.searchParams.get("email") ?? ""
-  // Suppression is Worker-owned; record activity intent only.
+  if (email) {
+    const { suppressSarahEmail } = await import("./services/crm-email-rail.ts")
+    await suppressSarahEmail({
+      email,
+      reason: "unsubscribe",
+      source: "sarah.unsubscribe",
+    })
+  }
+  // Production enforcement remains on the openagents.com CRM rail at send time;
+  // local projection blocks further Sarah dry-run drafts for this address.
   return json({
     ok: true,
     email,
     status: "recorded_for_crm_suppression_rail",
     detail:
-      "Suppression is enforced by the openagents.com CRM rail on send, not a Sarah-local list.",
+      "Opt-out recorded on Sarah's CRM rail projection; openagents.com CRM rail remains send authority.",
   })
 }
 
@@ -253,6 +262,16 @@ export async function handleSarahRequest(request: Request): Promise<Response> {
 
   const ui = serveUi(path)
   if (ui) return ui
+
+  // Handoff continue: openagents.com/sarah/continue/<token> (non-API path)
+  if (path.startsWith("/continue/")) {
+    const token = path.slice("/continue/".length).split("/")[0] ?? ""
+    return handleContinueHandoff(request, token)
+  }
+
+  if (path === "/unsubscribe" || path.startsWith("/unsubscribe?")) {
+    return handleUnsubscribe(request)
+  }
 
   // API routes (legacy private-sarah paths under /api, also under /sarah/api)
   const apiPath = path.startsWith("/api") ? path : null
@@ -287,11 +306,54 @@ export async function handleSarahRequest(request: Request): Promise<Response> {
   if (apiPath === "/api/operator/ops" && request.method === "GET") {
     return handleOperatorOps()
   }
-  if (apiPath === "/api/unsubscribe" || path === "/unsubscribe") {
+  if (apiPath === "/api/unsubscribe") {
     return handleUnsubscribe(request)
   }
 
   return json({ error: "not_found", path: apiPath }, { status: 404 })
+}
+
+async function handleContinueHandoff(
+  request: Request,
+  handoffToken: string,
+): Promise<Response> {
+  if (!handoffToken || handoffToken.length < 4) {
+    return json({ error: "invalid_handoff_token" }, { status: 400 })
+  }
+  // Prospect session continuity: mint/bind cookie; Worker handoff click is
+  // recorded by the CRM rail when operator tooling posts the token.
+  let prospectRef = readSarahProspectRef(request)
+  if (!prospectRef) {
+    prospectRef = mintSarahProspectRef()
+  }
+  const response = json({
+    ok: true,
+    handoffToken,
+    prospectRef,
+    threadId: threadIdForProspectRef(prospectRef),
+    next: "/sarah/",
+    detail:
+      "Handoff accepted. Open /sarah/ to continue with this prospect cookie.",
+  })
+  setProspectCookieOn(response, prospectRef, 60 * 60 * 24 * 365)
+  response.headers.set("location", "/sarah/")
+  // Prefer HTML bounce for browsers.
+  if ((request.headers.get("accept") ?? "").includes("text/html")) {
+    return new Response(
+      `<!doctype html><meta http-equiv="refresh" content="0;url=/sarah/"><p>Continuing to <a href="/sarah/">Sarah</a>…</p>`,
+      {
+        status: 302,
+        headers: {
+          location: "/sarah/",
+          "set-cookie":
+            response.headers.get("set-cookie") ??
+            `${SARAH_PROSPECT_COOKIE}=${encodeURIComponent(prospectRef)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=31536000`,
+          "content-type": "text/html; charset=utf-8",
+        },
+      },
+    )
+  }
+  return response
 }
 
 const port = Number(process.env.SARAH_PORT ?? process.env.PORT ?? 8790)

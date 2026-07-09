@@ -37,12 +37,25 @@ Handoffs and CTAs point at `/sarah` (and continue tokens under `/sarah/continue/
 | Phase | Status |
 | --- | --- |
 | SM-0 freeze + redaction | done |
-| SM-1 Bun/Effect service backend | done (`apps/sarah` Bun server) |
+| SM-1 Bun/Effect service backend | done (`apps/sarah` Bun server + `effect-layers.ts` Context.Service tags) |
 | SM-2 voice UI zero-React DOM | done (`src/ui/*`); EN component promotion is follow-on via EN-2 gaps |
-| SM-3 email/CRM rail convergence | done (`crm-email-rail.ts`; no parallel Resend stack) |
+| SM-3 email/CRM rail convergence | done (`crm-email-rail.ts` — CRM rail client + local dry-run draft/opt-out projection; no Resend) |
 | SM-4 owned agent runtime | done seed (`owned-runtime.ts`; eve not a runtime dep for HTTP turns) |
-| SM-5 cutover to openagents.com/sarah | in progress — Start route + handoff URL rewrites; DNS/Vercel decommission operator-armed |
+| SM-5 cutover to openagents.com/sarah | in progress — Start route + `/sarah/continue/<token>` handoff; Vercel decommission operator-armed |
 | SM-6 retire private repo | README historical pointer |
+
+## Oracle receipt (local monorepo)
+
+Run from `apps/sarah` (server for S-3/S-12: `SARAH_REALTIME_TOKEN_TEST_MODE=1` plus daily/session caps):
+
+| Gate | Result |
+| --- | --- |
+| `bun test` | green |
+| deal-rules property | green |
+| S-3 token-guard smoke | green (`Origin` = host origin, not `/sarah` path) |
+| S-12 eval suite | 6/6 CONFIRMED |
+| S-8 continuity / suppression | green on CRM rail projection |
+| S-13 follow-up smoke | green |
 
 ## Layout
 

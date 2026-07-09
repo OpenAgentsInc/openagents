@@ -1,12 +1,10 @@
 import assert from "node:assert/strict";
-import { createJiti } from "jiti";
 
-const jiti = createJiti(import.meta.url);
-const {
+import {
   DEFAULT_DEAL_RULES_CONFIG,
   evaluateDealRules,
   validateCheckoutQuoteTrace,
-} = await jiti.import("../src/lib/deal-rules.ts");
+} from "../src/services/deal-rules.ts";
 
 const quote = input => {
   const result = evaluateDealRules(input);
