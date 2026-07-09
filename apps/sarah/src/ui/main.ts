@@ -23,6 +23,7 @@ import {
   MediaVideo,
   Spacer,
   Stack,
+  Tabs,
   Text,
   TextField,
   Transcript,
@@ -57,6 +58,9 @@ type SarahCard = Readonly<{
   href?: string
 }>
 
+const sarahPanelIds = ["blueprint", "chat", "actions", "receipts"] as const
+type SarahPanelId = (typeof sarahPanelIds)[number]
+
 /**
  * KHS-7 (#8606) in-conversation account linking:
  * unknown → boot probe pending; anonymous → show the sign-in button;
@@ -80,6 +84,7 @@ type SarahSurfaceState = Readonly<{
   cards: ReadonlyArray<SarahCard>
   accountPhase: AccountPhase
   accountEmail: string | null
+  activePanel: SarahPanelId
 }>
 
 const initialState: SarahSurfaceState = {
@@ -99,6 +104,7 @@ const initialState: SarahSurfaceState = {
   cards: [],
   accountPhase: "unknown",
   accountEmail: null,
+  activePanel: "blueprint",
 }
 
 const InputChanged = defineIntent("SarahInputChanged", Schema.String)
@@ -107,6 +113,7 @@ const StartAvatar = defineIntent("SarahStartAvatar", Schema.Null)
 const StopAvatar = defineIntent("SarahStopAvatar", Schema.Null)
 const OpenLink = defineIntent("SarahOpenLink", Schema.String)
 const ConnectAccount = defineIntent("SarahConnectAccount", Schema.Null)
+const SelectPanel = defineIntent("SarahSelectPanel", Schema.Literals(sarahPanelIds))
 
 const sarahIntents = [
   InputChanged,
@@ -115,6 +122,7 @@ const sarahIntents = [
   StopAvatar,
   OpenLink,
   ConnectAccount,
+  SelectPanel,
 ] as const
 
 const keyed = <V extends View>(view: V): V & { key: string } =>
@@ -167,6 +175,22 @@ const accountChip = (state: SarahSurfaceState): View | null => {
       })
   }
 }
+
+const avatarControl = (state: SarahSurfaceState, keySuffix = "overlay"): View =>
+  state.avatarActive
+    ? Button({
+        key: `avatar-stop-${keySuffix}`,
+        label: "End",
+        variant: "secondary",
+        onPress: IntentRef("SarahStopAvatar"),
+      })
+    : Button({
+        key: `avatar-start-${keySuffix}`,
+        label: state.avatarArmed ? "Talk to Sarah" : "Avatar offline",
+        variant: "primary",
+        disabled: !state.avatarArmed || state.status === "connecting",
+        onPress: IntentRef("SarahStartAvatar"),
+      })
 
 /**
  * A transcript entry as an EN Transcript message (effect-native#35): keyed and
@@ -226,80 +250,186 @@ const cardItem = (card: SarahCard): View & { key: string } =>
     ],
   ))
 
+const blueprintNode = (key: string, label: string, body: string): View =>
+  Card(
+    {
+      key,
+      padding: "3",
+      radius: "lg",
+      style: {
+        backgroundColor: "surfaceRaised",
+        borderColor: "border",
+        borderWidth: 1,
+        width: "full",
+      },
+    },
+    [
+      text(`${key}-label`, label, "caption", "focus"),
+      text(`${key}-body`, body, "body"),
+    ],
+  )
+
+const blueprintMapPanel = (): View =>
+  Stack(
+    {
+      key: "blueprint-map-panel",
+      direction: "column",
+      gap: "3",
+      style: { width: "full", height: "full", minHeight: 0 },
+    },
+    [
+      Stack(
+        {
+          key: "blueprint-map",
+          direction: { base: "column", lg: "row" },
+          gap: "3",
+          style: { width: "full" },
+        },
+        [
+          blueprintNode("blueprint-node-identity", "Identity", "OpenAgents AI sales employee"),
+          blueprintNode("blueprint-node-conversation", "Conversation", "Discovery, fit, next step"),
+        ],
+      ),
+      Stack(
+        {
+          key: "blueprint-map-lower",
+          direction: { base: "column", lg: "row" },
+          gap: "3",
+          style: { width: "full" },
+        },
+        [
+          blueprintNode("blueprint-node-rules", "Rules", "Public packs, approved deal paths"),
+          blueprintNode("blueprint-node-handoff", "Handoff", "Human follow-up when needed"),
+        ],
+      ),
+      Spacer({ key: "blueprint-map-fill", flex: true }),
+    ],
+  )
+
+const composerView = (state: SarahSurfaceState): View =>
+  Stack(
+    { key: "composer", direction: "row", gap: "3", align: "center", style: { width: "full" } },
+    [
+      TextField({
+        key: "composer-input",
+        value: state.input,
+        placeholder: "Type if you prefer text…",
+        onChange: IntentRef("SarahInputChanged", ComponentValueBinding()),
+        onSubmit: IntentRef("SarahSendText", ComponentValueBinding()),
+        style: { flex: 1 },
+      }),
+      Button({
+        key: "composer-send",
+        label: state.status === "thinking" ? "…" : "Send",
+        variant: "primary",
+        disabled: state.status === "thinking",
+        onPress: IntentRef("SarahSendText", ComponentValueBinding("input")),
+      }),
+    ],
+  )
+
+const chatPanel = (state: SarahSurfaceState): View =>
+  Stack(
+    {
+      key: "chat-panel",
+      direction: "column",
+      gap: "3",
+      style: { width: "full", height: "full", minHeight: 0 },
+    },
+    [
+      Transcript({
+        key: "transcript",
+        pinToEnd: true,
+        messages: state.transcript.map(transcriptMessage),
+        style: { width: "full", flex: 1, minHeight: 0 },
+      }),
+      composerView(state),
+    ],
+  )
+
+const actionsPanel = (state: SarahSurfaceState): View => {
+  const accountAction =
+    state.accountPhase === "linked"
+      ? Badge({
+          key: "actions-account-linked",
+          label: state.accountEmail ?? "Account linked",
+          tone: "success",
+        })
+      : state.accountPhase === "linking"
+        ? Badge({ key: "actions-account-linking", label: "Linking account…", tone: "info" })
+        : Button({
+            key: "actions-account-connect",
+            label: "Create account / Sign in",
+            variant: "secondary",
+            onPress: IntentRef("SarahConnectAccount"),
+          })
+  return Stack(
+    {
+      key: "actions-panel",
+      direction: "column",
+      gap: "3",
+      style: { width: "full", height: "full", minHeight: 0 },
+    },
+    [accountAction, Spacer({ key: "actions-fill", flex: true })],
+  )
+}
+
+const receiptsPanel = (state: SarahSurfaceState): View =>
+  Stack(
+    {
+      key: "receipts-panel",
+      direction: "column",
+      gap: "3",
+      style: { width: "full", height: "full", minHeight: 0 },
+    },
+    state.cards.length
+      ? [
+          List(
+            { key: "receipts-cards", style: { width: "full", flex: 1, minHeight: 0 } },
+            state.cards.map(cardItem),
+          ),
+        ]
+      : [text("receipts-empty", "No receipts yet.", "body", "textMuted")],
+  )
+
 export const sarahSurfaceView = (state: SarahSurfaceState): View => {
   const account = accountChip(state)
   return Stack(
     {
       key: "sarah-root",
       direction: "column",
-      gap: "3",
-      padding: "4",
-      style: { backgroundColor: "background", minHeight: "full", width: "full" },
+      gap: "2",
+      padding: "3",
+      style: { backgroundColor: "background", height: "full", minHeight: "full", width: "full" },
     },
     [
       Stack(
-        { key: "header", direction: "row", gap: "3", align: "center", style: { width: "full" } },
+        { key: "sarah-toolbar", direction: "row", gap: "3", align: "center", style: { width: "full" } },
         [
-          text("title", "Sarah", "title"),
-          text("subtitle", "OpenAgents sales · openagents.com/sarah", "caption", "textMuted"),
-          Spacer({ key: "header-space", flex: true }),
-          ...(account ? [account] : []),
+          Spacer({ key: "toolbar-space", flex: true }),
           statusBadge(state),
+          ...(account ? [account] : []),
         ],
       ),
-      Stack(
-        { key: "avatar-controls", direction: "row", gap: "3", style: { width: "full" } },
-        [
-          state.avatarActive
-            ? Button({
-                key: "avatar-stop",
-                label: "End conversation",
-                variant: "secondary",
-                onPress: IntentRef("SarahStopAvatar"),
-              })
-            : Button({
-                key: "avatar-start",
-                label: state.avatarArmed ? "Talk to Sarah (live avatar)" : "Avatar offline",
-                variant: "primary",
-                disabled: !state.avatarArmed || state.status === "connecting",
-                onPress: IntentRef("SarahStartAvatar"),
-              }),
+      Tabs({
+        key: "sarah-tabs",
+        tabs: [
+          { id: "blueprint", label: "Blueprint map" },
+          { id: "chat", label: "Chat" },
+          { id: "actions", label: "Actions" },
+          { id: "receipts", label: "Receipts" },
         ],
-      ),
-      Transcript({
-        key: "transcript",
-        pinToEnd: true,
-        messages: state.transcript.map(transcriptMessage),
-        style: { width: "full" },
+        panels: [
+          { id: "blueprint", content: blueprintMapPanel() },
+          { id: "chat", content: chatPanel(state) },
+          { id: "actions", content: actionsPanel(state) },
+          { id: "receipts", content: receiptsPanel(state) },
+        ],
+        selectedId: state.activePanel,
+        keepMounted: true,
+        onSelect: IntentRef("SarahSelectPanel", ComponentValueBinding()),
+        style: { width: "full", flex: 1, minHeight: 0 },
       }),
-      ...(state.cards.length
-        ? [
-            List(
-              { key: "cards", style: { width: "full" } },
-              state.cards.map(cardItem),
-            ),
-          ]
-        : []),
-      Stack(
-        { key: "composer", direction: "row", gap: "3", align: "center", style: { width: "full" } },
-        [
-          TextField({
-            key: "composer-input",
-            value: state.input,
-            placeholder: "Type if you prefer text…",
-            onChange: IntentRef("SarahInputChanged", ComponentValueBinding()),
-            onSubmit: IntentRef("SarahSendText", ComponentValueBinding()),
-            style: { flex: 1 },
-          }),
-          Button({
-            key: "composer-send",
-            label: state.status === "thinking" ? "…" : "Send",
-            variant: "primary",
-            disabled: state.status === "thinking",
-            onPress: IntentRef("SarahSendText", ComponentValueBinding("input")),
-          }),
-        ],
-      ),
     ],
   )
 }
@@ -310,15 +440,33 @@ export const sarahSurfaceView = (state: SarahSurfaceState): View => {
  * empty and the #sarah-avatar chrome (data-state CSS) shows the idle overlay.
  */
 export const sarahAvatarPaneView = (state: SarahSurfaceState): View =>
-  state.avatarSessionOpen
-    ? MediaVideo({
-        key: "avatar-video",
-        fit: "cover",
-        muted: false,
-        style: { width: "full", height: "full" },
-        a11y: { label: "Sarah live avatar video" },
-      })
-    : Stack({ key: "avatar-empty", direction: "column" }, [])
+  Stack(
+    {
+      key: "avatar-pane",
+      direction: "column",
+      style: { width: "full", height: "full", minHeight: "full" },
+    },
+    [
+      ...(state.avatarSessionOpen
+        ? [
+            MediaVideo({
+              key: "avatar-video",
+              fit: "cover",
+              muted: false,
+              style: { width: "full", height: "full" },
+              a11y: { label: "Sarah live avatar video" },
+            }),
+          ]
+        : [Stack({ key: "avatar-empty", direction: "column", style: { width: "full", height: "full" } }, [])]),
+      Stack(
+        { key: "avatar-overlay", direction: "row", gap: "2", align: "center", style: { width: "full" } },
+        [
+          avatarControl(state),
+          statusBadge(state),
+        ],
+      ),
+    ],
+  )
 
 let entryCounter = 0
 const nextKey = (prefix: string) => `${prefix}-${entryCounter++}`
@@ -532,6 +680,11 @@ export const mountSarahSurface = (container: HTMLElement, avatarContainer: HTMLE
             ),
           )
         }),
+      SarahSelectPanel: (panel) =>
+        SubscriptionRef.update(state, (current): SarahSurfaceState => ({
+          ...current,
+          activePanel: panel,
+        })),
       SarahStartAvatar: () =>
         Effect.gen(function* () {
           yield* SubscriptionRef.update(state, (current): SarahSurfaceState => ({

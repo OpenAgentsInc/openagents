@@ -11,6 +11,7 @@ body {
   margin: 0;
   padding: 0;
   min-height: 100%;
+  height: 100%;
   background: #000000;
   color: #f1efe8;
   font-family:
@@ -19,20 +20,18 @@ body {
 
 .sarah-layout {
   display: grid;
-  grid-template-columns: minmax(280px, 480px) minmax(360px, 720px);
-  gap: 16px;
-  justify-content: center;
-  align-items: start;
-  padding: 24px 16px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0;
+  align-items: stretch;
+  padding: 0;
   min-height: 100vh;
 }
 
 #sarah-avatar {
-  position: sticky;
-  top: 24px;
-  aspect-ratio: 3 / 4;
-  border: 1px solid #17315f;
-  border-radius: 8px;
+  position: relative;
+  height: 100vh;
+  min-height: 100vh;
+  border-right: 1px solid #17315f;
   background:
     radial-gradient(ellipse at 50% 30%, #0b1220 0%, #010102 70%);
   overflow: hidden;
@@ -43,14 +42,28 @@ body {
 
 #sarah-avatar[data-state="idle"]::after {
   content: "Sarah's live avatar appears here";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   color: #5b6b8c;
   font-size: 13px;
+  pointer-events: none;
 }
 
 #sarah-avatar[data-state="connecting"]::after {
   content: "Connecting…";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   color: #4fd0ff;
   font-size: 13px;
+  pointer-events: none;
 }
 
 /* The EN avatar-pane surface (MediaVideo host) overlays the chrome box; the
@@ -59,6 +72,7 @@ body {
 #sarah-avatar > [data-effect-native-surface] {
   position: absolute;
   inset: 0;
+  z-index: 2;
 }
 
 #sarah-avatar video {
@@ -67,30 +81,115 @@ body {
   object-fit: cover;
 }
 
-@media (max-width: 900px) {
-  .sarah-layout {
-    grid-template-columns: 1fr;
-  }
-  #sarah-avatar {
-    /* relative (not static) keeps the absolute EN surface anchored here. */
-    position: relative;
-    aspect-ratio: 16 / 10;
-    max-height: 40vh;
-  }
+#sarah-avatar [data-en-key="avatar-overlay"] {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: 16px;
+  z-index: 3;
+  display: flex;
+  justify-content: space-between;
+  padding: 10px;
+  border: 1px solid rgba(79, 208, 255, 0.34);
+  border-radius: 8px;
+  background: rgba(1, 11, 26, 0.78);
+  backdrop-filter: blur(12px);
+}
+
+.sarah-right-shell {
+  min-width: 0;
+  min-height: 100vh;
+  max-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #000000;
+}
+
+#sarah-root {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+#sarah-root > [data-effect-native-surface] {
+  height: 100%;
+  min-height: 0;
+}
+
+#sarah-root [data-en-key="sarah-toolbar"] {
+  min-height: 36px;
+}
+
+#sarah-root [data-en-key="sarah-tabs"] {
+  min-height: 0;
+  overflow: hidden;
+}
+
+#sarah-root [data-en-role="tablist"] {
+  gap: 6px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #17315f;
+  overflow-x: auto;
+}
+
+#sarah-root [role="tab"] {
+  min-height: 32px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: #aaa8a2;
+  font: inherit;
+  font-size: 13px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+#sarah-root [role="tab"][aria-selected="true"] {
+  border-color: #4fd0ff;
+  background: #010b1a;
+  color: #f1efe8;
+}
+
+#sarah-root [role="tabpanel"] {
+  height: calc(100% - 41px);
+  min-height: 0;
+  overflow: auto;
 }
 
 .sarah-disclosure {
-  max-width: 1216px;
-  margin: 16px auto 0;
-  padding: 12px 16px;
-  border: 1px solid #17315f;
-  border-radius: 8px;
+  margin: 0;
+  padding: 8px 12px;
+  border-bottom: 1px solid #17315f;
   background: #010b1a;
   color: #aaa8a2;
-  font-size: 13px;
-  line-height: 1.5;
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 .sarah-disclosure strong {
   color: #4fd0ff;
+}
+
+@media (max-width: 900px) {
+  .sarah-layout {
+    grid-template-columns: 1fr;
+  }
+
+  #sarah-avatar {
+    height: 56vh;
+    min-height: 360px;
+    border-right: 0;
+    border-bottom: 1px solid #17315f;
+  }
+
+  .sarah-right-shell {
+    min-height: 44vh;
+    max-height: none;
+  }
+
+  #sarah-root [role="tabpanel"] {
+    height: auto;
+    max-height: none;
+  }
 }

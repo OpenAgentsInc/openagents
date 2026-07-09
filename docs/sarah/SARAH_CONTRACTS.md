@@ -1,20 +1,22 @@
 # Sarah Behavior Contracts
 
-Machine source of truth: `apps/sarah/src/contracts/isolation-contracts.ts`
-(schema: `@openagentsinc/behavior-contracts`). This document is the human
-rendering; the coverage test in
-`apps/sarah/src/contracts/isolation-contracts.test.ts` fails the sweep if this
-doc drifts from the registry, if an enforced contract loses its oracle, or if
-an oracle file drops its contract reference.
+Machine sources of truth: `apps/sarah/src/contracts/isolation-contracts.ts`,
+`apps/sarah/src/contracts/split-layout-contracts.ts`, and the Sarah avatar UX
+registry in `apps/sarah/src/contracts/avatar-ux-contracts.ts` (schema:
+`@openagentsinc/behavior-contracts`). This document is the human rendering;
+the coverage tests under `apps/sarah/src/contracts/` fail the sweep if a doc
+drifts from its registry, if an enforced contract loses its oracle, or if an
+oracle file drops its contract reference.
 
 Lane: KHS-3 (#8602) + KHS-4 (#8603) + KHS-5 (#8604), epic #8599 (Sarah ×
-Khala). The isolation law landed BEFORE any shared learning ("isolation
-before generalization"): KHS-3 enforced the cross-prospect oracles first,
-KHS-4 then shipped the owner-approved collective-learning queue behind them —
-flipping `sarah.collective_learning_owner_gated.v1` from pending to enforced
-in the same change that added the first shared-knowledge read path — and
-KHS-5 moved Sarah's knowledge itself onto a typed, versioned Blueprint with
-per-fact provenance (`sarah.blueprint_versioned_provenance.v1`).
+Khala), plus BM-3 (#8629) for the Sarah Blueprint map shell. The isolation law
+landed BEFORE any shared learning ("isolation before generalization"): KHS-3
+enforced the cross-prospect oracles first, KHS-4 then shipped the
+owner-approved collective-learning queue behind them — flipping
+`sarah.collective_learning_owner_gated.v1` from pending to enforced in the
+same change that added the first shared-knowledge read path — and KHS-5 moved
+Sarah's knowledge itself onto a typed, versioned Blueprint with per-fact
+provenance (`sarah.blueprint_versioned_provenance.v1`).
 
 ## Where the statements come from
 
@@ -35,6 +37,13 @@ per-fact provenance (`sarah.blueprint_versioned_provenance.v1`).
   Sarah in production, 2026-07-09, relayed in epic #8599): her knowledge is a
   typed object with per-fact provenance and receipted revisions, not a flat
   pasted document.
+- `sarah.split_screen_blueprint_map.v1` records the owner's BM-3 directive
+  verbatim ("the split layout — your video full-height left ~50%, tabbed
+  canvas right (map / chat / actions), with the audit's cut list applied (the
+  caption row, controls row, and the 480px centered grid that made the page
+  mostly padding — the disclosure banner stays, it's a contract)." — owner,
+  Codex thread, 2026-07-09): the `/sarah` shell is a full-height split with
+  the Effect Native tabbed canvas on the right.
 
 ## How collective learning is gated (KHS-4, #8603)
 
@@ -80,16 +89,22 @@ entries. This is an internal owner-approved store; it makes no public
   required on every fact (including the `learning_receipt:<id>` promotion
   seam from KHS-4), flag-off rollout safety, admin guard fail-closed + a full
   HTTP revision cycle.
+- `apps/sarah/src/ui/surface.test.ts` — the BM-3 (#8629) Effect Native
+  surface oracle: right pane is EN `Tabs` with Blueprint map default, Chat /
+  Actions / Receipts panels, transcript+composer in Chat, and the audited
+  Sarah title/caption/control row removed.
+- `apps/sarah/src/contracts/split-layout-contracts.test.ts` — the BM-3 source
+  cut-list oracle: full-height 50/50 split host shell, compact disclosure in
+  the right shell, EN-keyed video overlay controls, and no 480px/720px
+  centered grid.
 - All run in `bun test` inside `apps/sarah`, in the `apps/sarah` `oracle`
   chain, and in the repo `test:sarah` sweep before pushes to main.
 
 ## Pending entries (blocker-gated, never claim as guaranteed)
 
 None. `sarah.collective_learning_owner_gated.v1` flipped pending → enforced
-with KHS-4 (#8603); all six registered contracts (including the KHS-7
-`sarah.in_chat_account_linking.v1` account-link seam, #8606, and the KHS-5
-`sarah.blueprint_versioned_provenance.v1` knowledge object, #8604) are
-enforced in the test sweep.
+with KHS-4 (#8603); the Sarah behavior contracts listed here are enforced in
+the test sweep unless a future section explicitly marks one pending.
 
 ## Registry
 
@@ -165,6 +180,21 @@ Registry version: `2026-07-09.5` (schema `openagents.behavior_contracts.v1`)
 - **Oracle** `blueprint_admin_guard.rpc` (bun-test, rpc): Safe rollout + fail-closed guard: with SARAH_BLUEPRINT unset the file-based instructions path is unchanged (no compiled sections leak in); armed, the compiled blueprint leads while the tool protocol stays; the operator endpoints are admin-bearer-guarded (unarmed → 503, missing/wrong bearer → 401 with nothing written) and a full receipted revision cycle (add → retire → read back) works only with the exact bearer. — `apps/sarah/src/services/sarah-blueprint.test.ts`
 - **Verification:** bun test src/services/sarah-blueprint.test.ts inside apps/sarah; runs in the package test glob, the apps/sarah oracle chain, and the repo test:sarah sweep before pushes to main.
 - **Authority boundary:** This contract binds Sarah's knowledge object (KHS-5, #8604): her persona/playbook/knowledge live in a typed Blueprint — facts with per-fact provenance ({source, ref, at}; owner_kb_v2 | owner_directive | promise_registry | deal_rules | learning_receipt:<id>), versioned revisions (retire is a new revision, never a delete), and admin-guarded operator writes with a change note. The KB doc is GENERATED from the blueprint (render-kb-from-blueprint.ts), not hand-edited. Consumption is flag-armed (SARAH_BLUEPRINT=1); flag-off keeps the file-based path unchanged. It grants no authority: deal-rules code remains the only pricing authority and the openagents.com API the system of record — blueprint facts inform language, never prices.
+
+## Blueprint Map Split-Screen Contract (BM-3 #8629)
+
+Registry version: `2026-07-09.1` (schema `openagents.behavior_contracts.v1`)
+
+### `sarah.split_screen_blueprint_map.v1` — ENFORCED
+
+- **Surface:** sarah (Sarah Blueprint map surface)
+- **Stated by:** owner via openagents-codex-thread on 2026-07-09
+- **Statement:** the split layout — your video full-height left ~50%, tabbed canvas right (map / chat / actions), with the audit's cut list applied (the caption row, controls row, and the 480px centered grid that made the page mostly padding — the disclosure banner stays, it's a contract).
+- **Enforcement tier:** test-sweep
+- **Oracle** `split_layout_surface_tree.unit` (bun-test, unit): Effect Native surface tree oracle: the right pane is an EN Tabs node with Blueprint map selected by default, Chat/Actions/Receipts panels kept mounted, transcript+composer inside the Chat panel, card receipts inside the Receipts panel, and no standalone Sarah title/caption/control row. — `apps/sarah/src/ui/surface.test.ts`
+- **Oracle** `split_layout_source_cutlist.unit` (bun-test, unit): Source layout oracle: the host shell uses a 50/50 viewport split, compact disclosure inside the right shell, EN-keyed video overlay controls, and rejects the old 480px/720px centered grid plus the audited caption/control row strings. — `apps/sarah/src/contracts/split-layout-contracts.test.ts`
+- **Verification:** bun test src/ui/surface.test.ts src/contracts/split-layout-contracts.test.ts inside apps/sarah; runs in the package test glob and gives BM-5 a named contract for the later screenshot smoke deploy gate.
+- **Authority boundary:** This contract binds the /sarah browser surface shell only: the top-level split, Effect Native Tabs composition, video-pane overlay controls, compact disclosure banner, and removal of the audited caption/control/centered-grid padding. It does not claim the live Blueprint graph exists yet (BM-2) and does not replace BM-5's later screenshot smoke gate.
 
 ## Avatar UX contracts (SQ-4 #8621)
 

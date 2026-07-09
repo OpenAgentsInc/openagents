@@ -29,6 +29,7 @@ const baseState: SurfaceState = {
   cards: [],
   accountPhase: "anonymous",
   accountEmail: null,
+  activePanel: "blueprint",
 }
 
 type AnyNode = { readonly _tag?: string; readonly [key: string]: unknown }
@@ -46,6 +47,34 @@ const findByTag = (node: unknown, tag: string): AnyNode | null => {
   if (record._tag === tag) return record
   for (const value of Object.values(record)) {
     const found = findByTag(value, tag)
+    if (found) return found
+  }
+  return null
+}
+
+const findAllByTag = (node: unknown, tag: string): ReadonlyArray<AnyNode> => {
+  if (node === null || typeof node !== "object") return []
+  if (Array.isArray(node)) return node.flatMap((child) => findAllByTag(child, tag))
+  const record = node as AnyNode
+  return [
+    ...(record._tag === tag ? [record] : []),
+    ...Object.values(record).flatMap((value) => findAllByTag(value, tag)),
+  ]
+}
+
+const findByKey = (node: unknown, key: string): AnyNode | null => {
+  if (node === null || typeof node !== "object") return null
+  if (Array.isArray(node)) {
+    for (const child of node) {
+      const found = findByKey(child, key)
+      if (found) return found
+    }
+    return null
+  }
+  const record = node as AnyNode
+  if (record.key === key) return record
+  for (const value of Object.values(record)) {
+    const found = findByKey(value, key)
     if (found) return found
   }
   return null
@@ -71,12 +100,66 @@ describe("sarah surface consumes the EN catalog (SQ-7 #8624)", () => {
 
   test("an open avatar session mounts the media-video host attach target", () => {
     const pane = sarahAvatarPaneView({ ...baseState, avatarSessionOpen: true })
-    expect(pane._tag).toBe("Host")
-    expect((pane as { kind?: string }).kind).toBe("media-video")
+    const media = findByTag(pane, "Host")
+    expect(media).not.toBeNull()
+    expect(media?.kind).toBe("media-video")
+    expect(findByKey(pane, "avatar-overlay")).not.toBeNull()
   })
 
-  test("with no open session the avatar pane renders empty (idle chrome shows)", () => {
+  test("with no open session the avatar pane renders no media host but keeps EN overlay controls", () => {
     const pane = sarahAvatarPaneView(baseState)
-    expect(pane._tag).not.toBe("Host")
+    expect(findByTag(pane, "Host")).toBeNull()
+    expect(findByKey(pane, "avatar-start-overlay")).not.toBeNull()
+  })
+})
+
+describe("contract sarah.split_screen_blueprint_map.v1 (BM-3 #8629)", () => {
+  test("the right pane is an Effect Native Tabs surface with Blueprint map default", () => {
+    const view = sarahSurfaceView(baseState)
+    const tabs = findByTag(view, "Tabs") as
+      | {
+          selectedId?: string
+          keepMounted?: boolean
+          tabs?: ReadonlyArray<{ id: string; label: string }>
+          panels?: ReadonlyArray<{ id: string }>
+        }
+      | null
+    expect(tabs).not.toBeNull()
+    expect(tabs?.selectedId).toBe("blueprint")
+    expect(tabs?.keepMounted).toBe(true)
+    expect(tabs?.tabs?.map((tab) => tab.label)).toEqual([
+      "Blueprint map",
+      "Chat",
+      "Actions",
+      "Receipts",
+    ])
+    expect(tabs?.panels?.map((panel) => panel.id)).toEqual([
+      "blueprint",
+      "chat",
+      "actions",
+      "receipts",
+    ])
+  })
+
+  test("the cut list is absent from the EN surface tree", () => {
+    const serialized = JSON.stringify(sarahSurfaceView(baseState))
+    expect(serialized).not.toContain("OpenAgents sales · openagents.com/sarah")
+    expect(serialized).not.toContain("avatar-controls")
+    expect(serialized).not.toContain('"key":"title"')
+    expect(findByKey(sarahSurfaceView(baseState), "sarah-toolbar")).not.toBeNull()
+  })
+
+  test("the transcript, composer, actions, and receipts stay inside tab panels", () => {
+    const view = sarahSurfaceView({
+      ...baseState,
+      cards: [{ key: "receipt-1", title: "Receipt", body: "Tool call recorded" }],
+    })
+    expect(findByKey(view, "chat-panel")).not.toBeNull()
+    expect(findByKey(view, "composer")).not.toBeNull()
+    expect(findByKey(view, "actions-panel")).not.toBeNull()
+    expect(findByKey(view, "receipts-panel")).not.toBeNull()
+    expect(findByKey(view, "receipts-cards")).not.toBeNull()
+    expect(findByKey(view, "cards")).toBeNull()
+    expect(findAllByTag(view, "List").length).toBe(1)
   })
 })

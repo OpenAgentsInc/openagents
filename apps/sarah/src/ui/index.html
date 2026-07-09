@@ -7,14 +7,16 @@
     <link rel="stylesheet" href="/sarah/sarah.css" />
   </head>
   <body>
-    <header class="sarah-disclosure">
-      <strong>AI disclosure.</strong> Sarah is an AI sales assistant for
-      OpenAgents. She is not a human. She will not invent prices or discounts
-      outside public pack prices and owner-approved deal rules.
-    </header>
     <main class="sarah-layout">
       <section id="sarah-avatar" data-state="idle" aria-label="Sarah live avatar"></section>
-      <section id="sarah-root" aria-label="Sarah conversation"></section>
+      <section class="sarah-right-shell" aria-label="Sarah conversation">
+        <header class="sarah-disclosure">
+          <strong>AI disclosure.</strong> Sarah is an AI sales assistant for
+          OpenAgents. She is not a human. She will not invent prices or discounts
+          outside public pack prices and owner-approved deal rules.
+        </header>
+        <section id="sarah-root" aria-label="Sarah workspace"></section>
+      </section>
     </main>
     <script type="module" src="/sarah/app.js"></script>
   </body>
