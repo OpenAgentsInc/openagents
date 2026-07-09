@@ -341,7 +341,70 @@ describe('public product promises document', () => {
     expect(rx8Note).toContain('Live customer runs')
   })
 
-  test('keeps Khala Code install truth public but desktop release gated', () => {
+  test('records the greenfield OpenAgents app successors and exact legacy states', () => {
+    const decoded = S.decodeUnknownSync(ProductPromisesDocument)(
+      publicProductPromisesDocument(),
+    )
+    const promiseById = new Map(
+      decoded.promises.map(promise => [promise.promiseId, promise]),
+    )
+    const khalaCodeStates = Object.fromEntries(
+      decoded.promises
+        .filter(promise => promise.promiseId.startsWith('khala_code.'))
+        .map(promise => [promise.promiseId, promise.state]),
+    )
+
+    expect(decoded.version).toBe('2026-07-09.1')
+    expect(khalaCodeStates).toEqual({
+      'khala_code.architect_coder_judge.v1': 'planned',
+      'khala_code.bundled_fleet_skill.v1': 'planned',
+      'khala_code.desktop_codex_wrapper.v1': 'withdrawn',
+      'khala_code.forum_hotbar.v1': 'withdrawn',
+      'khala_code.free_paid_plans.v1': 'planned',
+      'khala_code.free_plan_trace_capture.v1': 'planned',
+      'khala_code.mobile_mvp.v1': 'withdrawn',
+      'khala_code.paid_to_free_revenue_share.v1': 'planned',
+      'khala_code.plugin_backend_revenue_share.v1': 'planned',
+      'khala_code.trace_derived_plugins.v1': 'planned',
+      'khala_code.ux_behavior_contracts.v1': 'yellow',
+    })
+
+    const desktop = promiseById.get('openagents.desktop_app.v1')
+    expect(desktop).toMatchObject({ state: 'planned' })
+    expect(desktop?.safeCopy).toContain('LuanRoger/electron-shadcn')
+    expect(desktop?.safeCopy).toContain('nodeIntegration')
+    expect(desktop?.evidenceRefs).toContain(
+      'contract:openagents_apps.desktop_starting_template.v1',
+    )
+
+    const mobile = promiseById.get('openagents.mobile_app.v1')
+    expect(mobile).toMatchObject({ state: 'planned' })
+    expect(mobile?.safeCopy).toContain('com.openagents.app')
+    expect(mobile?.safeCopy).toContain(
+      '0a1865ac6d1efc792d365d9a37af9e6ffa3270fa7c8731f36129f35371bfc7ce',
+    )
+
+    const fleetCompanion = promiseById.get('mobile.fleet_companion.v1')
+    expect(fleetCompanion?.safeCopy).toContain('openagents.mobile_app.v1')
+    expect(fleetCompanion?.safeCopy).not.toContain('mobile-only Khala Code MVP')
+
+    const stateCounts = decoded.promises.reduce<Record<string, number>>(
+      (counts, promise) => ({
+        ...counts,
+        [promise.state]: (counts[promise.state] ?? 0) + 1,
+      }),
+      {},
+    )
+    expect(stateCounts).toEqual({
+      green: 34,
+      planned: 78,
+      red: 6,
+      withdrawn: 7,
+      yellow: 20,
+    })
+  })
+
+  test('withdraws the Khala Code app while preserving historical evidence routes', () => {
     const decoded = S.decodeUnknownSync(ProductPromisesDocument)(
       publicProductPromisesDocument(),
     )
@@ -351,11 +414,10 @@ describe('public product promises document', () => {
     const khalaCode = promiseById.get('khala_code.desktop_codex_wrapper.v1')
 
     expect(khalaCode).toMatchObject({
-      state: 'yellow',
-      blockerRefs: expect.arrayContaining([
-        'blocker.product_promises.khala_code_public_release_artifact_missing',
-        'blocker.product_promises.khala_code_outside_user_evidence_missing',
-      ]),
+      state: 'withdrawn',
+      blockerRefs: [
+        'blocker.product_promises.legacy_product_app_withdrawn',
+      ],
       evidenceRefs: expect.arrayContaining([
         'apps/openagents.com/apps/web/src/page/khalaCodeDownload.ts',
         'apps/openagents.com/apps/web/src/khala-code-download-route.test.ts',
@@ -373,28 +435,14 @@ describe('public product promises document', () => {
         'route:/api/public/khala-code/outside-user-runs/:receiptRef',
       ]),
     })
-    expect(khalaCode?.safeCopy).toContain('/code/download')
-    expect(khalaCode?.safeCopy).toContain('Run evidence action')
-    expect(khalaCode?.safeCopy).toContain('no paths, prompts, tokens, logs')
-    expect(khalaCode?.safeCopy).toContain('pending public artifact')
+    expect(khalaCode?.safeCopy).toContain('historical')
+    expect(khalaCode?.safeCopy).toContain('promise:openagents.desktop_app.v1')
     expect(khalaCode?.verification).toContain(
-      'exact-row-or-empty public counters',
+      'retains its historical evidence/receipt refs',
     )
-    expect(khalaCode?.verification).toContain(
-      'outside-user run receipt tests',
-    )
-    expect(khalaCode?.authorityBoundary).toContain(
-      'exact rows from khala_code_download_events',
-    )
-    expect(khalaCode?.authorityBoundary).toContain(
-      'Outside-user run receipts are opt-in evidence only',
-    )
-    expect(khalaCode?.unsafeCopy).toContain(
-      'Do not claim Khala Code is downloadable',
-    )
-    expect(decoded.notes.join('\n')).toContain('Registry 2026-07-04.2')
-    expect(decoded.notes.join('\n')).toContain('No phone-home')
-    expect(decoded.notes.join('\n')).toContain('flips NO promise state')
+    expect(khalaCode?.authorityBoundary).toContain('withdrawn app/product')
+    expect(khalaCode?.unsafeCopy).toContain('Do not use')
+    expect(decoded.notes.join('\n')).toContain('Registry 2026-07-09.1')
   })
 
   test('keeps Khala Code trace plugin revenue-share precedent planned until a live receipt exists', () => {
@@ -423,9 +471,11 @@ describe('public product promises document', () => {
         'blocker.owner.khala_code_trace_plugin_revenue_share_live_receipt_missing',
       ]),
     })
-    expect(tracePlugins?.safeCopy).toContain('admin-token route')
-    expect(tracePlugins?.safeCopy).toContain('already-settled Spark')
-    expect(tracePlugins?.unsafeCopy).toContain('empty precedent ledger')
+    expect(tracePlugins?.safeCopy).toContain('Planned engine idea only')
+    expect(tracePlugins?.unsafeCopy).toContain('Do not claim')
+    expect(tracePlugins?.blockerRefs).toContain(
+      'blocker.product_promises.openagents_greenfield_capability_port_missing',
+    )
 
     expect(revenueShare).toMatchObject({
       state: 'planned',
@@ -439,6 +489,7 @@ describe('public product promises document', () => {
         'blocker.product_promises.plugin_revenue_settlement_not_armed',
       ]),
     })
+    expect(revenueShare?.safeCopy).toContain('Planned engine/economics idea')
     expect(revenueShare?.safeCopy).toContain('moves no sats itself')
     expect(revenueShare?.unsafeCopy).toContain(
       'Do not claim anyone has been paid',
@@ -685,7 +736,7 @@ describe('public product promises document', () => {
     expect(existsSync(repoFile('NEEDS_OWNER.md'))).toBe(true)
   })
 
-  test('keeps issue 7023 desktop and builtin compute proof yellow-only', () => {
+  test('withdraws the legacy desktop app while keeping builtin compute planned', () => {
     const decoded = S.decodeUnknownSync(ProductPromisesDocument)(
       publicProductPromisesDocument(),
     )
@@ -696,13 +747,9 @@ describe('public product promises document', () => {
     const builtinCompute = promiseById.get('autopilot.builtin_compute_agent.v1')
 
     expect(desktop).toMatchObject({
-      // 2026-07-04.8 owner-directed revenue-refocus demotion
-      state: 'planned',
+      state: 'withdrawn',
       blockerRefs: [
-        'blocker.product_promises.autopilot_desktop_owner_review_green_pending',
-        'blocker.product_promises.autopilot_desktop_live_runtimes_not_wired',
-        'blocker.product_promises.autopilot_desktop_remote_cloud_lane_not_wired',
-        'blocker.product_promises.autopilot_desktop_pricing_distribution_undecided',
+        'blocker.product_promises.legacy_product_app_withdrawn',
       ],
       evidenceRefs: expect.arrayContaining([
         'docs/launch/JUNE19_ROADMAP.md',
@@ -714,22 +761,10 @@ describe('public product promises document', () => {
         'docs/launch/artifacts/ao6-20260619T010148/live-refs.txt',
       ]),
     })
-    expect(desktop?.blockerRefs).not.toContain(
-      'blocker.product_promises.autopilot_desktop_from_dmg_proof_owner_gated',
-    )
-    expect(desktop?.safeCopy).toContain(
-      'This is NOT a green/default-on production claim',
-    )
-    expect(desktop?.safeCopy).toContain('pylon.fa4e9049a4329f3d56e2')
-    expect(desktop?.safeCopy).toContain(
-      'training.verification.challenge.9fd49062-f82c-46ee-a2a0-242d36dd126e',
-    )
-    expect(desktop?.verification).toContain(
-      'Green still requires owner review/sign-off',
-    )
-    expect(desktop?.unsafeCopy).toContain(
-      'Do not claim the from-DMG clean-Mac evidence makes Autopilot Desktop green',
-    )
+    expect(desktop?.safeCopy).toContain('historical')
+    expect(desktop?.safeCopy).toContain('promise:openagents.desktop_app.v1')
+    expect(desktop?.verification).toContain('registry still serves')
+    expect(desktop?.unsafeCopy).toContain('revive its legacy app')
 
     expect(builtinCompute).toMatchObject({
       // 2026-07-04.8 owner-directed revenue-refocus demotion

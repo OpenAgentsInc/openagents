@@ -119,17 +119,16 @@ const authResponse = () => {
   return noStoreJsonResponse({ error: 'unauthorized' }, { headers, status: 401 })
 }
 
-// The catalog is static text plus one deployment-config input (the purchase
-// flag), recomputed on every read — live_at_read with no data tables behind
-// it, only the catalog module and the fail-closed flag read.
+// The catalog is a static retirement/compatibility projection recomputed on
+// every read. The legacy env key remains in the staleness provenance, but its
+// reader is permanently fail-closed and cannot rearm purchases.
 const planCatalogStaleness = liveAtReadStaleness([
   'module:khala-code-plan-catalog.ts',
   'env:KHALA_CODE_PAID_PLANS_ENABLED',
 ])
 
 // GET /api/public/khala-code/plans — the public, agent-readable plan catalog.
-// Read-only, no auth, no DB, no secrets; purchasability reflects the real
-// fail-closed flag state instead of hardcoded copy.
+// Read-only, no auth, no DB, no secrets; purchasability is permanently false.
 export const handleKhalaCodePlanCatalogApi = (
   request: Request,
   deps: Readonly<{
@@ -202,11 +201,10 @@ export const handleKhalaCodePlanStatus = (
   })
 
 // POST /v1/khala-code/plans/purchases — the paid-plan purchase seam.
-// FLAG-GATED, DEFAULT OFF, FAIL-CLOSED: while KHALA_CODE_PAID_PLANS_ENABLED
-// is unarmed this returns 503 and grants nothing. When armed, it returns a
-// payment-required object for the selected rail. Only a completed Stripe
-// Checkout webhook or a locally verified Lightning preimage fulfills the
-// existing paid-privacy entitlement receipt.
+// RETIRED IN PRODUCTION: the only production flag reader always supplies false,
+// so this returns the stable 503 khala_code_paid_plans_not_enabled response and
+// grants nothing. The injected armed branch remains solely as historical
+// receipt/entitlement compatibility coverage; no production route can select it.
 export const handleKhalaCodePlanPurchase = (
   request: Request,
   deps: KhalaCodePlanRoutesDeps,

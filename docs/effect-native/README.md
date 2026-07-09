@@ -86,9 +86,11 @@ components and the app on top don't change at all.
 ## Status
 
 Effect Native is an **owner decision as of 2026-07-08** and is being
-adopted greenfield-first: new surfaces are built on it immediately, while
-existing, shipping apps migrate onto it gradually — never rewritten just to
-move them.
+adopted greenfield-first: new surfaces are built on it immediately. Retained
+shipping surfaces migrate incrementally, while the owner-directed 2026-07-09
+mobile and desktop replacements are explicitly greenfield applications rather
+than in-place rewrites. The binding app decision is
+[`../sol/2026-07-09-greenfield-mobile-desktop-decision.md`](../sol/2026-07-09-greenfield-mobile-desktop-decision.md).
 
 ## Documents in this folder
 
@@ -110,7 +112,9 @@ move them.
   vs migrate-on-touch discipline, a ruthlessly-small v0, and the phased
   full-conversion roadmap **EN-0…EN-9** (foundation → greenfield web →
   catalog → mobile → web product → desktop → canvas → native renderers →
-  terminal → governance). *The main doc; read first.*
+  terminal → governance). Its EN-3/EN-4/EN-5 execution sections are amended by
+  the 2026-07-09 Sarah-first greenfield/route-retirement decision linked above.
+  *Read the framework doc first, then the current Sol decision before app work.*
 
 - **[Foldkit vs Effect Native](./2026-07-08-foldkit-vs-effect-native.md)**
   — Foldkit is our Elm/MVU Effect framework with a *fixed DOM renderer* and

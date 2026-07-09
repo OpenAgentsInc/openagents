@@ -4,6 +4,9 @@ This ledger records docs/program areas that are no longer current routing direct
 
 | Program/dir | Status | Date | Revival condition | Authority |
 |---|---|---|---|---|
+| `clients/khala-mobile` | deprecated/frozen | 2026-07-09 | No revival as a product; retain only until greenfield mobile parity/migration proof permits deletion/archive. | [Sol greenfield decision](sol/2026-07-09-greenfield-mobile-desktop-decision.md); #8597 |
+| `clients/khala-ios/Khala` | deprecated/frozen | 2026-07-09 | No revival as a product; extract only applicable native contracts/modules into the greenfield mobile app. | [Sol greenfield decision](sol/2026-07-09-greenfield-mobile-desktop-decision.md); #8597 |
+| `clients/khala-code-desktop` | deprecated/frozen | 2026-07-09 | No revival as a product or Electrobun destination; retain only until shared-service/contract extraction and Electron cutover proof. | [Sol greenfield decision](sol/2026-07-09-greenfield-mobile-desktop-decision.md); #8574 |
 | `docs/tassadar/` | archived | 2026-07-08 | Owner decision; earliest after cashflow-positive. | [audit §4](fable/2026-07-08-repo-docs-direction-cleanup-audit.md#4-retired-for-now--the-tassadarpsionic-program-surface); backroom `openagents-prune-20260708-tassadar-psionic/docs/tassadar/` @ `a56fd270` |
 | `docs/training/` | archived | 2026-07-08 | Owner decision; earliest after cashflow-positive. | [audit §4](fable/2026-07-08-repo-docs-direction-cleanup-audit.md#4-retired-for-now--the-tassadarpsionic-program-surface); backroom `openagents-prune-20260708-tassadar-psionic/docs/training/` @ `a56fd270` |
 | `docs/gym/` | archived | 2026-07-08 | Owner decision; earliest after cashflow-positive. | [audit §4](fable/2026-07-08-repo-docs-direction-cleanup-audit.md#4-retired-for-now--the-tassadarpsionic-program-surface); backroom `openagents-prune-20260708-tassadar-psionic/docs/gym/` @ `a56fd270` |

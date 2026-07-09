@@ -6,64 +6,31 @@ owner's behalf, aim at this file and follow it exactly — including the
 [notes for agents](#notes-for-ai-agents) at the bottom. A fetchable copy of
 the current install truth is also served at
 <https://openagents.com/INSTALL.md>.
-The public Khala Code install-truth page is
-<https://openagents.com/code/download>; it mirrors the Codex requirement,
-the npm `khala` CLI path, the source-build path, and the fact that the macOS
-DMG is still receipt-gated.
+The former Khala Code desktop and mobile applications are deprecated and have
+no active install or release lane. Their historical install and promise routes
+remain only where promise/service-deliverable integrity requires them, and must
+not advertise a new release.
 
 Quick map — what do you want to install?
 
 | Product | What it is | Fastest path |
 | --- | --- | --- |
-| **Khala Code** | The desktop coding app (the main product) | Build from source — [section 1](#1-khala-code-the-desktop-coding-app); public install truth at `/code/download` |
+| **OpenAgents apps** | Sarah-first web, greenfield mobile, and greenfield Electron desktop | Web is live; mobile/desktop are not installable until their release gates pass — [section 1](#1-openagents-apps) |
 | **Pylon** | Headless contributor node (the agent path) | `npx @openagentsinc/pylon` — [section 2](#2-pylon-headless-contributor-node) |
 
-## 1. Khala Code (the desktop coding app)
+## 1. OpenAgents apps
 
-Khala Code wraps your own local Codex install and adds fleet/swarm
-coordination on top. **There is no public installer yet — building from
-source is the supported path** (tracked honestly in the `khala_code.*`
-product promises). macOS is the primary target (Electrobun desktop shell).
-The public download counter at
-`/api/public/khala-code/download-counts` serves exact ledger rows only; if no
-public-countable rows exist, it returns an empty `counts` array rather than a
-synthetic install total.
+The supported product surface today is <https://openagents.com>. The new
+OpenAgents mobile app (`apps/openagents-mobile`, Effect Native + React
+Native/Expo) and OpenAgents Desktop (`apps/openagents-desktop`, Effect Native +
+Electron) are greenfield builds tracked by #8597 and #8574. They are not yet
+installable and must not be represented as released.
 
-**Prerequisites**
+Do not install or distribute `clients/khala-mobile`, `clients/khala-ios/Khala`,
+or `clients/khala-code-desktop` as current products. They are frozen migration,
+contract, native-module, and service-extraction references.
 
-- [Bun](https://bun.sh) 1.3+ (`curl -fsSL https://bun.sh/install | bash`)
-- Node 20+ (for the Codex CLI install below)
-- **Codex CLI, logged in** — Khala Code requires it:
-
-```sh
-npm install -g @openai/codex
-codex login
-```
-
-> Already using Codex? If `codex login` shows you're signed in, skip it.
-> **Never re-run `codex login` on a machine with a live Codex session unless
-> the owner asks** — starting the login flow wipes the stored Codex login in
-> `~/.codex` and breaks active work.
-
-**Install and run**
-
-```sh
-# 1. Shallow clone — do NOT clone the full history (~460 MB of .git you don't
-#    need; a --depth 1 clone's .git is ~40 MB)
-git clone --depth 1 https://github.com/OpenAgentsInc/openagents
-cd openagents
-
-# 2. Install workspace dependencies (must run at the repo ROOT, not in a subdir)
-bun install
-
-# 3. Launch Khala Code
-bun run dev:khala-code-desktop
-```
-
-That's it. The app builds its UI and opens the desktop window wired to your
-local `codex app-server`.
-
-**Your fleet, from the terminal** (optional, pairs with Khala Code):
+**Connect coding capacity from the terminal**
 
 ```sh
 npm install -g @openagentsinc/khala     # Node 20+ or Bun
@@ -74,18 +41,6 @@ khala fleet status      # see your fleet
 `khala fleet connect` uses an **isolated per-account home** — it never
 touches your live `~/.codex` session. Each distinct Codex account you connect
 adds real concurrency for delegated coding work.
-
-**Updating**
-
-```sh
-cd openagents
-git pull            # shallow clones pull normally
-bun install         # picks up dependency changes
-bun run dev:khala-code-desktop
-```
-
-More detail (smokes, env flags, headless mode):
-[`clients/khala-code-desktop/README.md`](clients/khala-code-desktop/README.md).
 
 ## 2. Pylon (headless contributor node)
 
@@ -111,8 +66,7 @@ settlement stay behind their own gated public promises.
 - **Do not sparse-checkout.** The Bun workspace resolves `workspace:*`
   dependencies against the checked-out tree; partial checkouts break
   `bun install`. Shallow-full is the supported cheap path.
-- **Run `bun install` at the repo root**, never inside
-  `clients/khala-code-desktop`.
+- **Run `bun install` at the repo root**, never inside an individual workspace.
 - **Never disturb an existing Codex login.** Do not run `codex login` (or
   any device-auth flow) against the default `~/.codex` home if a session
   already exists there, unless the owner explicitly asks — the flow wipes

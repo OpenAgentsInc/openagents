@@ -35,9 +35,10 @@ An Effect Native application is one Effect program:
 - foreign surfaces such as video, Monaco, terminal, or native modules enter
   through typed host contracts.
 
-React, TanStack Start, React Native, Expo, and Electrobun may remain useful
-hosts or rendering machinery. They do not define the product's authoring
-model.
+React, TanStack Start, React Native, Expo, and Electron may remain useful hosts
+or rendering machinery. They do not define the product's authoring model.
+Electrobun remains only in deprecated legacy applications; it is not an
+OpenAgents Desktop destination host.
 
 ## Why Sarah-first raises the stakes
 
@@ -132,10 +133,13 @@ The conversion waves form a dependency ladder:
 - **CV0:** build and harden the public framework and catalog.
 - **CV1:** prove greenfield web surfaces such as the landing and Sarah.
 - **CV2:** absorb legacy web routes, deleting replaced Foldkit/React.
-- **CV3:** rewrite the mobile surface screen-by-screen on the mobile renderer,
-  preserving the launch gates.
-- **CV4:** convert desktop and canvas, including foreign hosts and graph/Verse
-  rendering.
+- **CV3:** build the greenfield OpenAgents mobile app on the mobile renderer,
+  extracting contracts/native modules from frozen legacy clients and proving
+  the new identity, store, OTA, and cross-device gates.
+- **CV4:** build the greenfield Electron desktop from the required hardened
+  `LuanRoger/electron-shadcn` template and upstream Electron host (#69), while
+  converting canvas/foreign-host semantics and retiring only legacy
+  implementations after successor proof.
 - **CV5:** add true native fidelity only where evidence justifies it.
 
 “ASAP” must not mean bypassing the catalog or weakening verification. It means

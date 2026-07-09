@@ -1,5 +1,12 @@
 # Khala — native SwiftUI app (ChatGPT-style)
 
+> **DEPRECATED AND FROZEN (2026-07-09).** This SwiftUI app is not a shipping
+> destination. The new OpenAgents mobile app is built from scratch at
+> `apps/openagents-mobile` under #8597 with Effect Native on React Native/Expo.
+> Keep this tree only as native-module/behavior reference and for critical
+> security or typed migration fixes; add no product features or releases. Its
+> icon is not the icon selected for the new app.
+
 Khala is a **ChatGPT-style mobile client** for the public Khala API with a
 retained **push-to-talk voice visualization**. A left slide-over drawer holds
 chat history; the main surface is a chat `NavigationStack`.

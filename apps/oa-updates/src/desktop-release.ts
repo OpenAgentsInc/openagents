@@ -53,6 +53,23 @@ export const DESKTOP_RELEASE_PRODUCTS = [
   "khala-code-desktop",
 ] as const satisfies readonly DesktopReleaseProduct[]
 
+// Keep these products decodable so historical feeds and receipts remain
+// readable. New publication is a separate authority question and is disabled
+// for both retired Electrobun applications.
+const RETIRED_DESKTOP_RELEASE_PRODUCTS = new Set<DesktopReleaseProduct>(
+  DESKTOP_RELEASE_PRODUCTS,
+)
+
+export function assertDesktopReleaseProductPublishable(
+  product: DesktopReleaseProduct,
+): void {
+  if (RETIRED_DESKTOP_RELEASE_PRODUCTS.has(product)) {
+    throw new Error(
+      `Desktop release product ${product} is retired and read-only; create the independent OpenAgents Desktop product/feed under openagents#8574`,
+    )
+  }
+}
+
 export function sha256Hex(bytes: Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex")
 }

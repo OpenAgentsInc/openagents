@@ -20,12 +20,19 @@ There are three product applications, all authored through Effect Native:
 | Application | Product role | Current implementation home |
 | --- | --- | --- |
 | **OpenAgents web** | Landing, Sarah, Forum, and product-promise integrity | `apps/openagents.com`, `apps/sarah`, and the Forum extraction source during consolidation |
-| **OpenAgents** | One iOS/Android app with Sarah as home | `clients/khala-mobile` during rename and conversion |
-| **OpenAgents Desktop** | Sarah plus the deep fleet, approval, code, terminal, and diagnostics cockpit | `clients/khala-code-desktop` during rename and conversion |
+| **OpenAgents** | One iOS/Android app with Sarah as home | new `apps/openagents-mobile` (greenfield Effect Native + React Native/Expo) |
+| **OpenAgents Desktop** | Sarah plus the deep fleet, approval, code, terminal, and diagnostics cockpit | new `apps/openagents-desktop` (greenfield Effect Native + Electron, starting from `LuanRoger/electron-shadcn`) |
 
 Khala Code, Autopilot, Sites, Pylon cockpit, and similar earlier product ideas
 do not remain separate product applications. Useful capabilities fold into
-these three apps; obsolete surfaces are deleted.
+these three apps; obsolete surfaces are deleted. The old Khala Code mobile,
+Swift companion, and Electrobun desktop clients are deprecated reference trees,
+not foundations that will be renamed in place.
+
+The mobile identity is locked: product name `OpenAgents`, iOS bundle identifier
+and Android application ID `com.openagents.app`, and an exact copy of the
+current `clients/khala-mobile/assets/images/icon.png` icon. The desktop host is
+Electron; Electrobun is not part of the destination architecture.
 
 The canonical implementation roadmap is
 [`docs/sol/MASTER_ROADMAP.md`](docs/sol/MASTER_ROADMAP.md). Sol owns sequencing
@@ -114,7 +121,7 @@ reproducible bugs.
 
 Every retained interface is one typed Effect Native component and intent
 system with thin swappable renderers. React, TanStack Start, React Native,
-Expo, Electrobun, DOM, Monaco, terminal, video, and native modules are hosts or
+Expo, Electron, DOM, Monaco, terminal, video, and native modules are hosts or
 foreign surfaces—not separate application architectures.
 
 That is more than UI reuse. A fleet run, approval, refusal, receipt, or Sarah
@@ -135,8 +142,12 @@ This is a Bun, Effect, and Effect Schema monorepo. Important current paths:
   consolidation;
 - `apps/pylon` — account custody, local execution, presence, assignments, and
   the contributor node;
-- `clients/khala-mobile` — migration source for the OpenAgents mobile app;
-- `clients/khala-code-desktop` — migration source for OpenAgents Desktop;
+- `apps/openagents-mobile` — greenfield OpenAgents React Native/Expo host (to
+  be scaffolded under #8597);
+- `apps/openagents-desktop` — greenfield OpenAgents Desktop Electron host (to
+  be scaffolded under #8574);
+- `clients/khala-mobile`, `clients/khala-ios/Khala`, and
+  `clients/khala-code-desktop` — frozen, deprecated parity/extraction sources;
 - `packages/khala-fleet-intents` and related fleet packages — typed run,
   worker, policy, control, and projection contracts;
 - `packages/cloud-contract` plus the bounded Cloud Rust crates — managed
@@ -151,8 +162,8 @@ Install dependencies and use the scoped checks for the area being changed:
 bun install
 bun run test:openagents.com
 bun run test:pylon
-bun run test:khala-mobile
-bun run test:khala-code-desktop
+bun run test:khala-mobile       # legacy parity/reference checks
+bun run test:khala-code-desktop # legacy parity/reference checks
 bun run test:khala-cli
 ```
 
@@ -160,8 +171,8 @@ Read [`AGENTS.md`](AGENTS.md) before working, and read
 [`INVARIANTS.md`](INVARIANTS.md) before changing authority, routing, payment,
 projection, or public-claim surfaces. Deployment and release procedures are
 indexed by [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md). Current installation
-entry points remain in [`INSTALL.md`](INSTALL.md) while product names and apps
-are migrated.
+entry points remain in [`INSTALL.md`](INSTALL.md); the greenfield apps are not
+presented as installable until their release gates are real.
 
 For public agent onboarding, start at
 [openagents.com/AGENTS.md](https://openagents.com/AGENTS.md). Never expose

@@ -4607,7 +4607,7 @@ const requestSchemas = (): JsonSchema => ({
     additionalProperties: false,
     required: ['catalog'],
     description:
-      'Khala Code plan catalog (khala_code.free_paid_plans.v1, #7966). Public-safe catalog text and bounded policy facts only: the honest two-plan structure with real purchasability state from the fail-closed KHALA_CODE_PAID_PLANS_ENABLED read. When armed, paid-plan purchase still requires settled Stripe Checkout or Spark/MPP Lightning payment before the existing paid-privacy entitlement receipt is granted. Carries generatedAt plus the shared live_at_read staleness contract. Grants no capture, billing, payout, or settlement authority.',
+      'Frozen Khala Code plan compatibility catalog. Preserves stable legacy plan IDs, historical entitlement meaning, and receipt links while reporting purchases permanently unarmed after product retirement. KHALA_CODE_PAID_PLANS_ENABLED cannot rearm the withdrawn product. Carries generatedAt plus the shared live_at_read staleness contract and grants no capture, billing, payout, settlement, or future OpenAgents plan authority.',
     properties: {
       catalog: {
         type: 'object',

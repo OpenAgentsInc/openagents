@@ -166,39 +166,54 @@ Nearest proof: #8547, then hybrid-policy integration under #8636.
 
 ## 7. Mobile
 
-**Must become:** Sarah in the user's pocket, with work supervision as her
-first deep capability.
+**Must become:** a greenfield OpenAgents app at `apps/openagents-mobile`, with
+Sarah in the user's pocket and work supervision as her first deep capability.
 
 Implementation consequences:
 
-- Preserve the existing shipping P0 straight line throughout MB-EN.
-- Make Sarah the eventual navigation root/home, not an additional menu item.
+- Build from scratch on Effect Native with React Native/Expo as the host; do
+  not rename or convert `clients/khala-mobile` in place.
+- Lock display name to `OpenAgents`, iOS bundle identifier and Android
+  application ID to `com.openagents.app`, and copy the pinned current Khala
+  Code icon exactly into the new app.
+- Make Sarah the navigation root/home, not an additional menu item.
 - Carry conversation, Blueprint, approvals, and active-run state through
   Khala Sync.
 - Use Effect Native navigation, gesture, list, and foreign-host contracts for
   voice/STT and native modules.
 - Keep provider-account connection and target selection available as bounded
   actions Sarah can guide, while retaining direct settings for experts.
-- Extend the MB-EN exit proof from generic message parity to a Sarah-originated
+- Treat the legacy RN and Swift apps as frozen contract/native-module/parity
+  sources. Extract shared services rather than importing either app package.
+- Define an explicit migration or clean-start policy for auth, keychain,
+  SQLite, OAuth/deep-link, push, store, and OTA identity.
+- Extend the exit proof from generic message parity to a Sarah-originated
   conversation or run visible on mobile and desktop.
 
 Do not:
 
 - block current owner dogfood on completion of the full rewrite;
-- rewrite Khala Sync, auth, push, credits, native STT, or OTA as part of UI
-  conversion;
+- assume legacy Khala identifiers, secrets, store records, or OTA namespaces
+  belong to the new `com.openagents.app` app;
+- keep shipping either deprecated mobile shell;
 - weaken mobile behavior contracts to simplify the port.
 
-Nearest proof: #8597 cross-app Sarah continuation while the existing dogfood
-straight line stays green.
+Nearest proof: #8597 identity/icon oracle, independent scaffold, and cross-app
+Sarah continuation.
 
 ## 8. Desktop cockpit
 
-**Must become:** the specialist deep-work projection over the same state Sarah
-uses.
+**Must become:** a greenfield Electron app at `apps/openagents-desktop`, the
+specialist deep-work projection over the same state Sarah uses.
 
 Implementation consequences:
 
+- Author the application in Effect Native and use Electron only as the host;
+  do not convert or rename the Electrobun client.
+- Start from the pinned `LuanRoger/electron-shadcn` template, retaining its
+  Forge/Vite/fuse/test bootstrap while replacing starter application semantics
+  with Effect Native/Effect Schema and fixing `nodeIntegration: true` before
+  product capability lands.
 - Render account health, capacity, concurrent runs, approvals, and exact
   receipts from typed RPC/Sync state.
 - Emit the same pause/resume/drain/stop/steer intents used elsewhere.
@@ -206,11 +221,17 @@ Implementation consequences:
   hosts without making them the shared product contract.
 - Ensure a run started in Sarah can be opened deeply in the cockpit and a run
   started in the cockpit can be summarized accurately by Sarah.
+- Extract reusable harness, fleet, behavior, and release contracts into shared
+  packages; never import the deprecated client package into the new app.
+- Enforce a narrow, schema-decoded Electron preload/IPC boundary with
+  `contextIsolation` on and `nodeIntegration` off.
 
 Do not:
 
 - make desktop a second orchestration authority;
 - reintroduce a React/Tailwind shell architecture;
+- treat Electrobun packaging, IPC, identity, state roots, or update feeds as the
+  new app's architecture;
 - retire OpenTUI before cockpit parity and owner proof.
 
 Nearest proof: #8574, consuming the same #8637/#8639 run and intent contracts.

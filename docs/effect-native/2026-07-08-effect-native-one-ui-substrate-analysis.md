@@ -323,27 +323,32 @@ catalog when a screen needs it. *Exit: the catalog covers ≥90% of the
 elements across existing screens; a gap register tracks the tail.*
 Parallel with EN-1 and EN-3.
 
-**EN-3 — Mobile migration (the 94 `.tsx` files).** RN is already adapter
-#1 (EN-0). New/changed mobile screens land on the component set from now;
-existing screens migrate **screen-by-screen under the QAM gate**,
-retiring duplicate primitives as they go. No working screen is rewritten
-solely to migrate — only when it's touched. *Exit: all khala-mobile
-screens render via the component set; the RN adapter is the only
-platform-specific mobile UI code.* Starts after the P0 MVP ships (never
-during).
+**EN-3 — Greenfield OpenAgents mobile (amended 2026-07-09).** Build the new
+`apps/openagents-mobile` application in Effect Native with React Native/Expo as
+the host. `clients/khala-mobile` and the Swift companion are frozen
+parity/native-module sources, not conversion targets. *Exit: the new OpenAgents
+app renders through Effect Native, proves `com.openagents.app` on iOS/Android
+and the pinned icon, and carries Sarah/Fleet state across devices; legacy apps
+have no install or release lane.*
 
-**EN-4 — Web product migration (openagents.com).** Migrate the product
-surfaces — dashboard, Forum, Sites, operator/Aiur, Autopilot — from
-legacy Foldkit (and any interim React) onto the DOM renderer,
-route-by-route as WEB-1's TanStack app absorbs them. Delete legacy
-Foldkit surfaces as they're replaced. *Exit: openagents.com served
-entirely by Effect Native web; legacy Foldkit UI removed.*
+**EN-4 — Retained web product (amended 2026-07-09).** Convert only `/`,
+`/sarah`, `/forum*`, and `/promises` into the consolidated Effect Native web
+host. Retire other public product pages instead of porting them, while
+preserving legal/auth/API and promise/service-deliverable integrity routes.
+*Exit: retained pages render through Effect Native and every retired page has
+an explicit redirect/410 plus evidence-preservation receipt.*
 
-**EN-5 — Desktop (Khala Code desktop).** The Electrobun shell is already
-a DOM host, so it consumes the **DOM renderer** directly; migrate the
-desktop panels (chat, fleet, inbox, forum, gym, settings, editor) onto
-the component set. *Exit: Khala Code desktop UI is Effect Native;
-Sarah/desktop/web share one component definition set.*
+**EN-5 — Greenfield OpenAgents Desktop (amended 2026-07-09).** Build
+`apps/openagents-desktop` from the required pinned MIT-licensed
+[`LuanRoger/electron-shadcn`](https://github.com/LuanRoger/electron-shadcn)
+template, with Electron as host and Effect Native as the application model.
+Harden the template before product capability: `nodeIntegration: false`,
+`sandbox: true`, narrow `contextBridge`, Effect Schema on both IPC sides,
+deny-by-default navigation/permissions, and verified packaged fuses. The old
+Khala Code Electrobun app is a frozen extraction source, never the destination.
+*Exit: the greenfield Electron app proves Sarah/Fleet continuity, a mechanical
+Effect Native renderer boundary, secure IPC, and an independent signed update
+lane; the Electrobun app cannot release.*
 
 **EN-6 — Canvas unification.** Fold `three-effect` and `arbiter-effect`
 in as the **canvas renderer** under the same contract, so 3D/graph
@@ -412,6 +417,7 @@ small.
 4. The Axis-B (server-driven) option: worth wiring for mobile to dodge
    store review, or does OTA + Khala Sync already cover it? (Design-for,
    decide-later — v0 doesn't need it.)
-5. How aggressively to migrate the 94 mobile `.tsx` files — full migration,
-   or only new/changed screens on Effect Native while legacy stays wrapped?
-   (Recommend the latter: never rewrite a working screen just to move it.)
+5. **Answered by owner direction 2026-07-09:** do not migrate the legacy mobile
+   screen tree in place. Build the greenfield `apps/openagents-mobile` app in
+   Effect Native and use the old RN/Swift apps only as frozen parity,
+   native-module, and migration evidence.

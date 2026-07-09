@@ -5,6 +5,7 @@ import { tmpdir } from "node:os"
 
 import { assetKeyFromBytes } from "../src/asset-store.ts"
 import {
+  assertDesktopReleaseProductPublishable,
   DEFAULT_DESKTOP_ARTIFACT_CONTENT_TYPE,
   DEFAULT_DESKTOP_RELEASE_PRODUCT,
   normalizeDesktopReleaseProduct,
@@ -29,6 +30,7 @@ const defaultOutDir = join(repoRoot, "apps/oa-updates/desktop-dist")
 
 async function main(): Promise<void> {
   const args = parseArgs(Bun.argv.slice(2))
+  assertDesktopReleaseProductPublishable(args.product)
   const artifactBytes = await readFile(args.artifact)
   const artifactHash = assetKeyFromBytes(new Uint8Array(artifactBytes))
   const artifactPath = `assets/${artifactHash}${normalizedExt(args.artifact)}`

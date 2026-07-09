@@ -21,14 +21,19 @@ scope reviewable beside [`../MASTER_ROADMAP.md`](../MASTER_ROADMAP.md).
 
 ## P1 — three product surfaces
 
-- [`app-epic.md`](./app-epic.md) — #8566 three-app consolidation epic.
+- [`app-epic.md`](./app-epic.md) — #8566 three-app epic with greenfield mobile
+  and desktop.
 - [`app-web-consolidation.md`](./app-web-consolidation.md) — #8634 one retained
   web app and aggressive public-route retirement.
 - [`app-forum.md`](./app-forum.md) — #8635 retain `/forum*` in the Effect Native
   web app.
-- [`app-desktop.md`](./app-desktop.md) — #8574 OpenAgents Desktop.
+- [`app-desktop.md`](./app-desktop.md) — #8574 greenfield Electron OpenAgents
+  Desktop from the required electron-shadcn template.
+- [`effect-native-electron-host.md`](./effect-native-electron-host.md) —
+  upstream reusable Effect Native Electron host gap for #8574.
 - [`app-landing.md`](./app-landing.md) — #8595 retained root landing.
-- [`app-mobile.md`](./app-mobile.md) — #8597 OpenAgents mobile.
+- [`app-mobile.md`](./app-mobile.md) — #8597 greenfield React Native
+  OpenAgents mobile with `com.openagents.app` and the pinned icon.
 
 ## Retained cross-cutting lanes
 

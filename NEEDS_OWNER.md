@@ -61,6 +61,26 @@ context: `docs/fable/2026-07-09-open-issue-grid-assessment.md`.
 - **Gemma4 lane** — if the current gcloud lane turns out not to serve
   Gemma4 yet, the drop-OpenRouter agent will report exactly what a
   Gemma4 adapter needs; that may come back as one small decision.
+
+## OpenAgents Desktop identity freeze — required before first package
+
+Source issue: OpenAgentsInc/openagents#8574
+
+No action is needed until the greenfield Electron scaffold is ready to package.
+Before its first packaged build, the owner must approve one coherent identity
+set: macOS bundle ID/product name/executable; Windows AppUserModelId and
+installer identity; Linux desktop/app ID; deep-link scheme; Electron `userData`
+root and session partition; update product/feed/channel; GitHub tag namespace;
+and OAuth redirect/client ownership. `com.openagents.desktop` is a candidate,
+not a decision. Never reuse `com.openagents.khala.code.desktop`,
+`khala-code://`, `~/.khala-code`, `desktop/khala-code-desktop`, or
+`khala-code-desktop-v*`.
+
+The first package gate must also record the imported
+`LuanRoger/electron-shadcn` commit/MIT attribution, prove its updater/publisher
+targets were removed, and attach the Electron security/Effect Native/fuse
+oracles defined by #8574. Do not create signing profiles, OAuth clients, update
+feeds, or public artifacts before the identity set is approved.
 ---
 
 # Contract-anchored owner gates (kept verbatim for QAM oracles — do not delete; update state inline)
@@ -70,6 +90,11 @@ The two sections below are asserted by `clients/khala-mobile/tests/launch-readin
 ## Khala Mobile P0.8 Launch Readiness {#khala-mobile-p08-launch-readiness}
 
 Source issue: OpenAgentsInc/openagents#8543
+
+> **SUPERSEDED 2026-07-09:** the Khala mobile app is deprecated and frozen; do
+> not complete these actions to launch it. The checklist remains verbatim for
+> legacy QAM oracles and parity/migration evidence. New OpenAgents mobile owner
+> gates belong to #8597 and must target `com.openagents.app`.
 
 State 2026-07-09 (E2E wiring landed): the test account exists (**AgentFlampy** + fork, recorded on #8543) and is wired into the unattended harness (`clients/khala-mobile/scripts/straight-line-e2e-run.sh`; typed leg registry `clients/khala-mobile/src/qa/straight-line-e2e.ts`). The runnable iOS-simulator legs are green (signed-in smoke, repo-picker reachability, dispatch → live hosted_khala reply); receipt: `docs/khala-mobile/2026-07-09-straight-line-e2e-agentflampy-receipt.md`. Remaining actions:
 
@@ -83,6 +108,12 @@ State 2026-07-09 (E2E wiring landed): the test account exists (**AgentFlampy** +
 ## Khala Mobile P0.9 Store Submissions {#khala-mobile-p09-store-submissions}
 
 Source issue: OpenAgentsInc/openagents#8544
+
+> **CANCELLED FOR THIS APP 2026-07-09:** do not submit or create store records
+> for `com.openagents.khala.mobile`. These actions remain only because legacy
+> tests anchor the text. The greenfield OpenAgents app uses the owner-designated
+> existing identifier `com.openagents.app`; its real store records, signing,
+> provisioning, and monotonic build numbers must be verified under #8597.
 
 State 2026-07-09: per the owner decision on #8544, public review submissions are deferred to broad-release readiness; artifacts (TestFlight build 20, Android APK/AAB) exist. Deferred actions:
 

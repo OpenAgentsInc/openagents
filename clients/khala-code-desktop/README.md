@@ -1,16 +1,24 @@
 # Khala Code Desktop
 
+> **DEPRECATED AND FROZEN (2026-07-09).** This Electrobun app is not the
+> OpenAgents Desktop destination and has no active release lane. Build the new
+> app from scratch at `apps/openagents-desktop` under #8574 with Effect Native
+> on Electron. Keep this tree only for parity evidence, behavior-contract and
+> service extraction, typed data migration, and critical security fixes. Add no
+> new product features, UI, branding, or releases, and never import this app
+> package into the greenfield Electron app.
+
 Khala Code Desktop is the Electrobun wrapper for local Codex coding work. The
 default product path requires the `codex` CLI and a signed-in main Codex home.
 Khala adds the desktop shell, sidebar, Inbox, Fleet, Gym/proof panes, and Pylon
 swarm controls around that Codex harness.
 
-## Install And First Run
+## Historical parity build
 
-Public install truth is served at <https://openagents.com/code/download>. That
-page may point to the npm `khala` CLI and source-build paths, but it must not
-present a public Khala Code DMG until the owner receipts in `NEEDS_OWNER.md`
-exist.
+Do not direct users to `/code/download`, install this package as a current
+product, or present its source build as OpenAgents Desktop. The commands and
+implementation notes below exist only for bounded parity, migration, and
+service-extraction work in this frozen tree.
 
 Khala Code does not bundle or reimplement Codex Core. The default harness is the
 user's local Codex install and the `codex app-server --stdio` protocol exposed
@@ -46,35 +54,19 @@ under the Pylon account directory. The desktop app must not run `codex login`
 against the user's default home automatically and must not reuse the primary
 user home for worker accounts.
 
-## Release Builds
+## Release lane retired
 
-Khala Code Desktop releases use the same Apple Developer ID/notary lane as
-Autopilot Desktop, but publish to the product-specific updates feed:
+The former `release:plan` and `release:macos` package commands now fail closed,
+and direct invocation of `scripts/release-macos.sh` exits before any build,
+signing, feed, upload, or GitHub operation. Preserve old feed and receipt reads,
+but create no new `khala-code-desktop-v*` tag or
+`desktop/khala-code-desktop` artifact.
 
-```sh
-bun run release:plan -- --version 0.1.0-rc.1 --channel rc --artifact ./Khala-Code-0.1.0-rc.1.dmg
-bun run release:macos -- --version 0.1.0-rc.1 --channel rc
-```
+The unreachable historical script remains temporarily as signing/feed migration
+evidence. It is not an executable runbook. OpenAgents Desktop establishes a new
+Electron-compatible identity, tag, signing, and update lane under #8574.
 
-The release script builds the Electrobun app with `build:rc` or `build:stable`,
-reuses `apps/autopilot-desktop/scripts/notarize-macos.sh` with
-`OA_DESKTOP_APP_PATH` pointed at `Khala Code.app`, recreates the DMG from the
-stapled app, signs/notarizes/staples the DMG, and stages a
-`khala-code-desktop` feed entry. RC versions are forced onto the `rc` channel
-and GitHub prerelease path with `--latest=false`; stable latest is reserved for
-non-prerelease versions.
-
-Live upload and GitHub release creation are owner-gated. Set
-`KHALA_CODE_RELEASE_UPLOAD=1` and `KHALA_CODE_RELEASE_CREATE_GITHUB=1` only on
-an owner-controlled machine after the signing/notary/update-feed credentials
-are confirmed. The release is not complete until the owner records the signed
-app, notarized app, stapled app, recreated/signed/notarized/stapled DMG,
-updates-feed upload, GitHub release, and clean-Mac first-run smoke receipt refs
-listed in `NEEDS_OWNER.md`. Public counters for this product must be exact
-`khala_code_download_events` rows or an empty response with blocker refs; do not
-infer installs from release-feed presence or page views.
-
-## Product Boundary
+## Historical Product Boundary
 
 The product center is: Codex owns coding-agent execution; Khala Code wraps it in
 a desktop/web shell. Future work should extend the wrapper around Codex
@@ -88,14 +80,12 @@ desktop app adds:
 - Fleet and Pylon swarm controls around isolated worker Codex accounts;
 - Gym/proof panes and smoke-test harnesses for desktop advantages.
 
-## React Shell Migration
+## Cancelled React shell migration
 
-TS-7 phase 1 starts the React + Tailwind shell rewrite with the chat/thread
-sidebar only. `src/ui/codex-thread-sidebar.ts` remains the stable mount API for
-the Electrobun shell, and it re-exports the React implementation from
-`src/ui/codex-thread-sidebar-react.tsx`. Keep the UX behavior contracts as the
-regression net for this migration: future shell surfaces should move
-route-by-route and delete their vanilla renderer as they cross over.
+The in-place React/Tailwind/Electrobun shell migration is cancelled. Existing
+code and UX contracts are parity evidence only. Destination UI is authored in
+Effect Native inside the greenfield Electron application; reusable services
+move to shared packages without importing this app package.
 
 ## Iconography
 

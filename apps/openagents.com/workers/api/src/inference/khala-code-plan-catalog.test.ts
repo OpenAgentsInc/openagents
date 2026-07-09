@@ -37,11 +37,11 @@ describe('khalaCodePlanCatalog', () => {
     expect(paid?.captureExcluded).toBe(true)
   })
 
-  it('reports the paid plan as not purchasable while the seam is unarmed', () => {
+  it('reports the paid plan as retired and not purchasable', () => {
     const catalog = khalaCodePlanCatalog({ ...freshness(), paidPlanPurchaseArmed: false })
     const paid = catalog.plans.find(plan => plan.kind === 'paid')
 
-    expect(paid?.priceLabel).toBe('Not yet purchasable')
+    expect(paid?.priceLabel).toBe('Retired — not purchasable')
     expect(paid?.purchase).toEqual({
       armed: false,
       envFlag: KHALA_CODE_PAID_PLANS_ENABLED_ENV_KEY,
@@ -50,14 +50,18 @@ describe('khalaCodePlanCatalog', () => {
     expect(catalog.blockerRefs).toContain(
       'blocker.product_promises.khala_code_paid_plan_not_purchasable',
     )
+    expect(catalog.blockerRefs).toContain(
+      'blocker.product_promises.khala_code_product_retired',
+    )
   })
 
-  it('reflects the armed flag without dropping the owner-gated framing', () => {
+  it('ignores a legacy armed input and stays retired', () => {
     const catalog = khalaCodePlanCatalog({ ...freshness(), paidPlanPurchaseArmed: true })
     const paid = catalog.plans.find(plan => plan.kind === 'paid')
 
-    expect(paid?.purchase?.armed).toBe(true)
-    expect(paid?.priceLabel).toContain('owner-gated')
+    expect(paid?.purchase?.armed).toBe(false)
+    expect(paid?.priceLabel).toContain('Retired')
+    expect(catalog.summary).toContain('cannot rearm')
   })
 
   it('keeps the copy honest: no live-capture or purchasable claims', () => {
@@ -67,7 +71,7 @@ describe('khalaCodePlanCatalog', () => {
     // The launch-copy discipline for khala_code.free_paid_plans.v1: the
     // catalog must carry the not-live framing, cite the adjacent promises,
     // and grant no authority.
-    expect(text).toContain('NOT yet purchasable')
+    expect(text).toContain('RETIRED and not purchasable')
     expect(text).toContain('NOT captured for training today')
     expect(catalog.relatedPromiseIds).toContain(
       'khala_code.free_plan_trace_capture.v1',
@@ -80,14 +84,14 @@ describe('khalaCodePlanCatalog', () => {
 })
 
 describe('isKhalaCodePaidPlansEnabled', () => {
-  it('is fail-closed: only explicit on tokens arm the seam', () => {
+  it('is permanently fail-closed after product retirement', () => {
     expect(isKhalaCodePaidPlansEnabled(undefined)).toBe(false)
     expect(isKhalaCodePaidPlansEnabled('')).toBe(false)
     expect(isKhalaCodePaidPlansEnabled('false')).toBe(false)
     expect(isKhalaCodePaidPlansEnabled('0')).toBe(false)
     expect(isKhalaCodePaidPlansEnabled(1)).toBe(false)
-    expect(isKhalaCodePaidPlansEnabled('true')).toBe(true)
-    expect(isKhalaCodePaidPlansEnabled(' ON ')).toBe(true)
-    expect(isKhalaCodePaidPlansEnabled('1')).toBe(true)
+    expect(isKhalaCodePaidPlansEnabled('true')).toBe(false)
+    expect(isKhalaCodePaidPlansEnabled(' ON ')).toBe(false)
+    expect(isKhalaCodePaidPlansEnabled('1')).toBe(false)
   })
 })

@@ -1,5 +1,11 @@
 # Khala Mobile — App Store reviewer demo login
 
+> **Legacy-only runbook (deprecated 2026-07-09).** This documents the frozen
+> Khala mobile app and its `com.openagents.khala.mobile` identity. It is not a
+> release or reviewer path for the greenfield OpenAgents app. The new app is
+> built from scratch under #8597 with `com.openagents.app`; this file remains
+> only as behavior/parity evidence.
+
 Date: 2026-07-07
 Surface: `clients/khala-mobile` (Expo React Native, bundle
 `com.openagents.khala.mobile`)

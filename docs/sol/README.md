@@ -37,7 +37,7 @@ When documents disagree, use this order:
    status. When they move, Sol must reconcile rather than repeat stale prose.
 
 The current roadmap reset is dated 2026-07-09 and recorded in
-[`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md) rev 1. Issue state and
+[`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md) rev 2. Issue state and
 implementation status can move faster than essays; current code, issue state,
 and receipts win when they do.
 
@@ -47,6 +47,10 @@ and receipts win when they do.
   Command is P0, presentation is parallel, the issue set is reduced from 30 to
   15, most public pages retire, and the product becomes three Effect Native
   OpenAgents applications.
+- [`2026-07-09-greenfield-mobile-desktop-decision.md`](./2026-07-09-greenfield-mobile-desktop-decision.md)
+  — binding implementation decision for the new React Native mobile and
+  Electron desktop apps, legacy freezes, mobile identity/icon, and extraction
+  rules.
 - [`2026-07-09-issue-triage.md`](./2026-07-09-issue-triage.md) — exact receipt
   for the 7 rewritten issues, 8 new issues, and 23 superseded/postponed
   closures.

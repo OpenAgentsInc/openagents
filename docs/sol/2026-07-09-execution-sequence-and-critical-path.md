@@ -96,10 +96,14 @@ destinations:
 - production web retains `/`, `/sarah`, `/forum*`, `/promises`, plus explicit
   legal, auth, API, asset, health, manifest, and receipt exceptions; promise and
   service-deliverable integrity refs remain dereferenceable;
-- the mobile product becomes OpenAgents with Sarah as home;
-- the desktop product becomes OpenAgents Desktop with the deep fleet cockpit;
-- the existing mobile straight line, Forum authority, auth, receipts, and
-  release gates stay green;
+- a greenfield `apps/openagents-mobile` becomes OpenAgents with Sarah as home,
+  Effect Native on React Native/Expo, exact `com.openagents.app` identifiers,
+  and the pinned Khala Code icon;
+- a greenfield `apps/openagents-desktop` becomes OpenAgents Desktop with Sarah,
+  the deep fleet cockpit, Effect Native, and an Electron host;
+- legacy mobile and Electrobun desktop apps are frozen parity/extraction
+  sources, while Forum authority, auth, receipts, and relevant contracts stay
+  green;
 - retired public pages and replaced UI are deleted rather than carried as a
   fourth product.
 
@@ -113,11 +117,13 @@ paths are disjoint. The valuable order is:
 
 1. Keep substrate/catalog work continuous.
 2. Finish the Sarah and landing surfaces as real Effect Native consumers.
-3. Convert the mobile relationship and approval path early enough to prove
-   cross-device continuity.
-4. Convert the desktop cockpit where specialist power is needed.
+3. Build the greenfield mobile relationship and approval path early enough to
+   prove cross-device continuity.
+4. Build the greenfield Electron desktop cockpit where specialist power is
+   needed.
 5. Fold graph/canvas semantics into the common contract.
-6. Delete each replaced legacy path in the same conversion.
+6. Delete or archive each deprecated legacy app after applicable capabilities,
+   contracts, data migration, and release proof are complete.
 
 The exit proof is not merely renderer adoption. It is one material workflow
 that begins on one device, continues on another, and emits the same typed

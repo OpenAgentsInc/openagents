@@ -58,6 +58,12 @@ infrastructure exceptions, not additional product pages.
    generated route trees, smoke allowlists, and public copy. Update
    `docs/promises` references only after their targets are preserved or given a
    stable redirect; never delete the promise registry/history as route cleanup.
+   In particular, `/code`, `/code/download`, and legacy Khala Code install or
+   plan pages must stop advertising deprecated apps and redirect to `/` or
+   `/promises` as recorded in the route map. Keep historical
+   `khala_code.*` promise IDs, transition history, exact download/evidence rows,
+   and public-safe receipt APIs dereferenceable as integrity infrastructure;
+   those APIs do not make Khala Code a current product surface.
 8. Delete replaced page implementations and assets; do not convert pages that
    are being retired.
 9. Preserve API authority, database routes, receipts, and Forum content during

@@ -201,16 +201,13 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   // — NOTHING is auto-captured, regardless of the capture-default flag or the
   // per-account privacy entitlement. The explicit deployment-wide exclusion.
   INFERENCE_CONFIDENTIAL_COMPUTE_ENABLED?: string | undefined
-  // Khala Code paid-plan purchase seam flag (khala_code.free_paid_plans.v1,
-  // #7966). DEFAULT OFF, fail-closed: while unarmed the purchase route returns
-  // 503 khala_code_paid_plans_not_enabled and grants nothing, and the public
-  // plan catalog reports the paid plan as not purchasable. Arming is an owner
-  // decision; when armed, payment still fails closed unless the owner has
-  // provided Stripe price / Lightning sats config for the selected rail.
+  // Retired Khala Code paid-plan flag, retained only for config compatibility.
+  // The production reader ignores every value and stays false; the stable
+  // purchase route returns 503 and grants nothing. A future OpenAgents plan
+  // requires a new promise/API authority path.
   KHALA_CODE_PAID_PLANS_ENABLED?: string | undefined
-  // Owner-approved Stripe Price id for the Khala Code paid-private-data plan.
-  // Absent => the Stripe/card purchase rail returns a typed 503 and grants no
-  // entitlement even if KHALA_CODE_PAID_PLANS_ENABLED is armed.
+  // Historical Khala Code pricing keys retained for receipt/config decoding;
+  // they cannot rearm purchases.
   KHALA_CODE_PAID_PLAN_STRIPE_PRICE_ID?: string | undefined
   KHALA_CODE_PAID_PLAN_STRIPE_SUCCESS_URL?: string | undefined
   KHALA_CODE_PAID_PLAN_STRIPE_CANCEL_URL?: string | undefined
@@ -233,11 +230,8 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   // stripe-billing.ts via the structurally-compatible StripeBillingEnv). Worker
   // secret; never committed/logged.
   STRIPE_API_KEY?: string | undefined
-  // Legacy-named Lightning rail gate used by the Khala Code paid-plan purchase
-  // seam while the account-keyed MPP chat endpoint is retired (#8387). Default
-  // OFF: paid-plan purchases do not offer a Lightning invoice unless this flag,
-  // KHALA_CODE_PAID_PLANS_ENABLED, KHALA_CODE_PAID_PLAN_PRICE_SATS, and a working
-  // Spark-primary/MDK-fallback invoice issuer are all present.
+  // Legacy Lightning rail key retained for config compatibility. It cannot
+  // rearm the retired Khala Code purchase path.
   KHALA_MPP_LIGHTNING_ENABLED?: string | undefined
   // Cloud primitive scaffold feature flags (EPIC #5510, #5516/#5517). Default
   // OFF: the `/v1/fine_tuning/jobs` and `/v1/sandboxes` routes are inert on the

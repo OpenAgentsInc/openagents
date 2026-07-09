@@ -12430,11 +12430,9 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     handler: request => handleFreeTierDataSharingDisclosureApi(request),
   },
   {
-    // Khala Code plan catalog (khala_code.free_paid_plans.v1, #7966). Public,
-    // agent-readable: the honest two-plan structure (Free pay-with-data /
-    // Paid private-data) with real purchasability state from the fail-closed
-    // KHALA_CODE_PAID_PLANS_ENABLED read. Read-only, no auth, no DB, no
-    // secrets; catalog text grants no capture/billing/payout authority.
+    // Frozen Khala Code plan compatibility catalog. Stable IDs and historical
+    // entitlement/receipt meaning remain readable, but the legacy flag reader
+    // is permanently false and cannot rearm purchases.
     path: '/api/public/khala-code/plans',
     handler: (request, env) =>
       handleKhalaCodePlanCatalogApi(request, {
@@ -15071,13 +15069,10 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       }),
   },
   {
-    // Khala Code paid-plan purchase seam (khala_code.free_paid_plans.v1,
-    // #7966). FLAG-GATED, DEFAULT OFF, FAIL-CLOSED: 503 while
-    // KHALA_CODE_PAID_PLANS_ENABLED is unarmed. When armed, it creates a real
-    // payment requirement on the Stripe Checkout card rail or Spark/Lightning
-    // Lightning rail, then grants the idempotent paid-privacy entitlement only
-    // after payment settlement produces the existing dereferenceable privacy
-    // receipt. Pricing/arming remain owner decisions.
+    // Retired Khala Code purchase compatibility route. Production always
+    // supplies paidPlanPurchaseArmed=false, preserving the stable 503 response
+    // and historical receipt/status reads without creating new purchase
+    // authority. A future OpenAgents plan needs a new API/promise path.
     path: '/v1/khala-code/plans/purchases',
     handler: (request, env) => {
       const lightningEnabled = isKhalaCodeLightningPaymentsEnabled(

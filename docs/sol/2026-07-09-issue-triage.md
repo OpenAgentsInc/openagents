@@ -79,5 +79,6 @@ misrepresented as fully completed.
 - P0 begins with #8637 and #8633, then #8639 and #8640 Phase A.
 - Managed cloud (#8547/#8636) runs alongside the local unblock.
 - There is no active generic route-conversion issue. #8634 retires pages.
-- There is no active Khala Code product epic. Mobile and desktop are OpenAgents
-  applications under #8566.
+- There is no active Khala Code product epic. Mobile and desktop are greenfield
+  OpenAgents applications under #8566/#8597/#8574; the old RN/Swift mobile and
+  Electrobun desktop clients are frozen non-shipping extraction sources.

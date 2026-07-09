@@ -1,7 +1,7 @@
 # MASTER ROADMAP — Sarah Fleet Command first; three OpenAgents apps
 
 - Date: 2026-07-09
-- Revision: 1
+- Revision: 2
 - Status: canonical OpenAgents implementation roadmap
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Issue source set: [`issues/README.md`](./issues/README.md)
@@ -32,6 +32,12 @@
    converted.
 6. **Sol owns the roadmap.** Fable remains strategic source material, but its
    master roadmap and pre-reset queue are historical.
+7. **Mobile and desktop are greenfield.** The new mobile app uses Effect Native
+   with a React Native/Expo host at `apps/openagents-mobile`; it is named
+   `OpenAgents`, uses `com.openagents.app` on iOS and Android, and copies the
+   pinned current Khala Code mobile icon. The new desktop app uses Effect Native
+   with Electron at `apps/openagents-desktop`. The old mobile and Electrobun
+   desktop clients are deprecated extraction sources, not conversion targets.
 
 ## The product in one sentence
 
@@ -254,27 +260,49 @@ is deleted, not lovingly ported.
 ### OpenAgents mobile
 
 **[#8597 APP-MOBILE](https://github.com/OpenAgentsInc/openagents/issues/8597)**
-turns `clients/khala-mobile` into the OpenAgents iOS/Android app.
+builds a new OpenAgents iOS/Android app at `apps/openagents-mobile`.
 
 - Sarah is home.
 - Fleet runs, approvals, receipts, and Blueprint continue over Khala Sync.
 - Account setup remains directly accessible for recovery/power use.
-- The shipping sign-in→repo→work→writeback→credits path remains green during
-  migration.
-- Every retained screen moves to Effect Native and its legacy implementation
-  is deleted.
+- Effect Native is the application model and React Native/Expo is the host.
+- The product name is `OpenAgents`; both the iOS bundle identifier and Android
+  application ID are the owner-designated existing identifier
+  `com.openagents.app`.
+- The checked-in application icon is copied exactly from
+  `clients/khala-mobile/assets/images/icon.png` (SHA-256
+  `0a1865ac6d1efc792d365d9a37af9e6ffa3270fa7c8731f36129f35371bfc7ce`).
+- `clients/khala-mobile` is deprecated and frozen as a parity, contract, native-
+  module, and migration reference. It is not renamed, converted in place, or
+  shipped as the destination app.
 
 ### OpenAgents Desktop
 
 **[#8574 APP-DESKTOP](https://github.com/OpenAgentsInc/openagents/issues/8574)**
-turns `clients/khala-code-desktop` into OpenAgents Desktop.
+builds a new Electron application at `apps/openagents-desktop`.
 
 - Sarah is the relationship surface.
 - Fleet is the specialist cockpit over the same run state.
 - Monaco, terminal, and raw diagnostics remain typed specialist hosts.
 - Pylon is an engine, not a separate public desktop product.
-- Full EN conversion and product rename must preserve signed/notarized release
-  authority.
+- Effect Native is the application model and Electron is the host. The old
+  Electrobun shell is not the destination architecture.
+- Scaffold from the required MIT-licensed
+  [`LuanRoger/electron-shadcn`](https://github.com/LuanRoger/electron-shadcn)
+  template, pinning the imported upstream commit. Retain its useful Electron
+  Forge/Vite/fuse/test structure, but harden its current `nodeIntegration: true`
+  default before product work: remove its upstream updater/publisher wiring,
+  set `sandbox: true`, install a deny-by-default Electron boundary, verify
+  packaged fuses, and replace starter Zod/oRPC/shadcn/TanStack application
+  semantics with a mechanically asserted Effect Native/Effect Schema boundary.
+- The reusable Electron host gap is OpenAgentsInc/effect-native#69. The earlier
+  Electrobun Phase 4 issues are historical, not destination proof.
+- `clients/khala-code-desktop` is deprecated and frozen as a parity, contract,
+  service-extraction, and migration reference; it is never renamed or converted
+  in place.
+- The full cross-platform app/protocol/data/update/OAuth identity freezes before
+  the first packaged build. The secure Electron boundary, signed/notarized
+  release lane, and independent updates feed must be proven before distribution.
 
 ### Effect Native integration blocker
 
@@ -313,12 +341,12 @@ The issue reset leaves **15 open roadmap issues**:
 | P0 | #8636 | Hybrid local/cloud routing |
 | P0 parallel | #8600 | Khala inference hardening |
 | P1 parallel | #8610 | Sarah presentation quality |
-| P1 | #8566 | Three-app Effect Native epic |
+| P1 | #8566 | Three-app Effect Native epic; greenfield mobile/desktop |
 | P1 | #8634 | Web host consolidation + public-page retirement |
 | P1 | #8635 | Retained Forum on Effect Native |
 | P1 | #8595 | Retained landing/root cutover |
-| P1 | #8597 | OpenAgents mobile |
-| P1 | #8574 | OpenAgents Desktop |
+| P1 | #8597 | Greenfield OpenAgents mobile (`com.openagents.app`) |
+| P1 | #8574 | Greenfield Electron OpenAgents Desktop |
 
 Every open issue carries `roadmap:sol`. P0 fleet issues carry `priority:P0`;
 parallel presentation/app lanes carry `priority:P1-parallel`.

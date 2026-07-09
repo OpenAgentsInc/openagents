@@ -560,10 +560,11 @@ and local Codex auth out of reports.
 
 - **`docs/DEPLOYMENT.md` is the single hub for every deploy / publish / release.**
   Read it first for any of: deploying the `openagents.com` Cloudflare Worker,
-  publishing Pylon to npm, cutting an OpenAgents Desktop release from its
-  current desktop source path (incl. the
-  signed/notarized macOS DMG), the `updates.openagents.com` OTA feed, or the mobile
-  app. It indexes the per-surface runbooks (the sources of truth), the one-line
+  publishing Pylon to npm, cutting a future OpenAgents Desktop Electron release
+  from `apps/openagents-desktop` (including the signed/notarized macOS DMG), the
+  `updates.openagents.com` OTA feed, or the greenfield mobile app. The deprecated
+  Khala clients have no active release lane. The hub indexes the per-surface
+  runbooks (the sources of truth), the one-line
   recipe for each, the GitHub release-tag convention, and where the signing
   secrets live (`~/work/.secrets/` + GCP Secret Manager, project `openagentsgemini`).
 - Signing/notarization details live in `apps/oa-updates/docs/release-signing-runbook.md`
@@ -595,6 +596,33 @@ and local Codex auth out of reports.
   is Sarah-managed parallel coding across Codex, Claude, and Grok accounts on
   owner-local Pylons, with cloud capacity additive after the local path works.
   The canonical order and issue set live in `docs/sol/MASTER_ROADMAP.md`.
+- **Greenfield app boundary (owner decision, 2026-07-09):** mobile and desktop
+  are new applications, not rename-in-place conversions. Build OpenAgents
+  mobile at `apps/openagents-mobile` with Effect Native on a React Native/Expo
+  host; its product name is `OpenAgents`, its iOS bundle identifier and Android
+  application ID are exactly `com.openagents.app`, and its checked-in icon is
+  an exact copy of `clients/khala-mobile/assets/images/icon.png` (SHA-256
+  `0a1865ac6d1efc792d365d9a37af9e6ffa3270fa7c8731f36129f35371bfc7ce`). Build
+  OpenAgents Desktop at `apps/openagents-desktop` with Effect Native on an
+  Electron host, using
+  `https://github.com/LuanRoger/electron-shadcn` as the required starting
+  template (reviewed local mirror `~/work/projects/repos/electron-shadcn`). Pin
+  the imported upstream commit and preserve its MIT attribution. The reviewed
+  template enables `contextIsolation` but also enables `nodeIntegration`; turn
+  `nodeIntegration` off, set `sandbox: true`, remove its upstream updater and
+  Forge publisher target before first launch/package, install deny-by-default
+  permission/navigation/window-open handling, and replace its broad starter
+  IPC/application state with the narrow, mechanically checked Effect Schema/
+  Effect Native boundary before adding product capability. Freeze the full
+  platform/protocol/data/update/OAuth identity set in `NEEDS_OWNER.md` before
+  the first packaged build. `clients/khala-mobile`,
+  `clients/khala-ios/Khala`, and
+  `clients/khala-code-desktop` are deprecated, frozen migration, contract,
+  native-module, and service-extraction sources: no new product features, UI,
+  branding work, or releases. Do not import their app packages into the new
+  apps or resurrect the deleted Electrobun `clients/openagents-desktop` stub.
+  Extract reusable typed services/contracts to shared packages; remove the old
+  clients only after parity, migration, and release proof.
 - Keep new TypeScript implementation work on Bun, Effect, and Effect Schema.
   **UI layer (owner decision, 2026-07-08 — supersedes the 2026-07-04
   React+Tailwind clause): the entire repo converts to Effect Native, ASAP**
@@ -609,11 +637,12 @@ and local Codex auth out of reports.
   Effect remains the services/logic substrate everywhere. Existing Foldkit
   surfaces in `apps/openagents.com/apps/web` are legacy; retained routes are
   converted under #8634/#8635 and all other public pages retired. The
-  OpenAgents Desktop target is **Effect Native** (#8574 on the effect-native
-  Phase 4 epic #20/#21–#43); the previously planned
-  React+Tailwind desktop shell rewrite is cancelled. Every conversion PR
-  keeps its surface's tests/QAM gates/behavior contracts green and deletes
-  the legacy surface it replaces; component gaps go upstream through the
+  OpenAgents Desktop target is **Effect Native on Electron** (#8574 on the
+  effect-native Phase 4 epic #20/#21–#43); the previously planned
+  React+Tailwind and Electrobun destination shells are cancelled. Retained web
+  conversion PRs delete the legacy surface they replace. Greenfield mobile and
+  desktop PRs keep parity/QAM gates green while extracting shared contracts;
+  component gaps go upstream through the
   effect-native GAPS register (EN-2 #8572), never local one-off primitives.
 - Never stash, reset, checkout, restore, or otherwise move another agent's
   uncommitted work out of the way. If a checkout is dirty with concurrent work
@@ -635,8 +664,9 @@ and local Codex auth out of reports.
   Worker, and Pylon logic stays on Bun/Effect/TypeScript.
 - **Mobile policy (owner decision, 2026-07-04 — supersedes the 2026-06-26
   no-Expo mandate for the framework; amended 2026-07-09):** the mobile
-  destination is the **OpenAgents** Expo React Native app (one codebase, iOS +
-  Android—no separate Swift and Kotlin apps), authored in Effect Native with
+  destination is a new **OpenAgents** app at `apps/openagents-mobile`, built
+  from scratch as one Expo React Native codebase for iOS + Android (no separate
+  Swift and Kotlin apps), authored in Effect Native with
   React Native/NativeWind as renderer/host machinery, TanStack DB +
   `khala-sync-db-collection` as the data layer, and expo-modules ports of the
   native Swift pieces (voice/STT, Apple FM bridge). See
@@ -656,11 +686,15 @@ and local Codex auth out of reports.
   the owner explicitly changes that. Note: `publish-ota.sh` currently
   points at the retired `AutopilotRemoteControl` path and must be
   repointed to the new Expo app when it lands (TS-8).
-  The existing native SwiftUI app `clients/khala-ios/Khala`
-  (`com.openagents.khala`, `docs/mobile/2026-06-26-khala-voice-app-spec.md`)
-  is the **interim companion and native-module reference** until the Expo
-  app reaches parity — keep it buildable; near-term dogfood milestones
-  (e.g. chat sync) may land there first. The earlier Expo app
+  The new app's display name is exactly `OpenAgents`; its iOS bundle identifier
+  and Android application ID are exactly `com.openagents.app`; its icon is the
+  exact Khala Code mobile icon pinned above. Store build/version numbers and
+  signing/provisioning must remain monotonic and valid against the owner-
+  designated existing store records before upload. `clients/khala-mobile` and
+  the native SwiftUI `clients/khala-ios/Khala` app are deprecated references,
+  not interim shipping destinations. Their auth, Sync, push, OTA, native-module,
+  and behavior contracts may be extracted or ported, but their product shells
+  receive no new features or releases. The earlier Expo app
   `AutopilotRemoteControl` remains retired
   (`docs/mobile/2026-06-26-autopilot-remote-control-retirement.md`).
 - Route new user-facing and agent-facing product claim systems through
@@ -670,11 +704,14 @@ and local Codex auth out of reports.
   in the owning surface's behavior-contract registry in the same change —
   statement verbatim, source recorded, oracle test written (or an explicit
   `pending` entry with blocker refs). Never leave a stated expectation only
-  in conversation. During the OpenAgents Desktop path/name migration the
-  registry remains
-  `clients/khala-code-desktop/src/contracts/ux-contracts.ts` with the human
-  doc at `docs/khala-code/khala-code-ux-contract.md`; the shared schema and
-  coverage checker live in `packages/behavior-contracts`
+  in conversation. Until the greenfield app roots exist, new cross-app
+  expectations belong in a pending shared registry under
+  `packages/behavior-contracts`; once scaffolded, each new app owns its registry.
+  The legacy registries under `clients/khala-mobile` and
+  `clients/khala-code-desktop/src/contracts/ux-contracts.ts`, plus the human doc
+  at `docs/khala-code/khala-code-ux-contract.md`, are parity/migration inputs
+  only, not destination authority. The shared schema and coverage checker live
+  in `packages/behavior-contracts`
   (`@openagentsinc/behavior-contracts`). Enforced contracts must run in the
   normal test sweep; do not weaken an oracle to make a change pass — that is
   a contract change and needs the owner's sign-off.

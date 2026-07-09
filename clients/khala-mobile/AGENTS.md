@@ -1,10 +1,16 @@
 # Khala Mobile Agent Contract
 
+> **Deprecated/frozen source.** The destination is the from-scratch
+> `apps/openagents-mobile` app under #8597, not this package. Make no new product
+> features, UI, branding, or releases here. Changes are limited to critical
+> security fixes, parity evidence, contract/native-module extraction, and typed
+> migration support. Never make the greenfield app import this package.
+
 ## Scope
 
-This package is the Expo React Native destination for the Khala mobile
-companion. The SwiftUI app in `clients/khala-ios/Khala` remains the interim
-shipping app and native-reference source until parity is proven.
+This package is the deprecated Expo React Native Khala mobile implementation.
+The SwiftUI app in `clients/khala-ios/Khala` is deprecated too. Both are
+reference sources until the new OpenAgents app proves parity and cutover.
 
 ## Invariants
 

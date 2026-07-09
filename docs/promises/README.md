@@ -79,6 +79,9 @@ Product Promises Forum.
 - [`registry.md`](registry.md): the promise record contract and current promise
   families across OpenAgents product areas, including the recent transcript
   promise backlog.
+- [`2026-07-09-khala-code-app-retirement-and-openagents-successors.md`](2026-07-09-khala-code-app-retirement-and-openagents-successors.md):
+  withdrawal/successor map for the legacy app shells, greenfield app promises,
+  and compatibility/evidence-route preservation law.
 - [`checks-and-gates.md`](checks-and-gates.md): state model, verification
   gates, copy gates, redaction gates, settlement gates, and release gates.
 - [`reporting-and-rci.md`](reporting-and-rci.md): Forum-first report intake and

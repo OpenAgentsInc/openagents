@@ -95,15 +95,14 @@ use the ed25519 release key; headless Pylon needs no Apple signing.
   `OA_DEVELOPER_ID_APPLICATION="Developer ID Application: OpenAgents, Inc. (HQWSG26L43)"`
   (quoted — value has spaces/parens) alongside the `ASC_API_*` notary key.
   `apps/autopilot-desktop/scripts/notarize-macos.sh` reads both.
-- **Khala Code Desktop:** run
-  `bun run --cwd clients/khala-code-desktop release:macos -- --version <version> --channel rc`
-  on the owner-controlled Mac. The script points
-  `OA_DESKTOP_APP_PATH` at `Khala Code.app`, skips Autopilot's Apple-FM bridge
-  preflight, re-creates the DMG from the stapled app, signs/notarizes/staples
-  the DMG, and stages the `desktop/khala-code-desktop/<channel>/feed.json`
-  product feed. Upload/GitHub release creation stay behind explicit owner env
-  flags and must be paired with the clean-Mac first-run smoke receipt in
-  `NEEDS_OWNER.md`.
+- **Khala Code Desktop (historical only):** the Electrobun app and its
+  `desktop/khala-code-desktop` feed are deprecated and frozen. Do not run its
+  release command or create new tags/artifacts. Its scripts remain temporarily
+  as signing/migration evidence. The shared desktop publish script rejects new
+  `khala-code-desktop` and `autopilot-desktop` writes while keeping old feeds
+  readable. The greenfield Electron app at
+  `apps/openagents-desktop` must establish an independent release/feed contract
+  under #8574 before any OpenAgents Desktop RC.
 
 ### Backup & recovery (device loss)
 

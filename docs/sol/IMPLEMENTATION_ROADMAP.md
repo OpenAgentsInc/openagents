@@ -48,8 +48,9 @@ The phase mechanics remain valuable, but their implementation target changes:
 - The first Sarah→coding vertical slice becomes an explicit missing lane.
 - Mobile Effect Native work is not just a framework rewrite; it must make
   Sarah the home relationship and prove cross-device continuation.
-- Khala Code desktop and Pylon remain specialist power tools that project the
-  same runs Sarah sees.
+- Pylon remains the execution engine, and the future greenfield OpenAgents
+  Desktop is the specialist power tool that projects the same runs Sarah sees;
+  Khala Code desktop is now a frozen extraction source.
 - CX work continues to build custody and cloud execution, but the default
   product entry for those capabilities becomes Sarah.
 - Outbound identity and reply handling move from the tail of a generic queue
@@ -136,16 +137,15 @@ Track A when they do not touch the same Sarah hot paths.
 
 Prioritize Effect Native work by Sarah-first leverage:
 
-1. **#8597 MB-EN:** add Sarah-as-mobile-home and authenticated conversation
-   continuation to the port plan before navigation-root conversion. Preserve
-   the existing P0 app throughout. The named cross-app Khala Sync proof remains
-   necessary but should include a Sarah-originated conversation/run state, not
-   only a generic chat message.
-2. **#8573 EN-4:** continue disjoint route conversion (`/terms` next, then
-   public/funnel batches) without blocking Sarah integration. Convert and
-   delete; no local primitives.
-3. **#8574 EN-5:** convert desktop as a specialist cockpit over the same typed
-   run and intent model. Do not recreate a second product home.
+1. **#8597 APP-MOBILE:** build the greenfield OpenAgents app with Sarah as home
+   and authenticated conversation/run continuation; freeze the old RN/Swift
+   apps as extraction evidence.
+2. **#8634 APP-WEB:** convert only the retained web allowlist and retire other
+   pages with promise/service-deliverable integrity preserved.
+3. **#8574 APP-DESKTOP:** build the greenfield Electron specialist cockpit from
+   the required hardened `LuanRoger/electron-shadcn` template over the same
+   typed run and intent model. Do not convert the Electrobun app or recreate a
+   second product home.
 4. **#8575 EN-6:** move Blueprint/graph/canvas semantics under the shared
    renderer contract while preserving evidence-backed edges.
 5. **#8566:** close only after downstream surfaces actually run on the
@@ -274,8 +274,8 @@ surface assumptions.
 | #8571 | Effect Native public hosting | Code deployed; owner domain verification | **Owner-only residual** |
 | #8595 | EN marketing landing | Catalog landed; copy/root flip remain | **Owner-only residual** |
 | #8573 | Legacy web absorption | Inventory + `/download` + `/privacy` landed | **Parallel route slices; non-blocking** |
-| #8597 | Sarah in the pocket on one UI model | Full rewrite unstarted/early; substrate epic upstream | **Promote within EN; add Sarah-home acceptance** |
-| #8574 | Specialist desktop cockpit substrate | First cockpit proof exists; full conversion open | **After/with PY typed RPC** |
+| #8597 | Greenfield OpenAgents mobile on one UI model | New app unscaffolded; legacy clients frozen | **Build after/alongside P0 fleet command; add Sarah-home acceptance** |
+| #8574 | Greenfield Electron specialist desktop cockpit | New app unscaffolded; legacy Electrobun proof is extraction evidence only | **Required electron-shadcn bootstrap + effect-native#69; after/with typed Pylon RPC** |
 | #8575 | Shared Blueprint/canvas renderer | Open | **Needed for long-term canvas unity, not first slice** |
 | #8566 | Effect Native adoption closure | Multiple children open; deploy topology guard is stale against EN `beta.94` | **Closeout + integration guard repair** |
 | #8578 | Stable Pylon engine beneath Sarah/power tools | Large leaf set landed; top graph/RPC/wallet residual | **Active parallel engine lane** |

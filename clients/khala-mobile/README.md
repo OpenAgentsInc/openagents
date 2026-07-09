@@ -1,6 +1,15 @@
 # Khala Mobile
 
-Expo React Native companion for Khala. This is the TS-8 destination app: one
+> **DEPRECATED AND FROZEN (2026-07-09).** This app is not the OpenAgents mobile
+> destination and must not receive new product features, UI work, branding, or
+> releases. The greenfield app is `apps/openagents-mobile` under #8597: Effect
+> Native on React Native/Expo, named `OpenAgents`, using `com.openagents.app` on
+> iOS and Android and an exact copied version of this app's
+> `assets/images/icon.png`. Keep this tree only for parity evidence, typed
+> contract/native-module extraction, migration work, and critical security
+> fixes until cutover. Do not import this app package into the new app.
+
+Expo React Native companion for Khala. This was the TS-8 destination app: one
 codebase for iOS and Android, NativeWind over the shared OpenAgents token
 export, Khala Sync read models through `@openagentsinc/khala-sync-db-collection`,
 and self-hosted OTA through OpenAgents Updates. NativeWind 4 currently requires

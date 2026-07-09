@@ -11,6 +11,7 @@ import {
   backgroundAgentsContractRegistry,
 } from "./background-agents"
 import { khalaSyncContractRegistry } from "./khala-sync"
+import { openAgentsAppsContractRegistry } from "./openagents-apps"
 import {
   checkBehaviorContractCoverage,
   inMemoryOracleSourceLayer,
@@ -133,6 +134,21 @@ const engagement = (
 }
 
 describe("behavior contract registry", () => {
+  test("records the pending owner contracts for greenfield OpenAgents apps", () => {
+    const decoded = decodeBehaviorContractRegistryDocument(openAgentsAppsContractRegistry)
+    const validation = validateBehaviorContractRegistry(decoded)
+
+    expect(validation).toEqual({ issues: [], ok: true })
+    expect(decoded.contracts).toHaveLength(4)
+    expect(decoded.contracts.every(contract => contract.state === "pending")).toBe(true)
+    expect(
+      decoded.contracts.find(
+        contract =>
+          contract.contractId === "openagents_apps.greenfield_mobile_identity.v1",
+      )?.statement,
+    ).toContain('existing app identifier "com.openagents.app"')
+  })
+
   test("decodes a well-formed registry document", () => {
     const decoded = decodeBehaviorContractRegistryDocument(document([contract()]))
     expect(decoded.contracts).toHaveLength(1)

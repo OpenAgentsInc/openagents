@@ -3,6 +3,13 @@
 # outward-facing upload or GitHub release creation unless the owner opts in.
 set -euo pipefail
 
+echo "Khala Code Desktop was retired on 2026-07-09; legacy release writes are disabled. Use apps/openagents-desktop (#8574)." >&2
+exit 78
+
+# Historical implementation below is intentionally unreachable and retained
+# only as signing/feed migration evidence until the greenfield Electron lane
+# has independent receipts.
+
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 REPO="$(cd "$APP_DIR/../.." && pwd)"
 

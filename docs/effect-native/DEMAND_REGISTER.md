@@ -27,8 +27,8 @@ See `apps/openagents.com/packages/effect-native-vendor.json`:
 | D-SARAH-05 | `/sarah` first paint | AI disclosure banner component | covered by v16 `StatusBanner` (effect-native#40) | vendored v26; surface adoption is a shell-layout step (copy unchanged) | #8624 |
 | D-SARAH-06 | `/sarah` Blueprint map | GraphFigure semantic affordances: badge/accent slot, entry animation, provenance chips, `evidence_backed` edge status | waiting — upstream effect-native#68 | n/a — BM-2 uses existing `GraphFigure` v26 model | #8628 #8575 |
 | D-WEB-01 | `/stage1` `/landing-en` | Marketing catalog consumption | shipped upstream v20–v25 | vendored v25 | #8595 |
-| D-MB-01 | khala-mobile screens | Full mobile rewrite components | effect-native #52/#64 | vendored v25 | #8597 |
-| D-DESK-01 | Khala Code desktop | Full desktop chrome (EN-5) | Phase 4 catalog | vendored v25 | #8574 |
+| D-MB-01 | greenfield OpenAgents mobile | Mobile relationship/fleet components for the React Native host | effect-native #52/#64 | vendored v25 | #8597 |
+| D-DESK-01 | greenfield OpenAgents Desktop | Electron main/preload/renderer platform host plus desktop chrome and specialist typed hosts (EN-5) | effect-native#69; earlier Electrobun #20/#21 are historical | vendored v26 lacks the Electron host | #8574 |
 
 ## Process checklist (per wave)
 

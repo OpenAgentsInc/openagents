@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-07-08.1'
+export const PublicProductPromisesVersion = '2026-07-09.1'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 const tassadarPsionicBackroomArchiveRef =
@@ -148,6 +148,103 @@ const basePromiseFields = {
   sourceRefs,
 }
 
+const retiredAppPromiseSuccessors: Readonly<Record<string, string>> = {
+  'autopilot.desktop_gui_client.v1': 'promise:openagents.desktop_app.v1',
+  'khala_code.desktop_codex_wrapper.v1':
+    'promise:openagents.desktop_app.v1',
+  'khala_code.forum_hotbar.v1': 'promise:openagents.desktop_app.v1',
+  'khala_code.mobile_mvp.v1': 'promise:openagents.mobile_app.v1',
+  'mobile.autopilot_remote_control.v1': 'promise:openagents.mobile_app.v1',
+}
+
+const khalaCodeCapabilityDisposition: Readonly<
+  Record<
+    string,
+    {
+      claim: string
+      safeCopy: string
+      state?: 'planned' | 'yellow'
+      successor: string
+      unsafeCopy: string
+    }
+  >
+> = {
+  'khala_code.architect_coder_judge.v1': {
+    claim:
+      'Legacy-ID carry-forward: Sarah Fleet may offer an architect/coder/judge workflow over the owner’s connected accounts, subject to typed plans, verification, and exact per-role evidence.',
+    safeCopy:
+      'Planned only. The old Khala Code preset is migration evidence for the #8574 capability-disposition ledger; any destination workflow belongs inside Sarah/OpenAgents Desktop and uses the shared FleetRun, account, approval, verifier, and receipt contracts. The deprecated app is not the destination implementation.',
+    successor: 'promise:openagents.desktop_app.v1',
+    unsafeCopy:
+      'Do not claim the architect/coder/judge workflow is available in Sarah or OpenAgents Desktop, and do not treat the legacy preset as cross-device fleet proof.',
+  },
+  'khala_code.bundled_fleet_skill.v1': {
+    claim:
+      'Legacy-ID carry-forward: the canonical khala-fleet skill may be packaged as guidance for Sarah/OpenAgents Desktop without becoming runtime or dispatch authority.',
+    safeCopy:
+      'The canonical repository skill and its tests remain real. Packaging it through the deprecated Khala Code app is no longer a shipping claim; porting/discovery in OpenAgents Desktop is planned under #8574 and must preserve user-owned files, managed markers, and the canonical runbook authority.',
+    state: 'planned',
+    successor: 'promise:openagents.desktop_app.v1',
+    unsafeCopy:
+      'Do not claim outside users receive the skill through OpenAgents Desktop today or that skill text grants dispatch, spend, merge, or settlement authority.',
+  },
+  'khala_code.free_paid_plans.v1': {
+    claim:
+      'Legacy-ID carry-forward: a future unified OpenAgents app policy may distinguish a disclosed data-contributing tier from a paid private-data tier.',
+    safeCopy:
+      'Planned economics only. No Khala Code plan is purchasable, and neither greenfield OpenAgents app inherits this policy, catalog, pricing, consent, or entitlement automatically. A future OpenAgents plan needs fresh owner approval, product-promise scope, copy, privacy behavior, and payment receipts.',
+    successor: 'promise:openagents.desktop_app.v1',
+    unsafeCopy:
+      'Do not sell or advertise a Khala Code plan, arm the legacy purchase path, or imply OpenAgents free/paid tiers exist because historical catalog and entitlement code remains.',
+  },
+  'khala_code.free_plan_trace_capture.v1': {
+    claim:
+      'Legacy-ID carry-forward: a future OpenAgents app may support disclosed, consented, redacted trace contribution under an explicit privacy policy.',
+    safeCopy:
+      'Planned cross-app privacy capability only. The deprecated desktop consent/capture planner is historical implementation evidence, not a live OpenAgents policy. Any successor must be scoped afresh across Sarah and the new apps, fail closed, preserve owner-only raw evidence, and remain payout-inert unless separate receipts authorize more.',
+    successor: 'promise:openagents.desktop_app.v1',
+    unsafeCopy:
+      'Do not claim OpenAgents sessions are captured for training, that redaction guarantees removal of sensitive data, or that legacy Khala capture flags authorize the new apps.',
+  },
+  'khala_code.paid_to_free_revenue_share.v1': {
+    claim:
+      'Legacy-ID carry-forward: a future approved OpenAgents economics design may route some paid-plan revenue to qualifying contributors on the free tier.',
+    safeCopy:
+      'Unapproved planned economics only. There is no purchasable successor plan, revenue pool, share policy, qualifying ledger, or payout. The idea remains in the capability-disposition ledger and needs a fresh OpenAgents promise before implementation or copy.',
+    successor: 'promise:openagents.desktop_app.v1',
+    unsafeCopy:
+      'Do not claim free users are paid, quote a percentage, imply a pool exists, or use the deprecated Khala Code plan as current product authority.',
+  },
+  'khala_code.plugin_backend_revenue_share.v1': {
+    claim:
+      'Legacy-ID carry-forward: a future OpenAgents engine may attribute verified plugin-derived usage and route an approved revenue share to its author.',
+    safeCopy:
+      'Planned engine/economics idea only. Historical precedent intake stays dereferenceable and moves no sats itself, but no current app, plugin market, share rate, payout pool, or live settlement is authorized. Any successor needs a fresh OpenAgents scope and production receipt.',
+    successor: 'promise:openagents.desktop_app.v1',
+    unsafeCopy:
+      'Do not claim anyone has been paid through plugin routing or that historical precedent rows create a current market, rate, payout, or demand claim.',
+  },
+  'khala_code.trace_derived_plugins.v1': {
+    claim:
+      'Legacy-ID carry-forward: a future OpenAgents engine may derive admitted, reviewable plugins from consented traces without making private trace content public.',
+    safeCopy:
+      'Planned engine idea only. Historical trace/plugin precedent routes remain integrity evidence; no successor app currently derives, publishes, installs, routes, or pays for such a plugin. Re-entry requires a fresh OpenAgents contract and privacy/admission receipts.',
+    successor: 'promise:openagents.desktop_app.v1',
+    unsafeCopy:
+      'Do not claim a trace-to-plugin pipeline or market is live, and do not expose raw prompts, events, local paths, provider material, or private repository data.',
+  },
+  'khala_code.ux_behavior_contracts.v1': {
+    claim:
+      'OpenAgents records owner/customer UX expectations verbatim in typed behavior-contract registries and enforces only the entries backed by named oracle tests.',
+    safeCopy:
+      'The shared behavior-contract schema, coverage checker, legacy enforced oracles, and same-change repository mandate are live source evidence. The Khala Code registry is now a frozen parity input; new expectations live in the shared pending registry until apps/openagents-mobile and apps/openagents-desktop own their registries. Pending entries are never described as enforced, and applicable legacy contracts must be dispositioned and ported before cutover.',
+    state: 'yellow',
+    successor: 'promise:openagents.desktop_app.v1',
+    unsafeCopy:
+      'Do not claim every legacy or new-app expectation is enforced, that pending entries pass oracles, or that the deprecated registry is destination authority.',
+  },
+}
+
 const summarizePromiseVerification = (
   promises: ReadonlyArray<{
     blockerRefs: ReadonlyArray<string>
@@ -196,7 +293,7 @@ export const publicProductPromisesDocument = () => {
     generatedAt: currentIsoTimestamp(),
     maxStalenessSeconds: staleness.maxStalenessSeconds,
     staleness,
-    lastUpdated: '2026-07-06',
+    lastUpdated: '2026-07-09',
     canonicalDocsUrl:
       'https://github.com/OpenAgentsInc/openagents/tree/main/docs/promises',
     sourceRefs,
@@ -228,7 +325,7 @@ export const publicProductPromisesDocument = () => {
     currentMonorepoStatus: {
       status: 'work_in_progress',
       summary:
-        'The openagents monorepo now contains the deployed openagents.com Worker/app, Forum surfaces, docs/promises, packages/probe, apps/pylon, the apps/autopilot-desktop GUI shell, the clients/khala-desktop Electrobun shell, and the clients/khala-ios/AutopilotRemoteControl spec lane. The live Cloudflare deployment is served from apps/openagents.com, and the public code map in this registry points agents to the public source trees behind those shipped surfaces. As of 2026-06-14: the agent labor market crossed its first end-to-end milestone — one real backlog issue was posted, negotiated over NIP-90, escrowed, executed on an independent provider Pylon, validator-accepted, and settled with public receipts (#4777), so labor.forum_work_requests.v1 and labor.nostr_negotiation_market.v1 are green and provider.compliant_usage_labor.v1 / autopilot.control_center_fanout_marketplace.v1 are yellow. A large wave-3 Autopilot Sites / Agency Pack buildout (#4977-#4995) added client-delivery workrooms, native email sequences, custom tenant hostnames, partner-payout ledger, voice evidence, and a credits UI as operator-gated infrastructure — entered here as new conservative promise records. As of 2026-06-19, @openagentsinc/pylon@latest resolves to the v1.0 line and a first auto-stream settlement sequence is captured in public timeline/replay evidence; public product copy must still distinguish install capability and a single bounded visibility capture from broad live-network earning, paid-at-scale assignment, every-platform support, and unbounded settlement authority.',
+        'The openagents monorepo contains the deployed openagents.com Worker/app, Forum and promise-integrity surfaces, Sarah, Pylon, shared fleet/runtime packages, and frozen legacy app sources. As of owner direction 2026-07-09, the only product-app targets are OpenAgents web, a greenfield OpenAgents React Native/Expo mobile app, and a greenfield OpenAgents Desktop Electron app. The old Autopilot and Khala Code Electrobun apps plus Khala RN/Swift apps are withdrawn product surfaces retained only for historical evidence, parity, migration, and typed service extraction. Public code and promise maps must distinguish preserved compatibility/evidence routes from current product availability.',
       liveDeploymentRefs: [
         'https://openagents.com',
         'https://openagents.com/docs/product-promises',
@@ -244,6 +341,7 @@ export const publicProductPromisesDocument = () => {
         'apps/pylon/docs/launch-gates-no-overclaim.md',
       ],
       caveats: [
+        'Registry 2026-07-09.1 withdraws the legacy Autopilot/Khala Code app-shell claims, adds planned openagents.desktop_app.v1 and openagents.mobile_app.v1 successors, and keeps every stable legacy promise ID, transition, evidence ref, and public-safe receipt/read route for integrity. Preserved APIs do not make a retired app installable or releasable.',
         'Pylon v1.0 has a stable source cut, and npm reports @openagentsinc/pylon@latest on the v1.0 line. Live deployment, signed-binary feed rollout, and earning/settlement claims remain separate gates.',
         'macOS and Linux are the first supported operator platforms for the v1.0 launch path.',
         'Pylon v1.0 local release gates and a no-spend live worker-loop smoke exist, but broad earning, paid assignment, every-platform coverage, and settlement claims still need fresh public evidence before they go green.',
@@ -2920,15 +3018,15 @@ export const publicProductPromisesDocument = () => {
       {
         ...basePromiseFields,
         promiseId: 'autopilot.cloud_coding_sessions.v1',
-        productArea: 'Autopilot',
+        productArea: 'OpenAgents cloud execution',
         audience: ['operator', 'agent', 'user'],
         state: 'red',
         claim:
-          'Owners can run coding sessions on OpenAgents Cloud (Google GCE first, SHC second) and administer them from desktop and the Expo mobile app — spawn, watch, approve, accept — so work continues without the owner at their computer.',
+          'Owners can let Sarah place coding FleetRun work on OpenAgents managed Agent Computers and supervise the same work from web, OpenAgents mobile, and OpenAgents Desktop.',
         safeCopy:
-          'The Coder Cloud initiative (epic #4996, "code on the go") is the active top-priority build, and the full Phase 1 contract layer has now landed: the lane selector auto|local|cloud-gcp|cloud-shc is wired end to end (#4998), the Vortex-independent Codex grant-resolution endpoint contract is in place (#4999), the Pylon openagents-cloud provider dispatches cloud lanes to the cloud placement endpoint and maps events to Pylon SessionEvents (#4997, gated by OA_CLOUD_CONTROL_URL/OA_CLOUD_CONTROL_TOKEN; it falls back to local execution if unset), and the cloud repo shipped POST /v1/placement plus a per-session GCE VM lease lifecycle (cloud #86/#87/#88, #90). The first-party cloud coding-session surface on the openagents.com Worker is still flag-gated (CLOUD_CODING_SESSIONS_ENABLED, default off -> POST /v1/cloud-coding-sessions launch + GET /v1/cloud-coding-sessions/:id lifecycle read return 404 on prod), but when enabled its default launch path now targets the real cloud placement/GCE lease endpoint and fails closed with typed not-armed errors unless OA_CODEX_GCE_PROVISIONER=live and OA_CLOUD_CONTROL_URL/OA_CLOUD_CONTROL_TOKEN are configured. The old fake-success default is gone; tests keep the inert stub injectable only as an explicit test adapter. The Pylon cloud client now has an executable full-kind round-trip test for openagents.codex_workroom_event.v1, including the cloud.gce.* lease lifecycle and resource_usage_receipt alias, and the desktop bridge test proves cloud rows keep the same timeline row shape as local composer events. It still stays red: a real desktop-originated cloud session must run a repo edit on Google GCE and produce a content-addressed artifact plus a dereferenceable usage receipt with owner sign-off before this can turn green.',
+          'Red/planned capability lineage only. Cloud lane selectors, grant and placement contracts, GCE lease lifecycle code, event-kind round trips, and fail-closed Worker surfaces exist, but the Sarah-managed local-plus-cloud path is not live-proven. The immediate #8640 burn proves three useful local Codex/Claude/Grok streams first; #8547/#8636 then add real Firecracker Codex and hybrid placement through the same FleetRun, claim, approval, event, and receipt contracts. Neither deprecated desktop app is a control destination, and no greenfield app currently exposes this capability.',
         unsafeCopy:
-          'Do not claim cloud coding sessions are live or that the owner can already code from a phone via the cloud; the Phase 1 contracts have landed and fake-success provisioning is removed, but the demonstrable desktop->GCE loop still needs a real receipt-backed run and owner sign-off.',
+          'Do not claim Sarah or either greenfield app can run or supervise managed cloud coding today, that contract/fake evidence proves in-VM Codex, or that cloud availability may block the required local fleet proof.',
         evidenceRefs: [
           'docs/autopilot-coder/2026-06-14-cloud-desktop-mobile-coding-sessions-full-flow-audit.md',
           'docs/autopilot-coder/2026-06-13-cloud-remote-execution-commercial-plan.md',
@@ -2949,11 +3047,12 @@ export const publicProductPromisesDocument = () => {
           'https://github.com/OpenAgentsInc/openagents/issues/6831',
         ],
         blockerRefs: [
-          'blocker.product_promises.cloud_desktop_gce_receipt_owner_signoff_missing',
-          'blocker.product_promises.pylon_remote_bridge_transport_missing',
+          'blocker.product_promises.real_firecracker_codex_receipt_missing',
+          'blocker.product_promises.sarah_hybrid_fleet_routing_receipt_missing',
+          'blocker.product_promises.openagents_greenfield_apps_not_shipped',
         ],
         verification:
-          'Phase 1 exit proof: with CLOUD_CODING_SESSIONS_ENABLED armed, OA_CODEX_GCE_PROVISIONER=live, and OA_CLOUD_CONTROL_URL/OA_CLOUD_CONTROL_TOKEN configured, a desktop-originated session.spawn{lane:"cloud-gcp"} leases a real Google GCE ephemeral VM through the cloud placement endpoint, runs a real repo-edit Codex session, streams openagents.codex_workroom_event.v1 into the desktop timeline lane-transparently, and produces a content-addressed artifact plus an openagents.resource_usage_receipt.v1. The route must fail closed with cloud_gce_provisioning_not_armed when the live GCE flag is off. The lane selector (#4998), grant endpoint (#4999), Pylon cloud dispatch (#4997), cloud placement + GCE lease (cloud #86/#87/#88/#90), first-party fail-closed Worker launch path (#6830), and codex_workroom_event.v1 full-kind round-trip tests (#6831) have landed; green still requires the real receipt-backed desktop->GCE run and owner sign-off. Remote phone administration is the mobile.fleet_companion.v1 path (the Expo mobile.autopilot_remote_control.v1 record is withdrawn).',
+          'Run #8547/#8636 acceptance: one Sarah FleetRun uses the same typed contract for local and managed work; a real Firecracker VM redeems a broker grant into scratch-only provider state, runs a real repo-edit Codex work unit, emits resumable progress, independent verification, exact usage/resource receipts, and reclaim/replay-failure evidence; then OpenAgents mobile/Desktop show the same bounded state. Green still requires owner-signed receipt-first review.',
         authorityBoundary:
           'Cloud sessions run under owner-resolved Codex grants on ephemeral VMs; placement honors repo trust tiers (regulated->SHC-only, private->own/verified, public->any). This promise grants no multi-tenant, settlement, or non-owner authority — that is deferred Phase 4 (credits gateway, tenant caps, settlement, microVM isolation).',
       },
@@ -3178,9 +3277,9 @@ export const publicProductPromisesDocument = () => {
         audience: ['user', 'operator'],
         state: 'planned',
         claim:
-          'Spoken commands and intent can be ingested into Autopilot workrooms as transcribed, approval-gated action proposals.',
+          'Spoken commands and intent can be presented in Sarah/OpenAgents as transcribed, approval-gated action proposals.',
         safeCopy:
-          'Voice-session evidence contracts and read-only projections shipped in wave-3 (#4992): voice-session metadata, transcript segments, and command-proposal shapes with approval-required and risk labels, projected with mutation disabled. The old default-off Worker ingestion endpoint (POST /api/mobile/voice-sessions/ingest) and its unused ingest core were retired in the 2026-07-05 #8386 cleanup because they were never armed and are not directly needed by Khala Code. Future spoken-command ingest should start from the native mobile voice app, a chosen STT/capture path, AI proposal generation, and approval UI instead of reviving that Worker endpoint. Foundation infrastructure for mobile.voice_approval_companion.v1 remains.',
+          'Voice-session evidence contracts and read-only projections shipped in wave-3 (#4992): voice-session metadata, transcript segments, and command-proposal shapes with approval-required and risk labels, projected with mutation disabled. The old default-off Worker ingestion endpoint (POST /api/mobile/voice-sessions/ingest) and its unused ingest core were retired in the 2026-07-05 #8386 cleanup because they were never armed. Future spoken-command ingest belongs in the greenfield OpenAgents React Native app through a typed Expo native-module/STT capture path, Sarah proposal generation, and approval UI instead of reviving that Worker endpoint. Foundation infrastructure for mobile.voice_approval_companion.v1 remains.',
         unsafeCopy:
           'Do not claim users can speak commands that execute, or that voice transcripts are trusted for mutations (CRM, email send, code, deploy, spend) without server-side approval; there is no live Worker ingest endpoint, no STT vendor, and no live capture path.',
         evidenceRefs: [
@@ -4514,6 +4613,40 @@ export const publicProductPromisesDocument = () => {
       },
       {
         ...basePromiseFields,
+        promiseId: 'openagents.desktop_app.v1',
+        productArea: 'OpenAgents Desktop',
+        audience: ['user', 'agent', 'operator', 'public'],
+        state: 'planned',
+        claim:
+          'OpenAgents Desktop is a new Sarah-first desktop app, authored in Effect Native on Electron, with the deep coding-fleet cockpit and all Khala Code product ideas folded into the OpenAgents app family or shared engines.',
+        safeCopy:
+          'Planned only: OpenAgents Desktop will be built from scratch at apps/openagents-desktop under #8574. It must start from the pinned MIT-licensed LuanRoger/electron-shadcn template, record provenance, remove the template updater/publisher wiring, and replace starter application semantics with Effect Native, Effect Schema, and shared typed services. The first scaffold gate must assert contextIsolation=true, nodeIntegration=false, sandbox=true, deny-by-default navigation/permissions, narrow schema-decoded IPC, and verified packaged fuses while keeping credentials/raw private worker events out of the renderer. The full desktop/protocol/data/update/OAuth identity freezes before the first package. Sarah is home; Fleet, approvals, Blueprint, receipts, code, terminal, and diagnostics are typed capabilities over the same run state. The old Autopilot and Khala Code Electrobun apps are withdrawn product surfaces and are not release destinations.',
+        unsafeCopy:
+          'Do not claim OpenAgents Desktop exists, is downloadable, is a renamed Khala Code/Autopilot build, has a secure Electron boundary, or has a signed update lane until #8574 records the corresponding receipts. Do not release either legacy Electrobun app as OpenAgents Desktop.',
+        evidenceRefs: [
+          'docs/sol/2026-07-09-greenfield-mobile-desktop-decision.md',
+          'docs/sol/issues/app-desktop.md',
+          'https://github.com/LuanRoger/electron-shadcn',
+          'https://github.com/OpenAgentsInc/effect-native/issues/69',
+          'https://github.com/OpenAgentsInc/openagents/issues/8574',
+          'contract:openagents_apps.greenfield_desktop_electron.v1',
+          'contract:openagents_apps.desktop_starting_template.v1',
+          'promise:autopilot.desktop_gui_client.v1',
+          'promise:khala_code.desktop_codex_wrapper.v1',
+        ],
+        blockerRefs: [
+          'blocker.product_promises.openagents_desktop_greenfield_scaffold_missing',
+          'blocker.product_promises.openagents_desktop_electron_security_oracle_missing',
+          'blocker.product_promises.openagents_desktop_sarah_fleet_continuation_missing',
+          'blocker.product_promises.openagents_desktop_signed_release_missing',
+        ],
+        verification:
+          'Planned #8574 gate: record the imported electron-shadcn commit/MIT attribution; remove its updater/publisher wiring; freeze the cross-platform app/protocol/data/update/OAuth identity; prove contextIsolation=true, nodeIntegration=false, sandbox=true, deny-by-default permissions/navigation, a minimal origin-validated contextBridge preload, Effect Schema on both IPC sides, verified packaged fuses, an Effect Native source/dependency boundary, and no imports from legacy app packages; then prove Sarah/FleetRun continuation, mixed-harness controls, signed/notarized clean-machine install, update, rollback, and deep links before any yellow/green movement.',
+        authorityBoundary:
+          'A planned app record grants no provider credential, filesystem, process, dispatch, approval, spend, merge, release, update, or public availability authority. Pylon and typed server services remain execution/authority boundaries; Electron is a host, not a second orchestration authority.',
+      },
+      {
+        ...basePromiseFields,
         promiseId: 'khala_code.desktop_codex_wrapper.v1',
         productArea: 'Khala Code',
         audience: ['user', 'agent', 'operator', 'public'],
@@ -4830,6 +4963,40 @@ export const publicProductPromisesDocument = () => {
       },
       {
         ...basePromiseFields,
+        promiseId: 'openagents.mobile_app.v1',
+        productArea: 'OpenAgents mobile',
+        audience: ['user', 'operator', 'public'],
+        state: 'planned',
+        claim:
+          'OpenAgents is a new Sarah-first iOS and Android app, authored in Effect Native on React Native/Expo, with fleet supervision and all Khala Code mobile product ideas folded into the OpenAgents app family or shared engines.',
+        safeCopy:
+          'Planned only: OpenAgents mobile will be built from scratch at apps/openagents-mobile under #8597. Its product name is OpenAgents; its iOS bundle identifier and Android application ID are exactly com.openagents.app; and its checked-in app icon must be an exact copy of clients/khala-mobile/assets/images/icon.png (SHA-256 0a1865ac6d1efc792d365d9a37af9e6ffa3270fa7c8731f36129f35371bfc7ce). Effect Native owns the application model and React Native/Expo is the host. Sarah is home, with Blueprint, active FleetRuns, steering, approvals, receipts, voice, and account recovery using shared typed services and Khala Sync. The Khala RN and Swift apps are withdrawn product surfaces and remain only as frozen parity/native-module/migration evidence until cutover.',
+        unsafeCopy:
+          'Do not claim the new OpenAgents mobile app exists, is downloadable, inherits a legacy Khala store identity, has working fleet/voice/OTA capabilities, or may be uploaded until #8597 proves the exact identity/icon, owner-designated existing store records, signing/provisioning, monotonically advancing build numbers, and release gates.',
+        evidenceRefs: [
+          'docs/sol/2026-07-09-greenfield-mobile-desktop-decision.md',
+          'docs/sol/issues/app-mobile.md',
+          'clients/khala-mobile/assets/images/icon.png',
+          'https://github.com/OpenAgentsInc/openagents/issues/8597',
+          'contract:openagents_apps.greenfield_mobile_identity.v1',
+          'contract:openagents_apps.sarah_first_khala_capabilities.v1',
+          'promise:khala_code.mobile_mvp.v1',
+          'promise:mobile.fleet_companion.v1',
+        ],
+        blockerRefs: [
+          'blocker.product_promises.openagents_mobile_greenfield_scaffold_missing',
+          'blocker.product_promises.openagents_mobile_identity_icon_oracle_missing',
+          'blocker.owner.openagents_mobile_store_identity_provisioning_unverified',
+          'blocker.product_promises.openagents_mobile_sarah_fleet_continuation_missing',
+          'blocker.product_promises.openagents_mobile_signed_ota_store_release_missing',
+        ],
+        verification:
+          'Planned #8597 gate: assert the OpenAgents display name, com.openagents.app on iOS and Android, and the copied icon digest; verify the real existing store records plus signing/provisioning/build-number continuity; then prove local iOS/Android builds, owned signed OTA, auth/recovery, and one Sarah/FleetRun continuation across web, mobile, and Electron desktop before any yellow/green movement.',
+        authorityBoundary:
+          'A planned app and owner-designated store identity grant no store ownership, upload, credential migration, push, dispatch, approval, spend, release, or public availability authority. Auth, Pylon, Khala Sync, store, and receipt gates remain typed external authority boundaries.',
+      },
+      {
+        ...basePromiseFields,
         promiseId: 'khala_code.mobile_mvp.v1',
         productArea: 'mobile and Khala Code',
         audience: ['user', 'public'],
@@ -4870,32 +5037,32 @@ export const publicProductPromisesDocument = () => {
       {
         ...basePromiseFields,
         promiseId: 'mobile.fleet_companion.v1',
-        productArea: 'mobile and Khala Code',
+        productArea: 'OpenAgents mobile',
         audience: ['operator', 'user'],
         state: 'planned',
         claim:
-          'A mobile companion pairs with the owner’s fleet to observe, get notified, approve, and steer — it never hosts work.',
+          'Sarah in OpenAgents mobile can observe, notify, approve, and steer the owner’s coding FleetRuns through shared typed state; the phone never becomes the worker or orchestration authority.',
         safeCopy:
-          'Postponed by owner direction 2026-07-05: the active mobile path is the mobile-only Khala Code MVP (khala_code.mobile_mvp.v1), which works entirely without a desktop; the desktop-pairing companion model recorded here (pairing with per-device tokens, relay transport, allowlisted RPC, approve/steer against the owner’s own fleet) returns after that MVP ships. The framework baseline is the Expo React Native app per the 2026-07-04 owner decision (the earlier native-SwiftUI/no-Expo framing in this record is superseded). Today only a read-only iOS fleet-status poll exists; the pairing/relay/steer stack is unbuilt.',
+          'Planned as a capability of the greenfield OpenAgents app recorded by openagents.mobile_app.v1 and #8597, not as a separate companion product or a continuation of Khala Code mobile. Sarah must show the same owner-scoped FleetRun, work units, progress, approvals, controls, and receipts as web and OpenAgents Desktop through Khala Sync and typed services. Existing mobile pairing, push, and decision-queue contracts are migration evidence only; no real cross-device approval/steer receipt exists yet.',
         unsafeCopy:
-          'Do not claim a mobile fleet companion is live, downloadable, or can approve or steer work from a phone; the read-only status poll is not the companion, and the mobile-only MVP is not a fleet-pairing companion.',
+          'Do not claim OpenAgents mobile is live/downloadable or can already approve, steer, or host fleet work. Do not describe either deprecated Khala mobile app as this capability.',
         evidenceRefs: [
-          'docs/fable/2026-07-05-khala-code-mobile-only-mvp-launch-audit.md',
-          'docs/fable/2026-07-01-orca-analysis-and-adoption-plan.md',
-          'docs/fable/ROADMAP.md',
-          'docs/mobile/2026-06-26-autopilot-remote-control-retirement.md',
+          'docs/sol/MASTER_ROADMAP.md',
+          'docs/sol/2026-07-09-greenfield-mobile-desktop-decision.md',
+          'docs/sol/issues/app-mobile.md',
           'packages/autopilot-control-protocol/src/remote-decision-queue.ts',
+          'promise:openagents.mobile_app.v1',
         ],
         blockerRefs: [
-          'blocker.product_promises.mobile_companion_postponed_for_mobile_mvp',
-          'blocker.product_promises.mobile_companion_pairing_relay_transport_missing',
-          'blocker.product_promises.mobile_companion_allowlisted_rpc_surface_missing',
-          'blocker.product_promises.mobile_companion_not_shipped',
+          'blocker.product_promises.openagents_mobile_greenfield_scaffold_missing',
+          'blocker.product_promises.openagents_mobile_sarah_fleet_continuation_missing',
+          'blocker.product_promises.openagents_mobile_fleet_approval_steer_receipt_missing',
+          'blocker.product_promises.openagents_mobile_signed_ota_store_release_missing',
         ],
         verification:
-          'Requires the paired relay transport, the enforced RPC allowlist test, a shipped store/TestFlight artifact, and a dereferenceable receipt of a real approval/steer action resolved from a phone against a live fleet run — after the mobile-only MVP (khala_code.mobile_mvp.v1) ships.',
+          'Requires the greenfield #8597 app, an allowlisted typed mobile control surface, a shipped TestFlight/internal-track artifact, and a dereferenceable receipt of a real approval or steer action resolved from OpenAgents mobile against the same live FleetRun visible in Sarah and OpenAgents Desktop.',
         authorityBoundary:
-          'The phone is a projection and control relay only: it never hosts work, never holds worker credentials, and every write action is capability-gated and allowlisted with the node as the decision authority.',
+          'The phone is a projection and bounded control client only: it never hosts work, never holds worker credentials, and every write is owner-scoped, capability-gated, allowlisted, and resolved by the run/Pylon authority.',
       },
       {
         ...basePromiseFields,
@@ -5266,6 +5433,7 @@ export const publicProductPromisesDocument = () => {
     ],
     notes: [
       `Include version ${PublicProductPromisesVersion} and the relevant promiseId when reporting a mismatch.`,
+      'Registry 2026-07-09.1 is the owner-directed legacy app retirement and greenfield successor pass. It adds planned openagents.desktop_app.v1 (Effect Native + Electron, required pinned LuanRoger/electron-shadcn scaffold) and openagents.mobile_app.v1 (Effect Native + React Native/Expo, name OpenAgents, iOS/Android com.openagents.app, pinned Khala mobile icon); withdraws autopilot.desktop_gui_client.v1, khala_code.desktop_codex_wrapper.v1, khala_code.mobile_mvp.v1, and khala_code.forum_hotbar.v1; demotes khala_code.bundled_fleet_skill.v1 from yellow to planned packaging carry-forward; and reframes the remaining khala_code.* records as stable-ID capability/economics lineage rather than current app-shell promises. mobile.fleet_companion.v1 now targets the greenfield OpenAgents app. Green stays exactly 34; total 145, planned 78, yellow 20, withdrawn 7. Historical promise IDs, transition receipts, exact download/evidence rows, entitlement/privacy/payment receipts, and public-safe read routes remain dereferenceable. No retired app may be installed, released, or resurrected by a legacy feature flag.',
       'Registry 2026-07-06.2 is the CFG-13 (#8528) Sites/Workers-for-Platforms retirement pass under the Cloudflare→Google consolidation epic (#8515) and flips autopilot_sites.custom_tenant_hostnames.v1 from yellow to red — green stays exactly 34. The Sites/WfP program was hard-removed from the active code path by owner decision: the sites.openagents.com serving route and SITES_DISPATCH dispatch-namespace binding are gone from wrangler.jsonc, the site-runtime serving pipeline, /api/tenant/hostnames self-serve hostname routes, Cloudflare custom-hostname (Cloudflare for SaaS) client, hostname provisioning core, sites provisioning-plan route, and operator deploy/disable/rollback routes are deleted, and the openagents-sites-production dispatch namespace is being deleted on the Cloudflare side. Trial-site D1 rows were archived first. No custom hostname was ever provisioned to active and the WfP namespace held zero scripts, so no customer-serving capability is lost. Sites returns later redesigned on owned primitives (docs/cloud/2026-07-06-cloudflare-to-google-consolidation-audit.md, Phase 4). No other promise changes state.',
       'Registry 2026-07-06.1 is an MM-I4 (#8493) evidence-accrual pass on khala_code.mobile_mvp.v1 and flips NO promise state — green stays exactly 34, and the record stays planned (not yellow: the full straight line is not yet proven as one continuous device-level run). Since the 2026-07-05.4 pivot pass, real committed evidence landed for mobile GitHub sign-in (#8468-#8470), the repo picker (#8471-#8472), the $10 signup grant plus balance/history UI (#8478, #8480), per-user model configuration (#8484), push device registration (#8485-#8486), the Settings/onboarding/contracts surface rework (#8487-#8489), the first slice of the org-cloud execution spine (#8473), Android emulator launch/interaction proof (#8490), an App Store submission-pack draft (#8491), and repo-picker component-mount E2E coverage (#8492) — the evidenceRefs and safeCopy/unsafeCopy text are updated to reflect this honestly, replacing the stale "five unbuilt pillars" framing with the current, more granular blocker set: the credit-gated dispatch/private-repo-checkout/isolation/writeback work around the landed executor (#8474-#8477), coding-run metering against it (#8479), unproven push delivery (the Expo project id remains unset), IAP staying postponed by owner decision (credits now granted manually via the in-progress Aiur admin app instead), a newly-filed account-deletion gap required for a real store submission (#8502), and any store release. No revenue, payout, settlement, availability, or green claim is created; the record explicitly does not claim the straight line works end to end on a real device yet.',
       'Registry 2026-07-05.4 is the owner-directed Khala Code mobile-only MVP pivot pass (2026-07-05; audit docs/fable/2026-07-05-khala-code-mobile-only-mvp-launch-audit.md, epic #8467) and flips NO promise state — green stays exactly 34. It adds the planned record khala_code.mobile_mvp.v1: the mobile-only launch claim (GitHub sign-in through the OpenAgents auth server, repo picker over the user’s own GitHub authorization, coding turns executed on OpenAgents Cloud with per-user model configuration, exact-usage credit metering with a one-per-GitHub-account $10 starter grant, in-app credit purchases, push notifications, iOS + Android), blockered on the five unbuilt pillars (mobile GitHub login, cloud execution lane, credit grant + IAP, push, store release). It rescopes mobile.fleet_companion.v1 (stays planned): the desktop-pairing companion model is postponed by owner direction until the mobile-only MVP ships, its copy now routes the active mobile path to khala_code.mobile_mvp.v1, and the stale native-SwiftUI/no-Expo framing is dropped as superseded by the 2026-07-04 Expo React Native owner decision. The same pass closed all 15 remaining pre-pivot open issues as postponed with a reopen ledger (audit §8) and filed the launch backlog #8468-#8494. The org-cloud execution lane described by the new record is additive and never widens access to any user’s own Pylon; no revenue, payout, settlement, availability, or green claim is created.',
@@ -5414,9 +5582,61 @@ export const publicProductPromisesDocument = () => {
     ],
   }
 
+  const promises = document.promises.map(promise => {
+    const retiredSuccessor = retiredAppPromiseSuccessors[promise.promiseId]
+    if (retiredSuccessor !== undefined) {
+      return {
+        ...promise,
+        authorityBoundary:
+          'A withdrawn app/product record grants no install, release, update, credential, dispatch, approval, spend, payout, settlement, or public-availability authority. Historical IDs, receipts, and evidence routes remain stable for integrity only.',
+        blockerRefs: [
+          'blocker.product_promises.legacy_product_app_withdrawn',
+        ],
+        claim: `Withdrawn on 2026-07-09: ${promise.claim}`,
+        evidenceRefs: [
+          ...promise.evidenceRefs,
+          'docs/promises/2026-07-09-khala-code-app-retirement-and-openagents-successors.md',
+          'docs/sol/2026-07-09-greenfield-mobile-desktop-decision.md',
+          retiredSuccessor,
+        ],
+        safeCopy:
+          `This stable promise ID is historical. The legacy app/product surface was withdrawn by owner direction on 2026-07-09; its evidence and public-safe receipt/read routes remain dereferenceable, but it is not installable or releasable and receives no new product work. Route current app direction to ${retiredSuccessor}.`,
+        state: 'withdrawn' as const,
+        unsafeCopy:
+          `Do not use ${promise.promiseId} as current product copy, revive its legacy app or release lane, or treat preserved evidence APIs as availability. Route new app claims to ${retiredSuccessor}.`,
+        verification:
+          `Compatibility check: the registry still serves ${promise.promiseId} as withdrawn, retains its historical evidence/receipt refs, and points consumers to ${retiredSuccessor}; active install/release copy and routes must not advertise the legacy app.`,
+      }
+    }
+
+    const disposition = khalaCodeCapabilityDisposition[promise.promiseId]
+    if (disposition === undefined) return promise
+
+    return {
+      ...promise,
+      blockerRefs: [
+        ...promise.blockerRefs,
+        'blocker.product_promises.openagents_greenfield_capability_port_missing',
+      ],
+      claim: disposition.claim,
+      evidenceRefs: [
+        ...promise.evidenceRefs,
+        'docs/promises/2026-07-09-khala-code-app-retirement-and-openagents-successors.md',
+        'docs/sol/2026-07-09-greenfield-mobile-desktop-decision.md',
+        disposition.successor,
+      ],
+      safeCopy: disposition.safeCopy,
+      state: disposition.state ?? promise.state,
+      unsafeCopy: disposition.unsafeCopy,
+      verification:
+        `${promise.verification} Greenfield carry-forward also requires an explicit capability disposition and a real successor-app oracle under #8574/#8597; legacy app evidence cannot satisfy that gate by itself.`,
+    }
+  })
+
   return {
     ...document,
-    verificationSummary: summarizePromiseVerification(document.promises),
+    promises,
+    verificationSummary: summarizePromiseVerification(promises),
   }
 }
 

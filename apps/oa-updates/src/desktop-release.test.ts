@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 
 import { assetKeyFromBytes, createInMemoryAssetStore } from "./asset-store.ts"
 import {
+  assertDesktopReleaseProductPublishable,
   buildDesktopUpdateManifest,
   normalizeDesktopReleaseSeed,
   sha256Hex,
@@ -81,6 +82,15 @@ describe("desktop release manifests", () => {
         artifactPath: "assets/khala-code.dmg",
       }).product,
     ).toBe("khala-code-desktop")
+  })
+
+  test("keeps retired desktop feeds readable but blocks new publication", () => {
+    expect(() =>
+      assertDesktopReleaseProductPublishable("autopilot-desktop"),
+    ).toThrow("autopilot-desktop is retired and read-only")
+    expect(() =>
+      assertDesktopReleaseProductPublishable("khala-code-desktop"),
+    ).toThrow("khala-code-desktop is retired and read-only")
   })
 
   test("rejects prerelease versions from the stable desktop feed", () => {

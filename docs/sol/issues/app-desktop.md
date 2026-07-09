@@ -1,43 +1,121 @@
-# APP-DESKTOP: OpenAgents Desktop — Sarah plus the fleet cockpit on Effect Native
+# APP-DESKTOP: greenfield OpenAgents Desktop — Electron + Effect Native
 
 ## Outcome
 
-The former Khala Code desktop becomes **OpenAgents Desktop**: Sarah is the
-relationship surface and the Fleet pane is the specialist cockpit for deep
-coding work.
+Build a new **OpenAgents Desktop** application from scratch at
+`apps/openagents-desktop`. Sarah is the relationship surface and Fleet is the
+specialist cockpit for deep coding work. Effect Native owns the application,
+component, state, and typed-intent model; Electron is the desktop host.
 
-## Existing substrate
+This is not a rename or in-place rewrite of `clients/khala-code-desktop`. That
+Electrobun application is deprecated and frozen as a parity, behavior-contract,
+service-extraction, and migration reference until greenfield cutover proof.
+Public claim authority is planned `openagents.desktop_app.v1`; the legacy
+`khala_code.desktop_codex_wrapper.v1` and
+`autopilot.desktop_gui_client.v1` records are withdrawn but remain
+dereferenceable history.
+The reusable Effect Native Electron host gap is tracked upstream by
+OpenAgentsInc/effect-native#69; the earlier Electrobun Phase 4 issues #20/#21
+are historical, not destination proof.
 
-- Shipping Electrobun desktop and Codex/Claude/Grok chat runtimes.
-- Dev-only Effect Native fleet cockpit proof.
-- Pylon control API, account status, sessions, approvals, and assignment
-  execution.
-- Shared fleet intents and Khala Sync projections.
+## Legacy substrate to extract, not inherit
+
+- Codex, Claude, and Grok harness/control capabilities.
+- Pylon account status, fleet intents, sessions, approvals, assignments, and
+  exact closeout projections.
+- Khala Sync state, Monaco, terminal, and local diagnostic host requirements.
+- Applicable UX contracts, release-signing knowledge, and update invariants.
+
+No new app code imports the legacy app package, renderer, Electrobun APIs, or
+shell state. Reusable platform-neutral contracts/services move into shared
+packages with independent tests first.
+
+## Required starting template
+
+Scaffold the app from the MIT-licensed
+[`LuanRoger/electron-shadcn`](https://github.com/LuanRoger/electron-shadcn)
+template. The reviewed local mirror is `~/work/projects/repos/electron-shadcn`;
+the reviewed 2026-07-09 baseline is upstream commit
+`a02e7bbfe0c196db22b76f40ec23b5c265d24215`. Record the actual imported commit
+and attribution in the new app and in an `UPSTREAM.md` or `NOTICE` manifest.
+
+Use its Electron Forge + Vite main/preload/renderer layout, fuse hardening,
+packaging structure, Vitest, and Playwright scaffolding as the bootstrap. It is
+a template, not the application architecture: Effect Native replaces its
+starter renderer/component tree, Effect Schema replaces Zod at IPC boundaries,
+and Effect services replace starter process/state logic. Remove unused shadcn,
+TanStack Router/Query, oRPC, updater, and demo dependencies rather than carrying
+parallel architectures. Before the first launch or package, remove the
+template's `updateElectronApp` call and Forge publisher target for
+`LuanRoger/electron-shadcn`, ensure React DevTools cannot install in production,
+remove the template `package-lock.json`, and integrate the scaffold into the Bun
+workspace/lockfile.
+
+The template is not safe unchanged for this product. The reviewed baseline has
+`contextIsolation: true` but also `nodeIntegration: true` and no explicit
+renderer sandbox. The first scaffold commit must set `nodeIntegration: false`,
+set `sandbox: true`, expose only a minimal `contextBridge` preload API, remove
+the generic MessagePort/oRPC starter bridge, and prove those settings with tests
+before any provider/account capability is added.
 
 ## Scope
 
-1. Reframe product name, navigation, and shell as OpenAgents Desktop.
-2. Make Sarah conversation and active Blueprint/run state first-class.
-3. Build the deep Fleet pane from the same run/work-unit/account/approval
-   projections used by `/sarah`.
-4. Consume typed Pylon engine/control services; remove stdout parsing and
-   duplicate orchestration state only where the replacement is ready.
-5. Keep Monaco, terminal, and raw local diagnostics behind typed foreign Host
-   nodes as specialist tools.
-6. Reauthor the full shell and retained panels on Effect Native; delete legacy
-   shell code by converted slice.
-7. Preserve signed/notarized distribution and updates-feed contracts under the
-   new product name with an explicit release migration plan.
+1. Scaffold `@openagentsinc/openagents-desktop` at
+   `apps/openagents-desktop` from the pinned electron-shadcn template, with an
+   independent product identity. Before the first packaged build, freeze the
+   exact macOS bundle ID/product name/executable, Windows AppUserModelId and
+   installer identity, Linux desktop/app ID, deep-link scheme, Electron
+   `userData` path/session partition, update product/feed/channel, GitHub tag
+   namespace, and OAuth redirect/client ownership in `NEEDS_OWNER.md`. Do not
+   reuse `com.openagents.khala.code.desktop`, `khala-code://`, `.khala-code`,
+   `desktop/khala-code-desktop`, or `khala-code-desktop-v*`.
+2. Make Sarah conversation and active Blueprint/FleetRun state first-class,
+   using the same work-unit, account, approval, control, and receipt projections
+   as `/sarah` and mobile.
+3. Build the Fleet pane as a typed specialist projection, not a second
+   orchestration authority. Keep Monaco, terminal, and raw local diagnostics
+   behind typed Effect Native foreign-host nodes.
+4. Enforce a narrow Electron boundary: `contextIsolation: true`,
+   `nodeIntegration: false`, `sandbox: true`, `webviewTag: false`,
+   `webSecurity: true`, restrictive CSP, deny-by-default permission/navigation/
+   window-open handlers, allowlisted external protocols, IPC sender/frame-origin
+   validation, verified packaged fuses, and no raw `ipcRenderer`, MessagePort,
+   Node/Electron built-ins, filesystem/process authority, provider credentials,
+   or raw private events in the renderer.
+5. Add a mechanical Effect Native boundary: depend on the Electron host tracked
+   by OpenAgentsInc/effect-native#69 (or record its typed interim gap), boot the
+   product renderer through Effect Native, and fail a source/dependency oracle
+   if shadcn/Zod/oRPC/TanStack starter application semantics or direct product UI
+   return outside explicitly approved host/renderer adapters.
+6. Consume typed Pylon engine/control services and remove stdout parsing or
+   duplicate orchestration state only after replacement proof.
+7. Establish a new signed/notarized Electron build, clean-machine first-run
+   smoke, rollback, and updates-feed path. Electrobun release tooling and
+   `desktop/khala-code-desktop` feeds are historical inputs, not a destination.
+8. Port applicable behavior contracts into the new app registry and prove
+   cross-device Sarah/Fleet continuation before retiring the legacy app.
+9. Maintain a capability-disposition ledger: every Khala Code idea is marked
+   `fold into Sarah`, `retain as an OpenAgents specialist capability`, or
+   `extract as an engine consumed by the Sarah-first apps`. Only superseded
+   legacy implementations may be retired after their successor disposition is
+   explicit and proven; there is no silent idea loss and no surviving Khala
+   Code product surface.
+10. After extraction, parity, and release receipts exist, remove the deprecated
+   Electrobun package from active workspace, install, release, and update paths.
 
 ## Non-goals
 
-- Desktop is not a second product home or a separate authority plane.
-- Do not block P0 Sarah Fleet Command on completion of the shell conversion.
-- Do not retire useful CLI/TUI diagnostics until the replacement is proven.
+- Desktop is not a second product home or authority plane.
+- Do not convert or rename the Electrobun app.
+- Do not block P0 Sarah Fleet Command on the full desktop build.
+- Do not retire useful CLI/TUI diagnostics until their replacement is proven.
 
 ## Exit
 
-A Sarah-started FleetRun opens in OpenAgents Desktop with matching state and
-controls; a desktop-started run is accurately summarized by Sarah. The retained
-desktop UI is Effect Native, the product is branded OpenAgents Desktop, and
-legacy Khala Code shell paths are deleted.
+A Sarah-started FleetRun opens in the greenfield Electron app with matching
+state and controls; a desktop-started run is accurately summarized by Sarah.
+The retained UI mechanically boots through Effect Native with no surviving
+starter application architecture. The frozen cross-platform identity, secure
+Electron boundary, verified packaged fuses, and signed/notarized independent
+update lane are proven, and the legacy Khala Code Electrobun app is unable to
+release and is no longer an installable product surface.
