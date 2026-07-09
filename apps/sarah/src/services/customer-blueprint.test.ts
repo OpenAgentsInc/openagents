@@ -306,6 +306,60 @@ describe("buildCustomerBlueprintDraft scoping (KHS-3 single-ref seam)", () => {
     expect(storedDrafts[0]!.prospectRef).toBe("prospect-a")
   })
 
+  test("draft revisions publish typed blueprint deltas to this prospect's aliases", async () => {
+    const { sarahAvatarEventStream } = await import("./avatar-event-bus.ts")
+    const raw = sarahAvatarEventStream("prospect-a")
+    const alias = sarahAvatarEventStream("prospect:prospect-a")
+    const rawReader = raw.body!.getReader()
+    const aliasReader = alias.body!.getReader()
+    const decoder = new TextDecoder()
+    await rawReader.read()
+    await aliasReader.read()
+
+    const result = await buildCustomerBlueprintDraft("prospect-a")
+    expect(result.ok).toBe(true)
+
+    await rawReader.read() // existing "Your Blueprint draft" card
+    await aliasReader.read()
+    const rawDelta = JSON.parse(
+      decoder.decode((await rawReader.read()).value).replace(/^data:\s*/, ""),
+    ) as {
+      type: string
+      delta: {
+        kind: string
+        revision: number
+        needsCount: number
+        matchedModules: Array<{
+          ref: string
+          name: string
+          matchBasis: string
+          matchedNeedTurnIds: string[]
+        }>
+      }
+    }
+    const aliasDelta = JSON.parse(
+      decoder.decode((await aliasReader.read()).value).replace(/^data:\s*/, ""),
+    ) as typeof rawDelta
+
+    expect(rawDelta).toEqual(aliasDelta)
+    expect(rawDelta.type).toBe("blueprint_delta")
+    expect(rawDelta.delta.kind).toBe("draft_revision")
+    expect(rawDelta.delta.revision).toBe(1)
+    expect(rawDelta.delta.needsCount).toBe(1)
+    expect(rawDelta.delta.matchedModules.length).toBeGreaterThan(0)
+    expect(rawDelta.delta.matchedModules[0]).toEqual(
+      expect.objectContaining({
+        ref: expect.any(String),
+        name: expect.any(String),
+        matchBasis: expect.any(String),
+        matchedNeedTurnIds: expect.any(Array),
+      }),
+    )
+
+    await rawReader.cancel()
+    await aliasReader.cancel()
+  })
+
   test("an empty ref refuses instead of reading unscoped", async () => {
     const result = await buildCustomerBlueprintDraft("")
     expect(result.ok).toBe(false)

@@ -13,6 +13,7 @@ import {
   getProspectMemoryContext,
   isCrossProspectMemoryProbe,
   PROSPECT_MEMORY_MAX_CHARS,
+  publishProspectFactBlueprintDeltas,
   prospectRefAliases,
   redactProspectFactForCrossScope,
 } from "./prospect-memory.ts"
@@ -146,6 +147,55 @@ describe("distillProspectFacts (deterministic v1)", () => {
     const [fact] = distillProspectFacts([turn("7", "user", long)])
     expect(fact!.fact.length).toBeLessThanOrEqual(160)
     expect(fact!.fact).toContain('"we need')
+  })
+
+  test("publishes one fact_added blueprint delta to this prospect's aliases only", async () => {
+    const { sarahAvatarEventStream } = await import("./avatar-event-bus.ts")
+    const raw = sarahAvatarEventStream("abc123")
+    const alias = sarahAvatarEventStream("prospect:abc123")
+    const other = sarahAvatarEventStream("prospect:other")
+    const rawReader = raw.body!.getReader()
+    const aliasReader = alias.body!.getReader()
+    const otherReader = other.body!.getReader()
+    const decoder = new TextDecoder()
+    await rawReader.read()
+    await aliasReader.read()
+    await otherReader.read()
+
+    const [fact] = distillProspectFacts([
+      turn("turn-need", "user", "We need an AI sales agent for our site"),
+    ])
+    publishProspectFactBlueprintDeltas("abc123", [fact!])
+
+    const rawFrame = decoder.decode((await rawReader.read()).value)
+    const aliasFrame = decoder.decode((await aliasReader.read()).value)
+    for (const frame of [rawFrame, aliasFrame]) {
+      const event = JSON.parse(frame.replace(/^data:\s*/, "")) as {
+        type: string
+        delta: { kind: string; label: string; text: string; sourceTurnId: string }
+      }
+      expect(event.type).toBe("blueprint_delta")
+      expect(event.delta).toEqual({
+        kind: "fact_added",
+        label: "need",
+        text: "We need an AI sales agent for our site",
+        sourceTurnId: "turn-need",
+      })
+    }
+
+    const noOtherFrame = await Promise.race([
+      otherReader.read().then(() => false),
+      Bun.sleep(25).then(() => true),
+    ])
+    const noDuplicateFrame = await Promise.race([
+      rawReader.read().then(() => false),
+      Bun.sleep(25).then(() => true),
+    ])
+    expect(noOtherFrame).toBe(true)
+    expect(noDuplicateFrame).toBe(true)
+    await rawReader.cancel()
+    await aliasReader.cancel()
+    await otherReader.cancel()
   })
 })
 

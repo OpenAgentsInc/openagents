@@ -8,20 +8,53 @@
  * ephemeral UI signals — the session index remains the durable record.
  */
 
-export type SarahAvatarEvent = {
-  type:
-    | "transcript"
-    | "card"
-    | "guard_refusal"
-    | "session"
-  role?: "user" | "assistant"
-  text?: string
-  title?: string
-  body?: string
-  href?: string
-  state?: string
-  at: string
-}
+export type SarahBlueprintFactLabel =
+  | "company"
+  | "role"
+  | "need"
+  | "stack"
+  | "contact"
+  | "other"
+
+export type SarahBlueprintDelta =
+  | {
+      kind: "fact_added"
+      label: SarahBlueprintFactLabel
+      text: string
+      sourceTurnId: string
+    }
+  | {
+      kind: "draft_revision"
+      revision: number
+      needsCount: number
+      matchedModules: Array<{
+        ref: string
+        name: string
+        matchBasis: string
+        matchedNeedTurnIds: string[]
+      }>
+    }
+  | {
+      kind: "contact_linked"
+      contactId: string | null
+      email: string | null
+      mode: string | null
+    }
+  | {
+      kind: "account_linked"
+      contactId: string
+      email: string | null
+      userRef: string
+    }
+
+export type SarahAvatarEventInput =
+  | { type: "transcript"; role: "user" | "assistant"; text: string }
+  | { type: "card"; title: string; body: string; href?: string }
+  | { type: "guard_refusal"; title: string; body: string }
+  | { type: "session"; state: string; title?: string; body?: string }
+  | { type: "blueprint_delta"; delta: SarahBlueprintDelta }
+
+export type SarahAvatarEvent = SarahAvatarEventInput & { at: string }
 
 type Subscriber = (event: SarahAvatarEvent) => void
 
@@ -29,7 +62,7 @@ const subscribers = new Map<string, Set<Subscriber>>()
 
 export function publishSarahAvatarEvent(
   conversationRef: string,
-  event: Omit<SarahAvatarEvent, "at">,
+  event: SarahAvatarEventInput,
 ): void {
   const full: SarahAvatarEvent = { ...event, at: new Date().toISOString() }
   for (const notify of subscribers.get(conversationRef) ?? []) {
@@ -38,6 +71,15 @@ export function publishSarahAvatarEvent(
     } catch {
       // A broken subscriber never blocks the turn.
     }
+  }
+}
+
+export function publishSarahBlueprintDelta(
+  conversationRefs: Iterable<string>,
+  delta: SarahBlueprintDelta,
+): void {
+  for (const ref of conversationRefs) {
+    publishSarahAvatarEvent(ref, { type: "blueprint_delta", delta })
   }
 }
 

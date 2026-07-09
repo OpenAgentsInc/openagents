@@ -12,6 +12,7 @@ import { afterEach, describe, expect, test } from "bun:test"
 import {
   accountPromptLine,
   buildAccountLinkContactRow,
+  linkSarahProspectAccount,
   resolveOpenAgentsSession,
   SARAH_ACCOUNT_CONTACT_ID_PREFIX,
   SARAH_ACCOUNT_LINK_MODE,
@@ -75,6 +76,44 @@ describe("KHS-7 account linking (#8606)", () => {
     })
     expect(line).toContain("buyer@example.com")
     expect(line).toContain("never ask them to create an account")
+  })
+
+  test("account link publishes a typed account_linked blueprint delta", async () => {
+    const { sarahAvatarEventStream } = await import("./avatar-event-bus.ts")
+    const stream = sarahAvatarEventStream("prospect-abc")
+    const reader = stream.body!.getReader()
+    const decoder = new TextDecoder()
+    await reader.read()
+
+    await linkSarahProspectAccount("prospect-abc", {
+      userId: "user_123",
+      email: "buyer@example.com",
+      name: "Buyer",
+    })
+
+    const event = JSON.parse(
+      decoder.decode((await reader.read()).value).replace(/^data:\s*/, ""),
+    ) as {
+      type: string
+      at: string
+      delta: {
+        kind: string
+        contactId: string
+        email: string
+        userRef: string
+      }
+    }
+    expect(event).toEqual({
+      type: "blueprint_delta",
+      at: expect.any(String),
+      delta: {
+        kind: "account_linked",
+        contactId: "oa_user:user_123",
+        email: "buyer@example.com",
+        userRef: "user_123",
+      },
+    })
+    await reader.cancel()
   })
 
   test("test-mode session resolution accepts only a valid userId payload", async () => {

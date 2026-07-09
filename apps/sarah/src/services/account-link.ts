@@ -20,6 +20,7 @@ import {
   sarahTurnStoreStatus,
 } from "./turn-store.ts"
 import { prospectRefAliases } from "./prospect-memory.ts"
+import { publishSarahBlueprintDelta } from "./avatar-event-bus.ts"
 
 export type OpenAgentsSessionUser = {
   userId: string
@@ -168,6 +169,12 @@ export async function linkSarahProspectAccount(
 ): Promise<{ contactId: string; email: string | null }> {
   const row = buildAccountLinkContactRow(prospectRef, user)
   await persistSarahProspectContact(row)
+  publishSarahBlueprintDelta(prospectRefAliases(prospectRef), {
+    kind: "account_linked",
+    contactId: row.contactId,
+    email: row.contactEmail,
+    userRef: user.userId,
+  })
   return { contactId: row.contactId, email: row.contactEmail }
 }
 

@@ -28,6 +28,10 @@
  */
 
 import { readSarahStore } from "./turn-store.ts"
+import {
+  publishSarahBlueprintDelta,
+  type SarahBlueprintFactLabel,
+} from "./avatar-event-bus.ts"
 
 export type SarahMemoryTurnRow = {
   /** sarah_transcript_turns.id — provenance for distilled facts. */
@@ -238,6 +242,43 @@ export function formatMemoryContext(input: {
 
 type ProfileFactJson = { fact: string; source_turn_id: string; at: string }
 
+const FACT_DELTA_LABELS = new Set([
+  "company",
+  "role",
+  "need",
+  "stack",
+  "contact",
+])
+
+function factDeltaLabel(fact: string): SarahBlueprintFactLabel {
+  const raw = fact.split(":", 1)[0]?.trim() ?? ""
+  return FACT_DELTA_LABELS.has(raw)
+    ? (raw as SarahBlueprintFactLabel)
+    : "other"
+}
+
+function factDeltaText(fact: string): string {
+  const withoutLabel = fact.replace(/^[a-z_]+:\s*/i, "").trim()
+  const quoted = withoutLabel.match(/^"([\s\S]*)"$/)
+  return quoted ? quoted[1]!.trim() : withoutLabel
+}
+
+export function publishProspectFactBlueprintDeltas(
+  prospectRef: string,
+  facts: SarahProspectFact[],
+): void {
+  const aliases = prospectRefAliases(prospectRef)
+  if (aliases.length === 0) return
+  for (const fact of facts) {
+    publishSarahBlueprintDelta(aliases, {
+      kind: "fact_added",
+      label: factDeltaLabel(fact.fact),
+      text: factDeltaText(fact.fact),
+      sourceTurnId: fact.sourceTurnId,
+    })
+  }
+}
+
 let profileSchemaReady: Promise<boolean> | null = null
 
 async function ensureProfileSchema(): Promise<boolean> {
@@ -272,17 +313,19 @@ async function upsertProspectProfile(
     source_turn_id: fact.sourceTurnId,
     at: fact.at,
   }))
-  await readSarahStore(
+  const stored = await readSarahStore(async (sql) => {
     // Bun SQL: bind the JS array directly — a stringified param lands as a
     // jsonb *string*, not an array (verified against Postgres 16).
-    (sql) => sql`
+    await sql`
       INSERT INTO sarah_prospect_profile (prospect_ref, facts, updated_at)
       VALUES (${prospectRef}, ${payload}, now())
       ON CONFLICT (prospect_ref) DO UPDATE SET
         facts = EXCLUDED.facts,
         updated_at = now()
-    `,
-  )
+    `
+    return true
+  })
+  if (stored) publishProspectFactBlueprintDeltas(prospectRef, facts)
 }
 
 function asMemoryTurnRow(row: Record<string, unknown>): SarahMemoryTurnRow {

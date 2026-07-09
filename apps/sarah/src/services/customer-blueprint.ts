@@ -44,7 +44,10 @@ import {
   type SarahMemoryTurnRow,
   type SarahProspectFact,
 } from "./prospect-memory.ts"
-import { publishSarahAvatarEvent } from "./avatar-event-bus.ts"
+import {
+  publishSarahAvatarEvent,
+  publishSarahBlueprintDelta,
+} from "./avatar-event-bus.ts"
 import { cosineSimilarity, sarahEmbedText } from "./semantic-answer-cache.ts"
 import { readSarahStore } from "./turn-store.ts"
 
@@ -497,6 +500,17 @@ export async function buildCustomerBlueprintDraft(
       body: summary,
     })
   }
+  publishSarahBlueprintDelta(aliases, {
+    kind: "draft_revision",
+    revision,
+    needsCount: draft.needs.length,
+    matchedModules: draft.suggestedModules.map((module) => ({
+      ref: module.ref,
+      name: module.name,
+      matchBasis: module.matchBasis,
+      matchedNeedTurnIds: module.matchedNeedTurnIds,
+    })),
+  })
 
   return { ok: true, draft, stored, revision }
 }

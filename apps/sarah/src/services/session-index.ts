@@ -4,6 +4,8 @@ import {
   persistSarahProspectContact,
   persistSarahTurn,
 } from "./turn-store.ts";
+import { publishSarahBlueprintDelta } from "./avatar-event-bus.ts";
+import { prospectRefAliases } from "./prospect-memory.ts";
 import { dirname, join } from "node:path";
 
 export type SarahTranscriptRecord = {
@@ -276,6 +278,12 @@ export async function recordSarahCrmContact({
     prospectRef,
     contactId: contactId ?? null,
     contactEmail: contactEmail ?? null,
+    mode: mode ?? null,
+  });
+  publishSarahBlueprintDelta(prospectRefAliases(prospectRef), {
+    kind: "contact_linked",
+    contactId: contactId ?? null,
+    email: contactEmail ?? null,
     mode: mode ?? null,
   });
 }
