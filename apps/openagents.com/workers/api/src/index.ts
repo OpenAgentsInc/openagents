@@ -13400,7 +13400,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
   {
     path: SARAH_FLEET_RUNS_PATH,
     handler: (request, env, ctx) =>
-      Effect.promise(() => sarahFleetRunRoutes.handle(request, env, ctx)),
+      sarahFleetRunRoutes.handle(request, env, ctx),
   },
   {
     path: '/api/mobile/auth/session',

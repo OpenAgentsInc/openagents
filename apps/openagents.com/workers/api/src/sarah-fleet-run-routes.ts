@@ -97,6 +97,11 @@ export type SarahFleetRunRouteDependencies<
 
 class SarahFleetRunRequestBodyError extends Error {}
 
+class SarahFleetRunDependencyError extends S.TaggedErrorClass<SarahFleetRunDependencyError>()(
+  'SarahFleetRunDependencyError',
+  { cause: S.Defect },
+) {}
+
 const collectBoundedRequestChunks = async (
   reader: ReadableStreamDefaultReader<Uint8Array>,
   chunks: ReadonlyArray<Uint8Array> = [],
@@ -225,10 +230,13 @@ const authorityOutcome = <A>(
 const promiseOutcome = <A>(
   operation: () => Promise<A>,
 ): Effect.Effect<
-  | Readonly<{ kind: 'failure'; error: unknown }>
+  | Readonly<{ kind: 'failure'; error: SarahFleetRunDependencyError }>
   | Readonly<{ kind: 'success'; value: A }>
 > =>
-  Effect.tryPromise({ try: operation, catch: error => error }).pipe(
+  Effect.tryPromise({
+    try: operation,
+    catch: cause => new SarahFleetRunDependencyError({ cause }),
+  }).pipe(
     Effect.match({
       onFailure: error => ({ kind: 'failure' as const, error }),
       onSuccess: value => ({ kind: 'success' as const, value }),
@@ -347,7 +355,7 @@ export const makeSarahFleetRunRoutes = <
           )
           if (bodyResult.kind === 'failure') {
             return respond(
-              bodyResult.error instanceof SarahFleetRunRequestBodyError
+              bodyResult.error.cause instanceof SarahFleetRunRequestBodyError
                 ? invalidRequest()
                 : serviceUnavailable('storage_unavailable'),
             )
@@ -395,7 +403,7 @@ export const makeSarahFleetRunRoutes = <
         Effect.ensuring(
           Effect.tryPromise({
             try: () => client.end(),
-            catch: error => error,
+            catch: cause => new SarahFleetRunDependencyError({ cause }),
           }).pipe(Effect.ignore),
         ),
       )
