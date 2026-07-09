@@ -20,6 +20,7 @@ import {
   type KhalaCodexFleetCommandResult,
   type KhalaCodexFleetProgressPayload,
 } from "../src/bun/khala-fleet-tools"
+import { makePylonServiceStub, type PylonServiceAssignmentInput } from "../src/bun/pylon-service"
 
 const tempDirs: string[] = []
 
@@ -465,6 +466,131 @@ describe("Khala Code fleet tools", () => {
     expect(second.active).toBe(false)
   })
 
+  test("DefaultKhalaFleetRunSupervisorManager auto capacity preserves named Codex and Claude accounts", async () => {
+    const fixture = await tempPylonFixture()
+    const codexAccountKey = "aaaaaaaaaaaaaaaa"
+    const claudeAccountKey = "bbbbbbbbbbbbbbbb"
+    await writeFile(join(fixture.home, "config.json"), JSON.stringify({
+      dev: {
+        accounts: [
+          {
+            ref: "codex-owner",
+            provider: "codex",
+            home: join(fixture.home, "accounts", "codex", "codex-owner"),
+          },
+          {
+            ref: "claude-owner",
+            provider: "claude_agent",
+            home: join(fixture.home, "accounts", "claude", "claude-owner"),
+            marginalCostClass: "free",
+          },
+        ],
+      },
+    }))
+    const providerProjection = {
+      ok: true,
+      ownCapacityDispatch: {
+        claudeAccounts: [{ accountKey: claudeAccountKey, available: 1, busy: 0, queued: 0, ready: 1 }],
+        codexAccounts: [{ accountKey: codexAccountKey, available: 1, busy: 0, queued: 0, ready: 1 }],
+      },
+      pylonRef: "pylon.local.test",
+    }
+    const runner = async (input: KhalaCodexFleetCommandInput): Promise<KhalaCodexFleetCommandResult> => {
+      const joined = pylonArgs(input).join(" ")
+      if (joined === "provider go-online --json") return ok(providerProjection)
+      if (joined === "accounts list --json") {
+        return ok({
+          accounts: [
+            {
+              accountRef: "codex-owner",
+              accountRefHash: `account.pylon.codex.${codexAccountKey}`,
+              homeState: "present",
+              provider: "codex",
+            },
+            {
+              accountRef: "claude-owner",
+              accountRefHash: `account.pylon.claude_agent.${claudeAccountKey}`,
+              homeState: "present",
+              provider: "claude_agent",
+            },
+          ],
+        })
+      }
+      if (joined === "accounts status --provider codex --json") {
+        return ok({ accounts: [{
+          accountRef: "codex-owner",
+          accountRefHash: `account.pylon.codex.${codexAccountKey}`,
+          marginalCostClass: "subscription",
+          provider: "codex",
+          readiness: { state: "ready" },
+        }] })
+      }
+      if (joined === "accounts status --provider claude_agent --json") {
+        return ok({ accounts: [{
+          accountRef: "claude-owner",
+          accountRefHash: `account.pylon.claude_agent.${claudeAccountKey}`,
+          marginalCostClass: "free",
+          provider: "claude_agent",
+          readiness: { state: "ready" },
+        }] })
+      }
+      if (joined === "khala apm --base-url https://openagents.com --json") return ok({ assignments: [] })
+      return failed(`unexpected command: ${joined}`)
+    }
+    const inspected = await inspectCodexFleet({
+      includeProcesses: false,
+      startPylon: true,
+      workerKind: "auto",
+    }, { env: fixture.env, runner })
+    expect(inspected.accounts.find(account => account.accountRef === "codex-owner")?.marginalCostClass)
+      .toBe("subscription")
+    const assignments: PylonServiceAssignmentInput[] = []
+    const basePylonService = makePylonServiceStub()
+    const manager = new DefaultKhalaFleetRunSupervisorManager({
+      env: fixture.env,
+      pylonService: {
+        ...basePylonService,
+        runAssignment: input => Effect.gen(function* () {
+          assignments.push(input)
+          return yield* basePylonService.runAssignment(input)
+        }),
+      },
+      runner,
+    })
+
+    await manager.start({
+      fixtureCount: 2,
+      objective: "Prove mixed named capacity reaches one Pylon supervisor.",
+      pylonRef: "pylon.local.test",
+      runRef: "fleet_run.test.auto_mixed_capacity",
+      targetConcurrency: 2,
+      workerKind: "auto",
+      workSource: "fixture",
+    })
+    const result = await waitForFleetRunSnapshot(
+      manager,
+      "fleet_run.test.auto_mixed_capacity",
+      snapshot => snapshot.run.state === "completed" && !snapshot.active,
+      async () => {
+        await new Promise(resolve => setTimeout(resolve, 0))
+      },
+    )
+
+    expect(result.run.state).toBe("completed")
+    expect(new Set(assignments.map(assignment => assignment.accountRef))).toEqual(
+      new Set(["codex-owner", "claude-owner"]),
+    )
+    expect(assignments
+      .map(assignment => `${assignment.accountRef}:${assignment.workerKind}`)
+      .sort()).toEqual([
+      "claude-owner:claude",
+      "codex-owner:codex",
+    ])
+    expect(new Set(result.lifecycle
+      .filter(event => event.kind === "dispatch")
+      .map(event => event.accountRef))).toEqual(new Set(["codex-owner", "claude-owner"]))
+  })
+
   test("DefaultKhalaFleetRunSupervisorManager refreshes live issue-list capacity immediately before named-account dispatch", async () => {
     const fixture = await tempPylonFixture()
     const calls: string[] = []
@@ -572,7 +698,7 @@ describe("Khala Code fleet tools", () => {
     expect(calls[requestIndex - 1]).toBe("presence heartbeat --base-url https://openagents.com --json")
   })
 
-  test("DefaultKhalaFleetRunSupervisorManager refuses default Codex home for real issue-list dispatch", async () => {
+  test("DefaultKhalaFleetRunSupervisorManager auto real work refuses the default Codex home", async () => {
     const fixture = await tempPylonFixture()
     const calls: string[] = []
     const runner = async (input: KhalaCodexFleetCommandInput): Promise<KhalaCodexFleetCommandResult> => {
@@ -593,7 +719,7 @@ describe("Khala Code fleet tools", () => {
           pylonRef: "pylon.local.test",
         })
       }
-      if (joined === "codex accounts list --json") {
+      if (joined === "accounts list --json") {
         return ok({
           accounts: [{
             accountRef: null,
@@ -614,6 +740,9 @@ describe("Khala Code fleet tools", () => {
           }],
           schema: "openagents.pylon.accounts_status.v0.1",
         })
+      }
+      if (joined === "accounts status --provider claude_agent --json") {
+        return ok({ accounts: [], schema: "openagents.pylon.accounts_status.v0.1" })
       }
       if (joined === "gh pr list --repo OpenAgentsInc/openagents --state all --limit 1000 --json number,title,state,labels,body,url,mergedAt") {
         return ok([])
@@ -641,6 +770,7 @@ describe("Khala Code fleet tools", () => {
       runRef: "fleet_run.test.default_home_refused",
       targetConcurrency: 1,
       verify: "bun run check:deploy",
+      workerKind: "auto",
       workSource: "issue_list",
     })
 
@@ -649,6 +779,8 @@ describe("Khala Code fleet tools", () => {
     expect(started.lastTick?.freeSlots).toBe(0)
     expect(calls.some(command => command.startsWith("khala request "))).toBe(false)
     expect(calls).toContain("presence heartbeat --base-url https://openagents.com --json")
+    expect(calls).toContain("accounts status --provider codex --json")
+    expect(calls).toContain("accounts status --provider claude_agent --json")
 
     await manager.control({ runRef: "fleet_run.test.default_home_refused", verb: "stop" })
   })

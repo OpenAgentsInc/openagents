@@ -69,6 +69,12 @@ import {
   type FleetRunSupervisorTickResult,
 } from "../../../../apps/pylon/src/orchestration/fleet-run-supervisor.js"
 import { PylonFleetRunManager } from "../../../../apps/pylon/src/orchestration/fleet-run-manager.js"
+import {
+  mapPylonFleetSupervisorCapacity,
+  normalizePylonFleetMarginalCostClass,
+  parsePylonFleetMarginalCostClass,
+  type PylonFleetMarginalCostClass,
+} from "../../../../apps/pylon/src/orchestration/fleet-run-capacity.js"
 import { khalaCodeConfigFromRuntimeEnv } from "./khala-code-config.js"
 import { fetchKhalaCodexRateLimitStatus } from "./codex-rate-limits.js"
 import { spawnKhalaProcessNodeChild, type KhalaProcessNodeChild } from "./khala-process.js"
@@ -196,6 +202,7 @@ type AccountRow = {
   readonly accountRefHash: string | null
   readonly capacity: AccountCapacityRow | null
   readonly home: string | null
+  readonly marginalCostClass?: PylonFleetMarginalCostClass | undefined
   readonly paused: boolean
   readonly provider: "claude_agent" | "codex"
   readonly quotaState: string | null
@@ -1684,16 +1691,15 @@ export class DefaultKhalaFleetRunSupervisorManager implements KhalaFleetRunSuper
 
   private runnerFor(runRef: string, pylonRef: string): FleetRunSupervisorRunner {
     return {
-      dispatch: async ({ accountRef, run, workUnit }) => {
+      dispatch: async ({ accountRef, run, workUnit, workerKind }) => {
         const config = this.planConfigs.get(runRef)
         if (config === undefined) throw new Error(`missing fleet run plan config: ${runRef}`)
-        if (run.workerKind === "grok") {
-          // MH-4/MH-5: this manager has no grok executor and its capacityFor()
-          // never advertises grok-labeled Pylon accounts, so dispatch should
-          // be unreachable for a grok-labeled run. Fail loud rather than
-          // silently routing the run onto a real codex/claude Pylon account.
+        if (workerKind === "grok") {
+          // Grok has no Pylon account-provider row on this adapter yet, so a
+          // resolved Grok dispatch is unreachable here. Fail loud rather than
+          // silently routing it onto a real Codex/Claude Pylon account.
           throw new Error(
-            `fleet run ${run.runRef} is grok-labeled; DefaultKhalaFleetRunSupervisorManager has no grok executor and must never dispatch it onto a Pylon codex/claude account`,
+            `fleet run ${run.runRef} resolved a Grok worker; DefaultKhalaFleetRunSupervisorManager has no Pylon Grok account executor and must never dispatch it onto a Codex/Claude account`,
           )
         }
         const fixture = run.workSource === "fixture"
@@ -1716,7 +1722,7 @@ export class DefaultKhalaFleetRunSupervisorManager implements KhalaFleetRunSuper
           repo: fixture ? undefined : workUnit.repo ?? config.repo,
           timeoutMs: config.timeoutMs,
           verify: fixture ? undefined : workUnit.verify ?? config.verify,
-          workerKind: run.workerKind,
+          workerKind,
         }))
       },
     }
@@ -1736,13 +1742,18 @@ export class DefaultKhalaFleetRunSupervisorManager implements KhalaFleetRunSuper
           startPylon: true,
           workerKind: narrowToDelegateWorkerKind(run?.workerKind ?? "codex"),
         }, env === undefined ? this.options : { ...this.options, env })
-        return status.accounts
-          .filter(account => account.readiness === "ready" && !account.paused)
-          .filter(account => !realWork || !isDefaultAccountRef(account.accountRef))
-          .map(account => ({
+        return mapPylonFleetSupervisorCapacity(
+          status.accounts.map(account => ({
             accountRef: account.accountRef,
-            advertisedCapacity: Math.max(0, account.capacity?.available ?? account.capacity?.ready ?? 1),
-          }))
+            capacity: account.capacity,
+            isDefaultAccount: isDefaultAccountRef(account.accountRef),
+            marginalCostClass: account.marginalCostClass,
+            paused: account.paused,
+            provider: account.provider,
+            readiness: account.readiness,
+          })),
+          { allowDefaultAccount: !realWork },
+        )
       },
     }
   }
@@ -2136,6 +2147,7 @@ function parseJsonObject(raw: string): Record<string, unknown> | null {
 
 type AccountConfigEntry = Readonly<{
   home: string
+  marginalCostClass?: PylonFleetMarginalCostClass | undefined
   paused: boolean
 }>
 
@@ -2160,8 +2172,10 @@ async function readAccountConfig(
         typeof account.ref === "string" &&
         typeof account.home === "string"
       ) {
+        const marginalCostClass = parsePylonFleetMarginalCostClass(account.marginalCostClass)
         out.set(accountConfigKey(account.provider, account.ref), {
           home: account.home,
+          ...(marginalCostClass === null ? {} : { marginalCostClass }),
           paused: account.paused === true,
         })
       }
@@ -2193,6 +2207,7 @@ function mergeAccountRows(
         accountRefHash: row.accountRefHash ?? previous?.accountRefHash ?? null,
         capacity: row.capacity ?? previous?.capacity ?? null,
         home: row.home ?? previous?.home ?? null,
+        marginalCostClass: row.marginalCostClass ?? previous?.marginalCostClass,
         paused: row.paused || previous?.paused === true,
         rateLimits: row.rateLimits ?? previous?.rateLimits,
         readiness: row.readiness === "unknown" ? previous?.readiness ?? "unknown" : row.readiness,
@@ -2227,12 +2242,16 @@ function accountRowFrom(value: unknown, providers: readonly AccountProvider[] = 
     stringField(account, "readiness") ??
     (stringField(account, "homeState") === "present" ? "ready" : "unknown")
   const quota = recordField(account, "quota")
+  const marginalCostClass = stringField(account, "marginalCostClass")
   return {
     accountKey: accountKeyFromHash(accountRefHash),
     accountRef,
     accountRefHash,
     capacity: null,
     home: null,
+    ...(marginalCostClass === null
+      ? {}
+      : { marginalCostClass: normalizePylonFleetMarginalCostClass(marginalCostClass) }),
     paused: false,
     provider,
     quotaState: stringField(quota, "state"),
@@ -2247,7 +2266,14 @@ function withAccountConfig(
   return accounts.map(account => {
     const entry = config.get(accountConfigKey(account.provider, account.accountRef))
     if (entry === undefined) return account
-    return { ...account, home: entry.home, paused: entry.paused }
+    return {
+      ...account,
+      home: entry.home,
+      ...(entry.marginalCostClass === undefined
+        ? {}
+        : { marginalCostClass: entry.marginalCostClass }),
+      paused: entry.paused,
+    }
   })
 }
 
