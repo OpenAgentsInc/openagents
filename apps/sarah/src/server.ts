@@ -31,6 +31,14 @@ import { listSarahProspectSessions } from "./services/session-index.ts"
 import { processDueSarahFollowUps } from "./services/follow-up-scheduler.ts"
 import { enqueueSarahEmailDraft } from "./services/crm-email-rail.ts"
 import { runOwnedSarahTurn } from "./agent-runtime/owned-runtime.ts"
+import { handleSarahChatCompletions } from "./llm-openai-compat.ts"
+import { sarahAvatarEventStream } from "./services/avatar-event-bus.ts"
+import {
+  mintSarahAvatarSession,
+  reapStaleAvatarSessions,
+  sarahAvatarStatus,
+  stopSarahAvatarSession,
+} from "./services/liveavatar.ts"
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url))
 /** Overridable for Cloud Run monolith bundle (UI copied beside server.js). */
@@ -190,6 +198,7 @@ async function handleOperatorOps(): Promise<Response> {
     authority: "openagents.com API",
     emailRail: "crm_operator_rail",
     agentRuntime: "owned_effect_seed",
+    avatar: sarahAvatarStatus(),
     modelPath: sarahGoogleInferenceArmed()
       ? `google_gemma_live:${sarahTextModel()}`
       : "seed_echo_not_armed",
@@ -260,18 +269,50 @@ function serveUi(pathname: string): Response | null {
       headers: { "content-type": "text/css; charset=utf-8" },
     })
   }
-  if (pathname === "/sarah.js") {
-    return new Response(Bun.file(join(UI_DIR, "sarah.js")), {
+  return null
+}
+
+// The Effect Native surface bundle (#8598 AV-5). Production serves the
+// deploy-built artifact from UI_DIR; dev builds once from source on demand.
+let appBundlePromise: Promise<string | null> | null = null
+
+async function serveAppBundle(): Promise<Response | null> {
+  const built = Bun.file(join(UI_DIR, "app.js"))
+  if (await built.exists()) {
+    return new Response(built, {
       headers: { "content-type": "application/javascript; charset=utf-8" },
     })
   }
-  return null
+  appBundlePromise ??= (async () => {
+    const entry = join(__dirname, "ui/main.ts")
+    if (!(await Bun.file(entry).exists())) return null
+    const result = await Bun.build({
+      entrypoints: [entry],
+      target: "browser",
+      minify: false,
+    })
+    if (!result.success || result.outputs.length === 0) {
+      console.error("[sarah] app bundle build failed", result.logs)
+      return null
+    }
+    return await result.outputs[0]!.text()
+  })()
+  const code = await appBundlePromise
+  if (code === null) return null
+  return new Response(code, {
+    headers: { "content-type": "application/javascript; charset=utf-8" },
+  })
 }
 
 export async function handleSarahRequest(request: Request): Promise<Response> {
   const url = new URL(request.url)
   const path = stripPrefix(url.pathname)
 
+  if (path === "/app.js") {
+    const bundle = await serveAppBundle()
+    if (bundle) return bundle
+    return json({ error: { code: "app_bundle_unavailable" } }, { status: 500 })
+  }
   const ui = serveUi(path)
   if (ui) return ui
 
@@ -299,6 +340,32 @@ export async function handleSarahRequest(request: Request): Promise<Response> {
   }
   if (apiPath === "/api/realtime/session-config" && request.method === "GET") {
     return handleSessionConfig()
+  }
+  if (apiPath === "/api/avatar/status" && request.method === "GET") {
+    return json(sarahAvatarStatus())
+  }
+  if (apiPath === "/api/avatar/session" && request.method === "POST") {
+    reapStaleAvatarSessions()
+    const result = await mintSarahAvatarSession({
+      prospectRef: readSarahProspectRef(request) ?? undefined,
+    })
+    if (!result.ok) {
+      return json({ error: { code: result.error } }, { status: result.status })
+    }
+    return json(result)
+  }
+  if (apiPath === "/api/avatar/stop" && request.method === "POST") {
+    const body = (await request.json().catch(() => ({}))) as { sessionId?: string }
+    if (!body.sessionId) return json({ error: { code: "missing_session_id" } }, { status: 400 })
+    return json(await stopSarahAvatarSession(body.sessionId))
+  }
+  if (apiPath === "/api/avatar/events" && request.method === "GET") {
+    const ref = url.searchParams.get("ref")
+    if (!ref) return json({ error: { code: "missing_ref" } }, { status: 400 })
+    return sarahAvatarEventStream(ref)
+  }
+  if (apiPath === "/api/llm/chat/completions" && request.method === "POST") {
+    return handleSarahChatCompletions(request)
   }
   if (apiPath === "/api/eve/turn" && request.method === "POST") {
     return handleEveTurn(request)

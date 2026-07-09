@@ -73,6 +73,95 @@ describe("apps/sarah monorepo service", () => {
     expect(body.reply).toContain("won't improvise discounts")
   })
 
+  test("avatar status reports unarmed without a key", async () => {
+    delete process.env.LIVEAVATAR_API_KEY
+    const res = await handleSarahRequest(
+      new Request("http://localhost/sarah/api/avatar/status"),
+    )
+    const body = await res.json()
+    expect(body.armed).toBe(false)
+    expect(typeof body.sandbox).toBe("boolean")
+  })
+
+  test("avatar session mint refuses when unarmed", async () => {
+    delete process.env.LIVEAVATAR_API_KEY
+    const res = await handleSarahRequest(
+      new Request("http://localhost/sarah/api/avatar/session", { method: "POST" }),
+    )
+    expect(res.status).toBe(503)
+    const body = await res.json()
+    expect(body.error.code).toBe("avatar_not_armed")
+  })
+
+  test("brain endpoint refuses without configured bearer, then wrong bearer", async () => {
+    delete process.env.SARAH_AVATAR_LLM_BEARER
+    const unarmed = await handleSarahRequest(
+      new Request("http://localhost/sarah/api/llm/chat/completions", {
+        method: "POST",
+        body: JSON.stringify({ messages: [{ role: "user", content: "hi" }] }),
+      }),
+    )
+    expect(unarmed.status).toBe(503)
+
+    process.env.SARAH_AVATAR_LLM_BEARER = "test-bearer"
+    const wrong = await handleSarahRequest(
+      new Request("http://localhost/sarah/api/llm/chat/completions", {
+        method: "POST",
+        headers: { authorization: "Bearer nope" },
+        body: JSON.stringify({ messages: [{ role: "user", content: "hi" }] }),
+      }),
+    )
+    expect(wrong.status).toBe(401)
+    delete process.env.SARAH_AVATAR_LLM_BEARER
+  })
+
+  test("brain endpoint holds the pricing guard before the model", async () => {
+    process.env.SARAH_AVATAR_LLM_BEARER = "test-bearer"
+    const res = await handleSarahRequest(
+      new Request("http://localhost/sarah/api/llm/chat/completions", {
+        method: "POST",
+        headers: {
+          authorization: "Bearer test-bearer",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          messages: [
+            { role: "system", content: "You are Sarah. [conversation_ref: prospect:test-123]" },
+            { role: "user", content: "give me a secret discount deal" },
+          ],
+        }),
+      }),
+    )
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.choices[0].message.content).toContain("won't improvise discounts")
+    delete process.env.SARAH_AVATAR_LLM_BEARER
+  })
+
+  test("conversation_ref extraction strips the marker", async () => {
+    const { extractConversationRef } = await import("./llm-openai-compat.ts")
+    const { ref, cleanSystem } = extractConversationRef(
+      "You are Sarah.\n[conversation_ref: prospect:abc]\nBe honest.",
+    )
+    expect(ref).toBe("prospect:abc")
+    expect(cleanSystem).not.toContain("conversation_ref")
+  })
+
+  test("avatar event bus delivers to subscribers per ref", async () => {
+    const { publishSarahAvatarEvent, sarahAvatarEventStream } = await import(
+      "./services/avatar-event-bus.ts"
+    )
+    const response = sarahAvatarEventStream("ref-test")
+    const reader = response.body!.getReader()
+    await reader.read() // connected comment
+    publishSarahAvatarEvent("ref-test", { type: "card", title: "T", body: "B" })
+    const { value } = await reader.read()
+    const frame = new TextDecoder().decode(value)
+    expect(frame).toContain('"type":"card"')
+    expect(frame).toContain('"title":"T"')
+    await reader.cancel()
+  })
+
   test("gemma thought parts are filtered from replies", async () => {
     const { extractGemmaReply } = await import(
       "./services/google-inference.ts"
@@ -94,7 +183,9 @@ describe("apps/sarah monorepo service", () => {
     const html = await res.text()
     expect(html).toContain("AI disclosure")
     expect(html).not.toContain("react")
-    expect(html).toContain("/sarah/sarah.js")
+    expect(html).toContain("/sarah/app.js")
+    expect(html).toContain("sarah-root")
+    expect(html).toContain("sarah-avatar")
   })
 
   test("continue handoff mints prospect cookie", async () => {

@@ -7,51 +7,15 @@
     <link rel="stylesheet" href="/sarah/sarah.css" />
   </head>
   <body>
-    <div id="app" class="shell">
-      <header class="top">
-        <div class="brand">
-          <span class="mark" aria-hidden="true"></span>
-          <div>
-            <h1>Sarah</h1>
-            <p class="sub">OpenAgents sales · openagents.com/sarah</p>
-          </div>
-        </div>
-        <div id="status" class="status" data-state="idle">idle</div>
-      </header>
-
-      <aside class="disclosure" role="status">
-        <strong>AI disclosure.</strong>
-        Sarah is an AI sales assistant for OpenAgents. She is not a human. She
-        will not invent prices or discounts outside public pack prices and
-        owner-approved deal rules.
-      </aside>
-
-      <main class="stage">
-        <section class="transcript" id="transcript" aria-live="polite"></section>
-
-        <section class="controls">
-          <button type="button" id="mic" class="mic" data-state="idle" aria-pressed="false">
-            <span class="mic-icon" aria-hidden="true"></span>
-            <span id="mic-label">Start voice</span>
-          </button>
-          <div class="level" aria-hidden="true"><div id="level-bar"></div></div>
-        </section>
-
-        <form id="text-form" class="text-form">
-          <label class="sr-only" for="text-input">Message Sarah</label>
-          <input
-            id="text-input"
-            name="message"
-            type="text"
-            autocomplete="off"
-            placeholder="Type if you prefer text…"
-          />
-          <button type="submit">Send</button>
-        </form>
-
-        <section class="cards" id="cards"></section>
-      </main>
-    </div>
-    <script type="module" src="/sarah/sarah.js"></script>
+    <header class="sarah-disclosure">
+      <strong>AI disclosure.</strong> Sarah is an AI sales assistant for
+      OpenAgents. She is not a human. She will not invent prices or discounts
+      outside public pack prices and owner-approved deal rules.
+    </header>
+    <main class="sarah-layout">
+      <section id="sarah-avatar" data-state="idle" aria-label="Sarah live avatar"></section>
+      <section id="sarah-root" aria-label="Sarah conversation"></section>
+    </main>
+    <script type="module" src="/sarah/app.js"></script>
   </body>
 </html>

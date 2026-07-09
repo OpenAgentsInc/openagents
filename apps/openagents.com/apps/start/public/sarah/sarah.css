@@ -1,17 +1,6 @@
-:root {
-  color-scheme: dark;
-  --bg: #05070d;
-  --panel: #0b1220;
-  --line: #1a2a44;
-  --text: #d7e8ff;
-  --muted: #7f9bbf;
-  --protoss: #4cc9ff;
-  --protoss-dim: rgba(76, 201, 255, 0.16);
-  --good: #5dffa8;
-  --warn: #ffd36a;
-  --bad: #ff6b8a;
-  --font: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
-}
+/* Sarah surface chrome (#8598 AV-5). The UI tree itself is Effect Native —
+   this file only lays out the two top-level regions (avatar video + EN root)
+   and the avatar container states. Protoss blue, one theme. */
 
 * {
   box-sizing: border-box;
@@ -20,240 +9,79 @@
 html,
 body {
   margin: 0;
-  min-height: 100%;
-  background:
-    radial-gradient(1200px 600px at 20% -10%, rgba(76, 201, 255, 0.12), transparent 60%),
-    radial-gradient(900px 500px at 100% 0%, rgba(88, 70, 255, 0.1), transparent 50%),
-    var(--bg);
-  color: var(--text);
-  font-family: var(--font);
-}
-
-.shell {
-  max-width: 760px;
-  margin: 0 auto;
-  padding: 24px 16px 48px;
-}
-
-.top {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 16px;
-  margin-bottom: 16px;
-}
-
-.brand {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-}
-
-.mark {
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
-  background: linear-gradient(135deg, var(--protoss), #6a5cff);
-  box-shadow: 0 0 24px var(--protoss-dim);
-}
-
-h1 {
-  margin: 0;
-  font-size: 1.35rem;
-  letter-spacing: 0.02em;
-}
-
-.sub {
-  margin: 2px 0 0;
-  color: var(--muted);
-  font-size: 0.85rem;
-}
-
-.status {
-  border: 1px solid var(--line);
-  background: var(--panel);
-  padding: 6px 10px;
-  border-radius: 999px;
-  font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--muted);
-}
-
-.status[data-state="live"] {
-  color: var(--good);
-  border-color: rgba(93, 255, 168, 0.35);
-}
-
-.status[data-state="error"] {
-  color: var(--bad);
-}
-
-.disclosure {
-  border: 1px solid rgba(76, 201, 255, 0.35);
-  background: var(--protoss-dim);
-  color: var(--text);
-  padding: 12px 14px;
-  border-radius: 12px;
-  margin-bottom: 18px;
-  font-size: 0.92rem;
-  line-height: 1.45;
-}
-
-.stage {
-  border: 1px solid var(--line);
-  background: rgba(11, 18, 32, 0.92);
-  border-radius: 18px;
-  padding: 16px;
-  box-shadow: 0 0 0 1px rgba(76, 201, 255, 0.05) inset;
-}
-
-.transcript {
-  min-height: 280px;
-  max-height: 48vh;
-  overflow: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 4px 2px 16px;
-}
-
-.turn {
-  max-width: 92%;
-  padding: 10px 12px;
-  border-radius: 12px;
-  line-height: 1.4;
-  font-size: 0.95rem;
-  border: 1px solid var(--line);
-}
-
-.turn.user {
-  align-self: flex-end;
-  background: rgba(76, 201, 255, 0.1);
-}
-
-.turn.assistant {
-  align-self: flex-start;
-  background: rgba(255, 255, 255, 0.03);
-}
-
-.turn .meta {
-  display: block;
-  color: var(--muted);
-  font-size: 0.7rem;
-  margin-bottom: 4px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-
-.controls {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  margin: 8px 0 14px;
-}
-
-.mic {
-  appearance: none;
-  border: 1px solid rgba(76, 201, 255, 0.45);
-  background: linear-gradient(180deg, rgba(76, 201, 255, 0.18), rgba(76, 201, 255, 0.05));
-  color: var(--text);
-  border-radius: 999px;
-  padding: 12px 18px;
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  cursor: pointer;
-  font: inherit;
-}
-
-.mic[data-state="live"] {
-  border-color: var(--good);
-  box-shadow: 0 0 20px rgba(93, 255, 168, 0.2);
-}
-
-.mic-icon {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  background: var(--protoss);
-}
-
-.mic[data-state="live"] .mic-icon {
-  background: var(--good);
-}
-
-.level {
-  flex: 1;
-  height: 8px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.06);
-  overflow: hidden;
-}
-
-#level-bar {
-  width: 0%;
-  height: 100%;
-  background: linear-gradient(90deg, var(--protoss), #6a5cff);
-  transition: width 80ms linear;
-}
-
-.text-form {
-  display: flex;
-  gap: 8px;
-}
-
-.text-form input {
-  flex: 1;
-  border-radius: 12px;
-  border: 1px solid var(--line);
-  background: #070d18;
-  color: var(--text);
-  padding: 12px 14px;
-  font: inherit;
-}
-
-.text-form button {
-  border-radius: 12px;
-  border: 1px solid rgba(76, 201, 255, 0.4);
-  background: var(--protoss-dim);
-  color: var(--text);
-  padding: 0 16px;
-  cursor: pointer;
-  font: inherit;
-}
-
-.cards {
-  display: grid;
-  gap: 10px;
-  margin-top: 14px;
-}
-
-.card {
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 12px;
-  background: rgba(255, 255, 255, 0.02);
-}
-
-.card h3 {
-  margin: 0 0 6px;
-  font-size: 0.95rem;
-}
-
-.card p {
-  margin: 0;
-  color: var(--muted);
-  font-size: 0.88rem;
-}
-
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
   padding: 0;
-  margin: -1px;
+  min-height: 100%;
+  background: #000000;
+  color: #f1efe8;
+  font-family:
+    "Berkeley Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.sarah-layout {
+  display: grid;
+  grid-template-columns: minmax(280px, 480px) minmax(360px, 720px);
+  gap: 16px;
+  justify-content: center;
+  align-items: start;
+  padding: 24px 16px;
+  min-height: 100vh;
+}
+
+#sarah-avatar {
+  position: sticky;
+  top: 24px;
+  aspect-ratio: 3 / 4;
+  border: 1px solid #17315f;
+  border-radius: 8px;
+  background:
+    radial-gradient(ellipse at 50% 30%, #0b1220 0%, #010102 70%);
   overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  border: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#sarah-avatar[data-state="idle"]::after {
+  content: "Sarah's live avatar appears here";
+  color: #5b6b8c;
+  font-size: 13px;
+}
+
+#sarah-avatar[data-state="connecting"]::after {
+  content: "Connecting…";
+  color: #4fd0ff;
+  font-size: 13px;
+}
+
+#sarah-avatar video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+@media (max-width: 900px) {
+  .sarah-layout {
+    grid-template-columns: 1fr;
+  }
+  #sarah-avatar {
+    position: static;
+    aspect-ratio: 16 / 10;
+    max-height: 40vh;
+  }
+}
+
+.sarah-disclosure {
+  max-width: 1216px;
+  margin: 16px auto 0;
+  padding: 12px 16px;
+  border: 1px solid #17315f;
+  border-radius: 8px;
+  background: #010b1a;
+  color: #aaa8a2;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.sarah-disclosure strong {
+  color: #4fd0ff;
 }

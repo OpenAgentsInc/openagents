@@ -67,7 +67,10 @@ cp -R "$APP_DIR/apps/web/dist" dist-cloudrun/web-dist
 # #8594 SM-5: Sarah UI + agent persona ride beside the monolith bundle.
 REPO_ROOT="$(cd "$APP_DIR/../.." && pwd)"
 mkdir -p dist-cloudrun/sarah-ui dist-cloudrun/sarah-agent
-cp -R "$REPO_ROOT/apps/sarah/src/ui/." dist-cloudrun/sarah-ui/
+# #8598 AV-5: the Sarah surface is an Effect Native bundle, built here.
+cp "$REPO_ROOT/apps/sarah/src/ui/index.html" "$REPO_ROOT/apps/sarah/src/ui/sarah.css" dist-cloudrun/sarah-ui/
+(cd "$REPO_ROOT" && bun build apps/sarah/src/ui/main.ts --target browser --minify \
+  --outfile "$API_DIR/dist-cloudrun/sarah-ui/app.js") >/dev/null
 cp -R "$REPO_ROOT/apps/sarah/agent/." dist-cloudrun/sarah-agent/
 
 echo "==> Rendering env vars from wrangler.jsonc ($TARGET)"
@@ -79,6 +82,13 @@ SET_SECRETS=(
   "OPENAGENTS_ADMIN_API_TOKEN=openagents-monolith-admin-token-${ENV_SUFFIX}:latest"
   "KHALA_SYNC_LIVE_HUB_TOKEN=khala-live-hub-token:latest"
   "GEMINI_API_KEY=openagents-gemini-api-key:latest"
+  # #8598: Sarah LiveAvatar sessions + the bearer guarding the avatar brain
+  # endpoint (/sarah/api/llm/chat/completions) + the registered LiveAvatar
+  # llm-configuration id. SARAH_AVATAR_ID stays unset until the owner picks a
+  # production avatar (sandbox default keeps the loop provable).
+  "LIVEAVATAR_API_KEY=sarah-liveavatar-api-key:latest"
+  "SARAH_AVATAR_LLM_BEARER=sarah-avatar-llm-bearer:latest"
+  "SARAH_AVATAR_LLM_CONFIG_ID=sarah-avatar-llm-config-id:latest"
   # OPENROUTER_API_KEY is DROPPED on BOTH staging AND production (owner decision
   # 2026-07-09): OpenRouter is no longer a platform Khala supply lane — it was
   # removed from every plan in model-router.ts and the primary lane is now our

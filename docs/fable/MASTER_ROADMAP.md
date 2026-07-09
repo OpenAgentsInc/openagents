@@ -1,12 +1,34 @@
 # MASTER ROADMAP — Khala Code MVP (Tested, Submitted) → Sarah → Codex → AI Employees → the Suite
 
-Date: 2026-07-09 (rev 6.9 — MB-EN: full Khala mobile app rewrite on Effect Native filed (#8597) + upstream mobile epic effect-native#52; cross-app Khala Sync messaging as the exit test)
+Date: 2026-07-09 (rev 6.10 — Sarah gets a face: LiveAvatar surface on Effect Native, epic #8598)
 Status: **the single consolidated execution roadmap.** This document owns
 top-level sequencing across everything designed in the 2026-07-07 strategy
 set and its predecessors. The source docs remain authoritative for their
 *content* (specs, evidence, arguments); when sequencing here and sequencing
 there disagree, **this document wins**, and new issues are filed against the
 phase lanes named here.
+
+**Rev 6.10 changes (owner directive, 2026-07-09 — SARAH AVATAR ON EFFECT
+NATIVE):** Sarah gets a real-time avatar face at openagents.com/sarah,
+built per the assessment
+(`../sarah/2026-07-09-liveavatar-integration-assessment.md`) and tracked
+as epic **#8598** (AV-1..6): HeyGen LiveAvatar **FULL Mode** via the Web
+SDK in our own page (the tested iframe embed is sealed — no events, no
+tools — and is not built on), with the **Custom LLM add-on pointed at an
+OpenAI-compatible endpoint we host** so the avatar's brain is the owned
+runtime (Gemma 4 on our Google inference, deterministic pricing guard
+BEFORE the model, turns receipted to the session index) — one brain for
+text and voice. Components pop via SDK data-channel transcriptions + a
+session-keyed SSE tool-effect bus into typed cards. **The /sarah surface
+is reauthored in Effect Native** (`@effect-native/core` + DOM renderer,
+zero React, the hand-rolled sarah.js shell deleted) — satisfying the
+open SM-2 item on #8594; the avatar video mounts in a sibling container
+pending a `media-video` Host kind (demand filed in
+`docs/sarah/EN-GAPS.md` → EN-2 #8572). Session minting is S-3-guarded
+(caps + usage JSONL — avatar minutes are credit-metered); LITE mode
+(1 vs 2 credits/min, BYO STT/TTS) is deferred until usage data justifies
+it. Owner gates: production avatar_id selection (sandbox default until
+then) and the LiveAvatar credit budget.
 
 **Rev 6.8 changes (2026-07-09 — Sarah consolidation landed + review):**
 the SM epic #8594 executed same-night (`974490e7ba`, `31921bb3ab`):
