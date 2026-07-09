@@ -224,7 +224,52 @@ export const sarahIsolationContractRegistry: BehaviorContractRegistryDocument = 
       verification:
         "bun test src/server.test.ts inside apps/sarah (pricing-guard tests on both the text lane and the avatar brain); runs in the package test glob, the apps/sarah oracle chain, and the repo test:sarah sweep before pushes to main.",
     },
+    {
+      authorityBoundary:
+        "This contract binds the account-linking seam only (KHS-7, #8606): the openagents.com API remains the identity and credit authority; sign-in happens on the existing /login + OpenAuth rails (apps/sarah never touches password/OAuth internals and never mints sessions); identity for a link comes ONLY from the first-party session cookie verified against GET /api/auth/session, never from a request body; and the linked identity (user ref + email) lands only in sarah_prospect_contacts. The payment half of the owner's directive (attaching a card, paying in-chat) is KHS-8 (epic #8599) and must gain its own contract when it lands.",
+      blockerRefs: [],
+      contractId: "sarah.in_chat_account_linking.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "apps/sarah/src/services/account-link.ts",
+        "apps/sarah/src/server.ts",
+        "apps/sarah/src/ui/main.ts",
+        "docs/sarah/SARAH_CONTRACTS.md",
+        "issue:#8606",
+        "issue:#8599",
+      ],
+      oracles: [
+        {
+          description:
+            "Link routes: GET /sarah/api/account/status reports anonymous without a prospect cookie; POST /sarah/api/account/link returns 400 without a prospect cookie, 401 for an unauthenticated request, and on a verified openagents.com session upserts contact_id oa_user:<userId> + contact_email onto the prospect ref.",
+          id: "account_link_routes.rpc",
+          kind: "bun-test",
+          mode: "rpc",
+          ref: "apps/sarah/src/server.test.ts",
+        },
+        {
+          description:
+            "Link seam units: the pure contact-row shape (oa_user: prefix, account_link mode), the single account-awareness prompt line (may suggest once, never pushy, null when the store cannot persist a link so Sarah never pitches a link that would not stick), test-mode session parsing, and the no-oa_access-cookie anonymous fast path.",
+          id: "account_link_seam.unit",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/sarah/src/services/account-link.test.ts",
+        },
+      ],
+      productArea: "account linking + attribution",
+      source: {
+        channel: "sarah-production-conversation",
+        statedBy: "owner",
+        statedOn: "2026-07-09",
+      },
+      state: "enforced",
+      statement:
+        "Sarah prompts the user to create an account without leaving the conversation",
+      surface: "sarah",
+      verification:
+        "bun test src/server.test.ts and src/services/account-link.test.ts inside apps/sarah; runs in the package test glob, the apps/sarah oracle chain, and the repo test:sarah sweep before pushes to main.",
+    },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-09.2",
+  version: "2026-07-09.3",
 }

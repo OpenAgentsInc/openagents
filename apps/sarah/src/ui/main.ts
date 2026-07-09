@@ -50,6 +50,13 @@ type SarahCard = Readonly<{
   href?: string
 }>
 
+/**
+ * KHS-7 (#8606) in-conversation account linking:
+ * unknown → boot probe pending; anonymous → show the sign-in button;
+ * linking → popup/poll in flight; linked → email badge.
+ */
+type AccountPhase = "unknown" | "anonymous" | "linking" | "linked"
+
 type SarahSurfaceState = Readonly<{
   status: "idle" | "thinking" | "connecting" | "live" | "error"
   avatarArmed: boolean
@@ -58,6 +65,8 @@ type SarahSurfaceState = Readonly<{
   input: string
   transcript: ReadonlyArray<TranscriptEntry>
   cards: ReadonlyArray<SarahCard>
+  accountPhase: AccountPhase
+  accountEmail: string | null
 }>
 
 const initialState: SarahSurfaceState = {
@@ -74,6 +83,8 @@ const initialState: SarahSurfaceState = {
     },
   ],
   cards: [],
+  accountPhase: "unknown",
+  accountEmail: null,
 }
 
 const InputChanged = defineIntent("SarahInputChanged", Schema.String)
@@ -81,8 +92,16 @@ const SendText = defineIntent("SarahSendText", Schema.String)
 const StartAvatar = defineIntent("SarahStartAvatar", Schema.Null)
 const StopAvatar = defineIntent("SarahStopAvatar", Schema.Null)
 const OpenLink = defineIntent("SarahOpenLink", Schema.String)
+const ConnectAccount = defineIntent("SarahConnectAccount", Schema.Null)
 
-const sarahIntents = [InputChanged, SendText, StartAvatar, StopAvatar, OpenLink] as const
+const sarahIntents = [
+  InputChanged,
+  SendText,
+  StartAvatar,
+  StopAvatar,
+  OpenLink,
+  ConnectAccount,
+] as const
 
 const keyed = <V extends View>(view: V): V & { key: string } =>
   view as V & { key: string }
@@ -110,6 +129,29 @@ const statusBadge = (state: SarahSurfaceState): View => {
         : "LIVE"
       : state.status.toUpperCase()
   return Badge({ key: "status", label, tone })
+}
+
+/** Account chip (KHS-7): anonymous → sign-in button; linked → email badge. */
+const accountChip = (state: SarahSurfaceState): View | null => {
+  switch (state.accountPhase) {
+    case "unknown":
+      return null
+    case "linked":
+      return Badge({
+        key: "account",
+        label: state.accountEmail ?? "Account linked",
+        tone: "success",
+      })
+    case "linking":
+      return Badge({ key: "account", label: "Linking account…", tone: "info" })
+    case "anonymous":
+      return Button({
+        key: "account-connect",
+        label: "Create account / Sign in",
+        variant: "secondary",
+        onPress: IntentRef("SarahConnectAccount"),
+      })
+  }
 }
 
 const transcriptItem = (entry: TranscriptEntry): View & { key: string } =>
@@ -160,8 +202,9 @@ const cardItem = (card: SarahCard): View & { key: string } =>
     ],
   ))
 
-export const sarahSurfaceView = (state: SarahSurfaceState): View =>
-  Stack(
+export const sarahSurfaceView = (state: SarahSurfaceState): View => {
+  const account = accountChip(state)
+  return Stack(
     {
       key: "sarah-root",
       direction: "column",
@@ -176,6 +219,7 @@ export const sarahSurfaceView = (state: SarahSurfaceState): View =>
           text("title", "Sarah", "title"),
           text("subtitle", "OpenAgents sales · openagents.com/sarah", "caption", "textMuted"),
           Spacer({ key: "header-space", flex: true }),
+          ...(account ? [account] : []),
           statusBadge(state),
         ],
       ),
@@ -236,6 +280,7 @@ export const sarahSurfaceView = (state: SarahSurfaceState): View =>
       ),
     ],
   )
+}
 
 let entryCounter = 0
 const nextKey = (prefix: string) => `${prefix}-${entryCounter++}`
@@ -291,6 +336,69 @@ const sendTextTurn = (
     }))
   })
 
+// --- KHS-7 in-conversation account linking (#8606) -------------------------
+// /sarah is path-mounted on openagents.com, so the OpenAuth session cookie is
+// first-party. Flow: if already signed in, link immediately; otherwise open
+// the existing /login page in a popup (no new auth UI), poll the canonical
+// same-origin /api/auth/session until authenticated, then POST the link.
+
+const AUTH_POLL_INTERVAL_MS = 1500
+const AUTH_POLL_TIMEOUT_MS = 180_000
+/** Grace after the popup closes — the callback may land cookies just before. */
+const POPUP_CLOSED_GRACE_MS = 4000
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
+
+const fetchOpenAgentsAuthenticated = async (): Promise<boolean> => {
+  try {
+    const response = await fetch("/api/auth/session", {
+      headers: { accept: "application/json" },
+    })
+    if (!response.ok) return false
+    const data = (await response.json()) as { authenticated?: boolean }
+    return data.authenticated === true
+  } catch {
+    return false
+  }
+}
+
+const waitForOpenAgentsSession = async (popup: Window | null): Promise<boolean> => {
+  const deadline = Date.now() + AUTH_POLL_TIMEOUT_MS
+  let popupClosedAt: number | null = null
+  while (Date.now() < deadline) {
+    if (await fetchOpenAgentsAuthenticated()) return true
+    if (popup?.closed) {
+      popupClosedAt ??= Date.now()
+      if (Date.now() - popupClosedAt > POPUP_CLOSED_GRACE_MS) return false
+    }
+    await sleep(AUTH_POLL_INTERVAL_MS)
+  }
+  return false
+}
+
+/**
+ * Full connect flow. Resolves with the linked email (or null when the link
+ * succeeded without a known email); throws when sign-in never completed or
+ * the link call failed — the caller reverts the chip to anonymous.
+ */
+const connectOpenAgentsAccount = async (): Promise<string | null> => {
+  let popup: Window | null = null
+  if (!(await fetchOpenAgentsAuthenticated())) {
+    popup = window.open("/login", "oa-login", "width=520,height=680,noopener=false")
+    const authed = await waitForOpenAgentsSession(popup)
+    if (!authed) {
+      popup?.close()
+      throw new Error("sign_in_not_completed")
+    }
+  }
+  const response = await fetch("/sarah/api/account/link", { method: "POST" })
+  popup?.close()
+  if (!response.ok) throw new Error(`link_failed_${response.status}`)
+  const data = (await response.json()) as { linked?: boolean; email?: string }
+  if (data.linked !== true) throw new Error("link_not_confirmed")
+  return data.email ?? null
+}
+
 export const mountSarahSurface = (container: HTMLElement, avatarContainer: HTMLElement) =>
   Effect.gen(function* () {
     const state = yield* SubscriptionRef.make(initialState)
@@ -322,6 +430,46 @@ export const mountSarahSurface = (container: HTMLElement, avatarContainer: HTMLE
       SarahOpenLink: (href) =>
         Effect.sync(() => {
           window.open(href, "_blank", "noopener")
+        }),
+      SarahConnectAccount: () =>
+        Effect.gen(function* () {
+          const current = yield* SubscriptionRef.get(state)
+          if (current.accountPhase === "linking" || current.accountPhase === "linked") return
+          yield* SubscriptionRef.update(state, (s2): SarahSurfaceState => ({
+            ...s2,
+            accountPhase: "linking",
+          }))
+          yield* Effect.tryPromise({
+            try: connectOpenAgentsAccount,
+            catch: (error) => (error instanceof Error ? error : new Error(String(error))),
+          }).pipe(
+            Effect.flatMap((email) =>
+              Effect.gen(function* () {
+                yield* SubscriptionRef.update(state, (s2): SarahSurfaceState => ({
+                  ...s2,
+                  accountPhase: "linked",
+                  accountEmail: email,
+                }))
+                yield* appendCard(state, {
+                  title: "Account linked",
+                  body: "Your conversation history and credits now follow you.",
+                })
+              }),
+            ),
+            Effect.catch(() =>
+              Effect.gen(function* () {
+                yield* SubscriptionRef.update(state, (s2): SarahSurfaceState => ({
+                  ...s2,
+                  accountPhase: "anonymous",
+                }))
+                yield* appendTranscript(
+                  state,
+                  "assistant",
+                  "Sign-in didn't complete — no problem. The Create account button is here whenever you want your history and credits to follow you.",
+                )
+              }),
+            ),
+          )
         }),
       SarahStartAvatar: () =>
         Effect.gen(function* () {
@@ -423,6 +571,30 @@ export const mountSarahSurface = (container: HTMLElement, avatarContainer: HTMLE
         })),
       ),
       Effect.catch(() => Effect.void),
+    )
+
+    // KHS-7 (#8606): account link probe — linked prospects get the email
+    // badge; everyone else gets the sign-in button. Fail-soft to anonymous.
+    yield* Effect.tryPromise({
+      try: async () => {
+        const response = await fetch(`${API}/account/status`)
+        return (await response.json()) as { linked?: boolean; email?: string }
+      },
+      catch: () => new Error("account_status_unavailable"),
+    }).pipe(
+      Effect.flatMap((status) =>
+        SubscriptionRef.update(state, (current): SarahSurfaceState => ({
+          ...current,
+          accountPhase: status.linked === true ? "linked" : "anonymous",
+          accountEmail: status.linked === true ? (status.email ?? null) : null,
+        })),
+      ),
+      Effect.catch(() =>
+        SubscriptionRef.update(state, (current): SarahSurfaceState => ({
+          ...current,
+          accountPhase: "anonymous",
+        })),
+      ),
     )
 
     return { unmount: surface.unmount }

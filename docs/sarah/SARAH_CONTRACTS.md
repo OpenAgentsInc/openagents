@@ -59,19 +59,23 @@ entries. This is an internal owner-approved store; it makes no public
   memory seam suite: single-ref entry point, deterministic same-identity
   aliases (visitor refs never alias), fail-soft null without a store.
 - `apps/sarah/src/server.test.ts` — the pricing-guard oracles (text lane +
-  avatar brain).
+  avatar brain) and the KHS-7 (#8606) account-link route oracles.
+- `apps/sarah/src/services/account-link.test.ts` — the KHS-7 (#8606)
+  account-link seam units: contact-row shape, single never-pushy prompt line,
+  test-mode session parsing, anonymous fast path.
 - All run in `bun test` inside `apps/sarah`, in the `apps/sarah` `oracle`
   chain, and in the repo `test:sarah` sweep before pushes to main.
 
 ## Pending entries (blocker-gated, never claim as guaranteed)
 
 None. `sarah.collective_learning_owner_gated.v1` flipped pending → enforced
-with KHS-4 (#8603); all four registered contracts are enforced in the test
-sweep.
+with KHS-4 (#8603); all five registered contracts (including the KHS-7
+`sarah.in_chat_account_linking.v1` account-link seam, #8606) are enforced in
+the test sweep.
 
 ## Registry
 
-Registry version: `2026-07-09.2` (schema `openagents.behavior_contracts.v1`)
+Registry version: `2026-07-09.3` (schema `openagents.behavior_contracts.v1`)
 
 ### `sarah.cross_prospect_isolation.v1` — ENFORCED
 
@@ -118,3 +122,14 @@ Registry version: `2026-07-09.2` (schema `openagents.behavior_contracts.v1`)
 - **Oracle** `pricing_guard_avatar_brain.rpc` (bun-test, rpc): Avatar brain: POST /sarah/api/llm/chat/completions with pricing pressure answers from the deterministic guard before the model, holding the same law on the voice lane. — `apps/sarah/src/server.test.ts`
 - **Verification:** bun test src/server.test.ts inside apps/sarah (pricing-guard tests on both the text lane and the avatar brain); runs in the package test glob, the apps/sarah oracle chain, and the repo test:sarah sweep before pushes to main.
 - **Authority boundary:** Deal-rule evaluation and human handoff remain the only pricing-adjacent actions, and the openagents.com API remains the authority for checkout and credits. Retrieval, memory, or any future Khala lookup can inform language, never prices — this guard binds regardless of what memory returns.
+
+### `sarah.in_chat_account_linking.v1` — ENFORCED
+
+- **Surface:** sarah (account linking + attribution)
+- **Stated by:** owner via sarah-production-conversation on 2026-07-09
+- **Statement:** Sarah prompts the user to create an account without leaving the conversation
+- **Enforcement tier:** test-sweep
+- **Oracle** `account_link_routes.rpc` (bun-test, rpc): Link routes: GET /sarah/api/account/status reports anonymous without a prospect cookie; POST /sarah/api/account/link returns 400 without a prospect cookie, 401 for an unauthenticated request, and on a verified openagents.com session upserts contact_id oa_user:<userId> + contact_email onto the prospect ref. — `apps/sarah/src/server.test.ts`
+- **Oracle** `account_link_seam.unit` (bun-test, unit): Link seam units: the pure contact-row shape (oa_user: prefix, account_link mode), the single account-awareness prompt line (may suggest once, never pushy, null when the store cannot persist a link so Sarah never pitches a link that would not stick), test-mode session parsing, and the no-oa_access-cookie anonymous fast path. — `apps/sarah/src/services/account-link.test.ts`
+- **Verification:** bun test src/server.test.ts and src/services/account-link.test.ts inside apps/sarah; runs in the package test glob, the apps/sarah oracle chain, and the repo test:sarah sweep before pushes to main.
+- **Authority boundary:** This contract binds the account-linking seam only (KHS-7, #8606): the openagents.com API remains the identity and credit authority; sign-in happens on the existing /login + OpenAuth rails (apps/sarah never touches password/OAuth internals and never mints sessions); identity for a link comes ONLY from the first-party session cookie verified against GET /api/auth/session, never from a request body; and the linked identity (user ref + email) lands only in sarah_prospect_contacts. The payment half of the owner's directive (attaching a card, paying in-chat) is KHS-8 (epic #8599) and must gain its own contract when it lands.

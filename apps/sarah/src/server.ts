@@ -42,6 +42,11 @@ import {
   sarahCollectiveLearningStatus,
 } from "./services/collective-learning.ts"
 import { sarahTurnStoreStatus } from "./services/turn-store.ts"
+import {
+  getSarahAccountLinkStatus,
+  linkSarahProspectAccount,
+  resolveOpenAgentsSession,
+} from "./services/account-link.ts"
 import { sarahAvatarEventStream } from "./services/avatar-event-bus.ts"
 import {
   mintSarahAvatarSession,
@@ -346,6 +351,65 @@ async function handleEveToolCall(request: Request): Promise<Response> {
   return json(result)
 }
 
+/**
+ * KHS-7 (#8606): link state for the current prospect cookie. Purely a
+ * sarah_prospect_contacts read — no auth loopback on the poll path.
+ */
+async function handleAccountStatus(request: Request): Promise<Response> {
+  const prospectRef = readSarahProspectRef(request)
+  if (!prospectRef) {
+    return json({ linked: false, prospect: false })
+  }
+  const status = await getSarahAccountLinkStatus(prospectRef)
+  return json({
+    linked: status.linked,
+    ...(status.email ? { email: status.email } : {}),
+    prospect: true,
+  })
+}
+
+/**
+ * KHS-7 (#8606): link the anonymous prospect_ref to the authenticated
+ * openagents.com user. Identity comes ONLY from the first-party OpenAuth
+ * session cookie verified against /api/auth/session — never from the body,
+ * so an authenticated caller cannot link someone else's prospect ref.
+ */
+async function handleAccountLink(request: Request): Promise<Response> {
+  const prospectRef = readSarahProspectRef(request)
+  if (!prospectRef) {
+    return json(
+      {
+        error: {
+          code: "missing_prospect_ref",
+          detail:
+            "No sarah_prospect_ref cookie on this request — start a conversation on /sarah first.",
+        },
+      },
+      { status: 400 },
+    )
+  }
+  const user = await resolveOpenAgentsSession(request)
+  if (!user) {
+    return json(
+      {
+        error: {
+          code: "not_authenticated",
+          detail:
+            "No verified openagents.com session — sign in via /login (same origin), then retry the link.",
+        },
+      },
+      { status: 401 },
+    )
+  }
+  const result = await linkSarahProspectAccount(prospectRef, user)
+  return json({
+    ok: true,
+    linked: true,
+    contactId: result.contactId,
+    ...(result.email ? { email: result.email } : {}),
+  })
+}
+
 async function handleUnsubscribe(request: Request): Promise<Response> {
   const url = new URL(request.url)
   const email = url.searchParams.get("email") ?? ""
@@ -442,6 +506,12 @@ export async function handleSarahRequest(request: Request): Promise<Response> {
 
   if (apiPath === "/api/prospect/session" && request.method === "POST") {
     return handleProspectSession(request)
+  }
+  if (apiPath === "/api/account/status" && request.method === "GET") {
+    return handleAccountStatus(request)
+  }
+  if (apiPath === "/api/account/link" && request.method === "POST") {
+    return handleAccountLink(request)
   }
   if (apiPath === "/api/realtime/token" && request.method === "POST") {
     return handleRealtimeToken(request)

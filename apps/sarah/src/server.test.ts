@@ -80,6 +80,66 @@ describe("apps/sarah monorepo service", () => {
     expect(body.reply).toContain("won't improvise discounts")
   })
 
+  // Oracles for contract sarah.in_chat_account_linking.v1 (registered in
+  // src/contracts/isolation-contracts.ts; human doc docs/sarah/SARAH_CONTRACTS.md):
+  // KHS-7 (#8606) in-conversation account linking — the openagents.com API
+  // stays the identity authority; these routes only read/link refs.
+  test("account status is anonymous without a prospect cookie", async () => {
+    const res = await handleSarahRequest(
+      new Request("http://localhost/sarah/api/account/status"),
+    )
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.linked).toBe(false)
+    expect(body.prospect).toBe(false)
+  })
+
+  test("account link without a prospect cookie is a 400", async () => {
+    const res = await handleSarahRequest(
+      new Request("http://localhost/sarah/api/account/link", { method: "POST" }),
+    )
+    expect(res.status).toBe(400)
+    const body = await res.json()
+    expect(body.error.code).toBe("missing_prospect_ref")
+  })
+
+  test("account link refuses anonymous (unauthenticated) requests with 401", async () => {
+    process.env.SARAH_ACCOUNT_LINK_TEST_MODE = "1"
+    const res = await handleSarahRequest(
+      new Request("http://localhost/sarah/api/account/link", {
+        method: "POST",
+        headers: { cookie: "sarah_prospect_ref=prospect-khs7-test" },
+      }),
+    )
+    expect(res.status).toBe(401)
+    const body = await res.json()
+    expect(body.error.code).toBe("not_authenticated")
+    delete process.env.SARAH_ACCOUNT_LINK_TEST_MODE
+  })
+
+  test("account link upserts the authenticated user onto the prospect ref", async () => {
+    process.env.SARAH_ACCOUNT_LINK_TEST_MODE = "1"
+    const res = await handleSarahRequest(
+      new Request("http://localhost/sarah/api/account/link", {
+        method: "POST",
+        headers: {
+          cookie: "sarah_prospect_ref=prospect-khs7-test",
+          "x-sarah-test-oa-session": JSON.stringify({
+            userId: "user_123",
+            email: "buyer@example.com",
+          }),
+        },
+      }),
+    )
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.ok).toBe(true)
+    expect(body.linked).toBe(true)
+    expect(body.contactId).toBe("oa_user:user_123")
+    expect(body.email).toBe("buyer@example.com")
+    delete process.env.SARAH_ACCOUNT_LINK_TEST_MODE
+  })
+
   test("avatar status reports unarmed without a key", async () => {
     delete process.env.LIVEAVATAR_API_KEY
     const res = await handleSarahRequest(

@@ -22,6 +22,7 @@ import {
 } from "./services/google-inference.ts"
 import type { GemmaContent } from "./services/google-inference.ts"
 import { getProspectMemoryContext } from "./services/prospect-memory.ts"
+import { getSarahAccountPromptLine } from "./services/account-link.ts"
 import { maybeSemanticCacheAnswer } from "./services/semantic-answer-cache.ts"
 import { recordSarahTranscriptTurn } from "./services/session-index.ts"
 
@@ -277,7 +278,12 @@ export async function handleSarahChatCompletions(request: Request): Promise<Resp
   const memory = ref ? await getProspectMemoryContext(ref) : null
   const baseSystem =
     cleanSystem || "You are Sarah, OpenAgents' AI sales employee. Disclose you are an AI."
-  const system = memory ? `${memory}\n\n${baseSystem}` : baseSystem
+  // KHS-7 (#8606): same single account-awareness line as the text lane —
+  // appended code-side, after the pricing guard, base context untouched.
+  const accountLine = ref ? await getSarahAccountPromptLine(ref) : null
+  const system = [memory, baseSystem, accountLine]
+    .filter((part): part is string => Boolean(part))
+    .join("\n\n")
   const contents: GemmaContent[] = history.length
     ? history
     : [{ role: "user", parts: [{ text: lastUserText || "Hello" }] }]

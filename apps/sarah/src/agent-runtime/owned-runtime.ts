@@ -24,6 +24,7 @@ import {
 } from "../services/google-inference.ts"
 import type { GemmaContent } from "../services/google-inference.ts"
 import { getProspectMemoryContext } from "../services/prospect-memory.ts"
+import { getSarahAccountPromptLine } from "../services/account-link.ts"
 import { maybeSemanticCacheAnswer } from "../services/semantic-answer-cache.ts"
 import { getSarahRealtimeInstructions } from "../services/sarah-instructions.ts"
 import {
@@ -182,6 +183,12 @@ export async function runOwnedSarahTurn(
       const memory = await getProspectMemoryContext(input.prospectRef)
       if (memory) system = `${memory}\n\n${system}`
     }
+    // KHS-7 (#8606): one account-awareness line (linked identity, or a gentle
+    // may-suggest-once for engaged anonymous prospects). Code-side assembly
+    // only — the owner-managed base context is untouched, and this runs after
+    // the deterministic guards above, so it can never reach the pricing lane.
+    const accountLine = await getSarahAccountPromptLine(input.prospectRef)
+    if (accountLine) system = `${system}\n\n${accountLine}`
     const contents: GemmaContent[] = []
     if (input.prospectRef) {
       const history = await getSarahSessionTranscript({
