@@ -1,18 +1,5 @@
-export class PresenceRequestError extends Error {
-  readonly name = "PresenceRequestError"
-
-  constructor(
-    readonly status: number,
-    readonly responseText: string,
-  ) {
-    super(`OpenAgents presence request failed (${status}): ${responseText}`)
-  }
-}
-
-export function isPresenceUnauthorizedError(error: unknown) {
-  if (error instanceof PresenceRequestError) return error.status === 401
-  const maybeStatus = typeof error === "object" && error !== null && "status" in error ? error.status : undefined
-  if (maybeStatus === 401) return true
-  const message = error instanceof Error ? error.message : String(error)
-  return /\bOpenAgents presence request failed \(401\):/.test(message)
-}
+/**
+ * Re-export shim — moved to `@openagentsinc/pylon-core/presence` (issue #8578, PY-1 presence extraction).
+ * Kept so existing `apps/pylon` consumers keep importing `./presence-error.js` unchanged.
+ */
+export * from "@openagentsinc/pylon-core/presence/presence-error"
