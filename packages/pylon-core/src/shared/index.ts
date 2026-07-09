@@ -7,12 +7,14 @@
  * would be a circular `pylon` <-> `pylon-core` dependency). Original
  * `apps/pylon/src` modules are thin re-export shims.
  *
- *   version         — pinned Pylon version + type
- *   wsl-host-detect — WSL host detection
- *   bootstrap       — home resolution, bootstrap summary, platform gate
- *   nostr-identity  — load/create the node's nostr identity
- *   inventory       — host inventory projection
- *   state           — lifecycle/runtime/presence state + public projection
+ *   version             — pinned Pylon version + type
+ *   wsl-host-detect     — WSL host detection
+ *   bootstrap           — home resolution, bootstrap summary, platform gate
+ *   nostr-identity      — load/create the node's nostr identity
+ *   inventory           — host inventory projection
+ *   state               — lifecycle/runtime/presence state + public projection
+ *   ssh-target          — pure SSH target normalize/classify helpers
+ *   execution-provider  — pure provider kind descriptors (local/SSH/cloud)
  */
 
 export * from "./version.js"
@@ -21,3 +23,5 @@ export * from "./bootstrap.js"
 export * from "./nostr-identity.js"
 export * from "./inventory.js"
 export * from "./state.js"
+export * from "./ssh-target.js"
+export * from "./execution-provider.js"

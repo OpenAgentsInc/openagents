@@ -27,7 +27,8 @@ existing consumers keep compiling.
 
 - [x] Step 1 — package scaffold
 - [x] Shared foundation (`shared/`) — version, wsl-host-detect, bootstrap,
-  nostr-identity, inventory, state (linchpin the higher layers depend on)
+  nostr-identity, inventory, state, ssh-target, execution-provider (linchpin
+  the higher layers depend on)
 - [x] Step 2 — custody: **wave 1** (account-registry, account-quota,
   codex-account-health, codex-custody-reprime) + **wave 2** (account-quota-
   ledger, codex-account-health-ledger) + **wave 3** (account-usage,
@@ -85,6 +86,12 @@ existing consumers keep compiling.
   pure `effect`-only leaf used by codex/claude agent runners; extracted in
   preference to `forge-dispatch-protocol`, which is blocked by type-only
   coupling to top-of-graph `assignment.ts` plus `@openagentsinc/forge-protocol`.
+  **Additional pure leaves (this slice):** `proof-redaction` (zero local deps),
+  `required-artifact-gate` (node:fs path checks only), and `remote-verify`
+  (depends only on in-package `shared/execution-provider` + `shared/ssh-target`,
+  both also extracted as foundational shared helpers). App paths are thin
+  re-export shims; unit tests live next to the package modules and the existing
+  `apps/pylon/tests/*` consumers keep green via the shims.
   **Still in `apps/pylon`:**
   - `codex-agent-executor`, `assignment`, `khala-spawn` — now unblocked
     dependency-wise on `presence`/`account-connect` (both landed), but not
