@@ -44,6 +44,12 @@ export const khalaMobileGateScreenMountBundles: readonly KhalaMobileGateScreenBu
     mountTest: "tests/fleet-peek-screen.test.tsx",
     screenFile: "src/screens/fleet-peek-screen.tsx",
   },
+  {
+    // EN-3 (#8568): first screen authored with the Effect Native component set
+    // and rendered by @effect-native/render-rn (renderer adapter #1).
+    mountTest: "tests/about-effect-native-screen.test.tsx",
+    screenFile: "src/screens/about-effect-native-screen.tsx",
+  },
 ]
 
 export const khalaMobileGateScreenMountWaivers: readonly KhalaMobileGateScreenWaiver[] = []

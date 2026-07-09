@@ -27,6 +27,9 @@ export type AppDrawerParamList = {
   Main: NavigatorScreenParams<AppStackParamList> | undefined
   FleetPeek: undefined
   Settings: undefined
+  // EN-3 (#8568): Effect Native adapter #1 proof screen. Registered + deep-
+  // linkable (khala://about-effect-native) but hidden from the drawer flyout.
+  AboutEffectNative: undefined
 }
 
 /** A screen inside the threads native stack. `getParent()` reaches the root

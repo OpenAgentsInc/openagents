@@ -16,6 +16,7 @@ import { View, type ViewStyle } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
 
 import { DrawerCreditsBalance } from "../components/drawer-credits-balance"
+import { AboutEffectNativeScreen } from "../screens/about-effect-native-screen"
 import { CreditsHistoryScreen } from "../screens/credits-history-screen"
 import { FleetPeekScreen } from "../screens/fleet-peek-screen"
 import { RepoPickerScreen } from "../screens/repo-picker-screen"
@@ -57,6 +58,7 @@ const linking: LinkingOptions<AppDrawerParamList> = {
       },
       FleetPeek: "fleet",
       Settings: "settings",
+      AboutEffectNative: "about-effect-native",
     },
   },
   prefixes: [Linking.createURL("/")],
@@ -116,6 +118,16 @@ export const AppNavigator = () => {
         <Drawer.Screen name="Main" component={MainStackNavigator} options={{ title: tx("nav.threads") }} />
         <Drawer.Screen name="FleetPeek" component={FleetPeekScreen} options={{ title: "Fleet" }} />
         <Drawer.Screen name="Settings" component={SettingsScreen} options={{ title: tx("nav.settings") }} />
+        {/* EN-3 (#8568): renderer adapter #1 proof — a screen whose UI is
+         * authored with the Effect Native component set and rendered by
+         * @effect-native/render-rn. Registered so it is navigable/deep-linkable
+         * (khala://about-effect-native), but hidden from the drawer flyout so
+         * shipping UX is unchanged (new-screen-only, per the issue). */}
+        <Drawer.Screen
+          name="AboutEffectNative"
+          component={AboutEffectNativeScreen}
+          options={{ drawerItemStyle: { display: "none" }, title: "Effect Native" }}
+        />
       </Drawer.Navigator>
     </NavigationContainer>
   )

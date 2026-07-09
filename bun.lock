@@ -305,6 +305,23 @@
         "effect": "4.0.0-beta.94",
       },
     },
+    "apps/openagents.com/packages/effect-native-render-rn": {
+      "name": "@effect-native/render-rn",
+      "version": "0.0.0-openagents.8568",
+      "dependencies": {
+        "@effect-native/core": "workspace:*",
+        "@effect-native/tokens": "workspace:*",
+        "effect": "4.0.0-beta.94",
+      },
+      "peerDependencies": {
+        "react": "*",
+        "react-native": "*",
+      },
+      "optionalPeers": [
+        "react",
+        "react-native",
+      ],
+    },
     "apps/openagents.com/packages/effect-native-tokens": {
       "name": "@effect-native/tokens",
       "version": "0.0.0-openagents.8567",
@@ -578,6 +595,9 @@
       "name": "@openagentsinc/khala-mobile",
       "version": "0.1.0",
       "dependencies": {
+        "@effect-native/core": "workspace:*",
+        "@effect-native/render-rn": "workspace:*",
+        "@effect-native/tokens": "workspace:*",
         "@expo-google-fonts/jetbrains-mono": "^0.4.1",
         "@expo-google-fonts/space-grotesk": "^0.4.1",
         "@expo/metro-config": "57.0.3",
@@ -1427,6 +1447,8 @@
     "@effect-native/core": ["@effect-native/core@workspace:apps/openagents.com/packages/effect-native-core"],
 
     "@effect-native/render-dom": ["@effect-native/render-dom@workspace:apps/openagents.com/packages/effect-native-render-dom"],
+
+    "@effect-native/render-rn": ["@effect-native/render-rn@workspace:apps/openagents.com/packages/effect-native-render-rn"],
 
     "@effect-native/tokens": ["@effect-native/tokens@workspace:apps/openagents.com/packages/effect-native-tokens"],
 

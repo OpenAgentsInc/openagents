@@ -101,7 +101,12 @@ module.exports = {
   ],
   options: {
     doNotFollow: {
-      path: "node_modules",
+      // Treat the vendored `@effect-native/*` workspace packages as external
+      // (like node_modules): the mobile app depends on them (declared in
+      // package.json) but must not lint their INTERNAL source against these
+      // route/domain rules. They live under apps/openagents.com/packages/ (not
+      // node_modules), so name them explicitly. EN-3 (#8568).
+      path: "node_modules|/effect-native-(core|tokens|render-dom|render-rn)/",
     },
     enhancedResolveOptions: {
       conditionNames: ["react-native", "import", "require", "node", "default"],

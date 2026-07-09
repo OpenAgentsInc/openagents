@@ -27,6 +27,9 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@effect-native/core": "workspace:*",
+    "@effect-native/render-rn": "workspace:*",
+    "@effect-native/tokens": "workspace:*",
     "@expo-google-fonts/jetbrains-mono": "^0.4.1",
     "@expo-google-fonts/space-grotesk": "^0.4.1",
     "@expo/metro-config": "57.0.3",

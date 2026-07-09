@@ -1,0 +1,26 @@
+{
+  "name": "@effect-native/render-rn",
+  "version": "0.0.0-openagents.8568",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -b"
+  },
+  "dependencies": {
+    "@effect-native/core": "workspace:*",
+    "@effect-native/tokens": "workspace:*",
+    "effect": "4.0.0-beta.94"
+  },
+  "peerDependencies": {
+    "react": "*",
+    "react-native": "*"
+  },
+  "peerDependenciesMeta": {
+    "react": { "optional": true },
+    "react-native": { "optional": true }
+  }
+}
