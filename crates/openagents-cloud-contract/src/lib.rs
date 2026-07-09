@@ -17,6 +17,8 @@ pub const TRAINING_RUN_ASSIGNMENT_VERSION: &str = "openagents.training_run_assig
 pub const WORKROOM_CONTRACT_VERSION: &str = "openagents.workroom.v1";
 pub const COMPUTE_QUOTA_ROUTING_VERSION: &str = "openagents.compute_quota_routing.v1";
 pub const PLACEMENT_ASSIGNMENT_VERSION: &str = "openagents.codex_placement_assignment.v1";
+pub const AGENT_COMPUTER_ISOLATION_POLICY_VERSION: &str =
+    "openagents.agent_computer_isolation_policy.v1";
 
 /// SHC secondary/fallback runner id (CND-041). Google GCE is the primary lane.
 pub const SHC_FALLBACK_RUNNER_ID: &str = "oa-shc-katy-01";
@@ -2530,6 +2532,186 @@ impl PlacementAssignment {
     }
 }
 
+/// Provider-credential custody policy for a placement's custodied subscription
+/// login (CX-1 openagents#8545). Today the only lawful value is `broker_only`:
+/// the credential is redeemed through the server-side broker into a scratch
+/// `CODEX_HOME` for exactly one owner's work context, and is never handed to the
+/// guest as raw material, never pooled across owners, and never resold. Modeled
+/// as an enum (rather than a bool) so a future lawful mode is additive and any
+/// unknown/legacy wire value fails the closed decode rather than silently
+/// widening custody.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum ProviderCredentialPolicy {
+    /// Broker-redeemed only, owner-scoped, never pooled, never resold.
+    #[default]
+    BrokerOnly,
+}
+
+/// Agent Computer isolation policy — the Rust mirror of the TS
+/// `AgentComputerIsolationPolicySchema` in `packages/cloud-contract` and of the
+/// agent-computer image-manifest isolation block. It carries the CX-1
+/// (openagents#8545) provider-credential law into the control-plane crates so a
+/// placement can be checked against it fail-closed before any runner binds:
+///
+/// - `provider_credential_policy = broker_only` (custody is broker-redeemed
+///   only; raw provider material never reaches the guest),
+/// - `provider_grants_owner_scoped = true` (a grant is keyed to exactly one
+///   owner and injected only into that owner's own work contexts — never
+///   cross-owner),
+/// - `subscription_capacity_resale = false` (a custodied subscription login is
+///   never pooled or resold as capacity).
+///
+/// Optional/additive: the default policy encodes the lawful posture, so existing
+/// call sites that do not construct a policy still enforce the CX-1 law via
+/// [`AgentComputerIsolationPolicy::default`].
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct AgentComputerIsolationPolicy {
+    pub contract_version: String,
+    pub policy_ref: String,
+    pub one_work_context_per_computer: bool,
+    pub no_cross_context_reuse: bool,
+    pub scm_broker_only_credentials: bool,
+    /// CX-1 provider-credential custody law. Must be `broker_only`.
+    pub provider_credential_policy: ProviderCredentialPolicy,
+    /// CX-1: provider grants are keyed to exactly one owner. Must be `true`.
+    pub provider_grants_owner_scoped: bool,
+    /// CX-1: custodied subscription capacity is never resold. Must be `false`.
+    pub subscription_capacity_resale: bool,
+    pub require_scratch_wipe_receipt: bool,
+    pub require_microvm_destroy_receipt: bool,
+    /// Agent Computers never carry wallet authority. Must be `false`.
+    pub wallet_authority: bool,
+}
+
+impl Default for AgentComputerIsolationPolicy {
+    fn default() -> Self {
+        Self {
+            contract_version: AGENT_COMPUTER_ISOLATION_POLICY_VERSION.to_string(),
+            policy_ref: "policy.agent_computer.isolation.default".to_string(),
+            one_work_context_per_computer: true,
+            no_cross_context_reuse: true,
+            scm_broker_only_credentials: true,
+            provider_credential_policy: ProviderCredentialPolicy::BrokerOnly,
+            provider_grants_owner_scoped: true,
+            subscription_capacity_resale: false,
+            require_scratch_wipe_receipt: true,
+            require_microvm_destroy_receipt: true,
+            wallet_authority: false,
+        }
+    }
+}
+
+impl AgentComputerIsolationPolicy {
+    /// Validate the policy itself, fail-closed. Any value that would weaken the
+    /// CX-1 law (resale enabled, grants not owner-scoped, credential mode other
+    /// than broker-only, wallet authority granted, or a receipt requirement
+    /// dropped) is rejected rather than silently accepted.
+    pub fn validate_contract(&self) -> Result<(), String> {
+        if self.contract_version != AGENT_COMPUTER_ISOLATION_POLICY_VERSION {
+            return Err(format!(
+                "unexpected agent computer isolation policy version '{}'",
+                self.contract_version
+            ));
+        }
+        if self.policy_ref.trim().is_empty() || contains_secret_material(&self.policy_ref) {
+            return Err("policy_ref must be a non-empty public-safe ref".to_string());
+        }
+        if self.provider_credential_policy != ProviderCredentialPolicy::BrokerOnly {
+            return Err("provider_credential_policy must be broker_only".to_string());
+        }
+        if !self.provider_grants_owner_scoped {
+            return Err(
+                "provider_grants_owner_scoped must be true (owner-scoped grants)".to_string(),
+            );
+        }
+        if self.subscription_capacity_resale {
+            return Err(
+                "subscription_capacity_resale must be false (custodied capacity is never resold)"
+                    .to_string(),
+            );
+        }
+        if !self.one_work_context_per_computer {
+            return Err("one_work_context_per_computer must be true".to_string());
+        }
+        if !self.no_cross_context_reuse {
+            return Err("no_cross_context_reuse must be true".to_string());
+        }
+        if !self.scm_broker_only_credentials {
+            return Err("scm_broker_only_credentials must be true".to_string());
+        }
+        if !self.require_scratch_wipe_receipt {
+            return Err("require_scratch_wipe_receipt must be true".to_string());
+        }
+        if !self.require_microvm_destroy_receipt {
+            return Err("require_microvm_destroy_receipt must be true".to_string());
+        }
+        if self.wallet_authority {
+            return Err(
+                "agent computer isolation policy must not carry wallet authority".to_string(),
+            );
+        }
+        Ok(())
+    }
+
+    /// Check a placement against this policy, fail-closed (CX-1 openagents#8545).
+    ///
+    /// A placement is accepted only when its custodied provider credential is
+    /// broker-redeemed and owner-scoped:
+    ///
+    /// - the policy itself is lawful ([`validate_contract`]),
+    /// - the placement carries a non-empty `provider_account_ref` and a non-empty
+    ///   per-session `auth_grant_ref` (a broker-redeemed grant — a pooled or
+    ///   anonymous credential path would present no per-session grant and is
+    ///   therefore rejected),
+    /// - the placement requests no wallet authority, and
+    /// - when `expected_owner_ref` is supplied (the owner the provider account /
+    ///   grant is bound to), the placement's `owner_ref` matches it exactly;
+    ///   a mismatch is a never-cross-owner violation and is rejected.
+    ///
+    /// `expected_owner_ref = None` still enforces the never-pooled / no-wallet /
+    /// broker-only laws; pass the bound owner to also enforce never-cross-owner.
+    pub fn validate_placement(
+        &self,
+        assignment: &PlacementAssignment,
+        expected_owner_ref: Option<&str>,
+    ) -> Result<(), String> {
+        self.validate_contract()?;
+        if assignment.provider_account_ref.trim().is_empty() {
+            return Err(
+                "broker_only placement requires an owner-scoped provider_account_ref".to_string(),
+            );
+        }
+        // Never-pooled: a broker-redeemed placement must carry a per-session
+        // grant ref. A pooled/shared-credential path presents none, so absence
+        // fails closed rather than falling back to an ambient credential.
+        if assignment.auth_grant_ref.trim().is_empty() {
+            return Err(
+                "broker_only placement requires a per-session auth_grant_ref (never pooled)"
+                    .to_string(),
+            );
+        }
+        if assignment.wallet_authority {
+            return Err("broker_only placement must not request wallet authority".to_string());
+        }
+        if let Some(owner) = expected_owner_ref {
+            if owner.trim().is_empty() {
+                return Err("expected_owner_ref must be non-empty when supplied".to_string());
+            }
+            if assignment.owner_ref != owner {
+                // Never-cross-owner: the provider grant is keyed to exactly one
+                // owner and must not be injected into another owner's placement.
+                return Err(format!(
+                    "broker_only placement owner_ref '{}' does not match the grant owner '{}' \
+                     (never cross-owner)",
+                    assignment.owner_ref, owner
+                ));
+            }
+        }
+        Ok(())
+    }
+}
+
 /// Derive a stable ephemeral GCE runner id for a run. The concrete instance is
 /// provisioned per-session by the GCE capacity class; the runner id here is a
 /// reconciliation-safe label, not a raw instance name or self-link.
@@ -3046,6 +3228,101 @@ mod tests {
         let mut future = placement_fixture(ComputeLane::Auto);
         future.created_at_ms = 1_000_000_000;
         assert!(future.validate_contract(1).is_err());
+    }
+
+    #[test]
+    fn default_isolation_policy_is_lawful() {
+        let policy = AgentComputerIsolationPolicy::default();
+        assert_eq!(
+            policy.provider_credential_policy,
+            ProviderCredentialPolicy::BrokerOnly
+        );
+        assert!(policy.provider_grants_owner_scoped);
+        assert!(!policy.subscription_capacity_resale);
+        policy.validate_contract().unwrap();
+    }
+
+    #[test]
+    fn isolation_policy_rejects_resale_and_unscoped_grants() {
+        let mut resale = AgentComputerIsolationPolicy::default();
+        resale.subscription_capacity_resale = true;
+        assert!(resale.validate_contract().is_err());
+
+        let mut unscoped = AgentComputerIsolationPolicy::default();
+        unscoped.provider_grants_owner_scoped = false;
+        assert!(unscoped.validate_contract().is_err());
+
+        let mut wallet = AgentComputerIsolationPolicy::default();
+        wallet.wallet_authority = true;
+        assert!(wallet.validate_contract().is_err());
+
+        let mut version = AgentComputerIsolationPolicy::default();
+        version.contract_version = "openagents.some_other.v1".to_string();
+        assert!(version.validate_contract().is_err());
+    }
+
+    #[test]
+    fn isolation_policy_serde_rejects_unknown_credential_mode() {
+        // broker_only round-trips.
+        let json = serde_json::to_string(&ProviderCredentialPolicy::BrokerOnly).unwrap();
+        assert_eq!(json, "\"broker_only\"");
+        // Any other/legacy value fails the closed decode rather than widening
+        // custody silently.
+        assert!(serde_json::from_str::<ProviderCredentialPolicy>("\"pooled\"").is_err());
+        assert!(serde_json::from_str::<ProviderCredentialPolicy>("\"shared\"").is_err());
+    }
+
+    #[test]
+    fn broker_only_placement_accepts_owner_scoped_grant() {
+        // CX-1 (openagents#8545): a placement whose broker-redeemed grant is
+        // scoped to the same owner is accepted.
+        let assignment = placement_fixture(ComputeLane::CloudGcp);
+        let policy = AgentComputerIsolationPolicy::default();
+        // No expected owner: still passes the never-pooled / no-wallet laws.
+        policy.validate_placement(&assignment, None).unwrap();
+        // With the matching bound owner: passes the never-cross-owner law.
+        policy
+            .validate_placement(&assignment, Some(assignment.owner_ref.as_str()))
+            .unwrap();
+    }
+
+    #[test]
+    fn broker_only_placement_rejects_cross_owner_grant() {
+        // Never-cross-owner: a grant bound to a different owner must fail closed.
+        let assignment = placement_fixture(ComputeLane::CloudGcp);
+        let policy = AgentComputerIsolationPolicy::default();
+        let err = policy
+            .validate_placement(&assignment, Some("owner://sha256/someone-else"))
+            .expect_err("cross-owner placement must be rejected");
+        assert!(err.contains("never cross-owner"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn broker_only_placement_rejects_pooled_and_wallet_placements() {
+        let policy = AgentComputerIsolationPolicy::default();
+
+        // Never-pooled: absent per-session grant ref fails closed.
+        let mut pooled = placement_fixture(ComputeLane::CloudGcp);
+        pooled.auth_grant_ref = String::new();
+        assert!(policy.validate_placement(&pooled, None).is_err());
+
+        // Missing owner-scoped provider account fails closed.
+        let mut no_account = placement_fixture(ComputeLane::CloudGcp);
+        no_account.provider_account_ref = String::new();
+        assert!(policy.validate_placement(&no_account, None).is_err());
+
+        // Wallet authority is never granted to an Agent Computer placement.
+        let mut wallet = placement_fixture(ComputeLane::CloudGcp);
+        wallet.wallet_authority = true;
+        assert!(policy.validate_placement(&wallet, None).is_err());
+
+        // A misconfigured (resale-enabled) policy rejects every placement.
+        let mut resale_policy = AgentComputerIsolationPolicy::default();
+        resale_policy.subscription_capacity_resale = true;
+        let ok_assignment = placement_fixture(ComputeLane::CloudGcp);
+        assert!(resale_policy
+            .validate_placement(&ok_assignment, None)
+            .is_err());
     }
 
     #[test]

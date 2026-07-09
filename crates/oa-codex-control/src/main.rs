@@ -15,7 +15,8 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use std::os::unix::fs::PermissionsExt;
 
 use openagents_cloud_contract::{
-    ArtanisBootstrapAssignment, CodexAuthGrant, CodexRequestedMode, CodexSandboxMode,
+    AgentComputerIsolationPolicy, ArtanisBootstrapAssignment, CodexAuthGrant, CodexRequestedMode,
+    CodexSandboxMode,
     CodexWorkroomAssignment, ComputeLane, ComputeQuotaCaps, ComputeUsage, LaneCostModel,
     ModelUsageRecord, PlacementAssignment, ProviderLane, ResourceHostSnapshot,
     ResourceUsageReceipt, RunResourceUsage, RunnerBinding, TokenCountSource, TrainingRetentionMode,
@@ -1448,6 +1449,15 @@ fn start_placement_async(
 ) -> Result<PlacementResponse, String> {
     let now = now_ms()?;
     assignment.validate_contract(now)?;
+
+    // CX-1 (openagents#8545) provider-credential law: the custodied subscription
+    // grant is broker-redeemed only, owner-scoped, never pooled, and never
+    // resold. Enforce it fail-closed before any runner binds. The default policy
+    // encodes the lawful posture; a placement missing its per-session
+    // broker-redeemed grant (`auth_grant_ref`), missing its owner-scoped provider
+    // account, or requesting wallet authority is refused here rather than run.
+    AgentComputerIsolationPolicy::default().validate_placement(&assignment, None)?;
+
     let binding = resolve_placement_binding(config, &assignment)?;
 
     // AC-1 (openagents#8503): org-cloud-runtime microVM lane. When the caller
@@ -4799,6 +4809,25 @@ mod tests {
             work_context_b64: None,
             work_context_ref: None,
         }
+    }
+
+    #[test]
+    fn placement_isolation_gate_rejects_pooled_and_wallet_placements() {
+        // CX-1 (openagents#8545): the same fail-closed gate `start_placement_async`
+        // applies before binding a runner. A scoped placement passes; a pooled
+        // (grant-less) or wallet-bearing placement is refused.
+        let policy = AgentComputerIsolationPolicy::default();
+
+        let scoped = placement_assignment(ComputeLane::CloudGcp);
+        policy.validate_placement(&scoped, None).unwrap();
+
+        let mut pooled = placement_assignment(ComputeLane::CloudGcp);
+        pooled.auth_grant_ref = String::new();
+        assert!(policy.validate_placement(&pooled, None).is_err());
+
+        let mut wallet = placement_assignment(ComputeLane::CloudGcp);
+        wallet.wallet_authority = true;
+        assert!(policy.validate_placement(&wallet, None).is_err());
     }
 
     #[test]
