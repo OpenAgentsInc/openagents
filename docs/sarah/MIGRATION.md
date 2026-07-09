@@ -41,21 +41,34 @@ Handoffs and CTAs point at `/sarah` (and continue tokens under `/sarah/continue/
 | SM-2 voice UI zero-React DOM | done (`src/ui/*`); EN component promotion is follow-on via EN-2 gaps |
 | SM-3 email/CRM rail convergence | done (`crm-email-rail.ts` — CRM rail client + local dry-run draft/opt-out projection; no Resend) |
 | SM-4 owned agent runtime | done seed (`owned-runtime.ts`; eve not a runtime dep for HTTP turns) |
-| SM-5 cutover to openagents.com/sarah | **serving path confirmed owner-directed** — Cloud Run monolith mounts `handleSarahRequest` for `/sarah*`; live deploy + S-12 against prod is the remaining gate |
-| SM-6 retire private repo | README historical pointer; Vercel teardown once live oracles green |
+| SM-5 cutover to openagents.com/sarah | **done** — owner-confirmed path mount; `openagents-monolith` serves `/sarah*` (`handleSarahRequest`); live S-12 **6/6 CONFIRMED** on `https://openagents.com/sarah` (2026-07-09, rev `openagents-monolith-00046-pgq`) |
+| SM-6 retire private repo | README historical pointer; Vercel project teardown residual (subdomain DNS already NXDOMAIN) |
 
 ## Oracle receipt (local monorepo)
 
-Run from `apps/sarah` (server for S-3/S-12: `SARAH_REALTIME_TOKEN_TEST_MODE=1` plus daily/session caps):
+Run from `apps/sarah` (S-3 self-spawns an isolated capped server in test mode):
 
 | Gate | Result |
 | --- | --- |
 | `bun test` | green |
 | deal-rules property | green |
-| S-3 token-guard smoke | green (`Origin` = host origin, not `/sarah` path) |
+| S-3 token-guard smoke | green (self-spawn + token redaction; Origin = host origin) |
 | S-12 eval suite | 6/6 CONFIRMED |
 | S-8 continuity / suppression | green on CRM rail projection |
-| S-13 follow-up smoke | green |
+| S-13 follow-up smoke | green (idempotent; clears state files) |
+
+## Production cutover receipt (SM-5)
+
+| Field | Value |
+| --- | --- |
+| Serving | `https://openagents.com/sarah` (no subdomain) |
+| Host | Cloud Run `openagents-monolith` (`handleSarahRequest` front-controller mount) |
+| Deploy revision | `openagents-monolith-00046-pgq` (2026-07-09) |
+| Live S-12 | **6/6 CONFIRMED** against `https://openagents.com/sarah` |
+| Ops probe | `GET /sarah/api/operator/ops` → `apps/sarah` mount JSON |
+| Continue | `GET /sarah/continue/<token>` mints prospect cookie |
+| Residual | Vercel project teardown (operator; `sarah.openagents.com` already NXDOMAIN) |
+| Still open on #8594 | SM-2 EN component authoring (interim DOM shell is not the EN mandate) |
 
 ## Layout
 

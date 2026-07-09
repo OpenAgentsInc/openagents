@@ -59,11 +59,13 @@ balance, or say "drop the lane" and an agent reorders the plan.
 `https://openagents.com/sarah` only — **no** `sarah.openagents.com` subdomain.
 Attribution in `docs/sarah/MIGRATION.md` and MASTER_ROADMAP rev 6.8 is correct.
 
-Agent-owned SM-5 work (shipped or shipping with this change):
-- Mount `/sarah` on `openagents-monolith` Cloud Run via `handleSarahRequest`.
-- Live S-12 / production smokes against `https://openagents.com/sarah`.
-- Vercel project teardown after live `/sarah` oracles are green (DNS for the
-  old subdomain already does not resolve).
+**Shipped 2026-07-09:** `/sarah` mounted on `openagents-monolith`
+(`openagents-monolith-00046-pgq`); live S-12 **6/6 CONFIRMED** on
+`https://openagents.com/sarah`. Receipt: `docs/sarah/MIGRATION.md`.
+
+**Residual (optional operator cleanup):** Vercel project teardown for the
+private-sarah interim deploy — DNS for `sarah.openagents.com` is already
+NXDOMAIN; no production traffic remains on that hostname.
 
 **Obsolete:** any older framing of Sarah as a Cloudflare D1-quota host or
 separate-subdomain deploy problem. Monorepo Sarah does not hold D1; Worker API
