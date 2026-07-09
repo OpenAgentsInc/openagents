@@ -162,7 +162,7 @@ const seedClaimablePylon = async (
     VALUES
       ('registration.public.c1', ${PYLON_REF}, ${AGENT_USER_ID},
        'credential.public.c1', 'oa_agent_owner', 'C1 fixture Pylon',
-       'active', 'owner_local', '[]', 0, ${nowIso}, 'online', '[]',
+       'active', 'balanced', '[]', 0, ${nowIso}, 'online', '[]',
        '[]', '[]', '[]', '[]', '{}', ${nowIso}, ${nowIso})
   `
   await sql`
@@ -188,7 +188,7 @@ const registration = (): PylonApiRegistrationRecord => ({
   latestCapacityRefs: ['capacity.coding.codex.available=1'],
   latestHealthRefs: [],
   latestLoadRefs: ['load.coding.codex.busy=0'],
-  latestResourceMode: 'owner_local',
+  latestResourceMode: 'balanced',
   ownerAgentCredentialId: 'credential.public.c1',
   ownerAgentTokenPrefix: 'oa_agent_owner',
   ownerAgentUserId: AGENT_USER_ID,
@@ -198,7 +198,7 @@ const registration = (): PylonApiRegistrationRecord => ({
   providerNostrPubkey: null,
   publicProjectionJson: '{}',
   pylonRef: PYLON_REF,
-  resourceMode: 'owner_local',
+  resourceMode: 'balanced',
   status: 'active',
   updatedAt: new Date(FIXED_NOW_MS).toISOString(),
   walletReady: false,
