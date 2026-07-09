@@ -62,6 +62,7 @@ describe("pylon account registry", () => {
                   ref: "codex-a",
                   provider: "codex",
                   home: codexHome,
+                  paused: true,
                   openAgentsProviderAccountRef: "provider_account.public.codex.a",
                 },
                 { ref: "claude-a", provider: "claude_agent", home: claudeHome },
@@ -85,6 +86,7 @@ describe("pylon account registry", () => {
         "not_measured",
         "not_measured",
       ])
+      expect(entries.map(entry => entry.paused ?? false)).toEqual([true, false])
 
       const resolved = await resolvePylonAccountSelection(summary, {
         provider: "codex",

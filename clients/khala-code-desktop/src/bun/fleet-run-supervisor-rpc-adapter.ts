@@ -19,6 +19,7 @@ import {
 import {
   createPylonDurableFleetRunPlanner,
 } from "../../../../apps/pylon/src/orchestration/fleet-run-durable-planner.js"
+import { mapPylonFleetSupervisorCapacity } from "../../../../apps/pylon/src/orchestration/fleet-run-capacity.js"
 import {
   fleetRunWorkSourceDescriptorFrom,
   type FleetRunWorkSourceDescriptor,
@@ -47,6 +48,7 @@ import { collectKhalaProcessText, spawnKhalaProcess } from "./khala-process.js"
 import { makePylonService, type PylonServiceShape } from "./pylon-service.js"
 import {
   startFleetRunSupervisor,
+  type FleetRunSupervisorAccount,
   type FleetRunSupervisorCapacity,
   type FleetRunSupervisorHandle,
   type FleetRunSupervisorLifecycleEvent,
@@ -351,11 +353,7 @@ const durableDescriptorFor = (
 
 const capacityFor = (options: KhalaCodexFleetToolOptions | undefined): FleetRunSupervisorCapacity => ({
   accounts: async ({ run }) => {
-    const accounts: Array<{
-      accountRef: string
-      advertisedCapacity: number
-      workerKind: "codex" | "claude" | "grok"
-    }> = []
+    const accounts: FleetRunSupervisorAccount[] = []
 
     // Grok local capacity (MH-4): synthetic account when CLI is ready.
     // Soft-cap concurrent slots so free-window soak does not thrash the host.
@@ -392,24 +390,20 @@ const capacityFor = (options: KhalaCodexFleetToolOptions | undefined): FleetRunS
         startPylon: true,
         workerKind: inspectKind,
       }, options)
-      for (const account of status.accounts) {
-        if (account.paused) continue
-        if (
-          run.workerKind !== "auto" &&
-          account.provider !== (run.workerKind === "claude" ? "claude_agent" : "codex")
-        ) {
-          continue
-        }
-        accounts.push({
+      accounts.push(...mapPylonFleetSupervisorCapacity(
+        status.accounts.map(account => ({
           accountRef: account.accountRef,
-          advertisedCapacity: Math.max(0, Math.trunc(
-            account.capacity?.available ??
-            account.capacity?.ready ??
-            (account.readiness === "ready" || account.readiness === "available" ? 1 : 0),
-          )),
-          workerKind: account.provider === "claude_agent" ? "claude" as const : "codex" as const,
-        })
-      }
+          capacity: account.capacity,
+          isDefaultAccount: /^(?:\(default\)|default)$/iu.test(account.accountRef.trim()),
+          marginalCostClass: account.marginalCostClass,
+          paused: account.paused,
+          provider: account.provider,
+          readiness: account.readiness,
+        })),
+        { allowDefaultAccount: false },
+      ).filter(account =>
+        run.workerKind === "auto" || account.workerKind === run.workerKind
+      ))
     }
 
     return accounts
