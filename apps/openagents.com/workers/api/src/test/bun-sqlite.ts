@@ -6,7 +6,8 @@
 // vitest (Node) runtime, so `vitest.config.ts` aliases `bun:sqlite` to this
 // module — the same test-shim idiom as
 // `src/test/cloudflare-workers.ts`. Only the surface the client store
-// actually uses is implemented: `Database` construction, `exec`, prepared
+// and the Pylon orchestration store actually use is implemented: `Database`
+// construction, `exec`/`run`, prepared
 // `query` handles with `get`/`all`/`run`, callable `transaction` wrappers
 // (BEGIN/COMMIT/ROLLBACK — the store does not nest), and `close`.
 //
@@ -16,21 +17,38 @@
 import { DatabaseSync } from 'node:sqlite'
 
 type SqlParam = null | number | bigint | string | Uint8Array
+type SqlNamedParams = Record<string, SqlParam>
 
-const asParams = (params: ReadonlyArray<unknown>): Array<SqlParam> =>
+const asParam = (value: unknown): SqlParam => {
+  if (
+    value === null ||
+    typeof value === 'number' ||
+    typeof value === 'bigint' ||
+    typeof value === 'string' ||
+    value instanceof Uint8Array
+  ) {
+    return value
+  }
+  throw new TypeError(
+    `unsupported sqlite parameter of type ${typeof value} in bun:sqlite test adapter`,
+  )
+}
+
+const asParams = (
+  params: ReadonlyArray<unknown>,
+): Array<SqlParam | SqlNamedParams> =>
   params.map(value => {
     if (
-      value === null ||
-      typeof value === 'number' ||
-      typeof value === 'bigint' ||
-      typeof value === 'string' ||
-      value instanceof Uint8Array
+      value !== null &&
+      typeof value === 'object' &&
+      !Array.isArray(value) &&
+      !(value instanceof Uint8Array)
     ) {
-      return value
+      return Object.fromEntries(
+        Object.entries(value).map(([key, entry]) => [key, asParam(entry)]),
+      )
     }
-    throw new TypeError(
-      `unsupported sqlite parameter of type ${typeof value} in bun:sqlite test adapter`,
-    )
+    return asParam(value)
   })
 
 export interface Statement<
@@ -53,6 +71,10 @@ export class Database {
     this.db.exec(sql)
   }
 
+  run(sql: string): void {
+    this.db.exec(sql)
+  }
+
   query<
     Row = unknown,
     Params extends ReadonlyArray<unknown> = ReadonlyArray<unknown>,
@@ -60,13 +82,19 @@ export class Database {
     const statement = this.db.prepare(sql)
     return {
       all: (...params) =>
-        statement.all(...asParams(params)) as unknown as Array<Row>,
+        statement.all(
+          ...(asParams(params) as Parameters<typeof statement.all>),
+        ) as unknown as Array<Row>,
       get: (...params) => {
-        const row = statement.get(...asParams(params))
+        const row = statement.get(
+          ...(asParams(params) as Parameters<typeof statement.get>),
+        )
         return row === undefined ? null : (row as unknown as Row)
       },
       run: (...params) => {
-        statement.run(...asParams(params))
+        statement.run(
+          ...(asParams(params) as Parameters<typeof statement.run>),
+        )
       },
     }
   }
