@@ -465,7 +465,11 @@ import {
 } from './crm-mcp-grant'
 import { makeCrmMcpGrantRoutes } from './crm-mcp-grant-routes'
 import { makeCrmMcpRoutes } from './crm-mcp-routes'
-import { isCrmResendSendEnabled, makeCrmResendSender } from './crm-resend'
+import {
+  isCrmResendSendEnabled,
+  makeCrmResendSender,
+  resolveCrmResendIdentity,
+} from './crm-resend'
 import { makeCrmResendRoutes } from './crm-resend-routes'
 import { makeCrmRoutes } from './crm-routes'
 import { routePublicAgentMcpRequest } from './public-agent-mcp-routes'
@@ -9630,12 +9634,24 @@ const resolveCrmResendDeps = (env: WorkerBindings) => {
   if (resend === undefined) {
     return { enabled, fromEmail: null, sender: null }
   }
+  // OB-1 (#8558): the CRM send path uses its own sender identity
+  // (`Sarah <sarah@openagents.com>`) when configured, so Sites transactional
+  // mail keeps the shared RESEND_FROM_EMAIL identity. Falls back to the shared
+  // Resend from/reply-to when the CRM overrides are absent.
+  const emailConfig = getOpenAgentsWorkerConfig(env).email
+  const identity = resolveCrmResendIdentity(
+    { fromEmail: resend.fromEmail, replyToEmail: resend.replyToEmail },
+    {
+      fromEmail: emailConfig.crmResendFromEmail,
+      replyToEmail: emailConfig.crmResendReplyToEmail,
+    },
+  )
   return {
     enabled,
-    fromEmail: resend.fromEmail,
+    fromEmail: identity.fromEmail,
     sender: makeCrmResendSender({
       apiKey: resend.apiKey,
-      replyTo: resend.replyToEmail,
+      replyTo: identity.replyToEmail,
     }),
   }
 }

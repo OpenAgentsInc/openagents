@@ -4,6 +4,7 @@ import {
   type CrmResendDeps,
   type CrmResendSender,
   isCrmResendSendEnabled,
+  resolveCrmResendIdentity,
   sendCrmEmailViaResend,
 } from './crm-resend'
 
@@ -101,6 +102,52 @@ describe('isCrmResendSendEnabled', () => {
     expect(isCrmResendSendEnabled('1')).toBe(true)
     expect(isCrmResendSendEnabled('true')).toBe(true)
     expect(isCrmResendSendEnabled('ON')).toBe(true)
+  })
+})
+
+describe('resolveCrmResendIdentity (OB-1 #8558)', () => {
+  const shared = {
+    fromEmail: 'OpenAgents <chris+sites@openagents.com>',
+    replyToEmail: 'chris+sites@openagents.com',
+  }
+
+  test('falls back to the shared Resend identity when no CRM override', () => {
+    expect(resolveCrmResendIdentity(shared, {})).toEqual({
+      fromEmail: 'OpenAgents <chris+sites@openagents.com>',
+      replyToEmail: 'chris+sites@openagents.com',
+    })
+  })
+
+  test('uses the CRM-specific identity when the override is present', () => {
+    expect(
+      resolveCrmResendIdentity(shared, {
+        fromEmail: 'Sarah <sarah@openagents.com>',
+        replyToEmail: 'sarah@openagents.com',
+      }),
+    ).toEqual({
+      fromEmail: 'Sarah <sarah@openagents.com>',
+      replyToEmail: 'sarah@openagents.com',
+    })
+  })
+
+  test('overrides from-email while inheriting the shared reply-to', () => {
+    expect(
+      resolveCrmResendIdentity(shared, {
+        fromEmail: 'Sarah <sarah@openagents.com>',
+      }),
+    ).toEqual({
+      fromEmail: 'Sarah <sarah@openagents.com>',
+      replyToEmail: 'chris+sites@openagents.com',
+    })
+  })
+
+  test('never mutates the shared Sites identity (no side effects)', () => {
+    resolveCrmResendIdentity(shared, {
+      fromEmail: 'Sarah <sarah@openagents.com>',
+      replyToEmail: 'sarah@openagents.com',
+    })
+    expect(shared.fromEmail).toBe('OpenAgents <chris+sites@openagents.com>')
+    expect(shared.replyToEmail).toBe('chris+sites@openagents.com')
   })
 })
 

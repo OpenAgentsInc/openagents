@@ -32,6 +32,24 @@ import { readEmailSendEligibility } from './email-preferences'
 export const isCrmResendSendEnabled = (value: string | undefined): boolean =>
   value !== undefined && ['1', 'true', 'yes', 'on'].includes(value.trim().toLowerCase())
 
+/**
+ * OB-1 (#8558): resolve the effective CRM sender identity. The CRM send path
+ * uses its own from/reply-to (`Sarah <sarah@openagents.com>`) when configured,
+ * so the shared Sites transactional identity (RESEND_FROM_EMAIL) is never
+ * changed as a side effect. When the CRM overrides are absent it falls back to
+ * the shared Resend from/reply-to.
+ */
+export const resolveCrmResendIdentity = (
+  shared: Readonly<{ fromEmail: string; replyToEmail?: string | undefined }>,
+  override: Readonly<{
+    fromEmail?: string | undefined
+    replyToEmail?: string | undefined
+  }>,
+): Readonly<{ fromEmail: string; replyToEmail?: string | undefined }> => ({
+  fromEmail: override.fromEmail ?? shared.fromEmail,
+  replyToEmail: override.replyToEmail ?? shared.replyToEmail,
+})
+
 export type CrmResendSenderInput = Readonly<{
   from: string
   to: string

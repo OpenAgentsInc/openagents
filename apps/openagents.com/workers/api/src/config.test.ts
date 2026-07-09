@@ -26,6 +26,8 @@ describe('OpenAgentsWorkerConfig', () => {
     expect(config.github.clientId).toBe('github-client')
     expect(Redacted.isRedacted(config.github.clientSecret)).toBe(true)
     expect(config.email.resend).toBeUndefined()
+    expect(config.email.crmResendFromEmail).toBeUndefined()
+    expect(config.email.crmResendReplyToEmail).toBeUndefined()
     expect(config.artanis.fleetOverseerEnabled).toBe(false)
     expect(config.artanis.scheduledRunnerEnabled).toBe(false)
     expect(config.exa.enabled).toBe(false)
@@ -107,6 +109,8 @@ describe('OpenAgentsWorkerConfig', () => {
         RESEND_API_KEY: 're_test',
         RESEND_FROM_EMAIL: 'OpenAgents <billing@openagents.com>',
         RESEND_REPLY_TO_EMAIL: 'support@openagents.com',
+        CRM_RESEND_FROM_EMAIL: 'Sarah <sarah@openagents.com>',
+        CRM_RESEND_REPLY_TO_EMAIL: 'sarah@openagents.com',
         RUNNER_AUTOMATIC_FAILOVER_ENABLED: 'false',
         RUNNER_BACKEND_POLICY:
           'shc_primary_cloudflare_container_backup_gcloud_reference',
@@ -153,6 +157,8 @@ describe('OpenAgentsWorkerConfig', () => {
       'OpenAgents <billing@openagents.com>',
     )
     expect(config.email.resend?.replyToEmail).toBe('support@openagents.com')
+    expect(config.email.crmResendFromEmail).toBe('Sarah <sarah@openagents.com>')
+    expect(config.email.crmResendReplyToEmail).toBe('sarah@openagents.com')
     expect(config.mdk.configured).toBe(true)
     expect(redactedValue(config.mdk.accessToken)).toBe('mdk-access-token')
     expect(config.mdk.checkout).toMatchObject({
@@ -282,6 +288,31 @@ describe('OpenAgentsWorkerConfig', () => {
     ).rejects.toMatchObject({
       _tag: 'OpenAgentsWorkerConfigError',
       field: 'RESEND_FROM_EMAIL',
+    })
+
+    // OB-1 (#8558): the CRM-specific sender identity is validated the same way.
+    await expect(
+      Effect.runPromise(
+        decodeOpenAgentsWorkerConfig({
+          ...minimalEnv(),
+          CRM_RESEND_FROM_EMAIL: 'not-email',
+        }),
+      ),
+    ).rejects.toMatchObject({
+      _tag: 'OpenAgentsWorkerConfigError',
+      field: 'CRM_RESEND_FROM_EMAIL',
+    })
+
+    await expect(
+      Effect.runPromise(
+        decodeOpenAgentsWorkerConfig({
+          ...minimalEnv(),
+          CRM_RESEND_REPLY_TO_EMAIL: 'not-email',
+        }),
+      ),
+    ).rejects.toMatchObject({
+      _tag: 'OpenAgentsWorkerConfigError',
+      field: 'CRM_RESEND_REPLY_TO_EMAIL',
     })
   })
 

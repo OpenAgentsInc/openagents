@@ -443,6 +443,12 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   RESEND_FROM_EMAIL?: string | undefined
   RESEND_REPLY_TO_EMAIL?: string | undefined
   RESEND_WEBHOOK_SECRET?: string | undefined
+  // OB-1 (#8558): CRM-specific sender identity so Sarah's outbound uses
+  // `Sarah <sarah@openagents.com>` without repointing the shared
+  // RESEND_FROM_EMAIL that Sites transactional mail depends on. Optional —
+  // falls back to the shared Resend from/reply-to when absent.
+  CRM_RESEND_FROM_EMAIL?: string | undefined
+  CRM_RESEND_REPLY_TO_EMAIL?: string | undefined
   RUNNER_AUTOMATIC_FAILOVER_ENABLED?: string | undefined
   RUNNER_BACKEND_POLICY?: string | undefined
   RUNNER_CLOUDFLARE_CONTAINER_ALLOWED_TRUSTS?: string | undefined
@@ -621,6 +627,11 @@ export type OpenAgentsWorkerConfigShape = Readonly<{
   email: Readonly<{
     resend?: ResendEmailConfig | undefined
     resendWebhookSecret?: Redacted.Redacted<WorkerSecret> | undefined
+    // OB-1 (#8558): optional CRM-specific sender identity. When present it
+    // overrides the shared Resend from/reply-to for the CRM send path only,
+    // leaving Sites transactional identity untouched.
+    crmResendFromEmail?: ResendEmailSender | undefined
+    crmResendReplyToEmail?: EmailAddress | undefined
   }>
   exa: ExaConfig
   forgeControlPlaneToken?: Redacted.Redacted<WorkerSecret> | undefined
@@ -1174,6 +1185,33 @@ const resendConfig = (
     }
   })
 
+// OB-1 (#8558): resolve the optional CRM-specific sender identity. Validated
+// exactly like the shared Resend from/reply-to; both fields are optional and
+// fall back to the shared Resend config when absent (see resolveCrmResendDeps).
+const crmResendFromEmailConfig = (
+  env: OpenAgentsWorkerConfigEnv,
+): Effect.Effect<ResendEmailSender | undefined, OpenAgentsWorkerConfigError> =>
+  Effect.gen(function* () {
+    const fromEmail = optionalString(env, 'CRM_RESEND_FROM_EMAIL')
+    if (fromEmail === undefined) {
+      return undefined
+    }
+    yield* validateEmailAddress('CRM_RESEND_FROM_EMAIL', fromEmail)
+    return ResendEmailSender.make(fromEmail)
+  })
+
+const crmResendReplyToEmailConfig = (
+  env: OpenAgentsWorkerConfigEnv,
+): Effect.Effect<EmailAddress | undefined, OpenAgentsWorkerConfigError> =>
+  Effect.gen(function* () {
+    const replyToEmail = optionalString(env, 'CRM_RESEND_REPLY_TO_EMAIL')
+    if (replyToEmail === undefined) {
+      return undefined
+    }
+    yield* validateEmailAddress('CRM_RESEND_REPLY_TO_EMAIL', replyToEmail)
+    return EmailAddress.make(replyToEmail)
+  })
+
 const mdkCheckoutRouteKind = (
   env: OpenAgentsWorkerConfigEnv,
   routeUrl: string | undefined,
@@ -1345,6 +1383,8 @@ export const decodeOpenAgentsWorkerConfig = (
       email: {
         resend: yield* resendConfig(env),
         resendWebhookSecret: optionalRedacted(env, 'RESEND_WEBHOOK_SECRET'),
+        crmResendFromEmail: yield* crmResendFromEmailConfig(env),
+        crmResendReplyToEmail: yield* crmResendReplyToEmailConfig(env),
       },
       exa: yield* exaConfig(env),
       forgeControlPlaneToken: optionalRedacted(
