@@ -177,8 +177,14 @@ const fleetProjectionWithApproval = Schema.decodeUnknownSync(
 
 const ownerFleetState = (
   closeouts: NonNullable<SurfaceState["ownerFleet"]>["closeouts"],
-  projection: typeof fleetProjection = fleetProjection,
+  projection: typeof fleetProjection | null = fleetProjection,
+  connection: NonNullable<SurfaceState["ownerFleet"]>["connection"] = {
+    phase: "idle",
+  },
 ): NonNullable<SurfaceState["ownerFleet"]> => ({
+  runRef: projection?.run.runRef ?? fleetProjection.run.runRef,
+  scope: `scope.fleet_run.${projection?.run.runRef ?? fleetProjection.run.runRef}` as never,
+  connection,
   projection,
   closeouts,
   expandedAuditWorkUnitRefs: [],
@@ -350,7 +356,7 @@ describe("sarah surface consumes the EN catalog (SQ-7 #8624)", () => {
 })
 
 describe("FC-3 owner fleet surface integration", () => {
-  test("keeps Fleet absent and Blueprint selected without an exact owner projection", () => {
+  test("keeps Fleet absent and Blueprint selected without an exact owner run scope", () => {
     const staleFleetSelection = sarahSurfaceView({
       ...baseState,
       activePanel: "fleet",
@@ -380,7 +386,7 @@ describe("FC-3 owner fleet surface integration", () => {
     ).toBeNull()
   })
 
-  test("adds one Fleet tab after Blueprint only when the projection exists", () => {
+  test("adds one Fleet tab after Blueprint only for an exact configured run", () => {
     const view = sarahSurfaceView({
       ...baseState,
       ownerFleet: ownerFleetState({ status: "not_reported" }),
@@ -422,6 +428,54 @@ describe("FC-3 owner fleet surface integration", () => {
       flex: 1,
       minHeight: 0,
     })
+  })
+
+  test("renders typed loading and reconnect states before exact projection hydration", () => {
+    const loading = sarahSurfaceView({
+      ...baseState,
+      activePanel: "fleet",
+      ownerFleet: ownerFleetState({ status: "not_reported" }, null),
+    })
+    expect(findByKey(loading, "fleet-connection-idle")).toMatchObject({
+      a11y: {
+        role: "group",
+        label:
+          "Fleet loading. Loading the owner-safe projection for this exact run.",
+      },
+    })
+    expect(
+      findByKey(loading, "fleet-supervision-fleet.run.surface"),
+    ).toBeNull()
+
+    const reconnecting = sarahSurfaceView({
+      ...baseState,
+      activePanel: "fleet",
+      ownerFleet: ownerFleetState(
+        { status: "not_reported" },
+        null,
+        {
+          phase: "reconnecting",
+          scope: "scope.fleet_run.fleet.run.surface" as never,
+          cursor: 4 as never,
+          attempt: 1,
+          retryAtMs: 100,
+          mustRefetchReason: null,
+          error: {
+            reason: "network_unavailable",
+            messageSafe: "Fleet connection is temporarily unavailable.",
+            retryable: true,
+          },
+        },
+      ),
+    })
+    expect(findByKey(reconnecting, "fleet-connection-reconnecting")).toMatchObject({
+      a11y: {
+        role: "group",
+        label:
+          "Fleet reconnecting. Fleet connection is temporarily unavailable.",
+      },
+    })
+    expect(JSON.stringify(reconnecting)).not.toContain("network_unavailable")
   })
 
   test("renders loading, error, and not-reported closeouts only from explicit variants", () => {

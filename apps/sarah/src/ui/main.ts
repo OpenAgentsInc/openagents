@@ -66,13 +66,24 @@ import {
 } from "./fleet-supervision-view.ts"
 import type { SarahBlueprintDelta } from "../services/avatar-event-bus.ts"
 import type { CustomerBlueprintDraft } from "../services/customer-blueprint.ts"
-import type { SarahCodingCloseoutReceipt } from "../contracts/coding-closeout-receipt.ts"
+import {
+  projectSarahCodingCloseoutReceipts,
+  type SarahCodingCloseoutReceipt,
+} from "../contracts/coding-closeout-receipt.ts"
 import {
   SARAH_OWNER_FLEET_INTERACTIVE,
   SARAH_OWNER_FLEET_READ_ONLY,
   type SarahOwnerFleetInteractionMode,
 } from "./owner-fleet-interaction.ts"
 import type { SarahFleetOwnerProjection } from "../contracts/fleet-owner-projection.ts"
+import type { SarahFleetConnectionState } from "../services/fleet-sync-live-session.ts"
+import {
+  makeSarahFleetBrowserCoordinator,
+  makeSarahFleetBrowserRuntime,
+  parseSarahFleetBrowserConfig,
+  type SarahFleetBrowserConfig,
+  type SarahFleetBrowserViewState,
+} from "../services/fleet-browser-host.ts"
 
 const API = "/sarah/api"
 
@@ -114,12 +125,15 @@ export type SarahOwnerFleetCloseoutState =
     }>
 
 /**
- * Optional owner-scoped Fleet tab input. Presence means an exact decoded
- * projection exists; loading/error/not-reported only describe the separate
- * closeout receipt lane and are never inferred from an absent projection.
+ * Optional owner-scoped Fleet tab input. Presence means the browser has an
+ * exact run scope. Projection null is an honest pre-hydration/reconnect state,
+ * never permission to infer a latest/display run.
  */
 export type SarahOwnerFleetViewState = Readonly<{
-  projection: SarahFleetOwnerProjection
+  runRef: SarahFleetBrowserConfig["runRef"]
+  scope: SarahFleetBrowserConfig["scope"]
+  connection: SarahFleetConnectionState
+  projection: SarahFleetOwnerProjection | null
   closeouts: SarahOwnerFleetCloseoutState
   expandedAuditWorkUnitRefs: ReadonlyArray<
     SarahFleetOwnerProjection["workUnits"][number]["workUnitRef"]
@@ -786,6 +800,81 @@ const ownerFleetCloseoutViews = (
   ]
 }
 
+const fleetConnectionView = (
+  connection: SarahFleetConnectionState,
+): View & { key: string } => {
+  const presentation = (() => {
+    switch (connection.phase) {
+      case "live":
+        return {
+          label: "Fleet live",
+          tone: "success" as const,
+          message: "Owner Fleet projection is live for this exact run.",
+        }
+      case "reconnecting":
+        return {
+          label: "Fleet reconnecting",
+          tone: "info" as const,
+          message: connection.error.messageSafe,
+        }
+      case "must_refetch":
+        return {
+          label: "Fleet refreshing",
+          tone: "info" as const,
+          message: `A fresh exact-run snapshot is required (${connection.reason.replaceAll("_", " ")}).`,
+        }
+      case "failed":
+        return {
+          label: "Fleet unavailable",
+          tone: "danger" as const,
+          message: connection.error.messageSafe,
+        }
+      case "stopped":
+        return {
+          label: "Fleet stopped",
+          tone: "neutral" as const,
+          message: "The exact-run Fleet connection is stopped.",
+        }
+      case "idle":
+      case "catching_up":
+      case "connecting":
+        return {
+          label: "Fleet loading",
+          tone: "info" as const,
+          message: "Loading the owner-safe projection for this exact run.",
+        }
+    }
+  })()
+  return keyed(
+    Stack(
+      {
+        key: `fleet-connection-${connection.phase}`,
+        direction: "column",
+        gap: "1",
+        padding: "2",
+        a11y: {
+          role: "group",
+          label: `${presentation.label}. ${presentation.message}`,
+        },
+        style: { width: "full" },
+      },
+      [
+        Badge({
+          key: `fleet-connection-${connection.phase}-badge`,
+          label: presentation.label,
+          tone: presentation.tone,
+        }),
+        text(
+          `fleet-connection-${connection.phase}-message`,
+          presentation.message,
+          "caption",
+          "textMuted",
+        ),
+      ],
+    ),
+  )
+}
+
 const fleetPanel = (
   ownerFleet: SarahOwnerFleetViewState,
   interactionMode: SarahOwnerFleetInteractionMode,
@@ -804,6 +893,7 @@ const fleetPanel = (
           style: { width: "full", flex: 1, minHeight: 0 },
         },
         [
+          fleetConnectionView(ownerFleet.connection),
           ...(interactionMode === SARAH_OWNER_FLEET_READ_ONLY
             ? [
                 keyed(
@@ -837,35 +927,43 @@ const fleetPanel = (
                 ),
               ]
             : []),
-          keyed(
-            sarahFleetRunSupervisionView(ownerFleet.projection, {
-              expandedAuditWorkUnitRefs:
-                ownerFleet.expandedAuditWorkUnitRefs,
-              interactionMode,
-            }),
-          ),
-          keyed(
-            Stack(
-              {
-                key: "fleet-closeouts",
-                direction: "column",
-                gap: "3",
-                a11y: {
-                  role: "region",
-                  label: "Fleet coding closeouts",
-                },
-                style: { width: "full" },
-              },
-              [
-                text(
-                  "fleet-closeouts-title",
-                  "Coding closeouts",
-                  "title",
+          ...(ownerFleet.projection === null
+            ? []
+            : [
+                keyed(
+                  sarahFleetRunSupervisionView(ownerFleet.projection, {
+                    expandedAuditWorkUnitRefs:
+                      ownerFleet.expandedAuditWorkUnitRefs,
+                    interactionMode,
+                  }),
                 ),
-                ...ownerFleetCloseoutViews(ownerFleet, interactionMode),
-              ],
-            ),
-          ),
+              ]),
+          ...(ownerFleet.projection === null
+            ? []
+            : [
+                keyed(
+                  Stack(
+                    {
+                      key: "fleet-closeouts",
+                      direction: "column",
+                      gap: "3",
+                      a11y: {
+                        role: "region",
+                        label: "Fleet coding closeouts",
+                      },
+                      style: { width: "full" },
+                    },
+                    [
+                      text(
+                        "fleet-closeouts-title",
+                        "Coding closeouts",
+                        "title",
+                      ),
+                      ...ownerFleetCloseoutViews(ownerFleet, interactionMode),
+                    ],
+                  ),
+                ),
+              ]),
         ],
       ),
     ],
@@ -1519,6 +1617,7 @@ export const mountSarahSurface = (
           const ownerFleet = current.ownerFleet
           if (
             ownerFleet === undefined ||
+            ownerFleet.projection === null ||
             ownerFleet.projection.run.runRef !== runRef ||
             !ownerFleet.projection.workUnits.some(
               (workUnit) => workUnit.workUnitRef === workUnitRef,
@@ -1542,6 +1641,7 @@ export const mountSarahSurface = (
           const ownerFleet = current.ownerFleet
           if (
             ownerFleet === undefined ||
+            ownerFleet.projection === null ||
             ownerFleet.closeouts.status !== "ready" ||
             !ownerFleet.closeouts.receipts.some(
               (receipt) => receipt.cardRef === cardRef,
@@ -1716,13 +1816,123 @@ export const mountSarahSurface = (
     yield* loadBlueprintMapSeed(state)
     yield* loadCurrentReceipts(state)
 
+    const openOwnerFleetWorkUnit = (input: Readonly<{
+      runRef: string
+      workUnitRef: string
+      assignmentRef: string
+    }>) =>
+      SubscriptionRef.update(state, (current): SarahSurfaceState => {
+        const ownerFleet = current.ownerFleet
+        const workUnit = ownerFleet?.projection?.workUnits.find(
+          (candidate) =>
+            candidate.workUnitRef === input.workUnitRef &&
+            candidate.assignmentRef === input.assignmentRef,
+        )
+        if (
+          ownerFleet === undefined ||
+          ownerFleet.runRef !== input.runRef ||
+          ownerFleet.projection?.run.runRef !== input.runRef ||
+          workUnit === undefined
+        ) {
+          return current
+        }
+        return {
+          ...current,
+          activePanel: "fleet",
+          ownerFleet: {
+            ...ownerFleet,
+            expandedAuditWorkUnitRefs: ownerFleet.expandedAuditWorkUnitRefs.includes(
+              workUnit.workUnitRef,
+            )
+              ? ownerFleet.expandedAuditWorkUnitRefs
+              : [...ownerFleet.expandedAuditWorkUnitRefs, workUnit.workUnitRef],
+          },
+        }
+      })
+
+    const openOwnerFleetEvidence = (input: Readonly<{
+      runRef: string
+      workUnitRef: string
+      assignmentRef: string
+      evidenceKind: "verification" | "closeout"
+      evidenceRef: string
+    }>) =>
+      SubscriptionRef.update(state, (current): SarahSurfaceState => {
+        const ownerFleet = current.ownerFleet
+        const workUnit = ownerFleet?.projection?.workUnits.find(
+          (candidate) =>
+            candidate.workUnitRef === input.workUnitRef &&
+            candidate.assignmentRef === input.assignmentRef,
+        )
+        const expectedRef =
+          input.evidenceKind === "verification"
+            ? workUnit?.verification.verificationRef
+            : workUnit?.closeout.closeoutRef
+        if (
+          ownerFleet === undefined ||
+          ownerFleet.runRef !== input.runRef ||
+          ownerFleet.projection?.run.runRef !== input.runRef ||
+          workUnit === undefined ||
+          expectedRef !== input.evidenceRef
+        ) {
+          return current
+        }
+        return {
+          ...current,
+          activePanel: "fleet",
+          ownerFleet: {
+            ...ownerFleet,
+            expandedAuditWorkUnitRefs: ownerFleet.expandedAuditWorkUnitRefs.includes(
+              workUnit.workUnitRef,
+            )
+              ? ownerFleet.expandedAuditWorkUnitRefs
+              : [...ownerFleet.expandedAuditWorkUnitRefs, workUnit.workUnitRef],
+          },
+        }
+      })
+
+    const openOwnerFleetReceiptTarget = (targetRef: string) =>
+      SubscriptionRef.update(state, (current): SarahSurfaceState => {
+        const ownerFleet = current.ownerFleet
+        if (ownerFleet?.closeouts.status !== "ready") return current
+        const receipt = ownerFleet.closeouts.receipts.find((candidate) => {
+          const next = candidate.sections[5].next
+          return candidate.cardRef === targetRef || next.targetRef === targetRef
+        })
+        if (receipt === undefined) return current
+        return {
+          ...current,
+          activePanel: "fleet",
+          ownerFleet: {
+            ...ownerFleet,
+            expandedReceiptCardRefs: ownerFleet.expandedReceiptCardRefs.includes(
+              receipt.cardRef,
+            )
+              ? ownerFleet.expandedReceiptCardRefs
+              : [...ownerFleet.expandedReceiptCardRefs, receipt.cardRef],
+          },
+        }
+      })
+
     return {
       setOwnerFleetViewState: (
         ownerFleet: SarahOwnerFleetViewState | undefined,
       ) =>
         SubscriptionRef.update(state, (current): SarahSurfaceState => {
           if (ownerFleet !== undefined) {
-            return { ...current, ownerFleet }
+            const retainedLocalState =
+              current.ownerFleet?.scope === ownerFleet.scope
+                ? {
+                    expandedAuditWorkUnitRefs:
+                      current.ownerFleet.expandedAuditWorkUnitRefs,
+                    expandedReceiptCardRefs:
+                      current.ownerFleet.expandedReceiptCardRefs,
+                  }
+                : {}
+            return {
+              ...current,
+              ownerFleet: { ...ownerFleet, ...retainedLocalState },
+            }
           }
           const { ownerFleet: _removed, ...withoutOwnerFleet } = current
           return {
@@ -1731,6 +1941,9 @@ export const mountSarahSurface = (
               current.activePanel === "fleet" ? "blueprint" : current.activePanel,
           }
         }),
+      openOwnerFleetWorkUnit,
+      openOwnerFleetEvidence,
+      openOwnerFleetReceiptTarget,
       unmount: Effect.gen(function* () {
         yield* avatarSurface.unmount
         yield* surface.unmount
@@ -1738,17 +1951,149 @@ export const mountSarahSurface = (
     }
   })
 
+const ownerFleetViewStateFromBrowser = (
+  state: SarahFleetBrowserViewState,
+): SarahOwnerFleetViewState => ({
+  runRef: state.config.runRef,
+  scope: state.config.scope,
+  connection: state.connection,
+  projection: state.projection,
+  closeouts:
+    state.projection === null
+      ? { status: "not_reported" }
+      : {
+          status: "ready",
+          receipts: projectSarahCodingCloseoutReceipts({
+            projection: state.projection,
+            evidence: [],
+          }),
+        },
+  expandedAuditWorkUnitRefs: [],
+  expandedReceiptCardRefs: [],
+})
+
 const boot = () => {
   const root = document.getElementById("sarah-root")
   const avatar = document.getElementById("sarah-avatar")
   if (!root || !avatar) return
   void Effect.runPromise(Scope.make()).then((scope) => {
-    void Effect.runPromise(
-      Scope.provide(scope)(mountSarahSurface(root, avatar)),
-    ).catch((error) => {
-      console.error("[sarah] surface mount failed", error)
-      void Effect.runPromise(Scope.close(scope, Exit.void))
+    let mounted:
+      | Effect.Success<ReturnType<typeof mountSarahSurface>>
+      | null = null
+    let closed = false
+
+    const fleetCoordinator = makeSarahFleetBrowserCoordinator({
+      makeRuntime: (config) =>
+        makeSarahFleetBrowserRuntime({
+          config,
+          origin: window.location.origin,
+          fetch: (input, init) => fetch(input, init),
+        }),
+      onState: (state) => {
+        if (closed || mounted === null) return
+        void Effect.runPromise(
+          mounted.setOwnerFleetViewState(
+            state === null ? undefined : ownerFleetViewStateFromBrowser(state),
+          ),
+        )
+      },
     })
+
+    const currentCommands = (runRef: string) => {
+      const selected = fleetCoordinator.current()
+      return selected?.config.runRef === runRef ? selected.commands : null
+    }
+    const handlers: SarahOwnerFleetHostIntentHandlers = {
+      SarahFleetRunControlRequested: ({ runRef, action }) =>
+        Effect.tryPromise({
+          try: () => {
+            const commands = currentCommands(runRef)
+            return commands === null
+              ? Promise.reject(new Error("fleet_command_unavailable"))
+              : commands.runControl({ runRef, action })
+          },
+          catch: () => new Error("fleet_command_failed"),
+        }).pipe(Effect.asVoid, Effect.catch(() => Effect.void)),
+      SarahFleetApprovalDecisionRequested: ({
+        runRef,
+        approvalRef,
+        decision,
+      }) =>
+        Effect.tryPromise({
+          try: () => {
+            const commands = currentCommands(runRef)
+            return commands === null
+              ? Promise.reject(new Error("fleet_command_unavailable"))
+              : commands.approvalDecision({ runRef, approvalRef, decision })
+          },
+          catch: () => new Error("fleet_command_failed"),
+        }).pipe(Effect.asVoid, Effect.catch(() => Effect.void)),
+      SarahFleetWorkUnitOpened: (payload) =>
+        mounted?.openOwnerFleetWorkUnit(payload) ?? Effect.void,
+      SarahFleetEvidenceOpened: (payload) =>
+        mounted?.openOwnerFleetEvidence(payload) ?? Effect.void,
+      SarahCodingReceiptAction: (payload) => {
+        if (payload.action !== "control_run") {
+          return mounted?.openOwnerFleetReceiptTarget(payload.targetRef) ?? Effect.void
+        }
+        return Effect.tryPromise({
+          try: () => {
+            const commands = currentCommands(payload.targetRef)
+            return commands === null
+              ? Promise.reject(new Error("fleet_command_unavailable"))
+              : commands.runControl({
+                  runRef: payload.targetRef,
+                  action: payload.runControl,
+                })
+          },
+          catch: () => new Error("fleet_command_failed"),
+        }).pipe(Effect.asVoid, Effect.catch(() => Effect.void))
+      },
+    }
+
+    const reconcileFleetScope = () => {
+      if (closed || mounted === null) return
+      let config
+      try {
+        config = parseSarahFleetBrowserConfig(window.location.href)
+      } catch {
+        fleetCoordinator.setConfig(null)
+        return
+      }
+      fleetCoordinator.setConfig(config)
+    }
+
+    const close = () => {
+      if (closed) return
+      closed = true
+      window.removeEventListener("popstate", reconcileFleetScope)
+      window.removeEventListener("pagehide", close)
+      fleetCoordinator.dispose()
+      const selected = mounted
+      mounted = null
+      void Effect.runPromise(
+        Effect.gen(function* () {
+          if (selected !== null) yield* selected.unmount
+          yield* Scope.close(scope, Exit.void)
+        }),
+      )
+    }
+
+    void Effect.runPromise(
+      Scope.provide(scope)(mountSarahSurface(root, avatar, {
+        ownerFleetHandlers: handlers,
+      })),
+    )
+      .then((handle) => {
+        mounted = handle
+        window.addEventListener("popstate", reconcileFleetScope)
+        window.addEventListener("pagehide", close, { once: true })
+        reconcileFleetScope()
+      })
+      .catch((error) => {
+        console.error("[sarah] surface mount failed", error)
+        close()
+      })
   })
 }
 
