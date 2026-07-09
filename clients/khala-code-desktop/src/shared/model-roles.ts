@@ -11,7 +11,7 @@ export const KhalaCodeModelRoleSchema = S.Literals([
 ])
 export type KhalaCodeModelRole = typeof KhalaCodeModelRoleSchema.Type
 
-export const KhalaCodeModelRoleHarnessSchema = S.Literals(["claude", "codex", "khala"])
+export const KhalaCodeModelRoleHarnessSchema = S.Literals(["claude", "codex", "grok", "khala"])
 export type KhalaCodeModelRoleHarness = typeof KhalaCodeModelRoleHarnessSchema.Type
 
 export const KhalaCodeModelRoleEffortSchema = S.Literals([

@@ -41,8 +41,8 @@ function parseArgs(argv: string[]) {
 const args = parseArgs(process.argv.slice(2))
 const receipt = await runRlProbe({
   concurrencies: args.concurrency,
-  prompt: args.prompt,
-  model: args.model,
+  ...(args.prompt === undefined ? {} : { prompt: args.prompt }),
+  ...(args.model === undefined ? {} : { model: args.model }),
 })
 
 const outPath = resolve(args.out ?? defaultRlReceiptPath())

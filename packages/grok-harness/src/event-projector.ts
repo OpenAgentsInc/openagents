@@ -54,8 +54,8 @@ export function createGrokAcpEventProjector(input: {
           turnId: input.turnId,
           event: {
             kind: update.sessionUpdate,
-            name: update.title,
-            detail: update.status,
+            ...(update.title === undefined ? {} : { name: update.title }),
+            ...(update.status === undefined ? {} : { detail: update.status }),
           },
         })
       }

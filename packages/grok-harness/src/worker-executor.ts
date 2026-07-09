@@ -162,7 +162,10 @@ export function createGrokHeadlessWorkerExecutor(options: {
   return {
     kind: "grok_cli",
     async readiness() {
-      return probeGrokReadiness({ binary, env: options.env })
+      return probeGrokReadiness({
+        binary,
+        ...(options.env === undefined ? {} : { env: options.env }),
+      })
     },
     async runClaimedWork(input) {
       const plane = input.plane ?? (options.env?.XAI_API_KEY ? "api_key" : "cli_session")
@@ -205,7 +208,7 @@ export function createGrokHeadlessWorkerExecutor(options: {
       const usage: GrokUsageSnapshot = {
         metering: "not_measured",
         wallClockMs: result.wallClockMs,
-        model: input.model,
+        ...(input.model === undefined ? {} : { model: input.model }),
         plane,
         marginalCostClass,
       }

@@ -361,7 +361,7 @@ const RpcStringArray = S.Array(S.String)
 const RpcJsonObject = S.Record(S.String, RpcJson)
 const RpcStringNull = S.NullOr(S.String)
 const RpcNumberNull = S.NullOr(S.Number)
-const RpcRuntimeMode = S.Literals(["claude_runtime", "codex_harness", "khala_native_runtime"])
+const RpcRuntimeMode = S.Literals(["claude_runtime", "codex_harness", "grok_runtime", "khala_native_runtime"])
 const RpcToolCatalogKind = S.Literals(["codex_harness_supplemental", "khala_native_legacy"])
 
 const RpcToolEvent = S.Struct({
@@ -657,7 +657,7 @@ const RpcBackendProjection = S.Struct({
       "khala-provider-key",
     ]),
   ),
-  kind: S.Literals(["claude_app_sdk", "codex_app_server", "hosted_openagents", "mock"]),
+  kind: S.Literals(["claude_app_sdk", "codex_app_server", "grok_acp", "hosted_openagents", "mock"]),
   model: S.String,
   provider: S.optional(S.Literal("openrouter")),
   runtimeMode: S.optional(RpcRuntimeMode),

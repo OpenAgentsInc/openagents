@@ -176,6 +176,10 @@ import {
   createClaudeAppSdkChatRuntime,
   type ClaudeAppSdkChatRuntime,
 } from "./claude-app-sdk-chat-runtime.js"
+import {
+  createGrokDesktopChatRuntime,
+  type GrokDesktopChatRuntime,
+} from "./grok-desktop-chat-runtime.js"
 import { createArchitectPlanStore } from "./architect-plan-store.js"
 import {
   claudePlanFanoutDagToWorkSource,
@@ -299,6 +303,11 @@ type ChatRuntimeSelection =
     readonly kind: "codex"
     readonly modelRole?: KhalaCodeModelRoleEntry
     readonly runtime: ChatRuntime
+  }
+  | {
+    readonly kind: "grok"
+    readonly modelRole?: KhalaCodeModelRoleEntry
+    readonly runtime: GrokDesktopChatRuntime
   }
   | {
     readonly kind: "legacy"
@@ -1662,6 +1671,16 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
     })
     return lazyClaudeChatRuntime
   }
+  // Memoized like Claude: interrupt must hit the same ACP process/session map.
+  let lazyGrokChatRuntimePromise: Promise<GrokDesktopChatRuntime> | undefined
+  const requireGrokChatRuntime = async (): Promise<GrokDesktopChatRuntime> => {
+    lazyGrokChatRuntimePromise ??= createGrokDesktopChatRuntime({
+      env: input.env,
+      workingDirectory: input.workingDirectory,
+      ...(input.emitChatTurnEvent === undefined ? {} : { onEvent: input.emitChatTurnEvent }),
+    })
+    return lazyGrokChatRuntimePromise
+  }
   const requireFleetRunSupervisor = (): KhalaCodeDesktopFleetRunSupervisorRpc => {
     if (input.fleetRunSupervisor === undefined) {
       throw new Error("Fleet run supervisor is not configured.")
@@ -1702,7 +1721,7 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
   const roleRuntimeMode = async (
     role: KhalaCodeModelRole,
   ): Promise<{
-    readonly mode: "claude_runtime" | "codex_harness" | "khala_native_runtime"
+    readonly mode: "claude_runtime" | "codex_harness" | "grok_runtime" | "khala_native_runtime"
     readonly role: KhalaCodeModelRoleEntry
   }> => {
     const envOverride = khalaCodeDesktopRuntimeEnvOverride(input.env)
@@ -1712,6 +1731,7 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
       return { mode: await readKhalaCodeDesktopPersistedHarnessMode(input.env), role: modelRole }
     }
     if (modelRole.harness === "claude") return { mode: "claude_runtime", role: modelRole }
+    if (modelRole.harness === "grok") return { mode: "grok_runtime", role: modelRole }
     if (modelRole.harness === "khala") return { mode: "khala_native_runtime", role: modelRole }
     return { mode: "codex_harness", role: modelRole }
   }
@@ -1722,6 +1742,9 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
     const { mode, role: modelRole } = await roleRuntimeMode(role)
     if (mode === "claude_runtime") {
       return { kind: "claude", modelRole, runtime: requireClaudeChatRuntime() }
+    }
+    if (mode === "grok_runtime") {
+      return { kind: "grok", modelRole, runtime: await requireGrokChatRuntime() }
     }
     if (mode === "khala_native_runtime") {
       return { kind: "legacy" }
@@ -3932,6 +3955,14 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
           status: harness.available ? "ready" : "unavailable",
         })
       }
+      if (runtimeMode === "grok_runtime") {
+        return runtimeStatus({
+          available: true,
+          capability: "coding",
+          reason: "Grok ACP harness is selected (MH-3).",
+          status: "ready",
+        })
+      }
       const harness = await codexHarnessStatus()
       if (!harness.available) {
         return runtimeStatus({
@@ -3996,11 +4027,13 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
     async slashCommandDispatch(request) {
       const selection = await selectChatRuntime()
       if (selection.kind === "claude") return selection.runtime.slashCommandDispatch(request)
+      if (selection.kind === "grok") return selection.runtime.slashCommandDispatch(request)
       return dispatchSlashAppServerCommand(request)
     },
     async slashCommandList(request = {}) {
       const selection = await selectChatRuntime()
       if (selection.kind === "claude") return selection.runtime.slashCommandList(request)
+      if (selection.kind === "grok") return selection.runtime.slashCommandList(request)
       return {
         ok: true,
         commands: khalaCodeDesktopSlashCommandsWithAvailability({
@@ -4035,6 +4068,12 @@ export function createKhalaCodeDesktopRpcRequestHandlers(
               ...materializedRequest,
               cwd: input.workingDirectory,
               ...(selectedModelRole === undefined ? {} : { modelRole: selectedModelRole }),
+            })
+          }
+          if (selection.kind === "grok") {
+            return selection.runtime.startTurn({
+              ...materializedRequest,
+              cwd: input.workingDirectory,
             })
           }
           return labelLegacyRuntimeResponse(await legacyChatTurn({

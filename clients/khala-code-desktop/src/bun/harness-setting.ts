@@ -76,6 +76,7 @@ const DEFAULT_HARNESS_MODE: KhalaCodeDesktopRuntimeMode = "codex_harness"
 const VALID_HARNESS_MODES = new Set<KhalaCodeDesktopRuntimeMode>([
   "claude_runtime",
   "codex_harness",
+  "grok_runtime",
   "khala_native_runtime",
 ])
 
@@ -132,6 +133,7 @@ export const khalaCodeDesktopRuntimeEnvOverride = (
 ): KhalaCodeDesktopRuntimeMode | null => {
   if (env.KHALA_CODE_DESKTOP_RUNTIME === "claude_runtime") return "claude_runtime"
   if (env.KHALA_CODE_DESKTOP_RUNTIME === "codex_harness") return "codex_harness"
+  if (env.KHALA_CODE_DESKTOP_RUNTIME === "grok_runtime") return "grok_runtime"
   if (
     env.KHALA_CODE_DESKTOP_RUNTIME === "khala_native_runtime" ||
     env.KHALA_CODE_DESKTOP_LEGACY_KHALA_NATIVE_RUNTIME === "1"
