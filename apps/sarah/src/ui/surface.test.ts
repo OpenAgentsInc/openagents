@@ -26,6 +26,7 @@ import type { SarahOwnerFleetHostIntentHandlers } from "./main.ts"
 const {
   sarahSurfaceView,
   sarahAvatarPaneView,
+  sarahAvatarContinuityProjection,
   sarahOwnerFleetInteractionMode,
   sarahOwnerFleetHostIntents,
 } = await import("./main.ts")
@@ -36,6 +37,9 @@ type SurfaceState = Parameters<typeof sarahSurfaceView>[0]
 
 const baseState: SurfaceState = {
   status: "idle",
+  avatarMedia: { status: "not_requested" },
+  avatarStart: { status: "idle" },
+  avatarStop: { status: "idle" },
   avatarArmed: true,
   avatarActive: false,
   avatarSessionOpen: false,
@@ -352,6 +356,273 @@ describe("sarah surface consumes the EN catalog (SQ-7 #8624)", () => {
     const pane = sarahAvatarPaneView(baseState)
     expect(findByTag(pane, "Host")).toBeNull()
     expect(findByKey(pane, "avatar-start-overlay")).not.toBeNull()
+  })
+
+  test("shows video LIVE only for a fresh browser frame and transport lease", () => {
+    const nowMs = 10_000
+    const pane = sarahAvatarPaneView(
+      {
+        ...baseState,
+        status: "live",
+        avatarActive: true,
+        avatarSessionOpen: true,
+        avatarMedia: {
+          status: "live",
+          lease: {
+            transportLeaseRef: "browser.media.surface",
+            transportExpiresAtMs: nowMs + 1_000,
+            lastFrameAtMs: nowMs,
+          },
+        },
+      },
+      nowMs,
+    )
+
+    expect(findByKey(pane, "avatar-media-status")).toMatchObject({
+      label: "VIDEO · LIVE",
+      tone: "success",
+      a11y: { label: "Sarah video status: Live, moving frames" },
+    })
+    expect(findByKey(pane, "avatar-media-reconnect")).toBeNull()
+  })
+
+  test("keeps a text-live conversation and Fleet controls available when video is stale", () => {
+    const nowMs = 10_000
+    const staleState: SurfaceState = {
+      ...baseState,
+      status: "live",
+      avatarActive: true,
+      avatarSessionOpen: true,
+      avatarMedia: { status: "stale", lastFrameAtMs: nowMs - 1_000 },
+      ownerFleet: ownerFleetState({ status: "not_reported" }),
+    }
+    const continuity = sarahAvatarContinuityProjection(staleState, nowMs)
+    const pane = sarahAvatarPaneView(staleState, nowMs)
+    const surface = sarahSurfaceView(
+      staleState,
+      sarahOwnerFleetInteractionMode(ownerFleetHandlers),
+    )
+
+    expect(continuity.conversation).toEqual({ status: "text_live" })
+    expect(continuity.media.status).toBe("stale")
+    expect(continuity.continuation).toMatchObject({
+      status: "text_continuation_reconnect",
+      textControl: "available",
+      fleetControl: "available",
+      action: "reconnect_media",
+    })
+    expect(findByKey(pane, "avatar-media-reconnecting")).toMatchObject({
+      a11y: {
+        role: "group",
+        label:
+          "Sarah video status: Reconnecting. Video paused. Keep working in text; Fleet controls remain available.",
+      },
+    })
+    expect(findByKey(pane, "avatar-media-status")).toMatchObject({
+      label: "VIDEO · RECONNECTING",
+      tone: "warn",
+    })
+    expect(findByKey(pane, "avatar-media-reconnect")).toMatchObject({
+      label: "Reconnect video",
+      onPress: { name: "SarahReconnectAvatarMedia" },
+    })
+    expect(findByKey(surface, "composer-input")).not.toBeNull()
+    expect(findByKey(surface, "fleet-panel")).not.toBeNull()
+  })
+
+  test("stale and unavailable copy never promises Fleet without an exact Fleet scope", () => {
+    const nowMs = 10_000
+    const stale = sarahAvatarPaneView(
+      {
+        ...baseState,
+        status: "live",
+        avatarActive: true,
+        avatarSessionOpen: true,
+        avatarMedia: { status: "stale", lastFrameAtMs: nowMs - 1_000 },
+      },
+      nowMs,
+    )
+    const unavailable = sarahAvatarPaneView(
+      {
+        ...baseState,
+        status: "live",
+        avatarSessionOpen: true,
+        avatarMedia: { status: "unavailable" },
+      },
+      nowMs,
+    )
+
+    expect(findByKey(stale, "avatar-media-reconnecting")).toMatchObject({
+      a11y: {
+        role: "group",
+        label:
+          "Sarah video status: Reconnecting. Video paused. Keep working in text.",
+      },
+    })
+    expect(findByKey(stale, "avatar-media-reconnecting-copy")).toMatchObject({
+      content: "Video paused. Text stays available.",
+    })
+    expect(findByKey(unavailable, "avatar-media-unavailable")).toMatchObject({
+      a11y: {
+        role: "group",
+        label: "Sarah video status: Unavailable. Keep working in text.",
+      },
+    })
+    expect(findByKey(unavailable, "avatar-media-unavailable-copy")).toMatchObject({
+      content: "Video unavailable. Text stays available.",
+    })
+    expect(JSON.stringify(stale)).not.toContain("Fleet controls")
+    expect(JSON.stringify(unavailable)).not.toContain("Fleet controls")
+  })
+
+  test("an unconfirmed stop fails closed without offering a replacement action", () => {
+    const pane = sarahAvatarPaneView({
+      ...baseState,
+      status: "live",
+      avatarSessionOpen: true,
+      avatarMedia: { status: "unavailable" },
+      avatarStop: { status: "timed_out" },
+    })
+
+    expect(findByKey(pane, "avatar-media-stop-unconfirmed")).toMatchObject({
+      a11y: {
+        role: "group",
+        label:
+          "Sarah video status: Stop unconfirmed. A replacement video will not start. Keep working in text.",
+      },
+    })
+    expect(findByKey(pane, "avatar-media-reconnect")).toBeNull()
+    expect(findByKey(pane, "avatar-close-overlay")).toMatchObject({
+      label: "Close video",
+      disabled: false,
+      onPress: { name: "SarahStopAvatar" },
+    })
+  })
+
+  test("a start stays visibly single-flight even when callbacks report live before its handle resolves", () => {
+    const pane = sarahAvatarPaneView({
+      ...baseState,
+      status: "live",
+      avatarActive: true,
+      avatarSessionOpen: true,
+      avatarMedia: { status: "connecting" },
+      avatarStart: { status: "starting" },
+    })
+
+    expect(findByKey(pane, "avatar-media-status")).toMatchObject({
+      label: "VIDEO · STARTING",
+      tone: "info",
+    })
+    expect(findByKey(pane, "avatar-start-overlay")).toMatchObject({
+      label: "Starting video…",
+      disabled: true,
+    })
+    expect(findByKey(pane, "avatar-stop-overlay")).toBeNull()
+  })
+
+  test("a timed-out start blocks replacement visibly while text and scoped Fleet stay available", () => {
+    const timedOut: SurfaceState = {
+      ...baseState,
+      status: "error",
+      avatarSessionOpen: true,
+      avatarMedia: { status: "unavailable" },
+      avatarStart: { status: "timed_out" },
+      ownerFleet: ownerFleetState({ status: "not_reported" }),
+    }
+    const pane = sarahAvatarPaneView(timedOut)
+    const surface = sarahSurfaceView(
+      timedOut,
+      sarahOwnerFleetInteractionMode(ownerFleetHandlers),
+    )
+
+    expect(findByKey(pane, "avatar-media-start-unconfirmed")).toMatchObject({
+      a11y: {
+        role: "group",
+        label:
+          "Sarah video status: Start unconfirmed. A replacement video will not start until the pending start is resolved. Keep working in text; Fleet controls remain available.",
+      },
+    })
+    expect(findByKey(pane, "avatar-media-start-unconfirmed-copy")).toMatchObject({
+      content:
+        "Pending video start is unresolved. Text and Fleet controls stay available.",
+    })
+    expect(findByKey(pane, "avatar-media-reconnect")).toBeNull()
+    expect(findByKey(pane, "avatar-close-overlay")).toMatchObject({
+      label: "Close video",
+      disabled: false,
+      onPress: { name: "SarahStopAvatar" },
+    })
+    expect(findByKey(surface, "composer-input")).not.toBeNull()
+    expect(findByKey(surface, "fleet-panel")).not.toBeNull()
+  })
+
+  test("a timed-out start never promises Fleet without an exact Fleet scope", () => {
+    const pane = sarahAvatarPaneView({
+      ...baseState,
+      status: "error",
+      avatarSessionOpen: true,
+      avatarMedia: { status: "unavailable" },
+      avatarStart: { status: "timed_out" },
+    })
+
+    expect(findByKey(pane, "avatar-media-start-unconfirmed-copy")).toMatchObject({
+      content: "Pending video start is unresolved. Text stays available.",
+    })
+    expect(JSON.stringify(pane)).not.toContain("Fleet controls")
+  })
+
+  test("unconfirmed cleanup exposes no replacement action while text and scoped Fleet remain", () => {
+    const unconfirmed: SurfaceState = {
+      ...baseState,
+      status: "error",
+      avatarSessionOpen: true,
+      avatarMedia: { status: "unavailable" },
+      avatarStart: { status: "cleanup_unconfirmed" },
+      avatarStop: { status: "failed" },
+      ownerFleet: ownerFleetState({ status: "not_reported" }),
+    }
+    const pane = sarahAvatarPaneView(unconfirmed)
+    const surface = sarahSurfaceView(
+      unconfirmed,
+      sarahOwnerFleetInteractionMode(ownerFleetHandlers),
+    )
+
+    expect(findByKey(pane, "avatar-media-start-cleanup-unconfirmed")).toMatchObject({
+      a11y: {
+        role: "group",
+        label:
+          "Sarah video status: Start and stop unconfirmed. A replacement video will not start. Keep working in text; Fleet controls remain available.",
+      },
+    })
+    expect(findByKey(pane, "avatar-media-status")).toMatchObject({
+      label: "VIDEO · START/STOP UNCONFIRMED",
+      tone: "danger",
+    })
+    expect(findByKey(pane, "avatar-media-reconnect")).toBeNull()
+    expect(findByKey(pane, "avatar-close-overlay")).toMatchObject({
+      label: "Close video",
+      onPress: { name: "SarahStopAvatar" },
+    })
+    expect(findByKey(surface, "composer-input")).not.toBeNull()
+    expect(findByKey(surface, "fleet-panel")).not.toBeNull()
+  })
+
+  test("unconfirmed cleanup never promises Fleet without an exact Fleet scope", () => {
+    const pane = sarahAvatarPaneView({
+      ...baseState,
+      status: "error",
+      avatarSessionOpen: true,
+      avatarMedia: { status: "unavailable" },
+      avatarStart: { status: "cleanup_unconfirmed" },
+      avatarStop: { status: "failed" },
+    })
+
+    expect(
+      findByKey(pane, "avatar-media-start-cleanup-unconfirmed-copy"),
+    ).toMatchObject({
+      content: "Video cleanup is unconfirmed. Text stays available.",
+    })
+    expect(JSON.stringify(pane)).not.toContain("Fleet controls")
   })
 })
 

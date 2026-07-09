@@ -17,6 +17,28 @@
   Sarah-local Resend/suppression/approval queue.
 - **UI:** zero React in `apps/sarah`. DOM shell now; Effect Native component
   set is the growth path (gaps via EN-2).
+- **Browser media truth (#8610):** conversation/text health and avatar-video
+  health are independent. The browser may show video LIVE only after a recent
+  decoded frame on a live video track grants a bounded browser-local transport
+  lease; expiry renders reconnecting/unavailable with a typed reconnect action
+  while text and any exact-scope Fleet controls remain available. Browser
+  observation never invents admission, reservation, capacity, provider, or
+  cost truth. Frame-rate
+  observations renew the lease internally but public UI projection is cadence-
+  bounded. Start and stop both have typed deadlines: a timed-out start fences
+  that generation and a timed-out or failed stop blocks replacement sessions.
+  Replacement remains fail-closed until the exact pending work resolves and
+  any late handle proves bounded cleanup; interaction, cleanup, and unmount do
+  not inherit a provider/SDK/WebRTC hang. After a successful mint, local media
+  teardown never substitutes for server-slot release: start/attach/offer/peer
+  failure, disconnect, unload, explicit stop, and late-handle cleanup all join
+  exactly one authoritative `/avatar/stop` operation for that session. A
+  network/non-2xx stop is typed cleanup-unconfirmed through the bounded-start
+  boundary; the UI renders START/STOP UNCONFIRMED and replacement stays blocked
+  rather than degrading to an ordinary retryable start failure. Post-handle
+  attach/disconnect/peer terminals publish cleanup `pending` synchronously,
+  closing the same replacement gate before the server stop settles; only exact
+  `confirmed` cleanup reopens it, while `unconfirmed` produces zero new mints.
 - **Agent runtime:** HTTP turns use owned seed runtime; eve is not required for
   monorepo serving path.
 - **Coding FleetRun authority (FC-1, #8637):** the production

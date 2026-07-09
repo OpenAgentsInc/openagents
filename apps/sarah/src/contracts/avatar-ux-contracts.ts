@@ -96,17 +96,26 @@ export const sarahAvatarUxContractRegistry: BehaviorContractRegistryDocument = {
     },
     {
       authorityBoundary:
-        "Binds session admission across apps/sarah and the hydralisk render service compat surface. Watched sessions (connected WebRTC peer) are never evicted; only peer-less abandoned sessions yield the slot. Capacity truth stays with the render service.",
+        "Binds session admission across apps/sarah and the hydralisk render service compat surface. Every successful browser mint owns exactly one idempotent authoritative server stop independent from local media teardown. Watched sessions (connected WebRTC peer) are never evicted; only peer-less abandoned sessions yield the slot. Capacity truth stays with the render service.",
       blockerRefs: [],
       contractId: "sarah.avatar_slot_never_wedges.v1",
-      enforcementTier: "smoke",
+      enforcementTier: "test-sweep",
       evidenceRefs: [
         "apps/sarah/src/ui/avatar-session.ts",
+        "apps/sarah/src/ui/avatar-session.test.ts",
         "apps/sarah/scripts/sarah-avatar-e2e-smoke.mjs",
         "hydralisk:hydralisk/avatar/session.py#evict_one_stale",
         "issue:#8621",
       ],
       oracles: [
+        {
+          description:
+            "Adversarial one-slot browser lifecycle oracle: constructor/acquire/start/attach/EventSource and owned peer-constructor/acquire/offer/remote-description/EventSource/peer failures each issue exactly one authoritative stop; successful cleanup permits the next mint, while stop 503 remains typed cleanup-unconfirmed and forbids remint. Post-handle attach/disconnect/peer terminals synchronously block the shared client replacement gate before cleanup settles and produce zero additional mint requests unless exact cleanup confirms. Repeated or late handle.stop joins that same proof, and false/throwing beacons use one keepalive fallback.",
+          id: "avatar_slot_release.unit",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/sarah/src/ui/avatar-session.test.ts",
+        },
         {
           description:
             "E2E smoke: after an abandoned mint (no WebRTC connect), a second mint must succeed by evicting the stale session instead of returning avatar_session_limit; the surface must also send a stop beacon on unload so abandonment is usually explicit.",
@@ -127,9 +136,88 @@ export const sarahAvatarUxContractRegistry: BehaviorContractRegistryDocument = {
         "i click start conversation and theres some session post or something that took forever and then gave {...avatar_session_limit...} wht the fuck fix it",
       surface: "sarah",
       verification:
-        "bun apps/sarah/scripts/sarah-avatar-e2e-smoke.mjs against staging/production; hydralisk-side eviction verified live 2026-07-09 (two back-to-back mints, second evicted the peer-less first).",
+        "bun test src/ui/avatar-session.test.ts src/contracts/avatar-ux-contracts.test.ts inside apps/sarah; bun apps/sarah/scripts/sarah-avatar-e2e-smoke.mjs against staging/production; hydralisk-side eviction verified live 2026-07-09 (two back-to-back mints, second evicted the peer-less first).",
+    },
+    {
+      authorityBoundary:
+        "Binds only browser-observable Sarah video health and its Effect Native presentation. A decoded frame on a live MediaStream video track grants one short browser-local transport lease; it grants no admission, capacity, provider, reservation, or cost truth. Text and any exact-scope Fleet authority remain independent and available while video recovers.",
+      blockerRefs: [],
+      contractId: "sarah.avatar_media_truth_never_frozen_live.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "apps/sarah/src/ui/avatar-media-health.ts",
+        "apps/sarah/src/ui/avatar-session-attempt-gate.ts",
+        "apps/sarah/src/ui/avatar-start-deadline.ts",
+        "apps/sarah/src/ui/avatar-stop-deadline.ts",
+        "apps/sarah/src/ui/avatar-video-latch.ts",
+        "apps/sarah/src/ui/main.ts",
+        "apps/sarah/src/contracts/fleet-continuity-projection.ts",
+        "issue:#8610",
+      ],
+      oracles: [
+        {
+          description:
+            "Deterministic fake-clock/video oracle: no decoded frame never becomes LIVE; a frame on a live video track leases LIVE only until bounded expiry; burst frames renew that internal expiry without projecting state at frame rate; the next frame after stale recovers; requestVideoFrameCallback has a currentTime-advance fallback; hostile clocks/listeners cannot emit invalid leases; and stop removes every callback, timer, and listener.",
+          id: "avatar_browser_media_lease.unit",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/sarah/src/ui/avatar-media-health.test.ts",
+        },
+        {
+          description:
+            "Effect Native surface oracle: a text-live conversation with stale media renders VIDEO RECONNECTING plus one typed Reconnect video action, explicit accessible fallback copy, and leaves the composer and Fleet surface present; VIDEO LIVE requires the fresh typed lease variant.",
+          id: "avatar_media_status_surface.unit",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/sarah/src/ui/surface.test.ts",
+        },
+        {
+          description:
+            "Attempt-fence and bounded lifecycle oracles: rapid reconnect actions remain single-flight; an older async completion cannot replace a newer attempt; hung start/stop work reaches a typed deadline, refuses replacement without wedging cleanup, and disposal permanently rejects late completion or restart; pending video-element acquisition is rejected on disposal.",
+          id: "avatar_media_reconnect_fence.unit",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/sarah/src/ui/avatar-session-attempt-gate.test.ts",
+        },
+        {
+          description:
+            "Deadline and lifecycle units prove a never-settling start after a successful stop releases the interaction transition, visibly blocks replacement, fences its late handle, and runs that handle through bounded cleanup before retry is admitted.",
+          id: "avatar_media_start_deadline.unit",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/sarah/src/ui/avatar-start-deadline.test.ts",
+        },
+        {
+          description:
+            "Deadline units independently prove stop success, failure, and timeout outcomes are bounded and non-throwing while retaining eventual stop truth after the deadline.",
+          id: "avatar_media_stop_deadline.unit",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/sarah/src/ui/avatar-stop-deadline.test.ts",
+        },
+        {
+          description:
+            "Disposable video-latch units prove pending and future media-host acquisition rejects with fixed copy after surface disposal, so unmount cannot strand an avatar start awaiting a removed host.",
+          id: "avatar_media_video_latch.unit",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/sarah/src/ui/avatar-video-latch.test.ts",
+        },
+      ],
+      productArea: "avatar browser media health",
+      source: {
+        channel: "openagents-codex-thread",
+        statedBy: "owner",
+        statedOn: "2026-07-09",
+      },
+      state: "enforced",
+      statement:
+        "LIVE media requires an actual recent video-frame/transport lease, goes stale on bounded expiry, and exposes an explicit reconnect-media action/status while text and Fleet controls remain available.",
+      surface: "sarah",
+      verification:
+        "bun test src/ui/avatar-media-health.test.ts src/ui/avatar-session-attempt-gate.test.ts src/ui/avatar-start-deadline.test.ts src/ui/avatar-stop-deadline.test.ts src/ui/avatar-video-latch.test.ts src/ui/surface.test.ts src/contracts/avatar-ux-contracts.test.ts inside apps/sarah; runs in the package and repo test:sarah sweeps.",
     },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-09.1",
+  version: "2026-07-09.6",
 }

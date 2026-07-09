@@ -41,7 +41,26 @@ import {
 import { makeDomRenderer, makeMediaVideoDriver } from "@effect-native/render-dom"
 import { Effect, Exit, Schema, Scope, SubscriptionRef } from "@effect-native/core/effect"
 
-import { startAvatarSession, type AvatarHandle } from "./avatar-session.ts"
+import {
+  isAvatarCleanupUnconfirmedError,
+  startAvatarSession,
+  type AvatarHandle,
+} from "./avatar-session.ts"
+import {
+  applyAvatarCleanupObservation,
+  makeAvatarSessionAttemptGate,
+} from "./avatar-session-attempt-gate.ts"
+import {
+  beginBoundedAvatarStart,
+  type AvatarStartAttempt,
+  type AvatarStartDeadlineOutcome,
+} from "./avatar-start-deadline.ts"
+import { makeAvatarVideoElementLatch } from "./avatar-video-latch.ts"
+import {
+  beginBoundedAvatarStop,
+  type AvatarStopAttempt,
+  type AvatarStopDeadlineOutcome,
+} from "./avatar-stop-deadline.ts"
 import {
   blueprintMapFactFromDelta,
   blueprintMapFactFromProfileFact,
@@ -66,6 +85,12 @@ import {
 } from "./fleet-supervision-view.ts"
 import type { SarahBlueprintDelta } from "../services/avatar-event-bus.ts"
 import type { CustomerBlueprintDraft } from "../services/customer-blueprint.ts"
+import {
+  fleetContinuityProjection,
+  type ConversationObservation,
+  type MediaObservation,
+  type MediaPresentation,
+} from "../contracts/fleet-continuity-projection.ts"
 import {
   projectSarahCodingCloseoutReceipts,
   type SarahCodingCloseoutReceipt,
@@ -148,8 +173,25 @@ export type SarahOwnerFleetViewState = Readonly<{
  */
 type AccountPhase = "unknown" | "anonymous" | "linking" | "linked"
 
+export type SarahAvatarStopState =
+  | Readonly<{ status: "idle" }>
+  | Readonly<{ status: "stopping" }>
+  | Readonly<{ status: "timed_out" }>
+  | Readonly<{ status: "failed" }>
+
+export type SarahAvatarStartState =
+  | Readonly<{ status: "idle" }>
+  | Readonly<{ status: "starting" }>
+  | Readonly<{ status: "timed_out" }>
+  | Readonly<{ status: "cleanup_unconfirmed" }>
+  | Readonly<{ status: "failed" }>
+
 export type SarahSurfaceState = Readonly<{
   status: "idle" | "thinking" | "connecting" | "live" | "error"
+  /** Browser-observed video movement, independent from conversation state. */
+  avatarMedia: MediaObservation
+  avatarStart: SarahAvatarStartState
+  avatarStop: SarahAvatarStopState
   avatarArmed: boolean
   avatarActive: boolean
   /**
@@ -177,6 +219,9 @@ export type SarahSurfaceState = Readonly<{
 
 const initialState: SarahSurfaceState = {
   status: "idle",
+  avatarMedia: { status: "not_requested" },
+  avatarStart: { status: "idle" },
+  avatarStop: { status: "idle" },
   avatarArmed: false,
   avatarActive: false,
   avatarSessionOpen: false,
@@ -206,6 +251,7 @@ const InputChanged = defineIntent("SarahInputChanged", Schema.String)
 const SendText = defineIntent("SarahSendText", Schema.String)
 const StartAvatar = defineIntent("SarahStartAvatar", Schema.Null)
 const StopAvatar = defineIntent("SarahStopAvatar", Schema.Null)
+const ReconnectAvatarMedia = defineIntent("SarahReconnectAvatarMedia", Schema.Null)
 const OpenLink = defineIntent("SarahOpenLink", Schema.String)
 const ConnectAccount = defineIntent("SarahConnectAccount", Schema.Null)
 const BookHumanHandoff = defineIntent("SarahBookHumanHandoff", Schema.Null)
@@ -216,6 +262,7 @@ const baseSarahIntents = [
   SendText,
   StartAvatar,
   StopAvatar,
+  ReconnectAvatarMedia,
   OpenLink,
   ConnectAccount,
   BookHumanHandoff,
@@ -301,6 +348,260 @@ const statusBadge = (state: SarahSurfaceState): View => {
   })
 }
 
+const avatarConversationObservation = (
+  state: SarahSurfaceState,
+): ConversationObservation => {
+  switch (state.status) {
+    case "idle":
+      return { status: "idle" }
+    case "connecting":
+      return { status: "connecting" }
+    case "live":
+      return { status: "text_live" }
+    case "thinking":
+      return { status: "busy" }
+    case "error":
+      return { status: "failed" }
+  }
+}
+
+/**
+ * Reuses FC-3's one LIVE/stale law for the browser surface. The browser does
+ * not call the admission projector because it cannot observe reservations,
+ * provider capacity, or cost.
+ */
+export const sarahAvatarContinuityProjection = (
+  state: SarahSurfaceState,
+  nowMs: number,
+) =>
+  fleetContinuityProjection(
+    {
+      conversation: avatarConversationObservation(state),
+      media: state.avatarMedia,
+      progress: { status: "not_started" },
+    },
+    nowMs,
+  )
+
+const avatarMediaStatusTreatment = (
+  state: SarahSurfaceState,
+  nowMs: number,
+): View | null => {
+  if (!state.avatarSessionOpen) return null
+  const media: MediaPresentation = sarahAvatarContinuityProjection(
+    state,
+    nowMs,
+  ).media
+  const controlsRemainCopy =
+    state.ownerFleet === undefined
+      ? "Text stays available."
+      : "Text and Fleet controls stay available."
+  const keepWorkingCopy =
+    state.ownerFleet === undefined
+      ? "Keep working in text."
+      : "Keep working in text; Fleet controls remain available."
+  const badge = (
+    label: string,
+    tone: "neutral" | "info" | "success" | "warn" | "danger",
+    accessibleLabel: string,
+  ) => Badge({
+    key: "avatar-media-status",
+    label,
+    tone,
+    a11y: { label: accessibleLabel },
+  })
+
+  if (state.avatarStart.status === "cleanup_unconfirmed") {
+    return Stack(
+      {
+        key: "avatar-media-start-cleanup-unconfirmed",
+        direction: "row",
+        gap: "2",
+        align: "center",
+        a11y: {
+          role: "group",
+          label:
+            `Sarah video status: Start and stop unconfirmed. A replacement video will not start. ${keepWorkingCopy}`,
+        },
+      },
+      [
+        badge(
+          "VIDEO · START/STOP UNCONFIRMED",
+          "danger",
+          "Sarah video status: Start and stop unconfirmed",
+        ),
+        text(
+          "avatar-media-start-cleanup-unconfirmed-copy",
+          `Video cleanup is unconfirmed. ${controlsRemainCopy}`,
+          "caption",
+          "textMuted",
+        ),
+      ],
+    )
+  }
+  if (state.avatarStop.status === "stopping") {
+    return badge(
+      "VIDEO · STOPPING",
+      "info",
+      "Sarah video status: Stopping the previous video session",
+    )
+  }
+  if (
+    state.avatarStop.status === "timed_out" ||
+    state.avatarStop.status === "failed"
+  ) {
+    return Stack(
+      {
+        key: "avatar-media-stop-unconfirmed",
+        direction: "row",
+        gap: "2",
+        align: "center",
+        a11y: {
+          role: "group",
+          label:
+            `Sarah video status: Stop unconfirmed. A replacement video will not start. ${keepWorkingCopy}`,
+        },
+      },
+      [
+        badge(
+          "VIDEO · STOP UNCONFIRMED",
+          "danger",
+          "Sarah video status: Stop unconfirmed",
+        ),
+        text(
+          "avatar-media-stop-unconfirmed-copy",
+          `Previous video stop is unconfirmed. ${controlsRemainCopy}`,
+          "caption",
+          "textMuted",
+        ),
+      ],
+    )
+  }
+  if (state.avatarStart.status === "starting") {
+    return badge(
+      "VIDEO · STARTING",
+      "info",
+      "Sarah video status: Starting",
+    )
+  }
+  if (state.avatarStart.status === "timed_out") {
+    return Stack(
+      {
+        key: "avatar-media-start-unconfirmed",
+        direction: "row",
+        gap: "2",
+        align: "center",
+        a11y: {
+          role: "group",
+          label:
+            `Sarah video status: Start unconfirmed. A replacement video will not start until the pending start is resolved. ${keepWorkingCopy}`,
+        },
+      },
+      [
+        badge(
+          "VIDEO · START UNCONFIRMED",
+          "danger",
+          "Sarah video status: Start unconfirmed",
+        ),
+        text(
+          "avatar-media-start-unconfirmed-copy",
+          `Pending video start is unresolved. ${controlsRemainCopy}`,
+          "caption",
+          "textMuted",
+        ),
+      ],
+    )
+  }
+
+  switch (media.status) {
+    case "not_requested":
+      return null
+    case "queued":
+      return badge("VIDEO · QUEUED", "info", "Sarah video status: Queued")
+    case "connecting":
+      return badge(
+        "VIDEO · CONNECTING",
+        "info",
+        "Sarah video status: Connecting",
+      )
+    case "live":
+      return badge(
+        "VIDEO · LIVE",
+        "success",
+        "Sarah video status: Live, moving frames",
+      )
+    case "stale":
+      return Stack(
+        {
+          key: "avatar-media-reconnecting",
+          direction: "row",
+          gap: "2",
+          align: "center",
+          a11y: {
+            role: "group",
+            label:
+              `Sarah video status: Reconnecting. Video paused. ${keepWorkingCopy}`,
+          },
+        },
+        [
+          badge(
+            "VIDEO · RECONNECTING",
+            "warn",
+            "Sarah video status: Reconnecting",
+          ),
+          text(
+            "avatar-media-reconnecting-copy",
+            `Video paused. ${controlsRemainCopy}`,
+            "caption",
+            "textMuted",
+          ),
+          Button({
+            key: "avatar-media-reconnect",
+            label: "Reconnect video",
+            variant: "secondary",
+            onPress: IntentRef("SarahReconnectAvatarMedia"),
+          }),
+        ],
+      )
+    case "unavailable":
+    case "evicted":
+      return Stack(
+        {
+          key: "avatar-media-unavailable",
+          direction: "row",
+          gap: "2",
+          align: "center",
+          a11y: {
+            role: "group",
+            label:
+              `Sarah video status: Unavailable. ${keepWorkingCopy}`,
+          },
+        },
+        [
+          badge(
+            "VIDEO · UNAVAILABLE",
+            "danger",
+            "Sarah video status: Unavailable",
+          ),
+          text(
+            "avatar-media-unavailable-copy",
+            `Video unavailable. ${controlsRemainCopy}`,
+            "caption",
+            "textMuted",
+          ),
+          Button({
+            key: "avatar-media-reconnect",
+            label: "Reconnect video",
+            variant: "secondary",
+            onPress: IntentRef("SarahReconnectAvatarMedia"),
+          }),
+        ],
+      )
+    case "ended":
+      return badge("VIDEO · ENDED", "neutral", "Sarah video status: Ended")
+  }
+}
+
 /** Account chip (KHS-7): anonymous → sign-in button; linked → email badge. */
 const accountChip = (state: SarahSurfaceState): View | null => {
   switch (state.accountPhase) {
@@ -324,21 +625,62 @@ const accountChip = (state: SarahSurfaceState): View | null => {
   }
 }
 
-const avatarControl = (state: SarahSurfaceState, keySuffix = "overlay"): View =>
-  state.avatarActive
-    ? Button({
-        key: `avatar-stop-${keySuffix}`,
-        label: "End",
-        variant: "secondary",
-        onPress: IntentRef("SarahStopAvatar"),
-      })
-    : Button({
-        key: `avatar-start-${keySuffix}`,
-        label: state.avatarArmed ? "Talk to Sarah" : "Avatar offline",
-        variant: "primary",
-        disabled: !state.avatarArmed || state.status === "connecting",
-        onPress: IntentRef("SarahStartAvatar"),
-      })
+const avatarControl = (
+  state: SarahSurfaceState,
+  keySuffix = "overlay",
+): View => {
+  if (state.avatarStop.status === "stopping") {
+    return Button({
+      key: `avatar-start-${keySuffix}`,
+      label: "Stopping video…",
+      variant: "secondary",
+      disabled: true,
+      onPress: IntentRef("SarahStartAvatar"),
+    })
+  }
+  if (
+    state.avatarStop.status !== "idle" ||
+    state.avatarStart.status === "cleanup_unconfirmed" ||
+    state.avatarStart.status === "timed_out"
+  ) {
+    return Button({
+      key: `avatar-${state.avatarSessionOpen ? "close" : "blocked"}-${keySuffix}`,
+      label: state.avatarSessionOpen ? "Close video" : "Video unavailable",
+      variant: "secondary",
+      disabled: !state.avatarSessionOpen,
+      onPress: IntentRef("SarahStopAvatar"),
+    })
+  }
+  if (state.avatarStart.status === "starting") {
+    return Button({
+      key: `avatar-start-${keySuffix}`,
+      label: "Starting video…",
+      variant: "secondary",
+      disabled: true,
+      onPress: IntentRef("SarahStartAvatar"),
+    })
+  }
+  if (state.avatarActive) {
+    return Button({
+      key: `avatar-stop-${keySuffix}`,
+      label: "End",
+      variant: "secondary",
+      onPress: IntentRef("SarahStopAvatar"),
+    })
+  }
+  return Button({
+    key: `avatar-start-${keySuffix}`,
+    label:
+      state.avatarStart.status === "failed"
+        ? "Try video again"
+        : state.avatarArmed
+          ? "Talk to Sarah"
+          : "Avatar offline",
+    variant: "primary",
+    disabled: !state.avatarArmed || state.status === "connecting",
+    onPress: IntentRef("SarahStartAvatar"),
+  })
+}
 
 /**
  * A transcript entry as an EN Transcript message (effect-native#35): keyed and
@@ -1029,8 +1371,12 @@ export const sarahSurfaceView = (
  * of a session (effect-native#67). While no session is open the pane renders
  * empty and the #sarah-avatar chrome (data-state CSS) shows the idle overlay.
  */
-export const sarahAvatarPaneView = (state: SarahSurfaceState): View =>
-  Stack(
+export const sarahAvatarPaneView = (
+  state: SarahSurfaceState,
+  nowMs = Date.now(),
+): View => {
+  const mediaStatus = avatarMediaStatusTreatment(state, nowMs)
+  return Stack(
     {
       key: "avatar-pane",
       direction: "column",
@@ -1053,10 +1399,12 @@ export const sarahAvatarPaneView = (state: SarahSurfaceState): View =>
         [
           avatarControl(state),
           statusBadge(state),
+          ...(mediaStatus === null ? [] : [mediaStatus]),
         ],
       ),
     ],
   )
+}
 
 let entryCounter = 0
 const nextKey = (prefix: string) => `${prefix}-${entryCounter++}`
@@ -1430,32 +1778,412 @@ export const mountSarahSurface = (
       sarahSurfaceView(current, interactionMode),
     )
     const avatarProgram = makeViewProgramFromState(state, sarahAvatarPaneView)
-    const runtime = { avatar: null as AvatarHandle | null }
+    const runtime = {
+      avatar: null as AvatarHandle | null,
+      avatarGate: makeAvatarSessionAttemptGate(),
+      pendingStart: null as AvatarStartAttempt<AvatarHandle> | null,
+      pendingStop: null as AvatarStopAttempt | null,
+      disposed: false,
+    }
 
     // The media-video host driver hands us the EN-owned <video> attach
     // target; avatar-session awaits it through acquireVideo (the element
     // appears when avatarSessionOpen mounts the MediaVideo node).
-    let videoElement: HTMLVideoElement | null = null
-    let videoWaiters: Array<(element: HTMLVideoElement) => void> = []
+    const videoLatch = makeAvatarVideoElementLatch()
     const mediaVideoDriver = makeMediaVideoDriver({
       onElement: (element) => {
-        videoElement = element
-        for (const waiter of videoWaiters.splice(0)) waiter(element)
+        videoLatch.supply(element)
         return () => {
-          videoElement = null
+          videoLatch.clear(element)
         }
       },
     })
-    const acquireVideo = (): Promise<HTMLVideoElement> =>
-      videoElement
-        ? Promise.resolve(videoElement)
-        : new Promise((resolve) => {
-            videoWaiters.push(resolve)
-          })
-    const avatarPane = { container: avatarContainer, acquireVideo }
+    const avatarPane = {
+      container: avatarContainer,
+      acquireVideo: videoLatch.acquire,
+    }
 
     const runInBackground = <A, E>(effect: Effect.Effect<A, E>) =>
       Effect.runPromise(Effect.catch(effect, () => Effect.void) as Effect.Effect<void, never>)
+
+    const observeLateStop = (attempt: AvatarStopAttempt) => {
+      void attempt.completion.then((terminal) => {
+        if (runtime.pendingStop !== attempt) return
+        runtime.pendingStop = null
+        if (terminal === "stopped") runtime.avatarGate.unblockReplacement()
+        else runtime.avatarGate.blockReplacement()
+        if (runtime.disposed) return
+        void runInBackground(
+          SubscriptionRef.update(state, (current): SarahSurfaceState => ({
+            ...current,
+            avatarStop:
+              terminal === "stopped"
+                ? { status: "idle" }
+                : { status: "failed" },
+            avatarStart:
+              terminal === "stopped" &&
+              (current.avatarStart.status === "timed_out" ||
+                current.avatarStart.status === "cleanup_unconfirmed")
+                ? { status: "idle" }
+                : current.avatarStart,
+            avatarMedia:
+              terminal === "stopped"
+                ? current.avatarMedia
+                : { status: "unavailable" },
+          })),
+        )
+      })
+    }
+
+    const stopAvatarWithinDeadline = (
+      handle: AvatarHandle,
+    ): Effect.Effect<AvatarStopDeadlineOutcome> =>
+      Effect.tryPromise({
+        try: async () => {
+          const attempt = beginBoundedAvatarStop(() => handle.stop())
+          const outcome = await attempt.outcome
+          if (outcome === "timed_out") {
+            runtime.pendingStop = attempt
+            observeLateStop(attempt)
+          }
+          return outcome
+        },
+        catch: () => new Error("avatar_stop_deadline_failed"),
+      }).pipe(
+        Effect.catch(() => Effect.succeed("failed" as const)),
+      )
+
+    const recordStopOutcome = (
+      outcome: AvatarStopDeadlineOutcome,
+    ): Effect.Effect<void> =>
+      Effect.gen(function* () {
+        if (outcome === "stopped") {
+          runtime.pendingStop = null
+          runtime.avatarGate.unblockReplacement()
+        } else {
+          runtime.avatarGate.blockReplacement()
+        }
+        yield* SubscriptionRef.update(state, (current): SarahSurfaceState => ({
+          ...current,
+          avatarStop:
+            outcome === "stopped"
+              ? { status: "idle" }
+              : outcome === "timed_out"
+                ? { status: "timed_out" }
+                : { status: "failed" },
+          avatarMedia:
+            outcome === "stopped"
+              ? current.avatarMedia
+              : { status: "unavailable" },
+        }))
+      })
+
+    const cleanupRejectedAvatar = (
+      handle: AvatarHandle,
+    ): Effect.Effect<void> =>
+      Effect.gen(function* () {
+        const outcome = yield* stopAvatarWithinDeadline(handle)
+        if (runtime.disposed) return
+        yield* recordStopOutcome(outcome)
+        yield* SubscriptionRef.update(
+          state,
+          (current): SarahSurfaceState => ({
+            ...current,
+            avatarStart:
+              outcome === "stopped"
+                ? { status: "idle" }
+                : { status: "cleanup_unconfirmed" },
+          }),
+        )
+      })
+
+    const observeLateStart = (
+      attempt: AvatarStartAttempt<AvatarHandle>,
+    ) => {
+      void attempt.completion.then((terminal) => {
+        if (runtime.pendingStart !== attempt) {
+          if (terminal.status === "started") {
+            void runInBackground(cleanupRejectedAvatar(terminal.value))
+          }
+          return
+        }
+        runtime.pendingStart = null
+        if (terminal.status === "started") {
+          void runInBackground(cleanupRejectedAvatar(terminal.value))
+          return
+        }
+        if (terminal.status === "cleanup_unconfirmed") {
+          runtime.avatarGate.blockReplacement()
+          if (runtime.disposed) return
+          void runInBackground(
+            SubscriptionRef.update(state, (current): SarahSurfaceState => ({
+              ...current,
+              avatarStart: { status: "cleanup_unconfirmed" },
+              avatarStop: { status: "failed" },
+              avatarMedia: { status: "unavailable" },
+            })),
+          )
+          return
+        }
+        runtime.avatarGate.unblockReplacement()
+        if (runtime.disposed) return
+        void runInBackground(
+          SubscriptionRef.update(state, (current): SarahSurfaceState => ({
+            ...current,
+            avatarStart: { status: "failed" },
+            avatarMedia: { status: "unavailable" },
+          })),
+        )
+      })
+    }
+
+    const startAvatar = (keepPaneOnFailure: boolean) =>
+      Effect.gen(function* () {
+        const generation = runtime.avatarGate.nextAttempt()
+        yield* SubscriptionRef.update(state, (current): SarahSurfaceState => ({
+          ...current,
+          status: keepPaneOnFailure ? "live" : "connecting",
+          avatarActive: false,
+          avatarMedia: { status: "connecting" },
+          avatarStart: { status: "starting" },
+          avatarStop: { status: "idle" },
+          // Mount the EN MediaVideo host so acquireVideo can resolve.
+          avatarSessionOpen: true,
+        }))
+        const attempt = beginBoundedAvatarStart(
+          () => startAvatarSession(avatarPane, {
+              onState: (avatarState) => {
+                if (!runtime.avatarGate.accepts(generation)) return
+                void runInBackground(
+                  SubscriptionRef.update(state, (current): SarahSurfaceState => ({
+                    ...current,
+                    avatarActive: avatarState === "live",
+                    avatarSessionOpen:
+                      avatarState === "ended"
+                        ? false
+                        : current.avatarSessionOpen,
+                    status:
+                      avatarState === "live"
+                        ? "live"
+                        : avatarState === "error"
+                          ? keepPaneOnFailure
+                            ? "live"
+                            : "error"
+                          : avatarState === "ended"
+                            ? "idle"
+                            : keepPaneOnFailure
+                              ? "live"
+                              : "connecting",
+                    sandbox: runtime.avatar?.sandbox ?? current.sandbox,
+                  })),
+                )
+              },
+              onMedia: (avatarMedia) => {
+                if (!runtime.avatarGate.accepts(generation)) return
+                void runInBackground(
+                  SubscriptionRef.update(
+                    state,
+                    (current): SarahSurfaceState => ({
+                      ...current,
+                      avatarMedia,
+                    }),
+                  ),
+                )
+              },
+              onCleanup: (cleanup) => {
+                if (!runtime.avatarGate.accepts(generation)) return
+                if (cleanup === "pending") {
+                  applyAvatarCleanupObservation(runtime.avatarGate, cleanup)
+                  void runInBackground(
+                    SubscriptionRef.update(
+                      state,
+                      (current): SarahSurfaceState => ({
+                        ...current,
+                        avatarActive: false,
+                        avatarSessionOpen: true,
+                        avatarMedia: { status: "unavailable" },
+                        avatarStop: { status: "stopping" },
+                      }),
+                    ),
+                  )
+                  return
+                }
+                if (cleanup === "confirmed") {
+                  runtime.avatar = null
+                  applyAvatarCleanupObservation(runtime.avatarGate, cleanup)
+                  void runInBackground(
+                    SubscriptionRef.update(
+                      state,
+                      (current): SarahSurfaceState => ({
+                        ...current,
+                        status: "idle",
+                        avatarActive: false,
+                        avatarSessionOpen: false,
+                        avatarMedia: { status: "not_requested" },
+                        avatarStart: { status: "idle" },
+                        avatarStop: { status: "idle" },
+                      }),
+                    ),
+                  )
+                  return
+                }
+                applyAvatarCleanupObservation(runtime.avatarGate, cleanup)
+                void runInBackground(
+                  SubscriptionRef.update(
+                    state,
+                    (current): SarahSurfaceState => ({
+                      ...current,
+                      status: current.status === "live" ? "live" : "error",
+                      avatarActive: false,
+                      avatarSessionOpen: true,
+                      avatarMedia: { status: "unavailable" },
+                      avatarStart: { status: "cleanup_unconfirmed" },
+                      avatarStop: { status: "failed" },
+                    }),
+                  ),
+                )
+              },
+              onTranscript: (role, textValue) => {
+                if (!runtime.avatarGate.accepts(generation)) return
+                void runInBackground(appendTranscript(state, role, textValue))
+              },
+              onCard: (card) => {
+                if (!runtime.avatarGate.accepts(generation)) return
+                void runInBackground(appendCardReceipt(state, card))
+              },
+              onBlueprintDelta: (delta) => {
+                if (!runtime.avatarGate.accepts(generation)) return
+                void runInBackground(
+                  Effect.gen(function* () {
+                    yield* SubscriptionRef.update(
+                      state,
+                      (current): SarahSurfaceState =>
+                        applyBlueprintDelta(current, delta),
+                    )
+                    if (delta.kind === "draft_revision") {
+                      yield* loadBlueprintMapSeed(state)
+                    }
+                  }),
+                )
+              },
+            }),
+          {
+            classifyFailure: (error) =>
+              isAvatarCleanupUnconfirmedError(error)
+                ? "cleanup_unconfirmed"
+                : "failed",
+          },
+        )
+        runtime.pendingStart = attempt
+        const outcome: AvatarStartDeadlineOutcome<AvatarHandle> =
+          yield* Effect.tryPromise({
+            try: () => attempt.outcome,
+            catch: () => new Error("avatar_start_deadline_failed"),
+          }).pipe(
+            Effect.catch(() => Effect.succeed({ status: "failed" } as const)),
+          )
+
+        if (outcome.status === "timed_out") {
+          runtime.avatarGate.supersedeAttempt()
+          runtime.avatarGate.blockReplacement()
+          if (runtime.disposed) {
+            observeLateStart(attempt)
+            return
+          }
+          yield* SubscriptionRef.update(
+            state,
+            (current): SarahSurfaceState => ({
+              ...current,
+              status: keepPaneOnFailure ? "live" : "error",
+              avatarActive: false,
+              avatarSessionOpen: true,
+              avatarMedia: { status: "unavailable" },
+              avatarStart: { status: "timed_out" },
+            }),
+          )
+          observeLateStart(attempt)
+          return
+        }
+
+        runtime.pendingStart = null
+        if (outcome.status === "cleanup_unconfirmed") {
+          runtime.avatar = null
+          runtime.avatarGate.supersedeAttempt()
+          runtime.avatarGate.blockReplacement()
+          yield* appendTranscript(
+            state,
+            "assistant",
+            "Video cleanup is unconfirmed, so another video will not start. Keep working in text.",
+          )
+          yield* SubscriptionRef.update(
+            state,
+            (current): SarahSurfaceState => ({
+              ...current,
+              status: keepPaneOnFailure ? "live" : "error",
+              avatarActive: false,
+              avatarSessionOpen: true,
+              avatarMedia: { status: "unavailable" },
+              avatarStart: { status: "cleanup_unconfirmed" },
+              avatarStop: { status: "failed" },
+            }),
+          )
+          return
+        }
+        if (outcome.status === "failed") {
+          if (!runtime.avatarGate.accepts(generation)) return
+          runtime.avatar = null
+          yield* appendTranscript(
+            state,
+            "assistant",
+            "Video couldn't start. Keep working in text or try the video again.",
+          )
+          yield* SubscriptionRef.update(
+            state,
+            (current): SarahSurfaceState => ({
+              ...current,
+              status: keepPaneOnFailure ? "live" : "error",
+              avatarActive: false,
+              avatarSessionOpen: keepPaneOnFailure,
+              avatarMedia: { status: "unavailable" },
+              avatarStart: { status: "failed" },
+            }),
+          )
+          return
+        }
+
+        const handle = outcome.value
+        if (!runtime.avatarGate.accepts(generation)) {
+          yield* cleanupRejectedAvatar(handle)
+          return
+        }
+        runtime.avatar = handle
+        yield* SubscriptionRef.update(
+          state,
+          (current): SarahSurfaceState => ({
+            ...current,
+            sandbox: handle.sandbox,
+            avatarStart: { status: "idle" },
+          }),
+        )
+      })
+
+    const withAvatarTransition = (
+      transition: Effect.Effect<void>,
+      replacement = false,
+    ) =>
+      Effect.gen(function* () {
+        const began = replacement
+          ? runtime.avatarGate.tryBeginReplacementTransition()
+          : runtime.avatarGate.tryBeginTransition()
+        if (!began) return
+        yield* transition.pipe(
+          Effect.ensuring(
+            Effect.sync(() => {
+              runtime.avatarGate.finishTransition()
+            }),
+          ),
+        )
+      })
 
     const handlers: IntentHandlers<typeof sarahIntents> = {
       SarahInputChanged: (value) =>
@@ -1661,94 +2389,70 @@ export const mountSarahSurface = (
           }
         }),
       SarahStartAvatar: () =>
-        Effect.gen(function* () {
-          yield* SubscriptionRef.update(state, (current): SarahSurfaceState => ({
-            ...current,
-            status: "connecting",
-            // Mount the EN MediaVideo host so acquireVideo can resolve.
-            avatarSessionOpen: true,
-          }))
-          yield* Effect.tryPromise({
-            try: async () => {
-              runtime.avatar = await startAvatarSession(avatarPane, {
-                onState: (avatarState) => {
-                  void runInBackground(
-                    SubscriptionRef.update(state, (current): SarahSurfaceState => ({
-                      ...current,
-                      avatarActive: avatarState === "live" || avatarState === "connecting",
-                      status:
-                        avatarState === "live"
-                          ? "live"
-                          : avatarState === "error"
-                            ? "error"
-                            : avatarState === "ended"
-                              ? "idle"
-                              : "connecting",
-                      sandbox: runtime.avatar?.sandbox ?? current.sandbox,
-                    })),
-                  )
-                },
-                onTranscript: (role, textValue) => {
-                  void runInBackground(appendTranscript(state, role, textValue))
-                },
-                onCard: (card) => {
-                  void runInBackground(appendCardReceipt(state, card))
-                },
-                onBlueprintDelta: (delta) => {
-                  void runInBackground(
-                    Effect.gen(function* () {
-                      yield* SubscriptionRef.update(
-                        state,
-                        (current): SarahSurfaceState =>
-                          applyBlueprintDelta(current, delta),
-                      )
-                      if (delta.kind === "draft_revision") {
-                        yield* loadBlueprintMapSeed(state)
-                      }
-                    }),
-                  )
-                },
-              })
-            },
-            catch: (error) => (error instanceof Error ? error : new Error(String(error))),
-          }).pipe(
-            Effect.catch((error) =>
-              Effect.gen(function* () {
-                const busy =
-                  error instanceof Error && /busy|429|502/.test(error.message)
-                yield* appendTranscript(
-                  state,
-                  "assistant",
-                  busy
-                    ? "My avatar line is busy right now — give it a minute and try again, or just type below and I'll answer here."
-                    : "I couldn't start the avatar session — type below and I'll answer here while it recovers.",
-                )
-                yield* SubscriptionRef.update(state, (current): SarahSurfaceState => ({
-                  ...current,
-                  status: "error",
-                  avatarActive: false,
-                  avatarSessionOpen: false,
-                }))
+        withAvatarTransition(startAvatar(false), true),
+      SarahReconnectAvatarMedia: () =>
+        withAvatarTransition(
+          Effect.gen(function* () {
+            const handle = runtime.avatar
+            runtime.avatar = null
+            runtime.avatarGate.supersedeAttempt()
+            yield* SubscriptionRef.update(
+              state,
+              (current): SarahSurfaceState => ({
+                ...current,
+                status: current.status === "live" ? "live" : "connecting",
+                avatarActive: false,
+                avatarSessionOpen: true,
+                avatarMedia: { status: "connecting" },
+                avatarStop: { status: "stopping" },
               }),
-            ),
-          )
-        }),
-      SarahStopAvatar: () =>
-        Effect.gen(function* () {
-          const handle = runtime.avatar
-          runtime.avatar = null
-          if (handle) {
-            yield* Effect.tryPromise({ try: () => handle.stop(), catch: () => new Error("stop") }).pipe(
-              Effect.catch(() => Effect.void),
             )
-          }
-          yield* SubscriptionRef.update(state, (current): SarahSurfaceState => ({
-            ...current,
-            avatarActive: false,
-            avatarSessionOpen: false,
-            status: "idle",
-          }))
-        }),
+            if (handle !== null) {
+              const outcome = yield* stopAvatarWithinDeadline(handle)
+              yield* recordStopOutcome(outcome)
+              if (outcome !== "stopped") return
+            } else {
+              yield* SubscriptionRef.update(
+                state,
+                (current): SarahSurfaceState => ({
+                  ...current,
+                  avatarStop: { status: "idle" },
+                }),
+              )
+            }
+            yield* startAvatar(true)
+          }),
+          true,
+        ),
+      SarahStopAvatar: () =>
+        withAvatarTransition(
+          Effect.gen(function* () {
+            const handle = runtime.avatar
+            runtime.avatar = null
+            runtime.avatarGate.supersedeAttempt()
+            if (handle) {
+              yield* SubscriptionRef.update(
+                state,
+                (current): SarahSurfaceState => ({
+                  ...current,
+                  avatarStop: { status: "stopping" },
+                }),
+              )
+              const outcome = yield* stopAvatarWithinDeadline(handle)
+              yield* recordStopOutcome(outcome)
+            }
+            yield* SubscriptionRef.update(
+              state,
+              (current): SarahSurfaceState => ({
+                ...current,
+                avatarActive: false,
+                avatarSessionOpen: false,
+                avatarMedia: { status: "not_requested" },
+                status: "idle",
+              }),
+            )
+          }),
+        ),
     }
 
     const registry = yield* makeIntentRegistry(sarahIntents, handlers)
@@ -1945,6 +2649,14 @@ export const mountSarahSurface = (
       openOwnerFleetEvidence,
       openOwnerFleetReceiptTarget,
       unmount: Effect.gen(function* () {
+        const handle = runtime.avatar
+        runtime.avatar = null
+        runtime.avatarGate.dispose()
+        runtime.disposed = true
+        videoLatch.dispose()
+        if (handle !== null) {
+          yield* stopAvatarWithinDeadline(handle)
+        }
         yield* avatarSurface.unmount
         yield* surface.unmount
       }),

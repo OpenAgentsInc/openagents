@@ -18,9 +18,21 @@ import {
 } from "@heygen/liveavatar-web-sdk"
 
 import type { SarahBlueprintDelta } from "../services/avatar-event-bus.ts"
+import type { MediaObservation } from "../contracts/fleet-continuity-projection.ts"
+import {
+  observeAvatarMediaHealth,
+  type AvatarMediaHealthObserver,
+} from "./avatar-media-health.ts"
 
 export type AvatarCallbacks = {
+  /** Conversation/session health; independent from decoded media movement. */
   onState: (state: "connecting" | "live" | "ended" | "error") => void
+  /** Browser-observed video health; never admission, capacity, or cost truth. */
+  onMedia: (observation: MediaObservation) => void
+  /** Authoritative server-slot cleanup, independent from local media state. */
+  onCleanup: (
+    observation: "pending" | "confirmed" | "unconfirmed",
+  ) => void
   onTranscript: (role: "user" | "assistant", text: string) => void
   onCard: (card: { title: string; body: string; href?: string }) => void
   onBlueprintDelta?: (delta: SarahBlueprintDelta) => void
@@ -54,12 +66,117 @@ type AvatarMint = {
   webrtc?: { offer_url?: string }
 }
 
+export type AvatarSessionFetch = (
+  input: RequestInfo | URL,
+  init?: RequestInit,
+) => Promise<Response>
+
+export type AvatarSessionEnvironment = Readonly<{
+  fetch: AvatarSessionFetch
+  createLiveAvatarSession: (sessionToken: string) => LiveAvatarSession
+  createPeerConnection: () => RTCPeerConnection
+  createEventSource: (url: string) => EventSource
+  addBeforeUnload: (listener: () => void) => void
+  removeBeforeUnload: (listener: () => void) => void
+  sendStopBeacon: (url: string, body: Blob) => boolean
+  getSpeechRecognitionConstructor: () => any
+}>
+
+const browserAvatarSessionEnvironment: AvatarSessionEnvironment = {
+  fetch: (input, init) => fetch(input, init),
+  createLiveAvatarSession: (sessionToken) =>
+    new LiveAvatarSession(sessionToken),
+  createPeerConnection: () => new RTCPeerConnection(),
+  createEventSource: (url) => new EventSource(url),
+  addBeforeUnload: (listener) =>
+    window.addEventListener("beforeunload", listener),
+  removeBeforeUnload: (listener) =>
+    window.removeEventListener("beforeunload", listener),
+  sendStopBeacon: (url, body) => navigator.sendBeacon?.(url, body) ?? false,
+  getSpeechRecognitionConstructor: () =>
+    (window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition,
+}
+
+type ServerStopMode = "request" | "beacon"
+
+/** Fixed public-safe proof that browser teardown did not release admission. */
+export class AvatarCleanupUnconfirmedError extends Error {
+  readonly _tag = "AvatarCleanupUnconfirmedError"
+
+  constructor() {
+    super("avatar_cleanup_unconfirmed")
+    this.name = "AvatarCleanupUnconfirmedError"
+  }
+}
+
+export const isAvatarCleanupUnconfirmedError = (
+  error: unknown,
+): error is AvatarCleanupUnconfirmedError =>
+  error instanceof AvatarCleanupUnconfirmedError ||
+  (error instanceof Error && error.message === "avatar_cleanup_unconfirmed")
+
+/**
+ * One authoritative server-slot release per successful mint. Local browser
+ * teardown is deliberately separate: a disconnected SDK or failed peer may
+ * already be locally closed when a later handle.stop() still needs to await
+ * this exact server stop.
+ */
+const makeEnsureServerStop = (
+  sessionId: string,
+  environment: AvatarSessionEnvironment,
+) => {
+  let serverStop: Promise<void> | null = null
+
+  return (mode: ServerStopMode = "request"): Promise<void> => {
+    if (serverStop !== null) return serverStop
+
+    if (mode === "beacon") {
+      try {
+        const accepted = environment.sendStopBeacon(
+          `${API}/avatar/stop`,
+          new Blob([JSON.stringify({ sessionId })], {
+            type: "application/json",
+          }),
+        )
+        if (accepted) {
+          serverStop = Promise.resolve()
+          return serverStop
+        }
+      } catch {
+        // A keepalive request below is the unload-compatible fallback.
+      }
+    }
+
+    serverStop = Promise.resolve()
+      .then(() =>
+        environment.fetch(`${API}/avatar/stop`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ sessionId }),
+          ...(mode === "beacon" ? { keepalive: true } : {}),
+        }),
+      )
+      .then((response) => {
+        if (!response.ok) throw new AvatarCleanupUnconfirmedError()
+      })
+      .catch((error) => {
+        if (isAvatarCleanupUnconfirmedError(error)) throw error
+        throw new AvatarCleanupUnconfirmedError()
+      })
+    return serverStop
+  }
+}
+
 export async function startAvatarSession(
   pane: AvatarPane,
   callbacks: AvatarCallbacks,
+  environment: AvatarSessionEnvironment = browserAvatarSessionEnvironment,
 ): Promise<AvatarHandle> {
   callbacks.onState("connecting")
-  const mintResponse = await fetch(`${API}/avatar/session`, { method: "POST" })
+  callbacks.onMedia({ status: "connecting" })
+  const mintResponse = await environment.fetch(`${API}/avatar/session`, {
+    method: "POST",
+  })
   if (!mintResponse.ok) {
     const body = (await mintResponse.json().catch(() => ({}))) as {
       error?: { code?: string }
@@ -68,12 +185,33 @@ export async function startAvatarSession(
     throw new Error(body.error?.code ?? `avatar_mint_${mintResponse.status}`)
   }
   const mint = (await mintResponse.json()) as AvatarMint
+  const ensureServerStop = makeEnsureServerStop(mint.sessionId, environment)
 
   if (mint.renderer === "owned") {
-    return startOwnedRendererSession(pane, callbacks, mint)
+    try {
+      return await startOwnedRendererSession(
+        pane,
+        callbacks,
+        mint,
+        ensureServerStop,
+        environment,
+      )
+    } catch (error) {
+      await ensureServerStop()
+      throw error
+    }
   }
 
-  const session = new LiveAvatarSession(mint.sessionToken ?? "")
+  let session: LiveAvatarSession
+  try {
+    session = environment.createLiveAvatarSession(mint.sessionToken ?? "")
+  } catch (error) {
+    callbacks.onState("error")
+    await ensureServerStop()
+    throw error instanceof Error
+      ? error
+      : new Error("avatar_session_construct_failed")
+  }
 
   // One dedupe across BOTH transcript sources (SDK data-channel events and
   // the brain's SSE bus) — the 2026-07-09 live test showed duplicated user
@@ -88,36 +226,145 @@ export async function startAvatarSession(
 
   // The EN media-video host driver owns the <video> element lifecycle; this
   // session only binds the SDK stream to it (fit/mute come from typed props).
-  const video = await pane.acquireVideo()
+  let video: HTMLVideoElement
+  try {
+    video = await pane.acquireVideo()
+  } catch (error) {
+    callbacks.onState("error")
+    await ensureServerStop()
+    throw error instanceof Error
+      ? error
+      : new Error("avatar_video_acquire_failed")
+  }
   pane.container.dataset.state = "connecting"
+  let mediaObserver: AvatarMediaHealthObserver | null = null
+  let events: EventSource | null = null
+  let locallyStopped = false
+  let sdkStop: Promise<void> | null = null
+  let automaticServerStopReported = false
 
-  session.on(SessionEvent.SESSION_STREAM_READY, () => {
-    session.attach(video)
-    pane.container.dataset.state = "live"
-    callbacks.onState("live")
-    void Promise.resolve(session.voiceChat.start()).catch(() => {
-      // Mic denied — the avatar still speaks; text input remains available.
+  const ensureSdkStop = (): Promise<void> => {
+    if (sdkStop !== null) return sdkStop
+    sdkStop = Promise.resolve()
+      .then(() => session.stop())
+      .then(
+        () => undefined,
+        () => undefined,
+      )
+    return sdkStop
+  }
+
+  const reportAutomaticServerStop = () => {
+    const serverStop = ensureServerStop()
+    if (automaticServerStopReported) return serverStop
+    automaticServerStopReported = true
+    try { callbacks.onCleanup("pending") } catch { /* observer-isolated */ }
+    void serverStop.then(
+      () => {
+        try { callbacks.onCleanup("confirmed") } catch { /* observer-isolated */ }
+      },
+      () => {
+        try { callbacks.onCleanup("unconfirmed") } catch { /* observer-isolated */ }
+      },
+    )
+    return serverStop
+  }
+
+  const startMediaObserver = () => {
+    mediaObserver?.stop()
+    mediaObserver = observeAvatarMediaHealth({
+      video,
+      onObservation: (observation) => {
+        pane.container.dataset.state =
+          observation.status === "live" ? "live" : "connecting"
+        callbacks.onMedia(observation)
+      },
     })
-  })
-  session.on(SessionEvent.SESSION_DISCONNECTED, () => {
-    callbacks.onState("ended")
-  })
-  // Native data-channel transcriptions are the primary transcript source;
-  // the SSE bus below adds brain-side cards and covers pre-SDK-event gaps
-  // (both paths dedupe in the surface).
-  session.on(AgentEventsEnum.USER_TRANSCRIPTION, (event) => {
-    if (event.text) emitTranscript("user", event.text)
-  })
-  session.on(AgentEventsEnum.AVATAR_TRANSCRIPTION, (event) => {
-    if (event.text) emitTranscript("assistant", event.text)
-  })
+  }
 
-  await session.start()
+  const teardownLocalMedia = (observation: MediaObservation) => {
+    mediaObserver?.stop()
+    mediaObserver = null
+    events?.close()
+    events = null
+    environment.removeBeforeUnload(beforeUnload)
+    video.srcObject = null
+    pane.container.dataset.state = "idle"
+    callbacks.onMedia(observation)
+  }
 
-  const events = new EventSource(
-    `${API}/avatar/events?ref=${encodeURIComponent(mint.conversationRef)}`,
-  )
+  const stopLocalMedia = (observation: MediaObservation): boolean => {
+    if (locallyStopped) return false
+    locallyStopped = true
+    try { teardownLocalMedia(observation) } catch { /* authority continues */ }
+    return true
+  }
+
+  const beforeUnload = () => {
+    void ensureServerStop("beacon").catch(() => {})
+    if (stopLocalMedia({ status: "ended" })) callbacks.onState("ended")
+  }
+
+  try {
+    session.on(SessionEvent.SESSION_STREAM_READY, () => {
+      if (locallyStopped) return
+      try {
+        session.attach(video)
+        startMediaObserver()
+        callbacks.onState("live")
+        void Promise.resolve(session.voiceChat.start()).catch(() => {
+          // Mic denied — the avatar still speaks; text input remains available.
+        })
+      } catch {
+        void ensureSdkStop()
+        if (stopLocalMedia({ status: "unavailable" })) {
+          try { callbacks.onState("error") } catch { /* observer-isolated */ }
+        }
+        void reportAutomaticServerStop().catch(() => {})
+      }
+    })
+    session.on(SessionEvent.SESSION_DISCONNECTED, () => {
+      if (stopLocalMedia({ status: "ended" })) {
+        try { callbacks.onState("ended") } catch { /* observer-isolated */ }
+      }
+      void reportAutomaticServerStop().catch(() => {})
+    })
+    // Native data-channel transcriptions are the primary transcript source;
+    // the SSE bus below adds brain-side cards and covers pre-SDK-event gaps
+    // (both paths dedupe in the surface).
+    session.on(AgentEventsEnum.USER_TRANSCRIPTION, (event) => {
+      if (event.text) emitTranscript("user", event.text)
+    })
+    session.on(AgentEventsEnum.AVATAR_TRANSCRIPTION, (event) => {
+      if (event.text) emitTranscript("assistant", event.text)
+    })
+
+    await session.start()
+  } catch (error) {
+    const serverStop = ensureServerStop()
+    if (stopLocalMedia({ status: "unavailable" })) {
+      callbacks.onState("error")
+    }
+    await Promise.all([ensureSdkStop(), serverStop])
+    throw error instanceof Error ? error : new Error("avatar_session_start_failed")
+  }
+  if (locallyStopped) {
+    await Promise.all([ensureSdkStop(), ensureServerStop()])
+    throw new Error("avatar_session_closed_during_start")
+  }
+
+  try {
+    events = environment.createEventSource(
+      `${API}/avatar/events?ref=${encodeURIComponent(mint.conversationRef)}`,
+    )
+  } catch (error) {
+    const serverStop = ensureServerStop()
+    if (stopLocalMedia({ status: "unavailable" })) callbacks.onState("error")
+    await Promise.all([ensureSdkStop(), serverStop])
+    throw error
+  }
   events.onmessage = (message) => {
+    if (locallyStopped) return
     try {
       const event = JSON.parse(message.data) as {
         type: string
@@ -145,31 +392,17 @@ export async function startAvatarSession(
   }
 
   const stop = async () => {
-    events.close()
-    try {
-      await session.stop()
-    } catch {
-      // Server-side stop below is the authority.
-    }
-    // The EN driver owns the element; only unbind the stream here.
-    video.srcObject = null
-    pane.container.dataset.state = "idle"
-    await fetch(`${API}/avatar/stop`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ sessionId: mint.sessionId }),
-    }).catch(() => {})
-    callbacks.onState("ended")
+    const firstLocalStop = stopLocalMedia({ status: "ended" })
+    await Promise.all([ensureSdkStop(), ensureServerStop()])
+    if (firstLocalStop) callbacks.onState("ended")
   }
 
-  window.addEventListener("beforeunload", () => {
-    navigator.sendBeacon?.(
-      `${API}/avatar/stop`,
-      new Blob([JSON.stringify({ sessionId: mint.sessionId })], {
-        type: "application/json",
-      }),
-    )
-  })
+  try {
+    environment.addBeforeUnload(beforeUnload)
+  } catch (error) {
+    await stop()
+    throw error
+  }
 
   return {
     stop,
@@ -195,10 +428,13 @@ async function startOwnedRendererSession(
   pane: AvatarPane,
   callbacks: AvatarCallbacks,
   mint: AvatarMint,
+  ensureServerStop: (mode?: ServerStopMode) => Promise<void>,
+  environment: AvatarSessionEnvironment,
 ): Promise<AvatarHandle> {
   const offerUrl = mint.webrtc?.offer_url
   if (!offerUrl) {
     callbacks.onState("error")
+    await ensureServerStop()
     throw new Error("avatar_owned_missing_offer_url")
   }
 
@@ -212,30 +448,129 @@ async function startOwnedRendererSession(
 
   // The EN media-video host driver owns the <video>; bind the recvonly
   // WebRTC stream to the acquired attach target.
-  const video = await pane.acquireVideo()
+  let video: HTMLVideoElement
+  try {
+    video = await pane.acquireVideo()
+  } catch (error) {
+    callbacks.onState("error")
+    await ensureServerStop()
+    throw error instanceof Error
+      ? error
+      : new Error("avatar_video_acquire_failed")
+  }
   pane.container.dataset.state = "connecting"
 
-  const pc = new RTCPeerConnection()
-  pc.addTransceiver("video", { direction: "recvonly" })
-  pc.addTransceiver("audio", { direction: "recvonly" })
+  type SpeechRecognitionLike = {
+    lang: string
+    continuous: boolean
+    interimResults: boolean
+    start: () => void
+    stop: () => void
+    onresult: ((event: any) => void) | null
+    onend: (() => void) | null
+    onerror: ((event: any) => void) | null
+  }
+  let mediaObserver: AvatarMediaHealthObserver | null = null
+  let events: EventSource | null = null
+  let recognition: SpeechRecognitionLike | null = null
+  let recognitionActive = false
+  let locallyStopped = false
+  let automaticServerStopReported = false
+
+  let pc: RTCPeerConnection
+  try {
+    pc = environment.createPeerConnection()
+    pc.addTransceiver("video", { direction: "recvonly" })
+    pc.addTransceiver("audio", { direction: "recvonly" })
+  } catch (error) {
+    callbacks.onState("error")
+    await ensureServerStop()
+    throw error instanceof Error
+      ? error
+      : new Error("avatar_owned_peer_construct_failed")
+  }
+
+  const startMediaObserver = () => {
+    mediaObserver?.stop()
+    mediaObserver = observeAvatarMediaHealth({
+      video,
+      onObservation: (observation) => {
+        pane.container.dataset.state =
+          observation.status === "live" ? "live" : "connecting"
+        callbacks.onMedia(observation)
+      },
+    })
+  }
+
+  const teardownLocalMedia = (observation: MediaObservation) => {
+    mediaObserver?.stop()
+    mediaObserver = null
+    events?.close()
+    events = null
+    recognitionActive = false
+    try { recognition?.stop() } catch { /* already stopped */ }
+    recognition = null
+    pc.ontrack = null
+    pc.onconnectionstatechange = null
+    pc.close()
+    environment.removeBeforeUnload(beforeUnload)
+    video.srcObject = null
+    pane.container.dataset.state = "idle"
+    callbacks.onMedia(observation)
+  }
+
+  const stopLocalMedia = (observation: MediaObservation): boolean => {
+    if (locallyStopped) return false
+    locallyStopped = true
+    try { teardownLocalMedia(observation) } catch { /* authority continues */ }
+    return true
+  }
+
+  const reportAutomaticServerStop = () => {
+    const serverStop = ensureServerStop()
+    if (automaticServerStopReported) return serverStop
+    automaticServerStopReported = true
+    try { callbacks.onCleanup("pending") } catch { /* observer-isolated */ }
+    void serverStop.then(
+      () => {
+        try { callbacks.onCleanup("confirmed") } catch { /* observer-isolated */ }
+      },
+      () => {
+        try { callbacks.onCleanup("unconfirmed") } catch { /* observer-isolated */ }
+      },
+    )
+    return serverStop
+  }
+
+  const beforeUnload = () => {
+    void ensureServerStop("beacon").catch(() => {})
+    if (stopLocalMedia({ status: "ended" })) callbacks.onState("ended")
+  }
+
   pc.ontrack = (event) => {
     const stream = event.streams[0]
     if (stream && video.srcObject !== stream) {
       video.srcObject = stream
-      pane.container.dataset.state = "live"
+      startMediaObserver()
       callbacks.onState("live")
     }
   }
   pc.onconnectionstatechange = () => {
-    if (pc.connectionState === "failed" || pc.connectionState === "closed") {
-      callbacks.onState("ended")
+    if (
+      !locallyStopped &&
+      (pc.connectionState === "failed" || pc.connectionState === "closed")
+    ) {
+      if (stopLocalMedia({ status: "ended" })) {
+        try { callbacks.onState("ended") } catch { /* observer-isolated */ }
+      }
+      void reportAutomaticServerStop().catch(() => {})
     }
   }
 
   try {
     const offer = await pc.createOffer()
     await pc.setLocalDescription(offer)
-    const answerResponse = await fetch(offerUrl, {
+    const answerResponse = await environment.fetch(offerUrl, {
       method: "POST",
       headers: { "content-type": "application/sdp" },
       body: offer.sdp ?? "",
@@ -248,17 +583,24 @@ async function startOwnedRendererSession(
       sdp: await answerResponse.text(),
     })
   } catch (error) {
-    pc.close()
-    video.srcObject = null
-    pane.container.dataset.state = "idle"
-    callbacks.onState("error")
+    const serverStop = ensureServerStop()
+    if (stopLocalMedia({ status: "unavailable" })) callbacks.onState("error")
+    await serverStop
     throw error instanceof Error ? error : new Error("avatar_owned_webrtc_failed")
   }
 
-  const events = new EventSource(
-    `${API}/avatar/events?ref=${encodeURIComponent(mint.conversationRef)}`,
-  )
+  try {
+    events = environment.createEventSource(
+      `${API}/avatar/events?ref=${encodeURIComponent(mint.conversationRef)}`,
+    )
+  } catch (error) {
+    const serverStop = ensureServerStop()
+    if (stopLocalMedia({ status: "unavailable" })) callbacks.onState("error")
+    await serverStop
+    throw error
+  }
   events.onmessage = (message) => {
+    if (locallyStopped) return
     try {
       const event = JSON.parse(message.data) as {
         type: string
@@ -286,58 +628,50 @@ async function startOwnedRendererSession(
   }
 
   // --- user mic: browser speech recognition -> speak bridge ------------------
-  type SpeechRecognitionLike = {
-    lang: string
-    continuous: boolean
-    interimResults: boolean
-    start: () => void
-    stop: () => void
-    onresult: ((event: any) => void) | null
-    onend: (() => void) | null
-    onerror: ((event: any) => void) | null
+  let RecognitionCtor: any
+  try {
+    RecognitionCtor = environment.getSpeechRecognitionConstructor()
+  } catch {
+    RecognitionCtor = undefined
   }
-  const RecognitionCtor = (window as any).SpeechRecognition ??
-    (window as any).webkitSpeechRecognition
-  let recognition: SpeechRecognitionLike | null = null
-  let recognitionActive = false
   let speakInFlight = Promise.resolve()
   if (typeof RecognitionCtor === "function") {
-    recognition = new RecognitionCtor() as SpeechRecognitionLike
-    recognition.lang = "en-US"
-    recognition.continuous = true
-    recognition.interimResults = false
-    recognition.onresult = (event: any) => {
-      for (let i = event.resultIndex; i < event.results.length; i += 1) {
-        const result = event.results[i]
-        if (!result.isFinal) continue
-        const text = String(result[0]?.transcript ?? "").trim()
-        if (!text) continue
-        // Serialize turns: a fast talker must not interleave speak calls.
-        speakInFlight = speakInFlight.then(() =>
-          fetch(`${API}/avatar/speak`, {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ sessionId: mint.sessionId, message: text }),
-          }).then(() => {}, () => {}),
-        )
-      }
-    }
-    recognition.onend = () => {
-      // Chrome ends recognition periodically; keep listening for the session.
-      if (recognitionActive) {
-        try { recognition?.start() } catch { /* already started */ }
-      }
-    }
-    recognition.onerror = (event: any) => {
-      if (event?.error === "not-allowed" || event?.error === "service-not-allowed") {
-        recognitionActive = false
-        callbacks.onCard({
-          title: "Microphone unavailable",
-          body: "Sarah can't hear you — allow microphone access or type below.",
-        })
-      }
-    }
     try {
+      recognition = new RecognitionCtor() as SpeechRecognitionLike
+      recognition.lang = "en-US"
+      recognition.continuous = true
+      recognition.interimResults = false
+      recognition.onresult = (event: any) => {
+        for (let i = event.resultIndex; i < event.results.length; i += 1) {
+          const result = event.results[i]
+          if (!result.isFinal) continue
+          const text = String(result[0]?.transcript ?? "").trim()
+          if (!text) continue
+          // Serialize turns: a fast talker must not interleave speak calls.
+          speakInFlight = speakInFlight.then(() =>
+            environment.fetch(`${API}/avatar/speak`, {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ sessionId: mint.sessionId, message: text }),
+            }).then(() => {}, () => {}),
+          )
+        }
+      }
+      recognition.onend = () => {
+        // Chrome ends recognition periodically; keep listening for the session.
+        if (recognitionActive) {
+          try { recognition?.start() } catch { /* already started */ }
+        }
+      }
+      recognition.onerror = (event: any) => {
+        if (event?.error === "not-allowed" || event?.error === "service-not-allowed") {
+          recognitionActive = false
+          callbacks.onCard({
+            title: "Microphone unavailable",
+            body: "Sarah can't hear you — allow microphone access or type below.",
+          })
+        }
+      }
       recognition.start()
       recognitionActive = true
     } catch {
@@ -351,35 +685,24 @@ async function startOwnedRendererSession(
   }
 
   const stop = async () => {
-    recognitionActive = false
-    try { recognition?.stop() } catch { /* already stopped */ }
-    events.close()
-    pc.close()
-    video.srcObject = null
-    pane.container.dataset.state = "idle"
-    await fetch(`${API}/avatar/stop`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ sessionId: mint.sessionId }),
-    }).catch(() => {})
-    callbacks.onState("ended")
+    const firstLocalStop = stopLocalMedia({ status: "ended" })
+    await ensureServerStop()
+    if (firstLocalStop) callbacks.onState("ended")
   }
 
-  window.addEventListener("beforeunload", () => {
-    navigator.sendBeacon?.(
-      `${API}/avatar/stop`,
-      new Blob([JSON.stringify({ sessionId: mint.sessionId })], {
-        type: "application/json",
-      }),
-    )
-  })
+  try {
+    environment.addBeforeUnload(beforeUnload)
+  } catch (error) {
+    await stop()
+    throw error
+  }
 
   return {
     stop,
     message: (text: string) => {
       // Server-side turn loop: brain → TTS → render-service speak API. The
       // transcript comes back over the SSE bus above.
-      void fetch(`${API}/avatar/speak`, {
+      void environment.fetch(`${API}/avatar/speak`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ sessionId: mint.sessionId, message: text }),

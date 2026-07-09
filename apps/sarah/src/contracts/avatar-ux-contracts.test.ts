@@ -35,6 +35,10 @@ describe("owned surface wires speech recognition with a typed fallback", () => {
     join(APP_ROOT, "src", "ui", "avatar-session.ts"),
     "utf8",
   )
+  const surfaceSource = readFileSync(
+    join(APP_ROOT, "src", "ui", "main.ts"),
+    "utf8",
+  )
 
   test("constructs browser SpeechRecognition on the owned path", () => {
     expect(source).toContain("webkitSpeechRecognition")
@@ -58,7 +62,30 @@ describe("owned surface wires speech recognition with a typed fallback", () => {
   })
 
   test("session teardown stops recognition", () => {
-    expect(source).toMatch(/stop = async \(\) => \{[\s\S]{0,200}recognition\?\.stop\(\)/)
+    expect(source).toMatch(
+      /const teardownLocalMedia = \([\s\S]{0,500}recognitionActive = false[\s\S]{0,100}recognition\?\.stop\(\)/,
+    )
+    expect(source).toMatch(
+      /const stop = async \(\) => \{[\s\S]{0,200}stopLocalMedia\(\{ status: "ended" \}\)/,
+    )
+  })
+
+  test("local teardown never substitutes for authoritative server-slot release", () => {
+    expect(source).toContain("const makeEnsureServerStop")
+    expect(source).toMatch(
+      /const stop = async \(\) => \{[\s\S]{0,250}await (?:Promise\.all\(\[ensureSdkStop\(\), )?ensureServerStop\(\)/,
+    )
+    expect(source).toContain('void ensureServerStop("beacon")')
+  })
+
+  test("post-handle cleanup observations drive the shared replacement gate", () => {
+    expect(source).toContain('callbacks.onCleanup("pending")')
+    expect(source).toContain('callbacks.onCleanup("confirmed")')
+    expect(source).toContain('callbacks.onCleanup("unconfirmed")')
+    expect(surfaceSource).toContain("onCleanup: (cleanup) =>")
+    expect(surfaceSource).toContain(
+      "applyAvatarCleanupObservation(runtime.avatarGate, cleanup)",
+    )
   })
 })
 

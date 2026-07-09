@@ -218,13 +218,37 @@ Registry version: `2026-07-09.1` (schema `openagents.behavior_contracts.v1`)
 
 ## Avatar UX contracts (SQ-4 #8621)
 
-Registry version: `2026-07-09.1` (schema `openagents.behavior_contracts.v1`)
+Registry version: `2026-07-09.6` (schema `openagents.behavior_contracts.v1`)
 
 Owner live-failure statements from 2026-07-09 are enforced in
 `apps/sarah/src/contracts/avatar-ux-contracts.ts`: the session greets first
 audibly (`sarah.avatar_greets_first.v1`), the avatar hears user speech
 (`sarah.avatar_hears_speech.v1`), and an abandoned session never wedges the
-slot (`sarah.avatar_slot_never_wedges.v1`). Oracles run in the normal sweep
-plus the synthetic-prospect e2e smoke
+slot (`sarah.avatar_slot_never_wedges.v1`). Browser video truth is independent
+from conversation truth (`sarah.avatar_media_truth_never_frozen_live.v1`):
+only a decoded frame on a live video track grants a bounded local LIVE lease;
+expiry renders an explicit reconnect state without removing text or Fleet
+controls when an exact Fleet scope is present. Public LIVE updates are
+cadence-bounded rather than frame-rate UI
+work. The restart fence rejects duplicate or stale attempts, a prior stop has a
+typed deadline and blocks replacement while its outcome is unknown, and start
+has its own typed deadline so a hung mint/SDK/WebRTC/video acquisition releases
+the interaction transition without permitting overlap. A timed-out generation
+is fenced; a late handle is stopped through the same bounded cleanup path
+before replacement is admitted. Surface disposal rejects pending media-host
+acquisition. Every successful mint also owns one idempotent authoritative
+server stop, separate from local teardown: SDK/attach/offer/peer failure,
+disconnect, unload, explicit stop, and late cleanup all join it, so a one-slot
+admission lane cannot remain wedged after the browser is locally closed.
+If that authoritative stop is network-failed or non-2xx, the typed
+cleanup-unconfirmed terminal survives the bounded-start boundary: Sarah shows
+`START/STOP UNCONFIRMED`, exposes no replacement action, and keeps text plus
+any exact-scope Fleet controls available without issuing a second mint.
+Post-handle attach, disconnect, and peer terminals close the client replacement
+gate at cleanup `pending`, before the stop response settles. Exact `confirmed`
+cleanup is the only transition that reopens it; `unconfirmed` keeps the handle
+and gate fail-closed and produces zero additional session-mint requests.
+Oracles run in the
+normal sweep plus the synthetic-prospect e2e smoke
 (`apps/sarah/scripts/sarah-avatar-e2e-smoke.mjs`), which every Cloud Run
 deploy now runs against the deployed service before reporting Done.
