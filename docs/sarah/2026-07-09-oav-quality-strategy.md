@@ -265,3 +265,48 @@ Papers are mirrored in the workspace `projects/papers/`.
 Host access, run scripts, and receipts: see #8610/#8611 comments and
 `docs/sarah/2026-07-09-oav1-offline-proof-receipt.md`. Do not print secrets;
 host is billed hourly — coordinate before stopping it.
+
+## Round 3 (2026-07-09 late): opener library v1 FAILED owner playback — short-clip program
+
+Owner verdict on the full v1 opener library (5 scripts × v3/LatentSync):
+**all clips fail** ("all the sarah-openers were shit"), despite passing
+stills, jerk metrics, and word-level STT. Two QA lessons harden into rules:
+
+1. Stills + motion statistics + word-level STT are NOT sufficient gates.
+   Playback verdicts and prosody judgment must gate every take (SQ-1 #8618).
+2. Short clips (4–6s) are a HARDER problem than long takes, not an easier
+   one: prosody instability dominates, and there is no time for the viewer
+   to acclimate to any visual artifact.
+
+Root-cause hypotheses for the short-clip failure, ranked:
+
+- **Zero-shot TTS prosody instability on short texts.** CosyVoice zero-shot
+  conditions on one short reference; 4–6s scripts routinely come out with
+  wrong intonation ("Hello?" rising on the greeting), robotic pacing, or
+  flat affect. A long take averages out; an opener IS its prosody.
+- **Source-motion conflict.** Openers 01/02 used big-smile, high-motion
+  source clips (mouth-region motion 3.7–4.2 vs 1.2 on the long take).
+  Replacing the mouth on a smiling face reads uncanny: cheeks/eyes say one
+  thing, the synthesized mouth says another.
+- **Model-tier ceiling on expressiveness.** Both MuseTalk (inpaint-only)
+  and LatentSync (lip-region diffusion) keep the source head motion; neither
+  can generate greeting-appropriate head/face motion for a scripted line.
+
+Active lanes (parallelized 2026-07-09, all pushing to main + GCS):
+
+| Lane | What | Where |
+| --- | --- | --- |
+| Audio bake-off | per-script candidate pools: CosyVoice seeds + instruct-mode + 30–60s concatenated voice ref + Chirp 3 HD benchmark; gates = per-segment STT + **LLM audio judge** (Gemini rates naturalness/warmth/confidence 1–10 with defect notes) | L4 prod host, openers-v2 |
+| Calm-clip re-render | v3 recipe over neutral low-motion source clips only (<1.5 mouth-motion), winning audio from the bake-off | L4, openers-v2 |
+| Still-animation tier | **Hallo2** (MIT) animates a single still with generated head/face motion matched to speech — eliminates source-motion conflict entirely; the strongest paper candidate for scripted openers | fresh A100 spot instance |
+| RIFE 48fps | presentation-layer strobing test on the best take | L4 |
+| FLAIR | temporally-consistent crop restoration replacing tamed GFPGAN | queued after the above |
+
+Production note: `/sarah` flipped to the OWNED pipeline on 2026-07-09
+(`f5f9cb3725`): hydralisk-avatar (MuseTalk realtime + WebRTC WHEP) and
+hydralisk-tts live on the GPU host behind caddy/sslip.io; e2e verified from
+the public internet (ICE completed, idle+speak video flowing, full
+brain→TTS→render spoken turn). Fixes landed during bring-up: aiortc answerer
+track pairing (hydralisk `efb17d1`), keepalive-vs-warmup race (`f291823`).
+Hardening list lives in SQ-4 (#8621); the quality program issues are
+SQ-1..SQ-8 (#8618–#8625).
