@@ -1,0 +1,19 @@
+{
+  "$comment": "Single source of truth for the vendored @effect-native/* snapshot. The monorepo vendors unbuilt TypeScript from OpenAgentsInc/effect-native (not published to npm) as workspace members. This manifest pins the exact upstream commit and catalog version behind every vendored package. The guard test `effect-native-vendor.test.ts` asserts every vendored package.json records THIS commit (no partial bumps) and that the vendored core's CatalogVersion literal equals catalogVersion below. The freshness script `scripts/check-effect-native-vendor-freshness.ts` warns (never hard-fails) when the sibling upstream checkout has moved ahead of this commit. To re-vendor: bump the commit here, re-copy each package's upstream src/**, update each package.json effectNativeVendor.commit, and update catalogVersion.",
+  "repo": "OpenAgentsInc/effect-native",
+  "commit": "1aa6e364d9fc67cd22d493db9bf223bb0080bb0e",
+  "catalogVersion": "effect-native/v19",
+  "vendoredAt": "2026-07-09",
+  "vendoredPackages": [
+    "apps/openagents.com/packages/effect-native-core",
+    "apps/openagents.com/packages/effect-native-tokens",
+    "apps/openagents.com/packages/effect-native-render-dom",
+    "apps/openagents.com/packages/effect-native-render-rn"
+  ],
+  "upstreamPackagesNotVendored": {
+    "@effect-native/render-canvas": "Present upstream (Three.js scene-graph renderer) but not yet imported by any monorepo consumer; do not vendor speculatively.",
+    "@effect-native/devtools": "Upstream-only tooling; not consumed here.",
+    "@effect-native/gallery": "Upstream-only component gallery; not consumed here.",
+    "@effect-native/platform-desktop": "Upstream-only; not consumed here."
+  }
+}

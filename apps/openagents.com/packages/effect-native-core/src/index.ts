@@ -2,6 +2,7 @@ import {
   Cause,
   Context,
   Deferred,
+  Duration,
   Effect,
   Exit,
   Layer,
@@ -63,8 +64,23 @@ export const LinkCatalogVersion = "effect-native/v1" as const
 export const ResponsiveCatalogVersion = "effect-native/v2" as const
 export const FormCatalogVersion = "effect-native/v3" as const
 export const OverlayCatalogVersion = "effect-native/v4" as const
-export const PreviousCatalogVersion = OverlayCatalogVersion
-export const CatalogVersion = "effect-native/v5" as const
+export const CollectionCatalogVersion = "effect-native/v5" as const
+export const InteractionCatalogVersion = "effect-native/v6" as const
+export const HostCatalogVersion = "effect-native/v7" as const
+export const IconCatalogVersion = "effect-native/v8" as const
+export const DataDisplayCatalogVersion = "effect-native/v9" as const
+export const AppShellCatalogVersion = "effect-native/v10" as const
+export const AnchoredOverlayCatalogVersion = "effect-native/v11" as const
+export const ComboboxCatalogVersion = "effect-native/v12" as const
+export const TabsCatalogVersion = "effect-native/v13" as const
+export const ComposerCatalogVersion = "effect-native/v14" as const
+export const SettingsControlsCatalogVersion = "effect-native/v15" as const
+export const FeedbackCatalogVersion = "effect-native/v16" as const
+export const TranscriptCatalogVersion = "effect-native/v17" as const
+export const CodeBlockCatalogVersion = "effect-native/v18" as const
+export const GraphCatalogVersion = "effect-native/v19" as const
+export const PreviousCatalogVersion = CodeBlockCatalogVersion
+export const CatalogVersion = GraphCatalogVersion
 export const CatalogVersionSchema = Schema.Literal(CatalogVersion)
 export type CatalogVersion = typeof CatalogVersion
 export const compatibleCatalogVersions = [
@@ -72,6 +88,20 @@ export const compatibleCatalogVersions = [
   LinkCatalogVersion,
   ResponsiveCatalogVersion,
   FormCatalogVersion,
+  OverlayCatalogVersion,
+  CollectionCatalogVersion,
+  InteractionCatalogVersion,
+  HostCatalogVersion,
+  IconCatalogVersion,
+  DataDisplayCatalogVersion,
+  AppShellCatalogVersion,
+  AnchoredOverlayCatalogVersion,
+  ComboboxCatalogVersion,
+  TabsCatalogVersion,
+  ComposerCatalogVersion,
+  SettingsControlsCatalogVersion,
+  FeedbackCatalogVersion,
+  TranscriptCatalogVersion,
   PreviousCatalogVersion,
   CatalogVersion
 ] as const
@@ -90,7 +120,43 @@ export const componentTags = [
   "Spacer",
   "Link",
   "Modal",
-  "Sheet"
+  "Sheet",
+  "Host",
+  "Icon",
+  "Divider",
+  "Badge",
+  "Chip",
+  "Meter",
+  "StatTile",
+  "Table",
+  "SplitPane",
+  "NavRail",
+  "Workbench",
+  "Popover",
+  "DropdownMenu",
+  "ContextMenu",
+  "Tooltip",
+  "Combobox",
+  "CommandPalette",
+  "Tabs",
+  "Composer",
+  "Toggle",
+  "Select",
+  "Checkbox",
+  "RadioGroup",
+  "Slider",
+  "NumberField",
+  "FieldRow",
+  "Toast",
+  "ToastRegion",
+  "StatusBanner",
+  "RecoveryOverlay",
+  "Markdown",
+  "Transcript",
+  "CodeBlock",
+  "DiffView",
+  "GraphFigure",
+  "Timeline"
 ] as const
 export type ComponentTag = (typeof componentTags)[number]
 
@@ -398,7 +464,7 @@ export interface IntentRegistryOptions {
   readonly devtoolsSink?: DevtoolsSink
 }
 
-export const makeIntentRegistry =<const Definitions extends ReadonlyArray<IntentDefinition>>(
+export const makeIntentRegistry = <const Definitions extends ReadonlyArray<IntentDefinition>>(
   definitions: Definitions,
   handlers: IntentHandlers<Definitions>,
   options: IntentRegistryOptions = {}
@@ -1292,6 +1358,182 @@ export const ResponsiveStackDirectionSchema = makeResponsiveValueSchema(StackDir
 export const ResponsiveSpacingTokenSchema = makeResponsiveValueSchema(SpacingTokenSchema)
 export const ResponsiveDimensionSchema = makeResponsiveValueSchema(DimensionSchema)
 
+// ── Interaction algebra expansion (issue #24) ────────────────────────────────
+// Named, typed, closure-free interaction bindings for desktop-class surfaces.
+// Every event is projected to a bounded descriptor; no raw DOM event object
+// ever appears in the serializable view tree. Keyboard uses a closed key-name
+// set plus modifier booleans (never a raw KeyboardEvent). Imperative view
+// effects (focus, auto-pin-to-end) are expressed declaratively on the tree so
+// the headless renderer records them and app code never reaches for the DOM.
+
+export const keyNames = [
+  "Enter",
+  "Escape",
+  "Tab",
+  "Backspace",
+  "Delete",
+  "Space",
+  "ArrowUp",
+  "ArrowDown",
+  "ArrowLeft",
+  "ArrowRight",
+  "Home",
+  "End",
+  "PageUp",
+  "PageDown"
+] as const
+export const KeyNameSchema = Schema.Literals(keyNames)
+export type KeyName = (typeof keyNames)[number]
+
+export interface KeyBinding {
+  readonly key: KeyName
+  readonly alt?: boolean
+  readonly ctrl?: boolean
+  readonly meta?: boolean
+  readonly shift?: boolean
+  // When omitted the binding is skipped while an IME composition is active,
+  // matching composer submit-vs-newline semantics. Set true to fire regardless.
+  readonly whenComposing?: boolean
+  readonly preventDefault?: boolean
+  readonly stopPropagation?: boolean
+  readonly intent: IntentRef
+}
+export const KeyBindingSchema: Schema.Codec<KeyBinding, KeyBinding> = exactStruct({
+  key: KeyNameSchema,
+  alt: Schema.Boolean.pipe(Schema.optionalKey),
+  ctrl: Schema.Boolean.pipe(Schema.optionalKey),
+  meta: Schema.Boolean.pipe(Schema.optionalKey),
+  shift: Schema.Boolean.pipe(Schema.optionalKey),
+  whenComposing: Schema.Boolean.pipe(Schema.optionalKey),
+  preventDefault: Schema.Boolean.pipe(Schema.optionalKey),
+  stopPropagation: Schema.Boolean.pipe(Schema.optionalKey),
+  intent: IntentRefSchema
+}) as unknown as Schema.Codec<KeyBinding, KeyBinding>
+
+export interface Interactions {
+  readonly onKey?: ReadonlyArray<KeyBinding>
+  readonly onFocus?: IntentRef
+  readonly onBlur?: IntentRef
+  readonly onPointerEnter?: IntentRef
+  readonly onPointerLeave?: IntentRef
+  readonly onPaste?: IntentRef
+  readonly onDragEnter?: IntentRef
+  readonly onDragLeave?: IntentRef
+  readonly onDrop?: IntentRef
+}
+export const InteractionsSchema: Schema.Codec<Interactions, Interactions> = exactStruct({
+  onKey: Schema.Array(KeyBindingSchema).pipe(Schema.optionalKey),
+  onFocus: IntentRefSchema.pipe(Schema.optionalKey),
+  onBlur: IntentRefSchema.pipe(Schema.optionalKey),
+  onPointerEnter: IntentRefSchema.pipe(Schema.optionalKey),
+  onPointerLeave: IntentRefSchema.pipe(Schema.optionalKey),
+  onPaste: IntentRefSchema.pipe(Schema.optionalKey),
+  onDragEnter: IntentRefSchema.pipe(Schema.optionalKey),
+  onDragLeave: IntentRefSchema.pipe(Schema.optionalKey),
+  onDrop: IntentRefSchema.pipe(Schema.optionalKey)
+}) as unknown as Schema.Codec<Interactions, Interactions>
+
+// Bounded ARIA roles the renderers honor for roving-focus / combobox patterns.
+export const ariaRoles = [
+  "listbox",
+  "option",
+  "combobox",
+  "menu",
+  "menuitem",
+  "dialog",
+  "group",
+  "list",
+  "listitem",
+  "region",
+  "tablist",
+  "tab",
+  "tabpanel",
+  "none",
+  "presentation"
+] as const
+export const AriaRoleSchema = Schema.Literals(ariaRoles)
+export type AriaRole = (typeof ariaRoles)[number]
+
+export interface A11y {
+  readonly role?: AriaRole
+  readonly label?: string
+  // References another node's `key`; the renderer maps it to that node's id.
+  readonly activeDescendant?: string
+  readonly selected?: boolean
+  readonly expanded?: boolean
+  readonly disabled?: boolean
+  readonly hidden?: boolean
+  readonly tabIndex?: -1 | 0
+}
+export const A11ySchema: Schema.Codec<A11y, A11y> = exactStruct({
+  role: AriaRoleSchema.pipe(Schema.optionalKey),
+  label: Schema.String.pipe(Schema.optionalKey),
+  activeDescendant: Schema.String.pipe(Schema.optionalKey),
+  selected: Schema.Boolean.pipe(Schema.optionalKey),
+  expanded: Schema.Boolean.pipe(Schema.optionalKey),
+  disabled: Schema.Boolean.pipe(Schema.optionalKey),
+  hidden: Schema.Boolean.pipe(Schema.optionalKey),
+  tabIndex: Schema.Literals([-1, 0]).pipe(Schema.optionalKey)
+}) as unknown as Schema.Codec<A11y, A11y>
+
+// Typed dropped-item descriptor produced by drag-and-drop drops. Only bounded
+// file metadata is projected into the intent payload — never the raw
+// File/DataTransfer object.
+export interface DroppedItem {
+  readonly name: string
+  readonly kind: "file" | "string"
+  readonly mimeType: string
+  readonly size: number
+}
+export const DroppedItemSchema: Schema.Codec<DroppedItem, DroppedItem> = Schema.Struct({
+  name: Schema.String,
+  kind: Schema.Literals(["file", "string"]),
+  mimeType: Schema.String,
+  size: NonNegativeNumberSchema
+}) as unknown as Schema.Codec<DroppedItem, DroppedItem>
+export const DropPayloadSchema = Schema.Struct({
+  items: Schema.Array(DroppedItemSchema)
+})
+export type DropPayload = Schema.Schema.Type<typeof DropPayloadSchema>
+
+// Closed host-kind registry for the foreign-host escape hatch (issue #23). A
+// new host kind is a reviewed catalog change with the same growth-rule bar as
+// a component — never an open plugin point.
+export const hostKinds = ["code-editor", "terminal", "canvas"] as const
+export const HostKindSchema = Schema.Literals(hostKinds)
+export type HostKind = (typeof hostKinds)[number]
+
+// Closed icon-name set for the Icon catalog component (issue #31). No arbitrary
+// SVG string ever enters the public contract; the name set is the stable
+// contract and per-renderer registries own the concrete assets. Seeded with the
+// glyphs Khala Code actually uses (fleet controls, nav, status, menus). Growing
+// the set is a small, reviewed catalog change — never an escape hatch.
+export const iconNames = [
+  "Plus",
+  "Play",
+  "Pause",
+  "Stop",
+  "Reload",
+  "Circle",
+  "Check",
+  "X",
+  "ChevronUp",
+  "ChevronDown",
+  "ChevronLeft",
+  "ChevronRight"
+] as const
+export const IconNameSchema = Schema.Literals(iconNames)
+export type IconName = (typeof iconNames)[number]
+
+export const iconSizes = ["sm", "md", "lg"] as const
+export const IconSizeSchema = Schema.Literals(iconSizes)
+export type IconSize = (typeof iconSizes)[number]
+
+// Closed tone set for data-display components (issue #39), aligned to the blue
+// status system.
+export const tones = ["neutral", "info", "success", "warn", "danger"] as const
+export const ToneSchema = Schema.Literals(tones)
+
 const copyFlatStyle = <Key extends StyleKey>(style: StyleFor<Key> | FlatStyleFor<Key>): FlatStyleFor<Key> => {
   const flat: Record<string, unknown> = {}
   for (const [key, value] of Object.entries(style)) {
@@ -1450,6 +1692,8 @@ export const resolveStyle = <Key extends StyleKey>(
 export interface NodeBase {
   readonly catalogVersion: CompatibleCatalogVersion
   readonly key?: NodeKey
+  readonly interactions?: Interactions
+  readonly a11y?: A11y
 }
 
 export interface StackView extends NodeBase {
@@ -1460,6 +1704,12 @@ export interface StackView extends NodeBase {
   readonly justify?: StackJustify
   readonly padding?: ResponsiveValue<SpacingToken>
   readonly style?: StackStyle
+  // Scroll-region auto-pin (imperative view effect as data): when true the
+  // renderer keeps the region scrolled to its end as content grows; the
+  // renderer reports `onPinnedChange` with a boolean when the user scrolls
+  // away from / back to the end (reproduces transcript auto-pin behavior).
+  readonly pinToEnd?: boolean
+  readonly onPinnedChange?: IntentRef
   readonly children: ReadonlyArray<View>
 }
 
@@ -1522,6 +1772,8 @@ export interface ListView extends NodeBase {
   readonly estimatedItemSize?: Dimension
   readonly onEndReached?: IntentRef
   readonly endReachedThreshold?: number
+  readonly pinToEnd?: boolean
+  readonly onPinnedChange?: IntentRef
   readonly items: ReadonlyArray<View & { readonly key: NodeKey }>
 }
 
@@ -1593,6 +1845,670 @@ export interface SheetView extends NodeBase {
   readonly children: ReadonlyArray<View>
 }
 
+// Foreign-host escape hatch (issue #23). The single, catalog-blessed way to
+// embed a large third-party imperative widget (Monaco, an xterm terminal, a
+// raw canvas) while keeping the surrounding tree serializable. The tree carries
+// only the closed host-kind tag and a serializable props payload; the widget's
+// internal state is never serialized and no closures appear in the tree. The
+// widget's imperative code lives only in a per-renderer host driver whose
+// lifecycle is bound to an Effect Scope. Events out flow through a named typed
+// intent (`onEvent`); intents in are expressed as declarative prop updates.
+export interface HostView extends NodeBase {
+  readonly _tag: "Host"
+  readonly kind: HostKind
+  readonly props: JsonPayload
+  readonly onEvent?: IntentRef
+  readonly style?: CardStyle
+}
+
+// Icon catalog component (issue #31). Closed name set only; decorative vs
+// meaningful is typed — a `label` present means meaningful (aria-label), absent
+// means decorative (aria-hidden). Size is a token scale; color is token-driven
+// and defaults to currentColor in renderers.
+export interface IconView extends NodeBase {
+  readonly _tag: "Icon"
+  readonly name: IconName
+  readonly size?: IconSize
+  readonly color?: ColorToken
+  readonly label?: string
+  readonly style?: TextStyle
+}
+
+// Data-display catalog components (issue #39). Bounded typed building blocks
+// for stat strips, tables, and status readouts, built on Text/Icon + theme
+// tones. `tone` is a closed set aligned to the blue status system.
+export type Tone = "neutral" | "info" | "success" | "warn" | "danger"
+
+export interface DividerView extends NodeBase {
+  readonly _tag: "Divider"
+  readonly orientation?: "horizontal" | "vertical"
+  readonly style?: CardStyle
+}
+
+export interface BadgeView extends NodeBase {
+  readonly _tag: "Badge"
+  readonly label: string
+  readonly tone?: Tone
+  readonly style?: CardStyle
+}
+
+export interface ChipView extends NodeBase {
+  readonly _tag: "Chip"
+  readonly label: string
+  readonly value?: string
+  readonly tone?: Tone
+  readonly style?: CardStyle
+}
+
+export interface MeterView extends NodeBase {
+  readonly _tag: "Meter"
+  // Determinate progress in [0, 1]; omit with indeterminate: true for
+  // in-flight/unknown-duration work.
+  readonly value?: number
+  readonly indeterminate?: boolean
+  readonly label?: string
+  readonly tone?: Tone
+  readonly style?: CardStyle
+}
+
+export interface StatTileView extends NodeBase {
+  readonly _tag: "StatTile"
+  readonly label: string
+  readonly value: string
+  readonly tone?: Tone
+  readonly style?: CardStyle
+}
+
+export interface TableColumn {
+  readonly id: string
+  readonly header: string
+  readonly align?: "start" | "center" | "end"
+  readonly width?: DimensionToken
+}
+
+export interface TableRow {
+  readonly id: string
+  readonly cells: ReadonlyArray<View>
+}
+
+export interface TableView extends NodeBase {
+  readonly _tag: "Table"
+  readonly columns: ReadonlyArray<TableColumn>
+  readonly rows: ReadonlyArray<TableRow>
+  readonly onRowSelect?: IntentRef
+  readonly style?: CardStyle
+}
+
+// App shell catalog components (issue #27). The Khala Code Desktop top-level
+// shell: a resizable SplitPane workbench beside a navigation rail. Divider drag
+// and pane switching are named typed intents — no free-form drag math or
+// mount/unmount closures in app code.
+export interface SplitPanePane {
+  readonly id: string
+  readonly min?: Dimension
+  readonly max?: Dimension
+  readonly size?: Dimension
+  readonly collapsed?: boolean
+  readonly content: View
+}
+
+export interface SplitPaneView extends NodeBase {
+  readonly _tag: "SplitPane"
+  readonly orientation: StackDirection
+  readonly panes: ReadonlyArray<SplitPanePane>
+  // Divider drag reports { paneId, size } as a bounded numeric descriptor.
+  readonly onResize?: IntentRef
+  // Collapse/expand reports { paneId, collapsed } as typed state.
+  readonly onCollapseToggle?: IntentRef
+  readonly style?: CardStyle
+}
+
+export interface NavRailItem {
+  readonly id: string
+  readonly label: string
+  readonly icon?: IconName
+  readonly disabled?: boolean
+}
+
+export interface NavRailSection {
+  readonly id: string
+  readonly label?: string
+  readonly items: ReadonlyArray<NavRailItem>
+}
+
+export interface NavRailView extends NodeBase {
+  readonly _tag: "NavRail"
+  readonly sections: ReadonlyArray<NavRailSection>
+  readonly activeId?: string
+  readonly onSelect: IntentRef
+  readonly style?: CardStyle
+}
+
+export interface WorkbenchPane {
+  readonly id: string
+  readonly content: View
+}
+
+export interface WorkbenchView extends NodeBase {
+  readonly _tag: "Workbench"
+  readonly panes: ReadonlyArray<WorkbenchPane>
+  readonly activePaneId: string
+  // When true inactive panes stay mounted (hidden); otherwise only the active
+  // pane renders. Pane switching is a typed state change (driven by NavRail /
+  // Tabs onSelect), never a mount/unmount closure.
+  readonly keepMounted?: boolean
+  readonly style?: CardStyle
+}
+
+// Anchored overlay family (issue #28). Builds on the Modal/Sheet presence
+// primitive (#13): presence is typed `open` state, dismiss is a typed intent.
+// A shared placement contract (side + align) is resolved by the renderer, not
+// app math; collision/flip is a DOM-renderer concern.
+export type OverlaySide = "top" | "bottom" | "left" | "right"
+export type OverlayAlign = "start" | "center" | "end"
+export interface Placement {
+  readonly side: OverlaySide
+  readonly align: OverlayAlign
+}
+
+// Recursive typed menu-item model shared by DropdownMenu / ContextMenu. No
+// closures — selection flows through the menu's `onSelect` with the item id.
+export interface MenuItem {
+  readonly id: string
+  readonly label: string
+  readonly icon?: IconName
+  readonly disabled?: boolean
+  readonly danger?: boolean
+  readonly keybinding?: string
+  readonly items?: ReadonlyArray<MenuItem>
+}
+
+export interface PopoverView extends NodeBase {
+  readonly _tag: "Popover"
+  readonly open: Bound<boolean>
+  readonly placement: Placement
+  // References the anchor node's `key`; the renderer positions relative to it.
+  readonly anchorKey?: string
+  readonly dismissable: boolean
+  readonly onDismiss: IntentRef
+  readonly children: ReadonlyArray<View>
+}
+
+export interface DropdownMenuView extends NodeBase {
+  readonly _tag: "DropdownMenu"
+  readonly open: Bound<boolean>
+  readonly placement: Placement
+  readonly anchorKey?: string
+  readonly items: ReadonlyArray<MenuItem>
+  readonly onSelect: IntentRef
+  readonly onDismiss: IntentRef
+  readonly style?: CardStyle
+}
+
+export interface ContextMenuView extends NodeBase {
+  readonly _tag: "ContextMenu"
+  readonly open: Bound<boolean>
+  // Pointer-anchored position (typed, not app math).
+  readonly x: number
+  readonly y: number
+  readonly items: ReadonlyArray<MenuItem>
+  readonly onSelect: IntentRef
+  readonly onDismiss: IntentRef
+  readonly style?: CardStyle
+}
+
+export interface TooltipView extends NodeBase {
+  readonly _tag: "Tooltip"
+  readonly content: string
+  readonly placement?: Placement
+  readonly delayMillis?: number
+  // Exactly one target the tooltip describes (aria-describedby).
+  readonly children: ReadonlyArray<View>
+}
+
+// Command palette + Combobox / typeahead (issue #29). Filtering is app-supplied
+// (results in as data) — no keyword/string routing in the component. Highlight
+// is roving via aria-activedescendant; selection/highlight/query are named
+// typed intents. CommandPalette is a modal-overlay composition of a Combobox on
+// the #13 presence primitive.
+export interface ComboboxOption {
+  readonly id: string
+  readonly label: string
+  readonly subtitle?: string
+  readonly icon?: IconName
+  readonly group?: string
+  readonly disabled?: boolean
+  readonly disabledReason?: string
+  readonly keybinding?: string
+}
+
+export interface ComboboxView extends NodeBase {
+  readonly _tag: "Combobox"
+  readonly query: string
+  readonly placeholder?: string
+  readonly options: ReadonlyArray<ComboboxOption>
+  readonly highlightedId?: string
+  readonly loading?: boolean
+  readonly emptyLabel?: string
+  readonly onQueryChange?: IntentRef
+  readonly onHighlight?: IntentRef
+  readonly onSelect: IntentRef
+  readonly style?: CardStyle
+}
+
+export interface CommandPaletteView extends NodeBase {
+  readonly _tag: "CommandPalette"
+  readonly open: Bound<boolean>
+  readonly title?: string
+  readonly combobox: ComboboxView
+  readonly onDismiss: IntentRef
+}
+
+// Tabs (issue #30). A typed tablist with WAI-ARIA tablist/tab/tabpanel
+// semantics, roving tabindex, and arrow-key nav. Panel association is by id
+// (data), never DOM position; kept-mounted vs lazy is a typed policy.
+export interface TabItem {
+  readonly id: string
+  readonly label: string
+  readonly icon?: IconName
+  readonly disabled?: boolean
+  readonly badge?: string
+}
+
+export interface TabPanel {
+  readonly id: string
+  readonly content: View
+}
+
+export interface TabsView extends NodeBase {
+  readonly _tag: "Tabs"
+  readonly tabs: ReadonlyArray<TabItem>
+  readonly panels: ReadonlyArray<TabPanel>
+  readonly selectedId: string
+  readonly orientation?: "horizontal" | "vertical"
+  readonly keepMounted?: boolean
+  readonly onSelect: IntentRef
+  readonly style?: CardStyle
+}
+
+// Rich contenteditable composer (issue #32). The app sees only a typed
+// structured document (bounded inline runs + mention chips), typed attachment
+// state, and named typed intents; contenteditable internals, paste
+// normalization, and IME composition are owned by the renderer. Autocomplete
+// triggers are typed data whose candidate list is rendered via a Combobox
+// (#29) — matching/candidates are app-supplied (no keyword routing here).
+export type ComposerInline =
+  | { readonly kind: "text"; readonly text: string }
+  | { readonly kind: "mention"; readonly id: string; readonly label: string }
+
+export interface ComposerAttachment {
+  readonly id: string
+  readonly name: string
+  readonly mimeType: string
+  readonly size: number
+}
+
+export const composerTriggers = ["slash", "mention"] as const
+export type ComposerTrigger = (typeof composerTriggers)[number]
+
+export interface ComposerAutocomplete {
+  readonly trigger: ComposerTrigger
+  readonly query: string
+  readonly combobox: ComboboxView
+}
+
+export const composerKeyCommands = ["submit", "newline", "history-previous", "history-next"] as const
+export type ComposerKeyCommand = (typeof composerKeyCommands)[number]
+export type ComposerMode = "normal" | "shell"
+
+export interface ComposerView extends NodeBase {
+  readonly _tag: "Composer"
+  readonly doc: ReadonlyArray<ComposerInline>
+  readonly mode: ComposerMode
+  readonly placeholder?: string
+  readonly attachments?: ReadonlyArray<ComposerAttachment>
+  readonly autocomplete?: ComposerAutocomplete
+  // Fires with the normalized plaintext value of the document.
+  readonly onChange?: IntentRef
+  readonly onSubmit?: IntentRef
+  // Fires with one of composerKeyCommands as the payload.
+  readonly onKeyCommand?: IntentRef
+  // Fires with bounded dropped-item metadata (DnD from the interaction algebra).
+  readonly onAttachmentDrop?: IntentRef
+  readonly style?: TextFieldStyle
+}
+
+// Settings form controls (issue #38). Concrete widgets the Schema-backed
+// FormSpec (#12) binds to: each carries a typed value + typed onChange intent,
+// disabled/invalid state, and an optional `field` binding so it drives a
+// FormSpec field exactly like TextField. FieldRow is the label + control +
+// description + error layout the settings panels repeat.
+export interface ChoiceOption {
+  readonly value: string
+  readonly label: string
+  readonly disabled?: boolean
+}
+
+export interface ToggleView extends NodeBase {
+  readonly _tag: "Toggle"
+  readonly value: boolean
+  readonly label?: string
+  readonly disabled?: boolean
+  readonly invalid?: boolean
+  readonly field?: FieldBinding
+  readonly onChange?: IntentRef
+  readonly style?: CardStyle
+}
+
+export interface SelectView extends NodeBase {
+  readonly _tag: "Select"
+  readonly value: string
+  readonly options: ReadonlyArray<ChoiceOption>
+  readonly placeholder?: string
+  readonly label?: string
+  readonly disabled?: boolean
+  readonly invalid?: boolean
+  readonly field?: FieldBinding
+  readonly onChange?: IntentRef
+  readonly style?: TextFieldStyle
+}
+
+export interface CheckboxView extends NodeBase {
+  readonly _tag: "Checkbox"
+  readonly checked: boolean
+  readonly label?: string
+  readonly disabled?: boolean
+  readonly invalid?: boolean
+  readonly field?: FieldBinding
+  readonly onChange?: IntentRef
+  readonly style?: CardStyle
+}
+
+export interface RadioGroupView extends NodeBase {
+  readonly _tag: "RadioGroup"
+  readonly value: string
+  readonly name: string
+  readonly options: ReadonlyArray<ChoiceOption>
+  readonly orientation?: "horizontal" | "vertical"
+  readonly label?: string
+  readonly disabled?: boolean
+  readonly invalid?: boolean
+  readonly field?: FieldBinding
+  readonly onChange?: IntentRef
+  readonly style?: CardStyle
+}
+
+export interface SliderView extends NodeBase {
+  readonly _tag: "Slider"
+  readonly value: number
+  readonly min: number
+  readonly max: number
+  readonly step?: number
+  readonly label?: string
+  readonly disabled?: boolean
+  readonly invalid?: boolean
+  readonly field?: FieldBinding
+  readonly onChange?: IntentRef
+  readonly style?: CardStyle
+}
+
+export interface NumberFieldView extends NodeBase {
+  readonly _tag: "NumberField"
+  readonly value: number
+  readonly min?: number
+  readonly max?: number
+  readonly step?: number
+  readonly placeholder?: string
+  readonly label?: string
+  readonly disabled?: boolean
+  readonly invalid?: boolean
+  readonly field?: FieldBinding
+  readonly onChange?: IntentRef
+  readonly style?: TextFieldStyle
+}
+
+export interface FieldRowView extends NodeBase {
+  readonly _tag: "FieldRow"
+  readonly label: string
+  readonly description?: string
+  readonly error?: string
+  // The bound control's node key, for label association.
+  readonly controlKey?: string
+  readonly control: View
+  readonly style?: CardStyle
+}
+
+// Feedback surfaces (issue #40). Transient (Toast/ToastRegion) and persistent
+// (StatusBanner) status plus a full-surface blocking RecoveryOverlay on the #13
+// presence primitive. Delivery/timing is a runtime concern (enqueue via
+// intent/stream); the components render the typed state they are handed.
+export const toastPlacements = ["top-start", "top-end", "bottom-start", "bottom-end"] as const
+export type ToastPlacement = (typeof toastPlacements)[number]
+
+export interface NotificationModel {
+  readonly id: string
+  readonly tone: Tone
+  readonly title: string
+  readonly detail?: string
+  readonly actionLabel?: string
+  readonly action?: IntentRef
+  readonly autoDismissMillis?: number
+}
+
+export interface ToastView extends NodeBase {
+  readonly _tag: "Toast"
+  readonly notification: NotificationModel
+  readonly onDismiss: IntentRef
+  readonly style?: CardStyle
+}
+
+export interface ToastRegionView extends NodeBase {
+  readonly _tag: "ToastRegion"
+  readonly notifications: ReadonlyArray<NotificationModel>
+  readonly placement?: ToastPlacement
+  readonly onDismiss: IntentRef
+  readonly style?: CardStyle
+}
+
+export interface StatusBannerView extends NodeBase {
+  readonly _tag: "StatusBanner"
+  readonly tone: Tone
+  readonly message: string
+  readonly onRetry?: IntentRef
+  readonly onDismiss?: IntentRef
+  readonly style?: CardStyle
+}
+
+export interface RecoveryActionModel {
+  readonly id: string
+  readonly label: string
+  readonly action: IntentRef
+  readonly variant?: ButtonVariant
+}
+
+export interface RecoveryOverlayView extends NodeBase {
+  readonly _tag: "RecoveryOverlay"
+  readonly open: Bound<boolean>
+  readonly title: string
+  readonly message?: string
+  readonly status?: string
+  readonly actions: ReadonlyArray<RecoveryActionModel>
+}
+
+// Streaming transcript / markdown (issue #35). The app parses markdown to this
+// typed, pre-parsed block+inline model (as Khala does today) — the catalog ships
+// no parser and no arbitrary HTML enters the tree. Transcript composes a keyed,
+// append-optimized list of typed message items whose bodies are ordinary
+// catalog views (Markdown, Card tool-cards, CodeBlock once #36 lands).
+export type MarkdownInline =
+  | { readonly kind: "text"; readonly text: string }
+  | { readonly kind: "code"; readonly text: string }
+  | { readonly kind: "strong"; readonly children: ReadonlyArray<MarkdownInline> }
+  | { readonly kind: "emphasis"; readonly children: ReadonlyArray<MarkdownInline> }
+  | { readonly kind: "link"; readonly href: string; readonly children: ReadonlyArray<MarkdownInline> }
+
+export type MarkdownBlock =
+  | { readonly kind: "heading"; readonly level: 1 | 2 | 3 | 4 | 5 | 6; readonly children: ReadonlyArray<MarkdownInline> }
+  | { readonly kind: "paragraph"; readonly children: ReadonlyArray<MarkdownInline> }
+  | { readonly kind: "list"; readonly ordered: boolean; readonly items: ReadonlyArray<ReadonlyArray<MarkdownBlock>> }
+  | { readonly kind: "blockquote"; readonly children: ReadonlyArray<MarkdownBlock> }
+
+export interface MarkdownView extends NodeBase {
+  readonly _tag: "Markdown"
+  readonly blocks: ReadonlyArray<MarkdownBlock>
+  readonly style?: TextStyle
+}
+
+export const transcriptRoles = ["user", "assistant", "system", "tool"] as const
+export type TranscriptRole = (typeof transcriptRoles)[number]
+export const transcriptStatuses = ["thinking", "streaming", "failed", "done"] as const
+export type TranscriptStatus = (typeof transcriptStatuses)[number]
+
+export interface TranscriptMessage {
+  readonly key: NodeKey
+  readonly role: TranscriptRole
+  readonly status?: TranscriptStatus
+  readonly body: ReadonlyArray<View>
+}
+
+// Syntax-highlighted CodeBlock + unified diff (issue #36). The app tokenizes
+// code and parses diffs (as Khala does today via tokenizeCodeLines /
+// parseUnifiedDiff); the catalog renders the pre-tokenized model — it ships no
+// highlighter or diff parser, keeping the tree closed + deterministic. Token
+// colors come from the blue-theme syntax tokens.
+export const codeTokenKinds = ["plain", "keyword", "string", "comment", "function", "number", "operator"] as const
+export type CodeTokenKind = (typeof codeTokenKinds)[number]
+export interface CodeToken {
+  readonly kind: CodeTokenKind
+  readonly text: string
+}
+export interface CodeLine {
+  readonly tokens: ReadonlyArray<CodeToken>
+}
+
+export interface CodeBlockView extends NodeBase {
+  readonly _tag: "CodeBlock"
+  readonly language?: string
+  readonly lines: ReadonlyArray<CodeLine>
+  readonly showLineNumbers?: boolean
+  readonly startLine?: number
+  readonly onCopy?: IntentRef
+  readonly style?: CardStyle
+}
+
+export const diffRowKinds = ["context", "add", "remove"] as const
+export type DiffRowKind = (typeof diffRowKinds)[number]
+export const diffVerdicts = ["approved", "rejected", "pending"] as const
+export type DiffVerdict = (typeof diffVerdicts)[number]
+export interface DiffRow {
+  readonly kind: DiffRowKind
+  readonly tokens: ReadonlyArray<CodeToken>
+  readonly oldLine?: number
+  readonly newLine?: number
+  // Stable id for per-line review affordances (comment/verdict).
+  readonly id?: string
+  readonly verdict?: DiffVerdict
+  readonly comment?: string
+}
+export interface DiffHunk {
+  readonly header: string
+  readonly rows: ReadonlyArray<DiffRow>
+}
+export interface DiffSourceControlAction {
+  readonly id: string
+  readonly label: string
+}
+export interface DiffViewView extends NodeBase {
+  readonly _tag: "DiffView"
+  readonly language?: string
+  readonly hunks: ReadonlyArray<DiffHunk>
+  readonly layout?: "unified" | "split"
+  // Review affordances as named typed intents; review state rides the rows.
+  readonly onLineComment?: IntentRef
+  readonly onLineVerdict?: IntentRef
+  readonly onSourceControlAction?: IntentRef
+  readonly actions?: ReadonlyArray<DiffSourceControlAction>
+  readonly style?: CardStyle
+}
+
+// GraphFigure + Timeline (issue #37). The first catalog component targeting the
+// Phase 4 canvas renderer: a typed arbiter-graph model (nodes + edges, bounded,
+// no arbitrary scene data) with a typed layout policy and status→color mapping
+// from theme tokens. It renders through the canvas renderer (primary) and a
+// DOM/SVG fallback from the same typed model. Interactions are named typed
+// intents (node select/hover, pan/zoom camera state) — no closures.
+export const graphNodeKinds = ["worker", "validator", "arbiter", "task", "generic"] as const
+export type GraphNodeKind = (typeof graphNodeKinds)[number]
+export const graphStatuses = ["idle", "active", "success", "failed", "pending"] as const
+export type GraphStatus = (typeof graphStatuses)[number]
+export const graphEdgeKinds = ["flow", "dependency", "pairing"] as const
+export type GraphEdgeKind = (typeof graphEdgeKinds)[number]
+export const graphLayouts = ["precomputed", "force", "tree"] as const
+export type GraphLayout = (typeof graphLayouts)[number]
+
+export interface GraphNodeModel {
+  readonly id: string
+  readonly label: string
+  readonly kind?: GraphNodeKind
+  readonly status?: GraphStatus
+  // Precomputed position (used when layout is "precomputed").
+  readonly x?: number
+  readonly y?: number
+}
+export interface GraphEdgeModel {
+  readonly id: string
+  readonly from: string
+  readonly to: string
+  readonly kind?: GraphEdgeKind
+  readonly status?: GraphStatus
+}
+export interface GraphCamera {
+  readonly x: number
+  readonly y: number
+  readonly zoom: number
+}
+export interface GraphFigureView extends NodeBase {
+  readonly _tag: "GraphFigure"
+  readonly nodes: ReadonlyArray<GraphNodeModel>
+  readonly edges: ReadonlyArray<GraphEdgeModel>
+  readonly layout?: GraphLayout
+  readonly camera?: GraphCamera
+  readonly width?: number
+  readonly height?: number
+  readonly onNodeSelect?: IntentRef
+  readonly onNodeHover?: IntentRef
+  readonly onCameraChange?: IntentRef
+  readonly style?: CardStyle
+}
+
+export interface TimelineEvent {
+  readonly id: string
+  readonly label: string
+  readonly detail?: string
+  readonly time?: string
+  readonly status?: GraphStatus
+  // Node ids this event refers to.
+  readonly refs?: ReadonlyArray<string>
+}
+export interface TimelineView extends NodeBase {
+  readonly _tag: "Timeline"
+  readonly events: ReadonlyArray<TimelineEvent>
+  readonly onEventSelect?: IntentRef
+  readonly style?: CardStyle
+}
+
+export interface TranscriptView extends NodeBase {
+  readonly _tag: "Transcript"
+  readonly messages: ReadonlyArray<TranscriptMessage>
+  // Auto-pin-to-bottom while streaming; onPinnedChange fires when the user
+  // scrolls away from / back to the end (the "jump to latest" affordance).
+  readonly pinToEnd?: boolean
+  readonly onPinnedChange?: IntentRef
+  readonly virtualize?: boolean
+  readonly estimatedItemSize?: Dimension
+  readonly style?: ListStyle
+}
+
 export type View =
   | StackView
   | TextView
@@ -1606,6 +2522,42 @@ export type View =
   | LinkView
   | ModalView
   | SheetView
+  | HostView
+  | IconView
+  | DividerView
+  | BadgeView
+  | ChipView
+  | MeterView
+  | StatTileView
+  | TableView
+  | SplitPaneView
+  | NavRailView
+  | WorkbenchView
+  | PopoverView
+  | DropdownMenuView
+  | ContextMenuView
+  | TooltipView
+  | ComboboxView
+  | CommandPaletteView
+  | TabsView
+  | ComposerView
+  | ToggleView
+  | SelectView
+  | CheckboxView
+  | RadioGroupView
+  | SliderView
+  | NumberFieldView
+  | FieldRowView
+  | ToastView
+  | ToastRegionView
+  | StatusBannerView
+  | RecoveryOverlayView
+  | MarkdownView
+  | TranscriptView
+  | CodeBlockView
+  | DiffViewView
+  | GraphFigureView
+  | TimelineView
 
 export type KeyedView = View & { readonly key: NodeKey }
 
@@ -1636,6 +2588,36 @@ const childViewEntries = (
       return view.children.map((child, index) => ({ path: ["children", index], view: child }))
     case "Sheet":
       return view.children.map((child, index) => ({ path: ["children", index], view: child }))
+    case "Table":
+      return view.rows.flatMap((row, rowIndex) =>
+        row.cells.map((cell, cellIndex) => ({
+          path: ["rows", rowIndex, "cells", cellIndex],
+          view: cell
+        })))
+    case "SplitPane":
+      return view.panes.map((pane, index) => ({ path: ["panes", index, "content"], view: pane.content }))
+    case "Workbench":
+      return view.panes.map((pane, index) => ({ path: ["panes", index, "content"], view: pane.content }))
+    case "Popover":
+      return view.children.map((child, index) => ({ path: ["children", index], view: child }))
+    case "Tooltip":
+      return view.children.map((child, index) => ({ path: ["children", index], view: child }))
+    case "CommandPalette":
+      return [{ path: ["combobox"], view: view.combobox }]
+    case "Tabs":
+      return view.panels.map((panel, index) => ({ path: ["panels", index, "content"], view: panel.content }))
+    case "Composer":
+      return view.autocomplete === undefined
+        ? []
+        : [{ path: ["autocomplete", "combobox"], view: view.autocomplete.combobox }]
+    case "FieldRow":
+      return [{ path: ["control"], view: view.control }]
+    case "Transcript":
+      return view.messages.flatMap((message, messageIndex) =>
+        message.body.map((child, bodyIndex) => ({
+          path: ["messages", messageIndex, "body", bodyIndex],
+          view: child
+        })))
     default:
       return []
   }
@@ -1721,7 +2703,9 @@ const VirtualizationFilter = Schema.makeFilter<VirtualizationContract>((view) =>
 
 const CommonFields = {
   catalogVersion: CompatibleCatalogVersionSchema,
-  key: NodeKeySchema.pipe(Schema.optionalKey)
+  key: NodeKeySchema.pipe(Schema.optionalKey),
+  interactions: InteractionsSchema.pipe(Schema.optionalKey),
+  a11y: A11ySchema.pipe(Schema.optionalKey)
 } as const
 
 export const StackSchema: Schema.Codec<StackView, StackView> = Schema.TaggedStruct("Stack", {
@@ -1732,6 +2716,8 @@ export const StackSchema: Schema.Codec<StackView, StackView> = Schema.TaggedStru
   justify: StackJustifySchema.pipe(Schema.optionalKey),
   padding: ResponsiveSpacingTokenSchema.pipe(Schema.optionalKey),
   style: StackStyleSchema.pipe(Schema.optionalKey),
+  pinToEnd: Schema.Boolean.pipe(Schema.optionalKey),
+  onPinnedChange: IntentRefSchema.pipe(Schema.optionalKey),
   children: Schema.Array(ViewSelf)
 })
 
@@ -1798,6 +2784,8 @@ export const ListSchema: Schema.Codec<ListView, ListView> = Schema.TaggedStruct(
   ...CommonFields,
   style: ListStyleSchema.pipe(Schema.optionalKey),
   ...VirtualizationFields,
+  pinToEnd: Schema.Boolean.pipe(Schema.optionalKey),
+  onPinnedChange: IntentRefSchema.pipe(Schema.optionalKey),
   items: KeyedViewArraySchema
 }).check(VirtualizationFilter)
 
@@ -1888,6 +2876,568 @@ export const SheetSchema: Schema.Codec<SheetView, SheetView> = Schema.TaggedStru
   children: Schema.Array(ViewSelf)
 })
 
+export const HostSchema: Schema.Codec<HostView, HostView> = Schema.TaggedStruct("Host", {
+  ...CommonFields,
+  kind: HostKindSchema,
+  props: JsonPayloadSchema,
+  onEvent: IntentRefSchema.pipe(Schema.optionalKey),
+  style: CardStyleSchema.pipe(Schema.optionalKey)
+})
+
+export const IconSchema: Schema.Codec<IconView, IconView> = Schema.TaggedStruct("Icon", {
+  ...CommonFields,
+  name: IconNameSchema,
+  size: IconSizeSchema.pipe(Schema.optionalKey),
+  color: ColorTokenSchema.pipe(Schema.optionalKey),
+  label: Schema.String.pipe(Schema.optionalKey),
+  style: TextStyleSchema.pipe(Schema.optionalKey)
+})
+
+export const DividerSchema: Schema.Codec<DividerView, DividerView> = Schema.TaggedStruct("Divider", {
+  ...CommonFields,
+  orientation: Schema.Literals(["horizontal", "vertical"]).pipe(Schema.optionalKey),
+  style: CardStyleSchema.pipe(Schema.optionalKey)
+})
+
+export const BadgeSchema: Schema.Codec<BadgeView, BadgeView> = Schema.TaggedStruct("Badge", {
+  ...CommonFields,
+  label: Schema.String,
+  tone: ToneSchema.pipe(Schema.optionalKey),
+  style: CardStyleSchema.pipe(Schema.optionalKey)
+})
+
+export const ChipSchema: Schema.Codec<ChipView, ChipView> = Schema.TaggedStruct("Chip", {
+  ...CommonFields,
+  label: Schema.String,
+  value: Schema.String.pipe(Schema.optionalKey),
+  tone: ToneSchema.pipe(Schema.optionalKey),
+  style: CardStyleSchema.pipe(Schema.optionalKey)
+})
+
+const MeterValueSchema = Schema.Number.check(
+  Schema.makeFilter<number>((value) =>
+    value >= 0 && value <= 1 ? undefined : { path: [], issue: "Meter value must be within [0, 1]" }
+  )
+)
+
+export const MeterSchema: Schema.Codec<MeterView, MeterView> = Schema.TaggedStruct("Meter", {
+  ...CommonFields,
+  value: MeterValueSchema.pipe(Schema.optionalKey),
+  indeterminate: Schema.Boolean.pipe(Schema.optionalKey),
+  label: Schema.String.pipe(Schema.optionalKey),
+  tone: ToneSchema.pipe(Schema.optionalKey),
+  style: CardStyleSchema.pipe(Schema.optionalKey)
+})
+
+export const StatTileSchema: Schema.Codec<StatTileView, StatTileView> = Schema.TaggedStruct("StatTile", {
+  ...CommonFields,
+  label: Schema.String,
+  value: Schema.String,
+  tone: ToneSchema.pipe(Schema.optionalKey),
+  style: CardStyleSchema.pipe(Schema.optionalKey)
+})
+
+export const TableColumnSchema: Schema.Codec<TableColumn, TableColumn> = Schema.Struct({
+  id: Schema.NonEmptyString,
+  header: Schema.String,
+  align: Schema.Literals(["start", "center", "end"]).pipe(Schema.optionalKey),
+  width: DimensionTokenSchema.pipe(Schema.optionalKey)
+})
+
+export const TableRowSchema: Schema.Codec<TableRow, TableRow> = Schema.Struct({
+  id: Schema.NonEmptyString,
+  cells: Schema.Array(ViewSelf)
+})
+
+export const TableSchema: Schema.Codec<TableView, TableView> = Schema.TaggedStruct("Table", {
+  ...CommonFields,
+  columns: Schema.Array(TableColumnSchema),
+  rows: Schema.Array(TableRowSchema),
+  onRowSelect: IntentRefSchema.pipe(Schema.optionalKey),
+  style: CardStyleSchema.pipe(Schema.optionalKey)
+})
+
+export const SplitPanePaneSchema: Schema.Codec<SplitPanePane, SplitPanePane> = Schema.Struct({
+  id: Schema.NonEmptyString,
+  min: DimensionSchema.pipe(Schema.optionalKey),
+  max: DimensionSchema.pipe(Schema.optionalKey),
+  size: DimensionSchema.pipe(Schema.optionalKey),
+  collapsed: Schema.Boolean.pipe(Schema.optionalKey),
+  content: ViewSelf
+})
+
+export const SplitPaneSchema: Schema.Codec<SplitPaneView, SplitPaneView> = Schema.TaggedStruct("SplitPane", {
+  ...CommonFields,
+  orientation: StackDirectionSchema,
+  panes: Schema.Array(SplitPanePaneSchema).check(
+    Schema.isMinLength(1, { title: "NonEmptySplitPanePanes" })
+  ),
+  onResize: IntentRefSchema.pipe(Schema.optionalKey),
+  onCollapseToggle: IntentRefSchema.pipe(Schema.optionalKey),
+  style: CardStyleSchema.pipe(Schema.optionalKey)
+})
+
+export const NavRailItemSchema: Schema.Codec<NavRailItem, NavRailItem> = Schema.Struct({
+  id: Schema.NonEmptyString,
+  label: Schema.String,
+  icon: IconNameSchema.pipe(Schema.optionalKey),
+  disabled: Schema.Boolean.pipe(Schema.optionalKey)
+})
+
+export const NavRailSectionSchema: Schema.Codec<NavRailSection, NavRailSection> = Schema.Struct({
+  id: Schema.NonEmptyString,
+  label: Schema.String.pipe(Schema.optionalKey),
+  items: Schema.Array(NavRailItemSchema)
+})
+
+export const NavRailSchema: Schema.Codec<NavRailView, NavRailView> = Schema.TaggedStruct("NavRail", {
+  ...CommonFields,
+  sections: Schema.Array(NavRailSectionSchema),
+  activeId: Schema.String.pipe(Schema.optionalKey),
+  onSelect: IntentRefSchema,
+  style: CardStyleSchema.pipe(Schema.optionalKey)
+})
+
+export const WorkbenchPaneSchema: Schema.Codec<WorkbenchPane, WorkbenchPane> = Schema.Struct({
+  id: Schema.NonEmptyString,
+  content: ViewSelf
+})
+
+export const WorkbenchSchema: Schema.Codec<WorkbenchView, WorkbenchView> = Schema.TaggedStruct("Workbench", {
+  ...CommonFields,
+  panes: Schema.Array(WorkbenchPaneSchema).check(
+    Schema.isMinLength(1, { title: "NonEmptyWorkbenchPanes" })
+  ),
+  activePaneId: Schema.NonEmptyString,
+  keepMounted: Schema.Boolean.pipe(Schema.optionalKey),
+  style: CardStyleSchema.pipe(Schema.optionalKey)
+})
+
+export const OverlaySideSchema = Schema.Literals(["top", "bottom", "left", "right"] as const)
+export const OverlayAlignSchema = Schema.Literals(["start", "center", "end"] as const)
+export const PlacementSchema: Schema.Codec<Placement, Placement> = Schema.Struct({
+  side: OverlaySideSchema,
+  align: OverlayAlignSchema
+})
+
+const MenuItemSelf = Schema.suspend((): Schema.Codec<MenuItem, MenuItem> => MenuItemSchema)
+export const MenuItemSchema: Schema.Codec<MenuItem, MenuItem> = Schema.Struct({
+  id: Schema.NonEmptyString,
+  label: Schema.String,
+  icon: IconNameSchema.pipe(Schema.optionalKey),
+  disabled: Schema.Boolean.pipe(Schema.optionalKey),
+  danger: Schema.Boolean.pipe(Schema.optionalKey),
+  keybinding: Schema.String.pipe(Schema.optionalKey),
+  items: Schema.Array(MenuItemSelf).pipe(Schema.optionalKey)
+})
+
+export const PopoverSchema: Schema.Codec<PopoverView, PopoverView> = Schema.TaggedStruct("Popover", {
+  ...CommonFields,
+  open: BoundBooleanSchema,
+  placement: PlacementSchema,
+  anchorKey: Schema.String.pipe(Schema.optionalKey),
+  dismissable: Schema.Boolean,
+  onDismiss: IntentRefSchema,
+  children: Schema.Array(ViewSelf)
+})
+
+export const DropdownMenuSchema: Schema.Codec<DropdownMenuView, DropdownMenuView> =
+  Schema.TaggedStruct("DropdownMenu", {
+    ...CommonFields,
+    open: BoundBooleanSchema,
+    placement: PlacementSchema,
+    anchorKey: Schema.String.pipe(Schema.optionalKey),
+    items: Schema.Array(MenuItemSchema),
+    onSelect: IntentRefSchema,
+    onDismiss: IntentRefSchema,
+    style: CardStyleSchema.pipe(Schema.optionalKey)
+  })
+
+export const ContextMenuSchema: Schema.Codec<ContextMenuView, ContextMenuView> =
+  Schema.TaggedStruct("ContextMenu", {
+    ...CommonFields,
+    open: BoundBooleanSchema,
+    x: NonNegativeNumberSchema,
+    y: NonNegativeNumberSchema,
+    items: Schema.Array(MenuItemSchema),
+    onSelect: IntentRefSchema,
+    onDismiss: IntentRefSchema,
+    style: CardStyleSchema.pipe(Schema.optionalKey)
+  })
+
+export const TooltipSchema: Schema.Codec<TooltipView, TooltipView> = Schema.TaggedStruct("Tooltip", {
+  ...CommonFields,
+  content: Schema.String,
+  placement: PlacementSchema.pipe(Schema.optionalKey),
+  delayMillis: NonNegativeNumberSchema.pipe(Schema.optionalKey),
+  children: Schema.Array(ViewSelf).check(
+    Schema.makeFilter<ReadonlyArray<View>>((children) =>
+      children.length === 1 ? undefined : { path: [], issue: "Tooltip wraps exactly one target" }
+    )
+  )
+})
+
+export const ComboboxOptionSchema: Schema.Codec<ComboboxOption, ComboboxOption> = Schema.Struct({
+  id: Schema.NonEmptyString,
+  label: Schema.String,
+  subtitle: Schema.String.pipe(Schema.optionalKey),
+  icon: IconNameSchema.pipe(Schema.optionalKey),
+  group: Schema.String.pipe(Schema.optionalKey),
+  disabled: Schema.Boolean.pipe(Schema.optionalKey),
+  disabledReason: Schema.String.pipe(Schema.optionalKey),
+  keybinding: Schema.String.pipe(Schema.optionalKey)
+})
+
+export const ComboboxSchema: Schema.Codec<ComboboxView, ComboboxView> = Schema.TaggedStruct("Combobox", {
+  ...CommonFields,
+  query: Schema.String,
+  placeholder: Schema.String.pipe(Schema.optionalKey),
+  options: Schema.Array(ComboboxOptionSchema),
+  highlightedId: Schema.String.pipe(Schema.optionalKey),
+  loading: Schema.Boolean.pipe(Schema.optionalKey),
+  emptyLabel: Schema.String.pipe(Schema.optionalKey),
+  onQueryChange: IntentRefSchema.pipe(Schema.optionalKey),
+  onHighlight: IntentRefSchema.pipe(Schema.optionalKey),
+  onSelect: IntentRefSchema,
+  style: CardStyleSchema.pipe(Schema.optionalKey)
+})
+
+export const CommandPaletteSchema: Schema.Codec<CommandPaletteView, CommandPaletteView> =
+  Schema.TaggedStruct("CommandPalette", {
+    ...CommonFields,
+    open: BoundBooleanSchema,
+    title: Schema.String.pipe(Schema.optionalKey),
+    combobox: ComboboxSchema,
+    onDismiss: IntentRefSchema
+  })
+
+export const TabItemSchema: Schema.Codec<TabItem, TabItem> = Schema.Struct({
+  id: Schema.NonEmptyString,
+  label: Schema.String,
+  icon: IconNameSchema.pipe(Schema.optionalKey),
+  disabled: Schema.Boolean.pipe(Schema.optionalKey),
+  badge: Schema.String.pipe(Schema.optionalKey)
+})
+
+export const TabPanelSchema: Schema.Codec<TabPanel, TabPanel> = Schema.Struct({
+  id: Schema.NonEmptyString,
+  content: ViewSelf
+})
+
+export const TabsSchema: Schema.Codec<TabsView, TabsView> = Schema.TaggedStruct("Tabs", {
+  ...CommonFields,
+  tabs: Schema.Array(TabItemSchema).check(Schema.isMinLength(1, { title: "NonEmptyTabs" })),
+  panels: Schema.Array(TabPanelSchema),
+  selectedId: Schema.NonEmptyString,
+  orientation: Schema.Literals(["horizontal", "vertical"]).pipe(Schema.optionalKey),
+  keepMounted: Schema.Boolean.pipe(Schema.optionalKey),
+  onSelect: IntentRefSchema,
+  style: CardStyleSchema.pipe(Schema.optionalKey)
+})
+
+export const ComposerInlineSchema: Schema.Codec<ComposerInline, ComposerInline> = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("text"), text: Schema.String }),
+  Schema.Struct({ kind: Schema.Literal("mention"), id: Schema.NonEmptyString, label: Schema.String })
+]) as unknown as Schema.Codec<ComposerInline, ComposerInline>
+
+export const ComposerAttachmentSchema: Schema.Codec<ComposerAttachment, ComposerAttachment> = Schema.Struct({
+  id: Schema.NonEmptyString,
+  name: Schema.String,
+  mimeType: Schema.String,
+  size: NonNegativeNumberSchema
+})
+
+export const ComposerAutocompleteSchema: Schema.Codec<ComposerAutocomplete, ComposerAutocomplete> = Schema.Struct({
+  trigger: Schema.Literals(composerTriggers),
+  query: Schema.String,
+  combobox: ComboboxSchema
+})
+
+export const ComposerSchema: Schema.Codec<ComposerView, ComposerView> = Schema.TaggedStruct("Composer", {
+  ...CommonFields,
+  doc: Schema.Array(ComposerInlineSchema),
+  mode: Schema.Literals(["normal", "shell"]),
+  placeholder: Schema.String.pipe(Schema.optionalKey),
+  attachments: Schema.Array(ComposerAttachmentSchema).pipe(Schema.optionalKey),
+  autocomplete: ComposerAutocompleteSchema.pipe(Schema.optionalKey),
+  onChange: IntentRefSchema.pipe(Schema.optionalKey),
+  onSubmit: IntentRefSchema.pipe(Schema.optionalKey),
+  onKeyCommand: IntentRefSchema.pipe(Schema.optionalKey),
+  onAttachmentDrop: IntentRefSchema.pipe(Schema.optionalKey),
+  style: TextFieldStyleSchema.pipe(Schema.optionalKey)
+})
+
+export const ChoiceOptionSchema: Schema.Codec<ChoiceOption, ChoiceOption> = Schema.Struct({
+  value: Schema.String,
+  label: Schema.String,
+  disabled: Schema.Boolean.pipe(Schema.optionalKey)
+})
+
+const SettingsControlCommonFields = {
+  ...CommonFields,
+  label: Schema.String.pipe(Schema.optionalKey),
+  disabled: Schema.Boolean.pipe(Schema.optionalKey),
+  invalid: Schema.Boolean.pipe(Schema.optionalKey),
+  field: FieldBindingSchema.pipe(Schema.optionalKey),
+  onChange: IntentRefSchema.pipe(Schema.optionalKey)
+} as const
+
+export const ToggleSchema: Schema.Codec<ToggleView, ToggleView> = Schema.TaggedStruct("Toggle", {
+  ...SettingsControlCommonFields,
+  value: Schema.Boolean,
+  style: CardStyleSchema.pipe(Schema.optionalKey)
+})
+
+export const SelectSchema: Schema.Codec<SelectView, SelectView> = Schema.TaggedStruct("Select", {
+  ...SettingsControlCommonFields,
+  value: Schema.String,
+  options: Schema.Array(ChoiceOptionSchema),
+  placeholder: Schema.String.pipe(Schema.optionalKey),
+  style: TextFieldStyleSchema.pipe(Schema.optionalKey)
+})
+
+export const CheckboxSchema: Schema.Codec<CheckboxView, CheckboxView> = Schema.TaggedStruct("Checkbox", {
+  ...SettingsControlCommonFields,
+  checked: Schema.Boolean,
+  style: CardStyleSchema.pipe(Schema.optionalKey)
+})
+
+export const RadioGroupSchema: Schema.Codec<RadioGroupView, RadioGroupView> = Schema.TaggedStruct("RadioGroup", {
+  ...SettingsControlCommonFields,
+  value: Schema.String,
+  name: Schema.NonEmptyString,
+  options: Schema.Array(ChoiceOptionSchema),
+  orientation: Schema.Literals(["horizontal", "vertical"]).pipe(Schema.optionalKey),
+  style: CardStyleSchema.pipe(Schema.optionalKey)
+})
+
+const FiniteNumberSchema = Schema.Number.check(Schema.isFinite({ title: "FiniteNumber" }))
+
+export const SliderSchema: Schema.Codec<SliderView, SliderView> = Schema.TaggedStruct("Slider", {
+  ...SettingsControlCommonFields,
+  value: FiniteNumberSchema,
+  min: FiniteNumberSchema,
+  max: FiniteNumberSchema,
+  step: Schema.Number.check(Schema.isFinite({ title: "FiniteStep" }), Schema.isGreaterThan(0, { title: "PositiveStep" })).pipe(Schema.optionalKey),
+  style: CardStyleSchema.pipe(Schema.optionalKey)
+})
+
+export const NumberFieldSchema: Schema.Codec<NumberFieldView, NumberFieldView> = Schema.TaggedStruct("NumberField", {
+  ...SettingsControlCommonFields,
+  value: FiniteNumberSchema,
+  min: FiniteNumberSchema.pipe(Schema.optionalKey),
+  max: FiniteNumberSchema.pipe(Schema.optionalKey),
+  step: Schema.Number.check(Schema.isFinite({ title: "FiniteStep" }), Schema.isGreaterThan(0, { title: "PositiveStep" })).pipe(Schema.optionalKey),
+  placeholder: Schema.String.pipe(Schema.optionalKey),
+  style: TextFieldStyleSchema.pipe(Schema.optionalKey)
+})
+
+export const FieldRowSchema: Schema.Codec<FieldRowView, FieldRowView> = Schema.TaggedStruct("FieldRow", {
+  ...CommonFields,
+  label: Schema.String,
+  description: Schema.String.pipe(Schema.optionalKey),
+  error: Schema.String.pipe(Schema.optionalKey),
+  controlKey: Schema.String.pipe(Schema.optionalKey),
+  control: ViewSelf,
+  style: CardStyleSchema.pipe(Schema.optionalKey)
+})
+
+export const NotificationModelSchema: Schema.Codec<NotificationModel, NotificationModel> = Schema.Struct({
+  id: Schema.NonEmptyString,
+  tone: ToneSchema,
+  title: Schema.String,
+  detail: Schema.String.pipe(Schema.optionalKey),
+  actionLabel: Schema.String.pipe(Schema.optionalKey),
+  action: IntentRefSchema.pipe(Schema.optionalKey),
+  autoDismissMillis: NonNegativeNumberSchema.pipe(Schema.optionalKey)
+})
+
+export const ToastSchema: Schema.Codec<ToastView, ToastView> = Schema.TaggedStruct("Toast", {
+  ...CommonFields,
+  notification: NotificationModelSchema,
+  onDismiss: IntentRefSchema,
+  style: CardStyleSchema.pipe(Schema.optionalKey)
+})
+
+export const ToastRegionSchema: Schema.Codec<ToastRegionView, ToastRegionView> = Schema.TaggedStruct("ToastRegion", {
+  ...CommonFields,
+  notifications: Schema.Array(NotificationModelSchema),
+  placement: Schema.Literals(toastPlacements).pipe(Schema.optionalKey),
+  onDismiss: IntentRefSchema,
+  style: CardStyleSchema.pipe(Schema.optionalKey)
+})
+
+export const StatusBannerSchema: Schema.Codec<StatusBannerView, StatusBannerView> = Schema.TaggedStruct("StatusBanner", {
+  ...CommonFields,
+  tone: ToneSchema,
+  message: Schema.String,
+  onRetry: IntentRefSchema.pipe(Schema.optionalKey),
+  onDismiss: IntentRefSchema.pipe(Schema.optionalKey),
+  style: CardStyleSchema.pipe(Schema.optionalKey)
+})
+
+export const RecoveryActionModelSchema: Schema.Codec<RecoveryActionModel, RecoveryActionModel> = Schema.Struct({
+  id: Schema.NonEmptyString,
+  label: Schema.String,
+  action: IntentRefSchema,
+  variant: ButtonVariantSchema.pipe(Schema.optionalKey)
+})
+
+export const RecoveryOverlaySchema: Schema.Codec<RecoveryOverlayView, RecoveryOverlayView> =
+  Schema.TaggedStruct("RecoveryOverlay", {
+    ...CommonFields,
+    open: BoundBooleanSchema,
+    title: Schema.String,
+    message: Schema.String.pipe(Schema.optionalKey),
+    status: Schema.String.pipe(Schema.optionalKey),
+    actions: Schema.Array(RecoveryActionModelSchema)
+  })
+
+const MarkdownInlineSelf = Schema.suspend((): Schema.Codec<MarkdownInline, MarkdownInline> => MarkdownInlineSchema)
+export const MarkdownInlineSchema: Schema.Codec<MarkdownInline, MarkdownInline> = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("text"), text: Schema.String }),
+  Schema.Struct({ kind: Schema.Literal("code"), text: Schema.String }),
+  Schema.Struct({ kind: Schema.Literal("strong"), children: Schema.Array(MarkdownInlineSelf) }),
+  Schema.Struct({ kind: Schema.Literal("emphasis"), children: Schema.Array(MarkdownInlineSelf) }),
+  Schema.Struct({ kind: Schema.Literal("link"), href: UriStringSchema, children: Schema.Array(MarkdownInlineSelf) })
+]) as unknown as Schema.Codec<MarkdownInline, MarkdownInline>
+
+const MarkdownBlockSelf = Schema.suspend((): Schema.Codec<MarkdownBlock, MarkdownBlock> => MarkdownBlockSchema)
+export const MarkdownBlockSchema: Schema.Codec<MarkdownBlock, MarkdownBlock> = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("heading"), level: Schema.Literals([1, 2, 3, 4, 5, 6] as const), children: Schema.Array(MarkdownInlineSchema) }),
+  Schema.Struct({ kind: Schema.Literal("paragraph"), children: Schema.Array(MarkdownInlineSchema) }),
+  Schema.Struct({ kind: Schema.Literal("list"), ordered: Schema.Boolean, items: Schema.Array(Schema.Array(MarkdownBlockSelf)) }),
+  Schema.Struct({ kind: Schema.Literal("blockquote"), children: Schema.Array(MarkdownBlockSelf) })
+]) as unknown as Schema.Codec<MarkdownBlock, MarkdownBlock>
+
+export const CodeTokenSchema: Schema.Codec<CodeToken, CodeToken> = Schema.Struct({
+  kind: Schema.Literals(codeTokenKinds),
+  text: Schema.String
+})
+export const CodeLineSchema: Schema.Codec<CodeLine, CodeLine> = Schema.Struct({
+  tokens: Schema.Array(CodeTokenSchema)
+})
+export const CodeBlockSchema: Schema.Codec<CodeBlockView, CodeBlockView> = Schema.TaggedStruct("CodeBlock", {
+  ...CommonFields,
+  language: Schema.String.pipe(Schema.optionalKey),
+  lines: Schema.Array(CodeLineSchema),
+  showLineNumbers: Schema.Boolean.pipe(Schema.optionalKey),
+  startLine: NonNegativeNumberSchema.pipe(Schema.optionalKey),
+  onCopy: IntentRefSchema.pipe(Schema.optionalKey),
+  style: CardStyleSchema.pipe(Schema.optionalKey)
+})
+
+export const DiffRowSchema: Schema.Codec<DiffRow, DiffRow> = Schema.Struct({
+  kind: Schema.Literals(diffRowKinds),
+  tokens: Schema.Array(CodeTokenSchema),
+  oldLine: NonNegativeNumberSchema.pipe(Schema.optionalKey),
+  newLine: NonNegativeNumberSchema.pipe(Schema.optionalKey),
+  id: Schema.NonEmptyString.pipe(Schema.optionalKey),
+  verdict: Schema.Literals(diffVerdicts).pipe(Schema.optionalKey),
+  comment: Schema.String.pipe(Schema.optionalKey)
+})
+export const DiffHunkSchema: Schema.Codec<DiffHunk, DiffHunk> = Schema.Struct({
+  header: Schema.String,
+  rows: Schema.Array(DiffRowSchema)
+})
+export const DiffSourceControlActionSchema: Schema.Codec<DiffSourceControlAction, DiffSourceControlAction> = Schema.Struct({
+  id: Schema.NonEmptyString,
+  label: Schema.String
+})
+export const DiffViewSchema: Schema.Codec<DiffViewView, DiffViewView> = Schema.TaggedStruct("DiffView", {
+  ...CommonFields,
+  language: Schema.String.pipe(Schema.optionalKey),
+  hunks: Schema.Array(DiffHunkSchema),
+  layout: Schema.Literals(["unified", "split"]).pipe(Schema.optionalKey),
+  onLineComment: IntentRefSchema.pipe(Schema.optionalKey),
+  onLineVerdict: IntentRefSchema.pipe(Schema.optionalKey),
+  onSourceControlAction: IntentRefSchema.pipe(Schema.optionalKey),
+  actions: Schema.Array(DiffSourceControlActionSchema).pipe(Schema.optionalKey),
+  style: CardStyleSchema.pipe(Schema.optionalKey)
+})
+
+const GraphNumberSchema = Schema.Number.check(Schema.isFinite({ title: "FiniteGraphNumber" }))
+export const GraphNodeModelSchema: Schema.Codec<GraphNodeModel, GraphNodeModel> = Schema.Struct({
+  id: Schema.NonEmptyString,
+  label: Schema.String,
+  kind: Schema.Literals(graphNodeKinds).pipe(Schema.optionalKey),
+  status: Schema.Literals(graphStatuses).pipe(Schema.optionalKey),
+  x: GraphNumberSchema.pipe(Schema.optionalKey),
+  y: GraphNumberSchema.pipe(Schema.optionalKey)
+})
+export const GraphEdgeModelSchema: Schema.Codec<GraphEdgeModel, GraphEdgeModel> = Schema.Struct({
+  id: Schema.NonEmptyString,
+  from: Schema.NonEmptyString,
+  to: Schema.NonEmptyString,
+  kind: Schema.Literals(graphEdgeKinds).pipe(Schema.optionalKey),
+  status: Schema.Literals(graphStatuses).pipe(Schema.optionalKey)
+})
+export const GraphCameraSchema: Schema.Codec<GraphCamera, GraphCamera> = Schema.Struct({
+  x: GraphNumberSchema,
+  y: GraphNumberSchema,
+  zoom: Schema.Number.check(Schema.isFinite({ title: "FiniteZoom" }), Schema.isGreaterThan(0, { title: "PositiveZoom" }))
+})
+export const GraphFigureSchema: Schema.Codec<GraphFigureView, GraphFigureView> = Schema.TaggedStruct("GraphFigure", {
+  ...CommonFields,
+  nodes: Schema.Array(GraphNodeModelSchema),
+  edges: Schema.Array(GraphEdgeModelSchema),
+  layout: Schema.Literals(graphLayouts).pipe(Schema.optionalKey),
+  camera: GraphCameraSchema.pipe(Schema.optionalKey),
+  width: NonNegativeNumberSchema.pipe(Schema.optionalKey),
+  height: NonNegativeNumberSchema.pipe(Schema.optionalKey),
+  onNodeSelect: IntentRefSchema.pipe(Schema.optionalKey),
+  onNodeHover: IntentRefSchema.pipe(Schema.optionalKey),
+  onCameraChange: IntentRefSchema.pipe(Schema.optionalKey),
+  style: CardStyleSchema.pipe(Schema.optionalKey)
+})
+
+export const TimelineEventSchema: Schema.Codec<TimelineEvent, TimelineEvent> = Schema.Struct({
+  id: Schema.NonEmptyString,
+  label: Schema.String,
+  detail: Schema.String.pipe(Schema.optionalKey),
+  time: Schema.String.pipe(Schema.optionalKey),
+  status: Schema.Literals(graphStatuses).pipe(Schema.optionalKey),
+  refs: Schema.Array(Schema.NonEmptyString).pipe(Schema.optionalKey)
+})
+export const TimelineSchema: Schema.Codec<TimelineView, TimelineView> = Schema.TaggedStruct("Timeline", {
+  ...CommonFields,
+  events: Schema.Array(TimelineEventSchema),
+  onEventSelect: IntentRefSchema.pipe(Schema.optionalKey),
+  style: CardStyleSchema.pipe(Schema.optionalKey)
+})
+
+// Status -> theme color-token mapping shared by graph/timeline renderers.
+export const graphStatusColorToken: Record<GraphStatus, ColorToken> = {
+  idle: "textMuted",
+  active: "info",
+  success: "success",
+  failed: "danger",
+  pending: "warning"
+}
+
+export const MarkdownSchema: Schema.Codec<MarkdownView, MarkdownView> = Schema.TaggedStruct("Markdown", {
+  ...CommonFields,
+  blocks: Schema.Array(MarkdownBlockSchema),
+  style: TextStyleSchema.pipe(Schema.optionalKey)
+})
+
+export const TranscriptMessageSchema: Schema.Codec<TranscriptMessage, TranscriptMessage> = Schema.Struct({
+  key: NodeKeySchema,
+  role: Schema.Literals(transcriptRoles),
+  status: Schema.Literals(transcriptStatuses).pipe(Schema.optionalKey),
+  body: Schema.Array(ViewSelf)
+})
+
+export const TranscriptSchema: Schema.Codec<TranscriptView, TranscriptView> = Schema.TaggedStruct("Transcript", {
+  ...CommonFields,
+  messages: Schema.Array(TranscriptMessageSchema),
+  pinToEnd: Schema.Boolean.pipe(Schema.optionalKey),
+  onPinnedChange: IntentRefSchema.pipe(Schema.optionalKey),
+  virtualize: Schema.Boolean.pipe(Schema.optionalKey),
+  estimatedItemSize: DimensionSchema.pipe(Schema.optionalKey),
+  style: ListStyleSchema.pipe(Schema.optionalKey)
+})
+
 export const ViewSchema: Schema.Codec<View, View> = Schema.suspend(() =>
   Schema.Union([
     StackSchema,
@@ -1901,7 +3451,43 @@ export const ViewSchema: Schema.Codec<View, View> = Schema.suspend(() =>
     SpacerSchema,
     LinkSchema,
     ModalSchema,
-    SheetSchema
+    SheetSchema,
+    HostSchema,
+    IconSchema,
+    DividerSchema,
+    BadgeSchema,
+    ChipSchema,
+    MeterSchema,
+    StatTileSchema,
+    TableSchema,
+    SplitPaneSchema,
+    NavRailSchema,
+    WorkbenchSchema,
+    PopoverSchema,
+    DropdownMenuSchema,
+    ContextMenuSchema,
+    TooltipSchema,
+    ComboboxSchema,
+    CommandPaletteSchema,
+    TabsSchema,
+    ComposerSchema,
+    ToggleSchema,
+    SelectSchema,
+    CheckboxSchema,
+    RadioGroupSchema,
+    SliderSchema,
+    NumberFieldSchema,
+    FieldRowSchema,
+    ToastSchema,
+    ToastRegionSchema,
+    StatusBannerSchema,
+    RecoveryOverlaySchema,
+    MarkdownSchema,
+    TranscriptSchema,
+    CodeBlockSchema,
+    DiffViewSchema,
+    GraphFigureSchema,
+    TimelineSchema
   ]).check(OverlayStackFilter)
 )
 
@@ -1976,6 +3562,307 @@ export const Modal = (props: ModalProps, children: ReadonlyArray<View> = []): Mo
 export type SheetProps = Omit<WithoutTagAndVersion<SheetView>, "children">
 export const Sheet = (props: SheetProps, children: ReadonlyArray<View> = []): SheetView =>
   SheetSchema.make({ _tag: "Sheet", catalogVersion: CatalogVersion, ...props, children })
+
+export type HostProps = WithoutTagAndVersion<HostView>
+export const Host = (props: HostProps): HostView =>
+  HostSchema.make({ _tag: "Host", catalogVersion: CatalogVersion, ...props })
+
+// ── CodeEditor host contract (issue #33) ─────────────────────────────────────
+//
+// A CodeEditor is not a new closed-catalog tag: it is a typed constructor over
+// the reviewed `Host(kind: "code-editor")` escape hatch (#23), with bounded,
+// serializable props and a typed event union. The concrete widget (Monaco) is
+// provided by the app as a per-renderer host driver whose lifecycle is bound to
+// the surface Scope; the framework owns the typed contract + driver seam, never
+// a bundled editor engine. No Monaco types appear in the public contract.
+export interface CodeEditorHostProps {
+  readonly value: string
+  readonly language: string
+  readonly readOnly?: boolean
+  readonly wordWrap?: boolean
+  readonly minimap?: boolean
+  // Font size from the token scale (never a raw pixel number).
+  readonly fontScale?: TypeScaleToken
+}
+export const CodeEditorHostPropsSchema: Schema.Codec<CodeEditorHostProps, CodeEditorHostProps> = Schema.Struct({
+  value: Schema.String,
+  language: Schema.NonEmptyString,
+  readOnly: Schema.Boolean.pipe(Schema.optionalKey),
+  wordWrap: Schema.Boolean.pipe(Schema.optionalKey),
+  minimap: Schema.Boolean.pipe(Schema.optionalKey),
+  fontScale: TypeScaleTokenSchema.pipe(Schema.optionalKey)
+}) as unknown as Schema.Codec<CodeEditorHostProps, CodeEditorHostProps>
+export const decodeCodeEditorHostProps = Schema.decodeUnknownSync(CodeEditorHostPropsSchema)
+
+// Typed events the code-editor driver emits outward through the Host `onEvent`
+// intent (no editor types cross the boundary).
+export type CodeEditorEvent =
+  | { readonly type: "change"; readonly value: string }
+  | { readonly type: "selection"; readonly start: number; readonly end: number }
+  | { readonly type: "save"; readonly value: string }
+export const CodeEditorEventSchema: Schema.Codec<CodeEditorEvent, CodeEditorEvent> = Schema.Union([
+  Schema.Struct({ type: Schema.Literal("change"), value: Schema.String }),
+  Schema.Struct({ type: Schema.Literal("selection"), start: NonNegativeNumberSchema, end: NonNegativeNumberSchema }),
+  Schema.Struct({ type: Schema.Literal("save"), value: Schema.String })
+]) as unknown as Schema.Codec<CodeEditorEvent, CodeEditorEvent>
+
+export interface CodeEditorProps extends CodeEditorHostProps {
+  readonly key?: NodeKey
+  readonly onEvent?: IntentRef
+  readonly style?: CardStyle
+  readonly a11y?: A11y
+  readonly interactions?: Interactions
+}
+export const CodeEditor = (props: CodeEditorProps): HostView => {
+  const { key, onEvent, style, a11y, interactions, ...hostProps } = props
+  return Host({
+    ...(key === undefined ? {} : { key }),
+    ...(onEvent === undefined ? {} : { onEvent }),
+    ...(style === undefined ? {} : { style }),
+    ...(a11y === undefined ? {} : { a11y }),
+    ...(interactions === undefined ? {} : { interactions }),
+    kind: "code-editor",
+    props: CodeEditorHostPropsSchema.make(hostProps) as unknown as JsonPayload
+  })
+}
+
+// ── Terminal host contract (issue #34) ───────────────────────────────────────
+//
+// Like CodeEditor, a Terminal is a typed constructor over the reviewed
+// `Host(kind: "terminal")` escape hatch (#23) — not a new closed-catalog tag.
+// Output is delivered as a serializable `output` buffer prop (the app joins a
+// byte/string Stream via the streaming data-binding runtime into this buffer);
+// user input is emitted as a typed `data` event and resize as a typed `resize`
+// event. No emulator (xterm) types cross the public contract; the PTY/process is
+// the app's concern.
+export interface TerminalHostProps {
+  readonly output?: string
+  readonly cols?: number
+  readonly rows?: number
+  readonly autoFit?: boolean
+  readonly fontScale?: TypeScaleToken
+  readonly scrollbackLines?: number
+  readonly readOnly?: boolean
+}
+export const TerminalHostPropsSchema: Schema.Codec<TerminalHostProps, TerminalHostProps> = Schema.Struct({
+  output: Schema.String.pipe(Schema.optionalKey),
+  cols: NonNegativeNumberSchema.pipe(Schema.optionalKey),
+  rows: NonNegativeNumberSchema.pipe(Schema.optionalKey),
+  autoFit: Schema.Boolean.pipe(Schema.optionalKey),
+  fontScale: TypeScaleTokenSchema.pipe(Schema.optionalKey),
+  scrollbackLines: NonNegativeNumberSchema.pipe(Schema.optionalKey),
+  readOnly: Schema.Boolean.pipe(Schema.optionalKey)
+}) as unknown as Schema.Codec<TerminalHostProps, TerminalHostProps>
+export const decodeTerminalHostProps = Schema.decodeUnknownSync(TerminalHostPropsSchema)
+
+export type TerminalEvent =
+  | { readonly type: "data"; readonly data: string }
+  | { readonly type: "resize"; readonly cols: number; readonly rows: number }
+export const TerminalEventSchema: Schema.Codec<TerminalEvent, TerminalEvent> = Schema.Union([
+  Schema.Struct({ type: Schema.Literal("data"), data: Schema.String }),
+  Schema.Struct({ type: Schema.Literal("resize"), cols: NonNegativeNumberSchema, rows: NonNegativeNumberSchema })
+]) as unknown as Schema.Codec<TerminalEvent, TerminalEvent>
+
+export interface TerminalProps extends TerminalHostProps {
+  readonly key?: NodeKey
+  readonly onEvent?: IntentRef
+  readonly style?: CardStyle
+  readonly a11y?: A11y
+  readonly interactions?: Interactions
+}
+export const Terminal = (props: TerminalProps): HostView => {
+  const { key, onEvent, style, a11y, interactions, ...hostProps } = props
+  return Host({
+    ...(key === undefined ? {} : { key }),
+    ...(onEvent === undefined ? {} : { onEvent }),
+    ...(style === undefined ? {} : { style }),
+    ...(a11y === undefined ? {} : { a11y }),
+    ...(interactions === undefined ? {} : { interactions }),
+    kind: "terminal",
+    props: TerminalHostPropsSchema.make(hostProps) as unknown as JsonPayload
+  })
+}
+
+export type IconProps = WithoutTagAndVersion<IconView>
+export const Icon = (props: IconProps): IconView =>
+  IconSchema.make({ _tag: "Icon", catalogVersion: CatalogVersion, ...props })
+
+export type DividerProps = WithoutTagAndVersion<DividerView>
+export const Divider = (props: DividerProps = {}): DividerView =>
+  DividerSchema.make({ _tag: "Divider", catalogVersion: CatalogVersion, ...props })
+
+export type BadgeProps = WithoutTagAndVersion<BadgeView>
+export const Badge = (props: BadgeProps): BadgeView =>
+  BadgeSchema.make({ _tag: "Badge", catalogVersion: CatalogVersion, ...props })
+
+export type ChipProps = WithoutTagAndVersion<ChipView>
+export const Chip = (props: ChipProps): ChipView =>
+  ChipSchema.make({ _tag: "Chip", catalogVersion: CatalogVersion, ...props })
+
+export type MeterProps = WithoutTagAndVersion<MeterView>
+export const Meter = (props: MeterProps): MeterView =>
+  MeterSchema.make({ _tag: "Meter", catalogVersion: CatalogVersion, ...props })
+
+export type StatTileProps = WithoutTagAndVersion<StatTileView>
+export const StatTile = (props: StatTileProps): StatTileView =>
+  StatTileSchema.make({ _tag: "StatTile", catalogVersion: CatalogVersion, ...props })
+
+export type TableProps = WithoutTagAndVersion<TableView>
+export const Table = (props: TableProps): TableView =>
+  TableSchema.make({ _tag: "Table", catalogVersion: CatalogVersion, ...props })
+
+export type SplitPaneProps = WithoutTagAndVersion<SplitPaneView>
+export const SplitPane = (props: SplitPaneProps): SplitPaneView =>
+  SplitPaneSchema.make({ _tag: "SplitPane", catalogVersion: CatalogVersion, ...props })
+
+export type NavRailProps = WithoutTagAndVersion<NavRailView>
+export const NavRail = (props: NavRailProps): NavRailView =>
+  NavRailSchema.make({ _tag: "NavRail", catalogVersion: CatalogVersion, ...props })
+
+export type WorkbenchProps = WithoutTagAndVersion<WorkbenchView>
+export const Workbench = (props: WorkbenchProps): WorkbenchView =>
+  WorkbenchSchema.make({ _tag: "Workbench", catalogVersion: CatalogVersion, ...props })
+
+export type PopoverProps = Omit<WithoutTagAndVersion<PopoverView>, "children">
+export const Popover = (props: PopoverProps, children: ReadonlyArray<View> = []): PopoverView =>
+  PopoverSchema.make({ _tag: "Popover", catalogVersion: CatalogVersion, ...props, children })
+
+export type DropdownMenuProps = WithoutTagAndVersion<DropdownMenuView>
+export const DropdownMenu = (props: DropdownMenuProps): DropdownMenuView =>
+  DropdownMenuSchema.make({ _tag: "DropdownMenu", catalogVersion: CatalogVersion, ...props })
+
+export type ContextMenuProps = WithoutTagAndVersion<ContextMenuView>
+export const ContextMenu = (props: ContextMenuProps): ContextMenuView =>
+  ContextMenuSchema.make({ _tag: "ContextMenu", catalogVersion: CatalogVersion, ...props })
+
+export type TooltipProps = Omit<WithoutTagAndVersion<TooltipView>, "children">
+export const Tooltip = (props: TooltipProps, children: ReadonlyArray<View>): TooltipView =>
+  TooltipSchema.make({ _tag: "Tooltip", catalogVersion: CatalogVersion, ...props, children })
+
+export type ComboboxProps = WithoutTagAndVersion<ComboboxView>
+export const Combobox = (props: ComboboxProps): ComboboxView =>
+  ComboboxSchema.make({ _tag: "Combobox", catalogVersion: CatalogVersion, ...props })
+
+export type CommandPaletteProps = WithoutTagAndVersion<CommandPaletteView>
+export const CommandPalette = (props: CommandPaletteProps): CommandPaletteView =>
+  CommandPaletteSchema.make({ _tag: "CommandPalette", catalogVersion: CatalogVersion, ...props })
+
+export type TabsProps = WithoutTagAndVersion<TabsView>
+export const Tabs = (props: TabsProps): TabsView =>
+  TabsSchema.make({ _tag: "Tabs", catalogVersion: CatalogVersion, ...props })
+
+export type ComposerProps = WithoutTagAndVersion<ComposerView>
+export const Composer = (props: ComposerProps): ComposerView =>
+  ComposerSchema.make({ _tag: "Composer", catalogVersion: CatalogVersion, ...props })
+
+export type ToggleProps = WithoutTagAndVersion<ToggleView>
+export const Toggle = (props: ToggleProps): ToggleView =>
+  ToggleSchema.make({ _tag: "Toggle", catalogVersion: CatalogVersion, ...props })
+
+export type SelectProps = WithoutTagAndVersion<SelectView>
+export const Select = (props: SelectProps): SelectView =>
+  SelectSchema.make({ _tag: "Select", catalogVersion: CatalogVersion, ...props })
+
+export type CheckboxProps = WithoutTagAndVersion<CheckboxView>
+export const Checkbox = (props: CheckboxProps): CheckboxView =>
+  CheckboxSchema.make({ _tag: "Checkbox", catalogVersion: CatalogVersion, ...props })
+
+export type RadioGroupProps = WithoutTagAndVersion<RadioGroupView>
+export const RadioGroup = (props: RadioGroupProps): RadioGroupView =>
+  RadioGroupSchema.make({ _tag: "RadioGroup", catalogVersion: CatalogVersion, ...props })
+
+export type SliderProps = WithoutTagAndVersion<SliderView>
+export const Slider = (props: SliderProps): SliderView =>
+  SliderSchema.make({ _tag: "Slider", catalogVersion: CatalogVersion, ...props })
+
+export type NumberFieldProps = WithoutTagAndVersion<NumberFieldView>
+export const NumberField = (props: NumberFieldProps): NumberFieldView =>
+  NumberFieldSchema.make({ _tag: "NumberField", catalogVersion: CatalogVersion, ...props })
+
+export type FieldRowProps = WithoutTagAndVersion<FieldRowView>
+export const FieldRow = (props: FieldRowProps): FieldRowView =>
+  FieldRowSchema.make({ _tag: "FieldRow", catalogVersion: CatalogVersion, ...props })
+
+export type ToastProps = WithoutTagAndVersion<ToastView>
+export const Toast = (props: ToastProps): ToastView =>
+  ToastSchema.make({ _tag: "Toast", catalogVersion: CatalogVersion, ...props })
+
+export type ToastRegionProps = WithoutTagAndVersion<ToastRegionView>
+export const ToastRegion = (props: ToastRegionProps): ToastRegionView =>
+  ToastRegionSchema.make({ _tag: "ToastRegion", catalogVersion: CatalogVersion, ...props })
+
+export type StatusBannerProps = WithoutTagAndVersion<StatusBannerView>
+export const StatusBanner = (props: StatusBannerProps): StatusBannerView =>
+  StatusBannerSchema.make({ _tag: "StatusBanner", catalogVersion: CatalogVersion, ...props })
+
+export type RecoveryOverlayProps = WithoutTagAndVersion<RecoveryOverlayView>
+export const RecoveryOverlay = (props: RecoveryOverlayProps): RecoveryOverlayView =>
+  RecoveryOverlaySchema.make({ _tag: "RecoveryOverlay", catalogVersion: CatalogVersion, ...props })
+
+export type MarkdownProps = WithoutTagAndVersion<MarkdownView>
+export const Markdown = (props: MarkdownProps): MarkdownView =>
+  MarkdownSchema.make({ _tag: "Markdown", catalogVersion: CatalogVersion, ...props })
+
+export type TranscriptProps = WithoutTagAndVersion<TranscriptView>
+export const Transcript = (props: TranscriptProps): TranscriptView =>
+  TranscriptSchema.make({ _tag: "Transcript", catalogVersion: CatalogVersion, ...props })
+
+export type CodeBlockProps = WithoutTagAndVersion<CodeBlockView>
+export const CodeBlock = (props: CodeBlockProps): CodeBlockView =>
+  CodeBlockSchema.make({ _tag: "CodeBlock", catalogVersion: CatalogVersion, ...props })
+
+export type DiffViewProps = WithoutTagAndVersion<DiffViewView>
+export const DiffView = (props: DiffViewProps): DiffViewView =>
+  DiffViewSchema.make({ _tag: "DiffView", catalogVersion: CatalogVersion, ...props })
+
+export type GraphFigureProps = WithoutTagAndVersion<GraphFigureView>
+export const GraphFigure = (props: GraphFigureProps): GraphFigureView =>
+  GraphFigureSchema.make({ _tag: "GraphFigure", catalogVersion: CatalogVersion, ...props })
+
+export type TimelineProps = WithoutTagAndVersion<TimelineView>
+export const Timeline = (props: TimelineProps): TimelineView =>
+  TimelineSchema.make({ _tag: "Timeline", catalogVersion: CatalogVersion, ...props })
+
+// Deterministic 2D layout for a graph figure: precomputed positions when given,
+// otherwise a bounded named layout (a stable circle for "force", a simple
+// left-to-right tree by insertion order for "tree"). Renderers and the canvas
+// adapter share this so the DOM/SVG fallback and the canvas path agree.
+export const layoutGraphNodes = (
+  view: GraphFigureView
+): ReadonlyMap<string, { readonly x: number; readonly y: number }> => {
+  const layout = view.layout ?? "precomputed"
+  const positions = new Map<string, { readonly x: number; readonly y: number }>()
+  if (layout === "precomputed") {
+    view.nodes.forEach((node, index) => {
+      positions.set(node.id, { x: node.x ?? index * 100, y: node.y ?? 0 })
+    })
+    return positions
+  }
+  if (layout === "tree") {
+    view.nodes.forEach((node, index) => {
+      positions.set(node.id, { x: index * 120, y: (index % 2) * 80 })
+    })
+    return positions
+  }
+  // "force" -> a stable circle so the layout is deterministic + snapshot-safe.
+  const count = Math.max(1, view.nodes.length)
+  const radius = 120
+  view.nodes.forEach((node, index) => {
+    const angle = (2 * Math.PI * index) / count
+    positions.set(node.id, { x: Math.round(radius * Math.cos(angle)), y: Math.round(radius * Math.sin(angle)) })
+  })
+  return positions
+}
+
+// Plaintext value of a pre-tokenized code block, for the copy affordance.
+export const codeBlockPlainText = (lines: ReadonlyArray<CodeLine>): string =>
+  lines.map((line) => line.tokens.map((token) => token.text).join("")).join("\n")
+
+// Normalize a composer document to its plaintext value (text runs verbatim,
+// mentions rendered as their label). This is the value renderers emit on change
+// and the app can re-parse to a typed document.
+export const composerPlainText = (doc: ReadonlyArray<ComposerInline>): string =>
+  doc.map((node) => (node.kind === "text" ? node.text : node.label)).join("")
 
 export const decodeView = Schema.decodeUnknownSync(ViewSchema)
 export const encodeView = Schema.encodeSync(ViewSchema)
@@ -2116,6 +4003,107 @@ export const resolveView = (view: View, input: ViewResolution = {}): View => {
         open: input.state === undefined ? view.open : resolveBoundBoolean(view.open, input.state),
         children: view.children.map((child) => resolveView(child, input))
       }
+    case "Host":
+    case "Icon":
+    case "Divider":
+    case "Badge":
+    case "Chip":
+    case "Meter":
+    case "StatTile":
+    case "NavRail":
+    case "Combobox":
+    case "Toggle":
+    case "Select":
+    case "Checkbox":
+    case "RadioGroup":
+    case "Slider":
+    case "NumberField":
+    case "Toast":
+    case "ToastRegion":
+    case "StatusBanner":
+    case "Markdown":
+    case "CodeBlock":
+    case "DiffView":
+    case "GraphFigure":
+    case "Timeline":
+      return {
+        ...view,
+        ...(view.style === undefined ? {} : { style: resolveStyle(view.style, resolution) })
+      }
+    case "RecoveryOverlay":
+      return {
+        ...view,
+        open: input.state === undefined ? view.open : resolveBoundBoolean(view.open, input.state)
+      }
+    case "Transcript":
+      return {
+        ...view,
+        ...(view.style === undefined ? {} : { style: resolveStyle(view.style, resolution) }),
+        messages: view.messages.map((message) => ({
+          ...message,
+          body: message.body.map((child) => resolveView(child, input))
+        }))
+      }
+    case "FieldRow":
+      return {
+        ...view,
+        ...(view.style === undefined ? {} : { style: resolveStyle(view.style, resolution) }),
+        control: resolveView(view.control, input)
+      }
+    case "Table":
+      return {
+        ...view,
+        ...(view.style === undefined ? {} : { style: resolveStyle(view.style, resolution) }),
+        rows: view.rows.map((row) => ({
+          ...row,
+          cells: row.cells.map((cell) => resolveView(cell, input))
+        }))
+      }
+    case "SplitPane":
+    case "Workbench":
+      return {
+        ...view,
+        ...(view.style === undefined ? {} : { style: resolveStyle(view.style, resolution) }),
+        panes: view.panes.map((pane) => ({ ...pane, content: resolveView(pane.content, input) }))
+      }
+    case "Popover":
+      return {
+        ...view,
+        open: input.state === undefined ? view.open : resolveBoundBoolean(view.open, input.state),
+        children: view.children.map((child) => resolveView(child, input))
+      }
+    case "DropdownMenu":
+    case "ContextMenu":
+      return {
+        ...view,
+        open: input.state === undefined ? view.open : resolveBoundBoolean(view.open, input.state),
+        ...(view.style === undefined ? {} : { style: resolveStyle(view.style, resolution) })
+      }
+    case "Tooltip":
+      return {
+        ...view,
+        children: view.children.map((child) => resolveView(child, input))
+      }
+    case "CommandPalette":
+      return {
+        ...view,
+        open: input.state === undefined ? view.open : resolveBoundBoolean(view.open, input.state),
+        combobox: resolveView(view.combobox, input) as ComboboxView
+      }
+    case "Tabs":
+      return {
+        ...view,
+        ...(view.style === undefined ? {} : { style: resolveStyle(view.style, resolution) }),
+        panels: view.panels.map((panel) => ({ ...panel, content: resolveView(panel.content, input) }))
+      }
+    case "Composer":
+      return {
+        ...view,
+        ...(view.style === undefined ? {} : { style: resolveStyle(view.style, resolution) }),
+        ...(view.autocomplete === undefined
+          ? {}
+          : { autocomplete: { ...view.autocomplete, combobox: resolveView(view.autocomplete.combobox, input) as ComboboxView } })
+      }
   }
 }
 
@@ -2135,7 +4123,97 @@ export const resolveBindings = <State>(view: View, state: State): View => {
     case "Image":
     case "TextField":
     case "Spacer":
+    case "Host":
+    case "Icon":
+    case "Divider":
+    case "Badge":
+    case "Chip":
+    case "Meter":
+    case "StatTile":
+    case "NavRail":
+    case "Combobox":
+    case "Toggle":
+    case "Select":
+    case "Checkbox":
+    case "RadioGroup":
+    case "Slider":
+    case "NumberField":
+    case "Toast":
+    case "ToastRegion":
+    case "StatusBanner":
+    case "Markdown":
+    case "CodeBlock":
+    case "DiffView":
+    case "GraphFigure":
+    case "Timeline":
       return view
+    case "RecoveryOverlay":
+      return {
+        ...view,
+        open: resolveBoundBoolean(view.open, state)
+      }
+    case "Transcript":
+      return {
+        ...view,
+        messages: view.messages.map((message) => ({
+          ...message,
+          body: message.body.map((child) => resolveBindings(child, state))
+        }))
+      }
+    case "FieldRow":
+      return {
+        ...view,
+        control: resolveBindings(view.control, state)
+      }
+    case "Table":
+      return {
+        ...view,
+        rows: view.rows.map((row) => ({
+          ...row,
+          cells: row.cells.map((cell) => resolveBindings(cell, state))
+        }))
+      }
+    case "SplitPane":
+    case "Workbench":
+      return {
+        ...view,
+        panes: view.panes.map((pane) => ({ ...pane, content: resolveBindings(pane.content, state) }))
+      }
+    case "Popover":
+      return {
+        ...view,
+        open: resolveBoundBoolean(view.open, state),
+        children: view.children.map((child) => resolveBindings(child, state))
+      }
+    case "DropdownMenu":
+    case "ContextMenu":
+      return {
+        ...view,
+        open: resolveBoundBoolean(view.open, state)
+      }
+    case "Tooltip":
+      return {
+        ...view,
+        children: view.children.map((child) => resolveBindings(child, state))
+      }
+    case "CommandPalette":
+      return {
+        ...view,
+        open: resolveBoundBoolean(view.open, state),
+        combobox: resolveBindings(view.combobox, state) as ComboboxView
+      }
+    case "Tabs":
+      return {
+        ...view,
+        panels: view.panels.map((panel) => ({ ...panel, content: resolveBindings(panel.content, state) }))
+      }
+    case "Composer":
+      return view.autocomplete === undefined
+        ? view
+        : {
+            ...view,
+            autocomplete: { ...view.autocomplete, combobox: resolveBindings(view.autocomplete.combobox, state) as ComboboxView }
+          }
     case "List":
       return {
         ...view,
@@ -2224,6 +4302,44 @@ export const redactSecureView = (view: View): View => {
             value: redactedValue
           }
         : view
+    case "Table":
+      return {
+        ...view,
+        rows: view.rows.map((row) => ({
+          ...row,
+          cells: row.cells.map(redactSecureView)
+        }))
+      }
+    case "SplitPane":
+    case "Workbench":
+      return {
+        ...view,
+        panes: view.panes.map((pane) => ({ ...pane, content: redactSecureView(pane.content) }))
+      }
+    case "Popover":
+    case "Tooltip":
+      return {
+        ...view,
+        children: view.children.map(redactSecureView)
+      }
+    case "Tabs":
+      return {
+        ...view,
+        panels: view.panels.map((panel) => ({ ...panel, content: redactSecureView(panel.content) }))
+      }
+    case "FieldRow":
+      return {
+        ...view,
+        control: redactSecureView(view.control)
+      }
+    case "Transcript":
+      return {
+        ...view,
+        messages: view.messages.map((message) => ({
+          ...message,
+          body: message.body.map(redactSecureView)
+        }))
+      }
     default:
       return view
   }
@@ -2390,3 +4506,340 @@ export const makeHeadlessRenderer = (
       }))
     })
 })
+
+// ── Streaming / live data binding (issue #26) ────────────────────────────────
+//
+// A coding-agent desktop surface is fundamentally streaming: transcript items
+// append token-by-token, counters tick, fleet/gym status updates continuously.
+// This runtime binds an Effect `Stream` of typed patches to a keyed region and
+// applies incremental updates:
+//
+//   - keyed reconciliation so appends are O(new), not O(all);
+//   - coalescing to frame cadence via `Stream.groupedWithin` (not ad-hoc
+//     throttling), so high-frequency streams collapse to one update per frame;
+//   - Scope-based interruption/cleanup — closing the region's scope interrupts
+//     the source stream and releases resources;
+//   - a recorded patch sequence so streaming is snapshot/replay testable.
+//
+// This is the update mechanism beneath the view tree, not a transport layer:
+// the app supplies the streams (desktop bridge, khala-sync, polling, etc.).
+
+export interface KeyedItem<A> {
+  readonly key: string
+  readonly value: A
+}
+
+export type RegionPatch<A> =
+  | { readonly _tag: "Append"; readonly items: ReadonlyArray<KeyedItem<A>> }
+  | { readonly _tag: "Update"; readonly key: string; readonly value: A }
+  | { readonly _tag: "Remove"; readonly key: string }
+  | { readonly _tag: "Replace"; readonly items: ReadonlyArray<KeyedItem<A>> }
+
+// Apply a single patch to a keyed list. Append is O(new); Update/Remove touch
+// only the matching key; Replace resets the region. Appending an existing key
+// updates in place so duplicate stream deliveries stay idempotent.
+export const applyRegionPatch = <A>(
+  current: ReadonlyArray<KeyedItem<A>>,
+  patch: RegionPatch<A>
+): ReadonlyArray<KeyedItem<A>> => {
+  switch (patch._tag) {
+    case "Append": {
+      if (patch.items.length === 0) return current
+      const index = new Map(current.map((item, position) => [item.key, position] as const))
+      const next = current.slice()
+      for (const item of patch.items) {
+        const existing = index.get(item.key)
+        if (existing === undefined) {
+          index.set(item.key, next.length)
+          next.push(item)
+        } else {
+          next[existing] = item
+        }
+      }
+      return next
+    }
+    case "Update":
+      return current.map((item) => (item.key === patch.key ? { key: item.key, value: patch.value } : item))
+    case "Remove":
+      return current.filter((item) => item.key !== patch.key)
+    case "Replace":
+      return patch.items.slice()
+  }
+}
+
+export interface StreamRegionOptions<A> {
+  // Coalescing window; buffered patches within one window are applied together
+  // in a single region update. Defaults to 16ms (~one animation frame).
+  readonly frameMillis?: number
+  // Seed items for the region before any patch arrives.
+  readonly initial?: ReadonlyArray<KeyedItem<A>>
+  // Optional monotonic clock for deterministic tests.
+  readonly recordPatches?: boolean
+}
+
+export interface StreamRegion<A> {
+  readonly items: SubscriptionRef.SubscriptionRef<ReadonlyArray<KeyedItem<A>>>
+  readonly changes: Stream.Stream<ReadonlyArray<KeyedItem<A>>>
+  // The recorded, applied patch sequence (in order) for snapshot/replay tests.
+  readonly patches: Effect.Effect<ReadonlyArray<RegionPatch<A>>>
+  // Number of coalesced frames committed (one per non-empty window).
+  readonly frames: Effect.Effect<number>
+}
+
+// Bind a `Stream` of region patches to a keyed region. The consumer fiber is
+// forked into the current `Scope`, so closing that scope interrupts the source
+// stream and releases resources.
+export const makeStreamRegion = <A, E, R>(
+  source: Stream.Stream<RegionPatch<A>, E, R>,
+  options: StreamRegionOptions<A> = {}
+): Effect.Effect<StreamRegion<A>, never, R | Scope.Scope> =>
+  Effect.gen(function*() {
+    const frameMillis = options.frameMillis ?? 16
+    const items = yield* SubscriptionRef.make<ReadonlyArray<KeyedItem<A>>>(options.initial ?? [])
+    const recorded = yield* Ref.make<ReadonlyArray<RegionPatch<A>>>([])
+    const frameCount = yield* Ref.make(0)
+    const record = options.recordPatches !== false
+
+    yield* source.pipe(
+      // Coalesce every patch that arrives within the frame window into one
+      // batch. `Number.MAX_SAFE_INTEGER` disables the size trigger so batching
+      // is purely time-based (frame cadence).
+      Stream.groupedWithin(Number.MAX_SAFE_INTEGER, Duration.millis(frameMillis)),
+      Stream.runForEach((batch) =>
+        batch.length === 0
+          ? Effect.void
+          : Effect.gen(function*() {
+              yield* SubscriptionRef.update(items, (current) => {
+                let next = current
+                for (const patch of batch) {
+                  next = applyRegionPatch(next, patch)
+                }
+                return next
+              })
+              if (record) {
+                yield* Ref.update(recorded, (all) => [...all, ...batch])
+              }
+              yield* Ref.update(frameCount, (count) => count + 1)
+            })
+      ),
+      Effect.forkScoped
+    )
+
+    return {
+      items,
+      changes: SubscriptionRef.changes(items),
+      patches: Ref.get(recorded),
+      frames: Ref.get(frameCount)
+    }
+  })
+
+// ── Hotkey / keybinding registry + focus management (issue #41) ───────────────
+//
+// The app-wide counterpart to the per-node `onKey` intents from the interaction
+// expansion (#24). A `Keymap` registers named commands (id, title, group,
+// declarative enablement, optional keybinding) and resolves a pressed chord to a
+// command within the active focus scope, then fires the command's typed intent —
+// no `addEventListener` in app code. Scopes form a stack so an overlay scope can
+// shadow a global binding; focus-return targets ride the same stack. Conflicts
+// (two commands, same chord, same scope) are surfaced as typed diagnostics, not
+// a silent last-wins. Keybinding labels are derived from the table, platform
+// aware (⌘ vs Ctrl).
+
+// A chord is not a serializable view node, so its key is the raw
+// KeyboardEvent.key value (letters normalized to lower case) rather than the
+// bounded navigation-only KeyName set used by node `onKey` bindings.
+export interface KeyChord {
+  readonly key: string
+  readonly alt?: boolean
+  readonly ctrl?: boolean
+  readonly meta?: boolean
+  readonly shift?: boolean
+}
+
+export const KeyChordSchema: Schema.Codec<KeyChord, KeyChord> = exactStruct({
+  key: Schema.NonEmptyString,
+  alt: Schema.Boolean.pipe(Schema.optionalKey),
+  ctrl: Schema.Boolean.pipe(Schema.optionalKey),
+  meta: Schema.Boolean.pipe(Schema.optionalKey),
+  shift: Schema.Boolean.pipe(Schema.optionalKey)
+}) as unknown as Schema.Codec<KeyChord, KeyChord>
+
+export const defaultFocusScope = "global" as const
+
+export interface CommandDefinition {
+  readonly id: string
+  readonly title: string
+  readonly group?: string
+  readonly intent: IntentRef
+  readonly binding?: KeyChord
+  // The focus scope this command belongs to; defaults to "global".
+  readonly scope?: string
+  // Declarative enablement: the command is enabled only when this context flag
+  // is active (see Keymap.setContext). Omit for always-enabled.
+  readonly when?: string
+}
+
+export interface KeymapConflict {
+  readonly chord: KeyChord
+  readonly scope: string
+  readonly commandIds: ReadonlyArray<string>
+}
+
+export const normalizeChordKey = (key: string): string =>
+  key.length === 1 ? key.toLowerCase() : key
+
+export const chordEquals = (a: KeyChord, b: KeyChord): boolean =>
+  normalizeChordKey(a.key) === normalizeChordKey(b.key) &&
+  (a.alt === true) === (b.alt === true) &&
+  (a.ctrl === true) === (b.ctrl === true) &&
+  (a.meta === true) === (b.meta === true) &&
+  (a.shift === true) === (b.shift === true)
+
+// Platform-aware keybinding label derived from the table (never hand-authored).
+export const formatChord = (chord: KeyChord, platform: PlatformVariant = "web"): string => {
+  const mac = platform === "ios"
+  const parts: Array<string> = []
+  if (chord.ctrl === true) parts.push(mac ? "⌃" : "Ctrl")
+  if (chord.alt === true) parts.push(mac ? "⌥" : "Alt")
+  if (chord.shift === true) parts.push(mac ? "⇧" : "Shift")
+  if (chord.meta === true) parts.push(mac ? "⌘" : "Meta")
+  const key = chord.key.length === 1 ? chord.key.toUpperCase() : chord.key
+  parts.push(key)
+  return mac ? parts.join("") : parts.join("+")
+}
+
+const detectKeymapConflicts = (commands: ReadonlyArray<CommandDefinition>): ReadonlyArray<KeymapConflict> => {
+  const byKey = new Map<string, { readonly chord: KeyChord; readonly scope: string; readonly ids: Array<string> }>()
+  for (const command of commands) {
+    if (command.binding === undefined) continue
+    const scope = command.scope ?? defaultFocusScope
+    const chord = command.binding
+    const signature = `${scope}::${normalizeChordKey(chord.key)}::${chord.alt === true}::${chord.ctrl === true}::${chord.meta === true}::${chord.shift === true}`
+    const existing = byKey.get(signature)
+    if (existing === undefined) {
+      byKey.set(signature, { chord, scope, ids: [command.id] })
+    } else {
+      existing.ids.push(command.id)
+    }
+  }
+  return Array.from(byKey.values())
+    .filter((entry) => entry.ids.length > 1)
+    .map((entry) => ({ chord: entry.chord, scope: entry.scope, commandIds: entry.ids }))
+}
+
+export interface Keymap {
+  readonly commands: ReadonlyArray<CommandDefinition>
+  readonly conflicts: ReadonlyArray<KeymapConflict>
+  // Resolve a chord to a command within the current scope stack + context,
+  // without firing it. Higher (more recently pushed) scopes shadow lower ones.
+  readonly resolve: (chord: KeyChord) => Effect.Effect<Option.Option<CommandDefinition>>
+  // Resolve and fire the matched command's intent; returns the command id fired.
+  readonly dispatchChord: (chord: KeyChord) => Effect.Effect<Option.Option<string>, IntentError, IntentRegistry>
+  readonly activeScope: Effect.Effect<string>
+  readonly scopeStack: Effect.Effect<ReadonlyArray<string>>
+  // Push a focus scope (e.g. "palette-open") with an optional focus-return
+  // target key restored when the scope is popped.
+  readonly pushScope: (scope: string, returnFocus?: string) => Effect.Effect<void>
+  // Pop the top scope; returns the focus-return target recorded for it.
+  readonly popScope: Effect.Effect<Option.Option<string>>
+  readonly setContext: (flags: Iterable<string>) => Effect.Effect<void>
+  readonly context: Effect.Effect<ReadonlySet<string>>
+  readonly keybindingLabel: (commandId: string) => Option.Option<string>
+}
+
+export interface KeymapOptions {
+  readonly platform?: PlatformVariant
+  readonly initialScope?: string
+  readonly initialContext?: Iterable<string>
+}
+
+const commandEnabled = (command: CommandDefinition, context: ReadonlySet<string>): boolean =>
+  command.when === undefined || context.has(command.when)
+
+export const makeKeymap = (
+  commands: ReadonlyArray<CommandDefinition>,
+  options: KeymapOptions = {}
+): Effect.Effect<Keymap> =>
+  Effect.gen(function*() {
+    const platform = options.platform ?? "web"
+    const scopeStackRef = yield* Ref.make<ReadonlyArray<string>>([options.initialScope ?? defaultFocusScope])
+    const returnFocusStackRef = yield* Ref.make<ReadonlyArray<string | undefined>>([undefined])
+    const contextRef = yield* Ref.make<ReadonlySet<string>>(new Set(options.initialContext ?? []))
+    const conflicts = detectKeymapConflicts(commands)
+    const commandsById = new Map(commands.map((command) => [command.id, command] as const))
+
+    const resolveIn = (
+      chord: KeyChord,
+      stack: ReadonlyArray<string>,
+      context: ReadonlySet<string>
+    ): Option.Option<CommandDefinition> => {
+      for (let index = stack.length - 1; index >= 0; index -= 1) {
+        const scope = stack[index]
+        const match = commands.find((command) =>
+          (command.scope ?? defaultFocusScope) === scope &&
+          command.binding !== undefined &&
+          chordEquals(command.binding, chord) &&
+          commandEnabled(command, context))
+        if (match !== undefined) return Option.some(match)
+      }
+      return Option.none()
+    }
+
+    const resolve = (chord: KeyChord): Effect.Effect<Option.Option<CommandDefinition>> =>
+      Effect.gen(function*() {
+        const stack = yield* Ref.get(scopeStackRef)
+        const context = yield* Ref.get(contextRef)
+        return resolveIn(chord, stack, context)
+      })
+
+    const dispatchChord = (chord: KeyChord): Effect.Effect<Option.Option<string>, IntentError, IntentRegistry> =>
+      Effect.gen(function*() {
+        const matched = yield* resolve(chord)
+        if (Option.isNone(matched)) return Option.none()
+        yield* dispatchIntent(resolveIntentRef(matched.value.intent))
+        return Option.some(matched.value.id)
+      })
+
+    return {
+      commands,
+      conflicts,
+      resolve,
+      dispatchChord,
+      activeScope: Ref.get(scopeStackRef).pipe(Effect.map((stack) => stack[stack.length - 1] ?? defaultFocusScope)),
+      scopeStack: Ref.get(scopeStackRef),
+      pushScope: (scope, returnFocus) =>
+        Effect.gen(function*() {
+          yield* Ref.update(scopeStackRef, (stack) => [...stack, scope])
+          yield* Ref.update(returnFocusStackRef, (stack) => [...stack, returnFocus])
+        }),
+      popScope: Effect.gen(function*() {
+        const stack = yield* Ref.get(scopeStackRef)
+        if (stack.length <= 1) return Option.none()
+        yield* Ref.set(scopeStackRef, stack.slice(0, -1))
+        const focusStack = yield* Ref.get(returnFocusStackRef)
+        const returned = focusStack[focusStack.length - 1]
+        yield* Ref.set(returnFocusStackRef, focusStack.slice(0, -1))
+        return returned === undefined ? Option.none() : Option.some(returned)
+      }),
+      setContext: (flags) => Ref.set(contextRef, new Set(flags)),
+      context: Ref.get(contextRef),
+      keybindingLabel: (commandId) => {
+        const command = commandsById.get(commandId)
+        return command === undefined || command.binding === undefined
+          ? Option.none()
+          : Option.some(formatChord(command.binding, platform))
+      }
+    }
+  })
+
+export const Keymap = Context.Service<Keymap>("@effect-native/core/Keymap")
+
+export const makeKeymapLayer = (
+  commands: ReadonlyArray<CommandDefinition>,
+  options?: KeymapOptions
+) => Layer.effect(Keymap, makeKeymap(commands, options))
+
+// Roving-tabindex helper (issue #41): the active item gets tabIndex 0, the rest
+// -1, so a group is a single tab stop with arrow-key traversal inside it.
+export const rovingTabIndex = (count: number, activeIndex: number): ReadonlyArray<-1 | 0> =>
+  Array.from({ length: count }, (_unused, index) => (index === activeIndex ? 0 : -1))

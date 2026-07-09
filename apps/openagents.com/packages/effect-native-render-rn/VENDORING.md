@@ -21,9 +21,45 @@ so swapping to the real published dependency later is a package.json-only change
 ## Provenance
 
 - Upstream repo: `OpenAgentsInc/effect-native`
-- Upstream commit: `e32b97e0f95b99a6f0547ce74d71056225ead10e`
-- Vendored: 2026-07-08
+- Upstream commit: `1aa6e364d9fc67cd22d493db9bf223bb0080bb0e` (catalog `v19`, 48 components)
+- Vendored: 2026-07-09 (bumped from `e32b97e`, catalog `v5`)
 - Files copied verbatim: `packages/render-rn/src/**`
+
+### Single source of truth + anti-staleness guard (2026-07-09)
+
+The pinned commit + catalog version now live in ONE manifest,
+[`../effect-native-vendor.json`](../effect-native-vendor.json), covering all
+four vendored packages (`core`, `tokens`, `render-dom`, `render-rn`). Each
+vendored `package.json` also records the same commit under `effectNativeVendor`.
+
+- `bun run --cwd apps/openagents.com test:effect-native-vendor-guard` — HARD
+  test (in `check:deploy`): a partial bump (one package at a stale commit) or a
+  core `CatalogVersion` that disagrees with the manifest is RED.
+- `bun run --cwd apps/openagents.com check:effect-native-vendor` — freshness
+  WARNING (never a failure): compares the manifest commit against the sibling
+  `~/work/effect-native` `origin/main` tip and prints how many commits behind.
+
+To re-vendor: fetch upstream, re-copy each package's `src/**`, then bump the
+commit + catalogVersion in `effect-native-vendor.json` AND every vendored
+`package.json` `effectNativeVendor.commit`.
+
+### Monorepo build deltas vs. verbatim upstream (v19 bump)
+
+The four packages are copied verbatim EXCEPT for the minimal edits the monorepo
+strict tsconfig forces (upstream compiles under a laxer config):
+
+- `effect-native-core/src/effect.ts` — monorepo-only "effect version bridge"
+  re-export (`@effect-native/core/effect`) so consumers unify Effect versions.
+  Not an upstream file.
+- `effect-native-core/src/index.ts` — removed 5 unused token imports
+  (`colorTokens`/`dimensionTokens`/`radiusTokens`/`spacingTokens`/`typeScaleTokens`,
+  still re-exported) and the dead `formatUnknown` helper to satisfy
+  `noUnusedLocals`. The EN-1 local `exactStruct` workaround (effect-native#44)
+  is gone — upstream's annotate-based fix is now the vendored code.
+
+The upstream `@effect-native/render-canvas` package (Three.js scene-graph
+renderer) is NOT vendored: no monorepo consumer imports it yet. See the manifest
+`upstreamPackagesNotVendored`.
 
 ## Coherence bump of the shared core (this change)
 

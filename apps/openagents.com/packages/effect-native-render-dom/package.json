@@ -4,6 +4,10 @@
   "private": true,
   "type": "module",
   "license": "MIT",
+  "effectNativeVendor": {
+    "repo": "OpenAgentsInc/effect-native",
+    "commit": "1aa6e364d9fc67cd22d493db9bf223bb0080bb0e"
+  },
   "exports": {
     ".": "./src/index.ts"
   },

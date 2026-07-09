@@ -1,4 +1,4 @@
-import { Schema } from "effect"
+import { Context, Layer, Schema } from "effect"
 
 export const packageName = "@effect-native/tokens" as const
 
@@ -30,12 +30,25 @@ export const spacingTokens = [
 export const colorTokens = [
   "background",
   "surface",
+  "surfaceRaised",
   "textPrimary",
   "textMuted",
   "accent",
   "danger",
   "border",
-  "focus"
+  "focus",
+  "info",
+  "success",
+  "warning",
+  "codeBackground",
+  "diffAdd",
+  "diffRemove",
+  "syntaxKeyword",
+  "syntaxString",
+  "syntaxComment",
+  "syntaxFunction",
+  "syntaxNumber",
+  "syntaxOperator"
 ] as const
 
 export const radiusTokens = ["none", "sm", "md", "lg", "xl", "full"] as const
@@ -148,12 +161,25 @@ export const defaultTheme = ThemeSchema.make({
   color: {
     background: "#ffffff",
     surface: "#f8fafc",
+    surfaceRaised: "#eef2f7",
     textPrimary: "#0f172a",
     textMuted: "#64748b",
     accent: "#2563eb",
     danger: "#dc2626",
     border: "#cbd5e1",
-    focus: "#93c5fd"
+    focus: "#93c5fd",
+    info: "#0ea5e9",
+    success: "#16a34a",
+    warning: "#d97706",
+    codeBackground: "#f1f5f9",
+    diffAdd: "#15803d",
+    diffRemove: "#b91c1c",
+    syntaxKeyword: "#1d4ed8",
+    syntaxString: "#15803d",
+    syntaxComment: "#64748b",
+    syntaxFunction: "#7e22ce",
+    syntaxNumber: "#b45309",
+    syntaxOperator: "#334155"
   },
   radius: {
     none: 0,
@@ -189,3 +215,71 @@ export const defaultTheme = ThemeSchema.make({
 export const defineTheme = (theme: Theme): Theme => ThemeSchema.make(theme)
 export const decodeTheme = Schema.decodeUnknownSync(ThemeSchema)
 export const encodeTheme = Schema.encodeSync(ThemeSchema)
+
+/**
+ * The single Khala Protoss-blue dark theme.
+ *
+ * Khala Code Desktop and every OpenAgents product surface share exactly one
+ * uniform blue theme: deep near-black backgrounds, a blue-500/400 accent
+ * family, and semantic/code/diff/syntax roles tuned to sit inside that same
+ * blue system. There is intentionally no light variant and no runtime theme
+ * switch — see workspace policy "uniform StarCraft blue everywhere" and
+ * issue #25. Renderers and apps should treat this as the only theme value
+ * they ever mount.
+ */
+export const khalaTheme = ThemeSchema.make({
+  spacing: defaultTheme.spacing,
+  color: {
+    background: "#05070d",
+    surface: "#0b1220",
+    surfaceRaised: "#141f36",
+    textPrimary: "#eef3ff",
+    textMuted: "#93a4c3",
+    accent: "#3b82f6",
+    danger: "#f87171",
+    border: "#1f2b45",
+    focus: "#60a5fa",
+    info: "#38bdf8",
+    success: "#22c55e",
+    warning: "#f59e0b",
+    codeBackground: "#0a0f1c",
+    diffAdd: "#4ade80",
+    diffRemove: "#f87171",
+    syntaxKeyword: "#60a5fa",
+    syntaxString: "#4ade80",
+    syntaxComment: "#5b6b8c",
+    syntaxFunction: "#c084fc",
+    syntaxNumber: "#fbbf24",
+    syntaxOperator: "#93a4c3"
+  },
+  radius: {
+    none: 0,
+    sm: 2,
+    md: 4,
+    lg: 6,
+    xl: 8,
+    full: 9999
+  },
+  typeScale: {
+    caption: { fontSize: 12, lineHeight: 16, fontWeight: 500 },
+    body: { fontSize: 14, lineHeight: 21, fontWeight: 400 },
+    label: { fontSize: 13, lineHeight: 18, fontWeight: 600 },
+    title: { fontSize: 18, lineHeight: 24, fontWeight: 600 },
+    heading: { fontSize: 24, lineHeight: 30, fontWeight: 600 }
+  },
+  breakpoint: defaultTheme.breakpoint,
+  dimension: defaultTheme.dimension
+})
+
+/**
+ * Effect service tag for the single active theme. There is deliberately no
+ * "current mode" concept: a consumer either provides `khalaThemeLayer` (the
+ * only sanctioned production layer) or a bespoke `Layer.succeed(ThemeService,
+ * someTheme)` in tests/tooling. No light layer is exported.
+ */
+export const ThemeService = Context.Service<Theme>("@effect-native/tokens/ThemeService")
+
+export const makeThemeLayer = (theme: Theme) => Layer.succeed(ThemeService, theme)
+
+/** The only theme Layer wired into Khala product surfaces. */
+export const khalaThemeLayer = makeThemeLayer(khalaTheme)
