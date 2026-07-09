@@ -234,4 +234,13 @@ fi
 echo "==> Smoke: /internal/healthz"
 curl -fsS "${SERVICE_URL}/internal/healthz"
 echo
+
+# Sarah avatar synthetic-prospect smoke (SQ-4 #8621): every deploy proves the
+# owner-contract basics (greeting within deadline, speak turn, slot eviction)
+# against the deployed service before we call it done. Consumes the render
+# slot briefly; skip with SARAH_SKIP_AVATAR_SMOKE=1 (e.g. during a live demo).
+if [[ "${SARAH_SKIP_AVATAR_SMOKE:-}" != "1" ]]; then
+  echo "==> Smoke: sarah avatar e2e (synthetic prospect)"
+  SARAH_SMOKE_BASE_URL="$SERVICE_URL" bun "$REPO_ROOT/apps/sarah/scripts/sarah-avatar-e2e-smoke.mjs"
+fi
 echo "==> Done."

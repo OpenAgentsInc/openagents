@@ -165,3 +165,14 @@ Registry version: `2026-07-09.5` (schema `openagents.behavior_contracts.v1`)
 - **Oracle** `blueprint_admin_guard.rpc` (bun-test, rpc): Safe rollout + fail-closed guard: with SARAH_BLUEPRINT unset the file-based instructions path is unchanged (no compiled sections leak in); armed, the compiled blueprint leads while the tool protocol stays; the operator endpoints are admin-bearer-guarded (unarmed → 503, missing/wrong bearer → 401 with nothing written) and a full receipted revision cycle (add → retire → read back) works only with the exact bearer. — `apps/sarah/src/services/sarah-blueprint.test.ts`
 - **Verification:** bun test src/services/sarah-blueprint.test.ts inside apps/sarah; runs in the package test glob, the apps/sarah oracle chain, and the repo test:sarah sweep before pushes to main.
 - **Authority boundary:** This contract binds Sarah's knowledge object (KHS-5, #8604): her persona/playbook/knowledge live in a typed Blueprint — facts with per-fact provenance ({source, ref, at}; owner_kb_v2 | owner_directive | promise_registry | deal_rules | learning_receipt:<id>), versioned revisions (retire is a new revision, never a delete), and admin-guarded operator writes with a change note. The KB doc is GENERATED from the blueprint (render-kb-from-blueprint.ts), not hand-edited. Consumption is flag-armed (SARAH_BLUEPRINT=1); flag-off keeps the file-based path unchanged. It grants no authority: deal-rules code remains the only pricing authority and the openagents.com API the system of record — blueprint facts inform language, never prices.
+
+## Avatar UX contracts (SQ-4 #8621)
+
+Owner live-failure statements from 2026-07-09 are enforced in
+`apps/sarah/src/contracts/avatar-ux-contracts.ts`: the session greets first
+audibly (`sarah.avatar_greets_first.v1`), the avatar hears user speech
+(`sarah.avatar_hears_speech.v1`), and an abandoned session never wedges the
+slot (`sarah.avatar_slot_never_wedges.v1`). Oracles run in the normal sweep
+plus the synthetic-prospect e2e smoke
+(`apps/sarah/scripts/sarah-avatar-e2e-smoke.mjs`), which every Cloud Run
+deploy now runs against the deployed service before reporting Done.
