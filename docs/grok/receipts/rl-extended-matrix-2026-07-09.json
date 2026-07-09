@@ -1,0 +1,51 @@
+{
+  "schema": "openagents.grok_harness.rl_extended_matrix.v1",
+  "measuredAt": "2026-07-09T17:01:13.775Z",
+  "rl1Rl2Rl4": {
+    "rl1MaxFullSuccessConcurrency": 48,
+    "rl4MaxFullSuccessConcurrency": 4,
+    "rl2Metering": "not_measured"
+  },
+  "rl3": {
+    "schema": "openagents.grok_harness.rl3_plan.v1",
+    "accountCount": 0,
+    "sessionsPerAccount": 2,
+    "totalWorkers": 0,
+    "runnable": false,
+    "skipReason": "need ≥2 distinct Grok login identities (set GROK_RL3_ACCOUNT_IDS=a,b)",
+    "notes": [
+      "RL-3 measures N logins × sessions scaling, not single-host concurrency (that is RL-1).",
+      "Without a second free-window identity, multi-account curves stay not_measured."
+    ]
+  },
+  "rl5": {
+    "schema": "openagents.grok_harness.rl5_observation.v1",
+    "plane": "cli_session",
+    "calendarCapObserved": false,
+    "dailyCap": null,
+    "weeklyCap": null,
+    "evidence": "not observed on free cli_session RL-1/RL-4 probes through 2026-07-09",
+    "notes": [
+      "No calendar wall observed yet; do not invent daily/weekly caps.",
+      "Re-run after free-window end or on api_key plane for RL-5 refresh."
+    ]
+  },
+  "rl6": {
+    "schema": "openagents.grok_harness.rl6_free_window_death.v1",
+    "flip": false,
+    "marginalCostClass": "free",
+    "alert": null,
+    "preferenceNote": "Free window holds — Grok remains free-class for fan-out.",
+    "notes": [
+      "RL-6: no free-window death observed."
+    ]
+  },
+  "exit": {
+    "executorFixtureGreen": true,
+    "rl1Rl2ReceiptsSetCeiling": true,
+    "notes": [
+      "Issue #8590 exit: executor fixture green + RL-1/RL-2 receipts set concurrency ceiling.",
+      "RL-3 skipped without ≥2 accounts; RL-5 no calendar wall observed; RL-6 flip wired for free death."
+    ]
+  }
+}
