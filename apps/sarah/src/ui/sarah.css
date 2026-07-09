@@ -1,6 +1,6 @@
-/* Sarah surface chrome (#8598 AV-5). The UI tree itself is Effect Native —
-   this file only lays out the two top-level regions (avatar video + EN root)
-   and the avatar container states. Protoss blue, one theme. */
+/* Sarah surface chrome (#8598 AV-5, #8610). The UI tree itself is Effect
+   Native; this file owns the DOM renderer skin, top-level split, and avatar
+   container states. Protoss blue, one theme. */
 
 * {
   box-sizing: border-box;
@@ -12,8 +12,9 @@ body {
   padding: 0;
   min-height: 100%;
   height: 100%;
-  background: #000000;
+  background: var(--en-color-background, #03060b);
   color: #f1efe8;
+  color-scheme: dark;
   font-family:
     "Berkeley Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 }
@@ -25,12 +26,15 @@ body {
   align-items: stretch;
   padding: 0;
   min-height: 100vh;
+  min-height: 100dvh;
 }
 
 #sarah-avatar {
   position: relative;
   height: 100vh;
+  height: 100dvh;
   min-height: 100vh;
+  min-height: 100dvh;
   border-right: 1px solid #17315f;
   background:
     radial-gradient(ellipse at 50% 30%, #0b1220 0%, #010102 70%);
@@ -48,8 +52,9 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #5b6b8c;
-  font-size: 13px;
+  color: var(--en-color-textMuted, #aeb9c6);
+  font-size: 14px;
+  line-height: 1.5;
   pointer-events: none;
 }
 
@@ -62,7 +67,8 @@ body {
   align-items: center;
   justify-content: center;
   color: #4fd0ff;
-  font-size: 13px;
+  font-size: 14px;
+  line-height: 1.5;
   pointer-events: none;
 }
 
@@ -96,14 +102,100 @@ body {
   backdrop-filter: blur(12px);
 }
 
+/* Effect Native owns the controls; this is their Sarah DOM-renderer skin.
+   Every real target is at least 44px and keeps one consistent interaction
+   vocabulary across the avatar, workspace, and tab strip. */
+.sarah-layout button {
+  appearance: none;
+  min-height: 44px;
+  padding: 9px 12px;
+  border: 1px solid var(--en-color-border, #17315f);
+  border-radius: 6px;
+  background: var(--en-color-surfaceRaised, #0b1220);
+  color: var(--en-color-textPrimary, #f1efe8);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.25;
+  cursor: pointer;
+  transition:
+    border-color 180ms cubic-bezier(0.165, 0.84, 0.44, 1),
+    background-color 180ms cubic-bezier(0.165, 0.84, 0.44, 1),
+    color 180ms cubic-bezier(0.165, 0.84, 0.44, 1),
+    transform 180ms cubic-bezier(0.165, 0.84, 0.44, 1);
+}
+
+.sarah-layout button[data-en-variant="primary"] {
+  border-color: var(--en-color-accent, #3a7bff);
+  background: color-mix(
+    in srgb,
+    var(--en-color-accent, #3a7bff) 16%,
+    var(--en-color-background, #03060b)
+  );
+}
+
+.sarah-layout button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.sarah-layout button:disabled {
+  opacity: 0.62;
+  cursor: not-allowed;
+}
+
+@media (hover: hover) {
+  .sarah-layout button:hover:not(:disabled) {
+    border-color: var(--en-color-focus, #4fd0ff);
+    background-color: var(--en-color-surface, #010102);
+    color: #ffffff;
+  }
+}
+
+#sarah-root [data-en-tag="TextField"] {
+  min-width: 0;
+  border: 1px solid var(--en-color-border, #17315f);
+  border-radius: 6px;
+  background: var(--en-color-surfaceRaised, #0b1220);
+}
+
+#sarah-root [data-en-tag="TextField"] [data-en-role="control"] {
+  min-height: 44px;
+  padding: 9px 12px;
+  caret-color: var(--en-color-focus, #4fd0ff);
+}
+
+#sarah-root [data-en-tag="TextField"] [data-en-role="control"]::placeholder {
+  color: var(--en-color-textMuted, #aeb9c6);
+  opacity: 1;
+}
+
+.sarah-layout button:focus-visible,
+#sarah-root [data-en-role="control"]:focus-visible {
+  outline: 2px solid var(--en-color-focus, #4fd0ff) !important;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px rgba(79, 208, 255, 0.2);
+}
+
+.sarah-layout [data-en-tag="Badge"] {
+  align-items: center;
+  min-height: 24px;
+  padding: 2px 8px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
 .sarah-right-shell {
   min-width: 0;
   min-height: 100vh;
+  min-height: 100dvh;
   max-height: 100vh;
+  max-height: 100dvh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: #000000;
+  background: var(--en-color-background, #03060b);
 }
 
 #sarah-root {
@@ -119,6 +211,8 @@ body {
 
 #sarah-root [data-en-key="sarah-toolbar"] {
   min-height: 36px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 #sarah-root [data-en-key="sarah-tabs"] {
@@ -134,13 +228,14 @@ body {
 }
 
 #sarah-root [role="tab"] {
-  min-height: 32px;
+  min-height: 44px;
+  padding: 9px 12px;
   border: 1px solid transparent;
   border-radius: 6px;
   background: transparent;
-  color: #aaa8a2;
+  color: var(--en-color-textMuted, #aeb9c6);
   font: inherit;
-  font-size: 13px;
+  font-size: 14px;
   white-space: nowrap;
   cursor: pointer;
 }
@@ -151,8 +246,17 @@ body {
   color: #f1efe8;
 }
 
+@media (hover: hover) {
+  #sarah-root [role="tab"]:hover:not(:disabled) {
+    border-color: var(--en-color-border, #17315f);
+    background: var(--en-color-surfaceRaised, #0b1220);
+    color: var(--en-color-textPrimary, #f1efe8);
+  }
+}
+
 #sarah-root [role="tabpanel"] {
-  height: calc(100% - 41px);
+  flex: 1 1 auto;
+  height: auto;
   min-height: 0;
   overflow: auto;
 }
@@ -174,9 +278,9 @@ body {
   padding: 8px 12px;
   border-bottom: 1px solid #17315f;
   background: #010b1a;
-  color: #aaa8a2;
-  font-size: 12px;
-  line-height: 1.4;
+  color: var(--en-color-textMuted, #aeb9c6);
+  font-size: 14px;
+  line-height: 1.5;
 }
 
 .sarah-disclosure strong {
@@ -189,19 +293,77 @@ body {
   }
 
   #sarah-avatar {
-    height: 56vh;
-    min-height: 360px;
+    height: 42vh;
+    height: clamp(240px, 42dvh, 360px);
+    min-height: 240px;
     border-right: 0;
     border-bottom: 1px solid #17315f;
   }
 
   .sarah-right-shell {
-    min-height: 44vh;
+    min-height: 58vh;
+    min-height: max(58dvh, 360px);
     max-height: none;
   }
 
   #sarah-root [role="tabpanel"] {
     height: auto;
     max-height: none;
+  }
+}
+
+@media (max-width: 520px) {
+  #sarah-avatar {
+    height: 38vh;
+    height: clamp(220px, 38dvh, 320px);
+    min-height: 220px;
+  }
+
+  #sarah-avatar [data-en-key="avatar-overlay"] {
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+    flex-wrap: wrap;
+  }
+
+  #sarah-root [data-en-key="composer"] {
+    flex-wrap: wrap;
+  }
+
+  #sarah-root [data-en-key="composer-input"],
+  #sarah-root [data-en-key="composer-send"] {
+    flex: 1 1 100%;
+  }
+
+  #sarah-root [data-en-role="graph-figure"] svg {
+    min-height: 260px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sarah-layout button {
+    transition: none;
+  }
+
+  .sarah-layout button:active:not(:disabled) {
+    transform: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .sarah-layout button:focus-visible,
+  #sarah-root [data-en-role="control"]:focus-visible {
+    outline: 3px solid Highlight !important;
+    box-shadow: none;
+  }
+
+  #sarah-root [role="tab"][aria-selected="true"] {
+    border-color: Highlight;
+    background: Canvas;
+    color: CanvasText;
+  }
+
+  .sarah-layout [data-en-tag="Badge"] {
+    border-color: currentColor;
   }
 }

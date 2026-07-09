@@ -26,11 +26,11 @@ export const sarahEffectNativeTheme = defineTheme({
     '64': 256,
   },
   color: {
-    background: '#000000',
+    background: '#03060b',
     surface: '#010102',
     surfaceRaised: '#0b1220',
     textPrimary: '#f1efe8',
-    textMuted: '#aaa8a2',
+    textMuted: '#aeb9c6',
     accent: '#3a7bff',
     danger: '#d32f2f',
     border: '#17315f',

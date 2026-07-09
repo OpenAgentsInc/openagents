@@ -5,6 +5,7 @@
  * host (effect-native#67, catalog v26) mounted for the session lifetime.
  */
 import { describe, expect, test } from "bun:test"
+import { readFileSync } from "node:fs"
 
 // main.ts boots against the real page on import; give it an inert document so
 // the module loads headlessly and boot() no-ops (no #sarah-root here).
@@ -15,6 +16,8 @@ import { describe, expect, test } from "bun:test"
 }
 
 const { sarahSurfaceView, sarahAvatarPaneView } = await import("./main.ts")
+const { sarahEffectNativeTheme } = await import("./theme.ts")
+const sarahCss = readFileSync(new URL("./sarah.css", import.meta.url), "utf8")
 
 type SurfaceState = Parameters<typeof sarahSurfaceView>[0]
 
@@ -86,6 +89,64 @@ const findByKey = (node: unknown, key: string): AnyNode | null => {
   }
   return null
 }
+
+const relativeLuminance = (hex: string): number => {
+  const channels = [1, 3, 5].map((start) => Number.parseInt(hex.slice(start, start + 2), 16) / 255)
+  const linear = channels.map((channel) =>
+    channel <= 0.04045
+      ? channel / 12.92
+      : ((channel + 0.055) / 1.055) ** 2.4,
+  )
+  return 0.2126 * linear[0]! + 0.7152 * linear[1]! + 0.0722 * linear[2]!
+}
+
+const contrastRatio = (foreground: string, background: string): number => {
+  const foregroundLuminance = relativeLuminance(foreground)
+  const backgroundLuminance = relativeLuminance(background)
+  return (
+    (Math.max(foregroundLuminance, backgroundLuminance) + 0.05) /
+    (Math.min(foregroundLuminance, backgroundLuminance) + 0.05)
+  )
+}
+
+describe("Sarah accessible responsive renderer skin (#8610)", () => {
+  test("secondary text is cool, AA-readable, and the UI canvas is near-black rather than pure black", () => {
+    expect(sarahEffectNativeTheme.color.background).toBe("#03060b")
+    expect(sarahEffectNativeTheme.color.textMuted).toBe("#aeb9c6")
+    expect(
+      contrastRatio(
+        sarahEffectNativeTheme.color.textMuted,
+        sarahEffectNativeTheme.color.surfaceRaised,
+      ),
+    ).toBeGreaterThanOrEqual(4.5)
+    expect(sarahCss).not.toContain("color: #5b6b8c")
+  })
+
+  test("status and composer controls carry explicit accessible state and names", () => {
+    const idleView = sarahSurfaceView(baseState)
+    expect(findByKey(idleView, "status")?.a11y).toEqual({
+      label: "Sarah conversation status: Idle",
+    })
+    expect(findByKey(idleView, "composer-input")?.a11y).toEqual({
+      label: "Message Sarah",
+    })
+
+    const thinkingView = sarahSurfaceView({ ...baseState, status: "thinking" })
+    expect(findByKey(thinkingView, "composer-send")).toMatchObject({
+      label: "Sending…",
+      disabled: true,
+    })
+  })
+
+  test("real controls retain focus, touch-target, reduced-motion, high-contrast, and narrow-height rules", () => {
+    expect(sarahCss).toMatch(/button:focus-visible/)
+    expect(sarahCss).toMatch(/min-height:\s*44px/)
+    expect(sarahCss).toContain("100dvh")
+    expect(sarahCss).toContain("@media (max-width: 520px)")
+    expect(sarahCss).toContain("@media (prefers-reduced-motion: reduce)")
+    expect(sarahCss).toContain("@media (forced-colors: active)")
+  })
+})
 
 describe("sarah surface consumes the EN catalog (SQ-7 #8624)", () => {
   test("the transcript is the EN Transcript primitive, pinned, with keyed role-tagged messages", () => {

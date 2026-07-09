@@ -187,7 +187,18 @@ const statusBadge = (state: SarahSurfaceState): View => {
         ? "LIVE · sandbox"
         : "LIVE"
       : state.status.toUpperCase()
-  return Badge({ key: "status", label, tone })
+  const accessibleState =
+    state.status === "live"
+      ? state.sandbox
+        ? "Live, sandbox"
+        : "Live"
+      : `${state.status[0]!.toUpperCase()}${state.status.slice(1)}`
+  return Badge({
+    key: "status",
+    label,
+    tone,
+    a11y: { label: `Sarah conversation status: ${accessibleState}` },
+  })
 }
 
 /** Account chip (KHS-7): anonymous → sign-in button; linked → email badge. */
@@ -488,13 +499,14 @@ const composerView = (state: SarahSurfaceState): View =>
         key: "composer-input",
         value: state.input,
         placeholder: "Type if you prefer text…",
+        a11y: { label: "Message Sarah" },
         onChange: IntentRef("SarahInputChanged", ComponentValueBinding()),
         onSubmit: IntentRef("SarahSendText", ComponentValueBinding()),
         style: { flex: 1 },
       }),
       Button({
         key: "composer-send",
-        label: state.status === "thinking" ? "…" : "Send",
+        label: state.status === "thinking" ? "Sending…" : "Send",
         variant: "primary",
         disabled: state.status === "thinking",
         onPress: IntentRef("SarahSendText", ComponentValueBinding("input")),
