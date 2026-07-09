@@ -67,9 +67,9 @@ existing consumers keep compiling.
   build verification** (can't be done source-only). Do this in a session that
   can build+run the packaged binary.
 - [~] Step 5 — executor (`executor/`): **leaf wave + Claude executor done** — the
-  dependency-closed leaves `claude-agent`, `codex-agent`, `claude-turn-reporter`
-  and (built on the first two) `workspace-materializer` are relocated with
-  shims. That unblocked the custody `account-usage → account-status` wave
+  dependency-closed leaves `claude-agent`, `codex-agent`, `claude-turn-reporter`,
+  `codex-rg-guard`, and (built on the first two) `workspace-materializer` are
+  relocated with shims. That unblocked the custody `account-usage → account-status` wave
   above. Also relocated `active-assignment-runs` (+ its test) here: a clean
   leaf of presence's closure (only local dep was `state`) — but it is active
   coding-**run** persistence, execution-domain state that presence merely reads
