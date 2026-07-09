@@ -150,8 +150,8 @@ export async function recoverInterruptedFleetRunAssignments(
   const { store } = input
   const now = input.now ?? new Date()
   const closeouts = new Map<string, FleetRunInterruptedCloseout>()
-  const originallyRunningRuns = new Set(
-    store.listFleetRuns("running").map((run) => run.runRef),
+  const originallyRunningRuns = new Map(
+    store.listFleetRuns("running").map((run) => [run.runRef, run]),
   )
   let inspectedAssignments = 0
   let liveAssignments = 0
@@ -241,8 +241,28 @@ export async function recoverInterruptedFleetRunAssignments(
   for (const runRef of new Set([...closeouts.values()].map((closeout) => closeout.runRef))) {
     if (store.getFleetRun(runRef) === null) continue
     const reconciled = store.reconcileFleetRun(runRef, now)
-    if (originallyRunningRuns.has(runRef) && isAutoRevivableFleetRun(reconciled)) {
-      store.updateFleetRunState(runRef, "running", now, "reconcile")
+    const originallyRunning = originallyRunningRuns.get(runRef)
+    if (originallyRunning !== undefined && isAutoRevivableFleetRun(reconciled)) {
+      const replacementUnits = [...closeouts.values()]
+        .filter((closeout) => closeout.runRef === runRef)
+        .length
+      store.upsertFleetRun({
+        ...reconciled,
+        state: "running",
+        stateSource: "reconcile",
+        counters: {
+          ...reconciled.counters,
+          // Reconciliation derives the number of already-created tasks. Keep
+          // one target slot per interrupted task above that derived count so
+          // the next supervisor tick can auto-revive and claim replacements.
+          // Preserve a larger planner target that was already persisted.
+          workUnitsTotal: Math.max(
+            originallyRunning.counters.workUnitsTotal,
+            reconciled.counters.workUnitsTotal + replacementUnits,
+          ),
+        },
+        updatedAt: now.toISOString(),
+      })
     }
   }
 

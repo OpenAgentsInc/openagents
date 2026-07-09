@@ -152,7 +152,7 @@ describe("FleetRun interrupted owner-local recovery", () => {
     expect(store.getFleetRun(fixture.runRef)).toMatchObject({
       state: "running",
       stateSource: "reconcile",
-      counters: { activeAssignments: 0, failedAssignments: 1 },
+      counters: { activeAssignments: 0, failedAssignments: 1, workUnitsTotal: 2 },
     })
     expect(store.listMessages()).toHaveLength(1)
     expect(store.listMessages()[0]?.body).toBe(

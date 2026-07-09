@@ -15,7 +15,7 @@ import {
 
 export const PYLON_FLEET_RUN_DATABASE_FILENAME = "orchestration.sqlite"
 
-type PylonFleetRunBootstrap = Pick<BootstrapSummary, "paths">
+export type PylonFleetRunBootstrap = Pick<BootstrapSummary, "paths">
 
 export type OpenPylonFleetRunRuntimeInput = {
   /** Reuse a daemon/CLI bootstrap summary when one is already available. */
