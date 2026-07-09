@@ -1099,6 +1099,60 @@ export const upsertCrmOpportunityContactRole = async (
   ])
 }
 
+/** The most recently created OPEN sales opportunity linked to a contact
+ * (via `crm_opportunity_contact_roles`), or `null` if the contact has none
+ * yet. Used by OB-5's reply handler to find the deal a reply should advance,
+ * rather than minting a new opportunity per reply. */
+export const findOpenCrmOpportunityForContact = (
+  db: CrmEmailDatabase,
+  tenantRef: string,
+  contactId: string,
+): Promise<CrmOpportunity | null> =>
+  queryFirst(
+    'crm.findOpenOpportunityForContact',
+    crmEmailAuthorityDb(db)
+      .prepare(
+        `SELECT o.* FROM crm_opportunities o
+           JOIN crm_opportunity_contact_roles r ON r.opportunity_id = o.id
+          WHERE r.contact_id = ? AND o.tenant_ref = ? AND o.status = 'open'
+            AND o.archived_at IS NULL
+          ORDER BY o.created_at DESC LIMIT 1`,
+      )
+      .bind(contactId, tenantRef),
+    decodeOpportunity,
+  )
+
+/** Advance a sales opportunity's stage ONLY if `stage` is strictly further
+ * along `CRM_SALES_OPPORTUNITY_STAGES` than its current stage — a no-op
+ * (returns the opportunity unchanged) if it has already progressed past (or
+ * closed beyond) the requested stage. Never regresses a deal, e.g. a stale
+ * "replied" webhook replay can never knock a `quoted` opportunity backward. */
+export const advanceCrmOpportunityStage = async (
+  db: CrmEmailDatabase,
+  input: Readonly<{
+    tenantRef: string
+    id: string
+    stage: CrmSalesOpportunityStage
+    metadata?: Readonly<Record<string, unknown>>
+  }>,
+  runtime: CrmRuntime = defaultCrmRuntime,
+): Promise<CrmOpportunity> => {
+  const existing = await getCrmOpportunityById(db, input.tenantRef, input.id)
+  if (existing === null) {
+    throw new CrmStorageError({
+      operation: `crm.advanceOpportunityStage: not found ${input.id}`,
+    })
+  }
+  const currentIndex = CRM_SALES_OPPORTUNITY_STAGES.indexOf(
+    existing.stage as CrmSalesOpportunityStage,
+  )
+  const targetIndex = CRM_SALES_OPPORTUNITY_STAGES.indexOf(input.stage)
+  if (currentIndex >= 0 && targetIndex <= currentIndex) {
+    return existing
+  }
+  return updateCrmOpportunityStage(db, input, runtime)
+}
+
 // ---------------------------------------------------------------------------
 // Import-run audit
 // ---------------------------------------------------------------------------

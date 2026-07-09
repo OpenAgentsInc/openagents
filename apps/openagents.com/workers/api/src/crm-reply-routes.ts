@@ -1,11 +1,14 @@
 /**
  * OB-4 (#8561): Sarah reply routing routes — CRM-side plumbing.
- * OB-5 (#8562): the inbound route also issues a Sarah handoff link (§ below).
+ * OB-5 (#8562): the inbound route also issues a Sarah handoff link and
+ * advances the reply's sales opportunity to the `replied` stage (§ below).
  *
  *   POST /api/operator/crm/replies/inbound
  *     { fromEmail, subject?, bodyText?, inReplyToRef?, provider?,
  *       providerEventId?, sourceRef? }
- *     -> { result: CrmReplyEventResult, sarahHandoff?: { url, handoffToken } }
+ *     -> { result: CrmReplyEventResult,
+ *          sarahHandoff?: { url, handoffToken },
+ *          opportunity?: { id, stage } }
  *
  *   GET  /api/operator/crm/replies?contactId=&limit=
  *     -> { replies: CrmReplyEvent[] }
@@ -19,13 +22,16 @@
  * sharing the operator token with an external system.
  *
  * OB-5 handoff: when a reply matches an existing CRM contact and does NOT
- * read as an opt-out, this route mints a Sarah handoff link
+ * read as an opt-out, this route (1) mints a Sarah handoff link
  * (crm-sarah-handoff.ts) so the response — and any future email-reply
  * continuation Sarah's own channel sends — can carry a personal link back
- * into sarah.openagents.com that keeps the prospect_ref/CRM-contact context.
- * Best-effort: a handoff-issuance failure never fails the reply-recording
- * request (the reply and any opt-out suppression are already durable by the
- * time this runs).
+ * into sarah.openagents.com that keeps the prospect_ref/CRM-contact context,
+ * and (2) finds (or opens) the contact's open sales opportunity and advances
+ * its `crm_opportunities.stage` to `replied` (never regressing a deal that
+ * has already moved further — see `advanceCrmOpportunityStage`). Both are
+ * best-effort: neither failure ever fails the reply-recording request (the
+ * reply and any opt-out suppression are already durable by the time this
+ * runs).
  */
 import { Effect } from 'effect'
 
@@ -41,7 +47,13 @@ import {
   CRM_SARAH_HANDOFF_DEFAULT_BASE_URL,
   makeD1CrmSarahHandoffStore,
 } from './crm-sarah-handoff'
-import { DEFAULT_CRM_TENANT_REF } from './crm-store'
+import {
+  advanceCrmOpportunityStage,
+  createCrmOpportunity,
+  DEFAULT_CRM_TENANT_REF,
+  findOpenCrmOpportunityForContact,
+  upsertCrmOpportunityContactRole,
+} from './crm-store'
 import { isRecord } from './json-boundary'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
 
@@ -153,15 +165,18 @@ export const makeCrmReplyRoutes = <Bindings extends CrmReplyEnv>(
             tenantRef,
           })
 
-          // OB-5 (#8562): best-effort handoff-link issuance. Never fails the
-          // reply-recording request — the reply row (and any opt-out
-          // suppression) is already durable above.
+          // OB-5 (#8562): best-effort handoff-link issuance + opportunity
+          // stage advance. Neither ever fails the reply-recording request —
+          // the reply row (and any opt-out suppression) is already durable
+          // above.
           let sarahHandoff: Readonly<{ url: string; handoffToken: string }> | undefined
+          let opportunity: Readonly<{ id: string; stage: string }> | undefined
           if (result.contactId !== null && !result.optOut) {
+            const sourceRefDecode = decodeBusinessSourceRef(body.sourceRef)
+            const sourceRef =
+              'sourceRef' in sourceRefDecode ? sourceRefDecode.sourceRef : undefined
+
             try {
-              const sourceRefDecode = decodeBusinessSourceRef(body.sourceRef)
-              const sourceRef =
-                'sourceRef' in sourceRefDecode ? sourceRefDecode.sourceRef : undefined
               const handoffStore = makeD1CrmSarahHandoffStore(
                 crmEmailAuthorityDb(db),
               )
@@ -180,10 +195,50 @@ export const makeCrmReplyRoutes = <Bindings extends CrmReplyEnv>(
               // recording; buildSarahHandoffUrl/issueHandoffLink failures
               // (e.g. token collision exhaustion) never block the reply.
             }
+
+            try {
+              // Advance (or open) the OB-5 sales-stage funnel: the deal a
+              // reply belongs to should read "replied" from here on, without
+              // ever regressing a deal that has already moved further
+              // (quoted/closed) — `advanceCrmOpportunityStage` enforces that.
+              const existingOpportunity = await findOpenCrmOpportunityForContact(
+                db,
+                tenantRef,
+                result.contactId,
+              )
+              const targetOpportunity =
+                existingOpportunity ??
+                (await createCrmOpportunity(db, {
+                  tenantRef,
+                  name: `${fromEmail} — inbound reply`,
+                  stage: 'sourced',
+                  ...(sourceRef !== undefined
+                    ? { metadata: { sourceRef, contactId: result.contactId } }
+                    : { metadata: { contactId: result.contactId } }),
+                }))
+              await upsertCrmOpportunityContactRole(db, {
+                tenantRef,
+                opportunityId: targetOpportunity.id,
+                contactId: result.contactId,
+              })
+              const advanced = await advanceCrmOpportunityStage(db, {
+                tenantRef,
+                id: targetOpportunity.id,
+                stage: 'replied',
+              })
+              opportunity = { id: advanced.id, stage: advanced.stage }
+            } catch {
+              // Swallow: the funnel-stage advance is non-authoritative for
+              // reply recording.
+            }
           }
 
           return noStoreJsonResponse(
-            { result, ...(sarahHandoff !== undefined ? { sarahHandoff } : {}) },
+            {
+              result,
+              ...(sarahHandoff !== undefined ? { sarahHandoff } : {}),
+              ...(opportunity !== undefined ? { opportunity } : {}),
+            },
             { status: 201 },
           )
         })
