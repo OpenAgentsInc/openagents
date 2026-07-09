@@ -72,6 +72,12 @@ iteration), the **top operating rule is CONSTANT MOTION**:
   LLM computers and verification by replay.
 - `docs/autopilot-coder/` owns Autopilot Coder status audits, smoke runbooks,
   and the paid L402 boundary notes.
+- `docs/fable/` owns high-level strategic synthesis and the master program
+  roadmap. `docs/sol/` owns the grounded implementation translation: current-
+  state reconciliation, subsystem designs, day-to-day slice ordering, and the
+  Sarah-first implementation roadmap. Read both before changing roadmap
+  sequencing; current code, issue state, contracts, and receipts remain the
+  factual status authorities.
 - `docs/forum/`, `docs/nostr/`, and `docs/research/` own dated audits for
   those areas.
 

@@ -1,9 +1,16 @@
 # docs/fable
 
-Synthesis documents written by the Fable agent lane: repo-wide summaries and
-analyses that map code, docs, and issue history for a given subject. These are
-orientation/analysis artifacts — they flip no promise state, change no runtime
-authority, and broaden no public copy.
+High-level strategic planning and synthesis from the Fable agent lane:
+repo-wide analyses that map code, docs, and issue history, establish product
+direction, and consolidate the program roadmap. These are orientation and
+strategy artifacts — they flip no promise state, change no runtime authority,
+and broaden no public copy.
+
+The grounded implementation companion is [`docs/sol`](../sol/README.md). Sol
+reconciles Fable's strategy against current code, issues, contracts, and
+receipts; designs cross-subsystem implementation; and maintains the day-to-day
+Sarah-first implementation roadmap. Fable sets the strategic direction; Sol
+turns it into implementation slices and keeps residual status current.
 
 As of 2026-07-01 the folder also carries the **unified execution layer**:
 every recommendation and roadmap across the eight analysis docs is
@@ -15,6 +22,10 @@ each source doc.
 - [`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md) — rev 6, the single top-level
   sequencing authority for Khala Code, Sarah, Codex, business-facing work,
   and the Effect Native full-conversion program.
+- [`../sol/IMPLEMENTATION_ROADMAP.md`](../sol/IMPLEMENTATION_ROADMAP.md) — the
+  grounded day-to-day companion: Sarah-first disposition of every live roadmap
+  item, implementation tracks, dependency holds, owner gates, and the missing
+  Sarah→coding vertical slice.
 - [`../RETIRED.md`](../RETIRED.md) — the central ledger of retired and
   postponed program/document areas after the 2026-07-08 owner mandate.
 - [`2026-07-08-repo-docs-direction-cleanup-audit.md`](./2026-07-08-repo-docs-direction-cleanup-audit.md)
