@@ -24,6 +24,8 @@
     "ai": "7.0.0-canary.176",
     "effect": "catalog:",
     "@openagentsinc/behavior-contracts": "workspace:*",
+    "@openagentsinc/khala-fleet-intents": "workspace:*",
+    "@openagentsinc/khala-sync": "workspace:*",
     "zod": "^4.4.3",
     "@effect-native/core": "workspace:*",
     "@effect-native/render-dom": "workspace:*",
