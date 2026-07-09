@@ -39,9 +39,15 @@ context: `docs/fable/2026-07-09-open-issue-grid-assessment.md`.
    and you re-review.
 5. **Firewall: DEFERRED by you** ("not done testing") — `0.0.0.0/0:8787`
    stays open on `oa-codex-control-1` until you say tighten.
-6. **OpenRouter: DROP THE LANE** → agent removing it from the prod plan
-   now; gcloud (Gemma4-primary direction) leads; adapter deprecate-marked,
-   physical removal to backroom can follow.
+6. **OpenRouter: DROPPED + Gemma4 IS NOW PRIMARY.** Both done and live:
+   OpenRouter out of every plan (prod rev 00049), then a real **Gemma 4**
+   lane (`gemma-4-31b-it` via our gcloud Generative Language API) built and
+   made the PRIMARY conversational lane (prod rev 00050-7sp). Verified:
+   normal completions serve `worker=google-gemma4`, tool-bearing requests
+   correctly stay on GLM (Gemma has no tools — airtight two-layer guard),
+   canary green, exact reasoning-token accounting. Reused the existing
+   Gemini secret — no credential action needed. BYOK preserved. Your
+   "Gemma4 via gcloud primarily" directive is fully satisfied.
 
 ## Standing / will ping you when ready
 
