@@ -1,5 +1,12 @@
 # CND-054 Coding Agent Benchmark Improvement
 
+> **Historical bootstrap note (#8591).** Kept for archaeology and ops memory.
+> Active Cloud implementation is in the public monorepo (`crates/*`,
+> `docs/cloud/`). Deprecated authority names: **Vortex** → Worker/Khala Sync;
+> **Treasury product** → Worker credits + MDK/Nexus payout bridge only;
+> **Nexus-as-registry** → Worker/Khala Sync (CLI may still say `nexus`).
+> Do not treat this note as current product-authority ownership.
+
 Status: implemented retained-regression improvement
 Date: 2026-06-02
 
@@ -12,7 +19,7 @@ Improve the Codex-backed Benchmark Cloud runner without changing the base model.
 The intended product path is:
 
 ```text
-Vortex training-run API
+Worker/Khala Sync training-run API
 -> Cloud Codex control assignment
 -> Benchmark runner
 -> Probe/Codex selected signatures
@@ -79,13 +86,13 @@ attempt at `0.0` reward and the revised package at `1.0` reward. This rule is
 now present in both:
 
 - the Python benchmark runner prompt addendum for `coding.sqlite_wal_recovery`;
-- the Rust `oa-codex-control` prompt generated from a Vortex
+- the Rust `oa-codex-control` prompt generated from a Worker/Khala Sync
   `openagents.training_run_assignment.v1` assignment carrying
   `probe.signature.db-wal-recovery`.
 
-## Vortex API Path
+## Worker/Khala Sync API Path
 
-The Vortex API contract checked here is `/api/training-runs/start`, which is
+The Worker/Khala Sync API contract checked here is `/api/training-runs/start`, which is
 the route that creates a training run, child Codex run, benchmark run/task
 records, variants, selected-signature state, and learning events.
 
@@ -103,7 +110,7 @@ Result:
 11 tests passed
 ```
 
-This validates the API route contract without mutating the dirty Vortex
+This validates the API route contract without mutating the dirty Worker/Khala Sync
 worktree.
 
 ## Improvement Measurement
@@ -161,7 +168,7 @@ Results:
 - Python benchmark runner: `22` tests passed.
 - Retained fixture evaluator: `+0.900` expected mean reward delta.
 - `oa-codex-control`: `16` tests passed.
-- Vortex training-run route API tests: `11` tests passed.
+- Worker/Khala Sync training-run route API tests: `11` tests passed.
 
 ## Caveats
 
@@ -170,5 +177,5 @@ Results:
 - Only `db-wal-recovery` has preserved account-backed evidence for an actual
   `0.0 -> 1.0` rerun after playbook revision.
 - The next live benchmark step is to rerun the remaining retained failures
-  through the Vortex training-run API and SHC/GCP runner, preserving artifacts
+  through the Worker/Khala Sync training-run API and SHC/GCP runner, preserving artifacts
   and public-safe proof bundles.

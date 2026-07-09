@@ -26,6 +26,34 @@ Computer.
   credential scanner before closeout/writeback, and reclaim receipts proving
   both scratch wipe and microVM destruction.
 
+
+
+## In-repo `oa-workroomd` guest binary (#8591)
+
+Agent Computer guest images include the **in-repo** workroom sidecar, not a
+binary from the historical private `OpenAgentsInc/cloud` checkout.
+
+| Item | Path |
+| --- | --- |
+| Source crate | `crates/oa-workroomd` |
+| Dockerfile | `docker/cloud/oa-workroomd.Dockerfile` |
+| Staging script | `apps/pylon/deploy/agent-computer/build-workroomd-for-image.sh` |
+| Guest install path | `/usr/local/bin/oa-workroomd` |
+| Manifest pointer | `agent-computer-image.manifest.json` → `runtime.workroomd` |
+
+```sh
+# Host-triple local stage (dev smoke)
+apps/pylon/deploy/agent-computer/build-workroomd-for-image.sh
+
+# Linux guest binary via Docker (nested-virt bake hosts)
+apps/pylon/deploy/agent-computer/build-workroomd-for-image.sh --docker
+```
+
+The script writes the binary + a public-safe staging receipt under
+`var/agent-computer/staging/` (gitignored). Bake steps copy the binary into the
+rootfs at `/usr/local/bin/oa-workroomd` before sealing rootfs digests. Secrets
+are never accepted as script arguments.
+
 ## Host Bootstrap
 
 Dry-run the command shape first:

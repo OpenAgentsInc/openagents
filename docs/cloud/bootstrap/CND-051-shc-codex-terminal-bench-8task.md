@@ -1,5 +1,12 @@
 # CND-051: SHC Codex Terminal-Bench 8-Task Smoke
 
+> **Historical bootstrap note (#8591).** Kept for archaeology and ops memory.
+> Active Cloud implementation is in the public monorepo (`crates/*`,
+> `docs/cloud/`). Deprecated authority names: **Vortex** → Worker/Khala Sync;
+> **Treasury product** → Worker credits + MDK/Nexus payout bridge only;
+> **Nexus-as-registry** → Worker/Khala Sync (CLI may still say `nexus`).
+> Do not treat this note as current product-authority ownership.
+
 Status: measured multi-task smoke
 Last updated: 2026-06-01
 Owner: OpenAgents
@@ -142,7 +149,7 @@ run or reported externally.
 ## Next Steps
 
 - Add a Benchmark Cloud launcher that can schedule a selected Harbor task set
-  from Vortex/Autopilot instead of manual SSH.
+  from Worker/Khala Sync/Autopilot instead of manual SSH.
 - Persist each Harbor job's `result.json`, trial `result.json`, verifier
   `ctrf.json`, and trajectory summary into normalized `BenchmarkResult` and
   proof-bundle records.

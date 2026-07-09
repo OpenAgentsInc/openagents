@@ -40,3 +40,13 @@ cargo run -p oa-workroomd -- --help
 
 Fake GCE and fake Cloud-VM provisioners are the default. Live lanes are
 explicit env-gated (`OA_CLOUD_VM_PROVISIONER=live`, GCE live flags).
+
+## Local smokes
+
+```bash
+# Fake control plane on loopback (placement, events, cancel, fake GCE, fake Cloud-VM)
+scripts/cloud/fake-control-plane-loopback-smoke.sh
+
+# Stage oa-workroomd for Agent Computer guest image bake
+apps/pylon/deploy/agent-computer/build-workroomd-for-image.sh
+```

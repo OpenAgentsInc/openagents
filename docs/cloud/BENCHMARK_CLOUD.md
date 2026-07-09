@@ -1,7 +1,7 @@
 # Benchmark Cloud
 
 Status: canonical Cloud execution plan
-Last updated: 2026-06-01
+Last updated: 2026-07-09 (#8591 authority rewrite)
 
 Benchmark Cloud is the reusable benchmark and workload execution lane for
 OpenAgents Cloud. Terminal-Bench 2 is the first dataset adapter, but the
@@ -13,11 +13,12 @@ tests.
 
 | Area | Owner | Notes |
 | --- | --- | --- |
-| Product UX, approvals, receipts, public/private projection | Vortex / Autopilot | Vortex decides who can launch, inspect, publish, or invalidate claims. |
-| Managed execution | Cloud | Cloud schedules bounded jobs and returns artifacts, events, and closeout evidence. |
+| Product UX, approvals, receipts, public/private projection | openagents.com Worker + Khala Sync | Worker/operator surfaces decide who can launch, inspect, publish, or invalidate claims. |
+| Managed execution | Cloud (`crates/*`) | Cloud schedules bounded jobs and returns artifacts, events, and closeout evidence. |
 | Coding-agent runtime behavior | Probe / Codex-compatible runner | Cloud may host the runner, but it must not invent product authority. |
 | Hot inference/training/sandbox internals | Psionic | Benchmark adapters may call Psionic capabilities through scoped contracts. |
-| Public provider admission | Pylon / Nexus / Vortex | Benchmark results can feed capability and trust state after receipts exist. |
+| Public provider admission | Pylon + Worker | Benchmark results can feed capability and trust state after receipts exist. |
+| Outbound payout / custody | MDK/Nexus payout bridge | Active money-movement boundary only — not benchmark claim authority. |
 
 Cloud does not become a leaderboard, a public claim authority, or a hidden
 labor path. Every benchmark job must have declared inputs, resource limits,
@@ -26,8 +27,8 @@ policies, expected artifacts, and receipt semantics before execution.
 ## Target Flow
 
 ```text
-Vortex Benchmark Workroom / Model Lab
-  -> Convex benchmark state and Effect control services
+Worker / operator Benchmark Workroom / Model Lab
+  -> Khala Sync + Worker durable state and Effect control services
   -> Cloud benchmark execution contract
   -> GCP execution backend
      - Artifact Registry for runner images
@@ -39,8 +40,8 @@ Vortex Benchmark Workroom / Model Lab
 ```
 
 Cloud receives a normalized task envelope and emits normalized task events,
-artifact manifests, and result JSON. Vortex remains the durable state and
-claim-projection authority.
+artifact manifests, and result JSON. The Worker / Khala Sync remain the durable
+state and claim-projection authority.
 
 ## Normalized Contracts
 
@@ -61,14 +62,14 @@ custom repo issue   -> BenchmarkTask -> runner -> tests    -> BenchmarkResult
 ```
 
 The normalized layer prevents Terminal-Bench-specific fields from becoming the
-Cloud/Vortex control-plane model.
+Cloud/Worker control-plane model.
 
 Every benchmark or workroom run should also carry
 `openagents.resource_usage_receipt.v1` when Cloud can observe the facts. That
 receipt records host/device facts, run resource usage, artifact/log sizes, and
 model token usage or an explicit unavailable-token reason. Subscription-backed
 Codex currently records `count_source=unavailable` with
-`subscription_backed_codex_no_token_counts`; Vortex must not treat missing token
+`subscription_backed_codex_no_token_counts`; product surfaces must not treat missing token
 counts as silently complete proof.
 
 The first local implementation lives in `runners/py-bench-runner`. It can run
@@ -82,7 +83,7 @@ Terminal-Bench adapters build on.
 `cloud_execution_closeout.json` is the Cloud-side closeout gate for the Pylon
 launch path. It carries only public-safe refs and digests, sets
 `walletAuthority=false`, `payoutAuthority=false`, and
-`publicClaimAuthority=false`, and marks `authorityOwner=omega`. Cloud can prove
+`publicClaimAuthority=false`, and marks `authorityOwner=worker` (historical label `omega` means product authority, not a separate Cloud owner). Cloud can prove
 that a bounded SHC/Benchmark task ran and produced artifacts; it does not
 approve public claims, settle payouts, or act as a wallet provider.
 
@@ -182,12 +183,12 @@ not appear in Benchmark Cloud evidence.
 
 The first credible demo is:
 
-1. Vortex launches a Terminal-Bench 2 oracle smoke run.
+1. Operator / Worker launches a Terminal-Bench 2 oracle smoke run.
 2. Cloud runs one selected task on Google Cloud Batch through the Python runner.
 3. The runner wraps Harbor for Terminal-Bench compatibility.
 4. Artifacts land in Cloud Storage.
-5. Events update Vortex task state.
-6. Vortex generates an internal proof bundle.
+5. Events update Worker / Khala Sync task state.
+6. Operator surfaces generate an internal proof bundle.
 7. The same task later runs through the OpenAgents/Codex agent adapter for
    oracle-vs-agent comparison.
 
@@ -203,7 +204,7 @@ material out of artifacts.
 The first repository-task lane supports `custom-repo`, `swe-bench`, and
 `swt-bench` dataset slugs through the same normalized task/result contract. It
 captures transcript, commands, verifier logs, `workspace.diff`, `patch.diff`,
-and proof-bundle artifacts without adding dataset-specific Vortex state.
+and proof-bundle artifacts without adding dataset-specific product-state coupling.
 
 The first Probe+Codex signature lane uses retained Terminal-Bench fixtures under
 `runners/py-bench-runner/fixtures/signature-routing/`. Raw Codex baselines
@@ -231,7 +232,7 @@ Modeled cost, online nodes, and runner self-reported summaries are not accepted
 benchmark claims by themselves.
 
 Cloud proof bundles remain internal by default. A valid Cloud closeout is
-necessary evidence for Omega/Vortex promotion, but it is not sufficient by
+necessary evidence for product claim promotion, but it is not sufficient by
 itself: promotion still requires the product authority to verify launch
 authorization, claim policy, public/private projection, settlement state, and
 any Probe/GEPA campaign gates.
@@ -252,7 +253,7 @@ Cloud issues:
   account-backed Codex.
 - CND-050: resource/device and model token usage receipts for every run.
 
-Vortex companion issues:
+Product-surface companion issues (Worker / Khala Code):
 
 - OpenAgentsInc/vortex#91: Benchmark Cloud Convex state and Effect control
   service.

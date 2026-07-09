@@ -1,5 +1,12 @@
 # CND-054 GCE Live Per-Session Provisioner Smoke
 
+> **Historical bootstrap note (#8591).** Kept for archaeology and ops memory.
+> Active Cloud implementation is in the public monorepo (`crates/*`,
+> `docs/cloud/`). Deprecated authority names: **Vortex** → Worker/Khala Sync;
+> **Treasury product** → Worker credits + MDK/Nexus payout bridge only;
+> **Nexus-as-registry** → Worker/Khala Sync (CLI may still say `nexus`).
+> Do not treat this note as current product-authority ownership.
+
 Status: live provisioner landed; bounded end-to-end live smoke passed on
 2026-06-14 with guaranteed teardown and zero leftover instances.
 

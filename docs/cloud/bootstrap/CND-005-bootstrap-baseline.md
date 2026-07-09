@@ -1,5 +1,12 @@
 # CND-005 Cloud Repo Bootstrap Baseline
 
+> **Historical bootstrap note (#8591).** Kept for archaeology and ops memory.
+> Active Cloud implementation is in the public monorepo (`crates/*`,
+> `docs/cloud/`). Deprecated authority names: **Vortex** → Worker/Khala Sync;
+> **Treasury product** → Worker credits + MDK/Nexus payout bridge only;
+> **Nexus-as-registry** → Worker/Khala Sync (CLI may still say `nexus`).
+> Do not treat this note as current product-authority ownership.
+
 Status: bootstrap scaffold verified for Cloud MVP
 
 This repo is the private implementation home for managed OpenAgents Cloud node

@@ -33,3 +33,4 @@ NEEDS_OWNER.md
 # Khala Sync backfill CLI resumable local cursor state (never commit)
 packages/khala-sync-server/.artanis-backfill-state.json
 /target
+var/agent-computer/

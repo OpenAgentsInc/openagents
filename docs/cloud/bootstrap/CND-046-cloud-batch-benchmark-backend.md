@@ -1,5 +1,12 @@
 # CND-046 Cloud Batch Benchmark Backend
 
+> **Historical bootstrap note (#8591).** Kept for archaeology and ops memory.
+> Active Cloud implementation is in the public monorepo (`crates/*`,
+> `docs/cloud/`). Deprecated authority names: **Vortex** → Worker/Khala Sync;
+> **Treasury product** → Worker credits + MDK/Nexus payout bridge only;
+> **Nexus-as-registry** → Worker/Khala Sync (CLI may still say `nexus`).
+> Do not treat this note as current product-authority ownership.
+
 Status: one-task backend scaffold
 Last updated: 2026-06-01
 
@@ -82,12 +89,12 @@ The first backend maps Batch and runner states this way:
 | `result.json.status == error` | error |
 | Batch cancellation | canceled |
 
-Vortex remains responsible for durable state and receipts. Cloud Batch is only
+Worker/Khala Sync remains responsible for durable state and receipts. Cloud Batch is only
 the execution substrate.
 
 ## Guardrails
 
-- The Batch job command is generated from typed fields; Vortex does not pass
+- The Batch job command is generated from typed fields; Worker/Khala Sync does not pass
   arbitrary shell text.
 - The container receives GCS URIs and bounded metadata only.
 - The runner writes `result.json`, `events.jsonl`, `metadata.json`,

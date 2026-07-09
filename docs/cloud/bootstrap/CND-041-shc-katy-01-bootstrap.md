@@ -1,5 +1,12 @@
 # CND-041 SHC Katy Bootstrap Smoke
 
+> **Historical bootstrap note (#8591).** Kept for archaeology and ops memory.
+> Active Cloud implementation is in the public monorepo (`crates/*`,
+> `docs/cloud/`). Deprecated authority names: **Vortex** → Worker/Khala Sync;
+> **Treasury product** → Worker credits + MDK/Nexus payout bridge only;
+> **Nexus-as-registry** → Worker/Khala Sync (CLI may still say `nexus`).
+> Do not treat this note as current product-authority ownership.
+
 Status: measured bootstrap smoke passed on 2026-06-01
 
 Host: `oa-shc-katy-01` at `23.182.128.195`
@@ -167,7 +174,7 @@ cleanup, and Psionic sandbox evidence.
 Run a real account-backed Codex workroom through the product surface:
 
 ```text
-Autopilot/Vortex provider-account grant
+Autopilot/Worker/Khala Sync provider-account grant
   -> Cloud control API
   -> oa-shc-katy-01 or GCP fallback runner
   -> per-session CODEX_HOME

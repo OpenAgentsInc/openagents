@@ -1,5 +1,12 @@
 # CND-049 SWE-Bench And Custom Repo Adapter
 
+> **Historical bootstrap note (#8591).** Kept for archaeology and ops memory.
+> Active Cloud implementation is in the public monorepo (`crates/*`,
+> `docs/cloud/`). Deprecated authority names: **Vortex** → Worker/Khala Sync;
+> **Treasury product** → Worker credits + MDK/Nexus payout bridge only;
+> **Nexus-as-registry** → Worker/Khala Sync (CLI may still say `nexus`).
+> Do not treat this note as current product-authority ownership.
+
 Status: adapter scaffold
 Last updated: 2026-06-01
 
@@ -16,7 +23,7 @@ The initial repo adapter accepts:
 - `swt-bench`
 
 The adapter records the dataset slug and version in `result.json` and
-`proof_bundle.json`; Vortex should not need dataset-specific state tables for
+`proof_bundle.json`; Worker/Khala Sync should not need dataset-specific state tables for
 the first tracking path.
 
 ## Fixtures
@@ -88,6 +95,6 @@ execution.
 - The verifier commands are declared in the task envelope.
 - The adapter writes artifacts through the same redaction boundary as the
   Terminal-Bench and Codex adapters.
-- Public claim projection stays blocked until Vortex verifies proof bundle,
+- Public claim projection stays blocked until Worker/Khala Sync verifies proof bundle,
   redaction, dataset version, task subset, harness version, retry policy, and
   artifact retention.

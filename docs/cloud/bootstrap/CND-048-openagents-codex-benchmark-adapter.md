@@ -1,11 +1,18 @@
 # CND-048 OpenAgents/Codex Benchmark Adapter
 
+> **Historical bootstrap note (#8591).** Kept for archaeology and ops memory.
+> Active Cloud implementation is in the public monorepo (`crates/*`,
+> `docs/cloud/`). Deprecated authority names: **Vortex** → Worker/Khala Sync;
+> **Treasury product** → Worker credits + MDK/Nexus payout bridge only;
+> **Nexus-as-registry** → Worker/Khala Sync (CLI may still say `nexus`).
+> Do not treat this note as current product-authority ownership.
+
 Status: adapter scaffold
 Last updated: 2026-06-01
 
 This adapter lets the same normalized Terminal-Bench task shape run through an
 OpenAgents/Codex-compatible agent mode. It is not a public score claim. It is an
-internal comparison path that produces artifacts Vortex can attach to a
+internal comparison path that produces artifacts Worker/Khala Sync can attach to a
 Benchmark Workroom and proof bundle.
 
 ## Smoke Fixture
@@ -92,5 +99,5 @@ not appear in artifacts or proof bundles.
 - redaction status;
 - internal claim state.
 
-Vortex can compare the oracle proof bundle and OpenAgents/Codex proof bundle
+Worker/Khala Sync can compare the oracle proof bundle and OpenAgents/Codex proof bundle
 without treating either as a public benchmark claim.

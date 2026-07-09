@@ -1,31 +1,37 @@
 # Cloud Bootstrap And Pylon-To-Node Issue List
 
-Status: initial backlog
+Status: **historical backlog source** (rewritten routing 2026-07-09, #8591)
 
-This is the private implementation issue list for converting the useful parts
-of Pylon into a managed OpenAgents Cloud node layer while keeping contributor
-Pylon open source.
+This is the implementation issue list for converting the useful parts of Pylon
+into a managed OpenAgents Cloud node layer while keeping contributor Pylon open
+source. Active implementation now lives in the **public openagents monorepo**
+(`crates/*`, `docs/cloud/*`). The private `OpenAgentsInc/cloud` repo is
+historical only.
 
-Workspace routing note: when this repo is checked out under the umbrella
-workspace, `docs/cloud/repo-routing.md` and `docs/cloud/issues.md` in the root
-workspace define cross-repo issue placement. This file remains the private
-`cloud` implementation backlog.
+Ownership rule (current):
 
-Ownership rule:
+- Cloud rows are implemented in `openagents` under `crates/oa-*` and
+  `docs/cloud/*` (tracking epic: openagents#8591).
+- `openagents`-only rows protect public contributor Pylon (`apps/pylon`).
+- Forge and Probe remain their own authorities; Cloud integrates through typed
+  adapters.
+- **Deprecated:** do not treat Worker/Khala Sync, Autopilot-as-Cloud-control, Treasury
+  product, or Nexus-as-registry as current owners. Customer credits live on the
+  Worker; outbound payout/custody uses the **MDK/Nexus payout bridge** only
+  where that path is still active.
 
-- `cloud` rows are implemented in this repo.
-- rows that include `cloud` plus another repo are tracked here first, then split
-  into linked companion issues when code must change in the other repo.
-- `openagents`-only rows protect public contributor Pylon and should not be
-  implemented in this private repo.
-- Psionic, Probe, Forge, Autopilot, Treasury, and Nexus authority stays in those
-  repos; this repo integrates through typed adapters.
+Historical intro (kept for archaeology):
 
+This file began as the private `cloud` implementation backlog. Issue IDs
+(`CND-*`) and many “Repo: cloud” rows are frozen labels; land code in
+openagents, not private cloud.
+
+---
 ## Issue List
 
 ### CND-001 Define `openagents.cloud_node.v1`
 
-Repo: `openagents` and `cloud`
+Repo: `openagents` (historical split with private `cloud`)
 
 Outcome: one typed schema for node identity, host facts, lifecycle,
 capabilities, policy, runtime endpoints, and evidence.
@@ -38,7 +44,7 @@ Acceptance:
 
 ### CND-002 Define `openagents.workroom.v1`
 
-Repo: `cloud`
+Repo: `openagents` (historical: private `cloud`)
 
 Outcome: one typed schema for workroom identity, runtime profile, capabilities,
 local gateways, ingress, artifacts, and receipt events.
@@ -74,11 +80,11 @@ Acceptance:
 
 - Public docs say contributor Pylon remains open source.
 - Contributor payout behavior remains auditable without private repo access.
-- Public Pylon does not depend on private `cloud` crates.
+- Public Pylon may depend on public Cloud contracts; managed daemons stay in `crates/*`.
 
 ### CND-005 Bootstrap Private `cloud` Repo
 
-Repo: `cloud`
+Repo: `openagents` (historical: private `cloud`)
 
 Outcome: private repo has scaffold, AGENTS, invariants, contracts, issue list,
 and placeholder binaries.
@@ -91,7 +97,7 @@ Acceptance:
 
 ### CND-006 Implement `oa-node` Config And Identity
 
-Repo: `cloud`
+Repo: `openagents` (historical: private `cloud`)
 
 Outcome: managed node has config, node identity, org binding, local state path,
 service name, and signing-key reference.
@@ -104,7 +110,7 @@ Acceptance:
 
 ### CND-007 Implement Managed Node Admin Store
 
-Repo: `cloud`
+Repo: `openagents` (historical: private `cloud`)
 
 Outcome: local SQLite or embedded store persists desired mode, observed status,
 health events, inventory, updates, quarantine state, and receipt cursors.
@@ -117,7 +123,7 @@ Acceptance:
 
 ### CND-008 Implement Capability Detection Adapter
 
-Repo: `cloud`
+Repo: `openagents` (historical: private `cloud`)
 
 Outcome: `oa-node` detects host CPU, memory, disk, OS, accelerator inventory,
 Psionic availability, sandbox engines, ingress support, and artifact support.
@@ -130,7 +136,7 @@ Acceptance:
 
 ### CND-009 Implement Nexus Node Registry Adapter
 
-Repo: `cloud`
+Repo: `openagents` (historical: private `cloud`)
 
 Outcome: `oa-node` registers with Nexus, sends signed heartbeats, reports
 health, and receives desired lifecycle updates.
@@ -143,7 +149,7 @@ Acceptance:
 
 ### CND-010 Implement Forge Assignment Adapter
 
-Repo: `cloud`
+Repo: `openagents` (historical: private `cloud`)
 
 Outcome: managed nodes can receive typed workroom or worker assignments from
 Forge without using NIP-90 as the primary cloud scheduler.
@@ -156,7 +162,7 @@ Acceptance:
 
 ### CND-011 Implement Psionic Worker Attachment
 
-Repo: `cloud` and `psionic`
+Repo: `openagents` (historical: private `cloud`) and `psionic`
 
 Outcome: managed node can attach Psionic inference, training, sandbox, and
 cluster workers as capabilities without embedding hot runtime logic.
@@ -169,7 +175,7 @@ Acceptance:
 
 ### CND-012 Implement Probe Worker Attachment
 
-Repo: `cloud` and `probe`
+Repo: `openagents` (historical: private `cloud`) and `probe`
 
 Outcome: managed workrooms can invoke Probe for coding-agent runtime under
 explicit workroom policy.
@@ -182,7 +188,7 @@ Acceptance:
 
 ### CND-013 Implement `oa-workroomd` Local Metadata Endpoint
 
-Repo: `cloud`
+Repo: `openagents` (historical: private `cloud`)
 
 Outcome: workrooms expose non-secret local metadata to agents and tools.
 
@@ -195,7 +201,7 @@ Acceptance:
 
 ### CND-014 Implement Link-Local Capability Gateways
 
-Repo: `cloud`
+Repo: `openagents` (historical: private `cloud`)
 
 Outcome: workrooms access models, artifacts, receipts, memory, email, and
 settlement metadata through local gateways.
@@ -208,7 +214,7 @@ Acceptance:
 
 ### CND-015 Implement Managed Preview Ingress
 
-Repo: `cloud`
+Repo: `openagents` (historical: private `cloud`)
 
 Outcome: workrooms can expose private previews, named collaborator access,
 public preview switches, custom domains, and scoped endpoint tokens.
@@ -217,7 +223,7 @@ Acceptance:
 
 - Workrooms start private.
 - Every exposure, token, revocation, and custom-domain change emits a receipt.
-- Ingress policy is visible to Autopilot and Forge.
+- Ingress policy is visible to operator surfaces and Forge.
 
 Implementation scaffold: `oa-workroomd ingress` stores non-secret ingress state
 in `ingress-state.json`, defaults to private, supports named collaborator
@@ -226,7 +232,7 @@ and receipt-backed revocation.
 
 ### CND-016 Implement Artifact Closeout
 
-Repo: `cloud`
+Repo: `openagents` (historical: private `cloud`)
 
 Outcome: workrooms upload declared artifacts, content digests, logs, and
 closeout manifests.
@@ -243,7 +249,7 @@ cites artifact and receipt digests for Forge verification.
 
 ### CND-017 Implement Workroom Lifecycle
 
-Repo: `cloud`
+Repo: `openagents` (historical: private `cloud`)
 
 Outcome: create, start, pause, resume, expose, closeout, archive, and destroy
 workroom states are explicit and receipt-bearing.
@@ -261,7 +267,7 @@ artifact closeout when required.
 
 ### CND-045 Run Codex On GCP VM And Emit Workroom Receipts
 
-Repo: `cloud`
+Repo: `openagents` (historical: private `cloud`)
 
 Outcome: Cloud can accept one structured Codex workroom assignment for
 `oa-gcp-shc-katy-01`, run Codex in a private no-wallet workroom under a
@@ -294,13 +300,13 @@ including redaction.
 GCP smoke: `oa-gcp-shc-katy-01` is reachable, has `/dev/kvm`, current Rust via
 rustup, and `codex-cli 0.135.0`. The fake-Codex `oa-workroomd` runner test
 passed on the VM. A real account-backed Codex run still needs the
-Vortex-issued provider-account grant and brokered auth material.
+Worker/broker-issued provider-account grant and brokered auth material.
 
 ### CND-046 Materialize Session-Scoped Codex Auth Grants
 
-Repo: `cloud`
+Repo: `openagents` (historical: private `cloud`)
 
-Outcome: Cloud can consume a Vortex ChatGPT/Codex provider-account grant ref,
+Outcome: Cloud can consume a Worker/broker ChatGPT/Codex provider-account grant ref,
 materialize a per-session `CODEX_HOME`, run `codex login status`, and scrub
 VM-local Codex auth material with redacted receipts.
 
@@ -320,7 +326,7 @@ scrub, expired-grant refusal, permissions, and receipt redaction.
 
 ### CND-018 Implement Service Manager Install
 
-Repo: `cloud`
+Repo: `openagents` (historical: private `cloud`)
 
 Outcome: `oa-node` can install and report launchd/systemd service status for
 managed nodes.
@@ -337,7 +343,7 @@ health events that project service status through `oa-node status`.
 
 ### CND-019 Implement Signed Update And Rollback
 
-Repo: `cloud`
+Repo: `openagents` (historical: private `cloud`)
 
 Outcome: managed nodes support signed release channels, staged rollout,
 rollback, and health-gated promotion.
@@ -354,7 +360,7 @@ rollback-on-failure, and quarantine when no previous version exists.
 
 ### CND-020 Implement Quarantine
 
-Repo: `cloud`
+Repo: `openagents` (historical: private `cloud`)
 
 Outcome: unhealthy, policy-violating, or suspicious nodes can be quarantined.
 
@@ -371,7 +377,7 @@ quarantine receipts.
 
 ### CND-021 Implement Settlement Modes
 
-Repo: `cloud`, `treasury`, and `nexus`
+Repo: `openagents` (historical: private `cloud`), `treasury`, and `nexus`
 
 Outcome: managed nodes support `internal-accounting` and `no-wallet` modes,
 while public contributor Pylon keeps contributor-wallet mode.
@@ -379,17 +385,17 @@ while public contributor Pylon keeps contributor-wallet mode.
 Acceptance:
 
 - No default managed workroom has wallet authority.
-- Internal accounting receipts reconcile with Treasury/Nexus.
+- Internal accounting receipts reconcile with accounting refs and the MDK/Nexus payout bridge.
 - Contributor-wallet mode remains public Pylon behavior.
 
 Implementation scaffold: `oa-node settlement` defaults managed nodes to
-`no-wallet`, supports `internal-accounting` receipts with Treasury and Nexus
+`no-wallet`, supports `internal-accounting` receipts with accounting refs and the payout bridge
 refs, projects accounting receipt evidence, and rejects contributor-wallet mode
 inside private Cloud.
 
 ### CND-022 Implement Capability Broker Redaction
 
-Repo: `cloud`
+Repo: `openagents` (historical: private `cloud`)
 
 Outcome: capability broker logs and receipts prove access without leaking
 tokens, API keys, private keys, wallet material, or customer data.
@@ -407,7 +413,7 @@ fixtures, writes only redacted artifacts, and emits digest-only broker receipts.
 
 ### CND-023 Implement Sandbox Profile Enforcement
 
-Repo: `cloud` and `psionic`
+Repo: `openagents` (historical: private `cloud`) and `psionic`
 
 Outcome: sandbox jobs run only under declared profiles with explicit network,
 filesystem, timeout, artifact, and secret policy.
@@ -424,22 +430,22 @@ register` records local profile policy, Forge sandbox worker assignments are
 accepted only when their declared sandbox policy matches a registered profile,
 and sandbox Psionic receipts require `--profile-digest`.
 
-### CND-024 Implement Autopilot Workroom UX Adapter
+### CND-024 Implement Operator Workroom UX Adapter (historical: Autopilot)
 
-Repo: `cloud` and `autopilot`
+Repo: `openagents` (historical: private `cloud`) and `autopilot`
 
-Outcome: Autopilot can create workrooms, show status, manage preview access,
+Outcome: Operator surfaces can create workrooms, show status, manage preview access,
 inspect artifacts, and submit acceptance decisions.
 
 Acceptance:
 
-- Autopilot displays workroom state from typed APIs.
+- Operator surfaces display workroom state from typed APIs.
 - Approval and exposure changes emit receipts.
 - User-visible copy does not expose private node topology.
 
 ### CND-025 Implement Forge Verification Adapter
 
-Repo: `cloud` and `forge`
+Repo: `openagents` (historical: private `cloud`) and `forge`
 
 Outcome: Forge verifies workroom artifacts, receipts, execution evidence, and
 acceptance gates before delivery or settlement.
@@ -452,7 +458,7 @@ Acceptance:
 
 ### CND-026 Implement Compatibility Test Matrix
 
-Repo: `openagents` and `cloud`
+Repo: `openagents` (historical split with private `cloud`)
 
 Outcome: public Pylon, public schema fixtures, private `oa-node`, and private
 `oa-workroomd` agree on boundaries.
@@ -466,7 +472,7 @@ Acceptance:
 
 ### CND-027 Implement Local Proof Fleet
 
-Repo: `cloud`
+Repo: `openagents` (historical: private `cloud`)
 
 Outcome: local proof environment can run one Nexus/Forge-shaped node and
 workroom lifecycle without touching production.
@@ -479,7 +485,7 @@ Acceptance:
 
 ### CND-028 Implement Observability And Operator Runbook
 
-Repo: `cloud`
+Repo: `openagents` (historical: private `cloud`)
 
 Outcome: managed cloud nodes have logs, metrics, health events, dashboards, and
 operator runbooks.
@@ -494,11 +500,11 @@ Acceptance:
 
 ### CND-029 Implement Migration Plan From Current Pylon
 
-Repo: `openagents` and `cloud`
+Repo: `openagents` (historical split with private `cloud`)
 
 Outcome: current Pylon capabilities are mapped to public Pylon, public
 `pylon-core`, private `oa-node`, private `oa-workroomd`, Psionic, Forge, Nexus,
-and Treasury.
+and Worker metering/credits (historical Treasury wording retired).
 
 Acceptance:
 
@@ -508,7 +514,7 @@ Acceptance:
 
 ### CND-030 Cut First Private Cloud Milestone
 
-Repo: `cloud`
+Repo: `openagents` (historical: private `cloud`)
 
 Outcome: first milestone proves one managed node can register, advertise
 capability, create one private workroom, run a bounded command, expose a
@@ -522,7 +528,7 @@ Acceptance:
 
 ### CND-031 Add Local Cloud MVP Smoke Harness
 
-Repo: `cloud`
+Repo: `openagents` (historical: private `cloud`)
 
 Outcome: one local command proves the first private Cloud MVP path without
 touching production services.
@@ -536,7 +542,7 @@ Acceptance:
 
 ### CND-032 Add Container Packaging
 
-Repo: `cloud`
+Repo: `openagents` (historical: private `cloud`)
 
 Outcome: `oa-node` and `oa-workroomd` can be packaged into reproducible local
 container images for GCP testing.
@@ -549,7 +555,7 @@ Acceptance:
 
 ### CND-033 Add First GCP Bootstrap Runbook And Scripts
 
-Repo: `cloud`
+Repo: `openagents` (historical: private `cloud`)
 
 Outcome: a documented `gcloud` path prepares a test environment for the first
 Cloud MVP deployment.
@@ -563,7 +569,7 @@ Acceptance:
 
 ### CND-034 Deploy `oa-node` To One Test GCE VM
 
-Repo: `cloud`
+Repo: `openagents` (historical: private `cloud`)
 
 Outcome: one test VM runs `oa-node` as a managed daemon.
 
@@ -576,7 +582,7 @@ Acceptance:
 
 ### CND-035 Run First GCP Workroom Smoke
 
-Repo: `cloud`
+Repo: `openagents` (historical: private `cloud`)
 
 Outcome: the GCE node can run one no-wallet test workroom end to end.
 
@@ -589,7 +595,7 @@ Acceptance:
 
 ### CND-036 Add Cloud MVP CI Gates
 
-Repo: `cloud`
+Repo: `openagents` (historical: private `cloud`)
 
 Outcome: CI protects the MVP path before deploy scripts are treated as valid.
 
@@ -603,7 +609,7 @@ Acceptance:
 
 ### CND-037 Add Minimal Local/GCP Control CLI
 
-Repo: `cloud`
+Repo: `openagents` (historical: private `cloud`)
 
 Outcome: operators have one command surface for local and first GCP test flows.
 
@@ -615,7 +621,7 @@ Acceptance:
 
 ### CND-038 Add Redacted Config And Environment Management
 
-Repo: `cloud`
+Repo: `openagents` (historical: private `cloud`)
 
 Outcome: local and GCP config can be templated without committing secrets.
 
@@ -627,7 +633,7 @@ Acceptance:
 
 ### CND-039 Add MVP Observability For Local And GCP Tests
 
-Repo: `cloud`
+Repo: `openagents` (historical: private `cloud`)
 
 Outcome: first MVP tests expose enough logs and event IDs to debug failures.
 
@@ -639,7 +645,7 @@ Acceptance:
 
 ### CND-040 Publish First Cloud MVP Closeout Report
 
-Repo: `cloud`
+Repo: `openagents` (historical: private `cloud`)
 
 Outcome: the first local and GCP MVP pass is recorded as a checked-in report.
 
@@ -652,7 +658,7 @@ Acceptance:
 
 ### CND-041 Bootstrap And Benchmark `oa-shc-katy-01`
 
-Repo: `cloud`
+Repo: `openagents` (historical: private `cloud`)
 
 Outcome: the first SHC Katy VPS runs the same managed-node bootstrap path as
 the GCP fallback node and produces measured benchmark receipts.
@@ -680,7 +686,7 @@ Notes:
 
 ### CND-042 Compare GCP And SHC Receipts
 
-Repo: `cloud` and `workspace`
+Repo: `openagents` (historical: private `cloud`) and `workspace`
 
 Outcome: GCP and SHC runs are compared through receipts, cost notes, and
 operator evidence before expanding the SHC pilot.
@@ -693,20 +699,20 @@ Acceptance:
   economics, and any unsettled assumptions.
 - Report recommends expand, hold, or stop for the SHC pilot.
 - Follow-up issues are filed in the correct repos for any missing Nexus,
-  Forge, Probe, Psionic, Autopilot, Treasury, or public Pylon integration.
+  Forge, Probe, Psionic, Worker, or public Pylon integration.
 
 ### CND-043 Add Benchmark Cloud Execution Lane For Terminal-Bench 2
 
 GitHub tracking: https://github.com/OpenAgentsInc/cloud/issues/62
 
-Repo: `cloud`, with Vortex companions
+Repo: `openagents` (historical: private `cloud`), with Worker/product companions
 
 Outcome: Cloud has a reusable Benchmark Cloud execution plan with
 Terminal-Bench 2 as the first dataset adapter.
 
 Acceptance:
 
-- `docs/BENCHMARK_CLOUD.md` defines the Cloud/Vortex authority split.
+- `docs/cloud/BENCHMARK_CLOUD.md` defines the Cloud/Worker authority split.
 - The MVP path targets a Terminal-Bench 2 oracle smoke on Google Cloud Batch.
 - The plan keeps Terminal-Bench behind normalized benchmark contracts.
 - The plan lists follow-on issues for runner contracts, GCP substrate, Batch,
@@ -716,7 +722,7 @@ Acceptance:
 
 GitHub tracking: https://github.com/OpenAgentsInc/cloud/issues/63
 
-Repo: `cloud`
+Repo: `openagents` (historical: private `cloud`)
 
 Outcome: local benchmark tasks can run through a dataset-neutral Python runner.
 
@@ -733,7 +739,7 @@ Acceptance:
 
 GitHub tracking: https://github.com/OpenAgentsInc/cloud/issues/64
 
-Repo: `cloud`
+Repo: `openagents` (historical: private `cloud`)
 
 Outcome: dev GCP setup exists for benchmark runner images, specs, artifacts,
 events, service accounts, and narrow IAM.
@@ -750,7 +756,7 @@ Acceptance:
 
 GitHub tracking: https://github.com/OpenAgentsInc/cloud/issues/65
 
-Repo: `cloud`
+Repo: `openagents` (historical: private `cloud`)
 
 Outcome: one normalized benchmark task attempt can run on Google Cloud Batch.
 
@@ -765,7 +771,7 @@ Acceptance:
 
 GitHub tracking: https://github.com/OpenAgentsInc/cloud/issues/66
 
-Repo: `cloud`
+Repo: `openagents` (historical: private `cloud`)
 
 Outcome: Terminal-Bench 2 oracle smoke runs as the first dataset adapter.
 
@@ -780,7 +786,7 @@ Acceptance:
 
 GitHub tracking: https://github.com/OpenAgentsInc/cloud/issues/67
 
-Repo: `cloud`, with Probe/Vortex coordination
+Repo: `openagents` (historical: private `cloud`), with Probe/Worker coordination
 
 Outcome: the same Terminal-Bench task can run through an OpenAgents/Codex-style
 agent adapter and produce proof-bundle-ready artifacts.
@@ -797,7 +803,7 @@ Acceptance:
 
 GitHub tracking: https://github.com/OpenAgentsInc/cloud/issues/68
 
-Repo: `cloud`, with Probe/Vortex coordination
+Repo: `openagents` (historical: private `cloud`), with Probe/Worker coordination
 
 Outcome: Benchmark Cloud proves the harness is general by supporting a
 SWE-bench-style or custom repo task path after Terminal-Bench smoke works.
@@ -807,13 +813,13 @@ Acceptance:
 - One custom repo task or SWE-bench instance runs through the normalized runner.
 - Patch/diff, transcript, commands, verifier logs, result JSON, and artifact
   manifest are captured.
-- Vortex can track the run without dataset-specific state tables.
+- Worker/Khala Sync can track the run without dataset-specific state tables.
 
 ### CND-056 Cross-OS Cloud-VM Provisioner (qa-runner CloudVm seam)
 
 GitHub tracking: https://github.com/OpenAgentsInc/openagents/issues/6200
 
-Repo: `cloud` (firecracker provisioner), with openagents/qa-runner coordination
+Repo: `openagents` (historical: private `cloud`) (firecracker provisioner), with openagents/qa-runner coordination
 
 Outcome: the qa-runner's typed `CloudVmProvisionerV2` /
 `CloudVmHandle` seam (`apps/qa-runner/src/backend.ts`,

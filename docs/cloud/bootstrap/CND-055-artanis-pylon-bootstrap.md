@@ -1,5 +1,12 @@
 # CND-055: Artanis Pylon Launch Bootstrap
 
+> **Historical bootstrap note (#8591).** Kept for archaeology and ops memory.
+> Active Cloud implementation is in the public monorepo (`crates/*`,
+> `docs/cloud/`). Deprecated authority names: **Vortex** → Worker/Khala Sync;
+> **Treasury product** → Worker credits + MDK/Nexus payout bridge only;
+> **Nexus-as-registry** → Worker/Khala Sync (CLI may still say `nexus`).
+> Do not treat this note as current product-authority ownership.
+
 Date: 2026-06-02
 
 ## Goal
@@ -101,7 +108,7 @@ The assignment uses only:
 - `auth_grant_ref`
 - optional `settlement_intent` public-safe ids
 
-The Cloud runner resolves those through the existing Vortex grant path and the
+The Cloud runner resolves those through the existing Worker/Khala Sync grant path and the
 VM-local account-scoped Codex home. It does not accept or store raw ChatGPT,
 Codex, OpenAI API, GitHub, wallet, or cloud credentials in the assignment.
 
@@ -143,9 +150,9 @@ secret-like text:
 cargo test -p openagents-cloud-contract artanis_bootstrap_assignment_fixture_parses_and_validates
 ```
 
-## Next Vortex Work
+## Next Worker/Khala Sync Work
 
-Vortex should add an admin/operator action that posts the fixture-shaped body to
+Worker/Khala Sync should add an admin/operator action that posts the fixture-shaped body to
 the Cloud endpoint with a fresh `auth_grant_ref` from the connected admin
 ChatGPT/Codex account. The resulting run can render in the same mission UI as
 other Codex workrooms, but the top-level briefing should label it as:

@@ -1,5 +1,12 @@
 # CND-052: SHC Codex Terminal-Bench 16-Task Preserved Run
 
+> **Historical bootstrap note (#8591).** Kept for archaeology and ops memory.
+> Active Cloud implementation is in the public monorepo (`crates/*`,
+> `docs/cloud/`). Deprecated authority names: **Vortex** → Worker/Khala Sync;
+> **Treasury product** → Worker credits + MDK/Nexus payout bridge only;
+> **Nexus-as-registry** → Worker/Khala Sync (CLI may still say `nexus`).
+> Do not treat this note as current product-authority ownership.
+
 Status: measured preserved multi-task smoke
 Last updated: 2026-06-01
 Owner: OpenAgents
@@ -182,7 +189,7 @@ run or reported externally.
 
 ## Next Steps
 
-- Move this manual SSH flow behind the Benchmark Cloud control API and Vortex
+- Move this manual SSH flow behind the Benchmark Cloud control API and Worker/Khala Sync
   workroom launch path.
 - Add automatic tar/checksum generation and artifact upload after every run.
 - Store Harbor `result.json`, trial `result.json`, verifier `ctrf.json`, and

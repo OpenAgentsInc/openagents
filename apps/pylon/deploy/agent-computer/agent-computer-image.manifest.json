@@ -4,16 +4,16 @@
   "strategyDoc": "docs/khala-code/2026-07-06-agent-computers-strategy.md",
   "inMicrovmWritebackProof": {
     "provedAt": "2026-07-08",
-    "issue": "#8477 (MM-C5) branch/PR writeback under the user's own GitHub authorization — GREEN",
+    "issue": "#8477 (MM-C5) branch/PR writeback under the user's own GitHub authorization \u2014 GREEN",
     "host": "agent-computer-gce-1 (openagentsgemini, us-central1-a)",
     "rootfsDigest": "sha256:2eb563b3f52e22eedfe85f1593cf08b0c8a1cc5dc3ca3d88f06bcc8f42cc7e0a",
     "turnRunnerBinary": "sha256:ca5bb8bb4924753c17875056615357c0a6ca187dbae290980a25fa9e2f1bf679 (bun-linux-x64 @ origin/main 8ebbef96c7)",
     "green": "A real Firecracker microVM (admin trigger POST /api/admin/khala/cloud/runtime-dispatch -> mint owner-linked execution token -> bridge -> daemon -> microVM) booted from this image, checked out AgentFlampy/openagents@main, staged a 1-file diff, brokered AgentFlampy's OWN github-identity credential from the live SCM auth broker (owner-scoped), PUSHED a real scoped branch (never force, never base), opened a real PR, then POSTed the outcome to the live /api/khala/cloud/runtime-turn-writeback route. REAL ARTIFACTS on github.com: branch pylon/agent-computer-turn.wb-final-20260708000734 + PR https://github.com/AgentFlampy/openagents/pull/3. The route recorded the thread-scoped writeback.recorded event in authoritative khala_sync_staging (event_id event.private.agent_computer.writeback.e913a752-ee6a-4fa7-a6b5-521b7741cfb0, status=pull_request_opened, pullRequestUrl=.../pull/3, sequence 6, turn turn.wb-final-20260708000734). Exactly ONE exact owner-attributed token_usage_events row for the turn. microVM reclaimed (0 live firecracker, scratch wiped). The brokered credential never appeared in any event/result/log.",
     "serverSeamFixesThatMadeItGreen": [
-      "gate: resolveKhalaWritebackAuthorization accepts a usable brokerable github-IDENTITY authorization, not only a github_write_connections row (the push already proves authorization) — dd8ba4f7fd",
-      "broker: the SCM auth broker vends the credential OWNER's github-identity (openauth_user_id), not the shared execution-agent user_id — e2673c68e1",
-      "recorder: owner-scoped client group so different owners never collide on one Khala Sync client group — 5f710e7492",
-      "recorder: derive the event sequence from GREATEST(event_count, MAX(sequence)+1) so out-of-band events don't cause a runtime_event_exists collision — fc01cb8497"
+      "gate: resolveKhalaWritebackAuthorization accepts a usable brokerable github-IDENTITY authorization, not only a github_write_connections row (the push already proves authorization) \u2014 dd8ba4f7fd",
+      "broker: the SCM auth broker vends the credential OWNER's github-identity (openauth_user_id), not the shared execution-agent user_id \u2014 e2673c68e1",
+      "recorder: owner-scoped client group so different owners never collide on one Khala Sync client group \u2014 5f710e7492",
+      "recorder: derive the event sequence from GREATEST(event_count, MAX(sequence)+1) so out-of-band events don't cause a runtime_event_exists collision \u2014 fc01cb8497"
     ]
   },
   "inMicrovmTurnProof": {
@@ -103,6 +103,14 @@
       "source": "apps/pylon/deploy/agent-computer/turn-runner.ts",
       "note": "Phase-2 model turn: when the work-context carries an `inference` block (agent bearer + gateway baseUrl + model + ownerUserId + no-meter secret), the turn-runner makes ONE POST /v1/chat/completions (mirroring runWithHostedKhalaGateway, carrying x-openagents-org-cloud-runtime-no-meter) then posts the EXACT model-token receipt to POST /api/khala/cloud/runtime-turn-usage (mirroring recordRuntimeTurnUsageReceipt + KhalaCloudRuntimeUsageIngestBody). The agent bearer is never serialized into events/result. The baked /opt/agent/turn-runner IS this build as of rootfsDigest sha256:fe7d6606... (re-compiled bun-linux-x64 from origin/main and re-baked 2026-07-07).",
       "liveProof": "PROVEN 2026-07-07 against openagents-monolith-staging. See inMicrovmTurnProof.modelTokenReceipt for the authoritative khala_sync_staging row (COUNT=1 exact, owner-attributed, 0 gateway rows). Remaining for the full #8503 dispatch DoD: (1) Seam A \u2014 a cloud-gcp intent->/v1/placement dispatcher that threads the `inference` block; (2) cloud oa-codex-control placement->cloud_vm.rs microVM branch + openagents.resource_usage_receipt.v1 lifecycle receipts (provision/active/idle/reclaim vm_seconds); (3) run the control daemon as a root-armed service so /v1/placement can boot Firecracker; (4) #8477 git writeback (branch/PR) from the in-guest turn. The in-VM turn here was driven through the same cloud_vm.rs run_cloud_vm_session path the placement branch will call, with an inference-bearing work-context."
+    },
+    "workroomd": {
+      "status": "in_repo_binary_staged_for_image",
+      "sourceCrate": "crates/oa-workroomd",
+      "dockerfile": "docker/cloud/oa-workroomd.Dockerfile",
+      "buildScript": "apps/pylon/deploy/agent-computer/build-workroomd-for-image.sh",
+      "guestInstallPath": "/usr/local/bin/oa-workroomd",
+      "note": "Agent Computer guest images must include the in-repo oa-workroomd release binary (not a private cloud/ checkout). Bake via build-workroomd-for-image.sh [--docker], then copy into the rootfs at /usr/local/bin/oa-workroomd before sealing digests."
     }
   },
   "isolation": {

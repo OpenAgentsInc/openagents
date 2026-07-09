@@ -1,5 +1,12 @@
 # CND-053: Terminal-Bench Signature Routing Fixtures
 
+> **Historical bootstrap note (#8591).** Kept for archaeology and ops memory.
+> Active Cloud implementation is in the public monorepo (`crates/*`,
+> `docs/cloud/`). Deprecated authority names: **Vortex** → Worker/Khala Sync;
+> **Treasury product** → Worker credits + MDK/Nexus payout bridge only;
+> **Nexus-as-registry** → Worker/Khala Sync (CLI may still say `nexus`).
+> Do not treat this note as current product-authority ownership.
+
 Status: retained regression fixture scaffold
 Last updated: 2026-06-01
 Owner: OpenAgents
@@ -119,7 +126,7 @@ The tests cover:
 
 ## Next Step
 
-Use these fixtures in `Vortex` issue `SIG-TRAIN-001` to run the first retained
+Use these fixtures in `Worker/Khala Sync` issue `SIG-TRAIN-001` to run the first retained
 Terminal-Bench rerun comparison:
 
 ```text

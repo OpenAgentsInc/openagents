@@ -44,10 +44,10 @@ runtime env only.
 | --- | --- |
 | 0 freeze + scrub + tracking issue | done (#8591, this receipt) |
 | 1 contracts + fixtures | done (Rust crate + fixtures/cloud) |
-| 2 control plane fake mode | done (crate + tests in-repo) |
+| 2 control plane fake mode | done (crate + tests + `scripts/cloud/fake-control-plane-loopback-smoke.sh`) |
 | 3 Agent Computer VM path | code moved; live lane remains env-gated |
-| 4 workroomd | done (crate + tests) |
-| 5 oa-node | done (crate + tests) |
+| 4 workroomd | done (crate + tests + Agent Computer image staging script) |
+| 5 oa-node | done (crate + tests + authority docs rewrite) |
 | 6 production cutover | **pending** staging deploy + #8503 DoD |
 
 ## Build / test
@@ -64,3 +64,10 @@ cargo test -p oa-workroomd
 
 `OpenAgentsInc/cloud` is read-only historical mirror. New Cloud implementation
 work lands in this monorepo. See private cloud README pointer update.
+
+## 2026-07-09 residuals (#8591 non-owner-gated)
+
+- Authority docs rewritten / historical-bannered (ARCHITECTURE, ISSUES, BENCHMARK_CLOUD, bootstrap, NEXUS_REGISTRY, SETTLEMENT_MODES).
+- Agent Computer image bake references in-repo `oa-workroomd` via `apps/pylon/deploy/agent-computer/build-workroomd-for-image.sh`.
+- Named loopback smoke: `scripts/cloud/fake-control-plane-loopback-smoke.sh` (placement → events → cancel → fake GCE → fake Cloud-VM).
+- Phase 6 production cutover remains owner-gated.

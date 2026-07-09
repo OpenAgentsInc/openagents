@@ -1,5 +1,12 @@
 # CND-047 Terminal-Bench Harbor Wrapper
 
+> **Historical bootstrap note (#8591).** Kept for archaeology and ops memory.
+> Active Cloud implementation is in the public monorepo (`crates/*`,
+> `docs/cloud/`). Deprecated authority names: **Vortex** → Worker/Khala Sync;
+> **Treasury product** → Worker credits + MDK/Nexus payout bridge only;
+> **Nexus-as-registry** → Worker/Khala Sync (CLI may still say `nexus`).
+> Do not treat this note as current product-authority ownership.
+
 Status: Harbor wrapper scaffold
 Last updated: 2026-06-01
 
@@ -67,7 +74,7 @@ The runner records:
 - `harbor_stdout.log`
 - `harbor_stderr.log`
 - `raw_harbor_result.json`
-- verifier stdout/stderr mirrors for Vortex artifact viewers
+- verifier stdout/stderr mirrors for Worker/Khala Sync artifact viewers
 
 ## Cloud Batch Dry-Run
 
@@ -97,6 +104,6 @@ created the dev substrate and the image has been built and pushed.
 ## Claim Boundary
 
 This adapter produces internal evidence only. Do not publish a Terminal-Bench
-claim until Vortex has proof projection, redaction checks, dataset/task subset
+claim until Worker/Khala Sync has proof projection, redaction checks, dataset/task subset
 disclosure, harness version disclosure, artifact retention, retry policy, and
 claim state controls.

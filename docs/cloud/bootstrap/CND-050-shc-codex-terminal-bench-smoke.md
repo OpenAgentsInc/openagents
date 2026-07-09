@@ -1,5 +1,12 @@
 # CND-050: SHC Codex Terminal-Bench Smoke
 
+> **Historical bootstrap note (#8591).** Kept for archaeology and ops memory.
+> Active Cloud implementation is in the public monorepo (`crates/*`,
+> `docs/cloud/`). Deprecated authority names: **Vortex** → Worker/Khala Sync;
+> **Treasury product** → Worker credits + MDK/Nexus payout bridge only;
+> **Nexus-as-registry** → Worker/Khala Sync (CLI may still say `nexus`).
+> Do not treat this note as current product-authority ownership.
+
 Status: measured single-task smoke
 Last updated: 2026-06-01
 Owner: OpenAgents
@@ -148,5 +155,5 @@ trajectory, and produce a passing internal score.
   `BenchmarkResult` and proof-bundle schema used by `runners/py-bench-runner`.
 - Run a 3-task smoke set before any customer-facing claim:
   `openssl-selfsigned-cert`, one git task, and one data-processing task.
-- Keep public projection disabled until Vortex has proof-bundle redaction,
+- Keep public projection disabled until Worker/Khala Sync has proof-bundle redaction,
   dataset/version disclosure, retry policy, and artifact retention checks.

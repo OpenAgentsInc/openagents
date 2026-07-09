@@ -1,5 +1,12 @@
 # CND-045 GCP Benchmark Cloud Substrate
 
+> **Historical bootstrap note (#8591).** Kept for archaeology and ops memory.
+> Active Cloud implementation is in the public monorepo (`crates/*`,
+> `docs/cloud/`). Deprecated authority names: **Vortex** → Worker/Khala Sync;
+> **Treasury product** → Worker credits + MDK/Nexus payout bridge only;
+> **Nexus-as-registry** → Worker/Khala Sync (CLI may still say `nexus`).
+> Do not treat this note as current product-authority ownership.
+
 Status: dev provisioning runbook
 Last updated: 2026-06-01
 
@@ -137,5 +144,5 @@ bundles.
   bundle is intentionally retained.
 - Do not enable GKE in this lane until Batch/Cloud Run compatibility is proven
   insufficient.
-- Keep public benchmark claims disabled until Vortex proof projection enforces
+- Keep public benchmark claims disabled until Worker/Khala Sync proof projection enforces
   dataset/version, task subset, harness version, artifacts, and redaction state.
