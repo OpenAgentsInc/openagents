@@ -1,8 +1,13 @@
-import { describe, expect, test } from "bun:test"
-import { unlink } from "node:fs/promises"
+import { afterEach, describe, expect, test } from "bun:test"
+import { mkdir, readFile, rm, unlink, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { handleSarahRequest } from "./server.ts"
 import { SARAH_OWNED_TOOL_INVENTORY } from "./agent-runtime/owned-runtime.ts"
+import {
+  __setSarahCodingFleetRunStoreForTest,
+  createSarahCodingFleetFileStoreForTest,
+  listSarahCodingFleetRunsForTest,
+} from "./services/coding-fleet.ts"
 import {
   __resetCustomerBlueprintForTest,
   __setCustomerBlueprintLatestDraftReaderForTest,
@@ -10,7 +15,19 @@ import {
   CUSTOMER_BLUEPRINT_SCHEMA,
 } from "./services/customer-blueprint.ts"
 
+function installCodingFleetFileStoreForTest(fleetFile: string) {
+  const fleetPath = join(process.cwd(), ".sarah", fleetFile)
+  __setSarahCodingFleetRunStoreForTest(
+    createSarahCodingFleetFileStoreForTest(fleetFile),
+  )
+  return fleetPath
+}
+
 describe("apps/sarah monorepo service", () => {
+  afterEach(() => {
+    __setSarahCodingFleetRunStoreForTest(null)
+  })
+
   test("ops endpoint describes /sarah mount and rails", async () => {
     const res = await handleSarahRequest(
       new Request("http://localhost/sarah/api/operator/ops"),
@@ -50,8 +67,670 @@ describe("apps/sarah monorepo service", () => {
         "live_stats",
         "plan_catalog",
         "promise_lookup",
+        "coding_fleet_start",
       ].sort(),
     )
+  })
+
+  test("coding_fleet_start refuses unauthenticated prospect calls", async () => {
+    const res = await handleSarahRequest(
+      new Request("http://localhost/sarah/api/eve/tool-call", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          toolName: "coding_fleet_start",
+          toolCallId: "fc1a-unauth",
+          args: {
+            objective: "Run a bounded public issue through Sarah Fleet Command.",
+          },
+        }),
+      }),
+    )
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.toolResults[0].ok).toBe(false)
+    expect(body.toolResults[0].output.error.code).toBe("owner_auth_required")
+  })
+
+  test("coding_fleet_start ignores local-store env switches on the live route", async () => {
+    const savedTestMode = process.env.SARAH_ACCOUNT_LINK_TEST_MODE
+    const savedFleetPath = process.env.SARAH_CODING_FLEET_RUNS_PATH
+    const savedLocalStore = process.env.SARAH_CODING_FLEET_START_LOCAL_STORE
+    process.env.SARAH_ACCOUNT_LINK_TEST_MODE = "1"
+    process.env.SARAH_CODING_FLEET_RUNS_PATH = "server-fc1a-env-ignored.json"
+    process.env.SARAH_CODING_FLEET_START_LOCAL_STORE = "1"
+    try {
+      const res = await handleSarahRequest(
+        new Request("http://localhost/sarah/api/eve/tool-call", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-sarah-test-oa-session": JSON.stringify({
+              userId: "owner-fc1a",
+              email: "owner@example.com",
+            }),
+          },
+          body: JSON.stringify({
+            toolName: "coding_fleet_start",
+            args: {
+              objective: "Run issue 8637 as a bounded FC-1 fixture.",
+              repository: {
+                owner: "OpenAgentsInc",
+                name: "openagents",
+                branch: "main",
+                commit: "f8e4aa29d9",
+              },
+              verifier: { kind: "command", command: "bun run test:sarah" },
+              workSource: { kind: "issue_list", issueRefs: ["#8637"] },
+              workerPolicy: {
+                workerKind: "auto",
+                targetPreference: "owner_local",
+              },
+              targetConcurrency: 1,
+              idempotencyKey: "fc1a-store-default-off",
+            },
+          }),
+        }),
+      )
+      const body = await res.json()
+      expect(body.toolResults[0].ok).toBe(false)
+      expect(body.toolResults[0].output.error).toEqual({
+        code: "store_unavailable",
+        message:
+          "coding_fleet_start does not have an enabled durable fleet run store.",
+      })
+    } finally {
+      if (savedTestMode === undefined) delete process.env.SARAH_ACCOUNT_LINK_TEST_MODE
+      else process.env.SARAH_ACCOUNT_LINK_TEST_MODE = savedTestMode
+      if (savedFleetPath === undefined) delete process.env.SARAH_CODING_FLEET_RUNS_PATH
+      else process.env.SARAH_CODING_FLEET_RUNS_PATH = savedFleetPath
+      if (savedLocalStore === undefined) delete process.env.SARAH_CODING_FLEET_START_LOCAL_STORE
+      else process.env.SARAH_CODING_FLEET_START_LOCAL_STORE = savedLocalStore
+    }
+  })
+
+  test("coding_fleet_start fixture store rejects escaped local paths", () => {
+    expect(() => createSarahCodingFleetFileStoreForTest("../escape.json")).toThrow(
+      "fixture store path must stay under .sarah",
+    )
+    expect(() =>
+      createSarahCodingFleetFileStoreForTest("/tmp/sarah-fleet.json"),
+    ).toThrow("fixture store path must stay under .sarah")
+  })
+
+  test("coding_fleet_start schema errors do not echo private input", async () => {
+    const savedTestMode = process.env.SARAH_ACCOUNT_LINK_TEST_MODE
+    process.env.SARAH_ACCOUNT_LINK_TEST_MODE = "1"
+    try {
+      const res = await handleSarahRequest(
+        new Request("http://localhost/sarah/api/eve/tool-call", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-sarah-test-oa-session": JSON.stringify({
+              userId: "owner-fc1a",
+              email: "owner@example.com",
+            }),
+          },
+          body: JSON.stringify({
+            toolName: "coding_fleet_start",
+            args: {
+              objective: { secret: "OPENAGENTS_AGENT_TOKEN=abc" },
+              repository: {
+                owner: "OpenAgentsInc",
+                name: "openagents",
+                branch: "main",
+                commit: "f8e4aa29d9",
+              },
+              verifier: { kind: "command", command: "bun run test:sarah" },
+              workSource: { kind: "issue_list", issueRefs: ["#8637"] },
+              workerPolicy: {
+                workerKind: "auto",
+                targetPreference: "owner_local",
+              },
+              targetConcurrency: 1,
+              idempotencyKey: "fc1a-schema-secret",
+            },
+          }),
+        }),
+      )
+      const body = await res.json()
+      const error = body.toolResults[0].output.error
+      expect(body.toolResults[0].ok).toBe(false)
+      expect(error).toEqual({
+        code: "invalid_request",
+        field: "request",
+        message: "coding_fleet_start args failed schema validation.",
+      })
+      expect(JSON.stringify(error)).not.toContain("OPENAGENTS_AGENT_TOKEN")
+    } finally {
+      if (savedTestMode === undefined) delete process.env.SARAH_ACCOUNT_LINK_TEST_MODE
+      else process.env.SARAH_ACCOUNT_LINK_TEST_MODE = savedTestMode
+    }
+  })
+
+  test("coding_fleet_start persists an owner-scoped pending run idempotently", async () => {
+    const savedTestMode = process.env.SARAH_ACCOUNT_LINK_TEST_MODE
+    const fleetFile = `server-fc1a-fleet-${process.pid}.json`
+    const fleetPath = installCodingFleetFileStoreForTest(fleetFile)
+    process.env.SARAH_ACCOUNT_LINK_TEST_MODE = "1"
+    try {
+      const requestBody = {
+        toolName: "coding_fleet_start",
+        toolCallId: "fc1a-start",
+        args: {
+          schema: "sarah.coding_fleet_start.request.v1",
+          objective: "Run issue 8637 as a bounded FC-1 fixture.",
+          repository: {
+            owner: "OpenAgentsInc",
+            name: "openagents",
+            branch: "main",
+            commit: "f8e4aa29d9",
+          },
+          verifier: { kind: "command", command: "bun run test:sarah" },
+          workSource: { kind: "issue_list", issueRefs: ["#8637"] },
+          workerPolicy: {
+            workerKind: "auto",
+            targetPreference: "owner_local",
+          },
+          targetConcurrency: 3,
+          idempotencyKey: "fc1a-start-8637",
+        },
+      }
+      const first = await handleSarahRequest(
+        new Request("http://localhost/sarah/api/eve/tool-call", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-sarah-test-oa-session": JSON.stringify({
+              userId: "owner-fc1a",
+              email: "owner@example.com",
+            }),
+          },
+          body: JSON.stringify(requestBody),
+        }),
+      )
+      const firstBody = await first.json()
+      expect(firstBody.toolResults[0].ok).toBe(true)
+      const output = firstBody.toolResults[0].output
+      expect(output.ok).toBe(true)
+      expect(output.duplicate).toBe(false)
+      expect(output.runRef).toStartWith("fleet_run.sarah.")
+      expect(output.scope).toBe(`scope.fleet_run.${output.runRef}`)
+      expect(output.privateMaterialExcluded).toBe(true)
+      expect(output.ownerRef).toBeUndefined()
+      expect(output.ownerHash).toBeUndefined()
+      expect(output.workerPolicy.workerKind).toBe("auto")
+      expect(output.workSource.issueRefs).toEqual(["#8637"])
+
+      const duplicate = await handleSarahRequest(
+        new Request("http://localhost/sarah/api/eve/tool-call", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-sarah-test-oa-session": JSON.stringify({
+              userId: "owner-fc1a",
+              email: "owner@example.com",
+            }),
+          },
+          body: JSON.stringify(requestBody),
+        }),
+      )
+      const duplicateBody = await duplicate.json()
+      expect(duplicateBody.toolResults[0].output.duplicate).toBe(true)
+      expect(duplicateBody.toolResults[0].output.runRef).toBe(output.runRef)
+
+      const conflict = await handleSarahRequest(
+        new Request("http://localhost/sarah/api/eve/tool-call", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-sarah-test-oa-session": JSON.stringify({
+              userId: "owner-fc1a",
+              email: "owner@example.com",
+            }),
+          },
+          body: JSON.stringify({
+            ...requestBody,
+            args: {
+              ...requestBody.args,
+              objective:
+                "Run issue 8637 as a different bounded FC-1 fixture.",
+            },
+          }),
+        }),
+      )
+      const conflictBody = await conflict.json()
+      expect(conflictBody.toolResults[0].ok).toBe(false)
+      expect(conflictBody.toolResults[0].output.error).toEqual({
+        code: "idempotency_conflict",
+        message:
+          "idempotencyKey already belongs to a different Sarah coding fleet request.",
+      })
+
+      const rows = await listSarahCodingFleetRunsForTest()
+      expect(rows).toHaveLength(1)
+      expect(rows[0].ownerRef).toBe("owner-fc1a")
+      expect(rows[0].status).toBe("pending_executor")
+    } finally {
+      if (savedTestMode === undefined) delete process.env.SARAH_ACCOUNT_LINK_TEST_MODE
+      else process.env.SARAH_ACCOUNT_LINK_TEST_MODE = savedTestMode
+      await unlink(fleetPath).catch(() => {})
+    }
+  })
+
+  test("coding_fleet_start isolates identical idempotency keys by owner", async () => {
+    const savedTestMode = process.env.SARAH_ACCOUNT_LINK_TEST_MODE
+    const fleetFile = `server-fc1a-two-owner-${process.pid}.json`
+    const fleetPath = installCodingFleetFileStoreForTest(fleetFile)
+    process.env.SARAH_ACCOUNT_LINK_TEST_MODE = "1"
+    try {
+      const requestBody = {
+        toolName: "coding_fleet_start",
+        args: {
+          objective: "Run issue 8637 as a bounded FC-1 owner isolation fixture.",
+          repository: {
+            owner: "OpenAgentsInc",
+            name: "openagents",
+            branch: "main",
+            commit: "f8e4aa29d9",
+          },
+          verifier: { kind: "command", command: "bun run test:sarah" },
+          workSource: { kind: "issue_list", issueRefs: ["#8637"] },
+          workerPolicy: {
+            workerKind: "auto",
+            targetPreference: "owner_local",
+          },
+          targetConcurrency: 2,
+          idempotencyKey: "fc1a-shared-key",
+        },
+      }
+
+      const startForOwner = async (ownerRef: string) => {
+        const res = await handleSarahRequest(
+          new Request("http://localhost/sarah/api/eve/tool-call", {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              "x-sarah-test-oa-session": JSON.stringify({
+                userId: ownerRef,
+                email: `${ownerRef}@example.com`,
+              }),
+            },
+            body: JSON.stringify(requestBody),
+          }),
+        )
+        const body = await res.json()
+        expect(body.toolResults[0].ok).toBe(true)
+        return body.toolResults[0].output
+      }
+
+      const ownerA = await startForOwner("owner-fc1a-a")
+      const ownerB = await startForOwner("owner-fc1a-b")
+      expect(ownerA.runRef).not.toBe(ownerB.runRef)
+      expect(ownerA.ownerHash).toBeUndefined()
+      expect(ownerB.ownerHash).toBeUndefined()
+
+      const rows = await listSarahCodingFleetRunsForTest()
+      expect(rows).toHaveLength(2)
+      expect(rows.map((row) => row.ownerRef).sort()).toEqual([
+        "owner-fc1a-a",
+        "owner-fc1a-b",
+      ])
+    } finally {
+      if (savedTestMode === undefined) delete process.env.SARAH_ACCOUNT_LINK_TEST_MODE
+      else process.env.SARAH_ACCOUNT_LINK_TEST_MODE = savedTestMode
+      await unlink(fleetPath).catch(() => {})
+    }
+  })
+
+  test("coding_fleet_start fails closed on invalid existing run stores", async () => {
+    const savedTestMode = process.env.SARAH_ACCOUNT_LINK_TEST_MODE
+    const fleetFile = `server-fc1a-invalid-store-${process.pid}.json`
+    const fleetPath = installCodingFleetFileStoreForTest(fleetFile)
+    process.env.SARAH_ACCOUNT_LINK_TEST_MODE = "1"
+    try {
+      await mkdir(join(process.cwd(), ".sarah"), { recursive: true })
+      await writeFile(fleetPath, "{not-json")
+
+      const res = await handleSarahRequest(
+        new Request("http://localhost/sarah/api/eve/tool-call", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-sarah-test-oa-session": JSON.stringify({
+              userId: "owner-fc1a",
+              email: "owner@example.com",
+            }),
+          },
+          body: JSON.stringify({
+            toolName: "coding_fleet_start",
+            args: {
+              objective: "Run issue 8637 as a bounded FC-1 fixture.",
+              repository: {
+                owner: "OpenAgentsInc",
+                name: "openagents",
+                branch: "main",
+                commit: "f8e4aa29d9",
+              },
+              verifier: { kind: "command", command: "bun run test:sarah" },
+              workSource: { kind: "issue_list", issueRefs: ["#8637"] },
+              workerPolicy: {
+                workerKind: "auto",
+                targetPreference: "owner_local",
+              },
+              targetConcurrency: 1,
+              idempotencyKey: "fc1a-invalid-store",
+            },
+          }),
+        }),
+      )
+      const body = await res.json()
+      expect(body.toolResults[0].ok).toBe(false)
+      expect(body.toolResults[0].output.error.code).toBe("store_unavailable")
+      expect(body.toolResults[0].output.error.message).not.toContain(fleetPath)
+      expect(await readFile(fleetPath, "utf8")).toBe("{not-json")
+    } finally {
+      if (savedTestMode === undefined) delete process.env.SARAH_ACCOUNT_LINK_TEST_MODE
+      else process.env.SARAH_ACCOUNT_LINK_TEST_MODE = savedTestMode
+      await unlink(fleetPath).catch(() => {})
+    }
+  })
+
+  test("coding_fleet_start refuses tampered loaded store records before replay", async () => {
+    const savedTestMode = process.env.SARAH_ACCOUNT_LINK_TEST_MODE
+    const fleetFile = `server-fc1a-tampered-store-${process.pid}.json`
+    const fleetPath = installCodingFleetFileStoreForTest(fleetFile)
+    process.env.SARAH_ACCOUNT_LINK_TEST_MODE = "1"
+    try {
+      const requestBody = {
+        toolName: "coding_fleet_start",
+        args: {
+          objective: "Run issue 8637 as a bounded FC-1 tamper fixture.",
+          repository: {
+            owner: "OpenAgentsInc",
+            name: "openagents",
+            branch: "main",
+            commit: "f8e4aa29d9",
+          },
+          verifier: { kind: "command", command: "bun run test:sarah" },
+          workSource: { kind: "issue_list", issueRefs: ["#8637"] },
+          workerPolicy: {
+            workerKind: "auto",
+            targetPreference: "owner_local",
+          },
+          targetConcurrency: 1,
+          idempotencyKey: "fc1a-tampered-store",
+        },
+      }
+      const start = async () => {
+        const res = await handleSarahRequest(
+          new Request("http://localhost/sarah/api/eve/tool-call", {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              "x-sarah-test-oa-session": JSON.stringify({
+                userId: "owner-fc1a",
+                email: "owner@example.com",
+              }),
+            },
+            body: JSON.stringify(requestBody),
+          }),
+        )
+        const body = await res.json()
+        return body.toolResults[0].output
+      }
+
+      const created = await start()
+      expect(created.ok).toBe(true)
+      const index = JSON.parse(await readFile(fleetPath, "utf8"))
+      index.runs[created.runRef].objective = "Read /Users/alice/private notes"
+      await writeFile(fleetPath, `${JSON.stringify(index, null, 2)}\n`)
+
+      const replay = await start()
+      expect(replay.ok).toBe(false)
+      expect(replay.error.code).toBe("store_unavailable")
+      expect(JSON.stringify(replay.error)).not.toContain("/Users/alice")
+    } finally {
+      if (savedTestMode === undefined) delete process.env.SARAH_ACCOUNT_LINK_TEST_MODE
+      else process.env.SARAH_ACCOUNT_LINK_TEST_MODE = savedTestMode
+      await unlink(fleetPath).catch(() => {})
+    }
+  })
+
+  test("coding_fleet_start recovers queued writes after a store failure", async () => {
+    const savedTestMode = process.env.SARAH_ACCOUNT_LINK_TEST_MODE
+    const fleetFile = `server-fc1a-queue-recovery-${process.pid}.json`
+    const fleetPath = installCodingFleetFileStoreForTest(fleetFile)
+    process.env.SARAH_ACCOUNT_LINK_TEST_MODE = "1"
+    try {
+      const requestBody = {
+        toolName: "coding_fleet_start",
+        args: {
+          objective: "Run issue 8637 as a bounded FC-1 queue recovery fixture.",
+          repository: {
+            owner: "OpenAgentsInc",
+            name: "openagents",
+            branch: "main",
+            commit: "f8e4aa29d9",
+          },
+          verifier: { kind: "command", command: "bun run test:sarah" },
+          workSource: { kind: "issue_list", issueRefs: ["#8637"] },
+          workerPolicy: {
+            workerKind: "auto",
+            targetPreference: "owner_local",
+          },
+          targetConcurrency: 1,
+          idempotencyKey: "fc1a-queue-recovery",
+        },
+      }
+      const start = async () => {
+        const res = await handleSarahRequest(
+          new Request("http://localhost/sarah/api/eve/tool-call", {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              "x-sarah-test-oa-session": JSON.stringify({
+                userId: "owner-fc1a",
+                email: "owner@example.com",
+              }),
+            },
+            body: JSON.stringify(requestBody),
+          }),
+        )
+        const body = await res.json()
+        return body.toolResults[0].output
+      }
+
+      await mkdir(fleetPath, { recursive: true })
+      const failed = await start()
+      expect(failed.ok).toBe(false)
+      expect(failed.error.code).toBe("store_unavailable")
+
+      await rm(fleetPath, { recursive: true, force: true })
+      const recovered = await start()
+      expect(recovered.ok).toBe(true)
+      expect(recovered.runRef).toStartWith("fleet_run.sarah.")
+      const rows = await listSarahCodingFleetRunsForTest()
+      expect(rows).toHaveLength(1)
+    } finally {
+      if (savedTestMode === undefined) delete process.env.SARAH_ACCOUNT_LINK_TEST_MODE
+      else process.env.SARAH_ACCOUNT_LINK_TEST_MODE = savedTestMode
+      await rm(fleetPath, { recursive: true, force: true }).catch(() => {})
+    }
+  })
+
+  test("coding_fleet_start rejects private material and unknown worker kinds", async () => {
+    const savedTestMode = process.env.SARAH_ACCOUNT_LINK_TEST_MODE
+    process.env.SARAH_ACCOUNT_LINK_TEST_MODE = "1"
+    try {
+      const res = await handleSarahRequest(
+        new Request("http://localhost/sarah/api/eve/tool-call", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-sarah-test-oa-session": JSON.stringify({
+              userId: "owner-fc1a",
+              email: "owner@example.com",
+            }),
+          },
+          body: JSON.stringify({
+            toolName: "coding_fleet_start",
+            args: {
+              objective: "Read /Users/alice/private repo secrets",
+              repository: {
+                owner: "OpenAgentsInc",
+                name: "openagents",
+                branch: "main",
+                commit: "f8e4aa29d9",
+              },
+              verifier: { kind: "command", command: "bun run test:sarah" },
+              workSource: { kind: "issue_list", issueRefs: ["#8637"] },
+              workerPolicy: {
+                workerKind: "default-home",
+                targetPreference: "owner_local",
+              },
+              targetConcurrency: 1,
+              idempotencyKey: "fc1a-unsafe-8637",
+            },
+          }),
+        }),
+      )
+      const body = await res.json()
+      expect(body.toolResults[0].ok).toBe(false)
+      expect(body.toolResults[0].output.error.code).toBe(
+        "unsafe_private_material",
+      )
+
+      const unknownWorker = await handleSarahRequest(
+        new Request("http://localhost/sarah/api/eve/tool-call", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-sarah-test-oa-session": JSON.stringify({
+              userId: "owner-fc1a",
+              email: "owner@example.com",
+            }),
+          },
+          body: JSON.stringify({
+            toolName: "coding_fleet_start",
+            args: {
+              objective: "Run issue 8637 as a bounded FC-1 fixture.",
+              repository: {
+                owner: "OpenAgentsInc",
+                name: "openagents",
+                branch: "main",
+                commit: "f8e4aa29d9",
+              },
+              verifier: { kind: "command", command: "bun run test:sarah" },
+              workSource: { kind: "issue_list", issueRefs: ["#8637"] },
+              workerPolicy: {
+                workerKind: "default-home",
+                targetPreference: "owner_local",
+              },
+              targetConcurrency: 1,
+              idempotencyKey: "fc1a-worker-8637",
+            },
+          }),
+        }),
+      )
+      const unknownWorkerBody = await unknownWorker.json()
+      expect(unknownWorkerBody.toolResults[0].ok).toBe(false)
+      expect(unknownWorkerBody.toolResults[0].output.error).toMatchObject({
+        code: "invalid_request",
+        field: "workerPolicy.workerKind",
+      })
+    } finally {
+      if (savedTestMode === undefined) delete process.env.SARAH_ACCOUNT_LINK_TEST_MODE
+      else process.env.SARAH_ACCOUNT_LINK_TEST_MODE = savedTestMode
+    }
+  })
+
+  test("coding_fleet_start rejects unusable plan DAGs", async () => {
+    const savedTestMode = process.env.SARAH_ACCOUNT_LINK_TEST_MODE
+    process.env.SARAH_ACCOUNT_LINK_TEST_MODE = "1"
+    try {
+      const startPlan = async (
+        units: Array<{ unitRef: string; title: string; dependsOn: string[] }>,
+        idempotencyKey: string,
+      ) => {
+        const res = await handleSarahRequest(
+          new Request("http://localhost/sarah/api/eve/tool-call", {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              "x-sarah-test-oa-session": JSON.stringify({
+                userId: "owner-fc1a",
+                email: "owner@example.com",
+              }),
+            },
+            body: JSON.stringify({
+              toolName: "coding_fleet_start",
+              args: {
+                objective: "Run a bounded FC-1 plan DAG fixture.",
+                repository: {
+                  owner: "OpenAgentsInc",
+                  name: "openagents",
+                  branch: "main",
+                  commit: "f8e4aa29d9",
+                },
+                verifier: { kind: "command", command: "bun run test:sarah" },
+                workSource: {
+                  kind: "plan_dag",
+                  planRef: "fc1a-plan",
+                  units,
+                },
+                workerPolicy: {
+                  workerKind: "auto",
+                  targetPreference: "owner_local",
+                },
+                targetConcurrency: 2,
+                idempotencyKey,
+              },
+            }),
+          }),
+        )
+        const body = await res.json()
+        return body.toolResults[0].output.error
+      }
+
+      expect(
+        await startPlan(
+          [
+            { unitRef: "unit.a", title: "A", dependsOn: [] },
+            { unitRef: "unit.a", title: "A again", dependsOn: [] },
+          ],
+          "fc1a-plan-duplicate",
+        ),
+      ).toMatchObject({
+        code: "invalid_request",
+        field: "workSource.units.unitRef",
+      })
+      expect(
+        await startPlan(
+          [{ unitRef: "unit.a", title: "A", dependsOn: ["unit.missing"] }],
+          "fc1a-plan-missing",
+        ),
+      ).toMatchObject({
+        code: "invalid_request",
+        field: "workSource.units.dependsOn",
+      })
+      expect(
+        await startPlan(
+          [
+            { unitRef: "unit.a", title: "A", dependsOn: ["unit.b"] },
+            { unitRef: "unit.b", title: "B", dependsOn: ["unit.a"] },
+          ],
+          "fc1a-plan-cycle",
+        ),
+      ).toMatchObject({
+        code: "invalid_request",
+        field: "workSource.units.dependsOn",
+      })
+    } finally {
+      if (savedTestMode === undefined) delete process.env.SARAH_ACCOUNT_LINK_TEST_MODE
+      else process.env.SARAH_ACCOUNT_LINK_TEST_MODE = savedTestMode
+    }
   })
 
   // KHS-9 (#8608): the operator handoff view for customer Blueprint drafts is
