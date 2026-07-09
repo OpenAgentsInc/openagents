@@ -912,6 +912,7 @@ const locallyTerminalAssignmentStatuses = new Set<AssignmentStatus>([
 ])
 const LOCAL_ASSIGNMENT_HEARTBEAT_INTERVAL_MS = 5_000
 const DEFAULT_LOCAL_ASSIGNMENT_HEARTBEAT_STALE_AFTER_MS = 90_000
+const MAX_LOCAL_ASSIGNMENT_HEARTBEAT_STALE_AFTER_MS = 15 * 60 * 1000
 const LEGACY_LOCAL_ACTIVE_LEASE_TTL_MS = 5 * 60 * 1000
 
 function defaultLocalProcessIsAlive(processId: number): boolean {
@@ -922,6 +923,108 @@ function defaultLocalProcessIsAlive(processId: number): boolean {
   } catch {
     return false
   }
+}
+
+export type PylonOwnerLocalAssignmentLiveness = "live" | "dead" | "unknown"
+
+export type ProbePylonOwnerLocalAssignmentLivenessInput = {
+  readonly assignmentRef: string
+  readonly assignmentStatePath: string
+  readonly heartbeatStaleAfterMs?: number | undefined
+  readonly now?: (() => Date) | undefined
+  readonly processIsAlive?: ((processId: number) => boolean) | undefined
+}
+
+const activeOwnerLocalAssignmentStatuses = new Set<AssignmentStatus>([
+  "accepted",
+  "running",
+])
+const ownerLocalAssignmentStatuses = new Set<AssignmentStatus>([
+  "offered",
+  ...activeOwnerLocalAssignmentStatuses,
+  ...locallyTerminalAssignmentStatuses,
+])
+
+const boundedOwnerHeartbeatStaleAfterMs = (value: number | undefined): number => {
+  if (value === undefined || !Number.isFinite(value) || value <= 0) {
+    return DEFAULT_LOCAL_ASSIGNMENT_HEARTBEAT_STALE_AFTER_MS
+  }
+  return Math.min(
+    MAX_LOCAL_ASSIGNMENT_HEARTBEAT_STALE_AFTER_MS,
+    Math.max(1, Math.floor(value)),
+  )
+}
+
+/**
+ * Resolve only the refs-only liveness verdict from the private assignment
+ * state file. Process IDs remain inside this function and are never returned.
+ */
+export async function probePylonOwnerLocalAssignmentLiveness(
+  input: ProbePylonOwnerLocalAssignmentLivenessInput,
+): Promise<PylonOwnerLocalAssignmentLiveness> {
+  if (!existsSync(input.assignmentStatePath)) return "unknown"
+
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(await readFile(input.assignmentStatePath, "utf8")) as unknown
+  } catch {
+    return "unknown"
+  }
+  if (
+    parsed === null ||
+    typeof parsed !== "object" ||
+    (parsed as { schema?: unknown }).schema !== "openagents.pylon.assignment_state.v0.3"
+  ) return "unknown"
+  const leases = (parsed as { leases?: unknown }).leases
+  if (leases === null || typeof leases !== "object" || Array.isArray(leases)) return "unknown"
+
+  const records = Object.values(leases as Record<string, unknown>)
+  if (records.some((record) => {
+    if (record === null || typeof record !== "object" || Array.isArray(record)) return true
+    const candidate = record as { assignmentRef?: unknown; status?: unknown }
+    return typeof candidate.assignmentRef !== "string" ||
+      candidate.assignmentRef.trim().length === 0 ||
+      typeof candidate.status !== "string" ||
+      !ownerLocalAssignmentStatuses.has(candidate.status as AssignmentStatus)
+  })) {
+    return "unknown"
+  }
+  const matching = records.filter((record) =>
+    (record as { assignmentRef?: unknown }).assignmentRef === input.assignmentRef
+  ) as Array<Record<string, unknown>>
+  if (matching.length !== 1) return "unknown"
+
+  const record = matching[0]!
+  const status = record.status
+  if (typeof status !== "string") return "unknown"
+  if (locallyTerminalAssignmentStatuses.has(status as AssignmentStatus)) return "dead"
+  if (!activeOwnerLocalAssignmentStatuses.has(status as AssignmentStatus)) return "unknown"
+
+  const ownerProcessId = record.ownerProcessId
+  if (!Number.isInteger(ownerProcessId) || (ownerProcessId as number) <= 0) return "unknown"
+  let processAlive: boolean
+  try {
+    processAlive = (input.processIsAlive ?? defaultLocalProcessIsAlive)(ownerProcessId as number)
+  } catch {
+    return "unknown"
+  }
+  if (!processAlive) return "dead"
+
+  const ownerHeartbeatAt = record.ownerHeartbeatAt
+  if (typeof ownerHeartbeatAt !== "string") return "unknown"
+  const heartbeatAtMs = Date.parse(ownerHeartbeatAt)
+  let observedAtMs: number
+  try {
+    observedAtMs = (input.now?.() ?? new Date()).getTime()
+  } catch {
+    return "unknown"
+  }
+  if (!Number.isFinite(heartbeatAtMs) || !Number.isFinite(observedAtMs)) return "unknown"
+  const heartbeatAgeMs = observedAtMs - heartbeatAtMs
+  if (heartbeatAgeMs < 0) return "unknown"
+  return heartbeatAgeMs > boundedOwnerHeartbeatStaleAfterMs(input.heartbeatStaleAfterMs)
+    ? "dead"
+    : "live"
 }
 
 function localLeaseRecordIsExpired(
