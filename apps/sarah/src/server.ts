@@ -63,6 +63,11 @@ import {
   linkSarahProspectAccount,
   resolveOpenAgentsSession,
 } from "./services/account-link.ts"
+import { sarahCodingFleetRunStoreIsInjectedForTest } from "./services/coding-fleet.ts"
+import {
+  startSarahCodingFleetRunThroughAuthority,
+  type SarahFleetAuthorityFetch,
+} from "./services/openagents-fleet-run-client.ts"
 import { sarahAvatarEventStream } from "./services/avatar-event-bus.ts"
 import {
   mintSarahAvatarSession,
@@ -88,6 +93,10 @@ const __dirname = fileURLToPath(new URL(".", import.meta.url))
 const UI_DIR =
   process.env.SARAH_UI_DIR?.trim() || join(__dirname, "ui")
 const PREFIX = "/sarah"
+
+export type SarahServerDependencies = Readonly<{
+  fleetAuthorityFetch?: SarahFleetAuthorityFetch | undefined
+}>
 
 function json(data: unknown, init: ResponseInit = {}) {
   const headers = new Headers(init.headers)
@@ -487,7 +496,10 @@ async function handleEveTurn(request: Request): Promise<Response> {
   return response
 }
 
-async function handleEveToolCall(request: Request): Promise<Response> {
+async function handleEveToolCall(
+  request: Request,
+  dependencies: SarahServerDependencies,
+): Promise<Response> {
   const body = (await request.json().catch(() => ({}))) as {
     toolName?: string
     args?: unknown
@@ -504,17 +516,38 @@ async function handleEveToolCall(request: Request): Promise<Response> {
     body.toolName === "coding_fleet_start"
       ? await resolveOpenAgentsSession(request)
       : null
+  const refreshedSessionCookies: Array<string> = []
+  const codingFleetStart =
+    body.toolName === "coding_fleet_start" &&
+    ownerSession !== null &&
+    !sarahCodingFleetRunStoreIsInjectedForTest()
+      ? async (args: unknown) => {
+          const authority = await startSarahCodingFleetRunThroughAuthority(
+            request,
+            args,
+            dependencies.fleetAuthorityFetch,
+          )
+          refreshedSessionCookies.push(...authority.refreshedSessionCookies)
+          return { ok: authority.ok, output: authority.output }
+        }
+      : undefined
   const result = await runOwnedSarahTurn({
     message: "",
     toolCall: {
       toolName: body.toolName ?? "",
       args: body.args ?? {},
-      toolCallId: body.toolCallId,
+      ...(body.toolCallId === undefined
+        ? {}
+        : { toolCallId: body.toolCallId }),
     },
     ...(ownerSession ? { ownerRef: ownerSession.userId } : {}),
+    ...(codingFleetStart === undefined ? {} : { codingFleetStart }),
     prospectRef,
   })
   const response = json(result)
+  refreshedSessionCookies.forEach(cookie =>
+    response.headers.append("set-cookie", cookie),
+  )
   if (mintedCookie) setSarahProspectCookie(response, prospectRef)
   return response
 }
@@ -680,7 +713,10 @@ async function serveAppBundle(): Promise<Response | null> {
   })
 }
 
-export async function handleSarahRequest(request: Request): Promise<Response> {
+export async function handleSarahRequest(
+  request: Request,
+  dependencies: SarahServerDependencies = {},
+): Promise<Response> {
   const url = new URL(request.url)
   const path = stripPrefix(url.pathname)
 
@@ -828,7 +864,7 @@ export async function handleSarahRequest(request: Request): Promise<Response> {
     return handleEveTurn(request)
   }
   if (apiPath === "/api/eve/tool-call" && request.method === "POST") {
-    return handleEveToolCall(request)
+    return handleEveToolCall(request, dependencies)
   }
   if (apiPath === "/api/operator/prospects" && request.method === "GET") {
     return handleOperatorProspects()
@@ -919,7 +955,7 @@ const port = Number(process.env.SARAH_PORT ?? process.env.PORT ?? 8790)
 if (import.meta.main) {
   Bun.serve({
     port,
-    fetch: handleSarahRequest,
+    fetch: request => handleSarahRequest(request),
   })
   console.log(
     JSON.stringify({

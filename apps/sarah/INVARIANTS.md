@@ -19,6 +19,19 @@
   set is the growth path (gaps via EN-2).
 - **Agent runtime:** HTTP turns use owned seed runtime; eve is not required for
   monorepo serving path.
+- **Coding FleetRun authority (FC-1, #8637):** the production
+  `coding_fleet_start` tool forwards its typed args and the existing human auth
+  context to the canonical OpenAgents base
+  (`SARAH_OPENAGENTS_BASE_URL`, production default `https://openagents.com`)
+  plus the fixed `/api/sarah/fleet-runs` contract. It does not trust the
+  incoming Cloud Run request origin as the authority origin. The
+  OpenAgents API derives owner and relationship policy and writes the Cloud SQL
+  Postgres authority; Sarah never sends owner/mode fields and never selects a
+  local JSON store from environment. The file store is explicit test injection
+  only. Sarah exactly decodes the public success/failure envelope with excess
+  properties rejected; malformed, private, or hostile upstream material
+  collapses to `invalid_response`. Refreshed OpenAuth cookies return on the
+  outer Sarah response and never enter tool output, receipts, or logs.
 - **Cross-prospect isolation (KHS-3, #8602):** no data from one prospect_ref
   may surface in another prospect's conversation. Isolation is enforced at the
   query layer — every prospect-scoped read (session-index and the KHS-2

@@ -131,13 +131,26 @@ describe("apps/sarah monorepo service", () => {
             },
           }),
         }),
+        {
+          fleetAuthorityFetch: () =>
+            Promise.resolve(
+              new Response(
+                JSON.stringify({
+                  ok: false,
+                  error: { code: "storage_unavailable", retryable: true },
+                  routeRef: "route.sarah.fleet_runs.authority.v1",
+                }),
+                { status: 503 },
+              ),
+            ),
+        },
       )
       const body = await res.json()
       expect(body.toolResults[0].ok).toBe(false)
-      expect(body.toolResults[0].output.error).toEqual({
-        code: "store_unavailable",
-        message:
-          "coding_fleet_start does not have an enabled durable fleet run store.",
+      expect(body.toolResults[0].output).toEqual({
+        ok: false,
+        error: { code: "storage_unavailable", retryable: true },
+        routeRef: "route.sarah.fleet_runs.authority.v1",
       })
     } finally {
       if (savedTestMode === undefined) delete process.env.SARAH_ACCOUNT_LINK_TEST_MODE
@@ -146,6 +159,142 @@ describe("apps/sarah monorepo service", () => {
       else process.env.SARAH_CODING_FLEET_RUNS_PATH = savedFleetPath
       if (savedLocalStore === undefined) delete process.env.SARAH_CODING_FLEET_START_LOCAL_STORE
       else process.env.SARAH_CODING_FLEET_START_LOCAL_STORE = savedLocalStore
+    }
+  })
+
+  test("authenticated coding_fleet_start reaches the Postgres authority HTTP adapter and propagates refreshed auth", async () => {
+    const savedTestMode = process.env.SARAH_ACCOUNT_LINK_TEST_MODE
+    process.env.SARAH_ACCOUNT_LINK_TEST_MODE = "1"
+    const authorityCalls: Array<Request> = []
+    try {
+      const response = await handleSarahRequest(
+        new Request("https://openagents.com/sarah/api/eve/tool-call", {
+          method: "POST",
+          headers: {
+            cookie: "oa_access=fixture-current",
+            "content-type": "application/json",
+            "x-sarah-test-oa-session": JSON.stringify({
+              userId: "owner-fc1-production-adapter",
+              email: "operator@example.com",
+            }),
+          },
+          body: JSON.stringify({
+            toolName: "coding_fleet_start",
+            toolCallId: "fc1-production-adapter",
+            args: {
+              objective: "Run issue 8637 through the durable authority.",
+              repository: {
+                owner: "OpenAgentsInc",
+                name: "openagents",
+                branch: "main",
+                commit: "6af4e38282e4e71882fc5fdd86ae8adadab6df50",
+              },
+              verifier: { kind: "command", command: "bun test" },
+              workSource: { kind: "issue_list", issueRefs: ["#8637"] },
+              workerPolicy: {
+                workerKind: "auto",
+                targetPreference: "owner_local",
+              },
+              targetConcurrency: 2,
+              idempotencyKey: "fc1-production-adapter-1",
+            },
+          }),
+        }),
+        {
+          fleetAuthorityFetch: request => {
+            authorityCalls.push(request)
+            const headers = new Headers({
+              "content-type": "application/json",
+            })
+            headers.append(
+              "set-cookie",
+              "oa_access=fixture-rotated; Path=/; HttpOnly; SameSite=Lax",
+            )
+            return Promise.resolve(
+              new Response(
+                JSON.stringify({
+                  ok: true,
+                  duplicate: false,
+                  policy: {
+                    source: "openagents_server_policy",
+                    relationshipMode: "operator",
+                    codingFleetStartAllowed: true,
+                    fleetObservationAllowed: true,
+                    retrievalScope: "owner_fleet_runs",
+                    responsePosture: "state_oriented",
+                    uiDensity: "dense",
+                    administratorToolsAllowed: false,
+                  },
+                  routeRef: "route.sarah.fleet_runs.authority.v1",
+                  run: {
+                    runRef: "fleet_run.sarah.aaaaaaaaaaaaaaaaaaaa",
+                    scope:
+                      "scope.fleet_run.fleet_run.sarah.aaaaaaaaaaaaaaaaaaaa",
+                    status: "pending_executor",
+                    objective:
+                      "Run issue 8637 through the durable authority.",
+                    repository: {
+                      owner: "OpenAgentsInc",
+                      name: "openagents",
+                      branch: "main",
+                      commit:
+                        "6af4e38282e4e71882fc5fdd86ae8adadab6df50",
+                    },
+                    verifier: { kind: "command", command: "bun test" },
+                    workSource: {
+                      kind: "issue_list",
+                      issueRefs: ["#8637"],
+                    },
+                    workerPolicy: {
+                      workerKind: "auto",
+                      targetPreference: "owner_local",
+                    },
+                    targetConcurrency: 2,
+                    createdAt: "2026-07-09T12:00:00.000Z",
+                    updatedAt: "2026-07-09T12:00:00.000Z",
+                    privateMaterialExcluded: true,
+                  },
+                }),
+                { headers },
+              ),
+            )
+          },
+        },
+      )
+
+      expect(response.status).toBe(200)
+      expect(authorityCalls).toHaveLength(1)
+      expect(new URL(authorityCalls[0]!.url).pathname).toBe(
+        "/api/sarah/fleet-runs",
+      )
+      expect(authorityCalls[0]!.headers.has("cookie")).toBe(true)
+      const authorityBody = (await authorityCalls[0]!.json()) as Record<
+        string,
+        unknown
+      >
+      expect(authorityBody).not.toHaveProperty("ownerUserId")
+      expect(authorityBody).not.toHaveProperty("ownerRef")
+      expect(authorityBody).not.toHaveProperty("relationshipMode")
+
+      const body = await response.json()
+      expect(body.toolResults[0]).toMatchObject({
+        ok: true,
+        output: {
+          ok: true,
+          policy: { relationshipMode: "operator" },
+          run: { runRef: "fleet_run.sarah.aaaaaaaaaaaaaaaaaaaa" },
+        },
+        toolName: "coding_fleet_start",
+      })
+      expect(response.headers.getSetCookie()).toHaveLength(2)
+      expect(JSON.stringify(body)).not.toContain("oa_access")
+      expect(JSON.stringify(body)).not.toContain("fixture-rotated")
+    } finally {
+      if (savedTestMode === undefined) {
+        delete process.env.SARAH_ACCOUNT_LINK_TEST_MODE
+      } else {
+        process.env.SARAH_ACCOUNT_LINK_TEST_MODE = savedTestMode
+      }
     }
   })
 
@@ -160,6 +309,9 @@ describe("apps/sarah monorepo service", () => {
 
   test("coding_fleet_start schema errors do not echo private input", async () => {
     const savedTestMode = process.env.SARAH_ACCOUNT_LINK_TEST_MODE
+    const fleetPath = installCodingFleetFileStoreForTest(
+      `server-fc1a-schema-${process.pid}.json`,
+    )
     process.env.SARAH_ACCOUNT_LINK_TEST_MODE = "1"
     try {
       const res = await handleSarahRequest(
@@ -206,6 +358,7 @@ describe("apps/sarah monorepo service", () => {
     } finally {
       if (savedTestMode === undefined) delete process.env.SARAH_ACCOUNT_LINK_TEST_MODE
       else process.env.SARAH_ACCOUNT_LINK_TEST_MODE = savedTestMode
+      await unlink(fleetPath).catch(() => {})
     }
   })
 
@@ -562,6 +715,9 @@ describe("apps/sarah monorepo service", () => {
 
   test("coding_fleet_start rejects private material and unknown worker kinds", async () => {
     const savedTestMode = process.env.SARAH_ACCOUNT_LINK_TEST_MODE
+    const fleetPath = installCodingFleetFileStoreForTest(
+      `server-fc1a-invalid-${process.pid}.json`,
+    )
     process.env.SARAH_ACCOUNT_LINK_TEST_MODE = "1"
     try {
       const res = await handleSarahRequest(
@@ -643,11 +799,15 @@ describe("apps/sarah monorepo service", () => {
     } finally {
       if (savedTestMode === undefined) delete process.env.SARAH_ACCOUNT_LINK_TEST_MODE
       else process.env.SARAH_ACCOUNT_LINK_TEST_MODE = savedTestMode
+      await unlink(fleetPath).catch(() => {})
     }
   })
 
   test("coding_fleet_start rejects unusable plan DAGs", async () => {
     const savedTestMode = process.env.SARAH_ACCOUNT_LINK_TEST_MODE
+    const fleetPath = installCodingFleetFileStoreForTest(
+      `server-fc1a-dag-${process.pid}.json`,
+    )
     process.env.SARAH_ACCOUNT_LINK_TEST_MODE = "1"
     try {
       const startPlan = async (
@@ -730,6 +890,7 @@ describe("apps/sarah monorepo service", () => {
     } finally {
       if (savedTestMode === undefined) delete process.env.SARAH_ACCOUNT_LINK_TEST_MODE
       else process.env.SARAH_ACCOUNT_LINK_TEST_MODE = savedTestMode
+      await unlink(fleetPath).catch(() => {})
     }
   })
 

@@ -277,6 +277,23 @@ describe.skipIf(!hasLocalPostgres())(
       expect(secondOwner.record.runRef).not.toBe(first.record.runRef)
       expect(first.record.scope).toBe(fleetRunScope(first.record.runRef))
 
+      const observed = await Effect.runPromise(
+        repository().observe({
+          ownerUserId: "user-owner-a",
+          runRef: first.record.runRef,
+        }),
+      )
+      expect(observed.record).toEqual(first.record)
+      const crossOwnerObservation = await Effect.runPromise(
+        repository()
+          .observe({
+            ownerUserId: "user-owner-b",
+            runRef: first.record.runRef,
+          })
+          .pipe(Effect.flip),
+      )
+      expect(crossOwnerObservation.kind).toBe("run_not_found")
+
       const runRows: Array<{ count: string | number }> = await sql`
         SELECT count(*) AS count FROM sarah_fleet_run_requests
         WHERE idempotency_key = 'create-atomic-1'

@@ -240,6 +240,10 @@ export function __setSarahCodingFleetRunStoreForTest(
   writeQueue = Promise.resolve()
 }
 
+export function sarahCodingFleetRunStoreIsInjectedForTest(): boolean {
+  return sarahCodingFleetRunStoreForTest !== null
+}
+
 class SarahCodingFleetStoreError extends Error {
   constructor(message: string) {
     super(message)

@@ -102,9 +102,14 @@ const approvedExactRoutePaths = [
   '/auth/logout',
   '/logout',
   '/api/auth/session',
+  '/api/sarah/fleet-runs',
   '/api/mobile/auth/session',
   '/api/mobile/session',
   '/api/mobile/model-preference',
+  '/api/mobile/codex-accounts',
+  '/api/mobile/codex-accounts/device-login/start',
+  '/api/mobile/claude-accounts',
+  '/api/mobile/claude-accounts/local-auth/import',
   '/api/mobile/signin-debug',
   // #8505 Part 1: mobile-bearer credit balance/transaction-history reads,
   // fixing #8480's shipped-but-dead REST routes. Backed by the authoritative
@@ -141,6 +146,7 @@ const approvedExactRoutePaths = [
   // here and the original queue-consumer dispatch runs unchanged.
   '/api/internal/queue/deliver',
   '/api/internal/khala-sync/db-smoke',
+  '/api/internal/khala-sync/capture-health',
   // Khala Sync public tokens-served reconcile/repair (KS-6.3, #8304):
   // admin bearer only; proves projection == SUM(exact token_usage_events
   // rows) (invariant 8) and hosts the explicit audited repair/backfill.
@@ -212,6 +218,8 @@ const approvedExactRoutePaths = [
   '/api/public/khala-tokens-served/channel-mix',
   '/api/public/settled-feed',
   '/api/khala/cloud/runtime-turn-usage',
+  '/api/khala/cloud/runtime-turn-writeback',
+  '/api/admin/khala/cloud/runtime-dispatch',
   '/api/pylon/codex/turns',
   '/api/pylon/codex/local-usage',
   '/api/pylon/claude/turns',
@@ -259,6 +267,8 @@ const approvedExactRoutePaths = [
   '/HEARTBEAT.md',
   '/RULES.md',
   '/skill.json',
+  '/demo',
+  '/new',
   '/lander2',
   '/lander3',
   '/lander4',

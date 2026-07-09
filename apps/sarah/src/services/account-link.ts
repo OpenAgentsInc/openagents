@@ -33,11 +33,17 @@ export const SARAH_ACCOUNT_CONTACT_ID_PREFIX = "oa_user:"
 /** mode value recorded on the contact row for account links. */
 export const SARAH_ACCOUNT_LINK_MODE = "account_link"
 
+export function sarahOpenAgentsBaseUrl(): string {
+  return (
+    process.env.SARAH_OPENAGENTS_BASE_URL?.trim().replace(/\/+$/, "") ||
+    "https://openagents.com"
+  )
+}
+
 function authBaseUrl(): string {
   return (
     process.env.SARAH_OPENAGENTS_AUTH_BASE_URL?.trim().replace(/\/+$/, "") ||
-    process.env.SARAH_OPENAGENTS_BASE_URL?.trim().replace(/\/+$/, "") ||
-    "https://openagents.com"
+    sarahOpenAgentsBaseUrl()
   )
 }
 

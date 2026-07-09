@@ -167,6 +167,13 @@ export const FleetRunAuthorityStartInput = S.Struct({
 export type FleetRunAuthorityStartInput =
   typeof FleetRunAuthorityStartInput.Type
 
+export const FleetRunAuthorityObserveInput = S.Struct({
+  ownerUserId: PublicOwnerRef,
+  runRef: TrimmedRunRef,
+})
+export type FleetRunAuthorityObserveInput =
+  typeof FleetRunAuthorityObserveInput.Type
+
 export const FleetRunAuthorityClaimInput = S.Struct({
   ownerUserId: PublicOwnerRef,
   pylonRef: PublicPylonRef,
@@ -221,6 +228,10 @@ export type FleetRunAuthorityStartResult = Readonly<{
   record: FleetRunAuthorityRecord
 }>
 
+export type FleetRunAuthorityObserveResult = Readonly<{
+  record: FleetRunAuthorityRecord
+}>
+
 export type FleetRunAuthorityClaimResult = Readonly<{
   duplicate: boolean
   claim: FleetRunIntakeClaim
@@ -257,6 +268,9 @@ export type FleetRunAuthorityRepositoryShape = Readonly<{
   start: (
     input: unknown,
   ) => Effect.Effect<FleetRunAuthorityStartResult, FleetRunAuthorityError>
+  observe: (
+    input: unknown,
+  ) => Effect.Effect<FleetRunAuthorityObserveResult, FleetRunAuthorityError>
   claim: (
     input: unknown,
   ) => Effect.Effect<FleetRunAuthorityClaimResult, FleetRunAuthorityError>
@@ -789,6 +803,29 @@ const createFleetRun = async (
   })
 }
 
+const observeFleetRun = async (
+  sql: SyncSql,
+  input: FleetRunAuthorityObserveInput,
+): Promise<FleetRunAuthorityObserveResult> =>
+  sql.begin(async tx => {
+    const rows: Array<FleetRunRequestRow> = await tx`
+      SELECT * FROM sarah_fleet_run_requests
+      WHERE run_ref = ${input.runRef}
+        AND owner_user_id = ${input.ownerUserId}
+    `
+    const row = rows[0]
+    if (row === undefined) {
+      throw fixedError(
+        "run_not_found",
+        "fleet run was not found for this owner",
+        { runRef: input.runRef },
+      )
+    }
+    const record = await recordFromRow(row)
+    await assertStoredWorkUnits(tx, record)
+    return { record }
+  })
+
 const requireClaimablePylon = async (
   sql: SqlTag,
   input: Pick<FleetRunAuthorityClaimInput, "ownerUserId" | "pylonRef">,
@@ -1184,6 +1221,19 @@ export const makeFleetRunAuthorityRepository = (
         })
       }),
   )
+  const observe = Effect.fn("FleetRunAuthorityRepository.observe")(
+    (rawInput: unknown) =>
+      Effect.gen(function* () {
+        const input = yield* Effect.try({
+          try: () => decodeUnknown(FleetRunAuthorityObserveInput, rawInput),
+          catch: authorityErrorFromUnknown,
+        })
+        return yield* Effect.tryPromise({
+          try: () => observeFleetRun(options.sql, input),
+          catch: authorityErrorFromUnknown,
+        })
+      }),
+  )
   const acceptClaim = Effect.fn("FleetRunAuthorityRepository.acceptClaim")(
     (rawInput: unknown) =>
       Effect.gen(function* () {
@@ -1199,7 +1249,7 @@ export const makeFleetRunAuthorityRepository = (
         })
       }),
   )
-  return { start, claim, acceptClaim }
+  return { start, observe, claim, acceptClaim }
 }
 
 export const fleetRunAuthorityRepositoryLayer = (

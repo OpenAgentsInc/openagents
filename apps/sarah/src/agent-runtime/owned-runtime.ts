@@ -61,6 +61,9 @@ export type OwnedSarahTurnInput = {
   threadId?: string
   prospectRef?: string
   ownerRef?: string
+  codingFleetStart?: (
+    args: unknown,
+  ) => Promise<{ ok: boolean; output: unknown }>
   toolCall?: { toolName: string; args: unknown; toolCallId?: string }
 }
 
@@ -103,7 +106,13 @@ async function loadPersona(): Promise<string> {
 async function runTool(
   toolName: string,
   args: unknown,
-  context: { ownerRef?: string; prospectRef?: string } = {},
+  context: {
+    ownerRef?: string
+    prospectRef?: string
+    codingFleetStart?: (
+      args: unknown,
+    ) => Promise<{ ok: boolean; output: unknown }>
+  } = {},
 ): Promise<{ ok: boolean; output: unknown }> {
   try {
     switch (toolName) {
@@ -168,10 +177,13 @@ async function runTool(
         const result = await buildCustomerBlueprintDraft(prospectRef)
         return { ok: result.ok, output: result }
       }
-      // FC-1A (#8637): authenticated owner-only coding fleet admission
-      // contract. The production route validates public-safe args but fails
-      // closed until a real durable fleet-run authority is injected.
+      // FC-1 (#8637): production starts through the authenticated OpenAgents
+      // FleetRun authority adapter. The local store path is injected by tests
+      // only and is never selected by process environment.
       case "coding_fleet_start": {
+        if (context.codingFleetStart !== undefined) {
+          return context.codingFleetStart(args)
+        }
         const result = await startSarahCodingFleetRun(args, {
           ownerRef: context.ownerRef,
         })
@@ -211,6 +223,9 @@ export async function runOwnedSarahTurn(
     const result = await runTool(toolName, args, {
       ...(input.ownerRef ? { ownerRef: input.ownerRef } : {}),
       ...(input.prospectRef ? { prospectRef: input.prospectRef } : {}),
+      ...(input.codingFleetStart === undefined
+        ? {}
+        : { codingFleetStart: input.codingFleetStart }),
     })
     const recorded = {
       toolCallId,

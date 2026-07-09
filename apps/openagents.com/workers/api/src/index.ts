@@ -377,6 +377,10 @@ import { makeD1BusinessPipelineStore } from './business-pipeline-queue'
 import { makeOperatorBusinessPipelineRoutes } from './business-pipeline-routes'
 import { makeOperatorSarahSalesCheckoutRoutes } from './sarah-sales-checkout-routes'
 import {
+  SARAH_FLEET_RUNS_PATH,
+  makeSarahFleetRunRoutes,
+} from './sarah-fleet-run-routes'
+import {
   makeD1BusinessStarterCreditStore,
 } from './business-starter-credit'
 import { makeOperatorBusinessStarterCreditRoutes } from './business-starter-credit-routes'
@@ -12218,6 +12222,46 @@ const optionalCommaSeparatedValues = (
   return values === undefined || values.length === 0 ? undefined : values
 }
 
+const sarahFleetRunRoutes = makeSarahFleetRunRoutes<Env>({
+  authenticateOwner: async (request, env, ctx) => {
+    const actor = await authenticateRequestActor(request, env, ctx)
+    if (actor === undefined || actor.kind !== 'human') {
+      return undefined
+    }
+    const tokens = actor.tokens
+    return {
+      userId: actor.user.userId,
+      email: actor.user.email,
+      ...(tokens === undefined
+        ? {}
+        : {
+            appendRefreshedSessionCookies: (response: Response) => {
+              appendSessionCookies(response.headers, tokens)
+              return response
+            },
+          }),
+    }
+  },
+  resolveRelationshipMode: async (owner, env) => {
+    if (isOpenAgentsAdminEmail(owner.email)) {
+      return 'administrator'
+    }
+    const teams = await readTeamsForUser(
+      openAgentsDatabase(env),
+      identityDbForEnv(env),
+      owner.userId,
+    )
+    const isCoreOperator = teams.some(
+      team =>
+        team.id === 'team_openagents_core' ||
+        team.slug === 'openagents-core-team' ||
+        team.name === 'OpenAgents Core Team',
+    )
+    return isCoreOperator ? 'operator' : 'customer'
+  },
+  bindingForEnv: env => env.KHALA_SYNC_DB,
+})
+
 const exactRouteRegistry = makeExactRouteRegistry<Env>([
   {
     path: '/',
@@ -13312,6 +13356,11 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     path: '/api/auth/session',
     handler: (request, env, ctx) =>
       Effect.promise(() => handleSessionApi(request, env, ctx)),
+  },
+  {
+    path: SARAH_FLEET_RUNS_PATH,
+    handler: (request, env, ctx) =>
+      Effect.promise(() => sarahFleetRunRoutes.handle(request, env, ctx)),
   },
   {
     path: '/api/mobile/auth/session',

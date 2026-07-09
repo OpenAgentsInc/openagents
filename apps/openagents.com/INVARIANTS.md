@@ -2297,11 +2297,42 @@ normalizedPatchDigest | behaviorReceiptDigest)`. Exactly one accepted
   details, local paths, credentials, prompts beyond the bounded public-safe
   objective, and private execution material never enter the FleetRun Sync
   post-image or public start result.
+- `POST|GET /api/sarah/fleet-runs` is the authenticated Sarah submission and
+  observation adapter over that same authority. It accepts only a verified
+  human OpenAuth context, derives `ownerUserId` from that context, and derives
+  `prospect | customer | operator | administrator` plus tool, retrieval,
+  response-posture, UI-density, and administrator-tool policy from server-owned
+  account/team policy. Owner or policy fields in request/query input are
+  rejected. Prospect mode cannot use the route, and an agent bearer does not
+  silently become a Sarah owner session.
+- The adapter requires the production `KHALA_SYNC_DB` Postgres binding and has
+  no D1, process-local JSON, in-memory, or environment-selectable fixture
+  fallback. It bounds request bytes, closes its SQL handle, maps authority
+  failures to fixed typed responses, and returns only
+  `publicFleetRunAuthorityRecord`; cross-owner observation is the same fixed
+  `run_not_found` as an absent run.
+- The actual Sarah `coding_fleet_start` tool reaches this adapter through the
+  canonical OpenAgents base resolver (`SARAH_OPENAGENTS_BASE_URL`, production
+  default `https://openagents.com`) plus the fixed route. The Cloud Run request
+  origin is not treated as the authority origin. It forwards only the existing
+  Cookie/User Authorization context plus the raw typed tool args; it never adds
+  an owner or relationship mode. Sarah decodes an exact Effect Schema
+  success/failure envelope with excess properties rejected; malformed, private,
+  or hostile responses collapse to a fixed `invalid_response` without echo. Any
+  refreshed OpenAuth `Set-Cookie` headers from the authority response are copied
+  onto the outer `/sarah/api/eve/tool-call` response and never enter tool output
+  or receipts. The earlier local file store remains available only through the
+  explicit in-process test setter; process environment cannot select it, and
+  production has no second successful start path.
 - Regression coverage lives in
-  `packages/khala-sync-server/src/fleet-run-authority.test.ts`, including real
-  Postgres atomicity, owner isolation, idempotency conflicts, active-link
-  revocation, stale-Pylon refusal, concurrent claim uniqueness, and lease
-  expiry.
+  `packages/khala-sync-server/src/fleet-run-authority.test.ts` and
+  `workers/api/src/sarah-fleet-run-routes.test.ts`, including real Postgres
+  atomicity, owner isolation, idempotency conflicts, active-link revocation,
+  stale-Pylon refusal, concurrent claim uniqueness, lease expiry,
+  unauthenticated/prospect refusal, policy ownership, no-fallback behavior,
+  bounded input, error redaction, public-safe cross-owner observation, actual
+  Sarah-tool HTTP handoff, restricted header forwarding, and refreshed-session
+  cookie propagation.
 
 ## Khala Coding Delegation Through Pylons
 
