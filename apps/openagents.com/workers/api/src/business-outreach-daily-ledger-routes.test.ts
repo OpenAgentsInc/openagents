@@ -61,14 +61,37 @@ const makeDb = (): D1Database => {
   db.exec(migration('0296_business_outreach_sequences.sql'))
   db.exec(migration('0026_email_ledger.sql'))
   db.exec(migration('0063_email_campaign_records.sql'))
+  db.exec(migration('0218_crm_contacts.sql'))
+  db.exec(migration('0270_business_funnel_events.sql'))
+  db.exec(migration('0310_crm_command_batches_and_replies.sql'))
   return new SqliteD1(db) as unknown as D1Database
 }
 
-type Env = Readonly<{ OPENAGENTS_DB: D1Database }>
+type Env = Readonly<{
+  OPENAGENTS_DB: D1Database
+  KHALA_SYNC_DB?: Readonly<{ connectionString: string }>
+}>
 
-const makeRoutes = (db: D1Database, adminUserId: string | undefined) =>
+type FakeSqlClient = Readonly<{
+  query: (
+    text: string,
+    params: ReadonlyArray<string>,
+  ) => Promise<ReadonlyArray<Record<string, unknown>>>
+  end: () => Promise<void>
+}>
+
+const makeRoutes = (
+  db: D1Database,
+  adminUserId: string | undefined,
+  options: Readonly<{
+    khalaSyncBinding?: (env: Env) => Readonly<{ connectionString: string }> | undefined
+    makeSqlClient?: (connectionString: string) => Promise<FakeSqlClient>
+  }> = {},
+) =>
   makeDailySalesLedgerRoutes<Env>({
     db: env => env.OPENAGENTS_DB,
+    khalaSyncBinding: options.khalaSyncBinding,
+    makeSqlClient: options.makeSqlClient,
     nowIso: () => '2026-07-08T12:00:00.000Z',
     requireAdminCaller: async (): Promise<AdminCaller | undefined> =>
       adminUserId === undefined ? undefined : { userId: adminUserId },
@@ -145,6 +168,72 @@ describe('daily sales ledger routes', () => {
     const body = (await response.json()) as { ledger: { since: string; until: string } }
     expect(body.ledger.since).toBe('2026-06-01')
     expect(body.ledger.until).toBe('2026-06-02')
+  })
+
+  test('reports conversations not_measured when KHALA_SYNC_DB is absent', async () => {
+    const db = makeDb()
+    const env: Env = { OPENAGENTS_DB: db }
+    const routes = makeRoutes(db, 'user_owner', {
+      khalaSyncBinding: e => e.KHALA_SYNC_DB,
+    })
+
+    const response = await routes.handleDailySalesLedgerApi(
+      new Request(
+        `https://openagents.com${ADMIN_OPS_DAILY_SALES_LEDGER_PATH}?since=2026-07-08&until=2026-07-08`,
+      ),
+      env,
+      fakeCtx,
+    )
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as {
+      ledger: {
+        engagementDays: Array<{ conversations: { status: string; reasonRef?: string } }>
+      }
+    }
+    expect(body.ledger.engagementDays[0]?.conversations).toEqual({
+      reasonRef: 'reason.ob6.khala_sync_db_binding_absent',
+      status: 'not_measured',
+    })
+  })
+
+  test('measures conversations through the khala-sync binding when present', async () => {
+    const db = makeDb()
+    const env: Env = {
+      KHALA_SYNC_DB: { connectionString: 'postgres://khala-sync-test' },
+      OPENAGENTS_DB: db,
+    }
+    const seenConnectionStrings: Array<string> = []
+    const routes = makeRoutes(db, 'user_owner', {
+      khalaSyncBinding: e => e.KHALA_SYNC_DB,
+      makeSqlClient: async connectionString => {
+        seenConnectionStrings.push(connectionString)
+        return {
+          end: async () => {},
+          query: async () => [{ count: 4, day: '2026-07-08' }],
+        }
+      },
+    })
+
+    const response = await routes.handleDailySalesLedgerApi(
+      new Request(
+        `https://openagents.com${ADMIN_OPS_DAILY_SALES_LEDGER_PATH}?since=2026-07-08&until=2026-07-08`,
+      ),
+      env,
+      fakeCtx,
+    )
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as {
+      ledger: {
+        digestLine: string
+        engagementDays: Array<{ conversations: { status: string; count?: number } }>
+      }
+    }
+    expect(seenConnectionStrings).toEqual(['postgres://khala-sync-test'])
+    expect(body.ledger.engagementDays[0]?.conversations).toEqual({
+      count: 4,
+      status: 'measured',
+    })
+    expect(body.ledger.digestLine).toContain('conversations 4')
   })
 
   test('400s on an invalid window instead of throwing', async () => {

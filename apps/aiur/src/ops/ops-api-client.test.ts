@@ -69,7 +69,22 @@ describe('fetchDailySalesLedger (OB-6, #8563)', () => {
               closedWon: 0,
               closedLost: 0,
             },
-            digestLine: '2026-07-01 sales ledger: sourced 0, drafted 0, sent 0, delivered 0, bounced 0, complained 0 (deliverability: not_measured), quoted 0, closes 0.',
+            engagementDays: [
+              {
+                date: '2026-07-01',
+                replies: { status: 'measured', count: 2 },
+                reportClicks: { status: 'measured', count: 1 },
+                conversations: {
+                  status: 'not_measured',
+                  reasonRef: 'reason.ob6.khala_sync_db_binding_absent',
+                },
+              },
+            ],
+            operatorMinutes: {
+              status: 'not_measured',
+              reasonRef: 'reason.ob6.operator_minutes_pending_ob4_batch_timing',
+            },
+            digestLine: '2026-07-01 sales ledger: sourced 0, drafted 0, sent 0, delivered 0, bounced 0, complained 0 (deliverability: not_measured), replies 2, report clicks 1, conversations n/m, quoted 0, closes 0.',
             notMeasured: [],
           },
         }),
@@ -81,6 +96,14 @@ describe('fetchDailySalesLedger (OB-6, #8563)', () => {
       const result = await fetchDailySalesLedger()
       expect(capturedUrl).toBe('/api/admin/ops/daily-sales-ledger')
       expect(result.ok).toBe(true)
+      if (result.ok) {
+        expect(result.value.ledger.engagementDays).toHaveLength(1)
+        expect(result.value.ledger.engagementDays[0]?.replies).toEqual({
+          count: 2,
+          status: 'measured',
+        })
+        expect(result.value.ledger.operatorMinutes.status).toBe('not_measured')
+      }
     } finally {
       globalThis.fetch = originalFetch
     }

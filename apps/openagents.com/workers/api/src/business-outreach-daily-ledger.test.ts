@@ -62,8 +62,59 @@ const makeDb = (): D1Database => {
   db.exec(migration('0296_business_outreach_sequences.sql'))
   db.exec(migration('0026_email_ledger.sql'))
   db.exec(migration('0063_email_campaign_records.sql'))
+  db.exec(migration('0218_crm_contacts.sql'))
+  db.exec(migration('0270_business_funnel_events.sql'))
+  db.exec(migration('0310_crm_command_batches_and_replies.sql'))
   return new SqliteD1(db) as unknown as D1Database
 }
+
+const insertReplyEvent = async (
+  db: D1Database,
+  id: string,
+  createdAt: string,
+): Promise<void> => {
+  await db
+    .prepare(
+      `INSERT INTO crm_reply_events (
+        id, tenant_ref, contact_id, from_email, provider, routed_to, created_at
+      ) VALUES (?, 'tenant.openagents', NULL, 'prospect@example.com',
+                'inbound_webhook', 'operator_notification', ?)`,
+    )
+    .bind(id, createdAt)
+    .run()
+}
+
+const insertFunnelEvent = async (
+  db: D1Database,
+  eventRef: string,
+  occurredAt: string,
+): Promise<void> => {
+  await db
+    .prepare(
+      `INSERT INTO business_funnel_events (
+        id, event_ref, stage, source_kind, source_ref, occurred_at, observed_at
+      ) VALUES (?, ?, 'visit', 'outbound', 'source.test', ?, ?)`,
+    )
+    .bind(`funnel-${eventRef}`, eventRef, occurredAt, occurredAt)
+    .run()
+}
+
+/** Canned khala-sync Postgres fake for the Sarah conversations read. */
+const fakeSarahTurnStore = (
+  rows: ReadonlyArray<Record<string, unknown>>,
+  observed?: { queries: Array<{ text: string; params: ReadonlyArray<string> }>; ended: number },
+) => ({
+  binding: { connectionString: 'postgres://fake' },
+  makeSqlClient: async (_connectionString: string) => ({
+    end: async () => {
+      if (observed) observed.ended += 1
+    },
+    query: async (text: string, params: ReadonlyArray<string>) => {
+      observed?.queries.push({ params, text })
+      return rows
+    },
+  }),
+})
 
 const insertPipelineRow = async (
   db: D1Database,
@@ -162,9 +213,32 @@ describe('computeDailySalesLedger', () => {
     ).toBe(true)
     expect(ledger.notMeasured.map(entry => entry.field).sort()).toEqual([
       'conversations',
-      'replies',
-      'reportClicks',
+      'conversations.perSegment',
+      'operatorMinutes',
+      'replies.perSegment',
+      'reportClicks.perSegment',
     ])
+    // Replies/report clicks are measured per day (their event tables exist
+    // and are simply empty); conversations are not (no khala-sync source).
+    expect(ledger.engagementDays).toHaveLength(2)
+    expect(
+      ledger.engagementDays.every(
+        day =>
+          day.replies.status === 'measured' &&
+          day.replies.count === 0 &&
+          day.reportClicks.status === 'measured' &&
+          day.reportClicks.count === 0 &&
+          day.conversations.status === 'not_measured',
+      ),
+    ).toBe(true)
+    const conversations = ledger.engagementDays[0]?.conversations
+    expect(conversations?.status === 'not_measured' && conversations.reasonRef).toBe(
+      'reason.ob6.khala_sync_db_binding_absent',
+    )
+    expect(ledger.operatorMinutes).toEqual({
+      reasonRef: 'reason.ob6.operator_minutes_pending_ob4_batch_timing',
+      status: 'not_measured',
+    })
   })
 
   test('aggregates a sourced pipeline row into the correct day and segment', async () => {
@@ -331,6 +405,110 @@ describe('computeDailySalesLedger', () => {
     expect(ledger.totals.optOuts).toBe(1)
   })
 
+  test('counts inbound replies per day from crm_reply_events', async () => {
+    const db = makeDb()
+    await insertReplyEvent(db, 'reply-1', '2026-07-01T10:00:00.000Z')
+    await insertReplyEvent(db, 'reply-2', '2026-07-01T18:30:00.000Z')
+    await insertReplyEvent(db, 'reply-3', '2026-07-02T08:00:00.000Z')
+
+    const ledger = await computeDailySalesLedger(db, {
+      since: '2026-07-01',
+      until: '2026-07-02',
+    })
+
+    expect(ledger.engagementDays.map(day => day.replies)).toEqual([
+      { count: 2, status: 'measured' },
+      { count: 1, status: 'measured' },
+    ])
+    // Per-segment replies stay honest: the event rows carry no segment ref.
+    expect(
+      ledger.segmentDays.every(row => row.replies.status === 'not_measured'),
+    ).toBe(true)
+  })
+
+  test('counts only readiness-report click funnel events, per day', async () => {
+    const db = makeDb()
+    await insertFunnelEvent(
+      db,
+      'agent_readiness_report_click_tok123_1',
+      '2026-07-01T09:00:00.000Z',
+    )
+    await insertFunnelEvent(
+      db,
+      'agent_readiness_report_click_tok123_2',
+      '2026-07-02T09:00:00.000Z',
+    )
+    // A non-click funnel receipt must NOT count as a report click.
+    await insertFunnelEvent(db, 'business_signup_visit_001', '2026-07-01T09:30:00.000Z')
+
+    const ledger = await computeDailySalesLedger(db, {
+      since: '2026-07-01',
+      until: '2026-07-02',
+    })
+
+    expect(ledger.engagementDays.map(day => day.reportClicks)).toEqual([
+      { count: 1, status: 'measured' },
+      { count: 1, status: 'measured' },
+    ])
+  })
+
+  test('counts Sarah conversations per day from the khala-sync turn store', async () => {
+    const db = makeDb()
+    const observed: {
+      ended: number
+      queries: Array<{ text: string; params: ReadonlyArray<string> }>
+    } = { ended: 0, queries: [] }
+    const ledger = await computeDailySalesLedger(db, {
+      sarahTurnStore: fakeSarahTurnStore(
+        [
+          { count: 3, day: '2026-07-01' },
+          // postgres.js may hand counts back as strings; both must parse.
+          { count: '1', day: '2026-07-02' },
+        ],
+        observed,
+      ),
+      since: '2026-07-01',
+      until: '2026-07-02',
+    })
+
+    expect(ledger.engagementDays.map(day => day.conversations)).toEqual([
+      { count: 3, status: 'measured' },
+      { count: 1, status: 'measured' },
+    ])
+    expect(ledger.notMeasured.map(entry => entry.field)).not.toContain('conversations')
+    expect(observed.queries).toHaveLength(1)
+    expect(observed.queries[0]?.text).toContain('sarah_transcript_turns')
+    expect(observed.queries[0]?.text).toContain("role = 'user'")
+    expect(observed.queries[0]?.params).toEqual(['2026-07-01', '2026-07-02'])
+    expect(observed.ended).toBe(1)
+  })
+
+  test('reports conversations as not_measured when the turn-store read fails', async () => {
+    const db = makeDb()
+    const ledger = await computeDailySalesLedger(db, {
+      sarahTurnStore: {
+        binding: { connectionString: 'postgres://fake' },
+        makeSqlClient: async () => ({
+          end: async () => {},
+          query: async () => {
+            throw new Error('connection refused')
+          },
+        }),
+      },
+      since: '2026-07-01',
+      until: '2026-07-01',
+    })
+
+    const conversations = ledger.engagementDays[0]?.conversations
+    expect(conversations).toEqual({
+      reasonRef: 'reason.ob6.sarah_turn_store_unreachable',
+      status: 'not_measured',
+    })
+    expect(
+      ledger.notMeasured.find(entry => entry.field === 'conversations')?.reasonRef,
+    ).toBe('reason.ob6.sarah_turn_store_unreachable')
+  })
+
   test('renders a one-line digest for the latest day in the window', async () => {
     const db = makeDb()
     await insertPipelineRow(db, {
@@ -340,12 +518,33 @@ describe('computeDailySalesLedger', () => {
       vertical: 'marketplace',
     })
 
+    await insertReplyEvent(db, 'reply-digest-1', '2026-07-02T10:00:00.000Z')
+    await insertFunnelEvent(
+      db,
+      'agent_readiness_report_click_tokd_1',
+      '2026-07-02T11:00:00.000Z',
+    )
+
     const ledger = await computeDailySalesLedger(db, {
+      sarahTurnStore: fakeSarahTurnStore([{ count: 2, day: '2026-07-02' }]),
       since: '2026-07-01',
       until: '2026-07-02',
     })
 
     expect(ledger.digestLine).toContain('2026-07-02 sales ledger:')
     expect(ledger.digestLine).toContain('sourced 1')
+    expect(ledger.digestLine).toContain('replies 1')
+    expect(ledger.digestLine).toContain('report clicks 1')
+    expect(ledger.digestLine).toContain('conversations 2')
+  })
+
+  test('digest marks engagement metrics n/m when conversations are not measured', async () => {
+    const db = makeDb()
+    const ledger = await computeDailySalesLedger(db, {
+      since: '2026-07-01',
+      until: '2026-07-01',
+    })
+    expect(ledger.digestLine).toContain('conversations n/m')
+    expect(ledger.digestLine).toContain('replies 0')
   })
 })

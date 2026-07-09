@@ -136,6 +136,17 @@ export type DailySalesLedgerTotals = Readonly<{
   closedLost: number
 }>
 
+export type DailySalesLedgerCountMetric =
+  | Readonly<{ status: 'measured'; count: number }>
+  | DailySalesLedgerNotMeasured
+
+export type DailySalesLedgerEngagementDay = Readonly<{
+  date: string
+  replies: DailySalesLedgerCountMetric
+  reportClicks: DailySalesLedgerCountMetric
+  conversations: DailySalesLedgerCountMetric
+}>
+
 export type DailySalesLedger = Readonly<{
   since: string
   until: string
@@ -143,7 +154,9 @@ export type DailySalesLedger = Readonly<{
   segmentRefs: ReadonlyArray<string>
   segmentDays: ReadonlyArray<DailySalesLedgerSegmentDay>
   deliverabilityDays: ReadonlyArray<DailySalesLedgerDeliverabilityDay>
+  engagementDays: ReadonlyArray<DailySalesLedgerEngagementDay>
   totals: DailySalesLedgerTotals
+  operatorMinutes: DailySalesLedgerNotMeasured
   digestLine: string
   notMeasured: ReadonlyArray<Readonly<{ field: string; reasonRef: string }>>
 }>

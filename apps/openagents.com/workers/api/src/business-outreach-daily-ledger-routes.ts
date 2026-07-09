@@ -6,8 +6,10 @@
 import {
   computeDailySalesLedger,
   DailySalesLedgerValidationError,
+  type SarahTurnStoreSqlClient,
 } from './business-outreach-daily-ledger'
 import { methodNotAllowed, noStoreJsonResponse, unauthorized } from './http/responses'
+import { defaultMakeSqlClient } from './khala-sync-db-smoke-routes'
 import { currentIsoTimestamp } from './runtime-primitives'
 
 type HttpResponse = globalThis.Response
@@ -18,6 +20,18 @@ export type AdminCaller = Readonly<{ userId: string }>
 
 export type DailySalesLedgerRouteDependencies<Bindings> = Readonly<{
   db: (env: Bindings) => D1Database
+  /**
+   * `env.KHALA_SYNC_DB` — the khala-sync Postgres the Sarah service writes
+   * `sarah_transcript_turns` to. Absent binding => conversations reported
+   * as `not_measured` (never zero-faked).
+   */
+  khalaSyncBinding?:
+    | ((env: Bindings) => Readonly<{ connectionString: string }> | undefined)
+    | undefined
+  /** Injectable Postgres client factory (tests). Default: shared pg pool. */
+  makeSqlClient?:
+    | ((connectionString: string) => Promise<SarahTurnStoreSqlClient>)
+    | undefined
   nowIso?: () => string
   requireAdminCaller: (
     request: Request,
@@ -50,6 +64,10 @@ const routeDailySalesLedger = async <Bindings>(
   try {
     const ledger = await computeDailySalesLedger(dependencies.db(env), {
       nowIso: () => nowIso,
+      sarahTurnStore: {
+        binding: dependencies.khalaSyncBinding?.(env),
+        makeSqlClient: dependencies.makeSqlClient ?? defaultMakeSqlClient,
+      },
       since,
       until,
     })

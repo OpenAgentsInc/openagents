@@ -14,6 +14,7 @@ import {
   fetchOpsHealth,
   fetchOpsRuns,
   type DailySalesLedger,
+  type DailySalesLedgerCountMetric,
   type OpsHealthCheck,
   type OpsRun,
 } from './ops-api-client'
@@ -171,6 +172,9 @@ const healthDotClass = (health: string): string =>
         ? 'bg-khala-danger'
         : 'bg-khala-text-faint'
 
+const renderCountMetric = (metric: DailySalesLedgerCountMetric): string =>
+  metric.status === 'measured' ? String(metric.count) : 'n/m'
+
 function DailySalesLedgerPanel() {
   const [ledger, setLedger] = useState<DailySalesLedger | undefined>(undefined)
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading')
@@ -240,6 +244,23 @@ function DailySalesLedgerPanel() {
                 </li>
               ))}
             </ul>
+            {ledger.engagementDays !== undefined && ledger.engagementDays.length > 0 && (
+              <ul className="grid gap-0" data-testid="daily-sales-ledger-engagement">
+                {ledger.engagementDays.map(day => (
+                  <li
+                    className="flex items-center justify-between border-b border-khala-border py-1.5 text-sm text-khala-text"
+                    key={day.date}
+                  >
+                    <span>{day.date}</span>
+                    <span className="text-khala-text-muted">
+                      replies {renderCountMetric(day.replies)} / report clicks{' '}
+                      {renderCountMetric(day.reportClicks)} / conversations{' '}
+                      {renderCountMetric(day.conversations)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
             {ledger.notMeasured.length > 0 && (
               <p className="text-xs text-khala-text-faint" data-testid="daily-sales-ledger-gaps">
                 Not yet measured: {ledger.notMeasured.map(entry => entry.field).join(', ')}.

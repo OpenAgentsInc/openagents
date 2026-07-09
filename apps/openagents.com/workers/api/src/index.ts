@@ -4191,9 +4191,12 @@ const adminOpsRoutes = makeAdminOpsRoutes<Env>({
 })
 
 // OB-6 (P1 Track C, #8563): the daily sales ledger reuses the exact same
-// owner-gate composition as the credits/ops consoles above.
+// owner-gate composition as the credits/ops consoles above. The khala-sync
+// binding feeds the Sarah conversations count (sarah_transcript_turns);
+// when absent, conversations stay honestly not_measured.
 const dailySalesLedgerRoutes = makeDailySalesLedgerRoutes<Env>({
   db: openAgentsDatabase,
+  khalaSyncBinding: env => env.KHALA_SYNC_DB,
   requireAdminCaller: async (request, env, ctx) => {
     const session = await requireUserBearerSession(request, env, ctx)
     if (session === undefined) return undefined
