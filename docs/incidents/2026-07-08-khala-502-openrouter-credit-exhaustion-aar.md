@@ -104,6 +104,31 @@ Language API** `POST https://generativelanguage.googleapis.com/v1beta/models/gem
 none, so tool-bearing Khala must stay on the GLM/Fireworks lanes). Until that
 lands, "gcloud primarily" = the Vertex Gemini lane leads.
 
+### Lane-drop deploy + verification (2026-07-09)
+
+Commit on `main`: `cdd18401ae`. Deployed via the sanctioned monolith path
+(`apps/openagents.com/workers/api/scripts/deploy-cloudrun.sh`, automation SA):
+staging revision `openagents-monolith-staging-00027-6tz` (healthz 200), then
+production revision `openagents-monolith-00049-jpc` (healthz 200). Prod service
+env confirmed to NO LONGER carry `OPENROUTER_API_KEY` (Vertex/Fireworks/Gemini
+keys retained).
+
+Verification (prod, authenticated `POST /api/v1/chat/completions`,
+`openagents/khala`):
+
+- Normal requests (`max_tokens` ≥ 64) now serve on `worker=vertex-gemini`
+  (our gcloud lane) with `fallback_reason=null`, ~1.5s — OpenRouter is no longer
+  attempted, so the ~0.5s dead-lane 402 hop is gone. Baseline pre-deploy was
+  `worker=fireworks` (overflowing past the exhausted OpenRouter lead), ~2.1–5.8s.
+- Very small requests (`max_tokens=8`, e.g. the canary) still land on
+  `worker=fireworks` — but now via a single `empty_assistant_content` overflow
+  off the Vertex primary (a thinking-model artifact when the token budget is too
+  small to emit text), NOT the old double hop (OpenRouter 402 → Vertex → …).
+  Minor follow-up: consider a min-output-token floor for the Khala Vertex lane so
+  tiny budgets still emit text.
+- Official canary (`scripts/khala-canary.sh`) run twice post-deploy:
+  `state=up, http=200, counterDelta=842` then `1684` (exit 0 both).
+
 ## Outstanding (superseded by "Lane dropped" above)
 
 - ~~**Owner-gated:** the OpenRouter account balance is still ~0…~~ Resolved: the
