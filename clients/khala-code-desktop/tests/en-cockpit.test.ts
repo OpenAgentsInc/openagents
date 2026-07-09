@@ -73,7 +73,7 @@ describe("EN cockpit view (MH-7 / EN-5)", () => {
     const serialized = JSON.stringify(tree)
 
     expect(structure).toMatchObject({ tag: "Stack", key: "cockpit-root" })
-    expect(serialized).toContain('"catalogVersion":"effect-native/v19"')
+    expect(serialized).toContain('"catalogVersion":"effect-native/v25"')
     expect(serialized).toContain("Fleet cockpit")
     expect(serialized).toContain("CockpitRunControl")
     expect(serialized).toContain("CockpitApprovalDecision")

@@ -29,7 +29,7 @@ describe('EN-1 stage1 Effect Native route', () => {
       tag: 'Stack',
       key: 'stage1-root',
     })
-    expect(serialized).toContain('"catalogVersion":"effect-native/v19"')
+    expect(serialized).toContain('"catalogVersion":"effect-native/v25"')
     expect(serialized).toContain('Software, built by agents.')
     expect(serialized).toContain('Stage1Navigated')
     expect(serialized).not.toContain('className')

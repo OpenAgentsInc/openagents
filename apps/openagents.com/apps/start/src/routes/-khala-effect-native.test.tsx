@@ -29,7 +29,7 @@ describe('EN-4 /khala Effect Native route', () => {
       tag: 'Stack',
       key: 'khala-root',
     })
-    expect(serialized).toContain('"catalogVersion":"effect-native/v19"')
+    expect(serialized).toContain('"catalogVersion":"effect-native/v25"')
     expect(serialized).toContain('openagents/khala')
     expect(serialized).toContain('https://openagents.com/api/v1')
     expect(serialized).toContain('POST /api/keys/free')
