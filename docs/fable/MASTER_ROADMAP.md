@@ -1,6 +1,24 @@
-# MASTER ROADMAP — Khala Code MVP (Tested, Submitted) → Sarah → Codex → AI Employees → the Suite
+# MASTER ROADMAP — Sarah-first: one front door (Khala Code MVP ships; everything else becomes what Sarah can do)
 
-Date: 2026-07-09 (rev 6.17 — OAV-2 closeout + live queue refresh)
+Date: 2026-07-09 (rev 6.18 — SARAH-FIRST ADOPTED as the product frame)
+
+**Rev 6.18 changes (owner decision, 2026-07-09 — SARAH-FIRST):** the
+roadmap adopts `docs/fable/2026-07-09-sarah-first-product-thesis.md` in
+full. Sarah is THE core product: fleet work, coding, standing employees,
+and the company brain are CAPABILITIES surfaced through her one
+conversational surface (video + Blueprint Map canvas, epic #8626), with
+the Khala model, gateway, and Pylon/Codex fleets as the engine room and
+the mobile app as Sarah in your pocket. Phase mechanics below are
+unchanged where they build capability; their FRONT ENDS re-target to
+Sarah's conversation + canvas: P2's user entry is Sarah (CLI/desktop stay
+power tools), P3/P4 become "deepen Sarah" (roles behind approval gates;
+CB-1 matures the Blueprint Map into the brain), the mobile home screen is
+Sarah, and the conversation loop's quality (OAV realtime #8610/#8621,
+turn latency, ASR, persona-neutral Khala lane #8600) is core-product P0
+work. Prerequisite chain for the first vertical slice: BM-1..5
+(#8627-#8631) → authenticated "run issue N on my fleet" through Sarah's
+conversation over the existing typed Khala→Pylon→Codex rail (dogfood,
+operator exemption) → #8600 persona-neutral model id for prod.
 Status: **the single consolidated execution roadmap.** This document owns
 top-level sequencing across everything designed in the 2026-07-07 strategy
 set and its predecessors. The source docs remain authoritative for their
@@ -1347,6 +1365,10 @@ end to end.
 
 ## P2 — Your Codex on your agent computer (CX-1..9) — the workflow cutover sprint
 
+> **Sarah-first (rev 6.18):** CX lanes keep the workflow cutover; the
+> user-facing entry becomes Sarah's conversation + canvas. Desktop/CLI
+> remain power tools, not the front door.
+
 Spec: `2026-07-07-beyond-mvp-codex-agent-computers-and-ai-employees.md`
 §2/§6. **Sprint goal (owner, 2026-07-08): switch our own coding to Khala
 Code mobile — we use Codex primarily and want all our coding through
@@ -1425,6 +1447,10 @@ last.
 
 ## P3 — Standing employees (AE-1: the cloud lane unification)
 
+> **Sarah-first (rev 6.18):** standing employees begin as Sarah wearing
+> more roles behind approval gates on her existing chassis (KHS memory,
+> Blueprint, receipts) — not parallel product builds.
+
 The definition cloud lane IS the Agent Computer (retires the parked
 `cloud_workroom` framing). Spec: integration doc Phase 1 = overarching
 roadmap H2.
@@ -1442,6 +1468,10 @@ computer for 7 consecutive days, zero desktop involvement, exact token +
 lifecycle receipts nightly, auto-pause proven on budget exhaustion.
 
 ## P4 — The employee and the brain (AE-2..4 + CB-1, Blueprint-lite)
+
+> **Sarah-first (rev 6.18):** CB-1 is the Blueprint Map's maturation
+> (#8626 → the company brain); "generalizes Sarah" is now literal —
+> capabilities land inside her first.
 
 Specs: integration doc Phases 2–3; post-MVP doc §3; sovereignty analysis
 §3 (the brain adopts the **Blueprint-lite typed vocabulary** — typed
