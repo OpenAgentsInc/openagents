@@ -6,6 +6,7 @@ import { tmpdir } from "node:os"
 import {
   parsePylonAuthArgs,
   resolveOpenAgentsAgentToken,
+  runPylonAuthClaude,
   runPylonAuthCodex,
   runPylonAuthOpenAgents,
 } from "../src/auth"
@@ -267,9 +268,44 @@ describe("pylon auth", () => {
       expect(result.projection.deviceLogin.status).toBe("already_linked")
       expect(JSON.stringify(result.projection)).not.toContain("oa_agent_fixture_789")
       assertPublicProjectionSafe(result.projection)
-      expect(() => parsePylonAuthArgs(["claude"])).toThrow(/pylon auth openagents\|codex/)
+      expect(parsePylonAuthArgs(["claude", "--account", "claude-a", "--token", "sk-ant-oat-x", "--json"])).toMatchObject({
+        target: "claude",
+        accountRef: "claude-a",
+        setupToken: "sk-ant-oat-x",
+        json: true,
+      })
+      expect(() => parsePylonAuthArgs(["claude", "--force-device-login"])).toThrow(/does not use device-login/)
+      expect(() => parsePylonAuthArgs(["codex", "--token", "sk-ant-oat-x"])).toThrow(/only valid for pylon auth claude/)
+      expect(() => parsePylonAuthArgs(["gemini"])).toThrow(/pylon auth openagents\|codex\|claude/)
       expect(() => parsePylonAuthArgs(["openagents", "--account", "codex-a"])).toThrow(/does not take --account/)
       expect(() => parsePylonAuthArgs(["codex", "--account", "../bad"])).toThrow(/letters, numbers/)
+    })
+  })
+
+  test("connects Claude via setup-token without projecting token material", async () => {
+    await withHome(async home => {
+      const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), {
+        PYLON_HOME: home,
+      })
+      const secret = "sk-ant-oat-auth-cli-secret"
+      const projection = await runPylonAuthClaude(
+        summary,
+        parsePylonAuthArgs(["claude", "--account", "claude-auth", "--token", secret, "--json"]),
+        { env: { PYLON_HOME: home } },
+      )
+      expect(projection).toMatchObject({
+        schema: "pylon.auth.claude.v1",
+        status: "connected",
+        accountRef: "claude-auth",
+        provider: "claude_agent",
+        localClaude: { setupTokenStatus: "completed", reason: "setup_token" },
+      })
+      assertPublicProjectionSafe(projection)
+      expect(JSON.stringify(projection)).not.toContain(secret)
+      expect(JSON.stringify(projection)).not.toContain("sk-ant-oat")
+      expect(await readFile(join(home, "accounts", "claude_agent", "claude-auth", "claude-oauth-token"), "utf8")).toBe(
+        `${secret}\n`,
+      )
     })
   })
 

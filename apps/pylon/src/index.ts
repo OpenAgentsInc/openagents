@@ -98,6 +98,7 @@ import {
 import {
   parsePylonAuthArgs,
   resolveOpenAgentsAgentToken,
+  runPylonAuthClaude,
   runPylonAuthCodex,
   runPylonAuthOpenAgents,
 } from "./auth.js"
@@ -3315,6 +3316,24 @@ async function main() {
         return
       }
 
+      if (options.target === "claude") {
+        const projection = await runPylonAuthClaude(summary, options, {
+          env: Bun.env,
+        })
+        if (options.json) {
+          process.stdout.write(`${JSON.stringify(projection, null, 2)}\n`)
+        } else {
+          const verb =
+            projection.localClaude.setupTokenStatus === "skipped_existing_auth"
+              ? "Reused"
+              : "Connected"
+          process.stdout.write(
+            `✓ ${verb} Claude account (${projection.accountRef})\n`,
+          )
+        }
+        return
+      }
+
       const projection = await runPylonAuthCodex(summary, options, {
         env: Bun.env,
         onDevicePrompt,
@@ -3454,7 +3473,9 @@ async function main() {
       if (command === "connect") {
         const options = parsePylonAccountsConnectArgs(accountCommandArgs.slice(1))
         if (!options.json) {
-          throw new Error("usage: pylon accounts connect codex --account <ref> [--home <path>] [--openagents-link|--openagents-attempt-id <id>] --json")
+          throw new Error(
+            "usage: pylon accounts connect codex|claude --account <ref> [--home <path>] [--token <setup-token>] [--openagents-link|--openagents-attempt-id <id>] --json",
+          )
         }
         const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
         const projection = await runPylonAccountsConnect(summary, options, { env: Bun.env })

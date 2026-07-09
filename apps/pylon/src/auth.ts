@@ -13,7 +13,7 @@ import {
 import { type BootstrapSummary } from "./bootstrap.js"
 import { assertPublicProjectionSafe } from "./state.js"
 
-export type PylonAuthTarget = "openagents" | "codex"
+export type PylonAuthTarget = "openagents" | "codex" | "claude"
 
 export type PylonAuthArgs = {
   accountRef: string | null
@@ -21,6 +21,11 @@ export type PylonAuthArgs = {
   baseUrl: string | null
   forceDeviceLogin: boolean
   json: boolean
+  /**
+   * Claude setup-token (CLAUDE_CODE_OAUTH_TOKEN material). Only for target
+   * `claude`; never projected.
+   */
+  setupToken: string | null
   target: PylonAuthTarget
   timeoutSeconds: number
 }
@@ -68,6 +73,22 @@ export type PylonAuthCodexProjection = {
     attemptStatus: string
     providerAccountRef: string
     source: "pylon_local_codex_auth"
+  }
+  blockerRefs: string[]
+}
+
+/**
+ * Local-only Claude auth projection. Claude uses setup-token file storage, not
+ * Codex device-login or OpenAgents provider-account import.
+ */
+export type PylonAuthClaudeProjection = {
+  schema: "pylon.auth.claude.v1"
+  status: "connected"
+  accountRef: string
+  provider: "claude_agent"
+  localClaude: {
+    setupTokenStatus: "completed" | "skipped_existing_auth"
+    reason?: string
   }
   blockerRefs: string[]
 }
@@ -139,8 +160,8 @@ function readRequiredValue(args: string[], index: number, option: string): strin
 
 export function parsePylonAuthArgs(args: string[]): PylonAuthArgs {
   const target = args[0]
-  if (target !== "openagents" && target !== "codex") {
-    throw new Error("usage: pylon auth openagents|codex [--account <ref>] [--json]")
+  if (target !== "openagents" && target !== "codex" && target !== "claude") {
+    throw new Error("usage: pylon auth openagents|codex|claude [--account <ref>] [--token <setup-token>] [--json]")
   }
 
   const parsed: PylonAuthArgs = {
@@ -149,6 +170,7 @@ export function parsePylonAuthArgs(args: string[]): PylonAuthArgs {
     baseUrl: null,
     forceDeviceLogin: false,
     json: false,
+    setupToken: null,
     target,
     timeoutSeconds: 10 * 60,
   }
@@ -163,6 +185,9 @@ export function parsePylonAuthArgs(args: string[]): PylonAuthArgs {
       index += 1
     } else if (arg === "--base-url") {
       parsed.baseUrl = readRequiredValue(args, index, arg).trim()
+      index += 1
+    } else if (arg === "--token" || arg === "--setup-token") {
+      parsed.setupToken = readRequiredValue(args, index, arg).trim()
       index += 1
     } else if (arg === "--force-device-login") {
       parsed.forceDeviceLogin = true
@@ -182,10 +207,19 @@ export function parsePylonAuthArgs(args: string[]): PylonAuthArgs {
   }
 
   if (parsed.accountRef !== null && !accountRefPattern.test(parsed.accountRef)) {
-    throw new Error("pylon auth codex --account must use letters, numbers, dot, dash, or underscore")
+    throw new Error("pylon auth --account must use letters, numbers, dot, dash, or underscore")
   }
   if (parsed.target === "openagents" && parsed.accountRef !== null) {
     throw new Error("pylon auth openagents does not take --account")
+  }
+  if (parsed.target === "claude") {
+    if (parsed.forceDeviceLogin) {
+      throw new Error(
+        "Claude auth does not use device-login; provide --token / --setup-token or CLAUDE_CODE_OAUTH_TOKEN (or an existing claude-oauth-token file)",
+      )
+    }
+  } else if (parsed.setupToken !== null) {
+    throw new Error("--token / --setup-token is only valid for pylon auth claude")
   }
 
   return parsed
@@ -619,7 +653,11 @@ async function writeConfig(
   await rename(tempPath, summary.paths.config)
 }
 
-async function nextCodexAccountRef(summary: Pick<BootstrapSummary, "paths">): Promise<string> {
+async function nextProviderAccountRef(
+  summary: Pick<BootstrapSummary, "paths">,
+  provider: "codex" | "claude_agent",
+  baseRef: string,
+): Promise<string> {
   const config = await readConfig(summary)
   const dev = config.dev !== null && typeof config.dev === "object" && !Array.isArray(config.dev)
     ? (config.dev as Record<string, unknown>)
@@ -631,22 +669,30 @@ async function nextCodexAccountRef(summary: Pick<BootstrapSummary, "paths">): Pr
         return []
       }
       const record = account as Record<string, unknown>
-      return record.provider === "codex" && typeof record.ref === "string"
+      return record.provider === provider && typeof record.ref === "string"
         ? [record.ref]
         : []
     }),
   )
 
-  if (!existing.has("codex")) {
-    return "codex"
+  if (!existing.has(baseRef)) {
+    return baseRef
   }
   for (let index = 2; index < 10_000; index += 1) {
-    const candidate = `codex-${index}`
+    const candidate = `${baseRef}-${index}`
     if (!existing.has(candidate)) {
       return candidate
     }
   }
-  return `codex-${hashRef(String(Date.now()))}`
+  return `${baseRef}-${hashRef(String(Date.now()))}`
+}
+
+async function nextCodexAccountRef(summary: Pick<BootstrapSummary, "paths">): Promise<string> {
+  return nextProviderAccountRef(summary, "codex", "codex")
+}
+
+async function nextClaudeAccountRef(summary: Pick<BootstrapSummary, "paths">): Promise<string> {
+  return nextProviderAccountRef(summary, "claude_agent", "claude")
 }
 
 function codexConnectArgs(input: {
@@ -667,7 +713,30 @@ function codexConnectArgs(input: {
     openAgentsAttemptId: null,
     openAgentsLink: false,
     providerAccountRef: null,
+    setupToken: null,
     skipDeviceLogin: input.skipDeviceLogin,
+  }
+}
+
+function claudeConnectArgs(input: {
+  accountRef: string
+  setupToken: string | null
+}): PylonAccountsConnectArgs {
+  return {
+    provider: "claude_agent",
+    accountRef: input.accountRef,
+    accountLabel: input.accountRef,
+    agentToken: null,
+    baseUrl: null,
+    createNewOpenAgentsAccount: true,
+    home: null,
+    forceDeviceLogin: false,
+    json: true,
+    openAgentsAttemptId: null,
+    openAgentsLink: false,
+    providerAccountRef: null,
+    setupToken: input.setupToken,
+    skipDeviceLogin: false,
   }
 }
 
@@ -1027,6 +1096,47 @@ export async function runPylonAuthCodex(
     },
     blockerRefs: [],
   } satisfies PylonAuthCodexProjection
+  assertPublicProjectionSafe(projection)
+  return projection
+}
+
+/**
+ * Local Claude account connect via setup-token file storage. Does not run
+ * OpenAgents device-login or Codex provider-account import — those remain
+ * Codex-only. Token material is never projected.
+ */
+export async function runPylonAuthClaude(
+  summary: Pick<BootstrapSummary, "bootstrap" | "paths">,
+  args: PylonAuthArgs,
+  options: PylonAuthOptions = {},
+): Promise<PylonAuthClaudeProjection> {
+  const env = options.env ?? (Bun.env as Record<string, string | undefined>)
+  const accountRef = args.accountRef ?? await nextClaudeAccountRef(summary)
+  const started = await runPylonAccountsConnect(
+    summary,
+    claudeConnectArgs({
+      accountRef,
+      setupToken: args.setupToken,
+    }),
+    { env },
+  )
+
+  const setupTokenStatus =
+    started.deviceLogin.status === "skipped_existing_auth"
+      ? "skipped_existing_auth"
+      : "completed"
+
+  const projection = {
+    schema: "pylon.auth.claude.v1",
+    status: "connected",
+    accountRef,
+    provider: "claude_agent",
+    localClaude: {
+      setupTokenStatus,
+      ...(started.deviceLogin.reason !== undefined ? { reason: started.deviceLogin.reason } : {}),
+    },
+    blockerRefs: started.blockerRefs,
+  } satisfies PylonAuthClaudeProjection
   assertPublicProjectionSafe(projection)
   return projection
 }

@@ -19,12 +19,14 @@
  * same combined surface they always have.
  */
 import { existsSync } from "node:fs"
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises"
+import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises"
 import { dirname, join } from "node:path"
 
 import {
   hashPylonAccountRef,
   normalizeAccountHome,
+  pylonClaudeAccountHomeHasAuth,
+  PYLON_CLAUDE_OAUTH_TOKEN_FILE,
   type PylonAccountProvider,
 } from "./account-registry.js"
 import type { BootstrapSummary } from "../shared/bootstrap.js"
@@ -50,6 +52,11 @@ export type PylonAccountsConnectArgs = {
   openAgentsAttemptId: string | null
   openAgentsLink: boolean
   providerAccountRef: string | null
+  /**
+   * Claude setup-token (CLAUDE_CODE_OAUTH_TOKEN material). Never projected.
+   * Accepted via `--token` / `--setup-token` CLI flags or env.
+   */
+  setupToken: string | null
   skipDeviceLogin: boolean
 }
 
@@ -145,10 +152,23 @@ function readRequiredValue(args: string[], index: number, option: string): strin
   return value
 }
 
+const ACCOUNTS_CONNECT_USAGE =
+  "usage: pylon accounts connect codex|claude --account <ref> [--home <path>] [--token <setup-token>] [--openagents-link|--openagents-attempt-id <id>] --json"
+
+/**
+ * Normalize CLI provider aliases to the registry provider id.
+ * `claude` is the public CLI alias; `claude_agent` is the custody registry id.
+ */
+export function normalizeAccountsConnectProvider(raw: string | undefined): PylonAccountProvider | null {
+  if (raw === "codex") return "codex"
+  if (raw === "claude" || raw === "claude_agent") return "claude_agent"
+  return null
+}
+
 export function parsePylonAccountsConnectArgs(args: string[]): PylonAccountsConnectArgs {
-  const provider = args[0]
-  if (provider !== "codex") {
-    throw new Error("usage: pylon accounts connect codex --account <ref> [--home <path>] [--openagents-link|--openagents-attempt-id <id>] --json")
+  const provider = normalizeAccountsConnectProvider(args[0])
+  if (provider === null) {
+    throw new Error(ACCOUNTS_CONNECT_USAGE)
   }
 
   const parsed: PylonAccountsConnectArgs = {
@@ -164,6 +184,7 @@ export function parsePylonAccountsConnectArgs(args: string[]): PylonAccountsConn
     openAgentsAttemptId: null,
     openAgentsLink: false,
     providerAccountRef: null,
+    setupToken: null,
     skipDeviceLogin: false,
   }
 
@@ -181,8 +202,11 @@ export function parsePylonAccountsConnectArgs(args: string[]): PylonAccountsConn
     } else if (arg === "--base-url") {
       parsed.baseUrl = readRequiredValue(args, index, arg).trim()
       index += 1
-    } else if (arg === "--home" || arg === "--codex-home") {
+    } else if (arg === "--home" || arg === "--codex-home" || arg === "--claude-home" || arg === "--claude-config-dir") {
       parsed.home = readRequiredValue(args, index, arg)
+      index += 1
+    } else if (arg === "--token" || arg === "--setup-token") {
+      parsed.setupToken = readRequiredValue(args, index, arg).trim()
       index += 1
     } else if (arg === "--openagents-link") {
       parsed.openAgentsLink = true
@@ -210,6 +234,21 @@ export function parsePylonAccountsConnectArgs(args: string[]): PylonAccountsConn
   }
   if (parsed.forceDeviceLogin && parsed.skipDeviceLogin) {
     throw new Error("Use either --force-device-login or --skip-device-login, not both")
+  }
+  if (parsed.provider === "claude_agent") {
+    if (parsed.forceDeviceLogin || parsed.skipDeviceLogin) {
+      throw new Error(
+        "Claude connect does not use device-login; provide --token / --setup-token or CLAUDE_CODE_OAUTH_TOKEN (or an existing claude-oauth-token file in the account home)",
+      )
+    }
+    if (parsed.openAgentsLink || parsed.openAgentsAttemptId !== null) {
+      throw new Error(
+        "Claude connect does not support --openagents-link / --openagents-attempt-id (Codex device-login only)",
+      )
+    }
+  }
+  if (parsed.provider === "codex" && parsed.setupToken !== null) {
+    throw new Error("--token / --setup-token is only valid for pylon accounts connect claude")
   }
 
   return parsed
@@ -308,6 +347,36 @@ async function forceCodexFileCredentialStore(home: string): Promise<void> {
   if (next !== raw) {
     await writeFile(configPath, next)
   }
+}
+
+/**
+ * Persist a long-lived Claude setup-token into the isolated account home as
+ * `claude-oauth-token` (mode 0600). The token material is never returned from
+ * connect and must never appear in public projections.
+ */
+export async function writeClaudeOauthTokenFile(home: string, token: string): Promise<void> {
+  const trimmed = token.trim()
+  if (trimmed === "") {
+    throw new Error("Claude setup-token must be a non-empty string")
+  }
+  await mkdir(home, { recursive: true })
+  const path = join(home, PYLON_CLAUDE_OAUTH_TOKEN_FILE)
+  const tempPath = `${path}.tmp-${process.pid}-${Date.now()}`
+  await writeFile(tempPath, `${trimmed}\n`, { mode: 0o600 })
+  await chmod(tempPath, 0o600).catch(() => undefined)
+  await rename(tempPath, path)
+  await chmod(path, 0o600).catch(() => undefined)
+}
+
+function resolveClaudeSetupToken(
+  args: PylonAccountsConnectArgs,
+  env: Record<string, string | undefined>,
+): string | null {
+  const fromArgs = (args.setupToken ?? "").trim()
+  if (fromArgs !== "") return fromArgs
+  const fromEnv = (env.CLAUDE_CODE_OAUTH_TOKEN ?? "").trim()
+  if (fromEnv !== "") return fromEnv
+  return null
 }
 
 const defaultCodexDeviceLoginRunner: PylonCodexDeviceLoginRunner = async input => {
@@ -582,6 +651,24 @@ export async function runPylonAccountsConnect(
         throw new Error("codex login --device-auth completed but auth.json was not written in the account home")
       }
       deviceLoginStatus = "completed"
+    }
+  } else if (args.provider === "claude_agent") {
+    // Claude custody is paste/setup-token file storage (not device-login). Token
+    // material may come from --token/--setup-token, CLAUDE_CODE_OAUTH_TOKEN, or
+    // an already-present claude-oauth-token file in the isolated home.
+    const providedToken = resolveClaudeSetupToken(args, env)
+    const hasExisting = await pylonClaudeAccountHomeHasAuth(home)
+    if (providedToken !== null) {
+      await writeClaudeOauthTokenFile(home, providedToken)
+      deviceLoginStatus = hasExisting ? "completed" : "completed"
+      deviceLoginReason = "setup_token"
+    } else if (hasExisting) {
+      deviceLoginStatus = "skipped_existing_auth"
+      deviceLoginReason = "existing_claude_oauth_token"
+    } else {
+      throw new Error(
+        "Claude connect requires --token / --setup-token, CLAUDE_CODE_OAUTH_TOKEN, or an existing claude-oauth-token file in the account home",
+      )
     }
   }
 

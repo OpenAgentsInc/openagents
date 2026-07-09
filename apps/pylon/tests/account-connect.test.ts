@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { existsSync } from "node:fs"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
@@ -381,9 +381,77 @@ describe("pylon accounts connect", () => {
       openAgentsAttemptId: "provider_attempt_1",
       providerAccountRef: "provider_account_work",
       forceDeviceLogin: true,
+      setupToken: null,
       json: true,
     })
-    expect(() => parsePylonAccountsConnectArgs(["claude", "--account", "a", "--json"])).toThrow(/connect codex/)
+    expect(
+      parsePylonAccountsConnectArgs([
+        "claude",
+        "--account",
+        "claude-a",
+        "--token",
+        "sk-ant-oat-fixture",
+        "--json",
+      ]),
+    ).toMatchObject({
+      provider: "claude_agent",
+      accountRef: "claude-a",
+      setupToken: "sk-ant-oat-fixture",
+      json: true,
+    })
+    expect(
+      parsePylonAccountsConnectArgs([
+        "claude_agent",
+        "--account",
+        "claude-b",
+        "--setup-token",
+        "sk-ant-oat-alias",
+        "--json",
+      ]),
+    ).toMatchObject({
+      provider: "claude_agent",
+      setupToken: "sk-ant-oat-alias",
+    })
+    expect(() =>
+      parsePylonAccountsConnectArgs([
+        "claude",
+        "--account",
+        "a",
+        "--force-device-login",
+        "--json",
+      ]),
+    ).toThrow(/does not use device-login/)
+    expect(() =>
+      parsePylonAccountsConnectArgs([
+        "claude",
+        "--account",
+        "a",
+        "--skip-device-login",
+        "--json",
+      ]),
+    ).toThrow(/does not use device-login/)
+    expect(() =>
+      parsePylonAccountsConnectArgs([
+        "claude",
+        "--account",
+        "a",
+        "--openagents-link",
+        "--json",
+      ]),
+    ).toThrow(/does not support --openagents-link/)
+    expect(() =>
+      parsePylonAccountsConnectArgs([
+        "codex",
+        "--account",
+        "a",
+        "--token",
+        "sk-ant-oat-nope",
+        "--json",
+      ]),
+    ).toThrow(/only valid for pylon accounts connect claude/)
+    expect(() => parsePylonAccountsConnectArgs(["gemini", "--account", "a", "--json"])).toThrow(
+      /connect codex\|claude/,
+    )
     expect(() => parsePylonAccountsConnectArgs(["codex", "--account", "../bad", "--json"])).toThrow(
       /requires --account/,
     )
@@ -397,5 +465,105 @@ describe("pylon accounts connect", () => {
         "--json",
       ]),
     ).toThrow(/Use either --force-device-login or --skip-device-login/)
+  })
+
+  test("registers an isolated Claude account home from setup-token without leaking token material", async () => {
+    await withHome(async home => {
+      const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), {
+        PYLON_HOME: home,
+      })
+      const secret = "sk-ant-oat-unit-test-secret-never-project"
+      const projection = await runPylonAccountsConnect(
+        summary,
+        parsePylonAccountsConnectArgs([
+          "claude",
+          "--account",
+          "claude-a",
+          "--token",
+          secret,
+          "--json",
+        ]),
+        { env: { PYLON_HOME: home } },
+      )
+
+      expect(projection).toMatchObject({
+        schema: "pylon.accounts.connect.v1",
+        provider: "claude_agent",
+        accountRef: "claude-a",
+        accountRefHash: hashPylonAccountRef("claude_agent", "claude-a"),
+        codexCredentialStore: "not_applicable",
+        registry: { status: "created" },
+        deviceLogin: { status: "completed", reason: "setup_token" },
+        openAgentsDeviceLogin: { status: "not_requested" },
+      })
+      assertPublicProjectionSafe(projection)
+      const serialized = JSON.stringify(projection)
+      expect(serialized).not.toContain(secret)
+      expect(serialized).not.toContain(home)
+      expect(serialized).not.toContain("sk-ant-oat")
+
+      const accountHome = join(home, "accounts", "claude_agent", "claude-a")
+      const tokenPath = join(accountHome, "claude-oauth-token")
+      expect(await readFile(tokenPath, "utf8")).toBe(`${secret}\n`)
+      // Private-only perms (owner read/write); group/other bits must be clear.
+      expect((await stat(tokenPath)).mode & 0o077).toBe(0)
+
+      const config = JSON.parse(await readFile(summary.paths.config, "utf8")) as {
+        dev?: { accounts?: Array<{ ref: string; provider: string; home: string }> }
+      }
+      expect(config.dev?.accounts).toEqual([
+        {
+          ref: "claude-a",
+          provider: "claude_agent",
+          home: accountHome,
+        },
+      ])
+    })
+  })
+
+  test("reuses existing Claude oauth token file and accepts CLAUDE_CODE_OAUTH_TOKEN env", async () => {
+    await withHome(async home => {
+      const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), {
+        PYLON_HOME: home,
+      })
+      const accountHome = join(home, "accounts", "claude_agent", "claude-reuse")
+      await mkdir(accountHome, { recursive: true })
+      await writeFile(join(accountHome, "claude-oauth-token"), "sk-ant-oat-existing\n", { mode: 0o600 })
+
+      const reused = await runPylonAccountsConnect(
+        summary,
+        parsePylonAccountsConnectArgs(["claude", "--account", "claude-reuse", "--json"]),
+        { env: { PYLON_HOME: home } },
+      )
+      expect(reused.deviceLogin.status).toBe("skipped_existing_auth")
+      expect(reused.registry.status).toBe("created")
+      assertPublicProjectionSafe(reused)
+      expect(JSON.stringify(reused)).not.toContain("sk-ant-oat-existing")
+
+      const fromEnv = await runPylonAccountsConnect(
+        summary,
+        parsePylonAccountsConnectArgs(["claude", "--account", "claude-env", "--json"]),
+        {
+          env: {
+            PYLON_HOME: home,
+            CLAUDE_CODE_OAUTH_TOKEN: "sk-ant-oat-from-env-only",
+          },
+        },
+      )
+      expect(fromEnv.deviceLogin.status).toBe("completed")
+      expect(await readFile(join(home, "accounts", "claude_agent", "claude-env", "claude-oauth-token"), "utf8")).toBe(
+        "sk-ant-oat-from-env-only\n",
+      )
+      expect(JSON.stringify(fromEnv)).not.toContain("sk-ant-oat-from-env-only")
+      assertPublicProjectionSafe(fromEnv)
+
+      await expect(
+        runPylonAccountsConnect(
+          summary,
+          parsePylonAccountsConnectArgs(["claude", "--account", "claude-missing", "--json"]),
+          { env: { PYLON_HOME: home } },
+        ),
+      ).rejects.toThrow(/requires --token/)
+    })
   })
 })
