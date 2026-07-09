@@ -392,3 +392,39 @@ describe("OAV-4 owned render-service contract client", () => {
     disarmAll()
   })
 })
+
+describe("toSpeakableText (SQ-4 #8621)", () => {
+  const { toSpeakableText } = require("./owned-renderer.ts")
+  test("strips markdown emphasis, bullets, links, and code", () => {
+    const md = "**Bold claim.** Here's a [link](https://x.com) and `code`.\n- bullet one\n- bullet two\n\n```js\nconsole.log(1)\n```\n## Header\n1. numbered"
+    const out = toSpeakableText(md)
+    expect(out).toBe("Bold claim. Here's a link and code. bullet one bullet two Header numbered")
+  })
+  test("keeps plain prose untouched", () => {
+    expect(toSpeakableText("Hello! I'm Sarah. What's on your mind today?")).toBe(
+      "Hello! I'm Sarah. What's on your mind today?",
+    )
+  })
+})
+
+describe("splitSpeakableSentences (SQ-4 #8621)", () => {
+  const { splitSpeakableSentences } = require("./owned-renderer.ts")
+  test("groups short sentences to the minimum size", () => {
+    const groups = splitSpeakableSentences("Got it. And how much time does that eat up each week?", 40)
+    expect(groups).toEqual(["Got it. And how much time does that eat up each week?"])
+  })
+  test("splits a long reply into multiple streamable groups", () => {
+    const reply =
+      "We help businesses put agents to work on real tasks every single day. " +
+      "You pay for completed work, not for seats. " +
+      "So tell me, what's eating the most hours in your business right now?"
+    const groups = splitSpeakableSentences(reply, 40)
+    expect(groups.length).toBeGreaterThan(1)
+    expect(groups.join(" ")).toBe(reply)
+  })
+  test("merges a trailing fragment into the previous group", () => {
+    const groups = splitSpeakableSentences("This is a fairly long first sentence for the group. Okay?", 40)
+    expect(groups.length).toBe(1)
+    expect(groups[0].endsWith("Okay?")).toBe(true)
+  })
+})

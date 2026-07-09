@@ -340,6 +340,56 @@ async function synthesizeSpeechPcm(text: string): Promise<
   }
 }
 
+// --- speech text shaping (SQ-4 #8621) -----------------------------------------
+
+/**
+ * The brain replies in Markdown; TTS must never vocalize its syntax
+ * ("asterisk asterisk", "dash dash"). Strip structure, keep the words.
+ * Exported for tests.
+ */
+export function toSpeakableText(markdown: string): string {
+  return markdown
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/`([^`]*)`/g, "$1")
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, " ")
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/^\s*[-*+]\s+/gm, "")
+    .replace(/^\s*\d+\.\s+/gm, "")
+    .replace(/(\*\*|__)(.*?)\1/g, "$2")
+    .replace(/(\*|_)(.*?)\1/g, "$2")
+    .replace(/^\s*>\s?/gm, "")
+    .replace(/\|/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+}
+
+/**
+ * Split a reply into sentence groups of at least `minChars` so TTS can
+ * stream per group: first audio lands after the FIRST group synthesizes,
+ * not after the whole reply. Exported for tests.
+ */
+export function splitSpeakableSentences(text: string, minChars = 40): string[] {
+  const sentences = text
+    .split(/(?<=[.!?])\s+/)
+    .map((sentence) => sentence.trim())
+    .filter(Boolean)
+  const groups: string[] = []
+  let current = ""
+  for (const sentence of sentences) {
+    current = current ? `${current} ${sentence}` : sentence
+    if (current.length >= minChars) {
+      groups.push(current)
+      current = ""
+    }
+  }
+  if (current) {
+    if (groups.length > 0) groups[groups.length - 1] += ` ${current}`
+    else groups.push(current)
+  }
+  return groups
+}
+
 // --- the speaking bridge (owned-path turn loop) -------------------------------
 
 async function sendControl(
@@ -409,24 +459,49 @@ export async function speakOwnedAvatarTurn({
     await sendControl(sessionId, { type: "interrupt" }).catch(() => {})
   }
 
-  const speech = await synthesizeSpeechPcm(turn.reply)
-  if (!speech.ok) {
-    return { ok: true, reply: turn.reply, spoken: false, speechError: speech.error }
+  // Sentence-streamed synthesis (SQ-4 #8621): synthesize and push per
+  // sentence group under one event_id, so first audio lands after the first
+  // group's TTS instead of the whole reply's.
+  const speakable = toSpeakableText(turn.reply)
+  const groups = splitSpeakableSentences(speakable)
+  if (groups.length === 0) {
+    return { ok: true, reply: turn.reply, spoken: false, speechError: "empty_speakable_text" }
   }
 
   const eventId = crypto.randomUUID()
   session.speakingEventId = eventId
+  let spokeAnything = false
   try {
-    for (const audioB64 of chunkPcmBase64(speech.pcm)) {
-      // A newer turn interrupted this utterance — stop pushing stale audio.
+    for (const group of groups) {
       if (session.speakingEventId !== eventId) {
-        return { ok: true, reply: turn.reply, spoken: false, speechError: "interrupted" }
+        return { ok: true, reply: turn.reply, spoken: spokeAnything, speechError: "interrupted" }
       }
-      await sendControl(sessionId, {
-        type: "speak",
-        event_id: eventId,
-        audio_b64: audioB64,
-      })
+      const speech = await synthesizeSpeechPcm(group)
+      if (!speech.ok) {
+        // First-group failure means nothing was spoken; later failures are
+        // an honest partial with the reason attached.
+        if (spokeAnything) {
+          await sendControl(sessionId, { type: "speak_end", event_id: eventId }).catch(() => {})
+        }
+        return {
+          ok: true,
+          reply: turn.reply,
+          spoken: spokeAnything,
+          speechError: spokeAnything ? `partial:${speech.error}` : speech.error,
+        }
+      }
+      for (const audioB64 of chunkPcmBase64(speech.pcm)) {
+        // A newer turn interrupted this utterance — stop pushing stale audio.
+        if (session.speakingEventId !== eventId) {
+          return { ok: true, reply: turn.reply, spoken: spokeAnything, speechError: "interrupted" }
+        }
+        await sendControl(sessionId, {
+          type: "speak",
+          event_id: eventId,
+          audio_b64: audioB64,
+        })
+        spokeAnything = true
+      }
     }
     await sendControl(sessionId, { type: "speak_end", event_id: eventId })
     return { ok: true, reply: turn.reply, spoken: true }
