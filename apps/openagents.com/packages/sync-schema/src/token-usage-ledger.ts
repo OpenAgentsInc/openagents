@@ -33,7 +33,21 @@ export const TokenUsageSourceRoute = S.Literals([
 ])
 export type TokenUsageSourceRoute = typeof TokenUsageSourceRoute.Type
 
-export const TokenUsageTruth = S.Literals(['exact', 'estimated', 'unknown'])
+// `not_measured` is the honest truth label for served work whose token usage
+// the harness genuinely cannot measure (e.g. a Grok CLI worker that returns a
+// real completion but exposes no per-turn token counts — its closeout carries
+// `usage.metering: "not_measured"` with wall-clock only). Such rows MUST carry
+// zero/omitted token counts (never a synthesized number) and are EXCLUDED from
+// the public `khala-tokens-served` counter by construction — see
+// `publicTokensServedDemandWhere` in workers/api/src/token-usage-ledger.ts.
+// It is a first-class truth value alongside the measured classes so the honest
+// accounting trail can exist without polluting the served-token total.
+export const TokenUsageTruth = S.Literals([
+  'exact',
+  'estimated',
+  'unknown',
+  'not_measured',
+])
 export type TokenUsageTruth = typeof TokenUsageTruth.Type
 
 export const TokenUsageDemandKind = S.Literals([
