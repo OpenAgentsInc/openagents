@@ -347,7 +347,10 @@ export const buildServedTokensIngestBody = (
     cacheWrite5mTokens: 0,
     inputTokens: Math.max(0, Math.trunc(input.usage.promptTokens)),
     outputTokens: Math.max(0, Math.trunc(input.usage.completionTokens)),
-    reasoningTokens: 0,
+    // Exact-only: mapped from the provider's reasoning/thinking token field where
+    // one exists (e.g. Gemma 4's thoughtsTokenCount -> usage.reasoningTokens),
+    // never synthesized. Defaults to 0 for lanes that report none.
+    reasoningTokens: Math.max(0, Math.trunc(input.usage.reasoningTokens ?? 0)),
     totalTokens: Math.max(0, Math.trunc(input.usage.totalTokens)),
   },
   usageTruth: 'exact' as const,

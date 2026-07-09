@@ -71,6 +71,12 @@ export const VERTEX_ANTHROPIC_ADAPTER_ID = 'vertex-anthropic'
 // The Vertex Gemini lane (Google's own model). Serves Gemini 3.5 Flash + other
 // gemini-* ids from our first-party Vertex quota — the default/free-tier lane.
 export const VERTEX_GEMINI_ADAPTER_ID = 'vertex-gemini'
+// The Gemma 4 lane (Google's open Gemma model on the Generative Language API,
+// GEMINI_API_KEY path). The PRIMARY conversational Khala lane on our own gcloud
+// (owner decision 2026-07-09). Gemma has NO tool calling, so this id is kept out
+// of every tool/agentic plan (see selectAdapterPlanForKhalaToolRequest) and the
+// adapter itself refuses tool-bearing requests retryably.
+export const GEMMA4_ADAPTER_ID = 'google-gemma4'
 export const FIREWORKS_ADAPTER_ID = 'fireworks'
 export const HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID =
   'hydralisk-vllm-glm-5p2-reap-504b'
@@ -268,11 +274,19 @@ const LANE_PLAN_BY_CLASS: Readonly<
 // prod Khala plans. It previously LED the conversational chain, so after the
 // #8565 502 fix (which made a platform-key 402 overflow instead of hard-fail)
 // every request still paid a dead-lane ~0.5s 402 hop before overflowing. The
-// primary lane is now our own Google Cloud (Vertex) lane; OpenRouter is no
-// longer a platform supply lane here (the adapter stays registered only for the
-// BYOK caller-key path — see chat-completions-routes.ts). See
+// primary lane is now our own Google Cloud lane; OpenRouter is no longer a
+// platform supply lane here (the adapter stays registered only for the BYOK
+// caller-key path — see chat-completions-routes.ts). See
 // docs/incidents/2026-07-08-khala-502-openrouter-credit-exhaustion-aar.md.
+//
+// The conversational plan LEADS with our own Gemma 4 gcloud lane (owner decision
+// 2026-07-09: "we are going to use Gemma 4 via our gcloud primarily"), then
+// overflows to the Vertex Gemini gcloud lane, Fireworks, and the owned GLM lane.
+// Gemma has no tool calling, so this lane leads ONLY the conversational plan;
+// tool-bearing Khala requests use the agent-tool plan (GLM-led) below and never
+// touch Gemma (selectAdapterPlanForKhalaToolRequest excludes it).
 const KHALA_CONVERSATIONAL_ADAPTER_PLAN: ReadonlyArray<string> = [
+  GEMMA4_ADAPTER_ID,
   VERTEX_GEMINI_ADAPTER_ID,
   FIREWORKS_ADAPTER_ID,
   HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
@@ -351,7 +365,11 @@ export const selectAdapterPlanForKhalaToolRequest = (
         adapterId !== HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID &&
         adapterId !== FIREWORKS_ADAPTER_ID &&
         adapterId !== VERTEX_GEMINI_ADAPTER_ID &&
-        adapterId !== OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
+        adapterId !== OPENROUTER_KHALA_FALLBACK_ADAPTER_ID &&
+        // Gemma 4 has NO tool calling — it must never appear in a tool-bearing
+        // plan (it leads the conversational plan, which is the base here). The
+        // adapter also refuses tools retryably as defense-in-depth.
+        adapterId !== GEMMA4_ADAPTER_ID,
     ),
   ])
 }

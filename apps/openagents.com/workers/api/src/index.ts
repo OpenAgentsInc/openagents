@@ -820,6 +820,7 @@ import {
   VERTEX_GEMINI_ADAPTER_ID,
   makeVertexGeminiAdapter,
 } from './inference/vertex-gemini-adapter'
+import { makeGemma4Adapter } from './inference/gemma4-adapter'
 import { tokenProviderFromSecret } from './inference/vertex-token'
 import {
   decodeUnknownWithSchema,
@@ -12096,6 +12097,26 @@ inferenceProviderRegistry.register(
             }),
           )
         : provider()
+    },
+  }),
+)
+
+// Gemma 4 (Google's open Gemma model on the Generative Language API) — the
+// PRIMARY conversational Khala lane on our own gcloud (owner decision
+// 2026-07-09). Registered exactly once. Reads the GEMINI_API_KEY Worker secret
+// LAZILY at call time (the registry is constructed at module load, before env is
+// captured) — the SAME key sarah's google-inference service uses (#8594); we
+// reuse it, never mint a parallel one. INERT until the secret is present: with no
+// key the adapter returns a typed non-retryable error, and the route stays
+// flag-gated off via INFERENCE_GATEWAY_ENABLED regardless. Gemma has no tool
+// calling, so this lane leads ONLY the conversational plan; the router keeps it
+// out of every tool plan and the adapter refuses tool-bearing requests retryably.
+inferenceProviderRegistry.register(
+  makeGemma4Adapter({
+    apiKey: () => {
+      const env = inferenceAdapterEnv
+      const raw = env?.GEMINI_API_KEY?.trim()
+      return raw === undefined || raw === '' ? undefined : Redacted.make(raw)
     },
   }),
 )

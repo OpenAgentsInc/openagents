@@ -7,6 +7,7 @@ import {
   type DispatchSuccessValidator,
   FIREWORKS_ADAPTER_ID,
   FIREWORKS_STRONG_CODING_ADAPTER_ID,
+  GEMMA4_ADAPTER_ID,
   HYDRALISK_ADAPTER_ID,
   HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
   HYDRALISK_GPT_OSS_120B_ADAPTER_ID,
@@ -194,11 +195,15 @@ describe('model classification', () => {
     }
   })
 
-  test('routes conversational Khala through our Vertex Gemini (gcloud) lane first, then Fireworks and GLM (OpenRouter dropped 2026-07-09)', () => {
+  test('routes conversational Khala through our Gemma 4 (gcloud) lane first, then Vertex Gemini, Fireworks and GLM (OpenRouter dropped 2026-07-09)', () => {
     for (const model of [KHALA_MODEL_SLUG, KHALA_MODEL_ID]) {
       expect(classifyModel(model)).toBe('open')
       const plan = selectAdapterPlan(model)
+      // Gemma 4 leads the conversational plan (owner decision 2026-07-09: "use
+      // Gemma 4 via our gcloud primarily"), then the Vertex Gemini gcloud lane,
+      // Fireworks, and the owned GLM lane.
       expect(plan).toEqual([
+        GEMMA4_ADAPTER_ID,
         VERTEX_GEMINI_ADAPTER_ID,
         FIREWORKS_ADAPTER_ID,
         HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
@@ -229,17 +234,18 @@ describe('model classification', () => {
     expect(selectAdapterPlan('deepseek-v4-flash')[0]).toBe(FIREWORKS_ADAPTER_ID)
   })
 
-  test('makes our Vertex Gemini (gcloud) lane primary for conversational Khala while keeping GPT-OSS out (#6259)', () => {
+  test('makes our Gemma 4 (gcloud) lane primary for conversational Khala while keeping GPT-OSS out (#6259)', () => {
     for (const model of [KHALA_MODEL_SLUG, KHALA_MODEL_ID]) {
       const plan = selectAdapterPlanForKhalaBacking(
         model,
         KHALA_BACKING_HYDRALISK_GPT_OSS,
       )
-      // Conversational Khala now leads with our own Google Cloud (Vertex Gemini)
-      // lane — the platform OpenRouter lane was dropped (owner 2026-07-09). GLM
-      // remains in the overflow chain, and GPT-OSS is NOT in this plan.
-      expect(plan[0]).toBe(VERTEX_GEMINI_ADAPTER_ID)
+      // Conversational Khala now leads with our own Gemma 4 gcloud lane (owner
+      // 2026-07-09), then the Vertex Gemini gcloud lane — the platform OpenRouter
+      // lane was dropped. GLM remains in the overflow chain; GPT-OSS is NOT here.
+      expect(plan[0]).toBe(GEMMA4_ADAPTER_ID)
       expect(plan).toEqual([
+        GEMMA4_ADAPTER_ID,
         VERTEX_GEMINI_ADAPTER_ID,
         FIREWORKS_ADAPTER_ID,
         HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
@@ -253,7 +259,7 @@ describe('model classification', () => {
       makeKhalaBackedAdapterPlan(
         resolveKhalaBackingModel('hydralisk-glm-5.2-reap-504b'),
       )(KHALA_MODEL_ID)[0],
-    ).toBe(VERTEX_GEMINI_ADAPTER_ID)
+    ).toBe(GEMMA4_ADAPTER_ID)
   })
 
   test('routes tool-bearing Khala requests to the owned GLM lane first, then Fireworks and Vertex (OpenRouter dropped)', () => {
@@ -270,6 +276,9 @@ describe('model classification', () => {
       VERTEX_GEMINI_ADAPTER_ID,
     ])
     expect(plan).not.toContain(OPENROUTER_KHALA_FALLBACK_ADAPTER_ID)
+    // NO-TOOLS GUARD: Gemma 4 has no tool calling, so it must never appear in a
+    // tool-bearing plan even though it LEADS the conversational base plan.
+    expect(plan).not.toContain(GEMMA4_ADAPTER_ID)
   })
 
   test('routes internal strong-coding Khala requests to the frontier GLM coding lane first, then Fireworks and Vertex (OpenRouter dropped)', () => {

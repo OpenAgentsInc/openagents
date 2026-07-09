@@ -68,6 +68,13 @@ export type InferenceUsage = Readonly<{
   // ~50% of input). Present when the provider reports it; left undefined
   // otherwise so the metering hook can decide how to price the difference.
   cachedPromptTokens?: number | undefined
+  // Optional reasoning/thinking output dimension. Present when a thinking model
+  // reports a distinct scratchpad token count (e.g. Gemma 4's
+  // `usageMetadata.thoughtsTokenCount`), so the served-token ledger can record
+  // reasoning_tokens exactly. Left undefined for models that report none. The
+  // provider's `totalTokens` already accounts for these where applicable, so this
+  // is a breakdown dimension, not an addend to total.
+  reasoningTokens?: number | undefined
 }>
 
 // Public-safe routing metadata a provider adapter may know only after its own

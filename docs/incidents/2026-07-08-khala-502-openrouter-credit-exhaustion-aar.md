@@ -129,6 +129,96 @@ Verification (prod, authenticated `POST /api/v1/chat/completions`,
 - Official canary (`scripts/khala-canary.sh`) run twice post-deploy:
   `state=up, http=200, counterDelta=842` then `1684` (exit 0 both).
 
+## Gemma 4 lane landed — primary conversational Khala lane (2026-07-09 follow-up)
+
+The follow-up the "Lane dropped" note called for is now built: a real **Gemma 4**
+lane on our own gcloud, leading the conversational Khala plan (owner directive
+2026-07-09: "we are going to use Gemma 4 via our gcloud primarily"). "gcloud
+primarily" now = Gemma 4, with the Vertex Gemini lane as the next overflow.
+
+### Adapter (`inference/gemma4-adapter.ts`, `GEMMA4_ADAPTER_ID = 'google-gemma4'`)
+
+- **Target = Generative Language API**, the exact path #8594 proved live in
+  `apps/sarah/src/services/google-inference.ts`:
+  `POST https://generativelanguage.googleapis.com/v1beta/models/gemma-4-31b-it:generateContent?key=GEMINI_API_KEY`
+  (and `:streamGenerateContent?alt=sse` for the incremental path). This is NOT the
+  Vertex `aiplatform` publishers/google endpoint the `vertex-gemini` lane uses —
+  it is the API-key-in-query path, so the adapter NEVER surfaces the request URL
+  in an error/log (the key rides the URL). Implements the full adapter seam:
+  buffered `complete`, buffered `stream`, and true pass-through `streamSse`.
+- **Key reused, none minted.** The adapter reads the existing `GEMINI_API_KEY`
+  Worker secret — the SAME secret sarah's google-inference service uses
+  (`openagents-gemini-api-key:latest`, already in `deploy-cloudrun.sh` on BOTH
+  staging and prod). No new credential, no owner credential action. The key is
+  resolved LAZILY per call (the registry is constructed at module load before env
+  is captured — same pattern as the Vertex lanes' `tokenProvider`); with no key
+  the adapter is INERT (typed non-retryable error), and the gateway route stays
+  flag-gated regardless.
+- **Thought filtering.** Gemma is a thinking model: candidates carry scratchpad
+  parts flagged `thought: true` before the answer. Buffered `complete` drops them
+  from user-visible content; streaming routes them to the separate `reasoningDelta`
+  channel (clients hide it) and keeps them out of `contentDelta`. Either way thoughts
+  never appear in user-visible output.
+- **Exact token accounting.** `usageMetadata.thoughtsTokenCount` maps verbatim to
+  a new optional `InferenceUsage.reasoningTokens`, which the served-tokens recorder
+  writes into `token_usage_events.reasoning_tokens` (was hard-coded `0`). Mapped
+  only when the field is a real finite number — never invented. Google's
+  `totalTokenCount` already includes thoughts, so it is trusted as the total (a
+  breakdown dimension, not an addend). Other lanes leave `reasoningTokens`
+  undefined -> `0`, unchanged.
+- **NO-TOOLS guard (airtight, two layers).** Gemma has no tool calling. (1) The
+  router keeps `google-gemma4` out of every tool plan:
+  `selectAdapterPlanForKhalaToolRequest` now filters it from the base plan, so a
+  tool-bearing Khala request uses the GLM-led agent-tool plan and never lists
+  Gemma. (2) Defense-in-depth: the adapter itself refuses any request carrying
+  tools/functions or prior tool-call/tool-result messages with a RETRYABLE
+  `tool_calls_unsupported` error, so even a mis-routed tool request overflows to a
+  tool-capable lane (Vertex Gemini / Fireworks / GLM) instead of silently dropping
+  the tools. The conversational plan is the only plan Gemma leads.
+- **Tiny-budget guard (the AAR caveat above).** The "min-output-token floor for the
+  Khala Vertex lane" minor follow-up is implemented for Gemma: thoughts draw from
+  the output budget, so a tiny `max_tokens` (the canary's 8) would be entirely
+  consumed by thoughts and emit zero visible text -> `empty_assistant_content`
+  overflow off the primary. The adapter floors the effective `maxOutputTokens` to
+  `GEMMA4_DEFAULT_MIN_OUTPUT_TOKENS` (512) so tiny requests keep headroom for a
+  visible answer and the canary stays on the Gemma primary. Budgets already above
+  the floor are untouched.
+- **Failure classification** matches the #8565 overflow pattern: 402
+  `quota_exhausted` / 429 `rate_limited` / 503 `service_overloaded` / 5xx
+  `upstream_error` are all retryable (lane unviable -> overflow); a 4xx rejection
+  surfaces non-retryable.
+
+### Plan ordering — before / after
+
+- Conversational (`KHALA_CONVERSATIONAL_ADAPTER_PLAN`):
+  before `[vertex-gemini, fireworks, hydralisk-glm]`
+  → after `[google-gemma4, vertex-gemini, fireworks, hydralisk-glm]`.
+- Agent-tool (`KHALA_AGENT_TOOL_ADAPTER_PLAN`), strong-coding, deepseek-backing,
+  paid-failover: UNCHANGED (still GLM-led for tools). Gemma is excluded from all of
+  them by the no-tools guard.
+
+### Tests
+
+New `gemma4-adapter.test.ts` (17 tests: endpoint/key-in-query, system hoist +
+role map, thought filtering, exact `thoughtsTokenCount -> reasoningTokens`,
+min-output floor, no-tools refusal (declared tools + tool messages), full failure
+classification, key-not-leaked, inert-without-key, streamSse thought→reasoning
+split + receipt-first terminal usage, buffered stream). Router plan-order tests
+updated for the Gemma lead + a new assertion that the tool plan excludes
+`google-gemma4`. Full inference suite green: **1839 passing** (was 1822; +17).
+`typecheck:cloudrun` clean for the changed files; the cloudrun server bundle
+builds (the real deploy gate).
+
+### Deploy + verification (2026-07-09)
+
+Commit on `main`: `PENDING-COMMIT`. Deployed via the sanctioned monolith path
+(`apps/openagents.com/workers/api/scripts/deploy-cloudrun.sh`, automation SA):
+staging revision `PENDING`, then production revision `PENDING`. Rollback target if
+the canary goes red post-deploy: `openagents-monolith-00049-jpc`.
+
+Verification (prod, authenticated `POST /api/v1/chat/completions`,
+`openagents/khala`): `PENDING`.
+
 ## Outstanding (superseded by "Lane dropped" above)
 
 - ~~**Owner-gated:** the OpenRouter account balance is still ~0…~~ Resolved: the

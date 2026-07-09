@@ -295,6 +295,14 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   VERTEX_SA_KEY?: string | undefined
   VERTEX_PROJECT_ID?: string | undefined
   VERTEX_LOCATION?: string | undefined
+  // Generative Language API key (Gemma 4 lane — the primary conversational Khala
+  // lane on our own gcloud; owner decision 2026-07-09). The SAME key sarah's
+  // google-inference service uses (#8594); the `gemma4-adapter` reads it lazily.
+  // Worker secret (openagents-gemini-api-key); NEVER logged. Also used by the
+  // image-generation + provider-account Gemini surfaces. The Gemma lane is inert
+  // without it, and the gateway route stays flag-gated off via
+  // INFERENCE_GATEWAY_ENABLED regardless.
+  GEMINI_API_KEY?: string | undefined
   // Hosted Gemini Autopilot executor arming flag (api.hosted_gemini.v1, yellow;
   // blocker.product_promises.production_hosted_gemini_executor_binding_missing).
   // Default OFF. The hosted Gemini `executeReadyWork` binding stays INERT on the
