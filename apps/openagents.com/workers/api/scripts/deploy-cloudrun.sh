@@ -89,6 +89,7 @@ SET_SECRETS=(
   "LIVEAVATAR_API_KEY=sarah-liveavatar-api-key:latest"
   "SARAH_AVATAR_LLM_BEARER=sarah-avatar-llm-bearer:latest"
   "SARAH_AVATAR_LLM_CONFIG_ID=sarah-avatar-llm-config-id:latest"
+  "SARAH_AVATAR_ID=sarah-avatar-id:latest"
   # OPENROUTER_API_KEY is DROPPED on BOTH staging AND production (owner decision
   # 2026-07-09): OpenRouter is no longer a platform Khala supply lane — it was
   # removed from every plan in model-router.ts and the primary lane is now our

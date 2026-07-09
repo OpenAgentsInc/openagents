@@ -31,7 +31,8 @@ export function sarahAvatarConfig() {
   return {
     avatarId: configuredAvatarId || SANDBOX_AVATAR_ID,
     // Sandbox until a real avatar id is configured (sandbox sessions are free
-    // and ~1 minute — good enough to prove the loop, wrong for production).
+    // and ~1 minute). Production avatar: June HR preset via SARAH_AVATAR_ID
+    // (owner selection 2026-07-09, #8598).
     sandbox: !configuredAvatarId || process.env.SARAH_AVATAR_SANDBOX === "1",
     voiceId: process.env.SARAH_AVATAR_VOICE_ID?.trim() || undefined,
     baseContextId:
