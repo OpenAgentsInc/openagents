@@ -90,6 +90,10 @@ SET_SECRETS=(
   "SARAH_AVATAR_LLM_BEARER=sarah-avatar-llm-bearer:latest"
   "SARAH_AVATAR_LLM_CONFIG_ID=sarah-avatar-llm-config-id:latest"
   "SARAH_AVATAR_ID=sarah-avatar-id:latest"
+  # OAV owned avatar pipeline (#8612/#8614): bearer tokens for the
+  # hydralisk-avatar render service and hydralisk-tts on sarah-avatar-gpu-1.
+  "SARAH_RENDER_SERVICE_TOKEN=sarah-render-service-token:latest"
+  "SARAH_TTS_SERVICE_TOKEN=sarah-tts-service-token:latest"
   # OPENROUTER_API_KEY is DROPPED on BOTH staging AND production (owner decision
   # 2026-07-09): OpenRouter is no longer a platform Khala supply lane — it was
   # removed from every plan in model-router.ts and the primary lane is now our
