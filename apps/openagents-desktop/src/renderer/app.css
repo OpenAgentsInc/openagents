@@ -1,0 +1,31 @@
+/* OpenAgents Desktop chrome (#8574). The UI tree itself is Effect Native;
+   this file owns only the DOM renderer skin and the top-level viewport fill.
+   Protoss blue, one theme — mirrors apps/sarah/src/ui/sarah.css. */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--en-color-background, #03060b);
+  color: #f1efe8;
+  color-scheme: dark;
+  font-family:
+    "Berkeley Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+#openagents-desktop-root {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  min-height: 100dvh;
+}
+
+#openagents-desktop-root > * {
+  flex: 1;
+  min-height: 0;
+}

@@ -1,0 +1,27 @@
+{
+  "name": "@openagentsinc/openagents-desktop",
+  "productName": "OpenAgents Desktop",
+  "version": "0.0.1",
+  "description": "OpenAgents Desktop — Effect Native application on an Electron host (#8574).",
+  "private": true,
+  "type": "module",
+  "main": "dist/main.js",
+  "license": "MIT",
+  "scripts": {
+    "build": "bun scripts/build.ts",
+    "dev": "bun scripts/build.ts && electron .",
+    "smoke": "bun scripts/build.ts && OPENAGENTS_DESKTOP_SMOKE=1 electron .",
+    "test": "bun test",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@effect-native/core": "workspace:*",
+    "@effect-native/render-dom": "workspace:*",
+    "@effect-native/tokens": "workspace:*"
+  },
+  "devDependencies": {
+    "bun-types": "^1.0.0",
+    "electron": "^43.1.0",
+    "typescript": "catalog:"
+  }
+}
