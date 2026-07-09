@@ -131,17 +131,65 @@ export function isDeniedCodingFleetToolAttempt(
   text: string,
   policy: SarahInstructedJsonToolPolicy,
 ): boolean {
-  if (policy.codingFleetStartAllowed) return false
-  const trimmed = text.trim()
-  if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) return false
-  try {
-    const parsed = JSON.parse(trimmed) as Record<string, unknown>
-    return [parsed.sarah_tool, parsed.tool, parsed.toolName].includes(
-      "coding_fleet_start",
-    )
-  } catch {
-    return false
+  if (toolNamesForPolicy(policy).includes("coding_fleet_start")) return false
+
+  // The model reply is already bounded by the inference lane. Bound the
+  // additional structural work too: parse only complete JSON objects, cap
+  // object size/count/depth, and fail closed if a structured reply exhausts
+  // that budget. Plain prose that merely names the tool never enters JSON
+  // parsing and is not mistaken for an attempted call.
+  const maxCandidateChars = 16 * 1024
+  const maxCandidates = 64
+  const maxDepth = 32
+  const starts: number[] = []
+  let inString = false
+  let escaped = false
+  let candidates = 0
+
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index]!
+    if (starts.length > 0 && inString) {
+      if (escaped) {
+        escaped = false
+      } else if (character === "\\") {
+        escaped = true
+      } else if (character === '"') {
+        inString = false
+      }
+      continue
+    }
+    if (starts.length > 0 && character === '"') {
+      inString = true
+      continue
+    }
+    if (character === "{") {
+      if (starts.length >= maxDepth) return true
+      starts.push(index)
+      continue
+    }
+    if (character !== "}" || starts.length === 0) continue
+
+    const start = starts.pop()!
+    candidates += 1
+    if (candidates > maxCandidates) return true
+    if (index - start + 1 > maxCandidateChars) continue
+    try {
+      const parsed = JSON.parse(text.slice(start, index + 1)) as Record<
+        string,
+        unknown
+      >
+      if (
+        [parsed.sarah_tool, parsed.tool, parsed.toolName].includes(
+          "coding_fleet_start",
+        )
+      ) {
+        return true
+      }
+    } catch {
+      // A brace-delimited prose fragment is not a syntactic tool attempt.
+    }
   }
+  return false
 }
 
 /** Format a tool result into a short prospect-facing reply (no secrets). */

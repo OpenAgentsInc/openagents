@@ -4,6 +4,7 @@ import {
   formatInstructedToolReply,
   instructedJsonToolsArmed,
   instructedJsonToolProtocolPrompt,
+  isDeniedCodingFleetToolAttempt,
   parseInstructedJsonToolCall,
   SARAH_INSTRUCTED_JSON_TOOLS,
 } from "./instructed-json-tools.ts"
@@ -91,6 +92,40 @@ describe("AV-3 instructed-JSON tool calling (#8598)", () => {
     expect(
       parseInstructedJsonToolCall(`\`\`\`json\n${coding}\n\`\`\``, operatorPolicy),
     ).toBeNull()
+  })
+
+  test("denied coding attempts are recognized structurally without tool-name prose false positives", () => {
+    const deniedPolicy = {
+      relationshipMode: "customer" as const,
+      codingFleetStartAllowed: false,
+    }
+    const coding =
+      '{"sarah_tool":"coding_fleet_start","args":{"objective":"PRIVATE /Users/owner/repo"}}'
+    expect(isDeniedCodingFleetToolAttempt(coding, deniedPolicy)).toBe(true)
+    expect(
+      isDeniedCodingFleetToolAttempt(
+        `Here is a quoted attempt:\n\`\`\`json\n${coding}\n\`\`\``,
+        deniedPolicy,
+      ),
+    ).toBe(true)
+    expect(
+      isDeniedCodingFleetToolAttempt(
+        `Prose before ${coding} prose after`,
+        deniedPolicy,
+      ),
+    ).toBe(true)
+    expect(
+      isDeniedCodingFleetToolAttempt(
+        "The coding_fleet_start tool is not available here.",
+        deniedPolicy,
+      ),
+    ).toBe(false)
+    expect(
+      isDeniedCodingFleetToolAttempt(
+        '{"note":"coding_fleet_start is not available here"}',
+        deniedPolicy,
+      ),
+    ).toBe(false)
   })
 
   test("formatInstructedToolReply stays short", () => {

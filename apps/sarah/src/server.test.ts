@@ -207,7 +207,7 @@ describe("apps/sarah monorepo service", () => {
     }
   })
 
-  test("authenticated coding_fleet_start reaches the Postgres authority HTTP adapter and propagates refreshed auth", async () => {
+  test("direct typed authenticated-customer coding_fleet_start reaches authority while natural selection stays operator-only", async () => {
     const savedTestMode = process.env.SARAH_ACCOUNT_LINK_TEST_MODE
     process.env.SARAH_ACCOUNT_LINK_TEST_MODE = "1"
     const authorityCalls: Array<Request> = []
@@ -408,6 +408,76 @@ describe("apps/sarah monorepo service", () => {
         )
         expect(systems).toHaveLength(1)
         expect(systems[0]).not.toContain("coding_fleet_start")
+        expect(authorityCalls).toBe(0)
+      }
+    } finally {
+      if (savedTestMode === undefined) delete process.env.SARAH_ACCOUNT_LINK_TEST_MODE
+      else process.env.SARAH_ACCOUNT_LINK_TEST_MODE = savedTestMode
+      if (savedInstructed === undefined) delete process.env.SARAH_INSTRUCTED_JSON_TOOLS
+      else process.env.SARAH_INSTRUCTED_JSON_TOOLS = savedInstructed
+    }
+  })
+
+  test("denied natural-language coding attempts redact fenced and prose-embedded private args", async () => {
+    const savedTestMode = process.env.SARAH_ACCOUNT_LINK_TEST_MODE
+    const savedInstructed = process.env.SARAH_INSTRUCTED_JSON_TOOLS
+    process.env.SARAH_ACCOUNT_LINK_TEST_MODE = "1"
+    process.env.SARAH_INSTRUCTED_JSON_TOOLS = "1"
+    const coding = JSON.stringify({
+      sarah_tool: "coding_fleet_start",
+      args: {
+        objective: "PRIVATE OPENAGENTS_AGENT_TOKEN /Users/owner/repo",
+      },
+    })
+    try {
+      for (const [kind, reply] of [
+        ["fenced", `Quoted attempt:\n\`\`\`json\n${coding}\n\`\`\``],
+        ["prose", `Attempt follows: ${coding} and must not be echoed.`],
+      ] as const) {
+        let authorityCalls = 0
+        const response = await handleSarahRequest(
+          new Request("https://openagents.com/sarah/api/eve/turn", {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              "x-sarah-test-oa-session": JSON.stringify({
+                userId: `customer-denied-${kind}`,
+                email: "customer@example.com",
+                teams: [],
+                isAdmin: false,
+              }),
+            },
+            body: JSON.stringify({
+              message: "Show the attempted coding command.",
+              prospectRef: `prospect-denied-${kind}`,
+            }),
+          }),
+          {
+            generateOwnedReply: async () => ({
+              ok: true,
+              reply,
+              model: "fixture-gemma",
+              usage: {
+                promptTokens: 1,
+                outputTokens: 1,
+                thoughtTokens: 0,
+                totalTokens: 2,
+              },
+            }),
+            fleetAuthorityFetch: () => {
+              authorityCalls += 1
+              return Promise.resolve(new Response())
+            },
+          },
+        )
+        const body = await response.json()
+        expect(body.reply).toBe(
+          "Coding fleet commands are available only in authenticated owner-operator mode.",
+        )
+        expect(body.toolResults).toEqual([])
+        expect(JSON.stringify(body)).not.toContain("PRIVATE")
+        expect(JSON.stringify(body)).not.toContain("OPENAGENTS_AGENT_TOKEN")
+        expect(JSON.stringify(body)).not.toContain("/Users/owner/repo")
         expect(authorityCalls).toBe(0)
       }
     } finally {
