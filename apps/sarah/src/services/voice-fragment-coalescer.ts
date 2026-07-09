@@ -162,11 +162,10 @@ const makeRejected = <Result>(
  *
  * It intentionally is not wired directly into `liveStreamingResponse`: a
  * promise-only integration would buffer the model reply and violate Sarah's
- * immediate SSE role/keepalive first-byte law. Live wiring needs a bounded
- * multi-controller stream fanout/replay primitive before this grouping policy
- * can safely sit between `handleSarahChatCompletions` and
- * `liveStreamingResponse`; that fanout must also own the current exactly-once
- * `publishAndRecord` completion after the shared stream closes.
+ * immediate SSE role/keepalive first-byte law. The bounded, exact-scope
+ * delivery primitive now lives in `conversation-stream-fanout.ts`; live route
+ * wiring remains separate so this grouping policy cannot accidentally turn
+ * subscriber replay into another `publishAndRecord` transcript write.
  */
 export function makeSarahVoiceFragmentCoalescer<Result>(input: Readonly<{
   execute: SarahVoiceFragmentExecutor<Result>
