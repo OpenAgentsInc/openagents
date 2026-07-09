@@ -2,13 +2,11 @@ import { defineTheme } from "@effect-native/tokens"
 
 // Khala Protoss-blue theme for the Effect Native fleet cockpit (MH-7 / EN-5).
 //
-// The upstream `@effect-native/tokens` snapshot EN-1 vendored (commit
-// 6dda1d4) ships only `defaultTheme` / `defineTheme` — the shared
-// `khalaTheme` export is not in that snapshot. So, exactly like EN-1's
-// `/stage1` route defined a route-local theme via `defineTheme`, this proof
-// defines the Protoss-blue palette locally rather than inventing a parallel
-// styling system. When the shared `khalaTheme` lands in a re-vendored
-// effect-native snapshot, this local theme should be replaced by it.
+// NOTE: the shared `khalaTheme` export now EXISTS in the vendored
+// `@effect-native/tokens` snapshot (catalog v19, commit 3c1645e). This
+// route-local theme is kept as working code for now, but it can and should be
+// replaced by importing the canonical `khalaTheme` from `@effect-native/tokens`
+// in a follow-up so the cockpit shares exactly one Protoss-blue palette.
 export const khalaCockpitTheme = defineTheme({
   spacing: {
     "0": 0,
@@ -38,12 +36,25 @@ export const khalaCockpitTheme = defineTheme({
     // Protoss-blue on near-black, matching the desktop shell's uniform theme.
     background: "#02040a",
     surface: "#081226",
+    surfaceRaised: "#0f1d3a",
     textPrimary: "#e8f0ff",
     textMuted: "#8fa6cc",
     accent: "#3a7bff",
     danger: "#ff5470",
     border: "#17315f",
     focus: "#4fd0ff",
+    info: "#38bdf8",
+    success: "#22c55e",
+    warning: "#f59e0b",
+    codeBackground: "#0a0f1c",
+    diffAdd: "#4ade80",
+    diffRemove: "#f87171",
+    syntaxKeyword: "#60a5fa",
+    syntaxString: "#4ade80",
+    syntaxComment: "#5b6b8c",
+    syntaxFunction: "#c084fc",
+    syntaxNumber: "#fbbf24",
+    syntaxOperator: "#93a4c3",
   },
   radius: {
     none: 0,
