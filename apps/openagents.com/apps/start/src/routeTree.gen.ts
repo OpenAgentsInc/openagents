@@ -13,6 +13,7 @@ import { Route as TermsRouteImport } from './routes/terms'
 import { Route as TassadarRouteImport } from './routes/tassadar'
 import { Route as StatsRouteImport } from './routes/stats'
 import { Route as Stage1RouteImport } from './routes/stage1'
+import { Route as SarahRouteImport } from './routes/sarah'
 import { Route as RunRouteImport } from './routes/run'
 import { Route as PylonsRouteImport } from './routes/pylons'
 import { Route as PromisesRouteImport } from './routes/promises'
@@ -73,6 +74,11 @@ const StatsRoute = StatsRouteImport.update({
 const Stage1Route = Stage1RouteImport.update({
   id: '/stage1',
   path: '/stage1',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SarahRoute = SarahRouteImport.update({
+  id: '/sarah',
+  path: '/sarah',
   getParentRoute: () => rootRouteImport,
 } as any)
 const RunRoute = RunRouteImport.update({
@@ -299,6 +305,7 @@ export interface FileRoutesByFullPath {
   '/promises': typeof PromisesRoute
   '/pylons': typeof PylonsRoute
   '/run': typeof RunRoute
+  '/sarah': typeof SarahRoute
   '/stage1': typeof Stage1Route
   '/stats': typeof StatsRoute
   '/tassadar': typeof TassadarRoute
@@ -346,6 +353,7 @@ export interface FileRoutesByTo {
   '/promises': typeof PromisesRoute
   '/pylons': typeof PylonsRoute
   '/run': typeof RunRoute
+  '/sarah': typeof SarahRoute
   '/stage1': typeof Stage1Route
   '/stats': typeof StatsRoute
   '/tassadar': typeof TassadarRoute
@@ -394,6 +402,7 @@ export interface FileRoutesById {
   '/promises': typeof PromisesRoute
   '/pylons': typeof PylonsRoute
   '/run': typeof RunRoute
+  '/sarah': typeof SarahRoute
   '/stage1': typeof Stage1Route
   '/stats': typeof StatsRoute
   '/tassadar': typeof TassadarRoute
@@ -443,6 +452,7 @@ export interface FileRouteTypes {
     | '/promises'
     | '/pylons'
     | '/run'
+    | '/sarah'
     | '/stage1'
     | '/stats'
     | '/tassadar'
@@ -490,6 +500,7 @@ export interface FileRouteTypes {
     | '/promises'
     | '/pylons'
     | '/run'
+    | '/sarah'
     | '/stage1'
     | '/stats'
     | '/tassadar'
@@ -537,6 +548,7 @@ export interface FileRouteTypes {
     | '/promises'
     | '/pylons'
     | '/run'
+    | '/sarah'
     | '/stage1'
     | '/stats'
     | '/tassadar'
@@ -585,6 +597,7 @@ export interface RootRouteChildren {
   PromisesRoute: typeof PromisesRoute
   PylonsRoute: typeof PylonsRoute
   RunRoute: typeof RunRoute
+  SarahRoute: typeof SarahRoute
   Stage1Route: typeof Stage1Route
   StatsRoute: typeof StatsRoute
   TassadarRoute: typeof TassadarRoute
@@ -645,6 +658,13 @@ declare module '@tanstack/react-router' {
       path: '/stage1'
       fullPath: '/stage1'
       preLoaderRoute: typeof Stage1RouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sarah': {
+      id: '/sarah'
+      path: '/sarah'
+      fullPath: '/sarah'
+      preLoaderRoute: typeof SarahRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/run': {
@@ -963,6 +983,7 @@ const rootRouteChildren: RootRouteChildren = {
   PromisesRoute: PromisesRoute,
   PylonsRoute: PylonsRoute,
   RunRoute: RunRoute,
+  SarahRoute: SarahRoute,
   Stage1Route: Stage1Route,
   StatsRoute: StatsRoute,
   TassadarRoute: TassadarRoute,

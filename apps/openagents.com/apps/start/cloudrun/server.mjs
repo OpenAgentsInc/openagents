@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs'
 import { readFile, stat } from 'node:fs/promises'
 import path from 'node:path'
-import startWorker from '../dist/server/index.js'
+import startWorker from '../dist/server/server.js'
 
 const CLIENT_DIR = path.resolve(
   process.env.OPENAGENTS_START_CLIENT_DIR ?? './dist/client',

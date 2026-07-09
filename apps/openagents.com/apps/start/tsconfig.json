@@ -10,7 +10,7 @@
       "@/*": ["./src/*"],
       "~/*": ["./src/*"]
     },
-    "types": ["@cloudflare/workers-types", "bun-types", "vite/client"]
+    "types": ["bun-types", "vite/client"]
   },
   "include": ["src/**/*.ts", "src/**/*.tsx", "vite.config.ts"]
 }

@@ -362,7 +362,7 @@ const proxyConnectUpgrade = async (
   }
 
   const [client, server] = new PairCtor()
-  server.accept()
+  ;(server as unknown as { accept: () => void }).accept()
 
   server.addEventListener('message', event => {
     try {
