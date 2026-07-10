@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-07-09.2'
+export const PublicProductPromisesVersion = '2026-07-10.1'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 const tassadarPsionicBackroomArchiveRef =
@@ -341,6 +341,7 @@ export const publicProductPromisesDocument = () => {
         'apps/pylon/docs/launch-gates-no-overclaim.md',
       ],
       caveats: [
+        'Registry 2026-07-10.1 is the Pylon FleetRun closeout route-evidence binding pass. It binds the live owner-scoped FleetRun execution/steering read/write routes to pylon.v0_3_multi_earning_node.v1 as closeout-route evidence only, so blocker.product_promises.pylon_fleetrun_closeout_receipts_missing points at the route surface that can append execution evidence and settle steering completions/outcomes. The promise stays planned and green stays exactly 34; these route refs are not payment, settlement, public availability, or broad multi-earning proof.',
         'Registry 2026-07-09.2 is the #8644 Pylon FleetRun route-evidence correction pass. It binds the live owner-scoped FleetRun claim/accept intake routes to pylon.v0_3_multi_earning_node.v1 while explicitly keeping them route-level intake evidence only, adds blocker.product_promises.pylon_fleetrun_closeout_receipts_missing, and requires accepted FleetRun closeout receipts before that blocker can clear. The promise stays planned and green stays exactly 34; claim/accept intake proves no assignment closeout, payment, settlement, or broad multi-earning availability. This version is a fix-forward provenance correction because the evidence/copy mutation first landed under the unchanged 2026-07-09.1 registry version.',
         'Registry 2026-07-09.1 withdraws the legacy Autopilot/Khala Code app-shell claims, adds planned openagents.desktop_app.v1 and openagents.mobile_app.v1 successors, and keeps every stable legacy promise ID, transition, evidence ref, and public-safe receipt/read route for integrity. Preserved APIs do not make a retired app installable or releasable.',
         'Pylon v1.0 has a stable source cut, and npm reports @openagentsinc/pylon@latest on the v1.0 line. Live deployment, signed-binary feed rollout, and earning/settlement claims remain separate gates.',
@@ -1103,7 +1104,7 @@ export const publicProductPromisesDocument = () => {
         claim:
           'Pylon v1.0 becomes one piece of node software that can earn Bitcoin in multiple ways, including training, Forum or coding-agent-adjacent work, and payment-integrated tasks.',
         safeCopy:
-          'Pylon v1.0 has a stable source cut with scoped green/yellow subclaims; one-install multi-earning remains red until each earning mode has its own evidence. The Sarah FleetRun claim/accept routes are route-level intake evidence only; they are not assignment closeout, payment, settlement, or broad multi-earning proof.',
+          'Pylon v1.0 has a stable source cut with scoped green/yellow subclaims; one-install multi-earning remains red until each earning mode has its own evidence. The Sarah FleetRun claim/accept routes are route-level intake evidence only, and the FleetRun execution/steering routes are closeout-route evidence only; they are not payment, settlement, public availability, or broad multi-earning proof.',
         unsafeCopy:
           'Do not claim one Pylon install currently earns Bitcoin across multiple modes automatically.',
         evidenceRefs: [
@@ -1116,6 +1117,10 @@ export const publicProductPromisesDocument = () => {
           'docs/promises/2026-06-19-pylon-non-green-promise-assault-assessment.md',
           'route:/api/pylons/{pylonRef}/fleet-runs/claim',
           'route:/api/pylons/{pylonRef}/fleet-runs/accept',
+          'route:/api/pylons/{pylonRef}/fleet-runs/{runRef}/events',
+          'route:/api/pylons/{pylonRef}/fleet-runs/{runRef}/steering',
+          'route:/api/pylons/{pylonRef}/fleet-runs/{runRef}/steering/completions',
+          'route:/api/pylons/{pylonRef}/fleet-runs/{runRef}/steering/outcomes',
         ],
         blockerRefs: [
           'blocker.product_promises.pylon_v1_default_install_not_fully_closed',
@@ -5437,6 +5442,7 @@ export const publicProductPromisesDocument = () => {
     ],
     notes: [
       `Include version ${PublicProductPromisesVersion} and the relevant promiseId when reporting a mismatch.`,
+      'Registry 2026-07-10.1 is the Pylon FleetRun closeout route-evidence binding pass and flips NO promise state — green stays exactly 34. It binds route:/api/pylons/{pylonRef}/fleet-runs/{runRef}/events, route:/api/pylons/{pylonRef}/fleet-runs/{runRef}/steering, route:/api/pylons/{pylonRef}/fleet-runs/{runRef}/steering/completions, and route:/api/pylons/{pylonRef}/fleet-runs/{runRef}/steering/outcomes to planned pylon.v0_3_multi_earning_node.v1 as closeout-route evidence only, so blocker.product_promises.pylon_fleetrun_closeout_receipts_missing has explicit route anchors for execution evidence, steering completions, and outcomes. These route refs are not payment, settlement, public availability, or broad multi-earning proof.',
       'Registry 2026-07-09.2 is the #8644 Pylon FleetRun route-evidence correction pass and flips NO promise state — green stays exactly 34. It binds route:/api/pylons/{pylonRef}/fleet-runs/claim and route:/api/pylons/{pylonRef}/fleet-runs/accept to planned pylon.v0_3_multi_earning_node.v1 as route-level intake evidence only, adds blocker.product_promises.pylon_fleetrun_closeout_receipts_missing, and requires accepted FleetRun closeout receipts before that blocker can clear. Claim/accept intake is not assignment closeout, payment, settlement, or broad multi-earning proof. The .2 bump is a fix-forward provenance correction because #8644 first changed this public registry content while leaving PublicProductPromisesVersion at 2026-07-09.1.',
       'Registry 2026-07-09.1 is the owner-directed legacy app retirement and greenfield successor pass. It adds planned openagents.desktop_app.v1 (Effect Native + Electron, required pinned LuanRoger/electron-shadcn scaffold) and openagents.mobile_app.v1 (Effect Native + React Native/Expo, name OpenAgents, iOS/Android com.openagents.app, pinned Khala mobile icon); withdraws autopilot.desktop_gui_client.v1, khala_code.desktop_codex_wrapper.v1, khala_code.mobile_mvp.v1, and khala_code.forum_hotbar.v1; demotes khala_code.bundled_fleet_skill.v1 from yellow to planned packaging carry-forward; and reframes the remaining khala_code.* records as stable-ID capability/economics lineage rather than current app-shell promises. mobile.fleet_companion.v1 now targets the greenfield OpenAgents app. Green stays exactly 34; total 145, planned 78, yellow 20, withdrawn 7. Historical promise IDs, transition receipts, exact download/evidence rows, entitlement/privacy/payment receipts, and public-safe read routes remain dereferenceable. No retired app may be installed, released, or resurrected by a legacy feature flag.',
       'Registry 2026-07-06.2 is the CFG-13 (#8528) Sites/Workers-for-Platforms retirement pass under the Cloudflare→Google consolidation epic (#8515) and flips autopilot_sites.custom_tenant_hostnames.v1 from yellow to red — green stays exactly 34. The Sites/WfP program was hard-removed from the active code path by owner decision: the sites.openagents.com serving route and SITES_DISPATCH dispatch-namespace binding are gone from wrangler.jsonc, the site-runtime serving pipeline, /api/tenant/hostnames self-serve hostname routes, Cloudflare custom-hostname (Cloudflare for SaaS) client, hostname provisioning core, sites provisioning-plan route, and operator deploy/disable/rollback routes are deleted, and the openagents-sites-production dispatch namespace is being deleted on the Cloudflare side. Trial-site D1 rows were archived first. No custom hostname was ever provisioned to active and the WfP namespace held zero scripts, so no customer-serving capability is lost. Sites returns later redesigned on owned primitives (docs/cloud/2026-07-06-cloudflare-to-google-consolidation-audit.md, Phase 4). No other promise changes state.',

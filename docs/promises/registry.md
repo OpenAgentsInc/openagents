@@ -1,16 +1,11 @@
 # Promise Registry
 
-> Registry `2026-07-09.2` is the #8644 Pylon FleetRun route-evidence
-> correction pass. It binds the live owner-scoped FleetRun claim/accept routes
-> to planned `pylon.v0_3_multi_earning_node.v1` as route-level intake evidence
-> only, adds
-> `blocker.product_promises.pylon_fleetrun_closeout_receipts_missing`, and
-> requires accepted FleetRun closeout receipts before that blocker can clear.
-> The promise stays planned and green stays exactly 34: claim/accept intake is
-> not assignment closeout, payment, settlement, or broad multi-earning proof.
-> This `.2` rung is a fix-forward provenance correction because #8644 first
-> changed the public registry content while leaving the served source version
-> at `2026-07-09.1`.
+> Registry `2026-07-10.1` is the Pylon FleetRun closeout route-evidence
+> binding pass. It binds the live FleetRun execution/steering routes to planned
+> `pylon.v0_3_multi_earning_node.v1` as closeout-route evidence only, keeping
+> the promise planned and green unchanged at 34. The earlier `2026-07-09.2`
+> pass bound claim/accept intake routes and added
+> `blocker.product_promises.pylon_fleetrun_closeout_receipts_missing`.
 
 > Registry `2026-07-09.1` is the owner-directed legacy app retirement and
 > greenfield successor pass. It adds planned `openagents.desktop_app.v1`
@@ -795,9 +790,15 @@ promise candidates and public-copy constraints, not proof of live state.
 The live Sarah FleetRun standing-node routes
 `route:/api/pylons/{pylonRef}/fleet-runs/claim` and
 `route:/api/pylons/{pylonRef}/fleet-runs/accept` are attached to
-`pylon.v0_3_multi_earning_node.v1` as route-level intake evidence only. They do
-not prove assignment closeout, payment, settlement, or broad multi-earning
-availability. Accepted FleetRun closeout receipts are tracked by
+`pylon.v0_3_multi_earning_node.v1` as route-level intake evidence only. The
+FleetRun execution/steering routes
+`route:/api/pylons/{pylonRef}/fleet-runs/{runRef}/events`,
+`route:/api/pylons/{pylonRef}/fleet-runs/{runRef}/steering`,
+`route:/api/pylons/{pylonRef}/fleet-runs/{runRef}/steering/completions`, and
+`route:/api/pylons/{pylonRef}/fleet-runs/{runRef}/steering/outcomes` are
+attached as closeout-route evidence only. They do not prove payment,
+settlement, public availability, or broad multi-earning availability. Accepted
+FleetRun closeout receipts are tracked by
 `blocker.product_promises.pylon_fleetrun_closeout_receipts_missing`, and the
 promise stays non-green until those receipts exist.
 
