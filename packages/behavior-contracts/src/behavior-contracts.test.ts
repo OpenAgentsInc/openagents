@@ -140,7 +140,7 @@ describe("behavior contract registry", () => {
     const validation = validateBehaviorContractRegistry(decoded)
 
     expect(validation).toEqual({ issues: [], ok: true })
-    expect(decoded.contracts).toHaveLength(10)
+    expect(decoded.contracts).toHaveLength(11)
     const pending = decoded.contracts.filter(contract => contract.state === "pending")
     expect(pending).toHaveLength(4)
     expect(
@@ -161,6 +161,16 @@ describe("behavior contract registry", () => {
     )
     expect(desktopRuntime?.state).toBe("pending")
     expect(desktopRuntime?.statement).toContain("mobile sync working soon")
+    const mobileSyncHost = decoded.contracts.find(
+      contract =>
+        contract.contractId === "openagents_mobile.sync.host_owned_expo_sqlite.v1",
+    )
+    expect(mobileSyncHost?.state).toBe("enforced")
+    expect(mobileSyncHost?.enforcementTier).toBe("test-sweep")
+    expect(mobileSyncHost?.statement).toContain("never presents local readiness")
+    expect(mobileSyncHost?.oracles[0]?.ref).toBe(
+      "apps/openagents-mobile/tests/mobile-sync-host.test.ts",
+    )
     // Owner P0 (build 111 TestFlight feedback, 2026-07-09): the minerals
     // sheet closes only on USER intents, enforced in the mobile test sweep.
     const mineralsSheet = decoded.contracts.find(

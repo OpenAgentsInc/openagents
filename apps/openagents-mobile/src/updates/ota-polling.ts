@@ -25,6 +25,9 @@ export interface OtaUpdatesClient {
 
 export interface OtaPollingOptions {
   readonly intervalMs?: number
+  /** Flush host-owned resources after fetch and before replacing the JS
+   * runtime. A rejection prevents reload and leaves the poller retryable. */
+  readonly beforeReload?: () => void | Promise<void>
   /** Called after an update is fetched, just before the reload — a visible
    * "update ready — restarting" beat if the shell wants one. */
   readonly onUpdateReady?: () => void
@@ -70,6 +73,8 @@ export const startOtaPolling = (
         await client.fetchUpdateAsync()
         if (stopped) return
         options.onUpdateReady?.()
+        await options.beforeReload?.()
+        if (stopped) return
         await client.reloadAsync()
         // reloadAsync restarts the app; nothing more to schedule.
         return

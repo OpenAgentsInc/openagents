@@ -5,8 +5,9 @@ in `docs/khala-sync/SPEC.md` §6, server in `packages/khala-sync-server`).
 
 Components (KS-5 workstream):
 
-- **Local store** — ✅ shipped on `bun:sqlite` (KS-5.1, Khala Code
-  desktop) and ✅ on web (KS-5.4): SQLite-WASM on the `opfs-sahpool` VFS
+- **Local store** — ✅ shipped on `bun:sqlite` (KS-5.1), Electron
+  `node:sqlite`, Expo SQLite, and ✅ on web (KS-5.4): SQLite-WASM on the
+  `opfs-sahpool` VFS
   behind a SharedWorker with Web Locks single-writer election — see
   "Web store" below. Both adapters share ONE driver-agnostic SQL core
   (`store-core.ts`), so the semantics are identical by construction.
@@ -47,7 +48,18 @@ Components (KS-5 workstream):
 - **v1 offline contract** — online-optimistic: reads work offline, pushes
   wait for connectivity (bounded queue, honest expiry).
 
-First consumer: the Khala Code desktop fleet cockpit (KS-6).
+Consumers include the Khala Code desktop fleet cockpit and the greenfield
+OpenAgents Desktop/mobile hosts.
+
+## Expo SQLite store
+
+`@openagentsinc/khala-sync-client/expo-sqlite-store` maps Expo's synchronous
+SQLite surface onto the same driver-agnostic store core. It deliberately does
+not import the native Expo module: the React Native host injects
+`openDatabaseSync`, so Bun/web package entry points stay loadable and the app
+retains native-handle ownership. WAL, foreign keys, initialization cleanup,
+transaction rollback, typed close, restart-stable identity, and the durable
+mutation queue are covered by the package and OpenAgents mobile test sweeps.
 
 ## Local store usage (`bun:sqlite`)
 

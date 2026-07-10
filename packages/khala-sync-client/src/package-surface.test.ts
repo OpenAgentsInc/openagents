@@ -7,7 +7,7 @@ const read = (path: string): Promise<string> =>
   Bun.file(new URL(path, packageRoot)).text()
 
 describe("@openagentsinc/khala-sync-client package surface", () => {
-  test("keeps the root entry free of the Bun-only SQLite store", async () => {
+  test("keeps the root entry free of runtime-specific SQLite stores", async () => {
     const [packageJsonText, rootEntry] = await Promise.all([
       read("package.json"),
       read("src/index.ts"),
@@ -18,7 +18,11 @@ describe("@openagentsinc/khala-sync-client package surface", () => {
 
     expect(packageJson.exports?.["."]).toBe("./src/index.ts")
     expect(packageJson.exports?.["./sqlite-store"]).toBe("./src/sqlite-store.ts")
+    expect(packageJson.exports?.["./expo-sqlite-store"]).toBe(
+      "./src/expo-sqlite-store.ts",
+    )
     expect(rootEntry).not.toContain('from "./sqlite-store.js"')
+    expect(rootEntry).not.toContain('from "./expo-sqlite-store.js"')
     expect(rootEntry).not.toContain("openKhalaSyncStore")
   })
 

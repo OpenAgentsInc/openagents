@@ -522,6 +522,11 @@ More specific invariant ledgers apply inside imported apps and packages.
   routes and the hub DO. Substrate and client enforcement lives in
   `packages/khala-sync-server` and `packages/khala-sync-client` test
   suites named there.
+- Desktop `node:sqlite` and mobile Expo SQLite are thin host adapters over the
+  same `packages/khala-sync-client` store core. The host owns the database
+  handle and installation identity, closes it before process/OTA teardown,
+  and exposes only bounded readiness/freshness state to Effect Native views;
+  a local cache is never authenticated or server-authoritative Sync.
 - Operations (Cloud SQL monitoring, migration runner, compaction, capture
   daemon, hub reset, Hyperdrive saturation, secrets locations) are in
   `docs/khala-sync/RUNBOOK.md`.

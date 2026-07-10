@@ -16,8 +16,9 @@
 // ---------------------------------------------------------------------------
 // Local store (KS-5.1 + KS-5.4): contracts in store.ts; ALL SQL semantics
 // in the driver-agnostic store-core.ts. Runtime-specific stores live behind
-// explicit subpaths: `./sqlite-store` for Bun desktop and `./web` for the
-// SQLite-WASM worker adapter. Keep this root entry free of runtime-only
+// explicit subpaths: `./sqlite-store` for Bun, `./expo-sqlite-store` for
+// React Native hosts, and `./web` for the SQLite-WASM worker adapter. Keep this
+// root entry free of runtime-only
 // modules so Metro/React Native can import session, overlay, and transport
 // code without trying to resolve Bun's `bun:sqlite`.
 // ---------------------------------------------------------------------------

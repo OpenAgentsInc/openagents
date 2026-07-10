@@ -113,6 +113,29 @@ describe("contract openagents_mobile.ota.temporary_3s_poll.v1", () => {
     expect(order).toEqual(["ready", "reload"])
   })
 
+  test("fetches, closes host-owned state, then reloads", async () => {
+    const order: Array<string> = []
+    const { client } = makeClient(() => ({ available: true }))
+    const wrapped: OtaUpdatesClient = {
+      ...client,
+      fetchUpdateAsync: async () => {
+        order.push("fetch")
+      },
+      reloadAsync: async () => {
+        order.push("reload")
+      },
+    }
+    const handle = startOtaPolling(wrapped, {
+      intervalMs: 5,
+      beforeReload: () => {
+        order.push("close-sync")
+      },
+    })
+    await wait(30)
+    handle.stop()
+    expect(order).toEqual(["fetch", "close-sync", "reload"])
+  })
+
   test("no-op when updates are disabled (Expo Go / dev)", async () => {
     const { client, state } = makeClient(() => ({ available: true }))
     const disabled: OtaUpdatesClient = { ...client, isEnabled: false }

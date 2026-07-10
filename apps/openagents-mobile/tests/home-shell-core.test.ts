@@ -50,6 +50,21 @@ describe("contract openagents_mobile.persona_neutral_home.v1", () => {
     expect(content).not.toContain("Repository:")
   })
 
+  test("reports local durability without claiming authenticated network Sync", async () => {
+    const program = buildHomeProgram()
+    program.sync.setPhase("local_ready")
+    await Effect.runPromise(settle)
+    const state = await Effect.runPromise(lastState(program))
+    const content = JSON.stringify(renderContentView({ ...state, surfaceMode: "openagents" }))
+    expect(syncStatusCopy("local_ready")).toEqual({
+      title: "Local Sync ready",
+      detail: "Local data is durable. Connect an OpenAgents session to sync shared work.",
+    })
+    expect(content).toContain("Local Sync ready")
+    expect(content).toContain("Connect an OpenAgents session")
+    expect(content).not.toContain("Sync live")
+  })
+
   test("native-composer dispatchers own the Khala draft and New chat clears it", async () => {
     const program = buildHomeProgram()
     program.khala.draftChanged("Plan the mobile handoff")

@@ -453,10 +453,12 @@ records before claiming the first new slice.
   authoritative Sync threads or conversation services composed behind that
   gateway, a streamed provider-neutral event runtime, a complete coding
   workbench, or a visible server-authoritative Fleet cockpit.
-- The new mobile app has an Effect Native/React Native shell and one in-memory
-  persona-neutral Khala chat path driven by the native composer. Removed Sarah/
-  demo/local-catalog state is not an authority substitute. It does not yet have
-  authenticated cross-device Sync,
+- The new mobile app has an Effect Native/React Native shell, one in-memory
+  persona-neutral Khala chat path driven by the native composer, and a
+  host-owned Expo SQLite adapter over the shared Khala Sync store core with a
+  restart-stable installation identity and pre-OTA close. Removed Sarah/demo/
+  local-catalog state and local cache readiness are not authority substitutes.
+  It does not yet have authenticated cross-device Sync,
   FleetRun authority, account/capacity state, durable controls, remote-workroom
   coding, or receipt continuity. The frozen `clients/khala-mobile` app already
   demonstrates much of the missing product behavior—GitHub PKCE, SecureStore
@@ -1128,11 +1130,12 @@ bounded issues under the owning program.
    #8638/#8640 claims to Revision 27. Preserve R0 on both clients: green clean-
    state builds/tests/smokes, honest capability manifests, no fake authority,
    and the existing hardened Desktop boundary.
-2. Implement F1/R1/R2 through both clients together from the published
+2. Continue F1/R1/R2 through both clients together from the published
    `khala.identity_sync_contract.v1`: Desktop keychain/main-process session,
    mobile secure session, `device_session` through the serialized freeze lane,
-   Desktop SQLite and mobile Expo SQLite adapters, exact phases, and fault
-   fixtures. Do not invent a new Sync engine or app-local entity model.
+   exact authenticated phases, and fault fixtures. Desktop `node:sqlite` and
+   mobile Expo SQLite adapters are landed over the shared store core; do not
+   invent a new Sync engine or app-local entity model.
 3. Implement F2/D1 as the first product milestone: one provider-neutral real
    streamed durable conversation through the host-owned Desktop Runtime
    Gateway, immediately continued on mobile with matching refs/versions/phases

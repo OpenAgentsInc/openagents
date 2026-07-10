@@ -52,7 +52,12 @@ export interface HomeState {
   readonly khala: KhalaState
 }
 
-export type MobileSyncPhase = ScopeSyncState["phase"] | "unconfigured" | "unavailable" | "stale"
+export type MobileSyncPhase =
+  | ScopeSyncState["phase"]
+  | "local_ready"
+  | "unconfigured"
+  | "unavailable"
+  | "stale"
 
 export interface SyncStatusCopy {
   readonly title: string
@@ -60,6 +65,10 @@ export interface SyncStatusCopy {
 }
 
 const syncStatusCopyByPhase: Record<MobileSyncPhase, SyncStatusCopy> = {
+  local_ready: {
+    title: "Local Sync ready",
+    detail: "Local data is durable. Connect an OpenAgents session to sync shared work.",
+  },
   unconfigured: {
     title: "Sync not configured",
     detail: "Connect an OpenAgents session to view shared work, repositories, and Fleet state.",
@@ -229,6 +238,9 @@ export interface HomeProgramHandle {
     readonly draftChanged: (text: string) => void
     readonly submitTurn: (text: string) => void
   }
+  readonly sync: {
+    readonly setPhase: (phase: MobileSyncPhase) => void
+  }
 }
 
 export const buildHomeProgram = (options: HomeProgramOptions = {}): HomeProgramHandle =>
@@ -258,6 +270,11 @@ export const buildHomeProgram = (options: HomeProgramOptions = {}): HomeProgramH
         khala: {
           draftChanged: (text) => fireText(IntentRef("KhalaDraftChanged", ComponentValueBinding()), text),
           submitTurn: submitKhala,
+        },
+        sync: {
+          setPhase: phase => {
+            Effect.runFork(SubscriptionRef.update(state, current => ({ ...current, syncPhase: phase })))
+          },
         },
       }
     }),

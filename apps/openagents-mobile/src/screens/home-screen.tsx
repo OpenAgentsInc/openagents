@@ -15,6 +15,7 @@ import {
   renderContentView,
   renderDrawerView,
   surfaceModeOptions,
+  type MobileSyncPhase,
 } from "./home-core"
 
 /**
@@ -34,7 +35,7 @@ const fallbackChromeStyle = {
   borderWidth: 1,
 } as const
 
-export const HomeScreen = () => {
+export const HomeScreen = ({ syncPhase }: { readonly syncPhase: MobileSyncPhase }) => {
   const program = useMemo(() => buildHomeProgram({ khalaTurn: { sendTurn: sendKhalaTurn } }), [])
   const [homeState, setHomeState] = useState(initialHomeState)
   const insets = useSafeAreaInsets()
@@ -49,6 +50,10 @@ export const HomeScreen = () => {
     })
     return () => controller.abort()
   }, [program])
+
+  useEffect(() => {
+    program.sync.setPhase(syncPhase)
+  }, [program, syncPhase])
 
   const chrome = chromeProps(homeState)
 

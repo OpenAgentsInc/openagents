@@ -25,6 +25,10 @@ imports nothing from it.
 - `src/screens/home-screen.tsx` — thin RN shell: safe area + the Effect Native
   surface mounted with the shared Protoss-blue `khalaTheme` from
   `@effect-native/tokens`.
+- `src/sync/mobile-sync-host.ts` — host-owned Expo SQLite composition over the
+  shared Khala Sync store core. It owns the native handle and installation
+  identity, closes before OTA reload/unmount, and never projects either into
+  the Effect Native view program.
 - Styling is **typed style objects on the shared token vocabulary** — no
   NativeWind, no Tailwind class strings (see
   `docs/effect-native/2026-07-08-styling-tailwind-stylex-effect-native.md`).
@@ -112,7 +116,9 @@ Android and test hosts use a functional React Native fallback.
 ## What exists today
 
 The Home screen is persona-neutral: a typed Khala conversation with one native
-Liquid Glass composer, backed by the public orchestration endpoint. It does
-not manufacture local fleet, account, Sync, receipt, or cross-device state.
-Fleet supervision, authenticated identity, Khala Sync continuity, and durable
-commands are the next #8597 priorities.
+Liquid Glass composer, backed by the public orchestration endpoint. A private
+Expo SQLite cache now supplies restart-stable local Khala Sync storage and an
+honest `Local Sync ready` state. It does not manufacture authenticated/network
+Sync, fleet, account, receipt, or cross-device authority. Secure OpenAgents
+session custody, real Sync subscriptions, and durable commands are the next
+#8597 priorities.
