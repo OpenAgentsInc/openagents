@@ -29,7 +29,7 @@ import {
   type FleetRunWorkSourceDescriptor,
 } from "./fleet-run-work-source.js"
 
-export const ORCHESTRATION_SCHEMA_VERSION = 5
+export const ORCHESTRATION_SCHEMA_VERSION = 6
 
 export type OrchestrationTaskStatus =
   | "pending"
@@ -202,6 +202,7 @@ export type FleetRunExecutionOutboxEntry = {
   sequence: number
   eventRef: string
   eventJson: string
+  deliveryBatchRef: string | null
   createdAt: string
   deliveredAt: string | null
 }
@@ -213,6 +214,14 @@ export type EnqueueFleetRunExecutionOutboxInput = {
   /** Encode the final schema event after the store assigns its gapless sequence. */
   eventJsonForSequence: (sequence: number) => string
   now?: Date
+}
+
+export type ReserveFleetRunExecutionOutboxBatchInput = {
+  runRef: string
+  claimRef: string
+  firstSequence: number
+  lastSequence: number
+  deliveryBatchRef: string
 }
 
 export const FleetRunOwnerLocalStateSchema = S.Struct({
@@ -510,6 +519,8 @@ const DEFAULT_FLEET_RUN_REFILL_POLICY: FleetRunRefillPolicy = {
 const FLEET_RUN_ACTIVATION_REF_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:/#-]{0,180}$/u
 const FLEET_RUN_EXECUTION_EVENT_REF_PATTERN =
   /^event\.pylon\.fleet_run\.[a-f0-9]{24}$/u
+const FLEET_RUN_EXECUTION_BATCH_REF_PATTERN =
+  /^batch\.pylon\.fleet_run\.[a-f0-9]{24}$/u
 const FLEET_RUN_EXECUTION_EVENT_MAX_BYTES = 64 * 1_024
 
 const parseJsonArray = (value: string): string[] => {
@@ -834,6 +845,7 @@ type FleetRunExecutionOutboxRow = {
   sequence: number
   event_ref: string
   event_json: string
+  delivery_batch_ref?: string | null
   created_at: string
   delivered_at: string | null
 }
@@ -999,6 +1011,7 @@ const fleetRunExecutionOutboxEntryFromRow = (
   sequence: row.sequence,
   eventRef: row.event_ref,
   eventJson: row.event_json,
+  deliveryBatchRef: row.delivery_batch_ref ?? null,
   createdAt: row.created_at,
   deliveredAt: row.delivered_at,
 })
@@ -1260,9 +1273,10 @@ export class PylonOrchestrationStore {
       CREATE TABLE IF NOT EXISTS pylon_orchestration_fleet_run_execution_outbox (
         run_ref TEXT NOT NULL,
         claim_ref TEXT NOT NULL,
-        sequence INTEGER NOT NULL CHECK (sequence >= 1),
+        sequence INTEGER NOT NULL CHECK (sequence BETWEEN 1 AND 9007199254740991),
         event_ref TEXT NOT NULL UNIQUE,
         event_json TEXT NOT NULL,
+        delivery_batch_ref TEXT,
         created_at TEXT NOT NULL,
         delivered_at TEXT,
         PRIMARY KEY (run_ref, sequence)
@@ -1317,6 +1331,7 @@ export class PylonOrchestrationStore {
     this.ensureDispatchContextBreakerColumns()
     this.ensureDispatchContextPausedColumn()
     this.ensureDispatchContextRunnerKindAllowsGrokCli()
+    this.ensureFleetRunExecutionOutboxBatchColumn()
     this.db
       .query("INSERT OR REPLACE INTO pylon_orchestration_meta (key, value) VALUES ('schema_version', $version)")
       .run({ $version: String(ORCHESTRATION_SCHEMA_VERSION) })
@@ -1357,6 +1372,22 @@ export class PylonOrchestrationStore {
     if (!contextColumns.has("paused")) {
       this.db.exec("ALTER TABLE pylon_orchestration_dispatch_contexts ADD COLUMN paused INTEGER NOT NULL DEFAULT 0")
     }
+  }
+
+  private ensureFleetRunExecutionOutboxBatchColumn(): void {
+    const outboxColumns = this.tableColumnNames(
+      "pylon_orchestration_fleet_run_execution_outbox",
+    )
+    if (!outboxColumns.has("delivery_batch_ref")) {
+      this.db.exec(`
+        ALTER TABLE pylon_orchestration_fleet_run_execution_outbox
+        ADD COLUMN delivery_batch_ref TEXT
+      `)
+    }
+    this.db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_pylon_orchestration_fleet_run_execution_batch
+        ON pylon_orchestration_fleet_run_execution_outbox(run_ref, delivery_batch_ref, sequence)
+    `)
   }
 
   /**
@@ -1571,19 +1602,22 @@ export class PylonOrchestrationStore {
     ) {
       throw new Error("fleet run execution outbox refs are invalid")
     }
-    const run = this.getFleetRun(input.runRef)
-    if (
-      run?.authorityBinding?.phase !== "accepted" ||
-      run.authorityBinding.claimRef !== input.claimRef
-    ) {
-      throw new Error("fleet run execution outbox requires the exact accepted authority claim")
-    }
     const createdAt = iso(input.now)
     this.db.run("BEGIN IMMEDIATE")
     try {
+      // The authority read belongs under the same write lock as sequence
+      // allocation. Otherwise another connection could replace or revoke the
+      // accepted binding after the check but before this append commits.
+      const run = this.getFleetRun(input.runRef)
+      if (
+        run?.authorityBinding?.phase !== "accepted" ||
+        run.authorityBinding.claimRef !== input.claimRef
+      ) {
+        throw new Error("fleet run execution outbox requires the exact accepted authority claim")
+      }
       const existing = this.db
         .query(`
-          SELECT run_ref, claim_ref, sequence, event_ref, event_json,
+          SELECT run_ref, claim_ref, sequence, event_ref, event_json, delivery_batch_ref,
                  created_at, delivered_at
             FROM pylon_orchestration_fleet_run_execution_outbox
            WHERE event_ref = $eventRef
@@ -1640,7 +1674,7 @@ export class PylonOrchestrationStore {
         })
       const inserted = this.db
         .query(`
-          SELECT run_ref, claim_ref, sequence, event_ref, event_json,
+          SELECT run_ref, claim_ref, sequence, event_ref, event_json, delivery_batch_ref,
                  created_at, delivered_at
             FROM pylon_orchestration_fleet_run_execution_outbox
            WHERE run_ref = $runRef AND sequence = $sequence
@@ -1651,6 +1685,123 @@ export class PylonOrchestrationStore {
       }
       this.db.run("COMMIT")
       return fleetRunExecutionOutboxEntryFromRow(inserted)
+    } catch (error) {
+      this.db.run("ROLLBACK")
+      throw error
+    }
+  }
+
+  /**
+   * Freeze one retry boundary before a network append begins.
+   *
+   * A response may be lost after the server commits. Persisting this boundary
+   * means later enqueues cannot expand the retried request and thereby change
+   * its idempotency key or bytes. Only the oldest pending, gapless prefix may
+   * be reserved.
+   */
+  reserveFleetRunExecutionOutboxBatch(
+    input: ReserveFleetRunExecutionOutboxBatchInput,
+  ): FleetRunExecutionOutboxEntry[] {
+    const count = input.lastSequence - input.firstSequence + 1
+    if (
+      !FLEET_RUN_ACTIVATION_REF_PATTERN.test(input.runRef) ||
+      !/^claim\.sarah_fleet_run\.[0-9a-f]{24}$/u.test(input.claimRef) ||
+      !FLEET_RUN_EXECUTION_BATCH_REF_PATTERN.test(input.deliveryBatchRef) ||
+      !Number.isSafeInteger(input.firstSequence) ||
+      !Number.isSafeInteger(input.lastSequence) ||
+      input.firstSequence < 1 ||
+      input.lastSequence < input.firstSequence ||
+      !Number.isSafeInteger(count) ||
+      count > 64
+    ) {
+      throw new Error("fleet run execution batch reservation is invalid")
+    }
+
+    this.db.run("BEGIN IMMEDIATE")
+    try {
+      const run = this.getFleetRun(input.runRef)
+      if (
+        run?.authorityBinding?.phase !== "accepted" ||
+        run.authorityBinding.claimRef !== input.claimRef
+      ) {
+        throw new Error("fleet run execution outbox requires the exact accepted authority claim")
+      }
+      const head = this.db
+        .query(`
+          SELECT MIN(sequence) AS sequence
+            FROM pylon_orchestration_fleet_run_execution_outbox
+           WHERE run_ref = $runRef AND delivered_at IS NULL
+        `)
+        .get({ $runRef: input.runRef }) as { sequence?: unknown } | null
+      if (Number(head?.sequence) !== input.firstSequence) {
+        throw new Error("fleet run execution batch must reserve the oldest pending prefix")
+      }
+      const rows = this.db
+        .query(`
+          SELECT run_ref, claim_ref, sequence, event_ref, event_json, delivery_batch_ref,
+                 created_at, delivered_at
+            FROM pylon_orchestration_fleet_run_execution_outbox
+           WHERE run_ref = $runRef
+             AND sequence BETWEEN $firstSequence AND $lastSequence
+           ORDER BY sequence ASC
+        `)
+        .all({
+          $runRef: input.runRef,
+          $firstSequence: input.firstSequence,
+          $lastSequence: input.lastSequence,
+        }) as FleetRunExecutionOutboxRow[]
+      if (
+        rows.length !== count ||
+        rows.some((row, index) =>
+          row.sequence !== input.firstSequence + index ||
+          row.claim_ref !== input.claimRef ||
+          row.delivered_at !== null ||
+          (row.delivery_batch_ref !== null &&
+            row.delivery_batch_ref !== undefined &&
+            row.delivery_batch_ref !== input.deliveryBatchRef)
+        )
+      ) {
+        throw new Error("fleet run execution batch prefix is not reservable")
+      }
+      this.db
+        .query(`
+          UPDATE pylon_orchestration_fleet_run_execution_outbox
+             SET delivery_batch_ref = $deliveryBatchRef
+           WHERE run_ref = $runRef
+             AND claim_ref = $claimRef
+             AND sequence BETWEEN $firstSequence AND $lastSequence
+             AND delivered_at IS NULL
+             AND (delivery_batch_ref IS NULL OR delivery_batch_ref = $deliveryBatchRef)
+        `)
+        .run({
+          $runRef: input.runRef,
+          $claimRef: input.claimRef,
+          $firstSequence: input.firstSequence,
+          $lastSequence: input.lastSequence,
+          $deliveryBatchRef: input.deliveryBatchRef,
+        })
+      const reserved = this.db
+        .query(`
+          SELECT run_ref, claim_ref, sequence, event_ref, event_json, delivery_batch_ref,
+                 created_at, delivered_at
+            FROM pylon_orchestration_fleet_run_execution_outbox
+           WHERE run_ref = $runRef
+             AND sequence BETWEEN $firstSequence AND $lastSequence
+           ORDER BY sequence ASC
+        `)
+        .all({
+          $runRef: input.runRef,
+          $firstSequence: input.firstSequence,
+          $lastSequence: input.lastSequence,
+        }) as FleetRunExecutionOutboxRow[]
+      if (
+        reserved.length !== count ||
+        reserved.some(row => row.delivery_batch_ref !== input.deliveryBatchRef)
+      ) {
+        throw new Error("fleet run execution batch reservation was not retained")
+      }
+      this.db.run("COMMIT")
+      return reserved.map(fleetRunExecutionOutboxEntryFromRow)
     } catch (error) {
       this.db.run("ROLLBACK")
       throw error
@@ -1668,7 +1819,7 @@ export class PylonOrchestrationStore {
     const rows = options.pendingOnly === false
       ? this.db
         .query(`
-          SELECT run_ref, claim_ref, sequence, event_ref, event_json,
+          SELECT run_ref, claim_ref, sequence, event_ref, event_json, delivery_batch_ref,
                  created_at, delivered_at
             FROM pylon_orchestration_fleet_run_execution_outbox
            WHERE run_ref = $runRef
@@ -1678,7 +1829,7 @@ export class PylonOrchestrationStore {
         .all({ $runRef: runRef, $limit: limit })
       : this.db
         .query(`
-          SELECT run_ref, claim_ref, sequence, event_ref, event_json,
+          SELECT run_ref, claim_ref, sequence, event_ref, event_json, delivery_batch_ref,
                  created_at, delivered_at
             FROM pylon_orchestration_fleet_run_execution_outbox
            WHERE run_ref = $runRef AND delivered_at IS NULL

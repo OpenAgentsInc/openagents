@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test"
+import { createHash } from "node:crypto"
 import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+
+import { canonicalJson } from "@openagentsinc/khala-sync"
 
 import {
   makePylonFleetRunExecutionHttpPort,
@@ -9,6 +12,8 @@ import {
   PYLON_FLEET_RUN_EXECUTION_ACK_SCHEMA,
   PYLON_FLEET_RUN_EXECUTION_BATCH_SCHEMA,
   type PylonFleetRunExecutionAck,
+  type PylonFleetRunExecutionBatch,
+  type PylonFleetRunExecutionEventInput,
 } from "../src/orchestration/fleet-run-execution-reporter.js"
 import { openPylonFleetRunRuntime } from "../src/orchestration/fleet-run-runtime.js"
 
@@ -16,6 +21,26 @@ const fixedNow = new Date("2026-07-10T00:10:00.000Z")
 const runRef = "fleet_run.sarah.0123456789abcdef0123"
 const claimRef = "claim.sarah_fleet_run.0123456789abcdef01234567"
 const pylonRef = "pylon.public.fc2.execution"
+const maxBatchBytes = 256 * 1_024
+
+const eventWithSequence = (
+  sequence: number,
+  event: PylonFleetRunExecutionEventInput,
+) => ({
+  ...event,
+  sequence,
+  eventRef: `event.pylon.fleet_run.${createHash("sha256")
+    .update(canonicalJson({ runRef, claimRef, event }))
+    .digest("hex")
+    .slice(0, 24)}`,
+})
+
+const startedEvent = (sequence = 1, observedAt = fixedNow.toISOString()) =>
+  eventWithSequence(sequence, {
+    schema: "openagents.pylon.fleet_run_execution_event.v1",
+    kind: "run_started",
+    observedAt,
+  })
 
 const ack = (acceptedThroughSequence: number): PylonFleetRunExecutionAck => ({
   schema: PYLON_FLEET_RUN_EXECUTION_ACK_SCHEMA,
@@ -137,13 +162,7 @@ describe("Pylon FleetRun execution reporter", () => {
       batch: {
         schema: PYLON_FLEET_RUN_EXECUTION_BATCH_SCHEMA,
         claimRef,
-        events: [{
-          schema: "openagents.pylon.fleet_run_execution_event.v1",
-          sequence: 1,
-          eventRef: "event.pylon.fleet_run.0123456789abcdef01234567",
-          kind: "run_started",
-          observedAt: fixedNow.toISOString(),
-        }],
+        events: [startedEvent()],
       },
     })
 
@@ -153,6 +172,7 @@ describe("Pylon FleetRun execution reporter", () => {
       `/api/pylons/${pylonRef}/fleet-runs/${runRef}/events`,
     )
     expect(calls[0]!.init.method).toBe("POST")
+    expect(calls[0]!.init.redirect).toBe("error")
     expect((calls[0]!.init.headers as Record<string, string>).Authorization).toBe(
       "Bearer oa_agent_fixture",
     )
@@ -168,5 +188,193 @@ describe("Pylon FleetRun execution reporter", () => {
       agentToken: "oa_agent_fixture",
       baseUrl: "http://openagents.test",
     })).toThrow("unavailable")
+  })
+
+  test("retries the exact frozen batch after a lost response even when a later event enqueues", async () => {
+    const root = await mkdtemp(join(tmpdir(), "pylon-fleet-run-idempotency-"))
+    const env = { PYLON_HOME: join(root, "pylon-home") } as NodeJS.ProcessEnv
+    try {
+      const runtime = await seedAcceptedRun(env)
+      const calls: Array<{ body: string; idempotencyKey: string }> = []
+      let loseFirstResponse = true
+      const remote = makePylonFleetRunExecutionHttpPort({
+        agentToken: "oa_agent_fixture",
+        baseUrl: "https://openagents.test",
+        fetchImpl: async (_url, init) => {
+          const body = String(init?.body)
+          calls.push({
+            body,
+            idempotencyKey: (init?.headers as Record<string, string>)["Idempotency-Key"]!,
+          })
+          if (loseFirstResponse) {
+            loseFirstResponse = false
+            throw new Error("response lost after commit")
+          }
+          const batch = JSON.parse(body) as PylonFleetRunExecutionBatch
+          return Response.json(ack(batch.events.at(-1)!.sequence))
+        },
+      })
+      const reporter = openPylonFleetRunExecutionReporter({
+        store: runtime.store,
+        pylonRef,
+        runRef,
+        now: () => fixedNow,
+        remote,
+      })
+      try {
+        await reporter.record({
+          schema: "openagents.pylon.fleet_run_execution_event.v1",
+          kind: "run_started",
+          observedAt: fixedNow.toISOString(),
+        })
+        await reporter.record({
+          schema: "openagents.pylon.fleet_run_execution_event.v1",
+          kind: "run_started",
+          observedAt: new Date(fixedNow.getTime() + 1_000).toISOString(),
+        })
+        expect(calls).toHaveLength(3)
+        expect(calls[1]).toEqual(calls[0])
+        expect(JSON.parse(calls[0]!.body).events.map((event: { sequence: number }) => event.sequence))
+          .toEqual([1])
+        expect(JSON.parse(calls[2]!.body).events.map((event: { sequence: number }) => event.sequence))
+          .toEqual([2])
+        expect(calls[2]!.idempotencyKey).not.toBe(calls[0]!.idempotencyKey)
+      } finally {
+        await reporter.close()
+        await runtime.close()
+      }
+    } finally {
+      await rm(root, { force: true, recursive: true })
+    }
+  })
+
+  test("close drains every largest byte-bounded prefix from a large valid queue", async () => {
+    const root = await mkdtemp(join(tmpdir(), "pylon-fleet-run-drain-"))
+    const env = { PYLON_HOME: join(root, "pylon-home") } as NodeJS.ProcessEnv
+    try {
+      const runtime = await seedAcceptedRun(env)
+      let online = false
+      const delivered: PylonFleetRunExecutionBatch[] = []
+      const reporter = openPylonFleetRunExecutionReporter({
+        store: runtime.store,
+        pylonRef,
+        runRef,
+        now: () => fixedNow,
+        remote: {
+          append: async ({ batch }) => {
+            if (!online) throw new Error("offline")
+            delivered.push(batch)
+            return ack(batch.events.at(-1)!.sequence)
+          },
+        },
+      })
+      const usageRefs = Array.from({ length: 100 }, (_, index) =>
+        `usage.${String(index).padStart(3, "0")}.${"x".repeat(180)}`)
+      const inputs = Array.from({ length: 20 }, (_, index): PylonFleetRunExecutionEventInput => ({
+        schema: "openagents.pylon.fleet_run_execution_event.v1",
+        kind: "work_terminal",
+        observedAt: new Date(fixedNow.getTime() + index * 1_000).toISOString(),
+        unitRef: `unit.fixture.${index}`,
+        workClaimRef: `work-claim.fixture.${index}`,
+        assignmentRef: `assignment.fixture.${index}`,
+        workerKind: "codex",
+        accountRefHash: "account.pylon.codex.0123456789abcdef01234567",
+        terminalState: "accepted",
+        closeoutRef: `closeout.fixture.${index}`,
+        usageEvidence: { truth: "exact", tokenUsageRefs: usageRefs },
+        blockerRefs: [],
+      }))
+
+      await Promise.all(inputs.map(event => reporter.record(event)))
+      online = true
+      await reporter.close()
+
+      expect(delivered.length).toBeGreaterThan(1)
+      expect(delivered.flatMap(batch => batch.events.map(event => event.sequence)))
+        .toEqual(Array.from({ length: 20 }, (_, index) => index + 1))
+      for (const batch of delivered) {
+        expect(batch.events.length).toBeLessThanOrEqual(64)
+        expect(new TextEncoder().encode(canonicalJson(batch)).byteLength)
+          .toBeLessThanOrEqual(maxBatchBytes)
+      }
+      const nextEvent = delivered[1]!.events[0]!
+      const expanded = {
+        ...delivered[0]!,
+        events: [...delivered[0]!.events, nextEvent],
+      }
+      expect(new TextEncoder().encode(canonicalJson(expanded)).byteLength)
+        .toBeGreaterThan(maxBatchBytes)
+      expect(runtime.store.listFleetRunExecutionOutbox(runRef)).toEqual([])
+      await runtime.close()
+    } finally {
+      await rm(root, { force: true, recursive: true })
+    }
+  })
+
+  test("rejects non-contiguous, unsafe, or content-unbound events without leaking input", async () => {
+    let fetchCalls = 0
+    const port = makePylonFleetRunExecutionHttpPort({
+      agentToken: "oa_agent_fixture",
+      baseUrl: "https://openagents.test",
+      fetchImpl: async () => {
+        fetchCalls += 1
+        return Response.json(ack(1))
+      },
+    })
+    const valid = startedEvent()
+    const attempts: PylonFleetRunExecutionBatch[] = [
+      {
+        schema: PYLON_FLEET_RUN_EXECUTION_BATCH_SCHEMA,
+        claimRef,
+        events: [valid, startedEvent(3, new Date(fixedNow.getTime() + 1_000).toISOString())],
+      },
+      {
+        schema: PYLON_FLEET_RUN_EXECUTION_BATCH_SCHEMA,
+        claimRef,
+        events: [{ ...valid, sequence: Number.MAX_SAFE_INTEGER + 1 }],
+      },
+      {
+        schema: PYLON_FLEET_RUN_EXECUTION_BATCH_SCHEMA,
+        claimRef,
+        events: [{ ...valid, observedAt: "2026-07-10T00:10:01.000Z" }],
+      },
+    ]
+    for (const batch of attempts) {
+      const error = await port.append({ pylonRef, runRef, batch }).catch(value => value as Error)
+      expect(error.message).toBe("Pylon FleetRun execution projection is unavailable")
+      expect(error.message).not.toContain("2026-07-10T00:10:01.000Z")
+    }
+    expect(fetchCalls).toBe(0)
+  })
+
+  test("requires an exact ack and bounds a streamed response before buffering it", async () => {
+    const batch: PylonFleetRunExecutionBatch = {
+      schema: PYLON_FLEET_RUN_EXECUTION_BATCH_SCHEMA,
+      claimRef,
+      events: [startedEvent()],
+    }
+    const wrongAck = makePylonFleetRunExecutionHttpPort({
+      agentToken: "oa_agent_fixture",
+      baseUrl: "https://openagents.test",
+      fetchImpl: async () => Response.json(ack(2)),
+    })
+    await expect(wrongAck.append({ pylonRef, runRef, batch })).rejects.toThrow("unavailable")
+
+    let cancelled = false
+    const oversized = makePylonFleetRunExecutionHttpPort({
+      agentToken: "oa_agent_fixture",
+      baseUrl: "https://openagents.test",
+      fetchImpl: async () => new Response(new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new Uint8Array(200_000))
+          controller.enqueue(new Uint8Array(100_000))
+        },
+        cancel() {
+          cancelled = true
+        },
+      }), { status: 200 }),
+    })
+    await expect(oversized.append({ pylonRef, runRef, batch })).rejects.toThrow("unavailable")
+    expect(cancelled).toBe(true)
   })
 })

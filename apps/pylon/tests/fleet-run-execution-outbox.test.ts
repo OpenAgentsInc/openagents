@@ -82,12 +82,34 @@ describe("Pylon FleetRun execution outbox", () => {
       expect(
         first.store.markFleetRunExecutionOutboxDelivered(runRef, claimRef, 1, deliveredAt),
       ).toBe(1)
+      const deliveryBatchRef = "batch.pylon.fleet_run.0123456789abcdef01234567"
+      expect(() => first.store.reserveFleetRunExecutionOutboxBatch({
+        runRef,
+        claimRef,
+        firstSequence: 2,
+        lastSequence: Number.MAX_SAFE_INTEGER + 1,
+        deliveryBatchRef,
+      })).toThrow("reservation is invalid")
+      expect(first.store.reserveFleetRunExecutionOutboxBatch({
+        runRef,
+        claimRef,
+        firstSequence: 2,
+        lastSequence: 2,
+        deliveryBatchRef,
+      })).toEqual([
+        expect.objectContaining({ sequence: 2, deliveryBatchRef }),
+      ])
       await first.close()
 
       const reopened = await openPylonFleetRunRuntime({ env, now: () => deliveredAt })
       try {
         expect(reopened.store.listFleetRunExecutionOutbox(runRef)).toEqual([
-          expect.objectContaining({ sequence: 2, eventRef: terminalRef, deliveredAt: null }),
+          expect.objectContaining({
+            sequence: 2,
+            eventRef: terminalRef,
+            deliveryBatchRef,
+            deliveredAt: null,
+          }),
         ])
         expect(reopened.store.listFleetRunExecutionOutbox(runRef, { pendingOnly: false })).toEqual([
           expect.objectContaining({ sequence: 1, eventRef: startedRef, deliveredAt: deliveredAt.toISOString() }),

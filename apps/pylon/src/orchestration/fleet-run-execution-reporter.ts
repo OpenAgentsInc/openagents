@@ -3,7 +3,10 @@ import { createHash } from "node:crypto"
 import { canonicalJson } from "@openagentsinc/khala-sync"
 import { Schema as S } from "effect"
 
-import type { PylonOrchestrationStore } from "./store.js"
+import type {
+  FleetRunExecutionOutboxEntry,
+  PylonOrchestrationStore,
+} from "./store.js"
 
 export const PYLON_FLEET_RUN_EXECUTION_BATCH_SCHEMA =
   "openagents.pylon.fleet_run_execution_batch.v1" as const
@@ -15,12 +18,14 @@ export const PYLON_FLEET_RUN_EXECUTION_ACK_SCHEMA =
 const RUN_REF = /^fleet_run\.sarah\.[0-9a-f]{20}$/u
 const CLAIM_REF = /^claim\.sarah_fleet_run\.[0-9a-f]{24}$/u
 const EVENT_REF = /^event\.pylon\.fleet_run\.[0-9a-f]{24}$/u
+const DELIVERY_BATCH_REF = /^batch\.pylon\.fleet_run\.[0-9a-f]{24}$/u
 const PYLON_REF = /^[a-z0-9][a-z0-9._:-]{2,119}$/u
 const PUBLIC_REF = /^[A-Za-z0-9][A-Za-z0-9._:/#=-]{0,199}$/u
 const ACCOUNT_REF_HASH = /^account\.pylon\.(?:codex|claude_agent|grok)\.[0-9a-f]{24}$/u
 const ISO_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u
 const MAX_BATCH_EVENTS = 64
 const MAX_BATCH_BYTES = 256 * 1_024
+const MAX_SAFE_INTEGER = Number.MAX_SAFE_INTEGER
 
 const RunRef = S.String.check(S.isPattern(RUN_REF))
 const ClaimRef = S.String.check(S.isPattern(CLAIM_REF))
@@ -30,6 +35,14 @@ const AccountRefHash = S.String.check(S.isPattern(ACCOUNT_REF_HASH))
 const IsoTimestamp = S.String.check(S.isPattern(ISO_TIMESTAMP))
 const WorkerKind = S.Literals(["codex", "claude", "grok"])
 const BlockerRefs = S.Array(PublicRef).check(S.isMaxLength(32))
+const SafePositiveInt = S.Int.check(
+  S.isGreaterThanOrEqualTo(1),
+  S.isLessThanOrEqualTo(MAX_SAFE_INTEGER),
+)
+const SafeNonNegativeInt = S.Int.check(
+  S.isGreaterThanOrEqualTo(0),
+  S.isLessThanOrEqualTo(MAX_SAFE_INTEGER),
+)
 export const PylonFleetRunProjectedUsageEvidenceSchema = S.Union([
   S.Struct({
     truth: S.Literal("exact"),
@@ -45,7 +58,7 @@ export type PylonFleetRunProjectedUsageEvidence =
 
 export const PylonFleetRunStartedExecutionEvent = S.Struct({
   schema: S.Literal(PYLON_FLEET_RUN_EXECUTION_EVENT_SCHEMA),
-  sequence: S.Int.check(S.isGreaterThanOrEqualTo(1)),
+  sequence: SafePositiveInt,
   eventRef: EventRef,
   kind: S.Literal("run_started"),
   observedAt: IsoTimestamp,
@@ -53,7 +66,7 @@ export const PylonFleetRunStartedExecutionEvent = S.Struct({
 
 export const PylonFleetRunWorkProgressExecutionEvent = S.Struct({
   schema: S.Literal(PYLON_FLEET_RUN_EXECUTION_EVENT_SCHEMA),
-  sequence: S.Int.check(S.isGreaterThanOrEqualTo(1)),
+  sequence: SafePositiveInt,
   eventRef: EventRef,
   kind: S.Literal("work_progress"),
   observedAt: IsoTimestamp,
@@ -67,7 +80,7 @@ export const PylonFleetRunWorkProgressExecutionEvent = S.Struct({
 
 export const PylonFleetRunWorkTerminalExecutionEvent = S.Struct({
   schema: S.Literal(PYLON_FLEET_RUN_EXECUTION_EVENT_SCHEMA),
-  sequence: S.Int.check(S.isGreaterThanOrEqualTo(1)),
+  sequence: SafePositiveInt,
   eventRef: EventRef,
   kind: S.Literal("work_terminal"),
   observedAt: IsoTimestamp,
@@ -84,7 +97,7 @@ export const PylonFleetRunWorkTerminalExecutionEvent = S.Struct({
 
 export const PylonFleetRunTerminalExecutionEvent = S.Struct({
   schema: S.Literal(PYLON_FLEET_RUN_EXECUTION_EVENT_SCHEMA),
-  sequence: S.Int.check(S.isGreaterThanOrEqualTo(1)),
+  sequence: SafePositiveInt,
   eventRef: EventRef,
   kind: S.Literal("run_terminal"),
   observedAt: IsoTimestamp,
@@ -123,17 +136,17 @@ export const PylonFleetRunExecutionAckSchema = S.Struct({
   schema: S.Literal(PYLON_FLEET_RUN_EXECUTION_ACK_SCHEMA),
   runRef: RunRef,
   claimRef: ClaimRef,
-  acceptedThroughSequence: S.Int.check(S.isGreaterThanOrEqualTo(0)),
-  storedEventCount: S.Int.check(S.isGreaterThanOrEqualTo(0)),
-  duplicateEventCount: S.Int.check(S.isGreaterThanOrEqualTo(0)),
+  acceptedThroughSequence: SafeNonNegativeInt,
+  storedEventCount: SafeNonNegativeInt,
+  duplicateEventCount: SafeNonNegativeInt,
   execution: S.Struct({
     state: S.Literals(["pending", "running", "completed", "failed", "stopped"]),
     counters: S.Struct({
-      workUnitsTotal: S.Int.check(S.isGreaterThanOrEqualTo(0)),
-      activeAssignments: S.Int.check(S.isGreaterThanOrEqualTo(0)),
-      acceptedAssignments: S.Int.check(S.isGreaterThanOrEqualTo(0)),
-      failedAssignments: S.Int.check(S.isGreaterThanOrEqualTo(0)),
-      staleAssignments: S.Int.check(S.isGreaterThanOrEqualTo(0)),
+      workUnitsTotal: SafeNonNegativeInt,
+      activeAssignments: SafeNonNegativeInt,
+      acceptedAssignments: SafeNonNegativeInt,
+      failedAssignments: SafeNonNegativeInt,
+      staleAssignments: SafeNonNegativeInt,
     }),
     updatedAt: IsoTimestamp,
   }),
@@ -192,10 +205,41 @@ const validatedBaseUrl = (value: string): URL => {
 }
 
 const readBoundedJson = async (response: Response): Promise<unknown> => {
-  const declared = Number(response.headers.get("content-length"))
-  if (Number.isFinite(declared) && declared > MAX_BATCH_BYTES) throw unavailable()
-  const text = await response.text()
-  if (new TextEncoder().encode(text).byteLength > MAX_BATCH_BYTES) throw unavailable()
+  const contentLength = response.headers.get("content-length")
+  if (contentLength !== null) {
+    const declared = Number(contentLength)
+    if (
+      !/^\d+$/u.test(contentLength) ||
+      !Number.isSafeInteger(declared) ||
+      declared < 0 ||
+      declared > MAX_BATCH_BYTES
+    ) throw unavailable()
+  }
+  const reader = response.body?.getReader()
+  if (reader === undefined) throw unavailable()
+  const chunks: Uint8Array[] = []
+  let byteLength = 0
+  try {
+    while (true) {
+      const next = await reader.read()
+      if (next.done) break
+      byteLength += next.value.byteLength
+      if (!Number.isSafeInteger(byteLength) || byteLength > MAX_BATCH_BYTES) {
+        void reader.cancel().catch(() => undefined)
+        throw unavailable()
+      }
+      chunks.push(next.value)
+    }
+  } catch {
+    throw unavailable()
+  }
+  const bytes = new Uint8Array(byteLength)
+  let offset = 0
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes)
   try {
     return JSON.parse(text) as unknown
   } catch {
@@ -218,22 +262,33 @@ export function makePylonFleetRunExecutionHttpPort(
 
   return {
     append: async ({ pylonRef, runRef, batch }) => {
-      if (!PYLON_REF.test(pylonRef) || !RUN_REF.test(runRef)) throw unavailable()
-      const decodedBatch = S.decodeUnknownSync(PylonFleetRunExecutionBatchSchema)(batch, {
-        onExcessProperty: "error",
-      })
-      const body = canonicalJson(decodedBatch)
-      if (new TextEncoder().encode(body).byteLength > MAX_BATCH_BYTES) throw unavailable()
-      const first = decodedBatch.events[0]
-      const last = decodedBatch.events.at(-1)
-      if (first === undefined || last === undefined) throw unavailable()
-      const idempotencyDigest = createHash("sha256")
-        .update(`${runRef}\0${first.eventRef}\0${last.eventRef}`)
-        .digest("hex")
-        .slice(0, 24)
-      let response: Response
       try {
-        response = await fetchImpl(
+        if (!PYLON_REF.test(pylonRef) || !RUN_REF.test(runRef)) throw unavailable()
+        const decodedBatch = S.decodeUnknownSync(PylonFleetRunExecutionBatchSchema)(batch, {
+          onExcessProperty: "error",
+        })
+        const first = decodedBatch.events[0]
+        const last = decodedBatch.events.at(-1)
+        if (first === undefined || last === undefined) throw unavailable()
+        for (let index = 0; index < decodedBatch.events.length; index += 1) {
+          const event = decodedBatch.events[index]!
+          if (index > 0 && event.sequence !== decodedBatch.events[index - 1]!.sequence + 1) {
+            throw unavailable()
+          }
+          if (event.eventRef !== eventRefFor(runRef, decodedBatch.claimRef, eventInputFor(event))) {
+            throw unavailable()
+          }
+        }
+        const body = canonicalJson(decodedBatch)
+        if (new TextEncoder().encode(body).byteLength > MAX_BATCH_BYTES) throw unavailable()
+        // Bind idempotency to the exact canonical request, including its
+        // durable first/last sequence boundary. The reporter freezes that
+        // boundary locally before this call begins.
+        const idempotencyDigest = createHash("sha256")
+          .update(canonicalJson({ pylonRef, runRef, batch: decodedBatch }))
+          .digest("hex")
+          .slice(0, 24)
+        const response = await fetchImpl(
           new URL(
             `/api/pylons/${encodeURIComponent(pylonRef)}/fleet-runs/${encodeURIComponent(runRef)}/events`,
             baseUrl,
@@ -247,19 +302,23 @@ export function makePylonFleetRunExecutionHttpPort(
               "Idempotency-Key": `pylon.fleet-run.events.${idempotencyDigest}`,
             },
             body,
+            redirect: "error",
             signal: AbortSignal.timeout(requestTimeoutMs),
           },
         )
-      } catch {
-        throw unavailable()
-      }
-      const raw = await readBoundedJson(response)
-      if (!response.ok) throw unavailable()
-      try {
+        if (!response.ok) {
+          void response.body?.cancel().catch(() => undefined)
+          throw unavailable()
+        }
+        const raw = await readBoundedJson(response)
         const ack = S.decodeUnknownSync(PylonFleetRunExecutionAckSchema)(raw, {
           onExcessProperty: "error",
         })
-        if (ack.runRef !== runRef || ack.claimRef !== batch.claimRef) throw unavailable()
+        if (
+          ack.runRef !== runRef ||
+          ack.claimRef !== decodedBatch.claimRef ||
+          ack.acceptedThroughSequence !== last.sequence
+        ) throw unavailable()
         return ack
       } catch {
         throw unavailable()
@@ -273,6 +332,13 @@ const decodeStoredEvent = (value: string): PylonFleetRunExecutionEvent =>
     onExcessProperty: "error",
   })
 
+const eventInputFor = (
+  event: PylonFleetRunExecutionEvent,
+): PylonFleetRunExecutionEventInput => {
+  const { eventRef: _eventRef, sequence: _sequence, ...input } = event
+  return input as PylonFleetRunExecutionEventInput
+}
+
 const eventRefFor = (
   runRef: string,
   claimRef: string,
@@ -281,6 +347,51 @@ const eventRefFor = (
   .update(canonicalJson({ runRef, claimRef, event }))
   .digest("hex")
   .slice(0, 24)}`
+
+const deliveryBatchRefFor = (
+  pylonRef: string,
+  runRef: string,
+  batch: PylonFleetRunExecutionBatch,
+): string => `batch.pylon.fleet_run.${createHash("sha256")
+  .update(canonicalJson({ pylonRef, runRef, batch }))
+  .digest("hex")
+  .slice(0, 24)}`
+
+const decodeOutboxEntries = (
+  runRef: string,
+  claimRef: string,
+  entries: readonly FleetRunExecutionOutboxEntry[],
+): PylonFleetRunExecutionEvent[] => {
+  const events = entries.map(entry => decodeStoredEvent(entry.eventJson))
+  for (let index = 0; index < events.length; index += 1) {
+    const entry = entries[index]!
+    const event = events[index]!
+    if (
+      entry.claimRef !== claimRef ||
+      !Number.isSafeInteger(entry.sequence) ||
+      entry.sequence < 1 ||
+      event.sequence !== entry.sequence ||
+      event.eventRef !== entry.eventRef ||
+      event.eventRef !== eventRefFor(runRef, claimRef, eventInputFor(event)) ||
+      canonicalJson(event) !== entry.eventJson ||
+      (index > 0 && event.sequence !== events[index - 1]!.sequence + 1)
+    ) throw unavailable()
+  }
+  return events
+}
+
+const executionBatch = (
+  claimRef: string,
+  events: readonly PylonFleetRunExecutionEvent[],
+): PylonFleetRunExecutionBatch =>
+  S.decodeUnknownSync(PylonFleetRunExecutionBatchSchema)({
+    schema: PYLON_FLEET_RUN_EXECUTION_BATCH_SCHEMA,
+    claimRef,
+    events,
+  }, { onExcessProperty: "error" })
+
+const batchByteLength = (batch: PylonFleetRunExecutionBatch): number =>
+  new TextEncoder().encode(canonicalJson(batch)).byteLength
 
 /**
  * Durable local outbox + authenticated server append loop.
@@ -304,32 +415,71 @@ export function openPylonFleetRunExecutionReporter(
     if (!Number.isFinite(value.getTime())) throw unavailable()
     return value
   }
+  let accepting = true
   let closed = false
+  let closePromise: Promise<void> | null = null
   let tail = Promise.resolve<PylonFleetRunExecutionAck | null>(null)
 
-  const flushOnce = async (): Promise<PylonFleetRunExecutionAck | null> => {
-    if (closed) return null
+  const nextPendingBatch = (): PylonFleetRunExecutionBatch | null => {
     const pending = input.store.listFleetRunExecutionOutbox(input.runRef, {
       pendingOnly: true,
       limit: MAX_BATCH_EVENTS,
     })
     if (pending.length === 0) return null
-    if (pending.some(entry => entry.claimRef !== claimRef)) throw unavailable()
-    const events = pending.map(entry => decodeStoredEvent(entry.eventJson))
-    for (let index = 1; index < events.length; index += 1) {
-      if (events[index]!.sequence !== events[index - 1]!.sequence + 1) throw unavailable()
+    const decoded = decodeOutboxEntries(input.runRef, claimRef, pending)
+    const existingBatchRef = pending[0]!.deliveryBatchRef
+
+    if (existingBatchRef !== null) {
+      if (!DELIVERY_BATCH_REF.test(existingBatchRef)) throw unavailable()
+      const boundary = pending.findIndex(entry => entry.deliveryBatchRef !== existingBatchRef)
+      const end = boundary === -1 ? pending.length : boundary
+      const batch = executionBatch(claimRef, decoded.slice(0, end))
+      if (
+        batchByteLength(batch) > MAX_BATCH_BYTES ||
+        deliveryBatchRefFor(input.pylonRef, input.runRef, batch) !== existingBatchRef
+      ) throw unavailable()
+      return batch
     }
-    const batch = S.decodeUnknownSync(PylonFleetRunExecutionBatchSchema)({
-      schema: PYLON_FLEET_RUN_EXECUTION_BATCH_SCHEMA,
+
+    let selected: PylonFleetRunExecutionBatch | null = null
+    for (let length = 1; length <= decoded.length; length += 1) {
+      // A later reservation behind an unreserved head violates the one-prefix
+      // delivery discipline and must not be silently coalesced.
+      if (pending[length - 1]!.deliveryBatchRef !== null) throw unavailable()
+      const candidate = executionBatch(claimRef, decoded.slice(0, length))
+      if (batchByteLength(candidate) > MAX_BATCH_BYTES) break
+      selected = candidate
+    }
+    // Store events are capped at 64KiB, so one valid event plus envelope must
+    // always fit. Fail closed if database corruption violates that invariant.
+    if (selected === null) throw unavailable()
+    const firstSequence = selected.events[0]!.sequence
+    const lastSequence = selected.events.at(-1)!.sequence
+    const deliveryBatchRef = deliveryBatchRefFor(
+      input.pylonRef,
+      input.runRef,
+      selected,
+    )
+    input.store.reserveFleetRunExecutionOutboxBatch({
+      runRef: input.runRef,
       claimRef,
-      events,
-    }, { onExcessProperty: "error" })
+      firstSequence,
+      lastSequence,
+      deliveryBatchRef,
+    })
+    return selected
+  }
+
+  const deliverOne = async (): Promise<PylonFleetRunExecutionAck | null> => {
+    if (closed) return null
+    const batch = nextPendingBatch()
+    if (batch === null) return null
     const ack = await input.remote.append({
       pylonRef: input.pylonRef,
       runRef: input.runRef,
       batch,
     })
-    const lastSequence = events.at(-1)?.sequence ?? 0
+    const lastSequence = batch.events.at(-1)?.sequence ?? 0
     // The server may acknowledge exact replay, but it may not advance this
     // local cursor past bytes that were not in the posted batch.
     if (ack.acceptedThroughSequence !== lastSequence) throw unavailable()
@@ -342,38 +492,63 @@ export function openPylonFleetRunExecutionReporter(
     return ack
   }
 
+  const drain = async (): Promise<PylonFleetRunExecutionAck | null> => {
+    let lastAck: PylonFleetRunExecutionAck | null = null
+    while (true) {
+      const next = await deliverOne()
+      if (next === null) return lastAck
+      lastAck = next
+    }
+  }
+
   const flush = (): Promise<PylonFleetRunExecutionAck | null> => {
-    const next = tail.then(flushOnce, flushOnce)
+    if (closed) return Promise.resolve(null)
+    const runDrain = async (): Promise<PylonFleetRunExecutionAck | null> => {
+      try {
+        return await drain()
+      } catch {
+        throw unavailable()
+      }
+    }
+    const next = tail.then(runDrain, runDrain)
     tail = next
     return next
   }
 
   return {
     record: async event => {
-      if (closed) throw unavailable()
-      const observedAt = new Date(event.observedAt)
-      if (!Number.isFinite(observedAt.getTime())) throw unavailable()
-      const eventRef = eventRefFor(input.runRef, claimRef, event)
-      input.store.enqueueFleetRunExecutionOutbox({
-        runRef: input.runRef,
-        claimRef,
-        eventRef,
-        eventJsonForSequence: sequence => canonicalJson(
-          S.decodeUnknownSync(PylonFleetRunExecutionEventSchema)({
-            ...event,
-            sequence,
-            eventRef,
-          }, { onExcessProperty: "error" }),
-        ),
-        now: observedAt,
-      })
+      if (!accepting || closed) throw unavailable()
+      try {
+        const observedAt = new Date(event.observedAt)
+        if (!Number.isFinite(observedAt.getTime())) throw unavailable()
+        const eventRef = eventRefFor(input.runRef, claimRef, event)
+        input.store.enqueueFleetRunExecutionOutbox({
+          runRef: input.runRef,
+          claimRef,
+          eventRef,
+          eventJsonForSequence: sequence => canonicalJson(
+            S.decodeUnknownSync(PylonFleetRunExecutionEventSchema)({
+              ...event,
+              sequence,
+              eventRef,
+            }, { onExcessProperty: "error" }),
+          ),
+          now: observedAt,
+        })
+      } catch {
+        throw unavailable()
+      }
       await flush().catch(() => null)
     },
     flush,
-    close: async () => {
-      if (closed) return
-      await flush().catch(() => null)
-      closed = true
+    close: () => {
+      if (closePromise !== null) return closePromise
+      accepting = false
+      closePromise = (async () => {
+        await flush().catch(() => null)
+        closed = true
+      })()
+      return closePromise
     },
   }
 }
