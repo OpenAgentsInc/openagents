@@ -32,6 +32,11 @@ Authority: `docs/sol/MASTER_ROADMAP.md`.
 4. #8636 FC-4 — hybrid local-Pylon + Agent Computer routing.
 5. #8640 FC-5 — live multi-stream dogfood acceptance.
 
+Current gate: #8637 and #8633 are closed at their honest implementation and
+fixture/deployment rungs. #8639 is the remaining minimum-safe C1 composition;
+#8640 owns the first useful real Codex+Claude+Grok burn and the default-driver
+cutover decision.
+
 ## Non-negotiable laws
 
 - Named isolated account refs only; never the default `~/.codex` or equivalent

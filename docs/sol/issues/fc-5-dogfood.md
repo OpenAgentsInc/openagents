@@ -9,6 +9,11 @@ backlog across multiple coding streams.
 
 ## Phase A — immediate local unblock
 
+This phase is the explicit home of the live-account rung transferred when
+#8633 closed at its production-code/integrated-fixture boundary. It must use
+real owner-linked Codex, Claude, and Grok credentials; no #8633 fixture or
+synthetic harness result satisfies the following acceptance list.
+
 - At least three simultaneous pinned public work units under one FleetRun.
 - Codex, Claude, and Grok each complete at least one useful unit on owner-local
   capacity.

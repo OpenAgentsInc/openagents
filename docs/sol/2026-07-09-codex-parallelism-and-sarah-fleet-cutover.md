@@ -3,8 +3,8 @@
 - Date: 2026-07-09
 - Status: operational companion to [`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md)
 - Original source snapshot: `origin/main` at `5c4ec13dc7`; current status
-  reconciled through `3d87cb609b`, master roadmap rev 9, and the 17-issue set
-  on 2026-07-09
+  reconciled through the #8633 stack ending `134d7d8ca3`, master roadmap rev
+  13, and the 14-issue set on 2026-07-09
 
 ## What can be parallelized in this Codex session now
 
@@ -30,7 +30,7 @@ therefore uses:
 This is useful parallelism, not four independent repositories or four separate
 provider budgets. These subagents are Codex-session agents; they do not
 automatically consume the owner's connected Claude or Grok accounts and are
-not a substitute for FC-2's real mixed-harness supervisor.
+not a substitute for closed FC-2's real mixed-harness supervisor.
 
 ## When multiple Codex tabs are better
 
@@ -51,25 +51,25 @@ otherwise coordination cost and collision risk erase the extra throughput.
 Before mutation it posts the cross-session `CLAIM` defined in
 [`CLAIM_PROTOCOL.md`](./CLAIM_PROTOCOL.md), including hot contracts; same-
 session subagent claims remain coordinated by the root.
-Using Claude or Grok before FC-2 requires their own explicitly operated client
-or harness path; opening another Codex tab does not turn it into a Claude or
-Grok worker.
+Using Claude or Grok before the C1/C2 Sarah canary requires their own explicitly
+operated client or harness path; opening another Codex tab does not turn it
+into a Claude or Grok worker.
 
-For the immediate FC-1/FC-2/FC-3 build, one coordinated session with up to four
-agents is enough if work is divided along the existing contract, Pylon
-executor, Sarah projection, and verification seams. Additional tabs are
-optional capacity, not a prerequisite.
+For the remaining FC-3/C1 build, one coordinated session with up to four agents
+is enough if work is divided along Sarah projection, control, reconnect, and
+verification seams. Additional tabs are optional capacity, not a prerequisite.
 
 ## Current cutover status
 
 The Sarah/Khala fleet workflow is **not yet the honest primary coding path**.
-Production Postgres run/claim authority, the authenticated Sarah start/observe
-adapter, owner-local node arming, restart-safe Pylon import/accept/activation,
-exact named Codex/Claude/Grok execution, and fail-closed text/media continuity
-are code- and fixture-proven. They are not yet one deployed path: registered-
-Pylon claim/accept transport and standing polling are not integrated; the
-migration is not deployed; and the minimum integrated named-stream
-progress/control/reconnect proof is absent.
+Closed #8637 and #8633 now make production Postgres run/claim/execution
+authority, authenticated Sarah start/observe, owner-local node arming,
+restart-safe Pylon import/accept/activation, standing polling/refill, exact
+named Codex/Claude/Grok execution adapters, durable terminal projection, and
+fail-closed text/media continuity code- and fixture-proven. They are not yet
+one deployed canary path: execution migration 0053 and its Worker route are not
+yet deployed, and the minimum integrated named-stream progress/control/
+reconnect proof remains #8639.
 Until those seams and the C1 receipt land, this Codex app—using coordinated
 subagents or explicitly separated tabs—is the implementation control plane for
 building the replacement.
@@ -78,9 +78,9 @@ building the replacement.
 
 ### C0 — interim implementation mode: now
 
-Use this Codex app for #8637, #8633, and #8639. Parallelize through child
-agents here or additional tabs, with clean worktrees and one integration
-owner. Do not describe Sarah as able to run the coding fleet yet.
+Use this Codex app to finish #8639 and the pinned C1 verification/deployment.
+Parallelize through child agents here or additional tabs, with clean worktrees
+and one integration owner. Do not describe Sarah as the coding front door yet.
 
 ### C1 — first real Sarah canary: earliest point work can move
 

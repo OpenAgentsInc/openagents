@@ -1,7 +1,7 @@
 # MASTER ROADMAP — Sarah Fleet Command first; three OpenAgents apps
 
 - Date: 2026-07-09
-- Revision: 12
+- Revision: 13
 - Status: canonical OpenAgents implementation roadmap
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Issue source set: [`issues/README.md`](./issues/README.md)
@@ -186,9 +186,12 @@ The immediate gaps are now narrower composition and live-proof gaps:
   `0892d57b3b` is deployed as staging revision `00046-jpn` and production
   revision `00068-5t8`. The real mixed-account canary remains #8640, not an
   unreported FC-1 residue.
-- The exact Grok executor is code- and fixture-proven through the same standing
-  supervisor and claim registry as Codex/Claude. It has not spent a live Grok
-  account in this program, and Grok usage remains explicitly `not_measured`.
+- #8633 is closed at the implementation/fixture boundary on the stack ending
+  `134d7d8ca3`: one production standing composition now owns mixed
+  Codex/Claude/Grok capacity, typed auto fallback, restart-safe claims and
+  health, exact-or-unmeasured closeout evidence, a durable local outbox, and an
+  authenticated owner/Pylon-bound server execution projection. It has not
+  spent a live three-account run in this program; that receipt remains #8640.
 - Sarah's safe FleetRun projection, persisted exact-cursor live session, views,
   run controls, and approval decisions are code/fixture-proven in retained
   `/sarah`; a deployed owner-cookie WebSocket reconnect canary and a projection-
@@ -209,7 +212,7 @@ P0 fixes those seams. It does not build another fleet system.
 | Lane | Narrowest proven state on `main` | Next blocking proof |
 | --- | --- | --- |
 | #8637 FC-1 | **closed** at `0892d57b3b`: integrated operator conversation -> durable authority -> registered standing Pylon -> bounded closeout is fixture-proven; timing is 1.8s acknowledgment / 6.1s first claim / 8.6s first capacity; staging `00046-jpn` and production `00068-5t8` are deployed and smoke-proven | none in FC-1; real mixed-account execution is #8640 and owner-cookie reconnect/steer is #8639 |
-| #8633 FC-2 | through `03365073c0`: one-store standing runtime, exact three-harness runners, node control, restart-safe remote import/accept/activate, and real server transport/poller are code-landed and fixture-proven | live named Codex+Claude+Grok run; exact or explicit unmeasured usage receipt |
+| #8633 FC-2 | **closed** on the stack ending `134d7d8ca3`: production standing adapters, shared typed auto policy, restart-safe mixed claims, health rotation, durable execution outbox/server projection, and one integrated three-harness restart/usage fixture are proven | none in FC-2; useful live Codex+Claude+Grok work is #8640 |
 | #8639 FC-3 | through `3d87cb609b`: exact-scope projection/controls/reconnect and fail-closed media/text/Fleet continuity are code-landed and fixture-proven | start-result-to-live-scope composition, owner-cookie reconnect canary, authorized steer, and integrated closeout proof |
 | #8640 FC-5 | acceptance contract only | C1 integrated fixture, then Phase A on one pinned deployment |
 
@@ -245,15 +248,15 @@ catalogs, lockfiles, central route tables, and other hot files through one
 lane. Use separate Codex tabs beyond this session cap or for independently
 steered long-lived contexts; tabs on one account share its quota budget.
 Same-session subagents are Codex agents; they do not exercise the connected
-Claude or Grok accounts. The #8633 three-harness path is now code- and fixture-
-proven, but real mixed-account fanout begins only with the C1/C2 pinned live
-receipts below.
+Claude or Grok accounts. Closed #8633 proves the production three-harness path
+in code and fixtures, but real mixed-account fanout begins only with the C1/C2
+pinned live receipts below.
 
 The coding cutover is staged:
 
 | Gate | When | Operating decision |
 | --- | --- | --- |
-| C0 | Now | #8637 is closed; finish/disposition #8633 and minimum-safe #8639 through this Codex app, subagents, or explicitly partitioned tabs. Sarah is not yet the coding front door. |
+| C0 | Now | #8637 and #8633 are closed; finish minimum-safe #8639 through this Codex app, subagents, or explicitly partitioned tabs. Sarah is not yet the coding front door. |
 | C1 | On one pinned integrated commit, closed #8637 durable Sarah run + #8633 standing real mixed executor + minimum-safe #8639 named progress, typed control, and reconnect pass one Sarah→Pylon fixture E2E. | Only then send the first low-risk pinned real issue through Sarah as a canary; retain this app as observer/break-glass. |
 | C2 | #8640 Phase A clean local three-harness receipt from one pinned integrated deployment | Sarah/Khala/Pylon becomes the default entry point for new bounded owner coding work. This Codex app becomes control-plane development, independent review, and break-glass—not the routine dispatcher. |
 | C3 | #8547/#8636 exits integrated + clean #8640 Phase B receipt | Sarah may choose owner-local or managed-cloud capacity through the same run contract. |
@@ -295,6 +298,13 @@ Exit:
 **[#8633 FC-2](https://github.com/OpenAgentsInc/openagents/issues/8633)**
 wires the real Pylon supervisor across Codex, Claude, and Grok.
 
+Status: **closed at the code/fixture boundary** on the implementation stack
+ending `134d7d8ca3`. The integrated receipt proves one accepted Sarah run,
+three concrete harness ports, restart without duplicate claims or redispatch,
+durable server terminal projection, Codex/Claude exact evidence, and Grok
+`not_measured` evidence. The useful real-account burn is #8640, not an implied
+FC-2 live rung.
+
 Exit:
 
 - durable Pylon-home FleetRun store;
@@ -302,7 +312,10 @@ Exit:
 - one production runner path for all three harnesses;
 - typed `auto` policy on live accounts;
 - standing refill up to advertised capacity, no manual background shells;
-- three simultaneous real local streams, one per harness, zero double claims.
+- three simultaneous production-adapter streams in the integrated fixture,
+  one per harness, zero double claims;
+- authenticated execution events and terminal closeouts survive offline
+  delivery and one restart without synthetic proof.
 
 P0.2 now consumes the closed P0.1 contract. Any schema change remains serialized
 through the narrow shared package.
@@ -570,13 +583,12 @@ apps. It does not begin as a fourth product surface.
 
 ## Canonical open issue set
 
-The issue reset plus this reconciliation leaves **15 open roadmap issues**: 13
+The issue reset plus this reconciliation leaves **14 open roadmap issues**: 12
 active P0/P1 lanes and two explicitly dependency-held P2 lanes.
 
 | Priority | Issue | Purpose |
 | --- | --- | --- |
 | P0 | #8638 | Sarah Fleet Command epic |
-| P0 | #8633 | Real mixed-harness standing Pylon executor |
 | P0 | #8639 | Sarah progress, canvas, approval, and steering |
 | P0 | #8640 | Live multi-stream dogfood burn |
 | P0 | #8547 | Codex inside real Agent Computer |
@@ -598,19 +610,17 @@ their milestone or tripwire fires.
 
 ## Execution order
 
-1. Audit #8633 against its exit ladder and close/split it honestly; its real
-   Codex+Claude+Grok receipt belongs to #8640 rather than an indefinite partial.
-2. Finish #8639 against the stable owner-safe run projection while retaining
+1. Finish #8639 against the now-stable owner-safe run projection while retaining
    text/fleet control under media failure; do not infer authority in the UI.
-3. Run #8640 Phase A at the first honest opportunity. Fix fleet substrate bugs
+2. Run #8640 Phase A at the first honest opportunity. Fix fleet substrate bugs
    in place until the receipt is clean, then flip routine bounded owner coding
    to Sarah/Khala/Pylon by default.
-4. Run #8547 and #8636 on dedicated cloud capacity; never block Phase A.
-5. Keep #8610 active in parallel without taking the fleet integration hot
+3. Run #8547 and #8636 on dedicated cloud capacity; never block Phase A.
+4. Keep #8610 active in parallel without taking the fleet integration hot
    paths; closed #8600 remains production inference substrate.
-6. Run #8634 route inventory/retirement and #8635 Forum work in parallel with
+5. Run #8634 route inventory/retirement and #8635 Forum work in parallel with
    app conversion; landing/mobile/desktop slices follow their substrate.
-7. Keep #8642/#8643 dependency-held until Phase A, except that #8642's first
+6. Keep #8642/#8643 dependency-held until Phase A, except that #8642's first
    real correction/deletion request or privacy-incident receipt activates it
    immediately.
 
