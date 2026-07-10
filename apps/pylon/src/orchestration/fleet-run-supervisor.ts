@@ -1230,6 +1230,13 @@ export async function tickFleetRunSupervisor(
       // item's promise in the shared `Promise.all(dispatches)` and discard visibility
       // into every OTHER in-flight or already-succeeded dispatch in the same batch.
       try {
+        // The exact assignment ref is durable execution identity. Persist it
+        // synchronously before any awaited lifecycle projection so the next
+        // fire-and-forget supervisor tick cannot misclassify a completed
+        // initializer as assignment_missing while reporting is still in flight.
+        if (result.assignmentRef !== null) {
+          store.updateWorkClaimAssignmentRef(claim.claimRef, result.assignmentRef, now)
+        }
         for (const event of result.lifecycle) {
           if (streamedLifecycle.has(JSON.stringify(event))) continue
           await emit(options.onLifecycle, {
@@ -1240,9 +1247,6 @@ export async function tickFleetRunSupervisor(
             accountRef: account.accountRef,
             event,
           })
-        }
-        if (result.assignmentRef !== null) {
-          store.updateWorkClaimAssignmentRef(claim.claimRef, result.assignmentRef, now)
         }
 
         const terminal = terminalDispositionFor(run, result)

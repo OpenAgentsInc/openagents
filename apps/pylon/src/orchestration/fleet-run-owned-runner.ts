@@ -813,6 +813,7 @@ export function createPylonOwnedFleetRunSupervisorRunner(
   type DispatchCacheEntry = {
     readonly fingerprint: string
     readonly promise: Promise<PylonOwnedFleetRunDispatchResult>
+    settled: boolean
   }
   const dispatchesByClaim = new Map<string, DispatchCacheEntry>()
   const terminalRetentionOrder: Array<{ readonly dispatchKey: string; readonly entry: DispatchCacheEntry }> = []
@@ -1075,9 +1076,16 @@ export function createPylonOwnedFleetRunSupervisorRunner(
         "The Pylon fleet runner failed safely.",
         PYLON_OWNED_FLEET_RUNNER_BLOCKERS.runFailed,
       ))
-    const entry = { fingerprint, promise: started } satisfies DispatchCacheEntry
+    const entry: DispatchCacheEntry = {
+      fingerprint,
+      promise: started,
+      settled: false,
+    }
     dispatchesByClaim.set(dispatchKey, entry)
-    void started.then(result => retainTerminalDispatch(dispatchKey, entry, result))
+    void started.then(result => {
+      entry.settled = true
+      retainTerminalDispatch(dispatchKey, entry, result)
+    })
     return started
   }
 
@@ -1096,6 +1104,23 @@ export function createPylonOwnedFleetRunSupervisorRunner(
           PYLON_OWNED_FLEET_RUNNER_BLOCKERS.dispatchInvalid,
         ),
         taskId: active.taskId,
+      }
+    }
+    const dispatchKey = `${runRef}:${active.claim.claimRef}`
+    const inProcessDispatch = dispatchesByClaim.get(dispatchKey)
+    if (inProcessDispatch !== undefined && !inProcessDispatch.settled) {
+      const assignmentRef = active.claim.assignmentRef?.trim() ?? ""
+      return {
+        accountRefHash: null,
+        assignmentRef: assignmentRefPattern.test(assignmentRef)
+          ? assignmentRef
+          : null,
+        closeoutRef: null,
+        lifecycle: [],
+        status: "accepted",
+        summary: "The exact in-process assignment is still initializing.",
+        taskId: active.taskId,
+        usageEvidence: null,
       }
     }
     const assignmentRef = active.claim.assignmentRef?.trim() ?? ""

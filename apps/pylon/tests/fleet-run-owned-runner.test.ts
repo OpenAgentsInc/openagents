@@ -838,6 +838,97 @@ describe("Pylon-owned FleetRun runner", () => {
     expect(runCount).toBe(1)
   })
 
+  test("keeps an exact in-process dispatch nonterminal until assignment initialization settles", async () => {
+    const input = dispatchInput("codex", "codex-a", 303, "fixture")
+    let requestCount = 0
+    let runCount = 0
+    let inspectCount = 0
+    let releaseRequest!: () => void
+    let markRequestStarted!: () => void
+    const requestGate = new Promise<void>(resolve => {
+      releaseRequest = resolve
+    })
+    const requestStarted = new Promise<void>(resolve => {
+      markRequestStarted = resolve
+    })
+    const runner = createPylonOwnedFleetRunSupervisorRunner({
+      summary,
+      pylonRef,
+      baseUrl: "https://openagents.test",
+      readCloseout: readExactCloseout,
+      loadRegistry: async () => [account("codex-a", "codex")],
+      request: async request => {
+        requestCount += 1
+        markRequestStarted()
+        await requestGate
+        return requestReceipt(request)
+      },
+      runAssignment: async request => {
+        runCount += 1
+        return acceptedAssignment(
+          request.assignmentRef,
+          hashPylonAccountRef("codex", "codex-a"),
+        )
+      },
+      inspectAssignment: async assignmentRef => {
+        inspectCount += 1
+        return trace(assignmentRef, "streaming_chunks")
+      },
+    })
+
+    const dispatched = runner.dispatch(input)
+    await requestStarted
+    const [initializing] = await runner.reconcile({
+      activeAssignments: [{
+        accountRef: input.accountRef,
+        claim: input.claim,
+        contextId: "context.runner.303",
+        taskId: input.taskId,
+      }],
+      now: fixedNow,
+      run,
+    })
+
+    expect(initializing).toMatchObject({
+      assignmentRef: null,
+      lifecycle: [],
+      status: "accepted",
+      summary: "The exact in-process assignment is still initializing.",
+      taskId: input.taskId,
+    })
+    expect(inspectCount).toBe(0)
+
+    releaseRequest()
+    expect((await dispatched).status).toBe("completed")
+    expect(requestCount).toBe(1)
+    expect(runCount).toBe(1)
+
+    const fresh = createPylonOwnedFleetRunSupervisorRunner({
+      summary,
+      pylonRef,
+      baseUrl: "https://openagents.test",
+      readCloseout: readExactCloseout,
+      loadRegistry: async () => [account("codex-a", "codex")],
+    })
+    const [orphaned] = await fresh.reconcile({
+      activeAssignments: [{
+        accountRef: input.accountRef,
+        claim: input.claim,
+        contextId: "context.runner.303",
+        taskId: input.taskId,
+      }],
+      now: fixedNow,
+      run,
+    })
+    expect(orphaned).toMatchObject({
+      assignmentRef: null,
+      status: "failed",
+      lifecycle: [{
+        blockerRefs: [PYLON_OWNED_FLEET_RUNNER_BLOCKERS.assignmentMissing],
+      }],
+    })
+  })
+
   test("rejects conflicting reuse of one claim ref instead of inheriting another account result", async () => {
     let requestCount = 0
     let runCount = 0
