@@ -1,7 +1,7 @@
 # MASTER ROADMAP — Sarah Fleet Command first; three OpenAgents apps
 
 - Date: 2026-07-09
-- Revision: 20
+- Revision: 21
 - Status: canonical OpenAgents implementation roadmap
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Issue source set: [`issues/README.md`](./issues/README.md)
@@ -185,15 +185,15 @@ The coding-fleet program starts from substantial working substrate:
   then received JS-only owner chrome corrections through the OTA channel at
   `d5e524b142`. Build 109 baked those corrections in and replaced the Sarah
   loop with the owner-selected, container-level silent video at `65f8216cb9`.
-  Builds 110 and 111 keep marketing version 0.5.2 per owner direction. Build
-  111 at `eb34e8d9ee` layers the typed composer-triggered Sarah reply under the
-  glass chrome, fixes the opaque content surface, and opens a typed Liquid Glass
-  Minerals demo sheet at video midpoint before returning to the original
-  surface. The price choices are demo presentation only—no StoreKit purchase
-  is implemented. Source tests/typecheck and simulator proofs are recorded,
-  but no build-110/111 App Store Connect/`VALID` receipt is. Owner-device
-  acceptance, Sarah/Sync continuity, Android, and the full #8597 exit remain
-  open;
+  Builds 110 and 111 keep marketing version 0.5.2 per owner direction and both
+  reached App Store Connect `VALID` (`824072cd…` and `000e2c2a…`; build 111 at
+  20:59 PT). Build 111 at `eb34e8d9ee` layers the typed composer-triggered
+  Sarah reply under the glass chrome, fixes the opaque content surface, and
+  opens a typed Liquid Glass Minerals demo sheet at video midpoint before
+  returning to the original surface. The price choices are demo presentation
+  only—no StoreKit purchase is implemented. Source tests/typecheck and
+  simulator proofs are recorded. Explicit final owner acceptance, Sarah/Sync
+  continuity, Android, and the full #8597 exit remain open;
 - the Effect Native vendor at `66d2f7544b` now includes upstream `2918c277`
   (v27): typed `IconButton`, `Toolbar`, semantic `surface: "glass"`, and Sheet
   detents. The Scope-bound host-driver registry, conversion/deletion of the
@@ -249,6 +249,13 @@ The coding-fleet program starts from substantial working substrate:
   closed; read-only collections use canonical work-unit/attempt keys. The owner
   projection intentionally still ignores these retained rows until its next
   serialized slice, so no assignment-backed UI claim is implied.
+- exact approval authority through `05638b0320`: execution v2 admits a bounded
+  `approval_requested` only for an existing active attempt; the owner-safe
+  projection binds run, work unit, attempt, effective assignment/account edge,
+  worker, request event, and tool class on the server receipt clock. Legacy
+  worker-only approvals remain visible but non-actionable. Migration 0057 adds
+  the event kind and indexed global ref lookup; sorted pre-locking prevents
+  reverse-order cross-run deadlocks. The migration is code-landed, not deployed.
 
 The immediate gaps are now narrower composition and live-proof gaps:
 
@@ -276,10 +283,11 @@ The immediate gaps are now narrower composition and live-proof gaps:
   restart-safe private follow-up/completion are closed through `59538f71a2`.
   First-class stable work-unit/exact-attempt server authority is closed through
   `849856d189`, exact worker-closeout evidence through `dd807e6d91`, and Sarah
-  strict ingestion/reconnect of those entities through `fe7b523e13`. Real
-  Pylon FleetRun v2 lifecycle/approval production, Sarah owner projection/
+  strict ingestion/reconnect of those entities through `fe7b523e13`, and exact
+  server approval binding through `05638b0320`. Real Pylon FleetRun v2 lifecycle/
+  approval production, Sarah owner projection/
   receipts/full canvas, the integrated C1 reconnect/control/privacy fixture,
-  migrations 0054/0055/0056 deployment, and a deployed owner-cookie canary
+  migrations 0054/0055/0056/0057 deployment, and a deployed owner-cookie canary
   remain.
 - The trusted-context voice coordinator/SSE adapter is fixture-proven but stays
   unarmed until renderer-authenticated conversation/session metadata carries
@@ -297,7 +305,7 @@ P0 fixes those seams. It does not build another fleet system.
 | --- | --- | --- |
 | #8637 FC-1 | **closed** at `0892d57b3b`: integrated operator conversation -> durable authority -> registered standing Pylon -> bounded closeout is fixture-proven; timing is 1.8s acknowledgment / 6.1s first claim / 8.6s first capacity; staging `00046-jpn` and production `00068-5t8` are deployed and smoke-proven | none in FC-1; real mixed-account execution is #8640 and owner-cookie reconnect/steer is #8639 |
 | #8633 FC-2 | **closed** on the stack ending `d779c360c3`: production standing adapters, shared typed auto policy, restart-safe mixed claims, health rotation, durable execution outbox/server projection, and one integrated three-harness restart/usage fixture are proven; migration 0053 is applied in staging/production, while the application stack is not deployed | the pinned integrated deployment is a #8639/#8640 gate, not reopened FC-2 residue; useful live Codex+Claude+Grok work is #8640 |
-| #8639 FC-3 | controls/reconnect through `6cd9d09205`, media continuity through `3d87cb609b`, reconnect-honest command outcomes through `08aac90250`, restart-safe private follow-up/completion through `59538f71a2`, first-class server work-unit/exact-attempt authority through `849856d189`, exact worker-closeout evidence through `dd807e6d91`, and strict Sarah entity ingestion/reconnect through `fe7b523e13` are code-landed and fixture-proven | real Pylon FleetRun v2 lifecycle/approval production; Sarah owner projection/receipts/full canvas; integrated reconnect/control/privacy receipt; deploy migrations 0054/0055/0056 and application stack |
+| #8639 FC-3 | controls/reconnect through `6cd9d09205`, media continuity through `3d87cb609b`, reconnect-honest command outcomes through `08aac90250`, restart-safe private follow-up/completion through `59538f71a2`, first-class server work-unit/exact-attempt authority through `849856d189`, exact worker-closeout evidence through `dd807e6d91`, strict Sarah entity ingestion/reconnect through `fe7b523e13`, and exact server approval binding through `05638b0320` are code-landed and fixture-proven | real Pylon FleetRun v2 lifecycle/approval production; Sarah owner projection/receipts/full canvas; integrated reconnect/control/privacy receipt; deploy migrations 0054/0055/0056/0057 and application stack |
 | #8640 FC-5 | acceptance contract only | C1 integrated fixture, then Phase A on one pinned deployment |
 
 These rows are implementation receipts, not issue closure. The commit named in
@@ -419,9 +427,10 @@ The server half of evidence composition is closed through `849856d189`; exact
 assignment worker-closeout evidence is retained through `dd807e6d91`; and
 Sarah can ingest, persist, and reconnect the direct entities through
 `fe7b523e13` without changing its current owner projection. The remaining
-serial block is production and presentation. Pylon must emit FleetRun v2
-lifecycle and a typed approval binding only when a real executor lifecycle
-event exists. Sarah must build owner state from the retained work-unit/attempt
+server approval prerequisite is closed through `05638b0320`; no executor event
+still means no actionable approval. The remaining serial block is production
+and presentation. Pylon must emit FleetRun v2 lifecycle and the real typed
+approval event. Sarah must build owner state from the retained work-unit/attempt
 entities, remove assignment fallback/synthetic proof, populate closeout
 receipts, expose named steer only for an authorized exact attempt, and render
 the full plan→claim→assignment→verification→closeout chain. The upgraded C1
@@ -594,15 +603,16 @@ effect-native#70 / EN-S lanes mature (convert-and-delete).
 
 Current narrow truth: GL-1 has the v27 typed catalog primitives on `main` at
 `66d2f7544b`, but not its host-driver/island-conversion/real-lowering exit.
-GL-2 has the pixel-proven build-107 shell; builds 108 and 109 subsequently
+GL-2 has the pixel-proven build-107 shell; builds 108 through 111 subsequently
 reached `VALID`, with the owner chrome corrections both OTA-proven on build 108
 and baked into build 109 at `65f8216cb9`. Builds 110/111 add the typed Sarah
 reply video; build 111 at `eb34e8d9ee` places it under chrome and opens a typed
-Liquid Glass Minerals demo sheet at midpoint, with no StoreKit purchase. No
-ASC/`VALID` receipt is recorded for 110/111. Both bundled Sarah videos and the
-demo sheet are presentation material, not GL-3 auth/SSE/reconnect proof. GL-3's
-text-first shared contract can begin now. GL-4 remains held by the owned-
-lowering dependency.
+Liquid Glass Minerals demo sheet at midpoint, with no StoreKit purchase. Both
+bundled Sarah videos and the demo sheet are presentation material, not GL-3
+auth/SSE/reconnect proof. D-MB-02 catalog conversion and app-island deletion
+remain GL-1/GL-4 exits rather than reopening GL-2. GL-2 now waits only for
+explicit final owner acceptance. GL-3's text-first shared contract can begin
+now. GL-4 remains held by the owned-lowering dependency.
 
 GL-3 is the convergence point with the Sarah program: the mobile
 conversation surface consumes the same `/sarah` APIs, SSE transcript, and
@@ -663,7 +673,7 @@ builds a new OpenAgents iOS/Android app at `apps/openagents-mobile`.
 Status: the initial greenfield shell, identity/icon oracles, Effect Native
 React Native renderer seam, owned OTA feed, and iOS release lane are proven.
 TestFlight 0.4.3 build 106, 0.5.0 build 107, 0.5.1 build 108, and 0.5.2 build
-109 reached `VALID`; build 107 is the simulator-pixel-proven glass shell
+109, 110, and 111 reached `VALID`; build 107 is the simulator-pixel-proven glass shell
 correction and still needs owner-device acceptance. Build 108 added the typed
 surface selector/Sarah presentation loop and received JS-only owner chrome
 corrections through the live OTA channel. Build 109 at `65f8216cb9` baked
@@ -672,8 +682,9 @@ Sarah loop. Builds 110/111 stay on marketing version 0.5.2; build 111 at
 `eb34e8d9ee` layers the typed reply video under chrome, fixes the opaque content
 surface, and opens a typed Liquid Glass Minerals demo sheet at midpoint. The
 price choices are demo-only with no StoreKit purchase. Source tests/typecheck
-and simulator proofs are recorded, but 110/111 are not called TestFlight-
-deployed/valid without ASC/`VALID` receipts.
+and simulator proofs are recorded. The recorded ASC build identifiers for 110
+and 111 are `824072cd…` and `000e2c2a…`; explicit final owner acceptance remains
+open.
 #8597 retains an unreleased Fable claim whose published scope is only the
 initial greenfield setup; later OTA/SwiftUI/TestFlight work exceeded that
 recorded scope. Treat it as owned until the actor posts an explicit re-scope or

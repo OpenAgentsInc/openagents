@@ -47,6 +47,14 @@ work-unit/attempt rows now survive bootstrap, delta, tombstone, persistence,
 replay, and exact-cursor reconnect with strict nested evidence/privacy gates.
 That slice intentionally does not change the owner projection yet.
 
+Exact server approval binding landed through `05638b0320`. A v2
+`approval_requested` event binds one pending approval to the exact run, stable
+work unit, active attempt, effective nullable assignment/account edge, worker,
+request event, and tool class on the server receipt clock. Legacy worker-only
+approvals remain decodable but non-actionable. Migration 0057 adds the closed
+event kind and indexed global ref lookup; sorted pre-locking prevents
+reverse-order cross-run deadlocks. It is code-landed, not deployed.
+
 The remaining serial residual is production and owner presentation: Pylon must
 emit the FleetRun v2 lifecycle and real typed approval request; non-issue Sarah
 work can still fall back to assignment identity; steer is correctly absent
@@ -55,7 +63,7 @@ run→work→worker; and the retained browser mount calls the coding-closeout
 projector with `evidence: []`. Sarah must consume the retained entities directly
 into the full plan→claim→assignment→verification→closeout chain. Then the C1
 fixture must prove pause/resume/approval/steer/reconnect/privacy on one pinned
-stack, followed by migrations 0054/0055/0056 and application deployment.
+stack, followed by migrations 0054/0055/0056/0057 and application deployment.
 
 ## Scope
 

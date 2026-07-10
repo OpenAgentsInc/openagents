@@ -26,10 +26,11 @@ keep marketing version 0.5.2; build 111 at `eb34e8d9ee` layers the typed Sarah
 reply video under chrome, fixes the opaque content surface, and opens a typed
 Liquid Glass Minerals demo sheet at midpoint before returning to the original
 surface. Its price choices are demo-only with no StoreKit purchase. Source
-tests/typecheck and simulator proofs are recorded, but no 110/111 ASC/`VALID`
-receipt is. Sarah/Sync cross-device continuity, Android, owner-device
-acceptance, the remaining GL integration, and legacy-client retirement remain
-open.
+tests/typecheck and simulator proofs are recorded. Live #8648 records both
+builds `VALID` (`824072cd…` and `000e2c2a…`; build 111 at 20:59 PT).
+Sarah/Sync cross-device
+continuity, Android, explicit final owner acceptance, the remaining GL
+integration, and legacy-client retirement remain open.
 
 ## Identity locks
 

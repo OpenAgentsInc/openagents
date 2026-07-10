@@ -48,10 +48,12 @@ add the typed composer-triggered Sarah reply video with audio. Build 111 at
 `eb34e8d9ee` layers it under the glass chrome, fixes the opaque content surface,
 and opens a typed Liquid Glass Minerals demo sheet at midpoint before returning
 to the original surface. Price choices are demo-only with no StoreKit purchase.
-Source tests/typecheck and simulator proofs are recorded, but no 110/111
-ASC/`VALID` receipt is. These videos and the demo sheet remain presentation
-material rather than GL-3 conversation/auth/SSE proof. The remaining work is
-integration and owner acceptance, not an unstarted shell.
+Source tests/typecheck and simulator proofs are recorded, and live #8648 records
+both 110 and 111 `VALID` (`824072cd…` and `000e2c2a…`; build 111 at 20:59 PT).
+These videos and the demo sheet remain presentation material rather than GL-3
+conversation/auth/SSE proof. D-MB-02 catalog conversion and app-island deletion
+belong to GL-1/GL-4; they are not held open again here. GL-2's remaining exit is
+explicit final owner acceptance of the shell, not more implementation.
 
 Complete the owner's target structure in `apps/openagents-mobile`: a left
 flyout drawer, selected navigation row, Recents, floating settings, glass Chat
