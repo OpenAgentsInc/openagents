@@ -243,41 +243,23 @@ export const HomeScreen = () => {
                   )
                 }
                 onTap={program.chrome.pressPill}
-                style={{ width: 180, height: 44 }}
+                // Hug the content: the SwiftUI capsule centers inside the RN
+                // frame, so a fixed 180pt frame made short labels ("Sarah")
+                // look right-aligned. Width tracks the label (owner fix,
+                // shipped OTA).
+                style={{ width: 76 + chrome.pillLabel.length * 10, height: 44 }}
               />
             )}
             <RNView style={{ flex: 1 }} />
-            {GlassIconButton === undefined ? (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Search"
-                onPress={program.chrome.pressSearch}
-                style={{
-                  width: 44,
-                  height: 44,
-                  borderRadius: 22,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  ...fallbackChromeStyle,
-                }}
-              >
-                <RNText style={{ color: khalaTheme.color.textPrimary, fontSize: 16 }}>?</RNText>
-              </Pressable>
-            ) : (
-              <>
-                <GlassIconButton
-                  symbol="magnifyingglass"
-                  accessibilityLabelText="Search"
-                  onTap={program.chrome.pressSearch}
-                  style={{ width: 44, height: 44 }}
-                />
-                <GlassIconButton
-                  symbol="square.and.pencil"
-                  accessibilityLabelText="New chat"
-                  onTap={program.chrome.pressNewChat}
-                  style={{ width: 44, height: 44 }}
-                />
-              </>
+            {/* Search icon removed from the chrome (owner direction
+                2026-07-09); search stays reachable in the drawer. */}
+            {GlassIconButton === undefined ? null : (
+              <GlassIconButton
+                symbol="square.and.pencil"
+                accessibilityLabelText="New chat"
+                onTap={program.chrome.pressNewChat}
+                style={{ width: 44, height: 44 }}
+              />
             )}
           </RNView>
 
