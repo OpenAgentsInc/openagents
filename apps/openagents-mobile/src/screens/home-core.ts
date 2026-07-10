@@ -15,6 +15,7 @@ import {
   Text,
   type View,
 } from "@effect-native/core"
+import type { ScopeSyncState } from "@openagentsinc/khala-sync-client"
 
 import {
   initialKhalaState,
@@ -47,13 +48,63 @@ export interface HomeState {
   readonly drawerOpen: boolean
   readonly surfaceMode: SurfaceMode
   readonly modeMenuOpen: boolean
+  readonly syncPhase: MobileSyncPhase
   readonly khala: KhalaState
 }
+
+export type MobileSyncPhase = ScopeSyncState["phase"] | "unconfigured" | "unavailable" | "stale"
+
+export interface SyncStatusCopy {
+  readonly title: string
+  readonly detail: string
+}
+
+const syncStatusCopyByPhase: Record<MobileSyncPhase, SyncStatusCopy> = {
+  unconfigured: {
+    title: "Sync not configured",
+    detail: "Connect an OpenAgents session to view shared work, repositories, and Fleet state.",
+  },
+  idle: {
+    title: "Sync idle",
+    detail: "Sync is ready to connect. Shared work is not loaded yet.",
+  },
+  bootstrapping: {
+    title: "Loading shared work",
+    detail: "Fetching the current authorized projection.",
+  },
+  catching_up: {
+    title: "Catching up",
+    detail: "Applying confirmed updates before shared work is ready.",
+  },
+  live: {
+    title: "Sync live",
+    detail: "Shared work is current.",
+  },
+  stale: {
+    title: "Sync stale",
+    detail: "Shared work may be outdated. Controls stay unavailable until it reconnects.",
+  },
+  must_refetch: {
+    title: "Sync needs refresh",
+    detail: "The authorized projection must be fetched again before it can be used.",
+  },
+  denied: {
+    title: "Sync access removed",
+    detail: "This device can no longer show shared work for the previous session.",
+  },
+  unavailable: {
+    title: "Sync unavailable",
+    detail: "Shared work cannot be loaded right now.",
+  },
+}
+
+export const syncStatusCopy = (phase: MobileSyncPhase): SyncStatusCopy => syncStatusCopyByPhase[phase]
 
 export const initialHomeState: HomeState = {
   drawerOpen: false,
   surfaceMode: "khala",
   modeMenuOpen: false,
+  syncPhase: "unconfigured",
   khala: initialKhalaState,
 }
 
@@ -113,8 +164,14 @@ export const renderContentView = (state: HomeState): View =>
           Spacer({ key: "openagents-top-space", size: "16" }),
           Text({ key: "openagents-title", content: "OpenAgents", variant: "title", color: "textPrimary" }),
           Text({
-            key: "openagents-subtitle",
-            content: "Choose Khala to start a conversation.",
+            key: "openagents-sync-title",
+            content: syncStatusCopy(state.syncPhase).title,
+            variant: "heading",
+            color: state.syncPhase === "unconfigured" ? "warning" : "textPrimary",
+          }),
+          Text({
+            key: "openagents-sync-detail",
+            content: syncStatusCopy(state.syncPhase).detail,
             variant: "body",
             color: "textMuted",
           }),

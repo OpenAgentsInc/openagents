@@ -75,6 +75,11 @@
   typecheck, bundle build, and real Electron smoke run together. Current main
   passes 70 Desktop tests/363 expectations, including the 256 MiB first-content
   budget and selected recent-Codex-history smoke receipt.
+- 2026-07-10 12:05 CDT — M0 mobile truthfulness now consumes the frozen
+  `ScopeSyncState` vocabulary. The neutral OpenAgents surface renders an
+  explicit `Sync not configured` state until the later authenticated adapter
+  exists; its regression oracle forbids fabricated FleetRun and repository
+  content. Mobile typecheck and 21 tests/74 expectations pass.
 
 ## Mission
 

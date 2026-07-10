@@ -8,6 +8,7 @@ import {
   initialHomeState,
   renderContentView,
   renderDrawerView,
+  syncStatusCopy,
   surfaceModeOptions,
 } from "../src/screens/home-core"
 
@@ -35,6 +36,18 @@ describe("contract openagents_mobile.persona_neutral_home.v1", () => {
     expect(serialized).toContain('"_tag":"Transcript"')
     expect(serialized).not.toContain('"_tag":"Composer"')
     expect(serialized).not.toContain("khala-composer")
+  })
+
+  test("the neutral OpenAgents surface reports its unconfigured Sync state without inventing work", () => {
+    const content = JSON.stringify(renderContentView({ ...initialHomeState, surfaceMode: "openagents" }))
+    expect(syncStatusCopy("unconfigured")).toEqual({
+      title: "Sync not configured",
+      detail: "Connect an OpenAgents session to view shared work, repositories, and Fleet state.",
+    })
+    expect(content).toContain("Sync not configured")
+    expect(content).toContain("Connect an OpenAgents session")
+    expect(content).not.toContain("Active FleetRun")
+    expect(content).not.toContain("Repository:")
   })
 
   test("native-composer dispatchers own the Khala draft and New chat clears it", async () => {
