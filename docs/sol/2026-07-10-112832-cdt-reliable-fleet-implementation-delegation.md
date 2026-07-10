@@ -89,6 +89,13 @@
   server, physical-device, or live-account receipt. Khala Sync typecheck plus
   134 tests/12,572 expectations, Desktop typecheck plus 70 tests/363
   expectations, and mobile typecheck plus 21 tests/74 expectations pass.
+- 2026-07-10 12:18 CDT — R4 now covers the mobile-equivalent lifecycle seam:
+  background unsubscribe leaves the confirmed projection at its durable cursor,
+  and foreground resubscribe catches up to the server without bootstrap or
+  duplicate rows. This is a deterministic shared-client fixture, not proof of
+  a native app lifecycle adapter or physical-device background execution.
+  Khala Sync typecheck plus 135 tests/12,578 expectations and mobile
+  typecheck plus 21 tests/74 expectations pass.
 
 ## Mission
 
