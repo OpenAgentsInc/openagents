@@ -20,7 +20,7 @@
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       },
-      "buildNumber": "115"
+      "buildNumber": "116"
     },
     "android": {
       "package": "com.openagents.app"
@@ -38,8 +38,7 @@
       }
     },
     "plugins": [
-      "expo-updates",
-      "expo-video"
+      "expo-updates"
     ]
   }
 }

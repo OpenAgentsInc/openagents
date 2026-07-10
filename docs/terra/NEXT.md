@@ -36,12 +36,11 @@ the assigned desktop order. It needs an explicit user-selection/import design
 and native-runtime compatibility decision; it must never become raw device
 filesystem browsing.
 
-Build 115 needs an owner device/pixel receipt confirming the native SwiftUI
-glass composer, icon controls, and mode picker have replaced the opaque
-fallback. Khala mode then needs a real device/pixel receipt before any attempt to add
-authenticated account, key, model-route, or Fleet controls. Those surfaces
-touch authority and do not belong in the generic public chat without an
-explicit Sol-owned integration scope.
+Build 116 needs an owner device/pixel receipt confirming the native SwiftUI
+glass composer is the only Khala input, accepts text, sends a real turn, and
+the named-persona/demo/catalog surfaces are absent. Then move to Sol’s R1/R2
+identity and Khala Sync continuity contracts; do not replace the removed cache
+with another client-local authority model.
 
 ## Next: close the shared-native rendering loop
 

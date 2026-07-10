@@ -41,15 +41,15 @@ packages):
 bun install
 ```
 
-### Development (Expo Go / simulator)
+### Development (custom development build / simulator)
 
 ```sh
 cd apps/openagents-mobile
-bun run dev          # expo start — press i for iOS simulator, a for Android,
-                     # or scan the QR code with Expo Go on a device
+bun run dev          # expo start — press i for iOS simulator or a for Android
 ```
 
-The app has no custom native modules yet, so it runs in stock Expo Go.
+The app carries an iOS SwiftUI Liquid Glass module, so verify the native
+composer through a development or TestFlight build rather than Expo Go.
 
 ### Tests
 
@@ -94,33 +94,25 @@ bun run publish:ota        # = apps/oa-updates/scripts/publish-ota.sh
 ```
 
 Bump `BUNDLE_TAG` in `src/screens/home-core.ts` before publishing so the swap
-is visible on the Home card. The installed app polls for updates on a
+is identifiable in diagnostics. The installed app polls for updates on a
 **TEMPORARY aggressive 3-second cadence** (`TEMPORARY_OTA_POLL_INTERVAL_MS` in
 `src/updates/ota-polling.ts` — dial down after owner testing): a published OTA
 appears on device within ~3s, downloads, and reloads. Errors (offline etc.)
 are soft and never crash the loop. Polling is a no-op in Expo Go/dev
 (`Updates.isEnabled` false).
 
-## SwiftUI Liquid Glass island (Effect Native SwiftUI seam test)
+## SwiftUI Liquid Glass island
 
-The Home screen carries a labeled test section ("SwiftUI via Effect Native —
-test"): a SwiftUI island (`modules/openagents-liquid-glass`, iOS 26
-`.glassEffect` / `.buttonStyle(.glass)` with an `.ultraThinMaterial` fallback
-pre-26) mounted via `UIHostingController` inside the RN shell — the interop
-boundary prescribed by
-`docs/effect-native/2026-07-09-effect-native-swiftui-renderer-audit.md`
-(interop case 2). It is NOT a parallel component system: its props are a pure
-projection of the Effect Native program state, and its button dispatches the
-typed `GlassPinged` intent through the same intent registry the RN renderer
-uses. The catalog's closed `hostKinds` has no SwiftUI kind yet — the gap is
-upstream (effect-native#70, demand register D-MB-02), and this shell-boundary
-island is the marked interim. SwiftUI rendering itself is device-proven only
-(native iOS build/TestFlight); Expo Go/Android show an honest fallback notice.
+`modules/openagents-liquid-glass` owns the visible iOS menu, icon controls,
+and the one working Khala text composer using SwiftUI `.glassEffect` on iOS
+26 and a material fallback on earlier iOS. Its serializable state comes from
+the Effect Native program; native events return only through typed intents.
+Android and test hosts use a functional React Native fallback.
 
 ## What exists today
 
-The Home screen: the OpenAgents shell rendered from a typed Effect Native view
-program with one typed intent wired end-to-end, owned-server OTA updates with
-the temporary fast poll, and the SwiftUI Liquid Glass seam test above. Sarah
-conversation, fleet supervision, Khala Sync continuity, auth, and push land
-next, per #8597.
+The Home screen is persona-neutral: a typed Khala conversation with one native
+Liquid Glass composer, backed by the public orchestration endpoint. It does
+not manufacture local fleet, account, Sync, receipt, or cross-device state.
+Fleet supervision, authenticated identity, Khala Sync continuity, and durable
+commands are the next #8597 priorities.

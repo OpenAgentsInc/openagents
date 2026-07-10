@@ -3,66 +3,41 @@
 - Updated: 2026-07-10
 - Destination: `apps/openagents-mobile` on Expo, React Native, SwiftUI Liquid
   Glass, and Effect Native
-- Principle: preserve native interaction and privacy boundaries while matching
-  the user-visible desktop behavior where that behavior makes sense on a phone
+- Program authority: Sol roadmap rev-24; mobile is a purpose-built fleet
+  supervision and continuity client, never a miniature desktop workbench
 
-## Why mobile is not a desktop clone
-
-The desktop can safely expose a user-selected local workspace through an
-Electron host service. A phone has a different permission model, screen size,
-and native runtime. Mobile parity therefore means the same trustworthy product
-facts—real conversations, honest actions, durable local continuity—not a
-miniature file manager or a copy of desktop diagnostics.
-
-## Capability ledger
+## Current truthful baseline
 
 | Desktop behavior | Mobile-native equivalent | Status | Guardrail |
 | --- | --- | --- | --- |
-| Recent five chats | Persisted five-thread Sarah catalog | Landed | App-owned document storage only |
-| New chat | Fresh Sarah prospect/session mint | Landed | No cloned or fake session |
-| Open a chat | Restore the selected thread relationship + bounded transcript | Landed | Each selected row restores its own thread |
-| Real response/error | Existing Sarah route, bounded SSE, typed unavailable state | Landed baseline | No canned assistant reply |
-| Khala orchestrator | Public generic Khala mode in the same native picker | Landed baseline | Server owns `openagents/khala` routing; no invented backing lane or Fleet outcome |
-| Minimal default chrome | Native SwiftUI Liquid Glass shell, typed Effect Native content/drawer | Build 115 correction uploading | The visible iOS shell must not silently fall back to opaque React Native controls |
-| Official typed icon names | Shared Effect Native icon catalog | Landed | RN fallback remains closed and typed |
-| Project home | Conversation catalog is the current mobile home | Landed baseline | No fictional project data |
-| Desktop local Files | Explicit import/attachment catalog | Not started | Requires user choice and native-runtime review |
-| Desktop review/editor | Read-only attachment/detail surface | Not started | Must have a real selected document source |
-| Desktop Fleet cockpit | Purposeful mobile supervision surface | Deferred | Requires authoritative Pylon/Sync state |
+| Neutral conversation entry | Persona-neutral Khala conversation | Landed baseline | No named-persona relationship or local thread authority |
+| Real response/error | Public generic Khala stream with typed failure state | Landed baseline | No canned assistant reply |
+| New chat | Clear the current in-memory Khala transcript | Landed baseline | Does not mint a fictional session or durable reference |
+| Minimal composer | One real SwiftUI Liquid Glass composer | Build 116 correction | No duplicate Effect Native composer in the transcript |
+| Official typed icon names | Shared Effect Native icon catalog | Landed | Native shell uses SF Symbols; renderer remains typed |
+| Cross-device conversations | Khala Sync projection | Not started in mobile | Local state never claims to be authority |
+| Fleet supervision | Activity, attention, control, receipts, handoff | Not started in mobile | Requires authoritative Sync/Fleet contracts |
+| Desktop editor/terminal | No mobile equivalent | Deliberately absent | Mobile does not pretend to be a coding workbench |
 
-## Persistence behavior
+## Removed by the owner’s rev-24 decision
 
-1. The existing Sarah session file preserves the current relationship and its
-   bounded settled transcript.
-2. The recent-thread file stores at most five valid thread records, newest
-   first.
-3. A record title is the user's first message, clipped to a bounded length;
-   it is not generated marketing copy or a synthetic summary.
-4. Selecting a record resets the transient surface and restores that record's
-   own prospect reference, thread ID, and transcript.
-5. Disk failures are soft: the current live conversation remains usable, and
-   no false persistence confirmation appears in the interface.
+The mobile application no longer includes named-persona UI, relationship or
+prospect state, local session/thread persistence, named-persona SSE adapters,
+video/demo assets, or the price-sheet demo. Server compatibility routes remain
+outside the client. Removing these local surfaces is not a claim that the
+underlying server contracts have been deleted.
 
-## Khala mode boundary
+## Khala boundary
 
-Khala mode is intentionally a separate, stateless generic conversation. Its
-turns call the already-public streaming route at `/api/khala/chat`; the server
-rebuilds the Khala instruction and performs orchestration. The mobile app
-renders the returned answer but does not label a particular serving model,
-Pylon, tool, verifier, receipt, or economic result. It does not reuse Sarah's
-prospect persistence. This preserves the transcript distinction documented in
-episodes 242–245: one Khala model surface can orchestrate a pool, but routing
-and authority belong behind the endpoint.
+Khala calls the public streaming route at `/api/khala/chat`. The server owns
+orchestration and any backing-lane routing. The mobile client renders the reply
+but does not label a serving model, Pylon, tool, verifier, receipt, account,
+or economic result. It creates no durable mobile authority.
 
-## Next mobile acceptance test
+## Next acceptance proof
 
-On a real device, create more than five distinct chats, restart the app, and
-verify that exactly the newest five appear in the drawer, each restores its
-own transcript, and a new chat does not inherit a prior prospect/thread ID.
-This is the next proof before adding any attachment or Fleet surface.
-
-For Khala specifically, the next device receipt is a real turn through build
-115 while the mode picker and native glass chrome are visible; build validity is
-not a pixel/owner-acceptance claim. Build 114 is not a valid visual acceptance
-candidate: its binary lost the native SwiftUI module and showed the opaque
-fallback.
+On a physical phone using build 116, type and submit a real Khala turn through
+the sole native SwiftUI composer. Verify no second input appears in the
+transcript and that switching/new-chat cannot surface named-persona/demo/local
+catalog residue. Then the correct next product work is R1/R2 authenticated
+identity and Khala Sync continuity—not a replacement local cache.

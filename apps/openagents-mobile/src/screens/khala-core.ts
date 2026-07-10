@@ -1,12 +1,7 @@
 import { Effect, Schema, SubscriptionRef } from "@effect-native/core/effect"
 import {
-  Button,
-  Composer,
-  ComponentValueBinding,
-  IntentRef,
   Stack,
   Spacer,
-  StaticPayload,
   Text,
   Transcript,
   type TranscriptMessage,
@@ -15,7 +10,7 @@ import {
 
 /**
  * The public Khala mode: one conversation over the public orchestration
- * endpoint. It deliberately has no Sarah relationship, FleetRun, account, or
+ * endpoint. It deliberately has no named-persona relationship, FleetRun, account, or
  * backing-model claim. The server owns routing and returns an honest failure.
  */
 export type KhalaRole = "user" | "assistant"
@@ -155,25 +150,9 @@ export const renderKhalaSurface = (state: KhalaState): View =>
         pinToEnd: true,
         style: { width: "full", flex: 1 },
       }),
-      Stack({ key: "khala-composer-row", direction: "row", gap: "2", style: { width: "full" } }, [
-        Composer({
-          key: "khala-composer",
-          mode: "normal",
-          doc: [{ kind: "text", text: state.draft }],
-          placeholder: state.pending ? "Khala is replying…" : "Ask Khala",
-          onChange: IntentRef(KhalaDraftChanged, ComponentValueBinding()),
-          onSubmit: IntentRef(KhalaTurnSubmitted, ComponentValueBinding()),
-          style: { surface: "glass", borderRadius: "lg", padding: "3", minHeight: 48, flex: 1 },
-        }),
-        Button({
-          key: "khala-send",
-          label: state.pending ? "…" : "Send",
-          variant: "primary",
-          onPress: IntentRef(KhalaTurnSubmitted, StaticPayload(state.draft)),
-          style: { minHeight: 48 },
-        }),
-      ]),
-      Spacer({ key: "khala-bottom-space", size: "8" }),
+      // The one active composer is the SwiftUI Liquid Glass island mounted by
+      // the shell. Do not add an Effect Native second input here.
+      Spacer({ key: "khala-bottom-composer-clearance", size: "16" }),
     ],
   )
 

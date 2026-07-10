@@ -30,11 +30,9 @@ real user question.
 
 | Area | Current behavior | Boundary | Not yet claimed |
 | --- | --- | --- | --- |
-| Liquid Glass | SwiftUI iOS 26 `.glassEffect`, material fallback on older iOS; the owner-visible iOS chrome is always the `openagents-liquid-glass` native module | `openagents-liquid-glass` native module embedded in build 115 | A React Native outline fallback presented as Liquid Glass |
-| Chats | App-owned, persisted five-thread Sarah catalog; title from first user turn | `expo-file-system` document storage | Cross-device Sync |
-| New/open chat | New chat mints a new Sarah relationship; recent selection restores that thread's bounded transcript | Typed Effect Native intents and Sarah client | Invented placeholder or canned thread state |
-| Sarah turns | Existing production Sarah route and bounded SSE stream | Effectful mobile client -> typed state updates | Fleet/authority state inferred from chat text |
-| Khala mode | Public generic streaming conversation at `/api/khala/chat` | Server-owned `openagents/khala` routing; typed mobile transcript/composer | Sarah relationship continuity, backing-model disclosure, Fleet/receipt/account authority, or cross-device Sync |
+| Liquid Glass | SwiftUI iOS 26 `.glassEffect`, material fallback on older iOS; one native `GlassComposer` is the only visible Khala input | `openagents-liquid-glass` native module embedded in build 116 | A React Native outline fallback or a duplicate composer |
+| Khala conversation | Persona-neutral generic streaming conversation at `/api/khala/chat`; New chat clears only the in-memory local transcript | Server-owned `openagents/khala` routing; typed native-composer intents | Sync, Fleet/account authority, receipts, local cache authority, or backing-model disclosure |
+| Named-persona path | Removed from the mobile application source, assets, tests, and state model under the rev-24 pause | Existing server routes remain compatibility substrate outside this client | A named-assistant front door or local relationship catalog |
 | Files | No folder browser | Mobile privacy/runtime boundary | Raw device filesystem browsing |
 
 ## Shared renderer status
@@ -51,7 +49,7 @@ real user question.
 | Surface | Commands last run | Result |
 | --- | --- | --- |
 | Desktop | `bun run --cwd apps/openagents-desktop typecheck`; `bun test apps/openagents-desktop`; `OPENAGENTS_DESKTOP_SMOKE=1 bun run --cwd apps/openagents-desktop smoke` | Passed through the Settings slice; Sol's receipt records 58 tests plus real Electron smoke |
-| Mobile | `bun run --cwd apps/openagents-mobile typecheck`; `bun run --cwd apps/openagents-mobile test`; iOS archive/export | Passed: 40 tests; TestFlight build 115 is ASC `VALID` and embeds the restored SwiftUI module. Build 114 remains valid but has the now-corrected opaque fallback. |
+| Mobile | `bun run --cwd apps/openagents-mobile typecheck`; `bun run --cwd apps/openagents-mobile test`; iOS archive/export | Passed: 20 tests after the persona-neutral correction; build 116 native archive/upload is pending. Build 115 remains `VALID` but contains the removed path and duplicate composer. |
 
 ## Deliberate exclusions
 

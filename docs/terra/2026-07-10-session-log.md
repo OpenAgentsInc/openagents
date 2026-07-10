@@ -41,6 +41,7 @@ was direct and useful:
 | `7d77150514` | Replaced mobile seeded conversations with an app-owned five-thread catalog, real new-thread minting, and recent-thread restoration. |
 | `23aba8270a` | Added the mobile Khala mode: a typed public-orchestrator transcript/composer through the existing streaming Khala route; TestFlight build 114 is `VALID`. |
 | `ee78dc1a2e` | Restored the owner-required `openagents-liquid-glass` SwiftUI module after a concurrent removal caused the iOS app to expose opaque React Native fallback controls; prepared native build 115. |
+| Pending current mobile landing | Removed mobile named-persona/session/demo/local-catalog code; made the SwiftUI Liquid Glass composer the sole Khala input; prepared build 116. |
 | Pending current desktop landing | Uses the exact checked-in OpenAgents mobile app PNG for the Electron window and macOS Dock, with a build-time byte-parity test. |
 
 ## What now works
@@ -155,6 +156,22 @@ the module to be embedded during iOS prebuild. The typed state and intent model
 remains shared; the owner-visible iOS lowering is deliberately native SwiftUI.
 Because an OTA cannot add a native module missing from an already-installed
 binary, this correction requires build 115 rather than a build-114 OTA.
+
+## Mobile reliability reset
+
+The owner directed a cleanup after seeing two inputs on Khala: the floating
+SwiftUI composer and an Effect Native composer inside the transcript. The
+second composer is removed. The remaining native composer now owns the real
+Khala text field, draft change, and submit events; it feeds the same typed
+Khala intent boundary as the renderer rather than serving as a decorative tap
+target.
+
+Sol roadmap rev-24 also changes the acceptance path. The mobile client no
+longer contains named-persona relationship state, client-side prospect/thread
+persistence, SSE adapters, demo videos, purchase-sheet demo, or their tests.
+Those server-side compatibility routes remain outside this mobile client. The
+new client is intentionally smaller and truthful while R1/R2 identity and
+Khala Sync authority are built.
 
 ## Execution record
 

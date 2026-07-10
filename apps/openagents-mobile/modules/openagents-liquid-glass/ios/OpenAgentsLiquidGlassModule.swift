@@ -12,7 +12,7 @@ import ExpoModulesCore
 //
 // - GlassIconButton: circular Liquid Glass icon button (SF symbol).
 // - GlassPill: capsule Liquid Glass pill with a label.
-// - GlassComposer: the floating composer bar (plus, placeholder, mic).
+// - GlassComposer: the one real floating text composer (plus, input, send).
 //
 // The former single test island (builds 105/106) grew into this real product
 // chrome; the intent/props discipline is unchanged.
@@ -59,30 +59,21 @@ public class OpenAgentsLiquidGlassModule: Module {
       }
     }
 
-    View(GlassOptionSheetView.self) {
-      ViewName("GlassOptionSheet")
-
-      Events("onSelect", "onDismiss")
-
-      Prop("title") { (view: GlassOptionSheetView, title: String) in
-        view.state.title = title
-      }
-
-      Prop("options") { (view: GlassOptionSheetView, options: [[String: String]]) in
-        view.state.options = options.compactMap { entry in
-          guard let id = entry["id"], let label = entry["label"] else { return nil }
-          return GlassSheetOption(id: id, label: label, price: entry["price"] ?? "")
-        }
-      }
-    }
-
     View(GlassComposerView.self) {
       ViewName("GlassComposer")
 
-      Events("onTapComposer", "onTapMic", "onTapPlus")
+      Events("onTextChange", "onSubmit", "onTapPlus")
 
       Prop("placeholder") { (view: GlassComposerView, placeholder: String) in
         view.state.placeholder = placeholder
+      }
+
+      Prop("text") { (view: GlassComposerView, text: String) in
+        if view.state.text != text { view.state.text = text }
+      }
+
+      Prop("isSending") { (view: GlassComposerView, isSending: Bool) in
+        view.state.isSending = isSending
       }
     }
   }

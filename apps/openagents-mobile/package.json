@@ -23,7 +23,6 @@
     "expo-modules-core": "57.0.2",
     "expo-status-bar": "57.0.0",
     "expo-updates": "57.0.6",
-    "expo-video": "~57.0.0",
     "openagents-liquid-glass": "file:./modules/openagents-liquid-glass",
     "react": "19.2.7",
     "react-native": "0.86.0",

@@ -39,8 +39,9 @@ describe("contract openagents_mobile.khala_surface.v1", () => {
       ["assistant", "done"],
     ])
     expect(state.khala.entries[1]?.text).toContain("public orchestration")
-    expect(JSON.stringify(renderContentView({ ...state, surfaceMode: "khala" }))).toContain(
-      "KhalaTurnSubmitted",
-    )
+    const view = JSON.stringify(renderContentView({ ...state, surfaceMode: "khala" }))
+    expect(view).toContain("Khala routed this through the public orchestration path.")
+    expect(view).not.toContain('"_tag":"Composer"')
+    expect(view).not.toContain("khala-composer")
   })
 })
