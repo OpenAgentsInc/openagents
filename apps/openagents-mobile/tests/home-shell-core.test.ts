@@ -108,7 +108,7 @@ describe("contract openagents_mobile.home_shell.view_program.v1", () => {
       expect(serialized).toContain(recent.title)
     }
     expect(serialized).toContain('"label":"Settings"')
-    expect(serialized).toContain("Bundle 2026-07-09.embedded-112")
+    expect(serialized).toContain("Bundle 2026-07-10.embedded-113")
     // The active recent renders as the highlighted (secondary) row; the
     // others are ghost rows.
     expect(serialized).toContain('"backgroundColor":"surfaceRaised"')

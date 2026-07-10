@@ -22,6 +22,13 @@ import {
 } from "openagents-liquid-glass"
 import { EffectNativeHost } from "../effect-native/effect-native-host"
 import {
+  loadPersistedSarahSession,
+  mintSarahProspectSession,
+  persistSarahSession,
+  runSarahEventStream,
+  sendSarahTurn,
+} from "../sarah/sarah-client"
+import {
   buildHomeProgram,
   chromeProps,
   initialHomeState,
@@ -74,8 +81,13 @@ const fallbackChromeStyle = {
 
 export const HomeScreen = () => {
   // Build the program (state ref + intent registry + two view projections)
-  // once per mount.
-  const program = useMemo(buildHomeProgram, [])
+  // once per mount. The production Sarah turn client is the ONE injected
+  // effect seam (GL-3 #8649); everything else reaches the program as typed
+  // intents.
+  const program = useMemo(
+    () => buildHomeProgram({ sarahTurn: { sendTurn: sendSarahTurn } }),
+    [],
+  )
   const [homeState, setHomeState] = useState(initialHomeState)
   const insets = useSafeAreaInsets()
 
@@ -202,6 +214,84 @@ export const HomeScreen = () => {
       controller.abort()
     }
   }, [program])
+
+  // --- GL-3 (#8649): Sarah session boot ------------------------------------
+  // Entering Sarah mode restores the persisted prospect relationship from
+  // disk (survives restarts) or mints one against production; failure lands
+  // as the typed unavailable card — the composer never dies (a later send
+  // can bootstrap the session through the turn itself).
+  const sarahPhase = homeState.sarah.phase
+  useEffect(() => {
+    if (!sarahMode || sarahPhase !== "idle") return
+    let cancelled = false
+    void (async () => {
+      try {
+        const persisted = await loadPersistedSarahSession()
+        if (cancelled) return
+        if (persisted !== null) {
+          program.sarah.sessionReady({
+            prospectRef: persisted.prospectRef,
+            threadId: persisted.threadId,
+            restored: true,
+            entries: persisted.entries,
+          })
+          return
+        }
+        const minted = await mintSarahProspectSession()
+        if (cancelled) return
+        program.sarah.sessionReady({ ...minted, restored: false, entries: [] })
+      } catch {
+        if (!cancelled) program.sarah.sessionUnavailable("session_mint_failed")
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [sarahMode, sarahPhase, program])
+
+  // Bounded SSE transcript/card stream with typed reconnect — runs while the
+  // Sarah surface is active and a prospect relationship exists; aborted on
+  // mode exit/unmount. (Verified server contract: the bus carries avatar-tier
+  // events; text turns render from the POST reply — web-parity.)
+  const sarahProspectRef = homeState.sarah.prospectRef
+  useEffect(() => {
+    if (!sarahMode || sarahProspectRef === null) return
+    const controller = new AbortController()
+    void runSarahEventStream({
+      prospectRef: sarahProspectRef,
+      signal: controller.signal,
+      callbacks: {
+        onStatus: (phase) => program.sarah.streamStatus(phase),
+        onEvent: (event) => program.sarah.eventReceived(event),
+      },
+    }).catch(() => {
+      // Abort on exit is the expected path; never crash the shell.
+    })
+    return () => {
+      controller.abort()
+      program.sarah.streamStatus("idle")
+    }
+  }, [sarahMode, sarahProspectRef, program])
+
+  // Debounced session persistence: the relationship (ref + bounded settled
+  // transcript) survives app restarts.
+  const sarahThreadId = homeState.sarah.threadId
+  const sarahEntries = homeState.sarah.entries
+  useEffect(() => {
+    if (sarahProspectRef === null || sarahThreadId === null) return
+    const timer = setTimeout(() => {
+      void persistSarahSession({
+        prospectRef: sarahProspectRef,
+        threadId: sarahThreadId,
+        entries: sarahEntries
+          .filter((entry) => entry.status === "done")
+          .map((entry) => ({ key: entry.key, role: entry.role, text: entry.text })),
+      })
+    }, 400)
+    return () => {
+      clearTimeout(timer)
+    }
+  }, [sarahProspectRef, sarahThreadId, sarahEntries])
 
   const chrome = chromeProps(homeState)
 
@@ -361,6 +451,10 @@ export const HomeScreen = () => {
             )}
           </RNView>
 
+          {/* GL-3: the tap-only glass composer belongs to the demo surface;
+              in Sarah mode the EN Composer (a real text input inside the
+              conversation surface) replaces it. */}
+          {chrome.glassComposerVisible ? (
           <RNView
             pointerEvents="box-none"
             style={{
@@ -398,6 +492,7 @@ export const HomeScreen = () => {
               />
             )}
           </RNView>
+          ) : null}
         </>
       ) : null}
 

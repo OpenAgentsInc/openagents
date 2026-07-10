@@ -18,6 +18,7 @@
     "@effect-native/render-rn": "workspace:*",
     "@effect-native/tokens": "workspace:*",
     "expo": "57.0.2",
+    "expo-file-system": "~57.0.0",
     "expo-modules-core": "57.0.2",
     "expo-status-bar": "57.0.0",
     "expo-updates": "57.0.6",

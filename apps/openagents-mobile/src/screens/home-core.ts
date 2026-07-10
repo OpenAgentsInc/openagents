@@ -6,6 +6,7 @@
 import { Effect, Schema, type Stream, SubscriptionRef } from "@effect-native/core/effect"
 import {
   Button,
+  ComponentValueBinding,
   defineIntent,
   type IntentHandlers,
   IntentRef,
@@ -19,6 +20,25 @@ import {
   Text,
   type View,
 } from "@effect-native/core"
+
+import {
+  boundedEntries,
+  clipSarahText,
+  turnCounterFromEntries,
+  initialSarahState,
+  isDuplicateTranscriptEvent,
+  MAX_SARAH_CARDS,
+  prospectRefFromThreadId,
+  renderSarahSurface,
+  SARAH_TURN_FAILED_TEXT,
+  SarahEventPayload,
+  SarahSessionReadyPayload,
+  SarahSessionUnavailablePayload,
+  SarahStreamStatusPayload,
+  type SarahEntry,
+  type SarahState,
+  type SarahTurnClient,
+} from "./sarah-core"
 
 /**
  * OpenAgents mobile (#8597, GL-2 #8648) — the PURE half of the Home screen:
@@ -98,6 +118,8 @@ export interface HomeState {
   readonly searchTaps: number
   readonly pillTaps: number
   readonly settingsTaps: number
+  /** GL-3 (#8649): the Sarah conversation slice — one program, one state. */
+  readonly sarah: SarahState
 }
 
 /** Seed conversations so the drawer's Recents section and selection highlight
@@ -122,13 +144,14 @@ export const initialHomeState: HomeState = {
   searchTaps: 0,
   pillTaps: 0,
   settingsTaps: 0,
+  sarah: initialSarahState,
 }
 
 /** Visible JS-bundle tag (OTA proof surface). Bump when publishing an OTA so
  * the owner can SEE the over-the-air bundle swap land (embedded build 107
  * ships the tag below; a published OTA with a bumped tag should appear within
  * ~3s via the temporary poll loop and reload). Rendered in the drawer footer. */
-export const BUNDLE_TAG = "2026-07-09.embedded-112"
+export const BUNDLE_TAG = "2026-07-10.embedded-113"
 
 // ---------------------------------------------------------------------------
 // Typed intents — the ONLY way anything (EN tree, SwiftUI chrome, scrim)
@@ -163,6 +186,26 @@ export const SurfaceModeSelected = defineIntent(
   Schema.Struct({ mode: Schema.Literals(["openagents", "sarah"]) }),
 )
 
+// GL-3 (#8649) Sarah conversation intents. Session/stream/event intents are
+// dispatched by the HOST from the effectful client (../sarah/sarah-client);
+// draft/turn intents come from the EN Composer inside the surface itself.
+export const SarahSessionReady = defineIntent(
+  "SarahSessionReady",
+  SarahSessionReadyPayload,
+)
+export const SarahSessionUnavailable = defineIntent(
+  "SarahSessionUnavailable",
+  SarahSessionUnavailablePayload,
+)
+/** ComponentValueBinding payload: the composer's normalized plaintext. */
+export const SarahDraftChanged = defineIntent("SarahDraftChanged", Schema.String)
+export const SarahTurnSubmitted = defineIntent("SarahTurnSubmitted", Schema.String)
+export const SarahStreamStatusChanged = defineIntent(
+  "SarahStreamStatusChanged",
+  SarahStreamStatusPayload,
+)
+export const SarahEventReceived = defineIntent("SarahEventReceived", SarahEventPayload)
+
 export const homeIntentDefinitions = [
   DrawerToggled,
   NewChatPressed,
@@ -178,6 +221,12 @@ export const homeIntentDefinitions = [
   MineralsSheetOpened,
   MineralsSheetDismissed,
   MineralPackSelected,
+  SarahSessionReady,
+  SarahSessionUnavailable,
+  SarahDraftChanged,
+  SarahTurnSubmitted,
+  SarahStreamStatusChanged,
+  SarahEventReceived,
 ] as const
 
 export const drawerToggledRef = IntentRef("DrawerToggled", StaticPayload({}))
@@ -191,6 +240,10 @@ export interface ChromeProps {
   readonly pillLabel: string
   readonly composerPlaceholder: string
   readonly chromeVisible: boolean
+  /** GL-3: the tap-only SwiftUI glass composer belongs to the demo surface.
+   * In Sarah mode the EN Composer (a real bound text input) lives INSIDE the
+   * conversation surface, so the glass bar hides. */
+  readonly glassComposerVisible: boolean
   readonly surfaceMode: SurfaceMode
 }
 
@@ -200,6 +253,7 @@ export const chromeProps = (state: HomeState): ChromeProps => ({
     "OpenAgents",
   composerPlaceholder: "Ask anything",
   chromeVisible: !state.drawerOpen,
+  glassComposerVisible: !state.drawerOpen && state.surfaceMode !== "sarah",
   surfaceMode: state.surfaceMode,
 })
 
@@ -212,13 +266,12 @@ export const activeRecentTitle = (state: HomeState): string => {
 // Views
 // ---------------------------------------------------------------------------
 
-/** Main surface, rendered under the floating glass chrome. DELIBERATELY
- * EMPTY (owner direction 2026-07-09: no status text on the main surface) —
- * just the surface itself: opaque Protoss background in "openagents" mode;
- * TRANSPARENT in "sarah" mode AND while the ask video plays, so the
- * fullscreen video (a shell layer below) shows through and the glass chrome
- * floats over it. Conversation content mounts here when the Sarah surface
- * lands. */
+/** Main surface, rendered under the floating glass chrome. In "openagents"
+ * mode it stays DELIBERATELY EMPTY (owner direction 2026-07-09: no status
+ * text) — opaque Protoss background, transparent while the ask video plays.
+ * In "sarah" mode (GL-3 #8649) it is the REAL Sarah conversation: transparent
+ * root (the muted demo loop plays beneath as AMBIENT BACKGROUND ONLY) with
+ * the typed transcript, cards, and the EN Composer rendered over it. */
 export const renderContentView = (state: HomeState): View =>
   Stack(
     {
@@ -232,7 +285,9 @@ export const renderContentView = (state: HomeState): View =>
           : {}),
       },
     },
-    [],
+    state.surfaceMode === "sarah" && !state.askVideoPlaying
+      ? [renderSarahSurface(state.sarah)]
+      : [],
   )
 
 const drawerRow = (input: {
@@ -313,8 +368,26 @@ export const renderDrawerView = (state: HomeState): View =>
 // Handlers + program
 // ---------------------------------------------------------------------------
 
+/** Effect seams the program needs but never owns: the Sarah turn client is
+ * injected (production: ../sarah/sarah-client sendSarahTurn; tests: a
+ * deterministic fake). No client => turns fail honestly to the typed
+ * degradation entry. */
+export interface HomeProgramOptions {
+  readonly sarahTurn?: SarahTurnClient
+}
+
+const updateSarah = (
+  state: SubscriptionRef.SubscriptionRef<HomeState>,
+  update: (sarah: SarahState) => SarahState,
+) =>
+  SubscriptionRef.update(state, (current) => ({
+    ...current,
+    sarah: update(current.sarah),
+  }))
+
 export const makeHomeHandlers = (
   state: SubscriptionRef.SubscriptionRef<HomeState>,
+  options: HomeProgramOptions = {},
 ): IntentHandlers<typeof homeIntentDefinitions> => ({
   DrawerToggled: () =>
     SubscriptionRef.update(state, (current) => ({
@@ -352,7 +425,11 @@ export const makeHomeHandlers = (
     SubscriptionRef.update(state, (current) => ({
       ...current,
       composerTaps: current.composerTaps + 1,
-      askVideoPlaying: true,
+      // The demo reply-video takeover belongs to the "openagents" surface;
+      // in Sarah mode the composer is a REAL conversation input (GL-3) and
+      // never triggers presentation playback.
+      askVideoPlaying:
+        current.surfaceMode === "sarah" ? current.askVideoPlaying : true,
     })),
   MicPressed: () =>
     SubscriptionRef.update(state, (current) => ({
@@ -395,6 +472,150 @@ export const makeHomeHandlers = (
       mineralsSheetOpen: false,
       lastMineralPackId: payload.id,
     })),
+  // --- GL-3 Sarah conversation handlers -----------------------------------
+  SarahSessionReady: (payload) =>
+    updateSarah(state, (sarah) => {
+      // Restored transcript (persisted relationship) seeds ONLY an empty
+      // surface — a live conversation is never clobbered by a late restore.
+      const entries =
+        sarah.entries.length === 0
+          ? boundedEntries(
+              payload.entries.map((entry): SarahEntry => ({
+                key: entry.key,
+                role: entry.role,
+                text: clipSarahText(entry.text),
+                status: "done",
+              })),
+            )
+          : sarah.entries
+      return {
+        ...sarah,
+        phase: "ready",
+        prospectRef: payload.prospectRef,
+        threadId: payload.threadId,
+        restored: payload.restored,
+        lastFailure: null,
+        entries,
+        // New turns must never reuse a restored turn key (a collision would
+        // rewrite a restored bubble with the new reply).
+        turnCounter: Math.max(sarah.turnCounter, turnCounterFromEntries(entries)),
+      }
+    }),
+  SarahSessionUnavailable: (payload) =>
+    updateSarah(state, (sarah) => ({
+      ...sarah,
+      phase: "unavailable",
+      lastFailure: payload.reason,
+    })),
+  SarahDraftChanged: (text) =>
+    updateSarah(state, (sarah) => ({
+      ...sarah,
+      draft: typeof text === "string" ? clipSarahText(text) : "",
+    })),
+  SarahTurnSubmitted: (raw) =>
+    Effect.gen(function* () {
+      const message = (typeof raw === "string" ? raw : "").trim()
+      if (message === "") return
+      const before = yield* SubscriptionRef.get(state)
+      if (before.sarah.turnPending) return
+      const turn = before.sarah.turnCounter + 1
+      const userKey = `turn-${turn}-user`
+      const replyKey = `turn-${turn}-reply`
+      yield* updateSarah(state, (sarah) => ({
+        ...sarah,
+        draft: "",
+        turnPending: true,
+        turnCounter: turn,
+        entries: boundedEntries([
+          ...sarah.entries,
+          { key: userKey, role: "user", text: clipSarahText(message), status: "done" },
+          { key: replyKey, role: "assistant", text: "", status: "thinking" },
+        ]),
+      }))
+      const client = options.sarahTurn
+      const result =
+        client === undefined
+          ? null
+          : yield* Effect.tryPromise({
+              try: () =>
+                client.sendTurn({
+                  message,
+                  prospectRef: before.sarah.prospectRef,
+                  threadId: before.sarah.threadId,
+                }),
+              catch: () => new Error("turn_failed"),
+            }).pipe(Effect.catch(() => Effect.succeed(null)))
+      yield* updateSarah(state, (sarah) => {
+        const adoptedRef =
+          sarah.prospectRef ??
+          (result === null ? null : prospectRefFromThreadId(result.threadId))
+        return {
+          ...sarah,
+          turnPending: false,
+          // A turn that reached the server can bootstrap the session (the
+          // server mints the prospect relationship on first contact).
+          prospectRef: adoptedRef,
+          threadId:
+            sarah.threadId ?? (result === null ? null : result.threadId),
+          phase: result === null ? sarah.phase : "ready",
+          lastFailure: result === null ? "turn_failed" : sarah.lastFailure,
+          entries: sarah.entries.map((entry) =>
+            entry.key === replyKey
+              ? result === null
+                ? { ...entry, text: SARAH_TURN_FAILED_TEXT, status: "failed" as const }
+                : { ...entry, text: clipSarahText(result.reply), status: "done" as const }
+              : entry,
+          ),
+        }
+      })
+    }),
+  SarahStreamStatusChanged: (payload) =>
+    updateSarah(state, (sarah) => ({ ...sarah, stream: payload.phase })),
+  SarahEventReceived: (event) =>
+    updateSarah(state, (sarah) => {
+      sarah = { ...sarah, eventCounter: sarah.eventCounter + 1 }
+      if (
+        event.type === "transcript" &&
+        (event.role === "user" || event.role === "assistant") &&
+        typeof event.text === "string" &&
+        event.text.length > 0
+      ) {
+        const text = clipSarahText(event.text)
+        if (isDuplicateTranscriptEvent(sarah.entries, event.role, text)) return sarah
+        return {
+          ...sarah,
+          entries: boundedEntries([
+            ...sarah.entries,
+            {
+              key: `sse-${sarah.eventCounter}`,
+              role: event.role,
+              text,
+              status: "done",
+            },
+          ]),
+        }
+      }
+      if (
+        (event.type === "card" || event.type === "guard_refusal") &&
+        typeof event.title === "string" &&
+        event.title.length > 0
+      ) {
+        return {
+          ...sarah,
+          cards: [
+            ...sarah.cards,
+            {
+              key: `card-${sarah.eventCounter}`,
+              title: clipSarahText(event.title),
+              body: clipSarahText(typeof event.body === "string" ? event.body : ""),
+            },
+          ].slice(-MAX_SARAH_CARDS),
+        }
+      }
+      // Unknown/other event types (session, blueprint_delta) are counted but
+      // not rendered in v1 — bounded and honest.
+      return sarah
+    }),
 })
 
 /** Fire-and-forget typed dispatchers for the SwiftUI chrome + shell scrim —
@@ -417,21 +638,52 @@ export interface ChromeDispatchers {
   readonly selectMineralPack: (id: string) => void
 }
 
+/** Host-side dispatchers for the effectful Sarah client (session boot, SSE
+ * loop). Same fire-and-forget posture as the chrome: typed intents only. */
+export interface SarahDispatchers {
+  readonly sessionReady: (payload: {
+    readonly prospectRef: string
+    readonly threadId: string
+    readonly restored: boolean
+    readonly entries: ReadonlyArray<{
+      readonly key: string
+      readonly role: "user" | "assistant"
+      readonly text: string
+    }>
+  }) => void
+  readonly sessionUnavailable: (reason: string) => void
+  readonly streamStatus: (
+    phase: "idle" | "connecting" | "live" | "reconnecting" | "unavailable",
+  ) => void
+  readonly eventReceived: (event: {
+    readonly type: string
+    readonly role?: string
+    readonly text?: string
+    readonly title?: string
+    readonly body?: string
+  }) => void
+  /** Exact same intent the EN Composer's onSubmit dispatches. */
+  readonly submitTurn: (text: string) => void
+}
+
 export interface HomeProgramHandle {
   readonly contentViewStream: Stream.Stream<View>
   readonly drawerViewStream: Stream.Stream<View>
   readonly report: IntentReporter
   readonly stateChanges: Stream.Stream<HomeState>
   readonly chrome: ChromeDispatchers
+  readonly sarah: SarahDispatchers
 }
 
-export const buildHomeProgram = (): HomeProgramHandle =>
+export const buildHomeProgram = (
+  options: HomeProgramOptions = {},
+): HomeProgramHandle =>
   Effect.runSync(
     Effect.gen(function* () {
       const state = yield* SubscriptionRef.make<HomeState>(initialHomeState)
       const registry = yield* makeIntentRegistry(
         homeIntentDefinitions,
-        makeHomeHandlers(state),
+        makeHomeHandlers(state, options),
       )
       const report: IntentReporter = (ref, runtimeValue) =>
         registry.dispatch(resolveIntentRef(ref, runtimeValue))
@@ -464,6 +716,42 @@ export const buildHomeProgram = (): HomeProgramHandle =>
           dismissMineralsSheet: fire("MineralsSheetDismissed"),
           selectMineralPack: (id) => {
             fireRef(IntentRef("MineralPackSelected", StaticPayload({ id })))
+          },
+        },
+        sarah: {
+          sessionReady: (payload) => {
+            fireRef(
+              IntentRef(
+                "SarahSessionReady",
+                StaticPayload({
+                  prospectRef: payload.prospectRef,
+                  threadId: payload.threadId,
+                  restored: payload.restored,
+                  entries: payload.entries.map((entry) => ({ ...entry })),
+                }),
+              ),
+            )
+          },
+          sessionUnavailable: (reason) => {
+            fireRef(IntentRef("SarahSessionUnavailable", StaticPayload({ reason })))
+          },
+          streamStatus: (phase) => {
+            fireRef(IntentRef("SarahStreamStatusChanged", StaticPayload({ phase })))
+          },
+          eventReceived: (event) => {
+            fireRef(IntentRef("SarahEventReceived", StaticPayload({ ...event })))
+          },
+          submitTurn: (text) => {
+            Effect.runFork(
+              Effect.exit(
+                registry.dispatch(
+                  resolveIntentRef(
+                    IntentRef("SarahTurnSubmitted", ComponentValueBinding()),
+                    text,
+                  ),
+                ),
+              ),
+            )
           },
         },
       }

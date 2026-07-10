@@ -33,18 +33,25 @@ const importSpecifiers = (source: string): ReadonlyArray<string> =>
   [...source.matchAll(/from\s+"([^"]+)"/g)].map((match) => match[1] ?? "")
 
 describe("contract openagents_mobile.home.catalog_sharing.v1", () => {
-  test("the view-program layer is host-agnostic: only @effect-native/core imports", () => {
-    const source = readFileSync(
-      join(appRoot, "src/screens/home-core.ts"),
-      "utf8",
-    )
-    const specifiers = importSpecifiers(source)
-    expect(specifiers.length).toBeGreaterThan(0)
-    for (const specifier of specifiers) {
-      expect(specifier.startsWith("@effect-native/core")).toBe(true)
+  test("the view-program layer is host-agnostic: only @effect-native/core (or pure sibling) imports", () => {
+    // GL-3 (#8649): the pure layer is now two sibling modules — home-core and
+    // sarah-core. Each may import ONLY @effect-native/core (+ its effect
+    // bridge) or the other pure sibling; nothing host-specific ever enters.
+    const pureSiblings = ["./sarah-core", "./home-core"]
+    for (const module of ["src/screens/home-core.ts", "src/screens/sarah-core.ts"]) {
+      const source = readFileSync(join(appRoot, module), "utf8")
+      const specifiers = importSpecifiers(source)
+      expect(specifiers.length).toBeGreaterThan(0)
+      for (const specifier of specifiers) {
+        expect(
+          specifier.startsWith("@effect-native/core") ||
+            pureSiblings.includes(specifier),
+        ).toBe(true)
+      }
+      expect(source).not.toContain('"react"')
+      expect(source).not.toContain('"react-native"')
+      expect(source).not.toContain('"expo')
     }
-    expect(source).not.toContain('"react"')
-    expect(source).not.toContain('"react-native"')
   })
 
   test("the authored trees are the shared catalog version the web EN surfaces author", () => {

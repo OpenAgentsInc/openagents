@@ -182,7 +182,41 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
       verification:
         "bun test apps/openagents-mobile/tests/home-shell-core.test.ts proves the sheet survives video-ended and video-tap-dismiss events and closes only on the user's pack-selection or Not-now intents; the simulator pixel proof on #8648 shows the sheet still open past the video loop boundary.",
     },
+    {
+      authorityBoundary:
+        "This binds the text-first conversation floor only; voice/avatar tiers follow #8610 capacity policy, account linking unlocks operator posture only through server-owned policy, and the bundled demo video is ambient presentation — never conversation evidence.",
+      blockerRefs: [],
+      contractId: "openagents_mobile.sarah_text_surface.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "apps/openagents-mobile/src/screens/sarah-core.ts",
+        "apps/openagents-mobile/src/sarah/sarah-client.ts",
+        "github:OpenAgentsInc/openagents#8649",
+      ],
+      oracles: [
+        {
+          description:
+            "Drives the real Home view program with a deterministic turn client and the real render-rn lowering: typed turn round-trips (submit -> user + thinking -> done reply), typed SSE transcript/card events with bounded dedupe and typed reconnect phases, honest typed degradation on turn/session failure with the composer alive, turn-bootstrap session adoption, persisted-session restore marking continuity, and the SSE frame parser contract.",
+          id: "openagents_mobile.sarah_text_surface.view_program",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/openagents-mobile/tests/sarah-surface.test.ts",
+        },
+      ],
+      productArea: "mobile Sarah conversation surface",
+      source: {
+        channel: "issue",
+        statedBy: "owner",
+        statedOn: "2026-07-09",
+      },
+      state: "enforced",
+      statement:
+        "The owner wants Sarah consumable in OpenAgents mobile with the native glass shell as soon as possible. V1 is the text availability floor over the same /sarah contracts as web: prospect/authenticated session, bounded SSE transcript, composer turns, and typed cards inside the GL-2 shell.",
+      surface: "openagents-mobile",
+      verification:
+        "bun test apps/openagents-mobile/tests/sarah-surface.test.ts proves the view-program contract; the #8649 receipt carries the production pixel proof (real prospect session + live Sarah reply in the shell) and the restart-persistence + reconnect evidence.",
+    },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-09.3",
+  version: "2026-07-10.1",
 }

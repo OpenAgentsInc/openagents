@@ -139,7 +139,7 @@ describe("behavior contract registry", () => {
     const validation = validateBehaviorContractRegistry(decoded)
 
     expect(validation).toEqual({ issues: [], ok: true })
-    expect(decoded.contracts).toHaveLength(5)
+    expect(decoded.contracts).toHaveLength(6)
     const pending = decoded.contracts.filter(contract => contract.state === "pending")
     expect(pending).toHaveLength(4)
     expect(
@@ -159,6 +159,16 @@ describe("behavior contract registry", () => {
     expect(mineralsSheet?.statement).toContain("stay open until the USER dismisses it")
     expect(mineralsSheet?.oracles[0]?.ref).toBe(
       "apps/openagents-mobile/tests/home-shell-core.test.ts",
+    )
+    // GL-3 (#8649): Sarah text-first conversation surface, enforced in the
+    // mobile test sweep.
+    const sarahSurface = decoded.contracts.find(
+      contract => contract.contractId === "openagents_mobile.sarah_text_surface.v1",
+    )
+    expect(sarahSurface?.state).toBe("enforced")
+    expect(sarahSurface?.enforcementTier).toBe("test-sweep")
+    expect(sarahSurface?.oracles[0]?.ref).toBe(
+      "apps/openagents-mobile/tests/sarah-surface.test.ts",
     )
   })
 
