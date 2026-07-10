@@ -22,6 +22,7 @@ import {
   Card,
   ComponentValueBinding,
   IntentRef,
+  Icon,
   Spacer,
   Stack,
   Text,
@@ -408,30 +409,42 @@ const shellSidebar = (state: DesktopShellState): View =>
       style: { height: "full", minHeight: 0 },
     },
     [
-      Text({ key: "sidebar-brand", content: "OpenAgents", variant: "title", color: "textPrimary" }),
-      Button({
-        key: "sidebar-new-chat",
-        label: "New chat",
-        variant: "secondary",
-        onPress: IntentRef("DesktopNewChat"),
-        a11y: { label: "Start a new chat" },
-      }),
+      Stack({ key: "sidebar-brand-row", direction: "row", gap: "2", align: "center" }, [
+        Icon({ key: "sidebar-brand-icon", name: "Terminal", size: "sm", color: "accent" }),
+        Text({ key: "sidebar-brand", content: "OpenAgents", variant: "title", color: "textPrimary" }),
+      ]),
+      Stack({ key: "sidebar-action-new-chat", direction: "row", gap: "2", align: "center" }, [
+        Icon({ key: "sidebar-new-chat-icon", name: "ChatCompose", size: "sm", color: "accent" }),
+        Button({
+          key: "sidebar-new-chat",
+          label: "New chat",
+          variant: "secondary",
+          onPress: IntentRef("DesktopNewChat"),
+          a11y: { label: "Start a new chat" },
+        }),
+      ]),
       Text({ key: "sidebar-chats-label", content: "Chats", variant: "caption", color: "textMuted" }),
-      ...state.threads.map((thread) => Button({
-        key: `sidebar-thread-${thread.id}`,
-        label: thread.title,
-        variant: "ghost",
-        onPress: IntentRef("DesktopChatSelected", StaticPayload(thread.id)),
-        a11y: { label: `Open chat ${thread.title}` },
-      })),
+      ...state.threads.map((thread) => Stack({ key: `sidebar-action-thread-${thread.id}`, direction: "row", gap: "2", align: "center" }, [
+        Icon({ key: `sidebar-thread-icon-${thread.id}`, name: "Chats", size: "sm", color: "textMuted" }),
+        Button({
+          key: `sidebar-thread-${thread.id}`,
+          label: thread.title,
+          variant: "ghost",
+          onPress: IntentRef("DesktopChatSelected", StaticPayload(thread.id)),
+          a11y: { label: `Open chat ${thread.title}` },
+        }),
+      ])),
       Text({ key: "sidebar-workspace-label", content: "Workspace", variant: "caption", color: "textMuted" }),
-      Button({
-        key: "sidebar-fleet",
-        label: "Fleet",
-        variant: "ghost",
-        onPress: IntentRef("DesktopFleetDeskToggled"),
-        a11y: { label: state.fleetDeskOpen ? "Close Fleet" : "Open Fleet" },
-      }),
+      Stack({ key: "sidebar-action-fleet", direction: "row", gap: "2", align: "center" }, [
+        Icon({ key: "sidebar-fleet-icon", name: "Agent", size: "sm", color: "textMuted" }),
+        Button({
+          key: "sidebar-fleet",
+          label: "Fleet",
+          variant: "ghost",
+          onPress: IntentRef("DesktopFleetDeskToggled"),
+          a11y: { label: state.fleetDeskOpen ? "Close Fleet" : "Open Fleet" },
+        }),
+      ]),
       Spacer({ key: "sidebar-fill", flex: true }),
       Badge({
         key: "sidebar-pylon-status",
@@ -564,6 +577,7 @@ const shellComposer = (state: DesktopShellState): View =>
             onSubmit: IntentRef("DesktopNoteSubmitted", ComponentValueBinding()),
             style: { flex: 1 },
           }),
+          Icon({ key: "shell-send-icon", name: "Plane", size: "sm", color: "accent" }),
           Button({
             key: "shell-note",
             label: "Send",

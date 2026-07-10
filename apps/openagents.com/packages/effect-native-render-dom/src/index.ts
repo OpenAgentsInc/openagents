@@ -1,4 +1,5 @@
 import { Deferred, Effect, Exit, FiberSet, Layer, Scope, Stream } from "effect"
+import { iconSvg as openAiIconSvg } from "@openagentsinc/ui/icon"
 import {
   type BadgeView,
   type ButtonView,
@@ -1683,7 +1684,7 @@ const renderSpacer = (view: SpacerView, state: DomRendererState): HTMLElement =>
 // through. No user-supplied SVG ever enters the tree.
 const iconSizePixels: Record<IconSize, number> = { sm: 16, md: 20, lg: 24 }
 
-const iconRegistry: Record<IconName, { readonly body: string; readonly fill: boolean }> = {
+const iconRegistry: Partial<Record<IconName, { readonly body: string; readonly fill: boolean }>> = {
   Plus: { body: '<path d="M12 5v14M5 12h14"/>', fill: false },
   Play: { body: '<path d="M8 5v14l11-7z"/>', fill: true },
   Pause: { body: '<path d="M8 5h3v14H8zM13 5h3v14h-3z"/>', fill: true },
@@ -1705,12 +1706,7 @@ const renderIcon = (view: IconView, state: DomRendererState): HTMLElement => {
   element.style.display = "inline-flex"
   element.style.color = view.color === undefined ? "" : colorValue(view.color)
   const px = iconSizePixels[view.size ?? "md"]
-  const glyph = iconRegistry[view.name]
-  const paint = glyph.fill
-    ? 'fill="currentColor"'
-    : 'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"'
-  element.innerHTML =
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${px}" height="${px}" viewBox="0 0 24 24" ${paint}>${glyph.body}</svg>`
+  element.innerHTML = iconSvg(view.name, px)
   if (view.label === undefined) {
     element.setAttribute("aria-hidden", "true")
   } else {
@@ -1946,11 +1942,10 @@ const renderTable = (view: TableView, state: DomRendererState, report: IntentRep
 // free-form drag math in app code). NavRail is a selection contract; Workbench
 // swaps the active pane as typed state.
 const iconSvg = (name: IconName, sizePx: number): string => {
-  const glyph = iconRegistry[name]
-  const paint = glyph.fill
-    ? 'fill="currentColor"'
-    : 'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"'
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${sizePx}" height="${sizePx}" viewBox="0 0 24 24" ${paint}>${glyph.body}</svg>`
+  return openAiIconSvg(name).replace(
+    'width="1em" height="1em"',
+    `width="${sizePx}" height="${sizePx}"`,
+  )
 }
 
 const splitAxis = (orientation: "row" | "column"): {
@@ -4863,12 +4858,7 @@ const renderIconButton = (
   // Same closed glyph registry as Icon; the glyph is decorative because the
   // button itself carries the accessible name.
   const px = iconSizePixels.md
-  const glyph = iconRegistry[view.icon]
-  const paint = glyph.fill
-    ? 'fill="currentColor"'
-    : 'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"'
-  element.innerHTML =
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${px}" height="${px}" viewBox="0 0 24 24" aria-hidden="true" ${paint}>${glyph.body}</svg>`
+  element.innerHTML = iconSvg(view.icon, px)
   state.addListener(element, "click", () => runReportedIntent(report, view.onPress))
   applySurfaceMergedStyle(element, view.style, view.surface, state)
   applyA11y(element, view)

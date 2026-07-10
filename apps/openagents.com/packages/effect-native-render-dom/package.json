@@ -17,6 +17,7 @@
   "dependencies": {
     "@effect-native/core": "workspace:*",
     "@effect-native/tokens": "workspace:*",
+    "@openagentsinc/ui": "workspace:*",
     "effect": "4.0.0-beta.94"
   }
 }

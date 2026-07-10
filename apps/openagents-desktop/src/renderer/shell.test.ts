@@ -93,8 +93,12 @@ describe("desktopShellView (state -> component tree)", () => {
     expect(nodeByKey(view, "shell-fleet-toggle")?._tag).toBe("Button")
     expect(nodeByKey(view, "shell-sidebar")?._tag).toBe("Stack")
     expect(nodeByKey(view, "sidebar-new-chat")?._tag).toBe("Button")
+    expect(nodeByKey(view, "sidebar-new-chat-icon")?.name).toBe("ChatCompose")
     expect(nodeByKey(view, "sidebar-thread-test-thread")?._tag).toBe("Button")
+    expect(nodeByKey(view, "sidebar-thread-icon-test-thread")?.name).toBe("Chats")
     expect(nodeByKey(view, "sidebar-fleet")?._tag).toBe("Button")
+    expect(nodeByKey(view, "sidebar-fleet-icon")?.name).toBe("Agent")
+    expect(nodeByKey(view, "shell-send-icon")?.name).toBe("Plane")
     expect(nodeByKey(view, "fleet-desk")).toBeUndefined()
   })
 

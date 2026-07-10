@@ -1601,6 +1601,12 @@ export type HostKind = (typeof hostKinds)[number]
 // glyphs Khala Code actually uses (fleet controls, nav, status, menus). Growing
 // the set is a small, reviewed catalog change — never an escape hatch.
 export const iconNames = [
+  "Agent",
+  "ChatCompose",
+  "Chats",
+  "Plane",
+  "Terminal",
+  "Tools",
   "Plus",
   "Play",
   "Pause",

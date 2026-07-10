@@ -107,14 +107,29 @@ textarea:focus-visible {
 }
 
 [data-en-key="sidebar-brand"] {
-  padding: 0 8px 12px;
+  padding: 0 0 12px;
   font-size: 17px !important;
   font-weight: 650 !important;
   letter-spacing: -0.025em;
 }
 
+[data-en-key="sidebar-brand-row"],
+[data-en-key^="sidebar-action-"] {
+  width: 100%;
+  justify-content: flex-start !important;
+  text-align: left;
+}
+
+[data-en-key^="sidebar-action-"] [data-en-tag="Icon"] {
+  flex: 0 0 18px;
+  display: inline-flex;
+  justify-content: center;
+}
+
 [data-en-key="sidebar-new-chat"] {
   justify-content: flex-start;
+  flex: 1;
+  text-align: left !important;
   min-height: 36px;
   padding: 0 11px !important;
   border: 1px solid rgba(172, 206, 255, 0.18) !important;
@@ -144,6 +159,8 @@ textarea:focus-visible {
 [data-en-key^="sidebar-thread-"],
 [data-en-key="sidebar-fleet"] {
   justify-content: flex-start;
+  flex: 1;
+  text-align: left !important;
   min-height: 34px;
   padding: 0 9px !important;
   border: 1px solid transparent !important;
@@ -433,6 +450,10 @@ textarea:focus-visible {
   min-height: 40px;
   color: var(--oa-ink) !important;
   font-size: 15px;
+}
+
+[data-en-key="shell-send-icon"] {
+  color: var(--oa-cyan) !important;
 }
 
 /* The composer is already the visible input affordance; do not draw a second

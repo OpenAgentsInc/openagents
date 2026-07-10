@@ -130,3 +130,14 @@ describe("Effect Native renderer boundary (no parallel UI architecture)", () => 
     }
   })
 })
+
+describe("OpenAI Apps SDK icon catalog", () => {
+  test("Effect Native DOM resolves its closed icon contract through the shared catalog", () => {
+    const domRenderer = read("../openagents.com/packages/effect-native-render-dom/src/index.ts")
+    const catalog = read("../openagents.com/packages/effect-native-core/src/index.ts")
+    expect(domRenderer).toContain('from "@openagentsinc/ui/icon"')
+    expect(domRenderer).toContain("openAiIconSvg(name)")
+    expect(catalog).toContain('"ChatCompose"')
+    expect(catalog).toContain('"Agent"')
+  })
+})
