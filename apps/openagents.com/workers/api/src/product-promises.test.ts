@@ -87,6 +87,30 @@ const ProductPromisesDocument = S.Struct({
 const repoFile = (relPath: string): URL =>
   new URL(`../../../../../${relPath}`, import.meta.url)
 
+/**
+ * Snapshot array fields before `toMatchObject({ …: expect.arrayContaining(...) })`.
+ *
+ * Bun's expect mutates the received object in place, replacing matched array
+ * properties with the `ExpectArrayContaining` matcher instance. Subsequent
+ * `toContain` / `not.toContain` on those fields then fail with
+ * "Received value must be an array type" even when the oracle was correct.
+ * Copying first keeps claim-bearing oracles honest without loosening them.
+ */
+const snapshotPromiseRefs = <
+  T extends {
+    blockerRefs?: ReadonlyArray<string>
+    evidenceRefs?: ReadonlyArray<string>
+  },
+>(
+  promise: T | undefined,
+): {
+  blockerRefs: string[]
+  evidenceRefs: string[]
+} => ({
+  blockerRefs: [...(promise?.blockerRefs ?? [])],
+  evidenceRefs: [...(promise?.evidenceRefs ?? [])],
+})
+
 describe('public product promises document', () => {
   test('marks source-only registry constants that were not live-served', () => {
     const registry = readFileSync(repoFile('docs/promises/registry.md'), 'utf8')
@@ -456,39 +480,70 @@ describe('public product promises document', () => {
     const revenueShare = promiseById.get(
       'khala_code.plugin_backend_revenue_share.v1',
     )
+    // Snapshot before toMatchObject — see snapshotPromiseRefs.
+    const traceRefs = snapshotPromiseRefs(tracePlugins)
+    const revenueRefs = snapshotPromiseRefs(revenueShare)
 
-    expect(tracePlugins).toMatchObject({
-      state: 'planned',
-      evidenceRefs: expect.arrayContaining([
+    expect(tracePlugins).toBeDefined()
+    expect(tracePlugins?.state).toBe('planned')
+    expect(tracePlugins?.productArea).toBe('Khala Code')
+    // RL-7 precedent spine evidence (historical integrity routes).
+    expect(traceRefs.evidenceRefs).toEqual(
+      expect.arrayContaining([
         'apps/openagents.com/workers/api/src/khala-code-trace-plugin-revenue-share-routes.ts',
         'apps/openagents.com/workers/api/src/khala-code-trace-plugin-revenue-share-routes.test.ts',
         'apps/openagents.com/workers/api/migrations/0291_khala_code_trace_plugin_revenue_share_precedents.sql',
         'route:/api/operator/khala-code/trace-plugin-revenue-share-precedents',
         'route:/api/public/khala-code/trace-plugin-revenue-share-precedents/:receiptRef',
+        // greenfield disposition always attaches successor + retirement docs
+        'docs/promises/2026-07-09-khala-code-app-retirement-and-openagents-successors.md',
+        'docs/sol/2026-07-09-greenfield-mobile-desktop-decision.md',
+        'promise:openagents.desktop_app.v1',
       ]),
-      blockerRefs: expect.arrayContaining([
+    )
+    // Planned until live receipt + distillation path; greenfield port gate
+    // is appended by khalaCodeCapabilityDisposition (registry 2026-07-09.1).
+    expect(traceRefs.blockerRefs).toEqual(
+      expect.arrayContaining([
+        'blocker.product_promises.trace_to_plugin_distillation_pipeline_missing',
         'blocker.product_promises.trace_plugin_precedent_receipt_missing',
         'blocker.owner.khala_code_trace_plugin_revenue_share_live_receipt_missing',
+        'blocker.product_promises.openagents_greenfield_capability_port_missing',
       ]),
-    })
+    )
     expect(tracePlugins?.safeCopy).toContain('Planned engine idea only')
+    expect(tracePlugins?.safeCopy).toContain(
+      'no successor app currently derives',
+    )
     expect(tracePlugins?.unsafeCopy).toContain('Do not claim')
-    expect(tracePlugins?.blockerRefs).toContain(
-      'blocker.product_promises.openagents_greenfield_capability_port_missing',
+    expect(tracePlugins?.claim).toContain('Legacy-ID carry-forward')
+    expect(tracePlugins?.verification).toContain(
+      'Greenfield carry-forward also requires',
     )
 
-    expect(revenueShare).toMatchObject({
-      state: 'planned',
-      evidenceRefs: expect.arrayContaining([
+    expect(revenueShare).toBeDefined()
+    expect(revenueShare?.state).toBe('planned')
+    expect(revenueRefs.evidenceRefs).toEqual(
+      expect.arrayContaining([
         'apps/openagents.com/workers/api/src/khala-code-trace-plugin-revenue-share-routes.ts',
         'apps/openagents.com/workers/api/src/khala-code-trace-plugin-revenue-share-routes.test.ts',
         'route:/api/public/khala-code/trace-plugin-revenue-share-precedents/:receiptRef',
+        'promise:khala_code.trace_derived_plugins.v1',
+        'docs/promises/2026-07-09-khala-code-app-retirement-and-openagents-successors.md',
+        'promise:openagents.desktop_app.v1',
       ]),
-      blockerRefs: expect.arrayContaining([
+    )
+    expect(revenueRefs.blockerRefs).toEqual(
+      expect.arrayContaining([
         'blocker.product_promises.plugin_revenue_share_precedent_receipt_missing',
         'blocker.product_promises.plugin_revenue_settlement_not_armed',
+        'blocker.owner.khala_code_trace_plugin_revenue_share_live_receipt_missing',
+        'blocker.product_promises.openagents_greenfield_capability_port_missing',
       ]),
-    })
+    )
+    // Disposition rewrite keeps the historical "moves no sats" boundary in
+    // claim language via unsafeCopy/authorityBoundary; safeCopy is the
+    // greenfield planned-economics framing.
     expect(revenueShare?.safeCopy).toContain('Planned engine/economics idea')
     expect(revenueShare?.safeCopy).toContain('moves no sats itself')
     expect(revenueShare?.unsafeCopy).toContain(
@@ -513,11 +568,16 @@ describe('public product promises document', () => {
     const privateDeployment = promiseById.get('reactor.private_deployment.v1')
     const provenance = promiseById.get('reactor.model_provenance.v1')
     const policy = promiseById.get('reactor.model_policy.v1')
+    // Snapshot before any arrayContaining matcher — see snapshotPromiseRefs.
+    const privateRefs = snapshotPromiseRefs(privateDeployment)
+    const provenanceRefs = snapshotPromiseRefs(provenance)
+    const policyRefs = snapshotPromiseRefs(policy)
 
-    expect(privateDeployment).toMatchObject({
-      state: 'planned',
-      productArea: 'Reactor',
-      evidenceRefs: expect.arrayContaining([
+    expect(privateDeployment).toBeDefined()
+    expect(privateDeployment?.state).toBe('planned')
+    expect(privateDeployment?.productArea).toBe('Reactor')
+    expect(privateRefs.evidenceRefs).toEqual(
+      expect.arrayContaining([
         'https://github.com/OpenAgentsInc/openagents/issues/8271',
         'https://github.com/OpenAgentsInc/openagents/issues/8273',
         'https://github.com/OpenAgentsInc/openagents/issues/8274',
@@ -544,15 +604,20 @@ describe('public product promises document', () => {
         'docs/fable/2026-07-04-reactor-open-model-private-deployment-plan.md',
         'NEEDS_OWNER.md',
       ]),
-      blockerRefs: expect.arrayContaining([
+    )
+    // Active planned blockers only — RX receipt work cleared the old
+    // serving-smoke / metering-receipt blockers from this record.
+    expect(privateRefs.blockerRefs).toEqual(
+      expect.arrayContaining([
         'blocker.product_promises.reactor_customer_premises_deployment_missing',
         'blocker.owner.reactor_rate_card_publication_approval_missing',
+        'blocker.owner.reactor_customer_pilot_approval_missing',
       ]),
-    })
-    expect(privateDeployment?.blockerRefs).not.toContain(
+    )
+    expect(privateRefs.blockerRefs).not.toContain(
       'blocker.product_promises.reactor_policy_enforced_serving_smoke_missing',
     )
-    expect(privateDeployment?.blockerRefs).not.toContain(
+    expect(privateRefs.blockerRefs).not.toContain(
       'blocker.product_promises.reactor_exact_metering_receipt_missing',
     )
     expect(privateDeployment?.safeCopy).toContain('not an available product')
@@ -578,12 +643,15 @@ describe('public product promises document', () => {
     expect(privateDeployment?.unsafeCopy).toContain('priced publicly')
     expect(privateDeployment?.authorityBoundary).toContain('grants no external serving')
 
-    expect(provenance).toMatchObject({
-      state: 'planned',
-      blockerRefs: expect.arrayContaining([
+    expect(provenance).toBeDefined()
+    expect(provenance?.state).toBe('planned')
+    expect(provenanceRefs.blockerRefs).toEqual(
+      expect.arrayContaining([
         'blocker.product_promises.reactor_full_eval_coverage_missing',
       ]),
-      evidenceRefs: expect.arrayContaining([
+    )
+    expect(provenanceRefs.evidenceRefs).toEqual(
+      expect.arrayContaining([
         'https://github.com/OpenAgentsInc/openagents/issues/8272',
         'https://github.com/OpenAgentsInc/openagents/issues/8274',
         'packages/reactor-contracts/src/index.ts',
@@ -592,17 +660,17 @@ describe('public product promises document', () => {
         'docs/fable/2026-07-04-rx-4-reactor-eval-receipts.md',
         'promise:reactor.private_deployment.v1',
       ]),
-    })
-    expect(provenance?.blockerRefs).not.toContain(
+    )
+    expect(provenanceRefs.blockerRefs).not.toContain(
       'blocker.product_promises.reactor_model_eval_receipts_missing',
     )
-    expect(provenance?.blockerRefs).not.toContain(
+    expect(provenanceRefs.blockerRefs).not.toContain(
       'blocker.product_promises.reactor_model_provenance_schema_missing',
     )
-    expect(provenance?.blockerRefs).not.toContain(
+    expect(provenanceRefs.blockerRefs).not.toContain(
       'blocker.product_promises.reactor_model_catalog_seed_missing',
     )
-    expect(provenance?.blockerRefs).not.toContain(
+    expect(provenanceRefs.blockerRefs).not.toContain(
       'blocker.product_promises.reactor_distillation_lineage_policy_missing',
     )
     expect(provenance?.safeCopy).toContain('typed catalog shape')
@@ -614,13 +682,16 @@ describe('public product promises document', () => {
     expect(provenance?.unsafeCopy).toContain('US-origin-only models')
     expect(provenance?.authorityBoundary).toContain('metadata only')
 
-    expect(policy).toMatchObject({
-      state: 'planned',
-      blockerRefs: expect.arrayContaining([
+    expect(policy).toBeDefined()
+    expect(policy?.state).toBe('planned')
+    expect(policyRefs.blockerRefs).toEqual(
+      expect.arrayContaining([
         'blocker.product_promises.reactor_external_customer_pilot_missing',
         'blocker.owner.reactor_case_study_public_copy_approval_missing',
       ]),
-      evidenceRefs: expect.arrayContaining([
+    )
+    expect(policyRefs.evidenceRefs).toEqual(
+      expect.arrayContaining([
         'https://github.com/OpenAgentsInc/openagents/issues/8272',
         'https://github.com/OpenAgentsInc/openagents/issues/8273',
         'https://github.com/OpenAgentsInc/openagents/issues/8274',
@@ -638,23 +709,23 @@ describe('public product promises document', () => {
         'promise:reactor.model_provenance.v1',
         'promise:reactor.private_deployment.v1',
       ]),
-    })
-    expect(policy?.blockerRefs).not.toContain(
+    )
+    expect(policyRefs.blockerRefs).not.toContain(
       'blocker.product_promises.reactor_dogfood_or_customer_deployment_missing',
     )
-    expect(policy?.blockerRefs).not.toContain(
+    expect(policyRefs.blockerRefs).not.toContain(
       'blocker.product_promises.reactor_airgap_update_path_missing',
     )
-    expect(policy?.blockerRefs).not.toContain(
+    expect(policyRefs.blockerRefs).not.toContain(
       'blocker.product_promises.reactor_model_policy_schema_missing',
     )
-    expect(policy?.blockerRefs).not.toContain(
+    expect(policyRefs.blockerRefs).not.toContain(
       'blocker.product_promises.reactor_policy_decision_receipts_missing',
     )
-    expect(policy?.blockerRefs).not.toContain(
+    expect(policyRefs.blockerRefs).not.toContain(
       'blocker.product_promises.reactor_policy_router_missing',
     )
-    expect(policy?.blockerRefs).not.toContain(
+    expect(policyRefs.blockerRefs).not.toContain(
       'blocker.product_promises.reactor_policy_refusal_smoke_missing',
     )
     expect(policy?.safeCopy).toContain('versioned schema')
