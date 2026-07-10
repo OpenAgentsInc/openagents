@@ -10,6 +10,7 @@ import { Effect, SubscriptionRef } from "@effect-native/core/effect"
 import {
   desktopShellIntents,
   desktopShellView,
+  formatRelativeTimestamp,
   formatShellTimestamp,
   initialDesktopShellState,
   makeDesktopShellHandlers,
@@ -87,7 +88,8 @@ describe("desktopShellView (state -> component tree)", () => {
     expect(nodeByKey(view, "workspace-home")?._tag).toBe("IconButton")
     expect(nodeByKey(view, "sidebar-chats-label")?.content).toBe("Codex chats · last 24 hours")
     expect(nodeByKey(view, "sidebar-thread-test-thread")?._tag).toBe("Button")
-    expect(nodeByKey(view, "sidebar-thread-icon-test-thread")?.name).toBe("Chats")
+    expect(nodeByKey(view, "sidebar-thread-icon-test-thread")).toBeUndefined()
+    expect(nodeByKey(view, "sidebar-thread-time-test-thread")?._tag).toBe("Text")
     expect(nodeByKey(view, "shell-send-icon")?.name).toBe("Plane")
     expect(nodeByKey(view, "codex-thread-details-title")?.content).toBe("New chat")
   })
@@ -226,6 +228,13 @@ describe("pure transitions", () => {
   test("formatShellTimestamp is a zero-padded display string", () => {
     expect(formatShellTimestamp(new Date(2026, 6, 10, 9, 5))).toBe("09:05")
     expect(formatShellTimestamp(new Date(2026, 6, 10, 18, 45))).toBe("18:45")
+  })
+
+  test("relative sidebar timestamps stay compact", () => {
+    const now = new Date("2026-07-10T18:10:00.000Z")
+    expect(formatRelativeTimestamp("2026-07-10T18:09:30.000Z", now)).toBe("now")
+    expect(formatRelativeTimestamp("2026-07-10T18:07:00.000Z", now)).toBe("3m")
+    expect(formatRelativeTimestamp("2026-07-10T12:10:00.000Z", now)).toBe("6h")
   })
 })
 

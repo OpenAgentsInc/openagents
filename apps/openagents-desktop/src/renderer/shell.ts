@@ -71,7 +71,6 @@ export type DesktopShellState = Readonly<{
   notes: ReadonlyArray<DesktopNoteEntry>
   threads: ReadonlyArray<DesktopThread>
   activeThreadId: string | null
-  threadLoadingId: string | null
   workspace: DesktopWorkspaceName
   workspaceSnapshot: DesktopWorkspaceSnapshot | null
   workspaceFile: DesktopWorkspaceFile | null
@@ -91,6 +90,14 @@ export type DesktopShellState = Readonly<{
 export const formatShellTimestamp = (date: Date): string =>
   `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`
 
+export const formatRelativeTimestamp = (updatedAt: string, now: Date = new Date()): string => {
+  const elapsed = Math.max(0, now.getTime() - Date.parse(updatedAt))
+  if (!Number.isFinite(elapsed) || elapsed < 60_000) return "now"
+  if (elapsed < 3_600_000) return `${Math.floor(elapsed / 60_000)}m`
+  if (elapsed < 86_400_000) return `${Math.floor(elapsed / 3_600_000)}h`
+  return `${Math.floor(elapsed / 86_400_000)}d`
+}
+
 /**
  * The initial transcript is local presentation state only: it neither creates
  * a FleetRun nor impersonates a server-authorized turn.
@@ -105,7 +112,6 @@ export const initialDesktopShellState = (
   notes: [],
   threads: [],
   activeThreadId: null,
-  threadLoadingId: null,
   workspace: "chat",
   workspaceSnapshot: null,
   workspaceFile: null,
@@ -195,7 +201,6 @@ export const withNewChat = (state: DesktopShellState, thread: DesktopThread): De
   notes: thread.notes,
   threads: [thread, ...state.threads.filter((item) => item.id !== thread.id)].slice(0, 5),
   activeThreadId: thread.id,
-  threadLoadingId: null,
   workspace: "chat",
   fleetDeskOpen: false,
   fleetObjective: "",
@@ -379,7 +384,7 @@ export const makeDesktopShellHandlers = (
     }),
   DesktopNewChat: () => Effect.gen(function* () { const thread = yield* Effect.promise(chat.newThread); if (thread) yield* SubscriptionRef.update(state, (current) => withNewChat(current, thread)) }),
   DesktopChatSelected: (id) => Effect.gen(function* () {
-    yield* SubscriptionRef.update(state, current => ({ ...current, activeThreadId: id, threadLoadingId: id, notes: [] }))
+    yield* SubscriptionRef.update(state, current => ({ ...current, activeThreadId: id, notes: [] }))
     const thread = yield* Effect.promise(() => chat.openThread(id)); if (!thread) return
     yield* SubscriptionRef.update(state, (current) => withChatSelected(current, thread))
     if (chat.hydrateThread !== undefined) {
@@ -521,17 +526,16 @@ const shellSidebar = (state: DesktopShellState): View =>
       ]),
       Text({ key: "sidebar-chats-label", content: "Codex chats · last 24 hours", variant: "caption", color: "textMuted" }),
       ...(state.threads.length === 0 ? [Text({ key: "sidebar-chats-empty", content: "No top-level Codex chats in the last 24 hours.", variant: "body", color: "textMuted" })] : []),
-      ...state.threads.map((thread) => Stack({ key: `sidebar-action-thread-${thread.id}`, direction: "row", gap: "2", align: "center" }, [
-        Icon({ key: `sidebar-thread-icon-${thread.id}`, name: "Chats", size: "sm", color: "textMuted" }),
+      ...state.threads.map((thread) => Stack({ key: `sidebar-action-thread-${thread.id}`, direction: "row", gap: "2", align: "center", style: { width: "full" } }, [
         Button({
           key: `sidebar-thread-${thread.id}`,
-          // Selection must never replace the user-recognizable Codex title.
-          // The main panel owns the transient loading state.
           label: thread.title,
           variant: "ghost",
           onPress: IntentRef("DesktopChatSelected", StaticPayload(thread.id)),
           a11y: { label: `Open chat ${thread.title}` },
         }),
+        Spacer({ key: `sidebar-thread-spacer-${thread.id}`, flex: true }),
+        Text({ key: `sidebar-thread-time-${thread.id}`, content: formatRelativeTimestamp(thread.updatedAt), variant: "caption", color: "textMuted" }),
       ])),
     ],
   )
@@ -564,10 +568,6 @@ const shellWelcome = (): View =>
 const selectedCodexThreadDetails = (state: DesktopShellState): View | null => {
   const thread = state.threads.find(item => item.id === state.activeThreadId)
   if (thread === undefined) return null
-  if (state.threadLoadingId === thread.id) return Card(
-    { key: "codex-thread-loading", padding: "2", radius: "lg", style: { width: "full", maxWidth: columnWidth, alignSelf: "center", surface: "glass" } },
-    [Text({ key: "codex-thread-loading-copy", content: "Loading recent messages…", variant: "body", color: "textMuted" })],
-  )
   const fields = [
     `Updated ${thread.updatedAt.slice(0, 16).replace("T", " ")}`,
     ...(thread.createdAt === undefined ? [] : [`Started ${thread.createdAt.slice(0, 16).replace("T", " ")}`]),
