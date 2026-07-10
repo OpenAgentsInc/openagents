@@ -1,12 +1,15 @@
-import { useMemo } from "react"
-import { Platform } from "react-native"
+import { useEffect, useMemo, useState } from "react"
+import { Platform, Text as RNText, View as RNView } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
 
+import { Effect, Stream } from "@effect-native/core/effect"
 import { khalaTheme } from "@effect-native/tokens"
 
+import { loadLiquidGlassView } from "openagents-liquid-glass"
 import { EffectNativeHost } from "../effect-native/effect-native-host"
 import {
   buildHomeProgram,
+  glassIslandProps,
   initialHomeState,
   renderHomeView,
 } from "./home-core"
@@ -18,10 +21,43 @@ import {
  * inside the Expo app. Theme: the shared Protoss-blue `khalaTheme` from
  * `@effect-native/tokens` — the same theme value every other Effect Native
  * host mounts.
+ *
+ * SwiftUI seam test (audit
+ * docs/effect-native/2026-07-09-effect-native-swiftui-renderer-audit.md):
+ * below the Effect Native surface the shell mounts the SwiftUI "Liquid Glass"
+ * island at a per-component UIHostingController boundary (the audit's interop
+ * case 2 — the catalog's closed `hostKinds` registry has no SwiftUI kind yet;
+ * demand register row D-MB-02). The island is NOT a parallel component
+ * system: its props are a pure projection of the SAME program state
+ * (`glassIslandProps`), and its tap event dispatches the typed `GlassPinged`
+ * intent through the SAME reporter seam the RN renderer uses — SwiftUI tap ->
+ * typed intent -> state -> both the EN tree and the island re-render.
  */
+const LiquidGlassView = Platform.OS === "ios" ? loadLiquidGlassView() : undefined
+
 export const HomeScreen = () => {
   // Build the program (state ref + intent registry + reporter) once per mount.
   const program = useMemo(buildHomeProgram, [])
+  const [homeState, setHomeState] = useState(initialHomeState)
+
+  // Mirror program state into React state for the island props — one source
+  // of truth (the program's SubscriptionRef), two renderers reading it.
+  useEffect(() => {
+    const controller = new AbortController()
+    Effect.runPromise(
+      Stream.runForEach(program.stateChanges, (next) =>
+        Effect.sync(() => setHomeState(next)),
+      ),
+      { signal: controller.signal },
+    ).catch(() => {
+      // Interrupt on unmount is the expected exit; never crash the shell.
+    })
+    return () => {
+      controller.abort()
+    }
+  }, [program])
+
+  const island = glassIslandProps(homeState)
 
   return (
     <SafeAreaView
@@ -35,6 +71,29 @@ export const HomeScreen = () => {
         platform={Platform.OS === "android" ? "android" : "ios"}
         initialView={renderHomeView(initialHomeState)}
       />
+      {LiquidGlassView === undefined ? (
+        <RNView
+          style={{
+            padding: 16,
+            borderTopWidth: 1,
+            borderTopColor: khalaTheme.color.border,
+          }}
+        >
+          <RNText style={{ color: khalaTheme.color.textMuted, fontSize: 13 }}>
+            SwiftUI Liquid Glass island unavailable in this host (requires the
+            iOS native build — not Expo Go/Android).
+          </RNText>
+        </RNView>
+      ) : (
+        <LiquidGlassView
+          title={island.title}
+          subtitle={island.subtitle}
+          buttonLabel={island.buttonLabel}
+          tapCount={island.tapCount}
+          onGlassTap={program.dispatchGlassTap}
+          style={{ height: 220 }}
+        />
+      )}
     </SafeAreaView>
   )
 }

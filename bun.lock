@@ -191,8 +191,10 @@
         "@effect-native/render-rn": "workspace:*",
         "@effect-native/tokens": "workspace:*",
         "expo": "57.0.2",
+        "expo-modules-core": "57.0.2",
         "expo-status-bar": "57.0.0",
         "expo-updates": "57.0.6",
+        "openagents-liquid-glass": "file:./modules/openagents-liquid-glass",
         "react": "19.2.7",
         "react-native": "0.86.0",
         "react-native-safe-area-context": "5.8.0",
@@ -4726,6 +4728,8 @@
     "@openagentsinc/oa-queue-worker/effect": ["effect@4.0.0-beta.70", "", { "dependencies": { "@standard-schema/spec": "^1.1.0", "fast-check": "^4.8.0", "find-my-way-ts": "^0.1.6", "ini": "^7.0.0", "kubernetes-types": "^1.30.0", "msgpackr": "^2.0.1", "multipasta": "^0.2.7", "toml": "^4.1.1", "uuid": "^14.0.0", "yaml": "^2.9.0" } }, "sha512-8AwGTRiNriirHGEYHrOS0E9fzdhIqCdZjiHP1YXmNo2UyPGS43ILsymsSHT7V0DJS+8dvlKq2RxnrDBUhDNZHg=="],
 
     "@openagentsinc/openagents-com-start/effect": ["effect@4.0.0-beta.70", "", { "dependencies": { "@standard-schema/spec": "^1.1.0", "fast-check": "^4.8.0", "find-my-way-ts": "^0.1.6", "ini": "^7.0.0", "kubernetes-types": "^1.30.0", "msgpackr": "^2.0.1", "multipasta": "^0.2.7", "toml": "^4.1.1", "uuid": "^14.0.0", "yaml": "^2.9.0" } }, "sha512-8AwGTRiNriirHGEYHrOS0E9fzdhIqCdZjiHP1YXmNo2UyPGS43ILsymsSHT7V0DJS+8dvlKq2RxnrDBUhDNZHg=="],
+
+    "@openagentsinc/openagents-mobile/openagents-liquid-glass": ["openagents-liquid-glass@file:apps/openagents-mobile/modules/openagents-liquid-glass", { "dependencies": { "expo-modules-core": "*" } }],
 
     "@openagentsinc/openagents-mobile/react": ["react@19.2.7", "", {}, "sha512-HNe9WslTbXmFK8o8cmwgAeJFSBvt1bPdHCVKtaaV+WlAN36mpT4hcRpwbf3fY56ar2oIXzsBpOAiIRHAdY0OlQ=="],
 

@@ -18,8 +18,10 @@
     "@effect-native/render-rn": "workspace:*",
     "@effect-native/tokens": "workspace:*",
     "expo": "57.0.2",
+    "expo-modules-core": "57.0.2",
     "expo-status-bar": "57.0.0",
     "expo-updates": "57.0.6",
+    "openagents-liquid-glass": "file:./modules/openagents-liquid-glass",
     "react": "19.2.7",
     "react-native": "0.86.0",
     "react-native-safe-area-context": "5.8.0"

@@ -34,15 +34,16 @@ import {
 
 export interface HomeState {
   readonly pings: number
+  readonly glassTaps: number
 }
 
-export const initialHomeState: HomeState = { pings: 0 }
+export const initialHomeState: HomeState = { pings: 0, glassTaps: 0 }
 
 /** Visible JS-bundle tag, rendered on the Home card. Bump this string when
  * publishing an OTA so the owner can SEE the over-the-air bundle swap land
- * (embedded build 104 ships the tag below; a published OTA with a bumped tag
+ * (embedded build 105 ships the tag below; a published OTA with a bumped tag
  * should appear within ~3s via the temporary poll loop and reload). */
-export const BUNDLE_TAG = "2026-07-09.embedded-104"
+export const BUNDLE_TAG = "2026-07-09.embedded-105"
 
 /** One typed intent, proving the intent -> handler -> state -> re-render loop
  * runs end-to-end through the RN adapter (not just static rendering). */
@@ -51,7 +52,40 @@ export const HomePinged = defineIntent(
   Schema.Struct({ amount: Schema.Number }),
 )
 
-export const homeIntentDefinitions = [HomePinged] as const
+/** Typed intent dispatched when the SwiftUI Liquid Glass island's button is
+ * tapped (SwiftUI event -> shell -> this intent -> state -> re-render of BOTH
+ * the Effect Native tree and the island's props). This is the intent half of
+ * the SwiftUI renderer seam per
+ * docs/effect-native/2026-07-09-effect-native-swiftui-renderer-audit.md. */
+export const GlassPinged = defineIntent(
+  "GlassPinged",
+  Schema.Struct({ amount: Schema.Number }),
+)
+
+/** The IntentRef the shell dispatches for a SwiftUI glass tap — the typed
+ * contract between the native island and this program. */
+export const glassPingedRef = IntentRef("GlassPinged", StaticPayload({ amount: 1 }))
+
+export const homeIntentDefinitions = [HomePinged, GlassPinged] as const
+
+/** Serializable props for the SwiftUI island, derived from program state —
+ * the props half of the seam. The catalog has NO SwiftUI host kind yet
+ * (closed `hostKinds` registry; demand register D-MB-02), so the island
+ * mounts at the shell boundary per the audit's interop case 2 and this
+ * projection is the typed data contract it renders. */
+export interface GlassIslandProps {
+  readonly title: string
+  readonly subtitle: string
+  readonly buttonLabel: string
+  readonly tapCount: number
+}
+
+export const glassIslandProps = (state: HomeState): GlassIslandProps => ({
+  title: "Liquid Glass",
+  subtitle: "SwiftUI island driven by the Effect Native program",
+  buttonLabel: "Dispatch typed intent from SwiftUI",
+  tapCount: state.glassTaps,
+})
 
 /** The OpenAgents shell authored as a typed Effect Native view tree —
  * Stack/Text/Card/Spacer/Button from the shared component catalog, styled with
@@ -152,6 +186,19 @@ export const renderHomeView = (state: HomeState): View =>
         variant: "primary",
         onPress: IntentRef("HomePinged", StaticPayload({ amount: 1 })),
       }),
+      Spacer({ key: "home-glass-space", size: "2" }),
+      Text({
+        key: "home-glass-section-label",
+        content: "SwiftUI via Effect Native — test",
+        variant: "label",
+        color: "accent",
+      }),
+      Text({
+        key: "home-glass-taps",
+        content: `Glass intents received: ${state.glassTaps}`,
+        variant: "body",
+        color: "textMuted",
+      }),
     ],
   )
 
@@ -160,13 +207,28 @@ export const makeHomeHandlers = (
 ): IntentHandlers<typeof homeIntentDefinitions> => ({
   HomePinged: (payload) =>
     SubscriptionRef.update(state, (current) => ({
+      ...current,
       pings: current.pings + payload.amount,
+    })),
+  GlassPinged: (payload) =>
+    SubscriptionRef.update(state, (current) => ({
+      ...current,
+      glassTaps: current.glassTaps + payload.amount,
     })),
 })
 
 export interface HomeProgramHandle {
   readonly viewStream: Stream.Stream<View>
   readonly report: IntentReporter
+  /** State changes stream — the shell subscribes to derive the SwiftUI
+   * island's serializable props from the same single source of truth the
+   * Effect Native tree renders from. */
+  readonly stateChanges: Stream.Stream<HomeState>
+  /** The SwiftUI island's tap event handler: dispatches the typed
+   * `GlassPinged` intent through the SAME registry the renderer's reporter
+   * uses. Fire-and-forget with soft failure (an intent error must never crash
+   * the native event path). */
+  readonly dispatchGlassTap: () => void
 }
 
 /** Builds the runnable program: a `SubscriptionRef` of state, an intent
@@ -183,7 +245,15 @@ export const buildHomeProgram = (): HomeProgramHandle =>
       )
       const report: IntentReporter = (ref, runtimeValue) =>
         registry.dispatch(resolveIntentRef(ref, runtimeValue))
+      const dispatchGlassTap = (): void => {
+        Effect.runFork(Effect.exit(registry.dispatch(resolveIntentRef(glassPingedRef))))
+      }
       const program = makeViewProgramFromState(state, renderHomeView)
-      return { viewStream: program.viewStream, report }
+      return {
+        viewStream: program.viewStream,
+        report,
+        stateChanges: SubscriptionRef.changes(state),
+        dispatchGlassTap,
+      }
     }),
   )

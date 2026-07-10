@@ -101,9 +101,26 @@ appears on device within ~3s, downloads, and reloads. Errors (offline etc.)
 are soft and never crash the loop. Polling is a no-op in Expo Go/dev
 (`Updates.isEnabled` false).
 
+## SwiftUI Liquid Glass island (Effect Native SwiftUI seam test)
+
+The Home screen carries a labeled test section ("SwiftUI via Effect Native —
+test"): a SwiftUI island (`modules/openagents-liquid-glass`, iOS 26
+`.glassEffect` / `.buttonStyle(.glass)` with an `.ultraThinMaterial` fallback
+pre-26) mounted via `UIHostingController` inside the RN shell — the interop
+boundary prescribed by
+`docs/effect-native/2026-07-09-effect-native-swiftui-renderer-audit.md`
+(interop case 2). It is NOT a parallel component system: its props are a pure
+projection of the Effect Native program state, and its button dispatches the
+typed `GlassPinged` intent through the same intent registry the RN renderer
+uses. The catalog's closed `hostKinds` has no SwiftUI kind yet — the gap is
+upstream (effect-native#70, demand register D-MB-02), and this shell-boundary
+island is the marked interim. SwiftUI rendering itself is device-proven only
+(native iOS build/TestFlight); Expo Go/Android show an honest fallback notice.
+
 ## What exists today
 
 The Home screen: the OpenAgents shell rendered from a typed Effect Native view
-program with one typed intent wired end-to-end, plus owned-server OTA updates
-with the temporary fast poll. Sarah conversation, fleet supervision, Khala
-Sync continuity, auth, and push land next, per #8597.
+program with one typed intent wired end-to-end, owned-server OTA updates with
+the temporary fast poll, and the SwiftUI Liquid Glass seam test above. Sarah
+conversation, fleet supervision, Khala Sync continuity, auth, and push land
+next, per #8597.
