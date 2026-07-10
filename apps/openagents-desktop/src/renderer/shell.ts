@@ -46,6 +46,7 @@ import type {
   DesktopWorkspaceSaveResult,
   DesktopWorkspaceSnapshot,
 } from "../workspace-contract.ts"
+import { desktopCommandRegistry } from "./command-registry.ts"
 
 import {
   initialSettingsState,
@@ -86,6 +87,7 @@ export type DesktopShellState = Readonly<{
   workspaceSave: "idle" | "saving" | "saved" | "conflict" | "unavailable"
   workspaceGitStatus: DesktopWorkspaceGitStatus
   workspaceGitDiff: DesktopWorkspaceGitDiff | null
+  commandPaletteOpen: boolean
   /** The desktop-only planning deck; it has no deployment authority itself. */
   fleetDeskOpen: boolean
   /** The current, explicitly unsubmitted FleetRun objective draft. */
@@ -132,6 +134,7 @@ export const initialDesktopShellState = (
   workspaceSave: "idle",
   workspaceGitStatus: { state: "unavailable" },
   workspaceGitDiff: null,
+  commandPaletteOpen: false,
   fleetDeskOpen: false,
   fleetObjective: "",
   fleetDeployment: "not_requested",
@@ -175,6 +178,8 @@ export const DesktopWorkspaceDraftChanged = defineIntent("DesktopWorkspaceDraftC
 export const DesktopWorkspaceSaveRequested = defineIntent("DesktopWorkspaceSaveRequested", Schema.Null)
 export const DesktopWorkspaceReloadRequested = defineIntent("DesktopWorkspaceReloadRequested", Schema.Null)
 export const DesktopWorkspaceGitDiffSelected = defineIntent("DesktopWorkspaceGitDiffSelected", Schema.String)
+export const DesktopCommandPaletteToggled = defineIntent("DesktopCommandPaletteToggled", Schema.Null)
+export const DesktopCommandPaletteDismissed = defineIntent("DesktopCommandPaletteDismissed", Schema.Null)
 
 export const desktopShellIntents = [
   DesktopInputChanged,
@@ -192,6 +197,8 @@ export const desktopShellIntents = [
   DesktopWorkspaceSaveRequested,
   DesktopWorkspaceReloadRequested,
   DesktopWorkspaceGitDiffSelected,
+  DesktopCommandPaletteToggled,
+  DesktopCommandPaletteDismissed,
   ...settingsIntents,
 ] as const
 
@@ -230,6 +237,7 @@ export const withNewChat = (state: DesktopShellState, thread: DesktopThread): De
   fleetDeskOpen: false,
   fleetObjective: "",
   fleetDeployment: "not_requested",
+  commandPaletteOpen: false,
 })
 
 export const withChatSelected = (state: DesktopShellState, thread: DesktopThread): DesktopShellState => ({
@@ -238,12 +246,13 @@ export const withChatSelected = (state: DesktopShellState, thread: DesktopThread
   activeThreadId: thread.id,
   fleetDeskOpen: false,
   workspace: "chat",
+  commandPaletteOpen: false,
 })
 
 export const withWorkspace = (
   state: DesktopShellState,
   workspace: DesktopWorkspaceName,
-): DesktopShellState => ({ ...state, workspace })
+): DesktopShellState => ({ ...state, workspace, commandPaletteOpen: false })
 
 export const withWorkspaceSnapshot = (
   state: DesktopShellState,
@@ -278,6 +287,11 @@ export const withWorkspaceDraft = (
   workspaceDraft,
   workspaceSave: state.workspaceSave === "conflict" ? "conflict" : "idle",
 })
+
+export const withCommandPalette = (
+  state: DesktopShellState,
+  commandPaletteOpen: boolean,
+): DesktopShellState => ({ ...state, commandPaletteOpen })
 
 /**
  * Submit resets the composer value binding in the same transition that
@@ -510,6 +524,10 @@ export const makeDesktopShellHandlers = (
       const diff = yield* Effect.promise(() => workspaceHost.gitDiff(`${root}/${relativePath}`))
       yield* SubscriptionRef.update(state, (next) => ({ ...next, workspaceGitDiff: diff }))
     }),
+  DesktopCommandPaletteToggled: () =>
+    SubscriptionRef.update(state, (current) => withCommandPalette(current, !current.commandPaletteOpen)),
+  DesktopCommandPaletteDismissed: () =>
+    SubscriptionRef.update(state, (current) => withCommandPalette(current, false)),
 })
 
 // ---------------------------------------------------------------------------
@@ -575,6 +593,13 @@ const shellHeader = (state: DesktopShellState): View =>
         color: "textPrimary",
       }),
       Spacer({ key: "shell-header-fill", flex: true }),
+      Button({
+        key: "shell-command-palette-toggle",
+        label: "Commands",
+        variant: "ghost",
+        onPress: IntentRef("DesktopCommandPaletteToggled"),
+        a11y: { label: "Open command palette" },
+      }),
       Button({
         key: "shell-settings-toggle",
         label: state.workspace === "settings" ? "Back to chat" : "Settings",
@@ -950,6 +975,44 @@ const shellComposer = (state: DesktopShellState): View =>
     ],
   )
 
+const commandPalette = (): View =>
+  Card(
+    {
+      key: "desktop-command-palette",
+      padding: "3",
+      radius: "lg",
+      style: {
+        width: "full",
+        maxWidth: 420,
+        surface: "glass",
+        borderColor: "border",
+        borderWidth: 1,
+      },
+    },
+    [
+      Stack({ key: "desktop-command-palette-heading", direction: "row", gap: "2", align: "center" }, [
+        Text({ key: "desktop-command-palette-title", content: "Commands", variant: "heading", color: "textPrimary" }),
+        Spacer({ key: "desktop-command-palette-heading-fill", flex: true }),
+        Button({
+          key: "desktop-command-palette-close",
+          label: "Close",
+          variant: "ghost",
+          onPress: IntentRef("DesktopCommandPaletteDismissed"),
+          a11y: { label: "Close command palette" },
+        }),
+      ]),
+      ...desktopCommandRegistry.map((command) => Button({
+        key: `desktop-command-${command.id}`,
+        label: command.label,
+        variant: "ghost",
+        onPress: command.payload === null
+          ? IntentRef(command.intentName)
+          : IntentRef(command.intentName, StaticPayload(command.payload)),
+        a11y: { label: command.label },
+      })),
+    ],
+  )
+
 export const desktopShellView = (state: DesktopShellState): View =>
   BackgroundGradient(
     {
@@ -998,5 +1061,5 @@ export const desktopShellView = (state: DesktopShellState): View =>
         ],
       ),
     ],
-  )],
+  ), ...(state.commandPaletteOpen ? [commandPalette()] : [])],
   )

@@ -124,6 +124,14 @@
   controls. Desktop `verify` passes: 80 tests/414 expectations, bundle build,
   and Electron fixture smoke. Review comments, revert, remote writeback, and
   a physical visual receipt remain separate work.
+- 2026-07-10 12:50 CDT — DESKTOP-3 now has a closed command registry and
+  renderer-only palette. Each palette entry dispatches the same existing typed
+  intent as its direct UI control; it carries no callback, shell command,
+  host capability, or user-supplied route. Cmd/Ctrl+K opens it only when the
+  browser event is otherwise unhandled and focus is not editable. Desktop
+  `verify` passes: 82 tests/426 expectations, bundle build, and Electron
+  fixture smoke. Visual/manual accessibility receipt and later command search
+  remain separate work.
 
 ## Mission
 

@@ -24,6 +24,7 @@ import {
   withChatSelected,
   withLoopProof,
   withWorkspace,
+  withCommandPalette,
   withWorkspaceFile,
   withWorkspaceSnapshot,
   withNote,
@@ -254,6 +255,17 @@ describe("pure transitions", () => {
     expect(nodeByKey(view, "shell-composer")).toBeUndefined()
   })
 
+  test("command palette exposes only closed registry commands that reuse existing intent refs", () => {
+    const view = desktopShellView(withCommandPalette(baseState, true))
+    expect(nodeByKey(view, "desktop-command-palette")?._tag).toBe("Card")
+    const files = nodeByKey(view, "desktop-command-workspace.files") as {
+      onPress?: { name?: string; payload?: unknown }
+    }
+    expect(files.onPress?.name).toBe("DesktopWorkspaceSelected")
+    expect(JSON.stringify(files.onPress)).toContain("files")
+    expect(nodeByKey(view, "desktop-command-palette-close")?._tag).toBe("Button")
+  })
+
   test("New chat resets the conversation and current-chat navigation closes Fleet", () => {
     const activeFleet = withFleetDesk(withNote(baseState, "Ship the app", "18:05"))
     expect(activeFleet.fleetDeskOpen).toBe(true)
@@ -308,6 +320,26 @@ describe("pure transitions", () => {
 })
 
 describe("typed chat intent loop end-to-end (registry -> state -> re-render)", () => {
+
+  test("palette command uses the same workspace handler as the visible dock", async () => {
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const state = yield* SubscriptionRef.make(withCommandPalette(baseState, true))
+        const registry = yield* makeIntentRegistry(
+          desktopShellIntents,
+          makeDesktopShellHandlers(state, fixedNow),
+        )
+        const palette = desktopShellView(yield* SubscriptionRef.get(state))
+        const command = nodeByKey(palette, "desktop-command-workspace.files") as {
+          onPress: Parameters<typeof resolveIntentRef>[0]
+        }
+        yield* registry.dispatch(resolveIntentRef(command.onPress, null))
+        const after = yield* SubscriptionRef.get(state)
+        expect(after.workspace).toBe("files")
+        expect(after.commandPaletteOpen).toBe(false)
+      }),
+    )
+  })
 
   test("workspace save sends one revision-bound request and requires explicit reload after conflict", async () => {
     await Effect.runPromise(

@@ -9,9 +9,11 @@
  * from the preload, decoded with Effect Schema — never trusted raw.
  */
 import {
+  IntentRef,
   makeIntentRegistry,
   makeViewProgramFromState,
   resolveIntentRef,
+  StaticPayload,
   type IntentReporter,
 } from "@effect-native/core"
 import { Effect, Exit, Schema, Scope, SubscriptionRef } from "@effect-native/core/effect"
@@ -238,6 +240,25 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
         })),
       )
     }
+    const onCommandPaletteShortcut = (event: KeyboardEvent): void => {
+      const target = event.target
+      const editable = target instanceof HTMLElement &&
+        target.closest("input, textarea, [contenteditable='true']") !== null
+      if (
+        event.defaultPrevented ||
+        editable ||
+        event.key.toLowerCase() !== "k" ||
+        (!event.metaKey && !event.ctrlKey)
+      ) return
+      event.preventDefault()
+      void Effect.runPromise(
+        registry.dispatch(resolveIntentRef(IntentRef("DesktopCommandPaletteToggled", StaticPayload(null)))),
+      )
+    }
+    window.addEventListener("keydown", onCommandPaletteShortcut)
+    window.addEventListener("pagehide", () => {
+      window.removeEventListener("keydown", onCommandPaletteShortcut)
+    }, { once: true })
     const renderer = makeDomRenderer({ theme: openagentsDesktopTheme })
     yield* renderer.mount(root, program.viewStream, report)
     // First paint must never wait on local rollout parsing. The sidebar gets
