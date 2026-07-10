@@ -278,12 +278,29 @@ export function codingServiceCapacityFromRuntime(
     .filter(config => capabilityRefs.includes(config.capabilityRef))
     .map(config => {
       const observedReady = Math.max(0, readyCounts[config.service] ?? 0)
-      const fallbackReady = observedReady > 0 ? observedReady : 1
-      const ready = nonNegativeEnvInteger(env, config.concurrencyKey, fallbackReady)
-      const busy = Math.min(
-        nonNegativeEnvInteger(env, config.busyKey, 0) + Math.max(0, activeRunCounts[config.service] ?? 0),
-        ready,
-      )
+      // A named Claude registry is also an admission boundary. When it exists
+      // but every registered account is paused or unauthenticated, the pooled
+      // bucket must not fall back to one phantom slot. Keep the historical
+      // configured total whenever at least one registered account is runnable,
+      // and keep the default-home fallback when no named registry is present.
+      const namedClaudeReadinessObserved =
+        config.service === "claude" &&
+        Object.prototype.hasOwnProperty.call(readyCounts, "claude")
+      const fallbackReady = namedClaudeReadinessObserved
+        ? observedReady > 0 ? 1 : 0
+        : observedReady > 0 ? observedReady : 1
+      const configuredReady = nonNegativeEnvInteger(env, config.concurrencyKey, fallbackReady)
+      const ready = namedClaudeReadinessObserved && observedReady === 0
+        ? 0
+        : configuredReady
+      const observedBusy =
+        nonNegativeEnvInteger(env, config.busyKey, 0) +
+        Math.max(0, activeRunCounts[config.service] ?? 0)
+      // Pausing prevents new admission; it does not erase work that was
+      // already active when the operator paused the account.
+      const busy = namedClaudeReadinessObserved && observedReady === 0
+        ? observedBusy
+        : Math.min(observedBusy, ready)
       const queued = nonNegativeEnvInteger(env, config.queuedKey, 0)
       return {
         available: Math.max(0, ready - busy),
@@ -321,6 +338,7 @@ export async function localCodingServiceReadyCounts(
   summary: Pick<BootstrapSummary, "paths">,
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<PylonCodingServiceReadyCounts> {
+  const registry = await loadPylonAccountRegistry(summary)
   const codexHomes = new Set<string>()
   const configuredCodexHome = env.CODEX_HOME?.trim()
   codexHomes.add(
@@ -328,7 +346,7 @@ export async function localCodingServiceReadyCounts(
       ? normalizeAccountHome(configuredCodexHome)
       : join(homedir(), ".codex"),
   )
-  for (const entry of await loadPylonAccountRegistry(summary)) {
+  for (const entry of registry) {
     if (entry.provider === "codex") {
       codexHomes.add(entry.home)
     }
@@ -340,7 +358,24 @@ export async function localCodingServiceReadyCounts(
       codex += 1
     }
   }
-  return codex > 0 ? { codex } : {}
+
+  // Presence must use the same registry pause gate as account selection.
+  // Only a named registry activates this pooled gate; installations that use
+  // the historical default Claude home retain their existing pooled fallback.
+  const registeredClaudeAccounts = registry.filter(
+    entry => entry.provider === "claude_agent",
+  )
+  let claude = 0
+  for (const entry of registeredClaudeAccounts) {
+    if (entry.paused !== true && await pylonClaudeAccountHomeHasAuth(entry.home)) {
+      claude += 1
+    }
+  }
+
+  return {
+    ...(codex > 0 ? { codex } : {}),
+    ...(registeredClaudeAccounts.length > 0 ? { claude } : {}),
+  }
 }
 
 // #6354: per-Codex-account capacity so multiple linked accounts on one owner
@@ -349,6 +384,7 @@ export async function localCodingServiceReadyCounts(
 // carries a raw account ref, email, or home path.
 export type PylonCodexAccountReadiness = {
   accountRefHash: string
+  paused?: boolean
   ready: boolean
   reason?: "account_unlinked" | "credentials_revoked" | "usage_limited" | "rate_limited" | "network" | "timeout" | "other"
 }
@@ -458,16 +494,29 @@ export function codexAccountCapacities(input: {
   busyByAccount?: Record<string, number>
   perAccountConcurrency: number
   queuedByAccount?: Record<string, number>
-  readiness: ReadonlyArray<Pick<PylonCodexAccountReadiness, "accountRefHash" | "ready">>
+  readiness: ReadonlyArray<Pick<PylonCodexAccountReadiness, "accountRefHash" | "paused" | "ready">>
 }): PylonCodexAccountCapacity[] {
   const ready = Math.max(0, Math.min(input.perAccountConcurrency, 10_000))
   const out: PylonCodexAccountCapacity[] = []
   for (const account of input.readiness) {
-    if (!account.ready) continue
+    if (!account.ready && account.paused !== true) continue
     const accountKey = codexAccountCapacityKey(account.accountRefHash)
     if (accountKey === null) continue
-    const busy = Math.min(input.busyByAccount?.[account.accountRefHash] ?? 0, ready)
     const queued = Math.max(0, input.queuedByAccount?.[account.accountRefHash] ?? 0)
+    if (account.paused === true) {
+      out.push({
+        accountKey,
+        accountRefHash: account.accountRefHash,
+        available: 0,
+        // A paused account cannot accept more work, but an already-running
+        // assignment remains real load even though effective readiness is 0.
+        busy: Math.max(0, input.busyByAccount?.[account.accountRefHash] ?? 0),
+        queued,
+        ready: 0,
+      })
+      continue
+    }
+    const busy = Math.min(input.busyByAccount?.[account.accountRefHash] ?? 0, ready)
     out.push({
       accountKey,
       accountRefHash: account.accountRefHash,
@@ -579,9 +628,11 @@ export async function localClaudeAccountReadiness(
     const accountRefHash = hashPylonAccountRef("claude_agent", entry.ref)
     seen.add(accountRefHash)
     seenHomes.add(entry.home)
+    const paused = entry.paused === true
     readiness.push({
       accountRefHash,
-      ready: await pylonClaudeAccountHomeHasAuth(entry.home),
+      ...(paused ? { paused: true } : {}),
+      ready: !paused && await pylonClaudeAccountHomeHasAuth(entry.home),
     })
   }
   for (const sibling of await discoverPylonSiblingAccountHomes(env)) {
