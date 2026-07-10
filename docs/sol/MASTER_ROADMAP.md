@@ -1,7 +1,7 @@
 # MASTER ROADMAP — Sarah Fleet Command first; three OpenAgents apps
 
 - Date: 2026-07-09
-- Revision: 11
+- Revision: 12
 - Status: canonical OpenAgents implementation roadmap
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Issue source set: [`issues/README.md`](./issues/README.md)
@@ -179,13 +179,13 @@ The coding-fleet program starts from substantial working substrate:
 
 The immediate gaps are now narrower composition and live-proof gaps:
 
-- The Postgres authority and authenticated Sarah tool/route are code- and
-  fixture-proven, and migration `0052_sarah_fleet_run_authority.sql` is applied
-  and table-verified in staging and production. The registered-Pylon bearer
-  HTTP claim/accept transport and standing node poller are also code- and
-  fixture-proven on `main`. Their remaining gap is one integrated
-  Sarah-to-standing-Pylon fixture receipt and the subsequent deployed/live
-  canary; isolated seam tests do not establish C1.
+- #8637 is closed. The authenticated Sarah tool, Postgres authority, registered-
+  Pylon claim/import/accept/activate handoff, operator-to-closeout fixture,
+  prospect/owner-isolation proofs, and latency receipt are fixture-proven;
+  migration 0052 is table-verified in both environments; and exact main commit
+  `0892d57b3b` is deployed as staging revision `00046-jpn` and production
+  revision `00068-5t8`. The real mixed-account canary remains #8640, not an
+  unreported FC-1 residue.
 - The exact Grok executor is code- and fixture-proven through the same standing
   supervisor and claim registry as Codex/Claude. It has not spent a live Grok
   account in this program, and Grok usage remains explicitly `not_measured`.
@@ -197,8 +197,9 @@ The immediate gaps are now narrower composition and live-proof gaps:
 - The trusted-context voice coordinator/SSE adapter is fixture-proven but stays
   unarmed until renderer-authenticated conversation/session metadata carries
   the server-minted conversation ref; model/system text is not scope authority.
-- No integrated Sarah→standing-Pylon fixture has satisfied C1, and no real
-  Codex+Claude+Grok burn has satisfied C2.
+- The #8637 Sarah→standing-Pylon fixture and deployment rung are satisfied.
+  Minimum-safe #8639 live reconnect/steering still gates the first real canary,
+  and no real Codex+Claude+Grok burn has satisfied C2.
 - Agent Computer Codex still lacks the new live Firecracker proof.
 
 P0 fixes those seams. It does not build another fleet system.
@@ -207,7 +208,7 @@ P0 fixes those seams. It does not build another fleet system.
 
 | Lane | Narrowest proven state on `main` | Next blocking proof |
 | --- | --- | --- |
-| #8637 FC-1 | through `03365073c0`: Postgres authority, authenticated Sarah tool/create/observe adapter, deployed migration 0052, and registered-Pylon bearer claim/accept plus standing intake are code/fixture/deployment-proven at their narrowest respective rungs | integrated operator-conversation-to-closeout fixture with prospect refusal and latency receipt; then deployed canary |
+| #8637 FC-1 | **closed** at `0892d57b3b`: integrated operator conversation -> durable authority -> registered standing Pylon -> bounded closeout is fixture-proven; timing is 1.8s acknowledgment / 6.1s first claim / 8.6s first capacity; staging `00046-jpn` and production `00068-5t8` are deployed and smoke-proven | none in FC-1; real mixed-account execution is #8640 and owner-cookie reconnect/steer is #8639 |
 | #8633 FC-2 | through `03365073c0`: one-store standing runtime, exact three-harness runners, node control, restart-safe remote import/accept/activate, and real server transport/poller are code-landed and fixture-proven | live named Codex+Claude+Grok run; exact or explicit unmeasured usage receipt |
 | #8639 FC-3 | through `3d87cb609b`: exact-scope projection/controls/reconnect and fail-closed media/text/Fleet continuity are code-landed and fixture-proven | start-result-to-live-scope composition, owner-cookie reconnect canary, authorized steer, and integrated closeout proof |
 | #8640 FC-5 | acceptance contract only | C1 integrated fixture, then Phase A on one pinned deployment |
@@ -252,8 +253,8 @@ The coding cutover is staged:
 
 | Gate | When | Operating decision |
 | --- | --- | --- |
-| C0 | Now | Build #8637/#8633/#8639 through this Codex app, subagents, or explicitly partitioned tabs. Sarah is not yet the coding front door. |
-| C1 | On one pinned integrated commit, #8637 durable Sarah run + #8633 standing real mixed executor + minimum-safe #8639 named progress, typed control, and reconnect pass one Sarah→Pylon fixture E2E. | Only then send the first low-risk pinned real issue through Sarah as a canary; retain this app as observer/break-glass. |
+| C0 | Now | #8637 is closed; finish/disposition #8633 and minimum-safe #8639 through this Codex app, subagents, or explicitly partitioned tabs. Sarah is not yet the coding front door. |
+| C1 | On one pinned integrated commit, closed #8637 durable Sarah run + #8633 standing real mixed executor + minimum-safe #8639 named progress, typed control, and reconnect pass one Sarah→Pylon fixture E2E. | Only then send the first low-risk pinned real issue through Sarah as a canary; retain this app as observer/break-glass. |
 | C2 | #8640 Phase A clean local three-harness receipt from one pinned integrated deployment | Sarah/Khala/Pylon becomes the default entry point for new bounded owner coding work. This Codex app becomes control-plane development, independent review, and break-glass—not the routine dispatcher. |
 | C3 | #8547/#8636 exits integrated + clean #8640 Phase B receipt | Sarah may choose owner-local or managed-cloud capacity through the same run contract. |
 
@@ -270,6 +271,11 @@ Epic: **[#8638](https://github.com/OpenAgentsInc/openagents/issues/8638)**.
 
 **[#8637 FC-1](https://github.com/OpenAgentsInc/openagents/issues/8637)**
 adds the authenticated Sarah fleet tool and durable run request.
+
+Status: **closed** on `0892d57b3b`, deployed staging then production. The
+[closure receipt](https://github.com/OpenAgentsInc/openagents/issues/8637#issuecomment-4930867072)
+records every proof rung and assigns the real mixed-account/live-control work to
+#8640/#8639 rather than holding this contract lane open.
 
 Exit:
 
@@ -298,8 +304,8 @@ Exit:
 - standing refill up to advertised capacity, no manual background shells;
 - three simultaneous real local streams, one per harness, zero double claims.
 
-P0.1 and P0.2 may proceed in parallel against their shared existing schemas.
-Any schema change is serialized through the narrow shared package.
+P0.2 now consumes the closed P0.1 contract. Any schema change remains serialized
+through the narrow shared package.
 
 ### P0.3 — supervise through Sarah
 
@@ -564,13 +570,12 @@ apps. It does not begin as a fourth product surface.
 
 ## Canonical open issue set
 
-The issue reset plus this reconciliation leaves **16 open roadmap issues**: 14
+The issue reset plus this reconciliation leaves **15 open roadmap issues**: 13
 active P0/P1 lanes and two explicitly dependency-held P2 lanes.
 
 | Priority | Issue | Purpose |
 | --- | --- | --- |
 | P0 | #8638 | Sarah Fleet Command epic |
-| P0 | #8637 | Sarah fleet tool + durable run contract |
 | P0 | #8633 | Real mixed-harness standing Pylon executor |
 | P0 | #8639 | Sarah progress, canvas, approval, and steering |
 | P0 | #8640 | Live multi-stream dogfood burn |
@@ -593,10 +598,9 @@ their milestone or tripwire fires.
 
 ## Execution order
 
-1. Finish #8637 authenticated Sarah composition and the #8633 Pylon
-   discovery/import/accept/activate bridge on disjoint paths; serialize their
-   shared intake contract.
-2. Compose #8639 against the stable owner-safe run projection while retaining
+1. Audit #8633 against its exit ladder and close/split it honestly; its real
+   Codex+Claude+Grok receipt belongs to #8640 rather than an indefinite partial.
+2. Finish #8639 against the stable owner-safe run projection while retaining
    text/fleet control under media failure; do not infer authority in the UI.
 3. Run #8640 Phase A at the first honest opportunity. Fix fleet substrate bugs
    in place until the receipt is clean, then flip routine bounded owner coding
