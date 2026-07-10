@@ -495,6 +495,37 @@ and the renderer watchdog plus FPS/cadence simulator stay green under concurrent
 ASR load. Failure selects a native port or fallback, never foundation adoption
 by inertia. This P1 work cannot delay #8640 Phase A or the C2 coding cutover.
 
+## P1 parallel — GL: native glass UI stdlib and Sarah-in-the-app (owner priority 2026-07-09)
+
+Owner decision (2026-07-09, adopting the hybrid recommendation of
+`docs/fable/2026-07-09-swiftui-expo-ui-and-the-effect-native-stdlib.md`):
+this program runs ALONGSIDE the Sarah Fleet Command burn, because the goal
+is **consuming Sarah in the mobile app with native glass UI elements
+ASAP**. Design target: the ChatGPT iOS app's Liquid Glass structure
+(owner screenshots — glass pill buttons, circular icon buttons, nav
+flyout drawer, floating composer).
+
+The hybrid contract: `@expo/ui` is consumed strictly INSIDE `render-rn`
+as a lowering target (SwiftUI on iOS, Compose on Android); app code sees
+only typed Effect Native catalog components; `surface: "glass"` is a
+semantic contract (Liquid Glass on iOS 26+, honest material equivalents
+elsewhere); owned lowerings replace `@expo/ui` component-by-component as
+effect-native#70 / EN-S lanes mature (convert-and-delete).
+
+| Lane | Issue | Purpose |
+| --- | --- | --- |
+| GL epic | #8646 | Program epic: hybrid lowering, glass shell, Sarah in-app |
+| GL-1 | #8647 | render-rn lowers typed EN glass components via @expo/ui |
+| GL-2 | #8648 | openagents-mobile Home → ChatGPT-style glass shell |
+| GL-3 | #8649 | Sarah conversation surface in the mobile app (text-first) |
+| GL-4 | #8650 | Owned lowerings replace @expo/ui (migration half) |
+
+GL-3 is the convergence point with the Sarah program: the mobile
+conversation surface consumes the same `/sarah` APIs, SSE transcript, and
+typed intent grammar as the web surface — no parallel state models. Its
+voice/avatar tiers follow the #8610 capacity policy; text is the
+availability floor and is never blocked.
+
 ## P1 — three OpenAgents applications
 
 Epic: **[#8566 APP-1](https://github.com/OpenAgentsInc/openagents/issues/8566)**.
@@ -633,8 +664,9 @@ apps. It does not begin as a fourth product surface.
 
 ## Canonical open issue set
 
-The issue reset plus this reconciliation leaves **14 open roadmap issues**: 12
-active P0/P1 lanes and two explicitly dependency-held P2 lanes.
+The issue reset plus this reconciliation leaves **19 open roadmap issues**: 17
+active P0/P1 lanes and two explicitly dependency-held P2 lanes (GL lanes
+added 2026-07-09 at owner direction).
 
 | Priority | Issue | Purpose |
 | --- | --- | --- |
@@ -650,6 +682,11 @@ active P0/P1 lanes and two explicitly dependency-held P2 lanes.
 | P1 | #8595 | Retained landing/root cutover |
 | P1 | #8597 | Greenfield OpenAgents mobile (`com.openagents.app`) |
 | P1 | #8574 | Greenfield Electron OpenAgents Desktop |
+| P1 parallel | #8646 | GL epic: glass UI stdlib + Sarah in-app |
+| P1 parallel | #8647 | GL-1 render-rn @expo/ui lowering seam |
+| P1 parallel | #8648 | GL-2 mobile Home glass shell conversion |
+| P1 parallel | #8649 | GL-3 Sarah conversation surface in mobile |
+| P1 parallel | #8650 | GL-4 owned-lowering migration |
 | P2 deferred | #8642 | Blueprint correction/deletion/provenance export + privacy tripwire |
 | P2 deferred | #8643 | Typed role programs + evidence-based colleague split |
 
@@ -732,3 +769,12 @@ never reported as live/owner acceptance.
 
 This file is reconciled in place after material landings. Do not grow a long
 revision diary or restore the old 30-item phase queue.
+
+---
+
+*Editing note (2026-07-09): this Sol-owned document was edited by the
+Fable lane at explicit owner request — the owner adopted the hybrid
+`@expo/ui` recommendation and directed that the GL program be added here,
+prioritized to run alongside the Sarah work so Sarah is consumable in the
+mobile app ASAP. Sol reconciles or re-sequences these entries at its next
+pass; the lane additions themselves are owner decisions.*
