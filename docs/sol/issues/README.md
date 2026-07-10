@@ -69,8 +69,9 @@ Completed bounded leaves, including #8653's recent local Codex-history
 projection and
 [`desktop-runtime-gateway.md`](./desktop-runtime-gateway.md) (#8655) plus
 [`desktop-sync-host.md`](./desktop-sync-host.md) (#8656) and
-[`mobile-sync-host.md`](./mobile-sync-host.md) (#8657), remain closed receipts
-rather than open P0 queue items.
+[`mobile-sync-host.md`](./mobile-sync-host.md) (#8657), plus
+[`mobile-session-vault.md`](./mobile-session-vault.md) (#8658), remain closed
+receipts rather than open P0 queue items.
 
 ## Other source records
 

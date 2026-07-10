@@ -224,6 +224,40 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
     },
     {
       authorityBoundary:
+        "SecureStore custody protects credential material but does not prove the credential is current, assign identity authority to the client, authorize Sync rows or commands, or make cached state live.",
+      blockerRefs: [],
+      contractId: "openagents_mobile.session.secure_store_custody.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "apps/openagents-mobile/src/auth/native-session-vault.ts",
+        "docs/sol/issues/mobile-session-vault.md",
+        "github:OpenAgentsInc/openagents#8658",
+      ],
+      oracles: [
+        {
+          description:
+            "Proves one versioned device-only SecureStore record, exact keychain service/options, schema and epoch validation, malformed-record purge, idempotent clear, bounded recovery classification, and public-safe storage failures.",
+          id: "openagents_mobile.session.secure_store_custody",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/openagents-mobile/tests/native-session-vault.test.ts",
+        },
+      ],
+      productArea: "mobile native session custody",
+      source: {
+        channel: "owner-codex-session",
+        statedBy: "owner",
+        statedOn: "2026-07-10",
+      },
+      state: "enforced",
+      statement:
+        "OpenAgents mobile keeps native access and refresh tokens in a versioned device-only SecureStore record, purges invalid records, and projects only credential-present-unverified until server validation.",
+      surface: "openagents-mobile",
+      verification:
+        "The native-session-vault and Home view-program tests prove custody, fail-closed recovery, and the no-credential view boundary; mobile typecheck and behavior-contract coverage gate the integration.",
+    },
+    {
+      authorityBoundary:
         "This binds sheet-dismissal authority to user intents only; it does not authorize StoreKit purchase flows or change how/when the shell opens the sheet.",
       blockerRefs: [],
       contractId: "openagents_mobile.minerals_sheet_user_dismiss_only.v1",

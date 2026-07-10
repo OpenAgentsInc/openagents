@@ -42,6 +42,10 @@ dispositioned. Importing the legacy package/component tree is forbidden.
   persists one installation identity and offline queue across restart, closes
   before OTA reload, and reports only local durability. Secure session custody
   and authenticated network Sync remain unimplemented.
+- A versioned Expo SecureStore vault now holds one native access/refresh-token
+  record plus the server-derived owner ref with device-only accessibility.
+  Malformed/old-epoch records purge fail-closed and view state sees only
+  credential-present-unverified. Browser PKCE and server validation remain.
 - The #8597 Sarah-removal/composer claim released at `e8bf6b8603`. Recheck live
   claims before editing; the next honest action is FAST-3/R0 baseline and one
   M0–M2 leaf, not rebuilding removed persona/demo/local catalog state.

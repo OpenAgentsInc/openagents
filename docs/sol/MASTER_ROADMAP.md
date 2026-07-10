@@ -456,9 +456,11 @@ records before claiming the first new slice.
 - The new mobile app has an Effect Native/React Native shell, one in-memory
   persona-neutral Khala chat path driven by the native composer, and a
   host-owned Expo SQLite adapter over the shared Khala Sync store core with a
-  restart-stable installation identity and pre-OTA close. Removed Sarah/demo/
-  local-catalog state and local cache readiness are not authority substitutes.
-  It does not yet have authenticated cross-device Sync,
+  restart-stable installation identity and pre-OTA close, plus a versioned
+  device-only SecureStore vault that exposes only credential-present-
+  unverified recovery state. Removed Sarah/demo/local-catalog state, local
+  cache readiness, and a stored credential are not authority substitutes. It
+  does not yet have authenticated cross-device Sync,
   FleetRun authority, account/capacity state, durable controls, remote-workroom
   coding, or receipt continuity. The frozen `clients/khala-mobile` app already
   demonstrates much of the missing product behavior—GitHub PKCE, SecureStore
@@ -1132,7 +1134,8 @@ bounded issues under the owning program.
    and the existing hardened Desktop boundary.
 2. Continue F1/R1/R2 through both clients together from the published
    `khala.identity_sync_contract.v1`: Desktop keychain/main-process session,
-   mobile secure session, `device_session` through the serialized freeze lane,
+   mobile PKCE validation/refresh over the landed secure vault,
+   `device_session` through the serialized freeze lane,
    exact authenticated phases, and fault fixtures. Desktop `node:sqlite` and
    mobile Expo SQLite adapters are landed over the shared store core; do not
    invent a new Sync engine or app-local entity model.

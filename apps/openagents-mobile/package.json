@@ -24,6 +24,7 @@
     "expo-crypto": "~57.0.0",
     "expo-file-system": "~57.0.0",
     "expo-modules-core": "57.0.2",
+    "expo-secure-store": "57.0.0",
     "expo-status-bar": "57.0.0",
     "expo-sqlite": "57.0.0",
     "expo-updates": "57.0.6",

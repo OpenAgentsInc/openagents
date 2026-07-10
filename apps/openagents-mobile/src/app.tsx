@@ -4,8 +4,9 @@ import * as Updates from "expo-updates"
 import { useEffect, useState } from "react"
 import { SafeAreaProvider } from "react-native-safe-area-context"
 
-import { HomeScreen } from "./screens/home-screen"
+import { recoverNativeSession } from "./auth/native-session-vault"
 import type { MobileSyncPhase } from "./screens/home-core"
+import { HomeScreen } from "./screens/home-screen"
 import { openMobileSyncHost, type MobileSyncHost } from "./sync/mobile-sync-host"
 import { startOtaPolling } from "./updates/ota-polling"
 
@@ -26,13 +27,29 @@ export const App = () => {
   // see src/updates/ota-polling.ts. `Updates.isEnabled` is false in Expo Go /
   // dev, so the loop is a no-op there.
   useEffect(() => {
+    let stopped = false
     let syncHost: MobileSyncHost | undefined
+    let localStoreReady = false
     try {
       syncHost = openMobileSyncHost()
+      localStoreReady = true
       setSyncPhase("local_ready")
     } catch {
       setSyncPhase("unavailable")
     }
+    void recoverNativeSession().then(
+      recovery => {
+        if (stopped || !localStoreReady) return
+        setSyncPhase(
+          recovery.state === "credential_present_unverified"
+            ? "credential_present_unverified"
+            : "local_ready",
+        )
+      },
+      () => {
+        if (!stopped) setSyncPhase("unavailable")
+      },
+    )
     const handle = startOtaPolling({
       isEnabled: Updates.isEnabled,
       checkForUpdateAsync: () => Updates.checkForUpdateAsync(),
@@ -42,6 +59,7 @@ export const App = () => {
       beforeReload: () => syncHost?.close(),
     })
     return () => {
+      stopped = true
       handle.stop()
       syncHost?.close()
     }

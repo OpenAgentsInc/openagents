@@ -65,6 +65,20 @@ describe("contract openagents_mobile.persona_neutral_home.v1", () => {
     expect(content).not.toContain("Sync live")
   })
 
+  test("hides shared work while a recovered credential awaits server verification", async () => {
+    const program = buildHomeProgram()
+    program.sync.setPhase("credential_present_unverified")
+    await Effect.runPromise(settle)
+    const state = await Effect.runPromise(lastState(program))
+    const content = JSON.stringify(renderContentView({ ...state, surfaceMode: "openagents" }))
+    expect(content).toContain("Session verification required")
+    expect(content).toContain("Shared work stays hidden")
+    expect(content).not.toContain("Sync live")
+    expect(content).not.toContain("accessToken")
+    expect(content).not.toContain("refreshToken")
+    expect(content).not.toContain("ownerUserId")
+  })
+
   test("native-composer dispatchers own the Khala draft and New chat clears it", async () => {
     const program = buildHomeProgram()
     program.khala.draftChanged("Plan the mobile handoff")

@@ -29,6 +29,10 @@ imports nothing from it.
   shared Khala Sync store core. It owns the native handle and installation
   identity, closes before OTA reload/unmount, and never projects either into
   the Effect Native view program.
+- `src/auth/native-session-vault.ts` — one versioned Expo SecureStore record
+  for the native OpenAgents access/refresh tokens and server-derived owner ref.
+  Recovery exposes only signed-out or credential-present-unverified state;
+  malformed/retired records are purged and no credential enters view state.
 - Styling is **typed style objects on the shared token vocabulary** — no
   NativeWind, no Tailwind class strings (see
   `docs/effect-native/2026-07-08-styling-tailwind-stylex-effect-native.md`).
@@ -118,7 +122,9 @@ Android and test hosts use a functional React Native fallback.
 The Home screen is persona-neutral: a typed Khala conversation with one native
 Liquid Glass composer, backed by the public orchestration endpoint. A private
 Expo SQLite cache now supplies restart-stable local Khala Sync storage and an
-honest `Local Sync ready` state. It does not manufacture authenticated/network
-Sync, fleet, account, receipt, or cross-device authority. Secure OpenAgents
-session custody, real Sync subscriptions, and durable commands are the next
-#8597 priorities.
+honest `Local Sync ready` state. Native session credentials now have a
+device-only SecureStore vault, but a recovered record remains visibly
+unverified until the server accepts it. The app does not manufacture
+authenticated/network Sync, fleet, account, receipt, or cross-device
+authority. PKCE sign-in/refresh/revocation, real Sync subscriptions, and
+durable commands are the next #8597 priorities.

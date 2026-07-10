@@ -527,6 +527,11 @@ More specific invariant ledgers apply inside imported apps and packages.
   handle and installation identity, closes it before process/OTA teardown,
   and exposes only bounded readiness/freshness state to Effect Native views;
   a local cache is never authenticated or server-authoritative Sync.
+- Native OpenAgents user access/refresh tokens live only in platform credential
+  custody: Expo SecureStore on mobile and the Electron main-process OS
+  credential boundary on Desktop. Effect Native state receives only typed
+  session phases; stored credentials are unverified until the server accepts
+  them, and malformed or retired-epoch records are purged fail-closed.
 - Operations (Cloud SQL monitoring, migration runner, compaction, capture
   daemon, hub reset, Hyperdrive saturation, secrets locations) are in
   `docs/khala-sync/RUNBOOK.md`.

@@ -105,6 +105,11 @@ Reserved (do not implement until Sol freezes the entity schema in
   `clients/khala-mobile` — pattern only, not the component tree). Use
   `openagents://auth` as the canonical redirect; keep only the exact
   temporary rollback redirect `khala://auth`.
+- Mobile credential custody/recovery classification is landed in #8658:
+  access/refresh tokens plus the server-derived owner ref share one versioned
+  Expo SecureStore record; a recovered record remains unverified until the
+  server accepts it. Browser prompt, PKCE exchange, refresh, and revocation are
+  still required for the R1 exit.
 - The `device_session` projection/mutator pair (after §R1.4 freeze).
 
 ## R2 — Khala Sync as the cross-device authority
@@ -253,16 +258,16 @@ this same envelope. **DRAFT:** whether R3 adds a first-class
 `fleet.approve`/`fleet.steer` mutator pair or keeps the landed exchange routes
 is an R3 freeze item, not a client decision.
 
-### R2.6 Device-local persistence (SETTLED decision, one DRAFT detail)
+### R2.6 Device-local persistence (SETTLED)
 
 - Both clients persist through the existing `khala-sync-client` store
   semantics: `store-core.ts` + `sqlite-store.ts` (SQLite) with the overlay for
   optimistic state and the offline mutation queue.
 - Desktop: SQLite in the Electron **main process**; the renderer receives typed
   projections over the fixed schema-decoded IPC boundary only.
-- Mobile: same store semantics over the app-side SQLite driver
-  (**DRAFT:** exact Expo SQLite driver binding is an M1 leaf; semantics and
-  test-kit `store-semantics.testkit.ts` conformance are frozen).
+- Mobile: the #8657 Expo SQLite driver is landed over the same store core, with
+  restart-stable identity/queue, transaction rollback, initialization cleanup,
+  and deterministic close before OTA reload.
 - Caches carry explicit staleness/conflict markers (§R2.2 phases). A restarted
   client may render cached rows **only** labeled as `stale`/`catching_up`
   until the cursor reconciles; authority-bearing actions stay disabled until
@@ -306,18 +311,17 @@ reported per item; no rung implies the next.
 | Already exists (bind, do not rebuild) | Must be built |
 | --- | --- |
 | Protocol/envelope/cursors/tombstones/`must_refetch` (`khala-sync`) | Desktop OpenAgents sign-in + keychain custody (R1.5) |
-| Chat + fleet entity schemas and mutators (`khala-sync`/`-server`) | Mobile bearer sign-in + secure-storage recovery in `apps/openagents-mobile` |
+| Chat + fleet entity schemas and mutators (`khala-sync`/`-server`) | Mobile PKCE prompt/exchange plus server validation/refresh over the landed #8658 secure vault |
 | Client session/store/overlay/offline/reconnect + fault tests (`khala-sync-client`) | `device_session` projection + `identity.revokeSession` (after §R1.4 freeze) |
-| Server session boundaries, refresh propagation, revocation (`workers/api/src/auth*`) | Desktop/mobile Sync adapters (SYNC-2/SYNC-3) over the frozen catalog |
-| Fleet run/attempt/approval/command authority + steering exchange (#8637/#8633/#8639 substrate) | SYNC-4 cross-client continuity fixture; mobile SQLite driver binding |
+| Server session boundaries, refresh propagation, revocation (`workers/api/src/auth*`) | Authenticated Desktop/mobile session composition over the landed local adapters |
+| Fleet run/attempt/approval/command authority + steering exchange (#8637/#8633/#8639 substrate) | SYNC-4 cross-client continuity fixture |
 | `khala-sync-db-collection` TanStack adapter | R3+ entities (`project/session`, `workroom`, `receipt`, …) — DRAFT, later freeze |
 
 ## Open DRAFT register
 
 1. §R1.4 `device_session` entity + revoke mutator schema.
 2. §R2.5 R3 approve/steer mutator surface vs landed exchange routes.
-3. §R2.6 exact mobile SQLite driver binding.
-4. R3–R7 entity schemas listed as follow-ons (workroom/preview/artifact/
+3. R3–R7 entity schemas listed as follow-ons (workroom/preview/artifact/
    writeback/receipt, project/session).
 
 Everything not listed in this register is **frozen**. SYNC-1/2/3/4, M1, and

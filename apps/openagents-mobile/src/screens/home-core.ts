@@ -54,6 +54,7 @@ export interface HomeState {
 
 export type MobileSyncPhase =
   | ScopeSyncState["phase"]
+  | "credential_present_unverified"
   | "local_ready"
   | "unconfigured"
   | "unavailable"
@@ -65,6 +66,10 @@ export interface SyncStatusCopy {
 }
 
 const syncStatusCopyByPhase: Record<MobileSyncPhase, SyncStatusCopy> = {
+  credential_present_unverified: {
+    title: "Session verification required",
+    detail: "Stored credentials remain private. Shared work stays hidden until the server verifies them.",
+  },
   local_ready: {
     title: "Local Sync ready",
     detail: "Local data is durable. Connect an OpenAgents session to sync shared work.",

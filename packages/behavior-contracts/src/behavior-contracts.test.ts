@@ -140,7 +140,7 @@ describe("behavior contract registry", () => {
     const validation = validateBehaviorContractRegistry(decoded)
 
     expect(validation).toEqual({ issues: [], ok: true })
-    expect(decoded.contracts).toHaveLength(11)
+    expect(decoded.contracts).toHaveLength(12)
     const pending = decoded.contracts.filter(contract => contract.state === "pending")
     expect(pending).toHaveLength(4)
     expect(
@@ -170,6 +170,17 @@ describe("behavior contract registry", () => {
     expect(mobileSyncHost?.statement).toContain("never presents local readiness")
     expect(mobileSyncHost?.oracles[0]?.ref).toBe(
       "apps/openagents-mobile/tests/mobile-sync-host.test.ts",
+    )
+    const mobileSessionVault = decoded.contracts.find(
+      contract =>
+        contract.contractId === "openagents_mobile.session.secure_store_custody.v1",
+    )
+    expect(mobileSessionVault?.state).toBe("enforced")
+    expect(mobileSessionVault?.statement).toContain(
+      "credential-present-unverified",
+    )
+    expect(mobileSessionVault?.oracles[0]?.ref).toBe(
+      "apps/openagents-mobile/tests/native-session-vault.test.ts",
     )
     // Owner P0 (build 111 TestFlight feedback, 2026-07-09): the minerals
     // sheet closes only on USER intents, enforced in the mobile test sweep.
