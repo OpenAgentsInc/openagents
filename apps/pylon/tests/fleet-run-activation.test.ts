@@ -539,6 +539,67 @@ describe("headless Pylon FleetRun activation", () => {
     })
   })
 
+  test("a newer terminal signal retries a failed in-flight reap once without spinning", async () => {
+    await fixture(async ({ summary }) => {
+      const runRef = "fleet_run.fc2.terminal_signal_during_reap"
+      await seedRuns(summary, [runRef])
+      let observe: ((event: FleetRunSupervisorObservedEvent) => void | Promise<void>) | undefined
+      let closeAttempts = 0
+      let markFirstCloseStarted!: () => void
+      let releaseFirstClose!: () => void
+      const firstCloseStarted = new Promise<void>((resolve) => {
+        markFirstCloseStarted = resolve
+      })
+      const firstCloseRelease = new Promise<void>((resolve) => {
+        releaseFirstClose = resolve
+      })
+      const service = await openPylonNodeFleetRunActivationService({
+        summary,
+        pylonRef,
+        baseUrl: "https://openagents.test",
+        openExecutor: async input => {
+          observe = input.onLifecycle
+          return {
+            close: async () => {
+              closeAttempts += 1
+              if (closeAttempts === 1) {
+                markFirstCloseStarted()
+                await firstCloseRelease
+              }
+              if (closeAttempts <= 2) throw new Error("private transient close failure")
+            },
+          }
+        },
+      })
+      await service.arm(runRef)
+      await setRunState(summary, runRef, "stopped")
+      const terminalEvent: FleetRunSupervisorObservedEvent = {
+        kind: "terminal",
+        runRef,
+        terminalState: "stopped",
+        blockerRefs: [],
+      }
+
+      await observe?.(terminalEvent)
+      await firstCloseStarted
+      // This second authoritative signal arrives after the first scheduled
+      // reap entered handle.close(). It must authorize exactly one follow-up
+      // attempt even though the first close fails.
+      await observe?.(terminalEvent)
+      releaseFirstClose()
+
+      for (let attempt = 0; attempt < 20 && closeAttempts < 2; attempt += 1) {
+        await Bun.sleep(1)
+      }
+      expect(closeAttempts).toBe(2)
+      // Both cleanup attempts failed. With no third lifecycle generation, the
+      // scheduler must leave the failed handle counted instead of spinning.
+      await Bun.sleep(5)
+      expect(closeAttempts).toBe(2)
+      await service.close()
+    })
+  })
+
   test("does not infer finality or remove restart intent from the durable run state alone", async () => {
     await fixture(async ({ summary }) => {
       const runRef = "fleet_run.fc2.store_terminal_only"

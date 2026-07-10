@@ -143,7 +143,14 @@ export async function openPylonNodeFleetRunActivationService(
   // intent: reconcile-stopped/completed runs can be revived. Only a terminal
   // observation emitted by the owned supervisor enters this set.
   const terminalLifecycle = new Set<string>()
+  // Keep a monotonic signal generation per run so a lifecycle observation
+  // arriving while that run's cleanup is already queued cannot be lost when
+  // the older cleanup finishes. A generation advances only for a new
+  // supervisor observation, which also prevents a failed close from retrying
+  // itself forever without a new signal.
+  const terminalLifecycleGeneration = new Map<string, number>()
   const scheduledTerminalReaps = new Set<string>()
+  let nextTerminalLifecycleGeneration = 0
   let closed = false
   let tail = Promise.resolve()
 
@@ -192,11 +199,17 @@ export async function openPylonNodeFleetRunActivationService(
   const reapTerminalLifecycle = async (): Promise<boolean> => {
     let freedActiveSlot = false
     for (const runRef of [...terminalLifecycle].sort()) {
+      const observedGeneration = terminalLifecycleGeneration.get(runRef)
+      const clearObservedLifecycle = (): void => {
+        if (terminalLifecycleGeneration.get(runRef) === observedGeneration) {
+          terminalLifecycle.delete(runRef)
+        }
+      }
       const run = authority.store.getFleetRun(runRef)
       // A newer live state supersedes an already-queued terminal observation.
       // Never discard restart intent for running, paused, or draining work.
       if (run === null || !isTerminalState(run.state)) {
-        terminalLifecycle.delete(runRef)
+        clearObservedLifecycle()
         continue
       }
 
@@ -211,7 +224,7 @@ export async function openPylonNodeFleetRunActivationService(
       if (handle === undefined) {
         if (!opening.has(runRef)) {
           blocked.delete(runRef)
-          terminalLifecycle.delete(runRef)
+          clearObservedLifecycle()
         }
         continue
       }
@@ -221,7 +234,7 @@ export async function openPylonNodeFleetRunActivationService(
         // after the complete executor/reporter close succeeds.
         handles.delete(runRef)
         blocked.delete(runRef)
-        terminalLifecycle.delete(runRef)
+        clearObservedLifecycle()
         freedActiveSlot = true
       } catch {
         blocked.set(runRef, "executor_close_failed")
@@ -334,16 +347,27 @@ export async function openPylonNodeFleetRunActivationService(
 
   function scheduleTerminalReap(runRef: string): void {
     terminalLifecycle.add(runRef)
+    terminalLifecycleGeneration.set(runRef, ++nextTerminalLifecycleGeneration)
+    queueTerminalReap(runRef)
+  }
+
+  function queueTerminalReap(runRef: string): void {
     if (scheduledTerminalReaps.has(runRef)) return
     scheduledTerminalReaps.add(runRef)
     // The lifecycle callback may run while openExecutor is itself awaited by
     // the serialized arm operation. Queue cleanup but never await it here, or
     // a terminal-during-open event would deadlock its own handle creation.
     void serialize(async () => {
+      const scheduledGeneration = terminalLifecycleGeneration.get(runRef)
       try {
         if (!closed) await reapTerminalLifecycleThenFill()
       } finally {
         scheduledTerminalReaps.delete(runRef)
+        if (
+          !closed &&
+          terminalLifecycle.has(runRef) &&
+          terminalLifecycleGeneration.get(runRef) !== scheduledGeneration
+        ) queueTerminalReap(runRef)
       }
     }).catch(() => undefined)
   }
