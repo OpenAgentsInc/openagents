@@ -19,6 +19,13 @@ export type PylonFleetRunExactAttempt = {
   readonly assignmentRef: string
 }
 
+export type PylonFleetRunSteeringIntentIdentity = {
+  readonly seq: number
+  readonly intentId: string
+  /** Stable before execution so an external control adapter can deduplicate. */
+  readonly completionContractRef: string
+}
+
 export type PylonFleetRunAttemptControlResult =
   | { readonly state: "applied" }
   | { readonly state: "retry"; readonly failureRef: string }
@@ -32,10 +39,12 @@ export type PylonFleetRunAttemptControlResult =
  */
 export type PylonFleetRunAttemptControl = {
   readonly applyApproval: (input: PylonFleetRunExactAttempt & {
+    readonly intent: PylonFleetRunSteeringIntentIdentity
     readonly approvalRef: string
     readonly decision: "allow" | "deny"
   }) => Promise<PylonFleetRunAttemptControlResult>
   readonly applySteer: (input: PylonFleetRunExactAttempt & {
+    readonly intent: PylonFleetRunSteeringIntentIdentity
     /** Owner-private local material. Implementations must not project it. */
     readonly body: string | null
     readonly bodyRef: string | null
@@ -44,6 +53,7 @@ export type PylonFleetRunAttemptControl = {
     readonly pylonRef: string
     readonly runRef: string
     readonly claimRef: string
+    readonly intent: PylonFleetRunSteeringIntentIdentity
     readonly attempts: readonly PylonFleetRunExactAttempt[]
   }) => Promise<PylonFleetRunAttemptControlResult>
 }
@@ -96,6 +106,20 @@ const completionRefFor = (
     intentId: followUp.intentId,
     state,
     completedAt,
+  }))
+  .digest("hex")
+  .slice(0, 24)}`
+
+const completionContractRefFor = (
+  followUp: FleetRunSteeringQueuedFollowUp,
+): string => `contract.pylon.fleet_steering_completion.${createHash("sha256")
+  .update(canonicalJson({
+    schema: "openagents.pylon.fleet_steering_follow_up_completion_contract.v1",
+    pylonRef: followUp.pylonRef,
+    runRef: followUp.runRef,
+    claimRef: followUp.claimRef,
+    seq: followUp.seq,
+    intentId: followUp.intentId,
   }))
   .digest("hex")
   .slice(0, 24)}`
@@ -162,6 +186,11 @@ const dispatchFollowUp = async (
   options: PylonFleetRunSteeringFollowUpDispatcherOptions,
   followUp: FleetRunSteeringQueuedFollowUp,
 ): Promise<PylonFleetRunAttemptControlResult> => {
+  const intent = {
+    seq: followUp.seq,
+    intentId: followUp.intentId,
+    completionContractRef: completionContractRefFor(followUp),
+  } satisfies PylonFleetRunSteeringIntentIdentity
   if (followUp.intentKind === "fleet_run_control") {
     const run = options.store.getFleetRun(followUp.runRef)
     if (run === null) {
@@ -182,6 +211,7 @@ const dispatchFollowUp = async (
       pylonRef: followUp.pylonRef,
       runRef: followUp.runRef,
       claimRef: followUp.claimRef,
+      intent,
       attempts,
     })
   }
@@ -205,12 +235,14 @@ const dispatchFollowUp = async (
     ) return { state: "failed", failureRef: "blocker.pylon.fleet_steering.approval_binding_invalid" }
     return await options.control.applyApproval({
       ...attempt,
+      intent,
       approvalRef: followUp.approvalRef,
       decision: followUp.decision,
     })
   }
   return await options.control.applySteer({
     ...attempt,
+    intent,
     body: followUp.body,
     bodyRef: followUp.bodyRef,
   })

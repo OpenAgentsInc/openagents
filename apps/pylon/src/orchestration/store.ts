@@ -29,7 +29,7 @@ import {
   type FleetRunWorkSourceDescriptor,
 } from "./fleet-run-work-source.js"
 
-export const ORCHESTRATION_SCHEMA_VERSION = 8
+export const ORCHESTRATION_SCHEMA_VERSION = 9
 
 export type OrchestrationTaskStatus =
   | "pending"
@@ -277,6 +277,8 @@ export type FleetRunSteeringQueuedFollowUp = {
   readonly nextAttemptAt: string
   readonly lastAttemptAt: string | null
   readonly dispatchLeaseExpiresAt: string | null
+  readonly dispatchLeaseToken: string | null
+  readonly leaseGeneration: number
   readonly lastFailureRef: string | null
   readonly completionRef: string | null
   readonly completedAt: string | null
@@ -347,6 +349,8 @@ export type FleetRunSteeringApplication = {
     | "nextAttemptAt"
     | "lastAttemptAt"
     | "dispatchLeaseExpiresAt"
+    | "dispatchLeaseToken"
+    | "leaseGeneration"
     | "lastFailureRef"
     | "completionRef"
     | "completedAt"
@@ -1018,6 +1022,8 @@ type FleetRunSteeringQueuedFollowUpRow = {
   next_attempt_at: string
   last_attempt_at: string | null
   dispatch_lease_expires_at: string | null
+  dispatch_lease_token: string | null
+  lease_generation: number
   last_failure_ref: string | null
   completion_ref: string | null
   completed_at: string | null
@@ -1269,6 +1275,8 @@ const fleetRunSteeringQueuedFollowUpFromRow = (
   nextAttemptAt: row.next_attempt_at,
   lastAttemptAt: row.last_attempt_at,
   dispatchLeaseExpiresAt: row.dispatch_lease_expires_at,
+  dispatchLeaseToken: row.dispatch_lease_token,
+  leaseGeneration: row.lease_generation,
   lastFailureRef: row.last_failure_ref,
   completionRef: row.completion_ref,
   completedAt: row.completed_at,
@@ -1642,6 +1650,8 @@ export class PylonOrchestrationStore {
         next_attempt_at TEXT NOT NULL DEFAULT '1970-01-01T00:00:00.000Z',
         last_attempt_at TEXT,
         dispatch_lease_expires_at TEXT,
+        dispatch_lease_token TEXT,
+        lease_generation INTEGER NOT NULL DEFAULT 0 CHECK (lease_generation BETWEEN 0 AND 9007199254740991),
         last_failure_ref TEXT,
         completion_ref TEXT,
         completed_at TEXT,
@@ -1807,6 +1817,8 @@ export class PylonOrchestrationStore {
       ["next_attempt_at", "TEXT NOT NULL DEFAULT '1970-01-01T00:00:00.000Z'"],
       ["last_attempt_at", "TEXT"],
       ["dispatch_lease_expires_at", "TEXT"],
+      ["dispatch_lease_token", "TEXT"],
+      ["lease_generation", "INTEGER NOT NULL DEFAULT 0 CHECK (lease_generation BETWEEN 0 AND 9007199254740991)"],
       ["last_failure_ref", "TEXT"],
       ["completion_ref", "TEXT"],
       ["completed_at", "TEXT"],
@@ -2726,7 +2738,8 @@ export class PylonOrchestrationStore {
                work_claim_ref, assignment_ref, target_ref, intent_kind,
                approval_ref, decision, residual_refs_json, body, body_ref, created_at,
                state, attempt_count, next_attempt_at, last_attempt_at,
-               dispatch_lease_expires_at, last_failure_ref, completion_ref, completed_at
+               dispatch_lease_expires_at, dispatch_lease_token, lease_generation,
+               last_failure_ref, completion_ref, completed_at
           FROM pylon_orchestration_fleet_run_steering_follow_ups
          WHERE pylon_ref = $pylonRef
            AND run_ref = $runRef
@@ -2850,7 +2863,8 @@ export class PylonOrchestrationStore {
              work_claim_ref, assignment_ref, target_ref, intent_kind,
              approval_ref, decision, residual_refs_json, body, body_ref, created_at,
              state, attempt_count, next_attempt_at, last_attempt_at,
-             dispatch_lease_expires_at, last_failure_ref, completion_ref, completed_at
+             dispatch_lease_expires_at, dispatch_lease_token, lease_generation,
+             last_failure_ref, completion_ref, completed_at
         FROM pylon_orchestration_fleet_run_steering_follow_ups
        WHERE pylon_ref = $pylonRef AND run_ref = $runRef AND claim_ref = $claimRef
          AND seq = $seq AND intent_id = $intentId
@@ -2884,6 +2898,7 @@ export class PylonOrchestrationStore {
       this.db.query(`
         UPDATE pylon_orchestration_fleet_run_steering_follow_ups
            SET state = 'queued', dispatch_lease_expires_at = NULL,
+               dispatch_lease_token = NULL,
                next_attempt_at = $at,
                last_failure_ref = COALESCE(last_failure_ref,
                  'blocker.pylon.fleet_steering.dispatch_interrupted')
@@ -2896,28 +2911,57 @@ export class PylonOrchestrationStore {
         $at: at,
       })
       const candidate = this.db.query(`
-        SELECT seq, intent_id
+        SELECT seq, intent_id, state, next_attempt_at, lease_generation
           FROM pylon_orchestration_fleet_run_steering_follow_ups
          WHERE pylon_ref = $pylonRef AND run_ref = $runRef AND claim_ref = $claimRef
-           AND state = 'queued' AND next_attempt_at <= $at
+           AND state IN ('queued', 'dispatching')
          ORDER BY seq ASC
          LIMIT 1
       `).get({
         $pylonRef: input.pylonRef,
         $runRef: input.runRef,
         $claimRef: input.claimRef,
-        $at: at,
-      }) as { seq: number; intent_id: string } | null
-      if (candidate === null) {
+      }) as {
+        seq: number
+        intent_id: string
+        state: "queued" | "dispatching"
+        next_attempt_at: string
+        lease_generation: number
+      } | null
+      // True head-of-line ordering: a live lease or backed-off oldest intent
+      // fences every later sequence until the oldest intent is terminal.
+      if (
+        candidate === null ||
+        candidate.state === "dispatching" ||
+        candidate.next_attempt_at > at
+      ) {
         this.db.run("COMMIT")
         return null
       }
-      this.db.query(`
+      const leaseGeneration = candidate.lease_generation + 1
+      if (!Number.isSafeInteger(leaseGeneration) || leaseGeneration < 1) {
+        throw new Error("fleet run steering follow-up lease generation overflow")
+      }
+      const leaseToken = `lease.pylon.fleet_steering.${createHash("sha256")
+        .update(JSON.stringify({
+          pylonRef: input.pylonRef,
+          runRef: input.runRef,
+          claimRef: input.claimRef,
+          seq: candidate.seq,
+          intentId: candidate.intent_id,
+          leaseGeneration,
+          acquiredAt: at,
+        }))
+        .digest("hex")
+        .slice(0, 24)}`
+      const leasedRow = this.db.query(`
         UPDATE pylon_orchestration_fleet_run_steering_follow_ups
            SET state = 'dispatching', attempt_count = attempt_count + 1,
-               last_attempt_at = $at, dispatch_lease_expires_at = $leaseExpiresAt
+               last_attempt_at = $at, dispatch_lease_expires_at = $leaseExpiresAt,
+               dispatch_lease_token = $leaseToken, lease_generation = $leaseGeneration
          WHERE pylon_ref = $pylonRef AND run_ref = $runRef AND claim_ref = $claimRef
            AND seq = $seq AND intent_id = $intentId AND state = 'queued'
+           AND lease_generation = $previousLeaseGeneration
       `).run({
         $pylonRef: input.pylonRef,
         $runRef: input.runRef,
@@ -2926,7 +2970,13 @@ export class PylonOrchestrationStore {
         $intentId: candidate.intent_id,
         $at: at,
         $leaseExpiresAt: leaseExpiresAt,
+        $leaseToken: leaseToken,
+        $leaseGeneration: leaseGeneration,
+        $previousLeaseGeneration: candidate.lease_generation,
       })
+      if (Number(leasedRow.changes) !== 1) {
+        throw new Error("fleet run steering follow-up lease compare-and-swap failed")
+      }
       const leased = this.getFleetRunSteeringFollowUp({
         pylonRef: input.pylonRef,
         runRef: input.runRef,
@@ -2934,7 +2984,11 @@ export class PylonOrchestrationStore {
         seq: candidate.seq,
         intentId: candidate.intent_id,
       })
-      if (leased?.state !== "dispatching") throw new Error("fleet run steering follow-up lease was lost")
+      if (
+        leased?.state !== "dispatching" ||
+        leased.dispatchLeaseToken !== leaseToken ||
+        leased.leaseGeneration !== leaseGeneration
+      ) throw new Error("fleet run steering follow-up lease was lost")
       this.db.run("COMMIT")
       return leased
     } catch (error) {
@@ -2950,14 +3004,20 @@ export class PylonOrchestrationStore {
   }): FleetRunSteeringQueuedFollowUp {
     if (
       Number.isNaN(input.nextAttemptAt.getTime()) ||
-      !FLEET_RUN_ACTIVATION_REF_PATTERN.test(input.failureRef)
+      !FLEET_RUN_ACTIVATION_REF_PATTERN.test(input.failureRef) ||
+      input.followUp.dispatchLeaseToken === null ||
+      !FLEET_RUN_ACTIVATION_REF_PATTERN.test(input.followUp.dispatchLeaseToken) ||
+      !Number.isSafeInteger(input.followUp.leaseGeneration) ||
+      input.followUp.leaseGeneration < 1
     ) throw new Error("fleet run steering follow-up retry is invalid")
     const changed = this.db.query(`
       UPDATE pylon_orchestration_fleet_run_steering_follow_ups
          SET state = 'queued', next_attempt_at = $nextAttemptAt,
-             dispatch_lease_expires_at = NULL, last_failure_ref = $failureRef
+             dispatch_lease_expires_at = NULL, dispatch_lease_token = NULL,
+             last_failure_ref = $failureRef
        WHERE pylon_ref = $pylonRef AND run_ref = $runRef AND claim_ref = $claimRef
          AND seq = $seq AND intent_id = $intentId AND state = 'dispatching'
+         AND lease_generation = $leaseGeneration AND dispatch_lease_token = $leaseToken
     `).run({
       $pylonRef: input.followUp.pylonRef,
       $runRef: input.followUp.runRef,
@@ -2966,6 +3026,8 @@ export class PylonOrchestrationStore {
       $intentId: input.followUp.intentId,
       $nextAttemptAt: iso(input.nextAttemptAt),
       $failureRef: input.failureRef,
+      $leaseGeneration: input.followUp.leaseGeneration,
+      $leaseToken: input.followUp.dispatchLeaseToken,
     })
     if (Number(changed.changes) !== 1) throw new Error("fleet run steering follow-up retry lost its lease")
     const updated = this.getFleetRunSteeringFollowUp(input.followUp)
@@ -2986,13 +3048,21 @@ export class PylonOrchestrationStore {
       Number.isNaN(completedAt.getTime()) ||
       !FLEET_RUN_ACTIVATION_REF_PATTERN.test(input.completionRef) ||
       (failureRef !== null && !FLEET_RUN_ACTIVATION_REF_PATTERN.test(failureRef)) ||
-      (input.state === "applied" && failureRef !== null)
+      (input.state === "applied" && failureRef !== null) ||
+      input.followUp.dispatchLeaseToken === null ||
+      !FLEET_RUN_ACTIVATION_REF_PATTERN.test(input.followUp.dispatchLeaseToken) ||
+      !Number.isSafeInteger(input.followUp.leaseGeneration) ||
+      input.followUp.leaseGeneration < 1
     ) throw new Error("fleet run steering follow-up completion is invalid")
     const at = iso(completedAt)
     this.db.run("BEGIN IMMEDIATE")
     try {
       const current = this.getFleetRunSteeringFollowUp(input.followUp)
       if (current === null) throw new Error("unknown fleet run steering follow-up")
+      if (
+        current.dispatchLeaseToken !== input.followUp.dispatchLeaseToken ||
+        current.leaseGeneration !== input.followUp.leaseGeneration
+      ) throw new Error("fleet run steering follow-up lease fence was lost")
       if (current.state === "applied" || current.state === "failed" || current.state === "stale") {
         if (
           current.state !== input.state ||
@@ -3004,13 +3074,14 @@ export class PylonOrchestrationStore {
         }
       } else {
         if (current.state !== "dispatching") throw new Error("fleet run steering follow-up is not leased")
-        this.db.query(`
+        const completed = this.db.query(`
           UPDATE pylon_orchestration_fleet_run_steering_follow_ups
              SET state = $state, dispatch_lease_expires_at = NULL,
                  completion_ref = $completionRef, completed_at = $completedAt,
                  last_failure_ref = $failureRef
            WHERE pylon_ref = $pylonRef AND run_ref = $runRef AND claim_ref = $claimRef
              AND seq = $seq AND intent_id = $intentId AND state = 'dispatching'
+             AND lease_generation = $leaseGeneration AND dispatch_lease_token = $leaseToken
         `).run({
           $pylonRef: current.pylonRef,
           $runRef: current.runRef,
@@ -3021,7 +3092,12 @@ export class PylonOrchestrationStore {
           $completionRef: input.completionRef,
           $completedAt: at,
           $failureRef: failureRef,
+          $leaseGeneration: current.leaseGeneration,
+          $leaseToken: current.dispatchLeaseToken,
         })
+        if (Number(completed.changes) !== 1) {
+          throw new Error("fleet run steering follow-up completion lost its lease")
+        }
         if (current.intentKind === "approval_decision") {
           if (current.approvalRef === null || current.decision === null) {
             throw new Error("fleet run steering approval follow-up lost its decision")

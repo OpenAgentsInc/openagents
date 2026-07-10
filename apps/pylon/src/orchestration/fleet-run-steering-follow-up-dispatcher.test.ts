@@ -141,6 +141,13 @@ describe("Pylon FleetRun steering follow-up dispatcher", () => {
           ...retryControl,
           applySteer: input => {
             expect(input).toMatchObject({ workClaimRef, assignmentRef })
+            expect(input.intent).toEqual({
+              seq: 1,
+              intentId: "intent.fc3.follow_up.restart",
+              completionContractRef: expect.stringMatching(
+                /^contract\.pylon\.fleet_steering_completion\.[a-f0-9]{24}$/u,
+              ),
+            })
             expect(input.body).toBe("owner-private restart direction")
             return Promise.resolve({ state: "applied" })
           },
@@ -175,6 +182,132 @@ describe("Pylon FleetRun steering follow-up dispatcher", () => {
         claimRef: intakeClaimRef,
       })).toEqual([])
       await reopened.close()
+    } finally {
+      await rm(root, { force: true, recursive: true })
+    }
+  })
+
+  test("enforces head-of-line order across two runtime connections and backed-off work", async () => {
+    const root = await mkdtemp(join(tmpdir(), "pylon-fc3-follow-up-head-of-line-"))
+    const home = join(root, "home")
+    try {
+      const first = await seed(home)
+      queue(first.store, {
+        seq: 1,
+        intentId: "intent.fc3.follow_up.first",
+        intentKind: "steer_message",
+        application: exactSteer("first"),
+      })
+      queue(first.store, {
+        seq: 2,
+        intentId: "intent.fc3.follow_up.second",
+        intentKind: "steer_message",
+        application: exactSteer("second"),
+      })
+      const second = await seed(home)
+      const [fromFirst, fromSecond] = await Promise.all([
+        Promise.resolve().then(() => first.store.acquireFleetRunSteeringFollowUp({
+          pylonRef,
+          runRef,
+          claimRef: intakeClaimRef,
+          now: initialNow,
+        })),
+        Promise.resolve().then(() => second.store.acquireFleetRunSteeringFollowUp({
+          pylonRef,
+          runRef,
+          claimRef: intakeClaimRef,
+          now: initialNow,
+        })),
+      ])
+      const leased = fromFirst ?? fromSecond
+      expect(leased).toMatchObject({ seq: 1, state: "dispatching", leaseGeneration: 1 })
+      expect([fromFirst, fromSecond].filter(Boolean)).toHaveLength(1)
+
+      first.store.retryFleetRunSteeringFollowUp({
+        followUp: leased!,
+        nextAttemptAt: new Date(initialNow.getTime() + 10_000),
+        failureRef: "blocker.fixture.head_of_line_retry",
+      })
+      expect(second.store.acquireFleetRunSteeringFollowUp({
+        pylonRef,
+        runRef,
+        claimRef: intakeClaimRef,
+        now: new Date(initialNow.getTime() + 5_000),
+      })).toBeNull()
+
+      const reacquired = second.store.acquireFleetRunSteeringFollowUp({
+        pylonRef,
+        runRef,
+        claimRef: intakeClaimRef,
+        now: new Date(initialNow.getTime() + 11_000),
+      })
+      expect(reacquired).toMatchObject({ seq: 1, leaseGeneration: 2 })
+      second.store.completeFleetRunSteeringFollowUp({
+        followUp: reacquired!,
+        state: "applied",
+        completionRef: "completion.pylon.fleet_steering.head_of_line.first",
+        completedAt: new Date(initialNow.getTime() + 11_500),
+      })
+      expect(first.store.acquireFleetRunSteeringFollowUp({
+        pylonRef,
+        runRef,
+        claimRef: intakeClaimRef,
+        now: new Date(initialNow.getTime() + 12_000),
+      })).toMatchObject({ seq: 2, leaseGeneration: 1 })
+      await second.close()
+      await first.close()
+    } finally {
+      await rm(root, { force: true, recursive: true })
+    }
+  })
+
+  test("fences a late worker after crash recovery reacquires the same intent", async () => {
+    const root = await mkdtemp(join(tmpdir(), "pylon-fc3-follow-up-fenced-lease-"))
+    const home = join(root, "home")
+    try {
+      const first = await seed(home)
+      queue(first.store, {
+        seq: 1,
+        intentId: "intent.fc3.follow_up.fenced",
+        intentKind: "steer_message",
+        application: exactSteer("fenced"),
+      })
+      const oldLease = first.store.acquireFleetRunSteeringFollowUp({
+        pylonRef,
+        runRef,
+        claimRef: intakeClaimRef,
+        now: initialNow,
+        leaseMs: 1_000,
+      })!
+      const second = await seed(home)
+      const newLease = second.store.acquireFleetRunSteeringFollowUp({
+        pylonRef,
+        runRef,
+        claimRef: intakeClaimRef,
+        now: new Date(initialNow.getTime() + 2_000),
+        leaseMs: 1_000,
+      })!
+      expect(newLease.leaseGeneration).toBe(oldLease.leaseGeneration + 1)
+      expect(newLease.dispatchLeaseToken).not.toBe(oldLease.dispatchLeaseToken)
+      expect(() => first.store.completeFleetRunSteeringFollowUp({
+        followUp: oldLease,
+        state: "applied",
+        completionRef: "completion.pylon.fleet_steering.late_worker",
+        completedAt: new Date(initialNow.getTime() + 2_100),
+      })).toThrow("lease fence")
+      expect(() => first.store.retryFleetRunSteeringFollowUp({
+        followUp: oldLease,
+        nextAttemptAt: new Date(initialNow.getTime() + 3_000),
+        failureRef: "blocker.fixture.late_worker",
+      })).toThrow("lost its lease")
+      expect(second.store.completeFleetRunSteeringFollowUp({
+        followUp: newLease,
+        state: "applied",
+        completionRef: "completion.pylon.fleet_steering.reacquired_worker",
+        completedAt: new Date(initialNow.getTime() + 2_200),
+      })).toMatchObject({ state: "applied" })
+      await second.close()
+      await first.close()
     } finally {
       await rm(root, { force: true, recursive: true })
     }
