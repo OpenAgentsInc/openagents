@@ -1,12 +1,18 @@
-import type { AuthKvStore } from './auth/auth-kv'
 import type { AutopilotTokenUsage } from '@openagentsinc/sync-schema'
 import { Schema as S } from 'effect'
 
+import type { AuthKvStore } from './auth/auth-kv'
 import {
   executeBuiltinComputeAgentGrant,
   makeD1BuiltinComputeAgentStore,
 } from './builtin-compute-agent-grant'
-import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
+import {
+  type HttpResult,
+  type JsonHttpResult,
+  methodNotAllowedResult,
+  noStoreJsonResult,
+  streamHttpResult,
+} from './http/responses'
 import { inferenceEntitlementsMirrorForEnv } from './inference-entitlements-store'
 import {
   optionalBoolean,
@@ -32,8 +38,6 @@ import {
 import { openAgentsDatabase, scheduleBackgroundWork } from './runtime'
 import { currentIsoTimestamp } from './runtime-primitives'
 import { extractAutopilotTokenUsage } from './token-usage'
-
-type HttpResponse = globalThis.Response
 
 type ProviderAccountServiceEnv = Readonly<{
   AUTH_KV?: AuthKvStore | undefined
@@ -63,18 +67,19 @@ class ProviderAccountGrantSerializationError extends S.TaggedErrorClass<Provider
   },
 ) {}
 
-type ProviderAccountServiceDependencies<RouteEnv extends ProviderAccountServiceEnv> =
-  Readonly<{
-    readConnectedCodexAuthMaterial: (
-      bindings: RouteEnv,
-      ownerUserId: string,
-      providerAccountRef: string,
-    ) => Promise<ConnectedCodexAuthMaterial | undefined>
-    requireProviderServiceActor: (
-      request: Request,
-      env: RouteEnv,
-    ) => Promise<ProviderServiceActor | undefined>
-  }>
+type ProviderAccountServiceDependencies<
+  RouteEnv extends ProviderAccountServiceEnv,
+> = Readonly<{
+  readConnectedCodexAuthMaterial: (
+    bindings: RouteEnv,
+    ownerUserId: string,
+    providerAccountRef: string,
+  ) => Promise<ConnectedCodexAuthMaterial | undefined>
+  requireProviderServiceActor: (
+    request: Request,
+    env: RouteEnv,
+  ) => Promise<ProviderServiceActor | undefined>
+}>
 
 const optionalFailedStatus = (
   value: unknown,
@@ -376,15 +381,15 @@ export const makeProviderAccountServiceHandlers = <
     request: Request,
     env: RouteEnv,
     attemptId: string,
-  ): Promise<HttpResponse> => {
+  ): Promise<JsonHttpResult> => {
     if (request.method !== 'POST') {
-      return methodNotAllowed(['POST'])
+      return methodNotAllowedResult(['POST'])
     }
 
     const actor = await dependencies.requireProviderServiceActor(request, env)
 
     if (actor === undefined) {
-      return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
+      return noStoreJsonResult({ error: 'unauthorized' }, { status: 401 })
     }
 
     const body = await readJsonObject(request).catch(
@@ -415,10 +420,10 @@ export const makeProviderAccountServiceHandlers = <
       )
 
       if (result === undefined) {
-        return noStoreJsonResponse({ error: 'not_found' }, { status: 404 })
+        return noStoreJsonResult({ error: 'not_found' }, { status: 404 })
       }
 
-      return noStoreJsonResponse(result)
+      return noStoreJsonResult(result)
     } catch (error) {
       logWorkerRouteError('provider_device_login_connected_failed', error, {
         attemptId,
@@ -426,7 +431,7 @@ export const makeProviderAccountServiceHandlers = <
         providerAccountRef,
       })
 
-      return noStoreJsonResponse(
+      return noStoreJsonResult(
         {
           error: 'provider_device_login_connected_failed',
           message: providerAccountRouteErrorMessage(error),
@@ -440,15 +445,15 @@ export const makeProviderAccountServiceHandlers = <
     request: Request,
     env: RouteEnv,
     attemptId: string,
-  ): Promise<HttpResponse> => {
+  ): Promise<JsonHttpResult> => {
     if (request.method !== 'POST') {
-      return methodNotAllowed(['POST'])
+      return methodNotAllowedResult(['POST'])
     }
 
     const actor = await dependencies.requireProviderServiceActor(request, env)
 
     if (actor === undefined) {
-      return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
+      return noStoreJsonResult({ error: 'unauthorized' }, { status: 401 })
     }
 
     const body = await readJsonObject(request).catch(
@@ -477,10 +482,10 @@ export const makeProviderAccountServiceHandlers = <
       )
 
       if (result === undefined) {
-        return noStoreJsonResponse({ error: 'not_found' }, { status: 404 })
+        return noStoreJsonResult({ error: 'not_found' }, { status: 404 })
       }
 
-      return noStoreJsonResponse(result)
+      return noStoreJsonResult(result)
     } catch (error) {
       logWorkerRouteError(
         'provider_device_login_failed_callback_failed',
@@ -492,7 +497,7 @@ export const makeProviderAccountServiceHandlers = <
         },
       )
 
-      return noStoreJsonResponse(
+      return noStoreJsonResult(
         {
           error: 'provider_device_login_failed_callback_failed',
           message: providerAccountRouteErrorMessage(error),
@@ -506,15 +511,15 @@ export const makeProviderAccountServiceHandlers = <
     request: Request,
     env: RouteEnv,
     providerAccountRef: string,
-  ): Promise<HttpResponse> => {
+  ): Promise<JsonHttpResult> => {
     if (request.method !== 'POST') {
-      return methodNotAllowed(['POST'])
+      return methodNotAllowedResult(['POST'])
     }
 
     const actor = await dependencies.requireProviderServiceActor(request, env)
 
     if (actor === undefined) {
-      return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
+      return noStoreJsonResult({ error: 'unauthorized' }, { status: 401 })
     }
 
     const body = await readJsonObject(request).catch(
@@ -524,7 +529,7 @@ export const makeProviderAccountServiceHandlers = <
     const reason = optionalString(body.reason)
 
     if (health === undefined) {
-      return noStoreJsonResponse(
+      return noStoreJsonResult(
         { error: 'bad_request', reason: 'health is required' },
         { status: 400 },
       )
@@ -546,17 +551,17 @@ export const makeProviderAccountServiceHandlers = <
       )
 
       if (account === undefined) {
-        return noStoreJsonResponse({ error: 'not_found' }, { status: 404 })
+        return noStoreJsonResult({ error: 'not_found' }, { status: 404 })
       }
 
-      return noStoreJsonResponse({ account })
+      return noStoreJsonResult({ account })
     } catch (error) {
       logWorkerRouteError('provider_account_health_callback_failed', error, {
         errorName: providerAccountRouteErrorName(error),
         providerAccountRef,
       })
 
-      return noStoreJsonResponse(
+      return noStoreJsonResult(
         {
           error: 'provider_account_health_callback_failed',
           message: providerAccountRouteErrorMessage(error),
@@ -569,15 +574,15 @@ export const makeProviderAccountServiceHandlers = <
   handleProviderAccountGrantResolveApi: async (
     request: Request,
     env: RouteEnv,
-  ): Promise<HttpResponse> => {
+  ): Promise<JsonHttpResult> => {
     if (request.method !== 'POST') {
-      return methodNotAllowed(['POST'])
+      return methodNotAllowedResult(['POST'])
     }
 
     const actor = await dependencies.requireProviderServiceActor(request, env)
 
     if (actor === undefined) {
-      return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
+      return noStoreJsonResult({ error: 'unauthorized' }, { status: 401 })
     }
 
     const body = await readJsonObject(request).catch(
@@ -587,7 +592,7 @@ export const makeProviderAccountServiceHandlers = <
       optionalString(body.authGrantRef) ?? optionalString(body.grantRef)
 
     if (grantRef === undefined) {
-      return noStoreJsonResponse(
+      return noStoreJsonResult(
         { error: 'bad_request', reason: 'grantRef is required' },
         { status: 400 },
       )
@@ -617,7 +622,7 @@ export const makeProviderAccountServiceHandlers = <
       )
 
       if (grant === undefined) {
-        return noStoreJsonResponse({ error: 'not_found' }, { status: 404 })
+        return noStoreJsonResult({ error: 'not_found' }, { status: 404 })
       }
 
       const authMaterial = includeAuthMaterial
@@ -633,7 +638,7 @@ export const makeProviderAccountServiceHandlers = <
         : undefined
 
       if (includeAuthMaterial && authMaterial === undefined) {
-        return noStoreJsonResponse(
+        return noStoreJsonResult(
           {
             error: 'provider_account_auth_material_unavailable',
             message:
@@ -643,7 +648,7 @@ export const makeProviderAccountServiceHandlers = <
         )
       }
 
-      return noStoreJsonResponse({
+      return noStoreJsonResult({
         grant: runnerResolvedGrantJson(grant),
         ...(authMaterial === undefined ? {} : { authMaterial }),
         status: 'resolved',
@@ -656,7 +661,7 @@ export const makeProviderAccountServiceHandlers = <
         runnerSessionId,
       })
 
-      return noStoreJsonResponse(
+      return noStoreJsonResult(
         {
           error: 'provider_account_grant_resolve_failed',
           message: providerAccountRouteErrorMessage(error),
@@ -666,15 +671,18 @@ export const makeProviderAccountServiceHandlers = <
     }
   },
 
-  handleGoogleGeminiGrantResolveApi: async (request: Request, env: RouteEnv) => {
+  handleGoogleGeminiGrantResolveApi: async (
+    request: Request,
+    env: RouteEnv,
+  ): Promise<JsonHttpResult> => {
     if (request.method !== 'POST') {
-      return methodNotAllowed(['POST'])
+      return methodNotAllowedResult(['POST'])
     }
 
     const actor = await dependencies.requireProviderServiceActor(request, env)
 
     if (actor === undefined) {
-      return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
+      return noStoreJsonResult({ error: 'unauthorized' }, { status: 401 })
     }
 
     const body = await readJsonObject(request).catch(
@@ -684,7 +692,7 @@ export const makeProviderAccountServiceHandlers = <
       optionalString(body.authGrantRef) ?? optionalString(body.grantRef)
 
     if (grantRef === undefined) {
-      return noStoreJsonResponse(
+      return noStoreJsonResult(
         { error: 'bad_request', reason: 'grantRef is required' },
         { status: 400 },
       )
@@ -695,7 +703,7 @@ export const makeProviderAccountServiceHandlers = <
       optionalString(body.runnerSessionId) ?? optionalString(body.runId)
 
     if (env.GEMINI_API_KEY === undefined || env.GEMINI_API_KEY.trim() === '') {
-      return noStoreJsonResponse(
+      return noStoreJsonResult(
         {
           error: 'provider_account_auth_material_unavailable',
           message: 'Gemini API key material is unavailable.',
@@ -704,7 +712,7 @@ export const makeProviderAccountServiceHandlers = <
       )
     }
 
-    return noStoreJsonResponse(
+    return noStoreJsonResult(
       googleGeminiGrantJson({
         grantRef,
         now: systemProviderAccountRuntime.now(),
@@ -726,15 +734,18 @@ export const makeProviderAccountServiceHandlers = <
   //   (429) with remaining/reset info; grants nothing.
   // - The response carries only the redacted secret-ref materialization, never
   //   the raw key.
-  handleGoogleGeminiBuiltinGrantApi: async (request: Request, env: RouteEnv) => {
+  handleGoogleGeminiBuiltinGrantApi: async (
+    request: Request,
+    env: RouteEnv,
+  ): Promise<JsonHttpResult> => {
     if (request.method !== 'POST') {
-      return methodNotAllowed(['POST'])
+      return methodNotAllowedResult(['POST'])
     }
 
     const actor = await dependencies.requireProviderServiceActor(request, env)
 
     if (actor === undefined) {
-      return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
+      return noStoreJsonResult({ error: 'unauthorized' }, { status: 401 })
     }
 
     const hostedKeyConfigured =
@@ -760,7 +771,7 @@ export const makeProviderAccountServiceHandlers = <
     })
 
     if (result.kind === 'not_configured') {
-      return noStoreJsonResponse(
+      return noStoreJsonResult(
         {
           error: 'hosted_compute_not_configured',
           message:
@@ -771,7 +782,7 @@ export const makeProviderAccountServiceHandlers = <
     }
 
     if (result.kind === 'quota_exhausted') {
-      return noStoreJsonResponse(
+      return noStoreJsonResult(
         {
           dailyTokenCeiling: result.dailyTokenCeiling,
           error: 'builtin_agent_quota_exhausted',
@@ -784,7 +795,7 @@ export const makeProviderAccountServiceHandlers = <
       )
     }
 
-    return noStoreJsonResponse({ grant: result.grant, status: 'issued' })
+    return noStoreJsonResult({ grant: result.grant, status: 'issued' })
   },
 
   handleGoogleGeminiGenerateContentApi: async (
@@ -792,21 +803,21 @@ export const makeProviderAccountServiceHandlers = <
     env: RouteEnv,
     ctx: ExecutionContext,
     model: string,
-  ) => {
+  ): Promise<HttpResult> => {
     if (request.method !== 'POST') {
-      return methodNotAllowed(['POST'])
+      return methodNotAllowedResult(['POST'])
     }
 
     const actor = await dependencies.requireProviderServiceActor(request, env)
 
     if (actor === undefined) {
-      return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
+      return noStoreJsonResult({ error: 'unauthorized' }, { status: 401 })
     }
 
     const apiKey = env.GEMINI_API_KEY
 
     if (apiKey === undefined || apiKey.trim() === '') {
-      return noStoreJsonResponse(
+      return noStoreJsonResult(
         {
           error: 'provider_account_auth_material_unavailable',
           message: 'Gemini API key material is unavailable.',
@@ -841,15 +852,12 @@ export const makeProviderAccountServiceHandlers = <
         }),
       ),
     )
-    const headers = new Headers()
-    headers.set('cache-control', 'no-store')
-    headers.set(
-      'content-type',
-      response.headers.get('content-type') ?? 'text/event-stream',
-    )
-
-    return new Response(response.body, {
-      headers,
+    return streamHttpResult(response.body, {
+      headers: {
+        'cache-control': 'no-store',
+        'content-type':
+          response.headers.get('content-type') ?? 'text/event-stream',
+      },
       status: response.status,
       statusText: response.statusText,
     })

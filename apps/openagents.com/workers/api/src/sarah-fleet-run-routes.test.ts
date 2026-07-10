@@ -12,6 +12,7 @@ import {
 import { Effect, Schema as S } from 'effect'
 import { describe, expect, test } from 'vitest'
 
+import { materializeHttpResult } from './http/responses'
 import {
   makeSarahFleetRunRoutes,
   SARAH_FLEET_RUN_REQUEST_MAX_BYTES,
@@ -44,7 +45,6 @@ const fleetRequest = (
   targetConcurrency: 2,
   idempotencyKey,
 })
-
 const sha256Hex = async (value: unknown): Promise<string> => {
   const digest = await crypto.subtle.digest(
     'SHA-256',
@@ -195,9 +195,8 @@ const makeHarness = (
           : {
               userId,
               email: `${userId}@example.com`,
-              appendRefreshedSessionCookies: response => {
-                response.headers.set('x-test-session-refreshed', '1')
-                return response
+              decorateResponseHeaders: headers => {
+                headers.set('x-test-session-refreshed', '1')
               },
             },
       )
@@ -226,7 +225,9 @@ const makeHarness = (
       ? input.env ?? {}
       : { KHALA_SYNC_DB: { connectionString: CONNECTION_STRING } }
   const run = (request: Request) =>
-    Effect.runPromise(routes.handle(request, env, {} as ExecutionContext))
+    Effect.runPromise(routes.handle(request, env, {} as ExecutionContext)).then(
+      materializeHttpResult,
+    )
   return { calls, run }
 }
 
@@ -338,6 +339,8 @@ describe('Sarah FleetRun authenticated route', () => {
       post(fleetRequest('operator-create-1'), 'user-operator'),
     )
     expect(created.status).toBe(200)
+    expect(created.headers.get('cache-control')).toBe('no-store')
+    expect(created.headers.get('content-type')).toBe('application/json')
     expect(created.headers.get('x-test-session-refreshed')).toBe('1')
     const createdBody = (await created.json()) as {
       duplicate: boolean

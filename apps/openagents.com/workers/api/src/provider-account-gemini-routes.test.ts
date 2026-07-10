@@ -1,5 +1,6 @@
 import { describe, expect, test, vi } from 'vitest'
 
+import { materializeHttpResult } from './http/responses'
 import { makeProviderAccountServiceHandlers } from './provider-account-service-routes'
 
 type TokenUsageRow = Record<string, string | number | null>
@@ -39,7 +40,6 @@ const d1Meta = (): D1Meta & Record<string, unknown> => ({
   size_after: 0,
   timings: { sql_duration_ms: 0 },
 })
-
 const makeResult = <T>(results: Array<T> = []): D1Result<T> => ({
   meta: d1Meta(),
   results,
@@ -151,13 +151,30 @@ const makeTokenUsageDb = (): Readonly<{
   return { db, rows }
 }
 
-const handlers = makeProviderAccountServiceHandlers({
+const typedHandlers = makeProviderAccountServiceHandlers({
   readConnectedCodexAuthMaterial: () => Promise.resolve(undefined),
   requireProviderServiceActor: request =>
     request.headers.get('authorization') === 'Bearer oa_agent_test'
       ? Promise.resolve({ user: { id: 'agent:test' } })
       : Promise.resolve(undefined),
 })
+
+const handlers = {
+  handleGoogleGeminiGrantResolveApi: async (
+    ...args: Parameters<typeof typedHandlers.handleGoogleGeminiGrantResolveApi>
+  ): Promise<Response> =>
+    materializeHttpResult(
+      await typedHandlers.handleGoogleGeminiGrantResolveApi(...args),
+    ),
+  handleGoogleGeminiGenerateContentApi: async (
+    ...args: Parameters<
+      typeof typedHandlers.handleGoogleGeminiGenerateContentApi
+    >
+  ): Promise<Response> =>
+    materializeHttpResult(
+      await typedHandlers.handleGoogleGeminiGenerateContentApi(...args),
+    ),
+}
 
 describe('google gemini provider account routes', () => {
   test('rejects Gemini grant resolution without service bearer auth', async () => {

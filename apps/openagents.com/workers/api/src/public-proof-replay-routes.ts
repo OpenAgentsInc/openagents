@@ -1,9 +1,9 @@
-type HttpResponse = globalThis.Response
+import { type JsonHttpResult, jsonHttpResult } from './http/responses'
 
 export const handlePublicProofReplayBundleRequest = async (
   ..._args: unknown[]
-): Promise<HttpResponse> =>
-  Response.json(
+): Promise<JsonHttpResult> =>
+  jsonHttpResult(
     {
       archived: true,
       backroomPath: 'openagents-prune-20260708-tassadar-psionic',

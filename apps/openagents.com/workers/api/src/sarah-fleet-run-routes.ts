@@ -1,14 +1,19 @@
+import {
+  FleetRunAuthorityError,
+  type FleetRunAuthorityRepositoryShape,
+  type SyncSql,
+  makeFleetRunAuthorityRepository,
+  publicFleetRunAuthorityRecord,
+} from '@openagentsinc/khala-sync-server'
 import { Effect, Schema as S } from 'effect'
 
 import {
-  FleetRunAuthorityError,
-  makeFleetRunAuthorityRepository,
-  publicFleetRunAuthorityRecord,
-  type FleetRunAuthorityRepositoryShape,
-  type SyncSql,
-} from '@openagentsinc/khala-sync-server'
-
-import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
+  type HttpHeadersDecorator,
+  type JsonHttpResult,
+  decorateJsonHttpResultHeaders,
+  methodNotAllowedResult,
+  noStoreJsonResult,
+} from './http/responses'
 import { parseJsonUnknown } from './json-boundary'
 import type {
   KhalaSyncHyperdriveBinding,
@@ -17,11 +22,8 @@ import type {
 } from './khala-sync-push-routes'
 import { defaultMakeKhalaSyncSqlClient } from './khala-sync-push-routes'
 
-type HttpResponse = globalThis.Response
-
 export const SARAH_FLEET_RUNS_PATH = '/api/sarah/fleet-runs'
-export const SARAH_FLEET_RUNS_ROUTE_REF =
-  'route.sarah.fleet_runs.authority.v1'
+export const SARAH_FLEET_RUNS_ROUTE_REF = 'route.sarah.fleet_runs.authority.v1'
 export const SARAH_FLEET_RUN_REQUEST_MAX_BYTES = 32 * 1024
 
 export const SarahRelationshipMode = S.Literals([
@@ -47,9 +49,7 @@ export type SarahFleetRunPolicy = typeof SarahFleetRunPolicy.Type
 export type SarahFleetRunAuthenticatedOwner = Readonly<{
   userId: string
   email: string
-  appendRefreshedSessionCookies?:
-    | ((response: HttpResponse) => HttpResponse)
-    | undefined
+  decorateResponseHeaders?: HttpHeadersDecorator | undefined
 }>
 
 export const sarahFleetRunPolicyForMode = (
@@ -106,7 +106,9 @@ const collectBoundedRequestChunks = async (
   reader: ReadableStreamDefaultReader<Uint8Array>,
   chunks: ReadonlyArray<Uint8Array> = [],
   byteLength = 0,
-): Promise<Readonly<{ chunks: ReadonlyArray<Uint8Array>; byteLength: number }>> => {
+): Promise<
+  Readonly<{ chunks: ReadonlyArray<Uint8Array>; byteLength: number }>
+> => {
   const next = await reader.read()
   if (next.done) {
     return { chunks, byteLength }
@@ -179,9 +181,9 @@ const authorityErrorStatus = (
 
 const authorityErrorResponse = (
   error: FleetRunAuthorityError,
-): HttpResponse => {
+): JsonHttpResult => {
   const mapped = authorityErrorStatus(error)
-  return noStoreJsonResponse(
+  return noStoreJsonResult(
     {
       ok: false,
       error: {
@@ -194,8 +196,8 @@ const authorityErrorResponse = (
   )
 }
 
-const serviceUnavailable = (code: string): HttpResponse =>
-  noStoreJsonResponse(
+const serviceUnavailable = (code: string): JsonHttpResult =>
+  noStoreJsonResult(
     {
       ok: false,
       error: { code, retryable: true },
@@ -204,8 +206,8 @@ const serviceUnavailable = (code: string): HttpResponse =>
     { status: 503 },
   )
 
-const invalidRequest = (): HttpResponse =>
-  noStoreJsonResponse(
+const invalidRequest = (): JsonHttpResult =>
+  noStoreJsonResult(
     {
       ok: false,
       error: { code: 'invalid_request', retryable: false },
@@ -252,19 +254,17 @@ const bindingConnectionString = (
     : undefined
 }
 
-export const makeSarahFleetRunRoutes = <
-  Bindings extends SarahFleetRunRouteEnv,
->(
+export const makeSarahFleetRunRoutes = <Bindings extends SarahFleetRunRouteEnv>(
   dependencies: SarahFleetRunRouteDependencies<Bindings>,
 ) => {
   const handle = (
     request: Request,
     env: Bindings,
     ctx: ExecutionContext,
-  ): Effect.Effect<HttpResponse> =>
+  ): Effect.Effect<JsonHttpResult> =>
     Effect.gen(function* () {
       if (request.method !== 'POST' && request.method !== 'GET') {
-        return methodNotAllowed(['GET', 'POST'])
+        return methodNotAllowedResult(['GET', 'POST'])
       }
 
       const authentication = yield* promiseOutcome(() =>
@@ -274,7 +274,7 @@ export const makeSarahFleetRunRoutes = <
         return serviceUnavailable('authentication_unavailable')
       }
       if (authentication.value === undefined) {
-        return noStoreJsonResponse(
+        return noStoreJsonResult(
           {
             ok: false,
             error: { code: 'unauthenticated', retryable: false },
@@ -284,8 +284,12 @@ export const makeSarahFleetRunRoutes = <
         )
       }
       const owner = authentication.value
-      const respond = (response: HttpResponse): HttpResponse =>
-        owner.appendRefreshedSessionCookies?.(response) ?? response
+      const respond = <Body>(
+        result: JsonHttpResult<Body>,
+      ): JsonHttpResult<Body> =>
+        owner.decorateResponseHeaders === undefined
+          ? result
+          : decorateJsonHttpResultHeaders(result, owner.decorateResponseHeaders)
 
       const policyResult = yield* promiseOutcome(async () =>
         sarahFleetRunPolicyForMode(
@@ -298,12 +302,9 @@ export const makeSarahFleetRunRoutes = <
         return respond(serviceUnavailable('relationship_policy_unavailable'))
       }
       const policy = policyResult.value
-      if (
-        !policy.codingFleetStartAllowed ||
-        !policy.fleetObservationAllowed
-      ) {
+      if (!policy.codingFleetStartAllowed || !policy.fleetObservationAllowed) {
         return respond(
-          noStoreJsonResponse(
+          noStoreJsonResult(
             {
               ok: false,
               error: {
@@ -369,7 +370,7 @@ export const makeSarahFleetRunRoutes = <
           return respond(
             outcome.kind === 'failure'
               ? authorityErrorResponse(outcome.error)
-              : noStoreJsonResponse({
+              : noStoreJsonResult({
                   ok: true,
                   duplicate: outcome.value.duplicate,
                   policy,
@@ -389,7 +390,7 @@ export const makeSarahFleetRunRoutes = <
         return respond(
           outcome.kind === 'failure'
             ? authorityErrorResponse(outcome.error)
-            : noStoreJsonResponse({
+            : noStoreJsonResult({
                 ok: true,
                 policy,
                 routeRef: SARAH_FLEET_RUNS_ROUTE_REF,
