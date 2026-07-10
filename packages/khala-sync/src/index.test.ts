@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test"
 import { Schema as S } from "effect"
 import {
   ChangelogEntry,
+  decodeBootstrapRequest,
+  decodePushRequest,
   ClientGroupId,
   ClientId,
   decodeChangelogEntry,
@@ -131,12 +133,41 @@ describe("khala-sync wire round-trips", () => {
 
   test("PushRequest requires protocol version match", () => {
     expect(() =>
-      decodePush({
+      decodePushRequest({
         protocolVersion: 999,
         schemaVersion: 1,
         clientGroupId: "cg1",
         clientId: "c1",
         mutations: [],
+      }),
+    ).toThrow()
+  })
+
+  test("request codecs refuse excess private fields and invalid scope/version inputs", () => {
+    expect(() =>
+      decodePushRequest({
+        protocolVersion: KHALA_SYNC_PROTOCOL_VERSION,
+        schemaVersion: 1,
+        clientGroupId: "cg1",
+        clientId: "c1",
+        mutations: [],
+        bearerToken: "must-not-cross-the-wire",
+      }),
+    ).toThrow()
+    expect(() =>
+      decodeBootstrapRequest({
+        protocolVersion: KHALA_SYNC_PROTOCOL_VERSION,
+        schemaVersion: 1,
+        clientGroupId: "cg1",
+        scope: "scope.user.user@example.com",
+      }),
+    ).toThrow()
+    expect(() =>
+      decodeBootstrapRequest({
+        protocolVersion: KHALA_SYNC_PROTOCOL_VERSION,
+        schemaVersion: 0,
+        clientGroupId: "cg1",
+        scope: "scope.user.user_123",
       }),
     ).toThrow()
   })

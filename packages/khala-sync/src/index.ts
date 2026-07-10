@@ -584,17 +584,50 @@ export const canonicalJson = (value: unknown): string => {
 // Boundary codecs (throwing; pair with decodeUnknownExit at fallible edges)
 // ---------------------------------------------------------------------------
 
-export const decodePushRequest = S.decodeUnknownSync(PushRequest)
+const rejectExcessProperties = (
+  input: unknown,
+  allowedProperties: ReadonlySet<string>,
+): void => {
+  if (typeof input !== "object" || input === null || Array.isArray(input)) {
+    return
+  }
+  const excessProperty = Object.keys(input).find(
+    (property) => !allowedProperties.has(property),
+  )
+  if (excessProperty !== undefined) {
+    throw new TypeError(`unexpected sync request property: ${excessProperty}`)
+  }
+}
+
+export const decodePushRequest = (input: unknown) => {
+  rejectExcessProperties(
+    input,
+    new Set(["protocolVersion", "schemaVersion", "clientGroupId", "clientId", "mutations"]),
+  )
+  return S.decodeUnknownSync(PushRequest)(input)
+}
 export const encodePushRequest = S.encodeSync(PushRequest)
 export const decodePushResponse = S.decodeUnknownSync(PushResponse)
 export const encodePushResponse = S.encodeSync(PushResponse)
 export const encodeMutationResult = S.encodeSync(MutationResult)
 export const decodeSyncError = S.decodeUnknownSync(SyncError)
 export const encodeSyncError = S.encodeSync(SyncError)
-export const decodeBootstrapRequest = S.decodeUnknownSync(BootstrapRequest)
+export const decodeBootstrapRequest = (input: unknown) => {
+  rejectExcessProperties(
+    input,
+    new Set(["protocolVersion", "schemaVersion", "scope", "clientGroupId", "pageSize", "pageToken"]),
+  )
+  return S.decodeUnknownSync(BootstrapRequest)(input)
+}
 export const encodeBootstrapRequest = S.encodeSync(BootstrapRequest)
 export const decodeBootstrapResponse = S.decodeUnknownSync(BootstrapResponse)
-export const decodeCvrPullRequest = S.decodeUnknownSync(CvrPullRequest)
+export const decodeCvrPullRequest = (input: unknown) => {
+  rejectExcessProperties(
+    input,
+    new Set(["protocolVersion", "schemaVersion", "scope", "clientGroupId", "cvrVersion", "drift"]),
+  )
+  return S.decodeUnknownSync(CvrPullRequest)(input)
+}
 export const encodeCvrPullRequest = S.encodeSync(CvrPullRequest)
 export const decodeCvrPullResponse = S.decodeUnknownSync(CvrPullResponse)
 export const encodeCvrPullResponse = S.encodeSync(CvrPullResponse)

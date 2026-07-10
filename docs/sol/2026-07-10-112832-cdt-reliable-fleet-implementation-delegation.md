@@ -63,6 +63,13 @@
   processing, or physical-device acceptance. A real current Desktop reconnect
   reached the OpenAI device-auth consent screen after honestly displaying five
   `credentials_revoked` accounts; it remains pending owner consent.
+- 2026-07-10 11:55 CDT — The published senior R1–R2 contract enabled SYNC-1.
+  A focused regression found that Effect Schema class decoders silently stripped
+  an excess private request field. `decodePushRequest`,
+  `decodeBootstrapRequest`, and `decodeCvrPullRequest` now reject excess
+  top-level fields; the negative matrix covers excess private input, wrong
+  scope, and invalid schema version. Khala Sync typecheck plus 175 tests and
+  Fleet Intents typecheck plus 27 tests pass.
 
 ## Mission
 
