@@ -108,7 +108,7 @@ describe("contract openagents_mobile.home_shell.view_program.v1", () => {
       expect(serialized).toContain(recent.title)
     }
     expect(serialized).toContain('"label":"Settings"')
-    expect(serialized).toContain("Bundle 2026-07-09.embedded-111")
+    expect(serialized).toContain("Bundle 2026-07-09.embedded-112")
     // The active recent renders as the highlighted (secondary) row; the
     // others are ghost rows.
     expect(serialized).toContain('"backgroundColor":"surfaceRaised"')
@@ -237,7 +237,8 @@ describe("contract openagents_mobile.home_shell.view_program.v1", () => {
 
           // Minerals fly-up (owner direction): shell opens it midway through
           // the video; selecting a pack (or Not now) closes it; ending the
-          // video closes BOTH so the original surface resumes.
+          // video ends ONLY the takeover — the sheet stays open until the
+          // user dismisses it (owner P0, build 111 feedback 2026-07-09).
           program.chrome.openMineralsSheet()
           yield* settle
           expect((yield* lastState(program)).mineralsSheetOpen).toBe(true)
@@ -252,12 +253,73 @@ describe("contract openagents_mobile.home_shell.view_program.v1", () => {
           yield* settle
           const afterEnd = yield* lastState(program)
           expect(afterEnd.askVideoPlaying).toBe(false)
-          expect(afterEnd.mineralsSheetOpen).toBe(false)
+          expect(afterEnd.mineralsSheetOpen).toBe(true)
+          program.chrome.dismissMineralsSheet()
+          yield* settle
+          expect((yield* lastState(program)).mineralsSheetOpen).toBe(false)
 
           yield* content.unmount
           yield* drawer.unmount
         }),
       ),
+    )
+  })
+
+  // Behavior contract openagents_mobile.minerals_sheet_user_dismiss_only.v1
+  // (owner P0, build 111 feedback 2026-07-09): the Buy Minerals sheet's
+  // lifecycle is decoupled from playback state ENTIRELY. A video ended/looped
+  // playback event must never close the sheet; only the USER closes it —
+  // selecting a price pack or "Not now".
+  test("minerals sheet survives video end/dismiss; ONLY user intents close it", async () => {
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const program = buildHomeProgram()
+
+        // Takeover starts (composer tap) and the shell opens the sheet
+        // midway through the video.
+        program.chrome.pressComposer()
+        yield* settle
+        program.chrome.openMineralsSheet()
+        yield* settle
+        expect((yield* lastState(program)).mineralsSheetOpen).toBe(true)
+
+        // (1) PLAYBACK event — playToEnd/loop boundary: the takeover ends,
+        // the sheet STAYS OPEN over the resumed surface.
+        program.chrome.askVideoEnded()
+        yield* settle
+        const afterEnded = yield* lastState(program)
+        expect(afterEnded.askVideoPlaying).toBe(false)
+        expect(afterEnded.mineralsSheetOpen).toBe(true)
+
+        // Ending the video again (spurious repeat playback events) still
+        // never touches the sheet.
+        program.chrome.askVideoEnded()
+        yield* settle
+        expect((yield* lastState(program)).mineralsSheetOpen).toBe(true)
+
+        // (2) USER tap-dismisses a replaying video: sheet still stays open.
+        program.chrome.pressComposer()
+        yield* settle
+        program.chrome.dismissAskVideo()
+        yield* settle
+        const afterTapDismiss = yield* lastState(program)
+        expect(afterTapDismiss.askVideoPlaying).toBe(false)
+        expect(afterTapDismiss.mineralsSheetOpen).toBe(true)
+
+        // (3) USER intent "Not now" closes it.
+        program.chrome.dismissMineralsSheet()
+        yield* settle
+        expect((yield* lastState(program)).mineralsSheetOpen).toBe(false)
+
+        // (4) USER intent pack selection closes it too.
+        program.chrome.openMineralsSheet()
+        yield* settle
+        program.chrome.selectMineralPack("pack-1200")
+        yield* settle
+        const afterPack = yield* lastState(program)
+        expect(afterPack.mineralsSheetOpen).toBe(false)
+        expect(afterPack.lastMineralPackId).toBe("pack-1200")
+      }),
     )
   })
 })

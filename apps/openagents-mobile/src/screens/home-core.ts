@@ -80,10 +80,14 @@ export interface HomeState {
   readonly drawerOpen: boolean
   readonly surfaceMode: SurfaceMode
   /** Composer-tap takeover: fullscreen Sarah reply video WITH audio (owner
-   * direction 2026-07-09); dismissed on play-to-end or tap. */
+   * direction 2026-07-09); ends on play-to-end (AskVideoEnded) or user tap
+   * (AskVideoDismissed). Ending the video NEVER touches the minerals sheet. */
   readonly askVideoPlaying: boolean
   /** Liquid Glass fly-up sheet (bottom third) offering example mineral
-   * packs; opened by the shell midway through the ask video. */
+   * packs; opened by the shell midway through the ask video. USER-owned
+   * lifecycle (owner P0, build 111 feedback 2026-07-09): only
+   * MineralPackSelected or MineralsSheetDismissed closes it — a video
+   * ended/looped playback event must never close the sheet. */
   readonly mineralsSheetOpen: boolean
   readonly lastMineralPackId: string | undefined
   /** The active conversation; undefined = fresh "new chat" surface. */
@@ -124,7 +128,7 @@ export const initialHomeState: HomeState = {
  * the owner can SEE the over-the-air bundle swap land (embedded build 107
  * ships the tag below; a published OTA with a bumped tag should appear within
  * ~3s via the temporary poll loop and reload). Rendered in the drawer footer. */
-export const BUNDLE_TAG = "2026-07-09.embedded-111"
+export const BUNDLE_TAG = "2026-07-09.embedded-112"
 
 // ---------------------------------------------------------------------------
 // Typed intents — the ONLY way anything (EN tree, SwiftUI chrome, scrim)
@@ -145,6 +149,9 @@ export const ChatPillPressed = defineIntent("ChatPillPressed", EmptyPayload)
 export const ComposerPressed = defineIntent("ComposerPressed", EmptyPayload)
 export const MicPressed = defineIntent("MicPressed", EmptyPayload)
 export const AskVideoDismissed = defineIntent("AskVideoDismissed", EmptyPayload)
+/** Playback-lifecycle event (playToEnd/loop boundary) — distinct from the
+ * USER dismissal above so the sheet lifecycle can never couple to playback. */
+export const AskVideoEnded = defineIntent("AskVideoEnded", EmptyPayload)
 export const MineralsSheetOpened = defineIntent("MineralsSheetOpened", EmptyPayload)
 export const MineralsSheetDismissed = defineIntent("MineralsSheetDismissed", EmptyPayload)
 export const MineralPackSelected = defineIntent(
@@ -167,6 +174,7 @@ export const homeIntentDefinitions = [
   MicPressed,
   SurfaceModeSelected,
   AskVideoDismissed,
+  AskVideoEnded,
   MineralsSheetOpened,
   MineralsSheetDismissed,
   MineralPackSelected,
@@ -356,13 +364,20 @@ export const makeHomeHandlers = (
       ...current,
       surfaceMode: payload.mode,
     })),
+  // Ending the takeover (user tap OR playback end) NEVER touches the
+  // minerals sheet (owner P0, build 111 feedback 2026-07-09): the sheet
+  // stays open until the USER dismisses it via MineralPackSelected or
+  // MineralsSheetDismissed. The original surface (Sarah loop / black)
+  // resumes untouched underneath the still-open sheet.
   AskVideoDismissed: () =>
     SubscriptionRef.update(state, (current) => ({
       ...current,
       askVideoPlaying: false,
-      // Ending the takeover also retires its sheet; the original surface
-      // (Sarah loop / black) resumes untouched underneath.
-      mineralsSheetOpen: false,
+    })),
+  AskVideoEnded: () =>
+    SubscriptionRef.update(state, (current) => ({
+      ...current,
+      askVideoPlaying: false,
     })),
   MineralsSheetOpened: () =>
     SubscriptionRef.update(state, (current) => ({
@@ -394,6 +409,9 @@ export interface ChromeDispatchers {
   readonly pressMic: () => void
   readonly selectSurfaceMode: (mode: SurfaceMode) => void
   readonly dismissAskVideo: () => void
+  /** Playback event (playToEnd/loop) — never a user intent, never closes
+   * the minerals sheet. */
+  readonly askVideoEnded: () => void
   readonly openMineralsSheet: () => void
   readonly dismissMineralsSheet: () => void
   readonly selectMineralPack: (id: string) => void
@@ -441,6 +459,7 @@ export const buildHomeProgram = (): HomeProgramHandle =>
             fireRef(IntentRef("SurfaceModeSelected", StaticPayload({ mode })))
           },
           dismissAskVideo: fire("AskVideoDismissed"),
+          askVideoEnded: fire("AskVideoEnded"),
           openMineralsSheet: fire("MineralsSheetOpened"),
           dismissMineralsSheet: fire("MineralsSheetDismissed"),
           selectMineralPack: (id) => {

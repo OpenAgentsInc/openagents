@@ -92,8 +92,10 @@ export const HomeScreen = () => {
   const videoScale = useRef(new Animated.Value(1.03)).current
 
   // "Ask anything" takeover video — AUDIO ON (muted=false), no loop,
-  // preloaded at mount; plays from the start on each composer tap and
-  // dismisses on play-to-end or tap (typed AskVideoDismissed intent).
+  // preloaded at mount; plays from the start on each composer tap. Ends on
+  // play-to-end (typed AskVideoEnded playback event) or user tap (typed
+  // AskVideoDismissed intent). Neither touches the minerals sheet — its
+  // lifecycle is user-owned (owner P0, build 111 feedback).
   const askPlaying = homeState.askVideoPlaying
   const askPlayer = useVideoPlayer(askAnythingVideo, (p) => {
     p.loop = false
@@ -110,8 +112,12 @@ export const HomeScreen = () => {
   useEffect(() => {
     const subscription = askPlayer.addListener("playToEnd", () => {
       // Video over -> takeover ends; the ORIGINAL surface (Sarah loop /
-      // black) resumes underneath (owner direction).
-      program.chrome.dismissAskVideo()
+      // black) resumes underneath (owner direction). This is a PLAYBACK
+      // event, not a user intent: it must NEVER close the minerals sheet
+      // (owner P0, build 111 feedback 2026-07-09) — if the sheet is open it
+      // stays open over the resumed surface until the user picks a pack or
+      // taps "Not now".
+      program.chrome.askVideoEnded()
     })
     return () => {
       subscription.remove()
@@ -226,8 +232,8 @@ export const HomeScreen = () => {
       ) : null}
       {/* 0b. "Ask anything" reply video — WITH audio, UNDER the chrome
           (same layering as the Sarah loop, owner direction); tap outside the
-          chrome dismisses; auto-dismiss on play-to-end resumes the original
-          surface underneath. */}
+          chrome dismisses; play-to-end resumes the original surface
+          underneath. Neither ever closes the minerals sheet (layer 4). */}
       {askPlaying ? (
         <Pressable
           accessibilityRole="button"
@@ -434,7 +440,9 @@ export const HomeScreen = () => {
       </SafeAreaView>
       {/* 4. Minerals fly-up sheet — Liquid Glass panel over the bottom
           third; opened midway through the ask video; options dispatch typed
-          MineralPackSelected / MineralsSheetDismissed intents. */}
+          MineralPackSelected / MineralsSheetDismissed intents. Those USER
+          intents are the ONLY way it closes — it survives the video's
+          play-to-end/loop boundary and stays over the resumed surface. */}
       {sheetOpen ? (
         <Animated.View
           style={{

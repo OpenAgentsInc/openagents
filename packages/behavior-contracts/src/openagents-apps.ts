@@ -149,7 +149,40 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
       verification:
         "Pending #8566/#8574/#8597: every Khala Code idea has an explicit fold-into-Sarah, retain-as-OpenAgents-capability, or extract-as-shared-engine disposition; only its superseded legacy implementation may retire, and one Sarah/FleetRun continues across all retained apps without a Khala Code product shell.",
     },
+    {
+      authorityBoundary:
+        "This binds sheet-dismissal authority to user intents only; it does not authorize StoreKit purchase flows or change how/when the shell opens the sheet.",
+      blockerRefs: [],
+      contractId: "openagents_mobile.minerals_sheet_user_dismiss_only.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "apps/openagents-mobile/src/screens/home-core.ts",
+        "github:OpenAgentsInc/openagents#8648",
+      ],
+      oracles: [
+        {
+          description:
+            "Drives the real Home view program: with the Buy Minerals sheet open, the AskVideoEnded playback event (playToEnd/loop boundary) and the AskVideoDismissed user video-tap both end the takeover while the sheet stays open; only MineralsSheetDismissed (Not now) or MineralPackSelected closes it.",
+          id: "openagents_mobile.minerals_sheet.user_dismiss_only",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/openagents-mobile/tests/home-shell-core.test.ts",
+        },
+      ],
+      productArea: "mobile minerals purchase sheet",
+      source: {
+        channel: "owner-testflight-feedback",
+        statedBy: "owner",
+        statedOn: "2026-07-09",
+      },
+      state: "enforced",
+      statement:
+        "The Buy Minerals Liquid Glass sheet auto-dismisses when the background reply video ends/loops. Wrong. The sheet must stay open until the USER dismisses it (selecting a price pack or Not now).",
+      surface: "openagents-mobile",
+      verification:
+        "bun test apps/openagents-mobile/tests/home-shell-core.test.ts proves the sheet survives video-ended and video-tap-dismiss events and closes only on the user's pack-selection or Not-now intents; the simulator pixel proof on #8648 shows the sheet still open past the video loop boundary.",
+    },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-09.2",
+  version: "2026-07-09.3",
 }

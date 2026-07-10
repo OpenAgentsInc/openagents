@@ -139,14 +139,27 @@ describe("behavior contract registry", () => {
     const validation = validateBehaviorContractRegistry(decoded)
 
     expect(validation).toEqual({ issues: [], ok: true })
-    expect(decoded.contracts).toHaveLength(4)
-    expect(decoded.contracts.every(contract => contract.state === "pending")).toBe(true)
+    expect(decoded.contracts).toHaveLength(5)
+    const pending = decoded.contracts.filter(contract => contract.state === "pending")
+    expect(pending).toHaveLength(4)
     expect(
       decoded.contracts.find(
         contract =>
           contract.contractId === "openagents_apps.greenfield_mobile_identity.v1",
       )?.statement,
     ).toContain('existing app identifier "com.openagents.app"')
+    // Owner P0 (build 111 TestFlight feedback, 2026-07-09): the minerals
+    // sheet closes only on USER intents, enforced in the mobile test sweep.
+    const mineralsSheet = decoded.contracts.find(
+      contract =>
+        contract.contractId === "openagents_mobile.minerals_sheet_user_dismiss_only.v1",
+    )
+    expect(mineralsSheet?.state).toBe("enforced")
+    expect(mineralsSheet?.enforcementTier).toBe("test-sweep")
+    expect(mineralsSheet?.statement).toContain("stay open until the USER dismisses it")
+    expect(mineralsSheet?.oracles[0]?.ref).toBe(
+      "apps/openagents-mobile/tests/home-shell-core.test.ts",
+    )
   })
 
   test("decodes a well-formed registry document", () => {
