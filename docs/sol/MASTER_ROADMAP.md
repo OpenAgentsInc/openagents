@@ -235,7 +235,7 @@ P0 fixes those seams. It does not build another fleet system.
 | --- | --- | --- |
 | #8637 FC-1 | **closed** at `0892d57b3b`: integrated operator conversation -> durable authority -> registered standing Pylon -> bounded closeout is fixture-proven; timing is 1.8s acknowledgment / 6.1s first claim / 8.6s first capacity; staging `00046-jpn` and production `00068-5t8` are deployed and smoke-proven | none in FC-1; real mixed-account execution is #8640 and owner-cookie reconnect/steer is #8639 |
 | #8633 FC-2 | **closed** on the stack ending `d779c360c3`: production standing adapters, shared typed auto policy, restart-safe mixed claims, health rotation, durable execution outbox/server projection, and one integrated three-harness restart/usage fixture are proven; migration 0053 is applied in staging/production, while the application stack is not deployed | the pinned integrated deployment is a #8639/#8640 gate, not reopened FC-2 residue; useful live Codex+Claude+Grok work is #8640 |
-| #8639 FC-3 | through `6cd9d09205`: exact start-to-scope projection, controls/approval writes, reconnect runtime, closeout shell, and fail-closed media/text/Fleet continuity are code-landed and fixture-proven | deliver new steering rows to standing Pylon; canonical attempt identity/authority; per-unit evidence and full canvas chain; integrated reconnect/control receipt |
+| #8639 FC-3 | controls/reconnect through `6cd9d09205` and fail-closed media/text/Fleet continuity through `3d87cb609b` are code-landed and fixture-proven | deliver new steering rows to standing Pylon; canonical attempt identity/authority; per-unit evidence and full canvas chain; integrated reconnect/control receipt |
 | #8640 FC-5 | acceptance contract only | C1 integrated fixture, then Phase A on one pinned deployment |
 
 These rows are implementation receipts, not issue closure. The commit named in
@@ -355,6 +355,11 @@ Pylon watermark/outcome, and exact-target enforcement before UI controls count
 as working. Then it must populate the currently empty closeout-evidence input
 and extend the canvas from run/work/worker to the backed
 plan→claim→assignment→verification→closeout chain.
+
+An active Sol claim covers this exact steering exchange on #8639, including the
+shared `@openagentsinc/khala-fleet-intents` transport contract. Candidate
+server/Pylon branches do not advance the proof rung until they are reconciled,
+reviewed, verified together, and landed on current `main`.
 
 Exit:
 
@@ -561,6 +566,13 @@ They do not become extra product destinations.
   rewrite copy for Sarah + three apps, complete owner review, promote the
   existing EN catalog surface to `/`, and delete previews.
 
+Status: #8634's retained-route oracle and live `/`, `/sarah`, `/forum`,
+`/promises`, promise-registry, and proof-replay smokes passed against production
+revision `00068-5t8`; the exhaustive retirement inventory and cutover remain
+open. #8595's `/landing-en` surface is code/fixture-proven at `0625e8b291`;
+root promotion, owner copy/assets, rollback proof, and preview deletion remain
+open.
+
 Do not continue generic EN-4 route conversion. A page scheduled for retirement
 is deleted, not lovingly ported.
 
@@ -580,6 +592,11 @@ recorded scope. Treat it as owned until the actor posts an explicit re-scope or
 release—do not infer a stale claim without the protocol's evidence and process/
 worktree audit. Sarah/Sync cross-device continuation, Android proof, vendor
 reconciliation, and the full issue exit remain open.
+
+The current SwiftUI Liquid Glass island is intentionally app-local/interim,
+not catalog-native. D-MB-02/effect-native#70 host-driver conversion and vendor
+reconciliation are GL-1/#8647 work, not evidence that the final shared lowering
+already exists.
 
 - Sarah is home.
 - Fleet runs, approvals, receipts, and Blueprint continue over Khala Sync.
@@ -612,6 +629,12 @@ audit before another session mutates the lane. Owner identity acceptance,
 Sarah/Fleet and Pylon composition, specialist hosts, packaging/fuses, signing/
 notarization, updates, cross-device continuation, and legacy-client retirement
 remain open.
+
+The scaffold already removed the template updater/publisher wiring, disabled
+`nodeIntegration`, enabled sandboxing/context isolation, and installed
+deny-by-default permission/navigation/window-open handling. Packaged Electron
+fuse verification, signing/notarization, and the real release/update path are
+still unstarted; the click receipt is a local smoke, not the whole issue exit.
 
 - Sarah is the relationship surface.
 - Fleet is the specialist cockpit over the same run state.
@@ -675,8 +698,8 @@ apps. It does not begin as a fourth product surface.
 ## Canonical open issue set
 
 The issue reset plus this reconciliation leaves **19 open roadmap issues**: 17
-active P0/P1 lanes and two explicitly dependency-held P2 lanes (GL lanes
-added 2026-07-09 at owner direction).
+P0/P1 program issues, including dependency-following GL-4, and two explicitly
+dependency-held P2 lanes.
 
 | Priority | Issue | Purpose |
 | --- | --- | --- |
@@ -686,12 +709,12 @@ added 2026-07-09 at owner direction).
 | P0 | #8547 | Codex inside real Agent Computer |
 | P0 | #8636 | Hybrid local/cloud routing |
 | P1 parallel | #8610 | Sarah presentation quality |
-| P1 | #8566 | Three-app Effect Native epic; greenfield mobile/desktop |
-| P1 | #8634 | Web host consolidation + public-page retirement |
-| P1 | #8635 | Retained Forum on Effect Native |
-| P1 | #8595 | Retained landing/root cutover |
-| P1 | #8597 | Greenfield OpenAgents mobile (`com.openagents.app`) |
-| P1 | #8574 | Greenfield Electron OpenAgents Desktop |
+| P1 parallel | #8566 | Three-app Effect Native epic; greenfield mobile/desktop |
+| P1 parallel | #8634 | Web host consolidation + public-page retirement |
+| P1 parallel | #8635 | Retained Forum on Effect Native |
+| P1 parallel | #8595 | Retained landing/root cutover |
+| P1 parallel | #8597 | Greenfield OpenAgents mobile (`com.openagents.app`) |
+| P1 parallel | #8574 | Greenfield Electron OpenAgents Desktop |
 | P1 parallel | #8646 | GL epic: glass UI stdlib + Sarah in-app |
 | P1 parallel | #8647 | GL-1 render-rn @expo/ui lowering seam |
 | P1 parallel | #8648 | GL-2 mobile Home glass shell conversion |
