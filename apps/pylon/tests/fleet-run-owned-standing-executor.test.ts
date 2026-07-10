@@ -81,7 +81,7 @@ const exactCloseoutReceipt = async (assignmentRef: string): Promise<PylonKhalaCl
     reasoningTokens: 1,
     refs: [`token_usage_event.public.${assignmentRef}`],
     rowCount: 1,
-    totalTokens: 9,
+    totalTokens: 8,
     usageTruth: "exact" as const,
   }
   const policy = {
@@ -95,6 +95,21 @@ const exactCloseoutReceipt = async (assignmentRef: string): Promise<PylonKhalaCl
     blockerRefs: [],
     items: [{ ok: true, ref: "check.public.fixture" }],
     ok: true,
+  }
+  const workerCloseout = {
+    artifactRefs: [`artifact.public.${assignmentRef}`],
+    authorityReceiptRefs: [`receipt.public.${assignmentRef}`],
+    closeoutRefs: [`closeout.public.${assignmentRef}`],
+    eventRef: `event.public.worker_closeout.${assignmentRef}`,
+    observedAt: fixedNow.toISOString(),
+    projectionBlockerRefs: [],
+    proofRefs: [`proof.public.${assignmentRef}`],
+    resultRefs: [`result.public.${assignmentRef}`],
+    source: "worker_closeout_event" as const,
+    status: "closeout_submitted",
+    testRefs: [`test.public.${assignmentRef}`],
+    verificationRefs: [`test.public.${assignmentRef}`],
+    visibility: "owner_only" as const,
   }
   return {
     assignmentRef,
@@ -114,6 +129,7 @@ const exactCloseoutReceipt = async (assignmentRef: string): Promise<PylonKhalaCl
         schema: "openagents.pylon.khala_proof_checklist.v0.1",
       },
       tokenUsage,
+      workerCloseout,
     },
     schema: "openagents.pylon.khala_closeout.v0.1",
     status: {
@@ -131,6 +147,7 @@ const exactCloseoutReceipt = async (assignmentRef: string): Promise<PylonKhalaCl
       },
       pylonRef,
       tokenUsage: { ...tokenUsage, status: "recorded" },
+      workerCloseout,
     },
   } as PylonKhalaCloseoutResult
 }
@@ -427,7 +444,9 @@ describe("canonical Pylon-owned standing FleetRun composition", () => {
           workflow: "codex_agent_task",
         })
         expect(requests[0]?.workspace).toBeUndefined()
-        expect(assignmentRuns).toEqual([{ accountRef: account.ref, assignmentRef }])
+        expect(assignmentRuns).toHaveLength(1)
+        expect(assignmentRuns[0]).toMatchObject({ accountRef: account.ref, assignmentRef })
+        expect(typeof (assignmentRuns[0] as { onLifecycle?: unknown }).onLifecycle).toBe("function")
 
         const claims = standing.runtime.store.listWorkClaims({ runRef })
         expect(claims).toHaveLength(1)

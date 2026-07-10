@@ -29,7 +29,62 @@ const projectedRefs = (
   values: readonly string[],
   prefix: string,
   maximum = 64,
-): string[] => [...new Set(values.map(value => projectedRef(value, prefix)))].slice(0, maximum)
+): string[] => {
+  if (values.length > maximum || new Set(values).size !== values.length) {
+    throw new Error("FleetRun evidence ref cardinality is invalid")
+  }
+  const projected = values.map(value => projectedRef(value, prefix))
+  if (new Set(projected).size !== projected.length) {
+    throw new Error("FleetRun evidence ref projection collided")
+  }
+  return projected
+}
+
+const requireEvidenceCardinality = (
+  groups: readonly (readonly string[])[],
+  maximum: number,
+): void => {
+  const union = groups.flatMap(group => [...group])
+  if (new Set(union).size > maximum) {
+    throw new Error("FleetRun evidence union cardinality is invalid")
+  }
+}
+
+const projectedEvidenceGroups = <const Groups extends readonly {
+  readonly values: readonly string[]
+  readonly prefix: string
+}[]>(
+  groups: Groups,
+  maximum: number,
+): { readonly [Index in keyof Groups]: string[] } => {
+  // Arrays are role-bearing, so the same real receipt may legitimately appear
+  // in (for example) both artifact and verification roles. Preserve both role
+  // entries while mapping each unique source ref to exactly one projected ref.
+  // Duplicates inside one role remain invalid; distinct refs may never collide.
+  for (const group of groups) {
+    if (
+      group.values.length > maximum ||
+      new Set(group.values).size !== group.values.length
+    ) throw new Error("FleetRun evidence ref cardinality is invalid")
+  }
+  requireEvidenceCardinality(groups.map(group => group.values), maximum)
+  const projectedBySource = new Map<string, string>()
+  const sourceByProjected = new Map<string, string>()
+  const projected = groups.map(group => group.values.map(value => {
+    const existing = projectedBySource.get(value)
+    if (existing !== undefined) return existing
+    const next = projectedRef(value, group.prefix)
+    const existingSource = sourceByProjected.get(next)
+    if (existingSource !== undefined && existingSource !== value) {
+      throw new Error("FleetRun evidence ref projection collided")
+    }
+    projectedBySource.set(value, next)
+    sourceByProjected.set(next, value)
+    return next
+  }))
+  requireEvidenceCardinality(projected, maximum)
+  return projected as { readonly [Index in keyof Groups]: string[] }
+}
 
 const blockerRef = (value: string): string =>
   projectedBlockerPattern.test(value)
@@ -58,26 +113,30 @@ const terminalUsageProjection = (
       caveatRefs: projectedRefs(evidence.caveatRefs, "caveat.pylon.fleet_run.opaque", 100),
     }
   }
+  const [tokenUsageRefs, proofRefs, closeoutChecklistRefs, proofChecklistRefs] =
+    projectedEvidenceGroups([
+      {
+        values: evidence.tokenUsageRefs,
+        prefix: "token_usage.public.pylon.opaque",
+      },
+      { values: evidence.proofRefs, prefix: "proof.public.pylon.opaque" },
+      {
+        values: evidence.closeoutChecklistRefs,
+        prefix: "check.public.pylon.closeout.opaque",
+      },
+      {
+        values: evidence.proofChecklistRefs,
+        prefix: "check.public.pylon.proof.opaque",
+      },
+    ] as const, 100)
   return {
     ...evidence,
     assignmentRef,
     evidenceRef: projectedRef(evidence.evidenceRef, "evidence.public.pylon.opaque"),
-    tokenUsageRefs: projectedRefs(
-      evidence.tokenUsageRefs,
-      "token_usage.public.pylon.opaque",
-      100,
-    ),
-    proofRefs: projectedRefs(evidence.proofRefs, "proof.public.pylon.opaque", 100),
-    closeoutChecklistRefs: projectedRefs(
-      evidence.closeoutChecklistRefs,
-      "check.public.pylon.closeout.opaque",
-      100,
-    ),
-    proofChecklistRefs: projectedRefs(
-      evidence.proofChecklistRefs,
-      "check.public.pylon.proof.opaque",
-      100,
-    ),
+    tokenUsageRefs,
+    proofRefs,
+    closeoutChecklistRefs,
+    proofChecklistRefs,
   }
 }
 
@@ -148,7 +207,6 @@ export function projectFleetRunSupervisorObservation(input: {
   }
 
   if (input.event.kind === "dispatch") {
-    const usageEvidence = terminalUsageProjection(input.event)
     const unitRef = projectedUnitRef(input.event.workUnitRef)
     const workClaimRef = projectedRef(input.event.claimRef, "work_claim.pylon.opaque")
     const assignmentRef = input.event.assignmentRef === null
@@ -157,28 +215,94 @@ export function projectFleetRunSupervisorObservation(input: {
     const closeoutRef = input.event.closeoutRef === null
       ? null
       : projectedRef(input.event.closeoutRef, "closeout.public.pylon.opaque")
-    const verification = input.event.verification?.truth === "passed"
-      ? {
-          truth: "passed" as const,
-          verifierRef: projectedRef(
-            input.event.verification.verifierRef,
-            "verifier.public.pylon.opaque",
-          ),
-          evidenceRefs: projectedRefs(
-            input.event.verification.evidenceRefs,
-            "verification.public.pylon.opaque",
-          ),
-        }
-      : null
-    const artifactRefs = projectedRefs(
-      input.event.artifactRefs ?? [],
-      "artifact.public.pylon.opaque",
-    )
-    const proofRefs = projectedRefs(input.event.proofRefs ?? [], "proof.public.pylon.opaque")
-    const authorityReceiptRefs = projectedRefs(
-      input.event.authorityReceiptRefs ?? [],
-      "receipt.public.pylon.authority.opaque",
-    )
+    let usageEvidence: PylonFleetRunUsageEvidenceV2 | null
+    let verification: {
+      readonly truth: "passed"
+      readonly verifierRef: string
+      readonly evidenceRefs: readonly string[]
+    } | null
+    let failedVerification: {
+      readonly truth: "failed"
+      readonly verifierRef?: string | undefined
+      readonly evidenceRefs: readonly string[]
+    } | null
+    let artifactRefs: string[]
+    let proofRefs: string[]
+    let authorityReceiptRefs: string[]
+    try {
+      usageEvidence = terminalUsageProjection(input.event)
+      const projectedVerification = input.event.verification?.truth === "passed"
+        ? {
+            truth: "passed" as const,
+            verifierRef: projectedRef(
+              input.event.verification.verifierRef,
+              "verifier.public.pylon.opaque",
+            ),
+            evidenceRefs: input.event.verification.evidenceRefs,
+          }
+        : null
+      const projectedFailedVerification = input.event.verification?.truth === "failed"
+        ? {
+            truth: "failed" as const,
+            ...(input.event.verification.verifierRef === undefined
+              ? {}
+              : {
+                  verifierRef: projectedRef(
+                    input.event.verification.verifierRef,
+                    "verifier.public.pylon.opaque",
+                  ),
+                }),
+            evidenceRefs: input.event.verification.evidenceRefs,
+          }
+        : null
+      const verificationEvidenceRefs = projectedVerification?.evidenceRefs ??
+        projectedFailedVerification?.evidenceRefs ?? []
+      const projectedGroups = projectedEvidenceGroups([
+        {
+          values: verificationEvidenceRefs,
+          prefix: "verification.public.pylon.opaque",
+        },
+        {
+          values: input.event.artifactRefs ?? [],
+          prefix: "artifact.public.pylon.opaque",
+        },
+        {
+          values: input.event.proofRefs ?? [],
+          prefix: "proof.public.pylon.opaque",
+        },
+        {
+          values: input.event.authorityReceiptRefs ?? [],
+          prefix: "receipt.public.pylon.authority.opaque",
+        },
+      ] as const, 64)
+      const [verificationRefs, projectedArtifacts, projectedProofs, projectedAuthority] =
+        projectedGroups
+      verification = projectedVerification === null
+        ? null
+        : { ...projectedVerification, evidenceRefs: verificationRefs }
+      failedVerification = projectedFailedVerification === null
+        ? null
+        : { ...projectedFailedVerification, evidenceRefs: verificationRefs }
+      artifactRefs = projectedArtifacts
+      proofRefs = projectedProofs
+      authorityReceiptRefs = projectedAuthority
+    } catch {
+      return [started, {
+        schema: "openagents.pylon.fleet_run_execution_event.v2",
+        kind: "work_terminal",
+        observedAt,
+        unitRef,
+        workClaimRef,
+        ...(assignmentRef === null ? {} : { assignmentRef }),
+        workerKind: input.event.workerKind,
+        ...(input.event.accountRefHash === null
+          ? {}
+          : { accountRefHash: input.event.accountRefHash }),
+        marginalCostClass: input.event.marginalCostClass ?? "not_measured",
+        terminalState: "failed",
+        blockerRefs: ["blocker.pylon.fleet_run.evidence_cardinality_invalid"],
+      }]
+    }
     if (
       input.event.status === "completed" &&
       assignmentRef !== null &&
@@ -238,25 +362,9 @@ export function projectFleetRunSupervisorObservation(input: {
         terminalState: "failed",
         blockerRefs: [...new Set(failedBlockers)].slice(0, 32),
         ...(closeoutRef === null ? {} : { closeoutRef }),
-        ...(input.event.verification?.truth !== "failed"
+        ...(failedVerification === null
           ? {}
-          : {
-              verification: {
-                truth: "failed" as const,
-                ...(input.event.verification.verifierRef === undefined
-                  ? {}
-                  : {
-                      verifierRef: projectedRef(
-                        input.event.verification.verifierRef,
-                        "verifier.public.pylon.opaque",
-                      ),
-                    }),
-                evidenceRefs: projectedRefs(
-                  input.event.verification.evidenceRefs,
-                  "verification.public.pylon.opaque",
-                ),
-              },
-            }),
+          : { verification: failedVerification }),
         ...(artifactRefs.length === 0 ? {} : { artifactRefs }),
         ...(proofRefs.length === 0 ? {} : { proofRefs }),
         ...(authorityReceiptRefs.length === 0 ? {} : { authorityReceiptRefs }),

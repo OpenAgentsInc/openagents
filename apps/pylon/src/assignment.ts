@@ -406,6 +406,9 @@ const hostedAssignmentWorkerCloseoutBody = (
   status: closeout.status === "accepted" ? "closeout_submitted" : closeout.status,
   summaryRefs: [...closeout.summaryRefs],
   testRefs: [...closeout.testRefs],
+  // Preserve the real worker receipt in both roles when the runtime's test is
+  // also its verifier. Do not fabricate a second ref merely to make the role
+  // arrays look disjoint.
   verificationRefs: [...closeout.testRefs],
 })
 
@@ -1929,6 +1932,7 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
   }
   const emitLifecycleEvent = async (
     event: Omit<AssignmentRunLifecycleEvent, "schema" | "observedAt">,
+    isCurrent: () => boolean = () => true,
   ) => {
     try {
       const lifecycleEvent: AssignmentRunLifecycleEvent = {
@@ -1939,9 +1943,14 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
       const encodedLifecycleEvent = encodePylonAssignmentRunLifecycleEvent(lifecycleEvent)
       assertPublicProjectionSafe(encodedLifecycleEvent)
       await publishRunnerStatusEvent(encodedLifecycleEvent)
+      // Runtime-progress publication can be slower than the cadence. Recheck
+      // the owning generation after the await so a cleared interval can never
+      // register an outer FleetRun callback behind a terminal event.
+      if (!isCurrent()) return
       if (options.onLifecycleEvent !== undefined) {
         await options.onLifecycleEvent(encodedLifecycleEvent)
       }
+      if (!isCurrent()) return
       if (event.event !== "assignment_run.runtime_progress") {
         lastProgressEvent = event.event
       }
@@ -1960,9 +1969,11 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
     },
   ): Promise<T> => {
     let stopped = false
+    let generation = 0
     let progressSequence = 0
-    const tick = async () => {
-      if (stopped) return
+    const tick = async (tickGeneration: number) => {
+      const isCurrent = () => !stopped && generation === tickGeneration
+      if (!isCurrent()) return
       const elapsedMs = Math.max(0, Date.now() - input.startedAtMs)
       await emitLifecycleEvent({
         event: "assignment_run.runtime_progress",
@@ -1972,9 +1983,10 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
         phase: "runtime_active",
         elapsedMs,
         ...(lastProgressEvent === undefined ? {} : { lastProgressEvent }),
-      })
+      }, isCurrent)
+      if (!isCurrent()) return
       progressSequence += 1
-      void submitAssignmentProgress(
+      await submitAssignmentProgress(
         summary,
         {
           schema: "openagents.pylon.assignment_progress.v0.3",
@@ -1995,15 +2007,24 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
         options,
       ).catch(() => {})
     }
+    let tickTail = Promise.resolve<void>(undefined)
+    const enqueueTick = (): Promise<void> => {
+      const tickGeneration = generation
+      const scheduled = tickTail.then(() => tick(tickGeneration))
+      tickTail = scheduled.catch(() => undefined)
+      return scheduled
+    }
     const interval = setInterval(() => {
-      void tick()
+      void enqueueTick().catch(() => undefined)
     }, runtimeProgressIntervalMs)
     try {
-      await tick()
+      await enqueueTick()
       return await input.run()
     } finally {
       stopped = true
+      generation += 1
       clearInterval(interval)
+      await tickTail
     }
   }
   const heartbeatRefresh = async () => {

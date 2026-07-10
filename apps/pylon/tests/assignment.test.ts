@@ -886,6 +886,137 @@ describe("Pylon assignment lease flow", () => {
     })
   })
 
+  test("joins and fences a delayed runtime-progress publication before terminal return", async () => {
+    await withTempHome(async (home) => {
+      const codexLease = lease({
+        assignmentRef: "assignment.public.no_spend.codex_progress_fence",
+        leaseRef: "lease.public.no_spend.codex_progress_fence",
+        capabilityRefs: ["capability.pylon.local_codex"],
+        codingAssignment: {
+          codex: {
+            agentKind: "codex_sdk",
+            fixtureRef: CODEX_AGENT_SUM_REPAIR_FIXTURE_REF,
+            schema: CODEX_AGENT_TASK_SCHEMA,
+          },
+        },
+      })
+      const fake = fakeAssignmentServer({ leases: [codexLease] })
+      const summary = await readySummary(home, ["capability.pylon.local_codex"])
+      const state = await ensurePylonLocalState(summary)
+      const codexHome = join(home, "accounts/codex/codex-progress-fence")
+      await mkdir(codexHome, { recursive: true })
+      await writeFile(join(codexHome, "auth.json"), "{}\n")
+      await writeFile(
+        state.paths.config,
+        `${JSON.stringify({
+          dev: {
+            accounts: [{ provider: "codex", ref: "codex-progress-fence", home: codexHome }],
+          },
+        }, null, 2)}\n`,
+      )
+      await sendHeartbeat(summary, {
+        baseUrl: fake.baseUrl,
+        now: () => new Date("2026-06-09T00:00:00.000Z"),
+      })
+
+      let releaseDelayedStatus!: () => void
+      const delayedStatusGate = new Promise<void>(resolve => {
+        releaseDelayedStatus = resolve
+      })
+      let markDelayedStatusStarted!: () => void
+      const delayedStatusStarted = new Promise<void>(resolve => {
+        markDelayedStatusStarted = resolve
+      })
+      let runtimeStatusCount = 0
+      const delayedFetch = (async (
+        request: Parameters<typeof fetch>[0],
+        init?: Parameters<typeof fetch>[1],
+      ) => {
+        const url = new URL(typeof request === "string" || request instanceof URL
+          ? request.toString()
+          : request.url)
+        if (url.pathname === "/api/operator/pro/status") {
+          const body = JSON.parse(String(init?.body ?? "{}")) as { refs?: unknown }
+          if (
+            Array.isArray(body.refs) &&
+            body.refs.includes("assignment-event.pylon.assignment-run-runtime-progress")
+          ) {
+            runtimeStatusCount += 1
+            if (runtimeStatusCount === 2) {
+              markDelayedStatusStarted()
+              await delayedStatusGate
+            }
+          }
+        }
+        return fetch(request, init)
+      }) as typeof fetch
+
+      const lifecycleEvents: AssignmentRunLifecycleEvent[] = []
+      const runner: CodexAgentRunner = async (input) => {
+        // Keep the worker alive until the interval tick has entered the slow
+        // pre-callback status publication. The worker then finishes while that
+        // tick is still in flight.
+        await delayedStatusStarted
+        await writeFile(
+          join(input.cwd, "sum.ts"),
+          "export const sum = (left: number, right: number) => left + right\n",
+        )
+        return {
+          commandCount: 1,
+          editedFileCount: 1,
+          outcome: "completed",
+          sessionRef: null,
+          turnCount: 1,
+        }
+      }
+      let settled = false
+      const running = runNoSpendAssignment(summary, {
+        accountRef: "codex-progress-fence",
+        agentToken: "agent-token-fixture",
+        baseUrl: fake.baseUrl,
+        codexAgentProbe: { env: {}, importer: async () => ({}), platform: "darwin" },
+        codexAuthValidityProbe: async () => ({ valid: true }),
+        codexAgentRunner: runner,
+        fetch: delayedFetch,
+        now: () => new Date("2026-06-09T00:00:30.000Z"),
+        runtimeProgressIntervalMs: 1,
+        onLifecycleEvent: event => {
+          lifecycleEvents.push(event)
+        },
+      }).finally(() => {
+        settled = true
+      })
+
+      await delayedStatusStarted
+      // The injected worker has already returned; keep the publication held
+      // long enough for its bounded fixture verifier and input.run cleanup to
+      // reach the ticker's finally block.
+      await Bun.sleep(100)
+      expect(settled).toBe(false)
+      releaseDelayedStatus()
+      const result = await running
+      expect(result.ok).toBe(true)
+      expect(settled).toBe(true)
+      expect(runtimeStatusCount).toBeGreaterThanOrEqual(2)
+      expect(lifecycleEvents.filter(event =>
+        event.event === "assignment_run.runtime_progress" &&
+        event.phase === "runtime_active"
+      )).toHaveLength(1)
+      const completedIndex = lifecycleEvents.findIndex(event =>
+        event.event === "assignment_run.completed"
+      )
+      expect(completedIndex).toBeGreaterThan(-1)
+      expect(lifecycleEvents.slice(completedIndex + 1)).not.toContainEqual(
+        expect.objectContaining({ event: "assignment_run.runtime_progress" }),
+      )
+      const workerCloseout = fake.requests.find(request =>
+        request.path.endsWith("/closeout")
+      )?.body
+      expect(workerCloseout?.verificationRefs).toEqual(workerCloseout?.testRefs)
+      expect(JSON.stringify(workerCloseout)).not.toContain("assignment.verification.passed")
+    })
+  })
+
   test("closes out Codex runtime failures and clears active run markers", async () => {
     await withTempHome(async (home) => {
       const codexLease = lease({

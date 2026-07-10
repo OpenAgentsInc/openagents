@@ -235,14 +235,47 @@ const terminalLifecycle = (input: {
 const stablePublicRef = (prefix: string, seed: string): string =>
   `${prefix}.${createHash("sha256").update(seed).digest("hex").slice(0, 24)}`
 
-const uniqueRefs = (refs: readonly string[]): string[] => [...new Set(refs)].slice(0, 64)
 const workerEvidenceRefPattern = /^[A-Za-z0-9][A-Za-z0-9_.:/=-]{2,259}$/u
 const attemptProjectionRefPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,179}$/u
 
-const projectedWorkerRefs = (refs: readonly string[], prefix: string): string[] =>
-  uniqueRefs(refs.map(ref => attemptProjectionRefPattern.test(ref)
-    ? ref
-    : stablePublicRef(prefix, ref)))
+const requireWorkerEvidenceCardinality = (
+  groups: readonly (readonly string[])[],
+): void => {
+  const refs = groups.flatMap(group => [...group])
+  if (new Set(refs).size > 64) {
+    throw new Error("worker closeout evidence cardinality is invalid")
+  }
+}
+
+const projectedWorkerEvidenceGroups = <const Groups extends readonly {
+  readonly refs: readonly string[]
+  readonly prefix: string
+}[]>(groups: Groups): { readonly [Index in keyof Groups]: string[] } => {
+  for (const group of groups) {
+    if (group.refs.length > 64 || new Set(group.refs).size !== group.refs.length) {
+      throw new Error("worker evidence ref cardinality is invalid")
+    }
+  }
+  requireWorkerEvidenceCardinality(groups.map(group => group.refs))
+  const projectedBySource = new Map<string, string>()
+  const sourceByProjected = new Map<string, string>()
+  const projected = groups.map(group => group.refs.map(ref => {
+    const existing = projectedBySource.get(ref)
+    if (existing !== undefined) return existing
+    const next = attemptProjectionRefPattern.test(ref)
+      ? ref
+      : stablePublicRef(group.prefix, ref)
+    const existingSource = sourceByProjected.get(next)
+    if (existingSource !== undefined && existingSource !== ref) {
+      throw new Error("worker evidence projection collided")
+    }
+    projectedBySource.set(ref, next)
+    sourceByProjected.set(next, ref)
+    return next
+  }))
+  requireWorkerEvidenceCardinality(projected)
+  return projected as { readonly [Index in keyof Groups]: string[] }
+}
 
 type ExactWorkerCloseoutEvidence = {
   readonly artifactRefs: readonly string[]
@@ -250,6 +283,7 @@ type ExactWorkerCloseoutEvidence = {
   readonly closeoutRefs: readonly string[]
   readonly eventRef: string
   readonly proofRefs: readonly string[]
+  readonly resultRefs: readonly string[]
   readonly testRefs: readonly string[]
   readonly verificationRefs: readonly string[]
 }
@@ -257,7 +291,8 @@ type ExactWorkerCloseoutEvidence = {
 const stringRefs = (value: unknown): readonly string[] | null =>
   Array.isArray(value) &&
     value.length <= 64 &&
-    value.every(ref => typeof ref === "string" && workerEvidenceRefPattern.test(ref))
+    value.every(ref => typeof ref === "string" && workerEvidenceRefPattern.test(ref)) &&
+    new Set(value).size === value.length
     ? value as readonly string[]
     : null
 
@@ -279,6 +314,7 @@ const exactWorkerCloseout = (
     const authorityReceiptRefs = stringRefs(record.authorityReceiptRefs)
     const closeoutRefs = stringRefs(record.closeoutRefs)
     const proofRefs = stringRefs(record.proofRefs)
+    const resultRefs = stringRefs(record.resultRefs)
     const testRefs = stringRefs(record.testRefs)
     const verificationRefs = stringRefs(record.verificationRefs)
     const projectionBlockerRefs = stringRefs(record.projectionBlockerRefs)
@@ -291,6 +327,7 @@ const exactWorkerCloseout = (
       authorityReceiptRefs === null ||
       closeoutRefs === null ||
       proofRefs === null ||
+      resultRefs === null ||
       testRefs === null ||
       verificationRefs === null ||
       projectionBlockerRefs === null ||
@@ -298,16 +335,27 @@ const exactWorkerCloseout = (
       authorityReceiptRefs.length === 0 ||
       closeoutRefs.length === 0 ||
       proofRefs.length === 0 ||
+      resultRefs.length === 0 ||
       testRefs.length === 0 ||
       verificationRefs.length === 0 ||
       projectionBlockerRefs.length !== 0
     ) throw new Error("worker closeout evidence is incomplete")
+    requireWorkerEvidenceCardinality([
+      artifactRefs,
+      authorityReceiptRefs,
+      closeoutRefs,
+      proofRefs,
+      resultRefs,
+      testRefs,
+      verificationRefs,
+    ])
     return {
       artifactRefs,
       authorityReceiptRefs,
       closeoutRefs,
       eventRef: record.eventRef,
       proofRefs,
+      resultRefs,
       testRefs,
       verificationRefs,
       projectionBlockerRefs,
@@ -321,6 +369,37 @@ const exactWorkerCloseout = (
     throw new Error("worker closeout status and proof evidence diverged")
   }
   return statusEvidence
+}
+
+const projectedTerminalEvidenceRefs = (
+  worker: ExactWorkerCloseoutEvidence,
+): {
+  readonly artifactRefs: readonly string[]
+  readonly authorityReceiptRefs: readonly string[]
+  readonly proofRefs: readonly string[]
+  readonly verificationRefs: readonly string[]
+} => {
+  // FleetAttempt verification evidence is a set of refs rather than two
+  // separate test/verification role arrays. Collapse only this explicit union;
+  // the worker closeout itself retains both exact role arrays.
+  const verificationSourceRefs = [...new Set([
+    ...worker.testRefs,
+    ...worker.verificationRefs,
+  ])]
+  const [verificationRefs, artifactRefs, proofRefs, authorityReceiptRefs] =
+    projectedWorkerEvidenceGroups([
+      {
+        refs: verificationSourceRefs,
+        prefix: "verification.public.pylon.opaque",
+      },
+      { refs: worker.artifactRefs, prefix: "artifact.public.pylon.opaque" },
+      { refs: worker.proofRefs, prefix: "proof.public.pylon.opaque" },
+      {
+        refs: worker.authorityReceiptRefs,
+        prefix: "receipt.public.pylon.authority.opaque",
+      },
+    ] as const)
+  return { artifactRefs, authorityReceiptRefs, proofRefs, verificationRefs }
 }
 
 const terminalEvidenceFromCloseout = (
@@ -337,24 +416,18 @@ const terminalEvidenceFromCloseout = (
   readonly authorityReceiptRefs: readonly string[]
 } => {
   const worker = exactWorkerCloseout(closeout)
-  const verificationRefs = projectedWorkerRefs(
-    [...worker.testRefs, ...worker.verificationRefs],
-    "verification.public.pylon.opaque",
-  )
+  const projected = projectedTerminalEvidenceRefs(worker)
   const verifierSeed = dispatch.workUnit.verify ??
-    `worker_closeout:${worker.eventRef}:${verificationRefs.join(":")}`
+    `worker_closeout:${worker.eventRef}:${projected.verificationRefs.join(":")}`
   return {
     verification: {
       truth: "passed",
       verifierRef: stablePublicRef("verifier.public.pylon.fleet_run", verifierSeed),
-      evidenceRefs: verificationRefs,
+      evidenceRefs: projected.verificationRefs,
     },
-    artifactRefs: projectedWorkerRefs(worker.artifactRefs, "artifact.public.pylon.opaque"),
-    proofRefs: projectedWorkerRefs(worker.proofRefs, "proof.public.pylon.opaque"),
-    authorityReceiptRefs: projectedWorkerRefs(
-      worker.authorityReceiptRefs,
-      "receipt.public.pylon.authority.opaque",
-    ),
+    artifactRefs: projected.artifactRefs,
+    proofRefs: projected.proofRefs,
+    authorityReceiptRefs: projected.authorityReceiptRefs,
   }
 }
 
@@ -363,25 +436,19 @@ const reconciledTerminalEvidenceFromCloseout = (
   closeout: PylonKhalaCloseoutResult,
 ): ReturnType<typeof terminalEvidenceFromCloseout> => {
   const worker = exactWorkerCloseout(closeout)
-  const verificationRefs = projectedWorkerRefs(
-    [...worker.testRefs, ...worker.verificationRefs],
-    "verification.public.pylon.opaque",
-  )
+  const projected = projectedTerminalEvidenceRefs(worker)
   return {
     verification: {
       truth: "passed",
       verifierRef: stablePublicRef(
         "verifier.public.pylon.fleet_run",
-        `worker_closeout:${active.claim.claimRef}:${worker.eventRef}:${verificationRefs.join(":")}`,
+        `worker_closeout:${active.claim.claimRef}:${worker.eventRef}:${projected.verificationRefs.join(":")}`,
       ),
-      evidenceRefs: verificationRefs,
+      evidenceRefs: projected.verificationRefs,
     },
-    artifactRefs: projectedWorkerRefs(worker.artifactRefs, "artifact.public.pylon.opaque"),
-    proofRefs: projectedWorkerRefs(worker.proofRefs, "proof.public.pylon.opaque"),
-    authorityReceiptRefs: projectedWorkerRefs(
-      worker.authorityReceiptRefs,
-      "receipt.public.pylon.authority.opaque",
-    ),
+    artifactRefs: projected.artifactRefs,
+    proofRefs: projected.proofRefs,
+    authorityReceiptRefs: projected.authorityReceiptRefs,
   }
 }
 

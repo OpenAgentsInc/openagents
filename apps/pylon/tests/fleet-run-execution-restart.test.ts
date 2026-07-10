@@ -180,6 +180,144 @@ describe("FleetRun execution projection restart receipt", () => {
       terminalState: "failed",
       blockerRefs: ["blocker.pylon.fleet_run.evidence_incomplete"],
     })
+
+    const completeEvent = {
+      kind: "dispatch" as const,
+      runRef,
+      taskId: "task.public.cardinality",
+      claimRef: "claim.public.cardinality",
+      workUnitRef: "unit.public.cardinality",
+      accountRef: "private-account-ref-must-not-project",
+      accountRefHash: hashPylonAccountRef("grok", "grok-owner"),
+      assignmentRef: "assignment.public.cardinality",
+      blockerRefs: [],
+      closeoutRef: "closeout.public.cardinality",
+      status: "completed" as const,
+      usageEvidence: notMeasuredEvidence("assignment.public.cardinality"),
+      workerKind: "grok" as const,
+      marginalCostClass: "not_measured" as const,
+      verification: {
+        truth: "passed" as const,
+        verifierRef: "verifier.public.cardinality",
+        evidenceRefs: ["verification.public.cardinality"],
+      },
+      artifactRefs: ["artifact.public.cardinality"],
+      proofRefs: ["proof.public.cardinality"],
+      authorityReceiptRefs: [claimRef],
+    }
+    const invalidCardinalityEvents = [
+      {
+        ...completeEvent,
+        verification: {
+          ...completeEvent.verification,
+          evidenceRefs: Array.from(
+            { length: 62 },
+            (_, index) => `verification.public.cardinality.${index}`,
+          ),
+        },
+      },
+      {
+        ...completeEvent,
+        verification: {
+          ...completeEvent.verification,
+          evidenceRefs: [
+            "evidence.public.cardinality.duplicate",
+            "evidence.public.cardinality.duplicate",
+          ],
+        },
+      },
+      {
+        ...completeEvent,
+        workerKind: "codex" as const,
+        accountRefHash: hashPylonAccountRef("codex", "codex-owner"),
+        usageEvidence: {
+          ...exactEvidence({
+            assignmentRef: completeEvent.assignmentRef,
+            harnessKind: "codex",
+          }),
+          tokenRows: 101,
+          tokenUsageRefs: Array.from(
+            { length: 101 },
+            (_, index) => `token_usage.public.cardinality.${index}`,
+          ),
+        },
+      },
+      {
+        ...completeEvent,
+        workerKind: "codex" as const,
+        accountRefHash: hashPylonAccountRef("codex", "codex-owner"),
+        usageEvidence: {
+          ...exactEvidence({
+            assignmentRef: completeEvent.assignmentRef,
+            harnessKind: "codex",
+          }),
+          tokenUsageRefs: Array.from(
+            { length: 26 },
+            (_, index) => `token_usage.public.cardinality.${index}`,
+          ),
+          proofRefs: Array.from(
+            { length: 25 },
+            (_, index) => `proof.public.cardinality.${index}`,
+          ),
+          closeoutChecklistRefs: Array.from(
+            { length: 25 },
+            (_, index) => `check.public.cardinality.closeout.${index}`,
+          ),
+          proofChecklistRefs: Array.from(
+            { length: 25 },
+            (_, index) => `check.public.cardinality.proof.${index}`,
+          ),
+        },
+      },
+      {
+        ...completeEvent,
+        workerKind: "codex" as const,
+        accountRefHash: hashPylonAccountRef("codex", "codex-owner"),
+        usageEvidence: {
+          ...exactEvidence({
+            assignmentRef: completeEvent.assignmentRef,
+            harnessKind: "codex",
+          }),
+          tokenUsageRefs: [
+            "usage.public.within_role_duplicate",
+            "usage.public.within_role_duplicate",
+          ],
+        },
+      },
+    ]
+    for (const event of invalidCardinalityEvents) {
+      expect(projectFleetRunSupervisorObservation({ store, event })[1]).toMatchObject({
+        kind: "work_terminal",
+        terminalState: "failed",
+        blockerRefs: ["blocker.pylon.fleet_run.evidence_cardinality_invalid"],
+      })
+    }
+
+    for (const sharedRef of [
+      "evidence.public.shared_test_and_verification",
+      "Users/owner/private/shared-test-and-verification",
+    ]) {
+      const sharedReceipt = projectFleetRunSupervisorObservation({
+        store,
+        event: {
+          ...completeEvent,
+          verification: {
+            ...completeEvent.verification,
+            evidenceRefs: [sharedRef],
+          },
+          artifactRefs: [sharedRef],
+        },
+      })[1]
+      expect(sharedReceipt).toMatchObject({
+        kind: "work_terminal",
+        terminalState: "accepted",
+      })
+      if (sharedReceipt?.kind !== "work_terminal" || sharedReceipt.terminalState !== "accepted") {
+        throw new Error("expected the shared receipt to remain accepted")
+      }
+      expect(sharedReceipt.verification.evidenceRefs[0]).toBe(sharedReceipt.artifactRefs[0])
+      expect(JSON.stringify(sharedReceipt)).not.toContain("Users/owner/private")
+    }
   })
 
   test("resumes one mixed Codex/Claude/Grok run without duplicate claims and closes with exact evidence truth", async () => {

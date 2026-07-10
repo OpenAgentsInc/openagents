@@ -312,7 +312,7 @@ const exactCloseout = (
     source: "worker_closeout_event",
     status: "closeout_submitted",
     testRefs: ["test.public.fixture"],
-    verificationRefs: ["verification.public.fixture"],
+    verificationRefs: ["test.public.fixture"],
     visibility: "owner_only",
   } as const
   const status = {
@@ -620,7 +620,10 @@ describe("Pylon-owned FleetRun runner", () => {
       ),
       readCloseout: async assignmentRef => {
         const closeout = exactCloseout(assignmentRef)
-        const pathLike = "Users/owner/private/worktree/artifact"
+        const pathLikes = [
+          "Users/owner/private/worktree/artifact-a",
+          "Users/owner/private/worktree/artifact-b",
+        ]
         const status = closeout.status as PylonKhalaAssignmentTraceStatusResult & {
           workerCloseout: { artifactRefs: string[] }
         }
@@ -631,11 +634,11 @@ describe("Pylon-owned FleetRun runner", () => {
           ...closeout,
           status: {
             ...status,
-            workerCloseout: { ...status.workerCloseout, artifactRefs: [pathLike] },
+            workerCloseout: { ...status.workerCloseout, artifactRefs: pathLikes },
           },
           proof: {
             ...proof,
-            workerCloseout: { ...proof.workerCloseout, artifactRefs: [pathLike] },
+            workerCloseout: { ...proof.workerCloseout, artifactRefs: pathLikes },
           },
         }
       },
@@ -643,10 +646,77 @@ describe("Pylon-owned FleetRun runner", () => {
 
     const result = await runner.dispatch(dispatchInput("codex", "codex-a", 206, "fixture"))
     expect(result.status).toBe("completed")
-    expect(result.artifactRefs).toEqual([
+    expect(result.artifactRefs).toHaveLength(2)
+    expect(new Set(result.artifactRefs).size).toBe(2)
+    expect(result.artifactRefs).toEqual(expect.arrayContaining([
       expect.stringMatching(/^artifact\.public\.pylon\.opaque\.[a-f0-9]{24}$/),
-    ])
+      expect.stringMatching(/^artifact\.public\.pylon\.opaque\.[a-f0-9]{24}$/),
+    ]))
+    expect(result.verification?.evidenceRefs).toEqual(["test.public.fixture"])
     expect(JSON.stringify(result)).not.toContain("Users/owner/private")
+  })
+
+  test("fails closed instead of truncating or deduplicating within-role worker evidence refs", async () => {
+    const withWorkerEvidence = (
+      closeout: PylonKhalaCloseoutResult,
+      update: (worker: Record<string, unknown>) => Record<string, unknown>,
+    ): PylonKhalaCloseoutResult => {
+      const status = closeout.status as PylonKhalaAssignmentTraceStatusResult & {
+        workerCloseout: Record<string, unknown>
+      }
+      const proof = closeout.proof as typeof closeout.proof & {
+        workerCloseout: Record<string, unknown>
+      }
+      const workerCloseout = update(status.workerCloseout)
+      return {
+        ...closeout,
+        status: { ...status, workerCloseout },
+        proof: { ...proof, workerCloseout },
+      } as PylonKhalaCloseoutResult
+    }
+    const invalidEvidence = [
+      (closeout: PylonKhalaCloseoutResult) => withWorkerEvidence(closeout, worker => ({
+        ...worker,
+        artifactRefs: ["artifact.public.duplicate", "artifact.public.duplicate"],
+      })),
+      (closeout: PylonKhalaCloseoutResult) => withWorkerEvidence(closeout, worker => ({
+        ...worker,
+        // Test and verification legitimately share one receipt. The five
+        // other unique required refs plus 60 artifacts make 65 unique refs.
+        artifactRefs: Array.from(
+          { length: 60 },
+          (_, index) => `artifact.public.overflow.${index}`,
+        ),
+      })),
+    ]
+
+    for (const [index, mutate] of invalidEvidence.entries()) {
+      const runner = createPylonOwnedFleetRunSupervisorRunner({
+        summary,
+        pylonRef,
+        baseUrl: "https://openagents.test",
+        loadRegistry: async () => [account("codex-a", "codex")],
+        request: async request => requestReceipt(request),
+        runAssignment: async request => acceptedAssignment(
+          request.assignmentRef,
+          hashPylonAccountRef("codex", "codex-a"),
+        ),
+        readCloseout: async assignmentRef => mutate(exactCloseout(assignmentRef)),
+      })
+
+      const result = await runner.dispatch(
+        dispatchInput("codex", "codex-a", 260 + index, "fixture"),
+      )
+      expect(result).toMatchObject({
+        accountRefHash: null,
+        closeoutRef: null,
+        status: "failed",
+        usageEvidence: null,
+      })
+      expect(result.lifecycle).toContainEqual(expect.objectContaining({
+        blockerRefs: [PYLON_OWNED_FLEET_RUNNER_BLOCKERS.usageEvidenceInvalid],
+      }))
+    }
   })
 
   test("coalesces a duplicate durable claim into one request and one assignment run", async () => {
