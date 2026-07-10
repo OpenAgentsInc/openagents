@@ -1,0 +1,9 @@
+[Unit]
+Description=OpenAgents Agent Computer guest agent (vsock)
+After=network.target
+[Service]
+ExecStart=/usr/bin/python3 /opt/agent/guest-agent.py
+Restart=always
+RestartSec=1
+[Install]
+WantedBy=multi-user.target

@@ -28,6 +28,31 @@ Computer.
 
 
 
+## Source-controlled rootfs bake (CX-3 #8547 item 1)
+
+The guest rootfs bake is no longer a hand-run recipe on the bake host — it is
+`build-agent-computer-rootfs.sh` in this directory (root, Linux x86_64,
+normally `agent-computer-gce-1`). It reproduces the proven recipe (debootstrap
+jammy + git/python3/ca-certificates/openssh-client, pinned bun, the vsock
+guest agent from the checked-in `guest-agent.py` + `agent-guest.service`,
+compiled `turn-runner`, `oa-workroomd`, and the systemd-networkd/resolved
+egress fix) and ADDS the pinned `codex` binary at `/usr/local/bin/codex`
+(npm `@openai/codex` linux-x64 vendor musl build; version + digests pinned in
+the script and in `agent-computer-image.manifest.json` → `guestImage.codex`).
+
+```sh
+# On the nested-virt bake host, as root, with a staged turn-runner + workroomd:
+sudo ./build-agent-computer-rootfs.sh \
+  --turn-runner /srv/openagents/stage/turn-runner \
+  --workroomd /srv/openagents/stage/oa-workroomd \
+  --output /srv/openagents/cloud-vm/agent-computer-rootfs-codex.ext4
+```
+
+It bakes to a NEW image (never overwrites the validated one), fsck-verifies,
+seals the sha256, and writes a refs-and-digests-only bake receipt JSON. Re-pin
+`guestImage.rootfsDigest` in the manifest only after the microVM boot smoke
+(guest agent ready over vsock + `codex --version` via guest exec) passes.
+
 ## In-repo `oa-workroomd` guest binary (#8591)
 
 Agent Computer guest images include the **in-repo** workroom sidecar, not a

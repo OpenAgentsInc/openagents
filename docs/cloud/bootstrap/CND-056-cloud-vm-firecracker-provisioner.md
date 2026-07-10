@@ -243,3 +243,19 @@ proven Python vsock protocol above is the reference for wiring `guest_exec`/
 `guest_copy_out` (connect the vsock UDS, `CONNECT 1024`, length-prefixed JSON)
 and `wait_guest_ready` (poll `{op:ping}` for `"ready"`). Then run the ignored
 `live_cloud_vm_session_extracts_and_tears_down` test.
+
+## Source-controlled rootfs bake (2026-07-10, CX-3 openagents#8547 item 1)
+
+The hand-run debootstrap recipe above is now source-controlled:
+`apps/pylon/deploy/agent-computer/build-agent-computer-rootfs.sh` (run as root
+on the nested-virt bake host) reproduces it — debootstrap jammy, pinned bun,
+the checked-in vsock guest agent (`guest-agent.py` + `agent-guest.service`,
+extracted verbatim from the validated baked image), compiled `turn-runner`,
+`oa-workroomd`, and the proven systemd-networkd/resolved egress fix — and ADDS
+the pinned `codex` binary at `/usr/local/bin/codex` (npm `@openai/codex`
+linux-x64 vendor musl build, version + tarball/binary sha256 pinned in the
+script and in `agent-computer-image.manifest.json` → `guestImage.codex`). It
+bakes to a NEW image, fsck-verifies, seals the sha256, and writes a refs-only
+bake receipt JSON. `guestImage.rootfsDigest` is re-pinned only after the
+microVM boot smoke (vsock guest agent ready + `codex --version` via guest
+exec) passes on the bake host.
