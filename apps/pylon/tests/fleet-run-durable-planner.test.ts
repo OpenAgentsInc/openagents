@@ -44,6 +44,111 @@ const planDagDescriptor = (): FleetRunWorkSourceDescriptor =>
   })
 
 describe("Pylon durable FleetRun work-source planner", () => {
+  test("preserves exact Sarah authority unit refs across issue and DAG claims", async () => {
+    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const authorityBinding = (claimRef: string) => ({
+      schema: "openagents.pylon.fleet_run_authority_binding.v1" as const,
+      source: "sarah_authority" as const,
+      authorityFingerprint: "a".repeat(64),
+      claimRef,
+      pylonRef: "pylon.public.durable_planner",
+      targetPreference: "owner_local" as const,
+      phase: "accepted" as const,
+    })
+    const issueRun = store.createFleetRun({
+      runRef: "fleet_run.sarah.11111111111111111111",
+      objective: "Preserve the authority issue unit identity.",
+      workSource: "issue_list",
+      workSourceDescriptor: fleetRunWorkSourceDescriptorFrom({
+        kind: "issue_list",
+        repo: "OpenAgentsInc/openagents",
+        branch: "main",
+        baseCommit: commit,
+        verify,
+        issues: [8633],
+      }),
+      authorityBinding: authorityBinding(
+        "claim.sarah_fleet_run.111111111111111111111111",
+      ),
+      targetConcurrency: 1,
+      workerKind: "codex",
+      state: "running",
+      now: fixedNow,
+    })
+    const issuePlanner = createPylonDurableFleetRunPlanner({ store })
+    const firstIssuePlan = await issuePlanner.plan({
+      run: issueRun,
+      now: fixedNow,
+    })
+    expect(firstIssuePlan.claimable.map(unit => unit.workUnitRef)).toEqual([
+      "issue.8633",
+    ])
+    expect(store.tryClaimWorkUnit({
+      claimRef: "claim.public.authority.issue.8633",
+      workUnitRef: "issue.8633",
+      runRef: issueRun.runRef,
+      workerAccountRef: "codex-owner-isolated",
+      ttl: 60_000,
+      now: fixedNow,
+    })).not.toBeNull()
+    const claimedIssuePlan = await issuePlanner.plan({
+      run: issueRun,
+      now: fixedNow,
+    })
+    expect(claimedIssuePlan.claimable).toEqual([])
+    expect(claimedIssuePlan.skipped).toEqual([
+      expect.objectContaining({
+        workUnitRef: "issue.8633",
+        skipReason: "already_claimed",
+      }),
+    ])
+
+    const dagRun = store.createFleetRun({
+      runRef: "fleet_run.sarah.22222222222222222222",
+      objective: "Preserve authority DAG identities and dependencies.",
+      workSource: "plan_dag",
+      workSourceDescriptor: planDagDescriptor(),
+      authorityBinding: authorityBinding(
+        "claim.sarah_fleet_run.222222222222222222222222",
+      ),
+      targetConcurrency: 2,
+      workerKind: "auto",
+      state: "running",
+      now: fixedNow,
+    })
+    const dagPlanner = createPylonDurableFleetRunPlanner({ store })
+    const firstDagPlan = await dagPlanner.plan({ run: dagRun, now: fixedNow })
+    expect(firstDagPlan.claimable.map(unit => unit.workUnitRef)).toEqual([
+      "root",
+    ])
+    expect(firstDagPlan.skipped).toEqual([
+      expect.objectContaining({
+        workUnitRef: "dependent",
+        skipReason: "dependency_pending",
+      }),
+    ])
+    const rootClaim = store.tryClaimWorkUnit({
+      claimRef: "claim.public.authority.dag.root",
+      workUnitRef: "root",
+      runRef: dagRun.runRef,
+      workerAccountRef: "claude-owner-isolated",
+      ttl: 60_000,
+      now: fixedNow,
+    })
+    expect(rootClaim).not.toBeNull()
+    store.updateWorkClaimState(rootClaim!.claimRef, "closeout", fixedNow)
+    const completedRootPlan = await dagPlanner.plan({
+      run: dagRun,
+      now: fixedNow,
+    })
+    expect(completedRootPlan.claimable.map(unit => unit.workUnitRef)).toEqual([
+      "dependent",
+    ])
+    expect(completedRootPlan.skipped).toEqual([
+      expect.objectContaining({ workUnitRef: "root", skipReason: "completed" }),
+    ])
+  })
+
   test("reopens the same pinned plan and refuses a duplicate live claim", async () => {
     const root = await mkdtemp(join(tmpdir(), "pylon-durable-planner-"))
     const env = { PYLON_HOME: join(root, "pylon-home") } as NodeJS.ProcessEnv

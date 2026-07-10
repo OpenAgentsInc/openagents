@@ -107,6 +107,9 @@ export function createPylonDurableFleetRunPlanner(
         claimRegistry: input.store,
         completedWorkUnitRefs: completedWorkUnitRefs(claims),
         now,
+        unitRefMode: stored.authorityBinding?.source === "sarah_authority"
+          ? "sarah_authority" as const
+          : "local" as const,
       }
       if (source.kind === "fixture") return planFixtureWork(source, options)
       if (source.kind === "issue_list") return planIssueListWork(source, options)

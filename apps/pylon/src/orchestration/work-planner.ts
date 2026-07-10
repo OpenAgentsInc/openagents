@@ -76,6 +76,8 @@ export type WorkPlannerRealWorkDispatch = {
 
 export type WorkPlannerClaimRegistry = Pick<PylonOrchestrationStore, "getLiveWorkClaim">
 
+export type WorkPlannerUnitRefMode = "local" | "sarah_authority"
+
 export type WorkPlannerOptions = {
   readonly now?: Date
   readonly claimRegistry?: WorkPlannerClaimRegistry
@@ -84,6 +86,8 @@ export type WorkPlannerOptions = {
   readonly failedWorkUnitRefs?: readonly string[]
   readonly needsOwnerLabels?: readonly string[]
   readonly pullRequests?: readonly WorkPlannerCandidate[]
+  /** Preserve Sarah authority plan-unit refs for exact execution reporting. */
+  readonly unitRefMode?: WorkPlannerUnitRefMode
 }
 
 export type WorkPlannerDispatchOptions = {
@@ -253,7 +257,13 @@ const normalizeLabels = (labels: unknown): string[] => {
     .filter((label) => label.length > 0)
 }
 
-const issueWorkUnitRef = (repo: string, issueNumber: number): string => `github:${repo}:issue:${issueNumber}`
+const issueWorkUnitRef = (
+  repo: string,
+  issueNumber: number,
+  mode: WorkPlannerUnitRefMode,
+): string => mode === "sarah_authority"
+  ? `issue.${issueNumber}`
+  : `github:${repo}:issue:${issueNumber}`
 const prWorkUnitRef = (repo: string, prNumber: number): string => `github:${repo}:pr:${prNumber}`
 const planDagWorkUnitRef = (planRef: string, nodeRef: string): string => `plan_dag:${planRef}:node:${nodeRef}`
 
@@ -294,11 +304,17 @@ const skipped = (
   ...(detail === undefined ? {} : { detail }),
 })
 
-export const normalizeIssueListCandidate = (repo: string, item: number | IssueListItem): WorkPlannerCandidate => {
+export const normalizeIssueListCandidate = (
+  repo: string,
+  item: number | IssueListItem,
+  unitRefMode: WorkPlannerUnitRefMode = "local",
+): WorkPlannerCandidate => {
   const issue = typeof item === "number" ? { number: item } : item
   const kind: WorkPlannerUnitKind = issue.kind === "pr" ? "github_pr" : "github_issue"
   return {
-    workUnitRef: kind === "github_pr" ? prWorkUnitRef(repo, issue.number) : issueWorkUnitRef(repo, issue.number),
+    workUnitRef: kind === "github_pr"
+      ? prWorkUnitRef(repo, issue.number)
+      : issueWorkUnitRef(repo, issue.number, unitRefMode),
     kind,
     source: "issue_list",
     repo,
@@ -340,17 +356,31 @@ export const fixtureCandidates = (source: FixtureWorkSource): WorkPlannerCandida
   }))
 }
 
-export const issueListCandidates = (source: IssueListWorkSource): WorkPlannerCandidate[] => [
-  ...source.issues.map((issue) => withSourcePins(normalizeIssueListCandidate(source.repo, issue), source)),
+export const issueListCandidates = (
+  source: IssueListWorkSource,
+  unitRefMode: WorkPlannerUnitRefMode = "local",
+): WorkPlannerCandidate[] => [
+  ...source.issues.map((issue) => withSourcePins(
+    normalizeIssueListCandidate(source.repo, issue, unitRefMode),
+    source,
+  )),
   ...(source.pullRequests ?? []).map((pr) =>
     withSourcePins(normalizeIssueListCandidate(source.repo, { ...pr, kind: "pr" }), source)
   ),
 ]
 
-export const planDagCandidates = (source: PlanDagWorkSource): WorkPlannerCandidate[] => {
+export const planDagCandidates = (
+  source: PlanDagWorkSource,
+  unitRefMode: WorkPlannerUnitRefMode = "local",
+): WorkPlannerCandidate[] => {
   const validated = validatePlanDagWorkSource(source)
   const workUnitRefsByNodeRef = new Map(
-    validated.nodes.map((node) => [node.ref, planDagWorkUnitRef(validated.planRef, node.ref)]),
+    validated.nodes.map((node) => [
+      node.ref,
+      unitRefMode === "sarah_authority"
+        ? node.ref
+        : planDagWorkUnitRef(validated.planRef, node.ref),
+    ]),
   )
   return validated.nodes.map((node) => {
     const repo = node.repo ?? validated.repo
@@ -381,7 +411,7 @@ export const planDagCandidates = (source: PlanDagWorkSource): WorkPlannerCandida
 const ghIssueRecordToCandidate = (repo: string, record: GhIssueRecord): WorkPlannerCandidate | null => {
   if (typeof record.number !== "number") return null
   return {
-    workUnitRef: issueWorkUnitRef(repo, record.number),
+    workUnitRef: issueWorkUnitRef(repo, record.number, "local"),
     kind: "github_issue",
     source: "github_backlog",
     repo,
@@ -553,7 +583,7 @@ export const planIssueListWork = (
   source: IssueListWorkSource,
   options: WorkPlannerOptions = {},
 ): WorkPlannerOutput => {
-  const candidates = issueListCandidates(source)
+  const candidates = issueListCandidates(source, options.unitRefMode)
   return planWorkCandidates(source.kind, candidates, options)
 }
 
@@ -578,7 +608,7 @@ export const planDagWork = (
   source: PlanDagWorkSource,
   options: WorkPlannerOptions = {},
 ): WorkPlannerOutput => {
-  const candidates = planDagCandidates(source)
+  const candidates = planDagCandidates(source, options.unitRefMode)
   return planWorkCandidates(source.kind, candidates, options)
 }
 
