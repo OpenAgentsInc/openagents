@@ -148,8 +148,9 @@ This is a Bun, Effect, and Effect Schema monorepo. Important current paths:
   the contributor node;
 - `apps/openagents-mobile` — greenfield OpenAgents React Native/Expo host (to
   be scaffolded under #8597);
-- `apps/openagents-desktop` — greenfield OpenAgents Desktop Electron host (to
-  be scaffolded under #8574);
+- [`apps/openagents-desktop`](./apps/openagents-desktop/README.md) — OpenAgents
+  Desktop Electron host; see its public, test-backed
+  [`GUARANTEES.md`](./apps/openagents-desktop/GUARANTEES.md);
 - `clients/khala-mobile`, `clients/khala-ios/Khala`, and
   `clients/khala-code-desktop` — frozen, deprecated parity/extraction sources;
 - `packages/khala-fleet-intents` and related fleet packages — typed run,

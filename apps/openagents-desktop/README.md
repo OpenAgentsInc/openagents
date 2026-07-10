@@ -6,6 +6,10 @@ Electron is the desktop host.** This is not a rename of
 `clients/khala-code-desktop` — that Electrobun app is frozen legacy
 reference material and nothing here imports it.
 
+Current public, test-backed promises are summarized in
+[`GUARANTEES.md`](./GUARANTEES.md). Agents should use that document rather than
+infer guarantees from roadmap material or screenshots.
+
 This package now includes a neutral desktop chat workspace: a hardened
 Electron app whose renderer is 100% Effect Native (the shared vendored catalog
 at `apps/openagents.com/packages/effect-native-*`, catalog v29). It renders
