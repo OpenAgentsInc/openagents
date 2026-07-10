@@ -18,6 +18,7 @@ import { Route as RunRouteImport } from './routes/run'
 import { Route as PylonsRouteImport } from './routes/pylons'
 import { Route as PromisesRouteImport } from './routes/promises'
 import { Route as PrivacyRouteImport } from './routes/privacy'
+import { Route as PortalRouteImport } from './routes/portal'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as NewRouteImport } from './routes/new'
 import { Route as MirrorcodeRouteImport } from './routes/mirrorcode'
@@ -104,6 +105,11 @@ const PromisesRoute = PromisesRouteImport.update({
 const PrivacyRoute = PrivacyRouteImport.update({
   id: '/privacy',
   path: '/privacy',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PortalRoute = PortalRouteImport.update({
+  id: '/portal',
+  path: '/portal',
   getParentRoute: () => rootRouteImport,
 } as any)
 const OnboardingRoute = OnboardingRouteImport.update({
@@ -332,6 +338,7 @@ export interface FileRoutesByFullPath {
   '/mirrorcode': typeof MirrorcodeRoute
   '/new': typeof NewRoute
   '/onboarding': typeof OnboardingRoute
+  '/portal': typeof PortalRoute
   '/privacy': typeof PrivacyRoute
   '/promises': typeof PromisesRoute
   '/pylons': typeof PylonsRoute
@@ -385,6 +392,7 @@ export interface FileRoutesByTo {
   '/mirrorcode': typeof MirrorcodeRoute
   '/new': typeof NewRoute
   '/onboarding': typeof OnboardingRoute
+  '/portal': typeof PortalRoute
   '/privacy': typeof PrivacyRoute
   '/promises': typeof PromisesRoute
   '/pylons': typeof PylonsRoute
@@ -439,6 +447,7 @@ export interface FileRoutesById {
   '/mirrorcode': typeof MirrorcodeRoute
   '/new': typeof NewRoute
   '/onboarding': typeof OnboardingRoute
+  '/portal': typeof PortalRoute
   '/privacy': typeof PrivacyRoute
   '/promises': typeof PromisesRoute
   '/pylons': typeof PylonsRoute
@@ -494,6 +503,7 @@ export interface FileRouteTypes {
     | '/mirrorcode'
     | '/new'
     | '/onboarding'
+    | '/portal'
     | '/privacy'
     | '/promises'
     | '/pylons'
@@ -547,6 +557,7 @@ export interface FileRouteTypes {
     | '/mirrorcode'
     | '/new'
     | '/onboarding'
+    | '/portal'
     | '/privacy'
     | '/promises'
     | '/pylons'
@@ -600,6 +611,7 @@ export interface FileRouteTypes {
     | '/mirrorcode'
     | '/new'
     | '/onboarding'
+    | '/portal'
     | '/privacy'
     | '/promises'
     | '/pylons'
@@ -654,6 +666,7 @@ export interface RootRouteChildren {
   MirrorcodeRoute: typeof MirrorcodeRoute
   NewRoute: typeof NewRoute
   OnboardingRoute: typeof OnboardingRoute
+  PortalRoute: typeof PortalRoute
   PrivacyRoute: typeof PrivacyRoute
   PromisesRoute: typeof PromisesRoute
   PylonsRoute: typeof PylonsRoute
@@ -758,6 +771,13 @@ declare module '@tanstack/react-router' {
       path: '/privacy'
       fullPath: '/privacy'
       preLoaderRoute: typeof PrivacyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/portal': {
+      id: '/portal'
+      path: '/portal'
+      fullPath: '/portal'
+      preLoaderRoute: typeof PortalRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/onboarding': {
@@ -1080,6 +1100,7 @@ const rootRouteChildren: RootRouteChildren = {
   MirrorcodeRoute: MirrorcodeRoute,
   NewRoute: NewRoute,
   OnboardingRoute: OnboardingRoute,
+  PortalRoute: PortalRoute,
   PrivacyRoute: PrivacyRoute,
   PromisesRoute: PromisesRoute,
   PylonsRoute: PylonsRoute,
