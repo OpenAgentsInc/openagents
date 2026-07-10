@@ -95,6 +95,23 @@ describe("desktopShellView (state -> component tree)", () => {
     expect(nodeByKey(view, "codex-thread-details-label")).toBeUndefined()
   })
 
+  test("sidebar chat rows are plain left/right text without card chrome", () => {
+    const view = desktopShellView(baseState)
+    const title = nodeByKey(view, `sidebar-thread-${testThread.id}`)
+    const time = nodeByKey(view, `sidebar-thread-time-${testThread.id}`)
+
+    expect(title?._tag).toBe("Button")
+    expect(title?.style).toMatchObject({
+      flex: 1,
+      padding: "0",
+      borderWidth: 0,
+      borderRadius: "none",
+      textAlign: "left",
+    })
+    expect(time?._tag).toBe("Text")
+    expect(time?.style).toEqual({ textAlign: "right" })
+  })
+
   test("buttons carry the typed intent refs (no ad hoc handlers)", () => {
     const view = desktopShellView(baseState)
     const note = nodeByKey(view, "shell-note") as { onPress?: { name?: string } }
