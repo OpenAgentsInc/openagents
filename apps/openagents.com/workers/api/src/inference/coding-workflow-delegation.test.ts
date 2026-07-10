@@ -965,6 +965,33 @@ describe('coding workflow delegation', () => {
     })
   })
 
+  test('does not reject a heartbeat written after the request timestamp as stale clock skew', async () => {
+    const result = await delegateCodingWorkflow({
+      classification,
+      linkedAgents: [linkedOwner],
+      makeId: () => 'id1',
+      nowIso,
+      pylonStore: makeStore({
+        registrations: [
+          registration({
+            latestHeartbeatAt: '2026-06-25T12:00:00.500Z',
+            updatedAt: '2026-06-25T12:00:00.500Z',
+          }),
+        ],
+      }),
+      rawBody: {
+        openagents: { coding: { targetPylonRef: 'pylon.owner.codex' } },
+      },
+      requestId: 'chatcmpl_coding_future_heartbeat',
+    })
+
+    const assigned = expectAssigned(result)
+    expect(assigned.pylon.latestHeartbeatAt).toBe(
+      '2026-06-25T12:00:00.500Z',
+    )
+    expect(assigned.assignment.pylonRef).toBe('pylon.owner.codex')
+  })
+
   test('refreshes an explicit target when the owner registration index is stale (#7915)', async () => {
     const staleIndexedRegistration = registration({
       latestHeartbeatAt: '2026-06-25T11:00:00.000Z',

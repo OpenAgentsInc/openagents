@@ -988,10 +988,12 @@ export const controlledPylonAssignmentDispatchGate = (
     registration === undefined
       ? null
       : heartbeatAgeMs(registration, input.nowIso)
+  // A heartbeat may land after the request timestamp was captured. Treat that
+  // clock-order inversion as fresh; only age past the online window is
+  // stale, matching the canonical Pylon admission policy.
   const staleHeartbeat =
     heartbeatAge !== null &&
-    (heartbeatAge < 0 ||
-      heartbeatAge > CONTROLLED_PYLON_ASSIGNMENT_ONLINE_WINDOW_MS)
+    heartbeatAge > CONTROLLED_PYLON_ASSIGNMENT_ONLINE_WINDOW_MS
   const missingCapabilityRefs =
     registration === undefined
       ? []

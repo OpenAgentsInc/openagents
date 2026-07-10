@@ -3239,6 +3239,24 @@ describe('Pylon API routes', () => {
     expect(codexGate.blockerRefs).toContain(
       'blocker.public.pylon_dispatch.duplicate_active_assignment',
     )
+
+    // The request timestamp is captured before the registration read. A
+    // heartbeat that lands while the request is in flight is newer than that
+    // timestamp, but it is fresh rather than stale clock skew.
+    const futureHeartbeatGate = controlledPylonAssignmentDispatchGate({
+      activeAssignments: [],
+      assignmentRef: 'assignment.public.claude_future_heartbeat',
+      body: claudeBody,
+      nowIso,
+      registration: {
+        ...registration,
+        latestHeartbeatAt: '2026-06-27T12:00:00.500Z',
+      },
+    })
+    expect(futureHeartbeatGate.blockerRefs).not.toContain(
+      'blocker.public.pylon_dispatch.pylon_stale',
+    )
+    expect(futureHeartbeatGate.dispatchAllowed).toBe(true)
   })
 
   test('#6386: stale over-admitted `offered` leases do not deadlock a per-account Codex lane that advertises free capacity', () => {

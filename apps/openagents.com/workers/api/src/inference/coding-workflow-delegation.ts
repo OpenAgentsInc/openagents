@@ -647,10 +647,13 @@ const hasFreshOnlineHeartbeat = (
   const heartbeat = Date.parse(registration.latestHeartbeatAt)
   const status = (registration.latestHeartbeatStatus ?? '').trim().toLowerCase()
 
+  // The request timestamp is captured before the registration read. A Pylon
+  // may write a newer heartbeat while that request is in flight, so a
+  // future delta is freshness evidence rather than staleness. This matches the
+  // canonical Pylon admission policy: only age beyond the TTL is stale.
   return (
     Number.isFinite(now) &&
     Number.isFinite(heartbeat) &&
-    now - heartbeat >= 0 &&
     now - heartbeat <= 5 * 60 * 1000 &&
     ['available', 'healthy', 'idle', 'online', 'ready'].includes(status)
   )
