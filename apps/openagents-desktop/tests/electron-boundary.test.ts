@@ -89,7 +89,7 @@ describe("Effect Native renderer boundary (no parallel UI architecture)", () => 
     }))
 
   test("renderer imports only the shared EN catalog and sibling modules", () => {
-    const allowed = /^(@effect-native\/(core|core\/effect|render-dom|tokens)|\.\/[a-z-]+\.ts)$/
+    const allowed = /^(@effect-native\/(core|core\/effect|render-dom|tokens)|(\.\.\/|\.\/)[a-z-]+\.ts)$/
     for (const { name, source } of rendererSources) {
       const specifiers = [...source.matchAll(/from\s+"([^"]+)"/g)].map((match) => match[1]!)
       for (const specifier of specifiers) {

@@ -55,7 +55,8 @@ const collectNodes = (root: unknown): Array<AnyNode> => {
 const nodeByKey = (view: View, key: string): AnyNode | undefined =>
   collectNodes(view).find((node) => node.key === key)
 
-const baseState: DesktopShellState = initialDesktopShellState("electron/darwin", "18:04")
+const testThread = { id: "test-thread", title: "New chat", updatedAt: "2026-07-10T18:04:00.000Z", notes: [] } as const
+const baseState: DesktopShellState = { ...initialDesktopShellState("electron/darwin", "18:04"), threads: [testThread], activeThreadId: testThread.id }
 const fixedNow = () => "18:05"
 
 describe("desktopShellView (state -> component tree)", () => {
@@ -64,7 +65,7 @@ describe("desktopShellView (state -> component tree)", () => {
 
     const title = nodeByKey(view, "shell-title")
     expect(title?._tag).toBe("Text")
-    expect(title?.content).toBe("New conversation")
+    expect(title?.content).toBe("New chat")
 
     const surface = nodeByKey(view, "shell-surface")
     expect(surface?._tag).toBe("Badge")
@@ -84,7 +85,7 @@ describe("desktopShellView (state -> component tree)", () => {
     const transcript = nodeByKey(view, "shell-transcript")
     expect(transcript?._tag).toBe("Transcript")
     expect(transcript?.pinToEnd).toBe(true)
-    expect((transcript?.messages as Array<unknown>).length).toBe(2)
+    expect((transcript?.messages as Array<unknown>).length).toBe(0)
 
     expect(nodeByKey(view, "shell-input")?._tag).toBe("TextField")
     expect(nodeByKey(view, "shell-note")?._tag).toBe("Button")
@@ -92,7 +93,7 @@ describe("desktopShellView (state -> component tree)", () => {
     expect(nodeByKey(view, "shell-fleet-toggle")?._tag).toBe("Button")
     expect(nodeByKey(view, "shell-sidebar")?._tag).toBe("Stack")
     expect(nodeByKey(view, "sidebar-new-chat")?._tag).toBe("Button")
-    expect(nodeByKey(view, "sidebar-current-chat")?._tag).toBe("Button")
+    expect(nodeByKey(view, "sidebar-thread-test-thread")?._tag).toBe("Button")
     expect(nodeByKey(view, "sidebar-fleet")?._tag).toBe("Button")
     expect(nodeByKey(view, "fleet-desk")).toBeUndefined()
   })
@@ -162,15 +163,14 @@ describe("pure transitions", () => {
   test("withNote trims, clears the composer value binding, and appends a user note", () => {
     const next = withNote(withInput(baseState, "  hello desktop  "), "  hello desktop  ", "18:05")
     expect(next.input).toBe("")
-    expect(next.pending).toBe(false)
-    expect(next.notes.length).toBe(4)
-    expect(next.notes[2]).toEqual({
-      key: "note-2",
+    expect(next.pending).toBe(true)
+    expect(next.notes.length).toBe(1)
+    expect(next.notes[0]).toEqual({
+      key: "pending-0",
       role: "user",
       text: "hello desktop",
       timestamp: "18:05",
     })
-    expect(next.notes[3]?.role).toBe("assistant")
   })
 
   test("withNote ignores empty input", () => {
@@ -187,22 +187,22 @@ describe("pure transitions", () => {
   test("New chat resets the conversation and current-chat navigation closes Fleet", () => {
     const activeFleet = withFleetDesk(withNote(baseState, "Ship the app", "18:05"))
     expect(activeFleet.fleetDeskOpen).toBe(true)
-    expect(withChatSelected(activeFleet).fleetDeskOpen).toBe(false)
+    const existing = { id: "test-thread", title: "Existing", updatedAt: "2026-07-10T18:05:00.000Z", notes: [] } as const
+    expect(withChatSelected(activeFleet, existing).fleetDeskOpen).toBe(false)
 
-    const fresh = withNewChat(activeFleet, "18:06")
+    const fresh = withNewChat(activeFleet, existing)
     expect(fresh.fleetDeskOpen).toBe(false)
     expect(fresh.fleetObjective).toBe("")
     expect(fresh.fleetDeployment).toBe("not_requested")
-    expect(fresh.notes).toHaveLength(2)
-    expect(fresh.notes[0]?.role).toBe("assistant")
+    expect(fresh.notes).toHaveLength(0)
   })
 
   test("withLoopProof increments and appends a system note", () => {
     const next = withLoopProof(baseState, "18:05")
     expect(next.loopProofs).toBe(1)
-    expect(next.notes.length).toBe(3)
-    expect(next.notes[2]?.role).toBe("system")
-    expect(next.notes[2]?.timestamp).toBe("18:05")
+    expect(next.notes.length).toBe(1)
+    expect(next.notes[0]?.role).toBe("system")
+    expect(next.notes[0]?.timestamp).toBe("18:05")
   })
 
   test("Fleet desk stages an objective without manufacturing a FleetRun", () => {
@@ -251,7 +251,7 @@ describe("typed intent loop end-to-end (registry -> state -> re-render)", () => 
         const rerendered = desktopShellView(next)
         expect(nodeByKey(rerendered, "shell-ping-count")?.label).toBe("proofs 1")
         const transcript = nodeByKey(rerendered, "shell-transcript")
-        expect((transcript?.messages as Array<unknown>).length).toBe(3)
+        expect((transcript?.messages as Array<unknown>).length).toBe(1)
       }),
     )
   })
@@ -277,13 +277,13 @@ describe("typed intent loop end-to-end (registry -> state -> re-render)", () => 
 
         const next = yield* SubscriptionRef.get(state)
         expect(next.input).toBe("")
-        expect(next.notes[2]).toEqual({
-          key: "note-2",
+        expect(next.notes[0]).toEqual({
+          key: "pending-0",
           role: "user",
           text: "ship the shell",
           timestamp: "18:05",
         })
-        expect(next.notes[3]?.role).toBe("assistant")
+        expect(next.notes.at(-1)?.role).toBe("system")
       }),
     )
   })
@@ -322,9 +322,8 @@ describe("typed intent loop end-to-end (registry -> state -> re-render)", () => 
         yield* registry.dispatch(resolveIntentRef(input.onSubmit, "second message"))
         const afterSecond = yield* SubscriptionRef.get(state)
         expect(afterSecond.input).toBe("")
-        expect(afterSecond.notes.at(-2)?.text).toBe("second message")
-        expect(afterSecond.notes.at(-1)?.role).toBe("assistant")
-        expect(afterSecond.notes.length).toBe(6)
+        expect(afterSecond.notes.at(-1)?.text).toBe("Desktop chat is unavailable.")
+        expect(afterSecond.notes.length).toBe(4)
       }),
     )
   })
@@ -343,7 +342,7 @@ describe("typed intent loop end-to-end (registry -> state -> re-render)", () => 
         }
         yield* registry.dispatch(resolveIntentRef(input.onSubmit, "held"))
         const next = yield* SubscriptionRef.get(state)
-        expect(next.notes.length).toBe(2)
+        expect(next.notes.length).toBe(0)
         expect(next.input).toBe("held")
       }),
     )

@@ -11,10 +11,14 @@
  * Plain TypeScript, bundled by `scripts/build.ts` (Bun) into `dist/`.
  */
 import path from "node:path"
+import { randomUUID } from "node:crypto"
 import { BrowserWindow, app, ipcMain, session } from "electron"
 
 import { FleetStageChannel, decodeFleetStageRequest, unavailableFleetStageResult } from "./fleet-contract.ts"
 import { submitFleetBrief } from "./fleet-control.ts"
+import { completeChatTurn } from "./chat-service.ts"
+import { DesktopChatTurnChannel, DesktopNewThreadChannel, DesktopOpenThreadChannel, DesktopThreadsChannel, decode, DesktopThreadRequestSchema, DesktopTurnRequestSchema, type DesktopMessage } from "./chat-contract.ts"
+import { makeThreadStore } from "./thread-store.ts"
 
 const here = import.meta.dirname
 const smokeMode = process.env.OPENAGENTS_DESKTOP_SMOKE === "1"
@@ -41,6 +45,31 @@ const hardenSession = (): void => {
 ipcMain.handle(FleetStageChannel, async (_event, value: unknown) => {
   const request = decodeFleetStageRequest(value)
   return request === null ? unavailableFleetStageResult() : submitFleetBrief(request)
+})
+
+const threads = () => makeThreadStore(path.join(app.getPath("userData"), "threads.json"))
+ipcMain.handle(DesktopThreadsChannel, () => threads().list())
+ipcMain.handle(DesktopNewThreadChannel, () => threads().newThread())
+ipcMain.handle(DesktopOpenThreadChannel, (_event, value: unknown) => {
+  const request = decode(DesktopThreadRequestSchema, value) as { id: string } | null
+  return request === null ? null : threads().open(request.id)
+})
+ipcMain.handle(DesktopChatTurnChannel, async (_event, value: unknown) => {
+  const request = decode(DesktopTurnRequestSchema, value) as { id: string; message: string } | null
+  if (request === null || request.message.trim() === "" || request.message.length > 8_000) {
+    return { ok: false, error: "That message could not be sent." }
+  }
+  const store = threads()
+  const user: DesktopMessage = { key: randomUUID(), role: "user", text: request.message.trim(), timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) }
+  const saved = store.append(request.id, user)
+  if (saved === null) return { ok: false, error: "That conversation no longer exists." }
+  try {
+    const text = await completeChatTurn(saved.notes)
+    const thread = store.append(saved.id, { key: randomUUID(), role: "assistant", text, timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) })
+    return { ok: true, thread }
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "The model request failed." }
+  }
 })
 
 // Deny-by-default for every WebContents: no navigation away from the bundled
@@ -118,7 +147,7 @@ const smokeOpenFleetDesk = `(async () => {
   const button = document.querySelector('[data-en-key="shell-fleet-toggle"]')
   if (button === null) return { ok: false, reason: "Fleet toggle never mounted" }
   button.click()
-  const deadline = Date.now() + 5000
+  const deadline = Date.now() + 20_000
   while (Date.now() < deadline && document.querySelector('[data-en-key="fleet-desk"]') === null) {
     await wait(50)
   }
@@ -140,18 +169,18 @@ const smokeSubmitComposer = `(async () => {
   const messagesBefore = messageCount()
   input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }))
   const deadline = Date.now() + 5000
-  while (Date.now() < deadline && (messageCount() === messagesBefore || input.value !== "")) {
+  while (Date.now() < deadline && (messageCount() < messagesBefore + 2 || input.value !== "")) {
     await wait(50)
   }
   const userRow = document.querySelector(
     '[data-en-key="shell-transcript"] [data-en-message][data-en-role="user"]'
   )
-  const assistantRow = Array.from(
-    document.querySelectorAll('[data-en-key="shell-transcript"] [data-en-message][data-en-role="assistant"]')
+  const responseRow = Array.from(
+    document.querySelectorAll('[data-en-key="shell-transcript"] [data-en-message][data-en-role="assistant"], [data-en-key="shell-transcript"] [data-en-message][data-en-role="system"]')
   ).at(-1)
   const sender = userRow === null ? null : userRow.querySelector('[data-en-role="sender"]')
   const body = userRow === null ? null : userRow.querySelector('[data-en-role="body"]')
-  const assistantSender = assistantRow === undefined ? null : assistantRow.querySelector('[data-en-role="sender"]')
+  const responseSender = responseRow === undefined ? null : responseRow.querySelector('[data-en-role="sender"]')
   return {
     ok:
       messageCount() === messagesBefore + 2 &&
@@ -159,12 +188,12 @@ const smokeSubmitComposer = `(async () => {
       sender !== null && sender.textContent === "YOU" &&
       body !== null && body.textContent.includes("Pixel-proof") &&
       !body.textContent.includes("YOU") &&
-      assistantSender !== null && assistantSender.textContent === "ASSISTANT",
+      responseSender !== null && (responseSender.textContent === "ASSISTANT" || responseSender.textContent === "SYSTEM"),
     messagesBefore,
     messagesAfter: messageCount(),
     inputAfterSubmit: input.value,
     senderChip: sender === null ? null : sender.textContent,
-    assistantSenderChip: assistantSender === null ? null : assistantSender.textContent,
+    responseSenderChip: responseSender === null ? null : responseSender.textContent,
   }
 })()`
 

@@ -17,6 +17,7 @@ import {
   decodeFleetStageRequest,
   unavailableFleetStageResult,
 } from "./fleet-contract.ts"
+import { DesktopChatTurnChannel, DesktopNewThreadChannel, DesktopOpenThreadChannel, DesktopThreadsChannel, decode, DesktopThreadRequestSchema, DesktopTurnRequestSchema } from "./chat-contract.ts"
 
 contextBridge.exposeInMainWorld("openagentsDesktop", {
   host: "electron",
@@ -27,5 +28,15 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
     return request === null
       ? Promise.resolve(unavailableFleetStageResult())
       : ipcRenderer.invoke(FleetStageChannel, request)
+  },
+  listThreads: () => ipcRenderer.invoke(DesktopThreadsChannel),
+  newThread: () => ipcRenderer.invoke(DesktopNewThreadChannel),
+  openThread: (value: unknown) => {
+    const request = decode(DesktopThreadRequestSchema, value) as { id: string } | null
+    return request === null ? Promise.resolve(null) : ipcRenderer.invoke(DesktopOpenThreadChannel, request)
+  },
+  sendMessage: (value: unknown) => {
+    const request = decode(DesktopTurnRequestSchema, value) as { id: string; message: string } | null
+    return request === null ? Promise.resolve({ ok: false, error: "That message could not be sent." }) : ipcRenderer.invoke(DesktopChatTurnChannel, request)
   },
 })

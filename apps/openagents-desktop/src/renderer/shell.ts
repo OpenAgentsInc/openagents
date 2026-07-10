@@ -27,6 +27,7 @@ import {
   Text,
   TextField,
   Transcript,
+  StaticPayload,
   defineIntent,
   type IntentHandlers,
   type TextView,
@@ -34,6 +35,7 @@ import {
   type View,
 } from "@effect-native/core"
 import { Effect, Schema, SubscriptionRef } from "@effect-native/core/effect"
+import type { DesktopThread } from "../chat-contract.ts"
 
 export type DesktopNoteEntry = Readonly<{
   key: string
@@ -50,6 +52,8 @@ export type DesktopShellState = Readonly<{
   /** True while a submission is in flight; the composer disables itself. */
   pending: boolean
   notes: ReadonlyArray<DesktopNoteEntry>
+  threads: ReadonlyArray<DesktopThread>
+  activeThreadId: string | null
   /** The desktop-only planning deck; it has no deployment authority itself. */
   fleetDeskOpen: boolean
   /** The current, explicitly unsubmitted FleetRun objective draft. */
@@ -64,21 +68,6 @@ export type DesktopShellState = Readonly<{
 export const formatShellTimestamp = (date: Date): string =>
   `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`
 
-const initialNotes = (timestamp: string): ReadonlyArray<DesktopNoteEntry> => [
-  {
-    key: "boot-0",
-    role: "assistant",
-    text: "What would you like to work on? I can help you shape a clear next step or prepare a bounded fleet brief.",
-    timestamp,
-  },
-  {
-    key: "boot-1",
-    role: "system",
-    text: "This workspace stays local and private. Fleet work starts only after Pylon authority accepts an exact request.",
-    timestamp,
-  },
-]
-
 /**
  * The initial transcript is local presentation state only: it neither creates
  * a FleetRun nor impersonates a server-authorized turn.
@@ -90,7 +79,9 @@ export const initialDesktopShellState = (
   host,
   input: "",
   pending: false,
-  notes: initialNotes(timestamp),
+  notes: [],
+  threads: [],
+  activeThreadId: null,
   fleetDeskOpen: false,
   fleetObjective: "",
   fleetDeployment: "not_requested",
@@ -122,7 +113,7 @@ export const DesktopFleetDeploymentRequested = defineIntent(
   Schema.Null,
 )
 export const DesktopNewChat = defineIntent("DesktopNewChat", Schema.Null)
-export const DesktopChatSelected = defineIntent("DesktopChatSelected", Schema.Null)
+export const DesktopChatSelected = defineIntent("DesktopChatSelected", Schema.String)
 
 export const desktopShellIntents = [
   DesktopInputChanged,
@@ -159,18 +150,22 @@ export const withFleetObjective = (
   fleetObjective: string,
 ): DesktopShellState => ({ ...state, fleetObjective })
 
-export const withNewChat = (state: DesktopShellState, timestamp: string): DesktopShellState => ({
+export const withNewChat = (state: DesktopShellState, thread: DesktopThread): DesktopShellState => ({
   ...state,
   input: "",
   pending: false,
-  notes: initialNotes(timestamp),
+  notes: thread.notes,
+  threads: [thread, ...state.threads.filter((item) => item.id !== thread.id)].slice(0, 5),
+  activeThreadId: thread.id,
   fleetDeskOpen: false,
   fleetObjective: "",
   fleetDeployment: "not_requested",
 })
 
-export const withChatSelected = (state: DesktopShellState): DesktopShellState => ({
+export const withChatSelected = (state: DesktopShellState, thread: DesktopThread): DesktopShellState => ({
   ...state,
+  notes: thread.notes,
+  activeThreadId: thread.id,
   fleetDeskOpen: false,
 })
 
@@ -189,18 +184,29 @@ export const withNote = (
   return {
     ...state,
     input: "",
-    pending: false,
+    pending: true,
     notes: [
       ...state.notes,
-      { key: `note-${state.notes.length}`, role: "user", text: trimmed, timestamp },
-      {
-        key: `note-${state.notes.length + 1}`,
-        role: "assistant",
-        text: "I have that in view. Open Fleet to turn it into an explicit repository, verifier, and worker-policy request before anything is deployed.",
-        timestamp,
-      },
+      { key: `pending-${state.notes.length}`, role: "user", text: trimmed, timestamp },
     ],
   }
+}
+
+export type ChatHost = Readonly<{
+  listThreads: () => Promise<ReadonlyArray<DesktopThread>>
+  newThread: () => Promise<DesktopThread | null>
+  openThread: (id: string) => Promise<DesktopThread | null>
+  sendMessage: (input: Readonly<{ id: string; message: string }>) => Promise<Readonly<{ ok: boolean; thread?: DesktopThread | null; error?: string }>>
+}>
+
+export const withThreads = (state: DesktopShellState, threads: ReadonlyArray<DesktopThread>): DesktopShellState => {
+  const active = state.activeThreadId === null ? threads[0] : threads.find((thread) => thread.id === state.activeThreadId)
+  return { ...state, threads: threads.slice(0, 5), activeThreadId: active?.id ?? null, notes: active?.notes ?? state.notes }
+}
+
+export const withTurnResult = (state: DesktopShellState, result: Awaited<ReturnType<ChatHost["sendMessage"]>>, timestamp: string): DesktopShellState => {
+  if (result.ok && result.thread) return { ...withChatSelected(state, result.thread), pending: false, threads: [result.thread, ...state.threads.filter((thread) => thread.id !== result.thread!.id)].slice(0, 5) }
+  return { ...state, pending: false, notes: [...state.notes, { key: `error-${state.notes.length}`, role: "system", text: result.error ?? "The model request failed.", timestamp }] }
 }
 
 /**
@@ -270,16 +276,22 @@ export const makeDesktopShellHandlers = (
     message: "Local Pylon control is unavailable. No fleet work was dispatched.",
     intentStatus: null,
   }),
+  chat: ChatHost = {
+    listThreads: async () => [], newThread: async () => null, openThread: async () => null,
+    sendMessage: async () => ({ ok: false, error: "Desktop chat is unavailable." }),
+  },
 ): IntentHandlers<typeof desktopShellIntents> => ({
   DesktopInputChanged: (value) =>
     SubscriptionRef.update(state, (current) => withInput(current, value)),
   DesktopNoteSubmitted: (value) =>
     Effect.gen(function* () {
       const current = yield* SubscriptionRef.get(state)
-      if (current.pending) return
+      if (current.pending || current.activeThreadId === null) return
       const message =
         typeof value === "string" && value.trim() !== "" ? value : current.input
       yield* SubscriptionRef.set(state, withNote(current, message, now()))
+      const result = yield* Effect.promise(() => chat.sendMessage({ id: current.activeThreadId!, message }))
+      yield* SubscriptionRef.update(state, (next) => withTurnResult(next, result, now()))
     }),
   DesktopLoopPinged: () =>
     SubscriptionRef.update(state, (current) => withLoopProof(current, now())),
@@ -296,10 +308,8 @@ export const makeDesktopShellHandlers = (
       const result = yield* Effect.promise(() => stageFleet({ objective: dispatching.fleetObjective }))
       yield* SubscriptionRef.update(state, (next) => withFleetDeploymentResult(next, result, now()))
     }),
-  DesktopNewChat: () =>
-    SubscriptionRef.update(state, (current) => withNewChat(current, now())),
-  DesktopChatSelected: () =>
-    SubscriptionRef.update(state, withChatSelected),
+  DesktopNewChat: () => Effect.gen(function* () { const thread = yield* Effect.promise(chat.newThread); if (thread) yield* SubscriptionRef.update(state, (current) => withNewChat(current, thread)) }),
+  DesktopChatSelected: (id) => Effect.gen(function* () { const thread = yield* Effect.promise(() => chat.openThread(id)); if (thread) yield* SubscriptionRef.update(state, (current) => withChatSelected(current, thread)) }),
 })
 
 // ---------------------------------------------------------------------------
@@ -353,7 +363,7 @@ const shellHeader = (state: DesktopShellState): View =>
       },
     },
     [
-      Text({ key: "shell-title", content: state.fleetDeskOpen ? "Fleet" : "New conversation", variant: "title", color: "textPrimary" }),
+      Text({ key: "shell-title", content: state.fleetDeskOpen ? "Fleet" : state.threads.find((thread) => thread.id === state.activeThreadId)?.title ?? "New chat", variant: "title", color: "textPrimary" }),
       Badge({
         key: "shell-surface",
         label: state.fleetDeskOpen ? "Planning" : "Chat",
@@ -407,13 +417,13 @@ const shellSidebar = (state: DesktopShellState): View =>
         a11y: { label: "Start a new chat" },
       }),
       Text({ key: "sidebar-chats-label", content: "Chats", variant: "caption", color: "textMuted" }),
-      Button({
-        key: "sidebar-current-chat",
-        label: "New conversation",
+      ...state.threads.map((thread) => Button({
+        key: `sidebar-thread-${thread.id}`,
+        label: thread.title,
         variant: "ghost",
-        onPress: IntentRef("DesktopChatSelected"),
-        a11y: { label: "Open current chat" },
-      }),
+        onPress: IntentRef("DesktopChatSelected", StaticPayload(thread.id)),
+        a11y: { label: `Open chat ${thread.title}` },
+      })),
       Text({ key: "sidebar-workspace-label", content: "Workspace", variant: "caption", color: "textMuted" }),
       Button({
         key: "sidebar-fleet",
@@ -594,7 +604,7 @@ export const desktopShellView = (state: DesktopShellState): View =>
         [
           shellHeader(state),
           ...(state.fleetDeskOpen ? [fleetDesk(state)] : []),
-          ...(state.notes.length <= 2 && !state.fleetDeskOpen ? [shellWelcome()] : []),
+          ...(state.notes.length === 0 && !state.fleetDeskOpen ? [shellWelcome()] : []),
           Transcript({
             key: "shell-transcript",
             pinToEnd: true,

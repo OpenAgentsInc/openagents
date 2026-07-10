@@ -141,7 +141,7 @@ textarea:focus-visible {
   text-transform: uppercase;
 }
 
-[data-en-key="sidebar-current-chat"],
+[data-en-key^="sidebar-thread-"],
 [data-en-key="sidebar-fleet"] {
   justify-content: flex-start;
   min-height: 34px;
@@ -153,7 +153,7 @@ textarea:focus-visible {
   font-weight: 520;
 }
 
-[data-en-key="sidebar-current-chat"] {
+[data-en-key^="sidebar-thread-"] {
   border-color: rgba(152, 189, 255, 0.14) !important;
   background: rgba(97, 143, 235, 0.13) !important;
   color: var(--oa-ink) !important;

@@ -24,6 +24,7 @@ import {
   makeDesktopShellHandlers,
 } from "./shell.ts"
 import { openagentsDesktopTheme } from "./theme.ts"
+import { type DesktopThread } from "../chat-contract.ts"
 
 /** Effect Schema at the preload boundary (issue #8574: Schema, not Zod). */
 const DesktopBridgeSchema = Schema.Struct({
@@ -35,6 +36,10 @@ type DesktopBridge = Readonly<{
   host: string
   platform: string
   stageFleet?: (value: unknown) => Promise<unknown>
+  listThreads?: () => Promise<unknown>
+  newThread?: () => Promise<unknown>
+  openThread?: (value: unknown) => Promise<unknown>
+  sendMessage?: (value: unknown) => Promise<unknown>
 }>
 
 export const decodeBridgeHost = (bridge: unknown): string => {
@@ -79,8 +84,34 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
           message: "Local Pylon returned an invalid response. No fleet work was dispatched.",
           intentStatus: null,
         }
+      }, {
+        listThreads: async () => {
+          const raw = await (globalThis as { openagentsDesktop?: DesktopBridge }).openagentsDesktop?.listThreads?.()
+          return Array.isArray(raw) ? raw as DesktopThread[] : []
+        },
+        newThread: async () => {
+          const raw = await (globalThis as { openagentsDesktop?: DesktopBridge }).openagentsDesktop?.newThread?.()
+          return typeof raw === "object" && raw !== null && typeof (raw as { id?: unknown }).id === "string" ? raw as DesktopThread : null
+        },
+        openThread: async (id) => {
+          const raw = await (globalThis as { openagentsDesktop?: DesktopBridge }).openagentsDesktop?.openThread?.({ id })
+          return typeof raw === "object" && raw !== null && typeof (raw as { id?: unknown }).id === "string" ? raw as DesktopThread : null
+        },
+        sendMessage: async (input) => {
+          const raw = await (globalThis as { openagentsDesktop?: DesktopBridge }).openagentsDesktop?.sendMessage?.(input)
+          if (typeof raw === "object" && raw !== null && typeof (raw as { ok?: unknown }).ok === "boolean") return raw as { ok: boolean; thread?: DesktopThread | null; error?: string }
+          return { ok: false, error: "Desktop chat returned an invalid response." }
+        },
       }),
     )
+    const bridge = (globalThis as { openagentsDesktop?: DesktopBridge }).openagentsDesktop
+    const existing = typeof bridge?.listThreads === "function" ? yield* Effect.promise(bridge.listThreads) : []
+    const threads = Array.isArray(existing) ? existing.filter((item): item is DesktopThread => typeof item === "object" && item !== null && typeof (item as { id?: unknown }).id === "string") : []
+    if (threads.length > 0) yield* SubscriptionRef.update(state, (current) => ({ ...current, threads, activeThreadId: threads[0]!.id, notes: threads[0]!.notes }))
+    else if (typeof bridge?.newThread === "function") {
+      const created = yield* Effect.promise(bridge.newThread)
+      if (typeof created === "object" && created !== null && typeof (created as { id?: unknown }).id === "string") yield* SubscriptionRef.update(state, (current) => ({ ...current, threads: [created as DesktopThread], activeThreadId: (created as DesktopThread).id, notes: (created as DesktopThread).notes }))
+    }
     const report: IntentReporter = (ref, runtimeValue) =>
       registry.dispatch(resolveIntentRef(ref, runtimeValue ?? null))
     const renderer = makeDomRenderer({ theme: openagentsDesktopTheme })
