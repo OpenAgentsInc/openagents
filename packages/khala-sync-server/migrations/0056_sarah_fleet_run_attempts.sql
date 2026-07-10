@@ -129,7 +129,7 @@ CREATE TABLE IF NOT EXISTS sarah_fleet_run_attempts (
   CONSTRAINT sarah_fleet_run_attempts_owner_shape
     CHECK (owner_user_id ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{2,159}$'),
   CONSTRAINT sarah_fleet_run_attempts_attempt_shape
-    CHECK (attempt_ref ~ '^[A-Za-z0-9][A-Za-z0-9._:/#-]{0,179}$'),
+    CHECK (attempt_ref ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,179}$'),
   CONSTRAINT sarah_fleet_run_attempts_pylon_shape
     CHECK (pylon_ref ~ '^[a-z0-9][a-z0-9._:-]{2,119}$'),
   CONSTRAINT sarah_fleet_run_attempts_claim_shape
@@ -137,7 +137,7 @@ CREATE TABLE IF NOT EXISTS sarah_fleet_run_attempts (
   CONSTRAINT sarah_fleet_run_attempts_assignment_shape
     CHECK (
       assignment_ref IS NULL OR
-      assignment_ref ~ '^[A-Za-z0-9][A-Za-z0-9._:/#-]{0,179}$'
+      assignment_ref ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,179}$'
     ),
   CONSTRAINT sarah_fleet_run_attempts_account_hash_shape
     CHECK (
@@ -147,7 +147,7 @@ CREATE TABLE IF NOT EXISTS sarah_fleet_run_attempts (
   CONSTRAINT sarah_fleet_run_attempts_closeout_shape
     CHECK (
       closeout_ref IS NULL OR
-      closeout_ref ~ '^[A-Za-z0-9][A-Za-z0-9._:/#-]{0,179}$'
+      closeout_ref ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,179}$'
     ),
   CONSTRAINT sarah_fleet_run_attempts_terminal_clock_coherence
     CHECK ((state = 'running') = (terminal_at IS NULL)),
@@ -335,6 +335,81 @@ CREATE TRIGGER sarah_fleet_run_attempt_pointer_guard_trigger
   ON sarah_fleet_run_work_units
   FOR EACH ROW EXECUTE FUNCTION sarah_fleet_run_attempt_pointer_guard();
 
+-- v1 allowed `/` and `#` inside blocker refs, while the shared Sync entity
+-- contract deliberately does not. Preserve replay without projecting an
+-- undecodable or privacy-bearing entity by replacing any non-projectable ref
+-- with an opaque digest. An optional typed fallback records why an otherwise
+-- empty legacy terminal is blocked.
+CREATE OR REPLACE FUNCTION sarah_project_legacy_fleet_blocker_refs(
+  blocker_refs_json text,
+  fallback_ref text
+)
+RETURNS text AS $$
+  SELECT replace((
+      CASE
+        WHEN fallback_ref IS NULL THEN '[]'::jsonb
+        ELSE jsonb_build_array(fallback_ref)
+      END ||
+      COALESCE(
+        (
+          SELECT jsonb_agg(
+            deduplicated.mapped_ref ORDER BY deduplicated.first_ordinality
+          )
+          FROM (
+            SELECT mapped.mapped_ref,
+                   min(mapped.ordinality) AS first_ordinality
+            FROM (
+              SELECT
+                CASE
+                  WHEN blocker.value ~
+                    '^blocker\.[A-Za-z0-9][A-Za-z0-9._:-]{0,171}$'
+                    THEN blocker.value
+                  ELSE 'blocker.pylon.fleet_run.legacy.' || substr(
+                    encode(
+                      sha256(convert_to(to_json(blocker.value)::text, 'UTF8')),
+                      'hex'
+                    ),
+                    1,
+                    24
+                  )
+                END AS mapped_ref,
+                blocker.ordinality
+              FROM jsonb_array_elements_text(
+                COALESCE(NULLIF(blocker_refs_json, ''), '[]')::jsonb
+              ) WITH ORDINALITY AS blocker(value, ordinality)
+            ) AS mapped
+            GROUP BY mapped.mapped_ref
+          ) AS deduplicated
+        ),
+        '[]'::jsonb
+      )
+    )::text, ', ', ',');
+$$ LANGUAGE sql IMMUTABLE;
+
+-- `attempt_ref = workClaimRef` remains exact for every current contract. A
+-- historically admitted v1 ref containing `/` or `#` cannot be copied into a
+-- privacy-safe Sync entity, so repair uses an opaque deterministic legacy ref
+-- while leaving the raw execution ledger untouched as the audit authority.
+CREATE OR REPLACE FUNCTION sarah_project_legacy_fleet_ref(
+  source_ref text,
+  safe_prefix text
+)
+RETURNS text AS $$
+  SELECT CASE
+    WHEN source_ref IS NULL THEN NULL
+    WHEN source_ref ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,179}$'
+      THEN source_ref
+    ELSE safe_prefix || '.' || substr(
+      encode(
+        sha256(convert_to(to_json(source_ref)::text, 'UTF8')),
+        'hex'
+      ),
+      1,
+      24
+    )
+  END;
+$$ LANGUAGE sql IMMUTABLE;
+
 -- Deterministic replay repair for events persisted before 0056. Legacy v1
 -- accepted closeouts have refs-only usage and no verifier/artifact/authority
 -- proof, so they become evidence_pending (never succeeded). The function is
@@ -376,6 +451,47 @@ BEGIN
   ) ON COMMIT DROP;
   TRUNCATE sarah_fleet_attempt_repair_entities;
 
+  -- The execution event row remains immutable audit authority. The legacy
+  -- closeout table is a derived projection, so make every ref it exposes
+  -- owner-private/Sync safe before either observation or attempt repair.
+  UPDATE sarah_fleet_run_work_unit_closeouts AS closeout
+  SET work_claim_ref = sarah_project_legacy_fleet_ref(
+        closeout.work_claim_ref,
+        'work_claim.pylon.fleet_run.legacy'
+      ),
+      assignment_ref = sarah_project_legacy_fleet_ref(
+        closeout.assignment_ref,
+        'assignment.pylon.fleet_run.legacy'
+      ),
+      closeout_ref = sarah_project_legacy_fleet_ref(
+        closeout.closeout_ref,
+        'closeout.pylon.fleet_run.legacy'
+      ),
+      blocker_refs_json = sarah_project_legacy_fleet_blocker_refs(
+        closeout.blocker_refs_json,
+        NULL
+      )
+  WHERE closeout.work_claim_ref IS DISTINCT FROM
+          sarah_project_legacy_fleet_ref(
+            closeout.work_claim_ref,
+            'work_claim.pylon.fleet_run.legacy'
+          )
+     OR closeout.assignment_ref IS DISTINCT FROM
+          sarah_project_legacy_fleet_ref(
+            closeout.assignment_ref,
+            'assignment.pylon.fleet_run.legacy'
+          )
+     OR closeout.closeout_ref IS DISTINCT FROM
+          sarah_project_legacy_fleet_ref(
+            closeout.closeout_ref,
+            'closeout.pylon.fleet_run.legacy'
+          )
+     OR closeout.blocker_refs_json IS DISTINCT FROM
+          sarah_project_legacy_fleet_blocker_refs(
+            closeout.blocker_refs_json,
+            NULL
+          );
+
   WITH inserted AS (
     INSERT INTO sarah_fleet_run_attempts
       (run_ref, attempt_ref, work_unit_ref, owner_user_id, intake_claim_ref,
@@ -391,7 +507,10 @@ BEGIN
        last_observed_at, started_at, terminal_at, updated_at)
     SELECT
       closeout.run_ref,
-      closeout.work_claim_ref,
+      sarah_project_legacy_fleet_ref(
+        closeout.work_claim_ref,
+        'work_claim.pylon.fleet_run.legacy'
+      ),
       closeout.unit_ref,
       event.owner_user_id,
       event.intake_claim_ref,
@@ -402,7 +521,10 @@ BEGIN
         ELSE closeout.terminal_state
       END,
       'terminal',
-      closeout.assignment_ref,
+      sarah_project_legacy_fleet_ref(
+        closeout.assignment_ref,
+        'assignment.pylon.fleet_run.legacy'
+      ),
       closeout.account_ref_hash,
       'owner_local',
       'not_measured',
@@ -410,7 +532,10 @@ BEGIN
       '[]',
       '[]',
       '[]',
-      closeout.closeout_ref,
+      sarah_project_legacy_fleet_ref(
+        closeout.closeout_ref,
+        'closeout.pylon.fleet_run.legacy'
+      ),
       '{"truth":"pending"}',
       'pending',
       NULL, NULL, NULL, NULL, NULL,
@@ -418,9 +543,13 @@ BEGIN
       '[]',
       CASE
         WHEN closeout.terminal_state = 'accepted' THEN '[]'
-        WHEN closeout.blocker_refs_json = '[]' THEN
-          '["blocker.pylon.fleet_run.legacy_terminal_without_blocker"]'
-        ELSE closeout.blocker_refs_json
+        ELSE sarah_project_legacy_fleet_blocker_refs(
+          closeout.blocker_refs_json,
+          CASE WHEN closeout.blocker_refs_json = '[]'
+            THEN 'blocker.pylon.fleet_run.legacy_terminal_without_blocker'
+            ELSE NULL
+          END
+        )
       END,
       closeout.event_ref,
       closeout.observed_at,
@@ -447,7 +576,11 @@ BEGIN
       ) AS first_remote_observed_at,
       min(event.recorded_at) OVER (
         PARTITION BY event.run_ref, event.work_claim_ref
-      ) AS first_recorded_at
+      ) AS first_recorded_at,
+      sarah_project_legacy_fleet_ref(
+        event.work_claim_ref,
+        'work_claim.pylon.fleet_run.legacy'
+      ) <> event.work_claim_ref AS identity_unprojectable
     FROM sarah_fleet_run_execution_events AS event
     JOIN sarah_fleet_run_requests AS request
       ON request.run_ref = event.run_ref
@@ -473,7 +606,10 @@ BEGIN
        last_observed_at, started_at, terminal_at, updated_at)
     SELECT
       progress.run_ref,
-      progress.work_claim_ref,
+      sarah_project_legacy_fleet_ref(
+        progress.work_claim_ref,
+        'work_claim.pylon.fleet_run.legacy'
+      ),
       progress.unit_ref,
       progress.owner_user_id,
       progress.intake_claim_ref,
@@ -481,22 +617,28 @@ BEGIN
       progress.event_json::jsonb ->> 'workerKind',
       CASE
         WHEN progress.run_execution_state IN ('completed', 'failed', 'stopped')
+          OR progress.identity_unprojectable
           THEN 'stale'
         ELSE 'running'
       END,
       CASE
         WHEN progress.run_execution_state IN ('completed', 'failed', 'stopped')
+          OR progress.identity_unprojectable
           THEN 'terminal'
         WHEN progress.event_json::jsonb -> 'blockerRefs' = '[]'::jsonb
           THEN 'active'
         ELSE 'blocked'
       END,
-      progress.event_json::jsonb ->> 'assignmentRef',
+      sarah_project_legacy_fleet_ref(
+        progress.event_json::jsonb ->> 'assignmentRef',
+        'assignment.pylon.fleet_run.legacy'
+      ),
       progress.event_json::jsonb ->> 'accountRefHash',
       'owner_local',
       'not_measured',
       CASE
         WHEN progress.run_execution_state IN ('completed', 'failed', 'stopped')
+          OR progress.identity_unprojectable
           THEN '{"truth":"not_reported"}'
         ELSE '{"truth":"pending"}'
       END,
@@ -506,9 +648,20 @@ BEGIN
       NULL, NULL, NULL, NULL, NULL, NULL,
       '[]',
       CASE
+        WHEN progress.identity_unprojectable
+          THEN sarah_project_legacy_fleet_blocker_refs(
+            (progress.event_json::jsonb -> 'blockerRefs')::text,
+            'blocker.pylon.fleet_run.legacy_identity_unprojectable'
+          )
         WHEN progress.run_execution_state IN ('completed', 'failed', 'stopped')
-          THEN '["blocker.pylon.fleet_run.legacy_terminal_with_active_attempt"]'
-        ELSE (progress.event_json::jsonb -> 'blockerRefs')::text
+          THEN sarah_project_legacy_fleet_blocker_refs(
+            (progress.event_json::jsonb -> 'blockerRefs')::text,
+            'blocker.pylon.fleet_run.legacy_terminal_with_active_attempt'
+          )
+        ELSE sarah_project_legacy_fleet_blocker_refs(
+          (progress.event_json::jsonb -> 'blockerRefs')::text,
+          NULL
+        )
       END,
       progress.event_ref,
       progress.first_remote_observed_at,
@@ -517,6 +670,7 @@ BEGIN
       progress.first_recorded_at,
       CASE
         WHEN progress.run_execution_state IN ('completed', 'failed', 'stopped')
+          OR progress.identity_unprojectable
           THEN progress.recorded_at
         ELSE NULL
       END,

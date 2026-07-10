@@ -122,8 +122,15 @@ const AccountRefHash = S.String.check(
   ),
 )
 const BlockerRef = S.String.check(
+  S.isPattern(/^blocker\.[A-Za-z0-9][A-Za-z0-9._:-]{0,171}$/u),
+)
+const LegacyBlockerRef = S.String.check(
   S.isPattern(/^blocker\.[A-Za-z0-9][A-Za-z0-9._:/#-]{0,171}$/u),
 )
+const projectedExecutionPublicRefPattern =
+  /^[A-Za-z0-9][A-Za-z0-9._:-]{0,179}$/u
+const projectedBlockerRefPattern =
+  /^blocker\.[A-Za-z0-9][A-Za-z0-9._:-]{0,171}$/u
 
 export const FleetRunTargetPreference = S.Literals([
   "owner_local",
@@ -290,7 +297,7 @@ export const FleetRunWorkProgressExecutionEvent = S.Struct({
   assignmentRef: S.optionalKey(ExecutionPublicRef),
   workerKind: S.Literals(["codex", "claude", "grok"]),
   accountRefHash: S.optionalKey(AccountRefHash),
-  blockerRefs: S.Array(BlockerRef),
+  blockerRefs: S.Array(LegacyBlockerRef),
 })
 const FleetRunWorkTerminalExecutionEventBase = S.Struct({
   ...FleetRunExecutionEventBase.fields,
@@ -298,7 +305,7 @@ const FleetRunWorkTerminalExecutionEventBase = S.Struct({
   unitRef: PlanUnitRef,
   workClaimRef: ExecutionPublicRef,
   workerKind: S.Literals(["codex", "claude", "grok"]),
-  blockerRefs: S.Array(BlockerRef),
+  blockerRefs: S.Array(LegacyBlockerRef),
 })
 export const FleetRunAcceptedWorkTerminalExecutionEvent = S.Struct({
   ...FleetRunWorkTerminalExecutionEventBase.fields,
@@ -322,8 +329,8 @@ export const FleetRunProvenFailedWorkTerminalExecutionEvent = S.Struct({
 })
 export const FleetRunWorkTerminalExecutionEvent = S.Union([
   FleetRunAcceptedWorkTerminalExecutionEvent,
-  FleetRunUnprovenWorkTerminalExecutionEvent,
   FleetRunProvenFailedWorkTerminalExecutionEvent,
+  FleetRunUnprovenWorkTerminalExecutionEvent,
 ])
 export type FleetRunWorkTerminalExecutionEvent =
   typeof FleetRunWorkTerminalExecutionEvent.Type
@@ -331,7 +338,7 @@ export const FleetRunTerminalExecutionEvent = S.Struct({
   ...FleetRunExecutionEventBase.fields,
   kind: S.Literal("run_terminal"),
   terminalState: S.Literals(["completed", "failed", "stopped"]),
-  blockerRefs: S.Array(BlockerRef),
+  blockerRefs: S.Array(LegacyBlockerRef),
 })
 export const FleetRunExecutionEventV1 = S.Union([
   FleetRunStartedExecutionEvent,
@@ -476,7 +483,7 @@ const FleetRunWorkUnitCloseoutBase = S.Struct({
   unitRef: PlanUnitRef,
   workClaimRef: ExecutionPublicRef,
   workerKind: S.Literals(["codex", "claude", "grok"]),
-  blockerRefs: S.Array(BlockerRef),
+  blockerRefs: S.Array(LegacyBlockerRef),
   observedAt: IsoTimestamp,
   eventRef: ExecutionEventRef,
 })
@@ -502,8 +509,8 @@ export const FleetRunProvenFailedWorkUnitCloseout = S.Struct({
 })
 export const FleetRunWorkUnitCloseout = S.Union([
   FleetRunAcceptedWorkUnitCloseout,
-  FleetRunUnprovenWorkUnitCloseout,
   FleetRunProvenFailedWorkUnitCloseout,
+  FleetRunUnprovenWorkUnitCloseout,
 ])
 export type FleetRunWorkUnitCloseout = typeof FleetRunWorkUnitCloseout.Type
 
@@ -845,6 +852,22 @@ export const decodeFleetRunExecutionBatch = (
     }
     if (event.kind === "run_started") {
       return
+    }
+    if (
+      event.schema === FLEET_RUN_EXECUTION_EVENT_SCHEMA &&
+      (event.blockerRefs.some(
+        (blockerRef) => !projectedBlockerRefPattern.test(blockerRef),
+      ) ||
+        ("workClaimRef" in event &&
+          !projectedExecutionPublicRefPattern.test(event.workClaimRef)) ||
+        ("assignmentRef" in event &&
+          event.assignmentRef !== undefined &&
+          !projectedExecutionPublicRefPattern.test(event.assignmentRef)) ||
+        ("closeoutRef" in event &&
+          event.closeoutRef !== undefined &&
+          !projectedExecutionPublicRefPattern.test(event.closeoutRef)))
+    ) {
+      throw invalidRequest()
     }
     if (event.blockerRefs.length > 32) {
       throw invalidRequest()
@@ -1309,7 +1332,7 @@ const assertStoredWorkUnits = async (
 }
 
 const executionRefsFromJson = S.decodeUnknownSync(
-  S.fromJsonString(S.Array(ExecutionPublicRef)),
+  S.fromJsonString(S.Array(ProjectedExecutionPublicRef)),
 )
 const blockerRefsFromJson = S.decodeUnknownSync(
   S.fromJsonString(S.Array(BlockerRef)),
