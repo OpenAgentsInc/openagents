@@ -268,6 +268,18 @@ describe("canonical Pylon-owned standing FleetRun composition", () => {
                     },
                   }
                 },
+                runFollowUp: async input => ({
+                  ok: true,
+                  claimRef: input.pin.claimRef,
+                  stopReason: "end_turn",
+                  text: "private local Grok follow-up output",
+                  usage: {
+                    metering: "not_measured",
+                    wallClockMs: 10,
+                    plane: "cli_session",
+                    marginalCostClass: "subscription",
+                  },
+                }),
               }
             },
           },

@@ -121,6 +121,8 @@ export type PylonOwnedGrokClaimedWorkPort = {
   }) => Promise<PylonOwnedFleetRunReconcileResult>
   /** Terminal local receipts remain available for supervisor reconciliation after restart. */
   readonly probeLiveness: (assignmentRef: string) => Promise<FleetRunOwnerLocalLiveness>
+  /** Exact owner-private follow-up for one live local Grok assignment. */
+  readonly applySteer: PylonFleetRunAttemptControl["applySteer"]
 }
 
 type AssignmentOptionOverrides = Omit<
@@ -1352,10 +1354,24 @@ export function createPylonOwnedFleetRunSupervisorRunner(
         attempt,
         "blocker.pylon.fleet_steering.approval_control_unavailable",
       ),
-      applySteer: async attempt => await unsupportedAttemptControl(
-        attempt,
-        "blocker.pylon.fleet_steering.next_turn_control_unavailable",
-      ),
+      applySteer: async attempt => {
+        if (
+          input.grok !== undefined &&
+          /^assignment\.pylon\.grok\.[a-f0-9]{24}$/u.test(attempt.assignmentRef)
+        ) {
+          if (attempt.pylonRef !== input.pylonRef) {
+            return {
+              state: "failed",
+              failureRef: "blocker.pylon.fleet_steering.attempt_inspection_mismatch",
+            }
+          }
+          return await input.grok.applySteer(attempt)
+        }
+        return await unsupportedAttemptControl(
+          attempt,
+          "blocker.pylon.fleet_steering.next_turn_control_unavailable",
+        )
+      },
       observeStop: async ({ attempts }) => {
         for (const attempt of attempts) {
           const state = await inspectExactAttempt(attempt)

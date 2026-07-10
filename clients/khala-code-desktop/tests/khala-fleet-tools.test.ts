@@ -3198,6 +3198,18 @@ describe("Khala Code fleet tools", () => {
             marginalCostClass: "free" as const,
           },
         }),
+        runFollowUp: async (input) => ({
+          ok: true,
+          claimRef: input.pin.claimRef,
+          text: "fixture-follow-up-ok",
+          stopReason: "end_turn",
+          usage: {
+            metering: "not_measured" as const,
+            wallClockMs: 1,
+            plane: "cli_session" as const,
+            marginalCostClass: "free" as const,
+          },
+        }),
       },
     })
       .find(item => item.definition.name === "codex_spawn")

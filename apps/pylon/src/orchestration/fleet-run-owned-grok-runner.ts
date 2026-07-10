@@ -41,6 +41,11 @@ import type {
   FleetRunSupervisorActiveAssignment,
   FleetRunSupervisorDispatchInput,
 } from "./fleet-run-supervisor.js"
+import type {
+  PylonFleetRunAttemptControlResult,
+  PylonFleetRunExactAttempt,
+  PylonFleetRunSteeringIntentIdentity,
+} from "./fleet-run-steering-follow-up-dispatcher.js"
 import type { PylonOrchestrationStore } from "./store.js"
 
 export const PYLON_OWNED_GROK_RUNNER_BLOCKERS = {
@@ -72,6 +77,14 @@ const DEFAULT_GROK_VERIFY_TIMEOUT_MS = 15 * 60 * 1_000
 const MAX_GROK_VERIFY_TIMEOUT_MS = 60 * 60 * 1_000
 const GROK_LIFECYCLE_HEARTBEAT_MS = 10_000
 const GROK_FIXTURE_VERIFICATION_FILE = "grok-fixture-closeout.json"
+
+const GROK_STEERING_BLOCKERS = {
+  attemptBindingInvalid: "blocker.pylon.fleet_steering.attempt_binding_invalid",
+  attemptTerminal: "blocker.pylon.fleet_steering.attempt_terminal",
+  bodyUnavailable: "blocker.pylon.fleet_steering.steer_body_unavailable",
+  conflictingReplay: "blocker.pylon.fleet_steering.intent_replay_conflict",
+  resumeFailed: "blocker.pylon.fleet_steering.grok_resume_failed",
+} as const
 
 type GrokExecutionReceiptV1 = {
   readonly schema: typeof GROK_RECEIPT_SCHEMA
@@ -107,6 +120,35 @@ type GrokExecutionReceiptV2 = Omit<GrokExecutionReceiptV1, "schema"> & {
 }
 
 type GrokExecutionReceipt = GrokExecutionReceiptV1 | GrokExecutionReceiptV2
+
+type GrokTurnPin = Parameters<
+  GrokWorkerExecutorPort["runClaimedWork"]
+>[0]["pin"]
+
+type GrokSteerInput = PylonFleetRunExactAttempt & {
+  readonly intent: PylonFleetRunSteeringIntentIdentity
+  readonly body: string | null
+  readonly bodyRef: string | null
+}
+
+type ActiveGrokExecution = {
+  readonly assignmentRef: string
+  readonly claimRef: string
+  readonly executor: GrokWorkerExecutorPort
+  readonly marginalCostClass: PylonAccountRegistryEntry["marginalCostClass"]
+  readonly pin: GrokTurnPin
+  readonly runRef: string
+  readonly sessionId: string
+  readonly steerResults: Map<string, {
+    readonly identity: string
+    readonly result: Promise<PylonFleetRunAttemptControlResult>
+  }>
+  readonly workUnitRef: string
+  failureRef: string | null
+  phase: "initial" | "draining" | "verifying" | "closed"
+  tail: Promise<void>
+  wallClockMs: number | null
+}
 
 export type PylonOwnedGrokWorkspace = {
   readonly checkout: GitCheckoutWorkspace | null
@@ -608,6 +650,55 @@ const failureRefForClass = (failureClass: string | undefined): string =>
           ? PYLON_OWNED_GROK_RUNNER_BLOCKERS.custodyInvalid
           : PYLON_OWNED_GROK_RUNNER_BLOCKERS.executionFailed
 
+const grokSessionIdFor = (assignmentRef: string): string => {
+  const hex = createHash("sha256")
+    .update(`openagents:pylon:grok-session:${assignmentRef}`)
+    .digest("hex")
+    .slice(0, 32)
+    .split("")
+  // Deterministic RFC 4122 UUID. It is local execution state and is never
+  // copied into receipts, lifecycle events, or public steering outcomes.
+  hex[12] = "5"
+  hex[16] = ((Number.parseInt(hex[16] ?? "0", 16) & 0x3) | 0x8).toString(16)
+  const value = hex.join("")
+  return `${value.slice(0, 8)}-${value.slice(8, 12)}-${value.slice(12, 16)}-${value.slice(16, 20)}-${value.slice(20)}`
+}
+
+type GrokTurnCloseout = Awaited<
+  ReturnType<GrokWorkerExecutorPort["runClaimedWork"]>
+>
+
+const recordGrokTurnCloseout = (
+  active: ActiveGrokExecution,
+  closeout: GrokTurnCloseout,
+): string | null => {
+  let failureRef: string | null = null
+  const wallClockMs = closeout.usage.wallClockMs
+  const accumulatedWallClockMs = (active.wallClockMs ?? 0) + wallClockMs
+  if (
+    !Number.isSafeInteger(wallClockMs) ||
+    wallClockMs < 0 ||
+    !Number.isSafeInteger(accumulatedWallClockMs)
+  ) {
+    failureRef = PYLON_OWNED_GROK_RUNNER_BLOCKERS.executionFailed
+  } else {
+    active.wallClockMs = accumulatedWallClockMs
+  }
+  if (
+    !closeout.ok ||
+    closeout.claimRef !== active.claimRef ||
+    closeout.usage.metering !== "not_measured" ||
+    closeout.usage.plane !== "cli_session" ||
+    closeout.usage.marginalCostClass !== active.marginalCostClass
+  ) {
+    failureRef = failureRefForClass(closeout.failureClass)
+  }
+  if (failureRef !== null && active.failureRef === null) {
+    active.failureRef = failureRef
+  }
+  return failureRef
+}
+
 export function isPylonOwnedGrokAssignmentRef(value: string | null | undefined): value is string {
   return typeof value === "string" && /^assignment\.pylon\.grok\.[a-f0-9]{24}$/u.test(value)
 }
@@ -647,6 +738,110 @@ export function createPylonOwnedGrokClaimedWorkPort(
     } catch {
       return new Date(0)
     }
+  }
+
+  const activeExecutions = new Map<string, ActiveGrokExecution>()
+
+  const applySteer = async (
+    steer: GrokSteerInput,
+  ): Promise<PylonFleetRunAttemptControlResult> => {
+    const active = activeExecutions.get(steer.assignmentRef)
+    if (active === undefined || active.phase === "closed") {
+      return {
+        state: "stale",
+        failureRef: GROK_STEERING_BLOCKERS.attemptTerminal,
+      }
+    }
+    if (
+      steer.runRef !== active.runRef ||
+      steer.workUnitRef !== active.workUnitRef ||
+      steer.workClaimRef !== active.claimRef ||
+      steer.assignmentRef !== active.assignmentRef
+    ) {
+      return {
+        state: "failed",
+        failureRef: GROK_STEERING_BLOCKERS.attemptBindingInvalid,
+      }
+    }
+    if (steer.body === null || steer.body.trim() === "") {
+      return {
+        state: "failed",
+        failureRef: GROK_STEERING_BLOCKERS.bodyUnavailable,
+      }
+    }
+
+    // This identity is owner-local only. It detects a conflicting replay
+    // without projecting the private steer body or any digest of it.
+    const identity = JSON.stringify({
+      body: steer.body,
+      bodyRef: steer.bodyRef,
+      intentId: steer.intent.intentId,
+      seq: steer.intent.seq,
+    })
+    const previous = active.steerResults.get(
+      steer.intent.completionContractRef,
+    )
+    if (previous !== undefined) {
+      if (previous.identity !== identity) {
+        return {
+          state: "failed",
+          failureRef: GROK_STEERING_BLOCKERS.conflictingReplay,
+        }
+      }
+      return await previous.result
+    }
+    if (active.phase === "verifying") {
+      return {
+        state: "stale",
+        failureRef: GROK_STEERING_BLOCKERS.attemptTerminal,
+      }
+    }
+
+    const before = active.tail
+    const result = before.then(async (): Promise<PylonFleetRunAttemptControlResult> => {
+      if (active.failureRef !== null || active.phase === "closed") {
+        return {
+          state: "failed",
+          failureRef: GROK_STEERING_BLOCKERS.resumeFailed,
+        }
+      }
+      let closeout: GrokTurnCloseout
+      try {
+        closeout = await active.executor.runFollowUp({
+          pin: active.pin,
+          prompt: steer.body!,
+          sessionId: active.sessionId,
+          timeoutMs: workerTimeoutMs,
+          plane: "cli_session",
+          marginalCostClass: active.marginalCostClass,
+        })
+      } catch {
+        active.failureRef ??=
+          PYLON_OWNED_GROK_RUNNER_BLOCKERS.executionFailed
+        return {
+          state: "failed",
+          failureRef: GROK_STEERING_BLOCKERS.resumeFailed,
+        }
+      }
+      return recordGrokTurnCloseout(active, closeout) === null
+        ? { state: "applied" }
+        : {
+            state: "failed",
+            failureRef: GROK_STEERING_BLOCKERS.resumeFailed,
+          }
+    }).catch(() => {
+      active.failureRef ??= PYLON_OWNED_GROK_RUNNER_BLOCKERS.executionFailed
+      return {
+        state: "failed" as const,
+        failureRef: GROK_STEERING_BLOCKERS.resumeFailed,
+      }
+    })
+    active.steerResults.set(steer.intent.completionContractRef, {
+      identity,
+      result,
+    })
+    active.tail = result.then(() => undefined)
+    return await result
   }
 
   const dispatch = async (
@@ -875,45 +1070,87 @@ export function createPylonOwnedGrokClaimedWorkPort(
       lifecycleTail = delivery.catch(() => undefined)
       return delivery
     }
+    const pin: GrokTurnPin = {
+      claimRef: request.claim.claimRef,
+      workUnitRef: request.workUnit.workUnitRef,
+      runRef: request.run.runRef,
+      accountRefHash,
+      cwd: workspace.workingDirectory,
+      ...(request.workUnit.repo === undefined
+        ? {}
+        : { repo: request.workUnit.repo }),
+      ...(request.workUnit.baseCommit === undefined
+        ? {}
+        : { commit: request.workUnit.baseCommit }),
+      ...(request.workUnit.branch === undefined
+        ? {}
+        : { branch: request.workUnit.branch }),
+      ...(request.workUnit.verify === undefined
+        ? {}
+        : { verifyCommand: request.workUnit.verify }),
+    }
+    const active: ActiveGrokExecution = {
+      assignmentRef,
+      claimRef: request.claim.claimRef,
+      executor,
+      failureRef: null,
+      marginalCostClass,
+      phase: "initial",
+      pin,
+      runRef: request.run.runRef,
+      sessionId: grokSessionIdFor(assignmentRef),
+      steerResults: new Map(),
+      tail: Promise.resolve(),
+      wallClockMs: null,
+      workUnitRef: request.workUnit.workUnitRef,
+    }
+    let startInitialTurn!: () => void
+    const initialTurnStart = new Promise<void>(resolveStart => {
+      startInitialTurn = resolveStart
+    })
+    const initialTurn = initialTurnStart
+      .then(async () => await executor.runClaimedWork({
+        pin,
+        prompt: request.workUnit.body ?? request.run.objective,
+        sessionId: active.sessionId,
+        timeoutMs: workerTimeoutMs,
+        plane: "cli_session",
+        marginalCostClass,
+      }))
+      .then(closeout => {
+        recordGrokTurnCloseout(active, closeout)
+      })
+      .catch(() => {
+        active.failureRef ??=
+          PYLON_OWNED_GROK_RUNNER_BLOCKERS.executionFailed
+      })
+    active.tail = initialTurn
+    activeExecutions.set(assignmentRef, active)
+    // Bind live control before projecting the assignment. Sarah can only steer
+    // once that projection is visible, so the exact local target must already
+    // exist when the first runtime_started event leaves this process.
     await queueExecutorLifecycle("assignment_run.runtime_started")
     const lifecycleHeartbeat = setInterval(() => {
       void queueExecutorLifecycle("assignment_run.runtime_progress")
     }, lifecycleHeartbeatMs)
+    startInitialTurn()
     try {
-      const closeout = await executor.runClaimedWork({
-        pin: {
-          claimRef: request.claim.claimRef,
-          workUnitRef: request.workUnit.workUnitRef,
-          runRef: request.run.runRef,
-          accountRefHash,
-          cwd: workspace.workingDirectory,
-          ...(request.workUnit.repo === undefined ? {} : { repo: request.workUnit.repo }),
-          ...(request.workUnit.baseCommit === undefined ? {} : { commit: request.workUnit.baseCommit }),
-          ...(request.workUnit.branch === undefined ? {} : { branch: request.workUnit.branch }),
-          ...(request.workUnit.verify === undefined ? {} : { verifyCommand: request.workUnit.verify }),
-        },
-        prompt: request.workUnit.body ?? request.run.objective,
-        timeoutMs: workerTimeoutMs,
-        plane: "cli_session",
-        marginalCostClass,
-      })
-      if (
-        !Number.isSafeInteger(closeout.usage.wallClockMs) ||
-        closeout.usage.wallClockMs < 0
-      ) {
-        failureRef = PYLON_OWNED_GROK_RUNNER_BLOCKERS.executionFailed
-      } else {
-        wallClockMs = closeout.usage.wallClockMs
+      await initialTurn
+
+      // Any steer accepted while the initial turn was active is chained onto
+      // the same session. Keep draining until the tail is stable, then fence
+      // new turns before verification starts.
+      active.phase = "draining"
+      while (true) {
+        const tail = active.tail
+        await tail
+        if (active.tail === tail) break
       }
-      if (
-        !closeout.ok ||
-        closeout.claimRef !== request.claim.claimRef ||
-        closeout.usage.metering !== "not_measured" ||
-        closeout.usage.plane !== "cli_session" ||
-        closeout.usage.marginalCostClass !== marginalCostClass
-      ) {
-        failureRef = failureRefForClass(closeout.failureClass)
-      } else if (failureRef === null && workspace.verificationArgs === null) {
+      active.phase = "verifying"
+      failureRef = active.failureRef
+      wallClockMs = active.wallClockMs
+
+      if (failureRef === null && workspace.verificationArgs === null) {
         failureRef = PYLON_OWNED_GROK_RUNNER_BLOCKERS.verificationFailed
       } else if (failureRef === null && workspace.verificationArgs !== null) {
         try {
@@ -922,10 +1159,10 @@ export function createPylonOwnedGrokClaimedWorkPort(
               join(workspace.workingDirectory, GROK_FIXTURE_VERIFICATION_FILE),
               `${JSON.stringify({
                 schema: "openagents.pylon.grok_fixture_closeout.v1",
-                claimRef: closeout.claimRef,
+                claimRef: request.claim.claimRef,
                 workUnitRef: request.workUnit.workUnitRef,
-                metering: closeout.usage.metering,
-                plane: closeout.usage.plane,
+                metering: "not_measured",
+                plane: "cli_session",
               })}\n`,
               { mode: 0o600 },
             )
@@ -945,6 +1182,10 @@ export function createPylonOwnedGrokClaimedWorkPort(
     } catch {
       failureRef = PYLON_OWNED_GROK_RUNNER_BLOCKERS.executionFailed
     } finally {
+      active.phase = "closed"
+      if (activeExecutions.get(assignmentRef) === active) {
+        activeExecutions.delete(assignmentRef)
+      }
       lifecycleClosed = true
       clearInterval(lifecycleHeartbeat)
       await lifecycleTail
@@ -1031,5 +1272,5 @@ export function createPylonOwnedGrokClaimedWorkPort(
     return receipt.state === "running" ? "dead" : "live"
   }
 
-  return { dispatch, reconcile, probeLiveness }
+  return { applySteer, dispatch, reconcile, probeLiveness }
 }

@@ -109,6 +109,7 @@ const accountFor = (home: string, ref: string): PylonAccountRegistryEntry => ({
 
 const successfulExecutor = (
   onRun: (input: Parameters<GrokWorkerExecutorPort["runClaimedWork"]>[0]) => void = () => {},
+  onFollowUp: (input: Parameters<GrokWorkerExecutorPort["runFollowUp"]>[0]) => void = () => {},
 ): GrokWorkerExecutorPort => ({
   kind: "grok_cli",
   readiness: async () => ({
@@ -127,6 +128,21 @@ const successfulExecutor = (
       usage: {
         metering: "not_measured",
         wallClockMs: 12,
+        plane: "cli_session",
+        marginalCostClass: input.marginalCostClass ?? "not_measured",
+      },
+    }
+  },
+  runFollowUp: async input => {
+    onFollowUp(input)
+    return {
+      ok: true,
+      claimRef: input.pin.claimRef,
+      stopReason: "end_turn",
+      text: "private local follow-up output must not project",
+      usage: {
+        metering: "not_measured",
+        wallClockMs: 8,
         plane: "cli_session",
         marginalCostClass: input.marginalCostClass ?? "not_measured",
       },
@@ -287,6 +303,269 @@ describe("Pylon-owned exact Grok claimed-work adapter", () => {
       })
       expect(materializeInput).not.toHaveProperty("checkoutRunner")
     } finally {
+      await rm(root, { force: true, recursive: true })
+    }
+  })
+
+  test("serializes one exact private steer onto the Grok session before verification", async () => {
+    const root = await mkdtemp(join(tmpdir(), "pylon-grok-steer-"))
+    const pylonHome = join(root, "pylon")
+    const summary = createBootstrapSummary(
+      parseBootstrapArgs(["--json"]),
+      { PYLON_HOME: pylonHome },
+    )
+    const accountRef = "grok-steer"
+    const accountHome = join(pylonHome, "accounts", "grok", accountRef)
+    const workingDirectory = join(root, "workspace")
+    await mkdir(accountHome, { recursive: true })
+    await mkdir(workingDirectory, { recursive: true })
+    const request = dispatchFor(accountRef, 203, "fixture")
+    const order: string[] = []
+    const privateBody = "PRIVATE: add the exact regression before closeout"
+    let assignmentRef = ""
+    let releaseInitial!: () => void
+    const initialGate = new Promise<void>(resolve => {
+      releaseInitial = resolve
+    })
+    let reportInitialStarted!: (
+      input: Parameters<GrokWorkerExecutorPort["runClaimedWork"]>[0],
+    ) => void
+    const initialStarted = new Promise<
+      Parameters<GrokWorkerExecutorPort["runClaimedWork"]>[0]
+    >(resolve => {
+      reportInitialStarted = resolve
+    })
+    const followUps: Array<
+      Parameters<GrokWorkerExecutorPort["runFollowUp"]>[0]
+    > = []
+    let verifierRuns = 0
+    let port!: ReturnType<typeof createPylonOwnedGrokClaimedWorkPort>
+    let earlySteer: ReturnType<typeof port.applySteer> | null = null
+
+    try {
+      port = createPylonOwnedGrokClaimedWorkPort({
+        summary,
+        now: () => fixedNow,
+        loadRegistry: async () => [accountFor(accountHome, accountRef)],
+        createExecutor: () => ({
+          ...successfulExecutor(),
+          runClaimedWork: async input => {
+            order.push("initial")
+            reportInitialStarted(input)
+            await initialGate
+            return await successfulExecutor().runClaimedWork(input)
+          },
+          runFollowUp: async input => {
+            order.push("follow_up")
+            followUps.push(input)
+            return await successfulExecutor().runFollowUp(input)
+          },
+        }),
+        materializeWorkspace: async () => ({
+          checkout: null,
+          verificationArgs: ["bun", "--version"],
+          workingDirectory,
+          workspaceRef: "workspace.public.grok.steer",
+        }),
+        runVerifier: async () => {
+          order.push("verify")
+          verifierRuns += 1
+          return { exitCode: 0, timedOut: false }
+        },
+      })
+      const exactSteerFor = (targetAssignmentRef: string) => ({
+        pylonRef: "pylon.public.grok.steer",
+        runRef: request.run.runRef,
+        claimRef: "claim.sarah_fleet_run.grok.steer",
+        workUnitRef: request.workUnit.workUnitRef,
+        workClaimRef: request.claim.claimRef,
+        assignmentRef: targetAssignmentRef,
+        intent: {
+          seq: 17,
+          intentId: "intent.grok.steer.exact",
+          completionContractRef:
+            "contract.pylon.fleet_steering_completion.grok_exact",
+        },
+        body: privateBody,
+        bodyRef: null,
+      } as const)
+      const dispatched = port.dispatch({
+        ...request,
+        onLifecycle: async event => {
+          if (event.event === "assignment_run.runtime_started") {
+            assignmentRef = event.assignmentRef ?? ""
+            // Reproduce the tightest live race: the steer is accepted as soon
+            // as assignment identity is projected, before the initial CLI turn
+            // has started. It must queue behind that initial turn.
+            earlySteer = port.applySteer(exactSteerFor(assignmentRef))
+          }
+        },
+      })
+      const initial = await initialStarted
+      expect(assignmentRef).toMatch(/^assignment\.pylon\.grok\.[a-f0-9]{24}$/)
+      expect(initial.sessionId).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+      )
+
+      const exactSteer = exactSteerFor(assignmentRef)
+      expect(await port.applySteer({
+        ...exactSteer,
+        workUnitRef: "work_unit.grok.foreign",
+      })).toEqual({
+        state: "failed",
+        failureRef: "blocker.pylon.fleet_steering.attempt_binding_invalid",
+      })
+      expect(await port.applySteer({
+        ...exactSteer,
+        intent: {
+          ...exactSteer.intent,
+          intentId: "intent.grok.steer.body_ref_only",
+          completionContractRef:
+            "contract.pylon.fleet_steering_completion.grok_body_ref",
+        },
+        body: null,
+        bodyRef: "private.body.ref.only",
+      })).toEqual({
+        state: "failed",
+        failureRef: "blocker.pylon.fleet_steering.steer_body_unavailable",
+      })
+
+      expect(earlySteer).not.toBeNull()
+      const first = earlySteer!
+      const duplicate = port.applySteer(exactSteer)
+      expect(await port.applySteer({
+        ...exactSteer,
+        body: "PRIVATE conflicting replay body",
+      })).toEqual({
+        state: "failed",
+        failureRef: "blocker.pylon.fleet_steering.intent_replay_conflict",
+      })
+      await Bun.sleep(0)
+      expect(followUps).toHaveLength(0)
+      releaseInitial()
+      expect(await first).toEqual({ state: "applied" })
+      expect(await duplicate).toEqual({ state: "applied" })
+      const result = await dispatched
+
+      expect(followUps).toHaveLength(1)
+      expect(followUps[0]).toMatchObject({
+        prompt: privateBody,
+        sessionId: initial.sessionId,
+      })
+      expect(verifierRuns).toBe(1)
+      expect(order).toEqual(["initial", "follow_up", "verify"])
+      expect(result.status).toBe("completed")
+      expect(JSON.stringify(result)).not.toContain(privateBody)
+      expect(JSON.stringify(result)).not.toContain(initial.sessionId!)
+    } finally {
+      releaseInitial?.()
+      await rm(root, { force: true, recursive: true })
+    }
+  })
+
+  test("fails the assignment and skips verification when the resumed Grok turn fails", async () => {
+    const root = await mkdtemp(join(tmpdir(), "pylon-grok-steer-failure-"))
+    const pylonHome = join(root, "pylon")
+    const summary = createBootstrapSummary(
+      parseBootstrapArgs(["--json"]),
+      { PYLON_HOME: pylonHome },
+    )
+    const accountRef = "grok-steer-failure"
+    const accountHome = join(pylonHome, "accounts", "grok", accountRef)
+    const workingDirectory = join(root, "workspace")
+    await mkdir(accountHome, { recursive: true })
+    await mkdir(workingDirectory, { recursive: true })
+    const request = dispatchFor(accountRef, 204, "fixture")
+    let assignmentRef = ""
+    let releaseInitial!: () => void
+    const initialGate = new Promise<void>(resolve => {
+      releaseInitial = resolve
+    })
+    let reportStarted!: () => void
+    const started = new Promise<void>(resolve => {
+      reportStarted = resolve
+    })
+    let verifierRuns = 0
+
+    try {
+      const port = createPylonOwnedGrokClaimedWorkPort({
+        summary,
+        now: () => fixedNow,
+        loadRegistry: async () => [accountFor(accountHome, accountRef)],
+        createExecutor: () => ({
+          ...successfulExecutor(),
+          runClaimedWork: async input => {
+            reportStarted()
+            await initialGate
+            return await successfulExecutor().runClaimedWork(input)
+          },
+          runFollowUp: async input => ({
+            ok: false,
+            claimRef: input.pin.claimRef,
+            stopReason: "timeout",
+            text: "PRIVATE failed follow-up output",
+            failureClass: "timeout",
+            usage: {
+              metering: "not_measured",
+              wallClockMs: 5,
+              plane: "cli_session",
+              marginalCostClass: "subscription",
+            },
+          }),
+        }),
+        materializeWorkspace: async () => ({
+          checkout: null,
+          verificationArgs: ["bun", "--version"],
+          workingDirectory,
+          workspaceRef: "workspace.public.grok.steer_failure",
+        }),
+        runVerifier: async () => {
+          verifierRuns += 1
+          return { exitCode: 0, timedOut: false }
+        },
+      })
+      const dispatched = port.dispatch({
+        ...request,
+        onLifecycle: async event => {
+          if (event.event === "assignment_run.runtime_started") {
+            assignmentRef = event.assignmentRef ?? ""
+          }
+        },
+      })
+      await started
+      const steered = port.applySteer({
+        pylonRef: "pylon.public.grok.steer_failure",
+        runRef: request.run.runRef,
+        claimRef: "claim.sarah_fleet_run.grok.steer_failure",
+        workUnitRef: request.workUnit.workUnitRef,
+        workClaimRef: request.claim.claimRef,
+        assignmentRef,
+        intent: {
+          seq: 18,
+          intentId: "intent.grok.steer.failure",
+          completionContractRef:
+            "contract.pylon.fleet_steering_completion.grok_failure",
+        },
+        body: "PRIVATE failing steer",
+        bodyRef: null,
+      })
+      releaseInitial()
+
+      expect(await steered).toEqual({
+        state: "failed",
+        failureRef: "blocker.pylon.fleet_steering.grok_resume_failed",
+      })
+      const result = await dispatched
+      expect(result).toMatchObject({
+        status: "failed",
+        lifecycle: [{
+          blockerRefs: [PYLON_OWNED_GROK_RUNNER_BLOCKERS.executionTimedOut],
+        }],
+      })
+      expect(verifierRuns).toBe(0)
+      expect(JSON.stringify(result)).not.toContain("PRIVATE")
+    } finally {
+      releaseInitial?.()
       await rm(root, { force: true, recursive: true })
     }
   })

@@ -1005,8 +1005,15 @@ describe("Pylon-owned FleetRun runner", () => {
       workClaimRef: "claim.runner.steering",
       assignmentRef: "assignment.runner.steering",
     }
+    const intent = {
+      seq: 20,
+      intentId: "intent.runner.steering",
+      completionContractRef:
+        "contract.pylon.fleet_steering_completion.runner",
+    }
     expect(await runner.steeringControl.applySteer({
       ...attempt,
+      intent,
       body: "owner-private direction",
       bodyRef: null,
     })).toEqual({
@@ -1017,6 +1024,7 @@ describe("Pylon-owned FleetRun runner", () => {
       pylonRef,
       runRef: run.runRef,
       claimRef: attempt.claimRef,
+      intent,
       attempts: [attempt],
     })).toEqual({
       state: "retry",
@@ -1025,12 +1033,70 @@ describe("Pylon-owned FleetRun runner", () => {
     state = "closed_out"
     expect(await runner.steeringControl.applyApproval({
       ...attempt,
+      intent,
       approvalRef: "approval.public.runner.steering",
       decision: "allow",
     })).toEqual({
       state: "stale",
       failureRef: "blocker.pylon.fleet_steering.attempt_terminal",
     })
+
+    let routedGrokSteers = 0
+    const grokRunner = createPylonOwnedFleetRunSupervisorRunner({
+      summary,
+      pylonRef,
+      baseUrl: "https://openagents.test",
+      grok: {
+        dispatch: async () => ({
+          accountRefHash: null,
+          assignmentRef: null,
+          closeoutRef: null,
+          lifecycle: [],
+          status: "accepted",
+          summary: "Grok fixture remains active.",
+          usageEvidence: null,
+        }),
+        reconcile: async ({ active }) => ({
+          accountRefHash: null,
+          assignmentRef: active.claim.assignmentRef,
+          closeoutRef: null,
+          lifecycle: [],
+          status: "accepted",
+          summary: "Grok fixture remains active.",
+          taskId: active.taskId,
+          usageEvidence: null,
+        }),
+        probeLiveness: async () => "unknown",
+        applySteer: async steer => {
+          routedGrokSteers += 1
+          expect(steer.body).toBe("owner-private Grok direction")
+          return { state: "applied" }
+        },
+      },
+    })
+    const grokAttempt = {
+      ...attempt,
+      assignmentRef: "assignment.pylon.grok.aaaaaaaaaaaaaaaaaaaaaaaa",
+      intent: {
+        seq: 21,
+        intentId: "intent.runner.grok.steer",
+        completionContractRef:
+          "contract.pylon.fleet_steering_completion.runner_grok",
+      },
+      body: "owner-private Grok direction",
+      bodyRef: null,
+    } as const
+    expect(await grokRunner.steeringControl.applySteer(grokAttempt)).toEqual({
+      state: "applied",
+    })
+    expect(await grokRunner.steeringControl.applySteer({
+      ...grokAttempt,
+      pylonRef: "pylon.public.foreign",
+    })).toEqual({
+      state: "failed",
+      failureRef: "blocker.pylon.fleet_steering.attempt_inspection_mismatch",
+    })
+    expect(routedGrokSteers).toBe(1)
   })
 
   test("never substitutes providers, default accounts, or Grok claims", async () => {
@@ -1243,6 +1309,7 @@ describe("Pylon-owned FleetRun runner", () => {
           usageEvidence: null,
         }),
         probeLiveness: async () => "unknown",
+        applySteer: async () => ({ state: "applied" }),
       },
     })
     const grokInput = dispatchInput("grok", "grok-a", 43, "fixture")
