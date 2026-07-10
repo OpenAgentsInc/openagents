@@ -1,14 +1,19 @@
 import {
   canonicalJson,
   decodeFleetApprovalEntity,
+  decodeFleetAssignmentEntity,
   decodeFleetAttemptEntity,
+  decodeFleetWorkerEntity,
   decodeFleetWorkUnitEntity,
   FleetAttemptExactUsageEvidence,
   FleetAttemptMarginalCostClass,
   FleetAttemptNotMeasuredUsageEvidence,
+  fleetApprovalHasExactBinding,
   fleetRunScope,
+  type FleetAssignmentEntity,
   type FleetAttemptEntity,
   type FleetApprovalEntity,
+  type FleetWorkerEntity,
   type FleetWorkUnitEntity,
   type SyncScope,
 } from "@openagentsinc/khala-sync"
@@ -473,6 +478,15 @@ export type FleetRunExecutionEvent = typeof FleetRunExecutionEvent.Type
 type FleetRunAnyWorkTerminalExecutionEvent = Extract<
   FleetRunExecutionEvent,
   { readonly kind: "work_terminal" }
+>
+type FleetRunV2WorkExecutionEvent = Extract<
+  FleetRunExecutionEventV2,
+  {
+    readonly kind:
+      | "work_progress"
+      | "approval_requested"
+      | "work_terminal"
+  }
 >
 
 export const FleetRunExecutionBatchV1 = S.Struct({
@@ -2593,6 +2607,300 @@ const projectAttemptForEvent = async (
   return { attempt: projectedAttempt, workUnit }
 }
 
+type FleetProjectionPostImageRow = Readonly<{
+  scope: string
+  post_image_json: string | object
+}>
+
+type LatestFleetProjectionRow = Readonly<{
+  scope: string
+  op: "upsert" | "delete"
+  post_image_json: string | object | null
+}>
+
+const latestFleetEntityPostImage = async <Entity>(
+  sql: SqlTag,
+  runRef: string,
+  entityType: "fleet_assignment" | "fleet_worker",
+  entityId: string,
+  decode: (input: unknown) => Entity,
+): Promise<Entity | undefined> => {
+  const scope = fleetRunScope(runRef)
+  const rows: Array<LatestFleetProjectionRow> = await sql`
+    SELECT scope, op, post_image_json
+    FROM khala_sync_changelog
+    WHERE scope = ${scope}
+      AND entity_type = ${entityType}
+      AND entity_id = ${entityId}
+    ORDER BY version DESC
+    LIMIT 1
+  `
+  const row = rows[0]
+  if (row === undefined) return undefined
+  if (row.op !== "upsert" || row.post_image_json === null) {
+    throw fixedError(
+      "idempotency_conflict",
+      `fleet ${entityType === "fleet_worker" ? "worker" : "assignment"} projection was already retired`,
+      { runRef },
+    )
+  }
+  try {
+    if (row.scope !== scope) throw invalidRequest()
+    return decode(
+      typeof row.post_image_json === "string"
+        ? JSON.parse(row.post_image_json)
+        : row.post_image_json,
+    )
+  } catch {
+    throw fixedError(
+      "storage_unavailable",
+      `fleet ${entityType === "fleet_worker" ? "worker" : "assignment"} projection failed integrity validation`,
+      { runRef },
+    )
+  }
+}
+
+const assignmentStatusForEvent = (
+  event: FleetRunV2WorkExecutionEvent,
+): Readonly<{ status: string; closeoutClass?: string }> => {
+  if (event.kind !== "work_terminal") return { status: "running" }
+  if (event.terminalState === "accepted") {
+    return { status: "accepted_work", closeoutClass: "accepted_work" }
+  }
+  return {
+    status: event.terminalState,
+    closeoutClass: event.terminalState,
+  }
+}
+
+const projectAssignmentForEvent = async (
+  sql: SqlTag,
+  input: FleetRunAuthorityAppendExecutionInput,
+  event: FleetRunV2WorkExecutionEvent,
+  attempt: FleetAttemptEntity,
+  workUnit: FleetWorkUnitEntity,
+  nowIso: string,
+): Promise<FleetAssignmentEntity | null> => {
+  const assignmentRef = attempt.assignmentRef
+  if (assignmentRef === null) return null
+
+  const bindings: Array<{
+    run_ref: string
+    attempt_ref: string
+    work_unit_ref: string
+    owner_user_id: string
+    intake_claim_ref: string
+    pylon_ref: string
+    worker_kind: string
+    account_ref_hash: string | null
+  }> = await sql`
+    SELECT run_ref, attempt_ref, work_unit_ref, owner_user_id,
+           intake_claim_ref, pylon_ref, worker_kind, account_ref_hash
+    FROM sarah_fleet_run_attempts
+    WHERE run_ref = ${input.runRef} AND assignment_ref = ${assignmentRef}
+    FOR UPDATE
+  `
+  if (
+    bindings.length !== 1 ||
+    bindings[0]?.attempt_ref !== attempt.attemptRef ||
+    bindings[0]?.work_unit_ref !== attempt.workUnitRef ||
+    bindings[0]?.owner_user_id !== input.ownerUserId ||
+    bindings[0]?.intake_claim_ref !== input.batch.claimRef ||
+    bindings[0]?.pylon_ref !== input.pylonRef ||
+    bindings[0]?.worker_kind !== attempt.workerKind ||
+    bindings[0]?.account_ref_hash !== attempt.accountRefHash
+  ) {
+    throw fixedError(
+      "idempotency_conflict",
+      "fleet assignment ref is already bound to another exact attempt",
+      { runRef: input.runRef },
+    )
+  }
+
+  const current = await latestFleetEntityPostImage(
+    sql,
+    input.runRef,
+    "fleet_assignment",
+    assignmentRef,
+    decodeFleetAssignmentEntity,
+  )
+  if (
+    current !== undefined &&
+    (current.assignmentRef !== assignmentRef ||
+      (current.issueRef !== undefined &&
+        workUnit.issueRef !== null &&
+        current.issueRef !== workUnit.issueRef) ||
+      (current.closeoutClass !== undefined && event.kind !== "work_terminal"))
+  ) {
+    throw fixedError(
+      "idempotency_conflict",
+      "fleet assignment projection changed an established graph edge",
+      { runRef: input.runRef },
+    )
+  }
+
+  const lifecycle = assignmentStatusForEvent(event)
+  return decodeFleetAssignmentEntity({
+    assignmentRef,
+    ...(workUnit.issueRef === null
+      ? current?.issueRef === undefined
+        ? {}
+        : { issueRef: current.issueRef }
+      : { issueRef: workUnit.issueRef }),
+    ...lifecycle,
+    updatedAt: nowIso,
+  })
+}
+
+const exactApprovalWorkerRefForAttempt = async (
+  sql: SqlTag,
+  input: FleetRunAuthorityAppendExecutionInput,
+  attempt: FleetAttemptEntity,
+): Promise<string | null> => {
+  const scope = fleetRunScope(input.runRef)
+  const rows: Array<FleetProjectionPostImageRow> = await sql`
+    WITH latest AS (
+      SELECT DISTINCT ON (entity_id)
+             scope, entity_id, op, post_image_json, version
+      FROM khala_sync_changelog
+      WHERE scope = ${scope} AND entity_type = 'fleet_approval'
+      ORDER BY entity_id, version DESC
+    )
+    SELECT scope, post_image_json
+    FROM latest
+    WHERE op = 'upsert'
+    ORDER BY entity_id
+    LIMIT 1025
+  `
+  const workerRefs = new Set<string>()
+  for (const row of rows) {
+    let approval: FleetApprovalEntity
+    try {
+      approval = decodeFleetApprovalEntity(
+        typeof row.post_image_json === "string"
+          ? JSON.parse(row.post_image_json)
+          : row.post_image_json,
+      )
+    } catch {
+      throw fixedError(
+        "storage_unavailable",
+        "fleet approval projection failed integrity validation",
+        { runRef: input.runRef },
+      )
+    }
+    if (
+      !fleetApprovalHasExactBinding(approval) ||
+      approval.attemptRef !== attempt.attemptRef
+    ) {
+      continue
+    }
+    if (
+      row.scope !== scope ||
+      approval.runRef !== input.runRef ||
+      approval.workUnitRef !== attempt.workUnitRef ||
+      approval.assignmentRef !== attempt.assignmentRef ||
+      approval.accountRefHash !== attempt.accountRefHash
+    ) {
+      throw fixedError(
+        "storage_unavailable",
+        "fleet approval worker binding failed integrity validation",
+        { runRef: input.runRef },
+      )
+    }
+    workerRefs.add(approval.workerId)
+  }
+  if (rows.length >= 1025 || workerRefs.size > 1) {
+    throw fixedError(
+      "idempotency_conflict",
+      "fleet attempt is already bound to another exact worker",
+      { runRef: input.runRef },
+    )
+  }
+  return workerRefs.values().next().value ?? null
+}
+
+const workerPhaseForEvent = (
+  event: FleetRunV2WorkExecutionEvent,
+): FleetWorkerEntity["phase"] => {
+  if (event.kind === "approval_requested") return "blocked"
+  if (event.kind === "work_terminal") {
+    return event.terminalState === "accepted" ? "completed" : "failed"
+  }
+  return event.blockerRefs.length > 0 ? "blocked" : "dispatched"
+}
+
+const projectWorkerForEvent = async (
+  sql: SqlTag,
+  input: FleetRunAuthorityAppendExecutionInput,
+  event: FleetRunV2WorkExecutionEvent,
+  attempt: FleetAttemptEntity,
+  nowIso: string,
+): Promise<FleetWorkerEntity | null> => {
+  const establishedWorkerRef = await exactApprovalWorkerRefForAttempt(
+    sql,
+    input,
+    attempt,
+  )
+  const workerRef =
+    event.kind === "approval_requested" ? event.workerRef : establishedWorkerRef
+  if (
+    event.kind === "approval_requested" &&
+    establishedWorkerRef !== null &&
+    establishedWorkerRef !== event.workerRef
+  ) {
+    throw fixedError(
+      "idempotency_conflict",
+      "fleet attempt is already bound to another exact worker",
+      { runRef: input.runRef },
+    )
+  }
+  if (workerRef === null) return null
+
+  const current = await latestFleetEntityPostImage(
+    sql,
+    input.runRef,
+    "fleet_worker",
+    workerRef,
+    decodeFleetWorkerEntity,
+  )
+  if (current === undefined && event.kind !== "approval_requested") {
+    throw fixedError(
+      "storage_unavailable",
+      "fleet approval names a missing exact worker projection",
+      { runRef: input.runRef },
+    )
+  }
+  if (
+    current !== undefined &&
+    (current.workerId !== workerRef ||
+      current.harnessKind !== attempt.workerKind ||
+      (current.assignmentRef ?? null) !== attempt.assignmentRef ||
+      (current.accountRefHash ?? null) !== attempt.accountRefHash ||
+      ((current.phase === "completed" || current.phase === "failed") &&
+        event.kind !== "work_terminal"))
+  ) {
+    throw fixedError(
+      "idempotency_conflict",
+      "fleet worker projection changed an established graph edge",
+      { runRef: input.runRef },
+    )
+  }
+
+  return decodeFleetWorkerEntity({
+    workerId: workerRef,
+    phase: workerPhaseForEvent(event),
+    harnessKind: attempt.workerKind,
+    ...(attempt.assignmentRef === null
+      ? {}
+      : { assignmentRef: attempt.assignmentRef }),
+    ...(attempt.accountRefHash === null
+      ? {}
+      : { accountRefHash: attempt.accountRefHash }),
+    lastProgressAt: nowIso,
+    updatedAt: nowIso,
+  })
+}
+
 const projectApprovalRequestedForEvent = async (
   sql: SqlTag,
   input: FleetRunAuthorityAppendExecutionInput,
@@ -2993,6 +3301,47 @@ const appendFleetRunExecutionEvents = async (
           },
           FLEET_RUN_AUTHORITY_EXECUTION_MUTATION_REF,
         )
+        if (event.schema === FLEET_RUN_EXECUTION_EVENT_SCHEMA_V2) {
+          const assignment = await projectAssignmentForEvent(
+            writer.sql,
+            input,
+            event,
+            projection.attempt,
+            projection.workUnit,
+            nowIso,
+          )
+          if (assignment !== null) {
+            await appendFleetEntityChange(
+              writer,
+              input.runRef,
+              {
+                kind: "fleet_assignment",
+                op: "upsert",
+                entity: assignment,
+              },
+              FLEET_RUN_AUTHORITY_EXECUTION_MUTATION_REF,
+            )
+          }
+          const worker = await projectWorkerForEvent(
+            writer.sql,
+            input,
+            event,
+            projection.attempt,
+            nowIso,
+          )
+          if (worker !== null) {
+            await appendFleetEntityChange(
+              writer,
+              input.runRef,
+              {
+                kind: "fleet_worker",
+                op: "upsert",
+                entity: worker,
+              },
+              FLEET_RUN_AUTHORITY_EXECUTION_MUTATION_REF,
+            )
+          }
+        }
         if (event.kind === "approval_requested") {
           const approval = await projectApprovalRequestedForEvent(
             writer.sql,

@@ -3,6 +3,8 @@ import { createHash } from "node:crypto"
 import {
   canonicalJson,
   decodeFleetApprovalEntity,
+  decodeFleetAssignmentEntity,
+  decodeFleetWorkerEntity,
   fleetRunScope,
 } from "@openagentsinc/khala-sync"
 import { SQL } from "bun"
@@ -1228,7 +1230,7 @@ describe.skipIf(!hasLocalPostgres())(
         WHERE scope = ${run.record.scope}
         ORDER BY version
       `
-      expect(changelog).toHaveLength(9)
+      expect(changelog).toHaveLength(11)
       const projected =
         typeof changelog.at(-1)!.post_image_json === "string"
           ? (changelog.at(-1)!.post_image_json as string)
@@ -1724,6 +1726,52 @@ describe.skipIf(!hasLocalPostgres())(
         openedAt: new Date(FIXED_NOW).toISOString(),
         updatedAt: new Date(FIXED_NOW).toISOString(),
       })
+      const exactGraphImages: Array<{
+        entity_type: string
+        entity_id: string
+        post_image_json: string | object
+      }> = await sql`
+        SELECT DISTINCT ON (entity_type, entity_id)
+               entity_type, entity_id, post_image_json
+        FROM khala_sync_changelog
+        WHERE scope = ${run.record.scope}
+          AND entity_type IN ('fleet_worker', 'fleet_assignment')
+        ORDER BY entity_type, entity_id, version DESC
+      `
+      const workerRaw = exactGraphImages.find(
+        (row) => row.entity_type === "fleet_worker",
+      )?.post_image_json
+      const assignmentRaw = exactGraphImages.find(
+        (row) => row.entity_type === "fleet_assignment",
+      )?.post_image_json
+      expect(
+        decodeFleetWorkerEntity(
+          typeof workerRaw === "string" ? JSON.parse(workerRaw) : workerRaw,
+        ),
+      ).toEqual(
+        decodeFleetWorkerEntity({
+          workerId: "worker.codex.approval-slot-1",
+          phase: "blocked",
+          harnessKind: "codex",
+          assignmentRef,
+          accountRefHash,
+          lastProgressAt: new Date(FIXED_NOW).toISOString(),
+          updatedAt: new Date(FIXED_NOW).toISOString(),
+        }),
+      )
+      expect(
+        decodeFleetAssignmentEntity(
+          typeof assignmentRaw === "string"
+            ? JSON.parse(assignmentRaw)
+            : assignmentRaw,
+        ),
+      ).toEqual(
+        decodeFleetAssignmentEntity({
+          assignmentRef,
+          status: "running",
+          updatedAt: new Date(FIXED_NOW).toISOString(),
+        }),
+      )
       const blockedAttempts: Array<{
         state: string
         progress_class: string
@@ -1766,6 +1814,24 @@ describe.skipIf(!hasLocalPostgres())(
         storedEventCount: 0,
         duplicateEventCount: 3,
       })
+      const graphVersionsAfterReplay: Array<{
+        entity_type: string
+        count: string | number
+      }> = await sql`
+        SELECT entity_type, count(*) AS count
+        FROM khala_sync_changelog
+        WHERE scope = ${run.record.scope}
+          AND entity_type IN ('fleet_worker', 'fleet_assignment')
+        GROUP BY entity_type
+        ORDER BY entity_type
+      `
+      expect(graphVersionsAfterReplay.map((row) => ({
+        entity_type: row.entity_type,
+        count: Number(row.count),
+      }))).toEqual([
+        { entity_type: "fleet_assignment", count: 1 },
+        { entity_type: "fleet_worker", count: 1 },
+      ])
 
       const conflict = await Effect.runPromise(
         repository()
@@ -1809,6 +1875,292 @@ describe.skipIf(!hasLocalPostgres())(
         WHERE run_ref = ${run.record.runRef}
       `
       expect(Number(rolledBack[0]!.count)).toBe(3)
+    })
+
+    test("keeps worker and assignment identity exact through terminal transitions", async () => {
+      const ownerUserId = "user-execution-worker-owner"
+      const pylonRef = "pylon-execution-worker"
+      const run = await start(ownerUserId, "execution-worker-graph-1", {
+        workSource: {
+          kind: "plan_dag",
+          planRef: "plan.execution.worker",
+          units: [
+            { unitRef: "unit-a", title: "Unit A", dependsOn: [] },
+            { unitRef: "unit-b", title: "Unit B", dependsOn: [] },
+          ],
+        },
+      })
+      await seedPylon({ pylonRef, ownerUserId })
+      const claimRef = await claimAndAccept({
+        ownerUserId,
+        pylonRef,
+        runRef: run.record.runRef,
+        claimIdempotencyKey: "execution-worker-claim-1",
+      })
+      const workerA = "worker.codex.execution-slot-a"
+      const assignmentA = "assignment.execution.unit-a"
+      const accountA = `account.pylon.codex.${"a".repeat(24)}`
+      const initialEvents = [
+        pylonExecutionEvent(run.record.runRef, claimRef, 1, {
+          schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA_V2,
+          observedAt: "2026-07-09T22:00:01.000Z",
+          kind: "run_started",
+        }),
+        pylonExecutionEvent(run.record.runRef, claimRef, 2, {
+          schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA_V2,
+          observedAt: "2026-07-09T22:00:02.000Z",
+          kind: "work_progress",
+          unitRef: "unit-a",
+          workClaimRef: "work_claim.execution.unit-a",
+          assignmentRef: assignmentA,
+          workerKind: "codex",
+          accountRefHash: accountA,
+          blockerRefs: [],
+        }),
+        pylonExecutionEvent(run.record.runRef, claimRef, 3, {
+          schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA_V2,
+          observedAt: "2026-07-09T22:00:03.000Z",
+          kind: "approval_requested",
+          unitRef: "unit-a",
+          workClaimRef: "work_claim.execution.unit-a",
+          workerKind: "codex",
+          workerRef: workerA,
+          approvalRef: "approval.execution.unit-a",
+          toolClass: "write_file",
+          blockerRefs: ["blocker.approval_required"],
+        }),
+      ]
+      await Effect.runPromise(
+        repository().appendExecutionEvents({
+          ownerUserId,
+          pylonRef,
+          runRef: run.record.runRef,
+          batch: {
+            schema: FLEET_RUN_EXECUTION_BATCH_SCHEMA_V2,
+            claimRef,
+            events: initialEvents,
+          },
+        }),
+      )
+
+      const mismatchedWorkerReuse = await Effect.runPromise(
+        repository()
+          .appendExecutionEvents({
+            ownerUserId,
+            pylonRef,
+            runRef: run.record.runRef,
+            batch: {
+              schema: FLEET_RUN_EXECUTION_BATCH_SCHEMA_V2,
+              claimRef,
+              events: [
+                pylonExecutionEvent(run.record.runRef, claimRef, 4, {
+                  schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA_V2,
+                  observedAt: "2026-07-09T22:00:04.000Z",
+                  kind: "work_progress",
+                  unitRef: "unit-b",
+                  workClaimRef: "work_claim.execution.unit-b",
+                  assignmentRef: "assignment.execution.unit-b",
+                  workerKind: "codex",
+                  accountRefHash: `account.pylon.codex.${"b".repeat(24)}`,
+                  blockerRefs: [],
+                }),
+                pylonExecutionEvent(run.record.runRef, claimRef, 5, {
+                  schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA_V2,
+                  observedAt: "2026-07-09T22:00:05.000Z",
+                  kind: "approval_requested",
+                  unitRef: "unit-b",
+                  workClaimRef: "work_claim.execution.unit-b",
+                  workerKind: "codex",
+                  workerRef: workerA,
+                  approvalRef: "approval.execution.unit-b.wrong-worker",
+                  toolClass: "write_file",
+                  blockerRefs: ["blocker.approval_required"],
+                }),
+              ],
+            },
+          })
+          .pipe(Effect.flip),
+      )
+      expect(mismatchedWorkerReuse.kind).toBe("idempotency_conflict")
+      const afterMismatch: Array<{ count: string | number }> = await sql`
+        SELECT count(*) AS count
+        FROM sarah_fleet_run_execution_events
+        WHERE run_ref = ${run.record.runRef}
+      `
+      expect(Number(afterMismatch[0]!.count)).toBe(3)
+
+      const workerB = "worker.codex.execution-slot-b"
+      const assignmentB = "assignment.execution.unit-b"
+      const accountB = `account.pylon.codex.${"b".repeat(24)}`
+      const terminalEvents = [
+        pylonExecutionEvent(run.record.runRef, claimRef, 4, {
+          schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA_V2,
+          observedAt: "2026-07-09T22:00:04.000Z",
+          kind: "work_terminal",
+          unitRef: "unit-a",
+          workClaimRef: "work_claim.execution.unit-a",
+          assignmentRef: assignmentA,
+          workerKind: "codex",
+          accountRefHash: accountA,
+          terminalState: "accepted",
+          closeoutRef: "closeout.execution.unit-a",
+          verification: {
+            truth: "passed",
+            verifierRef: "verifier.execution.unit-a",
+            evidenceRefs: ["verification.execution.unit-a"],
+          },
+          artifactRefs: ["artifact.execution.unit-a"],
+          proofRefs: ["proof.execution.unit-a"],
+          authorityReceiptRefs: ["receipt.execution.unit-a"],
+          usageEvidence: exactUsageEvidence(
+            assignmentA,
+            pylonRef,
+            "execution.unit-a",
+          ),
+          blockerRefs: [],
+        }),
+        pylonExecutionEvent(run.record.runRef, claimRef, 5, {
+          schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA_V2,
+          observedAt: "2026-07-09T22:00:05.000Z",
+          kind: "work_progress",
+          unitRef: "unit-b",
+          workClaimRef: "work_claim.execution.unit-b",
+          assignmentRef: assignmentB,
+          workerKind: "codex",
+          accountRefHash: accountB,
+          blockerRefs: [],
+        }),
+        pylonExecutionEvent(run.record.runRef, claimRef, 6, {
+          schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA_V2,
+          observedAt: "2026-07-09T22:00:06.000Z",
+          kind: "approval_requested",
+          unitRef: "unit-b",
+          workClaimRef: "work_claim.execution.unit-b",
+          workerKind: "codex",
+          workerRef: workerB,
+          approvalRef: "approval.execution.unit-b",
+          toolClass: "write_file",
+          blockerRefs: ["blocker.approval_required"],
+        }),
+        pylonExecutionEvent(run.record.runRef, claimRef, 7, {
+          schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA_V2,
+          observedAt: "2026-07-09T22:00:07.000Z",
+          kind: "work_terminal",
+          unitRef: "unit-b",
+          workClaimRef: "work_claim.execution.unit-b",
+          assignmentRef: assignmentB,
+          workerKind: "codex",
+          accountRefHash: accountB,
+          terminalState: "failed",
+          blockerRefs: ["blocker.verification_failed"],
+        }),
+      ]
+      const terminal = await Effect.runPromise(
+        repository().appendExecutionEvents({
+          ownerUserId,
+          pylonRef,
+          runRef: run.record.runRef,
+          batch: {
+            schema: FLEET_RUN_EXECUTION_BATCH_SCHEMA_V2,
+            claimRef,
+            events: terminalEvents,
+          },
+        }),
+      )
+      expect(terminal.ack).toMatchObject({
+        acceptedThroughSequence: 7,
+        storedEventCount: 4,
+      })
+
+      const currentGraph: Array<{
+        entity_type: string
+        entity_id: string
+        post_image_json: string | object
+      }> = await sql`
+        SELECT DISTINCT ON (entity_type, entity_id)
+               entity_type, entity_id, post_image_json
+        FROM khala_sync_changelog
+        WHERE scope = ${run.record.scope}
+          AND entity_type IN ('fleet_worker', 'fleet_assignment')
+        ORDER BY entity_type, entity_id, version DESC
+      `
+      const decodedWorkers = currentGraph
+        .filter((row) => row.entity_type === "fleet_worker")
+        .map((row) =>
+          decodeFleetWorkerEntity(
+            typeof row.post_image_json === "string"
+              ? JSON.parse(row.post_image_json)
+              : row.post_image_json,
+          ),
+        )
+      expect(decodedWorkers).toEqual([
+        expect.objectContaining({
+          workerId: workerA,
+          phase: "completed",
+          harnessKind: "codex",
+          assignmentRef: assignmentA,
+          accountRefHash: accountA,
+        }),
+        expect.objectContaining({
+          workerId: workerB,
+          phase: "failed",
+          harnessKind: "codex",
+          assignmentRef: assignmentB,
+          accountRefHash: accountB,
+        }),
+      ])
+      const decodedAssignments = currentGraph
+        .filter((row) => row.entity_type === "fleet_assignment")
+        .map((row) =>
+          decodeFleetAssignmentEntity(
+            typeof row.post_image_json === "string"
+              ? JSON.parse(row.post_image_json)
+              : row.post_image_json,
+          ),
+        )
+      expect(decodedAssignments).toEqual([
+        expect.objectContaining({
+          assignmentRef: assignmentA,
+          status: "accepted_work",
+          closeoutClass: "accepted_work",
+        }),
+        expect.objectContaining({
+          assignmentRef: assignmentB,
+          status: "failed",
+          closeoutClass: "failed",
+        }),
+      ])
+
+      const versionsBeforeReplay: Array<{ count: string | number }> = await sql`
+        SELECT count(*) AS count FROM khala_sync_changelog
+        WHERE scope = ${run.record.scope}
+          AND entity_type IN ('fleet_worker', 'fleet_assignment')
+      `
+      const replay = await Effect.runPromise(
+        repository().appendExecutionEvents({
+          ownerUserId,
+          pylonRef,
+          runRef: run.record.runRef,
+          batch: {
+            schema: FLEET_RUN_EXECUTION_BATCH_SCHEMA_V2,
+            claimRef,
+            events: terminalEvents,
+          },
+        }),
+      )
+      expect(replay.ack).toMatchObject({
+        acceptedThroughSequence: 7,
+        storedEventCount: 0,
+        duplicateEventCount: 4,
+      })
+      const versionsAfterReplay: Array<{ count: string | number }> = await sql`
+        SELECT count(*) AS count FROM khala_sync_changelog
+        WHERE scope = ${run.record.scope}
+          AND entity_type IN ('fleet_worker', 'fleet_assignment')
+      `
+      expect(Number(versionsAfterReplay[0]!.count)).toBe(
+        Number(versionsBeforeReplay[0]!.count),
+      )
     })
 
     test("indexes global approval identity lookup independently of changelog size", async () => {
