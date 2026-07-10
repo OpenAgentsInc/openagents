@@ -203,9 +203,17 @@ describe("Pylon-owned exact Grok claimed-work adapter", () => {
 
       const result = await port.dispatch(dispatch)
       expect(result).toMatchObject({
+        accountRefHash: hashPylonAccountRef("grok", accountRef),
         assignmentRef: expect.stringMatching(/^assignment\.pylon\.grok\.[a-f0-9]{24}$/),
+        closeoutRef: expect.stringMatching(/^closeout\.public\.pylon\.grok\.[a-f0-9]{24}$/),
         status: "completed",
         summary: "The exact named Grok claimed work completed with not_measured usage.",
+        usageEvidence: {
+          truth: "not_measured",
+          harnessKind: "grok",
+          receiptRef: expect.stringMatching(/^receipt\.public\.pylon\.grok\.[a-f0-9]{24}$/),
+          tokenUsageRefs: [],
+        },
         lifecycle: [{
           accountRefHash: hashPylonAccountRef("grok", accountRef),
           artifactRef: expect.stringMatching(/^workspace\.pylon\.grok\./),
@@ -217,6 +225,9 @@ describe("Pylon-owned exact Grok claimed-work adapter", () => {
       expect(JSON.stringify(result)).not.toContain("/Users")
       expect(JSON.stringify(result)).not.toContain("private-global")
       expect(JSON.stringify(result)).not.toContain(materializedCwd!)
+      expect(JSON.stringify(result.usageEvidence)).not.toMatch(
+        /inputTokens|outputTokens|reasoningTokens|cacheReadTokens|totalTokens|tokenRows/,
+      )
 
       const replay = await port.dispatch(dispatch)
       expect(replay).toEqual(result)
@@ -329,9 +340,12 @@ describe("Pylon-owned exact Grok claimed-work adapter", () => {
       }
       const reconciled = await fresh.reconcile({ active, now: fixedNow, runRef: run.runRef })
       expect(reconciled).toMatchObject({
+        accountRefHash: one.accountRefHash,
         assignmentRef: one.assignmentRef,
+        closeoutRef: one.closeoutRef,
         status: "completed",
         taskId: dispatch.taskId,
+        usageEvidence: one.usageEvidence,
       })
       expect(await fresh.probeLiveness(one.assignmentRef!)).toBe("live")
     } finally {

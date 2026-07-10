@@ -27,12 +27,19 @@ import {
   type GitCheckoutWorkspace,
   type WorkspaceCheckoutRunner,
 } from "../workspace-materializer.js"
-import type { PylonOwnedGrokClaimedWorkPort } from "./fleet-run-owned-runner.js"
+import type {
+  PylonOwnedFleetRunDispatchResult,
+  PylonOwnedFleetRunReconcileResult,
+  PylonOwnedGrokClaimedWorkPort,
+} from "./fleet-run-owned-runner.js"
+import {
+  notMeasuredPylonFleetRunUsageEvidence,
+  pylonGrokUsageEvidenceRefs,
+  type PylonFleetRunUsageEvidenceCarrier,
+} from "./fleet-run-usage-evidence.js"
 import type {
   FleetRunSupervisorActiveAssignment,
   FleetRunSupervisorDispatchInput,
-  FleetRunSupervisorDispatchResult,
-  FleetRunSupervisorReconcileResult,
 } from "./fleet-run-supervisor.js"
 import type { PylonOrchestrationStore } from "./store.js"
 
@@ -66,11 +73,13 @@ type GrokExecutionReceipt = {
   readonly schema: typeof GROK_RECEIPT_SCHEMA
   readonly accountRefHash: string
   readonly assignmentRef: string
+  readonly closeoutRef: string
   readonly claimRef: string
   readonly failureRef: string | null
   readonly fingerprint: string
   readonly observedAt: string
   readonly runRef: string
+  readonly receiptRef: string
   readonly state: "running" | "completed" | "failed"
   readonly taskId: string
   readonly usageTruth: "not_measured"
@@ -157,7 +166,8 @@ const fixedResult = (input: {
   readonly summary: string
   readonly accountRefHash?: string | undefined
   readonly workspaceRef?: string | undefined
-}): FleetRunSupervisorDispatchResult => {
+  readonly evidence?: PylonFleetRunUsageEvidenceCarrier | undefined
+}): PylonOwnedFleetRunDispatchResult => {
   const lifecycle: PylonAssignmentRunLifecycleEvent[] = input.assignmentRef === null
     ? [{
         schema: "openagents.pylon.assignment_run_lifecycle_event.v0.1",
@@ -177,11 +187,14 @@ const fixedResult = (input: {
         ...(input.blockerRef === undefined ? {} : { blockerRefs: [input.blockerRef] }),
       }]
   const result = {
+    accountRefHash: input.evidence?.accountRefHash ?? null,
     assignmentRef: input.assignmentRef,
+    closeoutRef: input.evidence?.closeoutRef ?? null,
     lifecycle,
     status: input.status,
     summary: input.summary,
-  } satisfies FleetRunSupervisorDispatchResult
+    usageEvidence: input.evidence?.usageEvidence ?? null,
+  } satisfies PylonOwnedFleetRunDispatchResult
   assertPublicProjectionSafe(result, "pylonOwnedGrokClaimedWorkResult")
   return result
 }
@@ -316,11 +329,13 @@ const receiptFrom = (value: unknown): GrokExecutionReceipt | null => {
     record.schema !== GROK_RECEIPT_SCHEMA ||
     typeof record.accountRefHash !== "string" ||
     typeof record.assignmentRef !== "string" ||
+    typeof record.closeoutRef !== "string" ||
     typeof record.claimRef !== "string" ||
     !(record.failureRef === null || typeof record.failureRef === "string") ||
     typeof record.fingerprint !== "string" ||
     typeof record.observedAt !== "string" ||
     typeof record.runRef !== "string" ||
+    typeof record.receiptRef !== "string" ||
     !(record.state === "running" || record.state === "completed" || record.state === "failed") ||
     typeof record.taskId !== "string" ||
     record.usageTruth !== "not_measured" ||
@@ -328,10 +343,23 @@ const receiptFrom = (value: unknown): GrokExecutionReceipt | null => {
     !(record.workspaceRef === null || typeof record.workspaceRef === "string")
   ) return null
   const observedAt = new Date(record.observedAt)
-  const refs = [record.claimRef, record.runRef, record.taskId, record.workUnitRef]
+  const stableEvidenceRefs = isPylonOwnedGrokAssignmentRef(record.assignmentRef)
+    ? pylonGrokUsageEvidenceRefs(record.assignmentRef)
+    : null
+  const refs = [
+    record.claimRef,
+    record.closeoutRef,
+    record.receiptRef,
+    record.runRef,
+    record.taskId,
+    record.workUnitRef,
+  ]
   if (
     !validDate(observedAt) ||
     !isPylonOwnedGrokAssignmentRef(record.assignmentRef) ||
+    stableEvidenceRefs === null ||
+    record.closeoutRef !== stableEvidenceRefs.closeoutRef ||
+    record.receiptRef !== stableEvidenceRefs.receiptRef ||
     !ACCOUNT_REF_HASH_PATTERN.test(record.accountRefHash) ||
     !FINGERPRINT_PATTERN.test(record.fingerprint) ||
     refs.some(ref => !PUBLIC_REF_PATTERN.test(ref)) ||
@@ -390,8 +418,14 @@ const receiptMatchesDispatch = (
 const resultFromReceipt = (
   receipt: GrokExecutionReceipt,
   now: Date,
-): FleetRunSupervisorDispatchResult => {
+): PylonOwnedFleetRunDispatchResult => {
   if (receipt.state === "completed") {
+    const evidence = notMeasuredPylonFleetRunUsageEvidence({
+      accountRefHash: receipt.accountRefHash,
+      assignmentRef: receipt.assignmentRef,
+      closeoutRef: receipt.closeoutRef,
+      receiptRef: receipt.receiptRef,
+    })
     return fixedResult({
       assignmentRef: receipt.assignmentRef,
       accountRefHash: receipt.accountRefHash,
@@ -399,6 +433,7 @@ const resultFromReceipt = (
       now,
       status: "completed",
       summary: "The exact named Grok claimed work completed with not_measured usage.",
+      evidence,
     })
   }
   return fixedResult({
@@ -465,7 +500,7 @@ export function createPylonOwnedGrokClaimedWorkPort(
 
   const dispatch = async (
     request: FleetRunSupervisorDispatchInput,
-  ): Promise<FleetRunSupervisorDispatchResult> => {
+  ): Promise<PylonOwnedFleetRunDispatchResult> => {
     const now = safeNow()
     if (request.workerKind !== "grok") {
       return fixedResult({
@@ -501,6 +536,7 @@ export function createPylonOwnedGrokClaimedWorkPort(
     const accountRefHash = hashPylonAccountRef("grok", account.ref)
     const fingerprint = dispatchFingerprint(request)
     const assignmentRef = assignmentRefFor(fingerprint)
+    const evidenceRefs = pylonGrokUsageEvidenceRefs(assignmentRef)
     const existing = await readReceipt(input.summary, assignmentRef)
     if (existing === "invalid") {
       return fixedResult({
@@ -592,11 +628,13 @@ export function createPylonOwnedGrokClaimedWorkPort(
       schema: GROK_RECEIPT_SCHEMA,
       accountRefHash,
       assignmentRef,
+      closeoutRef: evidenceRefs.closeoutRef,
       claimRef: request.claim.claimRef,
       failureRef: null,
       fingerprint,
       observedAt: now.toISOString(),
       runRef: request.run.runRef,
+      receiptRef: evidenceRefs.receiptRef,
       state: "running",
       taskId: request.taskId,
       usageTruth: "not_measured",
@@ -700,7 +738,7 @@ export function createPylonOwnedGrokClaimedWorkPort(
     readonly active: FleetRunSupervisorActiveAssignment
     readonly now: Date
     readonly runRef: string
-  }): Promise<FleetRunSupervisorReconcileResult> => {
+  }): Promise<PylonOwnedFleetRunReconcileResult> => {
     const assignmentRef = request.active.claim.assignmentRef
     if (!isPylonOwnedGrokAssignmentRef(assignmentRef)) {
       return {

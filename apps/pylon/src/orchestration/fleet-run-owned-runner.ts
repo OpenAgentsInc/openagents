@@ -22,7 +22,9 @@ import type { BootstrapSummary } from "../bootstrap.js"
 import {
   buildPylonKhalaGitCheckoutWorkspace,
   issuePylonKhalaRequest,
+  readPylonKhalaCloseout,
   readPylonKhalaAssignmentTraceStatus,
+  type PylonKhalaCloseoutResult,
   type PylonKhalaAssignmentTraceStatusResult,
   type PylonKhalaRequestInput,
   type PylonKhalaRequestResult,
@@ -39,6 +41,10 @@ import type {
   FleetRunSupervisorRunner,
 } from "./fleet-run-supervisor.js"
 import type { FleetRunOwnerLocalLiveness } from "./fleet-run-recovery.js"
+import {
+  exactPylonFleetRunUsageEvidence,
+  type PylonFleetRunUsageEvidenceCarrier,
+} from "./fleet-run-usage-evidence.js"
 
 export const PYLON_OWNED_FLEET_RUNNER_BLOCKERS = {
   accountMismatch: "blocker.pylon.fleet_runner.account_mismatch",
@@ -51,6 +57,7 @@ export const PYLON_OWNED_FLEET_RUNNER_BLOCKERS = {
   grokCustodyUnavailable: "blocker.pylon.fleet_runner.grok_custody_unavailable",
   requestFailed: "blocker.pylon.fleet_runner.request_failed",
   runFailed: "blocker.pylon.fleet_runner.run_failed",
+  usageEvidenceInvalid: "blocker.pylon.fleet_runner.usage_evidence_invalid",
   workspaceInvalid: "blocker.pylon.fleet_runner.workspace_invalid",
 } as const
 
@@ -85,16 +92,26 @@ export type PylonOwnedFleetRunInspectionPort = (
   assignmentRef: string,
 ) => Promise<PylonKhalaAssignmentTraceStatusResult>
 
+export type PylonOwnedFleetRunCloseoutPort = (
+  assignmentRef: string,
+) => Promise<PylonKhalaCloseoutResult>
+
+export type PylonOwnedFleetRunDispatchResult = FleetRunSupervisorDispatchResult &
+  PylonFleetRunUsageEvidenceCarrier
+
+export type PylonOwnedFleetRunReconcileResult = FleetRunSupervisorReconcileResult &
+  PylonFleetRunUsageEvidenceCarrier
+
 /** Grok stays a separate local claimed-work port because it has no Khala assignment wire kind. */
 export type PylonOwnedGrokClaimedWorkPort = {
   readonly dispatch: (
     input: FleetRunSupervisorDispatchInput,
-  ) => Promise<FleetRunSupervisorDispatchResult>
+  ) => Promise<PylonOwnedFleetRunDispatchResult>
   readonly reconcile: (input: {
     readonly active: FleetRunSupervisorActiveAssignment
     readonly now: Date
     readonly runRef: string
-  }) => Promise<FleetRunSupervisorReconcileResult>
+  }) => Promise<PylonOwnedFleetRunReconcileResult>
   /** Terminal local receipts remain available for supervisor reconciliation after restart. */
   readonly probeLiveness: (assignmentRef: string) => Promise<FleetRunOwnerLocalLiveness>
 }
@@ -127,10 +144,22 @@ export type CreatePylonOwnedFleetRunSupervisorRunnerInput = {
   readonly request?: PylonOwnedFleetRunRequestPort | undefined
   readonly runAssignment?: PylonOwnedFleetRunAssignmentPort | undefined
   readonly inspectAssignment?: PylonOwnedFleetRunInspectionPort | undefined
+  readonly readCloseout?: PylonOwnedFleetRunCloseoutPort | undefined
   readonly grok?: PylonOwnedGrokClaimedWorkPort | undefined
 }
 
-export type PylonOwnedFleetRunSupervisorRunner = FleetRunSupervisorRunner & {
+export type PylonOwnedFleetRunSupervisorRunner = Omit<
+  FleetRunSupervisorRunner,
+  "dispatch" | "reconcile"
+> & {
+  readonly dispatch: (
+    input: FleetRunSupervisorDispatchInput,
+  ) => Promise<PylonOwnedFleetRunDispatchResult>
+  readonly reconcile: (input: {
+    readonly activeAssignments: readonly FleetRunSupervisorActiveAssignment[]
+    readonly now: Date
+    readonly run: FleetRunSupervisorDispatchInput["run"]
+  }) => Promise<readonly PylonOwnedFleetRunReconcileResult[]>
   /** Process-local single-flight/terminal replay cache; durable task state remains the restart authority. */
   readonly retainedDispatchCount: () => number
 }
@@ -155,8 +184,16 @@ const fixedFailure = (
   summary: string,
   assignmentRef: string | null = null,
   lifecycle: readonly PylonAssignmentRunLifecycleEvent[] = [],
-): FleetRunSupervisorDispatchResult => {
-  const result = { assignmentRef, lifecycle: [...lifecycle], status, summary } satisfies FleetRunSupervisorDispatchResult
+): PylonOwnedFleetRunDispatchResult => {
+  const result = {
+    accountRefHash: null,
+    assignmentRef,
+    closeoutRef: null,
+    lifecycle: [...lifecycle],
+    status,
+    summary,
+    usageEvidence: null,
+  } satisfies PylonOwnedFleetRunDispatchResult
   assertPublicProjectionSafe(result, "pylonOwnedFleetRunFailure")
   return result
 }
@@ -473,7 +510,7 @@ export function createPylonOwnedFleetRunSupervisorRunner(
     blockerRef: string,
     assignmentRef: string | null = null,
     lifecycle: readonly PylonAssignmentRunLifecycleEvent[] = [],
-  ): FleetRunSupervisorDispatchResult => fixedFailure(
+  ): PylonOwnedFleetRunDispatchResult => fixedFailure(
     status,
     summary,
     assignmentRef,
@@ -493,6 +530,8 @@ export function createPylonOwnedFleetRunSupervisorRunner(
   const request = input.request ?? ((requestInput) => issuePylonKhalaRequest(network, requestInput))
   const inspectAssignment = input.inspectAssignment ?? ((assignmentRef) =>
     readPylonKhalaAssignmentTraceStatus(network, assignmentRef))
+  const readCloseout = input.readCloseout ?? ((assignmentRef) =>
+    readPylonKhalaCloseout(network, assignmentRef))
   const runAssignment = input.runAssignment ?? (async (requestInput) => {
     const lifecycle: PylonAssignmentRunLifecycleEvent[] = []
     const result = await runNoSpendAssignment(input.summary, {
@@ -532,7 +571,7 @@ export function createPylonOwnedFleetRunSupervisorRunner(
   // inspect-only reconcile, never this cache.
   type DispatchCacheEntry = {
     readonly fingerprint: string
-    readonly promise: Promise<FleetRunSupervisorDispatchResult>
+    readonly promise: Promise<PylonOwnedFleetRunDispatchResult>
   }
   const dispatchesByClaim = new Map<string, DispatchCacheEntry>()
   const terminalRetentionOrder: Array<{ readonly dispatchKey: string; readonly entry: DispatchCacheEntry }> = []
@@ -540,7 +579,7 @@ export function createPylonOwnedFleetRunSupervisorRunner(
   const retainTerminalDispatch = (
     dispatchKey: string,
     entry: DispatchCacheEntry,
-    result: FleetRunSupervisorDispatchResult,
+    result: PylonOwnedFleetRunDispatchResult,
   ): void => {
     if (result.status === "accepted") return
     terminalRetentionOrder.push({ dispatchKey, entry })
@@ -555,7 +594,7 @@ export function createPylonOwnedFleetRunSupervisorRunner(
 
   const dispatchExact = async (
     dispatchInput: FleetRunSupervisorDispatchInput,
-  ): Promise<FleetRunSupervisorDispatchResult> => {
+  ): Promise<PylonOwnedFleetRunDispatchResult> => {
     if (dispatchInput.workerKind === "grok") {
       if (input.grok === undefined) {
         return fail(
@@ -702,28 +741,45 @@ export function createPylonOwnedFleetRunSupervisorRunner(
       )
     }
     const completed = assignment.ok && assignment.closeout?.status === "accepted"
+    if (!completed) {
+      return fail(
+        "failed",
+        "The exact no-spend Pylon assignment closed unsuccessfully.",
+        PYLON_OWNED_FLEET_RUNNER_BLOCKERS.runFailed,
+        assignmentRef,
+        assignment.lifecycle,
+      )
+    }
+    let evidence: ReturnType<typeof exactPylonFleetRunUsageEvidence>
+    try {
+      evidence = exactPylonFleetRunUsageEvidence({
+        accountRefHash,
+        assignmentRef,
+        closeout: await readCloseout(assignmentRef),
+        harnessKind: dispatchInput.workerKind,
+        pylonRef: input.pylonRef,
+      })
+    } catch {
+      return fail(
+        "failed",
+        "The exact assignment closeout usage evidence was incomplete or mismatched.",
+        PYLON_OWNED_FLEET_RUNNER_BLOCKERS.usageEvidenceInvalid,
+        assignmentRef,
+        assignment.lifecycle,
+      )
+    }
     const result = {
+      ...evidence,
       assignmentRef,
-      lifecycle: completed
-        ? [...assignment.lifecycle]
-        : [
-            ...assignment.lifecycle,
-            failureLifecycle({
-              assignmentRef,
-              blockerRef: PYLON_OWNED_FLEET_RUNNER_BLOCKERS.runFailed,
-              now: safeNow(),
-            }),
-          ],
-      status: completed ? "completed" : "failed",
-      summary: completed
-        ? "The exact no-spend Pylon assignment completed."
-        : "The exact no-spend Pylon assignment closed unsuccessfully.",
-    } satisfies FleetRunSupervisorDispatchResult
+      lifecycle: [...assignment.lifecycle],
+      status: "completed",
+      summary: "The exact no-spend Pylon assignment completed with exact usage evidence.",
+    } satisfies PylonOwnedFleetRunDispatchResult
     assertPublicProjectionSafe(result, "pylonOwnedFleetRunDispatchResult")
     return result
   }
 
-  const dispatch: FleetRunSupervisorRunner["dispatch"] = (dispatchInput) => {
+  const dispatch: PylonOwnedFleetRunSupervisorRunner["dispatch"] = (dispatchInput) => {
     try {
       readNow()
       validateDispatchInput(dispatchInput)
@@ -761,7 +817,7 @@ export function createPylonOwnedFleetRunSupervisorRunner(
     active: FleetRunSupervisorActiveAssignment,
     now: Date,
     runRef: string,
-  ): Promise<FleetRunSupervisorReconcileResult> => {
+  ): Promise<PylonOwnedFleetRunReconcileResult> => {
     try {
       validateReconcileInput(active, runRef)
     } catch {
@@ -820,7 +876,9 @@ export function createPylonOwnedFleetRunSupervisorRunner(
       trace = await inspectAssignment(assignmentRef)
     } catch {
       return {
+        accountRefHash: null,
         assignmentRef,
+        closeoutRef: null,
         lifecycle: [{
           schema: "openagents.pylon.assignment_run_lifecycle_event.v0.1",
           event: "assignment_run.runtime_progress",
@@ -833,11 +891,14 @@ export function createPylonOwnedFleetRunSupervisorRunner(
         status: "accepted",
         summary: "The exact assignment is temporarily unavailable for inspection.",
         taskId: active.taskId,
+        usageEvidence: null,
       }
     }
     if (trace.assignmentRef !== assignmentRef || trace.pylonRef !== input.pylonRef) {
       return {
+        accountRefHash: null,
         assignmentRef,
+        closeoutRef: null,
         lifecycle: [terminalLifecycle({
           assignmentRef,
           blockerRef: PYLON_OWNED_FLEET_RUNNER_BLOCKERS.assignmentMismatch,
@@ -847,20 +908,56 @@ export function createPylonOwnedFleetRunSupervisorRunner(
         status: "failed",
         summary: "The assignment inspection did not match the durable claim.",
         taskId: active.taskId,
+        usageEvidence: null,
       }
     }
     if (traceIsAcceptedCloseout(trace)) {
+      let evidence: ReturnType<typeof exactPylonFleetRunUsageEvidence>
+      try {
+        const registry = await loadRegistry()
+        const matches = registry.filter(account => account.ref === active.accountRef)
+        const candidate = matches.length === 1 ? matches[0] : undefined
+        if (candidate === undefined || (candidate.provider !== "codex" && candidate.provider !== "claude_agent")) {
+          throw new Error("reconcile account custody is unavailable")
+        }
+        const account = exactRegistryAccount(registry, {
+          accountRef: active.accountRef,
+          defaultHomes,
+          provider: candidate.provider,
+        })
+        if (account === null) throw new Error("reconcile account custody is invalid")
+        evidence = exactPylonFleetRunUsageEvidence({
+          accountRefHash: hashPylonAccountRef(account.provider, account.ref),
+          assignmentRef,
+          closeout: await readCloseout(assignmentRef),
+          harnessKind: account.provider === "codex" ? "codex" : "claude",
+          pylonRef: input.pylonRef,
+        })
+      } catch {
+        return {
+          ...fail(
+            "failed",
+            "The reconciled assignment closeout usage evidence was incomplete or mismatched.",
+            PYLON_OWNED_FLEET_RUNNER_BLOCKERS.usageEvidenceInvalid,
+            assignmentRef,
+          ),
+          taskId: active.taskId,
+        }
+      }
       return {
+        ...evidence,
         assignmentRef,
         lifecycle: [terminalLifecycle({ assignmentRef, now, status: "closed" })],
         status: "completed",
-        summary: "The exact no-spend Pylon assignment is closed out.",
+        summary: "The exact no-spend Pylon assignment is closed out with exact usage evidence.",
         taskId: active.taskId,
       }
     }
     if (traceIsRejected(trace)) {
       return {
+        accountRefHash: null,
         assignmentRef,
+        closeoutRef: null,
         lifecycle: [terminalLifecycle({
           assignmentRef,
           blockerRef: PYLON_OWNED_FLEET_RUNNER_BLOCKERS.runFailed,
@@ -870,14 +967,18 @@ export function createPylonOwnedFleetRunSupervisorRunner(
         status: "failed",
         summary: "The exact Pylon assignment was rejected.",
         taskId: active.taskId,
+        usageEvidence: null,
       }
     }
     return {
+      accountRefHash: null,
       assignmentRef,
+      closeoutRef: null,
       lifecycle: [],
       status: "accepted",
       summary: "The exact Pylon assignment remains active.",
       taskId: active.taskId,
+      usageEvidence: null,
     }
   }
 

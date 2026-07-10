@@ -6,7 +6,10 @@ import { join } from "node:path"
 
 import { hashPylonAccountRef, type PylonAccountRegistryEntry } from "../src/account-registry.js"
 import { createBootstrapSummary, parseBootstrapArgs } from "../src/bootstrap.js"
-import type { PylonKhalaRequestInput } from "../src/khala-requester.js"
+import type {
+  PylonKhalaCloseoutResult,
+  PylonKhalaRequestInput,
+} from "../src/khala-requester.js"
 import {
   openPylonOwnedStandingFleetRunExecutor,
 } from "../src/orchestration/fleet-run-owned-standing-executor.js"
@@ -64,6 +67,73 @@ const requestReceipt = (request: PylonKhalaRequestInput, assignmentRef: string) 
     },
   }],
 })
+
+const exactCloseoutReceipt = async (assignmentRef: string): Promise<PylonKhalaCloseoutResult> => {
+  const claude = assignmentRef.includes("claude")
+  const tokenUsage = {
+    cacheReadTokens: 1,
+    demandKind: "own_capacity" as const,
+    demandSource: "khala_coding_delegation" as const,
+    inputTokens: 5,
+    model: claude ? "openagents/pylon-claude" as const : "openagents/pylon-codex" as const,
+    outputTokens: 3,
+    provider: claude ? "pylon-claude-own-capacity" as const : "pylon-codex-own-capacity" as const,
+    reasoningTokens: 1,
+    refs: [`token_usage_event.public.${assignmentRef}`],
+    rowCount: 1,
+    totalTokens: 9,
+    usageTruth: "exact" as const,
+  }
+  const policy = {
+    paymentMode: "no-spend" as const,
+    payoutClaimAllowed: false,
+    settlementState: "not_applicable" as const,
+    source: "worker_closeout_event" as const,
+  }
+  const owner = { agentUserRef: "agent:owner", openauthUserRef: "user:owner" }
+  const checklist = {
+    blockerRefs: [],
+    items: [{ ok: true, ref: "check.public.fixture" }],
+    ok: true,
+  }
+  return {
+    assignmentRef,
+    closeoutChecklist: {
+      ...checklist,
+      caveatRefs: [],
+      schema: "openagents.pylon.khala_closeout_checklist.v0.1",
+    },
+    ok: true,
+    proof: {
+      assignmentRef,
+      closeoutPolicy: policy,
+      owner,
+      pylonRef,
+      proofChecklist: {
+        ...checklist,
+        schema: "openagents.pylon.khala_proof_checklist.v0.1",
+      },
+      tokenUsage,
+    },
+    schema: "openagents.pylon.khala_closeout.v0.1",
+    status: {
+      assignmentRef,
+      closeoutPolicy: policy,
+      lifecycle: {
+        closeoutRefs: [`closeout.public.${assignmentRef}`],
+        proofRefs: [`proof.public.${assignmentRef}`],
+      },
+      owner,
+      progress: {
+        closeoutReady: true,
+        hasTokenUsage: true,
+        state: "closed_out",
+      },
+      pylonRef,
+      tokenUsage: { ...tokenUsage, status: "recorded" },
+    },
+  } as PylonKhalaCloseoutResult
+}
 
 describe("canonical Pylon-owned standing FleetRun composition", () => {
   test("dispatches one mixed standing wave across exact Codex, Claude, and Grok accounts", async () => {
@@ -125,6 +195,7 @@ describe("canonical Pylon-owned standing FleetRun composition", () => {
             probeReadiness: async () => "ready",
           },
           runner: {
+            readCloseout: exactCloseoutReceipt,
             request: async request => {
               requestKinds.push(request.workflow)
               return requestReceipt(request, `assignment.public.${request.workflow}`)
@@ -294,6 +365,7 @@ describe("canonical Pylon-owned standing FleetRun composition", () => {
             },
           },
           runner: {
+            readCloseout: exactCloseoutReceipt,
             request: async request => {
               requests.push(request)
               return requestReceipt(request, assignmentRef)
