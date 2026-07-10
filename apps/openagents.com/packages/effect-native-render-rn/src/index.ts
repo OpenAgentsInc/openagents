@@ -3701,7 +3701,7 @@ export const createEffectNativeSurface = (
               ),
               Effect.ignoreCause
             )
-            yield* Effect.never
+            return yield* Effect.never
           })
         ).pipe(
           Effect.ignoreCause,
