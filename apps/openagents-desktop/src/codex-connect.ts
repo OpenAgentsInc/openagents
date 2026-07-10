@@ -259,26 +259,29 @@ export const makeCodexConnectService = (
       return current
     }
     child = connectChild
-    const parser = createDeviceAuthStdoutParser()
+    const stdoutParser = createDeviceAuthStdoutParser()
+    const stderrParser = createDeviceAuthStdoutParser()
     const applyEvents = (events: ReadonlyArray<DeviceAuthEvent>): void => {
       for (const event of events) {
         if (event.kind === "awaiting_browser") {
           settle({ state: "awaiting_browser", url: event.url, code: event.code })
         } else if (event.kind === "connected") {
+          // A successful isolated Pylon account registration is authoritative
+          // even when generic wrapper stderr or process-exit ordering races it.
           current = { state: "connected", ref: event.ref }
-        } else {
+        } else if (current.state !== "connected") {
           current = { state: "failed", reason: event.reason }
         }
       }
     }
-    collectStream(connectChild.stdout, (text) => applyEvents(parser.feed(text)))
-    collectStream(connectChild.stderr, (text) => applyEvents(parser.feed(text)))
+    collectStream(connectChild.stdout, (text) => applyEvents(stdoutParser.feed(text)))
+    collectStream(connectChild.stderr, (text) => applyEvents(stderrParser.feed(text)))
     connectChild.on("error", () => {
       settle({ state: "failed", reason: "spawn_failed" })
       clearChild()
     })
     connectChild.on("close", (...args: unknown[]) => {
-      applyEvents(parser.end())
+      applyEvents([...stdoutParser.end(), ...stderrParser.end()])
       const exitCode = typeof args[0] === "number" ? args[0] : null
       if (current.state !== "connected" && current.state !== "failed") {
         settle({

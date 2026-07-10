@@ -22,6 +22,7 @@ import {
   decodeAccountsView,
   decodeConnectStatusView,
 } from "../src/renderer/settings.ts"
+import type { CodexConnectServiceDependencies } from "../src/codex-connect.ts"
 
 /**
  * Exact device-auth output format of `pylon auth codex` (non-JSON mode):
@@ -33,6 +34,53 @@ const deviceAuthSuccessFixture =
   "https://auth.openai.com/codex/device\n" +
   "8260-DUG55\n" +
   "✓ Linked Codex account: owner@example.com (codex-4)\n"
+
+type FakeChild = NonNullable<ReturnType<NonNullable<CodexConnectServiceDependencies["spawnPylon"]>>>
+
+const makeFakeChild = (): FakeChild & {
+  emitStdout: (chunk: string) => void
+  emitStderr: (chunk: string) => void
+  emitClose: (code: number | null) => void
+} => {
+  const listeners = new Map<string, Array<(...values: unknown[]) => void>>()
+  const stdoutHandlers: Array<(chunk: string) => void> = []
+  const stderrHandlers: Array<(chunk: string) => void> = []
+  const child: FakeChild & {
+    emitStdout: (chunk: string) => void
+    emitStderr: (chunk: string) => void
+    emitClose: (code: number | null) => void
+  } = {
+    stdout: {
+      on: (event: string, listener: (chunk: string) => void) => {
+        if (event === "data") stdoutHandlers.push(listener)
+      },
+    } as unknown as NodeJS.ReadableStream,
+    stderr: {
+      on: (event: string, listener: (chunk: string) => void) => {
+        if (event === "data") stderrHandlers.push(listener)
+      },
+    } as unknown as NodeJS.ReadableStream,
+    on: (event: "close" | "error", listener: (...args: unknown[]) => void) => {
+      const existing = listeners.get(event) ?? []
+      listeners.set(event, [...existing, listener])
+      return child
+    },
+    kill: () => true,
+    killed: false,
+    exitCode: null,
+    emitStdout: (chunk: string) => {
+      for (const handler of stdoutHandlers) handler(chunk)
+    },
+    emitStderr: (chunk: string) => {
+      for (const handler of stderrHandlers) handler(chunk)
+    },
+    emitClose: (code: number | null) => {
+      child.exitCode = code
+      for (const listener of listeners.get("close") ?? []) listener(code)
+    },
+  }
+  return child
+}
 
 describe("createDeviceAuthStdoutParser (pylon auth codex output)", () => {
   test("parses the URL + user-code pair then the connected ref; the email never leaks", () => {
@@ -219,5 +267,21 @@ describe("makeCodexConnectService (fake children)", () => {
         code: "1234-ABCDE",
       },
     ])
+  })
+
+  test("ready isolated registration wins over earlier generic stderr failure and close ordering", () => {
+    const child = makeFakeChild()
+    const service = makeCodexConnectService("/nonexistent", {
+      spawnPylon: () => child,
+    })
+
+    expect(service.start()).toEqual({ state: "starting" })
+    child.emitStdout("✓ Linked Codex account: owner@example.com (codex-4)")
+    child.emitStderr("Pylon auth failed: stale generic wrapper warning\n")
+    child.emitClose(1)
+
+    const status = service.status()
+    expect(status).toEqual({ state: "connected", ref: "codex-4" })
+    expect(JSON.stringify(status)).not.toContain("owner@example.com")
   })
 })
