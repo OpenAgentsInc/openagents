@@ -584,6 +584,18 @@ describe("apps/sarah monorepo service", () => {
       })
       expect(systems[0]).toContain("coding_fleet_start")
       expect(systems[0]).toContain("owner's AI coding-fleet operator")
+      expect(systems[0]).toContain(
+        'repository:{owner,name,branch,commit}',
+      )
+      expect(systems[0]).toContain(
+        'workSource is either {kind:"issue_list",issueRefs:["#123"]}',
+      )
+      expect(systems[0]).toContain(
+        "repository.commit MUST be the supplied 40-character lowercase Git SHA",
+      )
+      expect(systems[0]).toContain(
+        "one new idempotencyKey for each materially different request",
+      )
       expect(systems[0]).not.toContain("AI sales employee")
       expect(body.personaPreview).toContain("AI coding-fleet operator")
       expect(body.personaPreview).not.toContain("AI sales employee")

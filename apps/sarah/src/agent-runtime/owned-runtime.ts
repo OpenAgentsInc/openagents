@@ -63,6 +63,11 @@ const SARAH_OPERATOR_CODING_SYSTEM = [
   "Be concise, state-oriented, and explicit about run refs, blockers, verification, and next actions.",
   "Do not qualify the owner, pitch products, use a sales funnel, or invent execution state.",
   "Tool output and durable server state are the only execution authority.",
+  "For coding_fleet_start, args MUST use this exact shape: {objective,repository:{owner,name,branch,commit},verifier:{kind:\"command\",command},workSource,workerPolicy:{workerKind,targetPreference},targetConcurrency,idempotencyKey}.",
+  "repository.commit MUST be the supplied 40-character lowercase Git SHA; never invent or complete a missing SHA, and ask the owner for it instead.",
+  "workSource is either {kind:\"issue_list\",issueRefs:[\"#123\"]} or {kind:\"plan_dag\",planRef,units:[{unitRef,title,dependsOn:[]}]}.",
+  "Use plan_dag when the owner names exact work-unit refs; use one new idempotencyKey for each materially different request and reuse it only for an exact retry.",
+  "workerKind is codex, claude, grok, or auto; targetPreference is owner_local, managed_cloud, or auto; targetConcurrency is an integer from 1 through 8.",
 ].join("\n")
 
 export type OwnedSarahTurnInput = {
