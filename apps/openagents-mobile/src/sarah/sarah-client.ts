@@ -19,6 +19,8 @@ import { drainSseBuffer, type SarahTurnResult } from "../screens/sarah-core"
 export const SARAH_API_BASE = "https://openagents.com/sarah/api"
 
 const SESSION_FILE = "sarah-session-v1.json"
+const THREADS_FILE = "sarah-threads-v1.json"
+export const MAX_PERSISTED_SARAH_THREADS = 5
 
 export interface PersistedSarahSession {
   readonly prospectRef: string
@@ -30,12 +32,82 @@ export interface PersistedSarahSession {
   }>
 }
 
+/** A deliberately small, app-owned conversation index. Mobile never crawls
+ * device storage: it remembers only conversations the user created here. */
+export interface PersistedSarahThread extends PersistedSarahSession {
+  readonly title: string
+  readonly updatedAt: number
+}
+
 // expo-file-system modern API (SDK 57): File/Paths classes. Imported lazily
 // inside functions so unit tests (bun, no native runtime) can import this
 // module for its pure helpers without expo natives present.
 const sessionFile = async () => {
   const { File, Paths } = await import("expo-file-system")
   return new File(Paths.document, SESSION_FILE)
+}
+
+const threadsFile = async () => {
+  const { File, Paths } = await import("expo-file-system")
+  return new File(Paths.document, THREADS_FILE)
+}
+
+const validPersistedEntries = (
+  value: unknown,
+): ReadonlyArray<PersistedSarahSession["entries"][number]> =>
+  Array.isArray(value)
+    ? value
+        .filter(
+          (entry): entry is PersistedSarahSession["entries"][number] =>
+            typeof entry === "object" &&
+            entry !== null &&
+            typeof (entry as { key?: unknown }).key === "string" &&
+            ((entry as { role?: unknown }).role === "user" ||
+              (entry as { role?: unknown }).role === "assistant") &&
+            typeof (entry as { text?: unknown }).text === "string",
+        )
+        .slice(-40)
+    : []
+
+export const loadPersistedSarahThreads = async (): Promise<ReadonlyArray<PersistedSarahThread>> => {
+  try {
+    const file = await threadsFile()
+    if (!file.exists) return []
+    const parsed = JSON.parse(await file.text()) as { threads?: unknown }
+    if (!Array.isArray(parsed.threads)) return []
+    return parsed.threads
+      .filter(
+        (thread): thread is PersistedSarahThread =>
+          typeof thread === "object" &&
+          thread !== null &&
+          typeof (thread as { prospectRef?: unknown }).prospectRef === "string" &&
+          typeof (thread as { threadId?: unknown }).threadId === "string" &&
+          typeof (thread as { title?: unknown }).title === "string" &&
+          typeof (thread as { updatedAt?: unknown }).updatedAt === "number",
+      )
+      .map((thread) => ({ ...thread, entries: validPersistedEntries(thread.entries) }))
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+      .slice(0, MAX_PERSISTED_SARAH_THREADS)
+  } catch {
+    return []
+  }
+}
+
+export const persistSarahThread = async (thread: PersistedSarahThread): Promise<ReadonlyArray<PersistedSarahThread>> => {
+  const existing = await loadPersistedSarahThreads()
+  const next = [
+    { ...thread, title: thread.title.trim().slice(0, 96) || "New chat", entries: thread.entries.slice(-40) },
+    ...existing.filter((item) => item.threadId !== thread.threadId),
+  ]
+    .sort((a, b) => b.updatedAt - a.updatedAt)
+    .slice(0, MAX_PERSISTED_SARAH_THREADS)
+  try {
+    const file = await threadsFile()
+    file.write(JSON.stringify({ threads: next }))
+  } catch {
+    // The current conversation remains usable when device persistence fails.
+  }
+  return next
 }
 
 export const loadPersistedSarahSession =
@@ -53,19 +125,7 @@ export const loadPersistedSarahSession =
       ) {
         return null
       }
-      const entries = Array.isArray(parsed.entries)
-        ? parsed.entries
-            .filter(
-              (entry): entry is PersistedSarahSession["entries"][number] =>
-                typeof entry === "object" &&
-                entry !== null &&
-                typeof (entry as { key?: unknown }).key === "string" &&
-                ((entry as { role?: unknown }).role === "user" ||
-                  (entry as { role?: unknown }).role === "assistant") &&
-                typeof (entry as { text?: unknown }).text === "string",
-            )
-            .slice(-40)
-        : []
+      const entries = validPersistedEntries(parsed.entries)
       return { prospectRef: parsed.prospectRef, threadId: parsed.threadId, entries }
     } catch {
       // Unreadable persistence is treated as absent — never a crash.

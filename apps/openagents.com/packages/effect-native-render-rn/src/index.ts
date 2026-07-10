@@ -1128,6 +1128,18 @@ const renderHost = (
 // token-driven color). Decorative vs meaningful is honored via accessibility
 // props. No raw SVG/markup enters the tree.
 const iconGlyphs: Record<IconName, string> = {
+  Home: "⌂",
+  Agent: "◌",
+  ChatCompose: "✎",
+  Chats: "☷",
+  Code: "‹›",
+  Compare: "⇄",
+  Folder: "□",
+  NotificationBell: "♢",
+  Plane: "➤",
+  Settings: "⚙",
+  Terminal: ">_",
+  Tools: "⌘",
   Plus: "+",
   Play: "▶",
   Pause: "❚❚",

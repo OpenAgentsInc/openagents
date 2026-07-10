@@ -104,3 +104,15 @@ still visibly wrong.
   Sync-backed cross-device conversation authority.
 - Actual model responses require a configured host token/gateway. No fallback
   response is fabricated.
+
+## Mobile continuation
+
+The same day, the mobile OpenAgents app gained the corresponding real
+conversation catalog. Its native Liquid Glass shell remains SwiftUI-owned,
+while the Effect Native program now hydrates a five-thread, app-owned on-device
+catalog. New chat mints a fresh Sarah relationship, a recent row restores its
+own bounded transcript, and titles come from the user's first message rather
+than placeholder copy. It intentionally does not expose the desktop's raw
+folder browser: on mobile, device-file access must begin with an explicit
+user-selected document capability rather than silently treating the phone's
+filesystem as a workspace.

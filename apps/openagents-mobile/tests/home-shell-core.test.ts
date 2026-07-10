@@ -17,7 +17,6 @@ import {
   initialHomeState,
   renderContentView,
   renderDrawerView,
-  seedRecents,
   surfaceModeOptions,
 } from "../src/screens/home-core"
 
@@ -99,12 +98,17 @@ describe("contract openagents_mobile.home_shell.view_program.v1", () => {
     )
   })
 
-  test("drawer view: search/new-chat rows, Recents section, selection highlight, settings + bundle footer", () => {
-    const serialized = JSON.stringify(renderDrawerView(initialHomeState))
+  test("drawer view: search/new-chat rows, real Recents section, selection highlight, settings + bundle footer", () => {
+    const realRecents = [
+      { id: "thread-1", title: "Review the project" },
+      { id: "thread-2", title: "Ship mobile parity" },
+    ]
+    const state = { ...initialHomeState, recents: realRecents, activeRecentId: "thread-1" }
+    const serialized = JSON.stringify(renderDrawerView(state))
     expect(serialized).toContain('"label":"Search"')
     expect(serialized).toContain('"label":"New chat"')
     expect(serialized).toContain("Recents")
-    for (const recent of seedRecents) {
+    for (const recent of realRecents) {
       expect(serialized).toContain(recent.title)
     }
     expect(serialized).toContain('"label":"Settings"')
@@ -200,13 +204,18 @@ describe("contract openagents_mobile.home_shell.view_program.v1", () => {
           )
 
           // (1) SwiftUI sidebar icon tap (exact shell wiring) opens the drawer.
+          program.recents.hydrate([
+            { id: "thread-1", title: "Review the project" },
+            { id: "thread-2", title: "Ship mobile parity" },
+          ])
+          yield* settle
           program.chrome.toggleDrawer()
           yield* settle
           // (2) tap a drawer recent row (find its Pressable in the rendered tree).
           const drawerTree = yield* drawer.currentElement
           const row = findByNativeId(
             drawerTree,
-            "effect-native:Button:drawer-recent-glass-shell",
+            "effect-native:Button:drawer-recent-thread-2",
           )
           const onPress = row?.props.onPress
           if (typeof onPress !== "function") {
@@ -218,10 +227,16 @@ describe("contract openagents_mobile.home_shell.view_program.v1", () => {
           // Selection landed in STATE (the main surface is deliberately
           // text-free): active recent switched and the drawer closed.
           const afterSelect = yield* lastState(program)
-          expect(afterSelect.activeRecentId).toBe("glass-shell")
+          expect(afterSelect.activeRecentId).toBe("thread-2")
           expect(afterSelect.drawerOpen).toBe(false)
+          expect(afterSelect.conversationSource).toBe("recent")
+          expect(afterSelect.surfaceMode).toBe("sarah")
 
           // (3) chrome dispatchers land in state.
+          // Return to the non-conversation surface: only there does the
+          // presentation-only composer start the ask-video takeover.
+          program.chrome.selectSurfaceMode("openagents")
+          yield* settle
           program.chrome.pressComposer()
           yield* settle
           program.chrome.pressMic()

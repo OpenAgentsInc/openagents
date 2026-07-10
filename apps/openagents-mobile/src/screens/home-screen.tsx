@@ -23,8 +23,10 @@ import {
 import { EffectNativeHost } from "../effect-native/effect-native-host"
 import {
   loadPersistedSarahSession,
+  loadPersistedSarahThreads,
   mintSarahProspectSession,
   persistSarahSession,
+  persistSarahThread,
   runSarahEventStream,
   sendSarahTurn,
 } from "../sarah/sarah-client"
@@ -215,17 +217,53 @@ export const HomeScreen = () => {
     }
   }, [program])
 
+  // The drawer is a real, bounded local catalog — no seeded fake chats. It
+  // contains only conversations this app has persisted, newest first.
+  useEffect(() => {
+    let cancelled = false
+    void loadPersistedSarahThreads().then((threads) => {
+      if (!cancelled) {
+        program.recents.hydrate(threads.map((thread) => ({ id: thread.threadId, title: thread.title })))
+      }
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [program])
+
   // --- GL-3 (#8649): Sarah session boot ------------------------------------
   // Entering Sarah mode restores the persisted prospect relationship from
   // disk (survives restarts) or mints one against production; failure lands
   // as the typed unavailable card — the composer never dies (a later send
   // can bootstrap the session through the turn itself).
   const sarahPhase = homeState.sarah.phase
+  const activeRecentId = homeState.activeRecentId
+  const conversationSource = homeState.conversationSource
   useEffect(() => {
     if (!sarahMode || sarahPhase !== "idle") return
     let cancelled = false
     void (async () => {
       try {
+        if (conversationSource === "recent" && activeRecentId !== undefined) {
+          const selected = (await loadPersistedSarahThreads()).find(
+            (thread) => thread.threadId === activeRecentId,
+          )
+          if (cancelled) return
+          if (selected !== undefined) {
+            program.sarah.sessionReady({
+              prospectRef: selected.prospectRef,
+              threadId: selected.threadId,
+              restored: true,
+              entries: selected.entries,
+            })
+            return
+          }
+        }
+        if (conversationSource === "new") {
+          const minted = await mintSarahProspectSession()
+          if (!cancelled) program.sarah.sessionReady({ ...minted, restored: false, entries: [] })
+          return
+        }
         const persisted = await loadPersistedSarahSession()
         if (cancelled) return
         if (persisted !== null) {
@@ -247,7 +285,7 @@ export const HomeScreen = () => {
     return () => {
       cancelled = true
     }
-  }, [sarahMode, sarahPhase, program])
+  }, [sarahMode, sarahPhase, activeRecentId, conversationSource, program])
 
   // Bounded SSE transcript/card stream with typed reconnect — runs while the
   // Sarah surface is active and a prospect relationship exists; aborted on
@@ -292,6 +330,33 @@ export const HomeScreen = () => {
       clearTimeout(timer)
     }
   }, [sarahProspectRef, sarahThreadId, sarahEntries])
+
+  // Keep the current conversation in the five-item catalog once it has a
+  // real settled turn. The title is derived from the user's own first message
+  // rather than fabricated UI copy.
+  useEffect(() => {
+    if (sarahProspectRef === null || sarahThreadId === null) return
+    const settled = sarahEntries
+      .filter((entry) => entry.status === "done")
+      .map((entry) => ({ key: entry.key, role: entry.role, text: entry.text }))
+    const firstUser = settled.find((entry) => entry.role === "user")
+    if (firstUser === undefined) return
+    let cancelled = false
+    void persistSarahThread({
+      prospectRef: sarahProspectRef,
+      threadId: sarahThreadId,
+      title: firstUser.text,
+      updatedAt: Date.now(),
+      entries: settled,
+    }).then((threads) => {
+      if (!cancelled) {
+        program.recents.hydrate(threads.map((thread) => ({ id: thread.threadId, title: thread.title })))
+      }
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [sarahProspectRef, sarahThreadId, sarahEntries, program])
 
   const chrome = chromeProps(homeState)
 

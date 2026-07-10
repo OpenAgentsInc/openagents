@@ -66,6 +66,8 @@ export interface RecentChat {
   readonly title: string
 }
 
+export type ConversationSource = "restore" | "new" | "recent"
+
 /** The pill dropdown's surface modes: the plain OpenAgents surface (Protoss
  * background) or the Sarah demo-video surface (fullscreen looping video the
  * glass chrome layers over). */
@@ -113,6 +115,8 @@ export interface HomeState {
   /** The active conversation; undefined = fresh "new chat" surface. */
   readonly activeRecentId: string | undefined
   readonly recents: ReadonlyArray<RecentChat>
+  /** Controls how an idle Sarah surface obtains its next session. */
+  readonly conversationSource: ConversationSource
   readonly composerTaps: number
   readonly micTaps: number
   readonly searchTaps: number
@@ -122,23 +126,15 @@ export interface HomeState {
   readonly sarah: SarahState
 }
 
-/** Seed conversations so the drawer's Recents section and selection highlight
- * are real state-driven UI (local placeholder data until Sarah conversation
- * state lands per #8597 scope 2/3). */
-export const seedRecents: ReadonlyArray<RecentChat> = [
-  { id: "welcome", title: "Welcome to OpenAgents" },
-  { id: "glass-shell", title: "Glass shell design" },
-  { id: "fleet-notes", title: "Fleet supervision notes" },
-]
-
 export const initialHomeState: HomeState = {
   drawerOpen: false,
   surfaceMode: "openagents",
   askVideoPlaying: false,
   mineralsSheetOpen: false,
   lastMineralPackId: undefined,
-  activeRecentId: "welcome",
-  recents: seedRecents,
+  activeRecentId: undefined,
+  recents: [],
+  conversationSource: "restore",
   composerTaps: 0,
   micTaps: 0,
   searchTaps: 0,
@@ -165,6 +161,14 @@ export const NewChatPressed = defineIntent("NewChatPressed", EmptyPayload)
 export const RecentSelected = defineIntent(
   "RecentSelected",
   Schema.Struct({ id: Schema.NonEmptyString }),
+)
+export const RecentsHydrated = defineIntent(
+  "RecentsHydrated",
+  Schema.Struct({
+    recents: Schema.Array(
+      Schema.Struct({ id: Schema.NonEmptyString, title: Schema.NonEmptyString }),
+    ),
+  }),
 )
 export const SearchPressed = defineIntent("SearchPressed", EmptyPayload)
 export const SettingsPressed = defineIntent("SettingsPressed", EmptyPayload)
@@ -210,6 +214,7 @@ export const homeIntentDefinitions = [
   DrawerToggled,
   NewChatPressed,
   RecentSelected,
+  RecentsHydrated,
   SearchPressed,
   SettingsPressed,
   ChatPillPressed,
@@ -398,13 +403,24 @@ export const makeHomeHandlers = (
     SubscriptionRef.update(state, (current) => ({
       ...current,
       activeRecentId: undefined,
+      conversationSource: "new" as const,
+      surfaceMode: "sarah" as const,
+      sarah: initialSarahState,
       drawerOpen: false,
     })),
   RecentSelected: (payload) =>
     SubscriptionRef.update(state, (current) => ({
       ...current,
       activeRecentId: payload.id,
+      conversationSource: "recent" as const,
+      surfaceMode: "sarah" as const,
+      sarah: initialSarahState,
       drawerOpen: false,
+    })),
+  RecentsHydrated: (payload) =>
+    SubscriptionRef.update(state, (current) => ({
+      ...current,
+      recents: payload.recents.slice(0, 5),
     })),
   SearchPressed: () =>
     SubscriptionRef.update(state, (current) => ({
@@ -638,6 +654,10 @@ export interface ChromeDispatchers {
   readonly selectMineralPack: (id: string) => void
 }
 
+export interface RecentDispatchers {
+  readonly hydrate: (recents: ReadonlyArray<RecentChat>) => void
+}
+
 /** Host-side dispatchers for the effectful Sarah client (session boot, SSE
  * loop). Same fire-and-forget posture as the chrome: typed intents only. */
 export interface SarahDispatchers {
@@ -673,6 +693,7 @@ export interface HomeProgramHandle {
   readonly stateChanges: Stream.Stream<HomeState>
   readonly chrome: ChromeDispatchers
   readonly sarah: SarahDispatchers
+  readonly recents: RecentDispatchers
 }
 
 export const buildHomeProgram = (
@@ -750,6 +771,16 @@ export const buildHomeProgram = (
                     text,
                   ),
                 ),
+              ),
+            )
+          },
+        },
+        recents: {
+          hydrate: (recents) => {
+            fireRef(
+              IntentRef(
+                "RecentsHydrated",
+                StaticPayload({ recents: recents.slice(0, 5).map((recent) => ({ ...recent })) }),
               ),
             )
           },
