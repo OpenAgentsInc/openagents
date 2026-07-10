@@ -57,6 +57,19 @@ const seedRuns = async (
   }
 }
 
+const setRunState = async (
+  summary: ReturnType<typeof createBootstrapSummary>,
+  runRef: string,
+  state: "running" | "paused" | "draining" | "stopped" | "completed",
+): Promise<void> => {
+  const runtime = await openPylonFleetRunRuntime({ bootstrap: summary })
+  try {
+    runtime.store.updateFleetRunState(runRef, state)
+  } finally {
+    await runtime.close()
+  }
+}
+
 const openerFixture = () => {
   const opened: string[] = []
   const closed: string[] = []
@@ -354,6 +367,236 @@ describe("headless Pylon FleetRun activation", () => {
       })
       await service.close()
     })
+  })
+
+  test("a supervisor-terminal run is durably disarmed and frees its slot for the next armed run", async () => {
+    await fixture(async ({ summary }) => {
+      const firstRef = "fleet_run.fc2.terminal_a"
+      const secondRef = "fleet_run.fc2.terminal_b"
+      await seedRuns(summary, [firstRef, secondRef])
+      const opened: string[] = []
+      const closed: string[] = []
+      const lifecycle = new Map<
+        string,
+        (event: FleetRunSupervisorObservedEvent) => void | Promise<void>
+      >()
+      const service = await openPylonNodeFleetRunActivationService({
+        summary,
+        pylonRef,
+        baseUrl: "https://openagents.test",
+        openExecutor: async input => {
+          opened.push(input.runRef)
+          if (input.onLifecycle !== undefined) lifecycle.set(input.runRef, input.onLifecycle)
+          return {
+            close: async () => {
+              closed.push(input.runRef)
+            },
+          }
+        },
+      })
+      expect(await service.arm(firstRef)).toMatchObject({ armed: true, active: true })
+      expect(await service.arm(secondRef)).toMatchObject({
+        armed: true,
+        active: false,
+        reason: "active_limit_reached",
+      })
+
+      await setRunState(summary, firstRef, "completed")
+      await lifecycle.get(firstRef)?.({
+        kind: "completed",
+        runRef: firstRef,
+        reason: "backlog_empty",
+      })
+      const status = await service.status()
+      expect(opened).toEqual([firstRef, secondRef])
+      expect(closed).toEqual([firstRef])
+      expect(status.activeRuns).toBe(1)
+      expect(status.runs).toEqual([
+        expect.objectContaining({
+          runRef: firstRef,
+          armed: false,
+          active: false,
+          state: "disarmed",
+          reason: null,
+        }),
+        expect.objectContaining({
+          runRef: secondRef,
+          armed: true,
+          active: true,
+          state: "active",
+          reason: null,
+        }),
+      ])
+      await service.close()
+    })
+  })
+
+  test("a terminal lifecycle emitted during executor open reaps without deadlocking", async () => {
+    await fixture(async ({ summary }) => {
+      const runRef = "fleet_run.fc2.terminal_during_open"
+      await seedRuns(summary, [runRef])
+      let closeAttempts = 0
+      const service = await openPylonNodeFleetRunActivationService({
+        summary,
+        pylonRef,
+        baseUrl: "https://openagents.test",
+        openExecutor: async input => {
+          await setRunState(summary, runRef, "completed")
+          await input.onLifecycle?.({
+            kind: "completed",
+            runRef,
+            reason: "backlog_empty",
+          })
+          return {
+            close: async () => {
+              closeAttempts += 1
+            },
+          }
+        },
+      })
+
+      await service.arm(runRef)
+      expect((await service.status(runRef)).runs[0]).toMatchObject({
+        runRef,
+        armed: false,
+        active: false,
+        state: "disarmed",
+        reason: null,
+      })
+      expect(closeAttempts).toBe(1)
+      await service.close()
+    })
+  })
+
+  test("a terminal close failure stays counted but cannot resurrect after restart", async () => {
+    await fixture(async ({ summary }) => {
+      const failedRef = "fleet_run.fc2.terminal_close_failure"
+      const waitingRef = "fleet_run.fc2.waiting_after_failure"
+      await seedRuns(summary, [failedRef, waitingRef])
+      let observe: ((event: FleetRunSupervisorObservedEvent) => void | Promise<void>) | undefined
+      let closeAttempts = 0
+      const service = await openPylonNodeFleetRunActivationService({
+        summary,
+        pylonRef,
+        baseUrl: "https://openagents.test",
+        openExecutor: async input => {
+          if (input.runRef === failedRef) observe = input.onLifecycle
+          return {
+            close: async () => {
+              if (input.runRef === failedRef) {
+                closeAttempts += 1
+                throw new Error("private terminal close failure")
+              }
+            },
+          }
+        },
+      })
+      await service.arm(failedRef)
+      await service.arm(waitingRef)
+      await setRunState(summary, failedRef, "stopped")
+      await observe?.({
+        kind: "terminal",
+        runRef: failedRef,
+        terminalState: "stopped",
+        blockerRefs: [],
+      })
+
+      const blockedStatus = await service.status()
+      expect(closeAttempts).toBeGreaterThan(0)
+      expect(blockedStatus.activeRuns).toBe(1)
+      expect(blockedStatus.runs).toEqual([
+        expect.objectContaining({
+          runRef: failedRef,
+          armed: false,
+          active: true,
+          state: "disarmed_cleanup_blocked",
+          reason: "executor_close_failed",
+          retryable: false,
+        }),
+        expect.objectContaining({
+          runRef: waitingRef,
+          armed: true,
+          active: false,
+          reason: "active_limit_reached",
+        }),
+      ])
+      await service.close()
+
+      const restarted = openerFixture()
+      const next = await openPylonNodeFleetRunActivationService({
+        summary,
+        pylonRef,
+        baseUrl: "https://openagents.test",
+        openExecutor: restarted.opener,
+      })
+      expect(restarted.opened).toEqual([waitingRef])
+      expect((await next.status(failedRef)).runs[0]).toMatchObject({
+        runRef: failedRef,
+        armed: false,
+        active: false,
+      })
+      await next.close()
+    })
+  })
+
+  test("does not infer finality or remove restart intent from the durable run state alone", async () => {
+    await fixture(async ({ summary }) => {
+      const runRef = "fleet_run.fc2.store_terminal_only"
+      await seedRuns(summary, [runRef])
+      const opener = openerFixture()
+      const service = await openPylonNodeFleetRunActivationService({
+        summary,
+        pylonRef,
+        baseUrl: "https://openagents.test",
+        openExecutor: opener.opener,
+      })
+      await service.arm(runRef)
+      await setRunState(summary, runRef, "stopped")
+      expect((await service.status(runRef)).runs[0]).toMatchObject({
+        runRef,
+        armed: true,
+        active: true,
+        state: "active",
+      })
+      expect(opener.closed).toEqual([])
+      await service.close()
+    })
+  })
+
+  test("a stale terminal observation never disarms a run that is live again", async () => {
+    for (const state of ["running", "paused", "draining"] as const) {
+      await fixture(async ({ summary }) => {
+        const runRef = `fleet_run.fc2.stale_terminal_${state}`
+        await seedRuns(summary, [runRef])
+        const opener = openerFixture()
+        let observe: ((event: FleetRunSupervisorObservedEvent) => void | Promise<void>) | undefined
+        const service = await openPylonNodeFleetRunActivationService({
+          summary,
+          pylonRef,
+          baseUrl: "https://openagents.test",
+          openExecutor: async input => {
+            observe = input.onLifecycle
+            return await opener.opener(input)
+          },
+        })
+        await service.arm(runRef)
+        await setRunState(summary, runRef, state)
+        await observe?.({
+          kind: "terminal",
+          runRef,
+          terminalState: "stopped",
+          blockerRefs: [],
+        })
+        expect((await service.status(runRef)).runs[0]).toMatchObject({
+          runRef,
+          armed: true,
+          active: true,
+          state: "active",
+        })
+        expect(opener.closed).toEqual([])
+        await service.close()
+      })
+    }
   })
 
   test("rejects a second node-level supervisor handle instead of overstating production capacity", async () => {

@@ -103,6 +103,9 @@ const activeLimit = (value: number | undefined): number => {
 const isRunnableState = (state: string): boolean =>
   state === "running"
 
+const isTerminalState = (state: string): boolean =>
+  state === "completed" || state === "stopped"
+
 const transportConfigured = (baseUrl: string | undefined): boolean => {
   try {
     const parsed = new URL(baseUrl ?? "")
@@ -136,6 +139,11 @@ export async function openPylonNodeFleetRunActivationService(
   const handles = new Map<string, PylonFleetRunExecutorHandle>()
   const opening = new Set<string>()
   const blocked = new Map<string, PylonFleetRunActivationReason>()
+  // A terminal store row is not enough authority to retire durable restart
+  // intent: reconcile-stopped/completed runs can be revived. Only a terminal
+  // observation emitted by the owned supervisor enters this set.
+  const terminalLifecycle = new Set<string>()
+  const scheduledTerminalReaps = new Set<string>()
   let closed = false
   let tail = Promise.resolve()
 
@@ -181,9 +189,54 @@ export async function openPylonNodeFleetRunActivationService(
     }
   }
 
-  const tryActivate = async (runRef: string): Promise<void> => {
+  const reapTerminalLifecycle = async (): Promise<boolean> => {
+    let freedActiveSlot = false
+    for (const runRef of [...terminalLifecycle].sort()) {
+      const run = authority.store.getFleetRun(runRef)
+      // A newer live state supersedes an already-queued terminal observation.
+      // Never discard restart intent for running, paused, or draining work.
+      if (run === null || !isTerminalState(run.state)) {
+        terminalLifecycle.delete(runRef)
+        continue
+      }
+
+      const activation = authority.store.getFleetRunActivation(pylonRef, runRef)
+      if (activation?.armed === true) {
+        // Remove durable restart intent before process-local cleanup. Even if
+        // close fails, this terminal run cannot resurrect after a restart.
+        authority.store.setFleetRunActivation({ pylonRef, runRef, armed: false })
+      }
+
+      const handle = handles.get(runRef)
+      if (handle === undefined) {
+        if (!opening.has(runRef)) {
+          blocked.delete(runRef)
+          terminalLifecycle.delete(runRef)
+        }
+        continue
+      }
+      try {
+        await handle.close()
+        // A failed close remains a counted process-local handle. Delete only
+        // after the complete executor/reporter close succeeds.
+        handles.delete(runRef)
+        blocked.delete(runRef)
+        terminalLifecycle.delete(runRef)
+        freedActiveSlot = true
+      } catch {
+        blocked.set(runRef, "executor_close_failed")
+      }
+    }
+    return freedActiveSlot
+  }
+
+  const tryActivate = async (
+    runRef: string,
+    reapBeforeAdmission = true,
+  ): Promise<void> => {
+    if (reapBeforeAdmission) await reapTerminalLifecycle()
     if (handles.has(runRef) || opening.has(runRef)) {
-      blocked.delete(runRef)
+      if (blocked.get(runRef) !== "executor_close_failed") blocked.delete(runRef)
       return
     }
     const activation = authority.store.getFleetRunActivation(pylonRef, runRef)
@@ -227,18 +280,23 @@ export async function openPylonNodeFleetRunActivationService(
         baseUrl: input.baseUrl ?? "",
         ...(input.agentToken === undefined ? {} : { agentToken: input.agentToken }),
         ...(input.env === undefined ? {} : { env: input.env }),
-        ...(executionReporter === null
-          ? {}
-          : {
-              onLifecycle: async event => {
-                for (const projected of projectFleetRunSupervisorObservation({
-                  event,
-                  store: authority.store,
-                })) {
-                  await executionReporter.record(projected)
-                }
-              },
-            }),
+        onLifecycle: async event => {
+          try {
+            if (executionReporter !== null) {
+              for (const projected of projectFleetRunSupervisorObservation({
+                event,
+                store: authority.store,
+              })) {
+                await executionReporter.record(projected)
+              }
+            }
+          } finally {
+            if (
+              event.runRef === runRef &&
+              (event.kind === "completed" || event.kind === "terminal")
+            ) scheduleTerminalReap(runRef)
+          }
+        },
       })
       handles.set(runRef, executionReporter === null
         ? handle
@@ -258,15 +316,36 @@ export async function openPylonNodeFleetRunActivationService(
     }
   }
 
-  const reconcileArmed = async (): Promise<void> => {
+  const reconcileArmed = async (reapBeforeAdmission = true): Promise<void> => {
+    if (reapBeforeAdmission) await reapTerminalLifecycle()
     for (const activation of authority.store.listFleetRunActivations(pylonRef)) {
       if (!activation.armed) continue
       if (!PUBLIC_REF_PATTERN.test(activation.runRef)) {
         blocked.set(activation.runRef, "unsafe_stored_ref")
         continue
       }
-      await tryActivate(activation.runRef)
+      await tryActivate(activation.runRef, false)
     }
+  }
+
+  const reapTerminalLifecycleThenFill = async (): Promise<void> => {
+    if (await reapTerminalLifecycle()) await reconcileArmed(false)
+  }
+
+  function scheduleTerminalReap(runRef: string): void {
+    terminalLifecycle.add(runRef)
+    if (scheduledTerminalReaps.has(runRef)) return
+    scheduledTerminalReaps.add(runRef)
+    // The lifecycle callback may run while openExecutor is itself awaited by
+    // the serialized arm operation. Queue cleanup but never await it here, or
+    // a terminal-during-open event would deadlock its own handle creation.
+    void serialize(async () => {
+      try {
+        if (!closed) await reapTerminalLifecycleThenFill()
+      } finally {
+        scheduledTerminalReaps.delete(runRef)
+      }
+    }).catch(() => undefined)
   }
 
   const assertOpen = (): void => {
@@ -310,6 +389,7 @@ export async function openPylonNodeFleetRunActivationService(
     })),
     status: (unsafeRunRef) => serialize(() => commandOperation(async () => {
       assertOpen()
+      await reapTerminalLifecycleThenFill()
       const requested = unsafeRunRef === undefined
         ? undefined
         : validateRef(unsafeRunRef, "run_ref")
