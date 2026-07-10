@@ -14,6 +14,11 @@ import {
   openPylonFleetRunRuntime,
   pylonFleetRunDatabasePath,
 } from "../src/orchestration/fleet-run-runtime.js"
+import type { FleetRunSupervisorObservedEvent } from "../src/orchestration/fleet-run-supervisor.js"
+import type {
+  PylonFleetRunExecutionBatch,
+  PylonFleetRunExecutionHttpPort,
+} from "../src/orchestration/fleet-run-execution-reporter.js"
 
 const pylonRef = "pylon.public.fc2.node_activation"
 
@@ -165,6 +170,81 @@ describe("headless Pylon FleetRun activation", () => {
       fail = false
       expect(await service.arm(runRef)).toMatchObject({ armed: true, active: true, reason: null })
       expect(opens).toBe(2)
+      await service.close()
+    })
+  })
+
+  test("wires accepted Sarah-run lifecycle observations into the durable execution reporter", async () => {
+    await fixture(async ({ summary }) => {
+      const runRef = "fleet_run.sarah.0123456789abcdefabcd"
+      const claimRef = "claim.sarah_fleet_run.0123456789abcdef01234567"
+      const runtime = await openPylonFleetRunRuntime({ bootstrap: summary })
+      runtime.store.createFleetRun({
+        runRef,
+        objective: "Public-safe execution projection fixture",
+        workSource: "fixture",
+        targetConcurrency: 1,
+        workerKind: "auto",
+        state: "running",
+        authorityBinding: {
+          schema: "openagents.pylon.fleet_run_authority_binding.v1",
+          source: "sarah_authority",
+          authorityFingerprint: "a".repeat(64),
+          claimRef,
+          pylonRef,
+          targetPreference: "owner_local",
+          phase: "accepted",
+        },
+      })
+      await runtime.close()
+
+      const batches: PylonFleetRunExecutionBatch[] = []
+      const executionRemote: PylonFleetRunExecutionHttpPort = {
+        append: async ({ batch }) => {
+          batches.push(batch)
+          return {
+            schema: "openagents.pylon.fleet_run_execution_ack.v1",
+            runRef,
+            claimRef,
+            acceptedThroughSequence: batch.events.at(-1)?.sequence ?? 0,
+            storedEventCount: batch.events.length,
+            duplicateEventCount: 0,
+            execution: {
+              state: batch.events.some(event => event.kind === "run_terminal")
+                ? "completed"
+                : "running",
+              counters: {
+                workUnitsTotal: 0,
+                activeAssignments: 0,
+                acceptedAssignments: 0,
+                failedAssignments: 0,
+                staleAssignments: 0,
+              },
+              updatedAt: "2026-07-09T20:00:00.000Z",
+            },
+          }
+        },
+      }
+      let observe: ((event: FleetRunSupervisorObservedEvent) => void | Promise<void>) | undefined
+      const opener: PylonFleetRunExecutorOpener = async input => {
+        observe = input.onLifecycle
+        return { close: () => Promise.resolve() }
+      }
+      const service = await openPylonNodeFleetRunActivationService({
+        summary,
+        pylonRef,
+        baseUrl: "https://openagents.test",
+        agentToken: "private-token",
+        executionRemote,
+        openExecutor: opener,
+      })
+      await service.arm(runRef)
+      await observe?.({ kind: "completed", runRef, reason: "backlog_empty" })
+      expect(batches.flatMap(batch => batch.events).map(event => event.kind)).toEqual([
+        "run_started",
+        "run_terminal",
+      ])
+      expect(JSON.stringify(batches)).not.toContain("private-token")
       await service.close()
     })
   })

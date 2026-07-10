@@ -337,6 +337,44 @@ describe("Pylon-owned FleetRun supervisor", () => {
     ])
   })
 
+  test("does not quarantine a healthy account for task or verifier failure", async () => {
+    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const run = createRun(store, {
+      runRef: "fleet_run.fc2.grok_task_failure",
+      workUnits: 1,
+      targetConcurrency: 1,
+      workerKind: "grok",
+    })
+    await tickFleetRunSupervisor({
+      store,
+      pylonRef: "pylon.owner.fc2.grok-task-failure",
+      runRef: run.runRef,
+      planner: planner(store, 1),
+      runner: {
+        dispatch: async input => ({
+          assignmentRef: `assignment.grok.${input.claim.claimRef}`,
+          lifecycle: [{
+            ...lifecycleEvent("assignment_run.completed", "rejected"),
+            blockerRefs: ["blocker.pylon.fleet_runner.grok_verification_failed"],
+          }],
+          status: "failed",
+          summary: "The claimed task verifier failed.",
+        }),
+      },
+      capacity: {
+        accounts: async () => [{
+          accountRef: "grok-healthy",
+          advertisedCapacity: 1,
+          marginalCostClass: "not_measured",
+          workerKind: "grok",
+        }],
+      },
+      clock: { now: () => fixedNow },
+    })
+
+    expect(store.listActiveDispatchBreakers(fixedNow)).toEqual([])
+  })
+
   test("keeps explicit concrete runs constrained to their requested harness", async () => {
     const store = createPylonOrchestrationStore(new Database(":memory:"))
     const run = createRun(store, {

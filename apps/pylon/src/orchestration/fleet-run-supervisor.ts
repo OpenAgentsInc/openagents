@@ -666,6 +666,13 @@ export async function tickFleetRunSupervisor(
       })
     }
     if (run.state !== "running") {
+      if (run.state === "completed") {
+        await emit(options.onLifecycle, {
+          kind: "completed",
+          runRef: run.runRef,
+          reason: "drained",
+        })
+      }
       return {
         activeAssignments: activeAssignmentsForRun(store, run.runRef),
         claimed: 0,

@@ -59,6 +59,7 @@ import {
   openPylonFleetRunIntakePoller,
 } from "./node/fleet-run-intake-poller.js"
 import { makePylonFleetRunHttpIntake } from "./orchestration/fleet-run-http-intake.js"
+import { makePylonFleetRunExecutionHttpPort } from "./orchestration/fleet-run-execution-reporter.js"
 import { openPylonFleetRunRemoteIntakeService } from "./orchestration/fleet-run-remote-intake.js"
 import { createCoordinatorRuntime, type CoordinatorRuntime } from "./coordinator/coordinator-runtime.js"
 import { evaluateShipSpendGate } from "./coordinator/ship-spend-gate.js"
@@ -1151,6 +1152,16 @@ const runHeadlessNode = Effect.gen(function* () {
       env: Bun.env,
     })
   const presenceClientOptions = currentPresenceClientOptions()
+  const fleetRunExecutionRemote = yield* Effect.try({
+    try: () =>
+      presenceClientOptions.agentToken === undefined || presenceBaseUrl === undefined
+        ? undefined
+        : makePylonFleetRunExecutionHttpPort({
+            agentToken: presenceClientOptions.agentToken,
+            baseUrl: presenceBaseUrl,
+          }),
+    catch: () => new Error("failed to configure FleetRun execution projection"),
+  })
   const fleetRunActivation = yield* Effect.tryPromise({
     try: () => openPylonNodeFleetRunActivationService({
       summary: bootstrapSummary,
@@ -1160,6 +1171,9 @@ const runHeadlessNode = Effect.gen(function* () {
       ...(presenceClientOptions.agentToken === undefined
         ? {}
         : { agentToken: presenceClientOptions.agentToken }),
+      ...(fleetRunExecutionRemote === undefined
+        ? {}
+        : { executionRemote: fleetRunExecutionRemote }),
     }),
     catch: () => new Error("failed to open owner-local FleetRun activation authority"),
   })

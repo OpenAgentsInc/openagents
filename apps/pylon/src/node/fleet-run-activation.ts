@@ -11,6 +11,12 @@ import {
 import {
   openPylonFleetRunRuntime,
 } from "../orchestration/fleet-run-runtime.js"
+import {
+  openPylonFleetRunExecutionReporter,
+  type PylonFleetRunExecutionHttpPort,
+  type PylonFleetRunExecutionReporter,
+} from "../orchestration/fleet-run-execution-reporter.js"
+import { projectFleetRunSupervisorObservation } from "../orchestration/fleet-run-execution-projection.js"
 
 export const PYLON_FLEET_RUN_ACTIVATION_SCHEMA =
   "openagents.pylon.fleet_run_activation.v1" as const
@@ -60,6 +66,7 @@ export type OpenPylonNodeFleetRunActivationServiceInput = {
   readonly agentToken?: string | undefined
   readonly baseUrl?: string | undefined
   readonly env?: NodeJS.ProcessEnv | undefined
+  readonly executionRemote?: PylonFleetRunExecutionHttpPort | undefined
   readonly maxActiveRuns?: number | undefined
   readonly openExecutor?: PylonFleetRunExecutorOpener | undefined
   readonly openRuntime?: typeof openPylonFleetRunRuntime | undefined
@@ -195,7 +202,18 @@ export async function openPylonNodeFleetRunActivationService(
 
     opening.add(runRef)
     blocked.delete(runRef)
+    let reporter: PylonFleetRunExecutionReporter | null = null
     try {
+      reporter = input.executionRemote === undefined
+        ? null
+        : openPylonFleetRunExecutionReporter({
+            store: authority.store,
+            pylonRef,
+            runRef,
+            remote: input.executionRemote,
+          })
+      const executionReporter = reporter
+      await executionReporter?.flush().catch(() => null)
       const handle = await openExecutor({
         summary: input.summary,
         pylonRef,
@@ -203,9 +221,29 @@ export async function openPylonNodeFleetRunActivationService(
         baseUrl: input.baseUrl ?? "",
         ...(input.agentToken === undefined ? {} : { agentToken: input.agentToken }),
         ...(input.env === undefined ? {} : { env: input.env }),
+        ...(executionReporter === null
+          ? {}
+          : {
+              onLifecycle: async event => {
+                for (const projected of projectFleetRunSupervisorObservation({
+                  event,
+                  store: authority.store,
+                })) {
+                  await executionReporter.record(projected)
+                }
+              },
+            }),
       })
-      handles.set(runRef, handle)
+      handles.set(runRef, executionReporter === null
+        ? handle
+        : {
+            close: async () => {
+              await handle.close()
+              await executionReporter.close()
+            },
+          })
     } catch {
+      await reporter?.close().catch(() => null)
       // The arm is intentional durable state. Keep it armed and expose only a
       // fixed retryable blocker; opener/provider/local-path text is private.
       blocked.set(runRef, "executor_open_failed")
