@@ -30,7 +30,7 @@ describe('WEB-1-EN stage1 Effect Native marketing-catalog landing (#8595)', () =
       tag: 'Stack',
       key: 'stage1-root',
     })
-    expect(serialized).toContain('"catalogVersion":"effect-native/v29"')
+    expect(serialized).toContain('"catalogVersion":"effect-native/v30"')
     // Marketing catalog tags (v20 wave)
     expect(serialized).toContain('"_tag":"NavBar"')
     expect(serialized).toContain('"_tag":"Hero"')
