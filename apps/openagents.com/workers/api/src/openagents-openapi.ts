@@ -1585,6 +1585,19 @@ const satsInteger = (description: string, minimum = 0): JsonSchema => ({
   description,
 })
 
+const pylonWorkerCloseoutRefArray = (description: string): JsonSchema => ({
+  type: 'array',
+  maxItems: 100,
+  uniqueItems: true,
+  items: {
+    type: 'string',
+    minLength: 3,
+    maxLength: 260,
+    pattern: '^[A-Za-z0-9][A-Za-z0-9_.:/=-]{2,259}$',
+  },
+  description,
+})
+
 const schemaComponents = (): JsonSchema => ({
   AtifTraceIngestEnvelope: objectSummary(
     'Result of a trace ingest (#6208, #6221): the stored trace uuid, its public `/trace/{uuid}` url, the resolved visibility tier, a replay flag (true when an Idempotency-Key matched an already-stored trace), and a public-safe dataMarket block { trainingConsent, license?, uploadSource ("agent"|"user_session"), reward { eligible, amountSats (always null), status ("tbd") } }. The reward marker is INERT (eligible-only, amount TBD); it moves no money. Contains refs only.',
@@ -6310,9 +6323,139 @@ const requestSchemas = (): JsonSchema => ({
   PylonSettlementStatusRequest: objectSummary(
     'Registered Pylon settlement status report with settlementRefs and treasuryReceiptRefs.',
   ),
-  PylonAssignmentWorkerCloseoutRequest: objectSummary(
-    'Registered Pylon worker closeout report with public-safe closeoutRefs, resultRefs, summaryRefs, artifactRefs, proofRefs, buildRefs, testRefs, previewRefs, blockerRefs, and optional status. Worker closeout records closeout_submitted evidence only; accepted-work closeout, payout, and settlement remain separate operator-gated decisions.',
-  ),
+  PylonAssignmentWorkerCloseoutRequest: {
+    type: 'object',
+    additionalProperties: false,
+    description:
+      'Registered Pylon worker closeout report. Every ref array is canonical input: at most 100 public-safe refs, no duplicates, and retained in the submitted order. Legacy clients may omit all three closeout-policy fields; current clients must provide paymentMode, payoutClaimAllowed, and settlementState together. no-spend is coherent only with payoutClaimAllowed=false and settlementState=not_applicable; paid closeouts must use pending, recorded, blocked, or settled. Worker closeout records closeout_submitted evidence only; accepted-work closeout, payout, and settlement remain separate operator-gated decisions.',
+    properties: {
+      artifactRefs: pylonWorkerCloseoutRefArray(
+        'Public-safe artifact evidence refs.',
+      ),
+      authorityReceiptRefs: pylonWorkerCloseoutRefArray(
+        'Public-safe authority and execution receipt refs.',
+      ),
+      blockerRefs: pylonWorkerCloseoutRefArray(
+        'Public-safe blocker refs.',
+      ),
+      buildRefs: pylonWorkerCloseoutRefArray('Public-safe build refs.'),
+      changeCaptureRefs: pylonWorkerCloseoutRefArray(
+        'Public-safe change-capture refs.',
+      ),
+      changeCaptureStatus: {
+        type: 'string',
+        enum: ['blocked', 'review_ready', 'stale'],
+      },
+      closeoutRefs: pylonWorkerCloseoutRefArray(
+        'Public-safe worker closeout refs.',
+      ),
+      deliveryReadinessFreshness: {
+        type: 'string',
+        enum: ['fresh', 'stale'],
+      },
+      deliveryReadinessRefs: pylonWorkerCloseoutRefArray(
+        'Public-safe delivery-readiness refs.',
+      ),
+      deliveryReadinessStatus: {
+        type: 'string',
+        enum: ['blocked', 'ready', 'scoped_exception'],
+      },
+      fileCount: { type: 'integer', minimum: 0 },
+      addedLineCount: { type: 'integer', minimum: 0 },
+      patchDigestRef: {
+        oneOf: [
+          {
+            type: 'string',
+            minLength: 3,
+            maxLength: 260,
+            pattern: '^[A-Za-z0-9][A-Za-z0-9_.:/=-]{2,259}$',
+          },
+          { type: 'null' },
+        ],
+      },
+      paymentMode: { type: 'string', enum: ['no-spend', 'paid'] },
+      previewRefs: pylonWorkerCloseoutRefArray(
+        'Public-safe preview refs.',
+      ),
+      payoutClaimAllowed: { type: 'boolean' },
+      proofRefs: pylonWorkerCloseoutRefArray('Public-safe proof refs.'),
+      removedLineCount: { type: 'integer', minimum: 0 },
+      resultRefs: pylonWorkerCloseoutRefArray('Public-safe result refs.'),
+      reviewCaveatRefs: pylonWorkerCloseoutRefArray(
+        'Public-safe review caveat refs.',
+      ),
+      settlementState: {
+        type: 'string',
+        enum: [
+          'not_applicable',
+          'pending',
+          'recorded',
+          'blocked',
+          'settled',
+        ],
+      },
+      status: { type: 'string', minLength: 1, maxLength: 80 },
+      summaryRefs: pylonWorkerCloseoutRefArray(
+        'Public-safe summary refs.',
+      ),
+      testRefs: pylonWorkerCloseoutRefArray('Public-safe test refs.'),
+      verificationRefs: pylonWorkerCloseoutRefArray(
+        'Public-safe verification refs.',
+      ),
+      worktreeIdentityStatus: {
+        type: 'string',
+        enum: ['blocked', 'ready', 'stale'],
+      },
+      writebackRequired: { type: 'boolean' },
+    },
+    oneOf: [
+      {
+        not: {
+          anyOf: [
+            { required: ['paymentMode'] },
+            { required: ['payoutClaimAllowed'] },
+            { required: ['settlementState'] },
+          ],
+        },
+      },
+      {
+        required: [
+          'paymentMode',
+          'payoutClaimAllowed',
+          'settlementState',
+        ],
+        allOf: [
+          {
+            if: {
+              properties: {
+                paymentMode: { const: 'no-spend' },
+              },
+              required: ['paymentMode'],
+            },
+            then: {
+              properties: {
+                payoutClaimAllowed: { const: false },
+                settlementState: { const: 'not_applicable' },
+              },
+            },
+          },
+          {
+            if: {
+              properties: { paymentMode: { const: 'paid' } },
+              required: ['paymentMode'],
+            },
+            then: {
+              properties: {
+                settlementState: {
+                  enum: ['pending', 'recorded', 'blocked', 'settled'],
+                },
+              },
+            },
+          },
+        ],
+      },
+    ],
+  },
   TrainingRunPlanRequest: objectSummary(
     'Admin-only request to plan a D1-authoritative training run linked to a promiseRef with public-safe sourceRefs and receiptRefs, plus an optional public-safe launch manifest.',
   ),
@@ -10063,7 +10206,7 @@ const paths = (): JsonSchema => ({
       operationId: 'recordPylonAssignmentWorkerCloseout',
       summary: 'Record Pylon worker closeout',
       description:
-        'Records an owned Pylon worker closeout with public-safe closeout, result, summary, artifact, proof, build, test, preview, and blocker refs. Worker closeout marks the assignment closeout_submitted as evidence only; accepted-work closeout, payout, and settlement remain separate operator-gated decisions.',
+        'Records an owned Pylon worker closeout with strict canonical public-safe ref arrays and an explicit coherent paymentMode, payoutClaimAllowed, and settlementState policy triad for current clients. Legacy clients may omit the complete triad and then project unknown/unproven policy; partial policy, duplicate refs, more than 100 refs per array, and additional properties are rejected. Worker closeout marks the assignment closeout_submitted as evidence only; accepted-work closeout, payout, and settlement remain separate operator-gated decisions.',
       tags: ['Pylon'],
       security: agentBearer,
       parameters: [

@@ -1868,6 +1868,57 @@ describe('GET /api/pylon/codex/proof', () => {
     expect(JSON.stringify(body)).not.toContain('shell output')
   })
 
+  test('owner proof marks noncanonical stored closeout refs unavailable instead of deduping or truncating', async () => {
+    const oversizedArtifactRefs = Array.from(
+      { length: 101 },
+      (_, index) => `artifact.pylon_codex.legacy.${index}`,
+    )
+    const { routes } = await makeHarness({
+      workerCloseoutBody: {
+        artifactRefs: oversizedArtifactRefs,
+        authorityReceiptRefs: workerCloseoutEvidence.authorityReceiptRefs,
+        closeoutRefs: workerCloseoutEvidence.closeoutRefs,
+        paymentMode: 'no-spend',
+        payoutClaimAllowed: false,
+        proofRefs: [
+          'proof.pylon_codex.duplicate',
+          'proof.pylon_codex.duplicate',
+        ],
+        resultRefs: workerCloseoutEvidence.resultRefs,
+        settlementState: 'not_applicable',
+        testRefs: workerCloseoutEvidence.testRefs,
+        verificationRefs: workerCloseoutEvidence.verificationRefs,
+      },
+    })
+    const response = await Effect.runPromise(
+      routes.handlePylonCodexAssignmentProofApi(
+        getProof('assignment-pylon-codex-1'),
+        {},
+      ),
+    )
+    const body = (await response.json()) as PylonCodexAssignmentProof
+
+    expect(response.status).toBe(200)
+    expect(body.closeoutPolicy).toEqual(noSpendCloseoutPolicy)
+    expect(body.workerCloseout).toEqual({
+      artifactRefs: [],
+      authorityReceiptRefs: [],
+      closeoutRefs: [],
+      eventRef: null,
+      observedAt: null,
+      proofRefs: [],
+      resultRefs: [],
+      source: 'unavailable',
+      status: null,
+      testRefs: [],
+      verificationRefs: [],
+      visibility: 'owner_only',
+    })
+    expect(body.workerCloseout.artifactRefs).not.toEqual(
+      oversizedArtifactRefs.slice(0, 100),
+    )
+  })
+
   test('does not read proof rows for another agent owner', async () => {
     const { proofStore, routes } = await makeHarness({
       assignment: assignmentRecord({ ownerAgentUserId: 'agent-user-other' }),

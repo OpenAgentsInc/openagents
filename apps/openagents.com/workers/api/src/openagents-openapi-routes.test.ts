@@ -1172,6 +1172,75 @@ describe('OpenAgents OpenAPI route', () => {
     expect(
       operationAt(body, '/api/pylons/{pylonRef}/heartbeat', 'post').description,
     ).toContain('does not grant Forum speech')
+    const workerCloseout = operationAt(
+      body,
+      '/api/pylons/{pylonRef}/assignments/{assignmentRef}/closeout',
+      'post',
+    )
+    const workerCloseoutSchema = body.components.schemas
+      .PylonAssignmentWorkerCloseoutRequest as Record<string, unknown>
+    const workerCloseoutProperties = schemaProperties(
+      body,
+      'PylonAssignmentWorkerCloseoutRequest',
+    )
+    expect(workerCloseout.security).toEqual([{ agentBearer: [] }])
+    expect(workerCloseout.description).toContain(
+      'partial policy, duplicate refs, more than 100 refs per array, and additional properties are rejected',
+    )
+    expect(JSON.stringify(workerCloseout.requestBody)).toContain(
+      '#/components/schemas/PylonAssignmentWorkerCloseoutRequest',
+    )
+    expect(workerCloseoutSchema).toEqual(
+      expect.objectContaining({
+        additionalProperties: false,
+        oneOf: expect.arrayContaining([
+          expect.objectContaining({
+            required: [
+              'paymentMode',
+              'payoutClaimAllowed',
+              'settlementState',
+            ],
+          }),
+        ]),
+      }),
+    )
+    for (const propertyName of [
+      'artifactRefs',
+      'authorityReceiptRefs',
+      'blockerRefs',
+      'buildRefs',
+      'changeCaptureRefs',
+      'closeoutRefs',
+      'deliveryReadinessRefs',
+      'previewRefs',
+      'proofRefs',
+      'resultRefs',
+      'reviewCaveatRefs',
+      'summaryRefs',
+      'testRefs',
+      'verificationRefs',
+    ]) {
+      expect(workerCloseoutProperties[propertyName]).toEqual(
+        expect.objectContaining({ maxItems: 100, uniqueItems: true }),
+      )
+    }
+    expect(workerCloseoutProperties.paymentMode).toEqual(
+      expect.objectContaining({ enum: ['no-spend', 'paid'] }),
+    )
+    expect(workerCloseoutProperties.payoutClaimAllowed).toEqual(
+      expect.objectContaining({ type: 'boolean' }),
+    )
+    expect(workerCloseoutProperties.settlementState).toEqual(
+      expect.objectContaining({
+        enum: [
+          'not_applicable',
+          'pending',
+          'recorded',
+          'blocked',
+          'settled',
+        ],
+      }),
+    )
     expect(
       operationAt(body, '/api/pylons/{pylonRef}/fleet-runs/claim', 'post')
         .security,

@@ -3805,6 +3805,38 @@ describe('Pylon API routes', () => {
         tokenUserId: 'agent-one',
       },
     )
+    const tooManyRefs = await route(
+      store,
+      `/api/pylons/pylon.test.one/assignments/${assignmentRef}/closeout`,
+      {
+        body: {
+          ...exactBody,
+          artifactRefs: Array.from(
+            { length: 101 },
+            (_, index) => `artifact.public.worker_closeout_policy.${index}`,
+          ),
+        },
+        idempotencyKey: 'worker-closeout-policy-too-many-refs',
+        method: 'POST',
+        tokenUserId: 'agent-one',
+      },
+    )
+    const duplicateRefs = await route(
+      store,
+      `/api/pylons/pylon.test.one/assignments/${assignmentRef}/closeout`,
+      {
+        body: {
+          ...exactBody,
+          proofRefs: [
+            'proof.public.worker_closeout_policy',
+            'proof.public.worker_closeout_policy',
+          ],
+        },
+        idempotencyKey: 'worker-closeout-policy-duplicate-refs',
+        method: 'POST',
+        tokenUserId: 'agent-one',
+      },
+    )
     const accepted = await route(
       store,
       `/api/pylons/pylon.test.one/assignments/${assignmentRef}/closeout`,
@@ -3824,6 +3856,8 @@ describe('Pylon API routes', () => {
     expect(excess.status).toBe(400)
     expect(partialPolicy.status).toBe(400)
     expect(privatePayload.status).toBe(400)
+    expect(tooManyRefs.status).toBe(400)
+    expect(duplicateRefs.status).toBe(400)
     expect(accepted.status).toBe(201)
     expect(workerCloseout?.eventBody).toEqual(exactBody)
     expect(JSON.stringify(acceptedBody)).not.toContain(

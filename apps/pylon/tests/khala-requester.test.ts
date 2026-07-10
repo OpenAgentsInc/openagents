@@ -126,6 +126,7 @@ function completeWorkerCloseoutEvidence() {
     closeoutRefs: ["assignment.closeout.assignment_1"],
     eventRef: "event.pylon_codex.worker_closeout.1",
     observedAt: "2026-06-26T12:00:05.000Z",
+    projectionBlockerRefs: [],
     proofRefs: ["proof.pylon_codex.assignment_1"],
     resultRefs: ["result.pylon_codex.assignment_1"],
     source: "worker_closeout_event",
@@ -1279,6 +1280,49 @@ describe("pylon khala requester API", () => {
     expect(checklist.ok).toBe(false)
     expect(checklist.blockerRefs).toContain(
       "blocker.khala_closeout.worker_closeout.status_and_refs_consistent",
+    )
+  })
+
+  test("closeout reads normalize partial worker evidence to structured blockers", async () => {
+    const {
+      verificationRefs: _verificationRefs,
+      ...partialWorkerCloseout
+    } = completeWorkerCloseoutEvidence()
+    const result = await readPylonKhalaCloseout(
+      {
+        agentToken: "oa_agent_test",
+        baseUrl: "https://openagents.test",
+        fetch: async (url: URL | RequestInfo) =>
+          Response.json(
+            new URL(String(url)).pathname.endsWith("/trace-status")
+              ? completeTraceStatus({ workerCloseout: partialWorkerCloseout })
+              : completeProof({ workerCloseout: partialWorkerCloseout }),
+          ),
+      },
+      "assignment-pylon-codex-1",
+    )
+
+    expect(result.status.workerCloseout).toEqual(
+      expect.objectContaining({
+        projectionBlockerRefs: [
+          "blocker.khala_closeout.worker_closeout.malformed",
+        ],
+        source: "unavailable",
+        verificationRefs: [],
+      }),
+    )
+    expect(result.proof.workerCloseout).toEqual(
+      expect.objectContaining({
+        projectionBlockerRefs: [
+          "blocker.khala_closeout.worker_closeout.malformed",
+        ],
+        source: "unavailable",
+        verificationRefs: [],
+      }),
+    )
+    expect(result.closeoutChecklist.ok).toBe(false)
+    expect(result.closeoutChecklist.blockerRefs).toContain(
+      "blocker.khala_closeout.worker_closeout.malformed",
     )
   })
 

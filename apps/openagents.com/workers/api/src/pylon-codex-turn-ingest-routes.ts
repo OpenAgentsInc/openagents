@@ -607,24 +607,28 @@ const unavailableWorkerCloseoutEvidence =
     visibility: 'owner_only',
   })
 
-const boundedWorkerCloseoutRefs = (
+const canonicalWorkerCloseoutRefs = (
   body: Record<string, unknown>,
   key: string,
-): ReadonlyArray<string> => {
+): ReadonlyArray<string> | null => {
   const refs = body[key]
-  if (!Array.isArray(refs)) {
+  if (refs === undefined) {
     return []
   }
-
-  return [
-    ...new Set(
-      refs.filter(
-        (ref): ref is string =>
-          typeof ref === 'string' &&
-          /^[A-Za-z0-9][A-Za-z0-9_.:/=-]{2,259}$/.test(ref),
-      ),
-    ),
-  ].slice(0, 100)
+  if (!Array.isArray(refs)) {
+    return null
+  }
+  if (
+    refs.length > 100 ||
+    !refs.every(
+      (ref): ref is string =>
+        typeof ref === 'string' &&
+        /^[A-Za-z0-9][A-Za-z0-9_.:/=-]{2,259}$/.test(ref),
+    )
+  ) {
+    return null
+  }
+  return new Set(refs).size === refs.length ? refs : null
 }
 
 const explicitCloseoutPolicyFromBody = (
@@ -675,26 +679,50 @@ const workerCloseoutFromEvents = (
     }
   }
   const body = closeoutEvent.eventBody
+  const artifactRefs = canonicalWorkerCloseoutRefs(body, 'artifactRefs')
+  const authorityReceiptRefs = canonicalWorkerCloseoutRefs(
+    body,
+    'authorityReceiptRefs',
+  )
+  const closeoutRefs = canonicalWorkerCloseoutRefs(body, 'closeoutRefs')
+  const proofRefs = canonicalWorkerCloseoutRefs(body, 'proofRefs')
+  const resultRefs = canonicalWorkerCloseoutRefs(body, 'resultRefs')
+  const testRefs = canonicalWorkerCloseoutRefs(body, 'testRefs')
+  const verificationRefs = canonicalWorkerCloseoutRefs(
+    body,
+    'verificationRefs',
+  )
+  if (
+    artifactRefs === null ||
+    authorityReceiptRefs === null ||
+    closeoutRefs === null ||
+    proofRefs === null ||
+    resultRefs === null ||
+    testRefs === null ||
+    verificationRefs === null
+  ) {
+    return {
+      closeoutPolicy: explicitCloseoutPolicyFromBody(body),
+      workerCloseout: unavailableWorkerCloseoutEvidence(),
+    }
+  }
   return {
     closeoutPolicy: explicitCloseoutPolicyFromBody(body),
     workerCloseout: {
-      artifactRefs: boundedWorkerCloseoutRefs(body, 'artifactRefs'),
-      authorityReceiptRefs: boundedWorkerCloseoutRefs(
-        body,
-        'authorityReceiptRefs',
-      ),
-      closeoutRefs: boundedWorkerCloseoutRefs(body, 'closeoutRefs'),
+      artifactRefs,
+      authorityReceiptRefs,
+      closeoutRefs,
       eventRef: closeoutEvent.eventRef,
       observedAt: closeoutEvent.createdAt,
-      proofRefs: boundedWorkerCloseoutRefs(body, 'proofRefs'),
-      resultRefs: boundedWorkerCloseoutRefs(body, 'resultRefs'),
+      proofRefs,
+      resultRefs,
       source: 'worker_closeout_event',
       status:
         /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,79}$/.test(closeoutEvent.status)
           ? closeoutEvent.status
           : null,
-      testRefs: boundedWorkerCloseoutRefs(body, 'testRefs'),
-      verificationRefs: boundedWorkerCloseoutRefs(body, 'verificationRefs'),
+      testRefs,
+      verificationRefs,
       visibility: 'owner_only',
     },
   }

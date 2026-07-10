@@ -22,6 +22,17 @@ const PublicSafeRef = NonEmptyTrimmedString.check(
   S.isPattern(/^[A-Za-z0-9][A-Za-z0-9_.:/=-]*$/),
 )
 const PublicSafeRefs = S.optionalKey(S.Array(PublicSafeRef))
+const WorkerCloseoutPublicSafeRefs = S.optionalKey(
+  S.Array(PublicSafeRef).pipe(
+    S.check(
+      S.isMaxLength(100),
+      S.makeFilter(refs => new Set(refs).size === refs.length, {
+        message:
+          'worker closeout ref arrays must contain at most 100 unique refs in canonical order',
+      }),
+    ),
+  ),
+)
 const NonNegativeInteger = S.Int.check(S.isGreaterThanOrEqualTo(0))
 const PylonRef = NonEmptyTrimmedString.check(
   S.isMinLength(3),
@@ -544,17 +555,17 @@ export type PylonApiArtifactProofMetadataRequest =
   typeof PylonApiArtifactProofMetadataRequest.Type
 
 export const PylonApiAssignmentWorkerCloseoutRequest = S.Struct({
-  artifactRefs: PublicSafeRefs,
-  authorityReceiptRefs: PublicSafeRefs,
-  blockerRefs: PublicSafeRefs,
-  buildRefs: PublicSafeRefs,
-  changeCaptureRefs: PublicSafeRefs,
+  artifactRefs: WorkerCloseoutPublicSafeRefs,
+  authorityReceiptRefs: WorkerCloseoutPublicSafeRefs,
+  blockerRefs: WorkerCloseoutPublicSafeRefs,
+  buildRefs: WorkerCloseoutPublicSafeRefs,
+  changeCaptureRefs: WorkerCloseoutPublicSafeRefs,
   changeCaptureStatus: S.optionalKey(
     S.Literals(['blocked', 'review_ready', 'stale']),
   ),
-  closeoutRefs: PublicSafeRefs,
+  closeoutRefs: WorkerCloseoutPublicSafeRefs,
   deliveryReadinessFreshness: S.optionalKey(S.Literals(['fresh', 'stale'])),
-  deliveryReadinessRefs: PublicSafeRefs,
+  deliveryReadinessRefs: WorkerCloseoutPublicSafeRefs,
   deliveryReadinessStatus: S.optionalKey(
     S.Literals(['blocked', 'ready', 'scoped_exception']),
   ),
@@ -562,12 +573,12 @@ export const PylonApiAssignmentWorkerCloseoutRequest = S.Struct({
   addedLineCount: S.optionalKey(NonNegativeInteger),
   patchDigestRef: S.optionalKey(S.NullOr(PublicSafeRef)),
   paymentMode: S.optionalKey(S.Literals(['no-spend', 'paid'])),
-  previewRefs: PublicSafeRefs,
+  previewRefs: WorkerCloseoutPublicSafeRefs,
   payoutClaimAllowed: S.optionalKey(S.Boolean),
-  proofRefs: PublicSafeRefs,
+  proofRefs: WorkerCloseoutPublicSafeRefs,
   removedLineCount: S.optionalKey(NonNegativeInteger),
-  resultRefs: PublicSafeRefs,
-  reviewCaveatRefs: PublicSafeRefs,
+  resultRefs: WorkerCloseoutPublicSafeRefs,
+  reviewCaveatRefs: WorkerCloseoutPublicSafeRefs,
   settlementState: S.optionalKey(
     S.Literals([
       'not_applicable',
@@ -578,9 +589,9 @@ export const PylonApiAssignmentWorkerCloseoutRequest = S.Struct({
     ]),
   ),
   status: S.optionalKey(PylonEventStatus),
-  summaryRefs: PublicSafeRefs,
-  testRefs: PublicSafeRefs,
-  verificationRefs: PublicSafeRefs,
+  summaryRefs: WorkerCloseoutPublicSafeRefs,
+  testRefs: WorkerCloseoutPublicSafeRefs,
+  verificationRefs: WorkerCloseoutPublicSafeRefs,
   worktreeIdentityStatus: S.optionalKey(
     S.Literals(['blocked', 'ready', 'stale']),
   ),

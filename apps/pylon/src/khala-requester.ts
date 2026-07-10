@@ -230,6 +230,7 @@ export type PylonKhalaWorkerCloseoutEvidence = {
   closeoutRefs: string[]
   eventRef: string | null
   observedAt: string | null
+  projectionBlockerRefs: string[]
   proofRefs: string[]
   resultRefs: string[]
   source: "worker_closeout_event" | "unavailable"
@@ -591,12 +592,15 @@ const unavailableCloseoutPolicy = {
   PylonKhalaAssignmentTraceStatusResult["closeoutPolicy"]
 >
 
-const unavailableWorkerCloseoutEvidence = {
+const unavailableWorkerCloseoutEvidence = (
+  blockerRef = "blocker.khala_closeout.worker_closeout.unavailable",
+): PylonKhalaWorkerCloseoutEvidence => ({
   artifactRefs: [],
   authorityReceiptRefs: [],
   closeoutRefs: [],
   eventRef: null,
   observedAt: null,
+  projectionBlockerRefs: [blockerRef],
   proofRefs: [],
   resultRefs: [],
   source: "unavailable",
@@ -604,7 +608,141 @@ const unavailableWorkerCloseoutEvidence = {
   testRefs: [],
   verificationRefs: [],
   visibility: "owner_only",
-} as const satisfies PylonKhalaWorkerCloseoutEvidence
+})
+
+const workerCloseoutAllowedKeys = new Set([
+  "artifactRefs",
+  "authorityReceiptRefs",
+  "closeoutRefs",
+  "eventRef",
+  "observedAt",
+  "projectionBlockerRefs",
+  "proofRefs",
+  "resultRefs",
+  "source",
+  "status",
+  "testRefs",
+  "verificationRefs",
+  "visibility",
+])
+const workerCloseoutRefPattern = /^[A-Za-z0-9][A-Za-z0-9_.:/=-]{2,259}$/
+
+const normalizedWorkerCloseoutRefs = (value: unknown): string[] | null => {
+  if (
+    !Array.isArray(value) ||
+    value.length > 100 ||
+    !value.every(
+      (ref): ref is string =>
+        typeof ref === "string" && workerCloseoutRefPattern.test(ref),
+    ) ||
+    new Set(value).size !== value.length
+  ) {
+    return null
+  }
+  return value
+}
+
+const normalizePylonKhalaWorkerCloseout = (
+  value: unknown,
+): PylonKhalaWorkerCloseoutEvidence => {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return unavailableWorkerCloseoutEvidence()
+  }
+  const record = value as Record<string, unknown>
+  if (Object.keys(record).some(key => !workerCloseoutAllowedKeys.has(key))) {
+    return unavailableWorkerCloseoutEvidence(
+      "blocker.khala_closeout.worker_closeout.malformed",
+    )
+  }
+  const artifactRefs = normalizedWorkerCloseoutRefs(record.artifactRefs)
+  const authorityReceiptRefs = normalizedWorkerCloseoutRefs(
+    record.authorityReceiptRefs,
+  )
+  const closeoutRefs = normalizedWorkerCloseoutRefs(record.closeoutRefs)
+  const proofRefs = normalizedWorkerCloseoutRefs(record.proofRefs)
+  const resultRefs = normalizedWorkerCloseoutRefs(record.resultRefs)
+  const testRefs = normalizedWorkerCloseoutRefs(record.testRefs)
+  const verificationRefs = normalizedWorkerCloseoutRefs(
+    record.verificationRefs,
+  )
+  const projectionBlockerRefs =
+    record.projectionBlockerRefs === undefined
+      ? []
+      : normalizedWorkerCloseoutRefs(record.projectionBlockerRefs)
+  if (
+    artifactRefs === null ||
+    authorityReceiptRefs === null ||
+    closeoutRefs === null ||
+    proofRefs === null ||
+    resultRefs === null ||
+    testRefs === null ||
+    verificationRefs === null ||
+    projectionBlockerRefs === null ||
+    projectionBlockerRefs.some(
+      ref =>
+        ref !== "blocker.khala_closeout.worker_closeout.unavailable" &&
+        ref !== "blocker.khala_closeout.worker_closeout.malformed",
+    ) ||
+    record.visibility !== "owner_only"
+  ) {
+    return unavailableWorkerCloseoutEvidence(
+      "blocker.khala_closeout.worker_closeout.malformed",
+    )
+  }
+  if (record.source === "unavailable") {
+    const unavailableIsCoherent =
+      artifactRefs.length === 0 &&
+      authorityReceiptRefs.length === 0 &&
+      closeoutRefs.length === 0 &&
+      proofRefs.length === 0 &&
+      resultRefs.length === 0 &&
+      testRefs.length === 0 &&
+      verificationRefs.length === 0 &&
+      record.eventRef === null &&
+      record.observedAt === null &&
+      record.status === null
+    return unavailableIsCoherent
+      ? unavailableWorkerCloseoutEvidence(
+          projectionBlockerRefs.includes(
+            "blocker.khala_closeout.worker_closeout.malformed",
+          )
+            ? "blocker.khala_closeout.worker_closeout.malformed"
+            : "blocker.khala_closeout.worker_closeout.unavailable",
+        )
+      : unavailableWorkerCloseoutEvidence(
+          "blocker.khala_closeout.worker_closeout.malformed",
+        )
+  }
+  if (
+    record.source !== "worker_closeout_event" ||
+    projectionBlockerRefs.length > 0 ||
+    typeof record.eventRef !== "string" ||
+    !workerCloseoutRefPattern.test(record.eventRef) ||
+    typeof record.observedAt !== "string" ||
+    Number.isNaN(Date.parse(record.observedAt)) ||
+    typeof record.status !== "string" ||
+    !/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,79}$/.test(record.status)
+  ) {
+    return unavailableWorkerCloseoutEvidence(
+      "blocker.khala_closeout.worker_closeout.malformed",
+    )
+  }
+  return {
+    artifactRefs,
+    authorityReceiptRefs,
+    closeoutRefs,
+    eventRef: record.eventRef,
+    observedAt: record.observedAt,
+    projectionBlockerRefs: [],
+    proofRefs,
+    resultRefs,
+    source: "worker_closeout_event",
+    status: record.status,
+    testRefs,
+    verificationRefs,
+    visibility: "owner_only",
+  }
+}
 
 const refsMatchExactly = (
   left: ReadonlyArray<string>,
@@ -621,9 +759,9 @@ export function evaluatePylonKhalaCloseoutChecklist(
     status.closeoutPolicy ?? unavailableCloseoutPolicy
   const proofCloseoutPolicy = proof.closeoutPolicy ?? unavailableCloseoutPolicy
   const statusWorkerCloseout =
-    status.workerCloseout ?? unavailableWorkerCloseoutEvidence
+    normalizePylonKhalaWorkerCloseout(status.workerCloseout)
   const proofWorkerCloseout =
-    proof.workerCloseout ?? unavailableWorkerCloseoutEvidence
+    normalizePylonKhalaWorkerCloseout(proof.workerCloseout)
   const statusTokenUsageRefs = status.tokenUsage.refs ?? []
   const proofTokenUsageRefs = proof.tokenUsage.refs ?? []
   const items = [
@@ -781,6 +919,8 @@ export function evaluatePylonKhalaCloseoutChecklist(
       .filter((item) => !item.ok)
       .map((item) => item.ref.replace(/^check\./, "blocker.")),
     ...proof.proofChecklist.blockerRefs,
+    ...statusWorkerCloseout.projectionBlockerRefs,
+    ...proofWorkerCloseout.projectionBlockerRefs,
   ]
   return {
     blockerRefs: [...new Set(blockerRefs)].sort(),
@@ -1098,6 +1238,9 @@ export async function readPylonKhalaAssignmentTraceStatus(
   return {
     ...payload,
     ok: true,
+    workerCloseout: normalizePylonKhalaWorkerCloseout(
+      payload.workerCloseout,
+    ),
   }
 }
 
@@ -1112,10 +1255,16 @@ export async function readPylonKhalaProof(
   })
   const payload = (await response.json()) as Omit<PylonKhalaProofResult, "ok" | "proofChecklist">
   assertPublicSafe(payload, "khala proof response")
-  return {
+  const normalizedPayload = {
     ...payload,
+    workerCloseout: normalizePylonKhalaWorkerCloseout(
+      payload.workerCloseout,
+    ),
+  }
+  return {
+    ...normalizedPayload,
     ok: true,
-    proofChecklist: evaluatePylonKhalaProofChecklist(payload),
+    proofChecklist: evaluatePylonKhalaProofChecklist(normalizedPayload),
   }
 }
 
