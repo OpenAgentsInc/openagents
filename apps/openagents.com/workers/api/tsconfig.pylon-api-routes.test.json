@@ -1,0 +1,11 @@
+{
+  "extends": "../../../../apps/pylon/tsconfig.json",
+  "compilerOptions": {
+    "module": "preserve",
+    "moduleResolution": "bundler",
+    "types": ["bun-types", "@cloudflare/workers-types"],
+    "noEmit": true,
+    "allowImportingTsExtensions": true
+  },
+  "include": ["src/pylon-api-routes.test.ts"]
+}

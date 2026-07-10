@@ -153,6 +153,16 @@
   inspected. Desktop `verify` remains green (82 tests/426 expectations,
   build, and fixture smoke). This is reproducible local pixel evidence, not
   physical-device or owner-accepted proof.
+- 2026-07-10 17:35 CDT — Sol resumed the #8640 machine-side typecheck gate
+  after the Sarah C1 acceptance surface had been deleted. The remaining
+  `pylon-api-routes.test.ts` Pylon import now typechecks in a dedicated
+  Bun+Cloudflare project, while the main Worker project is restored to
+  Cloudflare-only ambient types and excludes only that integration test.
+  `check:deploy` names the dedicated gate explicitly. A fresh frozen install,
+  Worker typecheck, dedicated integration typecheck, 92-route runtime suite,
+  Cloud Run typecheck, Pylon typecheck, Effect-topology check, and diff check
+  all pass. The full integrated `check:deploy` also passes, including 545 web
+  tests and 261 final Worker tests; preparing the push and claim release.
 
 ## Mission
 
