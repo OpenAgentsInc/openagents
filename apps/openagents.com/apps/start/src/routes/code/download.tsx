@@ -1,17 +1,13 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, redirect } from '@tanstack/react-router'
 
-import { KhalaCodeDownloadPage } from '../-funnel-components'
+export const redirectRetiredCodeDownloadRoute = (): never => {
+  throw redirect({
+    to: '/promises',
+    replace: true,
+    statusCode: 308,
+  })
+}
 
 export const Route = createFileRoute('/code/download')({
-  component: KhalaCodeDownloadPage,
-  head: () => ({
-    meta: [
-      { title: 'Khala Code install paths - OpenAgents' },
-      {
-        name: 'description',
-        content:
-          'Install paths for Khala Code, with the Codex requirement kept visible.',
-      },
-    ],
-  }),
+  beforeLoad: redirectRetiredCodeDownloadRoute,
 })
