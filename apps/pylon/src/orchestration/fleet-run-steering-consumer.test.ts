@@ -9,6 +9,15 @@ import type {
   FleetSteeringPage,
   KhalaFleetIntent,
 } from "@openagentsinc/khala-fleet-intents"
+import { hashPylonAccountRef } from "../account-registry.js"
+import { projectFleetRunSupervisorObservation } from "./fleet-run-execution-projection.js"
+import {
+  openPylonFleetRunExecutionReporter,
+  type PylonFleetRunAnyExecutionBatch,
+  type PylonFleetRunAnyExecutionEvent,
+} from "./fleet-run-execution-reporter.js"
+import { fleetRunTaskIdForClaim } from "./fleet-run-refs.js"
+import { tickFleetRunSupervisor } from "./fleet-run-supervisor.js"
 
 import {
   makePylonFleetRunSteeringHttpTransport,
@@ -466,6 +475,10 @@ describe("Pylon FleetRun steering consumer", () => {
         workUnitRef,
         workClaimRef,
         assignmentRef,
+        workerKind: "codex",
+        workerRef: "worker.pylon.codex.steering",
+        accountRefHash: hashPylonAccountRef("codex", "account.public.fc3.codex"),
+        toolClass: "write_file",
         now,
       })
       const known = fleetIntent({
@@ -792,6 +805,162 @@ describe("Pylon FleetRun steering consumer", () => {
           ]),
         }),
       ])
+      await runtime.close()
+    } finally {
+      await rm(root, { force: true, recursive: true })
+    }
+  })
+
+  test("reports one durable stop only after the steered residual attempt is terminal", async () => {
+    const root = await mkdtemp(join(tmpdir(), "pylon-fc3-steering-stop-report-"))
+    const env = { PYLON_HOME: join(root, "pylon-home") } as NodeJS.ProcessEnv
+    try {
+      const runtime = await seed(env)
+      const taskId = fleetRunTaskIdForClaim(runRef, workClaimRef)
+      const contextId = `account.public.fc3.codex.ctx.${taskId}`
+        .replace(/[^a-zA-Z0-9_.-]/gu, "_")
+      runtime.store.createDispatchContext({
+        id: contextId,
+        assigneeHandle: "account.public.fc3.codex",
+        runnerKind: "codex",
+        accountRefHash: hashPylonAccountRef("codex", "account.public.fc3.codex"),
+        lastHeartbeatAt: now,
+        now,
+      })
+      runtime.store.createTask({
+        id: taskId,
+        spec: {
+          title: "Residual stop fixture",
+          prompt: "Finish only the already accepted residual attempt.",
+          runnerKind: "codex",
+          fleetRunRef: runRef,
+        },
+        status: "ready",
+        now,
+      })
+      runtime.store.markDispatched(taskId, contextId, now)
+
+      const stop = fleetIntent({
+        intentId: "intent.fc3.stop-report",
+        kind: "fleet_run_control",
+        action: "stop",
+      })
+      const stopResult = await tickPylonFleetRunSteeringConsumer({
+        store: runtime.store,
+        pylonRef,
+        runRef,
+        claimRef,
+        now: () => now,
+        transport: {
+          read: () => Promise.resolve(page([delivery(1, stop)], 1)),
+          postOutcomes: ({ outcomes }) => Promise.resolve(ack(outcomes)),
+        },
+      })
+      expect(stopResult).toMatchObject({ ok: true, applied: 1, acknowledged: 1 })
+      expect(runtime.store.getFleetRun(runRef)?.state).toBe("stopped")
+
+      const delivered: PylonFleetRunAnyExecutionBatch[] = []
+      const deliveredEvents = (): PylonFleetRunAnyExecutionEvent[] => {
+        const events: PylonFleetRunAnyExecutionEvent[] = []
+        for (const batch of delivered) {
+          events.push(...batch.events as readonly PylonFleetRunAnyExecutionEvent[])
+        }
+        return events
+      }
+      const reporter = openPylonFleetRunExecutionReporter({
+        store: runtime.store,
+        pylonRef,
+        runRef,
+        now: () => now,
+        remote: {
+          append: async ({ batch }) => {
+            delivered.push(batch)
+            const lastSequence = batch.events.at(-1)?.sequence ?? 0
+            return {
+              schema: "openagents.pylon.fleet_run_execution_ack.v1",
+              runRef,
+              claimRef,
+              acceptedThroughSequence: lastSequence,
+              storedEventCount: batch.events.length,
+              duplicateEventCount: 0,
+              execution: {
+                state: batch.events.some(event =>
+                    event.kind === "run_terminal" && event.terminalState === "stopped"
+                  )
+                  ? "stopped"
+                  : "running",
+                lastSequence,
+                counters: {
+                  workUnitsTotal: 1,
+                  activeAssignments: 0,
+                  acceptedAssignments: 0,
+                  failedAssignments: 1,
+                  staleAssignments: 0,
+                },
+                startedAt: now.toISOString(),
+                updatedAt: now.toISOString(),
+                closeouts: [],
+              },
+            }
+          },
+        },
+      })
+      let residualTerminal = false
+      const runner = {
+        dispatch: () => Promise.reject(new Error("stopped run must not refill")),
+        reconcile: () => Promise.resolve(residualTerminal
+          ? [{
+              taskId,
+              assignmentRef,
+              lifecycle: [{
+                schema: "openagents.pylon.assignment_run_lifecycle_event.v0.1" as const,
+                event: "assignment_run.runtime_failed" as const,
+                observedAt: now.toISOString(),
+                assignmentRef,
+                accountRefHash: hashPylonAccountRef("codex", "account.public.fc3.codex"),
+                status: "rejected" as const,
+                blockerRefs: ["blocker.pylon.fleet_run.operator_stopped"],
+              }],
+              status: "failed" as const,
+            }]
+          : []),
+      }
+      const supervisorInput = {
+        store: runtime.store,
+        pylonRef,
+        runRef,
+        planner: { plan: () => Promise.reject(new Error("stopped run must not plan")) },
+        capacity: { accounts: () => Promise.reject(new Error("stopped run must not refill")) },
+        runner,
+        clock: { now: () => now },
+        onLifecycle: async (event: Parameters<typeof projectFleetRunSupervisorObservation>[0]["event"]) => {
+          for (const projected of projectFleetRunSupervisorObservation({
+            event,
+            store: runtime.store,
+          })) await reporter.record(projected)
+        },
+      }
+
+      await tickFleetRunSupervisor(supervisorInput)
+      expect(deliveredEvents()
+        .filter(event => event.kind === "run_terminal")).toEqual([])
+
+      residualTerminal = true
+      await tickFleetRunSupervisor(supervisorInput)
+      await tickFleetRunSupervisor(supervisorInput)
+      await reporter.close()
+
+      const stoppedEvents = deliveredEvents().filter(event =>
+        event.kind === "run_terminal" && event.terminalState === "stopped"
+      )
+      expect(stoppedEvents).toHaveLength(1)
+      expect(runtime.store.listFleetRunExecutionOutbox(runRef, {
+        pendingOnly: false,
+      }).filter(entry => {
+        const event = JSON.parse(entry.eventJson) as { kind?: unknown; terminalState?: unknown }
+        return event.kind === "run_terminal" && event.terminalState === "stopped"
+      })).toHaveLength(1)
+      expect(runtime.store.getWorkClaim(workClaimRef)?.state).toBe("released")
       await runtime.close()
     } finally {
       await rm(root, { force: true, recursive: true })

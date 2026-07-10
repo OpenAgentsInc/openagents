@@ -29,7 +29,7 @@ import {
   type FleetRunWorkSourceDescriptor,
 } from "./fleet-run-work-source.js"
 
-export const ORCHESTRATION_SCHEMA_VERSION = 10
+export const ORCHESTRATION_SCHEMA_VERSION = 11
 
 export type OrchestrationTaskStatus =
   | "pending"
@@ -292,6 +292,12 @@ export type FleetRunSteeringApprovalBinding = {
   readonly workUnitRef: string
   readonly workClaimRef: string
   readonly assignmentRef: string
+  /** Null only for bindings written before schema v11; such rows are never projected. */
+  readonly workerKind: "codex" | "claude" | "grok" | null
+  /** Stable public-safe worker identity, distinct from the private account ref. */
+  readonly workerRef: string | null
+  readonly accountRefHash: string | null
+  readonly toolClass: string | null
   readonly state: "pending" | "resolved"
   readonly decision: "allow" | "deny" | null
   readonly resolutionState: "applied" | "failed" | "stale" | null
@@ -660,6 +666,10 @@ const DEFAULT_FLEET_RUN_REFILL_POLICY: FleetRunRefillPolicy = {
 }
 
 const FLEET_RUN_ACTIVATION_REF_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:/#-]{0,180}$/u
+const FLEET_RUN_PROJECTED_REF_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,179}$/u
+const FLEET_RUN_APPROVAL_TOOL_CLASS_PATTERN = /^[a-z][a-z0-9_]{0,63}$/u
+const FLEET_RUN_ACCOUNT_REF_HASH_PATTERN =
+  /^account\.pylon\.(?:codex|claude_agent|grok)\.[a-f0-9]{24}$/u
 const FLEET_RUN_EXECUTION_EVENT_REF_PATTERN =
   /^event\.pylon\.fleet_run\.[a-f0-9]{24}$/u
 const FLEET_RUN_EXECUTION_BATCH_REF_PATTERN =
@@ -1048,6 +1058,10 @@ type FleetRunSteeringApprovalBindingRow = {
   work_unit_ref: string
   work_claim_ref: string
   assignment_ref: string
+  worker_kind: FleetRunSteeringApprovalBinding["workerKind"]
+  worker_ref: string | null
+  account_ref_hash: string | null
+  tool_class: string | null
   state: FleetRunSteeringApprovalBinding["state"]
   decision: FleetRunSteeringApprovalBinding["decision"]
   resolution_state: FleetRunSteeringApprovalBinding["resolutionState"]
@@ -1304,6 +1318,10 @@ const fleetRunSteeringApprovalBindingFromRow = (
   workUnitRef: row.work_unit_ref,
   workClaimRef: row.work_claim_ref,
   assignmentRef: row.assignment_ref,
+  workerKind: row.worker_kind,
+  workerRef: row.worker_ref,
+  accountRefHash: row.account_ref_hash,
+  toolClass: row.tool_class,
   state: row.state,
   decision: row.decision,
   resolutionState: row.resolution_state,
@@ -1680,6 +1698,10 @@ export class PylonOrchestrationStore {
         work_unit_ref TEXT NOT NULL,
         work_claim_ref TEXT NOT NULL,
         assignment_ref TEXT NOT NULL,
+        worker_kind TEXT NOT NULL CHECK (worker_kind IN ('codex', 'claude', 'grok')),
+        worker_ref TEXT NOT NULL,
+        account_ref_hash TEXT NOT NULL,
+        tool_class TEXT NOT NULL,
         state TEXT NOT NULL CHECK (state IN ('pending', 'resolved')),
         decision TEXT CHECK (decision IS NULL OR decision IN ('allow', 'deny')),
         resolution_state TEXT CHECK (resolution_state IS NULL OR resolution_state IN ('applied', 'failed', 'stale')),
@@ -1871,6 +1893,23 @@ export class PylonOrchestrationStore {
         ADD COLUMN resolution_state TEXT
           CHECK (resolution_state IS NULL OR resolution_state IN ('applied', 'failed', 'stale'))
       `)
+    }
+    const approvalIdentityColumns = [
+      ["worker_kind", "TEXT CHECK (worker_kind IS NULL OR worker_kind IN ('codex', 'claude', 'grok'))"],
+      ["worker_ref", "TEXT"],
+      ["account_ref_hash", "TEXT"],
+      ["tool_class", "TEXT"],
+    ] as const
+    for (const [column, definition] of approvalIdentityColumns) {
+      if (!approvalColumns.has(column)) {
+        // Historical approval bindings predate exact worker/tool identity.
+        // Keep those columns nullable on upgrade and exclude incomplete rows
+        // from replay instead of inventing identity after the fact.
+        this.db.exec(`
+          ALTER TABLE pylon_orchestration_fleet_run_steering_approval_bindings
+          ADD COLUMN ${column} ${definition}
+        `)
+      }
     }
   }
 
@@ -2787,12 +2826,43 @@ export class PylonOrchestrationStore {
   ): FleetRunSteeringApprovalBinding | null {
     const row = this.db.query(`
       SELECT approval_ref, pylon_ref, run_ref, claim_ref, work_unit_ref,
-             work_claim_ref, assignment_ref, state, decision, resolution_state, created_at,
-             resolved_at, completion_ref
+             work_claim_ref, assignment_ref, worker_kind, worker_ref,
+             account_ref_hash, tool_class, state, decision, resolution_state,
+             created_at, resolved_at, completion_ref
         FROM pylon_orchestration_fleet_run_steering_approval_bindings
        WHERE approval_ref = $approvalRef
     `).get({ $approvalRef: approvalRef }) as FleetRunSteeringApprovalBindingRow | null
     return row === null ? null : fleetRunSteeringApprovalBindingFromRow(row)
+  }
+
+  listFleetRunSteeringApprovalBindings(input: {
+    readonly pylonRef: string
+    readonly runRef: string
+    readonly claimRef: string
+    readonly pendingOnly?: boolean
+  }): FleetRunSteeringApprovalBinding[] {
+    if (
+      !FLEET_RUN_ACTIVATION_REF_PATTERN.test(input.pylonRef) ||
+      !FLEET_RUN_ACTIVATION_REF_PATTERN.test(input.runRef) ||
+      !FLEET_RUN_ACTIVATION_REF_PATTERN.test(input.claimRef)
+    ) throw new Error("fleet run steering approval binding scope is invalid")
+    const rows = this.db.query(`
+      SELECT approval_ref, pylon_ref, run_ref, claim_ref, work_unit_ref,
+             work_claim_ref, assignment_ref, worker_kind, worker_ref,
+             account_ref_hash, tool_class, state, decision, resolution_state,
+             created_at, resolved_at, completion_ref
+        FROM pylon_orchestration_fleet_run_steering_approval_bindings
+       WHERE pylon_ref = $pylonRef
+         AND run_ref = $runRef
+         AND claim_ref = $claimRef
+         ${input.pendingOnly === false ? "" : "AND state = 'pending'"}
+       ORDER BY created_at ASC, approval_ref ASC
+    `).all({
+      $pylonRef: input.pylonRef,
+      $runRef: input.runRef,
+      $claimRef: input.claimRef,
+    }) as FleetRunSteeringApprovalBindingRow[]
+    return rows.map(fleetRunSteeringApprovalBindingFromRow)
   }
 
   /** Bind a pending approval to one exact live attempt. Replays are byte-identical. */
@@ -2804,19 +2874,36 @@ export class PylonOrchestrationStore {
     readonly workUnitRef: string
     readonly workClaimRef: string
     readonly assignmentRef: string
+    readonly workerKind: "codex" | "claude" | "grok"
+    readonly workerRef: string
+    readonly accountRefHash: string
+    readonly toolClass: string
     readonly now?: Date
   }): { readonly binding: FleetRunSteeringApprovalBinding; readonly created: boolean } {
-    const refs = [
-      input.approvalRef,
+    const authorityRefs = [
       input.pylonRef,
       input.runRef,
       input.claimRef,
       input.workUnitRef,
       input.workClaimRef,
+    ]
+    const projectedRefs = [
+      input.approvalRef,
       input.assignmentRef,
+      input.workerRef,
+      input.accountRefHash,
+      input.toolClass,
     ]
     const now = input.now ?? new Date()
-    if (refs.some(ref => !FLEET_RUN_ACTIVATION_REF_PATTERN.test(ref)) || Number.isNaN(now.getTime())) {
+    const provider = input.workerKind === "claude" ? "claude_agent" : input.workerKind
+    if (
+      authorityRefs.some(ref => !FLEET_RUN_ACTIVATION_REF_PATTERN.test(ref)) ||
+      projectedRefs.some(ref => !FLEET_RUN_PROJECTED_REF_PATTERN.test(ref)) ||
+      !FLEET_RUN_ACCOUNT_REF_HASH_PATTERN.test(input.accountRefHash) ||
+      !input.accountRefHash.startsWith(`account.pylon.${provider}.`) ||
+      !FLEET_RUN_APPROVAL_TOOL_CLASS_PATTERN.test(input.toolClass) ||
+      Number.isNaN(now.getTime())
+    ) {
       throw new Error("fleet run steering approval binding is invalid")
     }
     this.db.run("BEGIN IMMEDIATE")
@@ -2829,7 +2916,11 @@ export class PylonOrchestrationStore {
           existing.claimRef !== input.claimRef ||
           existing.workUnitRef !== input.workUnitRef ||
           existing.workClaimRef !== input.workClaimRef ||
-          existing.assignmentRef !== input.assignmentRef
+          existing.assignmentRef !== input.assignmentRef ||
+          existing.workerKind !== input.workerKind ||
+          existing.workerRef !== input.workerRef ||
+          existing.accountRefHash !== input.accountRefHash ||
+          existing.toolClass !== input.toolClass
         ) {
           throw new Error("fleet run steering approval ref was rebound")
         }
@@ -2838,6 +2929,12 @@ export class PylonOrchestrationStore {
       }
       const run = this.getFleetRun(input.runRef)
       const workClaim = this.getWorkClaim(input.workClaimRef)
+      const expectedAccountRefHash = workClaim === null
+        ? null
+        : `account.pylon.${provider}.${createHash("sha256")
+          .update(`${provider}:${workClaim.workerAccountRef}`)
+          .digest("hex")
+          .slice(0, 24)}`
       if (
         run?.authorityBinding?.phase !== "accepted" ||
         run.authorityBinding.pylonRef !== input.pylonRef ||
@@ -2845,19 +2942,38 @@ export class PylonOrchestrationStore {
         workClaim === null ||
         workClaim.runRef !== input.runRef ||
         workClaim.workUnitRef !== input.workUnitRef ||
-        workClaim.assignmentRef !== input.assignmentRef ||
+        expectedAccountRefHash !== input.accountRefHash ||
+        (workClaim.assignmentRef !== null && workClaim.assignmentRef !== input.assignmentRef) ||
         (workClaim.state !== "claimed" && workClaim.state !== "in_progress")
       ) {
         throw new Error("fleet run steering approval requires an exact live attempt")
       }
+      if (workClaim.assignmentRef === null) {
+        const assigned = this.db.query(`
+          UPDATE pylon_orchestration_work_claims
+             SET assignment_ref = $assignmentRef, updated_at = $updatedAt
+           WHERE claim_ref = $workClaimRef
+             AND assignment_ref IS NULL
+             AND state IN ('claimed', 'in_progress')
+        `).run({
+          $workClaimRef: input.workClaimRef,
+          $assignmentRef: input.assignmentRef,
+          $updatedAt: iso(now),
+        })
+        if (Number(assigned.changes) !== 1) {
+          throw new Error("fleet run steering approval lost its exact live attempt")
+        }
+      }
       this.db.query(`
         INSERT INTO pylon_orchestration_fleet_run_steering_approval_bindings
           (approval_ref, pylon_ref, run_ref, claim_ref, work_unit_ref,
-           work_claim_ref, assignment_ref, state, decision, resolution_state, created_at,
-           resolved_at, completion_ref)
+           work_claim_ref, assignment_ref, worker_kind, worker_ref,
+           account_ref_hash, tool_class, state, decision, resolution_state,
+           created_at, resolved_at, completion_ref)
         VALUES
           ($approvalRef, $pylonRef, $runRef, $claimRef, $workUnitRef,
-           $workClaimRef, $assignmentRef, 'pending', NULL, NULL, $createdAt, NULL, NULL)
+           $workClaimRef, $assignmentRef, $workerKind, $workerRef,
+           $accountRefHash, $toolClass, 'pending', NULL, NULL, $createdAt, NULL, NULL)
       `).run({
         $approvalRef: input.approvalRef,
         $pylonRef: input.pylonRef,
@@ -2866,6 +2982,10 @@ export class PylonOrchestrationStore {
         $workUnitRef: input.workUnitRef,
         $workClaimRef: input.workClaimRef,
         $assignmentRef: input.assignmentRef,
+        $workerKind: input.workerKind,
+        $workerRef: input.workerRef,
+        $accountRefHash: input.accountRefHash,
+        $toolClass: input.toolClass,
         $createdAt: iso(now),
       })
       const binding = this.getFleetRunSteeringApprovalBinding(input.approvalRef)
@@ -3303,12 +3423,22 @@ export class PylonOrchestrationStore {
     const stateSource = shouldClose
       ? (run.state === "draining" ? ("operator" as const) : ("reconcile" as const))
       : run.stateSource
+    const projectionChanged =
+      state !== run.state ||
+      stateSource !== run.stateSource ||
+      counters.workUnitsTotal !== run.counters.workUnitsTotal ||
+      counters.activeAssignments !== run.counters.activeAssignments ||
+      counters.completedAssignments !== run.counters.completedAssignments ||
+      counters.failedAssignments !== run.counters.failedAssignments ||
+      counters.blockedAssignments !== run.counters.blockedAssignments
     return this.upsertFleetRun({
       ...run,
       state,
       ...(stateSource === undefined ? {} : { stateSource }),
       counters,
-      updatedAt: iso(now),
+      // Stable unchanged rows make terminal observations idempotent across
+      // standing-loop ticks; state/counter transitions still advance time.
+      updatedAt: projectionChanged ? iso(now) : run.updatedAt,
     })
   }
 
@@ -3735,6 +3865,9 @@ export class PylonOrchestrationStore {
   updateWorkClaimAssignmentRef(claimRef: string, assignmentRef: string | null, now: Date = new Date()): WorkClaim {
     const current = this.getWorkClaim(claimRef)
     if (current === null) throw new Error(`unknown work claim: ${claimRef}`)
+    if (current.assignmentRef !== null && assignmentRef !== current.assignmentRef) {
+      throw new Error(`cannot rebind work claim assignment: ${claimRef}`)
+    }
     this.db
       .query(`
         UPDATE pylon_orchestration_work_claims

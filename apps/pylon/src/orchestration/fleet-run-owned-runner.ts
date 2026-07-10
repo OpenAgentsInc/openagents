@@ -91,6 +91,8 @@ export type PylonOwnedFleetRunAssignmentPort = (input: {
   readonly accountRef: string
   readonly assignmentRef: string
   readonly onLifecycle?: ((event: PylonAssignmentRunLifecycleEvent) => void | Promise<void>) | undefined
+  /** Forwarded only; the unattended default assignment runner emits no approval signal. */
+  readonly onApprovalRequested?: FleetRunSupervisorDispatchInput["onApprovalRequested"]
 }) => Promise<PylonOwnedFleetRunAssignmentReceipt>
 
 export type PylonOwnedFleetRunInspectionPort = (
@@ -956,6 +958,9 @@ export function createPylonOwnedFleetRunSupervisorRunner(
         ...(dispatchInput.onLifecycle === undefined
           ? {}
           : { onLifecycle: deliverLifecycle }),
+        ...(dispatchInput.onApprovalRequested === undefined
+          ? {}
+          : { onApprovalRequested: dispatchInput.onApprovalRequested }),
       })
     } catch {
       await lifecycleDeliveryTail

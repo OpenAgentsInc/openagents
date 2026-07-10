@@ -201,6 +201,96 @@ describe("Pylon-owned FleetRun supervisor", () => {
     )).toHaveLength(1)
   })
 
+  test("binds a real executor approval signal to the exact live attempt and stable worker", async () => {
+    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const pylonRef = "pylon.owner.fc3.approval"
+    const authorityClaimRef = `claim.sarah_fleet_run.${"a".repeat(24)}`
+    const baseRun = createRun(store, {
+      runRef: "fleet_run.sarah.0123456789abcdef0123",
+      workUnits: 1,
+      targetConcurrency: 1,
+      workerKind: "codex",
+    })
+    const run = store.upsertFleetRun({
+      ...baseRun,
+      authorityBinding: {
+        schema: "openagents.pylon.fleet_run_authority_binding.v1",
+        source: "sarah_authority",
+        authorityFingerprint: "b".repeat(64),
+        claimRef: authorityClaimRef,
+        pylonRef,
+        targetPreference: "owner_local",
+        phase: "accepted",
+      },
+    })
+    const assignmentRef = "assignment.public.fc3.approval"
+    const approvalRef = "approval.public.fc3.write_file"
+    const observed: FleetRunSupervisorObservedEvent[] = []
+    let conflictingReplayRejected = false
+
+    await tickFleetRunSupervisor({
+      store,
+      pylonRef,
+      runRef: run.runRef,
+      planner: planner(store, 1),
+      capacity: { accounts: async () => [mixedCapacity[0]!] },
+      clock: { now: () => fixedNow },
+      runner: {
+        dispatch: async input => {
+          await input.onApprovalRequested?.({
+            approvalRef,
+            assignmentRef,
+            toolClass: "write_file",
+          })
+          // Exact executor replay is idempotent; changing the bound tool is not.
+          await input.onApprovalRequested?.({
+            approvalRef,
+            assignmentRef,
+            toolClass: "write_file",
+          })
+          try {
+            await input.onApprovalRequested?.({
+              approvalRef,
+              assignmentRef,
+              toolClass: "shell_command",
+            })
+          } catch {
+            conflictingReplayRejected = true
+          }
+          return {
+            assignmentRef,
+            lifecycle: [],
+            status: "accepted",
+          }
+        },
+      },
+      onLifecycle: event => {
+        observed.push(event)
+      },
+    })
+
+    const approval = store.getFleetRunSteeringApprovalBinding(approvalRef)
+    expect(approval).toMatchObject({
+      approvalRef,
+      pylonRef,
+      runRef: run.runRef,
+      claimRef: authorityClaimRef,
+      assignmentRef,
+      workerKind: "codex",
+      accountRefHash: hashPylonAccountRef("codex", "codex-owner"),
+      toolClass: "write_file",
+      state: "pending",
+      createdAt: fixedNow.toISOString(),
+    })
+    expect(approval?.workerRef).toMatch(/^worker\.pylon\.codex\.[a-f0-9]{24}$/u)
+    expect(approval?.workerRef).not.toContain("codex-owner")
+    expect(store.getWorkClaim(approval?.workClaimRef ?? "")?.assignmentRef).toBe(
+      assignmentRef,
+    )
+    expect(observed.filter(event => event.kind === "approval_requested")).toHaveLength(2)
+    expect(conflictingReplayRejected).toBe(true)
+  })
+
   test("replays buffered lifecycle when the first live projection fails", async () => {
     const store = createPylonOrchestrationStore(new Database(":memory:"))
     const run = createRun(store, {
@@ -625,7 +715,7 @@ describe("Pylon-owned FleetRun supervisor", () => {
         reconcile: async ({ activeAssignments }) => {
           resumedAssignments.push([...activeAssignments])
           return activeAssignments.map((assignment) => ({
-            assignmentRef: `assignment.after-restart.${assignment.claim.claimRef}`,
+            assignmentRef: assignment.claim.assignmentRef,
             lifecycle: [lifecycleEvent("assignment_run.completed", "closed")],
             status: "completed" as const,
             summary: "reconciled after standing Pylon restart",

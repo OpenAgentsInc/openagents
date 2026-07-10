@@ -3,6 +3,8 @@ import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
+import { hashPylonAccountRef } from "../account-registry.js"
+
 import {
   tickPylonFleetRunSteeringFollowUpDispatcher,
   type PylonFleetRunAttemptControl,
@@ -382,6 +384,12 @@ describe("Pylon FleetRun steering follow-up dispatcher", () => {
     try {
       const runtime = await seed(join(root, "home"))
       const approvalRef = "approval.public.fc3.follow_up.unit"
+      const approvalIdentity = {
+        workerKind: "codex" as const,
+        workerRef: "worker.pylon.codex.follow-up",
+        accountRefHash: hashPylonAccountRef("codex", "codex-fc3-follow-up"),
+        toolClass: "write_file",
+      }
       const bound = runtime.store.bindFleetRunSteeringApproval({
         approvalRef,
         pylonRef,
@@ -390,6 +398,7 @@ describe("Pylon FleetRun steering follow-up dispatcher", () => {
         workUnitRef,
         workClaimRef,
         assignmentRef,
+        ...approvalIdentity,
         now: initialNow,
       })
       expect(bound).toMatchObject({ created: true, binding: { state: "pending" } })
@@ -401,6 +410,7 @@ describe("Pylon FleetRun steering follow-up dispatcher", () => {
         workUnitRef,
         workClaimRef,
         assignmentRef,
+        ...approvalIdentity,
         now: initialNow,
       }).created).toBe(false)
       expect(() => runtime.store.bindFleetRunSteeringApproval({
@@ -411,6 +421,7 @@ describe("Pylon FleetRun steering follow-up dispatcher", () => {
         workUnitRef,
         workClaimRef,
         assignmentRef: "assignment.public.fc3.follow_up.other",
+        ...approvalIdentity,
         now: initialNow,
       })).toThrow("rebound")
 

@@ -137,7 +137,9 @@ export class PylonFleetRunManager {
             const existing = this.active.get(runRef)
             existing?.lifecycle.push(event)
             await input.onLifecycle?.(event)
-            if (event.kind === "completed") void this.releaseActive(runRef)
+            if (event.kind === "completed" || event.kind === "terminal") {
+              void this.releaseActive(runRef)
+            }
           },
         }),
         Scope.Scope,
@@ -168,7 +170,7 @@ export class PylonFleetRunManager {
     }
     const reconciled = this.store.reconcileFleetRun(runRef)
     if (reconciled.state === "completed" || reconciled.state === "stopped") {
-      await this.releaseActive(runRef)
+      await this.reportTerminalThenRelease(runRef, active)
     }
     return this.snapshot(runRef)
   }
@@ -178,7 +180,7 @@ export class PylonFleetRunManager {
     if (runRef !== undefined) {
       const run = this.store.reconcileFleetRun(runRef)
       if (run.state === "completed" || run.state === "stopped") {
-        await this.releaseActive(runRef)
+        await this.reportTerminalThenRelease(runRef)
       }
       return this.snapshotForRun(runRef)
     }
@@ -194,7 +196,7 @@ export class PylonFleetRunManager {
       verb === "drain" ? "draining" :
       "stopped"
     this.store.updateFleetRunState(runRef, nextState, this.now())
-    if (verb === "stop") await this.releaseActive(runRef)
+    if (verb === "stop") await this.reportTerminalThenRelease(runRef)
     return { ...this.snapshot(runRef), verb }
   }
 
@@ -215,17 +217,46 @@ export class PylonFleetRunManager {
   }
 
   private async reapTerminalActives(): Promise<void> {
-    for (const [runRef, active] of this.active) {
+    for (const [runRef, active] of [...this.active]) {
       const run = this.store.reconcileFleetRun(runRef)
       if (run.state === "completed" || run.state === "stopped") {
-        await this.releaseActive(runRef, active)
+        await this.reportTerminalThenRelease(runRef, active)
       }
     }
   }
 
+  /**
+   * Give the supervisor the only terminal-reporting pass. A stopped run with
+   * residual assignments stays active so later ticks can reconcile them; the
+   * manager releases the scope only after that pass observes zero residuals.
+   */
+  private async reportTerminalThenRelease(
+    runRef: string,
+    knownActive?: ActiveFleetRun,
+  ): Promise<boolean> {
+    const active = knownActive ?? this.active.get(runRef)
+    if (active === undefined || this.active.get(runRef) !== active) return false
+    const run = this.store.getFleetRun(runRef)
+    if (run === null || (run.state !== "completed" && run.state !== "stopped")) {
+      return false
+    }
+    try {
+      active.lastTick = await Effect.runPromise(active.handle.tick())
+    } catch {
+      // Projection/reporting is retryable. Keeping the scope active lets the
+      // standing loop or a later status/reap pass retry exact same bytes.
+      return false
+    }
+    if (!this.active.has(runRef)) return true
+    const reconciled = this.store.reconcileFleetRun(runRef)
+    if (reconciled.counters.activeAssignments > 0) return false
+    await this.releaseActive(runRef, active)
+    return true
+  }
+
   private async releaseActive(runRef: string, knownActive?: ActiveFleetRun): Promise<void> {
     const active = knownActive ?? this.active.get(runRef)
-    if (active === undefined) return
+    if (active === undefined || this.active.get(runRef) !== active) return
     this.retainedLifecycle.set(runRef, [...active.lifecycle])
     this.retainedPylonRefs.set(runRef, active.pylonRef)
     this.active.delete(runRef)

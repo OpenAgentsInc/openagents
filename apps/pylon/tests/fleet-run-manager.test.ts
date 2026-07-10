@@ -52,7 +52,7 @@ const managerFixture = () => {
 }
 
 describe("PylonFleetRunManager", () => {
-  test("retains terminal lifecycle and releases the Pylon supervisor slot for the next run", async () => {
+  test("reports the fire-and-forget completion race once before releasing the supervisor slot", async () => {
     const fixture = managerFixture()
     const runner: FleetRunSupervisorRunner = {
       dispatch: async input => ({
@@ -82,8 +82,10 @@ describe("PylonFleetRunManager", () => {
     expect(first.active).toBe(false)
     expect(first.run.state).toBe("completed")
     expect(first.lifecycle.some(event => event.kind === "dispatch")).toBe(true)
+    expect(first.lifecycle.filter(event => event.kind === "completed")).toHaveLength(1)
     expect(second.active).toBe(false)
     expect(second.run.state).toBe("completed")
+    expect(second.lifecycle.filter(event => event.kind === "completed")).toHaveLength(1)
   })
 
   test("records a failed competing start as reconcile-stopped and closes its scope", async () => {
@@ -119,6 +121,9 @@ describe("PylonFleetRunManager", () => {
     if (Array.isArray(competing)) throw new Error("expected one snapshot")
     expect(competing.run.state).toBe("stopped")
 
-    await fixture.manager.control("fleet_run.manager.active", "stop")
+    const stopped = await fixture.manager.control("fleet_run.manager.active", "stop")
+    expect(stopped.active).toBe(true)
+    expect(stopped.run.counters.activeAssignments).toBe(1)
+    await fixture.manager.close()
   })
 })

@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto"
+
 import { Effect, Schema as S, Scope } from "effect"
 import type { PylonAssignmentRunLifecycleEvent } from "@openagentsinc/agent-runtime-schema"
 import {
@@ -75,6 +77,22 @@ export type FleetRunSupervisorAccount = {
 
 export type FleetRunSupervisorLifecycleEvent = PylonAssignmentRunLifecycleEvent
 
+const FleetRunSupervisorProjectedPublicRef = S.String.check(
+  S.isPattern(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,179}$/u),
+)
+
+export const FleetRunSupervisorApprovalRequestSchema = S.Struct({
+  approvalRef: FleetRunSupervisorProjectedPublicRef,
+  assignmentRef: FleetRunSupervisorProjectedPublicRef,
+  toolClass: S.String.check(
+    S.isMinLength(1),
+    S.isMaxLength(64),
+    S.isPattern(/^[a-z][a-z0-9_]*$/u),
+  ),
+})
+export type FleetRunSupervisorApprovalRequest =
+  typeof FleetRunSupervisorApprovalRequestSchema.Type
+
 export type FleetRunSupervisorDispatchInput = {
   readonly accountRef: string
   readonly claim: WorkClaim
@@ -87,6 +105,13 @@ export type FleetRunSupervisorDispatchInput = {
   readonly workerKind: FleetRunSupervisorConcreteWorkerKind
   /** Streams executor lifecycle as it happens; buffered terminal replay is deduplicated. */
   readonly onLifecycle?: ((event: FleetRunSupervisorLifecycleEvent) => void | Promise<void>) | undefined
+  /**
+   * A real executor calls this only when it has actually paused for a named
+   * tool approval. Unattended harnesses must not synthesize this signal.
+   */
+  readonly onApprovalRequested?: (
+    request: FleetRunSupervisorApprovalRequest,
+  ) => void | Promise<void>
 }
 
 export type FleetRunSupervisorVerificationEvidence =
@@ -204,6 +229,13 @@ export type FleetRunSupervisorObservedEvent =
     readonly claimRef: string
     readonly accountRef: string
     readonly event: FleetRunSupervisorLifecycleEvent
+  }
+  | {
+    readonly kind: "approval_requested"
+    readonly runRef: string
+    readonly taskId: string
+    readonly claimRef: string
+    readonly approvalRef: string
   }
   | {
     readonly kind: "completed"
@@ -529,6 +561,15 @@ const fallbackEventKey = (event: FleetAutoTargetFallbackEvent): string =>
 const contextIdFor = (accountRef: string, taskId: string): string =>
   `${accountRef}.ctx.${taskId}`.replace(/[^a-zA-Z0-9_.-]/g, "_")
 
+const stableWorkerRef = (input: {
+  readonly accountRefHash: string
+  readonly pylonRef: string
+  readonly workerKind: FleetRunSupervisorConcreteWorkerKind
+}): string => `worker.pylon.${input.workerKind}.${createHash("sha256")
+  .update(`${input.pylonRef}:${input.accountRefHash}`)
+  .digest("hex")
+  .slice(0, 24)}`
+
 const claimRefFor = (runRef: string, workUnitRef: string, now: Date, ordinal: number): string =>
   `${runRef}.claim.${workUnitRef.replace(/[^a-zA-Z0-9_.-]/g, "_")}.${now.getTime()}.${ordinal}`
 
@@ -683,6 +724,34 @@ export async function tickFleetRunSupervisor(
     })
   }
   if (run.state !== "running") {
+    // An operator stop forbids new dispatch immediately, but an already
+    // accepted attempt still owns its claim until terminal reconciliation.
+    // Do not publish run_terminal ahead of that residual attempt.
+    if (run.state === "stopped") {
+      const residual = collectActiveAssignments(store, run.runRef)
+      if (options.runner.reconcile !== undefined && residual.length > 0) {
+        const activeByTask = new Map(residual.map(assignment => [assignment.taskId, assignment]))
+        const reconciled = await options.runner.reconcile({
+          activeAssignments: residual,
+          now,
+          run,
+        })
+        for (const result of reconciled) {
+          const assignment = activeByTask.get(result.taskId)
+          if (assignment === undefined) continue
+          await recordTerminalAssignment(options, assignment, result, now)
+        }
+        run = store.reconcileFleetRun(run.runRef, now)
+      }
+      if (activeAssignmentsForRun(store, run.runRef) === 0) {
+        await emitRunTerminal(options.onLifecycle, run)
+      }
+    } else if (
+      run.state === "completed" &&
+      activeAssignmentsForRun(store, run.runRef) === 0
+    ) {
+      await emitRunTerminal(options.onLifecycle, run)
+    }
     return {
       activeAssignments: activeAssignmentsForRun(store, run.runRef),
       claimed: 0,
@@ -996,6 +1065,47 @@ export async function tickFleetRunSupervisor(
             })
             streamedLifecycle.add(JSON.stringify(event))
           },
+          onApprovalRequested: async rawRequest => {
+            const request = S.decodeUnknownSync(
+              FleetRunSupervisorApprovalRequestSchema,
+            )(rawRequest, { onExcessProperty: "error" })
+            const observedAt = clock.now()
+            if (!Number.isFinite(observedAt.getTime())) {
+              throw new Error("FleetRun approval request clock is invalid")
+            }
+            const authority = store.getFleetRun(run.runRef)?.authorityBinding
+            if (
+              authority?.phase !== "accepted" ||
+              authority.pylonRef !== options.pylonRef
+            ) {
+              throw new Error("FleetRun approval request lacks accepted Sarah authority")
+            }
+            store.bindFleetRunSteeringApproval({
+              approvalRef: request.approvalRef,
+              pylonRef: options.pylonRef,
+              runRef: run.runRef,
+              claimRef: authority.claimRef,
+              workUnitRef: claim.workUnitRef,
+              workClaimRef: claim.claimRef,
+              assignmentRef: request.assignmentRef,
+              workerKind,
+              workerRef: stableWorkerRef({
+                accountRefHash,
+                pylonRef: options.pylonRef,
+                workerKind,
+              }),
+              accountRefHash,
+              toolClass: request.toolClass,
+              now: observedAt,
+            })
+            await emit(options.onLifecycle, {
+              kind: "approval_requested",
+              runRef: run.runRef,
+              taskId,
+              claimRef: claim.claimRef,
+              approvalRef: request.approvalRef,
+            })
+          },
         })
       } catch {
         store.recordWorkerDone({
@@ -1168,7 +1278,10 @@ export async function tickFleetRunSupervisor(
   }
   if (reconciled.state === "completed") {
     await emit(options.onLifecycle, { kind: "completed", runRef: run.runRef, reason: "drained" })
-  } else if (reconciled.state === "stopped") {
+  } else if (
+    reconciled.state === "stopped" &&
+    activeAssignmentsForRun(store, run.runRef) === 0
+  ) {
     await emitRunTerminal(options.onLifecycle, reconciled)
   }
   if (

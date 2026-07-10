@@ -5,15 +5,22 @@ import type {
   PylonFleetRunUsageEvidenceV2,
 } from "./fleet-run-execution-reporter.js"
 import type { FleetRunSupervisorObservedEvent } from "./fleet-run-supervisor.js"
-import type { PylonOrchestrationStore } from "./store.js"
+import type {
+  FleetRunSteeringApprovalBinding,
+  PylonOrchestrationStore,
+} from "./store.js"
 
 const projectedRefPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,179}$/u
 const projectedUnitRefPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u
 const projectedBlockerPattern = /^blocker\.[A-Za-z0-9][A-Za-z0-9._:-]{0,171}$/u
+const approvalToolClassPattern = /^[a-z][a-z0-9_]{0,63}$/u
+const isoTimestampPattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u
 const evidenceCardinalityBlocker =
   "blocker.pylon.fleet_run.evidence_cardinality_invalid" as const
 const evidenceIdentityBlocker =
   "blocker.pylon.fleet_run.evidence_identity_invalid" as const
+const approvalRequiredBlocker =
+  "blocker.pylon.fleet_run.approval_required" as const
 
 const digest = (value: string): string =>
   createHash("sha256").update(value).digest("hex").slice(0, 24)
@@ -29,19 +36,31 @@ const projectedUnitRef = (value: string): string =>
     ? value
     : `work_unit.pylon.opaque.${digest(value)}`
 
-const projectedRefs = (
-  values: readonly string[],
+type EvidenceProjectionRegistry = {
+  readonly projectedBySource: Map<string, string>
+  readonly sourceByProjected: Map<string, string>
+}
+
+const openEvidenceProjectionRegistry = (): EvidenceProjectionRegistry => ({
+  projectedBySource: new Map(),
+  sourceByProjected: new Map(),
+})
+
+const projectEvidenceRef = (
+  registry: EvidenceProjectionRegistry,
+  value: string,
   prefix: string,
-  maximum = 64,
-): string[] => {
-  if (values.length > maximum || new Set(values).size !== values.length) {
-    throw new Error("FleetRun evidence ref cardinality is invalid")
-  }
-  const projected = values.map(value => projectedRef(value, prefix))
-  if (new Set(projected).size !== projected.length) {
+): string => {
+  const existing = registry.projectedBySource.get(value)
+  if (existing !== undefined) return existing
+  const next = projectedRef(value, prefix)
+  const existingSource = registry.sourceByProjected.get(next)
+  if (existingSource !== undefined && existingSource !== value) {
     throw new Error("FleetRun evidence ref projection collided")
   }
-  return projected
+  registry.projectedBySource.set(value, next)
+  registry.sourceByProjected.set(next, value)
+  return next
 }
 
 const projectedEvidenceGroups = <const Groups extends readonly {
@@ -49,6 +68,7 @@ const projectedEvidenceGroups = <const Groups extends readonly {
   readonly prefix: string
   readonly maximum: number
 }[]>(
+  registry: EvidenceProjectionRegistry,
   groups: Groups,
 ): { readonly [Index in keyof Groups]: string[] } => {
   // Arrays are role-bearing, so the same real receipt may legitimately appear
@@ -61,20 +81,9 @@ const projectedEvidenceGroups = <const Groups extends readonly {
       new Set(group.values).size !== group.values.length
     ) throw new Error("FleetRun evidence ref cardinality is invalid")
   }
-  const projectedBySource = new Map<string, string>()
-  const sourceByProjected = new Map<string, string>()
-  const projected = groups.map(group => group.values.map(value => {
-    const existing = projectedBySource.get(value)
-    if (existing !== undefined) return existing
-    const next = projectedRef(value, group.prefix)
-    const existingSource = sourceByProjected.get(next)
-    if (existingSource !== undefined && existingSource !== value) {
-      throw new Error("FleetRun evidence ref projection collided")
-    }
-    projectedBySource.set(value, next)
-    sourceByProjected.set(next, value)
-    return next
-  }))
+  const projected = groups.map(group => group.values.map(value =>
+    projectEvidenceRef(registry, value, group.prefix)
+  ))
   return projected as { readonly [Index in keyof Groups]: string[] }
 }
 
@@ -106,8 +115,47 @@ const accountHashMatchesWorker = (
   `account.pylon.${workerKind === "claude" ? "claude_agent" : workerKind}.`,
 )
 
+/**
+ * Rebuild the exact approval-request wire from durable local custody. Legacy
+ * bindings without worker/tool identity remain local and are never guessed.
+ */
+export function projectFleetRunApprovalBinding(
+  binding: FleetRunSteeringApprovalBinding,
+): PylonFleetRunExecutionEventInput | null {
+  if (
+    binding.workerKind === null ||
+    binding.workerRef === null ||
+    binding.accountRefHash === null ||
+    binding.toolClass === null ||
+    !approvalToolClassPattern.test(binding.toolClass) ||
+    !isoTimestampPattern.test(binding.createdAt) ||
+    !accountHashMatchesWorker(binding.workerKind, binding.accountRefHash)
+  ) return null
+  return {
+    schema: "openagents.pylon.fleet_run_execution_event.v2",
+    kind: "approval_requested",
+    observedAt: binding.createdAt,
+    unitRef: projectedUnitRef(binding.workUnitRef),
+    workClaimRef: projectedRef(binding.workClaimRef, "work_claim.pylon.opaque"),
+    assignmentRef: projectedRef(
+      binding.assignmentRef,
+      "assignment.public.pylon.opaque",
+    ),
+    workerKind: binding.workerKind,
+    workerRef: projectedRef(binding.workerRef, "worker.public.pylon.opaque"),
+    accountRefHash: binding.accountRefHash,
+    approvalRef: projectedRef(
+      binding.approvalRef,
+      "approval.public.pylon.opaque",
+    ),
+    toolClass: binding.toolClass,
+    blockerRefs: [approvalRequiredBlocker],
+  }
+}
+
 const terminalUsageProjection = (
   event: Extract<FleetRunSupervisorObservedEvent, { readonly kind: "dispatch" }>,
+  registry: EvidenceProjectionRegistry,
 ): PylonFleetRunUsageEvidenceV2 | null => {
   const evidence = event.usageEvidence
   if (evidence === null) return null
@@ -119,14 +167,26 @@ const terminalUsageProjection = (
     return {
       ...evidence,
       assignmentRef,
-      evidenceRef: projectedRef(evidence.evidenceRef, "evidence.public.pylon.opaque"),
-      receiptRef: projectedRef(evidence.receiptRef, "receipt.public.pylon.opaque"),
+      evidenceRef: projectEvidenceRef(
+        registry,
+        evidence.evidenceRef,
+        "evidence.public.pylon.opaque",
+      ),
+      receiptRef: projectEvidenceRef(
+        registry,
+        evidence.receiptRef,
+        "receipt.public.pylon.opaque",
+      ),
       tokenUsageRefs: [],
-      caveatRefs: projectedRefs(evidence.caveatRefs, "caveat.pylon.fleet_run.opaque", 100),
+      caveatRefs: projectedEvidenceGroups(registry, [{
+        values: evidence.caveatRefs,
+        prefix: "caveat.pylon.fleet_run.opaque",
+        maximum: 100,
+      }] as const)[0],
     }
   }
   const [tokenUsageRefs, proofRefs, closeoutChecklistRefs, proofChecklistRefs] =
-    projectedEvidenceGroups([
+    projectedEvidenceGroups(registry, [
       {
         values: evidence.tokenUsageRefs,
         prefix: "token_usage.public.pylon.opaque",
@@ -151,7 +211,11 @@ const terminalUsageProjection = (
   return {
     ...evidence,
     assignmentRef,
-    evidenceRef: projectedRef(evidence.evidenceRef, "evidence.public.pylon.opaque"),
+    evidenceRef: projectEvidenceRef(
+      registry,
+      evidence.evidenceRef,
+      "evidence.public.pylon.opaque",
+    ),
     tokenUsageRefs,
     proofRefs,
     closeoutChecklistRefs,
@@ -219,6 +283,21 @@ export function projectFleetRunSupervisorObservation(input: {
     terminalState: "failed",
     blockerRefs: [failure.blockerRef],
   }]
+
+  if (input.event.kind === "approval_requested") {
+    const binding = input.store.getFleetRunSteeringApprovalBinding(
+      input.event.approvalRef,
+    )
+    if (
+      binding === null ||
+      binding.pylonRef !== run.authorityBinding.pylonRef ||
+      binding.runRef !== input.event.runRef ||
+      binding.claimRef !== run.authorityBinding.claimRef ||
+      binding.workClaimRef !== input.event.claimRef
+    ) return [started]
+    const approval = projectFleetRunApprovalBinding(binding)
+    return approval === null ? [started] : [started, approval]
+  }
 
   if (input.event.kind === "lifecycle") {
     const claim = input.store.getWorkClaim(input.event.claimRef)
@@ -301,6 +380,19 @@ export function projectFleetRunSupervisorObservation(input: {
         marginalCostClass: input.event.marginalCostClass,
       })
     }
+    const rawUsageIdentityMatches = input.event.usageEvidence === null ||
+      (input.event.assignmentRef !== null &&
+        input.event.usageEvidence.assignmentRef === input.event.assignmentRef &&
+        input.event.usageEvidence.harnessKind === input.event.workerKind)
+    if (!rawUsageIdentityMatches) {
+      return failedProjection({
+        blockerRef: evidenceIdentityBlocker,
+        unitRef,
+        workClaimRef,
+        workerKind: input.event.workerKind,
+        marginalCostClass: input.event.marginalCostClass,
+      })
+    }
     let usageEvidence: PylonFleetRunUsageEvidenceV2 | null
     let verification: {
       readonly truth: "passed"
@@ -316,11 +408,12 @@ export function projectFleetRunSupervisorObservation(input: {
     let proofRefs: string[]
     let authorityReceiptRefs: string[]
     try {
-      usageEvidence = terminalUsageProjection(input.event)
+      const evidenceRegistry = openEvidenceProjectionRegistry()
       const projectedVerification = input.event.verification?.truth === "passed"
         ? {
             truth: "passed" as const,
-            verifierRef: projectedRef(
+            verifierRef: projectEvidenceRef(
+              evidenceRegistry,
               input.event.verification.verifierRef,
               "verifier.public.pylon.opaque",
             ),
@@ -333,7 +426,8 @@ export function projectFleetRunSupervisorObservation(input: {
             ...(input.event.verification.verifierRef === undefined
               ? {}
               : {
-                  verifierRef: projectedRef(
+                  verifierRef: projectEvidenceRef(
+                    evidenceRegistry,
                     input.event.verification.verifierRef,
                     "verifier.public.pylon.opaque",
                   ),
@@ -343,7 +437,7 @@ export function projectFleetRunSupervisorObservation(input: {
         : null
       const verificationEvidenceRefs = projectedVerification?.evidenceRefs ??
         projectedFailedVerification?.evidenceRefs ?? []
-      const projectedGroups = projectedEvidenceGroups([
+      const projectedGroups = projectedEvidenceGroups(evidenceRegistry, [
         {
           values: verificationEvidenceRefs,
           prefix: "verification.public.pylon.opaque",
@@ -376,6 +470,7 @@ export function projectFleetRunSupervisorObservation(input: {
       artifactRefs = projectedArtifacts
       proofRefs = projectedProofs
       authorityReceiptRefs = projectedAuthority
+      usageEvidence = terminalUsageProjection(input.event, evidenceRegistry)
     } catch {
       return failedProjection({
         blockerRef: evidenceCardinalityBlocker,
@@ -385,10 +480,10 @@ export function projectFleetRunSupervisorObservation(input: {
         marginalCostClass: input.event.marginalCostClass,
       })
     }
-    const usageIdentityMatches = usageEvidence === null ||
+    const projectedUsageIdentityMatches = usageEvidence === null ||
       (usageEvidence.assignmentRef === assignmentRef &&
         usageEvidence.harnessKind === input.event.workerKind)
-    if (!usageIdentityMatches) {
+    if (!projectedUsageIdentityMatches) {
       return failedProjection({
         blockerRef: evidenceIdentityBlocker,
         unitRef,

@@ -287,6 +287,26 @@ describe("FleetRun execution projection restart receipt", () => {
           proofRefs: [opaque],
         }
       })(),
+      (() => {
+        const unsafeUsageProof = "Users/owner/private/usage-proof"
+        const collidingTerminalProof = `proof.public.pylon.opaque.${createHash("sha256")
+          .update(unsafeUsageProof)
+          .digest("hex")
+          .slice(0, 24)}`
+        return {
+          ...completeEvent,
+          workerKind: "codex" as const,
+          accountRefHash: hashPylonAccountRef("codex", "codex-owner"),
+          proofRefs: [collidingTerminalProof],
+          usageEvidence: {
+            ...exactEvidence({
+              assignmentRef: completeEvent.assignmentRef,
+              harnessKind: "codex",
+            }),
+            proofRefs: [unsafeUsageProof],
+          },
+        }
+      })(),
       {
         ...completeEvent,
         workerKind: "codex" as const,
@@ -310,6 +330,30 @@ describe("FleetRun execution projection restart receipt", () => {
         blockerRefs: ["blocker.pylon.fleet_run.evidence_cardinality_invalid"],
       })
     }
+
+    const unsafeUsageAssignment = "Users/owner/private/usage-assignment"
+    const collidingTerminalAssignment = `assignment.public.pylon.opaque.${createHash("sha256")
+      .update(unsafeUsageAssignment)
+      .digest("hex")
+      .slice(0, 24)}`
+    const rawAssignmentMismatch = projectFleetRunSupervisorObservation({
+      store,
+      event: {
+        ...completeEvent,
+        workerKind: "codex",
+        accountRefHash: hashPylonAccountRef("codex", "codex-owner"),
+        assignmentRef: collidingTerminalAssignment,
+        usageEvidence: exactEvidence({
+          assignmentRef: unsafeUsageAssignment,
+          harnessKind: "codex",
+        }),
+      },
+    })[1]
+    expect(rawAssignmentMismatch).toMatchObject({
+      kind: "work_terminal",
+      terminalState: "failed",
+      blockerRefs: ["blocker.pylon.fleet_run.evidence_identity_invalid"],
+    })
 
     const independentRoleBounds = projectFleetRunSupervisorObservation({
       store,
@@ -400,6 +444,157 @@ describe("FleetRun execution projection restart receipt", () => {
       terminalState: "failed",
       blockerRefs: ["blocker.pylon.fleet_run.evidence_cardinality_invalid"],
     })
+  })
+
+  test("replays one durably bound approval request after reporter restart", async () => {
+    const root = await mkdtemp(join(tmpdir(), "pylon-fc3-approval-restart-"))
+    const databasePath = join(root, "orchestration.sqlite")
+    const workUnitRef = "unit.public.approval_restart"
+    const workClaimRef = "work_claim.public.approval_restart"
+    const assignmentRef = "assignment.public.approval_restart"
+    const approvalRef = "approval.public.approval_restart"
+    try {
+      const firstDatabase = new Database(databasePath)
+      const firstStore = createPylonOrchestrationStore(firstDatabase)
+      firstStore.createFleetRun({
+        runRef,
+        objective: "Retain one exact approval request across restart.",
+        workSource: "fixture",
+        targetConcurrency: 1,
+        workerKind: "codex",
+        state: "running",
+        startedAt: firstNow,
+        now: firstNow,
+        authorityBinding: {
+          schema: "openagents.pylon.fleet_run_authority_binding.v1",
+          source: "sarah_authority",
+          authorityFingerprint: "c".repeat(64),
+          claimRef,
+          pylonRef,
+          targetPreference: "owner_local",
+          phase: "accepted",
+        },
+      })
+      expect(firstStore.tryClaimWorkUnit({
+        claimRef: workClaimRef,
+        workUnitRef,
+        runRef,
+        workerAccountRef: "codex-owner",
+        marginalCostClass: "subscription",
+        ttl: 60_000,
+        now: firstNow,
+      })).not.toBeNull()
+      firstStore.updateWorkClaimState(workClaimRef, "in_progress", firstNow)
+      const offline: PylonFleetRunExecutionHttpPort = {
+        append: async () => {
+          throw new Error("fixture transport offline")
+        },
+      }
+      const firstReporter = openPylonFleetRunExecutionReporter({
+        store: firstStore,
+        pylonRef,
+        runRef,
+        remote: offline,
+        now: () => firstNow,
+      })
+      await firstReporter.record({
+        schema: "openagents.pylon.fleet_run_execution_event.v2",
+        kind: "run_started",
+        observedAt: firstNow.toISOString(),
+      })
+      await firstReporter.record({
+        schema: "openagents.pylon.fleet_run_execution_event.v2",
+        kind: "work_progress",
+        observedAt: firstNow.toISOString(),
+        unitRef: workUnitRef,
+        workClaimRef,
+        assignmentRef,
+        workerKind: "codex",
+        accountRefHash: hashPylonAccountRef("codex", "codex-owner"),
+        marginalCostClass: "subscription",
+        blockerRefs: [],
+      })
+      firstStore.bindFleetRunSteeringApproval({
+        approvalRef,
+        pylonRef,
+        runRef,
+        claimRef,
+        workUnitRef,
+        workClaimRef,
+        assignmentRef,
+        workerKind: "codex",
+        workerRef: "worker.pylon.codex.approval-restart",
+        accountRefHash: hashPylonAccountRef("codex", "codex-owner"),
+        toolClass: "write_file",
+        now: firstNow,
+      })
+      // Simulate process death after the binding commits but before the live
+      // callback can append its approval event. The reopened reporter must
+      // rebuild that exact event from SQLite custody.
+      firstDatabase.close()
+
+      const secondDatabase = new Database(databasePath)
+      const secondStore = createPylonOrchestrationStore(secondDatabase)
+      const delivered: PylonFleetRunAnyExecutionBatch[] = []
+      const secondReporter = openPylonFleetRunExecutionReporter({
+        store: secondStore,
+        pylonRef,
+        runRef,
+        now: () => new Date(firstNow.getTime() + 1_000),
+        remote: {
+          append: async ({ batch }) => {
+            delivered.push(batch)
+            const lastSequence = batch.events.at(-1)?.sequence ?? 0
+            return {
+              schema: "openagents.pylon.fleet_run_execution_ack.v1",
+              runRef,
+              claimRef,
+              acceptedThroughSequence: lastSequence,
+              storedEventCount: batch.events.length,
+              duplicateEventCount: 0,
+              execution: {
+                state: "running",
+                lastSequence,
+                counters: {
+                  workUnitsTotal: 1,
+                  activeAssignments: 1,
+                  acceptedAssignments: 0,
+                  failedAssignments: 0,
+                  staleAssignments: 0,
+                },
+                startedAt: firstNow.toISOString(),
+                updatedAt: firstNow.toISOString(),
+                closeouts: [],
+              },
+            }
+          },
+        },
+      })
+      await secondReporter.flush()
+      await secondReporter.flush()
+      await secondReporter.close()
+
+      const approvalEvents = delivered.flatMap(batch => batch.events)
+        .filter(event => event.kind === "approval_requested")
+      expect(approvalEvents).toEqual([expect.objectContaining({
+        kind: "approval_requested",
+        unitRef: workUnitRef,
+        workClaimRef,
+        assignmentRef,
+        workerKind: "codex",
+        workerRef: "worker.pylon.codex.approval-restart",
+        accountRefHash: hashPylonAccountRef("codex", "codex-owner"),
+        approvalRef,
+        toolClass: "write_file",
+        blockerRefs: ["blocker.pylon.fleet_run.approval_required"],
+      })])
+      expect(secondStore.listFleetRunExecutionOutbox(runRef, {
+        pendingOnly: false,
+      }).filter(entry => JSON.parse(entry.eventJson).kind === "approval_requested")).toHaveLength(1)
+      secondDatabase.close()
+    } finally {
+      await rm(root, { force: true, recursive: true })
+    }
   })
 
   test("resumes one mixed Codex/Claude/Grok run without duplicate claims and closes with exact evidence truth", async () => {

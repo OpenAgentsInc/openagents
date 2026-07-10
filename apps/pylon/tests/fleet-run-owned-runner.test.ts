@@ -531,6 +531,47 @@ describe("Pylon-owned FleetRun runner", () => {
     expect(delivered).toHaveLength(2)
   })
 
+  test("forwards only an executor-originated approval request", async () => {
+    const accountRefHash = hashPylonAccountRef("codex", "codex-a")
+    const approvals: Array<{
+      approvalRef: string
+      assignmentRef: string
+      toolClass: string
+    }> = []
+    const runner = createPylonOwnedFleetRunSupervisorRunner({
+      summary,
+      pylonRef,
+      baseUrl: "https://openagents.test",
+      readCloseout: readExactCloseout,
+      loadRegistry: async () => [account("codex-a", "codex")],
+      request: async request => requestReceipt(request),
+      runAssignment: async input => {
+        // This injected port stands in for a future interactive executor. The
+        // normal unattended implementation never calls this callback.
+        await input.onApprovalRequested?.({
+          approvalRef: "approval.public.runner.write_file",
+          assignmentRef: input.assignmentRef,
+          toolClass: "write_file",
+        })
+        return acceptedAssignment(input.assignmentRef, accountRefHash)
+      },
+    })
+
+    const result = await runner.dispatch({
+      ...dispatchInput("codex", "codex-a", 208, "fixture"),
+      onApprovalRequested: request => {
+        approvals.push(request)
+      },
+    })
+
+    expect(result.status).toBe("completed")
+    expect(approvals).toEqual([{
+      approvalRef: "approval.public.runner.write_file",
+      assignmentRef: "assignment.public.codex_agent_task",
+      toolClass: "write_file",
+    }])
+  })
+
   test("fails closed when exact closeout evidence is missing or mismatched", async () => {
     const makeRunner = (readCloseout: (assignmentRef: string) => Promise<PylonKhalaCloseoutResult>) =>
       createPylonOwnedFleetRunSupervisorRunner({

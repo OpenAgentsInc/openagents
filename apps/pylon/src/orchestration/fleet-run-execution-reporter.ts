@@ -12,6 +12,7 @@ import type {
   FleetRunExecutionOutboxEntry,
   PylonOrchestrationStore,
 } from "./store.js"
+import { projectFleetRunApprovalBinding } from "./fleet-run-execution-projection.js"
 
 export const PYLON_FLEET_RUN_EXECUTION_BATCH_SCHEMA =
   "openagents.pylon.fleet_run_execution_batch.v1" as const
@@ -59,6 +60,11 @@ const ProjectedBlockerRef = S.String.check(
 const AccountRefHash = S.String.check(S.isPattern(ACCOUNT_REF_HASH))
 const IsoTimestamp = S.String.check(S.isPattern(ISO_TIMESTAMP))
 const WorkerKind = S.Literals(["codex", "claude", "grok"])
+const ApprovalToolClass = S.String.check(
+  S.isMinLength(1),
+  S.isMaxLength(64),
+  S.isPattern(/^[a-z][a-z0-9_]*$/u),
+)
 const BlockerRefs = S.Array(BlockerRef).check(S.isMaxLength(32))
 const NonEmptyBlockerRefs = S.Array(BlockerRef).check(S.isMinLength(1), S.isMaxLength(32))
 const ProjectedBlockerRefs = S.Array(ProjectedBlockerRef).check(S.isMaxLength(32))
@@ -203,6 +209,19 @@ export const PylonFleetRunWorkProgressExecutionEventV2 = S.Struct({
   kind: S.Literal("work_progress"),
   ...PylonFleetRunExecutionV2WorkFields,
 })
+export const PylonFleetRunApprovalRequestedExecutionEventV2 = S.Struct({
+  ...PylonFleetRunExecutionEventV2Base.fields,
+  kind: S.Literal("approval_requested"),
+  unitRef: ProjectedUnitRef,
+  workClaimRef: ProjectedPublicRef,
+  assignmentRef: S.optionalKey(ProjectedPublicRef),
+  workerKind: WorkerKind,
+  workerRef: ProjectedPublicRef,
+  accountRefHash: S.optionalKey(AccountRefHash),
+  approvalRef: ProjectedPublicRef,
+  toolClass: ApprovalToolClass,
+  blockerRefs: NonEmptyProjectedBlockerRefs,
+})
 export const PylonFleetRunVerifiedEvidenceV2 = S.Struct({
   truth: S.Literal("passed"),
   verifierRef: ProjectedPublicRef,
@@ -253,6 +272,7 @@ export const PylonFleetRunTerminalExecutionEventV2 = S.Struct({
 export const PylonFleetRunExecutionEventSchemaV2 = S.Union([
   PylonFleetRunStartedExecutionEventV2,
   PylonFleetRunWorkProgressExecutionEventV2,
+  PylonFleetRunApprovalRequestedExecutionEventV2,
   PylonFleetRunAcceptedWorkTerminalExecutionEventV2,
   PylonFleetRunFailedWorkTerminalExecutionEventV2,
   PylonFleetRunTerminalExecutionEventV2,
@@ -612,7 +632,7 @@ const normalizeV2WorkEvent = (
     PylonFleetRunExecutionEventInput,
     {
       readonly schema: typeof PYLON_FLEET_RUN_EXECUTION_EVENT_SCHEMA_V2
-      readonly kind: "work_progress" | "work_terminal"
+      readonly kind: "work_progress" | "approval_requested" | "work_terminal"
     }
   >,
 ): PylonFleetRunExecutionEventInput => {
@@ -635,6 +655,7 @@ const normalizeV2WorkEvent = (
   const identityInvalid =
     (event.accountRefHash !== undefined &&
       !accountHashMatchesWorker(event.workerKind, event.accountRefHash)) ||
+    (event.kind === "approval_requested" && event.blockerRefs.length < 1) ||
     (event.kind === "work_terminal" && (
       (event.terminalState === "accepted" &&
         (event.assignmentRef === undefined || event.accountRefHash === undefined)) ||
@@ -648,7 +669,7 @@ const normalizeV2WorkEvent = (
     unitRef: event.unitRef,
     workClaimRef: event.workClaimRef,
     workerKind: event.workerKind,
-    ...(event.marginalCostClass === undefined
+    ...(!("marginalCostClass" in event) || event.marginalCostClass === undefined
       ? {}
       : { marginalCostClass: event.marginalCostClass }),
     terminalState: "failed",
@@ -664,7 +685,9 @@ const normalizeEventForRecord = (
   event: PylonFleetRunExecutionEventInput,
 ): PylonFleetRunExecutionEventInput =>
   event.schema === PYLON_FLEET_RUN_EXECUTION_EVENT_SCHEMA_V2 &&
-    (event.kind === "work_progress" || event.kind === "work_terminal")
+    (event.kind === "work_progress" ||
+      event.kind === "approval_requested" ||
+      event.kind === "work_terminal")
     ? normalizeV2WorkEvent(event)
     : event
 
@@ -750,6 +773,49 @@ export function openPylonFleetRunExecutionReporter(
   let closed = false
   let closePromise: Promise<void> | null = null
   let tail = Promise.resolve<PylonFleetRunExecutionAck | null>(null)
+
+  const enqueue = (event: PylonFleetRunExecutionEventInput): void => {
+    const normalizedEvent = normalizeEventForRecord(event)
+    if (normalizedEvent.kind === "run_started") {
+      const first = input.store.listFleetRunExecutionOutbox(input.runRef, {
+        pendingOnly: false,
+        limit: 1,
+      })[0]
+      if (first !== undefined && decodeStoredEvent(first.eventJson).kind === "run_started") {
+        return
+      }
+    }
+    const observedAt = new Date(normalizedEvent.observedAt)
+    if (!Number.isFinite(observedAt.getTime())) throw unavailable()
+    const eventRef = eventRefFor(input.runRef, claimRef, normalizedEvent)
+    input.store.enqueueFleetRunExecutionOutbox({
+      runRef: input.runRef,
+      claimRef,
+      eventRef,
+      eventJsonForSequence: sequence => canonicalJson(
+        S.decodeUnknownSync(PylonFleetRunAnyExecutionEventSchema)({
+          ...normalizedEvent,
+          sequence,
+          eventRef,
+        }, { onExcessProperty: "error" }),
+      ),
+      // The event keeps the remote audit clock. Local outbox custody uses
+      // the Pylon receipt clock and therefore remains monotonic even when
+      // parallel lifecycle callbacks arrive with reordered observedAt.
+      now: readNow(),
+    })
+  }
+
+  const recoverPendingApprovalBindings = (): void => {
+    for (const binding of input.store.listFleetRunSteeringApprovalBindings({
+      pylonRef: input.pylonRef,
+      runRef: input.runRef,
+      claimRef,
+    })) {
+      const event = projectFleetRunApprovalBinding(binding)
+      if (event !== null) enqueue(event)
+    }
+  }
 
   const nextPendingBatch = (): PylonFleetRunAnyExecutionBatch | null => {
     const pending = input.store.listFleetRunExecutionOutbox(input.runRef, {
@@ -838,6 +904,7 @@ export function openPylonFleetRunExecutionReporter(
     if (closed) return Promise.resolve(null)
     const runDrain = async (): Promise<PylonFleetRunExecutionAck | null> => {
       try {
+        recoverPendingApprovalBindings()
         return await drain()
       } catch {
         throw unavailable()
@@ -852,35 +919,7 @@ export function openPylonFleetRunExecutionReporter(
     record: async event => {
       if (!accepting || closed) throw unavailable()
       try {
-        const normalizedEvent = normalizeEventForRecord(event)
-        if (normalizedEvent.kind === "run_started") {
-          const first = input.store.listFleetRunExecutionOutbox(input.runRef, {
-            pendingOnly: false,
-            limit: 1,
-          })[0]
-          if (first !== undefined && decodeStoredEvent(first.eventJson).kind === "run_started") {
-            return
-          }
-        }
-        const observedAt = new Date(normalizedEvent.observedAt)
-        if (!Number.isFinite(observedAt.getTime())) throw unavailable()
-        const eventRef = eventRefFor(input.runRef, claimRef, normalizedEvent)
-        input.store.enqueueFleetRunExecutionOutbox({
-          runRef: input.runRef,
-          claimRef,
-          eventRef,
-          eventJsonForSequence: sequence => canonicalJson(
-            S.decodeUnknownSync(PylonFleetRunAnyExecutionEventSchema)({
-              ...normalizedEvent,
-              sequence,
-              eventRef,
-            }, { onExcessProperty: "error" }),
-          ),
-          // The event keeps the remote audit clock. Local outbox custody uses
-          // the Pylon receipt clock and therefore remains monotonic even when
-          // parallel lifecycle callbacks arrive with reordered observedAt.
-          now: readNow(),
-        })
+        enqueue(event)
       } catch {
         throw unavailable()
       }
