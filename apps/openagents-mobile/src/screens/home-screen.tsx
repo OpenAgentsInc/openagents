@@ -6,6 +6,7 @@ import {
   Easing,
   Platform,
   Pressable,
+  Text as RNText,
   View as RNView,
 } from "react-native"
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
@@ -13,6 +14,11 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import { Effect, Stream } from "@effect-native/core/effect"
 import { khalaTheme } from "@effect-native/tokens"
 
+import {
+  loadGlassComposer,
+  loadGlassIconButton,
+  loadGlassPill,
+} from "openagents-liquid-glass"
 import { EffectNativeHost } from "../effect-native/effect-native-host"
 import { sendKhalaTurn } from "../khala/khala-client"
 import {
@@ -28,14 +34,10 @@ import {
   buildHomeProgram,
   chromeProps,
   initialHomeState,
-  renderChromeComposerView,
-  renderChromeMenuButtonView,
-  renderChromeNewChatView,
-  renderChromePillView,
   renderContentView,
   renderDrawerView,
   renderMineralsSheetView,
-  renderModeMenuView,
+  surfaceModeOptions,
 } from "./home-core"
 
 // Bundled Sarah demo loop (assets/videos/sarah-demo.mp4, ~1.7 MB) — the
@@ -56,19 +58,22 @@ const askAnythingVideo = require("../../assets/videos/ask-anything.mp4") as numb
  * every tree and every intent):
  *
  *   1. EN content surface (fills the screen).
- *   2. Floating glass chrome — typed Effect Native trees (GL-1 #8647):
- *      IconButton/Button/Toolbar with `surface: "glass"`, mounted through
- *      `EffectNativeHost`. render-rn lowers them INTERNALLY through @expo/ui
- *      to real SwiftUI Liquid Glass on iOS 26+ and to the honest material
- *      approximation everywhere else (Android, Expo Go, iOS < 26) — the shell
- *      has no per-platform branches and NEVER imports @expo/ui. Every tap
- *      dispatches a typed intent through the program registry (the ONLY seam
- *      native events enter the program). The former app-local
- *      openagents-liquid-glass expo-module island is deleted (D-MB-02).
+ *   2. Floating glass chrome — SwiftUI Liquid Glass islands on iOS 26+ with
+ *      ultra-thin-material fallbacks. State enters as serializable projections
+ *      and every native action exits through the typed intent registry.
  *   3. Drawer overlay when `drawerOpen`: scrim (tap = DrawerToggled) + the EN
  *      drawer panel (a SECOND view projection of the SAME program state).
  */
 const enPlatform = Platform.OS === "android" ? ("android" as const) : ("ios" as const)
+const GlassIconButton = Platform.OS === "ios" ? loadGlassIconButton() : undefined
+const GlassPill = Platform.OS === "ios" ? loadGlassPill() : undefined
+const GlassComposer = Platform.OS === "ios" ? loadGlassComposer() : undefined
+
+const fallbackChromeStyle = {
+  backgroundColor: "rgba(11, 18, 32, 0.9)",
+  borderColor: khalaTheme.color.border,
+  borderWidth: 1,
+} as const
 
 export const HomeScreen = () => {
   // Build the program (state ref + intent registry + two view projections)
@@ -421,9 +426,6 @@ export const HomeScreen = () => {
       {/* 2. Floating glass chrome (hidden while the drawer is open) */}
       {chrome.chromeVisible ? (
         <>
-          {/* Top row: sidebar toggle, mode pill, new chat — each a typed EN
-              tree in its own host so the space between them stays
-              touch-transparent (box-none), exactly like the island layout. */}
           <RNView
             pointerEvents="box-none"
             style={{
@@ -436,30 +438,18 @@ export const HomeScreen = () => {
               gap: 10,
             }}
           >
-            <EffectNativeHost
-              viewStream={program.chromeMenuButtonViewStream}
-              report={program.report}
-              theme={khalaTheme}
-              platform={enPlatform}
-              initialView={renderChromeMenuButtonView(homeState)}
-            />
-            <EffectNativeHost
-              viewStream={program.chromePillViewStream}
-              report={program.report}
-              theme={khalaTheme}
-              platform={enPlatform}
-              initialView={renderChromePillView(homeState)}
-            />
-            <RNView style={{ flex: 1 }} pointerEvents="none" />
-            {/* Search icon removed from the chrome (owner direction
-                2026-07-09); search stays reachable in the drawer. */}
-            <EffectNativeHost
-              viewStream={program.chromeNewChatViewStream}
-              report={program.report}
-              theme={khalaTheme}
-              platform={enPlatform}
-              initialView={renderChromeNewChatView(homeState)}
-            />
+            {GlassIconButton === undefined ? (
+              <Pressable accessibilityRole="button" accessibilityLabel="Open navigation" onPress={program.chrome.toggleDrawer} style={{ width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center", ...fallbackChromeStyle }}>
+                <RNText style={{ color: khalaTheme.color.textPrimary, fontSize: 18 }}>≡</RNText>
+              </Pressable>
+            ) : <GlassIconButton symbol="line.3.horizontal" accessibilityLabelText="Open navigation" onTap={program.chrome.toggleDrawer} style={{ width: 44, height: 44 }} />}
+            {GlassPill === undefined ? (
+              <Pressable accessibilityRole="button" accessibilityLabel={chrome.pillLabel} onPress={() => program.chrome.selectSurfaceMode(homeState.surfaceMode === "openagents" ? "khala" : "openagents")} style={{ height: 44, borderRadius: 22, paddingHorizontal: 16, justifyContent: "center", ...fallbackChromeStyle }}>
+                <RNText style={{ color: khalaTheme.color.textPrimary, fontWeight: "600" }}>{chrome.pillLabel}</RNText>
+              </Pressable>
+            ) : <GlassPill label={chrome.pillLabel} symbol="sparkles" options={surfaceModeOptions} selectedId={chrome.surfaceMode} onSelect={(event) => program.chrome.selectSurfaceMode(event.nativeEvent.id === "sarah" ? "sarah" : event.nativeEvent.id === "khala" ? "khala" : "openagents")} style={{ width: 76 + chrome.pillLabel.length * 10, height: 44 }} />}
+            <RNView style={{ flex: 1 }} />
+            {GlassIconButton === undefined ? null : <GlassIconButton symbol="square.and.pencil" accessibilityLabelText="New chat" onTap={program.chrome.pressNewChat} style={{ width: 44, height: 44 }} />}
           </RNView>
 
           {/* GL-3: the tap-only glass composer belongs to the demo surface;
@@ -475,30 +465,15 @@ export const HomeScreen = () => {
               right: 16,
             }}
           >
-            <EffectNativeHost
-              viewStream={program.chromeComposerViewStream}
-              report={program.report}
-              theme={khalaTheme}
-              platform={enPlatform}
-              initialView={renderChromeComposerView(homeState)}
-            />
+            {GlassComposer === undefined ? (
+              <Pressable accessibilityRole="button" accessibilityLabel="Composer" onPress={program.chrome.pressComposer} style={{ marginHorizontal: 16, height: 54, borderRadius: 27, paddingHorizontal: 18, justifyContent: "center", ...fallbackChromeStyle }}>
+                <RNText style={{ color: khalaTheme.color.textMuted }}>{chrome.composerPlaceholder}</RNText>
+              </Pressable>
+            ) : <GlassComposer placeholder={chrome.composerPlaceholder} onTapComposer={program.chrome.pressComposer} onTapMic={program.chrome.pressMic} onTapPlus={program.chrome.pressNewChat} style={{ height: 54 }} />}
           </RNView>
           ) : null}
         </>
       ) : null}
-
-      {/* 2b. The pill's surface-mode dropdown — a typed EN DropdownMenu
-          (renders a fullscreen Modal while open; a zero-size marker View
-          while closed). */}
-      <RNView pointerEvents="box-none" style={{ position: "absolute", width: 0, height: 0 }}>
-        <EffectNativeHost
-          viewStream={program.modeMenuViewStream}
-          report={program.report}
-          theme={khalaTheme}
-          platform={enPlatform}
-          initialView={renderModeMenuView(homeState)}
-        />
-      </RNView>
 
       {/* 3. Drawer overlay — scrim + the EN drawer panel projection */}
       {homeState.drawerOpen ? (

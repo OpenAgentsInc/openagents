@@ -115,26 +115,15 @@ describe("contract openagents_mobile.home.catalog_sharing.v1", () => {
     expect(packageJson.dependencies["@expo/ui"]).toBeDefined()
   })
 
-  test("GL-1 (#8647): the D-MB-02 app-local liquid-glass island is DELETED — no module, no references", () => {
-    // Converted to catalog Host-kind mounting through the render-rn driver
-    // seam + the internal @expo/ui glass lowering; the expo-module is gone.
-    expect(existsSync(join(appRoot, "modules/openagents-liquid-glass"))).toBe(false)
-    const sources = sourceFilesUnder(join(appRoot, "src"), join(appRoot, "tests"))
-    // Banned refs assembled by concatenation so this test file's own source
-    // (which the sweep also scans) never contains them literally.
-    const bannedRefs = [
-      'from "openagents-liquid-' + 'glass"',
-      "loadGlass" + "IconButton",
-      "requireNative" + "ViewManager",
-    ]
-    for (const file of sources) {
-      const source = readFileSync(file, "utf8")
-      if (file.endsWith("component-sharing.test.ts")) continue
-      for (const banned of bannedRefs) {
-        expect(source).not.toContain(banned)
-      }
-    }
+  test("owner-required SwiftUI Liquid Glass island remains present for the iOS chrome", () => {
+    // The typed catalog remains useful, but the owner rejected its visible
+    // lowering. This module is the real iOS .glassEffect host, with serializable
+    // props in and typed intents out.
+    expect(existsSync(join(appRoot, "modules/openagents-liquid-glass"))).toBe(true)
+    const shell = readFileSync(join(appRoot, "src/screens/home-screen.tsx"), "utf8")
+    expect(shell).toContain('from "openagents-liquid-glass"')
+    expect(shell).toContain("loadGlassPill")
     const packageJson = readFileSync(join(appRoot, "package.json"), "utf8")
-    expect(packageJson).not.toContain("openagents-liquid-" + "glass")
+    expect(packageJson).toContain("openagents-liquid-glass")
   })
 })
