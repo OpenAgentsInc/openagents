@@ -406,10 +406,10 @@ does not close any product issue.
 
 Expected source files:
 
-- `docs/sol/issues/app-epic.md`
+- `docs/sol/issues/app-program.md`
 - `docs/sol/issues/app-desktop.md`
 - `docs/sol/issues/app-mobile.md`
-- `docs/sol/issues/fc-epic.md`
+- `docs/sol/issues/fc-substrate.md`
 - `docs/sol/issues/fc-5-dogfood.md`
 
 ### FAST-3 — record the R0 baseline after active app claims release

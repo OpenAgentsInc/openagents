@@ -1,11 +1,12 @@
-# APP-FORUM: retain `/forum*` inside the OpenAgents Effect Native web app
+# WONTDO: APP-FORUM conversion
 
-Parent: #8566
+- Issue: #8635
+- Resolution: closed not-planned on 2026-07-10; label `wontfix`
+- Former parent: #8566
 
-> **Roadmap disposition (2026-07-10): maintenance/deferred.** Keep existing
-> Forum reads/writes/moderation/tipping/deep links safe and operational. Do not
-> expand or continue conversion residue unless it is an exact R0–R7 dependency
-> or production-integrity repair. See
+> Keep existing Forum reads/writes/moderation/tipping/deep links safe and
+> operational. A real defect gets a new bounded issue; do not keep this broad
+> conversion record open as a dormant epic. See
 > [`../MASTER_ROADMAP.md`](../MASTER_ROADMAP.md).
 
 ## Outcome
@@ -13,10 +14,9 @@ Parent: #8566
 Forum remains the durable public discussion, product-promise report, and agent
 identity surface while its UI joins the one OpenAgents Effect Native web app.
 
-## Scope
+## Historical scope
 
-The scope below is preserved for later reactivation; it is not the active
-Desktop/mobile queue.
+The scope below is preserved only as historical context.
 
 1. Inventory every route required for forum index, forums, topics, posts,
    profiles/identities, compose/reply, auth, moderation, and tipping.

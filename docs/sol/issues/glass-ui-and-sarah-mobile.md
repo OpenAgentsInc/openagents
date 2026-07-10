@@ -1,12 +1,12 @@
-# GL: native glass UI standard library and Sarah in OpenAgents mobile
+# WONTDO: native glass/Sarah mobile presentation program
 
-Live issues: #8646 epic, #8647 GL-1, #8648 GL-2, #8649 GL-3, #8650 GL-4.
+Issue #8646 and leaf #8650 were closed not-planned on 2026-07-10 with label
+`wontfix`. #8647–#8649 remain closed historical receipts.
 
-> **Revision 25 disposition:** #8647–#8649 are closed historical receipts.
-> #8646 and presentation/Sarah integration are paused. #8650 may move only for
-> an exact correctness, accessibility, platform, or R0–R7 blocker. Do not use
-> this document as the mobile product queue; current mobile remote coding lives
-> in [`app-mobile.md`](./app-mobile.md) and the
+> This document is historical architecture evidence, not a dormant epic or
+> mobile product queue. A real correctness, accessibility, or platform defect
+> gets a new bounded issue under the active mobile track. Current mobile remote
+> coding lives in [`app-mobile.md`](./app-mobile.md) and the
 > [`mobile port plan`](../2026-07-10-khala-code-mvp-to-openagents-mobile-port-plan.md).
 
 ## Outcome
@@ -76,19 +76,19 @@ proof remain follow-on work in their owning lanes rather than GL-3 closure
 residue. No parallel FleetRun, Blueprint, intent, cursor, or receipt truth was
 created.
 
-### GL-4 — #8650: convert and delete the temporary lowering
+### Historical GL-4 — #8650: convert and delete the temporary lowering
 
 Replace `@expo/ui` component-by-component with owned SwiftUI/Compose lowerings
 as their exact behavior is proven. Exit is zero `@expo/ui` imports, no catalog
 contract change for app code, and reconciled vendored divergence.
 
-## Program gates
+## Historical program gates
 
-- GL is paused except for the exact #8650 blocker boundary above. It cannot
-  preempt Sync, Fleet, remote-workroom, mobile coding, or release work.
+- GL is closed not-planned and cannot preempt Sync, Fleet, remote-workroom,
+  mobile coding, or release work.
 - Every new mobile/renderer leaf must claim its exact scope and coordinate any
-  active #8597/#8647/#8650 hot paths before mutation. Elapsed time alone does
-  not transfer ownership.
+  active #8597 hot paths before mutation. Elapsed time alone does not transfer
+  ownership.
 - Each lane reports code-landed, fixture-proven, deployed, live-proven,
   owner-accepted, and closed separately.
 - Visual changes require deterministic simulator screenshots and owner device

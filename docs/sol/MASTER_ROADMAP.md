@@ -1,8 +1,8 @@
 # MASTER ROADMAP — reliable synced coding and fleet software on Desktop/mobile
 
 - Date: 2026-07-10
-- Updated: 2026-07-10 (Desktop runtime architecture freeze and early mobile Sync latch)
-- Revision: 26
+- Updated: 2026-07-10 (one program epic, executable issue queue, no paused backlog)
+- Revision: 27
 - Status: canonical OpenAgents implementation roadmap
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Issue source set: [`issues/README.md`](./issues/README.md)
@@ -23,12 +23,13 @@
    owner can start, inspect, steer, approve, pause, resume, stop, and recover a
    fleet without guessing which device or local cache owns reality.
 2. **Sarah is not the required front door.** Named-persona, relationship-first,
-   avatar, opener, voice, video, and A/V quality work are paused.
+   avatar, opener, voice, video, and A/V quality backlog is closed `wontfix` /
+   not-planned rather than held open as paused work.
    **Amendment (owner escalation, 2026-07-10, later the same day): the Sarah
    surface is removed, not retained.** The owner overruled the
    compatibility-substrate clause ("all sarah shit must die"): the
    `openagents.com/sarah` web page, every `/sarah/api/*` route, and the whole
-   `apps/sarah` package are deleted (epic #8610); `/sarah/*` returns an
+   `apps/sarah` package are deleted (former issue #8610); `/sarah/*` returns an
    explicit 404 tombstone; the mobile Sarah surface is stripped in a parallel
    lane; the `sarah-avatar-gpu-1` render node is stopped. The behavior
    contracts are preserved verbatim as `retired` in
@@ -104,6 +105,14 @@
     first complete real conversation slice includes a narrow mobile
     continuation proof with matching thread/message refs, versions, phases,
     and durable outcomes. Broad D3–D6 Desktop parity does not block that proof.
+14. **There is one program parent, not a pile of epics.** #8566 is the sole
+    Desktop/mobile R0–R7 program parent. #8574 and #8597 are client tracks;
+    #8638 is shared substrate; #8547/#8636 are bounded remote-workroom tasks;
+    #8640 is a proof. Non-executable presentation/web/privacy-backlog records
+    are closed not-planned with `wontfix`, removed from `roadmap:sol`, and must
+    not remain open as “paused” queues. A real defect, incident, privacy request,
+    or newly authorized product outcome starts as a new bounded issue under the
+    actual owning program.
 
 ## The product in one sentence
 
@@ -158,9 +167,9 @@ command outcomes, policy, and evidence never do. Web services may host
 authority and public/API surfaces, but web product expansion is not on the
 active P0 path.
 
-### Executive pause boundary — effective 2026-07-10
+### Executive wontdo boundary — effective 2026-07-10
 
-Pause new work on:
+The following broad backlog categories are closed not-planned:
 
 - Sarah-specific front-door, persona, relationship, role-program, and named-
   colleague UX;
@@ -172,17 +181,17 @@ Pause new work on:
   unblock identity, Sync, Fleet authority, release, or incident recovery.
 
 Do not delete proven contracts or break production consumers merely to express
-the pause. Security, privacy, data-loss, production-outage, and compatibility
-repairs remain allowed. Existing named-assistant endpoints may be used as a
-temporary adapter when they are the only landed route, but new client state and
-acceptance tests must target persona-neutral typed contracts. Reactivation
-requires a later owner decision after the P0 reliability exit.
+the closure. Security, privacy, data-loss, production-outage, and compatibility
+repairs begin as new bounded issues and remain allowed. Existing named-assistant
+endpoints may be used as a temporary adapter when they are the only landed
+route, but new client state and acceptance tests must target persona-neutral
+typed contracts. Do not reopen the broad wontdo tombstones.
 
 ## Current implementation truth
 
 The coding-fleet program starts from substantial working substrate. This list
-records landed truth, including components whose further product work is now
-paused; inclusion here is not active priority:
+records landed truth, including components whose former backlog is now closed
+not-planned; inclusion here is not active priority:
 
 - typed `FleetRun`, work planner, plan DAG, and claim registry;
 - one typed fleet intent vocabulary for worker selection, pause/resume/drain/
@@ -298,8 +307,8 @@ paused; inclusion here is not active priority:
   then-current D-MB-02 app-local island was deleted. Build 115 later restored
   an application-local `openagents-liquid-glass` SwiftUI module to correct the
   build-114 visual regression. Treat that module as a bounded current host
-  exception, not proof of final shared lowering; further visual migration is
-  paused except where it blocks R0–R7 correctness or platform support;
+  exception, not proof of final shared lowering; broad visual migration is
+  closed, and a real R0–R7 correctness/platform defect gets a bounded issue;
 - the greenfield OpenAgents Desktop line through `f4cb8ed18e`: the pinned
   electron-shadcn scaffold and Electron sandbox/isolation boundary now host a
   minimal Effect Native conversation workspace, a bounded host-owned five-
@@ -401,8 +410,9 @@ product gaps are the R0–R7 Desktop/mobile continuity and reliability gates:
   #8547, but its real brokered owner-account Firecracker turn remains open.
   Hybrid owner-local plus managed-cloud acceptance belongs to #8636 and never
   blocks the local cutover.
-- The trusted-context voice coordinator/SSE adapter remains fixture-proven and
-  paused. Model/system text is not scope authority.
+- The trusted-context voice coordinator/SSE adapter remains fixture-proven
+  historical evidence and has no open product lane. Model/system text is not
+  scope authority.
 
 P0 closes the live runtime receipt while projecting the existing Fleet system
 into reliable Desktop/mobile software; it does not build another fleet system.
@@ -524,8 +534,8 @@ generic IPC authority.
 The complete source-to-destination audit and ordered port plan is
 [`2026-07-10-khala-code-mvp-to-openagents-mobile-port-plan.md`](./2026-07-10-khala-code-mvp-to-openagents-mobile-port-plan.md).
 Every useful Khala Code MVP idea must have one explicit disposition: ported,
-replaced by a stronger shared contract, paused by owner decision, or rejected
-with a reason. Silence is not a disposition.
+replaced by a stronger shared contract, or rejected/wontdo with a reason.
+Silence is not a disposition.
 
 | Capability group | OpenAgents mobile destination | Required P0 result |
 | --- | --- | --- |
@@ -538,9 +548,9 @@ with a reason. Silence is not a disposition.
 | Quality and release | Extract legacy architecture guards, tests, stories, Maestro flows, visual baselines, crash/connectivity and iOS/Android gates | Green clean-state builds plus physical-device and migration/recovery evidence |
 
 Voice, native speech-to-text, Apple Foundation Models, avatar/video, demo
-Minerals/IAP, and persona-first navigation are accounted for but remain paused.
-They are not permitted to hide gaps in the active coding, fleet, Sync,
-workroom, or release flows.
+Minerals/IAP, and persona-first navigation are accounted for and closed
+not-planned. They are not permitted to hide gaps in the active coding, fleet,
+Sync, workroom, or release flows.
 
 ## Proof status is six distinct rungs
 
@@ -594,12 +604,12 @@ The coding cutover is staged:
 
 C2 remains the runtime-unblock point. R7 is now the owner-facing software
 cutover. Neither waits for Sarah presentation work, public-route contraction,
-or other paused scope. Historical C2 criteria and fallback rules are in
+or other closed backlog. Historical C2 criteria and fallback rules are in
 [`2026-07-09-codex-parallelism-and-sarah-fleet-cutover.md`](./2026-07-09-codex-parallelism-and-sarah-fleet-cutover.md).
 
-## P0 substrate — Fleet Command
+## P0 shared substrate — Fleet Command
 
-Epic: **[#8638](https://github.com/OpenAgentsInc/openagents/issues/8638)**.
+Substrate task: **[#8638](https://github.com/OpenAgentsInc/openagents/issues/8638)**.
 
 ### P0.1 — durable run authority (closed substrate)
 
@@ -747,38 +757,37 @@ local fleet dogfood slice.
 
 ## REMOVED — Sarah presentation, voice, video, and named front door
 
-**Amendment 2026-07-10 (owner escalation, epic #8610):** paused became
+**Amendment 2026-07-10 (owner escalation, former #8610 backlog):** Sarah was
 removed. The `/sarah` web surface, all `/sarah/api/*` routes, and `apps/sarah`
 are deleted; contracts retired into
 `packages/behavior-contracts/src/sarah-retired.ts`; `sarah-avatar-gpu-1`
-stopped. The paragraphs below are the retained pause record that preceded the
+stopped. The paragraphs below are the retained decision record that preceded the
 removal.
 
 **[#8610](https://github.com/OpenAgentsInc/openagents/issues/8610)** and all
-remaining opener/avatar/voice/video/media-quality work are paused by the
-2026-07-10 owner decision. Existing artifacts, audits, recipes, contracts, and
-closed receipts remain historical evidence. Do not spend active product or GPU
-capacity on new A/V experiments, canaries, rendering quality, semantic media
-cache, ASR/VAD, or persona polish.
+remaining opener/avatar/voice/video/media-quality work are closed not-planned.
+Existing artifacts, audits, recipes, contracts, and closed receipts remain
+historical evidence. Do not spend active product or GPU capacity on new A/V
+experiments, canaries, rendering quality, semantic media cache, ASR/VAD, or
+persona polish.
 
 Allowed work is limited to a production outage, security/privacy/data-loss
 repair, removing active cost, or preserving a compatibility floor needed by an
-already-supported consumer. Reopening requires an explicit owner decision
-after R7; the next proposal must show why direct Desktop/mobile software is no
-longer the higher-value reliability constraint.
+already-supported consumer. Such work gets a new bounded issue; do not reopen
+#8610 as a catch-all epic.
 
 The existing voice audit remains a historical decision record:
 [`docs/sarah/2026-07-09-pipecat-voice-infra-audit.md`](../sarah/2026-07-09-pipecat-voice-infra-audit.md).
 
-## Effect Native runtime work; presentation program paused
+## Effect Native runtime work; presentation program closed
 
 The 2026-07-09 glass/Sarah program is superseded as an active product lane by
 the 2026-07-10 reliability reset. Keep the architecture it proved: app code
 uses typed Effect Native components/intents, and host-specific lowering stays
 behind renderer boundaries. Continue only work required for R0–R7 interaction
 correctness, accessibility, lifecycle safety, Android/iOS parity, or removal of
-an app-local duplicate architecture. Pause aesthetic glass refinement, named-
-assistant placement, and presentation-only migrations.
+an app-local duplicate architecture. Aesthetic glass refinement, named-
+assistant placement, and presentation-only migrations are wontdo.
 
 The target hybrid contract is: `@expo/ui` is consumed strictly inside
 `render-rn` as a lowering target (SwiftUI on iOS, Compose on Android); app code
@@ -790,11 +799,11 @@ exception, not a second application-state architecture.
 
 | Lane | Issue | Purpose |
 | --- | --- | --- |
-| GL epic | #8646 | **PAUSED** presentation program; retain closed receipts |
+| GL program | #8646 | **CLOSED NOT-PLANNED**; retain historical receipts |
 | GL-1 | #8647 | CLOSED 2026-07-10 — host driver + v30 @expo/ui lowering + island deletion |
 | GL-2 | #8648 | CLOSED 2026-07-09 — glass shell shipped (builds 107–112) |
 | GL-3 | #8649 | CLOSED 2026-07-10 — build 113, production conversation, contract enforced |
-| GL-4 | #8650 | **PAUSED except R0–R7 blockers** — owned-lowering migration |
+| GL-4 | #8650 | **CLOSED NOT-PLANNED** — future real defects get bounded issues |
 
 Current narrow truth (2026-07-10): GL-1 closed at `5202a2665a` after the Scope-
 bound render-rn host driver and catalog-v30 internal `@expo/ui` lowering landed,
@@ -803,8 +812,8 @@ passed. Build 114 subsequently shipped an opaque fallback because its binary
 omitted the expected native module; build 115 source at `ee78dc1a2e` restores an
 application-local `openagents-liquid-glass` module. Therefore the closed receipt
 is historical architecture evidence, not a claim that the current tree has no
-app-local native presentation module. #8646/#8650 remain paused except where a
-narrow host/lowering defect demonstrably blocks R0–R7.
+app-local native presentation module. #8646/#8650 are closed not-planned. A
+narrow host/lowering defect that blocks R0–R7 gets a new issue under #8597.
 
 GL-3 is a closed historical receipt at `6647d998ad` / TestFlight build 113. Its
 then-current mobile shell minted/persisted the production prospect session and sent
@@ -812,16 +821,17 @@ typed turns through the same `/sarah` contracts as web, renders the production
 reply, survives restart, and shows bounded offline/reconnect states under an
 enforced behavior contract. Its current text path renders the POST result while
 SSE carries liveness/cards. Authenticated operator posture, authoritative Sync,
-and Android proof move into R1/R2/R6; voice/avatar tiers remain paused. The
+and Android proof move into R1/R2/R6; voice/avatar tiers remain wontdo. The
 Build 116 removed that Sarah/persona/session path from the active app. The
 checked-in historical issue source and exit ordering live in
 [`issues/glass-ui-and-sarah-mobile.md`](./issues/glass-ui-and-sarah-mobile.md).
 
 ## Active client programs — OpenCode-parity Desktop and synced mobile
 
-Epic: **[#8566 APP-1](https://github.com/OpenAgentsInc/openagents/issues/8566)**.
-Its Desktop/mobile reliability scope is P0 under R0–R7. Its web/presentation
-scope is maintenance or paused unless it blocks those gates.
+Program parent: **[#8566](https://github.com/OpenAgentsInc/openagents/issues/8566)**.
+It is the sole R0–R7 program epic. Desktop and mobile are tracks; Fleet is
+shared substrate; remote execution/routing are tasks; mixed-runtime dogfood is
+a proof. Former web/presentation backlog issues are closed not-planned.
 
 ### OpenAgents web — maintain, do not expand during the reliability burn
 
@@ -844,22 +854,20 @@ readiness APIs, owner-gated transition authority, and every public-safe
 receipt/verification/evidence route cited by a promise or service deliverable.
 They do not become extra product destinations.
 
-- **[#8634 APP-WEB](https://github.com/OpenAgentsInc/openagents/issues/8634):**
-  one Effect Native host, exact route allowlist, promise/service-deliverable
-  integrity preservation, redirect/410 plan, deletion of other public pages,
-  and migration of private operator functions toward Desktop.
-- **[#8635 APP-FORUM](https://github.com/OpenAgentsInc/openagents/issues/8635):**
-  retain Forum behavior and deep links inside the Effect Native web app.
-- **[#8595 APP-WEB-LANDING](https://github.com/OpenAgentsInc/openagents/issues/8595):**
-  **paused product work**; the earlier Sarah + three-app copy/cutover scope no
-  longer reflects the active owner priority.
+- **[#8634](https://github.com/OpenAgentsInc/openagents/issues/8634),
+  [#8635](https://github.com/OpenAgentsInc/openagents/issues/8635), and
+  [#8595](https://github.com/OpenAgentsInc/openagents/issues/8595)** are closed
+  `wontfix` / not-planned. Broad host consolidation, Forum conversion, and
+  landing promotion are not dormant epics. Real production defects get new
+  bounded issues.
 
 Status: #8634's earlier retained-route receipt included `/sarah` before its
 owner-directed removal and is historical for that route. Current retained
 product routing is `/`, `/forum`, and `/promises`; `/sarah/*` stays tombstoned.
-The exhaustive retirement inventory and cutover remain open. #8595's
-`/landing-en` surface is code/fixture-proven at `0625e8b291`; root promotion,
-owner copy/assets, rollback proof, and preview deletion remain open.
+The exhaustive broad retirement/cutover backlog is closed. #8595's
+`/landing-en` surface remains code/fixture-proven historical evidence at
+`0625e8b291`; root promotion, owner copy/assets, and preview deletion are not an
+open queue.
 
 Do not continue generic EN-4 route conversion or new web product scope during
 R0–R7. Preserve security, auth, API, receipt, promise-integrity, and production
@@ -888,8 +896,8 @@ ledger before new mobile changes.
 GL-1/#8647 landed the Scope-bound host driver and internal `@expo/ui` lowering.
 The build-115 compatibility repair reintroduced an application-local SwiftUI
 module after build 114's visible fallback regression. Preserve the working
-release floor and record the exception honestly; further visual migration is
-paused unless a narrow defect blocks R0–R7.
+release floor and record the exception honestly; a narrow visual defect that
+blocks R0–R7 gets a new bounded issue under #8597.
 
 - The default target is a neutral coding/fleet home: recent work, repositories,
   Sync health, attention/approvals, active threads/workrooms/runs, outcomes,
@@ -1061,19 +1069,15 @@ peer-report output as resolution authority: OpenAgents/Omega remains on Effect
 no longer a deploy blocker; any package escaping its declared line fails the
 guard.
 
-## Deferred work after the reliability exit
+## Closed speculative directions
 
-The following directions remain dependency-held until P0 evidence pulls a
-bounded next slice:
+The following broad records are closed not-planned, not held as future epics:
 
 - **[#8642 BM-CORRECT](https://github.com/OpenAgentsInc/openagents/issues/8642):**
-  inspect/correct/delete/export Blueprint facts through provenance-bearing
-  revisions, scoped tombstones, authorized propagation, and receipts. It
-  activates after R7 or immediately when the first real user requests a
-  correction/deletion or a live privacy incident fires the tripwire.
+  the speculative correction/deletion product lane is closed. A real privacy
+  request or incident opens a new bounded P0 privacy issue immediately.
 - **[#8643 SARAH-ROLES](https://github.com/OpenAgentsInc/openagents/issues/8643):**
-  **paused by owner decision**; do not generalize the relationship-mode seam or
-  create a named colleague during R0–R7.
+  the role-program/named-colleague backlog is closed not-planned.
 
 - named-assistant standing responsibilities using `agent_definition.v1`;
 - Blueprint Map maturation into the company brain;
@@ -1082,47 +1086,39 @@ bounded next slice:
 - outbound sales and email automation;
 - broader assurance, connector, and network programs.
 
-When explicitly reactivated, each begins against the same typed authority and
-action contracts used by Desktop/mobile. It does not begin as a fourth product
-surface or a parallel state universe.
+Any later explicitly authorized product direction begins as a new bounded issue
+against the same typed authority/action contracts. It does not reopen these
+tombstones, begin as a fourth product surface, or create a parallel state
+universe.
 
 ## Canonical open issue set
 
-There are **15 open `roadmap:sol` issue records**. #8652 was reopened later on
-2026-07-10 but currently carries no `roadmap:sol` label and remains outside the
-active program; portal work remains paused under Revision 26. Previous labels
-and prose do not all match the new priority. The disposition below is
-authoritative for sequencing; reconcile live labels, issue bodies, and claims
-before starting or continuing a slice. Closed #8639 and #8647–#8649 remain
-landed substrate. #8652's portal repairs remain production evidence but are not
-an active roadmap burn item.
+There are **seven open `roadmap:sol` records under one program parent**. #8566
+is the sole program epic. #8652 remains closed and outside the active program;
+its portal repairs are production evidence, not an active burn item. Closed
+#8639 and #8647–#8649 remain landed substrate. #8653 is a completed bounded
+Desktop leaf. Reconcile live labels, issue bodies, and claims before starting a
+slice.
 
 | Roadmap disposition | Issue | Purpose now |
 | --- | --- | --- |
-| **P0 active** | #8566 | Parent for the R0–R7 Effect Native Desktop/mobile reliability program |
-| **P0 active** | #8574 | OpenCode-parity Desktop, authoritative Sync, Fleet cockpit, and D0–D6 |
-| **P0 active** | #8597 | Effect Native mobile coding/fleet client, full Khala Code MVP fold-in, and iOS/Android proof |
+| **P0 program parent** | #8566 | Sole R0–R7 Effect Native Desktop/mobile program epic |
+| **P0 client track** | #8574 | OpenCode-parity Desktop, Runtime Gateway, authoritative Sync, Fleet cockpit, and D0–D6 |
+| **P0 client track** | #8597 | Effect Native mobile Sync/coding/fleet client and iOS/Android proof |
 | **P0 active substrate** | #8638 | Persona-neutral Fleet Command contracts projected into both clients |
 | **P0 active proof** | #8640 | Real simultaneous Codex + Claude runtime burn, then R3/R7 client receipt |
-| **P0 active remote execution** | #8547 | Brokered Codex inside a real Agent Computer/workroom for mobile-originated coding |
-| **P0 active remote routing** | #8636 | Owner-local/remote target routing through the same proven run and workroom contract |
-| Maintenance/deferred | #8634 | Web host/public-route work only when required for R0–R7 or production integrity |
-| Maintenance/deferred | #8635 | Retained Forum maintenance; no active conversion expansion |
-| **PAUSED** | #8595 | Landing/root copy and product cutover |
-| **PAUSED** | #8610 | Sarah presentation, opener, avatar, voice, and video quality |
-| **PAUSED** | #8643 | Sarah roles, named colleagues, and relationship-mode expansion |
-| **PAUSED** | #8646 | Glass/Sarah-in-app presentation epic; retain closed architectural receipts |
-| **PAUSED except R0–R7 blocker** | #8650 | Owned visual lowering migration |
-| P2 privacy tripwire | #8642 | Blueprint correction/deletion/provenance export; activate for real privacy/data-integrity need |
+| **P0 bounded task** | #8547 | Brokered Codex inside a real Agent Computer/workroom for mobile-originated coding |
+| **P0 bounded task** | #8636 | Owner-local/remote target routing through the same proven run and workroom contract |
 
-`roadmap:sol` remains the program label. “Paused” means no new feature or
-quality scope is pulled; it does not authorize breaking production, abandoning
-an active unsafe partial migration, or ignoring a security/privacy incident.
+Closed `wontfix` / not-planned and removed from `roadmap:sol`: #8595, #8610,
+#8634, #8635, #8642, #8643, #8646, and #8650. They are historical tombstones,
+not dormant queues. Production/security/privacy/accessibility defects get new
+bounded issues under the owning program.
 
 ## Execution order
 
 1. Land the Desktop architecture freeze and reconcile #8566/#8574/#8597/
-   #8638/#8640 claims to Revision 26. Preserve R0 on both clients: green clean-
+   #8638/#8640 claims to Revision 27. Preserve R0 on both clients: green clean-
    state builds/tests/smokes, honest capability manifests, no fake authority,
    and the existing hardened Desktop boundary.
 2. Implement F1/R1/R2 through both clients together from the published
@@ -1156,11 +1152,11 @@ an active unsafe partial migration, or ignoring a security/privacy incident.
    deprecated clients without converting them in place.
 8. Close R7 with a sustained owner dogfood and release receipt that begins a
    remote coding task on mobile and continues it on Desktop without forking
-   thread, workroom, Fleet, or receipt truth. Only then expand cloud placement
-   breadth or reactivate another product lane. #8642 may activate earlier only
-   for a real privacy/data-integrity request or incident.
-   All Sarah/persona, A/V, presentation, landing, portal, and optional visual-
-   lowering work remains paused until an explicit owner reactivation.
+   thread, workroom, Fleet, or receipt truth. Only then consider new bounded
+   cloud-placement breadth. Real privacy/data-integrity requests or incidents
+   open immediate scoped P0 issues; they do not reopen #8642. Sarah/persona,
+   A/V, presentation, landing, portal, and optional visual-lowering backlog
+   remains closed not-planned.
 
 ## Implementation laws
 
@@ -1188,7 +1184,7 @@ an active unsafe partial migration, or ignoring a security/privacy incident.
    Desktop or mobile; web receives only required public/API/operations work
    until an owner decision changes this focus.
 10. **Constant motion with integration bias.** Owner/cloud blockers cause work
-   to shift to another R0–R7 slice, never to paused presentation scope.
+    to shift to another R0–R7 slice, never to closed presentation backlog.
 11. **Developer claims are explicit.** The live Sol GitHub issue set is the
    cross-session claim ledger; same-session coordination belongs to the root.
    Follow [`CLAIM_PROTOCOL.md`](./CLAIM_PROTOCOL.md), name hot files and hot
@@ -1259,7 +1255,7 @@ revision diary or restore the old 30-item phase queue.
 
 **Historical snapshot.** The facts below describe the mid-day state before the
 owner's Desktop/mobile reliability reset. Any “in flight,” “P0,” or sequencing
-language here is superseded by Revision 26 and the disposition table above.
+language here is superseded by Revision 27 and the disposition table above.
 
 Factual status updates since the last Sol reconciliation (Fable lane,
 evidence on the named issues):
@@ -1298,5 +1294,5 @@ evidence on the named issues):
   in flight.
 
 *Editing note: this factual reconciliation was written by the **Fable** lane at
-explicit owner request. Revision 26 preserves it as evidence but supersedes its
+explicit owner request. Revision 27 preserves it as evidence but supersedes its
 sequencing with the reliable Desktop/mobile program above.*

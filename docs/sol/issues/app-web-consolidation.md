@@ -1,12 +1,13 @@
-# APP-WEB: one OpenAgents Effect Native web app and public-route retirement
+# WONTDO: APP-WEB consolidation and public-route retirement
 
-Parent: #8566
+- Issue: #8634
+- Resolution: closed not-planned on 2026-07-10; label `wontfix`
+- Former parent: #8566
 
-> **Roadmap disposition (2026-07-10): maintenance/deferred.** Preserve auth,
-> security, APIs, promises/service-deliverable integrity, receipts, health, and
-> production operations. Do not continue broad route conversion/retirement or
-> web product expansion during R0–R7 unless an exact Desktop/mobile reliability
-> dependency or production incident requires it. See
+> This backlog is not a dormant epic. Preserve auth, security, APIs, promises/
+> service-deliverable integrity, receipts, health, and production operations.
+> A real production defect or exact Desktop/mobile dependency gets a new
+> bounded issue; do not reopen this broad consolidation record. See
 > [`../MASTER_ROADMAP.md`](../MASTER_ROADMAP.md).
 
 ## Owner direction
@@ -30,10 +31,9 @@ Legally required `/privacy` and `/terms`, authentication callbacks, other
 public APIs, assets, health checks, and machine-readable receipts are
 infrastructure exceptions, not additional product pages.
 
-## Scope
+## Historical scope
 
-The scope below is retained for later reactivation. During R0–R7 only bounded
-production-integrity subsets may be claimed.
+The scope below is retained only as historical context.
 
 1. Establish one route allowlist and one serving host for the retained web app.
    Treat `/promises` as retained, not as an exception scheduled for later

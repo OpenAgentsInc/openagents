@@ -1,10 +1,10 @@
-# P0 FC-CLOUD-1: Codex inside a real Agent Computer/workroom
+# P0 TASK: Codex inside a real Agent Computer/workroom
 
 - Issue: #8547
 - Parent capability: #8636 hybrid target routing
 - Mobile consumer: #8597
 - Status: active P0 minimum remote-workroom path; advanced capacity follows R7
-- Authority: [`../MASTER_ROADMAP.md`](../MASTER_ROADMAP.md), Revision 25
+- Authority: [`../MASTER_ROADMAP.md`](../MASTER_ROADMAP.md), Revision 27
 
 ## Outcome
 

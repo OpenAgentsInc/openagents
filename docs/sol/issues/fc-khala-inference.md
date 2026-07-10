@@ -2,7 +2,7 @@
 
 > **Historical closed substrate:** #8600 is closed. Retain persona-neutral
 > gateway, caps, fallback, and receipt contracts. Sarah-specific presentation
-> is paused and this file is not a current dispatch queue.
+> has no open product lane and this file is not a current dispatch queue.
 
 ## Outcome
 

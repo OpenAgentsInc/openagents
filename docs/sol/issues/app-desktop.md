@@ -1,9 +1,12 @@
-# P0 APP-DESKTOP: OpenCode-parity OpenAgents Desktop
+# P0 TRACK: OpenAgents Desktop workbench, Sync, and runtime gateway
 
 - Issue: #8574
+- Program parent: #8566
 - Destination: `apps/openagents-desktop`
 - Status: active P0 under R0–R7/D0–D6
 - Authority: [`../MASTER_ROADMAP.md`](../MASTER_ROADMAP.md)
+- Architecture:
+  [`../2026-07-10-openagents-desktop-product-architecture.md`](../2026-07-10-openagents-desktop-product-architecture.md)
 - Capability audit:
   [`../2026-07-10-opencode-khala-openagents-desktop-parity-audit.md`](../2026-07-10-opencode-khala-openagents-desktop-parity-audit.md)
 - Bounded leaves:
@@ -23,21 +26,22 @@ behavior/service/release extraction source until successor and migration proof.
 
 ## Current truthful baseline
 
-The greenfield app has:
+The greenfield app now has:
 
 - hardened Electron sandbox/isolation/navigation/permission boundaries;
 - a minimal Effect Native conversation workspace;
-- local bounded thread persistence and host-held gateway completion with honest
-  configuration failure;
-- project-root selection, bounded root listing, and read-only file preview;
+- local bounded thread persistence, recent read-only Codex history, and
+  host-held gateway completion with honest configuration failure;
+- project-root selection, bounded root listing/read/edit/save with conflict and
+  atomic-write checks, plus typed read-only Git status/diff;
+- a closed command registry and palette;
 - a local diagnostic Fleet brief that explicitly is not a FleetRun;
-- Codex readiness and isolated Pylon device-auth Settings; and
-- mobile-icon byte parity, 61 tests, build, and real-Electron smoke at
-  `19ebe9741f`.
+- Codex readiness and isolated Pylon device-auth Settings.
 
-The current Desktop typecheck is red because semantic `Compose` is passed to an
-OpenAI icon source that supports `ChatCompose`. The exact bounded repair is
-FAST-1 in the delegation packet; do not cast around it or fork the icon catalog.
+The normal Desktop `verify` gate is green: typecheck, contract/e2e tests,
+bundle, and real-Electron fixture smoke. The current architecture receipt is
+`f49a66b4aa`; this is still fixture/development proof, not a signed/live-product
+claim.
 
 Not yet claimed: authoritative Sync threads, complete streamed session state,
 full workbench, visible authoritative Fleet cockpit, signed distribution, live

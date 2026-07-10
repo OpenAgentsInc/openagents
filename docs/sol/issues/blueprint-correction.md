@@ -1,10 +1,14 @@
-# P2 BM-CORRECT: Blueprint correction, deletion, provenance export, and privacy tripwire
+# WONTDO: Blueprint correction/deletion product backlog
+
+- Issue: #8642
+- Resolution: closed not-planned on 2026-07-10; label `wontfix`
 
 ## Priority posture
 
-Paused until R7 unless the tripwire below fires. A real correction/deletion/
-privacy/data-integrity request activates it immediately. The presentation
-surface may be direct Desktop/mobile software; Sarah is not required.
+This speculative product lane is closed. A real correction/deletion/privacy/
+data-integrity request or incident creates a new bounded P0 privacy issue
+immediately; it does not reactivate this broad backlog. The presentation surface
+may be direct Desktop/mobile software; Sarah is not required.
 
 ## Outcome
 
@@ -14,11 +18,11 @@ it propagated, and export current facts with provenance and tombstones.
 
 ## Automatic tripwire
 
-The first real, non-fixture conversation in which a user asks OpenAgents to correct
-or delete remembered information must create a bounded owner-private
-`blueprint_correction_requested` receipt and immediately reclassify this issue
-for active privacy work. The same applies to a live privacy incident involving
-an incorrect or over-broad Blueprint projection. Do not wait for a periodic
+The first real, non-fixture conversation in which a user asks OpenAgents to
+correct or delete remembered information must create a bounded owner-private
+`blueprint_correction_requested` receipt and immediately open a new scoped
+privacy issue. The same applies to a live privacy incident involving an
+incorrect or over-broad Blueprint projection. Do not wait for a periodic
 roadmap review to notice either event.
 
 ## Scope

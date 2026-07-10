@@ -1,12 +1,14 @@
-# PAUSED: Sarah presentation quality — avatar, opener, and UI polish
+# WONTDO: Sarah presentation quality — avatar, opener, and UI polish
+
+- Issue: #8610
+- Resolution: closed not-planned on 2026-07-10; label `wontfix`
 
 ## Priority posture
 
-**Paused by Master Revision 25.** Do not dispatch avatar, opener, voice, video,
-ASR/VAD, media-cache/admission, crossover, or presentation-polish work. Preserve
-supported compatibility and repair an exact security/outage/correctness defect;
-reactivation requires an explicit later owner decision. The detailed scope
-below is historical backlog, not a ready queue.
+Do not dispatch avatar, opener, voice, video, ASR/VAD, media-cache/admission,
+crossover, or presentation-polish work. A supported-surface security/outage/
+correctness defect gets a new bounded issue. The detailed scope below is
+historical backlog, not a ready queue or a dormant epic.
 
 ## Consolidated scope
 

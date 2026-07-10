@@ -1,7 +1,7 @@
-# PAUSED — APP-WEB-LANDING: OpenAgents landing on Effect Native
+# WONTDO: APP-WEB-LANDING
 
 - Issue: #8595
-- Paused: 2026-07-10 by the Desktop/mobile reliability reset
+- Resolution: closed not-planned on 2026-07-10; label `wontfix`
 - Authority: [`../MASTER_ROADMAP.md`](../MASTER_ROADMAP.md)
 
 Do not implement landing copy, brand, root promotion, CTA, preview deletion, or
@@ -9,9 +9,9 @@ presentation work during R0–R7. Existing production security, legal, auth,
 availability, broken-link, and misleading-claim defects may be repaired without
 reactivating product scope.
 
-The prior Sarah-first three-app copy direction is superseded. If the owner
-reactivates this issue after R7, rewrite its outcome against the shipped
-Desktop/mobile product and current distribution truth before implementation.
+The prior Sarah-first three-app copy direction is superseded. Any future
+landing change begins as a new bounded issue against shipped product and
+distribution truth; do not reopen this backlog record.
 
 ## Frozen prior scope
 

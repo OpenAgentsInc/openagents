@@ -1,7 +1,7 @@
-# P0 APP-1: reliable Effect Native Desktop/mobile coding and fleet software
+# P0 PROGRAM: reliable Effect Native Desktop/mobile coding and fleet software
 
 - Issue: #8566
-- Status: active P0 parent under Master Revision 25
+- Status: sole active program parent under Master Revision 27
 - Authority: [`../MASTER_ROADMAP.md`](../MASTER_ROADMAP.md)
 - Execution:
   [`../2026-07-10-112832-cdt-reliable-fleet-implementation-delegation.md`](../2026-07-10-112832-cdt-reliable-fleet-implementation-delegation.md)
@@ -10,8 +10,9 @@
 
 Desktop and mobile are the active product clients. OpenAgents web remains a
 supported public/API/operations surface, but web expansion does not preempt the
-reliability program. Sarah is a compatibility adapter and possible future
-consumer of typed actions, not the required front door.
+reliability program. The Sarah product surface is removed. Any future assistant
+must consume the same typed actions without becoming a new authority or front
+door.
 
 Both clients use one Effect Native application/component/intent grammar and
 one Khala Sync identity/state/outcome reality:
@@ -21,18 +22,23 @@ OpenAgents mobile <---- Khala Sync ----> OpenAgents Desktop
 remote coding + fleet                    full workbench + fleet
 ```
 
-## Child lanes
+## Program tracks and bounded work
 
-- #8574 — OpenAgents Desktop: D0–D6, practical OpenCode parity, Sync, Fleet,
+- #8574 — Desktop track: D0–D6, practical OpenCode parity, Sync, Fleet,
   security, lifecycle, and distribution.
-- #8597 — OpenAgents mobile: R0/R1/R2/R3/R6, full useful Khala Code MVP
+- #8597 — mobile track: R0/R1/R2/R3/R6, full useful Khala Code MVP
   capability fold-in, remote coding, fleet controls, receipts, and iOS/Android.
-- #8547/#8636 — P0 remote-workroom execution and target routing required by the
+- #8547/#8636 — bounded P0 remote-workroom execution and target-routing tasks
+  required by the
   mobile coding exit; advanced elastic/provider breadth remains follow-on.
-- #8638/#8640 — existing Fleet substrate plus real mixed-account runtime/client
-  proof.
-- #8634/#8635 — maintenance/deferred web integrity only during R0–R7.
-- #8595/#8610/#8643/#8646/#8650 — paused as recorded in the master roadmap.
+- #8638 — existing Fleet substrate consumed by the clients; it is not another
+  epic.
+- #8640 — bounded real mixed-account runtime/client proof.
+
+The retired web/presentation/privacy-backlog records #8595, #8610, #8634,
+#8635, #8642, #8643, #8646, and #8650 are closed `wontfix` / not-planned.
+Production defects and real privacy requests get a new bounded incident or task;
+these backlog tombstones are not dormant epics.
 
 ## Shared implementation laws
 

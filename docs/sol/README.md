@@ -5,9 +5,10 @@ direction is reliable Desktop/mobile coding and fleet software built with
 Effect Native and Khala Sync. OpenAgents mobile absorbs the useful Khala Code
 MVP capability set—including coding through brokered remote workrooms—rather
 than remaining a supervision-only client. Sarah/persona, relationship-first
-front-door, A/V, presentation, landing, portal, and optional visual-polish work
-are paused unless an exact security, production-integrity, compatibility,
-accessibility, or R0–R7 blocker requires a bounded repair.
+front-door, A/V, presentation, landing, portal, optional visual-polish, and
+broad web-conversion backlog issues are closed `wontfix` / not-planned. Real
+security, production-integrity, compatibility, accessibility, and privacy
+defects begin as new bounded issues under their actual owning program.
 
 These documents never replace runtime authority, product promises, owner gates,
 live issue state, tests, or receipts. They turn owner decisions into dependency
@@ -21,7 +22,7 @@ When documents disagree, use this order:
    [`INVARIANTS.md`](../../INVARIANTS.md) for workspace/repository law.
 2. Owning schemas, behavior contracts, Source Authority, product promises, and
    runtime policy for enforceable behavior.
-3. [`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md), Revision 26, for current product
+3. [`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md), Revision 27, for current product
    direction, priority, R0–R7 gates, and issue disposition.
 4. Live GitHub issue state and [`CLAIM_PROTOCOL.md`](./CLAIM_PROTOCOL.md) for
    current ownership and collision avoidance.

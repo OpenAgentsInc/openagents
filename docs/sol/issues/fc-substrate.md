@@ -1,7 +1,8 @@
-# P0 EPIC: Fleet Command substrate for reliable Desktop/mobile control
+# P0 SUBSTRATE: Fleet Command contracts for Desktop/mobile
 
 - Issue: #8638
-- Status: active P0 substrate parent
+- Program parent: #8566
+- Status: active P0 shared substrate consumed by the client tracks; not an epic
 - Authority: [`../MASTER_ROADMAP.md`](../MASTER_ROADMAP.md)
 
 ## Owner direction
@@ -24,7 +25,7 @@ information architecture.
 Do not create a second Fleet schema, client-local claim universe, or transcript-
 inferred outcome.
 
-## Active child work
+## Active consumers and bounded proof
 
 1. #8640 — clean real simultaneous Codex+Claude runtime proof, then R3/R7
    Desktop/mobile acceptance. An existing compatibility adapter may initiate
@@ -58,7 +59,7 @@ adapter and historical canary remain regression evidence.
 - Every cross-session mutation follows
   [`../CLAIM_PROTOCOL.md`](../CLAIM_PROTOCOL.md).
 
-## Epic exit
+## Substrate exit
 
 1. #8640 produces one accepted real Codex+Claude runtime receipt with zero
    duplicate claims or silent substitution.

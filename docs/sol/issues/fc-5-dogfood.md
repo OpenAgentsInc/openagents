@@ -1,4 +1,4 @@
-# FC-5: live Codex + Claude runtime and two-client Fleet proof
+# P0 PROOF: live Codex + Claude runtime and two-client Fleet
 
 - Issue: #8640
 - Parent: #8638
@@ -8,7 +8,8 @@
 This live-proof issue supplies runtime evidence to the reliable persona-neutral
 Desktop/mobile coding and Fleet program. It does not make Sarah the required
 front door, own mobile information architecture, or replace #8547/#8636's
-remote-workroom acceptance. Persona/A/V/presentation scope is paused.
+remote-workroom acceptance. Persona/A/V/presentation backlog is closed
+not-planned and is not part of this proof.
 
 ## Outcome
 

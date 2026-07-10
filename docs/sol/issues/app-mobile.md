@@ -1,8 +1,9 @@
-# P0 APP-MOBILE: OpenAgents mobile remote coding and fleet control
+# P0 TRACK: OpenAgents mobile Sync, remote coding, and fleet control
 
 - Issue: #8597
+- Program parent: #8566
 - Destination: `apps/openagents-mobile`
-- Status: active P0 under Master Revision 25 / R0–R7 / M0–M7
+- Status: active P0 under Master Revision 27 / R0–R7 / M0–M7
 - Authority: [`../MASTER_ROADMAP.md`](../MASTER_ROADMAP.md)
 - Bounded leaves:
   [`../2026-07-10-112832-cdt-reliable-fleet-implementation-delegation.md`](../2026-07-10-112832-cdt-reliable-fleet-implementation-delegation.md)

@@ -1,11 +1,14 @@
-# P2 SARAH-ROLES: typed role programs and evidence-based colleague split
+# WONTDO: typed role programs and evidence-based colleague split
+
+- Issue: #8643
+- Resolution: closed not-planned on 2026-07-10; label `wontfix`
 
 ## Priority posture
 
-**Paused by Master Revision 25.** Named colleagues, role expansion, and
-relationship-first navigation are not active after #8640 or R7 automatically.
-Reactivation requires an explicit later owner decision and must consume the
-same typed Desktop/mobile action/authority contracts.
+Named colleagues, role expansion, and relationship-first navigation are not an
+active or deferred product lane. Any later owner-directed capability begins as
+a new bounded issue and must consume the same typed Desktop/mobile action and
+authority contracts.
 
 ## Outcome
 

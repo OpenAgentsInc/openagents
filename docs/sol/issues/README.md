@@ -9,23 +9,23 @@ The live GitHub issue is the operational copy and claim ledger. When a checked-
 in source and live body differ, reconcile both before using the body for
 dispatch.
 
-As of 2026-07-10 there are 15 open `roadmap:sol` issue records. Older Sarah-
-first/P1 labels do not override Master Revision 25.
+As of 2026-07-10 there are seven open `roadmap:sol` records under one program
+parent. Older Sarah-first/P1 labels do not override Master Revision 27.
 
 ## P0 — reliable Desktop/mobile fleet software
 
-- [`app-epic.md`](./app-epic.md) — #8566 parent for R0–R7 Effect Native
+- [`app-program.md`](./app-program.md) — #8566 sole program parent for R0–R7 Effect Native
   Desktop/mobile reliability.
-- [`app-desktop.md`](./app-desktop.md) — #8574 practical OpenCode-parity
+- [`app-desktop.md`](./app-desktop.md) — #8574 Desktop implementation track: practical OpenCode-parity
   Desktop, authoritative Sync, Fleet cockpit, and D0–D6.
-- [`app-mobile.md`](./app-mobile.md) — #8597 Effect Native mobile remote coding,
+- [`app-mobile.md`](./app-mobile.md) — #8597 mobile implementation track: Effect Native remote coding,
   useful Khala Code MVP fold-in, Fleet control, and iOS/Android proof.
 - [`fc-cloud-codex.md`](./fc-cloud-codex.md) — #8547 first real brokered Codex
   Agent Computer/workroom required by the mobile coding MVP.
 - [`fc-4-hybrid-cloud.md`](./fc-4-hybrid-cloud.md) — #8636 explicit owner-local/
   managed-remote target routing through one claim/run/workroom contract.
-- [`fc-epic.md`](./fc-epic.md) — #8638 existing Fleet Command substrate
-  projected into both clients; not a Sarah front-door epic.
+- [`fc-substrate.md`](./fc-substrate.md) — #8638 existing Fleet Command substrate
+  projected into both clients; not another program or epic.
 - [`fc-5-dogfood.md`](./fc-5-dogfood.md) — #8640 real Codex+Claude runtime proof
   followed by R3/R7 client acceptance.
 
@@ -44,34 +44,29 @@ The minimum remote-workroom slice of #8547/#8636 is P0 because R6/R7 now
 requires mobile-originated coding. Advanced elastic placement, additional
 providers, and cloud-cost optimization remain post-R7 breadth.
 
-## Maintenance/deferred web
+## Closed `wontdo` / not-planned records
 
-- [`app-web-consolidation.md`](./app-web-consolidation.md) — #8634 production/
-  API/integrity maintenance only during R0–R7.
-- [`app-forum.md`](./app-forum.md) — #8635 retained Forum maintenance; no
-  expansion during R0–R7.
-
-## Paused
-
+- [`app-web-consolidation.md`](./app-web-consolidation.md) — #8634 broad web
+  consolidation.
+- [`app-forum.md`](./app-forum.md) — #8635 broad Forum conversion.
 - [`app-landing.md`](./app-landing.md) — #8595 landing/root product work.
 - [`sarah-presentation.md`](./sarah-presentation.md) — #8610 Sarah/avatar/
   opener/voice/video/presentation work.
 - [`role-programs-and-colleagues.md`](./role-programs-and-colleagues.md) —
   #8643 roles/named colleagues/persona expansion.
 - [`glass-ui-and-sarah-mobile.md`](./glass-ui-and-sarah-mobile.md) — #8646 and
-  #8650 presentation/lowering program; #8647–#8649 are closed historical
-  receipts. #8650 may move only for an exact correctness/accessibility/
-  platform/R0–R7 blocker.
-
-Paused does not mean abandoned production safety. Security, privacy, data-loss,
-active-cost, outage, and already-supported compatibility repairs remain
-allowed. No new feature/polish scope starts without an owner reactivation.
-
-## Privacy tripwire
-
+  #8650 presentation/lowering program; #8647–#8649 remain closed historical
+  receipts.
 - [`blueprint-correction.md`](./blueprint-correction.md) — #8642 correction,
-  deletion, provenance export, and tombstone propagation. Activate after R7 or
-  immediately for a real user request/privacy/data-integrity incident.
+  deletion, provenance export, and tombstone-propagation product backlog.
+
+These records are closed with GitHub reason `not planned`, labeled `wontfix`,
+and removed from `roadmap:sol`. Do not reopen them as dormant epics. A real
+security, privacy, data-loss, accessibility, outage, or supported-surface defect
+gets a new bounded incident/task under its actual owning program.
+
+Completed bounded leaves, including #8653's recent local Codex-history
+projection, remain closed receipts rather than open P0 queue items.
 
 ## Other source records
 
