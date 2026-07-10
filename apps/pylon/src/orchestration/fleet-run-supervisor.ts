@@ -32,6 +32,10 @@ import {
   type PylonFleetRunUsageEvidence,
   type PylonFleetRunUsageEvidenceCarrier,
 } from "./fleet-run-usage-evidence.js"
+import {
+  ACCOUNT_HEALTH_REDISPATCH_DISPOSITION,
+  taskHasAccountHealthRedispatchDisposition,
+} from "./fleet-run-retry-disposition.js"
 
 export const FLEET_RUN_SUPERVISOR_MAX_SPAWN_COUNT = 10
 
@@ -395,21 +399,10 @@ const accountHealthFailureFor = (
     : { blockerRefs: accountHealthRefs, status }
 }
 
-const ACCOUNT_HEALTH_REDISPATCH_DISPOSITION = "account_health_redispatch" as const
-
-const taskHasAccountHealthRedispatchDisposition = (
+const storedTaskHasAccountHealthRedispatchDisposition = (
   store: PylonOrchestrationStore,
   taskId: string,
-): boolean => {
-  const task = store.getTask(taskId)
-  if (task?.status !== "failed" || task.result === null) return false
-  try {
-    const result = JSON.parse(task.result) as { readonly retryDisposition?: unknown }
-    return result.retryDisposition === ACCOUNT_HEALTH_REDISPATCH_DISPOSITION
-  } catch {
-    return false
-  }
-}
+): boolean => taskHasAccountHealthRedispatchDisposition(store.getTask(taskId))
 
 const terminalResultFor = (
   result: FleetRunSupervisorDispatchResult,
@@ -455,7 +448,7 @@ const accountHealthRedispatchStateForRun = (
       latestByWorkUnit.set(claim.workUnitRef, claim)
     }
     if (
-      taskHasAccountHealthRedispatchDisposition(
+      storedTaskHasAccountHealthRedispatchDisposition(
         store,
         fleetRunTaskIdForClaim(runRef, claim.claimRef),
       )
@@ -470,8 +463,11 @@ const accountHealthRedispatchStateForRun = (
   for (const [workUnitRef, latest] of latestByWorkUnit) {
     const taskId = fleetRunTaskIdForClaim(runRef, latest.claimRef)
     const task = store.getTask(taskId)
-    const retryableAccountFailure = taskHasAccountHealthRedispatchDisposition(store, taskId)
-    if (latest.state === "released" && retryableAccountFailure) {
+    const retryableAccountFailure = storedTaskHasAccountHealthRedispatchDisposition(store, taskId)
+    if (
+      (latest.state === "released" || latest.state === "expired") &&
+      retryableAccountFailure
+    ) {
       pendingWorkUnitRefs.add(workUnitRef)
       continue
     }
@@ -1610,6 +1606,7 @@ export async function tickFleetRunSupervisor(
   if (
     reconciled.state === "running" &&
     dispatchableWorkUnits.length === 0 &&
+    accountHealthRedispatch.pendingWorkUnitRefs.size === 0 &&
     !dependencyPending &&
     activeAssignmentsForRun(store, run.runRef) === 0 &&
     reconciled.refillPolicy.stopCondition === "backlog_empty"

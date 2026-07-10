@@ -28,6 +28,7 @@ import {
   decodeFleetRunWorkSourceDescriptor,
   type FleetRunWorkSourceDescriptor,
 } from "./fleet-run-work-source.js"
+import { fleetRunTaskIdForClaim } from "./fleet-run-refs.js"
 
 export const ORCHESTRATION_SCHEMA_VERSION = 12
 
@@ -3544,17 +3545,33 @@ export class PylonOrchestrationStore {
     const run = this.getFleetRun(runRef)
     if (run === null) throw new Error(`unknown fleet run: ${runRef}`)
     const tasks = this.listTasks().filter((task) => task.spec.fleetRunRef === runRef)
+    const claims = this.listWorkClaims({ runRef })
+    const workUnitRefByTaskId = new Map(
+      claims.map(claim => [fleetRunTaskIdForClaim(runRef, claim.claimRef), claim.workUnitRef]),
+    )
+    const workUnitKeys = new Set(claims.map(claim => `claim:${claim.workUnitRef}`))
+    for (const task of tasks) {
+      if (!workUnitRefByTaskId.has(task.id)) workUnitKeys.add(`task:${task.id}`)
+    }
+    const completedWorkUnitKeys = new Set(tasks
+      .filter(task => task.status === "completed")
+      .map(task => {
+        const workUnitRef = workUnitRefByTaskId.get(task.id)
+        return workUnitRef === undefined ? `task:${task.id}` : `claim:${workUnitRef}`
+      }))
     const counters: FleetRunCounters = {
-      workUnitsTotal: tasks.length,
+      workUnitsTotal: workUnitKeys.size,
       activeAssignments: tasks.filter((task) => task.status === "dispatched").length,
-      completedAssignments: tasks.filter((task) => task.status === "completed").length,
+      completedAssignments: completedWorkUnitKeys.size,
       failedAssignments: tasks.filter((task) => task.status === "failed").length,
       blockedAssignments: tasks.filter((task) => task.status === "blocked").length,
     }
-    const terminalCount = counters.completedAssignments + counters.failedAssignments + counters.blockedAssignments
+    const terminalTaskCount = tasks.filter(task =>
+      task.status === "completed" || task.status === "failed" || task.status === "blocked"
+    ).length
     const shouldClose =
       tasks.length > 0 &&
-      terminalCount === tasks.length &&
+      terminalTaskCount === tasks.length &&
       counters.activeAssignments === 0 &&
       (run.state === "running" || run.state === "draining")
     const state: FleetRunState = shouldClose && counters.failedAssignments === 0 && counters.blockedAssignments === 0

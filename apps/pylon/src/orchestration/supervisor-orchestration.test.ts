@@ -14,6 +14,7 @@ import {
   type VerifyCommandEvidence,
 } from "./merge-policy.js"
 import { encodeAgentRunnerStatusEventForDispatchContext } from "./status-control.js"
+import { fleetRunTaskIdForClaim } from "./fleet-run-refs.js"
 import {
   FLEET_RUN_SCHEMA,
   WORK_CLAIM_SCHEMA,
@@ -759,6 +760,63 @@ describe("Pylon supervisor orchestration store", () => {
       blockedAssignments: 0,
     })
     expect(reconciled.state).toBe("running")
+  })
+
+  test("counts retried attempts as one work unit while retaining failed-attempt history", () => {
+    const now = new Date("2026-07-01T12:00:00.000Z")
+    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const runRef = "fleet_run.reconcile.retry_unit"
+    const workUnitRef = "issue.8640"
+    store.createFleetRun({
+      runRef,
+      objective: "Retry one unit on another account.",
+      workSource: "issue_list",
+      targetConcurrency: 1,
+      workerKind: "claude",
+      state: "running",
+      now,
+    })
+    const failedClaim = store.tryClaimWorkUnit({
+      claimRef: "claim.retry.failed",
+      workUnitRef,
+      runRef,
+      workerAccountRef: "claude-revoked",
+      ttl: 60_000,
+      now,
+    })!
+    store.releaseWorkClaim(failedClaim.claimRef, now)
+    store.createTask({
+      id: fleetRunTaskIdForClaim(runRef, failedClaim.claimRef),
+      spec: { ...baseTaskSpec, title: "failed attempt", fleetRunRef: runRef },
+      status: "failed",
+      now,
+    })
+    const completedClaim = store.tryClaimWorkUnit({
+      claimRef: "claim.retry.completed",
+      workUnitRef,
+      runRef,
+      workerAccountRef: "claude-ready",
+      ttl: 60_000,
+      now,
+    })!
+    store.updateWorkClaimState(completedClaim.claimRef, "closeout", now)
+    store.createTask({
+      id: fleetRunTaskIdForClaim(runRef, completedClaim.claimRef),
+      spec: { ...baseTaskSpec, title: "completed retry", fleetRunRef: runRef },
+      status: "completed",
+      now,
+    })
+
+    const reconciled = store.reconcileFleetRun(runRef, now)
+
+    expect(reconciled.counters).toEqual({
+      workUnitsTotal: 1,
+      activeAssignments: 0,
+      completedAssignments: 1,
+      failedAssignments: 1,
+      blockedAssignments: 0,
+    })
+    expect(reconciled.state).toBe("stopped")
   })
 
   test("reconciles completed FleetRuns when every DAG-tracked work unit is terminal", () => {

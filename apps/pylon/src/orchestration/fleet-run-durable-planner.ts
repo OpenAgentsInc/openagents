@@ -4,6 +4,7 @@ import {
   FLEET_RUN_INTERRUPTED_CLOSEOUT_SCHEMA,
   FleetRunInterruptedCloseoutSchema,
 } from "./fleet-run-recovery.js"
+import { taskHasAccountHealthRedispatchDisposition } from "./fleet-run-retry-disposition.js"
 import { fleetRunTaskIdForClaim } from "./fleet-run-refs.js"
 import type { FleetRunSupervisorPlanner } from "./fleet-run-supervisor.js"
 import type { PylonOrchestrationStore, WorkClaim } from "./store.js"
@@ -67,6 +68,13 @@ const interruptedClaim = (store: PylonOrchestrationStore, claim: WorkClaim): boo
   }
 }
 
+const accountHealthRedispatchClaim = (
+  store: PylonOrchestrationStore,
+  claim: WorkClaim,
+): boolean => taskHasAccountHealthRedispatchDisposition(
+  store.getTask(fleetRunTaskIdForClaim(claim.runRef, claim.claimRef)),
+)
+
 const failedWorkUnitRefs = (
   store: PylonOrchestrationStore,
   claims: readonly WorkClaim[],
@@ -78,6 +86,10 @@ const failedWorkUnitRefs = (
     // A typed interrupted closeout reserves a replacement; it is not evidence
     // that the work unit itself failed and must not poison DAG retry planning.
     .filter((claim) => !interruptedClaim(store, claim))
+    // Account-health failure belongs to the named attempt, not the DAG unit.
+    // Preserve it as attempt history while leaving the same unit claimable on
+    // another ready account, including after an expired-claim restart window.
+    .filter((claim) => !accountHealthRedispatchClaim(store, claim))
     .map((claim) => claim.workUnitRef))]
 }
 

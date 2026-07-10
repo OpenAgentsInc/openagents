@@ -8,6 +8,8 @@ import {
   FleetRunDurablePlannerError,
   createPylonDurableFleetRunPlanner,
 } from "../src/orchestration/fleet-run-durable-planner.js"
+import { fleetRunTaskIdForClaim } from "../src/orchestration/fleet-run-refs.js"
+import { ACCOUNT_HEALTH_REDISPATCH_DISPOSITION } from "../src/orchestration/fleet-run-retry-disposition.js"
 import { openPylonFleetRunRuntime } from "../src/orchestration/fleet-run-runtime.js"
 import {
   fleetRunWorkSourceDescriptorFrom,
@@ -226,6 +228,82 @@ describe("Pylon durable FleetRun work-source planner", () => {
       }
     } finally {
       await rm(root, { force: true, recursive: true })
+    }
+  })
+
+  test("keeps a DAG unit claimable after released or expired account-health attempts", async () => {
+    for (const terminalClaimState of ["released", "expired"] as const) {
+      const store = createPylonOrchestrationStore(new Database(":memory:"))
+      const runRef = `fleet_run.fc5.dag_account_redispatch.${terminalClaimState}`
+      const run = store.createFleetRun({
+        runRef,
+        objective: "Retry the root DAG unit on another healthy account.",
+        workSource: "plan_dag",
+        workSourceDescriptor: planDagDescriptor(),
+        targetConcurrency: 1,
+        workerKind: "claude",
+        state: "running",
+        now: fixedNow,
+      })
+      const workUnitRef = "plan_dag:plan.fc2.durable:node:root"
+      const claim = store.tryClaimWorkUnit({
+        claimRef: `claim.fc5.dag-account-health.${terminalClaimState}`,
+        workUnitRef,
+        runRef,
+        workerAccountRef: "claude-revoked",
+        ttl: 1_000,
+        now: fixedNow,
+      })!
+      const taskId = fleetRunTaskIdForClaim(runRef, claim.claimRef)
+      const contextId = `context.fc5.dag-account-health.${terminalClaimState}`
+      store.createTask({
+        id: taskId,
+        spec: {
+          title: "Failed account attempt",
+          prompt: "Retry this public DAG unit.",
+          runnerKind: "claude_agent",
+          fleetRunRef: runRef,
+        },
+        now: fixedNow,
+      })
+      store.createDispatchContext({
+        id: contextId,
+        assigneeHandle: "claude-revoked",
+        runnerKind: "claude_agent",
+        lastHeartbeatAt: fixedNow,
+        now: fixedNow,
+      })
+      store.markDispatched(taskId, contextId, fixedNow)
+      store.recordWorkerDone({
+        contextId,
+        taskId,
+        status: "failed",
+        result: JSON.stringify({
+          retryDisposition: ACCOUNT_HEALTH_REDISPATCH_DISPOSITION,
+        }),
+        now: fixedNow,
+      })
+      const planAt = terminalClaimState === "released"
+        ? fixedNow
+        : new Date(fixedNow.getTime() + 2_000)
+      if (terminalClaimState === "released") {
+        store.releaseWorkClaim(claim.claimRef, fixedNow)
+      } else {
+        store.expireWorkClaims(planAt)
+      }
+
+      const plan = await createPylonDurableFleetRunPlanner({ store }).plan({
+        run,
+        now: planAt,
+      })
+
+      expect(plan.claimable.map(unit => unit.workUnitRef)).toEqual([workUnitRef])
+      expect(plan.skipped).toEqual([
+        expect.objectContaining({
+          workUnitRef: "plan_dag:plan.fc2.durable:node:dependent",
+          skipReason: "dependency_pending",
+        }),
+      ])
     }
   })
 

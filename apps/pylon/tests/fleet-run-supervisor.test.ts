@@ -24,6 +24,7 @@ import {
   fixtureCandidates,
   planWorkCandidates,
 } from "../src/orchestration/work-planner.js"
+import { ACCOUNT_HEALTH_REDISPATCH_DISPOSITION } from "../src/orchestration/fleet-run-retry-disposition.js"
 
 const fixedNow = new Date("2026-07-09T12:00:00.000Z")
 
@@ -1195,6 +1196,89 @@ describe("Pylon-owned FleetRun supervisor", () => {
     expect(new Set(claims.map(claim => claim.workUnitRef)).size).toBe(1)
     expect(store.listTasks("failed")).toHaveLength(1)
     expect(store.listTasks("completed")).toHaveLength(1)
+    expect(completedTick.run.counters).toEqual({
+      workUnitsTotal: 1,
+      activeAssignments: 0,
+      completedAssignments: 1,
+      failedAssignments: 1,
+      blockedAssignments: 0,
+    })
+  })
+
+  test("does not call a pending account-health redispatch backlog-empty", async () => {
+    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const run = createRun(store, {
+      runRef: "fleet_run.fc5.pending_redispatch_not_empty",
+      workUnits: 1,
+      targetConcurrency: 1,
+      workerKind: "claude",
+    })
+    let accountFailed = false
+    const candidate = fixtureCandidates({ kind: "fixture", count: 1 })[0]!
+    const dispatchedAccounts: string[] = []
+    const options = {
+      store,
+      pylonRef: "pylon.owner.fc5.pending-redispatch-not-empty",
+      runRef: run.runRef,
+      planner: {
+        plan: async ({ now }: { readonly now: Date }) => {
+          if (!accountFailed) {
+            return planWorkCandidates("fixture", [candidate], { claimRegistry: store, now })
+          }
+          const failed = {
+            ...candidate,
+            status: "skipped" as const,
+            skipReason: "failed" as const,
+          }
+          return {
+            schema: "openagents.khala_code.work_planner.v1" as const,
+            source: "fixture" as const,
+            generatedAt: now.toISOString(),
+            units: [failed],
+            claimable: [],
+            skipped: [failed],
+          }
+        },
+      },
+      capacity: {
+        accounts: async () => [
+          {
+            accountRef: "claude-a-revoked",
+            advertisedCapacity: 1,
+            marginalCostClass: "subscription" as const,
+            workerKind: "claude" as const,
+          },
+          {
+            accountRef: "claude-z-ready",
+            advertisedCapacity: 1,
+            marginalCostClass: "subscription" as const,
+            workerKind: "claude" as const,
+          },
+        ],
+      },
+      runner: {
+        dispatch: async (input: FleetRunSupervisorDispatchInput) => {
+          dispatchedAccounts.push(input.accountRef)
+          accountFailed = true
+          return {
+            assignmentRef: `assignment.claude.pending.${input.claim.claimRef}`,
+            lifecycle: [{
+              ...lifecycleEvent("assignment_run.completed", "rejected"),
+              blockerRefs: ["blocker.pylon.fleet_runner.claude_credentials_revoked"],
+            }],
+            status: "failed" as const,
+          }
+        },
+      },
+      clock: { now: () => fixedNow },
+    }
+
+    expect((await tickFleetRunSupervisor(options)).run.state).toBe("running")
+    const pending = await tickFleetRunSupervisor(options)
+
+    expect(pending.run.state).toBe("running")
+    expect(pending.dispatched).toBe(0)
+    expect(dispatchedAccounts).toEqual(["claude-a-revoked"])
   })
 
   test("does not loop an ordinary task failure onto another ready account", async () => {
@@ -1535,6 +1619,108 @@ describe("Pylon-owned FleetRun supervisor", () => {
           accountRefHash: hashPylonAccountRef("claude_agent", "claude-a-revoked"),
           failureKind: "permanent",
         })])
+      secondDb.close()
+    } finally {
+      await rm(root, { force: true, recursive: true })
+    }
+  })
+
+  test("redispatches after restart when the failed account claim expired in the crash window", async () => {
+    const root = await mkdtemp(join(tmpdir(), "pylon-fc5-expired-account-redispatch-"))
+    const dbPath = join(root, "orchestration.sqlite")
+    const accounts: readonly FleetRunSupervisorAccount[] = [
+      {
+        accountRef: "claude-a-revoked",
+        advertisedCapacity: 1,
+        marginalCostClass: "subscription",
+        workerKind: "claude",
+      },
+      {
+        accountRef: "claude-z-ready",
+        advertisedCapacity: 1,
+        marginalCostClass: "subscription",
+        workerKind: "claude",
+      },
+    ]
+    try {
+      const firstDb = new Database(dbPath)
+      const firstStore = createPylonOrchestrationStore(firstDb)
+      const run = createRun(firstStore, {
+        runRef: "fleet_run.fc5.expired_account_redispatch",
+        workUnits: 1,
+        targetConcurrency: 1,
+        workerKind: "claude",
+      })
+      await tickFleetRunSupervisor({
+        store: firstStore,
+        pylonRef: "pylon.owner.fc5.expired-account-redispatch",
+        runRef: run.runRef,
+        planner: planner(firstStore, 1),
+        capacity: { accounts: async () => accounts },
+        runner: {
+          dispatch: async input => ({
+            assignmentRef: `assignment.claude.crash-window.${input.claim.claimRef}`,
+            lifecycle: [lifecycleEvent("assignment_run.accepted", "accepted")],
+            status: "accepted",
+          }),
+        },
+        claimTtlMs: 1_000,
+        clock: { now: () => fixedNow },
+      })
+      const failedTask = firstStore.listTasks("dispatched")[0]!
+      const failedContext = firstStore.listDispatchContexts("dispatched")[0]!
+      firstStore.recordWorkerDone({
+        contextId: failedContext.id,
+        taskId: failedTask.id,
+        status: "failed",
+        result: JSON.stringify({
+          retryDisposition: ACCOUNT_HEALTH_REDISPATCH_DISPOSITION,
+        }),
+        failure: {
+          blockerRefs: ["blocker.pylon.fleet_runner.claude_credentials_revoked"],
+          status: "failed",
+        },
+        now: fixedNow,
+      })
+      // Deliberately omit claim release: this is the process-death window
+      // between durable task completion and its separate claim transition.
+      firstDb.close()
+
+      const secondDb = new Database(dbPath)
+      const secondStore = createPylonOrchestrationStore(secondDb)
+      const dispatchedAccounts: string[] = []
+      const resumed = await tickFleetRunSupervisor({
+        store: secondStore,
+        pylonRef: "pylon.owner.fc5.expired-account-redispatch",
+        runRef: run.runRef,
+        planner: planner(secondStore, 1),
+        capacity: { accounts: async () => accounts },
+        runner: {
+          dispatch: async input => {
+            dispatchedAccounts.push(input.accountRef)
+            return {
+              assignmentRef: `assignment.claude.after-crash.${input.claim.claimRef}`,
+              lifecycle: [lifecycleEvent("assignment_run.completed", "closed")],
+              status: "completed" as const,
+            }
+          },
+        },
+        clock: { now: () => new Date(fixedNow.getTime() + 2_000) },
+      })
+
+      expect(dispatchedAccounts).toEqual(["claude-z-ready"])
+      expect(resumed.run.state).toBe("completed")
+      expect(resumed.run.counters).toEqual({
+        workUnitsTotal: 1,
+        activeAssignments: 0,
+        completedAssignments: 1,
+        failedAssignments: 1,
+        blockedAssignments: 0,
+      })
+      expect(secondStore.listWorkClaims({ runRef: run.runRef, state: "expired" }))
+        .toHaveLength(1)
+      expect(secondStore.listWorkClaims({ runRef: run.runRef, state: "closeout" }))
+        .toHaveLength(1)
       secondDb.close()
     } finally {
       await rm(root, { force: true, recursive: true })
