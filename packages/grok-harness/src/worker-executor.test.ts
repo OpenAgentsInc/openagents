@@ -156,6 +156,7 @@ describe("GrokHeadlessWorkerExecutor", () => {
       async runCommand(argv, cwd) {
         expect(argv).toContain("-p")
         expect(argv).toContain("--no-auto-update")
+        expect(argv).toContain("--always-approve")
         expect(cwd).toBe("/tmp/work")
         const promptIdx = argv.indexOf("-p")
         const prompt = argv[promptIdx + 1] ?? ""

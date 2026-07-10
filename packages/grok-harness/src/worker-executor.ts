@@ -558,6 +558,10 @@ export function createGrokHeadlessWorkerExecutor(options: {
         binary,
         "--no-auto-update",
         "--no-alt-screen",
+        // This is an owner-local, isolated claimed-work executor with no stdin.
+        // Without explicit unattended approval Grok can answer successfully
+        // while declining every edit/tool prompt, producing a false clean run.
+        "--always-approve",
         "-p",
         prompt,
         "--cwd",

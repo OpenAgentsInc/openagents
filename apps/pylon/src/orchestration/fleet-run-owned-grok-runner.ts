@@ -138,6 +138,8 @@ export type CreatePylonOwnedGrokClaimedWorkPortInput = {
     readonly env: NodeJS.ProcessEnv
   }) => GrokWorkerExecutorPort) | undefined
   readonly materializeWorkspace?: PylonOwnedGrokWorkspacePort | undefined
+  /** Test seam for asserting the production checkout/cache composition. */
+  readonly materializeCheckout?: typeof materializeGitCheckoutWorkspaceWithLease | undefined
   readonly checkoutRunner?: WorkspaceCheckoutRunner | undefined
   readonly runVerifier?: PylonOwnedGrokVerifierPort | undefined
   readonly workerTimeoutMs?: number | undefined
@@ -317,10 +319,18 @@ const defaultWorkspacePort = (
       workspaceRef,
     }
   }
-  const materialized = await materializeGitCheckoutWorkspaceWithLease({
+  const materialized = await (
+    input.materializeCheckout ?? materializeGitCheckoutWorkspaceWithLease
+  )({
     cacheRoot: join(input.summary.paths.cache, "grok-fleet-workspaces"),
     checkout,
     ...(input.checkoutRunner === undefined ? {} : { checkoutRunner: input.checkoutRunner }),
+    ...(input.checkoutRunner === undefined
+      ? {
+          preparedWorktreeCacheRoot: join(input.summary.paths.cache, "workspace-prepared-cache"),
+          prebuiltBaselineCacheRoot: join(input.summary.paths.cache, "workspace-prebuilt-baselines"),
+        }
+      : {}),
     leaseRef: request.assignmentRef,
     now: request.now,
     refPrefix: "workspace.pylon.grok",

@@ -248,6 +248,49 @@ describe("Pylon-owned exact Grok claimed-work adapter", () => {
     }
   })
 
+  test("uses the shared prepared and prebuilt dependency caches for production Grok checkouts", async () => {
+    const root = await mkdtemp(join(tmpdir(), "pylon-grok-prebuilt-"))
+    const pylonHome = join(root, "pylon")
+    const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), { PYLON_HOME: pylonHome })
+    const accountRef = "grok-prebuilt"
+    const accountHome = join(pylonHome, "accounts", "grok", accountRef)
+    const workingDirectory = join(root, "workspace")
+    await mkdir(accountHome, { recursive: true })
+    await mkdir(workingDirectory, { recursive: true })
+    let materializeInput: Record<string, unknown> | null = null
+
+    try {
+      const result = await createPylonOwnedGrokClaimedWorkPort({
+        summary,
+        now: () => fixedNow,
+        loadRegistry: async () => [accountFor(accountHome, accountRef)],
+        createExecutor: () => successfulExecutor(),
+        materializeCheckout: async input => {
+          materializeInput = input as unknown as Record<string, unknown>
+          return {
+            cleanupRef: "cleanup.public.grok.prebuilt",
+            sourceRef: "source.public.grok.prebuilt",
+            workingDirectory,
+            workspaceRef: "workspace.public.grok.prebuilt",
+          }
+        },
+        runVerifier: async () => ({ exitCode: 0, timedOut: false }),
+      }).dispatch(dispatchFor(accountRef, 202))
+
+      expect(result.status).toBe("completed")
+      expect(materializeInput).toMatchObject({
+        cacheRoot: join(summary.paths.cache, "grok-fleet-workspaces"),
+        preparedWorktreeCacheRoot: join(summary.paths.cache, "workspace-prepared-cache"),
+        prebuiltBaselineCacheRoot: join(summary.paths.cache, "workspace-prebuilt-baselines"),
+        repositoryCacheRoot: join(summary.paths.cache, "workspace-git-cache"),
+        workspaceStateRoot: join(summary.paths.cache, "workspace-leases"),
+      })
+      expect(materializeInput).not.toHaveProperty("checkoutRunner")
+    } finally {
+      await rm(root, { force: true, recursive: true })
+    }
+  })
+
   test("runs the built-in deterministic fixture verifier before promoting CLI success", async () => {
     const root = await mkdtemp(join(tmpdir(), "pylon-grok-fixture-verifier-"))
     const pylonHome = join(root, "pylon")
