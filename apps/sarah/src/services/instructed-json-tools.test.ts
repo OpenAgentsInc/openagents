@@ -185,6 +185,15 @@ describe("AV-3 instructed-JSON tool calling (#8598)", () => {
     expect(hostile).not.toContain("OPENAGENTS_AGENT_TOKEN")
     expect(hostile).not.toContain("private-value")
 
+    const hostileString = formatInstructedToolReply(
+      "coding_fleet_start",
+      false,
+      { error: "PRIVATE /Users/owner/.openagents/token" },
+    )
+    expect(hostileString).toContain("tool_failed")
+    expect(hostileString).not.toContain("/Users/owner")
+    expect(hostileString).not.toContain("PRIVATE")
+
     const wrongRetryability = formatInstructedToolReply(
       "coding_fleet_start",
       false,

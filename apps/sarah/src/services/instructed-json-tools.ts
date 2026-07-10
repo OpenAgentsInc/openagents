@@ -273,7 +273,12 @@ export function formatInstructedToolReply(
       toolName === "coding_fleet_start"
         ? formatSafeFleetAuthorityError(output)
         : null
-    const stringError = boundedStringToolError(output)
+    // The coding tool crosses the owner authority boundary. Its closed error
+    // envelope is the only text we may render; a thrown arbitrary string can
+    // contain request, auth, or transport detail and must collapse to the
+    // fixed fallback. Public lookup tools retain their bounded legacy string.
+    const stringError =
+      toolName === "coding_fleet_start" ? null : boundedStringToolError(output)
     const err = safeAuthorityError ?? stringError ?? "tool_failed"
     return `I couldn't complete that lookup (${toolName}: ${err}). Want me to try a different angle?`
   }
