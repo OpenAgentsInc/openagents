@@ -91,7 +91,8 @@ describe("desktopShellView (state -> component tree)", () => {
     expect(nodeByKey(view, "sidebar-thread-icon-test-thread")).toBeUndefined()
     expect(nodeByKey(view, "sidebar-thread-time-test-thread")?._tag).toBe("Text")
     expect(nodeByKey(view, "shell-send-icon")?.name).toBe("Plane")
-    expect(nodeByKey(view, "codex-thread-details-title")?.content).toBe("New chat")
+    expect(nodeByKey(view, "codex-thread-details-title")).toBeUndefined()
+    expect(nodeByKey(view, "codex-thread-details-label")).toBeUndefined()
   })
 
   test("buttons carry the typed intent refs (no ad hoc handlers)", () => {

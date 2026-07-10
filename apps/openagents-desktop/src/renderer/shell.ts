@@ -533,8 +533,8 @@ const shellSidebar = (state: DesktopShellState): View =>
           variant: "ghost",
           onPress: IntentRef("DesktopChatSelected", StaticPayload(thread.id)),
           a11y: { label: `Open chat ${thread.title}` },
+          style: { flex: 1 },
         }),
-        Spacer({ key: `sidebar-thread-spacer-${thread.id}`, flex: true }),
         Text({ key: `sidebar-thread-time-${thread.id}`, content: formatRelativeTimestamp(thread.updatedAt), variant: "caption", color: "textMuted" }),
       ])),
     ],
@@ -578,8 +578,6 @@ const selectedCodexThreadDetails = (state: DesktopShellState): View | null => {
   return Card(
     { key: "codex-thread-details", padding: "2", radius: "lg", style: { width: "full", maxWidth: columnWidth, alignSelf: "center", surface: "glass" } },
     [Stack({ key: "codex-thread-details-content", direction: "column", gap: "1" }, [
-      Text({ key: "codex-thread-details-label", content: "LOCAL CODEX HISTORY", variant: "caption", color: "textMuted" }),
-      Text({ key: "codex-thread-details-title", content: thread.title, variant: "body", color: "textPrimary" }),
       Text({ key: "codex-thread-details-meta", content: fields.join(" · "), variant: "caption", color: "textMuted" }),
     ])],
   )
