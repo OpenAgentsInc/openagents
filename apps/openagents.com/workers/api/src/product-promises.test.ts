@@ -2451,6 +2451,24 @@ describe('public product promises document', () => {
       )
     }
 
+    const multiEarningPylon = byId.get('pylon.v0_3_multi_earning_node.v1')
+    expect(multiEarningPylon).toMatchObject({
+      state: 'planned',
+      blockerRefs: expect.arrayContaining([
+        'blocker.product_promises.pylon_fleetrun_closeout_receipts_missing',
+      ]),
+      evidenceRefs: expect.arrayContaining([
+        'route:/api/pylons/{pylonRef}/fleet-runs/claim',
+        'route:/api/pylons/{pylonRef}/fleet-runs/accept',
+      ]),
+    })
+    expect(multiEarningPylon?.safeCopy).toContain(
+      'route-level intake evidence only',
+    )
+    expect(multiEarningPylon?.verification).toContain(
+      'blocker.product_promises.pylon_fleetrun_closeout_receipts_missing',
+    )
+
     expect(byId.get('pylon.first_real_model_training_run.v1')).toMatchObject({
       blockerRefs: [
         'blocker.product_promises.model_ladder_network_rungs_not_run',
