@@ -112,6 +112,12 @@ const transportConfigured = (baseUrl: string | undefined): boolean => {
   }
 }
 
+const offlineExecutionRemote: PylonFleetRunExecutionHttpPort = {
+  append: async () => {
+    throw new Error("Pylon FleetRun execution projection transport is unavailable")
+  },
+}
+
 /**
  * Open the node-owned activation authority and resume only explicitly armed
  * runs. All mutation is serialized through this service. The durable row is
@@ -204,13 +210,13 @@ export async function openPylonNodeFleetRunActivationService(
     blocked.delete(runRef)
     let reporter: PylonFleetRunExecutionReporter | null = null
     try {
-      reporter = input.executionRemote === undefined
+      reporter = run.authorityBinding?.phase !== "accepted"
         ? null
         : openPylonFleetRunExecutionReporter({
             store: authority.store,
             pylonRef,
             runRef,
-            remote: input.executionRemote,
+            remote: input.executionRemote ?? offlineExecutionRemote,
           })
       const executionReporter = reporter
       await executionReporter?.flush().catch(() => null)

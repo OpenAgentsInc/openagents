@@ -249,6 +249,57 @@ describe("headless Pylon FleetRun activation", () => {
     })
   })
 
+  test("journals an accepted Sarah run locally when authenticated delivery is offline", async () => {
+    await fixture(async ({ summary }) => {
+      const runRef = "fleet_run.sarah.1123456789abcdefabcd"
+      const runtime = await openPylonFleetRunRuntime({ bootstrap: summary })
+      runtime.store.createFleetRun({
+        runRef,
+        objective: "Public-safe offline execution journal fixture",
+        workSource: "fixture",
+        targetConcurrency: 1,
+        workerKind: "auto",
+        state: "running",
+        authorityBinding: {
+          schema: "openagents.pylon.fleet_run_authority_binding.v1",
+          source: "sarah_authority",
+          authorityFingerprint: "c".repeat(64),
+          claimRef: "claim.sarah_fleet_run.1123456789abcdef01234567",
+          pylonRef,
+          targetPreference: "owner_local",
+          phase: "accepted",
+        },
+      })
+      await runtime.close()
+
+      let observe: ((event: FleetRunSupervisorObservedEvent) => void | Promise<void>) | undefined
+      const service = await openPylonNodeFleetRunActivationService({
+        summary,
+        pylonRef,
+        baseUrl: "https://openagents.test",
+        openExecutor: async input => {
+          observe = input.onLifecycle
+          return { close: () => Promise.resolve() }
+        },
+      })
+      await service.arm(runRef)
+      await observe?.({ kind: "completed", runRef, reason: "backlog_empty" })
+      await service.close()
+
+      const reopened = await openPylonFleetRunRuntime({ bootstrap: summary })
+      try {
+        expect(reopened.store.listFleetRunExecutionOutbox(runRef, {
+          pendingOnly: true,
+        }).map(entry => JSON.parse(entry.eventJson).kind)).toEqual([
+          "run_started",
+          "run_terminal",
+        ])
+      } finally {
+        await reopened.close()
+      }
+    })
+  })
+
   test("keeps an arm blocked instead of opening an executor without configured transport", async () => {
     await fixture(async ({ summary }) => {
       const runRef = "fleet_run.fc2.no_transport"
