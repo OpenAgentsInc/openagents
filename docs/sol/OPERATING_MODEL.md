@@ -1,7 +1,7 @@
 # Sol day-to-day operating model
 
-- Date: 2026-07-09
-- Status: working contract for grounded implementation planning
+- Updated: 2026-07-10
+- Status: active working contract under Master Roadmap Revision 25
 
 ## Role
 
@@ -27,6 +27,8 @@ Before recommending or implementing a roadmap slice:
 
 1. Read [`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md), the live Sol-owned GitHub
    issues, and the relevant source body under [`issues/`](./issues/README.md).
+   For mobile/remote-workroom scope, also read the
+   [`Khala Code MVP port ledger`](./2026-07-10-khala-code-mvp-to-openagents-mobile-port-plan.md).
 2. Fetch `origin/main`; inspect the current commit, dirty state, open PRs, and
    the relevant issue body/comments.
 3. Read the owning `AGENTS.md`, `INVARIANTS.md`, product spec, behavior
@@ -34,7 +36,7 @@ Before recommending or implementing a roadmap slice:
 4. Trace the current code path end to end. Do not infer “unstarted” from an
    open issue or “done” from a landed file.
 5. Classify the work as:
-   - **critical path** — the next serial Sarah-first dependency;
+   - **critical path** — the next unsatisfied R0–R7 dependency;
    - **parallel slice** — useful and non-colliding;
    - **owner gate** — code is done; human/prod action remains;
    - **dependency hold** — more code now would duplicate or speculate;
@@ -42,7 +44,7 @@ Before recommending or implementing a roadmap slice:
 6. Choose the smallest slice that closes a real loop or removes a duplicate
    seam.
 
-## Parallel implementation before the Sarah cutover
+## Parallel implementation during the reliability cutover
 
 In this current Codex app runtime, Sol plus up to three concurrently active
 subagents are available. This is a session-scoped cap, not a universal Codex
@@ -60,11 +62,10 @@ or session posts a GitHub `CLAIM` before implementation and follows the
 on a schema name, catalog version, registry, or package key; those name one
 integration owner explicitly.
 
-Before C1, this Codex app remains the implementation control plane. After one
-integrated C1 fixture receipt, send only low-risk pinned canaries through
-Sarah; routine dispatch remains here until #8640 Phase A cleanly satisfies C2.
-After C2, bounded owner-local work defaults to Sarah/Khala/Pylon and this app
-remains break-glass/control-plane/review. See
+The C1 fleet substrate is crossed. #8640 C2 remains a mixed-account runtime
+proof, not a product-front-door switch. Direct Desktop/mobile software becomes
+the accepted owner workflow only after R7. Existing Sarah routes may remain
+bounded compatibility/canary adapters; they do not own product sequencing. See
 [`2026-07-09-codex-parallelism-and-sarah-fleet-cutover.md`](./2026-07-09-codex-parallelism-and-sarah-fleet-cutover.md).
 
 ## Sol and Terra execution split
@@ -72,16 +73,16 @@ remains break-glass/control-plane/review. See
 Terra is an authorized parallel implementation lane under this roadmap. Sol
 continues to own priority, dependencies, shared-contract integration, proof-rung
 reconciliation, and the master roadmap. Terra may independently pull and ship a
-ready P1 leaf when it has one observable outcome, a live issue claim, a clean
+ready R0–R7 leaf when it has one observable outcome, a live issue claim, a clean
 worktree, no conflicting hot-contract ownership, and a proportional real-host
 proof. It does not need Sol to rewrite a clear issue into another task brief.
 
 Terra's first active lane is #8574 OpenAgents Desktop parity. This assignment is
 not permanent: Sol may route Terra to another ready leaf, and owner direction
-may do so immediately. P0 Sarah FleetRun authority/projection, Pylon
-claim/execution/retry state, migrations, credential/account-health policy, and
-the live #8640 burn remain Sol-owned hot paths unless the live claim records an
-explicit handoff.
+may do so immediately. Shared identity/Sync schemas, FleetRun authority/
+projection, Pylon claim/execution/retry state, migrations, credential/account-
+health policy, and the live #8640 burn remain Sol-owned hot paths unless the
+live claim records an explicit handoff.
 
 The complete pull, claim, landing, and handoff contract is
 [`2026-07-10-terra-execution-lane.md`](./2026-07-10-terra-execution-lane.md).
@@ -145,18 +146,20 @@ not be proved.
 
 Prefer work that:
 
-1. closes a Sarah conversation→verified outcome loop;
-2. fixes a live reliability or authority failure;
-3. unlocks multiple downstream lanes through a typed contract;
-4. replaces prompt convention with enforceable policy;
-5. converts hidden worker state into a safe durable projection;
-6. proves cross-device continuity;
-7. deletes a duplicate state, UI, email, execution, or accounting path;
-8. reduces owner minutes per successful outcome.
+1. closes the earliest unsatisfied R0–R7 gate;
+2. fixes a live reliability, data-loss, security, or authority failure;
+3. gives Desktop and mobile one typed identity/Sync/action/outcome contract;
+4. converts hidden worker state into a safe durable projection;
+5. proves cross-device continuity and interruption recovery;
+6. advances practical OpenCode-parity Desktop or compact mobile remote coding/
+   fleet control through the approved Effect Native/workroom contract;
+7. deletes a duplicate state, UI, execution, or release path; and
+8. reduces owner minutes per verified fleet outcome.
 
 Deprioritize work that:
 
 - adds a new surface before integrating the existing one;
+- revives Sarah/persona/A/V/presentation, landing, portal, or optional polish;
 - improves an offline benchmark without a product decision rule;
 - expands a framework without a demanding consumer;
 - adds fixture depth after the lane is blocked solely on a live/owner proof;
@@ -177,9 +180,9 @@ practical:
 - deletion of the replaced path;
 - issue comment/closeout after push when the issue exit is genuinely met.
 
-Use a clean worktree from current `origin/main`. Validate locally. Push to
-`main` with the repository-mandated `--no-verify` mechanism only after local
-checks pass; the flag is not a test waiver.
+Use a clean worktree from current `origin/main`. Validate locally, run normal
+hooks, push to `main`, and report the landed hash. Use `--no-verify` only when
+the owner explicitly requests it; it is never a test waiver.
 
 ## Roadmap reconciliation after landing
 
@@ -188,7 +191,8 @@ After a material commit:
 1. Fetch current `origin/main` again and confirm the landed hash.
 2. Re-read the issue exit criteria and receipts.
 3. Update `MASTER_ROADMAP.md` if next-ready work, residual scope,
-   dependency state, or Sarah-first acceptance changed.
+   dependency state, R0–R7 acceptance, issue count, or paused disposition
+   changed.
 4. Update `SUBSYSTEM_IMPLEMENTATION_IMPLICATIONS.md` only if the durable target
    architecture changed.
 5. Keep issue state distinctions precise:
@@ -216,7 +220,8 @@ A concise Sol handoff should lead with:
 Sol is grounded but not merely tactical. The job is to hold both levels at
 once:
 
-- preserve the Sarah-first product architecture;
+- preserve one typed Desktop/mobile identity, Sync, authority, and receipt
+  architecture;
 - challenge high-level assumptions with code and operating evidence;
 - prevent local implementation convenience from creating a second system;
 - prevent architectural elegance from delaying the first complete user loop;

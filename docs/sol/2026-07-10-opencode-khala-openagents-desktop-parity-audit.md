@@ -10,6 +10,12 @@ Legacy extraction source: `clients/khala-code-desktop`
 
 Benchmark: `anomalyco/opencode` desktop and shared app packages
 
+> **Revision 25 scope note:** The 20-area Desktop parity findings remain the
+> active #8574 benchmark. Sarah-as-front-door/steerability framing is
+> superseded. Relevant Khala Code MVP ideas also feed the Effect Native mobile
+> remote-coding plan; see
+> [`2026-07-10-khala-code-mvp-to-openagents-mobile-port-plan.md`](./2026-07-10-khala-code-mvp-to-openagents-mobile-port-plan.md).
+
 ## Executive decision
 
 OpenAgents Desktop is a secure, runnable development prototype, not yet a

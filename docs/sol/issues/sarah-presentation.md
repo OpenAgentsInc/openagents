@@ -1,10 +1,12 @@
-# P1 PARALLEL: Sarah presentation quality — avatar, opener, and UI polish
+# PAUSED: Sarah presentation quality — avatar, opener, and UI polish
 
 ## Priority posture
 
-This is a dedicated parallel lane. It improves Sarah's presentation and
-quality without blocking P0 Fleet Command. Text-first conversation and fleet
-control remain usable throughout.
+**Paused by Master Revision 25.** Do not dispatch avatar, opener, voice, video,
+ASR/VAD, media-cache/admission, crossover, or presentation-polish work. Preserve
+supported compatibility and repair an exact security/outage/correctness defect;
+reactivation requires an explicit later owner decision. The detailed scope
+below is historical backlog, not a ready queue.
 
 ## Consolidated scope
 

@@ -4,7 +4,9 @@
 - Repository snapshot: `19ebe9741f23cfd58e4a1be47c6c08476f742709`
 - Audience: bounded, high-throughput coding agent with limited architectural
   judgment
-- Authority: [`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md), Revision 24
+- Authority: [`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md), Revision 25
+- Mobile capability ledger:
+  [`2026-07-10-khala-code-mvp-to-openagents-mobile-port-plan.md`](./2026-07-10-khala-code-mvp-to-openagents-mobile-port-plan.md)
 - Coordination: [`CLAIM_PROTOCOL.md`](./CLAIM_PROTOCOL.md)
 - Status: executable delegation packet; not a replacement for the roadmap,
   live issue state, or an active claim
@@ -29,8 +31,8 @@
   coordinator/owner-gated, including its Codex account reconnect and live proof.
 - 2026-07-10 11:41 CDT — FAST-2 claimed across #8566, #8574, #8597, #8638, and
   #8640 in a clean worktree because the shared checkout contains unrelated Sol
-  edits. The metadata-only leaf adds the Revision 24 override to each checked-in
-  issue source, then reconciles each live body and label without touching active
+  edits. The metadata-only leaf added the Revision 24 override to each checked-in
+  issue source, then reconciled each live body and label without touching active
   implementation paths.
 - 2026-07-10 11:42 CDT — FAST-2 reconciliation is verified: all five live
   bodies match their checked-in source after GitHub final-newline normalization;
@@ -39,12 +41,21 @@
   scoped commit and release receipts.
 - 2026-07-10 11:43 CDT — FAST-2 landed on `main` as `8b23f6f45d`; release
   receipts were posted to #8566, #8574, #8597, #8638, and #8640. The next
-  implementation leaf remains blocked by #8597's active mobile claim and the
-  missing senior R1–R2 contract freeze; #8640 remains owner/coordinator-gated.
+  implementation leaf was blocked by #8597's then-active mobile claim and the
+  missing senior R1–R2 contract freeze; #8640 remained owner/coordinator-gated.
 - 2026-07-10 11:43 CDT — Refresh confirmed #8597's current claim is only
   fifteen minutes old and therefore not stale under the claim protocol. No
   senior R1–R2 contract freeze was found, so SYNC-1 through SYNC-4, R3, and R4
   remain intentionally undispatched.
+- 2026-07-10 11:53 CDT — Revision 25's mobile remote-workroom decision
+  supersedes FAST-2's supervision-only wording and requires another source/live
+  reconciliation.
+- 2026-07-10 11:51 CDT — the #8597 mobile claim released at `e8bf6b8603` after
+  build 116 removed Sarah/persona/demo/local-catalog state, made the native
+  composer the sole Khala input, passed typecheck and 20 tests/69 expectations,
+  archived/exported, and was accepted for App Store delivery. Processing/
+  `VALID` and owner physical-device acceptance remain unproven. FAST-3 and a
+  disjoint M0–M2 leaf may now be selected after refreshing current claims.
 
 ## Mission
 
@@ -56,9 +67,12 @@ Rapidly close the active OpenAgents reliability program in dependency order:
 4. expose real fleet start, inspection, steering, approval, pause/resume/stop,
    outcomes, and receipts on both clients;
 5. prove offline/reconnect/restart and duplicate-suppression behavior;
-6. finish the practical OpenCode-parity Desktop workbench and purposeful mobile
-   supervision client;
-7. package, release, dogfood, and close with exact receipts.
+6. finish the practical OpenCode-parity Desktop workbench and port the useful
+   Khala Code MVP into a compact Effect Native mobile remote workbench;
+7. prove mobile-originated coding in a real brokered remote workroom, including
+   files, changes, bounded terminal, managed preview, safe writeback, and
+   cross-device continuation;
+8. package, release, dogfood, and close with exact receipts.
 
 The agent implements small, already-decided leaves. It does **not** invent a
 new architecture, relax authority, infer completion from UI text, or revive
@@ -66,18 +80,16 @@ paused Sarah/persona/A/V/presentation scope.
 
 ## Read this before touching code
 
-At this timestamp, GitHub reports **15** open `roadmap:sol` issues. Revision 24
-still records 16 because #8652 closed after that snapshot. #8652 is closed;
-do not reopen or continue portal scope. Live issue labels and bodies still use
-older Sarah-first/P1 wording. Revision 24 controls priority and product shape
+At this revision, GitHub reports **15** open `roadmap:sol` issues. #8652 closed
+after the initial Revision 24 table, then reopened without `roadmap:sol`; it is
+outside this dispatch set and portal expansion remains paused. Live issue labels and bodies still use
+older Sarah-first/P1 wording. Revision 25 controls priority and product shape
 until those records are reconciled.
 
 Several lanes are concurrently owned:
 
-- #8597 has an active claim removing the mobile Sarah/persona/demo path and
-  making the native composer drive the persona-neutral Khala surface. Do not
-  touch its listed mobile files until `CLAIM-RELEASE` lands or the claim is
-  properly audited under the 90-minute-plus-process rule.
+- #8597's Sarah-removal/native-composer claim released at `e8bf6b8603`. Do not
+  assume the lane remains free: refresh comments before each M0–M7 leaf.
 - #8640 has coordinator-owned type-boundary/scanner/acceptance work and an
   owner-gated Codex account reconnect. Do not take it, modify its hot files, or
   attempt credential work.
@@ -132,7 +144,7 @@ git log -5 --oneline --decorate
 Continue only when all are true:
 
 - the checkout is clean and on `main`;
-- the issue is still open and active under Revision 24;
+- the issue is still open and active under Revision 25;
 - no live claim overlaps files or contracts;
 - the leaf has a falsifiable acceptance test;
 - required upstream contract decisions already exist.
@@ -142,15 +154,15 @@ general “working on desktop/mobile” comment is not enough.
 
 ## Live issue disposition and what this agent may do
 
-| Issue | Revision 24 disposition | Delegation rule |
+| Issue | Revision 25 disposition | Delegation rule |
 | --- | --- | --- |
 | #8566 | P0 parent | Do not claim the epic. Reconcile its stale body/labels when authorized; close only after R0–R7 and child exits reconcile. |
 | #8574 | P0 Desktop | Primary implementation lane. Take one D0–D6 leaf only after the active claim releases or explicitly hands off disjoint paths. |
-| #8597 | P0 mobile | Primary implementation lane. Current claim is active; wait for release, then take one R0/R1/R2/R6 leaf. |
+| #8597 | P0 mobile | Primary implementation lane. The prior claim released; refresh live comments, then take one M0–M7/R0–R6 leaf from the mobile port ledger. |
 | #8638 | P0 Fleet substrate parent | Do not rebuild Fleet or claim the epic. Integrate existing contracts; close only after #8640, R3/R7, and accepted follow-on disposition. |
 | #8640 | P0 live proof | Coordinator/owner-gated. Do not take credentials, scanner, type-gate, deploy, or live burn work. Consume its receipts after release. |
-| #8547 | P1 follow-on | Do not start before local R7 unless the owner reprioritizes. Firecracker/grant/custody work requires a senior integration owner. |
-| #8636 | P1 follow-on | Do not start before local R7. Never design target fallback or grant authority without an approved contract. |
+| #8547 | P0 remote execution | Minimum real remote-workroom path is required for mobile R6/R7. A senior integration owner must freeze Firecracker/workroom, grant, isolation, writeback, and reclaim contracts before delegation. |
+| #8636 | P0 remote routing | Minimum explicit local/remote target contract is required for R3/R6/R7. Never invent fallback or grant authority without the approved contract; advanced placement breadth follows R7. |
 | #8634 | maintenance/deferred | Only production/security/API/receipt work required by R0–R7. No broad route conversion. |
 | #8635 | maintenance/deferred | Only production integrity or R0–R7 dependency repairs. No Forum expansion. |
 | #8595 | paused | No implementation. Do not close merely because it is paused. |
@@ -170,11 +182,11 @@ untouched until an owner disposition says implement, supersede, or close.
 | 0 | Claim and truth | Current issue bodies/labels/claims; clean baselines | Documentation and test-only inventory |
 | 1 | R0 | Both clients green; honest local/fixture/unconfigured states | Bounded Desktop workbench leaves with disjoint claims |
 | 2 | R1–R2 | Shared identity/session and Khala Sync continuity | Pure codecs, client adapters, read-only views, fault fixtures |
-| 3 | R3 | Real Fleet start/control/outcome on both clients | #8640 live proof when owner/coordinator is ready |
+| 3 | R3/M3 | Real Fleet start/control/outcome plus remote-workroom lifecycle on both clients | #8640 live proof and approved #8547/#8636 contract work |
 | 4 | R4 | Offline/restart/replay/refetch convergence | Desktop D2/D3 and mobile read-only supervision |
-| 5 | R5–R6 | Complete Desktop workbench and mobile supervision | Packaging prep and diagnostics |
-| 6 | R7 | Signed/installable releases and sustained dogfood receipt | None that changes the acceptance baseline |
-| 7 | Follow-ons | #8547/#8636, then explicitly reactivated work | Only after R7 or owner reprioritization |
+| 5 | R5–R6/M4–M6 | Complete Desktop workbench and mobile remote coding/fleet client | Packaging prep and diagnostics |
+| 6 | R7/M7 | Signed/installable releases and mobile-originated remote-coding dogfood receipt | None that changes the acceptance baseline |
+| 7 | Follow-ons | Advanced cloud/provider/placement breadth, then explicitly reactivated work | Only after R7 |
 
 Never skip a gate because later UI work looks easier. A later leaf may run in
 parallel only if it does not consume an unfrozen earlier contract and its files
@@ -232,7 +244,8 @@ Update checked-in issue sources first, then live bodies/labels, so they say:
 - Sarah is a compatibility adapter, not the required front door;
 - A/V/persona/presentation work is paused;
 - R0–R7 are the acceptance order;
-- #8652 is closed and not part of the open count.
+- #8652 is not part of the labeled roadmap count; its later reopen does not
+  reactivate portal product scope under Revision 25.
 
 Do not rewrite historical receipts or remove still-supported routes. Verify
 checked-in/live body equality after GitHub newline normalization. This leaf
@@ -282,7 +295,8 @@ contract naming all of the following:
 - canonical package and schema version;
 - authenticated owner/org/device/session scope;
 - conversation, project/session, FleetRun, work-unit, attempt, account/worker,
-  approval, command, outcome, and receipt entity names/keys;
+  approval, command, outcome, receipt, repository, remote-workroom, preview,
+  artifact, and writeback entity names/keys;
 - bootstrap/connect/log/push routes and token refresh/revocation behavior;
 - cursor/version/tombstone/gap and `must_refetch` semantics;
 - mutation expected-version or commutative behavior, idempotency key, and
@@ -327,10 +341,11 @@ bun run --cwd packages/khala-fleet-intents test
 ### SYNC-3 — mobile read-only adapter
 
 - Use the same schemas and outcome grammar as Desktop.
-- Build the neutral activity/fleet home: recent work, sync health, attention,
-  active runs, outcomes, and handoff.
+- Build the neutral coding/fleet home: recent work, repositories, sync health,
+  attention, active threads/workrooms/runs, outcomes, and handoff.
 - Do not restore Sarah/demo modes, invent a backing worker/model, or add raw
-  filesystem/editor/terminal capability.
+  **local device** filesystem/process/credential capability. Typed remote
+  editor/terminal/preview projections belong to later M3–M5 leaves.
 
 ### SYNC-4 — real cross-client continuity fixture
 
@@ -351,6 +366,31 @@ bun run --cwd apps/openagents-mobile typecheck
 bun run --cwd apps/openagents-mobile test
 ```
 
+## M3 remote-workroom contract freeze: senior decision required
+
+The lower-reasoning agent must not invent isolation, credential, workroom, Git
+writeback, port, or target-fallback authority. Before M3 production code, a
+senior integration owner must freeze:
+
+- canonical lifecycle states and create/resume/stop/destroy/reclaim outcomes;
+- owner/repository/thread/workroom/run/snapshot refs and TTL/recovery rules;
+- provider/Git grant issue, redemption, scope, expiry, revocation, and replay
+  defense;
+- isolated workspace/account homes and the accepted production isolation rung;
+- bounded file IO, run/spawn/PTY, output/timeout/reconnect/teardown behavior;
+- managed preview-port discovery/gateway/auth/expiry and network policy;
+- exact pre/post image, branch/PR writeback, no-force policy, verification, and
+  failure recovery;
+- target selection/eligibility/fallback history and one cross-target claim
+  registry; and
+- safe projections, usage/compute receipts, reclaim evidence, migrations, and
+  integration owner.
+
+After freeze, the delegated agent may take one codec/fixture, read-only mobile
+projection, bounded Effect Native surface, or deterministic fault-test leaf at
+a time. Real grants, production isolation, deployment, credentials, live burns,
+and final acceptance remain senior/owner-gated.
+
 ## R3 fleet-control leaves
 
 Start only after R1–R2 read-only continuity is green and the senior owner has
@@ -363,8 +403,9 @@ frozen mutation outcomes.
 - Return a durable `runRef` plus typed accepted/rejected/failed/unknown result.
 - Keep local Pylon staging available only as clearly labeled diagnostic
   substrate until retired by proof.
-- Mobile receives the same start contract only if R6 product design explicitly
-  includes start; otherwise it supervises runs started elsewhere.
+- Mobile receives the same start contract and must explicitly select or accept
+  the typed execution target. Start cannot silently choose a provider account,
+  Pylon, or remote workroom.
 
 ### FLEET-2 — run and work detail
 
@@ -478,26 +519,40 @@ bun run --cwd apps/openagents-desktop build
 OPENAGENTS_DESKTOP_SMOKE=1 bun run --cwd apps/openagents-desktop smoke
 ```
 
-## R6 mobile supervision queue
+## R6 / M0–M7 mobile coding and fleet queue
 
-Begin only after the active #8597 Sarah-removal claim releases and rebase onto
-its landed state.
+The Sarah-removal claim released at `e8bf6b8603`; rebase onto its landed state
+and confirm no successor claim overlaps. Use the exhaustive
+[`mobile port ledger`](./2026-07-10-khala-code-mvp-to-openagents-mobile-port-plan.md);
+do not dispatch from this abbreviated queue alone.
 
-1. **MOBILE-1:** neutral activity/fleet home with exact loading, offline,
-   reconnecting, stale, must-refetch, denied, empty, and failed states.
-2. **MOBILE-2:** run/work/attempt detail and worker/account readiness from
-   authoritative Sync projections.
-3. **MOBILE-3:** attention/approval queue and the approved subset of typed
-   controls, sharing command IDs/outcomes with Desktop.
-4. **MOBILE-4:** outcome/receipt inspection and deep-link handoff to Desktop.
-5. **MOBILE-5:** background/foreground, restart, offline queue, notification,
-   accessibility, and physical-device fault receipts.
-6. **MOBILE-6:** Android build/install proof and cross-platform migration/
-   rollback. Do not use EAS; follow the app's owned local release lane.
+1. **M0 — freeze/inventory:** capability manifest, source/destination locks,
+   legacy test-vector inventory, and honest missing states.
+2. **M1 — identity/Sync/repos:** owner session, secure recovery, device,
+   repository picker/binding, shared threads, cursor/offline state.
+3. **M2 — authoritative turns:** rich events, composer context, queue/steer/
+   interrupt/retry, named account/model/target readiness, push/deep links.
+4. **M3 — workroom lifecycle:** after senior contract freeze, integrate #8547/
+   #8636 create/resume/stop/reclaim, brokered grants, isolation rung, TTL/
+   snapshot, and exact target/fallback projection.
+5. **M4 — files/changes/writeback:** bounded tree/read/edit, exact diff,
+   artifacts/verification, safe branch/PR refs, no force writeback.
+6. **M5 — terminal/preview:** bounded remote PTY/run/spawn, managed ports,
+   authenticated preview, reconnect/teardown, stop/reclaim evidence.
+7. **M6 — Fleet/release hardening:** run/work/attempt detail, attention/
+   approvals, shared controls, background/offline faults, accessibility,
+   physical iOS/Android, local builds/updates, rewritten QA gates. Never use
+   EAS.
+8. **M7 — dogfood/retirement:** mobile-originated remote task, Desktop
+   continuation, safe writeback, exact receipt, migration, and inability of the
+   legacy product/install/update path to ship.
 
-Do not add a mobile editor, Git client, terminal, raw device filesystem,
-credential browser, Sarah/persona surface, voice/video, Minerals/demo pricing,
-or presentation-only polish. Unsupported deep work hands off to Desktop.
+Do not add raw **local device** filesystem/process/credential/port authority,
+import the legacy app package/UI tree, restore Sarah/persona/voice/video/
+Minerals/demo pricing, or add presentation-only polish. Remote files, changes,
+terminal, preview, artifacts, and writeback are required through the approved
+owner-scoped workroom contract. Desktop handoff is optional, not the only way
+to finish useful coding.
 
 Every non-native mobile leaf runs:
 
@@ -556,7 +611,8 @@ Acceptance: <ONE FALSIFIABLE OUTCOME>
 Verification: <EXACT COMMANDS>
 
 Before editing, read the root AGENTS.md/INVARIANTS.md, the repo claim protocol,
-Revision 24, the live issue body/comments, and the named source/tests. Post an
+Master Revision 25, the mobile port ledger when applicable, the live issue
+body/comments, and the named source/tests. Post an
 exact CLAIM. Do not touch overlapping claims, paused scope, schemas/migrations,
 authority, credentials, lockfiles, shared catalogs, or external systems unless
 listed above. Preserve unrelated work. If blocked or uncertain after two
@@ -567,15 +623,17 @@ and post CLAIM-RELEASE with exact results and residuals.
 
 ## Recommended next dispatch at this timestamp
 
-1. Refresh the three active claim states (#8574, #8597, #8640).
-2. If #8574 hands off the shared renderer contract, run FAST-1 immediately.
-3. If #8597 releases, rebase and run FAST-3 mobile verification before adding
-   any Sync/Fleet surface.
-4. If GitHub metadata mutation is authorized and code claims remain occupied,
-   run FAST-2 without touching active implementation paths.
-5. The senior integration owner must then freeze R1–R2. As soon as it lands,
-   dispatch SYNC-1, SYNC-2, and SYNC-3 as separate, file-disjoint claims and
-   integrate them serially through SYNC-4.
+1. Refresh the active claim states (#8574, #8597, #8640, #8547, #8636).
+2. FAST-1 and FAST-2 are already landed; do not repeat them. If #8597 releases,
+   rebase and run FAST-3 mobile verification before adding Sync/workroom UI.
+3. While shared contracts are blocked, take only M0 inventory/test-vector work
+   or app-local honest-state/accessibility leaves with disjoint claims.
+4. The senior integration owner freezes R1–R2 and the M3 workroom/target/grant/
+   writeback contract. Then dispatch SYNC-1/2/3 and M1/M2 leaves separately,
+   integrate through SYNC-4, and keep schema/migration changes serialized.
+5. After real #8547/#8636 substrate is available, dispatch M3–M5 read-only
+   projections first, then controls, fault tests, physical-device receipts, and
+   the M7 cross-device dogfood.
 
 The fastest route is not maximum parallel edits. It is a frozen shared contract,
 small disjoint leaves, immediate receipts, and zero rework from invented

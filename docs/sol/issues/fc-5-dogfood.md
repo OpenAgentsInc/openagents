@@ -1,112 +1,102 @@
-# FC-5: live Sarah Codex + Claude coding burn
+# FC-5: live Codex + Claude runtime and two-client Fleet proof
 
-## Revision 24 authoritative override (2026-07-10)
+- Issue: #8640
+- Parent: #8638
+- Status: active P0 proof lane; coordinator/owner-gated hot paths
+- Authority: [`../MASTER_ROADMAP.md`](../MASTER_ROADMAP.md)
 
-This P0 live-proof issue supplies runtime evidence to the reliable
-persona-neutral Desktop/mobile Fleet program. It does not make Sarah the
-required product front door. New persona, relationship, avatar, opener, voice,
-video, A/V, and presentation scope is paused. It remains coordinator/owner
-gated and does not authorize implementation that bypasses R0–R7 acceptance
-order. The current open `roadmap:sol` count excludes closed #8652. The
-historical text below is retained only where it does not conflict with this
-override.
-
-Parent: #8638
+This live-proof issue supplies runtime evidence to the reliable persona-neutral
+Desktop/mobile coding and Fleet program. It does not make Sarah the required
+front door, own mobile information architecture, or replace #8547/#8636's
+remote-workroom acceptance. Persona/A/V/presentation scope is paused.
 
 ## Outcome
 
-The owner uses Sarah—not manual terminal orchestration—to burn real OpenAgents
-backlog concurrently across named, isolated Codex and Claude accounts.
+Prove the real mixed-account Fleet runtime, then prove reliable Desktop/mobile
+observation and control. The landed Sarah route may initiate Phase A as a
+compatibility adapter; it is not the required product front door and does not
+by itself complete R3 or R7.
 
-## Phase A — immediate local daily-driver unblock
-
-This phase is the live-account rung transferred when #8633 closed at its
-production-code/integrated-fixture boundary. It must use real owner-linked
-Codex and Claude credentials; no fixture, synthetic harness result, default
-provider home, or provider substitution satisfies the following acceptance
-list.
+## Phase A — real mixed-account runtime
 
 - At least two simultaneous pinned public work units under one FleetRun.
-- Codex and Claude each complete at least one useful unit on owner-local
-  capacity through explicitly named isolated accounts.
-- Sarah starts the run, reports progress, handles one live steer or approval,
-  and presents verification and accepted closeout.
-- A browser reconnect reconstructs the same named work-unit state and controls.
-- Zero duplicate claims, default account homes, silent harness substitutions,
+- Codex and Claude each complete useful work through explicitly named isolated
+  owner accounts.
+- An authenticated typed adapter starts/manages the run and performs one steer
+  or approval round trip.
+- Zero duplicate claims, default account homes, silent provider substitution,
   or manually launched per-assignment shells.
 - Exact provider usage where available; explicit `not_measured` otherwise.
-- Measure and report Sarah acknowledgment/run-ref latency, first capacity state,
-  first executor progress/blocker, and heartbeat freshness against the FC
-  budgets; do not hide misses behind an aggregate pass.
-- Record the proof rung for each acceptance item: code-landed, fixture-proven,
-  deployed, live-proven, owner-accepted, or closed. No earlier rung implies a
-  later one.
+- Verification and accepted closeout survive reconnect.
+- Latency, progress freshness, stalls/reconnects, friction, and proof rung are
+  recorded without hiding misses in an aggregate pass.
 
-## Grok disposition
+No fixture, synthetic harness result, default provider home, or provider
+substitution satisfies Phase A.
 
-Grok is postponed by owner decision on 2026-07-10. The connected account is
-quota/payment exhausted and no additional quota is planned soon. Existing Grok
-adapters, typed HTTP-402 state, fixtures, and the accepted historical canary
-remain regression substrate, but Grok is not a Phase A acceptance item and
-cannot hold this issue or the daily-driver cutover open. Reactivation receives
-a separately scoped issue only when funded capacity exists.
+## R3/R7 client acceptance
 
-The hybrid local/managed-cloud acceptance formerly duplicated here belongs to
-#8636. It is not part of this issue's exit and does not block the owner-local
-cutover.
+After the runtime receipt:
+
+- Desktop and mobile show the same run/work/attempt/account/approval/command/
+  outcome/receipt refs and versions through Khala Sync;
+- one or more controls are exercised from each client;
+- every command reaches exactly one durable accepted/rejected/failed outcome or
+  remains explicitly unknown-pending-reconcile until reconciled;
+- lost acknowledgement, duplicate/out-of-order delivery, restart, stale
+  generation, and handoff do not duplicate work or fabricate success; and
+- a sustained owner dogfood receipt proves direct software is the reliable
+  operational path.
+
+Phase A can close the Fleet runtime rung before the full client rung. Do not
+call that product cutover complete.
 
 ## Current live truth
 
-- C1 is crossed: #8637, #8633, and #8639 are closed; the exact command-loop
-  fixture shipped through production revision `00069-h2k`.
-- A real Sarah→Grok run completed useful work with accepted closeout and
-  reconnect-visible evidence. This is historical proof, not the current
-  provider requirement.
-- A real Sarah→Claude run failed closed before verification on the long-lived
-  SCM credential scanner. It produced zero completed work, a rejected no-spend
-  closeout, a released claim, and no landed patch; the scanner/diagnostic gap
-  must be repaired without weakening the invariant.
-- Named Codex homes require isolated owner reauthentication. The default
-  `~/.codex` home must never be touched.
-- The clean physical dependency/API typecheck gate remains an implementation
-  blocker; its active hot-file claim must be respected.
+- C1 is crossed: #8637, #8633, and #8639 are closed; the minimum-safe command/
+  reconnect stack is deployed.
+- A historical Grok canary completed; Grok is postponed while funded capacity
+  is unavailable and is not an acceptance item.
+- A Claude canary failed closed before verification on credential scanning and
+  produced no accepted work/spend.
+- Named Codex homes require isolated owner reauthentication; default
+  `~/.codex` must never be used or modified for automatic work.
+- Type-boundary/scanner/acceptance paths have coordinator-owned claims. Respect
+  the live claim ledger; do not duplicate or weaken them.
 
-## Operational cutover decision
+## Operational decision
 
-- C1 permits low-risk Sarah canaries while this Codex app remains coordinator,
-  independent verifier, and break-glass.
-- Between C1 and a clean Phase A receipt, Sarah is canary-only and routine work
-  remains in this app. A failed or incomplete canary does not advance the gate:
-  record the fallback/friction, repair in place, and remain at C1.
-- A clean Phase A receipt changes the default: new bounded owner backlog work
-  starts through Sarah/Khala/Pylon, not through a manually orchestrated Codex
-  app session.
-- Keep the Codex app as break-glass, control-plane development, and independent
-  evidence review. Record every fallback in the friction ledger.
-
-**Clean** means all required evidence comes from one pinned integrated
-deployment: owner/auth scope, named isolated accounts, fresh advertised
-capacity, claim uniqueness, typed fallback, reconnect, verification, closeout,
-and honest usage evidence pass without manual per-assignment shells or silent
-substitution.
+- Existing compatibility-route canaries may continue only at their honest
+  proof rung.
+- A clean Phase A receipt accepts the mixed-account runtime as substrate.
+- R7, not C2 alone, accepts Desktop/mobile as the owner-facing software path.
+- This Codex app remains coordinator, independent verifier, development, and
+  break-glass while reliability work continues.
+- #8547/#8636's minimum remote-workroom path is a separate P0 dependency for
+  mobile R6/R7. It does not change #8640 Phase A's owner-local runtime exit;
+  advanced managed-capacity/provider breadth follows R7.
 
 ## Evidence bundle
 
-- Deployment commit and app versions.
-- Run, work-unit, assignment, session, account-hash, and target refs.
-- Verification commands/results and public-safe artifact refs.
-- Usage evidence per completed turn: exact ledger rows where measured;
-  otherwise an explicit `not_measured` closeout plus accounting-gap ref. Never
-  synthesize counter movement. Private trace/raw-event presence is required
-  where the harness ingest route exists; every absence is explicit in
-  could-not-prove.
-- Claim-uniqueness and concurrency report.
-- Before/after operator-minutes and a friction ledger.
-- Latency distribution and stall/reconnect events against the named budgets.
-- Could-not-prove list.
+- pinned deployment/source/app versions;
+- run/work/attempt/assignment/session/account/target refs;
+- exact verification and public-safe artifact refs;
+- exact usage or explicit `not_measured`, separate compute economics, and no-
+  spend failure truth;
+- claim uniqueness/concurrency and typed fallback history;
+- command idempotency/outcomes and reconnect/restart evidence;
+- Desktop/mobile matching refs/versions and handoff receipt;
+- operator minutes, latency/freshness/stall distribution, friction ledger; and
+- could-not-prove list with owners.
 
 ## Exit
 
-One clean, Sarah-started, simultaneous Codex+Claude Phase A receipt closes this
-issue and authorizes the default owner-local operational cutover to
-Sarah/Khala/Pylon. Managed-cloud hybrid proof remains #8636; Grok is postponed.
+#8640 closes when the issue body explicitly records which of these are complete:
+
+1. clean live Codex+Claude runtime receipt;
+2. R3 Desktop/mobile control receipt; and
+3. R7 owner-accepted dogfood/product cutover receipt.
+
+If issue scope closes at Phase A only, R3/R7 residuals must be transferred to
+#8566/#8574/#8597 with exact acceptance and owners. Sarah/persona/A/V quality
+is not an exit criterion.

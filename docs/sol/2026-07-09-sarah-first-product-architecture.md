@@ -8,6 +8,13 @@
   [`Sarah–Khala assessment`](../fable/2026-07-09-sarah-khala-connection-assessment.md),
   and [`Blueprint Map audit`](../sarah/2026-07-09-blueprint-map-surface-audit.md)
 
+> **Revision 25 supersession (2026-07-10):** Sarah-first/named-front-door,
+> relationship navigation, role, avatar, and A/V conclusions are paused and do
+> not control implementation. Preserve reusable typed action, authority,
+> privacy, and receipt ideas. Direct Effect Native Desktop/mobile coding and
+> fleet flows now own the product exit; see
+> [`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md).
+
 ## The important claim
 
 “Sarah-first” should not mean “put a face in front of every feature.” It means

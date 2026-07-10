@@ -2,9 +2,10 @@
 
 ## Priority posture
 
-The minimum decoded relationship/operator posture belongs in FC-1/FC-3 now.
-This fuller lane begins after #8640 Phase A and uses canary evidence; it does not
-block the coding cutover.
+**Paused by Master Revision 25.** Named colleagues, role expansion, and
+relationship-first navigation are not active after #8640 or R7 automatically.
+Reactivation requires an explicit later owner decision and must consume the
+same typed Desktop/mobile action/authority contracts.
 
 ## Outcome
 

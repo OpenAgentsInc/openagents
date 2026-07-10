@@ -1,27 +1,49 @@
-# FC-CLOUD-1: Codex inside an Agent Computer
+# P0 FC-CLOUD-1: Codex inside a real Agent Computer/workroom
 
-Parent capability: #8636 hybrid fleet routing.
+- Issue: #8547
+- Parent capability: #8636 hybrid target routing
+- Mobile consumer: #8597
+- Status: active P0 minimum remote-workroom path; advanced capacity follows R7
+- Authority: [`../MASTER_ROADMAP.md`](../MASTER_ROADMAP.md), Revision 25
 
 ## Outcome
 
-A Sarah FleetRun can place a Codex work unit on the owner's connected Codex
-account inside an OpenAgents Agent Computer.
+An authenticated owner can start a repository-bound Codex unit from OpenAgents
+mobile inside a real isolated OpenAgents Agent Computer/workroom. The unit uses
+the normal Fleet/Sync progress and closeout contract and can continue on
+Desktop without forking thread, workroom, run, account, or receipt truth.
 
 ## Scope
 
-- Reproducibly build and pin the Agent Computer rootfs with Codex and runtime
-  dependencies.
-- Populate an owner-scoped `auth_grant_ref` at placement.
-- Redeem inside the VM into an isolated scratch `CODEX_HOME` under
-  `provider_credential_policy: broker_only`.
-- Execute through `codex_app_server` with pinned repository/work context.
-- Record exact model usage as owner subscription capacity with
-  `tokenChargeMetered: false`; record compute lifecycle separately.
-- Destroy scratch and make grant replay impossible on reclaim.
-- Feed the normal FleetRun work-unit progress/closeout contract.
+- Reproducibly build and pin the Agent Computer rootfs/runtime dependencies.
+- Create/resume/stop/reclaim an owner-scoped workroom with explicit lifecycle,
+  TTL, snapshot identity, and isolation rung.
+- Populate bounded provider and Git `auth_grant_ref` values at placement;
+  redeem them into isolated scratch account homes under broker-only policy.
+- Bind stable owner/repository/thread/workroom/run refs and execute through the
+  approved Codex runtime with pinned repository/work context.
+- Expose typed bounded file IO, run/spawn/PTY, managed preview ports, network
+  policy, artifacts, verification, and safe branch/PR writeback.
+- Record exact model usage or `not_measured`; keep owner subscription/model
+  usage distinct from compute lifecycle/economics.
+- Destroy scratch, prevent grant replay, revoke preview access, and prove
+  reclaim without leaving an executable orphan.
+- Feed normal FleetRun/Khala Sync progress, approvals, command outcomes,
+  verification, writeback, and receipt projections to mobile and Desktop.
+
+## Non-goals before R7
+
+- every provider or region;
+- elastic capacity optimization or a sophisticated placement planner;
+- public arbitrary container hosting;
+- treating a control-plane mock or lower-isolation dev container as accepted
+  production isolation.
 
 ## Exit
 
-One Sarah-created work unit completes inside real Firecracker on the nested-
-virt host with verification, token truth, compute receipts, scratch wipe, and
-reclaim evidence. Fake control-plane VM lifecycle is not sufficient proof.
+From a physical phone, one owner starts a real Codex workroom, observes
+authoritative progress, inspects/changes code, reviews the exact diff, runs a
+bounded command, opens a managed preview, completes verified branch/PR
+writeback, and receives token/compute/reclaim receipts. Desktop resumes the same
+refs. Brokered credentials do not reach either client, grant replay and force
+writeback fail closed, and scratch/ports/processes are gone after reclaim.

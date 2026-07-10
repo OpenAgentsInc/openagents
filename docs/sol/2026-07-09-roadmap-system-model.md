@@ -5,6 +5,12 @@
 - Canonical roadmap: [`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md)
 - Historical source snapshot: `origin/main` at `93bfa6b7e3`
 
+> **Revision 25 supersession (2026-07-10):** The relationship-centered thesis
+> is historical and no longer controls product shape or dispatch. The active
+> model is one typed authority/Sync/evidence loop consumed directly by Desktop
+> and a remote-coding mobile client. See
+> [`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md).
+
 ## Thesis
 
 OpenAgents is becoming a **relationship-centered operating system for

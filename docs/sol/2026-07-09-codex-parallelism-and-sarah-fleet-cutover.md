@@ -6,6 +6,13 @@
   reconciled through the #8633 stack ending `d779c360c3`, master roadmap rev
   13, and the 14-issue set on 2026-07-09
 
+> **Revision 25 supersession (2026-07-10):** Runtime receipts and the C0–C3
+> distinctions remain historical evidence. Sarah is not the product front
+> door, and this document no longer controls dispatch. R0–R7/M0–M7 in the
+> [`master roadmap`](./MASTER_ROADMAP.md) and
+> [`mobile port plan`](./2026-07-10-khala-code-mvp-to-openagents-mobile-port-plan.md)
+> control current sequencing.
+
 > **2026-07-10 operating update:** C1 is crossed. #8637, #8633, and #8639 are
 > closed; the minimum-safe command/reconnect stack is fixture-proven and
 > deployed. The remaining C2 event is #8640 Phase A, narrowed by owner decision

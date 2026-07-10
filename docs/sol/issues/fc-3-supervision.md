@@ -4,6 +4,10 @@ Parent: #8638
 
 Status: **closed** at `1d84386cb5`; fixture-proven and deployed on 2026-07-10.
 
+> **Revision 25 use:** This is closed Fleet/Sync/receipt substrate. Direct
+> Desktop/mobile views and controls consume it; the Sarah/canvas surface is a
+> compatibility and regression path, not the product front door.
+
 ## Outcome
 
 Sarah can explain and control an active FleetRun from conversation and the

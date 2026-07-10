@@ -2,6 +2,13 @@
 
 Parent: #8566
 
+> **Roadmap disposition (2026-07-10): maintenance/deferred.** Preserve auth,
+> security, APIs, promises/service-deliverable integrity, receipts, health, and
+> production operations. Do not continue broad route conversion/retirement or
+> web product expansion during R0–R7 unless an exact Desktop/mobile reliability
+> dependency or production incident requires it. See
+> [`../MASTER_ROADMAP.md`](../MASTER_ROADMAP.md).
+
 ## Owner direction
 
 The retained public product surface is:
@@ -24,6 +31,9 @@ public APIs, assets, health checks, and machine-readable receipts are
 infrastructure exceptions, not additional product pages.
 
 ## Scope
+
+The scope below is retained for later reactivation. During R0–R7 only bounded
+production-integrity subsets may be claimed.
 
 1. Establish one route allowlist and one serving host for the retained web app.
    Treat `/promises` as retained, not as an exception scheduled for later

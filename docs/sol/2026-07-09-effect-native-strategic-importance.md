@@ -6,6 +6,12 @@
   [`framework framing`](../effect-native/2026-07-08-effect-native-is-a-framework-for-native-apps-using-effect.md),
   and [`MASTER_ROADMAP`](./MASTER_ROADMAP.md)
 
+> **Revision 25 supersession (2026-07-10):** The Effect Native thesis remains
+> active; Sarah-first framing does not. The immediate proof is shared typed
+> semantics across the Desktop workbench and the OpenAgents mobile remote-
+> coding/fleet client. See the
+> [`mobile port plan`](./2026-07-10-khala-code-mvp-to-openagents-mobile-port-plan.md).
+
 ## Thesis
 
 Effect Native matters because the Sarah-first product cannot remain coherent

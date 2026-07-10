@@ -4,9 +4,12 @@
 - Status: Sol analysis; explanatory companion to the canonical roadmap
 - Canonical source: [`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md)
 
-> Priority note: the old avatar-first queue described below has been
-> superseded. Sarah Fleet Command is P0; Sarah presentation quality is a
-> parallel P1 lane. Use the canonical roadmap for dispatch order.
+> **Revision 25 supersession (2026-07-10):** The full queue below is historical.
+> Reliable Desktop/mobile coding and fleet software is P0; mobile remote
+> workrooms are required, and Sarah/persona/A/V/presentation is paused. Use
+> R0–R7/M0–M7 in the [`master roadmap`](./MASTER_ROADMAP.md) and
+> [`mobile port plan`](./2026-07-10-khala-code-mvp-to-openagents-mobile-port-plan.md)
+> for dispatch.
 
 ## Purpose
 

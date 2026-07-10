@@ -7,6 +7,13 @@
 - Planned product promises: `openagents.mobile_app.v1`,
   `openagents.desktop_app.v1`
 
+> **Revision 25 addendum (2026-07-10):** The greenfield destinations, Effect
+> Native requirement, identifiers, and frozen-source migration rule remain
+> binding. Any supervision-only or Desktop-required mobile scope below is
+> superseded: OpenAgents mobile must port the useful Khala Code MVP and support
+> coding through typed remote workrooms. See the
+> [`mobile port plan`](./2026-07-10-khala-code-mvp-to-openagents-mobile-port-plan.md).
+
 ## Decision
 
 OpenAgents mobile and OpenAgents Desktop are new applications. They are not

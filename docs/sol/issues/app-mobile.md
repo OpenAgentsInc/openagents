@@ -1,102 +1,122 @@
-# APP-MOBILE: greenfield OpenAgents mobile — Effect Native + React Native
+# P0 APP-MOBILE: OpenAgents mobile remote coding and fleet control
 
-## Revision 24 authoritative override (2026-07-10)
-
-Reliable persona-neutral mobile Fleet supervision is P0. Sarah is a supported
-compatibility adapter, not the required home/front door. New persona,
-relationship, avatar, opener, voice, video, A/V, and presentation scope is
-paused. This issue advances only in R0–R7 order and must consume the shared
-authoritative Sync/Fleet contract. The current open `roadmap:sol` count excludes
-closed #8652. The historical text below is retained only where it does not
-conflict with this override.
+- Issue: #8597
+- Destination: `apps/openagents-mobile`
+- Status: active P0 under Master Revision 25 / R0–R7 / M0–M7
+- Authority: [`../MASTER_ROADMAP.md`](../MASTER_ROADMAP.md)
+- Bounded leaves:
+  [`../2026-07-10-112832-cdt-reliable-fleet-implementation-delegation.md`](../2026-07-10-112832-cdt-reliable-fleet-implementation-delegation.md)
+- Capability/port ledger:
+  [`../2026-07-10-khala-code-mvp-to-openagents-mobile-port-plan.md`](../2026-07-10-khala-code-mvp-to-openagents-mobile-port-plan.md)
 
 ## Outcome
 
-Build a new **OpenAgents** iOS/Android app from scratch at
-`apps/openagents-mobile`. Sarah is home and coding-fleet supervision is the
-first deep capability. Effect Native owns the application/component/intent
-model; React Native and Expo are host and renderer machinery.
+Build one OpenAgents iOS/Android client for repository-bound agent coding,
+remote workrooms, cross-device continuity, fleet attention/control, outcomes,
+receipts, and optional Desktop handoff. It is not a Sarah/persona front door or
+a compressed Desktop layout. It is a compact phone-native workbench that can
+complete useful remote coding. Effect Native owns application/component/intent
+semantics; React Native/Expo and native modules are least-authority hosts/
+renderers.
 
-This is not a rename or in-place rewrite of `clients/khala-mobile`. That package
-is deprecated and frozen as a parity, contract, native-module, and migration
-reference until the new app proves its cutover.
-Public claim authority is planned `openagents.mobile_app.v1`; the legacy
-`khala_code.mobile_mvp.v1` record is withdrawn but remains dereferenceable
-history.
+This is not a rename or in-place conversion of `clients/khala-mobile`. The
+legacy app remains a frozen contract/native/release extraction source until
+successor and migration proof.
 
-## Current status
+The useful Khala Code MVP behavior and QA corpus must be ported or explicitly
+dispositioned. Importing the legacy package/component tree is forbidden.
 
-The greenfield identity/icon/OTA floor is landed. The owner accepted and closed
-the GL-2 glass shell after build 111; build 112 fixed the Minerals-sheet
-lifecycle. TestFlight build 113 at `6647d998ad` is `VALID` and closes GL-3's
-text-first Sarah slice: the app uses the production `/sarah` prospect/turn
-contracts, persists the relationship across restart, renders typed replies,
-and exposes bounded offline/reconnect state under an enforced behavior
-contract. `7d77150514` adds an app-owned persisted five-thread catalog, mints a
-fresh relationship for New chat, and restores each selected thread's own
-bounded transcript; it does not claim Sync. Pure transcript-stream/Sync
-cross-surface continuation, authenticated
-operator posture, voice/avatar tiers, Android proof, the remaining GL lowering,
-and legacy-client retirement remain open under their owning lanes. Demo pricing
-remains presentation-only; no StoreKit purchase is implemented.
+## Current truthful baseline
+
+- Greenfield identity/icon/owned OTA and local iOS release floor are landed.
+- Build 116 at `e8bf6b8603` removes the Sarah/persona/demo/local catalog path,
+  makes the native SwiftUI Liquid Glass composer the sole Khala input, passes
+  typecheck plus 20 tests/69 expectations, archives/exports, and was accepted
+  for App Store delivery. App Store processing/`VALID` and owner physical-
+  device acceptance remain distinct unproven rungs.
+- The current in-memory generic Khala chat does not provide
+  authenticated cross-device Sync, FleetRun/account authority, command
+  outcomes, remote workrooms, or receipts.
+- The #8597 Sarah-removal/composer claim released at `e8bf6b8603`. Recheck live
+  claims before editing; the next honest action is FAST-3/R0 baseline and one
+  M0–M2 leaf, not rebuilding removed persona/demo/local catalog state.
 
 ## Identity locks
 
 1. Display/product name: `OpenAgents`.
 2. iOS bundle identifier: `com.openagents.app`.
 3. Android package/application ID: `com.openagents.app`.
-4. Copy the current Khala Code mobile application icon into the new app; do not
-   load it at runtime from the deprecated package. The canonical source is
-   `clients/khala-mobile/assets/images/icon.png`, SHA-256
+4. App icon bytes match the pinned copied icon digest
    `0a1865ac6d1efc792d365d9a37af9e6ffa3270fa7c8731f36129f35371bfc7ce`.
-   Add an automated identity/icon oracle so the name, both identifiers, and
-   copied icon digest cannot drift.
+5. OTA/release/store identity is owned by OpenAgents and never reuses a legacy
+   Khala feed or build number silently.
 
-The legacy package currently uses `com.openagents.khala.mobile`; that identifier
-is not the destination identity. `com.openagents.app` is an owner-designated
-existing application identifier and wins for the new app.
+## R0/R1/R2/R3/R6 scope
 
-## Scope
+1. Keep clean typecheck/tests/builds and honest unconfigured/offline/
+   reconnecting/stale/must-refetch/denied/failed/ready states.
+2. Use the canonical authenticated owner/org/device/session contract.
+3. Subscribe to the same Khala Sync conversation/project/Fleet/work/attempt/
+   account/approval/command/outcome/receipt projections as Desktop.
+4. Make the default home recent work, repositories, Sync health, attention/
+   approvals, active threads/workrooms/runs, outcomes, receipts, push returns,
+   and handoff.
+5. Add run/work/attempt detail and worker/account readiness without inferring
+   state from chat text.
+6. Port GitHub/repository selection and thread binding, rich streamed runtime
+   events, composer context, queue/steer/interrupt/retry, named account/model/
+   execution-target readiness, push/deep links, and cross-agent handoff.
+7. Add typed remote-workroom lifecycle and compact Thread, Files, Changes,
+   Terminal, Preview, and Artifacts/Receipts modes. Remote file/process/port/
+   writeback capabilities are brokered, bounded, revocable, and receipt-backed.
+8. Share steer, approve/reject, pause/resume/stop command IDs, idempotency,
+   policy, and durable outcomes with Desktop.
+9. Prove background/foreground, restart, offline queue, dropped acknowledgement,
+   duplicate/out-of-order events, schema migration/rollback, notifications,
+   accessibility, deep links, and physical-device behavior.
+10. Prove local iOS and Android build/install/recovery/update gates; never use
+   EAS.
+11. Define explicit migration or clean-start policy for local data, secure
+   storage, deep links, push, and legacy app state.
+12. Extract and rewrite useful architecture guards, unit/mount tests, stories,
+    Maestro journeys, visual baselines, crash/connectivity checks, and release
+    gates against the new app.
 
-1. Scaffold an independent `@openagentsinc/openagents-mobile` application with
-   no imports from the legacy app package or its screen tree.
-2. Make Sarah conversation, voice, Blueprint, active fleet runs, steering,
-   approvals, receipts, and exact closeout state the home flow.
-3. Use shared typed services and Khala Sync for conversation/fleet continuity
-   across web, mobile, and desktop; retain direct account connection/settings
-   as an expert recovery path.
-4. Extract or reimplement reusable platform-neutral contracts, auth, Sync,
-   push, credits, secure storage, OTA, STT, and Apple FM capabilities behind
-   Effect/Effect Schema boundaries. Do not copy the legacy UI architecture.
-5. Create a new OpenAgents mobile OTA namespace/channel and repoint the owned
-   `apps/oa-updates` publish path. Never reuse a legacy Khala product feed by
-   accident and never use EAS build/submit/update.
-6. Define typed migration or an explicit clean-start policy for local data,
-   keychain/secure-store entries, deep links, and store identity. Do not silently
-   read legacy secrets or databases.
-7. Port applicable behavior contracts into the new app's registry and prove
-   iOS and Android QAM/Maestro, local build/submission, update, and recovery
-   gates before cutover.
-8. Verify store ownership, provisioning/signing, and monotonically advancing
-   build/version numbers against the actual existing `com.openagents.app`
-   App Store Connect and Play Console records before upload; do not inherit the
-   legacy Khala app's local build numbers.
-9. After parity and migration receipts exist, remove the deprecated app from
-   active workspace, install, release, and update paths.
+## Host and product boundaries
 
-## Non-goals
+- Mobile does not expose raw **local device** filesystem/process authority,
+  provider credential material, arbitrary ports/network, or force writeback.
+  Remote files/editing, typed Git changes, bounded terminal, managed preview,
+  artifacts, and branch/PR writeback are required through owner-scoped
+  workroom capabilities.
+- The phone UI uses progressive contextual navigation and accessible controls;
+  it does not squeeze Desktop panes into a small viewport. Desktop handoff is a
+  convenience for higher-density work, not an MVP dependency.
+- The build-115 SwiftUI module is a bounded current presentation lowering, not
+  a parallel application-state model or an active polish program.
+- Generic Khala chat may remain a bounded conversation capability but cannot
+  claim a specific backing worker/model, FleetRun, account, cost, payment,
+  verification, or receipt without owning authority.
+- Direct account recovery/settings remains available behind typed capabilities.
 
-- Do not convert, rename, or keep shipping `clients/khala-mobile` as OpenAgents.
-- Do not preserve legacy navigation or visual structure merely because it
-  exists.
-- Do not block the immediate Sarah Fleet Command burn on full mobile completion.
+## Paused/non-goals
+
+- Sarah/persona/relationship home;
+- avatar, opener, voice, ASR/VAD, video, media cache/admission;
+- demo Minerals/pricing or StoreKit work;
+- aesthetic Liquid Glass iteration not required for accessibility, correctness,
+  platform support, or R0–R7;
+- conversion or continued shipping of `clients/khala-mobile`.
 
 ## Exit
 
-A Sarah conversation and active multi-stream run started on web appear live in
-the new OpenAgents mobile app; a mobile steer/approval changes the same run and
-appears in OpenAgents Desktop. Both platforms render through Effect Native. A
-clean iOS and Android build proves the exact `OpenAgents` name,
-`com.openagents.app` identifiers, icon digest, owned OTA path, and relevant
-ported behavior contracts. The legacy Khala Code mobile app is no longer an
-installable or releasable product surface.
+On physical iOS and Android devices, the authenticated owner selects a
+repository, starts or resumes one real isolated remote workroom, streams and
+steers the agent, inspects/edits files, reviews the exact diff, runs a bounded
+command, opens a managed preview, verifies and safely writes back a branch/PR,
+and receives one durable receipt. The same thread/workroom/FleetRun/work/
+attempt/command/outcome refs continue on Desktop. The flow survives offline,
+lost acknowledgement, restart, reconnect, token revocation, workroom expiry/
+reclaim, migration, update, push, and handoff without presenting local or
+optimistic state as authority. Owned release lanes are proven and the
+deprecated mobile product/install/release path cannot ship.

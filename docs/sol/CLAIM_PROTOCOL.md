@@ -3,6 +3,8 @@
 - Date: 2026-07-09
 - Status: active coordination contract
 - Authority: [`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md)
+- Bounded task packets:
+  [`2026-07-10-112832-cdt-reliable-fleet-implementation-delegation.md`](./2026-07-10-112832-cdt-reliable-fleet-implementation-delegation.md)
 
 ## Purpose
 

@@ -1,4 +1,4 @@
-# Issue triage receipt — Sarah Fleet Command roadmap reset
+# Issue triage receipts — historical Sarah reset and current reliable software reset
 
 - Date: 2026-07-09
 - Before: 30 open issues from the pre-Sarah-Fleet-Command roadmap
@@ -7,10 +7,43 @@
 > Reconciliation note: this audit records the initial reset exactly. The
 > subsequent live set first reached 19 open issues after the dependency-held
 > and GL additions. On 2026-07-10, #8639, #8648, and #8649 closed, leaving 16
-> open roadmap issues: 14 active P0/P1 program issues and two dependency-held
-> P2 issues. This note updates current arithmetic without changing the original
-> disposition receipt below.
+> open roadmap issues; #8652 then closed. It was later reopened without the
+> `roadmap:sol` label, so the current labeled set remains 15. Revision 25's
+> disposition is recorded below without changing the original receipt.
 - GitHub label: `roadmap:sol`
+
+## 2026-07-10 Revision 25 authoritative triage
+
+The original receipt below is historical. The current executive direction is
+reliable Desktop/mobile coding and fleet software with Effect Native and Khala
+Sync. Mobile absorbs the useful Khala Code MVP capability set and remote-
+workroom coding; Sarah/persona/A/V/presentation work remains paused.
+
+There are **15** open `roadmap:sol` records. #8652 is open but unlabeled,
+outside this roadmap, and portal product expansion remains paused.
+
+| Current disposition | Issues | Current role |
+| --- | --- | --- |
+| **P0 app program** | #8566, #8574, #8597 | Shared R0–R7 program; practical OpenCode Desktop plus compact Effect Native mobile coding/fleet client |
+| **P0 Fleet/runtime** | #8638, #8640 | Existing persona-neutral Fleet authority and real Codex+Claude proof projected into both clients |
+| **P0 remote execution** | #8547, #8636 | Minimum brokered remote workroom and explicit local/remote target routing required by mobile R6/R7; advanced placement breadth follows R7 |
+| Maintenance/deferred | #8634, #8635 | Production/API/security/integrity work only; no broad web or Forum expansion |
+| Paused | #8595, #8610, #8643, #8646 | Landing, Sarah/persona/roles, A/V, and presentation work |
+| Paused except blocker | #8650 | Visual lowering only for exact correctness/accessibility/platform/R0–R7 defects |
+| Privacy tripwire | #8642 | Activate immediately for real correction/deletion/privacy/data-integrity need; otherwise after R7 |
+
+#8597 owns the mobile Effect Native port and phone UX. #8547 owns the first real
+brokered Agent Computer/workroom and #8636 owns one typed target/claim contract
+across owner-local and managed-remote execution. Their minimum path is no
+longer a post-R7 follow-on. See the
+[`mobile port ledger`](./2026-07-10-khala-code-mvp-to-openagents-mobile-port-plan.md)
+and [`issues/README.md`](./issues/README.md).
+
+Live bodies, labels, and claims are operational state and must be reconciled
+before dispatch. This table does not steal an active claim or compress code-
+landed, fixture-proven, deployed, live-proven, owner-accepted, and closed.
+
+## Original 2026-07-09 receipt — historical only
 
 ## Triage rules
 

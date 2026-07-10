@@ -4,6 +4,13 @@
 - Status: Sol analysis; challenge document, non-authoritative
 - Context: [`roadmap system model`](./2026-07-09-roadmap-system-model.md)
 
+> **Revision 25 supersession (2026-07-10):** The risk inventory remains useful
+> where it matches current contracts, but its Sarah-first/A/V/sales program
+> assumptions do not control priority. Current falsifiers live in
+> [`CHALLENGE_LEDGER.md`](./CHALLENGE_LEDGER.md); mobile remote-workroom risks
+> and acceptance live in the
+> [`mobile port plan`](./2026-07-10-khala-code-mvp-to-openagents-mobile-port-plan.md).
+
 ## Why this document exists
 
 The current roadmap is coherent, but it is unusually ambitious. Sarah-first,

@@ -1,14 +1,16 @@
-# MASTER ROADMAP — reliable synced fleet software; OpenCode-parity Desktop
+# MASTER ROADMAP — reliable synced coding and fleet software on Desktop/mobile
 
 - Date: 2026-07-10
-- Updated: 2026-07-10 (owner desktop/mobile reliability reset)
-- Revision: 24
+- Updated: 2026-07-10 (Khala Code mobile/remote-workroom fold-in)
+- Revision: 25
 - Status: canonical OpenAgents implementation roadmap
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Issue source set: [`issues/README.md`](./issues/README.md)
 - Triage receipt: [`2026-07-09-issue-triage.md`](./2026-07-09-issue-triage.md)
 - Desktop parity audit:
   [`2026-07-10-opencode-khala-openagents-desktop-parity-audit.md`](./2026-07-10-opencode-khala-openagents-desktop-parity-audit.md)
+- Mobile MVP/remote-workroom port plan:
+  [`2026-07-10-khala-code-mvp-to-openagents-mobile-port-plan.md`](./2026-07-10-khala-code-mvp-to-openagents-mobile-port-plan.md)
 
 ## Owner decisions encoded here
 
@@ -67,6 +69,20 @@
     prove restart, reconnect, offline catch-up, duplicate suppression, explicit
     conflict/refetch behavior, and one real desktop-to-mobile handoff while a
     mixed coding fleet is active.
+11. **The full Khala Code MVP capability set moves into OpenAgents mobile.**
+    Mobile is not limited to passive supervision. The Effect Native app must
+    absorb the useful behavior, contracts, and test vectors from the frozen
+    Khala Code mobile work: authenticated GitHub/repository selection,
+    repo-bound threads, rich streamed turns, provider/target readiness,
+    steering, approvals, files, changes, artifacts, terminal, preview, push,
+    handoff, fleet state, and release QA. It ports the capability model, not the
+    legacy React Native/NativeWind component tree.
+12. **Remote workrooms are a mobile MVP dependency.** Coding from a phone runs
+    in an owner-scoped remote workroom/Agent Computer through typed lifecycle,
+    file, process, preview-port, network-policy, grant, writeback, and receipt
+    APIs. The phone never gains raw local filesystem, shell, credential, or
+    execution authority. #8547 and #8636 are therefore P0 integration lanes,
+    not post-R7 optional cloud expansion.
 
 ## The product in one sentence
 
@@ -74,9 +90,14 @@
 agents from Desktop and mobile without forking identity, state, authority, or
 receipts.**
 
-Desktop is the complete coding workbench and fleet cockpit. Mobile is a
-purpose-built supervision and continuity client, not a miniature editor. Both
-use the same typed state, control, policy, Sync, and receipt contracts.
+Desktop is the complete local/remote coding workbench and fleet cockpit. Mobile
+is a compact remote coding, supervision, and continuity client. It is not a
+pixel-compressed Desktop or a source of local device authority, but a user must
+be able to select a repository, start or resume an isolated remote workroom,
+inspect and change code, review a diff, use a bounded terminal and preview,
+steer the agent, and complete safe branch/PR writeback without first opening
+Desktop. Both clients use the same typed state, control, policy, Sync, workroom,
+and receipt contracts.
 
 Khala is the inference, routing, and Sync engine. Pylon and Agent Computers are
 execution. Blueprint is legible memory and work state. Effect Native is the
@@ -91,7 +112,7 @@ intent -> policy -> orchestration -> execution
 state <- Sync <- evidence <- durable outcome
 
        OpenAgents mobile  <---- Khala Sync ---->  OpenAgents Desktop
-       supervision + handoff                    workbench + fleet cockpit
+       remote coding + fleet                    full workbench + fleet
                \_____ same identity, authority, and receipts _____/
 ```
 
@@ -105,13 +126,16 @@ state <- Sync <- evidence <- durable outcome
 | Evidence | Verification, exact or explicitly unmeasured usage, and closeout receipts |
 | Continuity | Khala Sync, offline/catch-up protocol, Blueprint, provenance-bearing memory, and resumable work |
 
-Desktop owns the deep workbench affordances: projects/sessions, rich agent
-timeline and composer, files/editor, diff/review, terminal, commands, accounts,
-settings, diagnostics, and release lifecycle. Mobile owns glanceable fleet and
-work status, attention/approval queues, steering, stop/recovery, receipts, and
-handoff. Device capabilities differ; durable identity, run state, command
-outcomes, policy, and evidence never do. Web services may host authority and
-public/API surfaces, but web product expansion is not on the active P0 path.
+Desktop owns the highest-density workbench, local workspace integration,
+multi-pane review, diagnostics, settings, and release lifecycle. Mobile owns a
+compact thread/workspace flow over remote workrooms: activity, repositories,
+agent turns, plan, files, changes, terminal, preview, artifacts, approvals,
+steering, stop/recovery, receipts, push, and handoff. Mobile navigation exposes
+these modes progressively instead of shrinking Desktop columns. Device
+capabilities differ; durable identity, repository/workroom refs, run state,
+command outcomes, policy, and evidence never do. Web services may host
+authority and public/API surfaces, but web product expansion is not on the
+active P0 path.
 
 ### Executive pause boundary — effective 2026-07-10
 
@@ -241,12 +265,13 @@ paused; inclusion here is not active priority:
   Connect `VALID` and adds a separate generic Khala chat mode, but it regressed
   the intended native glass chrome by omitting the local SwiftUI module. Build
   115 source at `ee78dc1a2e` restores that module; typecheck and 40 tests pass,
-  archive/export completed, and App Store Connect reports `VALID`. Physical-
-  device visual acceptance remains open.
-  The app-owned five-thread catalog, Sarah adapter, and generic Khala mode do
-  **not** provide authenticated Sync, Fleet/account authority, or cross-device
-  receipts. Demo prices/video are presentation-only and paused; no StoreKit
-  purchase is implemented;
+  archive/export completed, and App Store Connect reports `VALID`. Build 116 at
+  `e8bf6b8603` then removes the Sarah/persona/demo/local five-thread catalog,
+  makes the native composer the sole generic Khala input, passes typecheck plus
+  20 tests/69 expectations, archives/exports, and is accepted for App Store
+  delivery. Processing/`VALID` and owner physical-device acceptance remain
+  unproven. The current in-memory Khala mode does **not** provide authenticated
+  Sync, Fleet/account/workroom authority, or cross-device receipts;
 - the Effect Native v30 host/lowering seam through `5202a2665a`: the Scope-
   bound render-rn host driver and internal `@expo/ui` lowering landed, and the
   then-current D-MB-02 app-local island was deleted. Build 115 later restored
@@ -392,10 +417,16 @@ records before claiming the first new slice.
   partial project/file access, and provider readiness/device auth. It does not
   yet have authoritative Sync threads, a complete coding workbench, or a
   visible server-authoritative Fleet cockpit.
-- Mobile has an Effect Native/React Native shell, a persisted local five-thread
-  catalog, a production Sarah compatibility path, and a separate generic Khala
-  chat mode. It does not yet have authenticated cross-device Sync, FleetRun
-  authority, account/capacity state, durable controls, or receipt continuity.
+- The new mobile app has an Effect Native/React Native shell and one in-memory
+  persona-neutral Khala chat path driven by the native composer. Removed Sarah/
+  demo/local-catalog state is not an authority substitute. It does not yet have
+  authenticated cross-device Sync,
+  FleetRun authority, account/capacity state, durable controls, remote-workroom
+  coding, or receipt continuity. The frozen `clients/khala-mobile` app already
+  demonstrates much of the missing product behavior—GitHub PKCE, SecureStore
+  session recovery, repository selection, repo-bound threads, rich runtime
+  events, composer controls, model/account readiness, fleet peeks, push/deep
+  links, and a substantial mobile QA system—and is the extraction baseline.
 - The backend has considerably stronger FleetRun, claim, command, attempt,
   outcome, and receipt authority than either app exposes. The shortest path is
   to project and mutate that existing authority through Khala Sync, not to
@@ -413,11 +444,11 @@ The evidence baseline is maintained in
 | R0 — truthful green foundation | Desktop and mobile typecheck/tests/builds; isolated first-run state; capability manifests; explicit `unconfigured`, `offline`, `reconnecting`, `stale`, `must_refetch`, `failed`, and `ready` states; remove or finish fake/dormant Fleet affordances | Both clients are green from clean state and no fixture, local cache, transcript, or optimistic toast is presented as authority |
 | R1 — shared identity and session | One authenticated owner/org identity; device registration; scoped provider/account readiness; stable conversation/project/session refs; safe token refresh/revocation; persona-neutral app/session bootstrap | Sign in on Desktop and mobile, see the same authorized account/session catalog, revoke either device, and prove no credential or private payload crosses renderer/public evidence boundaries |
 | R2 — Khala Sync continuity | Canonical projections for conversations, projects/sessions, FleetRuns, work units, attempts, workers/accounts, approvals, commands, outcomes, and receipts; monotonic cursor/version; tombstones; bounded cache; mutation idempotency keys; explicit conflict/refetch semantics | Create or change durable state on one device, observe it on the other with matching refs/versions, restart both, and reconstruct the same current state without duplicate objects or invented completion |
-| R3 — fleet operations | Start from pinned work; choose named worker/account/capacity; inspect plan/claim/assignment/attempt; steer, approve/reject, pause/resume/drain/stop; surface unavailable/quota/policy states; show exact or `not_measured` usage and verification/closeout | One real Codex+Claude run is started and managed with controls from both clients; every command has one durable accepted/rejected/failed outcome and zero duplicate claims or silent provider substitution |
+| R3 — fleet and remote-workroom operations | Start from pinned work; choose named worker/account/capacity/execution target; create/resume/stop/reclaim a typed remote workroom; inspect plan/claim/assignment/attempt; steer, approve/reject, pause/resume/drain/stop; surface unavailable/quota/policy states; show exact or `not_measured` usage and verification/closeout | One real Codex+Claude run is started and managed with controls from both clients, including at least one remote-workroom unit; every command has one durable accepted/rejected/failed outcome and zero duplicate claims or silent provider/target substitution |
 | R4 — interruption and recovery | Offline mutation queue with bounded eligibility; foreground/background transitions; dropped acknowledgements; replay deduplication; out-of-order/duplicate events; stale leases; server restart; device restart; explicit merge/refetch rules | Fault-injection suite plus a real handoff prove no lost accepted intent, double execution, false LIVE/success state, or indefinite spinner; stale clients converge or fail closed |
 | R5 — Desktop everyday workbench | Complete D0–D6 below: streamed sessions, composer/context, projects/files/editor, Git review, bounded terminal, commands/keybindings, runtimes/models/MCP/permissions, settings/diagnostics, Fleet cockpit, lifecycle/distribution | The practical OpenCode-parity workflow completes through the hardened Effect Native/Electron app and survives restart/reconnect while retaining authoritative Sync/Fleet state |
-| R6 — mobile supervision | Activity/fleet home, recent work, attention queue, run/work/attempt detail, worker/account readiness, steer/approve/pause/resume/stop, outcome/receipt inspection, deep link/handoff, accessible loading/error/offline states | On a physical phone, supervise the R3 run end-to-end and hand deep work to Desktop; mobile never pretends to offer unsupported editor/terminal capability |
-| R7 — release and dogfood | Signed/recoverable Desktop release lane; iOS and Android build/install proof; schema compatibility window; migration/rollback; public-safe diagnostics; telemetry for sync lag, command latency, reconnect, conflicts, and duplicate suppression | A sustained owner dogfood window includes real cross-device fleet work, upgrade/restart/offline faults, no P0/P1 data-loss or false-authority defect, and a signed owner-accepted receipt |
+| R6 — mobile coding and fleet control | Activity/fleet home; GitHub/repository and repo-bound thread flow; rich streamed turns; account/model/target readiness; run/work/attempt detail; steer/approve/pause/resume/stop; typed remote-workroom lifecycle; compact plan/files/changes/terminal/preview/artifact surfaces; safe branch/PR writeback; push, deep link, handoff, and accessible loading/error/offline states | On physical iOS and Android devices, select a repository, start or resume isolated remote coding, inspect/change code, review the exact diff, run a bounded command, open a managed preview, complete safe writeback, and supervise the R3 run without local raw filesystem/shell/credential authority |
+| R7 — release and dogfood | Signed/recoverable Desktop release lane; iOS and Android build/install proof; schema compatibility window; migration/rollback; public-safe diagnostics; telemetry for sync lag, workroom lifecycle, command latency, reconnect, conflicts, and duplicate suppression | A sustained owner dogfood window includes a real mobile-originated remote-container coding task, Desktop/mobile continuation of the same thread/workroom/run, safe branch/PR writeback, upgrade/restart/offline faults, no P0/P1 data-loss or false-authority defect, and a signed owner-accepted receipt |
 
 ### Khala Sync laws for this program
 
@@ -438,6 +469,29 @@ The evidence baseline is maintained in
 - Desktop and mobile consume one shared Effect Native domain/component/intent
   vocabulary. Platform hosts may expose different capabilities, but do not
   fork identifiers, enums, error classes, sync semantics, or outcome grammar.
+
+## Khala Code MVP fold-in to OpenAgents mobile
+
+The complete source-to-destination audit and ordered port plan is
+[`2026-07-10-khala-code-mvp-to-openagents-mobile-port-plan.md`](./2026-07-10-khala-code-mvp-to-openagents-mobile-port-plan.md).
+Every useful Khala Code MVP idea must have one explicit disposition: ported,
+replaced by a stronger shared contract, paused by owner decision, or rejected
+with a reason. Silence is not a disposition.
+
+| Capability group | OpenAgents mobile destination | Required P0 result |
+| --- | --- | --- |
+| Identity and repositories | Effect Native auth/session, GitHub repository search/select, stable repo refs, thread binding | Sign in, select a repository, bind or resume a thread, revoke safely |
+| Agent conversation | Rich streamed reasoning/text/tool/usage/file/writeback events, composer context, queue/steer/interrupt/recover | One authoritative turn survives background, restart, reconnect, and target handoff |
+| Accounts and targets | Codex/Claude readiness/quota, model preference, owner-local/remote target policy, explicit unavailable/fallback state | No default account, silent provider, or silent execution-target substitution |
+| Remote workroom | Typed create/resume/stop/reclaim, files, run/spawn/PTY, preview ports, network policy, snapshots, artifacts | Phone can complete useful remote coding while host authority remains brokered and isolated |
+| Review and writeback | File tree/read/change, exact diff, verification, branch/PR writeback, safe refs, receipts | No force writeback; exact post-image and verification receipt are inspectable before completion |
+| Fleet and attention | Run/work/attempt/account state, approvals, controls, push/deep links, outcomes, receipts | Same refs, versions, and command outcomes as Desktop through Khala Sync |
+| Quality and release | Extract legacy architecture guards, tests, stories, Maestro flows, visual baselines, crash/connectivity and iOS/Android gates | Green clean-state builds plus physical-device and migration/recovery evidence |
+
+Voice, native speech-to-text, Apple Foundation Models, avatar/video, demo
+Minerals/IAP, and persona-first navigation are accounted for but remain paused.
+They are not permitted to hide gaps in the active coding, fleet, Sync,
+workroom, or release flows.
 
 ## Proof status is six distinct rungs
 
@@ -600,7 +654,7 @@ R7 still requires reliable Desktop/mobile operation. Do not wait for cloud or
 Grok quota to run it. Grok is postponed; its adapters and historical canary
 remain regression evidence.
 
-### Follow-on — add managed cloud without changing the product contract
+### P0 remote-workroom lane — mobile coding without local device authority
 
 **[#8547 FC-CLOUD-1](https://github.com/OpenAgentsInc/openagents/issues/8547)**
 completes Codex in real Firecracker.
@@ -616,8 +670,20 @@ selection/fallback is typed and visible, and compute/model usage truth remains
 separate. Claude/Grok cloud expansion follows only through separately accepted
 capacity and the same contract; it is not part of #8640's local cutover exit.
 
-Cloud is additive and follows the local R7 exit unless it becomes necessary to
-close a demonstrated reliability defect. A cloud blocker never stalls R0–R7.
+The user-facing remote-workroom slice of #8547/#8636 is required for R3, R6,
+and R7. Implement the smallest honest owner-scoped path first: repository-bound
+workroom creation, brokered provider/Git grants, isolated workspace and account
+homes, progress through the normal Fleet/Sync contract, bounded file/process/
+preview access, safe branch/PR writeback, verification, usage truth, stop,
+reclaim, and receipts. This path may use the already-owned Agent Computer and
+OpenAgents sandbox contracts; clients must not depend on a provider-specific
+control plane.
+
+Broader elastic capacity, additional providers, advanced placement, or cost
+optimization may follow R7. The minimum remote coding path does not. If the
+nested-virtualization Firecracker proof is temporarily unavailable, use only an
+explicitly labeled lower-isolation development rung and keep R7 blocked; never
+rename a container/control-plane mock into production isolation proof.
 
 ### P0 completed substrate — production inference
 
@@ -684,13 +750,14 @@ is historical architecture evidence, not a claim that the current tree has no
 app-local native presentation module. #8646/#8650 remain paused except where a
 narrow host/lowering defect demonstrably blocks R0–R7.
 
-GL-3 is delivered and closed at `6647d998ad` / TestFlight build 113. The
-mobile glass shell now mints/persists the production prospect session, sends
+GL-3 is a closed historical receipt at `6647d998ad` / TestFlight build 113. Its
+then-current mobile shell minted/persisted the production prospect session and sent
 typed turns through the same `/sarah` contracts as web, renders the production
 reply, survives restart, and shows bounded offline/reconnect states under an
 enforced behavior contract. Its current text path renders the POST result while
 SSE carries liveness/cards. Authenticated operator posture, authoritative Sync,
 and Android proof move into R1/R2/R6; voice/avatar tiers remain paused. The
+Build 116 removed that Sarah/persona/session path from the active app. The
 checked-in historical issue source and exit ordering live in
 [`issues/glass-ui-and-sarah-mobile.md`](./issues/glass-ui-and-sarah-mobile.md).
 
@@ -745,24 +812,18 @@ builds a new OpenAgents iOS/Android app at `apps/openagents-mobile`.
 
 Status: the initial greenfield shell, identity/icon oracles, Effect Native
 React Native renderer seam, owned OTA feed, and iOS release lane are proven.
-TestFlight build 113 closed the text-first Sarah compatibility slice. Build 114
-at `23aba8270a` adds a separate public generic Khala conversation mode and is
-App Store Connect `VALID`, but omitted the intended native glass module. Build
-115 source at `ee78dc1a2e` restores that module; 40 tests/typecheck, archive/
-export, and App Store Connect validity pass, while physical-device acceptance
-remains open. Khala mode is stateless with respect to authenticated
-account keys, credits, FleetRun, receipts, and cross-device Sync. The persisted
-five-thread catalog remains app-local. Neither route satisfies R1–R6.
+Build 115 at `ee78dc1a2e` is the last `VALID` baseline with the restored app-
+local SwiftUI module. Build 116 at `e8bf6b8603` removes Sarah/persona/demo/local-
+catalog state and uses the native composer as the sole generic Khala input;
+typecheck, 20 tests/69 expectations, archive/export, and App Store delivery
+acceptance pass. App Store processing/`VALID` and owner device acceptance are
+still open. Khala mode remains in-memory and has no authenticated account,
+repository, workroom, FleetRun, receipt, or cross-device Sync authority.
 
-The bundled video and demo pricing are presentation-only and paused; there is
-no StoreKit purchase.
-
-#8597 retains an unreleased Fable claim whose published scope is only the
-initial greenfield setup; later OTA/SwiftUI/TestFlight work exceeded that
-recorded scope. Treat it as owned until the actor posts an explicit re-scope or
-release—do not infer a stale claim without the protocol's evidence and process/
-worktree audit. Authenticated Sync/Fleet continuation, Android proof, vendor
-reconciliation needed for reliability, and the full issue exit remain open.
+The #8597 removal/composer claim released. Authenticated Sync, the complete
+M0–M7 capability port, remote-workroom coding, Android proof, migration/release
+reconciliation, and the full issue exit remain open. Refresh the live claim
+ledger before new mobile changes.
 
 GL-1/#8647 landed the Scope-bound host driver and internal `@expo/ui` lowering.
 The build-115 compatibility repair reintroduced an application-local SwiftUI
@@ -770,15 +831,19 @@ module after build 114's visible fallback regression. Preserve the working
 release floor and record the exception honestly; further visual migration is
 paused unless a narrow defect blocks R0–R7.
 
-- The default target is a neutral activity/fleet home: recent work, sync
-  health, attention/approvals, active runs, outcomes, and handoff.
+- The default target is a neutral coding/fleet home: recent work, repositories,
+  Sync health, attention/approvals, active threads/workrooms/runs, outcomes,
+  push-driven returns, and handoff.
 - Fleet runs, approvals, command outcomes, receipts, conversations, and
   Blueprint continuity use authoritative Khala Sync projections.
 - Account setup remains directly accessible for recovery/power use.
 - Effect Native is the application model and React Native/Expo is the host.
-- Mobile implements the R6 supervision subset. File editing, full Git review,
-  and PTY are handed off to Desktop instead of approximated with unsafe or
-  cramped mobile controls.
+- Mobile implements the full R6 compact remote-workbench slice. Repository
+  selection, rich turns, plan/files/changes, bounded terminal, managed preview,
+  artifacts, verification, and safe branch/PR writeback are first-class over
+  typed remote-workroom capabilities. Desktop remains the higher-density local
+  workbench and a handoff target; it is not a prerequisite for useful mobile
+  coding.
 - The product name is `OpenAgents`; both the iOS bundle identifier and Android
   application ID are the owner-designated existing identifier
   `com.openagents.app`.
@@ -787,7 +852,9 @@ paused unless a narrow defect blocks R0–R7.
   `0a1865ac6d1efc792d365d9a37af9e6ffa3270fa7c8731f36129f35371bfc7ce`).
 - `clients/khala-mobile` is deprecated and frozen as a parity, contract, native-
   module, and migration reference. It is not renamed, converted in place, or
-  shipped as the destination app.
+  shipped as the destination app. Its useful behaviors and QA vectors are
+  exhaustively dispositioned in the
+  [`mobile port plan`](./2026-07-10-khala-code-mvp-to-openagents-mobile-port-plan.md).
 
 ### OpenAgents Desktop
 
@@ -942,21 +1009,24 @@ surface or a parallel state universe.
 
 ## Canonical open issue set
 
-There are **16 open roadmap issue records** at this reset. Their previous labels
+There are **15 open `roadmap:sol` issue records**. #8652 was reopened later on
+2026-07-10 but currently carries no `roadmap:sol` label and remains outside the
+active program; portal work is paused by Revision 25. Previous labels
 and prose do not all match the new priority. The disposition below is
 authoritative for sequencing; reconcile live labels, issue bodies, and claims
-before starting or continuing a slice. Closed #8639, #8647, #8648, and #8649
-remain landed substrate and are not active burn items.
+before starting or continuing a slice. Closed #8639 and #8647–#8649 remain
+landed substrate. #8652's portal repairs remain production evidence but are not
+an active roadmap burn item.
 
 | Roadmap disposition | Issue | Purpose now |
 | --- | --- | --- |
 | **P0 active** | #8566 | Parent for the R0–R7 Effect Native Desktop/mobile reliability program |
 | **P0 active** | #8574 | OpenCode-parity Desktop, authoritative Sync, Fleet cockpit, and D0–D6 |
-| **P0 active** | #8597 | Purpose-built mobile continuity and fleet supervision, including iOS/Android proof |
+| **P0 active** | #8597 | Effect Native mobile coding/fleet client, full Khala Code MVP fold-in, and iOS/Android proof |
 | **P0 active substrate** | #8638 | Persona-neutral Fleet Command contracts projected into both clients |
 | **P0 active proof** | #8640 | Real simultaneous Codex + Claude runtime burn, then R3/R7 client receipt |
-| P1 follow-on | #8547 | Codex inside real Agent Computer after local cross-device reliability is green |
-| P1 follow-on | #8636 | Hybrid local/cloud routing through the same proven run contract |
+| **P0 active remote execution** | #8547 | Brokered Codex inside a real Agent Computer/workroom for mobile-originated coding |
+| **P0 active remote routing** | #8636 | Owner-local/remote target routing through the same proven run and workroom contract |
 | Maintenance/deferred | #8634 | Web host/public-route work only when required for R0–R7 or production integrity |
 | Maintenance/deferred | #8635 | Retained Forum maintenance; no active conversion expansion |
 | **PAUSED** | #8595 | Landing/root copy and product cutover |
@@ -964,7 +1034,6 @@ remain landed substrate and are not active burn items.
 | **PAUSED** | #8643 | Sarah roles, named colleagues, and relationship-mode expansion |
 | **PAUSED** | #8646 | Glass/Sarah-in-app presentation epic; retain closed architectural receipts |
 | **PAUSED except R0–R7 blocker** | #8650 | Owned visual lowering migration |
-| **PAUSED** | #8652 | Portal/product expansion during the core client reliability burn |
 | P2 privacy tripwire | #8642 | Blueprint correction/deletion/provenance export; activate for real privacy/data-integrity need |
 
 `roadmap:sol` remains the program label. “Paused” means no new feature or
@@ -981,10 +1050,11 @@ an active unsafe partial migration, or ignoring a security/privacy incident.
    both clients together: schema + migration, server projection/mutator,
    shared Effect Native domain/intent, Desktop view, mobile view, fault tests.
    Serialize shared schemas, migrations, catalogs, and generated clients.
-3. In parallel, continue ready Desktop D1/D2 work and replace mobile's current
-   route picker/local catalog as the default product shape with the neutral R6
-   activity/fleet home. Preserve existing Sarah and generic Khala routes only
-   as clearly bounded compatibility adapters while neutral contracts land.
+3. In parallel, continue ready Desktop D1/D2 work and port the frozen Khala Code
+   MVP behaviors into the neutral Effect Native mobile shell in the ordered
+   waves from the mobile port plan. Preserve existing Sarah and generic Khala
+   routes only as clearly bounded compatibility adapters while identity,
+   repository, thread, rich-turn, account, and target contracts land.
 4. Run #8640 Phase A at the first honest owner-account opportunity without
    blocking other R0–R2 work. Fix runtime defects in place. Then close R3 with
    one real simultaneous Codex+Claude run whose state and typed controls are
@@ -993,13 +1063,17 @@ an active unsafe partial migration, or ignoring a security/privacy incident.
    acknowledgement, offline queue, stale lease, server/device restart, cursor
    gap, migration, and rollback. Convert every counterexample into a regression
    test and a user-visible bounded state.
-6. Finish Desktop D3–D6/R5 and mobile R6: complete workbench, runtime/settings,
-   Fleet cockpit, purposeful mobile supervision, accessibility, diagnostics,
-   packaging, iOS/Android proof, and deep-link handoff. Reuse contracts and
-   test vectors from deprecated Khala clients without converting them in place.
-7. Close R7 with a sustained owner dogfood and release receipt. Only then pull
-   #8547/#8636 cloud expansion or reactivate another product lane. #8642 may
-   activate earlier only for a real privacy/data-integrity request or incident.
+6. Complete #8547/#8636's minimum remote-workroom path and finish Desktop
+   D3–D6/R5 plus mobile R6: compact files/changes/terminal/preview/artifacts,
+   safe writeback, Fleet cockpit/control, accessibility, diagnostics,
+   packaging, physical iOS/Android proof, push, and deep-link handoff. Reuse
+   contracts and test vectors from deprecated Khala clients without converting
+   them in place.
+7. Close R7 with a sustained owner dogfood and release receipt that begins a
+   remote coding task on mobile and continues it on Desktop without forking
+   thread, workroom, Fleet, or receipt truth. Only then expand cloud placement
+   breadth or reactivate another product lane. #8642 may activate earlier only
+   for a real privacy/data-integrity request or incident.
    All Sarah/persona, A/V, presentation, landing, portal, and optional visual-
    lowering work remains paused until an explicit owner reactivation.
 
@@ -1044,10 +1118,13 @@ an active unsafe partial migration, or ignoring a security/privacy incident.
     vertical slice without waiting for Sol to implement or restate it. Sol owns
     roadmap reconciliation and shared hot contracts; an active claim or P0
     boundary still requires explicit coordination.
-15. **Mobile is purposeful, not compressed Desktop.** Mobile provides fleet
-    supervision, attention, control, receipts, and handoff. Unsupported editor,
-    Git, terminal, or credential capability is explicit and deep-links to
-    Desktop rather than being approximated unsafely.
+15. **Mobile is a compact remote workbench, not a local-authority clone.**
+    Mobile provides coding threads, plan/files/changes, bounded terminal,
+    managed preview, artifacts/writeback, fleet supervision, attention,
+    controls, receipts, and handoff through typed remote capabilities. It never
+    receives raw device filesystem/process credentials or silently widens a
+    workroom grant. Information density and navigation are phone-native rather
+    than a scaled-down Desktop layout.
 16. **A timeout is not an outcome.** Accepted, rejected, failed, and unknown-
     pending-reconcile are distinct durable command states. Retries are driven by
     idempotency and reconciliation evidence, never user-visible optimism.
@@ -1087,7 +1164,7 @@ revision diary or restore the old 30-item phase queue.
 
 **Historical snapshot.** The facts below describe the mid-day state before the
 owner's Desktop/mobile reliability reset. Any “in flight,” “P0,” or sequencing
-language here is superseded by Revision 24 and the disposition table above.
+language here is superseded by Revision 25 and the disposition table above.
 
 Factual status updates since the last Sol reconciliation (Fable lane,
 evidence on the named issues):
@@ -1126,5 +1203,5 @@ evidence on the named issues):
   in flight.
 
 *Editing note: this factual reconciliation was written by the **Fable** lane at
-explicit owner request. Revision 24 preserves it as evidence but supersedes its
+explicit owner request. Revision 25 preserves it as evidence but supersedes its
 sequencing with the reliable Desktop/mobile program above.*

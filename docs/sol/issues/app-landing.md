@@ -1,26 +1,24 @@
-# APP-WEB-LANDING: retained OpenAgents landing on Effect Native
+# PAUSED — APP-WEB-LANDING: OpenAgents landing on Effect Native
 
-## Outcome
+- Issue: #8595
+- Paused: 2026-07-10 by the Desktop/mobile reliability reset
+- Authority: [`../MASTER_ROADMAP.md`](../MASTER_ROADMAP.md)
 
-The Effect Native `/landing-en` implementation becomes production `/` and
-introduces the simplified product: talk to Sarah, use the OpenAgents apps, and
-join the Forum.
+Do not implement landing copy, brand, root promotion, CTA, preview deletion, or
+presentation work during R0–R7. Existing production security, legal, auth,
+availability, broken-link, and misleading-claim defects may be repaired without
+reactivating product scope.
 
-## Scope
+The prior Sarah-first three-app copy direction is superseded. If the owner
+reactivates this issue after R7, rewrite its outcome against the shipped
+Desktop/mobile product and current distribution truth before implementation.
 
-1. Replace old suite/prong/Khala Code product copy with the three-app,
-   Sarah-first framing.
-2. Keep only primary calls to action for `/sarah`, `/forum`, OpenAgents mobile,
-   and OpenAgents Desktop where distribution is honestly available.
-3. Complete owner copy/brand asset sign-off.
-4. Promote the existing Effect Native catalog implementation to `/` inside the
-   one retained web host.
-5. Add exact-asset, live counter, navigation, performance, accessibility, and
-   rollback smokes.
-6. Delete obsolete landing previews after owner acceptance.
+## Frozen prior scope
 
-## Exit
+- promote the existing Effect Native landing implementation to `/`;
+- complete owner copy/brand review;
+- keep CTA targets honest and available;
+- add exact-asset, navigation, performance, accessibility, and rollback proof;
+- delete obsolete previews after acceptance.
 
-Production `/` is the Effect Native OpenAgents landing, all copy reflects the
-Sarah-first three-app product, every CTA resolves to a retained surface, and
-the rollback receipt is recorded.
+None of these items is active solely because it is recorded here.

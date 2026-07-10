@@ -1,6 +1,7 @@
 # Terra execution lane under the Sol roadmap
 
 - Date: 2026-07-10
+- Updated: 2026-07-10 (Revision 25 mobile remote-workroom fold-in)
 - Status: active operating amendment
 - Authority: owner direction, [`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md),
   [`CLAIM_PROTOCOL.md`](./CLAIM_PROTOCOL.md), and repository invariants
@@ -18,19 +19,24 @@ Terra is not a second roadmap and is not permanently a Desktop team. Its first
 active home is #8574 because OpenAgents Desktop has a deep, ready parity queue
 with bounded host seams and little overlap with the live Phase A fleet burn.
 Sol may route Terra to another ready leaf when that creates more useful motion.
+The new #8597 M0–M7 queue is defined in the
+[`mobile port ledger`](./2026-07-10-khala-code-mvp-to-openagents-mobile-port-plan.md).
+Terra may take a disjoint M0–M2/M4–M6 leaf after claim release and contract
+freeze; it does not independently design #8547/#8636 isolation, grants,
+workroom lifecycle, target fallback, ports, or writeback authority.
 
 ## Why this changes throughput
 
 The previous operating model concentrated roadmap maintenance, critical-path
 integration, leaf implementation, visual feedback, and closeout in one lane.
-That made Sol a serial bottleneck even when safe P1 work was ready.
+That made Sol a serial bottleneck even when safe R0–R7 work was ready.
 
 The split is now explicit:
 
 | Responsibility | Sol | Terra |
 | --- | --- | --- |
 | Canonical priorities and issue set | owns | consumes and reports drift |
-| P0 hot-contract integration | owns unless explicitly handed off | does not take implicitly |
+| Shared identity/Sync/Fleet hot-contract integration | owns unless explicitly handed off | does not take implicitly |
 | Ready low-collision leaf implementation | may implement | may claim and ship directly |
 | Real-host feedback and small corrective passes | reviews when material | owns for its active slice |
 | Shared schemas, migrations, generated catalogs, lockfiles, route tables | integration owner | changes only under an explicit hot-contract claim |
@@ -59,55 +65,51 @@ Terra does not need Sol to restate an already-clear issue body before starting
 such a leaf. Discovery that materially changes scope, authority, sequencing, or
 a hot contract returns to Sol for integration ownership.
 
-## Current Terra assignment: #8574 Desktop parity
+## Current Terra assignment: #8574 Desktop parity under R0–R7
 
-The Desktop lane is beyond its scaffold-only state. Through `f4cb8ed18e`, it
-has a hardened Electron/Effect Native host, a minimal real chat surface,
-host-owned bounded thread persistence, a host-held gateway bridge with honest
-failure, shared typed icons and glass material lowering, and the start of a
-real local-workspace vertical slice: user-selected root, bounded root listing,
-and bounded read-only file preview. It also has a dedicated Settings surface
-that reads bounded Codex account readiness and starts Pylon's isolated
-device-auth flow without touching default `~/.codex`; the headless smoke proves
-the typed awaiting-browser state, not completion of real owner authentication.
+The Desktop lane is beyond scaffold-only state, but local threads, local Fleet
+staging, and host smoke are not Sync/Fleet authority. Current factual state is
+maintained in [`../terra/CURRENT_STATE.md`](../terra/CURRENT_STATE.md); bounded
+task packets and stop rules live in the
+[`reliable fleet implementation delegation`](./2026-07-10-112832-cdt-reliable-fleet-implementation-delegation.md).
 
 The active Terra delivery order is:
 
-1. Complete one real owner Codex reconnect through the Settings path when the
-   owner is available, recording the account-ready receipt without exposing
-   credentials. This is an owner proof gate, not a reason to idle.
-2. Complete project/editor/review as one coherent local-workspace slice:
-   bounded editing and save, typed Git status/diff, review UI, failure states,
-   and Electron smoke.
-3. Add the terminal workbench through a bounded process/session host service;
-   never expose generic renderer-to-shell authority.
-4. Add command palette and hotkeys over the typed intent registry so capability
-   growth does not restore permanent developer chrome.
-5. Connect Fleet, approvals, receipts, Forum, provider details, and diagnostics
-   only to their owning authoritative services; keep chat as the quiet default.
-6. Finish identity, packaging, fuse, signing, notarization, update, rollback,
-   and clean-machine proof under their explicit owner gates.
+1. Close #8574's R0/D0 baseline, including shared type/catalog drift and honest
+   fixture/local/unconfigured capability states. A real owner Codex reconnect
+   is evidence when available, not a queue-wide blocker.
+2. After Sol freezes R1/R2, consume the canonical identity/session/Khala Sync
+   contract in Desktop; do not invent app-local thread or fleet authority.
+3. Complete bounded file edit/save and typed Git status/diff/review through the
+   hardened host boundary.
+4. Add command registry/palette/keybindings, then the terminal only after its
+   workspace/PTY/redaction/lifecycle contract is approved.
+5. Connect the server-authoritative Fleet cockpit, approvals, command outcomes,
+   receipts, provider/MCP/permission settings, and diagnostics.
+6. Finish identity, fuses, signing/notarization, updates, rollback, clean-
+   machine proof, and R7 dogfood under explicit owner gates.
 
 Terra may make required reusable Effect Native DOM/catalog changes when the
 live #8574 claim names the shared hot contract before mutation. App-local UI
 semantics remain prohibited when the need belongs in the shared catalog or
 renderer.
 
-## Boundaries around the P0 burn
+## Boundaries around the runtime proof and client program
 
 C1 is crossed: #8637, #8633, and #8639 are closed, fixture-proven, and the
-minimum-safe supervision stack is deployed. The serial P0 is #8640 Phase A: a
-clean simultaneous Codex + Claude owner-local burn through Sarah. Grok is
+minimum-safe supervision stack is deployed. #8640 Phase A is a clean
+simultaneous Codex + Claude owner-local runtime proof through a landed
+compatibility adapter. It does not make Sarah the product front door or block
+ready R0–R2 client work. Grok is
 postponed by owner decision because the connected account is quota/payment
 exhausted; its existing adapter and receipt coverage remain regression
 substrate but do not block the cutover.
 
-Until Phase A closes, Sol owns the live-burn hot paths: Sarah FleetRun
-authority/projection, Pylon claim/execution/retry state, account-health and
-credential scanners, deployment type boundaries, migrations, and the exact
-receipt contract. Terra may work beside that burn on disjoint P1 leaves. Terra
-touches a P0 hot path only through an explicit Sol handoff recorded in the live
-issue claim.
+Sol owns shared identity/Sync schemas, FleetRun authority/projection, Pylon
+claim/execution/retry state, account-health and credential scanners, deployment
+type boundaries, migrations, and the exact receipt contract. Terra may work on
+disjoint R0–R7 leaves. It touches a shared hot path only through an explicit
+Sol handoff recorded in the live issue claim.
 
 ## Claim and landing protocol
 
@@ -132,9 +134,10 @@ leaf.
 
 ## Success test
 
-This amendment is working when Terra continuously closes real P1 product loops
-while Sol closes the Phase A/hybrid critical path, without duplicate claims,
-hot-contract collisions, fabricated UI state, or a second roadmap. If Terra
+This amendment is working when Terra continuously closes real R0–R7 product
+loops while Sol integrates shared identity/Sync/Fleet contracts and live proof,
+without duplicate claims, hot-contract collisions, fabricated UI state, or a
+second roadmap. If Terra
 spends more time waiting for restated instructions than shipping ready leaves,
 the pull rules are too narrow. If Sol repeatedly has to unwind Terra landings,
 the claim or hot-contract boundary is too loose.

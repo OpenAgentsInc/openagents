@@ -1,5 +1,9 @@
 # FC-BRAIN: Sarah inference through the Khala gateway
 
+> **Historical closed substrate:** #8600 is closed. Retain persona-neutral
+> gateway, caps, fallback, and receipt contracts. Sarah-specific presentation
+> is paused and this file is not a current dispatch queue.
+
 ## Outcome
 
 Sarah's text and avatar brain use the persona-neutral Khala gateway with exact

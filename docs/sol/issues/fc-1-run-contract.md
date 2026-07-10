@@ -1,5 +1,9 @@
 # FC-1: authenticated Sarah fleet tool and durable run contract
 
+> **Historical closed substrate:** #8637 is closed. Preserve the durable run/
+> idempotency/owner-scope contracts; Sarah-specific initiating-surface and role
+> language does not control Revision 25 product work.
+
 Parent: #8638
 
 ## Outcome

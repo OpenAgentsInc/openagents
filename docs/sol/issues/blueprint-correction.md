@@ -2,18 +2,19 @@
 
 ## Priority posture
 
-Dependency-held until #8640 Phase A closes the owner-local Sarah Fleet cutover,
-unless the tripwire below fires. It must not distract the serial P0 fleet path.
+Paused until R7 unless the tripwire below fires. A real correction/deletion/
+privacy/data-integrity request activates it immediately. The presentation
+surface may be direct Desktop/mobile software; Sarah is not required.
 
 ## Outcome
 
-From Sarah/Blueprint, an authenticated user can inspect what Sarah knows,
+From OpenAgents/Blueprint, an authenticated user can inspect retained facts,
 correct or delete a fact without silently rewriting history, understand where
 it propagated, and export current facts with provenance and tombstones.
 
 ## Automatic tripwire
 
-The first real, non-fixture conversation in which a user asks Sarah to correct
+The first real, non-fixture conversation in which a user asks OpenAgents to correct
 or delete remembered information must create a bounded owner-private
 `blueprint_correction_requested` receipt and immediately reclassify this issue
 for active privacy work. The same applies to a live privacy incident involving
@@ -38,7 +39,7 @@ roadmap review to notice either event.
 
 ## Authority and safety
 
-Sarah presents and requests; the owning data/projection services authorize and
+Desktop/mobile present and request; the owning data/projection services authorize and
 apply. Model confidence is never deletion authority. Legal retention,
 service-deliverable evidence, payment records, and promise receipts remain under
 their own retention/authority rules and may return an explicit cannot-delete
@@ -47,7 +48,7 @@ reason instead of false success.
 ## Exit
 
 One live owner-scoped fact is inspected, corrected, propagated, exported, and
-then tombstoned through Sarah. Every transition is receipted and survives
+then tombstoned through the authenticated product surface. Every transition is receipted and survives
 reconnect; the old value disappears from current authorized projections while
 remaining only where explicit history/retention policy permits, and a second
 owner's state is unchanged.

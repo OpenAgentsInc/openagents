@@ -2,6 +2,13 @@
 
 Live issues: #8646 epic, #8647 GL-1, #8648 GL-2, #8649 GL-3, #8650 GL-4.
 
+> **Revision 25 disposition:** #8647–#8649 are closed historical receipts.
+> #8646 and presentation/Sarah integration are paused. #8650 may move only for
+> an exact correctness, accessibility, platform, or R0–R7 blocker. Do not use
+> this document as the mobile product queue; current mobile remote coding lives
+> in [`app-mobile.md`](./app-mobile.md) and the
+> [`mobile port plan`](../2026-07-10-khala-code-mvp-to-openagents-mobile-port-plan.md).
+
 ## Outcome
 
 OpenAgents mobile can consume Sarah immediately through the same text-first
@@ -77,8 +84,8 @@ contract change for app code, and reconciled vendored divergence.
 
 ## Program gates
 
-- GL is P1 parallel. It cannot take the #8639 steering, authority, projection,
-  or receipt hot contracts or delay #8640 Phase A.
+- GL is paused except for the exact #8650 blocker boundary above. It cannot
+  preempt Sync, Fleet, remote-workroom, mobile coding, or release work.
 - Every new mobile/renderer leaf must claim its exact scope and coordinate any
   active #8597/#8647/#8650 hot paths before mutation. Elapsed time alone does
   not transfer ownership.

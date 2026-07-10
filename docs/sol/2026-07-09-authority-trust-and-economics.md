@@ -2,9 +2,16 @@
 
 - Date: 2026-07-09
 - Status: Sol analysis; no authority or pricing change
-- Governing sources: [`INVARIANTS.md`](../../INVARIANTS.md),
+- Governing sources: [`INVARIANTS.md`](../../../INVARIANTS.md),
   [`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md), and owning-surface
   contracts
+
+> **Revision 25 supersession (2026-07-10):** Retain the typed-authority,
+> privacy, trust, receipt, and economic-separation analysis. Sarah-first
+> presentation is historical. Direct Desktop/mobile software—including mobile
+> remote workrooms—uses the same service-owned authority. See the
+> [`master roadmap`](./MASTER_ROADMAP.md) and
+> [`mobile port plan`](./2026-07-10-khala-code-mvp-to-openagents-mobile-port-plan.md).
 
 ## The central law
 
