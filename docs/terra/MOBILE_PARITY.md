@@ -23,7 +23,7 @@ miniature file manager or a copy of desktop diagnostics.
 | Open a chat | Restore the selected thread relationship + bounded transcript | Landed | Each selected row restores its own thread |
 | Real response/error | Existing Sarah route, bounded SSE, typed unavailable state | Landed baseline | No canned assistant reply |
 | Khala orchestrator | Public generic Khala mode in the same native picker | Landed baseline | Server owns `openagents/khala` routing; no invented backing lane or Fleet outcome |
-| Minimal default chrome | Native Liquid Glass shell, typed Effect Native content/drawer | Landed | No developer/transport/Fleet counters in default chrome |
+| Minimal default chrome | Native SwiftUI Liquid Glass shell, typed Effect Native content/drawer | Build 115 correction uploading | The visible iOS shell must not silently fall back to opaque React Native controls |
 | Official typed icon names | Shared Effect Native icon catalog | Landed | RN fallback remains closed and typed |
 | Project home | Conversation catalog is the current mobile home | Landed baseline | No fictional project data |
 | Desktop local Files | Explicit import/attachment catalog | Not started | Requires user choice and native-runtime review |
@@ -62,5 +62,7 @@ own transcript, and a new chat does not inherit a prior prospect/thread ID.
 This is the next proof before adding any attachment or Fleet surface.
 
 For Khala specifically, the next device receipt is a real turn through build
-114 while the mode picker and native glass chrome are visible; build validity is
-not a pixel/owner-acceptance claim.
+115 while the mode picker and native glass chrome are visible; build validity is
+not a pixel/owner-acceptance claim. Build 114 is not a valid visual acceptance
+candidate: its binary lost the native SwiftUI module and showed the opaque
+fallback.

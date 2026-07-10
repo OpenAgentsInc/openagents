@@ -36,7 +36,9 @@ the assigned desktop order. It needs an explicit user-selection/import design
 and native-runtime compatibility decision; it must never become raw device
 filesystem browsing.
 
-Khala mode now needs a real device/pixel receipt before any attempt to add
+Build 115 needs an owner device/pixel receipt confirming the native SwiftUI
+glass composer, icon controls, and mode picker have replaced the opaque
+fallback. Khala mode then needs a real device/pixel receipt before any attempt to add
 authenticated account, key, model-route, or Fleet controls. Those surfaces
 touch authority and do not belong in the generic public chat without an
 explicit Sol-owned integration scope.

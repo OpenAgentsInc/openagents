@@ -7,6 +7,10 @@
 - ASC build id: `79fd0ef2-bbc1-4eac-9f66-87eac1371eda`
 - Processing state: `VALID`
 
+> Superseded for visual acceptance by build 115. Build 114 is a valid Khala
+> transport build, but its native SwiftUI Liquid Glass module was absent and it
+> therefore showed an opaque React Native fallback for the top-level chrome.
+
 ## Outcome
 
 The existing Liquid Glass mode picker now contains **Khala**. Selecting it

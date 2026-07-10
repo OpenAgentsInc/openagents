@@ -40,6 +40,7 @@ was direct and useful:
 | `226aad0e72` | Sharpened the desktop material geometry after visual review. |
 | `7d77150514` | Replaced mobile seeded conversations with an app-owned five-thread catalog, real new-thread minting, and recent-thread restoration. |
 | `23aba8270a` | Added the mobile Khala mode: a typed public-orchestrator transcript/composer through the existing streaming Khala route; TestFlight build 114 is `VALID`. |
+| `ee78dc1a2e` | Restored the owner-required `openagents-liquid-glass` SwiftUI module after a concurrent removal caused the iOS app to expose opaque React Native fallback controls; prepared native build 115. |
 
 ## What now works
 
@@ -137,6 +138,22 @@ user-selected document capability rather than silently treating the phone's
 - The default mobile mode picker now includes Khala. It is a real call to the
   public generic orchestration route, but it is deliberately not a claim that
   a named backing model, Pylon, FleetRun, receipt, or Sarah relationship exists.
+
+## Mobile SwiftUI regression and correction
+
+Build 114 was technically valid in App Store Connect but was visually wrong.
+The concurrent renderer cleanup removed the app-local SwiftUI module from the
+native project. The JavaScript fallback then became the actual iOS chrome,
+which is why the owner saw outlined, opaque controls instead of Liquid Glass.
+That is not an acceptable degradation for a surface explicitly required to be
+SwiftUI.
+
+`ee78dc1a2e` restores the native module, its SwiftUI `GlassComposer`,
+`GlassIconButton`, and `GlassPill` controls, and the app dependency that causes
+the module to be embedded during iOS prebuild. The typed state and intent model
+remains shared; the owner-visible iOS lowering is deliberately native SwiftUI.
+Because an OTA cannot add a native module missing from an already-installed
+binary, this correction requires build 115 rather than a build-114 OTA.
 
 ## Execution record
 
