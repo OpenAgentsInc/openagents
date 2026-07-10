@@ -1946,7 +1946,8 @@ const renderTable = (view: TableView, state: DomRendererState, report: IntentRep
 // free-form drag math in app code). NavRail is a selection contract; Workbench
 // swaps the active pane as typed state.
 const iconSvg = (name: IconName, sizePx: number): string => {
-  return openAiIconSvg(name).replace(
+  const assetName = name === "Compose" ? "ChatCompose" : name
+  return openAiIconSvg(assetName).replace(
     'width="1em" height="1em"',
     `width="${sizePx}" height="${sizePx}"`,
   )

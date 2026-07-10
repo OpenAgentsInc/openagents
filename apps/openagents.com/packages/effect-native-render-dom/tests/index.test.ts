@@ -2,9 +2,11 @@ import { describe, expect, test } from "bun:test"
 import { Window } from "../../../apps/web/node_modules/happy-dom"
 import {
   Button,
+  Icon,
   IntentRef,
   Stack,
   UnknownIntentError,
+  iconNames,
   type IntentReporter
 } from "@effect-native/core"
 import { Effect, Stream } from "@effect-native/core/effect"
@@ -17,6 +19,33 @@ const nextTask = Effect.promise<void>(
 )
 
 describe("DOM renderer host boundaries", () => {
+  test("resolves every closed icon and lowers Compose through the ChatCompose asset", async () => {
+    const window = new Window({ url: "http://localhost/" })
+    const document = window.document as unknown as Document
+    const root = document.createElement("div")
+    document.body.appendChild(root)
+    const report: IntentReporter = () => Effect.succeed(undefined)
+
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function*() {
+          yield* makeDomRenderer({ document }).mount(
+            root,
+            Stream.succeed(Stack(
+              { key: "icons", direction: "row" },
+              iconNames.map((name) => Icon({ key: `icon-${name}`, name }))
+            )),
+            report
+          )
+
+          expect(root.querySelectorAll("[data-en-icon] svg")).toHaveLength(iconNames.length)
+          const compose = root.querySelector('[data-en-icon="Compose"] svg')
+          expect(compose?.outerHTML).toContain("M12 4.5")
+        })
+      )
+    )
+  })
+
   test("deduplicates atomic CSS while retaining the exact declaration value", async () => {
     const window = new Window({ url: "http://localhost/" })
     const document = window.document as unknown as Document

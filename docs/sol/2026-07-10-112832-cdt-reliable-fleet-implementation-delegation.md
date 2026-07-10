@@ -9,6 +9,20 @@
 - Status: executable delegation packet; not a replacement for the roadmap,
   live issue state, or an active claim
 
+## Execution progress
+
+- 2026-07-10 16:38 CDT — FAST-1 claimed on #8574 after the prior Desktop
+  execution claim released. The scope is limited to the DOM renderer's
+  `Compose` → `ChatCompose` asset alias and its closed-icon regression; no
+  catalog, schema, app, authority, or Fleet contract change is in scope.
+- 2026-07-10 16:41 CDT — Renderer typecheck and focused regression passed.
+  The Desktop suite exposed its former direct-call static assertion, so the
+  claim was explicitly extended to update that guard to require the narrow
+  alias before the shared catalog call. No production contract changed.
+- 2026-07-10 16:42 CDT — FAST-1 verification is green: render-dom typecheck;
+  four focused DOM tests; Desktop typecheck; 61 Desktop tests; and
+  `git diff --check`. Preparing the scoped commit and release receipt.
+
 ## Mission
 
 Rapidly close the active OpenAgents reliability program in dependency order:
