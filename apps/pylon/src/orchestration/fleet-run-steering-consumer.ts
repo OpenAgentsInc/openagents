@@ -1,9 +1,12 @@
 import { createHash } from "node:crypto"
 import {
   encodeKhalaFleetIntent,
+  FleetSteeringFollowUpCompletionAck,
   FleetSteeringOutcomeAck,
   FleetSteeringPage,
   fleetSteeringOutcomeRefContent,
+  type FleetSteeringFollowUpCompletion,
+  type FleetSteeringFollowUpCompletionAck as FleetSteeringFollowUpCompletionAckType,
   type FleetSteeringOutcome,
   type KhalaFleetIntent,
 } from "@openagentsinc/khala-fleet-intents"
@@ -56,7 +59,20 @@ export type PylonFleetRunSteeringTransport = {
     readonly claimRef: string
     readonly outcomes: ReadonlyArray<FleetSteeringOutcome>
   }) => Promise<FleetSteeringOutcomeAck>
+  readonly postCompletions?: (input: {
+    readonly pylonRef: string
+    readonly runRef: string
+    readonly claimRef: string
+    readonly completions: ReadonlyArray<FleetSteeringFollowUpCompletion>
+  }) => Promise<FleetSteeringFollowUpCompletionAckType>
 }
+
+export type PylonFleetRunSteeringHttpTransport =
+  PylonFleetRunSteeringTransport & {
+    readonly postCompletions: NonNullable<
+      PylonFleetRunSteeringTransport["postCompletions"]
+    >
+  }
 
 export type MakePylonFleetRunSteeringHttpTransportOptions = {
   readonly agentToken: string
@@ -116,7 +132,7 @@ const mapResponseFailure = (status: number): PylonFleetRunSteeringTransportError
 /** Agent-bearer HTTP adapter for the accepted FleetRun steering channel. */
 export const makePylonFleetRunSteeringHttpTransport = (
   options: MakePylonFleetRunSteeringHttpTransportOptions,
-): PylonFleetRunSteeringTransport => {
+): PylonFleetRunSteeringHttpTransport => {
   const baseUrl = validateBaseUrl(options.baseUrl)
   if (options.agentToken.trim() === "") throw transportError("not_authorized")
   const requestTimeoutMs = options.requestTimeoutMs ?? 15_000
@@ -133,7 +149,7 @@ export const makePylonFleetRunSteeringHttpTransport = (
     input: Readonly<{
       pylonRef: string
       runRef: string
-      suffix?: "/outcomes"
+      suffix?: "/outcomes" | "/completions"
       query?: URLSearchParams
       init: RequestInit
     }>,
@@ -213,6 +229,51 @@ export const makePylonFleetRunSteeringHttpTransport = (
           onExcessProperty: "error",
         })
       } catch {
+        throw transportError("bad_response")
+      }
+    },
+    postCompletions: async ({ pylonRef, runRef, claimRef, completions }) => {
+      let raw: string
+      try {
+        raw = await request({
+          pylonRef,
+          runRef,
+          suffix: "/completions",
+          init: {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ claimRef, completions }),
+          },
+        })
+      } catch (error) {
+        if (error instanceof PylonFleetRunSteeringTransportError) throw error
+        throw transportError("unavailable")
+      }
+      try {
+        const ack = S.decodeUnknownSync(
+          S.fromJsonString(FleetSteeringFollowUpCompletionAck),
+        )(raw, { onExcessProperty: "error" })
+        if (
+          ack.runRef !== runRef ||
+          ack.claimRef !== claimRef ||
+          ack.completions.length !== completions.length ||
+          ack.storedCompletionCount + ack.duplicateCompletionCount !==
+            completions.length ||
+          ack.completions.some((completion, index) => {
+            const expected = completions[index]
+            return expected === undefined ||
+              completion.seq !== expected.seq ||
+              completion.intentId !== expected.intentId ||
+              completion.state !== expected.state ||
+              completion.completionRef !== expected.completionRef ||
+              completion.completedAt !== expected.completedAt
+          })
+        ) {
+          throw transportError("bad_response")
+        }
+        return ack
+      } catch (error) {
+        if (error instanceof PylonFleetRunSteeringTransportError) throw error
         throw transportError("bad_response")
       }
     },

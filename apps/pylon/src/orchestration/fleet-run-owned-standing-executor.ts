@@ -128,6 +128,13 @@ export async function openPylonOwnedStandingFleetRunExecutor(
   const options = input.options ?? {}
   const statePaths = resolveStatePaths(summary.paths)
   let steeringControl: PylonFleetRunAttemptControl | null = null
+  const steeringTransport = input.agentToken === undefined
+    ? null
+    : makePylonFleetRunSteeringHttpTransport({
+        agentToken: input.agentToken,
+        baseUrl: input.baseUrl,
+        ...(input.fetch === undefined ? {} : { fetchImpl: input.fetch }),
+      })
 
   return await openPylonStandingFleetRunExecutor({
     bootstrap: summary,
@@ -138,7 +145,7 @@ export async function openPylonOwnedStandingFleetRunExecutor(
     runRef: input.runRef,
     ...(input.startImmediately === undefined ? {} : { startImmediately: input.startImmediately }),
     ...(input.tickIntervalMs === undefined ? {} : { tickIntervalMs: input.tickIntervalMs }),
-    ...(input.agentToken === undefined
+    ...(steeringTransport === null
       ? {}
       : {
           steeringConsumerFactory: ({ store, pylonRef, runRef, claimRef }) =>
@@ -147,11 +154,7 @@ export async function openPylonOwnedStandingFleetRunExecutor(
               pylonRef,
               runRef,
               claimRef,
-              transport: makePylonFleetRunSteeringHttpTransport({
-                agentToken: input.agentToken!,
-                baseUrl: input.baseUrl,
-                ...(input.fetch === undefined ? {} : { fetchImpl: input.fetch }),
-              }),
+              transport: steeringTransport,
               ...(input.now === undefined ? {} : { now: input.now }),
             }),
           steeringFollowUpDispatcherFactory: ({ store, pylonRef, runRef, claimRef }) => {
@@ -164,9 +167,24 @@ export async function openPylonOwnedStandingFleetRunExecutor(
               pylonRef,
               runRef,
               claimRef,
-              ...(input.onSteeringFollowUpCompletion === undefined
-                ? {}
-                : { onCompletion: input.onSteeringFollowUpCompletion }),
+              onCompletion:
+                input.onSteeringFollowUpCompletion ??
+                (async (completion) => {
+                  await steeringTransport.postCompletions({
+                    pylonRef,
+                    runRef,
+                    claimRef,
+                    completions: [
+                      {
+                        seq: completion.seq,
+                        intentId: completion.intentId,
+                        state: completion.state,
+                        completionRef: completion.completionRef,
+                        completedAt: completion.completedAt,
+                      },
+                    ],
+                  })
+                }),
               ...(input.now === undefined ? {} : { now: input.now }),
             })
           },

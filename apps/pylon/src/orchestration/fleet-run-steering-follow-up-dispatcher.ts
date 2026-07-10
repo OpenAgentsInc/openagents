@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto"
+import { fleetSteeringFollowUpCompletionRefContent } from "@openagentsinc/khala-fleet-intents"
 
 import type {
   FleetRunSteeringFollowUpCompletion,
@@ -97,8 +98,7 @@ const completionRefFor = (
   state: FleetRunSteeringFollowUpCompletion["state"],
   completedAt: string,
 ): string => `completion.pylon.fleet_steering.${createHash("sha256")
-  .update(canonicalJson({
-    schema: "openagents.pylon.fleet_steering_follow_up_completion.v1",
+  .update(canonicalJson(fleetSteeringFollowUpCompletionRefContent({
     pylonRef: followUp.pylonRef,
     runRef: followUp.runRef,
     claimRef: followUp.claimRef,
@@ -106,7 +106,7 @@ const completionRefFor = (
     intentId: followUp.intentId,
     state,
     completedAt,
-  }))
+  })))
   .digest("hex")
   .slice(0, 24)}`
 

@@ -120,18 +120,39 @@ describe("Pylon FleetRun steering transport", () => {
       outcomeRef: "outcome.pylon.fleet_steering.0123456789abcdef01234567",
       observedAt: now.toISOString(),
     }
+    const completion = {
+      seq: 7,
+      intentId: outcome.intentId,
+      state: "applied" as const,
+      completionRef:
+        "completion.pylon.fleet_steering.0123456789abcdef01234567",
+      completedAt: now.toISOString(),
+    }
     const transport = makePylonFleetRunSteeringHttpTransport({
       agentToken: "oa_agent_fixture_private",
       baseUrl: "https://openagents.test",
       fetchImpl: (async (url, init) => {
         calls.push({ url: String(url), init: init ?? {} })
-        return calls.length === 1
-          ? Response.json(page([]))
-          : Response.json(ack([outcome]))
+        if (calls.length === 1) return Response.json(page([]))
+        if (calls.length === 2) return Response.json(ack([outcome]))
+        return Response.json({
+          ok: true,
+          runRef,
+          claimRef,
+          completions: [completion],
+          storedCompletionCount: 1,
+          duplicateCompletionCount: 0,
+        })
       }) as typeof fetch,
     })
     await transport.read({ pylonRef, runRef, claimRef, after: 0, limit: 64 })
     await transport.postOutcomes({ pylonRef, runRef, claimRef, outcomes: [outcome] })
+    await transport.postCompletions({
+      pylonRef,
+      runRef,
+      claimRef,
+      completions: [completion],
+    })
 
     const readUrl = new URL(calls[0]!.url)
     expect(readUrl.pathname).toBe(
@@ -147,6 +168,11 @@ describe("Pylon FleetRun steering transport", () => {
     expect(posted).toEqual({ claimRef, outcomes: [outcome] })
     expect(JSON.stringify(posted)).not.toContain("body")
     expect(JSON.stringify(posted)).not.toContain("detail")
+    expect(new URL(calls[2]!.url).pathname).toEndWith("/steering/completions")
+    const postedCompletion = JSON.parse(String(calls[2]!.init.body)) as Record<string, unknown>
+    expect(postedCompletion).toEqual({ claimRef, completions: [completion] })
+    expect(JSON.stringify(postedCompletion)).not.toContain("body")
+    expect(JSON.stringify(postedCompletion)).not.toContain("failure")
 
     const strict = makePylonFleetRunSteeringHttpTransport({
       agentToken: "oa_agent_fixture_private",
@@ -155,6 +181,25 @@ describe("Pylon FleetRun steering transport", () => {
     })
     await expect(strict.read({ pylonRef, runRef, claimRef, after: 0, limit: 64 }))
       .rejects.toMatchObject({ failure: "bad_response" })
+
+    const mismatchedCompletion = makePylonFleetRunSteeringHttpTransport({
+      agentToken: "oa_agent_fixture_private",
+      baseUrl: "https://openagents.test",
+      fetchImpl: (() => Promise.resolve(Response.json({
+        ok: true,
+        runRef,
+        claimRef,
+        completions: [{ ...completion, state: "failed" }],
+        storedCompletionCount: 1,
+        duplicateCompletionCount: 0,
+      }))) as unknown as typeof fetch,
+    })
+    await expect(mismatchedCompletion.postCompletions({
+      pylonRef,
+      runRef,
+      claimRef,
+      completions: [completion],
+    })).rejects.toMatchObject({ failure: "bad_response" })
 
     const unavailable = makePylonFleetRunSteeringHttpTransport({
       agentToken: "oa_agent_fixture_private",
