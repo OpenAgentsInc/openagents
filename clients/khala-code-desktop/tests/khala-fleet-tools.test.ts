@@ -691,6 +691,12 @@ describe("Khala Code fleet tools", () => {
     expect(requestArgs).toContain("--account-ref")
     expect(requestArgs).toContain("codex-2")
     expect(requestArgs).not.toContain("(default)")
+    const promptIndex = requestArgs.indexOf("--prompt")
+    const dispatchedPrompt = promptIndex < 0 ? "" : requestArgs[promptIndex + 1] ?? ""
+    expect(dispatchedPrompt).toContain("cooperative, not a cryptographic sandbox")
+    expect(dispatchedPrompt).toContain(
+      "reserved for Pylon after worker verification and post-run scanning",
+    )
     expect(heartbeatIndex).toBeGreaterThanOrEqual(0)
     expect(requestIndex).toBeGreaterThanOrEqual(0)
     expect(heartbeatIndex).toBeLessThan(requestIndex)

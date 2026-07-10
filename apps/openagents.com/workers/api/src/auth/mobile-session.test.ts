@@ -11,6 +11,7 @@ import {
 import {
   DEFAULT_KHALA_MOBILE_OPENAUTH_CLIENT_ID,
   KHALA_MOBILE_OPENAUTH_REDIRECT_URI,
+  TEMPORARY_KHALA_MOBILE_OPENAUTH_ROLLBACK_REDIRECT_URI,
   authIssuerAllowsRedirect,
   isMobileAccessTokenRevoked,
   openAuthRefreshStorageKeyFromToken,
@@ -206,7 +207,7 @@ describe('Khala mobile OpenAuth session policy', () => {
     ).toBe(true)
   })
 
-  test('allows only the mobile public client with GitHub code + S256 PKCE on khala://auth', () => {
+  test('allows only exact mobile public-client native redirects with GitHub code + S256 PKCE', () => {
     const allowedRequest = new Request(
       'https://auth.openagents.com/authorize?provider=github&response_type=code&code_challenge_method=S256&code_challenge=abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQ',
     )
@@ -216,6 +217,17 @@ describe('Khala mobile OpenAuth session policy', () => {
         {
           clientID: DEFAULT_KHALA_MOBILE_OPENAUTH_CLIENT_ID,
           redirectURI: KHALA_MOBILE_OPENAUTH_REDIRECT_URI,
+        },
+        allowedRequest,
+        { webClientId: 'openagents-web' },
+      ),
+    ).toBe(true)
+
+    expect(
+      authIssuerAllowsRedirect(
+        {
+          clientID: DEFAULT_KHALA_MOBILE_OPENAUTH_CLIENT_ID,
+          redirectURI: TEMPORARY_KHALA_MOBILE_OPENAUTH_ROLLBACK_REDIRECT_URI,
         },
         allowedRequest,
         { webClientId: 'openagents-web' },
@@ -238,8 +250,55 @@ describe('Khala mobile OpenAuth session policy', () => {
     expect(
       authIssuerAllowsRedirect(
         {
+          clientID: 'configured-other-mobile-client',
+          redirectURI: KHALA_MOBILE_OPENAUTH_REDIRECT_URI,
+        },
+        allowedRequest,
+        {
+          mobileClientId: 'configured-other-mobile-client',
+          webClientId: 'openagents-web',
+        },
+      ),
+    ).toBe(false)
+
+    expect(
+      authIssuerAllowsRedirect(
+        {
           clientID: 'unknown-client',
           redirectURI: KHALA_MOBILE_OPENAUTH_REDIRECT_URI,
+        },
+        allowedRequest,
+        { webClientId: 'openagents-web' },
+      ),
+    ).toBe(false)
+
+    expect(
+      authIssuerAllowsRedirect(
+        {
+          clientID: DEFAULT_KHALA_MOBILE_OPENAUTH_CLIENT_ID,
+          redirectURI: 'openagents://auth?callback=1',
+        },
+        allowedRequest,
+        { webClientId: 'openagents-web' },
+      ),
+    ).toBe(false)
+
+    expect(
+      authIssuerAllowsRedirect(
+        {
+          clientID: DEFAULT_KHALA_MOBILE_OPENAUTH_CLIENT_ID,
+          redirectURI: 'openagents://auth/',
+        },
+        allowedRequest,
+        { webClientId: 'openagents-web' },
+      ),
+    ).toBe(false)
+
+    expect(
+      authIssuerAllowsRedirect(
+        {
+          clientID: DEFAULT_KHALA_MOBILE_OPENAUTH_CLIENT_ID,
+          redirectURI: 'https://openagents.com/auth/callback',
         },
         allowedRequest,
         { webClientId: 'openagents-web' },
@@ -485,6 +544,42 @@ describe('Khala mobile OpenAuth session policy', () => {
 
       expect(exchanged.status).toBe(400)
       expect(body.error).toBe('invalid_grant')
+    } finally {
+      close()
+    }
+  })
+
+  test('exchanges the temporary rollback khala://auth authorization-code tuple', async () => {
+    const { close, env, storage } = makeEnv()
+    const pkce = await generatePKCE()
+    const code = 'mobile-auth-code-rollback-ok'
+
+    try {
+      await seedAuthorizationCode(storage, {
+        challenge: pkce.challenge,
+        code,
+        method: 'S256',
+        redirectURI: TEMPORARY_KHALA_MOBILE_OPENAUTH_ROLLBACK_REDIRECT_URI,
+      })
+
+      const exchanged = await postToken(
+        env,
+        new URLSearchParams({
+          client_id: DEFAULT_KHALA_MOBILE_OPENAUTH_CLIENT_ID,
+          code,
+          code_verifier: pkce.verifier,
+          grant_type: 'authorization_code',
+          redirect_uri: TEMPORARY_KHALA_MOBILE_OPENAUTH_ROLLBACK_REDIRECT_URI,
+        }),
+      )
+      const tokens = (await exchanged.json()) as {
+        access_token: string
+        refresh_token: string
+      }
+
+      expect(exchanged.status).toBe(200)
+      expect(tokens.access_token).toMatch(/^ey/)
+      expect(tokens.refresh_token).toContain('github:12345:')
     } finally {
       close()
     }

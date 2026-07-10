@@ -67,9 +67,11 @@ This is the invariant ledger for `openagents`.
 - Login only authenticates. Authorization stays gated downstream
   (`authHasCoreTeamAccess` / `isAdmin` / onboarding in
   `apps/web/src/product-policy.ts`); email sign-in does not widen product access.
-- Khala mobile native sign-in may use only the OpenAuth public mobile client
-  (`openagents-khala-mobile` by default) with GitHub authorization-code + PKCE
-  S256 and the allowlisted `khala://auth` redirect. Native sessions are
+- Khala mobile native sign-in may use only the exact OpenAuth public mobile
+  client `openagents-khala-mobile` with GitHub authorization-code + PKCE S256
+  and the canonical `openagents://auth` redirect. The only temporary rollback
+  redirect is the exact `khala://auth` tuple for that same client and grant
+  policy. Native sessions are
   cookie-free OpenAuth user bearer sessions verified through the same subject
   verifier as browser cookies; sign-out must revoke the presented access token
   server-side and remove the matching refresh token when the app supplies it.

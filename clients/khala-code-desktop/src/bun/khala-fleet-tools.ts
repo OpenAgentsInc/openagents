@@ -1717,7 +1717,11 @@ export class DefaultKhalaFleetRunSupervisorManager implements KhalaFleetRunSuper
           commit: fixture ? undefined : workUnit.baseCommit ?? config.commit,
           env,
           fixture,
-          objective: workUnit.body ?? renderFleetRunDispatchPrompt(run, workUnit),
+          objective: fixture
+            ? (workUnit.body ?? renderFleetRunDispatchPrompt(run, workUnit))
+            : appendRealWorkMutationBoundary(
+                workUnit.body ?? renderFleetRunDispatchPrompt(run, workUnit),
+              ),
           pylonRef,
           repo: fixture ? undefined : workUnit.repo ?? config.repo,
           timeoutMs: config.timeoutMs,
@@ -1856,6 +1860,18 @@ function renderFleetRunDispatchPrompt(
     workUnit.number === undefined ? null : `Issue/PR: #${workUnit.number}`,
     `Title: ${workUnit.title}`,
   ].filter((line): line is string => line !== null).join("\n")
+}
+
+// Cooperative instruction only: the post-run scanner and Pylon publisher,
+// not this text, remain the actual writeback authority.
+const REAL_WORK_MUTATION_BOUNDARY = [
+  "Worker publication boundary (cooperative, not a cryptographic sandbox):",
+  "Do not commit, push, open or update pull requests, or post or edit issue comments during this assignment.",
+  "Commit, push, pull-request, and issue-comment mutations are reserved for Pylon after worker verification and post-run scanning.",
+].join(" ")
+
+function appendRealWorkMutationBoundary(objective: string): string {
+  return `${objective}\n\n${REAL_WORK_MUTATION_BOUNDARY}`
 }
 
 function renderFleetRunSnapshot(snapshot: KhalaFleetRunSnapshot): string {

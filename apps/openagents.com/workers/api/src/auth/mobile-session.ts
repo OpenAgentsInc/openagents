@@ -8,7 +8,11 @@ import type { VerifiedSession } from './session'
 
 export const DEFAULT_KHALA_MOBILE_OPENAUTH_CLIENT_ID =
   'openagents-khala-mobile'
-export const KHALA_MOBILE_OPENAUTH_REDIRECT_URI = 'khala://auth'
+export const OPENAGENTS_MOBILE_OPENAUTH_REDIRECT_URI = 'openagents://auth'
+export const TEMPORARY_KHALA_MOBILE_OPENAUTH_ROLLBACK_REDIRECT_URI =
+  'khala://auth'
+export const KHALA_MOBILE_OPENAUTH_REDIRECT_URI =
+  OPENAGENTS_MOBILE_OPENAUTH_REDIRECT_URI
 
 const PKCE_S256_CHALLENGE = /^[A-Za-z0-9_-]{43,128}$/
 
@@ -60,8 +64,6 @@ export const authIssuerAllowsRedirect = (
   request: Request,
   policy: AuthIssuerRedirectPolicy,
 ): boolean => {
-  const mobileClient = mobileOpenAuthClientId(policy.mobileClientId)
-
   let redirect: URL
   try {
     redirect = new URL(input.redirectURI)
@@ -73,15 +75,15 @@ export const authIssuerAllowsRedirect = (
     return authIssuerAllowsWebRedirectHostname(redirect.hostname)
   }
 
-  if (input.clientID !== mobileClient) {
+  if (input.clientID !== DEFAULT_KHALA_MOBILE_OPENAUTH_CLIENT_ID) {
     return false
   }
 
   const query = new URL(request.url).searchParams
   const isMobileRedirect =
-    redirect.protocol === 'khala:' &&
-    redirect.hostname === 'auth' &&
-    (redirect.pathname === '' || redirect.pathname === '/')
+    input.redirectURI === OPENAGENTS_MOBILE_OPENAUTH_REDIRECT_URI ||
+    input.redirectURI ===
+      TEMPORARY_KHALA_MOBILE_OPENAUTH_ROLLBACK_REDIRECT_URI
   const isGitHubCodePkce =
     query.get('provider') === 'github' &&
     query.get('response_type') === 'code' &&

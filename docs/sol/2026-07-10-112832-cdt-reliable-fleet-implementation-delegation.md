@@ -190,6 +190,25 @@
   passes 95 tests/451 expectations, both Pylon typechecks pass, the supervisor
   store guard passes, and real isolated Codex plus two Claude homes scan clean
   without exposing paths or credential material. Preparing the scoped push.
+- 2026-07-10 17:20 CDT — Stopping-point reconciliation: scanner repair is
+  landed as `4d26d2a120`. The corrected mixed FleetRun
+  `fleet_run.fc5.mixed.phase-a.20260710t2212z` did prove simultaneous named
+  provider execution—`codex` on #8597 and `claude-pylon-3` on #8640, with one
+  slot each and default homes excluded—but produced zero accepted closeouts.
+  Claude reached proof-ready then rejected with
+  `blocker.assignment.claude_agent_execution_refused`; Codex completed a real
+  turn with exact token frames but the run used the wrong Vitest entry point
+  and rejected with `blocker.assignment.codex_agent_test_failed`. Both dirty
+  workspaces were cleaned, so this is a live mixed-provider failure receipt,
+  not Phase A acceptance. Sol re-applied only the reviewed bounded diffs: the
+  exact canonical `openagents://auth` tuple plus exact temporary
+  `khala://auth` rollback tuple, and a cooperative Fleet worker instruction
+  reserving publication/issue mutation for post-scan Pylon writeback. The
+  correct mobile-session Vitest entry point passes 7 tests, Worker API
+  typecheck passes, and the focused real-issue Fleet prompt regression passes.
+  Current-main Khala Desktop full verification remains red independently: its
+  suite has an existing leaked-supervisor-scope failure and its broad
+  typecheck has pre-existing Effect-version and unrelated source errors.
 
 ## Mission
 

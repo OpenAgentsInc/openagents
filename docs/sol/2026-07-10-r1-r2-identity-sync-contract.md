@@ -56,7 +56,7 @@ document must be reconciled — a client never "fixes" the disagreement locally.
 | Client class | Credential | Refresh | Source |
 | --- | --- | --- | --- |
 | Web/browser | HttpOnly OpenAuth cookies `oa_access` + `oa_refresh` (`ACCESS_COOKIE`/`REFRESH_COOKIE`) | Server refreshes and propagates rotated cookies back on responses (`appendSessionCookies`); clear on sign-out (`appendClearSessionCookies`) | `auth-cookies.ts`, `auth/session.ts` (`makeBrowserSessionBoundary`, `VerifiedSession`) |
-| Mobile (native) | User **bearer** session against the mobile OpenAuth client (`mobileOpenAuthClientId`), tokens held in platform secure storage only | `makeUserBearerSessionBoundary` / `requireUserBearerSession`; refresh via stored OpenAuth refresh token; revocation via `revokeMobileAccessToken` / `revokeOpenAuthRefreshToken`; deletion receipts via `hasMobileAccountDeletionReceipt` | `auth/mobile-session.ts` |
+| Mobile (native) | User **bearer** session against the exact OpenAuth public mobile client `openagents-khala-mobile`: canonical redirect `openagents://auth`, plus only the temporary rollback redirect `khala://auth`; both are GitHub authorization-code with S256 PKCE only. Tokens are held in platform secure storage only. | `makeUserBearerSessionBoundary` / `requireUserBearerSession`; refresh via stored OpenAuth refresh token; revocation via `revokeMobileAccessToken` / `revokeOpenAuthRefreshToken`; deletion receipts via `hasMobileAccountDeletionReceipt` | `auth/mobile-session.ts` |
 | Desktop (native/Electron) | Same **user bearer session class as mobile** (a native OpenAgents client, not a browser). Tokens live in the **main process/OS keychain only**; the renderer never sees a token. | Same boundary as mobile | `auth/mobile-session.ts` boundary reused; desktop keychain wiring is new work (§R1.5) |
 | Agent/machine | `OPENAGENTS_AGENT_TOKEN` bearer; registered-Pylon bearer for Pylon claim/steering routes | Out of R1 client scope; unchanged | `auth/bearer-token.ts`, Pylon routes |
 
@@ -100,9 +100,11 @@ Reserved (do not implement until Sol freezes the entity schema in
 
 - Desktop OpenAgents sign-in (bearer-session boundary + OS keychain custody in
   the main process; renderer gets a typed session-phase projection only).
-- Mobile sign-in against `mobileOpenAuthClientId` with secure-storage recovery
-  (port the pattern from frozen `clients/khala-mobile` — pattern only, not the
-  component tree).
+- Mobile sign-in against the exact `openagents-khala-mobile` OpenAuth client
+  with secure-storage recovery (port the pattern from frozen
+  `clients/khala-mobile` — pattern only, not the component tree). Use
+  `openagents://auth` as the canonical redirect; keep only the exact
+  temporary rollback redirect `khala://auth`.
 - The `device_session` projection/mutator pair (after §R1.4 freeze).
 
 ## R2 — Khala Sync as the cross-device authority
