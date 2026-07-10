@@ -528,7 +528,7 @@ describe('makeCloudCodingAdapterLaunchSeam', () => {
     let launchArg: unknown
     const adapter: CloudCodingRuntimeAdapter = {
       id: 'fake',
-      get: () => Effect.succeed(undefined),
+      get: () => Effect.sync((): undefined => undefined),
       launch: input => {
         launchArg = input
         return Effect.succeed(session())
@@ -557,7 +557,7 @@ describe('makeCloudCodingAdapterLaunchSeam', () => {
   test('maps a typed adapter failure to ok:false with the adapter reason', async () => {
     const adapter: CloudCodingRuntimeAdapter = {
       id: 'fake',
-      get: () => Effect.succeed(undefined),
+      get: () => Effect.sync((): undefined => undefined),
       launch: () =>
         Effect.fail(
           new CloudCodingAdapterError({
