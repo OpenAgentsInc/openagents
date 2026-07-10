@@ -10,6 +10,7 @@ import {
   type FleetAutoTargetSkipReason,
 } from "@openagentsinc/khala-fleet-intents"
 import type { PylonAccountMarginalCostClass as MarginalCostClass } from "@openagentsinc/pylon-core/custody/account-registry"
+import { hashPylonAccountRef } from "../account-registry.js"
 
 import type {
   FleetRun,
@@ -251,6 +252,13 @@ const terminalStatusForDispatch = (
   return null
 }
 
+const dispatchFailureFor = (
+  result: FleetRunSupervisorDispatchResult,
+): { readonly blockerRefs: readonly string[]; readonly status: string } => ({
+  blockerRefs: [...new Set(result.lifecycle.flatMap(event => event.blockerRefs ?? []))],
+  status: result.status,
+})
+
 const isoSafe = (date: Date | string): string =>
   typeof date === "string" ? date : date.toISOString()
 
@@ -422,15 +430,16 @@ const recordTerminalAssignment = async (
   if (result.assignmentRef !== null) {
     options.store.updateWorkClaimAssignmentRef(assignment.claim.claimRef, result.assignmentRef, now)
   }
-  options.store.recordWorkerDone({
+    options.store.recordWorkerDone({
     contextId: assignment.contextId,
     taskId: assignment.taskId,
     status: terminalStatus,
-    result: JSON.stringify({
-      assignmentRef: result.assignmentRef,
-      summary: result.summary ?? null,
-    }),
-    now,
+      result: JSON.stringify({
+        assignmentRef: result.assignmentRef,
+        summary: result.summary ?? null,
+      }),
+      ...(terminalStatus === "failed" ? { failure: dispatchFailureFor(result) } : {}),
+      now,
   })
   options.store.updateWorkClaimState(
     assignment.claim.claimRef,
@@ -721,10 +730,14 @@ export async function tickFleetRunSupervisor(
     const taskId = fleetRunTaskIdForClaim(run.runRef, claim.claimRef)
     const contextId = contextIdFor(account.accountRef, taskId)
     if (store.getDispatchContext(contextId) === null) {
+      const accountProvider = workerKind === "claude"
+        ? "claude_agent"
+        : workerKind
       store.createDispatchContext({
         id: contextId,
         assigneeHandle: account.accountRef,
         runnerKind,
+        accountRefHash: hashPylonAccountRef(accountProvider, account.accountRef),
         lastHeartbeatAt: now,
         maxConcurrentSlots: 1,
         now,
@@ -761,8 +774,9 @@ export async function tickFleetRunSupervisor(
           status: "failed",
           result: JSON.stringify({
             assignmentRef: null,
-            summary: error instanceof Error ? error.message : String(error),
+            summary: "The named FleetRun executor failed safely.",
           }),
+          failure: { error, status: "runner_throw" },
           now,
         })
         store.releaseWorkClaim(claim.claimRef, now)
@@ -776,7 +790,7 @@ export async function tickFleetRunSupervisor(
           accountRef: account.accountRef,
           assignmentRef: null,
           status: "failed",
-          summary: error instanceof Error ? error.message : String(error),
+          summary: "The named FleetRun executor failed safely.",
         })
         return
       }
@@ -825,6 +839,7 @@ export async function tickFleetRunSupervisor(
             assignmentRef: result.assignmentRef,
             summary: result.summary ?? null,
           }),
+          ...(terminalStatus === "failed" ? { failure: dispatchFailureFor(result) } : {}),
           now,
         })
         store.updateWorkClaimState(

@@ -348,6 +348,60 @@ describe("Pylon-owned FleetRun account capacity", () => {
     ])
   })
 
+  test("retains a Grok rate-limit breaker across restart and rotates to another named Grok account", async () => {
+    const root = await mkdtemp(join(tmpdir(), "pylon-grok-breaker-restart-"))
+    const databasePath = join(root, "orchestration.sqlite")
+    const throttled = account("grok-throttled", "grok")
+    const healthy = account("grok-healthy", "grok")
+    try {
+      const firstDatabase = new Database(databasePath, { create: true })
+      const firstStore = createPylonOrchestrationStore(firstDatabase)
+      firstStore.recordDispatchBreakerFailure({
+        accountRefHash: hashPylonAccountRef("grok", throttled.ref),
+        classification: classifyPylonDispatchFailure({
+          blockerRefs: ["blocker.pylon.fleet_runner.grok_account_rate_limited"],
+        }),
+        lane: "grok",
+        now: fixedNow,
+      })
+      firstDatabase.close()
+
+      const reopenedDatabase = new Database(databasePath)
+      const reopenedStore = createPylonOrchestrationStore(reopenedDatabase)
+      const { capacity } = capacityFixture({
+        registry: [throttled, healthy],
+        grokExecutionAvailable: true,
+        store: reopenedStore,
+      })
+      const run = createRun(
+        reopenedStore,
+        "fleet_run.capacity.grok_breaker_restart",
+        "grok",
+      )
+      try {
+        expect(await capacity.accounts({ run, now: fixedNow })).toEqual([
+          {
+            accountRef: "grok-throttled",
+            advertisedCapacity: 0,
+            marginalCostClass: "not_measured",
+            unavailabilityReason: "account_rate_limited",
+            workerKind: "grok",
+          },
+          {
+            accountRef: "grok-healthy",
+            advertisedCapacity: 1,
+            marginalCostClass: "not_measured",
+            workerKind: "grok",
+          },
+        ])
+      } finally {
+        reopenedDatabase.close()
+      }
+    } finally {
+      await rm(root, { force: true, recursive: true })
+    }
+  })
+
   test("fails unknown capacity to zero and excludes default homes without projecting private data", async () => {
     const defaultCodex = account("default", "codex", { home: "/private/default/.codex" })
     const named = account("codex-named", "codex", { home: "/private/isolated/codex-named" })

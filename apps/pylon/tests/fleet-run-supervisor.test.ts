@@ -5,6 +5,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { PylonAssignmentRunLifecycleEvent } from "@openagentsinc/agent-runtime-schema"
 import { assertPublicProjectionSafe } from "../src/state.js"
+import { hashPylonAccountRef } from "../src/account-registry.js"
 
 import {
   tickFleetRunSupervisor,
@@ -287,6 +288,52 @@ describe("Pylon-owned FleetRun supervisor", () => {
           nextAccountRef: "codex-subscription",
         },
       },
+    ])
+  })
+
+  test("records a failed Grok account as a durable account-lane breaker", async () => {
+    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const run = createRun(store, {
+      runRef: "fleet_run.fc2.grok_breaker",
+      workUnits: 1,
+      targetConcurrency: 1,
+      workerKind: "grok",
+    })
+    const result = await tickFleetRunSupervisor({
+      store,
+      pylonRef: "pylon.owner.fc2.grok-breaker",
+      runRef: run.runRef,
+      planner: planner(store, 1),
+      runner: {
+        dispatch: async input => ({
+          assignmentRef: `assignment.grok.${input.claim.claimRef}`,
+          lifecycle: [{
+            ...lifecycleEvent("assignment_run.completed", "rejected"),
+            blockerRefs: ["blocker.pylon.fleet_runner.grok_account_rate_limited"],
+          }],
+          status: "failed",
+          summary: "The named Grok account was rate limited.",
+        }),
+      },
+      capacity: {
+        accounts: async () => [{
+          accountRef: "grok-throttled",
+          advertisedCapacity: 1,
+          marginalCostClass: "not_measured",
+          workerKind: "grok",
+        }],
+      },
+      clock: { now: () => fixedNow },
+    })
+
+    expect(result.dispatched).toBe(1)
+    expect(store.listActiveDispatchBreakers(fixedNow)).toEqual([
+      expect.objectContaining({
+        accountRefHash: hashPylonAccountRef("grok", "grok-throttled"),
+        failureKind: "transient",
+        lane: "grok",
+        reason: "account_rate_limited",
+      }),
     ])
   })
 

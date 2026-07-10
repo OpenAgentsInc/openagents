@@ -234,12 +234,12 @@ const usageCapacityState = (
 
 const laneForProvider = (
   provider: PylonAccountProvider,
-): "claude_agent" | "codex" | null =>
+): "claude_agent" | "codex" | "grok" =>
   provider === "claude_agent"
     ? "claude_agent"
-    : provider === "codex"
-      ? "codex"
-      : null
+    : provider === "grok"
+      ? "grok"
+      : "codex"
 
 const workerKindForProvider = (provider: PylonAccountProvider): FleetRunSupervisorConcreteWorkerKind =>
   provider === "claude_agent"
@@ -394,7 +394,7 @@ export function createPylonOwnedFleetRunSupervisorCapacity(
           continue
         }
         const lane = laneForProvider(account.provider)
-        const activeBreaker = lane === null ? undefined : activeBreakers.find((breaker) =>
+        const activeBreaker = activeBreakers.find((breaker) =>
           breaker.lane === lane &&
           (breaker.accountRefHash === accountRefHash ||
             (breaker.accountRefHash === null && breaker.contextId === null))
