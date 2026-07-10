@@ -10,6 +10,7 @@ import {
   makeD1AgentReadinessPublicReportStore,
 } from './agent-readiness-public-report-store'
 import {
+  AGENT_READINESS_PUBLIC_REPORT_MAX_STALENESS_SECONDS,
   handlePublicAgentReadinessReportApi,
   makeOperatorAgentReadinessReportRoutes,
 } from './agent-readiness-public-report-routes'
@@ -165,7 +166,13 @@ describe('agent-readiness public report routes (OB-3, #8560)', () => {
     )
     expect(createResponse.status).toBe(201)
     const created = (await createResponse.json()) as {
-      report: { reportToken: string; url: string; domain: string; score: number }
+      report: {
+        createdAt: string
+        reportToken: string
+        url: string
+        domain: string
+        score: number
+      }
     }
     expect(created.report.domain).toBe(report.domain)
     expect(created.report.url).toBe(
@@ -181,12 +188,31 @@ describe('agent-readiness public report routes (OB-3, #8560)', () => {
     const publicRequest = new Request(
       `https://openagents.com/api/public/agent-readiness/reports/${created.report.reportToken}`,
     )
+    const readAt = new Date(
+      Date.parse(created.report.createdAt) +
+        (AGENT_READINESS_PUBLIC_REPORT_MAX_STALENESS_SECONDS + 1) * 1_000,
+    ).toISOString()
     const publicResponse = await Effect.runPromise(
-      handlePublicAgentReadinessReportApi(publicRequest, { OPENAGENTS_DB: db }),
+      handlePublicAgentReadinessReportApi(publicRequest, {
+        OPENAGENTS_DB: db,
+        nowIso: () => readAt,
+      }),
     )
     expect(publicResponse.status).toBe(200)
     const publicBody = (await publicResponse.json()) as Record<string, unknown>
     expect(publicBody.domain).toBe(report.domain)
+    expect(publicBody.generatedAt).toBe(readAt)
+    expect(publicBody.dataAgeSeconds).toBe(
+      AGENT_READINESS_PUBLIC_REPORT_MAX_STALENESS_SECONDS + 1,
+    )
+    expect(publicBody.staleExceeded).toBe(true)
+    expect(publicBody.staleness).toEqual({
+      composition: 'stored_snapshot',
+      contractVersion: 'projection_staleness.v1',
+      maxStalenessSeconds:
+        AGENT_READINESS_PUBLIC_REPORT_MAX_STALENESS_SECONDS,
+      rebuildsOn: ['agent_readiness_public_report_created'],
+    })
     expect(publicBody).not.toHaveProperty('pipelineRef')
     expect(publicBody).not.toHaveProperty('sourceRef')
     expect(JSON.stringify(publicBody)).not.toContain('biz-pipe-100')

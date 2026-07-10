@@ -4580,22 +4580,32 @@ const schemaComponents = (): JsonSchema => ({
     type: 'object',
     additionalProperties: false,
     description:
-      'Public-safe, tokenized 15-step assessment of one prospect domain. Internal CRM pipeline and attribution refs are excluded.',
+      'Public-safe, tokenized 15-step assessment of one prospect domain. The assessment is an immutable stored snapshot: generatedAt identifies this read, dataAgeSeconds measures the scan age from createdAt, staleExceeded becomes true after seven days, and staleness declares the projection_staleness.v1 stored_snapshot contract. Internal CRM pipeline and attribution refs are excluded.',
     required: [
       'assessment',
       'createdAt',
+      'dataAgeSeconds',
       'domain',
+      'generatedAt',
       'grade',
       'reportToken',
       'schemaVersion',
       'score',
+      'staleExceeded',
+      'staleness',
     ],
     properties: {
       assessment: objectSummary(
         'openagents.agent_readiness_fifteen_step_assessment.v1 projection containing only findings and evidence for the assessed public domain.',
       ),
       createdAt: { type: 'string', format: 'date-time' },
+      dataAgeSeconds: {
+        type: 'integer',
+        minimum: 0,
+        nullable: true,
+      },
       domain: { type: 'string', format: 'hostname', maxLength: 253 },
+      generatedAt: { type: 'string', format: 'date-time' },
       grade: { type: 'string', enum: ['A', 'B', 'C', 'D', 'F'] },
       reportToken: { type: 'string' },
       schemaVersion: {
@@ -4603,6 +4613,30 @@ const schemaComponents = (): JsonSchema => ({
         enum: ['openagents.agent_readiness_public_report.v1'],
       },
       score: { type: 'number', minimum: 0, maximum: 100 },
+      staleExceeded: { type: 'boolean' },
+      staleness: {
+        type: 'object',
+        additionalProperties: false,
+        required: [
+          'composition',
+          'contractVersion',
+          'maxStalenessSeconds',
+          'rebuildsOn',
+        ],
+        properties: {
+          composition: { type: 'string', enum: ['stored_snapshot'] },
+          contractVersion: {
+            type: 'string',
+            enum: ['projection_staleness.v1'],
+          },
+          maxStalenessSeconds: { type: 'integer', enum: [604800] },
+          rebuildsOn: {
+            type: 'array',
+            items: { type: 'string' },
+            minItems: 1,
+          },
+        },
+      },
     },
   },
 })

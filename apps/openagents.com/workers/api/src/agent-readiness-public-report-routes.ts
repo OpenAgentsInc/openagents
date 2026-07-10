@@ -27,6 +27,7 @@ import {
 } from '@openagentsinc/agent-readiness'
 
 import {
+  AgentReadinessPublicReportProjection as StoredAgentReadinessPublicReportProjection,
   type AgentReadinessPublicReportStore,
   AgentReadinessPublicReportValidationError,
   makeD1AgentReadinessPublicReportStore,
@@ -40,6 +41,12 @@ import { recordBusinessFunnelEvent } from './business-funnel-dashboard'
 import { methodNotAllowed, noStoreJsonResponse, unauthorized } from './http/responses'
 import { optionalString, readJsonObject } from './json-boundary'
 import { logWorkerRouteWarning } from './observability'
+import {
+  PublicProjectionStalenessContract,
+  projectionDataAgeSeconds,
+  projectionStalenessExceeded,
+  storedSnapshotStaleness,
+} from './public-projection-staleness'
 import { currentIsoTimestamp } from './runtime-primitives'
 
 type HttpResponse = globalThis.Response
@@ -195,12 +202,36 @@ export const makeOperatorAgentReadinessReportRoutes = <Bindings>(
 
 export type PublicAgentReadinessReportRouteInput = Readonly<{
   OPENAGENTS_DB?: D1Database
+  nowIso?: () => string
   store?: AgentReadinessPublicReportStore
   recordClick?: (
     reportToken: string,
     store: AgentReadinessPublicReportStore,
   ) => Promise<void>
 }>
+
+/**
+ * A readiness assessment is a point-in-time scan of a mutable public site.
+ * Keep the original report immutable, but tell readers once that scan is more
+ * than seven days old instead of presenting it as current indefinitely.
+ */
+export const AGENT_READINESS_PUBLIC_REPORT_MAX_STALENESS_SECONDS =
+  7 * 24 * 60 * 60
+
+const publicReportStaleness = storedSnapshotStaleness(
+  AGENT_READINESS_PUBLIC_REPORT_MAX_STALENESS_SECONDS,
+  ['agent_readiness_public_report_created'],
+)
+
+export const PublicAgentReadinessReportProjection = S.Struct({
+  ...StoredAgentReadinessPublicReportProjection.fields,
+  dataAgeSeconds: S.NullOr(S.Number),
+  generatedAt: S.String,
+  staleExceeded: S.Boolean,
+  staleness: PublicProjectionStalenessContract,
+})
+export type PublicAgentReadinessReportProjection =
+  typeof PublicAgentReadinessReportProjection.Type
 
 const PUBLIC_REPORT_PATH_PATTERN =
   /^\/api\/public\/agent-readiness\/reports\/([^/]+)$/
@@ -255,6 +286,12 @@ export const handlePublicAgentReadinessReportApi = (
         )
       }
 
+      const generatedAt = input.nowIso?.() ?? currentIsoTimestamp()
+      const dataAgeSeconds = projectionDataAgeSeconds(
+        projection.createdAt,
+        generatedAt,
+      )
+
       // Every successful GET is a real report-click: best-effort, never
       // blocks or fails the response the prospect is looking at.
       try {
@@ -265,7 +302,7 @@ export const handlePublicAgentReadinessReportApi = (
             reportToken,
             store,
             input.OPENAGENTS_DB,
-            currentIsoTimestamp,
+            () => generatedAt,
           )
         }
       } catch (error) {
@@ -275,7 +312,18 @@ export const handlePublicAgentReadinessReportApi = (
         })
       }
 
-      return noStoreJsonResponse(projection)
+      return noStoreJsonResponse(
+        S.decodeUnknownSync(PublicAgentReadinessReportProjection)({
+          ...projection,
+          dataAgeSeconds,
+          generatedAt,
+          staleExceeded: projectionStalenessExceeded(
+            publicReportStaleness,
+            dataAgeSeconds,
+          ),
+          staleness: publicReportStaleness,
+        }),
+      )
     },
   }).pipe(
     Effect.catch(error =>
