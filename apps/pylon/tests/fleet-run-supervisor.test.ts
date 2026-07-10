@@ -295,6 +295,79 @@ describe("Pylon-owned FleetRun supervisor", () => {
     )).toHaveLength(1)
   })
 
+  test("terminalizes locally before a slow lifecycle projection can trigger double reconciliation", async () => {
+    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const run = createRun(store, {
+      runRef: "fleet_run.fc3.slow_terminal_projection",
+      workUnits: 1,
+      targetConcurrency: 1,
+      workerKind: "codex",
+    })
+    let releaseProjection!: () => void
+    let markProjectionStarted!: () => void
+    let markProjectionFinished!: () => void
+    const projectionGate = new Promise<void>(resolve => {
+      releaseProjection = resolve
+    })
+    const projectionStarted = new Promise<void>(resolve => {
+      markProjectionStarted = resolve
+    })
+    const projectionFinished = new Promise<void>(resolve => {
+      markProjectionFinished = resolve
+    })
+    let reconcileCalls = 0
+    const options = {
+      store,
+      pylonRef: "pylon.owner.fc3.slow_terminal_projection",
+      runRef: run.runRef,
+      planner: planner(store, 1),
+      capacity: { accounts: async () => [mixedCapacity[0]!] },
+      clock: { now: () => fixedNow },
+      runner: {
+        dispatch: async () => ({
+          assignmentRef: "assignment.public.slow_terminal_projection",
+          lifecycle: [lifecycleEvent("assignment_run.completed", "closed")],
+          status: "completed" as const,
+          summary: "The exact fixture completed.",
+        }),
+        reconcile: async () => {
+          reconcileCalls += 1
+          return []
+        },
+      },
+      onLifecycle: async (event: FleetRunSupervisorObservedEvent) => {
+        if (event.kind !== "lifecycle") return
+        markProjectionStarted()
+        await projectionGate
+        markProjectionFinished()
+      },
+    }
+
+    await tickFleetRunSupervisor({ ...options, awaitDispatches: false })
+    await projectionStarted
+
+    const [task] = store.listTasks().filter(candidate =>
+      candidate.spec.fleetRunRef === run.runRef
+    )
+    const [claim] = store.listWorkClaims({ runRef: run.runRef })
+    const [context] = store.listDispatchContexts()
+    expect(task?.status).toBe("completed")
+    expect(claim).toMatchObject({
+      assignmentRef: "assignment.public.slow_terminal_projection",
+      state: "closeout",
+    })
+    expect(context).toMatchObject({ status: "idle", currentTaskId: null })
+
+    const second = await tickFleetRunSupervisor(options)
+    expect(second.activeAssignments).toBe(0)
+    expect(reconcileCalls).toBe(0)
+
+    releaseProjection()
+    await projectionFinished
+    expect(store.getTask(task!.id)?.status).toBe("completed")
+    expect(store.getWorkClaim(claim!.claimRef)?.state).toBe("closeout")
+  })
+
   test("binds a real executor approval signal to the exact live attempt and stable worker", async () => {
     const store = createPylonOrchestrationStore(new Database(":memory:"))
     const pylonRef = "pylon.owner.fc3.approval"

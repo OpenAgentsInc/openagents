@@ -1237,6 +1237,33 @@ export async function tickFleetRunSupervisor(
         if (result.assignmentRef !== null) {
           store.updateWorkClaimAssignmentRef(claim.claimRef, result.assignmentRef, now)
         }
+        const terminal = terminalDispositionFor(run, result)
+        // A settled runner promise and its durable local terminal state must be
+        // one synchronous handoff. Otherwise a slow lifecycle projection lets
+        // the next one-second tick reconcile and finalize the same task first.
+        // Projection order below remains lifecycle events, then dispatch.
+        if (terminal !== null) {
+          store.recordWorkerDone({
+            contextId,
+            taskId,
+            status: terminal.status,
+            result: JSON.stringify({
+              assignmentRef: result.assignmentRef,
+              summary: result.summary ?? null,
+              ...terminal.carrier,
+            }),
+            ...(terminal.status === "failed" &&
+                accountHealthFailureFor(terminal.blockerRefs, result.status) !== undefined
+              ? { failure: accountHealthFailureFor(terminal.blockerRefs, result.status) }
+              : {}),
+            now,
+          })
+          store.updateWorkClaimState(
+            claim.claimRef,
+            terminal.status === "completed" ? "closeout" : "released",
+            now,
+          )
+        }
         for (const event of result.lifecycle) {
           if (streamedLifecycle.has(JSON.stringify(event))) continue
           await emit(options.onLifecycle, {
@@ -1249,7 +1276,6 @@ export async function tickFleetRunSupervisor(
           })
         }
 
-        const terminal = terminalDispositionFor(run, result)
         if (terminal === null) {
           const carrier = usageEvidenceCarrierFor(result)
           await emit(options.onLifecycle, {
@@ -1276,26 +1302,6 @@ export async function tickFleetRunSupervisor(
           return
         }
 
-        store.recordWorkerDone({
-          contextId,
-          taskId,
-          status: terminal.status,
-          result: JSON.stringify({
-            assignmentRef: result.assignmentRef,
-            summary: result.summary ?? null,
-            ...terminal.carrier,
-          }),
-          ...(terminal.status === "failed" &&
-              accountHealthFailureFor(terminal.blockerRefs, result.status) !== undefined
-            ? { failure: accountHealthFailureFor(terminal.blockerRefs, result.status) }
-            : {}),
-          now,
-        })
-        store.updateWorkClaimState(
-          claim.claimRef,
-          terminal.status === "completed" ? "closeout" : "released",
-          now,
-        )
         await emit(options.onLifecycle, {
           kind: "dispatch",
           runRef: run.runRef,
