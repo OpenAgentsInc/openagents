@@ -4,13 +4,16 @@
  * payloads. Unknown relationship metadata is excluded rather than risking a
  * noisy sub-agent sidebar.
  */
-import { readdirSync, readFileSync } from "node:fs"
+import { closeSync, openSync, readFileSync, readSync, readdirSync, statSync } from "node:fs"
 import path from "node:path"
 
 import type { DesktopMessage, DesktopThread } from "./chat-contract.ts"
 
 const windowMs = 24 * 60 * 60 * 1000
-const recentMessageLimit = 12
+const recentMessageLimit = 5
+const historyHeadBytes = 256 * 1024
+const historyTailBytes = 512 * 1024
+const summaryHeadBytes = 16 * 1024
 
 type RecordValue = Record<string, unknown>
 const object = (value: unknown): RecordValue | null =>
@@ -37,6 +40,10 @@ const filesUnder = (root: string): string[] => {
   return visit(root)
 }
 
+const changedSince = (file: string, cutoff: number): boolean => {
+  try { return statSync(file).mtimeMs >= cutoff } catch { return false }
+}
+
 type MutableThread = {
   id: string
   createdAt: string
@@ -48,10 +55,73 @@ type MutableThread = {
   notes: DesktopMessage[]
 }
 
-const readOne = (file: string): MutableThread | null => {
-  let rows: unknown[]
-  try { rows = readFileSync(file, "utf8").split("\n").filter(Boolean).map(line => JSON.parse(line)) } catch { return null }
-  let thread: MutableThread | null = null
+const firstMatch = (value: string, pattern: RegExp): string | null => pattern.exec(value)?.[1] ?? null
+const partialSessionMeta = (file: string): MutableThread | null => {
+  try {
+    const descriptor = openSync(file, "r")
+    let head: string
+    try {
+      const bytes = Buffer.alloc(Math.min(summaryHeadBytes, statSync(file).size))
+      readSync(descriptor, bytes, 0, bytes.length, 0)
+      head = bytes.toString("utf8")
+    } finally { closeSync(descriptor) }
+    const id = firstMatch(head, /"id"\s*:\s*"([^"]+)"/u)
+    if (id === null) return null
+    const modifiedAt = statSync(file).mtime.toISOString()
+    const parent = firstMatch(head, /"parent_thread_id"\s*:\s*"([^"]+)"/u)
+    return {
+      id,
+      createdAt: modifiedAt,
+      updatedAt: modifiedAt,
+      cwd: firstMatch(head, /"cwd"\s*:\s*"([^"]+)"/u) ?? undefined,
+      child: parent !== null,
+      notes: [],
+    }
+  } catch { return null }
+}
+
+/**
+ * Large Codex rollouts can be tens of megabytes. History needs the opening
+ * session metadata/title and trailing messages only, never the full trace.
+ * Keeping this bounded also prevents a read-only sidebar refresh from
+ * monopolizing the Electron main process or serializing an entire transcript.
+ */
+const boundedJsonLines = (file: string, includeMessages: boolean): unknown[] | null => {
+  try {
+    const size = statSync(file).size
+    const text = !includeMessages
+      ? (() => {
+          const descriptor = openSync(file, "r")
+          try {
+            const head = Buffer.alloc(Math.min(summaryHeadBytes, size))
+            readSync(descriptor, head, 0, head.length, 0)
+            return head.toString("utf8").replace(/[^\n]*$/u, "")
+          } finally { closeSync(descriptor) }
+        })()
+      : size <= historyHeadBytes + historyTailBytes
+      ? readFileSync(file, "utf8")
+      : (() => {
+          const descriptor = openSync(file, "r")
+          try {
+            const head = Buffer.alloc(Math.min(historyHeadBytes, size))
+            const tailSize = Math.min(historyTailBytes, size - head.length)
+            const tail = Buffer.alloc(tailSize)
+            readSync(descriptor, head, 0, head.length, 0)
+            readSync(descriptor, tail, 0, tail.length, size - tail.length)
+            // Discard the partial line at the beginning of the tail window.
+            return `${head.toString("utf8").replace(/[^\n]*$/u, "")}\n${tail.toString("utf8").replace(/^[^\n]*\n/u, "")}`
+          } finally { closeSync(descriptor) }
+        })()
+    return text.split("\n").filter(Boolean).flatMap(line => {
+      try { return [JSON.parse(line)] } catch { return [] }
+    })
+  } catch { return null }
+}
+
+const readOne = (file: string, includeMessages: boolean): MutableThread | null => {
+  const rows = boundedJsonLines(file, includeMessages)
+  if (rows === null) return null
+  let thread: MutableThread | null = partialSessionMeta(file)
   for (const row of rows) {
     const envelope = object(row); const payload = envelope && nested(envelope, "payload")
     if (envelope === null || payload === null) continue
@@ -62,7 +132,8 @@ const readOne = (file: string): MutableThread | null => {
       if (id === null) continue
       const parent = string(payload.parent_thread_id) ?? string(payload.parentThreadId) ?? string(payload.parent_session_id)
       const source = string(payload.source)?.toLowerCase() ?? ""
-      thread = { id, createdAt: at, updatedAt: at, cwd: string(payload.cwd) ?? undefined, model: string(payload.model) ?? undefined, child: parent !== null || source.includes("subagent") || source.includes("side"), notes: [] }
+      const modifiedAt = statSync(file).mtime.toISOString()
+      thread = { id, createdAt: at, updatedAt: modifiedAt > at ? modifiedAt : at, cwd: string(payload.cwd) ?? undefined, model: string(payload.model) ?? undefined, child: parent !== null || source.includes("subagent") || source.includes("side"), notes: [] }
       continue
     }
     if (thread === null || payloadType !== "response_item") continue
@@ -85,14 +156,27 @@ const readOne = (file: string): MutableThread | null => {
   return thread
 }
 
-export const readRecentCodexHistory = (input: Readonly<{ sessionsRoot: string; now?: Date }>): DesktopThread[] => {
+export const readRecentCodexHistory = (input: Readonly<{ sessionsRoot: string; now?: Date; includeMessages?: boolean; limit?: number }>): DesktopThread[] => {
   const cutoff = (input.now ?? new Date()).getTime() - windowMs
   return filesUnder(input.sessionsRoot)
-    .map(readOne)
+    // Do not parse historic 10–100 MB rollouts just to learn that the file
+    // itself has not changed in the selected time window.
+    .filter(file => changedSince(file, cutoff))
+    .map(file => readOne(file, input.includeMessages !== false))
     .filter((thread): thread is MutableThread => thread !== null && !thread.child && Date.parse(thread.updatedAt) >= cutoff)
     .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
-    .map(thread => ({ id: thread.id, title: thread.title ?? "Untitled Codex chat", createdAt: thread.createdAt, updatedAt: thread.updatedAt, cwd: thread.cwd, model: thread.model, notes: thread.notes.slice(-recentMessageLimit) }))
+    .slice(0, input.limit)
+    .map(thread => ({ id: thread.id, title: thread.title ?? "Untitled Codex chat", createdAt: thread.createdAt, updatedAt: thread.updatedAt, cwd: thread.cwd, model: thread.model, notes: input.includeMessages === false ? [] : thread.notes.slice(-recentMessageLimit) }))
 }
 
-export const findRecentCodexThread = (input: Readonly<{ sessionsRoot: string; id: string; now?: Date }>): DesktopThread | null =>
-  readRecentCodexHistory(input).find(thread => thread.id === input.id) ?? null
+export const findRecentCodexThread = (input: Readonly<{ sessionsRoot: string; id: string; now?: Date; messageLimit?: number }>): DesktopThread | null => {
+  const cutoff = (input.now ?? new Date()).getTime() - windowMs
+  const file = filesUnder(input.sessionsRoot).filter(candidate => changedSince(candidate, cutoff)).find(candidate => {
+    const summary = readOne(candidate, false)
+    return summary?.id === input.id && !summary.child
+  })
+  const thread = file === undefined ? null : readOne(file, true)
+  return thread === null || thread.child
+    ? null
+    : { id: thread.id, title: thread.title ?? "Untitled Codex chat", createdAt: thread.createdAt, updatedAt: thread.updatedAt, cwd: thread.cwd, model: thread.model, notes: thread.notes.slice(-(input.messageLimit ?? recentMessageLimit)) }
+}

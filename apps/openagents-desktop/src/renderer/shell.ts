@@ -249,6 +249,7 @@ export type ChatHost = Readonly<{
   listThreads: () => Promise<ReadonlyArray<DesktopThread>>
   newThread: () => Promise<DesktopThread | null>
   openThread: (id: string) => Promise<DesktopThread | null>
+  hydrateThread?: (id: string) => Promise<DesktopThread | null>
   sendMessage: (input: Readonly<{ id: string; message: string }>) => Promise<Readonly<{ ok: boolean; thread?: DesktopThread | null; error?: string }>>
 }>
 
@@ -374,7 +375,14 @@ export const makeDesktopShellHandlers = (
       yield* SubscriptionRef.update(state, (next) => withFleetDeploymentResult(next, result, now()))
     }),
   DesktopNewChat: () => Effect.gen(function* () { const thread = yield* Effect.promise(chat.newThread); if (thread) yield* SubscriptionRef.update(state, (current) => withNewChat(current, thread)) }),
-  DesktopChatSelected: (id) => Effect.gen(function* () { const thread = yield* Effect.promise(() => chat.openThread(id)); if (thread) yield* SubscriptionRef.update(state, (current) => withChatSelected(current, thread)) }),
+  DesktopChatSelected: (id) => Effect.gen(function* () {
+    const thread = yield* Effect.promise(() => chat.openThread(id)); if (!thread) return
+    yield* SubscriptionRef.update(state, (current) => withChatSelected(current, thread))
+    if (chat.hydrateThread !== undefined) {
+      const hydrated = yield* Effect.promise(() => chat.hydrateThread!(id))
+      if (hydrated) yield* SubscriptionRef.update(state, current => current.activeThreadId === id ? withChatSelected(current, hydrated) : current)
+    }
+  }),
   DesktopWorkspaceSelected: (workspace) =>
     Effect.gen(function* () {
       yield* SubscriptionRef.update(state, (current) => withWorkspace(current, workspace))

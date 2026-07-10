@@ -23,7 +23,7 @@ import {
   decodeFleetStageRequest,
   unavailableFleetStageResult,
 } from "./fleet-contract.ts"
-import { DesktopChatTurnChannel, DesktopNewThreadChannel, DesktopOpenThreadChannel, DesktopThreadsChannel, decode, DesktopThreadRequestSchema, DesktopTurnRequestSchema } from "./chat-contract.ts"
+import { DesktopChatTurnChannel, DesktopHydrateThreadChannel, DesktopNewThreadChannel, DesktopOpenThreadChannel, DesktopThreadsChannel, decode, DesktopThreadRequestSchema, DesktopTurnRequestSchema } from "./chat-contract.ts"
 import { DesktopWorkspaceChooseChannel, DesktopWorkspaceFilesChannel, DesktopWorkspaceReadChannel, DesktopWorkspaceSummaryChannel, decodeWorkspaceFileRequest } from "./workspace-contract.ts"
 
 contextBridge.exposeInMainWorld("openagentsDesktop", {
@@ -41,6 +41,10 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
   openThread: (value: unknown) => {
     const request = decode(DesktopThreadRequestSchema, value) as { id: string } | null
     return request === null ? Promise.resolve(null) : ipcRenderer.invoke(DesktopOpenThreadChannel, request)
+  },
+  hydrateThread: (value: unknown) => {
+    const request = decode(DesktopThreadRequestSchema, value) as { id: string } | null
+    return request === null ? Promise.resolve(null) : ipcRenderer.invoke(DesktopHydrateThreadChannel, request)
   },
   sendMessage: (value: unknown) => {
     const request = decode(DesktopTurnRequestSchema, value) as { id: string; message: string } | null

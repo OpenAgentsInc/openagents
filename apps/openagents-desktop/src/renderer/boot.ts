@@ -44,6 +44,7 @@ type DesktopBridge = Readonly<{
   listThreads?: () => Promise<unknown>
   newThread?: () => Promise<unknown>
   openThread?: (value: unknown) => Promise<unknown>
+  hydrateThread?: (value: unknown) => Promise<unknown>
   sendMessage?: (value: unknown) => Promise<unknown>
   workspaceSummary?: () => Promise<unknown>
   chooseWorkspace?: () => Promise<unknown>
@@ -144,6 +145,10 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
           const raw = await (globalThis as { openagentsDesktop?: DesktopBridge }).openagentsDesktop?.openThread?.({ id })
           return typeof raw === "object" && raw !== null && typeof (raw as { id?: unknown }).id === "string" ? raw as DesktopThread : null
         },
+        hydrateThread: async (id) => {
+          const raw = await (globalThis as { openagentsDesktop?: DesktopBridge }).openagentsDesktop?.hydrateThread?.({ id })
+          return typeof raw === "object" && raw !== null && typeof (raw as { id?: unknown }).id === "string" ? raw as DesktopThread : null
+        },
         sendMessage: async (input) => {
           const raw = await (globalThis as { openagentsDesktop?: DesktopBridge }).openagentsDesktop?.sendMessage?.(input)
           if (typeof raw === "object" && raw !== null && typeof (raw as { ok?: unknown }).ok === "boolean") return raw as { ok: boolean; thread?: DesktopThread | null; error?: string }
@@ -167,7 +172,15 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
     const bridge = (globalThis as { openagentsDesktop?: DesktopBridge }).openagentsDesktop
     const existing = typeof bridge?.listThreads === "function" ? yield* Effect.promise(bridge.listThreads) : []
     const threads = Array.isArray(existing) ? existing.filter((item): item is DesktopThread => typeof item === "object" && item !== null && typeof (item as { id?: unknown }).id === "string") : []
-    if (threads.length > 0) yield* SubscriptionRef.update(state, (current) => ({ ...current, threads, activeThreadId: threads[0]!.id, notes: threads[0]!.notes }))
+    if (threads.length > 0) {
+      const first = threads[0]!
+      yield* SubscriptionRef.update(state, (current) => ({
+        ...current,
+        threads,
+        activeThreadId: first.id,
+        notes: [],
+      }))
+    }
     const focusComposer = (): void => {
       // Let the controlled TextField render its cleared/enabled state first.
       window.setTimeout(() => {
@@ -184,6 +197,31 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
     }
     const renderer = makeDomRenderer({ theme: openagentsDesktopTheme })
     yield* renderer.mount(root, program.viewStream, report)
+    // First paint must never wait on local rollout parsing. The sidebar gets
+    // metadata immediately; the selected thread receives five recent messages
+    // and then its bounded expanded tail after the DOM is already visible.
+    if (threads.length > 0 && typeof bridge?.openThread === "function") {
+      const id = threads[0]!.id
+      window.setTimeout(() => {
+        void (async () => {
+          const detail = await bridge.openThread!({ id })
+          if (typeof detail === "object" && detail !== null && typeof (detail as { id?: unknown }).id === "string") {
+            const selected = detail as DesktopThread
+            await Effect.runPromise(SubscriptionRef.update(state, current => current.activeThreadId === id
+              ? { ...current, threads: [selected, ...current.threads.filter(thread => thread.id !== id)], notes: selected.notes }
+              : current))
+          }
+          if (typeof bridge.hydrateThread !== "function") return
+          const hydrated = await bridge.hydrateThread({ id })
+          if (typeof hydrated === "object" && hydrated !== null && typeof (hydrated as { id?: unknown }).id === "string") {
+            const expanded = hydrated as DesktopThread
+            await Effect.runPromise(SubscriptionRef.update(state, current => current.activeThreadId === id
+              ? { ...current, threads: [expanded, ...current.threads.filter(thread => thread.id !== id)], notes: expanded.notes }
+              : current))
+          }
+        })()
+      }, 0)
+    }
   })
 
 const boot = (): void => {

@@ -24,7 +24,7 @@ import { makeCodexConnectService, makeFixtureSpawnPylon } from "./codex-connect.
 import { FleetStageChannel, decodeFleetStageRequest, unavailableFleetStageResult } from "./fleet-contract.ts"
 import { submitFleetBrief } from "./fleet-control.ts"
 import { completeChatTurn } from "./chat-service.ts"
-import { DesktopChatTurnChannel, DesktopNewThreadChannel, DesktopOpenThreadChannel, DesktopThreadsChannel, decode, DesktopThreadRequestSchema, DesktopTurnRequestSchema, type DesktopMessage } from "./chat-contract.ts"
+import { DesktopChatTurnChannel, DesktopHydrateThreadChannel, DesktopNewThreadChannel, DesktopOpenThreadChannel, DesktopThreadsChannel, decode, DesktopThreadRequestSchema, DesktopTurnRequestSchema, type DesktopMessage } from "./chat-contract.ts"
 import { makeThreadStore } from "./thread-store.ts"
 import { findRecentCodexThread, readRecentCodexHistory } from "./codex-history.ts"
 import { DesktopWorkspaceChooseChannel, DesktopWorkspaceFilesChannel, DesktopWorkspaceReadChannel, DesktopWorkspaceSummaryChannel, decodeWorkspaceFileRequest } from "./workspace-contract.ts"
@@ -89,11 +89,21 @@ ipcMain.handle(DesktopWorkspaceReadChannel, (_event, value: unknown) => {
   const request = decodeWorkspaceFileRequest(value)
   return request === null ? null : readWorkspaceFile(workspaceRoot, request.path)
 })
-ipcMain.handle(DesktopThreadsChannel, () => readRecentCodexHistory({ sessionsRoot: codexSessionsRoot() }))
+// List is intentionally metadata-only: a large local history must not
+// serialize every transcript into the renderer merely to draw the sidebar.
+ipcMain.handle(DesktopThreadsChannel, () => {
+  const result = readRecentCodexHistory({ sessionsRoot: codexSessionsRoot(), includeMessages: false, ...(smokeMode ? { limit: 1 } : {}) })
+  return result
+})
 ipcMain.handle(DesktopNewThreadChannel, () => threads().newThread())
 ipcMain.handle(DesktopOpenThreadChannel, (_event, value: unknown) => {
   const request = decode(DesktopThreadRequestSchema, value) as { id: string } | null
-  return request === null ? null : findRecentCodexThread({ sessionsRoot: codexSessionsRoot(), id: request.id })
+  const result = request === null ? null : findRecentCodexThread({ sessionsRoot: codexSessionsRoot(), id: request.id })
+  return result
+})
+ipcMain.handle(DesktopHydrateThreadChannel, (_event, value: unknown) => {
+  const request = decode(DesktopThreadRequestSchema, value) as { id: string } | null
+  return request === null ? null : findRecentCodexThread({ sessionsRoot: codexSessionsRoot(), id: request.id, messageLimit: 40 })
 })
 ipcMain.handle(DesktopChatTurnChannel, async (_event, value: unknown) => {
   const request = decode(DesktopTurnRequestSchema, value) as { id: string; message: string } | null
@@ -189,6 +199,17 @@ const smokeTypeIntoComposer = `(() => {
   input.value = "Pixel-proof: real chat rows on the shared catalog"
   input.dispatchEvent(new Event("input", { bubbles: true }))
   return { ok: true, typed: input.value }
+})()`
+
+const smokeCodexHistoryDetails = `(async () => {
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+  const deadline = Date.now() + 15000
+  while (Date.now() < deadline && document.querySelector('[data-en-key="codex-thread-details"]') === null) {
+    await wait(100)
+  }
+  const sidebar = document.querySelector('[data-en-key="sidebar-chats-label"]')
+  const detail = document.querySelector('[data-en-key="codex-thread-details"]')
+  return { ok: sidebar?.textContent === "Codex chats · last 24 hours" && detail !== null }
 })()`
 
 const smokeOpenFleetDesk = `(async () => {
@@ -361,10 +382,8 @@ const runSmoke = (window: BrowserWindow): void => {
       try {
         await step("shell-mounted", smokeWaitForShell)
         await captureShot(window, "01-shell")
-        await step("composer-typed", smokeTypeIntoComposer)
-        await captureShot(window, "02-composer-typed")
-        await step("composer-submit-clears", smokeSubmitComposer)
-        await captureShot(window, "03-composer-cleared")
+        await step("recent-codex-history-selected-detail", smokeCodexHistoryDetails)
+        await captureShot(window, "02-codex-history-detail")
         // Settings / Codex reconnect (#8640 unblock). Headless smoke cannot
         // complete a real browser device-auth, so main runs a FIXTURE spawn:
         // the awaiting_browser receipt below shows scripted fixture data.

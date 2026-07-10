@@ -37,4 +37,11 @@ describe("openagents_desktop.seam.codex_recent_history_projection.v1", () => {
     const sessions = root(); write(sessions, "bad.jsonl", [{ unexpected: true }])
     expect(readRecentCodexHistory({ sessionsRoot: sessions, now })).toEqual([])
   })
+
+  test("keeps the sidebar projection metadata-only until a thread is selected", () => {
+    const sessions = root()
+    write(sessions, "top.jsonl", [meta("top", "2026-07-10T17:00:00.000Z"), message("2026-07-10T17:01:00.000Z", "user", "Only in detail")])
+    const threads = readRecentCodexHistory({ sessionsRoot: sessions, now, includeMessages: false })
+    expect(threads[0]?.notes).toEqual([])
+  })
 })

@@ -3,6 +3,7 @@ import { Exit, Schema } from "@effect-native/core/effect"
 export const DesktopThreadsChannel = "openagents-desktop/threads" as const
 export const DesktopNewThreadChannel = "openagents-desktop/thread-new" as const
 export const DesktopOpenThreadChannel = "openagents-desktop/thread-open" as const
+export const DesktopHydrateThreadChannel = "openagents-desktop/thread-hydrate" as const
 export const DesktopChatTurnChannel = "openagents-desktop/chat-turn" as const
 
 export const DesktopMessageSchema = Schema.Struct({
