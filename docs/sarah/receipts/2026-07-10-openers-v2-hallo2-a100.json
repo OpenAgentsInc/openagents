@@ -1,0 +1,72 @@
+{
+  "schemaVersion": "openagents.sarah.gpu_media_run_closeout.v1",
+  "runId": "openers-v2-hallo2-a100-20260710",
+  "issueRefs": ["#8610", "#8618", "#8625"],
+  "startedAt": "2026-07-09T14:20:00.000Z",
+  "endedAt": "2026-07-10T15:05:00.000Z",
+  "host": {
+    "name": "sarah-hallo2-exp-1",
+    "project": "openagentsgemini",
+    "zone": "us-central1-f",
+    "machineType": "a2-highgpu-1g",
+    "gpu": "nvidia-a100-sxm4-40gb (SPOT)"
+  },
+  "hostDisposition": {
+    "status": "stopped"
+  },
+  "artifacts": [
+    { "uri": "gs://openagentsgemini-oa-artifacts/sarah-avatar/openers-v2/opener-01-hello-hallo2.mp4", "kind": "render_video" },
+    { "uri": "gs://openagentsgemini-oa-artifacts/sarah-avatar/openers-v2/opener-02-welcome-back-hallo2.mp4", "kind": "render_video" },
+    { "uri": "gs://openagentsgemini-oa-artifacts/sarah-avatar/openers-v2/opener-03-good-question-hallo2.mp4", "kind": "render_video" },
+    { "uri": "gs://openagentsgemini-oa-artifacts/sarah-avatar/openers-v2/opener-04-got-it-hallo2.mp4", "kind": "render_video" },
+    { "uri": "gs://openagentsgemini-oa-artifacts/sarah-avatar/openers-v2/opener-05-show-you-hallo2.mp4", "kind": "render_video" },
+    { "uri": "gs://openagentsgemini-oa-artifacts/sarah-avatar/openers-v2/opener-01-hello-hallo2-sr.mp4", "kind": "render_video_sr_research_only" },
+    { "uri": "gs://openagentsgemini-oa-artifacts/sarah-avatar/openers-v2/opener-02-welcome-back-hallo2-sr.mp4", "kind": "render_video_sr_research_only" },
+    { "uri": "gs://openagentsgemini-oa-artifacts/sarah-avatar/openers-v2/opener-03-good-question-hallo2-sr.mp4", "kind": "render_video_sr_research_only" },
+    { "uri": "gs://openagentsgemini-oa-artifacts/sarah-avatar/openers-v2/opener-04-got-it-hallo2-sr.mp4", "kind": "render_video_sr_research_only" },
+    { "uri": "gs://openagentsgemini-oa-artifacts/sarah-avatar/openers-v2/opener-05-show-you-hallo2-sr.mp4", "kind": "render_video_sr_research_only" },
+    { "uri": "gs://openagentsgemini-oa-artifacts/sarah-avatar/openers-v2/manifest.json", "kind": "manifest" }
+  ],
+  "artifactChecks": [
+    { "uri": "gs://openagentsgemini-oa-artifacts/sarah-avatar/openers-v2/opener-01-hello-hallo2.mp4", "method": "object_exists" },
+    { "uri": "gs://openagentsgemini-oa-artifacts/sarah-avatar/openers-v2/opener-02-welcome-back-hallo2.mp4", "method": "object_exists" },
+    { "uri": "gs://openagentsgemini-oa-artifacts/sarah-avatar/openers-v2/opener-03-good-question-hallo2.mp4", "method": "object_exists" },
+    { "uri": "gs://openagentsgemini-oa-artifacts/sarah-avatar/openers-v2/opener-04-got-it-hallo2.mp4", "method": "object_exists" },
+    { "uri": "gs://openagentsgemini-oa-artifacts/sarah-avatar/openers-v2/opener-05-show-you-hallo2.mp4", "method": "object_exists" },
+    { "uri": "gs://openagentsgemini-oa-artifacts/sarah-avatar/openers-v2/opener-01-hello-hallo2-sr.mp4", "method": "object_exists" },
+    { "uri": "gs://openagentsgemini-oa-artifacts/sarah-avatar/openers-v2/opener-02-welcome-back-hallo2-sr.mp4", "method": "object_exists" },
+    { "uri": "gs://openagentsgemini-oa-artifacts/sarah-avatar/openers-v2/opener-03-good-question-hallo2-sr.mp4", "method": "object_exists" },
+    { "uri": "gs://openagentsgemini-oa-artifacts/sarah-avatar/openers-v2/opener-04-got-it-hallo2-sr.mp4", "method": "object_exists" },
+    { "uri": "gs://openagentsgemini-oa-artifacts/sarah-avatar/openers-v2/opener-05-show-you-hallo2-sr.mp4", "method": "object_exists" },
+    { "uri": "gs://openagentsgemini-oa-artifacts/sarah-avatar/openers-v2/manifest.json", "method": "object_exists" }
+  ],
+  "gcsIndex": {
+    "updated": true,
+    "indexUri": "gs://openagentsgemini-oa-artifacts/sarah-avatar/openers-v2/manifest.json",
+    "entries": [
+      "gs://openagentsgemini-oa-artifacts/sarah-avatar/openers-v2/opener-01-hello-hallo2.mp4",
+      "gs://openagentsgemini-oa-artifacts/sarah-avatar/openers-v2/opener-02-welcome-back-hallo2.mp4",
+      "gs://openagentsgemini-oa-artifacts/sarah-avatar/openers-v2/opener-03-good-question-hallo2.mp4",
+      "gs://openagentsgemini-oa-artifacts/sarah-avatar/openers-v2/opener-04-got-it-hallo2.mp4",
+      "gs://openagentsgemini-oa-artifacts/sarah-avatar/openers-v2/opener-05-show-you-hallo2.mp4",
+      "gs://openagentsgemini-oa-artifacts/sarah-avatar/openers-v2/opener-01-hello-hallo2-sr.mp4",
+      "gs://openagentsgemini-oa-artifacts/sarah-avatar/openers-v2/opener-02-welcome-back-hallo2-sr.mp4",
+      "gs://openagentsgemini-oa-artifacts/sarah-avatar/openers-v2/opener-03-good-question-hallo2-sr.mp4",
+      "gs://openagentsgemini-oa-artifacts/sarah-avatar/openers-v2/opener-04-got-it-hallo2-sr.mp4",
+      "gs://openagentsgemini-oa-artifacts/sarah-avatar/openers-v2/opener-05-show-you-hallo2-sr.mp4",
+      "gs://openagentsgemini-oa-artifacts/sarah-avatar/openers-v2/qa/ (per-clip mouth crops, consecutive-frame strips, full-frame stills)",
+      "gs://openagentsgemini-oa-artifacts/sarah-avatar/openers-v2/manifest.json"
+    ]
+  },
+  "costEstimate": {
+    "currency": "USD",
+    "gpuHours": 24.7,
+    "estimatedUsd": 32,
+    "notes": "a2-highgpu-1g A100-40GB SPOT ~$1.30/h. Actual render work: ~1.0 h (prior session inference batches 2026-07-09 14:43-16:04 UTC) + ~0.8 h (this session: 5x video_sr, remux, STT/motion QA, uploads). The remaining ~22 h is idle waste: the prior GPU lane died ~16:04 UTC without stopping the host (SQ-8 left_running violation) — found RUNNING at 14:20 UTC 2026-07-10, reused for completion, then STOPPED."
+  },
+  "privacy": {
+    "attestation": "no_secrets_no_prospect_pii",
+    "notes": "Public-safe opener scripts and synthetic presenter footage only; no tokens, keys, or customer data in artifacts or this receipt"
+  },
+  "notes": "Openers-v2 quality-tier completion (Hallo2 still-animation, MIT) over the audio bake-off judge winners (lr-s31337/lr-s1986/lr-s77/lr-s555/zs-s7; Gemini judge 7/9/7/9/7 of 10). First-generation 2026-07-09 hallo2 GCS objects (pre-bake-off audio) were replaced. LICENSE FLAG: Hallo2 scripts/video_sr.py is modified from CodeFormer and its header requires S-Lab License 1.0 (non-commercial) compliance — all *-sr.mp4 variants are research/evaluation-only and must not ship until resolved. Owner playback PENDING on all five clips (Desktop copies at ~/Desktop/sarah-openers-v2/); scoreboards in docs/sarah/scoreboards/openers-v2-opener-0*.json."
+}

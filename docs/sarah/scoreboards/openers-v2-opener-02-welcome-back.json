@@ -1,0 +1,111 @@
+{
+  "schemaVersion": "sarah-take-scoreboard.v1",
+  "takeId": "openers-v2-opener-02-welcome-back",
+  "title": "Openers v2 — opener-02 welcome-back (Hallo2 quality tier, judge-winner audio)",
+  "date": "2026-07-10",
+  "issueRefs": [
+    "#8610",
+    "#8618"
+  ],
+  "inputRefs": {
+    "sourceClip": "single source still src_opener02.jpg (square face crop per Hallo2 spec) — Hallo2 still-animation tier",
+    "script": "Hey, welcome back! Where did we leave off? (2.4 s)",
+    "ttsReference": "CosyVoice2 clone, openers-v2 audio bake-off winner lr-s1986 (30-60 s concatenated long voice reference, seed 1986); wav at gs://openagentsgemini-oa-artifacts/sarah-avatar/openers-v2/opener-02-welcome-back.wav",
+    "modelVersions": {
+      "hallo2": "Hallo2 (MIT) inference_long.py, 512^2 audio-driven portrait animation, 16-frame chunks x 40 DDIM steps, net.pth + wav2vec2-base-960h",
+      "video_sr": "Hallo2 scripts/video_sr.py x4 (CodeFormer architecture + Hallo2 net_g.pth VFHQ weights + RealESRGAN_x2plus bg) — upstream header requires S-Lab License 1.0 compliance: RESEARCH-ONLY, non-shippable",
+      "cosyvoice": "CosyVoice2-0.5B long-reference clone (bake-off candidate pool)"
+    },
+    "renderCommand": "python scripts/inference_long.py --config configs/inference/v2_opener02.yaml (A100 40GB); python scripts/video_sr.py -i <merge> -o <out> --bg_upsampler realesrgan --face_upsample -w 1 -s 4",
+    "recipe": "Hallo2 still-animation quality tier: judged winner audio over a single calm source still; re-mux with full-band judged wav, measured-gain normalization +12.5 dB to -17.1 LUFS (alimiter ceiling -3.8 dB), libx264 CRF16 slow; SR variant is evaluation-only (license)",
+    "commits": [],
+    "artifactUris": [
+      "gs://openagentsgemini-oa-artifacts/sarah-avatar/openers-v2/opener-02-welcome-back-hallo2.mp4",
+      "gs://openagentsgemini-oa-artifacts/sarah-avatar/openers-v2/opener-02-welcome-back-hallo2-sr.mp4",
+      "gs://openagentsgemini-oa-artifacts/sarah-avatar/openers-v2/qa/opener-02-welcome-back-hallo2-consec6.jpg"
+    ]
+  },
+  "audioGates": {
+    "sttRoundTrip": {
+      "status": "watch",
+      "perSegment": true,
+      "transcriber": "whisper small.en on the final mux",
+      "notes": "hears 'Where do we leave off?' vs script 'Where did we leave off?' — the deviation is in the winner audio itself (bake-off manifest records the same transcript and still scored it 9/10); flagged for owner adjudication, not silently passed"
+    },
+    "loudnessLufs": -17.1,
+    "truePeakDbtp": -3.7,
+    "pauseTiming": {
+      "status": "watch",
+      "notes": "judge flagged slightly abrupt cutoff at the very end"
+    },
+    "prosody": {
+      "humanVerdict": "pending",
+      "llmJudgeScore": 9,
+      "llmJudgeModel": "gemini-3.5-flash (naturalness 9 / warmth 8 / confidence 9 / overall 9)",
+      "notes": "highest-scored candidate in the bake-off: 'easily passes for a professional human voice actor'"
+    },
+    "initialismRisk": "script avoids initialisms by design"
+  },
+  "videoGates": {
+    "ownerPlaybackVerdict": {
+      "status": "pending",
+      "notes": "awaiting owner playback of ~/Desktop/sarah-openers-v2/ copies — stills never advance a take"
+    },
+    "avSync": {
+      "start": "watch",
+      "middle": "not_run",
+      "end": "not_run",
+      "notes": "speech onset articulation visible in first consecutive-frame strip; full 3-point sync check deferred to playback review"
+    },
+    "cropSharpness": {
+      "status": "watch",
+      "notes": "512^2 native output is soft vs 720p source footage; SR x4 variant recovers texture but is license-encumbered (S-Lab) — serving upscale strategy open"
+    },
+    "temporalBoil": {
+      "status": "pass",
+      "notes": "6 consecutive frames at t=1.2 s: smooth progression, zero boil, stable identity"
+    },
+    "chunkBoundaryJerk": {
+      "status": "watch",
+      "metrics": {
+        "frames": 61,
+        "fps": 25,
+        "motionMean": 2.29,
+        "motionP95": 4.64,
+        "jerkMean": 1.28,
+        "jerkP95": 3.19,
+        "periodicHitch": "jerk by frame-index mod 16: phase 0 at 2.7 vs 1.28 mean — possible chunk seam; needs playback confirmation"
+      },
+      "notes": "numbers NOT comparable to MuseTalk-lane takes (full-face 512^2 portrait crop with real generated head/face motion vs 720p paste-back mouth crop)"
+    },
+    "identityDrift": {
+      "status": "pass",
+      "notes": "identity faithful to source still across sampled frames"
+    },
+    "pasteBackSeam": {
+      "status": "pass",
+      "notes": "no paste-back — Hallo2 generates the full frame"
+    },
+    "badFrameExclusions": [],
+    "notes": "Hallo2 generates head/eye/face motion matched to speech — eliminates the source-motion conflict that sank opener library v1"
+  },
+  "operationalGates": {
+    "renderWallSeconds": 278,
+    "gpuType": "GCE a2-highgpu-1g, 1x NVIDIA A100-SXM4-40GB (us-central1-f, SPOT) — sarah-hallo2-exp-1",
+    "costEstimateUsd": 0.1,
+    "costNotes": "~140 s inference + 138 s SR at ~$1.30/h spot; idle-host waste booked in the run closeout receipt",
+    "artifactExistenceCheck": {
+      "status": "pass",
+      "method": "object_exists",
+      "notes": "gsutil stat on final + SR + qa crops in gs://…/openers-v2/"
+    },
+    "hostDisposition": {
+      "status": "stopped"
+    },
+    "gcsIndexUpdated": true,
+    "noSecretsInArtifacts": true,
+    "closeoutReceipt": "docs/sarah/receipts/2026-07-10-openers-v2-hallo2-a100.json"
+  },
+  "advance": false,
+  "verdictSummary": "Strongest audio in the library (judge 9/10). Video gates clean in temporal inspection; STT 'did'->'do' word deviation inherited from the winner audio is flagged for owner adjudication. Awaiting owner playback."
+}

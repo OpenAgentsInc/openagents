@@ -210,6 +210,11 @@ describe("checked-in scoreboards under docs/sarah/scoreboards", () => {
 
   test("the retrofit corpus is present", () => {
     expect(files).toEqual([
+      "openers-v2-opener-01-hello.json",
+      "openers-v2-opener-02-welcome-back.json",
+      "openers-v2-opener-03-good-question.json",
+      "openers-v2-opener-04-got-it.json",
+      "openers-v2-opener-05-show-you.json",
       "sarah-openers-v1.json",
       "sarah-reply-enhanced.json",
       "sarah-reply-hq.json",

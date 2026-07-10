@@ -42,3 +42,17 @@ with reason, GCS index updated, cost estimate, and the no-secrets attestation.
 | `sarah-reply-v3` | pending | tamed GFPGAN; measured smoothest take (jerk 0.15) |
 | `sarah-reply-latentsync` | pending | best articulation; 16-frame chunk-boundary hitch |
 | `sarah-openers-v1` | **FAIL** | all 10 clips failed playback; openers-v2 lanes running |
+
+## Openers v2 (2026-07-10, per-clip)
+
+| Take | Owner playback | Note |
+| --- | --- | --- |
+| `openers-v2-opener-01-hello` | pending | Hallo2 quality tier, judge 7/10 audio; STT verbatim pass |
+| `openers-v2-opener-02-welcome-back` | pending | judge 9/10 audio; STT watch ('did'→'do' in winner audio) |
+| `openers-v2-opener-03-good-question` | pending | judge 7/10 audio; STT verbatim pass |
+| `openers-v2-opener-04-got-it` | pending | judge 9/10 audio; most expressive render; STT verbatim pass |
+| `openers-v2-opener-05-show-you` | pending | judge 7/10 audio (only zero-shot winner); STT verbatim pass |
+
+All five: Hallo2 (MIT) still-animation renders of the bake-off winner wavs;
+`*-sr.mp4` variants are research-only (S-Lab license chain on
+`video_sr.py`). Desktop copies: `~/Desktop/sarah-openers-v2/`.

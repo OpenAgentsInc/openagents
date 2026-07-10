@@ -302,6 +302,50 @@ Active lanes (parallelized 2026-07-09, all pushing to main + GCS):
 | RIFE 48fps | presentation-layer strobing test on the best take | L4 |
 | FLAIR | temporally-consistent crop restoration replacing tamed GFPGAN | queued after the above |
 
+## Round 4 (2026-07-10): openers-v2 completed on the Hallo2 quality tier
+
+The opener-library v2 is complete and awaiting owner playback
+(`gs://openagentsgemini-oa-artifacts/sarah-avatar/openers-v2/`, Desktop
+copies at `~/Desktop/sarah-openers-v2/`). What landed:
+
+- **Audio bake-off results (per-script Gemini judge, 1–10 overall):**
+  long-reference CosyVoice2 candidates (30–60 s concatenated voice ref) won
+  4 of 5 scripts — opener-01 `lr-s31337` (7), opener-02 `lr-s1986` (**9**),
+  opener-03 `lr-s77` (7), opener-04 `lr-s555` (**9**), opener-05 `zs-s7`
+  (7, the only zero-shot winner). Chirp 3 HD benchmarked 6–8 on the same
+  rubric. Winner wavs + full judge notes: `openers-v2/manifest.json`.
+- **Hallo2 still-animation renders (the quality tier)** of the winner audio
+  for ALL five scripts on the A100 spot host `sarah-hallo2-exp-1`:
+  single calm source still per script, 512² `inference_long` (16-frame
+  chunks × 40 DDIM steps, ~1.6 it/s ≈ 140–250 s per clip), re-mux with the
+  full-band judged wav, measured-gain loudness to ≈ −17 LUFS / TP ≤ −2.9
+  dBTP, CRF16 slow. Generated head/eye/face motion eliminates the v1
+  source-motion conflict by construction.
+- **QA per the scoreboard law:** per-segment whisper STT (verbatim PASS on
+  01/03/04/05; opener-02 carries a `did`→`do` deviation **in the winner
+  audio itself** — bake-off judged it 9/10 with that transcript; flagged for
+  owner adjudication), consecutive-frame strips (no boil, stable identity),
+  mouth crops, motion/jerk metrics (mod-16 phase analysis suggests a
+  possible 16-frame chunk seam on 01/02 — playback will tell). Scoreboards:
+  `docs/sarah/scoreboards/openers-v2-opener-0*.json`, owner playback
+  PENDING on all five — stills never advance a take.
+- **LICENSE FLAG — Hallo2 `video_sr.py`:** the SR pass recovers texture
+  (×4, RealESRGAN background) but the script header says it is *modified
+  from CodeFormer* and requires **S-Lab License 1.0** (non-commercial)
+  compliance, even though it loads Hallo2's own VFHQ-trained `net_g.pth`.
+  All `*-sr.mp4` variants (including the 2026-07-09 opener-01 SR) are
+  research/evaluation-only until that chain is resolved. The shippable
+  quality-tier candidates are the raw Hallo2 512² renders (MIT).
+- **Ops:** the prior GPU lane died ~16:04 UTC 2026-07-09 leaving the A100
+  running idle ~22 h (SQ-8 violation, ~$29 waste booked honestly in
+  `docs/sarah/receipts/2026-07-10-openers-v2-hallo2-a100.json`); host
+  STOPPED at completion.
+
+Open after owner playback: per-clip serving pick (hallo2 vs v3), audio
+re-rolls for the three 7/10 scripts (opener-02/04-style long-reference
+candidates are the strongest lane), SR license resolution or a permissive
+temporal upscaler (FLAIR), and KHS-6/OAV-4 serving integration.
+
 Production note: `/sarah` flipped to the OWNED pipeline on 2026-07-09
 (`f5f9cb3725`): hydralisk-avatar (MuseTalk realtime + WebRTC WHEP) and
 hydralisk-tts live on the GPU host behind caddy/sslip.io; e2e verified from
