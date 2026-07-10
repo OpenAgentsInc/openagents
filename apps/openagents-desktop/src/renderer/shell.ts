@@ -24,7 +24,6 @@ import {
   ComponentValueBinding,
   IntentRef,
   Icon,
-  Spacer,
   Stack,
   Text,
   TextField,
@@ -366,39 +365,7 @@ const shellHeader = (state: DesktopShellState): View =>
       },
     },
     [
-      Text({ key: "shell-title", content: state.fleetDeskOpen ? "Fleet" : state.threads.find((thread) => thread.id === state.activeThreadId)?.title ?? "New chat", variant: "title", color: "textPrimary" }),
-      Badge({
-        key: "shell-surface",
-        label: state.fleetDeskOpen ? "Planning" : "Chat",
-        tone: "info",
-        a11y: { label: state.fleetDeskOpen ? "Fleet planning workspace" : "Chat workspace" },
-      }),
-      Button({
-        key: "shell-fleet-toggle",
-        label: state.fleetDeskOpen ? "Back to chat" : "Open Fleet",
-        variant: "ghost",
-        onPress: IntentRef("DesktopFleetDeskToggled"),
-        a11y: { label: state.fleetDeskOpen ? "Close Fleet desk" : "Open Fleet desk" },
-      }),
-      Badge({
-        key: "shell-status",
-        label: "Local workspace",
-        tone: "success",
-        a11y: { label: "Local workspace ready" },
-      }),
-      Spacer({ key: "shell-header-fill", flex: true }),
-      Badge({
-        key: "shell-host",
-        label: state.host,
-        tone: "neutral",
-        a11y: { label: `Rendering host: ${state.host}` },
-      }),
-      Badge({
-        key: "shell-ping-count",
-        label: `proofs ${state.loopProofs}`,
-        tone: state.loopProofs > 0 ? "success" : "neutral",
-        a11y: { label: `${state.loopProofs} completed intent loop proofs` },
-      }),
+      Text({ key: "shell-title", content: state.threads.find((thread) => thread.id === state.activeThreadId)?.title ?? "New chat", variant: "title", color: "textPrimary" }),
     ],
   )
 
@@ -436,24 +403,6 @@ const shellSidebar = (state: DesktopShellState): View =>
           a11y: { label: `Open chat ${thread.title}` },
         }),
       ])),
-      Text({ key: "sidebar-workspace-label", content: "Workspace", variant: "caption", color: "textMuted" }),
-      Stack({ key: "sidebar-action-fleet", direction: "row", gap: "2", align: "center" }, [
-        Icon({ key: "sidebar-fleet-icon", name: "Agent", size: "sm", color: "textMuted" }),
-        Button({
-          key: "sidebar-fleet",
-          label: "Fleet",
-          variant: "ghost",
-          onPress: IntentRef("DesktopFleetDeskToggled"),
-          a11y: { label: state.fleetDeskOpen ? "Close Fleet" : "Open Fleet" },
-        }),
-      ]),
-      Spacer({ key: "sidebar-fill", flex: true }),
-      Badge({
-        key: "sidebar-pylon-status",
-        label: "Pylon dispatch",
-        tone: "neutral",
-        a11y: { label: "Local Pylon dispatch capability" },
-      }),
     ],
   )
 
@@ -474,7 +423,7 @@ const shellWelcome = (): View =>
       }),
       Text({
         key: "shell-welcome-body",
-        content: "Start with a question, a task, or a clear objective for your local fleet.",
+        content: "Start with a question or a task.",
         variant: "body",
         color: "textMuted",
       }),
@@ -588,13 +537,6 @@ const shellComposer = (state: DesktopShellState): View =>
             onPress: IntentRef("DesktopNoteSubmitted"),
             a11y: { label: "Send the typed message" },
           }),
-          Button({
-            key: "shell-ping",
-            label: "Proof",
-            variant: "ghost",
-            onPress: IntentRef("DesktopLoopPinged"),
-            a11y: { label: "Ping the Effect Native intent loop" },
-          }),
         ],
       ),
     ],
@@ -627,8 +569,7 @@ export const desktopShellView = (state: DesktopShellState): View =>
         },
         [
           shellHeader(state),
-          ...(state.fleetDeskOpen ? [fleetDesk(state)] : []),
-          ...(state.notes.length === 0 && !state.fleetDeskOpen ? [shellWelcome()] : []),
+          ...(state.notes.length === 0 ? [shellWelcome()] : []),
           Transcript({
             key: "shell-transcript",
             pinToEnd: true,

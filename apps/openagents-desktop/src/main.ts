@@ -117,8 +117,7 @@ const createWindow = (): BrowserWindow => {
  * Smoke mode (`bun run smoke`): proves the Effect Native intent loop runs
  * inside the real Electron renderer — types into the catalog-rendered
  * composer, submits, and asserts the message row appended AND the composer
- * cleared (the v29 clear-on-submit contract, effect-native#72); then clicks
- * "Ping loop" and asserts the loop-proof badge re-rendered. When
+ * cleared (the v29 clear-on-submit contract, effect-native#72). When
  * `OPENAGENTS_DESKTOP_SMOKE_SHOTS` names a directory, it captures pixel
  * receipts (shell / composer-typed / composer-cleared). Exits 0/1.
  */
@@ -127,10 +126,10 @@ const smokeShotsDir = process.env.OPENAGENTS_DESKTOP_SMOKE_SHOTS
 const smokeWaitForShell = `(async () => {
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
   const deadline = Date.now() + 15000
-  while (Date.now() < deadline && document.querySelector('[data-en-key="shell-ping"]') === null) {
+  while (Date.now() < deadline && document.querySelector('[data-en-key="shell-input"] input') === null) {
     await wait(100)
   }
-  return document.querySelector('[data-en-key="shell-ping"]') !== null
+  return document.querySelector('[data-en-key="shell-input"] input') !== null
 })()`
 
 const smokeTypeIntoComposer = `(() => {
@@ -256,13 +255,10 @@ const runSmoke = (window: BrowserWindow): void => {
       try {
         await step("shell-mounted", smokeWaitForShell)
         await captureShot(window, "01-shell")
-        await step("fleet-desk-open", smokeOpenFleetDesk)
-        await captureShot(window, "02-fleet-desk")
         await step("composer-typed", smokeTypeIntoComposer)
-        await captureShot(window, "03-composer-typed")
+        await captureShot(window, "02-composer-typed")
         await step("composer-submit-clears", smokeSubmitComposer)
-        await captureShot(window, "04-composer-cleared")
-        await step("intent-loop-ping", smokePingLoop)
+        await captureShot(window, "03-composer-cleared")
         clearTimeout(timeout)
         console.log("[openagents-desktop smoke] OK")
         app.exit(0)

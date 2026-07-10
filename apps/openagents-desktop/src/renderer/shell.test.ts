@@ -70,17 +70,6 @@ describe("desktopShellView (state -> component tree)", () => {
     expect(title?._tag).toBe("Text")
     expect(title?.content).toBe("New chat")
 
-    const surface = nodeByKey(view, "shell-surface")
-    expect(surface?._tag).toBe("Badge")
-    expect(surface?.label).toBe("Chat")
-
-    const status = nodeByKey(view, "shell-status")
-    expect(status?.label).toBe("Local workspace")
-    expect(status?.tone).toBe("success")
-
-    const host = nodeByKey(view, "shell-host")
-    expect(host?.label).toBe("electron/darwin")
-
     expect(nodeByKey(view, "shell-welcome-title")?.content).toBe(
       "What would you like to move today?",
     )
@@ -92,37 +81,17 @@ describe("desktopShellView (state -> component tree)", () => {
 
     expect(nodeByKey(view, "shell-input")?._tag).toBe("TextField")
     expect(nodeByKey(view, "shell-note")?._tag).toBe("Button")
-    expect(nodeByKey(view, "shell-ping")?._tag).toBe("Button")
-    expect(nodeByKey(view, "shell-fleet-toggle")?._tag).toBe("Button")
     expect(nodeByKey(view, "shell-sidebar")?._tag).toBe("Stack")
     expect((nodeByKey(view, "shell-sidebar")?.style as { surface?: string }).surface).toBe("glass")
     expect(nodeByKey(view, "sidebar-new-chat")?._tag).toBe("Button")
     expect(nodeByKey(view, "sidebar-new-chat-icon")?.name).toBe("ChatCompose")
     expect(nodeByKey(view, "sidebar-thread-test-thread")?._tag).toBe("Button")
     expect(nodeByKey(view, "sidebar-thread-icon-test-thread")?.name).toBe("Chats")
-    expect(nodeByKey(view, "sidebar-fleet")?._tag).toBe("Button")
-    expect(nodeByKey(view, "sidebar-fleet-icon")?.name).toBe("Agent")
     expect(nodeByKey(view, "shell-send-icon")?.name).toBe("Plane")
-    expect(nodeByKey(view, "fleet-desk")).toBeUndefined()
-  })
-
-  test("loop-proof badge reflects state and flips tone once proven", () => {
-    const zero = nodeByKey(desktopShellView(baseState), "shell-ping-count")
-    expect(zero?.label).toBe("proofs 0")
-    expect(zero?.tone).toBe("neutral")
-
-    const proven = nodeByKey(
-      desktopShellView({ ...baseState, loopProofs: 3 }),
-      "shell-ping-count",
-    )
-    expect(proven?.label).toBe("proofs 3")
-    expect(proven?.tone).toBe("success")
   })
 
   test("buttons carry the typed intent refs (no ad hoc handlers)", () => {
     const view = desktopShellView(baseState)
-    const ping = nodeByKey(view, "shell-ping") as { onPress?: { name?: string } }
-    expect(ping.onPress?.name).toBe("DesktopLoopPinged")
     const note = nodeByKey(view, "shell-note") as { onPress?: { name?: string } }
     expect(note.onPress?.name).toBe("DesktopNoteSubmitted")
     const input = nodeByKey(view, "shell-input") as {
@@ -213,11 +182,11 @@ describe("pure transitions", () => {
     expect(next.notes[0]?.timestamp).toBe("18:05")
   })
 
-  test("Fleet desk stages an objective without manufacturing a FleetRun", () => {
+  test("Fleet staging remains an internal capability and does not enter the minimal chat surface", () => {
     const open = withFleetDesk(baseState)
     expect(open.fleetDeskOpen).toBe(true)
-    expect(nodeByKey(desktopShellView(open), "fleet-desk")?._tag).toBe("Card")
-    expect(nodeByKey(desktopShellView(open), "shell-welcome")).toBeUndefined()
+    expect(nodeByKey(desktopShellView(open), "fleet-desk")).toBeUndefined()
+    expect(nodeByKey(desktopShellView(open), "shell-welcome")?._tag).toBe("Stack")
 
     const drafted = withFleetObjective(open, "Ship the desktop fleet chat")
     const dispatching = withFleetDeploymentRequested(drafted)
@@ -238,31 +207,7 @@ describe("pure transitions", () => {
   })
 })
 
-describe("typed intent loop end-to-end (registry -> state -> re-render)", () => {
-  test("DesktopLoopPinged round trip re-renders the badge and transcript", async () => {
-    await Effect.runPromise(
-      Effect.gen(function* () {
-        const state = yield* SubscriptionRef.make(baseState)
-        const registry = yield* makeIntentRegistry(
-          desktopShellIntents,
-          makeDesktopShellHandlers(state, fixedNow),
-        )
-        // Dispatch through the SAME IntentRef the rendered button carries.
-        const view = desktopShellView(yield* SubscriptionRef.get(state))
-        const ping = nodeByKey(view, "shell-ping") as {
-          onPress: Parameters<typeof resolveIntentRef>[0]
-        }
-        yield* registry.dispatch(resolveIntentRef(ping.onPress, null))
-
-        const next = yield* SubscriptionRef.get(state)
-        expect(next.loopProofs).toBe(1)
-        const rerendered = desktopShellView(next)
-        expect(nodeByKey(rerendered, "shell-ping-count")?.label).toBe("proofs 1")
-        const transcript = nodeByKey(rerendered, "shell-transcript")
-        expect((transcript?.messages as Array<unknown>).length).toBe(1)
-      }),
-    )
-  })
+describe("typed chat intent loop end-to-end (registry -> state -> re-render)", () => {
 
   test("composer intents: input change then submit falls back to composer state on button press", async () => {
     await Effect.runPromise(
