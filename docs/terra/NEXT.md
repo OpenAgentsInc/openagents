@@ -36,6 +36,11 @@ the assigned desktop order. It needs an explicit user-selection/import design
 and native-runtime compatibility decision; it must never become raw device
 filesystem browsing.
 
+Khala mode now needs a real device/pixel receipt before any attempt to add
+authenticated account, key, model-route, or Fleet controls. Those surfaces
+touch authority and do not belong in the generic public chat without an
+explicit Sol-owned integration scope.
+
 ## Next: close the shared-native rendering loop
 
 1. **Specify the DOM Liquid Glass acceptance surface beside the mobile one.**

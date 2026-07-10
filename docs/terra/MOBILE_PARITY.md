@@ -22,6 +22,7 @@ miniature file manager or a copy of desktop diagnostics.
 | New chat | Fresh Sarah prospect/session mint | Landed | No cloned or fake session |
 | Open a chat | Restore the selected thread relationship + bounded transcript | Landed | Each selected row restores its own thread |
 | Real response/error | Existing Sarah route, bounded SSE, typed unavailable state | Landed baseline | No canned assistant reply |
+| Khala orchestrator | Public generic Khala mode in the same native picker | Landed baseline | Server owns `openagents/khala` routing; no invented backing lane or Fleet outcome |
 | Minimal default chrome | Native Liquid Glass shell, typed Effect Native content/drawer | Landed | No developer/transport/Fleet counters in default chrome |
 | Official typed icon names | Shared Effect Native icon catalog | Landed | RN fallback remains closed and typed |
 | Project home | Conversation catalog is the current mobile home | Landed baseline | No fictional project data |
@@ -42,9 +43,24 @@ miniature file manager or a copy of desktop diagnostics.
 5. Disk failures are soft: the current live conversation remains usable, and
    no false persistence confirmation appears in the interface.
 
+## Khala mode boundary
+
+Khala mode is intentionally a separate, stateless generic conversation. Its
+turns call the already-public streaming route at `/api/khala/chat`; the server
+rebuilds the Khala instruction and performs orchestration. The mobile app
+renders the returned answer but does not label a particular serving model,
+Pylon, tool, verifier, receipt, or economic result. It does not reuse Sarah's
+prospect persistence. This preserves the transcript distinction documented in
+episodes 242–245: one Khala model surface can orchestrate a pool, but routing
+and authority belong behind the endpoint.
+
 ## Next mobile acceptance test
 
 On a real device, create more than five distinct chats, restart the app, and
 verify that exactly the newest five appear in the drawer, each restores its
 own transcript, and a new chat does not inherit a prior prospect/thread ID.
 This is the next proof before adding any attachment or Fleet surface.
+
+For Khala specifically, the next device receipt is a real turn through build
+114 while the mode picker and native glass chrome are visible; build validity is
+not a pixel/owner-acceptance claim.

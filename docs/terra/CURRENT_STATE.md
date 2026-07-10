@@ -33,6 +33,7 @@ real user question.
 | Chats | App-owned, persisted five-thread Sarah catalog; title from first user turn | `expo-file-system` document storage | Cross-device Sync |
 | New/open chat | New chat mints a new Sarah relationship; recent selection restores that thread's bounded transcript | Typed Effect Native intents and Sarah client | Invented placeholder or canned thread state |
 | Sarah turns | Existing production Sarah route and bounded SSE stream | Effectful mobile client -> typed state updates | Fleet/authority state inferred from chat text |
+| Khala mode | Public generic streaming conversation at `/api/khala/chat` | Server-owned `openagents/khala` routing; typed mobile transcript/composer | Sarah relationship continuity, backing-model disclosure, Fleet/receipt/account authority, or cross-device Sync |
 | Files | No folder browser | Mobile privacy/runtime boundary | Raw device filesystem browsing |
 
 ## Shared renderer status
@@ -49,7 +50,7 @@ real user question.
 | Surface | Commands last run | Result |
 | --- | --- | --- |
 | Desktop | `bun run --cwd apps/openagents-desktop typecheck`; `bun test apps/openagents-desktop`; `OPENAGENTS_DESKTOP_SMOKE=1 bun run --cwd apps/openagents-desktop smoke` | Passed through the Settings slice; Sol's receipt records 58 tests plus real Electron smoke |
-| Mobile | `bun run --cwd apps/openagents-mobile typecheck`; `bun run --cwd apps/openagents-mobile test` | Passed: 32 tests |
+| Mobile | `bun run --cwd apps/openagents-mobile typecheck`; `bun run --cwd apps/openagents-mobile test` | Passed: 40 tests after build-114 source rebase; TestFlight build 114 is ASC `VALID` |
 
 ## Deliberate exclusions
 

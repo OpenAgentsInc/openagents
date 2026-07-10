@@ -39,6 +39,7 @@ was direct and useful:
 | `d1abe0e81e` | Added real desktop Project Home and bounded local-folder listing/read preview through fixed IPC. |
 | `226aad0e72` | Sharpened the desktop material geometry after visual review. |
 | `7d77150514` | Replaced mobile seeded conversations with an app-owned five-thread catalog, real new-thread minting, and recent-thread restoration. |
+| `23aba8270a` | Added the mobile Khala mode: a typed public-orchestrator transcript/composer through the existing streaming Khala route; TestFlight build 114 is `VALID`. |
 
 ## What now works
 
@@ -132,7 +133,10 @@ own bounded transcript, and titles come from the user's first message rather
 than placeholder copy. It intentionally does not expose the desktop's raw
 folder browser: on mobile, device-file access must begin with an explicit
 user-selected document capability rather than silently treating the phone's
-filesystem as a workspace.
+  filesystem as a workspace.
+- The default mobile mode picker now includes Khala. It is a real call to the
+  public generic orchestration route, but it is deliberately not a claim that
+  a named backing model, Pylon, FleetRun, receipt, or Sarah relationship exists.
 
 ## Execution record
 
