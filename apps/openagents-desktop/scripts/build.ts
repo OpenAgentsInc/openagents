@@ -58,6 +58,14 @@ export const buildDesktop = async (): Promise<string> => {
 
   await cp(path.join(appRoot, "index.html"), path.join(dist, "renderer/index.html"))
   await cp(path.join(appRoot, "src/renderer/app.css"), path.join(dist, "renderer/app.css"))
+  // Consume the checked-in mobile source icon rather than maintaining an
+  // approximate sibling asset. A future macOS package can derive `.icns` from
+  // this same PNG without introducing a second brand source.
+  await mkdir(path.join(dist, "assets"), { recursive: true })
+  await cp(
+    path.join(appRoot, "..", "openagents-mobile", "assets", "images", "icon.png"),
+    path.join(dist, "assets", "openagents-icon.png"),
+  )
   return dist
 }
 

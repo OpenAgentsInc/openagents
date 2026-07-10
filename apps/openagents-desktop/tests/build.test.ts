@@ -4,6 +4,7 @@
  * source in the test sweep, so a broken bundle can never reach `bun run dev`.
  */
 import { describe, expect, test } from "bun:test"
+import { createHash } from "node:crypto"
 import { existsSync, readFileSync } from "node:fs"
 import path from "node:path"
 
@@ -30,6 +31,7 @@ describe("openagents-desktop build", () => {
       "renderer/boot.js",
       "renderer/index.html",
       "renderer/app.css",
+      "assets/openagents-icon.png",
     ]) {
       expect(existsSync(path.join(dist, artifact))).toBe(true)
     }
@@ -42,5 +44,10 @@ describe("openagents-desktop build", () => {
     const renderer = readFileSync(path.join(dist, "renderer/boot.js"), "utf8")
     expect(renderer).not.toContain('require("electron")')
     expect(renderer).toContain("openagents-desktop-root")
+
+    const fingerprint = (icon: Buffer) => createHash("sha256").update(icon).digest("hex")
+    const mobileIcon = readFileSync(path.join(appRoot, "..", "openagents-mobile", "assets", "images", "icon.png"))
+    const desktopIcon = readFileSync(path.join(dist, "assets", "openagents-icon.png"))
+    expect(fingerprint(desktopIcon)).toBe(fingerprint(mobileIcon))
   }, 60_000)
 })

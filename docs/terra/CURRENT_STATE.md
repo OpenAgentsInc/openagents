@@ -20,6 +20,7 @@ real user question.
 | Completion | Sends bounded `{threadId, message}` through the Electron host | Host-held configured OpenAgents gateway token | A response without configured gateway credentials |
 | Composer | Focus returns after New chat and completed sends; no rectangular focus outline | Renderer state + DOM focus management | Rich editor parity |
 | Material | Typed backdrop and glass surface authored in Effect Native | Shared DOM lowering | Literal SwiftUI `.glassEffect` on macOS |
+| Application icon | Exact OpenAgents mobile PNG is copied into the desktop runtime build | Electron window and macOS Dock receive that built asset | A separate or approximate desktop brand mark |
 | Project Home | Real thread projection and local-root selection | Bounded Electron workspace service | Project/session Sync authority |
 | Files | Root listing plus bounded, traversal-checked read preview | Fixed workspace IPC | Edit/save, diffs, terminal, arbitrary renderer filesystem access |
 | Settings | Bounded Codex account-readiness view and isolated Pylon device-auth start | Fixed renderer-argument-free IPC; never default `~/.codex` | Completion of a real owner browser authentication; headless smoke proves only awaiting-browser state |

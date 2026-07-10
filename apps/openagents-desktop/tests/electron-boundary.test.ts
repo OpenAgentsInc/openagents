@@ -32,6 +32,12 @@ describe("Electron boundary (issue #8574 mandatory first-scaffold hardening)", (
     expect(main).toContain("webSecurity: true")
   })
 
+  test("uses the built mobile icon for the window and macOS Dock", () => {
+    expect(main).toContain('"assets", "openagents-icon.png"')
+    expect(main).toContain("icon: desktopIconPath")
+    expect(main).toContain("app.dock?.setIcon(desktopIconPath)")
+  })
+
   test("deny-by-default permission, navigation, window-open, and webview handlers", () => {
     expect(main).toContain("setPermissionRequestHandler")
     expect(main).toContain("will-navigate")

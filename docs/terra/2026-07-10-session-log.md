@@ -41,6 +41,7 @@ was direct and useful:
 | `7d77150514` | Replaced mobile seeded conversations with an app-owned five-thread catalog, real new-thread minting, and recent-thread restoration. |
 | `23aba8270a` | Added the mobile Khala mode: a typed public-orchestrator transcript/composer through the existing streaming Khala route; TestFlight build 114 is `VALID`. |
 | `ee78dc1a2e` | Restored the owner-required `openagents-liquid-glass` SwiftUI module after a concurrent removal caused the iOS app to expose opaque React Native fallback controls; prepared native build 115. |
+| Pending current desktop landing | Uses the exact checked-in OpenAgents mobile app PNG for the Electron window and macOS Dock, with a build-time byte-parity test. |
 
 ## What now works
 
