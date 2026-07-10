@@ -2762,7 +2762,25 @@ export class PylonOrchestrationStore {
     this.db.run("BEGIN IMMEDIATE")
     try {
       for (const entry of entries) {
-        const result = this.db
+        const before = this.db.query(`
+          SELECT delivered_at
+            FROM pylon_orchestration_fleet_run_steering_outbox
+           WHERE pylon_ref = $pylonRef
+             AND run_ref = $runRef
+             AND claim_ref = $claimRef
+             AND seq = $seq
+             AND intent_id = $intentId
+             AND outcome_ref = $outcomeRef
+        `).get({
+          $pylonRef: entry.pylonRef,
+          $runRef: entry.runRef,
+          $claimRef: entry.claimRef,
+          $seq: entry.seq,
+          $intentId: entry.intentId,
+          $outcomeRef: entry.outcomeRef,
+        }) as { delivered_at: string | null } | null
+        if (before === null) continue
+        this.db
           .query(`
             UPDATE pylon_orchestration_fleet_run_steering_outbox
                SET delivered_at = COALESCE(delivered_at, $deliveredAt)
@@ -2782,7 +2800,27 @@ export class PylonOrchestrationStore {
             $outcomeRef: entry.outcomeRef,
             $deliveredAt: deliveredAt,
           })
-        changed += Number(result.changes)
+        const after = this.db.query(`
+          SELECT delivered_at
+            FROM pylon_orchestration_fleet_run_steering_outbox
+           WHERE pylon_ref = $pylonRef
+             AND run_ref = $runRef
+             AND claim_ref = $claimRef
+             AND seq = $seq
+             AND intent_id = $intentId
+             AND outcome_ref = $outcomeRef
+        `).get({
+          $pylonRef: entry.pylonRef,
+          $runRef: entry.runRef,
+          $claimRef: entry.claimRef,
+          $seq: entry.seq,
+          $intentId: entry.intentId,
+          $outcomeRef: entry.outcomeRef,
+        }) as { delivered_at: string | null } | null
+        if (after?.delivered_at === null || after === null) {
+          throw new Error("fleet run steering outcome delivery was not retained")
+        }
+        if (before.delivered_at === null) changed += 1
       }
       this.db.run("COMMIT")
       return changed
@@ -2949,7 +2987,7 @@ export class PylonOrchestrationStore {
         throw new Error("fleet run steering approval requires an exact live attempt")
       }
       if (workClaim.assignmentRef === null) {
-        const assigned = this.db.query(`
+        this.db.query(`
           UPDATE pylon_orchestration_work_claims
              SET assignment_ref = $assignmentRef, updated_at = $updatedAt
            WHERE claim_ref = $workClaimRef
@@ -2960,7 +2998,12 @@ export class PylonOrchestrationStore {
           $assignmentRef: input.assignmentRef,
           $updatedAt: iso(now),
         })
-        if (Number(assigned.changes) !== 1) {
+        const assigned = this.getWorkClaim(input.workClaimRef)
+        if (
+          assigned === null ||
+          assigned.assignmentRef !== input.assignmentRef ||
+          (assigned.state !== "claimed" && assigned.state !== "in_progress")
+        ) {
           throw new Error("fleet run steering approval lost its exact live attempt")
         }
       }
@@ -3101,7 +3144,7 @@ export class PylonOrchestrationStore {
         }))
         .digest("hex")
         .slice(0, 24)}`
-      const leasedRow = this.db.query(`
+      this.db.query(`
         UPDATE pylon_orchestration_fleet_run_steering_follow_ups
            SET state = 'dispatching', attempt_count = attempt_count + 1,
                last_attempt_at = $at, dispatch_lease_expires_at = $leaseExpiresAt,
@@ -3121,9 +3164,6 @@ export class PylonOrchestrationStore {
         $leaseGeneration: leaseGeneration,
         $previousLeaseGeneration: candidate.lease_generation,
       })
-      if (Number(leasedRow.changes) !== 1) {
-        throw new Error("fleet run steering follow-up lease compare-and-swap failed")
-      }
       const leased = this.getFleetRunSteeringFollowUp({
         pylonRef: input.pylonRef,
         runRef: input.runRef,
@@ -3221,7 +3261,7 @@ export class PylonOrchestrationStore {
         }
       } else {
         if (current.state !== "dispatching") throw new Error("fleet run steering follow-up is not leased")
-        const completed = this.db.query(`
+        this.db.query(`
           UPDATE pylon_orchestration_fleet_run_steering_follow_ups
              SET state = $state, dispatch_lease_expires_at = NULL,
                  completion_ref = $completionRef, completed_at = $completedAt,
@@ -3242,7 +3282,14 @@ export class PylonOrchestrationStore {
           $leaseGeneration: current.leaseGeneration,
           $leaseToken: current.dispatchLeaseToken,
         })
-        if (Number(completed.changes) !== 1) {
+        const transitioned = this.getFleetRunSteeringFollowUp(current)
+        if (
+          transitioned === null ||
+          transitioned.state !== input.state ||
+          transitioned.completionRef !== input.completionRef ||
+          transitioned.completedAt !== at ||
+          transitioned.lastFailureRef !== failureRef
+        ) {
           throw new Error("fleet run steering follow-up completion lost its lease")
         }
         if (current.intentKind === "approval_decision") {
@@ -3348,14 +3395,33 @@ export class PylonOrchestrationStore {
     this.db.run("BEGIN IMMEDIATE")
     try {
       for (const entry of entries) {
-        changed += Number(this.db.query(`
+        const before = this.db.query(`
+          SELECT delivered_at
+            FROM pylon_orchestration_fleet_run_steering_completion_outbox
+           WHERE completion_ref = $completionRef
+        `).get({
+          $completionRef: entry.completionRef,
+        }) as { delivered_at: string | null } | null
+        if (before === null) continue
+        this.db.query(`
           UPDATE pylon_orchestration_fleet_run_steering_completion_outbox
              SET delivered_at = COALESCE(delivered_at, $deliveredAt)
            WHERE completion_ref = $completionRef
         `).run({
           $completionRef: entry.completionRef,
           $deliveredAt: iso(now),
-        }).changes)
+        })
+        const after = this.db.query(`
+          SELECT delivered_at
+            FROM pylon_orchestration_fleet_run_steering_completion_outbox
+           WHERE completion_ref = $completionRef
+        `).get({
+          $completionRef: entry.completionRef,
+        }) as { delivered_at: string | null } | null
+        if (after?.delivered_at === null || after === null) {
+          throw new Error("fleet run steering completion delivery was not retained")
+        }
+        if (before.delivered_at === null) changed += 1
       }
       this.db.run("COMMIT")
       return changed

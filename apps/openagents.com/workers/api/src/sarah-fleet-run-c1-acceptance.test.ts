@@ -1,5 +1,9 @@
+import { canonicalJson, fleetRunScope } from '@openagentsinc/khala-sync'
 import {
+  makeFleetSteeringExchangeRepository,
   makeFleetRunAuthorityRepository,
+  readScopeOwner,
+  resolveScopeRead,
   type FleetRunAuthorityRepositoryShape,
   type SyncSql,
 } from '@openagentsinc/khala-sync-server'
@@ -30,6 +34,9 @@ import {
   createPylonDurableFleetRunPlanner,
 } from '../../../../pylon/src/orchestration/fleet-run-durable-planner'
 import {
+  makePylonFleetRunExecutionHttpPort,
+} from '../../../../pylon/src/orchestration/fleet-run-execution-reporter'
+import {
   makePylonFleetRunHttpIntake,
 } from '../../../../pylon/src/orchestration/fleet-run-http-intake'
 import {
@@ -42,10 +49,30 @@ import {
   openPylonStandingFleetRunExecutor,
   type PylonStandingFleetRunExecutor,
 } from '../../../../pylon/src/orchestration/fleet-run-standing-executor'
+import {
+  makePylonFleetRunSteeringHttpTransport,
+  openPylonFleetRunSteeringConsumer,
+  type PylonFleetRunSteeringConsumer,
+} from '../../../../pylon/src/orchestration/fleet-run-steering-consumer'
+import {
+  openPylonFleetRunSteeringFollowUpDispatcher,
+  type PylonFleetRunAttemptControl,
+  type PylonFleetRunSteeringFollowUpDispatcher,
+} from '../../../../pylon/src/orchestration/fleet-run-steering-follow-up-dispatcher'
 import type {
   FleetRunSupervisorDispatchInput,
 } from '../../../../pylon/src/orchestration/fleet-run-supervisor'
 import { assertPublicProjectionSafe } from '../../../../pylon/src/state'
+import {
+  makeSarahFleetBrowserCommands,
+  parseSarahFleetBrowserConfig,
+} from '../../../../sarah/src/services/fleet-browser-host'
+import { makeSarahFleetSyncClient } from '../../../../sarah/src/services/fleet-sync-client'
+import {
+  makeSarahFleetProjectionStore,
+  type SarahFleetProjectionOpenResult,
+  type SarahFleetProjectionState,
+} from '../../../../sarah/src/services/fleet-sync-projection-store'
 import { materializeHttpResult } from './http/responses'
 import {
   type AgentCredentialLookup,
@@ -61,6 +88,10 @@ import {
   makeSarahFleetRunRoutes,
   SARAH_FLEET_RUNS_PATH,
 } from './sarah-fleet-run-routes'
+import { handleKhalaSyncBootstrap } from './khala-sync-bootstrap-routes'
+import { handleKhalaSyncLog } from './khala-sync-log-routes'
+import { makeKhalaSyncWorkerMutatorRegistry } from './khala-sync-mutators'
+import { handleKhalaSyncPush } from './khala-sync-push-routes'
 
 const FIXED_NOW_MS = Date.parse('2026-07-09T23:45:00.000Z')
 const COMMIT = '03365073c0d96da42535ac74c6147c38e34368ed'
@@ -274,11 +305,11 @@ const makeAgentStore = async (): Promise<AgentRegistrationStore> => {
 }
 
 const waitUntil = async (
-  predicate: () => boolean,
-  timeoutMs = 5_000,
+  predicate: () => boolean | Promise<boolean>,
+  timeoutMs = 15_000,
 ): Promise<void> => {
   const deadline = performance.now() + timeoutMs
-  while (!predicate()) {
+  while (!(await predicate())) {
     if (performance.now() >= deadline) {
       throw new Error('timed out waiting for the C1 fixture closeout')
     }
@@ -304,8 +335,24 @@ describe.skipIf(!hasLocalPostgres())(
           { PYLON_HOME: join(root, 'pylon-home') },
         )
         const standingExecutors: Array<PylonStandingFleetRunExecutor> = []
+        const steeringConsumers: Array<PylonFleetRunSteeringConsumer> = []
+        const steeringDispatchers: Array<PylonFleetRunSteeringFollowUpDispatcher> = []
         const dispatched: Array<FleetRunSupervisorDispatchInput> = []
         const transportBodies: Array<unknown> = []
+        const executionTransportBodies: Array<unknown> = []
+        const executionTransportFailures: Array<unknown> = []
+        const steeringTransportFailures: Array<unknown> = []
+        const steeringTransportBodies: Array<unknown> = []
+        const appliedSteers: Array<Parameters<PylonFleetRunAttemptControl['applySteer']>[0]> = []
+        const appliedApprovals: Array<Parameters<PylonFleetRunAttemptControl['applyApproval']>[0]> = []
+        const approvalCallbackFailures: Array<string> = []
+        const PRIVATE_STEER_BODY =
+          'PRIVATE C1 steer: inspect the exact named attempt before closeout.'
+        let approvalRequestObserved = false
+        let releaseApprovedCodex!: () => void
+        const approvedCodex = new Promise<void>(resolve => {
+          releaseApprovedCodex = resolve
+        })
         let authorityClaimCalls = 0
         let authorityAcceptCalls = 0
         let importedBeforeAccept = false
@@ -329,6 +376,10 @@ describe.skipIf(!hasLocalPostgres())(
           await migrate(sql)
           await seedClaimablePylon(sql)
           const authority = makeFleetRunAuthorityRepository({
+            sql: sql as unknown as SyncSql,
+            now: Effect.sync(() => FIXED_NOW_MS + timeline.now()),
+          })
+          const steeringExchange = makeFleetSteeringExchangeRepository({
             sql: sql as unknown as SyncSql,
             now: Effect.sync(() => FIXED_NOW_MS + timeline.now()),
           })
@@ -589,10 +640,33 @@ describe.skipIf(!hasLocalPostgres())(
               Effect.sync(() => {
                 authorityAcceptCalls += 1
               }).pipe(Effect.andThen(authority.acceptClaim(input))),
+            appendExecutionEvents: (
+              _env: Readonly<Record<string, unknown>>,
+              input: Parameters<
+                NonNullable<
+                  FleetRunAuthorityRepositoryShape['appendExecutionEvents']
+                >
+              >[0],
+            ) => authority.appendExecutionEvents(input),
+          }
+          const fleetSteeringExchange = {
+            readPage: (
+              _env: Readonly<Record<string, unknown>>,
+              input: Parameters<typeof steeringExchange.readPage>[0],
+            ) => steeringExchange.readPage(input),
+            appendOutcomes: (
+              _env: Readonly<Record<string, unknown>>,
+              input: Parameters<typeof steeringExchange.appendOutcomes>[0],
+            ) => steeringExchange.appendOutcomes(input),
+            appendCompletions: (
+              _env: Readonly<Record<string, unknown>>,
+              input: Parameters<typeof steeringExchange.appendCompletions>[0],
+            ) => steeringExchange.appendCompletions(input),
           }
           const pylonRoutes = makePylonApiRoutes({
             agentStore: () => agentStore,
             fleetRunAuthority: fleetAuthority,
+            fleetSteeringExchange,
             makeStore: () => pylonStore,
             nowIso: () =>
               new Date(FIXED_NOW_MS + timeline.now()).toISOString(),
@@ -608,6 +682,146 @@ describe.skipIf(!hasLocalPostgres())(
             }
             return Effect.runPromise(route)
           }
+          const steeringTransport = makePylonFleetRunSteeringHttpTransport({
+            agentToken: OWNER_TOKEN,
+            baseUrl: 'https://openagents.test',
+            fetchImpl: Object.assign(
+              async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+                const request = new Request(input, init)
+                const requestBody = request.method === 'GET'
+                  ? null
+                  : await request.clone().json()
+                const response = await routePylon(request)
+                steeringTransportBodies.push({
+                  method: request.method,
+                  url: request.url,
+                  request: requestBody,
+                  response: await response.clone().json(),
+                  status: response.status,
+                })
+                if (!response.ok) {
+                  steeringTransportFailures.push({
+                    method: request.method,
+                    url: request.url,
+                    request: requestBody,
+                    response: await response.clone().json(),
+                    status: response.status,
+                  })
+                }
+                return response
+              },
+              { preconnect: fetch.preconnect },
+            ),
+          })
+          const steeringControl: PylonFleetRunAttemptControl = {
+            applyApproval: input => {
+              appliedApprovals.push(input)
+              return Promise.resolve({ state: 'applied' })
+            },
+            applySteer: input => {
+              appliedSteers.push(input)
+              return Promise.resolve({ state: 'applied' })
+            },
+            observeStop: () =>
+              Promise.resolve({
+                state: 'failed',
+                failureRef: 'blocker.public.c1.stop_not_exercised',
+              }),
+          }
+          const syncScope = fleetRunScope(startOutput.run.runRef)
+          const makeSyncSqlClient = () =>
+            Promise.resolve({
+              sql: sql as unknown as SyncSql,
+              end: () => Promise.resolve(),
+            })
+          const resolveSyncScope = (userId: string | undefined, scope: string) =>
+            resolveScopeRead(
+              {
+                canReadAgentRun: () => Promise.resolve(false),
+                canReadThread: () => Promise.resolve(false),
+                isTeamMember: () => Promise.resolve(false),
+                readFleetScopeOwner: requestedScope =>
+                  readScopeOwner(
+                    sql as unknown as SyncSql,
+                    requestedScope,
+                  ),
+              },
+              userId,
+              scope as Parameters<typeof resolveScopeRead>[2],
+            )
+          const syncRegistry = makeKhalaSyncWorkerMutatorRegistry()
+          const syncFetch = async (
+            path: string,
+            init?: RequestInit,
+          ): Promise<Response> => {
+            const request = new Request(
+              new URL(path, 'https://openagents.test'),
+              init,
+            )
+            if (request.url.includes('/api/sync/push')) {
+              return Effect.runPromise(
+                handleKhalaSyncPush(request, {
+                  authenticate: () =>
+                    Promise.resolve({ userId: OWNER_USER_ID }),
+                  binding: { connectionString: pg.url },
+                  makeSqlClient: makeSyncSqlClient,
+                  registry: syncRegistry,
+                }),
+              )
+            }
+            if (request.url.includes('/api/sync/bootstrap')) {
+              return Effect.runPromise(
+                handleKhalaSyncBootstrap(request, {
+                  authenticate: () =>
+                    Promise.resolve({ userId: OWNER_USER_ID }),
+                  binding: { connectionString: pg.url },
+                  makeSqlClient: makeSyncSqlClient,
+                  resolveScopeRead: resolveSyncScope,
+                }),
+              )
+            }
+            if (request.url.includes('/api/sync/log')) {
+              return Effect.runPromise(
+                handleKhalaSyncLog(request, {
+                  authenticate: () =>
+                    Promise.resolve({ userId: OWNER_USER_ID }),
+                  binding: { connectionString: pg.url },
+                  hubNamespace: undefined,
+                  makeSqlClient: makeSyncSqlClient,
+                  resolveScopeRead: resolveSyncScope,
+                }),
+              )
+            }
+            throw new Error(`unmatched Sync route: ${request.url}`)
+          }
+          let persistedProjectionJson: string | null = null
+          const projectionPersistence = {
+            load: () =>
+              Promise.resolve(
+                persistedProjectionJson === null
+                  ? null
+                  : (JSON.parse(persistedProjectionJson) as unknown),
+              ),
+            save: (state: SarahFleetProjectionState) => {
+              persistedProjectionJson = JSON.stringify(state)
+              return Promise.resolve()
+            },
+          }
+          let browserSerial = 0
+          const makeBrowserClient = (clientId: string) =>
+            makeSarahFleetSyncClient({
+              fetch: syncFetch,
+              clientGroupId: 'sarah.web.c1',
+              clientId,
+            })
+          const openBrowserProjection = async (
+            client: ReturnType<typeof makeBrowserClient>,
+          ): Promise<SarahFleetProjectionOpenResult> =>
+            makeSarahFleetProjectionStore({
+              client,
+              persistence: projectionPersistence,
+              now: () => FIXED_NOW_MS + timeline.now(),
+            }).open(syncScope)
 
           const foreignClaim = await routePylon(
             new Request(
@@ -653,6 +867,31 @@ describe.skipIf(!hasLocalPostgres())(
             summary,
             pylonRef: PYLON_REF,
             baseUrl: 'https://openagents.test',
+            agentToken: OWNER_TOKEN,
+            executionRemote: makePylonFleetRunExecutionHttpPort({
+              agentToken: OWNER_TOKEN,
+              baseUrl: 'https://openagents.test',
+              fetchImpl: Object.assign(
+                async (
+                  input: Parameters<typeof fetch>[0],
+                  init?: Parameters<typeof fetch>[1],
+                ) => {
+                  const request = new Request(input, init)
+                  const requestBody = await request.clone().json()
+                  executionTransportBodies.push(requestBody)
+                  const response = await routePylon(request)
+                  if (!response.ok) {
+                    executionTransportFailures.push({
+                      request: requestBody,
+                      response: await response.clone().json(),
+                      status: response.status,
+                    })
+                  }
+                  return response
+                },
+                { preconnect: fetch.preconnect },
+              ),
+            }),
             openExecutor: async input => {
               const standing = await openPylonStandingFleetRunExecutor({
                 bootstrap: summary,
@@ -660,11 +899,67 @@ describe.skipIf(!hasLocalPostgres())(
                 pylonRef: input.pylonRef,
                 runRef: input.runRef,
                 startImmediately: false,
-                tickIntervalMs: 300_000,
+                tickIntervalMs: 5,
                 clock: {
                   now: () => new Date(FIXED_NOW_MS + timeline.now()),
-                  sleep: () => new Promise<void>(() => undefined),
+                  sleep: milliseconds =>
+                    new Promise(resolve => setTimeout(resolve, milliseconds)),
                 },
+                steeringConsumerFactory: input => {
+                  const consumer = openPylonFleetRunSteeringConsumer({
+                    ...input,
+                    transport: steeringTransport,
+                    now: () => new Date(FIXED_NOW_MS + timeline.now()),
+                    startImmediately: false,
+                    intervalMs: 60_000,
+                  })
+                  steeringConsumers.push(consumer)
+                  return consumer
+                },
+                steeringFollowUpDispatcherFactory: input => {
+                  const dispatcher =
+                    openPylonFleetRunSteeringFollowUpDispatcher({
+                      ...input,
+                      control: steeringControl,
+                      now: () => new Date(FIXED_NOW_MS + timeline.now()),
+                      startImmediately: false,
+                      intervalMs: 60_000,
+                      onCompletion: async completion => {
+                        await steeringTransport.postCompletions({
+                          ...input,
+                          completions: [
+                            {
+                              seq: completion.seq,
+                              intentId: completion.intentId,
+                              state: completion.state,
+                              completionRef: completion.completionRef,
+                              completedAt: completion.completedAt,
+                            },
+                          ],
+                        })
+                        const approval = appliedApprovals.find(
+                          candidate =>
+                            candidate.intent.intentId === completion.intentId,
+                        )
+                        if (approval !== undefined) {
+                          const binding =
+                            input.store.getFleetRunSteeringApprovalBinding(
+                              approval.approvalRef,
+                            )
+                          expect(binding).toMatchObject({
+                            state: 'resolved',
+                            decision: 'allow',
+                          })
+                          releaseApprovedCodex()
+                        }
+                      },
+                    })
+                  steeringDispatchers.push(dispatcher)
+                  return dispatcher
+                },
+                ...(input.onLifecycle === undefined
+                  ? {}
+                  : { onLifecycle: input.onLifecycle }),
                 adapterFactory: ({ store }) => ({
                   capacity: {
                     accounts: () => {
@@ -763,15 +1058,54 @@ describe.skipIf(!hasLocalPostgres())(
                                 `check.public.c1.proof.${dispatch.workerKind}`,
                               ],
                             }
+                      if (dispatch.workerKind === 'codex') {
+                        try {
+                          await dispatch.onApprovalRequested?.({
+                            approvalRef: 'approval.public.c1.write_file',
+                            assignmentRef,
+                            toolClass: 'write_file',
+                          })
+                        } catch (error) {
+                          approvalCallbackFailures.push(
+                            error instanceof Error
+                              ? (error.stack ?? error.message)
+                              : String(error),
+                          )
+                          throw error
+                        }
+                        approvalRequestObserved = true
+                        await approvedCodex
+                      }
                       return {
                         assignmentRef,
                         accountRefHash,
+                        artifactRefs: [
+                          `artifact.public.c1.${dispatch.workerKind}`,
+                        ],
+                        authorityReceiptRefs: [
+                          `receipt.public.c1.authority.${dispatch.workerKind}`,
+                        ],
                         closeoutRef:
                           `closeout.public.c1.${dispatch.workerKind}`,
+                        proofRefs: [
+                          `proof.public.c1.${dispatch.workerKind}`,
+                        ],
                         usageEvidence,
                         lifecycle: [],
+                        marginalCostClass:
+                          dispatch.workerKind === 'grok'
+                            ? ('not_measured' as const)
+                            : ('subscription' as const),
                         status: 'completed' as const,
                         summary: `Bounded ${dispatch.workerKind} fixture work completed and verified.`,
+                        verification: {
+                          truth: 'passed' as const,
+                          verifierRef:
+                            `verifier.public.c1.${dispatch.workerKind}`,
+                          evidenceRefs: [
+                            `verification.public.c1.${dispatch.workerKind}`,
+                          ],
+                        },
                       }
                     },
                   },
@@ -817,6 +1151,7 @@ describe.skipIf(!hasLocalPostgres())(
           const intake = await openPylonFleetRunRemoteIntakeService({
             activation,
             bootstrap: summary,
+            now: () => new Date(FIXED_NOW_MS + timeline.now()),
             pylonRef: PYLON_REF,
             remote,
           })
@@ -848,11 +1183,217 @@ describe.skipIf(!hasLocalPostgres())(
           expect(firstClaimWallMs).toBeLessThan(15_000)
 
           expect(standingExecutors).toHaveLength(1)
+          expect(steeringConsumers).toHaveLength(1)
+          expect(steeringDispatchers).toHaveLength(1)
           const standing = standingExecutors[0]!
+          const steeringConsumer = steeringConsumers[0]!
+          const steeringDispatcher = steeringDispatchers[0]!
+          await waitUntil(
+            () => approvalRequestObserved || executionTransportFailures.length > 0,
+            30_000,
+          )
+          if (executionTransportFailures.length > 0) {
+            throw new Error(
+              JSON.stringify({ approvalCallbackFailures, executionTransportBodies, executionTransportFailures }),
+            )
+          }
+          expect(approvalRequestObserved).toBe(true)
+          await waitUntil(async () => {
+            const rows = await sql<Array<{ count: number }>>`
+              SELECT count(*)::int AS count
+              FROM khala_sync_changelog
+              WHERE scope = ${syncScope}
+                AND entity_type IN ('fleet_approval', 'fleet_worker', 'fleet_assignment')
+            `
+            return (rows[0]?.count ?? 0) >= 3
+          })
+
+          const browserConfig = parseSarahFleetBrowserConfig(
+            `https://openagents.com/sarah?fleet_run=${startOutput.run.runRef}`,
+          )!
+          const browserClient = makeBrowserClient('sarah.web.c1.controls')
+          let browser = await openBrowserProjection(browserClient)
+          expect(browser.source).toBe('bootstrap')
+          const pendingApproval = browser.projection.approvals.find(
+            approval => approval.status === 'pending',
+          )
+          expect(pendingApproval).toMatchObject({
+            approvalRef: 'approval.public.c1.write_file',
+            bindingStatus: 'exact',
+            availableDecisions: ['allow', 'deny'],
+          })
+          expect(pendingApproval?.attemptRef).not.toBeNull()
+          const exactAttemptRef = pendingApproval!.attemptRef!
+          const commandReceipts: Array<unknown> = []
+          const commands = makeSarahFleetBrowserCommands({
+            config: browserConfig,
+            client: browserClient,
+            cursor: () => Number(browser.state.cursor),
+            projection: () => browser.projection,
+            now: () => new Date(FIXED_NOW_MS + timeline.now()).toISOString(),
+            randomId: () => `c1browsercommand${++browserSerial}`,
+          })
+
+          commandReceipts.push(
+            await commands.runControl({
+              runRef: startOutput.run.runRef,
+              action: 'pause',
+            }),
+          )
+          const pauseTick = await steeringConsumer.tick()
+          if (!pauseTick.ok) {
+            throw new Error(
+              JSON.stringify({ pauseTick, steeringTransportBodies, steeringTransportFailures }),
+            )
+          }
+          expect(pauseTick).toMatchObject({
+            ok: true,
+            applied: 1,
+            acknowledged: 1,
+          })
+          browser = await openBrowserProjection(browserClient)
+          expect(browser.source).toBe('resume')
+          expect(standing.runtime.store.getFleetRun(startOutput.run.runRef)?.state)
+            .toBe('paused')
+          expect(browser.projection.run.status).toBe('paused')
+          expect(browser.projection.commandOutcomes).toContainEqual(
+            expect.objectContaining({
+              kind: 'fleet_run_control',
+              deliveryOutcome: 'applied',
+              effectiveOutcome: 'paused',
+            }),
+          )
+
+          commandReceipts.push(
+            await commands.runControl({
+              runRef: startOutput.run.runRef,
+              action: 'resume',
+            }),
+          )
+          expect(await steeringConsumer.tick()).toMatchObject({
+            ok: true,
+            applied: 1,
+            acknowledged: 1,
+          })
+          browser = await openBrowserProjection(browserClient)
+          expect(standing.runtime.store.getFleetRun(startOutput.run.runRef)?.state)
+            .toBe('running')
+          expect(browser.projection.run.status).toBe('running')
+          expect(browser.projection.commandOutcomes).toContainEqual(
+            expect.objectContaining({
+              kind: 'fleet_run_control',
+              deliveryOutcome: 'applied',
+              effectiveOutcome: 'running',
+            }),
+          )
+
+          commandReceipts.push(
+            await commands.steer({
+              runRef: startOutput.run.runRef,
+              targetRef: exactAttemptRef,
+              body: PRIVATE_STEER_BODY,
+            }),
+          )
+          expect(await steeringConsumer.tick()).toMatchObject({
+            ok: true,
+            applied: 1,
+            acknowledged: 1,
+          })
+          const steerDispatchTick = await steeringDispatcher.tick()
+          if (!steerDispatchTick.ok) {
+            throw new Error(
+              JSON.stringify({
+                steerDispatchTick,
+                steeringTransportBodies,
+                steeringTransportFailures,
+              }),
+            )
+          }
+          expect(steerDispatchTick).toMatchObject({
+            ok: true,
+            dispatched: 1,
+            completionsDelivered: 1,
+          })
+          expect(appliedSteers).toHaveLength(1)
+          expect(appliedSteers[0]).toMatchObject({
+            runRef: startOutput.run.runRef,
+            workClaimRef: exactAttemptRef,
+            body: PRIVATE_STEER_BODY,
+            bodyRef: null,
+          })
+          browser = await openBrowserProjection(browserClient)
+          expect(browser.projection.commandOutcomes).toContainEqual(
+            expect.objectContaining({
+              kind: 'steer_message',
+              targetRef: exactAttemptRef,
+              deliveryOutcome: 'queued_follow_up',
+              completionOutcome: 'applied',
+              effectiveOutcome: 'steer_delivered',
+            }),
+          )
+
+          commandReceipts.push(
+            await commands.approvalDecision({
+              runRef: startOutput.run.runRef,
+              approvalRef: pendingApproval!.approvalRef,
+              decision: 'allow',
+            }),
+          )
+          expect(await steeringConsumer.tick()).toMatchObject({
+            ok: true,
+            applied: 1,
+            acknowledged: 1,
+          })
+          expect(await steeringDispatcher.tick()).toMatchObject({
+            ok: true,
+            dispatched: 1,
+            completionsDelivered: 1,
+          })
+          expect(appliedApprovals).toHaveLength(1)
+          expect(appliedApprovals[0]).toMatchObject({
+            runRef: startOutput.run.runRef,
+            workClaimRef: exactAttemptRef,
+            approvalRef: pendingApproval!.approvalRef,
+            decision: 'allow',
+          })
+          await approvedCodex
+
           await waitUntil(() =>
             standing.runtime.store
               .listWorkClaims({ runRef: startOutput.run.runRef })
               .filter(claim => claim.state === 'closeout').length === 3,
+          )
+          await waitUntil(async () => {
+            if (executionTransportFailures.length > 0) return true
+            const rows = await sql<Array<{ execution_state: string }>>`
+              SELECT execution_state
+              FROM sarah_fleet_run_requests
+              WHERE run_ref = ${startOutput.run.runRef}
+            `
+            return rows[0]?.execution_state === 'completed'
+          }, 30_000)
+          browser = await openBrowserProjection(browserClient)
+          const reconnectClient = makeBrowserClient('sarah.web.c1.reconnect')
+          const reconnected = await openBrowserProjection(reconnectClient)
+          expect(reconnected.source).toBe('resume')
+          expect(reconnected.projection.run.status).toBe('completed')
+          expect(reconnected.projection.approvals).toContainEqual(
+            expect.objectContaining({
+              approvalRef: pendingApproval!.approvalRef,
+              status: 'allowed',
+              availableDecisions: [],
+            }),
+          )
+          expect(reconnected.projection.commandOutcomes).toHaveLength(4)
+          expect(
+            reconnected.projection.commandOutcomes?.map(outcome =>
+              outcome.effectiveOutcome,
+            ),
+          ).toEqual(['paused', 'running', 'steer_delivered', 'allowed'])
+          expect(canonicalJson(commandReceipts)).not.toContain(PRIVATE_STEER_BODY)
+          expect(persistedProjectionJson).not.toContain(PRIVATE_STEER_BODY)
+          expect(canonicalJson(reconnected.projection)).not.toContain(
+            PRIVATE_STEER_BODY,
           )
           const closed = await standing.runtime.manager.status(
             startOutput.run.runRef,
@@ -871,6 +1412,7 @@ describe.skipIf(!hasLocalPostgres())(
             },
           })
           expect(dispatched).toHaveLength(3)
+          expect(executionTransportFailures).toEqual([])
           expect(
             dispatched
               .map(dispatch => ({
@@ -948,6 +1490,21 @@ describe.skipIf(!hasLocalPostgres())(
           expect(observedBody).toMatchObject({
             ok: true,
             run: {
+              execution: {
+                state: 'completed',
+                counters: {
+                  acceptedAssignments: 3,
+                  activeAssignments: 0,
+                  failedAssignments: 0,
+                  staleAssignments: 0,
+                  workUnitsTotal: 3,
+                },
+                closeouts: [
+                  { terminalState: 'accepted' },
+                  { terminalState: 'accepted' },
+                  { terminalState: 'accepted' },
+                ],
+              },
               privateMaterialExcluded: true,
               runRef: startOutput.run.runRef,
               status: 'claimed_by_pylon',
@@ -976,9 +1533,99 @@ describe.skipIf(!hasLocalPostgres())(
             FROM sarah_fleet_run_work_units
             WHERE run_ref = ${startOutput.run.runRef}
           `
+          const eventRows = await sql<
+            Array<{
+              event_kind: string
+              event_ref: string
+              sequence: number
+            }>
+          >`
+            SELECT event_kind, event_ref, sequence::int AS sequence
+            FROM sarah_fleet_run_execution_events
+            WHERE run_ref = ${startOutput.run.runRef}
+            ORDER BY sequence
+          `
+          const changelogRows = await sql<
+            Array<{ post_image_json: unknown }>
+          >`
+            SELECT post_image_json
+            FROM khala_sync_changelog
+            WHERE scope = ${syncScope}
+            ORDER BY version
+          `
+          const attemptRows = await sql<
+            Array<{
+              state: string
+              worker_kind: string
+              usage_truth: string
+              evidence_complete: boolean
+            }>
+          >`
+            SELECT state, worker_kind, usage_truth,
+                   jsonb_array_length(artifact_refs_json::jsonb) > 0
+                     AND jsonb_array_length(proof_refs_json::jsonb) > 0
+                     AND jsonb_array_length(authority_receipt_refs_json::jsonb) > 0
+                     AND jsonb_array_length(
+                       verification_json::jsonb -> 'evidenceRefs'
+                     ) > 0 AS evidence_complete
+            FROM sarah_fleet_run_attempts
+            WHERE run_ref = ${startOutput.run.runRef}
+            ORDER BY worker_kind
+          `
           expect(runRows).toEqual([{ status: 'claimed_by_pylon', count: 1 }])
           expect(leaseRows).toEqual([{ state: 'accepted', count: 1 }])
           expect(workUnitRows).toEqual([{ count: 3 }])
+          expect(eventRows.map(row => row.sequence)).toEqual(
+            Array.from({ length: eventRows.length }, (_, index) => index + 1),
+          )
+          expect(new Set(eventRows.map(row => row.event_ref)).size).toBe(
+            eventRows.length,
+          )
+          expect(
+            eventRows.reduce<Record<string, number>>((counts, row) => {
+              counts[row.event_kind] = (counts[row.event_kind] ?? 0) + 1
+              return counts
+            }, {}),
+          ).toEqual({
+            approval_requested: 1,
+            run_started: 1,
+            run_terminal: 1,
+            work_progress: 3,
+            work_terminal: 3,
+          })
+          expect(approvalCallbackFailures).toEqual([])
+          expect(steeringTransportFailures).toEqual([])
+          expect(
+            canonicalJson(
+              steeringTransportBodies.filter(
+                value =>
+                  typeof value === 'object' &&
+                  value !== null &&
+                  (value as { method?: unknown }).method === 'POST',
+              ),
+            ),
+          ).not.toContain(PRIVATE_STEER_BODY)
+          expect(canonicalJson(changelogRows)).not.toContain(PRIVATE_STEER_BODY)
+          expect(attemptRows).toEqual([
+            {
+              evidence_complete: true,
+              state: 'succeeded',
+              usage_truth: 'exact',
+              worker_kind: 'claude',
+            },
+            {
+              evidence_complete: true,
+              state: 'succeeded',
+              usage_truth: 'exact',
+              worker_kind: 'codex',
+            },
+            {
+              evidence_complete: true,
+              state: 'succeeded',
+              usage_truth: 'not_measured',
+              worker_kind: 'grok',
+            },
+          ])
         } finally {
           await poller?.close().catch(() => undefined)
           await activation?.close().catch(() => undefined)
