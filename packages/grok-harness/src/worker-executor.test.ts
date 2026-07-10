@@ -157,6 +157,8 @@ describe("GrokHeadlessWorkerExecutor", () => {
         expect(argv).toContain("-p")
         expect(argv).toContain("--no-auto-update")
         expect(argv).toContain("--always-approve")
+        expect(argv).not.toContain("--session-id")
+        expect(argv).not.toContain("--resume")
         expect(cwd).toBe("/tmp/work")
         const promptIdx = argv.indexOf("-p")
         const prompt = argv[promptIdx + 1] ?? ""
@@ -190,6 +192,181 @@ describe("GrokHeadlessWorkerExecutor", () => {
     expect(closeout.usage.metering).toBe("not_measured")
     expect(closeout.usage.marginalCostClass).toBe("free")
     expect(closeout.usage.plane).toBe("cli_session")
+  })
+
+  test("creates and resumes the same canonical session with pinned headless argv", async () => {
+    const sessionId = "d5d2c7cc-31f3-5b3f-8d11-41a68b1f88ef"
+    const calls: Array<{
+      argv: string[]
+      cwd: string
+      timeoutMs: number
+    }> = []
+    const executor = createGrokHeadlessWorkerExecutor({
+      binary: "grok-test",
+      async runCommand(argv, cwd, timeoutMs) {
+        calls.push({ argv, cwd, timeoutMs })
+        return {
+          code: 0,
+          stdout: argv.includes("--resume") ? "follow-up complete" : "initial complete",
+          stderr: "",
+          wallClockMs: 12,
+        }
+      },
+    })
+    const pin = {
+      claimRef: "claim-session",
+      workUnitRef: "issue-8640",
+      runRef: "run-session",
+      cwd: "/tmp/session-work",
+      repo: "OpenAgentsInc/openagents",
+      commit: "abc123",
+      branch: "main",
+      verifyCommand: "bun test",
+    }
+
+    const initial = await executor.runClaimedWork({
+      pin,
+      prompt: "Initial private task body",
+      sessionId,
+      model: "grok-code-fast-1",
+      timeoutMs: 9_999,
+      plane: "cli_session",
+      marginalCostClass: "subscription",
+    })
+    const followUp = await executor.runFollowUp({
+      pin,
+      prompt: "Private steering body",
+      sessionId,
+      model: "grok-code-fast-1",
+      timeoutMs: 9_999,
+      plane: "cli_session",
+      marginalCostClass: "subscription",
+    })
+
+    expect(calls).toHaveLength(2)
+    const initialArgv = calls[0]?.argv ?? []
+    const followUpArgv = calls[1]?.argv ?? []
+    expect(initialArgv.slice(0, 6)).toEqual([
+      "grok-test",
+      "--no-auto-update",
+      "--no-alt-screen",
+      "--always-approve",
+      "--session-id",
+      sessionId,
+    ])
+    expect(initialArgv).not.toContain("--resume")
+    expect(followUpArgv.slice(0, 6)).toEqual([
+      "grok-test",
+      "--no-auto-update",
+      "--no-alt-screen",
+      "--always-approve",
+      "--resume",
+      sessionId,
+    ])
+    expect(followUpArgv).not.toContain("--session-id")
+    for (const call of calls) {
+      expect(call.cwd).toBe(pin.cwd)
+      expect(call.timeoutMs).toBe(9_999)
+      expect(call.argv).toContain("--always-approve")
+      expect(call.argv).toContain("-p")
+      expect(call.argv).toContain("--cwd")
+      expect(call.argv).toContain(pin.cwd)
+      expect(call.argv).toContain("--output-format")
+      expect(call.argv).toContain("plain")
+      expect(call.argv).toContain("-m")
+      expect(call.argv).toContain("grok-code-fast-1")
+    }
+    const initialPrompt = initialArgv[initialArgv.indexOf("-p") + 1] ?? ""
+    const followUpPrompt = followUpArgv[followUpArgv.indexOf("-p") + 1] ?? ""
+    expect(initialPrompt).toContain("claimRef=claim-session")
+    expect(initialPrompt).toContain("Initial private task body")
+    expect(initialPrompt).not.toContain(sessionId)
+    expect(followUpPrompt).toContain("claimRef=claim-session")
+    expect(followUpPrompt).toContain("Private steering body")
+    expect(followUpPrompt).not.toContain(sessionId)
+    expect(initial).toMatchObject({
+      ok: true,
+      claimRef: "claim-session",
+      stopReason: "end_turn",
+      text: "initial complete",
+      usage: {
+        metering: "not_measured",
+        model: "grok-code-fast-1",
+        plane: "cli_session",
+        marginalCostClass: "subscription",
+      },
+    })
+    expect(followUp).toMatchObject({
+      ok: true,
+      claimRef: "claim-session",
+      stopReason: "end_turn",
+      text: "follow-up complete",
+      usage: {
+        metering: "not_measured",
+        model: "grok-code-fast-1",
+        plane: "cli_session",
+        marginalCostClass: "subscription",
+      },
+    })
+    expect(JSON.stringify(initial)).not.toContain(sessionId)
+    expect(JSON.stringify(followUp)).not.toContain(sessionId)
+    expect(JSON.stringify(initial)).not.toContain("Initial private task body")
+    expect(JSON.stringify(followUp)).not.toContain("Private steering body")
+  })
+
+  test("rejects non-canonical session ids without invoking Grok", async () => {
+    let calls = 0
+    const executor = createGrokHeadlessWorkerExecutor({
+      async runCommand() {
+        calls += 1
+        return {
+          code: 0,
+          stdout: "must not run",
+          stderr: "",
+          wallClockMs: 1,
+        }
+      },
+    })
+    const pin = {
+      claimRef: "claim-invalid-session",
+      workUnitRef: "issue-8640",
+      runRef: "run-invalid-session",
+      cwd: "/tmp/invalid-session-work",
+    }
+
+    const initial = await executor.runClaimedWork({
+      pin,
+      prompt: "Private initial body",
+      sessionId: "D5D2C7CC-31F3-5B3F-8D11-41A68B1F88EF",
+    })
+    const followUp = await executor.runFollowUp({
+      pin,
+      prompt: "Private follow-up body",
+      sessionId: "not-a-uuid",
+    })
+
+    expect(calls).toBe(0)
+    expect(initial).toMatchObject({
+      ok: false,
+      claimRef: "claim-invalid-session",
+      stopReason: "invalid_session_id",
+      text: "",
+      usage: { metering: "not_measured", wallClockMs: 0 },
+      failureClass: "unknown",
+    })
+    expect(followUp).toMatchObject({
+      ok: false,
+      claimRef: "claim-invalid-session",
+      stopReason: "invalid_session_id",
+      text: "",
+      usage: { metering: "not_measured", wallClockMs: 0 },
+      failureClass: "unknown",
+    })
+    const publicCloseouts = JSON.stringify([initial, followUp])
+    expect(publicCloseouts).not.toContain("D5D2C7CC")
+    expect(publicCloseouts).not.toContain("not-a-uuid")
+    expect(publicCloseouts).not.toContain("Private initial body")
+    expect(publicCloseouts).not.toContain("Private follow-up body")
   })
 
   test("classifies rate limit failures", async () => {

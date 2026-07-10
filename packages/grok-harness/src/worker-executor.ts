@@ -17,16 +17,24 @@ import type {
   WorkerCloseout,
 } from "./types.js"
 
+export type GrokClaimedWorkInput = {
+  readonly pin: WorkerClaimPin
+  readonly prompt: string
+  readonly model?: string
+  readonly timeoutMs?: number
+  readonly plane?: AuthPlane
+  readonly marginalCostClass?: MarginalCostClass
+  readonly sessionId?: string
+}
+
+export type GrokFollowUpInput = Omit<GrokClaimedWorkInput, "sessionId"> & {
+  readonly sessionId: string
+}
+
 export type GrokWorkerExecutorPort = {
   readonly kind: "grok_cli"
-  readonly runClaimedWork: (input: {
-    readonly pin: WorkerClaimPin
-    readonly prompt: string
-    readonly model?: string
-    readonly timeoutMs?: number
-    readonly plane?: AuthPlane
-    readonly marginalCostClass?: MarginalCostClass
-  }) => Promise<WorkerCloseout>
+  readonly runClaimedWork: (input: GrokClaimedWorkInput) => Promise<WorkerCloseout>
+  readonly runFollowUp: (input: GrokFollowUpInput) => Promise<WorkerCloseout>
   readonly readiness: () => Promise<GrokReadiness>
 }
 
@@ -61,6 +69,11 @@ export const MAX_GROK_WORKER_OUTPUT_BYTES = 1_048_576
 const GROK_READINESS_FORCE_KILL_GRACE_MS = 250
 const GROK_CONFIG_SCAN_MAX_BYTES = 1_048_576
 const GROK_CONFIG_SCAN_CHUNK_BYTES = 65_536
+const CANONICAL_UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u
+
+const isCanonicalUuid = (value: string): boolean =>
+  CANONICAL_UUID_PATTERN.test(value)
 
 const sharedGrokCredentialKey = (key: string): boolean =>
   key === "XAI_API_KEY" ||
@@ -525,6 +538,100 @@ export function createGrokHeadlessWorkerExecutor(options: {
       }
     })
 
+  const usageFor = (
+    input: Omit<GrokClaimedWorkInput, "sessionId">,
+    wallClockMs: number,
+  ): GrokUsageSnapshot => {
+    const plane = input.plane ?? (options.env?.XAI_API_KEY ? "api_key" : "cli_session")
+    const marginalCostClass: MarginalCostClass =
+      input.marginalCostClass ?? (plane === "cli_session" ? "free" : "api_metered")
+    return {
+      metering: "not_measured",
+      wallClockMs,
+      ...(input.model === undefined ? {} : { model: input.model }),
+      plane,
+      marginalCostClass,
+    }
+  }
+
+  const invalidSessionCloseout = (
+    input: Omit<GrokClaimedWorkInput, "sessionId">,
+  ): WorkerCloseout => ({
+    ok: false,
+    claimRef: input.pin.claimRef,
+    stopReason: "invalid_session_id",
+    text: "",
+    usage: usageFor(input, 0),
+    failureClass: "unknown",
+  })
+
+  const runTurn = async (
+    input: Omit<GrokClaimedWorkInput, "sessionId">,
+    sessionArgs: readonly string[],
+  ): Promise<WorkerCloseout> => {
+    const systemPin = [
+      `claimRef=${input.pin.claimRef}`,
+      `workUnitRef=${input.pin.workUnitRef}`,
+      `runRef=${input.pin.runRef}`,
+      input.pin.accountRefHash ? `accountRefHash=${input.pin.accountRefHash}` : null,
+      input.pin.repo ? `repo=${input.pin.repo}` : null,
+      input.pin.commit ? `commit=${input.pin.commit}` : null,
+      input.pin.branch ? `branch=${input.pin.branch}` : null,
+      input.pin.verifyCommand ? `verify=${input.pin.verifyCommand}` : null,
+      "Stay in scope. One focused change. Do not expand.",
+    ]
+      .filter(Boolean)
+      .join("\n")
+
+    const prompt = `${systemPin}\n\n${input.prompt}`
+
+    const argv = [
+      binary,
+      "--no-auto-update",
+      "--no-alt-screen",
+      // This is an owner-local, isolated claimed-work executor with no stdin.
+      // Without explicit unattended approval Grok can answer successfully
+      // while declining every edit/tool prompt, producing a false clean run.
+      "--always-approve",
+      ...sessionArgs,
+      "-p",
+      prompt,
+      "--cwd",
+      input.pin.cwd,
+      "--output-format",
+      "plain",
+      ...(input.model ? ["-m", input.model] : []),
+    ]
+
+    let result: Awaited<ReturnType<typeof runCommand>>
+    try {
+      result = await runCommand(argv, input.pin.cwd, boundedWorkerTimeout(input.timeoutMs))
+    } catch {
+      result = {
+        code: 1,
+        stdout: "",
+        stderr: "",
+        wallClockMs: 0,
+      }
+    }
+    const combined = `${result.stdout}\n${result.stderr}`
+    const failureClass =
+      result.code === 0
+        ? undefined
+        : result.timedOut === true
+          ? "timeout"
+          : classifyError(combined, result.code)
+
+    return {
+      ok: result.code === 0 && workerOutputIsBounded(result.stdout) && workerOutputIsBounded(result.stderr),
+      claimRef: input.pin.claimRef,
+      stopReason: result.code === 0 ? "end_turn" : result.timedOut === true ? "timeout" : `exit_${result.code}`,
+      text: workerOutputIsBounded(result.stdout) ? result.stdout.trim() : "",
+      usage: usageFor(input, result.wallClockMs),
+      ...(failureClass ? { failureClass } : {}),
+    }
+  }
+
   return {
     kind: "grok_cli",
     async readiness() {
@@ -534,78 +641,17 @@ export function createGrokHeadlessWorkerExecutor(options: {
       })
     },
     async runClaimedWork(input) {
-      const plane = input.plane ?? (options.env?.XAI_API_KEY ? "api_key" : "cli_session")
-      const marginalCostClass: MarginalCostClass =
-        input.marginalCostClass ?? (plane === "cli_session" ? "free" : "api_metered")
-
-      const systemPin = [
-        `claimRef=${input.pin.claimRef}`,
-        `workUnitRef=${input.pin.workUnitRef}`,
-        `runRef=${input.pin.runRef}`,
-        input.pin.accountRefHash ? `accountRefHash=${input.pin.accountRefHash}` : null,
-        input.pin.repo ? `repo=${input.pin.repo}` : null,
-        input.pin.commit ? `commit=${input.pin.commit}` : null,
-        input.pin.branch ? `branch=${input.pin.branch}` : null,
-        input.pin.verifyCommand ? `verify=${input.pin.verifyCommand}` : null,
-        "Stay in scope. One focused change. Do not expand.",
-      ]
-        .filter(Boolean)
-        .join("\n")
-
-      const prompt = `${systemPin}\n\n${input.prompt}`
-
-      const argv = [
-        binary,
-        "--no-auto-update",
-        "--no-alt-screen",
-        // This is an owner-local, isolated claimed-work executor with no stdin.
-        // Without explicit unattended approval Grok can answer successfully
-        // while declining every edit/tool prompt, producing a false clean run.
-        "--always-approve",
-        "-p",
-        prompt,
-        "--cwd",
-        input.pin.cwd,
-        "--output-format",
-        "plain",
-        ...(input.model ? ["-m", input.model] : []),
-      ]
-
-      let result: Awaited<ReturnType<typeof runCommand>>
-      try {
-        result = await runCommand(argv, input.pin.cwd, boundedWorkerTimeout(input.timeoutMs))
-      } catch {
-        result = {
-          code: 1,
-          stdout: "",
-          stderr: "",
-          wallClockMs: 0,
-        }
+      if (input.sessionId !== undefined && !isCanonicalUuid(input.sessionId)) {
+        return invalidSessionCloseout(input)
       }
-      const combined = `${result.stdout}\n${result.stderr}`
-      const failureClass =
-        result.code === 0
-          ? undefined
-          : result.timedOut === true
-            ? "timeout"
-            : classifyError(combined, result.code)
-
-      const usage: GrokUsageSnapshot = {
-        metering: "not_measured",
-        wallClockMs: result.wallClockMs,
-        ...(input.model === undefined ? {} : { model: input.model }),
-        plane,
-        marginalCostClass,
-      }
-
-      return {
-        ok: result.code === 0 && workerOutputIsBounded(result.stdout) && workerOutputIsBounded(result.stderr),
-        claimRef: input.pin.claimRef,
-        stopReason: result.code === 0 ? "end_turn" : result.timedOut === true ? "timeout" : `exit_${result.code}`,
-        text: workerOutputIsBounded(result.stdout) ? result.stdout.trim() : "",
-        usage,
-        ...(failureClass ? { failureClass } : {}),
-      }
+      return await runTurn(
+        input,
+        input.sessionId === undefined ? [] : ["--session-id", input.sessionId],
+      )
+    },
+    async runFollowUp(input) {
+      if (!isCanonicalUuid(input.sessionId)) return invalidSessionCloseout(input)
+      return await runTurn(input, ["--resume", input.sessionId])
     },
   }
 }
