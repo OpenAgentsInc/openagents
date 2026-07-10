@@ -181,6 +181,7 @@ const SarahFleetWorkerProjection = Schema.Struct({
   phase: FleetWorkerPhase,
   harnessKind: Schema.NullOr(FleetHarnessKind),
   workUnitRef: Schema.NullOr(SarahFleetDisplayName),
+  attemptRef: Schema.NullOr(FleetPublicRef),
   accountRefHash: Schema.NullOr(FleetAccountRefHash),
   progress: SarahFleetProgress,
   approvalRefs: Schema.Array(FleetPublicRef),
@@ -807,13 +808,24 @@ export function projectSarahFleetOwnerRun(
     if (actionable) actionableApprovals.push(approval)
   }
 
-  const currentAttemptForAssignment = (
-    assignmentRef: string,
+  const workerMatchesAttempt = (
+    worker: FleetWorkerEntity,
+    attempt: typeof FleetAttemptEntity.Type,
+  ): boolean =>
+    (worker.assignmentRef ?? null) === attempt.assignmentRef &&
+    worker.harnessKind === attempt.workerKind &&
+    (worker.accountRefHash ?? null) === attempt.accountRefHash
+
+  const currentAttemptForWorker = (
+    worker: FleetWorkerEntity,
   ): typeof FleetAttemptEntity.Type | undefined => {
-    const current = (attemptsByAssignment.get(assignmentRef) ?? []).filter(
+    if (worker.assignmentRef === undefined) return undefined
+    const current = (
+      attemptsByAssignment.get(worker.assignmentRef) ?? []
+    ).filter(
       (attempt) =>
         workUnitByRef.get(attempt.workUnitRef)?.latestAttemptRef ===
-        attempt.attemptRef,
+          attempt.attemptRef && workerMatchesAttempt(worker, attempt),
     )
     return current.length === 1 ? current[0] : undefined
   }
@@ -828,7 +840,9 @@ export function projectSarahFleetOwnerRun(
     const assignmentWorkers =
       attempt.assignmentRef === null
         ? []
-        : (workersByAssignment.get(attempt.assignmentRef) ?? [])
+        : (workersByAssignment.get(attempt.assignmentRef) ?? []).filter(
+            (worker) => workerMatchesAttempt(worker, attempt),
+          )
     const approvalWorkers = (approvalRefsByAttempt.get(attempt.attemptRef) ?? [])
       .flatMap((approvalRef) => {
         const resolution = exactApprovalByRef.get(approvalRef)
@@ -842,7 +856,13 @@ export function projectSarahFleetOwnerRun(
           index,
       )
     const workersForAttempt =
-      assignmentWorkers.length > 0 ? assignmentWorkers : approvalWorkers
+      [...assignmentWorkers, ...approvalWorkers].filter(
+        (worker, index, all) =>
+          workerMatchesAttempt(worker, attempt) &&
+          all.findIndex(
+            (candidate) => candidate.workerId === worker.workerId,
+          ) === index,
+      )
     const worker =
       workersForAttempt.length === 1 ? workersForAttempt[0] : undefined
     return {
@@ -939,10 +959,7 @@ export function projectSarahFleetOwnerRun(
     },
     workUnits: projectedWorkUnits,
     workers: workers.map((worker) => {
-      const attempt =
-        worker.assignmentRef === undefined
-          ? undefined
-          : currentAttemptForAssignment(worker.assignmentRef)
+      const attempt = currentAttemptForWorker(worker)
       const workUnit =
         attempt === undefined
           ? undefined
@@ -953,6 +970,7 @@ export function projectSarahFleetOwnerRun(
         phase: worker.phase,
         harnessKind: worker.harnessKind ?? null,
         workUnitRef: workUnit?.workUnitRef ?? null,
+        attemptRef: attempt?.attemptRef ?? null,
         accountRefHash: worker.accountRefHash ?? null,
         progress:
           attempt === undefined

@@ -640,6 +640,82 @@ describe("FC-3 direct owner-safe fleet projection", () => {
     expect(projection.workUnits).toEqual([])
   })
 
+  test("does not bind an attempt to a worker with a different harness", () => {
+    const mismatchedWorker = decodeFleetWorkerEntity({
+      workerId: "worker.running.wrong-harness",
+      phase: "dispatched",
+      harnessKind: "claude",
+      assignmentRef: runningAttempt.assignmentRef!,
+      accountRefHash: runningAttempt.accountRefHash!,
+      lastProgressAt: "2026-07-09T19:59:55.000Z",
+      updatedAt: "2026-07-09T19:59:55.000Z",
+    })
+    const projection = projectSarahFleetOwnerRun(
+      {
+        run,
+        workUnits: [workUnits[2]!],
+        attempts: [runningAttempt],
+        assignments: [assignments[2]!],
+        workers: [mismatchedWorker],
+        approvals: [],
+        inboxFlags: [],
+      },
+      NOW,
+    )
+
+    expect(projection.workUnits[0]).toMatchObject({
+      workerRef: null,
+      attempts: [{ attemptRef: runningAttempt.attemptRef, workerRef: null }],
+    })
+    expect(projection.workers[0]).toMatchObject({
+      workerRef: mismatchedWorker.workerId,
+      workUnitRef: null,
+      attemptRef: null,
+      progress: {
+        status: "fresh",
+        heartbeatAt: mismatchedWorker.lastProgressAt,
+      },
+    })
+  })
+
+  test("does not bind an attempt to a worker with a different account", () => {
+    const mismatchedWorker = decodeFleetWorkerEntity({
+      workerId: "worker.running.wrong-account",
+      phase: "dispatched",
+      harnessKind: runningAttempt.workerKind,
+      assignmentRef: runningAttempt.assignmentRef!,
+      accountRefHash: `account.pylon.codex.${"9".repeat(24)}`,
+      lastProgressAt: "2026-07-09T19:59:55.000Z",
+      updatedAt: "2026-07-09T19:59:55.000Z",
+    })
+    const projection = projectSarahFleetOwnerRun(
+      {
+        run,
+        workUnits: [workUnits[2]!],
+        attempts: [runningAttempt],
+        assignments: [assignments[2]!],
+        workers: [mismatchedWorker],
+        approvals: [],
+        inboxFlags: [],
+      },
+      NOW,
+    )
+
+    expect(projection.workUnits[0]).toMatchObject({
+      workerRef: null,
+      attempts: [{ attemptRef: runningAttempt.attemptRef, workerRef: null }],
+    })
+    expect(projection.workers[0]).toMatchObject({
+      workerRef: mismatchedWorker.workerId,
+      workUnitRef: null,
+      attemptRef: null,
+      progress: {
+        status: "fresh",
+        heartbeatAt: mismatchedWorker.lastProgressAt,
+      },
+    })
+  })
+
   test("preserves retry history when attempts reuse one assignment edge", () => {
     const reusedAssignmentAttempt = decodeFleetAttemptEntity({
       ...retryFailed,
@@ -674,7 +750,16 @@ describe("FC-3 direct owner-safe fleet projection", () => {
       "work_claim.retry.1",
       "work_claim.retry.2",
     ])
+    expect(retry.attempts.map((attempt) => attempt.workerRef)).toEqual([
+      null,
+      "worker.retry.2",
+    ])
     expect(retry.assignmentRef).toBe("assignment.retry.2")
+    expect(projection.workers[0]).toMatchObject({
+      workerRef: "worker.retry.2",
+      workUnitRef: "unit.retry",
+      attemptRef: retrySucceeded.attemptRef,
+    })
   })
 
   test("fails closed on duplicate, orphan, and cross-unit attempt pointers", () => {
