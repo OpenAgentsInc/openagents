@@ -1,5 +1,8 @@
 import { describe, expect, it } from "bun:test"
 import {
+  decodeFleetSteeringOutcomeAck,
+  decodeFleetSteeringOutcomeBatch,
+  decodeFleetSteeringPage,
   decodeKhalaFleetIntent,
   decodeKhalaFleetIntentJson,
   defaultFleetAutoPolicy,
@@ -11,6 +14,74 @@ import {
   rankFleetHarnessesByCostClass,
   resolveFleetAutoTarget,
 } from "./index.ts"
+
+describe("Fleet steering delivery transport", () => {
+  const intent = {
+    schema: "khala.fleet_intent.v1" as const,
+    intentId: "intent.sarah.pause.1",
+    createdAt: "2026-07-09T23:00:00.000Z",
+    origin: { surface: "web" as const },
+    idempotencyKey: "intent.sarah.pause.1.idem",
+    runRef: "fleet_run.sarah.0123456789abcdef0123",
+    kind: "fleet_run_control" as const,
+    action: "pause" as const,
+  }
+  const claimRef = "claim.sarah_fleet_run.0123456789abcdef01234567"
+  const outcome = {
+    seq: 41,
+    intentId: intent.intentId,
+    state: "applied" as const,
+  }
+
+  it("decodes the exact bounded Pylon delivery page", () => {
+    expect(
+      decodeFleetSteeringPage({
+        ok: true,
+        runRef: intent.runRef,
+        claimRef,
+        intents: [{ seq: 41, intentId: intent.intentId, intent, createdAt: intent.createdAt }],
+        nextAfter: 41,
+        upToDate: true,
+      }),
+    ).toMatchObject({ nextAfter: 41, upToDate: true })
+  })
+
+  it("decodes body-free outcome input and acknowledgment", () => {
+    expect(decodeFleetSteeringOutcomeBatch({ claimRef, outcomes: [outcome] })).toEqual({
+      claimRef,
+      outcomes: [outcome],
+    })
+    expect(
+      decodeFleetSteeringOutcomeAck({
+        ok: true,
+        runRef: intent.runRef,
+        claimRef,
+        outcomes: [outcome],
+        storedOutcomeCount: 1,
+        duplicateOutcomeCount: 0,
+      }),
+    ).toMatchObject({ storedOutcomeCount: 1, duplicateOutcomeCount: 0 })
+  })
+
+  it("rejects malformed authority refs and private outcome payloads", () => {
+    expect(() =>
+      decodeFleetSteeringPage({
+        ok: true,
+        runRef: "fleet_run.sarah.not-a-run",
+        claimRef,
+        intents: [],
+        nextAfter: 0,
+        upToDate: true,
+      }),
+    ).toThrow()
+    expect(() =>
+      decodeFleetSteeringOutcomeBatch({
+        claimRef,
+        outcomes: [{ ...outcome, body: "must not cross the outcome boundary" }],
+      }),
+    ).toThrow()
+  })
+})
 
 describe("khala-fleet-intents vocabulary", () => {
   it("includes grok alongside codex/claude and auto for worker selection", () => {

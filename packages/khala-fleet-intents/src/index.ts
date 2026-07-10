@@ -384,3 +384,91 @@ export const KhalaFleetIntentFromJsonString = S.fromJsonString(KhalaFleetIntent)
 export const decodeKhalaFleetIntentJson = S.decodeUnknownSync(
   KhalaFleetIntentFromJsonString,
 )
+
+// --- Pylon steering delivery transport (FC-3 #8639) ----------------------
+
+export const FleetSteeringRunRef = S.Trim.check(
+  S.isPattern(/^fleet_run\.sarah\.[0-9a-f]{20}$/u),
+)
+export type FleetSteeringRunRef = typeof FleetSteeringRunRef.Type
+
+export const FleetSteeringClaimRef = S.Trim.check(
+  S.isPattern(/^claim\.sarah_fleet_run\.[0-9a-f]{24}$/u),
+)
+export type FleetSteeringClaimRef = typeof FleetSteeringClaimRef.Type
+
+export const FleetSteeringSequence = S.Int.check(
+  S.isGreaterThanOrEqualTo(1),
+  S.isLessThanOrEqualTo(Number.MAX_SAFE_INTEGER),
+)
+export type FleetSteeringSequence = typeof FleetSteeringSequence.Type
+
+export const FleetSteeringDeliveryIntent = S.Struct({
+  seq: FleetSteeringSequence,
+  intentId: S.Trim.check(
+    S.isMinLength(1),
+    S.isMaxLength(160),
+    S.isPattern(/^[A-Za-z0-9][A-Za-z0-9._:-]*$/u),
+  ),
+  intent: KhalaFleetIntent,
+  createdAt: S.String,
+})
+export type FleetSteeringDeliveryIntent =
+  typeof FleetSteeringDeliveryIntent.Type
+
+export const FleetSteeringPage = S.Struct({
+  ok: S.Literal(true),
+  runRef: FleetSteeringRunRef,
+  claimRef: FleetSteeringClaimRef,
+  intents: S.Array(FleetSteeringDeliveryIntent),
+  nextAfter: S.Int.check(S.isGreaterThanOrEqualTo(0)),
+  upToDate: S.Boolean,
+})
+export type FleetSteeringPage = typeof FleetSteeringPage.Type
+
+export const FleetSteeringOutcomeState = S.Literals([
+  "applied",
+  "queued_follow_up",
+  "skipped_stale",
+  "rejected",
+  "failed",
+])
+export type FleetSteeringOutcomeState = typeof FleetSteeringOutcomeState.Type
+
+export const FleetSteeringOutcome = S.Struct({
+  seq: FleetSteeringSequence,
+  intentId: FleetSteeringDeliveryIntent.fields.intentId,
+  state: FleetSteeringOutcomeState,
+})
+export type FleetSteeringOutcome = typeof FleetSteeringOutcome.Type
+
+export const FleetSteeringOutcomeBatch = S.Struct({
+  claimRef: FleetSteeringClaimRef,
+  outcomes: S.Array(FleetSteeringOutcome),
+})
+export type FleetSteeringOutcomeBatch = typeof FleetSteeringOutcomeBatch.Type
+
+export const FleetSteeringOutcomeAck = S.Struct({
+  ok: S.Literal(true),
+  runRef: FleetSteeringRunRef,
+  claimRef: FleetSteeringClaimRef,
+  outcomes: S.Array(FleetSteeringOutcome),
+  storedOutcomeCount: S.Int.check(S.isGreaterThanOrEqualTo(0)),
+  duplicateOutcomeCount: S.Int.check(S.isGreaterThanOrEqualTo(0)),
+})
+export type FleetSteeringOutcomeAck = typeof FleetSteeringOutcomeAck.Type
+
+export const decodeFleetSteeringPage = (input: unknown): FleetSteeringPage =>
+  S.decodeUnknownSync(FleetSteeringPage)(input, { onExcessProperty: "error" })
+export const decodeFleetSteeringOutcomeBatch = (
+  input: unknown,
+): FleetSteeringOutcomeBatch =>
+  S.decodeUnknownSync(FleetSteeringOutcomeBatch)(input, {
+    onExcessProperty: "error",
+  })
+export const decodeFleetSteeringOutcomeAck = (
+  input: unknown,
+): FleetSteeringOutcomeAck =>
+  S.decodeUnknownSync(FleetSteeringOutcomeAck)(input, {
+    onExcessProperty: "error",
+  })
