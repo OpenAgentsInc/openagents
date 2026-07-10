@@ -395,6 +395,32 @@ describe("GrokHeadlessWorkerExecutor", () => {
     expect(closeout.failureClass).toBe("account_rate_limited")
   })
 
+  test("classifies provider 402 usage exhaustion before the CLI auth wrapper", async () => {
+    const executor = createGrokHeadlessWorkerExecutor({
+      async runCommand() {
+        return {
+          code: 1,
+          stdout: "",
+          stderr: "AuthenticationError: HTTP 402 Payment Required for usage",
+          wallClockMs: 5,
+        }
+      },
+    })
+
+    const closeout = await executor.runClaimedWork({
+      pin: {
+        claimRef: "claim-402",
+        workUnitRef: "work-402",
+        runRef: "run-402",
+        cwd: "/tmp",
+      },
+      prompt: "x",
+    })
+
+    expect(closeout.ok).toBe(false)
+    expect(closeout.failureClass).toBe("account_quota_exhausted")
+  })
+
   test("kills a worker that exceeds its bounded execution deadline", async () => {
     const home = await mkdtemp(join(tmpdir(), "grok-worker-timeout-"))
     try {

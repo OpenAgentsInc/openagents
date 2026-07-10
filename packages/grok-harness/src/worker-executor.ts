@@ -143,7 +143,15 @@ function classifyError(text: string, code: number | null): GrokFailureClass {
   if (lower.includes("429") || lower.includes("rate limit")) {
     return "account_rate_limited"
   }
-  if (lower.includes("quota") || lower.includes("usage limit")) {
+  // The Grok CLI may wrap provider HTTP 402 usage/payment exhaustion in an
+  // AuthenticationError. Classify the provider status before generic auth
+  // words so Sarah asks for capacity, not a destructive re-login.
+  if (
+    lower.includes("402") ||
+    lower.includes("payment required") ||
+    lower.includes("quota") ||
+    lower.includes("usage limit")
+  ) {
     return "account_quota_exhausted"
   }
   if (
