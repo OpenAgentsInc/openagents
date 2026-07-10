@@ -403,6 +403,10 @@ export const FleetSteeringSequence = S.Int.check(
 )
 export type FleetSteeringSequence = typeof FleetSteeringSequence.Type
 
+const FleetSteeringIsoTimestamp = S.String.check(
+  S.isPattern(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u),
+)
+
 export const FleetSteeringDeliveryIntent = S.Struct({
   seq: FleetSteeringSequence,
   intentId: S.Trim.check(
@@ -411,40 +415,55 @@ export const FleetSteeringDeliveryIntent = S.Struct({
     S.isPattern(/^[A-Za-z0-9][A-Za-z0-9._:-]*$/u),
   ),
   intent: KhalaFleetIntent,
-  createdAt: S.String,
+  createdAt: FleetSteeringIsoTimestamp,
 })
 export type FleetSteeringDeliveryIntent =
   typeof FleetSteeringDeliveryIntent.Type
+
+export const FLEET_STEERING_PAGE_MAX_INTENTS = 100 as const
+export const FLEET_STEERING_OUTCOME_BATCH_MAX_OUTCOMES = 64 as const
 
 export const FleetSteeringPage = S.Struct({
   ok: S.Literal(true),
   runRef: FleetSteeringRunRef,
   claimRef: FleetSteeringClaimRef,
-  intents: S.Array(FleetSteeringDeliveryIntent),
-  nextAfter: S.Int.check(S.isGreaterThanOrEqualTo(0)),
+  intents: S.Array(FleetSteeringDeliveryIntent).check(
+    S.isMaxLength(FLEET_STEERING_PAGE_MAX_INTENTS),
+  ),
+  nextAfter: S.Int.check(
+    S.isGreaterThanOrEqualTo(0),
+    S.isLessThanOrEqualTo(Number.MAX_SAFE_INTEGER),
+  ),
   upToDate: S.Boolean,
 })
 export type FleetSteeringPage = typeof FleetSteeringPage.Type
 
-export const FleetSteeringOutcomeState = S.Literals([
+export const FleetSteeringOutcomeValue = S.Literals([
   "applied",
   "queued_follow_up",
   "skipped_stale",
   "rejected",
   "failed",
 ])
-export type FleetSteeringOutcomeState = typeof FleetSteeringOutcomeState.Type
+export type FleetSteeringOutcomeValue = typeof FleetSteeringOutcomeValue.Type
 
 export const FleetSteeringOutcome = S.Struct({
   seq: FleetSteeringSequence,
   intentId: FleetSteeringDeliveryIntent.fields.intentId,
-  state: FleetSteeringOutcomeState,
+  outcome: FleetSteeringOutcomeValue,
+  outcomeRef: S.Trim.check(
+    S.isPattern(/^outcome\.pylon\.fleet_steering\.[a-f0-9]{24}$/u),
+  ),
+  observedAt: FleetSteeringIsoTimestamp,
 })
 export type FleetSteeringOutcome = typeof FleetSteeringOutcome.Type
 
 export const FleetSteeringOutcomeBatch = S.Struct({
   claimRef: FleetSteeringClaimRef,
-  outcomes: S.Array(FleetSteeringOutcome),
+  outcomes: S.Array(FleetSteeringOutcome).check(
+    S.isMinLength(1),
+    S.isMaxLength(FLEET_STEERING_OUTCOME_BATCH_MAX_OUTCOMES),
+  ),
 })
 export type FleetSteeringOutcomeBatch = typeof FleetSteeringOutcomeBatch.Type
 
@@ -452,7 +471,10 @@ export const FleetSteeringOutcomeAck = S.Struct({
   ok: S.Literal(true),
   runRef: FleetSteeringRunRef,
   claimRef: FleetSteeringClaimRef,
-  outcomes: S.Array(FleetSteeringOutcome),
+  outcomes: S.Array(FleetSteeringOutcome).check(
+    S.isMinLength(1),
+    S.isMaxLength(FLEET_STEERING_OUTCOME_BATCH_MAX_OUTCOMES),
+  ),
   storedOutcomeCount: S.Int.check(S.isGreaterThanOrEqualTo(0)),
   duplicateOutcomeCount: S.Int.check(S.isGreaterThanOrEqualTo(0)),
 })

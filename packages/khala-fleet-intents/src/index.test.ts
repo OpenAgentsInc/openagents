@@ -30,7 +30,9 @@ describe("Fleet steering delivery transport", () => {
   const outcome = {
     seq: 41,
     intentId: intent.intentId,
-    state: "applied" as const,
+    outcome: "applied" as const,
+    outcomeRef: "outcome.pylon.fleet_steering.0123456789abcdef01234567",
+    observedAt: "2026-07-09T23:00:01.000Z",
   }
 
   it("decodes the exact bounded Pylon delivery page", () => {
@@ -79,6 +81,15 @@ describe("Fleet steering delivery transport", () => {
         claimRef,
         outcomes: [{ ...outcome, body: "must not cross the outcome boundary" }],
       }),
+    ).toThrow()
+    expect(() =>
+      decodeFleetSteeringOutcomeBatch({
+        claimRef,
+        outcomes: [{ ...outcome, observedAt: "yesterday" }],
+      }),
+    ).toThrow()
+    expect(() =>
+      decodeFleetSteeringOutcomeBatch({ claimRef, outcomes: [] }),
     ).toThrow()
   })
 })
