@@ -26,11 +26,17 @@ import { createHash } from "node:crypto"
 import { stat } from "node:fs/promises"
 import { homedir } from "node:os"
 import { join } from "node:path"
+import {
+  isolateGrokCliEnvironment,
+  probeGrokReadiness,
+  type GrokReadiness,
+} from "@openagentsinc/grok-harness/worker-executor"
 import { PYLON_CLIENT_VERSION, type PylonClientVersion } from "../shared/version.js"
 import type { BootstrapSummary } from "../shared/bootstrap.js"
 import {
   hashPylonAccountRef,
   discoverPylonSiblingAccountHomes,
+  isDefaultGrokAccountHome,
   loadPylonAccountRegistry,
   normalizeAccountHome,
   pylonClaudeAccountHomeHasAuth,
@@ -111,6 +117,9 @@ export type PresenceClientOptions = {
   // heartbeat buckets do not re-advertise a slot that the server has already
   // leased but the local runtime has not yet registered.
   activeRunCountsByAccount?: PylonActiveCodingRunAccountCounts
+  // Test/embedding seam for the named isolated Grok CLI-session probe. Live
+  // callers omit it and use the real bounded Grok readiness check.
+  grokReadinessProbe?: PylonGrokReadinessProbe
   // Injection seam for the live Apple FM bridge readiness report (issue
   // #8578: presence cannot depend on @openagentsinc/pylon-runtime, so it
   // cannot run the live probe itself). When omitted, `sendHeartbeat` uses
@@ -449,7 +458,7 @@ export function codexAccountCapacities(input: {
   busyByAccount?: Record<string, number>
   perAccountConcurrency: number
   queuedByAccount?: Record<string, number>
-  readiness: ReadonlyArray<PylonCodexAccountReadiness>
+  readiness: ReadonlyArray<Pick<PylonCodexAccountReadiness, "accountRefHash" | "ready">>
 }): PylonCodexAccountCapacity[] {
   const ready = Math.max(0, Math.min(input.perAccountConcurrency, 10_000))
   const out: PylonCodexAccountCapacity[] = []
@@ -618,6 +627,30 @@ export function claudePerAccountConcurrency(
 
 export const DEFAULT_GROK_PER_ACCOUNT_CONCURRENCY = 1
 export const MAX_GROK_PER_ACCOUNT_CONCURRENCY = 64
+export const GROK_CODING_CAPABILITY_REF = "capability.public.coding.grok"
+
+export type PylonGrokAccountReadiness = {
+  accountRefHash: string
+  ready: boolean
+  reason?: "custody_invalid" | "not_ready"
+}
+
+export type PylonGrokReadinessProbe = (input: {
+  env: Record<string, string | undefined>
+  timeoutMs: number
+}) => Promise<Pick<GrokReadiness, "plane" | "ready">>
+
+const grokReadinessTimeoutMs = (
+  env: Record<string, string | undefined>,
+): number => {
+  const parsed = Number.parseInt(
+    (env.PYLON_GROK_READINESS_TIMEOUT_MS ?? "").trim(),
+    10,
+  )
+  return Number.isFinite(parsed)
+    ? Math.max(100, Math.min(60_000, parsed))
+    : 10_000
+}
 
 /**
  * Declared named-Grok account slots. This is capacity truth only; scheduler
@@ -635,6 +668,104 @@ export function grokPerAccountConcurrency(
   return Number.isSafeInteger(parsed) && parsed >= 0
     ? Math.min(parsed, MAX_GROK_PER_ACCOUNT_CONCURRENCY)
     : DEFAULT_GROK_PER_ACCOUNT_CONCURRENCY
+}
+
+/**
+ * Enumerate only Pylon-owned named Grok homes and prove each one with the real
+ * isolated CLI-session readiness check. The user's default `~/.grok` home,
+ * sibling homes, and hand-edited external registry paths never become
+ * advertised fleet capacity.
+ */
+export async function localGrokAccountReadiness(
+  summary: Pick<BootstrapSummary, "paths">,
+  env: NodeJS.ProcessEnv = process.env,
+  options: { readinessProbe?: PylonGrokReadinessProbe } = {},
+): Promise<PylonGrokAccountReadiness[]> {
+  const readinessProbe = options.readinessProbe ?? probeGrokReadiness
+  const readiness: PylonGrokAccountReadiness[] = []
+  for (const entry of await loadPylonAccountRegistry(summary)) {
+    if (entry.provider !== "grok") continue
+    const accountRefHash = hashPylonAccountRef("grok", entry.ref)
+    const expectedHome = normalizeAccountHome(
+      join(summary.paths.home, "accounts", "grok", entry.ref),
+    )
+    const home = normalizeAccountHome(entry.home)
+    if (home !== expectedHome || isDefaultGrokAccountHome(home, env)) {
+      readiness.push({ accountRefHash, ready: false, reason: "custody_invalid" })
+      continue
+    }
+    try {
+      const result = await readinessProbe({
+        env: isolateGrokCliEnvironment(env, home),
+        timeoutMs: grokReadinessTimeoutMs(env),
+      })
+      const ready = result.ready && result.plane === "cli_session"
+      readiness.push({
+        accountRefHash,
+        ready,
+        ...(ready ? {} : { reason: "not_ready" as const }),
+      })
+    } catch {
+      readiness.push({ accountRefHash, ready: false, reason: "not_ready" })
+    }
+  }
+  return readiness
+}
+
+export async function localGrokAccountCapacities(
+  summary: Pick<BootstrapSummary, "paths">,
+  env: NodeJS.ProcessEnv = process.env,
+  input: {
+    busyByAccount?: Record<string, number>
+    queuedByAccount?: Record<string, number>
+    readinessProbe?: PylonGrokReadinessProbe
+  } = {},
+): Promise<PylonCodexAccountCapacity[]> {
+  return codexAccountCapacities({
+    ...(input.busyByAccount === undefined ? {} : { busyByAccount: input.busyByAccount }),
+    perAccountConcurrency: grokPerAccountConcurrency(env),
+    ...(input.queuedByAccount === undefined ? {} : { queuedByAccount: input.queuedByAccount }),
+    readiness: await localGrokAccountReadiness(
+      summary,
+      env,
+      input.readinessProbe === undefined
+        ? {}
+        : { readinessProbe: input.readinessProbe },
+    ),
+  })
+}
+
+export const grokAccountCapacityRefs = (
+  accounts: ReadonlyArray<PylonCodexAccountCapacity>,
+): { capacityRefs: string[]; loadRefs: string[] } => {
+  const pooled = accounts.reduce(
+    (sum, account) => ({
+      available: sum.available + account.available,
+      busy: sum.busy + account.busy,
+      queued: sum.queued + account.queued,
+      ready: sum.ready + account.ready,
+    }),
+    { available: 0, busy: 0, queued: 0, ready: 0 },
+  )
+  if (accounts.length === 0) return { capacityRefs: [], loadRefs: [] }
+  return {
+    capacityRefs: [
+      `capacity.coding.grok.ready=${pooled.ready}`,
+      `capacity.coding.grok.available=${pooled.available}`,
+      ...accounts.flatMap(account => [
+        `capacity.coding.grok.account.${account.accountKey}.ready=${account.ready}`,
+        `capacity.coding.grok.account.${account.accountKey}.available=${account.available}`,
+      ]),
+    ],
+    loadRefs: [
+      `load.coding.grok.busy=${pooled.busy}`,
+      `load.coding.grok.queued=${pooled.queued}`,
+      ...accounts.flatMap(account => [
+        `load.coding.grok.account.${account.accountKey}.busy=${account.busy}`,
+        `load.coding.grok.account.${account.accountKey}.queued=${account.queued}`,
+      ]),
+    ],
+  }
 }
 
 // Build the per-account Claude capacity for the heartbeat from live readiness
@@ -861,12 +992,29 @@ export async function sendHeartbeat(summary: BootstrapSummary, options: Presence
       claudeBusyByAccount(activeRunCountsByAccount),
     ),
   )
+  // Named Grok accounts are admitted only after their exact Pylon-owned home
+  // passes the isolated CLI-session probe. The default ~/.grok session is never
+  // inspected or projected. FleetRun execution composes the Grok claimed-work
+  // port by default, so a proved account is both custody- and executor-ready.
+  const grokAccountCapacities = await localGrokAccountCapacities(
+    summary,
+    presenceEnv,
+    options.grokReadinessProbe === undefined
+      ? {}
+      : { readinessProbe: options.grokReadinessProbe },
+  )
+  const grokAccountRefs = grokAccountCapacityRefs(grokAccountCapacities)
   const appleFmStatus = options.appleFmStatusProbe === undefined
     ? NOT_PROBED_APPLE_FM_STATUS
     : await options.appleFmStatusProbe()
   const appleFmRefs = appleFmBackendCapacityRefs(appleFmStatus)
   const capabilityRefs = publishableCapabilityRefs(
-    withAppleFmBackendCapabilities(state.runtime.capabilityRefs, appleFmStatus),
+    withAppleFmBackendCapabilities(
+      grokAccountCapacities.length === 0
+        ? state.runtime.capabilityRefs
+        : [...state.runtime.capabilityRefs, GROK_CODING_CAPABILITY_REF],
+      appleFmStatus,
+    ),
   )
   const body: PylonHeartbeatRequest = {
     schema: "openagents.pylon.heartbeat.v0.3",
@@ -879,6 +1027,7 @@ export async function sendHeartbeat(summary: BootstrapSummary, options: Presence
       ...codingRefs.capacityRefs,
       ...codexAccountRefs.capacityRefs,
       ...claudeAccountRefs.capacityRefs,
+      ...grokAccountRefs.capacityRefs,
       ...appleFmRefs.capacityRefs,
     ],
     clientProtocolVersion: "0.3.0",
@@ -889,6 +1038,7 @@ export async function sendHeartbeat(summary: BootstrapSummary, options: Presence
       ...codingRefs.loadRefs,
       ...codexAccountRefs.loadRefs,
       ...claudeAccountRefs.loadRefs,
+      ...grokAccountRefs.loadRefs,
       ...appleFmRefs.loadRefs,
     ],
     resourceMode: state.runtime.resourceMode,
