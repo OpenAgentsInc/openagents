@@ -24,6 +24,7 @@ import {
   FLEET_RUN_EXECUTION_EVENT_SCHEMA,
   FLEET_RUN_EXECUTION_EVENT_SCHEMA_V2,
   FleetRunAuthorityError,
+  type FleetRunExecutionEventV2,
   makeFleetRunAuthorityRepository,
   publicFleetRunAuthorityRecord,
 } from "./fleet-run-authority.js"
@@ -628,6 +629,80 @@ describe.skipIf(!hasLocalPostgres())(
         }),
       )
       return claimed.claim.claimRef
+    }
+
+    const settleWithoutHang = async <T>(
+      promises: ReadonlyArray<Promise<T>>,
+      timeoutMs = 10_000,
+    ): Promise<Array<PromiseSettledResult<T>>> => {
+      let timeout: ReturnType<typeof setTimeout> | undefined
+      try {
+        return await Promise.race([
+          Promise.allSettled(promises),
+          new Promise<never>((_, reject) => {
+            timeout = setTimeout(
+              () => reject(new Error("concurrent approval writes hung")),
+              timeoutMs,
+            )
+          }),
+        ])
+      } finally {
+        if (timeout !== undefined) clearTimeout(timeout)
+      }
+    }
+
+    const approvalBatch = (input: {
+      runRef: string
+      claimRef: string
+      suffix: string
+      approvalRefs: ReadonlyArray<string>
+    }) => {
+      let sequence = 1
+      const events: Array<FleetRunExecutionEventV2> = [
+        pylonExecutionEvent(input.runRef, input.claimRef, sequence++, {
+          schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA_V2,
+          observedAt: "2026-07-09T22:00:00.000Z",
+          kind: "run_started",
+        }),
+      ]
+      for (const [index, approvalRef] of input.approvalRefs.entries()) {
+        const unitRef = `unit-${index + 1}`
+        const workClaimRef = `work_claim.${input.suffix}.${unitRef}`
+        const accountRefHash = `account.pylon.codex.${createHash("sha256")
+          .update(input.suffix)
+          .digest("hex")
+          .slice(0, 24)}`
+        events.push(
+          pylonExecutionEvent(input.runRef, input.claimRef, sequence++, {
+            schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA_V2,
+            observedAt: "2026-07-09T22:00:00.000Z",
+            kind: "work_progress",
+            unitRef,
+            workClaimRef,
+            assignmentRef: `assignment.${input.suffix}.${unitRef}`,
+            workerKind: "codex",
+            accountRefHash,
+            blockerRefs: [],
+          }),
+          pylonExecutionEvent(input.runRef, input.claimRef, sequence++, {
+            schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA_V2,
+            observedAt: "2026-07-09T22:00:00.000Z",
+            kind: "approval_requested",
+            unitRef,
+            workClaimRef,
+            workerKind: "codex",
+            workerRef: `worker.codex.${input.suffix}.${unitRef}`,
+            approvalRef,
+            toolClass: "write_file",
+            blockerRefs: ["blocker.approval_required"],
+          }),
+        )
+      }
+      return {
+        schema: FLEET_RUN_EXECUTION_BATCH_SCHEMA_V2,
+        claimRef: input.claimRef,
+        events,
+      } as const
     }
 
     test("creates run, work units, owner scope, and draft projection atomically", async () => {
@@ -1577,6 +1652,242 @@ describe.skipIf(!hasLocalPostgres())(
         WHERE run_ref = ${run.record.runRef}
       `
       expect(Number(rolledBack[0]!.count)).toBe(3)
+    })
+
+    test("indexes global approval identity lookup independently of changelog size", async () => {
+      const scope = "scope.fleet_run.approval-index-proof"
+      await sql`
+        INSERT INTO khala_sync_scopes (scope, last_version)
+        VALUES (${scope}, 100001)
+      `
+      await sql`
+        INSERT INTO khala_sync_changelog
+          (scope, version, entity_type, entity_id, op, post_image_json,
+           mutation_ref, committed_at)
+        SELECT ${scope}, n, 'approval_index_noise', 'noise.' || n::text,
+               'upsert', '{}'::jsonb, 'test:approval-index-proof',
+               '2026-07-09T21:00:00.000Z'::timestamptz
+                 + (n * interval '1 microsecond')
+        FROM generate_series(1, 100000) AS n
+      `
+      await sql`
+        INSERT INTO khala_sync_changelog
+          (scope, version, entity_type, entity_id, op, post_image_json,
+           mutation_ref, committed_at)
+        VALUES
+          (${scope}, 100001, 'fleet_approval', 'approval.index.probe',
+           'upsert', '{}', 'test:approval-index-proof',
+           '2026-07-09T22:00:00.000Z')
+      `
+      await sql`ANALYZE khala_sync_changelog`
+
+      const plans: Array<{ "QUERY PLAN": unknown }> = await sql`
+        EXPLAIN (FORMAT JSON)
+        SELECT scope, post_image_json
+        FROM khala_sync_changelog
+        WHERE entity_type = 'fleet_approval'
+          AND entity_id = 'approval.index.probe'
+          AND op = 'upsert'
+        ORDER BY committed_at DESC, version DESC
+        LIMIT 1
+        FOR UPDATE
+      `
+      expect(JSON.stringify(plans)).toContain(
+        "khala_sync_changelog_fleet_approval_latest_idx",
+      )
+    })
+
+    test("serializes concurrent cross-run claims for one approval ref", async () => {
+      const approvalRef = "approval.concurrent.same-ref"
+      const runs = await Promise.all([
+        start("user-approval-race-a", "approval-race-a", {
+          workSource: {
+            kind: "plan_dag",
+            planRef: "plan.approval.race.a",
+            units: [{ unitRef: "unit-1", title: "Unit 1", dependsOn: [] }],
+          },
+        }),
+        start("user-approval-race-b", "approval-race-b", {
+          workSource: {
+            kind: "plan_dag",
+            planRef: "plan.approval.race.b",
+            units: [{ unitRef: "unit-1", title: "Unit 1", dependsOn: [] }],
+          },
+        }),
+      ])
+      await Promise.all([
+        seedPylon({
+          ownerUserId: "user-approval-race-a",
+          pylonRef: "pylon-approval-race-a",
+        }),
+        seedPylon({
+          ownerUserId: "user-approval-race-b",
+          pylonRef: "pylon-approval-race-b",
+        }),
+      ])
+      const claims = await Promise.all([
+        claimAndAccept({
+          ownerUserId: "user-approval-race-a",
+          pylonRef: "pylon-approval-race-a",
+          runRef: runs[0]!.record.runRef,
+          claimIdempotencyKey: "approval-race-claim-a",
+        }),
+        claimAndAccept({
+          ownerUserId: "user-approval-race-b",
+          pylonRef: "pylon-approval-race-b",
+          runRef: runs[1]!.record.runRef,
+          claimIdempotencyKey: "approval-race-claim-b",
+        }),
+      ])
+
+      const results = await settleWithoutHang([
+        Effect.runPromise(
+          repository().appendExecutionEvents({
+            ownerUserId: "user-approval-race-a",
+            pylonRef: "pylon-approval-race-a",
+            runRef: runs[0]!.record.runRef,
+            batch: approvalBatch({
+              runRef: runs[0]!.record.runRef,
+              claimRef: claims[0]!,
+              suffix: "race-a",
+              approvalRefs: [approvalRef],
+            }),
+          }),
+        ),
+        Effect.runPromise(
+          repository().appendExecutionEvents({
+            ownerUserId: "user-approval-race-b",
+            pylonRef: "pylon-approval-race-b",
+            runRef: runs[1]!.record.runRef,
+            batch: approvalBatch({
+              runRef: runs[1]!.record.runRef,
+              claimRef: claims[1]!,
+              suffix: "race-b",
+              approvalRefs: [approvalRef],
+            }),
+          }),
+        ),
+      ])
+      expect(
+        results.filter((result) => result.status === "fulfilled"),
+      ).toHaveLength(1)
+      const rejected = results.filter(
+        (result): result is PromiseRejectedResult =>
+          result.status === "rejected",
+      )
+      expect(rejected).toHaveLength(1)
+      expect(rejected[0]!.reason).toMatchObject({
+        kind: "idempotency_conflict",
+        reason: "fleet approval ref is already bound to another exact attempt",
+      })
+      const approvals: Array<{ count: string | number }> = await sql`
+        SELECT count(*) AS count FROM khala_sync_changelog
+        WHERE entity_type = 'fleet_approval' AND entity_id = ${approvalRef}
+      `
+      expect(Number(approvals[0]!.count)).toBe(1)
+    })
+
+    test("prelocks reverse-order multi-approval batches without deadlock", async () => {
+      const approvalRefs = [
+        "approval.concurrent.multi-a",
+        "approval.concurrent.multi-b",
+      ] as const
+      const planUnits = [
+        { unitRef: "unit-1", title: "Unit 1", dependsOn: [] },
+        { unitRef: "unit-2", title: "Unit 2", dependsOn: [] },
+      ]
+      const runs = await Promise.all([
+        start("user-approval-order-a", "approval-order-a", {
+          workSource: {
+            kind: "plan_dag",
+            planRef: "plan.approval.order.a",
+            units: planUnits,
+          },
+        }),
+        start("user-approval-order-b", "approval-order-b", {
+          workSource: {
+            kind: "plan_dag",
+            planRef: "plan.approval.order.b",
+            units: planUnits,
+          },
+        }),
+      ])
+      await Promise.all([
+        seedPylon({
+          ownerUserId: "user-approval-order-a",
+          pylonRef: "pylon-approval-order-a",
+        }),
+        seedPylon({
+          ownerUserId: "user-approval-order-b",
+          pylonRef: "pylon-approval-order-b",
+        }),
+      ])
+      const claims = await Promise.all([
+        claimAndAccept({
+          ownerUserId: "user-approval-order-a",
+          pylonRef: "pylon-approval-order-a",
+          runRef: runs[0]!.record.runRef,
+          claimIdempotencyKey: "approval-order-claim-a",
+        }),
+        claimAndAccept({
+          ownerUserId: "user-approval-order-b",
+          pylonRef: "pylon-approval-order-b",
+          runRef: runs[1]!.record.runRef,
+          claimIdempotencyKey: "approval-order-claim-b",
+        }),
+      ])
+
+      const results = await settleWithoutHang([
+        Effect.runPromise(
+          repository().appendExecutionEvents({
+            ownerUserId: "user-approval-order-a",
+            pylonRef: "pylon-approval-order-a",
+            runRef: runs[0]!.record.runRef,
+            batch: approvalBatch({
+              runRef: runs[0]!.record.runRef,
+              claimRef: claims[0]!,
+              suffix: "order-a",
+              approvalRefs,
+            }),
+          }),
+        ),
+        Effect.runPromise(
+          repository().appendExecutionEvents({
+            ownerUserId: "user-approval-order-b",
+            pylonRef: "pylon-approval-order-b",
+            runRef: runs[1]!.record.runRef,
+            batch: approvalBatch({
+              runRef: runs[1]!.record.runRef,
+              claimRef: claims[1]!,
+              suffix: "order-b",
+              approvalRefs: [...approvalRefs].reverse(),
+            }),
+          }),
+        ),
+      ])
+      expect(
+        results.filter((result) => result.status === "fulfilled"),
+      ).toHaveLength(1)
+      const rejected = results.filter(
+        (result): result is PromiseRejectedResult =>
+          result.status === "rejected",
+      )
+      expect(rejected).toHaveLength(1)
+      expect(rejected[0]!.reason).toMatchObject({
+        kind: "idempotency_conflict",
+        reason: "fleet approval ref is already bound to another exact attempt",
+      })
+      const approvals: Array<{ entity_id: string; count: string | number }> =
+        await sql`
+          SELECT entity_id, count(*) AS count FROM khala_sync_changelog
+          WHERE entity_type = 'fleet_approval'
+            AND entity_id IN (${approvalRefs[0]}, ${approvalRefs[1]})
+          GROUP BY entity_id ORDER BY entity_id
+        `
+      expect(approvals.map((row) => [row.entity_id, Number(row.count)])).toEqual([
+        [approvalRefs[0], 1],
+        [approvalRefs[1], 1],
+      ])
     })
 
     test("accepts reordered remote clocks while server receipt time remains authoritative", async () => {

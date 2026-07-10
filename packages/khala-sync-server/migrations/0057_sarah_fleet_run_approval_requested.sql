@@ -15,3 +15,11 @@ ALTER TABLE sarah_fleet_run_execution_events
     'work_terminal',
     'run_terminal'
   ));
+
+-- Approval refs are global identities while their immutable post-images live
+-- in per-run scopes. The authority path resolves the latest binding by ref
+-- before admitting a new request. Keep that lookup proportional to one
+-- approval's history rather than to the global changelog.
+CREATE INDEX IF NOT EXISTS khala_sync_changelog_fleet_approval_latest_idx
+  ON khala_sync_changelog (entity_id, committed_at DESC, version DESC)
+  WHERE entity_type = 'fleet_approval' AND op = 'upsert';

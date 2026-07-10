@@ -2588,10 +2588,6 @@ const projectApprovalRequestedForEvent = async (
   attempt: FleetAttemptEntity,
   nowIso: string,
 ): Promise<FleetApprovalEntity> => {
-  // Approval refs are global public identities even though their post-images
-  // live in run-scoped Sync logs. This closes the concurrent first-writer race
-  // without introducing a second approval authority table.
-  await sql`SELECT pg_advisory_xact_lock(hashtextextended(${event.approvalRef}, 0))`
   const rows: Array<{ scope: string; post_image_json: string | object }> =
     await sql`
       SELECT scope, post_image_json
@@ -2690,6 +2686,23 @@ const appendFleetRunExecutionEvents = async (
 ): Promise<FleetRunAuthorityAppendExecutionResult> => {
   const nowIso = new Date(nowMs).toISOString()
   return withSyncTransaction(sql, async (writer) => {
+    // Approval refs are global public identities even though their post-images
+    // live in run-scoped Sync logs. Acquire every requested ref in one stable
+    // global order before taking a run, lease, scope, or projection row lock.
+    // This both closes the concurrent first-writer race and prevents two
+    // cross-run batches with reverse approval order from deadlocking.
+    const approvalRefs = [
+      ...new Set(
+        input.batch.events
+          .filter((event) => event.kind === "approval_requested")
+          .map((event) => event.approvalRef),
+      ),
+    ].sort()
+    for (const approvalRef of approvalRefs) {
+      await writer.sql`
+        SELECT pg_advisory_xact_lock(hashtextextended(${approvalRef}, 0))
+      `
+    }
     await requireLinkedPylon(writer.sql, input)
     const runRows: Array<FleetRunRequestRow> = await writer.sql`
       SELECT * FROM sarah_fleet_run_requests
