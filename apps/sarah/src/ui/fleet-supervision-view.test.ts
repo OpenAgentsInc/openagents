@@ -4,8 +4,10 @@ import { ViewSchema } from "@effect-native/core"
 import {
   decodeFleetApprovalEntity,
   decodeFleetAssignmentEntity,
+  decodeFleetAttemptEntity,
   decodeFleetRunEntity,
   decodeFleetWorkerEntity,
+  decodeFleetWorkUnitEntity,
 } from "@openagentsinc/khala-sync"
 
 import { projectSarahFleetOwnerRun } from "../contracts/fleet-owner-projection.ts"
@@ -22,6 +24,7 @@ import { SARAH_OWNER_FLEET_INTERACTIVE } from "./owner-fleet-interaction.ts"
 const interactive = { interactionMode: SARAH_OWNER_FLEET_INTERACTIVE } as const
 
 const NOW = Date.parse("2026-07-09T20:00:00.000Z")
+const CLAIM_REF = `claim.sarah_fleet_run.${"a".repeat(24)}`
 
 const run = decodeFleetRunEntity({
   runId: "fleet.run.sarah.8639",
@@ -30,7 +33,7 @@ const run = decodeFleetRunEntity({
   workerKind: "auto",
   startedAt: "2026-07-09T19:50:00.000Z",
   counters: {
-    workUnitsTotal: 3,
+    workUnitsTotal: 4,
     activeAssignments: 2,
     completedAssignments: 1,
     failedAssignments: 0,
@@ -102,11 +105,147 @@ const approvals = [
   }),
 ]
 
+const attempts = [
+  decodeFleetAttemptEntity({
+    attemptRef: "work_claim.fc3.claude",
+    workUnitRef: "unit.fc3.claude",
+    intakeClaimRef: CLAIM_REF,
+    pylonRef: "pylon-owner-1",
+    workerKind: "claude",
+    state: "running",
+    progressClass: "blocked",
+    assignmentRef: "assignment.fc3.claude",
+    accountRefHash: `account.pylon.claude_agent.${"2".repeat(24)}`,
+    capacityClass: "owner_local",
+    marginalCostClass: "subscription",
+    verification: { truth: "pending" },
+    artifactRefs: [],
+    proofRefs: [],
+    authorityReceiptRefs: [],
+    closeoutRef: null,
+    usageEvidence: { truth: "pending" },
+    blockerRefs: ["blocker.fc3.claude"],
+    lastEventRef: `event.pylon.fleet_run.${"1".repeat(24)}`,
+    startedAt: "2026-07-09T19:55:00.000Z",
+    lastObservedAt: "2026-07-09T19:59:45.000Z",
+    remoteObservedAt: "2026-07-09T19:59:44.000Z",
+    terminalAt: null,
+    updatedAt: "2026-07-09T19:59:45.000Z",
+  }),
+  decodeFleetAttemptEntity({
+    attemptRef: "work_claim.fc3.codex",
+    workUnitRef: "unit.fc3.codex",
+    intakeClaimRef: CLAIM_REF,
+    pylonRef: "pylon-owner-1",
+    workerKind: "codex",
+    state: "running",
+    progressClass: "active",
+    assignmentRef: "assignment.fc3.codex",
+    accountRefHash: `account.pylon.codex.${"1".repeat(24)}`,
+    capacityClass: "owner_local",
+    marginalCostClass: "subscription",
+    verification: { truth: "pending" },
+    artifactRefs: [],
+    proofRefs: [],
+    authorityReceiptRefs: [],
+    closeoutRef: null,
+    usageEvidence: { truth: "pending" },
+    blockerRefs: [],
+    lastEventRef: `event.pylon.fleet_run.${"2".repeat(24)}`,
+    startedAt: "2026-07-09T19:55:00.000Z",
+    lastObservedAt: "2026-07-09T19:59:30.000Z",
+    // A future remote clock cannot make the attempt fresh.
+    remoteObservedAt: "2026-07-09T20:59:59.000Z",
+    terminalAt: null,
+    updatedAt: "2026-07-09T19:59:30.000Z",
+  }),
+  decodeFleetAttemptEntity({
+    attemptRef: "work_claim.fc3.grok",
+    workUnitRef: "unit.fc3.grok",
+    intakeClaimRef: CLAIM_REF,
+    pylonRef: "pylon-owner-1",
+    workerKind: "grok",
+    state: "succeeded",
+    progressClass: "terminal",
+    assignmentRef: "assignment.fc3.grok",
+    accountRefHash: `account.pylon.grok.${"3".repeat(24)}`,
+    capacityClass: "owner_local",
+    marginalCostClass: "api_metered",
+    verification: {
+      truth: "passed",
+      verifierRef: "verifier.fc3.grok",
+      evidenceRefs: ["test.fc3.grok"],
+    },
+    artifactRefs: ["artifact.fc3.grok"],
+    proofRefs: ["proof.fc3.grok"],
+    authorityReceiptRefs: ["authority.fc3.grok"],
+    closeoutRef: "closeout.fc3.grok",
+    usageEvidence: {
+      schema: "openagents.pylon.fleet_run_usage_evidence.v1",
+      truth: "not_measured",
+      harnessKind: "grok",
+      evidenceRef: "evidence.fc3.grok",
+      assignmentRef: "assignment.fc3.grok",
+      receiptRef: "receipt.fc3.grok",
+      tokenUsageRefs: [],
+      caveatRefs: ["caveat.fc3.grok.not_measured"],
+    },
+    blockerRefs: [],
+    lastEventRef: `event.pylon.fleet_run.${"3".repeat(24)}`,
+    startedAt: "2026-07-09T19:55:00.000Z",
+    lastObservedAt: "2026-07-09T19:59:50.000Z",
+    remoteObservedAt: "2026-07-09T19:59:49.000Z",
+    terminalAt: "2026-07-09T19:59:50.000Z",
+    updatedAt: "2026-07-09T19:59:50.000Z",
+  }),
+]
+
+const workUnits = [
+  decodeFleetWorkUnitEntity({
+    workUnitRef: "unit.fc3.claude",
+    issueRef: "#8633",
+    dependsOnRefs: [],
+    state: "running",
+    latestAttemptRef: "work_claim.fc3.claude",
+    acceptedAttemptRef: null,
+    updatedAt: "2026-07-09T19:59:45.000Z",
+  }),
+  decodeFleetWorkUnitEntity({
+    workUnitRef: "unit.fc3.codex",
+    issueRef: "#8637",
+    dependsOnRefs: [],
+    state: "running",
+    latestAttemptRef: "work_claim.fc3.codex",
+    acceptedAttemptRef: null,
+    updatedAt: "2026-07-09T19:59:30.000Z",
+  }),
+  decodeFleetWorkUnitEntity({
+    workUnitRef: "unit.fc3.grok",
+    issueRef: "#8639",
+    dependsOnRefs: [],
+    state: "succeeded",
+    latestAttemptRef: "work_claim.fc3.grok",
+    acceptedAttemptRef: "work_claim.fc3.grok",
+    updatedAt: "2026-07-09T19:59:50.000Z",
+  }),
+  decodeFleetWorkUnitEntity({
+    workUnitRef: "unit.fc3.planned",
+    issueRef: "#8640",
+    dependsOnRefs: ["unit.fc3.grok"],
+    state: "planned",
+    latestAttemptRef: null,
+    acceptedAttemptRef: null,
+    updatedAt: "2026-07-09T19:59:55.000Z",
+  }),
+]
+
 const projection = projectSarahFleetOwnerRun(
   {
     run,
     assignments,
     workers,
+    workUnits,
+    attempts,
     approvals,
     inboxFlags: [],
   },
@@ -163,7 +302,7 @@ describe("FC-3 Effect Native fleet supervision view", () => {
       _tag: "Card",
       a11y: {
         role: "region",
-        label: "Fleet run. Running. 3 work units. 1 pending approvals.",
+        label: "Fleet run. Running. 4 work units. 1 pending approvals.",
       },
     })
 
@@ -177,26 +316,28 @@ describe("FC-3 Effect Native fleet supervision view", () => {
       "#8633",
       "#8637",
       "#8639",
+      "#8640",
       "Claude worker",
       "Codex worker",
       "Grok worker",
     ])
     expect(graph?.nodes?.map((node) => node.id)).toEqual([
       "run:fleet.run.sarah.8639",
-      "work:#8633:assignment.fc3.claude",
-      "work:#8637:assignment.fc3.codex",
-      "work:#8639:assignment.fc3.grok",
+      "work:unit.fc3.claude",
+      "work:unit.fc3.codex",
+      "work:unit.fc3.grok",
+      "work:unit.fc3.planned",
       "worker:worker.fc3.claude",
       "worker:worker.fc3.codex",
       "worker:worker.fc3.grok",
     ])
     expect(graph?.a11y?.label).toBe(
-      "Fleet run map. 3 work units and 3 workers.",
+      "Fleet run map. 4 work units and 3 workers.",
     )
-    expect(graph?.edges).toHaveLength(6)
+    expect(graph?.edges).toHaveLength(7)
 
     expect(
-      findByKey(view, "fleet-supervision-assignment.fc3.codex-progress"),
+      findByKey(view, "fleet-supervision-unit.fc3.codex-progress"),
     ).toMatchObject({
       label: "Reconnecting · no fresh progress for 30s",
       tone: "warn",
@@ -205,15 +346,15 @@ describe("FC-3 Effect Native fleet supervision view", () => {
       },
     })
     expect(
-      findByKey(view, "fleet-supervision-assignment.fc3.codex-heading")
+      findByKey(view, "fleet-supervision-unit.fc3.codex-heading")
         ?.direction,
     ).toEqual({ base: "column", sm: "row" })
     expect(
-      findByKey(view, "fleet-supervision-assignment.fc3.codex")?.a11y,
+      findByKey(view, "fleet-supervision-unit.fc3.codex")?.a11y,
     ).toMatchObject({ role: "listitem" })
     expect(
-      findByKey(view, "fleet-supervision-assignment.fc3.claude-progress"),
-    ).toMatchObject({ label: "Claude worker blocked", tone: "warn" })
+      findByKey(view, "fleet-supervision-unit.fc3.claude-progress"),
+    ).toMatchObject({ label: "Claude attempt blocked", tone: "warn" })
     expect(
       graph?.nodes?.find(
         (node) => node.id === "worker:worker.fc3.claude",
@@ -285,7 +426,7 @@ describe("FC-3 Effect Native fleet supervision view", () => {
     ).toMatchObject({ label: "Stopped", tone: "neutral" })
   })
 
-  test("renders pending decisions only and preserves approval target identity", () => {
+  test("never makes a worker-slot approval actionable across retry attempts", () => {
     const resolvedApproval = {
       ...projection.approvals[0]!,
       approvalRef: "approval.fc3.resolved",
@@ -303,18 +444,31 @@ describe("FC-3 Effect Native fleet supervision view", () => {
 
     const allow = findByKey(view, "fleet-supervision-approval.fc3.claude-allow")
     const deny = findByKey(view, "fleet-supervision-approval.fc3.claude-deny")
+    expect(allow).toBeNull()
+    expect(deny).toBeNull()
     expect(
       Schema.decodeUnknownSync(
         SarahFleetApprovalDecisionRequested.payloadSchema,
-      )(payloadOf(allow)),
+      )({
+        runRef: "fleet.run.sarah.8639",
+        approvalRef: "approval.fc3.exact_attempt_fixture",
+        workUnitRef: "unit.fc3.claude",
+        workerRef: "worker.fc3.claude",
+        decision: "allow",
+      }),
     ).toEqual({
       runRef: "fleet.run.sarah.8639",
-      approvalRef: "approval.fc3.claude",
-      workUnitRef: "#8633",
+      approvalRef: "approval.fc3.exact_attempt_fixture",
+      workUnitRef: "unit.fc3.claude",
       workerRef: "worker.fc3.claude",
       decision: "allow",
     })
-    expect(payloadOf(deny)).toMatchObject({ decision: "deny" })
+    expect(
+      findByKey(
+        view,
+        "fleet-supervision-approval.fc3.claude-decisions-empty",
+      )?.content,
+    ).toBe("Decision options not reported.")
     expect(
       findByKey(view, "fleet-supervision-approval.fc3.resolved"),
     ).toBeNull()
@@ -334,7 +488,7 @@ describe("FC-3 Effect Native fleet supervision view", () => {
     const view = sarahFleetRunSupervisionView(projection, interactive)
     const codexAudit = findByKey(
       view,
-      "fleet-supervision-assignment.fc3.codex-audit",
+      "fleet-supervision-unit.fc3.codex-audit",
     )
     expect(codexAudit).toMatchObject({
       _tag: "Accordion",
@@ -344,16 +498,16 @@ describe("FC-3 Effect Native fleet supervision view", () => {
     expect(
       findByKey(
         view,
-        "fleet-supervision-assignment.fc3.codex-verification-status",
+        "fleet-supervision-unit.fc3.codex-verification-status",
       )?.label,
     ).toBe("Verification not reported")
     expect(
-      findByKey(view, "fleet-supervision-assignment.fc3.codex-verification"),
+      findByKey(view, "fleet-supervision-unit.fc3.codex-verification"),
     ).toBeNull()
 
     const grokVerification = findByKey(
       view,
-      "fleet-supervision-assignment.fc3.grok-verification",
+      "fleet-supervision-unit.fc3.grok-verification",
     )
     expect(
       Schema.decodeUnknownSync(SarahFleetEvidenceOpened.payloadSchema)(
@@ -361,22 +515,22 @@ describe("FC-3 Effect Native fleet supervision view", () => {
       ),
     ).toEqual({
       runRef: "fleet.run.sarah.8639",
-      workUnitRef: "#8639",
+      workUnitRef: "unit.fc3.grok",
       assignmentRef: "assignment.fc3.grok",
       workerRef: "worker.fc3.grok",
       evidenceKind: "verification",
-      evidenceRef: "assignment.fc3.grok",
+      evidenceRef: "verifier.fc3.grok",
     })
     expect(
       findByKey(
         view,
-        "fleet-supervision-assignment.fc3.grok-verification-status",
+        "fleet-supervision-unit.fc3.grok-verification-status",
       ),
-    ).toMatchObject({ label: "Verification available", tone: "info" })
+    ).toMatchObject({ label: "Verification passed", tone: "info" })
 
     const opened = findByKey(
       view,
-      "fleet-supervision-assignment.fc3.grok-open",
+      "fleet-supervision-unit.fc3.grok-open",
     )
     expect(
       Schema.decodeUnknownSync(SarahFleetWorkUnitOpened.payloadSchema)(
@@ -384,18 +538,18 @@ describe("FC-3 Effect Native fleet supervision view", () => {
       ),
     ).toEqual({
       runRef: "fleet.run.sarah.8639",
-      workUnitRef: "#8639",
+      workUnitRef: "unit.fc3.grok",
       assignmentRef: "assignment.fc3.grok",
       workerRef: "worker.fc3.grok",
     })
 
     const expandedView = sarahFleetRunSupervisionView(projection, {
-      expandedAuditWorkUnitRefs: ["#8639"],
+      expandedAuditWorkUnitRefs: ["unit.fc3.grok"],
       interactionMode: SARAH_OWNER_FLEET_INTERACTIVE,
     })
     const expandedAudit = findByKey(
       expandedView,
-      "fleet-supervision-assignment.fc3.grok-audit",
+      "fleet-supervision-unit.fc3.grok-audit",
     )
     expect(expandedAudit?.expandedIds).toEqual(["references"])
     expect(
@@ -405,7 +559,7 @@ describe("FC-3 Effect Native fleet supervision view", () => {
       ),
     ).toEqual({
       runRef: "fleet.run.sarah.8639",
-      workUnitRef: "#8639",
+      workUnitRef: "unit.fc3.grok",
       assignmentRef: "assignment.fc3.grok",
       workerRef: "worker.fc3.grok",
     })
@@ -429,38 +583,52 @@ describe("FC-3 Effect Native fleet supervision view", () => {
     expect(serialized).not.toContain("PRIVATE PROMPT SENTINEL")
     expect(serialized).not.toContain("/Users/alice/private/repo")
 
-    const unassigned = sarahFleetRunSupervisionView({
-      ...projection,
-      workUnits: [
-        {
-          ...projection.workUnits[0]!,
-          workerRef: null,
-          progress: {
-            status: "not_assigned",
-            summary: "Work unit not assigned",
-          },
-          verification: {
-            status: "not_reported",
-            verificationRef: null,
-            summary: "Verification not reported",
-          },
-          closeout: {
-            status: "open",
-            closeoutRef: null,
-            closeoutClass: null,
-            summary: "Closeout open",
-          },
-        },
-      ],
-      workers: [],
-      approvals: [],
-    })
+    const plannedWorkUnit = projection.workUnits.find(
+      (workUnit) => workUnit.workUnitRef === "unit.fc3.planned",
+    )!
+    const unassigned = sarahFleetRunSupervisionView(
+      {
+        ...projection,
+        workUnits: [plannedWorkUnit],
+        workers: [],
+        approvals: [],
+      },
+      interactive,
+    )
     expect(
       findByKey(
         unassigned,
-        "fleet-supervision-assignment.fc3.claude-worker-name",
+        "fleet-supervision-unit.fc3.planned-worker-name",
       )?.content,
     ).toBe("Worker not assigned")
+    const plannedOpen = findByKey(
+      unassigned,
+      "fleet-supervision-unit.fc3.planned-open",
+    )
+    expect(plannedOpen).toBeNull()
+    const plannedAudit = findByKey(
+      unassigned,
+      "fleet-supervision-unit.fc3.planned-audit",
+    )
+    expect(
+      Schema.decodeUnknownSync(SarahFleetAuditToggled.payloadSchema)(
+        ((plannedAudit?.onToggle as { payload?: { value?: unknown } } | undefined)
+          ?.payload)?.value,
+      ),
+    ).toEqual({
+      runRef: "fleet.run.sarah.8639",
+      workUnitRef: "unit.fc3.planned",
+      assignmentRef: null,
+      workerRef: null,
+    })
+    const plannedGraph = findByTag(unassigned, "GraphFigure") as {
+      nodes?: ReadonlyArray<{ id: string }>
+    }
+    expect(plannedGraph.nodes?.some((node) => node.id === "work:unit.fc3.planned")).toBe(
+      true,
+    )
+    expect(JSON.stringify(unassigned)).not.toContain("fleet-supervision-null")
+    expect(JSON.stringify(unassigned)).not.toContain("Assignment: null")
     expect(
       findByKey(
         unassigned,

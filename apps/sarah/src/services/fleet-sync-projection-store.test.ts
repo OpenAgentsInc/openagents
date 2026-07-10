@@ -388,7 +388,7 @@ const expectReason = (
 }
 
 describe("Sarah FC-3 fleet entity reducer", () => {
-  test("reduces all bounded bootstrap pages and projects only decoded owner-safe entities", () => {
+  test("retains direct attempt rows without mixing them into the legacy projection before atomic wiring", () => {
     const state = reduceSarahFleetBootstrapPages(bootstrapPages())
 
     expect(state).toMatchObject({
@@ -427,7 +427,7 @@ describe("Sarah FC-3 fleet entity reducer", () => {
       ),
     ).toHaveLength(2)
     expect(projection.run.runRef).toBe(runRef)
-    expect(projection.workUnits[0]?.assignmentRef).toBe(assignment.assignmentRef)
+    expect(projection.workUnits).toEqual([])
     expect(projection.workers[0]?.workerRef).toBe(worker.workerId)
     expect(projection.approvals[0]?.approvalRef).toBe(approval.approvalRef)
     expect(projection.commandOutcomes).toEqual([commandOutcome])

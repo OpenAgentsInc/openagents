@@ -1,6 +1,9 @@
 import {
   FleetAccountRefHash,
   FleetApprovalStatus,
+  FleetAttemptEntity,
+  FleetAttemptMarginalCostClass,
+  FleetAttemptUsageEvidence,
   FleetClassToken,
   FleetCommandOutcomeEntity,
   FleetHarnessKind,
@@ -11,6 +14,7 @@ import {
   FleetRunStatus,
   FleetWorkerKind,
   FleetWorkerPhase,
+  FleetWorkUnitEntity,
   type FleetApprovalEntity,
   type FleetAssignmentEntity,
   type FleetInboxFlagEntity,
@@ -27,10 +31,9 @@ import { FC3_FRESHNESS_TIMEOUT_MS } from "./fleet-continuity-projection.ts"
 
 /**
  * Pure allowlist projection from owner-scoped Khala Sync fleet entities into
- * Sarah-readable state. The caller must establish owner scope before calling
- * this mapper. `availableControls` is only a state-derived UI affordance; it
- * grants no authority and every action still crosses the existing typed,
- * authenticated fleet-intent boundary.
+ * Sarah-readable state. The caller establishes owner scope before calling this
+ * mapper. Work units and attempts are the plan/execution authority;
+ * assignments and workers are optional graph edges only.
  *
  * Free-form worker material is not an input to this boundary. Prompts, steer
  * bodies, command output, credentials, local paths, and private events are
@@ -108,6 +111,7 @@ const SarahFleetBlocker = Schema.Struct({
 const SarahFleetVerification = Schema.Struct({
   status: Schema.Literals(["not_reported", "ready", "failed"]),
   verificationRef: Schema.NullOr(FleetPublicRef),
+  evidenceRefs: Schema.Array(FleetPublicRef),
   summary: SarahFleetSafeSummary,
 })
 
@@ -116,6 +120,13 @@ const SarahFleetCloseout = Schema.Struct({
   closeoutRef: Schema.NullOr(FleetPublicRef),
   closeoutClass: Schema.NullOr(FleetClassToken),
   summary: SarahFleetSafeSummary,
+})
+
+const SarahFleetCapacity = Schema.Struct({
+  harnessKind: FleetHarnessKind,
+  pylonRef: FleetPublicRef,
+  accountRefHash: Schema.NullOr(FleetAccountRefHash),
+  capacityClass: Schema.Literal("owner_local"),
 })
 
 const SarahFleetRunProjection = Schema.Struct({
@@ -131,6 +142,38 @@ const SarahFleetRunProjection = Schema.Struct({
   blockers: Schema.Array(SarahFleetBlocker),
 })
 
+const SarahFleetAttemptProjection = Schema.Struct({
+  attemptRef: FleetPublicRef,
+  workUnitRef: FleetPublicRef,
+  assignmentRef: Schema.NullOr(FleetPublicRef),
+  assignmentStatus: Schema.NullOr(FleetClassToken),
+  workerRef: Schema.NullOr(FleetPublicRef),
+  workerKind: FleetHarnessKind,
+  state: FleetAttemptEntity.fields.state,
+  progressClass: FleetAttemptEntity.fields.progressClass,
+  progress: SarahFleetProgress,
+  approvalRefs: Schema.Array(FleetPublicRef),
+  verification: SarahFleetVerification,
+  artifactRefs: Schema.Array(FleetPublicRef),
+  proofRefs: Schema.Array(FleetPublicRef),
+  authorityReceiptRefs: Schema.Array(FleetPublicRef),
+  closeout: SarahFleetCloseout,
+  marginalCostClass: FleetAttemptMarginalCostClass,
+  capacity: SarahFleetCapacity,
+  usageEvidence: FleetAttemptUsageEvidence,
+  blockerRefs: Schema.Array(FleetPublicRef),
+  startedAt: FleetIsoTimestamp,
+  /** Authoritative server-receipt clock used for freshness. */
+  lastObservedAt: FleetIsoTimestamp,
+  /** Remote worker clock retained for audit only; never freshness authority. */
+  remoteObservedAtAudit: FleetIsoTimestamp,
+  terminalAt: Schema.NullOr(FleetIsoTimestamp),
+  updatedAt: FleetIsoTimestamp,
+  summary: SarahFleetSafeSummary,
+})
+export type SarahFleetAttemptProjection =
+  typeof SarahFleetAttemptProjection.Type
+
 const SarahFleetWorkerProjection = Schema.Struct({
   workerRef: FleetPublicRef,
   name: SarahFleetSafeSummary,
@@ -144,15 +187,29 @@ const SarahFleetWorkerProjection = Schema.Struct({
 })
 
 const SarahFleetWorkUnitProjection = Schema.Struct({
-  workUnitRef: SarahFleetDisplayName,
-  assignmentRef: FleetPublicRef,
+  workUnitRef: FleetPublicRef,
+  issueRef: Schema.NullOr(FleetIssueRef),
   name: SarahFleetDisplayName,
-  assignmentStatus: FleetClassToken,
+  dependsOnRefs: Schema.Array(FleetPublicRef),
+  state: FleetWorkUnitEntity.fields.state,
+  latestAttemptRef: Schema.NullOr(FleetPublicRef),
+  acceptedAttemptRef: Schema.NullOr(FleetPublicRef),
+  /** Optional graph edge from the latest attempt, never work-unit identity. */
+  assignmentRef: Schema.NullOr(FleetPublicRef),
+  assignmentStatus: Schema.NullOr(FleetClassToken),
   workerRef: Schema.NullOr(FleetPublicRef),
   progress: SarahFleetProgress,
   approvalRefs: Schema.Array(FleetPublicRef),
   verification: SarahFleetVerification,
+  artifactRefs: Schema.Array(FleetPublicRef),
+  proofRefs: Schema.Array(FleetPublicRef),
+  authorityReceiptRefs: Schema.Array(FleetPublicRef),
   closeout: SarahFleetCloseout,
+  marginalCostClass: FleetAttemptMarginalCostClass,
+  capacity: Schema.NullOr(SarahFleetCapacity),
+  usageEvidence: FleetAttemptUsageEvidence,
+  blockerRefs: Schema.Array(FleetPublicRef),
+  attempts: Schema.Array(SarahFleetAttemptProjection),
   summary: SarahFleetSafeSummary,
   updatedAt: FleetIsoTimestamp,
 })
@@ -186,6 +243,10 @@ export type SarahFleetOwnerProjectionInput = Readonly<{
   run: FleetRunEntity
   workers: ReadonlyArray<FleetWorkerEntity>
   assignments: ReadonlyArray<FleetAssignmentEntity>
+  /** Optional until the live store wiring slice starts supplying these rows. */
+  workUnits?: ReadonlyArray<typeof FleetWorkUnitEntity.Type>
+  /** Optional until the live store wiring slice starts supplying these rows. */
+  attempts?: ReadonlyArray<typeof FleetAttemptEntity.Type>
   approvals: ReadonlyArray<FleetApprovalEntity>
   inboxFlags: ReadonlyArray<FleetInboxFlagEntity>
   commandOutcomes?: ReadonlyArray<FleetCommandOutcomeEntity>
@@ -202,30 +263,15 @@ const runControlsByStatus: Readonly<
   completed: [],
 }
 
-const verificationReadyStatuses = new Set([
-  "proof_ready",
-  "verified",
-  "closeout_submitted",
-  "accepted_work",
-])
-const verificationFailedStatuses = new Set([
-  "verification_failed",
-  "rejected",
-])
-const submittedCloseoutStatuses = new Set(["closeout_submitted"])
+const decodeWorkUnit = Schema.decodeUnknownSync(FleetWorkUnitEntity)
+const decodeAttempt = Schema.decodeUnknownSync(FleetAttemptEntity)
 
 const titleCaseHarness = (
   harnessKind: typeof FleetHarnessKind.Type | undefined,
 ): string => {
-  if (harnessKind === "codex") {
-    return "Codex"
-  }
-  if (harnessKind === "claude") {
-    return "Claude"
-  }
-  if (harnessKind === "grok") {
-    return "Grok"
-  }
+  if (harnessKind === "codex") return "Codex"
+  if (harnessKind === "claude") return "Claude"
+  if (harnessKind === "grok") return "Grok"
   return "Fleet"
 }
 
@@ -243,15 +289,6 @@ const approvalRefsForWorker = (
     .map((approval) => approval.approvalRef)
     .sort()
 
-// NOTE: Khala Sync's current assignment post-image does not carry the planner's
-// canonical workUnitRef. An issue ref is stable across assignment retries;
-// non-issue/plan work falls back to its stable assignment identity until the
-// shared projection grows that additive field.
-const workUnitRefForAssignment = (
-  assignment: FleetAssignmentEntity,
-): typeof SarahFleetDisplayName.Type =>
-  assignment.issueRef ?? assignment.assignmentRef
-
 const pendingApprovalForWorker = (
   approvals: ReadonlyArray<FleetApprovalEntity>,
   workerRef: string,
@@ -260,6 +297,90 @@ const pendingApprovalForWorker = (
     (approval) =>
       approval.workerId === workerRef && approval.status === "pending",
   )
+
+const progressFromHeartbeat = (
+  heartbeatAt: string,
+  harness: string,
+  nowMs: number,
+): SarahFleetProgress => {
+  const ageMs = Math.max(0, nowMs - Date.parse(heartbeatAt))
+  const staleAt = addMilliseconds(heartbeatAt, FC3_FRESHNESS_TIMEOUT_MS)
+  if (ageMs >= FC3_FRESHNESS_TIMEOUT_MS) {
+    return {
+      status: "stalled",
+      phase: "dispatched",
+      heartbeatAt,
+      staleAt,
+      ageMs,
+      reconnect: true,
+      summary: `${harness} attempt reconnecting`,
+    }
+  }
+  return {
+    status: "fresh",
+    phase: "dispatched",
+    heartbeatAt,
+    staleAt,
+    ageMs,
+    summary: `${harness} attempt progressing`,
+  }
+}
+
+const progressForAttempt = (
+  attempt: typeof FleetAttemptEntity.Type,
+  nowMs: number,
+): SarahFleetProgress => {
+  const harness = titleCaseHarness(attempt.workerKind)
+  if (attempt.state === "succeeded") {
+    return {
+      status: "completed",
+      phase: "completed",
+      observedAt: attempt.terminalAt ?? attempt.lastObservedAt,
+      summary: `${harness} attempt completed`,
+    }
+  }
+  if (attempt.state === "failed") {
+    return {
+      status: "blocked",
+      phase: "failed",
+      blockerRef: attempt.blockerRefs[0]!,
+      blockerClass: "attempt_failed",
+      observedAt: attempt.lastObservedAt,
+      summary: `${harness} attempt failed`,
+    }
+  }
+  if (attempt.state === "stale") {
+    return {
+      status: "blocked",
+      phase: "circuit_broken",
+      blockerRef: attempt.blockerRefs[0]!,
+      blockerClass: "attempt_stale",
+      observedAt: attempt.lastObservedAt,
+      summary: `${harness} attempt stale`,
+    }
+  }
+  if (attempt.state === "evidence_pending") {
+    return {
+      status: "blocked",
+      phase: "blocked",
+      blockerRef: attempt.closeoutRef!,
+      blockerClass: "evidence_pending",
+      observedAt: attempt.lastObservedAt,
+      summary: `${harness} evidence pending`,
+    }
+  }
+  if (attempt.progressClass === "blocked") {
+    return {
+      status: "blocked",
+      phase: "blocked",
+      blockerRef: attempt.blockerRefs[0]!,
+      blockerClass: "attempt_blocked",
+      observedAt: attempt.lastObservedAt,
+      summary: `${harness} attempt blocked`,
+    }
+  }
+  return progressFromHeartbeat(attempt.lastObservedAt, harness, nowMs)
+}
 
 const progressForWorker = (
   worker: FleetWorkerEntity,
@@ -298,89 +419,83 @@ const progressForWorker = (
       summary: `${harness} worker ${worker.phase}`,
     }
   }
-
-  const heartbeatAt = worker.lastProgressAt ?? worker.updatedAt
-  const ageMs = Math.max(0, nowMs - Date.parse(heartbeatAt))
-  const staleAt = addMilliseconds(heartbeatAt, FC3_FRESHNESS_TIMEOUT_MS)
-  if (ageMs >= FC3_FRESHNESS_TIMEOUT_MS) {
-    return {
-      status: "stalled",
-      phase: "dispatched",
-      heartbeatAt,
-      staleAt,
-      ageMs,
-      reconnect: true,
-      summary: `${harness} worker reconnecting`,
-    }
-  }
-  return {
-    status: "fresh",
-    phase: "dispatched",
-    heartbeatAt,
-    staleAt,
-    ageMs,
-    summary: `${harness} worker progressing`,
-  }
+  return progressFromHeartbeat(
+    worker.lastProgressAt ?? worker.updatedAt,
+    harness,
+    nowMs,
+  )
 }
 
-const verificationForAssignment = (
-  assignment: FleetAssignmentEntity,
+const verificationForAttempt = (
+  attempt: typeof FleetAttemptEntity.Type,
 ): typeof SarahFleetVerification.Type => {
-  if (
-    verificationFailedStatuses.has(assignment.status) ||
-    assignment.closeoutClass === "rejected"
-  ) {
-    return {
-      status: "failed",
-      verificationRef: assignment.assignmentRef,
-      summary: "Verification failed",
-    }
-  }
-  if (
-    verificationReadyStatuses.has(assignment.status) ||
-    assignment.closeoutClass !== undefined
-  ) {
+  if (attempt.verification.truth === "passed") {
     return {
       status: "ready",
-      verificationRef: assignment.assignmentRef,
-      summary: "Verification available",
+      verificationRef: attempt.verification.verifierRef,
+      evidenceRefs: [...attempt.verification.evidenceRefs],
+      summary: "Verification passed",
+    }
+  }
+  if (attempt.verification.truth === "failed") {
+    return {
+      status: "failed",
+      verificationRef: attempt.verification.verifierRef,
+      evidenceRefs: [...attempt.verification.evidenceRefs],
+      summary: "Verification failed",
     }
   }
   return {
     status: "not_reported",
     verificationRef: null,
-    summary: "Verification not reported",
+    evidenceRefs: [],
+    summary:
+      attempt.verification.truth === "pending"
+        ? "Verification pending"
+        : "Verification not reported",
   }
 }
 
-const closeoutForAssignment = (
-  assignment: FleetAssignmentEntity,
+const emptyVerification = (): typeof SarahFleetVerification.Type => ({
+  status: "not_reported",
+  verificationRef: null,
+  evidenceRefs: [],
+  summary: "Verification not reported",
+})
+
+const closeoutForAttempt = (
+  attempt: typeof FleetAttemptEntity.Type,
 ): typeof SarahFleetCloseout.Type => {
-  if (assignment.closeoutClass === "accepted_work") {
+  if (attempt.state === "succeeded") {
     return {
       status: "accepted",
-      closeoutRef: assignment.assignmentRef,
-      closeoutClass: assignment.closeoutClass,
+      closeoutRef: attempt.closeoutRef,
+      closeoutClass: "succeeded",
       summary: "Closeout accepted",
     }
   }
-  if (assignment.closeoutClass === "rejected") {
-    return {
-      status: "rejected",
-      closeoutRef: assignment.assignmentRef,
-      closeoutClass: assignment.closeoutClass,
-      summary: "Closeout rejected",
-    }
-  }
-  if (
-    assignment.closeoutClass !== undefined ||
-    submittedCloseoutStatuses.has(assignment.status)
-  ) {
+  if (attempt.state === "evidence_pending") {
     return {
       status: "submitted",
-      closeoutRef: assignment.assignmentRef,
-      closeoutClass: assignment.closeoutClass ?? null,
-      summary: "Closeout submitted",
+      closeoutRef: attempt.closeoutRef,
+      closeoutClass: "evidence_pending",
+      summary: "Closeout evidence pending",
+    }
+  }
+  if (attempt.state === "failed") {
+    return {
+      status: "rejected",
+      closeoutRef: attempt.closeoutRef,
+      closeoutClass: "failed",
+      summary: "Closeout failed",
+    }
+  }
+  if (attempt.state === "stale") {
+    return {
+      status: "rejected",
+      closeoutRef: attempt.closeoutRef,
+      closeoutClass: "stale",
+      summary: "Closeout stale",
     }
   }
   return {
@@ -390,6 +505,13 @@ const closeoutForAssignment = (
     summary: "Closeout open",
   }
 }
+
+const emptyCloseout = (): typeof SarahFleetCloseout.Type => ({
+  status: "open",
+  closeoutRef: null,
+  closeoutClass: null,
+  summary: "Closeout open",
+})
 
 const runBlockers = (
   workers: ReadonlyArray<FleetWorkerEntity>,
@@ -430,16 +552,45 @@ const runBlockers = (
   )
 }
 
+const uniqueBy = <A>(
+  values: ReadonlyArray<A>,
+  keyOf: (value: A) => string,
+  label: string,
+): Map<string, A> => {
+  const result = new Map<string, A>()
+  for (const value of values) {
+    const key = keyOf(value)
+    if (result.has(key)) {
+      throw new Error(`duplicate ${label}`)
+    }
+    result.set(key, value)
+  }
+  return result
+}
+
 export function projectSarahFleetOwnerRun(
   input: SarahFleetOwnerProjectionInput,
   projectedAtMs: number,
 ): SarahFleetOwnerProjection {
+  if (
+    !Number.isSafeInteger(projectedAtMs) ||
+    projectedAtMs < 0 ||
+    !Number.isFinite(projectedAtMs)
+  ) {
+    throw new Error("invalid projection time")
+  }
   const workers = [...input.workers].sort((left, right) =>
     left.workerId.localeCompare(right.workerId),
   )
   const assignments = [...input.assignments].sort((left, right) =>
     left.assignmentRef.localeCompare(right.assignmentRef),
   )
+  const workUnits = (input.workUnits ?? [])
+    .map((workUnit) => decodeWorkUnit(workUnit))
+    .sort((left, right) => left.workUnitRef.localeCompare(right.workUnitRef))
+  const attempts = (input.attempts ?? [])
+    .map((attempt) => decodeAttempt(attempt))
+    .sort((left, right) => left.attemptRef.localeCompare(right.attemptRef))
   const approvals = [...input.approvals].sort((left, right) =>
     left.approvalRef.localeCompare(right.approvalRef),
   )
@@ -450,16 +601,189 @@ export function projectSarahFleetOwnerRun(
         : left.intentId.localeCompare(right.intentId),
   )
 
-  const workerByAssignment = new Map(
-    workers.flatMap((worker) =>
-      worker.assignmentRef === undefined
+  const workUnitByRef = uniqueBy(
+    workUnits,
+    (workUnit) => workUnit.workUnitRef,
+    "work-unit ref",
+  )
+  const attemptByRef = uniqueBy(
+    attempts,
+    (attempt) => attempt.attemptRef,
+    "attempt ref",
+  )
+  const assignmentByRef = uniqueBy(
+    assignments,
+    (assignment) => assignment.assignmentRef,
+    "assignment ref",
+  )
+  const workersByAssignment = new Map<string, Array<FleetWorkerEntity>>()
+  for (const worker of workers) {
+    if (worker.assignmentRef === undefined) continue
+    const assignmentWorkers = workersByAssignment.get(worker.assignmentRef) ?? []
+    assignmentWorkers.push(worker)
+    workersByAssignment.set(worker.assignmentRef, assignmentWorkers)
+  }
+  const attemptsByAssignment = new Map<
+    string,
+    Array<typeof FleetAttemptEntity.Type>
+  >()
+  for (const attempt of attempts) {
+    if (attempt.assignmentRef === null) continue
+    const assignmentAttempts =
+      attemptsByAssignment.get(attempt.assignmentRef) ?? []
+    assignmentAttempts.push(attempt)
+    attemptsByAssignment.set(attempt.assignmentRef, assignmentAttempts)
+  }
+  const attemptsByWorkUnit = new Map<
+    string,
+    Array<typeof FleetAttemptEntity.Type>
+  >()
+  for (const attempt of attempts) {
+    if (!workUnitByRef.has(attempt.workUnitRef)) {
+      throw new Error("attempt names an unknown work unit")
+    }
+    const unitAttempts = attemptsByWorkUnit.get(attempt.workUnitRef) ?? []
+    unitAttempts.push(attempt)
+    attemptsByWorkUnit.set(attempt.workUnitRef, unitAttempts)
+  }
+  for (const workUnit of workUnits) {
+    const unitAttempts = attemptsByWorkUnit.get(workUnit.workUnitRef) ?? []
+    if (workUnit.latestAttemptRef === null && unitAttempts.length !== 0) {
+      throw new Error("work unit with attempts has no latest attempt pointer")
+    }
+    for (const pointer of [
+      workUnit.latestAttemptRef,
+      workUnit.acceptedAttemptRef,
+    ]) {
+      if (pointer === null) continue
+      const pointedAttempt = attemptByRef.get(pointer)
+      if (
+        pointedAttempt === undefined ||
+        pointedAttempt.workUnitRef !== workUnit.workUnitRef
+      ) {
+        throw new Error("work-unit attempt pointer is unresolved or cross-unit")
+      }
+    }
+    if (workUnit.latestAttemptRef === null) continue
+    const latestAttempt = attemptByRef.get(workUnit.latestAttemptRef)!
+    const expectedAttemptState =
+      workUnit.state === "verification_pending"
+        ? "evidence_pending"
+        : workUnit.state
+    if (latestAttempt.state !== expectedAttemptState) {
+      throw new Error("work-unit state disagrees with its latest attempt")
+    }
+    if (
+      workUnit.acceptedAttemptRef !== null &&
+      attemptByRef.get(workUnit.acceptedAttemptRef)?.state !== "succeeded"
+    ) {
+      throw new Error("accepted attempt is not succeeded")
+    }
+  }
+
+  const currentAttemptForAssignment = (
+    assignmentRef: string,
+  ): typeof FleetAttemptEntity.Type | undefined => {
+    const current = (attemptsByAssignment.get(assignmentRef) ?? []).filter(
+      (attempt) =>
+        workUnitByRef.get(attempt.workUnitRef)?.latestAttemptRef ===
+        attempt.attemptRef,
+    )
+    return current.length === 1 ? current[0] : undefined
+  }
+
+  const attemptProjection = (
+    attempt: typeof FleetAttemptEntity.Type,
+  ): SarahFleetAttemptProjection => {
+    const assignment =
+      attempt.assignmentRef === null
+        ? undefined
+        : assignmentByRef.get(attempt.assignmentRef)
+    const assignmentWorkers =
+      attempt.assignmentRef === null
         ? []
-        : [[worker.assignmentRef, worker] as const],
-    ),
-  )
-  const assignmentByRef = new Map(
-    assignments.map((assignment) => [assignment.assignmentRef, assignment]),
-  )
+        : (workersByAssignment.get(attempt.assignmentRef) ?? [])
+    const worker = assignmentWorkers.length === 1 ? assignmentWorkers[0] : undefined
+    return {
+      attemptRef: attempt.attemptRef,
+      workUnitRef: attempt.workUnitRef,
+      assignmentRef: attempt.assignmentRef,
+      assignmentStatus: assignment?.status ?? null,
+      workerRef: worker?.workerId ?? null,
+      workerKind: attempt.workerKind,
+      state: attempt.state,
+      progressClass: attempt.progressClass,
+      progress: progressForAttempt(attempt, projectedAtMs),
+      // Worker slots and assignment edges can be reused across retries. Until
+      // the approval entity binds an exact attempt, no approval is attributed
+      // to attempt evidence or made actionable here.
+      approvalRefs: [],
+      verification: verificationForAttempt(attempt),
+      artifactRefs: [...attempt.artifactRefs],
+      proofRefs: [...attempt.proofRefs],
+      authorityReceiptRefs: [...attempt.authorityReceiptRefs],
+      closeout: closeoutForAttempt(attempt),
+      marginalCostClass: attempt.marginalCostClass,
+      capacity: {
+        harnessKind: attempt.workerKind,
+        pylonRef: attempt.pylonRef,
+        accountRefHash: attempt.accountRefHash,
+        capacityClass: attempt.capacityClass,
+      },
+      usageEvidence: attempt.usageEvidence,
+      blockerRefs: [...attempt.blockerRefs],
+      startedAt: attempt.startedAt,
+      lastObservedAt: attempt.lastObservedAt,
+      remoteObservedAtAudit: attempt.remoteObservedAt,
+      terminalAt: attempt.terminalAt,
+      updatedAt: attempt.updatedAt,
+      summary: `${titleCaseHarness(attempt.workerKind)} attempt ${humanizeToken(attempt.state)}`,
+    }
+  }
+
+  const projectedWorkUnits = workUnits.map((workUnit) => {
+    const projectedAttempts = (
+      attemptsByWorkUnit.get(workUnit.workUnitRef) ?? []
+    )
+      .sort((left, right) => left.attemptRef.localeCompare(right.attemptRef))
+      .map(attemptProjection)
+    const latestAttempt =
+      workUnit.latestAttemptRef === null
+        ? undefined
+        : projectedAttempts.find(
+            (attempt) => attempt.attemptRef === workUnit.latestAttemptRef,
+          )
+    return {
+      workUnitRef: workUnit.workUnitRef,
+      issueRef: workUnit.issueRef,
+      name: workUnit.issueRef ?? workUnit.workUnitRef,
+      dependsOnRefs: [...workUnit.dependsOnRefs],
+      state: workUnit.state,
+      latestAttemptRef: workUnit.latestAttemptRef,
+      acceptedAttemptRef: workUnit.acceptedAttemptRef,
+      assignmentRef: latestAttempt?.assignmentRef ?? null,
+      assignmentStatus: latestAttempt?.assignmentStatus ?? null,
+      workerRef: latestAttempt?.workerRef ?? null,
+      progress:
+        latestAttempt?.progress ?? {
+          status: "not_assigned" as const,
+          summary: "Work unit planned",
+        },
+      approvalRefs: latestAttempt?.approvalRefs ?? [],
+      verification: latestAttempt?.verification ?? emptyVerification(),
+      artifactRefs: latestAttempt?.artifactRefs ?? [],
+      proofRefs: latestAttempt?.proofRefs ?? [],
+      authorityReceiptRefs: latestAttempt?.authorityReceiptRefs ?? [],
+      closeout: latestAttempt?.closeout ?? emptyCloseout(),
+      marginalCostClass: latestAttempt?.marginalCostClass ?? "not_measured",
+      capacity: latestAttempt?.capacity ?? null,
+      usageEvidence: latestAttempt?.usageEvidence ?? { truth: "pending" as const },
+      blockerRefs: latestAttempt?.blockerRefs ?? [],
+      attempts: projectedAttempts,
+      summary: `Work unit ${humanizeToken(workUnit.state)}`,
+      updatedAt: workUnit.updatedAt,
+    }
+  })
 
   const projection = {
     schema: SARAH_FLEET_OWNER_PROJECTION_SCHEMA,
@@ -475,74 +799,46 @@ export function projectSarahFleetOwnerRun(
       availableControls: [...runControlsByStatus[input.run.status]],
       blockers: runBlockers(workers, approvals, input.inboxFlags),
     },
-    workUnits: assignments.map((assignment) => {
-      const worker = workerByAssignment.get(assignment.assignmentRef)
-      const progress =
-        worker === undefined
-          ? ({
-              status: "not_assigned",
-              summary: "Work unit not assigned",
-            } as const)
-          : progressForWorker(worker, approvals, projectedAtMs)
-      return {
-        workUnitRef: workUnitRefForAssignment(assignment),
-        assignmentRef: assignment.assignmentRef,
-        name: assignment.issueRef ?? assignment.assignmentRef,
-        assignmentStatus: assignment.status,
-        workerRef: worker?.workerId ?? null,
-        progress,
-        approvalRefs:
-          worker === undefined
-            ? []
-            : approvalRefsForWorker(approvals, worker.workerId),
-        // NOTE: Owner proof and closeout lookups already resolve by assignmentRef;
-        // this mapper does not mint a synthetic evidence identity.
-        verification: verificationForAssignment(assignment),
-        closeout: closeoutForAssignment(assignment),
-        summary: `Work unit ${humanizeToken(assignment.status)}`,
-        updatedAt: assignment.updatedAt,
-      }
-    }),
+    workUnits: projectedWorkUnits,
     workers: workers.map((worker) => {
-      const assignment =
+      const attempt =
         worker.assignmentRef === undefined
           ? undefined
-          : assignmentByRef.get(worker.assignmentRef)
+          : currentAttemptForAssignment(worker.assignmentRef)
+      const workUnit =
+        attempt === undefined
+          ? undefined
+          : workUnitByRef.get(attempt.workUnitRef)
       return {
         workerRef: worker.workerId,
         name: `${titleCaseHarness(worker.harnessKind)} worker`,
         phase: worker.phase,
         harnessKind: worker.harnessKind ?? null,
-        workUnitRef:
-          assignment === undefined ? null : workUnitRefForAssignment(assignment),
+        workUnitRef: workUnit?.workUnitRef ?? null,
         accountRefHash: worker.accountRefHash ?? null,
-        progress: progressForWorker(worker, approvals, projectedAtMs),
+        progress:
+          attempt === undefined
+            ? progressForWorker(worker, approvals, projectedAtMs)
+            : progressForAttempt(attempt, projectedAtMs),
         approvalRefs: approvalRefsForWorker(approvals, worker.workerId),
         updatedAt: worker.updatedAt,
       }
     }),
     approvals: approvals.map((approval) => {
-      const worker =
-        approval.workerId === undefined
-          ? undefined
-          : workers.find((candidate) => candidate.workerId === approval.workerId)
-      const assignment =
-        worker?.assignmentRef === undefined
-          ? undefined
-          : assignmentByRef.get(worker.assignmentRef)
       return {
         approvalRef: approval.approvalRef,
         status: approval.status,
         workerRef: approval.workerId ?? null,
-        workUnitRef:
-          assignment === undefined ? null : workUnitRefForAssignment(assignment),
+        // The current approval entity is worker-bound. A worker and assignment
+        // may be reused by retries, so projecting a work-unit target here
+        // would manufacture attempt authority. Keep it unbound until the
+        // shared approval contract carries an exact attempt ref.
+        workUnitRef: null,
         toolClass: approval.toolClass ?? null,
         openedAt: approval.openedAt ?? null,
         decidedAt: approval.decidedAt ?? null,
-        availableDecisions:
-          approval.status === "pending"
-            ? (["allow", "deny"] as const)
-            : ([] as const),
+        // Exact attempt-bound approval actions are a separate authority lane.
+        availableDecisions: [] as const,
         summary:
           approval.status === "pending"
             ? "Approval needs decision"

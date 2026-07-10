@@ -40,7 +40,7 @@ const SarahFleetIssueRef = Schema.String.check(
     /^([A-Za-z0-9][A-Za-z0-9._-]*\/[A-Za-z0-9][A-Za-z0-9._-]*)?#\d+$/,
   ),
 )
-const SarahFleetWorkUnitRef = Schema.Union([
+const SarahFleetApprovalWorkUnitRef = Schema.Union([
   SarahFleetPublicRef,
   SarahFleetIssueRef,
 ])
@@ -64,7 +64,7 @@ export const SarahFleetWorkUnitOpened = defineIntent(
   "SarahFleetWorkUnitOpened",
   Schema.Struct({
     runRef: SarahFleetPublicRef,
-    workUnitRef: SarahFleetWorkUnitRef,
+    workUnitRef: SarahFleetPublicRef,
     assignmentRef: SarahFleetPublicRef,
     workerRef: Schema.NullOr(SarahFleetPublicRef),
   }),
@@ -75,7 +75,7 @@ export const SarahFleetApprovalDecisionRequested = defineIntent(
   Schema.Struct({
     runRef: SarahFleetPublicRef,
     approvalRef: SarahFleetPublicRef,
-    workUnitRef: Schema.NullOr(SarahFleetWorkUnitRef),
+    workUnitRef: Schema.NullOr(SarahFleetApprovalWorkUnitRef),
     workerRef: Schema.NullOr(SarahFleetPublicRef),
     decision: SarahFleetApprovalDecision,
   }),
@@ -85,7 +85,7 @@ export const SarahFleetEvidenceOpened = defineIntent(
   "SarahFleetEvidenceOpened",
   Schema.Struct({
     runRef: SarahFleetPublicRef,
-    workUnitRef: SarahFleetWorkUnitRef,
+    workUnitRef: SarahFleetPublicRef,
     assignmentRef: SarahFleetPublicRef,
     workerRef: Schema.NullOr(SarahFleetPublicRef),
     evidenceKind: Schema.Literals(["verification", "closeout"]),
@@ -97,8 +97,8 @@ export const SarahFleetAuditToggled = defineIntent(
   "SarahFleetAuditToggled",
   Schema.Struct({
     runRef: SarahFleetPublicRef,
-    workUnitRef: SarahFleetWorkUnitRef,
-    assignmentRef: SarahFleetPublicRef,
+    workUnitRef: SarahFleetPublicRef,
+    assignmentRef: Schema.NullOr(SarahFleetPublicRef),
     workerRef: Schema.NullOr(SarahFleetPublicRef),
   }),
 )
@@ -202,7 +202,7 @@ const graphStatusForRun = (
 
 const supervisionGraph = (projection: SarahFleetOwnerProjection): View => {
   const workNodeId = (workUnit: FleetWorkUnit): string =>
-    `work:${workUnit.workUnitRef}:${workUnit.assignmentRef}`
+    `work:${workUnit.workUnitRef}`
   const workerNodeId = (workerRef: string): string => `worker:${workerRef}`
   const runNodeId = `run:${projection.run.runRef}`
   const workerByRef = new Map(
@@ -354,21 +354,29 @@ const auditRows = (
   projection: SarahFleetOwnerProjection,
   workUnit: FleetWorkUnit,
 ): ReadonlyArray<View> => {
-  const rows: ReadonlyArray<readonly [string, string]> = [
+  const rows: Array<readonly [string, string]> = [
     ["Run", projection.run.runRef],
     ["Work unit", workUnit.workUnitRef],
-    ["Assignment", workUnit.assignmentRef],
     ["Worker", workUnit.workerRef ?? "not reported"],
     ["Verification", workUnit.verification.verificationRef ?? "not reported"],
     ["Closeout", workUnit.closeout.closeoutRef ?? "not reported"],
-    ...workUnit.approvalRefs.map(
-      (approvalRef, index) => [`Approval ${index + 1}`, approvalRef] as const,
-    ),
   ]
+  if (workUnit.latestAttemptRef !== null) {
+    rows.splice(2, 0, ["Latest attempt", workUnit.latestAttemptRef])
+  }
+  if (workUnit.acceptedAttemptRef !== null) {
+    rows.splice(3, 0, ["Accepted attempt", workUnit.acceptedAttemptRef])
+  }
+  if (workUnit.assignmentRef !== null) {
+    rows.splice(4, 0, ["Assignment", workUnit.assignmentRef])
+  }
+  workUnit.approvalRefs.forEach((approvalRef, index) => {
+    rows.push([`Approval ${index + 1}`, approvalRef])
+  })
   return rows.map(([label, value], index) =>
     Stack(
       {
-        key: `fleet-supervision-${workUnit.assignmentRef}-audit-${index}`,
+        key: `fleet-supervision-${workUnit.workUnitRef}-audit-${index}`,
         direction: { base: "column", sm: "row" },
         gap: "1",
         align: "start",
@@ -377,12 +385,12 @@ const auditRows = (
       },
       [
         text(
-          `fleet-supervision-${workUnit.assignmentRef}-audit-${index}-label`,
+          `fleet-supervision-${workUnit.workUnitRef}-audit-${index}-label`,
           label,
           "caption",
         ),
         text(
-          `fleet-supervision-${workUnit.assignmentRef}-audit-${index}-value`,
+          `fleet-supervision-${workUnit.workUnitRef}-audit-${index}-value`,
           value,
           "caption",
           "textMuted",
@@ -398,7 +406,7 @@ const auditDisclosure = (
   expanded: boolean,
 ): View =>
   Accordion({
-    key: `fleet-supervision-${workUnit.assignmentRef}-audit`,
+    key: `fleet-supervision-${workUnit.workUnitRef}-audit`,
     mode: "single",
     expandedIds: expanded ? ["references"] : [],
     onToggle: IntentRef(
@@ -417,7 +425,7 @@ const auditDisclosure = (
         content: [
           Stack(
             {
-              key: `fleet-supervision-${workUnit.assignmentRef}-audit-list`,
+              key: `fleet-supervision-${workUnit.workUnitRef}-audit-list`,
               direction: "column",
               gap: "1",
               padding: "2",
@@ -446,11 +454,11 @@ const evidenceButton = (
   evidenceKind: "verification" | "closeout",
   evidenceRef: string | null,
 ): ReadonlyArray<View> => {
-  if (evidenceRef === null) return []
+  if (evidenceRef === null || workUnit.assignmentRef === null) return []
   const label = evidenceKind === "verification" ? "View verification" : "View closeout"
   return [
     Button({
-      key: `fleet-supervision-${workUnit.assignmentRef}-${evidenceKind}`,
+      key: `fleet-supervision-${workUnit.workUnitRef}-${evidenceKind}`,
       label,
       variant: "ghost",
       onPress: IntentRef(
@@ -489,7 +497,7 @@ const workUnitRow = (
 
   return Stack(
     {
-      key: `fleet-supervision-${workUnit.assignmentRef}`,
+      key: `fleet-supervision-${workUnit.workUnitRef}`,
       direction: "column",
       gap: "2",
       padding: "3",
@@ -506,7 +514,7 @@ const workUnitRow = (
     [
       Stack(
         {
-          key: `fleet-supervision-${workUnit.assignmentRef}-heading`,
+          key: `fleet-supervision-${workUnit.workUnitRef}-heading`,
           direction: { base: "column", sm: "row" },
           gap: "2",
           align: "start",
@@ -516,18 +524,18 @@ const workUnitRow = (
         [
           Stack(
             {
-              key: `fleet-supervision-${workUnit.assignmentRef}-identity`,
+              key: `fleet-supervision-${workUnit.workUnitRef}-identity`,
               direction: "column",
               gap: "0.5",
             },
             [
               text(
-                `fleet-supervision-${workUnit.assignmentRef}-name`,
+                `fleet-supervision-${workUnit.workUnitRef}-name`,
                 workUnit.name,
                 "label",
               ),
               text(
-                `fleet-supervision-${workUnit.assignmentRef}-worker-name`,
+                `fleet-supervision-${workUnit.workUnitRef}-worker-name`,
                 workerLabel,
                 "caption",
                 "textMuted",
@@ -535,7 +543,7 @@ const workUnitRow = (
             ],
           ),
           Badge({
-            key: `fleet-supervision-${workUnit.assignmentRef}-progress`,
+            key: `fleet-supervision-${workUnit.workUnitRef}-progress`,
             label: progressLabel(workUnit.progress),
             tone: progressTone(workUnit.progress),
             a11y: { label: `Progress: ${progressLabel(workUnit.progress)}` },
@@ -543,14 +551,14 @@ const workUnitRow = (
         ],
       ),
       text(
-        `fleet-supervision-${workUnit.assignmentRef}-summary`,
+        `fleet-supervision-${workUnit.workUnitRef}-summary`,
         workUnit.summary,
         "body",
         "textMuted",
       ),
       Stack(
         {
-          key: `fleet-supervision-${workUnit.assignmentRef}-evidence-status`,
+          key: `fleet-supervision-${workUnit.workUnitRef}-evidence-status`,
           direction: { base: "column", sm: "row" },
           gap: "1",
           align: "start",
@@ -558,7 +566,7 @@ const workUnitRow = (
         },
         [
           Badge({
-            key: `fleet-supervision-${workUnit.assignmentRef}-verification-status`,
+            key: `fleet-supervision-${workUnit.workUnitRef}-verification-status`,
             label: verificationLabel,
             tone:
               workUnit.verification.status === "ready"
@@ -568,7 +576,7 @@ const workUnitRow = (
                   : "neutral",
           }),
           Badge({
-            key: `fleet-supervision-${workUnit.assignmentRef}-closeout-status`,
+            key: `fleet-supervision-${workUnit.workUnitRef}-closeout-status`,
             label: workUnit.closeout.summary,
             tone:
               workUnit.closeout.status === "accepted"
@@ -581,11 +589,12 @@ const workUnitRow = (
           }),
         ],
       ),
-      ...(interactionMode === SARAH_OWNER_FLEET_INTERACTIVE
+      ...(interactionMode === SARAH_OWNER_FLEET_INTERACTIVE &&
+      workUnit.assignmentRef !== null
         ? [
             Stack(
               {
-                key: `fleet-supervision-${workUnit.assignmentRef}-actions`,
+                key: `fleet-supervision-${workUnit.workUnitRef}-actions`,
                 direction: { base: "column", sm: "row" },
                 gap: "2",
                 align: "start",
@@ -593,7 +602,7 @@ const workUnitRow = (
               },
               [
                 Button({
-                  key: `fleet-supervision-${workUnit.assignmentRef}-open`,
+                  key: `fleet-supervision-${workUnit.workUnitRef}-open`,
                   label: "Open work unit",
                   variant: "secondary",
                   onPress: IntentRef(

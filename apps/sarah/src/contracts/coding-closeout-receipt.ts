@@ -1,15 +1,15 @@
 import {
   FleetAccountRefHash,
   FleetApprovalStatus,
+  FleetAttemptMarginalCostClass,
+  FleetAttemptUsageEvidence,
   FleetClassToken,
   FleetHarnessKind,
-  FleetIssueRef,
   FleetPublicRef,
 } from "@openagentsinc/khala-sync"
 import {
   ApprovalDecisionValue,
   FleetRunControlAction,
-  MarginalCostClass,
 } from "@openagentsinc/khala-fleet-intents"
 import { Schema } from "effect"
 
@@ -20,11 +20,9 @@ import {
 } from "./fleet-owner-projection.ts"
 
 /**
- * Pure FC-3 closeout-card projection. Its fixed tuple is the reading order,
- * and every optional fact fails honest: no verdict becomes `not_reported`, no
- * measured marginal cost becomes `not_measured`, and no change evidence means
- * no artifact claim. Authority refs are evidence labels, never authority
- * grants; actions still cross the authenticated fleet-intent boundary.
+ * Pure FC-3 closeout-card projection. Every card is keyed by one canonical
+ * attempt and reads evidence only from that attempt projection. Assignment is
+ * an optional graph edge; it is never receipt or evidence identity.
  */
 export const SARAH_CODING_CLOSEOUT_RECEIPT_SCHEMA =
   "sarah.coding_closeout_receipt.v1" as const
@@ -38,42 +36,18 @@ export const SARAH_CODING_CLOSEOUT_SECTION_ORDER = [
   "next_action",
 ] as const
 
-const ReceiptVerificationEvidence = Schema.Struct({
-  status: Schema.Literals(["passed", "failed"]),
-  verificationRef: FleetPublicRef,
-})
-
-const ReceiptChangeEvidence = Schema.Struct({
-  changeClass: FleetClassToken,
-  artifactRef: FleetPublicRef,
-})
-
-const ReceiptCapacityEvidence = Schema.Struct({
-  capacityClass: FleetClassToken,
-  marginalCostClass: Schema.optionalKey(MarginalCostClass),
-})
-
-const ReceiptAuthorityEvidence = Schema.Struct({
-  authorityClass: FleetClassToken,
-  authorityRef: FleetPublicRef,
-})
-
-export const SarahCodingCloseoutEvidence = Schema.Struct({
-  assignmentRef: FleetPublicRef,
-  verification: Schema.optionalKey(ReceiptVerificationEvidence),
-  changes: Schema.optionalKey(ReceiptChangeEvidence),
-  capacity: Schema.optionalKey(ReceiptCapacityEvidence),
-  authority: Schema.optionalKey(ReceiptAuthorityEvidence),
-})
-export type SarahCodingCloseoutEvidence =
-  typeof SarahCodingCloseoutEvidence.Type
-
-const ReceiptWorkUnitRef = Schema.Union([FleetPublicRef, FleetIssueRef])
-
 const OutcomeSection = Schema.Struct({
   kind: Schema.Literal("outcome"),
   status: Schema.Literals(["succeeded", "failed", "blocked", "in_progress"]),
-  assignmentStatus: FleetClassToken,
+  attemptState: Schema.Literals([
+    "running",
+    "evidence_pending",
+    "succeeded",
+    "failed",
+    "stale",
+  ]),
+  closeoutRef: Schema.NullOr(FleetPublicRef),
+  blockerRefs: Schema.Array(FleetPublicRef),
   summary: SarahFleetSafeSummary,
 })
 
@@ -81,6 +55,7 @@ const VerificationSection = Schema.Struct({
   kind: Schema.Literal("verification"),
   status: Schema.Literals(["passed", "failed", "not_reported"]),
   verificationRef: Schema.NullOr(FleetPublicRef),
+  evidenceRefs: Schema.Array(FleetPublicRef),
   summary: SarahFleetSafeSummary,
 })
 
@@ -89,16 +64,20 @@ const ChangesSection = Schema.Struct({
   status: Schema.Literals(["reported", "not_reported"]),
   changeClass: Schema.NullOr(FleetClassToken),
   artifactRef: Schema.NullOr(FleetPublicRef),
+  artifactRefs: Schema.Array(FleetPublicRef),
+  proofRefs: Schema.Array(FleetPublicRef),
   summary: SarahFleetSafeSummary,
 })
 
 const CapacityAndCostSection = Schema.Struct({
   kind: Schema.Literal("capacity_and_cost"),
-  status: Schema.Literals(["reported", "not_reported"]),
-  harnessKind: Schema.NullOr(FleetHarnessKind),
+  status: Schema.Literal("reported"),
+  harnessKind: FleetHarnessKind,
+  pylonRef: FleetPublicRef,
   accountRefHash: Schema.NullOr(FleetAccountRefHash),
-  capacityClass: Schema.NullOr(FleetClassToken),
-  marginalCostClass: MarginalCostClass,
+  capacityClass: Schema.Literal("owner_local"),
+  marginalCostClass: FleetAttemptMarginalCostClass,
+  usageEvidence: FleetAttemptUsageEvidence,
   summary: SarahFleetSafeSummary,
 })
 
@@ -114,6 +93,7 @@ const ApprovalAndAuthoritySection = Schema.Struct({
   authorityStatus: Schema.Literals(["reported", "not_reported"]),
   authorityClass: Schema.NullOr(FleetClassToken),
   authorityRef: Schema.NullOr(FleetPublicRef),
+  authorityReceiptRefs: Schema.Array(FleetPublicRef),
   summary: SarahFleetSafeSummary,
 })
 
@@ -154,10 +134,12 @@ const NextActionSection = Schema.Struct({
 
 export const SarahCodingCloseoutReceipt = Schema.Struct({
   schema: Schema.Literal(SARAH_CODING_CLOSEOUT_RECEIPT_SCHEMA),
+  /** Stable view key; exactly the attempt ref, never a fallback identity. */
   cardRef: FleetPublicRef,
   runRef: FleetPublicRef,
-  workUnitRef: ReceiptWorkUnitRef,
-  assignmentRef: FleetPublicRef,
+  workUnitRef: FleetPublicRef,
+  attemptRef: FleetPublicRef,
+  assignmentRef: Schema.NullOr(FleetPublicRef),
   sections: Schema.Tuple([
     OutcomeSection,
     VerificationSection,
@@ -166,122 +148,108 @@ export const SarahCodingCloseoutReceipt = Schema.Struct({
     ApprovalAndAuthoritySection,
     NextActionSection,
   ]),
-})
+}).pipe(
+  Schema.check(
+    Schema.makeFilter((receipt) => receipt.cardRef === receipt.attemptRef, {
+      message: "coding receipt card identity must equal its attempt ref",
+    }),
+  ),
+)
 export type SarahCodingCloseoutReceipt =
   typeof SarahCodingCloseoutReceipt.Type
 
-type FleetWorkUnit = SarahFleetOwnerProjectionType["workUnits"][number]
-type FleetWorker = SarahFleetOwnerProjectionType["workers"][number]
+type FleetAttempt =
+  SarahFleetOwnerProjectionType["workUnits"][number]["attempts"][number]
 type FleetApproval = SarahFleetOwnerProjectionType["approvals"][number]
-
-const decodeEvidence = Schema.decodeUnknownSync(SarahCodingCloseoutEvidence)
 
 const humanizeToken = (token: string): string => token.replaceAll("_", " ")
 
 const verificationSection = (
-  workUnit: FleetWorkUnit,
-  evidence: SarahCodingCloseoutEvidence | undefined,
+  attempt: FleetAttempt,
 ): typeof VerificationSection.Type => {
   if (
-    workUnit.verification.status === "failed" &&
-    workUnit.verification.verificationRef !== null
+    attempt.state === "succeeded" &&
+    attempt.verification.status === "ready"
   ) {
     return {
       kind: "verification",
-      status: "failed",
-      verificationRef: workUnit.verification.verificationRef,
-      summary: "Verification failed",
+      status: "passed",
+      verificationRef: attempt.verification.verificationRef,
+      evidenceRefs: [...attempt.verification.evidenceRefs],
+      summary: "Verification passed",
     }
   }
-  if (evidence?.verification !== undefined) {
+  if (attempt.verification.status === "failed") {
     return {
       kind: "verification",
-      status: evidence.verification.status,
-      verificationRef: evidence.verification.verificationRef,
-      summary:
-        evidence.verification.status === "passed"
-          ? "Verification passed"
-          : "Verification failed",
+      status: "failed",
+      verificationRef: attempt.verification.verificationRef,
+      evidenceRefs: [...attempt.verification.evidenceRefs],
+      summary: "Verification failed",
     }
   }
   return {
     kind: "verification",
     status: "not_reported",
-    verificationRef: workUnit.verification.verificationRef,
+    verificationRef: attempt.verification.verificationRef,
+    evidenceRefs: [...attempt.verification.evidenceRefs],
     summary:
-      workUnit.verification.verificationRef === null
+      attempt.verification.verificationRef === null
         ? "Verification not reported"
-        : "Verification verdict not reported",
+        : "Verification is not accepted",
   }
 }
 
 const changesSection = (
-  evidence: SarahCodingCloseoutEvidence | undefined,
+  attempt: FleetAttempt,
 ): typeof ChangesSection.Type => {
-  if (evidence?.changes === undefined) {
+  if (attempt.artifactRefs.length === 0) {
     return {
       kind: "changes",
       status: "not_reported",
       changeClass: null,
       artifactRef: null,
+      artifactRefs: [],
+      proofRefs: [...attempt.proofRefs],
       summary: "Changes not reported",
     }
   }
   return {
     kind: "changes",
     status: "reported",
-    changeClass: evidence.changes.changeClass,
-    artifactRef: evidence.changes.artifactRef,
-    summary: `Changed ${humanizeToken(evidence.changes.changeClass)}`,
+    changeClass: "attempt_evidence",
+    artifactRef: attempt.artifactRefs[0] ?? null,
+    artifactRefs: [...attempt.artifactRefs],
+    proofRefs: [...attempt.proofRefs],
+    summary: "Attempt artifacts and proofs reported",
   }
 }
 
 const capacityAndCostSection = (
-  worker: FleetWorker | undefined,
-  evidence: SarahCodingCloseoutEvidence | undefined,
-): typeof CapacityAndCostSection.Type => {
-  if (
-    evidence?.capacity === undefined ||
-    worker?.harnessKind === null ||
-    worker?.harnessKind === undefined ||
-    worker.accountRefHash === null
-  ) {
-    return {
-      kind: "capacity_and_cost",
-      status: "not_reported",
-      harnessKind: worker?.harnessKind ?? null,
-      accountRefHash: worker?.accountRefHash ?? null,
-      capacityClass: null,
-      marginalCostClass: "not_measured",
-      summary: "Capacity not reported. Cost not measured.",
-    }
-  }
-  const marginalCostClass =
-    evidence.capacity.marginalCostClass ?? "not_measured"
-  return {
-    kind: "capacity_and_cost",
-    status: "reported",
-    harnessKind: worker?.harnessKind ?? null,
-    accountRefHash: worker?.accountRefHash ?? null,
-    capacityClass: evidence.capacity.capacityClass,
-    marginalCostClass,
-    summary:
-      marginalCostClass === "not_measured"
-        ? "Capacity reported. Cost not measured."
-        : `Capacity reported. Cost ${humanizeToken(marginalCostClass)}.`,
-  }
-}
+  attempt: FleetAttempt,
+): typeof CapacityAndCostSection.Type => ({
+  kind: "capacity_and_cost",
+  status: "reported",
+  harnessKind: attempt.capacity.harnessKind,
+  pylonRef: attempt.capacity.pylonRef,
+  accountRefHash: attempt.capacity.accountRefHash,
+  capacityClass: attempt.capacity.capacityClass,
+  marginalCostClass: attempt.marginalCostClass,
+  usageEvidence: attempt.usageEvidence,
+  summary:
+    attempt.usageEvidence.truth === "exact"
+      ? `Capacity reported. Exact usage ${attempt.usageEvidence.totalTokens} tokens.`
+      : attempt.usageEvidence.truth === "not_measured"
+        ? "Capacity reported. Usage not measured."
+        : "Capacity reported. Usage pending.",
+})
 
 const approvalStatus = (
   approvals: ReadonlyArray<FleetApproval>,
   approvalRefs: ReadonlyArray<string>,
 ): typeof ReceiptApprovalStatus.Type => {
-  if (approvalRefs.length === 0) {
-    return "not_required"
-  }
-  if (approvals.length === 0) {
-    return "not_reported"
-  }
+  if (approvalRefs.length === 0) return "not_required"
+  if (approvals.length !== approvalRefs.length) return "not_reported"
   if (approvals.some((approval) => approval.status === "denied")) {
     return "denied"
   }
@@ -292,19 +260,19 @@ const approvalStatus = (
 }
 
 const approvalAndAuthoritySection = (
-  workUnit: FleetWorkUnit,
+  attempt: FleetAttempt,
   approvals: ReadonlyArray<FleetApproval>,
-  evidence: SarahCodingCloseoutEvidence | undefined,
 ): typeof ApprovalAndAuthoritySection.Type => {
-  const status = approvalStatus(approvals, workUnit.approvalRefs)
-  const authorityReported = evidence?.authority !== undefined
+  const status = approvalStatus(approvals, attempt.approvalRefs)
+  const authorityReported = attempt.authorityReceiptRefs.length > 0
   return {
     kind: "approval_and_authority",
     approvalStatus: status,
-    approvalRefs: [...workUnit.approvalRefs],
+    approvalRefs: [...attempt.approvalRefs],
     authorityStatus: authorityReported ? "reported" : "not_reported",
-    authorityClass: evidence?.authority?.authorityClass ?? null,
-    authorityRef: evidence?.authority?.authorityRef ?? null,
+    authorityClass: authorityReported ? "attempt_authority_receipt" : null,
+    authorityRef: attempt.authorityReceiptRefs[0] ?? null,
+    authorityReceiptRefs: [...attempt.authorityReceiptRefs],
     summary: authorityReported
       ? `Approval ${humanizeToken(status)}. Authority reported.`
       : `Approval ${humanizeToken(status)}. Authority not reported.`,
@@ -312,72 +280,68 @@ const approvalAndAuthoritySection = (
 }
 
 const outcomeSection = (
-  workUnit: FleetWorkUnit,
+  attempt: FleetAttempt,
   verification: typeof VerificationSection.Type,
 ): typeof OutcomeSection.Type => {
-  if (
-    verification.status === "failed" ||
-    workUnit.closeout.status === "rejected"
-  ) {
-    return {
-      kind: "outcome",
-      status: "failed",
-      assignmentStatus: workUnit.assignmentStatus,
-      summary: "Work unit failed",
-    }
-  }
-  if (workUnit.closeout.status === "accepted") {
+  if (attempt.state === "succeeded" && verification.status === "passed") {
     return {
       kind: "outcome",
       status: "succeeded",
-      assignmentStatus: workUnit.assignmentStatus,
-      summary: "Work unit succeeded",
+      attemptState: attempt.state,
+      closeoutRef: attempt.closeout.closeoutRef,
+      blockerRefs: [...attempt.blockerRefs],
+      summary: "Attempt succeeded",
+    }
+  }
+  if (attempt.state === "failed" || verification.status === "failed") {
+    return {
+      kind: "outcome",
+      status: "failed",
+      attemptState: attempt.state,
+      closeoutRef: attempt.closeout.closeoutRef,
+      blockerRefs: [...attempt.blockerRefs],
+      summary: "Attempt failed",
     }
   }
   if (
-    workUnit.progress.status === "blocked" ||
-    workUnit.progress.status === "stalled"
+    attempt.state === "stale" ||
+    attempt.state === "evidence_pending" ||
+    attempt.progress.status === "blocked" ||
+    attempt.progress.status === "stalled"
   ) {
     return {
       kind: "outcome",
       status: "blocked",
-      assignmentStatus: workUnit.assignmentStatus,
-      summary: "Work unit blocked",
+      attemptState: attempt.state,
+      closeoutRef: attempt.closeout.closeoutRef,
+      blockerRefs: [...attempt.blockerRefs],
+      summary:
+        attempt.state === "evidence_pending"
+          ? "Attempt evidence pending"
+          : "Attempt blocked",
     }
   }
   return {
     kind: "outcome",
     status: "in_progress",
-    assignmentStatus: workUnit.assignmentStatus,
-    summary: "Work unit in progress",
+    attemptState: attempt.state,
+    closeoutRef: attempt.closeout.closeoutRef,
+    blockerRefs: [...attempt.blockerRefs],
+    summary: "Attempt in progress",
   }
 }
 
 const nextActionSection = (
   projection: SarahFleetOwnerProjectionType,
-  workUnit: FleetWorkUnit,
+  attempt: FleetAttempt,
   verification: typeof VerificationSection.Type,
   changes: typeof ChangesSection.Type,
-  approval: typeof ApprovalAndAuthoritySection.Type,
 ): typeof NextActionSection.Type => {
-  if (approval.approvalStatus === "pending") {
-    const targetRef = approval.approvalRefs[0]
-    if (targetRef !== undefined) {
-      return {
-        kind: "next_action",
-        next: {
-          action: "resolve_approval",
-          targetRef,
-          decisions: ["allow", "deny"],
-        },
-        summary: "Resolve approval",
-      }
-    }
-  }
-  if (changes.artifactRef !== null) {
+  const artifactRef = changes.artifactRefs[0]
+  if (artifactRef !== undefined) {
     return {
       kind: "next_action",
-      next: { action: "open_artifact", targetRef: changes.artifactRef },
+      next: { action: "open_artifact", targetRef: artifactRef },
       summary: "Open safe artifact",
     }
   }
@@ -391,12 +355,12 @@ const nextActionSection = (
       summary: "Open verification",
     }
   }
-  if (workUnit.closeout.closeoutRef !== null) {
+  if (attempt.closeout.closeoutRef !== null) {
     return {
       kind: "next_action",
       next: {
         action: "open_closeout",
-        targetRef: workUnit.closeout.closeoutRef,
+        targetRef: attempt.closeout.closeoutRef,
       },
       summary: "Open closeout",
     }
@@ -420,63 +384,72 @@ const nextActionSection = (
   }
 }
 
-export function projectSarahCodingCloseoutReceipts(input: Readonly<{
-  projection: SarahFleetOwnerProjectionType
-  evidence: ReadonlyArray<SarahCodingCloseoutEvidence>
-}>): ReadonlyArray<SarahCodingCloseoutReceipt> {
-  const projection = Schema.decodeUnknownSync(SarahFleetOwnerProjection)(
-    input.projection,
+const SarahCodingCloseoutReceiptProjectionInput = Schema.Struct({
+  projection: SarahFleetOwnerProjection,
+})
+
+const decodeExactProjectionInput = (
+  input: unknown,
+): typeof SarahCodingCloseoutReceiptProjectionInput.Type => {
+  if (
+    typeof input !== "object" ||
+    input === null ||
+    Array.isArray(input) ||
+    Object.keys(input).some((key) => key !== "projection") ||
+    Object.keys(input).length !== 1
+  ) {
+    throw new Error("coding receipt input must contain only projection")
+  }
+  return Schema.decodeUnknownSync(SarahCodingCloseoutReceiptProjectionInput)(
+    input,
   )
-  const evidence = input.evidence.map((entry) => decodeEvidence(entry))
-  const evidenceByAssignment = new Map(
-    evidence.map((entry) => [entry.assignmentRef, entry]),
-  )
-  const workerByRef = new Map(
-    projection.workers.map((worker) => [worker.workerRef, worker]),
-  )
+}
+
+export function projectSarahCodingCloseoutReceipts(
+  input: unknown,
+): ReadonlyArray<SarahCodingCloseoutReceipt> {
+  const { projection } = decodeExactProjectionInput(input)
   const approvalByRef = new Map(
     projection.approvals.map((approval) => [approval.approvalRef, approval]),
   )
 
-  return [...projection.workUnits]
-    .sort((left, right) => left.assignmentRef.localeCompare(right.assignmentRef))
-    .map((workUnit) => {
-      const worker =
-        workUnit.workerRef === null
-          ? undefined
-          : workerByRef.get(workUnit.workerRef)
-      const workUnitApprovals = workUnit.approvalRefs.flatMap((approvalRef) => {
+  return projection.workUnits
+    .flatMap((workUnit) =>
+      workUnit.attempts
+        .filter((attempt) => attempt.state !== "running")
+        .map((attempt) => ({
+          workUnitRef: workUnit.workUnitRef,
+          attempt,
+        })),
+    )
+    .sort((left, right) =>
+      left.attempt.attemptRef.localeCompare(right.attempt.attemptRef),
+    )
+    .map(({ workUnitRef, attempt }) => {
+      const attemptApprovals = attempt.approvalRefs.flatMap((approvalRef) => {
         const approval = approvalByRef.get(approvalRef)
         return approval === undefined ? [] : [approval]
       })
-      const workUnitEvidence = evidenceByAssignment.get(workUnit.assignmentRef)
-      const verification = verificationSection(workUnit, workUnitEvidence)
-      const changes = changesSection(workUnitEvidence)
-      const capacityAndCost = capacityAndCostSection(worker, workUnitEvidence)
+      const verification = verificationSection(attempt)
+      const changes = changesSection(attempt)
       const approvalAndAuthority = approvalAndAuthoritySection(
-        workUnit,
-        workUnitApprovals,
-        workUnitEvidence,
+        attempt,
+        attemptApprovals,
       )
       const receipt = {
         schema: SARAH_CODING_CLOSEOUT_RECEIPT_SCHEMA,
-        cardRef: workUnit.closeout.closeoutRef ?? workUnit.assignmentRef,
+        cardRef: attempt.attemptRef,
         runRef: projection.run.runRef,
-        workUnitRef: workUnit.workUnitRef,
-        assignmentRef: workUnit.assignmentRef,
+        workUnitRef,
+        attemptRef: attempt.attemptRef,
+        assignmentRef: attempt.assignmentRef,
         sections: [
-          outcomeSection(workUnit, verification),
+          outcomeSection(attempt, verification),
           verification,
           changes,
-          capacityAndCost,
+          capacityAndCostSection(attempt),
           approvalAndAuthority,
-          nextActionSection(
-            projection,
-            workUnit,
-            verification,
-            changes,
-            approvalAndAuthority,
-          ),
+          nextActionSection(projection, attempt, verification, changes),
         ],
       }
       return Schema.decodeUnknownSync(SarahCodingCloseoutReceipt)(receipt)

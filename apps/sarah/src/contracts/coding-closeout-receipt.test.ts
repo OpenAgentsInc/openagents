@@ -1,344 +1,390 @@
 import { describe, expect, test } from "bun:test"
+import {
+  decodeFleetAttemptEntity,
+  decodeFleetRunEntity,
+  decodeFleetWorkUnitEntity,
+} from "@openagentsinc/khala-sync"
 import { Schema } from "effect"
 
 import {
   SARAH_CODING_CLOSEOUT_SECTION_ORDER,
-  SarahCodingCloseoutEvidence,
   SarahCodingCloseoutReceipt,
   projectSarahCodingCloseoutReceipts,
 } from "./coding-closeout-receipt.ts"
-import {
-  SarahFleetOwnerProjection,
-  type SarahFleetOwnerProjection as SarahFleetOwnerProjectionType,
-} from "./fleet-owner-projection.ts"
+import { projectSarahFleetOwnerRun } from "./fleet-owner-projection.ts"
 
-const completedProgress = (harness: "Codex" | "Claude" | "Grok") => ({
-  status: "completed" as const,
-  phase: "completed" as const,
-  observedAt: "2026-07-09T20:00:00.000Z",
-  summary: `${harness} worker completed`,
+const CLAIM_REF = `claim.sarah_fleet_run.${"a".repeat(24)}`
+const NOW = Date.parse("2026-07-09T20:00:00.000Z")
+
+const exactUsage = {
+  schema: "openagents.pylon.fleet_run_usage_evidence.v1" as const,
+  truth: "exact" as const,
+  harnessKind: "codex" as const,
+  evidenceRef: "evidence.receipt.codex",
+  assignmentRef: "assignment.receipt.codex",
+  pylonRef: "pylon-owner-1",
+  provider: "pylon-codex-own-capacity" as const,
+  model: "openagents/pylon-codex" as const,
+  demandKind: "own_capacity" as const,
+  demandSource: "khala_coding_delegation" as const,
+  inputTokens: 8,
+  outputTokens: 5,
+  reasoningTokens: 2,
+  cacheReadTokens: 3,
+  totalTokens: 13,
+  tokenRows: 1,
+  tokenUsageRefs: ["usage.receipt.codex"],
+  proofRefs: ["proof.usage.receipt.codex"],
+  closeoutChecklistRefs: ["check.closeout.receipt.codex"],
+  proofChecklistRefs: ["check.proof.receipt.codex"],
+}
+
+const succeeded = decodeFleetAttemptEntity({
+  attemptRef: "attempt.receipt.codex",
+  workUnitRef: "unit.receipt.codex",
+  intakeClaimRef: CLAIM_REF,
+  pylonRef: "pylon-owner-1",
+  workerKind: "codex",
+  state: "succeeded",
+  progressClass: "terminal",
+  assignmentRef: "assignment.receipt.codex",
+  accountRefHash: `account.pylon.codex.${"1".repeat(24)}`,
+  capacityClass: "owner_local",
+  marginalCostClass: "subscription",
+  verification: {
+    truth: "passed",
+    verifierRef: "verifier.receipt.codex",
+    evidenceRefs: ["test.receipt.codex"],
+  },
+  artifactRefs: ["artifact.receipt.codex"],
+  proofRefs: ["proof.receipt.codex"],
+  authorityReceiptRefs: ["authority.receipt.codex"],
+  closeoutRef: "closeout.receipt.codex",
+  usageEvidence: exactUsage,
+  blockerRefs: [],
+  lastEventRef: `event.pylon.fleet_run.${"1".repeat(24)}`,
+  startedAt: "2026-07-09T19:50:00.000Z",
+  lastObservedAt: "2026-07-09T19:55:00.000Z",
+  remoteObservedAt: "2026-07-09T19:54:59.000Z",
+  terminalAt: "2026-07-09T19:55:00.000Z",
+  updatedAt: "2026-07-09T19:55:00.000Z",
 })
 
-const closeout = (assignmentRef: string) => ({
-  status: "accepted" as const,
-  closeoutRef: assignmentRef,
-  closeoutClass: "accepted_work",
-  summary: "Closeout accepted",
+const failedWithoutVerification = decodeFleetAttemptEntity({
+  attemptRef: "attempt.receipt.failed",
+  workUnitRef: "unit.receipt.failed",
+  intakeClaimRef: CLAIM_REF,
+  pylonRef: "pylon-owner-1",
+  workerKind: "codex",
+  state: "failed",
+  progressClass: "terminal",
+  assignmentRef: "assignment.receipt.failed",
+  accountRefHash: `account.pylon.codex.${"2".repeat(24)}`,
+  capacityClass: "owner_local",
+  marginalCostClass: "not_measured",
+  verification: { truth: "not_reported" },
+  artifactRefs: [],
+  proofRefs: ["proof.receipt.failed"],
+  authorityReceiptRefs: [],
+  closeoutRef: "closeout.receipt.failed",
+  usageEvidence: { truth: "pending" },
+  blockerRefs: ["blocker.receipt.failed"],
+  lastEventRef: `event.pylon.fleet_run.${"2".repeat(24)}`,
+  startedAt: "2026-07-09T19:51:00.000Z",
+  lastObservedAt: "2026-07-09T19:56:00.000Z",
+  remoteObservedAt: "2026-07-09T19:55:59.000Z",
+  terminalAt: "2026-07-09T19:56:00.000Z",
+  updatedAt: "2026-07-09T19:56:00.000Z",
 })
 
-const verification = (assignmentRef: string) => ({
-  status: "ready" as const,
-  verificationRef: assignmentRef,
-  summary: "Verification available",
+const evidencePending = decodeFleetAttemptEntity({
+  attemptRef: "attempt.receipt.evidence_pending",
+  workUnitRef: "unit.receipt.evidence_pending",
+  intakeClaimRef: CLAIM_REF,
+  pylonRef: "pylon-owner-1",
+  workerKind: "claude",
+  state: "evidence_pending",
+  progressClass: "terminal",
+  assignmentRef: "assignment.receipt.evidence_pending",
+  accountRefHash: `account.pylon.claude_agent.${"3".repeat(24)}`,
+  capacityClass: "owner_local",
+  marginalCostClass: "subscription",
+  verification: { truth: "not_reported" },
+  artifactRefs: [],
+  proofRefs: [],
+  authorityReceiptRefs: [],
+  closeoutRef: "closeout.receipt.evidence_pending",
+  usageEvidence: { truth: "pending" },
+  blockerRefs: [],
+  lastEventRef: `event.pylon.fleet_run.${"3".repeat(24)}`,
+  startedAt: "2026-07-09T19:52:00.000Z",
+  lastObservedAt: "2026-07-09T19:57:00.000Z",
+  remoteObservedAt: "2026-07-09T19:56:59.000Z",
+  terminalAt: "2026-07-09T19:57:00.000Z",
+  updatedAt: "2026-07-09T19:57:00.000Z",
 })
 
-const projection = Schema.decodeUnknownSync(SarahFleetOwnerProjection)({
-  schema: "sarah.fleet_owner_projection.v1",
-  run: {
-    runRef: "fleet.run.receipt.fixture",
-    name: "Fleet run",
-    status: "completed",
-    desiredSlots: 3,
-    workerKind: "auto",
-    startedAt: "2026-07-09T19:30:00.000Z",
-    counters: {
-      workUnitsTotal: 3,
-      activeAssignments: 0,
-      completedAssignments: 3,
-      failedAssignments: 0,
-      blockedAssignments: 0,
-    },
-    updatedAt: "2026-07-09T20:00:00.000Z",
-    availableControls: [],
-    blockers: [],
+const grok = decodeFleetAttemptEntity({
+  attemptRef: "attempt.receipt.grok",
+  workUnitRef: "unit.receipt.grok",
+  intakeClaimRef: CLAIM_REF,
+  pylonRef: "pylon-owner-1",
+  workerKind: "grok",
+  state: "succeeded",
+  progressClass: "terminal",
+  assignmentRef: null,
+  accountRefHash: `account.pylon.grok.${"4".repeat(24)}`,
+  capacityClass: "owner_local",
+  marginalCostClass: "api_metered",
+  verification: {
+    truth: "passed",
+    verifierRef: "verifier.receipt.grok",
+    evidenceRefs: ["test.receipt.grok"],
   },
-  workUnits: [
-    {
-      workUnitRef: "#8637",
-      assignmentRef: "assignment.receipt.codex",
-      name: "#8637",
-      assignmentStatus: "accepted_work",
-      workerRef: "worker.receipt.codex",
-      progress: completedProgress("Codex"),
-      approvalRefs: [],
-      verification: verification("assignment.receipt.codex"),
-      closeout: closeout("assignment.receipt.codex"),
-      summary: "Work unit accepted work",
-      updatedAt: "2026-07-09T20:00:00.000Z",
-    },
-    {
-      workUnitRef: "#8633",
-      assignmentRef: "assignment.receipt.claude",
-      name: "#8633",
-      assignmentStatus: "accepted_work",
-      workerRef: "worker.receipt.claude",
-      progress: completedProgress("Claude"),
-      approvalRefs: ["approval.receipt.claude"],
-      verification: verification("assignment.receipt.claude"),
-      closeout: closeout("assignment.receipt.claude"),
-      summary: "Work unit accepted work",
-      updatedAt: "2026-07-09T20:00:00.000Z",
-    },
-    {
-      workUnitRef: "#8639",
-      assignmentRef: "assignment.receipt.grok",
-      name: "#8639",
-      assignmentStatus: "accepted_work",
-      workerRef: "worker.receipt.grok",
-      progress: completedProgress("Grok"),
-      approvalRefs: [],
-      verification: verification("assignment.receipt.grok"),
-      closeout: closeout("assignment.receipt.grok"),
-      summary: "Work unit accepted work",
-      updatedAt: "2026-07-09T20:00:00.000Z",
-    },
-  ],
-  workers: [
-    {
-      workerRef: "worker.receipt.codex",
-      name: "Codex worker",
-      phase: "completed",
-      harnessKind: "codex",
-      workUnitRef: "#8637",
-      accountRefHash: "account.pylon.codex.11111111",
-      progress: completedProgress("Codex"),
-      approvalRefs: [],
-      updatedAt: "2026-07-09T20:00:00.000Z",
-    },
-    {
-      workerRef: "worker.receipt.claude",
-      name: "Claude worker",
-      phase: "completed",
-      harnessKind: "claude",
-      workUnitRef: "#8633",
-      accountRefHash: "account.pylon.claude.22222222",
-      progress: completedProgress("Claude"),
-      approvalRefs: ["approval.receipt.claude"],
-      updatedAt: "2026-07-09T20:00:00.000Z",
-    },
-    {
-      workerRef: "worker.receipt.grok",
-      name: "Grok worker",
-      phase: "completed",
-      harnessKind: "grok",
-      workUnitRef: "#8639",
-      accountRefHash: "account.pylon.grok.33333333",
-      progress: completedProgress("Grok"),
-      approvalRefs: [],
-      updatedAt: "2026-07-09T20:00:00.000Z",
-    },
-  ],
-  approvals: [
-    {
-      approvalRef: "approval.receipt.claude",
-      status: "allowed",
-      workerRef: "worker.receipt.claude",
-      workUnitRef: "#8633",
-      toolClass: "write_file",
-      openedAt: "2026-07-09T19:55:00.000Z",
-      decidedAt: "2026-07-09T19:56:00.000Z",
-      availableDecisions: [],
-      summary: "Approval allowed",
-      updatedAt: "2026-07-09T19:56:00.000Z",
-    },
-  ],
-  projectedAt: "2026-07-09T20:00:00.000Z",
+  artifactRefs: ["artifact.receipt.grok"],
+  proofRefs: ["proof.receipt.grok"],
+  authorityReceiptRefs: ["authority.receipt.grok"],
+  closeoutRef: "closeout.receipt.grok",
+  usageEvidence: {
+    schema: "openagents.pylon.fleet_run_usage_evidence.v1",
+    truth: "not_measured",
+    harnessKind: "grok",
+    evidenceRef: "evidence.receipt.grok",
+    assignmentRef: "assignment.receipt.grok.usage",
+    receiptRef: "receipt.receipt.grok",
+    tokenUsageRefs: [],
+    caveatRefs: ["caveat.receipt.grok.not_measured"],
+  },
+  blockerRefs: [],
+  lastEventRef: `event.pylon.fleet_run.${"4".repeat(24)}`,
+  startedAt: "2026-07-09T19:53:00.000Z",
+  lastObservedAt: "2026-07-09T19:58:00.000Z",
+  remoteObservedAt: "2026-07-09T19:57:59.000Z",
+  terminalAt: "2026-07-09T19:58:00.000Z",
+  updatedAt: "2026-07-09T19:58:00.000Z",
 })
 
-const completeEvidence = [
-  {
-    assignmentRef: "assignment.receipt.codex",
-    verification: {
-      status: "passed" as const,
-      verificationRef: "verification.receipt.codex",
-    },
-    changes: {
-      changeClass: "source_and_tests",
-      artifactRef: "artifact.public.receipt.codex",
-    },
-    capacity: {
-      capacityClass: "owner_local",
-      marginalCostClass: "subscription" as const,
-    },
-    authority: {
-      authorityClass: "coding_session_control",
-      authorityRef: "authority.owner.receipt.codex",
-    },
-  },
-  {
-    assignmentRef: "assignment.receipt.claude",
-    verification: {
-      status: "passed" as const,
-      verificationRef: "verification.receipt.claude",
-    },
-    changes: {
-      changeClass: "source_and_tests",
-      artifactRef: "artifact.public.receipt.claude",
-    },
-    capacity: {
-      capacityClass: "owner_local",
-      marginalCostClass: "subscription" as const,
-    },
-    authority: {
-      authorityClass: "approval_resolution",
-      authorityRef: "authority.owner.receipt.claude",
-    },
-  },
-  {
-    assignmentRef: "assignment.receipt.grok",
-    verification: {
-      status: "passed" as const,
-      verificationRef: "verification.receipt.grok",
-    },
-    changes: {
-      changeClass: "source_and_tests",
-      artifactRef: "artifact.public.receipt.grok",
-    },
-    capacity: {
-      capacityClass: "owner_local",
-      marginalCostClass: "free" as const,
-    },
-    authority: {
-      authorityClass: "coding_session_control",
-      authorityRef: "authority.owner.receipt.grok",
-    },
-  },
+const running = decodeFleetAttemptEntity({
+  attemptRef: "attempt.receipt.running",
+  workUnitRef: "unit.receipt.running",
+  intakeClaimRef: CLAIM_REF,
+  pylonRef: "pylon-owner-1",
+  workerKind: "codex",
+  state: "running",
+  progressClass: "active",
+  assignmentRef: null,
+  accountRefHash: null,
+  capacityClass: "owner_local",
+  marginalCostClass: "not_measured",
+  verification: { truth: "pending" },
+  artifactRefs: [],
+  proofRefs: [],
+  authorityReceiptRefs: [],
+  closeoutRef: null,
+  usageEvidence: { truth: "pending" },
+  blockerRefs: [],
+  lastEventRef: `event.pylon.fleet_run.${"5".repeat(24)}`,
+  startedAt: "2026-07-09T19:59:00.000Z",
+  lastObservedAt: "2026-07-09T19:59:59.000Z",
+  remoteObservedAt: "2026-07-09T19:59:58.000Z",
+  terminalAt: null,
+  updatedAt: "2026-07-09T19:59:59.000Z",
+})
+
+const attemptFixtures = [
+  succeeded,
+  failedWithoutVerification,
+  evidencePending,
+  grok,
+  running,
 ]
 
-describe("FC-3 one-minute coding closeout receipt", () => {
-  test("the tuple contract fixes the comprehension order", () => {
-    const [receipt] = projectSarahCodingCloseoutReceipts({
-      projection,
-      evidence: completeEvidence,
-    })
-    expect(receipt?.sections.map((section) => section.kind)).toEqual(
-      [...SARAH_CODING_CLOSEOUT_SECTION_ORDER],
-    )
-    expect(Schema.decodeUnknownSync(SarahCodingCloseoutReceipt)(receipt)).toEqual(
-      receipt,
-    )
-  })
+const workUnits = attemptFixtures.map((attempt) =>
+  decodeFleetWorkUnitEntity({
+    workUnitRef: attempt.workUnitRef,
+    issueRef:
+      attempt.attemptRef === succeeded.attemptRef
+        ? "#8639"
+        : attempt.attemptRef === grok.attemptRef
+          ? "#8650"
+          : null,
+    dependsOnRefs: [],
+    state:
+      attempt.state === "evidence_pending"
+        ? "verification_pending"
+        : attempt.state,
+    latestAttemptRef: attempt.attemptRef,
+    acceptedAttemptRef:
+      attempt.state === "succeeded" ? attempt.attemptRef : null,
+    updatedAt: attempt.updatedAt,
+  }),
+)
 
-  test("maps complete Codex, Claude, and Grok closeout cards", () => {
-    const receipts = projectSarahCodingCloseoutReceipts({
-      projection,
-      evidence: completeEvidence,
-    })
+const run = decodeFleetRunEntity({
+  runId: "fleet.run.receipt.fixture",
+  status: "running",
+  desiredSlots: 3,
+  workerKind: "auto",
+  startedAt: "2026-07-09T19:49:00.000Z",
+  counters: {
+    workUnitsTotal: 5,
+    activeAssignments: 1,
+    completedAssignments: 2,
+    failedAssignments: 1,
+    blockedAssignments: 1,
+  },
+  updatedAt: "2026-07-09T19:59:59.000Z",
+})
 
-    expect(receipts).toHaveLength(3)
-    expect(
-      receipts.map((receipt) => receipt.sections[3].harnessKind),
-    ).toEqual(["claude", "codex", "grok"])
-    expect(
-      receipts.map((receipt) => receipt.sections[3].marginalCostClass),
-    ).toEqual(["subscription", "subscription", "free"])
-    for (const receipt of receipts) {
-      expect(receipt.sections[0].status).toBe("succeeded")
-      expect(receipt.sections[1].status).toBe("passed")
-      expect(receipt.sections[1].verificationRef).not.toBeNull()
-      expect(receipt.sections[2].status).toBe("reported")
-      expect(receipt.sections[2].artifactRef).not.toBeNull()
-      expect(receipt.sections[3].status).toBe("reported")
-      expect(receipt.sections[4].authorityStatus).toBe("reported")
-      expect(receipt.sections[5].next.action).toBe("open_artifact")
+const projection = projectSarahFleetOwnerRun(
+  {
+    run,
+    workUnits,
+    attempts: attemptFixtures,
+    assignments: [],
+    workers: [],
+    approvals: [],
+    inboxFlags: [],
+  },
+  NOW,
+)
+
+const receipts = () => projectSarahCodingCloseoutReceipts({ projection })
+
+describe("FC-3 attempt-backed coding closeout receipt", () => {
+  test("uses exact attempt identity and the fixed comprehension order", () => {
+    const result = receipts()
+    expect(result).toHaveLength(4)
+    for (const receipt of result) {
+      expect(receipt.cardRef).toBe(receipt.attemptRef)
+      expect(receipt.sections.map((section) => section.kind)).toEqual([
+        ...SARAH_CODING_CLOSEOUT_SECTION_ORDER,
+      ])
+      expect(Schema.decodeUnknownSync(SarahCodingCloseoutReceipt)(receipt)).toEqual(
+        receipt,
+      )
     }
-    expect(receipts[0]?.sections[4].approvalStatus).toBe("allowed")
-    expect(receipts[1]?.sections[4].approvalStatus).toBe("not_required")
+    const codex = result.find(
+      (receipt) => receipt.attemptRef === succeeded.attemptRef,
+    )!
+    expect(codex.workUnitRef).toBe("unit.receipt.codex")
+    expect(codex.workUnitRef).not.toBe("#8639")
+    expect(codex.assignmentRef).toBe("assignment.receipt.codex")
   })
 
-  test("missing evidence remains not reported and cost remains not measured", () => {
-    const singleWorkUnitProjection = {
-      ...projection,
-      workUnits: [projection.workUnits[0]!],
-      workers: [projection.workers[0]!],
-      approvals: [],
-    } as SarahFleetOwnerProjectionType
-    const [receipt] = projectSarahCodingCloseoutReceipts({
-      projection: singleWorkUnitProjection,
-      evidence: [{ assignmentRef: "assignment.receipt.codex" }],
-    })
+  test("emits no receipt for running attempts", () => {
+    expect(
+      receipts().some((receipt) => receipt.attemptRef === running.attemptRef),
+    ).toBe(false)
+  })
 
-    expect(receipt?.sections[1]).toMatchObject({
-      status: "not_reported",
-      verificationRef: "assignment.receipt.codex",
+  test("claims pass and success only for a fully proven succeeded attempt", () => {
+    const codex = receipts().find(
+      (receipt) => receipt.attemptRef === succeeded.attemptRef,
+    )!
+    expect(codex.sections[0]).toMatchObject({
+      status: "succeeded",
+      attemptState: "succeeded",
+      closeoutRef: "closeout.receipt.codex",
     })
-    expect(receipt?.sections[2]).toEqual({
-      kind: "changes",
-      status: "not_reported",
-      changeClass: null,
-      artifactRef: null,
-      summary: "Changes not reported",
+    expect(codex.sections[1]).toEqual({
+      kind: "verification",
+      status: "passed",
+      verificationRef: "verifier.receipt.codex",
+      evidenceRefs: ["test.receipt.codex"],
+      summary: "Verification passed",
     })
-    expect(receipt?.sections[3]).toMatchObject({
-      status: "not_reported",
-      capacityClass: null,
-      marginalCostClass: "not_measured",
-    })
-    expect(receipt?.sections[4]).toMatchObject({
-      approvalStatus: "not_required",
-      authorityStatus: "not_reported",
-      authorityRef: null,
-    })
-
-    const [capacityWithoutCost] = projectSarahCodingCloseoutReceipts({
-      projection: singleWorkUnitProjection,
-      evidence: [
-        {
-          assignmentRef: "assignment.receipt.codex",
-          capacity: { capacityClass: "owner_local" },
-        },
-      ],
-    })
-    expect(capacityWithoutCost?.sections[3]).toMatchObject({
+    expect(codex.sections[2]).toMatchObject({
       status: "reported",
-      capacityClass: "owner_local",
-      marginalCostClass: "not_measured",
+      artifactRefs: ["artifact.receipt.codex"],
+      proofRefs: ["proof.receipt.codex"],
+    })
+    expect(codex.sections[3]).toMatchObject({
+      status: "reported",
+      marginalCostClass: "subscription",
+      usageEvidence: { truth: "exact", totalTokens: 13 },
+    })
+    expect(codex.sections[4]).toMatchObject({
+      authorityStatus: "reported",
+      authorityReceiptRefs: ["authority.receipt.codex"],
     })
   })
 
-  test("unsafe raw coding fields cannot cross evidence decoding", () => {
-    const unsafeEvidence = {
-      ...completeEvidence[0]!,
-      rawPrompt: "PRIVATE PROMPT SENTINEL",
-      rawDiff: "PRIVATE DIFF SENTINEL",
-      command: "PRIVATE COMMAND SENTINEL",
-      path: "/Users/alice/private/repo",
-      output: "PRIVATE OUTPUT SENTINEL",
-      changes: {
-        ...completeEvidence[0]!.changes,
-        rawDiff: "PRIVATE NESTED DIFF SENTINEL",
-        path: "/Users/alice/private/repo",
-      },
-    }
-    const [receipt] = projectSarahCodingCloseoutReceipts({
-      projection: {
-        ...projection,
-        workUnits: [projection.workUnits[0]!],
-        workers: [projection.workers[0]!],
-        approvals: [],
-      } as SarahFleetOwnerProjectionType,
-      evidence: [unsafeEvidence],
+  test("keeps failed and evidence-pending terminal states honest", () => {
+    const failed = receipts().find(
+      (receipt) => receipt.attemptRef === failedWithoutVerification.attemptRef,
+    )!
+    expect(failed.sections[0].status).toBe("failed")
+    expect(failed.sections[1]).toMatchObject({
+      status: "not_reported",
+      verificationRef: null,
     })
-    const json = JSON.stringify(receipt)
+    expect(failed.sections[2]).toMatchObject({
+      status: "not_reported",
+      artifactRefs: [],
+      proofRefs: ["proof.receipt.failed"],
+    })
 
-    expect(json).not.toMatch(/rawPrompt|rawDiff|command|path|output/)
-    expect(json).not.toMatch(
-      /PRIVATE PROMPT SENTINEL|PRIVATE DIFF SENTINEL|PRIVATE COMMAND SENTINEL|PRIVATE OUTPUT SENTINEL|\/Users\/alice/,
-    )
+    const pending = receipts().find(
+      (receipt) => receipt.attemptRef === evidencePending.attemptRef,
+    )!
+    expect(pending.sections[0]).toMatchObject({
+      status: "blocked",
+      attemptState: "evidence_pending",
+    })
+    expect(pending.sections[1].status).toBe("not_reported")
+    expect(pending.sections[3].usageEvidence.truth).toBe("pending")
+  })
+
+  test("preserves Grok not-measured receipt and caveat evidence with no assignment", () => {
+    const grokReceipt = receipts().find(
+      (receipt) => receipt.attemptRef === grok.attemptRef,
+    )!
+    expect(grokReceipt.assignmentRef).toBeNull()
+    expect(grokReceipt.sections[0].status).toBe("succeeded")
+    expect(grokReceipt.sections[3]).toMatchObject({
+      harnessKind: "grok",
+      marginalCostClass: "api_metered",
+      usageEvidence: {
+        truth: "not_measured",
+        receiptRef: "receipt.receipt.grok",
+        caveatRefs: ["caveat.receipt.grok.not_measured"],
+      },
+    })
+  })
+
+  test("rejects the legacy assignment-keyed evidence channel", () => {
     expect(() =>
-      Schema.decodeUnknownSync(SarahCodingCloseoutEvidence)({
-        assignmentRef: "assignment.receipt.bad",
-        changes: {
-          changeClass: "source_and_tests",
-          artifactRef: "/Users/alice/private/repo",
-        },
+      projectSarahCodingCloseoutReceipts({
+        projection,
+        evidence: [
+          {
+            assignmentRef: "assignment.receipt.failed",
+            verification: { status: "passed" },
+          },
+        ],
       }),
-    ).toThrow()
+    ).toThrow("coding receipt input must contain only projection")
+  })
+
+  test("schema refuses fallback card identity and private graph refs", () => {
+    const codex = receipts().find(
+      (receipt) => receipt.attemptRef === succeeded.attemptRef,
+    )!
     expect(() =>
       Schema.decodeUnknownSync(SarahCodingCloseoutReceipt)({
-        ...receipt,
-        workUnitRef: "/Users/alice/private/repo",
+        ...codex,
+        cardRef: codex.sections[0].closeoutRef,
+      }),
+    ).toThrow("coding receipt card identity must equal its attempt ref")
+    expect(() =>
+      Schema.decodeUnknownSync(SarahCodingCloseoutReceipt)({
+        ...codex,
+        assignmentRef: "/Users/operator/private/repo",
       }),
     ).toThrow()
+    expect(JSON.stringify(receipts())).not.toMatch(
+      /rawPrompt|rawDiff|workspacePath|\/Users\//,
+    )
   })
 })

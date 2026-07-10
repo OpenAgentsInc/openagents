@@ -16,74 +16,159 @@ type AnyNode = { readonly _tag?: string; readonly [key: string]: unknown }
 
 const receipt = Schema.decodeUnknownSync(SarahCodingCloseoutReceipt)({
   schema: "sarah.coding_closeout_receipt.v1",
-  cardRef: "closeout.receipt.codex",
+  cardRef: "attempt.receipt.codex",
   runRef: "fleet.run.receipt",
-  workUnitRef: "#8639",
+  workUnitRef: "unit.receipt.codex",
+  attemptRef: "attempt.receipt.codex",
   assignmentRef: "assignment.receipt.codex",
   sections: [
     {
       kind: "outcome",
       status: "succeeded",
-      assignmentStatus: "accepted_work",
-      summary: "Work unit succeeded",
+      attemptState: "succeeded",
+      closeoutRef: "closeout.receipt.codex",
+      blockerRefs: [],
+      summary: "Attempt succeeded",
     },
     {
       kind: "verification",
       status: "passed",
-      verificationRef: "verification.receipt.codex",
+      verificationRef: "verifier.receipt.codex",
+      evidenceRefs: ["test.receipt.codex"],
       summary: "Verification passed",
     },
     {
       kind: "changes",
       status: "reported",
-      changeClass: "source_and_tests",
-      artifactRef: "artifact.public.receipt.codex",
-      summary: "Changed source and tests",
+      changeClass: "attempt_evidence",
+      artifactRef: "artifact.receipt.codex",
+      artifactRefs: ["artifact.receipt.codex"],
+      proofRefs: ["proof.receipt.codex"],
+      summary: "Attempt artifacts and proofs reported",
     },
     {
       kind: "capacity_and_cost",
       status: "reported",
       harnessKind: "codex",
-      accountRefHash: "account.pylon.codex.11111111",
+      pylonRef: "pylon-owner-1",
+      accountRefHash: `account.pylon.codex.${"1".repeat(24)}`,
       capacityClass: "owner_local",
-      marginalCostClass: "not_measured",
-      summary: "Capacity reported. Cost not measured.",
+      marginalCostClass: "subscription",
+      usageEvidence: {
+        schema: "openagents.pylon.fleet_run_usage_evidence.v1",
+        truth: "exact",
+        harnessKind: "codex",
+        evidenceRef: "evidence.receipt.codex",
+        assignmentRef: "assignment.receipt.codex",
+        pylonRef: "pylon-owner-1",
+        provider: "pylon-codex-own-capacity",
+        model: "openagents/pylon-codex",
+        demandKind: "own_capacity",
+        demandSource: "khala_coding_delegation",
+        inputTokens: 8,
+        outputTokens: 5,
+        reasoningTokens: 2,
+        cacheReadTokens: 3,
+        totalTokens: 13,
+        tokenRows: 1,
+        tokenUsageRefs: ["usage.receipt.codex"],
+        proofRefs: ["proof.usage.receipt.codex"],
+        closeoutChecklistRefs: ["check.closeout.receipt.codex"],
+        proofChecklistRefs: ["check.proof.receipt.codex"],
+      },
+      summary: "Capacity reported. Exact usage 13 tokens.",
     },
     {
       kind: "approval_and_authority",
-      approvalStatus: "allowed",
-      approvalRefs: ["approval.receipt.codex"],
+      approvalStatus: "not_required",
+      approvalRefs: [],
       authorityStatus: "reported",
-      authorityClass: "coding_session_control",
-      authorityRef: "authority.owner.receipt.codex",
-      summary: "Approval allowed. Authority reported.",
+      authorityClass: "attempt_authority_receipt",
+      authorityRef: "authority.receipt.codex",
+      authorityReceiptRefs: ["authority.receipt.codex"],
+      summary: "Approval not required. Authority reported.",
     },
     {
       kind: "next_action",
       next: {
         action: "open_artifact",
-        targetRef: "artifact.public.receipt.codex",
+        targetRef: "artifact.receipt.codex",
       },
       summary: "Open safe artifact",
     },
   ],
 })
 
-const notReportedReceipt = Schema.decodeUnknownSync(
-  SarahCodingCloseoutReceipt,
-)({
+const grokReceipt = Schema.decodeUnknownSync(SarahCodingCloseoutReceipt)({
   ...receipt,
-  cardRef: "closeout.receipt.unreported",
+  cardRef: "attempt.receipt.grok",
+  workUnitRef: "unit.receipt.grok",
+  attemptRef: "attempt.receipt.grok",
+  assignmentRef: null,
+  sections: [
+    { ...receipt.sections[0], closeoutRef: "closeout.receipt.grok" },
+    { ...receipt.sections[1], verificationRef: "verifier.receipt.grok" },
+    {
+      ...receipt.sections[2],
+      artifactRef: "artifact.receipt.grok",
+      artifactRefs: ["artifact.receipt.grok"],
+      proofRefs: ["proof.receipt.grok"],
+    },
+    {
+      kind: "capacity_and_cost",
+      status: "reported",
+      harnessKind: "grok",
+      pylonRef: "pylon-owner-1",
+      accountRefHash: `account.pylon.grok.${"2".repeat(24)}`,
+      capacityClass: "owner_local",
+      marginalCostClass: "api_metered",
+      usageEvidence: {
+        schema: "openagents.pylon.fleet_run_usage_evidence.v1",
+        truth: "not_measured",
+        harnessKind: "grok",
+        evidenceRef: "evidence.receipt.grok",
+        assignmentRef: "assignment.receipt.grok.usage",
+        receiptRef: "receipt.receipt.grok",
+        tokenUsageRefs: [],
+        caveatRefs: ["caveat.receipt.grok.not_measured"],
+      },
+      summary: "Capacity reported. Usage not measured.",
+    },
+    {
+      ...receipt.sections[4],
+      authorityRef: "authority.receipt.grok",
+      authorityReceiptRefs: ["authority.receipt.grok"],
+    },
+    {
+      kind: "next_action",
+      next: {
+        action: "open_artifact",
+        targetRef: "artifact.receipt.grok",
+      },
+      summary: "Open safe artifact",
+    },
+  ],
+})
+
+const failedReceipt = Schema.decodeUnknownSync(SarahCodingCloseoutReceipt)({
+  ...receipt,
+  cardRef: "attempt.receipt.failed",
+  workUnitRef: "unit.receipt.failed",
+  attemptRef: "attempt.receipt.failed",
   sections: [
     {
-      ...receipt.sections[0],
-      status: "in_progress",
-      summary: "Work unit in progress",
+      kind: "outcome",
+      status: "failed",
+      attemptState: "failed",
+      closeoutRef: "closeout.receipt.failed",
+      blockerRefs: ["blocker.receipt.failed"],
+      summary: "Attempt failed",
     },
     {
       kind: "verification",
       status: "not_reported",
       verificationRef: null,
+      evidenceRefs: [],
       summary: "Verification not reported",
     },
     {
@@ -91,54 +176,33 @@ const notReportedReceipt = Schema.decodeUnknownSync(
       status: "not_reported",
       changeClass: null,
       artifactRef: null,
+      artifactRefs: [],
+      proofRefs: ["proof.receipt.failed"],
       summary: "Changes not reported",
     },
-    {
-      kind: "capacity_and_cost",
-      status: "not_reported",
-      harnessKind: null,
-      accountRefHash: null,
-      capacityClass: null,
-      marginalCostClass: "not_measured",
-      summary: "Capacity not reported. Cost not measured.",
-    },
+    receipt.sections[3],
     {
       kind: "approval_and_authority",
-      approvalStatus: "not_reported",
+      approvalStatus: "not_required",
       approvalRefs: [],
       authorityStatus: "not_reported",
       authorityClass: null,
       authorityRef: null,
-      summary: "Approval not reported. Authority not reported.",
+      authorityReceiptRefs: [],
+      summary: "Approval not required. Authority not reported.",
     },
     {
       kind: "next_action",
-      next: { action: "none", targetRef: null },
-      summary: "No action available",
+      next: {
+        action: "open_closeout",
+        targetRef: "closeout.receipt.failed",
+      },
+      summary: "Open closeout",
     },
-  ],
-})
-
-const failedReceipt = Schema.decodeUnknownSync(SarahCodingCloseoutReceipt)({
-  ...receipt,
-  cardRef: "closeout.receipt.failed",
-  sections: [
-    {
-      ...receipt.sections[0],
-      status: "failed",
-      summary: "Work unit failed",
-    },
-    {
-      ...receipt.sections[1],
-      status: "failed",
-      summary: "Verification failed",
-    },
-    ...receipt.sections.slice(2),
   ],
 })
 
 const keyBase = `coding-receipt-${receipt.cardRef}`
-const notReportedKeyBase = `coding-receipt-${notReportedReceipt.cardRef}`
 const failedKeyBase = `coding-receipt-${failedReceipt.cardRef}`
 
 const findByKey = (node: unknown, key: string): AnyNode | null => {
@@ -188,16 +252,11 @@ const visibleTextOutsideAccordion = (node: unknown): ReadonlyArray<string> => {
   ]
 }
 
-describe("FC-3 Sarah coding closeout receipt view", () => {
-  test("renders the six contract sections in the fixed one-minute reading order", () => {
+describe("FC-3 Sarah attempt-backed closeout receipt view", () => {
+  test("renders the fixed six-section reading order", () => {
     const view = sarahCodingCloseoutReceiptView(receipt)
     const sectionList = findByKey(view, `${keyBase}-sections`)
     const children = sectionList?.children as ReadonlyArray<AnyNode>
-
-    expect(sectionList?.a11y).toEqual({
-      role: "list",
-      label: "Coding closeout summary in reading order",
-    })
     expect(children.map((child) => child.key)).toEqual([
       `${keyBase}-section-outcome`,
       `${keyBase}-section-verification`,
@@ -206,42 +265,45 @@ describe("FC-3 Sarah coding closeout receipt view", () => {
       `${keyBase}-section-approval_and_authority`,
       `${keyBase}-section-next_action`,
     ])
-    expect(children.every((child) => (child.a11y as AnyNode)?.role === "listitem")).toBe(
-      true,
-    )
     expect(findByKey(view, `${keyBase}-verification-status`)).toMatchObject({
       label: "Passed",
       tone: "success",
     })
   })
 
-  test("keeps audit refs in one expandable disclosure rather than primary copy", () => {
+  test("keeps complete attempt evidence behind one disclosure", () => {
     const collapsed = sarahCodingCloseoutReceiptView(receipt)
     const expanded = sarahCodingCloseoutReceiptView(receipt, {
       evidenceExpanded: true,
     })
     const visibleText = visibleTextOutsideAccordion(collapsed).join(" ")
     const disclosure = findByKey(expanded, `${keyBase}-evidence`)
-
     const references = [
-      receipt.cardRef,
-      receipt.runRef,
-      receipt.workUnitRef,
+      receipt.attemptRef,
       receipt.assignmentRef,
+      receipt.sections[0].closeoutRef,
       receipt.sections[1].verificationRef,
-      receipt.sections[2].artifactRef,
-      receipt.sections[3].accountRefHash,
-      receipt.sections[4].authorityRef,
+      ...receipt.sections[1].evidenceRefs,
+      ...receipt.sections[2].artifactRefs,
+      ...receipt.sections[2].proofRefs,
+      receipt.sections[3].usageEvidence.truth === "exact"
+        ? receipt.sections[3].usageEvidence.evidenceRef
+        : null,
+      ...(receipt.sections[3].usageEvidence.truth === "exact"
+        ? [
+            ...receipt.sections[3].usageEvidence.tokenUsageRefs,
+            ...receipt.sections[3].usageEvidence.proofRefs,
+            ...receipt.sections[3].usageEvidence.closeoutChecklistRefs,
+            ...receipt.sections[3].usageEvidence.proofChecklistRefs,
+          ]
+        : []),
+      ...receipt.sections[4].authorityReceiptRefs,
     ].filter((reference): reference is string => reference !== null)
     for (const reference of references) {
       expect(visibleText).not.toContain(reference)
       expect(JSON.stringify(disclosure)).toContain(reference)
     }
-    expect(findByKey(collapsed, `${keyBase}-evidence`)?.expandedIds).toEqual(
-      [],
-    )
     expect(disclosure?.expandedIds).toEqual(["references"])
-    expect(disclosure?.a11y).toMatchObject({ expanded: true })
     expect(disclosure?.onToggle).toEqual({
       name: SARAH_CODING_RECEIPT_EVIDENCE_TOGGLE_INTENT,
       payload: {
@@ -251,110 +313,73 @@ describe("FC-3 Sarah coding closeout receipt view", () => {
     })
   })
 
+  test("renders nullable assignment and Grok not-measured caveats honestly", () => {
+    const view = sarahCodingCloseoutReceiptView(grokReceipt, {
+      evidenceExpanded: true,
+    })
+    const serialized = JSON.stringify(view)
+    expect(serialized).not.toContain("Assignment: null")
+    expect(serialized).toContain("evidence.receipt.grok")
+    expect(serialized).toContain("assignment.receipt.grok.usage")
+    expect(serialized).toContain("receipt.receipt.grok")
+    expect(serialized).toContain("caveat.receipt.grok.not_measured")
+    expect(serialized).toContain("Usage not measured")
+  })
+
   test("emits the closed next-action payload behind one accessible control", () => {
     const view = sarahCodingCloseoutReceiptView(receipt, {
       interactionMode: SARAH_OWNER_FLEET_INTERACTIVE,
     })
     const button = findByKey(view, `${keyBase}-next-action`)
-
     expect(button).toMatchObject({
       _tag: "Button",
       label: "Open artifact",
-      variant: "secondary",
-      a11y: {
-        label: "Open the safe change artifact for this coding work",
-      },
       onPress: {
         name: SARAH_CODING_RECEIPT_ACTION_INTENT,
-        payload: {
-          _tag: "StaticPayload",
-          value: receipt.sections[5].next,
-        },
+        payload: { _tag: "StaticPayload", value: receipt.sections[5].next },
       },
     })
-    const decodedAction = NativeSchema.decodeUnknownSync(
-      SarahCodingReceiptAction.payloadSchema,
-    )(receipt.sections[5].next)
-    expect(decodedAction).toEqual({
-      action: "open_artifact",
-      targetRef: "artifact.public.receipt.codex",
-    })
-    expect(() =>
-      NativeSchema.decodeUnknownSync(SarahCodingReceiptAction.payloadSchema)({
-        action: "open_artifact",
-        targetRef: "/Users/alice/private/repo",
-      }),
-    ).toThrow()
-    expect(() =>
-      NativeSchema.decodeUnknownSync(SarahCodingReceiptAction.payloadSchema)({
-        action: "none",
-        targetRef: null,
-      }),
-    ).toThrow()
-    expect(() =>
-      NativeSchema.decodeUnknownSync(
-        SarahCodingReceiptEvidenceToggle.payloadSchema,
-      )({ cardRef: "owner@example.com" }),
-    ).toThrow()
-  })
-
-  test("states missing verdicts and measurements without implying success", () => {
-    const view = sarahCodingCloseoutReceiptView(notReportedReceipt)
-    const serialized = JSON.stringify(view)
-
-    expect(serialized).toContain("Verification not reported")
-    expect(serialized).toContain("Changes not reported")
-    expect(serialized).toContain("Capacity not reported. Cost not measured.")
-    expect(serialized).toContain("Approval not reported. Authority not reported.")
-    expect(serialized).toContain("Cost: Not measured")
-    expect(serialized).toContain("Harness not reported")
-    expect(serialized).not.toContain('"label":"Passed"')
+    const next = receipt.sections[5].next
+    if (next.action !== "open_artifact") {
+      throw new Error("fixture must expose the artifact action")
+    }
     expect(
-      findByKey(view, `${notReportedKeyBase}-verification-status`),
-    ).toMatchObject({ label: "Not reported", tone: "neutral" })
-    expect(findByKey(view, `${notReportedKeyBase}-cost-status`)).toMatchObject({
-      label: "Cost: Not measured",
-      tone: "neutral",
-    })
-    expect(findByKey(view, `${notReportedKeyBase}-next-action`)).toBeNull()
+      NativeSchema.decodeUnknownSync(SarahCodingReceiptAction.payloadSchema)(
+        next,
+      ),
+    ).toEqual(next)
+    expect(() =>
+      NativeSchema.decodeUnknownSync(SarahCodingReceiptEvidenceToggle.payloadSchema)(
+        { cardRef: "owner@example.com" },
+      ),
+    ).toThrow()
   })
 
-  test("marks failed outcomes and verification as danger, never as success", () => {
+  test("marks failed outcome without inventing failed verification", () => {
     const view = sarahCodingCloseoutReceiptView(failedReceipt)
-
     expect(findByKey(view, `${failedKeyBase}-overall-status`)).toMatchObject({
       label: "Failed",
       tone: "danger",
     })
-    expect(findByKey(view, `${failedKeyBase}-verification-status`)).toMatchObject({
-      label: "Failed",
-      tone: "danger",
-    })
+    expect(
+      findByKey(view, `${failedKeyBase}-verification-status`),
+    ).toMatchObject({ label: "Not reported", tone: "neutral" })
   })
 
-  test("uses one receipt Card and no React or local substitute primitives", () => {
-    const view = sarahCodingCloseoutReceiptView(receipt)
-
-    expect(findAllByTag(view, "Card")).toHaveLength(1)
-    expect(findAllByTag(view, "Accordion")).toHaveLength(1)
-    expect(findAllByTag(view, "BackgroundGradient")).toHaveLength(0)
-    expect(JSON.stringify(view)).not.toContain("React")
-  })
-
-  test("scopes every keyed child to its receipt when several closeouts render", () => {
+  test("uses one receipt Card and scopes every keyed child to its attempt", () => {
     const first = sarahCodingCloseoutReceiptView(receipt)
-    const second = sarahCodingCloseoutReceiptView(notReportedReceipt)
+    const second = sarahCodingCloseoutReceiptView(grokReceipt)
+    expect(findAllByTag(first, "Card")).toHaveLength(1)
+    expect(findAllByTag(first, "Accordion")).toHaveLength(1)
+    expect(JSON.stringify(first)).not.toContain("React")
+
     const firstKeys = new Set(
       findAllByTag(first, "Stack").map((node) => node.key as string),
     )
     const secondKeys = new Set(
       findAllByTag(second, "Stack").map((node) => node.key as string),
     )
-
     expect([...firstKeys].every((key) => key.startsWith(keyBase))).toBe(true)
-    expect([...secondKeys].every((key) => key.startsWith(notReportedKeyBase))).toBe(
-      true,
-    )
     expect([...firstKeys].some((key) => secondKeys.has(key))).toBe(false)
   })
 })

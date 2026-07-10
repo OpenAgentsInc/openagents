@@ -6,13 +6,18 @@
  */
 import { describe, expect, test } from "bun:test"
 import { readFileSync } from "node:fs"
-import { Schema } from "effect"
 import { Effect as NativeEffect } from "@effect-native/core/effect"
-
 import {
-  projectSarahCodingCloseoutReceipts,
-} from "../contracts/coding-closeout-receipt.ts"
-import { SarahFleetOwnerProjection } from "../contracts/fleet-owner-projection.ts"
+  decodeFleetApprovalEntity,
+  decodeFleetAssignmentEntity,
+  decodeFleetAttemptEntity,
+  decodeFleetRunEntity,
+  decodeFleetWorkerEntity,
+  decodeFleetWorkUnitEntity,
+} from "@openagentsinc/khala-sync"
+
+import { projectSarahCodingCloseoutReceipts } from "../contracts/coding-closeout-receipt.ts"
+import { projectSarahFleetOwnerRun } from "../contracts/fleet-owner-projection.ts"
 import type { SarahOwnerFleetHostIntentHandlers } from "./main.ts"
 
 // main.ts boots against the real page on import; give it an inert document so
@@ -59,125 +64,126 @@ const baseState: SurfaceState = {
   receipts: [],
 }
 
-const fleetProjection = Schema.decodeUnknownSync(SarahFleetOwnerProjection)({
-  schema: "sarah.fleet_owner_projection.v1",
-  run: {
-    runRef: "fleet.run.surface",
-    name: "Fleet run",
-    status: "running",
-    desiredSlots: 1,
-    workerKind: "auto",
-    startedAt: "2026-07-09T19:30:00.000Z",
-    counters: {
-      workUnitsTotal: 1,
-      activeAssignments: 0,
-      completedAssignments: 1,
-      failedAssignments: 0,
-      blockedAssignments: 0,
-    },
-    updatedAt: "2026-07-09T20:00:00.000Z",
-    availableControls: ["pause", "drain", "stop"],
-    blockers: [],
+const surfaceRun = decodeFleetRunEntity({
+  runId: "fleet.run.surface",
+  status: "running",
+  desiredSlots: 1,
+  workerKind: "auto",
+  startedAt: "2026-07-09T19:30:00.000Z",
+  counters: {
+    workUnitsTotal: 1,
+    activeAssignments: 0,
+    completedAssignments: 1,
+    failedAssignments: 0,
+    blockedAssignments: 0,
   },
-  workUnits: [
-    {
-      workUnitRef: "#8639",
-      assignmentRef: "assignment.surface.grok",
-      name: "#8639",
-      assignmentStatus: "accepted_work",
-      workerRef: "worker.surface.grok",
-      progress: {
-        status: "completed",
-        phase: "completed",
-        observedAt: "2026-07-09T20:00:00.000Z",
-        summary: "Grok worker completed",
-      },
-      approvalRefs: [],
-      verification: {
-        status: "ready",
-        verificationRef: "assignment.surface.grok",
-        summary: "Verification available",
-      },
-      closeout: {
-        status: "accepted",
-        closeoutRef: "assignment.surface.grok",
-        closeoutClass: "accepted_work",
-        summary: "Closeout accepted",
-      },
-      summary: "Work unit accepted work",
-      updatedAt: "2026-07-09T20:00:00.000Z",
-    },
-  ],
-  workers: [
-    {
-      workerRef: "worker.surface.grok",
-      name: "Grok worker",
-      phase: "completed",
-      harnessKind: "grok",
-      workUnitRef: "#8639",
-      accountRefHash: "account.pylon.grok.33333333",
-      progress: {
-        status: "completed",
-        phase: "completed",
-        observedAt: "2026-07-09T20:00:00.000Z",
-        summary: "Grok worker completed",
-      },
-      approvalRefs: [],
-      updatedAt: "2026-07-09T20:00:00.000Z",
-    },
-  ],
-  approvals: [],
-  projectedAt: "2026-07-09T20:00:00.000Z",
+  updatedAt: "2026-07-09T20:00:00.000Z",
 })
+
+const surfaceAssignment = decodeFleetAssignmentEntity({
+  assignmentRef: "assignment.surface.grok",
+  issueRef: "#8639",
+  status: "accepted_work",
+  closeoutClass: "accepted_work",
+  updatedAt: "2026-07-09T20:00:00.000Z",
+})
+
+const surfaceWorker = decodeFleetWorkerEntity({
+  workerId: "worker.surface.grok",
+  phase: "completed",
+  harnessKind: "grok",
+  assignmentRef: "assignment.surface.grok",
+  accountRefHash: `account.pylon.grok.${"3".repeat(24)}`,
+  lastProgressAt: "2026-07-09T20:00:00.000Z",
+  updatedAt: "2026-07-09T20:00:00.000Z",
+})
+
+const surfaceAttempt = decodeFleetAttemptEntity({
+  attemptRef: "work_claim.surface.grok",
+  workUnitRef: "unit.surface.grok",
+  intakeClaimRef: `claim.sarah_fleet_run.${"a".repeat(24)}`,
+  pylonRef: "pylon-owner-1",
+  workerKind: "grok",
+  state: "succeeded",
+  progressClass: "terminal",
+  assignmentRef: "assignment.surface.grok",
+  accountRefHash: `account.pylon.grok.${"3".repeat(24)}`,
+  capacityClass: "owner_local",
+  marginalCostClass: "api_metered",
+  verification: {
+    truth: "passed",
+    verifierRef: "verification.surface.grok",
+    evidenceRefs: ["test.surface.grok"],
+  },
+  artifactRefs: ["artifact.public.surface.grok"],
+  proofRefs: ["proof.surface.grok"],
+  authorityReceiptRefs: ["authority.owner.surface.grok"],
+  closeoutRef: "closeout.surface.grok",
+  usageEvidence: {
+    schema: "openagents.pylon.fleet_run_usage_evidence.v1",
+    truth: "not_measured",
+    harnessKind: "grok",
+    evidenceRef: "evidence.surface.grok",
+    assignmentRef: "assignment.surface.grok",
+    receiptRef: "receipt.surface.grok",
+    tokenUsageRefs: [],
+    caveatRefs: ["caveat.surface.grok.not_measured"],
+  },
+  blockerRefs: [],
+  lastEventRef: `event.pylon.fleet_run.${"1".repeat(24)}`,
+  startedAt: "2026-07-09T19:55:00.000Z",
+  lastObservedAt: "2026-07-09T20:00:00.000Z",
+  remoteObservedAt: "2026-07-09T19:59:59.000Z",
+  terminalAt: "2026-07-09T20:00:00.000Z",
+  updatedAt: "2026-07-09T20:00:00.000Z",
+})
+
+const surfaceWorkUnit = decodeFleetWorkUnitEntity({
+  workUnitRef: "unit.surface.grok",
+  issueRef: "#8639",
+  dependsOnRefs: [],
+  state: "succeeded",
+  latestAttemptRef: surfaceAttempt.attemptRef,
+  acceptedAttemptRef: surfaceAttempt.attemptRef,
+  updatedAt: "2026-07-09T20:00:00.000Z",
+})
+
+const surfaceProjection = (
+  approvals: ReadonlyArray<ReturnType<typeof decodeFleetApprovalEntity>> = [],
+) =>
+  projectSarahFleetOwnerRun(
+    {
+      run: surfaceRun,
+      workUnits: [surfaceWorkUnit],
+      attempts: [surfaceAttempt],
+      assignments: [surfaceAssignment],
+      workers: [surfaceWorker],
+      approvals,
+      inboxFlags: [],
+    },
+    Date.parse("2026-07-09T20:00:00.000Z"),
+  )
+
+const fleetProjection = surfaceProjection()
 
 const [fleetCloseoutReceipt] = projectSarahCodingCloseoutReceipts({
   projection: fleetProjection,
-  evidence: [
-    {
-      assignmentRef: "assignment.surface.grok",
-      verification: {
-        status: "passed",
-        verificationRef: "verification.surface.grok",
-      },
-      changes: {
-        changeClass: "source_and_tests",
-        artifactRef: "artifact.public.surface.grok",
-      },
-      capacity: {
-        capacityClass: "owner_local",
-        marginalCostClass: "not_measured",
-      },
-      authority: {
-        authorityClass: "coding_session_control",
-        authorityRef: "authority.owner.surface.grok",
-      },
-    },
-  ],
 })
 
 if (fleetCloseoutReceipt === undefined) {
   throw new Error("expected fleet closeout fixture")
 }
 
-const fleetProjectionWithApproval = Schema.decodeUnknownSync(
-  SarahFleetOwnerProjection,
-)({
-  ...fleetProjection,
-  approvals: [
-    {
-      approvalRef: "approval.surface.grok",
-      status: "pending",
-      workerRef: "worker.surface.grok",
-      workUnitRef: "#8639",
-      toolClass: "write_file",
-      openedAt: "2026-07-09T19:59:00.000Z",
-      decidedAt: null,
-      availableDecisions: ["allow", "deny"],
-      summary: "Approval pending",
-      updatedAt: "2026-07-09T20:00:00.000Z",
-    },
-  ],
-})
+const fleetProjectionWithApproval = surfaceProjection([
+  decodeFleetApprovalEntity({
+    approvalRef: "approval.surface.grok",
+    status: "pending",
+    workerId: "worker.surface.grok",
+    toolClass: "write_file",
+    openedAt: "2026-07-09T19:59:00.000Z",
+    updatedAt: "2026-07-09T20:00:00.000Z",
+  }),
+])
 
 const ownerFleetState = (
   closeouts: NonNullable<SurfaceState["ownerFleet"]>["closeouts"],
@@ -823,8 +829,8 @@ describe("FC-3 owner fleet surface integration", () => {
     })
     for (const key of [
       "fleet-supervision-fleet.run.surface-control-pause",
-      "fleet-supervision-assignment.surface.grok-open",
-      "fleet-supervision-assignment.surface.grok-verification",
+      "fleet-supervision-unit.surface.grok-open",
+      "fleet-supervision-unit.surface.grok-verification",
       "fleet-supervision-approval.surface.grok-allow",
       `${receiptKey}-next-action`,
     ]) {
@@ -833,7 +839,7 @@ describe("FC-3 owner fleet surface integration", () => {
     expect(
       (findByKey(
         view,
-        "fleet-supervision-assignment.surface.grok-audit",
+        "fleet-supervision-unit.surface.grok-audit",
       )?.onToggle as { name?: string })?.name,
     ).toBe("SarahFleetAuditToggled")
     expect(
@@ -871,11 +877,14 @@ describe("FC-3 owner fleet surface integration", () => {
       )?.onPress as { name?: string })?.name,
     ).toBe("SarahFleetRunControlRequested")
     expect(
-      (findByKey(
+      findByKey(view, "fleet-supervision-approval.surface.grok-allow"),
+    ).toBeNull()
+    expect(
+      findByKey(
         view,
-        "fleet-supervision-approval.surface.grok-allow",
-      )?.onPress as { name?: string })?.name,
-    ).toBe("SarahFleetApprovalDecisionRequested")
+        "fleet-supervision-approval.surface.grok-decisions-empty",
+      )?.content,
+    ).toBe("Decision options not reported.")
     expect(
       (findByKey(
         view,

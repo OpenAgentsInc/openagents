@@ -284,26 +284,66 @@ const evidenceRows = (
   const capacity = receipt.sections[3]
   const approval = receipt.sections[4]
   const rows: Array<readonly [string, string]> = [
-    ["Receipt", receipt.cardRef],
     ["Run", receipt.runRef],
     ["Work unit", receipt.workUnitRef],
-    ["Assignment", receipt.assignmentRef],
+    ["Attempt", receipt.attemptRef],
   ]
+
+  if (receipt.assignmentRef !== null) {
+    rows.push(["Assignment", receipt.assignmentRef])
+  }
 
   if (verification.verificationRef !== null) {
     rows.push(["Verification", verification.verificationRef])
   }
-  if (changes.artifactRef !== null) {
-    rows.push(["Artifact", changes.artifactRef])
-  }
+  verification.evidenceRefs.forEach((evidenceRef, index) => {
+    rows.push([`Verification evidence ${index + 1}`, evidenceRef])
+  })
+  changes.artifactRefs.forEach((artifactRef, index) => {
+    rows.push([`Artifact ${index + 1}`, artifactRef])
+  })
+  changes.proofRefs.forEach((proofRef, index) => {
+    rows.push([`Proof ${index + 1}`, proofRef])
+  })
   if (capacity.accountRefHash !== null) {
     rows.push(["Account (hashed)", capacity.accountRefHash])
+  }
+  rows.push(["Pylon", capacity.pylonRef])
+  if (capacity.usageEvidence.truth === "exact") {
+    rows.push(["Usage evidence", capacity.usageEvidence.evidenceRef])
+    if (capacity.usageEvidence.assignmentRef !== receipt.assignmentRef) {
+      rows.push(["Usage assignment", capacity.usageEvidence.assignmentRef])
+    }
+    capacity.usageEvidence.tokenUsageRefs.forEach((usageRef, index) => {
+      rows.push([`Token usage ${index + 1}`, usageRef])
+    })
+    capacity.usageEvidence.proofRefs.forEach((proofRef, index) => {
+      rows.push([`Usage proof ${index + 1}`, proofRef])
+    })
+    capacity.usageEvidence.closeoutChecklistRefs.forEach((checkRef, index) => {
+      rows.push([`Closeout checklist ${index + 1}`, checkRef])
+    })
+    capacity.usageEvidence.proofChecklistRefs.forEach((checkRef, index) => {
+      rows.push([`Proof checklist ${index + 1}`, checkRef])
+    })
+  } else if (capacity.usageEvidence.truth === "not_measured") {
+    rows.push(["Usage evidence", capacity.usageEvidence.evidenceRef])
+    if (capacity.usageEvidence.assignmentRef !== receipt.assignmentRef) {
+      rows.push(["Usage assignment", capacity.usageEvidence.assignmentRef])
+    }
+    rows.push(["Usage receipt", capacity.usageEvidence.receiptRef])
+    capacity.usageEvidence.caveatRefs.forEach((caveatRef, index) => {
+      rows.push([`Usage caveat ${index + 1}`, caveatRef])
+    })
   }
   approval.approvalRefs.forEach((approvalRef, index) => {
     rows.push([`Approval ${index + 1}`, approvalRef])
   })
-  if (approval.authorityRef !== null) {
-    rows.push(["Authority", approval.authorityRef])
+  approval.authorityReceiptRefs.forEach((authorityRef, index) => {
+    rows.push([`Authority ${index + 1}`, authorityRef])
+  })
+  if (receipt.sections[0].closeoutRef !== null) {
+    rows.push(["Closeout", receipt.sections[0].closeoutRef])
   }
 
   return rows.map(([label, value], index) =>
