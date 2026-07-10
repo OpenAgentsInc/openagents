@@ -17,6 +17,8 @@ import {
   type FleetRun,
   type PylonOrchestrationStore,
 } from "../src/orchestration/store.js"
+import { tickFleetRunSupervisor } from "../src/orchestration/fleet-run-supervisor.js"
+import { fixtureCandidates, planWorkCandidates } from "../src/orchestration/work-planner.js"
 
 const fixedNow = new Date("2026-07-09T16:00:00.000Z")
 const summary = {
@@ -356,14 +358,45 @@ describe("Pylon-owned FleetRun account capacity", () => {
     try {
       const firstDatabase = new Database(databasePath, { create: true })
       const firstStore = createPylonOrchestrationStore(firstDatabase)
-      firstStore.recordDispatchBreakerFailure({
-        accountRefHash: hashPylonAccountRef("grok", throttled.ref),
-        classification: classifyPylonDispatchFailure({
-          blockerRefs: ["blocker.pylon.fleet_runner.grok_account_rate_limited"],
-        }),
-        lane: "grok",
-        now: fixedNow,
+      const firstRun = createRun(
+        firstStore,
+        "fleet_run.capacity.grok_breaker_restart",
+        "grok",
+      )
+      await tickFleetRunSupervisor({
+        store: firstStore,
+        pylonRef: "pylon.owner.grok-breaker-restart",
+        runRef: firstRun.runRef,
+        planner: {
+          plan: async ({ now }) => planWorkCandidates(
+            "fixture",
+            fixtureCandidates({ kind: "fixture", count: 1 }),
+            { claimRegistry: firstStore, now },
+          ),
+        },
+        capacity: {
+          accounts: async () => [{
+            accountRef: throttled.ref,
+            advertisedCapacity: 1,
+            workerKind: "grok",
+          }],
+        },
+        runner: {
+          dispatch: async input => ({
+            assignmentRef: `assignment.grok.${input.claim.claimRef}`,
+            lifecycle: [{
+              schema: "openagents.pylon.assignment_run_lifecycle_event.v0.1",
+              event: "assignment_run.completed",
+              observedAt: fixedNow.toISOString(),
+              status: "rejected",
+              blockerRefs: ["blocker.pylon.fleet_runner.grok_account_rate_limited"],
+            }],
+            status: "failed",
+          }),
+        },
+        clock: { now: () => fixedNow },
       })
+      expect(firstStore.listActiveDispatchBreakers(fixedNow)).toHaveLength(1)
       firstDatabase.close()
 
       const reopenedDatabase = new Database(databasePath)
@@ -373,11 +406,8 @@ describe("Pylon-owned FleetRun account capacity", () => {
         grokExecutionAvailable: true,
         store: reopenedStore,
       })
-      const run = createRun(
-        reopenedStore,
-        "fleet_run.capacity.grok_breaker_restart",
-        "grok",
-      )
+      const run = reopenedStore.getFleetRun(firstRun.runRef)
+      if (run === null) throw new Error("restart fixture run is missing")
       try {
         expect(await capacity.accounts({ run, now: fixedNow })).toEqual([
           {
