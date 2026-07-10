@@ -2,8 +2,7 @@
  * Renderer entrypoint (#8574): boots the OpenAgents Desktop shell as one
  * Effect Native program — SubscriptionRef state, `makeViewProgramFromState`,
  * a typed intent registry, and the DOM renderer from the shared vendored
- * catalog. Same consumer pattern as the Sarah surface boot
- * (apps/sarah/src/ui/main.ts).
+ * catalog. It follows the standard Effect Native consumer pattern.
  *
  * Boundary: this file runs sandboxed (contextIsolation on, nodeIntegration
  * off). The only host input is the frozen `openagentsDesktop` bridge object

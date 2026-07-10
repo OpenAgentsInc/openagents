@@ -64,10 +64,24 @@ export type DesktopShellState = Readonly<{
 export const formatShellTimestamp = (date: Date): string =>
   `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`
 
+const initialNotes = (timestamp: string): ReadonlyArray<DesktopNoteEntry> => [
+  {
+    key: "boot-0",
+    role: "assistant",
+    text: "What would you like to work on? I can help you shape a clear next step or prepare a bounded fleet brief.",
+    timestamp,
+  },
+  {
+    key: "boot-1",
+    role: "system",
+    text: "This workspace stays local and private. Fleet work starts only after Pylon authority accepts an exact request.",
+    timestamp,
+  },
+]
+
 /**
- * Sarah is the desktop's relationship surface. This boot transcript is local
- * presentation state only: it neither creates a FleetRun nor impersonates a
- * server-authorized Sarah turn.
+ * The initial transcript is local presentation state only: it neither creates
+ * a FleetRun nor impersonates a server-authorized turn.
  */
 export const initialDesktopShellState = (
   host: string,
@@ -76,20 +90,7 @@ export const initialDesktopShellState = (
   host,
   input: "",
   pending: false,
-  notes: [
-    {
-      key: "boot-0",
-      role: "assistant",
-      text: "I’m Sarah. Tell me what you want the fleet to accomplish, and I’ll help you shape a bounded deployment brief.",
-      timestamp,
-    },
-    {
-      key: "boot-1",
-      role: "system",
-      text: "Desktop is local and private by default. Fleet runs start only after authenticated Sarah/Pylon authority accepts an exact request.",
-      timestamp,
-    },
-  ],
+  notes: initialNotes(timestamp),
   fleetDeskOpen: false,
   fleetObjective: "",
   fleetDeployment: "not_requested",
@@ -104,8 +105,7 @@ export const initialDesktopShellState = (
 export const DesktopInputChanged = defineIntent("DesktopInputChanged", Schema.String)
 /**
  * Null payload happens on button press (the renderer passes no component
- * value); the handler then falls back to the composer state, mirroring the
- * Sarah `SarahSendText` fallback.
+ * value); the handler then falls back to the composer state.
  */
 export const DesktopNoteSubmitted = defineIntent(
   "DesktopNoteSubmitted",
@@ -121,6 +121,8 @@ export const DesktopFleetDeploymentRequested = defineIntent(
   "DesktopFleetDeploymentRequested",
   Schema.Null,
 )
+export const DesktopNewChat = defineIntent("DesktopNewChat", Schema.Null)
+export const DesktopChatSelected = defineIntent("DesktopChatSelected", Schema.Null)
 
 export const desktopShellIntents = [
   DesktopInputChanged,
@@ -129,6 +131,8 @@ export const desktopShellIntents = [
   DesktopFleetDeskToggled,
   DesktopFleetObjectiveChanged,
   DesktopFleetDeploymentRequested,
+  DesktopNewChat,
+  DesktopChatSelected,
 ] as const
 
 // ---------------------------------------------------------------------------
@@ -154,6 +158,21 @@ export const withFleetObjective = (
   state: DesktopShellState,
   fleetObjective: string,
 ): DesktopShellState => ({ ...state, fleetObjective })
+
+export const withNewChat = (state: DesktopShellState, timestamp: string): DesktopShellState => ({
+  ...state,
+  input: "",
+  pending: false,
+  notes: initialNotes(timestamp),
+  fleetDeskOpen: false,
+  fleetObjective: "",
+  fleetDeployment: "not_requested",
+})
+
+export const withChatSelected = (state: DesktopShellState): DesktopShellState => ({
+  ...state,
+  fleetDeskOpen: false,
+})
 
 /**
  * Submit resets the composer value binding in the same transition that
@@ -277,6 +296,10 @@ export const makeDesktopShellHandlers = (
       const result = yield* Effect.promise(() => stageFleet({ objective: dispatching.fleetObjective }))
       yield* SubscriptionRef.update(state, (next) => withFleetDeploymentResult(next, result, now()))
     }),
+  DesktopNewChat: () =>
+    SubscriptionRef.update(state, (current) => withNewChat(current, now())),
+  DesktopChatSelected: () =>
+    SubscriptionRef.update(state, withChatSelected),
 })
 
 // ---------------------------------------------------------------------------
@@ -302,7 +325,7 @@ export const noteMessage = (entry: DesktopNoteEntry): TranscriptMessage => ({
   key: entry.key,
   role: entry.role,
   senderLabel:
-    entry.role === "user" ? "YOU" : entry.role === "assistant" ? "SARAH" : "SYSTEM",
+    entry.role === "user" ? "YOU" : entry.role === "assistant" ? "ASSISTANT" : "SYSTEM",
   timestamp: entry.timestamp,
   body: [
     text(
@@ -330,25 +353,25 @@ const shellHeader = (state: DesktopShellState): View =>
       },
     },
     [
-      Text({ key: "shell-title", content: "OpenAgents", variant: "title", color: "textPrimary" }),
+      Text({ key: "shell-title", content: state.fleetDeskOpen ? "Fleet" : "New conversation", variant: "title", color: "textPrimary" }),
       Badge({
         key: "shell-surface",
-        label: "Sarah",
+        label: state.fleetDeskOpen ? "Planning" : "Chat",
         tone: "info",
-        a11y: { label: "Sarah workspace" },
+        a11y: { label: state.fleetDeskOpen ? "Fleet planning workspace" : "Chat workspace" },
       }),
       Button({
         key: "shell-fleet-toggle",
-        label: state.fleetDeskOpen ? "Close Fleet" : "Fleet",
+        label: state.fleetDeskOpen ? "Back to chat" : "Open Fleet",
         variant: "ghost",
         onPress: IntentRef("DesktopFleetDeskToggled"),
         a11y: { label: state.fleetDeskOpen ? "Close Fleet desk" : "Open Fleet desk" },
       }),
       Badge({
         key: "shell-status",
-        label: "Private workspace",
+        label: "Local workspace",
         tone: "success",
-        a11y: { label: "Private workspace ready" },
+        a11y: { label: "Local workspace ready" },
       }),
       Spacer({ key: "shell-header-fill", flex: true }),
       Badge({
@@ -362,6 +385,49 @@ const shellHeader = (state: DesktopShellState): View =>
         label: `proofs ${state.loopProofs}`,
         tone: state.loopProofs > 0 ? "success" : "neutral",
         a11y: { label: `${state.loopProofs} completed intent loop proofs` },
+      }),
+    ],
+  )
+
+const shellSidebar = (state: DesktopShellState): View =>
+  Stack(
+    {
+      key: "shell-sidebar",
+      direction: "column",
+      gap: "2",
+      style: { height: "full", minHeight: 0 },
+    },
+    [
+      Text({ key: "sidebar-brand", content: "OpenAgents", variant: "title", color: "textPrimary" }),
+      Button({
+        key: "sidebar-new-chat",
+        label: "New chat",
+        variant: "secondary",
+        onPress: IntentRef("DesktopNewChat"),
+        a11y: { label: "Start a new chat" },
+      }),
+      Text({ key: "sidebar-chats-label", content: "Chats", variant: "caption", color: "textMuted" }),
+      Button({
+        key: "sidebar-current-chat",
+        label: "New conversation",
+        variant: "ghost",
+        onPress: IntentRef("DesktopChatSelected"),
+        a11y: { label: "Open current chat" },
+      }),
+      Text({ key: "sidebar-workspace-label", content: "Workspace", variant: "caption", color: "textMuted" }),
+      Button({
+        key: "sidebar-fleet",
+        label: "Fleet",
+        variant: "ghost",
+        onPress: IntentRef("DesktopFleetDeskToggled"),
+        a11y: { label: state.fleetDeskOpen ? "Close Fleet" : "Open Fleet" },
+      }),
+      Spacer({ key: "sidebar-fill", flex: true }),
+      Badge({
+        key: "sidebar-pylon-status",
+        label: "Pylon dispatch",
+        tone: "neutral",
+        a11y: { label: "Local Pylon dispatch capability" },
       }),
     ],
   )
@@ -383,7 +449,7 @@ const shellWelcome = (): View =>
       }),
       Text({
         key: "shell-welcome-body",
-        content: "Sarah can shape the work, then hand a bounded brief to your local fleet.",
+        content: "Start with a question, a task, or a clear objective for your local fleet.",
         variant: "body",
         color: "textMuted",
       }),
@@ -412,7 +478,7 @@ const fleetDesk = (state: DesktopShellState): View => {
         Text({ key: "fleet-desk-title", content: "Fleet deployment brief", variant: "title", color: "textPrimary" }),
         Text({
           key: "fleet-desk-copy",
-        content: "Turn a clear objective into a bounded local-Pylon brief. A real FleetRun still requires authority-backed evidence.",
+          content: "Turn a clear objective into a bounded local-Pylon brief. A real FleetRun still requires authority-backed evidence.",
           variant: "body",
           color: "textMuted",
         }),
@@ -480,10 +546,10 @@ const shellComposer = (state: DesktopShellState): View =>
           TextField({
             key: "shell-input",
             value: state.input,
-            placeholder: "Message Sarah",
+            placeholder: "Message",
             disabled: state.pending,
             clearOnSubmit: true,
-            a11y: { label: "Message Sarah" },
+            a11y: { label: "Message" },
             onChange: IntentRef("DesktopInputChanged", ComponentValueBinding()),
             onSubmit: IntentRef("DesktopNoteSubmitted", ComponentValueBinding()),
             style: { flex: 1 },
@@ -512,29 +578,40 @@ export const desktopShellView = (state: DesktopShellState): View =>
   Stack(
     {
       key: "shell-root",
-      direction: "column",
-      gap: "4",
+      direction: "row",
+      gap: "3",
       style: { width: "full", height: "full", minHeight: 0 },
     },
     [
-      shellHeader(state),
-      ...(state.fleetDeskOpen ? [fleetDesk(state)] : []),
-      ...(state.notes.length <= 2 && !state.fleetDeskOpen ? [shellWelcome()] : []),
-      Transcript({
-        key: "shell-transcript",
-        pinToEnd: true,
-        messages: state.notes.map(noteMessage),
-        style: {
-          width: "full",
-          maxWidth: columnWidth,
-          alignSelf: "center",
-          flex: 1,
-          minHeight: 0,
-          paddingLeft: "4",
-          paddingRight: "4",
-          gap: "5",
+      shellSidebar(state),
+      Stack(
+        {
+          key: "shell-main",
+          direction: "column",
+          gap: "3",
+          style: { flex: 1, minWidth: 0, minHeight: 0 },
         },
-      }),
-      shellComposer(state),
+        [
+          shellHeader(state),
+          ...(state.fleetDeskOpen ? [fleetDesk(state)] : []),
+          ...(state.notes.length <= 2 && !state.fleetDeskOpen ? [shellWelcome()] : []),
+          Transcript({
+            key: "shell-transcript",
+            pinToEnd: true,
+            messages: state.notes.map(noteMessage),
+            style: {
+              width: "full",
+              maxWidth: columnWidth,
+              alignSelf: "center",
+              flex: 1,
+              minHeight: 0,
+              paddingLeft: "4",
+              paddingRight: "4",
+              gap: "5",
+            },
+          }),
+          shellComposer(state),
+        ],
+      ),
     ],
   )

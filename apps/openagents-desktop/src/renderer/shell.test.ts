@@ -19,6 +19,8 @@ import {
   withFleetDeploymentResult,
   withFleetDesk,
   withFleetObjective,
+  withNewChat,
+  withChatSelected,
   withLoopProof,
   withNote,
   withPending,
@@ -57,19 +59,19 @@ const baseState: DesktopShellState = initialDesktopShellState("electron/darwin",
 const fixedNow = () => "18:05"
 
 describe("desktopShellView (state -> component tree)", () => {
-  test("renders Sarah chat: title, status badges, transcript, composer", () => {
+  test("renders neutral chat workspace: sidebar, title, transcript, composer", () => {
     const view = desktopShellView(baseState)
 
     const title = nodeByKey(view, "shell-title")
     expect(title?._tag).toBe("Text")
-    expect(title?.content).toBe("OpenAgents")
+    expect(title?.content).toBe("New conversation")
 
     const surface = nodeByKey(view, "shell-surface")
     expect(surface?._tag).toBe("Badge")
-    expect(surface?.label).toBe("Sarah")
+    expect(surface?.label).toBe("Chat")
 
     const status = nodeByKey(view, "shell-status")
-    expect(status?.label).toBe("Private workspace")
+    expect(status?.label).toBe("Local workspace")
     expect(status?.tone).toBe("success")
 
     const host = nodeByKey(view, "shell-host")
@@ -88,6 +90,10 @@ describe("desktopShellView (state -> component tree)", () => {
     expect(nodeByKey(view, "shell-note")?._tag).toBe("Button")
     expect(nodeByKey(view, "shell-ping")?._tag).toBe("Button")
     expect(nodeByKey(view, "shell-fleet-toggle")?._tag).toBe("Button")
+    expect(nodeByKey(view, "shell-sidebar")?._tag).toBe("Stack")
+    expect(nodeByKey(view, "sidebar-new-chat")?._tag).toBe("Button")
+    expect(nodeByKey(view, "sidebar-current-chat")?._tag).toBe("Button")
+    expect(nodeByKey(view, "sidebar-fleet")?._tag).toBe("Button")
     expect(nodeByKey(view, "fleet-desk")).toBeUndefined()
   })
 
@@ -136,9 +142,9 @@ describe("desktopShellView (state -> component tree)", () => {
     expect((user.body[0] as unknown as AnyNode).color).toBe("textPrimary")
     expect((user.body[0] as unknown as AnyNode).content).toBe("rofl")
 
-    const sarah = noteMessage({ key: "sarah-1", role: "assistant", text: "I’m here", timestamp: "18:05" })
-    expect(sarah.senderLabel).toBe("SARAH")
-    expect((sarah.body[0] as unknown as AnyNode).content).toBe("I’m here")
+    const assistant = noteMessage({ key: "assistant-1", role: "assistant", text: "I’m here", timestamp: "18:05" })
+    expect(assistant.senderLabel).toBe("ASSISTANT")
+    expect((assistant.body[0] as unknown as AnyNode).content).toBe("I’m here")
   })
 
   test("composer rides the v29 submit lifecycle contract: clearOnSubmit + pending disables", () => {
@@ -176,6 +182,19 @@ describe("pure transitions", () => {
     expect(pending.pending).toBe(true)
     expect(pending.notes).toBe(baseState.notes)
     expect(withPending(pending, false).pending).toBe(false)
+  })
+
+  test("New chat resets the conversation and current-chat navigation closes Fleet", () => {
+    const activeFleet = withFleetDesk(withNote(baseState, "Ship the app", "18:05"))
+    expect(activeFleet.fleetDeskOpen).toBe(true)
+    expect(withChatSelected(activeFleet).fleetDeskOpen).toBe(false)
+
+    const fresh = withNewChat(activeFleet, "18:06")
+    expect(fresh.fleetDeskOpen).toBe(false)
+    expect(fresh.fleetObjective).toBe("")
+    expect(fresh.fleetDeployment).toBe("not_requested")
+    expect(fresh.notes).toHaveLength(2)
+    expect(fresh.notes[0]?.role).toBe("assistant")
   })
 
   test("withLoopProof increments and appends a system note", () => {
@@ -331,8 +350,8 @@ describe("typed intent loop end-to-end (registry -> state -> re-render)", () => 
   })
 })
 
-describe("theme parity (one Protoss-blue theme, many hosts)", () => {
-  test("desktop theme matches the Sarah surface token values", () => {
+describe("theme parity (one OpenAgents blue theme, many hosts)", () => {
+  test("desktop theme keeps the shared token values", () => {
     expect(openagentsDesktopTheme.color.background).toBe("#03060b")
     expect(openagentsDesktopTheme.color.accent).toBe("#3a7bff")
     expect(openagentsDesktopTheme.color.border).toBe("#17315f")

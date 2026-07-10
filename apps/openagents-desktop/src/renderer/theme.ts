@@ -2,12 +2,11 @@
  * OpenAgents Desktop theme (#8574) — the one Protoss-blue OpenAgents theme,
  * expressed through `@effect-native/tokens`.
  *
- * The token values are intentionally identical to the Sarah web surface theme
- * (`apps/sarah/src/ui/theme.ts`): one catalog, one theme, many hosts. Desktop
- * must not drift into a second visual identity. `@effect-native/tokens`
- * already ships a canonical `khalaTheme`; when Sarah and this shell converge
- * on one shared theme value (a later #8574/#8566 step), both app-local copies
- * are deleted in favor of that single export.
+ * The token values remain aligned with the shared OpenAgents surface theme:
+ * one catalog, one theme, many hosts. Desktop must not drift into a second
+ * visual identity. `@effect-native/tokens` already ships a canonical
+ * `khalaTheme`; when the shared shell theme lands, this app-local copy is
+ * deleted in favor of that export.
  */
 import { defineTheme } from "@effect-native/tokens"
 

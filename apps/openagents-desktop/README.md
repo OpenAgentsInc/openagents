@@ -6,11 +6,12 @@ Electron is the desktop host.** This is not a rename of
 `clients/khala-code-desktop` — that Electrobun app is frozen legacy
 reference material and nothing here imports it.
 
-This package now includes the first desktop Sarah chat slice: a hardened
+This package now includes a neutral desktop chat workspace: a hardened
 Electron app whose renderer is 100% Effect Native (the shared vendored catalog
 at `apps/openagents.com/packages/effect-native-*`, catalog v29). It renders
-Sarah and owner transcript roles, clears the composer after a submitted turn,
-and opens an explicit Fleet deployment brief without pretending that local UI
+assistant and owner transcript roles, clears the composer after a submitted
+turn, provides a functional New Chat action, and opens an explicit Fleet
+deployment brief without pretending that local UI
 has authority to create a FleetRun.
 
 ## Run it
@@ -24,27 +25,28 @@ bun run dev:openagents-desktop   # builds dist/ and launches Electron
 
 Or from this directory: `bun run dev`.
 
-What you should see: Sarah's chat, an owner composer, and **Open Fleet** in
-the titlebar. A submitted message renders the owner turn plus a typed Sarah
-response and clears the composer. **Open Fleet** exposes a local deployment
+What you should see: a neutral chat workspace with a chat rail, an owner
+composer, and **Open Fleet** in the titlebar. A submitted message renders the
+owner turn plus a typed assistant response and clears the composer. **New
+chat** resets the local conversation. **Open Fleet** exposes a local deployment
 brief; **Dispatch to Pylon** sends only the bounded objective through a
 schema-checked, host-owned loopback control capability. The Pylon control token
 never enters the renderer. An accepted intent is not a FleetRun receipt:
 repository pins, verifier, named account, and authority-backed closeout remain
-the Pylon/Sarah contract.
+the Pylon contract.
 
 ## Verify it
 
 ```bash
 bun test apps/openagents-desktop   # from repo root; or `bun run test` here
 bun run smoke                      # launches Electron, opens the Fleet deck,
-                                   # submits a Sarah chat turn, verifies both
+                                   # submits a chat turn, verifies both
                                    # roles + clear-on-submit, exits 0/1
 bun run typecheck
 ```
 
 Tests cover: pure `state -> View` component trees, pure transitions, the
-intent loop through the real registry, theme parity with the Sarah surface,
+intent loop through the real registry, theme parity with the shared surface,
 the mechanical Electron/EN boundary oracle, and a real bundle build.
 
 ## Architecture
@@ -65,16 +67,16 @@ the mechanical Electron/EN boundary oracle, and a real bundle build.
   - `shell.ts` — typed state, `defineIntent` intents, pure transitions,
     pure `state -> View` over the shared catalog.
   - `theme.ts` — the one Protoss-blue theme via `@effect-native/tokens`,
-    token-identical to `apps/sarah/src/ui/theme.ts`.
+    token-identical to the shared OpenAgents theme values.
   - `boot.ts` — `SubscriptionRef` + `makeViewProgramFromState` +
     `makeIntentRegistry` + `makeDomRenderer().mount(...)`, the same
-    consumer pattern as the Sarah surface (`apps/sarah/src/ui/main.ts`).
+    consumer pattern shared by the OpenAgents Effect Native surfaces.
 - `scripts/build.ts` — Bun bundles main (ESM), preload (CJS, sandboxed),
   and renderer into `dist/`.
 
 **One catalog, many hosts.** The transcript-message and composer
-compositions are deliberately structured identically to the Sarah EN web
-surface, and `src/renderer/shell.test.ts` asserts the shared shape. New
+compositions are deliberately structured around the shared Effect Native chat
+contract, and `src/renderer/shell.test.ts` asserts the typed shape. New
 component needs go to `docs/effect-native/DEMAND_REGISTER.md` (row
 D-DESK-01 tracks the reusable Electron host, upstream
 OpenAgentsInc/effect-native#69) — never app-local primitives.
@@ -83,7 +85,7 @@ OpenAgentsInc/effect-native#69) — never app-local primitives.
 
 Honest residue, tracked on #8574:
 
-- The local Sarah response and Pylon brief dispatch do not yet create or
+- The local assistant response and Pylon brief dispatch do not yet create or
   project a server-authoritative `coding_fleet_start` FleetRun. That bridge,
   live FleetRun projection/controls, and Khala Sync remain (scopes 2, 3, 6, 8).
 - No Forge packaging, fuses verification, signing/notarization, or updates

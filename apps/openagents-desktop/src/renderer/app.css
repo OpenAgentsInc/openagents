@@ -88,9 +88,95 @@ textarea:focus-visible {
 
 /* Core app frame */
 [data-en-key="shell-root"] {
-  width: min(100%, 1120px) !important;
+  width: 100% !important;
+  max-width: 1440px;
   margin: 0 auto;
-  gap: 12px !important;
+  gap: 14px !important;
+}
+
+[data-en-key="shell-sidebar"] {
+  flex: 0 0 232px;
+  min-width: 0;
+  padding: 16px 10px 12px;
+  border: 1px solid var(--oa-line);
+  border-radius: 16px;
+  background: rgba(14, 20, 31, 0.6);
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(22px) saturate(1.15);
+  -webkit-backdrop-filter: blur(22px) saturate(1.15);
+}
+
+[data-en-key="sidebar-brand"] {
+  padding: 0 8px 12px;
+  font-size: 17px !important;
+  font-weight: 650 !important;
+  letter-spacing: -0.025em;
+}
+
+[data-en-key="sidebar-new-chat"] {
+  justify-content: flex-start;
+  min-height: 36px;
+  padding: 0 11px !important;
+  border: 1px solid rgba(172, 206, 255, 0.18) !important;
+  border-radius: 10px !important;
+  background: rgba(255, 255, 255, 0.07) !important;
+  color: var(--oa-ink) !important;
+  font-size: 13px;
+  font-weight: 580;
+}
+
+[data-en-key="sidebar-new-chat"]:hover {
+  transform: translateY(-1px);
+  border-color: var(--oa-line-hot) !important;
+  background: rgba(74, 134, 255, 0.14) !important;
+}
+
+[data-en-key="sidebar-chats-label"],
+[data-en-key="sidebar-workspace-label"] {
+  padding: 14px 8px 3px;
+  color: var(--oa-muted) !important;
+  font-size: 11px !important;
+  font-weight: 640 !important;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+[data-en-key="sidebar-current-chat"],
+[data-en-key="sidebar-fleet"] {
+  justify-content: flex-start;
+  min-height: 34px;
+  padding: 0 9px !important;
+  border: 1px solid transparent !important;
+  border-radius: 9px !important;
+  color: var(--oa-body) !important;
+  font-size: 13px;
+  font-weight: 520;
+}
+
+[data-en-key="sidebar-current-chat"] {
+  border-color: rgba(152, 189, 255, 0.14) !important;
+  background: rgba(97, 143, 235, 0.13) !important;
+  color: var(--oa-ink) !important;
+}
+
+[data-en-key="sidebar-fleet"]:hover {
+  transform: translateY(-1px);
+  background: rgba(255, 255, 255, 0.055) !important;
+}
+
+[data-en-key="sidebar-pylon-status"] {
+  align-items: center;
+  min-height: 28px;
+  padding: 0 8px;
+  border: 1px solid rgba(168, 195, 237, 0.12);
+  border-radius: 8px;
+  color: var(--oa-muted) !important;
+  font-size: 11px;
+}
+
+[data-en-key="shell-main"] {
+  min-width: 0;
+  min-height: 0;
 }
 
 /* Floating glass toolbar — direct Electron analogue to the SwiftUI pills. */
@@ -170,7 +256,7 @@ textarea:focus-visible {
   color: var(--oa-muted) !important;
 }
 
-/* The initial state gets its own breath, like the mobile Sarah surface. */
+/* The initial chat state gets its own breath. */
 [data-en-key="shell-welcome"] {
   padding: clamp(26px, 6vh, 76px) 24px 18px;
 }
@@ -356,6 +442,10 @@ textarea:focus-visible {
 
   [data-en-key="shell-header"] {
     border-radius: 15px;
+  }
+
+  [data-en-key="shell-sidebar"] {
+    display: none !important;
   }
 
   [data-en-key="shell-host"],
