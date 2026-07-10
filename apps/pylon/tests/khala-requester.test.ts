@@ -119,6 +119,23 @@ async function writeCodexAccounts(home: string, accountRefs: string[]) {
   )
 }
 
+function completeWorkerCloseoutEvidence() {
+  return {
+    artifactRefs: ["artifact.pylon_codex.assignment_1"],
+    authorityReceiptRefs: ["receipt.pylon_codex.assignment_1"],
+    closeoutRefs: ["assignment.closeout.assignment_1"],
+    eventRef: "event.pylon_codex.worker_closeout.1",
+    observedAt: "2026-06-26T12:00:05.000Z",
+    proofRefs: ["proof.pylon_codex.assignment_1"],
+    resultRefs: ["result.pylon_codex.assignment_1"],
+    source: "worker_closeout_event",
+    status: "closeout_submitted",
+    testRefs: ["test.pylon_codex.assignment_1"],
+    verificationRefs: ["test.pylon_codex.assignment_1"],
+    visibility: "owner_only",
+  }
+}
+
 function completeTraceStatus(overrides: Record<string, unknown> = {}) {
   return {
     schemaVersion: "openagents.pylon.codex_assignment_trace_status.v1",
@@ -198,6 +215,7 @@ function completeTraceStatus(overrides: Record<string, unknown> = {}) {
       hasFinalTrace: true,
       hasTokenUsage: true,
     },
+    workerCloseout: completeWorkerCloseoutEvidence(),
     generatedAt: "2026-06-26T12:00:06.000Z",
     ...overrides,
   }
@@ -245,6 +263,7 @@ function completeProof(overrides: Record<string, unknown> = {}) {
       visibility: "owner_only",
       refs: ["raw.pylon_codex.aaa", "raw.pylon_codex.bbb"],
     },
+    workerCloseout: completeWorkerCloseoutEvidence(),
     generatedAt: "2026-06-26T12:00:06.000Z",
     ...overrides,
   }
@@ -1221,6 +1240,46 @@ describe("pylon khala requester API", () => {
     expect(checklist.blockerRefs).toEqual([
       "blocker.khala_closeout.no_spend_payout_false",
     ])
+  })
+
+  test("closeout checklist fails closed when legacy worker evidence is unavailable", () => {
+    const { workerCloseout: _proofWorkerCloseout, ...proofPayload } =
+      completeProof()
+    const { workerCloseout: _statusWorkerCloseout, ...statusPayload } =
+      completeTraceStatus()
+    const proofChecklist = evaluatePylonKhalaProofChecklist(
+      proofPayload as ProofPayload,
+    )
+    const checklist = evaluatePylonKhalaCloseoutChecklist(
+      statusPayload as CloseoutTraceStatus,
+      { ...proofPayload, ok: true, proofChecklist } as CloseoutProofResult,
+    )
+
+    expect(checklist.ok).toBe(false)
+    expect(checklist.blockerRefs).toContain(
+      "blocker.khala_closeout.worker_closeout.owner_only_present",
+    )
+  })
+
+  test("closeout checklist rejects status/proof worker-ref divergence", () => {
+    const proofPayload = completeProof({
+      workerCloseout: {
+        ...completeWorkerCloseoutEvidence(),
+        verificationRefs: ["test.pylon_codex.different"],
+      },
+    })
+    const proofChecklist = evaluatePylonKhalaProofChecklist(
+      proofPayload as ProofPayload,
+    )
+    const checklist = evaluatePylonKhalaCloseoutChecklist(
+      completeTraceStatus() as CloseoutTraceStatus,
+      { ...proofPayload, ok: true, proofChecklist } as CloseoutProofResult,
+    )
+
+    expect(checklist.ok).toBe(false)
+    expect(checklist.blockerRefs).toContain(
+      "blocker.khala_closeout.worker_closeout.status_and_refs_consistent",
+    )
   })
 
   test("closeout reads owner-scoped trace status and proof as one JSON projection", async () => {

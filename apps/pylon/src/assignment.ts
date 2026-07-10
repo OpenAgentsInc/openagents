@@ -170,9 +170,12 @@ type HostedAssignmentWorkerCloseoutBody = {
   closeoutRefs: string[]
   deliveryReadinessRefs: string[]
   previewRefs: string[]
+  paymentMode: AssignmentPaymentMode
+  payoutClaimAllowed: boolean
   proofRefs: string[]
   resultRefs: string[]
   reviewCaveatRefs: string[]
+  settlementState: AssignmentCloseout["settlementState"]
   status: string
   summaryRefs: string[]
   testRefs: string[]
@@ -394,9 +397,12 @@ const hostedAssignmentWorkerCloseoutBody = (
   closeoutRefs: [...closeout.closeoutRefs],
   deliveryReadinessRefs: [...closeout.resultRefs],
   previewRefs: [...closeout.previewRefs],
+  paymentMode: closeout.paymentMode,
+  payoutClaimAllowed: closeout.payoutClaimAllowed,
   proofRefs: [...closeout.proofRefs],
   resultRefs: [...closeout.resultRefs],
   reviewCaveatRefs: [...closeout.blockerRefs],
+  settlementState: closeout.settlementState,
   status: closeout.status === "accepted" ? "closeout_submitted" : closeout.status,
   summaryRefs: [...closeout.summaryRefs],
   testRefs: [...closeout.testRefs],

@@ -71,6 +71,20 @@ const noSpendCloseoutPolicy = {
   settlementState: 'not_applicable' as const,
   source: 'worker_closeout_event' as const,
 }
+const workerCloseoutEvidence = {
+  artifactRefs: ['artifact.pylon_codex.assignment_1'],
+  authorityReceiptRefs: ['receipt.pylon_codex.assignment_1'],
+  closeoutRefs: ['assignment.closeout.summary.fixture'],
+  eventRef: 'event.pylon_codex.worker_closeout',
+  observedAt: nowIso,
+  proofRefs: ['proof.pylon_codex.assignment_1'],
+  resultRefs: ['result.pylon_codex.assignment_1'],
+  source: 'worker_closeout_event' as const,
+  status: 'accepted',
+  testRefs: ['test.pylon_codex.assignment_1'],
+  verificationRefs: ['test.pylon_codex.assignment_1'],
+  visibility: 'owner_only' as const,
+}
 
 const rawMetadataResult = (
   overrides: Partial<PylonCodexRawEventMetadataReadResult> = {},
@@ -224,7 +238,21 @@ const assignmentRecord = (
 })
 
 class MemoryPylonStore {
-  constructor(private readonly assignment: PylonApiAssignmentRecord) {}
+  constructor(
+    private readonly assignment: PylonApiAssignmentRecord,
+    private readonly workerCloseoutBody: Record<string, unknown> = {
+      artifactRefs: workerCloseoutEvidence.artifactRefs,
+      authorityReceiptRefs: workerCloseoutEvidence.authorityReceiptRefs,
+      closeoutRefs: workerCloseoutEvidence.closeoutRefs,
+      paymentMode: 'no-spend',
+      payoutClaimAllowed: false,
+      proofRefs: workerCloseoutEvidence.proofRefs,
+      resultRefs: workerCloseoutEvidence.resultRefs,
+      settlementState: 'not_applicable',
+      testRefs: workerCloseoutEvidence.testRefs,
+      verificationRefs: workerCloseoutEvidence.verificationRefs,
+    },
+  ) {}
 
   listEventsForAssignment = async (
     assignmentRef: string,
@@ -234,9 +262,7 @@ class MemoryPylonStore {
           {
             assignmentRef,
             createdAt: nowIso,
-            eventBody: {
-              closeoutRefs: ['assignment.closeout.summary.fixture'],
-            },
+            eventBody: this.workerCloseoutBody,
             eventKind: 'worker_closeout',
             eventRef: 'event.pylon_codex.worker_closeout',
             id: 'event-id-pylon-codex-worker-closeout',
@@ -308,6 +334,7 @@ class MemoryProofStore
         sourceRefs: ['d1:pylon_codex_raw_events'],
       },
       closeoutPolicy: input.closeoutPolicy,
+      workerCloseout: input.workerCloseout ?? workerCloseoutEvidence,
       generatedAt: input.nowIso,
     })
   }
@@ -387,6 +414,7 @@ class MemoryProofStore
         sourceRefs: ['d1:pylon_codex_raw_events'],
       },
       closeoutPolicy: input.closeoutPolicy,
+      workerCloseout: input.workerCloseout ?? workerCloseoutEvidence,
       progress: {
         closeoutReady: false,
         hasFinalTrace: false,
@@ -1654,6 +1682,7 @@ const getTraceStatus = (assignmentRef: string, token = agentToken): Request =>
 const makeHarness = async (
   overrides: Readonly<{
     assignment?: PylonApiAssignmentRecord
+    workerCloseoutBody?: Record<string, unknown>
   }> = {},
 ) => {
   const agentStore = new MemoryAgentStore(await sha256Hex(agentToken))
@@ -1664,6 +1693,7 @@ const makeHarness = async (
   const traceStore = new MemoryTraceStore()
   const pylonStore = new MemoryPylonStore(
     overrides.assignment ?? assignmentRecord(),
+    overrides.workerCloseoutBody,
   )
   const deltas: Array<{
     eventRef: string
@@ -1751,6 +1781,7 @@ describe('GET /api/pylon/codex/proof', () => {
         visibility: 'owner_only',
       },
       closeoutPolicy: noSpendCloseoutPolicy,
+      workerCloseout: workerCloseoutEvidence,
     })
     expect(body.traces.refs).toEqual([
       'trace-pylon-codex-1',
@@ -1771,8 +1802,70 @@ describe('GET /api/pylon/codex/proof', () => {
         ownerUserId: linkedOpenAuthUserId,
         pylonRef: 'pylon-local-codex-1',
         closeoutPolicy: noSpendCloseoutPolicy,
+        workerCloseout: workerCloseoutEvidence,
       },
     ])
+  })
+
+  test('legacy closeout bodies remain unknown instead of inferring no-spend policy', async () => {
+    const { routes } = await makeHarness({
+      workerCloseoutBody: {
+        artifactRefs: workerCloseoutEvidence.artifactRefs,
+        closeoutRefs: workerCloseoutEvidence.closeoutRefs,
+        proofRefs: workerCloseoutEvidence.proofRefs,
+      },
+    })
+    const response = await Effect.runPromise(
+      routes.handlePylonCodexAssignmentProofApi(
+        getProof('assignment-pylon-codex-1'),
+        {},
+      ),
+    )
+    const body = (await response.json()) as PylonCodexAssignmentProof
+
+    expect(response.status).toBe(200)
+    expect(body.closeoutPolicy).toEqual({
+      paymentMode: 'unknown',
+      payoutClaimAllowed: null,
+      settlementState: 'unknown',
+      source: 'unavailable',
+    })
+    expect(body.workerCloseout).toMatchObject({
+      artifactRefs: workerCloseoutEvidence.artifactRefs,
+      proofRefs: workerCloseoutEvidence.proofRefs,
+      source: 'worker_closeout_event',
+      visibility: 'owner_only',
+    })
+  })
+
+  test('owner proof projects only typed closeout refs when a stored legacy event has raw material', async () => {
+    const { routes } = await makeHarness({
+      workerCloseoutBody: {
+        artifactRefs: workerCloseoutEvidence.artifactRefs,
+        authorityReceiptRefs: workerCloseoutEvidence.authorityReceiptRefs,
+        closeoutRefs: workerCloseoutEvidence.closeoutRefs,
+        paymentMode: 'no-spend',
+        payoutClaimAllowed: false,
+        proofRefs: workerCloseoutEvidence.proofRefs,
+        rawResult: 'private prompt and shell output must stay stored-only',
+        resultRefs: workerCloseoutEvidence.resultRefs,
+        settlementState: 'not_applicable',
+        testRefs: workerCloseoutEvidence.testRefs,
+        verificationRefs: workerCloseoutEvidence.verificationRefs,
+      },
+    })
+    const response = await Effect.runPromise(
+      routes.handlePylonCodexAssignmentProofApi(
+        getProof('assignment-pylon-codex-1'),
+        {},
+      ),
+    )
+    const body = (await response.json()) as PylonCodexAssignmentProof
+
+    expect(response.status).toBe(200)
+    expect(body.workerCloseout).toEqual(workerCloseoutEvidence)
+    expect(JSON.stringify(body)).not.toContain('private prompt')
+    expect(JSON.stringify(body)).not.toContain('shell output')
   })
 
   test('does not read proof rows for another agent owner', async () => {
@@ -1970,6 +2063,7 @@ describe('GET /api/pylon/codex/trace-status', () => {
         latestChunkRef: 'raw_chunk.pylon_codex.latest',
         visibility: 'owner_only',
       },
+      workerCloseout: workerCloseoutEvidence,
       tokenUsage: {
         rowCount: 0,
         status: 'pending',

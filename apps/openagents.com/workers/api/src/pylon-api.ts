@@ -561,11 +561,22 @@ export const PylonApiAssignmentWorkerCloseoutRequest = S.Struct({
   fileCount: S.optionalKey(NonNegativeInteger),
   addedLineCount: S.optionalKey(NonNegativeInteger),
   patchDigestRef: S.optionalKey(S.NullOr(PublicSafeRef)),
+  paymentMode: S.optionalKey(S.Literals(['no-spend', 'paid'])),
   previewRefs: PublicSafeRefs,
+  payoutClaimAllowed: S.optionalKey(S.Boolean),
   proofRefs: PublicSafeRefs,
   removedLineCount: S.optionalKey(NonNegativeInteger),
   resultRefs: PublicSafeRefs,
   reviewCaveatRefs: PublicSafeRefs,
+  settlementState: S.optionalKey(
+    S.Literals([
+      'not_applicable',
+      'pending',
+      'recorded',
+      'blocked',
+      'settled',
+    ]),
+  ),
   status: S.optionalKey(PylonEventStatus),
   summaryRefs: PublicSafeRefs,
   testRefs: PublicSafeRefs,
@@ -574,7 +585,38 @@ export const PylonApiAssignmentWorkerCloseoutRequest = S.Struct({
     S.Literals(['blocked', 'ready', 'stale']),
   ),
   writebackRequired: S.optionalKey(S.Boolean),
-})
+}).pipe(
+  S.check(
+    S.makeFilter(
+      body => {
+        const policyFieldCount = [
+          body.paymentMode,
+          body.payoutClaimAllowed,
+          body.settlementState,
+        ].filter(value => value !== undefined).length
+
+        if (policyFieldCount === 0) {
+          return true
+        }
+        if (policyFieldCount !== 3) {
+          return false
+        }
+        if (body.paymentMode === 'no-spend') {
+          return (
+            body.settlementState === 'not_applicable' &&
+            body.payoutClaimAllowed === false
+          )
+        }
+
+        return body.settlementState !== 'not_applicable'
+      },
+      {
+        message:
+          'worker closeout policy fields must be omitted together or supplied as one coherent explicit policy',
+      },
+    ),
+  ),
+)
 export type PylonApiAssignmentWorkerCloseoutRequest =
   typeof PylonApiAssignmentWorkerCloseoutRequest.Type
 

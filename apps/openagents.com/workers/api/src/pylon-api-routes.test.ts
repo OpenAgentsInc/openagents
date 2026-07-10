@@ -3741,6 +3741,99 @@ describe('Pylon API routes', () => {
     })
   })
 
+  test('worker closeout accepts exact policy, rejects excess/private fields, and keeps evidence out of public projections', async () => {
+    const store = new MemoryPylonApiStore()
+    const assignmentRef = 'assignment.public.worker_closeout_policy'
+    await registerPylon(store)
+    await markOnline(store)
+    await markWalletReady(store)
+    await createAssignment(store, {
+      assignmentRef,
+      idempotencyKey: 'assignment-worker-closeout-policy',
+    })
+    await route(
+      store,
+      `/api/pylons/pylon.test.one/assignments/${assignmentRef}/accept`,
+      {
+        body: { accepted: true },
+        idempotencyKey: 'accept-worker-closeout-policy',
+        method: 'POST',
+        tokenUserId: 'agent-one',
+      },
+    )
+
+    const exactBody = {
+      artifactRefs: ['artifact.public.worker_closeout_policy'],
+      authorityReceiptRefs: ['receipt.public.worker_closeout_policy'],
+      closeoutRefs: ['closeout.public.worker_closeout_policy'],
+      paymentMode: 'no-spend',
+      payoutClaimAllowed: false,
+      proofRefs: ['proof.public.worker_closeout_policy'],
+      resultRefs: ['result.public.worker_closeout_policy'],
+      settlementState: 'not_applicable',
+      status: 'closeout_submitted',
+      testRefs: ['test.public.worker_closeout_policy'],
+      verificationRefs: ['test.public.worker_closeout_policy'],
+    }
+    const excess = await route(
+      store,
+      `/api/pylons/pylon.test.one/assignments/${assignmentRef}/closeout`,
+      {
+        body: { ...exactBody, unexpectedDetail: 'bounded-but-unmodeled' },
+        idempotencyKey: 'worker-closeout-policy-excess',
+        method: 'POST',
+        tokenUserId: 'agent-one',
+      },
+    )
+    const partialPolicy = await route(
+      store,
+      `/api/pylons/pylon.test.one/assignments/${assignmentRef}/closeout`,
+      {
+        body: { ...exactBody, payoutClaimAllowed: undefined },
+        idempotencyKey: 'worker-closeout-policy-partial',
+        method: 'POST',
+        tokenUserId: 'agent-one',
+      },
+    )
+    const privatePayload = await route(
+      store,
+      `/api/pylons/pylon.test.one/assignments/${assignmentRef}/closeout`,
+      {
+        body: { ...exactBody, rawResult: 'private prompt and shell output' },
+        idempotencyKey: 'worker-closeout-policy-private',
+        method: 'POST',
+        tokenUserId: 'agent-one',
+      },
+    )
+    const accepted = await route(
+      store,
+      `/api/pylons/pylon.test.one/assignments/${assignmentRef}/closeout`,
+      {
+        body: exactBody,
+        idempotencyKey: 'worker-closeout-policy-exact',
+        method: 'POST',
+        tokenUserId: 'agent-one',
+      },
+    )
+    const acceptedBody = await responseJson<PylonRouteJson>(accepted)
+    const events = await store.listEventsForAssignment(assignmentRef, 20)
+    const workerCloseout = events.find(
+      event => event.eventKind === 'worker_closeout',
+    )
+
+    expect(excess.status).toBe(400)
+    expect(partialPolicy.status).toBe(400)
+    expect(privatePayload.status).toBe(400)
+    expect(accepted.status).toBe(201)
+    expect(workerCloseout?.eventBody).toEqual(exactBody)
+    expect(JSON.stringify(acceptedBody)).not.toContain(
+      'receipt.public.worker_closeout_policy',
+    )
+    expect(JSON.stringify(acceptedBody)).not.toContain(
+      'test.public.worker_closeout_policy',
+    )
+  })
+
   test('records a settled paid GEPA-style assignment receipt after accepted closeout', async () => {
     const store = new MemoryPylonApiStore()
     await registerPylon(store, {
@@ -4486,7 +4579,10 @@ describe('Pylon Sarah FleetRun transport', () => {
           return executionAccepted
         }),
     }
-    const fetchImpl: typeof globalThis.fetch = async (input, init) => {
+    const fetchImpl = (async (
+      input: Parameters<typeof globalThis.fetch>[0],
+      init?: Parameters<typeof globalThis.fetch>[1],
+    ) => {
       expect(new Headers(init?.headers).get('authorization')).toBe(
         'Bearer oa_agent_cross_wire',
       )
@@ -4503,7 +4599,7 @@ describe('Pylon Sarah FleetRun transport', () => {
         openauthUserId: 'openauth-user-one',
         tokenUserId: 'agent-one',
       })
-    }
+    }) as unknown as typeof globalThis.fetch
     const pylonPort = makePylonFleetRunExecutionHttpPort({
       agentToken: 'oa_agent_cross_wire',
       baseUrl: 'https://openagents.com',

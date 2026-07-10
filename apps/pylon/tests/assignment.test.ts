@@ -212,12 +212,12 @@ function fakeAssignmentServer(input: {
         expect(body).not.toHaveProperty("assignmentRef")
         expect(body).not.toHaveProperty("completedAt")
         expect(body).not.toHaveProperty("leaseRef")
-        expect(body).not.toHaveProperty("paymentMode")
-        expect(body).not.toHaveProperty("payoutClaimAllowed")
+        expect(body.paymentMode).toBe("no-spend")
+        expect(body.payoutClaimAllowed).toBe(false)
         expect(body).not.toHaveProperty("receiptRefs")
         expect(body).not.toHaveProperty("redacted")
         expect(body).not.toHaveProperty("schema")
-        expect(body).not.toHaveProperty("settlementState")
+        expect(body.settlementState).toBe("not_applicable")
         const assignmentRef = decodeURIComponent(url.pathname.split("/").at(-2) ?? "")
         return Response.json({ closeoutRef: `assignment.closeout.${assignmentRef}` })
       }
@@ -380,17 +380,17 @@ describe("Pylon assignment lease flow", () => {
         blockerRefs: [],
         buildRefs: result.closeout.buildRefs,
         closeoutRefs: result.closeout.closeoutRefs,
+        paymentMode: "no-spend",
+        payoutClaimAllowed: false,
         proofRefs: result.closeout.proofRefs,
         resultRefs: result.closeout.resultRefs,
         status: "closeout_submitted",
+        settlementState: "not_applicable",
         summaryRefs: result.closeout.summaryRefs,
         testRefs: result.closeout.testRefs,
       })
       expect(closeoutRequest?.body).not.toHaveProperty("assignmentRef")
       expect(closeoutRequest?.body).not.toHaveProperty("leaseRef")
-      expect(closeoutRequest?.body).not.toHaveProperty("paymentMode")
-      expect(closeoutRequest?.body).not.toHaveProperty("settlementState")
-      expect(closeoutRequest?.body).not.toHaveProperty("payoutClaimAllowed")
       expect(fake.requests.map((request) => request.path).filter((path) => path.endsWith("/assignments"))).toEqual([
         `/api/pylons/${encodeURIComponent(pylonRef)}/assignments`,
       ])
@@ -1917,7 +1917,11 @@ describe("Pylon assignment lease flow", () => {
       })
       expect(closeoutRequest?.body).not.toHaveProperty("assignmentRef")
       expect(closeoutRequest?.body).not.toHaveProperty("leaseRef")
-      expect(closeoutRequest?.body).not.toHaveProperty("paymentMode")
+      expect(closeoutRequest?.body).toMatchObject({
+        paymentMode: "no-spend",
+        payoutClaimAllowed: false,
+        settlementState: "not_applicable",
+      })
       assertPublicProjectionSafe(result.closeout)
     })
   })

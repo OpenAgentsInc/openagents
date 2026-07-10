@@ -287,14 +287,36 @@ export type PylonCodexAssignmentProof = Readonly<{
     sourceRefs: ReadonlyArray<string>
   }>
   closeoutPolicy: PylonCodexAssignmentCloseoutPolicy
+  workerCloseout: PylonCodexAssignmentWorkerCloseoutEvidence
   generatedAt: string
 }>
 
 export type PylonCodexAssignmentCloseoutPolicy = Readonly<{
   paymentMode: 'no-spend' | 'paid' | 'unknown'
   payoutClaimAllowed: boolean | null
-  settlementState: 'not_applicable' | 'pending' | 'settled' | 'unknown'
+  settlementState:
+    | 'not_applicable'
+    | 'pending'
+    | 'recorded'
+    | 'blocked'
+    | 'settled'
+    | 'unknown'
   source: 'worker_closeout_event' | 'unavailable'
+}>
+
+export type PylonCodexAssignmentWorkerCloseoutEvidence = Readonly<{
+  artifactRefs: ReadonlyArray<string>
+  authorityReceiptRefs: ReadonlyArray<string>
+  closeoutRefs: ReadonlyArray<string>
+  eventRef: string | null
+  observedAt: string | null
+  proofRefs: ReadonlyArray<string>
+  resultRefs: ReadonlyArray<string>
+  source: 'worker_closeout_event' | 'unavailable'
+  status: string | null
+  testRefs: ReadonlyArray<string>
+  verificationRefs: ReadonlyArray<string>
+  visibility: 'owner_only'
 }>
 
 export type PylonCodexAssignmentTraceStatus = Readonly<{
@@ -354,6 +376,7 @@ export type PylonCodexAssignmentTraceStatus = Readonly<{
     sourceRefs: ReadonlyArray<string>
   }>
   closeoutPolicy: PylonCodexAssignmentCloseoutPolicy
+  workerCloseout: PylonCodexAssignmentWorkerCloseoutEvidence
   progress: Readonly<{
     state:
       | 'assignment_created'
@@ -380,6 +403,7 @@ export type PylonCodexAssignmentProofStore = Readonly<{
       pylonRef: string
       nowIso: string
       closeoutPolicy: PylonCodexAssignmentCloseoutPolicy
+      workerCloseout?: PylonCodexAssignmentWorkerCloseoutEvidence
     }>,
   ) => Promise<PylonCodexAssignmentProof>
 }>
@@ -392,6 +416,7 @@ export type PylonCodexAssignmentTraceStatusStore = Readonly<{
       ownerUserId: string
       nowIso: string
       closeoutPolicy: PylonCodexAssignmentCloseoutPolicy
+      workerCloseout?: PylonCodexAssignmentWorkerCloseoutEvidence
     }>,
   ) => Promise<PylonCodexAssignmentTraceStatus>
 }>
@@ -559,48 +584,119 @@ const boundedProofRefs = (
     .filter(ref => ref !== '')
     .slice(0, 100)
 
-const closeoutPolicyFromEvents = (
-  events: ReadonlyArray<PylonApiEventRecord>,
-  assignment: PylonApiAssignmentRecord,
-): PylonCodexAssignmentCloseoutPolicy => {
-  const closeoutEvent = events.find(row => row.eventKind === 'worker_closeout')
-  if (closeoutEvent === undefined) {
-    return {
-      paymentMode: 'unknown',
-      payoutClaimAllowed: null,
-      settlementState: 'unknown',
-      source: 'unavailable',
-    }
+const unavailableCloseoutPolicy = (): PylonCodexAssignmentCloseoutPolicy => ({
+  paymentMode: 'unknown',
+  payoutClaimAllowed: null,
+  settlementState: 'unknown',
+  source: 'unavailable',
+})
+
+const unavailableWorkerCloseoutEvidence =
+  (): PylonCodexAssignmentWorkerCloseoutEvidence => ({
+    artifactRefs: [],
+    authorityReceiptRefs: [],
+    closeoutRefs: [],
+    eventRef: null,
+    observedAt: null,
+    proofRefs: [],
+    resultRefs: [],
+    source: 'unavailable',
+    status: null,
+    testRefs: [],
+    verificationRefs: [],
+    visibility: 'owner_only',
+  })
+
+const boundedWorkerCloseoutRefs = (
+  body: Record<string, unknown>,
+  key: string,
+): ReadonlyArray<string> => {
+  const refs = body[key]
+  if (!Array.isArray(refs)) {
+    return []
   }
-  const body = closeoutEvent.eventBody
-  const codingAssignment = assignment.codingAssignment as
-    | { readonly budget?: { readonly paymentMode?: unknown } }
-    | null
-  const paymentMode =
-    body.paymentMode === 'no-spend' || body.paymentMode === 'paid'
-      ? body.paymentMode
-      : codingAssignment?.budget?.paymentMode === 'buyer_funded'
-        ? 'paid'
-        : 'no-spend'
-  const settlementState =
-    body.settlementState === 'not_applicable' ||
-    body.settlementState === 'pending' ||
-    body.settlementState === 'settled'
-      ? body.settlementState
-      : paymentMode === 'no-spend'
-        ? 'not_applicable'
-      : 'unknown'
-  const payoutClaimAllowed =
-    typeof body.payoutClaimAllowed === 'boolean'
-      ? body.payoutClaimAllowed
-      : paymentMode === 'no-spend'
-        ? false
-      : null
+
+  return [
+    ...new Set(
+      refs.filter(
+        (ref): ref is string =>
+          typeof ref === 'string' &&
+          /^[A-Za-z0-9][A-Za-z0-9_.:/=-]{2,259}$/.test(ref),
+      ),
+    ),
+  ].slice(0, 100)
+}
+
+const explicitCloseoutPolicyFromBody = (
+  body: Record<string, unknown>,
+): PylonCodexAssignmentCloseoutPolicy => {
+  const paymentMode = body.paymentMode
+  const settlementState = body.settlementState
+  const payoutClaimAllowed = body.payoutClaimAllowed
+  const policyIsComplete =
+    (paymentMode === 'no-spend' || paymentMode === 'paid') &&
+    (settlementState === 'not_applicable' ||
+      settlementState === 'pending' ||
+      settlementState === 'recorded' ||
+      settlementState === 'blocked' ||
+      settlementState === 'settled') &&
+    typeof payoutClaimAllowed === 'boolean'
+
+  if (!policyIsComplete) {
+    return unavailableCloseoutPolicy()
+  }
+  if (
+    (paymentMode === 'no-spend' &&
+      (settlementState !== 'not_applicable' || payoutClaimAllowed)) ||
+    (paymentMode === 'paid' && settlementState === 'not_applicable')
+  ) {
+    return unavailableCloseoutPolicy()
+  }
+
   return {
     paymentMode,
     payoutClaimAllowed,
     settlementState,
     source: 'worker_closeout_event',
+  }
+}
+
+const workerCloseoutFromEvents = (
+  events: ReadonlyArray<PylonApiEventRecord>,
+): Readonly<{
+  closeoutPolicy: PylonCodexAssignmentCloseoutPolicy
+  workerCloseout: PylonCodexAssignmentWorkerCloseoutEvidence
+}> => {
+  const closeoutEvent = events.find(row => row.eventKind === 'worker_closeout')
+  if (closeoutEvent === undefined) {
+    return {
+      closeoutPolicy: unavailableCloseoutPolicy(),
+      workerCloseout: unavailableWorkerCloseoutEvidence(),
+    }
+  }
+  const body = closeoutEvent.eventBody
+  return {
+    closeoutPolicy: explicitCloseoutPolicyFromBody(body),
+    workerCloseout: {
+      artifactRefs: boundedWorkerCloseoutRefs(body, 'artifactRefs'),
+      authorityReceiptRefs: boundedWorkerCloseoutRefs(
+        body,
+        'authorityReceiptRefs',
+      ),
+      closeoutRefs: boundedWorkerCloseoutRefs(body, 'closeoutRefs'),
+      eventRef: closeoutEvent.eventRef,
+      observedAt: closeoutEvent.createdAt,
+      proofRefs: boundedWorkerCloseoutRefs(body, 'proofRefs'),
+      resultRefs: boundedWorkerCloseoutRefs(body, 'resultRefs'),
+      source: 'worker_closeout_event',
+      status:
+        /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,79}$/.test(closeoutEvent.status)
+          ? closeoutEvent.status
+          : null,
+      testRefs: boundedWorkerCloseoutRefs(body, 'testRefs'),
+      verificationRefs: boundedWorkerCloseoutRefs(body, 'verificationRefs'),
+      visibility: 'owner_only',
+    },
   }
 }
 
@@ -1129,6 +1225,8 @@ export const makeD1PylonCodexAssignmentProofStore = (
         sourceRefs: rawEventMetadata.turnEvents.sourceRefs,
       },
       closeoutPolicy: input.closeoutPolicy,
+      workerCloseout:
+        input.workerCloseout ?? unavailableWorkerCloseoutEvidence(),
       generatedAt: input.nowIso,
     }
   },
@@ -1415,6 +1513,8 @@ export const makeD1PylonCodexAssignmentProofStore = (
         visibility: 'owner_only',
       },
       closeoutPolicy: input.closeoutPolicy,
+      workerCloseout:
+        input.workerCloseout ?? unavailableWorkerCloseoutEvidence(),
       progress: {
         closeoutReady: closedOut,
         hasFinalTrace,
@@ -2736,13 +2836,18 @@ const assignmentRefFromProofRequest = (
   return Effect.succeed(value)
 }
 
-const readCloseoutPolicy = <Bindings>(
+const readWorkerCloseout = <Bindings>(
   dependencies: PylonCodexTurnIngestDependencies<Bindings>,
   env: Bindings,
-  assignment: PylonApiAssignmentRecord,
   assignmentRef: string,
   operation: string,
-): Effect.Effect<PylonCodexAssignmentCloseoutPolicy, PylonCodexStorageError> =>
+): Effect.Effect<
+  Readonly<{
+    closeoutPolicy: PylonCodexAssignmentCloseoutPolicy
+    workerCloseout: PylonCodexAssignmentWorkerCloseoutEvidence
+  }>,
+  PylonCodexStorageError
+> =>
   Effect.tryPromise({
     catch: error =>
       new PylonCodexStorageError({
@@ -2752,8 +2857,8 @@ const readCloseoutPolicy = <Bindings>(
     try: async () => {
       const events = await dependencies
         .pylonStore(env)
-        .listEventsForAssignment(assignmentRef, 25)
-      return closeoutPolicyFromEvents(events, assignment)
+        .listEventsForAssignment(assignmentRef, 100)
+      return workerCloseoutFromEvents(events)
     },
   })
 
@@ -2780,10 +2885,9 @@ const routeProof = <Bindings>(
       assignmentRef,
     })
     const ownerUserId = ownerUserIdForAgent(session)
-    const closeoutPolicy = yield* readCloseoutPolicy(
+    const workerCloseoutProjection = yield* readWorkerCloseout(
       dependencies,
       env,
-      assignment,
       assignmentRef,
       'pylon_codex_assignment_proof_read',
     )
@@ -2796,11 +2900,12 @@ const routeProof = <Bindings>(
       try: () =>
         proofStore.readAssignmentProof({
           assignmentRef,
-          closeoutPolicy,
+          closeoutPolicy: workerCloseoutProjection.closeoutPolicy,
           nowIso: routeNowIso(dependencies),
           ownerAgentUserId: session.user.id,
           ownerUserId,
           pylonRef: assignment.pylonRef,
+          workerCloseout: workerCloseoutProjection.workerCloseout,
         }),
     })
 
@@ -2830,10 +2935,9 @@ const routeTraceStatus = <Bindings>(
       assignmentRef,
     })
     const ownerUserId = ownerUserIdForAgent(session)
-    const closeoutPolicy = yield* readCloseoutPolicy(
+    const workerCloseoutProjection = yield* readWorkerCloseout(
       dependencies,
       env,
-      assignment,
       assignmentRef,
       'pylon_codex_assignment_trace_status_read',
     )
@@ -2846,10 +2950,11 @@ const routeTraceStatus = <Bindings>(
       try: () =>
         statusStore.readAssignmentTraceStatus({
           assignment,
-          closeoutPolicy,
+          closeoutPolicy: workerCloseoutProjection.closeoutPolicy,
           nowIso: routeNowIso(dependencies),
           ownerAgentUserId: session.user.id,
           ownerUserId,
+          workerCloseout: workerCloseoutProjection.workerCloseout,
         }),
     })
 

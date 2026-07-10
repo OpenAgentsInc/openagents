@@ -522,6 +522,7 @@ const requireScopedIdempotencyHash = (
 const decodeBody = <A>(
   request: Request,
   schema: S.Decoder<A>,
+  rejectExcessProperties = false,
 ): Effect.Effect<A, PylonApiStoreError> =>
   Effect.tryPromise({
     catch: error =>
@@ -529,8 +530,12 @@ const decodeBody = <A>(
         kind: 'validation_error',
         reason: error instanceof Error ? error.message : String(error),
       }),
-    try: async () =>
-      decodeUnknownWithSchema(schema, await readJsonObject(request)),
+    try: async () => {
+      const body = await readJsonObject(request)
+      return rejectExcessProperties
+        ? S.decodeUnknownSync(schema)(body, { onExcessProperty: 'error' })
+        : decodeUnknownWithSchema(schema, body)
+    },
   })
 
 const routeStore = <Bindings extends PylonApiRouteEnv>(
@@ -2468,6 +2473,7 @@ const routeEvent = <Bindings extends PylonApiRouteEnv>(
     eventKind: PylonApiEventKind
     fallbackStatus: string
     pylonRef: string
+    rejectExcessProperties?: boolean | undefined
     schema: S.Decoder<Record<string, unknown>>
   }>,
 ) =>
@@ -2625,7 +2631,11 @@ const routeEvent = <Bindings extends PylonApiRouteEnv>(
       }
     }
 
-    const body = yield* decodeBody(request, input.schema)
+    const body = yield* decodeBody(
+      request,
+      input.schema,
+      input.rejectExcessProperties,
+    )
     const event = yield* Effect.try({
       catch: pylonApiStoreErrorFromUnknown,
       try: () =>
@@ -3628,6 +3638,7 @@ export const makePylonApiRoutes = <Bindings extends PylonApiRouteEnv>(
                 ? {
                     eventKind: 'worker_closeout' as const,
                     fallbackStatus: 'closeout_submitted',
+                    rejectExcessProperties: true,
                     schema: PylonApiAssignmentWorkerCloseoutRequest,
                   }
                 : action === 'payment-receipts'
@@ -3647,6 +3658,9 @@ export const makePylonApiRoutes = <Bindings extends PylonApiRouteEnv>(
         eventKind: route.eventKind,
         fallbackStatus: route.fallbackStatus,
         pylonRef: decodeURIComponent(assignmentMatch[1]!),
+        ...('rejectExcessProperties' in route
+          ? { rejectExcessProperties: route.rejectExcessProperties }
+          : {}),
         schema: route.schema,
       }).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
     }

@@ -133,7 +133,13 @@ export type PylonKhalaAssignmentTraceStatusResult = {
   closeoutPolicy?: {
     paymentMode: "no-spend" | "paid" | "unknown"
     payoutClaimAllowed: boolean | null
-    settlementState: "not_applicable" | "pending" | "settled" | "unknown"
+    settlementState:
+      | "not_applicable"
+      | "pending"
+      | "recorded"
+      | "blocked"
+      | "settled"
+      | "unknown"
     source: "worker_closeout_event" | "unavailable"
   }
   events: {
@@ -215,6 +221,22 @@ export type PylonKhalaAssignmentTraceStatusResult = {
     schemaVersion: string
     visibility: "owner_only"
   }
+  workerCloseout?: PylonKhalaWorkerCloseoutEvidence
+}
+
+export type PylonKhalaWorkerCloseoutEvidence = {
+  artifactRefs: string[]
+  authorityReceiptRefs: string[]
+  closeoutRefs: string[]
+  eventRef: string | null
+  observedAt: string | null
+  proofRefs: string[]
+  resultRefs: string[]
+  source: "worker_closeout_event" | "unavailable"
+  status: string | null
+  testRefs: string[]
+  verificationRefs: string[]
+  visibility: "owner_only"
 }
 
 export type PylonKhalaProofResult = {
@@ -256,6 +278,7 @@ export type PylonKhalaProofResult = {
     schemaVersion: string
     visibility: "owner_only"
   }
+  workerCloseout?: PylonKhalaWorkerCloseoutEvidence
 }
 
 export type PylonKhalaProofChecklistItem = {
@@ -388,7 +411,11 @@ function githubFullNameFromInput(repository: string | undefined): string {
   assertPublicSafe(value, "khala request repository")
   if (githubFullNamePattern.test(value)) return value
   const github = /^https:\/\/github\.com\/([^/\s]+)\/([^/\s#?]+)(?:[/?#].*)?$/.exec(value)
-  if (github) return `${github[1]}/${github[2].replace(/\.git$/, "")}`
+  const githubOwner = github?.[1]
+  const githubRepository = github?.[2]
+  if (githubOwner !== undefined && githubRepository !== undefined) {
+    return `${githubOwner}/${githubRepository.replace(/\.git$/, "")}`
+  }
   throw new Error("khala request --repo must be owner/repo or a public GitHub URL")
 }
 
@@ -564,6 +591,28 @@ const unavailableCloseoutPolicy = {
   PylonKhalaAssignmentTraceStatusResult["closeoutPolicy"]
 >
 
+const unavailableWorkerCloseoutEvidence = {
+  artifactRefs: [],
+  authorityReceiptRefs: [],
+  closeoutRefs: [],
+  eventRef: null,
+  observedAt: null,
+  proofRefs: [],
+  resultRefs: [],
+  source: "unavailable",
+  status: null,
+  testRefs: [],
+  verificationRefs: [],
+  visibility: "owner_only",
+} as const satisfies PylonKhalaWorkerCloseoutEvidence
+
+const refsMatchExactly = (
+  left: ReadonlyArray<string>,
+  right: ReadonlyArray<string>,
+): boolean =>
+  left.length === right.length &&
+  left.every((ref, index) => ref === right[index])
+
 export function evaluatePylonKhalaCloseoutChecklist(
   status: PylonKhalaAssignmentTraceStatusResult,
   proof: PylonKhalaProofResult,
@@ -571,6 +620,10 @@ export function evaluatePylonKhalaCloseoutChecklist(
   const statusCloseoutPolicy =
     status.closeoutPolicy ?? unavailableCloseoutPolicy
   const proofCloseoutPolicy = proof.closeoutPolicy ?? unavailableCloseoutPolicy
+  const statusWorkerCloseout =
+    status.workerCloseout ?? unavailableWorkerCloseoutEvidence
+  const proofWorkerCloseout =
+    proof.workerCloseout ?? unavailableWorkerCloseoutEvidence
   const statusTokenUsageRefs = status.tokenUsage.refs ?? []
   const proofTokenUsageRefs = proof.tokenUsage.refs ?? []
   const items = [
@@ -648,6 +701,63 @@ export function evaluatePylonKhalaCloseoutChecklist(
     checklistItem(
       "check.khala_closeout.proof_checklist.ok",
       proof.proofChecklist.ok,
+    ),
+    checklistItem(
+      "check.khala_closeout.worker_closeout.owner_only_present",
+      statusWorkerCloseout.visibility === "owner_only" &&
+        proofWorkerCloseout.visibility === "owner_only" &&
+        statusWorkerCloseout.source === "worker_closeout_event" &&
+        proofWorkerCloseout.source === "worker_closeout_event" &&
+        statusWorkerCloseout.eventRef !== null &&
+        proofWorkerCloseout.eventRef !== null &&
+        statusWorkerCloseout.status !== null &&
+        proofWorkerCloseout.status !== null,
+    ),
+    checklistItem(
+      "check.khala_closeout.worker_closeout.status_and_refs_consistent",
+      statusWorkerCloseout.eventRef === proofWorkerCloseout.eventRef &&
+        statusWorkerCloseout.observedAt === proofWorkerCloseout.observedAt &&
+        statusWorkerCloseout.status === proofWorkerCloseout.status &&
+        refsMatchExactly(
+          statusWorkerCloseout.artifactRefs,
+          proofWorkerCloseout.artifactRefs,
+        ) &&
+        refsMatchExactly(
+          statusWorkerCloseout.authorityReceiptRefs,
+          proofWorkerCloseout.authorityReceiptRefs,
+        ) &&
+        refsMatchExactly(
+          statusWorkerCloseout.closeoutRefs,
+          proofWorkerCloseout.closeoutRefs,
+        ) &&
+        refsMatchExactly(
+          statusWorkerCloseout.proofRefs,
+          proofWorkerCloseout.proofRefs,
+        ) &&
+        refsMatchExactly(
+          statusWorkerCloseout.resultRefs,
+          proofWorkerCloseout.resultRefs,
+        ) &&
+        refsMatchExactly(
+          statusWorkerCloseout.testRefs,
+          proofWorkerCloseout.testRefs,
+        ) &&
+        refsMatchExactly(
+          statusWorkerCloseout.verificationRefs,
+          proofWorkerCloseout.verificationRefs,
+        ) &&
+        refsMatchExactly(
+          status.lifecycle.artifactRefs,
+          statusWorkerCloseout.artifactRefs,
+        ) &&
+        refsMatchExactly(
+          status.lifecycle.closeoutRefs,
+          statusWorkerCloseout.closeoutRefs,
+        ) &&
+        refsMatchExactly(
+          status.lifecycle.proofRefs,
+          statusWorkerCloseout.proofRefs,
+        ),
     ),
     checklistItem(
       "check.khala_closeout.no_spend_payout_false",
