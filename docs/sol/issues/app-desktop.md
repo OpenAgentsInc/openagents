@@ -1,5 +1,14 @@
 # APP-DESKTOP: greenfield OpenAgents Desktop — Electron + Effect Native
 
+## Revision 24 authoritative override (2026-07-10)
+
+Reliable persona-neutral Desktop Fleet software is P0. Sarah is a compatibility
+adapter, not the required front door. New persona, relationship, avatar, opener,
+voice, video, A/V, and presentation scope is paused. This issue advances only in
+R0–R7 order; it does not establish Fleet authority locally. The current open
+`roadmap:sol` count excludes closed #8652. The historical text below is retained
+only where it does not conflict with this override.
+
 ## Outcome
 
 Build a new **OpenAgents Desktop** application from scratch at

@@ -1,5 +1,14 @@
 # EPIC APP-1: three OpenAgents apps on Effect Native — greenfield mobile and desktop
 
+## Revision 24 authoritative override (2026-07-10)
+
+Reliable persona-neutral Desktop and mobile Fleet software is P0. Sarah remains
+a supported compatibility adapter, not the required application front door.
+New persona, relationship, avatar, opener, voice, video, A/V, and presentation
+scope is paused. This epic closes only after R0–R7 and its child exits reconcile.
+The current open `roadmap:sol` count excludes closed #8652. The historical text
+below is retained as context where it does not conflict with this override.
+
 ## Owner direction
 
 The product surface collapses to three applications:

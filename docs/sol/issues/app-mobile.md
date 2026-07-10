@@ -1,5 +1,15 @@
 # APP-MOBILE: greenfield OpenAgents mobile — Effect Native + React Native
 
+## Revision 24 authoritative override (2026-07-10)
+
+Reliable persona-neutral mobile Fleet supervision is P0. Sarah is a supported
+compatibility adapter, not the required home/front door. New persona,
+relationship, avatar, opener, voice, video, A/V, and presentation scope is
+paused. This issue advances only in R0–R7 order and must consume the shared
+authoritative Sync/Fleet contract. The current open `roadmap:sol` count excludes
+closed #8652. The historical text below is retained only where it does not
+conflict with this override.
+
 ## Outcome
 
 Build a new **OpenAgents** iOS/Android app from scratch at

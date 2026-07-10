@@ -1,5 +1,16 @@
 # P0 EPIC: Sarah Fleet Command — Codex + Claude now, managed cloud next
 
+## Revision 24 authoritative override (2026-07-10)
+
+This is existing Fleet substrate for the P0 reliable persona-neutral
+Desktop/mobile program; do not rebuild Fleet or make a Sarah surface the product
+front door. Sarah remains a compatibility adapter. New persona, relationship,
+avatar, opener, voice, video, A/V, and presentation scope is paused. The
+program accepts work in R0–R7 order; this parent closes after #8640, R3/R7, and
+accepted follow-on disposition. The current open `roadmap:sol` count excludes
+closed #8652. The historical text below is retained only where it does not
+conflict with this override.
+
 ## Owner direction
 
 Sarah managing coding fleets is the immediate product priority. She must start,

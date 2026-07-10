@@ -1,5 +1,16 @@
 # FC-5: live Sarah Codex + Claude coding burn
 
+## Revision 24 authoritative override (2026-07-10)
+
+This P0 live-proof issue supplies runtime evidence to the reliable
+persona-neutral Desktop/mobile Fleet program. It does not make Sarah the
+required product front door. New persona, relationship, avatar, opener, voice,
+video, A/V, and presentation scope is paused. It remains coordinator/owner
+gated and does not authorize implementation that bypasses R0–R7 acceptance
+order. The current open `roadmap:sol` count excludes closed #8652. The
+historical text below is retained only where it does not conflict with this
+override.
+
 Parent: #8638
 
 ## Outcome

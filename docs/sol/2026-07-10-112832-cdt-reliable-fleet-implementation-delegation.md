@@ -27,6 +27,16 @@
   #8597 found an active 16:28 CDT mobile Sarah-removal/Khala-composer claim;
   FAST-3 and R6 remain unavailable until it explicitly releases. #8640 remains
   coordinator/owner-gated, including its Codex account reconnect and live proof.
+- 2026-07-10 16:50 CDT — FAST-2 claimed across #8566, #8574, #8597, #8638, and
+  #8640 in a clean worktree because the shared checkout contains unrelated Sol
+  edits. The metadata-only leaf adds the Revision 24 override to each checked-in
+  issue source, then reconciles each live body and label without touching active
+  implementation paths.
+- 2026-07-10 16:53 CDT — FAST-2 reconciliation is verified: all five live
+  bodies match their checked-in source after GitHub final-newline normalization;
+  every issue now has `priority:P0`, while stale `priority:P1-parallel` and
+  `area:sarah` labels were removed. `git diff --check` passes; preparing the
+  scoped commit and release receipts.
 
 ## Mission
 
