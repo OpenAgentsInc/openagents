@@ -29,7 +29,7 @@ import {
   type FleetRunWorkSourceDescriptor,
 } from "./fleet-run-work-source.js"
 
-export const ORCHESTRATION_SCHEMA_VERSION = 6
+export const ORCHESTRATION_SCHEMA_VERSION = 7
 
 export type OrchestrationTaskStatus =
   | "pending"
@@ -222,6 +222,79 @@ export type ReserveFleetRunExecutionOutboxBatchInput = {
   firstSequence: number
   lastSequence: number
   deliveryBatchRef: string
+}
+
+export type FleetRunSteeringOutcomeStatus =
+  | "applied"
+  | "queued_follow_up"
+  | "skipped_stale"
+  | "rejected"
+  | "failed"
+
+/**
+ * Durable, public-safe receipt for one Sarah steering intent applied by this
+ * accepted Pylon. The raw intent and steer body deliberately do not live in
+ * this row: only their content digest crosses the exactly-once boundary.
+ */
+export type FleetRunSteeringOutcomeRecord = {
+  readonly pylonRef: string
+  readonly runRef: string
+  readonly claimRef: string
+  readonly seq: number
+  readonly intentId: string
+  readonly intentKind: string
+  readonly intentDigest: string
+  readonly outcome: FleetRunSteeringOutcomeStatus
+  readonly outcomeRef: string
+  readonly observedAt: string
+}
+
+export type FleetRunSteeringOutcomeOutboxEntry =
+  FleetRunSteeringOutcomeRecord & {
+    readonly deliveredAt: string | null
+  }
+
+export type FleetRunSteeringQueuedFollowUp = {
+  readonly pylonRef: string
+  readonly runRef: string
+  readonly claimRef: string
+  readonly seq: number
+  readonly intentId: string
+  readonly workUnitRef: string | null
+  readonly workClaimRef: string | null
+  readonly assignmentRef: string | null
+  readonly targetRef: string | null
+  readonly intentKind: "fleet_run_control" | "approval_decision" | "steer_message"
+  readonly approvalRef: string | null
+  readonly decision: "allow" | "deny" | null
+  readonly residualRefs: readonly string[]
+  /** Owner-private local material. Never project this through an ACK. */
+  readonly body: string | null
+  readonly bodyRef: string | null
+  readonly createdAt: string
+}
+
+export type ApplyFleetRunSteeringIntentInput = {
+  readonly pylonRef: string
+  readonly runRef: string
+  readonly claimRef: string
+  readonly seq: number
+  readonly intentId: string
+  readonly intentKind: string
+  readonly intentDigest: string
+  readonly observedAt: Date
+  readonly outcomeRefFor: (
+    outcome: FleetRunSteeringOutcomeStatus,
+    observedAt: string,
+  ) => string
+}
+
+export type FleetRunSteeringApplication = {
+  readonly outcome: FleetRunSteeringOutcomeStatus
+  readonly queuedFollowUp?: Omit<
+    FleetRunSteeringQueuedFollowUp,
+    "pylonRef" | "runRef" | "claimRef" | "seq" | "intentId" | "createdAt"
+  > | undefined
 }
 
 export const FleetRunOwnerLocalStateSchema = S.Struct({
@@ -850,6 +923,42 @@ type FleetRunExecutionOutboxRow = {
   delivered_at: string | null
 }
 
+type FleetRunSteeringOutcomeRow = {
+  pylon_ref: string
+  run_ref: string
+  claim_ref: string
+  seq: number
+  intent_id: string
+  intent_kind: string
+  intent_digest: string
+  outcome: FleetRunSteeringOutcomeStatus
+  outcome_ref: string
+  observed_at: string
+}
+
+type FleetRunSteeringOutcomeOutboxRow = FleetRunSteeringOutcomeRow & {
+  delivered_at: string | null
+}
+
+type FleetRunSteeringQueuedFollowUpRow = {
+  pylon_ref: string
+  run_ref: string
+  claim_ref: string
+  seq: number
+  intent_id: string
+  work_unit_ref: string | null
+  work_claim_ref: string | null
+  assignment_ref: string | null
+  target_ref: string | null
+  intent_kind: "fleet_run_control" | "approval_decision" | "steer_message"
+  approval_ref: string | null
+  decision: "allow" | "deny" | null
+  residual_refs_json: string
+  body: string | null
+  body_ref: string | null
+  created_at: string
+}
+
 type WorkClaimRow = {
   claim_ref: string
   work_unit_ref: string
@@ -1014,6 +1123,49 @@ const fleetRunExecutionOutboxEntryFromRow = (
   deliveryBatchRef: row.delivery_batch_ref ?? null,
   createdAt: row.created_at,
   deliveredAt: row.delivered_at,
+})
+
+const fleetRunSteeringOutcomeFromRow = (
+  row: FleetRunSteeringOutcomeRow,
+): FleetRunSteeringOutcomeRecord => ({
+  pylonRef: row.pylon_ref,
+  runRef: row.run_ref,
+  claimRef: row.claim_ref,
+  seq: row.seq,
+  intentId: row.intent_id,
+  intentKind: row.intent_kind,
+  intentDigest: row.intent_digest,
+  outcome: row.outcome,
+  outcomeRef: row.outcome_ref,
+  observedAt: row.observed_at,
+})
+
+const fleetRunSteeringOutcomeOutboxFromRow = (
+  row: FleetRunSteeringOutcomeOutboxRow,
+): FleetRunSteeringOutcomeOutboxEntry => ({
+  ...fleetRunSteeringOutcomeFromRow(row),
+  deliveredAt: row.delivered_at,
+})
+
+const fleetRunSteeringQueuedFollowUpFromRow = (
+  row: FleetRunSteeringQueuedFollowUpRow,
+): FleetRunSteeringQueuedFollowUp => ({
+  pylonRef: row.pylon_ref,
+  runRef: row.run_ref,
+  claimRef: row.claim_ref,
+  seq: row.seq,
+  intentId: row.intent_id,
+  workUnitRef: row.work_unit_ref,
+  workClaimRef: row.work_claim_ref,
+  assignmentRef: row.assignment_ref,
+  targetRef: row.target_ref,
+  intentKind: row.intent_kind,
+  approvalRef: row.approval_ref,
+  decision: row.decision,
+  residualRefs: parseJsonArray(row.residual_refs_json),
+  body: row.body,
+  bodyRef: row.body_ref,
+  createdAt: row.created_at,
 })
 
 const workClaimFromRow = (row: WorkClaimRow): WorkClaim => decodeWorkClaim({
@@ -1283,6 +1435,68 @@ export class PylonOrchestrationStore {
       );
       CREATE INDEX IF NOT EXISTS idx_pylon_orchestration_fleet_run_execution_pending
         ON pylon_orchestration_fleet_run_execution_outbox(run_ref, delivered_at, sequence);
+      CREATE TABLE IF NOT EXISTS pylon_orchestration_fleet_run_steering_watermarks (
+        pylon_ref TEXT NOT NULL,
+        run_ref TEXT NOT NULL,
+        claim_ref TEXT NOT NULL,
+        after_seq INTEGER NOT NULL CHECK (after_seq BETWEEN 0 AND 9007199254740991),
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (pylon_ref, run_ref, claim_ref)
+      );
+      CREATE TABLE IF NOT EXISTS pylon_orchestration_fleet_run_steering_outcomes (
+        pylon_ref TEXT NOT NULL,
+        run_ref TEXT NOT NULL,
+        claim_ref TEXT NOT NULL,
+        seq INTEGER NOT NULL CHECK (seq BETWEEN 1 AND 9007199254740991),
+        intent_id TEXT NOT NULL,
+        intent_kind TEXT NOT NULL,
+        intent_digest TEXT NOT NULL,
+        outcome TEXT NOT NULL CHECK (outcome IN ('applied', 'queued_follow_up', 'skipped_stale', 'rejected', 'failed')),
+        outcome_ref TEXT NOT NULL UNIQUE,
+        observed_at TEXT NOT NULL,
+        PRIMARY KEY (pylon_ref, run_ref, claim_ref, seq, intent_id)
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_pylon_orchestration_fleet_run_steering_seq
+        ON pylon_orchestration_fleet_run_steering_outcomes(pylon_ref, run_ref, claim_ref, seq);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_pylon_orchestration_fleet_run_steering_intent
+        ON pylon_orchestration_fleet_run_steering_outcomes(pylon_ref, run_ref, claim_ref, intent_id);
+      CREATE TABLE IF NOT EXISTS pylon_orchestration_fleet_run_steering_outbox (
+        pylon_ref TEXT NOT NULL,
+        run_ref TEXT NOT NULL,
+        claim_ref TEXT NOT NULL,
+        seq INTEGER NOT NULL CHECK (seq BETWEEN 1 AND 9007199254740991),
+        intent_id TEXT NOT NULL,
+        intent_kind TEXT NOT NULL,
+        intent_digest TEXT NOT NULL,
+        outcome TEXT NOT NULL CHECK (outcome IN ('applied', 'queued_follow_up', 'skipped_stale', 'rejected', 'failed')),
+        outcome_ref TEXT NOT NULL UNIQUE,
+        observed_at TEXT NOT NULL,
+        delivered_at TEXT,
+        PRIMARY KEY (pylon_ref, run_ref, claim_ref, seq, intent_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_pylon_orchestration_fleet_run_steering_outbox_pending
+        ON pylon_orchestration_fleet_run_steering_outbox(pylon_ref, run_ref, claim_ref, delivered_at, seq);
+      CREATE TABLE IF NOT EXISTS pylon_orchestration_fleet_run_steering_follow_ups (
+        pylon_ref TEXT NOT NULL,
+        run_ref TEXT NOT NULL,
+        claim_ref TEXT NOT NULL,
+        seq INTEGER NOT NULL CHECK (seq BETWEEN 1 AND 9007199254740991),
+        intent_id TEXT NOT NULL,
+        work_unit_ref TEXT,
+        work_claim_ref TEXT,
+        assignment_ref TEXT,
+        target_ref TEXT,
+        intent_kind TEXT NOT NULL CHECK (intent_kind IN ('fleet_run_control', 'approval_decision', 'steer_message')),
+        approval_ref TEXT,
+        decision TEXT CHECK (decision IS NULL OR decision IN ('allow', 'deny')),
+        residual_refs_json TEXT NOT NULL,
+        body TEXT,
+        body_ref TEXT,
+        created_at TEXT NOT NULL,
+        PRIMARY KEY (pylon_ref, run_ref, claim_ref, seq, intent_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_pylon_orchestration_fleet_run_steering_follow_up_target
+        ON pylon_orchestration_fleet_run_steering_follow_ups(run_ref, work_claim_ref, assignment_ref, seq);
       CREATE TABLE IF NOT EXISTS pylon_orchestration_work_claims (
         claim_ref TEXT PRIMARY KEY,
         work_unit_ref TEXT NOT NULL,
@@ -1871,6 +2085,399 @@ export class PylonOrchestrationStore {
         $deliveredAt: iso(now),
       })
     return Number(result.changes)
+  }
+
+  getFleetRunSteeringWatermark(
+    pylonRef: string,
+    runRef: string,
+    claimRef: string,
+  ): number {
+    const row = this.db
+      .query(`
+        SELECT after_seq
+          FROM pylon_orchestration_fleet_run_steering_watermarks
+         WHERE pylon_ref = $pylonRef
+           AND run_ref = $runRef
+           AND claim_ref = $claimRef
+      `)
+      .get({ $pylonRef: pylonRef, $runRef: runRef, $claimRef: claimRef }) as
+        | { after_seq?: unknown }
+        | null
+    const value = Number(row?.after_seq ?? 0)
+    return Number.isSafeInteger(value) && value >= 0 ? value : 0
+  }
+
+  getFleetRunSteeringOutcome(input: {
+    readonly pylonRef: string
+    readonly runRef: string
+    readonly claimRef: string
+    readonly seq: number
+    readonly intentId: string
+  }): FleetRunSteeringOutcomeRecord | null {
+    const row = this.db
+      .query(`
+        SELECT pylon_ref, run_ref, claim_ref, seq, intent_id, intent_kind,
+               intent_digest, outcome, outcome_ref, observed_at
+          FROM pylon_orchestration_fleet_run_steering_outcomes
+         WHERE pylon_ref = $pylonRef
+           AND run_ref = $runRef
+           AND claim_ref = $claimRef
+           AND (seq = $seq OR intent_id = $intentId)
+         ORDER BY seq ASC
+         LIMIT 1
+      `)
+      .get({
+        $pylonRef: input.pylonRef,
+        $runRef: input.runRef,
+        $claimRef: input.claimRef,
+        $seq: input.seq,
+        $intentId: input.intentId,
+      }) as FleetRunSteeringOutcomeRow | null
+    return row === null ? null : fleetRunSteeringOutcomeFromRow(row)
+  }
+
+  /**
+   * Apply one decoded steering intent under the same SQLite write lock that
+   * records its outcome, advances its run+claim watermark, and appends its
+   * retryable ACK. A redelivery returns the original content-bound outcome
+   * without invoking `apply` again.
+   */
+  applyFleetRunSteeringIntent(
+    input: ApplyFleetRunSteeringIntentInput,
+    apply: () => FleetRunSteeringApplication,
+  ): { readonly recorded: boolean; readonly outcome: FleetRunSteeringOutcomeRecord } {
+    if (
+      !FLEET_RUN_ACTIVATION_REF_PATTERN.test(input.pylonRef) ||
+      !FLEET_RUN_ACTIVATION_REF_PATTERN.test(input.runRef) ||
+      !/^claim\.sarah_fleet_run\.[0-9a-f]{24}$/u.test(input.claimRef) ||
+      !Number.isSafeInteger(input.seq) ||
+      input.seq < 1 ||
+      !FLEET_RUN_ACTIVATION_REF_PATTERN.test(input.intentId) ||
+      !FLEET_RUN_ACTIVATION_REF_PATTERN.test(input.intentKind) ||
+      !/^[0-9a-f]{64}$/u.test(input.intentDigest) ||
+      Number.isNaN(input.observedAt.getTime())
+    ) {
+      throw new Error("fleet run steering application refs are invalid")
+    }
+    const observedAt = iso(input.observedAt)
+    this.db.run("BEGIN IMMEDIATE")
+    try {
+      const run = this.getFleetRun(input.runRef)
+      if (
+        run?.authorityBinding?.phase !== "accepted" ||
+        run.authorityBinding.claimRef !== input.claimRef ||
+        run.authorityBinding.pylonRef !== input.pylonRef
+      ) {
+        throw new Error("fleet run steering requires the exact accepted authority claim")
+      }
+
+      const existing = this.getFleetRunSteeringOutcome(input)
+      if (existing !== null) {
+        if (
+          existing.seq !== input.seq ||
+          existing.intentId !== input.intentId ||
+          existing.intentKind !== input.intentKind ||
+          existing.intentDigest !== input.intentDigest ||
+          existing.outcomeRef !== input.outcomeRefFor(
+            existing.outcome,
+            existing.observedAt,
+          )
+        ) {
+          throw new Error("fleet run steering sequence or intent ref was reused with conflicting bytes")
+        }
+        this.db.run("COMMIT")
+        return { outcome: existing, recorded: false }
+      }
+
+      const watermark = this.getFleetRunSteeringWatermark(
+        input.pylonRef,
+        input.runRef,
+        input.claimRef,
+      )
+      if (input.seq <= watermark) {
+        throw new Error("fleet run steering watermark has no matching durable outcome")
+      }
+      const pendingAcks = this.db
+        .query(`
+          SELECT COUNT(*) AS count
+            FROM pylon_orchestration_fleet_run_steering_outbox
+           WHERE pylon_ref = $pylonRef
+             AND run_ref = $runRef
+             AND claim_ref = $claimRef
+             AND delivered_at IS NULL
+        `)
+        .get({
+          $pylonRef: input.pylonRef,
+          $runRef: input.runRef,
+          $claimRef: input.claimRef,
+        }) as { count?: unknown } | null
+      if (Number(pendingAcks?.count ?? 0) >= 128) {
+        throw new Error("fleet run steering acknowledgement backpressure")
+      }
+
+      const application = apply()
+      const allowedOutcomes: ReadonlySet<string> = new Set([
+        "applied",
+        "queued_follow_up",
+        "skipped_stale",
+        "rejected",
+        "failed",
+      ])
+      if (!allowedOutcomes.has(application.outcome)) {
+        throw new Error("fleet run steering outcome is invalid")
+      }
+      if (
+        (application.outcome === "queued_follow_up") !==
+          (application.queuedFollowUp !== undefined)
+      ) {
+        throw new Error("fleet run steering follow-up does not match its outcome")
+      }
+      const outcomeRef = input.outcomeRefFor(application.outcome, observedAt)
+      if (!FLEET_RUN_ACTIVATION_REF_PATTERN.test(outcomeRef)) {
+        throw new Error("fleet run steering outcome ref is invalid")
+      }
+
+      this.db
+        .query(`
+          INSERT INTO pylon_orchestration_fleet_run_steering_outcomes
+            (pylon_ref, run_ref, claim_ref, seq, intent_id, intent_kind,
+             intent_digest, outcome, outcome_ref, observed_at)
+          VALUES
+            ($pylonRef, $runRef, $claimRef, $seq, $intentId, $intentKind,
+             $intentDigest, $outcome, $outcomeRef, $observedAt)
+        `)
+        .run({
+          $pylonRef: input.pylonRef,
+          $runRef: input.runRef,
+          $claimRef: input.claimRef,
+          $seq: input.seq,
+          $intentId: input.intentId,
+          $intentKind: input.intentKind,
+          $intentDigest: input.intentDigest,
+          $outcome: application.outcome,
+          $outcomeRef: outcomeRef,
+          $observedAt: observedAt,
+        })
+      this.db
+        .query(`
+          INSERT INTO pylon_orchestration_fleet_run_steering_outbox
+            (pylon_ref, run_ref, claim_ref, seq, intent_id, intent_kind,
+             intent_digest, outcome, outcome_ref, observed_at, delivered_at)
+          VALUES
+            ($pylonRef, $runRef, $claimRef, $seq, $intentId, $intentKind,
+             $intentDigest, $outcome, $outcomeRef, $observedAt, NULL)
+        `)
+        .run({
+          $pylonRef: input.pylonRef,
+          $runRef: input.runRef,
+          $claimRef: input.claimRef,
+          $seq: input.seq,
+          $intentId: input.intentId,
+          $intentKind: input.intentKind,
+          $intentDigest: input.intentDigest,
+          $outcome: application.outcome,
+          $outcomeRef: outcomeRef,
+          $observedAt: observedAt,
+        })
+
+      if (application.queuedFollowUp !== undefined) {
+        const queued = application.queuedFollowUp
+        const queuedCount = this.db
+          .query(`
+            SELECT COUNT(*) AS count
+              FROM pylon_orchestration_fleet_run_steering_follow_ups
+             WHERE pylon_ref = $pylonRef
+               AND run_ref = $runRef
+               AND claim_ref = $claimRef
+          `)
+          .get({
+            $pylonRef: input.pylonRef,
+            $runRef: input.runRef,
+            $claimRef: input.claimRef,
+          }) as { count?: unknown } | null
+        if (Number(queuedCount?.count ?? 0) >= 128) {
+          throw new Error("fleet run steering private follow-up backpressure")
+        }
+        const bodyBytes = new TextEncoder().encode(queued.body ?? "").byteLength
+        const targetRefsValid = queued.intentKind === "fleet_run_control"
+          ? queued.workUnitRef === null &&
+            queued.workClaimRef === null &&
+            queued.assignmentRef === null &&
+            queued.targetRef === null &&
+            queued.residualRefs.length > 0
+          : queued.workUnitRef !== null &&
+            queued.workClaimRef !== null &&
+            queued.assignmentRef !== null &&
+            queued.targetRef !== null &&
+            FLEET_RUN_ACTIVATION_REF_PATTERN.test(queued.workUnitRef) &&
+            FLEET_RUN_ACTIVATION_REF_PATTERN.test(queued.workClaimRef) &&
+            FLEET_RUN_ACTIVATION_REF_PATTERN.test(queued.assignmentRef) &&
+            FLEET_RUN_ACTIVATION_REF_PATTERN.test(queued.targetRef) &&
+            queued.residualRefs.length === 0
+        if (
+          !targetRefsValid ||
+          queued.residualRefs.length > 128 ||
+          queued.residualRefs.some(ref => !FLEET_RUN_ACTIVATION_REF_PATTERN.test(ref)) ||
+          bodyBytes > 16 * 1_024 ||
+          (queued.bodyRef !== null &&
+            !FLEET_RUN_ACTIVATION_REF_PATTERN.test(queued.bodyRef))
+        ) {
+          throw new Error("fleet run steering queued follow-up is invalid")
+        }
+        this.db
+          .query(`
+            INSERT INTO pylon_orchestration_fleet_run_steering_follow_ups
+              (pylon_ref, run_ref, claim_ref, seq, intent_id, work_unit_ref,
+               work_claim_ref, assignment_ref, target_ref, intent_kind,
+               approval_ref, decision, residual_refs_json, body, body_ref, created_at)
+            VALUES
+              ($pylonRef, $runRef, $claimRef, $seq, $intentId, $workUnitRef,
+               $workClaimRef, $assignmentRef, $targetRef, $intentKind,
+               $approvalRef, $decision, $residualRefsJson, $body, $bodyRef, $createdAt)
+          `)
+          .run({
+            $pylonRef: input.pylonRef,
+            $runRef: input.runRef,
+            $claimRef: input.claimRef,
+            $seq: input.seq,
+            $intentId: input.intentId,
+            $workUnitRef: queued.workUnitRef,
+            $workClaimRef: queued.workClaimRef,
+            $assignmentRef: queued.assignmentRef,
+            $targetRef: queued.targetRef,
+            $intentKind: queued.intentKind,
+            $approvalRef: queued.approvalRef,
+            $decision: queued.decision,
+            $residualRefsJson: JSON.stringify(queued.residualRefs),
+            $body: queued.body,
+            $bodyRef: queued.bodyRef,
+            $createdAt: observedAt,
+          })
+      }
+
+      this.db
+        .query(`
+          INSERT INTO pylon_orchestration_fleet_run_steering_watermarks
+            (pylon_ref, run_ref, claim_ref, after_seq, updated_at)
+          VALUES ($pylonRef, $runRef, $claimRef, $afterSeq, $updatedAt)
+          ON CONFLICT(pylon_ref, run_ref, claim_ref) DO UPDATE SET
+            after_seq = MAX(after_seq, excluded.after_seq),
+            updated_at = excluded.updated_at
+        `)
+        .run({
+          $pylonRef: input.pylonRef,
+          $runRef: input.runRef,
+          $claimRef: input.claimRef,
+          $afterSeq: input.seq,
+          $updatedAt: observedAt,
+        })
+
+      const stored = this.getFleetRunSteeringOutcome(input)
+      if (stored === null) {
+        throw new Error("fleet run steering outcome was not retained")
+      }
+      this.db.run("COMMIT")
+      return { outcome: stored, recorded: true }
+    } catch (error) {
+      this.db.run("ROLLBACK")
+      throw error
+    }
+  }
+
+  listFleetRunSteeringOutcomeOutbox(input: {
+    readonly pylonRef: string
+    readonly runRef: string
+    readonly claimRef: string
+    readonly pendingOnly?: boolean
+    readonly limit?: number
+  }): FleetRunSteeringOutcomeOutboxEntry[] {
+    const limit = Math.max(1, Math.min(100, Math.trunc(input.limit ?? 100)))
+    const rows = this.db
+      .query(`
+        SELECT pylon_ref, run_ref, claim_ref, seq, intent_id, intent_kind,
+               intent_digest, outcome, outcome_ref, observed_at, delivered_at
+          FROM pylon_orchestration_fleet_run_steering_outbox
+         WHERE pylon_ref = $pylonRef
+           AND run_ref = $runRef
+           AND claim_ref = $claimRef
+           ${input.pendingOnly === false ? "" : "AND delivered_at IS NULL"}
+         ORDER BY seq ASC
+         LIMIT $limit
+      `)
+      .all({
+        $pylonRef: input.pylonRef,
+        $runRef: input.runRef,
+        $claimRef: input.claimRef,
+        $limit: limit,
+      }) as FleetRunSteeringOutcomeOutboxRow[]
+    return rows.map(fleetRunSteeringOutcomeOutboxFromRow)
+  }
+
+  markFleetRunSteeringOutcomeOutboxDelivered(
+    entries: ReadonlyArray<Pick<
+      FleetRunSteeringOutcomeOutboxEntry,
+      "pylonRef" | "runRef" | "claimRef" | "seq" | "intentId" | "outcomeRef"
+    >>,
+    now: Date = new Date(),
+  ): number {
+    if (entries.length === 0) return 0
+    const deliveredAt = iso(now)
+    let changed = 0
+    this.db.run("BEGIN IMMEDIATE")
+    try {
+      for (const entry of entries) {
+        const result = this.db
+          .query(`
+            UPDATE pylon_orchestration_fleet_run_steering_outbox
+               SET delivered_at = COALESCE(delivered_at, $deliveredAt)
+             WHERE pylon_ref = $pylonRef
+               AND run_ref = $runRef
+               AND claim_ref = $claimRef
+               AND seq = $seq
+               AND intent_id = $intentId
+               AND outcome_ref = $outcomeRef
+          `)
+          .run({
+            $pylonRef: entry.pylonRef,
+            $runRef: entry.runRef,
+            $claimRef: entry.claimRef,
+            $seq: entry.seq,
+            $intentId: entry.intentId,
+            $outcomeRef: entry.outcomeRef,
+            $deliveredAt: deliveredAt,
+          })
+        changed += Number(result.changes)
+      }
+      this.db.run("COMMIT")
+      return changed
+    } catch (error) {
+      this.db.run("ROLLBACK")
+      throw error
+    }
+  }
+
+  listFleetRunSteeringQueuedFollowUps(input: {
+    readonly pylonRef: string
+    readonly runRef: string
+    readonly claimRef: string
+  }): FleetRunSteeringQueuedFollowUp[] {
+    const rows = this.db
+      .query(`
+        SELECT pylon_ref, run_ref, claim_ref, seq, intent_id, work_unit_ref,
+               work_claim_ref, assignment_ref, target_ref, intent_kind,
+               approval_ref, decision, residual_refs_json, body, body_ref, created_at
+          FROM pylon_orchestration_fleet_run_steering_follow_ups
+         WHERE pylon_ref = $pylonRef
+           AND run_ref = $runRef
+           AND claim_ref = $claimRef
+         ORDER BY seq ASC
+      `)
+      .all({
+        $pylonRef: input.pylonRef,
+        $runRef: input.runRef,
+        $claimRef: input.claimRef,
+      }) as FleetRunSteeringQueuedFollowUpRow[]
+    return rows.map(fleetRunSteeringQueuedFollowUpFromRow)
   }
 
   updateFleetRunState(

@@ -17,6 +17,10 @@ import type {
   FleetRunSupervisorPlanner,
   FleetRunSupervisorRunner,
 } from "./fleet-run-supervisor.js"
+import type {
+  PylonFleetRunSteeringConsumer,
+  PylonFleetRunSteeringConsumerFactory,
+} from "./fleet-run-steering-consumer.js"
 
 export type PylonStandingFleetRunAdapters = {
   readonly capacity: FleetRunSupervisorCapacity
@@ -43,6 +47,8 @@ type OpenPylonStandingFleetRunExecutorCommonInput = {
   readonly pylonRef: string
   readonly runRef: string
   readonly startImmediately?: boolean | undefined
+  /** Optional accepted-claim steering delivery composition seam. */
+  readonly steeringConsumerFactory?: PylonFleetRunSteeringConsumerFactory | undefined
   readonly tickIntervalMs?: number | undefined
 }
 
@@ -66,6 +72,7 @@ export type PylonStandingFleetRunConstructionFailure =
   | "adapter_factory_failed"
   | "invalid_adapter_config"
   | "invalid_adapter_factory_result"
+  | "steering_consumer_failed"
 
 export class PylonStandingFleetRunConstructionError extends Error {
   readonly failure: PylonStandingFleetRunConstructionFailure
@@ -154,6 +161,7 @@ export async function openPylonStandingFleetRunExecutor(
     ...(input.now === undefined ? {} : { now: input.now }),
   }
   const runtime = await openPylonFleetRunRuntime(runtimeInput)
+  let steeringConsumer: PylonFleetRunSteeringConsumer | null = null
   try {
     let adapters: PylonStandingFleetRunAdapters
     if (adapterConstruction === "factory") {
@@ -190,8 +198,43 @@ export async function openPylonStandingFleetRunExecutor(
       ...(input.startImmediately === undefined ? {} : { startImmediately: input.startImmediately }),
       ...(input.tickIntervalMs === undefined ? {} : { tickIntervalMs: input.tickIntervalMs }),
     })
+    if (input.steeringConsumerFactory !== undefined) {
+      const binding = runtime.store.getFleetRun(input.runRef)?.authorityBinding
+      if (
+        binding?.phase !== "accepted" ||
+        binding.pylonRef !== input.pylonRef
+      ) {
+        throw new PylonStandingFleetRunConstructionError("steering_consumer_failed")
+      }
+      try {
+        const candidate = await input.steeringConsumerFactory({
+          store: runtime.store,
+          pylonRef: input.pylonRef,
+          runRef: input.runRef,
+          claimRef: binding.claimRef,
+        })
+        if (
+          candidate === null ||
+          typeof candidate !== "object" ||
+          typeof candidate.tick !== "function" ||
+          typeof candidate.close !== "function"
+        ) {
+          throw new PylonStandingFleetRunConstructionError("steering_consumer_failed")
+        }
+        steeringConsumer = candidate
+      } catch (error) {
+        if (error instanceof PylonStandingFleetRunConstructionError) throw error
+        throw new PylonStandingFleetRunConstructionError("steering_consumer_failed")
+      }
+    }
     return {
-      close: runtime.close,
+      close: async () => {
+        try {
+          await steeringConsumer?.close()
+        } finally {
+          await runtime.close()
+        }
+      },
       recovery,
       runtime,
       snapshot,

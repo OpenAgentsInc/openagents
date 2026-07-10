@@ -27,6 +27,10 @@ import {
   openPylonStandingFleetRunExecutor,
   type PylonStandingFleetRunExecutor,
 } from "./fleet-run-standing-executor.js"
+import {
+  makePylonFleetRunSteeringHttpTransport,
+  openPylonFleetRunSteeringConsumer,
+} from "./fleet-run-steering-consumer.js"
 import type {
   FleetRunSupervisorClock,
   FleetRunSupervisorObservedEvent,
@@ -126,6 +130,23 @@ export async function openPylonOwnedStandingFleetRunExecutor(
     runRef: input.runRef,
     ...(input.startImmediately === undefined ? {} : { startImmediately: input.startImmediately }),
     ...(input.tickIntervalMs === undefined ? {} : { tickIntervalMs: input.tickIntervalMs }),
+    ...(input.agentToken === undefined
+      ? {}
+      : {
+          steeringConsumerFactory: ({ store, pylonRef, runRef, claimRef }) =>
+            openPylonFleetRunSteeringConsumer({
+              store,
+              pylonRef,
+              runRef,
+              claimRef,
+              transport: makePylonFleetRunSteeringHttpTransport({
+                agentToken: input.agentToken!,
+                baseUrl: input.baseUrl,
+                ...(input.fetch === undefined ? {} : { fetchImpl: input.fetch }),
+              }),
+              ...(input.now === undefined ? {} : { now: input.now }),
+            }),
+        }),
     adapterFactory: ({ store }) => {
       const grok = options.grok === false
         ? undefined
