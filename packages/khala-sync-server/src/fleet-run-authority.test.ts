@@ -441,6 +441,20 @@ describe("FleetRun authority request boundary", () => {
         events: [accepted],
       }).events[0],
     ).toMatchObject({ schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA_V2 })
+    expect(() =>
+      decodeFleetRunExecutionBatch({
+        schema: FLEET_RUN_EXECUTION_BATCH_SCHEMA_V2,
+        claimRef,
+        events: [{
+          ...accepted,
+          verification: {
+            ...accepted.verification,
+            evidenceRefs: ["evidence.shared.role"],
+          },
+          artifactRefs: ["evidence.shared.role"],
+        }],
+      }),
+    ).not.toThrow()
 
     const invalid = [
       { ...accepted, proofRefs: undefined },
@@ -451,6 +465,21 @@ describe("FleetRun authority request boundary", () => {
       { ...accepted, blockerRefs: ["blocker.not#projectable"] },
       {
         ...accepted,
+        artifactRefs: ["artifact.duplicate", "artifact.duplicate"],
+      },
+      {
+        ...pylonExecutionEvent(FIXTURE_RUN_REF, claimRef, 1, {
+          schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA_V2,
+          observedAt: "2026-07-09T22:00:00.000Z",
+          kind: "work_progress",
+          unitRef: "unit-a",
+          workClaimRef: "work_claim.unit-a.duplicate-blocker",
+          workerKind: "codex",
+        }),
+        blockerRefs: ["blocker.duplicate", "blocker.duplicate"],
+      },
+      {
+        ...accepted,
         usageEvidence: {
           ...exactUsageEvidence(
             "assignment.unit-a.edge-1",
@@ -458,6 +487,13 @@ describe("FleetRun authority request boundary", () => {
             "unit-a.invalid-total",
           ),
           totalTokens: 1,
+        },
+      },
+      {
+        ...accepted,
+        usageEvidence: {
+          ...accepted.usageEvidence,
+          proofRefs: ["proof.duplicate", "proof.duplicate"],
         },
       },
     ]
@@ -1265,6 +1301,127 @@ describe.skipIf(!hasLocalPostgres())(
       const publicRecord = publicFleetRunAuthorityRecord(observed.record)
       expect(publicRecord.execution.state).toBe("completed")
       expect(publicRecord).not.toHaveProperty("ownerUserId")
+    })
+
+    test("accepts a retained v1 start followed directly by v2 attempt and run terminals", async () => {
+      const ownerUserId = "user-execution-v1-v2-owner"
+      const pylonRef = "pylon-execution-v1-v2"
+      const run = await start(ownerUserId, "execution-v1-v2-upgrade-1", {
+        workSource: {
+          kind: "plan_dag",
+          planRef: "plan.execution.v1-v2",
+          units: [{ unitRef: "unit-a", title: "Unit A", dependsOn: [] }],
+        },
+      })
+      await seedPylon({ pylonRef, ownerUserId })
+      const claimRef = await claimAndAccept({
+        ownerUserId,
+        pylonRef,
+        runRef: run.record.runRef,
+        claimIdempotencyKey: "execution-v1-v2-claim-1",
+      })
+      const started = await Effect.runPromise(
+        repository().appendExecutionEvents({
+          ownerUserId,
+          pylonRef,
+          runRef: run.record.runRef,
+          batch: {
+            schema: FLEET_RUN_EXECUTION_BATCH_SCHEMA,
+            claimRef,
+            events: [
+              pylonExecutionEvent(run.record.runRef, claimRef, 1, {
+                schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA,
+                observedAt: "2026-07-09T22:00:01.000Z",
+                kind: "run_started",
+              }),
+            ],
+          },
+        }),
+      )
+      expect(started.ack).toMatchObject({
+        acceptedThroughSequence: 1,
+        execution: { state: "running" },
+      })
+
+      const assignmentRef = "assignment.unit-a.v1-v2"
+      const upgraded = await Effect.runPromise(
+        repository().appendExecutionEvents({
+          ownerUserId,
+          pylonRef,
+          runRef: run.record.runRef,
+          batch: {
+            schema: FLEET_RUN_EXECUTION_BATCH_SCHEMA_V2,
+            claimRef,
+            events: [
+              pylonExecutionEvent(run.record.runRef, claimRef, 2, {
+                schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA_V2,
+                observedAt: "2026-07-09T22:00:02.000Z",
+                kind: "work_progress",
+                unitRef: "unit-a",
+                workClaimRef: "work_claim.unit-a.v1-v2",
+                assignmentRef,
+                workerKind: "codex",
+                accountRefHash: `account.pylon.codex.${"a".repeat(24)}`,
+                marginalCostClass: "subscription",
+                blockerRefs: [],
+              }),
+              pylonExecutionEvent(run.record.runRef, claimRef, 3, {
+                schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA_V2,
+                observedAt: "2026-07-09T22:00:03.000Z",
+                kind: "work_terminal",
+                unitRef: "unit-a",
+                workClaimRef: "work_claim.unit-a.v1-v2",
+                assignmentRef,
+                workerKind: "codex",
+                accountRefHash: `account.pylon.codex.${"a".repeat(24)}`,
+                marginalCostClass: "subscription",
+                terminalState: "accepted",
+                closeoutRef: "closeout.unit-a.v1-v2",
+                verification: {
+                  truth: "passed",
+                  verifierRef: "verifier.bun-test.v1-v2",
+                  evidenceRefs: ["test.unit-a.v1-v2"],
+                },
+                artifactRefs: ["artifact.patch.unit-a.v1-v2"],
+                proofRefs: ["proof.unit-a.v1-v2"],
+                authorityReceiptRefs: ["receipt.authority.unit-a.v1-v2"],
+                usageEvidence: exactUsageEvidence(
+                  assignmentRef,
+                  pylonRef,
+                  "unit-a.v1-v2",
+                ),
+                blockerRefs: [],
+              }),
+              pylonExecutionEvent(run.record.runRef, claimRef, 4, {
+                schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA_V2,
+                observedAt: "2026-07-09T22:00:04.000Z",
+                kind: "run_terminal",
+                terminalState: "completed",
+                blockerRefs: [],
+              }),
+            ],
+          },
+        }),
+      )
+      expect(upgraded.ack).toMatchObject({
+        acceptedThroughSequence: 4,
+        storedEventCount: 3,
+        execution: {
+          state: "completed",
+          counters: { acceptedAssignments: 1 },
+        },
+      })
+      const eventRows: Array<{ event_kind: string }> = await sql`
+        SELECT event_kind FROM sarah_fleet_run_execution_events
+        WHERE run_ref = ${run.record.runRef}
+        ORDER BY sequence
+      `
+      expect(eventRows.map(row => row.event_kind)).toEqual([
+        "run_started",
+        "work_progress",
+        "work_terminal",
+        "run_terminal",
+      ])
     })
 
     test("v2 persists a proven attempt under its work-claim identity", async () => {

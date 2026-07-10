@@ -211,6 +211,12 @@ export type FleetRunSupervisorObservedEvent =
     readonly reason: "backlog_empty" | "drained"
   }
   | {
+    readonly kind: "terminal"
+    readonly runRef: string
+    readonly terminalState: "failed" | "stopped"
+    readonly blockerRefs: readonly string[]
+  }
+  | {
     // Typed skip/fallback for an unavailable worker kind. Emitted when a
     // grok-labeled run (fail closed, `accountRef: null`) or a grok-labeled
     // account in a mixed pool cannot be dispatched. This is the multi-harness
@@ -548,6 +554,27 @@ const emit = async (
   if (sink !== undefined) await sink(event)
 }
 
+const emitRunTerminal = async (
+  sink: FleetRunSupervisorOptions["onLifecycle"],
+  run: FleetRun,
+): Promise<void> => {
+  if (run.state === "completed") {
+    await emit(sink, { kind: "completed", runRef: run.runRef, reason: "drained" })
+    return
+  }
+  if (run.state !== "stopped") return
+  const failed = run.stateSource === "reconcile" &&
+    (run.counters.failedAssignments > 0 || run.counters.blockedAssignments > 0)
+  await emit(sink, {
+    kind: "terminal",
+    runRef: run.runRef,
+    terminalState: failed ? "failed" : "stopped",
+    blockerRefs: failed
+      ? ["blocker.pylon.fleet_run.local_attempt_failed"]
+      : [],
+  })
+}
+
 const recordTerminalAssignment = async (
   options: FleetRunSupervisorOptions,
   assignment: FleetRunSupervisorActiveAssignment,
@@ -610,7 +637,7 @@ const recordTerminalAssignment = async (
     summary: result.summary ?? null,
     usageEvidence: terminal.carrier.usageEvidence,
     workerKind: workerKindForTask(options.store, assignment.taskId),
-    marginalCostClass: result.marginalCostClass ?? "not_measured",
+    marginalCostClass: assignment.claim.marginalCostClass ?? "not_measured",
     verification: result.verification ?? null,
     artifactRefs: result.artifactRefs ?? [],
     proofRefs: result.proofRefs ?? [],
@@ -713,13 +740,7 @@ export async function tickFleetRunSupervisor(
       })
     }
     if (run.state !== "running") {
-      if (run.state === "completed") {
-        await emit(options.onLifecycle, {
-          kind: "completed",
-          runRef: run.runRef,
-          reason: "drained",
-        })
-      }
+      await emitRunTerminal(options.onLifecycle, run)
       return {
         activeAssignments: activeAssignmentsForRun(store, run.runRef),
         claimed: 0,
@@ -877,6 +898,7 @@ export async function tickFleetRunSupervisor(
       workUnitRef: workUnit.workUnitRef,
       runRef: run.runRef,
       workerAccountRef: account.accountRef,
+      marginalCostClass: account.marginalCostClass ?? "not_measured",
       ttl: claimTtlMs,
       now,
     })
@@ -945,7 +967,7 @@ export async function tickFleetRunSupervisor(
       summary: null,
       usageEvidence: null,
       workerKind,
-      marginalCostClass: account.marginalCostClass ?? "not_measured",
+      marginalCostClass: claim.marginalCostClass ?? "not_measured",
       verification: null,
       artifactRefs: [],
       proofRefs: [],
@@ -1003,7 +1025,7 @@ export async function tickFleetRunSupervisor(
           summary: "The named FleetRun executor failed safely.",
           usageEvidence: null,
           workerKind,
-          marginalCostClass: account.marginalCostClass ?? "not_measured",
+          marginalCostClass: claim.marginalCostClass ?? "not_measured",
           verification: null,
           artifactRefs: [],
           proofRefs: [],
@@ -1051,8 +1073,7 @@ export async function tickFleetRunSupervisor(
             summary: result.summary ?? null,
             usageEvidence: carrier.usageEvidence,
             workerKind,
-            marginalCostClass: result.marginalCostClass ??
-              account.marginalCostClass ?? "not_measured",
+            marginalCostClass: claim.marginalCostClass ?? "not_measured",
             verification: result.verification ?? null,
             artifactRefs: result.artifactRefs ?? [],
             proofRefs: result.proofRefs ?? [],
@@ -1100,8 +1121,7 @@ export async function tickFleetRunSupervisor(
           summary: result.summary ?? null,
           usageEvidence: terminal.carrier.usageEvidence,
           workerKind,
-          marginalCostClass: result.marginalCostClass ??
-            account.marginalCostClass ?? "not_measured",
+          marginalCostClass: claim.marginalCostClass ?? "not_measured",
           verification: result.verification ?? null,
           artifactRefs: result.artifactRefs ?? [],
           proofRefs: result.proofRefs ?? [],
@@ -1148,6 +1168,8 @@ export async function tickFleetRunSupervisor(
   }
   if (reconciled.state === "completed") {
     await emit(options.onLifecycle, { kind: "completed", runRef: run.runRef, reason: "drained" })
+  } else if (reconciled.state === "stopped") {
+    await emitRunTerminal(options.onLifecycle, reconciled)
   }
   if (
     reconciled.state === "running" &&

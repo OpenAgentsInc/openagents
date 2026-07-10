@@ -141,8 +141,113 @@ describe("Pylon FleetRun execution reporter", () => {
       ])
       expect(delivered.map(batch => batch.events.map(event => event.sequence))).toEqual([
         [1],
-        [2, 3],
+        [2],
       ])
+      expect(runtime.store.listFleetRunExecutionOutbox(runRef)).toEqual([])
+      await runtime.close()
+    } finally {
+      await rm(root, { force: true, recursive: true })
+    }
+  })
+
+  test("durably replaces incoherent v2 account, usage, and blocker evidence with typed failures", async () => {
+    const root = await mkdtemp(join(tmpdir(), "pylon-fleet-run-v2-coherence-"))
+    const env = { PYLON_HOME: join(root, "pylon-home") } as NodeJS.ProcessEnv
+    try {
+      const runtime = await seedAcceptedRun(env)
+      const delivered: PylonFleetRunAnyExecutionBatch[] = []
+      const reporter = openPylonFleetRunExecutionReporter({
+        store: runtime.store,
+        pylonRef,
+        runRef,
+        now: () => fixedNow,
+        remote: {
+          append: async ({ batch }) => {
+            delivered.push(batch)
+            return ack(batch.events.at(-1)?.sequence ?? 0)
+          },
+        },
+      })
+      await reporter.record({
+        schema: "openagents.pylon.fleet_run_execution_event.v2",
+        kind: "run_started",
+        observedAt: fixedNow.toISOString(),
+      })
+      await reporter.record({
+        schema: "openagents.pylon.fleet_run_execution_event.v2",
+        kind: "work_progress",
+        observedAt: fixedNow.toISOString(),
+        unitRef: "unit.fixture.account_mismatch",
+        workClaimRef: "work_claim.fixture.account_mismatch",
+        assignmentRef: "assignment.public.suspect",
+        workerKind: "codex",
+        accountRefHash: "account.pylon.claude_agent.0123456789abcdef01234567",
+        marginalCostClass: "subscription",
+        blockerRefs: [],
+      })
+      await reporter.record({
+        schema: "openagents.pylon.fleet_run_execution_event.v2",
+        kind: "work_terminal",
+        observedAt: fixedNow.toISOString(),
+        unitRef: "unit.fixture.usage_mismatch",
+        workClaimRef: "work_claim.fixture.usage_mismatch",
+        assignmentRef: "assignment.public.codex",
+        workerKind: "codex",
+        accountRefHash: "account.pylon.codex.0123456789abcdef01234567",
+        marginalCostClass: "subscription",
+        terminalState: "failed",
+        usageEvidence: {
+          schema: "openagents.pylon.fleet_run_usage_evidence.v1",
+          truth: "not_measured",
+          harnessKind: "grok",
+          evidenceRef: "evidence.public.suspect",
+          assignmentRef: "assignment.public.grok",
+          receiptRef: "receipt.public.suspect",
+          tokenUsageRefs: [],
+          caveatRefs: ["caveat.public.suspect"],
+        },
+        blockerRefs: ["blocker.public.original"],
+      })
+      await reporter.record({
+        schema: "openagents.pylon.fleet_run_execution_event.v2",
+        kind: "work_progress",
+        observedAt: fixedNow.toISOString(),
+        unitRef: "unit.fixture.blocker_overflow",
+        workClaimRef: "work_claim.fixture.blocker_overflow",
+        workerKind: "grok",
+        marginalCostClass: "not_measured",
+        blockerRefs: Array.from(
+          { length: 33 },
+          (_, index) => `blocker.public.overflow.${index}`,
+        ),
+      })
+      await reporter.record({
+        schema: "openagents.pylon.fleet_run_execution_event.v2",
+        kind: "work_terminal",
+        observedAt: fixedNow.toISOString(),
+        unitRef: "unit.fixture.missing_accepted_identity",
+        workClaimRef: "work_claim.fixture.missing_accepted_identity",
+        workerKind: "claude",
+        terminalState: "accepted",
+        blockerRefs: [],
+      } as unknown as PylonFleetRunExecutionEventInput)
+      await reporter.close()
+
+      const failures = delivered
+        .flatMap(batch => batch.events)
+        .filter(event => event.kind === "work_terminal")
+      expect(failures).toHaveLength(4)
+      expect(failures.map(event => event.blockerRefs)).toEqual([
+        ["blocker.pylon.fleet_run.evidence_identity_invalid"],
+        ["blocker.pylon.fleet_run.evidence_identity_invalid"],
+        ["blocker.pylon.fleet_run.evidence_cardinality_invalid"],
+        ["blocker.pylon.fleet_run.evidence_identity_invalid"],
+      ])
+      for (const failure of failures) {
+        expect(failure).not.toHaveProperty("assignmentRef")
+        expect(failure).not.toHaveProperty("accountRefHash")
+        expect(failure).not.toHaveProperty("usageEvidence")
+      }
       expect(runtime.store.listFleetRunExecutionOutbox(runRef)).toEqual([])
       await runtime.close()
     } finally {
@@ -315,9 +420,14 @@ describe("Pylon FleetRun execution reporter", () => {
           observedAt: fixedNow.toISOString(),
         })
         await reporter.record({
-          schema: "openagents.pylon.fleet_run_execution_event.v1",
-          kind: "run_started",
+          schema: "openagents.pylon.fleet_run_execution_event.v2",
+          kind: "work_progress",
           observedAt: new Date(fixedNow.getTime() + 1_000).toISOString(),
+          unitRef: "unit.fixture.frozen_batch",
+          workClaimRef: "work_claim.fixture.frozen_batch",
+          workerKind: "codex",
+          marginalCostClass: "subscription",
+          blockerRefs: [],
         })
         expect(calls).toHaveLength(3)
         expect(calls[1]).toEqual(calls[0])

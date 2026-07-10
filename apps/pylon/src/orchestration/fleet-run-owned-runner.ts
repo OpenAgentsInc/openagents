@@ -238,25 +238,19 @@ const stablePublicRef = (prefix: string, seed: string): string =>
 const workerEvidenceRefPattern = /^[A-Za-z0-9][A-Za-z0-9_.:/=-]{2,259}$/u
 const attemptProjectionRefPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,179}$/u
 
-const requireWorkerEvidenceCardinality = (
-  groups: readonly (readonly string[])[],
-): void => {
-  const refs = groups.flatMap(group => [...group])
-  if (new Set(refs).size > 64) {
-    throw new Error("worker closeout evidence cardinality is invalid")
-  }
-}
-
 const projectedWorkerEvidenceGroups = <const Groups extends readonly {
   readonly refs: readonly string[]
   readonly prefix: string
+  readonly maximum: number
 }[]>(groups: Groups): { readonly [Index in keyof Groups]: string[] } => {
   for (const group of groups) {
-    if (group.refs.length > 64 || new Set(group.refs).size !== group.refs.length) {
+    if (
+      group.refs.length > group.maximum ||
+      new Set(group.refs).size !== group.refs.length
+    ) {
       throw new Error("worker evidence ref cardinality is invalid")
     }
   }
-  requireWorkerEvidenceCardinality(groups.map(group => group.refs))
   const projectedBySource = new Map<string, string>()
   const sourceByProjected = new Map<string, string>()
   const projected = groups.map(group => group.refs.map(ref => {
@@ -273,7 +267,6 @@ const projectedWorkerEvidenceGroups = <const Groups extends readonly {
     sourceByProjected.set(next, ref)
     return next
   }))
-  requireWorkerEvidenceCardinality(projected)
   return projected as { readonly [Index in keyof Groups]: string[] }
 }
 
@@ -288,9 +281,13 @@ type ExactWorkerCloseoutEvidence = {
   readonly verificationRefs: readonly string[]
 }
 
+// Worker-closeout intake retains up to 100 refs per source role. The narrower
+// FleetAttempt roles are enforced only when those specific arrays are lowered
+// into the v2 terminal contract below; source-only closeout/result roles are
+// not subjected to an invented global 64-ref cap.
 const stringRefs = (value: unknown): readonly string[] | null =>
   Array.isArray(value) &&
-    value.length <= 64 &&
+    value.length <= 100 &&
     value.every(ref => typeof ref === "string" && workerEvidenceRefPattern.test(ref)) &&
     new Set(value).size === value.length
     ? value as readonly string[]
@@ -340,15 +337,6 @@ const exactWorkerCloseout = (
       verificationRefs.length === 0 ||
       projectionBlockerRefs.length !== 0
     ) throw new Error("worker closeout evidence is incomplete")
-    requireWorkerEvidenceCardinality([
-      artifactRefs,
-      authorityReceiptRefs,
-      closeoutRefs,
-      proofRefs,
-      resultRefs,
-      testRefs,
-      verificationRefs,
-    ])
     return {
       artifactRefs,
       authorityReceiptRefs,
@@ -386,17 +374,30 @@ const projectedTerminalEvidenceRefs = (
     ...worker.testRefs,
     ...worker.verificationRefs,
   ])]
+  if (verificationSourceRefs.length > 64) {
+    throw new Error("worker verification evidence cardinality is invalid")
+  }
   const [verificationRefs, artifactRefs, proofRefs, authorityReceiptRefs] =
     projectedWorkerEvidenceGroups([
       {
         refs: verificationSourceRefs,
         prefix: "verification.public.pylon.opaque",
+        maximum: 64,
       },
-      { refs: worker.artifactRefs, prefix: "artifact.public.pylon.opaque" },
-      { refs: worker.proofRefs, prefix: "proof.public.pylon.opaque" },
+      {
+        refs: worker.artifactRefs,
+        prefix: "artifact.public.pylon.opaque",
+        maximum: 64,
+      },
+      {
+        refs: worker.proofRefs,
+        prefix: "proof.public.pylon.opaque",
+        maximum: 64,
+      },
       {
         refs: worker.authorityReceiptRefs,
         prefix: "receipt.public.pylon.authority.opaque",
+        maximum: 64,
       },
     ] as const)
   return { artifactRefs, authorityReceiptRefs, proofRefs, verificationRefs }
@@ -417,7 +418,7 @@ const terminalEvidenceFromCloseout = (
 } => {
   const worker = exactWorkerCloseout(closeout)
   const projected = projectedTerminalEvidenceRefs(worker)
-  const verifierSeed = dispatch.workUnit.verify ??
+  const verifierSeed =
     `worker_closeout:${worker.eventRef}:${projected.verificationRefs.join(":")}`
   return {
     verification: {
@@ -442,7 +443,7 @@ const reconciledTerminalEvidenceFromCloseout = (
       truth: "passed",
       verifierRef: stablePublicRef(
         "verifier.public.pylon.fleet_run",
-        `worker_closeout:${active.claim.claimRef}:${worker.eventRef}:${projected.verificationRefs.join(":")}`,
+        `worker_closeout:${worker.eventRef}:${projected.verificationRefs.join(":")}`,
       ),
       evidenceRefs: projected.verificationRefs,
     },
@@ -1033,7 +1034,7 @@ export function createPylonOwnedFleetRunSupervisorRunner(
       assignmentRef,
       ...terminalEvidence,
       lifecycle: [...assignment.lifecycle],
-      marginalCostClass: account.marginalCostClass,
+      marginalCostClass: dispatchInput.claim.marginalCostClass ?? "not_measured",
       status: "completed",
       summary: "The exact no-spend Pylon assignment completed with exact usage evidence.",
     } satisfies PylonOwnedFleetRunDispatchResult
@@ -1176,7 +1177,6 @@ export function createPylonOwnedFleetRunSupervisorRunner(
     if (traceIsAcceptedCloseout(trace)) {
       let evidence: ReturnType<typeof exactPylonFleetRunUsageEvidence>
       let terminalEvidence: ReturnType<typeof terminalEvidenceFromCloseout>
-      let marginalCostClass: PylonAccountRegistryEntry["marginalCostClass"]
       try {
         const registry = await loadRegistry()
         const matches = registry.filter(account => account.ref === active.accountRef)
@@ -1199,7 +1199,6 @@ export function createPylonOwnedFleetRunSupervisorRunner(
           pylonRef: input.pylonRef,
         })
         terminalEvidence = reconciledTerminalEvidenceFromCloseout(active, closeout)
-        marginalCostClass = account.marginalCostClass
       } catch {
         return {
           ...fail(
@@ -1216,7 +1215,7 @@ export function createPylonOwnedFleetRunSupervisorRunner(
         assignmentRef,
         ...terminalEvidence,
         lifecycle: [terminalLifecycle({ assignmentRef, now, status: "closed" })],
-        marginalCostClass,
+        marginalCostClass: active.claim.marginalCostClass ?? "not_measured",
         status: "completed",
         summary: "The exact no-spend Pylon assignment is closed out with exact usage evidence.",
         taskId: active.taskId,

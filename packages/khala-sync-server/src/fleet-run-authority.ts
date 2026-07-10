@@ -851,6 +851,9 @@ const accountHashMatchesWorker = (
     `account.pylon.${workerKind === "claude" ? "claude_agent" : workerKind}.`,
   )
 
+const refsAreUnique = (refs: ReadonlyArray<string>): boolean =>
+  new Set(refs).size === refs.length
+
 export const decodeFleetRunExecutionBatch = (
   input: unknown,
 ): FleetRunExecutionBatch => {
@@ -890,7 +893,7 @@ export const decodeFleetRunExecutionBatch = (
     ) {
       throw invalidRequest()
     }
-    if (event.blockerRefs.length > 32) {
+    if (event.blockerRefs.length > 32 || !refsAreUnique(event.blockerRefs)) {
       throw invalidRequest()
     }
     if (event.kind === "run_terminal") {
@@ -914,11 +917,20 @@ export const decodeFleetRunExecutionBatch = (
       return
     }
     if (event.schema === FLEET_RUN_EXECUTION_EVENT_SCHEMA_V2) {
+      const terminalEvidenceGroups = event.kind === "work_terminal"
+        ? [
+            event.verification?.evidenceRefs ?? [],
+            event.artifactRefs ?? [],
+            event.proofRefs ?? [],
+            event.authorityReceiptRefs ?? [],
+          ]
+        : []
       if (
         (event.accountRefHash !== undefined &&
           !accountHashMatchesWorker(event.workerKind, event.accountRefHash)) ||
         (event.terminalState === "accepted" && event.blockerRefs.length > 0) ||
-        (event.terminalState !== "accepted" && event.blockerRefs.length < 1)
+        (event.terminalState !== "accepted" && event.blockerRefs.length < 1) ||
+        terminalEvidenceGroups.some((refs) => !refsAreUnique(refs))
       ) {
         throw invalidRequest()
       }

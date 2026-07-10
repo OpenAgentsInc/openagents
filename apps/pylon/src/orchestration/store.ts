@@ -29,7 +29,7 @@ import {
   type FleetRunWorkSourceDescriptor,
 } from "./fleet-run-work-source.js"
 
-export const ORCHESTRATION_SCHEMA_VERSION = 9
+export const ORCHESTRATION_SCHEMA_VERSION = 10
 
 export type OrchestrationTaskStatus =
   | "pending"
@@ -372,6 +372,14 @@ export const WorkClaimStateSchema = S.Literals([
 ])
 export type WorkClaimState = typeof WorkClaimStateSchema.Type
 export type LiveWorkClaimState = Extract<WorkClaimState, "claimed" | "in_progress" | "closeout">
+export const WorkClaimMarginalCostClassSchema = S.Literals([
+  "free",
+  "subscription",
+  "api_metered",
+  "not_measured",
+])
+export type WorkClaimMarginalCostClass =
+  typeof WorkClaimMarginalCostClassSchema.Type
 
 export const WorkClaimSchema = S.Struct({
   schema: S.Literal(WORK_CLAIM_SCHEMA),
@@ -380,6 +388,7 @@ export const WorkClaimSchema = S.Struct({
   runRef: S.String,
   assignmentRef: S.NullOr(S.String),
   workerAccountRef: S.String,
+  marginalCostClass: S.optional(WorkClaimMarginalCostClassSchema),
   state: WorkClaimStateSchema,
   ttl: S.Number,
   claimedAt: S.String,
@@ -394,6 +403,7 @@ export type CreateWorkClaimInput = {
   runRef: string
   assignmentRef?: string | null
   workerAccountRef: string
+  marginalCostClass?: WorkClaimMarginalCostClass | undefined
   ttl: number
   now?: Date
 }
@@ -814,6 +824,7 @@ export function buildWorkClaim(input: CreateWorkClaimInput): WorkClaim {
     runRef: input.runRef,
     assignmentRef: input.assignmentRef ?? null,
     workerAccountRef: input.workerAccountRef,
+    marginalCostClass: input.marginalCostClass ?? "not_measured",
     state: "claimed",
     ttl: input.ttl,
     claimedAt,
@@ -1069,6 +1080,7 @@ type WorkClaimRow = {
   run_ref: string
   assignment_ref: string | null
   worker_account_ref: string
+  marginal_cost_class?: WorkClaimMarginalCostClass | null
   state: WorkClaimState
   ttl_ms: number
   claimed_at: string
@@ -1327,6 +1339,7 @@ const workClaimFromRow = (row: WorkClaimRow): WorkClaim => decodeWorkClaim({
   runRef: row.run_ref,
   assignmentRef: row.assignment_ref,
   workerAccountRef: row.worker_account_ref,
+  marginalCostClass: row.marginal_cost_class ?? "not_measured",
   state: row.state,
   ttl: row.ttl_ms,
   claimedAt: row.claimed_at,
@@ -1706,6 +1719,8 @@ export class PylonOrchestrationStore {
         run_ref TEXT NOT NULL,
         assignment_ref TEXT,
         worker_account_ref TEXT NOT NULL,
+        marginal_cost_class TEXT NOT NULL DEFAULT 'not_measured'
+          CHECK (marginal_cost_class IN ('free', 'subscription', 'api_metered', 'not_measured')),
         state TEXT NOT NULL CHECK (state IN ('claimed', 'in_progress', 'closeout', 'released', 'expired')),
         ttl_ms INTEGER NOT NULL CHECK (ttl_ms > 0),
         claimed_at TEXT NOT NULL,
@@ -1749,6 +1764,7 @@ export class PylonOrchestrationStore {
     this.ensureDispatchContextPausedColumn()
     this.ensureDispatchContextRunnerKindAllowsGrokCli()
     this.ensureFleetRunExecutionOutboxBatchColumn()
+    this.ensureWorkClaimMarginalCostClassColumn()
     this.ensureFleetRunSteeringFollowUpColumns()
     this.db
       .query("INSERT OR REPLACE INTO pylon_orchestration_meta (key, value) VALUES ('schema_version', $version)")
@@ -1806,6 +1822,17 @@ export class PylonOrchestrationStore {
       CREATE INDEX IF NOT EXISTS idx_pylon_orchestration_fleet_run_execution_batch
         ON pylon_orchestration_fleet_run_execution_outbox(run_ref, delivery_batch_ref, sequence)
     `)
+  }
+
+  private ensureWorkClaimMarginalCostClassColumn(): void {
+    const columns = this.tableColumnNames("pylon_orchestration_work_claims")
+    if (!columns.has("marginal_cost_class")) {
+      this.db.exec(`
+        ALTER TABLE pylon_orchestration_work_claims
+        ADD COLUMN marginal_cost_class TEXT NOT NULL DEFAULT 'not_measured'
+          CHECK (marginal_cost_class IN ('free', 'subscription', 'api_metered', 'not_measured'))
+      `)
+    }
   }
 
   private ensureFleetRunSteeringFollowUpColumns(): void {
@@ -3601,10 +3628,12 @@ export class PylonOrchestrationStore {
       this.db
         .query(`
           INSERT INTO pylon_orchestration_work_claims
-            (claim_ref, work_unit_ref, run_ref, assignment_ref, worker_account_ref, state,
+            (claim_ref, work_unit_ref, run_ref, assignment_ref, worker_account_ref,
+             marginal_cost_class, state,
              ttl_ms, claimed_at, expires_at, updated_at)
           VALUES
-            ($claimRef, $workUnitRef, $runRef, $assignmentRef, $workerAccountRef, $state,
+            ($claimRef, $workUnitRef, $runRef, $assignmentRef, $workerAccountRef,
+             $marginalCostClass, $state,
              $ttl, $claimedAt, $expiresAt, $updatedAt)
         `)
         .run({
@@ -3613,6 +3642,7 @@ export class PylonOrchestrationStore {
           $runRef: claim.runRef,
           $assignmentRef: claim.assignmentRef,
           $workerAccountRef: claim.workerAccountRef,
+          $marginalCostClass: claim.marginalCostClass ?? "not_measured",
           $state: claim.state,
           $ttl: claim.ttl,
           $claimedAt: claim.claimedAt,

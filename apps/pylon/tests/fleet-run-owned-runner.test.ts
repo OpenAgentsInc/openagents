@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import { createHash } from "node:crypto"
 import type { PylonAssignmentRunLifecycleEvent } from "@openagentsinc/agent-runtime-schema"
 
 import type { PylonAccountRegistryEntry } from "../src/account-registry.js"
@@ -77,6 +78,7 @@ const claim = (ref: string, accountRef: string, assignmentRef: string | null = n
   runRef: run.runRef,
   assignmentRef,
   workerAccountRef: accountRef,
+  marginalCostClass: "subscription",
   state: "in_progress",
   ttl: 60_000,
   claimedAt: fixedNow.toISOString(),
@@ -681,13 +683,27 @@ describe("Pylon-owned FleetRun runner", () => {
       })),
       (closeout: PylonKhalaCloseoutResult) => withWorkerEvidence(closeout, worker => ({
         ...worker,
-        // Test and verification legitimately share one receipt. The five
-        // other unique required refs plus 60 artifacts make 65 unique refs.
-        artifactRefs: Array.from(
-          { length: 60 },
-          (_, index) => `artifact.public.overflow.${index}`,
+        testRefs: Array.from(
+          { length: 33 },
+          (_, index) => `test.public.combined_overflow.${index}`,
+        ),
+        verificationRefs: Array.from(
+          { length: 33 },
+          (_, index) => `verification.public.combined_overflow.${index}`,
         ),
       })),
+      (closeout: PylonKhalaCloseoutResult) => {
+        const unsafe = "Users/owner/private/colliding-artifact"
+        const collision = `artifact.public.pylon.opaque.${createHash("sha256")
+          .update(unsafe)
+          .digest("hex")
+          .slice(0, 24)}`
+        return withWorkerEvidence(closeout, worker => ({
+          ...worker,
+          artifactRefs: [unsafe],
+          proofRefs: [collision],
+        }))
+      },
     ]
 
     for (const [index, mutate] of invalidEvidence.entries()) {
@@ -717,6 +733,41 @@ describe("Pylon-owned FleetRun runner", () => {
         blockerRefs: [PYLON_OWNED_FLEET_RUNNER_BLOCKERS.usageEvidenceInvalid],
       }))
     }
+
+    const manyArtifactsRunner = createPylonOwnedFleetRunSupervisorRunner({
+      summary,
+      pylonRef,
+      baseUrl: "https://openagents.test",
+      loadRegistry: async () => [account("codex-a", "codex")],
+      request: async request => requestReceipt(request),
+      runAssignment: async request => acceptedAssignment(
+        request.assignmentRef,
+        hashPylonAccountRef("codex", "codex-a"),
+      ),
+      readCloseout: async assignmentRef => withWorkerEvidence(
+        exactCloseout(assignmentRef),
+        worker => ({
+          ...worker,
+          artifactRefs: Array.from(
+            { length: 60 },
+            (_, index) => `artifact.public.role_bounded.${index}`,
+          ),
+          closeoutRefs: Array.from(
+            { length: 100 },
+            (_, index) => `closeout.public.source_role.${index}`,
+          ),
+          resultRefs: Array.from(
+            { length: 100 },
+            (_, index) => `result.public.source_role.${index}`,
+          ),
+        }),
+      ),
+    })
+    const manyArtifacts = await manyArtifactsRunner.dispatch(
+      dispatchInput("codex", "codex-a", 269, "fixture"),
+    )
+    expect(manyArtifacts).toMatchObject({ status: "completed" })
+    expect(manyArtifacts.artifactRefs).toHaveLength(60)
   })
 
   test("coalesces a duplicate durable claim into one request and one assignment run", async () => {
@@ -1081,7 +1132,10 @@ describe("Pylon-owned FleetRun runner", () => {
       pylonRef,
       baseUrl: "https://openagents.test",
       readCloseout: readExactCloseout,
-      loadRegistry: async () => [account("codex-a", "codex")],
+      loadRegistry: async () => [{
+        ...account("codex-a", "codex"),
+        marginalCostClass: "api_metered",
+      }],
       request: async request => {
         requestCount += 1
         return requestReceipt(request)
@@ -1115,6 +1169,7 @@ describe("Pylon-owned FleetRun runner", () => {
       accountRefHash: hashPylonAccountRef("codex", "codex-a"),
       closeoutRef: expect.stringMatching(/^closeout\.public\./),
       usageEvidence: { truth: "exact", harnessKind: "codex", totalTokens: 8 },
+      marginalCostClass: "subscription",
     })
     expect(reconciled?.[1]).toMatchObject({
       accountRefHash: null,
@@ -1128,6 +1183,43 @@ describe("Pylon-owned FleetRun runner", () => {
     ])
     expect(requestCount).toBe(0)
     expect(runCount).toBe(0)
+  })
+
+  test("derives the same verifier ref before and after restart from worker closeout evidence", async () => {
+    const runner = createPylonOwnedFleetRunSupervisorRunner({
+      summary,
+      pylonRef,
+      baseUrl: "https://openagents.test",
+      loadRegistry: async () => [account("codex-a", "codex")],
+      request: async request => requestReceipt(request),
+      runAssignment: async request => acceptedAssignment(
+        request.assignmentRef,
+        hashPylonAccountRef("codex", "codex-a"),
+      ),
+      readCloseout: readExactCloseout,
+      inspectAssignment: async assignmentRef => exactCloseout(assignmentRef).status,
+    })
+    const input = dispatchInput("codex", "codex-a", 55, "fixture")
+    const dispatched = await runner.dispatch(input)
+    if (dispatched.assignmentRef === null) {
+      throw new Error("expected exact dispatched assignment")
+    }
+    const reconciled = await runner.reconcile({
+      activeAssignments: [{
+        accountRef: input.accountRef,
+        claim: { ...input.claim, assignmentRef: dispatched.assignmentRef },
+        contextId: "context.verifier.restart",
+        taskId: input.taskId,
+      }],
+      now: fixedNow,
+      run,
+    })
+
+    expect(dispatched.status).toBe("completed")
+    expect(reconciled[0]?.status).toBe("completed")
+    expect(reconciled[0]?.verification?.verifierRef).toBe(
+      dispatched.verification?.verifierRef,
+    )
   })
 
   test("never restart-promotes a closed verifier rejection to accepted", async () => {

@@ -248,6 +248,45 @@ describe("Pylon-owned exact Grok claimed-work adapter", () => {
     }
   })
 
+  test("runs the built-in deterministic fixture verifier before promoting CLI success", async () => {
+    const root = await mkdtemp(join(tmpdir(), "pylon-grok-fixture-verifier-"))
+    const pylonHome = join(root, "pylon")
+    const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), { PYLON_HOME: pylonHome })
+    const accountRef = "grok-a"
+    const accountHome = join(pylonHome, "accounts", "grok", accountRef)
+    await mkdir(accountHome, { recursive: true })
+
+    try {
+      const result = await createPylonOwnedGrokClaimedWorkPort({
+        summary,
+        now: () => fixedNow,
+        env: { PATH: process.env.PATH },
+        loadRegistry: async () => [accountFor(accountHome, accountRef)],
+        createExecutor: () => successfulExecutor(),
+      }).dispatch(dispatchFor(accountRef, 101, "fixture"))
+
+      expect(result).toMatchObject({
+        status: "completed",
+        verification: {
+          truth: "passed",
+          verifierRef: expect.stringMatching(/^verifier\.public\.pylon\.grok\./),
+          evidenceRefs: [expect.stringMatching(/^verification\.public\.pylon\.grok\./)],
+        },
+      })
+      expect(await readFile(
+        join(
+          summary.paths.cache,
+          "grok-fleet-fixtures",
+          result.artifactRefs[0]!,
+          "grok-fixture-closeout.json",
+        ),
+        "utf8",
+      )).toContain(dispatchFor(accountRef, 101, "fixture").claim.claimRef)
+    } finally {
+      await rm(root, { force: true, recursive: true })
+    }
+  })
+
   test("coalesces duplicates and a fresh adapter reconciles the terminal receipt without rerun", async () => {
     const root = await mkdtemp(join(tmpdir(), "pylon-grok-restart-"))
     const pylonHome = join(root, "pylon")
@@ -297,12 +336,17 @@ describe("Pylon-owned exact Grok claimed-work adapter", () => {
             return successfulExecutor().runClaimedWork(input)
           },
         }),
-        materializeWorkspace: async () => ({
-          checkout: null,
-          verificationArgs: null,
-          workingDirectory: join(root, "workspace"),
-          workspaceRef: "workspace.public.grok.restart",
-        }),
+        materializeWorkspace: async () => {
+          const workingDirectory = join(root, "workspace")
+          await mkdir(workingDirectory, { recursive: true })
+          return {
+            checkout: null,
+            verificationArgs: ["bun", "--version"],
+            workingDirectory,
+            workspaceRef: "workspace.public.grok.restart",
+          }
+        },
+        runVerifier: async () => ({ exitCode: 0, timedOut: false }),
       })
       const runner = createPylonOwnedFleetRunSupervisorRunner({
         summary,
@@ -356,6 +400,23 @@ describe("Pylon-owned exact Grok claimed-work adapter", () => {
         status: "completed",
         taskId: dispatch.taskId,
         usageEvidence: one.usageEvidence,
+      })
+      const crossUnit = await fresh.reconcile({
+        active: {
+          ...active,
+          claim: {
+            ...active.claim,
+            workUnitRef: "work_unit.grok.exact.foreign",
+          },
+        },
+        now: fixedNow,
+        runRef: run.runRef,
+      })
+      expect(crossUnit).toMatchObject({
+        status: "failed",
+        lifecycle: [{
+          blockerRefs: [PYLON_OWNED_GROK_RUNNER_BLOCKERS.receiptInvalid],
+        }],
       })
       expect(await fresh.probeLiveness(one.assignmentRef!)).toBe("live")
     } finally {
@@ -472,12 +533,19 @@ describe("Pylon-owned exact Grok claimed-work adapter", () => {
               }),
             }
           : successfulExecutor(),
-        materializeWorkspace: async request => ({
-          checkout: null,
-          verificationArgs: request.dispatch.accountRef === "grok-b" ? ["bun", "test"] : null,
-          workingDirectory: join(root, `workspace-${request.dispatch.accountRef}`),
-          workspaceRef: `workspace.public.${request.dispatch.accountRef}`,
-        }),
+        materializeWorkspace: async request => {
+          const workingDirectory = join(
+            root,
+            `workspace-${request.dispatch.accountRef}`,
+          )
+          await mkdir(workingDirectory, { recursive: true })
+          return {
+            checkout: null,
+            verificationArgs: ["bun", "test"],
+            workingDirectory,
+            workspaceRef: `workspace.public.${request.dispatch.accountRef}`,
+          }
+        },
         runVerifier: async () => ({ exitCode: verifierShouldFail ? 9 : 0, timedOut: false }),
       })
 
@@ -498,6 +566,33 @@ describe("Pylon-owned exact Grok claimed-work adapter", () => {
         status: "failed",
         lifecycle: [{ blockerRefs: [PYLON_OWNED_GROK_RUNNER_BLOCKERS.verificationFailed] }],
       })
+
+      let missingVerifierCalls = 0
+      const missingVerifierWorkspace = join(root, "workspace-missing-verifier")
+      await mkdir(missingVerifierWorkspace, { recursive: true })
+      const missingVerifier = await createPylonOwnedGrokClaimedWorkPort({
+        summary,
+        now: () => fixedNow,
+        loadRegistry: async () => [accountB],
+        createExecutor: () => successfulExecutor(),
+        materializeWorkspace: async () => ({
+          checkout: null,
+          verificationArgs: null,
+          workingDirectory: missingVerifierWorkspace,
+          workspaceRef: "workspace.public.grok.missing_verifier",
+        }),
+        runVerifier: async () => {
+          missingVerifierCalls += 1
+          return { exitCode: 0, timedOut: false }
+        },
+      }).dispatch(dispatchFor("grok-b", 42, "fixture"))
+      expect(missingVerifier).toMatchObject({
+        status: "failed",
+        lifecycle: [{
+          blockerRefs: [PYLON_OWNED_GROK_RUNNER_BLOCKERS.verificationFailed],
+        }],
+      })
+      expect(missingVerifierCalls).toBe(0)
 
       const defaultHomeResult = await createPylonOwnedGrokClaimedWorkPort({
         summary,

@@ -1,5 +1,6 @@
 import { Database } from "bun:sqlite"
 import { describe, expect, test } from "bun:test"
+import { createHash } from "node:crypto"
 import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -30,9 +31,24 @@ const pylonRef = "pylon.public.fc2.restart_projection"
 const firstNow = new Date("2026-07-09T20:00:00.000Z")
 
 const accounts: readonly FleetRunSupervisorAccount[] = [
-  { accountRef: "codex-owner", advertisedCapacity: 1, workerKind: "codex" },
-  { accountRef: "claude-owner", advertisedCapacity: 1, workerKind: "claude" },
-  { accountRef: "grok-owner", advertisedCapacity: 1, workerKind: "grok" },
+  {
+    accountRef: "codex-owner",
+    advertisedCapacity: 1,
+    marginalCostClass: "subscription",
+    workerKind: "codex",
+  },
+  {
+    accountRef: "claude-owner",
+    advertisedCapacity: 1,
+    marginalCostClass: "free",
+    workerKind: "claude",
+  },
+  {
+    accountRef: "grok-owner",
+    advertisedCapacity: 1,
+    marginalCostClass: "not_measured",
+    workerKind: "grok",
+  },
 ]
 
 const planner = (store: ReturnType<typeof createPylonOrchestrationStore>) => ({
@@ -210,16 +226,6 @@ describe("FleetRun execution projection restart receipt", () => {
         ...completeEvent,
         verification: {
           ...completeEvent.verification,
-          evidenceRefs: Array.from(
-            { length: 62 },
-            (_, index) => `verification.public.cardinality.${index}`,
-          ),
-        },
-      },
-      {
-        ...completeEvent,
-        verification: {
-          ...completeEvent.verification,
           evidenceRefs: [
             "evidence.public.cardinality.duplicate",
             "evidence.public.cardinality.duplicate",
@@ -244,31 +250,43 @@ describe("FleetRun execution projection restart receipt", () => {
       },
       {
         ...completeEvent,
-        workerKind: "codex" as const,
-        accountRefHash: hashPylonAccountRef("codex", "codex-owner"),
-        usageEvidence: {
-          ...exactEvidence({
-            assignmentRef: completeEvent.assignmentRef,
-            harnessKind: "codex",
-          }),
-          tokenUsageRefs: Array.from(
-            { length: 26 },
-            (_, index) => `token_usage.public.cardinality.${index}`,
-          ),
-          proofRefs: Array.from(
-            { length: 25 },
-            (_, index) => `proof.public.cardinality.${index}`,
-          ),
-          closeoutChecklistRefs: Array.from(
-            { length: 25 },
-            (_, index) => `check.public.cardinality.closeout.${index}`,
-          ),
-          proofChecklistRefs: Array.from(
-            { length: 25 },
-            (_, index) => `check.public.cardinality.proof.${index}`,
-          ),
-        },
+        artifactRefs: Array.from(
+          { length: 65 },
+          (_, index) => `artifact.public.cardinality.${index}`,
+        ),
       },
+      {
+        ...completeEvent,
+        status: "failed" as const,
+        blockerRefs: Array.from(
+          { length: 33 },
+          (_, index) => `blocker.public.cardinality.${index}`,
+        ),
+      },
+      (() => {
+        const unsafe = "Users/owner/private/blocker"
+        const opaque = `blocker.pylon.fleet_run.opaque.${createHash("sha256")
+          .update(unsafe)
+          .digest("hex")
+          .slice(0, 24)}`
+        return {
+          ...completeEvent,
+          status: "failed" as const,
+          blockerRefs: [unsafe, opaque],
+        }
+      })(),
+      (() => {
+        const unsafe = "Users/owner/private/artifact"
+        const opaque = `artifact.public.pylon.opaque.${createHash("sha256")
+          .update(unsafe)
+          .digest("hex")
+          .slice(0, 24)}`
+        return {
+          ...completeEvent,
+          artifactRefs: [unsafe],
+          proofRefs: [opaque],
+        }
+      })(),
       {
         ...completeEvent,
         workerKind: "codex" as const,
@@ -292,6 +310,52 @@ describe("FleetRun execution projection restart receipt", () => {
         blockerRefs: ["blocker.pylon.fleet_run.evidence_cardinality_invalid"],
       })
     }
+
+    const independentRoleBounds = projectFleetRunSupervisorObservation({
+      store,
+      event: {
+        ...completeEvent,
+        workerKind: "codex" as const,
+        accountRefHash: hashPylonAccountRef("codex", "codex-owner"),
+        verification: {
+          ...completeEvent.verification,
+          evidenceRefs: Array.from(
+            { length: 62 },
+            (_, index) => `verification.public.cardinality.${index}`,
+          ),
+        },
+        artifactRefs: Array.from(
+          { length: 60 },
+          (_, index) => `artifact.public.cardinality.${index}`,
+        ),
+        usageEvidence: {
+          ...exactEvidence({
+            assignmentRef: completeEvent.assignmentRef,
+            harnessKind: "codex",
+          }),
+          tokenUsageRefs: Array.from(
+            { length: 26 },
+            (_, index) => `token_usage.public.cardinality.${index}`,
+          ),
+          proofRefs: Array.from(
+            { length: 25 },
+            (_, index) => `proof.public.cardinality.${index}`,
+          ),
+          closeoutChecklistRefs: Array.from(
+            { length: 25 },
+            (_, index) => `check.public.cardinality.closeout.${index}`,
+          ),
+          proofChecklistRefs: Array.from(
+            { length: 25 },
+            (_, index) => `check.public.cardinality.proof.${index}`,
+          ),
+        },
+      },
+    })[1]
+    expect(independentRoleBounds).toMatchObject({
+      kind: "work_terminal",
+      terminalState: "accepted",
+    })
 
     for (const sharedRef of [
       "evidence.public.shared_test_and_verification",
@@ -318,6 +382,24 @@ describe("FleetRun execution projection restart receipt", () => {
       expect(sharedReceipt.verification.evidenceRefs[0]).toBe(sharedReceipt.artifactRefs[0])
       expect(JSON.stringify(sharedReceipt)).not.toContain("Users/owner/private")
     }
+
+    const invalidRunTerminal = projectFleetRunSupervisorObservation({
+      store,
+      event: {
+        kind: "terminal",
+        runRef,
+        terminalState: "failed",
+        blockerRefs: Array.from(
+          { length: 33 },
+          (_, index) => `blocker.public.run_terminal.${index}`,
+        ),
+      },
+    })[1]
+    expect(invalidRunTerminal).toMatchObject({
+      kind: "run_terminal",
+      terminalState: "failed",
+      blockerRefs: ["blocker.pylon.fleet_run.evidence_cardinality_invalid"],
+    })
   })
 
   test("resumes one mixed Codex/Claude/Grok run without duplicate claims and closes with exact evidence truth", async () => {
@@ -421,6 +503,9 @@ describe("FleetRun execution projection restart receipt", () => {
       }
       const secondDatabase = new Database(databasePath)
       const secondStore = createPylonOrchestrationStore(secondDatabase)
+      expect(secondStore.listWorkClaims({ runRef }).map(claim =>
+        claim.marginalCostClass
+      ).sort()).toEqual(["free", "not_measured", "subscription"])
       const secondReporter = openPylonFleetRunExecutionReporter({
         store: secondStore,
         pylonRef,
@@ -497,6 +582,15 @@ describe("FleetRun execution projection restart receipt", () => {
       expect(events.filter(event => event.kind === "work_terminal").map(event =>
         event.kind === "work_terminal" ? event.usageEvidence.truth : null
       ).sort()).toEqual(["exact", "exact", "not_measured"])
+      expect(events.filter(event => event.kind === "work_terminal").map(event =>
+        event.kind === "work_terminal"
+          ? `${event.workerKind}:${event.marginalCostClass}`
+          : null
+      ).sort()).toEqual([
+        "claude:free",
+        "codex:subscription",
+        "grok:not_measured",
+      ])
       expect(events.at(-1)?.kind).toBe("run_terminal")
       expect(JSON.stringify(events)).not.toContain("codex-owner")
       expect(JSON.stringify(events)).not.toContain(root)

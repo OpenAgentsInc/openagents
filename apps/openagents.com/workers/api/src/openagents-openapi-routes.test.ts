@@ -1261,6 +1261,7 @@ describe('OpenAgents OpenAPI route', () => {
     expect(fleetRunExecution.security).toEqual([{ agentBearer: [] }])
     expect(fleetRunExecution.description).toContain('gapless event sequence')
     expect(fleetRunExecution.description).toContain('same Postgres transaction')
+    expect(fleetRunExecution.description).toContain('v2 progress and terminal')
     expect(fleetRunExecution.responses).toEqual(
       expect.objectContaining({
         '200': expect.any(Object),
@@ -1278,10 +1279,52 @@ describe('OpenAgents OpenAPI route', () => {
       schemaProperties(body, 'PylonFleetRunExecutionBatch').events,
     ).toEqual(expect.objectContaining({ minItems: 1, maxItems: 64 }))
     expect(
+      schemaProperties(body, 'PylonFleetRunExecutionBatchV2').events,
+    ).toEqual(expect.objectContaining({ minItems: 1, maxItems: 64 }))
+    expect(
+      (
+        fleetRunExecution.requestBody as {
+          content: { 'application/json': { schema: unknown } }
+        }
+      ).content['application/json'].schema,
+    ).toEqual({
+      oneOf: [
+        { $ref: '#/components/schemas/PylonFleetRunExecutionBatch' },
+        { $ref: '#/components/schemas/PylonFleetRunExecutionBatchV2' },
+      ],
+    })
+    expect(
       schemaProperties(body, 'PylonFleetRunExecutionAck')
         .acceptedThroughSequence,
     ).toEqual(expect.objectContaining({ minimum: 0 }))
     expect(body.components.schemas).toHaveProperty('PylonFleetRunUsageEvidence')
+    expect(body.components.schemas).toHaveProperty(
+      'PylonFleetRunExecutionEventV2',
+    )
+    expect(body.components.schemas).toHaveProperty(
+      'PylonFleetRunApprovalRequestedEventV2',
+    )
+    expect(
+      (
+        body.components.schemas.PylonFleetRunExecutionEventV2 as {
+          oneOf: ReadonlyArray<Record<string, unknown>>
+        }
+      ).oneOf,
+    ).toContainEqual({
+      $ref: '#/components/schemas/PylonFleetRunApprovalRequestedEventV2',
+    })
+    expect(
+      schemaProperties(body, 'PylonFleetRunApprovalRequestedEventV2')
+        .blockerRefs,
+    ).toEqual(
+      expect.objectContaining({ minItems: 1, maxItems: 32, uniqueItems: true }),
+    )
+    expect(body.components.schemas).toHaveProperty(
+      'PylonFleetRunExactUsageEvidenceV2',
+    )
+    expect(body.components.schemas).toHaveProperty(
+      'PylonFleetRunNotMeasuredUsageEvidenceV2',
+    )
     const steeringPage = operationAt(
       body,
       '/api/pylons/{pylonRef}/fleet-runs/{runRef}/steering',
@@ -1323,17 +1366,13 @@ describe('OpenAgents OpenAPI route', () => {
       'post',
     )
     expect(steeringCompletions.security).toEqual([{ agentBearer: [] }])
-    expect(steeringCompletions.description).toContain(
-      'SHA-256 content-bound',
-    )
+    expect(steeringCompletions.description).toContain('SHA-256 content-bound')
     expect(steeringCompletions.description).toContain(
       'Private steer bodies never cross',
     )
     expect(
-      schemaProperties(
-        body,
-        'PylonFleetSteeringFollowUpCompletionBatch',
-      ).completions,
+      schemaProperties(body, 'PylonFleetSteeringFollowUpCompletionBatch')
+        .completions,
     ).toEqual(expect.objectContaining({ minItems: 1, maxItems: 64 }))
     expect(body.components.schemas).toHaveProperty(
       'PylonFleetSteeringFollowUpCompletionAck',

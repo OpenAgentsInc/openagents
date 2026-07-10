@@ -35,6 +35,10 @@ const ISO_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u
 const MAX_BATCH_EVENTS = 64
 const MAX_BATCH_BYTES = 256 * 1_024
 const MAX_SAFE_INTEGER = Number.MAX_SAFE_INTEGER
+const EVIDENCE_CARDINALITY_BLOCKER =
+  "blocker.pylon.fleet_run.evidence_cardinality_invalid" as const
+const EVIDENCE_IDENTITY_BLOCKER =
+  "blocker.pylon.fleet_run.evidence_identity_invalid" as const
 
 const RunRef = S.String.check(S.isPattern(RUN_REF))
 const ClaimRef = S.String.check(S.isPattern(CLAIM_REF))
@@ -554,6 +558,116 @@ const eventRefFor = (
   .digest("hex")
   .slice(0, 24)}`
 
+const refsAreUniqueWithin = (
+  refs: readonly string[] | undefined,
+  maximum: number,
+): boolean => refs === undefined ||
+  (refs.length <= maximum && new Set(refs).size === refs.length)
+
+const accountHashMatchesWorker = (
+  workerKind: "codex" | "claude" | "grok",
+  accountRefHash: string,
+): boolean => accountRefHash.startsWith(
+  `account.pylon.${workerKind === "claude" ? "claude_agent" : workerKind}.`,
+)
+
+const usageEvidenceIsCoherent = (
+  event: Extract<
+    PylonFleetRunExecutionEventInput,
+    {
+      readonly schema: typeof PYLON_FLEET_RUN_EXECUTION_EVENT_SCHEMA_V2
+      readonly kind: "work_terminal"
+    }
+  >,
+): boolean => {
+  const usage = event.usageEvidence
+  if (usage === undefined) return event.terminalState !== "accepted"
+  try {
+    S.decodeUnknownSync(PylonFleetRunUsageEvidenceV2Schema)(usage, {
+      onExcessProperty: "error",
+    })
+  } catch {
+    return false
+  }
+  const assignmentRef = event.assignmentRef
+  if (
+    assignmentRef === undefined ||
+    usage.assignmentRef !== assignmentRef ||
+    usage.harnessKind !== event.workerKind
+  ) return false
+  if (usage.truth === "not_measured") {
+    return event.workerKind === "grok" &&
+      refsAreUniqueWithin(usage.caveatRefs, 100) &&
+      usage.tokenUsageRefs.length === 0
+  }
+  return event.workerKind !== "grok" &&
+    refsAreUniqueWithin(usage.tokenUsageRefs, 100) &&
+    refsAreUniqueWithin(usage.proofRefs, 100) &&
+    refsAreUniqueWithin(usage.closeoutChecklistRefs, 100) &&
+    refsAreUniqueWithin(usage.proofChecklistRefs, 100)
+}
+
+const normalizeV2WorkEvent = (
+  event: Extract<
+    PylonFleetRunExecutionEventInput,
+    {
+      readonly schema: typeof PYLON_FLEET_RUN_EXECUTION_EVENT_SCHEMA_V2
+      readonly kind: "work_progress" | "work_terminal"
+    }
+  >,
+): PylonFleetRunExecutionEventInput => {
+  const cardinalityInvalid =
+    !refsAreUniqueWithin(event.blockerRefs, 32) ||
+    (event.kind === "work_terminal" && (
+      !refsAreUniqueWithin(event.verification?.evidenceRefs, 64) ||
+      !refsAreUniqueWithin(event.artifactRefs, 64) ||
+      !refsAreUniqueWithin(event.proofRefs, 64) ||
+      !refsAreUniqueWithin(event.authorityReceiptRefs, 64) ||
+      (event.usageEvidence?.truth === "exact" && (
+        !refsAreUniqueWithin(event.usageEvidence.tokenUsageRefs, 100) ||
+        !refsAreUniqueWithin(event.usageEvidence.proofRefs, 100) ||
+        !refsAreUniqueWithin(event.usageEvidence.closeoutChecklistRefs, 100) ||
+        !refsAreUniqueWithin(event.usageEvidence.proofChecklistRefs, 100)
+      )) ||
+      (event.usageEvidence?.truth === "not_measured" &&
+        !refsAreUniqueWithin(event.usageEvidence.caveatRefs, 100))
+    ))
+  const identityInvalid =
+    (event.accountRefHash !== undefined &&
+      !accountHashMatchesWorker(event.workerKind, event.accountRefHash)) ||
+    (event.kind === "work_terminal" && (
+      (event.terminalState === "accepted" &&
+        (event.assignmentRef === undefined || event.accountRefHash === undefined)) ||
+      !usageEvidenceIsCoherent(event)
+    ))
+  if (!cardinalityInvalid && !identityInvalid) return event
+  return {
+    schema: PYLON_FLEET_RUN_EXECUTION_EVENT_SCHEMA_V2,
+    kind: "work_terminal",
+    observedAt: event.observedAt,
+    unitRef: event.unitRef,
+    workClaimRef: event.workClaimRef,
+    workerKind: event.workerKind,
+    ...(event.marginalCostClass === undefined
+      ? {}
+      : { marginalCostClass: event.marginalCostClass }),
+    terminalState: "failed",
+    blockerRefs: [
+      cardinalityInvalid
+        ? EVIDENCE_CARDINALITY_BLOCKER
+        : EVIDENCE_IDENTITY_BLOCKER,
+    ],
+  }
+}
+
+const normalizeEventForRecord = (
+  event: PylonFleetRunExecutionEventInput,
+): PylonFleetRunExecutionEventInput =>
+  event.schema === PYLON_FLEET_RUN_EXECUTION_EVENT_SCHEMA_V2 &&
+    (event.kind === "work_progress" || event.kind === "work_terminal")
+    ? normalizeV2WorkEvent(event)
+    : event
+
 const deliveryBatchRefFor = (
   pylonRef: string,
   runRef: string,
@@ -738,16 +852,26 @@ export function openPylonFleetRunExecutionReporter(
     record: async event => {
       if (!accepting || closed) throw unavailable()
       try {
-        const observedAt = new Date(event.observedAt)
+        const normalizedEvent = normalizeEventForRecord(event)
+        if (normalizedEvent.kind === "run_started") {
+          const first = input.store.listFleetRunExecutionOutbox(input.runRef, {
+            pendingOnly: false,
+            limit: 1,
+          })[0]
+          if (first !== undefined && decodeStoredEvent(first.eventJson).kind === "run_started") {
+            return
+          }
+        }
+        const observedAt = new Date(normalizedEvent.observedAt)
         if (!Number.isFinite(observedAt.getTime())) throw unavailable()
-        const eventRef = eventRefFor(input.runRef, claimRef, event)
+        const eventRef = eventRefFor(input.runRef, claimRef, normalizedEvent)
         input.store.enqueueFleetRunExecutionOutbox({
           runRef: input.runRef,
           claimRef,
           eventRef,
           eventJsonForSequence: sequence => canonicalJson(
             S.decodeUnknownSync(PylonFleetRunAnyExecutionEventSchema)({
-              ...event,
+              ...normalizedEvent,
               sequence,
               eventRef,
             }, { onExcessProperty: "error" }),

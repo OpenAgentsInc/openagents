@@ -89,6 +89,56 @@ const mixedCapacity: readonly FleetRunSupervisorAccount[] = [
 const capacity = () => ({ accounts: async () => mixedCapacity })
 
 describe("Pylon-owned FleetRun supervisor", () => {
+  test("emits a failed run terminal when the last local attempt fails or blocks", async () => {
+    for (const status of ["failed", "blocked"] as const) {
+      const store = createPylonOrchestrationStore(new Database(":memory:"))
+      const run = createRun(store, {
+        runRef: `fleet_run.fc3.terminal_${status}`,
+        workUnits: 1,
+        targetConcurrency: 1,
+        workerKind: "codex",
+      })
+      const observed: FleetRunSupervisorObservedEvent[] = []
+      const result = await tickFleetRunSupervisor({
+        store,
+        pylonRef: "pylon.owner.fc3.terminal",
+        runRef: run.runRef,
+        planner: planner(store, 1),
+        capacity: {
+          accounts: async () => [{
+            accountRef: "codex-owner",
+            advertisedCapacity: 1,
+            marginalCostClass: "subscription",
+            workerKind: "codex",
+          }],
+        },
+        runner: {
+          dispatch: async () => ({
+            accountRefHash: null,
+            assignmentRef: null,
+            closeoutRef: null,
+            lifecycle: [],
+            status,
+            summary: "The bounded fixture failed safely.",
+            usageEvidence: null,
+          }),
+        },
+        clock: { now: () => fixedNow },
+        onLifecycle: async event => {
+          observed.push(event)
+        },
+      })
+
+      expect(result.run.state).toBe("stopped")
+      expect(observed).toContainEqual({
+        kind: "terminal",
+        runRef: run.runRef,
+        terminalState: "failed",
+        blockerRefs: ["blocker.pylon.fleet_run.local_attempt_failed"],
+      })
+    }
+  })
+
   test("projects the durable claim immediately and streams lifecycle before dispatch returns", async () => {
     const store = createPylonOrchestrationStore(new Database(":memory:"))
     const run = createRun(store, {

@@ -5632,6 +5632,673 @@ const requestSchemas = (): JsonSchema => ({
       },
     },
   },
+  PylonFleetRunExecutionBatchV2: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['schema', 'claimRef', 'events'],
+    properties: {
+      schema: {
+        type: 'string',
+        enum: ['openagents.pylon.fleet_run_execution_batch.v2'],
+      },
+      claimRef: {
+        type: 'string',
+        pattern: '^claim\\.sarah_fleet_run\\.[0-9a-f]{24}$',
+      },
+      events: {
+        type: 'array',
+        minItems: 1,
+        maxItems: 64,
+        items: { $ref: '#/components/schemas/PylonFleetRunExecutionEventV2' },
+        description:
+          'Contiguous v2 attempt-evidence slice. A retained v1 run_started remains the one start event when a durable outbox upgrades to v2.',
+      },
+    },
+  },
+  PylonFleetRunExecutionEventV2: {
+    oneOf: [
+      { $ref: '#/components/schemas/PylonFleetRunStartedEventV2' },
+      { $ref: '#/components/schemas/PylonFleetRunWorkProgressEventV2' },
+      { $ref: '#/components/schemas/PylonFleetRunApprovalRequestedEventV2' },
+      { $ref: '#/components/schemas/PylonFleetRunWorkTerminalEventV2' },
+      { $ref: '#/components/schemas/PylonFleetRunTerminalEventV2' },
+    ],
+    discriminator: { propertyName: 'kind' },
+  },
+  PylonFleetRunStartedEventV2: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['schema', 'sequence', 'eventRef', 'observedAt', 'kind'],
+    properties: {
+      schema: {
+        type: 'string',
+        enum: ['openagents.pylon.fleet_run_execution_event.v2'],
+      },
+      sequence: { type: 'integer', minimum: 1 },
+      eventRef: {
+        type: 'string',
+        pattern: '^event\\.pylon\\.fleet_run\\.[0-9a-f]{24}$',
+      },
+      observedAt: { type: 'string', format: 'date-time' },
+      kind: { type: 'string', enum: ['run_started'] },
+    },
+  },
+  PylonFleetRunWorkProgressEventV2: {
+    type: 'object',
+    additionalProperties: false,
+    required: [
+      'schema',
+      'sequence',
+      'eventRef',
+      'observedAt',
+      'kind',
+      'unitRef',
+      'workClaimRef',
+      'workerKind',
+      'blockerRefs',
+    ],
+    properties: {
+      schema: {
+        type: 'string',
+        enum: ['openagents.pylon.fleet_run_execution_event.v2'],
+      },
+      sequence: { type: 'integer', minimum: 1 },
+      eventRef: {
+        type: 'string',
+        pattern: '^event\\.pylon\\.fleet_run\\.[0-9a-f]{24}$',
+      },
+      observedAt: { type: 'string', format: 'date-time' },
+      kind: { type: 'string', enum: ['work_progress'] },
+      unitRef: {
+        type: 'string',
+        maxLength: 160,
+        pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]*$',
+      },
+      workClaimRef: {
+        type: 'string',
+        maxLength: 180,
+        pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]*$',
+      },
+      assignmentRef: {
+        type: 'string',
+        maxLength: 180,
+        pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]*$',
+      },
+      workerKind: { type: 'string', enum: ['codex', 'claude', 'grok'] },
+      accountRefHash: {
+        type: 'string',
+        pattern: '^account\\.pylon\\.(codex|claude_agent|grok)\\.[a-f0-9]{24}$',
+      },
+      marginalCostClass: {
+        type: 'string',
+        enum: ['free', 'subscription', 'api_metered', 'not_measured'],
+      },
+      blockerRefs: {
+        type: 'array',
+        maxItems: 32,
+        uniqueItems: true,
+        items: {
+          type: 'string',
+          pattern: '^blocker\\.[A-Za-z0-9][A-Za-z0-9._:-]*$',
+        },
+      },
+    },
+  },
+  PylonFleetRunApprovalRequestedEventV2: {
+    type: 'object',
+    additionalProperties: false,
+    required: [
+      'schema',
+      'sequence',
+      'eventRef',
+      'observedAt',
+      'kind',
+      'unitRef',
+      'workClaimRef',
+      'workerKind',
+      'workerRef',
+      'approvalRef',
+      'toolClass',
+      'blockerRefs',
+    ],
+    properties: {
+      schema: {
+        type: 'string',
+        enum: ['openagents.pylon.fleet_run_execution_event.v2'],
+      },
+      sequence: { type: 'integer', minimum: 1 },
+      eventRef: {
+        type: 'string',
+        pattern: '^event\\.pylon\\.fleet_run\\.[0-9a-f]{24}$',
+      },
+      observedAt: { type: 'string', format: 'date-time' },
+      kind: { type: 'string', enum: ['approval_requested'] },
+      unitRef: {
+        type: 'string',
+        maxLength: 160,
+        pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]*$',
+      },
+      workClaimRef: {
+        type: 'string',
+        maxLength: 180,
+        pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]*$',
+      },
+      assignmentRef: {
+        type: 'string',
+        maxLength: 180,
+        pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]*$',
+      },
+      workerKind: { type: 'string', enum: ['codex', 'claude', 'grok'] },
+      workerRef: {
+        type: 'string',
+        maxLength: 180,
+        pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]*$',
+      },
+      accountRefHash: {
+        type: 'string',
+        pattern: '^account\\.pylon\\.(codex|claude_agent|grok)\\.[a-f0-9]{24}$',
+      },
+      approvalRef: {
+        type: 'string',
+        maxLength: 180,
+        pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]*$',
+      },
+      toolClass: {
+        type: 'string',
+        minLength: 1,
+        maxLength: 64,
+        pattern: '^[a-z][a-z0-9_]*$',
+      },
+      blockerRefs: {
+        type: 'array',
+        minItems: 1,
+        maxItems: 32,
+        uniqueItems: true,
+        items: {
+          type: 'string',
+          pattern: '^blocker\\.[A-Za-z0-9][A-Za-z0-9._:-]*$',
+        },
+      },
+    },
+    description:
+      'Public-safe approval request bound to one existing exact attempt. Raw tool arguments, prompts, output, commands, and local paths are excluded.',
+  },
+  PylonFleetRunVerifiedEvidenceV2: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['truth', 'verifierRef', 'evidenceRefs'],
+    properties: {
+      truth: { type: 'string', enum: ['passed'] },
+      verifierRef: {
+        type: 'string',
+        maxLength: 180,
+        pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]*$',
+      },
+      evidenceRefs: {
+        type: 'array',
+        minItems: 1,
+        maxItems: 64,
+        uniqueItems: true,
+        items: {
+          type: 'string',
+          maxLength: 180,
+          pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]*$',
+        },
+      },
+    },
+  },
+  PylonFleetRunUsageEvidenceV2: {
+    oneOf: [
+      { $ref: '#/components/schemas/PylonFleetRunExactUsageEvidenceV2' },
+      { $ref: '#/components/schemas/PylonFleetRunNotMeasuredUsageEvidenceV2' },
+    ],
+    discriminator: { propertyName: 'truth' },
+  },
+  PylonFleetRunExactUsageEvidenceV2: {
+    type: 'object',
+    additionalProperties: false,
+    required: [
+      'schema',
+      'truth',
+      'harnessKind',
+      'evidenceRef',
+      'assignmentRef',
+      'pylonRef',
+      'provider',
+      'model',
+      'demandKind',
+      'demandSource',
+      'inputTokens',
+      'outputTokens',
+      'reasoningTokens',
+      'cacheReadTokens',
+      'totalTokens',
+      'tokenRows',
+      'tokenUsageRefs',
+      'proofRefs',
+      'closeoutChecklistRefs',
+      'proofChecklistRefs',
+    ],
+    properties: {
+      schema: {
+        type: 'string',
+        enum: ['openagents.pylon.fleet_run_usage_evidence.v1'],
+      },
+      truth: { type: 'string', enum: ['exact'] },
+      harnessKind: { type: 'string', enum: ['codex', 'claude'] },
+      evidenceRef: {
+        type: 'string',
+        maxLength: 256,
+        pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]*$',
+      },
+      assignmentRef: {
+        type: 'string',
+        maxLength: 256,
+        pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]*$',
+      },
+      pylonRef: { type: 'string', pattern: '^[a-z0-9][a-z0-9._:-]{2,119}$' },
+      provider: {
+        type: 'string',
+        enum: ['pylon-codex-own-capacity', 'pylon-claude-own-capacity'],
+      },
+      model: {
+        type: 'string',
+        enum: ['openagents/pylon-codex', 'openagents/pylon-claude'],
+      },
+      demandKind: { type: 'string', enum: ['own_capacity'] },
+      demandSource: { type: 'string', enum: ['khala_coding_delegation'] },
+      inputTokens: { type: 'integer', minimum: 0 },
+      outputTokens: { type: 'integer', minimum: 0 },
+      reasoningTokens: { type: 'integer', minimum: 0 },
+      cacheReadTokens: { type: 'integer', minimum: 0 },
+      totalTokens: { type: 'integer', minimum: 1 },
+      tokenRows: { type: 'integer', minimum: 1 },
+      tokenUsageRefs: {
+        type: 'array',
+        minItems: 1,
+        maxItems: 100,
+        uniqueItems: true,
+        items: {
+          type: 'string',
+          maxLength: 256,
+          pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]*$',
+        },
+      },
+      proofRefs: {
+        type: 'array',
+        minItems: 1,
+        maxItems: 100,
+        uniqueItems: true,
+        items: {
+          type: 'string',
+          maxLength: 256,
+          pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]*$',
+        },
+      },
+      closeoutChecklistRefs: {
+        type: 'array',
+        minItems: 1,
+        maxItems: 100,
+        uniqueItems: true,
+        items: {
+          type: 'string',
+          maxLength: 256,
+          pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]*$',
+        },
+      },
+      proofChecklistRefs: {
+        type: 'array',
+        minItems: 1,
+        maxItems: 100,
+        uniqueItems: true,
+        items: {
+          type: 'string',
+          maxLength: 256,
+          pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]*$',
+        },
+      },
+    },
+    description:
+      'Exact Codex/Claude usage. totalTokens equals inputTokens plus outputTokens; reasoningTokens is included in outputTokens and cacheReadTokens is included in inputTokens.',
+  },
+  PylonFleetRunNotMeasuredUsageEvidenceV2: {
+    type: 'object',
+    additionalProperties: false,
+    required: [
+      'schema',
+      'truth',
+      'harnessKind',
+      'evidenceRef',
+      'assignmentRef',
+      'receiptRef',
+      'tokenUsageRefs',
+      'caveatRefs',
+    ],
+    properties: {
+      schema: {
+        type: 'string',
+        enum: ['openagents.pylon.fleet_run_usage_evidence.v1'],
+      },
+      truth: { type: 'string', enum: ['not_measured'] },
+      harnessKind: { type: 'string', enum: ['grok'] },
+      evidenceRef: {
+        type: 'string',
+        maxLength: 256,
+        pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]*$',
+      },
+      assignmentRef: {
+        type: 'string',
+        maxLength: 256,
+        pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]*$',
+      },
+      receiptRef: {
+        type: 'string',
+        maxLength: 256,
+        pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]*$',
+      },
+      tokenUsageRefs: { type: 'array', maxItems: 0 },
+      caveatRefs: {
+        type: 'array',
+        minItems: 1,
+        maxItems: 100,
+        uniqueItems: true,
+        items: {
+          type: 'string',
+          maxLength: 256,
+          pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]*$',
+        },
+      },
+    },
+  },
+  PylonFleetRunWorkTerminalEventV2: {
+    oneOf: [
+      { $ref: '#/components/schemas/PylonFleetRunAcceptedWorkTerminalEventV2' },
+      { $ref: '#/components/schemas/PylonFleetRunFailedWorkTerminalEventV2' },
+    ],
+    description:
+      'Accepted v2 terminals require complete verifier, artifact, proof, authority, and usage evidence. Failed/stale terminals keep all such fields optional and require a typed blocker.',
+  },
+  PylonFleetRunAcceptedWorkTerminalEventV2: {
+    type: 'object',
+    additionalProperties: false,
+    required: [
+      'schema',
+      'sequence',
+      'eventRef',
+      'observedAt',
+      'kind',
+      'unitRef',
+      'workClaimRef',
+      'assignmentRef',
+      'workerKind',
+      'accountRefHash',
+      'terminalState',
+      'closeoutRef',
+      'verification',
+      'artifactRefs',
+      'proofRefs',
+      'authorityReceiptRefs',
+      'usageEvidence',
+      'blockerRefs',
+    ],
+    properties: {
+      schema: {
+        type: 'string',
+        enum: ['openagents.pylon.fleet_run_execution_event.v2'],
+      },
+      sequence: { type: 'integer', minimum: 1 },
+      eventRef: {
+        type: 'string',
+        pattern: '^event\\.pylon\\.fleet_run\\.[0-9a-f]{24}$',
+      },
+      observedAt: { type: 'string', format: 'date-time' },
+      kind: { type: 'string', enum: ['work_terminal'] },
+      unitRef: {
+        type: 'string',
+        maxLength: 160,
+        pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]*$',
+      },
+      workClaimRef: {
+        type: 'string',
+        maxLength: 180,
+        pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]*$',
+      },
+      assignmentRef: {
+        type: 'string',
+        maxLength: 180,
+        pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]*$',
+      },
+      workerKind: { type: 'string', enum: ['codex', 'claude', 'grok'] },
+      accountRefHash: {
+        type: 'string',
+        pattern: '^account\\.pylon\\.(codex|claude_agent|grok)\\.[a-f0-9]{24}$',
+      },
+      marginalCostClass: {
+        type: 'string',
+        enum: ['free', 'subscription', 'api_metered', 'not_measured'],
+      },
+      terminalState: { type: 'string', enum: ['accepted'] },
+      closeoutRef: {
+        type: 'string',
+        maxLength: 180,
+        pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]*$',
+      },
+      verification: {
+        $ref: '#/components/schemas/PylonFleetRunVerifiedEvidenceV2',
+      },
+      artifactRefs: {
+        type: 'array',
+        minItems: 1,
+        maxItems: 64,
+        uniqueItems: true,
+        items: {
+          type: 'string',
+          maxLength: 180,
+          pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]*$',
+        },
+      },
+      proofRefs: {
+        type: 'array',
+        minItems: 1,
+        maxItems: 64,
+        uniqueItems: true,
+        items: {
+          type: 'string',
+          maxLength: 180,
+          pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]*$',
+        },
+      },
+      authorityReceiptRefs: {
+        type: 'array',
+        minItems: 1,
+        maxItems: 64,
+        uniqueItems: true,
+        items: {
+          type: 'string',
+          maxLength: 180,
+          pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]*$',
+        },
+      },
+      usageEvidence: {
+        $ref: '#/components/schemas/PylonFleetRunUsageEvidenceV2',
+      },
+      blockerRefs: { type: 'array', maxItems: 0 },
+    },
+  },
+  PylonFleetRunFailedWorkTerminalEventV2: {
+    type: 'object',
+    additionalProperties: false,
+    required: [
+      'schema',
+      'sequence',
+      'eventRef',
+      'observedAt',
+      'kind',
+      'unitRef',
+      'workClaimRef',
+      'workerKind',
+      'terminalState',
+      'blockerRefs',
+    ],
+    properties: {
+      schema: {
+        type: 'string',
+        enum: ['openagents.pylon.fleet_run_execution_event.v2'],
+      },
+      sequence: { type: 'integer', minimum: 1 },
+      eventRef: {
+        type: 'string',
+        pattern: '^event\\.pylon\\.fleet_run\\.[0-9a-f]{24}$',
+      },
+      observedAt: { type: 'string', format: 'date-time' },
+      kind: { type: 'string', enum: ['work_terminal'] },
+      unitRef: {
+        type: 'string',
+        maxLength: 160,
+        pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]*$',
+      },
+      workClaimRef: {
+        type: 'string',
+        maxLength: 180,
+        pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]*$',
+      },
+      assignmentRef: {
+        type: 'string',
+        maxLength: 180,
+        pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]*$',
+      },
+      workerKind: { type: 'string', enum: ['codex', 'claude', 'grok'] },
+      accountRefHash: {
+        type: 'string',
+        pattern: '^account\\.pylon\\.(codex|claude_agent|grok)\\.[a-f0-9]{24}$',
+      },
+      marginalCostClass: {
+        type: 'string',
+        enum: ['free', 'subscription', 'api_metered', 'not_measured'],
+      },
+      terminalState: { type: 'string', enum: ['failed', 'stale'] },
+      closeoutRef: {
+        type: 'string',
+        maxLength: 180,
+        pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]*$',
+      },
+      verification: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['truth', 'evidenceRefs'],
+        properties: {
+          truth: { type: 'string', enum: ['failed'] },
+          verifierRef: {
+            type: 'string',
+            maxLength: 180,
+            pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]*$',
+          },
+          evidenceRefs: {
+            type: 'array',
+            maxItems: 64,
+            uniqueItems: true,
+            items: {
+              type: 'string',
+              maxLength: 180,
+              pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]*$',
+            },
+          },
+        },
+      },
+      artifactRefs: {
+        type: 'array',
+        maxItems: 64,
+        uniqueItems: true,
+        items: {
+          type: 'string',
+          maxLength: 180,
+          pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]*$',
+        },
+      },
+      proofRefs: {
+        type: 'array',
+        maxItems: 64,
+        uniqueItems: true,
+        items: {
+          type: 'string',
+          maxLength: 180,
+          pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]*$',
+        },
+      },
+      authorityReceiptRefs: {
+        type: 'array',
+        maxItems: 64,
+        uniqueItems: true,
+        items: {
+          type: 'string',
+          maxLength: 180,
+          pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]*$',
+        },
+      },
+      usageEvidence: {
+        $ref: '#/components/schemas/PylonFleetRunUsageEvidenceV2',
+      },
+      blockerRefs: {
+        type: 'array',
+        minItems: 1,
+        maxItems: 32,
+        uniqueItems: true,
+        items: {
+          type: 'string',
+          pattern: '^blocker\\.[A-Za-z0-9][A-Za-z0-9._:-]*$',
+        },
+      },
+    },
+  },
+  PylonFleetRunTerminalEventV2: {
+    type: 'object',
+    additionalProperties: false,
+    allOf: [
+      {
+        if: { properties: { terminalState: { const: 'completed' } } },
+        then: { properties: { blockerRefs: { maxItems: 0 } } },
+      },
+      {
+        if: { properties: { terminalState: { const: 'failed' } } },
+        then: { properties: { blockerRefs: { minItems: 1 } } },
+      },
+    ],
+    required: [
+      'schema',
+      'sequence',
+      'eventRef',
+      'observedAt',
+      'kind',
+      'terminalState',
+      'blockerRefs',
+    ],
+    properties: {
+      schema: {
+        type: 'string',
+        enum: ['openagents.pylon.fleet_run_execution_event.v2'],
+      },
+      sequence: { type: 'integer', minimum: 1 },
+      eventRef: {
+        type: 'string',
+        pattern: '^event\\.pylon\\.fleet_run\\.[0-9a-f]{24}$',
+      },
+      observedAt: { type: 'string', format: 'date-time' },
+      kind: { type: 'string', enum: ['run_terminal'] },
+      terminalState: {
+        type: 'string',
+        enum: ['completed', 'failed', 'stopped'],
+      },
+      blockerRefs: {
+        type: 'array',
+        maxItems: 32,
+        uniqueItems: true,
+        items: {
+          type: 'string',
+          pattern: '^blocker\\.[A-Za-z0-9][A-Za-z0-9._:-]*$',
+        },
+      },
+    },
+  },
   PylonFleetRunExecutionEvent: {
     oneOf: [
       { $ref: '#/components/schemas/PylonFleetRunStartedEvent' },
@@ -6099,14 +6766,7 @@ const requestSchemas = (): JsonSchema => ({
   PylonFleetSteeringPage: {
     type: 'object',
     additionalProperties: false,
-    required: [
-      'ok',
-      'runRef',
-      'claimRef',
-      'intents',
-      'nextAfter',
-      'upToDate',
-    ],
+    required: ['ok', 'runRef', 'claimRef', 'intents', 'nextAfter', 'upToDate'],
     properties: {
       ok: { type: 'boolean', enum: [true] },
       runRef: {
@@ -9711,16 +10371,25 @@ const paths = (): JsonSchema => ({
       operationId: 'appendSarahFleetRunExecutionEvents',
       summary: 'Append durable Sarah FleetRun execution evidence',
       description:
-        'Bearer-only, owner-scoped lifecycle intake for the exact FleetRun lease already accepted by this owned Pylon. Appends a bounded gapless event sequence, treats exact sequence/event replays as idempotent, stores per-unit terminal closeout refs, derives execution state and counters, and advances the owner FleetRun Sync post-image in the same Postgres transaction. The body is refs-only and cannot carry owners, raw prompts, output, paths, credentials, provider payloads, payment material, or a second work-claim authority.',
+        'Bearer-only, owner-scoped lifecycle intake for the exact FleetRun lease already accepted by this owned Pylon. Accepts legacy v1 batches and exact-attempt v2 batches; one retained v1 run_started may be followed directly by v2 progress and terminal evidence without a second start. V2 also admits public-safe approval_requested events only when bound to an existing exact attempt. Appends a bounded gapless event sequence, treats exact sequence/event replays as idempotent, stores per-unit terminal closeout refs, derives execution state and counters, and advances the owner FleetRun Sync post-image in the same Postgres transaction. The body is refs-only and cannot carry owners, raw prompts, output, paths, credentials, provider payloads, payment material, or a second work-claim authority.',
       tags: ['Pylon'],
       security: agentBearer,
       parameters: [
         pathParam('pylonRef', 'Owned Pylon ref.'),
         pathParam('runRef', 'Exact Sarah FleetRun ref.'),
       ],
-      requestBody: jsonContent(
-        '#/components/schemas/PylonFleetRunExecutionBatch',
-      ),
+      requestBody: {
+        content: {
+          'application/json': {
+            schema: {
+              oneOf: [
+                { $ref: '#/components/schemas/PylonFleetRunExecutionBatch' },
+                { $ref: '#/components/schemas/PylonFleetRunExecutionBatchV2' },
+              ],
+            },
+          },
+        },
+      },
       responses: {
         '200': okJson(
           'Gapless execution acknowledgment and current refs-only projection.',
@@ -9835,7 +10504,8 @@ const paths = (): JsonSchema => ({
           '#/components/schemas/PylonFleetSteeringOutcomeAck',
         ),
         '400': {
-          description: 'Malformed, oversized, unordered, or unsafe outcome batch.',
+          description:
+            'Malformed, oversized, unordered, or unsafe outcome batch.',
           ...jsonContent('#/components/schemas/PylonFleetSteeringError'),
         },
         '401': {

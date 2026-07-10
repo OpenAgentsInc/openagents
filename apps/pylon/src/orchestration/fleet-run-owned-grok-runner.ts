@@ -71,6 +71,7 @@ const MAX_GROK_CLAIM_TIMEOUT_MS = 4 * 60 * 60 * 1_000
 const DEFAULT_GROK_VERIFY_TIMEOUT_MS = 15 * 60 * 1_000
 const MAX_GROK_VERIFY_TIMEOUT_MS = 60 * 60 * 1_000
 const GROK_LIFECYCLE_HEARTBEAT_MS = 10_000
+const GROK_FIXTURE_VERIFICATION_FILE = "grok-fixture-closeout.json"
 
 type GrokExecutionReceiptV1 = {
   readonly schema: typeof GROK_RECEIPT_SCHEMA
@@ -297,7 +298,24 @@ const defaultWorkspacePort = (
     const workingDirectory = join(input.summary.paths.cache, "grok-fleet-fixtures", workspaceRef)
     await rm(workingDirectory, { force: true, recursive: true })
     await mkdir(workingDirectory, { mode: 0o700, recursive: true })
-    return { checkout: null, verificationArgs: null, workingDirectory, workspaceRef }
+    const expected = {
+      schema: "openagents.pylon.grok_fixture_closeout.v1",
+      claimRef: request.dispatch.claim.claimRef,
+      workUnitRef: request.dispatch.workUnit.workUnitRef,
+      metering: "not_measured",
+      plane: "cli_session",
+    }
+    const verifier = [
+      process.execPath,
+      "--eval",
+      `const actual=await Bun.file(${JSON.stringify(GROK_FIXTURE_VERIFICATION_FILE)}).json();const expected=${JSON.stringify(expected)};if(JSON.stringify(actual)!==JSON.stringify(expected))process.exit(1)`,
+    ]
+    return {
+      checkout: null,
+      verificationArgs: verifier,
+      workingDirectory,
+      workspaceRef,
+    }
   }
   const materialized = await materializeGitCheckoutWorkspaceWithLease({
     cacheRoot: join(input.summary.paths.cache, "grok-fleet-workspaces"),
@@ -434,6 +452,12 @@ const receiptFrom = (value: unknown): GrokExecutionReceipt | null => {
       !Array.isArray(record.authorityReceiptRefs)
     ) return null
     const evidenceRefs = (verification as Record<string, unknown>).evidenceRefs as unknown[]
+    const roleRefs = [
+      evidenceRefs,
+      record.artifactRefs,
+      record.proofRefs,
+      record.authorityReceiptRefs,
+    ]
     const allEvidenceRefs = [
       (verification as Record<string, unknown>).verifierRef,
       ...evidenceRefs,
@@ -446,6 +470,7 @@ const receiptFrom = (value: unknown): GrokExecutionReceipt | null => {
       record.artifactRefs.length > 64 ||
       record.proofRefs.length > 64 ||
       record.authorityReceiptRefs.length > 64 ||
+      roleRefs.some(refs => new Set(refs).size !== refs.length) ||
       allEvidenceRefs.some(ref => typeof ref !== "string" || !PUBLIC_REF_PATTERN.test(ref)) ||
       (record.state === "running"
         ? (verification as Record<string, unknown>).truth !== "pending" ||
@@ -650,6 +675,8 @@ export function createPylonOwnedGrokClaimedWorkPort(
       })
     }
     const accountRefHash = hashPylonAccountRef("grok", account.ref)
+    const marginalCostClass = request.claim.marginalCostClass ??
+      account.marginalCostClass
     const fingerprint = dispatchFingerprint(request)
     const assignmentRef = assignmentRefFor(fingerprint)
     const evidenceRefs = pylonGrokUsageEvidenceRefs(assignmentRef)
@@ -767,7 +794,7 @@ export function createPylonOwnedGrokClaimedWorkPort(
       workUnitRef: request.workUnit.workUnitRef,
       workspaceRef: workspace.workspaceRef,
       executionPlane: "cli_session",
-      marginalCostClass: account.marginalCostClass,
+      marginalCostClass,
       wallClockMs: null,
       verification: {
         truth: "pending",
@@ -858,7 +885,7 @@ export function createPylonOwnedGrokClaimedWorkPort(
         prompt: request.workUnit.body ?? request.run.objective,
         timeoutMs: workerTimeoutMs,
         plane: "cli_session",
-        marginalCostClass: account.marginalCostClass,
+        marginalCostClass,
       })
       if (
         !Number.isSafeInteger(closeout.usage.wallClockMs) ||
@@ -873,11 +900,26 @@ export function createPylonOwnedGrokClaimedWorkPort(
         closeout.claimRef !== request.claim.claimRef ||
         closeout.usage.metering !== "not_measured" ||
         closeout.usage.plane !== "cli_session" ||
-        closeout.usage.marginalCostClass !== account.marginalCostClass
+        closeout.usage.marginalCostClass !== marginalCostClass
       ) {
         failureRef = failureRefForClass(closeout.failureClass)
-      } else if (workspace.verificationArgs !== null) {
+      } else if (failureRef === null && workspace.verificationArgs === null) {
+        failureRef = PYLON_OWNED_GROK_RUNNER_BLOCKERS.verificationFailed
+      } else if (failureRef === null && workspace.verificationArgs !== null) {
         try {
+          if (request.workUnit.kind === "fixture") {
+            await writeFile(
+              join(workspace.workingDirectory, GROK_FIXTURE_VERIFICATION_FILE),
+              `${JSON.stringify({
+                schema: "openagents.pylon.grok_fixture_closeout.v1",
+                claimRef: closeout.claimRef,
+                workUnitRef: request.workUnit.workUnitRef,
+                metering: closeout.usage.metering,
+                plane: closeout.usage.plane,
+              })}\n`,
+              { mode: 0o600 },
+            )
+          }
           const verification = await runVerifier({
             args: workspace.verificationArgs,
             cwd: workspace.workingDirectory,
@@ -951,6 +993,7 @@ export function createPylonOwnedGrokClaimedWorkPort(
       receipt.claimRef !== request.active.claim.claimRef ||
       receipt.runRef !== request.runRef ||
       receipt.taskId !== request.active.taskId ||
+      receipt.workUnitRef !== request.active.claim.workUnitRef ||
       receipt.accountRefHash !== hashPylonAccountRef("grok", request.active.accountRef)
     ) {
       return {

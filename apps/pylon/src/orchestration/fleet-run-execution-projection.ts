@@ -10,6 +10,10 @@ import type { PylonOrchestrationStore } from "./store.js"
 const projectedRefPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,179}$/u
 const projectedUnitRefPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u
 const projectedBlockerPattern = /^blocker\.[A-Za-z0-9][A-Za-z0-9._:-]{0,171}$/u
+const evidenceCardinalityBlocker =
+  "blocker.pylon.fleet_run.evidence_cardinality_invalid" as const
+const evidenceIdentityBlocker =
+  "blocker.pylon.fleet_run.evidence_identity_invalid" as const
 
 const digest = (value: string): string =>
   createHash("sha256").update(value).digest("hex").slice(0, 24)
@@ -40,22 +44,12 @@ const projectedRefs = (
   return projected
 }
 
-const requireEvidenceCardinality = (
-  groups: readonly (readonly string[])[],
-  maximum: number,
-): void => {
-  const union = groups.flatMap(group => [...group])
-  if (new Set(union).size > maximum) {
-    throw new Error("FleetRun evidence union cardinality is invalid")
-  }
-}
-
 const projectedEvidenceGroups = <const Groups extends readonly {
   readonly values: readonly string[]
   readonly prefix: string
+  readonly maximum: number
 }[]>(
   groups: Groups,
-  maximum: number,
 ): { readonly [Index in keyof Groups]: string[] } => {
   // Arrays are role-bearing, so the same real receipt may legitimately appear
   // in (for example) both artifact and verification roles. Preserve both role
@@ -63,11 +57,10 @@ const projectedEvidenceGroups = <const Groups extends readonly {
   // Duplicates inside one role remain invalid; distinct refs may never collide.
   for (const group of groups) {
     if (
-      group.values.length > maximum ||
+      group.values.length > group.maximum ||
       new Set(group.values).size !== group.values.length
     ) throw new Error("FleetRun evidence ref cardinality is invalid")
   }
-  requireEvidenceCardinality(groups.map(group => group.values), maximum)
   const projectedBySource = new Map<string, string>()
   const sourceByProjected = new Map<string, string>()
   const projected = groups.map(group => group.values.map(value => {
@@ -82,7 +75,6 @@ const projectedEvidenceGroups = <const Groups extends readonly {
     sourceByProjected.set(next, value)
     return next
   }))
-  requireEvidenceCardinality(projected, maximum)
   return projected as { readonly [Index in keyof Groups]: string[] }
 }
 
@@ -91,8 +83,28 @@ const blockerRef = (value: string): string =>
     ? value
     : `blocker.pylon.fleet_run.opaque.${digest(value)}`
 
-const blockerRefs = (values: readonly string[]): string[] =>
-  [...new Set(values.map(blockerRef))].slice(0, 32)
+const blockerRefs = (values: readonly string[]): string[] => {
+  if (values.length > 32 || new Set(values).size !== values.length) {
+    throw new Error("FleetRun blocker ref cardinality is invalid")
+  }
+  const sourceByProjected = new Map<string, string>()
+  return values.map(value => {
+    const projected = blockerRef(value)
+    const existing = sourceByProjected.get(projected)
+    if (existing !== undefined && existing !== value) {
+      throw new Error("FleetRun blocker ref projection collided")
+    }
+    sourceByProjected.set(projected, value)
+    return projected
+  })
+}
+
+const accountHashMatchesWorker = (
+  workerKind: "codex" | "claude" | "grok",
+  accountRefHash: string,
+): boolean => accountRefHash.startsWith(
+  `account.pylon.${workerKind === "claude" ? "claude_agent" : workerKind}.`,
+)
 
 const terminalUsageProjection = (
   event: Extract<FleetRunSupervisorObservedEvent, { readonly kind: "dispatch" }>,
@@ -118,17 +130,24 @@ const terminalUsageProjection = (
       {
         values: evidence.tokenUsageRefs,
         prefix: "token_usage.public.pylon.opaque",
+        maximum: 100,
       },
-      { values: evidence.proofRefs, prefix: "proof.public.pylon.opaque" },
+      {
+        values: evidence.proofRefs,
+        prefix: "proof.public.pylon.opaque",
+        maximum: 100,
+      },
       {
         values: evidence.closeoutChecklistRefs,
         prefix: "check.public.pylon.closeout.opaque",
+        maximum: 100,
       },
       {
         values: evidence.proofChecklistRefs,
         prefix: "check.public.pylon.proof.opaque",
+        maximum: 100,
       },
-    ] as const, 100)
+    ] as const)
   return {
     ...evidence,
     assignmentRef,
@@ -181,15 +200,67 @@ export function projectFleetRunSupervisorObservation(input: {
   }
   const observedAt = observedAtFor(input.store, input.event)
 
+  const failedProjection = (failure: {
+    readonly blockerRef: typeof evidenceCardinalityBlocker | typeof evidenceIdentityBlocker
+    readonly unitRef: string
+    readonly workClaimRef: string
+    readonly workerKind: "codex" | "claude" | "grok"
+    readonly marginalCostClass?: "free" | "subscription" | "api_metered" | "not_measured"
+  }): readonly PylonFleetRunExecutionEventInput[] => [started, {
+    schema: "openagents.pylon.fleet_run_execution_event.v2",
+    kind: "work_terminal",
+    observedAt,
+    unitRef: failure.unitRef,
+    workClaimRef: failure.workClaimRef,
+    workerKind: failure.workerKind,
+    ...(failure.marginalCostClass === undefined
+      ? {}
+      : { marginalCostClass: failure.marginalCostClass }),
+    terminalState: "failed",
+    blockerRefs: [failure.blockerRef],
+  }]
+
   if (input.event.kind === "lifecycle") {
     const claim = input.store.getWorkClaim(input.event.claimRef)
     if (claim === null || claim.runRef !== input.event.runRef) return [started]
+    const unitRef = projectedUnitRef(claim.workUnitRef)
+    const workClaimRef = projectedRef(claim.claimRef, "work_claim.pylon.opaque")
+    const workerKind = workerKindForTask(input.store, input.event.taskId)
+    const accountRefHash = input.event.event.accountRefHash
+    if (
+      accountRefHash !== undefined &&
+      !accountHashMatchesWorker(workerKind, accountRefHash)
+    ) {
+      return failedProjection({
+        blockerRef: evidenceIdentityBlocker,
+        unitRef,
+        workClaimRef,
+        workerKind,
+        ...(claim.marginalCostClass === undefined
+          ? {}
+          : { marginalCostClass: claim.marginalCostClass }),
+      })
+    }
+    let projectedBlockers: string[]
+    try {
+      projectedBlockers = blockerRefs(input.event.event.blockerRefs ?? [])
+    } catch {
+      return failedProjection({
+        blockerRef: evidenceCardinalityBlocker,
+        unitRef,
+        workClaimRef,
+        workerKind,
+        ...(claim.marginalCostClass === undefined
+          ? {}
+          : { marginalCostClass: claim.marginalCostClass }),
+      })
+    }
     return [started, {
       schema: "openagents.pylon.fleet_run_execution_event.v2",
       kind: "work_progress",
       observedAt,
-      unitRef: projectedUnitRef(claim.workUnitRef),
-      workClaimRef: projectedRef(claim.claimRef, "work_claim.pylon.opaque"),
+      unitRef,
+      workClaimRef,
       ...(input.event.event.assignmentRef === undefined
         ? {}
         : {
@@ -198,11 +269,14 @@ export function projectFleetRunSupervisorObservation(input: {
               "assignment.public.pylon.opaque",
             ),
           }),
-      workerKind: workerKindForTask(input.store, input.event.taskId),
-      ...(input.event.event.accountRefHash === undefined
+      workerKind,
+      ...(accountRefHash === undefined
         ? {}
-        : { accountRefHash: input.event.event.accountRefHash }),
-      blockerRefs: blockerRefs(input.event.event.blockerRefs ?? []),
+        : { accountRefHash }),
+      ...(claim.marginalCostClass === undefined
+        ? {}
+        : { marginalCostClass: claim.marginalCostClass }),
+      blockerRefs: projectedBlockers,
     }]
   }
 
@@ -215,6 +289,18 @@ export function projectFleetRunSupervisorObservation(input: {
     const closeoutRef = input.event.closeoutRef === null
       ? null
       : projectedRef(input.event.closeoutRef, "closeout.public.pylon.opaque")
+    if (
+      input.event.accountRefHash !== null &&
+      !accountHashMatchesWorker(input.event.workerKind, input.event.accountRefHash)
+    ) {
+      return failedProjection({
+        blockerRef: evidenceIdentityBlocker,
+        unitRef,
+        workClaimRef,
+        workerKind: input.event.workerKind,
+        marginalCostClass: input.event.marginalCostClass,
+      })
+    }
     let usageEvidence: PylonFleetRunUsageEvidenceV2 | null
     let verification: {
       readonly truth: "passed"
@@ -261,20 +347,24 @@ export function projectFleetRunSupervisorObservation(input: {
         {
           values: verificationEvidenceRefs,
           prefix: "verification.public.pylon.opaque",
+          maximum: 64,
         },
         {
           values: input.event.artifactRefs ?? [],
           prefix: "artifact.public.pylon.opaque",
+          maximum: 64,
         },
         {
           values: input.event.proofRefs ?? [],
           prefix: "proof.public.pylon.opaque",
+          maximum: 64,
         },
         {
           values: input.event.authorityReceiptRefs ?? [],
           prefix: "receipt.public.pylon.authority.opaque",
+          maximum: 64,
         },
-      ] as const, 64)
+      ] as const)
       const [verificationRefs, projectedArtifacts, projectedProofs, projectedAuthority] =
         projectedGroups
       verification = projectedVerification === null
@@ -287,21 +377,25 @@ export function projectFleetRunSupervisorObservation(input: {
       proofRefs = projectedProofs
       authorityReceiptRefs = projectedAuthority
     } catch {
-      return [started, {
-        schema: "openagents.pylon.fleet_run_execution_event.v2",
-        kind: "work_terminal",
-        observedAt,
+      return failedProjection({
+        blockerRef: evidenceCardinalityBlocker,
         unitRef,
         workClaimRef,
-        ...(assignmentRef === null ? {} : { assignmentRef }),
         workerKind: input.event.workerKind,
-        ...(input.event.accountRefHash === null
-          ? {}
-          : { accountRefHash: input.event.accountRefHash }),
-        marginalCostClass: input.event.marginalCostClass ?? "not_measured",
-        terminalState: "failed",
-        blockerRefs: ["blocker.pylon.fleet_run.evidence_cardinality_invalid"],
-      }]
+        marginalCostClass: input.event.marginalCostClass,
+      })
+    }
+    const usageIdentityMatches = usageEvidence === null ||
+      (usageEvidence.assignmentRef === assignmentRef &&
+        usageEvidence.harnessKind === input.event.workerKind)
+    if (!usageIdentityMatches) {
+      return failedProjection({
+        blockerRef: evidenceIdentityBlocker,
+        unitRef,
+        workClaimRef,
+        workerKind: input.event.workerKind,
+        marginalCostClass: input.event.marginalCostClass,
+      })
     }
     if (
       input.event.status === "completed" &&
@@ -341,9 +435,34 @@ export function projectFleetRunSupervisorObservation(input: {
       input.event.status === "blocked" ||
       input.event.status === "completed"
     ) {
-      const failedBlockers = blockerRefs(input.event.blockerRefs)
+      let failedBlockers: string[]
+      try {
+        failedBlockers = blockerRefs(input.event.blockerRefs)
+      } catch {
+        return failedProjection({
+          blockerRef: evidenceCardinalityBlocker,
+          unitRef,
+          workClaimRef,
+          workerKind: input.event.workerKind,
+          marginalCostClass: input.event.marginalCostClass,
+        })
+      }
       if (input.event.status === "completed") {
-        failedBlockers.push("blocker.pylon.fleet_run.evidence_incomplete")
+        if (
+          !failedBlockers.includes("blocker.pylon.fleet_run.evidence_incomplete") &&
+          failedBlockers.length >= 32
+        ) {
+          return failedProjection({
+            blockerRef: evidenceCardinalityBlocker,
+            unitRef,
+            workClaimRef,
+            workerKind: input.event.workerKind,
+            marginalCostClass: input.event.marginalCostClass,
+          })
+        }
+        if (!failedBlockers.includes("blocker.pylon.fleet_run.evidence_incomplete")) {
+          failedBlockers.push("blocker.pylon.fleet_run.evidence_incomplete")
+        }
       } else if (failedBlockers.length === 0) {
         failedBlockers.push("blocker.pylon.fleet_run.work_failed")
       }
@@ -360,7 +479,7 @@ export function projectFleetRunSupervisorObservation(input: {
           : { accountRefHash: input.event.accountRefHash }),
         marginalCostClass: input.event.marginalCostClass ?? "not_measured",
         terminalState: "failed",
-        blockerRefs: [...new Set(failedBlockers)].slice(0, 32),
+        blockerRefs: failedBlockers,
         ...(closeoutRef === null ? {} : { closeoutRef }),
         ...(failedVerification === null
           ? {}
@@ -370,6 +489,18 @@ export function projectFleetRunSupervisorObservation(input: {
         ...(authorityReceiptRefs.length === 0 ? {} : { authorityReceiptRefs }),
         ...(usageEvidence === null ? {} : { usageEvidence }),
       }]
+    }
+    let projectedBlockers: string[]
+    try {
+      projectedBlockers = blockerRefs(input.event.blockerRefs)
+    } catch {
+      return failedProjection({
+        blockerRef: evidenceCardinalityBlocker,
+        unitRef,
+        workClaimRef,
+        workerKind: input.event.workerKind,
+        marginalCostClass: input.event.marginalCostClass,
+      })
     }
     return [started, {
       schema: "openagents.pylon.fleet_run_execution_event.v2",
@@ -383,7 +514,7 @@ export function projectFleetRunSupervisorObservation(input: {
         ? {}
         : { accountRefHash: input.event.accountRefHash }),
       marginalCostClass: input.event.marginalCostClass ?? "not_measured",
-      blockerRefs: blockerRefs(input.event.blockerRefs),
+      blockerRefs: projectedBlockers,
     }]
   }
 
@@ -394,6 +525,27 @@ export function projectFleetRunSupervisorObservation(input: {
       observedAt,
       terminalState: "completed",
       blockerRefs: [],
+    }]
+  }
+  if (input.event.kind === "terminal") {
+    let projectedBlockers: string[]
+    try {
+      projectedBlockers = blockerRefs(input.event.blockerRefs)
+    } catch {
+      return [started, {
+        schema: "openagents.pylon.fleet_run_execution_event.v2",
+        kind: "run_terminal",
+        observedAt,
+        terminalState: "failed",
+        blockerRefs: [evidenceCardinalityBlocker],
+      }]
+    }
+    return [started, {
+      schema: "openagents.pylon.fleet_run_execution_event.v2",
+      kind: "run_terminal",
+      observedAt,
+      terminalState: input.event.terminalState,
+      blockerRefs: projectedBlockers,
     }]
   }
   return [started]

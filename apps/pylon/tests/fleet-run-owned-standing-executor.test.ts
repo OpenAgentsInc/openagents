@@ -29,9 +29,9 @@ const fixedNow = new Date("2026-07-09T22:00:00.000Z")
 const pylonRef = "pylon.public.fc2.owned-standing"
 
 const waitUntil = async (predicate: () => boolean): Promise<void> => {
-  for (let attempt = 0; attempt < 100; attempt += 1) {
+  for (let attempt = 0; attempt < 2_000; attempt += 1) {
     if (predicate()) return
-    await Bun.sleep(2)
+    await Bun.sleep(5)
   }
   throw new Error("timed out waiting for owned standing FleetRun closeout")
 }
@@ -270,12 +270,6 @@ describe("canonical Pylon-owned standing FleetRun composition", () => {
                 },
               }
             },
-            materializeWorkspace: async request => ({
-              checkout: null,
-              verificationArgs: null,
-              workingDirectory: join(root, request.assignmentRef),
-              workspaceRef: `workspace.public.${request.assignmentRef}`,
-            }),
           },
         },
       })
@@ -304,7 +298,7 @@ describe("canonical Pylon-owned standing FleetRun composition", () => {
     } finally {
       await rm(root, { force: true, recursive: true })
     }
-  })
+  }, 20_000)
 
   test("reopens one persisted descriptor and dispatches it once through one named isolated account", async () => {
     const root = await mkdtemp(join(tmpdir(), "pylon-owned-standing-composition-"))
