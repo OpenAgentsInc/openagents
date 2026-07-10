@@ -3,11 +3,13 @@ import { describe, expect, test } from "bun:test"
 import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { Schema as S } from "effect"
 
 import { hashPylonAccountRef } from "../src/account-registry.js"
 import { projectFleetRunSupervisorObservation } from "../src/orchestration/fleet-run-execution-projection.js"
 import {
   openPylonFleetRunExecutionReporter,
+  PylonFleetRunExecutionEventSchema,
   type PylonFleetRunExecutionBatch,
   type PylonFleetRunExecutionHttpPort,
   type PylonFleetRunExecutionReporter,
@@ -92,6 +94,60 @@ const lifecycleSink = (
 }
 
 describe("FleetRun execution projection restart receipt", () => {
+  test("projects a failed unit as terminal without inventing unavailable proof", () => {
+    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    store.createFleetRun({
+      runRef,
+      objective: "Project a bounded failed-work fixture.",
+      workSource: "fixture",
+      targetConcurrency: 1,
+      workerKind: "grok",
+      state: "running",
+      startedAt: firstNow,
+      now: firstNow,
+      authorityBinding: {
+        schema: "openagents.pylon.fleet_run_authority_binding.v1",
+        source: "sarah_authority",
+        authorityFingerprint: "d".repeat(64),
+        claimRef,
+        pylonRef,
+        targetPreference: "owner_local",
+        phase: "accepted",
+      },
+    })
+    const projected = projectFleetRunSupervisorObservation({
+      store,
+      event: {
+        kind: "dispatch",
+        runRef,
+        taskId: "task.public.failed_fixture",
+        claimRef: "claim.public.failed_fixture",
+        workUnitRef: "unit.public.failed_fixture",
+        accountRef: "private-account-ref-must-not-project",
+        accountRefHash: null,
+        assignmentRef: null,
+        blockerRefs: ["blocker.pylon.fleet_runner.grok_verification_failed"],
+        closeoutRef: null,
+        status: "failed",
+        usageEvidence: null,
+        workerKind: "grok",
+      },
+    })
+    const failed = projected[1]
+    expect(failed).toMatchObject({
+      kind: "work_terminal",
+      terminalState: "failed",
+      blockerRefs: ["blocker.pylon.fleet_runner.grok_verification_failed"],
+    })
+    expect(failed).not.toHaveProperty("assignmentRef")
+    expect(JSON.stringify(projected)).not.toContain("private-account-ref")
+    expect(() => S.decodeUnknownSync(PylonFleetRunExecutionEventSchema)({
+      ...failed,
+      sequence: 2,
+      eventRef: "event.pylon.fleet_run.0123456789abcdef01234567",
+    }, { onExcessProperty: "error" })).not.toThrow()
+  })
+
   test("resumes one mixed Codex/Claude/Grok run without duplicate claims and closes with exact evidence truth", async () => {
     const root = await mkdtemp(join(tmpdir(), "pylon-fc2-execution-restart-"))
     const databasePath = join(root, "orchestration.sqlite")

@@ -20,7 +20,7 @@ const CLAIM_REF = /^claim\.sarah_fleet_run\.[0-9a-f]{24}$/u
 const EVENT_REF = /^event\.pylon\.fleet_run\.[0-9a-f]{24}$/u
 const DELIVERY_BATCH_REF = /^batch\.pylon\.fleet_run\.[0-9a-f]{24}$/u
 const PYLON_REF = /^[a-z0-9][a-z0-9._:-]{2,119}$/u
-const PUBLIC_REF = /^[A-Za-z0-9][A-Za-z0-9._:/#=-]{0,199}$/u
+const PUBLIC_REF = /^[A-Za-z0-9][A-Za-z0-9._:/#-]{0,179}$/u
 const ACCOUNT_REF_HASH = /^account\.pylon\.(?:codex|claude_agent|grok)\.[0-9a-f]{24}$/u
 const ISO_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u
 const MAX_BATCH_EVENTS = 64
@@ -35,6 +35,7 @@ const AccountRefHash = S.String.check(S.isPattern(ACCOUNT_REF_HASH))
 const IsoTimestamp = S.String.check(S.isPattern(ISO_TIMESTAMP))
 const WorkerKind = S.Literals(["codex", "claude", "grok"])
 const BlockerRefs = S.Array(PublicRef).check(S.isMaxLength(32))
+const NonEmptyBlockerRefs = S.Array(PublicRef).check(S.isMinLength(1), S.isMaxLength(32))
 const SafePositiveInt = S.Int.check(
   S.isGreaterThanOrEqualTo(1),
   S.isLessThanOrEqualTo(MAX_SAFE_INTEGER),
@@ -78,7 +79,7 @@ export const PylonFleetRunWorkProgressExecutionEvent = S.Struct({
   blockerRefs: BlockerRefs,
 })
 
-export const PylonFleetRunWorkTerminalExecutionEvent = S.Struct({
+const PylonFleetRunWorkTerminalExecutionEventBase = S.Struct({
   schema: S.Literal(PYLON_FLEET_RUN_EXECUTION_EVENT_SCHEMA),
   sequence: SafePositiveInt,
   eventRef: EventRef,
@@ -86,14 +87,40 @@ export const PylonFleetRunWorkTerminalExecutionEvent = S.Struct({
   observedAt: IsoTimestamp,
   unitRef: PublicRef,
   workClaimRef: PublicRef,
-  assignmentRef: PublicRef,
   workerKind: WorkerKind,
+})
+
+export const PylonFleetRunAcceptedWorkTerminalExecutionEvent = S.Struct({
+  ...PylonFleetRunWorkTerminalExecutionEventBase.fields,
+  terminalState: S.Literal("accepted"),
+  assignmentRef: PublicRef,
   accountRefHash: AccountRefHash,
-  terminalState: S.Literals(["accepted", "failed", "stale"]),
   closeoutRef: PublicRef,
   usageEvidence: PylonFleetRunProjectedUsageEvidenceSchema,
-  blockerRefs: BlockerRefs,
+  blockerRefs: S.Tuple([]),
 })
+
+export const PylonFleetRunUnprovenWorkTerminalExecutionEvent = S.Struct({
+  ...PylonFleetRunWorkTerminalExecutionEventBase.fields,
+  terminalState: S.Literals(["failed", "stale"]),
+  blockerRefs: NonEmptyBlockerRefs,
+})
+
+export const PylonFleetRunProvenFailedWorkTerminalExecutionEvent = S.Struct({
+  ...PylonFleetRunWorkTerminalExecutionEventBase.fields,
+  terminalState: S.Literals(["failed", "stale"]),
+  assignmentRef: PublicRef,
+  accountRefHash: AccountRefHash,
+  closeoutRef: PublicRef,
+  usageEvidence: PylonFleetRunProjectedUsageEvidenceSchema,
+  blockerRefs: NonEmptyBlockerRefs,
+})
+
+export const PylonFleetRunWorkTerminalExecutionEvent = S.Union([
+  PylonFleetRunAcceptedWorkTerminalExecutionEvent,
+  PylonFleetRunUnprovenWorkTerminalExecutionEvent,
+  PylonFleetRunProvenFailedWorkTerminalExecutionEvent,
+])
 
 export const PylonFleetRunTerminalExecutionEvent = S.Struct({
   schema: S.Literal(PYLON_FLEET_RUN_EXECUTION_EVENT_SCHEMA),

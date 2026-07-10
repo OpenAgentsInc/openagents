@@ -65,7 +65,36 @@ export function projectFleetRunSupervisorObservation(input: {
         terminalState: "accepted",
         closeoutRef: input.event.closeoutRef,
         usageEvidence,
-        blockerRefs: [...new Set(input.event.blockerRefs)].slice(0, 32),
+        blockerRefs: [],
+      }]
+    }
+    if (input.event.status === "failed" || input.event.status === "blocked") {
+      const blockerRefs = [...new Set(input.event.blockerRefs)].slice(0, 32)
+      const terminalBlockerRefs = blockerRefs.length > 0
+        ? blockerRefs
+        : ["blocker.pylon.fleet_run.work_failed"]
+      const proof =
+        input.event.assignmentRef !== null &&
+        input.event.accountRefHash !== null &&
+        input.event.closeoutRef !== null &&
+        usageEvidence !== null
+          ? {
+              assignmentRef: input.event.assignmentRef,
+              accountRefHash: input.event.accountRefHash,
+              closeoutRef: input.event.closeoutRef,
+              usageEvidence,
+            }
+          : {}
+      return [started, {
+        schema: "openagents.pylon.fleet_run_execution_event.v1",
+        kind: "work_terminal",
+        observedAt,
+        unitRef: input.event.workUnitRef,
+        workClaimRef: input.event.claimRef,
+        workerKind: input.event.workerKind,
+        terminalState: "failed",
+        blockerRefs: terminalBlockerRefs,
+        ...proof,
       }]
     }
     return [started, {

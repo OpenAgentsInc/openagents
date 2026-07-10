@@ -357,7 +357,10 @@ const terminalDispositionFor = (
       status: "failed",
     }
   }
-  return { blockerRefs, carrier, status }
+  const terminalBlockerRefs = status === "completed" || blockerRefs.length > 0
+    ? blockerRefs
+    : ["blocker.pylon.fleet_run.work_failed"]
+  return { blockerRefs: terminalBlockerRefs, carrier, status }
 }
 
 const isoSafe = (date: Date | string): string =>
@@ -564,7 +567,11 @@ const recordTerminalAssignment = async (
     assignmentRef: result.assignmentRef,
     blockerRefs: terminal.blockerRefs,
     closeoutRef: terminal.carrier.closeoutRef,
-    status: terminal.status === "completed" ? "completed" : result.status,
+    status: terminal.status === "completed"
+      ? "completed"
+      : terminal.status === "blocked"
+        ? "blocked"
+        : "failed",
     summary: result.summary ?? null,
     usageEvidence: terminal.carrier.usageEvidence,
     workerKind: workerKindForTask(options.store, assignment.taskId),
@@ -991,7 +998,11 @@ export async function tickFleetRunSupervisor(
           assignmentRef: result.assignmentRef,
           blockerRefs: terminal.blockerRefs,
           closeoutRef: terminal.carrier.closeoutRef,
-          status: terminal.status === "completed" ? "completed" : result.status,
+          status: terminal.status === "completed"
+            ? "completed"
+            : terminal.status === "blocked"
+              ? "blocked"
+              : "failed",
           summary: result.summary ?? null,
           usageEvidence: terminal.carrier.usageEvidence,
           workerKind,

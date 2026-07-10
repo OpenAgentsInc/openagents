@@ -269,7 +269,7 @@ describe("Pylon FleetRun execution reporter", () => {
         },
       })
       const usageRefs = Array.from({ length: 100 }, (_, index) =>
-        `usage.${String(index).padStart(3, "0")}.${"x".repeat(180)}`)
+        `usage.${String(index).padStart(3, "0")}.${"x".repeat(168)}`)
       const inputs = Array.from({ length: 20 }, (_, index): PylonFleetRunExecutionEventInput => ({
         schema: "openagents.pylon.fleet_run_execution_event.v1",
         kind: "work_terminal",
