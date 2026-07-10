@@ -114,7 +114,7 @@ const semanticResponseReturnSurfaceCount = text =>
 const responseMaterializationCount = text =>
   countMatches(
     text,
-    /\bnew\s+Response\s*\(|\bResponse\.json\s*\(|\b(?:noStoreJsonResponse|redirectResponse|methodNotAllowed|forbidden|unauthorized|serverError|notFound)\s*\(/g,
+    /\bnew\s+Response\s*\(|\bResponse\.json\s*\(|\b(?:materializeHttpResult|noStoreJsonResponse|redirectResponse|methodNotAllowed|forbidden|unauthorized|serverError|notFound)\s*\(/g,
   )
 
 const genericRunPromiseWrapperNames = text => [
@@ -153,6 +153,13 @@ const architectureGuardSelfTests = [
     ),
     expected: 1,
     name: 'inferred Response construction is visible',
+  },
+  {
+    actual: responseMaterializationCount(
+      `const route = result => materializeHttpResult(result)`,
+    ),
+    expected: 1,
+    name: 'typed HTTP-result materialization is visible',
   },
   {
     actual: genericRunPromiseWrapperCount(`
@@ -462,6 +469,21 @@ const budgetChecks = [
       genericRunPromiseWrapperCount,
     ),
     name: 'index.ts generic Effect.runPromise wrapper declarations and calls',
+  },
+  {
+    budget: 0,
+    description:
+      'Typed HTTP results may only be materialized by the shared HTTP adapter or the outer index dispatcher.',
+    details: countByFile(
+      workerFiles.filter(
+        path =>
+          !path.includes('/http/') &&
+          !path.endsWith('workers/api/src/index.ts') &&
+          !isCloudRunEntry(path),
+      ),
+      /\bmaterializeHttpResult\s*\(/g,
+    ),
+    name: 'HTTP result materialization inside route/domain modules',
   },
   {
     // Raised 80 -> 83 on 2026-06-14 for the wave-3 Agency Pack route landing;
