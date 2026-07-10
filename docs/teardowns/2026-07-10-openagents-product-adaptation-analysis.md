@@ -1,4 +1,4 @@
-# What OpenAgents Should Adapt from the ChatGPT and Claude Desktop Teardowns
+# What OpenAgents Should Adapt from the ChatGPT, Claude, and OpenCode Desktop Teardowns
 
 Date: 2026-07-10
 
@@ -8,19 +8,22 @@ Evidence base:
 
 - [ChatGPT / Codex desktop teardown](./2026-07-10-chatgpt-desktop-app-teardown.md)
 - [Claude desktop teardown](./2026-07-10-claude-desktop-app-teardown.md)
+- [OpenCode desktop source teardown](./2026-07-10-opencode-desktop-app-teardown.md)
 - [Sol master roadmap](../sol/MASTER_ROADMAP.md), especially Desktop D0–D6
 - [OpenAgents Desktop enforced guarantees](../../apps/openagents-desktop/GUARANTEES.md)
 
 ## Executive decision
 
-OpenAgents should adapt the **shape** both frontier desktop products converge
-on, while rejecting their least transparent trust choices.
+OpenAgents should adapt the **shape** all three desktop products converge on,
+while rejecting their least transparent trust choices. OpenCode matters
+disproportionately because it exposes the implementation of that shape under an
+MIT license rather than requiring inference from a signed bundle.
 
 The convergent shape is clear:
 
-1. a web-capable desktop shell;
+1. a web-capable desktop shell that is not itself the agent engine;
 2. a real agent engine outside the renderer;
-3. a versioned event/protocol seam between UI and engine;
+3. a versioned query/command/event seam between UI and engine;
 4. local tools, MCP, skills, plugins, and native capabilities;
 5. separate isolation for untrusted code execution;
 6. desktop/mobile continuity and remote steering;
@@ -31,9 +34,11 @@ The convergent shape is clear:
 OpenAgents already chose the correct foundation: stock Electron as a hardened
 host, Effect Native as the application and intent grammar, Khala Sync for
 cross-device continuity, and Pylon/Source Authority for execution and receipts.
-The teardowns strengthen that decision. They do **not** justify an Owl-style
-runtime fork, a live remote site as the privileged renderer, opaque sidecar
-sprawl, or ambient screen recording by default.
+The teardowns strengthen that decision. OpenCode further shows that the durable
+architecture is not “Electron”; it is a local/remote runtime protocol with a
+desktop client. The evidence does **not** justify an Owl-style runtime fork, a
+live remote site as the privileged renderer, opaque sidecar sprawl, renderer-
+held general runtime authority, or ambient screen recording by default.
 
 The product-level adaptation is:
 
@@ -42,27 +47,57 @@ The product-level adaptation is:
 > services; make every engine, plugin, sandbox, and remote-control transition
 > inspectable and receipt-backed.
 
-## What the two products prove together
+## What the three products prove together
 
-| Question | ChatGPT / Codex | Claude | OpenAgents conclusion |
-| --- | --- | --- | --- |
-| Can Electron support a serious agentic desktop? | Yes, through an Electron-compatible first-party Chromium fork | Yes, on stock Electron with native modules and a VM | Stay on stock Electron; capability does not require a browser fork |
-| Where should the agent engine live? | Rust `codex app-server` child over stdio JSON-RPC | Claude Agent SDK spawning Claude Code over stdio `stream-json` | One shared engine behind a versioned typed process protocol |
-| How should risky code run? | Codex Seatbelt/Landlock command sandbox and policy engine | Linux guest under Apple Virtualization/Hyper-V for local Cowork | Separate host authority from guest execution; explicit mounts, egress, policy, and receipts |
-| How should tools extend the product? | Plugin directories, MCP manifests, skills, marketplace metadata | MCPB/DXT, MCP hosts, skills, plugins, connectors, hardware bridge | Support open MCP/MCPB compatibility inside a signed typed catalog |
-| How should desktop and mobile relate? | Remote-control/device-key infrastructure | Dispatch, remote sessions, and desktop-backed local access | Mobile is a typed control/projection client, not a pixel mirror or credential carrier |
-| How should UI and host relate? | Large local React SPA on Owl | Remote Claude.ai plus bundled Ion SPA and local shell | Ship a local versioned Effect Native renderer; share packages, not live privileged web deployment authority |
-| What does the update problem become? | App, Owl, Codex, plugins, skills, computer-use services | App, live/bundled Ion, Agent SDK, CLI, extensions, VM rootfs | One signed component compatibility ledger with rollback proof |
-| What is the trust risk? | Unsandboxed automation host plus computer use and ambient memory | Unsandboxed host plus broad native/VM/browser/file reach | Make permissions, capture, execution, memory, and remote control explicit, narrow, and auditable |
+| Question | ChatGPT / Codex | Claude | OpenCode | OpenAgents conclusion |
+| --- | --- | --- | --- | --- |
+| Can Electron support a serious agentic desktop? | Yes, through an Electron-compatible first-party Chromium fork | Yes, on stock Electron with native modules and a VM | Yes, on stock Electron with an open utility-process server and shared local app | Stay on stock Electron; capability does not require a browser fork |
+| Where should the agent engine live? | Rust `codex app-server` child over stdio JSON-RPC | Claude Agent SDK spawning Claude Code over stdio `stream-json` | Embedded Effect server in an Electron utility process, addressed through HTTP/SSE/WebSocket | One shared engine behind a versioned typed protocol; transport follows lifecycle and stream needs |
+| How should risky code run? | Codex Seatbelt/Landlock command sandbox and policy engine | Linux guest under Apple Virtualization/Hyper-V for local Cowork | Host tools behind permission rules; renderer sandbox is strong, workload isolation is separate | Separate host authority from guest execution; explicit mounts, egress, policy, and receipts |
+| How should tools extend the product? | Plugin directories, MCP manifests, skills, marketplace metadata | MCPB/DXT, MCP hosts, skills, plugins, connectors, hardware bridge | MCP, skills, npm/config plugins, custom tools, provider adapters | Support open MCP/MCPB/plugin compatibility inside a signed, isolated typed catalog |
+| How should clients relate? | Remote-control/device-key infrastructure | Dispatch, remote sessions, and desktop-backed local access | The same generated server contract serves desktop, web, CLI, SDK, WSL, SSH, and remote HTTP | Desktop/mobile/web are typed command/projection clients, not pixel mirrors or credential carriers |
+| How should UI and host relate? | Large local React SPA on Owl | Remote Claude.ai plus bundled Ion SPA and local shell | Local shared Solid app plus a narrow desktop `Platform` adapter | Ship a local versioned Effect Native renderer; share packages, not live privileged web deployment authority |
+| How should workbench capabilities be exposed? | Renderer calls the app-server and native bridges | Web UI, CLI sidecar, native services, and VM planes | Files, Git, review, PTY, sessions, providers, and tools are server APIs; IPC stays desktop-specific | Keep workbench authority behind runtime services; keep preload small and schema-validated |
+| What does the update problem become? | App, Owl, Codex, plugins, skills, computer-use services | App, live/bundled Ion, Agent SDK, CLI, extensions, VM rootfs | App bundles host/server/renderer, while plugins, MCP, skills, and remote servers still move independently | One signed component compatibility ledger with rollback proof |
+| What is the trust risk? | Unsandboxed automation host plus computer use and ambient memory | Unsandboxed host plus broad native/VM/browser/file reach | Renderer receives local-server credentials; plugins run in the trusted server; host tools are not guest isolation | Make credentials, permissions, capture, execution, memory, extensions, and remote control explicit, narrow, and auditable |
+
+## What the open source changes
+
+ChatGPT and Claude establish architectural plausibility. OpenCode supplies an
+inspectable implementation and therefore turns several recommendations into
+specific engineering requirements:
+
+- **Local and remote are one protocol.** The built-in sidecar, WSL, SSH proxy,
+  and regular HTTP server are connection variants behind stable identities.
+- **Desktop IPC is not the engine API.** IPC handles windows, pickers, storage,
+  update, logs, menus, and OS integration; the generated server client handles
+  files, sessions, tools, Git, PTY, providers, and permissions.
+- **Streams need lifecycle semantics.** Eager subscription, connected and
+  heartbeat events, disposal, reconnection, coalescing, replay cursors, and
+  bounded UI scheduling are visible code, not implementation trivia.
+- **Local facts deserve a database.** SQLite WAL, migrations, aggregate event
+  sequences, scoped instances, and transactional project/session state replace
+  transcript-shaped ad hoc persistence.
+- **A renderer command catalog is useful but incomplete.** Stable IDs can unify
+  palette, keybindings, slash commands, and native menus; OpenAgents must carry
+  those IDs through typed authority checks and durable outcomes.
+- **Migration debt is architectural evidence.** OpenCode currently carries
+  legacy and next protocols, event bridges, generated clients, layouts, routes,
+  and state migrations. OpenAgents should freeze its event algebra early and
+  give every compatibility layer an explicit deletion gate.
+- **Open extensions still require isolation.** Open source does not make an npm
+  plugin safe to run inside the trusted server, nor a host shell a sandbox.
 
 ## Adapt now: changes that belong in the current P0 program
 
 ### 1. Freeze the engine protocol before widening the workbench
 
-Both competitors place their most valuable seam between UI and agent engine:
+All three products place their most valuable seam between UI and agent engine:
 Codex exposes `app-server`; Claude Code exposes JSON streams through the Agent
-SDK. OpenAgents should formalize the same seam across Desktop, Pylon, local
-Codex/Claude/Grok executors, and future engines.
+SDK; OpenCode exposes a generated HTTP/SSE/WebSocket contract shared by local
+and remote clients. OpenAgents should formalize the same seam across Desktop,
+Pylon, local Codex/Claude/Grok executors, mobile/web projections, and future
+engines.
 
 The contract should include:
 
@@ -73,6 +108,8 @@ The contract should include:
   error, interruption, and completion events;
 - typed capability discovery rather than UI feature guessing;
 - explicit cancellation, reconnect, and terminal states;
+- connected, heartbeat, disposal, and stale-stream semantics;
+- backpressure/coalescing rules and bounded replay cursors;
 - redacted diagnostics and per-event provenance; and
 - compatibility fixtures replayable without a live provider.
 
@@ -87,13 +124,14 @@ context isolation, Node integration off, webviews off, restrictive CSP,
 deny-by-default permissions/navigation/windows, and fixed validated preload
 capabilities. Keep those guarantees as D1–D5 expand.
 
-Add the concrete hardening both teardowns make visible:
+Add the concrete hardening the teardowns and OpenCode source make visible:
 
 - verify Electron fuses in packaged tests;
 - disable RunAsNode, `NODE_OPTIONS`, and CLI inspect arguments;
 - require asar integrity and asar-only application loading;
 - encrypt cookies and host credential stores;
 - validate sender frame and origin for every IPC call;
+- Effect Schema-decode every IPC request and response at runtime;
 - give artifact, file-preview, terminal, and browser surfaces separate
   partitions and schemes;
 - keep tokens, raw IPC, `MessagePort`, arbitrary commands, and general
@@ -128,9 +166,12 @@ authority universe.
 ### 4. Turn the command registry into the shared product API
 
 The Sol roadmap already requires every material action to have a stable intent
-and command ID. The teardowns show why: once chat grows into files, terminals,
-plugins, computer use, remote control, and scheduled work, ad hoc callbacks
-become an unreviewable authority graph.
+and command ID. OpenCode demonstrates the immediate product payoff: one catalog
+drives palette, keybindings, slash aliases, settings, contextual commands, and
+native-menu forwarding. The three teardowns show why it must go further: once
+chat grows into files, terminals, plugins, computer use, remote control, and
+scheduled work, renderer callbacks alone become an unreviewable authority
+graph.
 
 The registry should cover direct UI, keyboard, native menu, command palette,
 mobile, and future model-proposed actions. Each entry needs:
@@ -150,8 +191,10 @@ actual operating system/runtime.
 ### 5. Ship a local renderer; share source packages, not remote authority
 
 Claude's hybrid renderer gains deployment speed but creates two web-product
-copies and a privileged live-site dependency. OpenAgents should not load
-`openagents.com` as the primary Desktop application.
+copies and a privileged live-site dependency. OpenCode demonstrates the better
+sharing boundary: the desktop renderer imports the same local application
+package as web and adapts native behavior through a platform interface.
+OpenAgents should not load `openagents.com` as the primary Desktop application.
 
 Instead:
 
@@ -168,10 +211,12 @@ silently expand desktop privilege.
 
 Anthropic has created a practical open packaging convention: `.mcpb` is a zip
 with a manifest and local MCP server. OpenAI independently converges on plugin
-manifests plus MCP and skill directories. OpenAgents should ingest these common
-formats rather than inventing another archive shape.
+manifests plus MCP and skill directories. OpenCode proves the interoperability
+value of supporting stdio, Streamable HTTP, SSE, OAuth, roots, resources,
+skills, custom tools, and provider plugins in one runtime. OpenAgents should
+ingest these common formats rather than inventing another archive shape.
 
-The OpenAgents catalog should add what the competitors do not make strong
+The OpenAgents catalog should add what the references do not make strong
 enough:
 
 - publisher identity and signature;
@@ -189,9 +234,12 @@ OpenAgents policy, sandbox, and receipt boundaries.
 
 ### 7. Build the component compatibility ledger before D6
 
-Neither competitor is one binary in practice. OpenAgents will likewise have an
-Electron host, renderer, Pylon/runtime engine, provider adapters, native
-helpers, skills/plugins, sandbox images, and Sync protocol.
+None of the products is one immutable binary in practice. Even OpenCode, which
+bundles its server with the desktop app, still admits independently moving
+plugins, skills, MCP servers, remote runtimes, and native dependencies.
+OpenAgents will likewise have an Electron host, renderer, Pylon/runtime engine,
+provider adapters, native helpers, skills/plugins, sandbox images, and Sync
+protocol.
 
 Create one signed manifest that records:
 
@@ -214,12 +262,14 @@ Desktop should absorb the deepest lessons because it owns local capability.
 
 Priority order aligned with D0–D6:
 
-1. **D1:** real protocol-backed streamed sessions, replay, interrupt, resume,
-   reconnect, permissions, approvals, and usage.
+1. **D1:** real protocol-backed streamed sessions, eager subscribe, connected
+   and heartbeat events, replay, interrupt, resume, reconnect, coalescing,
+   permissions, approvals, and usage.
 2. **D2:** project/session routes plus the central command registry, palette,
    keybindings, native menus, deep links, and restore.
-3. **D3:** bounded file grants, lazy tree, editor foreign host, typed Git
-   review, workspace PTY, and guest-execution profiles.
+3. **D3:** bounded file grants, lazy tree and content budgets, editor foreign
+   host, typed Git review, replayable ticketed workspace PTY, and guest-
+   execution profiles.
 4. **D4:** runtime/model/MCP/skill/plugin registries, account custody,
    permissions, diagnostics, and recovery.
 5. **D5:** authoritative Fleet projection and control using the same command
@@ -233,7 +283,7 @@ three-depth product shape already in the Sol roadmap.
 
 ### OpenAgents mobile
 
-Mobile should adapt the competitors' remote-control value without becoming a
+Mobile should adapt the reference products' remote-control value without becoming a
 remote desktop.
 
 It should:
@@ -253,7 +303,9 @@ desktop pixels and hope clicks mean success.”
 ### Pylon and local runtimes
 
 Pylon should become the stable multi-engine supervisor behind Desktop rather
-than a second product shell.
+than a second product shell. OpenCode's built-in/WSL/SSH/HTTP connection model
+is the practical reference: clients address one typed runtime identity while
+the host chooses how that runtime is reached and supervised.
 
 Adapt:
 
@@ -263,6 +315,8 @@ Adapt:
 - typed quota/auth/rate-limit failures;
 - engine download/provenance verification;
 - deterministic shutdown/reconnect/reap;
+- health, heartbeat, disposal, and stale-stream recovery;
+- local/remote transport adapters behind stable runtime identities;
 - plugin/MCP/skill composition; and
 - redacted replayable event receipts.
 
@@ -270,7 +324,7 @@ Do not expose provider-specific sidecar flags directly to renderers or mobile.
 
 ### Khala Sync
 
-Khala Sync is the answer to the competitors' growing cross-device surfaces.
+Khala Sync is the answer to the reference products' growing cross-device surfaces.
 It should synchronize durable product facts, not desktop implementation state:
 
 - stable thread/session/run/work-unit IDs;
@@ -315,7 +369,7 @@ bounded request and durable outcome.
 
 ### Effect Native
 
-The competitor stacks validate the need for foreign-host components without
+The reference stacks validate the need for foreign-host components without
 weakening the one-UI-substrate decision.
 
 Effect Native should define typed, lifecycle-owned hosts for:
@@ -332,9 +386,15 @@ Each host receives serializable configuration and emits typed intents/events.
 It does not leak library-specific instances, Electron APIs, native handles, or
 provider state into application code.
 
+OpenCode's `Platform` adapter is the useful comparison point, while its
+Ghostty terminal shows the desired lifecycle shape: create/connect/replay,
+resize/input, persist bounded presentation state, disconnect, and dispose. The
+Effect Native version should make that lifecycle an owned Effect resource and
+keep the runtime token/transport outside ordinary renderer state.
+
 ## Adapt later, after the core loop is trustworthy
 
-These competitor capabilities are useful but should not preempt D1–D6:
+These reference capabilities are useful but should not preempt D1–D6:
 
 - multi-window workbench depth;
 - SSH and remote-environment management;
@@ -400,14 +460,17 @@ state comes from typed runtime outcomes and Source Authority receipts.
 
 ## The OpenAgents differentiation
 
-The two reference products leave a coherent opening:
+The three reference products leave a coherent opening:
 
 - OpenAI has the more open engine but a closed desktop/plugin/runtime stack and
   extremely broad ambient-computer ambitions.
 - Anthropic has an open extension/SDK edge but a closed engine and a desktop
   whose normal renderer is partly controlled by a live web deployment.
-- Both accumulate multiple state systems, runtimes, update planes, and trust
-  boundaries that are hard for users to inspect as one system.
+- OpenCode opens the load-bearing host, engine, UI, protocol, and test seams,
+  but renderer-held server credentials, in-process extensions, host execution,
+  and an active legacy/next migration leave authority and complexity gaps.
+- All three accumulate multiple state systems, runtimes, update planes, or
+  compatibility boundaries that are hard for users to inspect as one system.
 
 OpenAgents should differentiate on five properties:
 
@@ -424,13 +487,14 @@ OpenAgents should differentiate on five properties:
 
 That is a stronger product thesis than “another desktop chat app” or “OpenCode
 with Fleet buttons.” It is an inspectable operating surface for work performed
-by multiple engines across multiple computers.
+by multiple engines across multiple computers, with authority and evidence that
+survive beyond the renderer process.
 
 ## Ordered implementation consequences
 
 | Order | Decision | Owning program | Proof |
 | ---: | --- | --- | --- |
-| 1 | Freeze the engine/event protocol and replay fixtures | Desktop D1 + Pylon | Real streamed session survives restart/reconnect and fixture replay |
+| 1 | Freeze the engine/event protocol and replay fixtures | Desktop D1 + Pylon | Real streamed session proves eager subscribe, heartbeat, reconnect, bounded replay, and fixture replay |
 | 2 | Land central command registry and policy metadata | Desktop D2 + Effect Native | UI, keyboard, menu, and test invoke the same command IDs |
 | 3 | Define execution profiles and receipts | Desktop D3 + Pylon + Cloud | Same task reports grants/profile/evidence across local and guest modes |
 | 4 | Add bounded file/editor/Git/PTY foreign hosts | Desktop D3 + Effect Native | Workspace task completes without renderer filesystem/process authority |
@@ -441,13 +505,14 @@ by multiple engines across multiple computers.
 
 ## Final recommendation
 
-Do not chase either competitor's total feature surface. Adopt the common
-architecture they independently validate, then make its boundaries simpler and
-more legible:
+Do not chase any reference product's total feature surface. Adopt the common
+architecture they validate, use OpenCode as the inspectable implementation
+reference, then make its boundaries simpler and more legible:
 
 - stock Electron;
 - local Effect Native renderer;
-- versioned open engine protocol;
+- versioned open local/remote engine protocol with generated clients;
+- query/command/event transports with explicit lifecycle semantics;
 - host/guest execution split;
 - central typed command registry;
 - MCPB-compatible signed catalog;
