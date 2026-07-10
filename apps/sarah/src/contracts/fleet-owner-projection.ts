@@ -15,6 +15,7 @@ import {
   FleetWorkerKind,
   FleetWorkerPhase,
   FleetWorkUnitEntity,
+  fleetApprovalHasExactBinding,
   type FleetApprovalEntity,
   type FleetAssignmentEntity,
   type FleetInboxFlagEntity,
@@ -217,15 +218,57 @@ const SarahFleetWorkUnitProjection = Schema.Struct({
 const SarahFleetApprovalProjection = Schema.Struct({
   approvalRef: FleetPublicRef,
   status: FleetApprovalStatus,
+  bindingStatus: Schema.Literals(["exact", "legacy", "unresolved"]),
+  runRef: Schema.NullOr(FleetPublicRef),
   workerRef: Schema.NullOr(FleetPublicRef),
-  workUnitRef: Schema.NullOr(SarahFleetDisplayName),
+  workUnitRef: Schema.NullOr(FleetPublicRef),
+  attemptRef: Schema.NullOr(FleetPublicRef),
+  assignmentRef: Schema.NullOr(FleetPublicRef),
+  accountRefHash: Schema.NullOr(FleetAccountRefHash),
+  requestEventRef: Schema.NullOr(FleetPublicRef),
   toolClass: Schema.NullOr(FleetClassToken),
   openedAt: Schema.NullOr(FleetIsoTimestamp),
   decidedAt: Schema.NullOr(FleetIsoTimestamp),
   availableDecisions: Schema.Array(ApprovalDecisionValue),
   summary: SarahFleetSafeSummary,
   updatedAt: FleetIsoTimestamp,
-})
+}).pipe(
+  Schema.check(
+    Schema.makeFilter(
+      (approval) => {
+        const boundFieldsPresent =
+          approval.runRef !== null &&
+          approval.workerRef !== null &&
+          approval.workUnitRef !== null &&
+          approval.attemptRef !== null &&
+          approval.requestEventRef !== null &&
+          approval.toolClass !== null &&
+          approval.openedAt !== null
+        if (approval.bindingStatus === "legacy") {
+          return (
+            approval.runRef === null &&
+            approval.workUnitRef === null &&
+            approval.attemptRef === null &&
+            approval.assignmentRef === null &&
+            approval.accountRefHash === null &&
+            approval.requestEventRef === null &&
+            approval.availableDecisions.length === 0
+          )
+        }
+        if (!boundFieldsPresent) return false
+        if (approval.availableDecisions.length === 0) return true
+        return (
+          approval.bindingStatus === "exact" &&
+          approval.status === "pending" &&
+          approval.availableDecisions.length === 2 &&
+          approval.availableDecisions.includes("allow") &&
+          approval.availableDecisions.includes("deny")
+        )
+      },
+      { message: "fleet approval projection binding must be coherent" },
+    ),
+  ),
+)
 
 export const SarahFleetOwnerProjection = Schema.Struct({
   schema: Schema.Literal(SARAH_FLEET_OWNER_PROJECTION_SCHEMA),
@@ -279,15 +322,6 @@ const humanizeToken = (token: string): string => token.replaceAll("_", " ")
 
 const addMilliseconds = (iso: string, milliseconds: number): string =>
   new Date(Date.parse(iso) + milliseconds).toISOString()
-
-const approvalRefsForWorker = (
-  approvals: ReadonlyArray<FleetApprovalEntity>,
-  workerRef: string,
-): ReadonlyArray<string> =>
-  approvals
-    .filter((approval) => approval.workerId === workerRef)
-    .map((approval) => approval.approvalRef)
-    .sort()
 
 const pendingApprovalForWorker = (
   approvals: ReadonlyArray<FleetApprovalEntity>,
@@ -627,6 +661,12 @@ export function projectSarahFleetOwnerRun(
     (assignment) => assignment.assignmentRef,
     "assignment ref",
   )
+  uniqueBy(approvals, (approval) => approval.approvalRef, "approval ref")
+  const workerByRef = uniqueBy(
+    workers,
+    (worker) => worker.workerId,
+    "worker ref",
+  )
   const workersByAssignment = new Map<string, Array<FleetWorkerEntity>>()
   for (const worker of workers) {
     if (worker.assignmentRef === undefined) continue
@@ -692,6 +732,69 @@ export function projectSarahFleetOwnerRun(
     }
   }
 
+  type ExactApprovalResolution = Readonly<{
+    approval: FleetApprovalEntity
+    attempt: typeof FleetAttemptEntity.Type
+    workUnit: typeof FleetWorkUnitEntity.Type
+    worker: FleetWorkerEntity
+    actionable: boolean
+  }>
+  const exactApprovalByRef = new Map<string, ExactApprovalResolution>()
+  const approvalRefsByAttempt = new Map<string, Array<string>>()
+  const actionableApprovals: FleetApprovalEntity[] = []
+  for (const approval of approvals) {
+    if (!fleetApprovalHasExactBinding(approval)) continue
+    const workUnit = workUnitByRef.get(approval.workUnitRef)
+    const attempt = attemptByRef.get(approval.attemptRef)
+    const worker = workerByRef.get(approval.workerId)
+    const assignmentIsEffective =
+      approval.assignmentRef === attempt?.assignmentRef &&
+      (approval.assignmentRef === null ||
+        assignmentByRef.has(approval.assignmentRef))
+    const workerAssignmentIsEffective =
+      (worker?.assignmentRef ?? null) === approval.assignmentRef
+    const assignmentWorkerIsUnique =
+      approval.assignmentRef === null ||
+      ((workersByAssignment.get(approval.assignmentRef) ?? []).length === 1 &&
+        workersByAssignment.get(approval.assignmentRef)?.[0]?.workerId ===
+          approval.workerId)
+    const accountIsEffective =
+      approval.accountRefHash === attempt?.accountRefHash &&
+      (worker?.accountRefHash ?? null) === approval.accountRefHash
+    const requestEventIsPublicExecutionRef =
+      /^event\.pylon\.fleet_run\.[0-9a-f]{24}$/.test(
+        approval.requestEventRef,
+      )
+    if (
+      approval.runRef !== input.run.runId ||
+      workUnit === undefined ||
+      attempt === undefined ||
+      worker === undefined ||
+      attempt.workUnitRef !== approval.workUnitRef ||
+      worker.harnessKind !== attempt.workerKind ||
+      !assignmentIsEffective ||
+      !workerAssignmentIsEffective ||
+      !assignmentWorkerIsUnique ||
+      !accountIsEffective ||
+      !requestEventIsPublicExecutionRef
+    ) {
+      continue
+    }
+    const actionable =
+      approval.status === "pending" &&
+      workUnit.latestAttemptRef === attempt.attemptRef &&
+      attempt.state === "running" &&
+      attempt.progressClass === "blocked"
+    const resolution = { approval, attempt, workUnit, worker, actionable }
+    exactApprovalByRef.set(approval.approvalRef, resolution)
+    const attemptApprovalRefs =
+      approvalRefsByAttempt.get(attempt.attemptRef) ?? []
+    attemptApprovalRefs.push(approval.approvalRef)
+    attemptApprovalRefs.sort()
+    approvalRefsByAttempt.set(attempt.attemptRef, attemptApprovalRefs)
+    if (actionable) actionableApprovals.push(approval)
+  }
+
   const currentAttemptForAssignment = (
     assignmentRef: string,
   ): typeof FleetAttemptEntity.Type | undefined => {
@@ -714,7 +817,20 @@ export function projectSarahFleetOwnerRun(
       attempt.assignmentRef === null
         ? []
         : (workersByAssignment.get(attempt.assignmentRef) ?? [])
-    const worker = assignmentWorkers.length === 1 ? assignmentWorkers[0] : undefined
+    const approvalWorkers = (approvalRefsByAttempt.get(attempt.attemptRef) ?? [])
+      .flatMap((approvalRef) => {
+        const resolution = exactApprovalByRef.get(approvalRef)
+        return resolution === undefined ? [] : [resolution.worker]
+      })
+      .filter(
+        (worker, index, all) =>
+          all.findIndex((candidate) => candidate.workerId === worker.workerId) ===
+          index,
+      )
+    const workersForAttempt =
+      assignmentWorkers.length > 0 ? assignmentWorkers : approvalWorkers
+    const worker =
+      workersForAttempt.length === 1 ? workersForAttempt[0] : undefined
     return {
       attemptRef: attempt.attemptRef,
       workUnitRef: attempt.workUnitRef,
@@ -725,10 +841,7 @@ export function projectSarahFleetOwnerRun(
       state: attempt.state,
       progressClass: attempt.progressClass,
       progress: progressForAttempt(attempt, projectedAtMs),
-      // Worker slots and assignment edges can be reused across retries. Until
-      // the approval entity binds an exact attempt, no approval is attributed
-      // to attempt evidence or made actionable here.
-      approvalRefs: [],
+      approvalRefs: [...(approvalRefsByAttempt.get(attempt.attemptRef) ?? [])],
       verification: verificationForAttempt(attempt),
       artifactRefs: [...attempt.artifactRefs],
       proofRefs: [...attempt.proofRefs],
@@ -808,7 +921,7 @@ export function projectSarahFleetOwnerRun(
       counters: input.run.counters,
       updatedAt: input.run.updatedAt,
       availableControls: [...runControlsByStatus[input.run.status]],
-      blockers: runBlockers(workers, approvals, input.inboxFlags),
+      blockers: runBlockers(workers, actionableApprovals, input.inboxFlags),
     },
     workUnits: projectedWorkUnits,
     workers: workers.map((worker) => {
@@ -829,30 +942,49 @@ export function projectSarahFleetOwnerRun(
         accountRefHash: worker.accountRefHash ?? null,
         progress:
           attempt === undefined
-            ? progressForWorker(worker, approvals, projectedAtMs)
+            ? progressForWorker(worker, actionableApprovals, projectedAtMs)
             : progressForAttempt(attempt, projectedAtMs),
-        approvalRefs: approvalRefsForWorker(approvals, worker.workerId),
+        approvalRefs:
+          attempt === undefined
+            ? []
+            : [...(approvalRefsByAttempt.get(attempt.attemptRef) ?? [])],
         updatedAt: worker.updatedAt,
       }
     }),
     approvals: approvals.map((approval) => {
+      const exactBinding = fleetApprovalHasExactBinding(approval)
+      const resolution = exactApprovalByRef.get(approval.approvalRef)
+      const bindingStatus =
+        resolution !== undefined
+          ? ("exact" as const)
+          : exactBinding
+            ? ("unresolved" as const)
+            : ("legacy" as const)
       return {
         approvalRef: approval.approvalRef,
         status: approval.status,
+        bindingStatus,
+        runRef: exactBinding ? approval.runRef : null,
         workerRef: approval.workerId ?? null,
-        // The current approval entity is worker-bound. A worker and assignment
-        // may be reused by retries, so projecting a work-unit target here
-        // would manufacture attempt authority. Keep it unbound until the
-        // shared approval contract carries an exact attempt ref.
-        workUnitRef: null,
+        workUnitRef: exactBinding ? approval.workUnitRef : null,
+        attemptRef: exactBinding ? approval.attemptRef : null,
+        assignmentRef: exactBinding ? approval.assignmentRef : null,
+        accountRefHash: exactBinding ? approval.accountRefHash : null,
+        requestEventRef: exactBinding ? approval.requestEventRef : null,
         toolClass: approval.toolClass ?? null,
         openedAt: approval.openedAt ?? null,
         decidedAt: approval.decidedAt ?? null,
-        // Exact attempt-bound approval actions are a separate authority lane.
-        availableDecisions: [] as const,
+        availableDecisions:
+          resolution?.actionable === true
+            ? (["allow", "deny"] as const)
+            : ([] as const),
         summary:
-          approval.status === "pending"
+          approval.status === "pending" && resolution?.actionable === true
             ? "Approval needs decision"
+            : approval.status === "pending" && resolution !== undefined
+              ? "Approval decision unavailable"
+            : approval.status === "pending"
+              ? "Approval binding not reported"
             : `Approval ${approval.status}`,
         updatedAt: approval.updatedAt,
       }

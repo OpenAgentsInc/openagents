@@ -18,6 +18,61 @@ import type {
 const config = parseSarahFleetBrowserConfig(
   "https://openagents.com/sarah?fleet_run=fleet.fc3.run",
 )!
+const commandAttemptRef = "attempt.fc3.codex"
+const commandWorkUnitRef = "unit.fc3.codex"
+const commandWorkerRef = "worker.fc3.codex"
+const commandAssignmentRef = "assignment.fc3.codex"
+const commandEventRef = `event.pylon.fleet_run.${"a".repeat(24)}`
+const commandApprovalRef = "approval.fc3.codex"
+
+const commandProjection = (input?: Readonly<{
+  latestAttemptRef?: string
+  attemptState?: "running" | "failed"
+}>): SarahFleetOwnerProjection => {
+  const latestAttemptRef = input?.latestAttemptRef ?? commandAttemptRef
+  const attemptState = input?.attemptState ?? "running"
+  return {
+    run: { runRef: config.runRef },
+    workUnits: [
+      {
+        workUnitRef: commandWorkUnitRef,
+        state: attemptState,
+        latestAttemptRef,
+        approvalRefs:
+          latestAttemptRef === commandAttemptRef && attemptState === "running"
+            ? [commandApprovalRef]
+            : [],
+        attempts: [
+          {
+            attemptRef: commandAttemptRef,
+            workUnitRef: commandWorkUnitRef,
+            assignmentRef: null,
+            workerRef: commandWorkerRef,
+            state: attemptState,
+            progressClass: "blocked",
+            capacity: { accountRefHash: null },
+            approvalRefs: [commandApprovalRef],
+          },
+        ],
+      },
+    ],
+    approvals: [
+      {
+        approvalRef: commandApprovalRef,
+        status: "pending",
+        bindingStatus: "exact",
+        runRef: config.runRef,
+        workUnitRef: commandWorkUnitRef,
+        attemptRef: commandAttemptRef,
+        assignmentRef: null,
+        workerRef: commandWorkerRef,
+        accountRefHash: null,
+        requestEventRef: commandEventRef,
+        availableDecisions: ["allow", "deny"],
+      },
+    ],
+  } as unknown as SarahFleetOwnerProjection
+}
 
 describe("Sarah exact-run browser host", () => {
   test("keeps no-scope unchanged and accepts unrelated URL parameters", () => {
@@ -52,6 +107,7 @@ describe("Sarah exact-run browser host", () => {
     const pushes: Array<Record<string, unknown>> = []
     const commands = makeSarahFleetBrowserCommands({
       config,
+      projection: () => commandProjection(),
       cursor: () => cursor,
       randomId: () => `browsercommand${++serial}`,
       now: () => "2026-07-09T20:00:00.000Z",
@@ -97,6 +153,7 @@ describe("Sarah exact-run browser host", () => {
     const mutationIds: number[] = []
     const commands = makeSarahFleetBrowserCommands({
       config,
+      projection: () => commandProjection(),
       cursor: () => cursor,
       randomId: () => "browsercommandretry",
       client: {
@@ -117,7 +174,7 @@ describe("Sarah exact-run browser host", () => {
     const failure = await commands
       .steer({
         runRef: config.runRef,
-        targetRef: "worker.fc3.codex",
+        targetRef: commandAttemptRef,
         body: privateBody,
       })
       .catch((error: unknown) => error)
@@ -125,7 +182,7 @@ describe("Sarah exact-run browser host", () => {
     cursor = 12
     const receipt = await commands.steer({
       runRef: config.runRef,
-      targetRef: "worker.fc3.codex",
+      targetRef: commandAttemptRef,
       body: privateBody,
     })
     expect(receipt).toMatchObject({ mutationId: 1, status: "duplicate" })
@@ -138,6 +195,7 @@ describe("Sarah exact-run browser host", () => {
     const bodies: string[] = []
     const commands = makeSarahFleetBrowserCommands({
       config,
+      projection: () => commandProjection(),
       cursor: () => 14,
       randomId: () => `browsersteer${++serial}`,
       client: {
@@ -156,21 +214,22 @@ describe("Sarah exact-run browser host", () => {
     })
     await commands.steer({
       runRef: config.runRef,
-      targetRef: "worker.fc3.codex",
+      targetRef: commandAttemptRef,
       body: "First private steer",
     })
     await commands.steer({
       runRef: config.runRef,
-      targetRef: "worker.fc3.codex",
+      targetRef: commandAttemptRef,
       body: "Second private steer",
     })
     expect(bodies).toEqual(["First private steer", "Second private steer"])
   })
 
-  test("targets approvals exactly and rejects a foreign run before push", async () => {
+  test("allows only the exact current pending approval, including a nullable assignment", async () => {
     const pushes: Array<Record<string, unknown>> = []
     const commands = makeSarahFleetBrowserCommands({
       config,
+      projection: () => commandProjection(),
       cursor: () => 16,
       randomId: () => "browserapproval",
       client: {
@@ -208,12 +267,97 @@ describe("Sarah exact-run browser host", () => {
     expect(pushes).toHaveLength(1)
   })
 
+  test("rejects work-unit, worker, assignment, and stale attempt steer targets before push", async () => {
+    const pushes: Array<Record<string, unknown>> = []
+    let projection = commandProjection()
+    const commands = makeSarahFleetBrowserCommands({
+      config,
+      projection: () => projection,
+      cursor: () => 20,
+      randomId: () => "browserinvalidtarget",
+      client: {
+        submitIntent: async (input) => {
+          pushes.push(input)
+          return {
+            intentId: input.intent.intentId,
+            mutationId: input.mutationId,
+            status: "applied",
+            lastMutationId: input.mutationId,
+          }
+        },
+      },
+    })
+    for (const targetRef of [
+      commandWorkUnitRef,
+      commandWorkerRef,
+      commandAssignmentRef,
+    ]) {
+      const failure = await commands
+        .steer({ runRef: config.runRef, targetRef, body: "Private steer" })
+        .catch((error: unknown) => error)
+      expect(failure).toBeInstanceOf(SarahFleetBrowserHostError)
+      expect((failure as SarahFleetBrowserHostError).reason).toBe(
+        "invalid_command_target",
+      )
+    }
+    projection = commandProjection({ latestAttemptRef: "attempt.fc3.retry" })
+    const stale = await commands
+      .steer({
+        runRef: config.runRef,
+        targetRef: commandAttemptRef,
+        body: "Private stale steer",
+      })
+      .catch((error: unknown) => error)
+    expect(stale).toBeInstanceOf(SarahFleetBrowserHostError)
+    expect(pushes).toEqual([])
+  })
+
+  test("rechecks projection after a reconnect race before approval push", async () => {
+    let projection = commandProjection()
+    let pushes = 0
+    const commands = makeSarahFleetBrowserCommands({
+      config,
+      projection: () => projection,
+      cursor: () => {
+        projection = commandProjection({
+          latestAttemptRef: "attempt.fc3.retry",
+        })
+        return 21
+      },
+      randomId: () => "browserreconnectrace",
+      client: {
+        submitIntent: async (input) => {
+          pushes += 1
+          return {
+            intentId: input.intent.intentId,
+            mutationId: input.mutationId,
+            status: "applied",
+            lastMutationId: input.mutationId,
+          }
+        },
+      },
+    })
+    const failure = await commands
+      .approvalDecision({
+        runRef: config.runRef,
+        approvalRef: commandApprovalRef,
+        decision: "allow",
+      })
+      .catch((error: unknown) => error)
+    expect(failure).toBeInstanceOf(SarahFleetBrowserHostError)
+    expect((failure as SarahFleetBrowserHostError).reason).toBe(
+      "invalid_command_target",
+    )
+    expect(pushes).toBe(0)
+  })
+
   test("bounds settled command retention at 256 entries", async () => {
     let cursor = 0
     let serial = 0
     let pushes = 0
     const commands = makeSarahFleetBrowserCommands({
       config,
+      projection: () => commandProjection(),
       cursor: () => cursor,
       randomId: () => `browserbound${++serial}`,
       client: {

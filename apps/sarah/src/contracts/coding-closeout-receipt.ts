@@ -252,6 +252,9 @@ const approvalStatus = (
   // It does not prove that approval was unnecessary.
   if (approvalRefs.length === 0) return "not_reported"
   if (approvals.length !== approvalRefs.length) return "not_reported"
+  if (approvals.some((approval) => approval.bindingStatus !== "exact")) {
+    return "not_reported"
+  }
   if (approvals.some((approval) => approval.status === "denied")) {
     return "denied"
   }
@@ -336,9 +339,28 @@ const outcomeSection = (
 const nextActionSection = (
   projection: SarahFleetOwnerProjectionType,
   attempt: FleetAttempt,
+  approvals: ReadonlyArray<FleetApproval>,
   verification: typeof VerificationSection.Type,
   changes: typeof ChangesSection.Type,
 ): typeof NextActionSection.Type => {
+  const pendingApproval = approvals.find(
+    (approval) =>
+      approval.bindingStatus === "exact" &&
+      approval.status === "pending" &&
+      approval.attemptRef === attempt.attemptRef &&
+      approval.availableDecisions.length > 0,
+  )
+  if (pendingApproval !== undefined) {
+    return {
+      kind: "next_action",
+      next: {
+        action: "resolve_approval",
+        targetRef: pendingApproval.approvalRef,
+        decisions: [...pendingApproval.availableDecisions],
+      },
+      summary: "Resolve pending approval",
+    }
+  }
   const artifactRef = changes.artifactRefs[0]
   if (artifactRef !== undefined) {
     return {
@@ -414,11 +436,24 @@ export function projectSarahCodingCloseoutReceipts(
   const approvalByRef = new Map(
     projection.approvals.map((approval) => [approval.approvalRef, approval]),
   )
+  const hasActionableApproval = (attempt: FleetAttempt): boolean =>
+    attempt.approvalRefs.some((approvalRef) => {
+      const approval = approvalByRef.get(approvalRef)
+      return (
+        approval?.bindingStatus === "exact" &&
+        approval.status === "pending" &&
+        approval.attemptRef === attempt.attemptRef &&
+        approval.availableDecisions.length > 0
+      )
+    })
 
   return projection.workUnits
     .flatMap((workUnit) =>
       workUnit.attempts
-        .filter((attempt) => attempt.state !== "running")
+        .filter(
+          (attempt) =>
+            attempt.state !== "running" || hasActionableApproval(attempt),
+        )
         .map((attempt) => ({
           workUnitRef: workUnit.workUnitRef,
           attempt,
@@ -451,7 +486,13 @@ export function projectSarahCodingCloseoutReceipts(
           changes,
           capacityAndCostSection(attempt),
           approvalAndAuthority,
-          nextActionSection(projection, attempt, verification, changes),
+          nextActionSection(
+            projection,
+            attempt,
+            attemptApprovals,
+            verification,
+            changes,
+          ),
         ],
       }
       return Schema.decodeUnknownSync(SarahCodingCloseoutReceipt)(receipt)

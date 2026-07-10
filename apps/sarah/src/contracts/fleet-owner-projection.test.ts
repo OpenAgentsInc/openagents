@@ -385,6 +385,175 @@ describe("FC-3 direct owner-safe fleet projection", () => {
     expect(planned.closeout.closeoutRef).toBeNull()
   })
 
+  test("makes only an exact pending approval on the latest blocked attempt actionable", () => {
+    const requestEventRef = runningAttempt.lastEventRef
+    const laterBlockedHeartbeat = decodeFleetAttemptEntity({
+      ...runningAttempt,
+      progressClass: "blocked",
+      blockerRefs: ["blocker.running.approval"],
+      lastEventRef: `event.pylon.fleet_run.${"5".repeat(24)}`,
+    })
+    const exactApproval = decodeFleetApprovalEntity({
+      approvalRef: "approval.running.exact",
+      status: "pending",
+      runRef: run.runId,
+      workUnitRef: laterBlockedHeartbeat.workUnitRef,
+      attemptRef: laterBlockedHeartbeat.attemptRef,
+      assignmentRef: laterBlockedHeartbeat.assignmentRef,
+      workerId: "worker.running.1",
+      accountRefHash: laterBlockedHeartbeat.accountRefHash,
+      requestEventRef,
+      toolClass: "write_file",
+      openedAt: "2026-07-09T19:59:20.000Z",
+      updatedAt: "2026-07-09T19:59:30.000Z",
+    })
+    const projectAttempt = (attempt: FleetAttemptEntity) =>
+      projectSarahFleetOwnerRun(
+        {
+          run,
+          workUnits,
+          attempts: attempts.map((candidate) =>
+            candidate.attemptRef === attempt.attemptRef ? attempt : candidate,
+          ),
+          assignments,
+          workers,
+          approvals: [exactApproval],
+          inboxFlags: [],
+        },
+        NOW,
+      )
+
+    const blocked = projectAttempt(laterBlockedHeartbeat)
+    const blockedUnit = blocked.workUnits.find(
+      (unit) => unit.workUnitRef === laterBlockedHeartbeat.workUnitRef,
+    )!
+    expect(blockedUnit.approvalRefs).toEqual([exactApproval.approvalRef])
+    expect(blockedUnit.attempts[0]?.approvalRefs).toEqual([
+      exactApproval.approvalRef,
+    ])
+    expect(blocked.approvals[0]).toMatchObject({
+      bindingStatus: "exact",
+      runRef: run.runId,
+      workUnitRef: laterBlockedHeartbeat.workUnitRef,
+      attemptRef: laterBlockedHeartbeat.attemptRef,
+      assignmentRef: laterBlockedHeartbeat.assignmentRef,
+      workerRef: "worker.running.1",
+      accountRefHash: laterBlockedHeartbeat.accountRefHash,
+      requestEventRef,
+      availableDecisions: ["allow", "deny"],
+    })
+
+    const laterActiveProgress = decodeFleetAttemptEntity({
+      ...runningAttempt,
+      lastEventRef: `event.pylon.fleet_run.${"6".repeat(24)}`,
+    })
+    const active = projectAttempt(laterActiveProgress)
+    expect(active.approvals[0]).toMatchObject({
+      bindingStatus: "exact",
+      availableDecisions: [],
+    })
+  })
+
+  test("does not move an exact approval across retries that reuse a worker", () => {
+    const reusedOldAttempt = decodeFleetAttemptEntity({
+      ...retryFailed,
+      assignmentRef: retrySucceeded.assignmentRef,
+      accountRefHash: retrySucceeded.accountRefHash,
+      usageEvidence: exactUsage(
+        retrySucceeded.assignmentRef!,
+        "evidence.retry.old.reused",
+        10,
+      ),
+    })
+    const exactOldApproval = decodeFleetApprovalEntity({
+      approvalRef: "approval.retry.old.exact",
+      status: "allowed",
+      runRef: run.runId,
+      workUnitRef: reusedOldAttempt.workUnitRef,
+      attemptRef: reusedOldAttempt.attemptRef,
+      assignmentRef: reusedOldAttempt.assignmentRef,
+      workerId: "worker.retry.2",
+      accountRefHash: reusedOldAttempt.accountRefHash,
+      requestEventRef: reusedOldAttempt.lastEventRef,
+      toolClass: "write_file",
+      openedAt: "2026-07-09T19:51:00.000Z",
+      decidedAt: "2026-07-09T19:51:30.000Z",
+      updatedAt: "2026-07-09T19:51:30.000Z",
+    })
+    const projection = projectSarahFleetOwnerRun(
+      {
+        run,
+        workUnits,
+        attempts: [
+          reusedOldAttempt,
+          retrySucceeded,
+          runningAttempt,
+          grokSucceeded,
+        ],
+        assignments: [assignments[1]!, assignments[2]!],
+        workers,
+        approvals: [exactOldApproval],
+        inboxFlags: [],
+      },
+      NOW,
+    )
+    const retry = projection.workUnits.find(
+      (unit) => unit.workUnitRef === reusedOldAttempt.workUnitRef,
+    )!
+    expect(
+      retry.attempts.find(
+        (attempt) => attempt.attemptRef === reusedOldAttempt.attemptRef,
+      )?.approvalRefs,
+    ).toEqual([exactOldApproval.approvalRef])
+    expect(
+      retry.attempts.find(
+        (attempt) => attempt.attemptRef === retrySucceeded.attemptRef,
+      )?.approvalRefs,
+    ).toEqual([])
+    expect(retry.approvalRefs).toEqual([])
+    expect(projection.approvals[0]?.availableDecisions).toEqual([])
+  })
+
+  test("keeps unresolved exact bindings visible but nonactionable", () => {
+    const unresolved = decodeFleetApprovalEntity({
+      approvalRef: "approval.running.unresolved",
+      status: "pending",
+      runRef: run.runId,
+      workUnitRef: runningAttempt.workUnitRef,
+      attemptRef: runningAttempt.attemptRef,
+      assignmentRef: null,
+      workerId: "worker.running.1",
+      accountRefHash: runningAttempt.accountRefHash,
+      requestEventRef: runningAttempt.lastEventRef,
+      toolClass: "write_file",
+      openedAt: "2026-07-09T19:59:20.000Z",
+      updatedAt: "2026-07-09T19:59:20.000Z",
+    })
+    const projection = projectSarahFleetOwnerRun(
+      {
+        run,
+        workUnits,
+        attempts,
+        assignments,
+        workers,
+        approvals: [unresolved],
+        inboxFlags: [],
+      },
+      NOW,
+    )
+    expect(projection.approvals[0]).toMatchObject({
+      bindingStatus: "unresolved",
+      attemptRef: runningAttempt.attemptRef,
+      availableDecisions: [],
+      summary: "Approval binding not reported",
+    })
+    expect(
+      projection.workUnits.find(
+        (unit) => unit.workUnitRef === runningAttempt.workUnitRef,
+      )?.approvalRefs,
+    ).toEqual([])
+  })
+
   test("keeps unreported failed and stale closeouts open without changing attempt outcome", () => {
     for (const state of ["failed", "stale"] as const) {
       const attempt = decodeFleetAttemptEntity({

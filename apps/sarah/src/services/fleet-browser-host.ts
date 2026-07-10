@@ -151,6 +151,8 @@ export const makeSarahFleetBrowserCommands = (input: Readonly<{
   config: SarahFleetBrowserConfig
   client: Pick<SarahFleetSyncClient, "submitIntent">
   cursor: () => number
+  /** Latest owner-scoped projection, read again immediately before mutation. */
+  projection: () => SarahFleetOwnerProjection | null
   now?: () => string
   randomId?: () => string
 }>): SarahFleetBrowserCommands => {
@@ -169,6 +171,7 @@ export const makeSarahFleetBrowserCommands = (input: Readonly<{
       idempotencyKey: string
       createdAt: string
     }>) => unknown,
+    authorize: () => void = () => {},
   ): Promise<SarahFleetBrowserCommandReceipt> => {
     const cursor = input.cursor()
     if (!Number.isSafeInteger(cursor) || cursor < 0) {
@@ -192,6 +195,21 @@ export const makeSarahFleetBrowserCommands = (input: Readonly<{
       (retryKey !== null && retryKey !== key)
     ) {
       return Promise.reject(hostError("command_unavailable"))
+    }
+
+    // This is the final authority read before constructing and pushing the
+    // mutation. A reconnect can replace the projection after the click, so
+    // approval and steer authority must not be captured by the rendered view.
+    // This is only a stale-click fence; the authenticated server remains the
+    // final authority and revalidates every intent.
+    try {
+      authorize()
+    } catch (error) {
+      return Promise.reject(
+        error instanceof SarahFleetBrowserHostError
+          ? error
+          : hostError("invalid_command_target"),
+      )
     }
 
     let entry = existing
@@ -263,6 +281,77 @@ export const makeSarahFleetBrowserCommands = (input: Readonly<{
     }
     return runRef
   }
+  const currentProjection = (): SarahFleetOwnerProjection => {
+    const projection = input.projection()
+    if (projection === null) throw hostError("command_unavailable")
+    if (projection.run.runRef !== input.config.runRef) {
+      throw hostError("invalid_command_target")
+    }
+    return projection
+  }
+  const authorizeApproval = (
+    approvalRef: typeof FleetPublicRef.Type,
+    decision: ApprovalDecisionValue,
+  ): void => {
+    const projection = currentProjection()
+    const approval = projection.approvals.find(
+      (candidate) => candidate.approvalRef === approvalRef,
+    )
+    if (
+      approval === undefined ||
+      approval.bindingStatus !== "exact" ||
+      approval.status !== "pending" ||
+      approval.runRef !== projection.run.runRef ||
+      approval.workUnitRef === null ||
+      approval.attemptRef === null ||
+      approval.workerRef === null ||
+      approval.requestEventRef === null ||
+      !approval.availableDecisions.includes(decision)
+    ) {
+      throw hostError("invalid_command_target")
+    }
+    const workUnit = projection.workUnits.find(
+      (candidate) => candidate.workUnitRef === approval.workUnitRef,
+    )
+    const attempt = workUnit?.attempts.find(
+      (candidate) => candidate.attemptRef === approval.attemptRef,
+    )
+    if (
+      workUnit === undefined ||
+      attempt === undefined ||
+      workUnit.latestAttemptRef !== attempt.attemptRef ||
+      workUnit.state !== "running" ||
+      attempt.state !== "running" ||
+      attempt.progressClass !== "blocked" ||
+      attempt.workUnitRef !== workUnit.workUnitRef ||
+      attempt.assignmentRef !== approval.assignmentRef ||
+      attempt.workerRef !== approval.workerRef ||
+      attempt.capacity.accountRefHash !== approval.accountRefHash ||
+      !attempt.approvalRefs.includes(approval.approvalRef) ||
+      !workUnit.approvalRefs.includes(approval.approvalRef)
+    ) {
+      throw hostError("invalid_command_target")
+    }
+  }
+  const authorizeSteer = (targetRef: typeof FleetPublicRef.Type): void => {
+    const projection = currentProjection()
+    const matches = projection.workUnits.flatMap((workUnit) => {
+      if (workUnit.latestAttemptRef !== targetRef) return []
+      const attempt = workUnit.attempts.find(
+        (candidate) => candidate.attemptRef === targetRef,
+      )
+      return attempt === undefined ? [] : [{ attempt, workUnit }]
+    })
+    const match = matches.length === 1 ? matches[0] : undefined
+    if (
+      match === undefined ||
+      match.workUnit.state !== "running" ||
+      match.attempt.state !== "running" ||
+      match.attempt.workUnitRef !== match.workUnit.workUnitRef
+    ) {
+      throw hostError("invalid_command_target")
+    }
+  }
   const base = (identity: Readonly<{
     intentId: string
     idempotencyKey: string
@@ -286,12 +375,16 @@ export const makeSarahFleetBrowserCommands = (input: Readonly<{
     approvalDecision: ({ runRef: rawRunRef, approvalRef: rawApprovalRef, decision }) => {
       const runRef = assertRunRef(rawRunRef)
       const approvalRef = exactRef(rawApprovalRef)
-      return submit(`approval:${runRef}:${approvalRef}:${decision}`, (identity) => ({
-        ...base(identity),
-        kind: "approval_decision",
-        approvalRef,
-        decision,
-      }))
+      return submit(
+        `approval:${runRef}:${approvalRef}:${decision}`,
+        (identity) => ({
+          ...base(identity),
+          kind: "approval_decision",
+          approvalRef,
+          decision,
+        }),
+        () => authorizeApproval(approvalRef, decision),
+      )
     },
     steer: ({ runRef: rawRunRef, targetRef: rawTargetRef, body, bodyRef: rawBodyRef }) => {
       const runRef = assertRunRef(rawRunRef)
@@ -303,13 +396,17 @@ export const makeSarahFleetBrowserCommands = (input: Readonly<{
       // The private body is used only for the typed push and its in-memory
       // dedupe identity. It never enters view state, persistence, receipts,
       // or errors.
-      return submit(`steer:${runRef}:${targetRef}:${bodyRef ?? "inline"}:${body}`, (identity) => ({
-        ...base(identity),
-        kind: "steer_message",
-        targetRef,
-        body,
-        ...(bodyRef === undefined ? {} : { bodyRef }),
-      }))
+      return submit(
+        `steer:${runRef}:${targetRef}:${bodyRef ?? "inline"}:${body}`,
+        (identity) => ({
+          ...base(identity),
+          kind: "steer_message",
+          targetRef,
+          body,
+          ...(bodyRef === undefined ? {} : { bodyRef }),
+        }),
+        () => authorizeSteer(targetRef),
+      )
     },
   }
 }
@@ -449,6 +546,7 @@ export const makeSarahFleetBrowserRuntime = (input: Readonly<{
   const commands = makeSarahFleetBrowserCommands({
     config: input.config,
     client,
+    projection: () => projection,
     cursor: () => {
       const current = session.snapshot()
       return "cursor" in current && current.cursor !== null ? current.cursor : 0

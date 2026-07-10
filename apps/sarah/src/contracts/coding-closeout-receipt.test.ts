@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test"
 import {
+  decodeFleetApprovalEntity,
   decodeFleetAttemptEntity,
   decodeFleetRunEntity,
+  decodeFleetWorkerEntity,
   decodeFleetWorkUnitEntity,
 } from "@openagentsinc/khala-sync"
 import { Schema } from "effect"
@@ -276,6 +278,80 @@ describe("FC-3 attempt-backed coding closeout receipt", () => {
     expect(
       receipts().some((receipt) => receipt.attemptRef === running.attemptRef),
     ).toBe(false)
+  })
+
+  test("surfaces an exact pending approval first for a blocked running attempt", () => {
+    const blocked = decodeFleetAttemptEntity({
+      ...running,
+      progressClass: "blocked",
+      blockerRefs: ["blocker.receipt.approval"],
+      lastEventRef: `event.pylon.fleet_run.${"6".repeat(24)}`,
+    })
+    const worker = decodeFleetWorkerEntity({
+      workerId: "worker.receipt.running",
+      phase: "blocked",
+      harnessKind: "codex",
+      lastProgressAt: blocked.lastObservedAt,
+      updatedAt: blocked.updatedAt,
+    })
+    const approval = decodeFleetApprovalEntity({
+      approvalRef: "approval.receipt.running",
+      status: "pending",
+      runRef: run.runId,
+      workUnitRef: blocked.workUnitRef,
+      attemptRef: blocked.attemptRef,
+      assignmentRef: null,
+      workerId: worker.workerId,
+      accountRefHash: null,
+      requestEventRef: `event.pylon.fleet_run.${"5".repeat(24)}`,
+      toolClass: "write_file",
+      openedAt: "2026-07-09T19:59:30.000Z",
+      updatedAt: "2026-07-09T19:59:59.000Z",
+    })
+    const unit = workUnits.find(
+      (candidate) => candidate.workUnitRef === blocked.workUnitRef,
+    )!
+    const approvalProjection = projectSarahFleetOwnerRun(
+      {
+        run,
+        workUnits: [unit],
+        attempts: [blocked],
+        assignments: [],
+        workers: [worker],
+        approvals: [approval],
+        inboxFlags: [],
+      },
+      NOW,
+    )
+    const [receipt] = projectSarahCodingCloseoutReceipts({
+      projection: approvalProjection,
+    })
+    expect(receipt?.attemptRef).toBe(blocked.attemptRef)
+    expect(receipt?.sections[4]).toMatchObject({
+      approvalStatus: "pending",
+      approvalRefs: [approval.approvalRef],
+    })
+    expect(receipt?.sections[5]).toEqual({
+      kind: "next_action",
+      next: {
+        action: "resolve_approval",
+        targetRef: approval.approvalRef,
+        decisions: ["allow", "deny"],
+      },
+      summary: "Resolve pending approval",
+    })
+    const decidedProjection = {
+      ...approvalProjection,
+      approvals: approvalProjection.approvals.map((candidate) => ({
+        ...candidate,
+        status: "allowed" as const,
+        availableDecisions: [] as const,
+        summary: "Approval allowed",
+      })),
+    }
+    expect(
+      projectSarahCodingCloseoutReceipts({ projection: decidedProjection }),
+    ).toEqual([])
   })
 
   test("claims pass and success only for a fully proven succeeded attempt", () => {
