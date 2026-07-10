@@ -22,6 +22,11 @@
 - 2026-07-10 16:42 CDT — FAST-1 verification is green: render-dom typecheck;
   four focused DOM tests; Desktop typecheck; 61 Desktop tests; and
   `git diff --check`. Preparing the scoped commit and release receipt.
+- 2026-07-10 16:45 CDT — FAST-1 landed on `main` as `68dd9254db` and its
+  `CLAIM-RELEASE` receipt was verified on #8574 (fixture-proven). Refresh of
+  #8597 found an active 16:28 CDT mobile Sarah-removal/Khala-composer claim;
+  FAST-3 and R6 remain unavailable until it explicitly releases. #8640 remains
+  coordinator/owner-gated, including its Codex account reconnect and live proof.
 
 ## Mission
 
