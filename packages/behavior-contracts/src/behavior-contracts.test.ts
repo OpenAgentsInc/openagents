@@ -139,7 +139,7 @@ describe("behavior contract registry", () => {
     const validation = validateBehaviorContractRegistry(decoded)
 
     expect(validation).toEqual({ issues: [], ok: true })
-    expect(decoded.contracts).toHaveLength(8)
+    expect(decoded.contracts).toHaveLength(9)
     const pending = decoded.contracts.filter(contract => contract.state === "pending")
     expect(pending).toHaveLength(4)
     expect(
@@ -195,7 +195,7 @@ describe("behavior contract registry", () => {
     const portalContracts = openAgentsAppsContractRegistry.contracts.filter(
       contract => contract.contractId.startsWith("openagents_web.portal_"),
     )
-    expect(portalContracts).toHaveLength(2)
+    expect(portalContracts).toHaveLength(3)
     const registry = {
       ...openAgentsAppsContractRegistry,
       contracts: portalContracts,

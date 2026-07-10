@@ -6,6 +6,10 @@
 //     enforces owner scoping; this surface never offers a foreign lookup).
 //   * openagents_web.portal_decision_receipts.v1 — approve/reject dispatch
 //     typed intents and render the minted decision receipt ref.
+//   * openagents_web.portal_empty_state_account_identity.v1 — the
+//     authenticated empty state always names the signed-in account
+//     (email → login → honest fallback) and offers a sign-out/switch-account
+//     affordance (#8652 reopen: owner hit a mismatched-email binding blind).
 import { viewStructure } from '@effect-native/render-dom'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -41,6 +45,7 @@ const item = (
 
 const READY_STATE: PortalPageState = {
   phase: 'ready',
+  identity: { email: 'client@example.com', login: 'client' },
   engagement: {
     id: 'portal_engagement_1',
     name: 'Strategic Consulting Demo',
@@ -101,13 +106,45 @@ describe('PORTAL-1 /portal Effect Native route (#8652)', () => {
     expect(serialized).not.toContain('className')
   })
 
-  test('empty state renders the designed "setup is being prepared" card', () => {
+  test('empty state shows WHO is signed in and a switch-account affordance (#8652 reopen)', () => {
+    // Owner-reported failure 2026-07-10: authenticated /portal with a
+    // mismatched engagement binding rendered only "setup is being prepared"
+    // with no account context and no way out. The empty state must always
+    // name the signed-in identity and offer sign-out/switch-account.
     const serialized = JSON.stringify(
-      portalPageView({ ...initialPortalPageState, phase: 'empty' }),
+      portalPageView({
+        ...initialPortalPageState,
+        phase: 'empty',
+        identity: { email: 'chris@openagents.com', login: 'AtlantisPleb' },
+      }),
     )
     expect(serialized).toContain('Your setup is being prepared')
-    expect(serialized).toContain('No engagement is linked to this account yet.')
+    expect(serialized).toContain(
+      'No engagement is linked to this account yet. Signed in as chris@openagents.com.',
+    )
+    expect(serialized).toContain('different email')
+    expect(serialized).toContain('Sign out / switch account')
+    expect(serialized).toContain('/logout')
     expect(serialized).not.toContain('Approve')
+  })
+
+  test('empty state never renders a blank identity (email → login → honest fallback)', () => {
+    const loginOnly = JSON.stringify(
+      portalPageView({
+        ...initialPortalPageState,
+        phase: 'empty',
+        identity: { email: null, login: 'AtlantisPleb' },
+      }),
+    )
+    expect(loginOnly).toContain('Signed in as AtlantisPleb.')
+
+    const noIdentity = JSON.stringify(
+      portalPageView({ ...initialPortalPageState, phase: 'empty' }),
+    )
+    expect(noIdentity).toContain(
+      'Signed in as your account (no email on this session).',
+    )
+    expect(noIdentity).toContain('Sign out / switch account')
   })
 
   test('ready state is one typed EN tree: header, honest KPI tiles, A/B pairs, decision intents', () => {
@@ -166,6 +203,49 @@ describe('PORTAL-1 /portal Effect Native route (#8652)', () => {
     await waitFor(() =>
       (container.textContent ?? '').includes('Log in to view your engagement.'),
     )
+    expect(container.textContent).not.toContain('Content calendar')
+
+    await Effect.runPromise(surface.unmount)
+    await Effect.runPromise(Scope.close(scope, Exit.void))
+    container.remove()
+  })
+
+  test('mount smoke: logged-in with NO engagement renders the account email in real DOM (#8652 reopen)', async () => {
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+
+    const fetchFn = (async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.includes('/api/auth/session')) {
+        return jsonResponse({
+          authenticated: true,
+          bootstrap: {
+            session: {
+              userId: 'github:14167547',
+              email: 'chris@openagents.com',
+              login: 'AtlantisPleb',
+            },
+          },
+        })
+      }
+      if (url.includes('/api/portal/engagement')) {
+        return jsonResponse({ engagement: null })
+      }
+      return jsonResponse({ error: 'not_found' }, 404)
+    }) as typeof fetch
+
+    const scope = await Effect.runPromise(Scope.make())
+    const surface = await Effect.runPromise(
+      Scope.provide(scope)(mountPortalSurface(container, { fetchFn })),
+    )
+
+    await waitFor(() =>
+      (container.textContent ?? '').includes('Your setup is being prepared'),
+    )
+    expect(container.textContent).toContain(
+      'Signed in as chris@openagents.com',
+    )
+    expect(container.textContent).toContain('Sign out / switch account')
     expect(container.textContent).not.toContain('Content calendar')
 
     await Effect.runPromise(surface.unmount)

@@ -22,6 +22,18 @@ change, update its linked runbook **and** fix the pointer here.
 - **Secrets** live in `~/work/.secrets/` (workspace root, gitignored) and are mirrored
   in **GCP Secret Manager** (project `openagentsgemini`). Recovery steps are in the
   signing runbook. Never print secret values into tracked files, commits, or logs.
+- **Pixel proof before owner handoff — ALL user-visible surfaces, WEB included.**
+  The mobile TestFlight upload gate (simulator screenshot proving the actual
+  pixels) is not a mobile-only rule: before ANY new or changed user-visible
+  surface is put in front of the owner as "ready for testing", capture real
+  browser/simulator screenshots of every state the owner can land in —
+  including logged-out, logged-in-without-data/empty, and error states — from
+  the DEPLOYED environment, and attach them to the receipt. Curl/API-level
+  checks and unit/DOM tests with mocked fetch are NOT handoff evidence for a
+  web page (#8652 reopen: /portal shipped with an owner-blinding authenticated
+  empty state that every non-browser check passed). Reference gate:
+  `apps/openagents.com/workers/api/scripts/portal-browser-smoke.ts` (see
+  "Portal real-browser smoke" below).
 
 ## Surfaces
 
@@ -157,6 +169,38 @@ For the Bun.SQL services, just re-add the IP DSN version and
 with `gcloud sql instances patch khala-sync-pg --authorized-networks=0.0.0.0/0`.
 The old IP-DSN secret versions are the canonical rollback — never destroy them
 during the cutover.
+
+## Portal real-browser smoke (#8652 reopen — the pre-owner-handoff gate for /portal)
+
+`apps/openagents.com/workers/api/scripts/portal-browser-smoke.ts` drives the
+DEPLOYED `/portal` with headless Chromium (playwright; one-time
+`bunx playwright install chromium` per machine) and screenshots the three
+owner-visible states:
+
+1. **logged out** — login gate visible (`Log in with GitHub`), never the empty
+   or engagement body. Runs automatically on every
+   `deploy-cloudrun.sh` (skip: `PORTAL_SKIP_BROWSER_SMOKE=1`).
+2. **logged in, no engagement** — "Your setup is being prepared" **with the
+   signed-in account email** (`Signed in as …`) and the
+   `Sign out / switch account` affordance.
+3. **logged in, engagement bound** — engagement header + `Content calendar`.
+
+States 2–3 need a real session: pass
+`--cookie 'oa_access=…; oa_refresh=…'` (or `PORTAL_SMOKE_COOKIE`) from a
+logged-in browser's devtools, or let the script drive the real email-OTP flow
+with `--login-email you@example.com --otp-command '<cmd printing the code>'`.
+Select with `--state logged-in --expect empty|engagement`. These two states are
+the **manual pre-owner-handoff gate**: they cannot run unattended in the deploy
+script (they need an inbox or a live session), so run them after every deploy
+that touches `/portal`, auth/session, or the engagement API, and attach all
+three PNGs to the closeout receipt before telling the owner it is ready.
+
+Engagement bindings are identity-critical: bind clients by
+`clientUserId` (the `users.id` the client actually signs in with — verify in
+prod, do not guess from an email) or verify the email you bind is EXACTLY the
+session email of the account they browse with. The #8652 failure was a demo
+engagement bound to an email belonging to a different GitHub account than the
+owner's.
 
 ## openagents.com Worker deploy safety gate (AAR 2026-06-25 — read before deploying)
 

@@ -298,6 +298,39 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
       verification:
         "bun run --cwd apps/openagents.com/workers/api test -- src/portal-routes.test.ts proves receipt minting, idempotency, and immutability; bun run --cwd apps/openagents.com/apps/start test -- src/routes/-portal.test.tsx proves the rendered receipt ref and optimistic rollback.",
     },
+    {
+      authorityBoundary:
+        "Presentation-only guarantee over the authenticated /portal empty state: it names the caller's own session identity (email, else provider login, else an honest fallback) and links the existing /logout route. It grants no engagement access, adds no lookup route, and never renders anyone else's identity.",
+      blockerRefs: [],
+      contractId: "openagents_web.portal_empty_state_account_identity.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "apps/openagents.com/apps/start/src/routes/-portal-core.ts",
+        "github:OpenAgentsInc/openagents#8652",
+      ],
+      oracles: [
+        {
+          description:
+            "View + DOM proof: the authenticated empty state renders 'Signed in as <session email>' (login fallback, honest no-email fallback — never blank), the different-email guidance, and a 'Sign out / switch account' affordance targeting /logout.",
+          id: "openagents_web.portal_empty_state_identity.surface",
+          kind: "bun-test",
+          mode: "dom",
+          ref: "apps/openagents.com/apps/start/src/routes/-portal.test.tsx",
+        },
+      ],
+      productArea: "client portal engagement access",
+      source: {
+        channel: "session",
+        statedBy: "owner",
+        statedOn: "2026-07-10",
+      },
+      state: "enforced",
+      statement:
+        "Owner, 2026-07-10, after seeing only 'Your setup is being prepared' on /portal while logged in with no engagement, no account context, and no way to log in or switch: \"it will [go out] when it actually works... theres something horribly missing about your QA process that you would put this in front of me as ready for testing.\" The authenticated empty state must always show WHICH account/email the caller is signed in as, say that an engagement set up under a different email is the likely cause, and offer a sign-out/switch-account affordance.",
+      surface: "openagents-web",
+      verification:
+        "bun run --cwd apps/openagents.com/apps/start test -- src/routes/-portal.test.tsx proves the signed-in identity line, the fallback chain, the different-email guidance, and the /logout affordance on the empty state; the #8652 reopen receipts carry the deployed browser screenshots (logged out, logged in without engagement, logged in with engagement).",
+    },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
   version: "2026-07-10.2",

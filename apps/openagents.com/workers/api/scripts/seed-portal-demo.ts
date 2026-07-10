@@ -19,6 +19,19 @@
 //     -d '{"clientEmail":"client@example.com"}'
 // The client then logs into openagents.com with that email (or GitHub account
 // whose session email matches); their first /portal visit pins their user id.
+//
+// BIND BY THE IDENTITY THE CLIENT ACTUALLY SIGNS IN WITH (#8652 reopen).
+// An email binding only matches if it EXACTLY equals the client's session
+// email (their GitHub primary email for GitHub logins). Guessing wrong ships
+// the client an empty portal. When the client already has an account, prefer
+// the authoritative user-id bind (verify the prod `users.id` first):
+//   curl -sS -X POST "$BASE/api/portal/admin/engagements/<id>/bind" \
+//     -H "authorization: Bearer $OPENAGENTS_ADMIN_API_TOKEN" \
+//     -H 'content-type: application/json' \
+//     -d '{"clientUserId":"github:<id>"}'
+// After ANY bind, run the real-browser gate before owner/client handoff:
+//   scripts/portal-browser-smoke.ts (docs/DEPLOYMENT.md "Portal real-browser
+//   smoke").
 
 type SeedItem = Readonly<{
   kind: 'post'

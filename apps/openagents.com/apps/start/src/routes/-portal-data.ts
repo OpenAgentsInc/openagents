@@ -10,26 +10,55 @@ export const PORTAL_ENGAGEMENT_URL = '/api/portal/engagement'
 
 export type PortalAuthMode = 'LoggedIn' | 'LoggedOut'
 
-export const fetchPortalAuthMode = async (
+/**
+ * Signed-in identity as the session endpoint reports it. The portal renders
+ * this on the authenticated empty state so a client whose engagement was
+ * bound to a DIFFERENT email can immediately see which account they are
+ * signed in as (#8652 reopen: the owner hit exactly this blind spot).
+ */
+export type PortalSessionIdentity = Readonly<{
+  email: string | null
+  login: string | null
+}>
+
+export type PortalSessionState =
+  | Readonly<{ mode: 'LoggedIn'; identity: PortalSessionIdentity }>
+  | Readonly<{ mode: 'LoggedOut' }>
+
+export const fetchPortalSession = async (
   fetchFn: typeof fetch = fetch,
   url: string = PORTAL_SESSION_URL,
-): Promise<PortalAuthMode> => {
+): Promise<PortalSessionState> => {
   try {
     const response = await fetchFn(url, {
       cache: 'no-store',
       credentials: 'include',
       headers: { accept: 'application/json' },
     })
-    if (!response.ok) return 'LoggedOut'
-    const body = (await response.json()) as { authenticated?: unknown }
-    return body.authenticated === true ? 'LoggedIn' : 'LoggedOut'
+    if (!response.ok) return { mode: 'LoggedOut' }
+    const body = (await response.json()) as {
+      authenticated?: unknown
+      bootstrap?: { session?: { email?: unknown; login?: unknown } }
+    }
+    if (body.authenticated !== true) return { mode: 'LoggedOut' }
+    const session = body.bootstrap?.session
+    return {
+      mode: 'LoggedIn',
+      identity: {
+        email: typeof session?.email === 'string' ? session.email : null,
+        login: typeof session?.login === 'string' ? session.login : null,
+      },
+    }
   } catch {
-    return 'LoggedOut'
+    return { mode: 'LoggedOut' }
   }
 }
 
 export const portalLoginHref = (returnPath: string): string =>
   `/login/github?returnTo=${encodeURIComponent(returnPath)}`
+
+/** Sign-out/switch-account affordance target (Worker route `/logout`). */
+export const portalSignOutHref = '/logout'
 
 export type PortalEngagementSummary = Readonly<{
   id: string

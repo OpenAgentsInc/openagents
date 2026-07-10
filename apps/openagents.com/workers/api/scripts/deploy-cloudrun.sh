@@ -258,4 +258,19 @@ if [[ "${SARAH_SKIP_AVATAR_SMOKE:-}" != "1" ]]; then
   echo "==> Smoke: sarah avatar e2e (synthetic prospect)"
   SARAH_SMOKE_BASE_URL="$SERVICE_URL" bun "$REPO_ROOT/apps/sarah/scripts/sarah-avatar-e2e-smoke.mjs"
 fi
+
+# Portal REAL-BROWSER smoke (#8652 reopen): headless Chromium loads /portal on
+# the deployed service and proves the logged-out login gate pixel-level
+# (screenshot receipt). Curl checks alone shipped a broken owner-visible state
+# once; never again. Logged-in states (empty-with-identity / engagement) are
+# the pre-owner-handoff gate — see docs/DEPLOYMENT.md and
+# scripts/portal-browser-smoke.ts. Requires `bunx playwright install chromium`
+# once per machine; skip with PORTAL_SKIP_BROWSER_SMOKE=1.
+if [[ "${PORTAL_SKIP_BROWSER_SMOKE:-}" != "1" ]]; then
+  echo "==> Smoke: portal real-browser (logged-out login gate)"
+  bun "$API_DIR/scripts/portal-browser-smoke.ts" \
+    --base-url "$SERVICE_URL" \
+    --state logged-out \
+    --out-dir "${PORTAL_SMOKE_OUT_DIR:-/tmp/portal-smoke-${TARGET}}"
+fi
 echo "==> Done."

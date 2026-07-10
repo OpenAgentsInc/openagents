@@ -42,14 +42,16 @@ import { Effect, Schema, SubscriptionRef } from '@effect-native/core/effect'
 import { khalaTheme } from '@effect-native/tokens'
 
 import {
-  fetchPortalAuthMode,
   fetchPortalEngagement,
+  fetchPortalSession,
   portalLoginHref,
+  portalSignOutHref,
   submitPortalDecision,
   type PortalContentItem,
   type PortalDecision,
   type PortalEngagementSummary,
   type PortalKpi,
+  type PortalSessionIdentity,
 } from './-portal-data'
 
 // ---------------------------------------------------------------------------
@@ -64,6 +66,10 @@ export type PortalDecisionPanel = Readonly<{
 
 export type PortalPageState = Readonly<{
   phase: 'loading' | 'logged_out' | 'empty' | 'ready' | 'unavailable'
+  /** Signed-in identity from /api/auth/session (null while logged out or
+   * loading). Rendered on the authenticated empty state so a mismatched
+   * engagement binding is self-diagnosable (#8652 reopen). */
+  identity: PortalSessionIdentity | null
   engagement: PortalEngagementSummary | null
   items: ReadonlyArray<PortalContentItem>
   kpis: ReadonlyArray<PortalKpi>
@@ -72,6 +78,7 @@ export type PortalPageState = Readonly<{
 
 export const initialPortalPageState: PortalPageState = {
   phase: 'loading',
+  identity: null,
   engagement: null,
   items: [],
   kpis: [],
@@ -203,7 +210,21 @@ const loginGateView = (): View =>
     ),
   ])
 
-const emptyStateView = (): View =>
+/** Human-readable signed-in identity: prefer the session email, then the
+ * provider login, then an honest fallback. Never blank. */
+export const portalIdentityLabel = (
+  identity: PortalSessionIdentity | null,
+): string => {
+  if (identity?.email !== null && identity?.email !== undefined && identity.email !== '') {
+    return identity.email
+  }
+  if (identity?.login !== null && identity?.login !== undefined && identity.login !== '') {
+    return identity.login
+  }
+  return 'your account (no email on this session)'
+}
+
+const emptyStateView = (identity: PortalSessionIdentity | null): View =>
   surfaceCard('portal-empty', [
     text('portal-empty-title', 'Your setup is being prepared', 'heading'),
     text(
@@ -215,9 +236,21 @@ const emptyStateView = (): View =>
     StatusBanner({
       key: 'portal-empty-banner',
       tone: 'info',
-      message: 'No engagement is linked to this account yet.',
+      message: `No engagement is linked to this account yet. Signed in as ${portalIdentityLabel(identity)}.`,
       style: { width: 'full' },
     }),
+    text(
+      'portal-empty-identity-help',
+      'If your engagement was set up under a different email, contact your OpenAgents team with the address above — or switch to the account it was set up with.',
+      'body',
+      'textMuted',
+    ),
+    actionButton(
+      'portal-empty-signout',
+      'Sign out / switch account',
+      navigateIntent(portalSignOutHref),
+      'secondary',
+    ),
   ])
 
 const unavailableView = (): View =>
@@ -450,7 +483,7 @@ const contentCalendarView = (state: PortalPageState): View =>
 
 const readyView = (state: PortalPageState): ReadonlyArray<View> => {
   const engagement = state.engagement
-  if (engagement === null) return [emptyStateView()]
+  if (engagement === null) return [emptyStateView(state.identity)]
   return [
     surfaceCard('portal-header', [
       Stack(
@@ -513,7 +546,7 @@ export const portalPageView = (state: PortalPageState): View =>
           : state.phase === 'logged_out'
             ? [loginGateView()]
             : state.phase === 'empty'
-              ? [emptyStateView()]
+              ? [emptyStateView(state.identity)]
               : state.phase === 'unavailable'
                 ? [unavailableView()]
                 : readyView(state),
@@ -623,22 +656,24 @@ export const mountPortalSurface = (
     // Login gate first, then the owner-scoped engagement read. Fail-soft:
     // any failure renders the honest unavailable state.
     yield* Effect.promise(async () => {
-      const authMode = await fetchPortalAuthMode(fetchFn)
-      if (authMode === 'LoggedOut') {
+      const session = await fetchPortalSession(fetchFn)
+      if (session.mode === 'LoggedOut') {
         return { phase: 'logged_out' as const }
       }
+      const identity = session.identity
       const snapshot = await fetchPortalEngagement(fetchFn)
       if (snapshot === null) {
-        return { phase: 'unavailable' as const }
+        return { phase: 'unavailable' as const, identity }
       }
       if (snapshot.kind === 'unauthorized') {
         return { phase: 'logged_out' as const }
       }
       if (snapshot.kind === 'none') {
-        return { phase: 'empty' as const }
+        return { phase: 'empty' as const, identity }
       }
       return {
         phase: 'ready' as const,
+        identity,
         engagement: snapshot.engagement,
         items: snapshot.items,
         kpis: snapshot.kpis,
