@@ -139,7 +139,7 @@ describe("behavior contract registry", () => {
     const validation = validateBehaviorContractRegistry(decoded)
 
     expect(validation).toEqual({ issues: [], ok: true })
-    expect(decoded.contracts).toHaveLength(6)
+    expect(decoded.contracts).toHaveLength(8)
     const pending = decoded.contracts.filter(contract => contract.state === "pending")
     expect(pending).toHaveLength(4)
     expect(
@@ -170,6 +170,65 @@ describe("behavior contract registry", () => {
     expect(sarahSurface?.oracles[0]?.ref).toBe(
       "apps/openagents-mobile/tests/sarah-surface.test.ts",
     )
+    // PORTAL-1 (#8652): client portal owner scoping + decision receipts,
+    // enforced in the workers/api + apps/start test sweeps.
+    const portalScoping = decoded.contracts.find(
+      contract =>
+        contract.contractId === "openagents_web.portal_owner_scoped_engagement.v1",
+    )
+    expect(portalScoping?.state).toBe("enforced")
+    expect(portalScoping?.enforcementTier).toBe("test-sweep")
+    expect(portalScoping?.statement).toContain("NEVER read another engagement")
+    expect(portalScoping?.oracles.map(oracle => oracle.ref)).toEqual([
+      "apps/openagents.com/workers/api/src/portal-routes.test.ts",
+      "apps/openagents.com/apps/start/src/routes/-portal.test.tsx",
+    ])
+    const portalReceipts = decoded.contracts.find(
+      contract =>
+        contract.contractId === "openagents_web.portal_decision_receipts.v1",
+    )
+    expect(portalReceipts?.state).toBe("enforced")
+    expect(portalReceipts?.statement).toBe("Decisions always produce receipts.")
+  })
+
+  test("portal oracle coverage links against the REAL portal test sources on disk", async () => {
+    const portalContracts = openAgentsAppsContractRegistry.contracts.filter(
+      contract => contract.contractId.startsWith("openagents_web.portal_"),
+    )
+    expect(portalContracts).toHaveLength(2)
+    const registry = {
+      ...openAgentsAppsContractRegistry,
+      contracts: portalContracts,
+    }
+    const report = await Effect.runPromise(
+      checkBehaviorContractCoverage(registry).pipe(
+        Effect.provide(
+          inMemoryOracleSourceLayer(
+            Object.fromEntries(
+              await Promise.all(
+                portalContracts
+                  .flatMap(contract => contract.oracles)
+                  .map(async oracle => {
+                    const file = Bun.file(repoPath(oracle.ref))
+                    return [
+                      oracle.ref,
+                      (await file.exists()) ? await file.text() : "",
+                    ] as const
+                  }),
+              ),
+            ),
+          ),
+        ),
+      ),
+    )
+    // Each enforced portal oracle file exists on disk AND references the
+    // owning contractId, so the contract cannot drift away from the sweep
+    // that claims to enforce it.
+    expect(report.results.map(result => result.status)).toEqual(
+      Array.from({ length: report.results.length }, () => "covered"),
+    )
+    expect(report.results.length).toBeGreaterThanOrEqual(4)
+    expect(report.ok).toBe(true)
   })
 
   test("decodes a well-formed registry document", () => {

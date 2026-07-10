@@ -216,7 +216,89 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
       verification:
         "bun test apps/openagents-mobile/tests/sarah-surface.test.ts proves the view-program contract; the #8649 receipt carries the production pixel proof (real prospect session + live Sarah reply in the shell) and the restart-persistence + reconnect evidence.",
     },
+    {
+      authorityBoundary:
+        "Owner scoping binds the Worker portal API (/api/portal/*): engagement reads resolve only through the caller's verified session identity, and admin creation/binding/seeding stays behind the operator bearer token. This contract does not authorize any client-facing engagement-id lookup route.",
+      blockerRefs: [],
+      contractId: "openagents_web.portal_owner_scoped_engagement.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "apps/openagents.com/workers/api/src/portal-routes.ts",
+        "apps/openagents.com/workers/api/migrations/0315_portal_engagements_and_content_items.sql",
+        "github:OpenAgentsInc/openagents#8652",
+      ],
+      oracles: [
+        {
+          description:
+            "Route-level isolation proof against the real 0315 migration schema: a second client (different user id, same or different email) reads engagement:null, cannot decide the first client's content item (404, no existence leak, item stays draft), and a bound client_user_id is authoritative over any email match.",
+          id: "openagents_web.portal_owner_scoping.routes",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/openagents.com/workers/api/src/portal-routes.test.ts",
+        },
+        {
+          description:
+            "The /portal Effect Native surface is login-gated: logged-out renders only the login gate (never engagement content), and the surface offers no foreign-engagement lookup — it can only fetch the caller's own engagement.",
+          id: "openagents_web.portal_owner_scoping.surface",
+          kind: "bun-test",
+          mode: "dom",
+          ref: "apps/openagents.com/apps/start/src/routes/-portal.test.tsx",
+        },
+      ],
+      productArea: "client portal engagement access",
+      source: {
+        channel: "issue",
+        statedBy: "owner",
+        statedOn: "2026-07-10",
+      },
+      state: "enforced",
+      statement:
+        "Clients see only their own engagement. Owner-scoped fail-closed: a client can NEVER read another engagement.",
+      surface: "openagents-web",
+      verification:
+        "bun run --cwd apps/openagents.com/workers/api test -- src/portal-routes.test.ts proves cross-client isolation against the real migration schema; bun run --cwd apps/openagents.com/apps/start test -- src/routes/-portal.test.tsx proves the login gate and own-engagement-only surface.",
+    },
+    {
+      authorityBoundary:
+        "Receipts bind the decision write only: a decision receipt does not mark content as published, does not authorize publishing automation, and never flips after minting (idempotent repeats return the same receipt; opposite decisions are refused).",
+      blockerRefs: [],
+      contractId: "openagents_web.portal_decision_receipts.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "apps/openagents.com/workers/api/src/portal-store.ts",
+        "github:OpenAgentsInc/openagents#8652",
+      ],
+      oracles: [
+        {
+          description:
+            "Store + route proof: approve and reject each mint an immutable portal_content_decision:<id> receipt with decided_at, idempotent same-decision repeats return the identical receipt, and flipping a decided item is refused with a typed 422.",
+          id: "openagents_web.portal_decision_receipts.routes",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/openagents.com/workers/api/src/portal-routes.test.ts",
+        },
+        {
+          description:
+            "Surface proof: approve/reject dispatch typed intents, the optimistic card state commits on success with the minted receipt ref rendered inline, and a failed decision rolls the item back to draft.",
+          id: "openagents_web.portal_decision_receipts.surface",
+          kind: "bun-test",
+          mode: "dom",
+          ref: "apps/openagents.com/apps/start/src/routes/-portal.test.tsx",
+        },
+      ],
+      productArea: "client portal content decisions",
+      source: {
+        channel: "issue",
+        statedBy: "owner",
+        statedOn: "2026-07-10",
+      },
+      state: "enforced",
+      statement: "Decisions always produce receipts.",
+      surface: "openagents-web",
+      verification:
+        "bun run --cwd apps/openagents.com/workers/api test -- src/portal-routes.test.ts proves receipt minting, idempotency, and immutability; bun run --cwd apps/openagents.com/apps/start test -- src/routes/-portal.test.tsx proves the rendered receipt ref and optimistic rollback.",
+    },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-10.1",
+  version: "2026-07-10.2",
 }
