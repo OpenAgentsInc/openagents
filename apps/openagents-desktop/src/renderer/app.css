@@ -435,6 +435,14 @@ textarea:focus-visible {
   font-size: 15px;
 }
 
+/* The composer is already the visible input affordance; do not draw a second
+   rectangular focus ring inside its rounded capsule. */
+[data-en-key="shell-input"] input:focus,
+[data-en-key="shell-input"] input:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
 @media (max-width: 760px) {
   #openagents-desktop-root {
     padding: 10px;
