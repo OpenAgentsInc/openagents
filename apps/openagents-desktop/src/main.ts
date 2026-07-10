@@ -12,8 +12,15 @@
  */
 import path from "node:path"
 import { randomUUID } from "node:crypto"
-import { BrowserWindow, app, dialog, ipcMain, session } from "electron"
+import { BrowserWindow, app, dialog, ipcMain, session, shell } from "electron"
 
+import {
+  CodexAccountsChannel,
+  CodexConnectOpenChannel,
+  CodexConnectStartChannel,
+  CodexConnectStatusChannel,
+} from "./codex-connect-contract.ts"
+import { makeCodexConnectService, makeFixtureSpawnPylon } from "./codex-connect.ts"
 import { FleetStageChannel, decodeFleetStageRequest, unavailableFleetStageResult } from "./fleet-contract.ts"
 import { submitFleetBrief } from "./fleet-control.ts"
 import { completeChatTurn } from "./chat-service.ts"
@@ -24,6 +31,16 @@ import { inspectWorkspace, readWorkspaceFile } from "./workspace-service.ts"
 
 const here = import.meta.dirname
 const smokeMode = process.env.OPENAGENTS_DESKTOP_SMOKE === "1"
+
+// Smoke runs headless and can never complete a real browser device-auth, so
+// it uses a scripted fixture child (clearly logged; never in normal runs).
+if (smokeMode) {
+  console.log("[openagents-desktop] codex-connect running in SMOKE FIXTURE mode (no real pylon spawn)")
+}
+const codexConnect = makeCodexConnectService(here, {
+  ...(smokeMode ? { spawnPylon: makeFixtureSpawnPylon() } : {}),
+  openExternal: (url) => shell.openExternal(url),
+})
 
 // Interim development identity ONLY. The frozen macOS bundle ID / Windows
 // AppUserModelId / deep-link scheme / userData path / update channel are an
@@ -89,6 +106,14 @@ ipcMain.handle(DesktopChatTurnChannel, async (_event, value: unknown) => {
     return { ok: false, error: error instanceof Error ? error.message : "The model request failed." }
   }
 })
+
+// Codex account reconnect (#8640 unblock): renderer-argument-free channels
+// only. Main owns the pylon child processes and the verification URL; the
+// renderer polls typed status and never sees tokens, emails, or raw output.
+ipcMain.handle(CodexAccountsChannel, () => codexConnect.listAccounts())
+ipcMain.handle(CodexConnectStartChannel, () => codexConnect.start())
+ipcMain.handle(CodexConnectStatusChannel, () => codexConnect.status())
+ipcMain.handle(CodexConnectOpenChannel, () => codexConnect.openVerification())
 
 // Deny-by-default for every WebContents: no navigation away from the bundled
 // renderer, no window.open, no <webview> attachment.
@@ -241,6 +266,62 @@ const smokePingLoop = `(async () => {
   }
 })()`
 
+const smokeOpenSettings = `(async () => {
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+  const button = document.querySelector('[data-en-key="shell-settings-toggle"]')
+  if (button === null) return { ok: false, reason: "Settings toggle never mounted" }
+  button.click()
+  const deadline = Date.now() + 5000
+  while (
+    Date.now() < deadline &&
+    document.querySelector('[data-en-key="settings-account-codex-2-readiness"]') === null
+  ) {
+    await wait(50)
+  }
+  const revoked = document.querySelector('[data-en-key="settings-account-codex-2-readiness"]')
+  const connect = document.querySelector('[data-en-key="settings-connect-codex"]')
+  return {
+    ok: revoked !== null && revoked.textContent === "credentials_revoked" &&
+      connect !== null && connect.textContent === "Connect Codex account",
+    revokedChip: revoked === null ? null : revoked.textContent,
+    connectLabel: connect === null ? null : connect.textContent,
+  }
+})()`
+
+const smokeConnectCodex = `(async () => {
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+  const button = document.querySelector('[data-en-key="settings-connect-codex"]')
+  if (button === null) return { ok: false, reason: "Connect button never mounted" }
+  button.click()
+  const deadline = Date.now() + 10000
+  while (
+    Date.now() < deadline &&
+    document.querySelector('[data-en-key="settings-connect-code"]') === null
+  ) {
+    await wait(100)
+  }
+  const code = document.querySelector('[data-en-key="settings-connect-code"]')
+  const link = document.querySelector('[data-en-key="settings-connect-link"]')
+  return {
+    ok: code !== null && code.textContent === "1234-ABCDE" &&
+      link !== null && link.textContent === "https://auth.openai.com/codex/device",
+    code: code === null ? null : code.textContent,
+    link: link === null ? null : link.textContent,
+  }
+})()`
+
+const smokeCloseSettings = `(async () => {
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+  const button = document.querySelector('[data-en-key="settings-back"]')
+  if (button === null) return { ok: false, reason: "Settings back button never mounted" }
+  button.click()
+  const deadline = Date.now() + 5000
+  while (Date.now() < deadline && document.querySelector('[data-en-key="shell-input"]') === null) {
+    await wait(50)
+  }
+  return { ok: document.querySelector('[data-en-key="shell-input"]') !== null }
+})()`
+
 const captureShot = async (window: BrowserWindow, name: string): Promise<void> => {
   if (smokeShotsDir === undefined || smokeShotsDir === "") return
   const image = await window.webContents.capturePage()
@@ -277,6 +358,14 @@ const runSmoke = (window: BrowserWindow): void => {
         await captureShot(window, "02-composer-typed")
         await step("composer-submit-clears", smokeSubmitComposer)
         await captureShot(window, "03-composer-cleared")
+        // Settings / Codex reconnect (#8640 unblock). Headless smoke cannot
+        // complete a real browser device-auth, so main runs a FIXTURE spawn:
+        // the awaiting_browser receipt below shows scripted fixture data.
+        await step("settings-open-accounts", smokeOpenSettings)
+        await captureShot(window, "04-settings-accounts")
+        await step("settings-connect-awaiting-browser-FIXTURE", smokeConnectCodex)
+        await captureShot(window, "05-settings-awaiting-browser-fixture")
+        await step("settings-back-to-chat", smokeCloseSettings)
         clearTimeout(timeout)
         console.log("[openagents-desktop smoke] OK")
         app.exit(0)
@@ -296,9 +385,15 @@ void app.whenReady().then(() => {
 })
 
 app.on("window-all-closed", () => {
+  // Kill any in-flight pylon device-auth child with the window.
+  codexConnect.dispose()
   if (process.platform !== "darwin" || smokeMode) {
     app.quit()
   }
+})
+
+app.on("before-quit", () => {
+  codexConnect.dispose()
 })
 
 app.on("activate", () => {

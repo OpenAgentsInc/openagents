@@ -25,6 +25,7 @@ import {
   IntentRef,
   Icon,
   IconButton,
+  Spacer,
   Stack,
   Text,
   TextField,
@@ -39,6 +40,16 @@ import {
 import { Effect, Schema, SubscriptionRef } from "@effect-native/core/effect"
 import type { DesktopThread } from "../chat-contract.ts"
 import type { DesktopWorkspaceFile, DesktopWorkspaceSnapshot } from "../workspace-contract.ts"
+
+import {
+  initialSettingsState,
+  makeSettingsHandlers,
+  settingsIntents,
+  settingsView,
+  unavailableCodexSettingsBridge,
+  type CodexSettingsBridge,
+  type SettingsState,
+} from "./settings.ts"
 
 export type DesktopNoteEntry = Readonly<{
   key: string
@@ -71,6 +82,8 @@ export type DesktopShellState = Readonly<{
   fleetDeployment: "not_requested" | "dispatching" | "accepted" | "rejected" | "unavailable"
   /** Count of completed button -> intent -> state -> re-render round trips. */
   loopProofs: number
+  /** Codex account reconnect state, shown by the "settings" workspace (see ./settings.ts). */
+  settings: SettingsState
 }>
 
 /** "18:04" — display-string timestamps for the typed message contract. */
@@ -98,6 +111,7 @@ export const initialDesktopShellState = (
   fleetObjective: "",
   fleetDeployment: "not_requested",
   loopProofs: 0,
+  settings: initialSettingsState(),
 })
 
 // ---------------------------------------------------------------------------
@@ -145,6 +159,7 @@ export const desktopShellIntents = [
   DesktopWorkspaceSelected,
   DesktopWorkspacePickerRequested,
   DesktopWorkspaceFileSelected,
+  ...settingsIntents,
 ] as const
 
 // ---------------------------------------------------------------------------
@@ -327,7 +342,10 @@ export const makeDesktopShellHandlers = (
   workspaceHost: WorkspaceHost = {
     summary: async () => null, choose: async () => null, readFile: async () => null,
   },
+  codexBridge: CodexSettingsBridge = unavailableCodexSettingsBridge,
+  settingsSleep?: (ms: number) => Promise<void>,
 ): IntentHandlers<typeof desktopShellIntents> => ({
+  ...makeSettingsHandlers(state, codexBridge, settingsSleep),
   DesktopInputChanged: (value) =>
     SubscriptionRef.update(state, (current) => withInput(current, value)),
   DesktopNoteSubmitted: (value) =>
@@ -429,7 +447,24 @@ const shellHeader = (state: DesktopShellState): View =>
       },
     },
     [
-      Text({ key: "shell-title", content: state.workspace === "home" ? "Home" : state.threads.find((thread) => thread.id === state.activeThreadId)?.title ?? "New chat", variant: "title", color: "textPrimary" }),
+      Text({
+        key: "shell-title",
+        content: state.workspace === "settings"
+          ? "Settings"
+          : state.workspace === "home"
+            ? "Home"
+            : state.threads.find((thread) => thread.id === state.activeThreadId)?.title ?? "New chat",
+        variant: "title",
+        color: "textPrimary",
+      }),
+      Spacer({ key: "shell-header-fill", flex: true }),
+      Button({
+        key: "shell-settings-toggle",
+        label: state.workspace === "settings" ? "Back to chat" : "Settings",
+        variant: "ghost",
+        onPress: IntentRef("DesktopSettingsToggled"),
+        a11y: { label: state.workspace === "settings" ? "Close Settings" : "Open Settings" },
+      }),
     ],
   )
 
@@ -753,7 +788,7 @@ export const desktopShellView = (state: DesktopShellState): View =>
               paddingRight: "4",
               gap: "5",
             },
-          })] : state.workspace === "files" ? [workspaceFiles(state)] : [projectHome(state)]),
+          })] : state.workspace === "files" ? [workspaceFiles(state)] : state.workspace === "settings" ? [settingsView(state.settings)] : [projectHome(state)]),
           ...(state.workspace === "chat" ? [shellComposer(state)] : []),
         ],
       ),

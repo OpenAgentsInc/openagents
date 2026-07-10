@@ -13,6 +13,12 @@
 import { contextBridge, ipcRenderer } from "electron"
 
 import {
+  CodexAccountsChannel,
+  CodexConnectOpenChannel,
+  CodexConnectStartChannel,
+  CodexConnectStatusChannel,
+} from "./codex-connect-contract.ts"
+import {
   FleetStageChannel,
   decodeFleetStageRequest,
   unavailableFleetStageResult,
@@ -47,4 +53,13 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
     const request = decodeWorkspaceFileRequest(value)
     return request === null ? Promise.resolve(null) : ipcRenderer.invoke(DesktopWorkspaceReadChannel, request)
   },
+  /**
+   * Codex account reconnect (#8640 unblock): four renderer-argument-free
+   * calls. Main holds every input (including the verification URL it opens);
+   * the renderer only receives public-safe typed projections it schema-checks.
+   */
+  codexAccounts: () => ipcRenderer.invoke(CodexAccountsChannel),
+  codexConnectStart: () => ipcRenderer.invoke(CodexConnectStartChannel),
+  codexConnectStatus: () => ipcRenderer.invoke(CodexConnectStatusChannel),
+  codexConnectOpenVerification: () => ipcRenderer.invoke(CodexConnectOpenChannel),
 })

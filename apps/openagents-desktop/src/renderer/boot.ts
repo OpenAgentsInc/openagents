@@ -18,6 +18,10 @@ import { Effect, Exit, Schema, Scope, SubscriptionRef } from "@effect-native/cor
 import { makeDomRenderer } from "@effect-native/render-dom"
 
 import {
+  unavailableCodexSettingsBridge,
+  type CodexSettingsBridge,
+} from "./settings.ts"
+import {
   desktopShellIntents,
   desktopShellView,
   initialDesktopShellState,
@@ -44,7 +48,46 @@ type DesktopBridge = Readonly<{
   workspaceSummary?: () => Promise<unknown>
   chooseWorkspace?: () => Promise<unknown>
   readWorkspaceFile?: (value: unknown) => Promise<unknown>
+  codexAccounts?: () => Promise<unknown>
+  codexConnectStart?: () => Promise<unknown>
+  codexConnectStatus?: () => Promise<unknown>
+  codexConnectOpenVerification?: () => Promise<unknown>
 }>
+
+const readBridge = (): DesktopBridge | undefined =>
+  (globalThis as { openagentsDesktop?: DesktopBridge }).openagentsDesktop
+
+/**
+ * Codex settings bridge over the preload surface. Each call degrades to the
+ * honest unavailable projection when the bridge is absent; the settings
+ * handlers schema-decode every response before it touches state.
+ */
+const codexSettingsBridge: CodexSettingsBridge = {
+  listAccounts: () => {
+    const bridge = readBridge()
+    return typeof bridge?.codexAccounts === "function"
+      ? bridge.codexAccounts()
+      : unavailableCodexSettingsBridge.listAccounts()
+  },
+  connectStart: () => {
+    const bridge = readBridge()
+    return typeof bridge?.codexConnectStart === "function"
+      ? bridge.codexConnectStart()
+      : unavailableCodexSettingsBridge.connectStart()
+  },
+  connectStatus: () => {
+    const bridge = readBridge()
+    return typeof bridge?.codexConnectStatus === "function"
+      ? bridge.codexConnectStatus()
+      : unavailableCodexSettingsBridge.connectStatus()
+  },
+  openVerification: () => {
+    const bridge = readBridge()
+    return typeof bridge?.codexConnectOpenVerification === "function"
+      ? bridge.codexConnectOpenVerification()
+      : unavailableCodexSettingsBridge.openVerification()
+  },
+}
 
 export const decodeBridgeHost = (bridge: unknown): string => {
   const decoded = Schema.decodeUnknownExit(DesktopBridgeSchema)(bridge)
@@ -119,7 +162,7 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
           const raw = await (globalThis as { openagentsDesktop?: DesktopBridge }).openagentsDesktop?.readWorkspaceFile?.({ path })
           return typeof raw === "object" && raw !== null && typeof (raw as { content?: unknown }).content === "string" ? raw as DesktopWorkspaceFile : null
         },
-      }),
+      }, codexSettingsBridge),
     )
     const bridge = (globalThis as { openagentsDesktop?: DesktopBridge }).openagentsDesktop
     const existing = typeof bridge?.listThreads === "function" ? yield* Effect.promise(bridge.listThreads) : []
