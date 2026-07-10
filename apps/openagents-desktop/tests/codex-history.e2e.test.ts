@@ -7,7 +7,7 @@ import { validateBehaviorContractRegistry } from "@openagentsinc/behavior-contra
 import { findRecentCodexThread } from "../src/codex-history.ts"
 import { openAgentsDesktopUxContractRegistry } from "../src/contracts/ux-contracts.ts"
 
-const contractId = "openagents_desktop.chat.thread_first_content_under_1s.v1"
+const contractId = "openagents_desktop.chat.thread_first_content_under_50ms.v1"
 
 describe(contractId, () => {
   test("registry is valid and the performance contract is enforced", () => {
@@ -15,7 +15,7 @@ describe(contractId, () => {
     expect(openAgentsDesktopUxContractRegistry.contracts.find(contract => contract.contractId === contractId)?.state).toBe("enforced")
   })
 
-  test("projects first content from a 256 MiB rollout in under one second", () => {
+  test("projects first content from a 256 MiB rollout in under 50 milliseconds", () => {
     const root = mkdtempSync(path.join(tmpdir(), "openagents-desktop-large-rollout-"))
     try {
       const sessions = path.join(root, "sessions", "2026", "07", "10")
@@ -31,7 +31,7 @@ describe(contractId, () => {
       const elapsedMs = performance.now() - started
 
       expect(thread?.notes.at(-1)?.text).toBe("Immediate bounded content")
-      expect(elapsedMs).toBeLessThan(1_000)
+      expect(elapsedMs).toBeLessThan(50)
     } finally { rmSync(root, { recursive: true, force: true }) }
   })
 })
