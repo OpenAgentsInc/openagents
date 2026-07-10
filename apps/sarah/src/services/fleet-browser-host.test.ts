@@ -26,10 +26,12 @@ const commandEventRef = `event.pylon.fleet_run.${"a".repeat(24)}`
 const commandApprovalRef = "approval.fc3.codex"
 
 const commandProjection = (input?: Readonly<{
+  attemptRef?: string
   latestAttemptRef?: string
   attemptState?: "running" | "failed"
 }>): SarahFleetOwnerProjection => {
-  const latestAttemptRef = input?.latestAttemptRef ?? commandAttemptRef
+  const attemptRef = input?.attemptRef ?? commandAttemptRef
+  const latestAttemptRef = input?.latestAttemptRef ?? attemptRef
   const attemptState = input?.attemptState ?? "running"
   return {
     run: { runRef: config.runRef },
@@ -39,12 +41,12 @@ const commandProjection = (input?: Readonly<{
         state: attemptState,
         latestAttemptRef,
         approvalRefs:
-          latestAttemptRef === commandAttemptRef && attemptState === "running"
+          latestAttemptRef === attemptRef && attemptState === "running"
             ? [commandApprovalRef]
             : [],
         attempts: [
           {
-            attemptRef: commandAttemptRef,
+            attemptRef,
             workUnitRef: commandWorkUnitRef,
             assignmentRef: null,
             workerRef: commandWorkerRef,
@@ -63,7 +65,7 @@ const commandProjection = (input?: Readonly<{
         bindingStatus: "exact",
         runRef: config.runRef,
         workUnitRef: commandWorkUnitRef,
-        attemptRef: commandAttemptRef,
+        attemptRef,
         assignmentRef: null,
         workerRef: commandWorkerRef,
         accountRefHash: null,
@@ -223,6 +225,98 @@ describe("Sarah exact-run browser host", () => {
       body: "Second private steer",
     })
     expect(bodies).toEqual(["First private steer", "Second private steer"])
+  })
+
+  test("sends exactly one inline-or-ref steer carrier", async () => {
+    let serial = 0
+    const intents: Array<Record<string, unknown>> = []
+    const commands = makeSarahFleetBrowserCommands({
+      config,
+      projection: () => commandProjection(),
+      cursor: () => 15,
+      randomId: () => `browsersteercarrier${++serial}`,
+      client: {
+        submitIntent: async (input) => {
+          intents.push(input.intent as unknown as Record<string, unknown>)
+          return {
+            intentId: input.intent.intentId,
+            mutationId: input.mutationId,
+            status: "applied",
+            lastMutationId: input.mutationId,
+          }
+        },
+      },
+    })
+    await commands.steer({
+      runRef: config.runRef,
+      targetRef: commandAttemptRef,
+      body: "Private inline steer",
+    })
+    await commands.steer({
+      runRef: config.runRef,
+      targetRef: commandAttemptRef,
+      bodyRef: "body.private.fc3.1",
+    })
+    expect(intents[0]).toMatchObject({ body: "Private inline steer" })
+    expect(intents[0]).not.toHaveProperty("bodyRef")
+    expect(intents[1]).toMatchObject({ bodyRef: "body.private.fc3.1" })
+    expect(intents[1]).not.toHaveProperty("body")
+
+    const invalid = await commands
+      .steer({
+        runRef: config.runRef,
+        targetRef: commandAttemptRef,
+        body: "Must not be sent",
+        bodyRef: "body.private.fc3.2",
+      } as never)
+      .catch((error: unknown) => error)
+    expect(invalid).toBeInstanceOf(SarahFleetBrowserHostError)
+    expect(intents).toHaveLength(2)
+  })
+
+  test("keeps a:b/c distinct from a/b:c in steer identity", async () => {
+    const firstTarget = "attempt.fc3:a:b"
+    const secondTarget = "attempt.fc3:a"
+    let projection = commandProjection({ attemptRef: firstTarget })
+    let serial = 0
+    const deliveries: Array<{ targetRef?: string; bodyRef?: string }> = []
+    const commands = makeSarahFleetBrowserCommands({
+      config,
+      projection: () => projection,
+      cursor: () => 15,
+      randomId: () => `browsersteercollision${++serial}`,
+      client: {
+        submitIntent: async (input) => {
+          if (input.intent.kind === "steer_message") {
+            deliveries.push({
+              targetRef: input.intent.targetRef,
+              bodyRef: input.intent.bodyRef,
+            })
+          }
+          return {
+            intentId: input.intent.intentId,
+            mutationId: input.mutationId,
+            status: "applied",
+            lastMutationId: input.mutationId,
+          }
+        },
+      },
+    })
+    await commands.steer({
+      runRef: config.runRef,
+      targetRef: firstTarget,
+      bodyRef: "c",
+    })
+    projection = commandProjection({ attemptRef: secondTarget })
+    await commands.steer({
+      runRef: config.runRef,
+      targetRef: secondTarget,
+      bodyRef: "b:c",
+    })
+    expect(deliveries).toEqual([
+      { targetRef: firstTarget, bodyRef: "c" },
+      { targetRef: secondTarget, bodyRef: "b:c" },
+    ])
   })
 
   test("allows only the exact current pending approval, including a nullable assignment", async () => {

@@ -1,6 +1,7 @@
 import {
   FleetPublicRef,
   SyncScope,
+  canonicalJson,
   fleetRunScope,
 } from "@openagentsinc/khala-sync"
 import {
@@ -105,6 +106,20 @@ export type SarahFleetBrowserCommandReceipt = Awaited<
   ReturnType<SarahFleetSyncClient["submitIntent"]>
 >
 
+type SarahFleetSteerCommandInput =
+  | Readonly<{
+      runRef: string
+      targetRef: string
+      body: string
+      bodyRef?: never
+    }>
+  | Readonly<{
+      runRef: string
+      targetRef: string
+      body?: never
+      bodyRef: string
+    }>
+
 export type SarahFleetBrowserCommands = Readonly<{
   runControl: (input: Readonly<{
     runRef: string
@@ -115,12 +130,9 @@ export type SarahFleetBrowserCommands = Readonly<{
     approvalRef: string
     decision: ApprovalDecisionValue
   }>) => Promise<SarahFleetBrowserCommandReceipt>
-  steer: (input: Readonly<{
-    runRef: string
-    targetRef: string
-    body: string
-    bodyRef?: string
-  }>) => Promise<SarahFleetBrowserCommandReceipt>
+  steer: (
+    input: SarahFleetSteerCommandInput,
+  ) => Promise<SarahFleetBrowserCommandReceipt>
 }>
 
 type CommandEntry = {
@@ -386,24 +398,49 @@ export const makeSarahFleetBrowserCommands = (input: Readonly<{
         () => authorizeApproval(approvalRef, decision),
       )
     },
-    steer: ({ runRef: rawRunRef, targetRef: rawTargetRef, body, bodyRef: rawBodyRef }) => {
-      const runRef = assertRunRef(rawRunRef)
-      const targetRef = exactRef(rawTargetRef)
-      const bodyRef = rawBodyRef === undefined ? undefined : exactRef(rawBodyRef)
-      if (body.length < 1 || body.length > 16_384) {
+    steer: (steerInput) => {
+      const runRef = assertRunRef(steerInput.runRef)
+      const targetRef = exactRef(steerInput.targetRef)
+      const rawCarrier = steerInput as Readonly<{
+        body?: unknown
+        bodyRef?: unknown
+      }>
+      const hasInlineBody = Object.hasOwn(rawCarrier, "body")
+      const hasBodyRef = Object.hasOwn(rawCarrier, "bodyRef")
+      if (hasInlineBody === hasBodyRef) {
         return Promise.reject(hostError("invalid_command_target"))
       }
-      // The private body is used only for the typed push and its in-memory
-      // dedupe identity. It never enters view state, persistence, receipts,
-      // or errors.
+      if (
+        hasInlineBody &&
+        (typeof rawCarrier.body !== "string" ||
+          rawCarrier.body.length < 1 ||
+          rawCarrier.body.length > 16_384)
+      ) {
+        return Promise.reject(hostError("invalid_command_target"))
+      }
+      if (hasBodyRef && typeof rawCarrier.bodyRef !== "string") {
+        return Promise.reject(hostError("invalid_command_target"))
+      }
+      const carrier = hasInlineBody
+        ? { body: rawCarrier.body as string }
+        : { bodyRef: exactRef(rawCarrier.bodyRef as string) }
+      // Canonical JSON preserves tuple boundaries; delimiter-built keys can
+      // alias `target=a:b, bodyRef=c` with `target=a, bodyRef=b:c`.
+      // The private inline body remains in memory only and never enters view
+      // state, persistence, receipts, or errors.
+      const commandKey = canonicalJson({
+        carrier,
+        kind: "steer_message",
+        runRef,
+        targetRef,
+      })
       return submit(
-        `steer:${runRef}:${targetRef}:${bodyRef ?? "inline"}:${body}`,
+        commandKey,
         (identity) => ({
           ...base(identity),
           kind: "steer_message",
           targetRef,
-          body,
-          ...(bodyRef === undefined ? {} : { bodyRef }),
+          ...carrier,
         }),
         () => authorizeSteer(targetRef),
       )

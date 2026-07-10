@@ -455,26 +455,25 @@ describe("FC-3 direct owner-safe fleet projection", () => {
   })
 
   test("does not move an exact approval across retries that reuse a worker", () => {
-    const reusedOldAttempt = decodeFleetAttemptEntity({
-      ...retryFailed,
-      assignmentRef: retrySucceeded.assignmentRef,
-      accountRefHash: retrySucceeded.accountRefHash,
-      usageEvidence: exactUsage(
-        retrySucceeded.assignmentRef!,
-        "evidence.retry.old.reused",
-        10,
-      ),
+    const reassignedWorker = decodeFleetWorkerEntity({
+      workerId: "worker.retry.reused",
+      phase: "completed",
+      harnessKind: "codex",
+      assignmentRef: retrySucceeded.assignmentRef!,
+      accountRefHash: retrySucceeded.accountRefHash!,
+      lastProgressAt: retrySucceeded.updatedAt,
+      updatedAt: retrySucceeded.updatedAt,
     })
     const exactOldApproval = decodeFleetApprovalEntity({
       approvalRef: "approval.retry.old.exact",
       status: "allowed",
       runRef: run.runId,
-      workUnitRef: reusedOldAttempt.workUnitRef,
-      attemptRef: reusedOldAttempt.attemptRef,
-      assignmentRef: reusedOldAttempt.assignmentRef,
-      workerId: "worker.retry.2",
-      accountRefHash: reusedOldAttempt.accountRefHash,
-      requestEventRef: reusedOldAttempt.lastEventRef,
+      workUnitRef: retryFailed.workUnitRef,
+      attemptRef: retryFailed.attemptRef,
+      assignmentRef: retryFailed.assignmentRef,
+      workerId: reassignedWorker.workerId,
+      accountRefHash: retryFailed.accountRefHash,
+      requestEventRef: retryFailed.lastEventRef,
       toolClass: "write_file",
       openedAt: "2026-07-09T19:51:00.000Z",
       decidedAt: "2026-07-09T19:51:30.000Z",
@@ -484,25 +483,20 @@ describe("FC-3 direct owner-safe fleet projection", () => {
       {
         run,
         workUnits,
-        attempts: [
-          reusedOldAttempt,
-          retrySucceeded,
-          runningAttempt,
-          grokSucceeded,
-        ],
-        assignments: [assignments[1]!, assignments[2]!],
-        workers,
+        attempts,
+        assignments,
+        workers: [reassignedWorker, workers[1]!],
         approvals: [exactOldApproval],
         inboxFlags: [],
       },
       NOW,
     )
     const retry = projection.workUnits.find(
-      (unit) => unit.workUnitRef === reusedOldAttempt.workUnitRef,
+      (unit) => unit.workUnitRef === retryFailed.workUnitRef,
     )!
     expect(
       retry.attempts.find(
-        (attempt) => attempt.attemptRef === reusedOldAttempt.attemptRef,
+        (attempt) => attempt.attemptRef === retryFailed.attemptRef,
       )?.approvalRefs,
     ).toEqual([exactOldApproval.approvalRef])
     expect(
@@ -511,7 +505,13 @@ describe("FC-3 direct owner-safe fleet projection", () => {
       )?.approvalRefs,
     ).toEqual([])
     expect(retry.approvalRefs).toEqual([])
-    expect(projection.approvals[0]?.availableDecisions).toEqual([])
+    expect(projection.approvals[0]).toMatchObject({
+      bindingStatus: "exact",
+      workerRef: reassignedWorker.workerId,
+      assignmentRef: retryFailed.assignmentRef,
+      accountRefHash: retryFailed.accountRefHash,
+      availableDecisions: [],
+    })
   })
 
   test("keeps unresolved exact bindings visible but nonactionable", () => {

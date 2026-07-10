@@ -736,7 +736,7 @@ export function projectSarahFleetOwnerRun(
     approval: FleetApprovalEntity
     attempt: typeof FleetAttemptEntity.Type
     workUnit: typeof FleetWorkUnitEntity.Type
-    worker: FleetWorkerEntity
+    currentWorker: FleetWorkerEntity | undefined
     actionable: boolean
   }>
   const exactApprovalByRef = new Map<string, ExactApprovalResolution>()
@@ -746,21 +746,30 @@ export function projectSarahFleetOwnerRun(
     if (!fleetApprovalHasExactBinding(approval)) continue
     const workUnit = workUnitByRef.get(approval.workUnitRef)
     const attempt = attemptByRef.get(approval.attemptRef)
-    const worker = workerByRef.get(approval.workerId)
-    const assignmentIsEffective =
-      approval.assignmentRef === attempt?.assignmentRef &&
-      (approval.assignmentRef === null ||
-        assignmentByRef.has(approval.assignmentRef))
-    const workerAssignmentIsEffective =
-      (worker?.assignmentRef ?? null) === approval.assignmentRef
-    const assignmentWorkerIsUnique =
+    const currentWorker = workerByRef.get(approval.workerId)
+    const assignmentBindingMatchesAttempt =
+      approval.assignmentRef === attempt?.assignmentRef
+    const currentAssignmentExists =
+      approval.assignmentRef === null ||
+      assignmentByRef.has(approval.assignmentRef)
+    const currentWorkerAssignmentIsEffective =
+      (currentWorker?.assignmentRef ?? null) === approval.assignmentRef
+    const currentAssignmentWorkerIsUnique =
       approval.assignmentRef === null ||
       ((workersByAssignment.get(approval.assignmentRef) ?? []).length === 1 &&
         workersByAssignment.get(approval.assignmentRef)?.[0]?.workerId ===
           approval.workerId)
-    const accountIsEffective =
-      approval.accountRefHash === attempt?.accountRefHash &&
-      (worker?.accountRefHash ?? null) === approval.accountRefHash
+    const accountBindingMatchesAttempt =
+      approval.accountRefHash === attempt?.accountRefHash
+    const currentWorkerAccountIsEffective =
+      (currentWorker?.accountRefHash ?? null) === approval.accountRefHash
+    const currentWorkerIsEffective =
+      currentWorker !== undefined &&
+      currentWorker.harnessKind === attempt?.workerKind &&
+      currentAssignmentExists &&
+      currentWorkerAssignmentIsEffective &&
+      currentAssignmentWorkerIsUnique &&
+      currentWorkerAccountIsEffective
     const requestEventIsPublicExecutionRef =
       /^event\.pylon\.fleet_run\.[0-9a-f]{24}$/.test(
         approval.requestEventRef,
@@ -769,13 +778,9 @@ export function projectSarahFleetOwnerRun(
       approval.runRef !== input.run.runId ||
       workUnit === undefined ||
       attempt === undefined ||
-      worker === undefined ||
       attempt.workUnitRef !== approval.workUnitRef ||
-      worker.harnessKind !== attempt.workerKind ||
-      !assignmentIsEffective ||
-      !workerAssignmentIsEffective ||
-      !assignmentWorkerIsUnique ||
-      !accountIsEffective ||
+      !assignmentBindingMatchesAttempt ||
+      !accountBindingMatchesAttempt ||
       !requestEventIsPublicExecutionRef
     ) {
       continue
@@ -784,8 +789,15 @@ export function projectSarahFleetOwnerRun(
       approval.status === "pending" &&
       workUnit.latestAttemptRef === attempt.attemptRef &&
       attempt.state === "running" &&
-      attempt.progressClass === "blocked"
-    const resolution = { approval, attempt, workUnit, worker, actionable }
+      attempt.progressClass === "blocked" &&
+      currentWorkerIsEffective
+    const resolution = {
+      approval,
+      attempt,
+      workUnit,
+      currentWorker: currentWorkerIsEffective ? currentWorker : undefined,
+      actionable,
+    }
     exactApprovalByRef.set(approval.approvalRef, resolution)
     const attemptApprovalRefs =
       approvalRefsByAttempt.get(attempt.attemptRef) ?? []
@@ -820,7 +832,9 @@ export function projectSarahFleetOwnerRun(
     const approvalWorkers = (approvalRefsByAttempt.get(attempt.attemptRef) ?? [])
       .flatMap((approvalRef) => {
         const resolution = exactApprovalByRef.get(approvalRef)
-        return resolution === undefined ? [] : [resolution.worker]
+        return resolution?.currentWorker === undefined
+          ? []
+          : [resolution.currentWorker]
       })
       .filter(
         (worker, index, all) =>
