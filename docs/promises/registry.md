@@ -1,5 +1,16 @@
 # Promise Registry
 
+> Registry `2026-07-10.2` is the Portal route-evidence binding pass. It binds
+> the live auth-gated Portal admin/client engagement and content-decision routes
+> to planned `autopilot.lead_gen.v1` as route-level client-engagement and
+> approval evidence only. The promise stays planned, its live-customer-run,
+> send-approval, customer-result, and owner-signoff blockers remain, and green
+> stays exactly 34. Client `portal_content_decision:*` receipts are distinct
+> from the operator LG-4 send-approval receipt; the client approval route is
+> not send authority. The refs are not send authority, contact reveal,
+> publishing automation, self-serve availability, payment, payout, settlement,
+> or customer-result proof.
+
 > Registry `2026-07-10.1` is the Pylon FleetRun closeout route-evidence
 > binding pass. It binds the live FleetRun execution/steering routes to planned
 > `pylon.v0_3_multi_earning_node.v1` as closeout-route evidence only, keeping

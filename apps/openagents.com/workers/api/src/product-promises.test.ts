@@ -315,7 +315,7 @@ describe('public product promises document', () => {
     expect(qaSwarmCopy).not.toContain('paid delivery receipts exist')
   })
 
-  test('registers Autopilot Lead Gen as planned and drafting-only for issues 8268 and 8281', () => {
+  test('registers Autopilot Lead Gen as planned and drafting-only for issues 8268, 8281, and 8652', () => {
     const decoded = S.decodeUnknownSync(ProductPromisesDocument)(
       publicProductPromisesDocument(),
     )
@@ -340,6 +340,12 @@ describe('public product promises document', () => {
         'apps/openagents.com/workers/api/src/business-outreach-routes.test.ts',
         'apps/openagents.com/workers/api/src/business-pipeline-routes.test.ts',
         'packages/agent-readiness/src/index.test.ts',
+        'apps/openagents.com/workers/api/src/portal-routes.ts',
+        'apps/openagents.com/workers/api/src/portal-routes.test.ts',
+        'apps/openagents.com/workers/api/src/portal-store.ts',
+        'route:/api/portal/admin/engagements',
+        'route:/api/portal/content/{itemId}/decision',
+        'route:/api/portal/engagement',
         'contract:lead_gen_agent.drafting_only_toolset.v1',
         'contract:lead_gen_agent.no_send_without_approval_receipt.v1',
         'https://github.com/OpenAgentsInc/openagents/issues/8268',
@@ -351,8 +357,31 @@ describe('public product promises document', () => {
     expect(leadGen?.safeCopy).toContain('Ora-style public-URL')
     expect(leadGen?.safeCopy).toContain('model-custody segment')
     expect(leadGen?.safeCopy).toContain('public-only model-custody analyzer')
+    expect(leadGen?.safeCopy).toContain('route-level client-engagement/approval evidence only')
+    expect(leadGen?.safeCopy).toContain('portal_content_decision:*')
+    expect(leadGen?.safeCopy).toContain('operator LG-4 send-approval receipt')
     expect(leadGen?.unsafeCopy).toContain('without a separate LG-4 approval receipt')
+    expect(leadGen?.unsafeCopy).toContain('Portal approval routes')
+    expect(leadGen?.unsafeCopy).toContain('client `portal_content_decision:*` receipt')
+    expect(leadGen?.verification).toContain('portal_content_decision:*')
+    expect(leadGen?.verification).toContain('operator LG-4 send-approval')
     expect(leadGen?.authorityBoundary).toContain('grant no Apollo credential')
+    expect(leadGen?.authorityBoundary).toContain('Portal route refs')
+    expect(leadGen?.authorityBoundary).toContain(
+      'client content-decision receipt does not grant operator send approval',
+    )
+    expect(
+      decoded.notes.find(note => note.includes('Registry 2026-07-10.2')),
+    ).toContain('green stays exactly 34')
+    expect(
+      decoded.notes.find(note => note.includes('Registry 2026-07-10.2')),
+    ).toContain('auth-gated client-engagement')
+    expect(
+      decoded.notes.find(note => note.includes('Registry 2026-07-10.2')),
+    ).toContain('portal_content_decision:*')
+    expect(
+      decoded.notes.find(note => note.includes('Registry 2026-07-10.2')),
+    ).toContain('operator LG-4 send-approval')
     expect(
       decoded.notes.find(note => note.includes('Registry 2026-07-04.9')),
     ).toContain('green stays exactly 34')
@@ -2523,7 +2552,12 @@ describe('public product promises document', () => {
     }
 
     const multiEarningPylon = byId.get('pylon.v0_3_multi_earning_node.v1')
-    expect(document.version).toBe('2026-07-10.1')
+    expect(document.version).toBe('2026-07-10.2')
+    expect(
+      document.currentMonorepoStatus.caveats.find(caveat =>
+        caveat.includes('Registry 2026-07-10.2'),
+      ),
+    ).toContain('Portal route-evidence binding pass')
     expect(
       document.currentMonorepoStatus.caveats.find(caveat =>
         caveat.includes('Registry 2026-07-10.1'),
