@@ -16,6 +16,7 @@ import {
 import { Schema } from "@effect-native/core/effect"
 
 import type { SarahCodingCloseoutReceipt } from "../contracts/coding-closeout-receipt.ts"
+import { SarahFleetApprovalDecisionRequested } from "./fleet-supervision-view.ts"
 import {
   SARAH_OWNER_FLEET_INTERACTIVE,
   SARAH_OWNER_FLEET_READ_ONLY,
@@ -256,9 +257,33 @@ const nextActionPresentation = (
 
 const nextActionButton = (
   keyBase: string,
-  next: ReceiptNextAction,
+  receipt: SarahCodingCloseoutReceipt,
 ): ReadonlyArray<View> => {
+  const next = receipt.sections[5].next
   if (next.action === "none") return []
+  if (next.action === "resolve_approval") {
+    return next.decisions.map((decision) =>
+      Button({
+        key: `${keyBase}-approval-${decision}`,
+        label: decision === "allow" ? "Allow" : "Deny",
+        variant: decision === "allow" ? "primary" : "secondary",
+        onPress: IntentRef(
+          SarahFleetApprovalDecisionRequested.name,
+          StaticPayload({
+            runRef: receipt.runRef,
+            approvalRef: next.targetRef,
+            workUnitRef: receipt.workUnitRef,
+            workerRef: null,
+            decision,
+          }),
+        ),
+        a11y: {
+          label: `${decision === "allow" ? "Allow" : "Deny"} the exact pending approval for this coding attempt`,
+        },
+        style: { alignSelf: "start" },
+      }),
+    )
+  }
   const presentation = nextActionPresentation(next)
   return [
     Button({
@@ -606,7 +631,7 @@ export function sarahCodingCloseoutReceiptView(
                   ),
                 ]
               : interactionMode === SARAH_OWNER_FLEET_INTERACTIVE
-                ? nextActionButton(keyBase, nextAction.next)
+                ? nextActionButton(keyBase, receipt)
                 : [
                     text(
                       `${keyBase}-next-action-read-only`,

@@ -11,6 +11,7 @@ import {
   decodeFleetApprovalEntity,
   decodeFleetAssignmentEntity,
   decodeFleetAttemptEntity,
+  decodeFleetCommandOutcomeEntity,
   decodeFleetRunEntity,
   decodeFleetWorkerEntity,
   decodeFleetWorkUnitEntity,
@@ -168,6 +169,22 @@ const surfaceProjection = (
 
 const fleetProjection = surfaceProjection()
 
+const pauseOutcome = decodeFleetCommandOutcomeEntity({
+  intentId: "intent.surface.pause",
+  seq: 21,
+  kind: "fleet_run_control",
+  targetRef: surfaceRun.runId,
+  deliveryOutcome: "applied",
+  completionOutcome: "applied",
+  effectiveOutcome: "paused",
+  completionRef: `outcome.pylon.fleet_steering.${"e".repeat(24)}`,
+  completedAt: "2026-07-09T20:00:02.000Z",
+  outcomeRef: `outcome.pylon.fleet_steering.${"e".repeat(24)}`,
+  observedAt: "2026-07-09T20:00:01.000Z",
+  recordedAt: "2026-07-09T20:00:02.000Z",
+  updatedAt: "2026-07-09T20:00:02.000Z",
+})
+
 const [fleetCloseoutReceipt] = projectSarahCodingCloseoutReceipts({
   projection: fleetProjection,
 })
@@ -203,6 +220,7 @@ const ownerFleetState = (
   expandedReceiptCardRefs: [],
   selectedNode: null,
   hostCommandSubmissions: [],
+  steerDraft: null,
 })
 
 const ownerFleetHandlers: SarahOwnerFleetHostIntentHandlers = {
@@ -211,6 +229,7 @@ const ownerFleetHandlers: SarahOwnerFleetHostIntentHandlers = {
   SarahFleetApprovalDecisionRequested: () => NativeEffect.void,
   SarahFleetEvidenceOpened: () => NativeEffect.void,
   SarahCodingReceiptAction: () => NativeEffect.void,
+  submitSteer: () => NativeEffect.succeed({ intentId: "intent.test.steer" }),
 }
 
 type AnyNode = { readonly _tag?: string; readonly [key: string]: unknown }
@@ -810,16 +829,53 @@ describe("FC-3 owner fleet surface integration", () => {
       hostCommandSubmissions: [
         {
           submissionRef: "host-command-old",
+          intentId: null,
           kind: "fleet_run_control",
           targetRef: current.runRef,
           status: "failed",
-          baselineSeq: 0,
           summary: "Old command failed",
         },
       ],
     })
     expect(changedScope.selectedNode).toBeNull()
     expect(changedScope.hostCommandSubmissions).toEqual([])
+  })
+
+  test("clears pending command UI only for the exact durable intent id", () => {
+    const current: NonNullable<SurfaceState["ownerFleet"]> = {
+      ...ownerFleetState({ status: "not_reported" }),
+      hostCommandSubmissions: [
+        {
+          submissionRef: "host-pause",
+          intentId: pauseOutcome.intentId,
+          kind: "fleet_run_control",
+          targetRef: fleetProjection.run.runRef,
+          status: "requested",
+          summary: "Pause fleet run requested",
+        },
+        {
+          submissionRef: "host-stop",
+          intentId: "intent.surface.stop",
+          kind: "fleet_run_control",
+          targetRef: fleetProjection.run.runRef,
+          status: "requested",
+          summary: "Stop fleet run requested",
+        },
+      ],
+    }
+    const reconciled = reconcileSarahOwnerFleetViewState(current, {
+      ...current,
+      projection: {
+        ...fleetProjection,
+        commandOutcomes: [pauseOutcome],
+      },
+      hostCommandSubmissions: [],
+    })
+    expect(
+      reconciled.hostCommandSubmissions.map(
+        (submission) => submission.submissionRef,
+      ),
+    ).toEqual(["host-stop"])
   })
 
   test("renders typed loading and reconnect states before exact projection hydration", () => {

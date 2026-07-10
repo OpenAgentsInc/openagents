@@ -10,6 +10,7 @@ import {
   SarahCodingReceiptEvidenceToggle,
   sarahCodingCloseoutReceiptView,
 } from "./coding-closeout-receipt-view.ts"
+import { SarahFleetApprovalDecisionRequested } from "./fleet-supervision-view.ts"
 import { SARAH_OWNER_FLEET_INTERACTIVE } from "./owner-fleet-interaction.ts"
 
 type AnyNode = { readonly _tag?: string; readonly [key: string]: unknown }
@@ -202,6 +203,45 @@ const failedReceipt = Schema.decodeUnknownSync(SarahCodingCloseoutReceipt)({
   ],
 })
 
+const approvalReceipt = Schema.decodeUnknownSync(SarahCodingCloseoutReceipt)({
+  ...failedReceipt,
+  cardRef: "attempt.receipt.approval",
+  runRef: "fleet.run.receipt",
+  workUnitRef: "unit.receipt.approval",
+  attemptRef: "attempt.receipt.approval",
+  sections: [
+    {
+      ...failedReceipt.sections[0],
+      status: "blocked",
+      attemptState: "running",
+      closeoutRef: null,
+      summary: "Attempt blocked",
+    },
+    failedReceipt.sections[1],
+    failedReceipt.sections[2],
+    failedReceipt.sections[3],
+    {
+      kind: "approval_and_authority",
+      approvalStatus: "pending",
+      approvalRefs: ["approval.receipt.exact"],
+      authorityStatus: "not_reported",
+      authorityClass: null,
+      authorityRef: null,
+      authorityReceiptRefs: [],
+      summary: "Approval pending. Authority not reported.",
+    },
+    {
+      kind: "next_action",
+      next: {
+        action: "resolve_approval",
+        targetRef: "approval.receipt.exact",
+        decisions: ["allow", "deny"],
+      },
+      summary: "Resolve pending approval",
+    },
+  ],
+})
+
 const keyBase = `coding-receipt-${receipt.cardRef}`
 const failedKeyBase = `coding-receipt-${failedReceipt.cardRef}`
 
@@ -353,6 +393,38 @@ describe("FC-3 Sarah attempt-backed closeout receipt view", () => {
         { cardRef: "owner@example.com" },
       ),
     ).toThrow()
+  })
+
+  test("renders exact allow and deny approval commands instead of an expand action", () => {
+    const view = sarahCodingCloseoutReceiptView(approvalReceipt, {
+      interactionMode: SARAH_OWNER_FLEET_INTERACTIVE,
+    })
+    const approvalKey = `coding-receipt-${approvalReceipt.cardRef}`
+    const allow = findByKey(view, `${approvalKey}-approval-allow`)
+    const deny = findByKey(view, `${approvalKey}-approval-deny`)
+    expect(findByKey(view, `${approvalKey}-next-action`)).toBeNull()
+    expect(allow).toMatchObject({
+      label: "Allow",
+      onPress: { name: SarahFleetApprovalDecisionRequested.name },
+    })
+    expect(deny).toMatchObject({
+      label: "Deny",
+      onPress: { name: SarahFleetApprovalDecisionRequested.name },
+    })
+    const payload = (
+      allow?.onPress as { payload?: { value?: unknown } } | undefined
+    )?.payload?.value
+    expect(
+      NativeSchema.decodeUnknownSync(
+        SarahFleetApprovalDecisionRequested.payloadSchema,
+      )(payload),
+    ).toEqual({
+      runRef: approvalReceipt.runRef,
+      approvalRef: "approval.receipt.exact",
+      workUnitRef: approvalReceipt.workUnitRef,
+      workerRef: null,
+      decision: "allow",
+    })
   })
 
   test("marks failed outcome without inventing failed verification", () => {

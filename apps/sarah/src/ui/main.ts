@@ -75,12 +75,15 @@ import {
   sarahCodingReceiptIntents,
 } from "./coding-closeout-receipt-view.ts"
 import {
+  SARAH_FLEET_MAX_STEER_BODY_LENGTH,
   SarahFleetApprovalDecisionRequested,
   SarahFleetAuditToggled,
   SarahFleetDrilldownClosed,
   SarahFleetEvidenceOpened,
   SarahFleetNodeSelected,
   SarahFleetRunControlRequested,
+  SarahFleetSteerDraftChanged,
+  SarahFleetSteerSubmitted,
   SarahFleetWorkUnitOpened,
   isSarahFleetSelectedNodePresent,
   resolveSarahFleetSelectedNode,
@@ -177,6 +180,7 @@ export type SarahOwnerFleetViewState = Readonly<{
   expandedReceiptCardRefs: ReadonlyArray<string>
   selectedNode: SarahFleetSelectedNode | null
   hostCommandSubmissions: ReadonlyArray<SarahFleetHostSubmission>
+  steerDraft: Readonly<{ attemptRef: string; body: string }> | null
 }>
 
 /**
@@ -289,9 +293,22 @@ export const sarahOwnerFleetHostIntents = [
   SarahFleetEvidenceOpened,
   SarahCodingReceiptAction,
 ] as const
-export type SarahOwnerFleetHostIntentHandlers = IntentHandlers<
+type SarahOwnerFleetBaseIntentHandlers = IntentHandlers<
   typeof sarahOwnerFleetHostIntents
 >
+export type SarahFleetHostCommandReceipt = Readonly<{ intentId: string }>
+export type SarahOwnerFleetHostIntentHandlers = {
+  readonly [Name in keyof SarahOwnerFleetBaseIntentHandlers]: (
+    ...args: Parameters<SarahOwnerFleetBaseIntentHandlers[Name]>
+  ) => Effect.Effect<void | SarahFleetHostCommandReceipt, unknown>
+} &
+  Readonly<{
+    submitSteer: (input: Readonly<{
+      runRef: string
+      targetRef: string
+      body: string
+    }>) => Effect.Effect<SarahFleetHostCommandReceipt, unknown>
+  }>
 
 export type SarahSurfaceMountOptions = Readonly<{
   ownerFleet?: SarahOwnerFleetViewState
@@ -307,7 +324,8 @@ const hasCompleteSarahOwnerFleetHostHandlers = (
   typeof handlers.SarahFleetWorkUnitOpened === "function" &&
   typeof handlers.SarahFleetApprovalDecisionRequested === "function" &&
   typeof handlers.SarahFleetEvidenceOpened === "function" &&
-  typeof handlers.SarahCodingReceiptAction === "function"
+  typeof handlers.SarahCodingReceiptAction === "function" &&
+  typeof handlers.submitSteer === "function"
 
 /** Mount-safe mode: projection presence never enables host-bound actions. */
 export const sarahOwnerFleetInteractionMode = (
@@ -1327,7 +1345,16 @@ const fleetPanel = (
             }),
           ),
           fleetConnectionView(ownerFleet.connection),
-          keyed(sarahFleetNodeDrilldownView(ownerFleet.projection, selected)),
+          keyed(
+            sarahFleetNodeDrilldownView(ownerFleet.projection, selected, {
+              interactionMode,
+              steerDraft:
+                selected.kind === "attempt" &&
+                ownerFleet.steerDraft?.attemptRef === selected.attemptRef
+                  ? ownerFleet.steerDraft.body
+                  : "",
+            }),
+          ),
         ]
 
   return Stack(
@@ -1809,12 +1836,10 @@ const hostSubmissionHasDurableReceipt = (
   submission: SarahFleetHostSubmission,
   projection: SarahFleetOwnerProjection | null,
 ): boolean =>
-  projection?.commandOutcomes?.some(
-    (outcome) =>
-      outcome.seq > submission.baselineSeq &&
-      outcome.kind === submission.kind &&
-      outcome.targetRef === submission.targetRef,
-  ) ?? false
+  submission.intentId !== null &&
+  (projection?.commandOutcomes?.some(
+    (outcome) => outcome.intentId === submission.intentId,
+  ) ?? false)
 
 /** Preserve local Fleet-tab state only inside one exact run scope. A reconnect
  * may temporarily have no projection; once a fresh projection arrives, a
@@ -1829,6 +1854,7 @@ export const reconcileSarahOwnerFleetViewState = (
       ...next,
       selectedNode: null,
       hostCommandSubmissions: [],
+      steerDraft: null,
     }
   }
   const selectedNode =
@@ -1842,6 +1868,11 @@ export const reconcileSarahOwnerFleetViewState = (
     expandedAuditWorkUnitRefs: current.expandedAuditWorkUnitRefs,
     expandedReceiptCardRefs: current.expandedReceiptCardRefs,
     selectedNode,
+    steerDraft:
+      selectedNode?.kind === "attempt" &&
+      current.steerDraft?.attemptRef === selectedNode.attemptRef
+        ? current.steerDraft
+        : null,
     hostCommandSubmissions: current.hostCommandSubmissions.filter(
       (submission) =>
         submission.status === "failed" ||
@@ -2288,7 +2319,7 @@ export const mountSarahSurface = (
         targetRef: string
         summary: string
       }>,
-      command: Effect.Effect<void, unknown>,
+      command: Effect.Effect<void | SarahFleetHostCommandReceipt, unknown>,
     ) =>
       Effect.gen(function* () {
         const submissionRef = `host-command-${++fleetSubmissionSequence}`
@@ -2302,19 +2333,13 @@ export const mountSarahSurface = (
           ) {
             return current
           }
-          const baselineSeq = Math.max(
-            0,
-            ...(ownerFleet.projection.commandOutcomes ?? []).map(
-              (outcome) => outcome.seq,
-            ),
-          )
           accepted = true
           const submitted: SarahFleetHostSubmission = {
             submissionRef,
+            intentId: null,
             kind: input.kind,
             targetRef: input.targetRef,
             status: "requested",
-            baselineSeq,
             summary: input.summary,
           }
           return {
@@ -2330,7 +2355,38 @@ export const mountSarahSurface = (
         })
         if (!accepted) return
         const outcome = yield* Effect.exit(command)
-        if (Exit.isSuccess(outcome)) return
+        if (
+          Exit.isSuccess(outcome) &&
+          outcome.value !== undefined &&
+          /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/.test(outcome.value.intentId)
+        ) {
+          const intentId = outcome.value.intentId
+          yield* SubscriptionRef.update(state, (current): SarahSurfaceState => {
+            const ownerFleet = current.ownerFleet
+            if (ownerFleet?.runRef !== input.runRef) return current
+            const alreadyDurable = ownerFleet.projection?.commandOutcomes?.some(
+              (candidate) => candidate.intentId === intentId,
+            ) === true
+            return {
+              ...current,
+              ownerFleet: {
+                ...ownerFleet,
+                hostCommandSubmissions: alreadyDurable
+                  ? ownerFleet.hostCommandSubmissions.filter(
+                      (candidate) =>
+                        candidate.submissionRef !== submissionRef,
+                    )
+                  : ownerFleet.hostCommandSubmissions.map((candidate) =>
+                      candidate.submissionRef === submissionRef
+                        ? { ...candidate, intentId }
+                        : candidate,
+                    ),
+              },
+            }
+          })
+          return
+        }
+        if (Exit.isSuccess(outcome) && outcome.value === undefined) return
         yield* SubscriptionRef.update(state, (current): SarahSurfaceState => {
           const ownerFleet = current.ownerFleet
           if (ownerFleet?.runRef !== input.runRef) return current
@@ -2547,7 +2603,15 @@ export const mountSarahSurface = (
           return {
             ...current,
             activePanel: "fleet",
-            ownerFleet: { ...ownerFleet, selectedNode },
+            ownerFleet: {
+              ...ownerFleet,
+              selectedNode,
+              steerDraft:
+                selectedNode.kind === "attempt" &&
+                ownerFleet.steerDraft?.attemptRef === selectedNode.attemptRef
+                  ? ownerFleet.steerDraft
+                  : null,
+            },
           }
         }),
       SarahFleetDrilldownClosed: () =>
@@ -2556,9 +2620,101 @@ export const mountSarahSurface = (
             ? current
             : {
                 ...current,
-                ownerFleet: { ...current.ownerFleet, selectedNode: null },
+                ownerFleet: {
+                  ...current.ownerFleet,
+                  selectedNode: null,
+                  steerDraft: null,
+                },
               },
         ),
+      SarahFleetSteerDraftChanged: (body) =>
+        SubscriptionRef.update(state, (current): SarahSurfaceState => {
+          const ownerFleet = current.ownerFleet
+          const selected = ownerFleet?.selectedNode
+          if (
+            interactionMode !== SARAH_OWNER_FLEET_INTERACTIVE ||
+            ownerFleet?.projection === null ||
+            ownerFleet === undefined ||
+            selected?.kind !== "attempt"
+          ) {
+            return current
+          }
+          const workUnit = ownerFleet.projection.workUnits.find(
+            (candidate) =>
+              candidate.workUnitRef === selected.workUnitRef &&
+              candidate.latestAttemptRef === selected.attemptRef &&
+              candidate.state === "running",
+          )
+          const attempt = workUnit?.attempts.find(
+            (candidate) =>
+              candidate.attemptRef === selected.attemptRef &&
+              candidate.state === "running",
+          )
+          if (workUnit === undefined || attempt === undefined) return current
+          return {
+            ...current,
+            ownerFleet: {
+              ...ownerFleet,
+              steerDraft: { attemptRef: attempt.attemptRef, body },
+            },
+          }
+        }),
+      SarahFleetSteerSubmitted: ({ runRef, workUnitRef, attemptRef }) =>
+        Effect.gen(function* () {
+          const current = yield* SubscriptionRef.get(state)
+          const ownerFleet = current.ownerFleet
+          const workUnit = ownerFleet?.projection?.workUnits.find(
+            (candidate) =>
+              candidate.workUnitRef === workUnitRef &&
+              candidate.latestAttemptRef === attemptRef &&
+              candidate.state === "running",
+          )
+          const attempt = workUnit?.attempts.find(
+            (candidate) =>
+              candidate.attemptRef === attemptRef &&
+              candidate.state === "running",
+          )
+          const body =
+            ownerFleet?.steerDraft?.attemptRef === attemptRef
+              ? ownerFleet.steerDraft.body
+              : ""
+          if (
+            interactionMode !== SARAH_OWNER_FLEET_INTERACTIVE ||
+            ownerFleetHandlers === undefined ||
+            ownerFleet === undefined ||
+            ownerFleet.runRef !== runRef ||
+            ownerFleet.projection?.run.runRef !== runRef ||
+            ownerFleet.selectedNode?.kind !== "attempt" ||
+            ownerFleet.selectedNode.attemptRef !== attemptRef ||
+            workUnit === undefined ||
+            attempt === undefined ||
+            body.trim().length === 0 ||
+            body.length > SARAH_FLEET_MAX_STEER_BODY_LENGTH
+          ) {
+            return
+          }
+          yield* SubscriptionRef.update(state, (latest): SarahSurfaceState =>
+            latest.ownerFleet?.runRef !== runRef
+              ? latest
+              : {
+                  ...latest,
+                  ownerFleet: { ...latest.ownerFleet, steerDraft: null },
+                },
+          )
+          yield* submitOwnerFleetCommand(
+            {
+              runRef,
+              kind: "steer_message",
+              targetRef: attemptRef,
+              summary: `${attempt.workerKind[0]!.toUpperCase()}${attempt.workerKind.slice(1)} attempt steer requested`,
+            },
+            ownerFleetHandlers.submitSteer({
+              runRef,
+              targetRef: attemptRef,
+              body,
+            }),
+          )
+        }),
       SarahFleetAuditToggled: ({ runRef, workUnitRef }) =>
         SubscriptionRef.update(state, (current): SarahSurfaceState => {
           const ownerFleet = current.ownerFleet
@@ -2674,7 +2830,14 @@ export const mountSarahSurface = (
         ),
     }
 
-    const registry = yield* makeIntentRegistry(sarahIntents, handlers)
+    const registry = yield* makeIntentRegistry(sarahIntents, handlers, {
+      // Steer bodies are private transient input. The handler receives the
+      // decoded value, but intent history/devtools retain only a null marker.
+      redactIntent: (intent) =>
+        intent.name === SarahFleetSteerDraftChanged.name
+          ? { ...intent, payload: null }
+          : intent,
+    })
     const report: IntentReporter = (ref, runtimeValue) =>
       registry.dispatch(resolveIntentRef(ref, runtimeValue))
 
@@ -2769,6 +2932,7 @@ export const mountSarahSurface = (
               runRef: input.runRef,
               workUnitRef: workUnit.workUnitRef,
             },
+            steerDraft: null,
             expandedAuditWorkUnitRefs: ownerFleet.expandedAuditWorkUnitRefs.includes(
               workUnit.workUnitRef,
             )
@@ -2827,6 +2991,7 @@ export const mountSarahSurface = (
                     attemptRef: workUnit.latestAttemptRef,
                     closeoutRef: input.evidenceRef,
                   },
+            steerDraft: null,
             expandedAuditWorkUnitRefs: ownerFleet.expandedAuditWorkUnitRefs.includes(
               workUnit.workUnitRef,
             )
@@ -2850,6 +3015,8 @@ export const mountSarahSurface = (
           activePanel: "fleet",
           ownerFleet: {
             ...ownerFleet,
+            selectedNode: null,
+            steerDraft: null,
             expandedReceiptCardRefs: ownerFleet.expandedReceiptCardRefs.includes(
               receipt.cardRef,
             )
@@ -2920,6 +3087,7 @@ export const ownerFleetViewStateFromBrowser = (
   expandedReceiptCardRefs: [],
   selectedNode: null,
   hostCommandSubmissions: [],
+  steerDraft: null,
 })
 
 const boot = () => {
@@ -2984,7 +3152,7 @@ const boot = () => {
               : commands.runControl({ runRef, action })
           },
           catch: () => new Error("fleet_command_failed"),
-        }).pipe(Effect.asVoid),
+        }),
       SarahFleetApprovalDecisionRequested: ({
         runRef,
         approvalRef,
@@ -2998,12 +3166,13 @@ const boot = () => {
               : commands.approvalDecision({ runRef, approvalRef, decision })
           },
           catch: () => new Error("fleet_command_failed"),
-        }).pipe(Effect.asVoid),
+        }),
       SarahFleetWorkUnitOpened: (payload) =>
         mounted?.openOwnerFleetWorkUnit(payload) ?? Effect.void,
       SarahFleetEvidenceOpened: (payload) =>
         mounted?.openOwnerFleetEvidence(payload) ?? Effect.void,
       SarahCodingReceiptAction: (payload) => {
+        if (payload.action === "resolve_approval") return Effect.void
         if (payload.action !== "control_run") {
           return mounted?.openOwnerFleetReceiptTarget(payload.targetRef) ?? Effect.void
         }
@@ -3018,8 +3187,18 @@ const boot = () => {
                 })
           },
           catch: () => new Error("fleet_command_failed"),
-        }).pipe(Effect.asVoid)
+        })
       },
+      submitSteer: ({ runRef, targetRef, body }) =>
+        Effect.tryPromise({
+          try: () => {
+            const commands = currentCommands(runRef)
+            return commands === null
+              ? Promise.reject(new Error("fleet_command_unavailable"))
+              : commands.steer({ runRef, targetRef, body })
+          },
+          catch: () => new Error("fleet_command_failed"),
+        }),
     }
 
     const reconcileFleetScope = () => {

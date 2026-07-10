@@ -16,8 +16,11 @@ import {
   SarahFleetApprovalDecisionRequested,
   SarahFleetAuditToggled,
   SarahFleetEvidenceOpened,
+  SARAH_FLEET_MAX_STEER_BODY_LENGTH,
   SarahFleetNodeSelected,
   SarahFleetRunControlRequested,
+  SarahFleetSteerDraftChanged,
+  SarahFleetSteerSubmitted,
   SarahFleetWorkUnitOpened,
   resolveSarahFleetSelectedNode,
   sarahFleetNodeDrilldownView,
@@ -610,6 +613,68 @@ describe("FC-3 Effect Native fleet supervision view", () => {
     expect(resolveSarahFleetSelectedNode(projection, "attempt:not-real")).toBeNull()
   })
 
+  test("steers only the exact latest running attempt with a bounded private draft", () => {
+    const selected = resolveSarahFleetSelectedNode(
+      projection,
+      "attempt:work_claim.fc3.codex",
+    )
+    if (selected === null) throw new Error("expected active attempt selection")
+    const privateBody = "PRIVATE steer body — fix only the named test"
+    const detail = sarahFleetNodeDrilldownView(projection, selected, {
+      interactionMode: SARAH_OWNER_FLEET_INTERACTIVE,
+      steerDraft: privateBody,
+    })
+    const input = findByKey(
+      detail,
+      "fleet-drilldown-attempt-work_claim.fc3.codex-steer-input",
+    )
+    const submit = findByKey(
+      detail,
+      "fleet-drilldown-attempt-work_claim.fc3.codex-steer-submit",
+    )
+    expect(input).toMatchObject({
+      _tag: "TextField",
+      value: privateBody,
+      onChange: { name: SarahFleetSteerDraftChanged.name },
+      a11y: { label: "Private steer instruction for #8637" },
+    })
+    expect(submit).toMatchObject({
+      _tag: "Button",
+      disabled: false,
+      onPress: {
+        name: SarahFleetSteerSubmitted.name,
+        payload: {
+          value: {
+            runRef: projection.run.runRef,
+            workUnitRef: "unit.fc3.codex",
+            attemptRef: "work_claim.fc3.codex",
+          },
+        },
+      },
+    })
+    expect(JSON.stringify(submit)).not.toContain(privateBody)
+    expect(() =>
+      Schema.decodeUnknownSync(SarahFleetSteerDraftChanged.payloadSchema)(
+        "x".repeat(SARAH_FLEET_MAX_STEER_BODY_LENGTH + 1),
+      ),
+    ).toThrow()
+
+    const oldAttempt = resolveSarahFleetSelectedNode(
+      projection,
+      "attempt:work_claim.fc3.codex.retry1",
+    )
+    if (oldAttempt === null) throw new Error("expected old attempt selection")
+    expect(
+      findByKey(
+        sarahFleetNodeDrilldownView(projection, oldAttempt, {
+          interactionMode: SARAH_OWNER_FLEET_INTERACTIVE,
+          steerDraft: privateBody,
+        }),
+        "fleet-drilldown-attempt-work_claim.fc3.codex.retry1-steer-input",
+      ),
+    ).toBeNull()
+  })
+
   test("distinguishes local requests and failures from delivered, completed, failed, and stale receipts", () => {
     const view = sarahFleetRunSupervisionView(
       { ...projection, commandOutcomes },
@@ -617,18 +682,18 @@ describe("FC-3 Effect Native fleet supervision view", () => {
         hostSubmissions: [
           {
             submissionRef: "host-requested",
+            intentId: null,
             kind: "fleet_run_control",
             targetRef: projection.run.runRef,
             status: "requested",
-            baselineSeq: 13,
             summary: "Pause fleet run requested",
           },
           {
             submissionRef: "host-failed",
+            intentId: null,
             kind: "approval_decision",
             targetRef: "approval.fc3.claude",
             status: "failed",
-            baselineSeq: 13,
             summary: "Allow approval requested",
           },
         ],

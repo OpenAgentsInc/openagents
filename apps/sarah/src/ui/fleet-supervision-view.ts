@@ -9,6 +9,7 @@ import {
   Stack,
   StaticPayload,
   Text,
+  TextField,
   defineIntent,
   type GraphStatus,
   type TextView,
@@ -121,6 +122,26 @@ export const SarahFleetDrilldownClosed = defineIntent(
   Schema.Null,
 )
 
+export const SARAH_FLEET_MAX_STEER_BODY_LENGTH = 4_096
+
+/** Private local draft input. Intent history redacts this payload in main.ts. */
+export const SarahFleetSteerDraftChanged = defineIntent(
+  "SarahFleetSteerDraftChanged",
+  Schema.String.check(
+    Schema.isMaxLength(SARAH_FLEET_MAX_STEER_BODY_LENGTH),
+  ),
+)
+
+/** Body-free submit action; the host reads and clears the in-memory draft. */
+export const SarahFleetSteerSubmitted = defineIntent(
+  "SarahFleetSteerSubmitted",
+  Schema.Struct({
+    runRef: SarahFleetPublicRef,
+    workUnitRef: SarahFleetPublicRef,
+    attemptRef: SarahFleetPublicRef,
+  }),
+)
+
 export const sarahFleetSupervisionIntents = [
   SarahFleetRunControlRequested,
   SarahFleetWorkUnitOpened,
@@ -129,6 +150,8 @@ export const sarahFleetSupervisionIntents = [
   SarahFleetAuditToggled,
   SarahFleetNodeSelected,
   SarahFleetDrilldownClosed,
+  SarahFleetSteerDraftChanged,
+  SarahFleetSteerSubmitted,
 ] as const
 
 export const SarahFleetSelectedNode = Schema.Union([
@@ -178,11 +201,16 @@ export type SarahFleetSelectedNode = typeof SarahFleetSelectedNode.Type
 
 export type SarahFleetHostSubmission = Readonly<{
   submissionRef: string
-  kind: "fleet_run_control" | "approval_decision"
+  intentId: string | null
+  kind: "fleet_run_control" | "approval_decision" | "steer_message"
   targetRef: string
   status: "requested" | "failed"
-  baselineSeq: number
   summary: string
+}>
+
+export type SarahFleetDrilldownViewOptions = Readonly<{
+  interactionMode?: SarahOwnerFleetInteractionMode
+  steerDraft?: string
 }>
 
 export type SarahFleetSupervisionViewOptions = Readonly<{
@@ -958,6 +986,92 @@ const attemptOpenButtons = (
   ]
 }
 
+const attemptSteerControls = (
+  projection: SarahFleetOwnerProjection,
+  workUnit: FleetWorkUnit,
+  attempt: FleetAttempt,
+  options: SarahFleetDrilldownViewOptions,
+): ReadonlyArray<View> => {
+  if (
+    workUnit.latestAttemptRef !== attempt.attemptRef ||
+    workUnit.state !== "running" ||
+    attempt.state !== "running"
+  ) {
+    return []
+  }
+  if (
+    (options.interactionMode ?? SARAH_OWNER_FLEET_READ_ONLY) !==
+    SARAH_OWNER_FLEET_INTERACTIVE
+  ) {
+    return [
+      text(
+        `fleet-drilldown-attempt-${attempt.attemptRef}-steer-read-only`,
+        "Steering is unavailable in this read-only surface.",
+        "caption",
+        "textMuted",
+      ),
+    ]
+  }
+  const steerDraft = options.steerDraft ?? ""
+  const validDraft =
+    steerDraft.trim().length > 0 &&
+    steerDraft.length <= SARAH_FLEET_MAX_STEER_BODY_LENGTH
+  return [
+    Stack(
+      {
+        key: `fleet-drilldown-attempt-${attempt.attemptRef}-steer`,
+        direction: "column",
+        gap: "2",
+        a11y: {
+          role: "group",
+          label: `Steer the exact active ${attempt.workerKind} attempt`,
+        },
+        style: { width: "full" },
+      },
+      [
+        TextField({
+          key: `fleet-drilldown-attempt-${attempt.attemptRef}-steer-input`,
+          value: steerDraft,
+          label: "Steer this attempt",
+          placeholder: "Give this active attempt a bounded instruction…",
+          multiline: true,
+          onChange: IntentRef(
+            SarahFleetSteerDraftChanged.name,
+            ComponentValueBinding(),
+          ),
+          a11y: {
+            label: `Private steer instruction for ${workUnit.name}`,
+          },
+          style: { width: "full" },
+        }),
+        Button({
+          key: `fleet-drilldown-attempt-${attempt.attemptRef}-steer-submit`,
+          label: "Send steer",
+          variant: "primary",
+          disabled: !validDraft,
+          onPress: IntentRef(
+            SarahFleetSteerSubmitted.name,
+            StaticPayload({
+              runRef: projection.run.runRef,
+              workUnitRef: workUnit.workUnitRef,
+              attemptRef: attempt.attemptRef,
+            }),
+          ),
+          a11y: {
+            label: `Send private steer to the exact active ${attempt.workerKind} attempt`,
+          },
+        }),
+        text(
+          `fleet-drilldown-attempt-${attempt.attemptRef}-steer-privacy`,
+          `Private body stays in this browser until submission and is limited to ${SARAH_FLEET_MAX_STEER_BODY_LENGTH} characters.`,
+          "caption",
+          "textMuted",
+        ),
+      ],
+    ),
+  ]
+}
+
 const attemptRows = (
   projection: SarahFleetOwnerProjection,
   workUnit: FleetWorkUnit,
@@ -1613,6 +1727,7 @@ const missingSelectionCard = (): View =>
 export const sarahFleetNodeDrilldownView = (
   projection: SarahFleetOwnerProjection,
   selected: SarahFleetSelectedNode,
+  options: SarahFleetDrilldownViewOptions = {},
 ): View => {
   if (!isSarahFleetSelectedNodePresent(projection, selected)) {
     return missingSelectionCard()
@@ -1840,6 +1955,7 @@ export const sarahFleetNodeDrilldownView = (
           },
           attemptOpenButtons(projection, workUnit, attempt).slice(1),
         ),
+        ...attemptSteerControls(projection, workUnit, attempt, options),
       ],
     )
   }
