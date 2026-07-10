@@ -535,7 +535,11 @@ const styleDeclarations = (key: string, value: unknown): ReadonlyArray<readonly 
 class AtomicStyleSheet {
   readonly element: HTMLStyleElement
   #theme: Theme
-  #rules = new Map<string, string>()
+  #rules = new Map<string, {
+    readonly className: string
+    readonly property: string
+    readonly value: string
+  }>()
   #used = new Set<string>()
   #nextId = 0
 
@@ -556,16 +560,20 @@ class AtomicStyleSheet {
     this.#used = new Set()
   }
 
-  classFor(key: string, value: unknown): string {
+  classFor(key: string, value: string): string {
     const declarationKey = `${key}:${JSON.stringify(value)}`
-    let className = this.#rules.get(declarationKey)
-    if (className === undefined) {
-      className = `en-${this.#nextId.toString(36)}`
+    let rule = this.#rules.get(declarationKey)
+    if (rule === undefined) {
+      rule = {
+        className: `en-${this.#nextId.toString(36)}`,
+        property: key,
+        value
+      }
       this.#nextId += 1
-      this.#rules.set(declarationKey, className)
+      this.#rules.set(declarationKey, rule)
     }
     this.#used.add(declarationKey)
-    return className
+    return rule.className
   }
 
   apply(element: HTMLElement, style: FlatStyle | undefined): void {
@@ -603,12 +611,7 @@ class AtomicStyleSheet {
     ].join("")
     const atomicRules = Array.from(this.#rules.entries())
       .filter(([key]) => this.#used.has(key))
-      .map(([key, className]) => {
-        const separator = key.indexOf(":")
-        const property = key.slice(0, separator)
-        const value = JSON.parse(key.slice(separator + 1)) as string
-        return `.${className}{${property}:${value};}`
-      })
+      .map(([, rule]) => `.${rule.className}{${rule.property}:${rule.value};}`)
       .join("")
     this.element.textContent = `${themeRules}${atomicRules}`
   }
@@ -766,9 +769,9 @@ const runReportedIntent = (
   ref: IntentRef,
   runtimeValue: JsonPayload = null
 ): void => {
-  void Effect.runPromise(report(ref, runtimeValue) as Effect.Effect<void, IntentError>).catch(() => {
-    // Intent failures are recorded by the registry; DOM event handlers stay total.
-  })
+  Effect.runFork(
+    (report(ref, runtimeValue) as Effect.Effect<void, IntentError>).pipe(Effect.ignoreCause)
+  )
 }
 
 const applyBaseStyle = (element: HTMLElement, view: View, state: DomRendererState): void => {
@@ -3994,9 +3997,7 @@ export const makeDomRenderer = (options: DomRendererOptions = {}): RendererAdapt
         )
         if (window !== null) {
           const updateViewport = () => {
-            void Effect.runPromise(viewport.set(readDomViewport(document))).catch(() => {
-              // Host resize callbacks must stay total.
-            })
+            Effect.runFork(viewport.set(readDomViewport(document)).pipe(Effect.ignoreCause))
           }
           window.addEventListener("resize", updateViewport)
           yield* Effect.addFinalizer(() =>

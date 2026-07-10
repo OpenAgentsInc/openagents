@@ -385,9 +385,9 @@ const runReportedIntent = (
   ref: IntentRef,
   runtimeValue: JsonPayload = null
 ): void => {
-  void Effect.runPromise(report(ref, runtimeValue) as Effect.Effect<void, IntentError>).catch(() => {
-    // Intent failures are recorded by the registry; host event handlers stay total.
-  })
+  Effect.runFork(
+    (report(ref, runtimeValue) as Effect.Effect<void, IntentError>).pipe(Effect.ignoreCause)
+  )
 }
 
 // Map the bounded ARIA role contract to the RN accessibilityRole values that
@@ -3601,9 +3601,7 @@ export const createEffectNativeSurface = (
       )
 
       return () => {
-        void Effect.runPromise(Fiber.interrupt(fiber)).catch(() => {
-          // React unmount cleanup must stay total.
-        })
+        Effect.runFork(Fiber.interrupt(fiber).pipe(Effect.ignoreCause))
       }
     }, [props.viewStream])
 
@@ -3662,12 +3660,12 @@ export const makeReactNativeRenderer = (
         if (dimensions?.addEventListener !== undefined) {
           const updateViewport = (event: { readonly window?: ReactNativeDimensionMetrics }) => {
             const metrics = event.window ?? dimensions.get("window")
-            void Effect.runPromise(viewport.set({
-              width: metrics.width,
-              height: metrics.height
-            })).catch(() => {
-              // Host dimension callbacks must stay total.
-            })
+            Effect.runFork(
+              viewport.set({
+                width: metrics.width,
+                height: metrics.height
+              }).pipe(Effect.ignoreCause)
+            )
           }
           const subscription = dimensions.addEventListener("change", updateViewport)
           yield* Effect.addFinalizer(() =>
