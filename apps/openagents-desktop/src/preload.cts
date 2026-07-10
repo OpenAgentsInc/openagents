@@ -18,6 +18,7 @@ import {
   unavailableFleetStageResult,
 } from "./fleet-contract.ts"
 import { DesktopChatTurnChannel, DesktopNewThreadChannel, DesktopOpenThreadChannel, DesktopThreadsChannel, decode, DesktopThreadRequestSchema, DesktopTurnRequestSchema } from "./chat-contract.ts"
+import { DesktopWorkspaceChooseChannel, DesktopWorkspaceFilesChannel, DesktopWorkspaceReadChannel, DesktopWorkspaceSummaryChannel, decodeWorkspaceFileRequest } from "./workspace-contract.ts"
 
 contextBridge.exposeInMainWorld("openagentsDesktop", {
   host: "electron",
@@ -38,5 +39,12 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
   sendMessage: (value: unknown) => {
     const request = decode(DesktopTurnRequestSchema, value) as { id: string; message: string } | null
     return request === null ? Promise.resolve({ ok: false, error: "That message could not be sent." }) : ipcRenderer.invoke(DesktopChatTurnChannel, request)
+  },
+  workspaceSummary: () => ipcRenderer.invoke(DesktopWorkspaceSummaryChannel),
+  chooseWorkspace: () => ipcRenderer.invoke(DesktopWorkspaceChooseChannel),
+  listWorkspaceFiles: () => ipcRenderer.invoke(DesktopWorkspaceFilesChannel),
+  readWorkspaceFile: (value: unknown) => {
+    const request = decodeWorkspaceFileRequest(value)
+    return request === null ? Promise.resolve(null) : ipcRenderer.invoke(DesktopWorkspaceReadChannel, request)
   },
 })

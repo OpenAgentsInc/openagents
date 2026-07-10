@@ -103,6 +103,22 @@ textarea:focus-visible {
   text-align: left;
 }
 
+[data-en-key="sidebar-workspace-dock"] {
+  margin: -4px 0 4px;
+}
+
+[data-en-key^="workspace-"][data-en-variant="icon"] {
+  width: 32px !important;
+  height: 32px !important;
+  border-radius: 10px !important;
+  color: var(--oa-body) !important;
+}
+
+[data-en-key^="workspace-"][data-en-variant="icon"]:hover {
+  color: var(--oa-ink) !important;
+  background: rgba(255, 255, 255, 0.1) !important;
+}
+
 [data-en-key^="sidebar-action-"] [data-en-tag="Icon"] {
   flex: 0 0 18px;
   display: inline-flex;
@@ -274,6 +290,19 @@ textarea:focus-visible {
   font-size: 16px;
   line-height: 1.55;
   text-wrap: pretty;
+}
+
+[data-en-key="workspace-home-panel"] {
+  padding: clamp(26px, 6vh, 76px) 24px 18px;
+}
+
+[data-en-key="workspace-home-title"] {
+  font-size: 30px !important;
+  letter-spacing: -0.03em;
+}
+
+[data-en-key^="workspace-home-thread-"] {
+  text-align: left;
 }
 
 /* Conversation: no enclosing card — whitespace is the primary hierarchy. */

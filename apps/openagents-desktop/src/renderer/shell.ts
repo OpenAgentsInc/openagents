@@ -24,6 +24,7 @@ import {
   ComponentValueBinding,
   IntentRef,
   Icon,
+  IconButton,
   Stack,
   Text,
   TextField,
@@ -37,6 +38,7 @@ import {
 } from "@effect-native/core"
 import { Effect, Schema, SubscriptionRef } from "@effect-native/core/effect"
 import type { DesktopThread } from "../chat-contract.ts"
+import type { DesktopWorkspaceFile, DesktopWorkspaceSnapshot } from "../workspace-contract.ts"
 
 export type DesktopNoteEntry = Readonly<{
   key: string
@@ -45,6 +47,9 @@ export type DesktopNoteEntry = Readonly<{
   /** Preformatted display timestamp (the catalog ships no date formatting). */
   timestamp: string
 }>
+
+export const desktopWorkspaceNames = ["chat", "home", "files", "review", "terminal", "inbox", "settings"] as const
+export type DesktopWorkspaceName = (typeof desktopWorkspaceNames)[number]
 
 export type DesktopShellState = Readonly<{
   /** Host identity decoded from the preload bridge ("electron/darwin" etc.). */
@@ -55,6 +60,9 @@ export type DesktopShellState = Readonly<{
   notes: ReadonlyArray<DesktopNoteEntry>
   threads: ReadonlyArray<DesktopThread>
   activeThreadId: string | null
+  workspace: DesktopWorkspaceName
+  workspaceSnapshot: DesktopWorkspaceSnapshot | null
+  workspaceFile: DesktopWorkspaceFile | null
   /** The desktop-only planning deck; it has no deployment authority itself. */
   fleetDeskOpen: boolean
   /** The current, explicitly unsubmitted FleetRun objective draft. */
@@ -83,6 +91,9 @@ export const initialDesktopShellState = (
   notes: [],
   threads: [],
   activeThreadId: null,
+  workspace: "chat",
+  workspaceSnapshot: null,
+  workspaceFile: null,
   fleetDeskOpen: false,
   fleetObjective: "",
   fleetDeployment: "not_requested",
@@ -115,6 +126,12 @@ export const DesktopFleetDeploymentRequested = defineIntent(
 )
 export const DesktopNewChat = defineIntent("DesktopNewChat", Schema.Null)
 export const DesktopChatSelected = defineIntent("DesktopChatSelected", Schema.String)
+export const DesktopWorkspaceSelected = defineIntent(
+  "DesktopWorkspaceSelected",
+  Schema.Literals(desktopWorkspaceNames),
+)
+export const DesktopWorkspacePickerRequested = defineIntent("DesktopWorkspacePickerRequested", Schema.Null)
+export const DesktopWorkspaceFileSelected = defineIntent("DesktopWorkspaceFileSelected", Schema.String)
 
 export const desktopShellIntents = [
   DesktopInputChanged,
@@ -125,6 +142,9 @@ export const desktopShellIntents = [
   DesktopFleetDeploymentRequested,
   DesktopNewChat,
   DesktopChatSelected,
+  DesktopWorkspaceSelected,
+  DesktopWorkspacePickerRequested,
+  DesktopWorkspaceFileSelected,
 ] as const
 
 // ---------------------------------------------------------------------------
@@ -158,6 +178,7 @@ export const withNewChat = (state: DesktopShellState, thread: DesktopThread): De
   notes: thread.notes,
   threads: [thread, ...state.threads.filter((item) => item.id !== thread.id)].slice(0, 5),
   activeThreadId: thread.id,
+  workspace: "chat",
   fleetDeskOpen: false,
   fleetObjective: "",
   fleetDeployment: "not_requested",
@@ -168,7 +189,23 @@ export const withChatSelected = (state: DesktopShellState, thread: DesktopThread
   notes: thread.notes,
   activeThreadId: thread.id,
   fleetDeskOpen: false,
+  workspace: "chat",
 })
+
+export const withWorkspace = (
+  state: DesktopShellState,
+  workspace: DesktopWorkspaceName,
+): DesktopShellState => ({ ...state, workspace })
+
+export const withWorkspaceSnapshot = (
+  state: DesktopShellState,
+  workspaceSnapshot: DesktopWorkspaceSnapshot | null,
+): DesktopShellState => ({ ...state, workspaceSnapshot, workspaceFile: null })
+
+export const withWorkspaceFile = (
+  state: DesktopShellState,
+  workspaceFile: DesktopWorkspaceFile | null,
+): DesktopShellState => ({ ...state, workspaceFile })
 
 /**
  * Submit resets the composer value binding in the same transition that
@@ -198,6 +235,12 @@ export type ChatHost = Readonly<{
   newThread: () => Promise<DesktopThread | null>
   openThread: (id: string) => Promise<DesktopThread | null>
   sendMessage: (input: Readonly<{ id: string; message: string }>) => Promise<Readonly<{ ok: boolean; thread?: DesktopThread | null; error?: string }>>
+}>
+
+export type WorkspaceHost = Readonly<{
+  summary: () => Promise<DesktopWorkspaceSnapshot | null>
+  choose: () => Promise<DesktopWorkspaceSnapshot | null>
+  readFile: (path: string) => Promise<DesktopWorkspaceFile | null>
 }>
 
 export const withThreads = (state: DesktopShellState, threads: ReadonlyArray<DesktopThread>): DesktopShellState => {
@@ -281,6 +324,9 @@ export const makeDesktopShellHandlers = (
     listThreads: async () => [], newThread: async () => null, openThread: async () => null,
     sendMessage: async () => ({ ok: false, error: "Desktop chat is unavailable." }),
   },
+  workspaceHost: WorkspaceHost = {
+    summary: async () => null, choose: async () => null, readFile: async () => null,
+  },
 ): IntentHandlers<typeof desktopShellIntents> => ({
   DesktopInputChanged: (value) =>
     SubscriptionRef.update(state, (current) => withInput(current, value)),
@@ -311,6 +357,24 @@ export const makeDesktopShellHandlers = (
     }),
   DesktopNewChat: () => Effect.gen(function* () { const thread = yield* Effect.promise(chat.newThread); if (thread) yield* SubscriptionRef.update(state, (current) => withNewChat(current, thread)) }),
   DesktopChatSelected: (id) => Effect.gen(function* () { const thread = yield* Effect.promise(() => chat.openThread(id)); if (thread) yield* SubscriptionRef.update(state, (current) => withChatSelected(current, thread)) }),
+  DesktopWorkspaceSelected: (workspace) =>
+    Effect.gen(function* () {
+      yield* SubscriptionRef.update(state, (current) => withWorkspace(current, workspace))
+      if (workspace === "home" || workspace === "files" || workspace === "review") {
+        const snapshot = yield* Effect.promise(workspaceHost.summary)
+        yield* SubscriptionRef.update(state, (current) => withWorkspaceSnapshot(current, snapshot))
+      }
+    }),
+  DesktopWorkspacePickerRequested: () =>
+    Effect.gen(function* () {
+      const snapshot = yield* Effect.promise(workspaceHost.choose)
+      yield* SubscriptionRef.update(state, (current) => withWorkspaceSnapshot(current, snapshot))
+    }),
+  DesktopWorkspaceFileSelected: (path) =>
+    Effect.gen(function* () {
+      const file = yield* Effect.promise(() => workspaceHost.readFile(path))
+      yield* SubscriptionRef.update(state, (current) => withWorkspaceFile(current, file))
+    }),
 })
 
 // ---------------------------------------------------------------------------
@@ -365,7 +429,7 @@ const shellHeader = (state: DesktopShellState): View =>
       },
     },
     [
-      Text({ key: "shell-title", content: state.threads.find((thread) => thread.id === state.activeThreadId)?.title ?? "New chat", variant: "title", color: "textPrimary" }),
+      Text({ key: "shell-title", content: state.workspace === "home" ? "Home" : state.threads.find((thread) => thread.id === state.activeThreadId)?.title ?? "New chat", variant: "title", color: "textPrimary" }),
     ],
   )
 
@@ -381,6 +445,32 @@ const shellSidebar = (state: DesktopShellState): View =>
       Stack({ key: "sidebar-brand-row", direction: "row", gap: "2", align: "center" }, [
         Icon({ key: "sidebar-brand-icon", name: "Terminal", size: "sm", color: "accent" }),
         Text({ key: "sidebar-brand", content: "OpenAgents", variant: "title", color: "textPrimary" }),
+      ]),
+      Stack({ key: "sidebar-workspace-dock", direction: "row", gap: "1", align: "center" }, [
+        IconButton({
+          key: "workspace-chat",
+          icon: "Chats",
+          accessibilityLabel: "Chat",
+          onPress: IntentRef("DesktopWorkspaceSelected", StaticPayload("chat")),
+          surface: "glass",
+          style: state.workspace === "chat" ? { backgroundColor: "accent" } : {},
+        }),
+        IconButton({
+          key: "workspace-files",
+          icon: "Folder",
+          accessibilityLabel: "Files",
+          onPress: IntentRef("DesktopWorkspaceSelected", StaticPayload("files")),
+          surface: "glass",
+          style: state.workspace === "files" ? { backgroundColor: "accent" } : {},
+        }),
+        IconButton({
+          key: "workspace-home",
+          icon: "Home",
+          accessibilityLabel: "Project home",
+          onPress: IntentRef("DesktopWorkspaceSelected", StaticPayload("home")),
+          surface: "glass",
+          style: state.workspace === "home" ? { backgroundColor: "accent" } : {},
+        }),
       ]),
       Stack({ key: "sidebar-action-new-chat", direction: "row", gap: "2", align: "center" }, [
         Icon({ key: "sidebar-new-chat-icon", name: "ChatCompose", size: "sm", color: "accent" }),
@@ -427,6 +517,85 @@ const shellWelcome = (): View =>
         variant: "body",
         color: "textMuted",
       }),
+    ],
+  )
+
+const projectHome = (state: DesktopShellState): View =>
+  Stack(
+    {
+      key: "workspace-home-panel",
+      direction: "column",
+      gap: "3",
+      style: { width: "full", maxWidth: columnWidth, alignSelf: "center", flex: 1, minHeight: 0 },
+    },
+    [
+      Text({ key: "workspace-home-title", content: "Recent conversations", variant: "heading", color: "textPrimary" }),
+      Text({ key: "workspace-home-copy", content: "Pick up work where you left it.", variant: "body", color: "textMuted" }),
+      Button({
+        key: "workspace-home-open-folder",
+        label: state.workspaceSnapshot === null ? "Choose folder" : `Open ${state.workspaceSnapshot.label}`,
+        variant: "secondary",
+        onPress: IntentRef("DesktopWorkspacePickerRequested"),
+        a11y: { label: "Choose local workspace folder" },
+      }),
+      ...state.threads.map((thread) => Card(
+        {
+          key: `workspace-home-thread-${thread.id}`,
+          padding: "3",
+          radius: "lg",
+          style: { width: "full", surface: "glass" },
+        },
+        [
+          Text({ key: `workspace-home-thread-title-${thread.id}`, content: thread.title, variant: "body", color: "textPrimary" }),
+          Text({ key: `workspace-home-thread-time-${thread.id}`, content: `Updated ${thread.updatedAt.slice(0, 16).replace("T", " ")}`, variant: "caption", color: "textMuted" }),
+          Button({
+            key: `workspace-home-thread-open-${thread.id}`,
+            label: "Open",
+            variant: "ghost",
+            onPress: IntentRef("DesktopChatSelected", StaticPayload(thread.id)),
+            a11y: { label: `Open chat ${thread.title}` },
+          }),
+        ],
+      )),
+    ],
+  )
+
+const workspaceFiles = (state: DesktopShellState): View =>
+  Stack(
+    {
+      key: "workspace-files-panel",
+      direction: "column",
+      gap: "3",
+      style: { width: "full", minWidth: 0, flex: 1, minHeight: 0 },
+    },
+    [
+      Stack({ key: "workspace-files-heading", direction: "row", gap: "2", align: "center" }, [
+        Text({ key: "workspace-files-title", content: state.workspaceSnapshot?.label ?? "Files", variant: "heading", color: "textPrimary" }),
+        Button({
+          key: "workspace-files-choose",
+          label: "Choose folder",
+          variant: "ghost",
+          onPress: IntentRef("DesktopWorkspacePickerRequested"),
+          a11y: { label: "Choose local workspace folder" },
+        }),
+      ]),
+      ...(state.workspaceSnapshot === null ? [Text({ key: "workspace-files-empty", content: "Choose a local folder to inspect its files.", variant: "body", color: "textMuted" })] : [
+        Text({ key: "workspace-files-status", content: state.workspaceSnapshot.git === "clean" ? "No local changes" : state.workspaceSnapshot.git === "changed" ? "Local changes" : "Git status unavailable", variant: "caption", color: "textMuted" }),
+        Stack({ key: "workspace-files-layout", direction: "row", gap: "3", style: { width: "full", flex: 1, minHeight: 0 } }, [
+          Stack({ key: "workspace-files-list", direction: "column", gap: "1", style: { minWidth: 240, maxWidth: 320, flex: 1 } }, state.workspaceSnapshot.entries.map((entry) => Button({
+            key: `workspace-file-${entry.path}`,
+            label: entry.kind === "directory" ? `${entry.name}/` : entry.name,
+            variant: "ghost",
+            disabled: entry.kind === "directory",
+            onPress: IntentRef("DesktopWorkspaceFileSelected", StaticPayload(entry.path)),
+            a11y: { label: entry.kind === "directory" ? `Folder ${entry.name}` : `Open file ${entry.name}` },
+          }))),
+          Card({ key: "workspace-file-preview", padding: "3", radius: "lg", style: { flex: 2, minWidth: 0, surface: "glass" } }, [
+            Text({ key: "workspace-file-preview-title", content: state.workspaceFile?.path ?? "Select a file", variant: "caption", color: "textMuted" }),
+            Text({ key: "workspace-file-preview-content", content: state.workspaceFile?.content ?? "", variant: "body", color: "textPrimary" }),
+          ]),
+        ]),
+      ]),
     ],
   )
 
@@ -569,8 +738,8 @@ export const desktopShellView = (state: DesktopShellState): View =>
         },
         [
           shellHeader(state),
-          ...(state.notes.length === 0 ? [shellWelcome()] : []),
-          Transcript({
+          ...(state.workspace === "chat" && state.notes.length === 0 ? [shellWelcome()] : []),
+          ...(state.workspace === "chat" ? [Transcript({
             key: "shell-transcript",
             pinToEnd: true,
             messages: state.notes.map(noteMessage),
@@ -584,8 +753,8 @@ export const desktopShellView = (state: DesktopShellState): View =>
               paddingRight: "4",
               gap: "5",
             },
-          }),
-          shellComposer(state),
+          })] : state.workspace === "files" ? [workspaceFiles(state)] : [projectHome(state)]),
+          ...(state.workspace === "chat" ? [shellComposer(state)] : []),
         ],
       ),
     ],

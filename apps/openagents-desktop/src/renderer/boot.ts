@@ -25,6 +25,7 @@ import {
 } from "./shell.ts"
 import { openagentsDesktopTheme } from "./theme.ts"
 import { type DesktopThread } from "../chat-contract.ts"
+import { type DesktopWorkspaceFile, type DesktopWorkspaceSnapshot } from "../workspace-contract.ts"
 
 /** Effect Schema at the preload boundary (issue #8574: Schema, not Zod). */
 const DesktopBridgeSchema = Schema.Struct({
@@ -40,6 +41,9 @@ type DesktopBridge = Readonly<{
   newThread?: () => Promise<unknown>
   openThread?: (value: unknown) => Promise<unknown>
   sendMessage?: (value: unknown) => Promise<unknown>
+  workspaceSummary?: () => Promise<unknown>
+  chooseWorkspace?: () => Promise<unknown>
+  readWorkspaceFile?: (value: unknown) => Promise<unknown>
 }>
 
 export const decodeBridgeHost = (bridge: unknown): string => {
@@ -101,6 +105,19 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
           const raw = await (globalThis as { openagentsDesktop?: DesktopBridge }).openagentsDesktop?.sendMessage?.(input)
           if (typeof raw === "object" && raw !== null && typeof (raw as { ok?: unknown }).ok === "boolean") return raw as { ok: boolean; thread?: DesktopThread | null; error?: string }
           return { ok: false, error: "Desktop chat returned an invalid response." }
+        },
+      }, {
+        summary: async () => {
+          const raw = await (globalThis as { openagentsDesktop?: DesktopBridge }).openagentsDesktop?.workspaceSummary?.()
+          return typeof raw === "object" && raw !== null && typeof (raw as { root?: unknown }).root === "string" ? raw as DesktopWorkspaceSnapshot : null
+        },
+        choose: async () => {
+          const raw = await (globalThis as { openagentsDesktop?: DesktopBridge }).openagentsDesktop?.chooseWorkspace?.()
+          return typeof raw === "object" && raw !== null && typeof (raw as { root?: unknown }).root === "string" ? raw as DesktopWorkspaceSnapshot : null
+        },
+        readFile: async (path) => {
+          const raw = await (globalThis as { openagentsDesktop?: DesktopBridge }).openagentsDesktop?.readWorkspaceFile?.({ path })
+          return typeof raw === "object" && raw !== null && typeof (raw as { content?: unknown }).content === "string" ? raw as DesktopWorkspaceFile : null
         },
       }),
     )

@@ -12,13 +12,15 @@
  */
 import path from "node:path"
 import { randomUUID } from "node:crypto"
-import { BrowserWindow, app, ipcMain, session } from "electron"
+import { BrowserWindow, app, dialog, ipcMain, session } from "electron"
 
 import { FleetStageChannel, decodeFleetStageRequest, unavailableFleetStageResult } from "./fleet-contract.ts"
 import { submitFleetBrief } from "./fleet-control.ts"
 import { completeChatTurn } from "./chat-service.ts"
 import { DesktopChatTurnChannel, DesktopNewThreadChannel, DesktopOpenThreadChannel, DesktopThreadsChannel, decode, DesktopThreadRequestSchema, DesktopTurnRequestSchema, type DesktopMessage } from "./chat-contract.ts"
 import { makeThreadStore } from "./thread-store.ts"
+import { DesktopWorkspaceChooseChannel, DesktopWorkspaceFilesChannel, DesktopWorkspaceReadChannel, DesktopWorkspaceSummaryChannel, decodeWorkspaceFileRequest } from "./workspace-contract.ts"
+import { inspectWorkspace, readWorkspaceFile } from "./workspace-service.ts"
 
 const here = import.meta.dirname
 const smokeMode = process.env.OPENAGENTS_DESKTOP_SMOKE === "1"
@@ -48,6 +50,22 @@ ipcMain.handle(FleetStageChannel, async (_event, value: unknown) => {
 })
 
 const threads = () => makeThreadStore(path.join(app.getPath("userData"), "threads.json"))
+let workspaceRoot = path.resolve(process.env.OPENAGENTS_DESKTOP_WORKSPACE ?? process.cwd())
+const workspaceSnapshot = () => {
+  try { return inspectWorkspace(workspaceRoot) } catch { return null }
+}
+ipcMain.handle(DesktopWorkspaceSummaryChannel, () => workspaceSnapshot())
+ipcMain.handle(DesktopWorkspaceFilesChannel, () => workspaceSnapshot())
+ipcMain.handle(DesktopWorkspaceChooseChannel, async () => {
+  const result = await dialog.showOpenDialog({ properties: ["openDirectory", "createDirectory"] })
+  if (result.canceled || result.filePaths[0] === undefined) return workspaceSnapshot()
+  workspaceRoot = path.resolve(result.filePaths[0])
+  return workspaceSnapshot()
+})
+ipcMain.handle(DesktopWorkspaceReadChannel, (_event, value: unknown) => {
+  const request = decodeWorkspaceFileRequest(value)
+  return request === null ? null : readWorkspaceFile(workspaceRoot, request.path)
+})
 ipcMain.handle(DesktopThreadsChannel, () => threads().list())
 ipcMain.handle(DesktopNewThreadChannel, () => threads().newThread())
 ipcMain.handle(DesktopOpenThreadChannel, (_event, value: unknown) => {

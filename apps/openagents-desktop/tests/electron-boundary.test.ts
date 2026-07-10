@@ -53,10 +53,12 @@ describe("Electron boundary (issue #8574 mandatory first-scaffold hardening)", (
     }
   })
 
-  test("preload exposes only the typed Fleet capability — no raw IPC or MessagePort", () => {
+  test("preload exposes fixed typed capabilities only — no raw IPC or MessagePort", () => {
     const preload = stripComments(read("src/preload.cts"))
     expect(preload).toContain("contextBridge.exposeInMainWorld")
     expect(preload).toContain("ipcRenderer.invoke(FleetStageChannel, request)")
+    expect(preload).toContain("DesktopWorkspaceChooseChannel")
+    expect(preload).toContain("decodeWorkspaceFileRequest")
     expect(preload).not.toContain("ipcRenderer.send")
     expect(preload).not.toContain("ipcRenderer.on")
     expect(preload).not.toContain("ipcRenderer.remove")
@@ -64,9 +66,10 @@ describe("Electron boundary (issue #8574 mandatory first-scaffold hardening)", (
     expect(preload).not.toContain('require("node:')
   })
 
-  test("main exposes one validated Fleet channel rather than arbitrary command authority", () => {
+  test("main exposes fixed validated channels rather than arbitrary command authority", () => {
     expect(main).toContain("ipcMain.handle(FleetStageChannel")
     expect(main).toContain("decodeFleetStageRequest(value)")
+    expect(main).toContain("decodeWorkspaceFileRequest(value)")
     expect(main).not.toContain("ipcMain.on(")
   })
 

@@ -22,6 +22,8 @@ import {
   withNewChat,
   withChatSelected,
   withLoopProof,
+  withWorkspace,
+  withWorkspaceSnapshot,
   withNote,
   withPending,
   type DesktopShellState,
@@ -84,6 +86,8 @@ describe("desktopShellView (state -> component tree)", () => {
     expect(nodeByKey(view, "shell-sidebar")?._tag).toBe("Stack")
     expect((nodeByKey(view, "shell-sidebar")?.style as { surface?: string }).surface).toBe("glass")
     expect(nodeByKey(view, "sidebar-new-chat")?._tag).toBe("Button")
+    expect(nodeByKey(view, "workspace-chat")?._tag).toBe("IconButton")
+    expect(nodeByKey(view, "workspace-home")?._tag).toBe("IconButton")
     expect(nodeByKey(view, "sidebar-new-chat-icon")?.name).toBe("ChatCompose")
     expect(nodeByKey(view, "sidebar-thread-test-thread")?._tag).toBe("Button")
     expect(nodeByKey(view, "sidebar-thread-icon-test-thread")?.name).toBe("Chats")
@@ -159,6 +163,26 @@ describe("pure transitions", () => {
     expect(pending.pending).toBe(true)
     expect(pending.notes).toBe(baseState.notes)
     expect(withPending(pending, false).pending).toBe(false)
+  })
+
+  test("Project home is a real typed workspace projection over persisted threads", () => {
+    const home = withWorkspace(baseState, "home")
+    expect(nodeByKey(desktopShellView(home), "workspace-home-panel")?._tag).toBe("Stack")
+    expect(nodeByKey(desktopShellView(home), "workspace-home-thread-test-thread")?._tag).toBe("Card")
+    expect(nodeByKey(desktopShellView(home), "shell-composer")).toBeUndefined()
+  })
+
+  test("Files workspace projects only host-provided local entries and file content", () => {
+    const files = withWorkspaceSnapshot(withWorkspace(baseState, "files"), {
+      root: "/workspace",
+      label: "workspace",
+      git: "changed",
+      entries: [{ name: "README.md", path: "/workspace/README.md", kind: "file" }],
+    })
+    const view = desktopShellView(files)
+    expect(nodeByKey(view, "workspace-files-panel")?._tag).toBe("Stack")
+    expect(nodeByKey(view, "workspace-file-/workspace/README.md")?._tag).toBe("Button")
+    expect(nodeByKey(view, "shell-composer")).toBeUndefined()
   })
 
   test("New chat resets the conversation and current-chat navigation closes Fleet", () => {
