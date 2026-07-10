@@ -4576,6 +4576,149 @@ const schemaComponents = (): JsonSchema => ({
       },
     },
   },
+  PortalContentItem: {
+    type: 'object',
+    additionalProperties: false,
+    required: [
+      'id',
+      'engagementId',
+      'kind',
+      'channel',
+      'variant',
+      'pairRef',
+      'title',
+      'body',
+      'state',
+      'decidedAt',
+      'decisionReceiptRef',
+      'createdAt',
+      'updatedAt',
+    ],
+    properties: {
+      id: { type: 'string' },
+      engagementId: { type: 'string' },
+      kind: { type: 'string', enum: ['post', 'email', 'ad'] },
+      channel: { type: 'string' },
+      variant: { type: 'string', enum: ['a', 'b'] },
+      pairRef: { type: ['string', 'null'] },
+      title: { type: 'string' },
+      body: { type: 'string' },
+      state: {
+        type: 'string',
+        enum: ['draft', 'approved', 'rejected', 'published'],
+      },
+      decidedAt: { type: ['string', 'null'] },
+      decisionReceiptRef: { type: ['string', 'null'] },
+      createdAt: { type: 'string' },
+      updatedAt: { type: 'string' },
+    },
+  },
+  PortalEngagementEnvelope: {
+    type: 'object',
+    additionalProperties: false,
+    description:
+      "The signed-in client's OWN engagement (owner-scoped by session identity; there is no engagement-id lookup for clients). engagement is null while no engagement is bound to the caller. KPI values are honest placeholders (null) until the live funnel wiring exists.",
+    required: ['engagement'],
+    properties: {
+      engagement: {
+        type: ['object', 'null'],
+        additionalProperties: false,
+        required: ['id', 'name', 'status', 'createdAt'],
+        properties: {
+          id: { type: 'string' },
+          name: { type: 'string' },
+          status: {
+            type: 'string',
+            enum: ['preparing', 'active', 'paused', 'closed'],
+          },
+          createdAt: { type: 'string' },
+        },
+      },
+      items: {
+        type: 'array',
+        items: { $ref: '#/components/schemas/PortalContentItem' },
+      },
+      kpis: {
+        type: 'array',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['key', 'label', 'value', 'note'],
+          properties: {
+            key: { type: 'string' },
+            label: { type: 'string' },
+            value: { type: ['number', 'string', 'null'] },
+            note: { type: 'string' },
+          },
+        },
+      },
+    },
+  },
+  PortalDecisionRequest: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['decision'],
+    properties: {
+      decision: { type: 'string', enum: ['approve', 'reject'] },
+    },
+  },
+  PortalDecisionEnvelope: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['ok', 'item', 'receiptRef', 'alreadyDecided'],
+    properties: {
+      ok: { type: 'boolean', enum: [true] },
+      item: { $ref: '#/components/schemas/PortalContentItem' },
+      receiptRef: { type: 'string' },
+      alreadyDecided: { type: 'boolean' },
+    },
+  },
+  PortalAdminEngagementCreateRequest: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['name'],
+    properties: {
+      name: { type: 'string' },
+      status: {
+        type: 'string',
+        enum: ['preparing', 'active', 'paused', 'closed'],
+      },
+      clientEmail: { type: 'string' },
+    },
+  },
+  PortalAdminEngagementEnvelope: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['ok', 'engagement'],
+    properties: {
+      ok: { type: 'boolean', enum: [true] },
+      engagement: {
+        type: 'object',
+        additionalProperties: false,
+        required: [
+          'id',
+          'name',
+          'status',
+          'clientUserId',
+          'clientEmail',
+          'createdAt',
+          'updatedAt',
+        ],
+        properties: {
+          id: { type: 'string' },
+          name: { type: 'string' },
+          status: {
+            type: 'string',
+            enum: ['preparing', 'active', 'paused', 'closed'],
+          },
+          clientUserId: { type: ['string', 'null'] },
+          clientEmail: { type: ['string', 'null'] },
+          createdAt: { type: 'string' },
+          updatedAt: { type: 'string' },
+        },
+      },
+    },
+  },
   PublicAgentReadinessReport: {
     type: 'object',
     additionalProperties: false,
@@ -15662,6 +15805,73 @@ const paths = (): JsonSchema => ({
         '422': {
           description:
             'The contact, package, Stripe configuration, or checkout request was invalid.',
+          ...jsonContent('#/components/schemas/ErrorResponse'),
+        },
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/portal/engagement': {
+    get: operation({
+      operationId: 'getPortalEngagement',
+      summary: "Read the signed-in client's own portal engagement",
+      description:
+        "PORTAL-1 (#8652): returns the caller's OWN engagement (resolved only through the verified browser-session identity — client_user_id, or a pre-login client_email binding that pins the user id on first authenticated read), its content items awaiting decision, and honest placeholder KPI tiles (values null until live funnel wiring exists). Owner-scoped fail-closed: there is no client-facing engagement-id lookup, so a client can never read another engagement. engagement is null while none is bound.",
+      tags: ['Portal'],
+      security: [{ browserSession: [] }],
+      responses: {
+        '200': okJson(
+          "The caller's own engagement projection (or engagement: null).",
+          '#/components/schemas/PortalEngagementEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/portal/content/{itemId}/decision': {
+    post: operation({
+      operationId: 'decidePortalContentItem',
+      summary: 'Approve or reject a portal content item',
+      description:
+        "PORTAL-1 (#8652): signed-in client decision on one of their OWN engagement's draft content items. Every decision mints an immutable decision receipt ref (portal_content_decision:<id>) with decidedAt; idempotent repeats of the same decision return the identical receipt with alreadyDecided true, and flipping a decided item is refused (422). Items outside the caller's engagement answer 404 without leaking existence. Approved items become ready-to-publish; publishing automation is a follow-on lane and is NOT triggered by this route.",
+      tags: ['Portal'],
+      security: [{ browserSession: [] }],
+      parameters: [
+        pathParam('itemId', 'Portal content item id within the caller\'s own engagement.'),
+      ],
+      requestBody: jsonContent('#/components/schemas/PortalDecisionRequest'),
+      responses: {
+        '200': okJson(
+          'Decision recorded (or idempotently repeated) with its immutable receipt ref.',
+          '#/components/schemas/PortalDecisionEnvelope',
+        ),
+        '422': {
+          description:
+            'The decision was invalid or the item was already decided the other way (decisions are immutable).',
+          ...jsonContent('#/components/schemas/ErrorResponse'),
+        },
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/portal/admin/engagements': {
+    post: operation({
+      operationId: 'createPortalEngagement',
+      summary: 'Create a client portal engagement (operator)',
+      description:
+        'PORTAL-1 (#8652): admin-bearer operator action that creates a portal engagement (optionally pre-bound to a client email). Companion admin-bearer routes bind a client identity (/api/portal/admin/engagements/{id}/bind), seed content items (/{id}/content-items), and read the engagement for verification (/{id}). Creation grants no client access by itself; clients resolve only their own bound engagement through /api/portal/engagement.',
+      tags: ['Operator'],
+      security: adminBearer,
+      requestBody: jsonContent(
+        '#/components/schemas/PortalAdminEngagementCreateRequest',
+      ),
+      responses: {
+        '201': okJson(
+          'Created engagement projection.',
+          '#/components/schemas/PortalAdminEngagementEnvelope',
+        ),
+        '422': {
+          description: 'The engagement input was invalid.',
           ...jsonContent('#/components/schemas/ErrorResponse'),
         },
         ...errorResponses(),

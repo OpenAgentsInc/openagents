@@ -473,6 +473,7 @@ import { makeCrmEmailRoutes } from './crm-email-routes'
 import { makeCrmImportRoutes } from './crm-import-routes'
 import { makeCrmReplyRoutes } from './crm-reply-routes'
 import { makeCrmSalesCheckoutRoutes } from './crm-sales-checkout-routes'
+import { makePortalRoutes } from './portal-routes'
 import { makeCrmMcpCatalog } from './crm-mcp'
 import { makeCrmMcpDiscoveryRoutes } from './crm-mcp-discovery-routes'
 import {
@@ -9772,6 +9773,14 @@ const crmSalesCheckoutRoutes = makeCrmSalesCheckoutRoutes<WorkerBindings>({
   requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
 })
 
+// PORTAL-1 (#8652): client portal engagement + content decision routes.
+const portalRoutes = makePortalRoutes<WorkerBindings>({
+  database: env => openAgentsDatabase(env),
+  requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
+  requireBrowserSession: (request, env, ctx) =>
+    requireBrowserSession(request, env, ctx),
+})
+
 const makeKhalaMcpServedTokensRecorder = (
   db: D1Database,
   options: Readonly<{
@@ -16590,6 +16599,7 @@ const routeRequest = makeWorkerRouteRequest({
     crmApprovalBatchRoutes.routeCrmApprovalBatchRequest(request, env, ctx) ??
     crmReplyRoutes.routeCrmReplyRequest(request, env, ctx) ??
     crmSalesCheckoutRoutes.routeCrmSalesCheckoutRequest(request, env, ctx) ??
+    portalRoutes.routePortalRequest(request, env, ctx) ??
     crmMcpDiscoveryRoutes.routeCrmMcpDiscoveryRequest(request, env, ctx) ??
     crmMcpGrantRoutes.routeCrmMcpGrantRequest(request, env, ctx) ??
     crmMcpRoutes.routeCrmMcpRequest(request, env, ctx) ??
