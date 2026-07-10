@@ -330,10 +330,9 @@ export function openPylonFleetRunExecutionReporter(
       batch,
     })
     const lastSequence = events.at(-1)?.sequence ?? 0
-    if (
-      ack.acceptedThroughSequence < lastSequence ||
-      ack.acceptedThroughSequence < events[0]!.sequence
-    ) throw unavailable()
+    // The server may acknowledge exact replay, but it may not advance this
+    // local cursor past bytes that were not in the posted batch.
+    if (ack.acceptedThroughSequence !== lastSequence) throw unavailable()
     input.store.markFleetRunExecutionOutboxDelivered(
       input.runRef,
       claimRef,

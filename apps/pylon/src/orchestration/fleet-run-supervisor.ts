@@ -1,4 +1,4 @@
-import { Effect, Scope } from "effect"
+import { Effect, Schema as S, Scope } from "effect"
 import type { PylonAssignmentRunLifecycleEvent } from "@openagentsinc/agent-runtime-schema"
 import {
   defaultFleetAutoPolicy,
@@ -24,6 +24,11 @@ import type {
   WorkPlannerOutput,
 } from "./work-planner.js"
 import { fleetRunTaskIdForClaim } from "./fleet-run-refs.js"
+import {
+  PylonFleetRunUsageEvidenceCarrierSchema,
+  type PylonFleetRunUsageEvidence,
+  type PylonFleetRunUsageEvidenceCarrier,
+} from "./fleet-run-usage-evidence.js"
 
 export const FLEET_RUN_SUPERVISOR_MAX_SPAWN_COUNT = 10
 
@@ -87,6 +92,9 @@ export type FleetRunSupervisorDispatchResult = {
   readonly lifecycle: readonly FleetRunSupervisorLifecycleEvent[]
   readonly status: "accepted" | "blocked" | "failed" | "completed"
   readonly summary?: string | null
+  readonly accountRefHash?: string | null
+  readonly closeoutRef?: string | null
+  readonly usageEvidence?: PylonFleetRunUsageEvidence | null
 }
 
 export type FleetRunSupervisorActiveAssignment = {
@@ -156,9 +164,14 @@ export type FleetRunSupervisorObservedEvent =
     readonly claimRef: string
     readonly workUnitRef: string
     readonly accountRef: string
+    readonly accountRefHash: string | null
     readonly assignmentRef: string | null
+    readonly blockerRefs: readonly string[]
+    readonly closeoutRef: string | null
     readonly status: FleetRunSupervisorDispatchResult["status"]
     readonly summary?: string | null
+    readonly usageEvidence: PylonFleetRunUsageEvidence | null
+    readonly workerKind: FleetRunSupervisorConcreteWorkerKind
   }
   | {
     readonly kind: "lifecycle"
@@ -258,6 +271,94 @@ const dispatchFailureFor = (
   blockerRefs: [...new Set(result.lifecycle.flatMap(event => event.blockerRefs ?? []))],
   status: result.status,
 })
+
+const accountHealthFailureFor = (
+  blockerRefs: readonly string[],
+  status: string,
+): { readonly blockerRefs: readonly string[]; readonly status: string } | undefined => {
+  const accountHealthRefs = blockerRefs.filter(ref =>
+    /(?:account_(?:exhausted|quota_exhausted|rate_limited|unavailable)|credentials?_revoked|custody_invalid|auth_required)/u
+      .test(ref)
+  )
+  return accountHealthRefs.length === 0
+    ? undefined
+    : { blockerRefs: accountHealthRefs, status }
+}
+
+const emptyUsageEvidenceCarrier: PylonFleetRunUsageEvidenceCarrier = {
+  accountRefHash: null,
+  closeoutRef: null,
+  usageEvidence: null,
+}
+
+const usageEvidenceCarrierFor = (
+  result: FleetRunSupervisorDispatchResult,
+): PylonFleetRunUsageEvidenceCarrier => S.decodeUnknownSync(
+  PylonFleetRunUsageEvidenceCarrierSchema,
+)({
+  accountRefHash: result.accountRefHash ?? null,
+  closeoutRef: result.closeoutRef ?? null,
+  usageEvidence: result.usageEvidence ?? null,
+}, { onExcessProperty: "error" })
+
+const workerKindForTask = (
+  store: PylonOrchestrationStore,
+  taskId: string,
+): FleetRunSupervisorConcreteWorkerKind => {
+  const runnerKind = store.getTask(taskId)?.spec.runnerKind
+  if (runnerKind === "claude_agent") return "claude"
+  if (runnerKind === "grok_cli") return "grok"
+  return "codex"
+}
+
+type FleetRunTerminalDisposition = {
+  readonly blockerRefs: readonly string[]
+  readonly carrier: PylonFleetRunUsageEvidenceCarrier
+  readonly status: Extract<OrchestrationTaskStatus, "completed" | "failed" | "blocked">
+}
+
+const terminalDispositionFor = (
+  run: FleetRun,
+  result: FleetRunSupervisorDispatchResult,
+): FleetRunTerminalDisposition | null => {
+  const status = terminalStatusForDispatch(result)
+  if (status === null) return null
+  const blockerRefs = [...dispatchFailureFor(result).blockerRefs]
+  let carrier: PylonFleetRunUsageEvidenceCarrier
+  try {
+    carrier = usageEvidenceCarrierFor(result)
+  } catch {
+    return {
+      blockerRefs: [...new Set([
+        ...blockerRefs,
+        "blocker.pylon.fleet_run.usage_evidence_invalid",
+      ])],
+      carrier: emptyUsageEvidenceCarrier,
+      status: "failed",
+    }
+  }
+  const exactAssignment = carrier.usageEvidence?.assignmentRef
+  const acceptedSarahRun = run.authorityBinding?.phase === "accepted"
+  if (
+    status === "completed" &&
+    acceptedSarahRun &&
+    (
+      carrier.usageEvidence === null ||
+      result.assignmentRef === null ||
+      exactAssignment !== result.assignmentRef
+    )
+  ) {
+    return {
+      blockerRefs: [...new Set([
+        ...blockerRefs,
+        "blocker.pylon.fleet_run.usage_evidence_required",
+      ])],
+      carrier: emptyUsageEvidenceCarrier,
+      status: "failed",
+    }
+  }
+  return { blockerRefs, carrier, status }
+}
 
 const isoSafe = (date: Date | string): string =>
   typeof date === "string" ? date : date.toISOString()
@@ -415,8 +516,10 @@ const recordTerminalAssignment = async (
   result: FleetRunSupervisorDispatchResult,
   now: Date,
 ): Promise<boolean> => {
-  const terminalStatus = terminalStatusForDispatch(result)
-  if (terminalStatus === null) return false
+  const run = options.store.getFleetRun(options.runRef)
+  if (run === null) return false
+  const terminal = terminalDispositionFor(run, result)
+  if (terminal === null) return false
   for (const event of result.lifecycle) {
     await emit(options.onLifecycle, {
       kind: "lifecycle",
@@ -430,20 +533,24 @@ const recordTerminalAssignment = async (
   if (result.assignmentRef !== null) {
     options.store.updateWorkClaimAssignmentRef(assignment.claim.claimRef, result.assignmentRef, now)
   }
-    options.store.recordWorkerDone({
+  options.store.recordWorkerDone({
     contextId: assignment.contextId,
     taskId: assignment.taskId,
-    status: terminalStatus,
-      result: JSON.stringify({
-        assignmentRef: result.assignmentRef,
-        summary: result.summary ?? null,
-      }),
-      ...(terminalStatus === "failed" ? { failure: dispatchFailureFor(result) } : {}),
-      now,
+    status: terminal.status,
+    result: JSON.stringify({
+      assignmentRef: result.assignmentRef,
+      summary: result.summary ?? null,
+      ...terminal.carrier,
+    }),
+    ...(terminal.status === "failed" &&
+        accountHealthFailureFor(terminal.blockerRefs, result.status) !== undefined
+      ? { failure: accountHealthFailureFor(terminal.blockerRefs, result.status) }
+      : {}),
+    now,
   })
   options.store.updateWorkClaimState(
     assignment.claim.claimRef,
-    terminalStatus === "completed" ? "closeout" : "released",
+    terminal.status === "completed" ? "closeout" : "released",
     now,
   )
   await emit(options.onLifecycle, {
@@ -453,9 +560,14 @@ const recordTerminalAssignment = async (
     claimRef: assignment.claim.claimRef,
     workUnitRef: assignment.claim.workUnitRef,
     accountRef: assignment.accountRef,
+    accountRefHash: terminal.carrier.accountRefHash,
     assignmentRef: result.assignmentRef,
-    status: result.status,
+    blockerRefs: terminal.blockerRefs,
+    closeoutRef: terminal.carrier.closeoutRef,
+    status: terminal.status === "completed" ? "completed" : result.status,
     summary: result.summary ?? null,
+    usageEvidence: terminal.carrier.usageEvidence,
+    workerKind: workerKindForTask(options.store, assignment.taskId),
   })
   return true
 }
@@ -767,7 +879,7 @@ export async function tickFleetRunSupervisor(
       let result: FleetRunSupervisorDispatchResult
       try {
         result = await options.runner.dispatch({ accountRef: account.accountRef, claim, run, taskId, workUnit, workerKind })
-      } catch (error) {
+      } catch {
         store.recordWorkerDone({
           contextId,
           taskId,
@@ -776,7 +888,6 @@ export async function tickFleetRunSupervisor(
             assignmentRef: null,
             summary: "The named FleetRun executor failed safely.",
           }),
-          failure: { error, status: "runner_throw" },
           now,
         })
         store.releaseWorkClaim(claim.claimRef, now)
@@ -788,9 +899,14 @@ export async function tickFleetRunSupervisor(
           claimRef: claim.claimRef,
           workUnitRef: workUnit.workUnitRef,
           accountRef: account.accountRef,
+          accountRefHash: null,
           assignmentRef: null,
+          blockerRefs: ["blocker.pylon.fleet_run.runner_throw"],
+          closeoutRef: null,
           status: "failed",
           summary: "The named FleetRun executor failed safely.",
+          usageEvidence: null,
+          workerKind,
         })
         return
       }
@@ -815,8 +931,9 @@ export async function tickFleetRunSupervisor(
           store.updateWorkClaimAssignmentRef(claim.claimRef, result.assignmentRef, now)
         }
 
-        const terminalStatus = terminalStatusForDispatch(result)
-        if (terminalStatus === null) {
+        const terminal = terminalDispositionFor(run, result)
+        if (terminal === null) {
+          const carrier = usageEvidenceCarrierFor(result)
           await emit(options.onLifecycle, {
             kind: "dispatch",
             runRef: run.runRef,
@@ -824,9 +941,14 @@ export async function tickFleetRunSupervisor(
             claimRef: claim.claimRef,
             workUnitRef: workUnit.workUnitRef,
             accountRef: account.accountRef,
+            accountRefHash: carrier.accountRefHash,
             assignmentRef: result.assignmentRef,
+            blockerRefs: dispatchFailureFor(result).blockerRefs,
+            closeoutRef: carrier.closeoutRef,
             status: result.status,
             summary: result.summary ?? null,
+            usageEvidence: carrier.usageEvidence,
+            workerKind,
           })
           return
         }
@@ -834,17 +956,21 @@ export async function tickFleetRunSupervisor(
         store.recordWorkerDone({
           contextId,
           taskId,
-          status: terminalStatus,
+          status: terminal.status,
           result: JSON.stringify({
             assignmentRef: result.assignmentRef,
             summary: result.summary ?? null,
+            ...terminal.carrier,
           }),
-          ...(terminalStatus === "failed" ? { failure: dispatchFailureFor(result) } : {}),
+          ...(terminal.status === "failed" &&
+              accountHealthFailureFor(terminal.blockerRefs, result.status) !== undefined
+            ? { failure: accountHealthFailureFor(terminal.blockerRefs, result.status) }
+            : {}),
           now,
         })
         store.updateWorkClaimState(
           claim.claimRef,
-          terminalStatus === "completed" ? "closeout" : "released",
+          terminal.status === "completed" ? "closeout" : "released",
           now,
         )
         await emit(options.onLifecycle, {
@@ -854,9 +980,14 @@ export async function tickFleetRunSupervisor(
           claimRef: claim.claimRef,
           workUnitRef: workUnit.workUnitRef,
           accountRef: account.accountRef,
+          accountRefHash: terminal.carrier.accountRefHash,
           assignmentRef: result.assignmentRef,
-          status: result.status,
+          blockerRefs: terminal.blockerRefs,
+          closeoutRef: terminal.carrier.closeoutRef,
+          status: terminal.status === "completed" ? "completed" : result.status,
           summary: result.summary ?? null,
+          usageEvidence: terminal.carrier.usageEvidence,
+          workerKind,
         })
       } catch (error) {
         console.error("[fleet-run-supervisor] post-dispatch bookkeeping failed", {
