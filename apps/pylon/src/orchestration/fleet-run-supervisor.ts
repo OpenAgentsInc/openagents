@@ -305,6 +305,53 @@ const defaultClock: FleetRunSupervisorClock = {
 
 const liveTaskStatuses = new Set<OrchestrationTaskStatus>(["dispatched"])
 
+// A fire-and-forget runner may settle locally before its terminal lifecycle
+// projection has reached the durable execution outbox. Keep that short
+// in-process handoff counted as active so a following supervisor tick cannot
+// publish run_terminal ahead of the final work_terminal event. The store key
+// keeps independent supervisor/test runtimes isolated, and WeakMap ownership
+// avoids retaining a closed store.
+const finalizingTasksByStore = new WeakMap<
+  PylonOrchestrationStore,
+  Map<string, Set<string>>
+>()
+
+const finalizingTasksForRun = (
+  store: PylonOrchestrationStore,
+  runRef: string,
+): ReadonlySet<string> => finalizingTasksByStore.get(store)?.get(runRef) ?? new Set()
+
+const markTaskFinalizing = (
+  store: PylonOrchestrationStore,
+  runRef: string,
+  taskId: string,
+): void => {
+  let byRun = finalizingTasksByStore.get(store)
+  if (byRun === undefined) {
+    byRun = new Map()
+    finalizingTasksByStore.set(store, byRun)
+  }
+  let tasks = byRun.get(runRef)
+  if (tasks === undefined) {
+    tasks = new Set()
+    byRun.set(runRef, tasks)
+  }
+  tasks.add(taskId)
+}
+
+const clearTaskFinalizing = (
+  store: PylonOrchestrationStore,
+  runRef: string,
+  taskId: string,
+): void => {
+  const byRun = finalizingTasksByStore.get(store)
+  const tasks = byRun?.get(runRef)
+  if (tasks === undefined) return
+  tasks.delete(taskId)
+  if (tasks.size === 0) byRun?.delete(runRef)
+  if (byRun?.size === 0) finalizingTasksByStore.delete(store)
+}
+
 const terminalStatusForDispatch = (
   result: FleetRunSupervisorDispatchResult,
 ): Extract<OrchestrationTaskStatus, "completed" | "failed" | "blocked"> | null => {
@@ -446,8 +493,24 @@ const isCoolingDown = (account: FleetRunSupervisorAccount, now: Date): boolean =
   return !Number.isNaN(until) && until > now.getTime()
 }
 
-const activeAssignmentsForRun = (store: PylonOrchestrationStore, runRef: string): number =>
-  store.listTasks().filter(task => task.spec.fleetRunRef === runRef && liveTaskStatuses.has(task.status)).length
+const activeAssignmentsForRun = (
+  store: PylonOrchestrationStore,
+  runRef: string,
+): number => {
+  const activeTaskIds = new Set(
+    store
+      .listTasks()
+      .filter(
+        (task) =>
+          task.spec.fleetRunRef === runRef && liveTaskStatuses.has(task.status),
+      )
+      .map((task) => task.id),
+  )
+  for (const taskId of finalizingTasksForRun(store, runRef)) {
+    activeTaskIds.add(taskId)
+  }
+  return activeTaskIds.size
+}
 
 const liveClaimsForRun = (store: PylonOrchestrationStore, runRef: string, now: Date): WorkClaim[] =>
   store.listLiveWorkClaims(now).filter(claim => claim.runRef === runRef)
@@ -1188,6 +1251,7 @@ export async function tickFleetRunSupervisor(
           },
         })
       } catch {
+        markTaskFinalizing(store, run.runRef, taskId)
         store.recordWorkerDone({
           contextId,
           taskId,
@@ -1221,6 +1285,7 @@ export async function tickFleetRunSupervisor(
           proofRefs: [],
           authorityReceiptRefs: [],
         })
+        clearTaskFinalizing(store, run.runRef, taskId)
         return
       }
 
@@ -1243,6 +1308,7 @@ export async function tickFleetRunSupervisor(
         // the next one-second tick reconcile and finalize the same task first.
         // Projection order below remains lifecycle events, then dispatch.
         if (terminal !== null) {
+          markTaskFinalizing(store, run.runRef, taskId)
           store.recordWorkerDone({
             contextId,
             taskId,
@@ -1327,6 +1393,7 @@ export async function tickFleetRunSupervisor(
           proofRefs: result.proofRefs ?? [],
           authorityReceiptRefs: result.authorityReceiptRefs ?? [],
         })
+        clearTaskFinalizing(store, run.runRef, taskId)
       } catch (error) {
         console.error("[fleet-run-supervisor] post-dispatch bookkeeping failed", {
           runRef: run.runRef,
@@ -1366,7 +1433,10 @@ export async function tickFleetRunSupervisor(
   } else if (reconciled.state !== "running" && reviveForBacklog) {
     reconciled = store.updateFleetRunState(run.runRef, "running", clock.now(), "reconcile")
   }
-  if (reconciled.state === "completed") {
+  if (
+    reconciled.state === "completed" &&
+    activeAssignmentsForRun(store, run.runRef) === 0
+  ) {
     await emit(options.onLifecycle, { kind: "completed", runRef: run.runRef, reason: "drained" })
   } else if (
     reconciled.state === "stopped" &&

@@ -306,6 +306,7 @@ describe("Pylon-owned FleetRun supervisor", () => {
     let releaseProjection!: () => void
     let markProjectionStarted!: () => void
     let markProjectionFinished!: () => void
+    let markTerminalDispatchProjected!: () => void
     const projectionGate = new Promise<void>(resolve => {
       releaseProjection = resolve
     })
@@ -315,7 +316,11 @@ describe("Pylon-owned FleetRun supervisor", () => {
     const projectionFinished = new Promise<void>(resolve => {
       markProjectionFinished = resolve
     })
+    const terminalDispatchProjected = new Promise<void>(resolve => {
+      markTerminalDispatchProjected = resolve
+    })
     let reconcileCalls = 0
+    const observed: FleetRunSupervisorObservedEvent[] = []
     const options = {
       store,
       pylonRef: "pylon.owner.fc3.slow_terminal_projection",
@@ -336,6 +341,10 @@ describe("Pylon-owned FleetRun supervisor", () => {
         },
       },
       onLifecycle: async (event: FleetRunSupervisorObservedEvent) => {
+        observed.push(event)
+        if (event.kind === "dispatch" && event.status === "completed") {
+          markTerminalDispatchProjected()
+        }
         if (event.kind !== "lifecycle") return
         markProjectionStarted()
         await projectionGate
@@ -359,13 +368,31 @@ describe("Pylon-owned FleetRun supervisor", () => {
     expect(context).toMatchObject({ status: "idle", currentTaskId: null })
 
     const second = await tickFleetRunSupervisor(options)
-    expect(second.activeAssignments).toBe(0)
+    expect(second.activeAssignments).toBe(1)
     expect(reconcileCalls).toBe(0)
+    expect(observed.some(event => event.kind === "completed")).toBe(false)
+    expect(observed.some(event => event.kind === "terminal")).toBe(false)
 
     releaseProjection()
     await projectionFinished
+    await terminalDispatchProjected
+    // Let the fire-and-forget bookkeeping continuation clear its finalizing
+    // marker after the terminal lifecycle sink returns.
+    await Bun.sleep(1)
     expect(store.getTask(task!.id)?.status).toBe("completed")
     expect(store.getWorkClaim(claim!.claimRef)?.state).toBe("closeout")
+
+    const third = await tickFleetRunSupervisor(options)
+    expect(third.activeAssignments).toBe(0)
+    const workTerminalIndex = observed.findIndex(
+      event => event.kind === "dispatch" && event.status === "completed",
+    )
+    const runTerminalIndexes = observed.flatMap((event, index) =>
+      event.kind === "completed" ? [index] : [],
+    )
+    expect(workTerminalIndex).toBeGreaterThanOrEqual(0)
+    expect(runTerminalIndexes).toHaveLength(1)
+    expect(runTerminalIndexes[0]!).toBeGreaterThan(workTerminalIndex)
   })
 
   test("binds a real executor approval signal to the exact live attempt and stable worker", async () => {
