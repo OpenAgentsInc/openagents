@@ -4901,6 +4901,19 @@ describe('Pylon Sarah FleetRun steering exchange', () => {
     expect(privatePayload.status).toBe(400)
     expect(appends).toHaveLength(1)
 
+    const oversizedWithoutDeclaredLength = await route(store, path, {
+      body: {
+        claimRef,
+        completions: [completion],
+        padding: 'x'.repeat(70 * 1_024),
+      },
+      fleetSteeringExchange: exchange,
+      method: 'POST',
+      tokenUserId: 'agent-one',
+    })
+    expect(oversizedWithoutDeclaredLength.status).toBe(400)
+    expect(appends).toHaveLength(1)
+
     const missingBearer = await route(store, path, {
       body: { claimRef, completions: [completion] },
       fleetSteeringExchange: exchange,

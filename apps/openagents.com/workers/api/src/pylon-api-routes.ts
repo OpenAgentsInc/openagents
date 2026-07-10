@@ -279,6 +279,46 @@ const decodeStrictFleetRunBody = <A>(
       }),
   })
 
+const readBoundedFleetRunBody = (
+  request: Request,
+  maxBytes: number,
+  invalid: () => PylonApiStoreError,
+): Effect.Effect<string, PylonApiStoreError> =>
+  Effect.tryPromise({
+    try: async () => {
+      const declaredLength = Number(request.headers.get('content-length'))
+      if (Number.isFinite(declaredLength) && declaredLength > maxBytes) {
+        throw new Error('fleet run body exceeds bound')
+      }
+      if (request.body === null) return ''
+      const reader = request.body.getReader()
+      const chunks: Uint8Array[] = []
+      let byteLength = 0
+      try {
+        while (true) {
+          const chunk = await reader.read()
+          if (chunk.done) break
+          byteLength += chunk.value.byteLength
+          if (byteLength > maxBytes) {
+            await reader.cancel('fleet run body exceeds bound')
+            throw new Error('fleet run body exceeds bound')
+          }
+          chunks.push(chunk.value)
+        }
+      } finally {
+        reader.releaseLock()
+      }
+      const bytes = new Uint8Array(byteLength)
+      let offset = 0
+      for (const chunk of chunks) {
+        bytes.set(chunk, offset)
+        offset += chunk.byteLength
+      }
+      return new TextDecoder('utf-8', { fatal: true }).decode(bytes)
+    },
+    catch: invalid,
+  })
+
 const decodeFleetRunExecutionBody = (
   request: Request,
 ): Effect.Effect<typeof FleetRunExecutionBatch.Type, PylonApiStoreError> => {
@@ -288,23 +328,11 @@ const decodeFleetRunExecutionBody = (
       reason: 'FleetRun execution request failed validation.',
     })
   return Effect.gen(function* () {
-    const declaredLength = Number(request.headers.get('content-length'))
-    if (
-      Number.isFinite(declaredLength) &&
-      declaredLength > FLEET_RUN_EXECUTION_MAX_BODY_BYTES
-    ) {
-      return yield* invalid()
-    }
-    const raw = yield* Effect.tryPromise({
-      try: () => request.text(),
-      catch: invalid,
-    })
-    if (
-      new TextEncoder().encode(raw).byteLength >
-      FLEET_RUN_EXECUTION_MAX_BODY_BYTES
-    ) {
-      return yield* invalid()
-    }
+    const raw = yield* readBoundedFleetRunBody(
+      request,
+      FLEET_RUN_EXECUTION_MAX_BODY_BYTES,
+      invalid,
+    )
     return yield* Effect.try({
       try: () =>
         S.decodeUnknownSync(S.fromJsonString(FleetRunExecutionBatch))(raw, {
@@ -324,23 +352,11 @@ const decodeFleetSteeringOutcomesBody = (
       reason: 'Fleet steering outcome request failed validation.',
     })
   return Effect.gen(function* () {
-    const declaredLength = Number(request.headers.get('content-length'))
-    if (
-      Number.isFinite(declaredLength) &&
-      declaredLength > FLEET_RUN_STEERING_OUTCOMES_MAX_BODY_BYTES
-    ) {
-      return yield* invalid()
-    }
-    const raw = yield* Effect.tryPromise({
-      try: () => request.text(),
-      catch: invalid,
-    })
-    if (
-      new TextEncoder().encode(raw).byteLength >
-      FLEET_RUN_STEERING_OUTCOMES_MAX_BODY_BYTES
-    ) {
-      return yield* invalid()
-    }
+    const raw = yield* readBoundedFleetRunBody(
+      request,
+      FLEET_RUN_STEERING_OUTCOMES_MAX_BODY_BYTES,
+      invalid,
+    )
     return yield* Effect.try({
       try: () =>
         S.decodeUnknownSync(S.fromJsonString(FleetSteeringOutcomeBatch))(raw, {
@@ -363,23 +379,11 @@ const decodeFleetSteeringCompletionsBody = (
       reason: 'Fleet steering completion request failed validation.',
     })
   return Effect.gen(function* () {
-    const declaredLength = Number(request.headers.get('content-length'))
-    if (
-      Number.isFinite(declaredLength) &&
-      declaredLength > FLEET_RUN_STEERING_OUTCOMES_MAX_BODY_BYTES
-    ) {
-      return yield* invalid()
-    }
-    const raw = yield* Effect.tryPromise({
-      try: () => request.text(),
-      catch: invalid,
-    })
-    if (
-      new TextEncoder().encode(raw).byteLength >
-      FLEET_RUN_STEERING_OUTCOMES_MAX_BODY_BYTES
-    ) {
-      return yield* invalid()
-    }
+    const raw = yield* readBoundedFleetRunBody(
+      request,
+      FLEET_RUN_STEERING_OUTCOMES_MAX_BODY_BYTES,
+      invalid,
+    )
     return yield* Effect.try({
       try: () =>
         S.decodeUnknownSync(

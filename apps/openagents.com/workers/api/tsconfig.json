@@ -8,7 +8,10 @@
     // is `noEmit`, so allowing `.ts` import specifiers here only affects
     // typechecking of that package's source, not any emitted output.
     "allowImportingTsExtensions": true,
-    "types": ["@cloudflare/workers-types"]
+    // Route contract tests import the owner-local Pylon HTTP reporters. Keep
+    // their Bun-only source typed explicitly instead of letting `bun:sqlite`
+    // fall through to the DOM `Database` declaration in this Worker project.
+    "types": ["@cloudflare/workers-types", "bun-types"]
   },
   "include": ["src/**/*", "vitest.config.ts", "wrangler.jsonc"],
   // CFG-9 (#8524): the Cloud Run entry layer typechecks under bun-types via
