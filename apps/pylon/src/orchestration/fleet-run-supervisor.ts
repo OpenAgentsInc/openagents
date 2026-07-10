@@ -6,6 +6,7 @@ import {
   defaultFleetAutoPolicy,
   marginalCostClassRank,
   resolveFleetAutoTarget,
+  type FleetAutoHarnessCounts,
   type FleetAutoPolicy,
   type FleetAutoTargetCandidate,
   type FleetAutoTargetFallbackEvent,
@@ -460,6 +461,54 @@ const activeByAccount = (claims: readonly WorkClaim[]): Map<string, number> => {
   return counts
 }
 
+const concreteWorkerKindForRunnerKind = (
+  runnerKind: string | undefined,
+): FleetRunSupervisorConcreteWorkerKind | null =>
+  runnerKind === "codex"
+    ? "codex"
+    : runnerKind === "claude" || runnerKind === "claude_agent"
+      ? "claude"
+      : runnerKind === "grok_cli"
+        ? "grok"
+        : null
+
+const activeByHarness = (
+  store: PylonOrchestrationStore,
+  runRef: string,
+  claims: readonly WorkClaim[],
+  accountWorkerKinds: ReadonlyMap<string, FleetRunSupervisorConcreteWorkerKind>,
+): Map<FleetRunSupervisorConcreteWorkerKind, number> => {
+  const counts = new Map<FleetRunSupervisorConcreteWorkerKind, number>([
+    ["codex", 0],
+    ["claude", 0],
+    ["grok", 0],
+  ])
+  const taskWorkerKinds = new Map(
+    store.listTasks()
+      .filter(task => task.spec.fleetRunRef === runRef)
+      .flatMap(task => {
+        const workerKind = concreteWorkerKindForRunnerKind(task.spec.runnerKind)
+        return workerKind === null ? [] : [[task.id, workerKind] as const]
+      }),
+  )
+  for (const claim of claims) {
+    if (claim.state === "closeout") continue
+    const workerKind = taskWorkerKinds.get(fleetRunTaskIdForClaim(runRef, claim.claimRef)) ??
+      accountWorkerKinds.get(claim.workerAccountRef)
+    if (workerKind === undefined) continue
+    counts.set(workerKind, (counts.get(workerKind) ?? 0) + 1)
+  }
+  return counts
+}
+
+const fleetAutoHarnessCounts = (
+  counts: ReadonlyMap<FleetRunSupervisorConcreteWorkerKind, number>,
+): FleetAutoHarnessCounts => ({
+  codex: counts.get("codex") ?? 0,
+  claude: counts.get("claude") ?? 0,
+  grok: counts.get("grok") ?? 0,
+})
+
 const collectActiveAssignments = (
   store: PylonOrchestrationStore,
   runRef: string,
@@ -867,15 +916,31 @@ export async function tickFleetRunSupervisor(
     accounts.push(account)
     accountWorkerKinds.set(account.accountRef, resolution.workerKind)
   }
+  const workerKindForAccount = (
+    account: FleetRunSupervisorAccount,
+  ): FleetRunSupervisorConcreteWorkerKind => {
+    const workerKind = accountWorkerKinds.get(account.accountRef)
+    if (workerKind === undefined) {
+      throw new Error("FleetRun account worker kind was not resolved")
+    }
+    return workerKind
+  }
   const activeCounts = activeByAccount(liveClaims)
+  const activeHarnessCounts = activeByHarness(
+    store,
+    run.runRef,
+    liveClaims,
+    accountWorkerKinds,
+  )
   const autoPolicy = options.autoPolicy ?? defaultFleetAutoPolicy
   const emittedAutoFallbacks = new Set<string>()
   const resolveAutoAccount = async (): Promise<FleetRunSupervisorAccount | null> => {
     const resolution = resolveFleetAutoTarget({
       policy: autoPolicy,
+      activeHarnessCounts: fleetAutoHarnessCounts(activeHarnessCounts),
       candidates: accounts.map(account => autoCandidateFor(
         account,
-        accountWorkerKinds.get(account.accountRef) ?? "codex",
+        workerKindForAccount(account),
         activeCounts,
         now,
       )),
@@ -894,7 +959,7 @@ export async function tickFleetRunSupervisor(
     if (resolution.selection === null) return null
     return accounts.find(account =>
       account.accountRef === resolution.selection?.accountRef &&
-      accountWorkerKinds.get(account.accountRef) === resolution.selection?.harnessKind
+      workerKindForAccount(account) === resolution.selection?.harnessKind
     ) ?? null
   }
   const activeAssignments = activeAssignmentsForRun(store, run.runRef)
@@ -907,7 +972,7 @@ export async function tickFleetRunSupervisor(
     if (account.unavailabilityReason !== undefined) return total
     if (account.paused === true) return total
     if (isCoolingDown(account, now)) return total
-    const workerKind = accountWorkerKinds.get(account.accountRef) ?? "codex"
+    const workerKind = workerKindForAccount(account)
     if (run.workerKind === "auto" && !autoPolicyHarnesses.has(workerKind)) return total
     if (
       run.workerKind === "auto" &&
@@ -973,6 +1038,7 @@ export async function tickFleetRunSupervisor(
       ? await resolveAutoAccount()
       : pickAccount(accounts, activeCounts, now)
     if (account === null) break
+    const workerKind = workerKindForAccount(account)
     const claim = store.tryClaimWorkUnit({
       claimRef: claimRefFor(run.runRef, workUnit.workUnitRef, now, claimOrdinalBase + claimed),
       workUnitRef: workUnit.workUnitRef,
@@ -985,11 +1051,11 @@ export async function tickFleetRunSupervisor(
     if (claim === null) continue
     claimed += 1
     activeCounts.set(account.accountRef, (activeCounts.get(account.accountRef) ?? 0) + 1)
+    activeHarnessCounts.set(workerKind, (activeHarnessCounts.get(workerKind) ?? 0) + 1)
 
     // Resolve the concrete dispatch kind for THIS account (mixed pools carry a
     // per-account kind; otherwise the account inherited the run's kind). Grok
     // accounts with no executor were partitioned out above.
-    const workerKind = accountWorkerKinds.get(account.accountRef) ?? "codex"
     const runnerKind =
       workerKind === "claude" ? "claude_agent" :
       workerKind === "grok" ? "grok_cli" :

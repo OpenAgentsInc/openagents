@@ -82,6 +82,12 @@ export type HarnessSessionRef = typeof HarnessSessionRef.Type
 
 export const FleetAutoPolicySchemaLiteral = "khala.fleet_auto_policy.v1" as const
 
+export const FleetAutoDistributionMode = S.Literals([
+  "preference_order",
+  "spread_across_harnesses",
+])
+export type FleetAutoDistributionMode = typeof FleetAutoDistributionMode.Type
+
 export const FleetAutoPolicy = S.Struct({
   schema: S.Literal(FleetAutoPolicySchemaLiteral),
   // Ordered concrete-harness preference; first ready harness within the cost
@@ -90,6 +96,11 @@ export const FleetAutoPolicy = S.Struct({
   // Optional ceiling: skip harnesses whose marginal cost class is more
   // expensive than this. Absent = no ceiling.
   maxMarginalCostClass: S.optional(MarginalCostClass),
+  // Optional for wire compatibility with the original v1 policy. Omitted
+  // policies retain strict preference-order behavior. The compiled default
+  // spreads simultaneous work across the least-loaded ready harness kinds
+  // before giving any harness a second slot.
+  distributionMode: S.optional(FleetAutoDistributionMode),
 })
 export type FleetAutoPolicy = typeof FleetAutoPolicy.Type
 
@@ -103,6 +114,7 @@ export type FleetAutoPolicy = typeof FleetAutoPolicy.Type
 export const defaultFleetAutoPolicy: FleetAutoPolicy = {
   schema: FleetAutoPolicySchemaLiteral,
   preferenceOrder: ["codex", "claude", "grok"],
+  distributionMode: "spread_across_harnesses",
 }
 
 // Rank used to compare `MarginalCostClass` values cheapest-first. Exported so
@@ -199,6 +211,14 @@ export type FleetAutoTargetResolution = Readonly<{
   events: ReadonlyArray<FleetAutoTargetFallbackEvent>
 }>
 
+export type FleetAutoHarnessCounts = Readonly<Record<FleetHarnessKind, number>>
+
+const zeroFleetAutoHarnessCounts = (): FleetAutoHarnessCounts => ({
+  codex: 0,
+  claude: 0,
+  grok: 0,
+})
+
 /**
  * Pure, typed `auto` policy resolver (MH-8 v1). Walks `policy.preferenceOrder`
  * one harness at a time; within a harness, candidates are evaluated
@@ -216,14 +236,31 @@ export const resolveFleetAutoTarget = (
   input: Readonly<{
     policy: FleetAutoPolicy
     candidates: ReadonlyArray<FleetAutoTargetCandidate>
+    // Counts include already-live work plus successful claims made earlier in
+    // the same scheduler tick. They are scheduler evidence, not capacity: a
+    // missing or unavailable harness still has to fail through its typed
+    // candidate rather than being fabricated as ready.
+    activeHarnessCounts?: FleetAutoHarnessCounts
   }>,
 ): FleetAutoTargetResolution => {
   const ceilingRank = input.policy.maxMarginalCostClass === undefined
     ? undefined
     : marginalCostClassRank[input.policy.maxMarginalCostClass]
 
+  const activeHarnessCounts = input.activeHarnessCounts ?? zeroFleetAutoHarnessCounts()
+  const preferenceIndex = new Map(
+    input.policy.preferenceOrder.map((harnessKind, index) => [harnessKind, index]),
+  )
+  const harnessEvaluationOrder = input.policy.distributionMode === "spread_across_harnesses"
+    ? [...input.policy.preferenceOrder].sort((left, right) =>
+        activeHarnessCounts[left] - activeHarnessCounts[right] ||
+        (preferenceIndex.get(left) ?? Number.MAX_SAFE_INTEGER) -
+          (preferenceIndex.get(right) ?? Number.MAX_SAFE_INTEGER)
+      )
+    : input.policy.preferenceOrder
+
   const evaluationOrder: FleetAutoTargetCandidate[] = []
-  for (const harnessKind of input.policy.preferenceOrder) {
+  for (const harnessKind of harnessEvaluationOrder) {
     const group = input.candidates
       .map((candidate, index) => ({ candidate, index }))
       .filter(({ candidate }) => candidate.harnessKind === harnessKind)

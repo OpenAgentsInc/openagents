@@ -569,6 +569,243 @@ describe("Pylon-owned FleetRun supervisor", () => {
     expect(new Set(store.listWorkClaims({ runRef: run.runRef }).map((claim) => claim.workUnitRef)).size).toBe(3)
   })
 
+  test("spreads the default three-slot auto wave across harnesses despite extra ready Codex capacity", async () => {
+    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const run = createRun(store, {
+      runRef: "fleet_run.fc5.default_harness_spread",
+      workUnits: 3,
+      targetConcurrency: 3,
+    })
+    const dispatched: FleetRunSupervisorDispatchInput[] = []
+    const result = await tickFleetRunSupervisor({
+      store,
+      pylonRef: "pylon.owner.fc5.spread",
+      runRef: run.runRef,
+      planner: planner(store, 3),
+      capacity: {
+        accounts: async () => [
+          {
+            accountRef: "codex-a",
+            advertisedCapacity: 5,
+            marginalCostClass: "subscription",
+            workerKind: "codex",
+          },
+          {
+            accountRef: "codex-b",
+            advertisedCapacity: 5,
+            marginalCostClass: "subscription",
+            workerKind: "codex",
+          },
+          {
+            accountRef: "claude-a",
+            advertisedCapacity: 3,
+            marginalCostClass: "subscription",
+            workerKind: "claude",
+          },
+          {
+            accountRef: "grok-a",
+            advertisedCapacity: 3,
+            marginalCostClass: "not_measured",
+            workerKind: "grok",
+          },
+        ],
+      },
+      runner: {
+        dispatch: async input => {
+          dispatched.push(input)
+          return {
+            assignmentRef: `assignment.${input.workerKind}.${input.claim.claimRef}`,
+            lifecycle: [lifecycleEvent("assignment_run.completed", "closed")],
+            status: "completed",
+          }
+        },
+      },
+      clock: { now: () => fixedNow },
+    })
+
+    expect(result.dispatched).toBe(3)
+    expect(dispatched.map(entry => entry.workerKind)).toEqual([
+      "codex",
+      "claude",
+      "grok",
+    ])
+    expect(dispatched.filter(entry => entry.workerKind === "codex")).toHaveLength(1)
+  })
+
+  test("includes an already-live harness claim when spreading the next tick", async () => {
+    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const run = createRun(store, {
+      runRef: "fleet_run.fc5.live_harness_spread",
+      workUnits: 2,
+      targetConcurrency: 2,
+    })
+    const dispatched: FleetRunSupervisorDispatchInput[] = []
+    const options = {
+      store,
+      pylonRef: "pylon.owner.fc5.live-spread",
+      runRef: run.runRef,
+      planner: planner(store, 2),
+      capacity: capacity(),
+      runner: {
+        dispatch: async (input: FleetRunSupervisorDispatchInput) => {
+          dispatched.push(input)
+          return {
+            assignmentRef: `assignment.${input.workerKind}.${input.claim.claimRef}`,
+            lifecycle: [],
+            status: "accepted" as const,
+          }
+        },
+      },
+      clock: { now: () => fixedNow },
+      maxSpawnPerTick: 1,
+    }
+
+    expect((await tickFleetRunSupervisor(options)).dispatched).toBe(1)
+    expect((await tickFleetRunSupervisor(options)).dispatched).toBe(1)
+    expect(dispatched.map(entry => entry.workerKind)).toEqual(["codex", "claude"])
+  })
+
+  test("keeps a single default auto slot Codex-first", async () => {
+    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const run = createRun(store, {
+      runRef: "fleet_run.fc5.default_single_slot",
+      workUnits: 1,
+      targetConcurrency: 1,
+    })
+    const dispatched: FleetRunSupervisorDispatchInput[] = []
+    await tickFleetRunSupervisor({
+      store,
+      pylonRef: "pylon.owner.fc5.single",
+      runRef: run.runRef,
+      planner: planner(store, 1),
+      capacity: capacity(),
+      runner: {
+        dispatch: async input => {
+          dispatched.push(input)
+          return {
+            assignmentRef: `assignment.${input.workerKind}.${input.claim.claimRef}`,
+            lifecycle: [lifecycleEvent("assignment_run.completed", "closed")],
+            status: "completed",
+          }
+        },
+      },
+      clock: { now: () => fixedNow },
+    })
+
+    expect(dispatched.map(entry => entry.workerKind)).toEqual(["codex"])
+  })
+
+  test("records an exhausted Grok fallback before filling the next tied harness slot", async () => {
+    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const run = createRun(store, {
+      runRef: "fleet_run.fc5.exhausted_grok_spread",
+      workUnits: 3,
+      targetConcurrency: 3,
+    })
+    const observed: FleetRunSupervisorObservedEvent[] = []
+    const dispatched: FleetRunSupervisorDispatchInput[] = []
+    await tickFleetRunSupervisor({
+      store,
+      pylonRef: "pylon.owner.fc5.exhausted-grok",
+      runRef: run.runRef,
+      planner: planner(store, 3),
+      capacity: {
+        accounts: async () => [
+          {
+            accountRef: "codex-a",
+            advertisedCapacity: 3,
+            marginalCostClass: "subscription",
+            workerKind: "codex",
+          },
+          {
+            accountRef: "claude-a",
+            advertisedCapacity: 3,
+            marginalCostClass: "subscription",
+            workerKind: "claude",
+          },
+          {
+            accountRef: "grok-exhausted",
+            advertisedCapacity: 0,
+            marginalCostClass: "not_measured",
+            unavailabilityReason: "account_exhausted",
+            workerKind: "grok",
+          },
+        ],
+      },
+      runner: {
+        dispatch: async input => {
+          dispatched.push(input)
+          return {
+            assignmentRef: `assignment.${input.workerKind}.${input.claim.claimRef}`,
+            lifecycle: [lifecycleEvent("assignment_run.completed", "closed")],
+            status: "completed",
+          }
+        },
+      },
+      clock: { now: () => fixedNow },
+      onLifecycle: event => {
+        observed.push(event)
+      },
+    })
+
+    expect(dispatched.map(entry => entry.workerKind)).toEqual([
+      "codex",
+      "claude",
+      "codex",
+    ])
+    expect(dispatched.some(entry => entry.workerKind === "grok")).toBe(false)
+    expect(observed.filter(event => event.kind === "fallback")).toContainEqual({
+      kind: "fallback",
+      runRef: run.runRef,
+      policySchema: "khala.fleet_auto_policy.v1",
+      event: expect.objectContaining({
+        type: "account_exhausted",
+        harnessKind: "grok",
+        accountRef: "grok-exhausted",
+      }),
+    })
+  })
+
+  test("does not fabricate a Grok selection when no Grok account exists", async () => {
+    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const run = createRun(store, {
+      runRef: "fleet_run.fc5.missing_grok",
+      workUnits: 3,
+      targetConcurrency: 3,
+    })
+    const dispatched: FleetRunSupervisorDispatchInput[] = []
+    await tickFleetRunSupervisor({
+      store,
+      pylonRef: "pylon.owner.fc5.missing-grok",
+      runRef: run.runRef,
+      planner: planner(store, 3),
+      capacity: {
+        accounts: async () => [
+          { ...mixedCapacity[0]!, advertisedCapacity: 3 },
+          { ...mixedCapacity[1]!, advertisedCapacity: 3 },
+        ],
+      },
+      runner: {
+        dispatch: async input => {
+          dispatched.push(input)
+          return {
+            assignmentRef: `assignment.${input.workerKind}.${input.claim.claimRef}`,
+            lifecycle: [lifecycleEvent("assignment_run.completed", "closed")],
+            status: "completed",
+          }
+        },
+      },
+      clock: { now: () => fixedNow },
+    })
+
+    expect(dispatched.map(entry => entry.workerKind)).toEqual([
+      "codex",
+      "claude",
+      "codex",
+    ])
+    expect(dispatched.some(entry => entry.workerKind === "grok")).toBe(false)
+  })
+
   test("uses the shared default auto policy and emits one public-safe fallback per skipped candidate", async () => {
     const store = createPylonOrchestrationStore(new Database(":memory:"))
     const run = createRun(store, {

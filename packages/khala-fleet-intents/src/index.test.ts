@@ -249,6 +249,7 @@ describe("KhalaFleetIntent decoding", () => {
         schema: "khala.fleet_auto_policy.v1",
         preferenceOrder: ["grok", "codex", "claude"],
         maxMarginalCostClass: "subscription",
+        distributionMode: "spread_across_harnesses",
       },
       session: {
         harnessKind: "grok",
@@ -259,6 +260,7 @@ describe("KhalaFleetIntent decoding", () => {
     expect(intent.kind).toBe("worker_selection")
     if (intent.kind === "worker_selection") {
       expect(intent.workerKind).toBe("auto")
+      expect(intent.autoPolicy?.distributionMode).toBe("spread_across_harnesses")
       expect(intent.session?.capabilities.resume).toBe(true)
     }
   })
@@ -332,6 +334,68 @@ describe("resolveFleetAutoTarget", () => {
     reason: NonNullable<FleetAutoTargetCandidate["reason"]>,
     marginalCostClass: FleetAutoTargetCandidate["marginalCostClass"] = "not_measured",
   ): FleetAutoTargetCandidate => ({ accountRef, harnessKind, marginalCostClass, reason, ready: false })
+
+  it("compiles auto to spread simultaneous work while preserving Codex as the first tied choice", () => {
+    expect(defaultFleetAutoPolicy.distributionMode).toBe("spread_across_harnesses")
+    const candidates = [
+      ready("codex", "codex-a"),
+      ready("codex", "codex-b"),
+      ready("claude", "claude-a"),
+      ready("grok", "grok-a"),
+    ]
+
+    const first = resolveFleetAutoTarget({
+      candidates,
+      policy: defaultFleetAutoPolicy,
+      activeHarnessCounts: { codex: 0, claude: 0, grok: 0 },
+    })
+    const second = resolveFleetAutoTarget({
+      candidates,
+      policy: defaultFleetAutoPolicy,
+      activeHarnessCounts: { codex: 1, claude: 0, grok: 0 },
+    })
+    const third = resolveFleetAutoTarget({
+      candidates,
+      policy: defaultFleetAutoPolicy,
+      activeHarnessCounts: { codex: 1, claude: 1, grok: 0 },
+    })
+
+    expect(first.selection?.harnessKind).toBe("codex")
+    expect(second.selection?.harnessKind).toBe("claude")
+    expect(third.selection?.harnessKind).toBe("grok")
+  })
+
+  it("keeps omitted distribution mode on legacy preference-order behavior", () => {
+    const resolution = resolveFleetAutoTarget({
+      candidates: [ready("codex", "codex-a"), ready("claude", "claude-a")],
+      policy: {
+        schema: "khala.fleet_auto_policy.v1",
+        preferenceOrder: ["codex", "claude"],
+      },
+      activeHarnessCounts: { codex: 4, claude: 0, grok: 0 },
+    })
+    expect(resolution.selection?.harnessKind).toBe("codex")
+  })
+
+  it("emits the unavailable lower-count harness fallback before filling another harness slot", () => {
+    const resolution = resolveFleetAutoTarget({
+      candidates: [
+        ready("codex", "codex-a"),
+        ready("claude", "claude-a"),
+        notReady("grok", "grok-a", "account_exhausted"),
+      ],
+      policy: defaultFleetAutoPolicy,
+      activeHarnessCounts: { codex: 1, claude: 1, grok: 0 },
+    })
+    expect(resolution.selection?.harnessKind).toBe("codex")
+    expect(resolution.events).toEqual([{
+      accountRef: "grok-a",
+      harnessKind: "grok",
+      nextAccountRef: "codex-a",
+      nextHarnessKind: "codex",
+      type: "account_exhausted",
+    }])
+  })
 
   it("picks the first ready candidate in the fixed preference order with zero skips", () => {
     const resolution = resolveFleetAutoTarget({
