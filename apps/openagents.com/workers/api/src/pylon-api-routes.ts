@@ -288,7 +288,7 @@ const readBoundedFleetRunBody = (
     try: async () => {
       const declaredLength = Number(request.headers.get('content-length'))
       if (Number.isFinite(declaredLength) && declaredLength > maxBytes) {
-        throw new Error('fleet run body exceeds bound')
+        throw invalid()
       }
       if (request.body === null) return ''
       const reader = request.body.getReader()
@@ -301,7 +301,7 @@ const readBoundedFleetRunBody = (
           byteLength += chunk.value.byteLength
           if (byteLength > maxBytes) {
             await reader.cancel('fleet run body exceeds bound')
-            throw new Error('fleet run body exceeds bound')
+            throw invalid()
           }
           chunks.push(chunk.value)
         }
