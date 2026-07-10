@@ -1,109 +1,199 @@
 import ExpoModulesCore
 import SwiftUI
 
-// Observable prop state pushed from the JS side (which itself is fed by the
-// Effect Native view program's state). SwiftUI re-renders when these change.
-final class LiquidGlassState: ObservableObject {
-  @Published var title: String = ""
-  @Published var subtitle: String = ""
-  @Published var buttonLabel: String = "Tap"
-  @Published var tapCount: Int = 0
+// Shared Protoss-blue accent (khalaTheme accent #3b82f6).
+private let oaAccent = Color(red: 0x3b / 255.0, green: 0x82 / 255.0, blue: 0xf6 / 255.0)
+
+// Generic ExpoView that owns a UIHostingController — the audit's prescribed
+// mount boundary for SwiftUI islands inside a React Native shell.
+private func embed<Root: View>(_ root: Root, in view: ExpoView) {
+  let controller = UIHostingController(rootView: root)
+  controller.view.backgroundColor = .clear
+  view.addSubview(controller.view)
+  controller.view.translatesAutoresizingMaskIntoConstraints = false
+  NSLayoutConstraint.activate([
+    controller.view.topAnchor.constraint(equalTo: view.topAnchor),
+    controller.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+    controller.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+    controller.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+  ])
 }
 
-// ExpoView owning a UIHostingController whose rootView renders the Liquid
-// Glass SwiftUI content — the audit's prescribed mount boundary for a
-// SwiftUI island inside a React Native shell.
-final class OpenAgentsLiquidGlassView: ExpoView {
-  let state = LiquidGlassState()
-  let onGlassTap = EventDispatcher()
+// MARK: - GlassIconButton
 
-  private var hosting: UIHostingController<LiquidGlassRoot>?
+final class GlassIconButtonState: ObservableObject {
+  @Published var symbol: String = "circle"
+  @Published var accessibilityLabelText: String = ""
+}
+
+final class GlassIconButtonView: ExpoView {
+  let state = GlassIconButtonState()
+  let onTap = EventDispatcher()
 
   required init(appContext: AppContext? = nil) {
     super.init(appContext: appContext)
-    let root = LiquidGlassRoot(state: state) { [weak self] in
-      self?.onGlassTap([:])
-    }
-    let controller = UIHostingController(rootView: root)
-    controller.view.backgroundColor = .clear
-    hosting = controller
-    addSubview(controller.view)
-    controller.view.translatesAutoresizingMaskIntoConstraints = false
-    NSLayoutConstraint.activate([
-      controller.view.topAnchor.constraint(equalTo: topAnchor),
-      controller.view.bottomAnchor.constraint(equalTo: bottomAnchor),
-      controller.view.leadingAnchor.constraint(equalTo: leadingAnchor),
-      controller.view.trailingAnchor.constraint(equalTo: trailingAnchor),
-    ])
+    embed(GlassIconButtonRoot(state: state) { [weak self] in self?.onTap([:]) }, in: self)
   }
 }
 
-// The SwiftUI content: a glass card + a glass button on the Protoss-blue
-// backdrop. Uses the REAL iOS 26 Liquid Glass APIs (.glassEffect /
-// .buttonStyle(.glass)) when the device runs iOS 26+; earlier iOS falls back
-// to .ultraThinMaterial glass-morphism so the island still renders honestly.
-struct LiquidGlassRoot: View {
-  @ObservedObject var state: LiquidGlassState
-  let onTap: () -> Void
-
-  private let accent = Color(red: 0x3b / 255.0, green: 0x82 / 255.0, blue: 0xf6 / 255.0)
+struct GlassIconButtonRoot: View {
+  @ObservedObject var state: GlassIconButtonState
+  let action: () -> Void
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 12) {
-      glassCard
-      glassButton
-    }
-    .padding(16)
-    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-  }
-
-  private var cardContent: some View {
-    VStack(alignment: .leading, spacing: 6) {
-      Text(state.title)
-        .font(.headline)
-        .foregroundStyle(.white)
-      Text(state.subtitle)
-        .font(.subheadline)
-        .foregroundStyle(.white.opacity(0.7))
-      Text("Typed intents from SwiftUI: \(state.tapCount)")
-        .font(.caption.weight(.semibold))
-        .foregroundStyle(accent)
-    }
-    .frame(maxWidth: .infinity, alignment: .leading)
-    .padding(16)
-  }
-
-  @ViewBuilder
-  private var glassCard: some View {
-    if #available(iOS 26.0, *) {
-      cardContent
-        .glassEffect(.regular.tint(accent.opacity(0.2)), in: .rect(cornerRadius: 16))
-    } else {
-      cardContent
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
-        .overlay(
-          RoundedRectangle(cornerRadius: 16)
-            .stroke(accent.opacity(0.35), lineWidth: 1)
-        )
-    }
-  }
-
-  @ViewBuilder
-  private var glassButton: some View {
-    if #available(iOS 26.0, *) {
-      Button(state.buttonLabel, action: onTap)
-        .buttonStyle(.glass)
-        .tint(accent)
-    } else {
-      Button(action: onTap) {
-        Text(state.buttonLabel)
-          .font(.body.weight(.semibold))
-          .foregroundStyle(.white)
-          .padding(.horizontal, 16)
-          .padding(.vertical, 10)
-          .background(.ultraThinMaterial, in: Capsule())
-          .overlay(Capsule().stroke(accent.opacity(0.5), lineWidth: 1))
+    Group {
+      if #available(iOS 26.0, *) {
+        Button(action: action) {
+          Image(systemName: state.symbol)
+            .font(.system(size: 17, weight: .medium))
+            .foregroundStyle(.white)
+            .frame(width: 44, height: 44)
+        }
+        .glassEffect(.regular.interactive(), in: .circle)
+      } else {
+        Button(action: action) {
+          Image(systemName: state.symbol)
+            .font(.system(size: 17, weight: .medium))
+            .foregroundStyle(.white)
+            .frame(width: 44, height: 44)
+            .background(.ultraThinMaterial, in: Circle())
+            .overlay(Circle().stroke(oaAccent.opacity(0.35), lineWidth: 1))
+        }
       }
     }
+    .accessibilityLabel(state.accessibilityLabelText)
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+  }
+}
+
+// MARK: - GlassPill
+
+final class GlassPillState: ObservableObject {
+  @Published var label: String = ""
+  @Published var symbol: String = ""
+}
+
+final class GlassPillView: ExpoView {
+  let state = GlassPillState()
+  let onTap = EventDispatcher()
+
+  required init(appContext: AppContext? = nil) {
+    super.init(appContext: appContext)
+    embed(GlassPillRoot(state: state) { [weak self] in self?.onTap([:]) }, in: self)
+  }
+}
+
+struct GlassPillRoot: View {
+  @ObservedObject var state: GlassPillState
+  let action: () -> Void
+
+  private var content: some View {
+    HStack(spacing: 6) {
+      if !state.symbol.isEmpty {
+        Image(systemName: state.symbol)
+          .font(.system(size: 14, weight: .semibold))
+      }
+      Text(state.label)
+        .font(.system(size: 16, weight: .semibold))
+    }
+    .foregroundStyle(.white)
+    .padding(.horizontal, 16)
+    .frame(height: 44)
+  }
+
+  var body: some View {
+    Group {
+      if #available(iOS 26.0, *) {
+        Button(action: action) { content }
+          .glassEffect(.regular.interactive(), in: .capsule)
+      } else {
+        Button(action: action) {
+          content
+            .background(.ultraThinMaterial, in: Capsule())
+            .overlay(Capsule().stroke(oaAccent.opacity(0.35), lineWidth: 1))
+        }
+      }
+    }
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+  }
+}
+
+// MARK: - GlassComposer
+
+final class GlassComposerState: ObservableObject {
+  @Published var placeholder: String = "Ask anything"
+}
+
+final class GlassComposerView: ExpoView {
+  let state = GlassComposerState()
+  let onTapComposer = EventDispatcher()
+  let onTapMic = EventDispatcher()
+  let onTapPlus = EventDispatcher()
+
+  required init(appContext: AppContext? = nil) {
+    super.init(appContext: appContext)
+    embed(
+      GlassComposerRoot(
+        state: state,
+        onComposer: { [weak self] in self?.onTapComposer([:]) },
+        onMic: { [weak self] in self?.onTapMic([:]) },
+        onPlus: { [weak self] in self?.onTapPlus([:]) }
+      ),
+      in: self
+    )
+  }
+}
+
+struct GlassComposerRoot: View {
+  @ObservedObject var state: GlassComposerState
+  let onComposer: () -> Void
+  let onMic: () -> Void
+  let onPlus: () -> Void
+
+  private var bar: some View {
+    HStack(spacing: 12) {
+      Button(action: onPlus) {
+        Image(systemName: "plus")
+          .font(.system(size: 17, weight: .medium))
+          .foregroundStyle(.white)
+          .frame(width: 34, height: 34)
+      }
+      .accessibilityLabel("Add")
+
+      // Interim (GL-2): the composer is a tap target that dispatches a typed
+      // intent; a real bound TextField lands with the Sarah conversation
+      // surface. The placeholder is state-projected from the EN program.
+      Text(state.placeholder)
+        .font(.system(size: 16))
+        .foregroundStyle(.white.opacity(0.55))
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+        .onTapGesture(perform: onComposer)
+        .accessibilityLabel("Composer")
+
+      Button(action: onMic) {
+        Image(systemName: "mic")
+          .font(.system(size: 17, weight: .medium))
+          .foregroundStyle(.white)
+          .frame(width: 34, height: 34)
+      }
+      .accessibilityLabel("Voice input")
+    }
+    .padding(.horizontal, 14)
+    .frame(height: 54)
+  }
+
+  var body: some View {
+    Group {
+      if #available(iOS 26.0, *) {
+        bar.glassEffect(.regular, in: .capsule)
+      } else {
+        bar
+          .background(.ultraThinMaterial, in: Capsule())
+          .overlay(Capsule().stroke(oaAccent.opacity(0.35), lineWidth: 1))
+      }
+    }
+    .padding(.horizontal, 16)
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
   }
 }

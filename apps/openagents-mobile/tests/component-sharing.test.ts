@@ -4,7 +4,11 @@ import { join } from "node:path"
 
 import { CatalogVersion } from "@effect-native/core"
 
-import { renderHomeView, initialHomeState } from "../src/screens/home-core"
+import {
+  initialHomeState,
+  renderContentView,
+  renderDrawerView,
+} from "../src/screens/home-core"
 
 /**
  * OpenAgents mobile (#8597) component-sharing proof — one catalog, many hosts.
@@ -43,11 +47,12 @@ describe("contract openagents_mobile.home.catalog_sharing.v1", () => {
     expect(source).not.toContain('"react-native"')
   })
 
-  test("the authored tree is the shared catalog version the web EN surfaces author", () => {
-    const serialized = JSON.stringify(renderHomeView(initialHomeState))
+  test("the authored trees are the shared catalog version the web EN surfaces author", () => {
     // Same vendored catalog the web start-app Effect Native routes author —
-    // one catalog version across DOM and RN hosts.
-    expect(serialized).toContain(`"catalogVersion":"${CatalogVersion}"`)
+    // one catalog version across DOM and RN hosts, for BOTH projections.
+    for (const view of [renderContentView(initialHomeState), renderDrawerView(initialHomeState)]) {
+      expect(JSON.stringify(view)).toContain(`"catalogVersion":"${CatalogVersion}"`)
+    }
     expect(CatalogVersion.startsWith("effect-native/v")).toBe(true)
   })
 

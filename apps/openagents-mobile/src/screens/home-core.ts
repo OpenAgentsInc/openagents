@@ -22,76 +22,129 @@ import {
 } from "@effect-native/core"
 
 /**
- * OpenAgents mobile (#8597) — the PURE half of the Home screen. This module
- * imports only `@effect-native/core` (+ its effect bridge), never `react` or
- * `react-native`, so the same typed view program is host-agnostic: it renders
- * on mobile through `@effect-native/render-rn` and would render unchanged
- * through the DOM/desktop adapters. One catalog, many hosts.
+ * OpenAgents mobile (#8597, GL-2 #8648) — the PURE half of the Home screen:
+ * the ChatGPT-style glass shell as ONE typed Effect Native program. This
+ * module imports only `@effect-native/core` (+ its effect bridge), never
+ * `react`/`react-native`. Two view projections render from the same state:
  *
- * The `.tsx` screen mounts this program inside the Expo shell via
- * `EffectNativeHost` (`@effect-native/render-rn`).
+ * - `renderContentView` — the main surface (under the floating glass chrome).
+ * - `renderDrawerView` — the left nav flyout panel (rendered by the shell in
+ *   an overlay when `drawerOpen`; overlay POSITIONING is host machinery
+ *   because the v26 typed style system deliberately has no absolute
+ *   positioning).
+ *
+ * The floating glass chrome (pill, circular icon buttons, composer bar) is
+ * SwiftUI (iOS 26 Liquid Glass) mounted by the shell at the audit's island
+ * boundary; its props are `chromeProps(state)` projections and every tap
+ * dispatches one of the typed intents below through the SAME registry the
+ * renderer's reporter uses. Per the hybrid decision
+ * (docs/fable/2026-07-09-swiftui-expo-ui-and-the-effect-native-stdlib.md §6):
+ * state-in-props, intents-out, always.
  */
 
-export interface HomeState {
-  readonly pings: number
-  readonly glassTaps: number
-}
-
-export const initialHomeState: HomeState = { pings: 0, glassTaps: 0 }
-
-/** Visible JS-bundle tag, rendered on the Home card. Bump this string when
- * publishing an OTA so the owner can SEE the over-the-air bundle swap land
- * (embedded build 106 ships the tag below; a published OTA with a bumped tag
- * should appear within ~3s via the temporary poll loop and reload). */
-export const BUNDLE_TAG = "2026-07-09.embedded-106"
-
-/** One typed intent, proving the intent -> handler -> state -> re-render loop
- * runs end-to-end through the RN adapter (not just static rendering). */
-export const HomePinged = defineIntent(
-  "HomePinged",
-  Schema.Struct({ amount: Schema.Number }),
-)
-
-/** Typed intent dispatched when the SwiftUI Liquid Glass island's button is
- * tapped (SwiftUI event -> shell -> this intent -> state -> re-render of BOTH
- * the Effect Native tree and the island's props). This is the intent half of
- * the SwiftUI renderer seam per
- * docs/effect-native/2026-07-09-effect-native-swiftui-renderer-audit.md. */
-export const GlassPinged = defineIntent(
-  "GlassPinged",
-  Schema.Struct({ amount: Schema.Number }),
-)
-
-/** The IntentRef the shell dispatches for a SwiftUI glass tap — the typed
- * contract between the native island and this program. */
-export const glassPingedRef = IntentRef("GlassPinged", StaticPayload({ amount: 1 }))
-
-export const homeIntentDefinitions = [HomePinged, GlassPinged] as const
-
-/** Serializable props for the SwiftUI island, derived from program state —
- * the props half of the seam. The catalog has NO SwiftUI host kind yet
- * (closed `hostKinds` registry; demand register D-MB-02), so the island
- * mounts at the shell boundary per the audit's interop case 2 and this
- * projection is the typed data contract it renders. */
-export interface GlassIslandProps {
+export interface RecentChat {
+  readonly id: string
   readonly title: string
-  readonly subtitle: string
-  readonly buttonLabel: string
-  readonly tapCount: number
 }
 
-export const glassIslandProps = (state: HomeState): GlassIslandProps => ({
-  title: "Liquid Glass",
-  subtitle: "SwiftUI island driven by the Effect Native program",
-  buttonLabel: "Dispatch typed intent from SwiftUI",
-  tapCount: state.glassTaps,
+export interface HomeState {
+  readonly drawerOpen: boolean
+  /** The active conversation; undefined = fresh "new chat" surface. */
+  readonly activeRecentId: string | undefined
+  readonly recents: ReadonlyArray<RecentChat>
+  readonly composerTaps: number
+  readonly micTaps: number
+  readonly searchTaps: number
+  readonly pillTaps: number
+  readonly settingsTaps: number
+}
+
+/** Seed conversations so the drawer's Recents section and selection highlight
+ * are real state-driven UI (local placeholder data until Sarah conversation
+ * state lands per #8597 scope 2/3). */
+export const seedRecents: ReadonlyArray<RecentChat> = [
+  { id: "welcome", title: "Welcome to OpenAgents" },
+  { id: "glass-shell", title: "Glass shell design" },
+  { id: "fleet-notes", title: "Fleet supervision notes" },
+]
+
+export const initialHomeState: HomeState = {
+  drawerOpen: false,
+  activeRecentId: "welcome",
+  recents: seedRecents,
+  composerTaps: 0,
+  micTaps: 0,
+  searchTaps: 0,
+  pillTaps: 0,
+  settingsTaps: 0,
+}
+
+/** Visible JS-bundle tag (OTA proof surface). Bump when publishing an OTA so
+ * the owner can SEE the over-the-air bundle swap land (embedded build 107
+ * ships the tag below; a published OTA with a bumped tag should appear within
+ * ~3s via the temporary poll loop and reload). Rendered in the drawer footer. */
+export const BUNDLE_TAG = "2026-07-09.embedded-107"
+
+// ---------------------------------------------------------------------------
+// Typed intents — the ONLY way anything (EN tree, SwiftUI chrome, scrim)
+// mutates Home state.
+// ---------------------------------------------------------------------------
+
+const EmptyPayload = Schema.Struct({})
+
+export const DrawerToggled = defineIntent("DrawerToggled", EmptyPayload)
+export const NewChatPressed = defineIntent("NewChatPressed", EmptyPayload)
+export const RecentSelected = defineIntent(
+  "RecentSelected",
+  Schema.Struct({ id: Schema.NonEmptyString }),
+)
+export const SearchPressed = defineIntent("SearchPressed", EmptyPayload)
+export const SettingsPressed = defineIntent("SettingsPressed", EmptyPayload)
+export const ChatPillPressed = defineIntent("ChatPillPressed", EmptyPayload)
+export const ComposerPressed = defineIntent("ComposerPressed", EmptyPayload)
+export const MicPressed = defineIntent("MicPressed", EmptyPayload)
+
+export const homeIntentDefinitions = [
+  DrawerToggled,
+  NewChatPressed,
+  RecentSelected,
+  SearchPressed,
+  SettingsPressed,
+  ChatPillPressed,
+  ComposerPressed,
+  MicPressed,
+] as const
+
+export const drawerToggledRef = IntentRef("DrawerToggled", StaticPayload({}))
+const recentRef = (id: string) => IntentRef("RecentSelected", StaticPayload({ id }))
+
+// ---------------------------------------------------------------------------
+// Chrome projections — serializable props for the SwiftUI glass islands.
+// ---------------------------------------------------------------------------
+
+export interface ChromeProps {
+  readonly pillLabel: string
+  readonly composerPlaceholder: string
+  readonly chromeVisible: boolean
+}
+
+export const chromeProps = (state: HomeState): ChromeProps => ({
+  pillLabel: "OpenAgents",
+  composerPlaceholder: "Ask anything",
+  chromeVisible: !state.drawerOpen,
 })
 
-/** The OpenAgents shell authored as a typed Effect Native view tree —
- * Stack/Text/Card/Spacer/Button from the shared component catalog, styled with
- * typed color/spacing tokens the renderer resolves against the Protoss-blue
- * `khalaTheme` (no class strings, no parallel palette). */
-export const renderHomeView = (state: HomeState): View =>
+export const activeRecentTitle = (state: HomeState): string => {
+  const active = state.recents.find((recent) => recent.id === state.activeRecentId)
+  return active === undefined ? "New chat" : active.title
+}
+
+// ---------------------------------------------------------------------------
+// Views
+// ---------------------------------------------------------------------------
+
+/** Main surface, rendered under the floating glass chrome. */
+export const renderContentView = (state: HomeState): View =>
   Stack(
     {
       key: "home-root",
@@ -101,22 +154,24 @@ export const renderHomeView = (state: HomeState): View =>
       style: { width: "full", height: "full", backgroundColor: "background" },
     },
     [
+      // Clearance for the floating top chrome (shell overlays it).
+      Spacer({ key: "home-chrome-clearance", size: "12" }),
       Text({
-        key: "home-title",
-        content: "OpenAgents",
+        key: "home-active-title",
+        content: activeRecentTitle(state),
         variant: "heading",
         color: "textPrimary",
       }),
       Text({
         key: "home-subtitle",
         content:
-          "Greenfield OpenAgents mobile. This screen is a typed Effect Native view program from the shared component catalog, rendered by @effect-native/render-rn.",
+          "Typed Effect Native program; the SwiftUI glass chrome dispatches the same typed intents.",
         variant: "body",
         color: "textMuted",
       }),
       Card(
         {
-          key: "home-card",
+          key: "home-status-card",
           padding: "4",
           radius: "lg",
           style: {
@@ -128,113 +183,167 @@ export const renderHomeView = (state: HomeState): View =>
         },
         [
           Text({
-            key: "home-app-label",
-            content: "Application",
+            key: "home-intents-label",
+            content: "Chrome intents",
             variant: "label",
             color: "accent",
           }),
           Text({
-            key: "home-app-value",
-            content: "com.openagents.app",
+            key: "home-intents-value",
+            content: `pill ${state.pillTaps} · search ${state.searchTaps} · composer ${state.composerTaps} · mic ${state.micTaps}`,
             variant: "body",
-            color: "textPrimary",
-          }),
-          Spacer({ key: "home-card-space-1", size: "2" }),
-          Text({
-            key: "home-renderer-label",
-            content: "Renderer",
-            variant: "label",
-            color: "accent",
-          }),
-          Text({
-            key: "home-renderer-value",
-            content: "@effect-native/render-rn (React Native host)",
-            variant: "body",
-            color: "textPrimary",
-          }),
-          Spacer({ key: "home-card-space-2", size: "2" }),
-          Text({
-            key: "home-bundle-label",
-            content: "Bundle",
-            variant: "label",
-            color: "accent",
-          }),
-          Text({
-            key: "home-bundle-value",
-            content: BUNDLE_TAG,
-            variant: "body",
-            color: "textPrimary",
-          }),
-          Spacer({ key: "home-card-space-3", size: "2" }),
-          Text({
-            key: "home-pings-label",
-            content: "Typed intents dispatched",
-            variant: "label",
-            color: "accent",
-          }),
-          Text({
-            key: "home-pings-value",
-            content: String(state.pings),
-            variant: "title",
             color: "textPrimary",
           }),
         ],
       ),
-      Button({
-        key: "home-ping",
-        label: "Dispatch a typed intent",
-        variant: "primary",
-        onPress: IntentRef("HomePinged", StaticPayload({ amount: 1 })),
+    ],
+  )
+
+const drawerRow = (input: {
+  readonly key: string
+  readonly label: string
+  readonly onPress: ReturnType<typeof IntentRef>
+  readonly selected?: boolean
+}): View =>
+  Button({
+    key: input.key,
+    label: input.label,
+    variant: input.selected === true ? "secondary" : "ghost",
+    onPress: input.onPress,
+    style: {
+      width: "full",
+      ...(input.selected === true ? { backgroundColor: "surfaceRaised" } : {}),
+    },
+  })
+
+/** Left nav flyout panel (EN composition per the decision doc §6 — drawer
+ * state interleaves with the whole screen, which islands are worst at). The
+ * shell overlays this next to a scrim when `drawerOpen`. Rows are v26
+ * `Button`s; they upgrade to the v27 `IconButton`/row contract when the GL-1
+ * catalog bump is vendored (#8647). */
+export const renderDrawerView = (state: HomeState): View =>
+  Stack(
+    {
+      key: "drawer-root",
+      direction: "column",
+      gap: "2",
+      padding: "4",
+      style: { width: "full", height: "full", backgroundColor: "surface" },
+    },
+    [
+      Spacer({ key: "drawer-top-space", size: "10" }),
+      drawerRow({
+        key: "drawer-search",
+        label: "Search",
+        onPress: IntentRef("SearchPressed", StaticPayload({})),
       }),
-      Spacer({ key: "home-glass-space", size: "2" }),
+      drawerRow({
+        key: "drawer-new-chat",
+        label: "New chat",
+        onPress: IntentRef("NewChatPressed", StaticPayload({})),
+        selected: state.activeRecentId === undefined,
+      }),
+      Spacer({ key: "drawer-recents-space", size: "3" }),
       Text({
-        key: "home-glass-section-label",
-        content: "SwiftUI via Effect Native — test",
+        key: "drawer-recents-label",
+        content: "Recents",
         variant: "label",
-        color: "accent",
+        color: "textMuted",
+      }),
+      ...state.recents.map((recent) =>
+        drawerRow({
+          key: `drawer-recent-${recent.id}`,
+          label: recent.title,
+          onPress: recentRef(recent.id),
+          selected: state.activeRecentId === recent.id,
+        }),
+      ),
+      Spacer({ key: "drawer-flex-space", size: "8" }),
+      drawerRow({
+        key: "drawer-settings",
+        label: "Settings",
+        onPress: IntentRef("SettingsPressed", StaticPayload({})),
       }),
       Text({
-        key: "home-glass-taps",
-        content: `Glass intents received: ${state.glassTaps}`,
-        variant: "body",
+        key: "drawer-bundle",
+        content: `Bundle ${BUNDLE_TAG}`,
+        variant: "caption",
         color: "textMuted",
       }),
     ],
   )
 
+// ---------------------------------------------------------------------------
+// Handlers + program
+// ---------------------------------------------------------------------------
+
 export const makeHomeHandlers = (
   state: SubscriptionRef.SubscriptionRef<HomeState>,
 ): IntentHandlers<typeof homeIntentDefinitions> => ({
-  HomePinged: (payload) =>
+  DrawerToggled: () =>
     SubscriptionRef.update(state, (current) => ({
       ...current,
-      pings: current.pings + payload.amount,
+      drawerOpen: !current.drawerOpen,
     })),
-  GlassPinged: (payload) =>
+  NewChatPressed: () =>
     SubscriptionRef.update(state, (current) => ({
       ...current,
-      glassTaps: current.glassTaps + payload.amount,
+      activeRecentId: undefined,
+      drawerOpen: false,
+    })),
+  RecentSelected: (payload) =>
+    SubscriptionRef.update(state, (current) => ({
+      ...current,
+      activeRecentId: payload.id,
+      drawerOpen: false,
+    })),
+  SearchPressed: () =>
+    SubscriptionRef.update(state, (current) => ({
+      ...current,
+      searchTaps: current.searchTaps + 1,
+    })),
+  SettingsPressed: () =>
+    SubscriptionRef.update(state, (current) => ({
+      ...current,
+      settingsTaps: current.settingsTaps + 1,
+    })),
+  ChatPillPressed: () =>
+    SubscriptionRef.update(state, (current) => ({
+      ...current,
+      pillTaps: current.pillTaps + 1,
+    })),
+  ComposerPressed: () =>
+    SubscriptionRef.update(state, (current) => ({
+      ...current,
+      composerTaps: current.composerTaps + 1,
+    })),
+  MicPressed: () =>
+    SubscriptionRef.update(state, (current) => ({
+      ...current,
+      micTaps: current.micTaps + 1,
     })),
 })
 
-export interface HomeProgramHandle {
-  readonly viewStream: Stream.Stream<View>
-  readonly report: IntentReporter
-  /** State changes stream — the shell subscribes to derive the SwiftUI
-   * island's serializable props from the same single source of truth the
-   * Effect Native tree renders from. */
-  readonly stateChanges: Stream.Stream<HomeState>
-  /** The SwiftUI island's tap event handler: dispatches the typed
-   * `GlassPinged` intent through the SAME registry the renderer's reporter
-   * uses. Fire-and-forget with soft failure (an intent error must never crash
-   * the native event path). */
-  readonly dispatchGlassTap: () => void
+/** Fire-and-forget typed dispatchers for the SwiftUI chrome + shell scrim —
+ * the ONLY seam native events enter the program through. Soft failure: an
+ * intent error must never crash a native event path. */
+export interface ChromeDispatchers {
+  readonly toggleDrawer: () => void
+  readonly pressPill: () => void
+  readonly pressSearch: () => void
+  readonly pressNewChat: () => void
+  readonly pressComposer: () => void
+  readonly pressMic: () => void
 }
 
-/** Builds the runnable program: a `SubscriptionRef` of state, an intent
- * registry bound to the handlers, and a closure-captured `IntentReporter`
- * (R = never, so the RN surface runs it with no additional context). Runs
- * synchronously — `makeIntentRegistry`/`SubscriptionRef.make` need no Scope. */
+export interface HomeProgramHandle {
+  readonly contentViewStream: Stream.Stream<View>
+  readonly drawerViewStream: Stream.Stream<View>
+  readonly report: IntentReporter
+  readonly stateChanges: Stream.Stream<HomeState>
+  readonly chrome: ChromeDispatchers
+}
+
 export const buildHomeProgram = (): HomeProgramHandle =>
   Effect.runSync(
     Effect.gen(function* () {
@@ -245,15 +354,26 @@ export const buildHomeProgram = (): HomeProgramHandle =>
       )
       const report: IntentReporter = (ref, runtimeValue) =>
         registry.dispatch(resolveIntentRef(ref, runtimeValue))
-      const dispatchGlassTap = (): void => {
-        Effect.runFork(Effect.exit(registry.dispatch(resolveIntentRef(glassPingedRef))))
+      const fire = (name: string) => (): void => {
+        Effect.runFork(
+          Effect.exit(registry.dispatch(resolveIntentRef(IntentRef(name, StaticPayload({}))))),
+        )
       }
-      const program = makeViewProgramFromState(state, renderHomeView)
+      const content = makeViewProgramFromState(state, renderContentView)
+      const drawer = makeViewProgramFromState(state, renderDrawerView)
       return {
-        viewStream: program.viewStream,
+        contentViewStream: content.viewStream,
+        drawerViewStream: drawer.viewStream,
         report,
         stateChanges: SubscriptionRef.changes(state),
-        dispatchGlassTap,
+        chrome: {
+          toggleDrawer: fire("DrawerToggled"),
+          pressPill: fire("ChatPillPressed"),
+          pressSearch: fire("SearchPressed"),
+          pressNewChat: fire("NewChatPressed"),
+          pressComposer: fire("ComposerPressed"),
+          pressMic: fire("MicPressed"),
+        },
       }
     }),
   )

@@ -1,35 +1,60 @@
 import ExpoModulesCore
 
-// OpenAgents mobile (#8597) — SwiftUI "Liquid Glass" island Expo module.
+// OpenAgents mobile (GL-2 #8648, #8597) — SwiftUI Liquid Glass chrome module.
 //
-// Effect Native SwiftUI seam test per
-// docs/effect-native/2026-07-09-effect-native-swiftui-renderer-audit.md:
-// SwiftUI mounted inside the React Native shell at a per-component boundary
-// (audit interop case 2, UIHostingController), with events flowing OUT as a
-// single named event that the shell converts into a typed Effect Native
-// intent, and state flowing IN as serializable props. No JSX children, no
-// open-ended modifier bag — a bounded, typed island.
+// Effect Native SwiftUI seam per
+// docs/effect-native/2026-07-09-effect-native-swiftui-renderer-audit.md and
+// the hybrid decision (docs/fable/2026-07-09-swiftui-expo-ui-and-the-effect-
+// native-stdlib.md): SwiftUI mounted inside the React Native shell at
+// per-component UIHostingController boundaries; events OUT as single named
+// events the shell converts into typed Effect Native intents; state IN as
+// serializable props. Three chrome views:
+//
+// - GlassIconButton: circular Liquid Glass icon button (SF symbol).
+// - GlassPill: capsule Liquid Glass pill with a label.
+// - GlassComposer: the floating composer bar (plus, placeholder, mic).
+//
+// The former single test island (builds 105/106) grew into this real product
+// chrome; the intent/props discipline is unchanged.
 public class OpenAgentsLiquidGlassModule: Module {
   public func definition() -> ModuleDefinition {
     Name("OpenAgentsLiquidGlass")
 
-    View(OpenAgentsLiquidGlassView.self) {
-      Events("onGlassTap")
+    View(GlassIconButtonView.self) {
+      ViewName("GlassIconButton")
 
-      Prop("title") { (view: OpenAgentsLiquidGlassView, title: String) in
-        view.state.title = title
+      Events("onTap")
+
+      Prop("symbol") { (view: GlassIconButtonView, symbol: String) in
+        view.state.symbol = symbol
       }
 
-      Prop("subtitle") { (view: OpenAgentsLiquidGlassView, subtitle: String) in
-        view.state.subtitle = subtitle
+      Prop("accessibilityLabelText") { (view: GlassIconButtonView, label: String) in
+        view.state.accessibilityLabelText = label
+      }
+    }
+
+    View(GlassPillView.self) {
+      ViewName("GlassPill")
+
+      Events("onTap")
+
+      Prop("label") { (view: GlassPillView, label: String) in
+        view.state.label = label
       }
 
-      Prop("buttonLabel") { (view: OpenAgentsLiquidGlassView, buttonLabel: String) in
-        view.state.buttonLabel = buttonLabel
+      Prop("symbol") { (view: GlassPillView, symbol: String) in
+        view.state.symbol = symbol
       }
+    }
 
-      Prop("tapCount") { (view: OpenAgentsLiquidGlassView, tapCount: Int) in
-        view.state.tapCount = tapCount
+    View(GlassComposerView.self) {
+      ViewName("GlassComposer")
+
+      Events("onTapComposer", "onTapMic", "onTapPlus")
+
+      Prop("placeholder") { (view: GlassComposerView, placeholder: String) in
+        view.state.placeholder = placeholder
       }
     }
   }

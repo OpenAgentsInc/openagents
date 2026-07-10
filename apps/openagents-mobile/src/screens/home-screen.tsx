@@ -1,47 +1,63 @@
 import { useEffect, useMemo, useState } from "react"
-import { Platform, Text as RNText, View as RNView } from "react-native"
-import { SafeAreaView } from "react-native-safe-area-context"
+import { Platform, Pressable, Text as RNText, View as RNView } from "react-native"
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 
 import { Effect, Stream } from "@effect-native/core/effect"
 import { khalaTheme } from "@effect-native/tokens"
 
-import { loadLiquidGlassView } from "openagents-liquid-glass"
+import {
+  loadGlassComposer,
+  loadGlassIconButton,
+  loadGlassPill,
+} from "openagents-liquid-glass"
 import { EffectNativeHost } from "../effect-native/effect-native-host"
 import {
   buildHomeProgram,
-  glassIslandProps,
+  chromeProps,
   initialHomeState,
-  renderHomeView,
+  renderContentView,
+  renderDrawerView,
 } from "./home-core"
 
 /**
- * OpenAgents mobile (#8597) — the Home screen. Its UI is the typed `View`
- * program in `home-core.ts` rendered by `@effect-native/render-rn`; only this
- * thin outer shell is hand-written RN, to host the Effect Native surface
- * inside the Expo app. Theme: the shared Protoss-blue `khalaTheme` from
- * `@effect-native/tokens` — the same theme value every other Effect Native
- * host mounts.
+ * OpenAgents mobile (GL-2 #8648, #8597) — the ChatGPT-style glass shell.
  *
- * SwiftUI seam test (audit
- * docs/effect-native/2026-07-09-effect-native-swiftui-renderer-audit.md):
- * below the Effect Native surface the shell mounts the SwiftUI "Liquid Glass"
- * island at a per-component UIHostingController boundary (the audit's interop
- * case 2 — the catalog's closed `hostKinds` registry has no SwiftUI kind yet;
- * demand register row D-MB-02). The island is NOT a parallel component
- * system: its props are a pure projection of the SAME program state
- * (`glassIslandProps`), and its tap event dispatches the typed `GlassPinged`
- * intent through the SAME reporter seam the RN renderer uses — SwiftUI tap ->
- * typed intent -> state -> both the EN tree and the island re-render.
+ * Layering (host machinery only — the v26 typed style system deliberately has
+ * no absolute positioning, so the SHELL owns z-order; the EN program owns
+ * every tree and every intent):
+ *
+ *   1. EN content surface (fills the screen).
+ *   2. Floating glass chrome — SwiftUI Liquid Glass islands (iOS 26
+ *      .glassEffect, material fallback pre-26): top row = sidebar toggle,
+ *      OpenAgents pill, search; bottom = composer bar with plus/mic. Hidden
+ *      while the drawer is open. Every tap dispatches a typed intent through
+ *      `program.chrome` (the ONLY seam native events enter the program).
+ *   3. Drawer overlay when `drawerOpen`: scrim (tap = DrawerToggled) + the EN
+ *      drawer panel (a SECOND view projection of the SAME program state).
+ *
+ * Android / Expo Go render honest RN fallbacks for the chrome (no fake glass).
  */
-const LiquidGlassView = Platform.OS === "ios" ? loadLiquidGlassView() : undefined
+const GlassIconButton = Platform.OS === "ios" ? loadGlassIconButton() : undefined
+const GlassPill = Platform.OS === "ios" ? loadGlassPill() : undefined
+const GlassComposer = Platform.OS === "ios" ? loadGlassComposer() : undefined
+
+const enPlatform = Platform.OS === "android" ? ("android" as const) : ("ios" as const)
+
+const fallbackChromeStyle = {
+  backgroundColor: "rgba(11, 18, 32, 0.9)",
+  borderColor: khalaTheme.color.border,
+  borderWidth: 1,
+} as const
 
 export const HomeScreen = () => {
-  // Build the program (state ref + intent registry + reporter) once per mount.
+  // Build the program (state ref + intent registry + two view projections)
+  // once per mount.
   const program = useMemo(buildHomeProgram, [])
   const [homeState, setHomeState] = useState(initialHomeState)
+  const insets = useSafeAreaInsets()
 
-  // Mirror program state into React state for the island props — one source
-  // of truth (the program's SubscriptionRef), two renderers reading it.
+  // Mirror program state into React state for chrome props/visibility — one
+  // source of truth (the program's SubscriptionRef), many renderers reading it.
   useEffect(() => {
     const controller = new AbortController()
     Effect.runPromise(
@@ -57,50 +73,199 @@ export const HomeScreen = () => {
     }
   }, [program])
 
-  const island = glassIslandProps(homeState)
+  const chrome = chromeProps(homeState)
 
   return (
     <SafeAreaView
       edges={["top"]}
       style={{ flex: 1, backgroundColor: khalaTheme.color.background }}
     >
-      {/* The EN root Stack is height:"full" (100% of its parent), so it MUST
-          live inside a flex:1 wrapper. Rendering it directly under the
-          SafeAreaView made "full" mean the whole safe area, which pushed the
-          SwiftUI island below the fold — the build-105 invisible-island bug
-          (owner escalation; simulator-reproduced before this fix). */}
+      {/* 1. EN content surface */}
       <RNView style={{ flex: 1 }}>
         <EffectNativeHost
-          viewStream={program.viewStream}
+          viewStream={program.contentViewStream}
           report={program.report}
           theme={khalaTheme}
-          platform={Platform.OS === "android" ? "android" : "ios"}
-          initialView={renderHomeView(initialHomeState)}
+          platform={enPlatform}
+          initialView={renderContentView(initialHomeState)}
         />
       </RNView>
-      {LiquidGlassView === undefined ? (
+
+      {/* 2. Floating glass chrome (hidden while the drawer is open) */}
+      {chrome.chromeVisible ? (
+        <>
+          <RNView
+            pointerEvents="box-none"
+            style={{
+              position: "absolute",
+              top: insets.top + 8,
+              left: 16,
+              right: 16,
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 10,
+            }}
+          >
+            {GlassIconButton === undefined ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Open navigation"
+                onPress={program.chrome.toggleDrawer}
+                style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: 22,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  ...fallbackChromeStyle,
+                }}
+              >
+                <RNText style={{ color: khalaTheme.color.textPrimary, fontSize: 18 }}>≡</RNText>
+              </Pressable>
+            ) : (
+              <GlassIconButton
+                symbol="line.3.horizontal"
+                accessibilityLabelText="Open navigation"
+                onTap={program.chrome.toggleDrawer}
+                style={{ width: 44, height: 44 }}
+              />
+            )}
+            {GlassPill === undefined ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="OpenAgents"
+                onPress={program.chrome.pressPill}
+                style={{
+                  height: 44,
+                  borderRadius: 22,
+                  paddingHorizontal: 16,
+                  justifyContent: "center",
+                  ...fallbackChromeStyle,
+                }}
+              >
+                <RNText style={{ color: khalaTheme.color.textPrimary, fontWeight: "600" }}>
+                  {chrome.pillLabel}
+                </RNText>
+              </Pressable>
+            ) : (
+              <GlassPill
+                label={chrome.pillLabel}
+                symbol="sparkles"
+                onTap={program.chrome.pressPill}
+                style={{ width: 168, height: 44 }}
+              />
+            )}
+            <RNView style={{ flex: 1 }} />
+            {GlassIconButton === undefined ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Search"
+                onPress={program.chrome.pressSearch}
+                style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: 22,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  ...fallbackChromeStyle,
+                }}
+              >
+                <RNText style={{ color: khalaTheme.color.textPrimary, fontSize: 16 }}>?</RNText>
+              </Pressable>
+            ) : (
+              <>
+                <GlassIconButton
+                  symbol="magnifyingglass"
+                  accessibilityLabelText="Search"
+                  onTap={program.chrome.pressSearch}
+                  style={{ width: 44, height: 44 }}
+                />
+                <GlassIconButton
+                  symbol="square.and.pencil"
+                  accessibilityLabelText="New chat"
+                  onTap={program.chrome.pressNewChat}
+                  style={{ width: 44, height: 44 }}
+                />
+              </>
+            )}
+          </RNView>
+
+          <RNView
+            pointerEvents="box-none"
+            style={{
+              position: "absolute",
+              bottom: insets.bottom + 16,
+              left: 0,
+              right: 0,
+            }}
+          >
+            {GlassComposer === undefined ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Composer"
+                onPress={program.chrome.pressComposer}
+                style={{
+                  marginHorizontal: 16,
+                  height: 54,
+                  borderRadius: 27,
+                  paddingHorizontal: 18,
+                  justifyContent: "center",
+                  ...fallbackChromeStyle,
+                }}
+              >
+                <RNText style={{ color: khalaTheme.color.textMuted }}>
+                  {chrome.composerPlaceholder}
+                </RNText>
+              </Pressable>
+            ) : (
+              <GlassComposer
+                placeholder={chrome.composerPlaceholder}
+                onTapComposer={program.chrome.pressComposer}
+                onTapMic={program.chrome.pressMic}
+                onTapPlus={program.chrome.pressNewChat}
+                style={{ height: 54 }}
+              />
+            )}
+          </RNView>
+        </>
+      ) : null}
+
+      {/* 3. Drawer overlay — scrim + the EN drawer panel projection */}
+      {homeState.drawerOpen ? (
         <RNView
           style={{
-            padding: 16,
-            borderTopWidth: 1,
-            borderTopColor: khalaTheme.color.border,
+            position: "absolute",
+            top: 0,
+            bottom: 0,
+            left: 0,
+            right: 0,
+            flexDirection: "row",
           }}
         >
-          <RNText style={{ color: khalaTheme.color.textMuted, fontSize: 13 }}>
-            SwiftUI Liquid Glass island unavailable in this host (requires the
-            iOS native build — not Expo Go/Android).
-          </RNText>
+          <RNView
+            style={{
+              width: "82%",
+              height: "100%",
+              borderRightWidth: 1,
+              borderRightColor: khalaTheme.color.border,
+            }}
+          >
+            <EffectNativeHost
+              viewStream={program.drawerViewStream}
+              report={program.report}
+              theme={khalaTheme}
+              platform={enPlatform}
+              initialView={renderDrawerView(homeState)}
+            />
+          </RNView>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Close navigation"
+            onPress={program.chrome.toggleDrawer}
+            style={{ flex: 1, backgroundColor: "rgba(0, 0, 0, 0.55)" }}
+          />
         </RNView>
-      ) : (
-        <LiquidGlassView
-          title={island.title}
-          subtitle={island.subtitle}
-          buttonLabel={island.buttonLabel}
-          tapCount={island.tapCount}
-          onGlassTap={program.dispatchGlassTap}
-          style={{ height: 220 }}
-        />
-      )}
+      ) : null}
     </SafeAreaView>
   )
 }
