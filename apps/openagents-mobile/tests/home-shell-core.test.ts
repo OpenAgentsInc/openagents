@@ -108,7 +108,7 @@ describe("contract openagents_mobile.home_shell.view_program.v1", () => {
       expect(serialized).toContain(recent.title)
     }
     expect(serialized).toContain('"label":"Settings"')
-    expect(serialized).toContain("Bundle 2026-07-09.embedded-109")
+    expect(serialized).toContain("Bundle 2026-07-09.embedded-110")
     // The active recent renders as the highlighted (secondary) row; the
     // others are ghost rows.
     expect(serialized).toContain('"backgroundColor":"surfaceRaised"')
@@ -225,6 +225,12 @@ describe("contract openagents_mobile.home_shell.view_program.v1", () => {
           const afterTaps = yield* lastState(program)
           expect(afterTaps.composerTaps).toBe(1)
           expect(afterTaps.micTaps).toBe(2)
+          // Composer tap also starts the ask-video takeover (audio-on reply
+          // video, owner direction); dismissal is a typed intent.
+          expect(afterTaps.askVideoPlaying).toBe(true)
+          program.chrome.dismissAskVideo()
+          yield* settle
+          expect((yield* lastState(program)).askVideoPlaying).toBe(false)
 
           yield* content.unmount
           yield* drawer.unmount

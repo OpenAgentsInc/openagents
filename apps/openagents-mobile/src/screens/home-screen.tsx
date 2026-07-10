@@ -33,6 +33,11 @@ import {
 // "Sarah" surface mode plays it fullscreen UNDER the glass chrome.
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const sarahDemoVideo = require("../../assets/videos/sarah-demo.mp4") as number
+// Composer-tap reply video (assets/videos/ask-anything.mp4, ~2.1 MB) — plays
+// fullscreen WITH AUDIO on "Ask anything" tap (owner direction 2026-07-09);
+// preloaded by creating its player at mount.
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const askAnythingVideo = require("../../assets/videos/ask-anything.mp4") as number
 
 /**
  * OpenAgents mobile (GL-2 #8648, #8597) — the ChatGPT-style glass shell.
@@ -82,6 +87,31 @@ export const HomeScreen = () => {
   })
   const videoOpacity = useRef(new Animated.Value(0)).current
   const videoScale = useRef(new Animated.Value(1.03)).current
+
+  // "Ask anything" takeover video — AUDIO ON (muted=false), no loop,
+  // preloaded at mount; plays from the start on each composer tap and
+  // dismisses on play-to-end or tap (typed AskVideoDismissed intent).
+  const askPlaying = homeState.askVideoPlaying
+  const askPlayer = useVideoPlayer(askAnythingVideo, (p) => {
+    p.loop = false
+    p.muted = false
+  })
+  useEffect(() => {
+    if (askPlaying) {
+      askPlayer.currentTime = 0
+      askPlayer.play()
+    } else {
+      askPlayer.pause()
+    }
+  }, [askPlaying, askPlayer])
+  useEffect(() => {
+    const subscription = askPlayer.addListener("playToEnd", () => {
+      program.chrome.dismissAskVideo()
+    })
+    return () => {
+      subscription.remove()
+    }
+  }, [askPlayer, program])
 
   useEffect(() => {
     if (sarahMode) {
@@ -340,6 +370,31 @@ export const HomeScreen = () => {
         </RNView>
       ) : null}
       </SafeAreaView>
+      {/* 4. "Ask anything" takeover — fullscreen reply video WITH audio,
+          above everything; tap anywhere to dismiss (typed intent), auto-
+          dismiss on play-to-end. */}
+      {askPlaying ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Dismiss video"
+          onPress={program.chrome.dismissAskVideo}
+          style={{
+            position: "absolute",
+            top: 0,
+            bottom: 0,
+            left: 0,
+            right: 0,
+            backgroundColor: khalaTheme.color.background,
+          }}
+        >
+          <VideoView
+            player={askPlayer}
+            style={{ flex: 1 }}
+            contentFit="cover"
+            nativeControls={false}
+          />
+        </Pressable>
+      ) : null}
     </RNView>
   )
 }

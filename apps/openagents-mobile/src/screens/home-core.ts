@@ -64,6 +64,9 @@ export const surfaceModeOptions: ReadonlyArray<SurfaceModeOption> = [
 export interface HomeState {
   readonly drawerOpen: boolean
   readonly surfaceMode: SurfaceMode
+  /** Composer-tap takeover: fullscreen Sarah reply video WITH audio (owner
+   * direction 2026-07-09); dismissed on play-to-end or tap. */
+  readonly askVideoPlaying: boolean
   /** The active conversation; undefined = fresh "new chat" surface. */
   readonly activeRecentId: string | undefined
   readonly recents: ReadonlyArray<RecentChat>
@@ -86,6 +89,7 @@ export const seedRecents: ReadonlyArray<RecentChat> = [
 export const initialHomeState: HomeState = {
   drawerOpen: false,
   surfaceMode: "openagents",
+  askVideoPlaying: false,
   activeRecentId: "welcome",
   recents: seedRecents,
   composerTaps: 0,
@@ -99,7 +103,7 @@ export const initialHomeState: HomeState = {
  * the owner can SEE the over-the-air bundle swap land (embedded build 107
  * ships the tag below; a published OTA with a bumped tag should appear within
  * ~3s via the temporary poll loop and reload). Rendered in the drawer footer. */
-export const BUNDLE_TAG = "2026-07-09.embedded-109"
+export const BUNDLE_TAG = "2026-07-09.embedded-110"
 
 // ---------------------------------------------------------------------------
 // Typed intents — the ONLY way anything (EN tree, SwiftUI chrome, scrim)
@@ -119,6 +123,7 @@ export const SettingsPressed = defineIntent("SettingsPressed", EmptyPayload)
 export const ChatPillPressed = defineIntent("ChatPillPressed", EmptyPayload)
 export const ComposerPressed = defineIntent("ComposerPressed", EmptyPayload)
 export const MicPressed = defineIntent("MicPressed", EmptyPayload)
+export const AskVideoDismissed = defineIntent("AskVideoDismissed", EmptyPayload)
 export const SurfaceModeSelected = defineIntent(
   "SurfaceModeSelected",
   Schema.Struct({ mode: Schema.Literals(["openagents", "sarah"]) }),
@@ -134,6 +139,7 @@ export const homeIntentDefinitions = [
   ComposerPressed,
   MicPressed,
   SurfaceModeSelected,
+  AskVideoDismissed,
 ] as const
 
 export const drawerToggledRef = IntentRef("DrawerToggled", StaticPayload({}))
@@ -307,6 +313,7 @@ export const makeHomeHandlers = (
     SubscriptionRef.update(state, (current) => ({
       ...current,
       composerTaps: current.composerTaps + 1,
+      askVideoPlaying: true,
     })),
   MicPressed: () =>
     SubscriptionRef.update(state, (current) => ({
@@ -317,6 +324,11 @@ export const makeHomeHandlers = (
     SubscriptionRef.update(state, (current) => ({
       ...current,
       surfaceMode: payload.mode,
+    })),
+  AskVideoDismissed: () =>
+    SubscriptionRef.update(state, (current) => ({
+      ...current,
+      askVideoPlaying: false,
     })),
 })
 
@@ -331,6 +343,7 @@ export interface ChromeDispatchers {
   readonly pressComposer: () => void
   readonly pressMic: () => void
   readonly selectSurfaceMode: (mode: SurfaceMode) => void
+  readonly dismissAskVideo: () => void
 }
 
 export interface HomeProgramHandle {
@@ -374,6 +387,7 @@ export const buildHomeProgram = (): HomeProgramHandle =>
           selectSurfaceMode: (mode) => {
             fireRef(IntentRef("SurfaceModeSelected", StaticPayload({ mode })))
           },
+          dismissAskVideo: fire("AskVideoDismissed"),
         },
       }
     }),
