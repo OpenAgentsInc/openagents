@@ -1,7 +1,7 @@
 # MASTER ROADMAP — Sarah Fleet Command first; three OpenAgents apps
 
 - Date: 2026-07-09
-- Revision: 10
+- Revision: 11
 - Status: canonical OpenAgents implementation roadmap
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Issue source set: [`issues/README.md`](./issues/README.md)
@@ -172,6 +172,10 @@ The coding-fleet program starts from substantial working substrate:
   disconnect isolation, abort propagation, and honest overflow/record-timeout
   outcomes; the current renderer-wide bearer route remains byte-compatible and
   deliberately does not arm this trusted-context entrypoint.
+- a production Pipecat 1.5.0 seam audit that rejects a Python foundation swap
+  while selecting smart-turn, VAD-segmented owned ASR, qualified interruption,
+  TTFA/TTFB, task-lifecycle, and behavioral-eval patterns for one bounded,
+  process-isolated experiment under #8610.
 
 The immediate gaps are now narrower composition and live-proof gaps:
 
@@ -358,14 +362,16 @@ separate.
 
 Cloud is additive. A cloud blocker never stalls the P0.4 local burn.
 
-### P0 parallel — production inference
+### P0 completed substrate — production inference
 
 **[#8600 FC-BRAIN](https://github.com/OpenAgentsInc/openagents/issues/8600)**
 moves Sarah through persona-neutral Khala inference with exact receipts, turn
 coalescing, caps, and typed fallback.
 
-This is a production-hardening priority but not a prerequisite for the first
-owner-gated local fleet dogfood slice.
+This issue is closed: its persona-neutral gateway lane, exact receipts,
+coalescing, caps, typed fallback, deployment, and live proof are retained
+substrate. It is not an open lane or a prerequisite for the first owner-gated
+local fleet dogfood slice.
 
 ## P1 parallel — Sarah presentation quality
 
@@ -398,6 +404,46 @@ preempt P0 fleet integration.
 No experiment enters without the production decision/threshold it can change
 and the candidate it will remove afterward. Tiny-N results publish medians and
 bounded raw trials, not false population confidence.
+
+### Voice infrastructure disposition
+
+The canonical decision record is
+[`docs/sarah/2026-07-09-pipecat-voice-infra-audit.md`](../sarah/2026-07-09-pipecat-voice-infra-audit.md).
+Pipecat 1.5.0 at audited upstream commit `5b75654` is a BSD-2-Clause pattern
+source and one bounded ASR/VAD sidecar experiment, not Sarah's orchestration
+foundation.
+
+Preserve `apps/sarah` Effect orchestration, Effect Native state/intents, Khala
+inference and receipt authority, hydralisk's owned TTS/avatar renderer, and the
+text-first/media-admission floor. Extract smart-turn end-of-turn inference,
+Silero VAD-segmented `faster-whisper` STT, qualified interruption, word
+timestamps, per-stage TTFB/TTFA, tracked task cleanup, heartbeat/ICE recovery,
+and behavioral-eval patterns. Do not add Daily/Pipecat Cloud coupling, replace
+the brain/renderer, or create a parallel RTVI client-state universe.
+
+Ordered slice:
+
+1. Port smart-turn with the upstream ref, BSD notice, model digest, and a
+   single-thread CPU executor.
+2. Run `SARAH_ASR=browser|owned` as a separate process on the existing GPU host:
+   Silero -> `faster-whisper` -> smart-turn -> exactly one final utterance into
+   the existing `/sarah/api/avatar/speak` contract. Compare a pinned Pipecat
+   sidecar with a native FastAPI port; browser ASR remains rollback/fallback.
+3. Add VAD-qualified barge-in through hydralisk's existing `interrupt` verb,
+   with a minimum-words/backchannel guard, behavior-contract row, and simulator
+   oracle in the same implementation change.
+4. Add stage latency/TTFA, captions/word timestamps, and scripted live scenarios,
+   then explicitly accept the sidecar, select the native port, or retain the
+   browser fallback.
+
+Advancement gates are falsifiable: the existing voice-to-voice target remains
+p50 <= 800 ms with stage p50/p95 published; VAD-qualified speech-start reaches
+interrupt acknowledgement at p95 <= 500 ms and queued audible output stops at
+p95 <= 750 ms; final-utterance delivery is exactly once; raw mic audio is
+ephemeral by default; interim transcripts/metrics remain owner/session scoped;
+and the renderer watchdog plus FPS/cadence simulator stay green under concurrent
+ASR load. Failure selects a native port or fallback, never foundation adoption
+by inertia. This P1 work cannot delay #8640 Phase A or the C2 coding cutover.
 
 ## P1 — three OpenAgents applications
 
@@ -480,12 +526,14 @@ builds a new Electron application at `apps/openagents-desktop`.
   the first packaged build. The secure Electron boundary, signed/notarized
   release lane, and independent updates feed must be proven before distribution.
 
-### Effect Native integration blocker
+### Effect Native integration topology
 
-At this source snapshot `check:effect-topology` still expects Effect
-`4.0.0-beta.70`, while the four vendored Effect Native packages require
-`4.0.0-beta.94`. Resolve that guard/runtime mismatch under #8566 before any
-clean-deploy claim.
+The deploy guard now verifies the physical runtime boundary instead of treating
+peer-report output as resolution authority: OpenAgents/Omega remains on Effect
+`4.0.0-beta.70`, exactly the four vendored Effect Native packages resolve
+`4.0.0-beta.94`, and the isolated Nostr line remains Effect 3. The mismatch is
+no longer a deploy blocker; any package escaping its declared line fails the
+guard.
 
 ## P2 — after the coding loop is real
 
@@ -516,8 +564,8 @@ apps. It does not begin as a fourth product surface.
 
 ## Canonical open issue set
 
-The issue reset plus this Fable/Sol reconciliation leaves **17 open roadmap
-issues**: 15 active P0/P1 lanes and two explicitly dependency-held P2 lanes.
+The issue reset plus this reconciliation leaves **16 open roadmap issues**: 14
+active P0/P1 lanes and two explicitly dependency-held P2 lanes.
 
 | Priority | Issue | Purpose |
 | --- | --- | --- |
@@ -528,7 +576,6 @@ issues**: 15 active P0/P1 lanes and two explicitly dependency-held P2 lanes.
 | P0 | #8640 | Live multi-stream dogfood burn |
 | P0 | #8547 | Codex inside real Agent Computer |
 | P0 | #8636 | Hybrid local/cloud routing |
-| P0 parallel | #8600 | Khala inference hardening |
 | P1 parallel | #8610 | Sarah presentation quality |
 | P1 | #8566 | Three-app Effect Native epic; greenfield mobile/desktop |
 | P1 | #8634 | Web host consolidation + public-page retirement |
@@ -555,8 +602,8 @@ their milestone or tripwire fires.
    in place until the receipt is clean, then flip routine bounded owner coding
    to Sarah/Khala/Pylon by default.
 4. Run #8547 and #8636 on dedicated cloud capacity; never block Phase A.
-5. Keep #8600 and #8610 active in parallel without taking the fleet integration
-   hot paths.
+5. Keep #8610 active in parallel without taking the fleet integration hot
+   paths; closed #8600 remains production inference substrate.
 6. Run #8634 route inventory/retirement and #8635 Forum work in parallel with
    app conversion; landing/mobile/desktop slices follow their substrate.
 7. Keep #8642/#8643 dependency-held until Phase A, except that #8642's first
