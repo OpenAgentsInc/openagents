@@ -56,10 +56,12 @@ with another client-local authority model.
 
 ## Program-critical work to respect
 
-Per [`docs/sol/MASTER_ROADMAP.md`](../sol/MASTER_ROADMAP.md), the central
-program remains the Sarah → typed intent → durable FleetRun → Pylon claim →
-named worker → verification → closeout loop. Desktop polish is valuable only
-when it helps that loop become a trustworthy daily product.
+Per [`docs/sol/MASTER_ROADMAP.md`](../sol/MASTER_ROADMAP.md), the active
+program is persona-neutral: typed intent → durable FleetRun → Pylon claim →
+named worker → verification → closeout, with R1 identity and R2 Sync making
+Desktop and mobile truthful cross-device clients. Sarah is removed as a
+front-door surface; desktop polish is valuable only when it helps that daily
+product become trustworthy.
 
 The next Terra decision comes from Sol's ready-leaf order and live issue claim,
 not an abstract desire for more controls, pages, or status labels.

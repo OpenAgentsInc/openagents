@@ -41,8 +41,8 @@ was direct and useful:
 | `7d77150514` | Replaced mobile seeded conversations with an app-owned five-thread catalog, real new-thread minting, and recent-thread restoration. |
 | `23aba8270a` | Added the mobile Khala mode: a typed public-orchestrator transcript/composer through the existing streaming Khala route; TestFlight build 114 is `VALID`. |
 | `ee78dc1a2e` | Restored the owner-required `openagents-liquid-glass` SwiftUI module after a concurrent removal caused the iOS app to expose opaque React Native fallback controls; prepared native build 115. |
-| Pending current mobile landing | Removed mobile named-persona/session/demo/local-catalog code; made the SwiftUI Liquid Glass composer the sole Khala input; prepared build 116. |
-| Pending current desktop landing | Uses the exact checked-in OpenAgents mobile app PNG for the Electron window and macOS Dock, with a build-time byte-parity test. |
+| `09c9016b48` + `e8bf6b8603` | Removed mobile named-persona/session/demo/local-catalog code; made the SwiftUI Liquid Glass composer the sole Khala input; build 116 was archived/exported and accepted by App Store Connect pending build-record ingestion. |
+| `19ebe9741f` | Uses the exact checked-in OpenAgents mobile app PNG for the Electron window and macOS Dock, with a build-time byte-parity test. |
 
 ## What now works
 
@@ -184,3 +184,27 @@ Khala Sync authority are built.
 - The current Desktop Settings slice is a bounded readiness/device-auth start
   path. Its smoke reaches awaiting-browser state only; a real owner Codex
   reconnect remains an owner proof gate and must not be marked completed here.
+
+## Claude recovery — Sarah retirement deployment
+
+I recovered the four interrupted Claude subagent transcripts from
+`~/.claude/projects/-Users-christopherdavid-work/2e020799-3a44-4b2c-8f48-ae1976082faf/subagents/`.
+They showed that the code and contract landings had in fact reached `main`:
+Sarah retirement (`13bc1e7443`), the Forum Effect Native live-route slice
+(`311c268f94`), the Portal browser-proof repair (`d9cf9a6bfb`), and the R1–R2
+identity/Khala Sync freeze (`a7314e7768`, corrected by `c5e95dd164`).
+
+The genuine unfinished residue was operational: production still served the
+old Sarah revision even though current `main` carried the explicit tombstone.
+From clean `dcef148b08`, I deployed staging first and then production:
+
+- staging: `openagents-monolith-staging-00058-6b8`, `/sarah` → HTTP 404;
+- production: `openagents-monolith-00079-jsw`, `/sarah` → HTTP 404 with
+  `{\"error\":\"not_found\",\"path\":\"/sarah\"}`;
+- production `/internal/healthz` → `{\"ok\":true,\"service\":\"openagents-monolith\"}`;
+- a real headless-Chromium capture of the deployed production 404 was made;
+- `sarah-avatar-gpu-1` was already `TERMINATED`, so no additional GPU stop was
+  needed.
+
+The closeout is posted on #8610. This removes a real stale deployment; it does
+not alter the retained neutral `/api/sarah/fleet-runs` compatibility authority.
