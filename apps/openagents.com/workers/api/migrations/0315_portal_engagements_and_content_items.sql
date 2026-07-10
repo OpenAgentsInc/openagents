@@ -24,10 +24,13 @@
 --     set exactly once (`portal_content_decision:<opaque id>`), following the
 --     0308 `admin_credit_grants.credit_receipt_ref` receipt precedent.
 --
--- These tables are intentionally NOT part of the khala-sync Postgres mirror
--- registry (crm-email-domain-store.ts) — same D1-only precedent as
--- `agent_readiness_public_reports` (0310) and `crm_sarah_handoff_links`
--- (0311). No Postgres companion migration exists for them.
+-- LIVE storage is Cloud SQL Postgres: post D1-evacuation (#8515) the Cloud
+-- Run monolith serves OPENAGENTS_DB through the D1-shaped Postgres adapter,
+-- and the account-capped Cloudflare D1 databases no longer accept DDL. The
+-- Postgres twin of this schema is
+-- packages/khala-sync-server/migrations/0058_portal_engagements_and_content_items.sql;
+-- this SQLite file remains the schema the portal route/store tests load
+-- in-memory (and the historical D1 record if the bridge ever revives).
 
 CREATE TABLE IF NOT EXISTS portal_engagements (
   id TEXT PRIMARY KEY NOT NULL,
