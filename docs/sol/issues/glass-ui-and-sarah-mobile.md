@@ -41,9 +41,10 @@ fallback. No `@expo/ui` import is permitted in app code.
 
 Status: 0.5.0 build 107 at `9c5adff015` is `VALID` and pixel-proves the typed
 shell/drawer/composer loop. The 0.5.1 build-108 source and simulator receipt
-landed through `e30028a7e1`; no ASC/`VALID` receipt is recorded for build 108,
-so it is not described as deployed. The remaining work is integration and
-owner acceptance, not an unstarted shell.
+landed through `e30028a7e1`, followed by JS-only owner chrome corrections
+shipped through the OTA channel at `d5e524b142`; no ASC/`VALID` receipt is
+recorded for build 108, so it is not described as TestFlight-deployed/valid.
+The remaining work is integration and owner acceptance, not an unstarted shell.
 
 Complete the owner's target structure in `apps/openagents-mobile`: a left
 flyout drawer, selected navigation row, Recents, floating settings, glass Chat

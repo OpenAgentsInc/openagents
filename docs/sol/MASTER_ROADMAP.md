@@ -1,7 +1,7 @@
 # MASTER ROADMAP — Sarah Fleet Command first; three OpenAgents apps
 
 - Date: 2026-07-09
-- Revision: 17
+- Revision: 18
 - Status: canonical OpenAgents implementation roadmap
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Issue source set: [`issues/README.md`](./issues/README.md)
@@ -181,8 +181,9 @@ The coding-fleet program starts from substantial working substrate:
   an owned `openagents-production` OTA channel. TestFlight 0.4.3 build 106 and
   0.5.0 build 107 reached `VALID`; build 107 is the pixel-proven typed glass
   shell/drawer/composer loop. The 0.5.1 build-108 source, tests, typecheck,
-  simulator pixel receipt, and lockfile are on `main` through `e30028a7e1`, but
-  no App Store Connect/`VALID` receipt is recorded for build 108. Owner-device
+  simulator pixel receipt, and lockfile are on `main` through `e30028a7e1`;
+  JS-only owner chrome corrections then shipped through the OTA channel at
+  `d5e524b142`. No App Store Connect/`VALID` receipt is recorded for build 108. Owner-device
   acceptance, Sarah/Sync continuity, Android, and the full #8597 exit remain
   open;
 - the Effect Native vendor at `66d2f7544b` now includes upstream `2918c277`
@@ -558,7 +559,8 @@ effect-native#70 / EN-S lanes mature (convert-and-delete).
 Current narrow truth: GL-1 has the v27 typed catalog primitives on `main` at
 `66d2f7544b`, but not its host-driver/island-conversion/real-lowering exit.
 GL-2 has the pixel-proven build-107 shell and build-108 source/simulator receipt
-through `e30028a7e1`; build 108 has no recorded ASC/`VALID` receipt, and the
+through `e30028a7e1`, plus JS-only owner chrome corrections shipped through OTA
+at `d5e524b142`; build 108 has no recorded ASC/`VALID` receipt, and the
 bundled Sarah demo video is presentation material, not GL-3 auth/SSE/reconnect
 proof. GL-3's text-first shared contract can begin now. GL-4 remains held by
 the owned-lowering dependency.
@@ -624,8 +626,9 @@ React Native renderer seam, owned OTA feed, and iOS release lane are proven.
 TestFlight 0.4.3 build 106 and 0.5.0 build 107 reached `VALID`; build 107 is the
 simulator-pixel-proven glass shell correction and still needs owner-device
 acceptance. Build-108 source at 0.5.1, tests, typecheck, simulator pixel receipt,
-and lockfile are on `main` through `e30028a7e1`, but build 108 is not called
-deployed without an ASC/`VALID` receipt.
+and lockfile are on `main` through `e30028a7e1`, followed by JS-only owner
+chrome corrections through the OTA channel at `d5e524b142`. Build 108 is not
+called TestFlight-deployed/valid without an ASC/`VALID` receipt.
 #8597 retains an unreleased Fable claim whose published scope is only the
 initial greenfield setup; later OTA/SwiftUI/TestFlight work exceeded that
 recorded scope. Treat it as owned until the actor posts an explicit re-scope or
