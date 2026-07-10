@@ -30,6 +30,7 @@ import { Route as AdjutantRouteImport } from './routes/adjutant'
 import { Route as ActivityRouteImport } from './routes/activity'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as KhalaIndexRouteImport } from './routes/khala/index'
+import { Route as ForumIndexRouteImport } from './routes/forum/index'
 import { Route as DocsIndexRouteImport } from './routes/docs/index'
 import { Route as ComponentsIndexRouteImport } from './routes/components/index'
 import { Route as CodeIndexRouteImport } from './routes/code/index'
@@ -54,6 +55,9 @@ import { Route as AgentsAgentRefRouteImport } from './routes/agents/$agentRef'
 import { Route as TrainingRunsIndexRouteImport } from './routes/training/runs/index'
 import { Route as TrainingRunsRunIdRouteImport } from './routes/training/runs/$runId'
 import { Route as SitesDemoCheckoutReturnActionRouteImport } from './routes/sites/demo-checkout/$returnAction'
+import { Route as ForumTTopicIdRouteImport } from './routes/forum/t.$topicId'
+import { Route as ForumReceiptsReceiptRefRouteImport } from './routes/forum/receipts.$receiptRef'
+import { Route as ForumFForumRefRouteImport } from './routes/forum/f.$forumRef'
 import { Route as BusinessKpiEngagementRefRouteImport } from './routes/business/kpi/$engagementRef'
 import { Route as PylonCodexAssignmentsAssignmentRefRouteImport } from './routes/pylon/codex/assignments/$assignmentRef'
 
@@ -160,6 +164,11 @@ const IndexRoute = IndexRouteImport.update({
 const KhalaIndexRoute = KhalaIndexRouteImport.update({
   id: '/khala/',
   path: '/khala/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ForumIndexRoute = ForumIndexRouteImport.update({
+  id: '/forum/',
+  path: '/forum/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DocsIndexRoute = DocsIndexRouteImport.update({
@@ -283,6 +292,21 @@ const SitesDemoCheckoutReturnActionRoute =
     path: '/$returnAction',
     getParentRoute: () => SitesDemoCheckoutRoute,
   } as any)
+const ForumTTopicIdRoute = ForumTTopicIdRouteImport.update({
+  id: '/forum/t/$topicId',
+  path: '/forum/t/$topicId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ForumReceiptsReceiptRefRoute = ForumReceiptsReceiptRefRouteImport.update({
+  id: '/forum/receipts/$receiptRef',
+  path: '/forum/receipts/$receiptRef',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ForumFForumRefRoute = ForumFForumRefRouteImport.update({
+  id: '/forum/f/$forumRef',
+  path: '/forum/f/$forumRef',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const BusinessKpiEngagementRefRoute =
   BusinessKpiEngagementRefRouteImport.update({
     id: '/business/kpi/$engagementRef',
@@ -338,8 +362,12 @@ export interface FileRoutesByFullPath {
   '/code/': typeof CodeIndexRoute
   '/components/': typeof ComponentsIndexRoute
   '/docs/': typeof DocsIndexRoute
+  '/forum/': typeof ForumIndexRoute
   '/khala/': typeof KhalaIndexRoute
   '/business/kpi/$engagementRef': typeof BusinessKpiEngagementRefRoute
+  '/forum/f/$forumRef': typeof ForumFForumRefRoute
+  '/forum/receipts/$receiptRef': typeof ForumReceiptsReceiptRefRoute
+  '/forum/t/$topicId': typeof ForumTTopicIdRoute
   '/sites/demo-checkout/$returnAction': typeof SitesDemoCheckoutReturnActionRoute
   '/training/runs/$runId': typeof TrainingRunsRunIdRoute
   '/training/runs/': typeof TrainingRunsIndexRoute
@@ -387,8 +415,12 @@ export interface FileRoutesByTo {
   '/code': typeof CodeIndexRoute
   '/components': typeof ComponentsIndexRoute
   '/docs': typeof DocsIndexRoute
+  '/forum': typeof ForumIndexRoute
   '/khala': typeof KhalaIndexRoute
   '/business/kpi/$engagementRef': typeof BusinessKpiEngagementRefRoute
+  '/forum/f/$forumRef': typeof ForumFForumRefRoute
+  '/forum/receipts/$receiptRef': typeof ForumReceiptsReceiptRefRoute
+  '/forum/t/$topicId': typeof ForumTTopicIdRoute
   '/sites/demo-checkout/$returnAction': typeof SitesDemoCheckoutReturnActionRoute
   '/training/runs/$runId': typeof TrainingRunsRunIdRoute
   '/training/runs': typeof TrainingRunsIndexRoute
@@ -437,8 +469,12 @@ export interface FileRoutesById {
   '/code/': typeof CodeIndexRoute
   '/components/': typeof ComponentsIndexRoute
   '/docs/': typeof DocsIndexRoute
+  '/forum/': typeof ForumIndexRoute
   '/khala/': typeof KhalaIndexRoute
   '/business/kpi/$engagementRef': typeof BusinessKpiEngagementRefRoute
+  '/forum/f/$forumRef': typeof ForumFForumRefRoute
+  '/forum/receipts/$receiptRef': typeof ForumReceiptsReceiptRefRoute
+  '/forum/t/$topicId': typeof ForumTTopicIdRoute
   '/sites/demo-checkout/$returnAction': typeof SitesDemoCheckoutReturnActionRoute
   '/training/runs/$runId': typeof TrainingRunsRunIdRoute
   '/training/runs/': typeof TrainingRunsIndexRoute
@@ -488,8 +524,12 @@ export interface FileRouteTypes {
     | '/code/'
     | '/components/'
     | '/docs/'
+    | '/forum/'
     | '/khala/'
     | '/business/kpi/$engagementRef'
+    | '/forum/f/$forumRef'
+    | '/forum/receipts/$receiptRef'
+    | '/forum/t/$topicId'
     | '/sites/demo-checkout/$returnAction'
     | '/training/runs/$runId'
     | '/training/runs/'
@@ -537,8 +577,12 @@ export interface FileRouteTypes {
     | '/code'
     | '/components'
     | '/docs'
+    | '/forum'
     | '/khala'
     | '/business/kpi/$engagementRef'
+    | '/forum/f/$forumRef'
+    | '/forum/receipts/$receiptRef'
+    | '/forum/t/$topicId'
     | '/sites/demo-checkout/$returnAction'
     | '/training/runs/$runId'
     | '/training/runs'
@@ -586,8 +630,12 @@ export interface FileRouteTypes {
     | '/code/'
     | '/components/'
     | '/docs/'
+    | '/forum/'
     | '/khala/'
     | '/business/kpi/$engagementRef'
+    | '/forum/f/$forumRef'
+    | '/forum/receipts/$receiptRef'
+    | '/forum/t/$topicId'
     | '/sites/demo-checkout/$returnAction'
     | '/training/runs/$runId'
     | '/training/runs/'
@@ -636,8 +684,12 @@ export interface RootRouteChildren {
   CodeIndexRoute: typeof CodeIndexRoute
   ComponentsIndexRoute: typeof ComponentsIndexRoute
   DocsIndexRoute: typeof DocsIndexRoute
+  ForumIndexRoute: typeof ForumIndexRoute
   KhalaIndexRoute: typeof KhalaIndexRoute
   BusinessKpiEngagementRefRoute: typeof BusinessKpiEngagementRefRoute
+  ForumFForumRefRoute: typeof ForumFForumRefRoute
+  ForumReceiptsReceiptRefRoute: typeof ForumReceiptsReceiptRefRoute
+  ForumTTopicIdRoute: typeof ForumTTopicIdRoute
   TrainingRunsRunIdRoute: typeof TrainingRunsRunIdRoute
   TrainingRunsIndexRoute: typeof TrainingRunsIndexRoute
   PylonCodexAssignmentsAssignmentRefRoute: typeof PylonCodexAssignmentsAssignmentRefRoute
@@ -790,6 +842,13 @@ declare module '@tanstack/react-router' {
       path: '/khala'
       fullPath: '/khala/'
       preLoaderRoute: typeof KhalaIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/forum/': {
+      id: '/forum/'
+      path: '/forum'
+      fullPath: '/forum/'
+      preLoaderRoute: typeof ForumIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/docs/': {
@@ -960,6 +1019,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SitesDemoCheckoutReturnActionRouteImport
       parentRoute: typeof SitesDemoCheckoutRoute
     }
+    '/forum/t/$topicId': {
+      id: '/forum/t/$topicId'
+      path: '/forum/t/$topicId'
+      fullPath: '/forum/t/$topicId'
+      preLoaderRoute: typeof ForumTTopicIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/forum/receipts/$receiptRef': {
+      id: '/forum/receipts/$receiptRef'
+      path: '/forum/receipts/$receiptRef'
+      fullPath: '/forum/receipts/$receiptRef'
+      preLoaderRoute: typeof ForumReceiptsReceiptRefRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/forum/f/$forumRef': {
+      id: '/forum/f/$forumRef'
+      path: '/forum/f/$forumRef'
+      fullPath: '/forum/f/$forumRef'
+      preLoaderRoute: typeof ForumFForumRefRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/business/kpi/$engagementRef': {
       id: '/business/kpi/$engagementRef'
       path: '/business/kpi/$engagementRef'
@@ -1030,8 +1110,12 @@ const rootRouteChildren: RootRouteChildren = {
   CodeIndexRoute: CodeIndexRoute,
   ComponentsIndexRoute: ComponentsIndexRoute,
   DocsIndexRoute: DocsIndexRoute,
+  ForumIndexRoute: ForumIndexRoute,
   KhalaIndexRoute: KhalaIndexRoute,
   BusinessKpiEngagementRefRoute: BusinessKpiEngagementRefRoute,
+  ForumFForumRefRoute: ForumFForumRefRoute,
+  ForumReceiptsReceiptRefRoute: ForumReceiptsReceiptRefRoute,
+  ForumTTopicIdRoute: ForumTTopicIdRoute,
   TrainingRunsRunIdRoute: TrainingRunsRunIdRoute,
   TrainingRunsIndexRoute: TrainingRunsIndexRoute,
   PylonCodexAssignmentsAssignmentRefRoute:
