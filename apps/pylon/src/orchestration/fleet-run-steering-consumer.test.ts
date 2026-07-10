@@ -425,13 +425,6 @@ describe("Pylon FleetRun steering consumer", () => {
       const cases: Array<{ value: FleetSteeringPage; limit: number }> = [
         { value: page([delivery(2, two), delivery(1, one)], 1), limit: 100 },
         { value: page([delivery(1, one), delivery(2, one)], 2), limit: 100 },
-        {
-          value: page([{
-            ...delivery(1, one),
-            createdAt: "2026-07-10T02:00:01.000Z",
-          }], 1),
-          limit: 100,
-        },
         { value: page([delivery(1, one), delivery(2, two)], 2), limit: 1 },
         { value: { ...page([], 0), upToDate: false }, limit: 100 },
       ]
@@ -466,6 +459,42 @@ describe("Pylon FleetRun steering consumer", () => {
         runRef,
         claimRef,
       })).toEqual([])
+      await runtime.close()
+    } finally {
+      await rm(root, { force: true, recursive: true })
+    }
+  })
+
+  test("accepts distinct server delivery and client intent timestamps", async () => {
+    const root = await mkdtemp(join(tmpdir(), "pylon-fc3-steering-clock-domains-"))
+    const env = { PYLON_HOME: join(root, "pylon-home") } as NodeJS.ProcessEnv
+    try {
+      const runtime = await seed(env)
+      const pause = fleetIntent({
+        intentId: "intent.fc3.clock-domains",
+        kind: "fleet_run_control",
+        action: "pause",
+      })
+      const serverDelivery = {
+        ...delivery(1, pause),
+        createdAt: "2026-07-10T02:00:05.000Z",
+      }
+      const transport: PylonFleetRunSteeringTransport = {
+        read: () => Promise.resolve(page([serverDelivery], 1)),
+        postOutcomes: ({ outcomes }) => Promise.resolve(ack(outcomes)),
+      }
+      const result = await tickPylonFleetRunSteeringConsumer({
+        store: runtime.store,
+        transport,
+        pylonRef,
+        runRef,
+        claimRef,
+        now: () => now,
+      })
+      expect(pause.createdAt).toBe("2026-07-10T02:00:00.000Z")
+      expect(serverDelivery.createdAt).toBe("2026-07-10T02:00:05.000Z")
+      expect(result).toMatchObject({ ok: true, applied: 1, acknowledged: 1 })
+      expect(runtime.store.getFleetRun(runRef)?.state).toBe("paused")
       await runtime.close()
     } finally {
       await rm(root, { force: true, recursive: true })

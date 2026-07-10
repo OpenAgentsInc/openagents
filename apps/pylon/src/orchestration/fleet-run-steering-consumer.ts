@@ -572,7 +572,6 @@ export const tickPylonFleetRunSteeringConsumer = async (
     return item.seq <= watermark ||
       item.intent.intentId !== item.intentId ||
       item.intent.runRef !== options.runRef ||
-      item.createdAt !== item.intent.createdAt ||
       (index > 0 && ordered[index - 1]!.seq >= item.seq)
   })
   const invalidPage =
