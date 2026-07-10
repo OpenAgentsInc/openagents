@@ -35,6 +35,7 @@ const {
   sarahOwnerFleetInteractionMode,
   sarahOwnerFleetHostIntents,
   ownerFleetViewStateFromBrowser,
+  reconcileSarahOwnerFleetViewState,
 } = await import("./main.ts")
 const { sarahEffectNativeTheme } = await import("./theme.ts")
 const sarahCss = readFileSync(new URL("./sarah.css", import.meta.url), "utf8")
@@ -200,6 +201,8 @@ const ownerFleetState = (
   closeouts,
   expandedAuditWorkUnitRefs: [],
   expandedReceiptCardRefs: [],
+  selectedNode: null,
+  hostCommandSubmissions: [],
 })
 
 const ownerFleetHandlers: SarahOwnerFleetHostIntentHandlers = {
@@ -741,6 +744,82 @@ describe("FC-3 owner fleet surface integration", () => {
       flex: 1,
       minHeight: 0,
     })
+  })
+
+  test("uses the full Fleet tab for selected detail with an accessible Back action", () => {
+    const ownerFleet = ownerFleetState({
+      status: "ready",
+      receipts: [fleetCloseoutReceipt],
+    })
+    const view = sarahSurfaceView({
+      ...baseState,
+      activePanel: "fleet",
+      ownerFleet: {
+        ...ownerFleet,
+        selectedNode: {
+          kind: "attempt",
+          runRef: fleetProjection.run.runRef,
+          workUnitRef: surfaceWorkUnit.workUnitRef,
+          attemptRef: surfaceAttempt.attemptRef,
+        },
+      },
+    })
+    expect(findByKey(view, "fleet-drilldown-back")).toMatchObject({
+      _tag: "Button",
+      label: "Back to fleet",
+      a11y: { label: "Back to the fleet plan and work canvas" },
+      onPress: { name: "SarahFleetDrilldownClosed" },
+    })
+    expect(
+      findByKey(view, `fleet-drilldown-attempt-${surfaceAttempt.attemptRef}`),
+    ).not.toBeNull()
+    expect(
+      findByKey(view, `fleet-supervision-${fleetProjection.run.runRef}`),
+    ).toBeNull()
+    expect(findByKey(view, "fleet-closeouts")).toBeNull()
+  })
+
+  test("keeps selection through a blank reconnect but clears it when the entity or run disappears", () => {
+    const current: NonNullable<SurfaceState["ownerFleet"]> = {
+      ...ownerFleetState({ status: "not_reported" }),
+      selectedNode: {
+        kind: "work_unit",
+        runRef: fleetProjection.run.runRef,
+        workUnitRef: surfaceWorkUnit.workUnitRef,
+      },
+    }
+    const reconnecting = reconcileSarahOwnerFleetViewState(current, {
+      ...current,
+      projection: null,
+      selectedNode: null,
+    })
+    expect(reconnecting.selectedNode).toEqual(current.selectedNode)
+
+    const missing = reconcileSarahOwnerFleetViewState(current, {
+      ...current,
+      projection: { ...fleetProjection, workUnits: [] },
+      selectedNode: null,
+    })
+    expect(missing.selectedNode).toBeNull()
+
+    const changedScope = reconcileSarahOwnerFleetViewState(current, {
+      ...current,
+      runRef: "fleet.run.other",
+      scope: "scope.fleet_run.fleet.run.other" as never,
+      selectedNode: current.selectedNode,
+      hostCommandSubmissions: [
+        {
+          submissionRef: "host-command-old",
+          kind: "fleet_run_control",
+          targetRef: current.runRef,
+          status: "failed",
+          baselineSeq: 0,
+          summary: "Old command failed",
+        },
+      ],
+    })
+    expect(changedScope.selectedNode).toBeNull()
+    expect(changedScope.hostCommandSubmissions).toEqual([])
   })
 
   test("renders typed loading and reconnect states before exact projection hydration", () => {
