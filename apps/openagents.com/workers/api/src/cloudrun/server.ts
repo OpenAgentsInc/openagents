@@ -42,6 +42,8 @@ import {
 } from './sync-connect-bridge'
 // #8594 SM-5: Sarah mounts at openagents.com/sarah on this monolith (no subdomain).
 import { handleSarahRequest } from '../../../../../sarah/src/server.ts'
+// #8652 PORTAL-1: client portal mounts at openagents.com/portal (EN surface).
+import { handlePortalUiRequest } from './portal-ui'
 
 const log = (event: string, detail: Record<string, unknown> = {}): void => {
   console.log(
@@ -109,6 +111,15 @@ const main = async (): Promise<void> => {
       // Intercept before the Worker SPA unknown-document 302-to-home.
       if (url.pathname === '/sarah' || url.pathname.startsWith('/sarah/')) {
         return handleSarahRequest(request)
+      }
+
+      // #8652 PORTAL-1: client portal page + bundle at openagents.com/portal.
+      // API authority stays with the Worker's /api/portal/* routes.
+      if (url.pathname === '/portal' || url.pathname.startsWith('/portal/')) {
+        const portalResponse = await handlePortalUiRequest(request)
+        if (portalResponse !== undefined) {
+          return portalResponse
+        }
       }
 
       // Public-site homepage placeholder (owner request): openagents.com/www

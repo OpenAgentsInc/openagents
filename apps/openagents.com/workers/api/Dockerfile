@@ -20,8 +20,11 @@ COPY dist-cloudrun/sarah-ui ./sarah-ui
 COPY dist-cloudrun/sarah-agent ./sarah-agent
 # #8610: shippable pre-rendered clip tier (MIT Hallo2 openers-v2 only).
 COPY dist-cloudrun/sarah-clips ./sarah-clips
+# #8652 PORTAL-1: /portal Effect Native bundle for openagents.com/portal
+COPY dist-cloudrun/portal-ui ./portal-ui
 
 ENV OPENAGENTS_WEB_DIST=/app/web-dist
+ENV PORTAL_UI_DIR=/app/portal-ui
 ENV SARAH_UI_DIR=/app/sarah-ui
 ENV SARAH_AGENT_DIR=/app/sarah-agent
 ENV SARAH_CLIPS_DIR=/app/sarah-clips

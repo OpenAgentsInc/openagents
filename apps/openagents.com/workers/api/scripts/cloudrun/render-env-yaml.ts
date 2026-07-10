@@ -109,6 +109,8 @@ const openAgentsOrigin =
 Object.assign(vars, {
   KHALA_SYNC_LIVE_HUB_URL: liveHubUrl,
   OPENAGENTS_RUNTIME: 'cloudrun-monolith',
+  // #8652 PORTAL-1: /portal path mount on this monolith.
+  PORTAL_UI_DIR: '/app/portal-ui',
   // #8594: Sarah path mount on this monolith (assets copied into the image).
   SARAH_UI_DIR: '/app/sarah-ui',
   SARAH_AGENT_DIR: '/app/sarah-agent',
