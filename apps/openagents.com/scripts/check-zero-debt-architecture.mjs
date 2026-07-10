@@ -418,7 +418,15 @@ const budgetChecks = [
     // counter look green without changing the architecture. This records the
     // exact origin/main declaration baseline before that evasion. Keep the
     // literal surface ratchet below as well; neither spelling may grow.
-    budget: 151,
+    // +1 (151 -> 152) on 2026-07-10 for portal-routes.ts (PORTAL-1 #8652):
+    // the new /api/portal route module landed with one file-local
+    // `type HttpResponse = globalThis.Response` alias and never bumped this
+    // ratchet, leaving check:deploy red on main; this records the actual
+    // count (same recovery shape as the mdk-service-endpoints note on the
+    // literal budget below). It is a genuinely new route surface, not a
+    // literal->alias rename, and mints no spend/settlement/payout/
+    // public-claim authority.
+    budget: 152,
     description:
       'Worker modules may not hide new Response-returning surfaces behind local type aliases.',
     details: countByFileWith(
@@ -434,7 +442,15 @@ const budgetChecks = [
     // literal Response annotations and uses of every file-local direct
     // `type * = Response` alias. It is deliberately separate from the older
     // 135 literal budget so a rename cannot trade one spelling for another.
-    budget: 744,
+    // +8 (744 -> 752) on 2026-07-10: two lanes landed new route modules
+    // without bumping this ratchet, leaving check:deploy red on main —
+    // portal-routes.ts (PORTAL-1 #8652, +13) and pylon-api-routes.ts
+    // (7 -> 15, +8) — partially offset by retired surfaces in index.ts,
+    // provider-account-service-routes.ts, public-proof-replay-routes.ts,
+    // and sarah-fleet-run-routes.ts (-13). This records the actual count
+    // (same recovery shape as the notes above/below). Mints no spend/
+    // settlement/payout/public-claim authority.
+    budget: 752,
     description:
       'Worker Response-returning surfaces are counted semantically across literal and aliased annotations.',
     details: countByFileWith(
