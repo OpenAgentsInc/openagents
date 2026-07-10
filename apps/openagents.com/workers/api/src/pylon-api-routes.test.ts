@@ -805,7 +805,7 @@ const route = async (
           claimIdempotencyKey: string
           leaseDurationMs: number
         }>,
-      ) => Promise<FleetRunAuthorityClaimResult>
+      ) => Effect.Effect<FleetRunAuthorityClaimResult, FleetRunAuthorityError>
       acceptClaim: (
         env: Readonly<Record<string, unknown>>,
         input: Readonly<{
@@ -814,7 +814,10 @@ const route = async (
           runRef: string
           claimRef: string
         }>,
-      ) => Promise<FleetRunAuthorityAcceptClaimResult>
+      ) => Effect.Effect<
+        FleetRunAuthorityAcceptClaimResult,
+        FleetRunAuthorityError
+      >
     }>
     // KS-6.1 (#8302): optional fail-soft fleet cockpit projection spy.
     projectFleetAssignment?: (
@@ -4153,11 +4156,15 @@ describe('Pylon Sarah FleetRun transport', () => {
     await registerPylon(store, { tokenUserId: 'agent-one' })
     const claims: Array<Record<string, unknown>> = []
     const authority = {
-      claim: async (_env: Readonly<Record<string, unknown>>, input: Record<string, unknown>) => {
-        claims.push(input)
-        return claimed
-      },
-      acceptClaim: async () => accepted,
+      claim: (
+        _env: Readonly<Record<string, unknown>>,
+        input: Record<string, unknown>,
+      ) =>
+        Effect.sync(() => {
+          claims.push(input)
+          return claimed
+        }),
+      acceptClaim: () => Effect.succeed(accepted),
     }
     const request = {
       body: {
@@ -4208,11 +4215,15 @@ describe('Pylon Sarah FleetRun transport', () => {
     await registerPylon(store)
     const accepts: Array<Record<string, unknown>> = []
     const authority = {
-      claim: async () => claimed,
-      acceptClaim: async (_env: Readonly<Record<string, unknown>>, input: Record<string, unknown>) => {
-        accepts.push(input)
-        return accepted
-      },
+      claim: () => Effect.succeed(claimed),
+      acceptClaim: (
+        _env: Readonly<Record<string, unknown>>,
+        input: Record<string, unknown>,
+      ) =>
+        Effect.sync(() => {
+          accepts.push(input)
+          return accepted
+        }),
     }
     const response = await route(
       store,
@@ -4260,11 +4271,12 @@ describe('Pylon Sarah FleetRun transport', () => {
     await registerPylon(store, { tokenUserId: 'agent-one' })
     let called = 0
     const authority = {
-      claim: async () => {
-        called += 1
-        return claimed
-      },
-      acceptClaim: async () => accepted,
+      claim: () =>
+        Effect.sync(() => {
+          called += 1
+          return claimed
+        }),
+      acceptClaim: () => Effect.succeed(accepted),
     }
     const missing = await route(
       store,
@@ -4325,11 +4337,14 @@ describe('Pylon Sarah FleetRun transport', () => {
       {
         body: { schema: 'openagents.pylon.fleet_run_claim.request.v1' },
         fleetRunAuthority: {
-          claim: () => Promise.reject(new FleetRunAuthorityError({
-            kind: 'run_not_found',
-            reason: 'private detail must not escape',
-          })),
-          acceptClaim: async () => accepted,
+          claim: () =>
+            Effect.fail(
+              new FleetRunAuthorityError({
+                kind: 'run_not_found',
+                reason: 'private detail must not escape',
+              }),
+            ),
+          acceptClaim: () => Effect.succeed(accepted),
         },
         idempotencyKey: 'empty-queue-claim',
         method: 'POST',
@@ -4349,11 +4364,14 @@ describe('Pylon Sarah FleetRun transport', () => {
           claimRef,
         },
         fleetRunAuthority: {
-          claim: async () => claimed,
-          acceptClaim: () => Promise.reject(new FleetRunAuthorityError({
-            kind: 'claim_expired',
-            reason: 'postgres://private-host',
-          })),
+          claim: () => Effect.succeed(claimed),
+          acceptClaim: () =>
+            Effect.fail(
+              new FleetRunAuthorityError({
+                kind: 'claim_expired',
+                reason: 'postgres://private-host',
+              }),
+            ),
         },
         method: 'POST',
         tokenUserId: 'agent-one',

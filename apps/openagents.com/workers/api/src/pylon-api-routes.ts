@@ -102,7 +102,7 @@ type PylonApiRouteDependencies<Bindings> = Readonly<{
         claimIdempotencyKey: string
         leaseDurationMs: number
       }>,
-    ) => Promise<FleetRunAuthorityClaimResult>
+    ) => Effect.Effect<FleetRunAuthorityClaimResult, FleetRunAuthorityError>
     acceptClaim: (
       env: Bindings,
       input: Readonly<{
@@ -111,7 +111,10 @@ type PylonApiRouteDependencies<Bindings> = Readonly<{
         runRef: string
         claimRef: string
       }>,
-    ) => Promise<FleetRunAuthorityAcceptClaimResult>
+    ) => Effect.Effect<
+      FleetRunAuthorityAcceptClaimResult,
+      FleetRunAuthorityError
+    >
   }>
   // #5252: private operator-only store for raw Spark payout targets. Optional so
   // existing route wiring/tests stay valid; the spark-payout-target route fails
@@ -1221,22 +1224,12 @@ const routeFleetRunClaim = <Bindings extends PylonApiRouteEnv>(
       pylonRef,
       body.runRef ?? 'next',
     ])
-    const result = yield* Effect.tryPromise({
-      try: () =>
-        authority.claim(env, {
-          ownerUserId,
-          pylonRef,
-          ...(body.runRef === undefined ? {} : { runRef: body.runRef }),
-          claimIdempotencyKey,
-          leaseDurationMs: FLEET_RUN_LEASE_DURATION_MS,
-        }),
-      catch: (error): FleetRunAuthorityError =>
-        error instanceof FleetRunAuthorityError
-          ? error
-          : new FleetRunAuthorityError({
-              kind: 'storage_unavailable',
-              reason: 'fleet run authority is unavailable',
-            }),
+    const result = yield* authority.claim(env, {
+      ownerUserId,
+      pylonRef,
+      ...(body.runRef === undefined ? {} : { runRef: body.runRef }),
+      claimIdempotencyKey,
+      leaseDurationMs: FLEET_RUN_LEASE_DURATION_MS,
     })
     return noStoreJsonResponse({
       schema: PYLON_FLEET_RUN_TRANSPORT_SCHEMA,
@@ -1273,21 +1266,11 @@ const routeFleetRunAccept = <Bindings extends PylonApiRouteEnv>(
     const session = yield* requireAgent(dependencies, request, env)
     yield* requireOwnedRegistration(dependencies, env, pylonRef, session)
     const body = yield* decodeStrictFleetRunBody(request, FleetRunAcceptBody)
-    const result = yield* Effect.tryPromise({
-      try: () =>
-        authority.acceptClaim(env, {
-          ownerUserId: fleetRunOwnerUserId(session),
-          pylonRef,
-          runRef: body.runRef,
-          claimRef: body.claimRef,
-        }),
-      catch: (error): FleetRunAuthorityError =>
-        error instanceof FleetRunAuthorityError
-          ? error
-          : new FleetRunAuthorityError({
-              kind: 'storage_unavailable',
-              reason: 'fleet run authority is unavailable',
-            }),
+    const result = yield* authority.acceptClaim(env, {
+      ownerUserId: fleetRunOwnerUserId(session),
+      pylonRef,
+      runRef: body.runRef,
+      claimRef: body.claimRef,
     })
     return noStoreJsonResponse({
       schema: PYLON_FLEET_RUN_TRANSPORT_SCHEMA,
