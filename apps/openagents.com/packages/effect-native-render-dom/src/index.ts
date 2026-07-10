@@ -1,4 +1,4 @@
-import { Deferred, Effect, Exit, Layer, Scope, Stream } from "effect"
+import { Deferred, Effect, Exit, FiberSet, Layer, Scope, Stream } from "effect"
 import {
   type BadgeView,
   type ButtonView,
@@ -769,9 +769,23 @@ const runReportedIntent = (
   ref: IntentRef,
   runtimeValue: JsonPayload = null
 ): void => {
-  Effect.runFork(
-    (report(ref, runtimeValue) as Effect.Effect<void, IntentError>).pipe(Effect.ignoreCause)
-  )
+  const runEffect = domIntentReporterRuntimes.get(report)
+  if (runEffect !== undefined) {
+    runEffect((report(ref, runtimeValue) as Effect.Effect<void, IntentError>).pipe(Effect.ignoreCause))
+  }
+}
+
+type DomHostEffectRuntime = (effect: Effect.Effect<void, never>) => void
+
+const domIntentReporterRuntimes = new WeakMap<IntentReporter, DomHostEffectRuntime>()
+
+const withDomHostEffectRuntime = (
+  report: IntentReporter,
+  runEffect: DomHostEffectRuntime
+): IntentReporter => {
+  const scopedReport: IntentReporter = (ref, runtimeValue) => report(ref, runtimeValue)
+  domIntentReporterRuntimes.set(scopedReport, runEffect)
+  return scopedReport
 }
 
 const applyBaseStyle = (element: HTMLElement, view: View, state: DomRendererState): void => {
@@ -3981,6 +3995,11 @@ export const makeDomRenderer = (options: DomRendererOptions = {}): RendererAdapt
         const document = options.document ?? container.ownerDocument ?? globalThis.document
         const theme = options.theme ?? defaultTheme
         const viewport = yield* makeViewportService(options.viewport ?? readDomViewport(document), { theme })
+        const runFiber = yield* FiberSet.makeRuntime<never, void, never>()
+        const runEffect: DomHostEffectRuntime = (effect) => {
+          runFiber(effect)
+        }
+        const scopedReport = withDomHostEffectRuntime(report, runEffect)
         const state = new DomRendererState(container, document, theme, options.hostDrivers ?? [])
         const ready = yield* Deferred.make<void>()
         const window = document.defaultView
@@ -3997,7 +4016,7 @@ export const makeDomRenderer = (options: DomRendererOptions = {}): RendererAdapt
         )
         if (window !== null) {
           const updateViewport = () => {
-            Effect.runFork(viewport.set(readDomViewport(document)).pipe(Effect.ignoreCause))
+            runEffect(viewport.set(readDomViewport(document)).pipe(Effect.ignoreCause))
           }
           window.addEventListener("resize", updateViewport)
           yield* Effect.addFinalizer(() =>
@@ -4011,7 +4030,7 @@ export const makeDomRenderer = (options: DomRendererOptions = {}): RendererAdapt
           Stream.runForEach((view) =>
             Effect.gen(function*() {
               yield* Effect.sync(() => {
-                commitView(view, state, report)
+                commitView(view, state, scopedReport)
               })
               yield* Deferred.succeed(ready, undefined)
             })

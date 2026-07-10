@@ -1,4 +1,4 @@
-import { Deferred, Effect, Exit, Fiber, Ref, Scope, Stream } from "effect"
+import { Deferred, Effect, Exit, FiberSet, Ref, Scope, Stream } from "effect"
 import {
   type AriaRole,
   type BadgeView,
@@ -185,6 +185,12 @@ export interface ReactNativeRenderOptions {
   readonly theme?: Theme
   readonly platform?: ReactNativePlatform
   readonly viewport?: ViewportInput | Viewport
+}
+
+export type ReactNativeHostEffectRuntime = (effect: Effect.Effect<void, never>) => void
+
+export interface ReactNativeRenderRuntimeOptions extends ReactNativeRenderOptions {
+  readonly runEffect?: ReactNativeHostEffectRuntime
 }
 
 export interface EffectNativeSurfaceProps extends ReactNativeRenderOptions {
@@ -385,9 +391,67 @@ const runReportedIntent = (
   ref: IntentRef,
   runtimeValue: JsonPayload = null
 ): void => {
-  Effect.runFork(
-    (report(ref, runtimeValue) as Effect.Effect<void, IntentError>).pipe(Effect.ignoreCause)
-  )
+  const runEffect = reactNativeIntentReporterRuntimes.get(report)
+  if (runEffect !== undefined) {
+    runEffect((report(ref, runtimeValue) as Effect.Effect<void, IntentError>).pipe(Effect.ignoreCause))
+  }
+}
+
+const reactNativeIntentReporterRuntimes = new WeakMap<IntentReporter, ReactNativeHostEffectRuntime>()
+
+const makeReactNativeRefOwnedEffectRuntime = (): {
+  readonly runEffect: ReactNativeHostEffectRuntime
+  readonly dispose: () => void
+} => {
+  const interruptors = new Set<(interruptor?: number) => void>()
+  let disposed = false
+  return {
+    runEffect: (effect) => {
+      if (disposed) {
+        return
+      }
+      let completed = false
+      let interrupt: ((interruptor?: number) => void) | undefined
+      interrupt = Effect.runCallback(effect, {
+        onExit: () => {
+          completed = true
+          if (interrupt !== undefined) {
+            interruptors.delete(interrupt)
+          }
+        }
+      })
+      if (completed) {
+        return
+      }
+      if (disposed) {
+        interrupt()
+      } else {
+        interruptors.add(interrupt)
+      }
+    },
+    dispose: () => {
+      if (disposed) {
+        return
+      }
+      disposed = true
+      for (const interrupt of interruptors) {
+        interrupt()
+      }
+      interruptors.clear()
+    }
+  }
+}
+
+const withReactNativeHostEffectRuntime = (
+  report: IntentReporter,
+  runEffect: ReactNativeHostEffectRuntime | undefined
+): IntentReporter => {
+  if (runEffect === undefined) {
+    return report
+  }
+  const scopedReport: IntentReporter = (ref, runtimeValue) => report(ref, runtimeValue)
+  reactNativeIntentReporterRuntimes.set(scopedReport, runEffect)
+  return scopedReport
 }
 
 // Map the bounded ARIA role contract to the RN accessibilityRole values that
@@ -3362,7 +3426,7 @@ export const renderReactNativeView = (
   view: View,
   dependencies: ReactNativeDependencies,
   report: IntentReporter,
-  options: ReactNativeRenderOptions = {}
+  options: ReactNativeRenderRuntimeOptions = {}
 ): ReactElementLike => {
   const viewport = options.viewport === undefined
     ? undefined
@@ -3371,7 +3435,31 @@ export const renderReactNativeView = (
     ...(viewport === undefined ? {} : { viewport }),
     platform: options.platform ?? "ios"
   })
-  return renderResolvedReactNativeView(resolved, dependencies, report, options)
+  const ownedRuntime = options.runEffect === undefined
+    ? makeReactNativeRefOwnedEffectRuntime()
+    : undefined
+  const element = renderResolvedReactNativeView(
+    resolved,
+    dependencies,
+    withReactNativeHostEffectRuntime(report, options.runEffect ?? ownedRuntime?.runEffect),
+    options
+  )
+  if (ownedRuntime === undefined) {
+    return element
+  }
+  const existingRef = element.props.ref
+  return dependencies.React.createElement(element.type, {
+    ...element.props,
+    key: element.key,
+    ref: (instance: unknown) => {
+      if (typeof existingRef === "function") {
+        existingRef(instance)
+      }
+      if (instance === null) {
+        ownedRuntime.dispose()
+      }
+    }
+  })
 }
 
 const normalizeChildren = (children: unknown): ReadonlyArray<ReactNodeLike> => {
@@ -3588,27 +3676,56 @@ export const createEffectNativeSurface = (
 
   return function EffectNativeSurfaceWithDependencies(props: EffectNativeSurfaceProps): ReactNodeLike {
     const [view, setView] = useState<View | undefined>(() => props.initialView)
+    const [runtimeSlot] = useState<{ runEffect: ReactNativeHostEffectRuntime | undefined }>(() => ({
+      runEffect: undefined
+    }))
 
     useEffect(() => {
-      const fiber = Effect.runFork(
-        props.viewStream.pipe(
-          Stream.runForEach((nextView) =>
-            Effect.sync(() => {
-              setView(nextView)
+      let ownedRunEffect: ReactNativeHostEffectRuntime | undefined
+      const interrupt = Effect.runCallback(
+        Effect.scoped(
+          Effect.gen(function*() {
+            const runFiber = yield* FiberSet.makeRuntime<never, void, never>()
+            const runEffect: ReactNativeHostEffectRuntime = (effect) => {
+              runFiber(effect)
+            }
+            yield* Effect.sync(() => {
+              ownedRunEffect = runEffect
+              runtimeSlot.runEffect = runEffect
             })
-          )
+            yield* props.viewStream.pipe(
+              Stream.runForEach((nextView) =>
+                Effect.sync(() => {
+                  setView(nextView)
+                })
+              ),
+              Effect.ignoreCause
+            )
+            yield* Effect.never
+          })
+        ).pipe(
+          Effect.ignoreCause,
+          Effect.ensuring(Effect.sync(() => {
+            if (runtimeSlot.runEffect === ownedRunEffect) {
+              runtimeSlot.runEffect = undefined
+            }
+          }))
         )
       )
 
       return () => {
-        Effect.runFork(Fiber.interrupt(fiber).pipe(Effect.ignoreCause))
+        if (runtimeSlot.runEffect === ownedRunEffect) {
+          runtimeSlot.runEffect = undefined
+        }
+        interrupt()
       }
     }, [props.viewStream])
 
-    const renderOptions: ReactNativeRenderOptions = {
+    const renderOptions: ReactNativeRenderRuntimeOptions = {
       ...(props.theme === undefined ? {} : { theme: props.theme }),
       ...(props.platform === undefined ? {} : { platform: props.platform }),
-      ...(props.viewport === undefined ? {} : { viewport: props.viewport })
+      ...(props.viewport === undefined ? {} : { viewport: props.viewport }),
+      runEffect: (effect) => runtimeSlot.runEffect?.(effect)
     }
 
     return view === undefined
@@ -3639,6 +3756,11 @@ export const makeReactNativeRenderer = (
           options.viewport ?? readReactNativeViewport(dependencies),
           options.theme === undefined ? {} : { theme: options.theme }
         )
+        const runFiber = yield* FiberSet.makeRuntime<never, void, never>()
+        const runEffect: ReactNativeHostEffectRuntime = (effect) => {
+          runFiber(effect)
+        }
+        const scopedReport = withReactNativeHostEffectRuntime(report, runEffect)
         const current = yield* Ref.make<View | undefined>(undefined)
         const currentElement = yield* Ref.make<ReactNodeLike | undefined>(undefined)
         const ready = yield* Deferred.make<void>()
@@ -3660,7 +3782,7 @@ export const makeReactNativeRenderer = (
         if (dimensions?.addEventListener !== undefined) {
           const updateViewport = (event: { readonly window?: ReactNativeDimensionMetrics }) => {
             const metrics = event.window ?? dimensions.get("window")
-            Effect.runFork(
+            runEffect(
               viewport.set({
                 width: metrics.width,
                 height: metrics.height
@@ -3682,7 +3804,7 @@ export const makeReactNativeRenderer = (
         yield* resolvedViewStream.pipe(
           Stream.runForEach((view) =>
             Effect.gen(function*() {
-              const element = renderResolvedReactNativeView(view, dependencies, report, options)
+              const element = renderResolvedReactNativeView(view, dependencies, scopedReport, options)
               yield* Ref.set(current, view)
               yield* Ref.set(currentElement, element)
               yield* Effect.sync(() => {

@@ -8,6 +8,7 @@ import {
   type IntentReporter
 } from "@effect-native/core"
 import { Effect, Stream } from "@effect-native/core/effect"
+import { Deferred } from "effect"
 
 import { makeDomRenderer } from "../src/index"
 
@@ -87,6 +88,50 @@ describe("DOM renderer host boundaries", () => {
           expect(() => button?.click()).not.toThrow()
           yield* nextTask
           expect(attempted).toEqual(["FailSafely"])
+        })
+      )
+    )
+  })
+
+  test("interrupts an in-flight intent when the mounted surface unmounts", async () => {
+    const window = new Window({ url: "http://localhost/" })
+    const document = window.document as unknown as Document
+    const root = document.createElement("div")
+    document.body.appendChild(root)
+
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function*() {
+          const started = yield* Deferred.make<void>()
+          const interrupted = yield* Deferred.make<void>()
+          const report: IntentReporter = () =>
+            Deferred.succeed(started, undefined).pipe(
+              Effect.andThen(Effect.never),
+              Effect.onInterrupt(() =>
+                Effect.sleep("1 millis").pipe(
+                  Effect.andThen(Deferred.succeed(interrupted, undefined))
+                )
+              )
+            )
+          const surface = yield* makeDomRenderer({ document }).mount(
+            root,
+            Stream.succeed(Button({
+              key: "in-flight-button",
+              label: "Start",
+              variant: "primary",
+              onPress: IntentRef("StartInFlight")
+            })),
+            report
+          )
+          const button = root.querySelector("button") as HTMLButtonElement | null
+          expect(button).not.toBeNull()
+          button?.click()
+          yield* Deferred.await(started)
+
+          yield* surface.unmount
+
+          yield* Deferred.await(interrupted)
+          expect(surface.root.isConnected).toBe(false)
         })
       )
     )
