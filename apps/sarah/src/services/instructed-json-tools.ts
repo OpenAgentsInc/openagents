@@ -192,6 +192,76 @@ export function isDeniedCodingFleetToolAttempt(
   return false
 }
 
+const MAX_INSTRUCTED_TOOL_ERROR_CHARS = 120
+const SARAH_FLEET_AUTHORITY_ROUTE_REF =
+  "route.sarah.fleet_runs.authority.v1" as const
+const SAFE_FLEET_AUTHORITY_ERROR_CODES: ReadonlySet<string> = new Set([
+  "unauthenticated",
+  "authentication_unavailable",
+  "relationship_not_authorized",
+  "relationship_policy_unavailable",
+  "invalid_request",
+  "idempotency_conflict",
+  "run_not_found",
+  "pylon_not_authorized",
+  "pylon_unavailable",
+  "claim_conflict",
+  "claim_not_found",
+  "claim_expired",
+  "storage_unavailable",
+  // Sarah-local failures produced when the authority response cannot be
+  // decoded or reached. These use the same closed, public-safe envelope.
+  "invalid_response",
+  "store_unavailable",
+] as const)
+
+function formatSafeFleetAuthorityError(output: unknown): string | null {
+  try {
+    if (!output || typeof output !== "object" || Array.isArray(output)) {
+      return null
+    }
+    const envelope = output as Record<string, unknown>
+    if (
+      envelope.ok !== false ||
+      envelope.routeRef !== SARAH_FLEET_AUTHORITY_ROUTE_REF
+    ) {
+      return null
+    }
+    const error = envelope.error
+    if (!error || typeof error !== "object" || Array.isArray(error)) {
+      return null
+    }
+    const safeError = error as Record<string, unknown>
+    if (
+      typeof safeError.code !== "string" ||
+      !SAFE_FLEET_AUTHORITY_ERROR_CODES.has(safeError.code) ||
+      typeof safeError.retryable !== "boolean"
+    ) {
+      return null
+    }
+    // Deliberately do not read or render any other field from the upstream
+    // envelope. In particular, nested messages may contain private material.
+    return `${safeError.code}; retryable=${safeError.retryable}`
+  } catch {
+    // Hostile getters/proxies must collapse to the fixed public fallback.
+    return null
+  }
+}
+
+function boundedStringToolError(output: unknown): string | null {
+  try {
+    if (!output || typeof output !== "object" || !("error" in output)) {
+      return null
+    }
+    const error = (output as { error: unknown }).error
+    return typeof error === "string"
+      ? error.slice(0, MAX_INSTRUCTED_TOOL_ERROR_CHARS)
+      : null
+  } catch {
+    return null
+  }
+}
+
 /** Format a tool result into a short prospect-facing reply (no secrets). */
 export function formatInstructedToolReply(
   toolName: string,
@@ -199,13 +269,12 @@ export function formatInstructedToolReply(
   output: unknown,
 ): string {
   if (!ok) {
-    const err =
-      output &&
-      typeof output === "object" &&
-      "error" in output &&
-      typeof (output as { error: unknown }).error === "string"
-        ? (output as { error: string }).error
-        : "tool_failed"
+    const safeAuthorityError =
+      toolName === "coding_fleet_start"
+        ? formatSafeFleetAuthorityError(output)
+        : null
+    const stringError = boundedStringToolError(output)
+    const err = safeAuthorityError ?? stringError ?? "tool_failed"
     return `I couldn't complete that lookup (${toolName}: ${err}). Want me to try a different angle?`
   }
   // Keep replies short for avatar voice length.

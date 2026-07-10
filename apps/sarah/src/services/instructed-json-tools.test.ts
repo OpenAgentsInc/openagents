@@ -135,4 +135,75 @@ describe("AV-3 instructed-JSON tool calling (#8598)", () => {
     expect(reply).toContain("live_stats")
     expect(reply.length).toBeLessThan(500)
   })
+
+  test("renders only closed Sarah fleet authority failure fields", () => {
+    const reply = formatInstructedToolReply("coding_fleet_start", false, {
+      ok: false,
+      error: {
+        code: "idempotency_conflict",
+        retryable: false,
+        message: "private conflict detail at /Users/owner/openagents",
+      },
+      routeRef: "route.sarah.fleet_runs.authority.v1",
+    })
+
+    expect(reply).toContain("idempotency_conflict")
+    expect(reply).toContain("retryable=false")
+    expect(reply).not.toContain("private conflict detail")
+    expect(reply).not.toContain("/Users/owner")
+  })
+
+  test("keeps public authentication and storage failure distinctions", () => {
+    for (const [code, retryable] of [
+      ["unauthenticated", false],
+      ["authentication_unavailable", true],
+      ["storage_unavailable", true],
+      ["store_unavailable", true],
+    ] as const) {
+      const reply = formatInstructedToolReply("coding_fleet_start", false, {
+        ok: false,
+        error: { code, retryable },
+        routeRef: "route.sarah.fleet_runs.authority.v1",
+      })
+      expect(reply).toContain(code)
+      expect(reply).toContain(`retryable=${retryable}`)
+    }
+  })
+
+  test("redacts hostile nested Sarah fleet failures", () => {
+    const hostile = formatInstructedToolReply("coding_fleet_start", false, {
+      ok: false,
+      error: {
+        code: "private_/Users/owner/.openagents/token",
+        retryable: true,
+        message: "OPENAGENTS_AGENT_TOKEN=private-value",
+      },
+      routeRef: "route.sarah.fleet_runs.authority.v1",
+    })
+    expect(hostile).toContain("tool_failed")
+    expect(hostile).not.toContain("/Users/owner")
+    expect(hostile).not.toContain("OPENAGENTS_AGENT_TOKEN")
+    expect(hostile).not.toContain("private-value")
+
+    const wrongRetryability = formatInstructedToolReply(
+      "coding_fleet_start",
+      false,
+      {
+        ok: false,
+        error: { code: "idempotency_conflict", retryable: "yes" },
+        routeRef: "route.sarah.fleet_runs.authority.v1",
+      },
+    )
+    expect(wrongRetryability).toContain("tool_failed")
+    expect(wrongRetryability).not.toContain("idempotency_conflict")
+  })
+
+  test("preserves and bounds string failure output", () => {
+    const prefix = "public_lookup_unavailable"
+    const reply = formatInstructedToolReply("live_stats", false, {
+      error: `${prefix}${"x".repeat(2_000)}`,
+    })
+    expect(reply).toContain(prefix)
+    expect(reply.length).toBeLessThan(300)
+  })
 })
