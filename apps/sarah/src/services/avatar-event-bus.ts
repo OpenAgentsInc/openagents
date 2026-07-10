@@ -60,26 +60,41 @@ type Subscriber = (event: SarahAvatarEvent) => void
 
 const subscribers = new Map<string, Set<Subscriber>>()
 
-export function publishSarahAvatarEvent(
+const publishFullSarahAvatarEvent = (
   conversationRef: string,
-  event: SarahAvatarEventInput,
-): void {
-  const full: SarahAvatarEvent = { ...event, at: new Date().toISOString() }
+  event: SarahAvatarEvent,
+): void => {
   for (const notify of subscribers.get(conversationRef) ?? []) {
     try {
-      notify(full)
+      notify(event)
     } catch {
       // A broken subscriber never blocks the turn.
     }
   }
 }
 
+export function publishSarahAvatarEvent(
+  conversationRef: string,
+  event: SarahAvatarEventInput,
+): void {
+  const full: SarahAvatarEvent = { ...event, at: new Date().toISOString() }
+  publishFullSarahAvatarEvent(conversationRef, full)
+}
+
 export function publishSarahBlueprintDelta(
   conversationRefs: Iterable<string>,
   delta: SarahBlueprintDelta,
 ): void {
+  // Every alias is another exact encoding of one prospect identity. Capture
+  // the event once so all aliases observe one byte-identical logical event,
+  // even when iteration crosses a millisecond boundary.
+  const full: SarahAvatarEvent = {
+    type: "blueprint_delta",
+    delta,
+    at: new Date().toISOString(),
+  }
   for (const ref of conversationRefs) {
-    publishSarahAvatarEvent(ref, { type: "blueprint_delta", delta })
+    publishFullSarahAvatarEvent(ref, full)
   }
 }
 
