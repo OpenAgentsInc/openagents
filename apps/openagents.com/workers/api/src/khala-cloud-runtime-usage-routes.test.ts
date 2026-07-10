@@ -430,6 +430,139 @@ describe('khala cloud runtime usage routes', () => {
     expect(balance?.availableMsat).toBe(1_000)
   })
 
+  test('CX-3 (#8547): owner-subscription-capacity codex receipts are NEVER card-metered', async () => {
+    const tokenHash = await sha256Hex(agentToken)
+    const { events, ledger } = makeLedger()
+    const billingDb = makeBillingDb()
+    await seedOwnerBalance(billingDb, 10_000)
+    const routes = makeKhalaCloudRuntimeUsageRoutes({
+      agentStore: () => new MemoryAgentStore(tokenHash),
+      ledger: () => ledger,
+      meteringHook: () =>
+        makeLedgerMeteringHook({
+          ledgerDb: paymentsLedgerDbFromD1(billingDb as unknown as D1LikeDatabase),
+          nowIso: () => nowIso,
+          usdToMsat: () => 4_000,
+        }),
+      nowIso: () => nowIso,
+    })
+
+    const response = await Effect.runPromise(
+      routes.handleKhalaCloudRuntimeUsageIngestApi(
+        post(
+          body({
+            lane: 'codex_app_server',
+            model: 'openagents/pylon-codex',
+            provider: 'pylon-codex-org-capacity',
+            backendProfile: 'pylon-codex-org-capacity',
+          }),
+        ),
+        {},
+      ),
+    )
+    const json = await response.json() as {
+      insertedTokenUsage: boolean
+      tokenChargeFailureReason: string | null
+      tokenChargeMetered: boolean
+      tokenChargeReceiptRef: string | null
+      tokenChargeSkippedReason: string | null
+    }
+
+    expect(response.status).toBe(200)
+    // The exact token-truth row IS recorded…
+    expect(json.insertedTokenUsage).toBe(true)
+    expect(events).toHaveLength(1)
+    expect((events[0] as { provider: string }).provider).toBe(
+      'pylon-codex-org-capacity',
+    )
+    expect((events[0] as { model: string }).model).toBe('openagents/pylon-codex')
+    // …but the owner's own subscription tokens are never a customer charge.
+    expect(json.tokenChargeMetered).toBe(false)
+    expect(json.tokenChargeFailureReason).toBeNull()
+    expect(json.tokenChargeReceiptRef).toBeNull()
+    expect(json.tokenChargeSkippedReason).toBe('owner_subscription_capacity')
+    const balance = await readAgentBalance(
+      paymentsLedgerDbFromD1(billingDb as unknown as D1LikeDatabase),
+      ownerAccountRef,
+    )
+    expect(balance?.availableMsat).toBe(10_000)
+  })
+
+  test('CX-3 (#8547): claude_pylon org-capacity receipts skip metering too; mislabeled lanes do NOT', async () => {
+    const tokenHash = await sha256Hex(agentToken)
+    const { ledger } = makeLedger()
+    const billingDb = makeBillingDb()
+    await seedOwnerBalance(billingDb, 10_000)
+    const routes = makeKhalaCloudRuntimeUsageRoutes({
+      agentStore: () => new MemoryAgentStore(tokenHash),
+      ledger: () => ledger,
+      meteringHook: () =>
+        makeLedgerMeteringHook({
+          ledgerDb: paymentsLedgerDbFromD1(billingDb as unknown as D1LikeDatabase),
+          nowIso: () => nowIso,
+          usdToMsat: () => 4_000,
+        }),
+      nowIso: () => nowIso,
+    })
+
+    const claude = await Effect.runPromise(
+      routes.handleKhalaCloudRuntimeUsageIngestApi(
+        post(
+          body({
+            lane: 'claude_pylon',
+            model: 'openagents/pylon-claude',
+            provider: 'pylon-claude-org-capacity',
+          }),
+        ),
+        {},
+      ),
+    )
+    const claudeJson = await claude.json() as {
+      tokenChargeMetered: boolean
+      tokenChargeSkippedReason: string | null
+    }
+    expect(claude.status).toBe(200)
+    expect(claudeJson.tokenChargeMetered).toBe(false)
+    expect(claudeJson.tokenChargeSkippedReason).toBe('owner_subscription_capacity')
+
+    // The skip is an EXACT lane+provider match: a codex-lane row that does not
+    // carry the org-capacity provider still meters normally (fail-closed
+    // toward billing, so the skip can never widen into a metering bypass).
+    const mislabeled = await Effect.runPromise(
+      routes.handleKhalaCloudRuntimeUsageIngestApi(
+        post(
+          body({
+            lane: 'codex_app_server',
+            model: 'gemini-3.5-flash',
+            provider: 'vertex-gemini',
+            turnId: 'turn-2',
+            usage: {
+              cacheReadInputTokens: 2,
+              inputTokens: 10,
+              outputTokens: 5,
+              reasoningTokens: 3,
+              totalTokens: 18,
+              usageRef: 'usage.runtime.mislabel',
+            },
+          }),
+        ),
+        {},
+      ),
+    )
+    const mislabeledJson = await mislabeled.json() as {
+      tokenChargeMetered: boolean
+      tokenChargeSkippedReason: string | null
+    }
+    expect(mislabeled.status).toBe(200)
+    expect(mislabeledJson.tokenChargeMetered).toBe(true)
+    expect(mislabeledJson.tokenChargeSkippedReason).toBeNull()
+    const balance = await readAgentBalance(
+      paymentsLedgerDbFromD1(billingDb as unknown as D1LikeDatabase),
+      ownerAccountRef,
+    )
+    expect(balance?.availableMsat).toBe(6_000)
+  })
+
   test('rejects linked user-pylon agents posting usage for a different owner', async () => {
     const tokenHash = await sha256Hex(agentToken)
     const { ledger } = makeLedger()

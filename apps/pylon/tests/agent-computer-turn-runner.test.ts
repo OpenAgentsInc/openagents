@@ -17,8 +17,18 @@ import {
   KHALA_AGENT_COMPUTER_WRITEBACK_SCHEMA_VERSION,
   KHALA_CLOUD_RUNTIME_USAGE_INGEST_PATH,
   KHALA_CLOUD_RUNTIME_USAGE_SCHEMA_VERSION,
+  CODEX_BINARY_PATH,
+  CODEX_TURN_DEFAULT_MAX_SECONDS,
+  CODEX_USAGE_RECEIPT_LANE,
+  CODEX_USAGE_RECEIPT_MODEL,
+  CODEX_USAGE_RECEIPT_PROVIDER,
   brokerGitCredential,
   canReplayCodexProviderGrantAfterReclaim,
+  codexExecArgs,
+  codexExecEnv,
+  parseCodexExecJsonl,
+  postExactUsageReceipt,
+  runCodexTurnWithReceipt,
   chatCompletionUsage,
   chatCompletionText,
   chatCompletionsRequest,
@@ -35,7 +45,10 @@ import {
   shortLivedOpenCodeAuthExpiresAt,
   usageIngestBody,
   type ClaudeProviderAuthConfig,
+  type CodexExecRun,
   type CodexProviderAuthConfig,
+  type CodexProviderAuthMaterialization,
+  type CodexTurnConfig,
   type GitRun,
   type InferenceConfig,
   type WritebackConfig,
@@ -848,5 +861,340 @@ describe('turn-runner writeback: runWritebackForTurn', () => {
     expect(result.outcome.status).toBe('pull_request_opened')
     expect(result.recorded).toBe(false)
     expect(result.recordDecision).toBe('permission_blocked')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// CX-3 (#8547): in-VM Codex execution on the owner's OWN subscription capacity
+// ---------------------------------------------------------------------------
+
+const codexTurn: CodexTurnConfig = {
+  agentToken: 'agent-secret-token-should-never-be-serialized',
+  baseUrl: 'https://openagents.example',
+  ownerUserId: 'github:300914913',
+  pylonRef: 'pylon.agent-computer.proof',
+}
+
+const materializedCodexAuth: Extract<CodexProviderAuthMaterialization, { ok: true }> = {
+  ok: true,
+  providerAccountRef: 'provider-account.public.codex.owner',
+  authGrantRef: 'grant.public.codex.owner.turn',
+  codexHome: '/scratch/openagents-codex/turn-1/codex-home',
+  authJsonPath: '/scratch/openagents-codex/turn-1/codex-home/auth.json',
+  expiresAt: Date.now() + 3_600_000,
+  env: {
+    CODEX_HOME: '/scratch/openagents-codex/turn-1/codex-home',
+    OPENCODE_AUTH_CONTENT: shortLivedAuthContent,
+  },
+}
+
+const codexJsonl = [
+  JSON.stringify({ type: 'thread.started', thread_id: 'thread-abc' }),
+  JSON.stringify({
+    type: 'item.completed',
+    item: { type: 'command_execution', command: 'ls', exit_code: 0 },
+  }),
+  JSON.stringify({
+    type: 'item.completed',
+    item: { type: 'agent_message', text: 'Implemented the fix.' },
+  }),
+  JSON.stringify({
+    type: 'turn.completed',
+    usage: {
+      input_tokens: 900,
+      cached_input_tokens: 100,
+      output_tokens: 200,
+      reasoning_output_tokens: 40,
+    },
+  }),
+].join('\n')
+
+const receiptFetch = (response?: Response) => {
+  const calls: Array<{ url: string; init: RequestInit }> = []
+  const fetchImpl = (async (url: string | URL | Request, init?: RequestInit) => {
+    calls.push({ url: String(url), init: init ?? {} })
+    return (
+      response ??
+      new Response(
+        JSON.stringify({
+          insertedTokenUsage: true,
+          tokenChargeMetered: false,
+          tokenUsageEventRef: 'event.inference.served-tokens.khala-cloud-runtime.codexbeef',
+          tokensServedDelta: 1140,
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      )
+    )
+  }) as unknown as typeof globalThis.fetch
+  return { calls, fetchImpl }
+}
+
+describe('agent-computer turn-runner: codex exec contracts (CX-3 #8547)', () => {
+  test('codexExecArgs pins headless JSONL exec against the workspace', () => {
+    expect(
+      codexExecArgs({ workingDirectory: '/work/repo', prompt: 'do the task' }),
+    ).toEqual([
+      'exec',
+      '--json',
+      '--skip-git-repo-check',
+      '--ignore-user-config',
+      '--dangerously-bypass-approvals-and-sandbox',
+      '--cd',
+      '/work/repo',
+      'do the task',
+    ])
+    expect(
+      codexExecArgs({ workingDirectory: '/w', prompt: 'p', model: 'gpt-5.3-codex' }),
+    ).toContain('--model')
+  })
+
+  test('codexExecEnv is minimal and carries ONLY the scratch CODEX_HOME auth', () => {
+    const env = codexExecEnv(materializedCodexAuth.env)
+    expect(env.CODEX_HOME).toBe('/scratch/openagents-codex/turn-1/codex-home')
+    expect(env.HOME).toBe('/root')
+    expect(env.PATH).toContain('/usr/local/bin')
+    // Never the ambient process env (structural secret boundary).
+    expect(Object.keys(env).sort()).toEqual(
+      ['CODEX_HOME', 'HOME', 'OPENCODE_AUTH_CONTENT', 'PATH'].sort(),
+    )
+  })
+
+  test('parseCodexExecJsonl extracts thread id, message, and EXACT usage', () => {
+    const parsed = parseCodexExecJsonl(`banner line\n${codexJsonl}\nnot json {`)
+    expect(parsed.threadId).toBe('thread-abc')
+    expect(parsed.agentMessage).toBe('Implemented the fix.')
+    expect(parsed.failed).toBe(false)
+    expect(parsed.itemCount).toBe(2)
+    expect(parsed.usage).toEqual({
+      inputTokens: 900,
+      outputTokens: 200,
+      reasoningTokens: 40,
+      cacheReadTokens: 100,
+      totalTokens: 1140,
+    })
+  })
+
+  test('parseCodexExecJsonl: no usage event => null usage (never fabricated)', () => {
+    const parsed = parseCodexExecJsonl(
+      JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text: 'x' } }),
+    )
+    expect(parsed.usage).toBeNull()
+  })
+
+  test('parseCodexExecJsonl flags turn.failed / error events', () => {
+    expect(parseCodexExecJsonl(JSON.stringify({ type: 'turn.failed' })).failed).toBe(true)
+    expect(parseCodexExecJsonl(JSON.stringify({ type: 'error' })).failed).toBe(true)
+  })
+
+  test('cached_input_tokens is clamped to input_tokens', () => {
+    const parsed = parseCodexExecJsonl(
+      JSON.stringify({
+        type: 'turn.completed',
+        usage: { input_tokens: 10, cached_input_tokens: 50, output_tokens: 5 },
+      }),
+    )
+    expect(parsed.usage?.cacheReadTokens).toBe(10)
+  })
+})
+
+describe('agent-computer turn-runner: runCodexTurnWithReceipt (CX-3 #8547)', () => {
+  test('happy path: REAL spawn of a stub binary, exact org-capacity receipt, token never serialized', async () => {
+    const stubDir = mkdtempSync(join(tmpdir(), 'codex-stub-'))
+    const stubPath = join(stubDir, 'codex')
+    await Bun.write(stubPath, `#!/bin/sh\ncat << 'JSONL'\n${codexJsonl}\nJSONL\n`)
+    const { chmod } = await import('node:fs/promises')
+    await chmod(stubPath, 0o755)
+    const { calls, fetchImpl } = receiptFetch()
+
+    try {
+      const outcome = await runCodexTurnWithReceipt(
+        {
+          codexTurn: { ...codexTurn, binaryPath: stubPath },
+          providerAuth: materializedCodexAuth,
+          prompt: 'implement the pinned objective',
+          threadId: 'scope.thread.proof',
+          turnId: 'turn-codex-1',
+          runtimeEventId: 'evt-codex-1',
+        },
+        { fetchImpl },
+      )
+
+      expect(outcome.ok).toBe(true)
+      if (outcome.ok) {
+        expect(outcome.usage.totalTokens).toBe(1140)
+        expect(outcome.usageRef.startsWith('usage.codex_app_server.')).toBe(true)
+        expect(outcome.insertedTokenUsage).toBe(true)
+        expect(outcome.tokenChargeMetered).toBe(false)
+        expect(outcome.codexThreadId).toBe('thread-abc')
+        expect(outcome.agentMessage).toBe('Implemented the fix.')
+      }
+      // Exactly one receipt POST, to the runtime-usage ingest, as the
+      // org-capacity lane/provider/model triplet.
+      expect(calls).toHaveLength(1)
+      expect(calls[0]!.url.endsWith(KHALA_CLOUD_RUNTIME_USAGE_INGEST_PATH)).toBe(true)
+      const body = JSON.parse(String(calls[0]!.init.body)) as Record<string, unknown>
+      expect(body.lane).toBe(CODEX_USAGE_RECEIPT_LANE)
+      expect(body.provider).toBe(CODEX_USAGE_RECEIPT_PROVIDER)
+      expect(body.model).toBe(CODEX_USAGE_RECEIPT_MODEL)
+      expect(body.ownerUserId).toBe(codexTurn.ownerUserId)
+      expect((body.usage as Record<string, unknown>).inputTokens).toBe(900)
+      expect((body.usage as Record<string, unknown>).reasoningTokens).toBe(40)
+      // The bearer authenticates the POST but never appears in the outcome.
+      expect(
+        (calls[0]!.init.headers as Record<string, string>).Authorization,
+      ).toBe(`Bearer ${codexTurn.agentToken}`)
+      expect(JSON.stringify(outcome)).not.toContain(codexTurn.agentToken)
+      expect(JSON.stringify(outcome)).not.toContain('short-lived-access-token')
+    } finally {
+      await rm(stubDir, { recursive: true, force: true })
+    }
+  })
+
+  test('missing binary => codex.binary_missing, no receipt POST (fail-closed)', async () => {
+    const { calls, fetchImpl } = receiptFetch()
+    const outcome = await runCodexTurnWithReceipt(
+      {
+        codexTurn: { ...codexTurn, binaryPath: '/nonexistent/codex' },
+        providerAuth: materializedCodexAuth,
+        prompt: 'p',
+        threadId: 't',
+        turnId: 'u',
+      },
+      { fetchImpl },
+    )
+    expect(outcome.ok).toBe(false)
+    if (!outcome.ok) expect(outcome.reasonRef).toBe('codex.binary_missing')
+    expect(calls).toHaveLength(0)
+  })
+
+  test('nonzero exit => codex.exec_failed, no receipt POST', async () => {
+    const { calls, fetchImpl } = receiptFetch()
+    const execRun: CodexExecRun = () => ({ code: 1, stdout: codexJsonl, stderr: 'boom' })
+    const outcome = await runCodexTurnWithReceipt(
+      {
+        codexTurn,
+        providerAuth: materializedCodexAuth,
+        prompt: 'p',
+        threadId: 't',
+        turnId: 'u',
+      },
+      { execRun, existsImpl: () => true, fetchImpl },
+    )
+    expect(outcome.ok).toBe(false)
+    if (!outcome.ok) {
+      expect(outcome.reasonRef).toBe('codex.exec_failed')
+      expect(outcome.exitCode).toBe(1)
+    }
+    expect(calls).toHaveLength(0)
+  })
+
+  test('turn.failed event => codex.turn_failed even on exit 0', async () => {
+    const { calls, fetchImpl } = receiptFetch()
+    const execRun: CodexExecRun = () => ({
+      code: 0,
+      stdout: `${codexJsonl}\n${JSON.stringify({ type: 'turn.failed' })}`,
+      stderr: '',
+    })
+    const outcome = await runCodexTurnWithReceipt(
+      { codexTurn, providerAuth: materializedCodexAuth, prompt: 'p', threadId: 't', turnId: 'u', workingDirectory: '/w' },
+      { execRun, existsImpl: () => true, fetchImpl },
+    )
+    expect(outcome.ok).toBe(false)
+    if (!outcome.ok) expect(outcome.reasonRef).toBe('codex.turn_failed')
+    expect(calls).toHaveLength(0)
+  })
+
+  test('no exact usage => codex.no_exact_usage, NEVER a fabricated receipt', async () => {
+    const { calls, fetchImpl } = receiptFetch()
+    const execRun: CodexExecRun = () => ({
+      code: 0,
+      stdout: JSON.stringify({
+        type: 'item.completed',
+        item: { type: 'agent_message', text: 'done' },
+      }),
+      stderr: '',
+    })
+    const outcome = await runCodexTurnWithReceipt(
+      { codexTurn, providerAuth: materializedCodexAuth, prompt: 'p', threadId: 't', turnId: 'u', workingDirectory: '/w' },
+      { execRun, existsImpl: () => true, fetchImpl },
+    )
+    expect(outcome.ok).toBe(false)
+    if (!outcome.ok) expect(outcome.reasonRef).toBe('codex.no_exact_usage')
+    expect(calls).toHaveLength(0)
+  })
+
+  test('receipt ingest failure => codex.usage_receipt_failed (turn NOT a success)', async () => {
+    const { fetchImpl } = receiptFetch(
+      new Response(JSON.stringify({ reason: 'nope' }), { status: 403 }),
+    )
+    const execRun: CodexExecRun = () => ({ code: 0, stdout: codexJsonl, stderr: '' })
+    const outcome = await runCodexTurnWithReceipt(
+      { codexTurn, providerAuth: materializedCodexAuth, prompt: 'p', threadId: 't', turnId: 'u', workingDirectory: '/w' },
+      { execRun, existsImpl: () => true, fetchImpl },
+    )
+    expect(outcome.ok).toBe(false)
+    if (!outcome.ok) {
+      expect(outcome.reasonRef).toBe('codex.usage_receipt_failed')
+      expect(outcome.receiptStatus).toBe(403)
+    }
+  })
+
+  test('spawn seam receives the scratch CODEX_HOME env, workspace cwd, and bounded timeout', async () => {
+    const seen: Array<Parameters<CodexExecRun>[0]> = []
+    const execRun: CodexExecRun = input => {
+      seen.push(input)
+      return { code: 0, stdout: codexJsonl, stderr: '' }
+    }
+    const { fetchImpl } = receiptFetch()
+    await runCodexTurnWithReceipt(
+      {
+        codexTurn,
+        providerAuth: materializedCodexAuth,
+        prompt: 'objective prompt',
+        threadId: 't',
+        turnId: 'u',
+        workingDirectory: '/work/does-not-matter-here',
+      },
+      { execRun, existsImpl: () => true, fetchImpl },
+    )
+    expect(seen).toHaveLength(1)
+    expect(seen[0]!.binaryPath).toBe(CODEX_BINARY_PATH)
+    expect(seen[0]!.cwd).toBe('/work/does-not-matter-here')
+    expect(seen[0]!.env.CODEX_HOME).toBe(materializedCodexAuth.codexHome)
+    expect(seen[0]!.timeoutMs).toBe(CODEX_TURN_DEFAULT_MAX_SECONDS * 1000)
+    expect(seen[0]!.args).toContain('--json')
+    expect(seen[0]!.args).toContain('objective prompt')
+  })
+})
+
+describe('agent-computer turn-runner: postExactUsageReceipt tokenChargeMetered surfacing', () => {
+  test('surfaces tokenChargeMetered from the Worker response', async () => {
+    const { fetchImpl } = receiptFetch()
+    const outcome = await postExactUsageReceipt(
+      {
+        identity: {
+          agentToken: codexTurn.agentToken,
+          baseUrl: codexTurn.baseUrl,
+          lane: CODEX_USAGE_RECEIPT_LANE,
+          model: CODEX_USAGE_RECEIPT_MODEL,
+          ownerUserId: codexTurn.ownerUserId,
+          provider: CODEX_USAGE_RECEIPT_PROVIDER,
+        },
+        observedAt: '2026-07-10T00:00:00.000Z',
+        threadId: 't',
+        turnId: 'u',
+        usage: {
+          cacheReadTokens: 0,
+          inputTokens: 10,
+          outputTokens: 5,
+          reasoningTokens: 0,
+          totalTokens: 15,
+        },
+        usageRef: 'usage.codex_app_server.test',
+      },
+      fetchImpl,
+    )
+    expect(outcome.ok).toBe(true)
+    if (outcome.ok) expect(outcome.tokenChargeMetered).toBe(false)
   })
 })

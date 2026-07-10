@@ -50,7 +50,7 @@
  */
 import { mkdir, writeFile, readdir } from 'node:fs/promises'
 import { execFileSync, spawnSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import {
@@ -79,6 +79,36 @@ export const CODEX_PROVIDER_AUTH_MATERIAL_PATH =
 export const CLAUDE_PROVIDER_AUTH_MATERIAL_PATH =
   '/api/pylon/provider-accounts/anthropic-claude/auth-material'
 export const CODEX_PROVIDER_AUTH_PRE_EXPIRY_BUFFER_MS = 5 * 60 * 1000
+
+// ---------------------------------------------------------------------------
+// CX-3 (#8547): in-VM Codex execution on the owner's OWN subscription capacity.
+//
+// The baked Agent Computer rootfs carries the pinned `codex` binary (see
+// `agent-computer-image.manifest.json` / `build-agent-computer-rootfs.sh`).
+// When the work-context carries a `codexTurn` block, the turn-runner spawns
+// that binary headlessly (`codex exec --json`) against the checked-out
+// workspace, with `CODEX_HOME` pointing ONLY at the broker-redeemed scratch
+// home from `materializeCodexProviderAuth` — never a persisted or pooled home.
+//
+// TOKEN TRUTH (owner decision, thread #8547): the owner's Codex subscription
+// tokens are the owner's OWN capacity. The exact usage receipt is posted to
+// `/api/khala/cloud/runtime-turn-usage` with lane `codex_app_server`,
+// provider `pylon-codex-org-capacity`, model `openagents/pylon-codex`
+// (mirroring `usageReceiptProviderForLane` in
+// `apps/pylon/src/orchestration/runtime-intent-enforcement.ts`), and the
+// Worker must record it with `tokenChargeMetered: false` — never a customer
+// card/credit charge. Compute lifecycle is billed separately through
+// `openagents.resource_usage_receipt.v1`.
+//
+// FAIL-CLOSED: a missing binary, missing brokered auth, failed exec, a
+// `turn.failed` event, missing exact usage, or a failed receipt ingest FAILS
+// the turn with a typed reason ref. No silent success, no fabricated usage.
+// ---------------------------------------------------------------------------
+export const CODEX_BINARY_PATH = '/usr/local/bin/codex'
+export const CODEX_USAGE_RECEIPT_LANE = 'codex_app_server'
+export const CODEX_USAGE_RECEIPT_PROVIDER = 'pylon-codex-org-capacity'
+export const CODEX_USAGE_RECEIPT_MODEL = 'openagents/pylon-codex'
+export const CODEX_TURN_DEFAULT_MAX_SECONDS = 900
 
 /**
  * SINGLE-CHARGE HEADER (#8503 owner decision). The microVM's internal
@@ -372,6 +402,28 @@ export type WritebackConfig = {
   mode: 'branch_only' | 'pull_request'
 }
 
+/**
+ * CX-3 (#8547) in-VM Codex turn config. PUBLIC-SAFE apart from the agent
+ * bearer, which is used only for the exact usage receipt POST and is never
+ * serialized into events, the result bundle, or logs. Requires a
+ * `providerAuth` block on the same work-context: the codex process runs ONLY
+ * under the broker-redeemed scratch `CODEX_HOME` (fail-closed otherwise).
+ */
+export type CodexTurnConfig = {
+  /** Worker base URL for the exact usage receipt ingest. */
+  baseUrl: string
+  /** Programmatic agent bearer for the receipt POST. NEVER serialized. */
+  agentToken: string
+  /** The mobile/owner user id the exact usage rows are attributed to. */
+  ownerUserId: string
+  pylonRef?: string
+  /** Baked codex binary (default `CODEX_BINARY_PATH`). */
+  binaryPath?: string
+  /** Optional Codex model pin (`codex exec --model`). */
+  model?: string
+  maxTurnSeconds?: number
+}
+
 type WorkContext = {
   workContextRef: string
   threadRef?: string
@@ -383,6 +435,7 @@ type WorkContext = {
   providerAuth?: CodexProviderAuthConfig
   claudeProviderAuth?: ClaudeProviderAuthConfig
   codexContinuity?: CodexContinuityConfig
+  codexTurn?: CodexTurnConfig
   inference?: InferenceConfig
   writeback?: WritebackConfig
 }
@@ -572,6 +625,103 @@ export const usageIngestBody = (input: {
   },
 })
 
+export type ExactUsageReceiptOutcome =
+  | {
+      ok: true
+      tokenUsageEventRef: string | null
+      insertedTokenUsage: boolean
+      /**
+       * Whether the Worker card/credit-metered this receipt. Owner
+       * subscription-capacity lanes (`codex_app_server` /
+       * `pylon-codex-org-capacity`) MUST come back `false` — that is the CX-3
+       * token-truth requirement, surfaced here so the result bundle can prove
+       * it publicly.
+       */
+      tokenChargeMetered: boolean
+      tokensServedDelta: number
+    }
+  | { ok: false; error: string; status: number | null }
+
+/**
+ * POST one EXACT usage receipt to `/api/khala/cloud/runtime-turn-usage`.
+ * Shared by the phase-2 hosted model turn and the CX-3 in-VM codex turn.
+ * Never throws; never returns/logs the agent bearer.
+ */
+export const postExactUsageReceipt = async (
+  args: {
+    identity: InferenceConfig
+    threadId: string
+    turnId: string
+    observedAt: string
+    usage: ChatCompletionUsage
+    usageRef: string
+    runtimeEventId?: string
+  },
+  fetchImpl: typeof globalThis.fetch = globalThis.fetch,
+): Promise<ExactUsageReceiptOutcome> => {
+  const body = usageIngestBody({
+    inference: args.identity,
+    observedAt: args.observedAt,
+    threadId: args.threadId,
+    turnId: args.turnId,
+    usage: args.usage,
+    usageRef: args.usageRef,
+    ...(args.runtimeEventId === undefined
+      ? {}
+      : { runtimeEventId: args.runtimeEventId }),
+  })
+  let receiptResponse: Response
+  try {
+    receiptResponse = await fetchImpl(
+      new URL(KHALA_CLOUD_RUNTIME_USAGE_INGEST_PATH, args.identity.baseUrl).toString(),
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${args.identity.agentToken}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      },
+    )
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+      status: null,
+    }
+  }
+  const receiptJson = (await receiptResponse.json().catch(() => ({}))) as {
+    tokenUsageEventRef?: unknown
+    insertedTokenUsage?: unknown
+    tokenChargeMetered?: unknown
+    tokensServedDelta?: unknown
+    reason?: unknown
+  }
+  if (!receiptResponse.ok) {
+    return {
+      ok: false,
+      error:
+        typeof receiptJson.reason === 'string'
+          ? receiptJson.reason
+          : `usage ingest returned HTTP ${receiptResponse.status}`,
+      status: receiptResponse.status,
+    }
+  }
+  return {
+    ok: true,
+    tokenUsageEventRef:
+      typeof receiptJson.tokenUsageEventRef === 'string'
+        ? receiptJson.tokenUsageEventRef
+        : null,
+    insertedTokenUsage: receiptJson.insertedTokenUsage === true,
+    tokenChargeMetered: receiptJson.tokenChargeMetered === true,
+    tokensServedDelta:
+      typeof receiptJson.tokensServedDelta === 'number'
+        ? receiptJson.tokensServedDelta
+        : 0,
+  }
+}
+
 export type ModelTurnReceipt =
   | {
       ok: true
@@ -647,53 +797,26 @@ export const runModelTurnReceipt = async (
 
   // 2. Exact usage receipt.
   const usageRef = `usage.hosted_khala.${randomUUID()}`
-  const body = usageIngestBody({
-    inference: args.inference,
-    threadId: args.threadId,
-    turnId: args.turnId,
-    observedAt,
-    usage,
-    usageRef,
-    ...(args.runtimeEventId === undefined
-      ? {}
-      : { runtimeEventId: args.runtimeEventId }),
-  })
-  let receiptResponse: Response
-  try {
-    receiptResponse = await fetchImpl(
-      new URL(KHALA_CLOUD_RUNTIME_USAGE_INGEST_PATH, args.inference.baseUrl).toString(),
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${args.inference.agentToken}`,
-          'content-type': 'application/json',
-        },
-        body: JSON.stringify(body),
-      },
-    )
-  } catch (error) {
+  const receipt = await postExactUsageReceipt(
+    {
+      identity: args.inference,
+      threadId: args.threadId,
+      turnId: args.turnId,
+      observedAt,
+      usage,
+      usageRef,
+      ...(args.runtimeEventId === undefined
+        ? {}
+        : { runtimeEventId: args.runtimeEventId }),
+    },
+    fetchImpl,
+  )
+  if (!receipt.ok) {
     return {
       ok: false,
       stage: 'usage_receipt',
-      error: error instanceof Error ? error.message : String(error),
-      status: null,
-    }
-  }
-  const receiptJson = (await receiptResponse.json().catch(() => ({}))) as {
-    tokenUsageEventRef?: unknown
-    insertedTokenUsage?: unknown
-    tokensServedDelta?: unknown
-    reason?: unknown
-  }
-  if (!receiptResponse.ok) {
-    return {
-      ok: false,
-      stage: 'usage_receipt',
-      error:
-        typeof receiptJson.reason === 'string'
-          ? receiptJson.reason
-          : `usage ingest returned HTTP ${receiptResponse.status}`,
-      status: receiptResponse.status,
+      error: receipt.error,
+      status: receipt.status,
     }
   }
   return {
@@ -701,15 +824,9 @@ export const runModelTurnReceipt = async (
     text,
     usage,
     usageRef,
-    tokenUsageEventRef:
-      typeof receiptJson.tokenUsageEventRef === 'string'
-        ? receiptJson.tokenUsageEventRef
-        : null,
-    insertedTokenUsage: receiptJson.insertedTokenUsage === true,
-    tokensServedDelta:
-      typeof receiptJson.tokensServedDelta === 'number'
-        ? receiptJson.tokensServedDelta
-        : 0,
+    tokenUsageEventRef: receipt.tokenUsageEventRef,
+    insertedTokenUsage: receipt.insertedTokenUsage,
+    tokensServedDelta: receipt.tokensServedDelta,
   }
 }
 
@@ -719,6 +836,284 @@ const git = (cwd: string, args: string[]): string => {
   } catch (error) {
     const e = error as { stdout?: string; stderr?: string }
     return `${e.stdout ?? ''}${e.stderr ?? ''}`.trim()
+  }
+}
+
+// ---------------------------------------------------------------------------
+// CX-3 (#8547): in-VM Codex execution — args/env/parse/run.
+// ---------------------------------------------------------------------------
+
+/**
+ * The exact `codex exec` argv for one bounded in-VM turn. PURE.
+ *
+ * `--dangerously-bypass-approvals-and-sandbox` is lawful here ONLY because the
+ * Firecracker microVM is the declared external isolation boundary
+ * (`docs/cloud/INVARIANTS.md` `danger_full_access` clause: externally isolated
+ * VM, no wallet authority, session-scoped provider auth, cleanup receipts).
+ * `--ignore-user-config` keeps the turn deterministic (auth still comes from
+ * `CODEX_HOME/auth.json`, i.e. the broker-redeemed scratch home).
+ */
+export const codexExecArgs = (input: {
+  workingDirectory: string
+  prompt: string
+  model?: string
+}): string[] => [
+  'exec',
+  '--json',
+  '--skip-git-repo-check',
+  '--ignore-user-config',
+  '--dangerously-bypass-approvals-and-sandbox',
+  '--cd',
+  input.workingDirectory,
+  ...(input.model === undefined ? [] : ['--model', input.model]),
+  input.prompt,
+]
+
+/**
+ * The MINIMAL environment the codex process receives: PATH/HOME plus the
+ * broker materialization's `CODEX_HOME` (+ auth content). Deliberately NOT
+ * `process.env` — the codex child must never inherit ambient work-context
+ * secrets (agent bearers arrive via the work-context file, not env, but this
+ * keeps the boundary structural rather than incidental).
+ */
+export const codexExecEnv = (
+  materializationEnv: Record<string, string>,
+  base: { PATH?: string; HOME?: string } = {},
+): Record<string, string> => ({
+  HOME: base.HOME ?? '/root',
+  PATH:
+    base.PATH ?? '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
+  ...materializationEnv,
+})
+
+export type CodexExecParse = {
+  threadId: string | null
+  agentMessage: string
+  usage: ChatCompletionUsage | null
+  failed: boolean
+  itemCount: number
+}
+
+/**
+ * Parse `codex exec --json` JSONL output. Mirrors the event contract the
+ * owner-local lane consumes through the Codex SDK
+ * (`codexRawEventToRuntimeEvents` in
+ * `apps/pylon/src/orchestration/runtime-intent-enforcement.ts`):
+ * `thread.started` (thread id), `item.completed` (agent_message text),
+ * `turn.completed` (`usage.input_tokens` / `output_tokens` /
+ * `reasoning_output_tokens` / `cached_input_tokens`), `turn.failed` / `error`.
+ * Total = input + output + reasoning (translator parity). Malformed lines are
+ * skipped; usage is EXACT-only — nothing is fabricated when absent.
+ */
+export const parseCodexExecJsonl = (stdout: string): CodexExecParse => {
+  let threadId: string | null = null
+  let agentMessage = ''
+  let usage: ChatCompletionUsage | null = null
+  let failed = false
+  let itemCount = 0
+  for (const line of stdout.split('\n')) {
+    const trimmed = line.trim()
+    if (!trimmed.startsWith('{')) continue
+    let event: unknown
+    try {
+      event = JSON.parse(trimmed) as unknown
+    } catch {
+      continue
+    }
+    if (event === null || typeof event !== 'object' || Array.isArray(event)) {
+      continue
+    }
+    const record = event as Record<string, unknown>
+    const type = typeof record.type === 'string' ? record.type : undefined
+    if (type === 'thread.started' && typeof record.thread_id === 'string') {
+      threadId = record.thread_id
+    } else if (type === 'item.completed') {
+      const item = record.item as Record<string, unknown> | undefined
+      if (item === undefined || typeof item.type !== 'string') continue
+      itemCount += 1
+      if (item.type === 'agent_message' && typeof item.text === 'string') {
+        agentMessage = item.text
+      }
+    } else if (type === 'turn.completed') {
+      const raw = record.usage as Record<string, unknown> | undefined
+      const inputTokens = integerOrZero(raw?.input_tokens)
+      const outputTokens = integerOrZero(raw?.output_tokens)
+      const reasoningTokens = integerOrZero(raw?.reasoning_output_tokens)
+      const cacheReadTokens = Math.min(
+        inputTokens,
+        integerOrZero(raw?.cached_input_tokens),
+      )
+      usage = {
+        cacheReadTokens,
+        inputTokens,
+        outputTokens,
+        reasoningTokens,
+        totalTokens: inputTokens + outputTokens + reasoningTokens,
+      }
+    } else if (type === 'turn.failed' || type === 'error') {
+      failed = true
+    }
+  }
+  return { agentMessage, failed, itemCount, threadId, usage }
+}
+
+/** Spawn seam for the codex binary (tests inject a stub or fake). */
+export type CodexExecRun = (input: {
+  binaryPath: string
+  args: string[]
+  cwd: string
+  env: Record<string, string>
+  timeoutMs: number
+}) => { code: number | null; stdout: string; stderr: string }
+
+const defaultCodexExecRun: CodexExecRun = input => {
+  const result = spawnSync(input.binaryPath, input.args, {
+    cwd: input.cwd,
+    encoding: 'utf8',
+    env: input.env,
+    killSignal: 'SIGKILL',
+    maxBuffer: 64 * 1024 * 1024,
+    timeout: input.timeoutMs,
+  })
+  return {
+    code: result.status,
+    stderr: result.stderr ?? '',
+    stdout: result.stdout ?? '',
+  }
+}
+
+export type CodexTurnReasonRef =
+  | 'codex.provider_auth_required'
+  | 'codex.binary_missing'
+  | 'codex.exec_failed'
+  | 'codex.turn_failed'
+  | 'codex.no_exact_usage'
+  | 'codex.usage_receipt_failed'
+
+export type CodexTurnOutcome =
+  | {
+      ok: true
+      usage: ChatCompletionUsage
+      usageRef: string
+      tokenUsageEventRef: string | null
+      insertedTokenUsage: boolean
+      tokenChargeMetered: boolean
+      tokensServedDelta: number
+      codexThreadId: string | null
+      agentMessage: string
+      itemCount: number
+    }
+  | {
+      ok: false
+      reasonRef: CodexTurnReasonRef
+      exitCode: number | null
+      receiptStatus?: number | null
+    }
+
+/**
+ * One bounded in-VM Codex turn on the owner's OWN subscription capacity:
+ * spawn the baked binary under the broker-redeemed scratch `CODEX_HOME`,
+ * parse the exact usage, then post the exact receipt (lane
+ * `codex_app_server`, provider `pylon-codex-org-capacity`, model
+ * `openagents/pylon-codex`). FAIL-CLOSED at every stage — a turn without an
+ * ingested exact usage row is a FAILED turn, never a silent success. The
+ * agent bearer and auth material never appear in the outcome.
+ */
+export const runCodexTurnWithReceipt = async (
+  args: {
+    codexTurn: CodexTurnConfig
+    providerAuth: Extract<CodexProviderAuthMaterialization, { ok: true }>
+    workingDirectory: string
+    prompt: string
+    threadId: string
+    turnId: string
+    runtimeEventId?: string
+    nowIsoImpl?: () => string
+  },
+  deps: {
+    fetchImpl?: typeof globalThis.fetch
+    execRun?: CodexExecRun
+    existsImpl?: (path: string) => boolean
+  } = {},
+): Promise<CodexTurnOutcome> => {
+  const binaryPath = args.codexTurn.binaryPath ?? CODEX_BINARY_PATH
+  const exists = deps.existsImpl ?? existsSync
+  if (!exists(binaryPath)) {
+    return { exitCode: null, ok: false, reasonRef: 'codex.binary_missing' }
+  }
+  const execRun = deps.execRun ?? defaultCodexExecRun
+  const result = execRun({
+    args: codexExecArgs({
+      prompt: args.prompt,
+      workingDirectory: args.workingDirectory,
+      ...(args.codexTurn.model === undefined
+        ? {}
+        : { model: args.codexTurn.model }),
+    }),
+    binaryPath,
+    cwd: args.workingDirectory,
+    env: codexExecEnv(args.providerAuth.env),
+    timeoutMs:
+      (args.codexTurn.maxTurnSeconds ?? CODEX_TURN_DEFAULT_MAX_SECONDS) * 1000,
+  })
+  const parsed = parseCodexExecJsonl(result.stdout)
+  if (result.code !== 0) {
+    return { exitCode: result.code, ok: false, reasonRef: 'codex.exec_failed' }
+  }
+  if (parsed.failed) {
+    return { exitCode: result.code, ok: false, reasonRef: 'codex.turn_failed' }
+  }
+  if (
+    parsed.usage === null ||
+    parsed.usage.inputTokens + parsed.usage.outputTokens <= 0
+  ) {
+    return { exitCode: result.code, ok: false, reasonRef: 'codex.no_exact_usage' }
+  }
+  const usageRef = `usage.codex_app_server.${randomUUID()}`
+  const receipt = await postExactUsageReceipt(
+    {
+      identity: {
+        agentToken: args.codexTurn.agentToken,
+        backendProfile: CODEX_USAGE_RECEIPT_PROVIDER,
+        baseUrl: args.codexTurn.baseUrl,
+        lane: CODEX_USAGE_RECEIPT_LANE,
+        model: CODEX_USAGE_RECEIPT_MODEL,
+        ownerUserId: args.codexTurn.ownerUserId,
+        provider: CODEX_USAGE_RECEIPT_PROVIDER,
+        ...(args.codexTurn.pylonRef === undefined
+          ? {}
+          : { pylonRef: args.codexTurn.pylonRef }),
+      },
+      observedAt: (args.nowIsoImpl ?? nowIso)(),
+      threadId: args.threadId,
+      turnId: args.turnId,
+      usage: parsed.usage,
+      usageRef,
+      ...(args.runtimeEventId === undefined
+        ? {}
+        : { runtimeEventId: args.runtimeEventId }),
+    },
+    deps.fetchImpl ?? globalThis.fetch,
+  )
+  if (!receipt.ok) {
+    return {
+      exitCode: result.code,
+      ok: false,
+      reasonRef: 'codex.usage_receipt_failed',
+      receiptStatus: receipt.status,
+    }
+  }
+  return {
+    agentMessage: parsed.agentMessage,
+    codexThreadId: parsed.threadId,
+    insertedTokenUsage: receipt.insertedTokenUsage,
+    itemCount: parsed.itemCount,
+    ok: true,
+    tokenChargeMetered: receipt.tokenChargeMetered,
+    tokensServedDelta: receipt.tokensServedDelta,
+    tokenUsageEventRef: receipt.tokenUsageEventRef,
+    usage: parsed.usage,
+    usageRef,
   }
 }
 
@@ -1270,25 +1665,114 @@ async function main() {
     workspaceRef: ws.workspaceRef,
   })
 
-  // 2. Real coding step (deterministic, no model): add a proof note file and
-  //    produce a genuine staged git diff — real repo mutation + real git.
-  const proofPath = join(ws.workingDirectory, 'AGENT_COMPUTER_TURN.md')
-  const proofBody =
-    `# Agent Computer turn proof\n\n` +
-    `- workContextRef: ${wc.workContextRef}\n` +
-    `- turnId: ${turnId}\n` +
-    `- repo: ${wc.repo}\n` +
-    `- baseCommit: ${head}\n` +
-    `- ranAt: ${nowIso()}\n` +
-    `- host: firecracker microVM (OpenAgents Agent Computer)\n`
-  await writeFile(proofPath, proofBody)
-  git(ws.workingDirectory, ['add', 'AGENT_COMPUTER_TURN.md'])
+  // 2. Real coding step. CX-3 (#8547): when the work-context carries a
+  //    `codexTurn` block, the coding step IS a real Codex turn on the owner's
+  //    OWN subscription capacity (baked binary + broker-redeemed scratch
+  //    CODEX_HOME), fail-closed with typed reasons. Otherwise the proven
+  //    deterministic proof-note step runs (no model).
+  let codexTurnOutcome: CodexTurnOutcome | null = null
+  if (wc.codexTurn !== undefined) {
+    const codexTurnConfig = wc.codexTurn
+    if (codexProviderAuth === null || !codexProviderAuth.ok) {
+      emit({
+        kind: 'tool.result',
+        turnId,
+        tool: 'codex.exec',
+        status: 'failed',
+        reasonRef: 'codex.provider_auth_required',
+      })
+      throw new Error('codex.provider_auth_required')
+    }
+    const prompt = wc.objective ?? `Work on ${wc.repo}@${wc.commit.slice(0, 12)}.`
+    emit({
+      kind: 'tool.call',
+      turnId,
+      tool: 'codex.exec',
+      lane: CODEX_USAGE_RECEIPT_LANE,
+      binaryRef: codexTurnConfig.binaryPath ?? CODEX_BINARY_PATH,
+      homeIsolation: 'scratch_per_turn',
+    })
+    const codexRuntimeEventId = randomUUID()
+    codexTurnOutcome = await runCodexTurnWithReceipt({
+      codexTurn: codexTurnConfig,
+      providerAuth: codexProviderAuth,
+      prompt,
+      runtimeEventId: codexRuntimeEventId,
+      threadId: threadRef ?? wc.workContextRef,
+      turnId,
+      workingDirectory: ws.workingDirectory,
+    })
+    if (!codexTurnOutcome.ok) {
+      emit({
+        kind: 'tool.result',
+        turnId,
+        tool: 'codex.exec',
+        status: 'failed',
+        reasonRef: codexTurnOutcome.reasonRef,
+        exitCode: codexTurnOutcome.exitCode,
+        ...(codexTurnOutcome.receiptStatus === undefined ||
+        codexTurnOutcome.receiptStatus === null
+          ? {}
+          : { receiptStatus: codexTurnOutcome.receiptStatus }),
+      })
+      throw new Error(codexTurnOutcome.reasonRef)
+    }
+    emit({
+      kind: 'tool.result',
+      turnId,
+      tool: 'codex.exec',
+      status: 'ok',
+      itemCount: codexTurnOutcome.itemCount,
+      ...(codexTurnOutcome.codexThreadId === null
+        ? {}
+        : { codexThreadId: codexTurnOutcome.codexThreadId }),
+    })
+    emit({
+      kind: 'usage.recorded',
+      turnId,
+      eventId: codexRuntimeEventId,
+      lane: CODEX_USAGE_RECEIPT_LANE,
+      provider: CODEX_USAGE_RECEIPT_PROVIDER,
+      model: CODEX_USAGE_RECEIPT_MODEL,
+      usage: codexTurnOutcome.usage,
+      usageRef: codexTurnOutcome.usageRef,
+      tokenUsageEventRef: codexTurnOutcome.tokenUsageEventRef,
+      insertedTokenUsage: codexTurnOutcome.insertedTokenUsage,
+      tokenChargeMetered: codexTurnOutcome.tokenChargeMetered,
+    })
+    if (codexTurnOutcome.agentMessage !== '') {
+      emit({
+        kind: 'text.completed',
+        turnId,
+        text: codexTurnOutcome.agentMessage.slice(0, 4000),
+      })
+    }
+    // Stage whatever the codex turn changed so the diff/writeback below see
+    // the REAL work (never a synthetic proof note on a codex work unit).
+    git(ws.workingDirectory, ['add', '-A'])
+  } else {
+    // Deterministic proof-note step (no model): add a proof note file and
+    // produce a genuine staged git diff — real repo mutation + real git.
+    const proofPath = join(ws.workingDirectory, 'AGENT_COMPUTER_TURN.md')
+    const proofBody =
+      `# Agent Computer turn proof\n\n` +
+      `- workContextRef: ${wc.workContextRef}\n` +
+      `- turnId: ${turnId}\n` +
+      `- repo: ${wc.repo}\n` +
+      `- baseCommit: ${head}\n` +
+      `- ranAt: ${nowIso()}\n` +
+      `- host: firecracker microVM (OpenAgents Agent Computer)\n`
+    await writeFile(proofPath, proofBody)
+    git(ws.workingDirectory, ['add', 'AGENT_COMPUTER_TURN.md'])
+  }
   const diff = git(ws.workingDirectory, ['diff', '--cached', '--stat'])
   const diffFull = git(ws.workingDirectory, ['diff', '--cached'])
   const changedFiles = git(ws.workingDirectory, ['diff', '--cached', '--name-only'])
     .split('\n')
     .filter(line => line.trim().length > 0)
-  emit({ kind: 'text.completed', turnId, text: `Checked out ${wc.repo}@${head.slice(0, 12)} and staged a 1-file change.\n${diff}` })
+  if (wc.codexTurn === undefined) {
+    emit({ kind: 'text.completed', turnId, text: `Checked out ${wc.repo}@${head.slice(0, 12)} and staged a 1-file change.\n${diff}` })
+  }
 
   // 3. Phase-2 model turn + exact usage receipt (only when configured).
   let modelTokenReceipt: ModelTurnReceipt | null = null
@@ -1333,9 +1817,25 @@ async function main() {
 
   // 3b. MM-C5 (#8477) branch/PR writeback under the user's GitHub authorization.
   //     Only when the work-context carries a `writeback` block AND there is a
-  //     real staged change to publish. Fail-soft + token-safe.
+  //     real staged change to publish. Fail-soft + token-safe. A CX-3 codex
+  //     turn supplies the same identity fields (agent bearer + owner) when no
+  //     `inference` block is present, so a codex work unit can publish its
+  //     branch/PR too.
+  const writebackIdentity: InferenceConfig | undefined =
+    wc.inference ??
+    (wc.codexTurn === undefined
+      ? undefined
+      : {
+          agentToken: wc.codexTurn.agentToken,
+          baseUrl: wc.codexTurn.baseUrl,
+          model: CODEX_USAGE_RECEIPT_MODEL,
+          ownerUserId: wc.codexTurn.ownerUserId,
+          ...(wc.codexTurn.pylonRef === undefined
+            ? {}
+            : { pylonRef: wc.codexTurn.pylonRef }),
+        })
   let writebackResult: WritebackTurnResult | null = null
-  if (wc.writeback && wc.inference && changedFiles.length > 0) {
+  if (wc.writeback && writebackIdentity && changedFiles.length > 0) {
     emit({
       kind: 'tool.call',
       turnId,
@@ -1349,7 +1849,7 @@ async function main() {
       commitMessage:
         `chore(agent-computer): ${wc.objective ?? `staged change for ${wc.repo}`}\n\n` +
         `OpenAgents Agent Computer turn ${turnId} (${wc.workContextRef}).`,
-      inference: wc.inference,
+      inference: writebackIdentity,
       prBody:
         `Automated change from an OpenAgents Agent Computer coding turn.\n\n` +
         `- Objective: ${wc.objective ?? 'agent-computer turn'}\n` +
@@ -1427,6 +1927,31 @@ async function main() {
               ok: false,
               reasonRef: claudeProviderAuth.reasonRef,
               status: claudeProviderAuth.status,
+            },
+    codexTurn:
+      codexTurnOutcome === null
+        ? null
+        : codexTurnOutcome.ok
+          ? {
+              ok: true,
+              lane: CODEX_USAGE_RECEIPT_LANE,
+              provider: CODEX_USAGE_RECEIPT_PROVIDER,
+              model: CODEX_USAGE_RECEIPT_MODEL,
+              usage: codexTurnOutcome.usage,
+              usageRef: codexTurnOutcome.usageRef,
+              tokenUsageEventRef: codexTurnOutcome.tokenUsageEventRef,
+              insertedTokenUsage: codexTurnOutcome.insertedTokenUsage,
+              tokenChargeMetered: codexTurnOutcome.tokenChargeMetered,
+              tokensServedDelta: codexTurnOutcome.tokensServedDelta,
+              itemCount: codexTurnOutcome.itemCount,
+              ...(codexTurnOutcome.codexThreadId === null
+                ? {}
+                : { codexThreadId: codexTurnOutcome.codexThreadId }),
+            }
+          : {
+              ok: false,
+              reasonRef: codexTurnOutcome.reasonRef,
+              exitCode: codexTurnOutcome.exitCode,
             },
     model: wc.inference?.model ?? null,
     modelTokenReceipt:

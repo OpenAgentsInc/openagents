@@ -92,6 +92,41 @@ tests, models, or smoke checks.
   idempotent and always run (even on exec/copy_out failure) so a VM is never
   leaked.
 
+## Agent Computer In-VM Provider Execution (CX-3, #8547)
+
+- The in-VM Codex turn (`apps/pylon/deploy/agent-computer/turn-runner.ts`,
+  work-context `codexTurn` block) executes ONLY under a broker-redeemed,
+  owner-scoped provider grant materialized into a per-turn scratch
+  `CODEX_HOME` (`provider_credential_policy: broker_only`). A codex turn with
+  no materialized grant fails closed (`codex.provider_auth_required`); a
+  reclaimed grant is never replayable
+  (`canReplayCodexProviderGrantAfterReclaim` returns `false`).
+- The in-VM codex execution is fail-closed at every stage with typed reasons:
+  missing baked binary (`codex.binary_missing`), failed exec
+  (`codex.exec_failed`), a failed provider turn (`codex.turn_failed`), missing
+  exact usage (`codex.no_exact_usage` — usage is never fabricated), and a
+  failed receipt ingest (`codex.usage_receipt_failed` — a turn without an
+  ingested exact usage row is a FAILED turn).
+- The codex child process receives a minimal constructed environment (PATH,
+  HOME, plus the materialization's `CODEX_HOME`/auth content), never the
+  ambient process environment. Agent bearers and auth material never appear in
+  emitted events, result bundles, or logs.
+- Owner-subscription-capacity usage receipts (lane `codex_app_server` with
+  provider `pylon-codex-org-capacity`; lane `claude_pylon` with provider
+  `pylon-claude-org-capacity`) are exact token TRUTH rows and are NEVER
+  card/credit-metered: the Worker usage-ingest route skips the metering hook
+  for that exact lane+provider match and answers
+  `tokenChargeMetered: false` with
+  `tokenChargeSkippedReason: owner_subscription_capacity`
+  (`isOwnerSubscriptionCapacityReceipt` in
+  `apps/openagents.com/workers/api/src/khala-cloud-runtime-usage-routes.ts`).
+  Any other lane/provider combination — including a codex-lane row that does
+  not carry the org-capacity provider — meters normally (the skip can never
+  widen into a metering bypass). Compute lifecycle stays separately billed
+  through `openagents.resource_usage_receipt.v1`.
+- Subscription capacity is never resold (`subscriptionCapacityResale: false`);
+  these lanes serve only the owner the grant is scoped to.
+
 ## Compute Versus Labor
 
 - Bounded sandbox execution is compute only when the runtime profile, inputs,

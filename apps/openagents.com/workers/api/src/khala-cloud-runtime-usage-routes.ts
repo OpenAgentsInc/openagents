@@ -103,6 +103,36 @@ class KhalaCloudRuntimeUsageIngestBody extends S.Class<KhalaCloudRuntimeUsageIng
 export type KhalaCloudRuntimeUsageIngest =
   typeof KhalaCloudRuntimeUsageIngestBody.Type
 
+/**
+ * CX-3 (#8547) single-charge law for OWNER SUBSCRIPTION CAPACITY. The
+ * `codex_app_server` / `claude_pylon` lanes execute on the owner's OWN
+ * provider subscription (broker-redeemed grant, `broker_only` custody — see
+ * `docs/cloud/INVARIANTS.md`), so the exact usage receipt is token TRUTH,
+ * never a customer card/credit charge: OpenAgents bought no tokens to
+ * re-sell on those rows. Metering them at the unknown-model fallback price
+ * would double-bill the owner for their own subscription. `hosted_khala`
+ * stays metered (that lane IS OpenAgents-served inference).
+ *
+ * Bounded exact-enum match on already-decoded fields (no free-form routing).
+ */
+export const OWNER_SUBSCRIPTION_CAPACITY_RECEIPTS: ReadonlyArray<{
+  lane: KhalaCloudRuntimeUsageIngest['lane']
+  provider: string
+}> = [
+  { lane: 'codex_app_server', provider: 'pylon-codex-org-capacity' },
+  { lane: 'claude_pylon', provider: 'pylon-claude-org-capacity' },
+]
+
+export const isOwnerSubscriptionCapacityReceipt = (
+  body: Readonly<{
+    lane: KhalaCloudRuntimeUsageIngest['lane']
+    provider: string
+  }>,
+): boolean =>
+  OWNER_SUBSCRIPTION_CAPACITY_RECEIPTS.some(
+    entry => entry.lane === body.lane && entry.provider === body.provider,
+  )
+
 export type KhalaCloudRuntimeTokenCounts = Readonly<{
   cacheReadTokens: number
   cacheWrite1hTokens: number
@@ -628,9 +658,13 @@ const routeUsageIngest = <Bindings>(
         ),
       )
 
+    // CX-3 (#8547): owner-subscription-capacity receipts are token truth,
+    // never a customer charge — the metering hook is skipped entirely, so the
+    // response proves `tokenChargeMetered: false` with a typed skip reason.
+    const ownerSubscriptionCapacity = isOwnerSubscriptionCapacityReceipt(body)
     const meteringHook = dependencies.meteringHook?.(env)
     const tokenCharge: MeteringOutcome | undefined =
-      meteringHook === undefined
+      meteringHook === undefined || ownerSubscriptionCapacity
         ? undefined
         : yield* meteringHook(
             meteringContextFromUsage({
@@ -684,6 +718,9 @@ const routeUsageIngest = <Bindings>(
       tokenChargeFailureReason: tokenCharge?.failureReason ?? null,
       tokenChargeMetered: tokenCharge?.metered ?? false,
       tokenChargeReceiptRef: tokenCharge?.receiptRef ?? null,
+      tokenChargeSkippedReason: ownerSubscriptionCapacity
+        ? ('owner_subscription_capacity' as const)
+        : null,
       tokenUsageEventRef: tokenBody.eventId,
       tokensServedDelta: tokenResult.inserted ? tokensServed : 0,
       turnId: body.turnId,
