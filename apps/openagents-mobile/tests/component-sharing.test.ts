@@ -1,13 +1,17 @@
 import { describe, expect, test } from "bun:test"
-import { readFileSync } from "node:fs"
+import { existsSync, readdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 
 import { CatalogVersion } from "@effect-native/core"
 
 import {
   initialHomeState,
+  renderChromeComposerView,
+  renderChromeMenuButtonView,
+  renderChromePillView,
   renderContentView,
   renderDrawerView,
+  renderMineralsSheetView,
 } from "../src/screens/home-core"
 
 /**
@@ -28,6 +32,13 @@ import {
  */
 
 const appRoot = join(import.meta.dir, "..")
+
+const sourceFilesUnder = (...roots: ReadonlyArray<string>): ReadonlyArray<string> =>
+  roots.flatMap((root) =>
+    readdirSync(root, { recursive: true, encoding: "utf8" })
+      .filter((entry) => entry.endsWith(".ts") || entry.endsWith(".tsx"))
+      .map((entry) => join(root, entry)),
+  )
 
 const importSpecifiers = (source: string): ReadonlyArray<string> =>
   [...source.matchAll(/from\s+"([^"]+)"/g)].map((match) => match[1] ?? "")
@@ -57,7 +68,14 @@ describe("contract openagents_mobile.home.catalog_sharing.v1", () => {
   test("the authored trees are the shared catalog version the web EN surfaces author", () => {
     // Same vendored catalog the web start-app Effect Native routes author —
     // one catalog version across DOM and RN hosts, for BOTH projections.
-    for (const view of [renderContentView(initialHomeState), renderDrawerView(initialHomeState)]) {
+    for (const view of [
+      renderContentView(initialHomeState),
+      renderDrawerView(initialHomeState),
+      renderChromeMenuButtonView(initialHomeState),
+      renderChromePillView(initialHomeState),
+      renderChromeComposerView(initialHomeState),
+      renderMineralsSheetView(initialHomeState),
+    ]) {
       expect(JSON.stringify(view)).toContain(`"catalogVersion":"${CatalogVersion}"`)
     }
     expect(CatalogVersion.startsWith("effect-native/v")).toBe(true)
@@ -72,5 +90,47 @@ describe("contract openagents_mobile.home.catalog_sharing.v1", () => {
     expect(shell).toContain("theme={khalaTheme}")
     // No hex colors hand-written in the shell beyond the theme values.
     expect(shell).not.toMatch(/#[0-9a-fA-F]{6}/)
+  })
+
+  test("GL-1 (#8647): @expo/ui is a render-rn-INTERNAL lowering target — app code never imports it", () => {
+    // The hybrid contract (docs/fable/2026-07-09): @expo/ui is consumed
+    // strictly INSIDE @effect-native/render-rn. The app declares the
+    // dependency (the native-module installation vehicle) but no app source
+    // file may import from it.
+    const sources = sourceFilesUnder(join(appRoot, "src"))
+    expect(sources.length).toBeGreaterThan(0)
+    for (const file of sources) {
+      const source = readFileSync(file, "utf8")
+      if (file.endsWith("component-sharing.test.ts")) continue
+      expect(source).not.toContain('from "@expo' + '/ui')
+      expect(source).not.toContain('require("@expo' + '/ui')
+    }
+    const packageJson = JSON.parse(readFileSync(join(appRoot, "package.json"), "utf8")) as {
+      dependencies: Record<string, string>
+    }
+    expect(packageJson.dependencies["@expo/ui"]).toBeDefined()
+  })
+
+  test("GL-1 (#8647): the D-MB-02 app-local liquid-glass island is DELETED — no module, no references", () => {
+    // Converted to catalog Host-kind mounting through the render-rn driver
+    // seam + the internal @expo/ui glass lowering; the expo-module is gone.
+    expect(existsSync(join(appRoot, "modules/openagents-liquid-glass"))).toBe(false)
+    const sources = sourceFilesUnder(join(appRoot, "src"), join(appRoot, "tests"))
+    // Banned refs assembled by concatenation so this test file's own source
+    // (which the sweep also scans) never contains them literally.
+    const bannedRefs = [
+      'from "openagents-liquid-' + 'glass"',
+      "loadGlass" + "IconButton",
+      "requireNative" + "ViewManager",
+    ]
+    for (const file of sources) {
+      const source = readFileSync(file, "utf8")
+      if (file.endsWith("component-sharing.test.ts")) continue
+      for (const banned of bannedRefs) {
+        expect(source).not.toContain(banned)
+      }
+    }
+    const packageJson = readFileSync(join(appRoot, "package.json"), "utf8")
+    expect(packageJson).not.toContain("openagents-liquid-" + "glass")
   })
 })

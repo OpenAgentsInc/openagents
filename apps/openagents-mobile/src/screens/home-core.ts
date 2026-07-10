@@ -8,6 +8,9 @@ import {
   Button,
   ComponentValueBinding,
   defineIntent,
+  DropdownMenu,
+  IconButton,
+  Toolbar,
   type IntentHandlers,
   IntentRef,
   type IntentReporter,
@@ -112,6 +115,9 @@ export interface HomeState {
    * ended/looped playback event must never close the sheet. */
   readonly mineralsSheetOpen: boolean
   readonly lastMineralPackId: string | undefined
+  /** GL-1 (#8647): the pill's surface-mode dropdown, now a typed EN
+   * DropdownMenu (the SwiftUI-island menu converted to catalog data). */
+  readonly modeMenuOpen: boolean
   /** The active conversation; undefined = fresh "new chat" surface. */
   readonly activeRecentId: string | undefined
   readonly recents: ReadonlyArray<RecentChat>
@@ -132,6 +138,7 @@ export const initialHomeState: HomeState = {
   askVideoPlaying: false,
   mineralsSheetOpen: false,
   lastMineralPackId: undefined,
+  modeMenuOpen: false,
   activeRecentId: undefined,
   recents: [],
   conversationSource: "restore",
@@ -189,6 +196,16 @@ export const SurfaceModeSelected = defineIntent(
   "SurfaceModeSelected",
   Schema.Struct({ mode: Schema.Literals(["openagents", "sarah"]) }),
 )
+/** GL-1 (#8647): typed EN mode-menu lifecycle — the DropdownMenu's onSelect
+ * carries the tapped item id as a ComponentValueBinding string. */
+export const SurfaceModeMenuItemSelected = defineIntent(
+  "SurfaceModeMenuItemSelected",
+  Schema.String,
+)
+export const SurfaceModeMenuDismissed = defineIntent(
+  "SurfaceModeMenuDismissed",
+  EmptyPayload,
+)
 
 // GL-3 (#8649) Sarah conversation intents. Session/stream/event intents are
 // dispatched by the HOST from the effectful client (../sarah/sarah-client);
@@ -221,6 +238,8 @@ export const homeIntentDefinitions = [
   ComposerPressed,
   MicPressed,
   SurfaceModeSelected,
+  SurfaceModeMenuItemSelected,
+  SurfaceModeMenuDismissed,
   AskVideoDismissed,
   AskVideoEnded,
   MineralsSheetOpened,
@@ -266,6 +285,122 @@ export const activeRecentTitle = (state: HomeState): string => {
   const active = state.recents.find((recent) => recent.id === state.activeRecentId)
   return active === undefined ? "New chat" : active.title
 }
+
+// ---------------------------------------------------------------------------
+// Chrome views (GL-1 #8647) — the floating glass chrome as typed Effect
+// Native trees. `surface: "glass"` is the semantic contract: render-rn lowers
+// it INTERNALLY through @expo/ui (SwiftUI Liquid Glass) on iOS 26+ and to the
+// honest material approximation everywhere else. The former app-local
+// openagents-liquid-glass expo-module island is deleted; every tap below
+// dispatches the SAME typed intents the island's EventDispatchers used.
+// ---------------------------------------------------------------------------
+
+/** Top-left circular glass button: nav drawer toggle. */
+export const renderChromeMenuButtonView = (_state: HomeState): View =>
+  IconButton({
+    key: "chrome-menu",
+    icon: "Menu",
+    surface: "glass",
+    accessibilityLabel: "Open navigation",
+    onPress: drawerToggledRef,
+  })
+
+/** The OpenAgents/Sarah glass pill; tapping opens the typed mode menu. */
+export const renderChromePillView = (state: HomeState): View =>
+  Button({
+    key: "chrome-pill",
+    label: chromeProps(state).pillLabel,
+    variant: "secondary",
+    onPress: IntentRef("ChatPillPressed", StaticPayload({})),
+    style: { surface: "glass", height: 44 },
+  })
+
+/** Top-right circular glass button: new chat. */
+export const renderChromeNewChatView = (_state: HomeState): View =>
+  IconButton({
+    key: "chrome-new-chat",
+    icon: "Compose",
+    surface: "glass",
+    accessibilityLabel: "New chat",
+    onPress: IntentRef("NewChatPressed", StaticPayload({})),
+  })
+
+/** Floating glass composer bar (demo surface only): plus / ask-anything /
+ * mic in ONE shared Liquid Glass capsule. */
+export const renderChromeComposerView = (state: HomeState): View =>
+  Toolbar({ key: "chrome-composer", surface: "glass", style: { width: "full", height: 54 } }, [
+    IconButton({
+      key: "composer-plus",
+      icon: "Plus",
+      accessibilityLabel: "New chat",
+      onPress: IntentRef("NewChatPressed", StaticPayload({})),
+    }),
+    Button({
+      key: "composer-ask",
+      label: chromeProps(state).composerPlaceholder,
+      variant: "ghost",
+      onPress: IntentRef("ComposerPressed", StaticPayload({})),
+      // Muted placeholder treatment + flex: the WHOLE middle of the capsule
+      // is the tap target (parity with the island's full-capsule dispatcher).
+      style: { color: "textMuted", flex: 1 },
+    }),
+    IconButton({
+      key: "composer-mic",
+      icon: "Mic",
+      accessibilityLabel: "Voice input",
+      onPress: IntentRef("MicPressed", StaticPayload({})),
+    }),
+  ])
+
+/** The pill's surface-mode dropdown as typed catalog data (was the SwiftUI
+ * Menu inside the deleted island). */
+export const renderModeMenuView = (state: HomeState): View =>
+  DropdownMenu({
+    key: "chrome-mode-menu",
+    open: state.modeMenuOpen,
+    placement: { side: "bottom", align: "start" },
+    items: surfaceModeOptions.map((option) => ({
+      id: option.id,
+      label: option.label,
+      ...(option.id === state.surfaceMode ? { icon: "Check" as const } : {}),
+    })),
+    onSelect: IntentRef("SurfaceModeMenuItemSelected", ComponentValueBinding()),
+    onDismiss: IntentRef("SurfaceModeMenuDismissed", StaticPayload({})),
+  })
+
+/** Minerals fly-up sheet content: ONE glass panel (VStack under a shared
+ * Liquid Glass shape via the render-rn lowering) of typed pack Buttons. */
+export const renderMineralsSheetView = (_state: HomeState): View =>
+  Stack(
+    {
+      key: "minerals-sheet",
+      direction: "column",
+      gap: "2",
+      style: { surface: "glass", borderRadius: "lg", width: "full", height: "full" },
+    },
+    [
+      Text({
+        key: "minerals-title",
+        content: "Buy Minerals",
+        variant: "label",
+        weight: "bold",
+      }),
+      ...mineralPacks.map((pack) =>
+        Button({
+          key: `minerals-${pack.id}`,
+          label: `${pack.label}   ${pack.price}`,
+          variant: "secondary",
+          onPress: IntentRef("MineralPackSelected", StaticPayload({ id: pack.id })),
+        }),
+      ),
+      Button({
+        key: "minerals-dismiss",
+        label: "Not now",
+        variant: "ghost",
+        onPress: IntentRef("MineralsSheetDismissed", StaticPayload({})),
+      }),
+    ],
+  )
 
 // ---------------------------------------------------------------------------
 // Views
@@ -436,6 +571,9 @@ export const makeHomeHandlers = (
     SubscriptionRef.update(state, (current) => ({
       ...current,
       pillTaps: current.pillTaps + 1,
+      // GL-1 (#8647): the pill now opens the typed EN mode menu (the SwiftUI
+      // Menu shipped inside the deleted island before).
+      modeMenuOpen: !current.modeMenuOpen,
     })),
   ComposerPressed: () =>
     SubscriptionRef.update(state, (current) => ({
@@ -456,6 +594,21 @@ export const makeHomeHandlers = (
     SubscriptionRef.update(state, (current) => ({
       ...current,
       surfaceMode: payload.mode,
+    })),
+  // Typed EN mode-menu selection: the DropdownMenu row id arrives as a
+  // ComponentValueBinding string; anything outside the closed mode set is
+  // ignored (fail-closed) and the menu closes either way.
+  SurfaceModeMenuItemSelected: (id) =>
+    SubscriptionRef.update(state, (current) => ({
+      ...current,
+      modeMenuOpen: false,
+      surfaceMode:
+        id === "sarah" ? "sarah" : id === "openagents" ? "openagents" : current.surfaceMode,
+    })),
+  SurfaceModeMenuDismissed: () =>
+    SubscriptionRef.update(state, (current) => ({
+      ...current,
+      modeMenuOpen: false,
     })),
   // Ending the takeover (user tap OR playback end) NEVER touches the
   // minerals sheet (owner P0, build 111 feedback 2026-07-09): the sheet
@@ -689,6 +842,14 @@ export interface SarahDispatchers {
 export interface HomeProgramHandle {
   readonly contentViewStream: Stream.Stream<View>
   readonly drawerViewStream: Stream.Stream<View>
+  /** GL-1 (#8647): the glass chrome as typed EN view streams (one program,
+   * many projections) — replaces the deleted island's prop projections. */
+  readonly chromeMenuButtonViewStream: Stream.Stream<View>
+  readonly chromePillViewStream: Stream.Stream<View>
+  readonly chromeNewChatViewStream: Stream.Stream<View>
+  readonly chromeComposerViewStream: Stream.Stream<View>
+  readonly modeMenuViewStream: Stream.Stream<View>
+  readonly mineralsSheetViewStream: Stream.Stream<View>
   readonly report: IntentReporter
   readonly stateChanges: Stream.Stream<HomeState>
   readonly chrome: ChromeDispatchers
@@ -716,9 +877,21 @@ export const buildHomeProgram = (
       }
       const content = makeViewProgramFromState(state, renderContentView)
       const drawer = makeViewProgramFromState(state, renderDrawerView)
+      const chromeMenuButton = makeViewProgramFromState(state, renderChromeMenuButtonView)
+      const chromePill = makeViewProgramFromState(state, renderChromePillView)
+      const chromeNewChat = makeViewProgramFromState(state, renderChromeNewChatView)
+      const chromeComposer = makeViewProgramFromState(state, renderChromeComposerView)
+      const modeMenu = makeViewProgramFromState(state, renderModeMenuView)
+      const mineralsSheet = makeViewProgramFromState(state, renderMineralsSheetView)
       return {
         contentViewStream: content.viewStream,
         drawerViewStream: drawer.viewStream,
+        chromeMenuButtonViewStream: chromeMenuButton.viewStream,
+        chromePillViewStream: chromePill.viewStream,
+        chromeNewChatViewStream: chromeNewChat.viewStream,
+        chromeComposerViewStream: chromeComposer.viewStream,
+        modeMenuViewStream: modeMenu.viewStream,
+        mineralsSheetViewStream: mineralsSheet.viewStream,
         report,
         stateChanges: SubscriptionRef.changes(state),
         chrome: {

@@ -4,6 +4,8 @@ import { describe, expect, test } from "bun:test"
 import { Effect, Stream } from "@effect-native/core/effect"
 import {
   makeReactNativeRenderer,
+  renderReactNativeView,
+  type ExpoUiSwiftUiRuntime,
   type ReactElementLike,
   type ReactNativeDependencies,
   type ReactNodeLike,
@@ -15,8 +17,14 @@ import {
   buildHomeProgram,
   chromeProps,
   initialHomeState,
+  renderChromeComposerView,
+  renderChromeMenuButtonView,
+  renderChromeNewChatView,
+  renderChromePillView,
   renderContentView,
   renderDrawerView,
+  renderMineralsSheetView,
+  renderModeMenuView,
   surfaceModeOptions,
 } from "../src/screens/home-core"
 
@@ -356,6 +364,252 @@ const findByNativeId = (
   if (node.props.nativeID === nativeID) return node
   for (const child of childrenOf(node)) {
     const found = findByNativeId(child, nativeID)
+    if (found !== undefined) return found
+  }
+  return undefined
+}
+
+// ---------------------------------------------------------------------------
+// GL-1 (#8647): the glass chrome as typed EN trees through the render-rn
+// @expo/ui lowering seam. The app-local openagents-liquid-glass expo-module
+// island is DELETED; these oracles pin its replacement: catalog components
+// with `surface: "glass"`, lowered INTERNALLY by render-rn (SwiftUI Liquid
+// Glass on iOS 26+ via an injected fake runtime here; honest material
+// approximation otherwise). App code never imports @expo/ui.
+// ---------------------------------------------------------------------------
+
+const fakeExpoUi: ExpoUiSwiftUiRuntime = {
+  Host: "ExpoUi.Host",
+  HStack: "ExpoUi.HStack",
+  VStack: "ExpoUi.VStack",
+  Button: "ExpoUi.Button",
+  Image: "ExpoUi.Image",
+  Text: "ExpoUi.Text",
+  Spacer: "ExpoUi.Spacer",
+  modifiers: {
+    glassEffect: (params) => ({ $type: "glassEffect", ...params }),
+    foregroundStyle: (style) => ({ $type: "foregroundStyle", style }),
+    frame: (params) => ({ $type: "frame", ...params }),
+    padding: (params) => ({ $type: "padding", ...params }),
+    disabled: (disabled) => ({ $type: "disabled", disabled }),
+  },
+}
+
+const ios26Dependencies: ReactNativeDependencies = {
+  React: { createElement },
+  ReactNative: { ...host, Platform: { OS: "ios", Version: "26.0" } },
+}
+
+const findByType = (node: ReactNodeLike, type: unknown): ReactElementLike | undefined => {
+  if (!isElement(node)) return undefined
+  if (node.type === type) return node
+  for (const child of childrenOf(node)) {
+    const found = findByType(child, type)
+    if (found !== undefined) return found
+  }
+  return undefined
+}
+
+const findAllByType = (node: ReactNodeLike, type: unknown): ReadonlyArray<ReactElementLike> => {
+  if (!isElement(node)) return []
+  const own = node.type === type ? [node] : []
+  return [...own, ...childrenOf(node).flatMap((child) => findAllByType(child, type))]
+}
+
+describe("contract openagents_mobile.glass_chrome.en_seam.v1", () => {
+  test("the chrome is typed glass catalog data: IconButton/Button/Toolbar with surface glass + intents (no island props)", () => {
+    const menuButton = JSON.stringify(renderChromeMenuButtonView(initialHomeState))
+    expect(menuButton).toContain('"_tag":"IconButton"')
+    expect(menuButton).toContain('"surface":"glass"')
+    expect(menuButton).toContain('"icon":"Menu"')
+    expect(menuButton).toContain("DrawerToggled")
+
+    const pill = JSON.stringify(renderChromePillView(initialHomeState))
+    expect(pill).toContain('"_tag":"Button"')
+    expect(pill).toContain('"surface":"glass"')
+    expect(pill).toContain('"label":"OpenAgents"')
+    expect(pill).toContain("ChatPillPressed")
+
+    const newChat = JSON.stringify(renderChromeNewChatView(initialHomeState))
+    expect(newChat).toContain('"icon":"Compose"')
+    expect(newChat).toContain("NewChatPressed")
+
+    const composer = JSON.stringify(renderChromeComposerView(initialHomeState))
+    expect(composer).toContain('"_tag":"Toolbar"')
+    expect(composer).toContain('"surface":"glass"')
+    expect(composer).toContain('"label":"Ask anything"')
+    expect(composer).toContain("ComposerPressed")
+    expect(composer).toContain("MicPressed")
+
+    const sheet = JSON.stringify(renderMineralsSheetView(initialHomeState))
+    expect(sheet).toContain('"surface":"glass"')
+    expect(sheet).toContain("Buy Minerals")
+    expect(sheet).toContain("MineralPackSelected")
+    expect(sheet).toContain("MineralsSheetDismissed")
+  })
+
+  test("iOS 26 + @expo/ui runtime: the chrome lowers to SwiftUI Liquid Glass and round-trips typed intents through the NEW seam", async () => {
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const program = buildHomeProgram()
+
+        // Menu icon button: Host > Button(glassEffect circle) > SF Symbol.
+        const menuElement = renderReactNativeView(
+          renderChromeMenuButtonView(initialHomeState),
+          ios26Dependencies,
+          program.report,
+          { theme: khalaTheme, platform: "ios", expoUi: fakeExpoUi },
+        )
+        expect(findByType(menuElement, fakeExpoUi.Host)).toBeDefined()
+        const menuNative = findByType(menuElement, fakeExpoUi.Button)
+        const menuMods = (menuNative?.props.modifiers ?? []) as ReadonlyArray<Record<string, unknown>>
+        expect(
+          menuMods.some((mod) => mod.$type === "glassEffect" && mod.shape === "circle"),
+        ).toBe(true)
+        expect(findByType(menuElement, fakeExpoUi.Image)?.props.systemName).toBe(
+          "line.3.horizontal",
+        )
+
+        // Typed intent round trip: SwiftUI onPress -> DrawerToggled -> state.
+        ;(menuNative?.props.onPress as () => void)()
+        yield* settle
+        expect((yield* lastState(program)).drawerOpen).toBe(true)
+        ;(menuNative?.props.onPress as () => void)()
+        yield* settle
+        expect((yield* lastState(program)).drawerOpen).toBe(false)
+
+        // Composer bar: ONE SwiftUI subtree (HStack under a shared capsule)
+        // whose native buttons dispatch the same typed intents the island's
+        // EventDispatchers used.
+        const composerElement = renderReactNativeView(
+          renderChromeComposerView(initialHomeState),
+          ios26Dependencies,
+          program.report,
+          { theme: khalaTheme, platform: "ios", expoUi: fakeExpoUi },
+        )
+        const stack = findByType(composerElement, fakeExpoUi.HStack)
+        expect(stack).toBeDefined()
+        const stackMods = (stack?.props.modifiers ?? []) as ReadonlyArray<Record<string, unknown>>
+        expect(
+          stackMods.some((mod) => mod.$type === "glassEffect" && mod.shape === "capsule"),
+        ).toBe(true)
+        const buttons = findAllByType(composerElement, fakeExpoUi.Button)
+        expect(buttons).toHaveLength(3)
+        // plus / ask / mic in order.
+        ;(buttons[1]?.props.onPress as () => void)()
+        yield* settle
+        ;(buttons[2]?.props.onPress as () => void)()
+        yield* settle
+        const after = yield* lastState(program)
+        expect(after.composerTaps).toBe(1)
+        expect(after.askVideoPlaying).toBe(true)
+        expect(after.micTaps).toBe(1)
+      }),
+    )
+  })
+
+  test("the pill opens the TYPED mode menu; menu selection switches the surface and closes it", async () => {
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const program = buildHomeProgram()
+
+        // Pill tap (through the SwiftUI lowering) opens the typed menu.
+        const pillElement = renderReactNativeView(
+          renderChromePillView(initialHomeState),
+          ios26Dependencies,
+          program.report,
+          { theme: khalaTheme, platform: "ios", expoUi: fakeExpoUi },
+        )
+        const pillNative = findByType(pillElement, fakeExpoUi.Button)
+        expect(findByType(pillElement, fakeExpoUi.Text)?.props.children).toBe("OpenAgents")
+        ;(pillNative?.props.onPress as () => void)()
+        yield* settle
+        const open = yield* lastState(program)
+        expect(open.modeMenuOpen).toBe(true)
+        expect(open.pillTaps).toBe(1)
+
+        // The menu itself is a typed EN DropdownMenu (RN Modal lowering);
+        // selecting "Sarah" dispatches SurfaceModeMenuItemSelected.
+        const menuElement = renderReactNativeView(
+          renderModeMenuView(open),
+          dependencies,
+          program.report,
+          { theme: khalaTheme, platform: "ios" },
+        )
+        const sarahRow = findByTestId(menuElement, "en-menu-item:sarah")
+        ;(sarahRow?.props.onPress as () => void)()
+        yield* settle
+        const selected = yield* lastState(program)
+        expect(selected.surfaceMode).toBe("sarah")
+        expect(selected.modeMenuOpen).toBe(false)
+
+        // Backdrop dismissal closes without changing the mode.
+        ;(pillNative?.props.onPress as () => void)()
+        yield* settle
+        const reopened = yield* lastState(program)
+        const reopenedMenu = renderReactNativeView(
+          renderModeMenuView(reopened),
+          dependencies,
+          program.report,
+          { theme: khalaTheme, platform: "ios" },
+        )
+        const backdrop = findByTestId(reopenedMenu, "en-dropdown-backdrop")
+        ;(backdrop?.props.onPress as () => void)()
+        yield* settle
+        const dismissed = yield* lastState(program)
+        expect(dismissed.modeMenuOpen).toBe(false)
+        expect(dismissed.surfaceMode).toBe("sarah")
+      }),
+    )
+  })
+
+  test("without the @expo/ui runtime the chrome renders the HONEST material approximation (never fake glass, never a crash)", () => {
+    const element = renderReactNativeView(
+      renderChromeMenuButtonView(initialHomeState),
+      dependencies,
+      (() => Effect.succeed(undefined)) as never,
+      { theme: khalaTheme, platform: "ios" },
+    )
+    expect(element.type).toBe(host.Pressable)
+    const style = element.props.style as Record<string, unknown>
+    // khalaTheme surface #0b1220 at the documented 0.72 material opacity.
+    expect(style.backgroundColor).toBe("rgba(11, 18, 32, 0.72)")
+    expect(style.borderWidth).toBe(1)
+  })
+
+  test("minerals sheet: typed pack selection through the EN tree closes the sheet and records the pack", async () => {
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const program = buildHomeProgram()
+        program.chrome.openMineralsSheet()
+        yield* settle
+
+        const sheetElement = renderReactNativeView(
+          renderMineralsSheetView(yield* lastState(program)),
+          dependencies,
+          program.report,
+          { theme: khalaTheme, platform: "ios" },
+        )
+        const pack = findByNativeId(sheetElement, "effect-native:Button:minerals-pack-550")
+        const onPress = pack?.props.onPress
+        if (typeof onPress !== "function") {
+          throw new Error("expected the pack row to bind onPress")
+        }
+        onPress()
+        yield* settle
+        const after = yield* lastState(program)
+        expect(after.mineralsSheetOpen).toBe(false)
+        expect(after.lastMineralPackId).toBe("pack-550")
+      }),
+    )
+  })
+})
+
+const findByTestId = (node: ReactNodeLike, testID: string): ReactElementLike | undefined => {
+  if (!isElement(node)) return undefined
+  if (node.props.testID === testID) return node
+  for (const child of childrenOf(node)) {
+    const found = findByTestId(child, testID)
     if (found !== undefined) return found
   }
   return undefined
