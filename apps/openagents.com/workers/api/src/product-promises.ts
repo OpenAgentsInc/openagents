@@ -1102,7 +1102,7 @@ export const publicProductPromisesDocument = () => {
         claim:
           'Pylon v1.0 becomes one piece of node software that can earn Bitcoin in multiple ways, including training, Forum or coding-agent-adjacent work, and payment-integrated tasks.',
         safeCopy:
-          'Pylon v1.0 has a stable source cut with scoped green/yellow subclaims; one-install multi-earning remains red until each earning mode has its own evidence.',
+          'Pylon v1.0 has a stable source cut with scoped green/yellow subclaims; one-install multi-earning remains red until each earning mode has its own evidence. The Sarah FleetRun claim/accept routes are route-level intake evidence only; they are not assignment closeout, payment, settlement, or broad multi-earning proof.',
         unsafeCopy:
           'Do not claim one Pylon install currently earns Bitcoin across multiple modes automatically.',
         evidenceRefs: [
@@ -1113,15 +1113,18 @@ export const publicProductPromisesDocument = () => {
           'promise:forum.content_tipping.v1',
           'promise:pylon.install_without_wallet_knowledge.v1',
           'docs/promises/2026-06-19-pylon-non-green-promise-assault-assessment.md',
+          'route:/api/pylons/{pylonRef}/fleet-runs/claim',
+          'route:/api/pylons/{pylonRef}/fleet-runs/accept',
         ],
         blockerRefs: [
           'blocker.product_promises.pylon_v1_default_install_not_fully_closed',
           'blocker.product_promises.multi_earning_mode_receipts_missing',
+          'blocker.product_promises.pylon_fleetrun_closeout_receipts_missing',
           'blocker.product_promises.multi_earning_settlement_refs_missing',
           'blocker.product_promises.safe_public_projection_missing',
         ],
         verification:
-          'Green requires stable v1.0 release evidence, install/platform smokes, assignment/work receipts, per-mode payment evidence, settlement evidence, and public projections that distinguish modeled, observed, pending, paid, and settled amounts.',
+          'Green requires stable v1.0 release evidence, install/platform smokes, assignment/work receipts, accepted FleetRun closeout receipts (blocker.product_promises.pylon_fleetrun_closeout_receipts_missing), per-mode payment evidence, settlement evidence, and public projections that distinguish modeled, observed, pending, paid, and settled amounts.',
         authorityBoundary:
           'Separate Forum tipping, accepted-work closeout, training dispatch, labor-market, referral, data, and settlement authorities do not collapse into one broad earning claim.',
       },
