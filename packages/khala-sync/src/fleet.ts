@@ -593,20 +593,74 @@ export class FleetInboxFlagEntity extends S.Class<FleetInboxFlagEntity>(
 export const FleetApprovalStatus = S.Literals(["pending", "allowed", "denied"])
 export type FleetApprovalStatus = typeof FleetApprovalStatus.Type
 
-export class FleetApprovalEntity extends S.Class<FleetApprovalEntity>(
-  "FleetApprovalEntity",
-)({
+const FleetApprovalEntityFields = {
   approvalRef: FleetPublicRef,
   status: FleetApprovalStatus,
+  /** Exact run/attempt binding. All fields in this group are present together. */
+  runRef: S.optionalKey(FleetPublicRef),
+  workUnitRef: S.optionalKey(FleetPublicRef),
+  attemptRef: S.optionalKey(FleetPublicRef),
+  assignmentRef: S.optionalKey(S.NullOr(FleetPublicRef)),
   /** The worker slot blocked on this approval. */
   workerId: S.optionalKey(FleetPublicRef),
+  accountRefHash: S.optionalKey(S.NullOr(FleetAccountRefHash)),
+  requestEventRef: S.optionalKey(FleetPublicRef),
   /** Bounded tool classification (e.g. `bash`, `write_file`); never args. */
   toolClass: S.optionalKey(FleetClassToken),
   openedAt: S.optionalKey(FleetIsoTimestamp),
   /** When the allow/deny decision landed. */
   decidedAt: S.optionalKey(FleetIsoTimestamp),
   updatedAt: FleetIsoTimestamp,
-}) {}
+} as const
+
+/**
+ * Legacy approval post-images remain decodable without exact binding fields.
+ * Once any new binding field is present, every binding edge and the original
+ * public-safe request metadata must be present. Nullable edges are explicit
+ * keys, preventing absence from being confused with a known-null value.
+ */
+export const FleetApprovalEntity = S.Struct(FleetApprovalEntityFields).pipe(
+  S.check(
+    S.makeFilter(
+      (entity) => {
+        const bindingKeys = [
+          "runRef",
+          "workUnitRef",
+          "attemptRef",
+          "assignmentRef",
+          "accountRefHash",
+          "requestEventRef",
+        ] as const
+        const hasAnyBinding = bindingKeys.some((key) => key in entity)
+        if (!hasAnyBinding) return true
+        return (
+          bindingKeys.every((key) => key in entity) &&
+          "workerId" in entity &&
+          "toolClass" in entity &&
+          "openedAt" in entity
+        )
+      },
+      { message: "fleet approval exact binding must be complete" },
+    ),
+  ),
+)
+export type FleetApprovalEntity = typeof FleetApprovalEntity.Type
+export type FleetBoundApprovalEntity = FleetApprovalEntity &
+  Readonly<{
+    runRef: string
+    workUnitRef: string
+    attemptRef: string
+    assignmentRef: string | null
+    workerId: string
+    accountRefHash: string | null
+    requestEventRef: string
+    toolClass: string
+    openedAt: string
+  }>
+
+export const fleetApprovalHasExactBinding = (
+  entity: FleetApprovalEntity,
+): entity is FleetBoundApprovalEntity => "runRef" in entity
 
 // ---------------------------------------------------------------------------
 // fleet_steer (MH-6 #8585)
@@ -877,7 +931,10 @@ export const decodeFleetInboxFlagEntity = S.decodeUnknownSync(
   FleetInboxFlagEntity,
 )
 export const encodeFleetInboxFlagEntity = S.encodeSync(FleetInboxFlagEntity)
-export const decodeFleetApprovalEntity = S.decodeUnknownSync(FleetApprovalEntity)
+export const decodeFleetApprovalEntity = (input: unknown) =>
+  S.decodeUnknownSync(FleetApprovalEntity)(input, {
+    onExcessProperty: "error",
+  })
 export const encodeFleetApprovalEntity = S.encodeSync(FleetApprovalEntity)
 export const decodeFleetSteerEntity = S.decodeUnknownSync(FleetSteerEntity)
 export const encodeFleetSteerEntity = S.encodeSync(FleetSteerEntity)

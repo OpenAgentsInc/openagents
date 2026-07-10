@@ -1,5 +1,6 @@
 import {
   canonicalJson,
+  decodeFleetApprovalEntity,
   decodeFleetAttemptEntity,
   decodeFleetWorkUnitEntity,
   FleetAttemptExactUsageEvidence,
@@ -7,6 +8,7 @@ import {
   FleetAttemptNotMeasuredUsageEvidence,
   fleetRunScope,
   type FleetAttemptEntity,
+  type FleetApprovalEntity,
   type FleetWorkUnitEntity,
   type SyncScope,
 } from "@openagentsinc/khala-sync"
@@ -120,6 +122,11 @@ const AccountRefHash = S.String.check(
   S.isPattern(
     /^account\.pylon\.(?:codex|claude_agent|grok)\.[a-f0-9]{24}$/u,
   ),
+)
+const ApprovalToolClass = S.String.check(
+  S.isMinLength(1),
+  S.isMaxLength(64),
+  S.isPattern(/^[a-z][a-z0-9_]*$/u),
 )
 const BlockerRef = S.String.check(
   S.isPattern(/^blocker\.[A-Za-z0-9][A-Za-z0-9._:-]{0,171}$/u),
@@ -372,6 +379,19 @@ export const FleetRunWorkProgressExecutionEventV2 = S.Struct({
   kind: S.Literal("work_progress"),
   ...FleetRunExecutionV2WorkFields,
 })
+export const FleetRunApprovalRequestedExecutionEventV2 = S.Struct({
+  ...FleetRunExecutionEventV2Base.fields,
+  kind: S.Literal("approval_requested"),
+  unitRef: PlanUnitRef,
+  workClaimRef: ProjectedExecutionPublicRef,
+  assignmentRef: S.optionalKey(ProjectedExecutionPublicRef),
+  workerKind: S.Literals(["codex", "claude", "grok"]),
+  workerRef: ProjectedExecutionPublicRef,
+  accountRefHash: S.optionalKey(AccountRefHash),
+  approvalRef: ProjectedExecutionPublicRef,
+  toolClass: ApprovalToolClass,
+  blockerRefs: S.Array(BlockerRef).check(S.isMinLength(1), S.isMaxLength(32)),
+})
 export const FleetRunVerifiedEvidenceV2 = S.Struct({
   truth: S.Literal("passed"),
   verifierRef: ProjectedExecutionPublicRef,
@@ -438,6 +458,7 @@ export const FleetRunTerminalExecutionEventV2 = S.Struct({
 export const FleetRunExecutionEventV2 = S.Union([
   FleetRunStartedExecutionEventV2,
   FleetRunWorkProgressExecutionEventV2,
+  FleetRunApprovalRequestedExecutionEventV2,
   FleetRunAcceptedWorkTerminalExecutionEventV2,
   FleetRunFailedWorkTerminalExecutionEventV2,
   FleetRunTerminalExecutionEventV2,
@@ -881,11 +902,12 @@ export const decodeFleetRunExecutionBatch = (
       }
       return
     }
-    if (event.kind === "work_progress") {
+    if (event.kind === "work_progress" || event.kind === "approval_requested") {
       if (
         (event.accountRefHash !== undefined &&
           !accountHashMatchesWorker(event.workerKind, event.accountRefHash)) ||
-        event.blockerRefs.length > 32
+        event.blockerRefs.length > 32 ||
+        (event.kind === "approval_requested" && event.blockerRefs.length < 1)
       ) {
         throw invalidRequest()
       }
@@ -2141,11 +2163,15 @@ const executionEventFromRow = (
       row.event_ref !== event.eventRef ||
       row.event_kind !== event.kind ||
       row.unit_ref !==
-        (event.kind === "work_progress" || event.kind === "work_terminal"
+        (event.kind === "work_progress" ||
+        event.kind === "approval_requested" ||
+        event.kind === "work_terminal"
           ? event.unitRef
           : null) ||
       row.work_claim_ref !==
-        (event.kind === "work_progress" || event.kind === "work_terminal"
+        (event.kind === "work_progress" ||
+        event.kind === "approval_requested" ||
+        event.kind === "work_terminal"
           ? event.workClaimRef
           : null) ||
       row.observed_at !== event.observedAt ||
@@ -2223,11 +2249,15 @@ const insertExecutionEvent = async (
   nowIso: string,
 ): Promise<void> => {
   const unitRef =
-    event.kind === "work_progress" || event.kind === "work_terminal"
+    event.kind === "work_progress" ||
+    event.kind === "approval_requested" ||
+    event.kind === "work_terminal"
       ? event.unitRef
       : null
   const workClaimRef =
-    event.kind === "work_progress" || event.kind === "work_terminal"
+    event.kind === "work_progress" ||
+    event.kind === "approval_requested" ||
+    event.kind === "work_terminal"
       ? event.workClaimRef
       : null
   await sql`
@@ -2248,7 +2278,12 @@ const projectAttemptForEvent = async (
   input: FleetRunAuthorityAppendExecutionInput,
   event: Extract<
     FleetRunExecutionEvent,
-    { readonly kind: "work_progress" | "work_terminal" }
+    {
+      readonly kind:
+        | "work_progress"
+        | "approval_requested"
+        | "work_terminal"
+    }
   >,
   nowIso: string,
 ): Promise<Readonly<{
@@ -2263,6 +2298,13 @@ const projectAttemptForEvent = async (
   const existingRow = existingRows[0]
   const existing =
     existingRow === undefined ? undefined : attemptEntityFromRow(existingRow)
+  if (event.kind === "approval_requested" && existing === undefined) {
+    throw fixedError(
+      "claim_conflict",
+      "fleet approval requires an active exact work attempt",
+      { runRef: input.runRef },
+    )
+  }
   if (
     existing !== undefined &&
     (existingRow?.owner_user_id !== input.ownerUserId ||
@@ -2539,6 +2581,80 @@ const projectAttemptForEvent = async (
   return { attempt: projectedAttempt, workUnit }
 }
 
+const projectApprovalRequestedForEvent = async (
+  sql: SqlTag,
+  input: FleetRunAuthorityAppendExecutionInput,
+  event: typeof FleetRunApprovalRequestedExecutionEventV2.Type,
+  attempt: FleetAttemptEntity,
+  nowIso: string,
+): Promise<FleetApprovalEntity> => {
+  // Approval refs are global public identities even though their post-images
+  // live in run-scoped Sync logs. This closes the concurrent first-writer race
+  // without introducing a second approval authority table.
+  await sql`SELECT pg_advisory_xact_lock(hashtextextended(${event.approvalRef}, 0))`
+  const rows: Array<{ scope: string; post_image_json: string | object }> =
+    await sql`
+      SELECT scope, post_image_json
+      FROM khala_sync_changelog
+      WHERE entity_type = 'fleet_approval'
+        AND entity_id = ${event.approvalRef}
+        AND op = 'upsert'
+      ORDER BY committed_at DESC, version DESC
+      LIMIT 1
+      FOR UPDATE
+    `
+  const stored = rows[0]
+  const raw = stored?.post_image_json
+  if (raw !== undefined) {
+    let current: FleetApprovalEntity
+    try {
+      current = decodeFleetApprovalEntity(
+        typeof raw === "string" ? JSON.parse(raw) : raw,
+      )
+    } catch {
+      throw fixedError(
+        "storage_unavailable",
+        "fleet approval projection failed integrity validation",
+        { runRef: input.runRef },
+      )
+    }
+    if (
+      current.status !== "pending" ||
+      stored?.scope !== fleetRunScope(input.runRef) ||
+      !("runRef" in current) ||
+      current.runRef !== input.runRef ||
+      current.workUnitRef !== event.unitRef ||
+      current.attemptRef !== event.workClaimRef ||
+      current.assignmentRef !== attempt.assignmentRef ||
+      current.workerId !== event.workerRef ||
+      current.accountRefHash !== attempt.accountRefHash ||
+      current.requestEventRef !== event.eventRef ||
+      current.toolClass !== event.toolClass
+    ) {
+      throw fixedError(
+        "idempotency_conflict",
+        "fleet approval ref is already bound to another exact attempt",
+        { runRef: input.runRef },
+      )
+    }
+    return current
+  }
+  return decodeFleetApprovalEntity({
+    approvalRef: event.approvalRef,
+    status: "pending",
+    runRef: input.runRef,
+    workUnitRef: event.unitRef,
+    attemptRef: event.workClaimRef,
+    assignmentRef: attempt.assignmentRef,
+    workerId: event.workerRef,
+    accountRefHash: attempt.accountRefHash,
+    requestEventRef: event.eventRef,
+    toolClass: event.toolClass,
+    openedAt: nowIso,
+    updatedAt: nowIso,
+  })
+}
+
 const insertTerminalCloseout = async (
   sql: SqlTag,
   runRef: string,
@@ -2653,7 +2769,9 @@ const appendFleetRunExecutionEvents = async (
     for (const row of storedWorkEventRows) {
       const event = executionEventFromRow(row)
       if (
-        (event.kind !== "work_progress" && event.kind !== "work_terminal") ||
+        (event.kind !== "work_progress" &&
+          event.kind !== "approval_requested" &&
+          event.kind !== "work_terminal") ||
         row.owner_user_id !== input.ownerUserId ||
         row.pylon_ref !== input.pylonRef ||
         row.intake_claim_ref !== input.batch.claimRef
@@ -2779,6 +2897,7 @@ const appendFleetRunExecutionEvents = async (
         executionStartedAt = nowIso
       } else if (
         event.kind === "work_progress" ||
+        event.kind === "approval_requested" ||
         event.kind === "work_terminal"
       ) {
         if (!knownUnits.has(event.unitRef)) {
@@ -2828,7 +2947,11 @@ const appendFleetRunExecutionEvents = async (
       }
 
       await insertExecutionEvent(writer.sql, input, event, nowIso)
-      if (event.kind === "work_progress" || event.kind === "work_terminal") {
+      if (
+        event.kind === "work_progress" ||
+        event.kind === "approval_requested" ||
+        event.kind === "work_terminal"
+      ) {
         const projection = await projectAttemptForEvent(
           writer.sql,
           input,
@@ -2845,6 +2968,25 @@ const appendFleetRunExecutionEvents = async (
           },
           FLEET_RUN_AUTHORITY_EXECUTION_MUTATION_REF,
         )
+        if (event.kind === "approval_requested") {
+          const approval = await projectApprovalRequestedForEvent(
+            writer.sql,
+            input,
+            event,
+            projection.attempt,
+            nowIso,
+          )
+          await appendFleetEntityChange(
+            writer,
+            input.runRef,
+            {
+              kind: "fleet_approval",
+              op: "upsert",
+              entity: approval,
+            },
+            FLEET_RUN_AUTHORITY_EXECUTION_MUTATION_REF,
+          )
+        }
         await appendFleetEntityChange(
           writer,
           input.runRef,

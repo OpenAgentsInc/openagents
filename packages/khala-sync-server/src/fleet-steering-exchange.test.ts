@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto"
+
 import { canonicalJson, fleetRunScope } from "@openagentsinc/khala-sync"
 import {
   FleetSteeringFollowUpCompletionRefKnownAnswer,
@@ -24,7 +26,11 @@ import {
   fleetRunPostImage,
   projectFleetEntitiesBestEffort,
 } from "./fleet-projection.js"
-import { makeFleetRunAuthorityRepository } from "./fleet-run-authority.js"
+import {
+  FLEET_RUN_EXECUTION_BATCH_SCHEMA_V2,
+  FLEET_RUN_EXECUTION_EVENT_SCHEMA_V2,
+  makeFleetRunAuthorityRepository,
+} from "./fleet-run-authority.js"
 import { runMigrations } from "./migrate.js"
 import type { SyncSql } from "./sql.js"
 import { hasLocalPostgres, startLocalPostgres } from "./test/local-postgres.js"
@@ -34,6 +40,22 @@ setDefaultTimeout(120_000)
 
 const FIXED_NOW = Date.parse("2026-07-09T23:00:00.000Z")
 const COMMIT = "6896b5cbcc7c7268d77b05f29f64c1d6f8951b18"
+
+const pylonExecutionEvent = <
+  const Event extends Readonly<Record<string, unknown>>,
+>(
+  runRef: string,
+  claimRef: string,
+  sequence: number,
+  event: Event,
+) => ({
+  ...event,
+  sequence,
+  eventRef: `event.pylon.fleet_run.${createHash("sha256")
+    .update(canonicalJson({ runRef, claimRef, event }))
+    .digest("hex")
+    .slice(0, 24)}`,
+})
 
 test("fleet steering outcome ref matches the shared known-answer vector", async () => {
   expect(
@@ -183,6 +205,63 @@ describe.skipIf(!hasLocalPostgres())(
         runRef: run.record.runRef,
         claimRef: claimed.claim.claimRef,
       }
+    }
+
+    const seedExactApproval = async (
+      fixture: Awaited<ReturnType<typeof startAndAccept>>,
+      input: Readonly<{
+        approvalRef: string
+        attemptRef: string
+        assignmentRef: string
+        workerRef: string
+        toolClass: string
+      }>,
+    ) => {
+      const accountRefHash = `account.pylon.codex.${"a".repeat(24)}`
+      const events = [
+        pylonExecutionEvent(fixture.runRef, fixture.claimRef, 1, {
+          schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA_V2,
+          observedAt: new Date(FIXED_NOW).toISOString(),
+          kind: "run_started",
+        }),
+        pylonExecutionEvent(fixture.runRef, fixture.claimRef, 2, {
+          schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA_V2,
+          observedAt: new Date(FIXED_NOW + 1_000).toISOString(),
+          kind: "work_progress",
+          unitRef: "issue.8639",
+          workClaimRef: input.attemptRef,
+          assignmentRef: input.assignmentRef,
+          workerKind: "codex",
+          accountRefHash,
+          blockerRefs: [],
+        }),
+        pylonExecutionEvent(fixture.runRef, fixture.claimRef, 3, {
+          schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA_V2,
+          observedAt: new Date(FIXED_NOW + 2_000).toISOString(),
+          kind: "approval_requested",
+          unitRef: "issue.8639",
+          workClaimRef: input.attemptRef,
+          workerKind: "codex",
+          workerRef: input.workerRef,
+          approvalRef: input.approvalRef,
+          toolClass: input.toolClass,
+          blockerRefs: ["blocker.approval_required"],
+        }),
+      ]
+      const result = await Effect.runPromise(
+        authority().appendExecutionEvents({
+          ownerUserId: fixture.ownerUserId,
+          pylonRef: fixture.pylonRef,
+          runRef: fixture.runRef,
+          batch: {
+            schema: FLEET_RUN_EXECUTION_BATCH_SCHEMA_V2,
+            claimRef: fixture.claimRef,
+            events,
+          },
+        }),
+      )
+      expect(result.ack.acceptedThroughSequence).toBe(3)
+      return { accountRefHash, requestEventRef: events[2]!.eventRef }
     }
 
     const insertIntent = async (
@@ -612,6 +691,67 @@ describe.skipIf(!hasLocalPostgres())(
       expect(conflict.kind).toBe("idempotency_conflict")
     })
 
+    test("decodes legacy pending approvals but refuses them at the decision boundary", async () => {
+      const fixture = await startAndAccept("legacy-approval")
+      const intent = {
+        schema: "khala.fleet_intent.v1" as const,
+        intentId: "intent.steering.approval.legacy",
+        createdAt: "2026-07-09T23:02:00.000Z",
+        origin: { surface: "web" as const },
+        idempotencyKey: "intent.steering.approval.legacy.idem",
+        runRef: fixture.runRef,
+        kind: "approval_decision" as const,
+        approvalRef: "approval.steering.legacy.1",
+        decision: "allow" as const,
+      }
+      const seq = await insertIntent(fixture, intent)
+      const projected = await projectFleetEntitiesBestEffort({
+        changes: [
+          {
+            kind: "fleet_approval",
+            op: "upsert",
+            entity: fleetApprovalPostImage({
+              approvalRef: intent.approvalRef,
+              status: "pending",
+              workerId: "worker.steering.legacy.1",
+              toolClass: "bash",
+              openedAt: intent.createdAt,
+              updatedAt: intent.createdAt,
+            }),
+          },
+        ],
+        ownerUserId: fixture.ownerUserId,
+        runId: fixture.runRef,
+        sql: sql as unknown as SyncSql,
+      })
+      expect(projected.ok).toBe(true)
+      await Effect.runPromise(
+        exchange().readPage({ ...fixture, after: 0, limit: 10 }),
+      )
+      const outcome = await outcomeFor(fixture, {
+        seq,
+        intentId: intent.intentId,
+        outcome: "applied",
+        observedAt: "2026-07-09T23:02:01.000Z",
+      })
+      const refused = await Effect.runPromise(
+        exchange()
+          .appendOutcomes({
+            ownerUserId: fixture.ownerUserId,
+            pylonRef: fixture.pylonRef,
+            runRef: fixture.runRef,
+            batch: { claimRef: fixture.claimRef, outcomes: [outcome] },
+          })
+          .pipe(Effect.flip),
+      )
+      expect(refused.kind).toBe("claim_conflict")
+      const stored: Array<{ count: string | number }> = await sql`
+        SELECT count(*) AS count FROM sarah_fleet_run_steering_outcomes
+        WHERE run_ref = ${fixture.runRef}
+      `
+      expect(Number(stored[0]!.count)).toBe(0)
+    })
+
     test("applied approval and queued steer project body-free requested-vs-effective outcomes", async () => {
       const fixture = await startAndAccept("privacy")
       const approval = {
@@ -639,26 +779,13 @@ describe.skipIf(!hasLocalPostgres())(
       }
       const approvalSeq = await insertIntent(fixture, approval)
       const steerSeq = await insertIntent(fixture, steer)
-      const projectedApproval = await projectFleetEntitiesBestEffort({
-        changes: [
-          {
-            kind: "fleet_approval",
-            op: "upsert",
-            entity: fleetApprovalPostImage({
-              approvalRef: approval.approvalRef,
-              status: "pending",
-              workerId: "worker.steering.codex.1",
-              toolClass: "bash",
-              openedAt: "2026-07-09T23:03:00.000Z",
-              updatedAt: "2026-07-09T23:03:00.000Z",
-            }),
-          },
-        ],
-        ownerUserId: fixture.ownerUserId,
-        runId: fixture.runRef,
-        sql: sql as unknown as SyncSql,
+      await seedExactApproval(fixture, {
+        approvalRef: approval.approvalRef,
+        attemptRef: "work_claim.steering.privacy.1",
+        assignmentRef: "assignment.steering.privacy.1",
+        workerRef: "worker.steering.codex.1",
+        toolClass: "bash",
       })
-      expect(projectedApproval.ok).toBe(true)
       const approvalOutcome = await outcomeFor(fixture, {
         seq: approvalSeq,
         intentId: approval.intentId,
@@ -730,9 +857,18 @@ describe.skipIf(!hasLocalPostgres())(
         .at(-1)?.post_image_json
       const approvalImage =
         typeof approvalRaw === "string"
-          ? (JSON.parse(approvalRaw) as { status?: string })
-          : (approvalRaw as { status?: string } | undefined)
-      expect(approvalImage?.status).toBe("allowed")
+          ? (JSON.parse(approvalRaw) as Record<string, unknown>)
+          : (approvalRaw as Record<string, unknown> | undefined)
+      expect(approvalImage).toMatchObject({
+        status: "allowed",
+        runRef: fixture.runRef,
+        workUnitRef: "issue.8639",
+        attemptRef: "work_claim.steering.privacy.1",
+        assignmentRef: "assignment.steering.privacy.1",
+        accountRefHash: `account.pylon.codex.${"a".repeat(24)}`,
+        workerId: "worker.steering.codex.1",
+        toolClass: "bash",
+      })
 
       const outcomes: Array<Record<string, unknown>> = await sql`
         SELECT * FROM sarah_fleet_run_steering_outcomes
@@ -778,26 +914,13 @@ describe.skipIf(!hasLocalPostgres())(
       const approvalSeq = await insertIntent(fixture, approval)
       const steerSeq = await insertIntent(fixture, steer)
       const stopSeq = await insertIntent(fixture, stop)
-      const projectedApproval = await projectFleetEntitiesBestEffort({
-        changes: [
-          {
-            kind: "fleet_approval" as const,
-            op: "upsert" as const,
-            entity: fleetApprovalPostImage({
-              approvalRef: approval.approvalRef,
-              status: "pending",
-              workerId: "worker.steering.completion.1",
-              toolClass: "bash",
-              openedAt: approval.createdAt,
-              updatedAt: approval.createdAt,
-            }),
-          },
-        ],
-        ownerUserId: fixture.ownerUserId,
-        runId: fixture.runRef,
-        sql: sql as unknown as SyncSql,
+      await seedExactApproval(fixture, {
+        approvalRef: approval.approvalRef,
+        attemptRef: "work_claim.steering.completion.1",
+        assignmentRef: "assignment.steering.completion.1",
+        workerRef: "worker.steering.completion.1",
+        toolClass: "bash",
       })
-      expect(projectedApproval.ok).toBe(true)
       await Effect.runPromise(
         exchange().readPage({ ...fixture, after: 0, limit: 10 }),
       )

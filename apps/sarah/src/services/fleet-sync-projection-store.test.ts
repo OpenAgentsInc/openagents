@@ -97,7 +97,13 @@ const assignment = decodeFleetAssignmentEntity({
 const approval = decodeFleetApprovalEntity({
   approvalRef: "approval.fc3.codex",
   status: "pending",
+  runRef,
+  workUnitRef: "unit.fc3.reducer",
+  attemptRef: "work_claim.fc3.reducer.attempt-1",
+  assignmentRef: "assignment.fc3.codex",
   workerId: worker.workerId,
+  accountRefHash: "account.pylon.codex.11111111",
+  requestEventRef: `event.pylon.fleet_run.${"b".repeat(24)}`,
   toolClass: "write_file",
   openedAt: "2026-07-09T19:59:45.000Z",
   updatedAt: "2026-07-09T19:59:45.000Z",
@@ -816,6 +822,35 @@ describe("Sarah FC-3 fleet entity reducer", () => {
     expect(unsafeAttemptFailure).toMatchObject({ reason: "invalid_post_image" })
     expect(JSON.stringify(unsafeAttemptFailure)).not.toContain(
       "PRIVATE VERIFICATION SENTINEL",
+    )
+
+    const unsafeApproval = {
+      ...encodeFleetApprovalEntity(approval),
+      rawToolArgs: "PRIVATE APPROVAL ARGS SENTINEL",
+    }
+    let unsafeApprovalFailure: unknown
+    try {
+      reduceSarahFleetBootstrapPages([
+        bootstrapPage(
+          [
+            ...baseEntities.filter(
+              (row) => row.entityType !== FLEET_APPROVAL_ENTITY_TYPE,
+            ),
+            entity(
+              FLEET_APPROVAL_ENTITY_TYPE,
+              approval.approvalRef,
+              unsafeApproval,
+            ),
+          ],
+          { cursor: 10 },
+        ),
+      ])
+    } catch (error) {
+      unsafeApprovalFailure = error
+    }
+    expect(unsafeApprovalFailure).toMatchObject({ reason: "invalid_post_image" })
+    expect(JSON.stringify(unsafeApprovalFailure)).not.toContain(
+      "PRIVATE APPROVAL ARGS SENTINEL",
     )
 
     for (const usageEvidence of [

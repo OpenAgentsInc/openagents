@@ -303,7 +303,13 @@ const POST_IMAGE_KEYS = {
   [FLEET_APPROVAL_ENTITY_TYPE]: [
     "approvalRef",
     "status",
+    "runRef",
+    "workUnitRef",
+    "attemptRef",
+    "assignmentRef",
     "workerId",
+    "accountRefHash",
+    "requestEventRef",
     "toolClass",
     "openedAt",
     "decidedAt",

@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import {
   canonicalJson,
   decodeFleetAccountEntity,
+  decodeFleetApprovalEntity,
   decodeFleetAssignmentEntity,
   decodeFleetAttemptEntity,
   decodeFleetCommandOutcomeEntity,
@@ -174,6 +175,49 @@ describe("fleet entity contracts", () => {
     ).toThrow()
     expect(() =>
       decodeFleetAttemptEntity({ ...succeeded, rawPrompt: "private" }),
+    ).toThrow()
+  })
+
+  test("fleet approvals preserve legacy decoding and require complete exact bindings", () => {
+    const legacy = decodeFleetApprovalEntity({
+      approvalRef: "approval.fc3.legacy",
+      status: "pending",
+      workerId: "worker.fc3.legacy",
+      toolClass: "bash",
+      openedAt: "2026-07-09T23:00:00.000Z",
+      updatedAt: "2026-07-09T23:00:00.000Z",
+    })
+    expect(legacy).not.toHaveProperty("runRef")
+
+    const bound = {
+      ...legacy,
+      approvalRef: "approval.fc3.bound",
+      runRef: "fleet_run.sarah.0123456789abcdef0123",
+      workUnitRef: "unit-a",
+      attemptRef: "work_claim.unit-a.attempt-1",
+      assignmentRef: null,
+      accountRefHash: null,
+      requestEventRef: `event.pylon.fleet_run.${"a".repeat(24)}`,
+    }
+    expect(decodeFleetApprovalEntity(bound)).toMatchObject({
+      attemptRef: bound.attemptRef,
+      assignmentRef: null,
+      accountRefHash: null,
+    })
+    expect(() =>
+      decodeFleetApprovalEntity({ ...bound, requestEventRef: undefined }),
+    ).toThrow()
+    expect(() =>
+      decodeFleetApprovalEntity({
+        ...bound,
+        rawPrompt: "PRIVATE-SENTINEL-MUST-NOT-DECODE",
+      }),
+    ).toThrow()
+    expect(() =>
+      decodeFleetApprovalEntity({
+        ...bound,
+        workerId: "/Users/operator/private-worker",
+      }),
     ).toThrow()
   })
 

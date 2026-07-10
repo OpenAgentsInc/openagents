@@ -26,6 +26,7 @@ import {
   decodeFleetApprovalEntity,
   decodeFleetCommandOutcomeEntity,
   decodeFleetRunEntity,
+  fleetApprovalHasExactBinding,
   FLEET_APPROVAL_ENTITY_TYPE,
   type FleetCommandEffectiveOutcome,
   FLEET_RUN_ENTITY_TYPE,
@@ -749,14 +750,38 @@ const appendEffectiveProjection = async (
       )
     }
     const current = decodeFleetApprovalPostImage(raw)
-    const desiredStatus = intent.decision === "allow" ? "allowed" : "denied"
-    if (current.status !== "pending" && current.status !== desiredStatus) {
+    if (
+      current.status !== "pending" ||
+      !fleetApprovalHasExactBinding(current) ||
+      current.runRef !== runRef
+    ) {
       throw fixedError(
         "claim_conflict",
-        "fleet approval outcome conflicts with the effective approval state",
+        "fleet approval outcome requires a pending exact run-attempt binding",
         { runRef },
       )
     }
+    const activeAttempts: Array<{ active: boolean }> = await writer.sql`
+      SELECT true AS active
+      FROM sarah_fleet_run_attempts
+      WHERE run_ref = ${runRef}
+        AND work_unit_ref = ${current.workUnitRef}
+        AND attempt_ref = ${current.attemptRef}
+        AND state = 'running'
+        AND progress_class = 'blocked'
+        AND assignment_ref IS NOT DISTINCT FROM ${current.assignmentRef}
+        AND account_ref_hash IS NOT DISTINCT FROM ${current.accountRefHash}
+      LIMIT 1
+      FOR UPDATE
+    `
+    if (activeAttempts[0]?.active !== true) {
+      throw fixedError(
+        "claim_conflict",
+        "fleet approval outcome no longer names the active blocked attempt",
+        { runRef },
+      )
+    }
+    const desiredStatus = intent.decision === "allow" ? "allowed" : "denied"
     await appendFleetEntityChange(
       writer,
       runRef,

@@ -342,7 +342,13 @@ export const fleetAccountPostImage = (
 export interface RawFleetApprovalRow {
   readonly approvalRef: string
   readonly status: string
+  readonly runRef?: string | null
+  readonly workUnitRef?: string | null
+  readonly attemptRef?: string | null
+  readonly assignmentRef?: string | null
   readonly workerId?: string | null
+  readonly accountRefHash?: string | null
+  readonly requestEventRef?: string | null
   readonly toolClass?: string | null
   readonly openedAt?: string | Date | null
   readonly decidedAt?: string | Date | null
@@ -354,7 +360,19 @@ export const fleetApprovalPostImage = (
 ): FleetApprovalEntity =>
   decodeFleetApprovalEntity({
     approvalRef: row.approvalRef,
+    ...(row.runRef == null ? {} : { runRef: row.runRef }),
+    ...(row.workUnitRef == null ? {} : { workUnitRef: row.workUnitRef }),
+    ...(row.attemptRef == null ? {} : { attemptRef: row.attemptRef }),
+    ...(row.assignmentRef === undefined
+      ? {}
+      : { assignmentRef: row.assignmentRef }),
     ...(row.workerId == null ? {} : { workerId: row.workerId }),
+    ...(row.accountRefHash === undefined
+      ? {}
+      : { accountRefHash: row.accountRefHash }),
+    ...(row.requestEventRef == null
+      ? {}
+      : { requestEventRef: row.requestEventRef }),
     ...(row.toolClass == null ? {} : { toolClass: row.toolClass }),
     ...(row.openedAt == null ? {} : { openedAt: toIso(row.openedAt) }),
     ...(row.decidedAt == null ? {} : { decidedAt: toIso(row.decidedAt) }),

@@ -1,6 +1,10 @@
 import { createHash } from "node:crypto"
 
-import { canonicalJson, fleetRunScope } from "@openagentsinc/khala-sync"
+import {
+  canonicalJson,
+  decodeFleetApprovalEntity,
+  fleetRunScope,
+} from "@openagentsinc/khala-sync"
 import { SQL } from "bun"
 import {
   afterAll,
@@ -466,6 +470,44 @@ describe("FleetRun authority request boundary", () => {
       ).toThrow(FleetRunAuthorityError)
     }
   })
+
+  test("v2 approval requests require bounded public-safe exact binding metadata", () => {
+    const claimRef = `claim.sarah_fleet_run.${"d".repeat(24)}`
+    const approval = pylonExecutionEvent(FIXTURE_RUN_REF, claimRef, 1, {
+      schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA_V2,
+      observedAt: "2026-07-09T22:00:00.000Z",
+      kind: "approval_requested",
+      unitRef: "unit-a",
+      workClaimRef: "work_claim.unit-a.attempt-1",
+      workerKind: "codex",
+      workerRef: "worker.codex.slot-1",
+      approvalRef: "approval.unit-a.tool-1",
+      toolClass: "write_file",
+      blockerRefs: ["blocker.approval_required"],
+    })
+    expect(
+      decodeFleetRunExecutionBatch({
+        schema: FLEET_RUN_EXECUTION_BATCH_SCHEMA_V2,
+        claimRef,
+        events: [approval],
+      }).events[0],
+    ).toMatchObject({ kind: "approval_requested" })
+
+    for (const invalid of [
+      { ...approval, workerRef: undefined },
+      { ...approval, blockerRefs: [] },
+      { ...approval, rawToolArgs: "PRIVATE TOOL ARGS SENTINEL" },
+      { ...approval, workerRef: "/Users/operator/private-worker" },
+    ]) {
+      expect(() =>
+        decodeFleetRunExecutionBatch({
+          schema: FLEET_RUN_EXECUTION_BATCH_SCHEMA_V2,
+          claimRef,
+          events: [invalid],
+        }),
+      ).toThrow(FleetRunAuthorityError)
+    }
+  })
 })
 
 describe.skipIf(!hasLocalPostgres())(
@@ -487,6 +529,9 @@ describe.skipIf(!hasLocalPostgres())(
       )
       expect(migrated.applied).toContain(
         "0056_sarah_fleet_run_attempts.sql",
+      )
+      expect(migrated.applied).toContain(
+        "0057_sarah_fleet_run_approval_requested.sql",
       )
       sql = new SQL({ url, max: 12 })
     })
@@ -1352,6 +1397,186 @@ describe.skipIf(!hasLocalPostgres())(
       expect(serialized).toContain('"totalTokens":13')
       expect(serialized).toContain('"tokenUsageRefs":["usage_row.unit-a.1"]')
       expect(serialized).not.toContain(ownerUserId)
+    })
+
+    test("projects an exact approval against the active attempt using server receipt time", async () => {
+      const ownerUserId = "user-execution-approval-owner"
+      const pylonRef = "pylon-execution-approval"
+      const run = await start(ownerUserId, "execution-approval-1", {
+        workSource: {
+          kind: "plan_dag",
+          planRef: "plan.execution.approval",
+          units: [{ unitRef: "unit-a", title: "Unit A", dependsOn: [] }],
+        },
+      })
+      await seedPylon({ pylonRef, ownerUserId })
+      const claimRef = await claimAndAccept({
+        ownerUserId,
+        pylonRef,
+        runRef: run.record.runRef,
+        claimIdempotencyKey: "execution-approval-claim-1",
+      })
+      const assignmentRef = "assignment.unit-a.approval-edge"
+      const accountRefHash = `account.pylon.codex.${"f".repeat(24)}`
+      const approvalRef = "approval.unit-a.write-file-1"
+      const events = [
+        pylonExecutionEvent(run.record.runRef, claimRef, 1, {
+          schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA_V2,
+          observedAt: "2026-07-09T22:00:01.000Z",
+          kind: "run_started",
+        }),
+        pylonExecutionEvent(run.record.runRef, claimRef, 2, {
+          schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA_V2,
+          observedAt: "2026-07-09T21:59:59.000Z",
+          kind: "work_progress",
+          unitRef: "unit-a",
+          workClaimRef: "work_claim.unit-a.approval-attempt-1",
+          assignmentRef,
+          workerKind: "codex",
+          accountRefHash,
+          blockerRefs: [],
+        }),
+        pylonExecutionEvent(run.record.runRef, claimRef, 3, {
+          schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA_V2,
+          observedAt: "2026-07-09T21:59:58.000Z",
+          kind: "approval_requested",
+          unitRef: "unit-a",
+          workClaimRef: "work_claim.unit-a.approval-attempt-1",
+          workerKind: "codex",
+          workerRef: "worker.codex.approval-slot-1",
+          approvalRef,
+          toolClass: "write_file",
+          blockerRefs: ["blocker.approval_required"],
+        }),
+      ]
+      const first = await Effect.runPromise(
+        repository().appendExecutionEvents({
+          ownerUserId,
+          pylonRef,
+          runRef: run.record.runRef,
+          batch: {
+            schema: FLEET_RUN_EXECUTION_BATCH_SCHEMA_V2,
+            claimRef,
+            events,
+          },
+        }),
+      )
+      expect(first.ack).toMatchObject({
+        acceptedThroughSequence: 3,
+        storedEventCount: 3,
+        execution: { counters: { activeAssignments: 1 } },
+      })
+
+      const images: Array<{ post_image_json: string | object }> = await sql`
+        SELECT post_image_json FROM khala_sync_changelog
+        WHERE scope = ${run.record.scope}
+          AND entity_type = 'fleet_approval'
+          AND entity_id = ${approvalRef}
+        ORDER BY version DESC
+      `
+      const raw = images[0]!.post_image_json
+      const approval = decodeFleetApprovalEntity(
+        typeof raw === "string" ? JSON.parse(raw) : raw,
+      )
+      expect(approval).toMatchObject({
+        approvalRef,
+        status: "pending",
+        runRef: run.record.runRef,
+        workUnitRef: "unit-a",
+        attemptRef: "work_claim.unit-a.approval-attempt-1",
+        assignmentRef,
+        accountRefHash,
+        workerId: "worker.codex.approval-slot-1",
+        requestEventRef: events[2]!.eventRef,
+        toolClass: "write_file",
+        openedAt: new Date(FIXED_NOW).toISOString(),
+        updatedAt: new Date(FIXED_NOW).toISOString(),
+      })
+      const blockedAttempts: Array<{
+        state: string
+        progress_class: string
+        last_event_ref: string
+        last_observed_at: string
+        remote_observed_at: string
+        terminal_at: string | null
+      }> = await sql`
+        SELECT state, progress_class, last_event_ref, last_observed_at,
+               remote_observed_at, terminal_at
+        FROM sarah_fleet_run_attempts
+        WHERE run_ref = ${run.record.runRef}
+          AND attempt_ref = 'work_claim.unit-a.approval-attempt-1'
+      `
+      expect(blockedAttempts).toEqual([
+        {
+          state: "running",
+          progress_class: "blocked",
+          last_event_ref: events[2]!.eventRef,
+          last_observed_at: new Date(FIXED_NOW).toISOString(),
+          remote_observed_at: "2026-07-09T21:59:58.000Z",
+          terminal_at: null,
+        },
+      ])
+
+      const replay = await Effect.runPromise(
+        repository().appendExecutionEvents({
+          ownerUserId,
+          pylonRef,
+          runRef: run.record.runRef,
+          batch: {
+            schema: FLEET_RUN_EXECUTION_BATCH_SCHEMA_V2,
+            claimRef,
+            events,
+          },
+        }),
+      )
+      expect(replay.ack).toMatchObject({
+        acceptedThroughSequence: 3,
+        storedEventCount: 0,
+        duplicateEventCount: 3,
+      })
+
+      const conflict = await Effect.runPromise(
+        repository()
+          .appendExecutionEvents({
+            ownerUserId,
+            pylonRef,
+            runRef: run.record.runRef,
+            batch: {
+              schema: FLEET_RUN_EXECUTION_BATCH_SCHEMA_V2,
+              claimRef,
+              events: [
+                pylonExecutionEvent(run.record.runRef, claimRef, 4, {
+                  schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA_V2,
+                  observedAt: "2026-07-09T22:00:04.000Z",
+                  kind: "work_progress",
+                  unitRef: "unit-a",
+                  workClaimRef: "work_claim.unit-a.approval-attempt-2",
+                  workerKind: "codex",
+                  blockerRefs: [],
+                }),
+                pylonExecutionEvent(run.record.runRef, claimRef, 5, {
+                  schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA_V2,
+                  observedAt: "2026-07-09T22:00:05.000Z",
+                  kind: "approval_requested",
+                  unitRef: "unit-a",
+                  workClaimRef: "work_claim.unit-a.approval-attempt-2",
+                  workerKind: "codex",
+                  workerRef: "worker.codex.approval-slot-2",
+                  approvalRef,
+                  toolClass: "bash",
+                  blockerRefs: ["blocker.approval_required"],
+                }),
+              ],
+            },
+          })
+          .pipe(Effect.flip),
+      )
+      expect(conflict.kind).toBe("idempotency_conflict")
+      const rolledBack: Array<{ count: string | number }> = await sql`
+        SELECT count(*) AS count FROM sarah_fleet_run_execution_events
+        WHERE run_ref = ${run.record.runRef}
+      `
+      expect(Number(rolledBack[0]!.count)).toBe(3)
     })
 
     test("accepts reordered remote clocks while server receipt time remains authoritative", async () => {

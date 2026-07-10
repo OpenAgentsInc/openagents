@@ -1,0 +1,14 @@
+{
+  "approvalRef": "approval.fc3.unit-a.tool-1",
+  "status": "pending",
+  "runRef": "fleet_run.sarah.0123456789abcdef0123",
+  "workUnitRef": "unit-a",
+  "attemptRef": "work_claim.unit-a.attempt-1",
+  "assignmentRef": "assignment.unit-a.edge-1",
+  "workerId": "worker.codex.slot-1",
+  "accountRefHash": "account.pylon.codex.aaaaaaaaaaaaaaaaaaaaaaaa",
+  "requestEventRef": "event.pylon.fleet_run.bbbbbbbbbbbbbbbbbbbbbbbb",
+  "toolClass": "write_file",
+  "openedAt": "2026-07-09T22:00:00.000Z",
+  "updatedAt": "2026-07-09T22:00:00.000Z"
+}
