@@ -285,6 +285,41 @@ describe('portal client routes (PORTAL-1 #8652)', () => {
     expect(pinned?.clientUserId).toBe('user_a')
   })
 
+  test('an EMAIL-provider client (email:<address> user id) reads their email-bound engagement and pins it (#8652 reopen)', async () => {
+    // Regression: the SAFE_REF-only guard rejected `email:*` user ids ("@"
+    // not in the pattern), so email-login clients — the audience the email
+    // binding exists for — could never read even their own engagement.
+    const db = makeDb()
+    const { store, engagement } = await seedEngagementWithItems(db)
+    const routes = makeRoutes(db, {
+      session: {
+        user: {
+          userId: 'email:client-a@example.com',
+          email: 'client-a@example.com',
+        },
+      },
+    })
+
+    const response = await run(
+      routes,
+      jsonRequest('GET', '/api/portal/engagement'),
+    )
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as { engagement: { id: string } }
+    expect(body.engagement.id).toBe(engagement.id)
+
+    // The first visit pins the email-provider user id like any other id.
+    const pinned = await store.readEngagementById(engagement.id)
+    expect(pinned?.clientUserId).toBe('email:client-a@example.com')
+
+    // And the pinned id keeps resolving on subsequent visits (by-user path).
+    const again = await store.readEngagementForClient({
+      userId: 'email:client-a@example.com',
+      email: null,
+    })
+    expect(again?.id).toBe(engagement.id)
+  })
+
   test('openagents_web.portal_owner_scoped_engagement.v1: a client can NEVER read another engagement', async () => {
     const db = makeDb()
     const { store, engagement, items } = await seedEngagementWithItems(db)

@@ -79,6 +79,26 @@ const normalizedEmail = (value: string): string => value.trim().toLowerCase()
 const isEmailShaped = (value: string): boolean =>
   /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) && value.length <= 320
 
+/**
+ * Session user ids come in two shapes: provider refs (`github:14167547`,
+ * SAFE_REF) and email-provider subjects (`email:chris@example.com`, whose
+ * `@` SAFE_REF rejects). #8652 reopen: the original SAFE_REF-only guard made
+ * every email-login client unable to read even their OWN engagement — the
+ * exact audience the email binding exists for. All lookups bind the id as a
+ * query parameter, so this validation is shape/bound defense only.
+ */
+const isClientUserIdShaped = (value: string): boolean =>
+  SAFE_REF_PATTERN.test(value) ||
+  (value.startsWith('email:') && isEmailShaped(value.slice('email:'.length)))
+
+const assertClientUserId = (field: string, value: string): void => {
+  if (!isClientUserIdShaped(value)) {
+    throw new PortalValidationError(
+      `${field} must be a bounded session user id`,
+    )
+  }
+}
+
 export type PortalEngagement = Readonly<{
   id: string
   name: string
@@ -274,7 +294,7 @@ export const makeD1PortalStore = (db: D1Database): PortalStore => {
         ? null
         : input.clientUserId.trim()
     if (userId !== null) {
-      assertSafeRef('clientUserId', userId)
+      assertClientUserId('clientUserId', userId)
     }
     const email =
       input.clientEmail == null || input.clientEmail.trim() === ''
@@ -321,7 +341,7 @@ export const makeD1PortalStore = (db: D1Database): PortalStore => {
     userId: string
     email: string | null
   }): Promise<PortalEngagement | null> => {
-    if (!SAFE_REF_PATTERN.test(identity.userId)) return null
+    if (!isClientUserIdShaped(identity.userId)) return null
 
     const byUser = await db
       .prepare(
