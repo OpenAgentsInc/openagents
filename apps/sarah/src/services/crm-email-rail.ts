@@ -290,8 +290,12 @@ export async function enqueueSarahEmailDraft(
         threadId: draft.prospectRef ?? `email:${draft.to}`,
         messageId: null,
         continuationToken: draftRef,
-        contactId: draft.contactId,
-        sourceRef: draft.sourceRef,
+        ...(draft.contactId === undefined
+          ? {}
+          : { contactId: draft.contactId }),
+        ...(draft.sourceRef === undefined
+          ? {}
+          : { sourceRef: draft.sourceRef }),
         forcedStatus: "suppressed",
         reviewNote: `Suppressed by ${suppressed.reason} at ${suppressed.createdAt}.`,
       })
@@ -315,8 +319,12 @@ export async function enqueueSarahEmailDraft(
         threadId: draft.prospectRef ?? `email:${draft.to}`,
         messageId: null,
         continuationToken: draftRef,
-        contactId: draft.contactId,
-        sourceRef: draft.sourceRef,
+        ...(draft.contactId === undefined
+          ? {}
+          : { contactId: draft.contactId }),
+        ...(draft.sourceRef === undefined
+          ? {}
+          : { sourceRef: draft.sourceRef }),
         forcedStatus: "pending_approval",
       })
       return {
@@ -381,10 +389,10 @@ export async function enqueueSarahEmailDraft(
   if (!isRichEnqueue(rich)) {
     throw new Error("unreachable: thin enqueue shape already handled")
   }
-  return persistLocalDraft({
-    ...rich,
-    forcedStatus: undefined,
-  })
+  const { forcedStatus: ignoredForcedStatus, ...richWithoutForcedStatus } =
+    rich as typeof rich & { forcedStatus?: unknown }
+  void ignoredForcedStatus
+  return persistLocalDraft(richWithoutForcedStatus)
 }
 
 async function persistLocalDraft(input: {
@@ -439,8 +447,8 @@ async function persistLocalDraft(input: {
     sendError: null,
     providerMessageId: null,
     channel: "crm_operator_rail",
-    contactId: input.contactId,
-    sourceRef: input.sourceRef,
+    ...(input.contactId === undefined ? {} : { contactId: input.contactId }),
+    ...(input.sourceRef === undefined ? {} : { sourceRef: input.sourceRef }),
   }
 
   writeQueue = writeQueue.then(async () => {

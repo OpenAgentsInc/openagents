@@ -833,7 +833,6 @@ export async function* streamSarahGemmaReply({
     yield { type: "error", error: "google_inference_not_armed" }
     return
   }
-  const model = sarahTextModel()
   const baseUrl = (
     process.env.SARAH_GOOGLE_INFERENCE_BASE_URL?.trim() || BASE_URL_DEFAULT
   ).replace(/\/+$/, "")

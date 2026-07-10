@@ -134,9 +134,15 @@ async function handleRealtimeToken(request: Request): Promise<Response> {
       { error: guard.error },
       {
         status: guard.status,
-        headers: guard.error.retryAfterMs
-          ? { "retry-after": String(Math.ceil(guard.error.retryAfterMs / 1000)) }
-          : undefined,
+        ...(guard.error.retryAfterMs
+          ? {
+              headers: {
+                "retry-after": String(
+                  Math.ceil(guard.error.retryAfterMs / 1000),
+                ),
+              },
+            }
+          : {}),
       },
     )
     if (guard.prospectRef && guard.setProspectCookie) {
@@ -322,12 +328,16 @@ async function handleOperatorLearning(
         ? await approveLearningCandidate({
             id: decodeURIComponent(id!),
             by,
-            answerText: typeof body.answer === "string" ? body.answer : undefined,
+            ...(typeof body.answer === "string"
+              ? { answerText: body.answer }
+              : {}),
           })
         : await rejectLearningCandidate({
             id: decodeURIComponent(id!),
             by,
-            reason: typeof body.reason === "string" ? body.reason : undefined,
+            ...(typeof body.reason === "string"
+              ? { reason: body.reason }
+              : {}),
           })
     if (!result.ok) {
       const status = result.error === "candidate_not_found" ? 404 : 409
@@ -392,10 +402,9 @@ async function handleOperatorBlueprint(
             statement:
               typeof body.statement === "string" ? body.statement : "",
             heading: typeof body.heading === "string" ? body.heading : null,
-            format:
-              typeof body.format === "string"
-                ? (body.format as BlueprintFactFormat)
-                : undefined,
+            ...(typeof body.format === "string"
+              ? { format: body.format as BlueprintFactFormat }
+              : {}),
             source:
               typeof body.source === "string" ? body.source : "owner_directive",
             ref: typeof body.ref === "string" ? body.ref : null,
@@ -432,8 +441,9 @@ async function handleOperatorBlueprint(
       candidateId: typeof body.candidateId === "string" ? body.candidateId : "",
       by:
         typeof body.by === "string" && body.by.trim() ? body.by : "owner",
-      changeNote:
-        typeof body.changeNote === "string" ? body.changeNote : undefined,
+      ...(typeof body.changeNote === "string"
+        ? { changeNote: body.changeNote }
+        : {}),
     })
     if (!result.ok) {
       const status =
@@ -514,7 +524,7 @@ async function handleEveTurn(
       : undefined
   const result = await runOwnedSarahTurn({
     message: body.message ?? "",
-    threadId: body.threadId,
+    ...(body.threadId === undefined ? {} : { threadId: body.threadId }),
     prospectRef,
     ...(ownerSession ? { ownerRef: ownerSession.userId } : {}),
     relationshipPolicy: {
