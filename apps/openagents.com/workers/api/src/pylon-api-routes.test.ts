@@ -7,6 +7,7 @@ import {
   type FleetRunAuthorityClaimResult,
   FleetRunAuthorityError,
   type FleetRunExecutionBatch,
+  type FleetSteeringFollowUpCompletionAck,
   type FleetSteeringOutcomeAck,
   type FleetSteeringOutcomeBatch,
   type FleetSteeringPage,
@@ -4740,6 +4741,22 @@ describe('Pylon Sarah FleetRun steering exchange', () => {
     storedOutcomeCount: 1,
     duplicateOutcomeCount: 0,
   } as const satisfies FleetSteeringOutcomeAck
+  const completion = {
+    seq: 41,
+    intentId: intent.intentId,
+    state: 'applied' as const,
+    completionRef:
+      'completion.pylon.fleet_steering.4ac8b06de48bb7311f1c2064',
+    completedAt: '2026-07-09T23:00:02.000Z',
+  }
+  const completionAck = {
+    ok: true,
+    runRef,
+    claimRef,
+    completions: [completion],
+    storedCompletionCount: 1,
+    duplicateCompletionCount: 0,
+  } as const satisfies FleetSteeringFollowUpCompletionAck
 
   test('serves a strict no-store page with server-derived owner and Pylon authority', async () => {
     const store = new MemoryPylonApiStore()
@@ -4831,6 +4848,71 @@ describe('Pylon Sarah FleetRun steering exchange', () => {
     )
     expect(privatePayload.status).toBe(400)
     expect(appends).toHaveLength(1)
+  })
+
+  test('accepts only body-free terminal follow-up completions', async () => {
+    const store = new MemoryPylonApiStore()
+    await registerPylon(store, { tokenUserId: 'agent-one' })
+    const appends: Array<Record<string, unknown>> = []
+    const exchange = {
+      readPage: () => Effect.succeed(page),
+      appendOutcomes: () => Effect.succeed(ack),
+      appendCompletions: (
+        _env: Readonly<Record<string, unknown>>,
+        input: Record<string, unknown>,
+      ) =>
+        Effect.sync(() => {
+          appends.push(input)
+          return completionAck
+        }),
+    }
+    const path =
+      `/api/pylons/pylon.test.one/fleet-runs/${runRef}/steering/completions`
+    const response = await route(store, path, {
+      body: { claimRef, completions: [completion] },
+      fleetSteeringExchange: exchange,
+      method: 'POST',
+      openauthUserId: 'openauth-user-one',
+      tokenUserId: 'agent-one',
+    })
+    expect(response.status).toBe(200)
+    expect(response.headers.get('cache-control')).toContain('no-store')
+    expect(await responseJson(response)).toEqual(completionAck)
+    expect(appends).toEqual([
+      {
+        ownerUserId: 'openauth-user-one',
+        pylonRef: 'pylon.test.one',
+        runRef,
+        batch: { claimRef, completions: [completion] },
+      },
+    ])
+
+    const privatePayload = await route(store, path, {
+      body: {
+        claimRef,
+        completions: [
+          { ...completion, body: 'private steer detail' },
+        ],
+      },
+      fleetSteeringExchange: exchange,
+      method: 'POST',
+      tokenUserId: 'agent-one',
+    })
+    expect(privatePayload.status).toBe(400)
+    expect(appends).toHaveLength(1)
+
+    const missingBearer = await route(store, path, {
+      body: { claimRef, completions: [completion] },
+      fleetSteeringExchange: exchange,
+      method: 'POST',
+    })
+    expect(missingBearer.status).toBe(401)
+    const wrongMethod = await route(store, path, {
+      fleetSteeringExchange: exchange,
+      method: 'GET',
+      tokenUserId: 'agent-one',
+    })
+    expect(wrongMethod.status).toBe(405)
   })
 
   test('fails closed for wrong token, owner, Pylon, run, claim, query, and admin bearer', async () => {

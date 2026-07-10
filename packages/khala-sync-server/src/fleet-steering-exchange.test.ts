@@ -1,5 +1,8 @@
 import { canonicalJson, fleetRunScope } from "@openagentsinc/khala-sync"
-import { FleetSteeringOutcomeRefKnownAnswer } from "@openagentsinc/khala-fleet-intents"
+import {
+  FleetSteeringFollowUpCompletionRefKnownAnswer,
+  FleetSteeringOutcomeRefKnownAnswer,
+} from "@openagentsinc/khala-fleet-intents"
 import { SQL } from "bun"
 import {
   afterAll,
@@ -12,6 +15,7 @@ import {
 import { Effect } from "effect"
 
 import {
+  fleetSteeringFollowUpCompletionRef,
   fleetSteeringOutcomeRef,
   makeFleetSteeringExchangeRepository,
 } from "./fleet-steering-exchange.js"
@@ -48,6 +52,24 @@ test("fleet steering outcome ref matches the shared known-answer vector", async 
   ).toBe(FleetSteeringOutcomeRefKnownAnswer.outcomeRef)
 })
 
+test("fleet steering completion ref matches the shared known-answer vector", async () => {
+  expect(
+    await fleetSteeringFollowUpCompletionRef({
+      runRef: "fleet_run.sarah.0123456789abcdef0123",
+      claimRef: "claim.sarah_fleet_run.0123456789abcdef01234567",
+      pylonRef: "pylon.test.one",
+      completion: {
+        seq: 41,
+        intentId: "intent.sarah.pause.1",
+        state: "applied",
+        completionRef:
+          FleetSteeringFollowUpCompletionRefKnownAnswer.completionRef,
+        completedAt: "2026-07-09T23:00:02.000Z",
+      },
+    }),
+  ).toBe(FleetSteeringFollowUpCompletionRefKnownAnswer.completionRef)
+})
+
 const runRequest = (idempotencyKey: string) => ({
   objective: "Prove accepted Pylon steering delivery.",
   repository: {
@@ -81,6 +103,9 @@ describe.skipIf(!hasLocalPostgres())(
       const migrated = await runMigrations({ databaseUrl: url })
       expect(migrated.applied).toContain(
         "0054_sarah_fleet_run_steering_exchange.sql",
+      )
+      expect(migrated.applied).toContain(
+        "0055_sarah_fleet_run_steering_completions.sql",
       )
       sql = new SQL({ url, max: 12 })
     })
@@ -232,6 +257,31 @@ describe.skipIf(!hasLocalPostgres())(
             ...withoutRef,
             outcomeRef: "outcome.pylon.fleet_steering.000000000000000000000000",
           },
+        }),
+      }
+    }
+
+    const completionFor = async (
+      fixture: Awaited<ReturnType<typeof startAndAccept>>,
+      input: Readonly<{
+        seq: number
+        intentId: string
+        state: "applied" | "failed" | "stale"
+        completedAt: string
+      }>,
+    ) => {
+      const completion = {
+        ...input,
+        completionRef:
+          "completion.pylon.fleet_steering.000000000000000000000000",
+      }
+      return {
+        ...completion,
+        completionRef: await fleetSteeringFollowUpCompletionRef({
+          runRef: fixture.runRef,
+          claimRef: fixture.claimRef,
+          pylonRef: fixture.pylonRef,
+          completion,
         }),
       }
     }
@@ -691,6 +741,261 @@ describe.skipIf(!hasLocalPostgres())(
       `
       expect(outcomes).toHaveLength(2)
       expect(canonicalJson(outcomes)).not.toContain(secret)
+    })
+
+    test("completes queued approval, steer, and stop in order with reconnect-safe receipts", async () => {
+      const fixture = await startAndAccept("completion")
+      await projectRunningRun(fixture)
+      const secret = "PRIVATE-COMPLETION-STEER-BODY"
+      const approval = {
+        schema: "khala.fleet_intent.v1" as const,
+        intentId: "intent.steering.completion.approval",
+        createdAt: "2026-07-09T23:40:00.000Z",
+        origin: { surface: "web" as const },
+        idempotencyKey: "intent.steering.completion.approval.idem",
+        runRef: fixture.runRef,
+        kind: "approval_decision" as const,
+        approvalRef: "approval.steering.completion.1",
+        decision: "allow" as const,
+      }
+      const steer = {
+        schema: "khala.fleet_intent.v1" as const,
+        intentId: "intent.steering.completion.steer",
+        createdAt: "2026-07-09T23:40:01.000Z",
+        origin: { surface: "web" as const },
+        idempotencyKey: "intent.steering.completion.steer.idem",
+        runRef: fixture.runRef,
+        kind: "steer_message" as const,
+        targetRef: "work_claim.steering.completion.1",
+        body: secret,
+      }
+      const stop = runControlIntent(
+        fixture,
+        "intent.steering.completion.stop",
+        "stop",
+        "2026-07-09T23:40:02.000Z",
+      )
+      const approvalSeq = await insertIntent(fixture, approval)
+      const steerSeq = await insertIntent(fixture, steer)
+      const stopSeq = await insertIntent(fixture, stop)
+      const projectedApproval = await projectFleetEntitiesBestEffort({
+        changes: [
+          {
+            kind: "fleet_approval" as const,
+            op: "upsert" as const,
+            entity: fleetApprovalPostImage({
+              approvalRef: approval.approvalRef,
+              status: "pending",
+              workerId: "worker.steering.completion.1",
+              toolClass: "bash",
+              openedAt: approval.createdAt,
+              updatedAt: approval.createdAt,
+            }),
+          },
+        ],
+        ownerUserId: fixture.ownerUserId,
+        runId: fixture.runRef,
+        sql: sql as unknown as SyncSql,
+      })
+      expect(projectedApproval.ok).toBe(true)
+      await Effect.runPromise(
+        exchange().readPage({ ...fixture, after: 0, limit: 10 }),
+      )
+      const queuedOutcomes = await Promise.all([
+        outcomeFor(fixture, {
+          seq: approvalSeq,
+          intentId: approval.intentId,
+          outcome: "queued_follow_up",
+          observedAt: "2026-07-09T23:41:00.000Z",
+        }),
+        outcomeFor(fixture, {
+          seq: steerSeq,
+          intentId: steer.intentId,
+          outcome: "queued_follow_up",
+          observedAt: "2026-07-09T23:41:01.000Z",
+        }),
+        outcomeFor(fixture, {
+          seq: stopSeq,
+          intentId: stop.intentId,
+          outcome: "queued_follow_up",
+          observedAt: "2026-07-09T23:41:02.000Z",
+        }),
+      ])
+      await Effect.runPromise(
+        exchange().appendOutcomes({
+          ownerUserId: fixture.ownerUserId,
+          pylonRef: fixture.pylonRef,
+          runRef: fixture.runRef,
+          batch: { claimRef: fixture.claimRef, outcomes: queuedOutcomes },
+        }),
+      )
+      const completions = await Promise.all([
+        completionFor(fixture, {
+          seq: approvalSeq,
+          intentId: approval.intentId,
+          state: "applied",
+          completedAt: "2026-07-09T23:42:00.000Z",
+        }),
+        completionFor(fixture, {
+          seq: steerSeq,
+          intentId: steer.intentId,
+          state: "applied",
+          completedAt: "2026-07-09T23:42:01.000Z",
+        }),
+        completionFor(fixture, {
+          seq: stopSeq,
+          intentId: stop.intentId,
+          state: "applied",
+          completedAt: "2026-07-09T23:42:02.000Z",
+        }),
+      ])
+      const ack = await Effect.runPromise(
+        exchange().appendCompletions({
+          ownerUserId: fixture.ownerUserId,
+          pylonRef: fixture.pylonRef,
+          runRef: fixture.runRef,
+          batch: { claimRef: fixture.claimRef, completions },
+        }),
+      )
+      expect(ack.storedCompletionCount).toBe(3)
+      expect(canonicalJson(ack)).not.toContain(secret)
+      expect(await latestRunStatus(fixture.runRef)).toBe("stopped")
+      expect((await commandOutcomes(fixture.runRef)).slice(-3)).toEqual([
+        expect.objectContaining({
+          intentId: approval.intentId,
+          deliveryOutcome: "queued_follow_up",
+          completionOutcome: "applied",
+          effectiveOutcome: "allowed",
+          completionRef: completions[0]!.completionRef,
+          completedAt: completions[0]!.completedAt,
+        }),
+        expect.objectContaining({
+          intentId: steer.intentId,
+          completionOutcome: "applied",
+          effectiveOutcome: "steer_delivered",
+          completionRef: completions[1]!.completionRef,
+        }),
+        expect.objectContaining({
+          intentId: stop.intentId,
+          completionOutcome: "applied",
+          effectiveOutcome: "stopped",
+          completionRef: completions[2]!.completionRef,
+        }),
+      ])
+      expect(canonicalJson(await commandOutcomes(fixture.runRef))).not.toContain(
+        secret,
+      )
+
+      const beforeReplay: Array<{ count: string | number }> = await sql`
+        SELECT count(*) AS count FROM khala_sync_changelog
+        WHERE scope = ${fleetRunScope(fixture.runRef)}
+      `
+      await sql`
+        UPDATE sarah_fleet_run_intake_leases SET state = 'released'
+        WHERE run_ref = ${fixture.runRef}
+      `
+      const replay = await Effect.runPromise(
+        exchange().appendCompletions({
+          ownerUserId: fixture.ownerUserId,
+          pylonRef: fixture.pylonRef,
+          runRef: fixture.runRef,
+          batch: { claimRef: fixture.claimRef, completions },
+        }),
+      )
+      expect(replay.duplicateCompletionCount).toBe(3)
+      const afterReplay: Array<{ count: string | number }> = await sql`
+        SELECT count(*) AS count FROM khala_sync_changelog
+        WHERE scope = ${fleetRunScope(fixture.runRef)}
+      `
+      expect(Number(afterReplay[0]!.count)).toBe(
+        Number(beforeReplay[0]!.count),
+      )
+
+      const conflicting = await completionFor(fixture, {
+        seq: approvalSeq,
+        intentId: approval.intentId,
+        state: "applied",
+        completedAt: "2026-07-09T23:49:00.000Z",
+      })
+      const conflict = await Effect.runPromise(
+        exchange()
+          .appendCompletions({
+            ownerUserId: fixture.ownerUserId,
+            pylonRef: fixture.pylonRef,
+            runRef: fixture.runRef,
+            batch: { claimRef: fixture.claimRef, completions: [conflicting] },
+          })
+          .pipe(Effect.flip),
+      )
+      expect(conflict.kind).toBe("idempotency_conflict")
+    })
+
+    test("failed and stale completions never claim effective state", async () => {
+      const fixture = await startAndAccept("completion-terminal")
+      const intents = ["failed", "stale"].map((state, index) => ({
+        schema: "khala.fleet_intent.v1" as const,
+        intentId: `intent.steering.completion.${state}`,
+        createdAt: new Date(FIXED_NOW + 60_000 + index * 1_000).toISOString(),
+        origin: { surface: "web" as const },
+        idempotencyKey: `intent.steering.completion.${state}.idem`,
+        runRef: fixture.runRef,
+        kind: "steer_message" as const,
+        targetRef: `work_claim.steering.completion.${state}`,
+        body: `private-${state}`,
+      }))
+      const sequences: number[] = []
+      for (const intent of intents) {
+        sequences.push(await insertIntent(fixture, intent))
+      }
+      await Effect.runPromise(
+        exchange().readPage({ ...fixture, after: 0, limit: 10 }),
+      )
+      const outcomes = await Promise.all(
+        intents.map((intent, index) =>
+          outcomeFor(fixture, {
+            seq: sequences[index]!,
+            intentId: intent.intentId,
+            outcome: "queued_follow_up",
+            observedAt: new Date(FIXED_NOW + 70_000 + index * 1_000).toISOString(),
+          }),
+        ),
+      )
+      await Effect.runPromise(
+        exchange().appendOutcomes({
+          ownerUserId: fixture.ownerUserId,
+          pylonRef: fixture.pylonRef,
+          runRef: fixture.runRef,
+          batch: { claimRef: fixture.claimRef, outcomes },
+        }),
+      )
+      const completions = await Promise.all(
+        intents.map((intent, index) =>
+          completionFor(fixture, {
+            seq: sequences[index]!,
+            intentId: intent.intentId,
+            state: index === 0 ? "failed" : "stale",
+            completedAt: new Date(FIXED_NOW + 80_000 + index * 1_000).toISOString(),
+          }),
+        ),
+      )
+      await Effect.runPromise(
+        exchange().appendCompletions({
+          ownerUserId: fixture.ownerUserId,
+          pylonRef: fixture.pylonRef,
+          runRef: fixture.runRef,
+          batch: { claimRef: fixture.claimRef, completions },
+        }),
+      )
+      expect((await commandOutcomes(fixture.runRef)).slice(-2)).toEqual([
+        expect.objectContaining({
+          completionOutcome: "failed",
+          effectiveOutcome: null,
+        }),
+        expect.objectContaining({
+          completionOutcome: "skipped_stale",
+          effectiveOutcome: null,
+        }),
+      ])
     })
 
     test("refuses unsupported applied steer ACKs without storing or projecting them", async () => {

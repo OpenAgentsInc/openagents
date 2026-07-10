@@ -6185,6 +6185,73 @@ const requestSchemas = (): JsonSchema => ({
       duplicateOutcomeCount: { type: 'integer', minimum: 0 },
     },
   },
+  PylonFleetSteeringFollowUpCompletion: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['seq', 'intentId', 'state', 'completionRef', 'completedAt'],
+    properties: {
+      seq: { type: 'integer', minimum: 1 },
+      intentId: { type: 'string', minLength: 1, maxLength: 160 },
+      state: { type: 'string', enum: ['applied', 'failed', 'stale'] },
+      completionRef: {
+        type: 'string',
+        pattern: '^completion\\.pylon\\.fleet_steering\\.[a-f0-9]{24}$',
+      },
+      completedAt: { type: 'string', format: 'date-time' },
+    },
+  },
+  PylonFleetSteeringFollowUpCompletionBatch: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['claimRef', 'completions'],
+    properties: {
+      claimRef: {
+        type: 'string',
+        pattern: '^claim\\.sarah_fleet_run\\.[0-9a-f]{24}$',
+      },
+      completions: {
+        type: 'array',
+        minItems: 1,
+        maxItems: 64,
+        items: {
+          $ref: '#/components/schemas/PylonFleetSteeringFollowUpCompletion',
+        },
+      },
+    },
+  },
+  PylonFleetSteeringFollowUpCompletionAck: {
+    type: 'object',
+    additionalProperties: false,
+    required: [
+      'ok',
+      'runRef',
+      'claimRef',
+      'completions',
+      'storedCompletionCount',
+      'duplicateCompletionCount',
+    ],
+    properties: {
+      ok: { type: 'boolean', enum: [true] },
+      runRef: {
+        type: 'string',
+        pattern: '^fleet_run\\.sarah\\.[0-9a-f]{20}$',
+      },
+      claimRef: {
+        type: 'string',
+        pattern: '^claim\\.sarah_fleet_run\\.[0-9a-f]{24}$',
+      },
+      completions: {
+        type: 'array',
+        minItems: 1,
+        maxItems: 64,
+        items: {
+          $ref: '#/components/schemas/PylonFleetSteeringFollowUpCompletion',
+        },
+      },
+      storedCompletionCount: { type: 'integer', minimum: 0 },
+      duplicateCompletionCount: { type: 'integer', minimum: 0 },
+    },
+  },
   PylonFleetSteeringError: {
     type: 'object',
     additionalProperties: false,
@@ -9643,6 +9710,51 @@ const paths = (): JsonSchema => ({
         },
         '503': {
           description: 'Steering exchange storage unavailable.',
+          ...jsonContent('#/components/schemas/PylonFleetSteeringError'),
+        },
+      },
+    }),
+  },
+  '/api/pylons/{pylonRef}/fleet-runs/{runRef}/steering/completions': {
+    post: operation({
+      operationId: 'appendSarahFleetRunSteeringFollowUpCompletions',
+      summary: 'Finalize queued accepted-claim steering follow-ups',
+      description:
+        'Registered-agent-only terminal completion for a queued follow-up previously acknowledged by this exact accepted claim and owned Pylon. The body-free receipt is SHA-256 content-bound to run, claim, Pylon, sequence, intent, state, and completion time. Exact replay is idempotent; changed replay and out-of-order completion conflict. Effective run, approval, or steer-delivered state is derived from the original server-held intent and appended atomically with the reconnect-visible command outcome. Private steer bodies never cross this boundary.',
+      tags: ['Pylon'],
+      security: agentBearer,
+      parameters: [
+        pathParam('pylonRef', 'Owned Pylon ref.'),
+        pathParam('runRef', 'Exact Sarah FleetRun ref.'),
+      ],
+      requestBody: jsonContent(
+        '#/components/schemas/PylonFleetSteeringFollowUpCompletionBatch',
+      ),
+      responses: {
+        '200': okJson(
+          'Durable body-free terminal completion acknowledgment.',
+          '#/components/schemas/PylonFleetSteeringFollowUpCompletionAck',
+        ),
+        '400': {
+          description:
+            'Malformed, oversized, unordered, unsafe, or content-unbound completion batch.',
+          ...jsonContent('#/components/schemas/PylonFleetSteeringError'),
+        },
+        '401': {
+          description: 'Registered-agent bearer required.',
+          ...jsonContent('#/components/schemas/PylonFleetSteeringError'),
+        },
+        '403': {
+          description: 'Pylon is not owned by the derived owner.',
+          ...jsonContent('#/components/schemas/PylonFleetSteeringError'),
+        },
+        '409': {
+          description:
+            'Claim, ordering, queued-state, content-binding, effective-state, or replay conflict.',
+          ...jsonContent('#/components/schemas/PylonFleetSteeringError'),
+        },
+        '503': {
+          description: 'Steering completion exchange unavailable.',
           ...jsonContent('#/components/schemas/PylonFleetSteeringError'),
         },
       },

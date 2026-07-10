@@ -1,10 +1,16 @@
 import {
+  decodeFleetSteeringFollowUpCompletionAck,
+  decodeFleetSteeringFollowUpCompletionBatch,
   decodeFleetSteeringOutcomeAck,
   decodeFleetSteeringOutcomeBatch,
   decodeFleetSteeringPage,
   decodeKhalaFleetIntent,
   decodeKhalaFleetIntentJson,
   FLEET_STEERING_PAGE_MAX_INTENTS,
+  fleetSteeringFollowUpCompletionRefContent,
+  type FleetSteeringFollowUpCompletion,
+  type FleetSteeringFollowUpCompletionAck,
+  type FleetSteeringFollowUpCompletionBatch,
   type FleetSteeringClaimRef,
   type FleetSteeringDeliveryIntent,
   type FleetSteeringOutcome,
@@ -42,7 +48,9 @@ import type { SyncTransactionWriter } from "./outbox-writer.js"
 import type { SqlTag, SyncSql } from "./sql.js"
 
 export {
+  FleetSteeringFollowUpCompletionBatch,
   FleetSteeringOutcomeBatch,
+  type FleetSteeringFollowUpCompletionAck,
   type FleetSteeringOutcomeAck,
   type FleetSteeringPage,
 } from "@openagentsinc/khala-fleet-intents"
@@ -86,6 +94,12 @@ const FleetSteeringAppendOutcomesInput = S.Struct({
   runRef: FleetSteeringReadInput.fields.runRef,
   batch: S.Unknown,
 })
+const FleetSteeringAppendCompletionsInput = S.Struct({
+  ownerUserId: PublicOwnerRef,
+  pylonRef: PublicPylonRef,
+  runRef: FleetSteeringReadInput.fields.runRef,
+  batch: S.Unknown,
+})
 
 export type FleetSteeringReadInput = typeof FleetSteeringReadInput.Type
 export type FleetSteeringAppendOutcomesInput = Readonly<{
@@ -93,6 +107,12 @@ export type FleetSteeringAppendOutcomesInput = Readonly<{
   pylonRef: string
   runRef: string
   batch: FleetSteeringOutcomeBatch
+}>
+export type FleetSteeringAppendCompletionsInput = Readonly<{
+  ownerUserId: string
+  pylonRef: string
+  runRef: string
+  batch: FleetSteeringFollowUpCompletionBatch
 }>
 
 export type FleetSteeringExchangeRepositoryShape = Readonly<{
@@ -102,6 +122,9 @@ export type FleetSteeringExchangeRepositoryShape = Readonly<{
   appendOutcomes: (
     input: unknown,
   ) => Effect.Effect<FleetSteeringOutcomeAck, FleetRunAuthorityError>
+  appendCompletions: (
+    input: unknown,
+  ) => Effect.Effect<FleetSteeringFollowUpCompletionAck, FleetRunAuthorityError>
 }>
 
 type AcceptedLeaseRow = Readonly<{
@@ -132,6 +155,10 @@ type StoredOutcomeRow = Readonly<{
   outcome_ref: string
   observed_at: string
   recorded_at: string
+  completion_outcome: "applied" | "failed" | "skipped_stale" | null
+  completion_ref: string | null
+  completed_at: string | null
+  completion_recorded_at: string | null
 }>
 
 const fixedError = (
@@ -489,7 +516,7 @@ const readIntentForOutcome = async (
     pylonRef: string
     runRef: string
     claimRef: string
-    outcome: FleetSteeringOutcome
+    outcome: Pick<FleetSteeringOutcome, "seq" | "intentId">
   }>,
 ): Promise<KhalaFleetIntent> => {
   const rows: Array<RawIntentRow> = await sql`
@@ -642,8 +669,10 @@ const appendEffectiveProjection = async (
   runRef: string,
   ownerUserId: string,
   intent: KhalaFleetIntent,
-  observedAt: string,
+  recordedAt: string,
   completionRef: string,
+  completedAt: string = recordedAt,
+  allowSteer: boolean = false,
 ): Promise<Readonly<{
   effectiveOutcome: FleetCommandEffectiveOutcome
   completionRef: string
@@ -694,7 +723,7 @@ const appendEffectiveProjection = async (
               ? 0
               : current.desiredSlots,
           status: statusForAction(intent.action),
-          updatedAt: observedAt,
+          updatedAt: recordedAt,
         }),
       },
       FLEET_STEERING_OUTCOME_MUTATION_REF,
@@ -702,7 +731,7 @@ const appendEffectiveProjection = async (
     return {
       effectiveOutcome: statusForAction(intent.action),
       completionRef,
-      completedAt: observedAt,
+      completedAt,
     }
   }
   if (intent.kind === "approval_decision") {
@@ -738,8 +767,8 @@ const appendEffectiveProjection = async (
           ...current,
           approvalRef: intent.approvalRef,
           status: desiredStatus,
-          decidedAt: observedAt,
-          updatedAt: observedAt,
+          decidedAt: recordedAt,
+          updatedAt: recordedAt,
         }),
       },
       FLEET_STEERING_OUTCOME_MUTATION_REF,
@@ -747,7 +776,21 @@ const appendEffectiveProjection = async (
     return {
       effectiveOutcome: desiredStatus,
       completionRef,
-      completedAt: observedAt,
+      completedAt,
+    }
+  }
+  if (intent.kind === "steer_message") {
+    if (!allowSteer) {
+      throw fixedError(
+        "claim_conflict",
+        "fleet steering outcome cannot claim unsupported effective state",
+        { runRef },
+      )
+    }
+    return {
+      effectiveOutcome: "steer_delivered",
+      completionRef,
+      completedAt,
     }
   }
   throw fixedError(
@@ -897,6 +940,267 @@ const appendOneOutcome = async (
   return "stored"
 }
 
+const completionOutcomeFor = (
+  state: FleetSteeringFollowUpCompletion["state"],
+): "applied" | "failed" | "skipped_stale" =>
+  state === "stale" ? "skipped_stale" : state
+
+export const fleetSteeringFollowUpCompletionRef = async (input: Readonly<{
+  runRef: FleetSteeringRunRef
+  claimRef: FleetSteeringClaimRef
+  pylonRef: string
+  completion: FleetSteeringFollowUpCompletion
+}>): Promise<string> =>
+  `completion.pylon.fleet_steering.${(
+    await sha256Hex(
+      fleetSteeringFollowUpCompletionRefContent({
+        runRef: input.runRef,
+        claimRef: input.claimRef,
+        pylonRef: input.pylonRef,
+        seq: input.completion.seq,
+        intentId: input.completion.intentId,
+        state: input.completion.state,
+        completedAt: input.completion.completedAt,
+      }),
+    )
+  ).slice(0, 24)}`
+
+const assertCompletionContentBinding = async (input: Readonly<{
+  runRef: FleetSteeringRunRef
+  claimRef: FleetSteeringClaimRef
+  pylonRef: string
+  completion: FleetSteeringFollowUpCompletion
+}>): Promise<void> => {
+  if (
+    input.completion.completionRef !==
+    (await fleetSteeringFollowUpCompletionRef(input))
+  ) {
+    throw invalidRequest()
+  }
+}
+
+const readStoredOutcomeForCompletion = async (
+  sql: SqlTag,
+  input: Readonly<{
+    runRef: string
+    completion: FleetSteeringFollowUpCompletion
+  }>,
+): Promise<StoredOutcomeRow> => {
+  const rows: Array<StoredOutcomeRow> = await sql`
+    SELECT *
+    FROM sarah_fleet_run_steering_outcomes
+    WHERE (run_ref = ${input.runRef} AND seq = ${input.completion.seq})
+       OR intent_id = ${input.completion.intentId}
+       OR completion_ref = ${input.completion.completionRef}
+    FOR UPDATE
+  `
+  if (
+    rows.length !== 1 ||
+    rows[0]?.run_ref !== input.runRef ||
+    safeSequence(rows[0].seq) !== input.completion.seq ||
+    rows[0].intent_id !== input.completion.intentId
+  ) {
+    throw fixedError(
+      "idempotency_conflict",
+      "fleet steering completion identity is already bound to different bytes",
+      { runRef: input.runRef },
+    )
+  }
+  return rows[0]
+}
+
+const storedCompletionMatches = (
+  row: StoredOutcomeRow,
+  input: Readonly<{
+    ownerUserId: string
+    pylonRef: string
+    runRef: string
+    claimRef: string
+    completion: FleetSteeringFollowUpCompletion
+  }>,
+): boolean =>
+  row.run_ref === input.runRef &&
+  safeSequence(row.seq) === input.completion.seq &&
+  row.intent_id === input.completion.intentId &&
+  row.owner_user_id === input.ownerUserId &&
+  row.pylon_ref === input.pylonRef &&
+  row.intake_claim_ref === input.claimRef &&
+  row.completion_outcome === completionOutcomeFor(input.completion.state) &&
+  row.completion_ref === input.completion.completionRef &&
+  row.completed_at === input.completion.completedAt &&
+  row.completion_recorded_at !== null
+
+const assertNextUncompletedFollowUp = async (
+  sql: SqlTag,
+  input: Readonly<{
+    runRef: string
+    ownerUserId: string
+    pylonRef: string
+    claimRef: string
+    sequence: number
+  }>,
+): Promise<void> => {
+  const rows: Array<{ seq: string | number | bigint }> = await sql`
+    SELECT seq
+    FROM sarah_fleet_run_steering_outcomes
+    WHERE run_ref = ${input.runRef}
+      AND owner_user_id = ${input.ownerUserId}
+      AND pylon_ref = ${input.pylonRef}
+      AND intake_claim_ref = ${input.claimRef}
+      AND outcome = 'queued_follow_up'
+      AND completion_ref IS NULL
+    ORDER BY seq ASC
+    LIMIT 1
+  `
+  const nextSequence =
+    rows[0] === undefined ? undefined : safeSequence(rows[0].seq)
+  if (nextSequence !== input.sequence) {
+    throw fixedError(
+      "claim_conflict",
+      "fleet steering completions must finalize queued follow-ups in order",
+      { runRef: input.runRef },
+    )
+  }
+}
+
+const appendCommandCompletionProjection = async (
+  writer: SyncTransactionWriter,
+  input: Readonly<{
+    row: StoredOutcomeRow
+    ownerUserId: string
+    intent: KhalaFleetIntent
+    completion: FleetSteeringFollowUpCompletion
+    completionRecordedAt: string
+    effective: Readonly<{
+      effectiveOutcome: FleetCommandEffectiveOutcome
+      completionRef: string
+      completedAt: string
+    }> | null
+  }>,
+): Promise<void> => {
+  await appendFleetEntityChange(
+    writer,
+    input.row.run_ref,
+    {
+      kind: "fleet_command_outcome",
+      op: "upsert",
+      entity: decodeFleetCommandOutcomeEntity({
+        intentId: input.row.intent_id,
+        seq: safeSequence(input.row.seq),
+        kind: input.intent.kind,
+        targetRef: safeCommandTarget(input.row.run_ref, input.intent),
+        deliveryOutcome: input.row.outcome,
+        completionOutcome: completionOutcomeFor(input.completion.state),
+        effectiveOutcome: input.effective?.effectiveOutcome ?? null,
+        completionRef: input.completion.completionRef,
+        completedAt: input.completion.completedAt,
+        outcomeRef: input.row.outcome_ref,
+        observedAt: input.row.observed_at,
+        recordedAt: input.row.recorded_at,
+        updatedAt: input.completionRecordedAt,
+      }),
+    },
+    FLEET_STEERING_OUTCOME_MUTATION_REF,
+  )
+}
+
+const appendOneCompletion = async (
+  writer: SyncTransactionWriter,
+  input: Readonly<{
+    ownerUserId: string
+    pylonRef: string
+    runRef: FleetSteeringRunRef
+    claimRef: FleetSteeringClaimRef
+    completion: FleetSteeringFollowUpCompletion
+    recordedAt: string
+  }>,
+): Promise<"stored" | "duplicate"> => {
+  await assertCompletionContentBinding(input)
+  const row = await readStoredOutcomeForCompletion(writer.sql, input)
+  if (row.completion_ref !== null) {
+    if (storedCompletionMatches(row, input)) return "duplicate"
+    throw fixedError(
+      "idempotency_conflict",
+      "fleet steering completion identity is already bound to different bytes",
+      { runRef: input.runRef },
+    )
+  }
+  if (
+    row.owner_user_id !== input.ownerUserId ||
+    row.pylon_ref !== input.pylonRef ||
+    row.intake_claim_ref !== input.claimRef ||
+    row.outcome !== "queued_follow_up"
+  ) {
+    throw fixedError(
+      "claim_conflict",
+      "fleet steering completion does not match a queued outcome",
+      { runRef: input.runRef },
+    )
+  }
+  await requireAcceptedLease(writer.sql, {
+    ownerUserId: input.ownerUserId,
+    pylonRef: input.pylonRef,
+    runRef: input.runRef,
+    claimRef: input.claimRef,
+  })
+  await assertNextUncompletedFollowUp(writer.sql, {
+    runRef: input.runRef,
+    ownerUserId: input.ownerUserId,
+    pylonRef: input.pylonRef,
+    claimRef: input.claimRef,
+    sequence: input.completion.seq,
+  })
+  const intent = await readIntentForOutcome(writer.sql, {
+    ownerUserId: input.ownerUserId,
+    pylonRef: input.pylonRef,
+    runRef: input.runRef,
+    claimRef: input.claimRef,
+    outcome: input.completion,
+  })
+  const completionOutcome = completionOutcomeFor(input.completion.state)
+  const updated: Array<StoredOutcomeRow> = await writer.sql`
+    UPDATE sarah_fleet_run_steering_outcomes
+    SET completion_outcome = ${completionOutcome},
+        completion_ref = ${input.completion.completionRef},
+        completed_at = ${input.completion.completedAt},
+        completion_recorded_at = ${input.recordedAt}
+    WHERE run_ref = ${input.runRef}
+      AND seq = ${input.completion.seq}
+      AND intent_id = ${input.completion.intentId}
+      AND completion_ref IS NULL
+    RETURNING *
+  `
+  if (updated.length !== 1) {
+    throw fixedError(
+      "idempotency_conflict",
+      "fleet steering completion identity raced with different bytes",
+      { runRef: input.runRef },
+    )
+  }
+  const effective =
+    completionOutcome === "applied"
+      ? await appendEffectiveProjection(
+          writer,
+          input.runRef,
+          input.ownerUserId,
+          intent,
+          input.recordedAt,
+          input.completion.completionRef,
+          input.completion.completedAt,
+          true,
+        )
+      : null
+  await appendCommandCompletionProjection(writer, {
+    row,
+    ownerUserId: input.ownerUserId,
+    intent,
+    completion: input.completion,
+    completionRecordedAt: input.recordedAt,
+    effective,
+  })
+  return "stored"
+}
+
 const appendSteeringOutcomes = async (
   sql: SyncSql,
   input: FleetSteeringAppendOutcomesInput,
@@ -948,6 +1252,57 @@ const appendSteeringOutcomes = async (
       storedOutcomeCount: dispositions.filter((value) => value === "stored")
         .length,
       duplicateOutcomeCount: dispositions.filter(
+        (value) => value === "duplicate",
+      ).length,
+    })
+  })
+
+const appendSteeringCompletions = async (
+  sql: SyncSql,
+  input: FleetSteeringAppendCompletionsInput,
+  recordedAt: string,
+): Promise<FleetSteeringFollowUpCompletionAck> =>
+  withSyncTransaction(sql, async (writer) => {
+    const completions = [...input.batch.completions]
+    if (
+      new Set(completions.map((completion) => completion.seq)).size !==
+        completions.length ||
+      new Set(completions.map((completion) => completion.intentId)).size !==
+        completions.length ||
+      new Set(completions.map((completion) => completion.completionRef)).size !==
+        completions.length ||
+      completions.some(
+        (completion, index) =>
+          !validIsoTimestamp(completion.completedAt) ||
+          (index > 0 && completion.seq <= completions[index - 1]!.seq),
+      )
+    ) {
+      throw invalidRequest()
+    }
+    const dispositions = await completions.reduce<
+      Promise<ReadonlyArray<"stored" | "duplicate">>
+    >(
+      async (pending, completion) => [
+        ...(await pending),
+        await appendOneCompletion(writer, {
+          ownerUserId: input.ownerUserId,
+          pylonRef: input.pylonRef,
+          runRef: input.runRef,
+          claimRef: input.batch.claimRef,
+          completion,
+          recordedAt,
+        }),
+      ],
+      Promise.resolve([]),
+    )
+    return decodeFleetSteeringFollowUpCompletionAck({
+      ok: true,
+      runRef: input.runRef,
+      claimRef: input.batch.claimRef,
+      completions,
+      storedCompletionCount: dispositions.filter((value) => value === "stored")
+        .length,
+      duplicateCompletionCount: dispositions.filter(
         (value) => value === "duplicate",
       ).length,
     })
@@ -1012,5 +1367,36 @@ export const makeFleetSteeringExchangeRepository = (
       })
     }),
   )
-  return { readPage, appendOutcomes }
+  const appendCompletions = Effect.fn(
+    "FleetSteeringExchangeRepository.appendCompletions",
+  )((rawInput: unknown) =>
+    Effect.gen(function* () {
+      const input = yield* Effect.try({
+        try: () => {
+          const decoded = decodeUnknown(
+            FleetSteeringAppendCompletionsInput,
+            rawInput,
+          )
+          return {
+            ownerUserId: decoded.ownerUserId,
+            pylonRef: decoded.pylonRef,
+            runRef: decoded.runRef,
+            batch: decodeFleetSteeringFollowUpCompletionBatch(decoded.batch),
+          }
+        },
+        catch: exchangeErrorFromUnknown,
+      })
+      const nowMs = yield* now
+      return yield* Effect.tryPromise({
+        try: () =>
+          appendSteeringCompletions(
+            options.sql,
+            input,
+            new Date(nowMs).toISOString(),
+          ),
+        catch: exchangeErrorFromUnknown,
+      })
+    }),
+  )
+  return { readPage, appendOutcomes, appendCompletions }
 }

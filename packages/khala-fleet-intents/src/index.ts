@@ -508,6 +508,81 @@ export const FleetSteeringOutcomeAck = S.Struct({
 })
 export type FleetSteeringOutcomeAck = typeof FleetSteeringOutcomeAck.Type
 
+// A queued follow-up is completed by the exact Pylon only after its private
+// control side effect has reached a terminal state. This receipt is purposely
+// body-free: no steer text, prompt, command, output, account identity, or
+// local path is part of the wire contract.
+export const FleetSteeringFollowUpCompletionState = S.Literals([
+  "applied",
+  "failed",
+  "stale",
+])
+export type FleetSteeringFollowUpCompletionState =
+  typeof FleetSteeringFollowUpCompletionState.Type
+
+export const FleetSteeringFollowUpCompletion = S.Struct({
+  seq: FleetSteeringSequence,
+  intentId: FleetSteeringDeliveryIntent.fields.intentId,
+  state: FleetSteeringFollowUpCompletionState,
+  completionRef: S.Trim.check(
+    S.isPattern(/^completion\.pylon\.fleet_steering\.[a-f0-9]{24}$/u),
+  ),
+  completedAt: FleetSteeringIsoTimestamp,
+})
+export type FleetSteeringFollowUpCompletion =
+  typeof FleetSteeringFollowUpCompletion.Type
+
+export const FleetSteeringFollowUpCompletionRefSchemaLiteral =
+  "openagents.pylon.fleet_steering_follow_up_completion.v1" as const
+
+export const fleetSteeringFollowUpCompletionRefContent = (
+  input: Readonly<{
+    runRef: FleetSteeringRunRef
+    claimRef: FleetSteeringClaimRef
+    pylonRef: string
+  }> & Omit<FleetSteeringFollowUpCompletion, "completionRef">,
+) => ({
+  schema: FleetSteeringFollowUpCompletionRefSchemaLiteral,
+  runRef: input.runRef,
+  claimRef: input.claimRef,
+  pylonRef: input.pylonRef,
+  seq: input.seq,
+  intentId: input.intentId,
+  state: input.state,
+  completedAt: input.completedAt,
+})
+
+export const FleetSteeringFollowUpCompletionRefKnownAnswer = {
+  canonicalJson:
+    '{"claimRef":"claim.sarah_fleet_run.0123456789abcdef01234567","completedAt":"2026-07-09T23:00:02.000Z","intentId":"intent.sarah.pause.1","pylonRef":"pylon.test.one","runRef":"fleet_run.sarah.0123456789abcdef0123","schema":"openagents.pylon.fleet_steering_follow_up_completion.v1","seq":41,"state":"applied"}',
+  completionRef:
+    "completion.pylon.fleet_steering.4ac8b06de48bb7311f1c2064",
+} as const
+
+export const FleetSteeringFollowUpCompletionBatch = S.Struct({
+  claimRef: FleetSteeringClaimRef,
+  completions: S.Array(FleetSteeringFollowUpCompletion).check(
+    S.isMinLength(1),
+    S.isMaxLength(FLEET_STEERING_OUTCOME_BATCH_MAX_OUTCOMES),
+  ),
+})
+export type FleetSteeringFollowUpCompletionBatch =
+  typeof FleetSteeringFollowUpCompletionBatch.Type
+
+export const FleetSteeringFollowUpCompletionAck = S.Struct({
+  ok: S.Literal(true),
+  runRef: FleetSteeringRunRef,
+  claimRef: FleetSteeringClaimRef,
+  completions: S.Array(FleetSteeringFollowUpCompletion).check(
+    S.isMinLength(1),
+    S.isMaxLength(FLEET_STEERING_OUTCOME_BATCH_MAX_OUTCOMES),
+  ),
+  storedCompletionCount: S.Int.check(S.isGreaterThanOrEqualTo(0)),
+  duplicateCompletionCount: S.Int.check(S.isGreaterThanOrEqualTo(0)),
+})
+export type FleetSteeringFollowUpCompletionAck =
+  typeof FleetSteeringFollowUpCompletionAck.Type
+
 export const decodeFleetSteeringPage = (input: unknown): FleetSteeringPage =>
   S.decodeUnknownSync(FleetSteeringPage)(input, { onExcessProperty: "error" })
 export const decodeFleetSteeringOutcomeBatch = (
@@ -520,5 +595,17 @@ export const decodeFleetSteeringOutcomeAck = (
   input: unknown,
 ): FleetSteeringOutcomeAck =>
   S.decodeUnknownSync(FleetSteeringOutcomeAck)(input, {
+    onExcessProperty: "error",
+  })
+export const decodeFleetSteeringFollowUpCompletionBatch = (
+  input: unknown,
+): FleetSteeringFollowUpCompletionBatch =>
+  S.decodeUnknownSync(FleetSteeringFollowUpCompletionBatch)(input, {
+    onExcessProperty: "error",
+  })
+export const decodeFleetSteeringFollowUpCompletionAck = (
+  input: unknown,
+): FleetSteeringFollowUpCompletionAck =>
+  S.decodeUnknownSync(FleetSteeringFollowUpCompletionAck)(input, {
     onExcessProperty: "error",
   })

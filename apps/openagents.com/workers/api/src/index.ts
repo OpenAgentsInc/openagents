@@ -10946,6 +10946,10 @@ const pylonApiRoutes = makePylonApiRoutes<WorkerBindings>({
       withFleetSteeringExchange(env, repository =>
         repository.appendOutcomes(input),
       ),
+    appendCompletions: (env, input) =>
+      withFleetSteeringExchange(env, repository =>
+        repository.appendCompletions(input),
+      ),
   },
   // #5252: private operator-only store for raw Spark payout targets.
   makeSparkPayoutTargetStore: env =>

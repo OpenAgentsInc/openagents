@@ -4,6 +4,8 @@ import {
   type FleetRunAuthorityClaimResult,
   FleetRunAuthorityError,
   FleetRunExecutionBatch,
+  FleetSteeringFollowUpCompletionBatch,
+  type FleetSteeringFollowUpCompletionAck,
   FleetSteeringOutcomeBatch,
   type FleetSteeringOutcomeAck,
   type FleetSteeringPage,
@@ -152,6 +154,18 @@ type PylonApiRouteDependencies<Bindings> = Readonly<{
         batch: typeof FleetSteeringOutcomeBatch.Type
       }>,
     ) => Effect.Effect<FleetSteeringOutcomeAck, FleetRunAuthorityError>
+    appendCompletions?: (
+      env: Bindings,
+      input: Readonly<{
+        ownerUserId: string
+        pylonRef: string
+        runRef: string
+        batch: typeof FleetSteeringFollowUpCompletionBatch.Type
+      }>,
+    ) => Effect.Effect<
+      FleetSteeringFollowUpCompletionAck,
+      FleetRunAuthorityError
+    >
   }>
   // #5252: private operator-only store for raw Spark payout targets. Optional so
   // existing route wiring/tests stay valid; the spark-payout-target route fails
@@ -209,6 +223,8 @@ export const PYLON_FLEET_RUN_STEERING_ROUTE_PATTERN =
   '/api/pylons/:pylonRef/fleet-runs/:runRef/steering' as const
 export const PYLON_FLEET_RUN_STEERING_OUTCOMES_ROUTE_PATTERN =
   '/api/pylons/:pylonRef/fleet-runs/:runRef/steering/outcomes' as const
+export const PYLON_FLEET_RUN_STEERING_COMPLETIONS_ROUTE_PATTERN =
+  '/api/pylons/:pylonRef/fleet-runs/:runRef/steering/completions' as const
 
 const PYLON_FLEET_RUN_TRANSPORT_SCHEMA =
   'openagents.pylon.fleet_run_transport.v1' as const
@@ -330,6 +346,45 @@ const decodeFleetSteeringOutcomesBody = (
         S.decodeUnknownSync(S.fromJsonString(FleetSteeringOutcomeBatch))(raw, {
           onExcessProperty: 'error',
         }),
+      catch: invalid,
+    })
+  })
+}
+
+const decodeFleetSteeringCompletionsBody = (
+  request: Request,
+): Effect.Effect<
+  typeof FleetSteeringFollowUpCompletionBatch.Type,
+  PylonApiStoreError
+> => {
+  const invalid = () =>
+    new PylonApiStoreError({
+      kind: 'validation_error',
+      reason: 'Fleet steering completion request failed validation.',
+    })
+  return Effect.gen(function* () {
+    const declaredLength = Number(request.headers.get('content-length'))
+    if (
+      Number.isFinite(declaredLength) &&
+      declaredLength > FLEET_RUN_STEERING_OUTCOMES_MAX_BODY_BYTES
+    ) {
+      return yield* invalid()
+    }
+    const raw = yield* Effect.tryPromise({
+      try: () => request.text(),
+      catch: invalid,
+    })
+    if (
+      new TextEncoder().encode(raw).byteLength >
+      FLEET_RUN_STEERING_OUTCOMES_MAX_BODY_BYTES
+    ) {
+      return yield* invalid()
+    }
+    return yield* Effect.try({
+      try: () =>
+        S.decodeUnknownSync(
+          S.fromJsonString(FleetSteeringFollowUpCompletionBatch),
+        )(raw, { onExcessProperty: 'error' }),
       catch: invalid,
     })
   })
@@ -1658,6 +1713,48 @@ const routeFleetRunSteeringOutcomes = <Bindings extends PylonApiRouteEnv>(
     }
     const batch = yield* decodeFleetSteeringOutcomesBody(request)
     const ack = yield* exchange.appendOutcomes(env, {
+      ownerUserId: fleetRunOwnerUserId(session),
+      pylonRef,
+      runRef,
+      batch,
+    })
+    return noStoreJsonResponse(ack)
+  }).pipe(
+    Effect.catch(error =>
+      Effect.succeed(fleetRunSteeringErrorResponse(error)),
+    ),
+  )
+
+const routeFleetRunSteeringCompletions = <Bindings extends PylonApiRouteEnv>(
+  dependencies: PylonApiRouteDependencies<Bindings>,
+  request: Request,
+  env: Bindings,
+  pylonRef: string,
+  runRef: string,
+): Effect.Effect<HttpResponse> =>
+  Effect.gen(function* () {
+    const session = yield* requireAgent(dependencies, request, env)
+    yield* requireOwnedRegistration(dependencies, env, pylonRef, session)
+    const exchange = dependencies.fleetSteeringExchange
+    if (exchange === undefined) {
+      return fleetRunSteeringErrorResponse(
+        new FleetRunAuthorityError({
+          kind: 'storage_unavailable',
+          reason: 'fleet steering exchange is unavailable',
+        }),
+      )
+    }
+    const batch = yield* decodeFleetSteeringCompletionsBody(request)
+    const appendCompletions = exchange.appendCompletions
+    if (appendCompletions === undefined) {
+      return fleetRunSteeringErrorResponse(
+        new FleetRunAuthorityError({
+          kind: 'storage_unavailable',
+          reason: 'fleet steering completion exchange is unavailable',
+        }),
+      )
+    }
+    const ack = yield* appendCompletions(env, {
       ownerUserId: fleetRunOwnerUserId(session),
       pylonRef,
       runRef,
@@ -3297,17 +3394,18 @@ export const makePylonApiRoutes = <Bindings extends PylonApiRouteEnv>(
       /^\/api\/pylons\/([^/]+)\/fleet-runs\/([^/]+)\/events$/.exec(url.pathname)
 
     const fleetRunSteeringMatch =
-      /^\/api\/pylons\/([^/]+)\/fleet-runs\/([^/]+)\/steering(?:\/(outcomes))?$/.exec(
+      /^\/api\/pylons\/([^/]+)\/fleet-runs\/([^/]+)\/steering(?:\/(outcomes|completions))?$/.exec(
         url.pathname,
       )
 
     if (fleetRunSteeringMatch !== null) {
-      const outcomes = fleetRunSteeringMatch[3] === 'outcomes'
+      const child = fleetRunSteeringMatch[3]
+      const write = child === 'outcomes' || child === 'completions'
       if (
-        (outcomes && request.method !== 'POST') ||
-        (!outcomes && request.method !== 'GET')
+        (write && request.method !== 'POST') ||
+        (!write && request.method !== 'GET')
       ) {
-        return Effect.succeed(methodNotAllowed([outcomes ? 'POST' : 'GET']))
+        return Effect.succeed(methodNotAllowed([write ? 'POST' : 'GET']))
       }
       return Effect.try({
         try: () => ({
@@ -3323,7 +3421,7 @@ export const makePylonApiRoutes = <Bindings extends PylonApiRouteEnv>(
           }),
       }).pipe(
         Effect.flatMap(({ pylonRef, runRef }) =>
-          outcomes
+          child === 'outcomes'
             ? routeFleetRunSteeringOutcomes(
                 dependencies,
                 request,
@@ -3331,6 +3429,14 @@ export const makePylonApiRoutes = <Bindings extends PylonApiRouteEnv>(
                 pylonRef,
                 runRef,
               )
+            : child === 'completions'
+              ? routeFleetRunSteeringCompletions(
+                  dependencies,
+                  request,
+                  env,
+                  pylonRef,
+                  runRef,
+                )
             : routeFleetRunSteeringPage(
                 dependencies,
                 request,

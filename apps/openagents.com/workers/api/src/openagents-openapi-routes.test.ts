@@ -1248,6 +1248,27 @@ describe('OpenAgents OpenAPI route', () => {
     expect(body.components.schemas).toHaveProperty(
       'PylonFleetSteeringOutcomeAck',
     )
+    const steeringCompletions = operationAt(
+      body,
+      '/api/pylons/{pylonRef}/fleet-runs/{runRef}/steering/completions',
+      'post',
+    )
+    expect(steeringCompletions.security).toEqual([{ agentBearer: [] }])
+    expect(steeringCompletions.description).toContain(
+      'SHA-256 content-bound',
+    )
+    expect(steeringCompletions.description).toContain(
+      'Private steer bodies never cross',
+    )
+    expect(
+      schemaProperties(
+        body,
+        'PylonFleetSteeringFollowUpCompletionBatch',
+      ).completions,
+    ).toEqual(expect.objectContaining({ minItems: 1, maxItems: 64 }))
+    expect(body.components.schemas).toHaveProperty(
+      'PylonFleetSteeringFollowUpCompletionAck',
+    )
     expect(
       schemaProperties(body, 'PylonFleetRunUnprovenWorkTerminalEvent')
         .blockerRefs,

@@ -2,6 +2,8 @@ import { createHash } from "node:crypto"
 
 import { describe, expect, it } from "bun:test"
 import {
+  decodeFleetSteeringFollowUpCompletionAck,
+  decodeFleetSteeringFollowUpCompletionBatch,
   decodeFleetSteeringOutcomeAck,
   decodeFleetSteeringOutcomeBatch,
   decodeFleetSteeringPage,
@@ -9,6 +11,8 @@ import {
   decodeKhalaFleetIntentJson,
   defaultFleetAutoPolicy,
   fleetSteeringOutcomeRefContent,
+  fleetSteeringFollowUpCompletionRefContent,
+  FleetSteeringFollowUpCompletionRefKnownAnswer,
   FleetSteeringOutcomeRefKnownAnswer,
   type FleetAutoTargetCandidate,
   fleetHarnessKinds,
@@ -117,6 +121,64 @@ describe("Fleet steering delivery transport", () => {
     ).toThrow()
     expect(() =>
       decodeFleetSteeringOutcomeBatch({ claimRef, outcomes: [] }),
+    ).toThrow()
+  })
+
+  it("decodes content-bound body-free follow-up completions", () => {
+    const completion = {
+      seq: 41,
+      intentId: intent.intentId,
+      state: "applied" as const,
+      completionRef:
+        "completion.pylon.fleet_steering.4ac8b06de48bb7311f1c2064",
+      completedAt: "2026-07-09T23:00:02.000Z",
+    }
+    expect(
+      decodeFleetSteeringFollowUpCompletionBatch({
+        claimRef,
+        completions: [completion],
+      }),
+    ).toEqual({ claimRef, completions: [completion] })
+    expect(
+      decodeFleetSteeringFollowUpCompletionAck({
+        ok: true,
+        runRef: intent.runRef,
+        claimRef,
+        completions: [completion],
+        storedCompletionCount: 1,
+        duplicateCompletionCount: 0,
+      }),
+    ).toMatchObject({ storedCompletionCount: 1 })
+    expect(
+      fleetSteeringFollowUpCompletionRefContent({
+        runRef: intent.runRef,
+        claimRef,
+        pylonRef: "pylon.test.one",
+        ...completion,
+      }),
+    ).toEqual({
+      schema: "openagents.pylon.fleet_steering_follow_up_completion.v1",
+      runRef: intent.runRef,
+      claimRef,
+      pylonRef: "pylon.test.one",
+      seq: 41,
+      intentId: intent.intentId,
+      state: "applied",
+      completedAt: "2026-07-09T23:00:02.000Z",
+    })
+    expect(
+      `completion.pylon.fleet_steering.${createHash("sha256")
+        .update(FleetSteeringFollowUpCompletionRefKnownAnswer.canonicalJson)
+        .digest("hex")
+        .slice(0, 24)}`,
+    ).toBe(FleetSteeringFollowUpCompletionRefKnownAnswer.completionRef)
+    expect(() =>
+      decodeFleetSteeringFollowUpCompletionBatch({
+        claimRef,
+        completions: [
+          { ...completion, body: "private steer material must not cross" },
+        ],
+      }),
     ).toThrow()
   })
 })
