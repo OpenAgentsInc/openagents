@@ -1,6 +1,23 @@
-/* OpenAgents Desktop chrome (#8574). The UI tree itself is Effect Native;
-   this file owns only the DOM renderer skin and the top-level viewport fill.
-   Protoss blue, one theme — mirrors apps/sarah/src/ui/sarah.css. */
+/*
+ * Desktop glass host (#8574). The application remains entirely Effect Native;
+ * this stylesheet is the Electron equivalent of the mobile SwiftUI host's
+ * Liquid Glass treatment: one floating command bar, one composer, and an
+ * intentionally quiet conversation plane between them.
+ */
+
+:root {
+  color-scheme: dark;
+  --oa-void: #05070c;
+  --oa-surface: rgba(16, 22, 34, 0.66);
+  --oa-surface-strong: rgba(20, 29, 45, 0.82);
+  --oa-line: rgba(151, 190, 255, 0.18);
+  --oa-line-hot: rgba(114, 168, 255, 0.48);
+  --oa-ink: #f2f5fb;
+  --oa-body: #c4cfde;
+  --oa-muted: #91a0b5;
+  --oa-blue: #4a86ff;
+  --oa-cyan: #8ad7ff;
+}
 
 * {
   box-sizing: border-box;
@@ -9,23 +26,367 @@
 html,
 body {
   margin: 0;
-  padding: 0;
+  min-width: 0;
   height: 100%;
-  background: var(--en-color-background, #03060b);
-  color: #f1efe8;
-  color-scheme: dark;
-  font-family:
-    "Berkeley Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  overflow: hidden;
+  background: var(--oa-void);
+  color: var(--oa-ink);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+  font-feature-settings: "kern" 1, "liga" 1, "tnum" 1;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body::before {
+  position: fixed;
+  z-index: -2;
+  inset: 0;
+  content: "";
+  background:
+    radial-gradient(58rem 36rem at 50% -14%, rgba(54, 117, 255, 0.26), transparent 62%),
+    radial-gradient(36rem 32rem at 92% 88%, rgba(33, 92, 184, 0.12), transparent 70%),
+    linear-gradient(155deg, #0c1424 0%, var(--oa-void) 48%, #080b13 100%);
+}
+
+body::after {
+  position: fixed;
+  z-index: -1;
+  inset: 0;
+  content: "";
+  opacity: 0.42;
+  background-image: radial-gradient(rgba(181, 216, 255, 0.18) 0.55px, transparent 0.7px);
+  background-size: 22px 22px;
+  mask-image: radial-gradient(ellipse at 50% 0%, black 0%, transparent 70%);
+  pointer-events: none;
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--oa-cyan) !important;
+  outline-offset: 2px;
 }
 
 #openagents-desktop-root {
   display: flex;
-  flex-direction: column;
+  isolation: isolate;
   height: 100vh;
   min-height: 100dvh;
+  padding: 14px 18px 18px;
 }
 
 #openagents-desktop-root > * {
   flex: 1;
   min-height: 0;
+}
+
+/* Core app frame */
+[data-en-key="shell-root"] {
+  width: min(100%, 1120px) !important;
+  margin: 0 auto;
+  gap: 12px !important;
+}
+
+/* Floating glass toolbar — direct Electron analogue to the SwiftUI pills. */
+[data-en-key="shell-header"] {
+  min-height: 54px;
+  padding: 7px 9px !important;
+  border: 1px solid var(--oa-line);
+  border-radius: 18px;
+  background: rgba(17, 24, 37, 0.58) !important;
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.08), 0 10px 32px rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(22px) saturate(1.25);
+  -webkit-backdrop-filter: blur(22px) saturate(1.25);
+}
+
+[data-en-key="shell-title"] {
+  padding: 0 6px 0 8px;
+  color: var(--oa-ink) !important;
+  font-size: 15px !important;
+  font-weight: 650 !important;
+  letter-spacing: -0.02em;
+}
+
+[data-en-key="shell-surface"],
+[data-en-key="shell-status"],
+[data-en-key="shell-host"],
+[data-en-key="shell-ping-count"],
+[data-en-key="fleet-authority-status"] {
+  align-items: center;
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid rgba(178, 207, 255, 0.11);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.045);
+  font-size: 12px;
+  font-weight: 560;
+  letter-spacing: -0.01em;
+}
+
+[data-en-key="shell-surface"] {
+  color: var(--oa-cyan) !important;
+  background: rgba(73, 137, 255, 0.13);
+}
+
+[data-en-key="shell-status"] {
+  color: #a4f1cc !important;
+}
+
+[data-en-key="shell-host"],
+[data-en-key="shell-ping-count"] {
+  color: var(--oa-muted) !important;
+  font-variant-numeric: tabular-nums;
+}
+
+[data-en-key="shell-fleet-toggle"],
+[data-en-key="shell-ping"] {
+  min-height: 34px;
+  padding: 0 12px !important;
+  border: 1px solid transparent !important;
+  border-radius: 999px !important;
+  color: var(--oa-body) !important;
+  font-size: 13px;
+  font-weight: 560;
+}
+
+[data-en-key="shell-fleet-toggle"] {
+  background: rgba(255, 255, 255, 0.055) !important;
+}
+
+[data-en-key="shell-fleet-toggle"]:hover,
+[data-en-key="shell-ping"]:hover {
+  transform: translateY(-1px);
+  border-color: var(--oa-line-hot) !important;
+  background: rgba(74, 134, 255, 0.13) !important;
+}
+
+[data-en-key="shell-ping"] {
+  color: var(--oa-muted) !important;
+}
+
+/* The initial state gets its own breath, like the mobile Sarah surface. */
+[data-en-key="shell-welcome"] {
+  padding: clamp(26px, 6vh, 76px) 24px 18px;
+}
+
+[data-en-key="shell-welcome-title"] {
+  max-width: 19ch;
+  color: var(--oa-ink) !important;
+  font-size: clamp(30px, 4vw, 52px) !important;
+  font-weight: 590 !important;
+  letter-spacing: -0.038em;
+  line-height: 1.04;
+  text-wrap: balance;
+}
+
+[data-en-key="shell-welcome-body"] {
+  max-width: 58ch;
+  color: var(--oa-body) !important;
+  font-size: 16px;
+  line-height: 1.55;
+  text-wrap: pretty;
+}
+
+/* Conversation: no enclosing card — whitespace is the primary hierarchy. */
+[data-en-key="shell-transcript"] {
+  width: min(100%, 840px) !important;
+  align-self: center;
+  padding: 10px 24px 18px !important;
+  gap: 22px !important;
+  scrollbar-color: rgba(151, 190, 255, 0.35) transparent;
+}
+
+[data-en-key="shell-transcript"] [data-en-message] {
+  gap: 7px !important;
+}
+
+[data-en-key="shell-transcript"] [data-en-role="meta"] {
+  gap: 8px !important;
+}
+
+[data-en-key="shell-transcript"] [data-en-role="sender"] {
+  color: var(--oa-muted) !important;
+  font-size: 11px !important;
+  font-weight: 650 !important;
+  letter-spacing: 0.09em !important;
+}
+
+[data-en-key="shell-transcript"] [data-en-role="timestamp"] {
+  color: rgba(177, 194, 219, 0.56) !important;
+  font-size: 11px !important;
+}
+
+[data-en-key="shell-transcript"] [data-en-role="body"] {
+  color: var(--oa-ink);
+  font-size: 16px;
+  line-height: 1.54;
+}
+
+[data-en-key="shell-transcript"] [data-en-role="assistant"] [data-en-role="body"] {
+  max-width: 63ch;
+  color: var(--oa-ink) !important;
+}
+
+[data-en-key="shell-transcript"] [data-en-role="user"] [data-en-role="body"] {
+  padding: 12px 15px !important;
+  border: 1px solid rgba(121, 176, 255, 0.38) !important;
+  border-radius: 18px 18px 6px 18px !important;
+  background: rgba(43, 102, 220, 0.31) !important;
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.09), 0 7px 18px rgba(9, 35, 91, 0.18);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+[data-en-key="shell-transcript"] [data-en-role="system"] {
+  padding: 10px 13px;
+  border: 1px solid rgba(168, 195, 237, 0.09);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+[data-en-key="shell-transcript"] [data-en-role="system"] [data-en-role="body"] {
+  color: var(--oa-muted) !important;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+/* Fleet launch is an interactive panel, so it earns a distinct glass surface. */
+[data-en-key="fleet-desk"] {
+  width: min(100%, 840px) !important;
+  align-self: center;
+  padding: 22px !important;
+  border: 1px solid rgba(126, 177, 255, 0.25);
+  border-radius: 18px !important;
+  background: var(--oa-surface-strong) !important;
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.08), 0 18px 48px rgba(0, 0, 0, 0.22);
+  backdrop-filter: blur(28px) saturate(1.2);
+  -webkit-backdrop-filter: blur(28px) saturate(1.2);
+}
+
+[data-en-key="fleet-desk-title"] {
+  font-size: 18px !important;
+  font-weight: 620 !important;
+  letter-spacing: -0.025em;
+}
+
+[data-en-key="fleet-desk-copy"] {
+  max-width: 66ch;
+  color: var(--oa-body) !important;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+[data-en-key="fleet-objective"] {
+  margin-top: 4px;
+  padding: 0 14px;
+  border: 1px solid rgba(168, 195, 237, 0.15);
+  border-radius: 13px;
+  background: rgba(3, 7, 14, 0.42);
+}
+
+[data-en-key="fleet-objective"] input {
+  min-height: 42px;
+  color: var(--oa-ink) !important;
+  font-size: 14px;
+}
+
+[data-en-key="fleet-objective"] input::placeholder,
+[data-en-key="shell-input"] input::placeholder {
+  color: rgba(190, 205, 228, 0.63);
+  opacity: 1;
+}
+
+[data-en-key="fleet-desk-actions"] {
+  margin-top: 3px;
+}
+
+[data-en-key="fleet-stage-request"],
+[data-en-key="shell-note"] {
+  min-height: 38px;
+  padding: 0 16px !important;
+  border: 1px solid rgba(146, 190, 255, 0.5) !important;
+  border-radius: 999px !important;
+  background: var(--oa-blue) !important;
+  box-shadow: 0 7px 18px rgba(28, 83, 183, 0.28);
+  color: white !important;
+  font-size: 13px;
+  font-weight: 620;
+}
+
+[data-en-key="fleet-stage-request"]:hover,
+[data-en-key="shell-note"]:hover {
+  transform: translateY(-1px);
+  background: #6096ff !important;
+}
+
+/* Bottom composer: a single mobile-style floating glass capsule. */
+[data-en-key="shell-composer"] {
+  width: min(100%, 840px) !important;
+  align-self: center;
+  margin: 0 0 6px !important;
+  padding: 7px 8px 7px 16px !important;
+  border: 1px solid rgba(168, 204, 255, 0.24);
+  border-radius: 20px !important;
+  background: rgba(17, 24, 37, 0.72) !important;
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.1), 0 16px 42px rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(28px) saturate(1.3);
+  -webkit-backdrop-filter: blur(28px) saturate(1.3);
+}
+
+[data-en-key="shell-composer-row"] {
+  min-height: 46px;
+}
+
+[data-en-key="shell-input"] input {
+  min-height: 40px;
+  color: var(--oa-ink) !important;
+  font-size: 15px;
+}
+
+@media (max-width: 760px) {
+  #openagents-desktop-root {
+    padding: 10px;
+  }
+
+  [data-en-key="shell-header"] {
+    border-radius: 15px;
+  }
+
+  [data-en-key="shell-host"],
+  [data-en-key="shell-ping-count"],
+  [data-en-key="shell-status"] {
+    display: none !important;
+  }
+
+  [data-en-key="shell-welcome"] {
+    padding: 36px 14px 12px;
+  }
+
+  [data-en-key="shell-welcome-title"] {
+    font-size: 34px !important;
+  }
+
+  [data-en-key="shell-transcript"] {
+    padding: 8px 12px 16px !important;
+  }
+
+  [data-en-key="fleet-desk"] {
+    padding: 16px !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
 }

@@ -66,14 +66,18 @@ describe("desktopShellView (state -> component tree)", () => {
 
     const surface = nodeByKey(view, "shell-surface")
     expect(surface?._tag).toBe("Badge")
-    expect(surface?.label).toBe("DESKTOP")
+    expect(surface?.label).toBe("Sarah")
 
     const status = nodeByKey(view, "shell-status")
-    expect(status?.label).toBe("READY")
+    expect(status?.label).toBe("Private workspace")
     expect(status?.tone).toBe("success")
 
     const host = nodeByKey(view, "shell-host")
-    expect(host?.label).toBe("host: electron/darwin")
+    expect(host?.label).toBe("electron/darwin")
+
+    expect(nodeByKey(view, "shell-welcome-title")?.content).toBe(
+      "What would you like to move today?",
+    )
 
     const transcript = nodeByKey(view, "shell-transcript")
     expect(transcript?._tag).toBe("Transcript")
@@ -89,14 +93,14 @@ describe("desktopShellView (state -> component tree)", () => {
 
   test("loop-proof badge reflects state and flips tone once proven", () => {
     const zero = nodeByKey(desktopShellView(baseState), "shell-ping-count")
-    expect(zero?.label).toBe("loop proofs: 0")
+    expect(zero?.label).toBe("proofs 0")
     expect(zero?.tone).toBe("neutral")
 
     const proven = nodeByKey(
       desktopShellView({ ...baseState, loopProofs: 3 }),
       "shell-ping-count",
     )
-    expect(proven?.label).toBe("loop proofs: 3")
+    expect(proven?.label).toBe("proofs 3")
     expect(proven?.tone).toBe("success")
   })
 
@@ -186,6 +190,7 @@ describe("pure transitions", () => {
     const open = withFleetDesk(baseState)
     expect(open.fleetDeskOpen).toBe(true)
     expect(nodeByKey(desktopShellView(open), "fleet-desk")?._tag).toBe("Card")
+    expect(nodeByKey(desktopShellView(open), "shell-welcome")).toBeUndefined()
 
     const drafted = withFleetObjective(open, "Ship the desktop fleet chat")
     const dispatching = withFleetDeploymentRequested(drafted)
@@ -225,7 +230,7 @@ describe("typed intent loop end-to-end (registry -> state -> re-render)", () => 
         const next = yield* SubscriptionRef.get(state)
         expect(next.loopProofs).toBe(1)
         const rerendered = desktopShellView(next)
-        expect(nodeByKey(rerendered, "shell-ping-count")?.label).toBe("loop proofs: 1")
+        expect(nodeByKey(rerendered, "shell-ping-count")?.label).toBe("proofs 1")
         const transcript = nodeByKey(rerendered, "shell-transcript")
         expect((transcript?.messages as Array<unknown>).length).toBe(3)
       }),

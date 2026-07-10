@@ -126,7 +126,7 @@ const smokeOpenFleetDesk = `(async () => {
   const dispatch = document.querySelector('[data-en-key="fleet-stage-request"]')
   const status = document.querySelector('[data-en-key="fleet-authority-status"]')
   return {
-    ok: objective !== null && dispatch !== null && status !== null && status.textContent === "DRAFT ONLY",
+    ok: objective !== null && dispatch !== null && status !== null && status.textContent === "Draft",
     status: status === null ? null : status.textContent,
   }
 })()`

@@ -290,8 +290,8 @@ const text = (
   color: TextView["color"] = "textPrimary",
 ): TextView => Text({ key, content, variant, color })
 
-/** The centered ChatGPT-grade reading column shared by transcript + composer. */
-const columnWidth = 760
+/** The comfortable desktop reading measure shared by conversation + composer. */
+const columnWidth = 840
 
 /**
  * Real v29 chat rows: sender label and timestamp are typed message data — the
@@ -323,48 +323,69 @@ const shellHeader = (state: DesktopShellState): View =>
       align: "center",
       style: {
         width: "full",
-        paddingLeft: "4",
-        paddingRight: "4",
-        paddingTop: "3",
-        paddingBottom: "3",
-        backgroundColor: "surface",
-        borderColor: "border",
-        borderWidth: 1,
+        paddingLeft: "3",
+        paddingRight: "3",
+        paddingTop: "2",
+        paddingBottom: "2",
       },
     },
     [
       Text({ key: "shell-title", content: "OpenAgents", variant: "title", color: "textPrimary" }),
       Badge({
         key: "shell-surface",
-        label: "DESKTOP",
+        label: "Sarah",
         tone: "info",
-        a11y: { label: "OpenAgents Desktop surface" },
+        a11y: { label: "Sarah workspace" },
       }),
       Button({
         key: "shell-fleet-toggle",
-        label: state.fleetDeskOpen ? "Close Fleet" : "Open Fleet",
+        label: state.fleetDeskOpen ? "Close Fleet" : "Fleet",
         variant: "ghost",
         onPress: IntentRef("DesktopFleetDeskToggled"),
         a11y: { label: state.fleetDeskOpen ? "Close Fleet desk" : "Open Fleet desk" },
       }),
       Badge({
         key: "shell-status",
-        label: "READY",
+        label: "Private workspace",
         tone: "success",
-        a11y: { label: "Shell status: ready" },
+        a11y: { label: "Private workspace ready" },
       }),
       Spacer({ key: "shell-header-fill", flex: true }),
       Badge({
         key: "shell-host",
-        label: `host: ${state.host}`,
+        label: state.host,
         tone: "neutral",
         a11y: { label: `Rendering host: ${state.host}` },
       }),
       Badge({
         key: "shell-ping-count",
-        label: `loop proofs: ${state.loopProofs}`,
+        label: `proofs ${state.loopProofs}`,
         tone: state.loopProofs > 0 ? "success" : "neutral",
         a11y: { label: `${state.loopProofs} completed intent loop proofs` },
+      }),
+    ],
+  )
+
+const shellWelcome = (): View =>
+  Stack(
+    {
+      key: "shell-welcome",
+      direction: "column",
+      gap: "2",
+      style: { width: "full", maxWidth: columnWidth, alignSelf: "center" },
+    },
+    [
+      Text({
+        key: "shell-welcome-title",
+        content: "What would you like to move today?",
+        variant: "heading",
+        color: "textPrimary",
+      }),
+      Text({
+        key: "shell-welcome-body",
+        content: "Sarah can shape the work, then hand a bounded brief to your local fleet.",
+        variant: "body",
+        color: "textMuted",
       }),
     ],
   )
@@ -391,14 +412,14 @@ const fleetDesk = (state: DesktopShellState): View => {
         Text({ key: "fleet-desk-title", content: "Fleet deployment brief", variant: "title", color: "textPrimary" }),
         Text({
           key: "fleet-desk-copy",
-          content: "Shape the work here; authenticated Sarah/Pylon authority is required to create a real FleetRun.",
+        content: "Turn a clear objective into a bounded local-Pylon brief. A real FleetRun still requires authority-backed evidence.",
           variant: "body",
           color: "textMuted",
         }),
         TextField({
           key: "fleet-objective",
           value: state.fleetObjective,
-          placeholder: "What should the fleet ship?",
+          placeholder: "What should the fleet tackle?",
           disabled: dispatching,
           a11y: { label: "Fleet deployment objective" },
           onChange: IntentRef("DesktopFleetObjectiveChanged", ComponentValueBinding()),
@@ -407,7 +428,7 @@ const fleetDesk = (state: DesktopShellState): View => {
         Stack({ key: "fleet-desk-actions", direction: "row", gap: "2", align: "center" }, [
           Button({
             key: "fleet-stage-request",
-            label: dispatching ? "Dispatching…" : accepted ? "Dispatched" : "Dispatch to Pylon",
+            label: dispatching ? "Dispatching…" : accepted ? "Brief dispatched" : "Dispatch brief",
             variant: "primary",
             disabled: dispatching || state.fleetObjective.trim() === "",
             onPress: IntentRef("DesktopFleetDeploymentRequested"),
@@ -415,7 +436,7 @@ const fleetDesk = (state: DesktopShellState): View => {
           }),
           Badge({
             key: "fleet-authority-status",
-            label: accepted ? "INTENT ACCEPTED" : dispatching ? "DISPATCHING" : "DRAFT ONLY",
+            label: accepted ? "Intent accepted" : dispatching ? "Dispatching" : "Draft",
             tone: accepted ? "success" : dispatching ? "warn" : "neutral",
             a11y: { label: accepted ? "Pylon accepted Fleet intent" : dispatching ? "Fleet request dispatching" : "Fleet request is a draft" },
           }),
@@ -459,10 +480,10 @@ const shellComposer = (state: DesktopShellState): View =>
           TextField({
             key: "shell-input",
             value: state.input,
-            placeholder: "Message the shell…",
+            placeholder: "Message Sarah",
             disabled: state.pending,
             clearOnSubmit: true,
-            a11y: { label: "Message to the shell transcript" },
+            a11y: { label: "Message Sarah" },
             onChange: IntentRef("DesktopInputChanged", ComponentValueBinding()),
             onSubmit: IntentRef("DesktopNoteSubmitted", ComponentValueBinding()),
             style: { flex: 1 },
@@ -477,7 +498,7 @@ const shellComposer = (state: DesktopShellState): View =>
           }),
           Button({
             key: "shell-ping",
-            label: "Ping loop",
+            label: "Proof",
             variant: "ghost",
             onPress: IntentRef("DesktopLoopPinged"),
             a11y: { label: "Ping the Effect Native intent loop" },
@@ -498,6 +519,7 @@ export const desktopShellView = (state: DesktopShellState): View =>
     [
       shellHeader(state),
       ...(state.fleetDeskOpen ? [fleetDesk(state)] : []),
+      ...(state.notes.length <= 2 && !state.fleetDeskOpen ? [shellWelcome()] : []),
       Transcript({
         key: "shell-transcript",
         pinToEnd: true,
