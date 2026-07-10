@@ -145,6 +145,14 @@
   one confirmed effect. Khala Sync typecheck plus 137 tests/12,587
   expectations pass. This is deterministic client/transport fixture evidence,
   not a production delivery receipt.
+- 2026-07-10 13:18 CDT — DESKTOP-3 now has a fixture pixel receipt: the
+  Electron smoke opens the palette through its visible button, captures it,
+  confirms all closed commands are mounted, and closes it before the remaining
+  smoke steps. The initial screenshot exposed an off-layout mount; the palette
+  was moved into the main shell stack and the regenerated capture was visually
+  inspected. Desktop `verify` remains green (82 tests/426 expectations,
+  build, and fixture smoke). This is reproducible local pixel evidence, not
+  physical-device or owner-accepted proof.
 
 ## Mission
 

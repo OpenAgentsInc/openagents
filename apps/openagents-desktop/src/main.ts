@@ -257,6 +257,32 @@ const smokeCodexHistoryDetails = `(async () => {
   return { ok: sidebar?.textContent === "Codex chats · last 24 hours" && detail !== null }
 })()`
 
+const smokeOpenCommandPalette = `(async () => {
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+  const button = document.querySelector('[data-en-key="shell-command-palette-toggle"]')
+  if (button === null) return { ok: false, reason: "Command palette button never mounted" }
+  button.click()
+  const deadline = Date.now() + 5000
+  while (Date.now() < deadline && document.querySelector('[data-en-key="desktop-command-palette"]') === null) {
+    await wait(50)
+  }
+  const palette = document.querySelector('[data-en-key="desktop-command-palette"]')
+  const files = document.querySelector('[data-en-key="desktop-command-workspace.files"]')
+  return { ok: palette !== null && files !== null }
+})()`
+
+const smokeCloseCommandPalette = `(async () => {
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+  const button = document.querySelector('[data-en-key="desktop-command-palette-close"]')
+  if (button === null) return { ok: false, reason: "Command palette close button never mounted" }
+  button.click()
+  const deadline = Date.now() + 5000
+  while (Date.now() < deadline && document.querySelector('[data-en-key="desktop-command-palette"]') !== null) {
+    await wait(50)
+  }
+  return { ok: document.querySelector('[data-en-key="desktop-command-palette"]') === null }
+})()`
+
 const smokeOpenFleetDesk = `(async () => {
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
   const button = document.querySelector('[data-en-key="shell-fleet-toggle"]')
@@ -427,8 +453,11 @@ const runSmoke = (window: BrowserWindow): void => {
       try {
         await step("shell-mounted", smokeWaitForShell)
         await captureShot(window, "01-shell")
+        await step("command-palette-open", smokeOpenCommandPalette)
+        await captureShot(window, "02-command-palette")
+        await step("command-palette-close", smokeCloseCommandPalette)
         await step("recent-codex-history-selected-detail", smokeCodexHistoryDetails)
-        await captureShot(window, "02-codex-history-detail")
+        await captureShot(window, "03-codex-history-detail")
         // Settings / Codex reconnect (#8640 unblock). Headless smoke cannot
         // complete a real browser device-auth, so main runs a FIXTURE spawn:
         // the awaiting_browser receipt below shows scripted fixture data.

@@ -1040,6 +1040,7 @@ export const desktopShellView = (state: DesktopShellState): View =>
         },
         [
           shellHeader(state),
+          ...(state.commandPaletteOpen ? [commandPalette()] : []),
           ...(state.workspace === "chat" && state.threads.length === 0 ? [shellWelcome()] : []),
           ...(state.workspace === "chat" && selectedCodexThreadDetails(state) !== null ? [selectedCodexThreadDetails(state)!] : []),
           ...(state.workspace === "chat" ? [Transcript({
@@ -1061,5 +1062,5 @@ export const desktopShellView = (state: DesktopShellState): View =>
         ],
       ),
     ],
-  ), ...(state.commandPaletteOpen ? [commandPalette()] : [])],
+  )],
   )
