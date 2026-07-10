@@ -31,16 +31,23 @@ Approval remains honestly unavailable when the unattended executor has no
 typed `approval_requested` lifecycle event. No binding is synthesized from
 worker tone, raw logs, or “latest” identity.
 
-The remaining serial residual is evidence composition: non-issue work can
-still fall back to assignment identity; steer is correctly absent without a
-server-authorized exact-attempt affordance; the canvas stops at
+First-class server work-unit/attempt authority landed through `849856d189`.
+Every plan unit now exists durably before execution; retries keep distinct
+exact-attempt history; only v2 attempts with coherent verification, artifact,
+proof, authority, closeout, economics, and exact-or-explicitly-unmeasured usage
+can succeed. Server receipt time governs freshness. Legacy v1 replay stays
+compatible without manufacturing success, and migration 0056 opaque-repairs
+unsafe projected refs while terminalizing stranded unsafe progress for retry.
+
+The remaining serial residual is production and consumption: Pylon must emit
+the v2 lifecycle/evidence and real typed approval request; non-issue Sarah work
+can still fall back to assignment identity; steer is correctly absent without
+a server-authorized exact-attempt affordance; the canvas stops at
 run→work→worker; and the retained browser mount calls the coding-closeout
-projector with `evidence: []`. First-class work-unit and exact work-claim
-attempt entities must carry actual verification, artifact, capacity/cost,
-approval/authority, closeout, and exact-or-explicitly-unmeasured usage evidence
+projector with `evidence: []`. Sarah must consume the new entities directly
 into the full plan→claim→assignment→verification→closeout chain. Then the C1
 fixture must prove pause/resume/approval/steer/reconnect/privacy on one pinned
-stack, followed by migrations 0054/0055 and application deployment.
+stack, followed by migrations 0054/0055/0056 and application deployment.
 
 ## Scope
 

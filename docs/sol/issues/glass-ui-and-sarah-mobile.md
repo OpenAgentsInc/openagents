@@ -40,11 +40,15 @@ fallback. No `@expo/ui` import is permitted in app code.
 ### GL-2 — #8648: mobile glass shell
 
 Status: 0.5.0 build 107 at `9c5adff015` is `VALID` and pixel-proves the typed
-shell/drawer/composer loop. The 0.5.1 build-108 source and simulator receipt
-landed through `e30028a7e1`, followed by JS-only owner chrome corrections
-shipped through the OTA channel at `d5e524b142`; no ASC/`VALID` receipt is
-recorded for build 108, so it is not described as TestFlight-deployed/valid.
-The remaining work is integration and owner acceptance, not an unstarted shell.
+shell/drawer/composer loop. Builds 108 (0.5.1) and 109 (0.5.2) subsequently
+reached `VALID`; the build-108 owner chrome corrections were live-OTA proven,
+then baked into build 109 at `65f8216cb9` with the owner-selected Sarah loop
+made container-level silent. Build-110 source at `c17c3823ad` keeps marketing
+version 0.5.2 and adds a typed composer-triggered full-screen Sarah reply video
+with audio. Its source tests/typecheck and simulator proof are recorded, but no
+ASC/`VALID` receipt is. These videos remain presentation material rather than
+GL-3 conversation/auth/SSE proof. The remaining work is integration and owner
+acceptance, not an unstarted shell.
 
 Complete the owner's target structure in `apps/openagents-mobile`: a left
 flyout drawer, selected navigation row, Recents, floating settings, glass Chat

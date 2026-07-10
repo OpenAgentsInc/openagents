@@ -1,7 +1,7 @@
 # MASTER ROADMAP — Sarah Fleet Command first; three OpenAgents apps
 
 - Date: 2026-07-09
-- Revision: 18
+- Revision: 19
 - Status: canonical OpenAgents implementation roadmap
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Issue source set: [`issues/README.md`](./issues/README.md)
@@ -178,14 +178,18 @@ The coding-fleet program starts from substantial working substrate:
   process-isolated experiment under #8610.
 - the greenfield OpenAgents mobile shell on the Effect Native/React Native seam,
   exact `OpenAgents` / `com.openagents.app` / pinned-icon identity oracles, and
-  an owned `openagents-production` OTA channel. TestFlight 0.4.3 build 106 and
-  0.5.0 build 107 reached `VALID`; build 107 is the pixel-proven typed glass
-  shell/drawer/composer loop. The 0.5.1 build-108 source, tests, typecheck,
-  simulator pixel receipt, and lockfile are on `main` through `e30028a7e1`;
-  JS-only owner chrome corrections then shipped through the OTA channel at
-  `d5e524b142`. No App Store Connect/`VALID` receipt is recorded for build 108. Owner-device
-  acceptance, Sarah/Sync continuity, Android, and the full #8597 exit remain
-  open;
+  an owned `openagents-production` OTA channel. TestFlight 0.4.3 build 106,
+  0.5.0 build 107, 0.5.1 build 108, and 0.5.2 build 109 reached `VALID`;
+  build 107 is the pixel-proven typed glass shell/drawer/composer loop. Build
+  108 added the typed surface selector and bundled Sarah presentation loop,
+  then received JS-only owner chrome corrections through the OTA channel at
+  `d5e524b142`. Build 109 baked those corrections in and replaced the Sarah
+  loop with the owner-selected, container-level silent video at `65f8216cb9`.
+  Build-110 source at `c17c3823ad` keeps marketing version 0.5.2 per owner
+  direction and adds a typed composer-triggered full-screen Sarah reply video
+  with audio; source tests/typecheck and simulator proof are recorded, but no
+  build-110 App Store Connect/`VALID` receipt is recorded. Owner-device acceptance,
+  Sarah/Sync continuity, Android, and the full #8597 exit remain open;
 - the Effect Native vendor at `66d2f7544b` now includes upstream `2918c277`
   (v27): typed `IconButton`, `Toolbar`, semantic `surface: "glass"`, and Sheet
   detents. The Scope-bound host-driver registry, conversion/deletion of the
@@ -219,6 +223,15 @@ The coding-fleet program starts from substantial working substrate:
   `Content-Length`. When the unattended executor has no typed
   `approval_requested` event, approval remains honestly unavailable rather
   than receiving a fabricated binding.
+- first-class server work-unit/attempt authority through `849856d189`: every
+  normalized plan unit is durable before execution, every claim retry has a
+  stable exact attempt identity, only v2 attempts with coherent verifier,
+  artifact, proof, authority, closeout, economics, and exact-or-explicitly-
+  unmeasured usage evidence can succeed, and server receipt time—not a remote
+  worker clock—governs freshness. Historic v1 rows remain replayable but never
+  manufacture success; migration 0056 repairs unsafe legacy projection refs to
+  opaque digests, terminalizes stranded unsafe running attempts for safe retry,
+  and leaves the immutable execution ledger as audit authority.
 
 The immediate gaps are now narrower composition and live-proof gaps:
 
@@ -244,10 +257,11 @@ The immediate gaps are now narrower composition and live-proof gaps:
   `/sarah`, including exact start-result-to-scope selection through
   `6cd9d09205`. The transport split, reconnect-honest command outcome, and
   restart-safe private follow-up/completion are closed through `59538f71a2`.
-  First-class stable work-unit/exact-attempt evidence, real lifecycle/approval
-  production, Sarah evidence consumption and full canvas, the integrated C1
-  reconnect/control/privacy fixture, migrations 0054/0055 deployment, and a
-  deployed owner-cookie canary remain.
+  First-class stable work-unit/exact-attempt server authority is closed through
+  `849856d189`. Real Pylon v2 lifecycle/approval/evidence production, Sarah
+  direct attempt consumption and full canvas, the integrated C1 reconnect/
+  control/privacy fixture, migrations 0054/0055/0056 deployment, and a deployed
+  owner-cookie canary remain.
 - The trusted-context voice coordinator/SSE adapter is fixture-proven but stays
   unarmed until renderer-authenticated conversation/session metadata carries
   the server-minted conversation ref; model/system text is not scope authority.
@@ -264,7 +278,7 @@ P0 fixes those seams. It does not build another fleet system.
 | --- | --- | --- |
 | #8637 FC-1 | **closed** at `0892d57b3b`: integrated operator conversation -> durable authority -> registered standing Pylon -> bounded closeout is fixture-proven; timing is 1.8s acknowledgment / 6.1s first claim / 8.6s first capacity; staging `00046-jpn` and production `00068-5t8` are deployed and smoke-proven | none in FC-1; real mixed-account execution is #8640 and owner-cookie reconnect/steer is #8639 |
 | #8633 FC-2 | **closed** on the stack ending `d779c360c3`: production standing adapters, shared typed auto policy, restart-safe mixed claims, health rotation, durable execution outbox/server projection, and one integrated three-harness restart/usage fixture are proven; migration 0053 is applied in staging/production, while the application stack is not deployed | the pinned integrated deployment is a #8639/#8640 gate, not reopened FC-2 residue; useful live Codex+Claude+Grok work is #8640 |
-| #8639 FC-3 | controls/reconnect through `6cd9d09205`, media continuity through `3d87cb609b`, reconnect-honest command outcomes through `08aac90250`, and restart-safe private follow-up/completion through `59538f71a2` are code-landed and fixture-proven | first-class work-unit/exact-attempt lifecycle; real approval/evidence production; Sarah evidence/full canvas; integrated reconnect/control/privacy receipt; deploy migrations 0054/0055 and application stack |
+| #8639 FC-3 | controls/reconnect through `6cd9d09205`, media continuity through `3d87cb609b`, reconnect-honest command outcomes through `08aac90250`, restart-safe private follow-up/completion through `59538f71a2`, and first-class server work-unit/exact-attempt authority through `849856d189` are code-landed and fixture-proven | real Pylon v2 lifecycle/approval/evidence production; Sarah direct attempt consumption/full canvas; integrated reconnect/control/privacy receipt; deploy migrations 0054/0055/0056 and application stack |
 | #8640 FC-5 | acceptance contract only | C1 integrated fixture, then Phase A on one pinned deployment |
 
 These rows are implementation receipts, not issue closure. The commit named in
@@ -382,15 +396,17 @@ sees body-free delivery/completion receipts, no client collection manufactures
 effective state, and queued steer/active stop execute through a durable fenced
 dispatcher with an authenticated terminal ACK.
 
-The remaining serial block is evidence composition. Execution must materialize
-the stable plan work unit and exact work-claim attempt, require actual verifier,
-artifact, proof, authority, closeout, economics, and exact-or-explicitly-
-unmeasured usage evidence, and produce a typed approval binding only when a real
-executor lifecycle event exists. Sarah must consume those entities directly,
-remove assignment fallback/synthetic proof, populate closeout receipts, expose
-named steer only for an authorized exact attempt, and render the full
-plan→claim→assignment→verification→closeout chain. The upgraded C1 fixture then
-proves pause/resume/approval/steer/reconnect/privacy before deployment.
+The server half of evidence composition is now closed through `849856d189`:
+stable plan work units, retry-preserving exact attempts, strict proven-terminal
+evidence, owner-safe refs, and legacy replay/repair all project atomically.
+The remaining serial block is production and consumption. Pylon must emit v2
+lifecycle, actual verifier/artifact/proof/authority/closeout/economics/usage,
+and a typed approval binding only when a real executor lifecycle event exists.
+Sarah must consume the work-unit/attempt entities directly, remove assignment
+fallback/synthetic proof, populate closeout receipts, expose named steer only
+for an authorized exact attempt, and render the full plan→claim→assignment→
+verification→closeout chain. The upgraded C1 fixture then proves pause/resume/
+approval/steer/reconnect/privacy before deployment.
 
 Exit:
 
@@ -558,12 +574,13 @@ effect-native#70 / EN-S lanes mature (convert-and-delete).
 
 Current narrow truth: GL-1 has the v27 typed catalog primitives on `main` at
 `66d2f7544b`, but not its host-driver/island-conversion/real-lowering exit.
-GL-2 has the pixel-proven build-107 shell and build-108 source/simulator receipt
-through `e30028a7e1`, plus JS-only owner chrome corrections shipped through OTA
-at `d5e524b142`; build 108 has no recorded ASC/`VALID` receipt, and the
-bundled Sarah demo video is presentation material, not GL-3 auth/SSE/reconnect
-proof. GL-3's text-first shared contract can begin now. GL-4 remains held by
-the owned-lowering dependency.
+GL-2 has the pixel-proven build-107 shell; builds 108 and 109 subsequently
+reached `VALID`, with the owner chrome corrections both OTA-proven on build 108
+and baked into build 109 at `65f8216cb9`. Build-110 source at `c17c3823ad`
+adds the typed composer-triggered full-screen Sarah reply video with audio, but
+has no recorded ASC/`VALID` receipt. Both bundled Sarah videos are presentation
+material, not GL-3 auth/SSE/reconnect proof. GL-3's text-first shared contract
+can begin now. GL-4 remains held by the owned-lowering dependency.
 
 GL-3 is the convergence point with the Sarah program: the mobile
 conversation surface consumes the same `/sarah` APIs, SSE transcript, and
@@ -623,11 +640,15 @@ builds a new OpenAgents iOS/Android app at `apps/openagents-mobile`.
 
 Status: the initial greenfield shell, identity/icon oracles, Effect Native
 React Native renderer seam, owned OTA feed, and iOS release lane are proven.
-TestFlight 0.4.3 build 106 and 0.5.0 build 107 reached `VALID`; build 107 is the
-simulator-pixel-proven glass shell correction and still needs owner-device
-acceptance. Build-108 source at 0.5.1, tests, typecheck, simulator pixel receipt,
-and lockfile are on `main` through `e30028a7e1`, followed by JS-only owner
-chrome corrections through the OTA channel at `d5e524b142`. Build 108 is not
+TestFlight 0.4.3 build 106, 0.5.0 build 107, 0.5.1 build 108, and 0.5.2 build
+109 reached `VALID`; build 107 is the simulator-pixel-proven glass shell
+correction and still needs owner-device acceptance. Build 108 added the typed
+surface selector/Sarah presentation loop and received JS-only owner chrome
+corrections through the live OTA channel. Build 109 at `65f8216cb9` baked
+those corrections in and container-stripped audio from the owner-selected
+Sarah loop. Build-110 source at `c17c3823ad` stays on marketing version 0.5.2
+and adds a typed composer-triggered full-screen Sarah reply video with audio;
+its source tests/typecheck and simulator proof are recorded, but it is not
 called TestFlight-deployed/valid without an ASC/`VALID` receipt.
 #8597 retains an unreleased Fable claim whose published scope is only the
 initial greenfield setup; later OTA/SwiftUI/TestFlight work exceeded that
