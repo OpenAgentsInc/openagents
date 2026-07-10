@@ -25,7 +25,6 @@ import {
   type LiveFrame,
   LogPage,
   MutationEnvelope,
-  MutationId,
   MutationResult as MutationResultClass,
   MutatorName,
   PushResponse,
@@ -62,6 +61,7 @@ const waitFor = async (
 
 const FIXED_TIME = "2026-07-09T00:00:00.000Z"
 const threadScope = SyncScope.make("scope.thread.cross-app-proof")
+const fleetScope = SyncScope.make("scope.fleet_run.cross-app-fleet-proof")
 
 const cleanups: Array<() => void> = []
 afterEach(() => {
@@ -129,6 +129,29 @@ class DualClientChatServer {
         entries: [entry],
         cursor: SyncVersion.make(version),
       }) as LiveFrame,
+    )
+    return version
+  }
+
+  tombstone(
+    scope: SyncScope,
+    change: { readonly entityType: string; readonly entityId: string },
+    mutationRef: string,
+  ): number {
+    const version = this.lastVersion(scope) + 1
+    const entry = new ChangelogEntry({
+      scope,
+      version: SyncVersion.make(version),
+      entityType: EntityType.make(change.entityType),
+      entityId: EntityId.make(change.entityId),
+      op: "delete",
+      mutationRef,
+      committedAt: FIXED_TIME,
+    })
+    this.logOf(scope).push(entry)
+    this.emitFrame(
+      scope,
+      new DeltaFrame({ scope, entries: [entry], cursor: SyncVersion.make(version) }) as LiveFrame,
     )
     return version
   }
@@ -347,6 +370,7 @@ const makeClient = (
   return {
     session,
     overlay,
+    store,
     listTurns: () => {
       const view = Effect.runSync(overlay.read(threadScope))
       return view
@@ -359,6 +383,10 @@ const makeClient = (
         })
         .sort((a, b) => a.id.localeCompare(b.id))
     },
+    listFleetRuns: () =>
+      Effect.runSync(overlay.read(fleetScope))
+        .list("fleet_run")
+        .map((row) => JSON.parse(row.postImageJson) as { readonly runId: string }),
   }
 }
 
@@ -418,5 +446,69 @@ describe("cross-app chat.composeTurn over real khala-sync-client sessions", () =
     // Both clients applied both post-images (optimistic + confirmed).
     expect(desktopTurns).toHaveLength(2)
     expect(mobileTurns).toHaveLength(2)
+  })
+
+  test("both clients converge on a fleet projection tombstone and preserve its cursor after restart", async () => {
+    const server = new DualClientChatServer()
+    const desktop = makeClient(server, "c_desktop_fleet")
+    const mobile = makeClient(server, "c_mobile_fleet")
+
+    await Effect.runPromise(desktop.session.subscribe(fleetScope))
+    await Effect.runPromise(mobile.session.subscribe(fleetScope))
+    await waitFor(
+      () =>
+        desktop.session.state(fleetScope).phase === "live" &&
+        mobile.session.state(fleetScope).phase === "live",
+      "both fleet projections live",
+    )
+
+    const run = {
+      runId: "fleet-run.pylon.supervisor.crossapp",
+      status: "running",
+      desiredSlots: 1,
+      workerKind: "codex",
+      startedAt: FIXED_TIME,
+      counters: {
+        workUnitsTotal: 1,
+        activeAssignments: 1,
+        completedAssignments: 0,
+        failedAssignments: 0,
+        blockedAssignments: 0,
+      },
+      updatedAt: FIXED_TIME,
+    }
+    server.commit(
+      fleetScope,
+      {
+        entityType: "fleet_run",
+        entityId: run.runId,
+        postImageJson: canonicalJson(run),
+      },
+      "mutation.server.fleet-run.1",
+    )
+    await waitFor(
+      () =>
+        desktop.listFleetRuns()[0]?.runId === run.runId &&
+        mobile.listFleetRuns()[0]?.runId === run.runId,
+      "both clients see fleet run",
+    )
+    expect(Effect.runSync(desktop.store.cursor(fleetScope))).toBe(SyncVersion.make(1))
+    expect(Effect.runSync(mobile.store.cursor(fleetScope))).toBe(SyncVersion.make(1))
+
+    server.tombstone(
+      fleetScope,
+      { entityType: "fleet_run", entityId: run.runId },
+      "mutation.server.fleet-run.2",
+    )
+    await waitFor(
+      () => desktop.listFleetRuns().length === 0 && mobile.listFleetRuns().length === 0,
+      "fleet tombstone on both clients",
+    )
+    expect(Effect.runSync(desktop.store.cursor(fleetScope))).toBe(SyncVersion.make(2))
+    expect(Effect.runSync(mobile.store.cursor(fleetScope))).toBe(SyncVersion.make(2))
+
+    const restartedOverlay = Effect.runSync(createOverlay(desktop.store, [composeTurn]))
+    expect(Effect.runSync(restartedOverlay.read(fleetScope)).list("fleet_run")).toEqual([])
+    expect(Effect.runSync(desktop.store.cursor(fleetScope))).toBe(SyncVersion.make(2))
   })
 })

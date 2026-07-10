@@ -80,6 +80,15 @@
   explicit `Sync not configured` state until the later authenticated adapter
   exists; its regression oracle forbids fabricated FleetRun and repository
   content. Mobile typecheck and 21 tests/74 expectations pass.
+- 2026-07-10 12:12 CDT — SYNC-4 now has a deterministic two-client fleet
+  projection fixture: a server-originated `fleet_run` upsert is fanned out to
+  desktop and mobile sessions, then a tombstone removes it from both views.
+  The fixture proves both durable cursors reach version 2 and a fresh overlay
+  over the desktop durable store retains that empty/tombstoned state. This is
+  fixture proof over the real client/session/store seam, not a deployed
+  server, physical-device, or live-account receipt. Khala Sync typecheck plus
+  134 tests/12,572 expectations, Desktop typecheck plus 70 tests/363
+  expectations, and mobile typecheck plus 21 tests/74 expectations pass.
 
 ## Mission
 
