@@ -89,6 +89,100 @@ const mixedCapacity: readonly FleetRunSupervisorAccount[] = [
 const capacity = () => ({ accounts: async () => mixedCapacity })
 
 describe("Pylon-owned FleetRun supervisor", () => {
+  test("waits for every residual attempt before emitting an operator-stop terminal", async () => {
+    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const run = createRun(store, {
+      runRef: "fleet_run.fc3.operator_stop_residual",
+      workUnits: 2,
+      targetConcurrency: 2,
+      workerKind: "codex",
+    })
+    const observed: FleetRunSupervisorObservedEvent[] = []
+    let releaseReconcile!: () => void
+    let reconcileEntered!: () => void
+    const heldReconcile = new Promise<void>(resolve => {
+      releaseReconcile = resolve
+    })
+    const reconcileStarted = new Promise<void>(resolve => {
+      reconcileEntered = resolve
+    })
+    let reconcileCalls = 0
+    const options = {
+      store,
+      pylonRef: "pylon.owner.fc3.operator_stop_residual",
+      runRef: run.runRef,
+      planner: planner(store, 2),
+      capacity: {
+        accounts: async () => [{
+          accountRef: "codex-owner",
+          advertisedCapacity: 2,
+          marginalCostClass: "subscription" as const,
+          workerKind: "codex" as const,
+        }],
+      },
+      runner: {
+        dispatch: async (input: FleetRunSupervisorDispatchInput) => ({
+          assignmentRef: `assignment.public.${input.workUnit.workUnitRef}`,
+          lifecycle: [],
+          status: "accepted" as const,
+        }),
+        reconcile: async ({
+          activeAssignments,
+        }: {
+          readonly activeAssignments: readonly FleetRunSupervisorActiveAssignment[]
+        }) => {
+          reconcileCalls += 1
+          if (reconcileCalls === 1) {
+            reconcileEntered()
+            await heldReconcile
+            const assignment = activeAssignments[0]!
+            return [{
+              assignmentRef: assignment.claim.assignmentRef,
+              lifecycle: [lifecycleEvent("assignment_run.completed", "closed")],
+              status: "completed" as const,
+              summary: "first residual closed",
+              taskId: assignment.taskId,
+            }]
+          }
+          return activeAssignments.map(assignment => ({
+            assignmentRef: assignment.claim.assignmentRef,
+            lifecycle: [lifecycleEvent("assignment_run.completed", "closed")],
+            status: "completed" as const,
+            summary: "final residual closed",
+            taskId: assignment.taskId,
+          }))
+        },
+      },
+      clock: { now: () => fixedNow },
+      onLifecycle: (event: FleetRunSupervisorObservedEvent) => {
+        observed.push(event)
+      },
+    }
+
+    const initial = await tickFleetRunSupervisor(options)
+    expect(initial.activeAssignments).toBe(2)
+    observed.length = 0
+
+    const heldTick = tickFleetRunSupervisor(options)
+    await reconcileStarted
+    store.controlFleetRun(run.runRef, "stop", fixedNow)
+    releaseReconcile()
+    const partiallyReconciled = await heldTick
+
+    expect(partiallyReconciled.run.state).toBe("stopped")
+    expect(partiallyReconciled.activeAssignments).toBe(1)
+    expect(observed.filter(event => event.kind === "terminal")).toHaveLength(0)
+
+    const terminalReconcile = await tickFleetRunSupervisor(options)
+    expect(terminalReconcile.activeAssignments).toBe(0)
+    expect(observed.filter(event => event.kind === "terminal")).toEqual([{
+      kind: "terminal",
+      runRef: run.runRef,
+      terminalState: "stopped",
+      blockerRefs: [],
+    }])
+  })
+
   test("emits a failed run terminal when the last local attempt fails or blocks", async () => {
     for (const status of ["failed", "blocked"] as const) {
       const store = createPylonOrchestrationStore(new Database(":memory:"))
@@ -289,6 +383,95 @@ describe("Pylon-owned FleetRun supervisor", () => {
     )
     expect(observed.filter(event => event.kind === "approval_requested")).toHaveLength(2)
     expect(conflictingReplayRejected).toBe(true)
+  })
+
+  test("gives simultaneous slots on one account distinct worker refs with stable replay", async () => {
+    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const pylonRef = "pylon.owner.fc3.concurrent_approvals"
+    const authorityClaimRef = `claim.sarah_fleet_run.${"c".repeat(24)}`
+    const baseRun = createRun(store, {
+      runRef: "fleet_run.sarah.concurrent_approvals",
+      workUnits: 2,
+      targetConcurrency: 2,
+      workerKind: "codex",
+    })
+    const run = store.upsertFleetRun({
+      ...baseRun,
+      authorityBinding: {
+        schema: "openagents.pylon.fleet_run_authority_binding.v1",
+        source: "sarah_authority",
+        authorityFingerprint: "d".repeat(64),
+        claimRef: authorityClaimRef,
+        pylonRef,
+        targetPreference: "owner_local",
+        phase: "accepted",
+      },
+    })
+    const observed: FleetRunSupervisorObservedEvent[] = []
+    let approvalsReady = 0
+    let replayCount = 0
+    let releaseApprovals!: () => void
+    const bothApprovalsReady = new Promise<void>(resolve => {
+      releaseApprovals = resolve
+    })
+
+    const result = await tickFleetRunSupervisor({
+      store,
+      pylonRef,
+      runRef: run.runRef,
+      planner: planner(store, 2),
+      capacity: {
+        accounts: async () => [{
+          accountRef: "codex-owner",
+          advertisedCapacity: 2,
+          marginalCostClass: "subscription",
+          workerKind: "codex",
+        }],
+      },
+      clock: { now: () => fixedNow },
+      runner: {
+        dispatch: async input => {
+          const suffix = input.workUnit.workUnitRef.replace(/[^a-zA-Z0-9_.-]/gu, "_")
+          const request = {
+            approvalRef: `approval.public.fc3.${suffix}`,
+            assignmentRef: `assignment.public.fc3.${suffix}`,
+            toolClass: "write_file",
+          } as const
+          await input.onApprovalRequested?.(request)
+          approvalsReady += 1
+          if (approvalsReady === 2) releaseApprovals()
+          await bothApprovalsReady
+          await input.onApprovalRequested?.(request)
+          replayCount += 1
+          return {
+            assignmentRef: request.assignmentRef,
+            lifecycle: [],
+            status: "accepted",
+          }
+        },
+      },
+      onLifecycle: event => {
+        observed.push(event)
+      },
+    })
+
+    const approvals = store.listFleetRunSteeringApprovalBindings({
+      pylonRef,
+      runRef: run.runRef,
+      claimRef: authorityClaimRef,
+      pendingOnly: false,
+    })
+    expect(result.activeAssignments).toBe(2)
+    expect(result.dispatched).toBe(2)
+    expect(approvalsReady).toBe(2)
+    expect(replayCount).toBe(2)
+    expect(approvals).toHaveLength(2)
+    expect(new Set(approvals.map(approval => approval.workerRef)).size).toBe(2)
+    expect(approvals.every(approval =>
+      approval.workerRef !== null &&
+      /^worker\.pylon\.codex\.[a-f0-9]{24}$/u.test(approval.workerRef)
+    )).toBe(true)
+    expect(observed.filter(event => event.kind === "approval_requested")).toHaveLength(4)
   })
 
   test("replays buffered lifecycle when the first live projection fails", async () => {

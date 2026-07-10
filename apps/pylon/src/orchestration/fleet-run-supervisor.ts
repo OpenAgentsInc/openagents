@@ -563,10 +563,19 @@ const contextIdFor = (accountRef: string, taskId: string): string =>
 
 const stableWorkerRef = (input: {
   readonly accountRefHash: string
+  readonly contextId: string
   readonly pylonRef: string
+  readonly taskId: string
+  readonly workClaimRef: string
   readonly workerKind: FleetRunSupervisorConcreteWorkerKind
 }): string => `worker.pylon.${input.workerKind}.${createHash("sha256")
-  .update(`${input.pylonRef}:${input.accountRefHash}`)
+  .update(JSON.stringify([
+    input.pylonRef,
+    input.accountRefHash,
+    input.workClaimRef,
+    input.taskId,
+    input.contextId,
+  ]))
   .digest("hex")
   .slice(0, 24)}`
 
@@ -809,7 +818,9 @@ export async function tickFleetRunSupervisor(
       })
     }
     if (run.state !== "running") {
-      await emitRunTerminal(options.onLifecycle, run)
+      if (activeAssignmentsForRun(store, run.runRef) === 0) {
+        await emitRunTerminal(options.onLifecycle, run)
+      }
       return {
         activeAssignments: activeAssignmentsForRun(store, run.runRef),
         claimed: 0,
@@ -1091,7 +1102,10 @@ export async function tickFleetRunSupervisor(
               workerKind,
               workerRef: stableWorkerRef({
                 accountRefHash,
+                contextId,
                 pylonRef: options.pylonRef,
+                taskId,
+                workClaimRef: claim.claimRef,
                 workerKind,
               }),
               accountRefHash,
