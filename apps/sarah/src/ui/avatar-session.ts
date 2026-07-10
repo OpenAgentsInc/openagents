@@ -20,6 +20,10 @@ import {
 import type { SarahBlueprintDelta } from "../services/avatar-event-bus.ts"
 import type { MediaObservation } from "../contracts/fleet-continuity-projection.ts"
 import {
+  makeAvatarClipLayer,
+  type AvatarClipVideoLike,
+} from "./avatar-clip-layer.ts"
+import {
   observeAvatarMediaHealth,
   type AvatarMediaHealthObserver,
 } from "./avatar-media-health.ts"
@@ -64,6 +68,13 @@ type AvatarMint = {
   sandbox: boolean
   /** Owned renderer only: render-service WebRTC join info. */
   webrtc?: { offer_url?: string }
+  /**
+   * Epic #8610: pre-rendered shippable opener the browser plays immediately
+   * (its own judged audio) while WebRTC warms — present when the mint
+   * requested greeting:"client_clip" and a clip is available server-side.
+   * Its presence means the server SUPPRESSED the TTS greeting.
+   */
+  openerClip?: { name: string; url: string; script: string }
 }
 
 export type AvatarSessionFetch = (
@@ -80,6 +91,8 @@ export type AvatarSessionEnvironment = Readonly<{
   removeBeforeUnload: (listener: () => void) => void
   sendStopBeacon: (url: string, body: Blob) => boolean
   getSpeechRecognitionConstructor: () => any
+  /** Clip-layer <video> factory (epic #8610); defaults to document.createElement. */
+  createClipVideoElement?: () => AvatarClipVideoLike
 }>
 
 const browserAvatarSessionEnvironment: AvatarSessionEnvironment = {
@@ -95,6 +108,7 @@ const browserAvatarSessionEnvironment: AvatarSessionEnvironment = {
   sendStopBeacon: (url, body) => navigator.sendBeacon?.(url, body) ?? false,
   getSpeechRecognitionConstructor: () =>
     (window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition,
+  createClipVideoElement: () => document.createElement("video"),
 }
 
 type ServerStopMode = "request" | "beacon"
@@ -174,8 +188,13 @@ export async function startAvatarSession(
 ): Promise<AvatarHandle> {
   callbacks.onState("connecting")
   callbacks.onMedia({ status: "connecting" })
+  // greeting:"client_clip" (epic #8610): this surface plays the pre-rendered
+  // opener clip itself, so the server suppresses the TTS greeting when (and
+  // only when) it returns an openerClip in the mint.
   const mintResponse = await environment.fetch(`${API}/avatar/session`, {
     method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ greeting: "client_clip" }),
   })
   if (!mintResponse.ok) {
     const body = (await mintResponse.json().catch(() => ({}))) as {
@@ -460,6 +479,42 @@ async function startOwnedRendererSession(
   }
   pane.container.dataset.state = "connecting"
 
+  // --- pre-rendered clip tier (epic #8610) ----------------------------------
+  // The opener clip starts NOW — Hallo2 quality on screen immediately, with
+  // its own judged audio — while the WebRTC session warms underneath. Canned
+  // KHS-6 clips arrive later over SSE and play over the live stream. Failure
+  // of any clip falls through to the live/TTS path — never dead air.
+  let greetFallbackRequested = false
+  const requestServerGreeting = () => {
+    if (greetFallbackRequested) return
+    greetFallbackRequested = true
+    void environment.fetch(`${API}/avatar/greet`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ sessionId: mint.sessionId }),
+    }).catch(() => {})
+  }
+  const clipLayer = makeAvatarClipLayer({
+    container: pane.container,
+    createVideo:
+      environment.createClipVideoElement ??
+      (() => document.createElement("video")),
+    onUnplayable: (kind) => {
+      // The mint suppressed the server TTS greeting expecting the clip to
+      // carry it — restore it. Canned clips need nothing: their transcript
+      // line already landed and the reply text is on screen.
+      if (kind === "opener") requestServerGreeting()
+    },
+    onMutedPlayback: (kind) => {
+      // Audible autoplay refused: muted Hallo2 visuals continue while the
+      // server TTS greeting restores the audio through the live track.
+      if (kind === "opener") requestServerGreeting()
+    },
+  })
+  if (mint.openerClip?.url) {
+    clipLayer.play({ url: mint.openerClip.url, kind: "opener" })
+  }
+
   type SpeechRecognitionLike = {
     lang: string
     continuous: boolean
@@ -483,6 +538,7 @@ async function startOwnedRendererSession(
     pc.addTransceiver("video", { direction: "recvonly" })
     pc.addTransceiver("audio", { direction: "recvonly" })
   } catch (error) {
+    clipLayer.destroy()
     callbacks.onState("error")
     await ensureServerStop()
     throw error instanceof Error
@@ -503,6 +559,7 @@ async function startOwnedRendererSession(
   }
 
   const teardownLocalMedia = (observation: MediaObservation) => {
+    clipLayer.destroy()
     mediaObserver?.stop()
     mediaObserver = null
     events?.close()
@@ -553,6 +610,8 @@ async function startOwnedRendererSession(
       video.srcObject = stream
       startMediaObserver()
       callbacks.onState("live")
+      // A held opener clip may now crossfade out to the live stream.
+      clipLayer.notifyLiveMedia()
     }
   }
   pc.onconnectionstatechange = () => {
@@ -609,10 +668,16 @@ async function startOwnedRendererSession(
         title?: string
         body?: string
         href?: string
+        name?: string
+        url?: string
         delta?: SarahBlueprintDelta
       }
       if (event.type === "transcript" && event.role && event.text) {
         emitTranscript(event.role, event.text)
+      } else if (event.type === "clip" && event.url) {
+        // KHS-6 canned clip (epic #8610): play the QA-passed pre-rendered
+        // clip over the live stream; the transcript line arrives separately.
+        clipLayer.play({ url: event.url, kind: "canned" })
       } else if ((event.type === "card" || event.type === "guard_refusal") && event.title) {
         callbacks.onCard({
           title: event.title,
@@ -647,6 +712,8 @@ async function startOwnedRendererSession(
           if (!result.isFinal) continue
           const text = String(result[0]?.transcript ?? "").trim()
           if (!text) continue
+          // Barge-in: the user talking over a playing clip drops the clip.
+          clipLayer.interrupt()
           // Serialize turns: a fast talker must not interleave speak calls.
           speakInFlight = speakInFlight.then(() =>
             environment.fetch(`${API}/avatar/speak`, {
@@ -700,6 +767,8 @@ async function startOwnedRendererSession(
   return {
     stop,
     message: (text: string) => {
+      // Barge-in: a typed turn drops any playing clip before the next reply.
+      clipLayer.interrupt()
       // Server-side turn loop: brain → TTS → render-service speak API. The
       // transcript comes back over the SSE bus above.
       void environment.fetch(`${API}/avatar/speak`, {

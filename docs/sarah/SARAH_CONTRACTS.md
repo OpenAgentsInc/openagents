@@ -218,7 +218,7 @@ Registry version: `2026-07-09.1` (schema `openagents.behavior_contracts.v1`)
 
 ## Avatar UX contracts (SQ-4 #8621)
 
-Registry version: `2026-07-09.6` (schema `openagents.behavior_contracts.v1`)
+Registry version: `2026-07-10.7` (schema `openagents.behavior_contracts.v1`)
 
 Owner live-failure statements from 2026-07-09 are enforced in
 `apps/sarah/src/contracts/avatar-ux-contracts.ts`: the session greets first
@@ -252,3 +252,23 @@ Oracles run in the
 normal sweep plus the synthetic-prospect e2e smoke
 (`apps/sarah/scripts/sarah-avatar-e2e-smoke.mjs`), which every Cloud Run
 deploy now runs against the deployed service before reporting Done.
+
+`sarah.avatar_opens_with_shippable_opener_clip.v1` (owner directive,
+2026-07-10, epic #8610) puts the Hallo2 quality tier on screen first: a fresh
+owned session opens with a pre-rendered shippable opener clip playing
+immediately (its own judged audio) while the WebRTC session warms underneath,
+then crossfades to the live stream — killing cold-start dead air. The mint
+option `greeting:"client_clip"` makes the server publish only the greeting
+transcript line and suppress its own TTS greeting (one greet, never two);
+clip fetch/autoplay failure restores the TTS greeting via
+`POST /sarah/api/avatar/greet` (never dead air). The license law is inside
+the contract: the clip catalog (`apps/sarah/src/services/opener-clips.ts`)
+can only represent the raw MIT Hallo2 512² renders — the CodeFormer-derived
+`*-sr.mp4` variants (S-Lab 1.0, non-commercial) are unrepresentable and never
+served. The KHS-6 seam rides the same machinery: an answer-bank entry with a
+`clipRef` plays its QA-passed clip over the live stream instead of live TTS
+(`{type:"clip"}` on the SSE bus), degrading silently to TTS when the clip is
+missing. Oracles: `apps/sarah/src/services/opener-clips.test.ts`,
+`apps/sarah/src/ui/avatar-clip-layer.test.ts`, the owned-renderer clip-bridge
+units, and the extended e2e smoke (clips manifest, MP4 serving, opener clip
+on mint).

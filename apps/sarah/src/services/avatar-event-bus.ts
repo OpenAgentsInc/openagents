@@ -49,6 +49,12 @@ export type SarahBlueprintDelta =
 
 export type SarahAvatarEventInput =
   | { type: "transcript"; role: "user" | "assistant"; text: string }
+  /**
+   * Pre-rendered clip playback directive (epic #8610): the browser plays the
+   * QA-passed shippable clip (its own audio) over the live stream. `text` is
+   * the spoken line; the matching transcript event is published separately.
+   */
+  | { type: "clip"; name: string; url: string; text: string }
   | { type: "card"; title: string; body: string; href?: string }
   | { type: "guard_refusal"; title: string; body: string }
   | { type: "session"; state: string; title?: string; body?: string }

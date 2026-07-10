@@ -49,6 +49,13 @@ export type AnswerBankEntry = {
   /** Per-entry override; falls back to the env/default threshold. */
   minSimilarity: number | null
   approvedBy: string
+  /**
+   * Optional QA-passed pre-rendered clip for this answer (epic #8610):
+   * `clip:<name>` into the shippable opener-clips catalog. The owned avatar
+   * speak bridge plays the clip instead of live TTS when it resolves; a
+   * stale/unavailable ref degrades silently to TTS.
+   */
+  clipRef: string | null
   /** Lazily computed + cached; null until first match attempt. */
   embedding: number[] | null
 }
@@ -57,6 +64,7 @@ export type AnswerCacheHit = {
   id: string
   answer: string
   similarity: number
+  clipRef: string | null
 }
 
 // ---------------------------------------------------------------------------
@@ -98,7 +106,12 @@ export function matchAgainstBank(
     const threshold = entry.minSimilarity ?? fallbackThreshold
     if (similarity < threshold) continue
     if (!best || similarity > best.similarity) {
-      best = { id: entry.id, answer: entry.answer, similarity }
+      best = {
+        id: entry.id,
+        answer: entry.answer,
+        similarity,
+        clipRef: entry.clipRef,
+      }
     }
   }
   return best
@@ -242,9 +255,13 @@ async function ensureSchema(sql: SQL): Promise<boolean> {
           embedding JSONB,
           min_similarity DOUBLE PRECISION,
           approved_by TEXT NOT NULL,
+          clip_ref TEXT,
           created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
           updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
         )`
+      // Pre-#8610 deployments lack the clip column; additive + idempotent.
+      await sql`
+        ALTER TABLE sarah_answer_bank ADD COLUMN IF NOT EXISTS clip_ref TEXT`
       return true
     } catch (error) {
       lastError = error instanceof Error ? error.message : String(error)
@@ -261,6 +278,7 @@ type SeedFile = {
     answer?: string
     min_similarity?: number
     approved_by?: string
+    clip_ref?: string
   }>
 }
 
@@ -277,6 +295,7 @@ async function loadSeedEntries(): Promise<AnswerBankEntry[]> {
         minSimilarity:
           typeof seed.min_similarity === "number" ? seed.min_similarity : null,
         approvedBy: seed.approved_by ?? "owner_kb_v2",
+        clipRef: typeof seed.clip_ref === "string" ? seed.clip_ref : null,
         embedding: null,
       })
     }
@@ -303,14 +322,14 @@ async function loadBank(): Promise<AnswerBankEntry[]> {
       for (const seed of seeds) {
         await sql`
           INSERT INTO sarah_answer_bank
-            (id, question_canonical, answer, min_similarity, approved_by)
+            (id, question_canonical, answer, min_similarity, approved_by, clip_ref)
           VALUES
             (${seed.id}, ${seed.questionCanonical}, ${seed.answer},
-             ${seed.minSimilarity}, ${seed.approvedBy})
+             ${seed.minSimilarity}, ${seed.approvedBy}, ${seed.clipRef})
           ON CONFLICT (id) DO NOTHING`
       }
       const rows = (await sql`
-        SELECT id, question_canonical, answer, embedding, min_similarity, approved_by
+        SELECT id, question_canonical, answer, embedding, min_similarity, approved_by, clip_ref
         FROM sarah_answer_bank
         ORDER BY id`) as Array<{
         id: string
@@ -319,6 +338,7 @@ async function loadBank(): Promise<AnswerBankEntry[]> {
         embedding: number[] | string | null
         min_similarity: number | null
         approved_by: string
+        clip_ref: string | null
       }>
       return rows.map((row) => {
         const embedding =
@@ -331,6 +351,7 @@ async function loadBank(): Promise<AnswerBankEntry[]> {
           answer: row.answer,
           minSimilarity: row.min_similarity,
           approvedBy: row.approved_by,
+          clipRef: row.clip_ref ?? null,
           embedding: Array.isArray(embedding) && embedding.length > 0 ? embedding : null,
         }
       })
@@ -361,6 +382,7 @@ export async function addApprovedSarahAnswer(entry: {
   answer: string
   approvedBy: string
   minSimilarity?: number | null
+  clipRef?: string | null
 }): Promise<void> {
   const bank = await loadBank()
   if (!bank.some((existing) => existing.id === entry.id)) {
@@ -370,6 +392,7 @@ export async function addApprovedSarahAnswer(entry: {
       answer: entry.answer,
       minSimilarity: entry.minSimilarity ?? null,
       approvedBy: entry.approvedBy,
+      clipRef: entry.clipRef ?? null,
       embedding: null,
     })
   }
@@ -378,10 +401,11 @@ export async function addApprovedSarahAnswer(entry: {
   try {
     await sql`
       INSERT INTO sarah_answer_bank
-        (id, question_canonical, answer, min_similarity, approved_by)
+        (id, question_canonical, answer, min_similarity, approved_by, clip_ref)
       VALUES
         (${entry.id}, ${entry.questionCanonical}, ${entry.answer},
-         ${entry.minSimilarity ?? null}, ${entry.approvedBy})
+         ${entry.minSimilarity ?? null}, ${entry.approvedBy},
+         ${entry.clipRef ?? null})
       ON CONFLICT (id) DO NOTHING`
   } catch (error) {
     lastError = error instanceof Error ? error.message : String(error)

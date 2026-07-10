@@ -122,6 +122,12 @@ export type OwnedSarahTurnResult = {
     | "semantic_cache"
   model?: string
   modelError?: string
+  /**
+   * KHS-6 hit detail when modelPath === "semantic_cache" — carries the
+   * answer-bank entry's optional QA-passed clipRef so the owned avatar lane
+   * can play the pre-rendered clip instead of live TTS (epic #8610).
+   */
+  semanticCache?: { id: string; similarity: number; clipRef: string | null }
   ok: boolean
   reply: string
   threadId: string
@@ -294,6 +300,7 @@ export async function runOwnedSarahTurn(
   let modelPath: OwnedSarahTurnResult["modelPath"] = "seed_echo"
   let model: string | undefined
   let modelError: string | undefined
+  let semanticCacheHit: OwnedSarahTurnResult["semanticCache"]
   const relationshipPolicy = input.relationshipPolicy ?? {
     relationshipMode: "prospect" as const,
     codingFleetStartAllowed: false,
@@ -330,6 +337,11 @@ export async function runOwnedSarahTurn(
   } else if (semanticCached) {
     reply = semanticCached.answer
     modelPath = "semantic_cache"
+    semanticCacheHit = {
+      id: semanticCached.id,
+      similarity: semanticCached.similarity,
+      clipRef: semanticCached.clipRef,
+    }
   } else if (input.generateReply !== undefined || sarahInferenceArmed()) {
     // KHS-2 (#8601): prospect memory prepends AFTER the guards above — the
     // pricing guard always runs before the model regardless of memory.
@@ -448,6 +460,7 @@ export async function runOwnedSarahTurn(
     modelPath,
     ...(model ? { model } : {}),
     ...(modelError ? { modelError } : {}),
+    ...(semanticCacheHit ? { semanticCache: semanticCacheHit } : {}),
     ok: true,
     reply,
     threadId,

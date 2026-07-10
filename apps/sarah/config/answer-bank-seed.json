@@ -1,7 +1,7 @@
 {
   "version": 1,
   "source": "docs/sarah/SARAH_KNOWLEDGE_BASE.md (compiled 2026-07-09; registry 34 green / 22 yellow of 143; deal_rules.v1.2026-07-08)",
-  "note": "KHS-6 seed answer bank (#8605). Every answer is owner-approved KB copy — the same single-paste document that already drives Sarah's system prompt. Future entries arrive via the KHS-4 owner-approval queue, never ad hoc.",
+  "note": "KHS-6 seed answer bank (#8605). Every answer is owner-approved KB copy — the same single-paste document that already drives Sarah's system prompt. Future entries arrive via the KHS-4 owner-approval queue, never ad hoc. Entries may carry an optional clip_ref (clip:<name> into the shippable opener-clips catalog, epic #8610): the owned avatar lane plays that QA-passed pre-rendered clip instead of live TTS. No seed entry maps yet — the openers-v2 canned clips (opener-03/04/05) are conversational moves, not these FAQ answers; the seam is ready-for-content once answer clips for these exact scripts pass QA.",
   "entries": [
     {
       "id": "what_is_openagents.v1",

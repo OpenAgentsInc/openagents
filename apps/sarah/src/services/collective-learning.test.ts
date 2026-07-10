@@ -649,6 +649,7 @@ describe("SQ-6 learning-queue review ergonomics (#8623)", () => {
           "Totally different enterprise consulting pitch with MSA language only.",
         approvedBy: "seed",
         minSimilarity: null,
+        clipRef: null,
         embedding: null,
       },
     ])

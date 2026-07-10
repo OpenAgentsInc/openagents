@@ -18,10 +18,13 @@ COPY dist-cloudrun/web-dist ./web-dist
 # #8594: Sarah path-mount assets (UI + agent persona) for openagents.com/sarah
 COPY dist-cloudrun/sarah-ui ./sarah-ui
 COPY dist-cloudrun/sarah-agent ./sarah-agent
+# #8610: shippable pre-rendered clip tier (MIT Hallo2 openers-v2 only).
+COPY dist-cloudrun/sarah-clips ./sarah-clips
 
 ENV OPENAGENTS_WEB_DIST=/app/web-dist
 ENV SARAH_UI_DIR=/app/sarah-ui
 ENV SARAH_AGENT_DIR=/app/sarah-agent
+ENV SARAH_CLIPS_DIR=/app/sarah-clips
 ENV SARAH_PUBLIC_BASE_URL=https://openagents.com/sarah
 
 EXPOSE 8080

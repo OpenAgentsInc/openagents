@@ -84,12 +84,18 @@ import {
   ownedMintErrorIsFallbackable,
   ownedMintFallsBackToLiveAvatar,
   ownedRendererStatus,
+  publishOwnedGreetingTranscript,
   reapStaleOwnedSessions,
   sarahAvatarRenderer,
   speakOwnedAvatarTurn,
   speakOwnedGreeting,
   stopOwnedAvatarSession,
 } from "./services/owned-renderer.ts"
+import {
+  listSarahClipsForApi,
+  pickSarahOpenerClip,
+  serveSarahClipRequest,
+} from "./services/opener-clips.ts"
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url))
 /** Overridable for Cloud Run monolith bundle (UI copied beside server.js). */
@@ -828,6 +834,9 @@ export async function handleSarahRequest(
     // OAV-4 (#8614) renderer seam: SARAH_AVATAR_RENDERER=owned mints on the
     // owned render service (webrtc join info instead of a LiveAvatar token).
     const prospectRef = readSarahProspectRef(request) ?? undefined
+    const mintBody = (await request.json().catch(() => ({}))) as {
+      greeting?: string
+    }
     if (sarahAvatarRenderer() === "owned") {
       reapStaleOwnedSessions()
       const owned = await mintOwnedAvatarSession({ prospectRef })
@@ -858,6 +867,20 @@ export async function handleSarahRequest(
       // fresh session must never sit silent. Delayed fire-and-forget so the
       // browser WebRTC connect (typically <2s) lands before the audio.
       const greetDelayMs = Number(process.env.SARAH_AVATAR_GREETING_DELAY_MS ?? 2500)
+      // Clip tier (epic #8610): a browser that signals greeting:"client_clip"
+      // plays the pre-rendered Hallo2 opener itself (fade over the warming
+      // live stream). The server then publishes ONLY the transcript line for
+      // that clip's script and suppresses its own TTS greeting — one greet,
+      // never two. When no clip is actually available on disk, fall through
+      // to the TTS greeting so a fresh session still never sits silent.
+      const openerClip =
+        mintBody.greeting === "client_clip" ? await pickSarahOpenerClip() : null
+      if (openerClip) {
+        setTimeout(() => {
+          publishOwnedGreetingTranscript(owned.sessionId, openerClip.script)
+        }, greetDelayMs)
+        return json({ ...owned, openerClip })
+      }
       setTimeout(() => {
         void speakOwnedGreeting(owned.sessionId)
       }, greetDelayMs)
@@ -872,6 +895,26 @@ export async function handleSarahRequest(
       )
     }
     return json({ renderer: "liveavatar", ...result })
+  }
+  if (apiPath === "/api/avatar/greet" && request.method === "POST") {
+    // Honest degradation for the clip tier (epic #8610): when the browser
+    // requested greeting:"client_clip" but clip playback failed (fetch/
+    // autoplay), it calls this to restore the server-side TTS greeting —
+    // never dead air. Owned sessions only; idempotent fire-and-forget.
+    const body = (await request.json().catch(() => ({}))) as {
+      sessionId?: string
+    }
+    if (!body.sessionId) {
+      return json({ error: { code: "missing_session_id" } }, { status: 400 })
+    }
+    if (!isOwnedAvatarSession(body.sessionId)) {
+      return json(
+        { error: { code: "owned_session_not_found" } },
+        { status: 404 },
+      )
+    }
+    void speakOwnedGreeting(body.sessionId)
+    return json({ ok: true })
   }
   if (apiPath === "/api/avatar/stop" && request.method === "POST") {
     const body = (await request.json().catch(() => ({}))) as { sessionId?: string }
@@ -900,6 +943,16 @@ export async function handleSarahRequest(
       return json({ error: { code: spoken.error } }, { status: spoken.status })
     }
     return json(spoken)
+  }
+  if (apiPath === "/api/clips" && request.method === "GET") {
+    // Epic #8610: typed manifest of the shippable (MIT Hallo2) clip tier.
+    return json(await listSarahClipsForApi())
+  }
+  if (apiPath.startsWith("/api/clips/") && request.method === "GET") {
+    const name = decodeURIComponent(
+      apiPath.slice("/api/clips/".length).split("/")[0] ?? "",
+    )
+    return serveSarahClipRequest(name, request)
   }
   if (apiPath === "/api/avatar/events" && request.method === "GET") {
     const ref = url.searchParams.get("ref")

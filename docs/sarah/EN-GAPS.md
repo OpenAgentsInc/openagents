@@ -23,6 +23,17 @@ pieces are demand for Effect Native — tracked here and in
 | First-contact AI disclosure banner | `/sarah` + landing first paint | **covered** → `StatusBanner` ([effect-native#40](https://github.com/OpenAgentsInc/effect-native/issues/40), v16) | The catalog piece exists. Sarah's disclosure currently renders as the server-page `header.sarah-disclosure` above the EN mount; moving it onto `StatusBanner` is a layout-level EN adoption step (copy unchanged), tracked with the shell, not a catalog gap. |
 | GraphFigure semantic affordances | `/sarah` Blueprint map graph | **waiting** → [effect-native#68](https://github.com/OpenAgentsInc/effect-native/issues/68) | BM-2 ships on the existing `GraphFigure` v26 model. Follow-up demand: domain-neutral badge/accent slot, keyed node entry animation, typed pin/datum chips for evidence refs, and an `evidence_backed` edge status aligned with `arbiter-effect`. |
 
+## Clip-layer note (epic #8610, 2026-07-10)
+
+The pre-rendered opener/canned clip layer
+(`apps/sarah/src/ui/avatar-clip-layer.ts`) manages a transient `<video>`
+element inside the `#sarah-avatar` chrome container — the same imperative
+MEDIA seam class as `srcObject` binding in `avatar-session.ts`, not UI tree.
+It is pointer-inert, never hosts intents, and is destroyed with the session.
+Catalog demand if this generalizes: a `media-video` host variant that accepts
+a src-driven overlay track with typed crossfade state
+(`playing/holding/fading`), to be filed upstream on second-surface demand.
+
 ## Filed by AV-5 avatar surface (#8598, 2026-07-09)
 
 Historical detail (kept for provenance):

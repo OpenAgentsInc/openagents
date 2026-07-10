@@ -102,3 +102,60 @@ describe("owned mint speaks the greeting", () => {
     expect(server).toContain("SARAH_AVATAR_GREETING_DELAY_MS")
   })
 })
+
+/**
+ * Source oracles for sarah.avatar_opens_with_shippable_opener_clip.v1
+ * (epic #8610): a refactor cannot silently drop the clip tier, its crossfade,
+ * its barge-in, or its honest degradation back to the TTS greeting.
+ */
+describe("owned surface wires the pre-rendered clip tier (epic #8610)", () => {
+  const source = readFileSync(
+    join(APP_ROOT, "src", "ui", "avatar-session.ts"),
+    "utf8",
+  )
+
+  test("mint requests the client clip greeting so the server suppresses TTS", () => {
+    expect(source).toContain('greeting: "client_clip"')
+    expect(source).toContain("openerClip")
+  })
+
+  test("the opener plays through the clip layer and crossfades on live media", () => {
+    expect(source).toContain("makeAvatarClipLayer")
+    expect(source).toContain(
+      'clipLayer.play({ url: mint.openerClip.url, kind: "opener" })',
+    )
+    expect(source).toContain("clipLayer.notifyLiveMedia()")
+  })
+
+  test("clip failure restores the server TTS greeting (never dead air)", () => {
+    expect(source).toContain("/avatar/greet")
+    expect(source).toContain("requestServerGreeting")
+    const server = readFileSync(join(APP_ROOT, "src", "server.ts"), "utf8")
+    expect(server).toContain('"/api/avatar/greet"')
+    // No-clip mints still fall through to the spoken TTS greeting.
+    expect(server).toMatch(/if \(openerClip\) \{[\s\S]{0,400}speakOwnedGreeting\(owned\.sessionId\)/)
+  })
+
+  test("canned SSE clip events play over the live stream; barge-in drops the clip", () => {
+    expect(source).toContain('event.type === "clip"')
+    expect(source).toContain('kind: "canned"')
+    expect(source).toContain("clipLayer.interrupt()")
+  })
+
+  test("owned session teardown destroys the clip layer", () => {
+    expect(source).toMatch(
+      /const teardownLocalMedia = \(observation: MediaObservation\) => \{\s*clipLayer\.destroy\(\)/,
+    )
+  })
+
+  test("the license law is encoded in the catalog module", () => {
+    const catalog = readFileSync(
+      join(APP_ROOT, "src", "services", "opener-clips.ts"),
+      "utf8",
+    )
+    expect(catalog).toContain("hallo2_512_mit")
+    expect(catalog).toContain("NON-commercial")
+    // Statically: no SR filename can appear in the shippable catalog source.
+    expect(catalog.includes("-sr.mp4\"")).toBe(false)
+  })
+})

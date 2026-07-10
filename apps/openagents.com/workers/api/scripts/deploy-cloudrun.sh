@@ -73,6 +73,17 @@ cp "$REPO_ROOT/apps/sarah/src/ui/index.html" "$REPO_ROOT/apps/sarah/src/ui/sarah
   --outfile "$API_DIR/dist-cloudrun/sarah-ui/app.js") >/dev/null
 cp -R "$REPO_ROOT/apps/sarah/agent/." dist-cloudrun/sarah-agent/
 
+# Epic #8610: bake the SHIPPABLE Sarah opener clips (raw MIT Hallo2 512²
+# renders) into the image for /sarah/api/clips. LICENSE LAW: never copy the
+# *-sr.mp4 variants — they are CodeFormer-derived (S-Lab 1.0, non-commercial).
+echo "==> Fetching Sarah opener clips (openers-v2, shippable tier)"
+mkdir -p dist-cloudrun/sarah-clips
+SARAH_CLIP_BUCKET="gs://openagentsgemini-oa-artifacts/sarah-avatar/openers-v2"
+for clip in opener-01-hello opener-02-welcome-back opener-03-good-question opener-04-got-it opener-05-show-you; do
+  gcloud storage cp "$SARAH_CLIP_BUCKET/${clip}-hallo2.mp4" \
+    "dist-cloudrun/sarah-clips/${clip}-hallo2.mp4" --quiet
+done
+
 echo "==> Rendering env vars from wrangler.jsonc ($TARGET)"
 bun scripts/cloudrun/render-env-yaml.ts "$TARGET"
 

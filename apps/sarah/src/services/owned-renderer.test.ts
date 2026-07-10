@@ -11,6 +11,9 @@
  */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 
 import { handleSarahRequest } from "../server.ts"
 import {
@@ -20,6 +23,11 @@ import {
   sarahAvatarRenderer,
   speakOwnedAvatarTurn,
 } from "./owned-renderer.ts"
+import {
+  __resetSarahAnswerCacheForTest,
+  __setSarahAnswerBankForTest,
+  __setSarahEmbedderForTest,
+} from "./semantic-answer-cache.ts"
 
 type RecordedRequest = {
   method: string
@@ -48,6 +56,8 @@ const ENV_KEYS = [
   "SARAH_TTS_SERVICE_TOKEN",
   "SARAH_AVATAR_MAX_ACTIVE_SESSIONS",
   "SARAH_AVATAR_DAILY_SESSION_CAP",
+  "SARAH_CLIPS_DIR",
+  "SARAH_SEMANTIC_CACHE",
   "LIVEAVATAR_API_KEY",
 ]
 
@@ -417,6 +427,132 @@ describe("OAV-4 owned render-service contract client", () => {
     const body = await response.json()
     expect(body.error.code).toBe("owned_session_not_found")
     disarmAll()
+  })
+})
+
+
+describe("KHS-6 clip tier on the speak bridge (epic #8610)", () => {
+  // Contract: sarah.avatar_opens_with_shippable_opener_clip.v1 — canned side.
+  const cannedBankEntry = (clipRef: string | null) => [
+    {
+      id: "canned_clip_probe.v1",
+      questionCanonical: "Tell me about how the demo works",
+      answer: "Let me show you what that would look like with an agent doing it.",
+      minSimilarity: 0,
+      approvedBy: "owner_kb_v2",
+      clipRef,
+      embedding: [1, 0, 0],
+    },
+  ]
+
+  const armSemanticCache = () => {
+    process.env.SARAH_SEMANTIC_CACHE = "1"
+    __setSarahEmbedderForTest(async () => [1, 0, 0])
+  }
+
+  const readSse = async (conversationRef: string, untilText: string) => {
+    const sse = await handleSarahRequest(
+      new Request(
+        `http://localhost/sarah/api/avatar/events?ref=${encodeURIComponent(conversationRef)}`,
+      ),
+    )
+    const reader = sse.body!.getReader()
+    const decoder = new TextDecoder()
+    let text = ""
+    for (let i = 0; i < 12 && !text.includes(untilText); i++) {
+      const { value, done } = await reader.read()
+      if (done) break
+      text += decoder.decode(value)
+    }
+    await reader.cancel().catch(() => {})
+    return text
+  }
+
+  test("cache-hit answer with a servable clipRef publishes a clip SSE event and never calls TTS", async () => {
+    disarmAll()
+    armOwnedRenderer()
+    armOwnedTts()
+    armSemanticCache()
+    const clipsDir = mkdtempSync(join(tmpdir(), "sarah-clip-bridge-"))
+    writeFileSync(
+      join(clipsDir, "opener-05-show-you-hallo2.mp4"),
+      new Uint8Array(128),
+    )
+    process.env.SARAH_CLIPS_DIR = clipsDir
+    __setSarahAnswerBankForTest(cannedBankEntry("clip:opener-05-show-you"))
+    try {
+      const mint = await mintOwnedViaRoute()
+      renderRequests.length = 0
+      ttsRequests.length = 0
+
+      const ssePromise = readSse(mint.conversationRef, '"type":"clip"')
+      const speak = await handleSarahRequest(
+        new Request("http://localhost/sarah/api/avatar/speak", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            sessionId: mint.sessionId,
+            message: "Tell me about how the demo works",
+          }),
+        }),
+      )
+      expect(speak.status).toBe(200)
+      const spoken = await speak.json()
+      expect(spoken.ok).toBe(true)
+      expect(spoken.spoken).toBe(true)
+      expect(spoken.clip).toEqual({
+        name: "opener-05-show-you",
+        url: "/sarah/api/clips/opener-05-show-you",
+      })
+
+      const sseText = await ssePromise
+      expect(sseText).toContain('"type":"clip"')
+      expect(sseText).toContain("/sarah/api/clips/opener-05-show-you")
+      // No TTS synthesis and no render-service speak controls for this turn.
+      expect(ttsRequests.length).toBe(0)
+      expect(
+        renderRequests.filter((r) => r.body?.type === "speak").length,
+      ).toBe(0)
+
+      await stopViaRoute(mint.sessionId)
+    } finally {
+      rmSync(clipsDir, { recursive: true, force: true })
+      __resetSarahAnswerCacheForTest()
+      disarmAll()
+    }
+  })
+
+  test("cache-hit clipRef whose file is missing degrades to the TTS path", async () => {
+    disarmAll()
+    armOwnedRenderer()
+    armOwnedTts()
+    armSemanticCache()
+    process.env.SARAH_CLIPS_DIR = join(tmpdir(), "sarah-clip-none-does-not-exist")
+    __setSarahAnswerBankForTest(cannedBankEntry("clip:opener-05-show-you"))
+    try {
+      const mint = await mintOwnedViaRoute()
+      renderRequests.length = 0
+      ttsRequests.length = 0
+      const speak = await handleSarahRequest(
+        new Request("http://localhost/sarah/api/avatar/speak", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            sessionId: mint.sessionId,
+            message: "Tell me about how the demo works",
+          }),
+        }),
+      )
+      const spoken = await speak.json()
+      expect(spoken.ok).toBe(true)
+      expect(spoken.spoken).toBe(true)
+      expect(spoken.clip).toBeUndefined()
+      expect(ttsRequests.length).toBeGreaterThan(0)
+      await stopViaRoute(mint.sessionId)
+    } finally {
+      __resetSarahAnswerCacheForTest()
+      disarmAll()
+    }
   })
 })
 

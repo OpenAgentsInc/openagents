@@ -52,6 +52,7 @@ function bankEntry(overrides: Partial<AnswerBankEntry> = {}): AnswerBankEntry {
     answer: "OpenAgents gives businesses AI agents that actually do work.",
     minSimilarity: null,
     approvedBy: "owner_kb_v2",
+    clipRef: null,
     embedding: [1, 0, 0],
     ...overrides,
   }

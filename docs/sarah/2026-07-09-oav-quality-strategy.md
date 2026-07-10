@@ -355,6 +355,33 @@ stays false pending the remaining gates (audio re-rolls to ≥8/10 on
 01/03/05, a verbatim "did" re-roll on 02, and a license-clean sharpness
 tier — FLAIR evaluation replaces the S-Lab-encumbered `video_sr.py` lane).
 
+## Round 4b (2026-07-10): clip tier SERVING integration landed (#8610)
+
+Owner verdict on openers-v2: "much better"; opener-05 "close to shippable" —
+and the directive to get the Hallo2 tier into the LIVE `/sarah` surface ASAP.
+Landed the browser-side clip tier over the live lane:
+
+- **Serving**: the five raw MIT Hallo2 renders are baked into the monolith
+  container at deploy (`deploy-cloudrun.sh` → `SARAH_CLIPS_DIR`) and served
+  from `GET /sarah/api/clips/:name` (video/mp4, immutable caching, range
+  support) with a typed manifest at `GET /sarah/api/clips`. The catalog
+  (`apps/sarah/src/services/opener-clips.ts`) is a closed allowlist — the
+  S-Lab `*-sr.mp4` variants are unrepresentable by construction.
+- **Opener over cold start**: the surface mints with
+  `greeting:"client_clip"`; the mint returns the opener pick (rotation,
+  default opener-01) and the browser plays it IMMEDIATELY in a clip layer
+  over the warming WebRTC stream, holds its last frame, then crossfades to
+  live. The server publishes only the transcript line (no TTS — no double
+  greet); clip failure calls `POST /sarah/api/avatar/greet` to restore the
+  TTS greeting. Contract:
+  `sarah.avatar_opens_with_shippable_opener_clip.v1`.
+- **KHS-6 canned seam**: `sarah_answer_bank` rows now carry an optional
+  `clip_ref`; a cache-hit turn whose clip resolves plays the clip over the
+  live stream (SSE `{type:"clip"}`) instead of TTS. No seed rows map yet —
+  opener-03/04/05 are conversational moves, not FAQ answers; the seam is
+  READY-FOR-CONTENT for the first QA-passed answer clips rendered to the
+  bank's actual scripts.
+
 Production note: `/sarah` flipped to the OWNED pipeline on 2026-07-09
 (`f5f9cb3725`): hydralisk-avatar (MuseTalk realtime + WebRTC WHEP) and
 hydralisk-tts live on the GPU host behind caddy/sslip.io; e2e verified from

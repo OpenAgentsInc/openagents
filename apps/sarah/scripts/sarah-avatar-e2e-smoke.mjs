@@ -9,10 +9,18 @@
  *
  *   1. surface-up            GET /sarah is 200
  *   2. split-layout-shell    HTML/CSS markers for sarah.split_screen_blueprint_map.v1
- *   3. mint-owned            POST /sarah/api/avatar/session -> renderer=owned
- *                            with a webrtc.offer_url
+ *   2a. clips-manifest       GET /sarah/api/clips lists the shippable tier
+ *                            (no SR variants) with opener-01 available
+ *                            (contract sarah.avatar_opens_with_shippable_opener_clip.v1)
+ *   2b. opener-clip-serves   GET /sarah/api/clips/opener-01-hello streams
+ *                            video/mp4 bytes with immutable caching
+ *   3. mint-owned            POST /sarah/api/avatar/session (greeting:
+ *                            "client_clip") -> renderer=owned with a
+ *                            webrtc.offer_url
+ *   3a. opener-clip-on-mint  the mint carries the openerClip the browser
+ *                            plays (server TTS greeting suppressed)
  *   4. greeting-within-deadline
- *                            fixed greeting on SSE within deadline
+ *                            greeting transcript on SSE within deadline
  *   5. blueprint-delta-learning (BM-5)
  *                            speak a fact-bearing turn, then a follow-up so
  *                            memory refresh publishes blueprint_delta on SSE
@@ -136,11 +144,47 @@ try {
     layoutOk ? "markers present" : "missing split-shell markers in HTML",
   )
 
-  // 3. mint-owned
+  // 2a/2b. clip tier routes (sarah.avatar_opens_with_shippable_opener_clip.v1)
+  const clipsResponse = await fetch(`${BASE}/sarah/api/clips`)
+  const clipsBody = await clipsResponse.json().catch(() => ({}))
+  const clipsList = Array.isArray(clipsBody.clips) ? clipsBody.clips : []
+  const clipOpener = clipsList.find((c) => c.name === "opener-01-hello")
+  const noSrVariants = clipsList.every(
+    (c) => !String(c.name).includes("-sr") && !String(c.url).includes("-sr"),
+  )
+  const clipsOk =
+    clipsResponse.status === 200 &&
+    clipsList.length >= 5 &&
+    noSrVariants &&
+    Boolean(clipOpener?.available)
+  record(
+    "clips-manifest",
+    clipsOk,
+    clipsOk
+      ? `${clipsList.length} clips, opener-01 available, shippable tier only`
+      : `status=${clipsResponse.status} clips=${clipsList.length} opener01Available=${clipOpener?.available} noSr=${noSrVariants}`,
+  )
+
+  const clipResponse = await fetch(`${BASE}/sarah/api/clips/opener-01-hello`)
+  const clipBuffer = await clipResponse.arrayBuffer().catch(() => new ArrayBuffer(0))
+  const clipServeOk =
+    clipResponse.status === 200 &&
+    (clipResponse.headers.get("content-type") ?? "").includes("video/mp4") &&
+    (clipResponse.headers.get("cache-control") ?? "").includes("immutable") &&
+    clipBuffer.byteLength > 100_000
+  record(
+    "opener-clip-serves",
+    clipServeOk,
+    `status=${clipResponse.status} bytes=${clipBuffer.byteLength} cache=${clipResponse.headers.get("cache-control")}`,
+  )
+
+  // 3. mint-owned — greeting:"client_clip" mirrors the production browser
+  // surface: the browser plays the pre-rendered opener; the server publishes
+  // the transcript line and suppresses its own TTS greeting.
   const mintResponse = await fetch(`${BASE}/sarah/api/avatar/session`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: "{}",
+    body: JSON.stringify({ greeting: "client_clip" }),
   })
   const mint = await mintResponse.json().catch(() => ({}))
   if (mintResponse.status === 429) {
@@ -175,6 +219,28 @@ try {
   )
   if (!mintOk || !conversationRef) {
     throw new Error("mint failed; aborting dependent checks")
+  }
+
+  // 3a. opener-clip-on-mint (owned renderer only): the mint must carry the
+  // clip the browser plays immediately — this is the clip tier being LIVE.
+  if (mint.renderer === "owned") {
+    const openerClipOk =
+      typeof mint.openerClip?.url === "string" &&
+      mint.openerClip.url.includes("/sarah/api/clips/") &&
+      typeof mint.openerClip?.script === "string"
+    record(
+      "opener-clip-on-mint",
+      openerClipOk,
+      openerClipOk
+        ? `clip=${mint.openerClip.name} url=${mint.openerClip.url}`
+        : `mint carried no openerClip (body=${JSON.stringify(mint.openerClip ?? null)})`,
+    )
+  } else {
+    record(
+      "opener-clip-on-mint",
+      true,
+      "skipped on non-owned renderer (clip tier is owned-path only)",
+    )
   }
 
   // 4. greeting-within-deadline (SSE) — owned path only; LiveAvatar may not use our SSE greeting

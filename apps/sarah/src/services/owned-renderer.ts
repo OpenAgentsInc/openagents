@@ -36,6 +36,7 @@ import { dirname, join } from "node:path"
 
 import { runOwnedSarahTurn } from "../agent-runtime/owned-runtime.ts"
 import { publishSarahAvatarEvent } from "./avatar-event-bus.ts"
+import { resolveServableSarahClip } from "./opener-clips.ts"
 import { persistSarahAvatarSession } from "./turn-store.ts"
 
 export type SarahAvatarRenderer = "liveavatar" | "owned"
@@ -434,6 +435,26 @@ export function splitSpeakableSentences(text: string, minChars = 40): string[] {
 export const SARAH_OWNED_GREETING = "Hello! I'm Sarah. What's on your mind today?"
 
 /**
+ * Clip-tier greeting (epic #8610): when the browser plays the pre-rendered
+ * opener clip (mint option greeting:"client_clip"), the server publishes ONLY
+ * the transcript line for that clip's script — no TTS, no double greet. The
+ * clip carries its own judged audio. Returns false when the session is gone.
+ */
+export function publishOwnedGreetingTranscript(
+  sessionId: string,
+  text: string = SARAH_OWNED_GREETING,
+): boolean {
+  const session = activeSessions.get(sessionId)
+  if (!session) return false
+  publishSarahAvatarEvent(session.conversationRef, {
+    type: "transcript",
+    role: "assistant",
+    text,
+  })
+  return true
+}
+
+/**
  * Speak the fixed greeting on a fresh owned session — no brain turn, just
  * TTS + the speak API — and feed the SSE transcript so the surface shows it.
  * Fail-soft: a TTS/render hiccup must not break the session; the greeting
@@ -488,6 +509,11 @@ export type OwnedSpeakResult =
       /** false when the reply landed as text only (TTS/render degraded). */
       spoken: boolean
       speechError?: string
+      /**
+       * KHS-6 clip tier (epic #8610): set when the reply is delivered by the
+       * browser playing a QA-passed pre-rendered clip instead of live TTS.
+       */
+      clip?: { name: string; url: string }
     }
   | { ok: false; error: string; status: number }
 
@@ -535,6 +561,22 @@ export async function speakOwnedAvatarTurn({
   if (session.speakingEventId) {
     session.speakingEventId = null
     await sendControl(sessionId, { type: "interrupt" }).catch(() => {})
+  }
+
+  // KHS-6 clip tier (epic #8610): a cache-hit answer with a QA-passed clipRef
+  // plays the pre-rendered clip in the browser (its own judged audio) instead
+  // of live TTS. Unknown/missing clips degrade silently to the TTS path below.
+  if (turn.semanticCache?.clipRef) {
+    const clip = await resolveServableSarahClip(turn.semanticCache.clipRef)
+    if (clip) {
+      publishSarahAvatarEvent(session.conversationRef, {
+        type: "clip",
+        name: clip.name,
+        url: clip.url,
+        text: turn.reply,
+      })
+      return { ok: true, reply: turn.reply, spoken: true, clip }
+    }
   }
 
   // Sentence-streamed synthesis (SQ-4 #8621): synthesize and push per
