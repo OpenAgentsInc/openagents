@@ -16,7 +16,7 @@ export type PylonDispatchFailureReason =
   | "lane_public_safety_blocked"
   | "lane_timeout"
 
-export type PylonDispatchFailureLane = "claude_agent" | "codex" | "generic" | "unknown"
+export type PylonDispatchFailureLane = "claude_agent" | "codex" | "generic" | "grok" | "unknown"
 
 export type PylonDispatchFailureClassification = {
   blockerRef: string
@@ -93,6 +93,7 @@ const classification = (
 export function normalizePylonDispatchFailureLane(value: unknown): PylonDispatchFailureLane {
   if (value === "codex") return "codex"
   if (value === "claude" || value === "claude_agent") return "claude_agent"
+  if (value === "grok" || value === "grok_cli") return "grok"
   if (value === "generic") return "generic"
   return "unknown"
 }

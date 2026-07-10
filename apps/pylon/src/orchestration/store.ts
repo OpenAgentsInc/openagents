@@ -29,7 +29,7 @@ import {
   type FleetRunWorkSourceDescriptor,
 } from "./fleet-run-work-source.js"
 
-export const ORCHESTRATION_SCHEMA_VERSION = 4
+export const ORCHESTRATION_SCHEMA_VERSION = 5
 
 export type OrchestrationTaskStatus =
   | "pending"
@@ -185,6 +185,34 @@ export type FleetRunActivation = {
   pylonRef: string
   runRef: string
   armed: boolean
+}
+
+/**
+ * One public-safe execution event waiting for acknowledgement from the
+ * server-authoritative Sarah FleetRun projection.
+ *
+ * The local SQLite sequence is the replay cursor. `eventJson` is already
+ * schema-encoded by the FleetRun execution reporter; this store treats it as
+ * opaque bytes while binding it to the exact accepted intake claim. A caller
+ * cannot enqueue against an unaccepted or different authority binding.
+ */
+export type FleetRunExecutionOutboxEntry = {
+  runRef: string
+  claimRef: string
+  sequence: number
+  eventRef: string
+  eventJson: string
+  createdAt: string
+  deliveredAt: string | null
+}
+
+export type EnqueueFleetRunExecutionOutboxInput = {
+  runRef: string
+  claimRef: string
+  eventRef: string
+  /** Encode the final schema event after the store assigns its gapless sequence. */
+  eventJsonForSequence: (sequence: number) => string
+  now?: Date
 }
 
 export const FleetRunOwnerLocalStateSchema = S.Struct({
@@ -480,6 +508,9 @@ const DEFAULT_FLEET_RUN_REFILL_POLICY: FleetRunRefillPolicy = {
 }
 
 const FLEET_RUN_ACTIVATION_REF_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:/#-]{0,180}$/u
+const FLEET_RUN_EXECUTION_EVENT_REF_PATTERN =
+  /^event\.pylon\.fleet_run\.[a-f0-9]{24}$/u
+const FLEET_RUN_EXECUTION_EVENT_MAX_BYTES = 64 * 1_024
 
 const parseJsonArray = (value: string): string[] => {
   const parsed: unknown = JSON.parse(value)
@@ -797,6 +828,16 @@ type FleetRunActivationRow = {
   armed: number
 }
 
+type FleetRunExecutionOutboxRow = {
+  run_ref: string
+  claim_ref: string
+  sequence: number
+  event_ref: string
+  event_json: string
+  created_at: string
+  delivered_at: string | null
+}
+
 type WorkClaimRow = {
   claim_ref: string
   work_unit_ref: string
@@ -948,6 +989,18 @@ const messageFromRow = (row: MessageRow): OrchestrationMessage => ({
   kind: row.kind,
   body: row.body,
   createdAt: row.created_at,
+})
+
+const fleetRunExecutionOutboxEntryFromRow = (
+  row: FleetRunExecutionOutboxRow,
+): FleetRunExecutionOutboxEntry => ({
+  runRef: row.run_ref,
+  claimRef: row.claim_ref,
+  sequence: row.sequence,
+  eventRef: row.event_ref,
+  eventJson: row.event_json,
+  createdAt: row.created_at,
+  deliveredAt: row.delivered_at,
 })
 
 const workClaimFromRow = (row: WorkClaimRow): WorkClaim => decodeWorkClaim({
@@ -1204,6 +1257,18 @@ export class PylonOrchestrationStore {
       );
       CREATE INDEX IF NOT EXISTS idx_pylon_orchestration_fleet_run_activations_armed
         ON pylon_orchestration_fleet_run_activations(pylon_ref, armed, run_ref);
+      CREATE TABLE IF NOT EXISTS pylon_orchestration_fleet_run_execution_outbox (
+        run_ref TEXT NOT NULL,
+        claim_ref TEXT NOT NULL,
+        sequence INTEGER NOT NULL CHECK (sequence >= 1),
+        event_ref TEXT NOT NULL UNIQUE,
+        event_json TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        delivered_at TEXT,
+        PRIMARY KEY (run_ref, sequence)
+      );
+      CREATE INDEX IF NOT EXISTS idx_pylon_orchestration_fleet_run_execution_pending
+        ON pylon_orchestration_fleet_run_execution_outbox(run_ref, delivered_at, sequence);
       CREATE TABLE IF NOT EXISTS pylon_orchestration_work_claims (
         claim_ref TEXT PRIMARY KEY,
         work_unit_ref TEXT NOT NULL,
@@ -1494,6 +1559,167 @@ export class PylonOrchestrationStore {
       runRef: row.run_ref,
       armed: row.armed === 1,
     }))
+  }
+
+  enqueueFleetRunExecutionOutbox(
+    input: EnqueueFleetRunExecutionOutboxInput,
+  ): FleetRunExecutionOutboxEntry {
+    if (
+      !FLEET_RUN_ACTIVATION_REF_PATTERN.test(input.runRef) ||
+      !/^claim\.sarah_fleet_run\.[0-9a-f]{24}$/u.test(input.claimRef) ||
+      !FLEET_RUN_EXECUTION_EVENT_REF_PATTERN.test(input.eventRef)
+    ) {
+      throw new Error("fleet run execution outbox refs are invalid")
+    }
+    const run = this.getFleetRun(input.runRef)
+    if (
+      run?.authorityBinding?.phase !== "accepted" ||
+      run.authorityBinding.claimRef !== input.claimRef
+    ) {
+      throw new Error("fleet run execution outbox requires the exact accepted authority claim")
+    }
+    const createdAt = iso(input.now)
+    this.db.run("BEGIN IMMEDIATE")
+    try {
+      const existing = this.db
+        .query(`
+          SELECT run_ref, claim_ref, sequence, event_ref, event_json,
+                 created_at, delivered_at
+            FROM pylon_orchestration_fleet_run_execution_outbox
+           WHERE event_ref = $eventRef
+        `)
+        .get({ $eventRef: input.eventRef }) as FleetRunExecutionOutboxRow | null
+      if (existing !== null) {
+        const expectedJson = input.eventJsonForSequence(existing.sequence)
+        if (
+          existing.run_ref !== input.runRef ||
+          existing.claim_ref !== input.claimRef ||
+          existing.event_json !== expectedJson
+        ) {
+          throw new Error("fleet run execution event ref was reused with conflicting bytes")
+        }
+        this.db.run("COMMIT")
+        return fleetRunExecutionOutboxEntryFromRow(existing)
+      }
+      const next = this.db
+        .query(`
+          SELECT COALESCE(MAX(sequence), 0) + 1 AS sequence
+            FROM pylon_orchestration_fleet_run_execution_outbox
+           WHERE run_ref = $runRef
+        `)
+        .get({ $runRef: input.runRef }) as { sequence?: unknown } | null
+      const sequence = Number(next?.sequence)
+      if (!Number.isSafeInteger(sequence) || sequence < 1) {
+        throw new Error("fleet run execution outbox sequence is invalid")
+      }
+      const eventJson = input.eventJsonForSequence(sequence)
+      const byteLength = new TextEncoder().encode(eventJson).byteLength
+      if (
+        byteLength < 2 ||
+        byteLength > FLEET_RUN_EXECUTION_EVENT_MAX_BYTES ||
+        eventJson.includes("\u0000")
+      ) {
+        throw new Error("fleet run execution event bytes are invalid")
+      }
+      this.db
+        .query(`
+          INSERT INTO pylon_orchestration_fleet_run_execution_outbox
+            (run_ref, claim_ref, sequence, event_ref, event_json,
+             created_at, delivered_at)
+          VALUES
+            ($runRef, $claimRef, $sequence, $eventRef, $eventJson,
+             $createdAt, NULL)
+        `)
+        .run({
+          $runRef: input.runRef,
+          $claimRef: input.claimRef,
+          $sequence: sequence,
+          $eventRef: input.eventRef,
+          $eventJson: eventJson,
+          $createdAt: createdAt,
+        })
+      const inserted = this.db
+        .query(`
+          SELECT run_ref, claim_ref, sequence, event_ref, event_json,
+                 created_at, delivered_at
+            FROM pylon_orchestration_fleet_run_execution_outbox
+           WHERE run_ref = $runRef AND sequence = $sequence
+        `)
+        .get({ $runRef: input.runRef, $sequence: sequence }) as FleetRunExecutionOutboxRow | null
+      if (inserted === null) {
+        throw new Error("fleet run execution outbox insert was not retained")
+      }
+      this.db.run("COMMIT")
+      return fleetRunExecutionOutboxEntryFromRow(inserted)
+    } catch (error) {
+      this.db.run("ROLLBACK")
+      throw error
+    }
+  }
+
+  listFleetRunExecutionOutbox(
+    runRef: string,
+    options: { pendingOnly?: boolean; limit?: number } = {},
+  ): FleetRunExecutionOutboxEntry[] {
+    if (!FLEET_RUN_ACTIVATION_REF_PATTERN.test(runRef)) {
+      throw new Error("fleet run execution outbox run ref is invalid")
+    }
+    const limit = Math.max(1, Math.min(64, Math.trunc(options.limit ?? 64)))
+    const rows = options.pendingOnly === false
+      ? this.db
+        .query(`
+          SELECT run_ref, claim_ref, sequence, event_ref, event_json,
+                 created_at, delivered_at
+            FROM pylon_orchestration_fleet_run_execution_outbox
+           WHERE run_ref = $runRef
+           ORDER BY sequence ASC
+           LIMIT $limit
+        `)
+        .all({ $runRef: runRef, $limit: limit })
+      : this.db
+        .query(`
+          SELECT run_ref, claim_ref, sequence, event_ref, event_json,
+                 created_at, delivered_at
+            FROM pylon_orchestration_fleet_run_execution_outbox
+           WHERE run_ref = $runRef AND delivered_at IS NULL
+           ORDER BY sequence ASC
+           LIMIT $limit
+        `)
+        .all({ $runRef: runRef, $limit: limit })
+    return (rows as FleetRunExecutionOutboxRow[]).map(
+      fleetRunExecutionOutboxEntryFromRow,
+    )
+  }
+
+  markFleetRunExecutionOutboxDelivered(
+    runRef: string,
+    claimRef: string,
+    acceptedThroughSequence: number,
+    now: Date = new Date(),
+  ): number {
+    if (
+      !FLEET_RUN_ACTIVATION_REF_PATTERN.test(runRef) ||
+      !/^claim\.sarah_fleet_run\.[0-9a-f]{24}$/u.test(claimRef) ||
+      !Number.isSafeInteger(acceptedThroughSequence) ||
+      acceptedThroughSequence < 0
+    ) {
+      throw new Error("fleet run execution acknowledgement is invalid")
+    }
+    const result = this.db
+      .query(`
+        UPDATE pylon_orchestration_fleet_run_execution_outbox
+           SET delivered_at = COALESCE(delivered_at, $deliveredAt)
+         WHERE run_ref = $runRef
+           AND claim_ref = $claimRef
+           AND sequence <= $acceptedThroughSequence
+      `)
+      .run({
+        $runRef: runRef,
+        $claimRef: claimRef,
+        $acceptedThroughSequence: acceptedThroughSequence,
+        $deliveredAt: iso(now),
+      })
+    return Number(result.changes)
   }
 
   updateFleetRunState(

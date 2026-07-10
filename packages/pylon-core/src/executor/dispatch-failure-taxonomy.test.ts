@@ -47,6 +47,7 @@ describe("PY-1 dispatch-failure-taxonomy (#8578)", () => {
   test("normalize lane aliases", () => {
     expect(normalizePylonDispatchFailureLane("claude")).toBe("claude_agent")
     expect(normalizePylonDispatchFailureLane("codex")).toBe("codex")
+    expect(normalizePylonDispatchFailureLane("grok_cli")).toBe("grok")
     expect(normalizePylonDispatchFailureLane("nope")).toBe("unknown")
   })
 
