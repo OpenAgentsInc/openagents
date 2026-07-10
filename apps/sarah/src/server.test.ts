@@ -38,6 +38,21 @@ const naturalFleetArgs = {
   idempotencyKey: "fc1-natural-operator-1",
 }
 
+const pendingFleetExecution = {
+  state: "pending",
+  lastSequence: 0,
+  counters: {
+    workUnitsTotal: 1,
+    activeAssignments: 0,
+    acceptedAssignments: 0,
+    failedAssignments: 0,
+    staleAssignments: 0,
+  },
+  startedAt: null,
+  updatedAt: null,
+  closeouts: [],
+} as const
+
 const naturalFleetSuccess = {
   ok: true,
   duplicate: false,
@@ -62,6 +77,7 @@ const naturalFleetSuccess = {
     workSource: naturalFleetArgs.workSource,
     workerPolicy: naturalFleetArgs.workerPolicy,
     targetConcurrency: 2,
+    execution: pendingFleetExecution,
     createdAt: "2026-07-09T12:00:00.000Z",
     updatedAt: "2026-07-09T12:00:00.000Z",
     privateMaterialExcluded: true,
@@ -295,6 +311,7 @@ describe("apps/sarah monorepo service", () => {
                       targetPreference: "owner_local",
                     },
                     targetConcurrency: 2,
+                    execution: pendingFleetExecution,
                     createdAt: "2026-07-09T12:00:00.000Z",
                     updatedAt: "2026-07-09T12:00:00.000Z",
                     privateMaterialExcluded: true,
