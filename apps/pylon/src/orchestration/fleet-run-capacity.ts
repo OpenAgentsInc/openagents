@@ -1,3 +1,4 @@
+import type { FleetAutoTargetSkipReason } from "@openagentsinc/khala-fleet-intents"
 import {
   pylonAccountMarginalCostClasses,
   type PylonAccountMarginalCostClass,
@@ -23,6 +24,10 @@ export type PublicSafePylonFleetCapacityAccount = {
 export type MapPylonFleetSupervisorCapacityOptions = {
   readonly allowDefaultAccount?: boolean | undefined
   readonly grokExecutionAvailable?: boolean | undefined
+  // The Pylon-owned standing supervisor needs bounded zero-capacity rows so
+  // the shared auto policy can record every skipped named candidate. Legacy
+  // callers keep the historical ready-only projection by default.
+  readonly includeUnavailableCandidates?: boolean | undefined
 }
 
 const supportedProviders = new Set(["codex", "claude_agent", "grok"])
@@ -45,6 +50,30 @@ const availableSlots = (account: PublicSafePylonFleetCapacityAccount): number =>
   return Number.isFinite(candidate) ? Math.max(0, Math.trunc(candidate)) : 0
 }
 
+const autoSkipReasonForReadiness = (readiness: string): FleetAutoTargetSkipReason => {
+  const normalized = readiness.trim().toLowerCase().replaceAll("-", "_")
+  if (
+    normalized === "usage_limited" ||
+    normalized === "account_usage_limited" ||
+    normalized === "account_exhausted" ||
+    normalized === "account_quota_exhausted" ||
+    normalized === "weekly_exhausted"
+  ) return "account_exhausted"
+  if (
+    normalized === "rate_limited" ||
+    normalized === "account_rate_limited" ||
+    normalized === "cooldown"
+  ) return "account_rate_limited"
+  if (
+    normalized === "credentials_revoked" ||
+    normalized === "account_credentials_revoked" ||
+    normalized === "credentials_missing" ||
+    normalized === "auth_required" ||
+    normalized === "auth_error"
+  ) return "account_requires_reauth"
+  return "account_unavailable"
+}
+
 /**
  * Converts public-safe Pylon account status/capacity rows into the scheduler's
  * concrete mixed-account vocabulary.
@@ -62,9 +91,11 @@ export function mapPylonFleetSupervisorCapacity(
 ): readonly FleetRunSupervisorAccount[] {
   const allowDefaultAccount = options.allowDefaultAccount ?? true
   const grokExecutionAvailable = options.grokExecutionAvailable ?? false
+  const includeUnavailableCandidates = options.includeUnavailableCandidates ?? false
   return accounts.flatMap((account): FleetRunSupervisorAccount[] => {
     if (!supportedProviders.has(account.provider)) return []
-    if (!readyStates.has(account.readiness) || account.paused) return []
+    const readinessIsReady = readyStates.has(account.readiness)
+    if ((!readinessIsReady || account.paused) && !includeUnavailableCandidates) return []
     if (!allowDefaultAccount && account.isDefaultAccount === true) return []
     const accountRef = account.accountRef.trim()
     if (accountRef.length === 0) return []
@@ -74,14 +105,25 @@ export function mapPylonFleetSupervisorCapacity(
         : account.provider === "grok"
           ? "grok" as const
           : "codex" as const
+    const slots = availableSlots(account)
+    const unavailabilityReason: FleetAutoTargetSkipReason | undefined =
+      account.paused
+        ? "account_unavailable"
+        : !readinessIsReady
+          ? autoSkipReasonForReadiness(account.readiness)
+          : workerKind === "grok" && !grokExecutionAvailable
+            ? "account_unavailable"
+            : slots <= 0
+              ? "account_unavailable"
+              : undefined
     return [{
       accountRef,
-      advertisedCapacity:
-        workerKind === "grok" && !grokExecutionAvailable
-          ? 0
-          : availableSlots(account),
+      advertisedCapacity: unavailabilityReason === undefined ? slots : 0,
       marginalCostClass: normalizePylonFleetMarginalCostClass(account.marginalCostClass),
       workerKind,
+      ...(includeUnavailableCandidates && unavailabilityReason !== undefined
+        ? { unavailabilityReason }
+        : {}),
     }]
   })
 }

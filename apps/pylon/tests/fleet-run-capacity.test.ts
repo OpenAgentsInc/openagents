@@ -138,4 +138,58 @@ describe("mapPylonFleetSupervisorCapacity", () => {
       workerKind: "codex",
     }])
   })
+
+  test("retains bounded unavailable candidates only when the typed auto-policy caller requests them", () => {
+    expect(mapPylonFleetSupervisorCapacity([
+      {
+        accountRef: "codex-exhausted",
+        capacity: { available: 5, ready: 5 },
+        marginalCostClass: "subscription",
+        paused: false,
+        provider: "codex",
+        readiness: "usage_limited",
+      },
+      {
+        accountRef: "claude-reauth",
+        capacity: { available: 2, ready: 2 },
+        marginalCostClass: "subscription",
+        paused: false,
+        provider: "claude_agent",
+        readiness: "credentials_revoked",
+      },
+      {
+        accountRef: "grok-rate-limited",
+        capacity: { available: 3, ready: 3 },
+        marginalCostClass: "free",
+        paused: false,
+        provider: "grok",
+        readiness: "account_rate_limited",
+      },
+    ], {
+      grokExecutionAvailable: true,
+      includeUnavailableCandidates: true,
+    })).toEqual([
+      {
+        accountRef: "codex-exhausted",
+        advertisedCapacity: 0,
+        marginalCostClass: "subscription",
+        unavailabilityReason: "account_exhausted",
+        workerKind: "codex",
+      },
+      {
+        accountRef: "claude-reauth",
+        advertisedCapacity: 0,
+        marginalCostClass: "subscription",
+        unavailabilityReason: "account_requires_reauth",
+        workerKind: "claude",
+      },
+      {
+        accountRef: "grok-rate-limited",
+        advertisedCapacity: 0,
+        marginalCostClass: "free",
+        unavailabilityReason: "account_rate_limited",
+        workerKind: "grok",
+      },
+    ])
+  })
 })

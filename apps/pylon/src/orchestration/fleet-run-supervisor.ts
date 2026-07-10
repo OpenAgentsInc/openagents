@@ -1,5 +1,14 @@
 import { Effect, Scope } from "effect"
 import type { PylonAssignmentRunLifecycleEvent } from "@openagentsinc/agent-runtime-schema"
+import {
+  defaultFleetAutoPolicy,
+  marginalCostClassRank,
+  resolveFleetAutoTarget,
+  type FleetAutoPolicy,
+  type FleetAutoTargetCandidate,
+  type FleetAutoTargetFallbackEvent,
+  type FleetAutoTargetSkipReason,
+} from "@openagentsinc/khala-fleet-intents"
 import type { PylonAccountMarginalCostClass as MarginalCostClass } from "@openagentsinc/pylon-core/custody/account-registry"
 
 import type {
@@ -14,17 +23,6 @@ import type {
   WorkPlannerOutput,
 } from "./work-planner.js"
 import { fleetRunTaskIdForClaim } from "./fleet-run-refs.js"
-
-// Keep the scheduler's policy data-driven while avoiding a dependency from the
-// published Pylon package onto the private UI-oriented fleet-intents package.
-// These values are the canonical Pylon account registry vocabulary; unknown
-// cost is deliberately last and never guessed from provider/account names.
-const marginalCostClassRank: Readonly<Record<MarginalCostClass, number>> = {
-  free: 0,
-  subscription: 1,
-  api_metered: 2,
-  not_measured: 3,
-}
 
 export const FLEET_RUN_SUPERVISOR_MAX_SPAWN_COUNT = 10
 
@@ -60,10 +58,13 @@ export type FleetRunSupervisorAccount = {
   // absent the account inherits the run's concrete kind.
   readonly workerKind?: FleetRunSupervisorWorkerKind
   // MH-8 (#8587): DATA-DRIVEN marginal cost class carried on the capacity row.
-  // Absent/omitted accounts are treated as `"not_measured"` in `pickAccount`
-  // below, which preserves prior free-slot-only ordering exactly when no
-  // caller supplies cost data. Never inferred from `accountRef`/`workerKind`.
+  // Both concrete selection and the shared `auto` policy treat absence as
+  // `"not_measured"`; cost is never inferred from account or harness names.
   readonly marginalCostClass?: MarginalCostClass
+  // When this row is retained at zero capacity for `auto` policy visibility,
+  // carry the exact bounded reason. It is policy input only: a reasoned row is
+  // never dispatchable, even if a malformed producer also advertises slots.
+  readonly unavailabilityReason?: FleetAutoTargetSkipReason
 }
 
 export type FleetRunSupervisorLifecycleEvent = PylonAssignmentRunLifecycleEvent
@@ -133,6 +134,10 @@ export type FleetRunSupervisorOptions = {
   readonly maxSpawnPerTick?: number
   readonly awaitDispatches?: boolean
   readonly startImmediately?: boolean
+  // The shared fleet-intents policy is the only `auto` selection vocabulary.
+  // Production uses the compiled default; fixtures/operators may inject a
+  // stricter cost ceiling without changing scheduler code.
+  readonly autoPolicy?: FleetAutoPolicy
   readonly onLifecycle?: (event: FleetRunSupervisorObservedEvent) => void | Promise<void>
 }
 
@@ -178,6 +183,14 @@ export type FleetRunSupervisorObservedEvent =
     readonly requestedWorkerKind: FleetRunSupervisorWorkerKind
     readonly accountRef: string | null
     readonly detail: string
+  }
+  | {
+    // Exact public-safe projection of the shared typed auto-policy event. One
+    // event is emitted per skipped candidate per tick; no fallback is silent.
+    readonly kind: "fallback"
+    readonly runRef: string
+    readonly policySchema: FleetAutoPolicy["schema"]
+    readonly event: FleetAutoTargetFallbackEvent
   }
 
 export type FleetRunSupervisorTickResult = {
@@ -304,13 +317,10 @@ const resolveAccountWorkerKind = (
 ): FleetRunSupervisorWorkerKindResolution =>
   resolveSupervisorWorkerKind(account.workerKind ?? run.workerKind)
 
-// MH-8 (#8587): cheapest-`marginalCostClass`-first is the PRIMARY sort key,
-// ahead of free-slot count. This is what makes `auto` "re-rank without a
-// redesign" when cost data changes (analysis §11.4 / §6) — the algorithm
-// never checks an account's kind or ref by name, only its cost-class field.
-// When callers do not supply `marginalCostClass` (the common case today),
-// every account ranks as `"not_measured"` and this sort key is a no-op tie,
-// so existing free-desc/accountRef-asc ordering is preserved byte-for-byte.
+// Explicit concrete-harness runs retain cheapest-cost-first account selection.
+// `auto` runs do not use this helper: they resolve through the shared typed
+// fleet-intents policy below, which owns cross-harness preference, cost
+// ceilings, and fallback evidence.
 const pickAccount = (
   accounts: readonly FleetRunSupervisorAccount[],
   activeCounts: Map<string, number>,
@@ -318,6 +328,7 @@ const pickAccount = (
 ): FleetRunSupervisorAccount | null => {
   const eligible = accounts
     .filter(account => account.advertisedCapacity > 0)
+    .filter(account => account.unavailabilityReason === undefined)
     .filter(account => account.paused !== true)
     .filter(account => !isCoolingDown(account, now))
     .map(account => ({
@@ -333,6 +344,34 @@ const pickAccount = (
     )
   return eligible[0]?.account ?? null
 }
+
+const autoCandidateFor = (
+  account: FleetRunSupervisorAccount,
+  workerKind: FleetRunSupervisorConcreteWorkerKind,
+  activeCounts: ReadonlyMap<string, number>,
+  now: Date,
+): FleetAutoTargetCandidate => {
+  const free = Math.max(
+    0,
+    account.advertisedCapacity - (activeCounts.get(account.accountRef) ?? 0),
+  )
+  const reason = account.unavailabilityReason ??
+    (isCoolingDown(account, now) ? "account_rate_limited" : "account_unavailable")
+  const ready = account.unavailabilityReason === undefined &&
+    account.paused !== true &&
+    !isCoolingDown(account, now) &&
+    free > 0
+  return {
+    accountRef: account.accountRef,
+    harnessKind: workerKind,
+    marginalCostClass: account.marginalCostClass ?? "not_measured",
+    ready,
+    ...(ready ? {} : { reason }),
+  }
+}
+
+const fallbackEventKey = (event: FleetAutoTargetFallbackEvent): string =>
+  `${event.harnessKind}:${event.accountRef}:${event.type}`
 
 const contextIdFor = (accountRef: string, taskId: string): string =>
   `${accountRef}.ctx.${taskId}`.replace(/[^a-zA-Z0-9_.-]/g, "_")
@@ -537,15 +576,68 @@ export async function tickFleetRunSupervisor(
       })
       continue
     }
+    if (run.workerKind !== "auto" && resolution.workerKind !== run.workerKind) {
+      await emit(options.onLifecycle, {
+        kind: "skip",
+        runRef: run.runRef,
+        reason: "worker_kind_unavailable",
+        requestedWorkerKind: account.workerKind ?? resolution.workerKind,
+        accountRef: account.accountRef,
+        detail:
+          `Account ${account.accountRef} does not match explicit FleetRun worker kind '${run.workerKind}'; skipping it without substitution.`,
+      })
+      continue
+    }
     accounts.push(account)
     accountWorkerKinds.set(account.accountRef, resolution.workerKind)
   }
   const activeCounts = activeByAccount(liveClaims)
+  const autoPolicy = options.autoPolicy ?? defaultFleetAutoPolicy
+  const emittedAutoFallbacks = new Set<string>()
+  const resolveAutoAccount = async (): Promise<FleetRunSupervisorAccount | null> => {
+    const resolution = resolveFleetAutoTarget({
+      policy: autoPolicy,
+      candidates: accounts.map(account => autoCandidateFor(
+        account,
+        accountWorkerKinds.get(account.accountRef) ?? "codex",
+        activeCounts,
+        now,
+      )),
+    })
+    for (const event of resolution.events) {
+      const key = fallbackEventKey(event)
+      if (emittedAutoFallbacks.has(key)) continue
+      emittedAutoFallbacks.add(key)
+      await emit(options.onLifecycle, {
+        kind: "fallback",
+        runRef: run.runRef,
+        policySchema: autoPolicy.schema,
+        event,
+      })
+    }
+    if (resolution.selection === null) return null
+    return accounts.find(account =>
+      account.accountRef === resolution.selection?.accountRef &&
+      accountWorkerKinds.get(account.accountRef) === resolution.selection?.harnessKind
+    ) ?? null
+  }
   const activeAssignments = activeAssignmentsForRun(store, run.runRef)
   const targetFreeSlots = Math.max(0, run.targetConcurrency - activeAssignments)
+  const autoPolicyHarnesses = new Set(autoPolicy.preferenceOrder)
+  const autoPolicyCostCeiling = autoPolicy.maxMarginalCostClass === undefined
+    ? undefined
+    : marginalCostClassRank[autoPolicy.maxMarginalCostClass]
   const advertisedFreeSlots = accounts.reduce((total, account) => {
+    if (account.unavailabilityReason !== undefined) return total
     if (account.paused === true) return total
     if (isCoolingDown(account, now)) return total
+    const workerKind = accountWorkerKinds.get(account.accountRef) ?? "codex"
+    if (run.workerKind === "auto" && !autoPolicyHarnesses.has(workerKind)) return total
+    if (
+      run.workerKind === "auto" &&
+      autoPolicyCostCeiling !== undefined &&
+      marginalCostClassRank[account.marginalCostClass ?? "not_measured"] > autoPolicyCostCeiling
+    ) return total
     return total + Math.max(0, account.advertisedCapacity - (activeCounts.get(account.accountRef) ?? 0))
   }, 0)
   const freeSlots = Math.min(targetFreeSlots, advertisedFreeSlots, maxSpawnPerTick)
@@ -558,6 +650,9 @@ export async function tickFleetRunSupervisor(
   })
 
   if (freeSlots <= 0) {
+    if (run.workerKind === "auto" && targetFreeSlots > 0) {
+      await resolveAutoAccount()
+    }
     if (targetFreeSlots > 0 && activeAssignments === 0 && run.refillPolicy.stopCondition === "backlog_empty") {
       const plan = await options.planner.plan({ run, now })
       const dependencyPending = plan.skipped.some(unit => unit.skipReason === "dependency_pending")
@@ -598,7 +693,9 @@ export async function tickFleetRunSupervisor(
 
   for (const workUnit of plan.claimable) {
     if (dispatches.length >= freeSlots) break
-    const account = pickAccount(accounts, activeCounts, now)
+    const account = run.workerKind === "auto"
+      ? await resolveAutoAccount()
+      : pickAccount(accounts, activeCounts, now)
     if (account === null) break
     const claim = store.tryClaimWorkUnit({
       claimRef: claimRefFor(run.runRef, workUnit.workUnitRef, now, claimOrdinalBase + claimed),

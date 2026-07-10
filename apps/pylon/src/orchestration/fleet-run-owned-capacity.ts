@@ -214,14 +214,23 @@ const strictLoadRegistry = async (
   }
 }
 
-const usageBlocksCapacity = (entry: PylonAccountUsageStoreEntry | undefined): boolean =>
-  (entry?.providerTruth?.snapshots ?? []).some((snapshot) => {
-    if (snapshot.rateLimitReachedType !== null && snapshot.rateLimitReachedType.trim() !== "") return true
-    if (snapshot.credits !== null && !snapshot.credits.unlimited && !snapshot.credits.hasCredits) return true
-    return [snapshot.primary, snapshot.secondary].some((window) =>
+const usageCapacityState = (
+  entry: PylonAccountUsageStoreEntry | undefined,
+): "rate_limited" | "usage_limited" | null => {
+  let exhausted = false
+  for (const snapshot of entry?.providerTruth?.snapshots ?? []) {
+    if (snapshot.rateLimitReachedType !== null && snapshot.rateLimitReachedType.trim() !== "") {
+      return "rate_limited"
+    }
+    if (snapshot.credits !== null && !snapshot.credits.unlimited && !snapshot.credits.hasCredits) {
+      exhausted = true
+    }
+    if ([snapshot.primary, snapshot.secondary].some((window) =>
       window !== null && (window.usedPercent >= 100 || window.remainingPercent <= 0)
-    )
-  })
+    )) exhausted = true
+  }
+  return exhausted ? "usage_limited" : null
+}
 
 const laneForProvider = (
   provider: PylonAccountProvider,
@@ -373,16 +382,26 @@ export function createPylonOwnedFleetRunSupervisorCapacity(
               ? "grok_account_inspection_unavailable"
               : "account_inspection_unavailable",
           )
+          rows.push({
+            accountRef: account.ref,
+            capacity: { ready: 0, available: 0 },
+            isDefaultAccount,
+            marginalCostClass: account.marginalCostClass,
+            paused: account.paused === true,
+            provider: account.provider,
+            readiness: "unavailable",
+          })
           continue
         }
         const lane = laneForProvider(account.provider)
-        const circuitOpen = lane !== null && activeBreakers.some((breaker) =>
+        const activeBreaker = lane === null ? undefined : activeBreakers.find((breaker) =>
           breaker.lane === lane &&
           (breaker.accountRefHash === accountRefHash ||
             (breaker.accountRefHash === null && breaker.contextId === null))
         )
-        if (usageBlocksCapacity(usage.accounts[accountRefHash])) readiness = "usage_limited"
-        if (circuitOpen) readiness = "circuit_open"
+        const usageState = usageCapacityState(usage.accounts[accountRefHash])
+        if (usageState !== null) readiness = usageState
+        if (activeBreaker !== undefined) readiness = activeBreaker.reason
         let ready: number | null
         try {
           ready = boundedSlots(
@@ -391,6 +410,15 @@ export function createPylonOwnedFleetRunSupervisorCapacity(
           )
         } catch {
           await addDiagnostic("account_inspection_unavailable")
+          rows.push({
+            accountRef: account.ref,
+            capacity: { ready: 0, available: 0 },
+            isDefaultAccount,
+            marginalCostClass: account.marginalCostClass,
+            paused: account.paused === true,
+            provider: account.provider,
+            readiness: "unavailable",
+          })
           continue
         }
         const busy = externalBusy.get(account.ref) ?? 0
@@ -411,6 +439,7 @@ export function createPylonOwnedFleetRunSupervisorCapacity(
       return mapPylonFleetSupervisorCapacity(rows, {
         allowDefaultAccount: false,
         grokExecutionAvailable,
+        includeUnavailableCandidates: true,
       })
     }
 

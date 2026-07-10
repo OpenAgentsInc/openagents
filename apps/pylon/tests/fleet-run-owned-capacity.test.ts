@@ -178,6 +178,7 @@ describe("Pylon-owned FleetRun account capacity", () => {
       accountRef: "grok-owner",
       advertisedCapacity: 0,
       marginalCostClass: "not_measured",
+      unavailabilityReason: "account_unavailable",
       workerKind: "grok",
     }])
     expect(registryReads).toBe(1)
@@ -302,12 +303,49 @@ describe("Pylon-owned FleetRun account capacity", () => {
     })
     const run = createRun(store, "fleet_run.capacity.health_rotation", "codex")
 
-    expect(await capacity.accounts({ run, now: fixedNow })).toEqual([{
-      accountRef: "codex-healthy",
-      advertisedCapacity: 1,
-      marginalCostClass: "not_measured",
-      workerKind: "codex",
-    }])
+    expect(await capacity.accounts({ run, now: fixedNow })).toEqual([
+      {
+        accountRef: "codex-paused",
+        advertisedCapacity: 0,
+        marginalCostClass: "not_measured",
+        unavailabilityReason: "account_unavailable",
+        workerKind: "codex",
+      },
+      {
+        accountRef: "codex-revoked",
+        advertisedCapacity: 0,
+        marginalCostClass: "not_measured",
+        unavailabilityReason: "account_requires_reauth",
+        workerKind: "codex",
+      },
+      {
+        accountRef: "codex-rate-limited",
+        advertisedCapacity: 0,
+        marginalCostClass: "not_measured",
+        unavailabilityReason: "account_rate_limited",
+        workerKind: "codex",
+      },
+      {
+        accountRef: "codex-exhausted",
+        advertisedCapacity: 0,
+        marginalCostClass: "not_measured",
+        unavailabilityReason: "account_exhausted",
+        workerKind: "codex",
+      },
+      {
+        accountRef: "codex-circuit",
+        advertisedCapacity: 0,
+        marginalCostClass: "not_measured",
+        unavailabilityReason: "account_rate_limited",
+        workerKind: "codex",
+      },
+      {
+        accountRef: "codex-healthy",
+        advertisedCapacity: 1,
+        marginalCostClass: "not_measured",
+        workerKind: "codex",
+      },
+    ])
   })
 
   test("fails unknown capacity to zero and excludes default homes without projecting private data", async () => {
@@ -325,6 +363,7 @@ describe("Pylon-owned FleetRun account capacity", () => {
       accountRef: "codex-named",
       advertisedCapacity: 0,
       marginalCostClass: "not_measured",
+      unavailabilityReason: "account_unavailable",
       workerKind: "codex",
     }])
     expect(encoded).not.toMatch(/private|home|credential|token|auth\.json/i)
@@ -348,7 +387,13 @@ describe("Pylon-owned FleetRun account capacity", () => {
     })
     const run = createRun(store, "fleet_run.capacity.corrupt_readiness", "codex")
 
-    expect(await capacity.accounts({ run, now: fixedNow })).toEqual([])
+    expect(await capacity.accounts({ run, now: fixedNow })).toEqual([{
+      accountRef: "codex-private-failure",
+      advertisedCapacity: 0,
+      marginalCostClass: "not_measured",
+      unavailabilityReason: "account_unavailable",
+      workerKind: "codex",
+    }])
     expect(diagnostics).toEqual([{
       schema: PYLON_FLEET_CAPACITY_DIAGNOSTIC_SCHEMA,
       kind: "account_inspection_unavailable",
@@ -385,6 +430,13 @@ describe("Pylon-owned FleetRun account capacity", () => {
     const run = createRun(store, "fleet_run.capacity.slot_failure", "codex")
 
     expect(await capacity.accounts({ run, now: fixedNow })).toEqual([
+      {
+        accountRef: broken.ref,
+        advertisedCapacity: 0,
+        marginalCostClass: "not_measured",
+        unavailabilityReason: "account_unavailable",
+        workerKind: "codex",
+      },
       expect.objectContaining({ accountRef: healthy.ref, advertisedCapacity: 1 }),
     ])
     expect(JSON.stringify(capacity.diagnostics())).not.toContain("/private/capacity")

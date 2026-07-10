@@ -4,12 +4,14 @@ import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { PylonAssignmentRunLifecycleEvent } from "@openagentsinc/agent-runtime-schema"
+import { assertPublicProjectionSafe } from "../src/state.js"
 
 import {
   tickFleetRunSupervisor,
   type FleetRunSupervisorAccount,
   type FleetRunSupervisorActiveAssignment,
   type FleetRunSupervisorDispatchInput,
+  type FleetRunSupervisorObservedEvent,
   type FleetRunSupervisorRunner,
 } from "../src/orchestration/fleet-run-supervisor.js"
 import {
@@ -36,13 +38,18 @@ const lifecycleEvent = (
 
 const createRun = (
   store: PylonOrchestrationStore,
-  input: { readonly runRef: string; readonly workUnits: number },
+  input: {
+    readonly runRef: string
+    readonly workUnits: number
+    readonly targetConcurrency?: number
+    readonly workerKind?: "auto" | "claude" | "codex" | "grok"
+  },
 ): FleetRun => store.createFleetRun({
   runRef: input.runRef,
   objective: "Run one pinned unit on every connected harness.",
   workSource: "fixture",
-  targetConcurrency: 3,
-  workerKind: "auto",
+  targetConcurrency: input.targetConcurrency ?? 3,
+  workerKind: input.workerKind ?? "auto",
   state: "running",
   startedAt: fixedNow,
   now: fixedNow,
@@ -130,6 +137,210 @@ describe("Pylon-owned FleetRun supervisor", () => {
     ])
     expect(store.listWorkClaims({ runRef: run.runRef, state: "closeout" })).toHaveLength(3)
     expect(new Set(store.listWorkClaims({ runRef: run.runRef }).map((claim) => claim.workUnitRef)).size).toBe(3)
+  })
+
+  test("uses the shared default auto policy and emits one public-safe fallback per skipped candidate", async () => {
+    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const run = createRun(store, {
+      runRef: "fleet_run.fc2.typed_auto_fallback",
+      workUnits: 1,
+      targetConcurrency: 1,
+    })
+    const observed: FleetRunSupervisorObservedEvent[] = []
+    const dispatched: FleetRunSupervisorDispatchInput[] = []
+    const result = await tickFleetRunSupervisor({
+      store,
+      pylonRef: "pylon.owner.fc2.auto",
+      runRef: run.runRef,
+      planner: planner(store, 1),
+      runner: {
+        dispatch: async input => {
+          dispatched.push(input)
+          return {
+            assignmentRef: `assignment.${input.workerKind}.${input.claim.claimRef}`,
+            lifecycle: [lifecycleEvent("assignment_run.completed", "closed")],
+            status: "completed",
+          }
+        },
+      },
+      capacity: {
+        accounts: async () => [
+          {
+            accountRef: "codex-exhausted",
+            advertisedCapacity: 0,
+            marginalCostClass: "subscription",
+            unavailabilityReason: "account_exhausted",
+            workerKind: "codex",
+          },
+          {
+            accountRef: "codex-reauth",
+            advertisedCapacity: 0,
+            marginalCostClass: "subscription",
+            unavailabilityReason: "account_requires_reauth",
+            workerKind: "codex",
+          },
+          {
+            accountRef: "claude-rate-limited",
+            advertisedCapacity: 0,
+            marginalCostClass: "subscription",
+            unavailabilityReason: "account_rate_limited",
+            workerKind: "claude",
+          },
+          {
+            accountRef: "claude-unavailable",
+            advertisedCapacity: 0,
+            marginalCostClass: "not_measured",
+            unavailabilityReason: "account_unavailable",
+            workerKind: "claude",
+          },
+          {
+            accountRef: "grok-ready",
+            advertisedCapacity: 1,
+            marginalCostClass: "not_measured",
+            workerKind: "grok",
+          },
+        ],
+      },
+      clock: { now: () => fixedNow },
+      onLifecycle: event => {
+        observed.push(event)
+      },
+    })
+
+    expect(result.dispatched).toBe(1)
+    expect(dispatched.map(entry => [entry.accountRef, entry.workerKind])).toEqual([
+      ["grok-ready", "grok"],
+    ])
+    const fallbacks = observed.filter(event => event.kind === "fallback")
+    expect(fallbacks.map(({ event }) => [event.accountRef, event.type])).toEqual([
+      ["codex-exhausted", "account_exhausted"],
+      ["codex-reauth", "account_requires_reauth"],
+      ["claude-rate-limited", "account_rate_limited"],
+      ["claude-unavailable", "account_unavailable"],
+    ])
+    expect(fallbacks.every(event => event.policySchema === "khala.fleet_auto_policy.v1")).toBe(true)
+    expect(() => assertPublicProjectionSafe(fallbacks, "fleetAutoFallbacks")).not.toThrow()
+  })
+
+  test("emits a typed cost-ceiling fallback before selecting an allowed named account", async () => {
+    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const run = createRun(store, {
+      runRef: "fleet_run.fc2.typed_auto_cost_ceiling",
+      workUnits: 1,
+      targetConcurrency: 1,
+    })
+    const observed: FleetRunSupervisorObservedEvent[] = []
+    const selected: string[] = []
+    await tickFleetRunSupervisor({
+      store,
+      pylonRef: "pylon.owner.fc2.auto-cost",
+      runRef: run.runRef,
+      planner: planner(store, 1),
+      runner: {
+        dispatch: async input => {
+          selected.push(input.accountRef)
+          return {
+            assignmentRef: `assignment.${input.workerKind}.${input.claim.claimRef}`,
+            lifecycle: [lifecycleEvent("assignment_run.completed", "closed")],
+            status: "completed",
+          }
+        },
+      },
+      capacity: {
+        accounts: async () => [
+          {
+            accountRef: "grok-metered",
+            advertisedCapacity: 1,
+            marginalCostClass: "api_metered",
+            workerKind: "grok",
+          },
+          {
+            accountRef: "codex-subscription",
+            advertisedCapacity: 1,
+            marginalCostClass: "subscription",
+            workerKind: "codex",
+          },
+        ],
+      },
+      autoPolicy: {
+        schema: "khala.fleet_auto_policy.v1",
+        preferenceOrder: ["grok", "codex"],
+        maxMarginalCostClass: "subscription",
+      },
+      clock: { now: () => fixedNow },
+      onLifecycle: event => {
+        observed.push(event)
+      },
+    })
+
+    expect(selected).toEqual(["codex-subscription"])
+    expect(observed.filter(event => event.kind === "fallback")).toEqual([
+      {
+        kind: "fallback",
+        runRef: run.runRef,
+        policySchema: "khala.fleet_auto_policy.v1",
+        event: {
+          type: "cost_ceiling_exceeded",
+          harnessKind: "grok",
+          accountRef: "grok-metered",
+          nextHarnessKind: "codex",
+          nextAccountRef: "codex-subscription",
+        },
+      },
+    ])
+  })
+
+  test("keeps explicit concrete runs constrained to their requested harness", async () => {
+    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const run = createRun(store, {
+      runRef: "fleet_run.fc2.explicit_codex",
+      workUnits: 1,
+      targetConcurrency: 1,
+      workerKind: "codex",
+    })
+    const observed: FleetRunSupervisorObservedEvent[] = []
+    let dispatches = 0
+    const result = await tickFleetRunSupervisor({
+      store,
+      pylonRef: "pylon.owner.fc2.explicit",
+      runRef: run.runRef,
+      planner: planner(store, 1),
+      runner: {
+        dispatch: async () => {
+          dispatches += 1
+          throw new Error("explicit codex run must not reach a Claude adapter")
+        },
+      },
+      capacity: {
+        accounts: async () => [
+          {
+            accountRef: "codex-exhausted-malformed-slots",
+            advertisedCapacity: 9,
+            marginalCostClass: "subscription",
+            unavailabilityReason: "account_exhausted",
+            workerKind: "codex",
+          },
+          {
+            accountRef: "claude-only",
+            advertisedCapacity: 1,
+            marginalCostClass: "subscription",
+            workerKind: "claude",
+          },
+        ],
+      },
+      clock: { now: () => fixedNow },
+      onLifecycle: event => {
+        observed.push(event)
+      },
+    })
+
+    expect(result.dispatched).toBe(0)
+    expect(dispatches).toBe(0)
+    expect(observed).toContainEqual(expect.objectContaining({
+      kind: "skip",
+      accountRef: "claude-only",
+      requestedWorkerKind: "claude",
+    }))
   })
 
   test("reopens the Pylon-home SQLite store, reconciles in-flight work, and refills without a duplicate claim", async () => {
