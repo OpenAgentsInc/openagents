@@ -395,6 +395,125 @@ const accountHealthFailureFor = (
     : { blockerRefs: accountHealthRefs, status }
 }
 
+const ACCOUNT_HEALTH_REDISPATCH_DISPOSITION = "account_health_redispatch" as const
+
+const taskHasAccountHealthRedispatchDisposition = (
+  store: PylonOrchestrationStore,
+  taskId: string,
+): boolean => {
+  const task = store.getTask(taskId)
+  if (task?.status !== "failed" || task.result === null) return false
+  try {
+    const result = JSON.parse(task.result) as { readonly retryDisposition?: unknown }
+    return result.retryDisposition === ACCOUNT_HEALTH_REDISPATCH_DISPOSITION
+  } catch {
+    return false
+  }
+}
+
+const terminalResultFor = (
+  result: FleetRunSupervisorDispatchResult,
+  carrier: PylonFleetRunUsageEvidenceCarrier,
+  accountHealthFailure: ReturnType<typeof accountHealthFailureFor>,
+): string => JSON.stringify({
+  assignmentRef: result.assignmentRef,
+  summary: result.summary ?? null,
+  ...carrier,
+  ...(accountHealthFailure === undefined
+    ? {}
+    : { retryDisposition: ACCOUNT_HEALTH_REDISPATCH_DISPOSITION }),
+})
+
+type AccountHealthRedispatchState = {
+  readonly hasRecoveredFailure: boolean
+  readonly ordinaryTerminalWorkUnitRefs: ReadonlySet<string>
+  readonly pendingWorkUnitRefs: ReadonlySet<string>
+}
+
+const workClaimAttemptOrder = (left: WorkClaim, right: WorkClaim): number => {
+  const claimedAt = Date.parse(left.claimedAt) - Date.parse(right.claimedAt)
+  if (claimedAt !== 0) return claimedAt
+  const ordinalFor = (claim: WorkClaim): number => {
+    const raw = claim.claimRef.match(/\.(\d+)$/u)?.[1]
+    const ordinal = raw === undefined ? Number.NaN : Number(raw)
+    return Number.isSafeInteger(ordinal) ? ordinal : -1
+  }
+  const ordinal = ordinalFor(left) - ordinalFor(right)
+  return ordinal !== 0 ? ordinal : left.claimRef.localeCompare(right.claimRef)
+}
+
+const accountHealthRedispatchStateForRun = (
+  store: PylonOrchestrationStore,
+  runRef: string,
+): AccountHealthRedispatchState => {
+  const claims = store.listWorkClaims({ runRef })
+  const latestByWorkUnit = new Map<string, WorkClaim>()
+  const retriedWorkUnitRefs = new Set<string>()
+  for (const claim of claims) {
+    const latest = latestByWorkUnit.get(claim.workUnitRef)
+    if (latest === undefined || workClaimAttemptOrder(claim, latest) > 0) {
+      latestByWorkUnit.set(claim.workUnitRef, claim)
+    }
+    if (
+      taskHasAccountHealthRedispatchDisposition(
+        store,
+        fleetRunTaskIdForClaim(runRef, claim.claimRef),
+      )
+    ) {
+      retriedWorkUnitRefs.add(claim.workUnitRef)
+    }
+  }
+
+  const pendingWorkUnitRefs = new Set<string>()
+  const ordinaryTerminalWorkUnitRefs = new Set<string>()
+  let hasRecoveredFailure = false
+  for (const [workUnitRef, latest] of latestByWorkUnit) {
+    const taskId = fleetRunTaskIdForClaim(runRef, latest.claimRef)
+    const task = store.getTask(taskId)
+    const retryableAccountFailure = taskHasAccountHealthRedispatchDisposition(store, taskId)
+    if (latest.state === "released" && retryableAccountFailure) {
+      pendingWorkUnitRefs.add(workUnitRef)
+      continue
+    }
+    if (
+      latest.state === "released" &&
+      (task?.status === "failed" || task?.status === "blocked")
+    ) {
+      ordinaryTerminalWorkUnitRefs.add(workUnitRef)
+      continue
+    }
+    if (
+      retriedWorkUnitRefs.has(workUnitRef) &&
+      latest.state === "closeout" &&
+      task?.status === "completed"
+    ) {
+      hasRecoveredFailure = true
+    }
+  }
+  return {
+    hasRecoveredFailure,
+    ordinaryTerminalWorkUnitRefs,
+    pendingWorkUnitRefs,
+  }
+}
+
+const breakerSkipReasonForAccount = (
+  store: PylonOrchestrationStore,
+  account: FleetRunSupervisorAccount,
+  workerKind: FleetRunSupervisorConcreteWorkerKind,
+  now: Date,
+): FleetAutoTargetSkipReason | undefined => {
+  const provider = workerKind === "claude" ? "claude_agent" : workerKind
+  const accountRefHash = hashPylonAccountRef(provider, account.accountRef)
+  const breaker = store.listActiveDispatchBreakers(now)
+    .find(candidate => candidate.accountRefHash === accountRefHash)
+  if (breaker === undefined) return undefined
+  if (breaker.reason === "account_credentials_revoked") return "account_requires_reauth"
+  if (breaker.reason === "account_usage_limited") return "account_exhausted"
+  if (breaker.reason === "account_rate_limited") return "account_rate_limited"
+  return "account_unavailable"
+}
+
 const emptyUsageEvidenceCarrier: PylonFleetRunUsageEvidenceCarrier = {
   accountRefHash: null,
   closeoutRef: null,
@@ -760,19 +879,15 @@ const recordTerminalAssignment = async (
   if (result.assignmentRef !== null) {
     options.store.updateWorkClaimAssignmentRef(assignment.claim.claimRef, result.assignmentRef, now)
   }
+  const accountHealthFailure = terminal.status === "failed"
+    ? accountHealthFailureFor(terminal.blockerRefs, result.status)
+    : undefined
   options.store.recordWorkerDone({
     contextId: assignment.contextId,
     taskId: assignment.taskId,
     status: terminal.status,
-    result: JSON.stringify({
-      assignmentRef: result.assignmentRef,
-      summary: result.summary ?? null,
-      ...terminal.carrier,
-    }),
-    ...(terminal.status === "failed" &&
-        accountHealthFailureFor(terminal.blockerRefs, result.status) !== undefined
-      ? { failure: accountHealthFailureFor(terminal.blockerRefs, result.status) }
-      : {}),
+    result: terminalResultFor(result, terminal.carrier, accountHealthFailure),
+    ...(accountHealthFailure === undefined ? {} : { failure: accountHealthFailure }),
     now,
   })
   options.store.updateWorkClaimState(
@@ -832,7 +947,10 @@ export async function tickFleetRunSupervisor(
   if (
     run.state !== "running" &&
     isAutoRevivableFleetRun(run) &&
-    run.counters.workUnitsTotal < expectedWorkUnitsTotal
+    (
+      run.counters.workUnitsTotal < expectedWorkUnitsTotal ||
+      accountHealthRedispatchStateForRun(store, run.runRef).pendingWorkUnitRefs.size > 0
+    )
   ) {
     run = store.upsertFleetRun({
       ...run,
@@ -917,7 +1035,10 @@ export async function tickFleetRunSupervisor(
     if (
       run.state !== "running" &&
       isAutoRevivableFleetRun(run) &&
-      run.counters.workUnitsTotal < expectedWorkUnitsTotal
+      (
+        run.counters.workUnitsTotal < expectedWorkUnitsTotal ||
+        accountHealthRedispatchStateForRun(store, run.runRef).pendingWorkUnitRefs.size > 0
+      )
     ) {
       run = store.upsertFleetRun({
         ...run,
@@ -976,7 +1097,19 @@ export async function tickFleetRunSupervisor(
       })
       continue
     }
-    accounts.push(account)
+    const breakerReason = breakerSkipReasonForAccount(
+      store,
+      account,
+      resolution.workerKind,
+      now,
+    )
+    accounts.push(breakerReason === undefined
+      ? account
+      : {
+        ...account,
+        advertisedCapacity: 0,
+        unavailabilityReason: breakerReason,
+      })
     accountWorkerKinds.set(account.accountRef, resolution.workerKind)
   }
   const workerKindForAccount = (
@@ -1062,6 +1195,7 @@ export async function tickFleetRunSupervisor(
       const dependencyPending = plan.skipped.some(unit => unit.skipReason === "dependency_pending")
       const plannedWorkUnitsTotal = Math.max(expectedWorkUnitsTotal, run.counters.workUnitsTotal, plan.units.length)
       let reconciled = store.reconcileFleetRun(run.runRef, clock.now())
+      const accountHealthRedispatch = accountHealthRedispatchStateForRun(store, run.runRef)
       if (reconciled.counters.workUnitsTotal < plannedWorkUnitsTotal) {
         reconciled = store.upsertFleetRun({
           ...reconciled,
@@ -1072,7 +1206,19 @@ export async function tickFleetRunSupervisor(
           updatedAt: clock.now().toISOString(),
         })
       }
-      if (plan.claimable.length === 0 && !dependencyPending && activeAssignmentsForRun(store, run.runRef) === 0) {
+      if (
+        reconciled.state !== "running" &&
+        isAutoRevivableFleetRun(reconciled) &&
+        accountHealthRedispatch.pendingWorkUnitRefs.size > 0
+      ) {
+        reconciled = store.updateFleetRunState(run.runRef, "running", clock.now(), "reconcile")
+      }
+      if (
+        plan.claimable.length === 0 &&
+        accountHealthRedispatch.pendingWorkUnitRefs.size === 0 &&
+        !dependencyPending &&
+        activeAssignmentsForRun(store, run.runRef) === 0
+      ) {
         const completed = store.updateFleetRunState(run.runRef, "completed", clock.now(), "reconcile")
         await emit(options.onLifecycle, { kind: "completed", runRef: run.runRef, reason: "backlog_empty" })
         return {
@@ -1089,13 +1235,18 @@ export async function tickFleetRunSupervisor(
   }
 
   const plan = await options.planner.plan({ run, now })
+  const redispatchBeforeClaims = accountHealthRedispatchStateForRun(store, run.runRef)
+  const dispatchableWorkUnits = plan.claimable.filter(workUnit =>
+    redispatchBeforeClaims.pendingWorkUnitRefs.size === 0 ||
+    !redispatchBeforeClaims.ordinaryTerminalWorkUnitRefs.has(workUnit.workUnitRef)
+  )
   const dependencyPending = plan.skipped.some(unit => unit.skipReason === "dependency_pending")
   const plannedWorkUnitsTotal = Math.max(expectedWorkUnitsTotal, run.counters.workUnitsTotal, plan.units.length)
   let claimed = 0
   const claimOrdinalBase = store.listWorkClaims({ runRef: run.runRef }).length
   const dispatches: Promise<void>[] = []
 
-  for (const workUnit of plan.claimable) {
+  for (const workUnit of dispatchableWorkUnits) {
     if (dispatches.length >= freeSlots) break
     const account = run.workerKind === "auto"
       ? await resolveAutoAccount()
@@ -1309,19 +1460,15 @@ export async function tickFleetRunSupervisor(
         // Projection order below remains lifecycle events, then dispatch.
         if (terminal !== null) {
           markTaskFinalizing(store, run.runRef, taskId)
+          const accountHealthFailure = terminal.status === "failed"
+            ? accountHealthFailureFor(terminal.blockerRefs, result.status)
+            : undefined
           store.recordWorkerDone({
             contextId,
             taskId,
             status: terminal.status,
-            result: JSON.stringify({
-              assignmentRef: result.assignmentRef,
-              summary: result.summary ?? null,
-              ...terminal.carrier,
-            }),
-            ...(terminal.status === "failed" &&
-                accountHealthFailureFor(terminal.blockerRefs, result.status) !== undefined
-              ? { failure: accountHealthFailureFor(terminal.blockerRefs, result.status) }
-              : {}),
+            result: terminalResultFor(result, terminal.carrier, accountHealthFailure),
+            ...(accountHealthFailure === undefined ? {} : { failure: accountHealthFailure }),
             now,
           })
           store.updateWorkClaimState(
@@ -1417,7 +1564,10 @@ export async function tickFleetRunSupervisor(
   }
 
   let reconciled = store.reconcileFleetRun(run.runRef, clock.now())
-  const hasClaimableBacklog = plan.claimable.length > claimed || dependencyPending
+  const accountHealthRedispatch = accountHealthRedispatchStateForRun(store, run.runRef)
+  const hasClaimableBacklog = dispatchableWorkUnits.length > claimed ||
+    dependencyPending ||
+    accountHealthRedispatch.pendingWorkUnitRefs.size > 0
   const reviveForBacklog = hasClaimableBacklog &&
     (reconciled.state === "running" || isAutoRevivableFleetRun(reconciled))
   if (reconciled.counters.workUnitsTotal < plannedWorkUnitsTotal) {
@@ -1434,6 +1584,19 @@ export async function tickFleetRunSupervisor(
     reconciled = store.updateFleetRunState(run.runRef, "running", clock.now(), "reconcile")
   }
   if (
+    reconciled.state === "stopped" &&
+    isAutoRevivableFleetRun(reconciled) &&
+    accountHealthRedispatch.hasRecoveredFailure &&
+    accountHealthRedispatch.ordinaryTerminalWorkUnitRefs.size === 0 &&
+    accountHealthRedispatch.pendingWorkUnitRefs.size === 0 &&
+    dispatchableWorkUnits.length === claimed &&
+    !dependencyPending &&
+    activeAssignmentsForRun(store, run.runRef) === 0 &&
+    reconciled.refillPolicy.stopCondition === "backlog_empty"
+  ) {
+    reconciled = store.updateFleetRunState(run.runRef, "completed", clock.now(), "reconcile")
+  }
+  if (
     reconciled.state === "completed" &&
     activeAssignmentsForRun(store, run.runRef) === 0
   ) {
@@ -1446,7 +1609,7 @@ export async function tickFleetRunSupervisor(
   }
   if (
     reconciled.state === "running" &&
-    plan.claimable.length === 0 &&
+    dispatchableWorkUnits.length === 0 &&
     !dependencyPending &&
     activeAssignmentsForRun(store, run.runRef) === 0 &&
     reconciled.refillPolicy.stopCondition === "backlog_empty"
