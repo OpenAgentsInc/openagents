@@ -2204,7 +2204,19 @@ async function buildPrebuiltBaselineCacheEntry(input: {
       tempDirectory,
       "reason.workspace_prebuilt_baseline.checkout_failed",
     )
+    const tracked = await runTextCommand(["git", "ls-files", "-z"], tempDirectory)
+    if (tracked.exitCode !== 0) {
+      throw new WorkspaceCheckoutError("reason.workspace_prebuilt_baseline.tracked_file_inventory_failed")
+    }
+    const trackedPaths = new Set(tracked.stdout.split("\0").filter((path) => path.length > 0))
     const setup = await input.setupRunner({ checkout, workingDirectory: tempDirectory })
+    const setupHead = await runTextCommand(["git", "rev-parse", "HEAD"], tempDirectory)
+    if (
+      setupHead.exitCode !== 0 ||
+      setupHead.stdout.trim().toLowerCase() !== input.baselineCommitSha.toLowerCase()
+    ) {
+      throw new WorkspaceCheckoutError("reason.workspace_prebuilt_baseline.setup_changed_head")
+    }
     const cleanTracked = await runQuietCommand(["git", "diff", "--quiet", "HEAD", "--"], tempDirectory)
     const cleanIndex = await runQuietCommand(["git", "diff", "--cached", "--quiet"], tempDirectory)
     if (cleanTracked !== 0 || cleanIndex !== 0) {
@@ -2220,7 +2232,23 @@ async function buildPrebuiltBaselineCacheEntry(input: {
     const credentialScan = await scanLongLivedScmCredentials({
       roots: [{ rootRef: prebuiltBaselineRegistryRef(input.cacheKey), path: tempDirectory }],
     })
-    if (credentialScan.state === "leaked") throw new WorkspaceScmCredentialPolicyError(credentialScan)
+    // The pinned source commit may intentionally contain credential-shaped
+    // redaction and detector fixtures. Those files were present before setup,
+    // and the clean tracked/index checks above prove setup did not alter them.
+    // Keep failing closed for every finding setup can introduce outside that
+    // immutable tracked set, including ignored artifacts and `.git` broker
+    // state.
+    const setupCredentialFindings = credentialScan.findings.filter(
+      (finding) => !trackedPaths.has(finding.relativePath),
+    )
+    if (setupCredentialFindings.length > 0) {
+      throw new WorkspaceScmCredentialPolicyError({
+        ...credentialScan,
+        state: "leaked",
+        findingRefs: setupCredentialFindings.map((finding) => finding.findingRef),
+        findings: setupCredentialFindings,
+      })
+    }
 
     const previous = await readPrebuiltBaselineCacheRecord(prebuiltDirectory)
     const integrityRef = prebuiltBaselineIntegrityRef({
@@ -2463,14 +2491,21 @@ async function restorePrebuiltBaselineCacheEntry(input: {
       ...(input.remoteUrlFor === undefined ? {} : { remoteUrlFor: input.remoteUrlFor }),
       setupRunner: input.setupRunner,
     })
-  } catch {
+  } catch (error) {
+    const checkoutReasonRef = workspaceCheckoutFailureReasonRef(error)
+    const reasonRef =
+      error instanceof WorkspaceScmCredentialPolicyError
+        ? "reason.workspace_prebuilt_baseline.setup_introduced_scm_credentials"
+        : checkoutReasonRef?.startsWith("reason.workspace_prebuilt_baseline.") === true
+          ? checkoutReasonRef
+          : "reason.workspace_prebuilt_baseline.refresh_failed"
     return {
       state: "miss",
       metric: await recordPrebuiltBaselineMiss({
         cacheKey,
         checkout: input.checkout,
         now: input.now,
-        reasonRef: "reason.workspace_prebuilt_baseline.refresh_failed",
+        reasonRef,
         record,
       }),
     }

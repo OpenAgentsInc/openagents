@@ -1031,6 +1031,150 @@ describe("materializeGitCheckoutWorkspaceWithLease", () => {
     }
   })
 
+  test("allows credential-shaped fixtures already tracked by the pinned source commit", async () => {
+    const root = await mkdtemp(join(tmpdir(), "pylon-worktree-prebuilt-tracked-fixture-"))
+    try {
+      const originRoot = join(root, "origin")
+      await createOriginRepo(originRoot)
+      const commitSha = await commitOriginChange(
+        originRoot,
+        "credential-redaction-fixture.ts",
+        'export const fakeToken = "ghp_abcdefghijklmnopqrstuvwxyz123456"\n',
+      )
+      const checkout = checkoutFor(commitSha)
+      const prebuiltBaselineCacheRoot = join(root, "prebuilt-cache")
+
+      const materialized = await materializeGitCheckoutWorkspaceWithLease(
+        leaseInput(root, {
+          checkout,
+          checkoutRunner: undefined,
+          leaseRef: "lease.public.worktree.prebuilt.tracked_fixture",
+          now: new Date("2026-07-03T14:10:00.000Z"),
+          prebuiltBaselineCacheRoot,
+          prebuiltBaselineSetupRunner: async (input: {
+            checkout: GitCheckoutWorkspace
+            workingDirectory: string
+          }) => {
+            await mkdir(join(input.workingDirectory, "node_modules"), { recursive: true })
+            await writeFile(join(input.workingDirectory, "node_modules", ".prebuilt-ready"), "ready\n")
+            return {
+              state: "completed" as const,
+              setupRef: "setup.public.fixture.prebuilt_baseline",
+              commandRef: "command.public.fixture.prebuilt_baseline_setup",
+            }
+          },
+          remoteUrlFor: () => `file://${originRoot}`,
+        }) as never,
+      )
+
+      expect(materialized.prebuiltBaselineCache).toMatchObject({
+        baselineCommitSha: commitSha,
+        reasonRef: "reason.workspace_prebuilt_baseline.hit",
+        state: "hit",
+      })
+      expect(
+        await readFile(join(materialized.workingDirectory, "credential-redaction-fixture.ts"), "utf8"),
+      ).toContain("fakeToken")
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  test("rejects setup-created credentials in ignored prebuilt artifacts", async () => {
+    const root = await mkdtemp(join(tmpdir(), "pylon-worktree-prebuilt-ignored-credential-"))
+    try {
+      const origin = await createOriginRepo(join(root, "origin"))
+      const checkout = checkoutFor(origin.commitSha)
+      const prebuiltBaselineCacheRoot = join(root, "prebuilt-cache")
+
+      const materialized = await materializeGitCheckoutWorkspaceWithLease(
+        leaseInput(root, {
+          checkout,
+          checkoutRunner: undefined,
+          leaseRef: "lease.public.worktree.prebuilt.ignored_credential",
+          now: new Date("2026-07-03T14:11:00.000Z"),
+          prebuiltBaselineCacheRoot,
+          prebuiltBaselineSetupRunner: async (input: {
+            checkout: GitCheckoutWorkspace
+            workingDirectory: string
+          }) => {
+            await mkdir(join(input.workingDirectory, ".pylon-prebuilt"), { recursive: true })
+            await writeFile(
+              join(input.workingDirectory, ".pylon-prebuilt", "credential"),
+              "ghp_abcdefghijklmnopqrstuvwxyz123456\n",
+            )
+            return {
+              state: "completed" as const,
+              setupRef: "setup.public.fixture.prebuilt_baseline",
+              commandRef: "command.public.fixture.prebuilt_baseline_setup",
+            }
+          },
+          remoteUrlFor: () => origin.url,
+        }) as never,
+      )
+
+      expect(materialized.prebuiltBaselineCache).toMatchObject({
+        reasonRef: "reason.workspace_prebuilt_baseline.setup_introduced_scm_credentials",
+        state: "miss",
+      })
+      const cacheKey = prebuiltBaselineCacheKeyFor({
+        branch: checkout.repository.branch,
+        repositoryFullName: checkout.repository.fullName,
+      })
+      expect(existsSync(join(prebuiltBaselineCacheRoot, `prebuilt.${cacheKey}`))).toBe(false)
+      expect(existsSync(join(materialized.workingDirectory, "sum.ts"))).toBe(true)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  test("rejects setup-created credentials in git broker state", async () => {
+    const root = await mkdtemp(join(tmpdir(), "pylon-worktree-prebuilt-git-credential-"))
+    try {
+      const origin = await createOriginRepo(join(root, "origin"))
+      const checkout = checkoutFor(origin.commitSha)
+      const prebuiltBaselineCacheRoot = join(root, "prebuilt-cache")
+
+      const materialized = await materializeGitCheckoutWorkspaceWithLease(
+        leaseInput(root, {
+          checkout,
+          checkoutRunner: undefined,
+          leaseRef: "lease.public.worktree.prebuilt.git_credential",
+          now: new Date("2026-07-03T14:12:00.000Z"),
+          prebuiltBaselineCacheRoot,
+          prebuiltBaselineSetupRunner: async (input: {
+            checkout: GitCheckoutWorkspace
+            workingDirectory: string
+          }) => {
+            await run(
+              [
+                "git",
+                "config",
+                "remote.credentialed.url",
+                "https://fixture-user:fixture-password@example.com/repository.git",
+              ],
+              input.workingDirectory,
+            )
+            return {
+              state: "completed" as const,
+              setupRef: "setup.public.fixture.prebuilt_baseline",
+              commandRef: "command.public.fixture.prebuilt_baseline_setup",
+            }
+          },
+          remoteUrlFor: () => origin.url,
+        }) as never,
+      )
+
+      expect(materialized.prebuiltBaselineCache).toMatchObject({
+        reasonRef: "reason.workspace_prebuilt_baseline.setup_introduced_scm_credentials",
+        state: "miss",
+      })
+      expect(existsSync(join(materialized.workingDirectory, "sum.ts"))).toBe(true)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   test("records a prebuilt miss before cadence refresh, then refreshes to the newest upstream baseline", async () => {
     const root = await mkdtemp(join(tmpdir(), "pylon-worktree-prebuilt-refresh-"))
     try {
