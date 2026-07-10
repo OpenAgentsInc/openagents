@@ -123,9 +123,15 @@ All names below are exported from `@openagentsinc/khala-sync` unless noted.
   rides `SyncSchemaVersion`. An unsupported version yields `must_refetch`
   reason `schema_version_unsupported` (client stops rendering stale shape and
   re-bootstraps or fails closed).
-- **Routes (openagents.com API):** `/api/sync/bootstrap`, `/api/sync/connect`
-  (live stream), `/api/sync/cvr-pull` (`CvrPullMode = "reset" | "diff"`),
-  `/api/sync/push` (mutations), `/api/sync/log`.
+- **Routes (openagents.com API):** use the exported client constants
+  `KHALA_SYNC_BOOTSTRAP_PATH` (`/api/sync/bootstrap`), `KHALA_SYNC_CONNECT_PATH`
+  (`/api/sync/connect`, WebSocket live frames: `DeltaFrame`,
+  `MutationAckFrame`, `MustRefetchFrame`, `PingFrame`), `KHALA_SYNC_CVR_PULL_PATH`
+  (`/api/sync/cvr-pull`, `CvrPullMode = "reset" | "diff"`),
+  `KHALA_SYNC_PUSH_PATH` (`/api/sync/push`), `KHALA_SYNC_LOG_PATH`
+  (`/api/sync/log`) from `packages/khala-sync-client/src/transport.ts`.
+  Anonymous reads are allowed only for `scope.public.*`; all other scope kinds
+  require actor auth.
 - **Versioning:** per-scope monotonic `SyncVersion` with `SyncVersionWatermark`
   cursors; CVR (`CvrVersion`) for pull-diff reconciliation.
 - **Tombstones:** `ChangeOp = "upsert" | "delete"`; deletes are explicit
@@ -147,8 +153,11 @@ All names below are exported from `@openagentsinc/khala-sync` unless noted.
 ### R2.3 Mutation-outcome contract (SETTLED)
 
 - Every client mutation carries: owner scope, `MutatorName`, target ref,
-  args (schema-decoded), and idempotency identity `ClientGroupId` + `ClientId`
-  + monotonically increasing `MutationId` (`LastMutationId` acknowledgement).
+  args (schema-decoded, encoded through `canonicalJson`), and idempotency
+  identity `ClientGroupId` + `ClientId` + monotonically increasing
+  `MutationId` (`LastMutationId` acknowledgement). The durable idempotency ref
+  format is `mutation:<clientGroupId>:<clientId>:<mutationId>`
+  (`mutationRefFor` in `khala-sync-server/src/push-engine.ts`).
 - The server mutator is the only writer. The durable result is
   `MutationStatus = "applied" | "rejected" | "duplicate"` with a typed
   rejection reason. `duplicate` is a successful idempotent replay, not an
@@ -229,8 +238,9 @@ Registered in `@openagentsinc/khala-sync-server`:
 | `fleet.setDesiredSlots` | `unauthorized_scope` |
 | `fleet.pauseRun` / `fleet.resumeRun` | `unauthorized_scope` |
 | `fleet.pauseWorker` / `fleet.resumeWorker` | `unauthorized_scope` |
-| `fleet.stopRun` | `unauthorized_scope`, `confirmation_required` |
+| `fleet.stopRun` | `unauthorized_scope`, `confirmation_required` (requires `confirm: true`) |
 | `fleet.acknowledgeInboxFlag` | `unauthorized_scope` |
+| `fleet.reportAccountState` | `unauthorized_scope` |
 
 Fleet mutators record **durable operator intents** consumed by the Pylon
 steering exchange (`fleet-intents.ts`, `fleet-steering-exchange.ts`); they are
