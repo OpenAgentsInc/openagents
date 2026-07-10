@@ -1,7 +1,7 @@
 # MASTER ROADMAP — Sarah Fleet Command first; three OpenAgents apps
 
 - Date: 2026-07-09
-- Revision: 13
+- Revision: 14
 - Status: canonical OpenAgents implementation roadmap
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Issue source set: [`issues/README.md`](./issues/README.md)
@@ -176,6 +176,21 @@ The coding-fleet program starts from substantial working substrate:
   while selecting smart-turn, VAD-segmented owned ASR, qualified interruption,
   TTFA/TTFB, task-lifecycle, and behavioral-eval patterns for one bounded,
   process-isolated experiment under #8610.
+- the greenfield OpenAgents mobile shell on the Effect Native/React Native seam,
+  exact `OpenAgents` / `com.openagents.app` / pinned-icon identity oracles, an
+  owned `openagents-production` OTA channel, and TestFlight 0.4.3 build 106 in
+  `VALID` state after simulator pixel and typed-intent round-trip proof; owner
+  device acceptance, Sarah/Sync continuity, Android, and the full #8597 exit
+  remain open;
+- the greenfield OpenAgents Desktop scaffold at `7313b0934e`, pinned to the
+  required electron-shadcn source, with the Electron sandbox/isolation boundary,
+  an Effect Native renderer loop, and a real Electron click smoke proven;
+  Sarah/Fleet/Pylon composition, packaging/signing/updates, identity acceptance,
+  and legacy-client retirement remain open under #8574;
+- product-promise source registry `2026-07-09.2` at `55452fa614`, the
+  fix-forward #8644 provenance correction that binds the two owner-scoped
+  FleetRun intake routes as intake evidence only without changing promise state
+  or implying closeout, payment, settlement, or multi-earning availability.
 
 The immediate gaps are now narrower composition and live-proof gaps:
 
@@ -190,8 +205,12 @@ The immediate gaps are now narrower composition and live-proof gaps:
   `d779c360c3`: one production standing composition now owns mixed
   Codex/Claude/Grok capacity, typed auto fallback, restart-safe claims and
   health, exact-or-unmeasured closeout evidence, a durable local outbox, and an
-  authenticated owner/Pylon-bound server execution projection. It has not
-  spent a live three-account run in this program; that receipt remains #8640.
+  authenticated owner/Pylon-bound server execution projection. Migration 0053
+  for that projection is applied and table-verified in staging and production,
+  but the FC-2 application stack ending `d779c360c3` has not been deployed; the
+  attempted pre-deploy gate stopped before any application release. It has not
+  spent a live three-account run in this program; the pinned integrated deploy
+  and real-account receipt remain #8639/#8640 rather than an implied FC-2 rung.
 - Sarah's safe FleetRun projection, persisted exact-cursor live session, views,
   run controls, and approval decisions are code/fixture-proven in retained
   `/sarah`, including exact start-result-to-scope selection through
@@ -215,7 +234,7 @@ P0 fixes those seams. It does not build another fleet system.
 | Lane | Narrowest proven state on `main` | Next blocking proof |
 | --- | --- | --- |
 | #8637 FC-1 | **closed** at `0892d57b3b`: integrated operator conversation -> durable authority -> registered standing Pylon -> bounded closeout is fixture-proven; timing is 1.8s acknowledgment / 6.1s first claim / 8.6s first capacity; staging `00046-jpn` and production `00068-5t8` are deployed and smoke-proven | none in FC-1; real mixed-account execution is #8640 and owner-cookie reconnect/steer is #8639 |
-| #8633 FC-2 | **closed** on the stack ending `d779c360c3`: production standing adapters, shared typed auto policy, restart-safe mixed claims, health rotation, durable execution outbox/server projection, and one integrated three-harness restart/usage fixture are proven | none in FC-2; useful live Codex+Claude+Grok work is #8640 |
+| #8633 FC-2 | **closed** on the stack ending `d779c360c3`: production standing adapters, shared typed auto policy, restart-safe mixed claims, health rotation, durable execution outbox/server projection, and one integrated three-harness restart/usage fixture are proven; migration 0053 is applied in staging/production, while the application stack is not deployed | the pinned integrated deployment is a #8639/#8640 gate, not reopened FC-2 residue; useful live Codex+Claude+Grok work is #8640 |
 | #8639 FC-3 | through `6cd9d09205`: exact start-to-scope projection, controls/approval writes, reconnect runtime, closeout shell, and fail-closed media/text/Fleet continuity are code-landed and fixture-proven | deliver new steering rows to standing Pylon; canonical attempt identity/authority; per-unit evidence and full canvas chain; integrated reconnect/control receipt |
 | #8640 FC-5 | acceptance contract only | C1 integrated fixture, then Phase A on one pinned deployment |
 
@@ -515,6 +534,16 @@ is deleted, not lovingly ported.
 **[#8597 APP-MOBILE](https://github.com/OpenAgentsInc/openagents/issues/8597)**
 builds a new OpenAgents iOS/Android app at `apps/openagents-mobile`.
 
+Status: the initial greenfield shell, identity/icon oracles, Effect Native
+React Native renderer seam, owned OTA feed, and iOS release lane are
+code/fixture/deployment-proven through main `8f3cfbe77a` and TestFlight 0.4.3
+build 106 (`VALID`). Build 105 failed owner visual verification; build 106 is
+the simulator-pixel-proven correction and still needs owner device acceptance.
+The active app-directory claim remains with the Fable session that posted it on
+#8597; no other session should mutate that lane until it updates or releases
+the claim. Sarah/Sync cross-device continuation, Android proof, vendor
+reconciliation, and the full issue exit remain open.
+
 - Sarah is home.
 - Fleet runs, approvals, receipts, and Blueprint continue over Khala Sync.
 - Account setup remains directly accessible for recovery/power use.
@@ -533,6 +562,15 @@ builds a new OpenAgents iOS/Android app at `apps/openagents-mobile`.
 
 **[#8574 APP-DESKTOP](https://github.com/OpenAgentsInc/openagents/issues/8574)**
 builds a new Electron application at `apps/openagents-desktop`.
+
+Status: exit slice 1 is code/fixture/live-smoke proven at `7313b0934e`: the
+pinned electron-shadcn scaffold is in the Bun workspace, the retained surface
+runs through Effect Native, Electron starts with context isolation, sandboxing,
+and deny-by-default navigation/permission posture, and the typed ping loop was
+clicked in a real Electron smoke. The active app-directory claim remains with
+the Fable session recorded on #8574. Owner identity acceptance, Sarah/Fleet and
+Pylon composition, specialist hosts, packaging/fuses, signing/notarization,
+updates, cross-device continuation, and legacy-client retirement remain open.
 
 - Sarah is the relationship surface.
 - Fleet is the specialist cockpit over the same run state.
@@ -631,7 +669,8 @@ their milestone or tripwire fires.
 4. Keep #8610 active in parallel without taking the fleet integration hot
    paths; closed #8600 remains production inference substrate.
 5. Run #8634 route inventory/retirement and #8635 Forum work in parallel with
-   app conversion; landing/mobile/desktop slices follow their substrate.
+   app conversion; landing/mobile/desktop slices continue from their landed
+   substrate and preserve the active #8597/#8574 claim ownership.
 6. Keep #8642/#8643 dependency-held until Phase A, except that #8642's first
    real correction/deletion request or privacy-incident receipt activates it
    immediately.
