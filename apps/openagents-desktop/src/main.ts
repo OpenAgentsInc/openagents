@@ -76,16 +76,22 @@ const codexSessionsRoot = () => path.resolve(process.env.OPENAGENTS_DESKTOP_CODE
 type CodexHistoryRequest =
   | Readonly<{ kind: "list"; sessionsRoot: string; limit?: number }>
   | Readonly<{ kind: "detail"; sessionsRoot: string; id: string; messageLimit?: number }>
+let historyWorker: Worker | null = null
+let historyRequestId = 0
+const historyPending = new Map<number, (value: unknown) => void>()
 const runCodexHistoryWorker = (request: CodexHistoryRequest): Promise<unknown> => new Promise((resolve) => {
-  const worker = new Worker(new URL("./codex-history-worker.js", import.meta.url), { workerData: request })
-  const finish = (value: unknown) => { worker.terminate().catch(() => undefined); resolve(value) }
-  worker.once("message", (message: unknown) => finish(
-    typeof message === "object" && message !== null && (message as { ok?: unknown }).ok === true
-      ? (message as { result: unknown }).result
-      : null,
-  ))
-  worker.once("error", () => finish(null))
-  worker.once("exit", code => { if (code !== 0) finish(null) })
+  if (historyWorker === null) {
+    historyWorker = new Worker(new URL("./codex-history-worker.js", import.meta.url))
+    historyWorker.on("message", (message: { id?: unknown; ok?: unknown; result?: unknown }) => {
+      if (typeof message.id !== "number") return
+      const pending = historyPending.get(message.id); if (pending === undefined) return
+      historyPending.delete(message.id); pending(message.ok === true ? message.result : null)
+    })
+    historyWorker.on("error", () => { for (const pending of historyPending.values()) pending(null); historyPending.clear(); historyWorker = null })
+  }
+  const id = ++historyRequestId
+  historyPending.set(id, resolve)
+  historyWorker.postMessage({ id, request })
 })
 let workspaceRoot = path.resolve(process.env.OPENAGENTS_DESKTOP_WORKSPACE ?? process.cwd())
 const workspaceSnapshot = () => {

@@ -71,6 +71,7 @@ export type DesktopShellState = Readonly<{
   notes: ReadonlyArray<DesktopNoteEntry>
   threads: ReadonlyArray<DesktopThread>
   activeThreadId: string | null
+  threadLoadingId: string | null
   workspace: DesktopWorkspaceName
   workspaceSnapshot: DesktopWorkspaceSnapshot | null
   workspaceFile: DesktopWorkspaceFile | null
@@ -104,6 +105,7 @@ export const initialDesktopShellState = (
   notes: [],
   threads: [],
   activeThreadId: null,
+  threadLoadingId: null,
   workspace: "chat",
   workspaceSnapshot: null,
   workspaceFile: null,
@@ -193,6 +195,7 @@ export const withNewChat = (state: DesktopShellState, thread: DesktopThread): De
   notes: thread.notes,
   threads: [thread, ...state.threads.filter((item) => item.id !== thread.id)].slice(0, 5),
   activeThreadId: thread.id,
+  threadLoadingId: null,
   workspace: "chat",
   fleetDeskOpen: false,
   fleetObjective: "",
@@ -376,6 +379,7 @@ export const makeDesktopShellHandlers = (
     }),
   DesktopNewChat: () => Effect.gen(function* () { const thread = yield* Effect.promise(chat.newThread); if (thread) yield* SubscriptionRef.update(state, (current) => withNewChat(current, thread)) }),
   DesktopChatSelected: (id) => Effect.gen(function* () {
+    yield* SubscriptionRef.update(state, current => ({ ...current, activeThreadId: id, threadLoadingId: id, notes: [] }))
     const thread = yield* Effect.promise(() => chat.openThread(id)); if (!thread) return
     yield* SubscriptionRef.update(state, (current) => withChatSelected(current, thread))
     if (chat.hydrateThread !== undefined) {
@@ -521,7 +525,7 @@ const shellSidebar = (state: DesktopShellState): View =>
         Icon({ key: `sidebar-thread-icon-${thread.id}`, name: "Chats", size: "sm", color: "textMuted" }),
         Button({
           key: `sidebar-thread-${thread.id}`,
-          label: thread.title,
+          label: state.threadLoadingId === thread.id ? "Opening…" : thread.title,
           variant: "ghost",
           onPress: IntentRef("DesktopChatSelected", StaticPayload(thread.id)),
           a11y: { label: `Open chat ${thread.title}` },
@@ -558,6 +562,10 @@ const shellWelcome = (): View =>
 const selectedCodexThreadDetails = (state: DesktopShellState): View | null => {
   const thread = state.threads.find(item => item.id === state.activeThreadId)
   if (thread === undefined) return null
+  if (state.threadLoadingId === thread.id) return Card(
+    { key: "codex-thread-loading", padding: "2", radius: "lg", style: { width: "full", maxWidth: columnWidth, alignSelf: "center", surface: "glass" } },
+    [Text({ key: "codex-thread-loading-copy", content: "Loading recent messages…", variant: "body", color: "textMuted" })],
+  )
   const fields = [
     `Updated ${thread.updatedAt.slice(0, 16).replace("T", " ")}`,
     ...(thread.createdAt === undefined ? [] : [`Started ${thread.createdAt.slice(0, 16).replace("T", " ")}`]),

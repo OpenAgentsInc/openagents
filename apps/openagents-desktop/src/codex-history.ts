@@ -4,15 +4,14 @@
  * payloads. Unknown relationship metadata is excluded rather than risking a
  * noisy sub-agent sidebar.
  */
-import { closeSync, openSync, readFileSync, readSync, readdirSync, statSync } from "node:fs"
+import { closeSync, openSync, readSync, readdirSync, statSync } from "node:fs"
 import path from "node:path"
 
 import type { DesktopMessage, DesktopThread } from "./chat-contract.ts"
 
 const windowMs = 24 * 60 * 60 * 1000
 const recentMessageLimit = 5
-const historyHeadBytes = 256 * 1024
-const historyTailBytes = 512 * 1024
+const historyTailBytes = 96 * 1024
 const summaryHeadBytes = 16 * 1024
 
 type RecordValue = Record<string, unknown>
@@ -98,18 +97,14 @@ const boundedJsonLines = (file: string, includeMessages: boolean): unknown[] | n
             return head.toString("utf8").replace(/[^\n]*$/u, "")
           } finally { closeSync(descriptor) }
         })()
-      : size <= historyHeadBytes + historyTailBytes
-      ? readFileSync(file, "utf8")
       : (() => {
           const descriptor = openSync(file, "r")
           try {
-            const head = Buffer.alloc(Math.min(historyHeadBytes, size))
-            const tailSize = Math.min(historyTailBytes, size - head.length)
+            const tailSize = Math.min(historyTailBytes, size)
             const tail = Buffer.alloc(tailSize)
-            readSync(descriptor, head, 0, head.length, 0)
             readSync(descriptor, tail, 0, tail.length, size - tail.length)
             // Discard the partial line at the beginning of the tail window.
-            return `${head.toString("utf8").replace(/[^\n]*$/u, "")}\n${tail.toString("utf8").replace(/^[^\n]*\n/u, "")}`
+            return tail.toString("utf8").replace(/^[^\n]*\n/u, "")
           } finally { closeSync(descriptor) }
         })()
     return text.split("\n").filter(Boolean).flatMap(line => {
@@ -169,9 +164,21 @@ export const readRecentCodexHistory = (input: Readonly<{ sessionsRoot: string; n
     .map(thread => ({ id: thread.id, title: thread.title ?? "Untitled Codex chat", createdAt: thread.createdAt, updatedAt: thread.updatedAt, cwd: thread.cwd, model: thread.model, notes: input.includeMessages === false ? [] : thread.notes.slice(-recentMessageLimit) }))
 }
 
-export const findRecentCodexThread = (input: Readonly<{ sessionsRoot: string; id: string; now?: Date; messageLimit?: number }>): DesktopThread | null => {
+/** Cheap filename-only index for the persistent worker's selected-thread path. */
+export const recentCodexSessionFiles = (sessionsRoot: string, now: Date = new Date()): ReadonlyMap<string, string> => {
+  const cutoff = now.getTime() - windowMs
+  const index = new Map<string, string>()
+  for (const file of filesUnder(sessionsRoot)) {
+    if (!changedSince(file, cutoff)) continue
+    const id = /([0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12})\.jsonl$/iu.exec(file)?.[1]
+    if (id !== undefined) index.set(id, file)
+  }
+  return index
+}
+
+export const findRecentCodexThread = (input: Readonly<{ sessionsRoot: string; id: string; now?: Date; messageLimit?: number; file?: string }>): DesktopThread | null => {
   const cutoff = (input.now ?? new Date()).getTime() - windowMs
-  const file = filesUnder(input.sessionsRoot).filter(candidate => changedSince(candidate, cutoff)).find(candidate => {
+  const file = input.file ?? filesUnder(input.sessionsRoot).filter(candidate => changedSince(candidate, cutoff)).find(candidate => {
     const summary = readOne(candidate, false)
     return summary?.id === input.id && !summary.child
   })
