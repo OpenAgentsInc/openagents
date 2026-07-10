@@ -37,7 +37,7 @@ public class OpenAgentsLiquidGlassModule: Module {
     View(GlassPillView.self) {
       ViewName("GlassPill")
 
-      Events("onTap")
+      Events("onTap", "onSelect")
 
       Prop("label") { (view: GlassPillView, label: String) in
         view.state.label = label
@@ -45,6 +45,17 @@ public class OpenAgentsLiquidGlassModule: Module {
 
       Prop("symbol") { (view: GlassPillView, symbol: String) in
         view.state.symbol = symbol
+      }
+
+      Prop("options") { (view: GlassPillView, options: [[String: String]]) in
+        view.state.options = options.compactMap { entry in
+          guard let id = entry["id"], let label = entry["label"] else { return nil }
+          return GlassPillOption(id: id, label: label)
+        }
+      }
+
+      Prop("selectedId") { (view: GlassPillView, selectedId: String) in
+        view.state.selectedId = selectedId
       }
     }
 

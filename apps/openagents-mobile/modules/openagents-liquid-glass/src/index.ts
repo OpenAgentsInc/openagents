@@ -18,10 +18,19 @@ export interface GlassIconButtonProps {
   readonly style?: Record<string, unknown>
 }
 
+export interface GlassPillMenuOption {
+  readonly id: string
+  readonly label: string
+}
+
 export interface GlassPillProps {
   readonly label: string
   readonly symbol?: string
+  /** When present, the pill renders as a dropdown Menu of these options. */
+  readonly options?: ReadonlyArray<GlassPillMenuOption>
+  readonly selectedId?: string
   readonly onTap?: () => void
+  readonly onSelect?: (event: { nativeEvent: { id: string } }) => void
   readonly style?: Record<string, unknown>
 }
 

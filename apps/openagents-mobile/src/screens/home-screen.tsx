@@ -1,5 +1,14 @@
-import { useEffect, useMemo, useState } from "react"
-import { Platform, Pressable, Text as RNText, View as RNView } from "react-native"
+import { useEvent } from "expo"
+import { useVideoPlayer, VideoView } from "expo-video"
+import { useEffect, useMemo, useRef, useState } from "react"
+import {
+  Animated,
+  Easing,
+  Platform,
+  Pressable,
+  Text as RNText,
+  View as RNView,
+} from "react-native"
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 
 import { Effect, Stream } from "@effect-native/core/effect"
@@ -17,7 +26,13 @@ import {
   initialHomeState,
   renderContentView,
   renderDrawerView,
+  surfaceModeOptions,
 } from "./home-core"
+
+// Bundled Sarah demo loop (assets/videos/sarah-demo.mp4, ~1.7 MB) — the
+// "Sarah" surface mode plays it fullscreen UNDER the glass chrome.
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const sarahDemoVideo = require("../../assets/videos/sarah-demo.mp4") as number
 
 /**
  * OpenAgents mobile (GL-2 #8648, #8597) — the ChatGPT-style glass shell.
@@ -56,6 +71,51 @@ export const HomeScreen = () => {
   const [homeState, setHomeState] = useState(initialHomeState)
   const insets = useSafeAreaInsets()
 
+  // Sarah surface-mode video: looping, muted, cover-fit, UNDER all glass.
+  const sarahMode = homeState.surfaceMode === "sarah"
+  const player = useVideoPlayer(sarahDemoVideo, (p) => {
+    p.loop = true
+    p.muted = true
+  })
+  const { status: videoStatus } = useEvent(player, "statusChange", {
+    status: player.status,
+  })
+  const videoOpacity = useRef(new Animated.Value(0)).current
+  const videoScale = useRef(new Animated.Value(1.03)).current
+
+  useEffect(() => {
+    if (sarahMode) {
+      player.play()
+    } else {
+      player.pause()
+      // Reset so re-entering Sarah mode fades in again from black.
+      videoOpacity.setValue(0)
+      videoScale.setValue(1.03)
+    }
+  }, [sarahMode, player, videoOpacity, videoScale])
+
+  // Fade-in on first-frame-ready — never a hard pop: opacity 0 -> 1 (~700ms
+  // ease-out) with a subtle 1.03 -> 1.0 scale settle. Black underneath until
+  // ready keeps the transition seamless.
+  useEffect(() => {
+    if (sarahMode && videoStatus === "readyToPlay") {
+      Animated.parallel([
+        Animated.timing(videoOpacity, {
+          toValue: 1,
+          duration: 700,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+        Animated.timing(videoScale, {
+          toValue: 1,
+          duration: 900,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+      ]).start()
+    }
+  }, [sarahMode, videoStatus, videoOpacity, videoScale])
+
   // Mirror program state into React state for chrome props/visibility — one
   // source of truth (the program's SubscriptionRef), many renderers reading it.
   useEffect(() => {
@@ -76,10 +136,31 @@ export const HomeScreen = () => {
   const chrome = chromeProps(homeState)
 
   return (
-    <SafeAreaView
-      edges={["top"]}
-      style={{ flex: 1, backgroundColor: khalaTheme.color.background }}
-    >
+    <RNView style={{ flex: 1, backgroundColor: khalaTheme.color.background }}>
+      {/* 0. Sarah demo video — fullscreen cover, looping, muted, faded in on
+          first-frame-ready, UNDER every glass layer. Black shows through
+          until ready (and always in OpenAgents mode). */}
+      {sarahMode ? (
+        <Animated.View
+          style={{
+            position: "absolute",
+            top: 0,
+            bottom: 0,
+            left: 0,
+            right: 0,
+            opacity: videoOpacity,
+            transform: [{ scale: videoScale }],
+          }}
+        >
+          <VideoView
+            player={player}
+            style={{ flex: 1 }}
+            contentFit="cover"
+            nativeControls={false}
+          />
+        </Animated.View>
+      ) : null}
+      <SafeAreaView edges={["top"]} style={{ flex: 1 }}>
       {/* 1. EN content surface */}
       <RNView style={{ flex: 1 }}>
         <EffectNativeHost
@@ -133,8 +214,11 @@ export const HomeScreen = () => {
             {GlassPill === undefined ? (
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel="OpenAgents"
-                onPress={program.chrome.pressPill}
+                accessibilityLabel={chrome.pillLabel}
+                // Fallback dropdown: tapping cycles the surface mode.
+                onPress={() =>
+                  program.chrome.selectSurfaceMode(sarahMode ? "openagents" : "sarah")
+                }
                 style={{
                   height: 44,
                   borderRadius: 22,
@@ -151,8 +235,15 @@ export const HomeScreen = () => {
               <GlassPill
                 label={chrome.pillLabel}
                 symbol="sparkles"
+                options={surfaceModeOptions}
+                selectedId={chrome.surfaceMode}
+                onSelect={(event) =>
+                  program.chrome.selectSurfaceMode(
+                    event.nativeEvent.id === "sarah" ? "sarah" : "openagents",
+                  )
+                }
                 onTap={program.chrome.pressPill}
-                style={{ width: 168, height: 44 }}
+                style={{ width: 180, height: 44 }}
               />
             )}
             <RNView style={{ flex: 1 }} />
@@ -266,6 +357,7 @@ export const HomeScreen = () => {
           />
         </RNView>
       ) : null}
-    </SafeAreaView>
+      </SafeAreaView>
+    </RNView>
   )
 }

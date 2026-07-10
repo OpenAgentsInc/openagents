@@ -3,7 +3,7 @@
     "name": "OpenAgents",
     "slug": "openagents-mobile",
     "scheme": "openagents",
-    "version": "0.5.0",
+    "version": "0.5.1",
     "icon": "./assets/images/icon.png",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
@@ -20,7 +20,7 @@
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       },
-      "buildNumber": "107"
+      "buildNumber": "108"
     },
     "android": {
       "package": "com.openagents.app"
@@ -38,7 +38,8 @@
       }
     },
     "plugins": [
-      "expo-updates"
+      "expo-updates",
+      "expo-video"
     ]
   }
 }

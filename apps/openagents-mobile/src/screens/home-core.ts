@@ -6,7 +6,6 @@
 import { Effect, Schema, type Stream, SubscriptionRef } from "@effect-native/core/effect"
 import {
   Button,
-  Card,
   defineIntent,
   type IntentHandlers,
   IntentRef,
@@ -47,8 +46,24 @@ export interface RecentChat {
   readonly title: string
 }
 
+/** The pill dropdown's surface modes: the plain OpenAgents surface (Protoss
+ * background) or the Sarah demo-video surface (fullscreen looping video the
+ * glass chrome layers over). */
+export type SurfaceMode = "openagents" | "sarah"
+
+export interface SurfaceModeOption {
+  readonly id: SurfaceMode
+  readonly label: string
+}
+
+export const surfaceModeOptions: ReadonlyArray<SurfaceModeOption> = [
+  { id: "openagents", label: "OpenAgents" },
+  { id: "sarah", label: "Sarah" },
+]
+
 export interface HomeState {
   readonly drawerOpen: boolean
+  readonly surfaceMode: SurfaceMode
   /** The active conversation; undefined = fresh "new chat" surface. */
   readonly activeRecentId: string | undefined
   readonly recents: ReadonlyArray<RecentChat>
@@ -70,6 +85,7 @@ export const seedRecents: ReadonlyArray<RecentChat> = [
 
 export const initialHomeState: HomeState = {
   drawerOpen: false,
+  surfaceMode: "openagents",
   activeRecentId: "welcome",
   recents: seedRecents,
   composerTaps: 0,
@@ -83,7 +99,7 @@ export const initialHomeState: HomeState = {
  * the owner can SEE the over-the-air bundle swap land (embedded build 107
  * ships the tag below; a published OTA with a bumped tag should appear within
  * ~3s via the temporary poll loop and reload). Rendered in the drawer footer. */
-export const BUNDLE_TAG = "2026-07-09.embedded-107"
+export const BUNDLE_TAG = "2026-07-09.embedded-108"
 
 // ---------------------------------------------------------------------------
 // Typed intents — the ONLY way anything (EN tree, SwiftUI chrome, scrim)
@@ -103,6 +119,10 @@ export const SettingsPressed = defineIntent("SettingsPressed", EmptyPayload)
 export const ChatPillPressed = defineIntent("ChatPillPressed", EmptyPayload)
 export const ComposerPressed = defineIntent("ComposerPressed", EmptyPayload)
 export const MicPressed = defineIntent("MicPressed", EmptyPayload)
+export const SurfaceModeSelected = defineIntent(
+  "SurfaceModeSelected",
+  Schema.Struct({ mode: Schema.Literals(["openagents", "sarah"]) }),
+)
 
 export const homeIntentDefinitions = [
   DrawerToggled,
@@ -113,6 +133,7 @@ export const homeIntentDefinitions = [
   ChatPillPressed,
   ComposerPressed,
   MicPressed,
+  SurfaceModeSelected,
 ] as const
 
 export const drawerToggledRef = IntentRef("DrawerToggled", StaticPayload({}))
@@ -126,12 +147,16 @@ export interface ChromeProps {
   readonly pillLabel: string
   readonly composerPlaceholder: string
   readonly chromeVisible: boolean
+  readonly surfaceMode: SurfaceMode
 }
 
 export const chromeProps = (state: HomeState): ChromeProps => ({
-  pillLabel: "OpenAgents",
+  pillLabel:
+    surfaceModeOptions.find((option) => option.id === state.surfaceMode)?.label ??
+    "OpenAgents",
   composerPlaceholder: "Ask anything",
   chromeVisible: !state.drawerOpen,
+  surfaceMode: state.surfaceMode,
 })
 
 export const activeRecentTitle = (state: HomeState): string => {
@@ -143,60 +168,26 @@ export const activeRecentTitle = (state: HomeState): string => {
 // Views
 // ---------------------------------------------------------------------------
 
-/** Main surface, rendered under the floating glass chrome. */
+/** Main surface, rendered under the floating glass chrome. DELIBERATELY
+ * EMPTY (owner direction 2026-07-09: no status text on the main surface) —
+ * just the surface itself: opaque Protoss background in "openagents" mode;
+ * TRANSPARENT in "sarah" mode so the fullscreen demo video (a shell layer
+ * below) shows through and the glass chrome floats over it. Conversation
+ * content mounts here when the Sarah surface lands. */
 export const renderContentView = (state: HomeState): View =>
   Stack(
     {
       key: "home-root",
       direction: "column",
-      gap: "4",
-      padding: "5",
-      style: { width: "full", height: "full", backgroundColor: "background" },
+      style: {
+        width: "full",
+        height: "full",
+        ...(state.surfaceMode === "openagents"
+          ? { backgroundColor: "background" as const }
+          : {}),
+      },
     },
-    [
-      // Clearance for the floating top chrome (shell overlays it).
-      Spacer({ key: "home-chrome-clearance", size: "12" }),
-      Text({
-        key: "home-active-title",
-        content: activeRecentTitle(state),
-        variant: "heading",
-        color: "textPrimary",
-      }),
-      Text({
-        key: "home-subtitle",
-        content:
-          "Typed Effect Native program; the SwiftUI glass chrome dispatches the same typed intents.",
-        variant: "body",
-        color: "textMuted",
-      }),
-      Card(
-        {
-          key: "home-status-card",
-          padding: "4",
-          radius: "lg",
-          style: {
-            width: "full",
-            backgroundColor: "surface",
-            borderColor: "border",
-            borderWidth: 1,
-          },
-        },
-        [
-          Text({
-            key: "home-intents-label",
-            content: "Chrome intents",
-            variant: "label",
-            color: "accent",
-          }),
-          Text({
-            key: "home-intents-value",
-            content: `pill ${state.pillTaps} · search ${state.searchTaps} · composer ${state.composerTaps} · mic ${state.micTaps}`,
-            variant: "body",
-            color: "textPrimary",
-          }),
-        ],
-      ),
-    ],
+    [],
   )
 
 const drawerRow = (input: {
@@ -322,6 +313,11 @@ export const makeHomeHandlers = (
       ...current,
       micTaps: current.micTaps + 1,
     })),
+  SurfaceModeSelected: (payload) =>
+    SubscriptionRef.update(state, (current) => ({
+      ...current,
+      surfaceMode: payload.mode,
+    })),
 })
 
 /** Fire-and-forget typed dispatchers for the SwiftUI chrome + shell scrim —
@@ -334,6 +330,7 @@ export interface ChromeDispatchers {
   readonly pressNewChat: () => void
   readonly pressComposer: () => void
   readonly pressMic: () => void
+  readonly selectSurfaceMode: (mode: SurfaceMode) => void
 }
 
 export interface HomeProgramHandle {
@@ -354,10 +351,11 @@ export const buildHomeProgram = (): HomeProgramHandle =>
       )
       const report: IntentReporter = (ref, runtimeValue) =>
         registry.dispatch(resolveIntentRef(ref, runtimeValue))
+      const fireRef = (ref: ReturnType<typeof IntentRef>): void => {
+        Effect.runFork(Effect.exit(registry.dispatch(resolveIntentRef(ref))))
+      }
       const fire = (name: string) => (): void => {
-        Effect.runFork(
-          Effect.exit(registry.dispatch(resolveIntentRef(IntentRef(name, StaticPayload({}))))),
-        )
+        fireRef(IntentRef(name, StaticPayload({})))
       }
       const content = makeViewProgramFromState(state, renderContentView)
       const drawer = makeViewProgramFromState(state, renderDrawerView)
@@ -373,6 +371,9 @@ export const buildHomeProgram = (): HomeProgramHandle =>
           pressNewChat: fire("NewChatPressed"),
           pressComposer: fire("ComposerPressed"),
           pressMic: fire("MicPressed"),
+          selectSurfaceMode: (mode) => {
+            fireRef(IntentRef("SurfaceModeSelected", StaticPayload({ mode })))
+          },
         },
       }
     }),

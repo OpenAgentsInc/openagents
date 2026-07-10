@@ -66,26 +66,42 @@ struct GlassIconButtonRoot: View {
   }
 }
 
-// MARK: - GlassPill
+// MARK: - GlassPill (dropdown when options are provided)
+
+struct GlassPillOption: Identifiable {
+  let id: String
+  let label: String
+}
 
 final class GlassPillState: ObservableObject {
   @Published var label: String = ""
   @Published var symbol: String = ""
+  @Published var options: [GlassPillOption] = []
+  @Published var selectedId: String = ""
 }
 
 final class GlassPillView: ExpoView {
   let state = GlassPillState()
   let onTap = EventDispatcher()
+  let onSelect = EventDispatcher()
 
   required init(appContext: AppContext? = nil) {
     super.init(appContext: appContext)
-    embed(GlassPillRoot(state: state) { [weak self] in self?.onTap([:]) }, in: self)
+    embed(
+      GlassPillRoot(
+        state: state,
+        action: { [weak self] in self?.onTap([:]) },
+        select: { [weak self] id in self?.onSelect(["id": id]) }
+      ),
+      in: self
+    )
   }
 }
 
 struct GlassPillRoot: View {
   @ObservedObject var state: GlassPillState
   let action: () -> Void
+  let select: (String) -> Void
 
   private var content: some View {
     HStack(spacing: 6) {
@@ -95,22 +111,55 @@ struct GlassPillRoot: View {
       }
       Text(state.label)
         .font(.system(size: 16, weight: .semibold))
+      if !state.options.isEmpty {
+        Image(systemName: "chevron.down")
+          .font(.system(size: 11, weight: .semibold))
+          .foregroundStyle(.white.opacity(0.6))
+      }
     }
     .foregroundStyle(.white)
     .padding(.horizontal, 16)
     .frame(height: 44)
   }
 
+  @ViewBuilder
+  private var menuItems: some View {
+    ForEach(state.options) { option in
+      Button(action: { select(option.id) }) {
+        if option.id == state.selectedId {
+          Label(option.label, systemImage: "checkmark")
+        } else {
+          Text(option.label)
+        }
+      }
+    }
+  }
+
   var body: some View {
     Group {
-      if #available(iOS 26.0, *) {
-        Button(action: action) { content }
-          .glassEffect(.regular.interactive(), in: .capsule)
+      if state.options.isEmpty {
+        // Plain tap pill (no dropdown).
+        if #available(iOS 26.0, *) {
+          Button(action: action) { content }
+            .glassEffect(.regular.interactive(), in: .capsule)
+        } else {
+          Button(action: action) {
+            content
+              .background(.ultraThinMaterial, in: Capsule())
+              .overlay(Capsule().stroke(oaAccent.opacity(0.35), lineWidth: 1))
+          }
+        }
       } else {
-        Button(action: action) {
-          content
-            .background(.ultraThinMaterial, in: Capsule())
-            .overlay(Capsule().stroke(oaAccent.opacity(0.35), lineWidth: 1))
+        // Dropdown pill: the system Menu (glass-treated by iOS 26 itself).
+        if #available(iOS 26.0, *) {
+          Menu { menuItems } label: { content }
+            .glassEffect(.regular.interactive(), in: .capsule)
+        } else {
+          Menu { menuItems } label: {
+            content
+              .background(.ultraThinMaterial, in: Capsule())
+              .overlay(Capsule().stroke(oaAccent.opacity(0.35), lineWidth: 1))
+          }
         }
       }
     }
