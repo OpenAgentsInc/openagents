@@ -38,6 +38,7 @@ export const FLEET_INBOX_FLAG_ENTITY_TYPE = "fleet_inbox_flag"
 // body-free steer receipt.
 export const FLEET_APPROVAL_ENTITY_TYPE = "fleet_approval"
 export const FLEET_STEER_ENTITY_TYPE = "fleet_steer"
+export const FLEET_COMMAND_OUTCOME_ENTITY_TYPE = "fleet_command_outcome"
 
 export const FLEET_ENTITY_TYPES = [
   FLEET_RUN_ENTITY_TYPE,
@@ -47,6 +48,7 @@ export const FLEET_ENTITY_TYPES = [
   FLEET_INBOX_FLAG_ENTITY_TYPE,
   FLEET_APPROVAL_ENTITY_TYPE,
   FLEET_STEER_ENTITY_TYPE,
+  FLEET_COMMAND_OUTCOME_ENTITY_TYPE,
 ] as const
 
 // ---------------------------------------------------------------------------
@@ -345,6 +347,95 @@ export class FleetSteerEntity extends S.Class<FleetSteerEntity>(
 }) {}
 
 // ---------------------------------------------------------------------------
+// fleet_command_outcome (FC-3 #8639)
+// ---------------------------------------------------------------------------
+
+/**
+ * The Pylon delivery disposition for one typed Sarah fleet command. This is
+ * deliberately distinct from the command's effective result: a command can
+ * be accepted for local follow-up without yet changing the fleet projection.
+ */
+export const FleetCommandDeliveryOutcome = S.Literals([
+  "applied",
+  "queued_follow_up",
+  "skipped_stale",
+  "rejected",
+  "failed",
+])
+export type FleetCommandDeliveryOutcome =
+  typeof FleetCommandDeliveryOutcome.Type
+
+export const FleetCommandKind = S.Literals([
+  "fleet_run_control",
+  "approval_decision",
+  "steer_message",
+  "worker_selection",
+])
+export type FleetCommandKind = typeof FleetCommandKind.Type
+
+/**
+ * An exact effective state that this Sync transaction projected. `null` means
+ * no effective state was claimed (including queued, rejected, failed, and
+ * stale deliveries). Steering and worker-selection commands cannot claim an
+ * effective result until their executor posts a terminal, state-bound ACK.
+ */
+export const FleetCommandEffectiveOutcome = S.Literals([
+  "running",
+  "paused",
+  "draining",
+  "stopped",
+  "allowed",
+  "denied",
+  "steer_delivered",
+])
+export type FleetCommandEffectiveOutcome =
+  typeof FleetCommandEffectiveOutcome.Type
+
+/**
+ * Body-free, reconnect-safe command receipt. It contains no prompt, steer
+ * body, reason text, session handle, local path, or raw account identity.
+ * `entityId` is `intentId`, giving retries one stable upsert identity.
+ *
+ * An immediately applied run/approval command uses its content-bound
+ * `outcomeRef` as `completionRef`. A command first recorded as
+ * `queued_follow_up` keeps that delivery disposition and original outcome ref
+ * when an executor later completes it; that later upsert fills
+ * `effectiveOutcome`, `completedAt`, and a distinct content-bound
+ * `completion.pylon.fleet_steering.*` receipt. Delivery history is therefore
+ * never rewritten to imply that a queued command was immediate.
+ */
+export const FleetCommandCompletionRef = S.String.check(
+  S.isPattern(
+    /^(outcome|completion)\.pylon\.fleet_steering\.[a-f0-9]{24}$/,
+  ),
+)
+export type FleetCommandCompletionRef = typeof FleetCommandCompletionRef.Type
+
+export class FleetCommandOutcomeEntity extends S.Class<FleetCommandOutcomeEntity>(
+  "FleetCommandOutcomeEntity",
+)({
+  intentId: FleetPublicRef,
+  seq: S.Number.check(
+    S.isInt(),
+    S.isGreaterThanOrEqualTo(1),
+    S.isLessThanOrEqualTo(Number.MAX_SAFE_INTEGER),
+  ),
+  kind: FleetCommandKind,
+  /** A public-safe target ref only; unsafe/absent optional targets become null. */
+  targetRef: S.NullOr(FleetPublicRef),
+  deliveryOutcome: FleetCommandDeliveryOutcome,
+  effectiveOutcome: S.NullOr(FleetCommandEffectiveOutcome),
+  completionRef: S.NullOr(FleetCommandCompletionRef),
+  completedAt: S.NullOr(FleetIsoTimestamp),
+  outcomeRef: FleetPublicRef,
+  /** Pylon's observation clock. */
+  observedAt: FleetIsoTimestamp,
+  /** Authoritative server receipt clock. */
+  recordedAt: FleetIsoTimestamp,
+  updatedAt: FleetIsoTimestamp,
+}) {}
+
+// ---------------------------------------------------------------------------
 // Fleet operator intents (KS-3.2 #8292)
 // ---------------------------------------------------------------------------
 
@@ -411,3 +502,9 @@ export const decodeFleetApprovalEntity = S.decodeUnknownSync(FleetApprovalEntity
 export const encodeFleetApprovalEntity = S.encodeSync(FleetApprovalEntity)
 export const decodeFleetSteerEntity = S.decodeUnknownSync(FleetSteerEntity)
 export const encodeFleetSteerEntity = S.encodeSync(FleetSteerEntity)
+export const decodeFleetCommandOutcomeEntity = S.decodeUnknownSync(
+  FleetCommandOutcomeEntity,
+)
+export const encodeFleetCommandOutcomeEntity = S.encodeSync(
+  FleetCommandOutcomeEntity,
+)

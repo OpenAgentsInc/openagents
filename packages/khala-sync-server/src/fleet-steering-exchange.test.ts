@@ -252,6 +252,22 @@ describe.skipIf(!hasLocalPostgres())(
       return image.status
     }
 
+    const commandOutcomes = async (
+      runRef: string,
+    ): Promise<ReadonlyArray<Record<string, unknown>>> => {
+      const rows: Array<{ post_image_json: unknown }> = await sql`
+        SELECT post_image_json FROM khala_sync_changelog
+        WHERE scope = ${fleetRunScope(runRef)}
+          AND entity_type = 'fleet_command_outcome'
+        ORDER BY version ASC
+      `
+      return rows.map((row) =>
+        typeof row.post_image_json === "string"
+          ? (JSON.parse(row.post_image_json) as Record<string, unknown>)
+          : (row.post_image_json as Record<string, unknown>),
+      )
+    }
+
     const projectRunningRun = async (
       fixture: Awaited<ReturnType<typeof startAndAccept>>,
     ) => {
@@ -484,6 +500,29 @@ describe.skipIf(!hasLocalPostgres())(
       ])
       expect(ack.storedOutcomeCount).toBe(2)
       expect(await latestRunStatus(fixture.runRef)).toBe("running")
+      expect(await commandOutcomes(fixture.runRef)).toEqual([
+        expect.objectContaining({
+          intentId: pause.intentId,
+          seq: pauseSeq,
+          kind: "fleet_run_control",
+          deliveryOutcome: "applied",
+          effectiveOutcome: "paused",
+          completionRef: pauseOutcome.outcomeRef,
+          completedAt: "2026-07-09T23:00:05.000Z",
+          recordedAt: "2026-07-09T23:00:05.000Z",
+        }),
+        expect.objectContaining({
+          intentId: resume.intentId,
+          seq: resumeSeq,
+          deliveryOutcome: "applied",
+          effectiveOutcome: "running",
+        }),
+      ])
+
+      const beforeReplay: Array<{ count: string | number }> = await sql`
+        SELECT count(*) AS count FROM khala_sync_changelog
+        WHERE scope = ${fleetRunScope(fixture.runRef)}
+      `
 
       const replay = await Effect.runPromise(
         exchange().appendOutcomes({
@@ -497,6 +536,13 @@ describe.skipIf(!hasLocalPostgres())(
         }),
       )
       expect(replay.duplicateOutcomeCount).toBe(2)
+      const afterReplay: Array<{ count: string | number }> = await sql`
+        SELECT count(*) AS count FROM khala_sync_changelog
+        WHERE scope = ${fleetRunScope(fixture.runRef)}
+      `
+      expect(Number(afterReplay[0]!.count)).toBe(
+        Number(beforeReplay[0]!.count),
+      )
 
       const conflict = await Effect.runPromise(
         exchange()
@@ -514,7 +560,7 @@ describe.skipIf(!hasLocalPostgres())(
       expect(conflict.kind).toBe("idempotency_conflict")
     })
 
-    test("applied approval projects atomically while steer outcomes stay body-free and unprojected", async () => {
+    test("applied approval and queued steer project body-free requested-vs-effective outcomes", async () => {
       const fixture = await startAndAccept("privacy")
       const approval = {
         schema: "khala.fleet_intent.v1" as const,
@@ -570,7 +616,7 @@ describe.skipIf(!hasLocalPostgres())(
       const steerOutcome = await outcomeFor(fixture, {
         seq: steerSeq,
         intentId: steer.intentId,
-        outcome: "applied",
+        outcome: "queued_follow_up",
         observedAt: "2026-07-09T23:04:01.000Z",
       })
       await Effect.runPromise(
@@ -601,6 +647,30 @@ describe.skipIf(!hasLocalPostgres())(
         false,
       )
       expect(canonicalJson(projections)).not.toContain(secret)
+      const projectedOutcomes = await commandOutcomes(fixture.runRef)
+      expect(projectedOutcomes).toEqual([
+        expect.objectContaining({
+          intentId: approval.intentId,
+          kind: "approval_decision",
+          targetRef: approval.approvalRef,
+          deliveryOutcome: "applied",
+          effectiveOutcome: "allowed",
+          completionRef: approvalOutcome.outcomeRef,
+          completedAt: "2026-07-09T23:00:05.000Z",
+          observedAt: approvalOutcome.observedAt,
+        }),
+        expect.objectContaining({
+          intentId: steer.intentId,
+          kind: "steer_message",
+          targetRef: steer.targetRef,
+          deliveryOutcome: "queued_follow_up",
+          effectiveOutcome: null,
+          completionRef: null,
+          completedAt: null,
+          observedAt: steerOutcome.observedAt,
+        }),
+      ])
+      expect(canonicalJson(projectedOutcomes)).not.toContain(secret)
       const approvalRaw = projections
         .filter((row) => row.entity_type === "fleet_approval")
         .at(-1)?.post_image_json
@@ -617,6 +687,48 @@ describe.skipIf(!hasLocalPostgres())(
       `
       expect(outcomes).toHaveLength(2)
       expect(canonicalJson(outcomes)).not.toContain(secret)
+    })
+
+    test("refuses unsupported applied steer ACKs without storing or projecting them", async () => {
+      const fixture = await startAndAccept("unsupported-applied-steer")
+      const steer = {
+        schema: "khala.fleet_intent.v1" as const,
+        intentId: "intent.steering.unsupported.applied",
+        createdAt: "2026-07-09T23:04:00.000Z",
+        origin: { surface: "web" as const },
+        idempotencyKey: "intent.steering.unsupported.applied.idem",
+        runRef: fixture.runRef,
+        kind: "steer_message" as const,
+        targetRef: "worker.steering.codex.1",
+        body: "private body",
+      }
+      const seq = await insertIntent(fixture, steer)
+      await Effect.runPromise(
+        exchange().readPage({ ...fixture, after: 0, limit: 10 }),
+      )
+      const outcome = await outcomeFor(fixture, {
+        seq,
+        intentId: steer.intentId,
+        outcome: "applied",
+        observedAt: "2026-07-09T23:04:01.000Z",
+      })
+      const failure = await Effect.runPromise(
+        exchange()
+          .appendOutcomes({
+            ownerUserId: fixture.ownerUserId,
+            pylonRef: fixture.pylonRef,
+            runRef: fixture.runRef,
+            batch: { claimRef: fixture.claimRef, outcomes: [outcome] },
+          })
+          .pipe(Effect.flip),
+      )
+      expect(failure.kind).toBe("claim_conflict")
+      const stored: Array<{ count: string | number }> = await sql`
+        SELECT count(*) AS count FROM sarah_fleet_run_steering_outcomes
+        WHERE run_ref = ${fixture.runRef}
+      `
+      expect(Number(stored[0]!.count)).toBe(0)
+      expect(await commandOutcomes(fixture.runRef)).toEqual([])
     })
 
     test("rolls back an earlier outcome and effective projection when a later row fails", async () => {

@@ -2,6 +2,7 @@ import {
   FLEET_ACCOUNT_ENTITY_TYPE,
   FLEET_APPROVAL_ENTITY_TYPE,
   FLEET_ASSIGNMENT_ENTITY_TYPE,
+  FLEET_COMMAND_OUTCOME_ENTITY_TYPE,
   FLEET_INBOX_FLAG_ENTITY_TYPE,
   FLEET_RUN_ENTITY_TYPE,
   FLEET_STEER_ENTITY_TYPE,
@@ -15,6 +16,7 @@ import {
   decodeFleetAccountEntity,
   decodeFleetApprovalEntity,
   decodeFleetAssignmentEntity,
+  decodeFleetCommandOutcomeEntity,
   decodeFleetInboxFlagEntity,
   decodeFleetRunEntity,
   decodeFleetSteerEntity,
@@ -23,6 +25,7 @@ import {
   encodeFleetAccountEntity,
   encodeFleetApprovalEntity,
   encodeFleetAssignmentEntity,
+  encodeFleetCommandOutcomeEntity,
   encodeFleetInboxFlagEntity,
   encodeFleetRunEntity,
   encodeFleetSteerEntity,
@@ -30,6 +33,7 @@ import {
   fleetRunScope,
   type FleetApprovalEntity,
   type FleetAssignmentEntity,
+  type FleetCommandOutcomeEntity,
   type FleetInboxFlagEntity,
   type FleetRunEntity,
   type FleetWorkerEntity,
@@ -68,6 +72,7 @@ export const SarahFleetProjectionEntityType = Schema.Literals([
   FLEET_INBOX_FLAG_ENTITY_TYPE,
   FLEET_APPROVAL_ENTITY_TYPE,
   FLEET_STEER_ENTITY_TYPE,
+  FLEET_COMMAND_OUTCOME_ENTITY_TYPE,
 ])
 export type SarahFleetProjectionEntityType =
   typeof SarahFleetProjectionEntityType.Type
@@ -268,6 +273,20 @@ const POST_IMAGE_KEYS = {
     "createdAt",
     "updatedAt",
   ],
+  [FLEET_COMMAND_OUTCOME_ENTITY_TYPE]: [
+    "intentId",
+    "seq",
+    "kind",
+    "targetRef",
+    "deliveryOutcome",
+    "effectiveOutcome",
+    "completionRef",
+    "completedAt",
+    "outcomeRef",
+    "observedAt",
+    "recordedAt",
+    "updatedAt",
+  ],
 } as const satisfies Record<
   SarahFleetProjectionEntityType,
   ReadonlyArray<string>
@@ -355,6 +374,11 @@ const decodeAndCanonicalizePostImage = (
         const entity = decodeFleetSteerEntity(raw)
         if (entity.steerRef !== entityId) return fail("entity_key_mismatch")
         return canonicalJson(encodeFleetSteerEntity(entity))
+      }
+      case FLEET_COMMAND_OUTCOME_ENTITY_TYPE: {
+        const entity = decodeFleetCommandOutcomeEntity(raw)
+        if (entity.intentId !== entityId) return fail("entity_key_mismatch")
+        return canonicalJson(encodeFleetCommandOutcomeEntity(entity))
       }
     }
   } catch (error) {
@@ -720,12 +744,14 @@ const projectionInput = (
   assignments: ReadonlyArray<FleetAssignmentEntity>
   approvals: ReadonlyArray<FleetApprovalEntity>
   inboxFlags: ReadonlyArray<FleetInboxFlagEntity>
+  commandOutcomes: ReadonlyArray<FleetCommandOutcomeEntity>
 }> => {
   const runs: FleetRunEntity[] = []
   const workers: FleetWorkerEntity[] = []
   const assignments: FleetAssignmentEntity[] = []
   const approvals: FleetApprovalEntity[] = []
   const inboxFlags: FleetInboxFlagEntity[] = []
+  const commandOutcomes: FleetCommandOutcomeEntity[] = []
   for (const entity of state.entities) {
     if (entity.postImageJson === null) continue
     const raw = JSON.parse(entity.postImageJson) as unknown
@@ -745,11 +771,21 @@ const projectionInput = (
       case FLEET_INBOX_FLAG_ENTITY_TYPE:
         inboxFlags.push(decodeFleetInboxFlagEntity(raw))
         break
+      case FLEET_COMMAND_OUTCOME_ENTITY_TYPE:
+        commandOutcomes.push(decodeFleetCommandOutcomeEntity(raw))
+        break
     }
   }
   if (runs.length === 0) return fail("missing_run")
   if (runs.length !== 1) return fail("multiple_runs")
-  return { run: runs[0]!, workers, assignments, approvals, inboxFlags }
+  return {
+    run: runs[0]!,
+    workers,
+    assignments,
+    approvals,
+    inboxFlags,
+    commandOutcomes,
+  }
 }
 
 export const projectSarahFleetProjectionState = (

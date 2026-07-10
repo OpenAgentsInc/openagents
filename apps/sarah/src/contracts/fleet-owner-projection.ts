@@ -2,6 +2,7 @@ import {
   FleetAccountRefHash,
   FleetApprovalStatus,
   FleetClassToken,
+  FleetCommandOutcomeEntity,
   FleetHarnessKind,
   FleetIsoTimestamp,
   FleetIssueRef,
@@ -175,6 +176,8 @@ export const SarahFleetOwnerProjection = Schema.Struct({
   workUnits: Schema.Array(SarahFleetWorkUnitProjection),
   workers: Schema.Array(SarahFleetWorkerProjection),
   approvals: Schema.Array(SarahFleetApprovalProjection),
+  /** Body-free request/delivery/effective receipts, durable across reconnect. */
+  commandOutcomes: Schema.optionalKey(Schema.Array(FleetCommandOutcomeEntity)),
   projectedAt: FleetIsoTimestamp,
 })
 export type SarahFleetOwnerProjection = typeof SarahFleetOwnerProjection.Type
@@ -185,6 +188,7 @@ export type SarahFleetOwnerProjectionInput = Readonly<{
   assignments: ReadonlyArray<FleetAssignmentEntity>
   approvals: ReadonlyArray<FleetApprovalEntity>
   inboxFlags: ReadonlyArray<FleetInboxFlagEntity>
+  commandOutcomes?: ReadonlyArray<FleetCommandOutcomeEntity>
 }>
 
 const runControlsByStatus: Readonly<
@@ -439,6 +443,12 @@ export function projectSarahFleetOwnerRun(
   const approvals = [...input.approvals].sort((left, right) =>
     left.approvalRef.localeCompare(right.approvalRef),
   )
+  const commandOutcomes = [...(input.commandOutcomes ?? [])].sort(
+    (left, right) =>
+      left.seq !== right.seq
+        ? left.seq - right.seq
+        : left.intentId.localeCompare(right.intentId),
+  )
 
   const workerByAssignment = new Map(
     workers.flatMap((worker) =>
@@ -540,6 +550,7 @@ export function projectSarahFleetOwnerRun(
         updatedAt: approval.updatedAt,
       }
     }),
+    commandOutcomes,
     projectedAt: new Date(projectedAtMs).toISOString(),
   }
 

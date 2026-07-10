@@ -2,11 +2,13 @@ import { describe, expect, test } from "bun:test"
 import {
   decodeFleetApprovalEntity,
   decodeFleetAssignmentEntity,
+  decodeFleetCommandOutcomeEntity,
   decodeFleetInboxFlagEntity,
   decodeFleetRunEntity,
   decodeFleetWorkerEntity,
   type FleetApprovalEntity,
   type FleetAssignmentEntity,
+  type FleetCommandOutcomeEntity,
   type FleetRunEntity,
   type FleetWorkerEntity,
 } from "@openagentsinc/khala-sync"
@@ -108,9 +110,40 @@ const inboxFlags = [
   }),
 ]
 
+const commandOutcomes = [
+  decodeFleetCommandOutcomeEntity({
+    intentId: "intent.fc3.pause",
+    seq: 41,
+    kind: "fleet_run_control",
+    targetRef: run.runId,
+    deliveryOutcome: "applied",
+    effectiveOutcome: "paused",
+    completionRef: "outcome.pylon.fleet_steering.d93f26d5c3e00b404336608a",
+    completedAt: "2026-07-09T19:59:57.000Z",
+    outcomeRef: "outcome.pylon.fleet_steering.d93f26d5c3e00b404336608a",
+    observedAt: "2026-07-09T19:59:56.000Z",
+    recordedAt: "2026-07-09T19:59:57.000Z",
+    updatedAt: "2026-07-09T19:59:57.000Z",
+  }),
+  decodeFleetCommandOutcomeEntity({
+    intentId: "intent.fc3.steer",
+    seq: 42,
+    kind: "steer_message",
+    targetRef: "assignment.fc3.codex",
+    deliveryOutcome: "queued_follow_up",
+    effectiveOutcome: null,
+    completionRef: null,
+    completedAt: null,
+    outcomeRef: "outcome.pylon.fleet_steering.0123456789abcdef01234567",
+    observedAt: "2026-07-09T19:59:58.000Z",
+    recordedAt: "2026-07-09T19:59:59.000Z",
+    updatedAt: "2026-07-09T19:59:59.000Z",
+  }),
+]
+
 const project = () =>
   projectSarahFleetOwnerRun(
-    { run, assignments, workers, approvals, inboxFlags },
+    { run, assignments, workers, approvals, inboxFlags, commandOutcomes },
     NOW,
   )
 
@@ -174,6 +207,7 @@ describe("FC-3 owner-safe fleet projection", () => {
       workUnitRef: "#8633",
       availableDecisions: ["allow", "deny"],
     })
+    expect(projection.commandOutcomes).toEqual(commandOutcomes)
   })
 
   test("keeps canonical run, work-unit, and worker identity stable across reconnect", () => {
@@ -185,6 +219,7 @@ describe("FC-3 owner-safe fleet projection", () => {
         workers: [...workers].reverse(),
         approvals: [...approvals].reverse(),
         inboxFlags: [...inboxFlags].reverse(),
+        commandOutcomes: [...commandOutcomes].reverse(),
       },
       NOW + 1_000,
     )
@@ -202,6 +237,7 @@ describe("FC-3 owner-safe fleet projection", () => {
     expect(reconnect.workers.map((worker) => worker.workerRef)).toEqual(
       first.workers.map((worker) => worker.workerRef),
     )
+    expect(reconnect.commandOutcomes).toEqual(first.commandOutcomes)
   })
 
   test("projects a dispatched worker as stalled at exactly 30 seconds", () => {
@@ -257,6 +293,11 @@ describe("FC-3 owner-safe fleet projection", () => {
       ...approvals[0]!,
       toolArgs: { path: "/Users/alice/private/repo" },
     } as unknown as FleetApprovalEntity
+    const unsafeCommandOutcome = {
+      ...commandOutcomes[1]!,
+      body: "PRIVATE STEER BODY SENTINEL",
+      localPath: "/Users/alice/private/repo",
+    } as unknown as FleetCommandOutcomeEntity
 
     const json = JSON.stringify(
       projectSarahFleetOwnerRun(
@@ -266,16 +307,17 @@ describe("FC-3 owner-safe fleet projection", () => {
           workers: [unsafeWorker, workers[1]!, workers[2]!],
           approvals: [unsafeApproval],
           inboxFlags,
+          commandOutcomes: [commandOutcomes[0]!, unsafeCommandOutcome],
         },
         NOW,
       ),
     )
 
     expect(json).not.toMatch(
-      /rawPrompt|steerBody|output|credential|workspacePath|privateEvents|toolArgs|command/,
+      /rawPrompt|steerBody|output|credential|workspacePath|privateEvents|toolArgs|localPath|"command":/,
     )
     expect(json).not.toMatch(
-      /PRIVATE PROMPT SENTINEL|PRIVATE STEER SENTINEL|PRIVATE OUTPUT SENTINEL|PRIVATE EVENT SENTINEL|bearer-secret-sentinel|\/Users\/alice/,
+      /PRIVATE PROMPT SENTINEL|PRIVATE STEER SENTINEL|PRIVATE STEER BODY SENTINEL|PRIVATE OUTPUT SENTINEL|PRIVATE EVENT SENTINEL|bearer-secret-sentinel|\/Users\/alice/,
     )
   })
 })

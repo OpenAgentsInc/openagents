@@ -26,14 +26,17 @@ import {
   decodeChatMessageEntity,
   decodeChatThreadEntity,
   decodeFleetRunEntity,
+  decodeFleetCommandOutcomeEntity,
   decodeRuntimeEventEntity,
   decodeRuntimeTurnEntity,
   encodeChatMessageEntity,
   encodeChatThreadEntity,
   encodeFleetRunEntity,
+  encodeFleetCommandOutcomeEntity,
   encodeRuntimeEventEntity,
   encodeRuntimeTurnEntity,
   FLEET_RUN_ENTITY_TYPE,
+  FLEET_COMMAND_OUTCOME_ENTITY_TYPE,
   fleetRunScope,
   personalScope,
   RUNTIME_EVENT_ENTITY_TYPE,
@@ -42,6 +45,7 @@ import {
   type ChatMessageEntity,
   type ChatThreadEntity,
   type FleetRunEntity,
+  type FleetCommandOutcomeEntity,
   type RuntimeEventEntity,
   type RuntimeTurnEntity,
 } from "@openagentsinc/khala-sync"
@@ -72,6 +76,10 @@ import {
   chatThreadsForSidebar,
   createKhalaSyncMutationTracker,
   FLEET_SET_DESIRED_SLOTS_MUTATOR_NAME,
+  fleetCommandOutcomeKhalaSyncCollectionOptions,
+  fleetDispatchApprovalDecisionClientMutator,
+  fleetDispatchRunControlClientMutator,
+  fleetDispatchSteerMessageClientMutator,
   fleetRunKhalaSyncCollectionOptions,
   fleetSetDesiredSlotsClientMutator,
   type FleetSetDesiredSlotsArgs,
@@ -200,6 +208,34 @@ class FleetFakeServer {
       ...(mutationRef !== undefined ? { mutationRef } : {}),
       op: "upsert",
       postImageJson: canonicalJson(encodeFleetRunEntity(row)),
+      scope,
+      version: SyncVersion.make(version),
+    })
+    this.logOf(scope).push(entry)
+    this.emitFrame(
+      scope,
+      new DeltaFrame({
+        cursor: SyncVersion.make(version),
+        entries: [entry],
+        scope,
+      }),
+    )
+    return version
+  }
+
+  commitFleetCommandOutcome(row: FleetCommandOutcomeEntity): number {
+    const runId =
+      row.kind === "fleet_run_control" && row.targetRef !== null
+        ? row.targetRef
+        : "fleet_run.sarah.0123456789abcdef0123"
+    const scope = fleetRunScope(runId)
+    const version = this.lastVersion(scope) + 1
+    const entry = new ChangelogEntry({
+      committedAt: FIXED_TIME,
+      entityId: EntityId.make(row.intentId),
+      entityType: EntityType.make(FLEET_COMMAND_OUTCOME_ENTITY_TYPE),
+      op: "upsert",
+      postImageJson: canonicalJson(encodeFleetCommandOutcomeEntity(row)),
       scope,
       version: SyncVersion.make(version),
     })
@@ -724,6 +760,21 @@ const createFleetRunCollection = (
     }),
   )
 
+const createFleetCommandOutcomeCollection = (
+  harness: Awaited<ReturnType<typeof makeHarness>>,
+  scope: SyncScope,
+) =>
+  createCollection(
+    fleetCommandOutcomeKhalaSyncCollectionOptions({
+      mutationTracker: harness.tracker,
+      overlay: harness.overlay,
+      scope,
+      session: harness.session,
+      sleep: () => tick(),
+      startSync: true,
+    }),
+  )
+
 const createChatThreadCollection = (
   harness: Awaited<ReturnType<typeof makeHarness>>,
   ownerUserId: string,
@@ -899,6 +950,86 @@ describe("khalaSyncCollectionOptions / fleet_run", () => {
       _tag: "KhalaSyncDbCollectionError",
       reasonRef: "khala_sync_db_collection.scope_denied",
     })
+  })
+})
+
+describe("fleet command request/effective-state honesty", () => {
+  const runRef = "fleet_run.sarah.0123456789abcdef0123"
+  const common = {
+    schema: "khala.fleet_intent.v1" as const,
+    createdAt: "2026-07-09T23:00:00.000Z",
+    origin: { surface: "web" as const },
+    runRef,
+  }
+
+  test("run, approval, and steer request mutators create no optimistic post-image", () => {
+    expect(
+      fleetDispatchRunControlClientMutator.apply(
+        {
+          ...common,
+          intentId: "intent.sarah.pause.1",
+          idempotencyKey: "intent.sarah.pause.1.idem",
+          kind: "fleet_run_control",
+          action: "pause",
+        },
+        {} as never,
+      ),
+    ).toEqual([])
+    expect(
+      fleetDispatchApprovalDecisionClientMutator.apply(
+        {
+          ...common,
+          intentId: "intent.sarah.approval.1",
+          idempotencyKey: "intent.sarah.approval.1.idem",
+          kind: "approval_decision",
+          approvalRef: "approval.sarah.1",
+          decision: "allow",
+        },
+        {} as never,
+      ),
+    ).toEqual([])
+    expect(
+      fleetDispatchSteerMessageClientMutator.apply(
+        {
+          ...common,
+          intentId: "intent.sarah.steer.1",
+          idempotencyKey: "intent.sarah.steer.1.idem",
+          kind: "steer_message",
+          targetRef: "assignment.sarah.1",
+          body: "must remain outside Sync post-images",
+        },
+        {} as never,
+      ),
+    ).toEqual([])
+  })
+
+  test("reconnect loads the server-authored body-free fleet_command_outcome", async () => {
+    const receipt = decodeFleetCommandOutcomeEntity({
+      intentId: "intent.sarah.pause.1",
+      seq: 41,
+      kind: "fleet_run_control",
+      targetRef: runRef,
+      deliveryOutcome: "applied",
+      effectiveOutcome: "paused",
+      completionRef: "outcome.pylon.fleet_steering.d93f26d5c3e00b404336608a",
+      completedAt: "2026-07-09T23:00:02.000Z",
+      outcomeRef: "outcome.pylon.fleet_steering.d93f26d5c3e00b404336608a",
+      observedAt: "2026-07-09T23:00:01.000Z",
+      recordedAt: "2026-07-09T23:00:02.000Z",
+      updatedAt: "2026-07-09T23:00:02.000Z",
+    })
+    const server = new FleetFakeServer()
+    server.commitFleetCommandOutcome(receipt)
+    const harness = await makeHarness(server)
+    const collection = createFleetCommandOutcomeCollection(
+      harness,
+      fleetRunScope(runRef),
+    )
+    await waitFor(() => collection.isReady(), "command outcome ready")
+    expect(collection.get(receipt.intentId)).toMatchObject({ ...receipt })
+    expect(canonicalJson(collection.get(receipt.intentId))).not.toContain(
+      "must remain outside Sync post-images",
+    )
   })
 })
 

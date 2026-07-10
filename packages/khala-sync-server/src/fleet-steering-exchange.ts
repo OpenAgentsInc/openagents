@@ -18,10 +18,13 @@ import {
 import {
   canonicalJson,
   decodeFleetApprovalEntity,
+  decodeFleetCommandOutcomeEntity,
   decodeFleetRunEntity,
   FLEET_APPROVAL_ENTITY_TYPE,
+  type FleetCommandEffectiveOutcome,
   FLEET_RUN_ENTITY_TYPE,
   FleetApprovalEntity,
+  FleetPublicRef,
   FleetRunEntity,
   type FleetRunStatus,
   fleetRunScope,
@@ -595,7 +598,7 @@ const readCurrentPostImage = async (
 
 const statusForAction = (
   action: "pause" | "resume" | "drain" | "stop",
-): FleetRunStatus => {
+): "running" | "paused" | "draining" | "stopped" => {
   switch (action) {
     case "pause":
       return "paused"
@@ -639,7 +642,12 @@ const appendEffectiveProjection = async (
   ownerUserId: string,
   intent: KhalaFleetIntent,
   observedAt: string,
-): Promise<void> => {
+  completionRef: string,
+): Promise<Readonly<{
+  effectiveOutcome: FleetCommandEffectiveOutcome
+  completionRef: string
+  completedAt: string
+}>> => {
   const scope = fleetRunScope(runRef)
   const owner = await ensureScopeOwner(writer.sql, scope, ownerUserId)
   if (owner !== ownerUserId) {
@@ -690,7 +698,11 @@ const appendEffectiveProjection = async (
       },
       FLEET_STEERING_OUTCOME_MUTATION_REF,
     )
-    return
+    return {
+      effectiveOutcome: statusForAction(intent.action),
+      completionRef,
+      completedAt: observedAt,
+    }
   }
   if (intent.kind === "approval_decision") {
     const raw = await readCurrentPostImage(
@@ -731,7 +743,81 @@ const appendEffectiveProjection = async (
       },
       FLEET_STEERING_OUTCOME_MUTATION_REF,
     )
+    return {
+      effectiveOutcome: desiredStatus,
+      completionRef,
+      completedAt: observedAt,
+    }
   }
+  throw fixedError(
+    "claim_conflict",
+    "fleet steering outcome cannot claim unsupported effective state",
+    { runRef },
+  )
+}
+
+const safeCommandTarget = (
+  runRef: string,
+  intent: KhalaFleetIntent,
+): string | null => {
+  const candidate =
+    intent.kind === "approval_decision"
+      ? intent.approvalRef
+      : intent.kind === "steer_message"
+        ? intent.targetRef
+        : runRef
+  return candidate !== undefined && S.is(FleetPublicRef)(candidate)
+    ? candidate
+    : null
+}
+
+const appendCommandOutcomeProjection = async (
+  writer: SyncTransactionWriter,
+  input: Readonly<{
+    runRef: string
+    ownerUserId: string
+    intent: KhalaFleetIntent
+    outcome: FleetSteeringOutcome
+    recordedAt: string
+    effective: Readonly<{
+      effectiveOutcome: FleetCommandEffectiveOutcome
+      completionRef: string
+      completedAt: string
+    }> | null
+  }>,
+): Promise<void> => {
+  const scope = fleetRunScope(input.runRef)
+  const owner = await ensureScopeOwner(writer.sql, scope, input.ownerUserId)
+  if (owner !== input.ownerUserId) {
+    throw fixedError(
+      "pylon_not_authorized",
+      "fleet run scope is owned by another user",
+      { runRef: input.runRef },
+    )
+  }
+  await appendFleetEntityChange(
+    writer,
+    input.runRef,
+    {
+      kind: "fleet_command_outcome",
+      op: "upsert",
+      entity: decodeFleetCommandOutcomeEntity({
+        intentId: input.outcome.intentId,
+        seq: input.outcome.seq,
+        kind: input.intent.kind,
+        targetRef: safeCommandTarget(input.runRef, input.intent),
+        deliveryOutcome: input.outcome.outcome,
+        effectiveOutcome: input.effective?.effectiveOutcome ?? null,
+        completionRef: input.effective?.completionRef ?? null,
+        completedAt: input.effective?.completedAt ?? null,
+        outcomeRef: input.outcome.outcomeRef,
+        observedAt: input.outcome.observedAt,
+        recordedAt: input.recordedAt,
+        updatedAt: input.recordedAt,
+      }),
+    },
+    FLEET_STEERING_OUTCOME_MUTATION_REF,
+  )
 }
 
 const appendOneOutcome = async (
@@ -787,15 +873,25 @@ const appendOneOutcome = async (
       { runRef: input.runRef },
     )
   }
-  if (input.outcome.outcome === "applied") {
-    await appendEffectiveProjection(
-      writer,
-      input.runRef,
-      input.ownerUserId,
-      intent,
-      input.recordedAt,
-    )
-  }
+  const effective =
+    input.outcome.outcome === "applied"
+      ? await appendEffectiveProjection(
+          writer,
+          input.runRef,
+          input.ownerUserId,
+          intent,
+          input.recordedAt,
+          input.outcome.outcomeRef,
+        )
+      : null
+  await appendCommandOutcomeProjection(writer, {
+    runRef: input.runRef,
+    ownerUserId: input.ownerUserId,
+    intent,
+    outcome: input.outcome,
+    recordedAt: input.recordedAt,
+    effective,
+  })
   return "stored"
 }
 

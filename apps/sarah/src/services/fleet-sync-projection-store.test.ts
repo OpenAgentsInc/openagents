@@ -3,6 +3,7 @@ import {
   FLEET_ACCOUNT_ENTITY_TYPE,
   FLEET_APPROVAL_ENTITY_TYPE,
   FLEET_ASSIGNMENT_ENTITY_TYPE,
+  FLEET_COMMAND_OUTCOME_ENTITY_TYPE,
   FLEET_INBOX_FLAG_ENTITY_TYPE,
   FLEET_RUN_ENTITY_TYPE,
   FLEET_STEER_ENTITY_TYPE,
@@ -13,6 +14,7 @@ import {
   decodeFleetAccountEntity,
   decodeFleetApprovalEntity,
   decodeFleetAssignmentEntity,
+  decodeFleetCommandOutcomeEntity,
   decodeFleetInboxFlagEntity,
   decodeFleetRunEntity,
   decodeFleetSteerEntity,
@@ -21,6 +23,7 @@ import {
   encodeFleetAccountEntity,
   encodeFleetApprovalEntity,
   encodeFleetAssignmentEntity,
+  encodeFleetCommandOutcomeEntity,
   encodeFleetInboxFlagEntity,
   encodeFleetRunEntity,
   encodeFleetSteerEntity,
@@ -120,6 +123,21 @@ const steer = decodeFleetSteerEntity({
   updatedAt: "2026-07-09T19:59:50.000Z",
 })
 
+const commandOutcome = decodeFleetCommandOutcomeEntity({
+  intentId: "intent.fc3.pause",
+  seq: 41,
+  kind: "fleet_run_control",
+  targetRef: runRef,
+  deliveryOutcome: "applied",
+  effectiveOutcome: "paused",
+  completionRef: "outcome.pylon.fleet_steering.d93f26d5c3e00b404336608a",
+  completedAt: "2026-07-09T19:59:55.000Z",
+  outcomeRef: "outcome.pylon.fleet_steering.d93f26d5c3e00b404336608a",
+  observedAt: "2026-07-09T19:59:54.000Z",
+  recordedAt: "2026-07-09T19:59:55.000Z",
+  updatedAt: "2026-07-09T19:59:55.000Z",
+})
+
 type BootstrapEntityInput = Readonly<{
   entityType: string
   entityId: string
@@ -164,6 +182,11 @@ const baseEntities: ReadonlyArray<BootstrapEntityInput> = [
     encodeFleetAccountEntity(account),
   ),
   entity(FLEET_STEER_ENTITY_TYPE, steer.steerRef, encodeFleetSteerEntity(steer)),
+  entity(
+    FLEET_COMMAND_OUTCOME_ENTITY_TYPE,
+    commandOutcome.intentId,
+    encodeFleetCommandOutcomeEntity(commandOutcome),
+  ),
 ]
 
 const bootstrapPage = (
@@ -265,7 +288,7 @@ describe("Sarah FC-3 fleet entity reducer", () => {
       scope,
       cursor: 10,
     })
-    expect(state.entities).toHaveLength(7)
+    expect(state.entities).toHaveLength(8)
     expect(state.entities.every((row) => row.version === 10)).toBe(true)
     expect(
       state.entities.map((row) => `${row.entityType}/${row.entityId}`),
@@ -281,6 +304,7 @@ describe("Sarah FC-3 fleet entity reducer", () => {
     expect(projection.workUnits[0]?.assignmentRef).toBe(assignment.assignmentRef)
     expect(projection.workers[0]?.workerRef).toBe(worker.workerId)
     expect(projection.approvals[0]?.approvalRef).toBe(approval.approvalRef)
+    expect(projection.commandOutcomes).toEqual([commandOutcome])
     expect(JSON.stringify(projection)).not.toMatch(
       /bodyCarrier|capacityAvailable|postImageJson/,
     )

@@ -9,6 +9,7 @@ import {
   encodeFleetAccountEntity,
   encodeFleetApprovalEntity,
   encodeFleetAssignmentEntity,
+  encodeFleetCommandOutcomeEntity,
   encodeFleetInboxFlagEntity,
   encodeFleetRunEntity,
   encodeFleetSteerEntity,
@@ -18,6 +19,7 @@ import {
   FLEET_ACCOUNT_ENTITY_TYPE,
   FLEET_APPROVAL_ENTITY_TYPE,
   FLEET_ASSIGNMENT_ENTITY_TYPE,
+  FLEET_COMMAND_OUTCOME_ENTITY_TYPE,
   FLEET_INBOX_FLAG_ENTITY_TYPE,
   FLEET_RUN_ENTITY_TYPE,
   FLEET_STEER_ENTITY_TYPE,
@@ -25,6 +27,7 @@ import {
   type FleetAccountEntity,
   type FleetApprovalEntity,
   type FleetAssignmentEntity,
+  type FleetCommandOutcomeEntity,
   type FleetInboxFlagEntity,
   type FleetRunEntity,
   fleetRunScope,
@@ -369,6 +372,7 @@ export type FleetEntityChange =
   | { readonly kind: "fleet_run"; readonly op: "upsert"; readonly entity: FleetRunEntity }
   | { readonly kind: "fleet_worker"; readonly op: "upsert"; readonly entity: FleetWorkerEntity }
   | { readonly kind: "fleet_assignment"; readonly op: "upsert"; readonly entity: FleetAssignmentEntity }
+  | { readonly kind: "fleet_command_outcome"; readonly op: "upsert"; readonly entity: FleetCommandOutcomeEntity }
   | { readonly kind: "fleet_account"; readonly op: "upsert"; readonly entity: FleetAccountEntity }
   | { readonly kind: "fleet_inbox_flag"; readonly op: "upsert"; readonly entity: FleetInboxFlagEntity }
   | { readonly kind: "fleet_approval"; readonly op: "upsert"; readonly entity: FleetApprovalEntity }
@@ -378,6 +382,7 @@ export type FleetEntityChange =
         | "fleet_run"
         | "fleet_worker"
         | "fleet_assignment"
+        | "fleet_command_outcome"
         | "fleet_account"
         | "fleet_inbox_flag"
         | "fleet_approval"
@@ -391,6 +396,8 @@ const encodeByKind = {
     encodeFleetAccountEntity(entity),
   [FLEET_ASSIGNMENT_ENTITY_TYPE]: (entity: FleetAssignmentEntity) =>
     encodeFleetAssignmentEntity(entity),
+  [FLEET_COMMAND_OUTCOME_ENTITY_TYPE]: (entity: FleetCommandOutcomeEntity) =>
+    encodeFleetCommandOutcomeEntity(entity),
   [FLEET_INBOX_FLAG_ENTITY_TYPE]: (entity: FleetInboxFlagEntity) =>
     encodeFleetInboxFlagEntity(entity),
   [FLEET_RUN_ENTITY_TYPE]: (entity: FleetRunEntity) =>
@@ -412,6 +419,8 @@ const entityIdOf = (change: FleetEntityChange): string => {
       return change.entity.workerId
     case "fleet_assignment":
       return change.entity.assignmentRef
+    case "fleet_command_outcome":
+      return change.entity.intentId
     case "fleet_account":
       return change.entity.accountRefHash
     case "fleet_inbox_flag":

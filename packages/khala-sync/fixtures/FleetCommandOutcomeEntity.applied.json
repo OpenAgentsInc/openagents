@@ -1,0 +1,14 @@
+{
+  "intentId": "intent.sarah.pause.1",
+  "seq": 41,
+  "kind": "fleet_run_control",
+  "targetRef": "fleet_run.sarah.0123456789abcdef0123",
+  "deliveryOutcome": "applied",
+  "effectiveOutcome": "paused",
+  "completionRef": "outcome.pylon.fleet_steering.d93f26d5c3e00b404336608a",
+  "completedAt": "2026-07-09T23:00:02.000Z",
+  "outcomeRef": "outcome.pylon.fleet_steering.d93f26d5c3e00b404336608a",
+  "observedAt": "2026-07-09T23:00:01.000Z",
+  "recordedAt": "2026-07-09T23:00:02.000Z",
+  "updatedAt": "2026-07-09T23:00:02.000Z"
+}

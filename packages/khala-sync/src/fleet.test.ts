@@ -3,9 +3,11 @@ import {
   canonicalJson,
   decodeFleetAccountEntity,
   decodeFleetAssignmentEntity,
+  decodeFleetCommandOutcomeEntity,
   decodeFleetInboxFlagEntity,
   decodeFleetRunEntity,
   decodeFleetWorkerEntity,
+  encodeFleetCommandOutcomeEntity,
   encodeFleetInboxFlagEntity,
   encodeFleetRunEntity,
   FLEET_ENTITY_TYPES,
@@ -46,7 +48,82 @@ describe("fleet entity contracts", () => {
       "fleet_inbox_flag",
       "fleet_approval",
       "fleet_steer",
+      "fleet_command_outcome",
     ])
+  })
+
+  test("fleet_command_outcome separates delivery from effective state", () => {
+    const entity = decodeFleetCommandOutcomeEntity({
+      intentId: "intent.sarah.pause.1",
+      seq: 41,
+      kind: "fleet_run_control",
+      targetRef: "fleet_run.sarah.0123456789abcdef0123",
+      deliveryOutcome: "applied",
+      effectiveOutcome: "paused",
+      completionRef: "outcome.pylon.fleet_steering.d93f26d5c3e00b404336608a",
+      completedAt: "2026-07-09T23:00:02.000Z",
+      outcomeRef: "outcome.pylon.fleet_steering.d93f26d5c3e00b404336608a",
+      observedAt: "2026-07-09T23:00:01.000Z",
+      recordedAt: "2026-07-09T23:00:02.000Z",
+      updatedAt: "2026-07-09T23:00:02.000Z",
+    })
+    expect(entity.effectiveOutcome).toBe("paused")
+    expect(canonicalJson(encodeFleetCommandOutcomeEntity(entity))).not.toMatch(
+      FORBIDDEN,
+    )
+  })
+
+  test("fleet_command_outcome refuses private targets and invented effective states", () => {
+    const valid = {
+      intentId: "intent.sarah.steer.1",
+      seq: 42,
+      kind: "steer_message",
+      targetRef: null,
+      deliveryOutcome: "queued_follow_up",
+      effectiveOutcome: null,
+      completionRef: null,
+      completedAt: null,
+      outcomeRef: "outcome.pylon.fleet_steering.0123456789abcdef01234567",
+      observedAt: "2026-07-09T23:00:01.000Z",
+      recordedAt: "2026-07-09T23:00:02.000Z",
+      updatedAt: "2026-07-09T23:00:02.000Z",
+    }
+    expect(decodeFleetCommandOutcomeEntity(valid).effectiveOutcome).toBeNull()
+    expect(
+      decodeFleetCommandOutcomeEntity({
+        ...valid,
+        effectiveOutcome: "steer_delivered",
+        completionRef:
+          "completion.pylon.fleet_steering.abcdef0123456789abcdef01",
+        completedAt: "2026-07-09T23:00:03.000Z",
+      }),
+    ).toMatchObject({
+      deliveryOutcome: "queued_follow_up",
+      outcomeRef: valid.outcomeRef,
+      effectiveOutcome: "steer_delivered",
+      completionRef:
+        "completion.pylon.fleet_steering.abcdef0123456789abcdef01",
+    })
+    expect(() =>
+      decodeFleetCommandOutcomeEntity({
+        ...valid,
+        targetRef: "/Users/alice/private-turn",
+      }),
+    ).toThrow()
+    expect(() =>
+      decodeFleetCommandOutcomeEntity({
+        ...valid,
+        effectiveOutcome: "probably_applied",
+      }),
+    ).toThrow()
+    expect(() =>
+      decodeFleetCommandOutcomeEntity({
+        ...valid,
+        effectiveOutcome: "steer_delivered",
+        completionRef: "worker.steering.not-a-completion-receipt",
+        completedAt: "2026-07-09T23:00:03.000Z",
+      }),
+    ).toThrow()
   })
 
   test("fleet_run decodes and re-encodes canonically", () => {

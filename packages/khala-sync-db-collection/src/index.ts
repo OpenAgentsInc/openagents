@@ -15,6 +15,7 @@ import {
   decodeChatMessageEntity,
   decodeChatThreadEntity,
   decodeFleetApprovalEntity,
+  decodeFleetCommandOutcomeEntity,
   decodeFleetRunEntity,
   decodeFleetSteerEntity,
   decodeFleetWorkerEntity,
@@ -22,10 +23,9 @@ import {
   decodeRuntimeTurnEntity,
   encodeChatMessageEntity,
   encodeChatThreadEntity,
-  encodeFleetApprovalEntity,
   encodeFleetRunEntity,
-  encodeFleetSteerEntity,
   FLEET_APPROVAL_ENTITY_TYPE,
+  FLEET_COMMAND_OUTCOME_ENTITY_TYPE,
   FLEET_RUN_ENTITY_TYPE,
   FLEET_STEER_ENTITY_TYPE,
   FLEET_WORKER_ENTITY_TYPE,
@@ -37,6 +37,7 @@ import {
   type ChatMessageEntity,
   type ChatThreadEntity,
   type FleetApprovalEntity,
+  type FleetCommandOutcomeEntity,
   type FleetRunEntity,
   type FleetSteerEntity,
   type FleetWorkerEntity,
@@ -977,8 +978,9 @@ export const fleetRunKhalaSyncCollectionOptions = (
 // mutators, plus read-only worker/approval/steer collections for the mobile
 // peek. The mutator NAMES match the server mutators exactly; the args ARE the
 // `KhalaFleetIntent` value (one vocabulary, no bridge). `apply` produces the
-// optimistic projected post-image so the phone reflects the steer instantly;
-// the authoritative behavior change happens server/desktop-side.
+// request only. `apply` intentionally returns no effective-state post-image:
+// the run/approval state changes only after Pylon's ACK is recorded and the
+// resulting `fleet_command_outcome` arrives through Sync.
 // ---------------------------------------------------------------------------
 
 export const FLEET_DISPATCH_RUN_CONTROL_MUTATOR_NAME = "fleet.dispatchRunControl"
@@ -987,119 +989,21 @@ export const FLEET_DISPATCH_APPROVAL_DECISION_MUTATOR_NAME =
 export const FLEET_DISPATCH_STEER_MESSAGE_MUTATOR_NAME =
   "fleet.dispatchSteerMessage"
 
-const runStatusForAction = (
-  action: "pause" | "resume" | "drain" | "stop",
-): FleetRunEntity["status"] => {
-  switch (action) {
-    case "pause":
-      return "paused"
-    case "resume":
-      return "running"
-    case "drain":
-      return "draining"
-    case "stop":
-      return "stopped"
-  }
-}
-
 export const fleetDispatchRunControlClientMutator: ClientMutator<KhalaFleetIntent> =
   {
-    apply: (intent, view) => {
-      if (intent.kind !== "fleet_run_control" || intent.runRef === undefined) {
-        return []
-      }
-      const scope = fleetRunScope(intent.runRef)
-      const currentJson = view.get(scope, FLEET_RUN_ENTITY_TYPE, intent.runRef)
-      if (currentJson === undefined) return []
-      const current = decodeFleetRunEntity(JSON.parse(currentJson) as unknown)
-      const next = decodeFleetRunEntity({
-        ...current,
-        counters: { ...current.counters },
-        ...(intent.action === "stop" ? { desiredSlots: 0 } : {}),
-        status: runStatusForAction(intent.action),
-        updatedAt: intent.createdAt,
-      })
-      return [
-        {
-          entityId: intent.runRef,
-          entityType: FLEET_RUN_ENTITY_TYPE,
-          kind: "upsert",
-          postImageJson: canonicalJson(encodeFleetRunEntity(next)),
-          scope,
-        },
-      ]
-    },
+    apply: () => [],
     name: MutatorName.make(FLEET_DISPATCH_RUN_CONTROL_MUTATOR_NAME),
   }
 
 export const fleetDispatchApprovalDecisionClientMutator: ClientMutator<KhalaFleetIntent> =
   {
-    apply: (intent, view) => {
-      if (intent.kind !== "approval_decision" || intent.runRef === undefined) {
-        return []
-      }
-      const scope = fleetRunScope(intent.runRef)
-      const currentJson = view.get(
-        scope,
-        FLEET_APPROVAL_ENTITY_TYPE,
-        intent.approvalRef,
-      )
-      const base =
-        currentJson === undefined
-          ? { approvalRef: intent.approvalRef }
-          : (JSON.parse(currentJson) as Record<string, unknown>)
-      const next = decodeFleetApprovalEntity({
-        ...base,
-        approvalRef: intent.approvalRef,
-        decidedAt: intent.createdAt,
-        status: intent.decision === "allow" ? "allowed" : "denied",
-        updatedAt: intent.createdAt,
-      })
-      return [
-        {
-          entityId: intent.approvalRef,
-          entityType: FLEET_APPROVAL_ENTITY_TYPE,
-          kind: "upsert",
-          postImageJson: canonicalJson(encodeFleetApprovalEntity(next)),
-          scope,
-        },
-      ]
-    },
+    apply: () => [],
     name: MutatorName.make(FLEET_DISPATCH_APPROVAL_DECISION_MUTATOR_NAME),
   }
 
 export const fleetDispatchSteerMessageClientMutator: ClientMutator<KhalaFleetIntent> =
   {
-    apply: (intent) => {
-      if (intent.kind !== "steer_message" || intent.runRef === undefined) {
-        return []
-      }
-      const scope = fleetRunScope(intent.runRef)
-      const bodyCarrier =
-        intent.body !== undefined
-          ? "inline"
-          : intent.bodyRef !== undefined
-            ? "ref"
-            : "none"
-      const next = decodeFleetSteerEntity({
-        bodyCarrier,
-        createdAt: intent.createdAt,
-        steerRef: intent.intentId,
-        ...(intent.targetRef === undefined
-          ? {}
-          : { targetRef: intent.targetRef }),
-        updatedAt: intent.createdAt,
-      })
-      return [
-        {
-          entityId: intent.intentId,
-          entityType: FLEET_STEER_ENTITY_TYPE,
-          kind: "upsert",
-          postImageJson: canonicalJson(encodeFleetSteerEntity(next)),
-          scope,
-        },
-      ]
-    },
+    apply: () => [],
     name: MutatorName.make(FLEET_DISPATCH_STEER_MESSAGE_MUTATOR_NAME),
   }
 
@@ -1166,6 +1070,32 @@ export const fleetSteerKhalaSyncCollectionOptions = (
       decodeFleetSteerEntity(JSON.parse(entity.postImageJson) as unknown),
     entityIdFromKey: key => key,
     getKey: row => row.steerRef,
+  })
+
+/** Reconnect-safe, body-free delivery/effective command receipts. */
+export type FleetCommandOutcomeCollectionOptions = Omit<
+  KhalaSyncCollectionOptions<FleetCommandOutcomeEntity, string>,
+  "collection" | "decode" | "entityIdFromKey" | "getKey" | "mutators"
+>
+
+export const fleetCommandOutcomeKhalaSyncCollectionOptions = (
+  options: FleetCommandOutcomeCollectionOptions,
+): CollectionConfig<
+  FleetCommandOutcomeEntity,
+  string,
+  never,
+  KhalaSyncCollectionUtils
+> =>
+  khalaSyncCollectionOptions<FleetCommandOutcomeEntity, string>({
+    ...options,
+    awaitServerSync: options.awaitServerSync ?? false,
+    collection: FLEET_COMMAND_OUTCOME_ENTITY_TYPE,
+    decode: entity =>
+      decodeFleetCommandOutcomeEntity(
+        JSON.parse(entity.postImageJson) as unknown,
+      ),
+    entityIdFromKey: key => key,
+    getKey: row => row.intentId,
   })
 
 export type ChatThreadCollectionOptions = Omit<
