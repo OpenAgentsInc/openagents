@@ -596,11 +596,21 @@ describe.skipIf(!hasLocalPostgres())(
             }),
             bodyRef: "private body ref with spaces",
           }),
+          envelope(6, FLEET_DISPATCH_APPROVAL_DECISION_MUTATOR_NAME, {
+            ...approvalIntent({
+              approvalRef: "approval.mh6.oversized.1",
+              decision: "allow",
+              intentId: "intent.mh6.oversized.approval.1",
+              runRef,
+            }),
+            reasonRef: "r".repeat(32 * 1_024),
+          }),
         ]),
         sql: sql as unknown as SyncSql,
         userId: owner.userId,
       })
       expect(oversized.results.map((result) => result.errorCode)).toEqual([
+        FLEET_STEERING_BODY_SHAPE_REJECTION,
         FLEET_STEERING_BODY_SHAPE_REJECTION,
         FLEET_STEERING_BODY_SHAPE_REJECTION,
       ])

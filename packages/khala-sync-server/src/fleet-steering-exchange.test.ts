@@ -339,6 +339,62 @@ describe.skipIf(!hasLocalPostgres())(
       expect(tampered.kind).toBe("storage_unavailable")
     })
 
+    test("byte-bounded pages remain a strict sequence prefix", async () => {
+      const fixture = await startAndAccept("byte-prefix")
+      const inserted: Array<{ seq: number; intentId: string }> = []
+      for (let index = 0; index < 16; index += 1) {
+        const intentId = `intent.steering.byte-prefix.${index}`
+        const intent = {
+          schema: "khala.fleet_intent.v1" as const,
+          intentId,
+          createdAt: new Date(FIXED_NOW + index * 1_000).toISOString(),
+          origin: { surface: "web" as const },
+          idempotencyKey: `${intentId}.idem`,
+          runRef: fixture.runRef,
+          kind: "steer_message" as const,
+          targetRef: `work_claim.byte-prefix.${index}`,
+          body: "x".repeat(16_000),
+        }
+        inserted.push({ seq: await insertIntent(fixture, intent), intentId })
+      }
+      const tail = {
+        schema: "khala.fleet_intent.v1" as const,
+        intentId: "intent.steering.byte-prefix.tail",
+        createdAt: new Date(FIXED_NOW + 16_000).toISOString(),
+        origin: { surface: "web" as const },
+        idempotencyKey: "intent.steering.byte-prefix.tail.idem",
+        runRef: fixture.runRef,
+        kind: "steer_message" as const,
+        targetRef: "work_claim.byte-prefix.tail",
+        body: "tail",
+      }
+      const tailSeq = await insertIntent(fixture, tail)
+
+      const first = await Effect.runPromise(
+        exchange().readPage({ ...fixture, after: 0, limit: 100 }),
+      )
+      expect(first.intents.length).toBeGreaterThan(0)
+      expect(first.intents.length).toBeLessThan(inserted.length)
+      expect(first.intents.map((intent) => intent.seq)).toEqual(
+        inserted.slice(0, first.intents.length).map((intent) => intent.seq),
+      )
+      expect(first.nextAfter).toBe(
+        inserted[first.intents.length - 1]?.seq,
+      )
+      expect(first.intents.some((intent) => intent.seq === tailSeq)).toBe(false)
+      expect(first.upToDate).toBe(false)
+
+      const second = await Effect.runPromise(
+        exchange().readPage({
+          ...fixture,
+          after: first.nextAfter,
+          limit: 100,
+        }),
+      )
+      expect(second.intents.at(-1)?.seq).toBe(tailSeq)
+      expect(second.upToDate).toBe(true)
+    })
+
     test("orders same-run outcomes across global gaps and prevents delayed pause from overwriting resume", async () => {
       const fixture = await startAndAccept("ordering")
       const foreign = await startAndAccept("ordering-gap")

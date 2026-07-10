@@ -135,6 +135,16 @@ const refShapeRejection = (
       "fleet steering intent refs must be public-safe (no @, /, or whitespace)",
     )
   }
+  if (
+    new TextEncoder().encode(canonicalJson(intent)).byteLength >
+      FLEET_STEERING_INTENT_MAX_BYTES
+  ) {
+    return reject(
+      ctx,
+      FLEET_STEERING_BODY_SHAPE_REJECTION,
+      "fleet steering intents must fit the bounded delivery contract",
+    )
+  }
   if (intent.kind === "steer_message") {
     const bodyCarriers =
       Number(intent.body !== undefined) + Number(intent.bodyRef !== undefined)
@@ -148,9 +158,7 @@ const refShapeRejection = (
           !PUBLIC_BODY_REF_PATTERN.test(intent.bodyRef))) ||
       (intent.targetRef !== undefined &&
         (intent.targetRef.length > 180 ||
-          !PUBLIC_BODY_REF_PATTERN.test(intent.targetRef))) ||
-      new TextEncoder().encode(canonicalJson(intent)).byteLength >
-        FLEET_STEERING_INTENT_MAX_BYTES
+          !PUBLIC_BODY_REF_PATTERN.test(intent.targetRef)))
     ) {
       return reject(
         ctx,

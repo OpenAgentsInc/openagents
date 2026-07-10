@@ -306,25 +306,28 @@ const reserveDelivery = async (
 const pageWithinByteLimit = (
   input: FleetSteeringReadInput,
   deliveries: ReadonlyArray<FleetSteeringDeliveryIntent>,
-): ReadonlyArray<FleetSteeringDeliveryIntent> =>
-  deliveries.reduce<ReadonlyArray<FleetSteeringDeliveryIntent>>(
-    (selected, delivery) => {
-      const candidate = [...selected, delivery]
-      const candidatePage = {
-        ok: true,
-        runRef: input.runRef,
-        claimRef: input.claimRef,
-        intents: candidate,
-        nextAfter: delivery.seq,
-        upToDate: false,
-      }
-      return new TextEncoder().encode(canonicalJson(candidatePage)).byteLength <=
+): ReadonlyArray<FleetSteeringDeliveryIntent> => {
+  const selected: Array<FleetSteeringDeliveryIntent> = []
+  for (const delivery of deliveries) {
+    const candidate = [...selected, delivery]
+    const candidatePage = {
+      ok: true,
+      runRef: input.runRef,
+      claimRef: input.claimRef,
+      intents: candidate,
+      nextAfter: delivery.seq,
+      upToDate: false,
+    }
+    if (
+      new TextEncoder().encode(canonicalJson(candidatePage)).byteLength >
         FLEET_STEERING_PAGE_MAX_BYTES
-        ? candidate
-        : selected
-    },
-    [],
-  )
+    ) {
+      break
+    }
+    selected.push(delivery)
+  }
+  return selected
+}
 
 const readSteeringPage = async (
   sql: SyncSql,
