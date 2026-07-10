@@ -271,6 +271,10 @@ const makeFakePostgres = (
       'readEventByIdempotencyKeyHash',
       undefined,
     ),
+    readActiveQuarantineForPylon: track(
+      'readActiveQuarantineForPylon',
+      quarantine('quarantine.public.pylon.dual.1'),
+    ),
     readRegistration: track('readRegistration', registration('pylon.dual.1')),
     sweepStaleAssignmentLeases: track('sweepStaleAssignmentLeases', []),
     updateAssignment: track('updateAssignment', assignment('a1')),
@@ -560,12 +564,62 @@ describe('read routing', () => {
       wait: noWait,
     })
     await store.readRegistration('pylon.dual.1')
+    await store.readActiveQuarantineForPylon?.(
+      'pylon.dual.1',
+      '2026-07-01T02:00:00.000Z',
+    )
     await store.listAssignmentsForPylons!(['pylon.dual.1'], 10)
     expect(pg.calls).toEqual([])
     expect(d1.calls.map(c => c.method)).toEqual([
       'readRegistration',
+      'readActiveQuarantineForPylon',
       'listAssignmentsForPylons',
     ])
+  })
+
+  test('writes=postgres: active quarantine reads share Postgres authority even when the legacy reads flag says d1', async () => {
+    const d1 = makeFakeD1()
+    const pg = makeFakePostgres()
+    const store = makeDualWritePylonApiStore({
+      d1: d1.store,
+      flags: { dualWrite: true, reads: 'd1', writes: 'postgres' },
+      postgres: pg.store,
+      wait: noWait,
+    })
+
+    const result = await store.readActiveQuarantineForPylon?.(
+      'pylon.dual.1',
+      '2026-07-01T02:00:00.000Z',
+    )
+    expect(result?.quarantineRef).toBe(
+      'quarantine.public.pylon.dual.1',
+    )
+    expect(d1.calls).toEqual([])
+    expect(pg.calls.map(call => call.method)).toEqual([
+      'readActiveQuarantineForPylon',
+    ])
+  })
+
+  test('writes=postgres: quarantine read failure stays loud and never falls back to retired D1', async () => {
+    const d1 = makeFakeD1()
+    const pg = makeFakePostgres({
+      readActiveQuarantineForPylon: () =>
+        Promise.reject(new Error('postgres quarantine read down')),
+    })
+    const store = makeDualWritePylonApiStore({
+      d1: d1.store,
+      flags: { dualWrite: true, reads: 'd1', writes: 'postgres' },
+      postgres: pg.store,
+      wait: noWait,
+    })
+
+    await expect(
+      store.readActiveQuarantineForPylon?.(
+        'pylon.dual.1',
+        '2026-07-01T02:00:00.000Z',
+      ),
+    ).rejects.toThrow('postgres quarantine read down')
+    expect(d1.calls).toEqual([])
   })
 
   test('postgres mode: gate reads are served from Postgres, D1 untouched', async () => {

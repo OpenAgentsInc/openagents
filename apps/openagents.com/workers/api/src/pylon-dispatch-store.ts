@@ -77,6 +77,7 @@ import {
   type PylonApiEventRow,
   type PylonApiProviderJobLifecycleRecord,
   type PylonApiQuarantineRecord,
+  type PylonQuarantineState,
   type PylonApiRegistrationRecord,
   type PylonApiRegistrationRow,
   type PylonApiStore,
@@ -201,6 +202,9 @@ export type PostgresPylonDispatchStore = Readonly<{
   readAssignment: PylonApiStore['readAssignment']
   readAssignmentByIdempotencyKeyHash: PylonApiStore['readAssignmentByIdempotencyKeyHash']
   readEventByIdempotencyKeyHash: PylonApiStore['readEventByIdempotencyKeyHash']
+  readActiveQuarantineForPylon: NonNullable<
+    PylonApiStore['readActiveQuarantineForPylon']
+  >
   readRegistration: PylonApiStore['readRegistration']
   sweepStaleAssignmentLeases: NonNullable<
     PylonApiStore['sweepStaleAssignmentLeases']
@@ -268,6 +272,43 @@ type SparkPayoutTargetRow = Readonly<{
   created_at: string
   updated_at: string
 }>
+
+type PostgresPylonQuarantineRow = Readonly<{
+  action_refs_json: string
+  created_at: string
+  expires_at: string | null
+  id: string
+  owner_agent_user_id: string | null
+  public_projection_json: string
+  pylon_ref: string
+  quarantine_ref: string
+  reason_refs_json: string
+  released_at: string | null
+  source_refs_json: string
+  state: PylonQuarantineState
+  updated_at: string
+}>
+
+const rowToPostgresPylonQuarantine = (
+  row: PostgresPylonQuarantineRow | undefined,
+): PylonApiQuarantineRecord | undefined =>
+  row === undefined
+    ? undefined
+    : {
+        actionRefs: parseJsonStringArray(row.action_refs_json),
+        createdAt: row.created_at,
+        expiresAt: row.expires_at,
+        id: row.id,
+        ownerAgentUserId: row.owner_agent_user_id,
+        publicProjectionJson: row.public_projection_json,
+        pylonRef: row.pylon_ref,
+        quarantineRef: row.quarantine_ref,
+        reasonRefs: parseJsonStringArray(row.reason_refs_json),
+        releasedAt: row.released_at,
+        sourceRefs: parseJsonStringArray(row.source_refs_json),
+        state: row.state,
+        updatedAt: row.updated_at,
+      }
 
 const rowToSparkPayoutTarget = (
   row: SparkPayoutTargetRow | undefined,
@@ -864,6 +905,20 @@ export const makePostgresPylonDispatchStore = (
     readEventByIdempotencyKeyHash: idempotencyKeyHash =>
       withSql(sql => readEventByHash(sql, idempotencyKeyHash)),
 
+    readActiveQuarantineForPylon: (pylonRef, nowIso) =>
+      withSql(async sql => {
+        const rows: Array<PostgresPylonQuarantineRow> = await sql`
+          SELECT * FROM pylon_quarantines
+           WHERE pylon_ref = ${pylonRef}
+             AND state = 'active'
+             AND released_at IS NULL
+             AND (expires_at IS NULL OR expires_at > ${nowIso})
+             AND archived_at IS NULL
+           ORDER BY updated_at DESC
+           LIMIT 1`
+        return rowToPostgresPylonQuarantine(rows[0])
+      }),
+
     readRegistration: pylonRef =>
       withSql(sql => readRegistrationByRef(sql, pylonRef)),
 
@@ -1220,10 +1275,15 @@ export const makeDualWritePylonApiStore = (
   const writesPostgres = flags.writes === 'postgres'
 
   return {
-    // KS-8.4 read path remains D1-authoritative until #8315 cutover evidence.
-    ...(d1.readActiveQuarantineForPylon === undefined
-      ? {}
-      : { readActiveQuarantineForPylon: d1.readActiveQuarantineForPylon }),
+    // Quarantine writes follow the same authority as the read that gates every
+    // Pylon projection. Once writes cut to Postgres, reading the retired D1
+    // table is both stale and (on Cloud Run) a hard 500. Keep legacy D1 mode
+    // byte-compatible, but never split read/write authority in Postgres mode.
+    ...(writesPostgres
+      ? { readActiveQuarantineForPylon: postgres.readActiveQuarantineForPylon }
+      : d1.readActiveQuarantineForPylon === undefined
+        ? {}
+        : { readActiveQuarantineForPylon: d1.readActiveQuarantineForPylon }),
     ...(d1.upsertQuarantine === undefined
       ? {}
       : {
