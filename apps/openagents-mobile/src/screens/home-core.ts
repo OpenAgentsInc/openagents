@@ -25,6 +25,15 @@ import {
 } from "@effect-native/core"
 
 import {
+  initialKhalaState,
+  khalaHandlers,
+  khalaIntentDefinitions,
+  renderKhalaSurface,
+  type KhalaState,
+  type KhalaTurnClient,
+} from "./khala-core"
+
+import {
   boundedEntries,
   clipSarahText,
   turnCounterFromEntries,
@@ -74,7 +83,7 @@ export type ConversationSource = "restore" | "new" | "recent"
 /** The pill dropdown's surface modes: the plain OpenAgents surface (Protoss
  * background) or the Sarah demo-video surface (fullscreen looping video the
  * glass chrome layers over). */
-export type SurfaceMode = "openagents" | "sarah"
+export type SurfaceMode = "openagents" | "khala" | "sarah"
 
 export interface SurfaceModeOption {
   readonly id: SurfaceMode
@@ -83,6 +92,7 @@ export interface SurfaceModeOption {
 
 export const surfaceModeOptions: ReadonlyArray<SurfaceModeOption> = [
   { id: "openagents", label: "OpenAgents" },
+  { id: "khala", label: "Khala" },
   { id: "sarah", label: "Sarah" },
 ]
 
@@ -130,6 +140,8 @@ export interface HomeState {
   readonly settingsTaps: number
   /** GL-3 (#8649): the Sarah conversation slice — one program, one state. */
   readonly sarah: SarahState
+  /** Public Khala orchestration conversation; distinct from Sarah's relationship. */
+  readonly khala: KhalaState
 }
 
 export const initialHomeState: HomeState = {
@@ -148,13 +160,14 @@ export const initialHomeState: HomeState = {
   pillTaps: 0,
   settingsTaps: 0,
   sarah: initialSarahState,
+  khala: initialKhalaState,
 }
 
 /** Visible JS-bundle tag (OTA proof surface). Bump when publishing an OTA so
  * the owner can SEE the over-the-air bundle swap land (embedded build 107
  * ships the tag below; a published OTA with a bumped tag should appear within
  * ~3s via the temporary poll loop and reload). Rendered in the drawer footer. */
-export const BUNDLE_TAG = "2026-07-10.embedded-113"
+export const BUNDLE_TAG = "2026-07-10.embedded-114"
 
 // ---------------------------------------------------------------------------
 // Typed intents — the ONLY way anything (EN tree, SwiftUI chrome, scrim)
@@ -194,7 +207,7 @@ export const MineralPackSelected = defineIntent(
 )
 export const SurfaceModeSelected = defineIntent(
   "SurfaceModeSelected",
-  Schema.Struct({ mode: Schema.Literals(["openagents", "sarah"]) }),
+  Schema.Struct({ mode: Schema.Literals(["openagents", "khala", "sarah"]) }),
 )
 /** GL-1 (#8647): typed EN mode-menu lifecycle — the DropdownMenu's onSelect
  * carries the tapped item id as a ComponentValueBinding string. */
@@ -251,6 +264,9 @@ export const homeIntentDefinitions = [
   SarahTurnSubmitted,
   SarahStreamStatusChanged,
   SarahEventReceived,
+  ...khalaIntentDefinitions.map((definition) =>
+    defineIntent(definition.name, definition.payload),
+  ),
 ] as const
 
 export const drawerToggledRef = IntentRef("DrawerToggled", StaticPayload({}))
@@ -427,7 +443,9 @@ export const renderContentView = (state: HomeState): View =>
     },
     state.surfaceMode === "sarah" && !state.askVideoPlaying
       ? [renderSarahSurface(state.sarah)]
-      : [],
+      : state.surfaceMode === "khala" && !state.askVideoPlaying
+        ? [renderKhalaSurface(state.khala)]
+        : [],
   )
 
 const drawerRow = (input: {
@@ -514,6 +532,7 @@ export const renderDrawerView = (state: HomeState): View =>
  * degradation entry. */
 export interface HomeProgramOptions {
   readonly sarahTurn?: SarahTurnClient
+  readonly khalaTurn?: KhalaTurnClient
 }
 
 const updateSarah = (
@@ -785,6 +804,7 @@ export const makeHomeHandlers = (
       // not rendered in v1 — bounded and honest.
       return sarah
     }),
+  ...khalaHandlers(state, options.khalaTurn),
 })
 
 /** Fire-and-forget typed dispatchers for the SwiftUI chrome + shell scrim —
@@ -855,6 +875,9 @@ export interface HomeProgramHandle {
   readonly chrome: ChromeDispatchers
   readonly sarah: SarahDispatchers
   readonly recents: RecentDispatchers
+  readonly khala: {
+    readonly submitTurn: (text: string) => void
+  }
 }
 
 export const buildHomeProgram = (
@@ -910,6 +933,20 @@ export const buildHomeProgram = (
           dismissMineralsSheet: fire("MineralsSheetDismissed"),
           selectMineralPack: (id) => {
             fireRef(IntentRef("MineralPackSelected", StaticPayload({ id })))
+          },
+        },
+        khala: {
+          submitTurn: (text) => {
+            Effect.runFork(
+              Effect.exit(
+                registry.dispatch(
+                  resolveIntentRef(
+                    IntentRef("KhalaTurnSubmitted", ComponentValueBinding()),
+                    text,
+                  ),
+                ),
+              ),
+            )
           },
         },
         sarah: {

@@ -14,6 +14,7 @@ import { Effect, Stream } from "@effect-native/core/effect"
 import { khalaTheme } from "@effect-native/tokens"
 
 import { EffectNativeHost } from "../effect-native/effect-native-host"
+import { sendKhalaTurn } from "../khala/khala-client"
 import {
   loadPersistedSarahSession,
   loadPersistedSarahThreads,
@@ -75,7 +76,11 @@ export const HomeScreen = () => {
   // effect seam (GL-3 #8649); everything else reaches the program as typed
   // intents.
   const program = useMemo(
-    () => buildHomeProgram({ sarahTurn: { sendTurn: sendSarahTurn } }),
+    () =>
+      buildHomeProgram({
+        sarahTurn: { sendTurn: sendSarahTurn },
+        khalaTurn: { sendTurn: sendKhalaTurn },
+      }),
     [],
   )
   const [homeState, setHomeState] = useState(initialHomeState)

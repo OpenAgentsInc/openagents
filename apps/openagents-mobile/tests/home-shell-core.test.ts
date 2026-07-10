@@ -120,7 +120,7 @@ describe("contract openagents_mobile.home_shell.view_program.v1", () => {
       expect(serialized).toContain(recent.title)
     }
     expect(serialized).toContain('"label":"Settings"')
-    expect(serialized).toContain("Bundle 2026-07-10.embedded-113")
+    expect(serialized).toContain("Bundle 2026-07-10.embedded-114")
     // The active recent renders as the highlighted (secondary) row; the
     // others are ghost rows.
     expect(serialized).toContain('"backgroundColor":"surfaceRaised"')
@@ -136,10 +136,11 @@ describe("contract openagents_mobile.home_shell.view_program.v1", () => {
     expect(chromeProps(initialHomeState).pillLabel).toBe("OpenAgents")
   })
 
-  test("surface-mode dropdown: pill label follows the mode; sarah mode makes the content root transparent for the video layer", async () => {
+  test("surface-mode dropdown: labels follow modes; Khala is a real typed surface and Sarah keeps its video layer", async () => {
     // Projection: label swaps with the mode.
     expect(chromeProps({ ...initialHomeState, surfaceMode: "sarah" }).pillLabel).toBe("Sarah")
-    expect(surfaceModeOptions.map((option) => option.id)).toEqual(["openagents", "sarah"])
+    expect(chromeProps({ ...initialHomeState, surfaceMode: "khala" }).pillLabel).toBe("Khala")
+    expect(surfaceModeOptions.map((option) => option.id)).toEqual(["openagents", "khala", "sarah"])
 
     // openagents mode: opaque Protoss background; sarah mode: NO background
     // (the shell's fullscreen video shows through — glass-over-video depth).
@@ -155,6 +156,9 @@ describe("contract openagents_mobile.home_shell.view_program.v1", () => {
       renderContentView({ ...initialHomeState, askVideoPlaying: true }),
     )
     expect(askTransparent).not.toContain('"backgroundColor":"background"')
+    const khala = JSON.stringify(renderContentView({ ...initialHomeState, surfaceMode: "khala" }))
+    expect(khala).toContain('"content":"Khala"')
+    expect(khala).toContain("KhalaTurnSubmitted")
 
     // Typed round-trip through the REAL renderer: the SwiftUI menu selection
     // (exact shell wiring: chrome.selectSurfaceMode) re-renders the tree.
