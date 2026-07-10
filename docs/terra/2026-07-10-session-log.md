@@ -1,8 +1,8 @@
 # Terra session log — 2026-07-10
 
 - Status: factual working log; not a product-claim or authority record
-- Scope: OpenAgents Desktop in `apps/openagents-desktop`, plus the shared
-  Effect Native DOM renderer where the desktop needed a real host lowering
+- Scope: `apps/openagents-desktop`, `apps/openagents-mobile`, and the shared
+  Effect Native DOM/RN renderers where a native-equivalent lowering was needed
 
 ## The request as it evolved
 
@@ -33,6 +33,9 @@ was direct and useful:
 | `8ed6d166fd` | Effect Native DOM adopts the shared OpenAI Apps SDK icon catalog; sidebar uses typed icons and left-aligned rows. |
 | `acdb90f378` | Desktop authors a typed `BackgroundGradient` behind typed glass surfaces; the shared DOM renderer lowers the mobile-material analogue. |
 | `d13bdd4ab0` | Removed rendered host/proof/workspace/Fleet controls, authority copy, Pylon status, and the composer Proof action. |
+| `d1abe0e81e` | Added real desktop Project Home and bounded local-folder listing/read preview through fixed IPC. |
+| `226aad0e72` | Sharpened the desktop material geometry after visual review. |
+| `7d77150514` | Replaced mobile seeded conversations with an app-owned five-thread catalog, real new-thread minting, and recent-thread restoration. |
 
 ## What now works
 
@@ -50,6 +53,12 @@ was direct and useful:
   Native view tree, rather than only in app-local CSS.
 - The visible desktop default is intentionally minimal: sidebar conversations,
   the selected transcript, and the composer.
+- Desktop Project Home and Files use a bounded host service: the user selects
+  a local root, the renderer receives a capped root listing, and reads are
+  capped and traversal-checked.
+- Mobile persists only conversations created inside the app, keeps the newest
+  five, and restores the selected conversation's own Sarah relationship and
+  transcript. It never presents made-up recents.
 
 ## Verification run today
 
@@ -61,6 +70,11 @@ For the final minimal-surface change:
 
 The Electron application was restarted after each pushed UI change so the
 owner saw the current worktree build rather than a stale process.
+
+For the mobile recent-thread delivery (`7d77150514`):
+
+- `bun run --cwd apps/openagents-mobile typecheck`
+- `bun run --cwd apps/openagents-mobile test` — 32 passing tests
 
 ## Lessons
 
@@ -116,3 +130,12 @@ than placeholder copy. It intentionally does not expose the desktop's raw
 folder browser: on mobile, device-file access must begin with an explicit
 user-selected document capability rather than silently treating the phone's
 filesystem as a workspace.
+
+## Execution record
+
+- Desktop scope was claimed and progress-reported against OpenAgents issue
+  #8574. Mobile scope was claimed and released against #8597.
+- Each implementation commit was rebased onto the moving `main` tip before
+  push when necessary; no force-push or overwrite of concurrent work was used.
+- All claims in this log distinguish local persistence from Sync authority,
+  and user-visible success from an unverified production model/fleet outcome.

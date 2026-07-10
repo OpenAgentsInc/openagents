@@ -4,17 +4,27 @@
 - Priority rule: choose a user-visible, evidence-backed slice before expanding
   a surface or framework
 
-## Now: make the minimal desktop chat trustworthy
+## Now: close the next useful Desktop/Mobile vertical slice
 
 1. **Exercise a successful configured gateway turn in the running Desktop app.**
    The host boundary and honest no-token behavior are implemented, but the
    next receipt should prove a real configured model response persists and
    returns after reopening the desktop app. Keep the secret host-only.
-2. **Add a small explicit diagnostic entry point only if the owner needs it.**
+2. **Finish bounded desktop file editing before adding more workspaces.**
+   Project Home and read-only Files are real. The next desktop-local slice is
+   a typed, traversal-safe write/save operation with an explicit dirty state
+   and an honest failure path. Do not add a fake editor or a generic renderer
+   filesystem bridge.
+3. **Add mobile attachment parity through an explicit user selection flow.**
+   Mobile should never imitate the desktop folder browser. If file work is
+   needed there, use a user-selected document/import capability and retain an
+   app-owned attachment catalog. This requires a deliberate native-runtime
+   compatibility decision before adding a module.
+4. **Add a small explicit diagnostic entry point only if the owner needs it.**
    Fleet/Pylon details were intentionally removed from the default UI. Do not
    reintroduce them as header chrome. If needed, make one dedicated cockpit or
    command action with an exact purpose and evidence view.
-3. **Tighten conversation identity.**
+5. **Tighten conversation identity.**
    Thread titles currently derive from the first user message. Improve only
    after observing actual use: avoid premature summarization or synthetic
    labels.

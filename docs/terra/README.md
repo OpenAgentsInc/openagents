@@ -22,6 +22,11 @@ repository invariants.
    intent and the constraints that matter while executing.
 3. [`NEXT.md`](./NEXT.md) — the next narrow actions I would take, ordered by
    product feedback and evidence rather than architectural novelty.
+4. [`CURRENT_STATE.md`](./CURRENT_STATE.md) — a compact, factual map of the
+   shipped Desktop/Mobile behavior and the boundary each host owns.
+5. [`DESKTOP_PARITY.md`](./DESKTOP_PARITY.md) and
+   [`MOBILE_PARITY.md`](./MOBILE_PARITY.md) — capability ledgers against the
+   legacy desktop and the current mobile-native equivalent.
 
 ## Boundaries
 

@@ -39,7 +39,11 @@ limitation plainly. “It looks done” is not the bar.
   prove.
 - A UI cannot invent FleetRun, account, payment, or public-claim state.
 - Desktop, mobile, and web should share Effect Native component semantics and
-  typed intents; host-specific pixels belong in renderer lowerings.
+  typed intents; host-specific pixels belong in renderer lowerings. SwiftUI
+  owns iOS Liquid Glass; Electron/DOM owns its honest material equivalent.
+- “Parity” is behavioral, not literal. Desktop can own a selected local
+  workspace through Electron; mobile can own conversations and explicitly
+  selected attachments, but must not quietly expose the phone filesystem.
 - Capability that is useful only to an operator belongs behind an intentional
   diagnostic/cockpit entry point, not in the everyday chat surface.
 - The canonical program priority remains Sol's Sarah-first roadmap. Terra
