@@ -4,7 +4,8 @@
 - Source: current `main` mobile correction scope under issue #8597
 - App identity: `OpenAgents` / `com.openagents.app` / Team `HQWSG26L43`
 - App Store Connect build: `116`
-- Distribution state: signed upload pending
+- Distribution state: signed upload accepted; App Store Connect build record
+  ingestion pending
 
 ## Outcome
 
@@ -27,9 +28,13 @@ Effect Native composer inside the transcript is removed.
 - A clean unsigned Release archive completed, including compilation of the
   changed SwiftUI module.
 
-## Required distribution proof
+## Distribution proof
 
-The final record must include successful signed archive/export, App Store
-Connect upload, and the App Store Connect build ID/processing state. On device,
-verify a real Khala turn from the one native composer and confirm the removed
-persona/demo/catalog surfaces do not return.
+- The signed archive and manual App Store export completed successfully.
+- App Store delivery accepted build number 116. A retry was correctly rejected
+  as a duplicate because 116 is already reserved by the accepted delivery.
+- At this receipt time, the App Store Connect builds API has not yet exposed
+  the build ID or processing state; do not label it `VALID` until it does.
+
+On device, verify a real Khala turn from the one native composer and confirm
+the removed persona/demo/catalog surfaces do not return.

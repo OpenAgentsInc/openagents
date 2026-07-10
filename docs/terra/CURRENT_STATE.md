@@ -49,7 +49,7 @@ real user question.
 | Surface | Commands last run | Result |
 | --- | --- | --- |
 | Desktop | `bun run --cwd apps/openagents-desktop typecheck`; `bun test apps/openagents-desktop`; `OPENAGENTS_DESKTOP_SMOKE=1 bun run --cwd apps/openagents-desktop smoke` | Passed through the Settings slice; Sol's receipt records 58 tests plus real Electron smoke |
-| Mobile | `bun run --cwd apps/openagents-mobile typecheck`; `bun run --cwd apps/openagents-mobile test`; iOS archive/export | Passed: 20 tests after the persona-neutral correction; build 116 native archive/upload is pending. Build 115 remains `VALID` but contains the removed path and duplicate composer. |
+| Mobile | `bun run --cwd apps/openagents-mobile typecheck`; `bun run --cwd apps/openagents-mobile test`; iOS archive/export | Passed: 20 tests after the persona-neutral correction; build 116 signed upload is accepted and awaits ASC build-record ingestion. Build 115 remains `VALID` but contains the removed path and duplicate composer. |
 
 ## Deliberate exclusions
 
