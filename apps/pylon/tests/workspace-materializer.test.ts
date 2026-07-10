@@ -618,6 +618,87 @@ describe("materializeGitCheckoutWorkspace", () => {
       await rm(accountHome, { recursive: true, force: true })
     }
   })
+
+  test("bounds credentialed URL detection and permits only documented inert placeholders", async () => {
+    const root = await mkdtemp(join(tmpdir(), "pylon-credentialed-url-scan-"))
+    try {
+      await writeFile(
+        join(root, "examples.md"),
+        [
+          '{"url":"https://example.com","userinfo":"username:password@host.example"}',
+          "https://username:password@yourapp.com/callback",
+          "https://user:pass@example.com/repository.git",
+          "",
+        ].join("\n"),
+      )
+
+      const clean = await scanLongLivedScmCredentials({
+        roots: [{ rootRef: "workspace.url_examples", path: root }],
+      })
+      expect(clean.state).toBe("clean")
+
+      await writeFile(
+        join(root, "credential.txt"),
+        "https://x-access-token:real-secret-value@github.com/OpenAgentsInc/openagents.git\n",
+      )
+      const leaked = await scanLongLivedScmCredentials({
+        roots: [{ rootRef: "workspace.url_examples", path: root }],
+      })
+      expect(leaked.state).toBe("leaked")
+      expect(leaked.findings.map((finding) => finding.reasonRef)).toContain(
+        "reason.workspace_scm_credentials.credentialed_git_url",
+      )
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  test("suppresses only unchanged credential-shaped blobs at the exact pinned commit", async () => {
+    const root = await mkdtemp(join(tmpdir(), "pylon-pinned-credential-scan-"))
+    const fixturePath = join(root, "scanner-fixture.txt")
+    const fixtureContents = "ghp_abcdefghijklmnopqrstuvwxyz123456\n"
+    try {
+      expect((await runCommand(["git", "init"], root)).exitCode).toBe(0)
+      expect((await runCommand(["git", "config", "user.email", "test@example.com"], root)).exitCode).toBe(0)
+      expect((await runCommand(["git", "config", "user.name", "Pylon Test"], root)).exitCode).toBe(0)
+      await writeFile(fixturePath, fixtureContents)
+      expect((await runCommand(["git", "add", "scanner-fixture.txt"], root)).exitCode).toBe(0)
+      expect((await runCommand(["git", "commit", "-m", "add scanner fixture"], root)).exitCode).toBe(0)
+      const baselineCommitSha = (await runCommand(["git", "rev-parse", "HEAD"], root)).stdout.trim()
+
+      const unchanged = await scanLongLivedScmCredentials({
+        roots: [{ rootRef: "workspace.pinned", path: root, baselineCommitSha }],
+      })
+      expect(unchanged.state).toBe("clean")
+
+      await writeFile(fixturePath, "ghp_changedcredentialvalue1234567890\n")
+      const changed = await scanLongLivedScmCredentials({
+        roots: [{ rootRef: "workspace.pinned", path: root, baselineCommitSha }],
+      })
+      expect(changed.state).toBe("leaked")
+      expect(changed.findings[0]?.relativePath).toBe("scanner-fixture.txt")
+
+      await writeFile(fixturePath, fixtureContents)
+      const invalidPin = await scanLongLivedScmCredentials({
+        roots: [{ rootRef: "workspace.invalid_pin", path: root, baselineCommitSha: "main" }],
+      })
+      expect(invalidPin.state).toBe("leaked")
+
+      await writeFile(
+        join(root, ".git-credentials"),
+        "https://x-access-token:real-secret-value@github.com/OpenAgentsInc/openagents.git\n",
+      )
+      const untracked = await scanLongLivedScmCredentials({
+        roots: [{ rootRef: "workspace.pinned", path: root, baselineCommitSha }],
+      })
+      expect(untracked.state).toBe("leaked")
+      expect(untracked.findings.map((finding) => finding.relativePath)).toContain(
+        ".git-credentials",
+      )
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
 })
 
 describe("removeMaterializedWorkspace", () => {

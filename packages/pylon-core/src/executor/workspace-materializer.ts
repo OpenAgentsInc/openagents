@@ -189,6 +189,11 @@ export const WORKSPACE_SCM_CREDENTIAL_SCAN_SCHEMA =
 export type WorkspaceScmCredentialScanRoot = {
   rootRef: string
   path: string
+  // A bounded git workspace may contain credential-shaped detector fixtures
+  // in its pinned source commit. Suppress only findings whose current bytes
+  // hash exactly to the same path at this commit. Omit for provider homes,
+  // Git admin state, fixtures without a real pin, and every other strict root.
+  baselineCommitSha?: string
   // When true this root is an ISOLATED provider account home (e.g. a Pylon
   // per-account `~/.claude-pylon-*` or `~/.codex-pylon-*`). Such a home is
   // EXPECTED to hold the account's own provider login (a Claude OAuth token,
@@ -330,6 +335,7 @@ const rawCredentialMaterialPattern =
 const longLivedScmCredentialPatterns: ReadonlyArray<{
   reasonRef: string
   pattern: RegExp
+  matches?: (contents: string) => boolean
   // Provider LOGIN material (the account's own auth), as opposed to a
   // source-control credential. Skipped when scanning an isolated provider
   // account home (see `WorkspaceScmCredentialScanRoot.providerAuthHome`).
@@ -345,7 +351,8 @@ const longLivedScmCredentialPatterns: ReadonlyArray<{
   },
   {
     reasonRef: "reason.workspace_scm_credentials.credentialed_git_url",
-    pattern: /https?:\/\/[^/\s:@]+:[^@\s]+@[A-Za-z0-9.-]+[^\s]*/i,
+    pattern: /https?:\/\//i,
+    matches: (contents) => credentialedGitUrlIn(contents),
   },
   {
     reasonRef: "reason.workspace_scm_credentials.git_extraheader_authorization",
@@ -365,6 +372,32 @@ const longLivedScmCredentialPatterns: ReadonlyArray<{
     providerAuth: true,
   },
 ]
+
+const credentialedGitUrlIn = (contents: string): boolean => {
+  const candidates = contents.match(/https?:\/\/[^\s"'<>]+/giu) ?? []
+  for (const candidate of candidates) {
+    let url: URL
+    try {
+      url = new URL(candidate)
+    } catch {
+      continue
+    }
+    if (url.username === "" || url.password === "") continue
+    // URL exposes percent-encoded userinfo. Comparing the inert placeholders
+    // in their raw form keeps malformed percent sequences non-throwing and
+    // treats encoded variants as credential-bearing (the fail-closed choice).
+    const username = url.username.toLowerCase()
+    const password = url.password.toLowerCase()
+    if (
+      (username === "user" && password === "pass") ||
+      (username === "username" && password === "password")
+    ) {
+      continue
+    }
+    return true
+  }
+  return false
+}
 
 const credentialScanIgnoredDirectoryNames = new Set([
   ".bun",
@@ -387,7 +420,9 @@ function longLivedScmCredentialReasonFor(
 ): string | null {
   for (const candidate of longLivedScmCredentialPatterns) {
     if (options.skipProviderAuth && candidate.providerAuth === true) continue
-    if (candidate.pattern.test(contents)) return candidate.reasonRef
+    if ((candidate.matches?.(contents) ?? candidate.pattern.test(contents))) {
+      return candidate.reasonRef
+    }
   }
   return null
 }
@@ -477,15 +512,27 @@ export async function scanLongLivedScmCredentials(input: {
   let scannedFileCount = 0
   const maxFileBytes = input.maxFileBytes ?? defaultCredentialScanMaxFileBytes
   for (const root of input.roots) {
+    const rootFindings: WorkspaceScmCredentialFinding[] = []
     scannedFileCount += await scanCredentialPath({
       absolutePath: resolve(root.path),
-      findings,
+      findings: rootFindings,
       maxFileBytes,
       rootPath: resolve(root.path),
       rootRef: root.rootRef,
       seenRealPaths: new Set(),
       skipProviderAuth: root.providerAuthHome === true,
     })
+    for (const finding of rootFindings) {
+      const unchangedPinnedFinding =
+        root.baselineCommitSha !== undefined &&
+        gitCommitShaPattern.test(root.baselineCommitSha) &&
+        (await trackedWorkspaceFileMatchesCommitBlob({
+          commitSha: root.baselineCommitSha,
+          relativePath: finding.relativePath,
+          workingDirectory: resolve(root.path),
+        }))
+      if (!unchangedPinnedFinding) findings.push(finding)
+    }
   }
   return {
     schema: WORKSPACE_SCM_CREDENTIAL_SCAN_SCHEMA,
@@ -2153,12 +2200,16 @@ async function resolvePrebuiltBaselineUpstreamCommit(input: {
   return gitCommitShaPattern.test(commitSha) ? commitSha : null
 }
 
-async function trackedWorkspaceFileMatchesHeadBlob(input: {
+async function trackedWorkspaceFileMatchesCommitBlob(input: {
+  commitSha: string
   relativePath: string
   workingDirectory: string
 }): Promise<boolean> {
   const [headBlob, workingBlob] = await Promise.all([
-    runTextCommand(["git", "rev-parse", "--verify", `HEAD:${input.relativePath}`], input.workingDirectory),
+    runTextCommand(
+      ["git", "rev-parse", "--verify", `${input.commitSha}:${input.relativePath}`],
+      input.workingDirectory,
+    ),
     runTextCommand(
       ["git", "hash-object", "--no-filters", "--", input.relativePath],
       input.workingDirectory,
@@ -2263,7 +2314,8 @@ async function buildPrebuiltBaselineCacheEntry(input: {
     for (const finding of credentialScan.findings) {
       const unchangedTrackedFinding =
         trackedPaths.has(finding.relativePath) &&
-        (await trackedWorkspaceFileMatchesHeadBlob({
+        (await trackedWorkspaceFileMatchesCommitBlob({
+          commitSha: input.baselineCommitSha,
           relativePath: finding.relativePath,
           workingDirectory: tempDirectory,
         }))

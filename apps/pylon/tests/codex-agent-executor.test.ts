@@ -1392,6 +1392,67 @@ describe("codex git_checkout workspace (shared B2 contract)", () => {
     })
   })
 
+  test("accepts an isolated registry Codex account's own provider login", async () => {
+    await withState(async (state) => {
+      const accountRefHash = hashPylonAccountRef("codex", "codex-isolated-login")
+      const account: ResolvedPylonAccountSelection = {
+        provider: "codex",
+        selector: "registry_ref",
+        accountRef: "codex-isolated-login",
+        accountRefHash,
+        home: join(state.paths.home, "accounts", "codex", "codex-isolated-login"),
+      }
+      await mkdir(account.home, { recursive: true })
+      await writeFile(
+        join(account.home, "auth.json"),
+        `${JSON.stringify({
+          access: "providerAccessTokenValueLongEnoughForScanner",
+          refresh: "providerRefreshTokenValueLongEnoughForScanner",
+        })}\n`,
+      )
+      const checkoutRunner = async (workspace: string) => {
+        await mkdir(workspace, { recursive: true })
+        await writeFile(
+          join(workspace, "package.json"),
+          `${JSON.stringify({ private: true, type: "module" })}\n`,
+        )
+        await writeFile(
+          join(workspace, "sum.ts"),
+          "export const sum = (left: number, right: number) => left + right\n",
+        )
+        await writeFile(
+          join(workspace, "sum.test.ts"),
+          [
+            'import { describe, expect, test } from "bun:test"',
+            'import { sum } from "./sum"',
+            'describe("sum", () => { test("adds", () => { expect(sum(2, 3)).toBe(5) }) })',
+            "",
+          ].join("\n"),
+        )
+      }
+
+      const record = await executeCodexAgentAssignment(
+        state,
+        { ...lease, codingAssignment: checkoutAssignment },
+        now,
+        {
+          account,
+          checkoutRunner,
+          codexAgentProbe: readyProbe,
+          codexAuthValidityProbe: validCodexAuthProbe,
+          codexAgentRunner: idleRunner,
+          pullRequestPublisher: async () => ({ state: "no_change" }),
+        },
+      )
+
+      expect(record?.status).toBe("accepted")
+      expect(record?.blockerRefs).not.toContain(
+        "blocker.assignment.codex_agent_long_lived_scm_credentials_detected",
+      )
+      assertPublicProjectionSafe(record)
+    })
+  })
+
   test("refuses and cleans up when a run leaves long-lived SCM credentials", async () => {
     await withState(async (state) => {
       const accountRefHash = hashPylonAccountRef("codex", "codex-scm-leak")

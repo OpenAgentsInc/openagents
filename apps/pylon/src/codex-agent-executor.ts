@@ -1294,18 +1294,30 @@ async function releaseCodexAgentWorkspace(input: {
 
 function codexScmCredentialScanRoots(input: {
   account: ResolvedPylonAccountSelection | null | undefined
+  baselineCommitSha?: string | undefined
   materialized: Awaited<ReturnType<typeof materializeCodexAgentWorkspace>>
 }): WorkspaceScmCredentialScanRoot[] {
   return [
-    { rootRef: input.materialized.workspaceRef, path: input.materialized.workspace },
+    {
+      rootRef: input.materialized.workspaceRef,
+      path: input.materialized.workspace,
+      ...(input.baselineCommitSha === undefined
+        ? {}
+        : { baselineCommitSha: input.baselineCommitSha }),
+    },
     ...(input.account === null || input.account === undefined
       ? []
-      : [{ rootRef: input.account.accountRefHash, path: input.account.home }]),
+      : [{
+          rootRef: input.account.accountRefHash,
+          path: input.account.home,
+          providerAuthHome: input.account.selector === "registry_ref",
+        }]),
   ]
 }
 
 async function enforceCodexScmCredentialPolicy(input: {
   account: ResolvedPylonAccountSelection | null | undefined
+  baselineCommitSha?: string | undefined
   lease: CodexAgentLease
   materialized: Awaited<ReturnType<typeof materializeCodexAgentWorkspace>>
   now: Date
@@ -1315,6 +1327,7 @@ async function enforceCodexScmCredentialPolicy(input: {
     await assertNoLongLivedScmCredentials({
       roots: codexScmCredentialScanRoots({
         account: input.account,
+        baselineCommitSha: input.baselineCommitSha,
         materialized: input.materialized,
       }),
     })
@@ -1657,6 +1670,7 @@ export async function executeCodexAgentAssignment(
 
   const scmCredentialPolicyRefusal = await enforceCodexScmCredentialPolicy({
     account: options.account,
+    baselineCommitSha: task.workspace?.repository.commitSha,
     lease,
     materialized,
     now,

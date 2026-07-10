@@ -471,10 +471,17 @@ async function releaseClaudeAgentWorkspace(input: {
 
 function claudeScmCredentialScanRoots(input: {
   account: ResolvedPylonAccountSelection | null | undefined
+  baselineCommitSha?: string | undefined
   materialized: Awaited<ReturnType<typeof materializeClaudeAgentWorkspace>>
 }): WorkspaceScmCredentialScanRoot[] {
   return [
-    { rootRef: input.materialized.workspaceRef, path: input.materialized.workspace },
+    {
+      rootRef: input.materialized.workspaceRef,
+      path: input.materialized.workspace,
+      ...(input.baselineCommitSha === undefined
+        ? {}
+        : { baselineCommitSha: input.baselineCommitSha }),
+    },
     ...(input.account === null || input.account === undefined
       ? []
       : [
@@ -496,6 +503,7 @@ function claudeScmCredentialScanRoots(input: {
 
 async function enforceClaudeScmCredentialPolicy(input: {
   account: ResolvedPylonAccountSelection | null | undefined
+  baselineCommitSha?: string | undefined
   lease: ClaudeAgentLease
   materialized: Awaited<ReturnType<typeof materializeClaudeAgentWorkspace>>
   now: Date
@@ -505,6 +513,7 @@ async function enforceClaudeScmCredentialPolicy(input: {
     await assertNoLongLivedScmCredentials({
       roots: claudeScmCredentialScanRoots({
         account: input.account,
+        baselineCommitSha: input.baselineCommitSha,
         materialized: input.materialized,
       }),
     })
@@ -989,6 +998,7 @@ export async function executeClaudeAgentAssignment(
 
   const scmCredentialPolicyRefusal = await enforceClaudeScmCredentialPolicy({
     account: options.account,
+    baselineCommitSha: task.workspace?.repository.commitSha,
     lease,
     materialized,
     now,

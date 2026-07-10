@@ -163,6 +163,33 @@
   Cloud Run typecheck, Pylon typecheck, Effect-topology check, and diff check
   all pass. The full integrated `check:deploy` also passes, including 545 web
   tests and 261 final Worker tests; preparing the push and claim release.
+- 2026-07-10 17:02 CDT — The type-boundary gate above is landed on `main` as
+  `467b85a9c3`; #8640 has the corresponding claim-release receipt. The owner
+  completed the isolated Codex device authorization, and the new named
+  registry account `codex` is ready. A bounded usage refresh completed one
+  real turn with exact local-session accounting without touching the default
+  Codex home. The Desktop flow incorrectly projected failure after successful
+  custody, which was independently repaired on `main` as `eeebedce20`.
+- 2026-07-10 17:02 CDT — The first live two-unit FleetRun
+  `fleet_run.fc5.codex-claude.20260710t2146z` is retained as a failure receipt,
+  not acceptance evidence. Its mobile unit failed closed because a compound
+  `&&` verifier violated bounded-argv policy; its Desktop unit produced useful
+  verified code but pushed before post-run acceptance, then the scanner
+  rejected closeout. This proves code-landed and accepted-closeout are distinct
+  rungs and exposes a publication-before-closeout gap. The next run will use
+  single bounded verifier commands and prompts that reserve publication and
+  issue mutation for Pylon after scanning.
+- 2026-07-10 17:02 CDT — #8640's scanner repair now has a green local gate.
+  Workspace findings are suppressed only when current bytes exactly match the
+  same path at the assignment's pinned 40-hex commit; invalid pins, changed
+  files, and untracked files remain findings. Named isolated Codex homes now
+  receive the same provider-login exemption as named Claude homes while PAT,
+  Forge-token, extraheader, and real credentialed-URL detection stays strict.
+  URL matching is bounded to one parsed URL and permits only the two documented
+  inert user/password placeholders. Focused Codex/Claude/materializer coverage
+  passes 95 tests/451 expectations, both Pylon typechecks pass, the supervisor
+  store guard passes, and real isolated Codex plus two Claude homes scan clean
+  without exposing paths or credential material. Preparing the scoped push.
 
 ## Mission
 
