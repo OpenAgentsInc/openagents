@@ -70,6 +70,11 @@
   top-level fields; the negative matrix covers excess private input, wrong
   scope, and invalid schema version. Khala Sync typecheck plus 175 tests and
   Fleet Intents typecheck plus 27 tests pass.
+- 2026-07-10 11:58 CDT — Following transcript 248's predictable-software
+  standard, Desktop now has a normal `verify` gate: enforced UX/e2e contracts,
+  typecheck, bundle build, and real Electron smoke run together. Current main
+  passes 70 Desktop tests/363 expectations, including the 256 MiB first-content
+  budget and selected recent-Codex-history smoke receipt.
 
 ## Mission
 

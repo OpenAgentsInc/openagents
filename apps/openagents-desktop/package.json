@@ -12,7 +12,8 @@
     "dev": "bun scripts/build.ts && electron .",
     "smoke": "bun scripts/build.ts && OPENAGENTS_DESKTOP_SMOKE=1 electron .",
     "test": "bun test",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "verify": "bun run typecheck && bun test && bun run build && OPENAGENTS_DESKTOP_SMOKE=1 bun run smoke"
   },
   "dependencies": {
     "@openagentsinc/behavior-contracts": "workspace:*",
