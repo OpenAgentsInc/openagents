@@ -64,13 +64,20 @@ export const HomeScreen = () => {
       edges={["top"]}
       style={{ flex: 1, backgroundColor: khalaTheme.color.background }}
     >
-      <EffectNativeHost
-        viewStream={program.viewStream}
-        report={program.report}
-        theme={khalaTheme}
-        platform={Platform.OS === "android" ? "android" : "ios"}
-        initialView={renderHomeView(initialHomeState)}
-      />
+      {/* The EN root Stack is height:"full" (100% of its parent), so it MUST
+          live inside a flex:1 wrapper. Rendering it directly under the
+          SafeAreaView made "full" mean the whole safe area, which pushed the
+          SwiftUI island below the fold — the build-105 invisible-island bug
+          (owner escalation; simulator-reproduced before this fix). */}
+      <RNView style={{ flex: 1 }}>
+        <EffectNativeHost
+          viewStream={program.viewStream}
+          report={program.report}
+          theme={khalaTheme}
+          platform={Platform.OS === "android" ? "android" : "ios"}
+          initialView={renderHomeView(initialHomeState)}
+        />
+      </RNView>
       {LiquidGlassView === undefined ? (
         <RNView
           style={{

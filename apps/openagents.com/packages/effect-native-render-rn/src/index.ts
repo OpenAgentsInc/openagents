@@ -581,14 +581,48 @@ const renderText = (
   )
 }
 
+// Button variant lowering (openagents #8597 escalation; vendored from
+// upstream effect-native fd1ccc5): RN Text does NOT inherit color and
+// Pressable has no default surface, so a Button without explicit theme
+// lowering renders a default-black label on whatever the app background is —
+// invisible on dark themes. Variants lower to theme tokens: primary = accent
+// surface, secondary = surface + border, ghost = accent text on transparent.
+// App-level `view.style` still wins via merge order.
+const buttonVariantStyle = (view: ButtonView, theme: Theme): ReactNativeStyle => {
+  switch (view.variant) {
+    case "primary":
+      return { backgroundColor: colorValue(theme, "accent") }
+    case "secondary":
+      return {
+        backgroundColor: colorValue(theme, "surface"),
+        borderColor: colorValue(theme, "border"),
+        borderWidth: 1
+      }
+    case "ghost":
+      return { backgroundColor: "transparent" }
+  }
+}
+
+const buttonLabelColor = (view: ButtonView, theme: Theme): string =>
+  view.variant === "ghost" ? colorValue(theme, "accent") : colorValue(theme, "textPrimary")
+
 const renderButton = (
   view: ButtonView,
   dependencies: ReactNativeDependencies,
   report: IntentReporter,
   options: ReactNativeRenderOptions
 ): ReactElementLike => {
+  const theme = options.theme ?? defaultTheme
   const style = mergeNativeStyles(
-    { opacity: view.disabled === true ? 0.5 : 1 },
+    {
+      ...buttonVariantStyle(view, theme),
+      paddingVertical: spacingValue(theme, "2.5"),
+      paddingHorizontal: spacingValue(theme, "4"),
+      borderRadius: radiusValue(theme, "md"),
+      alignItems: "center",
+      justifyContent: "center",
+      opacity: view.disabled === true ? 0.5 : 1
+    },
     viewStyle(view, options)
   )
 
@@ -610,7 +644,10 @@ const renderButton = (
       dependencies,
       dependencies.ReactNative.Text,
       {
-        style: typeScaleValue(options.theme ?? defaultTheme, "label")
+        style: mergeNativeStyles(
+          typeScaleValue(theme, "label"),
+          { color: buttonLabelColor(view, theme) }
+        )
       },
       view.label
     )

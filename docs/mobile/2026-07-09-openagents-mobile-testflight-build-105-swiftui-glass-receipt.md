@@ -1,5 +1,17 @@
 # OpenAgents mobile — v0.4.2 build 105 (iOS TestFlight): SwiftUI Liquid Glass on the Effect Native seam (2026-07-09)
 
+> **CORRECTION (2026-07-09, owner verification FAILED):** on device, build 105
+> rendered the EN header/counter but the SwiftUI island was INVISIBLE and the
+> EN "Dispatch a typed intent" button was black-on-black. Root causes (both
+> simulator-reproduced): (1) the EN root Stack is `height:"full"`, and the
+> shell mounted it directly under the SafeAreaView, so the surface consumed
+> 100% of the screen and pushed the island below the fold; (2) the render-rn
+> `Button` lowering applied NO background/label color — RN's default-black
+> label on the dark theme. Fixed in build 106 (shell flex wrapper; upstream
+> effect-native `fd1ccc5` Button variant theme lowering, re-vendored).
+> Device rung for 105: **FAILED**. See the build-106 receipt for the
+> simulator pixel proof that now gates uploads.
+
 Third TestFlight build of `apps/openagents-mobile` (#8597): a SwiftUI
 "Liquid Glass" test section on the Home screen, rendered through the Effect
 Native SwiftUI seam prescribed by

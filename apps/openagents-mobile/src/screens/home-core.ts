@@ -41,9 +41,9 @@ export const initialHomeState: HomeState = { pings: 0, glassTaps: 0 }
 
 /** Visible JS-bundle tag, rendered on the Home card. Bump this string when
  * publishing an OTA so the owner can SEE the over-the-air bundle swap land
- * (embedded build 105 ships the tag below; a published OTA with a bumped tag
+ * (embedded build 106 ships the tag below; a published OTA with a bumped tag
  * should appear within ~3s via the temporary poll loop and reload). */
-export const BUNDLE_TAG = "2026-07-09.embedded-105"
+export const BUNDLE_TAG = "2026-07-09.embedded-106"
 
 /** One typed intent, proving the intent -> handler -> state -> re-render loop
  * runs end-to-end through the RN adapter (not just static rendering). */
