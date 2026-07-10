@@ -44,6 +44,8 @@ import {
 import { handleSarahRequest } from '../../../../../sarah/src/server.ts'
 // #8652 PORTAL-1: client portal mounts at openagents.com/portal (EN surface).
 import { handlePortalUiRequest } from './portal-ui'
+// #8634/#8635 scope 5: retained /forum* serves the Effect Native conversion.
+import { handleForumUiRequest } from './forum-ui'
 
 const log = (event: string, detail: Record<string, unknown> = {}): void => {
   console.log(
@@ -119,6 +121,17 @@ const main = async (): Promise<void> => {
         const portalResponse = await handlePortalUiRequest(request)
         if (portalResponse !== undefined) {
           return portalResponse
+        }
+      }
+
+      // #8634/#8635 scope 5: the four converted /forum* document routes serve
+      // the Effect Native forum (shell + /forum/app.js) instead of the legacy
+      // Foldkit SPA shell. Worker /api/forum* authority and unconverted
+      // /forum/* paths fall straight through to the Worker below.
+      if (url.pathname === '/forum' || url.pathname.startsWith('/forum/')) {
+        const forumResponse = await handleForumUiRequest(request)
+        if (forumResponse !== undefined) {
+          return forumResponse
         }
       }
 

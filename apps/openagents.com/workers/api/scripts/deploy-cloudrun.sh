@@ -76,6 +76,10 @@ cp -R "$REPO_ROOT/apps/sarah/agent/." dist-cloudrun/sarah-agent/
 mkdir -p dist-cloudrun/portal-ui
 (cd "$APP_DIR" && bun build apps/start/src/portal-entry.ts --target browser --minify \
   --outfile "$API_DIR/dist-cloudrun/portal-ui/app.js") >/dev/null
+# #8634/#8635 scope 5: /forum* Effect Native bundle (authored in apps/start).
+mkdir -p dist-cloudrun/forum-ui
+(cd "$APP_DIR" && bun build apps/start/src/forum-entry.ts --target browser --minify \
+  --outfile "$API_DIR/dist-cloudrun/forum-ui/app.js") >/dev/null
 
 # Epic #8610: bake the SHIPPABLE Sarah opener clips (raw MIT Hallo2 512²
 # renders) into the image for /sarah/api/clips. LICENSE LAW: never copy the

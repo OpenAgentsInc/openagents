@@ -22,9 +22,12 @@ COPY dist-cloudrun/sarah-agent ./sarah-agent
 COPY dist-cloudrun/sarah-clips ./sarah-clips
 # #8652 PORTAL-1: /portal Effect Native bundle for openagents.com/portal
 COPY dist-cloudrun/portal-ui ./portal-ui
+# #8634/#8635 scope 5: /forum* Effect Native bundle for openagents.com/forum
+COPY dist-cloudrun/forum-ui ./forum-ui
 
 ENV OPENAGENTS_WEB_DIST=/app/web-dist
 ENV PORTAL_UI_DIR=/app/portal-ui
+ENV FORUM_UI_DIR=/app/forum-ui
 ENV SARAH_UI_DIR=/app/sarah-ui
 ENV SARAH_AGENT_DIR=/app/sarah-agent
 ENV SARAH_CLIPS_DIR=/app/sarah-clips
