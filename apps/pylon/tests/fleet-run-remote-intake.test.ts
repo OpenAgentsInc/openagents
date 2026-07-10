@@ -50,6 +50,7 @@ const claimRef = `claim.sarah_fleet_run.${sha256({
 const authorityRequest = (
   input: {
     readonly workerKind?: "auto" | "claude" | "codex" | "grok"
+    readonly targetPreference?: "auto" | "managed_cloud" | "owner_local"
     readonly commit?: string
     readonly objective?: string
   } = {},
@@ -66,7 +67,7 @@ const authorityRequest = (
   workSource: { kind: "issue_list" as const, issueRefs: ["#8633"] },
   workerPolicy: {
     workerKind: input.workerKind ?? "codex",
-    targetPreference: "owner_local" as const,
+    targetPreference: input.targetPreference ?? "owner_local",
   },
   targetConcurrency: 1,
   idempotencyKey,
@@ -516,6 +517,187 @@ describe("Pylon Sarah FleetRun remote intake", () => {
       expect(acceptCalls).toBe(2)
       expect(secondActivation.calls).toEqual([`arm:${runRef}`, `status:${runRef}`])
       await second.close()
+    })
+  })
+
+  test("preserves managed_cloud through import, duplicate accept replay, and reload without local activation", async () => {
+    await fixture(async ({ summary }) => {
+      const claimed = claimResult({ targetPreference: "managed_cloud" })
+      let claimCalls = 0
+      let acceptCalls = 0
+      const firstActivation = activationFixture()
+      const first = await openPylonFleetRunRemoteIntakeService({
+        activation: firstActivation.activation,
+        bootstrap: summary,
+        pylonRef,
+        remote: {
+          claimNext: async () => {
+            claimCalls += 1
+            return claimed
+          },
+          acceptClaim: async () => {
+            acceptCalls += 1
+            const runtime = await openPylonFleetRunRuntime({ bootstrap: summary })
+            expect(runtime.store.getFleetRun(runRef)?.authorityBinding).toMatchObject({
+              phase: "imported",
+              targetPreference: "managed_cloud",
+            })
+            await runtime.close()
+            throw new Error("response unavailable after durable managed-cloud import")
+          },
+        },
+      })
+      expect(await first.runOnce()).toMatchObject({
+        state: "imported_accept_blocked",
+        retryable: true,
+      })
+      expect(firstActivation.calls).toEqual([])
+      await first.close()
+
+      const secondActivation = activationFixture()
+      const second = await openPylonFleetRunRemoteIntakeService({
+        activation: secondActivation.activation,
+        bootstrap: summary,
+        pylonRef,
+        remote: {
+          claimNext: async () => {
+            claimCalls += 1
+            throw new Error("must replay the durable managed-cloud import")
+          },
+          acceptClaim: async input => {
+            acceptCalls += 1
+            expect(input).toEqual({ claimRef, pylonRef, runRef })
+            const runtime = await openPylonFleetRunRuntime({ bootstrap: summary })
+            expect(runtime.store.getFleetRun(runRef)?.authorityBinding).toMatchObject({
+              phase: "imported",
+              targetPreference: "managed_cloud",
+            })
+            await runtime.close()
+            return { ...acceptedResult(claimed), duplicate: true }
+          },
+        },
+      })
+      expect(await second.runOnce()).toEqual({
+        schema: "openagents.pylon.fleet_run_remote_intake.v1",
+        pylonRef,
+        runRef,
+        state: "accepted_activation_blocked",
+        retryable: true,
+        blockerRefs: [
+          "blocker.pylon.fleet_run_intake.activation_managed_cloud_unconfigured",
+        ],
+      })
+      expect(claimCalls).toBe(1)
+      expect(acceptCalls).toBe(2)
+      expect(secondActivation.calls).toEqual([])
+      await second.close()
+
+      const persisted = await openPylonFleetRunRuntime({ bootstrap: summary })
+      expect(persisted.store.getFleetRun(runRef)?.authorityBinding).toEqual({
+        schema: "openagents.pylon.fleet_run_authority_binding.v1",
+        source: "sarah_authority",
+        authorityFingerprint: claimed.run.requestFingerprint,
+        claimRef,
+        pylonRef,
+        targetPreference: "managed_cloud",
+        phase: "accepted",
+      })
+      await persisted.close()
+
+      const replayActivation = activationFixture()
+      const replay = await openPylonFleetRunRemoteIntakeService({
+        activation: replayActivation.activation,
+        bootstrap: summary,
+        pylonRef,
+        remote: {
+          claimNext: async () => {
+            claimCalls += 1
+            throw new Error("accepted replay must not reclaim")
+          },
+          acceptClaim: async () => {
+            acceptCalls += 1
+            throw new Error("accepted replay must not reaccept")
+          },
+        },
+      })
+      expect(await replay.runOnce()).toMatchObject({
+        state: "accepted_activation_blocked",
+        runRef,
+      })
+      expect(claimCalls).toBe(1)
+      expect(acceptCalls).toBe(2)
+      expect(replayActivation.calls).toEqual([])
+      await replay.close()
+    })
+  })
+
+  test("preserves the existing auto target preference and activation behavior", async () => {
+    await fixture(async ({ summary }) => {
+      const claimed = claimResult({ targetPreference: "auto" })
+      const activation = activationFixture()
+      const service = await openPylonFleetRunRemoteIntakeService({
+        activation: activation.activation,
+        bootstrap: summary,
+        pylonRef,
+        remote: {
+          claimNext: async () => claimed,
+          acceptClaim: async () => acceptedResult(claimed),
+        },
+      })
+      expect(await service.runOnce()).toMatchObject({ state: "active", runRef })
+      const runtime = await openPylonFleetRunRuntime({ bootstrap: summary })
+      expect(runtime.store.getFleetRun(runRef)?.authorityBinding).toMatchObject({
+        phase: "accepted",
+        targetPreference: "auto",
+      })
+      await runtime.close()
+      expect(activation.calls).toEqual([`arm:${runRef}`, `status:${runRef}`])
+      await service.close()
+    })
+  })
+
+  test("rejects an unsupported target preference before local write", async () => {
+    await fixture(async ({ summary }) => {
+      const safe = claimResult()
+      const request = {
+        ...safe.run.request,
+        workerPolicy: {
+          ...safe.run.request.workerPolicy,
+          targetPreference: "third_party_pool",
+        },
+      }
+      const unsupported = {
+        ...safe,
+        run: {
+          ...safe.run,
+          request,
+          requestFingerprint: sha256(request),
+        },
+      }
+      let accepts = 0
+      const activation = activationFixture()
+      const service = await openPylonFleetRunRemoteIntakeService({
+        activation: activation.activation,
+        bootstrap: summary,
+        pylonRef,
+        remote: {
+          claimNext: async () => unsupported,
+          acceptClaim: async () => {
+            accepts += 1
+            return acceptedResult(safe)
+          },
+        },
+      })
+      await expect(service.runOnce()).rejects.toMatchObject({
+        kind: "authority_invalid",
+        blockerRefs: ["blocker.pylon.fleet_run_intake.authority_invalid"],
+      })
+      const runtime = await openPylonFleetRunRuntime({ bootstrap: summary })
+      expect(runtime.store.listFleetRuns()).toEqual([])
+      await runtime.close()
+      expect(accepts).toBe(0)
+      expect(activation.calls).toEqual([])
+      await service.close()
     })
   })
 

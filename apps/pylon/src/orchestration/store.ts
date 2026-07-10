@@ -148,7 +148,7 @@ export const FleetRunAuthorityBindingSchema = S.Struct({
   pylonRef: S.String.check(
     S.isPattern(/^[a-z0-9][a-z0-9._:-]{2,119}$/u),
   ),
-  targetPreference: S.Literals(["owner_local", "auto"]),
+  targetPreference: S.Literals(["owner_local", "managed_cloud", "auto"]),
   phase: S.Literals(["imported", "accepted"]),
 })
 export type FleetRunAuthorityBinding =

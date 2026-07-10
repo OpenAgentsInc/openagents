@@ -420,7 +420,6 @@ const decodeClaimResult = (value: unknown): DecodedRemoteClaimResult => {
       sha256(decoded.run.request) !== decoded.run.requestFingerprint ||
       Date.parse(decoded.claim.leaseExpiresAt) <= Date.parse(decoded.claim.createdAt) ||
       Date.parse(decoded.claim.updatedAt) < Date.parse(decoded.claim.createdAt) ||
-      decoded.run.request.workerPolicy.targetPreference === "managed_cloud" ||
       decoded.run.request.targetConcurrency < 1 ||
       decoded.run.request.targetConcurrency > 8 ||
       !Number.isInteger(decoded.run.request.targetConcurrency) ||
@@ -490,7 +489,7 @@ const bindingFrom = (
   authorityFingerprint: claim.run.requestFingerprint,
   claimRef: claim.claim.claimRef,
   pylonRef: claim.claim.pylonRef,
-  targetPreference: claim.run.request.workerPolicy.targetPreference as "owner_local" | "auto",
+  targetPreference: claim.run.request.workerPolicy.targetPreference,
   phase,
 })
 
@@ -734,6 +733,17 @@ export async function openPylonFleetRunRemoteIntakeService(
   }
 
   const activate = async (run: FleetRun): Promise<PylonFleetRunRemoteIntakeProjection> => {
+    // The current activation port opens the owner-local standing executor. A
+    // managed-cloud authority may be accepted and replayed durably, but must
+    // fail closed until its separate runner is explicitly composed here.
+    if (run.authorityBinding?.targetPreference === "managed_cloud") {
+      return projection(input.pylonRef, "accepted_activation_blocked", {
+        runRef: run.runRef,
+        retryable: true,
+        blocker:
+          "blocker.pylon.fleet_run_intake.activation_managed_cloud_unconfigured",
+      })
+    }
     try {
       await input.activation.arm(run.runRef)
       const status = await input.activation.status(run.runRef)
