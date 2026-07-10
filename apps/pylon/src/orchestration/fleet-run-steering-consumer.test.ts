@@ -364,7 +364,7 @@ describe("Pylon FleetRun steering consumer", () => {
     }
   })
 
-  test("rejects ambiguous/incomplete targets, skips stale targets, and never chooses latest", async () => {
+  test("rejects ambiguous and missing targets, skips stale targets, and never chooses latest", async () => {
     const root = await mkdtemp(join(tmpdir(), "pylon-fc3-steering-targets-"))
     const env = { PYLON_HOME: join(root, "pylon-home") } as NodeJS.ProcessEnv
     try {
@@ -381,16 +381,6 @@ describe("Pylon FleetRun steering consumer", () => {
         now,
       })
       runtime.store.updateWorkClaimState(replacementClaim, "in_progress", now)
-      const incompleteClaim = "claim.public.fc3.steering.incomplete"
-      runtime.store.tryClaimWorkUnit({
-        claimRef: incompleteClaim,
-        workUnitRef: "fixture:fc3.incomplete",
-        runRef,
-        workerAccountRef: "account.public.fc3.grok",
-        ttl: 60_000,
-        now,
-      })
-
       const intents = [
         fleetIntent({
           intentId: "intent.fc3.ambiguous",
@@ -411,12 +401,6 @@ describe("Pylon FleetRun steering consumer", () => {
           body: "missing",
         }),
         fleetIntent({
-          intentId: "intent.fc3.incomplete",
-          kind: "steer_message",
-          targetRef: incompleteClaim,
-          body: "incomplete",
-        }),
-        fleetIntent({
           intentId: "intent.fc3.approval",
           kind: "approval_decision",
           approvalRef: "assignment.public.fc3.steering.replacement",
@@ -427,7 +411,7 @@ describe("Pylon FleetRun steering consumer", () => {
       const transport: PylonFleetRunSteeringTransport = {
         read: () => Promise.resolve(page(intents.map((intent, index) =>
           delivery((index + 1) * 10, intent)
-        ), 50)),
+        ), 40)),
         postOutcomes: ({ outcomes }) => {
           posted.push([...outcomes])
           return Promise.resolve(ack(outcomes))
@@ -441,11 +425,10 @@ describe("Pylon FleetRun steering consumer", () => {
         claimRef,
         now: () => now,
       })
-      expect(result).toMatchObject({ ok: true, applied: 5, acknowledged: 5 })
+      expect(result).toMatchObject({ ok: true, applied: 4, acknowledged: 4 })
       expect(posted[0]!.map(item => item.outcome)).toEqual([
         "rejected",
         "skipped_stale",
-        "rejected",
         "rejected",
         "rejected",
       ])
@@ -455,6 +438,147 @@ describe("Pylon FleetRun steering consumer", () => {
         runRef,
         claimRef,
       })).toEqual([])
+      await runtime.close()
+    } finally {
+      await rm(root, { force: true, recursive: true })
+    }
+  })
+
+  test("defers an exact initializing target, then queues its replay exactly once after assignment binding", async () => {
+    const root = await mkdtemp(join(tmpdir(), "pylon-fc5-steering-initializing-"))
+    const env = { PYLON_HOME: join(root, "pylon-home") } as NodeJS.ProcessEnv
+    const initializingClaim = "claim.public.fc5.steering.initializing"
+    const initializingUnit = "fixture:fc5.steering.initializing"
+    const initializedAssignment = "assignment.public.fc5.steering.initialized"
+    const privateBody = "PRIVATE initializing steer body"
+    try {
+      const runtime = await seed(env)
+      runtime.store.tryClaimWorkUnit({
+        claimRef: initializingClaim,
+        workUnitRef: initializingUnit,
+        runRef,
+        workerAccountRef: "account.public.fc5.grok",
+        ttl: 60_000,
+        now,
+      })
+      runtime.store.updateWorkClaimState(initializingClaim, "in_progress", now)
+      const steer = fleetIntent({
+        intentId: "intent.fc5.steering.initializing",
+        kind: "steer_message",
+        targetRef: initializingClaim,
+        body: privateBody,
+      })
+      const posted: FleetSteeringOutcome[][] = []
+      const readAfter: number[] = []
+      const transport: PylonFleetRunSteeringTransport = {
+        read: ({ after }) => {
+          readAfter.push(after)
+          return Promise.resolve(
+            after === 0 ? page([delivery(7, steer)], 7) : page([], after),
+          )
+        },
+        postOutcomes: ({ outcomes }) => {
+          posted.push([...outcomes])
+          return Promise.resolve(ack(outcomes))
+        },
+      }
+
+      const deferred = await tickPylonFleetRunSteeringConsumer({
+        store: runtime.store,
+        transport,
+        pylonRef,
+        runRef,
+        claimRef,
+        now: () => now,
+      })
+      expect(deferred).toMatchObject({
+        ok: true,
+        applied: 0,
+        acknowledged: 0,
+        pendingAcknowledgements: 0,
+        watermark: 0,
+        failure: null,
+      })
+      expect(posted).toEqual([])
+      expect(runtime.store.getFleetRunSteeringOutcome({
+        pylonRef,
+        runRef,
+        claimRef,
+        seq: 7,
+        intentId: steer.intentId,
+      })).toBeNull()
+      expect(runtime.store.listFleetRunSteeringQueuedFollowUps({
+        pylonRef,
+        runRef,
+        claimRef,
+      })).toEqual([])
+
+      runtime.store.updateWorkClaimAssignmentRef(
+        initializingClaim,
+        initializedAssignment,
+        new Date(now.getTime() + 1_000),
+      )
+      const queued = await tickPylonFleetRunSteeringConsumer({
+        store: runtime.store,
+        transport,
+        pylonRef,
+        runRef,
+        claimRef,
+        now: () => new Date(now.getTime() + 2_000),
+      })
+      expect(queued).toMatchObject({
+        ok: true,
+        applied: 1,
+        acknowledged: 1,
+        pendingAcknowledgements: 0,
+        watermark: 7,
+        failure: null,
+      })
+      expect(posted).toHaveLength(1)
+      expect(posted[0]).toEqual([
+        expect.objectContaining({
+          seq: 7,
+          intentId: steer.intentId,
+          outcome: "queued_follow_up",
+        }),
+      ])
+      expect(JSON.stringify(posted)).not.toContain(privateBody)
+      expect(runtime.store.listFleetRunSteeringQueuedFollowUps({
+        pylonRef,
+        runRef,
+        claimRef,
+      })).toEqual([
+        expect.objectContaining({
+          seq: 7,
+          intentId: steer.intentId,
+          workUnitRef: initializingUnit,
+          workClaimRef: initializingClaim,
+          assignmentRef: initializedAssignment,
+          body: privateBody,
+        }),
+      ])
+
+      const settled = await tickPylonFleetRunSteeringConsumer({
+        store: runtime.store,
+        transport,
+        pylonRef,
+        runRef,
+        claimRef,
+        now: () => new Date(now.getTime() + 3_000),
+      })
+      expect(settled).toMatchObject({
+        ok: true,
+        applied: 0,
+        acknowledged: 0,
+        watermark: 7,
+      })
+      expect(readAfter).toEqual([0, 0, 7])
+      expect(posted).toHaveLength(1)
+      expect(runtime.store.listFleetRunSteeringQueuedFollowUps({
+        pylonRef,
+        runRef,
+        claimRef,
+      })).toHaveLength(1)
       await runtime.close()
     } finally {
       await rm(root, { force: true, recursive: true })

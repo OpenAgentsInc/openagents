@@ -359,6 +359,7 @@ export const makeSarahFleetBrowserCommands = (input: Readonly<{
       match === undefined ||
       match.workUnit.state !== "running" ||
       match.attempt.state !== "running" ||
+      match.attempt.assignmentRef === null ||
       match.attempt.workUnitRef !== match.workUnit.workUnitRef
     ) {
       throw hostError("invalid_command_target")

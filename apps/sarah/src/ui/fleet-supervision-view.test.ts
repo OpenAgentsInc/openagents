@@ -659,6 +659,49 @@ describe("FC-3 Effect Native fleet supervision view", () => {
       ),
     ).toThrow()
 
+    const initializingProjection = {
+      ...projection,
+      workUnits: projection.workUnits.map((workUnit) =>
+        workUnit.workUnitRef !== "unit.fc3.codex"
+          ? workUnit
+          : {
+              ...workUnit,
+              attempts: workUnit.attempts.map((attempt) =>
+                attempt.attemptRef !== "work_claim.fc3.codex"
+                  ? attempt
+                  : { ...attempt, assignmentRef: null },
+              ),
+            },
+      ),
+    } satisfies typeof projection
+    const initializingSelected = resolveSarahFleetSelectedNode(
+      initializingProjection,
+      "attempt:work_claim.fc3.codex",
+    )
+    if (initializingSelected === null) {
+      throw new Error("expected initializing attempt selection")
+    }
+    const initializingDetail = sarahFleetNodeDrilldownView(
+      initializingProjection,
+      initializingSelected,
+      {
+        interactionMode: SARAH_OWNER_FLEET_INTERACTIVE,
+        steerDraft: privateBody,
+      },
+    )
+    expect(
+      findByKey(
+        initializingDetail,
+        "fleet-drilldown-attempt-work_claim.fc3.codex-steer-input",
+      ),
+    ).toBeNull()
+    expect(
+      findByKey(
+        initializingDetail,
+        "fleet-drilldown-attempt-work_claim.fc3.codex-steer-submit",
+      ),
+    ).toBeNull()
+
     const oldAttempt = resolveSarahFleetSelectedNode(
       projection,
       "attempt:work_claim.fc3.codex.retry1",

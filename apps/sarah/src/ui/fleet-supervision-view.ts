@@ -995,7 +995,8 @@ const attemptSteerControls = (
   if (
     workUnit.latestAttemptRef !== attempt.attemptRef ||
     workUnit.state !== "running" ||
-    attempt.state !== "running"
+    attempt.state !== "running" ||
+    attempt.assignmentRef === null
   ) {
     return []
   }

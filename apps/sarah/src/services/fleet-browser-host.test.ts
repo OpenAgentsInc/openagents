@@ -29,10 +29,14 @@ const commandProjection = (input?: Readonly<{
   attemptRef?: string
   latestAttemptRef?: string
   attemptState?: "running" | "failed"
+  assignmentRef?: string | null
 }>): SarahFleetOwnerProjection => {
   const attemptRef = input?.attemptRef ?? commandAttemptRef
   const latestAttemptRef = input?.latestAttemptRef ?? attemptRef
   const attemptState = input?.attemptState ?? "running"
+  const assignmentRef = input?.assignmentRef === undefined
+    ? commandAssignmentRef
+    : input.assignmentRef
   return {
     run: { runRef: config.runRef },
     workUnits: [
@@ -48,7 +52,7 @@ const commandProjection = (input?: Readonly<{
           {
             attemptRef,
             workUnitRef: commandWorkUnitRef,
-            assignmentRef: null,
+            assignmentRef,
             workerRef: commandWorkerRef,
             state: attemptState,
             progressClass: "blocked",
@@ -66,7 +70,7 @@ const commandProjection = (input?: Readonly<{
         runRef: config.runRef,
         workUnitRef: commandWorkUnitRef,
         attemptRef,
-        assignmentRef: null,
+        assignmentRef,
         workerRef: commandWorkerRef,
         accountRefHash: null,
         requestEventRef: commandEventRef,
@@ -323,7 +327,7 @@ describe("Sarah exact-run browser host", () => {
     const pushes: Array<Record<string, unknown>> = []
     const commands = makeSarahFleetBrowserCommands({
       config,
-      projection: () => commandProjection(),
+      projection: () => commandProjection({ assignmentRef: null }),
       cursor: () => 16,
       randomId: () => "browserapproval",
       client: {
@@ -404,6 +408,39 @@ describe("Sarah exact-run browser host", () => {
       .catch((error: unknown) => error)
     expect(stale).toBeInstanceOf(SarahFleetBrowserHostError)
     expect(pushes).toEqual([])
+  })
+
+  test("rejects an initializing attempt without an exact assignment before push", async () => {
+    let pushes = 0
+    const commands = makeSarahFleetBrowserCommands({
+      config,
+      projection: () => commandProjection({ assignmentRef: null }),
+      cursor: () => 20,
+      randomId: () => "browserinitializingtarget",
+      client: {
+        submitIntent: async (input) => {
+          pushes += 1
+          return {
+            intentId: input.intent.intentId,
+            mutationId: input.mutationId,
+            status: "applied",
+            lastMutationId: input.mutationId,
+          }
+        },
+      },
+    })
+    const failure = await commands
+      .steer({
+        runRef: config.runRef,
+        targetRef: commandAttemptRef,
+        body: "Private steer during initialization",
+      })
+      .catch((error: unknown) => error)
+    expect(failure).toBeInstanceOf(SarahFleetBrowserHostError)
+    expect((failure as SarahFleetBrowserHostError).reason).toBe(
+      "invalid_command_target",
+    )
+    expect(pushes).toBe(0)
   })
 
   test("rechecks projection after a reconnect race before approval push", async () => {

@@ -357,6 +357,15 @@ const resolveExactTarget = (
   return exactTargetFromClaim(matches[0]!, targetRef)
 }
 
+const steerTargetIsInitializing = (
+  store: PylonOrchestrationStore,
+  runRef: string,
+  intent: KhalaFleetIntent,
+): boolean =>
+  intent.kind === "steer_message" &&
+  intent.targetRef !== undefined &&
+  resolveExactTarget(store, runRef, intent.targetRef) === "incomplete"
+
 const targetApplication = (
   target: ReturnType<typeof resolveExactTarget>,
   intent: Extract<KhalaFleetIntent, { kind: "approval_decision" | "steer_message" }>,
@@ -705,6 +714,19 @@ export const tickPylonFleetRunSteeringConsumer = async (
   let applied = 0
   try {
     for (const delivery of ordered) {
+      // A claim becomes visible before its deterministic assignment ref is
+      // bound. Keep that exact, live steer reserved on the server instead of
+      // manufacturing a permanent rejection during this short initialization
+      // window. Not advancing the watermark makes the accepted-claim exchange
+      // replay the same private intent; ordered delivery also fences later
+      // commands until this target binds or terminalizes.
+      if (
+        steerTargetIsInitializing(
+          options.store,
+          options.runRef,
+          delivery.intent,
+        )
+      ) break
       const intentDigest = digestIntent(delivery.intent)
       const result = options.store.applyFleetRunSteeringIntent(
         {
