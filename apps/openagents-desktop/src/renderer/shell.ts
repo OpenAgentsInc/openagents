@@ -525,7 +525,9 @@ const shellSidebar = (state: DesktopShellState): View =>
         Icon({ key: `sidebar-thread-icon-${thread.id}`, name: "Chats", size: "sm", color: "textMuted" }),
         Button({
           key: `sidebar-thread-${thread.id}`,
-          label: state.threadLoadingId === thread.id ? "Opening…" : thread.title,
+          // Selection must never replace the user-recognizable Codex title.
+          // The main panel owns the transient loading state.
+          label: thread.title,
           variant: "ghost",
           onPress: IntentRef("DesktopChatSelected", StaticPayload(thread.id)),
           a11y: { label: `Open chat ${thread.title}` },
