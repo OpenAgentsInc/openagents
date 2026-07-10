@@ -86,6 +86,15 @@ describe("Electron boundary (issue #8574 mandatory first-scaffold hardening)", (
     expect(html).toContain("script-src 'self'")
     expect(html).toContain("connect-src 'none'")
   })
+
+  test("recent-chat sidebar CSS is plain text and never restores card chrome", () => {
+    const css = read("src/renderer/app.css")
+    expect(css).not.toContain('[data-en-key^="sidebar-thread-"],')
+    expect(css).toContain('[data-en-key^="sidebar-thread-"][data-en-tag="Button"]')
+    expect(css).toContain('[data-en-key^="sidebar-thread-time-"][data-en-tag="Text"]')
+    expect(css).toContain("background: transparent !important")
+    expect(css).toContain("border-radius: 0 !important")
+  })
 })
 
 describe("Effect Native renderer boundary (no parallel UI architecture)", () => {

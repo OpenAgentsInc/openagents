@@ -155,7 +155,6 @@ textarea:focus-visible {
   text-transform: uppercase;
 }
 
-[data-en-key^="sidebar-thread-"],
 [data-en-key="sidebar-fleet"] {
   justify-content: flex-start;
   flex: 1;
@@ -169,10 +168,29 @@ textarea:focus-visible {
   font-weight: 520;
 }
 
-[data-en-key^="sidebar-thread-"] {
-  border-color: rgba(152, 189, 255, 0.14) !important;
-  background: rgba(97, 143, 235, 0.13) !important;
+[data-en-key^="sidebar-thread-"][data-en-tag="Button"] {
+  justify-content: flex-start;
+  flex: 1;
+  min-height: 24px;
+  padding: 2px 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
   color: var(--oa-ink) !important;
+  font-size: 13px;
+  font-weight: 520;
+  text-align: left !important;
+}
+
+[data-en-key^="sidebar-thread-time-"][data-en-tag="Text"] {
+  flex: 0 0 auto;
+  padding: 2px 0;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  color: var(--oa-muted) !important;
+  font-size: 11px !important;
+  text-align: right !important;
 }
 
 [data-en-key="sidebar-fleet"]:hover {
