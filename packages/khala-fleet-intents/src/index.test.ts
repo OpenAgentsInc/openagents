@@ -6,6 +6,7 @@ import {
   decodeKhalaFleetIntent,
   decodeKhalaFleetIntentJson,
   defaultFleetAutoPolicy,
+  fleetSteeringOutcomeRefContent,
   type FleetAutoTargetCandidate,
   fleetHarnessKinds,
   fleetWorkerKinds,
@@ -63,6 +64,23 @@ describe("Fleet steering delivery transport", () => {
         duplicateOutcomeCount: 0,
       }),
     ).toMatchObject({ storedOutcomeCount: 1, duplicateOutcomeCount: 0 })
+    expect(
+      fleetSteeringOutcomeRefContent({
+        runRef: intent.runRef,
+        claimRef,
+        pylonRef: "pylon.test.one",
+        ...outcome,
+      }),
+    ).toEqual({
+      schema: "openagents.pylon.fleet_steering_outcome.v1",
+      runRef: intent.runRef,
+      claimRef,
+      pylonRef: "pylon.test.one",
+      seq: 41,
+      intentId: intent.intentId,
+      outcome: "applied",
+      observedAt: "2026-07-09T23:00:01.000Z",
+    })
   })
 
   it("rejects malformed authority refs and private outcome payloads", () => {

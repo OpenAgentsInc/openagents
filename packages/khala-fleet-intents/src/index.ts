@@ -447,6 +447,28 @@ export const FleetSteeringOutcomeValue = S.Literals([
 ])
 export type FleetSteeringOutcomeValue = typeof FleetSteeringOutcomeValue.Type
 
+export const FleetSteeringOutcomeRefSchemaLiteral =
+  "openagents.pylon.fleet_steering_outcome.v1" as const
+
+export const fleetSteeringOutcomeRefContent = (input: Readonly<{
+  runRef: FleetSteeringRunRef
+  claimRef: FleetSteeringClaimRef
+  pylonRef: string
+  seq: FleetSteeringSequence
+  intentId: string
+  outcome: FleetSteeringOutcomeValue
+  observedAt: string
+}>) => ({
+  schema: FleetSteeringOutcomeRefSchemaLiteral,
+  runRef: input.runRef,
+  claimRef: input.claimRef,
+  pylonRef: input.pylonRef,
+  seq: input.seq,
+  intentId: input.intentId,
+  outcome: input.outcome,
+  observedAt: input.observedAt,
+})
+
 export const FleetSteeringOutcome = S.Struct({
   seq: FleetSteeringSequence,
   intentId: FleetSteeringDeliveryIntent.fields.intentId,
