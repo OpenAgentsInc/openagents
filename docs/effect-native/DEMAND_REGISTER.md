@@ -13,7 +13,7 @@ catalog version bump → vendor pin → convert-and-delete.**
 
 See `apps/openagents.com/packages/effect-native-vendor.json`:
 
-- commit / catalog: tracked there (v26 as of 2026-07-09)
+- commit / catalog: tracked there (v29 as of 2026-07-10)
 - Freshness: `bun apps/openagents.com/scripts/check-effect-native-vendor-freshness.ts`
 
 ## Open demand rows
@@ -30,6 +30,7 @@ See `apps/openagents.com/packages/effect-native-vendor.json`:
 | D-MB-01 | greenfield OpenAgents mobile | Mobile relationship/fleet components for the React Native host | effect-native #52/#64 | vendored v25 | #8597 |
 | D-MB-02 | OpenAgents mobile Home — SwiftUI Liquid Glass island | SwiftUI host kind + `render-rn` host-driver seam (or the `render-swiftui` lane, audit 2026-07-09); interim = shell-boundary UIHostingController island whose props project program state and whose tap dispatches the typed `GlassPinged` intent through the program registry (no parallel primitives) | effect-native#70 | vendored v26 has no SwiftUI kind | #8597 |
 | D-DESK-01 | greenfield OpenAgents Desktop | Electron main/preload/renderer platform host plus desktop chrome and specialist typed hosts (EN-5) | effect-native#69; earlier Electrobun #20/#21 are historical | vendored v26 lacks the Electron host; interim typed app-local host boot shipped in `apps/openagents-desktop` (#8574 exit 1) — converts to the upstream host when it lands | #8574 |
+| D-DESK-02 | OpenAgents Desktop shell transcript + composer | Chat message chrome (typed senderLabel/timestamp meta row, role-treated rows) + composer submit lifecycle (`clearOnSubmit`, `disabled`/`submitting`) + DOM focused controlled-value sync + DOM Button variant theming | shipped upstream v29 (effect-native#72, commits 5e6d8d2 + e0c57cb) | vendored e0c57cb (v29); `apps/openagents-desktop` shell converted to the real chrome | #8574 |
 
 ## Process checklist (per wave)
 

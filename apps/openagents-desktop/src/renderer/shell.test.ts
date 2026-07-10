@@ -10,12 +10,14 @@ import { Effect, SubscriptionRef } from "@effect-native/core/effect"
 import {
   desktopShellIntents,
   desktopShellView,
+  formatShellTimestamp,
   initialDesktopShellState,
   makeDesktopShellHandlers,
   noteMessage,
   withInput,
   withLoopProof,
   withNote,
+  withPending,
   type DesktopShellState,
 } from "./shell.ts"
 import { openagentsDesktopTheme } from "./theme.ts"
@@ -47,7 +49,8 @@ const collectNodes = (root: unknown): Array<AnyNode> => {
 const nodeByKey = (view: View, key: string): AnyNode | undefined =>
   collectNodes(view).find((node) => node.key === key)
 
-const baseState: DesktopShellState = initialDesktopShellState("electron/darwin")
+const baseState: DesktopShellState = initialDesktopShellState("electron/darwin", "18:04")
+const fixedNow = () => "18:05"
 
 describe("desktopShellView (state -> component tree)", () => {
   test("renders the honest shell: title, status badges, transcript, composer", () => {
@@ -105,36 +108,72 @@ describe("desktopShellView (state -> component tree)", () => {
     expect(input.onSubmit?.name).toBe("DesktopNoteSubmitted")
   })
 
-  test("transcript message shape matches the Sarah surface composition (shared catalog, keyed role-tagged Card body)", () => {
-    const message = noteMessage({ key: "boot-0", role: "system", text: "hello" })
-    expect(message.key).toBe("boot-0")
-    expect(message.role).toBe("system")
-    expect(message.body.length).toBe(1)
-    const card = message.body[0] as unknown as AnyNode
-    expect(card._tag).toBe("Card")
-    expect(card.key).toBe("boot-0-card")
-    const texts = collectNodes(card).filter((node) => node._tag === "Text")
-    expect(texts.map((node) => node.key)).toEqual(["boot-0-role", "boot-0-text"])
+  test("messages ride the v29 chat chrome contract: typed senderLabel/timestamp, body is only the text", () => {
+    const system = noteMessage({ key: "boot-0", role: "system", text: "hello", timestamp: "18:04" })
+    expect(system.key).toBe("boot-0")
+    expect(system.role).toBe("system")
+    expect(system.senderLabel).toBe("SHELL")
+    expect(system.timestamp).toBe("18:04")
+    expect(system.body.length).toBe(1)
+    const systemText = system.body[0] as unknown as AnyNode
+    expect(systemText._tag).toBe("Text")
+    expect(systemText.color).toBe("textMuted")
+    // sender identity is typed message data, never concatenated into the body
+    expect(systemText.content).toBe("hello")
+
+    const user = noteMessage({ key: "note-2", role: "user", text: "rofl", timestamp: "18:05" })
+    expect(user.senderLabel).toBe("YOU")
+    expect((user.body[0] as unknown as AnyNode).color).toBe("textPrimary")
+    expect((user.body[0] as unknown as AnyNode).content).toBe("rofl")
+  })
+
+  test("composer rides the v29 submit lifecycle contract: clearOnSubmit + pending disables", () => {
+    const idle = nodeByKey(desktopShellView(baseState), "shell-input")
+    expect(idle?.clearOnSubmit).toBe(true)
+    expect(idle?.disabled).toBe(false)
+
+    const pendingView = desktopShellView(withPending(baseState, true))
+    expect(nodeByKey(pendingView, "shell-input")?.disabled).toBe(true)
+    expect(nodeByKey(pendingView, "shell-note")?.disabled).toBe(true)
   })
 })
 
 describe("pure transitions", () => {
-  test("withNote trims, clears the composer, and appends a user note", () => {
-    const next = withNote(withInput(baseState, "  hello desktop  "), "  hello desktop  ")
+  test("withNote trims, clears the composer value binding, and appends a user note", () => {
+    const next = withNote(withInput(baseState, "  hello desktop  "), "  hello desktop  ", "18:05")
     expect(next.input).toBe("")
+    expect(next.pending).toBe(false)
     expect(next.notes.length).toBe(3)
-    expect(next.notes[2]).toEqual({ key: "note-2", role: "user", text: "hello desktop" })
+    expect(next.notes[2]).toEqual({
+      key: "note-2",
+      role: "user",
+      text: "hello desktop",
+      timestamp: "18:05",
+    })
   })
 
   test("withNote ignores empty input", () => {
-    expect(withNote(baseState, "   ")).toBe(baseState)
+    expect(withNote(baseState, "   ", "18:05")).toBe(baseState)
+  })
+
+  test("withPending toggles the composer-disabling flag without touching notes", () => {
+    const pending = withPending(baseState, true)
+    expect(pending.pending).toBe(true)
+    expect(pending.notes).toBe(baseState.notes)
+    expect(withPending(pending, false).pending).toBe(false)
   })
 
   test("withLoopProof increments and appends a system note", () => {
-    const next = withLoopProof(baseState)
+    const next = withLoopProof(baseState, "18:05")
     expect(next.loopProofs).toBe(1)
     expect(next.notes.length).toBe(3)
     expect(next.notes[2]?.role).toBe("system")
+    expect(next.notes[2]?.timestamp).toBe("18:05")
+  })
+
+  test("formatShellTimestamp is a zero-padded display string", () => {
+    expect(formatShellTimestamp(new Date(2026, 6, 10, 9, 5))).toBe("09:05")
+    expect(formatShellTimestamp(new Date(2026, 6, 10, 18, 45))).toBe("18:45")
   })
 })
 
@@ -145,7 +184,7 @@ describe("typed intent loop end-to-end (registry -> state -> re-render)", () => 
         const state = yield* SubscriptionRef.make(baseState)
         const registry = yield* makeIntentRegistry(
           desktopShellIntents,
-          makeDesktopShellHandlers(state),
+          makeDesktopShellHandlers(state, fixedNow),
         )
         // Dispatch through the SAME IntentRef the rendered button carries.
         const view = desktopShellView(yield* SubscriptionRef.get(state))
@@ -170,7 +209,7 @@ describe("typed intent loop end-to-end (registry -> state -> re-render)", () => 
         const state = yield* SubscriptionRef.make(baseState)
         const registry = yield* makeIntentRegistry(
           desktopShellIntents,
-          makeDesktopShellHandlers(state),
+          makeDesktopShellHandlers(state, fixedNow),
         )
         const view = desktopShellView(baseState)
         const input = nodeByKey(view, "shell-input") as {
@@ -185,7 +224,72 @@ describe("typed intent loop end-to-end (registry -> state -> re-render)", () => 
 
         const next = yield* SubscriptionRef.get(state)
         expect(next.input).toBe("")
-        expect(next.notes[2]).toEqual({ key: "note-2", role: "user", text: "ship the shell" })
+        expect(next.notes[2]).toEqual({
+          key: "note-2",
+          role: "user",
+          text: "ship the shell",
+          timestamp: "18:05",
+        })
+      }),
+    )
+  })
+
+  test("submit resets the composer value binding and the composer stays usable (clear-on-submit contract)", async () => {
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const state = yield* SubscriptionRef.make(baseState)
+        const registry = yield* makeIntentRegistry(
+          desktopShellIntents,
+          makeDesktopShellHandlers(state, fixedNow),
+        )
+        const view = desktopShellView(baseState)
+        const input = nodeByKey(view, "shell-input") as {
+          onChange: Parameters<typeof resolveIntentRef>[0]
+          onSubmit: Parameters<typeof resolveIntentRef>[0]
+        }
+
+        // Type then submit through the field's own intent (Enter path): the
+        // submit intent must reset the composer value binding to "".
+        yield* registry.dispatch(resolveIntentRef(input.onChange, "first message"))
+        expect((yield* SubscriptionRef.get(state)).input).toBe("first message")
+        yield* registry.dispatch(resolveIntentRef(input.onSubmit, "first message"))
+
+        const afterFirst = yield* SubscriptionRef.get(state)
+        expect(afterFirst.input).toBe("")
+        // the re-rendered TextField carries the emptied value + clearOnSubmit,
+        // so the DOM renderer empties the focused input too (effect-native#72)
+        const rerendered = nodeByKey(desktopShellView(afterFirst), "shell-input")
+        expect(rerendered?.value).toBe("")
+        expect(rerendered?.clearOnSubmit).toBe(true)
+        expect(rerendered?.disabled).toBe(false)
+
+        // the composer stays usable: a second round trip works end to end
+        yield* registry.dispatch(resolveIntentRef(input.onChange, "second message"))
+        yield* registry.dispatch(resolveIntentRef(input.onSubmit, "second message"))
+        const afterSecond = yield* SubscriptionRef.get(state)
+        expect(afterSecond.input).toBe("")
+        expect(afterSecond.notes.at(-1)?.text).toBe("second message")
+        expect(afterSecond.notes.length).toBe(4)
+      }),
+    )
+  })
+
+  test("submit while pending is refused (disabled-while-pending contract)", async () => {
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const state = yield* SubscriptionRef.make(withPending(withInput(baseState, "held"), true))
+        const registry = yield* makeIntentRegistry(
+          desktopShellIntents,
+          makeDesktopShellHandlers(state, fixedNow),
+        )
+        const view = desktopShellView(yield* SubscriptionRef.get(state))
+        const input = nodeByKey(view, "shell-input") as {
+          onSubmit: Parameters<typeof resolveIntentRef>[0]
+        }
+        yield* registry.dispatch(resolveIntentRef(input.onSubmit, "held"))
+        const next = yield* SubscriptionRef.get(state)
+        expect(next.notes.length).toBe(2)
+        expect(next.input).toBe("held")
       }),
     )
   })

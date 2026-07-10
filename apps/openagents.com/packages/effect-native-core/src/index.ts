@@ -88,8 +88,9 @@ export const MobileGesturesCatalogVersion = "effect-native/v25" as const
 export const MediaVideoCatalogVersion = "effect-native/v26" as const
 export const GlassCatalogVersion = "effect-native/v27" as const
 export const MarkdownLinkHrefCatalogVersion = "effect-native/v28" as const
-export const PreviousCatalogVersion = GlassCatalogVersion
-export const CatalogVersion = MarkdownLinkHrefCatalogVersion
+export const ChatChromeCatalogVersion = "effect-native/v29" as const
+export const PreviousCatalogVersion = MarkdownLinkHrefCatalogVersion
+export const CatalogVersion = ChatChromeCatalogVersion
 export const CatalogVersionSchema = Schema.Literal(CatalogVersion)
 export type CatalogVersion = typeof CatalogVersion
 export const compatibleCatalogVersions = [
@@ -121,7 +122,8 @@ export const compatibleCatalogVersions = [
   MobileGesturesCatalogVersion,
   MediaVideoCatalogVersion,
   GlassCatalogVersion,
-  MarkdownLinkHrefCatalogVersion
+  MarkdownLinkHrefCatalogVersion,
+  ChatChromeCatalogVersion
 ] as const
 export type CompatibleCatalogVersion = (typeof compatibleCatalogVersions)[number]
 export const CompatibleCatalogVersionSchema = Schema.Literals(compatibleCatalogVersions)
@@ -1838,6 +1840,14 @@ export interface BaseTextFieldView extends NodeBase {
   readonly label?: string
   readonly field?: FieldBinding
   readonly focused?: boolean
+  /** Disabled fields accept no input and dispatch no change/submit intents (v29, #72). */
+  readonly disabled?: boolean
+  /**
+   * Contract-level submit lifecycle (v29, #72): after dispatching `onSubmit`,
+   * the renderer clears the field locally so the input is empty and
+   * immediately usable — the app's controlled reset to "" agrees with it.
+   */
+  readonly clearOnSubmit?: boolean
   readonly onChange?: IntentRef
   readonly onSubmit?: IntentRef
   readonly style?: TextFieldStyle
@@ -2275,6 +2285,16 @@ export interface ComposerView extends NodeBase {
   readonly placeholder?: string
   readonly attachments?: ReadonlyArray<ComposerAttachment>
   readonly autocomplete?: ComposerAutocomplete
+  /** Disabled composers accept no input and dispatch no intents (v29, #72). */
+  readonly disabled?: boolean
+  /**
+   * A submitting composer keeps typing live for follow-up drafting (the Khala
+   * pending-turn pattern) but suppresses `onSubmit` dispatch and marks the
+   * surface busy (v29, #72).
+   */
+  readonly submitting?: boolean
+  /** After dispatching `onSubmit`, the renderer clears the editor locally (v29, #72). */
+  readonly clearOnSubmit?: boolean
   // Fires with the normalized plaintext value of the document.
   readonly onChange?: IntentRef
   readonly onSubmit?: IntentRef
@@ -2477,6 +2497,14 @@ export interface TranscriptMessage {
   readonly key: NodeKey
   readonly role: TranscriptRole
   readonly status?: TranscriptStatus
+  /**
+   * Display label for the sender ("YOU", "SHELL", an agent name). Renderers
+   * draw it in a meta row separated from the body (v29, issue #72) — sender
+   * identity is typed data, never text concatenated into the body.
+   */
+  readonly senderLabel?: string
+  /** Preformatted display timestamp — the catalog ships no date formatting. */
+  readonly timestamp?: string
   readonly body: ReadonlyArray<View>
 }
 
@@ -3214,6 +3242,8 @@ const BaseTextFieldFields = {
   label: Schema.String.pipe(Schema.optionalKey),
   field: FieldBindingSchema.pipe(Schema.optionalKey),
   focused: Schema.Boolean.pipe(Schema.optionalKey),
+  disabled: Schema.Boolean.pipe(Schema.optionalKey),
+  clearOnSubmit: Schema.Boolean.pipe(Schema.optionalKey),
   onChange: IntentRefSchema.pipe(Schema.optionalKey),
   onSubmit: IntentRefSchema.pipe(Schema.optionalKey),
   style: TextFieldStyleSchema.pipe(Schema.optionalKey)
@@ -3623,6 +3653,9 @@ export const ComposerSchema: Schema.Codec<ComposerView, ComposerView> = Schema.T
   placeholder: Schema.String.pipe(Schema.optionalKey),
   attachments: Schema.Array(ComposerAttachmentSchema).pipe(Schema.optionalKey),
   autocomplete: ComposerAutocompleteSchema.pipe(Schema.optionalKey),
+  disabled: Schema.Boolean.pipe(Schema.optionalKey),
+  submitting: Schema.Boolean.pipe(Schema.optionalKey),
+  clearOnSubmit: Schema.Boolean.pipe(Schema.optionalKey),
   onChange: IntentRefSchema.pipe(Schema.optionalKey),
   onSubmit: IntentRefSchema.pipe(Schema.optionalKey),
   onKeyCommand: IntentRefSchema.pipe(Schema.optionalKey),
@@ -3888,6 +3921,8 @@ export const TranscriptMessageSchema: Schema.Codec<TranscriptMessage, Transcript
   key: NodeKeySchema,
   role: Schema.Literals(transcriptRoles),
   status: Schema.Literals(transcriptStatuses).pipe(Schema.optionalKey),
+  senderLabel: Schema.String.pipe(Schema.optionalKey),
+  timestamp: Schema.String.pipe(Schema.optionalKey),
   body: Schema.Array(ViewSelf)
 })
 

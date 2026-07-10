@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { Window } from "happy-dom"
+import { CatalogVersion } from "@effect-native/core"
 import { viewStructure } from "@effect-native/render-dom"
 import { Effect, Exit, Scope } from "@effect-native/core/effect"
 import { KhalaFleetIntent } from "@openagentsinc/khala-fleet-intents"
@@ -73,7 +74,8 @@ describe("EN cockpit view (MH-7 / EN-5)", () => {
     const serialized = JSON.stringify(tree)
 
     expect(structure).toMatchObject({ tag: "Stack", key: "cockpit-root" })
-    expect(serialized).toContain('"catalogVersion":"effect-native/v26"')
+    // Pin to the live vendored catalog marker so vendor bumps don't rot this.
+    expect(serialized).toContain(`"catalogVersion":"${CatalogVersion}"`)
     expect(serialized).toContain("Fleet cockpit")
     expect(serialized).toContain("CockpitRunControl")
     expect(serialized).toContain("CockpitApprovalDecision")

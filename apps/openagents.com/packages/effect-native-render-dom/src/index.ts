@@ -43,6 +43,7 @@ import {
   type ComboboxView,
   type CommandPaletteView,
   type ComposerView,
+  composerPlainText,
   type CodeEditorHostProps,
   decodeCodeEditorHostProps,
   type TerminalHostProps,
@@ -1032,6 +1033,30 @@ const renderButton = (view: ButtonView, state: DomRendererState, report: IntentR
   element.textContent = view.label
   element.disabled = view.disabled === true
   element.setAttribute("data-en-variant", view.variant)
+  // Variant theme lowering (parity with the render-rn fix for the #71-class
+  // bug): themed surface + label color instead of the native default button.
+  // Applied before applyBaseStyle so typed style overrides still win.
+  element.style.font = "inherit"
+  element.style.borderRadius = "var(--en-radius-md)"
+  element.style.padding = "var(--en-spacing-2) var(--en-spacing-4)"
+  element.style.border = "1px solid transparent"
+  element.style.cursor = view.disabled === true ? "default" : "pointer"
+  element.style.opacity = view.disabled === true ? "0.5" : "1"
+  switch (view.variant) {
+    case "primary":
+      element.style.background = colorValue("accent")
+      element.style.color = colorValue("textPrimary")
+      break
+    case "secondary":
+      element.style.background = colorValue("surface")
+      element.style.color = colorValue("textPrimary")
+      element.style.borderColor = colorValue("border")
+      break
+    case "ghost":
+      element.style.background = "transparent"
+      element.style.color = colorValue("accent")
+      break
+  }
   state.addListener(element, "click", () => runReportedIntent(report, view.onPress))
   applyBaseStyle(element, view, state)
   applyA11y(element, view)
@@ -1280,8 +1305,20 @@ const renderTextField = (view: TextFieldView, state: DomRendererState, report: I
   if (field.localName === "input") {
     field.setAttribute("type", view.secure === true ? "password" : "text")
   }
-  if (!fieldWasActive) {
+  // Controlled-value sync (v29, #72): a focused field still applies app-driven
+  // value changes (e.g. a submit reset to "") — only in-progress typing whose
+  // echo matches the last app-pushed value is left alone.
+  const lastPushedValue = field.getAttribute("data-en-last-value")
+  if (!fieldWasActive || (lastPushedValue !== view.value && field.value !== view.value)) {
     field.value = view.value
+  }
+  field.setAttribute("data-en-last-value", view.value)
+  if (view.disabled === true) {
+    field.setAttribute("disabled", "")
+    field.setAttribute("aria-disabled", "true")
+  } else {
+    field.removeAttribute("disabled")
+    field.removeAttribute("aria-disabled")
   }
   field.style.boxSizing = "border-box"
   field.style.width = "100%"
@@ -1298,7 +1335,10 @@ const renderTextField = (view: TextFieldView, state: DomRendererState, report: I
     ? view.onChange
     : IntentRef("FormFieldChanged", FormFieldValueBinding(view.field))
   if (onChange !== undefined) {
-    state.addListener(field, "input", () => runReportedIntent(report, onChange, fieldValue(field)))
+    state.addListener(field, "input", () => {
+      if (view.disabled === true) return
+      runReportedIntent(report, onChange, fieldValue(field))
+    })
   }
   if (view.field !== undefined) {
     state.addListener(field, "blur", () =>
@@ -1308,7 +1348,14 @@ const renderTextField = (view: TextFieldView, state: DomRendererState, report: I
   if (view.onSubmit !== undefined) {
     state.addListener(field, "keydown", (event) => {
       if ((event as KeyboardEvent).key === "Enter") {
+        if (view.disabled === true) return
         runReportedIntent(report, view.onSubmit!, fieldValue(field))
+        // Contract-level clear-on-submit (v29, #72): the renderer empties the
+        // field immediately; the app's controlled reset to "" agrees with it.
+        if (view.clearOnSubmit === true) {
+          field.value = ""
+          field.setAttribute("data-en-last-value", "")
+        }
       }
     })
   }
@@ -2682,14 +2729,33 @@ const renderComposer = (view: ComposerView, state: DomRendererState, report: Int
   const editor = existingEditor ?? document.createElement("div")
   state.resetListeners(editor)
   editor.setAttribute("data-en-role", "control")
-  editor.setAttribute("contenteditable", "true")
+  editor.setAttribute("contenteditable", view.disabled === true ? "false" : "true")
   editor.setAttribute("role", "textbox")
   editor.setAttribute("aria-multiline", "true")
   if (view.placeholder !== undefined) editor.setAttribute("aria-placeholder", view.placeholder)
+  if (view.disabled === true) {
+    editor.setAttribute("aria-disabled", "true")
+  } else {
+    editor.removeAttribute("aria-disabled")
+  }
+  // Submitting keeps typing live for follow-up drafting but marks the surface
+  // busy and suppresses onSubmit dispatch (v29, #72).
+  if (view.submitting === true) {
+    element.setAttribute("data-en-submitting", "true")
+    editor.setAttribute("aria-busy", "true")
+  } else {
+    element.removeAttribute("data-en-submitting")
+    editor.removeAttribute("aria-busy")
+  }
 
   // Render the typed document: text runs as text, mentions as atomic,
   // non-editable chips (contenteditable=false), so the caret can't split them.
-  if (!editorWasActive) {
+  // Controlled-doc sync (v29, #72): a focused editor still applies app-driven
+  // doc changes (e.g. a submit reset to []) — only in-progress typing whose
+  // echo matches the last app-pushed document is left alone.
+  const docText = composerPlainText(view.doc)
+  const lastPushedDoc = editor.getAttribute("data-en-last-doc")
+  if (!editorWasActive || (lastPushedDoc !== docText && (editor.textContent ?? "") !== docText)) {
     editor.replaceChildren(
       ...view.doc.map((node) => {
         if (node.kind === "text") {
@@ -2703,8 +2769,10 @@ const renderComposer = (view: ComposerView, state: DomRendererState, report: Int
       })
     )
   }
+  editor.setAttribute("data-en-last-doc", docText)
 
   const emitChange = () => {
+    if (view.disabled === true) return
     if (view.onChange !== undefined) runReportedIntent(report, view.onChange, editor.textContent ?? "")
   }
   state.addListener(editor, "input", emitChange)
@@ -2730,6 +2798,7 @@ const renderComposer = (view: ComposerView, state: DomRendererState, report: Int
     if (view.onKeyCommand !== undefined) runReportedIntent(report, view.onKeyCommand, command)
   }
   state.addListener(editor, "keydown", (event) => {
+    if (view.disabled === true) return
     const key = (event as KeyboardEvent).key
     const composing = (event as KeyboardEvent).isComposing || editor.getAttribute("data-en-composing") === "true"
     if (key === "Enter") {
@@ -2740,8 +2809,16 @@ const renderComposer = (view: ComposerView, state: DomRendererState, report: Int
         return
       }
       event.preventDefault()
+      // The typed "submit" key command still fires while submitting so apps
+      // can queue follow-up drafts (the Khala pending-turn pattern); only the
+      // onSubmit dispatch is suppressed (v29, #72).
       keyCommand("submit")
+      if (view.submitting === true) return
       if (view.onSubmit !== undefined) runReportedIntent(report, view.onSubmit, editor.textContent ?? "")
+      if (view.clearOnSubmit === true) {
+        editor.replaceChildren()
+        editor.setAttribute("data-en-last-doc", "")
+      }
     } else if (key === "ArrowUp") {
       keyCommand("history-previous")
     } else if (key === "ArrowDown") {
@@ -3307,18 +3384,70 @@ const renderTranscript = (view: TranscriptView, state: DomRendererState, report:
     const messageEl = document.createElement("div")
     messageEl.setAttribute("data-en-message", message.key)
     messageEl.setAttribute("data-en-role", message.role)
-    if (message.status !== undefined) {
-      messageEl.setAttribute("data-en-status", message.status)
-      const indicator = document.createElement("span")
-      indicator.setAttribute("data-en-role", "status")
-      indicator.setAttribute("aria-label", message.status)
-      if (message.status === "streaming" || message.status === "thinking") {
-        indicator.setAttribute("aria-busy", "true")
+    // Role-differentiated row treatment (v29, #72), after the Khala Code
+    // design source: user rows are end-aligned bounded bubbles; assistant
+    // rows are start-aligned plain prose; system/tool rows are muted.
+    messageEl.style.display = "flex"
+    messageEl.style.flexDirection = "column"
+    messageEl.style.gap = "var(--en-spacing-1)"
+    if (message.role === "user") {
+      messageEl.style.alignSelf = "flex-end"
+      messageEl.style.alignItems = "flex-end"
+      messageEl.style.maxWidth = "min(82%, 34rem)"
+    } else if (message.role === "tool") {
+      messageEl.style.alignSelf = "flex-start"
+      messageEl.style.maxWidth = "40rem"
+    } else {
+      messageEl.style.alignSelf = "flex-start"
+      messageEl.style.maxWidth = "min(100%, 44rem)"
+    }
+    if (message.senderLabel !== undefined || message.timestamp !== undefined || message.status !== undefined) {
+      const meta = document.createElement("div")
+      meta.setAttribute("data-en-role", "meta")
+      meta.style.display = "flex"
+      meta.style.alignItems = "baseline"
+      meta.style.gap = "var(--en-spacing-2)"
+      if (message.senderLabel !== undefined) {
+        const sender = document.createElement("span")
+        sender.setAttribute("data-en-role", "sender")
+        sender.textContent = message.senderLabel
+        sender.style.fontSize = "11px"
+        sender.style.fontWeight = "600"
+        sender.style.letterSpacing = "0.08em"
+        sender.style.textTransform = "uppercase"
+        sender.style.color = message.role === "user" ? colorValue("accent") : colorValue("textMuted")
+        meta.appendChild(sender)
       }
-      messageEl.appendChild(indicator)
+      if (message.timestamp !== undefined) {
+        const time = document.createElement("span")
+        time.setAttribute("data-en-role", "timestamp")
+        time.textContent = message.timestamp
+        time.style.fontSize = "11px"
+        time.style.color = colorValue("textMuted")
+        meta.appendChild(time)
+      }
+      if (message.status !== undefined) {
+        messageEl.setAttribute("data-en-status", message.status)
+        const indicator = document.createElement("span")
+        indicator.setAttribute("data-en-role", "status")
+        indicator.setAttribute("aria-label", message.status)
+        if (message.status === "streaming" || message.status === "thinking") {
+          indicator.setAttribute("aria-busy", "true")
+        }
+        meta.appendChild(indicator)
+      }
+      messageEl.appendChild(meta)
     }
     const body = document.createElement("div")
     body.setAttribute("data-en-role", "body")
+    if (message.role === "user") {
+      body.style.background = colorValue("surfaceRaised")
+      body.style.border = `1px solid ${colorValue("border")}`
+      body.style.borderRadius = "8px"
+      body.style.padding = "var(--en-spacing-2) var(--en-spacing-3)"
+    } else if (message.role === "system" || message.role === "tool") {
+      body.style.color = colorValue("textMuted")
+    }
     body.append(...message.body.map((child) => renderView(child, state, report)))
     messageEl.appendChild(body)
     return messageEl

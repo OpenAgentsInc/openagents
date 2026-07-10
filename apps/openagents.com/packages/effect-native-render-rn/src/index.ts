@@ -883,7 +883,11 @@ const renderTextField = (
       accessibilityLabel: view.label,
       autoFocus: view.focused === true,
       multiline: view.multiline === true,
+      // v29 (#72): disabled fields accept no input; clear-on-submit rides the
+      // controlled `value` prop — RN TextInput always honors app resets.
+      editable: view.disabled !== true,
       onChangeText: (value: string) => {
+        if (view.disabled === true) return
         if (onChange !== undefined) {
           runReportedIntent(report, onChange, value)
         }
@@ -894,6 +898,7 @@ const renderTextField = (
         }
       },
       onSubmitEditing: (event: { readonly nativeEvent?: { readonly text?: string } }) => {
+        if (view.disabled === true) return
         if (view.onSubmit !== undefined) {
           runReportedIntent(report, view.onSubmit, event.nativeEvent?.text ?? view.value)
         }
@@ -2076,9 +2081,21 @@ const renderComposer = (
     multiline: true,
     placeholder: view.placeholder,
     value: composerPlainText(view.doc),
-    ...(view.onChange === undefined ? {} : { onChangeText: (value: string) => runReportedIntent(report, view.onChange!, value) }),
+    // v29 (#72): disabled composers accept no input; submitting keeps typing
+    // live but suppresses onSubmit dispatch (follow-up drafting); clear-on-
+    // submit rides the controlled value — RN always honors app resets.
+    editable: view.disabled !== true,
+    ...(view.submitting === true ? { accessibilityState: { busy: true } } : {}),
+    ...(view.onChange === undefined ? {} : {
+      onChangeText: (value: string) => {
+        if (view.disabled === true) return
+        runReportedIntent(report, view.onChange!, value)
+      }
+    }),
     onSubmitEditing: (event: { readonly nativeEvent?: { readonly text?: string } }) => {
+      if (view.disabled === true) return
       if (view.onKeyCommand !== undefined) runReportedIntent(report, view.onKeyCommand, "submit")
+      if (view.submitting === true) return
       if (view.onSubmit !== undefined) runReportedIntent(report, view.onSubmit, event.nativeEvent?.text ?? composerPlainText(view.doc))
     }
   })
@@ -2665,17 +2682,88 @@ const renderTranscript = (
           readonly key: string
           readonly role: string
           readonly status?: string
+          readonly senderLabel?: string
+          readonly timestamp?: string
           readonly body: ReadonlyArray<View>
         }
-      }) =>
-        createElement(
+      }) => {
+        // Role-differentiated chrome (v29, #72): meta row (sender/timestamp)
+        // separated from the body; user rows end-aligned bounded bubbles.
+        const children: Array<ReactElementLike> = []
+        if (message.senderLabel !== undefined || message.timestamp !== undefined) {
+          const metaChildren: Array<ReactElementLike> = []
+          if (message.senderLabel !== undefined) {
+            metaChildren.push(
+              createElement(dependencies, dependencies.ReactNative.Text, {
+                key: "sender",
+                testID: `en-message-sender:${message.key}`,
+                style: {
+                  fontSize: 11,
+                  fontWeight: "600",
+                  letterSpacing: 0.8,
+                  textTransform: "uppercase",
+                  color: message.role === "user" ? colorValue(theme, "accent") : colorValue(theme, "textMuted")
+                }
+              }, message.senderLabel)
+            )
+          }
+          if (message.timestamp !== undefined) {
+            metaChildren.push(
+              createElement(dependencies, dependencies.ReactNative.Text, {
+                key: "timestamp",
+                testID: `en-message-timestamp:${message.key}`,
+                style: { fontSize: 11, color: colorValue(theme, "textMuted") }
+              }, message.timestamp)
+            )
+          }
+          children.push(
+            createElement(
+              dependencies,
+              dependencies.ReactNative.View,
+              {
+                key: "meta",
+                testID: `en-message-meta:${message.key}`,
+                style: { flexDirection: "row", alignItems: "baseline", gap: spacingValue(theme, "2") }
+              },
+              ...metaChildren
+            )
+          )
+        }
+        children.push(
+          createElement(
+            dependencies,
+            dependencies.ReactNative.View,
+            {
+              key: "body",
+              testID: `en-message-body:${message.key}`,
+              style: message.role === "user"
+                ? {
+                    backgroundColor: colorValue(theme, "surfaceRaised"),
+                    borderColor: colorValue(theme, "border"),
+                    borderWidth: 1,
+                    borderRadius: 8,
+                    paddingVertical: spacingValue(theme, "2"),
+                    paddingHorizontal: spacingValue(theme, "3")
+                  }
+                : {}
+            },
+            ...message.body.map((child) =>
+              renderResolvedReactNativeView(child, dependencies, report, options)
+            )
+          )
+        )
+        return createElement(
           dependencies,
           dependencies.ReactNative.View,
           {
             key: `message-${message.key}`,
             testID: `en-message:${message.key}`,
             nativeID: `effect-native-message:${message.role}`,
-            style: { gap: spacingValue(theme, "1") },
+            style: {
+              gap: spacingValue(theme, "1"),
+              alignSelf: message.role === "user" ? "flex-end" : "flex-start",
+              maxWidth: "82%"
+            },
             ...(message.status === undefined
               ? {}
               : {
@@ -2684,10 +2772,9 @@ const renderTranscript = (
                   }
                 })
           },
-          ...message.body.map((child) =>
-            renderResolvedReactNativeView(child, dependencies, report, options)
-          )
+          ...children
         )
+      }
     }
   )
 }

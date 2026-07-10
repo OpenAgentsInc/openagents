@@ -73,62 +73,131 @@ const createWindow = (): BrowserWindow => {
 
 /**
  * Smoke mode (`bun run smoke`): proves the Effect Native intent loop runs
- * inside the real Electron renderer — finds the catalog-rendered "Ping loop"
- * button, clicks it, and asserts the loop-proof badge and transcript
- * re-rendered. Exits 0/1 for CI/owner verification.
+ * inside the real Electron renderer — types into the catalog-rendered
+ * composer, submits, and asserts the message row appended AND the composer
+ * cleared (the v29 clear-on-submit contract, effect-native#72); then clicks
+ * "Ping loop" and asserts the loop-proof badge re-rendered. When
+ * `OPENAGENTS_DESKTOP_SMOKE_SHOTS` names a directory, it captures pixel
+ * receipts (shell / composer-typed / composer-cleared). Exits 0/1.
  */
-const smokeScript = `(async () => {
+const smokeShotsDir = process.env.OPENAGENTS_DESKTOP_SMOKE_SHOTS
+
+const smokeWaitForShell = `(async () => {
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
-  const find = (selector) => document.querySelector(selector)
   const deadline = Date.now() + 15000
-  while (Date.now() < deadline && find('[data-en-key="shell-ping"]') === null) {
+  while (Date.now() < deadline && document.querySelector('[data-en-key="shell-ping"]') === null) {
     await wait(100)
   }
-  const button = find('[data-en-key="shell-ping"]')
+  return document.querySelector('[data-en-key="shell-ping"]') !== null
+})()`
+
+const smokeTypeIntoComposer = `(() => {
+  const input = document.querySelector('[data-en-key="shell-input"] input')
+  if (input === null) return { ok: false, reason: "composer input never mounted" }
+  input.focus()
+  input.value = "Pixel-proof: real chat rows on the shared catalog"
+  input.dispatchEvent(new Event("input", { bubbles: true }))
+  return { ok: true, typed: input.value }
+})()`
+
+const smokeSubmitComposer = `(async () => {
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+  const input = document.querySelector('[data-en-key="shell-input"] input')
+  if (input === null) return { ok: false, reason: "composer input never mounted" }
+  const messageCount = () =>
+    document.querySelectorAll('[data-en-key="shell-transcript"] [data-en-message]').length
+  const messagesBefore = messageCount()
+  input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }))
+  const deadline = Date.now() + 5000
+  while (Date.now() < deadline && (messageCount() === messagesBefore || input.value !== "")) {
+    await wait(50)
+  }
+  const userRow = document.querySelector(
+    '[data-en-key="shell-transcript"] [data-en-message][data-en-role="user"]'
+  )
+  const sender = userRow === null ? null : userRow.querySelector('[data-en-role="sender"]')
+  const body = userRow === null ? null : userRow.querySelector('[data-en-role="body"]')
+  return {
+    ok:
+      messageCount() === messagesBefore + 1 &&
+      input.value === "" &&
+      sender !== null && sender.textContent === "YOU" &&
+      body !== null && body.textContent.includes("Pixel-proof") &&
+      !body.textContent.includes("YOU"),
+    messagesBefore,
+    messagesAfter: messageCount(),
+    inputAfterSubmit: input.value,
+    senderChip: sender === null ? null : sender.textContent,
+  }
+})()`
+
+const smokePingLoop = `(async () => {
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+  const button = document.querySelector('[data-en-key="shell-ping"]')
   if (button === null) return { ok: false, reason: "ping button never mounted" }
   const badgeText = () => {
-    const badge = find('[data-en-key="shell-ping-count"]')
+    const badge = document.querySelector('[data-en-key="shell-ping-count"]')
     return badge === null ? null : badge.textContent
   }
   const before = badgeText()
-  const notesBefore = document.querySelectorAll('[data-en-key="shell-transcript"] [data-en-tag="Card"]').length
+  const messageCount = () =>
+    document.querySelectorAll('[data-en-key="shell-transcript"] [data-en-message]').length
+  const notesBefore = messageCount()
   button.click()
-  const proofDeadline = Date.now() + 5000
-  while (Date.now() < proofDeadline && badgeText() === before) {
+  const deadline = Date.now() + 5000
+  while (Date.now() < deadline && badgeText() === before) {
     await wait(50)
   }
   const after = badgeText()
-  const notesAfter = document.querySelectorAll('[data-en-key="shell-transcript"] [data-en-tag="Card"]').length
   return {
-    ok: after !== before && after !== null && after.includes("1") && notesAfter === notesBefore + 1,
+    ok: after !== before && after !== null && after.includes("1") && messageCount() === notesBefore + 1,
     before,
     after,
     notesBefore,
-    notesAfter,
+    notesAfter: messageCount(),
   }
 })()`
+
+const captureShot = async (window: BrowserWindow, name: string): Promise<void> => {
+  if (smokeShotsDir === undefined || smokeShotsDir === "") return
+  const image = await window.webContents.capturePage()
+  const { mkdirSync, writeFileSync } = await import("node:fs")
+  mkdirSync(smokeShotsDir, { recursive: true })
+  writeFileSync(path.join(smokeShotsDir, `${name}.png`), image.toPNG())
+  console.log(`[openagents-desktop smoke] shot ${name}.png`)
+}
 
 const runSmoke = (window: BrowserWindow): void => {
   const timeout = setTimeout(() => {
     console.error("[openagents-desktop smoke] TIMEOUT waiting for renderer")
     app.exit(1)
-  }, 30_000)
+  }, 45_000)
   window.webContents.once("did-finish-load", () => {
     void (async () => {
-      try {
-        const result: unknown = await window.webContents.executeJavaScript(smokeScript, true)
-        clearTimeout(timeout)
+      const step = async (name: string, script: string): Promise<void> => {
+        const result: unknown = await window.webContents.executeJavaScript(script, true)
         const ok =
-          typeof result === "object" &&
-          result !== null &&
-          (result as { ok?: unknown }).ok === true
-        if (ok) {
-          console.log("[openagents-desktop smoke] OK", JSON.stringify(result))
-          app.exit(0)
-        } else {
-          console.error("[openagents-desktop smoke] FAILED", JSON.stringify(result))
+          result === true ||
+          (typeof result === "object" && result !== null && (result as { ok?: unknown }).ok === true)
+        if (!ok) {
+          clearTimeout(timeout)
+          console.error(`[openagents-desktop smoke] FAILED ${name}`, JSON.stringify(result))
           app.exit(1)
+          return
         }
+        console.log(`[openagents-desktop smoke] ${name} OK`, JSON.stringify(result))
+      }
+      try {
+        await step("shell-mounted", smokeWaitForShell)
+        await captureShot(window, "01-shell")
+        await step("composer-typed", smokeTypeIntoComposer)
+        await captureShot(window, "02-composer-typed")
+        await step("composer-submit-clears", smokeSubmitComposer)
+        await captureShot(window, "03-composer-cleared")
+        await step("intent-loop-ping", smokePingLoop)
+        clearTimeout(timeout)
+        console.log("[openagents-desktop smoke] OK")
+        app.exit(0)
       } catch (error) {
         clearTimeout(timeout)
         console.error("[openagents-desktop smoke] ERROR", error)
