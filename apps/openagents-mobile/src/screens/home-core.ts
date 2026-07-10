@@ -99,7 +99,7 @@ export const initialHomeState: HomeState = {
  * the owner can SEE the over-the-air bundle swap land (embedded build 107
  * ships the tag below; a published OTA with a bumped tag should appear within
  * ~3s via the temporary poll loop and reload). Rendered in the drawer footer. */
-export const BUNDLE_TAG = "2026-07-09.ota-1"
+export const BUNDLE_TAG = "2026-07-09.embedded-109"
 
 // ---------------------------------------------------------------------------
 // Typed intents — the ONLY way anything (EN tree, SwiftUI chrome, scrim)
