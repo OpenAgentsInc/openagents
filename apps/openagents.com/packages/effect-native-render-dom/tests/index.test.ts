@@ -86,6 +86,50 @@ describe("DOM renderer host boundaries", () => {
     )
   })
 
+  test("typed button styles override renderer defaults instead of leaving pill chrome inline", async () => {
+    const window = new Window({ url: "http://localhost/" })
+    const document = window.document as unknown as Document
+    const root = document.createElement("div")
+    document.body.appendChild(root)
+    const report: IntentReporter = () => Effect.succeed(undefined)
+
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function*() {
+          const surface = yield* makeDomRenderer({ document }).mount(
+            root,
+            Stream.succeed(Button({
+              key: "plain-row",
+              label: "Plain row title",
+              variant: "ghost",
+              onPress: IntentRef("OpenRow"),
+              style: {
+                padding: "0",
+                borderWidth: 0,
+                borderRadius: "none",
+                color: "textPrimary",
+                textAlign: "left"
+              }
+            })),
+            report
+          )
+
+          const button = root.querySelector("button") as HTMLButtonElement
+          expect(button.style.padding).toBe("")
+          expect(button.style.border).toBe("")
+          expect(button.style.borderRadius).toBe("")
+          expect(button.style.color).toBe("")
+
+          const stylesheet = yield* surface.stylesheetText
+          expect(stylesheet).toContain("padding:var(--en-spacing-0)")
+          expect(stylesheet).toContain("border-width:0")
+          expect(stylesheet).toContain("border-radius:var(--en-radius-none)")
+          expect(stylesheet).toContain("text-align:left")
+        })
+      )
+    )
+  })
+
   test("keeps a failing intent callback total while executing its effect", async () => {
     const window = new Window({ url: "http://localhost/" })
     const document = window.document as unknown as Document

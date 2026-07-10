@@ -1028,6 +1028,13 @@ const renderText = (view: TextView, state: DomRendererState, report: IntentRepor
 
 const renderButton = (view: ButtonView, state: DomRendererState, report: IntentReporter): HTMLElement => {
   const element = state.keyedElement(view, "button") as HTMLButtonElement
+  const style = view.style
+  const hasPaddingOverride = style?.padding !== undefined
+    || style?.paddingTop !== undefined
+    || style?.paddingRight !== undefined
+    || style?.paddingBottom !== undefined
+    || style?.paddingLeft !== undefined
+  const hasBorderOverride = style?.borderWidth !== undefined || style?.borderColor !== undefined
   state.resetListeners(element)
   element.type = "button"
   element.textContent = view.label
@@ -1037,24 +1044,27 @@ const renderButton = (view: ButtonView, state: DomRendererState, report: IntentR
   // bug): themed surface + label color instead of the native default button.
   // Applied before applyBaseStyle so typed style overrides still win.
   element.style.font = "inherit"
-  element.style.borderRadius = "var(--en-radius-md)"
-  element.style.padding = "var(--en-spacing-2) var(--en-spacing-4)"
-  element.style.border = "1px solid transparent"
+  element.style.borderRadius = style?.borderRadius === undefined ? "var(--en-radius-md)" : ""
+  element.style.padding = hasPaddingOverride ? "" : "var(--en-spacing-2) var(--en-spacing-4)"
+  element.style.border = hasBorderOverride ? "" : "1px solid transparent"
+  element.style.borderColor = ""
+  element.style.background = ""
+  element.style.color = ""
   element.style.cursor = view.disabled === true ? "default" : "pointer"
   element.style.opacity = view.disabled === true ? "0.5" : "1"
   switch (view.variant) {
     case "primary":
-      element.style.background = colorValue("accent")
-      element.style.color = colorValue("textPrimary")
+      if (style?.backgroundColor === undefined) element.style.background = colorValue("accent")
+      if (style?.color === undefined) element.style.color = colorValue("textPrimary")
       break
     case "secondary":
-      element.style.background = colorValue("surface")
-      element.style.color = colorValue("textPrimary")
-      element.style.borderColor = colorValue("border")
+      if (style?.backgroundColor === undefined) element.style.background = colorValue("surface")
+      if (style?.color === undefined) element.style.color = colorValue("textPrimary")
+      if (style?.borderColor === undefined) element.style.borderColor = colorValue("border")
       break
     case "ghost":
-      element.style.background = "transparent"
-      element.style.color = colorValue("accent")
+      if (style?.backgroundColor === undefined) element.style.background = "transparent"
+      if (style?.color === undefined) element.style.color = colorValue("accent")
       break
   }
   state.addListener(element, "click", () => runReportedIntent(report, view.onPress))
