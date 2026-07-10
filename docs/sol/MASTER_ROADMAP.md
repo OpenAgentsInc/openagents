@@ -1,7 +1,7 @@
 # MASTER ROADMAP — Sarah Fleet Command first; three OpenAgents apps
 
 - Date: 2026-07-09
-- Revision: 15
+- Revision: 16
 - Status: canonical OpenAgents implementation roadmap
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Issue source set: [`issues/README.md`](./issues/README.md)
@@ -191,6 +191,14 @@ The coding-fleet program starts from substantial working substrate:
   fix-forward #8644 provenance correction that binds the two owner-scoped
   FleetRun intake routes as intake evidence only without changing promise state
   or implying closeout, payment, settlement, or multi-earning availability.
+- accepted-claim steering exchange at `e0b0fdc617`: registered owner/Pylon
+  delivery, strict-prefix bounded pages, durable delivery reservation,
+  content-bound body-free ordered outcomes, and lost-ACK replay now join a
+  standing Pylon consumer with an atomic local watermark/outbox, exact
+  work-claim/assignment targeting, restart-safe composition, and ACK
+  backpressure. Run controls can now become executor-effective only after an
+  `applied` ACK; approval and steer remain honestly rejected/queued until their
+  exact attempt authority and follow-up path land.
 
 The immediate gaps are now narrower composition and live-proof gaps:
 
@@ -214,11 +222,12 @@ The immediate gaps are now narrower composition and live-proof gaps:
 - Sarah's safe FleetRun projection, persisted exact-cursor live session, views,
   run controls, and approval decisions are code/fixture-proven in retained
   `/sarah`, including exact start-result-to-scope selection through
-  `6cd9d09205`. They are not yet executor-effective: the server writes the new
-  typed steering table while standing Pylon still consumes the older intent
-  vocabulary. Canonical attempt identity, projection-authorized steer,
-  per-unit closeout evidence/canvas edges, and a deployed owner-cookie
-  reconnect canary remain.
+  `6cd9d09205`. The former new-table/old-consumer split is closed at
+  `e0b0fdc617`, but reconnect cannot yet see a body-free command outcome and
+  the client collection still has optimistic effective post-images. Canonical
+  approval/attempt authority, a functional private steer follow-up with a
+  terminal completion, real per-unit closeout evidence/canvas edges, and a
+  deployed owner-cookie reconnect canary remain.
 - The trusted-context voice coordinator/SSE adapter is fixture-proven but stays
   unarmed until renderer-authenticated conversation/session metadata carries
   the server-minted conversation ref; model/system text is not scope authority.
@@ -235,7 +244,7 @@ P0 fixes those seams. It does not build another fleet system.
 | --- | --- | --- |
 | #8637 FC-1 | **closed** at `0892d57b3b`: integrated operator conversation -> durable authority -> registered standing Pylon -> bounded closeout is fixture-proven; timing is 1.8s acknowledgment / 6.1s first claim / 8.6s first capacity; staging `00046-jpn` and production `00068-5t8` are deployed and smoke-proven | none in FC-1; real mixed-account execution is #8640 and owner-cookie reconnect/steer is #8639 |
 | #8633 FC-2 | **closed** on the stack ending `d779c360c3`: production standing adapters, shared typed auto policy, restart-safe mixed claims, health rotation, durable execution outbox/server projection, and one integrated three-harness restart/usage fixture are proven; migration 0053 is applied in staging/production, while the application stack is not deployed | the pinned integrated deployment is a #8639/#8640 gate, not reopened FC-2 residue; useful live Codex+Claude+Grok work is #8640 |
-| #8639 FC-3 | controls/reconnect through `6cd9d09205` and fail-closed media/text/Fleet continuity through `3d87cb609b` are code-landed and fixture-proven | deliver new steering rows to standing Pylon; canonical attempt identity/authority; per-unit evidence and full canvas chain; integrated reconnect/control receipt |
+| #8639 FC-3 | controls/reconnect through `6cd9d09205`, media continuity through `3d87cb609b`, and accepted-claim steering exchange/standing consumption through `e0b0fdc617` are code-landed and fixture-proven | reconnect-visible command outcomes without optimistic state; approval/follow-up completion; real attempt evidence/full canvas; integrated reconnect/control receipt |
 | #8640 FC-5 | acceptance contract only | C1 integrated fixture, then Phase A on one pinned deployment |
 
 These rows are implementation receipts, not issue closure. The commit named in
@@ -347,19 +356,20 @@ through the narrow shared package.
 **[#8639 FC-3](https://github.com/OpenAgentsInc/openagents/issues/8639)**
 connects durable progress and existing fleet intents to Sarah.
 
-Current critical gap: Sarah's controls, approvals, and private steer client
-write `khala_sync_fleet_steering_intents`, while standing Pylon enforces the
-older `khala_sync_fleet_intents` table. A server receipt is therefore not yet
-proof that execution changed. FC-3 must add owner-bound delivery, a durable
-Pylon watermark/outcome, and exact-target enforcement before UI controls count
-as working. Then it must populate the currently empty closeout-evidence input
-and extend the canvas from run/work/worker to the backed
-plan→claim→assignment→verification→closeout chain.
+Current critical gap: the accepted-claim exchange and standing Pylon consumer
+landed at `e0b0fdc617`, closing the old-table/new-table split. The next truth
+gap is requested versus effective state: browser reconnect needs a body-free
+command-outcome entity and the client collection must stop manufacturing
+optimistic run/approval/steer post-images. Approval requires a durable exact
+approval-to-attempt binding; queued steer/active-stop needs a restart-safe
+private dispatcher and body-free terminal completion. Then FC-2 execution must
+project real work-unit/attempt evidence, replace synthetic assignment-as-proof
+refs, populate the currently empty closeout-evidence input, and extend the
+canvas through the backed plan→claim→assignment→verification→closeout chain.
 
-An active Sol claim covers this exact steering exchange on #8639, including the
-shared `@openagentsinc/khala-fleet-intents` transport contract. Candidate
-server/Pylon branches do not advance the proof rung until they are reconciled,
-reviewed, verified together, and landed on current `main`.
+The active Sol claim now covers those closure blocks. Separate clean lanes own
+the command-outcome contract and Pylon follow-up control; shared Sync schemas
+and migration numbers remain serialized through root integration.
 
 Exit:
 

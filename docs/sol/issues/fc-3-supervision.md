@@ -19,11 +19,18 @@ Code/Receipts panels. This issue composes them.
 The retained `/sarah` surface now selects an exact successful run, persists and
 resumes its cursor, renders supervision, and writes typed run-control,
 approval, and private steer requests to `khala_sync_fleet_steering_intents`.
-Standing Pylon still consumes the older `khala_sync_fleet_intents` vocabulary.
-A durable server receipt can therefore exist without changing the active
-executor. Closure requires owner-bound delivery of the new rows, a durable
-Pylon watermark and applied/rejected outcome, exact attempt targeting, and
-reconnect-safe replay before any control is called effective.
+The accepted-claim exchange and standing Pylon consumer landed at
+`e0b0fdc617`: delivery is owner/Pylon/claim-bound; the local watermark/outbox is
+durable; targeting requires exact work-claim/assignment identity; and ACK
+replay is ordered and body-free. That closes the transport split, not the
+issue.
+
+Closure now requires a reconnect-visible command outcome and removal of the
+client collection's optimistic effective post-images; a durable exact
+approval-to-attempt binding; a functional private follow-up dispatcher with a
+body-free terminal completion for steer/active stop; and an integrated fixture
+proving requested versus applied state survives restart. A queued receipt is
+not proof that execution changed.
 
 The visual/evidence residual is equally concrete: non-issue work can fall back
 to assignment identity; steer is correctly absent without a server-authorized
