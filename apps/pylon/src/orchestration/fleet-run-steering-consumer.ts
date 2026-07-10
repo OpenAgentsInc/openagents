@@ -320,6 +320,42 @@ const targetApplication = (
   }
 }
 
+const approvalApplication = (
+  store: PylonOrchestrationStore,
+  runRef: string,
+  intent: Extract<KhalaFleetIntent, { kind: "approval_decision" }>,
+): FleetRunSteeringApplication => {
+  const binding = store.getFleetRunSteeringApprovalBinding(intent.approvalRef)
+  if (binding === null) return { outcome: "rejected" }
+  if (binding.runRef !== runRef) return { outcome: "rejected" }
+  if (binding.state !== "pending") return { outcome: "skipped_stale" }
+  const claim = store.getWorkClaim(binding.workClaimRef)
+  if (
+    claim === null ||
+    claim.runRef !== binding.runRef ||
+    claim.workUnitRef !== binding.workUnitRef ||
+    claim.assignmentRef !== binding.assignmentRef
+  ) return { outcome: "rejected" }
+  if (claim.state === "released" || claim.state === "expired" || claim.state === "closeout") {
+    return { outcome: "skipped_stale" }
+  }
+  return {
+    outcome: "queued_follow_up",
+    queuedFollowUp: {
+      workUnitRef: binding.workUnitRef,
+      workClaimRef: binding.workClaimRef,
+      assignmentRef: binding.assignmentRef,
+      targetRef: intent.approvalRef,
+      intentKind: "approval_decision",
+      approvalRef: intent.approvalRef,
+      decision: intent.decision,
+      body: null,
+      bodyRef: null,
+      residualRefs: [],
+    },
+  }
+}
+
 const applyIntent = (
   store: PylonOrchestrationStore,
   runRef: string,
@@ -333,7 +369,7 @@ const applyIntent = (
     if (intent.action === "stop") {
       if (run.state === "completed") return { outcome: "skipped_stale" }
       const liveClaims = store.listLiveWorkClaims(now)
-        .filter(claim => claim.runRef === runRef)
+        .filter(claim => claim.runRef === runRef && claim.state !== "closeout")
       const residualRefs = liveClaims.flatMap(claim => [
         claim.claimRef,
         ...(claim.assignmentRef === null ? [] : [claim.assignmentRef]),
@@ -388,10 +424,7 @@ const applyIntent = (
     )
   }
   if (intent.kind === "approval_decision") {
-    // approvalRef is not an assignment/work-claim target. Until a durable
-    // local approvalRef -> exact attempt binding exists, reject rather than
-    // guessing a worker or treating an unrelated ref as authorization.
-    return { outcome: "rejected" }
+    return approvalApplication(store, runRef, intent)
   }
   return { outcome: "rejected" }
 }
@@ -518,7 +551,18 @@ export const tickPylonFleetRunSteeringConsumer = async (
     runRef: options.runRef,
     claimRef: options.claimRef,
   }).length
-  if (pendingBeforeRead > 0 || queuedBeforeRead >= MAX_PENDING_FOLLOW_UPS) {
+  const pendingCompletionsBeforeRead = options.store
+    .listFleetRunSteeringFollowUpCompletionOutbox({
+      pylonRef: options.pylonRef,
+      runRef: options.runRef,
+      claimRef: options.claimRef,
+      limit: MAX_PENDING_FOLLOW_UPS,
+    }).length
+  if (
+    pendingBeforeRead > 0 ||
+    queuedBeforeRead >= MAX_PENDING_FOLLOW_UPS ||
+    pendingCompletionsBeforeRead >= MAX_PENDING_FOLLOW_UPS
+  ) {
     return {
       ok: false,
       applied: 0,

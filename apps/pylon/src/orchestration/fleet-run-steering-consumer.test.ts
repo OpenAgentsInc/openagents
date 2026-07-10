@@ -407,6 +407,69 @@ describe("Pylon FleetRun steering consumer", () => {
     }
   })
 
+  test("queues only approval refs durably bound to the exact live attempt", async () => {
+    const root = await mkdtemp(join(tmpdir(), "pylon-fc3-steering-approval-binding-"))
+    const env = { PYLON_HOME: join(root, "pylon-home") } as NodeJS.ProcessEnv
+    try {
+      const runtime = await seed(env)
+      const approvalRef = "approval.public.fc3.steering.unit"
+      runtime.store.bindFleetRunSteeringApproval({
+        approvalRef,
+        pylonRef,
+        runRef,
+        claimRef,
+        workUnitRef,
+        workClaimRef,
+        assignmentRef,
+        now,
+      })
+      const known = fleetIntent({
+        intentId: "intent.fc3.approval.known",
+        kind: "approval_decision",
+        approvalRef,
+        decision: "allow",
+      })
+      const unknown = fleetIntent({
+        intentId: "intent.fc3.approval.unknown",
+        kind: "approval_decision",
+        approvalRef: "approval.public.fc3.steering.unknown",
+        decision: "deny",
+      })
+      const outcomes: FleetSteeringOutcome[] = []
+      const transport: PylonFleetRunSteeringTransport = {
+        read: () => Promise.resolve(page([delivery(1, known), delivery(2, unknown)], 2)),
+        postOutcomes: ({ outcomes: batch }) => {
+          outcomes.push(...batch)
+          return Promise.resolve(ack(batch))
+        },
+      }
+      const result = await tickPylonFleetRunSteeringConsumer({
+        store: runtime.store,
+        transport,
+        pylonRef,
+        runRef,
+        claimRef,
+        now: () => now,
+      })
+      expect(result).toMatchObject({ ok: true, applied: 2, acknowledged: 2 })
+      expect(outcomes.map(outcome => outcome.outcome)).toEqual(["queued_follow_up", "rejected"])
+      expect(runtime.store.listFleetRunSteeringQueuedFollowUps({
+        pylonRef,
+        runRef,
+        claimRef,
+      })).toEqual([expect.objectContaining({
+        approvalRef,
+        workUnitRef,
+        workClaimRef,
+        assignmentRef,
+        decision: "allow",
+      })])
+      await runtime.close()
+    } finally {
+      await rm(root, { force: true, recursive: true })
+    }
+  })
+
   test("rejects unordered, duplicate, mismatched, oversized, and stalled pages before mutation", async () => {
     const root = await mkdtemp(join(tmpdir(), "pylon-fc3-steering-invalid-pages-"))
     const env = { PYLON_HOME: join(root, "pylon-home") } as NodeJS.ProcessEnv
@@ -738,7 +801,9 @@ describe("Pylon FleetRun steering consumer", () => {
       const seeded = await seed(env)
       await seeded.close()
       const factoryInputs: unknown[] = []
+      const followUpFactoryInputs: unknown[] = []
       let consumerClosed = 0
+      let followUpClosed = 0
       const standing = await openPylonStandingFleetRunExecutor({
         env,
         now: () => now,
@@ -777,6 +842,22 @@ describe("Pylon FleetRun steering consumer", () => {
             },
           }
         },
+        steeringFollowUpDispatcherFactory: input => {
+          followUpFactoryInputs.push(input)
+          return {
+            tick: () => Promise.resolve({
+              ok: true,
+              dispatched: 0,
+              completionsDelivered: 0,
+              pending: 0,
+              failure: null,
+            }),
+            close: () => {
+              followUpClosed += 1
+              return Promise.resolve()
+            },
+          }
+        },
       })
       expect(factoryInputs).toEqual([{
         store: standing.runtime.store,
@@ -784,8 +865,10 @@ describe("Pylon FleetRun steering consumer", () => {
         runRef,
         claimRef,
       }])
+      expect(followUpFactoryInputs).toEqual(factoryInputs)
       await standing.close()
       expect(consumerClosed).toBe(1)
+      expect(followUpClosed).toBe(1)
     } finally {
       await rm(root, { force: true, recursive: true })
     }

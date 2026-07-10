@@ -559,6 +559,52 @@ describe("Pylon-owned FleetRun runner", () => {
     expect(runner.retainedDispatchCount()).toBe(PYLON_OWNED_FLEET_RUNNER_MAX_TERMINAL_RETENTION)
   })
 
+  test("exposes honest exact-attempt steering control from the production-owned runner", async () => {
+    let state: PylonKhalaAssignmentTraceStatusResult["progress"]["state"] = "streaming_chunks"
+    const runner = createPylonOwnedFleetRunSupervisorRunner({
+      summary,
+      pylonRef,
+      baseUrl: "https://openagents.test",
+      readCloseout: readExactCloseout,
+      loadRegistry: async () => [account("codex-a", "codex")],
+      inspectAssignment: async assignmentRef => trace(assignmentRef, state),
+    })
+    const attempt = {
+      pylonRef,
+      runRef: run.runRef,
+      claimRef: "claim.sarah_fleet_run.111111111111111111111111",
+      workUnitRef: "work_unit.runner.steering",
+      workClaimRef: "claim.runner.steering",
+      assignmentRef: "assignment.runner.steering",
+    }
+    expect(await runner.steeringControl.applySteer({
+      ...attempt,
+      body: "owner-private direction",
+      bodyRef: null,
+    })).toEqual({
+      state: "failed",
+      failureRef: "blocker.pylon.fleet_steering.next_turn_control_unavailable",
+    })
+    expect(await runner.steeringControl.observeStop({
+      pylonRef,
+      runRef: run.runRef,
+      claimRef: attempt.claimRef,
+      attempts: [attempt],
+    })).toEqual({
+      state: "retry",
+      failureRef: "blocker.pylon.fleet_steering.stop_waiting_for_terminal_attempts",
+    })
+    state = "closed_out"
+    expect(await runner.steeringControl.applyApproval({
+      ...attempt,
+      approvalRef: "approval.public.runner.steering",
+      decision: "allow",
+    })).toEqual({
+      state: "stale",
+      failureRef: "blocker.pylon.fleet_steering.attempt_terminal",
+    })
+  })
+
   test("never substitutes providers, default accounts, or Grok claims", async () => {
     let requestCount = 0
     const runner = createPylonOwnedFleetRunSupervisorRunner({

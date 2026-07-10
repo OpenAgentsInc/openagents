@@ -45,6 +45,10 @@ import {
   exactPylonFleetRunUsageEvidence,
   type PylonFleetRunUsageEvidenceCarrier,
 } from "./fleet-run-usage-evidence.js"
+import type {
+  PylonFleetRunAttemptControl,
+  PylonFleetRunExactAttempt,
+} from "./fleet-run-steering-follow-up-dispatcher.js"
 
 export const PYLON_OWNED_FLEET_RUNNER_BLOCKERS = {
   accountMismatch: "blocker.pylon.fleet_runner.account_mismatch",
@@ -162,6 +166,8 @@ export type PylonOwnedFleetRunSupervisorRunner = Omit<
   }) => Promise<readonly PylonOwnedFleetRunReconcileResult[]>
   /** Process-local single-flight/terminal replay cache; durable task state remains the restart authority. */
   readonly retainedDispatchCount: () => number
+  /** Exact, production-owned attempt observation/control seam for Sarah follow-ups. */
+  readonly steeringControl: PylonFleetRunAttemptControl
 }
 
 const assignmentRefPattern = /^[A-Za-z0-9][A-Za-z0-9_.:-]{2,180}$/u
@@ -982,6 +988,48 @@ export function createPylonOwnedFleetRunSupervisorRunner(
     }
   }
 
+  const inspectExactAttempt = async (
+    attempt: PylonFleetRunExactAttempt,
+  ): Promise<"active" | "terminal" | "invalid"> => {
+    if (attempt.pylonRef !== input.pylonRef) return "invalid"
+    let trace: PylonKhalaAssignmentTraceStatusResult
+    try {
+      trace = await inspectAssignment(attempt.assignmentRef)
+    } catch {
+      return "active"
+    }
+    if (
+      trace.assignmentRef !== attempt.assignmentRef ||
+      trace.pylonRef !== attempt.pylonRef
+    ) return "invalid"
+    if (traceIsAcceptedCloseout(trace) || traceIsRejected(trace)) return "terminal"
+    return "active"
+  }
+
+  const unsupportedAttemptControl = async (
+    attempt: PylonFleetRunExactAttempt,
+    failureRef: string,
+  ) => {
+    const state = await inspectExactAttempt(attempt)
+    if (state === "invalid") {
+      return {
+        state: "failed" as const,
+        failureRef: "blocker.pylon.fleet_steering.attempt_inspection_mismatch",
+      }
+    }
+    if (state === "terminal") {
+      return {
+        state: "stale" as const,
+        failureRef: "blocker.pylon.fleet_steering.attempt_terminal",
+      }
+    }
+    // The production no-spend runner is deliberately unattended
+    // (approvalPolicy=never) and its current assignment port has no live
+    // next-turn/abort wire. Report that boundary instead of pretending the
+    // command reached the worker.
+    return { state: "failed" as const, failureRef }
+  }
+
   return {
     dispatch,
     reconcile: async ({ activeAssignments, now, run }) => {
@@ -1007,5 +1055,30 @@ export function createPylonOwnedFleetRunSupervisorRunner(
       return results
     },
     retainedDispatchCount: () => dispatchesByClaim.size,
+    steeringControl: {
+      applyApproval: async attempt => await unsupportedAttemptControl(
+        attempt,
+        "blocker.pylon.fleet_steering.approval_control_unavailable",
+      ),
+      applySteer: async attempt => await unsupportedAttemptControl(
+        attempt,
+        "blocker.pylon.fleet_steering.next_turn_control_unavailable",
+      ),
+      observeStop: async ({ attempts }) => {
+        for (const attempt of attempts) {
+          const state = await inspectExactAttempt(attempt)
+          if (state === "invalid") {
+            return {
+              state: "failed",
+              failureRef: "blocker.pylon.fleet_steering.attempt_inspection_mismatch",
+            }
+          }
+        }
+        return {
+          state: "retry",
+          failureRef: "blocker.pylon.fleet_steering.stop_waiting_for_terminal_attempts",
+        }
+      },
+    },
   }
 }

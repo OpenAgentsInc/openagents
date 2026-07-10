@@ -31,6 +31,11 @@ import {
   makePylonFleetRunSteeringHttpTransport,
   openPylonFleetRunSteeringConsumer,
 } from "./fleet-run-steering-consumer.js"
+import {
+  openPylonFleetRunSteeringFollowUpDispatcher,
+  type PylonFleetRunAttemptControl,
+  type PylonFleetRunSteeringFollowUpCompletionSink,
+} from "./fleet-run-steering-follow-up-dispatcher.js"
 import type {
   FleetRunSupervisorClock,
   FleetRunSupervisorObservedEvent,
@@ -93,6 +98,8 @@ export type OpenPylonOwnedStandingFleetRunExecutorInput = {
   readonly fetch?: typeof fetch | undefined
   readonly now?: (() => Date) | undefined
   readonly onLifecycle?: ((event: FleetRunSupervisorObservedEvent) => void | Promise<void>) | undefined
+  /** Body-free terminal follow-up delivery; owner-private steer bodies are never passed. */
+  readonly onSteeringFollowUpCompletion?: PylonFleetRunSteeringFollowUpCompletionSink | undefined
   readonly options?: PylonOwnedStandingFleetRunAdapterOptions | undefined
   readonly pylonRef: string
   readonly runRef: string
@@ -120,6 +127,7 @@ export async function openPylonOwnedStandingFleetRunExecutor(
   )
   const options = input.options ?? {}
   const statePaths = resolveStatePaths(summary.paths)
+  let steeringControl: PylonFleetRunAttemptControl | null = null
 
   return await openPylonStandingFleetRunExecutor({
     bootstrap: summary,
@@ -146,6 +154,22 @@ export async function openPylonOwnedStandingFleetRunExecutor(
               }),
               ...(input.now === undefined ? {} : { now: input.now }),
             }),
+          steeringFollowUpDispatcherFactory: ({ store, pylonRef, runRef, claimRef }) => {
+            if (steeringControl === null) {
+              throw new Error("Pylon FleetRun steering control is unavailable")
+            }
+            return openPylonFleetRunSteeringFollowUpDispatcher({
+              store,
+              control: steeringControl,
+              pylonRef,
+              runRef,
+              claimRef,
+              ...(input.onSteeringFollowUpCompletion === undefined
+                ? {}
+                : { onCompletion: input.onSteeringFollowUpCompletion }),
+              ...(input.now === undefined ? {} : { now: input.now }),
+            })
+          },
         }),
     adapterFactory: ({ store }) => {
       const grok = options.grok === false
@@ -185,18 +209,22 @@ export async function openPylonOwnedStandingFleetRunExecutor(
           ...options.planner,
           store,
         }),
-        runner: createPylonOwnedFleetRunSupervisorRunner({
-          ...options.runner,
-          summary,
-          pylonRef: input.pylonRef,
-          baseUrl: input.baseUrl,
-          ...(input.agentToken === undefined ? {} : { agentToken: input.agentToken }),
-          ...(input.fetch === undefined ? {} : { fetch: input.fetch }),
-          ...(input.now === undefined ? {} : { now: input.now }),
-          ...(options.defaultHomes === undefined ? {} : { defaultHomes: options.defaultHomes }),
-          ...(options.loadRegistry === undefined ? {} : { loadRegistry: options.loadRegistry }),
-          ...(grok === undefined ? {} : { grok }),
-        }),
+        runner: (() => {
+          const runner = createPylonOwnedFleetRunSupervisorRunner({
+            ...options.runner,
+            summary,
+            pylonRef: input.pylonRef,
+            baseUrl: input.baseUrl,
+            ...(input.agentToken === undefined ? {} : { agentToken: input.agentToken }),
+            ...(input.fetch === undefined ? {} : { fetch: input.fetch }),
+            ...(input.now === undefined ? {} : { now: input.now }),
+            ...(options.defaultHomes === undefined ? {} : { defaultHomes: options.defaultHomes }),
+            ...(options.loadRegistry === undefined ? {} : { loadRegistry: options.loadRegistry }),
+            ...(grok === undefined ? {} : { grok }),
+          })
+          steeringControl = runner.steeringControl
+          return runner
+        })(),
       }
     },
   })

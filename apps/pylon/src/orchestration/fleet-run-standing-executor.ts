@@ -21,6 +21,10 @@ import type {
   PylonFleetRunSteeringConsumer,
   PylonFleetRunSteeringConsumerFactory,
 } from "./fleet-run-steering-consumer.js"
+import type {
+  PylonFleetRunSteeringFollowUpDispatcher,
+  PylonFleetRunSteeringFollowUpDispatcherFactory,
+} from "./fleet-run-steering-follow-up-dispatcher.js"
 
 export type PylonStandingFleetRunAdapters = {
   readonly capacity: FleetRunSupervisorCapacity
@@ -49,6 +53,8 @@ type OpenPylonStandingFleetRunExecutorCommonInput = {
   readonly startImmediately?: boolean | undefined
   /** Optional accepted-claim steering delivery composition seam. */
   readonly steeringConsumerFactory?: PylonFleetRunSteeringConsumerFactory | undefined
+  /** Optional restart-safe executor for locally queued steering follow-ups. */
+  readonly steeringFollowUpDispatcherFactory?: PylonFleetRunSteeringFollowUpDispatcherFactory | undefined
   readonly tickIntervalMs?: number | undefined
 }
 
@@ -73,6 +79,7 @@ export type PylonStandingFleetRunConstructionFailure =
   | "invalid_adapter_config"
   | "invalid_adapter_factory_result"
   | "steering_consumer_failed"
+  | "steering_follow_up_dispatcher_failed"
 
 export class PylonStandingFleetRunConstructionError extends Error {
   readonly failure: PylonStandingFleetRunConstructionFailure
@@ -162,6 +169,7 @@ export async function openPylonStandingFleetRunExecutor(
   }
   const runtime = await openPylonFleetRunRuntime(runtimeInput)
   let steeringConsumer: PylonFleetRunSteeringConsumer | null = null
+  let steeringFollowUpDispatcher: PylonFleetRunSteeringFollowUpDispatcher | null = null
   try {
     let adapters: PylonStandingFleetRunAdapters
     if (adapterConstruction === "factory") {
@@ -227,12 +235,38 @@ export async function openPylonStandingFleetRunExecutor(
         throw new PylonStandingFleetRunConstructionError("steering_consumer_failed")
       }
     }
+    if (input.steeringFollowUpDispatcherFactory !== undefined) {
+      const binding = runtime.store.getFleetRun(input.runRef)?.authorityBinding
+      if (binding?.phase !== "accepted" || binding.pylonRef !== input.pylonRef) {
+        throw new PylonStandingFleetRunConstructionError("steering_follow_up_dispatcher_failed")
+      }
+      try {
+        const candidate = await input.steeringFollowUpDispatcherFactory({
+          store: runtime.store,
+          pylonRef: input.pylonRef,
+          runRef: input.runRef,
+          claimRef: binding.claimRef,
+        })
+        if (
+          candidate === null || typeof candidate !== "object" ||
+          typeof candidate.tick !== "function" || typeof candidate.close !== "function"
+        ) throw new PylonStandingFleetRunConstructionError("steering_follow_up_dispatcher_failed")
+        steeringFollowUpDispatcher = candidate
+      } catch (error) {
+        if (error instanceof PylonStandingFleetRunConstructionError) throw error
+        throw new PylonStandingFleetRunConstructionError("steering_follow_up_dispatcher_failed")
+      }
+    }
     return {
       close: async () => {
         try {
-          await steeringConsumer?.close()
+          await steeringFollowUpDispatcher?.close()
         } finally {
-          await runtime.close()
+          try {
+            await steeringConsumer?.close()
+          } finally {
+            await runtime.close()
+          }
         }
       },
       recovery,
@@ -240,7 +274,15 @@ export async function openPylonStandingFleetRunExecutor(
       snapshot,
     }
   } catch (error) {
-    await runtime.close()
+    try {
+      await (steeringFollowUpDispatcher as PylonFleetRunSteeringFollowUpDispatcher | null)?.close()
+    } finally {
+      try {
+        await (steeringConsumer as PylonFleetRunSteeringConsumer | null)?.close()
+      } finally {
+        await runtime.close()
+      }
+    }
     throw error
   }
 }
