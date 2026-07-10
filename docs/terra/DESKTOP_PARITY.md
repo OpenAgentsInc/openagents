@@ -5,6 +5,8 @@
 - Destination: `apps/openagents-desktop` on Electron + Effect Native
 - Rule: extract behavior and typed data contracts; never import the frozen
   desktop package or reproduce its legacy UI
+- Lane: ready #8574 leaves only, under Sol's
+  [`Terra execution-lane contract`](../sol/2026-07-10-terra-execution-lane.md)
 
 ## Meaning of parity
 
@@ -23,6 +25,7 @@ working product.
 | Composer focus and minimal conversation UX | `rich-composer`, transcript renderer | Effect Native composer/transcript | Landed baseline |
 | Project/session home | `project-home-panel` | Effect Native workspace home + selected local root | Landed: real persisted conversation home; folder selection starts the workspace flow |
 | Local file explorer/editor | `editor-file-service`, `editor-panel` | Fixed typed Electron workspace service, read/edit/save state | In progress: user-chosen root, bounded root listing, and bounded read-only file preview are host-backed; editing/saving remains next |
+| Codex reconnect settings | provider/account readiness and local auth flows | Bounded readiness projection + isolated Pylon device-auth start | Landed baseline: headless smoke proves awaiting-browser state; real owner browser completion remains an owner gate |
 | Terminal workbench | `terminal-workbench`, `terminal-panel` | Bounded process/session projection and terminal host seam | Next; must not expose arbitrary renderer command authority |
 | Review/diff | `diff-review`, `review-panel` | Typed local git-status/diff projection, review view | Next |
 | Inbox/approvals | `inbox`, Claude approvals, run evidence | Owner-safe approval/closeout projection | After durable Fleet/approval source is connected |
@@ -35,15 +38,18 @@ working product.
 
 ## Delivery order
 
-1. Project root + editor + review form one coherent local-workspace vertical
-   slice. This is the desktop-specific capability users can immediately judge.
-2. Add terminal projection through a bounded host seam, never a generic
+1. Complete one owner Codex reconnect through Settings when the owner is
+   available. Record account-ready evidence without exposing credentials; do
+   not idle other leaves on this proof gate.
+2. Complete bounded editing/save and typed Git status/diff/review as one
+   coherent local-workspace vertical slice.
+3. Add terminal projection through a bounded host seam, never a generic
    renderer-to-shell bridge.
-3. Add command palette/hotkeys to make the expanding capability set fast
+4. Add command palette/hotkeys to make the expanding capability set fast
    without reintroducing permanent header clutter.
-4. Connect inbox, Fleet, Gym, Forum, and settings only to their current
+5. Connect inbox, Fleet, Gym, Forum, and settings only to their current
    authoritative sources; retain minimal chat as the everyday default.
-5. Finish packaging/update/diagnostic parity under the separate owner gates.
+6. Finish packaging/update/diagnostic parity under the separate owner gates.
 
 ## Non-negotiable extraction constraints
 

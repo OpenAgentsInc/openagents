@@ -6,6 +6,12 @@ record, not a replacement for the canonical roadmap in
 [`docs/sol/MASTER_ROADMAP.md`](../sol/MASTER_ROADMAP.md), product authority, or
 repository invariants.
 
+Terra operates under Sol's explicit
+[`execution-lane contract`](../sol/2026-07-10-terra-execution-lane.md): Sol
+owns priority, P0, dependency order, shared/hot-contract integration, and
+roadmap reconciliation. Terra independently ships only ready, low-collision
+leaves with a live issue claim and a proportionate receipt.
+
 ## What Terra optimizes for
 
 - A small, observable outcome over a broad plan.
@@ -27,6 +33,8 @@ repository invariants.
 5. [`DESKTOP_PARITY.md`](./DESKTOP_PARITY.md) and
    [`MOBILE_PARITY.md`](./MOBILE_PARITY.md) — capability ledgers against the
    legacy desktop and the current mobile-native equivalent.
+6. [`../sol/2026-07-10-terra-execution-lane.md`](../sol/2026-07-10-terra-execution-lane.md)
+   — the governing division of responsibility and claim/landing protocol.
 
 ## Boundaries
 
@@ -37,3 +45,7 @@ the repository invariants.
 
 When Terra changes a product surface, the minimum handoff is: outcome,
 commit, verification, remaining limitation, and the next testable move.
+
+When a Terra slice changes proof rung, residual scope, dependency state, or
+next-ready ordering, the handoff also goes to Sol for canonical roadmap
+reconciliation. Terra never independently revises Sol's priorities.

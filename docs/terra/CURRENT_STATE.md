@@ -22,6 +22,7 @@ real user question.
 | Material | Typed backdrop and glass surface authored in Effect Native | Shared DOM lowering | Literal SwiftUI `.glassEffect` on macOS |
 | Project Home | Real thread projection and local-root selection | Bounded Electron workspace service | Project/session Sync authority |
 | Files | Root listing plus bounded, traversal-checked read preview | Fixed workspace IPC | Edit/save, diffs, terminal, arbitrary renderer filesystem access |
+| Settings | Bounded Codex account-readiness view and isolated Pylon device-auth start | Fixed renderer-argument-free IPC; never default `~/.codex` | Completion of a real owner browser authentication; headless smoke proves only awaiting-browser state |
 | Fleet | Existing local brief dispatch remains internal | Pylon host integration | A visible Fleet cockpit or a claimed FleetRun |
 
 ## Mobile — `apps/openagents-mobile`
@@ -47,7 +48,7 @@ real user question.
 
 | Surface | Commands last run | Result |
 | --- | --- | --- |
-| Desktop | `bun run --cwd apps/openagents-desktop typecheck`; `bun test apps/openagents-desktop`; `OPENAGENTS_DESKTOP_SMOKE=1 bun run --cwd apps/openagents-desktop smoke` | Passed during this session (desktop suite reported 34 tests at latest run) |
+| Desktop | `bun run --cwd apps/openagents-desktop typecheck`; `bun test apps/openagents-desktop`; `OPENAGENTS_DESKTOP_SMOKE=1 bun run --cwd apps/openagents-desktop smoke` | Passed through the Settings slice; Sol's receipt records 58 tests plus real Electron smoke |
 | Mobile | `bun run --cwd apps/openagents-mobile typecheck`; `bun run --cwd apps/openagents-mobile test` | Passed: 32 tests |
 
 ## Deliberate exclusions

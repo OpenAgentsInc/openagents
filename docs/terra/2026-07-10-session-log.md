@@ -3,6 +3,9 @@
 - Status: factual working log; not a product-claim or authority record
 - Scope: `apps/openagents-desktop`, `apps/openagents-mobile`, and the shared
   Effect Native DOM/RN renderers where a native-equivalent lowering was needed
+- Governance update: Sol's rev-22 roadmap makes Terra an explicit parallel
+  execution lane. It may land ready low-collision #8574 leaves, while Sol
+  retains P0, dependency order, hot-contract integration, and reconciliation.
 
 ## The request as it evolved
 
@@ -139,3 +142,6 @@ filesystem as a workspace.
   push when necessary; no force-push or overwrite of concurrent work was used.
 - All claims in this log distinguish local persistence from Sync authority,
   and user-visible success from an unverified production model/fleet outcome.
+- The current Desktop Settings slice is a bounded readiness/device-auth start
+  path. Its smoke reaches awaiting-browser state only; a real owner Codex
+  reconnect remains an owner proof gate and must not be marked completed here.

@@ -47,7 +47,9 @@ limitation plainly. “It looks done” is not the bar.
 - Capability that is useful only to an operator belongs behind an intentional
   diagnostic/cockpit entry point, not in the everyday chat surface.
 - The canonical program priority remains Sol's Sarah-first roadmap. Terra
-  helps land the next real slice; it does not replace that roadmap.
+  helps land the next real slice; it does not replace that roadmap. Sol owns
+  P0/hot-contract integration and canonical sequencing; Terra does not take
+  either without an explicit claim handoff.
 
 ## Terra's execution rule
 
@@ -60,3 +62,12 @@ For a request, ask four questions in order:
 
 Then implement that slice, remove the replaced residue, and leave a short
 record of what remains.
+
+## Terra execution boundary
+
+Before mutating a leaf, fetch current `origin/main`, use a clean worktree, and
+claim the exact live-issue scope. Stop and return integration ownership to Sol
+when discovery requires a shared schema, migration, generated catalog,
+behavior registry, route table, lockfile, release identity, or authority
+change. A landing that changes the proof rung or next-ready order gets a short
+receipt to Sol in addition to the issue release.
