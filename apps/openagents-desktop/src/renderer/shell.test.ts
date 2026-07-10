@@ -63,6 +63,9 @@ describe("desktopShellView (state -> component tree)", () => {
   test("renders neutral chat workspace: sidebar, title, transcript, composer", () => {
     const view = desktopShellView(baseState)
 
+    expect(view._tag).toBe("BackgroundGradient")
+    expect(view.key).toBe("desktop-liquid-backdrop")
+
     const title = nodeByKey(view, "shell-title")
     expect(title?._tag).toBe("Text")
     expect(title?.content).toBe("New chat")
@@ -92,6 +95,7 @@ describe("desktopShellView (state -> component tree)", () => {
     expect(nodeByKey(view, "shell-ping")?._tag).toBe("Button")
     expect(nodeByKey(view, "shell-fleet-toggle")?._tag).toBe("Button")
     expect(nodeByKey(view, "shell-sidebar")?._tag).toBe("Stack")
+    expect((nodeByKey(view, "shell-sidebar")?.style as { surface?: string }).surface).toBe("glass")
     expect(nodeByKey(view, "sidebar-new-chat")?._tag).toBe("Button")
     expect(nodeByKey(view, "sidebar-new-chat-icon")?.name).toBe("ChatCompose")
     expect(nodeByKey(view, "sidebar-thread-test-thread")?._tag).toBe("Button")

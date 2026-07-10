@@ -18,6 +18,7 @@
  */
 import {
   Badge,
+  BackgroundGradient,
   Button,
   Card,
   ComponentValueBinding,
@@ -361,6 +362,7 @@ const shellHeader = (state: DesktopShellState): View =>
         paddingRight: "3",
         paddingTop: "2",
         paddingBottom: "2",
+        surface: "glass",
       },
     },
     [
@@ -406,7 +408,7 @@ const shellSidebar = (state: DesktopShellState): View =>
       key: "shell-sidebar",
       direction: "column",
       gap: "2",
-      style: { height: "full", minHeight: 0 },
+      style: { height: "full", minHeight: 0, surface: "glass" },
     },
     [
       Stack({ key: "sidebar-brand-row", direction: "row", gap: "2", align: "center" }, [
@@ -491,9 +493,9 @@ const fleetDesk = (state: DesktopShellState): View => {
         width: "full",
         maxWidth: columnWidth,
         alignSelf: "center",
-        backgroundColor: "surfaceRaised",
         borderColor: "border",
         borderWidth: 1,
+        surface: "glass",
       },
     },
     [
@@ -550,10 +552,10 @@ const shellComposer = (state: DesktopShellState): View =>
         width: "full",
         maxWidth: columnWidth,
         alignSelf: "center",
-        backgroundColor: "surface",
         borderColor: "border",
         borderWidth: 1,
         marginBottom: "4",
+        surface: "glass",
       },
     },
     [
@@ -599,7 +601,15 @@ const shellComposer = (state: DesktopShellState): View =>
   )
 
 export const desktopShellView = (state: DesktopShellState): View =>
-  Stack(
+  BackgroundGradient(
+    {
+      key: "desktop-liquid-backdrop",
+      direction: "radial",
+      from: "background",
+      to: "accent",
+      style: { width: "full", height: "full", minHeight: 0 },
+    },
+    [Stack(
     {
       key: "shell-root",
       direction: "row",
@@ -638,4 +648,5 @@ export const desktopShellView = (state: DesktopShellState): View =>
         ],
       ),
     ],
+  )],
   )

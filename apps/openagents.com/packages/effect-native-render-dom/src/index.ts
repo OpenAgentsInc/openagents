@@ -533,17 +533,16 @@ const styleDeclarations = (key: string, value: unknown): ReadonlyArray<readonly 
         ["font-weight", typeScaleValue(value as TypeScaleToken, "fontWeight")]
       ]
     case "surface":
-      // GL-1 "glass" material token: translucent theme-surface background plus
-      // backdrop blur, expressed as ordinary declarations so it flows through
-      // the atomic style system like every other token. color-mix keeps the
-      // background derived from the theme variable rather than a baked color.
-      // This is the honest web approximation; high-fidelity native glass
-      // (iOS Liquid Glass) lands via platform lanes outside this renderer.
+      // GL-1 glass material token: the DOM equivalent of the mobile SwiftUI
+      // Liquid Glass fallback (`.ultraThinMaterial`). The surface stays
+      // translucent enough for a typed BackgroundGradient to remain visible,
+      // with saturation and an inset highlight supplying the material edge.
       return [
-        ["background-color", "color-mix(in srgb, var(--en-color-surface) 72%, transparent)"],
-        ["-webkit-backdrop-filter", "blur(16px)"],
-        ["backdrop-filter", "blur(16px)"],
-        ["border", "1px solid var(--en-color-border)"]
+        ["background-color", "color-mix(in srgb, var(--en-color-surface) 48%, transparent)"],
+        ["-webkit-backdrop-filter", "blur(28px) saturate(1.35)"],
+        ["backdrop-filter", "blur(28px) saturate(1.35)"],
+        ["border", "1px solid color-mix(in srgb, var(--en-color-border) 72%, transparent)"],
+        ["box-shadow", "inset 0 1px rgba(255,255,255,.15)"]
       ]
     default:
       return []
@@ -4752,13 +4751,17 @@ const renderMobileSurfaceShell = (
   if (view._tag === "BackgroundGradient") {
     const from = view.from ?? "background"
     const to = view.to ?? "accent"
-    const dir = view.direction ?? "vertical"
-    el.style.background =
-      dir === "radial"
-        ? `radial-gradient(circle, var(--en-color-${from}) 0%, var(--en-color-${to}) 70%)`
-        : dir === "horizontal"
-          ? `linear-gradient(90deg, var(--en-color-${from}), var(--en-color-${to}))`
-          : `linear-gradient(180deg, var(--en-color-${from}), var(--en-color-${to}))`
+    // The desktop lowering of the same scene the native host gives SwiftUI
+    // Liquid Glass: broad, translucent color pools behind material surfaces.
+    el.style.backgroundColor = `var(--en-color-${from})`
+    el.style.backgroundImage = [
+      `radial-gradient(60rem 42rem at 8% -10%, color-mix(in srgb, var(--en-color-${to}) 56%, transparent), transparent 66%)`,
+      `radial-gradient(52rem 38rem at 108% 105%, color-mix(in srgb, var(--en-color-${to}) 40%, transparent), transparent 68%)`,
+      `radial-gradient(34rem 26rem at 58% 52%, color-mix(in srgb, var(--en-color-${to}) 22%, transparent), transparent 72%)`,
+      `linear-gradient(145deg, var(--en-color-${from}), color-mix(in srgb, var(--en-color-${from}) 78%, #0b1325))`,
+    ].join(", ")
+    el.style.backgroundAttachment = "fixed"
+    el.style.overflow = "hidden"
   }
   if (view._tag === "Wallpaper") {
     el.setAttribute("data-en-wallpaper", view.variant ?? "plain")

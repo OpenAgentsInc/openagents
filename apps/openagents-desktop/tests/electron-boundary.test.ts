@@ -141,3 +141,14 @@ describe("OpenAI Apps SDK icon catalog", () => {
     expect(catalog).toContain('"Agent"')
   })
 })
+
+describe("Effect Native Liquid Glass lowering", () => {
+  test("desktop backdrop and glass surfaces are authored in the catalog, not CSS-only", () => {
+    const shell = read("src/renderer/shell.ts")
+    const domRenderer = read("../openagents.com/packages/effect-native-render-dom/src/index.ts")
+    expect(shell).toContain("BackgroundGradient(")
+    expect(shell).toContain('surface: "glass"')
+    expect(domRenderer).toContain("mobile SwiftUI")
+    expect(domRenderer).toContain("blur(28px) saturate(1.35)")
+  })
+})

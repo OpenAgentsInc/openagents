@@ -37,28 +37,10 @@ body {
   text-rendering: optimizeLegibility;
 }
 
-body::before {
-  position: fixed;
-  z-index: -2;
-  inset: 0;
-  content: "";
-  background:
-    radial-gradient(58rem 36rem at 50% -14%, rgba(54, 117, 255, 0.26), transparent 62%),
-    radial-gradient(36rem 32rem at 92% 88%, rgba(33, 92, 184, 0.12), transparent 70%),
-    linear-gradient(155deg, #0c1424 0%, var(--oa-void) 48%, #080b13 100%);
-}
-
-body::after {
-  position: fixed;
-  z-index: -1;
-  inset: 0;
-  content: "";
-  opacity: 0.42;
-  background-image: radial-gradient(rgba(181, 216, 255, 0.18) 0.55px, transparent 0.7px);
-  background-size: 22px 22px;
-  mask-image: radial-gradient(ellipse at 50% 0%, black 0%, transparent 70%);
-  pointer-events: none;
-}
+/* The typed Effect Native BackgroundGradient owns the Liquid Glass scene.
+   Keep the document neutral so every desktop surface gets the same backdrop. */
+body::before,
+body::after { content: none; }
 
 button,
 input,
@@ -86,6 +68,10 @@ textarea:focus-visible {
   min-height: 0;
 }
 
+[data-en-key="desktop-liquid-backdrop"] {
+  border-radius: 28px;
+}
+
 /* Core app frame */
 [data-en-key="shell-root"] {
   width: 100% !important;
@@ -100,10 +86,7 @@ textarea:focus-visible {
   padding: 16px 10px 12px;
   border: 1px solid var(--oa-line);
   border-radius: 16px;
-  background: rgba(14, 20, 31, 0.6);
-  box-shadow: inset 0 1px rgba(255, 255, 255, 0.06);
-  backdrop-filter: blur(22px) saturate(1.15);
-  -webkit-backdrop-filter: blur(22px) saturate(1.15);
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.14);
 }
 
 [data-en-key="sidebar-brand"] {
@@ -202,10 +185,7 @@ textarea:focus-visible {
   padding: 7px 9px !important;
   border: 1px solid var(--oa-line);
   border-radius: 18px;
-  background: rgba(17, 24, 37, 0.58) !important;
-  box-shadow: inset 0 1px rgba(255, 255, 255, 0.08), 0 10px 32px rgba(0, 0, 0, 0.2);
-  backdrop-filter: blur(22px) saturate(1.25);
-  -webkit-backdrop-filter: blur(22px) saturate(1.25);
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.16), 0 8px 20px rgba(0, 0, 0, 0.16);
 }
 
 [data-en-key="shell-title"] {
@@ -366,10 +346,7 @@ textarea:focus-visible {
   padding: 22px !important;
   border: 1px solid rgba(126, 177, 255, 0.25);
   border-radius: 18px !important;
-  background: var(--oa-surface-strong) !important;
-  box-shadow: inset 0 1px rgba(255, 255, 255, 0.08), 0 18px 48px rgba(0, 0, 0, 0.22);
-  backdrop-filter: blur(28px) saturate(1.2);
-  -webkit-backdrop-filter: blur(28px) saturate(1.2);
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.15), 0 10px 24px rgba(0, 0, 0, 0.18);
 }
 
 [data-en-key="fleet-desk-title"] {
@@ -436,10 +413,7 @@ textarea:focus-visible {
   padding: 7px 8px 7px 16px !important;
   border: 1px solid rgba(168, 204, 255, 0.24);
   border-radius: 20px !important;
-  background: rgba(17, 24, 37, 0.72) !important;
-  box-shadow: inset 0 1px rgba(255, 255, 255, 0.1), 0 16px 42px rgba(0, 0, 0, 0.3);
-  backdrop-filter: blur(28px) saturate(1.3);
-  -webkit-backdrop-filter: blur(28px) saturate(1.3);
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.18), 0 10px 24px rgba(0, 0, 0, 0.2);
 }
 
 [data-en-key="shell-composer-row"] {
