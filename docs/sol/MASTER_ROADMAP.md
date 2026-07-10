@@ -1,6 +1,6 @@
 # MASTER ROADMAP — Sarah Fleet Command first; three OpenAgents apps
 
-- Date: 2026-07-09
+- Date: 2026-07-10 (Fable reconciliation pass — see editing notes at bottom)
 - Updated: 2026-07-10
 - Revision: 22
 - Status: canonical OpenAgents implementation roadmap
@@ -596,16 +596,20 @@ effect-native#70 / EN-S lanes mature (convert-and-delete).
 | Lane | Issue | Purpose |
 | --- | --- | --- |
 | GL epic | #8646 | Program epic: hybrid lowering, glass shell, Sarah in-app |
-| GL-1 | #8647 | render-rn lowers typed EN glass components via @expo/ui |
-| GL-2 | #8648 | openagents-mobile Home → ChatGPT-style glass shell |
-| GL-3 | #8649 | Sarah conversation surface in the mobile app (text-first) |
+| GL-1 | #8647 | CLOSED 2026-07-10 — host driver + v30 @expo/ui lowering + island deletion |
+| GL-2 | #8648 | CLOSED 2026-07-09 — glass shell shipped (builds 107–112) |
+| GL-3 | #8649 | CLOSED 2026-07-10 — build 113, production conversation, contract enforced |
 | GL-4 | #8650 | Owned lowerings replace @expo/ui (migration half) |
 
-Current narrow truth: GL-1 has the v27 typed catalog primitives on `main` at
-`66d2f7544b`, but not its host-driver/island-conversion/real-lowering exit.
-GL-2 is owner-accepted and closed after build 111; build 112 then fixed the
-Minerals-sheet lifecycle without reopening the shell lane. D-MB-02 catalog
-conversion and app-island deletion remain GL-1/GL-4 exits.
+Current narrow truth (2026-07-10): GL-1 is CLOSED at `5202a2665a` — the
+Scope-bound render-rn host driver landed upstream (83f1bde), catalog v30
+lowers the glass set through render-rn-internal `@expo/ui` to real SwiftUI
+(pixel-proven on iOS 26.5), the D-MB-02 app-local island is fully deleted,
+and a mechanical oracle proves app code never imports `@expo/ui`. The
+vendored divergence is cataloged in VENDORING.md. GL-2 and GL-3 closed
+earlier (builds 107–113). GL-4 (owned lowerings replacing `@expo/ui`)
+is the program's only open lane besides the epic; native fingerprint
+changed with GL-1, so the next coordinated TestFlight build carries it.
 
 GL-3 is delivered and closed at `6647d998ad` / TestFlight build 113. The
 mobile glass shell now mints/persists the production prospect session, sends
@@ -907,3 +911,48 @@ never reported as live/owner acceptance.
 
 This file is reconciled in place after material landings. Do not grow a long
 revision diary or restore the old 30-item phase queue.
+
+---
+
+## Fable reconciliation pass — 2026-07-10 (mid-day)
+
+Factual status updates since the last Sol reconciliation (Fable lane,
+evidence on the named issues):
+
+- **P0:** FC-3 #8639 CLOSED (overnight fleet burn; supervision surface
+  landed). #8640 remains THE event: Sol root owns the typecheck gate;
+  the owner-gated Codex reconnect now has a desktop UI path
+  (`oa` → Settings → Connect Codex account, `f4cb8ed18e`). #8547's wall
+  items 1–3 are done (in-VM codex execution + live-proven rootfs bake;
+  a production double-billing bug in usage metering was found and fixed,
+  now DEPLOYED); only its owner-gated live brokered turn remains.
+- **Coordinated monolith deploy shipped** (staging+prod, smoke 8/8):
+  FC-3 surface, the forum EN conversion (#8635 scopes 1–4+6 live; scope
+  5 rides #8634), and the billing fix.
+- **GL program:** GL-1/GL-2/GL-3 all CLOSED (see the GL section update);
+  GL-4 + epic remain.
+- **New lane:** #8652 PORTAL-1 (client portal on openagents.com —
+  engagement view, content approvals, lead-gen KPIs; the Sell-in-Public
+  revenue-loop front door, transcripts/247) — claimed and building; the
+  canonical open set is now 16 issues:
+  8547, 8566, 8574, 8595, 8597, 8610, 8634, 8635, 8636, 8638, 8640,
+  8642, 8643, 8646, 8650, 8652.
+- **Presentation (#8610):** openers-v2 (Hallo2 tier) received the OWNER
+  VERDICT: "much better," opener-05 "close to shippable" — the Hallo2
+  direction is approved. In flight: audio re-rolls to ≥8/10 + FLAIR as
+  the permissive upscaler (the Hallo2 SR script is CodeFormer-derived,
+  S-Lab non-commercial — research-only), and the web-/sarah pre-rendered
+  clip tier (instant opener playback + canned-answer clips over the live
+  WebRTC stream). Capacity truth for planning: pre-rendered tier ≈
+  unlimited concurrency at ~$0; text/voice ≈ hundreds per instance;
+  live MuseTalk video = 1 session per L4 GPU until a session router adds
+  linear scaling.
+- **Upstream effect-native:** v28 (markdown href), v29 (chat chrome +
+  submit lifecycle), v30 (host driver + glass lowering) all shipped from
+  consumer demand; a backlog-resolution pass over its 6 open issues is
+  in flight.
+
+*Editing note: this Sol-owned document was updated by the **Fable** lane
+at explicit owner request ("ensure master roadmap in docs/sol/ is fully
+up to date", 2026-07-10). Factual reconciliation only — no sequencing
+changes; Sol re-sequences at its next pass.*
