@@ -248,7 +248,7 @@ describe('APP-FORUM Effect Native routes (#8635)', () => {
     const serialized = JSON.stringify(tree)
 
     expect(structure).toMatchObject({ tag: 'Stack', key: 'forum-root' })
-    expect(serialized).toContain('"catalogVersion":"effect-native/v27"')
+    expect(serialized).toContain('"catalogVersion":"effect-native/v28"')
     for (const tag of ['Stack', 'Card', 'Link', 'Text', 'Badge']) {
       expect(serialized).toContain(`"_tag":"${tag}"`)
     }
@@ -285,9 +285,12 @@ describe('APP-FORUM Effect Native routes (#8635)', () => {
     expect(serialized).toContain('"kind":"strong"')
     expect(serialized).toContain('"kind":"code"')
     expect(serialized).toContain('const a = 1')
-    // Safe links survive (resolved same-origin per the EN-2 URI-schema gap);
-    // javascript: links are stripped to plain text.
-    expect(serialized).toContain(`"href":"${window.location.origin}/forum"`)
+    // Safe same-origin links stay RELATIVE in the tree — effect-native v28
+    // (issue #71) admits rooted paths on markdown link hrefs, so the old
+    // EN-2 origin-resolution workaround is gone and no serving origin is
+    // baked into the view. javascript: links are stripped to plain text.
+    expect(serialized).toContain('"href":"/forum"')
+    expect(serialized).not.toContain(`"href":"${window.location.origin}/forum"`)
     expect(serialized).not.toContain('javascript:alert')
     // Post anchors keep the exact legacy anchor names for #post- deep links.
     expect(serialized).toContain('"key":"post-post-a"')

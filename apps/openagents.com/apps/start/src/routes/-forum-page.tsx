@@ -98,7 +98,7 @@ import {
   type ForumTopicPostSortDirection,
   type ForumTopicProjection,
 } from './-forum-data'
-import { absolutizeMarkdownBlockHrefs, parseForumMarkdown } from './-forum-markdown'
+import { parseForumMarkdown } from './-forum-markdown'
 
 // ---------------------------------------------------------------------------
 // Route params + state
@@ -533,19 +533,12 @@ const forumView = (state: ForumPageState, nowMs: number): ReadonlyArray<View> =>
 // Topic (posts) view
 // ---------------------------------------------------------------------------
 
-// EN-2 catalog gap (#8572): the vendored MarkdownInline link href is
-// URI-schema-gated, so same-origin relative links must be resolved against
-// the serving origin before entering the tree (same gap class as the
-// landing's LogoRow/Image sources). Links stay same-origin.
-const markdownLinkOrigin = (): string =>
-  typeof window === 'undefined' ? 'https://openagents.com' : window.location.origin
-
 const markdownBody = (key: string, body: string): ReadonlyArray<View> =>
   parseForumMarkdown(body).map((segment, index) =>
     segment.kind === 'markdown'
       ? Markdown({
           key: `${key}-md-${index}`,
-          blocks: [...absolutizeMarkdownBlockHrefs(segment.blocks, markdownLinkOrigin())],
+          blocks: segment.blocks,
           style: { width: 'full' },
         })
       : segment.kind === 'code'

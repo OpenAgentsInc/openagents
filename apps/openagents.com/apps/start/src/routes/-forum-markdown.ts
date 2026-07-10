@@ -246,43 +246,8 @@ export const parseForumMarkdown = (
     : segments
 }
 
-// --- EN-2 catalog gap workaround (upstream: effect-native GAPS register) -----
-//
-// The vendored `MarkdownInline` link `href` is URI-schema-gated
-// (`^[a-z][a-z0-9+.-]*:`), so a same-origin relative path like `/forum` is
-// rejected by the Markdown component — the same gap the landing hit with
-// LogoRow/Image sources (#8572). Until the schema admits absolute paths,
-// resolve relative hrefs against the serving origin at view-build time. The
-// links stay same-origin and deep-link stable.
-
-export const absolutizeMarkdownInlineHrefs = (
-  inlines: ReadonlyArray<MarkdownInline>,
-  origin: string,
-): ReadonlyArray<MarkdownInline> =>
-  inlines.map((inline) =>
-    inline.kind === 'link'
-      ? {
-          kind: 'link',
-          href: inline.href.startsWith('/') ? `${origin}${inline.href}` : inline.href,
-          children: absolutizeMarkdownInlineHrefs(inline.children, origin),
-        }
-      : inline.kind === 'strong' || inline.kind === 'emphasis'
-        ? { kind: inline.kind, children: absolutizeMarkdownInlineHrefs(inline.children, origin) }
-        : inline,
-  )
-
-export const absolutizeMarkdownBlockHrefs = (
-  blocks: ReadonlyArray<MarkdownBlock>,
-  origin: string,
-): ReadonlyArray<MarkdownBlock> =>
-  blocks.map((block) =>
-    block.kind === 'heading' || block.kind === 'paragraph'
-      ? { kind: block.kind, ...(block.kind === 'heading' ? { level: block.level } : {}), children: absolutizeMarkdownInlineHrefs(block.children, origin) } as MarkdownBlock
-      : block.kind === 'list'
-        ? {
-            kind: 'list',
-            ordered: block.ordered,
-            items: block.items.map((item) => [...absolutizeMarkdownBlockHrefs(item, origin)]),
-          }
-        : { kind: 'blockquote', children: [...absolutizeMarkdownBlockHrefs(block.children, origin)] },
-  )
+// The former EN-2 origin-resolution workaround (absolutizeMarkdown*Hrefs) is
+// gone: effect-native v28 (issue #71, vendored at the pinned commit in
+// packages/effect-native-vendor.json) admits same-origin rooted paths and
+// #fragment refs on markdown link hrefs directly, so parsed trees enter the
+// Markdown component without baking in a serving origin.

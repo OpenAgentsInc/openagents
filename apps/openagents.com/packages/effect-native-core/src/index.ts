@@ -87,8 +87,9 @@ export const MobileSurfacesCatalogVersion = "effect-native/v24" as const
 export const MobileGesturesCatalogVersion = "effect-native/v25" as const
 export const MediaVideoCatalogVersion = "effect-native/v26" as const
 export const GlassCatalogVersion = "effect-native/v27" as const
-export const PreviousCatalogVersion = MediaVideoCatalogVersion
-export const CatalogVersion = GlassCatalogVersion
+export const MarkdownLinkHrefCatalogVersion = "effect-native/v28" as const
+export const PreviousCatalogVersion = GlassCatalogVersion
+export const CatalogVersion = MarkdownLinkHrefCatalogVersion
 export const CatalogVersionSchema = Schema.Literal(CatalogVersion)
 export type CatalogVersion = typeof CatalogVersion
 export const compatibleCatalogVersions = [
@@ -119,7 +120,8 @@ export const compatibleCatalogVersions = [
   MobileSurfacesCatalogVersion,
   MobileGesturesCatalogVersion,
   MediaVideoCatalogVersion,
-  GlassCatalogVersion
+  GlassCatalogVersion,
+  MarkdownLinkHrefCatalogVersion
 ] as const
 export type CompatibleCatalogVersion = (typeof compatibleCatalogVersions)[number]
 export const CompatibleCatalogVersionSchema = Schema.Literals(compatibleCatalogVersions)
@@ -650,6 +652,28 @@ export const PathStringSchema = Schema.String.check(
 export const AnchorIdSchema = Schema.NonEmptyString.check(
   Schema.isPattern(/^[A-Za-z][A-Za-z0-9_.:-]*$/, {
     title: "AnchorId"
+  })
+)
+// Markdown link href grammar (v28, issue #71 — demanded by the OpenAgents
+// Forum routes, openagents#8635). Markdown trees carry user/agent-authored
+// content, so the accepted grammar is closed and deliberately stricter than
+// the generic UriStringSchema used by app-authored Link/Image sources:
+//   1. http(s) absolute URLs with an authority — `https://…` / `http://…`
+//      (scheme case-insensitive);
+//   2. same-origin rooted paths — `/path`, `/path?query`, `/path#fragment`
+//      (mirrors PathStringSchema, but a leading `//` is rejected because
+//      protocol-relative references escape the origin);
+//   3. in-page fragment refs — `#fragment`.
+// Everything else is a typed decode/construction failure. In particular
+// `javascript:`, `data:`, `vbscript:`, `file:`, and every other scheme are
+// rejected — the prior URI gate (`^[a-z][a-z0-9+.-]*:`) admitted any scheme,
+// so v28 both widens (paths, fragments) and deliberately tightens (http(s)
+// only) this grammar; the tightening is the safety property the gate was
+// meant to provide and is recorded in GAPS.md. No smuggling via whitespace:
+// the value must match one branch in full.
+export const MarkdownLinkHrefSchema = Schema.String.check(
+  Schema.isPattern(/^(?:https?:\/\/\S+|\/(?!\/)[^?#\s]*(?:\?[^#\s]*)?(?:#\S*)?|#\S+)$/i, {
+    title: "MarkdownLinkHref"
   })
 )
 export const UrlDestinationSchema = Schema.Struct({
@@ -2423,6 +2447,8 @@ export interface RecoveryOverlayView extends NodeBase {
 // no parser and no arbitrary HTML enters the tree. Transcript composes a keyed,
 // append-optimized list of typed message items whose bodies are ordinary
 // catalog views (Markdown, Card tool-cards, CodeBlock once #36 lands).
+// Link `href` is gated by MarkdownLinkHrefSchema (v28, issue #71): http(s)
+// URLs, same-origin rooted paths, or in-page `#fragment` refs only.
 export type MarkdownInline =
   | { readonly kind: "text"; readonly text: string }
   | { readonly kind: "code"; readonly text: string }
@@ -3736,7 +3762,7 @@ export const MarkdownInlineSchema: Schema.Codec<MarkdownInline, MarkdownInline> 
   Schema.Struct({ kind: Schema.Literal("code"), text: Schema.String }),
   Schema.Struct({ kind: Schema.Literal("strong"), children: Schema.Array(MarkdownInlineSelf) }),
   Schema.Struct({ kind: Schema.Literal("emphasis"), children: Schema.Array(MarkdownInlineSelf) }),
-  Schema.Struct({ kind: Schema.Literal("link"), href: UriStringSchema, children: Schema.Array(MarkdownInlineSelf) })
+  Schema.Struct({ kind: Schema.Literal("link"), href: MarkdownLinkHrefSchema, children: Schema.Array(MarkdownInlineSelf) })
 ]) as unknown as Schema.Codec<MarkdownInline, MarkdownInline>
 
 const MarkdownBlockSelf = Schema.suspend((): Schema.Codec<MarkdownBlock, MarkdownBlock> => MarkdownBlockSchema)

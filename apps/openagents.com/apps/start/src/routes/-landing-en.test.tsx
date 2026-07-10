@@ -81,7 +81,7 @@ describe('WEB-1-EN landing Effect Native route (#8595)', () => {
 
     expect(structure).toMatchObject({ tag: 'Stack', key: 'landing-en-root' })
     // Pinned catalog version (guarded by the vendor-freshness test / vendor.json).
-    expect(serialized).toContain('"catalogVersion":"effect-native/v27"')
+    expect(serialized).toContain('"catalogVersion":"effect-native/v28"')
     // Every marketing catalog component the landing must be authored from.
     // (PricingTable/PricingColumn render in the hydrated `ready` state — see
     // the live-projection test below.)
