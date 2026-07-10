@@ -1392,6 +1392,85 @@ describe('OpenAgents OpenAPI route', () => {
     expect(containsProviderSecretMaterial(serialized)).toBe(false)
   })
 
+  test('documents stable CRM and public-readiness contracts without publishing credential plumbing', async () => {
+    const response = await runRoute()
+    const body = (await response.json()) as OpenApiDocument
+
+    const operatorRoutes: ReadonlyArray<
+      readonly [path: string, method: string, operationId: string]
+    > = [
+      [
+        '/api/operator/crm/commands/batch-queue',
+        'get',
+        'listOperatorCrmApprovalBatchQueue',
+      ],
+      [
+        '/api/operator/crm/commands/batch-approve',
+        'post',
+        'approveOperatorCrmCommandBatch',
+      ],
+      ['/api/operator/crm/replies', 'get', 'listOperatorCrmReplies'],
+      [
+        '/api/operator/crm/replies/inbound',
+        'post',
+        'recordOperatorCrmInboundReply',
+      ],
+      [
+        '/api/operator/crm/sales/checkout-link',
+        'post',
+        'createOperatorCrmSalesCheckoutLink',
+      ],
+    ]
+
+    for (const [path, method, operationId] of operatorRoutes) {
+      const apiOperation = operationAt(body, path, method)
+      expect(apiOperation.operationId).toBe(operationId)
+      expect(apiOperation.security).toEqual([{ adminBearer: [] }])
+    }
+
+    const readiness = operationAt(
+      body,
+      '/api/public/agent-readiness/reports/{reportToken}',
+      'get',
+    )
+    expect(readiness.operationId).toBe('getPublicAgentReadinessReport')
+    expect(readiness.security).toEqual([])
+    expect(readiness.parameters).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          in: 'path',
+          name: 'reportToken',
+          required: true,
+        }),
+      ]),
+    )
+
+    expect(schemaProperties(body, 'CrmBatchApproveRequest').commandIds).toEqual(
+      expect.objectContaining({ maxItems: 500, minItems: 1 }),
+    )
+    expect(schemaProperties(body, 'CrmReplyInboundRequest').fromEmail).toEqual(
+      expect.objectContaining({ format: 'email' }),
+    )
+    const publicReport = schemaProperties(body, 'PublicAgentReadinessReport')
+    expect(publicReport).not.toHaveProperty('pipelineRef')
+    expect(publicReport).not.toHaveProperty('sourceRef')
+    expect(publicReport.schemaVersion).toEqual(
+      expect.objectContaining({
+        enum: ['openagents.agent_readiness_public_report.v1'],
+      }),
+    )
+
+    for (const internalPath of [
+      '/api/mobile/claude-accounts/{accountRef}/disconnect',
+      '/api/mobile/codex-accounts/device-login/{attemptRef}',
+      '/api/mobile/codex-accounts/{accountRef}/disconnect',
+      '/api/pylon/provider-accounts/anthropic-claude/auth-material',
+      '/api/pylon/provider-accounts/anthropic-claude/local-auth/import',
+    ]) {
+      expect(body.paths).not.toHaveProperty(internalPath)
+    }
+  })
+
   test('rejects non-GET methods', async () => {
     const response = await runRoute('POST')
 
@@ -1435,6 +1514,20 @@ const intentionallyUndocumentedApiRoutes: ReadonlyArray<string> = [
   // Provider-account connection setup is browser/operator internal; the public
   // agent-facing provider account contract is not this connect route.
   '/api/provider-accounts/openrouter/connect',
+  // OpenAgents native-app account controls. These cookie-free routes are
+  // implementation details of the first-party mobile account connection UX,
+  // not a stable third-party account-management contract. They carry native
+  // user authority and device-login state, so the public OpenAPI document must
+  // not encourage general-purpose callers to bind to them.
+  '/api/mobile/claude-accounts/{param}/disconnect',
+  '/api/mobile/codex-accounts/device-login/{param}',
+  '/api/mobile/codex-accounts/{param}/disconnect',
+  // Owner-local Pylon credential plumbing. These routes import or materialize
+  // Claude authentication state for an already-authorized Pylon and are
+  // deliberately excluded from the public contract even though their route
+  // registration remains coverage-audited here.
+  '/api/pylon/provider-accounts/anthropic-claude/auth-material',
+  '/api/pylon/provider-accounts/anthropic-claude/local-auth/import',
   // Agency / services-business vertical pack (internal omni + operator surfaces;
   // session/operator-gated, not part of the public OpenAPI surface yet):
   '/api/workspaces',

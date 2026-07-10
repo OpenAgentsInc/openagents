@@ -4315,6 +4315,283 @@ const schemaComponents = (): JsonSchema => ({
   OperatorRlmTracesProjection: objectSummary(
     'Operator-only RLM trace projection with redacted/ref-only Recursive Language Model trace metadata, Blueprint signature refs, evidence refs, and authority flags. It never returns raw trajectory JSON or executor payloads.',
   ),
+  CrmApprovalQueueEnvelope: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['queue'],
+    properties: {
+      queue: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['groups', 'total'],
+        properties: {
+          groups: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['commands', 'day', 'segmentRef'],
+              properties: {
+                commands: {
+                  type: 'array',
+                  items: objectSummary(
+                    'Approval-gated CRM send command. The command remains proposed until the operator approval path issues an individual send decision and receipt.',
+                  ),
+                },
+                day: { type: 'string' },
+                segmentRef: { type: 'string' },
+              },
+            },
+          },
+          total: { type: 'integer', minimum: 0 },
+        },
+      },
+    },
+  },
+  CrmBatchApproveRequest: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['commandIds'],
+    properties: {
+      approvedByRef: { type: 'string' },
+      commandIds: {
+        type: 'array',
+        minItems: 1,
+        maxItems: 500,
+        items: { type: 'string', minLength: 1 },
+      },
+      dailyCap: { type: 'number', minimum: 0 },
+      tenant: { type: 'string' },
+    },
+  },
+  CrmBatchApproveEnvelope: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['result'],
+    properties: {
+      result: {
+        type: 'object',
+        additionalProperties: false,
+        required: [
+          'batchRef',
+          'cappedCount',
+          'executedCount',
+          'failedCount',
+          'items',
+          'notFoundCount',
+          'notPendingCount',
+          'requestedCount',
+        ],
+        properties: {
+          batchRef: { type: 'string' },
+          cappedCount: { type: 'integer', minimum: 0 },
+          executedCount: { type: 'integer', minimum: 0 },
+          failedCount: { type: 'integer', minimum: 0 },
+          items: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['commandId', 'disposition'],
+              properties: {
+                commandId: { type: 'string' },
+                disposition: {
+                  type: 'string',
+                  enum: [
+                    'executed',
+                    'failed',
+                    'not_pending',
+                    'not_found',
+                    'capped',
+                  ],
+                },
+              },
+            },
+          },
+          notFoundCount: { type: 'integer', minimum: 0 },
+          notPendingCount: { type: 'integer', minimum: 0 },
+          requestedCount: { type: 'integer', minimum: 0 },
+        },
+      },
+    },
+  },
+  CrmReplyEvent: {
+    type: 'object',
+    additionalProperties: false,
+    required: [
+      'bodyText',
+      'contactId',
+      'createdAt',
+      'fromEmail',
+      'id',
+      'inReplyToRef',
+      'optOut',
+      'provider',
+      'providerEventId',
+      'routedTo',
+      'subject',
+      'tenantRef',
+    ],
+    properties: {
+      bodyText: { type: ['string', 'null'] },
+      contactId: { type: ['string', 'null'] },
+      createdAt: { type: 'string', format: 'date-time' },
+      fromEmail: { type: 'string', format: 'email' },
+      id: { type: 'string' },
+      inReplyToRef: { type: ['string', 'null'] },
+      optOut: { type: 'boolean' },
+      provider: { type: 'string' },
+      providerEventId: { type: ['string', 'null'] },
+      routedTo: {
+        type: 'string',
+        enum: ['sarah_inbox', 'operator_notification'],
+      },
+      subject: { type: ['string', 'null'] },
+      tenantRef: { type: 'string' },
+    },
+  },
+  CrmReplyListEnvelope: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['replies'],
+    properties: {
+      replies: {
+        type: 'array',
+        items: { $ref: '#/components/schemas/CrmReplyEvent' },
+      },
+    },
+  },
+  CrmReplyInboundRequest: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['fromEmail'],
+    properties: {
+      bodyText: { type: 'string', maxLength: 5000 },
+      fromEmail: { type: 'string', format: 'email' },
+      inReplyToRef: { type: 'string', maxLength: 320 },
+      provider: { type: 'string' },
+      providerEventId: { type: 'string' },
+      sourceRef: { type: 'string' },
+      subject: { type: 'string', maxLength: 500 },
+      tenant: { type: 'string' },
+    },
+  },
+  CrmReplyInboundEnvelope: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['result'],
+    properties: {
+      opportunity: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['id', 'stage'],
+        properties: {
+          id: { type: 'string' },
+          stage: { type: 'string' },
+        },
+      },
+      result: {
+        type: 'object',
+        additionalProperties: false,
+        required: [
+          'contactId',
+          'duplicate',
+          'optOut',
+          'replyEventId',
+          'routedTo',
+        ],
+        properties: {
+          contactId: { type: ['string', 'null'] },
+          duplicate: { type: 'boolean' },
+          optOut: { type: 'boolean' },
+          replyEventId: { type: 'string' },
+          routedTo: {
+            type: 'string',
+            enum: ['sarah_inbox', 'operator_notification'],
+          },
+        },
+      },
+      sarahHandoff: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['handoffToken', 'url'],
+        properties: {
+          handoffToken: { type: 'string' },
+          url: { type: 'string', format: 'uri' },
+        },
+      },
+    },
+  },
+  CrmSalesCheckoutLinkRequest: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['contactId', 'packageId'],
+    properties: {
+      contactId: { type: 'string', minLength: 1 },
+      opportunityId: { type: 'string' },
+      packageId: { type: 'string', minLength: 1 },
+      sourceRef: { type: 'string' },
+      tenant: { type: 'string' },
+    },
+  },
+  CrmSalesCheckoutLinkEnvelope: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['link'],
+    properties: {
+      link: {
+        type: 'object',
+        additionalProperties: false,
+        required: [
+          'amountCents',
+          'checkoutUrl',
+          'currency',
+          'opportunityId',
+          'packageId',
+          'sessionId',
+          'sourceRef',
+        ],
+        properties: {
+          amountCents: { type: 'integer', minimum: 0 },
+          checkoutUrl: { type: 'string', format: 'uri' },
+          currency: { type: 'string', enum: ['USD'] },
+          opportunityId: { type: 'string' },
+          packageId: { type: 'string' },
+          sessionId: { type: 'string' },
+          sourceRef: { type: 'string' },
+        },
+      },
+    },
+  },
+  PublicAgentReadinessReport: {
+    type: 'object',
+    additionalProperties: false,
+    description:
+      'Public-safe, tokenized 15-step assessment of one prospect domain. Internal CRM pipeline and attribution refs are excluded.',
+    required: [
+      'assessment',
+      'createdAt',
+      'domain',
+      'grade',
+      'reportToken',
+      'schemaVersion',
+      'score',
+    ],
+    properties: {
+      assessment: objectSummary(
+        'openagents.agent_readiness_fifteen_step_assessment.v1 projection containing only findings and evidence for the assessed public domain.',
+      ),
+      createdAt: { type: 'string', format: 'date-time' },
+      domain: { type: 'string', format: 'hostname', maxLength: 253 },
+      grade: { type: 'string', enum: ['A', 'B', 'C', 'D', 'F'] },
+      reportToken: { type: 'string' },
+      schemaVersion: {
+        type: 'string',
+        enum: ['openagents.agent_readiness_public_report.v1'],
+      },
+      score: { type: 'number', minimum: 0, maximum: 100 },
+    },
+  },
 })
 
 const requestSchemas = (): JsonSchema => ({
@@ -14041,6 +14318,162 @@ const paths = (): JsonSchema => ({
         '201': okJson(
           'Forum tip settlement claim.',
           '#/components/schemas/ForumTipSettlementClaimResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/operator/crm/commands/batch-queue': {
+    get: operation({
+      operationId: 'listOperatorCrmApprovalBatchQueue',
+      summary: 'List the CRM approval queue grouped for batch review',
+      description:
+        'Admin-bearer operator read of proposed CRM send commands grouped by day and segment. This is a review projection only: reading the queue grants no send authority and does not create approval or delivery receipts.',
+      tags: ['Operator'],
+      security: adminBearer,
+      parameters: [
+        queryParam('tenant', 'Optional CRM tenant ref.'),
+        queryParam('status', 'Optional command status. Defaults to proposed.'),
+        queryParam('limit', 'Optional result limit, clamped by server policy.'),
+      ],
+      responses: {
+        '200': okJson(
+          'Grouped CRM approval queue.',
+          '#/components/schemas/CrmApprovalQueueEnvelope',
+        ),
+        '422': {
+          description: 'The CRM approval-queue query could not be fulfilled.',
+          ...jsonContent('#/components/schemas/ErrorResponse'),
+        },
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/operator/crm/commands/batch-approve': {
+    post: operation({
+      operationId: 'approveOperatorCrmCommandBatch',
+      summary: 'Approve and execute a bounded CRM command batch',
+      description:
+        'Admin-bearer operator action that approves the named proposed commands one by one through the existing per-send authority gate. Each executed command retains its individual approval and delivery receipt, the server-enforced daily cap stops remaining sends, and the response adds only a batch rollup; this route is not independent bulk-send authority.',
+      tags: ['Operator'],
+      security: adminBearer,
+      parameters: [
+        queryParam(
+          'tenant',
+          'Optional CRM tenant ref; the body tenant field takes precedence.',
+        ),
+      ],
+      requestBody: jsonContent('#/components/schemas/CrmBatchApproveRequest'),
+      responses: {
+        '200': okJson(
+          'Per-command dispositions and batch rollup receipt.',
+          '#/components/schemas/CrmBatchApproveEnvelope',
+        ),
+        '422': {
+          description: 'The CRM command batch could not be approved or run.',
+          ...jsonContent('#/components/schemas/ErrorResponse'),
+        },
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/operator/crm/replies': {
+    get: operation({
+      operationId: 'listOperatorCrmReplies',
+      summary: 'List recorded CRM reply events',
+      description:
+        'Admin-bearer operator projection of recorded inbound CRM reply events, including contact matching, opt-out disposition, and the bounded Sarah/operator routing decision. This operator-only response may contain customer email content and must not be republished as public evidence.',
+      tags: ['Operator'],
+      security: adminBearer,
+      parameters: [
+        queryParam('tenant', 'Optional CRM tenant ref.'),
+        queryParam('contactId', 'Optional CRM contact id filter.'),
+        queryParam('limit', 'Optional result limit, clamped to 1..500.'),
+      ],
+      responses: {
+        '200': okJson(
+          'Recorded CRM reply events.',
+          '#/components/schemas/CrmReplyListEnvelope',
+        ),
+        '422': {
+          description: 'The CRM reply list could not be read.',
+          ...jsonContent('#/components/schemas/ErrorResponse'),
+        },
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/operator/crm/replies/inbound': {
+    post: operation({
+      operationId: 'recordOperatorCrmInboundReply',
+      summary: 'Record and route an inbound CRM reply',
+      description:
+        'Admin-bearer v0 inbound-reply adapter. It records the reply idempotently when provider event identity is supplied, matches the CRM contact, enforces opt-out suppression, and may issue a Sarah continuation link plus advance the matching opportunity. An external email provider must use its own verified webhook boundary before calling equivalent domain logic; the admin bearer is not a provider webhook secret.',
+      tags: ['Operator'],
+      security: adminBearer,
+      parameters: [
+        queryParam(
+          'tenant',
+          'Optional CRM tenant ref; the body tenant field takes precedence.',
+        ),
+      ],
+      requestBody: jsonContent('#/components/schemas/CrmReplyInboundRequest'),
+      responses: {
+        '201': okJson(
+          'Recorded reply disposition and optional Sarah handoff projection.',
+          '#/components/schemas/CrmReplyInboundEnvelope',
+        ),
+        '422': {
+          description: 'The CRM reply could not be recorded.',
+          ...jsonContent('#/components/schemas/ErrorResponse'),
+        },
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/operator/crm/sales/checkout-link': {
+    post: operation({
+      operationId: 'createOperatorCrmSalesCheckoutLink',
+      summary: 'Create a pack-priced CRM sales checkout link',
+      description:
+        'Admin-bearer operator action that creates a Stripe Checkout Session for an existing CRM contact using the server-owned credit-package catalog and advances or creates the associated opportunity at quoted. Callers choose a package id, never an arbitrary amount; the returned checkout URL and session ref are operator/customer handoff material, not payment or settlement proof.',
+      tags: ['Operator'],
+      security: adminBearer,
+      requestBody: jsonContent(
+        '#/components/schemas/CrmSalesCheckoutLinkRequest',
+      ),
+      responses: {
+        '201': okJson(
+          'Pack-priced CRM checkout-link projection.',
+          '#/components/schemas/CrmSalesCheckoutLinkEnvelope',
+        ),
+        '422': {
+          description:
+            'The contact, package, Stripe configuration, or checkout request was invalid.',
+          ...jsonContent('#/components/schemas/ErrorResponse'),
+        },
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/public/agent-readiness/reports/{reportToken}': {
+    get: operation({
+      operationId: 'getPublicAgentReadinessReport',
+      summary: 'Read a tokenized public agent-readiness report',
+      description:
+        'Unauthenticated read of the public-safe 15-step readiness assessment for the single prospect domain addressed by an unguessable report token. The projection excludes internal pipeline, attribution, enrichment, and customer-contact refs. A successful read records a best-effort funnel visit without changing the response or granting sales, send, or fulfillment authority.',
+      tags: ['Public Proof'],
+      security: publicRead,
+      parameters: [
+        pathParam(
+          'reportToken',
+          'Unguessable report token issued by the operator readiness-report workflow.',
+        ),
+      ],
+      responses: {
+        '200': okJson(
+          'Public-safe readiness assessment.',
+          '#/components/schemas/PublicAgentReadinessReport',
         ),
         ...errorResponses(),
       },
