@@ -573,6 +573,7 @@ import {
 import { fetchAppShellWithPylonStatsBootPayload } from './http/pylon-stats-boot-payload'
 import {
   forbidden,
+  materializeHttpResult,
   methodNotAllowed,
   noStoreJsonResponse,
   redirectResponse,
@@ -8975,21 +8976,21 @@ const providerAccountRoutes = makeProviderAccountRoutes({
       providerAccountServiceHandlers.handleProviderAccountGrantResolveApi(
         request,
         env,
-      ),
+      ).then(materializeHttpResult),
     ),
   handleGoogleGeminiGrantResolveApi: (request, env) =>
     routeEffect('handle_google_gemini_grant_resolve_api', () =>
       providerAccountServiceHandlers.handleGoogleGeminiGrantResolveApi(
         request,
         env,
-      ),
+      ).then(materializeHttpResult),
     ),
   handleGoogleGeminiBuiltinGrantApi: (request, env) =>
     routeEffect('handle_google_gemini_builtin_grant_api', () =>
       providerAccountServiceHandlers.handleGoogleGeminiBuiltinGrantApi(
         request,
         env,
-      ),
+      ).then(materializeHttpResult),
     ),
   handleGoogleGeminiGenerateContentApi: (request, env, ctx, model) =>
     routeEffect('handle_google_gemini_generate_content_api', () =>
@@ -8998,7 +8999,7 @@ const providerAccountRoutes = makeProviderAccountRoutes({
         env,
         ctx,
         model,
-      ),
+      ).then(materializeHttpResult),
     ),
   handleProviderApiKeyConnectApi: (request, env, ctx, providerRouteSegment) =>
     routeEffect('handle_provider_api_key_connect_api', () =>
@@ -9015,7 +9016,7 @@ const providerAccountRoutes = makeProviderAccountRoutes({
         request,
         env,
         providerAccountRef,
-      ),
+      ).then(materializeHttpResult),
     ),
   handleProviderAccountPoolApi: (request, env, ctx) =>
     providerAccountPoolRoutes.handleProviderAccountPoolApi(request, env, ctx),
@@ -9033,7 +9034,7 @@ const providerAccountRoutes = makeProviderAccountRoutes({
         request,
         env,
         attemptId,
-      ),
+      ).then(materializeHttpResult),
     ),
   handleProviderDeviceLoginFailedApi: (request, env, attemptId) =>
     routeEffect('handle_provider_device_login_failed_api', () =>
@@ -9041,7 +9042,7 @@ const providerAccountRoutes = makeProviderAccountRoutes({
         request,
         env,
         attemptId,
-      ),
+      ).then(materializeHttpResult),
     ),
   handleProviderDeviceLoginStartApi: (request, env, ctx) =>
     routeEffect('handle_provider_device_login_start_api', () =>
@@ -12280,9 +12281,8 @@ const sarahFleetRunRoutes = makeSarahFleetRunRoutes<Env>({
       ...(tokens === undefined
         ? {}
         : {
-            appendRefreshedSessionCookies: (response: Response) => {
-              appendSessionCookies(response.headers, tokens)
-              return response
+            decorateResponseHeaders: (headers: Headers) => {
+              appendSessionCookies(headers, tokens)
             },
           }),
     }
@@ -12497,12 +12497,16 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
   {
     path: '/api/public/tassadar-replays/first-real-settlement',
     handler: (request, env) =>
-      Effect.promise(() => handlePublicProofReplayBundleRequest(request, env)),
+      Effect.promise(() =>
+        handlePublicProofReplayBundleRequest(request, env),
+      ).pipe(Effect.map(materializeHttpResult)),
   },
   {
     path: '/api/public/proof-replays',
     handler: (request, env) =>
-      Effect.promise(() => handlePublicProofReplayBundleRequest(request, env)),
+      Effect.promise(() =>
+        handlePublicProofReplayBundleRequest(request, env),
+      ).pipe(Effect.map(materializeHttpResult)),
   },
   {
     path: '/api/public/product-promises',
@@ -13405,7 +13409,9 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
   {
     path: SARAH_FLEET_RUNS_PATH,
     handler: (request, env, ctx) =>
-      sarahFleetRunRoutes.handle(request, env, ctx),
+      sarahFleetRunRoutes
+        .handle(request, env, ctx)
+        .pipe(Effect.map(materializeHttpResult)),
   },
   {
     path: '/api/mobile/auth/session',

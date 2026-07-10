@@ -552,26 +552,27 @@ describe.skipIf(!hasLocalPostgres())(
           } as unknown as PylonApiStore
           const agentStore = await makeAgentStore()
           const fleetAuthority = {
-            claim: async (
+            claim: (
               _env: Readonly<Record<string, unknown>>,
               input: Parameters<FleetRunAuthorityRepositoryShape['claim']>[0],
-            ) => {
-              authorityClaimCalls += 1
-              const result = await Effect.runPromise(authority.claim(input))
-              if (timeline.firstClaimAt === null) {
-                timeline.firstClaimAt = timeline.now()
-              }
-              return result
-            },
-            acceptClaim: async (
+            ) =>
+              Effect.gen(function* () {
+                authorityClaimCalls += 1
+                const result = yield* authority.claim(input)
+                if (timeline.firstClaimAt === null) {
+                  timeline.firstClaimAt = timeline.now()
+                }
+                return result
+              }),
+            acceptClaim: (
               _env: Readonly<Record<string, unknown>>,
               input: Parameters<
                 FleetRunAuthorityRepositoryShape['acceptClaim']
               >[0],
-            ) => {
-              authorityAcceptCalls += 1
-              return Effect.runPromise(authority.acceptClaim(input))
-            },
+            ) =>
+              Effect.sync(() => {
+                authorityAcceptCalls += 1
+              }).pipe(Effect.andThen(authority.acceptClaim(input))),
           }
           const pylonRoutes = makePylonApiRoutes({
             agentStore: () => agentStore,
