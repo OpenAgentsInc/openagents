@@ -17,9 +17,6 @@
   // CFG-9 (#8524): the Cloud Run entry layer typechecks under bun-types via
   // tsconfig.cloudrun.json (script `typecheck:cloudrun`), not workers-types.
   "exclude": [
-    "src/cloudrun/**",
-    // The C1 acceptance composes the Bun/Pylon executor graph. It is checked
-    // separately under the Pylon runtime's strict Bun type contract.
-    "src/sarah-fleet-run-c1-acceptance.test.ts"
+    "src/cloudrun/**"
   ]
 }

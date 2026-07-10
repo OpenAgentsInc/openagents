@@ -316,24 +316,11 @@
     // ceiling (over-cap falls through to the 402 balance gate); heartbeat /
     // canary / Artanis / Raynor accounts stay uncapped (unchanged exemption).
     "INFERENCE_INTERNAL_ACCOUNT_DAILY_TOKEN_CAPS": "agent:user_b2b171e7-e9c8-4756-9540-801b1b2c7667=5000000",
-    // #8600 FC-BRAIN: Sarah's inference is RE-ARMED on production through the
-    // PERSONA-NEUTRAL internal lane `openagents/internal-neutral` — the same
-    // Gemma-led khala conversational routing/receipts/caps with ZERO gateway
-    // persona conditioning, so the Khala collective identity ("We are Khala")
-    // can never compete with Sarah's system prompt again (the 2026-07-09 live
-    // finding that forced the KHS-1 rollback). The lane is served only to
-    // INFERENCE_INTERNAL_ACCOUNT_REFS accounts and never listed publicly.
-    // Rollback: unset SARAH_INFERENCE_GATEWAY_URL (direct-Google resumes).
-    "SARAH_INFERENCE_GATEWAY_URL": "https://openagents.com/api/v1",
-    "SARAH_INFERENCE_GATEWAY_MODEL": "openagents/internal-neutral",
-    // OAV owned avatar pipeline (#8610/#8612/#8614, owner directive
-    // 2026-07-09): /sarah runs the OWNED renderer — hydralisk-avatar
-    // (MuseTalk realtime + WebRTC) and hydralisk-tts on sarah-avatar-gpu-1,
-    // fronted by caddy/sslip.io. Bearer tokens ride SET_SECRETS in
-    // deploy-cloudrun.sh (sarah-render-service-token / sarah-tts-service-token).
-    "SARAH_AVATAR_RENDERER": "owned",
-    "SARAH_RENDER_SERVICE_URL": "https://34.63.208.229.sslip.io",
-    "SARAH_TTS_SERVICE_URL": "https://34.63.208.229.sslip.io/tts",
+    // Sarah removed at owner direction 2026-07-10 (epic #8610). The former
+    // SARAH_INFERENCE_GATEWAY_* (#8600 FC-BRAIN persona-neutral lane) and
+    // SARAH_AVATAR_RENDERER / SARAH_RENDER_SERVICE_URL / SARAH_TTS_SERVICE_URL
+    // (OAV owned renderer on sarah-avatar-gpu-1, #8612/#8614) vars are gone
+    // with apps/sarah; the internal-neutral inference lane itself remains.
     // Owner-controlled inference balance-gate exemption (#6180). Arms the gate
     // ONLY; it is a no-op until a verified owner key is granted into
     // `inference_operator_exemption`. Own-infra/non-premium lanes only; exempt
@@ -786,15 +773,8 @@
         // #8600 FC-BRAIN: staging parity — Sarah's staging agent account gets
         // the authoritative gateway-side 5M-token/UTC-day ceiling.
         "INFERENCE_INTERNAL_ACCOUNT_DAILY_TOKEN_CAPS": "agent:user_674bf06b-7f0e-4388-9921-030c689c750f=5000000",
-        "SARAH_INFERENCE_GATEWAY_URL": "https://openagents-monolith-staging-ezxz4mgdsq-uc.a.run.app/api/v1",
-        // #8600 FC-BRAIN: staging rides the persona-neutral internal lane —
-        // same khala routing, zero persona conditioning (the bench that proves
-        // the "We are Khala" bleed class is closed before prod re-arm).
-        "SARAH_INFERENCE_GATEWAY_MODEL": "openagents/internal-neutral",
-        // OAV owned avatar pipeline — staging mirrors production (#8610/#8612/#8614).
-        "SARAH_AVATAR_RENDERER": "owned",
-        "SARAH_RENDER_SERVICE_URL": "https://34.63.208.229.sslip.io",
-        "SARAH_TTS_SERVICE_URL": "https://34.63.208.229.sslip.io/tts",
+        // Sarah removed 2026-07-10 (epic #8610): staging SARAH_* vars gone
+        // with apps/sarah (gateway lane + owned avatar renderer).
         // Durable-stream Rank-1 resumable inference (#6058) — LIVE on staging too
         // (the DO binding + migration are added to this env below).
         "INFERENCE_DURABLE_STREAM_ENABLED": "true",

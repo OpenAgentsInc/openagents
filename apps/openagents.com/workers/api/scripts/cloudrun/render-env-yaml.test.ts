@@ -37,26 +37,26 @@ const renderEnvironment = async (
   }
 }
 
-describe('Cloud Run Sarah origin rendering', () => {
-  test('production keeps Sarah authority and public links on openagents.com', async () => {
+describe('Cloud Run env rendering', () => {
+  // Sarah removed at owner direction 2026-07-10 (epic #8610): the renderer
+  // must never re-emit SARAH_* mounts, and the monolith runtime vars stay.
+  test('production renders monolith vars with no SARAH_* mounts', async () => {
     const environment = await renderEnvironment('production')
 
-    expect(environment.SARAH_OPENAGENTS_BASE_URL).toBe(
-      'https://openagents.com',
-    )
-    expect(environment.SARAH_PUBLIC_BASE_URL).toBe(
-      'https://openagents.com/sarah',
-    )
+    expect(environment.OPENAGENTS_RUNTIME).toBe('cloudrun-monolith')
+    expect(environment.PORTAL_UI_DIR).toBe('/app/portal-ui')
+    for (const key of Object.keys(environment)) {
+      expect(key.startsWith('SARAH_')).toBe(false)
+    }
   })
 
-  test('staging keeps Sarah authority and public links inside the staging monolith', async () => {
+  test('staging renders monolith vars with no SARAH_* mounts', async () => {
     const environment = await renderEnvironment('staging')
 
-    expect(environment.SARAH_OPENAGENTS_BASE_URL).toBe(
-      'https://openagents-monolith-staging-ezxz4mgdsq-uc.a.run.app',
-    )
-    expect(environment.SARAH_PUBLIC_BASE_URL).toBe(
-      'https://openagents-monolith-staging-ezxz4mgdsq-uc.a.run.app/sarah',
-    )
+    expect(environment.OPENAGENTS_RUNTIME).toBe('cloudrun-monolith')
+    expect(environment.PORTAL_UI_DIR).toBe('/app/portal-ui')
+    for (const key of Object.keys(environment)) {
+      expect(key.startsWith('SARAH_')).toBe(false)
+    }
   })
 })

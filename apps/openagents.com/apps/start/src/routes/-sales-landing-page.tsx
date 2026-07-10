@@ -112,14 +112,8 @@ function SalesNavbar() {
             </nav>
           </NavbarLeft>
           <NavbarRight className="gap-2">
-            <a
-              href={SALES_LANDING_LINKS.businessIntake}
-              className="hidden text-sm font-medium text-muted-foreground transition-colors hover:text-foreground md:block"
-            >
+            <LinkButton href={SALES_LANDING_LINKS.businessIntake} size="sm">
               Start a project
-            </a>
-            <LinkButton href={SALES_LANDING_LINKS.talkToSarah} size="sm">
-              Talk to Sarah
             </LinkButton>
           </NavbarRight>
         </NavbarShell>
@@ -131,8 +125,8 @@ function SalesNavbar() {
 // ---------------------------------------------------------------------------
 // Hero — headline + subhead reuse the already-approved in-repo copy from the
 // existing `/preview/landing` candidate (`-landing-preview-page.tsx`), so no
-// new persuasive copy is authored. Primary CTAs are the two the issue names:
-// Talk to Sarah + business intake.
+// new persuasive copy is authored. Primary CTA is business intake (the former
+// Talk to Sarah CTA was removed with the Sarah surface, 2026-07-10).
 // ---------------------------------------------------------------------------
 function SalesHero() {
   return (
@@ -153,15 +147,9 @@ function SalesHero() {
         </p>
         <div className="relative z-10 flex flex-col justify-center gap-4 sm:flex-row">
           <LinkButton
-            href={SALES_LANDING_LINKS.talkToSarah}
+            href={SALES_LANDING_LINKS.businessIntake}
             variant="default"
             iconRight={<ArrowRight className="size-4" />}
-          >
-            Talk to Sarah
-          </LinkButton>
-          <LinkButton
-            href={SALES_LANDING_LINKS.businessIntake}
-            variant="glow"
           >
             Start a project
           </LinkButton>
@@ -452,13 +440,10 @@ function SalesCta() {
         </h2>
         <div className="flex flex-col justify-center gap-4 sm:flex-row">
           <LinkButton
-            href={SALES_LANDING_LINKS.talkToSarah}
+            href={SALES_LANDING_LINKS.businessIntake}
             variant="default"
             iconRight={<ArrowRight className="size-4" />}
           >
-            Talk to Sarah
-          </LinkButton>
-          <LinkButton href={SALES_LANDING_LINKS.businessIntake} variant="glow">
             Start a project
           </LinkButton>
         </div>
@@ -495,7 +480,6 @@ const FOOTER_COLUMNS = [
     links: [
       { text: 'Forum', href: SALES_LANDING_LINKS.forum },
       { text: 'GitHub', href: SALES_LANDING_LINKS.github },
-      { text: 'Talk to Sarah', href: SALES_LANDING_LINKS.talkToSarah },
     ],
   },
 ]

@@ -11,6 +11,7 @@ import {
   backgroundAgentsContractRegistry,
 } from "./background-agents"
 import { khalaSyncContractRegistry } from "./khala-sync"
+import { sarahRetiredContractRegistry } from "./sarah-retired"
 import { openAgentsAppsContractRegistry } from "./openagents-apps"
 import {
   checkBehaviorContractCoverage,
@@ -952,5 +953,24 @@ describe("behavior contract receipts", () => {
     expect(receipt?.checks.map(check => check.id)).toContain("oracle_coverage_linked")
     expect(receipt?.checks.map(check => check.id)).toContain("nightly_step.desktop_verify")
     expect(registry.contracts[0]?.state).toBe("enforced")
+  })
+})
+
+describe("retired sarah contract registry (owner removal 2026-07-10, #8610)", () => {
+  test("registry decodes, validates, and every contract is retired", () => {
+    const decoded = decodeBehaviorContractRegistryDocument(
+      sarahRetiredContractRegistry,
+    )
+    const validation = validateBehaviorContractRegistry(decoded)
+    expect(validation.issues).toEqual([])
+    expect(validation.ok).toBe(true)
+    expect(decoded.contracts.length).toBe(13)
+    for (const contract of decoded.contracts) {
+      expect(contract.state).toBe("retired")
+      expect(contract.enforcementTier).toBe("unenforced")
+      // Owner statements survive verbatim; the retirement note is explicit.
+      expect(contract.statement.length).toBeGreaterThan(10)
+      expect(contract.verification).toContain("RETIRED 2026-07-10")
+    }
   })
 })

@@ -1,5 +1,16 @@
 # docs/sarah
 
+> **STATUS — REMOVED (owner direction, 2026-07-10).** The Sarah surface is
+> dead: the web page at `openagents.com/sarah`, every `/sarah/api/*` route,
+> and the whole `apps/sarah` package were deleted at owner direction
+> ("all sarah shit must die", epic #8610), and the mobile Sarah surface is
+> being stripped in a parallel lane. `GET /sarah` now returns an explicit
+> 404 tombstone from the monolith. The behavior contracts that bound the
+> surface are preserved verbatim as `retired` in
+> `packages/behavior-contracts/src/sarah-retired.ts`; the GPU render node
+> (`sarah-avatar-gpu-1`) is stopped. Everything below this banner is the
+> retained historical record — git history is the archive for the code.
+
 Sarah is OpenAgents' AI sales employee — and under the Sarah-first product
 thesis, the front door to the whole product: a disclosed AI identity with a
 live avatar, durable per-prospect memory, typed tool and pricing authority,

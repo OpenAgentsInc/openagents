@@ -688,8 +688,8 @@ export const stage1LandingView = (state: Stage1LandingState): View =>
           ),
           actionButton(
             'stage1-cta-secondary',
-            'Talk to Sarah',
-            SALES_LANDING_LINKS.talkToSarah,
+            'Start a project',
+            SALES_LANDING_LINKS.businessIntake,
             'secondary',
           ),
         ],
@@ -748,12 +748,6 @@ export const stage1LandingView = (state: Stage1LandingState): View =>
                 'footer-github',
                 'GitHub',
                 SALES_LANDING_LINKS.github,
-                'ghost',
-              ),
-              actionButton(
-                'footer-sarah',
-                'Talk to Sarah',
-                SALES_LANDING_LINKS.talkToSarah,
                 'ghost',
               ),
             ],

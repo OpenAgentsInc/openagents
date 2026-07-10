@@ -64,14 +64,8 @@ bun build src/cloudrun/server.ts --target bun --outdir dist-cloudrun \
   --external cloudflare:workers --external '@cloudflare/playwright' >/dev/null
 bun build src/cloudrun/preload.ts --target bun --outdir dist-cloudrun >/dev/null
 cp -R "$APP_DIR/apps/web/dist" dist-cloudrun/web-dist
-# #8594 SM-5: Sarah UI + agent persona ride beside the monolith bundle.
-REPO_ROOT="$(cd "$APP_DIR/../.." && pwd)"
-mkdir -p dist-cloudrun/sarah-ui dist-cloudrun/sarah-agent
-# #8598 AV-5: the Sarah surface is an Effect Native bundle, built here.
-cp "$REPO_ROOT/apps/sarah/src/ui/index.html" "$REPO_ROOT/apps/sarah/src/ui/sarah.css" dist-cloudrun/sarah-ui/
-(cd "$REPO_ROOT" && bun build apps/sarah/src/ui/main.ts --target browser --minify \
-  --outfile "$API_DIR/dist-cloudrun/sarah-ui/app.js") >/dev/null
-cp -R "$REPO_ROOT/apps/sarah/agent/." dist-cloudrun/sarah-agent/
+# Sarah removed at owner direction 2026-07-10 (epic #8610): the former
+# sarah-ui / sarah-agent / sarah-clips bundle steps are gone with apps/sarah.
 # #8652 PORTAL-1: /portal Effect Native bundle (authored in apps/start).
 mkdir -p dist-cloudrun/portal-ui
 (cd "$APP_DIR" && bun build apps/start/src/portal-entry.ts --target browser --minify \
@@ -80,17 +74,6 @@ mkdir -p dist-cloudrun/portal-ui
 mkdir -p dist-cloudrun/forum-ui
 (cd "$APP_DIR" && bun build apps/start/src/forum-entry.ts --target browser --minify \
   --outfile "$API_DIR/dist-cloudrun/forum-ui/app.js") >/dev/null
-
-# Epic #8610: bake the SHIPPABLE Sarah opener clips (raw MIT Hallo2 512²
-# renders) into the image for /sarah/api/clips. LICENSE LAW: never copy the
-# *-sr.mp4 variants — they are CodeFormer-derived (S-Lab 1.0, non-commercial).
-echo "==> Fetching Sarah opener clips (openers-v2, shippable tier)"
-mkdir -p dist-cloudrun/sarah-clips
-SARAH_CLIP_BUCKET="gs://openagentsgemini-oa-artifacts/sarah-avatar/openers-v2"
-for clip in opener-01-hello opener-02-welcome-back opener-03-good-question opener-04-got-it opener-05-show-you; do
-  gcloud storage cp "$SARAH_CLIP_BUCKET/${clip}-hallo2.mp4" \
-    "dist-cloudrun/sarah-clips/${clip}-hallo2.mp4" --quiet
-done
 
 echo "==> Rendering env vars from wrangler.jsonc ($TARGET)"
 bun scripts/cloudrun/render-env-yaml.ts "$TARGET"
@@ -101,18 +84,12 @@ SET_SECRETS=(
   "OPENAGENTS_ADMIN_API_TOKEN=openagents-monolith-admin-token-${ENV_SUFFIX}:latest"
   "KHALA_SYNC_LIVE_HUB_TOKEN=khala-live-hub-token:latest"
   "GEMINI_API_KEY=openagents-gemini-api-key:latest"
-  # #8598: Sarah LiveAvatar sessions + the bearer guarding the avatar brain
-  # endpoint (/sarah/api/llm/chat/completions) + the registered LiveAvatar
-  # llm-configuration id. SARAH_AVATAR_ID stays unset until the owner picks a
-  # production avatar (sandbox default keeps the loop provable).
-  "LIVEAVATAR_API_KEY=sarah-liveavatar-api-key:latest"
-  "SARAH_AVATAR_LLM_BEARER=sarah-avatar-llm-bearer:latest"
-  "SARAH_AVATAR_LLM_CONFIG_ID=sarah-avatar-llm-config-id:latest"
-  "SARAH_AVATAR_ID=sarah-avatar-id:latest"
-  # OAV owned avatar pipeline (#8612/#8614): bearer tokens for the
-  # hydralisk-avatar render service and hydralisk-tts on sarah-avatar-gpu-1.
-  "SARAH_RENDER_SERVICE_TOKEN=sarah-render-service-token:latest"
-  "SARAH_TTS_SERVICE_TOKEN=sarah-tts-service-token:latest"
+  # Sarah removed 2026-07-10 (epic #8610). The following Secret Manager
+  # entries are retained in GCP as history but are no longer mounted:
+  #   sarah-liveavatar-api-key, sarah-avatar-llm-bearer,
+  #   sarah-avatar-llm-config-id, sarah-avatar-id,
+  #   sarah-render-service-token, sarah-tts-service-token,
+  #   sarah-inference-gateway-token(-staging)
   # OPENROUTER_API_KEY is DROPPED on BOTH staging AND production (owner decision
   # 2026-07-09): OpenRouter is no longer a platform Khala supply lane — it was
   # removed from every plan in model-router.ts and the primary lane is now our
@@ -145,8 +122,6 @@ SET_SECRETS=(
 
 if [[ "$TARGET" == "production" ]]; then
   SET_SECRETS+=(
-    # #8600 KHS-1: Sarah gateway agent bearer (prod key)
-    "SARAH_INFERENCE_GATEWAY_TOKEN=sarah-inference-gateway-token:latest"
     # OPENROUTER_API_KEY was dropped here (owner decision 2026-07-09) — OpenRouter
     # is no longer a platform Khala lane on prod OR staging. See the common block
     # above. The BYOK caller-key path does not need this platform secret.
@@ -195,8 +170,6 @@ if [[ "$TARGET" == "production" ]]; then
 else
   # Staging-only secrets.
   SET_SECRETS+=(
-    # #8600 KHS-1: Sarah gateway agent bearer (staging key)
-    "SARAH_INFERENCE_GATEWAY_TOKEN=sarah-inference-gateway-token-staging:latest"
     # AC-1 (#8503): the org-cloud runtime no-meter shared secret. A request
     # carrying x-openagents-org-cloud-runtime-no-meter matching this value
     # bypasses metering + the customer balance(402)/spend-cap gates so the
@@ -254,14 +227,15 @@ echo "==> Smoke: /internal/healthz"
 curl -fsS "${SERVICE_URL}/internal/healthz"
 echo
 
-# Sarah avatar synthetic-prospect smoke (SQ-4 #8621): every deploy proves the
-# owner-contract basics (greeting within deadline, speak turn, slot eviction)
-# against the deployed service before we call it done. Consumes the render
-# slot briefly; skip with SARAH_SKIP_AVATAR_SMOKE=1 (e.g. during a live demo).
-if [[ "${SARAH_SKIP_AVATAR_SMOKE:-}" != "1" ]]; then
-  echo "==> Smoke: sarah avatar e2e (synthetic prospect)"
-  SARAH_SMOKE_BASE_URL="$SERVICE_URL" bun "$REPO_ROOT/apps/sarah/scripts/sarah-avatar-e2e-smoke.mjs"
+# Sarah removed 2026-07-10 (epic #8610): the avatar e2e smoke died with the
+# surface. Prove the tombstone instead: /sarah must be 404, never a page.
+echo "==> Smoke: /sarah tombstone (expect 404)"
+SARAH_STATUS="$(curl -s -o /dev/null -w '%{http_code}' "${SERVICE_URL}/sarah")"
+if [[ "$SARAH_STATUS" != "404" ]]; then
+  echo "FATAL: GET /sarah returned $SARAH_STATUS (expected 404 — Sarah is removed)" >&2
+  exit 1
 fi
+echo "==> /sarah -> 404 confirmed"
 
 # Portal REAL-BROWSER smoke (#8652 reopen): headless Chromium loads /portal on
 # the deployed service and proves the logged-out login gate pixel-level

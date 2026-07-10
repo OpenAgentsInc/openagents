@@ -97,10 +97,10 @@ export const formatCount = (value: number | null | undefined): string =>
     : LIVE_VALUE_PENDING
 
 // --- Approved-reuse CTA + link targets --------------------------------------
-// Reused from existing, already-in-repo approved surfaces. `talkToSarah` is the
-// direction named in issue #8565 (openagents.com/sarah; embedded later).
+// Reused from existing, already-in-repo approved surfaces. The former
+// `talkToSarah` target (openagents.com/sarah, issue #8565) was removed at
+// owner direction 2026-07-10 (epic #8610): the Sarah surface is gone.
 export const SALES_LANDING_LINKS = {
-  talkToSarah: 'https://openagents.com/sarah',
   businessIntake: '/business#business-intake',
   khala: '/khala',
   promises: '/docs/product-promises',

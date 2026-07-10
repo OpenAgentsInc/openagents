@@ -1,13 +1,21 @@
 # Sarah Behavior Contracts
 
-Machine sources of truth: `apps/sarah/src/contracts/isolation-contracts.ts`,
-`apps/sarah/src/contracts/split-layout-contracts.ts`,
-`apps/sarah/src/contracts/fleet-command-contracts.ts`, and the Sarah avatar UX
-registry in `apps/sarah/src/contracts/avatar-ux-contracts.ts` (schema:
-`@openagentsinc/behavior-contracts`). This document is the human rendering;
-the coverage tests under `apps/sarah/src/contracts/` fail the sweep if a doc
-drifts from its registry, if an enforced contract loses its oracle, or if an
-oracle file drops its contract reference.
+> **RETIRED (owner direction, 2026-07-10, epic #8610).** The Sarah surface —
+> web page, every `/sarah/api/*` route, and the whole `apps/sarah` package —
+> was removed at owner direction. The machine source of truth for these
+> contracts is now `packages/behavior-contracts/src/sarah-retired.ts`, where
+> every contract below is preserved verbatim with state `retired` and a
+> retirement note (owner statements are never silently deleted). The
+> registries and oracle files formerly under `apps/sarah/src/contracts/`
+> were deleted with the package; this document is retained as the human
+> rendering of the historical record.
+
+Machine source of truth: `packages/behavior-contracts/src/sarah-retired.ts`
+(schema: `@openagentsinc/behavior-contracts`). Historically the registries
+lived in `apps/sarah/src/contracts/` (isolation, split-layout, fleet-command,
+and avatar UX), with coverage tests that failed the sweep if a doc drifted
+from its registry, if an enforced contract lost its oracle, or if an oracle
+file dropped its contract reference.
 
 Lane: KHS-3 (#8602) + KHS-4 (#8603) + KHS-5 (#8604), epic #8599 (Sarah ×
 Khala), plus BM-3 (#8629) for the Sarah Blueprint map shell. The isolation law

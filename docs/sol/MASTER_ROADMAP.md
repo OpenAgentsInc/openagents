@@ -21,11 +21,19 @@
    owner can start, inspect, steer, approve, pause, resume, stop, and recover a
    fleet without guessing which device or local cache owns reality.
 2. **Sarah is not the required front door.** Named-persona, relationship-first,
-   avatar, opener, voice, video, and A/V quality work are paused. Existing
-   Sarah routes and adapters remain compatibility and regression substrate;
-   they do not define the new app information architecture or acceptance
-   path. A future assistant may consume the same typed application actions
-   only after the direct software flows are reliable.
+   avatar, opener, voice, video, and A/V quality work are paused.
+   **Amendment (owner escalation, 2026-07-10, later the same day): the Sarah
+   surface is removed, not retained.** The owner overruled the
+   compatibility-substrate clause ("all sarah shit must die"): the
+   `openagents.com/sarah` web page, every `/sarah/api/*` route, and the whole
+   `apps/sarah` package are deleted (epic #8610); `/sarah/*` returns an
+   explicit 404 tombstone; the mobile Sarah surface is stripped in a parallel
+   lane; the `sarah-avatar-gpu-1` render node is stopped. The behavior
+   contracts are preserved verbatim as `retired` in
+   `packages/behavior-contracts/src/sarah-retired.ts`. Server-side FleetRun
+   intake authority (`/api/sarah/fleet-runs`) remains in force for the
+   desktop/mobile clients. A future assistant may consume the same typed
+   application actions only after the direct software flows are reliable.
 3. **Desktop and mobile are the active product clients.** OpenAgents web remains
    a supported public/API surface and operational dependency, but new landing,
    Forum, portal, persona, and broad route-conversion work does not preempt the
@@ -696,7 +704,14 @@ coalescing, caps, typed fallback, deployment, and live proof are retained
 substrate. It is not an open lane or a prerequisite for the first owner-gated
 local fleet dogfood slice.
 
-## PAUSED — Sarah presentation, voice, video, and named front door
+## REMOVED — Sarah presentation, voice, video, and named front door
+
+**Amendment 2026-07-10 (owner escalation, epic #8610):** paused became
+removed. The `/sarah` web surface, all `/sarah/api/*` routes, and `apps/sarah`
+are deleted; contracts retired into
+`packages/behavior-contracts/src/sarah-retired.ts`; `sarah-avatar-gpu-1`
+stopped. The paragraphs below are the retained pause record that preceded the
+removal.
 
 **[#8610](https://github.com/OpenAgentsInc/openagents/issues/8610)** and all
 remaining opener/avatar/voice/video/media-quality work are paused by the

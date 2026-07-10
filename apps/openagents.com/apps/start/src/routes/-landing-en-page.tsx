@@ -487,9 +487,9 @@ export const landingEnView = (state: LandingEnState): View =>
             links: navBarLinks,
             actions: [
               actionButton(
-                'landing-en-nav-sarah',
-                'Talk to Sarah',
-                SALES_LANDING_LINKS.talkToSarah,
+                'landing-en-nav-business',
+                'Start a project',
+                SALES_LANDING_LINKS.businessIntake,
                 'primary',
               ),
             ],
@@ -523,16 +523,10 @@ export const landingEnView = (state: LandingEnState): View =>
               'One open network where coding agents do real work - yours, or ours. Every outcome lands with verifiable receipts.',
             actions: [
               actionButton(
-                'landing-en-hero-sarah',
-                'Talk to Sarah',
-                SALES_LANDING_LINKS.talkToSarah,
-                'primary',
-              ),
-              actionButton(
                 'landing-en-hero-business',
                 'Start a project',
                 SALES_LANDING_LINKS.businessIntake,
-                'secondary',
+                'primary',
               ),
             ],
             // Mockup + glow centerpiece (the launch-ui signature visual).
@@ -720,16 +714,10 @@ export const landingEnView = (state: LandingEnState): View =>
                 tone: 'info',
                 actions: [
                   actionButton(
-                    'landing-en-cta-sarah',
-                    'Talk to Sarah',
-                    SALES_LANDING_LINKS.talkToSarah,
-                    'primary',
-                  ),
-                  actionButton(
                     'landing-en-cta-business',
                     'Start a project',
                     SALES_LANDING_LINKS.businessIntake,
-                    'secondary',
+                    'primary',
                   ),
                 ],
               }),

@@ -203,7 +203,9 @@ export const shouldRedirectUnknownDocumentToHome = (
     pathname.startsWith('/auth/') ||
     pathname.startsWith('/checkout') ||
     pathname.startsWith('/openagents-agent-claim') ||
-    // #8594: Sarah is a Cloud Run path-mount (apps/sarah), not Foldkit SPA.
+    // Sarah removed at owner direction 2026-07-10 (epic #8610). The Cloud Run
+    // entrypoint 404-tombstones /sarah/* before the Worker; this exclusion
+    // keeps the Worker layer consistent (404, never a 302-to-home revival).
     pathname === '/sarah' ||
     pathname.startsWith('/sarah/')
   ) {

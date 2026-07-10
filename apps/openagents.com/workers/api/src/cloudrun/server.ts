@@ -40,8 +40,6 @@ import {
   makeSyncBridgeWebSocketHandlers,
   withoutUpgradeHeaders,
 } from './sync-connect-bridge'
-// #8594 SM-5: Sarah mounts at openagents.com/sarah on this monolith (no subdomain).
-import { handleSarahRequest } from '../../../../../sarah/src/server.ts'
 // #8652 PORTAL-1: client portal mounts at openagents.com/portal (EN surface).
 import { handlePortalUiRequest } from './portal-ui'
 // #8634/#8635 scope 5: retained /forum* serves the Effect Native conversion.
@@ -109,10 +107,16 @@ const main = async (): Promise<void> => {
         return Response.json({ ok: true, service: 'openagents-monolith' })
       }
 
-      // #8594: Sarah lives at openagents.com/sarah (path mount, not subdomain).
-      // Intercept before the Worker SPA unknown-document 302-to-home.
+      // Sarah removed at owner direction 2026-07-10 (epic #8610; supersedes
+      // the #8594 SM-5 path mount): the web surface AND every /sarah/api/*
+      // route are gone (apps/sarah deleted). Explicit 404 tombstone so the
+      // Worker's SPA unknown-document 302-to-home never resurrects a /sarah
+      // page and stale clients get a typed not_found instead of HTML.
       if (url.pathname === '/sarah' || url.pathname.startsWith('/sarah/')) {
-        return handleSarahRequest(request)
+        return Response.json(
+          { error: 'not_found', path: url.pathname },
+          { status: 404 },
+        )
       }
 
       // #8652 PORTAL-1: client portal page + bundle at openagents.com/portal.

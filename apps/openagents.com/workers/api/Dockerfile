@@ -15,11 +15,8 @@ WORKDIR /app
 COPY dist-cloudrun/server.js ./dist-cloudrun/server.js
 COPY dist-cloudrun/preload.js ./dist-cloudrun/preload.js
 COPY dist-cloudrun/web-dist ./web-dist
-# #8594: Sarah path-mount assets (UI + agent persona) for openagents.com/sarah
-COPY dist-cloudrun/sarah-ui ./sarah-ui
-COPY dist-cloudrun/sarah-agent ./sarah-agent
-# #8610: shippable pre-rendered clip tier (MIT Hallo2 openers-v2 only).
-COPY dist-cloudrun/sarah-clips ./sarah-clips
+# Sarah removed at owner direction 2026-07-10 (epic #8610): the former
+# sarah-ui / sarah-agent / sarah-clips image layers and SARAH_* env are gone.
 # #8652 PORTAL-1: /portal Effect Native bundle for openagents.com/portal
 COPY dist-cloudrun/portal-ui ./portal-ui
 # #8634/#8635 scope 5: /forum* Effect Native bundle for openagents.com/forum
@@ -28,10 +25,6 @@ COPY dist-cloudrun/forum-ui ./forum-ui
 ENV OPENAGENTS_WEB_DIST=/app/web-dist
 ENV PORTAL_UI_DIR=/app/portal-ui
 ENV FORUM_UI_DIR=/app/forum-ui
-ENV SARAH_UI_DIR=/app/sarah-ui
-ENV SARAH_AGENT_DIR=/app/sarah-agent
-ENV SARAH_CLIPS_DIR=/app/sarah-clips
-ENV SARAH_PUBLIC_BASE_URL=https://openagents.com/sarah
 
 EXPOSE 8080
 

@@ -10,7 +10,6 @@ import {
 import { routeSiteCrawlSurfaceRequest } from '../../../workers/api/src/site-crawl-surfaces-routes'
 import { routeWellKnownAgentSurfaceRequest } from '../../../workers/api/src/well-known-agent-surfaces-routes'
 import { routeKhalaSyncProxyRequest } from './khala-sync-proxy'
-import { handleSarahRequest } from '../../../../sarah/src/server.ts'
 
 type StartWorkerEnv = Record<string, unknown>
 
@@ -46,10 +45,10 @@ export async function routeSharedAgentSurface(
 ): Promise<Response | undefined> {
   const path = new URL(request.url).pathname
 
-  // #8594: Sarah lives at openagents.com/sarah (no separate subdomain).
-  // API under /sarah/api/*; static UI is served from Start public/sarah/.
-  if (path === '/sarah/api' || path.startsWith('/sarah/api/')) {
-    return handleSarahRequest(request)
+  // Sarah removed at owner direction 2026-07-10 (epic #8610): the /sarah
+  // web surface and every /sarah/api/* route are gone (apps/sarah deleted).
+  if (path === '/sarah' || path.startsWith('/sarah/')) {
+    return Response.json({ error: 'not_found', path }, { status: 404 })
   }
 
   const crawlSurface = routeSiteCrawlSurfaceRequest(request)

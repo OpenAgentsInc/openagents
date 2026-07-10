@@ -4,8 +4,10 @@
 
 This directory is converging on the single OpenAgents web app described by
 [`docs/sol/MASTER_ROADMAP.md`](../../docs/sol/MASTER_ROADMAP.md). Retained
-human-facing product routes are `/`, `/sarah`, `/forum`, and required Forum
-descendants, plus `/promises`. Preserve `/docs/product-promises` as a stable
+human-facing product routes are `/`, `/forum`, and required Forum
+descendants, plus `/promises` (`/sarah` was removed at owner direction
+2026-07-10, epic #8610 — it and all `/sarah/api/*` routes are 404
+tombstones). Preserve `/docs/product-promises` as a stable
 document or alias and preserve the registry, transition, audit, readiness,
 report, receipt, verification, and evidence chain required to substantiate
 product promises and service deliverables. Legal, auth, other API, asset,
@@ -67,7 +69,7 @@ If `foldkit-skills` is installed as a Claude Code plugin, the `generate-program`
 - Read `DESIGN.md` when maintaining legacy UI, and read the Effect Native
   design docs plus the Sol master roadmap for retained/new UI. Do not preserve
   an Autopilot-specific visual rule when it conflicts with the unified
-  OpenAgents/Sarah product direction.
+  OpenAgents product direction.
 - When writing GitHub issue comments with `gh`, never pass Markdown containing
   escaped `\n` sequences in a quoted `--body` string. Use real newlines via
   `--body-file -`, a heredoc/stdin body, or a body variable populated from a

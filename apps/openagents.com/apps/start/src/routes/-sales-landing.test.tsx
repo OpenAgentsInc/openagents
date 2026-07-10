@@ -21,10 +21,11 @@ describe('WEB-1 sales-landing preview route', () => {
     // Reused-approved hero copy (verbatim, not newly authored).
     expect(html).toContain('Software, built by agents.')
 
-    // The two named CTAs are wired.
-    expect(html).toContain('https://openagents.com/sarah')
+    // The business-intake CTA is wired; the Sarah surface (and its CTA) was
+    // removed at owner direction 2026-07-10 (epic #8610).
     expect(html).toContain('/business#business-intake')
-    expect(html).toContain('Talk to Sarah')
+    expect(html).not.toContain('openagents.com/sarah')
+    expect(html).not.toContain('Talk to Sarah')
 
     // Live sections render their honest pending state under SSR (no fabricated
     // counters or prices before the client fetch resolves).

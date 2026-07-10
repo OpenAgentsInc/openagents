@@ -60,8 +60,9 @@ iteration), the **top operating rule is CONSTANT MOTION**:
 ## Repo Layout
 
 - `apps/openagents.com/` owns the single OpenAgents web app. The retained
-  public product routes are `/`, `/sarah`, `/forum`, required Forum
-  descendants, and `/promises`; legal, authentication, machine-readable API,
+  public product routes are `/`, `/forum`, required Forum
+  descendants, and `/promises` (`/sarah` was removed at owner direction
+  2026-07-10 — see the Sarah section below); legal, authentication, machine-readable API,
   asset, and operational endpoints are infrastructure exceptions. Preserve the
   complete product-promise and service-deliverable integrity chain—including
   stable docs/report paths, registry/transition/audit/readiness APIs,
@@ -592,10 +593,12 @@ and local Codex auth out of reports.
   too large or out of scope for the current change, fix what is cheap and **explicitly
   flag the rest** (in the report, and a tracking issue if it will persist) — never
   silently leave a red, and never describe a partially-green run as clean.
-- **Product shape (owner decision, 2026-07-09):** there are three product apps:
-  the OpenAgents web app (`/`, `/sarah`, `/forum`, and `/promises`), the
-  **OpenAgents** mobile app, and **OpenAgents Desktop**. Sarah is the
-  relationship and fleet-command surface in all three. Khala Code, Autopilot,
+- **Product shape (owner decision, 2026-07-09; amended 2026-07-10):** there
+  are three product apps: the OpenAgents web app (`/`, `/forum`, and
+  `/promises`), the **OpenAgents** mobile app, and **OpenAgents Desktop**.
+  The Sarah surface was removed at owner direction 2026-07-10 ("all sarah
+  shit must die", epic #8610): `/sarah` and every `/sarah/api/*` route are
+  404 tombstones and `apps/sarah` is deleted. Khala Code, Autopilot,
   Pylon cockpit, Sites, and other prior product ideas are capabilities,
   engine-room services, or migration sources—not additional product apps. P0
   is Sarah-managed parallel coding across Codex, Claude, and Grok accounts on
@@ -790,12 +793,22 @@ rationale in `docs/fable/2026-07-08-productspec-adoption-analysis.md` (#8593).
   private pricing in this tree (private engagement specs live in private repos).
 
 
-## Sarah (`apps/sarah`, #8594)
+## Sarah — REMOVED (owner direction 2026-07-10, epic #8610)
 
-- Public surface: **`openagents.com/sarah`** (path under the main product — no
-  `sarah.openagents.com` subdomain).
-- Implementation: `apps/sarah/` Bun service + zero-React DOM UI.
-- Authority: openagents.com Worker CRM/credits/checkout APIs remain system of
-  record; Sarah is a client.
-- Email: monorepo CRM approval rail only (`crm-email-rail`).
-- Private `OpenAgentsInc/sarah` is historical after SM-6.
+- The Sarah surface is dead: the `openagents.com/sarah` web page, every
+  `/sarah/api/*` route, and the whole `apps/sarah` package were deleted at
+  owner direction 2026-07-10 ("all sarah shit must die"). Git history is the
+  archive; do not resurrect the mount, the routes, or the package.
+- `GET /sarah` and `/sarah/*` return an explicit 404 tombstone from the
+  Cloud Run monolith entrypoint (`src/cloudrun/server.ts`).
+- The behavior contracts that bound the surface are preserved verbatim as
+  `retired` in `packages/behavior-contracts/src/sarah-retired.ts`; the human
+  rendering stays at `docs/sarah/SARAH_CONTRACTS.md` (historical).
+- Worker-side Sarah-named API surfaces that are NOT under `/sarah`
+  (`/api/sarah/fleet-runs` FleetRun intake authority, CRM handoff/checkout
+  operator routes, internal-neutral inference lane caps) remain in place —
+  their client surface is gone; any change there is a separate decision.
+- The GPU render node `sarah-avatar-gpu-1` (hydralisk-avatar + hydralisk-tts)
+  serves nothing and is stopped.
+- Historical: #8594 (path mount), private `OpenAgentsInc/sarah` (pre-SM-6),
+  `docs/sarah/` (retained record).

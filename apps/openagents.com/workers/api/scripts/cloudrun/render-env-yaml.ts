@@ -101,21 +101,13 @@ const liveHubUrl =
   target === 'production'
     ? 'https://khala-live-hub-ezxz4mgdsq-uc.a.run.app'
     : 'https://khala-live-hub-staging-ezxz4mgdsq-uc.a.run.app'
-const openAgentsOrigin =
-  target === 'production'
-    ? 'https://openagents.com'
-    : 'https://openagents-monolith-staging-ezxz4mgdsq-uc.a.run.app'
-
 Object.assign(vars, {
   KHALA_SYNC_LIVE_HUB_URL: liveHubUrl,
   OPENAGENTS_RUNTIME: 'cloudrun-monolith',
   // #8652 PORTAL-1: /portal path mount on this monolith.
   PORTAL_UI_DIR: '/app/portal-ui',
-  // #8594: Sarah path mount on this monolith (assets copied into the image).
-  SARAH_UI_DIR: '/app/sarah-ui',
-  SARAH_AGENT_DIR: '/app/sarah-agent',
-  SARAH_OPENAGENTS_BASE_URL: openAgentsOrigin,
-  SARAH_PUBLIC_BASE_URL: `${openAgentsOrigin}/sarah`,
+  // Sarah removed at owner direction 2026-07-10 (epic #8610): the former
+  // SARAH_UI_DIR / SARAH_AGENT_DIR / SARAH_*_BASE_URL mounts are gone.
   // D1-over-HTTP bridge coordinates for the not-yet-migrated CFG-4 domains
   // (the token itself is a Secret Manager secret; these two are public ids).
   ...(target === 'production'
