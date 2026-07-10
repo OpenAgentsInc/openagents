@@ -19,17 +19,26 @@ export type DesktopRuntimeGateway = Readonly<{
   dispose: () => void
 }>
 
-const defaultCapabilities: ReadonlyArray<CapabilityState> = [
+export const desktopRuntimeCapabilities = (input: Readonly<{
+  syncLocalState: "ready" | "unavailable"
+}>): ReadonlyArray<CapabilityState> => [
   { id: "codex-history", state: "available" },
   { id: "workspace", state: "available" },
   { id: "git-review", state: "available" },
   { id: "provider-accounts", state: "available" },
-  { id: "khala-sync", state: "unavailable", reason: "OpenAgents sign-in and Sync are not connected yet." },
+  {
+    id: "khala-sync",
+    state: "unavailable",
+    reason: input.syncLocalState === "ready"
+      ? "Local Sync persistence is ready; OpenAgents sign-in is required before network Sync."
+      : "Local Sync persistence is unavailable.",
+  },
   { id: "conversation-stream", state: "unavailable", reason: "The durable conversation runtime is not connected yet." },
 ]
 
 export const createDesktopRuntimeGateway = (
-  capabilities: ReadonlyArray<CapabilityState> = defaultCapabilities,
+  capabilities: ReadonlyArray<CapabilityState> | (() => ReadonlyArray<CapabilityState>) =
+    () => desktopRuntimeCapabilities({ syncLocalState: "unavailable" }),
 ): DesktopRuntimeGateway => {
   let phase: "idle" | "ready" | "disposed" = "idle"
   let sequence = 0
@@ -58,7 +67,7 @@ export const createDesktopRuntimeGateway = (
           kind: "query_result",
           requestId: request.requestId,
           result: {
-            capabilities,
+            capabilities: typeof capabilities === "function" ? capabilities() : capabilities,
             kind: "runtime.bootstrap",
             lifecycle: phase === "idle" ? "starting" : phase,
             protocolVersion: DesktopRuntimeGatewayProtocolVersion,

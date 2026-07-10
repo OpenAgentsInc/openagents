@@ -30,6 +30,21 @@ streaming; those capabilities remain explicitly unavailable.
 Contract:
 `openagents_desktop.seam.runtime_gateway_closed_protocol.v1`.
 
+### Host-owned Khala Sync persistence
+
+Electron main opens the existing shared Khala Sync SQLite store in an
+owner-private directory under Desktop `userData`.
+
+- One installation identity is generated once and reused after restart.
+- The shared store schema and semantics remain the only cache/offline-queue
+  implementation; Desktop does not create a parallel Sync database.
+- The store closes deterministically on quit.
+- The renderer receives only bounded readiness—never the database path/handle,
+  installation refs, rows, pending mutations, or credentials.
+- Network Sync remains unavailable until OpenAgents sign-in is implemented.
+
+Contract: `openagents_desktop.sync.host_owned_sqlite.v1`.
+
 ### Recent local Codex chats
 
 When local Codex history is available, opening Desktop projects top-level Codex
@@ -103,6 +118,12 @@ The Runtime Gateway seam oracle is:
 
 ```sh
 bun test apps/openagents-desktop/tests/runtime-gateway.e2e.test.ts
+```
+
+The host persistence oracle is:
+
+```sh
+bun test apps/openagents-desktop/tests/desktop-sync-host.test.ts
 ```
 
 ## Not guaranteed yet

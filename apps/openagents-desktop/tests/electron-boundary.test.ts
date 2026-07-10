@@ -95,6 +95,18 @@ describe("Electron boundary (issue #8574 mandatory first-scaffold hardening)", (
     }
   })
 
+  test("Khala Sync database identity and path remain in Electron main", () => {
+    const preload = stripComments(read("src/preload.cts"))
+    const renderer = stripComments(read("src/renderer/boot.ts"))
+    for (const source of [preload, renderer]) {
+      expect(source).not.toContain("khala-sync.sqlite")
+      expect(source).not.toContain("openagents-desktop.")
+      expect(source).not.toContain("openKhalaSyncStore")
+    }
+    expect(main).toContain('"sync", "khala-sync.sqlite"')
+    expect(main).toContain("desktopSyncHost?.close()")
+  })
+
   test("workspace filesystem authority starts only after an explicit directory choice", () => {
     expect(main).toContain("let workspaceRoot: string | null = null")
     expect(main).toContain('properties: ["openDirectory", "createDirectory"]')

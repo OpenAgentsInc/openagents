@@ -53,7 +53,7 @@ describe("Desktop Runtime Gateway", () => {
     expect(response.result.capabilities).toContainEqual({
       id: "khala-sync",
       state: "unavailable",
-      reason: "OpenAgents sign-in and Sync are not connected yet.",
+      reason: "Local Sync persistence is unavailable.",
     })
   })
 

@@ -5,7 +5,7 @@ import {
 
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument = {
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-10.4",
+  version: "2026-07-10.5",
   contracts: [
     {
       contractId: "openagents_desktop.seam.codex_recent_history_projection.v1",
@@ -50,6 +50,20 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
       evidenceRefs: ["apps/openagents-desktop/src/runtime-gateway-contract.ts", "apps/openagents-desktop/tests/electron-boundary.test.ts"],
       oracles: [{ id: "runtime_gateway_closed_protocol.e2e", kind: "bun-test", mode: "e2e", ref: "apps/openagents-desktop/tests/runtime-gateway.e2e.test.ts", description: "Round-trips schema-decoded renderer requests and proves truthful capability, unavailable command, lifecycle ordering, disposal, and rejection behavior." }],
       verification: "bun run --cwd apps/openagents-desktop verify runs the seam suite, mechanical boundary oracle, bundle, and real Electron bootstrap smoke.",
+    },
+    {
+      contractId: "openagents_desktop.sync.host_owned_sqlite.v1",
+      state: "enforced",
+      surface: "openagents-desktop",
+      productArea: "Khala Sync local persistence",
+      enforcementTier: "test-sweep",
+      blockerRefs: [],
+      source: { channel: "owner-codex-session", statedBy: "owner", statedOn: "2026-07-10" },
+      statement: "Desktop opens the shared Khala Sync SQLite store inside Electron main, persists one installation identity across restart, and closes it deterministically. Until OpenAgents sign-in lands, the gateway reports local persistence ready but network Sync unavailable.",
+      authorityBoundary: "The renderer receives only bounded readiness. Database path and handle, installation identity refs, rows, mutation queue, and credentials remain host-only. The local database is a reconstructible cache/offline queue and never server authority.",
+      evidenceRefs: ["apps/openagents-desktop/src/desktop-sync-host.ts", "apps/openagents-desktop/src/desktop-sync-store.ts", "packages/khala-sync-client/src/store-core.ts"],
+      oracles: [{ id: "desktop_sync_host.lifecycle", kind: "bun-test", mode: "unit", ref: "apps/openagents-desktop/tests/desktop-sync-host.test.ts", description: "Proves restart-stable identity, private permissions, idempotent close, bounded readiness projection, and reuse of the shared SQLite store." }],
+      verification: "bun run --cwd apps/openagents-desktop verify runs the host lifecycle suite and real Electron gateway bootstrap.",
     },
   ],
 }

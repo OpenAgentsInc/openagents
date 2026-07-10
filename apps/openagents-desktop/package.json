@@ -17,9 +17,12 @@
   },
   "dependencies": {
     "@openagentsinc/behavior-contracts": "workspace:*",
+    "@openagentsinc/khala-sync": "workspace:*",
+    "@openagentsinc/khala-sync-client": "workspace:*",
     "@effect-native/core": "workspace:*",
     "@effect-native/render-dom": "workspace:*",
-    "@effect-native/tokens": "workspace:*"
+    "@effect-native/tokens": "workspace:*",
+    "effect": "catalog:"
   },
   "devDependencies": {
     "bun-types": "^1.0.0",

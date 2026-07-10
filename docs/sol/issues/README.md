@@ -67,8 +67,9 @@ gets a new bounded incident/task under its actual owning program.
 
 Completed bounded leaves, including #8653's recent local Codex-history
 projection and
-[`desktop-runtime-gateway.md`](./desktop-runtime-gateway.md) (#8655), remain
-closed receipts rather than open P0 queue items.
+[`desktop-runtime-gateway.md`](./desktop-runtime-gateway.md) (#8655) plus
+[`desktop-sync-host.md`](./desktop-sync-host.md) (#8656), remain closed receipts
+rather than open P0 queue items.
 
 ## Other source records
 

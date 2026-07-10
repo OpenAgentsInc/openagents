@@ -447,8 +447,9 @@ records before claiming the first new slice.
 - Desktop has a hardened Electron/Effect Native shell, local five-thread chat,
   recent read-only Codex history, selected-root bounded read/edit/save, typed
   read-only Git status/diff, a closed command palette, and provider readiness/
-  device auth plus the first closed, versioned host-owned Runtime Gateway
-  protocol/lifecycle seam. It does not yet have OpenAgents sign-in,
+  device auth, the first closed/versioned host-owned Runtime Gateway seam, and
+  a private main-process Khala Sync SQLite cache using the shared store core.
+  It does not yet have OpenAgents sign-in,
   authoritative Sync threads or conversation services composed behind that
   gateway, a streamed provider-neutral event runtime, a complete coding
   workbench, or a visible server-authoritative Fleet cockpit.
@@ -956,7 +957,10 @@ folder selection, bounded root listing/read/edit/save with conflict and atomic-
 write checks, typed read-only Git status/diff, a closed command registry and
 palette, Codex readiness/device-auth Settings, and a schema-decoded Runtime
 Gateway bootstrap/command/lifecycle seam that truthfully reports Sync and
-conversation streaming unavailable. The focused landings are
+conversation streaming unavailable. The gateway now composes a host-owned
+`node:sqlite` adapter over the existing Khala Sync store core, with a private
+restart-stable installation identity and deterministic close; network Sync
+remains unavailable pending sign-in. The focused landings are
 `597f291f86` (bounded save), `09a48acd0a` (typed Git read-only seam),
 `e278ffd6c8` (palette smoke/pixel receipt), and `eeebedce20` (device-auth success
 reconciliation). These remain fixture/development proof: the smoke does not

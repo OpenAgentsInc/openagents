@@ -47,6 +47,8 @@ import {
   invalidDesktopRuntimeGatewayResponse,
 } from "./runtime-gateway-contract.ts"
 import { createDesktopRuntimeGateway } from "./runtime-gateway.ts"
+import { desktopRuntimeCapabilities } from "./runtime-gateway.ts"
+import { openDesktopSyncHost, type DesktopSyncHost } from "./desktop-sync-host.ts"
 
 const here = import.meta.dirname
 const smokeMode = process.env.OPENAGENTS_DESKTOP_SMOKE === "1"
@@ -64,7 +66,10 @@ const codexConnect = makeCodexConnectService(here, {
   ...(smokeMode ? { spawnPylon: makeFixtureSpawnPylon() } : {}),
   openExternal: (url) => shell.openExternal(url),
 })
-const runtimeGateway = createDesktopRuntimeGateway()
+let desktopSyncHost: DesktopSyncHost | null = null
+const runtimeGateway = createDesktopRuntimeGateway(() => desktopRuntimeCapabilities({
+  syncLocalState: desktopSyncHost?.status().state === "local_ready" ? "ready" : "unavailable",
+}))
 
 const isTrustedRuntimeGatewaySender = (event: IpcMainInvokeEvent): boolean => {
   const frame = event.senderFrame
@@ -283,7 +288,7 @@ const smokeRuntimeGatewayBootstrap = `(async () => {
       result.requestId === "smoke-runtime-bootstrap" &&
       result.result?.protocolVersion === 1 &&
       result.result?.lifecycle === "ready" &&
-      result.result?.capabilities?.some((capability) => capability.id === "khala-sync" && capability.state === "unavailable"),
+      result.result?.capabilities?.some((capability) => capability.id === "khala-sync" && capability.state === "unavailable" && capability.reason?.includes("Local Sync persistence is ready")),
     result,
   }
 })()`
@@ -536,6 +541,15 @@ void app.whenReady().then(() => {
   // PNG so the running desktop application has one product identity.
   if (process.platform === "darwin") app.dock?.setIcon(desktopIconPath)
   hardenSession()
+  try {
+    desktopSyncHost = openDesktopSyncHost({
+      databasePath: path.join(app.getPath("userData"), "sync", "khala-sync.sqlite"),
+      randomId: randomUUID,
+    })
+  } catch {
+    desktopSyncHost = null
+    console.error("[openagents-desktop] local Sync persistence unavailable")
+  }
   runtimeGateway.start()
   const window = createWindow()
   if (smokeMode) runSmoke(window)
@@ -552,6 +566,8 @@ app.on("window-all-closed", () => {
 app.on("before-quit", () => {
   codexConnect.dispose()
   runtimeGateway.dispose()
+  desktopSyncHost?.close()
+  desktopSyncHost = null
 })
 
 app.on("activate", () => {

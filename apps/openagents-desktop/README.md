@@ -103,6 +103,12 @@ the top-level bundled renderer; the Electron smoke exercises a truthful
 bootstrap. Khala Sync and durable conversation streaming remain explicitly
 `unavailable` until their later leaves land.
 
+Desktop main now also opens the shared `khala-sync-client` SQLite store beneath
+its private `userData` root, persists one installation identity, and closes the
+store on quit. The gateway reports that local persistence is ready while
+keeping network Sync unavailable until native OpenAgents sign-in lands. No
+database path, handle, identity ref, row, queue, or credential crosses preload.
+
 **One catalog, many hosts.** The transcript-message and composer
 compositions are deliberately structured around the shared Effect Native chat
 contract, and `src/renderer/shell.test.ts` asserts the typed shape. New
