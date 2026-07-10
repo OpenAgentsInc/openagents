@@ -48,8 +48,8 @@
   },
   "videoGates": {
     "ownerPlaybackVerdict": {
-      "status": "pending",
-      "notes": "awaiting owner playback of ~/Desktop/sarah-openers-v2/ copies — stills never advance a take"
+      "status": "pass",
+      "notes": "OWNER PLAYBACK 2026-07-10 (batch verdict, his words verbatim): \"those v2s are much better - opener-05-show-you-hallo2.mp4 is for example close to shippable so proceed in that direction\" — openers-v2 Hallo2 direction APPROVED. Advance stays gated on: audio judge 7/10 (re-roll to >=8 in flight) and license-clean sharpness tier."
     },
     "avSync": {
       "start": "watch",
@@ -107,5 +107,5 @@
     "closeoutReceipt": "docs/sarah/receipts/2026-07-10-openers-v2-hallo2-a100.json"
   },
   "advance": false,
-  "verdictSummary": "Hallo2 quality-tier render (judge 7/10 audio): STT verbatim PASS per segment, clean temporal inspection; watch the phase-9 jerk spike and staccato 'Good question' pacing in playback. Awaiting owner playback."
+  "verdictSummary": "Hallo2 quality-tier render (judge 7/10 audio): STT verbatim PASS per segment, clean temporal inspection; watch the phase-9 jerk spike and staccato 'Good question' pacing in playback. OWNER PLAYBACK PASS 2026-07-10 (v2 direction approved); advance still gated on audio judge 7/10 (re-roll to >=8 in flight) and license-clean sharpness tier."
 }

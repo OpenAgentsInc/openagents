@@ -346,6 +346,15 @@ re-rolls for the three 7/10 scripts (opener-02/04-style long-reference
 candidates are the strongest lane), SR license resolution or a permissive
 temporal upscaler (FLAIR), and KHS-6/OAV-4 serving integration.
 
+**OWNER PLAYBACK VERDICT (2026-07-10), verbatim:** "those v2s are much
+better - opener-05-show-you-hallo2.mp4 is for example close to shippable so
+proceed in that direction." The Hallo2 still-animation direction is
+**APPROVED**; opener-05 is called out as near-shippable. Recorded as
+`ownerPlaybackVerdict: pass` on all five openers-v2 scoreboards; `advance`
+stays false pending the remaining gates (audio re-rolls to ≥8/10 on
+01/03/05, a verbatim "did" re-roll on 02, and a license-clean sharpness
+tier — FLAIR evaluation replaces the S-Lab-encumbered `video_sr.py` lane).
+
 Production note: `/sarah` flipped to the OWNED pipeline on 2026-07-09
 (`f5f9cb3725`): hydralisk-avatar (MuseTalk realtime + WebRTC WHEP) and
 hydralisk-tts live on the GPU host behind caddy/sslip.io; e2e verified from

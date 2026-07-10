@@ -48,8 +48,8 @@
   },
   "videoGates": {
     "ownerPlaybackVerdict": {
-      "status": "pending",
-      "notes": "awaiting owner playback of ~/Desktop/sarah-openers-v2/ copies — stills never advance a take"
+      "status": "pass",
+      "notes": "OWNER PLAYBACK 2026-07-10 (batch verdict, his words verbatim): \"those v2s are much better - opener-05-show-you-hallo2.mp4 is for example close to shippable so proceed in that direction\" — openers-v2 Hallo2 direction APPROVED. Advance stays gated on: 'did'->'do' STT deviation in the winner audio (verbatim re-roll in flight) and license-clean sharpness tier."
     },
     "avSync": {
       "start": "watch",
@@ -107,5 +107,5 @@
     "closeoutReceipt": "docs/sarah/receipts/2026-07-10-openers-v2-hallo2-a100.json"
   },
   "advance": false,
-  "verdictSummary": "Strongest audio in the library (judge 9/10). Video gates clean in temporal inspection; STT 'did'->'do' word deviation inherited from the winner audio is flagged for owner adjudication. Awaiting owner playback."
+  "verdictSummary": "Strongest audio in the library (judge 9/10). Video gates clean in temporal inspection; STT 'did'->'do' word deviation inherited from the winner audio is flagged for owner adjudication. OWNER PLAYBACK PASS 2026-07-10 (v2 direction approved); advance still gated on 'did'->'do' STT deviation in the winner audio (verbatim re-roll in flight) and license-clean sharpness tier."
 }

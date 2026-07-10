@@ -3,7 +3,7 @@
 - Schema: `sarah-take-scoreboard.v1`
 - Take: `openers-v2-opener-01-hello` (2026-07-10)
 - Refs: #8610, #8618
-- **Advance: NO** — Hallo2 quality-tier render of the bake-off winner audio (judge 7/10): STT verbatim PASS per segment, no boil, stable identity, generated head motion. Awaiting owner playback; SR variant is research-only pending the S-Lab license question.
+- **Advance: NO** — Hallo2 quality-tier render of the bake-off winner audio (judge 7/10): STT verbatim PASS per segment, no boil, stable identity, generated head motion. Awaiting owner playback; SR variant is research-only pending the S-Lab license question. OWNER PLAYBACK PASS 2026-07-10 (v2 direction approved); advance still gated on audio judge 7/10 (re-roll to >=8 in flight) and license-clean sharpness tier.
 
 ## Input refs
 
@@ -36,7 +36,7 @@
 
 | Gate | Status | Notes |
 | --- | --- | --- |
-| **Owner playback verdict** | PENDING | awaiting owner playback of ~/Desktop/sarah-openers-v2/ copies — stills never advance a take |
+| **Owner playback verdict** | PASS | OWNER PLAYBACK 2026-07-10 (batch verdict, his words verbatim): "those v2s are much better - opener-05-show-you-hallo2.mp4 is for example close to shippable so proceed in that direction" — openers-v2 Hallo2 direction APPROVED. Advance stays gated on: audio judge 7/10 (re-roll to >=8 in flight) and license-clean sharpness tier. |
 | A/V sync (start / middle / end) | WATCH / not run / not run | speech onset articulation visible in first consecutive-frame strip; full 3-point sync check deferred to playback review |
 | Crop sharpness | WATCH | 512^2 native output is soft vs 720p source footage; SR x4 variant recovers texture but is license-encumbered (S-Lab) — serving upscale strategy open |
 | Temporal boil/flicker | PASS | 6 consecutive frames at t=1.3 s: smooth articulation progression, zero boil, stable identity |
