@@ -34,6 +34,9 @@ scope reviewable beside [`../MASTER_ROADMAP.md`](../MASTER_ROADMAP.md).
 - [`app-landing.md`](./app-landing.md) — #8595 retained root landing.
 - [`app-mobile.md`](./app-mobile.md) — #8597 greenfield React Native
   OpenAgents mobile with `com.openagents.app` and the pinned icon.
+- [`glass-ui-and-sarah-mobile.md`](./glass-ui-and-sarah-mobile.md) —
+  #8646–#8650 hybrid native-glass catalog, mobile shell, and text-first Sarah
+  convergence program.
 
 ## Retained cross-cutting lanes
 

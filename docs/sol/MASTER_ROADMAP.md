@@ -1,7 +1,7 @@
 # MASTER ROADMAP — Sarah Fleet Command first; three OpenAgents apps
 
 - Date: 2026-07-09
-- Revision: 14
+- Revision: 15
 - Status: canonical OpenAgents implementation roadmap
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Issue source set: [`issues/README.md`](./issues/README.md)
@@ -495,7 +495,7 @@ and the renderer watchdog plus FPS/cadence simulator stay green under concurrent
 ASR load. Failure selects a native port or fallback, never foundation adoption
 by inertia. This P1 work cannot delay #8640 Phase A or the C2 coding cutover.
 
-## P1 parallel — GL: native glass UI stdlib and Sarah-in-the-app (owner priority 2026-07-09)
+## P1 parallel — GL: native glass UI stdlib and Sarah-in-the-app
 
 Owner decision (2026-07-09, adopting the hybrid recommendation of
 `docs/fable/2026-07-09-swiftui-expo-ui-and-the-effect-native-stdlib.md`):
@@ -524,7 +524,11 @@ GL-3 is the convergence point with the Sarah program: the mobile
 conversation surface consumes the same `/sarah` APIs, SSE transcript, and
 typed intent grammar as the web surface — no parallel state models. Its
 voice/avatar tiers follow the #8610 capacity policy; text is the
-availability floor and is never blocked.
+availability floor and is never blocked. GL-3 may build its text-first seam in
+parallel with GL-1/GL-2 and then compose the glass catalog; consuming Sarah
+does not wait for every owned SwiftUI lowering. The checked-in issue source and
+exit ordering live in
+[`issues/glass-ui-and-sarah-mobile.md`](./issues/glass-ui-and-sarah-mobile.md).
 
 ## P1 — three OpenAgents applications
 
@@ -570,9 +574,11 @@ React Native renderer seam, owned OTA feed, and iOS release lane are
 code/fixture/deployment-proven through main `8f3cfbe77a` and TestFlight 0.4.3
 build 106 (`VALID`). Build 105 failed owner visual verification; build 106 is
 the simulator-pixel-proven correction and still needs owner device acceptance.
-The active app-directory claim remains with the Fable session that posted it on
-#8597; no other session should mutate that lane until it updates or releases
-the claim. Sarah/Sync cross-device continuation, Android proof, vendor
+#8597 retains an unreleased Fable claim whose published scope is only the
+initial greenfield setup; later OTA/SwiftUI/TestFlight work exceeded that
+recorded scope. Treat it as owned until the actor posts an explicit re-scope or
+release—do not infer a stale claim without the protocol's evidence and process/
+worktree audit. Sarah/Sync cross-device continuation, Android proof, vendor
 reconciliation, and the full issue exit remain open.
 
 - Sarah is home.
@@ -599,9 +605,13 @@ pinned electron-shadcn scaffold is in the Bun workspace, the retained surface
 runs through Effect Native, Electron starts with context isolation, sandboxing,
 and deny-by-default navigation/permission posture, and the typed ping loop was
 clicked in a real Electron smoke. The active app-directory claim remains with
-the Fable session recorded on #8574. Owner identity acceptance, Sarah/Fleet and
-Pylon composition, specialist hosts, packaging/fuses, signing/notarization,
-updates, cross-device continuation, and legacy-client retirement remain open.
+the Fable session recorded on #8574, but its published scope is only the
+already-landed initial greenfield setup. Its last evidence does not by itself
+make the claim stale; require an explicit release/re-scope or the full protocol
+audit before another session mutates the lane. Owner identity acceptance,
+Sarah/Fleet and Pylon composition, specialist hosts, packaging/fuses, signing/
+notarization, updates, cross-device continuation, and legacy-client retirement
+remain open.
 
 - Sarah is the relationship surface.
 - Fleet is the specialist cockpit over the same run state.
@@ -705,10 +715,17 @@ their milestone or tripwire fires.
 3. Run #8547 and #8636 on dedicated cloud capacity; never block Phase A.
 4. Keep #8610 active in parallel without taking the fleet integration hot
    paths; closed #8600 remains production inference substrate.
-5. Run #8634 route inventory/retirement and #8635 Forum work in parallel with
+5. Run #8646–#8650 on the mobile/Effect Native capacity already owning that
+   surface: inside GL-1, land effect-native#70's `render-rn` host-driver seam,
+   convert the D-MB-02 island to a typed Host, then add catalog-native glass
+   pieces; GL-2 composes the shell and GL-3 composes the text-first Sarah seam.
+   GL-3's shared API/state work may advance alongside GL-1/GL-2, but visual
+   integration follows their typed shell. GL-4 is the later convert-and-delete
+   lane. These remain parallel P1 work and do not take #8639 hot contracts.
+6. Run #8634 route inventory/retirement and #8635 Forum work in parallel with
    app conversion; landing/mobile/desktop slices continue from their landed
    substrate and preserve the active #8597/#8574 claim ownership.
-6. Keep #8642/#8643 dependency-held until Phase A, except that #8642's first
+7. Keep #8642/#8643 dependency-held until Phase A, except that #8642's first
    real correction/deletion request or privacy-incident receipt activates it
    immediately.
 
@@ -769,12 +786,3 @@ never reported as live/owner acceptance.
 
 This file is reconciled in place after material landings. Do not grow a long
 revision diary or restore the old 30-item phase queue.
-
----
-
-*Editing note (2026-07-09): this Sol-owned document was edited by the
-Fable lane at explicit owner request — the owner adopted the hybrid
-`@expo/ui` recommendation and directed that the GL program be added here,
-prioritized to run alongside the Sarah work so Sarah is consumable in the
-mobile app ASAP. Sol reconciles or re-sequences these entries at its next
-pass; the lane additions themselves are owner decisions.*
