@@ -66,7 +66,9 @@ security, privacy, data-loss, accessibility, outage, or supported-surface defect
 gets a new bounded incident/task under its actual owning program.
 
 Completed bounded leaves, including #8653's recent local Codex-history
-projection, remain closed receipts rather than open P0 queue items.
+projection and
+[`desktop-runtime-gateway.md`](./desktop-runtime-gateway.md) (#8655), remain
+closed receipts rather than open P0 queue items.
 
 ## Other source records
 

@@ -10,6 +10,26 @@ oracle runs in the normal test sweep.
 
 ## Current UX guarantees
 
+### Closed Desktop Runtime Gateway protocol
+
+The signed renderer reaches host runtime state through one versioned,
+schema-decoded query/command/event seam.
+
+- Bootstrap reports the gateway lifecycle and only truthful capability state.
+- Unsupported conversation commands return `unavailable`, never accepted or
+  completed.
+- Lifecycle events have a monotonic sequence and an owned disposer.
+- Electron main validates the top-level bundled renderer before serving a
+  request.
+- Tokens, credentials, URLs, raw runtime events, arbitrary IPC, `MessagePort`,
+  filesystem/process handles, and command arguments cannot enter the contract.
+
+This first slice does not claim OpenAgents sign-in, Khala Sync, or provider
+streaming; those capabilities remain explicitly unavailable.
+
+Contract:
+`openagents_desktop.seam.runtime_gateway_closed_protocol.v1`.
+
 ### Recent local Codex chats
 
 When local Codex history is available, opening Desktop projects top-level Codex
@@ -77,6 +97,12 @@ The focused Codex-history oracle is:
 
 ```sh
 bun test apps/openagents-desktop/tests/codex-history.e2e.test.ts
+```
+
+The Runtime Gateway seam oracle is:
+
+```sh
+bun test apps/openagents-desktop/tests/runtime-gateway.e2e.test.ts
 ```
 
 ## Not guaranteed yet

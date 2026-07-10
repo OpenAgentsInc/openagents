@@ -13,7 +13,7 @@
 import path from "node:path"
 import { randomUUID } from "node:crypto"
 import { Worker } from "node:worker_threads"
-import { BrowserWindow, app, dialog, ipcMain, session, shell } from "electron"
+import { BrowserWindow, app, dialog, ipcMain, session, shell, type IpcMainInvokeEvent } from "electron"
 
 import {
   CodexAccountsChannel,
@@ -40,6 +40,13 @@ import {
   decodeWorkspaceSaveRequest,
 } from "./workspace-contract.ts"
 import { inspectWorkspace, readWorkspaceFile, saveWorkspaceFile, workspaceGitDiff, workspaceGitStatus } from "./workspace-service.ts"
+import {
+  DesktopRuntimeGatewayEventChannel,
+  DesktopRuntimeGatewayInvokeChannel,
+  decodeDesktopRuntimeGatewayRequest,
+  invalidDesktopRuntimeGatewayResponse,
+} from "./runtime-gateway-contract.ts"
+import { createDesktopRuntimeGateway } from "./runtime-gateway.ts"
 
 const here = import.meta.dirname
 const smokeMode = process.env.OPENAGENTS_DESKTOP_SMOKE === "1"
@@ -56,6 +63,32 @@ if (smokeMode) {
 const codexConnect = makeCodexConnectService(here, {
   ...(smokeMode ? { spawnPylon: makeFixtureSpawnPylon() } : {}),
   openExternal: (url) => shell.openExternal(url),
+})
+const runtimeGateway = createDesktopRuntimeGateway()
+
+const isTrustedRuntimeGatewaySender = (event: IpcMainInvokeEvent): boolean => {
+  const frame = event.senderFrame
+  if (frame === null || frame !== event.sender.mainFrame) return false
+  try {
+    const url = new URL(frame.url)
+    return url.protocol === "file:" && path.basename(url.pathname) === "index.html"
+  } catch {
+    return false
+  }
+}
+
+ipcMain.handle(DesktopRuntimeGatewayInvokeChannel, (event, value: unknown) => {
+  if (!isTrustedRuntimeGatewaySender(event)) {
+    return { kind: "request_rejected", reason: "untrusted_renderer" } as const
+  }
+  const request = decodeDesktopRuntimeGatewayRequest(value)
+  return request === null ? invalidDesktopRuntimeGatewayResponse() : runtimeGateway.request(request)
+})
+
+runtimeGateway.subscribe(event => {
+  for (const window of BrowserWindow.getAllWindows()) {
+    if (!window.isDestroyed()) window.webContents.send(DesktopRuntimeGatewayEventChannel, event)
+  }
 })
 
 // Interim development identity ONLY. The frozen macOS bundle ID / Windows
@@ -235,6 +268,24 @@ const smokeWaitForShell = `(async () => {
     await wait(100)
   }
   return document.querySelector('[data-en-key="shell-input"] input') !== null
+})()`
+
+const smokeRuntimeGatewayBootstrap = `(async () => {
+  const bridge = globalThis.openagentsDesktop
+  if (typeof bridge?.runtimeRequest !== "function") return { ok: false, reason: "Runtime Gateway bridge missing" }
+  const result = await bridge.runtimeRequest({
+    kind: "query",
+    requestId: "smoke-runtime-bootstrap",
+    query: { id: "runtime.bootstrap" },
+  })
+  return {
+    ok: result?.kind === "query_result" &&
+      result.requestId === "smoke-runtime-bootstrap" &&
+      result.result?.protocolVersion === 1 &&
+      result.result?.lifecycle === "ready" &&
+      result.result?.capabilities?.some((capability) => capability.id === "khala-sync" && capability.state === "unavailable"),
+    result,
+  }
 })()`
 
 const smokeTypeIntoComposer = `(() => {
@@ -452,6 +503,7 @@ const runSmoke = (window: BrowserWindow): void => {
       }
       try {
         await step("shell-mounted", smokeWaitForShell)
+        await step("runtime-gateway-bootstrap", smokeRuntimeGatewayBootstrap)
         await captureShot(window, "01-shell")
         await step("command-palette-open", smokeOpenCommandPalette)
         await captureShot(window, "02-command-palette")
@@ -484,6 +536,7 @@ void app.whenReady().then(() => {
   // PNG so the running desktop application has one product identity.
   if (process.platform === "darwin") app.dock?.setIcon(desktopIconPath)
   hardenSession()
+  runtimeGateway.start()
   const window = createWindow()
   if (smokeMode) runSmoke(window)
 })
@@ -498,6 +551,7 @@ app.on("window-all-closed", () => {
 
 app.on("before-quit", () => {
   codexConnect.dispose()
+  runtimeGateway.dispose()
 })
 
 app.on("activate", () => {

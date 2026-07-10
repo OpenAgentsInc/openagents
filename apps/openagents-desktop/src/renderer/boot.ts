@@ -38,6 +38,10 @@ import {
   type DesktopWorkspaceSaveResult,
   type DesktopWorkspaceSnapshot,
 } from "../workspace-contract.ts"
+import type {
+  DesktopRuntimeGatewayEvent,
+  DesktopRuntimeGatewayResponse,
+} from "../runtime-gateway-contract.ts"
 
 /** Effect Schema at the preload boundary (issue #8574: Schema, not Zod). */
 const DesktopBridgeSchema = Schema.Struct({
@@ -48,6 +52,8 @@ const DesktopBridgeSchema = Schema.Struct({
 type DesktopBridge = Readonly<{
   host: string
   platform: string
+  runtimeRequest?: (value: unknown) => Promise<DesktopRuntimeGatewayResponse>
+  runtimeSubscribe?: (listener: (event: DesktopRuntimeGatewayEvent) => void) => () => void
   stageFleet?: (value: unknown) => Promise<unknown>
   listThreads?: () => Promise<unknown>
   newThread?: () => Promise<unknown>

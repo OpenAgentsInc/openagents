@@ -59,7 +59,7 @@ describe("Electron boundary (issue #8574 mandatory first-scaffold hardening)", (
     }
   })
 
-  test("preload exposes fixed typed capabilities only — no raw IPC or MessagePort", () => {
+  test("preload exposes fixed typed capabilities and one decoded runtime event stream", () => {
     const preload = stripComments(read("src/preload.cts"))
     expect(preload).toContain("contextBridge.exposeInMainWorld")
     expect(preload).toContain("ipcRenderer.invoke(FleetStageChannel, request)")
@@ -67,9 +67,12 @@ describe("Electron boundary (issue #8574 mandatory first-scaffold hardening)", (
     expect(preload).toContain("decodeWorkspaceFileRequest")
     expect(preload).toContain("decodeWorkspaceSaveRequest")
     expect(preload).toContain("decodeWorkspaceGitDiffRequest")
+    expect(preload).toContain("decodeDesktopRuntimeGatewayRequest(value)")
+    expect(preload).toContain("decodeDesktopRuntimeGatewayResponse(response)")
+    expect(preload).toContain("decodeDesktopRuntimeGatewayEvent(value)")
+    expect(preload).toContain("ipcRenderer.on(DesktopRuntimeGatewayEventChannel, handler)")
+    expect(preload).toContain("ipcRenderer.removeListener(DesktopRuntimeGatewayEventChannel, handler)")
     expect(preload).not.toContain("ipcRenderer.send")
-    expect(preload).not.toContain("ipcRenderer.on")
-    expect(preload).not.toContain("ipcRenderer.remove")
     expect(preload).not.toContain("MessagePort")
     expect(preload).not.toContain('require("node:')
   })
@@ -80,7 +83,16 @@ describe("Electron boundary (issue #8574 mandatory first-scaffold hardening)", (
     expect(main).toContain("decodeWorkspaceFileRequest(value)")
     expect(main).toContain("decodeWorkspaceSaveRequest(value)")
     expect(main).toContain("decodeWorkspaceGitDiffRequest(value)")
+    expect(main).toContain("decodeDesktopRuntimeGatewayRequest(value)")
+    expect(main).toContain("isTrustedRuntimeGatewaySender(event)")
     expect(main).not.toContain("ipcMain.on(")
+  })
+
+  test("Runtime Gateway contract cannot carry credentials, URLs, raw IPC, or process handles", () => {
+    const contract = stripComments(read("src/runtime-gateway-contract.ts"))
+    for (const banned of ["token", "credential", "url", "MessagePort", "ipcRenderer", "processHandle", "argv"]) {
+      expect(contract.toLowerCase()).not.toContain(banned.toLowerCase())
+    }
   })
 
   test("workspace filesystem authority starts only after an explicit directory choice", () => {

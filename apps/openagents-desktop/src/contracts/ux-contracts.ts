@@ -5,7 +5,7 @@ import {
 
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument = {
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-10.3",
+  version: "2026-07-10.4",
   contracts: [
     {
       contractId: "openagents_desktop.seam.codex_recent_history_projection.v1",
@@ -35,6 +35,21 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
       evidenceRefs: ["apps/openagents-desktop/src/codex-history.ts", "apps/openagents-desktop/src/codex-history-worker.ts"],
       oracles: [{ id: "oversized_rollout_first_content.performance", kind: "bun-test", mode: "e2e", ref: "apps/openagents-desktop/tests/codex-history.e2e.test.ts", description: "Creates a 256 MiB sparse rollout and requires bounded first-content projection to finish under 50 ms." }],
       verification: "bun test apps/openagents-desktop/tests/codex-history.e2e.test.ts enforces the 50 ms wall-clock budget in the normal desktop test sweep.",
+    },
+    {
+      contractId: "openagents_desktop.seam.runtime_gateway_closed_protocol.v1",
+      state: "enforced",
+      surface: "openagents-desktop",
+      productArea: "Desktop Runtime Gateway",
+      enforcementTier: "test-sweep",
+      blockerRefs: [],
+      source: { channel: "owner-codex-session", statedBy: "owner", statedOn: "2026-07-10" },
+      statement: "The signed Desktop renderer reaches host runtime state through one versioned closed query/command/event protocol. Unknown requests fail schema decoding, unavailable commands never appear completed, lifecycle events are ordered and disposable, and the renderer never receives runtime credentials or a generic transport.",
+      authorityBoundary: "Electron main owns the Runtime Gateway and validates the invoking top-level bundled renderer. The renderer receives bounded capability/lifecycle projections only; this contract grants no OpenAgents authentication, Khala Sync authority, provider credential, loopback URL, raw IPC channel, MessagePort, filesystem handle, process handle, or raw runtime event.",
+      seam: { client: "apps/openagents-desktop/src/preload.cts", server: "apps/openagents-desktop/src/runtime-gateway.ts" },
+      evidenceRefs: ["apps/openagents-desktop/src/runtime-gateway-contract.ts", "apps/openagents-desktop/tests/electron-boundary.test.ts"],
+      oracles: [{ id: "runtime_gateway_closed_protocol.e2e", kind: "bun-test", mode: "e2e", ref: "apps/openagents-desktop/tests/runtime-gateway.e2e.test.ts", description: "Round-trips schema-decoded renderer requests and proves truthful capability, unavailable command, lifecycle ordering, disposal, and rejection behavior." }],
+      verification: "bun run --cwd apps/openagents-desktop verify runs the seam suite, mechanical boundary oracle, bundle, and real Electron bootstrap smoke.",
     },
   ],
 }

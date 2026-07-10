@@ -97,6 +97,12 @@ process before D3/D4 breadth. The renderer never receives bearer/provider/
 Pylon credentials, a loopback URL, raw runtime events, general IPC, or a raw
 `MessagePort`.
 
+The first Runtime Gateway slice is now enforced: a versioned closed bootstrap,
+command-outcome, and lifecycle-event protocol crosses preload; main validates
+the top-level bundled renderer; the Electron smoke exercises a truthful
+bootstrap. Khala Sync and durable conversation streaming remain explicitly
+`unavailable` until their later leaves land.
+
 **One catalog, many hosts.** The transcript-message and composer
 compositions are deliberately structured around the shared Effect Native chat
 contract, and `src/renderer/shell.test.ts` asserts the typed shape. New

@@ -36,10 +36,33 @@ import {
   decodeWorkspaceGitDiffRequest,
   decodeWorkspaceSaveRequest,
 } from "./workspace-contract.ts"
+import {
+  DesktopRuntimeGatewayEventChannel,
+  DesktopRuntimeGatewayInvokeChannel,
+  decodeDesktopRuntimeGatewayEvent,
+  decodeDesktopRuntimeGatewayRequest,
+  decodeDesktopRuntimeGatewayResponse,
+  invalidDesktopRuntimeGatewayResponse,
+  type DesktopRuntimeGatewayEvent,
+} from "./runtime-gateway-contract.ts"
 
 contextBridge.exposeInMainWorld("openagentsDesktop", {
   host: "electron",
   platform: process.platform,
+  runtimeRequest: async (value: unknown) => {
+    const request = decodeDesktopRuntimeGatewayRequest(value)
+    if (request === null) return invalidDesktopRuntimeGatewayResponse()
+    const response = await ipcRenderer.invoke(DesktopRuntimeGatewayInvokeChannel, request)
+    return decodeDesktopRuntimeGatewayResponse(response) ?? invalidDesktopRuntimeGatewayResponse()
+  },
+  runtimeSubscribe: (listener: (event: DesktopRuntimeGatewayEvent) => void) => {
+    const handler = (_event: unknown, value: unknown): void => {
+      const decoded = decodeDesktopRuntimeGatewayEvent(value)
+      if (decoded !== null) listener(decoded)
+    }
+    ipcRenderer.on(DesktopRuntimeGatewayEventChannel, handler)
+    return () => ipcRenderer.removeListener(DesktopRuntimeGatewayEventChannel, handler)
+  },
   /** The sole renderer mutation: one schema-checked Fleet brief. */
   stageFleet: (value: unknown) => {
     const request = decodeFleetStageRequest(value)
