@@ -86,8 +86,9 @@ export const SwipeableListItemCatalogVersion = "effect-native/v23" as const
 export const MobileSurfacesCatalogVersion = "effect-native/v24" as const
 export const MobileGesturesCatalogVersion = "effect-native/v25" as const
 export const MediaVideoCatalogVersion = "effect-native/v26" as const
-export const PreviousCatalogVersion = MobileGesturesCatalogVersion
-export const CatalogVersion = MediaVideoCatalogVersion
+export const GlassCatalogVersion = "effect-native/v27" as const
+export const PreviousCatalogVersion = MediaVideoCatalogVersion
+export const CatalogVersion = GlassCatalogVersion
 export const CatalogVersionSchema = Schema.Literal(CatalogVersion)
 export type CatalogVersion = typeof CatalogVersion
 export const compatibleCatalogVersions = [
@@ -117,7 +118,8 @@ export const compatibleCatalogVersions = [
   SwipeableListItemCatalogVersion,
   MobileSurfacesCatalogVersion,
   MobileGesturesCatalogVersion,
-  MediaVideoCatalogVersion
+  MediaVideoCatalogVersion,
+  GlassCatalogVersion
 ] as const
 export type CompatibleCatalogVersion = (typeof compatibleCatalogVersions)[number]
 export const CompatibleCatalogVersionSchema = Schema.Literals(compatibleCatalogVersions)
@@ -190,7 +192,9 @@ export const componentTags = [
   "Wallpaper",
   "Spotlight",
   "Frame",
-  "BlurredPopup"
+  "BlurredPopup",
+  "IconButton",
+  "Toolbar"
 ] as const
 export type ComponentTag = (typeof componentTags)[number]
 
@@ -1088,6 +1092,13 @@ export const OpacitySchema = Schema.Number.check(
 )
 export const TextAlignSchema = Schema.Literals(["left", "center", "right"] as const)
 export const AlignSelfSchema = Schema.Literals(["start", "center", "end", "stretch"] as const)
+// Semantic surface-material token (GL-1). "glass" means a translucent blurred
+// surface; renderers lower it honestly within their host's capabilities and
+// higher-fidelity native lowerings (e.g. iOS Liquid Glass) live in platform
+// lanes outside this dependency-free catalog.
+export const surfaceMaterials = ["glass"] as const
+export const SurfaceMaterialSchema = Schema.Literals(surfaceMaterials)
+export type SurfaceMaterial = (typeof surfaceMaterials)[number]
 export const stateVariants = ["pressed", "focused", "disabled"] as const
 export const platformVariants = ["web", "ios", "android"] as const
 
@@ -1122,6 +1133,7 @@ export interface StyleProperties {
   readonly borderColor: ColorToken
   readonly borderRadius: RadiusToken
   readonly borderWidth: number
+  readonly surface: SurfaceMaterial
   readonly color: ColorToken
   readonly typeScale: TypeScaleToken
   readonly fontWeight: TextWeight
@@ -1176,6 +1188,7 @@ export const styleKeys = [
   "borderColor",
   "borderRadius",
   "borderWidth",
+  "surface",
   "color",
   "typeScale",
   "fontWeight",
@@ -1204,12 +1217,16 @@ const layoutStyleKeys = [
   "alignSelf",
   "opacity"
 ] as const satisfies ReadonlyArray<StyleKey>
+// "surface" (GL-1 glass material) rides on every box-derived style —
+// Stack/Card/List plus Button/Link/TextField — since any box surface may be
+// rendered as a translucent material.
 const boxStyleKeys = [
   ...layoutStyleKeys,
   "backgroundColor",
   "borderColor",
   "borderRadius",
-  "borderWidth"
+  "borderWidth",
+  "surface"
 ] as const satisfies ReadonlyArray<StyleKey>
 
 export const stackStyleKeys = boxStyleKeys
@@ -1313,6 +1330,7 @@ const stylePropertySchemas = {
   borderColor: ColorTokenSchema,
   borderRadius: RadiusTokenSchema,
   borderWidth: NonNegativeNumberSchema,
+  surface: SurfaceMaterialSchema,
   color: ColorTokenSchema,
   typeScale: TypeScaleTokenSchema,
   fontWeight: TextWeightSchema,
@@ -1891,12 +1909,21 @@ export interface ModalView extends NodeBase {
   readonly children: ReadonlyArray<View>
 }
 
+// Native presentation detents (GL-1): a semantic hint for hosts with a real
+// sheet presentation (iOS presentationDetents / Android ModalBottomSheet).
+// Distinct from the required size-token `detents` that drive the owned
+// DOM/RN panel lowering; optional so existing trees stay valid.
+export const sheetPresentationDetents = ["half", "full"] as const
+export const SheetPresentationDetentSchema = Schema.Literals(sheetPresentationDetents)
+export type SheetPresentationDetent = (typeof sheetPresentationDetents)[number]
+
 export interface SheetView extends NodeBase {
   readonly _tag: "Sheet"
   readonly open: Bound<boolean>
   readonly dismissable: boolean
   readonly edge: SheetEdge
   readonly detents: ReadonlyArray<DimensionToken>
+  readonly presentationDetents?: ReadonlyArray<SheetPresentationDetent>
   readonly onDismiss: IntentRef
   readonly children: ReadonlyArray<View>
 }
@@ -2819,6 +2846,34 @@ export interface BlurredPopupView extends NodeBase {
   readonly style?: CardStyle
 }
 
+// Glass set (GL-1, openagents#8647). A circular icon-only pressable over the
+// closed IconName registry. `accessibilityLabel` is required — an icon-only
+// button with no accessible name is not constructible.
+export interface IconButtonView extends NodeBase {
+  readonly _tag: "IconButton"
+  readonly icon: IconName
+  readonly accessibilityLabel: string
+  readonly onPress: IntentRef
+  readonly disabled?: boolean
+  readonly surface?: SurfaceMaterial
+  readonly style?: ButtonStyle
+}
+
+// Glass set (GL-1). A floating action strip — the Liquid Glass-era bottom
+// toolbar shape. Placement is semantic; renderers decide the concrete
+// positioning within their host.
+export const toolbarPlacements = ["bottom-floating", "top"] as const
+export const ToolbarPlacementSchema = Schema.Literals(toolbarPlacements)
+export type ToolbarPlacement = (typeof toolbarPlacements)[number]
+
+export interface ToolbarView extends NodeBase {
+  readonly _tag: "Toolbar"
+  readonly children: ReadonlyArray<View>
+  readonly placement?: ToolbarPlacement
+  readonly surface?: SurfaceMaterial
+  readonly style?: CardStyle
+}
+
 export type View =
   | StackView
   | TextView
@@ -2888,6 +2943,8 @@ export type View =
   | SpotlightView
   | FrameView
   | BlurredPopupView
+  | IconButtonView
+  | ToolbarView
 
 export type KeyedView = View & { readonly key: NodeKey }
 
@@ -2959,6 +3016,7 @@ const childViewEntries = (
     case "Spotlight":
     case "Frame":
     case "BlurredPopup":
+    case "Toolbar":
       return view.children.map((child, index) => ({ path: ["children", index], view: child }))
     case "Hero":
       return [
@@ -3250,6 +3308,7 @@ export const SheetSchema: Schema.Codec<SheetView, SheetView> = Schema.TaggedStru
   dismissable: Schema.Boolean,
   edge: SheetEdgeSchema,
   detents: SheetDetentsSchema,
+  presentationDetents: Schema.Array(SheetPresentationDetentSchema).pipe(Schema.optionalKey),
   onDismiss: IntentRefSchema,
   children: Schema.Array(ViewSelf)
 })
@@ -4076,6 +4135,26 @@ export const BlurredPopupSchema: Schema.Codec<BlurredPopupView, BlurredPopupView
     style: CardStyleSchema.pipe(Schema.optionalKey)
   })
 
+export const IconButtonSchema: Schema.Codec<IconButtonView, IconButtonView> =
+  Schema.TaggedStruct("IconButton", {
+    ...CommonFields,
+    icon: IconNameSchema,
+    accessibilityLabel: Schema.NonEmptyString,
+    onPress: IntentRefSchema,
+    disabled: Schema.Boolean.pipe(Schema.optionalKey),
+    surface: SurfaceMaterialSchema.pipe(Schema.optionalKey),
+    style: ButtonStyleSchema.pipe(Schema.optionalKey)
+  })
+
+export const ToolbarSchema: Schema.Codec<ToolbarView, ToolbarView> =
+  Schema.TaggedStruct("Toolbar", {
+    ...CommonFields,
+    children: Schema.Array(ViewSelf),
+    placement: ToolbarPlacementSchema.pipe(Schema.optionalKey),
+    surface: SurfaceMaterialSchema.pipe(Schema.optionalKey),
+    style: CardStyleSchema.pipe(Schema.optionalKey)
+  })
+
 export const ViewSchema: Schema.Codec<View, View> = Schema.suspend(() =>
   Schema.Union([
     StackSchema,
@@ -4145,7 +4224,9 @@ export const ViewSchema: Schema.Codec<View, View> = Schema.suspend(() =>
     WallpaperSchema,
     SpotlightSchema,
     FrameSchema,
-    BlurredPopupSchema
+    BlurredPopupSchema,
+    IconButtonSchema,
+    ToolbarSchema
   ]).check(OverlayStackFilter)
 )
 
@@ -4735,6 +4816,17 @@ export const BlurredPopup = (
 ): BlurredPopupView =>
   BlurredPopupSchema.make({ _tag: "BlurredPopup", catalogVersion: CatalogVersion, ...props, children })
 
+export type IconButtonProps = WithoutTagAndVersion<IconButtonView>
+export const IconButton = (props: IconButtonProps): IconButtonView =>
+  IconButtonSchema.make({ _tag: "IconButton", catalogVersion: CatalogVersion, ...props })
+
+export type ToolbarProps = Omit<WithoutTagAndVersion<ToolbarView>, "children">
+export const Toolbar = (
+  props: ToolbarProps,
+  children: ReadonlyArray<View> = []
+): ToolbarView =>
+  ToolbarSchema.make({ _tag: "Toolbar", catalogVersion: CatalogVersion, ...props, children })
+
 
 
 
@@ -4949,6 +5041,11 @@ export const resolveView = (view: View, input: ViewResolution = {}): View => {
         ...view,
         ...(view.style === undefined ? {} : { style: resolveStyle(view.style, resolution) })
       }
+    case "IconButton":
+      return {
+        ...view,
+        ...(view.style === undefined ? {} : { style: resolveStyle(view.style, resolution) })
+      }
     case "Section":
     case "Glow":
     case "MockupFrame":
@@ -4957,6 +5054,7 @@ export const resolveView = (view: View, input: ViewResolution = {}): View => {
     case "Spotlight":
     case "Frame":
     case "BlurredPopup":
+    case "Toolbar":
       return {
         ...view,
         ...(view.style === undefined ? {} : { style: resolveStyle(view.style, resolution) }),
@@ -5161,10 +5259,12 @@ export const resolveBindings = <State>(view: View, state: State): View => {
     case "AnnouncementBadge":
     case "LogoRow":
     case "PricingColumn":
+    case "IconButton":
       return view
     case "Section":
     case "Glow":
     case "MockupFrame":
+    case "Toolbar":
       return {
         ...view,
         children: view.children.map((child) => resolveBindings(child, state))
@@ -5433,6 +5533,7 @@ export const redactSecureView = (view: View): View => {
     case "Spotlight":
     case "Frame":
     case "BlurredPopup":
+    case "Toolbar":
       return {
         ...view,
         children: view.children.map(redactSecureView)

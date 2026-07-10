@@ -36,6 +36,8 @@ import {
   type SpotlightView,
   type FrameView,
   type BlurredPopupView,
+  type IconButtonView,
+  type ToolbarView,
   type ComboboxOption,
   type ComboboxView,
   type CommandPaletteView,
@@ -277,6 +279,30 @@ const typeScaleValue = (theme: Theme, token: TypeScaleToken): ReactNativeStyle =
   }
 }
 
+// GL-1 glass material. React Native core has no backdrop blur, so "glass"
+// lowers to an HONEST approximation: the theme surface color at ~0.72 opacity
+// plus a 1px hairline of the theme border color. High-fidelity iOS Liquid
+// Glass lowering arrives via the @expo/ui native-island lane (openagents
+// GL-1); this renderer stays dependency-free.
+const translucentColor = (color: string, alpha: number): string => {
+  const hex = /^#([0-9a-fA-F]{6})$/.exec(color)
+  if (hex === null) {
+    // Non-hex theme colors pass through untouched rather than guessing.
+    return color
+  }
+  const value = hex[1]!
+  const r = parseInt(value.slice(0, 2), 16)
+  const g = parseInt(value.slice(2, 4), 16)
+  const b = parseInt(value.slice(4, 6), 16)
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`
+}
+
+const glassSurfaceStyle = (theme: Theme): ReactNativeStyle => ({
+  backgroundColor: translucentColor(colorValue(theme, "surface"), 0.72),
+  borderColor: colorValue(theme, "border"),
+  borderWidth: 1
+})
+
 const styleDeclarations = (
   theme: Theme,
   key: string,
@@ -320,6 +346,10 @@ const styleDeclarations = (
       return [["textAlign", String(value)]]
     case "typeScale":
       return Object.entries(typeScaleValue(theme, value as TypeScaleToken))
+    case "surface":
+      // GL-1 "glass": see glassSurfaceStyle — translucent theme surface plus
+      // hairline border, the honest RN-core approximation of the material.
+      return Object.entries(glassSurfaceStyle(theme))
     default:
       return []
   }
@@ -3194,7 +3224,105 @@ const renderResolvedReactNativeView = (
     case "Frame":
     case "BlurredPopup":
       return renderMobileSurfaceShell(view, dependencies, report, options)
+    case "IconButton":
+      return renderIconButton(view, dependencies, report, options)
+    case "Toolbar":
+      return renderToolbar(view, dependencies, report, options)
   }
+}
+
+// ── Glass set (GL-1, openagents#8647) ────────────────────────────────────────
+
+const renderIconButton = (
+  view: IconButtonView,
+  dependencies: ReactNativeDependencies,
+  report: IntentReporter,
+  options: ReactNativeRenderOptions
+): ReactElementLike => {
+  const theme = options.theme ?? defaultTheme
+  const style = mergeNativeStyles(
+    {
+      width: 44,
+      height: 44,
+      borderRadius: 9999,
+      alignItems: "center",
+      justifyContent: "center",
+      opacity: view.disabled === true ? 0.5 : 1,
+      // surface "glass" -> translucent theme surface + hairline border (the
+      // honest RN-core material approximation; see glassSurfaceStyle);
+      // otherwise the plain theme surface.
+      ...(view.surface === "glass"
+        ? glassSurfaceStyle(theme)
+        : { backgroundColor: colorValue(theme, "surface") })
+    },
+    viewStyle(view, options)
+  )
+
+  return createElement(
+    dependencies,
+    dependencies.ReactNative.Pressable,
+    {
+      ...baseProps(view, style),
+      testID: `en-icon-button:${view.icon}`,
+      accessibilityRole: "button",
+      accessibilityLabel: view.accessibilityLabel,
+      accessibilityState: { disabled: view.disabled === true },
+      disabled: view.disabled === true,
+      onPress: () => {
+        if (view.disabled !== true) {
+          runReportedIntent(report, view.onPress)
+        }
+      }
+    },
+    createElement(
+      dependencies,
+      dependencies.ReactNative.Text,
+      {
+        // RN Text does not inherit color (#71-class bug): the glyph must be
+        // explicitly themed or it renders default-black on dark surfaces.
+        style: {
+          fontSize: iconFontSize.md,
+          color: colorValue(theme, "textPrimary")
+        }
+      },
+      iconGlyphs[view.icon]
+    )
+  )
+}
+
+const renderToolbar = (
+  view: ToolbarView,
+  dependencies: ReactNativeDependencies,
+  report: IntentReporter,
+  options: ReactNativeRenderOptions
+): ReactElementLike => {
+  const theme = options.theme ?? defaultTheme
+  const style = mergeNativeStyles(
+    {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: spacingValue(theme, "2"),
+      paddingVertical: spacingValue(theme, "2"),
+      paddingHorizontal: spacingValue(theme, "3"),
+      borderRadius: 9999,
+      borderColor: colorValue(theme, "border"),
+      borderWidth: 1,
+      backgroundColor: view.surface === "glass"
+        ? translucentColor(colorValue(theme, "surface"), 0.72)
+        : colorValue(theme, "surfaceRaised")
+    },
+    viewStyle(view, options)
+  )
+
+  return createElement(
+    dependencies,
+    dependencies.ReactNative.View,
+    {
+      ...baseProps(view, style),
+      testID: `en-toolbar:${view.placement ?? "bottom-floating"}`
+    },
+    ...view.children.map((child) => renderResolvedReactNativeView(child, dependencies, report, options))
+  )
 }
 
 const renderMobileSurfaceShell = (
@@ -3692,6 +3820,12 @@ export const viewStructure = (view: View): ReactNativeStructure => {
         tag: "SwipeableListItem",
         ...(view.key === undefined ? {} : { key: view.key }),
         children: [viewStructure(view.child)]
+      }
+    case "Toolbar":
+      return {
+        tag: "Toolbar",
+        ...(view.key === undefined ? {} : { key: view.key }),
+        children: view.children.map(viewStructure)
       }
     default:
       return {

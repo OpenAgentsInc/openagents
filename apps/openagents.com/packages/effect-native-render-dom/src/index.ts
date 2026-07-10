@@ -36,6 +36,9 @@ import {
   type SpotlightView,
   type FrameView,
   type BlurredPopupView,
+  type IconButtonView,
+  type ToolbarView,
+  type SurfaceMaterial,
   type ComboboxOption,
   type ComboboxView,
   type CommandPaletteView,
@@ -526,6 +529,19 @@ const styleDeclarations = (key: string, value: unknown): ReadonlyArray<readonly 
         ["font-size", typeScaleValue(value as TypeScaleToken, "fontSize")],
         ["line-height", typeScaleValue(value as TypeScaleToken, "lineHeight")],
         ["font-weight", typeScaleValue(value as TypeScaleToken, "fontWeight")]
+      ]
+    case "surface":
+      // GL-1 "glass" material token: translucent theme-surface background plus
+      // backdrop blur, expressed as ordinary declarations so it flows through
+      // the atomic style system like every other token. color-mix keeps the
+      // background derived from the theme variable rather than a baked color.
+      // This is the honest web approximation; high-fidelity native glass
+      // (iOS Liquid Glass) lands via platform lanes outside this renderer.
+      return [
+        ["background-color", "color-mix(in srgb, var(--en-color-surface) 72%, transparent)"],
+        ["-webkit-backdrop-filter", "blur(16px)"],
+        ["backdrop-filter", "blur(16px)"],
+        ["border", "1px solid var(--en-color-border)"]
       ]
     default:
       return []
@@ -1177,6 +1193,13 @@ const renderSheet = (view: SheetView, state: DomRendererState, report: IntentRep
 
   const panel = element.ownerDocument.createElement("section")
   panel.setAttribute("data-en-role", "panel")
+  // GL-1 native presentation detents: structural pass-through on the web —
+  // the semantic hint is exposed as data for hosts/tests; real detent
+  // presentation fidelity belongs to native sheet hosts (iOS
+  // presentationDetents / Android ModalBottomSheet) in platform lanes.
+  if (view.presentationDetents !== undefined && view.presentationDetents.length > 0) {
+    panel.setAttribute("data-en-presentation-detents", view.presentationDetents.join(","))
+  }
   panel.style.position = "relative"
   panel.style.background = "var(--en-color-background)"
   panel.style.border = "1px solid var(--en-color-border)"
@@ -3784,6 +3807,10 @@ const renderView = (view: View, state: DomRendererState, report: IntentReporter)
       return renderMobileSurfaceShell(view, state, report)
     case "BlurredPopup":
       return renderBlurredPopup(view, state, report)
+    case "IconButton":
+      return renderIconButton(view, state, report)
+    case "Toolbar":
+      return renderToolbar(view, state, report)
   }
 }
 
@@ -3976,6 +4003,12 @@ export const viewStructure = (view: View): DomStructure => {
         tag: "Transcript",
         ...(view.key === undefined ? {} : { key: view.key }),
         children: view.messages.flatMap((message) => message.body.map(viewStructure))
+      }
+    case "Toolbar":
+      return {
+        tag: "Toolbar",
+        ...(view.key === undefined ? {} : { key: view.key }),
+        children: view.children.map(viewStructure)
       }
     default:
       return {
@@ -4652,4 +4685,91 @@ const renderBlurredPopup = (
   applyBaseStyle(el, view, state)
   applyA11y(el, view)
   return el
+}
+
+// ── Glass set (GL-1, openagents#8647) ────────────────────────────────────────
+// IconButton and Toolbar carry `surface` as a first-class prop in addition to
+// the style-level token; the prop merges *under* the app style so an explicit
+// style always wins.
+const withSurfaceStyle = <S extends { readonly surface?: SurfaceMaterial }>(
+  style: S | undefined,
+  surface: SurfaceMaterial | undefined
+): S | undefined => (surface === undefined ? style : ({ surface, ...(style ?? {}) } as S))
+
+const applySurfaceMergedStyle = (
+  element: HTMLElement,
+  style: FlatStyle | undefined,
+  surface: SurfaceMaterial | undefined,
+  state: DomRendererState
+): void => {
+  const merged = withSurfaceStyle(style, surface)
+  state.styles.apply(
+    element,
+    merged === undefined ? undefined : resolveStyle(merged, { platform: "web" })
+  )
+}
+
+const renderIconButton = (
+  view: IconButtonView,
+  state: DomRendererState,
+  report: IntentReporter
+): HTMLElement => {
+  const element = state.keyedElement(view, "button") as HTMLButtonElement
+  state.resetListeners(element)
+  element.type = "button"
+  element.disabled = view.disabled === true
+  element.setAttribute("data-en-variant", "icon")
+  element.setAttribute("aria-label", view.accessibilityLabel)
+  if (view.surface === undefined) {
+    element.removeAttribute("data-en-surface")
+  } else {
+    element.setAttribute("data-en-surface", view.surface)
+  }
+  element.style.display = "inline-flex"
+  element.style.alignItems = "center"
+  element.style.justifyContent = "center"
+  element.style.width = "44px"
+  element.style.height = "44px"
+  element.style.borderRadius = "9999px"
+  // Same closed glyph registry as Icon; the glyph is decorative because the
+  // button itself carries the accessible name.
+  const px = iconSizePixels.md
+  const glyph = iconRegistry[view.icon]
+  const paint = glyph.fill
+    ? 'fill="currentColor"'
+    : 'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"'
+  element.innerHTML =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${px}" height="${px}" viewBox="0 0 24 24" aria-hidden="true" ${paint}>${glyph.body}</svg>`
+  state.addListener(element, "click", () => runReportedIntent(report, view.onPress))
+  applySurfaceMergedStyle(element, view.style, view.surface, state)
+  applyA11y(element, view)
+  applyInteractions(element, view, state, report)
+  return element
+}
+
+const renderToolbar = (
+  view: ToolbarView,
+  state: DomRendererState,
+  report: IntentReporter
+): HTMLElement => {
+  const element = state.keyedElement(view, "div")
+  state.resetListeners(element)
+  element.setAttribute("role", "toolbar")
+  element.setAttribute("data-en-placement", view.placement ?? "bottom-floating")
+  if (view.surface === undefined) {
+    element.removeAttribute("data-en-surface")
+  } else {
+    element.setAttribute("data-en-surface", view.surface)
+  }
+  element.style.display = "flex"
+  element.style.flexDirection = "row"
+  element.style.alignItems = "center"
+  element.style.gap = "var(--en-spacing-2)"
+  element.style.padding = "var(--en-spacing-2) var(--en-spacing-3)"
+  element.style.borderRadius = "9999px"
+  applySurfaceMergedStyle(element, view.style, view.surface, state)
+  applyA11y(element, view)
+  applyInteractions(element, view, state, report)
+  renderChildren(element, view.children, state, report)
+  return element
 }
