@@ -55,7 +55,7 @@ export type DesktopShellState = Readonly<{
   /** The current, explicitly unsubmitted FleetRun objective draft. */
   fleetObjective: string
   /** Honest deployment posture: local UI cannot invent a FleetRun receipt. */
-  fleetDeployment: "not_requested" | "awaiting_authority"
+  fleetDeployment: "not_requested" | "dispatching" | "accepted" | "rejected" | "unavailable"
   /** Count of completed button -> intent -> state -> re-render round trips. */
   loopProofs: number
 }>
@@ -187,28 +187,44 @@ export const withNote = (
 /**
  * This transition deliberately stops at an authority boundary. A desktop
  * renderer can prepare a request but cannot report a runRef, claim, or launch
- * until the authenticated server/Pylon bridge has returned exact evidence.
+ * until the local Pylon/server authority has returned exact evidence.
  */
 export const withFleetDeploymentRequested = (
   state: DesktopShellState,
-  timestamp: string,
 ): DesktopShellState => {
   const objective = state.fleetObjective.trim()
-  if (objective === "" || state.fleetDeployment === "awaiting_authority") return state
+  if (objective === "" || state.fleetDeployment === "dispatching") return state
   return {
     ...state,
-    fleetDeployment: "awaiting_authority",
-    notes: [
-      ...state.notes,
-      {
-        key: `note-${state.notes.length}`,
-        role: "system",
-        text: "Fleet brief is staged locally. Authentication and an exact repository, pinned commit, verifier, and named account are required before Sarah can request a FleetRun.",
-        timestamp,
-      },
-    ],
+    fleetDeployment: "dispatching",
   }
 }
+
+export type FleetStageResult = Readonly<{
+  state: "accepted" | "rejected" | "unavailable"
+  message: string
+  intentStatus: string | null
+}>
+
+export type FleetStage = (input: Readonly<{ objective: string }>) => Promise<FleetStageResult>
+
+export const withFleetDeploymentResult = (
+  state: DesktopShellState,
+  result: FleetStageResult,
+  timestamp: string,
+): DesktopShellState => ({
+  ...state,
+  fleetDeployment: result.state,
+  notes: [
+    ...state.notes,
+    {
+      key: `note-${state.notes.length}`,
+      role: "system",
+      text: result.message,
+      timestamp,
+    },
+  ],
+})
 
 export const withLoopProof = (state: DesktopShellState, timestamp: string): DesktopShellState => {
   const loopProofs = state.loopProofs + 1
@@ -230,6 +246,11 @@ export const withLoopProof = (state: DesktopShellState, timestamp: string): Desk
 export const makeDesktopShellHandlers = (
   state: SubscriptionRef.SubscriptionRef<DesktopShellState>,
   now: () => string = () => formatShellTimestamp(new Date()),
+  stageFleet: FleetStage = async () => ({
+    state: "unavailable",
+    message: "Local Pylon control is unavailable. No fleet work was dispatched.",
+    intentStatus: null,
+  }),
 ): IntentHandlers<typeof desktopShellIntents> => ({
   DesktopInputChanged: (value) =>
     SubscriptionRef.update(state, (current) => withInput(current, value)),
@@ -248,7 +269,14 @@ export const makeDesktopShellHandlers = (
   DesktopFleetObjectiveChanged: (value) =>
     SubscriptionRef.update(state, (current) => withFleetObjective(current, value)),
   DesktopFleetDeploymentRequested: () =>
-    SubscriptionRef.update(state, (current) => withFleetDeploymentRequested(current, now())),
+    Effect.gen(function* () {
+      const current = yield* SubscriptionRef.get(state)
+      const dispatching = withFleetDeploymentRequested(current)
+      if (dispatching === current) return
+      yield* SubscriptionRef.set(state, dispatching)
+      const result = yield* Effect.promise(() => stageFleet({ objective: dispatching.fleetObjective }))
+      yield* SubscriptionRef.update(state, (next) => withFleetDeploymentResult(next, result, now()))
+    }),
 })
 
 // ---------------------------------------------------------------------------
@@ -342,7 +370,8 @@ const shellHeader = (state: DesktopShellState): View =>
   )
 
 const fleetDesk = (state: DesktopShellState): View => {
-  const awaitingAuthority = state.fleetDeployment === "awaiting_authority"
+  const dispatching = state.fleetDeployment === "dispatching"
+  const accepted = state.fleetDeployment === "accepted"
   return Card(
     {
       key: "fleet-desk",
@@ -370,7 +399,7 @@ const fleetDesk = (state: DesktopShellState): View => {
           key: "fleet-objective",
           value: state.fleetObjective,
           placeholder: "What should the fleet ship?",
-          disabled: awaitingAuthority,
+          disabled: dispatching,
           a11y: { label: "Fleet deployment objective" },
           onChange: IntentRef("DesktopFleetObjectiveChanged", ComponentValueBinding()),
           style: { width: "full" },
@@ -378,17 +407,17 @@ const fleetDesk = (state: DesktopShellState): View => {
         Stack({ key: "fleet-desk-actions", direction: "row", gap: "2", align: "center" }, [
           Button({
             key: "fleet-stage-request",
-            label: awaitingAuthority ? "Awaiting authority" : "Stage deployment",
+            label: dispatching ? "Dispatching…" : accepted ? "Dispatched" : "Dispatch to Pylon",
             variant: "primary",
-            disabled: awaitingAuthority || state.fleetObjective.trim() === "",
+            disabled: dispatching || state.fleetObjective.trim() === "",
             onPress: IntentRef("DesktopFleetDeploymentRequested"),
-            a11y: { label: "Stage Fleet deployment request" },
+            a11y: { label: "Dispatch Fleet deployment brief to local Pylon" },
           }),
           Badge({
             key: "fleet-authority-status",
-            label: awaitingAuthority ? "AUTHORITY REQUIRED" : "DRAFT ONLY",
-            tone: awaitingAuthority ? "warn" : "neutral",
-            a11y: { label: awaitingAuthority ? "Fleet request awaits authority" : "Fleet request is a draft" },
+            label: accepted ? "INTENT ACCEPTED" : dispatching ? "DISPATCHING" : "DRAFT ONLY",
+            tone: accepted ? "success" : dispatching ? "warn" : "neutral",
+            a11y: { label: accepted ? "Pylon accepted Fleet intent" : dispatching ? "Fleet request dispatching" : "Fleet request is a draft" },
           }),
         ]),
       ]),

@@ -32,6 +32,12 @@ const DesktopBridgeSchema = Schema.Struct({
   platform: Schema.String,
 })
 
+type DesktopBridge = Readonly<{
+  host: string
+  platform: string
+  stageFleet?: (value: unknown) => Promise<unknown>
+}>
+
 export const decodeBridgeHost = (bridge: unknown): string => {
   const decoded = Schema.decodeUnknownExit(DesktopBridgeSchema)(bridge)
   return Exit.isSuccess(decoded)
@@ -45,7 +51,36 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
     const program = makeViewProgramFromState(state, desktopShellView)
     const registry = yield* makeIntentRegistry(
       desktopShellIntents,
-      makeDesktopShellHandlers(state),
+      makeDesktopShellHandlers(state, undefined, async (input) => {
+        const bridge = (globalThis as { openagentsDesktop?: DesktopBridge }).openagentsDesktop
+        if (typeof bridge?.stageFleet !== "function") {
+          return {
+            state: "unavailable",
+            message: "Local Pylon control is unavailable. No fleet work was dispatched.",
+            intentStatus: null,
+          }
+        }
+        const raw = await bridge.stageFleet(input)
+        if (
+          typeof raw === "object" && raw !== null &&
+          (raw as { state?: unknown }).state !== undefined &&
+          typeof (raw as { message?: unknown }).message === "string"
+        ) {
+          const value = raw as { state?: unknown; message: string; intentStatus?: unknown }
+          if (value.state === "accepted" || value.state === "rejected" || value.state === "unavailable") {
+            return {
+              state: value.state,
+              message: value.message,
+              intentStatus: typeof value.intentStatus === "string" ? value.intentStatus : null,
+            }
+          }
+        }
+        return {
+          state: "unavailable",
+          message: "Local Pylon returned an invalid response. No fleet work was dispatched.",
+          intentStatus: null,
+        }
+      }),
     )
     const report: IntentReporter = (ref, runtimeValue) =>
       registry.dispatch(resolveIntentRef(ref, runtimeValue ?? null))

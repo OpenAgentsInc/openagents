@@ -11,7 +11,10 @@
  * Plain TypeScript, bundled by `scripts/build.ts` (Bun) into `dist/`.
  */
 import path from "node:path"
-import { BrowserWindow, app, session } from "electron"
+import { BrowserWindow, app, ipcMain, session } from "electron"
+
+import { FleetStageChannel, decodeFleetStageRequest, unavailableFleetStageResult } from "./fleet-contract.ts"
+import { submitFleetBrief } from "./fleet-control.ts"
 
 const here = import.meta.dirname
 const smokeMode = process.env.OPENAGENTS_DESKTOP_SMOKE === "1"
@@ -29,6 +32,16 @@ const hardenSession = (): void => {
     callback(false)
   })
 }
+
+/**
+ * A deliberately single-purpose IPC boundary. The preload validates first and
+ * main validates again; the renderer never gets filesystem, token, arbitrary
+ * command, or loopback request authority.
+ */
+ipcMain.handle(FleetStageChannel, async (_event, value: unknown) => {
+  const request = decodeFleetStageRequest(value)
+  return request === null ? unavailableFleetStageResult() : submitFleetBrief(request)
+})
 
 // Deny-by-default for every WebContents: no navigation away from the bundled
 // renderer, no window.open, no <webview> attachment.
@@ -98,6 +111,24 @@ const smokeTypeIntoComposer = `(() => {
   input.value = "Pixel-proof: real chat rows on the shared catalog"
   input.dispatchEvent(new Event("input", { bubbles: true }))
   return { ok: true, typed: input.value }
+})()`
+
+const smokeOpenFleetDesk = `(async () => {
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+  const button = document.querySelector('[data-en-key="shell-fleet-toggle"]')
+  if (button === null) return { ok: false, reason: "Fleet toggle never mounted" }
+  button.click()
+  const deadline = Date.now() + 5000
+  while (Date.now() < deadline && document.querySelector('[data-en-key="fleet-desk"]') === null) {
+    await wait(50)
+  }
+  const objective = document.querySelector('[data-en-key="fleet-objective"] input')
+  const dispatch = document.querySelector('[data-en-key="fleet-stage-request"]')
+  const status = document.querySelector('[data-en-key="fleet-authority-status"]')
+  return {
+    ok: objective !== null && dispatch !== null && status !== null && status.textContent === "DRAFT ONLY",
+    status: status === null ? null : status.textContent,
+  }
 })()`
 
 const smokeSubmitComposer = `(async () => {
@@ -196,10 +227,12 @@ const runSmoke = (window: BrowserWindow): void => {
       try {
         await step("shell-mounted", smokeWaitForShell)
         await captureShot(window, "01-shell")
+        await step("fleet-desk-open", smokeOpenFleetDesk)
+        await captureShot(window, "02-fleet-desk")
         await step("composer-typed", smokeTypeIntoComposer)
-        await captureShot(window, "02-composer-typed")
+        await captureShot(window, "03-composer-typed")
         await step("composer-submit-clears", smokeSubmitComposer)
-        await captureShot(window, "03-composer-cleared")
+        await captureShot(window, "04-composer-cleared")
         await step("intent-loop-ping", smokePingLoop)
         clearTimeout(timeout)
         console.log("[openagents-desktop smoke] OK")

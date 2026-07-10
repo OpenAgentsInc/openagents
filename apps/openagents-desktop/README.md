@@ -27,17 +27,19 @@ Or from this directory: `bun run dev`.
 What you should see: Sarah's chat, an owner composer, and **Open Fleet** in
 the titlebar. A submitted message renders the owner turn plus a typed Sarah
 response and clears the composer. **Open Fleet** exposes a local deployment
-brief; staging it honestly remains `AUTHORITY REQUIRED` until authenticated
-Sarah/Pylon authority accepts an exact repository, pinned commit, verifier,
-and named account request.
+brief; **Dispatch to Pylon** sends only the bounded objective through a
+schema-checked, host-owned loopback control capability. The Pylon control token
+never enters the renderer. An accepted intent is not a FleetRun receipt:
+repository pins, verifier, named account, and authority-backed closeout remain
+the Pylon/Sarah contract.
 
 ## Verify it
 
 ```bash
 bun test apps/openagents-desktop   # from repo root; or `bun run test` here
-bun run smoke                      # launches Electron, submits a Sarah chat
-                                   # turn, verifies both roles + clear-on-submit,
-                                   # pings the intent loop, exits 0/1
+bun run smoke                      # launches Electron, opens the Fleet deck,
+                                   # submits a Sarah chat turn, verifies both
+                                   # roles + clear-on-submit, exits 0/1
 bun run typecheck
 ```
 
@@ -52,8 +54,13 @@ the mechanical Electron/EN boundary oracle, and a real bundle build.
   `webviewTag: false`, deny-by-default permissions/navigation/window-open,
   restrictive CSP, no updater/publisher/devtools-installer.
 - `src/preload.cts` — the only bridge: a frozen static identity object via
-  `contextBridge`. No ipcRenderer, no MessagePort, no Node authority. The
-  renderer decodes it with Effect Schema.
+  `contextBridge`, plus one `stageFleet` capability. The capability accepts a
+  bounded schema-checked objective and invokes one fixed IPC channel; no raw
+  token, Node capability, arbitrary command, event subscription, or
+  `MessagePort` reaches the renderer.
+- `src/fleet-control.ts` — main-process adapter for the existing local Pylon
+  `intent.submit` command. It resolves the loopback control token locally and
+  returns only `accepted | rejected | unavailable` status.
 - `src/renderer/` — the application, 100% Effect Native:
   - `shell.ts` — typed state, `defineIntent` intents, pure transitions,
     pure `state -> View` over the shared catalog.
@@ -76,9 +83,9 @@ OpenAgentsInc/effect-native#69) — never app-local primitives.
 
 Honest residue, tracked on #8574:
 
-- The local Sarah response and Fleet brief are presentation-only; a typed,
-  authenticated `coding_fleet_start` bridge, live FleetRun projection, Pylon
-  controls, and Khala Sync remain (scopes 2, 3, 6, 8).
+- The local Sarah response and Pylon brief dispatch do not yet create or
+  project a server-authoritative `coding_fleet_start` FleetRun. That bridge,
+  live FleetRun projection/controls, and Khala Sync remain (scopes 2, 3, 6, 8).
 - No Forge packaging, fuses verification, signing/notarization, or updates
   feed (scope 7) — blocked on the owner identity freeze (scope 1); the
   interim dev identity uses an `OpenAgentsDesktopDev` userData dir and no

@@ -16,6 +16,7 @@ import {
   noteMessage,
   withInput,
   withFleetDeploymentRequested,
+  withFleetDeploymentResult,
   withFleetDesk,
   withFleetObjective,
   withLoopProof,
@@ -187,9 +188,15 @@ describe("pure transitions", () => {
     expect(nodeByKey(desktopShellView(open), "fleet-desk")?._tag).toBe("Card")
 
     const drafted = withFleetObjective(open, "Ship the desktop fleet chat")
-    const staged = withFleetDeploymentRequested(drafted, "18:05")
-    expect(staged.fleetDeployment).toBe("awaiting_authority")
-    expect(staged.notes.at(-1)?.text).toContain("Authentication")
+    const dispatching = withFleetDeploymentRequested(drafted)
+    expect(dispatching.fleetDeployment).toBe("dispatching")
+    const staged = withFleetDeploymentResult(dispatching, {
+      state: "accepted",
+      message: "Local Pylon accepted the fleet brief.",
+      intentStatus: "received",
+    }, "18:05")
+    expect(staged.fleetDeployment).toBe("accepted")
+    expect(staged.notes.at(-1)?.text).toContain("accepted")
     expect(staged.notes.at(-1)?.text).not.toContain("runRef")
   })
 

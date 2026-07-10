@@ -53,12 +53,21 @@ describe("Electron boundary (issue #8574 mandatory first-scaffold hardening)", (
     }
   })
 
-  test("preload exposes a frozen bridge only — no ipcRenderer, no MessagePort", () => {
+  test("preload exposes only the typed Fleet capability — no raw IPC or MessagePort", () => {
     const preload = stripComments(read("src/preload.cts"))
     expect(preload).toContain("contextBridge.exposeInMainWorld")
-    expect(preload).not.toContain("ipcRenderer")
+    expect(preload).toContain("ipcRenderer.invoke(FleetStageChannel, request)")
+    expect(preload).not.toContain("ipcRenderer.send")
+    expect(preload).not.toContain("ipcRenderer.on")
+    expect(preload).not.toContain("ipcRenderer.remove")
     expect(preload).not.toContain("MessagePort")
     expect(preload).not.toContain('require("node:')
+  })
+
+  test("main exposes one validated Fleet channel rather than arbitrary command authority", () => {
+    expect(main).toContain("ipcMain.handle(FleetStageChannel")
+    expect(main).toContain("decodeFleetStageRequest(value)")
+    expect(main).not.toContain("ipcMain.on(")
   })
 
   test("renderer CSP is restrictive (no remote script/connect surface)", () => {

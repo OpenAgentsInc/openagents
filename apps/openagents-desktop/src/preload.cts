@@ -10,9 +10,22 @@
  * CommonJS (.cts -> dist/preload.cjs) because sandboxed preloads cannot be
  * ESM.
  */
-import { contextBridge } from "electron"
+import { contextBridge, ipcRenderer } from "electron"
+
+import {
+  FleetStageChannel,
+  decodeFleetStageRequest,
+  unavailableFleetStageResult,
+} from "./fleet-contract.ts"
 
 contextBridge.exposeInMainWorld("openagentsDesktop", {
   host: "electron",
   platform: process.platform,
+  /** The sole renderer mutation: one schema-checked Fleet brief. */
+  stageFleet: (value: unknown) => {
+    const request = decodeFleetStageRequest(value)
+    return request === null
+      ? Promise.resolve(unavailableFleetStageResult())
+      : ipcRenderer.invoke(FleetStageChannel, request)
+  },
 })
