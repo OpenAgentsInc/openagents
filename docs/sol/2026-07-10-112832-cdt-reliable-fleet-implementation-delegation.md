@@ -11,36 +11,40 @@
 
 ## Execution progress
 
-- 2026-07-10 16:38 CDT — FAST-1 claimed on #8574 after the prior Desktop
+- 2026-07-10 11:38 CDT — FAST-1 claimed on #8574 after the prior Desktop
   execution claim released. The scope is limited to the DOM renderer's
   `Compose` → `ChatCompose` asset alias and its closed-icon regression; no
   catalog, schema, app, authority, or Fleet contract change is in scope.
-- 2026-07-10 16:41 CDT — Renderer typecheck and focused regression passed.
+- 2026-07-10 11:41 CDT — Renderer typecheck and focused regression passed.
   The Desktop suite exposed its former direct-call static assertion, so the
   claim was explicitly extended to update that guard to require the narrow
   alias before the shared catalog call. No production contract changed.
-- 2026-07-10 16:42 CDT — FAST-1 verification is green: render-dom typecheck;
+- 2026-07-10 11:42 CDT — FAST-1 verification is green: render-dom typecheck;
   four focused DOM tests; Desktop typecheck; 61 Desktop tests; and
   `git diff --check`. Preparing the scoped commit and release receipt.
-- 2026-07-10 16:45 CDT — FAST-1 landed on `main` as `68dd9254db` and its
+- 2026-07-10 11:45 CDT — FAST-1 landed on `main` as `68dd9254db` and its
   `CLAIM-RELEASE` receipt was verified on #8574 (fixture-proven). Refresh of
   #8597 found an active 16:28 CDT mobile Sarah-removal/Khala-composer claim;
   FAST-3 and R6 remain unavailable until it explicitly releases. #8640 remains
   coordinator/owner-gated, including its Codex account reconnect and live proof.
-- 2026-07-10 16:50 CDT — FAST-2 claimed across #8566, #8574, #8597, #8638, and
+- 2026-07-10 11:41 CDT — FAST-2 claimed across #8566, #8574, #8597, #8638, and
   #8640 in a clean worktree because the shared checkout contains unrelated Sol
   edits. The metadata-only leaf adds the Revision 24 override to each checked-in
   issue source, then reconciles each live body and label without touching active
   implementation paths.
-- 2026-07-10 16:53 CDT — FAST-2 reconciliation is verified: all five live
+- 2026-07-10 11:42 CDT — FAST-2 reconciliation is verified: all five live
   bodies match their checked-in source after GitHub final-newline normalization;
   every issue now has `priority:P0`, while stale `priority:P1-parallel` and
   `area:sarah` labels were removed. `git diff --check` passes; preparing the
   scoped commit and release receipts.
-- 2026-07-10 16:55 CDT — FAST-2 landed on `main` as `8b23f6f45d`; release
+- 2026-07-10 11:43 CDT — FAST-2 landed on `main` as `8b23f6f45d`; release
   receipts were posted to #8566, #8574, #8597, #8638, and #8640. The next
   implementation leaf remains blocked by #8597's active mobile claim and the
   missing senior R1–R2 contract freeze; #8640 remains owner/coordinator-gated.
+- 2026-07-10 11:43 CDT — Refresh confirmed #8597's current claim is only
+  fifteen minutes old and therefore not stale under the claim protocol. No
+  senior R1–R2 contract freeze was found, so SYNC-1 through SYNC-4, R3, and R4
+  remain intentionally undispatched.
 
 ## Mission
 
