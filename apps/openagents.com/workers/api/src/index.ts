@@ -2052,12 +2052,9 @@ const fetchMdkTipsBufferPath = (
     )
 }
 
-const runWorkerEffect = <A, E>(effect: Effect.Effect<A, E>): Promise<A> =>
-  Effect.runPromise(effect)
-
 const runArtanisForumRouteEffect = async (
   effect: ReturnType<typeof forumRoutes.routeForumRequest> | undefined,
-) => (effect === undefined ? undefined : runWorkerEffect(effect))
+) => (effect === undefined ? undefined : Effect.runPromise(effect))
 
 const artanisComposerForumPostForEnv =
   (environment: Env) =>
@@ -10854,23 +10851,35 @@ const nexusPylonVisibilityRoutes = makeNexusPylonVisibilityRoutes({
   requireBrowserSession,
 })
 
-const withFleetRunAuthority = async <A>(
+const withFleetRunAuthority = <A>(
   env: WorkerBindings,
-  operation: (repository: FleetRunAuthorityRepositoryShape) => Promise<A>,
-): Promise<A> => {
+  operation: (
+    repository: FleetRunAuthorityRepositoryShape,
+  ) => Effect.Effect<A, FleetRunAuthorityError>,
+): Effect.Effect<A, FleetRunAuthorityError> => {
   const connectionString = env.KHALA_SYNC_DB?.connectionString
   if (connectionString === undefined || connectionString.trim() === '') {
-    throw new FleetRunAuthorityError({
-      kind: 'storage_unavailable',
-      reason: 'fleet run authority storage is unavailable',
-    })
+    return Effect.fail(
+      new FleetRunAuthorityError({
+        kind: 'storage_unavailable',
+        reason: 'fleet run authority storage is unavailable',
+      }),
+    )
   }
-  const client = await defaultMakeKhalaSyncSqlClient(connectionString)
-  try {
-    return await operation(makeFleetRunAuthorityRepository({ sql: client.sql }))
-  } finally {
-    await client.end().catch(() => undefined)
-  }
+
+  return Effect.acquireUseRelease(
+    Effect.tryPromise({
+      catch: () =>
+        new FleetRunAuthorityError({
+          kind: 'storage_unavailable',
+          reason: 'fleet run authority storage is unavailable',
+        }),
+      try: () => defaultMakeKhalaSyncSqlClient(connectionString),
+    }),
+    client =>
+      operation(makeFleetRunAuthorityRepository({ sql: client.sql })),
+    client => Effect.promise(() => client.end().catch(() => undefined)),
+  )
 }
 
 const pylonApiRoutes = makePylonApiRoutes<WorkerBindings>({
@@ -10878,13 +10887,9 @@ const pylonApiRoutes = makePylonApiRoutes<WorkerBindings>({
   makeStore: env => makePylonApiStoreForEnv(env),
   fleetRunAuthority: {
     claim: (env, input) =>
-      withFleetRunAuthority(env, repository =>
-        runWorkerEffect(repository.claim(input)),
-      ),
+      withFleetRunAuthority(env, repository => repository.claim(input)),
     acceptClaim: (env, input) =>
-      withFleetRunAuthority(env, repository =>
-        runWorkerEffect(repository.acceptClaim(input)),
-      ),
+      withFleetRunAuthority(env, repository => repository.acceptClaim(input)),
   },
   // #5252: private operator-only store for raw Spark payout targets.
   makeSparkPayoutTargetStore: env =>
