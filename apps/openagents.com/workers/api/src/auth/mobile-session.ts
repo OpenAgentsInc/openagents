@@ -8,6 +8,9 @@ import type { VerifiedSession } from './session'
 
 export const DEFAULT_KHALA_MOBILE_OPENAUTH_CLIENT_ID =
   'openagents-khala-mobile'
+export const DEFAULT_OPENAGENTS_DESKTOP_OPENAUTH_CLIENT_ID =
+  'openagents-desktop'
+export const OPENAGENTS_DESKTOP_OPENAUTH_LOOPBACK_PATH = '/auth/callback'
 export const OPENAGENTS_MOBILE_OPENAUTH_REDIRECT_URI = 'openagents://auth'
 export const TEMPORARY_KHALA_MOBILE_OPENAUTH_ROLLBACK_REDIRECT_URI =
   'khala://auth'
@@ -111,21 +114,39 @@ export const authIssuerAllowsRedirect = (
     return authIssuerAllowsWebRedirectHostname(redirect.hostname)
   }
 
-  if (input.clientID !== DEFAULT_KHALA_MOBILE_OPENAUTH_CLIENT_ID) {
-    return false
-  }
-
   const query = new URL(request.url).searchParams
-  const isMobileRedirect =
-    input.redirectURI === OPENAGENTS_MOBILE_OPENAUTH_REDIRECT_URI ||
-    input.redirectURI ===
-      TEMPORARY_KHALA_MOBILE_OPENAUTH_ROLLBACK_REDIRECT_URI
   const isGitHubCodePkce =
     query.get('provider') === 'github' &&
     query.get('response_type') === 'code' &&
     query.get('code_challenge_method') === 'S256' &&
     PKCE_S256_CHALLENGE.test(query.get('code_challenge') ?? '')
 
+  if (input.clientID === DEFAULT_OPENAGENTS_DESKTOP_OPENAUTH_CLIENT_ID) {
+    const port = Number.parseInt(redirect.port, 10)
+    const isDesktopLoopback =
+      redirect.protocol === 'http:' &&
+      redirect.hostname === '127.0.0.1' &&
+      redirect.port !== '' &&
+      Number.isInteger(port) &&
+      port >= 1024 &&
+      port <= 65_535 &&
+      redirect.pathname === OPENAGENTS_DESKTOP_OPENAUTH_LOOPBACK_PATH &&
+      redirect.username === '' &&
+      redirect.password === '' &&
+      redirect.search === '' &&
+      redirect.hash === ''
+
+    return isDesktopLoopback && isGitHubCodePkce
+  }
+
+  if (input.clientID !== DEFAULT_KHALA_MOBILE_OPENAUTH_CLIENT_ID) {
+    return false
+  }
+
+  const isMobileRedirect =
+    input.redirectURI === OPENAGENTS_MOBILE_OPENAUTH_REDIRECT_URI ||
+    input.redirectURI ===
+      TEMPORARY_KHALA_MOBILE_OPENAUTH_ROLLBACK_REDIRECT_URI
   return isMobileRedirect && isGitHubCodePkce
 }
 

@@ -140,7 +140,7 @@ describe("behavior contract registry", () => {
     const validation = validateBehaviorContractRegistry(decoded)
 
     expect(validation).toEqual({ issues: [], ok: true })
-    expect(decoded.contracts).toHaveLength(14)
+    expect(decoded.contracts).toHaveLength(15)
     const pending = decoded.contracts.filter(contract => contract.state === "pending")
     expect(pending).toHaveLength(4)
     expect(
@@ -206,6 +206,16 @@ describe("behavior contract registry", () => {
       "apps/openagents-mobile/tests/native-session-pkce.test.ts",
       "apps/openagents-mobile/tests/home-shell-core.test.ts",
     ])
+    const desktopLoopbackPkce = decoded.contracts.find(
+      contract =>
+        contract.contractId ===
+        "openagents_desktop.session.loopback_pkce_policy.v1",
+    )
+    expect(desktopLoopbackPkce?.state).toBe("enforced")
+    expect(desktopLoopbackPkce?.statement).toContain("never claims the mobile custom scheme")
+    expect(desktopLoopbackPkce?.oracles[0]?.ref).toBe(
+      "apps/openagents.com/workers/api/src/auth/mobile-session.test.ts",
+    )
     // Owner P0 (build 111 TestFlight feedback, 2026-07-09): the minerals
     // sheet closes only on USER intents, enforced in the mobile test sweep.
     const mineralsSheet = decoded.contracts.find(

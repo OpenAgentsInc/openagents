@@ -453,7 +453,10 @@ records before claiming the first new slice.
   encrypted persistence and a tokenless unverified/signed-out/unavailable
   gateway projection. Recovered credentials now validate and rotate through
   the native-session boundary before the gateway can project session readiness.
-  It does not yet have OpenAgents browser sign-in,
+  The issuer now registers a distinct `openagents-desktop` public-client policy
+  for exact literal-loopback GitHub code + S256 entry without colliding with
+  mobile `openagents://auth`. It does not yet have the local listener/browser/
+  exchange composition,
   authoritative Sync threads or conversation services composed behind that
   gateway, a streamed provider-neutral event runtime, a complete coding
   workbench, or a visible server-authoritative Fleet cockpit.
@@ -1143,8 +1146,9 @@ bounded issues under the owning program.
    state builds/tests/smokes, honest capability manifests, no fake authority,
    and the existing hardened Desktop boundary.
 2. Continue F1/R1/R2 through both clients together from the published
-   `khala.identity_sync_contract.v1`: Desktop browser entry over the landed
-   main-process encrypted vault and recovered-session validation/rotation,
+   `khala.identity_sync_contract.v1`: Desktop loopback listener/browser/
+   exchange over the landed issuer policy, encrypted vault, and recovered-
+   session validation/rotation,
    physical-device acceptance of the landed mobile PKCE/vault/recovery/signout
    composition,
    `device_session` through the serialized freeze lane,

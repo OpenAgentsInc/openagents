@@ -43,14 +43,17 @@ The greenfield app now has:
 - recovered-session validation through the existing native-session boundary,
   rotation-before-ready persistence, denial/owner-mismatch purge, transient
   retention, and bounded verified/unavailable gateway state.
+- a distinct `openagents-desktop` public-client issuer policy for exact RFC
+  8252 literal-loopback GitHub code + S256 entry; Desktop does not claim the
+  mobile custom scheme.
 
 The normal Desktop `verify` gate is green: typecheck, contract/e2e tests,
 bundle, and real-Electron fixture smoke. The current architecture receipt is
 `f49a66b4aa`; this is still fixture/development proof, not a signed/live-product
 claim.
 
-Not yet claimed: Desktop browser sign-in, authoritative Sync threads, complete
-streamed session state,
+Not yet claimed: Desktop loopback listener/browser/exchange composition,
+authoritative Sync threads, complete streamed session state,
 full workbench, visible authoritative Fleet cockpit, signed distribution, live
 owner account success, or legacy retirement.
 

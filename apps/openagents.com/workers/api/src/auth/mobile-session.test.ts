@@ -10,7 +10,9 @@ import {
 
 import {
   DEFAULT_KHALA_MOBILE_OPENAUTH_CLIENT_ID,
+  DEFAULT_OPENAGENTS_DESKTOP_OPENAUTH_CLIENT_ID,
   KHALA_MOBILE_OPENAUTH_REDIRECT_URI,
+  OPENAGENTS_DESKTOP_OPENAUTH_LOOPBACK_PATH,
   TEMPORARY_KHALA_MOBILE_OPENAUTH_ROLLBACK_REDIRECT_URI,
   authIssuerAllowsRedirect,
   isMobileAccessTokenRevoked,
@@ -269,6 +271,50 @@ describe('Khala mobile OpenAuth session policy', () => {
         { webClientId: 'openagents-web' },
       ),
     ).toBe(true)
+  })
+
+  test('contract openagents_desktop.session.loopback_pkce_policy.v1 allows only the exact Desktop loopback public-client tuple', () => {
+    const allowedRequest = new Request(
+      'https://auth.openagents.com/authorize?provider=github&response_type=code&code_challenge_method=S256&code_challenge=abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQ',
+    )
+    const allowed = (redirectURI: string, request: Request = allowedRequest, clientID = DEFAULT_OPENAGENTS_DESKTOP_OPENAUTH_CLIENT_ID) =>
+      authIssuerAllowsRedirect(
+        { clientID, redirectURI },
+        request,
+        { webClientId: 'openagents-web' },
+      )
+
+    expect(OPENAGENTS_DESKTOP_OPENAUTH_LOOPBACK_PATH).toBe('/auth/callback')
+    expect(allowed('http://127.0.0.1:49152/auth/callback')).toBe(true)
+    expect(allowed('http://127.0.0.1:65535/auth/callback')).toBe(true)
+
+    for (const rejected of [
+      'http://127.0.0.1/auth/callback',
+      'http://127.0.0.1:80/auth/callback',
+      'http://localhost:49152/auth/callback',
+      'http://[::1]:49152/auth/callback',
+      'https://127.0.0.1:49152/auth/callback',
+      'http://127.0.0.1:49152/auth/callback/',
+      'http://127.0.0.1:49152/auth/callback?code=preloaded',
+      'http://127.0.0.1:49152/auth/callback#fragment',
+      'http://user@127.0.0.1:49152/auth/callback',
+    ]) {
+      expect(allowed(rejected)).toBe(false)
+    }
+
+    expect(allowed(
+      'http://127.0.0.1:49152/auth/callback',
+      new Request('https://auth.openagents.com/authorize?provider=github&response_type=code&code_challenge_method=plain&code_challenge=abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQ'),
+    )).toBe(false)
+    expect(allowed(
+      'http://127.0.0.1:49152/auth/callback',
+      new Request('https://auth.openagents.com/authorize?provider=code&response_type=code&code_challenge_method=S256&code_challenge=abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQ'),
+    )).toBe(false)
+    expect(allowed(
+      'http://127.0.0.1:49152/auth/callback',
+      allowedRequest,
+      DEFAULT_KHALA_MOBILE_OPENAUTH_CLIENT_ID,
+    )).toBe(false)
   })
 
   test('allows only exact mobile public-client native redirects with GitHub code + S256 PKCE', () => {

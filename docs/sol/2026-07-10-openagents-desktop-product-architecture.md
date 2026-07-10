@@ -360,6 +360,12 @@ implementation lane must guess the renderer/runtime/Sync boundary.
 
 - Desktop bearer session in OS keychain/main; mobile bearer session in secure
   storage.
+- Desktop interactive auth uses public client `openagents-desktop` and an
+  [RFC 8252](https://www.rfc-editor.org/rfc/rfc8252.html) literal IPv4 loopback
+  callback at `http://127.0.0.1:{ephemeral-port}/auth/callback`, with GitHub
+  authorization-code + S256 only. It does not register or contend for mobile
+  `openagents://auth`; the callback listener binds loopback only and closes
+  after one bounded result.
 - Freeze and land `device_session` only through the R1 contract owner.
 - Bind Desktop main/runtime SQLite and mobile Expo SQLite to existing Khala Sync
   client semantics.

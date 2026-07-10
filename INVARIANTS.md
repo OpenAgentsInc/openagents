@@ -542,6 +542,12 @@ More specific invariant ledgers apply inside imported apps and packages.
   projecting `session_ready`, and purges denial or server-derived owner
   mismatch. Transient network/server/schema failure retains encrypted custody
   while projecting unavailable; verified session state is not live Sync.
+- Desktop interactive OpenAuth uses the distinct public client
+  `openagents-desktop` and only an RFC 8252 loopback redirect shaped exactly as
+  `http://127.0.0.1:{ephemeral-port}/auth/callback`. The issuer requires GitHub
+  authorization code + PKCE S256, a bounded challenge, a non-privileged port,
+  and no userinfo/query/fragment; it rejects localhost, non-loopback, HTTPS,
+  custom schemes, missing ports, and mobile-client reuse.
 - Mobile recovery may send the refresh token only to
   `GET /api/mobile/auth/session` via the bounded `X-OpenAgents-Refresh-Token`
   header. The existing OpenAuth verifier owns rotation; replacement tokens are

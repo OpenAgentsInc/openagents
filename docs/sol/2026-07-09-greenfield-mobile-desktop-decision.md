@@ -53,6 +53,13 @@ Legacy `khala://`, `openagents-khala-mobile`, keychain, SQLite, or update data i
 read only through a typed compatibility migration or deliberately not read at
 all. No new app silently claims unknown data belonging to `com.openagents.app`.
 
+The Desktop OAuth choice is now separately frozen by #8663 without deciding a
+package/deep-link identity: public client `openagents-desktop` uses an RFC 8252
+literal-loopback callback at
+`http://127.0.0.1:{ephemeral-port}/auth/callback`. Desktop does not register or
+reuse the mobile `openagents://auth` scheme. Mobile identity and its canonical
+callback remain unchanged.
+
 ## Desktop boundary is fixed
 
 OpenAgents Desktop uses Electron. The old Electrobun shell, RPC transport,

@@ -343,6 +343,40 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
     },
     {
       authorityBoundary:
+        "This registers only the Desktop public-client authorization redirect policy. It does not launch a browser, accept a callback, exchange a code, authenticate the renderer, make Sync live, or freeze package identity.",
+      blockerRefs: [],
+      contractId: "openagents_desktop.session.loopback_pkce_policy.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "apps/openagents.com/workers/api/src/auth/mobile-session.ts",
+        "docs/sol/issues/desktop-session-loopback-policy.md",
+        "github:OpenAgentsInc/openagents#8663",
+      ],
+      oracles: [
+        {
+          description:
+            "Proves the distinct Desktop public client accepts only literal IPv4 loopback, a required ephemeral port, exact callback path, GitHub code + S256, and no userinfo/query/fragment while preserving web/mobile redirect behavior.",
+          id: "openagents_desktop.session.loopback_pkce_policy",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/openagents.com/workers/api/src/auth/mobile-session.test.ts",
+        },
+      ],
+      productArea: "Desktop native OpenAuth entry",
+      source: {
+        channel: "owner-codex-session",
+        statedBy: "owner",
+        statedOn: "2026-07-10",
+      },
+      state: "enforced",
+      statement:
+        "OpenAgents Desktop uses the distinct public client openagents-desktop with an RFC 8252 literal-loopback callback and GitHub authorization-code + S256 PKCE only; it never claims the mobile custom scheme.",
+      surface: "openagents-desktop-and-api",
+      verification:
+        "The Worker native-session policy suite and API typecheck enforce the registered redirect boundary; behavior-contract validation gates its evidence record.",
+    },
+    {
+      authorityBoundary:
         "This binds sheet-dismissal authority to user intents only; it does not authorize StoreKit purchase flows or change how/when the shell opens the sheet.",
       blockerRefs: [],
       contractId: "openagents_mobile.minerals_sheet_user_dismiss_only.v1",
