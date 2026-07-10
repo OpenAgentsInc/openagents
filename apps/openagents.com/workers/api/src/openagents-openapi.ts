@@ -211,7 +211,7 @@ const mobileRefreshTokenHeader = (): JsonSchema => ({
   in: 'header',
   required: false,
   description:
-    'Optional native-app OpenAuth refresh token to revoke during mobile sign-out. Never send browser cookies or agent tokens here.',
+    'Optional native-app OpenAuth refresh token used only for native session validation/rotation or sign-out revocation. Never send browser cookies or agent tokens here.',
   schema: { type: 'string', minLength: 8, maxLength: 2000 },
 })
 
@@ -2725,7 +2725,7 @@ const schemaComponents = (): JsonSchema => ({
       },
     },
     description:
-      'Native Khala mobile OpenAuth bearer-session projection. It is cookie-free and never returns refresh tokens.',
+      'Native OpenAgents mobile bearer-session projection. It is cookie-free. When validation rotates an expiring credential, the optional tokens object contains the replacement access/refresh pair for immediate secure-storage rewrite; otherwise no token material is returned.',
   },
   MobileAuthSignOutRequest: {
     type: 'object',
@@ -13021,9 +13021,10 @@ const paths = (): JsonSchema => ({
       operationId: 'getMobileAuthSession',
       summary: 'Read native mobile session',
       description:
-        'Verifies a Khala mobile OpenAuth user access token from Authorization: Bearer and returns the user projection without relying on browser cookies. Tokens must come from the mobile PKCE public-client flow; agent bearer tokens are not accepted as mobile user sessions.',
+        'Verifies an OpenAgents mobile OpenAuth user access token from Authorization: Bearer and returns the user projection without relying on browser cookies. An optional X-OpenAgents-Refresh-Token permits the existing verifier to rotate an expiring native session; replacements are returned only in the no-store response. Agent bearer tokens are not accepted.',
       tags: ['Agents'],
       security: mobileUserBearer,
+      parameters: [mobileRefreshTokenHeader()],
       responses: {
         '200': okJson(
           'Mobile auth session.',

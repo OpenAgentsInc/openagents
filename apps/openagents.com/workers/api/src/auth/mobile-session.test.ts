@@ -14,7 +14,9 @@ import {
   TEMPORARY_KHALA_MOBILE_OPENAUTH_ROLLBACK_REDIRECT_URI,
   authIssuerAllowsRedirect,
   isMobileAccessTokenRevoked,
+  makeUserBearerSessionBoundary,
   openAuthRefreshStorageKeyFromToken,
+  readMobileOpenAuthSignOutRefreshToken,
   revokeMobileAccessToken,
 } from './mobile-session'
 import { makeMemoryAuthKvStore } from './auth-kv'
@@ -34,6 +36,68 @@ const executionContext = {
   passThroughOnException: () => undefined,
   waitUntil: () => undefined,
 } as never
+
+describe('contract openagents_mobile.session.recovered_validation_rotation.v1 — server boundary', () => {
+  test('passes only a bounded native refresh header to the existing verifier', async () => {
+    const calls: Array<Readonly<{ access: string; refresh: string | undefined }>> = []
+    const persisted: Array<string> = []
+    const boundary = makeUserBearerSessionBoundary<string, Record<string, never>>({
+      isAccessTokenRevoked: async () => false,
+      persistUser: async (_env, user) => {
+        persisted.push(user)
+      },
+      verifyTokens: async (access, refresh) => {
+        calls.push({ access, refresh })
+        return { user: 'owner.fixture' }
+      },
+    })
+    const run = (refresh: string | undefined) =>
+      boundary.requireUserBearerSession(
+        new Request('https://openagents.com/api/mobile/auth/session', {
+          headers: {
+            authorization: 'Bearer access-fixture',
+            ...(refresh === undefined
+              ? {}
+              : { 'x-openagents-refresh-token': refresh }),
+          },
+        }),
+        {},
+        executionContext,
+      )
+
+    await expect(run('refresh-fixture')).resolves.toEqual({ user: 'owner.fixture' })
+    await expect(run('short')).resolves.toEqual({ user: 'owner.fixture' })
+    await expect(run('x'.repeat(2001))).resolves.toEqual({ user: 'owner.fixture' })
+    await boundary.requireUserBearerSession(
+      new Request('https://openagents.com/api/mobile/credits/balance', {
+        headers: {
+          authorization: 'Bearer access-fixture',
+          'x-openagents-refresh-token': 'refresh-must-not-rotate-here',
+        },
+      }),
+      {},
+      executionContext,
+    )
+    expect(calls).toEqual([
+      { access: 'access-fixture', refresh: 'refresh-fixture' },
+      { access: 'access-fixture', refresh: undefined },
+      { access: 'access-fixture', refresh: undefined },
+      { access: 'access-fixture', refresh: undefined },
+    ])
+    expect(persisted).toEqual([
+      'owner.fixture',
+      'owner.fixture',
+      'owner.fixture',
+      'owner.fixture',
+    ])
+    expect(readMobileOpenAuthSignOutRefreshToken(
+      new Request('https://openagents.com/api/mobile/auth/session', {
+        method: 'DELETE',
+        headers: { 'x-openagents-refresh-token': 'refresh-for-sign-out' },
+      }),
+    )).toBe('refresh-for-sign-out')
+  })
+})
 
 const workerConfig = {
   GITHUB_CLIENT_ID: 'github-client',

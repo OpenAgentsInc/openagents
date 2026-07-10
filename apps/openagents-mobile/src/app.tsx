@@ -4,7 +4,7 @@ import * as Updates from "expo-updates"
 import { useEffect, useState } from "react"
 import { SafeAreaProvider } from "react-native-safe-area-context"
 
-import { recoverNativeSession } from "./auth/native-session-vault"
+import { recoverVerifiedNativeSession } from "./auth/native-session-recovery"
 import type { MobileSyncPhase } from "./screens/home-core"
 import { HomeScreen } from "./screens/home-screen"
 import { openMobileSyncHost, type MobileSyncHost } from "./sync/mobile-sync-host"
@@ -37,14 +37,23 @@ export const App = () => {
     } catch {
       setSyncPhase("unavailable")
     }
-    void recoverNativeSession().then(
+    void recoverVerifiedNativeSession().then(
       recovery => {
         if (stopped || !localStoreReady) return
-        setSyncPhase(
-          recovery.state === "credential_present_unverified"
-            ? "credential_present_unverified"
-            : "local_ready",
-        )
+        switch (recovery.state) {
+          case "signed_out":
+            setSyncPhase("local_ready")
+            break
+          case "verified":
+            setSyncPhase("session_ready")
+            break
+          case "denied":
+            setSyncPhase("denied")
+            break
+          case "unavailable":
+            setSyncPhase("unavailable")
+            break
+        }
       },
       () => {
         if (!stopped) setSyncPhase("unavailable")

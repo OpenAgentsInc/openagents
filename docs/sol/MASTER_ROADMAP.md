@@ -458,9 +458,12 @@ records before claiming the first new slice.
   host-owned Expo SQLite adapter over the shared Khala Sync store core with a
   restart-stable installation identity and pre-OTA close, plus a versioned
   device-only SecureStore vault that exposes only credential-present-
-  unverified recovery state. Removed Sarah/demo/local-catalog state, local
-  cache readiness, and a stored credential are not authority substitutes. It
-  does not yet have authenticated cross-device Sync,
+  unverified recovery state. Recovered credentials are now validated against
+  the existing native session boundary; bounded OpenAuth rotation rewrites the
+  vault, while denial/owner mismatch purges it. Removed Sarah/demo/local-
+  catalog state, local cache readiness, a stored credential, and a verified
+  session are not Sync authority substitutes. It does not yet have live
+  cross-device Sync,
   FleetRun authority, account/capacity state, durable controls, remote-workroom
   coding, or receipt continuity. The frozen `clients/khala-mobile` app already
   demonstrates much of the missing product behavior—GitHub PKCE, SecureStore
@@ -1134,7 +1137,8 @@ bounded issues under the owning program.
    and the existing hardened Desktop boundary.
 2. Continue F1/R1/R2 through both clients together from the published
    `khala.identity_sync_contract.v1`: Desktop keychain/main-process session,
-   mobile PKCE validation/refresh over the landed secure vault,
+   mobile browser PKCE exchange over the landed secure vault and recovered-
+   session validation/rotation,
    `device_session` through the serialized freeze lane,
    exact authenticated phases, and fault fixtures. Desktop `node:sqlite` and
    mobile Expo SQLite adapters are landed over the shared store core; do not

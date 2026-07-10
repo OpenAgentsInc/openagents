@@ -79,6 +79,17 @@ describe("contract openagents_mobile.persona_neutral_home.v1", () => {
     expect(content).not.toContain("ownerUserId")
   })
 
+  test("distinguishes a verified session from live Sync", async () => {
+    const program = buildHomeProgram()
+    program.sync.setPhase("session_ready")
+    await Effect.runPromise(settle)
+    const state = await Effect.runPromise(lastState(program))
+    const content = JSON.stringify(renderContentView({ ...state, surfaceMode: "openagents" }))
+    expect(content).toContain("Session verified")
+    expect(content).toContain("Shared work is ready to connect")
+    expect(content).not.toContain("Sync live")
+  })
+
   test("native-composer dispatchers own the Khala draft and New chat clears it", async () => {
     const program = buildHomeProgram()
     program.khala.draftChanged("Plan the mobile handoff")

@@ -33,6 +33,10 @@ imports nothing from it.
   for the native OpenAgents access/refresh tokens and server-derived owner ref.
   Recovery exposes only signed-out or credential-present-unverified state;
   malformed/retired records are purged and no credential enters view state.
+- `src/auth/native-session-recovery.ts` — host-only validation against the
+  existing native session endpoint. It passes the refresh token only on that
+  route, persists OpenAuth rotation, purges denial/owner mismatch, and returns
+  only signed-out/verified/denied/unavailable state.
 - Styling is **typed style objects on the shared token vocabulary** — no
   NativeWind, no Tailwind class strings (see
   `docs/effect-native/2026-07-08-styling-tailwind-stylex-effect-native.md`).
@@ -124,7 +128,9 @@ Liquid Glass composer, backed by the public orchestration endpoint. A private
 Expo SQLite cache now supplies restart-stable local Khala Sync storage and an
 honest `Local Sync ready` state. Native session credentials now have a
 device-only SecureStore vault, but a recovered record remains visibly
-unverified until the server accepts it. The app does not manufacture
-authenticated/network Sync, fleet, account, receipt, or cross-device
-authority. PKCE sign-in/refresh/revocation, real Sync subscriptions, and
-durable commands are the next #8597 priorities.
+unverified until the server accepts it. Startup now validates that record and
+persists access/refresh rotation; denial or owner mismatch purges it. A verified
+session is still distinct from live Sync. The app does not manufacture fleet,
+account, receipt, or cross-device authority. Browser PKCE sign-in, explicit
+sign-out/revocation, real Sync subscriptions, and durable commands are the next
+#8597 priorities.

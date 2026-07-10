@@ -56,6 +56,7 @@ export type MobileSyncPhase =
   | ScopeSyncState["phase"]
   | "credential_present_unverified"
   | "local_ready"
+  | "session_ready"
   | "unconfigured"
   | "unavailable"
   | "stale"
@@ -73,6 +74,10 @@ const syncStatusCopyByPhase: Record<MobileSyncPhase, SyncStatusCopy> = {
   local_ready: {
     title: "Local Sync ready",
     detail: "Local data is durable. Connect an OpenAgents session to sync shared work.",
+  },
+  session_ready: {
+    title: "Session verified",
+    detail: "OpenAgents accepted this session. Shared work is ready to connect.",
   },
   unconfigured: {
     title: "Sync not configured",

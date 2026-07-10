@@ -236,6 +236,7 @@ import {
   authIssuerAllowsWebRedirectHostname,
   isMobileAccessTokenRevoked,
   makeUserBearerSessionBoundary,
+  readMobileOpenAuthSignOutRefreshToken,
   revokeMobileAccessToken,
   revokeOpenAuthRefreshToken,
 } from './auth/mobile-session'
@@ -5266,11 +5267,9 @@ const MobileAuthSignOutRequest = S.Struct({
 const readMobileAuthSignOutRefreshToken = async (
   request: Request,
 ): Promise<string | undefined> => {
-  const headerRefresh = request.headers
-    .get('x-openagents-refresh-token')
-    ?.trim()
+  const headerRefresh = readMobileOpenAuthSignOutRefreshToken(request)
 
-  if (headerRefresh !== undefined && headerRefresh !== '') {
+  if (headerRefresh !== undefined) {
     return headerRefresh
   }
 

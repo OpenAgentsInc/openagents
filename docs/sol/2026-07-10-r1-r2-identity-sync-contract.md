@@ -108,8 +108,13 @@ Reserved (do not implement until Sol freezes the entity schema in
 - Mobile credential custody/recovery classification is landed in #8658:
   access/refresh tokens plus the server-derived owner ref share one versioned
   Expo SecureStore record; a recovered record remains unverified until the
-  server accepts it. Browser prompt, PKCE exchange, refresh, and revocation are
+  server accepts it. Browser prompt, PKCE exchange, and explicit revocation are
   still required for the R1 exit.
+- Recovered-session validation/rotation is landed in #8659: only the exact
+  native session GET may carry the bounded refresh header; the existing
+  OpenAuth verifier owns rotation, the vault is rewritten before projecting
+  `session_ready`, and denial/owner mismatch purges. The initial browser PKCE
+  flow and explicit sign-out remain required for R1.
 - The `device_session` projection/mutator pair (after §R1.4 freeze).
 
 ## R2 — Khala Sync as the cross-device authority
@@ -311,7 +316,7 @@ reported per item; no rung implies the next.
 | Already exists (bind, do not rebuild) | Must be built |
 | --- | --- |
 | Protocol/envelope/cursors/tombstones/`must_refetch` (`khala-sync`) | Desktop OpenAgents sign-in + keychain custody (R1.5) |
-| Chat + fleet entity schemas and mutators (`khala-sync`/`-server`) | Mobile PKCE prompt/exchange plus server validation/refresh over the landed #8658 secure vault |
+| Chat + fleet entity schemas and mutators (`khala-sync`/`-server`) | Mobile browser PKCE prompt/exchange and explicit sign-out over the landed #8658/#8659 vault + recovered-session boundary |
 | Client session/store/overlay/offline/reconnect + fault tests (`khala-sync-client`) | `device_session` projection + `identity.revokeSession` (after §R1.4 freeze) |
 | Server session boundaries, refresh propagation, revocation (`workers/api/src/auth*`) | Authenticated Desktop/mobile session composition over the landed local adapters |
 | Fleet run/attempt/approval/command authority + steering exchange (#8637/#8633/#8639 substrate) | SYNC-4 cross-client continuity fixture |

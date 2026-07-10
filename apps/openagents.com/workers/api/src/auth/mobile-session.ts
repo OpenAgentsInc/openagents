@@ -15,6 +15,42 @@ export const KHALA_MOBILE_OPENAUTH_REDIRECT_URI =
   OPENAGENTS_MOBILE_OPENAUTH_REDIRECT_URI
 
 const PKCE_S256_CHALLENGE = /^[A-Za-z0-9_-]{43,128}$/
+export const MOBILE_OPENAUTH_REFRESH_HEADER = 'x-openagents-refresh-token'
+export const MOBILE_OPENAUTH_SESSION_PATH = '/api/mobile/auth/session'
+const MOBILE_OPENAUTH_REFRESH_TOKEN_MIN_LENGTH = 8
+const MOBILE_OPENAUTH_REFRESH_TOKEN_MAX_LENGTH = 2000
+
+const readBoundedMobileOpenAuthRefreshHeader = (
+  request: Request,
+): string | undefined => {
+  const value = request.headers.get(MOBILE_OPENAUTH_REFRESH_HEADER)?.trim()
+
+  if (
+    value === undefined ||
+    value.length < MOBILE_OPENAUTH_REFRESH_TOKEN_MIN_LENGTH ||
+    value.length > MOBILE_OPENAUTH_REFRESH_TOKEN_MAX_LENGTH
+  ) {
+    return undefined
+  }
+
+  return value
+}
+
+export const readMobileOpenAuthRefreshToken = (
+  request: Request,
+): string | undefined =>
+  request.method === 'GET' &&
+  new URL(request.url).pathname === MOBILE_OPENAUTH_SESSION_PATH
+    ? readBoundedMobileOpenAuthRefreshHeader(request)
+    : undefined
+
+export const readMobileOpenAuthSignOutRefreshToken = (
+  request: Request,
+): string | undefined =>
+  request.method === 'DELETE' &&
+  new URL(request.url).pathname === MOBILE_OPENAUTH_SESSION_PATH
+    ? readBoundedMobileOpenAuthRefreshHeader(request)
+    : undefined
 
 export type AuthIssuerRedirectPolicy = Readonly<{
   mobileClientId?: string | undefined
@@ -250,7 +286,7 @@ export const makeUserBearerSessionBoundary = <User, Bindings>(
 
     const session = await dependencies.verifyTokens(
       accessToken,
-      undefined,
+      readMobileOpenAuthRefreshToken(request),
       request,
       env,
       ctx,

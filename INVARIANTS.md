@@ -532,6 +532,12 @@ More specific invariant ledgers apply inside imported apps and packages.
   credential boundary on Desktop. Effect Native state receives only typed
   session phases; stored credentials are unverified until the server accepts
   them, and malformed or retired-epoch records are purged fail-closed.
+- Mobile recovery may send the refresh token only to
+  `GET /api/mobile/auth/session` via the bounded `X-OpenAgents-Refresh-Token`
+  header. The existing OpenAuth verifier owns rotation; replacement tokens are
+  rewritten to SecureStore before the host projects `session_ready`. Denial or
+  server-derived owner mismatch purges the record, while transient failure
+  hides shared work without deleting a potentially valid credential.
 - Operations (Cloud SQL monitoring, migration runner, compaction, capture
   daemon, hub reset, Hyperdrive saturation, secrets locations) are in
   `docs/khala-sync/RUNBOOK.md`.

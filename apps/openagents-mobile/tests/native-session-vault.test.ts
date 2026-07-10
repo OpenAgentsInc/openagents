@@ -110,7 +110,7 @@ describe("contract openagents_mobile.session.secure_store_custody.v1", () => {
       new URL("../app.json", import.meta.url),
       "utf8",
     )) as { expo: { plugins: ReadonlyArray<string> } }
-    expect(appSource).toContain("recoverNativeSession")
+    expect(appSource).toContain("recoverVerifiedNativeSession")
     expect(appSource).not.toContain("loadNativeSessionCredential")
     expect(homeSource).not.toContain("accessToken")
     expect(homeSource).not.toContain("refreshToken")

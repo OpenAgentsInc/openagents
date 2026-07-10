@@ -140,7 +140,7 @@ describe("behavior contract registry", () => {
     const validation = validateBehaviorContractRegistry(decoded)
 
     expect(validation).toEqual({ issues: [], ok: true })
-    expect(decoded.contracts).toHaveLength(12)
+    expect(decoded.contracts).toHaveLength(13)
     const pending = decoded.contracts.filter(contract => contract.state === "pending")
     expect(pending).toHaveLength(4)
     expect(
@@ -182,6 +182,19 @@ describe("behavior contract registry", () => {
     expect(mobileSessionVault?.oracles[0]?.ref).toBe(
       "apps/openagents-mobile/tests/native-session-vault.test.ts",
     )
+    const mobileSessionRecovery = decoded.contracts.find(
+      contract =>
+        contract.contractId ===
+        "openagents_mobile.session.recovered_validation_rotation.v1",
+    )
+    expect(mobileSessionRecovery?.state).toBe("enforced")
+    expect(mobileSessionRecovery?.statement).toContain(
+      "never equates session readiness with live Sync",
+    )
+    expect(mobileSessionRecovery?.oracles.map(oracle => oracle.ref)).toEqual([
+      "apps/openagents-mobile/tests/native-session-recovery.test.ts",
+      "apps/openagents.com/workers/api/src/auth/mobile-session.test.ts",
+    ])
     // Owner P0 (build 111 TestFlight feedback, 2026-07-09): the minerals
     // sheet closes only on USER intents, enforced in the mobile test sweep.
     const mineralsSheet = decoded.contracts.find(

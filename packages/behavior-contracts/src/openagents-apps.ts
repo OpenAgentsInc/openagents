@@ -258,6 +258,49 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
     },
     {
       authorityBoundary:
+        "Server verification establishes only a native OpenAgents session. It does not make Khala Sync live, authorize cached rows, create a device_session, execute a command, or expose replacement tokens to Effect Native.",
+      blockerRefs: [],
+      contractId: "openagents_mobile.session.recovered_validation_rotation.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "apps/openagents.com/workers/api/src/auth/mobile-session.ts",
+        "apps/openagents-mobile/src/auth/native-session-recovery.ts",
+        "docs/sol/issues/mobile-session-recovery.md",
+        "github:OpenAgentsInc/openagents#8659",
+      ],
+      oracles: [
+        {
+          description:
+            "The mobile recovery test proves verification, rotation rewrite, denial and identity-mismatch purge, unavailable retention, and bounded tokenless state.",
+          id: "openagents_mobile.session.recovered_validation_rotation",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/openagents-mobile/tests/native-session-recovery.test.ts",
+        },
+        {
+          description:
+            "The Worker boundary test proves only a bounded refresh header on the exact native session GET reaches the existing OpenAuth verifier; other routes and malformed values cannot trigger rotation.",
+          id: "openagents_api.session.native_refresh_boundary",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/openagents.com/workers/api/src/auth/mobile-session.test.ts",
+        },
+      ],
+      productArea: "mobile native session recovery",
+      source: {
+        channel: "owner-codex-session",
+        statedBy: "owner",
+        statedOn: "2026-07-10",
+      },
+      state: "enforced",
+      statement:
+        "OpenAgents mobile validates recovered credentials through the native session boundary, persists bounded OpenAuth rotation, purges denial or owner mismatch, and never equates session readiness with live Sync.",
+      surface: "openagents-mobile-and-api",
+      verification:
+        "Worker mobile-session tests plus mobile native-session-recovery and Home tests enforce both sides; API/mobile typechecks and behavior-contract coverage gate the integration.",
+    },
+    {
+      authorityBoundary:
         "This binds sheet-dismissal authority to user intents only; it does not authorize StoreKit purchase flows or change how/when the shell opens the sheet.",
       blockerRefs: [],
       contractId: "openagents_mobile.minerals_sheet_user_dismiss_only.v1",
