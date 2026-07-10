@@ -133,7 +133,8 @@ const loginViaEmailOtp = async (
   await emailInput.waitFor({ state: 'visible', timeout: 30_000 })
   const requestedAt = Date.now()
   await emailInput.fill(email)
-  await page.locator('button[type="submit"]').first().click()
+  // OpenAuth's hosted UI button carries no type attribute; match in-form.
+  await page.locator('form button, button[type="submit"]').first().click()
 
   const codeInput = page
     .locator('input[name="code"], input[autocomplete="one-time-code"], input[inputmode="numeric"]')
@@ -158,7 +159,8 @@ const loginViaEmailOtp = async (
     fail('otp-command never printed a sign-in code within 120s')
   }
   await codeInput.fill(code!)
-  await page.locator('button[type="submit"]').first().click()
+  // OpenAuth's hosted UI button carries no type attribute; match in-form.
+  await page.locator('form button, button[type="submit"]').first().click()
   await page.waitForURL(url => !url.pathname.startsWith('/auth'), {
     timeout: 60_000,
   })
