@@ -34,6 +34,20 @@ const validStartEnvelope = () => ({
     workSource: { kind: "issue_list", issueRefs: ["#8637"] },
     workerPolicy: { workerKind: "auto", targetPreference: "owner_local" },
     targetConcurrency: 2,
+    execution: {
+      state: "pending",
+      lastSequence: 0,
+      counters: {
+        workUnitsTotal: 1,
+        activeAssignments: 0,
+        acceptedAssignments: 0,
+        failedAssignments: 0,
+        staleAssignments: 0,
+      },
+      startedAt: null,
+      updatedAt: null,
+      closeouts: [],
+    },
     createdAt: "2026-07-09T12:00:00.000Z",
     updatedAt: "2026-07-09T12:00:00.000Z",
     privateMaterialExcluded: true,
@@ -218,6 +232,62 @@ describe("Sarah FleetRun authority HTTP client", () => {
       refreshedSessionCookies: [],
     })
     expect(JSON.stringify(result)).not.toContain(privatePath)
+  })
+
+  test("accepts exact public execution state and rejects malformed closeout carriers", async () => {
+    const envelope = validStartEnvelope()
+    const accepted = await startSarahCodingFleetRunThroughAuthority(
+      new Request("https://openagents.com/sarah/api/eve/tool-call"),
+      {},
+      () => Promise.resolve(new Response(JSON.stringify(envelope))),
+    )
+    expect(accepted).toMatchObject({
+      ok: true,
+      output: {
+        run: {
+          execution: {
+            state: "pending",
+            lastSequence: 0,
+            closeouts: [],
+          },
+        },
+      },
+    })
+
+    const malformed = await startSarahCodingFleetRunThroughAuthority(
+      new Request("https://openagents.com/sarah/api/eve/tool-call"),
+      {},
+      () =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify({
+              ...envelope,
+              run: {
+                ...envelope.run,
+                execution: {
+                  ...envelope.run.execution,
+                  state: "completed",
+                  closeouts: [
+                    {
+                      unitRef: "unit.public.one",
+                      workClaimRef: "claim.public.one",
+                      workerKind: "codex",
+                      blockerRefs: [],
+                      observedAt: "2026-07-09T12:00:00.000Z",
+                      eventRef: "event.public.one",
+                      terminalState: "accepted",
+                    },
+                  ],
+                },
+              },
+            }),
+          ),
+        ),
+    )
+    expect(malformed).toMatchObject({
+      ok: false,
+      output: { error: { code: "invalid_response", retryable: false } },
+    })
   })
 
   test("rejects a known authority error with false retryability semantics", async () => {

@@ -60,6 +60,62 @@ const RelationshipPolicy = S.Struct({
   uiDensity: S.Literals(["standard", "dense"]),
   administratorToolsAllowed: S.Boolean,
 })
+const ExecutionUsageEvidence = S.Union([
+  S.Struct({
+    truth: S.Literal("exact"),
+    tokenUsageRefs: S.Array(SafeRef),
+  }),
+  S.Struct({
+    truth: S.Literal("not_measured"),
+    tokenUsageRefs: S.Array(SafeRef),
+  }),
+])
+const ExecutionCloseoutBase = {
+  unitRef: SafeRef,
+  workClaimRef: SafeRef,
+  workerKind: S.Literals(["codex", "claude", "grok"]),
+  blockerRefs: S.Array(SafeRef),
+  observedAt: SafeString,
+  eventRef: SafeRef,
+}
+const ExecutionCloseoutCarrier = {
+  assignmentRef: SafeRef,
+  accountRefHash: S.String.check(
+    S.isPattern(/^account\.pylon\.(?:codex|claude_agent|grok)\.[a-f0-9]{24}$/u),
+  ),
+  closeoutRef: SafeRef,
+  usageEvidence: ExecutionUsageEvidence,
+}
+const ExecutionCloseout = S.Union([
+  S.Struct({
+    ...ExecutionCloseoutBase,
+    ...ExecutionCloseoutCarrier,
+    terminalState: S.Literal("accepted"),
+  }),
+  S.Struct({
+    ...ExecutionCloseoutBase,
+    ...ExecutionCloseoutCarrier,
+    terminalState: S.Literals(["failed", "stale"]),
+  }),
+  S.Struct({
+    ...ExecutionCloseoutBase,
+    terminalState: S.Literals(["failed", "stale"]),
+  }),
+])
+const ExecutionProjection = S.Struct({
+  state: S.Literals(["pending", "running", "completed", "failed", "stopped"]),
+  lastSequence: S.Int.check(S.isGreaterThanOrEqualTo(0)),
+  counters: S.Struct({
+    workUnitsTotal: S.Int.check(S.isGreaterThanOrEqualTo(0)),
+    activeAssignments: S.Int.check(S.isGreaterThanOrEqualTo(0)),
+    acceptedAssignments: S.Int.check(S.isGreaterThanOrEqualTo(0)),
+    failedAssignments: S.Int.check(S.isGreaterThanOrEqualTo(0)),
+    staleAssignments: S.Int.check(S.isGreaterThanOrEqualTo(0)),
+  }),
+  startedAt: S.NullOr(SafeString),
+  updatedAt: S.NullOr(SafeString),
+  closeouts: S.Array(ExecutionCloseout),
+})
 const PublicRun = S.Struct({
   runRef: S.String.check(S.isPattern(/^fleet_run\.sarah\.[0-9a-f]{20}$/u)),
   scope: S.String.check(
@@ -75,6 +131,7 @@ const PublicRun = S.Struct({
     S.isGreaterThanOrEqualTo(1),
     S.isLessThanOrEqualTo(8),
   ),
+  execution: ExecutionProjection,
   createdAt: SafeString,
   updatedAt: SafeString,
   privateMaterialExcluded: S.Literal(true),

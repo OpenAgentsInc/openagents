@@ -93,6 +93,67 @@ const RemoteAuthorityRequest = S.Struct({
   idempotencyKey: S.String,
 })
 
+const RemoteExecutionUsageEvidence = S.Union([
+  S.Struct({
+    truth: S.Literal("exact"),
+    tokenUsageRefs: S.Array(PublicRef),
+  }),
+  S.Struct({
+    truth: S.Literal("not_measured"),
+    tokenUsageRefs: S.Array(PublicRef),
+  }),
+])
+
+const RemoteExecutionCloseoutBase = {
+  unitRef: PublicRef,
+  workClaimRef: PublicRef,
+  workerKind: S.Literals(["codex", "claude", "grok"]),
+  blockerRefs: S.Array(PublicRef),
+  observedAt: IsoTimestamp,
+  eventRef: PublicRef,
+}
+
+const RemoteExecutionCloseoutCarrier = {
+  assignmentRef: PublicRef,
+  accountRefHash: S.String.check(
+    S.isPattern(/^account\.pylon\.(?:codex|claude_agent|grok)\.[a-f0-9]{24}$/u),
+  ),
+  closeoutRef: PublicRef,
+  usageEvidence: RemoteExecutionUsageEvidence,
+}
+
+const RemoteExecutionCloseout = S.Union([
+  S.Struct({
+    ...RemoteExecutionCloseoutBase,
+    ...RemoteExecutionCloseoutCarrier,
+    terminalState: S.Literal("accepted"),
+  }),
+  S.Struct({
+    ...RemoteExecutionCloseoutBase,
+    ...RemoteExecutionCloseoutCarrier,
+    terminalState: S.Literals(["failed", "stale"]),
+  }),
+  S.Struct({
+    ...RemoteExecutionCloseoutBase,
+    terminalState: S.Literals(["failed", "stale"]),
+  }),
+])
+
+const RemoteExecutionProjection = S.Struct({
+  state: S.Literals(["pending", "running", "completed", "failed", "stopped"]),
+  lastSequence: S.Int.check(S.isGreaterThanOrEqualTo(0)),
+  counters: S.Struct({
+    workUnitsTotal: S.Int.check(S.isGreaterThanOrEqualTo(0)),
+    activeAssignments: S.Int.check(S.isGreaterThanOrEqualTo(0)),
+    acceptedAssignments: S.Int.check(S.isGreaterThanOrEqualTo(0)),
+    failedAssignments: S.Int.check(S.isGreaterThanOrEqualTo(0)),
+    staleAssignments: S.Int.check(S.isGreaterThanOrEqualTo(0)),
+  }),
+  startedAt: S.NullOr(IsoTimestamp),
+  updatedAt: S.NullOr(IsoTimestamp),
+  closeouts: S.Array(RemoteExecutionCloseout),
+})
+
 const RemoteAuthorityRecord = S.Struct({
   schema: S.Literal("openagents.sarah.fleet_run_authority.v1"),
   runRef: RunRef,
@@ -101,6 +162,7 @@ const RemoteAuthorityRecord = S.Struct({
   requestFingerprint: Fingerprint,
   status: S.Literal("pending_executor"),
   request: RemoteAuthorityRequest,
+  execution: RemoteExecutionProjection,
   createdAt: IsoTimestamp,
   updatedAt: IsoTimestamp,
 })
@@ -146,6 +208,7 @@ const RemoteAcceptResult = S.Struct({
     requestFingerprint: Fingerprint,
     status: S.Literal("claimed_by_pylon"),
     request: RemoteAuthorityRequest,
+    execution: RemoteExecutionProjection,
     createdAt: IsoTimestamp,
     updatedAt: IsoTimestamp,
   }),

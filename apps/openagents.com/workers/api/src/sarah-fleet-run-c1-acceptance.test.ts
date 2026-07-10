@@ -19,6 +19,7 @@ import {
   createBootstrapSummary,
   parseBootstrapArgs,
 } from '../../../../pylon/src/bootstrap'
+import { hashPylonAccountRef } from '../../../../pylon/src/account-registry'
 import {
   openPylonNodeFleetRunActivationService,
 } from '../../../../pylon/src/node/fleet-run-activation'
@@ -68,11 +69,11 @@ const FOREIGN_OWNER_USER_ID = 'owner.public.foreign'
 const AGENT_USER_ID = 'agent.public.c1'
 const FOREIGN_AGENT_USER_ID = 'agent.public.foreign'
 const PYLON_REF = 'pylon.public.c1'
-const OWNER_TOKEN = 'oa_agent_owner_fixture_8637'
-const FOREIGN_TOKEN = 'oa_agent_foreign_fixture_8637'
+const OWNER_TOKEN = 'oa_agent_owner_fixture_8639'
+const FOREIGN_TOKEN = 'oa_agent_foreign_fixture_8639'
 
 const fleetRequest = {
-  objective: 'Implement and verify the bounded public issue.',
+  objective: 'Run three bounded public work streams and verify each closeout.',
   repository: {
     owner: 'OpenAgentsInc',
     name: 'openagents',
@@ -84,10 +85,13 @@ const fleetRequest = {
     command:
       'bun test apps/openagents.com/workers/api/src/sarah-fleet-run-c1-acceptance.test.ts',
   },
-  workSource: { kind: 'issue_list', issueRefs: ['#8637'] },
-  workerPolicy: { workerKind: 'codex', targetPreference: 'owner_local' },
-  targetConcurrency: 1,
-  idempotencyKey: 'c1-integrated-fixture-0001',
+  workSource: {
+    kind: 'issue_list',
+    issueRefs: ['#8637', '#8633', '#8639'],
+  },
+  workerPolicy: { workerKind: 'auto', targetPreference: 'owner_local' },
+  targetConcurrency: 3,
+  idempotencyKey: 'c1-integrated-fixture-0002',
 } as const
 
 type PublicStartEnvelope = Readonly<{
@@ -178,7 +182,11 @@ const seedClaimablePylon = async (
 }
 
 const registration = (): PylonApiRegistrationRecord => ({
-  capabilityRefs: ['capability.public.coding.codex'],
+  capabilityRefs: [
+    'capability.public.coding.codex',
+    'capability.public.coding.claude',
+    'capability.public.coding.grok',
+  ],
   clientProtocolVersion: '1',
   clientVersion: 'openagents.pylon@fixture',
   createdAt: new Date(FIXED_NOW_MS).toISOString(),
@@ -186,9 +194,17 @@ const registration = (): PylonApiRegistrationRecord => ({
   id: 'registration.public.c1',
   latestHeartbeatAt: new Date(FIXED_NOW_MS).toISOString(),
   latestHeartbeatStatus: 'online',
-  latestCapacityRefs: ['capacity.coding.codex.available=1'],
+  latestCapacityRefs: [
+    'capacity.coding.codex.available=1',
+    'capacity.coding.claude.available=1',
+    'capacity.coding.grok.available=1',
+  ],
   latestHealthRefs: [],
-  latestLoadRefs: ['load.coding.codex.busy=0'],
+  latestLoadRefs: [
+    'load.coding.codex.busy=0',
+    'load.coding.claude.busy=0',
+    'load.coding.grok.busy=0',
+  ],
   latestResourceMode: 'balanced',
   ownerAgentCredentialId: 'credential.public.c1',
   ownerAgentTokenPrefix: 'oa_agent_owner',
@@ -274,7 +290,7 @@ describe.skipIf(!hasLocalPostgres())(
   'Sarah FleetRun C1 integrated acceptance',
   () => {
     test(
-      '#8637 composes operator start through durable claim, execution, and safe closeout',
+      '#8639 composes three-stream owner control through reconnect-safe closeout',
       async () => {
         const pg = await startLocalPostgres()
         const root = await mkdtemp(join(tmpdir(), 'sarah-c1-acceptance-'))
@@ -663,6 +679,18 @@ describe.skipIf(!hasLocalPostgres())(
                           marginalCostClass: 'subscription' as const,
                           workerKind: 'codex' as const,
                         },
+                        {
+                          accountRef: 'claude-fixture-isolated',
+                          advertisedCapacity: 1,
+                          marginalCostClass: 'subscription' as const,
+                          workerKind: 'claude' as const,
+                        },
+                        {
+                          accountRef: 'grok-fixture-isolated',
+                          advertisedCapacity: 1,
+                          marginalCostClass: 'not_measured' as const,
+                          workerKind: 'grok' as const,
+                        },
                       ])
                     },
                   },
@@ -672,11 +700,78 @@ describe.skipIf(!hasLocalPostgres())(
                     dispatch: async dispatch => {
                       dispatched.push(dispatch)
                       timeline.advance(1_000)
+                      const assignmentRef =
+                        `assignment.public.c1.${dispatch.workerKind}`
+                      const accountProvider =
+                        dispatch.workerKind === 'claude'
+                          ? 'claude_agent'
+                          : dispatch.workerKind
+                      const accountRefHash = hashPylonAccountRef(
+                        accountProvider,
+                        dispatch.accountRef,
+                      )
+                      const usageEvidence =
+                        dispatch.workerKind === 'grok'
+                          ? {
+                              schema:
+                                'openagents.pylon.fleet_run_usage_evidence.v1' as const,
+                              truth: 'not_measured' as const,
+                              harnessKind: 'grok' as const,
+                              evidenceRef: 'evidence.public.c1.grok',
+                              assignmentRef,
+                              receiptRef: 'receipt.public.c1.grok',
+                              tokenUsageRefs: [],
+                              caveatRefs: [
+                                'caveat.pylon.fleet_run.grok_usage_not_measured',
+                              ],
+                            }
+                          : {
+                              schema:
+                                'openagents.pylon.fleet_run_usage_evidence.v1' as const,
+                              truth: 'exact' as const,
+                              harnessKind: dispatch.workerKind,
+                              evidenceRef:
+                                `evidence.public.c1.${dispatch.workerKind}`,
+                              assignmentRef,
+                              pylonRef: PYLON_REF,
+                              provider:
+                                dispatch.workerKind === 'codex'
+                                  ? ('pylon-codex-own-capacity' as const)
+                                  : ('pylon-claude-own-capacity' as const),
+                              model:
+                                dispatch.workerKind === 'codex'
+                                  ? ('openagents/pylon-codex' as const)
+                                  : ('openagents/pylon-claude' as const),
+                              demandKind: 'own_capacity' as const,
+                              demandSource: 'khala_coding_delegation' as const,
+                              inputTokens: 8,
+                              outputTokens: 4,
+                              reasoningTokens: 1,
+                              cacheReadTokens: 2,
+                              totalTokens: 12,
+                              tokenRows: 1,
+                              tokenUsageRefs: [
+                                `token_usage_event.public.c1.${dispatch.workerKind}`,
+                              ],
+                              proofRefs: [
+                                `proof.public.c1.${dispatch.workerKind}`,
+                              ],
+                              closeoutChecklistRefs: [
+                                `check.public.c1.closeout.${dispatch.workerKind}`,
+                              ],
+                              proofChecklistRefs: [
+                                `check.public.c1.proof.${dispatch.workerKind}`,
+                              ],
+                            }
                       return {
-                        assignmentRef: 'assignment.public.c1.fixture',
+                        assignmentRef,
+                        accountRefHash,
+                        closeoutRef:
+                          `closeout.public.c1.${dispatch.workerKind}`,
+                        usageEvidence,
                         lifecycle: [],
                         status: 'completed' as const,
-                        summary: 'Bounded fixture work completed and verified.',
+                        summary: `Bounded ${dispatch.workerKind} fixture work completed and verified.`,
                       }
                     },
                   },
@@ -757,11 +852,7 @@ describe.skipIf(!hasLocalPostgres())(
           await waitUntil(() =>
             standing.runtime.store
               .listWorkClaims({ runRef: startOutput.run.runRef })
-              .some(
-                claim =>
-                  claim.assignmentRef === 'assignment.public.c1.fixture' &&
-                  claim.state === 'closeout',
-              ),
+              .filter(claim => claim.state === 'closeout').length === 3,
           )
           const closed = await standing.runtime.manager.status(
             startOutput.run.runRef,
@@ -772,24 +863,43 @@ describe.skipIf(!hasLocalPostgres())(
             run: {
               counters: {
                 activeAssignments: 0,
-                completedAssignments: 1,
+                completedAssignments: 3,
                 failedAssignments: 0,
               },
               runRef: startOutput.run.runRef,
               state: 'completed',
             },
           })
-          expect(dispatched).toHaveLength(1)
-          expect(dispatched[0]).toMatchObject({
-            accountRef: 'codex-fixture-isolated',
-            run: { runRef: startOutput.run.runRef },
-            workerKind: 'codex',
-            workUnit: {
-              baseCommit: COMMIT,
-              number: 8637,
-              repo: 'OpenAgentsInc/openagents',
+          expect(dispatched).toHaveLength(3)
+          expect(
+            dispatched
+              .map(dispatch => ({
+                accountRef: dispatch.accountRef,
+                issue: dispatch.workUnit.number,
+                runRef: dispatch.run.runRef,
+                workerKind: dispatch.workerKind,
+              }))
+              .sort((left, right) => left.workerKind.localeCompare(right.workerKind)),
+          ).toEqual([
+            {
+              accountRef: 'claude-fixture-isolated',
+              issue: 8633,
+              runRef: startOutput.run.runRef,
+              workerKind: 'claude',
             },
-          })
+            {
+              accountRef: 'codex-fixture-isolated',
+              issue: 8637,
+              runRef: startOutput.run.runRef,
+              workerKind: 'codex',
+            },
+            {
+              accountRef: 'grok-fixture-isolated',
+              issue: 8639,
+              runRef: startOutput.run.runRef,
+              workerKind: 'grok',
+            },
+          ])
 
           const publicProjection = {
             latency: {
@@ -868,7 +978,7 @@ describe.skipIf(!hasLocalPostgres())(
           `
           expect(runRows).toEqual([{ status: 'claimed_by_pylon', count: 1 }])
           expect(leaseRows).toEqual([{ state: 'accepted', count: 1 }])
-          expect(workUnitRows).toEqual([{ count: 1 }])
+          expect(workUnitRows).toEqual([{ count: 3 }])
         } finally {
           await poller?.close().catch(() => undefined)
           await activation?.close().catch(() => undefined)

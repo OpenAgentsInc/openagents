@@ -98,6 +98,20 @@ const claimResult = (
       requestFingerprint: sha256(request),
       status: "pending_executor" as const,
       request,
+      execution: {
+        state: "pending" as const,
+        lastSequence: 0,
+        counters: {
+          workUnitsTotal: request.workSource.issueRefs.length,
+          activeAssignments: 0,
+          acceptedAssignments: 0,
+          failedAssignments: 0,
+          staleAssignments: 0,
+        },
+        startedAt: null,
+        updatedAt: null,
+        closeouts: [],
+      },
       createdAt: nowIso,
       updatedAt: nowIso,
     },
@@ -132,6 +146,13 @@ const planDagClaimResult = () => {
       ...base.run,
       request,
       requestFingerprint: sha256(request),
+      execution: {
+        ...base.run.execution,
+        counters: {
+          ...base.run.execution.counters,
+          workUnitsTotal: request.workSource.units.length,
+        },
+      },
     },
   }
 }
