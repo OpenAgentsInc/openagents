@@ -1695,7 +1695,12 @@ const iconRegistry: Partial<Record<IconName, { readonly body: string; readonly f
   ChevronUp: { body: '<path d="M6 15l6-6 6 6"/>', fill: false },
   ChevronDown: { body: '<path d="M6 9l6 6 6-6"/>', fill: false },
   ChevronLeft: { body: '<path d="M15 6l-6 6 6 6"/>', fill: false },
-  ChevronRight: { body: '<path d="M9 6l6 6-6 6"/>', fill: false }
+  ChevronRight: { body: '<path d="M9 6l6 6-6 6"/>', fill: false },
+  // Glass-chrome icons (v30, GL-1 openagents#8647).
+  Menu: { body: '<path d="M4 7h16M4 12h16M4 17h16"/>', fill: false },
+  Compose: { body: '<path d="M4 20h4L19 9l-4-4L4 16v4zM13.5 6.5l4 4"/>', fill: false },
+  Mic: { body: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>', fill: false },
+  Sparkles: { body: '<path d="M12 4l1.8 4.7L18.5 10l-4.7 1.3L12 16l-1.8-4.7L5.5 10l4.7-1.3zM18 15l.9 2.1L21 18l-2.1.9L18 21l-.9-2.1L15 18l2.1-.9z"/>', fill: false }
 }
 
 const renderIcon = (view: IconView, state: DomRendererState): HTMLElement => {

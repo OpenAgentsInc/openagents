@@ -89,8 +89,9 @@ export const MediaVideoCatalogVersion = "effect-native/v26" as const
 export const GlassCatalogVersion = "effect-native/v27" as const
 export const MarkdownLinkHrefCatalogVersion = "effect-native/v28" as const
 export const ChatChromeCatalogVersion = "effect-native/v29" as const
-export const PreviousCatalogVersion = MarkdownLinkHrefCatalogVersion
-export const CatalogVersion = ChatChromeCatalogVersion
+export const GlassChromeIconsCatalogVersion = "effect-native/v30" as const
+export const PreviousCatalogVersion = ChatChromeCatalogVersion
+export const CatalogVersion = GlassChromeIconsCatalogVersion
 export const CatalogVersionSchema = Schema.Literal(CatalogVersion)
 export type CatalogVersion = typeof CatalogVersion
 export const compatibleCatalogVersions = [
@@ -123,7 +124,8 @@ export const compatibleCatalogVersions = [
   MediaVideoCatalogVersion,
   GlassCatalogVersion,
   MarkdownLinkHrefCatalogVersion,
-  ChatChromeCatalogVersion
+  ChatChromeCatalogVersion,
+  GlassChromeIconsCatalogVersion
 ] as const
 export type CompatibleCatalogVersion = (typeof compatibleCatalogVersions)[number]
 export const CompatibleCatalogVersionSchema = Schema.Literals(compatibleCatalogVersions)
@@ -1624,7 +1626,13 @@ export const iconNames = [
   "ChevronUp",
   "ChevronDown",
   "ChevronLeft",
-  "ChevronRight"
+  "ChevronRight",
+  // Glass-chrome icons (v30, GL-1 openagents#8647): the ChatGPT-style shell
+  // set — nav drawer toggle, new-chat compose, voice mic, assistant sparkles.
+  "Menu",
+  "Compose",
+  "Mic",
+  "Sparkles"
 ] as const
 export const IconNameSchema = Schema.Literals(iconNames)
 export type IconName = (typeof iconNames)[number]

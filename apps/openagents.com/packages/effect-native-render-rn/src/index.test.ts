@@ -124,7 +124,14 @@ describe("React Native renderer host boundaries", () => {
   })
 
   test("interrupts the view stream through total React unmount cleanup", async () => {
-    let cleanup: (() => void) | undefined
+    // The surface registers multiple effects (view-stream runtime + the
+    // host-driver runtime dispose); real React runs EVERY cleanup on unmount.
+    const cleanups: Array<() => void> = []
+    const cleanup = () => {
+      for (const finalizer of cleanups) {
+        finalizer()
+      }
+    }
     let finalized = false
     const dependencies: ReactNativeDependencies = {
       React: {
@@ -135,7 +142,9 @@ describe("React Native renderer host boundaries", () => {
         ],
         useEffect: (effect) => {
           const finalizer = effect()
-          cleanup = typeof finalizer === "function" ? finalizer : undefined
+          if (typeof finalizer === "function") {
+            cleanups.push(finalizer)
+          }
         }
       },
       ReactNative: reactNative
@@ -153,14 +162,19 @@ describe("React Native renderer host boundaries", () => {
       report,
       initialView
     })
-    expect(typeof cleanup).toBe("function")
-    expect(() => cleanup?.()).not.toThrow()
+    expect(cleanups.length).toBeGreaterThan(0)
+    expect(() => cleanup()).not.toThrow()
     await Effect.runPromise(nextTask)
     expect(finalized).toBe(true)
   })
 
   test("interrupts an in-flight intent through React unmount cleanup", async () => {
-    let cleanup: (() => void) | undefined
+    const cleanups: Array<() => void> = []
+    const cleanup = () => {
+      for (const finalizer of cleanups) {
+        finalizer()
+      }
+    }
     const started = await Effect.runPromise(Deferred.make<void>())
     const interrupted = await Effect.runPromise(Deferred.make<void>())
     const dependencies: ReactNativeDependencies = {
@@ -172,7 +186,9 @@ describe("React Native renderer host boundaries", () => {
         ],
         useEffect: (effect) => {
           const finalizer = effect()
-          cleanup = typeof finalizer === "function" ? finalizer : undefined
+          if (typeof finalizer === "function") {
+            cleanups.push(finalizer)
+          }
         }
       },
       ReactNative: reactNative
@@ -207,7 +223,7 @@ describe("React Native renderer host boundaries", () => {
     onPress()
     await Effect.runPromise(Deferred.await(started))
 
-    expect(() => cleanup?.()).not.toThrow()
+    expect(() => cleanup()).not.toThrow()
 
     await Effect.runPromise(Deferred.await(interrupted))
   })
@@ -215,7 +231,7 @@ describe("React Native renderer host boundaries", () => {
   test("an old async cleanup cannot clear a restarted hook runtime", async () => {
     const stateSlots: Array<unknown> = []
     let stateIndex = 0
-    let latestCleanup: (() => void) | undefined
+    let renderCleanups: Array<() => void> = []
     const dependencies: ReactNativeDependencies = {
       React: {
         createElement,
@@ -229,7 +245,9 @@ describe("React Native renderer host boundaries", () => {
         },
         useEffect: (effect) => {
           const finalizer = effect()
-          latestCleanup = typeof finalizer === "function" ? finalizer : undefined
+          if (typeof finalizer === "function") {
+            renderCleanups.push(finalizer)
+          }
         }
       },
       ReactNative: reactNative
@@ -250,9 +268,12 @@ describe("React Native renderer host boundaries", () => {
       initialView: view
     })
     await Effect.runPromise(nextTask)
-    const firstCleanup = latestCleanup
-    firstCleanup?.()
+    const firstCleanups = renderCleanups
+    for (const finalizer of firstCleanups) {
+      finalizer()
+    }
 
+    renderCleanups = []
     stateIndex = 0
     const restartedElement = Surface({
       viewStream: Stream.never,
@@ -261,7 +282,7 @@ describe("React Native renderer host boundaries", () => {
       }),
       initialView: view
     })
-    const secondCleanup = latestCleanup
+    const secondCleanups = renderCleanups
     await Effect.runPromise(Effect.sleep("20 millis"))
     if (typeof restartedElement !== "object" || restartedElement === null) {
       throw new Error("expected a restarted button")
@@ -274,7 +295,9 @@ describe("React Native renderer host boundaries", () => {
     await Effect.runPromise(nextTask)
 
     expect(secondRuntimeDispatches).toBe(1)
-    secondCleanup?.()
+    for (const finalizer of secondCleanups) {
+      finalizer()
+    }
   })
 
   test("updates viewport callbacks and removes the native subscription on unmount", async () => {

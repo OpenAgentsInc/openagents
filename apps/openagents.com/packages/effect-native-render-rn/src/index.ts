@@ -68,6 +68,7 @@ import {
   type StatTileView,
   type TableView,
   type Tone,
+  type HostKind,
   type HostView,
   type IconName,
   type IconSize,
@@ -159,6 +160,13 @@ export interface ReactNativeRuntime {
   readonly Modal: unknown
   /** Optional — present on real RN; headless tests may omit and still declare onRefresh. */
   readonly RefreshControl?: unknown
+  // Optional — present on real RN. The @expo/ui glass lowering gates on
+  // Platform.OS === "ios" and major Version >= 26 (real Liquid Glass); below
+  // that the renderer keeps the honest RN material approximation.
+  readonly Platform?: {
+    readonly OS?: string
+    readonly Version?: string | number
+  }
   readonly Dimensions?: ReactNativeDimensions
   readonly StyleSheet?: {
     readonly create: <Styles extends Record<string, ReactNativeStyle>>(styles: Styles) => Styles
@@ -187,6 +195,21 @@ export interface ReactNativeRenderOptions {
   readonly theme?: Theme
   readonly platform?: ReactNativePlatform
   readonly viewport?: ViewportInput | Viewport
+  // Registered host drivers (issue #70 ask 2, GL-1 openagents#8647): the only
+  // injection point through which native/imperative views mount behind the
+  // typed `Host` catalog contract. `EffectNativeSurface` and
+  // `makeReactNativeRenderer` build a Scope-bound instance runtime from this
+  // list automatically; a bare `renderReactNativeView` call mounts transient
+  // per-emission instances (unit-test posture — no retained native state).
+  readonly hostDrivers?: ReadonlyArray<ReactNativeHostDriver>
+  // Per-surface Scope-bound host-instance runtime. Created internally by the
+  // surface entrypoints from `hostDrivers`; apps normally never construct one.
+  readonly hostRuntime?: ReactNativeHostRuntime
+  // GL-1 (openagents#8647) internal @expo/ui SwiftUI lowering seam. By default
+  // the renderer require()s "@expo/ui/swift-ui" ITSELF when a glass component
+  // renders on iOS 26+; this override exists for tests (inject a fake runtime)
+  // — app code must never import @expo/ui.
+  readonly expoUi?: ExpoUiSwiftUiRuntime
 }
 
 export type ReactNativeHostEffectRuntime = (effect: Effect.Effect<void, never>) => void
@@ -232,6 +255,142 @@ const loadPeerDependencies = (): ReactNativeDependencies => {
   return {
     React: require("react") as ReactRuntime,
     ReactNative: require("react-native") as ReactNativeRuntime
+  }
+}
+
+// ── Scope-bound host-driver registry (issue #70 ask 2; mirrors render-dom's
+// DomHostDriver contract for the declarative RN element tree) ────────────────
+//
+// A driver is the ONLY place imperative/native-module view code lives on RN
+// (SwiftUI islands, native video, editors). Its lifecycle is owned by the
+// renderer and bound to the surface Scope: `mount` when the Host node first
+// appears, `render` on every typed prop emission, `unmount` on Scope exit or
+// when the node leaves the tree. Props enter through `decodeProps` (Schema
+// decode — throwing surfaces as a loud host error marker, never a silent
+// no-op) and events leave only through `emit`, which dispatches the Host
+// node's `onEvent` as a typed intent through the surface's IntentReporter.
+
+export interface ReactNativeHostContext {
+  readonly dependencies: ReactNativeDependencies
+  readonly report: IntentReporter
+  // Emit a typed host event outward as the Host node's `onEvent` intent. The
+  // binding always targets the CURRENT view emission's `onEvent`, not the one
+  // captured at mount.
+  readonly emit: (payload: JsonPayload) => void
+}
+
+export interface ReactNativeHostInstance {
+  // Produce the React element for the current decoded props. Called once per
+  // view emission while the Host node stays mounted; React reconciles the
+  // returned elements, the driver owns any imperative native state behind them.
+  readonly render: (props: unknown) => ReactElementLike
+  readonly unmount: () => void
+}
+
+export interface ReactNativeHostDriver {
+  readonly kind: HostKind
+  // Decode/validate the opaque props payload for this host kind. Throwing here
+  // surfaces as a loud host error marker, never a silent no-op.
+  readonly decodeProps: (props: JsonPayload) => unknown
+  readonly mount: (props: unknown, context: ReactNativeHostContext) => ReactNativeHostInstance
+}
+
+interface HostInstanceRecord {
+  readonly kind: HostKind
+  instance: ReactNativeHostInstance
+  // Latest emission's event binding — `emit` reads these at dispatch time.
+  onEvent: IntentRef | undefined
+  report: IntentReporter
+  seen: boolean
+}
+
+export interface ReactNativeHostRuntime {
+  readonly resolve: (kind: HostKind) => ReactNativeHostDriver | undefined
+  // Get-or-mount the instance for this Host node (keyed kind + view key, the
+  // same identity rule as render-dom) and render the current decoded props.
+  readonly render: (
+    view: HostView,
+    driver: ReactNativeHostDriver,
+    decoded: unknown,
+    dependencies: ReactNativeDependencies,
+    report: IntentReporter
+  ) => ReactElementLike
+  // Unmount every instance not rendered since the previous sweep (the node
+  // left the tree). Surface entrypoints call this after each full render pass.
+  readonly sweep: () => void
+  // Unmount everything — bound to the surface Scope / React unmount cleanup.
+  readonly dispose: () => void
+}
+
+const hostInstanceKey = (view: HostView): string => `${view.kind}:${view.key ?? ""}`
+
+export const makeReactNativeHostRuntime = (
+  drivers: ReadonlyArray<ReactNativeHostDriver>
+): ReactNativeHostRuntime => {
+  const byKind = new Map<HostKind, ReactNativeHostDriver>(drivers.map((driver) => [driver.kind, driver] as const))
+  const instances = new Map<string, HostInstanceRecord>()
+
+  const unmountRecord = (record: HostInstanceRecord): void => {
+    try {
+      record.instance.unmount()
+    } catch {
+      // Driver teardown must stay total: one faulty driver never breaks the
+      // surface's Scope close or the other instances' teardown.
+    }
+  }
+
+  return {
+    resolve: (kind) => byKind.get(kind),
+    render: (view, driver, decoded, dependencies, report) => {
+      const key = hostInstanceKey(view)
+      let record = instances.get(key)
+      if (record !== undefined && record.kind !== view.kind) {
+        unmountRecord(record)
+        instances.delete(key)
+        record = undefined
+      }
+      if (record === undefined) {
+        const created: HostInstanceRecord = {
+          kind: view.kind,
+          instance: undefined as unknown as ReactNativeHostInstance,
+          onEvent: view.onEvent,
+          report,
+          seen: true
+        }
+        const context: ReactNativeHostContext = {
+          dependencies,
+          report,
+          emit: (payload) => {
+            if (created.onEvent !== undefined) {
+              runReportedIntent(created.report, created.onEvent, payload)
+            }
+          }
+        }
+        created.instance = driver.mount(decoded, context)
+        instances.set(key, created)
+        return created.instance.render(decoded)
+      }
+      record.onEvent = view.onEvent
+      record.report = report
+      record.seen = true
+      return record.instance.render(decoded)
+    },
+    sweep: () => {
+      for (const [key, record] of instances) {
+        if (!record.seen) {
+          unmountRecord(record)
+          instances.delete(key)
+        } else {
+          record.seen = false
+        }
+      }
+    },
+    dispose: () => {
+      for (const record of instances.values()) {
+        unmountRecord(record)
+      }
+      instances.clear()
+    }
   }
 }
 
@@ -568,6 +727,16 @@ const renderStack = (
   report: IntentReporter,
   options: ReactNativeRenderOptions
 ): ReactElementLike => {
+  if (
+    resolvedFlatStyle(view, options)?.surface === "glass" &&
+    view.children.length > 0 &&
+    view.children.every(expoUiLowerableChild)
+  ) {
+    const expoUi = glassLoweringRuntime(dependencies, options)
+    if (expoUi !== undefined) {
+      return renderExpoUiGlassContainer(view, expoUi, dependencies, report, options)
+    }
+  }
   const direction = resolveResponsiveValue(view.direction)
   const gap = view.gap === undefined ? undefined : resolveResponsiveValue(view.gap)
   const padding = view.padding === undefined ? undefined : resolveResponsiveValue(view.padding)
@@ -642,6 +811,12 @@ const renderButton = (
   report: IntentReporter,
   options: ReactNativeRenderOptions
 ): ReactElementLike => {
+  if (resolvedFlatStyle(view, options)?.surface === "glass") {
+    const expoUi = glassLoweringRuntime(dependencies, options)
+    if (expoUi !== undefined) {
+      return renderExpoUiButton(view, expoUi, dependencies, report, options)
+    }
+  }
   const theme = options.theme ?? defaultTheme
   const style = mergeNativeStyles(
     {
@@ -1068,16 +1243,67 @@ const renderSpacer = (
   )
 }
 
-// Foreign-host escape hatch on React Native (issue #23/#58). Desktop host kinds
-// (code-editor/terminal/canvas) remain loud unsupported markers. Mobile kinds
-// voice-input / on-device-model ship a minimal structural surface so apps can
-// swap in real native modules under the same Host contract.
+// Foreign-host escape hatch on React Native (issue #23/#58/#70). A registered
+// host driver is consulted FIRST: it Schema-decodes the props (malformed props
+// fail closed to a loud error marker), mounts through the Scope-bound host
+// runtime, and maps native events to the Host node's typed `onEvent` intent.
+// Without a driver, desktop host kinds (code-editor/terminal/canvas) remain
+// loud unsupported markers and mobile kinds voice-input / on-device-model ship
+// the minimal structural surface so apps can swap in real native modules under
+// the same Host contract.
 const renderHost = (
   view: HostView,
   dependencies: ReactNativeDependencies,
+  report: IntentReporter,
   options: ReactNativeRenderOptions
 ): ReactElementLike => {
   const theme = options.theme ?? defaultTheme
+  const driver = options.hostRuntime?.resolve(view.kind) ??
+    options.hostDrivers?.find((candidate) => candidate.kind === view.kind)
+  if (driver !== undefined) {
+    let decoded: unknown
+    try {
+      decoded = driver.decodeProps(view.props)
+    } catch (error) {
+      // Fail closed and loud: malformed host props render an error marker that
+      // fails the conformance suite, never a silently-empty native mount.
+      return createElement(
+        dependencies,
+        dependencies.ReactNative.View,
+        {
+          ...baseProps(view, viewStyle(view, options)),
+          testID: `en-host-error:${view.kind}`,
+          accessibilityLabel: `Invalid ${view.kind} host props: ${String(error)}`
+        }
+      )
+    }
+    const embedded = options.hostRuntime !== undefined
+      ? options.hostRuntime.render(view, driver, decoded, dependencies, report)
+      : (() => {
+        // No Scope-bound runtime (bare renderReactNativeView call): mount a
+        // transient per-emission instance. Unit-test posture only — the
+        // surface entrypoints always provide the retained runtime.
+        const context: ReactNativeHostContext = {
+          dependencies,
+          report,
+          emit: (payload) => {
+            if (view.onEvent !== undefined) {
+              runReportedIntent(report, view.onEvent, payload)
+            }
+          }
+        }
+        return driver.mount(decoded, context).render(decoded)
+      })()
+    return createElement(
+      dependencies,
+      dependencies.ReactNative.View,
+      {
+        ...baseProps(view, viewStyle(view, options)),
+        testID: `en-host:${view.kind}`
+      },
+      embedded
+    )
+  }
   if (view.kind === "voice-input" || view.kind === "on-device-model") {
     const props = typeof view.props === "object" && view.props !== null && !Array.isArray(view.props)
       ? view.props as Record<string, unknown>
@@ -1151,7 +1377,13 @@ const iconGlyphs: Record<IconName, string> = {
   ChevronUp: "⌃",
   ChevronDown: "⌄",
   ChevronLeft: "‹",
-  ChevronRight: "›"
+  ChevronRight: "›",
+  // Glass-chrome icons (v30, GL-1 openagents#8647) — honest text glyphs for
+  // the RN-core path; the @expo/ui SwiftUI lowering renders real SF Symbols.
+  Menu: "≡",
+  Compose: "✎",
+  Mic: "🎤",
+  Sparkles: "✦"
 }
 
 const iconFontSize: Record<IconSize, number> = { sm: 16, md: 20, lg: 24 }
@@ -1555,13 +1787,28 @@ const renderMenuRows = (
   report: IntentReporter
 ): ReadonlyArray<ReactElementLike> =>
   items.flatMap((item) => {
+    // #71-class bug: RN Text does not inherit color — menu rows must theme
+    // their glyph/label/keybinding or they render default-black on the dark
+    // theme surface panel.
+    const rowColor = colorValue(theme, item.danger === true ? "danger" : "textPrimary")
     const parts: Array<ReactElementLike> = []
     if (item.icon !== undefined) {
-      parts.push(createElement(dependencies, dependencies.ReactNative.Text, { key: "icon" }, iconGlyphs[item.icon]))
+      parts.push(
+        createElement(dependencies, dependencies.ReactNative.Text, { key: "icon", style: { color: rowColor } }, iconGlyphs[item.icon])
+      )
     }
-    parts.push(createElement(dependencies, dependencies.ReactNative.Text, { key: "label" }, item.label))
+    parts.push(
+      createElement(dependencies, dependencies.ReactNative.Text, { key: "label", style: { color: rowColor } }, item.label)
+    )
     if (item.keybinding !== undefined) {
-      parts.push(createElement(dependencies, dependencies.ReactNative.Text, { key: "kbd" }, item.keybinding))
+      parts.push(
+        createElement(
+          dependencies,
+          dependencies.ReactNative.Text,
+          { key: "kbd", style: { color: colorValue(theme, "textMuted") } },
+          item.keybinding
+        )
+      )
     }
     const row = createElement(
       dependencies,
@@ -1575,8 +1822,9 @@ const renderMenuRows = (
         style: {
           flexDirection: "row",
           gap: spacingValue(theme, "2"),
+          paddingVertical: spacingValue(theme, "2"),
           paddingLeft: spacingValue(theme, "2") * (depth + 1),
-          ...(item.danger === true ? { } : {})
+          opacity: item.disabled === true ? 0.5 : 1
         },
         ...(item.disabled === true
           ? {}
@@ -3228,7 +3476,7 @@ const renderResolvedReactNativeView = (
     case "Spacer":
       return renderSpacer(view, dependencies, options)
     case "Host":
-      return renderHost(view, dependencies, options)
+      return renderHost(view, dependencies, report, options)
     case "Icon":
       return renderIcon(view, dependencies, options)
     case "Divider":
@@ -3331,6 +3579,497 @@ const renderResolvedReactNativeView = (
 }
 
 // ── Glass set (GL-1, openagents#8647) ────────────────────────────────────────
+//
+// `surface: "glass"` is a SEMANTIC contract. Three honest lowerings:
+//   1. iOS 26+ with @expo/ui present → real SwiftUI Liquid Glass through the
+//      render-rn-INTERNAL @expo/ui lowering below (app code never imports
+//      @expo/ui — the hybrid decision in openagents
+//      docs/fable/2026-07-09-swiftui-expo-ui-and-the-effect-native-stdlib.md).
+//   2. Everything else (Android, iOS < 26, missing native module, tests) →
+//      the documented RN-core material approximation (glassSurfaceStyle).
+//   3. GL-4 replaces the @expo/ui lowering component-by-component with owned
+//      lowerings under the SAME catalog contract (convert-and-delete).
+
+// Internal structural view of the "@expo/ui/swift-ui" (+ "/modifiers") runtime.
+// Loaded by require() inside this renderer only; tests inject a fake through
+// `ReactNativeRenderOptions.expoUi`.
+export interface ExpoUiSwiftUiRuntime {
+  readonly Host: unknown
+  readonly HStack: unknown
+  readonly VStack: unknown
+  readonly Button: unknown
+  readonly Image: unknown
+  readonly Text: unknown
+  readonly Spacer: unknown
+  readonly modifiers: {
+    readonly glassEffect: (params?: {
+      readonly glass?: {
+        readonly variant: "regular" | "clear" | "identity"
+        readonly interactive?: boolean
+        readonly tint?: string
+      }
+      readonly shape?: "circle" | "capsule" | "rectangle" | "ellipse" | "roundedRectangle" | "containerRelativeShape"
+      readonly cornerRadius?: number
+    }) => unknown
+    readonly foregroundStyle: (style: string) => unknown
+    readonly frame: (params: Record<string, number | string>) => unknown
+    readonly padding?: (params?: Record<string, number>) => unknown
+    readonly disabled?: (disabled?: boolean) => unknown
+    // Hit-testing shape (SwiftUI contentShape): without it only the visible
+    // label responds to taps — a flexed button's free space would be dead.
+    readonly contentShape?: (shape: unknown) => unknown
+    readonly shapes?: { readonly rectangle: (params?: Record<string, unknown>) => unknown }
+  }
+}
+
+let cachedExpoUiRuntime: ExpoUiSwiftUiRuntime | null | undefined
+const loadExpoUiRuntime = (): ExpoUiSwiftUiRuntime | undefined => {
+  if (cachedExpoUiRuntime !== undefined) {
+    return cachedExpoUiRuntime ?? undefined
+  }
+  if (typeof require !== "function") {
+    cachedExpoUiRuntime = null
+    return undefined
+  }
+  try {
+    const swiftUi = require("@expo/ui/swift-ui") as Record<string, unknown>
+    const modifiers = require("@expo/ui/swift-ui/modifiers") as ExpoUiSwiftUiRuntime["modifiers"]
+    if (
+      swiftUi.Host === undefined || swiftUi.Button === undefined || swiftUi.Image === undefined ||
+      swiftUi.HStack === undefined || swiftUi.VStack === undefined || swiftUi.Text === undefined ||
+      swiftUi.Spacer === undefined || typeof modifiers.glassEffect !== "function"
+    ) {
+      cachedExpoUiRuntime = null
+      return undefined
+    }
+    cachedExpoUiRuntime = {
+      Host: swiftUi.Host,
+      HStack: swiftUi.HStack,
+      VStack: swiftUi.VStack,
+      Button: swiftUi.Button,
+      Image: swiftUi.Image,
+      Text: swiftUi.Text,
+      Spacer: swiftUi.Spacer,
+      modifiers
+    }
+    return cachedExpoUiRuntime
+  } catch {
+    // @expo/ui absent (web/tests/Expo Go without the module) — honest material
+    // fallback, never a crash.
+    cachedExpoUiRuntime = null
+    return undefined
+  }
+}
+
+const iosMajorVersion = (dependencies: ReactNativeDependencies): number | undefined => {
+  const platform = dependencies.ReactNative.Platform
+  if (platform?.OS !== "ios") {
+    return undefined
+  }
+  const version = platform.Version
+  const major = typeof version === "number"
+    ? Math.trunc(version)
+    : typeof version === "string"
+      ? Number.parseInt(version, 10)
+      : Number.NaN
+  return Number.isFinite(major) ? major : undefined
+}
+
+// The @expo/ui lowering activates ONLY where the material is real: iOS 26+
+// (SwiftUI .glassEffect / Liquid Glass). Below 26 the @expo/ui modifiers
+// degrade to no-ops (transparent chrome), which would be DISHONEST — the RN
+// material approximation stays the fallback there.
+const glassLoweringRuntime = (
+  dependencies: ReactNativeDependencies,
+  options: ReactNativeRenderOptions
+): ExpoUiSwiftUiRuntime | undefined => {
+  const major = iosMajorVersion(dependencies)
+  if (major === undefined || major < 26) {
+    return undefined
+  }
+  return options.expoUi ?? loadExpoUiRuntime()
+}
+
+// SF Symbol names for the closed IconName set — a render-rn-internal asset
+// detail of the SwiftUI lowering (parallel to iconGlyphs / the DOM SVG
+// registry). No raw symbol strings enter the app-facing contract.
+const sfSymbolForIcon: Record<IconName, string> = {
+  Plus: "plus",
+  Play: "play.fill",
+  Pause: "pause.fill",
+  Stop: "stop.fill",
+  Reload: "arrow.clockwise",
+  Circle: "circle",
+  Check: "checkmark",
+  X: "xmark",
+  ChevronUp: "chevron.up",
+  ChevronDown: "chevron.down",
+  ChevronLeft: "chevron.left",
+  ChevronRight: "chevron.right",
+  Menu: "line.3.horizontal",
+  Compose: "square.and.pencil",
+  Mic: "mic",
+  Sparkles: "sparkles",
+  // Monorepo-vendored icon extensions (desktop/mobile app set; see the core
+  // iconNames divergence note in VENDORING.md).
+  Home: "house",
+  Agent: "circle.dashed",
+  ChatCompose: "square.and.pencil",
+  Chats: "bubble.left.and.bubble.right",
+  Code: "chevron.left.forwardslash.chevron.right",
+  Compare: "arrow.left.arrow.right",
+  Folder: "folder",
+  NotificationBell: "bell",
+  Plane: "paperplane.fill",
+  Settings: "gearshape",
+  Terminal: "apple.terminal",
+  Tools: "wrench.and.screwdriver"
+}
+
+// Resolved flat style (responsive variants applied, tokens NOT yet lowered) —
+// used to detect the semantic `surface: "glass"` key before lowering.
+const resolvedFlatStyle = (
+  view: View,
+  options: ReactNativeRenderOptions
+): FlatStyle | undefined => {
+  if (!("style" in view) || view.style === undefined) {
+    return undefined
+  }
+  const viewport = options.viewport === undefined
+    ? undefined
+    : makeViewport(options.viewport, options.theme ?? defaultTheme)
+  return resolveStyle(view.style as FlatStyle, {
+    platform: options.platform ?? "ios",
+    ...(viewport === undefined ? {} : { breakpoint: viewport.breakpoint })
+  })
+}
+
+// App style lowered WITHOUT the glass surface keys: on the @expo/ui path the
+// material is native, so the RN container must not also paint the translucent
+// approximation behind it.
+const viewStyleWithoutSurface = (view: View, options: ReactNativeRenderOptions): ReactNativeStyle => {
+  const flat = resolvedFlatStyle(view, options)
+  if (flat === undefined) {
+    return {}
+  }
+  const rest: Record<string, unknown> = { ...flat }
+  delete rest.surface
+  return lowerStyle(rest as FlatStyle, options)
+}
+
+const expoUiLowerableChild = (child: View): boolean =>
+  child._tag === "IconButton" || child._tag === "Button" || child._tag === "Text" ||
+  child._tag === "Spacer" || child._tag === "Icon"
+
+// Lower one bounded catalog leaf into its SwiftUI (@expo/ui) equivalent.
+// Events stay typed: every press dispatches the SAME IntentRef through the
+// SAME reporter as the RN path.
+const renderExpoUiLeaf = (
+  child: View,
+  expoUi: ExpoUiSwiftUiRuntime,
+  dependencies: ReactNativeDependencies,
+  report: IntentReporter,
+  options: ReactNativeRenderOptions
+): ReactElementLike => {
+  const theme = options.theme ?? defaultTheme
+  switch (child._tag) {
+    case "IconButton":
+      return createElement(
+        dependencies,
+        expoUi.Button,
+        {
+          key: child.key,
+          onPress: () => {
+            if (child.disabled !== true) {
+              runReportedIntent(report, child.onPress)
+            }
+          },
+          ...(child.disabled === true && expoUi.modifiers.disabled !== undefined
+            ? { modifiers: [expoUi.modifiers.disabled(true)] }
+            : {})
+        },
+        createElement(dependencies, expoUi.Image, {
+          systemName: sfSymbolForIcon[child.icon],
+          size: 17,
+          color: colorValue(theme, "textPrimary")
+        })
+      )
+    case "Button": {
+      const flat = resolvedFlatStyle(child, options)
+      return createElement(
+        dependencies,
+        expoUi.Button,
+        {
+          key: child.key,
+          onPress: () => {
+            if (child.disabled !== true) {
+              runReportedIntent(report, child.onPress)
+            }
+          },
+          modifiers: [
+            expoUi.modifiers.foregroundStyle(
+              flat?.color !== undefined
+                ? colorValue(theme, flat.color as ColorToken)
+                : buttonLabelColor(child, theme)
+            ),
+            ...(child.disabled === true && expoUi.modifiers.disabled !== undefined
+              ? [expoUi.modifiers.disabled(true)]
+              : [])
+          ]
+        },
+        createElement(
+          dependencies,
+          expoUi.Text,
+          {
+            key: "label",
+            // style.flex: the LABEL expands across the container's free
+            // space and the whole run hit-tests. The frame must live INSIDE
+            // the Button label — a frame on the Button itself does not
+            // extend its tappable area (SwiftUI buttons hug their label,
+            // leaving dead zones the island's full-capsule dispatcher never
+            // had); contentShape makes the empty run tappable.
+            ...(flat?.flex !== undefined
+              ? {
+                modifiers: [
+                  expoUi.modifiers.frame({ maxWidth: 100000, alignment: "leading" }),
+                  ...(expoUi.modifiers.contentShape !== undefined && expoUi.modifiers.shapes !== undefined
+                    ? [expoUi.modifiers.contentShape(expoUi.modifiers.shapes.rectangle())]
+                    : [])
+                ]
+              }
+              : {})
+          },
+          child.label
+        )
+      )
+    }
+    case "Text":
+      return createElement(
+        dependencies,
+        expoUi.Text,
+        {
+          key: child.key,
+          modifiers: [
+            expoUi.modifiers.foregroundStyle(
+              colorValue(theme, child.color ?? "textPrimary")
+            )
+          ]
+        },
+        String(child.content)
+      )
+    case "Icon":
+      return createElement(dependencies, expoUi.Image, {
+        key: child.key,
+        systemName: sfSymbolForIcon[child.name],
+        size: iconFontSize[child.size ?? "md"],
+        color: colorValue(theme, child.color ?? "textPrimary")
+      })
+    case "Spacer":
+      return createElement(dependencies, expoUi.Spacer, { key: child.key })
+    default:
+      // Guarded by expoUiLowerableChild; loud if the guard drifts.
+      throw new Error(`not an @expo/ui-lowerable child: ${child._tag}`)
+  }
+}
+
+// Standalone glass IconButton → SwiftUI Button + SF Symbol in a 44pt Liquid
+// Glass circle (the ChatGPT-chrome shape), hosted inside the RN-styled
+// container the shell positions.
+const renderExpoUiIconButton = (
+  view: IconButtonView,
+  expoUi: ExpoUiSwiftUiRuntime,
+  dependencies: ReactNativeDependencies,
+  report: IntentReporter,
+  options: ReactNativeRenderOptions
+): ReactElementLike => {
+  const theme = options.theme ?? defaultTheme
+  const style = mergeNativeStyles(
+    {
+      width: 44,
+      height: 44,
+      opacity: view.disabled === true ? 0.5 : 1
+    },
+    viewStyleWithoutSurface(view, options)
+  )
+  return createElement(
+    dependencies,
+    dependencies.ReactNative.View,
+    {
+      ...baseProps(view, style),
+      testID: `en-icon-button:${view.icon}`,
+      accessibilityRole: "button",
+      accessibilityLabel: view.accessibilityLabel,
+      accessibilityState: { disabled: view.disabled === true }
+    },
+    createElement(
+      dependencies,
+      expoUi.Host,
+      { key: "host", style: { flex: 1 } },
+      createElement(
+        dependencies,
+        expoUi.Button,
+        {
+          key: "button",
+          onPress: () => {
+            if (view.disabled !== true) {
+              runReportedIntent(report, view.onPress)
+            }
+          },
+          modifiers: [
+            expoUi.modifiers.frame({ width: 44, height: 44 }),
+            expoUi.modifiers.glassEffect({
+              glass: { variant: "regular", interactive: true },
+              shape: "circle"
+            }),
+            ...(view.disabled === true && expoUi.modifiers.disabled !== undefined
+              ? [expoUi.modifiers.disabled(true)]
+              : [])
+          ]
+        },
+        createElement(dependencies, expoUi.Image, {
+          systemName: sfSymbolForIcon[view.icon],
+          size: 17,
+          color: colorValue(theme, "textPrimary")
+        })
+      )
+    )
+  )
+}
+
+// Glass Button (style.surface === "glass") → SwiftUI Button label in a Liquid
+// Glass capsule — the ChatGPT-chrome pill.
+const renderExpoUiButton = (
+  view: ButtonView,
+  expoUi: ExpoUiSwiftUiRuntime,
+  dependencies: ReactNativeDependencies,
+  report: IntentReporter,
+  options: ReactNativeRenderOptions
+): ReactElementLike => {
+  const theme = options.theme ?? defaultTheme
+  const flat = resolvedFlatStyle(view, options)
+  const style = mergeNativeStyles(
+    { opacity: view.disabled === true ? 0.5 : 1 },
+    viewStyleWithoutSurface(view, options)
+  )
+  // SwiftUI owns the capsule's intrinsic size (matchContents reports it back
+  // into the RN tree); an app-provided height lowers to a SwiftUI frame.
+  const heightValue = typeof style.height === "number" ? style.height : undefined
+  const labelColor = flat?.color !== undefined
+    ? colorValue(theme, flat.color as ColorToken)
+    : buttonLabelColor(view, theme)
+  return createElement(
+    dependencies,
+    dependencies.ReactNative.View,
+    {
+      ...baseProps(view, style),
+      accessibilityRole: "button",
+      accessibilityState: { disabled: view.disabled === true }
+    },
+    createElement(
+      dependencies,
+      expoUi.Host,
+      { key: "host", matchContents: true },
+      createElement(
+        dependencies,
+        expoUi.Button,
+        {
+          key: "button",
+          onPress: () => {
+            if (view.disabled !== true) {
+              runReportedIntent(report, view.onPress)
+            }
+          },
+          modifiers: [
+            expoUi.modifiers.foregroundStyle(labelColor),
+            ...(expoUi.modifiers.padding === undefined
+              ? []
+              : [expoUi.modifiers.padding({ horizontal: spacingValue(theme, "4") })]),
+            ...(heightValue === undefined ? [] : [expoUi.modifiers.frame({ height: heightValue })]),
+            expoUi.modifiers.glassEffect({
+              glass: { variant: "regular", interactive: true },
+              shape: "capsule"
+            }),
+            ...(view.disabled === true && expoUi.modifiers.disabled !== undefined
+              ? [expoUi.modifiers.disabled(true)]
+              : [])
+          ]
+        },
+        createElement(dependencies, expoUi.Text, { key: "label" }, view.label)
+      )
+    )
+  )
+}
+
+// Glass container (Toolbar, or Stack with style.surface === "glass") whose
+// children are ALL bounded lowerable leaves → one SwiftUI subtree: an
+// HStack/VStack of native controls sharing a single Liquid Glass shape (the
+// floating-composer / option-sheet pattern). A single non-lowerable child
+// falls the WHOLE container back to the honest RN path — never a half-native
+// hybrid.
+const renderExpoUiGlassContainer = (
+  view: ToolbarView | StackView,
+  expoUi: ExpoUiSwiftUiRuntime,
+  dependencies: ReactNativeDependencies,
+  report: IntentReporter,
+  options: ReactNativeRenderOptions
+): ReactElementLike => {
+  const theme = options.theme ?? defaultTheme
+  const isToolbar = view._tag === "Toolbar"
+  const direction = isToolbar ? "row" : resolveResponsiveValue((view as StackView).direction)
+  const gap = isToolbar
+    ? spacingValue(theme, "2")
+    : (view as StackView).gap === undefined
+      ? undefined
+      : spacingValue(theme, resolveResponsiveValue((view as StackView).gap!))
+  const style = viewStyleWithoutSurface(view, options)
+  const loweredRadius = style.borderRadius
+  const shape: { readonly shape: "capsule" | "roundedRectangle"; readonly cornerRadius?: number } = isToolbar
+    ? { shape: "capsule" }
+    : typeof loweredRadius === "number"
+      ? { shape: "roundedRectangle", cornerRadius: loweredRadius }
+      : { shape: "roundedRectangle", cornerRadius: 24 }
+  const stackType = direction === "row" ? expoUi.HStack : expoUi.VStack
+  return createElement(
+    dependencies,
+    dependencies.ReactNative.View,
+    {
+      ...baseProps(view, style),
+      ...(isToolbar ? { testID: `en-toolbar:${(view as ToolbarView).placement ?? "bottom-floating"}` } : {})
+    },
+    createElement(
+      dependencies,
+      expoUi.Host,
+      // Without an app-provided height the RN wrapper has no intrinsic size;
+      // matchContents reports the SwiftUI layout back so the container stays
+      // hit-testable (glassEffect overdraw LOOKS right even at zero height —
+      // taps do not).
+      style.height !== undefined
+        ? { key: "host", style: { flex: 1 } }
+        : { key: "host", matchContents: true },
+      createElement(
+        dependencies,
+        stackType,
+        {
+          key: "stack",
+          ...(gap === undefined ? {} : { spacing: gap }),
+          modifiers: [
+            ...(expoUi.modifiers.padding === undefined
+              ? []
+              : [expoUi.modifiers.padding({ horizontal: spacingValue(theme, "3"), vertical: spacingValue(theme, "2") })]),
+            // Fill the host width so the shared glass shape spans the bar
+            // (SwiftUI stacks otherwise hug their content, centered).
+            expoUi.modifiers.frame(direction === "row" ? { maxWidth: 100000 } : { maxWidth: 100000, maxHeight: 100000 }),
+            expoUi.modifiers.glassEffect({
+              glass: { variant: "regular", interactive: true },
+              ...shape
+            })
+          ]
+        },
+        ...view.children.map((child) => renderExpoUiLeaf(child, expoUi, dependencies, report, options))
+      )
+    )
+  )
+}
 
 const renderIconButton = (
   view: IconButtonView,
@@ -3338,6 +4077,12 @@ const renderIconButton = (
   report: IntentReporter,
   options: ReactNativeRenderOptions
 ): ReactElementLike => {
+  if (view.surface === "glass") {
+    const expoUi = glassLoweringRuntime(dependencies, options)
+    if (expoUi !== undefined) {
+      return renderExpoUiIconButton(view, expoUi, dependencies, report, options)
+    }
+  }
   const theme = options.theme ?? defaultTheme
   const style = mergeNativeStyles(
     {
@@ -3395,6 +4140,12 @@ const renderToolbar = (
   report: IntentReporter,
   options: ReactNativeRenderOptions
 ): ReactElementLike => {
+  if (view.surface === "glass" && view.children.every(expoUiLowerableChild)) {
+    const expoUi = glassLoweringRuntime(dependencies, options)
+    if (expoUi !== undefined) {
+      return renderExpoUiGlassContainer(view, expoUi, dependencies, report, options)
+    }
+  }
   const theme = options.theme ?? defaultTheme
   const style = mergeNativeStyles(
     {
@@ -3949,6 +4700,15 @@ export const createEffectNativeSurface = (
     const [runtimeSlot] = useState<{ runEffect: ReactNativeHostEffectRuntime | undefined }>(() => ({
       runEffect: undefined
     }))
+    // One Scope-equivalent host runtime per surface component instance:
+    // driver instances mount on first appearance, update per emission, and
+    // unmount on React unmount (the component's lifecycle IS the surface
+    // scope on this entrypoint).
+    const [hostRuntime] = useState<ReactNativeHostRuntime | undefined>(() =>
+      props.hostDrivers === undefined || props.hostDrivers.length === 0
+        ? undefined
+        : makeReactNativeHostRuntime(props.hostDrivers)
+    )
 
     useEffect(() => {
       let ownedRunEffect: ReactNativeHostEffectRuntime | undefined
@@ -3991,16 +4751,27 @@ export const createEffectNativeSurface = (
       }
     }, [props.viewStream])
 
+    useEffect(() => () => {
+      hostRuntime?.dispose()
+    }, [hostRuntime])
+
     const renderOptions: ReactNativeRenderRuntimeOptions = {
       ...(props.theme === undefined ? {} : { theme: props.theme }),
       ...(props.platform === undefined ? {} : { platform: props.platform }),
       ...(props.viewport === undefined ? {} : { viewport: props.viewport }),
+      ...(props.hostDrivers === undefined ? {} : { hostDrivers: props.hostDrivers }),
+      ...(hostRuntime === undefined ? {} : { hostRuntime }),
+      ...(props.expoUi === undefined ? {} : { expoUi: props.expoUi }),
       runEffect: (effect) => runtimeSlot.runEffect?.(effect)
     }
 
-    return view === undefined
-      ? null
-      : renderReactNativeView(view, dependencies, props.report, renderOptions)
+    if (view === undefined) {
+      return null
+    }
+    const element = renderReactNativeView(view, dependencies, props.report, renderOptions)
+    // Instances whose Host node left the tree this pass unmount now.
+    hostRuntime?.sweep()
+    return element
   }
 }
 
@@ -4022,6 +4793,22 @@ export const makeReactNativeRenderer = (
 
       return yield* Scope.provide(surfaceScope)(Effect.gen(function*() {
         const dependencies = options.dependencies ?? loadPeerDependencies()
+        // Host-driver instances are Scope-owned (issue #70): mounted on first
+        // Host appearance, swept when the node leaves the tree, and all
+        // unmounted when the surface scope closes.
+        const hostRuntime = options.hostDrivers === undefined || options.hostDrivers.length === 0
+          ? undefined
+          : makeReactNativeHostRuntime(options.hostDrivers)
+        if (hostRuntime !== undefined) {
+          yield* Effect.addFinalizer(() =>
+            Effect.sync(() => {
+              hostRuntime.dispose()
+            })
+          )
+        }
+        const renderOptions: ReactNativeRenderOptions = hostRuntime === undefined
+          ? options
+          : { ...options, hostRuntime }
         const viewport = yield* makeViewportService(
           options.viewport ?? readReactNativeViewport(dependencies),
           options.theme === undefined ? {} : { theme: options.theme }
@@ -4074,7 +4861,8 @@ export const makeReactNativeRenderer = (
         yield* resolvedViewStream.pipe(
           Stream.runForEach((view) =>
             Effect.gen(function*() {
-              const element = renderResolvedReactNativeView(view, dependencies, scopedReport, options)
+              const element = renderResolvedReactNativeView(view, dependencies, scopedReport, renderOptions)
+              hostRuntime?.sweep()
               yield* Ref.set(current, view)
               yield* Ref.set(currentElement, element)
               yield* Effect.sync(() => {

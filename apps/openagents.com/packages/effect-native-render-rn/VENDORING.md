@@ -21,8 +21,9 @@ so swapping to the real published dependency later is a package.json-only change
 ## Provenance
 
 - Upstream repo: `OpenAgentsInc/effect-native`
-- Upstream commit: `eb9685b64129a7335641106d298ff7c1b6805ad8` (catalog `v25`)
-- Vendored: 2026-07-08 (bumped from `1aa6e364`, catalog `v19`; earlier `e32b97e`, catalog `v5`)
+- Upstream commit: `f8251374b6cca27e67a88265e2adb0e5967e36f6` (catalog `v30`)
+- Vendored: 2026-07-10 (bumped from `e0c57cb`, catalog `v29`; earlier `eb9685b`
+  `v25`, `1aa6e364` `v19`, `e32b97e` `v5`)
 - Files copied verbatim: `packages/render-rn/src/**`
 
 ### Single source of truth + anti-staleness guard (2026-07-09)
@@ -93,3 +94,34 @@ works in the app runtime.
 Do not hand-edit `src/**` except for a minimal, documented effect-version delta.
 Real component/renderer work belongs upstream in `OpenAgentsInc/effect-native`
 first, then re-vendored by bumping the commit above and re-copying `src/**`.
+
+## v30 hunk-level re-vendor (2026-07-10, GL-1 #8647)
+
+The `e0c57cb -> f825137` upstream delta (Scope-bound RN host-driver registry
+`ReactNativeHostDriver`/`makeReactNativeHostRuntime`, render-rn-internal
+`@expo/ui` SwiftUI Liquid Glass lowering for the glass set, and the v30
+glass-chrome icons `Menu`/`Compose`/`Mic`/`Sparkles`) was applied as a
+HUNK-LEVEL patch onto the vendored files instead of a wholesale re-copy,
+because the vendored copies now carry deliberate monorepo divergences that a
+re-copy would destroy:
+
+- `effect-native-core/src/index.ts` — 12 extra app `IconName`s
+  (`Agent`/`ChatCompose`/`Chats`/`Code`/`Compare`/`Folder`/`Home`/
+  `NotificationBell`/`Plane`/`Settings`/`Terminal`/`Tools`) added by the
+  desktop/mobile lanes (`8ed6d166fd`, `d1abe0e81e`). NOT upstream; upstream
+  demand should be filed through GAPS before these are re-vendored verbatim.
+- `effect-native-render-rn/src/index.ts` — Scope-owned intent effect runtime
+  (`ReactNativeRenderRuntimeOptions.runEffect`, FiberSet-backed reporter
+  wiring) replacing upstream's `Effect.runPromise` in `runReportedIntent`,
+  plus RN glyphs for the 12 app icons and their SF-Symbol entries in the new
+  `sfSymbolForIcon` map.
+- `effect-native-render-dom/src/index.ts` — OpenAI icon catalog import, glass
+  CSS tuning, and the atomic-style registry refactor from the desktop lane.
+- `@expo/ui` is an optional peer of `@effect-native/render-rn` and a real
+  dependency of `apps/openagents-mobile` (the installation vehicle for the
+  native module). App code never imports it — enforced by
+  `apps/openagents-mobile/tests/component-sharing.test.ts`.
+
+These divergences are now the "known divergence" base for the next re-vendor:
+either upstream them first (preferred, per the sync rule) or re-apply the next
+upstream delta hunk-wise as done here.
