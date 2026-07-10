@@ -1,6 +1,10 @@
 import {
   canonicalJson,
+  decodeFleetAttemptEntity,
+  decodeFleetWorkUnitEntity,
   fleetRunScope,
+  type FleetAttemptEntity,
+  type FleetWorkUnitEntity,
   type SyncScope,
 } from "@openagentsinc/khala-sync"
 import {
@@ -28,6 +32,10 @@ export const FLEET_RUN_EXECUTION_BATCH_SCHEMA =
   "openagents.pylon.fleet_run_execution_batch.v1" as const
 export const FLEET_RUN_EXECUTION_EVENT_SCHEMA =
   "openagents.pylon.fleet_run_execution_event.v1" as const
+export const FLEET_RUN_EXECUTION_BATCH_SCHEMA_V2 =
+  "openagents.pylon.fleet_run_execution_batch.v2" as const
+export const FLEET_RUN_EXECUTION_EVENT_SCHEMA_V2 =
+  "openagents.pylon.fleet_run_execution_event.v2" as const
 export const FLEET_RUN_EXECUTION_ACK_SCHEMA =
   "openagents.pylon.fleet_run_execution_ack.v1" as const
 export const FLEET_RUN_AUTHORITY_CREATE_MUTATION_REF =
@@ -312,19 +320,131 @@ export const FleetRunTerminalExecutionEvent = S.Struct({
   terminalState: S.Literals(["completed", "failed", "stopped"]),
   blockerRefs: S.Array(BlockerRef),
 })
-export const FleetRunExecutionEvent = S.Union([
+export const FleetRunExecutionEventV1 = S.Union([
   FleetRunStartedExecutionEvent,
   FleetRunWorkProgressExecutionEvent,
   FleetRunWorkTerminalExecutionEvent,
   FleetRunTerminalExecutionEvent,
 ])
-export type FleetRunExecutionEvent = typeof FleetRunExecutionEvent.Type
+export type FleetRunExecutionEventV1 = typeof FleetRunExecutionEventV1.Type
 
-export const FleetRunExecutionBatch = S.Struct({
+const FleetRunExecutionEventV2Base = S.Struct({
+  schema: S.Literal(FLEET_RUN_EXECUTION_EVENT_SCHEMA_V2),
+  sequence: ExecutionSequence,
+  eventRef: ExecutionEventRef,
+  observedAt: IsoTimestamp,
+})
+const FleetRunExecutionV2WorkFields = {
+  unitRef: PlanUnitRef,
+  workClaimRef: ExecutionPublicRef,
+  assignmentRef: S.optionalKey(ExecutionPublicRef),
+  workerKind: S.Literals(["codex", "claude", "grok"]),
+  accountRefHash: S.optionalKey(AccountRefHash),
+  blockerRefs: S.Array(BlockerRef),
+} as const
+export const FleetRunStartedExecutionEventV2 = S.Struct({
+  ...FleetRunExecutionEventV2Base.fields,
+  kind: S.Literal("run_started"),
+})
+export const FleetRunWorkProgressExecutionEventV2 = S.Struct({
+  ...FleetRunExecutionEventV2Base.fields,
+  kind: S.Literal("work_progress"),
+  ...FleetRunExecutionV2WorkFields,
+})
+export const FleetRunVerifiedEvidenceV2 = S.Struct({
+  truth: S.Literal("passed"),
+  verifierRef: ExecutionPublicRef,
+  evidenceRefs: S.Array(ExecutionPublicRef).check(
+    S.isMinLength(1),
+    S.isMaxLength(64),
+  ),
+})
+export const FleetRunAcceptedWorkTerminalExecutionEventV2 = S.Struct({
+  ...FleetRunExecutionEventV2Base.fields,
+  kind: S.Literal("work_terminal"),
+  ...FleetRunExecutionV2WorkFields,
+  terminalState: S.Literal("accepted"),
+  assignmentRef: ExecutionPublicRef,
+  accountRefHash: AccountRefHash,
+  closeoutRef: ExecutionPublicRef,
+  verification: FleetRunVerifiedEvidenceV2,
+  artifactRefs: S.Array(ExecutionPublicRef).check(
+    S.isMinLength(1),
+    S.isMaxLength(64),
+  ),
+  proofRefs: S.Array(ExecutionPublicRef).check(
+    S.isMinLength(1),
+    S.isMaxLength(64),
+  ),
+  authorityReceiptRefs: S.Array(ExecutionPublicRef).check(
+    S.isMinLength(1),
+    S.isMaxLength(64),
+  ),
+  usageEvidence: FleetRunUsageEvidence,
+})
+export const FleetRunFailedWorkTerminalExecutionEventV2 = S.Struct({
+  ...FleetRunExecutionEventV2Base.fields,
+  kind: S.Literal("work_terminal"),
+  ...FleetRunExecutionV2WorkFields,
+  terminalState: S.Literals(["failed", "stale"]),
+  closeoutRef: S.optionalKey(ExecutionPublicRef),
+  verification: S.optionalKey(
+    S.Struct({
+      truth: S.Literal("failed"),
+      verifierRef: S.optionalKey(ExecutionPublicRef),
+      evidenceRefs: S.Array(ExecutionPublicRef).check(S.isMaxLength(64)),
+    }),
+  ),
+  artifactRefs: S.optionalKey(
+    S.Array(ExecutionPublicRef).check(S.isMaxLength(64)),
+  ),
+  proofRefs: S.optionalKey(
+    S.Array(ExecutionPublicRef).check(S.isMaxLength(64)),
+  ),
+  authorityReceiptRefs: S.optionalKey(
+    S.Array(ExecutionPublicRef).check(S.isMaxLength(64)),
+  ),
+  usageEvidence: S.optionalKey(FleetRunUsageEvidence),
+})
+export const FleetRunTerminalExecutionEventV2 = S.Struct({
+  ...FleetRunExecutionEventV2Base.fields,
+  kind: S.Literal("run_terminal"),
+  terminalState: S.Literals(["completed", "failed", "stopped"]),
+  blockerRefs: S.Array(BlockerRef),
+})
+export const FleetRunExecutionEventV2 = S.Union([
+  FleetRunStartedExecutionEventV2,
+  FleetRunWorkProgressExecutionEventV2,
+  FleetRunAcceptedWorkTerminalExecutionEventV2,
+  FleetRunFailedWorkTerminalExecutionEventV2,
+  FleetRunTerminalExecutionEventV2,
+])
+export type FleetRunExecutionEventV2 = typeof FleetRunExecutionEventV2.Type
+
+export const FleetRunExecutionEvent = S.Union([
+  FleetRunExecutionEventV1,
+  FleetRunExecutionEventV2,
+])
+export type FleetRunExecutionEvent = typeof FleetRunExecutionEvent.Type
+type FleetRunAnyWorkTerminalExecutionEvent = Extract<
+  FleetRunExecutionEvent,
+  { readonly kind: "work_terminal" }
+>
+
+export const FleetRunExecutionBatchV1 = S.Struct({
   schema: S.Literal(FLEET_RUN_EXECUTION_BATCH_SCHEMA),
   claimRef: TrimmedClaimRef,
-  events: S.Array(FleetRunExecutionEvent),
+  events: S.Array(FleetRunExecutionEventV1),
 })
+export const FleetRunExecutionBatchV2 = S.Struct({
+  schema: S.Literal(FLEET_RUN_EXECUTION_BATCH_SCHEMA_V2),
+  claimRef: TrimmedClaimRef,
+  events: S.Array(FleetRunExecutionEventV2),
+})
+export const FleetRunExecutionBatch = S.Union([
+  FleetRunExecutionBatchV1,
+  FleetRunExecutionBatchV2,
+])
 export type FleetRunExecutionBatch = typeof FleetRunExecutionBatch.Type
 
 export const FleetRunAuthorityAppendExecutionInput = S.Struct({
@@ -579,6 +699,36 @@ type FleetRunWorkUnitCloseoutRow = Readonly<{
   event_ref: string
 }>
 
+type FleetRunAttemptRow = Readonly<{
+  run_ref: string
+  attempt_ref: string
+  work_unit_ref: string
+  owner_user_id: string
+  intake_claim_ref: string
+  pylon_ref: string
+  worker_kind: "codex" | "claude" | "grok"
+  state: "running" | "evidence_pending" | "succeeded" | "failed" | "stale"
+  progress_class: "active" | "blocked" | "terminal"
+  assignment_ref: string | null
+  account_ref_hash: string | null
+  capacity_class: "owner_local"
+  marginal_cost_class: "owner_capacity" | "not_reported"
+  verification_json: string
+  artifact_refs_json: string
+  proof_refs_json: string
+  authority_receipt_refs_json: string
+  closeout_ref: string | null
+  usage_truth: "pending" | "exact" | "not_measured"
+  token_usage_refs_json: string
+  blocker_refs_json: string
+  last_event_ref: string
+  first_observed_at: string
+  last_observed_at: string
+  started_at: string
+  terminal_at: string | null
+  updated_at: string
+}>
+
 const PRIVATE_MATERIAL_PATTERN =
   /(?:^|[\s"'])\/(?:Users|private|home)\/|(?:^|[\s"'])~\/|OPENAGENTS_AGENT_TOKEN|(?:API|AUTH|SECRET|TOKEN|PASSWORD|PRIVATE)_?KEY|BEGIN [A-Z ]*PRIVATE KEY/iu
 // This is the same bounded checkout contract enforced by Pylon's durable
@@ -686,6 +836,32 @@ export const decodeFleetRunExecutionBatch = (
         event.blockerRefs.length > 32
       ) {
         throw invalidRequest()
+      }
+      return
+    }
+    if (event.schema === FLEET_RUN_EXECUTION_EVENT_SCHEMA_V2) {
+      if (
+        (event.accountRefHash !== undefined &&
+          !accountHashMatchesWorker(event.workerKind, event.accountRefHash)) ||
+        (event.terminalState === "accepted" && event.blockerRefs.length > 0) ||
+        (event.terminalState !== "accepted" && event.blockerRefs.length < 1)
+      ) {
+        throw invalidRequest()
+      }
+      if (event.usageEvidence !== undefined) {
+        const tokenRefs = event.usageEvidence.tokenUsageRefs
+        if (
+          tokenRefs.length > 100 ||
+          (event.usageEvidence.truth === "exact" && tokenRefs.length < 1) ||
+          (event.usageEvidence.truth === "not_measured" &&
+            tokenRefs.length > 0) ||
+          (event.workerKind === "grok" &&
+            event.usageEvidence.truth !== "not_measured") ||
+          (event.workerKind !== "grok" &&
+            event.usageEvidence.truth !== "exact")
+        ) {
+          throw invalidRequest()
+        }
       }
       return
     }
@@ -1100,6 +1276,117 @@ const blockerRefsFromJson = S.decodeUnknownSync(
   S.fromJsonString(S.Array(BlockerRef)),
 )
 
+const parseCanonicalJson = (value: string): unknown => {
+  const decoded: unknown = JSON.parse(value)
+  if (canonicalJson(decoded) !== value) throw invalidRequest()
+  return decoded
+}
+
+const attemptEntityFromRow = (row: FleetRunAttemptRow): FleetAttemptEntity => {
+  try {
+    const artifactRefs = executionRefsFromJson(row.artifact_refs_json)
+    const proofRefs = executionRefsFromJson(row.proof_refs_json)
+    const authorityReceiptRefs = executionRefsFromJson(
+      row.authority_receipt_refs_json,
+    )
+    const tokenUsageRefs = executionRefsFromJson(row.token_usage_refs_json)
+    const blockerRefs = blockerRefsFromJson(row.blocker_refs_json)
+    const verification = parseCanonicalJson(row.verification_json)
+    const entity = decodeFleetAttemptEntity({
+      attemptRef: row.attempt_ref,
+      workUnitRef: row.work_unit_ref,
+      intakeClaimRef: row.intake_claim_ref,
+      pylonRef: row.pylon_ref,
+      workerKind: row.worker_kind,
+      state: row.state,
+      progressClass: row.progress_class,
+      assignmentRef: row.assignment_ref,
+      accountRefHash: row.account_ref_hash,
+      capacityClass: row.capacity_class,
+      marginalCostClass: row.marginal_cost_class,
+      verification,
+      artifactRefs,
+      proofRefs,
+      authorityReceiptRefs,
+      closeoutRef: row.closeout_ref,
+      usageEvidence: { truth: row.usage_truth, usageRefs: tokenUsageRefs },
+      blockerRefs,
+      lastEventRef: row.last_event_ref,
+      startedAt: row.started_at,
+      lastObservedAt: row.last_observed_at,
+      terminalAt: row.terminal_at,
+      updatedAt: row.updated_at,
+    })
+    if (
+      canonicalJson(artifactRefs) !== row.artifact_refs_json ||
+      canonicalJson(proofRefs) !== row.proof_refs_json ||
+      canonicalJson(authorityReceiptRefs) !==
+        row.authority_receipt_refs_json ||
+      canonicalJson(tokenUsageRefs) !== row.token_usage_refs_json ||
+      canonicalJson(blockerRefs) !== row.blocker_refs_json
+    ) {
+      throw invalidRequest()
+    }
+    return entity
+  } catch {
+    throw fixedError(
+      "storage_unavailable",
+      "fleet run attempt failed integrity validation",
+      { runRef: row.run_ref },
+    )
+  }
+}
+
+const workUnitEntityFromStorage = async (
+  sql: SqlTag,
+  runRef: string,
+  unitRef: string,
+): Promise<FleetWorkUnitEntity> => {
+  const rows: Array<{
+    unit_ref: string
+    issue_ref: string | null
+    depends_on_refs_json: string
+    state: FleetWorkUnitEntity["state"]
+    latest_attempt_ref: string | null
+    accepted_attempt_ref: string | null
+    updated_at: string
+  }> = await sql`
+    SELECT unit_ref, issue_ref, depends_on_refs_json, state,
+           latest_attempt_ref, accepted_attempt_ref, updated_at
+    FROM sarah_fleet_run_work_units
+    WHERE run_ref = ${runRef} AND unit_ref = ${unitRef}
+  `
+  const row = rows[0]
+  if (row === undefined) {
+    throw fixedError(
+      "storage_unavailable",
+      "fleet run work-unit projection is unavailable",
+      { runRef },
+    )
+  }
+  try {
+    const dependsOnRefs = dependsOnFromJson(row.depends_on_refs_json)
+    if (canonicalJson(dependsOnRefs) !== row.depends_on_refs_json) {
+      throw invalidRequest()
+    }
+    return decodeFleetWorkUnitEntity({
+      workUnitRef: row.unit_ref,
+      issueRef: row.issue_ref,
+      dependsOnRefs,
+      state: row.state,
+      latestAttemptRef: row.latest_attempt_ref,
+      acceptedAttemptRef: row.accepted_attempt_ref,
+      updatedAt: row.updated_at,
+    })
+  } catch {
+    throw fixedError(
+      "storage_unavailable",
+      "fleet run work-unit projection failed integrity validation",
+      { runRef },
+    )
+  }
+}
+
 const closeoutFromRow = (
   row: FleetRunWorkUnitCloseoutRow,
 ): FleetRunWorkUnitCloseout => {
@@ -1243,11 +1530,11 @@ const insertWorkUnits = async (
         sql`
         INSERT INTO sarah_fleet_run_work_units
           (run_ref, owner_user_id, unit_index, unit_ref, issue_ref, title,
-           depends_on_refs_json)
+           depends_on_refs_json, state, updated_at)
         VALUES
           (${record.runRef}, ${record.ownerUserId}, ${unitIndex},
            ${unit.unitRef}, ${unit.issueRef}, ${unit.title},
-           ${canonicalJson(unit.dependsOn)})
+           ${canonicalJson(unit.dependsOn)}, 'planned', ${record.createdAt})
       `,
     ),
   )
@@ -1332,6 +1619,26 @@ const createFleetRun = async (
       },
       FLEET_RUN_AUTHORITY_CREATE_MUTATION_REF,
     )
+    for (const unit of workUnitsFrom(request.workSource)) {
+      await appendFleetEntityChange(
+        writer,
+        runRef,
+        {
+          kind: "fleet_work_unit",
+          op: "upsert",
+          entity: decodeFleetWorkUnitEntity({
+            workUnitRef: unit.unitRef,
+            issueRef: unit.issueRef,
+            dependsOnRefs: unit.dependsOn,
+            state: "planned",
+            latestAttemptRef: null,
+            acceptedAttemptRef: null,
+            updatedAt: nowIso,
+          }),
+        },
+        FLEET_RUN_AUTHORITY_CREATE_MUTATION_REF,
+      )
+    }
     return { duplicate: false, record }
   })
 }
@@ -1749,25 +2056,40 @@ const executionEventFromRow = (
 }
 
 const closeoutForEvent = (
-  event: FleetRunWorkTerminalExecutionEvent,
-): FleetRunWorkUnitCloseout =>
-  decodeUnknown(FleetRunWorkUnitCloseout, {
+  event: FleetRunAnyWorkTerminalExecutionEvent,
+): FleetRunWorkUnitCloseout => {
+  const proof =
+    event.schema === FLEET_RUN_EXECUTION_EVENT_SCHEMA
+      ? "assignmentRef" in event
+        ? {
+            assignmentRef: event.assignmentRef,
+            accountRefHash: event.accountRefHash,
+            closeoutRef: event.closeoutRef,
+            usageEvidence: event.usageEvidence,
+          }
+        : {}
+      : event.assignmentRef !== undefined &&
+          event.accountRefHash !== undefined &&
+          event.closeoutRef !== undefined &&
+          event.usageEvidence !== undefined
+        ? {
+            assignmentRef: event.assignmentRef,
+            accountRefHash: event.accountRefHash,
+            closeoutRef: event.closeoutRef,
+            usageEvidence: event.usageEvidence,
+          }
+        : {}
+  return decodeUnknown(FleetRunWorkUnitCloseout, {
     unitRef: event.unitRef,
     workClaimRef: event.workClaimRef,
     workerKind: event.workerKind,
     terminalState: event.terminalState,
-    ...("assignmentRef" in event
-      ? {
-          assignmentRef: event.assignmentRef,
-          accountRefHash: event.accountRefHash,
-          closeoutRef: event.closeoutRef,
-          usageEvidence: event.usageEvidence,
-        }
-      : {}),
+    ...proof,
     blockerRefs: event.blockerRefs,
     observedAt: event.observedAt,
     eventRef: event.eventRef,
   })
+}
 
 const executionStateForSync = (
   state: FleetRunExecutionState,
@@ -1807,10 +2129,271 @@ const insertExecutionEvent = async (
   `
 }
 
+const projectAttemptForEvent = async (
+  sql: SqlTag,
+  input: FleetRunAuthorityAppendExecutionInput,
+  event: Extract<
+    FleetRunExecutionEvent,
+    { readonly kind: "work_progress" | "work_terminal" }
+  >,
+  nowIso: string,
+): Promise<Readonly<{
+  attempt: FleetAttemptEntity
+  workUnit: FleetWorkUnitEntity
+}>> => {
+  const existingRows: Array<FleetRunAttemptRow> = await sql`
+    SELECT * FROM sarah_fleet_run_attempts
+    WHERE run_ref = ${input.runRef} AND attempt_ref = ${event.workClaimRef}
+    FOR UPDATE
+  `
+  const existingRow = existingRows[0]
+  const existing =
+    existingRow === undefined ? undefined : attemptEntityFromRow(existingRow)
+  if (
+    existing !== undefined &&
+    (existingRow?.owner_user_id !== input.ownerUserId ||
+      existing.workUnitRef !== event.unitRef ||
+      existing.workerKind !== event.workerKind ||
+      existing.intakeClaimRef !== input.batch.claimRef ||
+      existing.pylonRef !== input.pylonRef)
+  ) {
+    throw fixedError(
+      "idempotency_conflict",
+      "fleet run work claim is already bound to another attempt",
+      { runRef: input.runRef },
+    )
+  }
+  if (existing !== undefined && existing.state !== "running") {
+    throw fixedError(
+      "idempotency_conflict",
+      "fleet run attempt already has terminal evidence",
+      { runRef: input.runRef },
+    )
+  }
+
+  const incomingAssignmentRef =
+    "assignmentRef" in event ? (event.assignmentRef ?? null) : null
+  const incomingAccountRefHash =
+    "accountRefHash" in event ? (event.accountRefHash ?? null) : null
+  if (
+    (existing?.assignmentRef !== null &&
+      existing?.assignmentRef !== undefined &&
+      incomingAssignmentRef !== null &&
+      existing.assignmentRef !== incomingAssignmentRef) ||
+    (existing?.accountRefHash !== null &&
+      existing?.accountRefHash !== undefined &&
+      incomingAccountRefHash !== null &&
+      existing.accountRefHash !== incomingAccountRefHash)
+  ) {
+    throw fixedError(
+      "idempotency_conflict",
+      "fleet run attempt evidence changed an established graph edge",
+      { runRef: input.runRef },
+    )
+  }
+  const assignmentRef = existing?.assignmentRef ?? incomingAssignmentRef
+  const accountRefHash = existing?.accountRefHash ?? incomingAccountRefHash
+  const usageRefsFor = async (
+    refs: ReadonlyArray<string>,
+  ): Promise<ReadonlyArray<string>> =>
+    Promise.all(
+      refs.map(async (sourceRef) =>
+        `usage.pylon.fleet_run.${(
+          await sha256Hex({
+            schema: "openagents.pylon.fleet_run_usage_ref.v1",
+            sourceRef,
+          })
+        ).slice(0, 24)}`,
+      ),
+    )
+
+  let state: FleetAttemptEntity["state"] = "running"
+  let progressClass: FleetAttemptEntity["progressClass"] =
+    event.blockerRefs.length > 0 ? "blocked" : "active"
+  let verification: FleetAttemptEntity["verification"] = { truth: "pending" }
+  let artifactRefs: ReadonlyArray<string> = []
+  let proofRefs: ReadonlyArray<string> = []
+  let authorityReceiptRefs: ReadonlyArray<string> = []
+  let closeoutRef: string | null = null
+  let usageEvidence: FleetAttemptEntity["usageEvidence"] = {
+    truth: "pending",
+    usageRefs: [],
+  }
+  let terminalAt: string | null = null
+  if (event.kind === "work_terminal") {
+    progressClass = "terminal"
+    terminalAt = nowIso
+    if (event.schema === FLEET_RUN_EXECUTION_EVENT_SCHEMA_V2) {
+      if (event.terminalState === "accepted") {
+        state = "succeeded"
+        verification = event.verification
+        artifactRefs = event.artifactRefs
+        proofRefs = event.proofRefs
+        authorityReceiptRefs = event.authorityReceiptRefs
+        closeoutRef = event.closeoutRef
+        usageEvidence = {
+          truth: event.usageEvidence.truth,
+          usageRefs: await usageRefsFor(event.usageEvidence.tokenUsageRefs),
+        }
+      } else {
+        state = event.terminalState
+        verification =
+          event.verification === undefined
+            ? { truth: "not_reported" }
+            : {
+                truth: "failed",
+                verifierRef: event.verification.verifierRef ?? null,
+                evidenceRefs: event.verification.evidenceRefs,
+              }
+        artifactRefs = event.artifactRefs ?? []
+        proofRefs = event.proofRefs ?? []
+        authorityReceiptRefs = event.authorityReceiptRefs ?? []
+        closeoutRef = event.closeoutRef ?? null
+        const wireUsage = event.usageEvidence
+        usageEvidence = {
+          truth: wireUsage?.truth ?? "pending",
+          usageRefs: await usageRefsFor(wireUsage?.tokenUsageRefs ?? []),
+        }
+      }
+    } else if (event.terminalState === "accepted") {
+      // v1 did not carry verifier/artifact/proof/authority receipts. Preserve
+      // its closeout and usage honestly, but do not promote it to succeeded.
+      state = "evidence_pending"
+      verification = { truth: "not_reported" }
+      closeoutRef = event.closeoutRef
+      usageEvidence = {
+        truth: event.usageEvidence.truth,
+        usageRefs: await usageRefsFor(event.usageEvidence.tokenUsageRefs),
+      }
+    } else {
+      state = event.terminalState
+      verification = { truth: "not_reported" }
+      if ("closeoutRef" in event) {
+        closeoutRef = event.closeoutRef
+        usageEvidence = {
+          truth: event.usageEvidence.truth,
+          usageRefs: await usageRefsFor(event.usageEvidence.tokenUsageRefs),
+        }
+      }
+    }
+  }
+
+  const startedAt = existing?.startedAt ?? nowIso
+  const attempt = decodeFleetAttemptEntity({
+    attemptRef: event.workClaimRef,
+    workUnitRef: event.unitRef,
+    intakeClaimRef: input.batch.claimRef,
+    pylonRef: input.pylonRef,
+    workerKind: event.workerKind,
+    state,
+    progressClass,
+    assignmentRef,
+    accountRefHash,
+    capacityClass: "owner_local",
+    marginalCostClass: "owner_capacity",
+    verification,
+    artifactRefs,
+    proofRefs,
+    authorityReceiptRefs,
+    closeoutRef,
+    usageEvidence,
+    blockerRefs: event.blockerRefs,
+    lastEventRef: event.eventRef,
+    startedAt,
+    lastObservedAt: event.observedAt,
+    terminalAt,
+    updatedAt: nowIso,
+  })
+  const inserted: Array<FleetRunAttemptRow> = await sql`
+    INSERT INTO sarah_fleet_run_attempts
+      (run_ref, attempt_ref, work_unit_ref, owner_user_id, intake_claim_ref,
+       pylon_ref, worker_kind, state, progress_class, assignment_ref,
+       account_ref_hash, capacity_class, marginal_cost_class,
+       verification_json, artifact_refs_json, proof_refs_json,
+       authority_receipt_refs_json, closeout_ref, usage_truth,
+       token_usage_refs_json, blocker_refs_json, last_event_ref,
+       first_observed_at, last_observed_at, started_at, terminal_at,
+       updated_at)
+    VALUES
+      (${input.runRef}, ${attempt.attemptRef}, ${attempt.workUnitRef},
+       ${input.ownerUserId}, ${input.batch.claimRef}, ${input.pylonRef},
+       ${attempt.workerKind}, ${attempt.state}, ${attempt.progressClass},
+       ${attempt.assignmentRef}, ${attempt.accountRefHash},
+       ${attempt.capacityClass}, ${attempt.marginalCostClass},
+       ${canonicalJson(attempt.verification)},
+       ${canonicalJson(attempt.artifactRefs)},
+       ${canonicalJson(attempt.proofRefs)},
+       ${canonicalJson(attempt.authorityReceiptRefs)},
+       ${attempt.closeoutRef}, ${attempt.usageEvidence.truth},
+       ${canonicalJson(attempt.usageEvidence.usageRefs)},
+       ${canonicalJson(attempt.blockerRefs)}, ${attempt.lastEventRef},
+       ${existingRow?.first_observed_at ?? event.observedAt},
+       ${attempt.lastObservedAt}, ${attempt.startedAt}, ${attempt.terminalAt},
+       ${attempt.updatedAt})
+    ON CONFLICT (run_ref, attempt_ref) DO UPDATE SET
+      state = EXCLUDED.state,
+      progress_class = EXCLUDED.progress_class,
+      assignment_ref = EXCLUDED.assignment_ref,
+      account_ref_hash = EXCLUDED.account_ref_hash,
+      verification_json = EXCLUDED.verification_json,
+      artifact_refs_json = EXCLUDED.artifact_refs_json,
+      proof_refs_json = EXCLUDED.proof_refs_json,
+      authority_receipt_refs_json = EXCLUDED.authority_receipt_refs_json,
+      closeout_ref = EXCLUDED.closeout_ref,
+      usage_truth = EXCLUDED.usage_truth,
+      token_usage_refs_json = EXCLUDED.token_usage_refs_json,
+      blocker_refs_json = EXCLUDED.blocker_refs_json,
+      last_event_ref = EXCLUDED.last_event_ref,
+      last_observed_at = EXCLUDED.last_observed_at,
+      terminal_at = EXCLUDED.terminal_at,
+      updated_at = EXCLUDED.updated_at
+    RETURNING *
+  `
+  const storedAttempt = inserted[0]
+  if (storedAttempt === undefined) {
+    throw fixedError(
+      "storage_unavailable",
+      "fleet run attempt was not persisted",
+      { runRef: input.runRef },
+    )
+  }
+  const projectedAttempt = attemptEntityFromRow(storedAttempt)
+  if (canonicalJson(projectedAttempt) !== canonicalJson(attempt)) {
+    throw fixedError(
+      "storage_unavailable",
+      "fleet run attempt projection changed during persistence",
+      { runRef: input.runRef },
+    )
+  }
+
+  const workUnitState: FleetWorkUnitEntity["state"] =
+    attempt.state === "running"
+      ? "running"
+      : attempt.state === "evidence_pending"
+        ? "verification_pending"
+        : attempt.state
+  await sql`
+    UPDATE sarah_fleet_run_work_units
+    SET state = ${workUnitState},
+        latest_attempt_ref = ${attempt.attemptRef},
+        accepted_attempt_ref = ${
+          attempt.state === "succeeded" ? attempt.attemptRef : null
+        },
+        updated_at = ${nowIso}
+    WHERE run_ref = ${input.runRef} AND unit_ref = ${event.unitRef}
+  `
+  const workUnit = await workUnitEntityFromStorage(
+    sql,
+    input.runRef,
+    event.unitRef,
+  )
+  return { attempt: projectedAttempt, workUnit }
+}
+
 const insertTerminalCloseout = async (
   sql: SqlTag,
   runRef: string,
-  event: FleetRunWorkTerminalExecutionEvent,
+  event: FleetRunAnyWorkTerminalExecutionEvent,
 ): Promise<FleetRunWorkUnitCloseout> => {
   const closeout = closeoutForEvent(event)
   const proof = "assignmentRef" in closeout ? closeout : undefined
@@ -2081,6 +2664,34 @@ const appendFleetRunExecutionEvents = async (
       }
 
       await insertExecutionEvent(writer.sql, input, event, nowIso)
+      if (event.kind === "work_progress" || event.kind === "work_terminal") {
+        const projection = await projectAttemptForEvent(
+          writer.sql,
+          input,
+          event,
+          nowIso,
+        )
+        await appendFleetEntityChange(
+          writer,
+          input.runRef,
+          {
+            kind: "fleet_attempt",
+            op: "upsert",
+            entity: projection.attempt,
+          },
+          FLEET_RUN_AUTHORITY_EXECUTION_MUTATION_REF,
+        )
+        await appendFleetEntityChange(
+          writer,
+          input.runRef,
+          {
+            kind: "fleet_work_unit",
+            op: "upsert",
+            entity: projection.workUnit,
+          },
+          FLEET_RUN_AUTHORITY_EXECUTION_MUTATION_REF,
+        )
+      }
       if (event.kind === "work_terminal") {
         const closeout = await insertTerminalCloseout(
           writer.sql,

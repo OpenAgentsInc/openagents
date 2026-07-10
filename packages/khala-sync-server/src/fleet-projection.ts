@@ -9,30 +9,36 @@ import {
   encodeFleetAccountEntity,
   encodeFleetApprovalEntity,
   encodeFleetAssignmentEntity,
+  encodeFleetAttemptEntity,
   encodeFleetCommandOutcomeEntity,
   encodeFleetInboxFlagEntity,
   encodeFleetRunEntity,
   encodeFleetSteerEntity,
   encodeFleetWorkerEntity,
+  encodeFleetWorkUnitEntity,
   EntityId,
   EntityType,
   FLEET_ACCOUNT_ENTITY_TYPE,
   FLEET_APPROVAL_ENTITY_TYPE,
   FLEET_ASSIGNMENT_ENTITY_TYPE,
+  FLEET_ATTEMPT_ENTITY_TYPE,
   FLEET_COMMAND_OUTCOME_ENTITY_TYPE,
   FLEET_INBOX_FLAG_ENTITY_TYPE,
   FLEET_RUN_ENTITY_TYPE,
   FLEET_STEER_ENTITY_TYPE,
   FLEET_WORKER_ENTITY_TYPE,
+  FLEET_WORK_UNIT_ENTITY_TYPE,
   type FleetAccountEntity,
   type FleetApprovalEntity,
   type FleetAssignmentEntity,
+  type FleetAttemptEntity,
   type FleetCommandOutcomeEntity,
   type FleetInboxFlagEntity,
   type FleetRunEntity,
   fleetRunScope,
   type FleetSteerEntity,
   type FleetWorkerEntity,
+  type FleetWorkUnitEntity,
   type SyncScope,
 } from "@openagentsinc/khala-sync"
 import type { SyncTransactionWriter } from "./outbox-writer.js"
@@ -372,6 +378,8 @@ export type FleetEntityChange =
   | { readonly kind: "fleet_run"; readonly op: "upsert"; readonly entity: FleetRunEntity }
   | { readonly kind: "fleet_worker"; readonly op: "upsert"; readonly entity: FleetWorkerEntity }
   | { readonly kind: "fleet_assignment"; readonly op: "upsert"; readonly entity: FleetAssignmentEntity }
+  | { readonly kind: "fleet_work_unit"; readonly op: "upsert"; readonly entity: FleetWorkUnitEntity }
+  | { readonly kind: "fleet_attempt"; readonly op: "upsert"; readonly entity: FleetAttemptEntity }
   | { readonly kind: "fleet_command_outcome"; readonly op: "upsert"; readonly entity: FleetCommandOutcomeEntity }
   | { readonly kind: "fleet_account"; readonly op: "upsert"; readonly entity: FleetAccountEntity }
   | { readonly kind: "fleet_inbox_flag"; readonly op: "upsert"; readonly entity: FleetInboxFlagEntity }
@@ -382,6 +390,8 @@ export type FleetEntityChange =
         | "fleet_run"
         | "fleet_worker"
         | "fleet_assignment"
+        | "fleet_work_unit"
+        | "fleet_attempt"
         | "fleet_command_outcome"
         | "fleet_account"
         | "fleet_inbox_flag"
@@ -396,6 +406,8 @@ const encodeByKind = {
     encodeFleetAccountEntity(entity),
   [FLEET_ASSIGNMENT_ENTITY_TYPE]: (entity: FleetAssignmentEntity) =>
     encodeFleetAssignmentEntity(entity),
+  [FLEET_ATTEMPT_ENTITY_TYPE]: (entity: FleetAttemptEntity) =>
+    encodeFleetAttemptEntity(entity),
   [FLEET_COMMAND_OUTCOME_ENTITY_TYPE]: (entity: FleetCommandOutcomeEntity) =>
     encodeFleetCommandOutcomeEntity(entity),
   [FLEET_INBOX_FLAG_ENTITY_TYPE]: (entity: FleetInboxFlagEntity) =>
@@ -404,6 +416,8 @@ const encodeByKind = {
     encodeFleetRunEntity(entity),
   [FLEET_WORKER_ENTITY_TYPE]: (entity: FleetWorkerEntity) =>
     encodeFleetWorkerEntity(entity),
+  [FLEET_WORK_UNIT_ENTITY_TYPE]: (entity: FleetWorkUnitEntity) =>
+    encodeFleetWorkUnitEntity(entity),
   [FLEET_APPROVAL_ENTITY_TYPE]: (entity: FleetApprovalEntity) =>
     encodeFleetApprovalEntity(entity),
   [FLEET_STEER_ENTITY_TYPE]: (entity: FleetSteerEntity) =>
@@ -419,6 +433,10 @@ const entityIdOf = (change: FleetEntityChange): string => {
       return change.entity.workerId
     case "fleet_assignment":
       return change.entity.assignmentRef
+    case "fleet_work_unit":
+      return change.entity.workUnitRef
+    case "fleet_attempt":
+      return change.entity.attemptRef
     case "fleet_command_outcome":
       return change.entity.intentId
     case "fleet_account":

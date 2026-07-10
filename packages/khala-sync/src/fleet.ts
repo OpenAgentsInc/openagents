@@ -31,6 +31,8 @@ import { Schema as S } from "effect"
 export const FLEET_RUN_ENTITY_TYPE = "fleet_run"
 export const FLEET_WORKER_ENTITY_TYPE = "fleet_worker"
 export const FLEET_ASSIGNMENT_ENTITY_TYPE = "fleet_assignment"
+export const FLEET_WORK_UNIT_ENTITY_TYPE = "fleet_work_unit"
+export const FLEET_ATTEMPT_ENTITY_TYPE = "fleet_attempt"
 export const FLEET_ACCOUNT_ENTITY_TYPE = "fleet_account"
 export const FLEET_INBOX_FLAG_ENTITY_TYPE = "fleet_inbox_flag"
 // MH-6 (#8585): the projected post-images the three MH-0 typed steering
@@ -44,6 +46,8 @@ export const FLEET_ENTITY_TYPES = [
   FLEET_RUN_ENTITY_TYPE,
   FLEET_WORKER_ENTITY_TYPE,
   FLEET_ASSIGNMENT_ENTITY_TYPE,
+  FLEET_WORK_UNIT_ENTITY_TYPE,
+  FLEET_ATTEMPT_ENTITY_TYPE,
   FLEET_ACCOUNT_ENTITY_TYPE,
   FLEET_INBOX_FLAG_ENTITY_TYPE,
   FLEET_APPROVAL_ENTITY_TYPE,
@@ -232,6 +236,203 @@ export class FleetAssignmentEntity extends S.Class<FleetAssignmentEntity>(
   closeoutClass: S.optionalKey(FleetClassToken),
   updatedAt: FleetIsoTimestamp,
 }) {}
+
+// ---------------------------------------------------------------------------
+// fleet_work_unit / fleet_attempt (FC-3 #8639)
+// ---------------------------------------------------------------------------
+
+const boundedPublicRefs = S.Array(FleetPublicRef).check(S.isMaxLength(64))
+const boundedBlockerRefs = S.Array(FleetPublicRef).check(S.isMaxLength(32))
+const nonEmptyEvidenceRefs = S.Array(FleetPublicRef).check(
+  S.isMinLength(1),
+  S.isMaxLength(64),
+)
+
+/**
+ * A work unit is the stable plan identity. Attempts may be retried, but this
+ * entity remains keyed by the original `unitRef` and points to the latest and
+ * (only when fully proven) accepted attempt.
+ */
+export const FleetWorkUnitState = S.Literals([
+  "planned",
+  "running",
+  "verification_pending",
+  "succeeded",
+  "failed",
+  "stale",
+])
+export type FleetWorkUnitState = typeof FleetWorkUnitState.Type
+
+const FleetWorkUnitEntityFields = {
+  workUnitRef: FleetPublicRef,
+  issueRef: S.NullOr(FleetIssueRef),
+  dependsOnRefs: boundedPublicRefs,
+  state: FleetWorkUnitState,
+  latestAttemptRef: S.NullOr(FleetPublicRef),
+  acceptedAttemptRef: S.NullOr(FleetPublicRef),
+  updatedAt: FleetIsoTimestamp,
+} as const
+
+export const FleetWorkUnitEntity = S.Struct(FleetWorkUnitEntityFields).pipe(
+  S.check(
+    S.makeFilter(
+      (entity) =>
+        (entity.state === "planned"
+          ? entity.latestAttemptRef === null &&
+            entity.acceptedAttemptRef === null
+          : entity.latestAttemptRef !== null) &&
+        (entity.state === "succeeded"
+          ? entity.acceptedAttemptRef === entity.latestAttemptRef
+          : entity.acceptedAttemptRef === null),
+      {
+        message:
+          "fleet work-unit state and attempt pointers must be coherent",
+      },
+    ),
+  ),
+)
+export type FleetWorkUnitEntity = typeof FleetWorkUnitEntity.Type
+
+export const FleetAttemptState = S.Literals([
+  "running",
+  "evidence_pending",
+  "succeeded",
+  "failed",
+  "stale",
+])
+export type FleetAttemptState = typeof FleetAttemptState.Type
+
+export const FleetAttemptProgressClass = S.Literals([
+  "active",
+  "blocked",
+  "terminal",
+])
+export type FleetAttemptProgressClass = typeof FleetAttemptProgressClass.Type
+
+export const FleetAttemptVerification = S.Union([
+  S.Struct({ truth: S.Literal("pending") }),
+  S.Struct({ truth: S.Literal("not_reported") }),
+  S.Struct({
+    truth: S.Literal("passed"),
+    verifierRef: FleetPublicRef,
+    evidenceRefs: nonEmptyEvidenceRefs,
+  }),
+  S.Struct({
+    truth: S.Literal("failed"),
+    verifierRef: S.NullOr(FleetPublicRef),
+    evidenceRefs: boundedPublicRefs,
+  }),
+])
+export type FleetAttemptVerification = typeof FleetAttemptVerification.Type
+
+export const FleetAttemptUsageEvidence = S.Union([
+  S.Struct({
+    truth: S.Literal("pending"),
+    usageRefs: S.Array(FleetPublicRef).check(S.isMaxLength(0)),
+  }),
+  S.Struct({
+    truth: S.Literal("exact"),
+    usageRefs: S.Array(FleetPublicRef).check(
+      S.isMinLength(1),
+      S.isMaxLength(100),
+    ),
+  }),
+  S.Struct({
+    truth: S.Literal("not_measured"),
+    usageRefs: S.Array(FleetPublicRef).check(S.isMaxLength(0)),
+  }),
+])
+export type FleetAttemptUsageEvidence = typeof FleetAttemptUsageEvidence.Type
+
+const FleetAttemptEntityFields = {
+  /** The canonical attempt identity: exactly the Pylon `workClaimRef`. */
+  attemptRef: FleetPublicRef,
+  workUnitRef: FleetPublicRef,
+  intakeClaimRef: S.String.check(
+    S.isPattern(/^claim\.sarah_fleet_run\.[0-9a-f]{24}$/),
+  ),
+  pylonRef: S.String.check(
+    S.isMinLength(3),
+    S.isMaxLength(120),
+    S.isPattern(/^[a-z0-9][a-z0-9._:-]*$/),
+  ),
+  workerKind: FleetHarnessKind,
+  state: FleetAttemptState,
+  progressClass: FleetAttemptProgressClass,
+  /** Optional graph edge only. It is never the attempt identity. */
+  assignmentRef: S.NullOr(FleetPublicRef),
+  accountRefHash: S.NullOr(FleetAccountRefHash),
+  capacityClass: S.Literal("owner_local"),
+  marginalCostClass: S.Literals(["owner_capacity", "not_reported"]),
+  verification: FleetAttemptVerification,
+  artifactRefs: boundedPublicRefs,
+  proofRefs: boundedPublicRefs,
+  authorityReceiptRefs: boundedPublicRefs,
+  closeoutRef: S.NullOr(FleetPublicRef),
+  usageEvidence: FleetAttemptUsageEvidence,
+  blockerRefs: boundedBlockerRefs,
+  lastEventRef: S.String.check(
+    S.isPattern(/^event\.pylon\.fleet_run\.[0-9a-f]{24}$/),
+  ),
+  startedAt: FleetIsoTimestamp,
+  lastObservedAt: FleetIsoTimestamp,
+  terminalAt: S.NullOr(FleetIsoTimestamp),
+  updatedAt: FleetIsoTimestamp,
+} as const
+
+export const FleetAttemptEntity = S.Struct(FleetAttemptEntityFields).pipe(
+  S.check(
+    S.makeFilter(
+      (entity) => {
+        if (
+          entity.accountRefHash !== null &&
+          !entity.accountRefHash.startsWith(
+            `account.pylon.${
+              entity.workerKind === "claude"
+                ? "claude_agent"
+                : entity.workerKind
+            }.`,
+          )
+        ) {
+          return false
+        }
+        if (entity.state === "running") {
+          return entity.progressClass !== "terminal" &&
+            entity.verification.truth === "pending" &&
+            entity.closeoutRef === null &&
+            entity.terminalAt === null &&
+            entity.artifactRefs.length === 0 &&
+            entity.proofRefs.length === 0 &&
+            entity.authorityReceiptRefs.length === 0 &&
+            entity.usageEvidence.truth === "pending"
+        }
+        if (entity.progressClass !== "terminal" || entity.terminalAt === null) {
+          return false
+        }
+        if (entity.state === "evidence_pending") {
+          return entity.verification.truth === "not_reported" &&
+            entity.closeoutRef !== null &&
+            entity.artifactRefs.length === 0 &&
+            entity.proofRefs.length === 0 &&
+            entity.authorityReceiptRefs.length === 0 &&
+            entity.usageEvidence.truth !== "pending"
+        }
+        if (entity.state === "succeeded") {
+          return entity.verification.truth === "passed" &&
+            entity.closeoutRef !== null &&
+            entity.artifactRefs.length > 0 &&
+            entity.proofRefs.length > 0 &&
+            entity.authorityReceiptRefs.length > 0 &&
+            entity.usageEvidence.truth !== "pending" &&
+            entity.blockerRefs.length === 0
+        }
+        return entity.verification.truth !== "pending"
+      },
+      { message: "fleet attempt state and evidence must be coherent" },
+    ),
+  ),
+)
+export type FleetAttemptEntity = typeof FleetAttemptEntity.Type
 
 // ---------------------------------------------------------------------------
 // fleet_account
@@ -576,6 +777,16 @@ export const decodeFleetAssignmentEntity = S.decodeUnknownSync(
   FleetAssignmentEntity,
 )
 export const encodeFleetAssignmentEntity = S.encodeSync(FleetAssignmentEntity)
+export const decodeFleetWorkUnitEntity = (input: unknown) =>
+  S.decodeUnknownSync(FleetWorkUnitEntity)(input, {
+    onExcessProperty: "error",
+  })
+export const encodeFleetWorkUnitEntity = S.encodeSync(FleetWorkUnitEntity)
+export const decodeFleetAttemptEntity = (input: unknown) =>
+  S.decodeUnknownSync(FleetAttemptEntity)(input, {
+    onExcessProperty: "error",
+  })
+export const encodeFleetAttemptEntity = S.encodeSync(FleetAttemptEntity)
 export const decodeFleetAccountEntity = S.decodeUnknownSync(FleetAccountEntity)
 export const encodeFleetAccountEntity = S.encodeSync(FleetAccountEntity)
 export const decodeFleetInboxFlagEntity = S.decodeUnknownSync(

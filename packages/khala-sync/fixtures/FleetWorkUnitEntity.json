@@ -1,0 +1,9 @@
+{
+  "workUnitRef": "unit-a",
+  "issueRef": "#8639",
+  "dependsOnRefs": ["unit-bootstrap"],
+  "state": "succeeded",
+  "latestAttemptRef": "work_claim.unit-a.attempt-2",
+  "acceptedAttemptRef": "work_claim.unit-a.attempt-2",
+  "updatedAt": "2026-07-09T23:00:04.000Z"
+}

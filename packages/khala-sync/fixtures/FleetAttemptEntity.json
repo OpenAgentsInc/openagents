@@ -1,0 +1,32 @@
+{
+  "attemptRef": "work_claim.unit-a.attempt-2",
+  "workUnitRef": "unit-a",
+  "intakeClaimRef": "claim.sarah_fleet_run.aaaaaaaaaaaaaaaaaaaaaaaa",
+  "pylonRef": "pylon-owner-1",
+  "workerKind": "codex",
+  "state": "succeeded",
+  "progressClass": "terminal",
+  "assignmentRef": "assignment.unit-a.edge-1",
+  "accountRefHash": "account.pylon.codex.bbbbbbbbbbbbbbbbbbbbbbbb",
+  "capacityClass": "owner_local",
+  "marginalCostClass": "owner_capacity",
+  "verification": {
+    "truth": "passed",
+    "verifierRef": "verifier.bun-test.1",
+    "evidenceRefs": ["test.run.unit-a.1"]
+  },
+  "artifactRefs": ["artifact.patch.unit-a.1"],
+  "proofRefs": ["proof.unit-a.1"],
+  "authorityReceiptRefs": ["receipt.authority.unit-a.1"],
+  "closeoutRef": "closeout.unit-a.1",
+  "usageEvidence": {
+    "truth": "exact",
+    "usageRefs": ["usage.pylon.fleet_run.0123456789abcdef01234567"]
+  },
+  "blockerRefs": [],
+  "lastEventRef": "event.pylon.fleet_run.cccccccccccccccccccccccc",
+  "startedAt": "2026-07-09T23:00:01.000Z",
+  "lastObservedAt": "2026-07-09T23:00:03.000Z",
+  "terminalAt": "2026-07-09T23:00:04.000Z",
+  "updatedAt": "2026-07-09T23:00:04.000Z"
+}

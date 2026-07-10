@@ -16,7 +16,9 @@ import {
   decodeFleetRunAuthorityStartRequest,
   decodeFleetRunExecutionBatch,
   FLEET_RUN_EXECUTION_BATCH_SCHEMA,
+  FLEET_RUN_EXECUTION_BATCH_SCHEMA_V2,
   FLEET_RUN_EXECUTION_EVENT_SCHEMA,
+  FLEET_RUN_EXECUTION_EVENT_SCHEMA_V2,
   FleetRunAuthorityError,
   makeFleetRunAuthorityRepository,
   publicFleetRunAuthorityRecord,
@@ -307,6 +309,57 @@ describe("FleetRun authority request boundary", () => {
       )
     }
   })
+
+  test("v2 requires complete verifier, artifact, proof, and authority receipts", () => {
+    const claimRef = `claim.sarah_fleet_run.${"c".repeat(24)}`
+    const accepted = pylonExecutionEvent(FIXTURE_RUN_REF, claimRef, 1, {
+      schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA_V2,
+      observedAt: "2026-07-09T22:00:00.000Z",
+      kind: "work_terminal",
+      unitRef: "unit-a",
+      workClaimRef: "work_claim.unit-a.attempt-1",
+      assignmentRef: "assignment.unit-a.edge-1",
+      workerKind: "codex",
+      accountRefHash: `account.pylon.codex.${"a".repeat(24)}`,
+      terminalState: "accepted",
+      closeoutRef: "closeout.unit-a.attempt-1",
+      verification: {
+        truth: "passed",
+        verifierRef: "verifier.bun-test.1",
+        evidenceRefs: ["test.unit-a.1"],
+      },
+      artifactRefs: ["artifact.patch.unit-a.1"],
+      proofRefs: ["proof.unit-a.1"],
+      authorityReceiptRefs: ["receipt.authority.unit-a.1"],
+      usageEvidence: {
+        truth: "exact",
+        tokenUsageRefs: ["token_usage.unit-a.1"],
+      },
+      blockerRefs: [],
+    })
+    expect(
+      decodeFleetRunExecutionBatch({
+        schema: FLEET_RUN_EXECUTION_BATCH_SCHEMA_V2,
+        claimRef,
+        events: [accepted],
+      }).events[0],
+    ).toMatchObject({ schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA_V2 })
+
+    const invalid = [
+      { ...accepted, proofRefs: undefined },
+      { ...accepted, rawPrompt: "must not cross" },
+      { ...accepted, artifactRefs: [] },
+    ]
+    for (const event of invalid) {
+      expect(() =>
+        decodeFleetRunExecutionBatch({
+          schema: FLEET_RUN_EXECUTION_BATCH_SCHEMA_V2,
+          claimRef,
+          events: [event],
+        }),
+      ).toThrow(FleetRunAuthorityError)
+    }
+  })
 })
 
 describe.skipIf(!hasLocalPostgres())(
@@ -325,6 +378,9 @@ describe.skipIf(!hasLocalPostgres())(
       expect(migrated.applied).toContain("0052_sarah_fleet_run_authority.sql")
       expect(migrated.applied).toContain(
         "0053_sarah_fleet_run_execution_projection.sql",
+      )
+      expect(migrated.applied).toContain(
+        "0056_sarah_fleet_run_attempts.sql",
       )
       sql = new SQL({ url, max: 12 })
     })
@@ -488,7 +544,7 @@ describe.skipIf(!hasLocalPostgres())(
         FROM khala_sync_changelog
         WHERE scope = ${first.record.scope}
       `
-      expect(changelog).toHaveLength(1)
+      expect(changelog).toHaveLength(2)
       expect(changelog[0]!.entity_type).toBe("fleet_run")
       expect(changelog[0]!.mutation_ref).toBe(
         "system:sarah_fleet_run_authority.create.v1",
@@ -500,6 +556,13 @@ describe.skipIf(!hasLocalPostgres())(
       expect(projected).toContain('"status":"draft"')
       expect(projected).not.toContain("user-owner-a")
       expect(projected).not.toContain("Implement one bounded public issue")
+      expect(changelog[1]!.entity_type).toBe("fleet_work_unit")
+      const projectedUnit =
+        typeof changelog[1]!.post_image_json === "string"
+          ? changelog[1]!.post_image_json
+          : JSON.stringify(changelog[1]!.post_image_json)
+      expect(projectedUnit).toContain('"workUnitRef":"issue.8637"')
+      expect(projectedUnit).toContain('"state":"planned"')
 
       const publicRecord = publicFleetRunAuthorityRecord(first.record)
       expect(publicRecord).not.toHaveProperty("ownerUserId")
@@ -883,7 +946,7 @@ describe.skipIf(!hasLocalPostgres())(
         WHERE scope = ${run.record.scope}
         ORDER BY version
       `
-      expect(changelog).toHaveLength(3)
+      expect(changelog).toHaveLength(9)
       const projected =
         typeof changelog.at(-1)!.post_image_json === "string"
           ? (changelog.at(-1)!.post_image_json as string)
@@ -892,6 +955,60 @@ describe.skipIf(!hasLocalPostgres())(
       expect(projected).toContain('"completedAssignments":2')
       expect(projected).not.toContain(ownerUserId)
       expect(projected).not.toContain("work_claim.unit-a")
+      const attemptRows: Array<{
+        attempt_ref: string
+        state: string
+        assignment_ref: string | null
+        verification_json: string
+        token_usage_refs_json: string
+      }> = await sql`
+        SELECT attempt_ref, state, assignment_ref, verification_json,
+               token_usage_refs_json
+        FROM sarah_fleet_run_attempts
+        WHERE run_ref = ${run.record.runRef}
+        ORDER BY attempt_ref
+      `
+      expect(attemptRows).toEqual([
+        {
+          attempt_ref: "work_claim.unit-a",
+          state: "evidence_pending",
+          assignment_ref: "assignment.unit-a",
+          verification_json: '{"truth":"not_reported"}',
+          token_usage_refs_json: expect.stringMatching(/^\["usage\.pylon\.fleet_run\.[0-9a-f]{24}"\]$/),
+        },
+        {
+          attempt_ref: "work_claim.unit-b",
+          state: "evidence_pending",
+          assignment_ref: "assignment.unit-b",
+          verification_json: '{"truth":"not_reported"}',
+          token_usage_refs_json: "[]",
+        },
+      ])
+      const workUnitRows: Array<{
+        unit_ref: string
+        state: string
+        latest_attempt_ref: string | null
+        accepted_attempt_ref: string | null
+      }> = await sql`
+        SELECT unit_ref, state, latest_attempt_ref, accepted_attempt_ref
+        FROM sarah_fleet_run_work_units
+        WHERE run_ref = ${run.record.runRef}
+        ORDER BY unit_ref
+      `
+      expect(workUnitRows).toEqual([
+        {
+          unit_ref: "unit-a",
+          state: "verification_pending",
+          latest_attempt_ref: "work_claim.unit-a",
+          accepted_attempt_ref: null,
+        },
+        {
+          unit_ref: "unit-b",
+          state: "verification_pending",
+          latest_attempt_ref: "work_claim.unit-b",
+          accepted_attempt_ref: null,
+        },
+      ])
 
       const observed = await Effect.runPromise(
         repository().observe({ ownerUserId, runRef: run.record.runRef }),
@@ -900,6 +1017,172 @@ describe.skipIf(!hasLocalPostgres())(
       const publicRecord = publicFleetRunAuthorityRecord(observed.record)
       expect(publicRecord.execution.state).toBe("completed")
       expect(publicRecord).not.toHaveProperty("ownerUserId")
+    })
+
+    test("v2 persists a proven attempt under its work-claim identity", async () => {
+      const ownerUserId = "user-execution-v2-owner"
+      const pylonRef = "pylon-execution-v2"
+      const run = await start(ownerUserId, "execution-v2-complete-1", {
+        workSource: {
+          kind: "plan_dag",
+          planRef: "plan.execution.v2",
+          units: [{ unitRef: "unit-a", title: "Unit A", dependsOn: [] }],
+        },
+      })
+      await seedPylon({ pylonRef, ownerUserId })
+      const claimRef = await claimAndAccept({
+        ownerUserId,
+        pylonRef,
+        runRef: run.record.runRef,
+        claimIdempotencyKey: "execution-v2-claim-1",
+      })
+      const events = [
+        pylonExecutionEvent(run.record.runRef, claimRef, 1, {
+          schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA_V2,
+          observedAt: "2026-07-09T22:00:01.000Z",
+          kind: "run_started",
+        }),
+        pylonExecutionEvent(run.record.runRef, claimRef, 2, {
+          schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA_V2,
+          observedAt: "2026-07-09T22:00:02.000Z",
+          kind: "work_progress",
+          unitRef: "unit-a",
+          workClaimRef: "work_claim.unit-a.attempt-1",
+          assignmentRef: "assignment.unit-a.edge-99",
+          workerKind: "codex",
+          accountRefHash: `account.pylon.codex.${"e".repeat(24)}`,
+          blockerRefs: [],
+        }),
+        pylonExecutionEvent(run.record.runRef, claimRef, 3, {
+          schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA_V2,
+          observedAt: "2026-07-09T22:00:03.000Z",
+          kind: "work_terminal",
+          unitRef: "unit-a",
+          workClaimRef: "work_claim.unit-a.attempt-1",
+          assignmentRef: "assignment.unit-a.edge-99",
+          workerKind: "codex",
+          accountRefHash: `account.pylon.codex.${"e".repeat(24)}`,
+          terminalState: "accepted",
+          closeoutRef: "closeout.unit-a.attempt-1",
+          verification: {
+            truth: "passed",
+            verifierRef: "verifier.bun-test.1",
+            evidenceRefs: ["test.unit-a.1"],
+          },
+          artifactRefs: ["artifact.patch.unit-a.1"],
+          proofRefs: ["proof.unit-a.1"],
+          authorityReceiptRefs: ["receipt.authority.unit-a.1"],
+          usageEvidence: {
+            truth: "exact",
+            tokenUsageRefs: ["token_usage.unit-a.1"],
+          },
+          blockerRefs: [],
+        }),
+        pylonExecutionEvent(run.record.runRef, claimRef, 4, {
+          schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA_V2,
+          observedAt: "2026-07-09T22:00:04.000Z",
+          kind: "run_terminal",
+          terminalState: "completed",
+          blockerRefs: [],
+        }),
+      ]
+      const result = await Effect.runPromise(
+        repository().appendExecutionEvents({
+          ownerUserId,
+          pylonRef,
+          runRef: run.record.runRef,
+          batch: {
+            schema: FLEET_RUN_EXECUTION_BATCH_SCHEMA_V2,
+            claimRef,
+            events,
+          },
+        }),
+      )
+      expect(result.ack.execution.state).toBe("completed")
+
+      const attempts: Array<{
+        attempt_ref: string
+        work_unit_ref: string
+        owner_user_id: string
+        intake_claim_ref: string
+        pylon_ref: string
+        state: string
+        assignment_ref: string | null
+        verification_json: string
+        artifact_refs_json: string
+        proof_refs_json: string
+        authority_receipt_refs_json: string
+        closeout_ref: string | null
+        usage_truth: string
+        token_usage_refs_json: string
+        started_at: string
+        updated_at: string
+      }> = await sql`
+        SELECT attempt_ref, work_unit_ref, owner_user_id, intake_claim_ref,
+               pylon_ref, state, assignment_ref, verification_json,
+               artifact_refs_json, proof_refs_json,
+               authority_receipt_refs_json, closeout_ref, usage_truth,
+               token_usage_refs_json, started_at, updated_at
+        FROM sarah_fleet_run_attempts
+        WHERE run_ref = ${run.record.runRef}
+      `
+      expect(attempts).toEqual([
+        {
+          attempt_ref: "work_claim.unit-a.attempt-1",
+          work_unit_ref: "unit-a",
+          owner_user_id: ownerUserId,
+          intake_claim_ref: claimRef,
+          pylon_ref: pylonRef,
+          state: "succeeded",
+          assignment_ref: "assignment.unit-a.edge-99",
+          verification_json:
+            '{"evidenceRefs":["test.unit-a.1"],"truth":"passed","verifierRef":"verifier.bun-test.1"}',
+          artifact_refs_json: '["artifact.patch.unit-a.1"]',
+          proof_refs_json: '["proof.unit-a.1"]',
+          authority_receipt_refs_json:
+            '["receipt.authority.unit-a.1"]',
+          closeout_ref: "closeout.unit-a.attempt-1",
+          usage_truth: "exact",
+          token_usage_refs_json: expect.stringMatching(
+            /^\["usage\.pylon\.fleet_run\.[0-9a-f]{24}"\]$/,
+          ),
+          started_at: new Date(FIXED_NOW).toISOString(),
+          updated_at: new Date(FIXED_NOW).toISOString(),
+        },
+      ])
+      const units: Array<{
+        state: string
+        latest_attempt_ref: string | null
+        accepted_attempt_ref: string | null
+      }> = await sql`
+        SELECT state, latest_attempt_ref, accepted_attempt_ref
+        FROM sarah_fleet_run_work_units
+        WHERE run_ref = ${run.record.runRef} AND unit_ref = 'unit-a'
+      `
+      expect(units).toEqual([
+        {
+          state: "succeeded",
+          latest_attempt_ref: "work_claim.unit-a.attempt-1",
+          accepted_attempt_ref: "work_claim.unit-a.attempt-1",
+        },
+      ])
+      const postImages: Array<{ post_image_json: unknown }> = await sql`
+        SELECT post_image_json FROM khala_sync_changelog
+        WHERE scope = ${run.record.scope}
+        ORDER BY version
+      `
+      const serialized = postImages
+        .map((row) =>
+          typeof row.post_image_json === "string"
+            ? row.post_image_json
+            : JSON.stringify(row.post_image_json),
+        )
+        .join("\n")
+      expect(serialized).toContain('"attemptRef":"work_claim.unit-a.attempt-1"')
+      expect(serialized).toContain('"assignmentRef":"assignment.unit-a.edge-99"')
+      expect(serialized).toContain('"acceptedAttemptRef":"work_claim.unit-a.attempt-1"')
+      expect(serialized).not.toContain("token_usage.unit-a.1")
+      expect(serialized).not.toContain(ownerUserId)
     })
 
     test("rejects gaps, foreign units, conflicting replay, and incomplete completion without partial writes", async () => {
@@ -1157,6 +1440,58 @@ describe.skipIf(!hasLocalPostgres())(
         ["unit-a", "work_claim.unit-a.attempt-1", "failed"],
         ["unit-a", "work_claim.unit-a.attempt-2", "accepted"],
         ["unit-b", "work_claim.unit-b.attempt-1", "accepted"],
+      ])
+      const persistedAttempts: Array<{
+        attempt_ref: string
+        work_unit_ref: string
+        state: string
+      }> = await sql`
+        SELECT attempt_ref, work_unit_ref, state
+        FROM sarah_fleet_run_attempts
+        WHERE run_ref = ${run.record.runRef}
+        ORDER BY attempt_ref
+      `
+      expect(persistedAttempts).toEqual([
+        {
+          attempt_ref: "work_claim.unit-a.attempt-1",
+          work_unit_ref: "unit-a",
+          state: "failed",
+        },
+        {
+          attempt_ref: "work_claim.unit-a.attempt-2",
+          work_unit_ref: "unit-a",
+          state: "evidence_pending",
+        },
+        {
+          attempt_ref: "work_claim.unit-b.attempt-1",
+          work_unit_ref: "unit-b",
+          state: "evidence_pending",
+        },
+      ])
+      const latestPointers: Array<{
+        unit_ref: string
+        state: string
+        latest_attempt_ref: string | null
+        accepted_attempt_ref: string | null
+      }> = await sql`
+        SELECT unit_ref, state, latest_attempt_ref, accepted_attempt_ref
+        FROM sarah_fleet_run_work_units
+        WHERE run_ref = ${run.record.runRef}
+        ORDER BY unit_ref
+      `
+      expect(latestPointers).toEqual([
+        {
+          unit_ref: "unit-a",
+          state: "verification_pending",
+          latest_attempt_ref: "work_claim.unit-a.attempt-2",
+          accepted_attempt_ref: null,
+        },
+        {
+          unit_ref: "unit-b",
+          state: "verification_pending",
+          latest_attempt_ref: "work_claim.unit-b.attempt-1",
+          accepted_attempt_ref: null,
+        },
       ])
     })
 

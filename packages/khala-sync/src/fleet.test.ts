@@ -3,9 +3,11 @@ import {
   canonicalJson,
   decodeFleetAccountEntity,
   decodeFleetAssignmentEntity,
+  decodeFleetAttemptEntity,
   decodeFleetCommandOutcomeEntity,
   decodeFleetInboxFlagEntity,
   decodeFleetRunEntity,
+  decodeFleetWorkUnitEntity,
   decodeFleetWorkerEntity,
   encodeFleetCommandOutcomeEntity,
   encodeFleetInboxFlagEntity,
@@ -44,12 +46,98 @@ describe("fleet entity contracts", () => {
       "fleet_run",
       "fleet_worker",
       "fleet_assignment",
+      "fleet_work_unit",
+      "fleet_attempt",
       "fleet_account",
       "fleet_inbox_flag",
       "fleet_approval",
       "fleet_steer",
       "fleet_command_outcome",
     ])
+  })
+
+  test("fleet work units keep stable plan identity across attempt retries", () => {
+    expect(
+      decodeFleetWorkUnitEntity({
+        workUnitRef: "unit-a",
+        issueRef: "#8639",
+        dependsOnRefs: ["unit-bootstrap"],
+        state: "succeeded",
+        latestAttemptRef: "work_claim.unit-a.attempt-2",
+        acceptedAttemptRef: "work_claim.unit-a.attempt-2",
+        updatedAt: "2026-07-09T23:00:04.000Z",
+      }),
+    ).toMatchObject({
+      workUnitRef: "unit-a",
+      acceptedAttemptRef: "work_claim.unit-a.attempt-2",
+    })
+    expect(() =>
+      decodeFleetWorkUnitEntity({
+        workUnitRef: "unit-a",
+        issueRef: null,
+        dependsOnRefs: [],
+        state: "planned",
+        latestAttemptRef: "work_claim.invented",
+        acceptedAttemptRef: null,
+        updatedAt: "2026-07-09T23:00:04.000Z",
+      }),
+    ).toThrow()
+  })
+
+  test("fleet attempts require exact evidence before success", () => {
+    const succeeded = {
+      attemptRef: "work_claim.unit-a.attempt-2",
+      workUnitRef: "unit-a",
+      intakeClaimRef: `claim.sarah_fleet_run.${"a".repeat(24)}`,
+      pylonRef: "pylon-owner-1",
+      workerKind: "codex",
+      state: "succeeded",
+      progressClass: "terminal",
+      assignmentRef: null,
+      accountRefHash: `account.pylon.codex.${"b".repeat(24)}`,
+      capacityClass: "owner_local",
+      marginalCostClass: "owner_capacity",
+      verification: {
+        truth: "passed",
+        verifierRef: "verifier.bun-test.1",
+        evidenceRefs: ["test.run.unit-a.1"],
+      },
+      artifactRefs: ["artifact.patch.unit-a.1"],
+      proofRefs: ["proof.unit-a.1"],
+      authorityReceiptRefs: ["receipt.authority.unit-a.1"],
+      closeoutRef: "closeout.unit-a.1",
+      usageEvidence: {
+        truth: "exact",
+        usageRefs: ["usage.unit-a.1"],
+      },
+      blockerRefs: [],
+      lastEventRef: `event.pylon.fleet_run.${"c".repeat(24)}`,
+      startedAt: "2026-07-09T23:00:01.000Z",
+      lastObservedAt: "2026-07-09T23:00:03.000Z",
+      terminalAt: "2026-07-09T23:00:04.000Z",
+      updatedAt: "2026-07-09T23:00:04.000Z",
+    } as const
+    expect(decodeFleetAttemptEntity(succeeded).attemptRef).toBe(
+      succeeded.attemptRef,
+    )
+    expect(() =>
+      decodeFleetAttemptEntity({ ...succeeded, proofRefs: [] }),
+    ).toThrow()
+    expect(() =>
+      decodeFleetAttemptEntity({
+        ...succeeded,
+        workerKind: "claude",
+      }),
+    ).toThrow()
+    expect(() =>
+      decodeFleetAttemptEntity({
+        ...succeeded,
+        assignmentRef: "/Users/operator/worktree",
+      }),
+    ).toThrow()
+    expect(() =>
+      decodeFleetAttemptEntity({ ...succeeded, rawPrompt: "private" }),
+    ).toThrow()
   })
 
   test("fleet_command_outcome separates delivery from effective state", () => {
