@@ -112,8 +112,20 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
       const created = yield* Effect.promise(bridge.newThread)
       if (typeof created === "object" && created !== null && typeof (created as { id?: unknown }).id === "string") yield* SubscriptionRef.update(state, (current) => ({ ...current, threads: [created as DesktopThread], activeThreadId: (created as DesktopThread).id, notes: (created as DesktopThread).notes }))
     }
-    const report: IntentReporter = (ref, runtimeValue) =>
-      registry.dispatch(resolveIntentRef(ref, runtimeValue ?? null))
+    const focusComposer = (): void => {
+      // Let the controlled TextField render its cleared/enabled state first.
+      window.setTimeout(() => {
+        root.querySelector<HTMLInputElement>('[data-en-key="shell-input"] input')?.focus()
+      }, 0)
+    }
+    const report: IntentReporter = (ref, runtimeValue) => {
+      const shouldFocus = ref.name === "DesktopNewChat" || ref.name === "DesktopNoteSubmitted"
+      return registry.dispatch(resolveIntentRef(ref, runtimeValue ?? null)).pipe(
+        Effect.ensuring(Effect.sync(() => {
+          if (shouldFocus) focusComposer()
+        })),
+      )
+    }
     const renderer = makeDomRenderer({ theme: openagentsDesktopTheme })
     yield* renderer.mount(root, program.viewStream, report)
   })
