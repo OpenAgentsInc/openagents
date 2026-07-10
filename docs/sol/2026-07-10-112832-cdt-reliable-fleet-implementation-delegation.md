@@ -56,6 +56,13 @@
   archived/exported, and was accepted for App Store delivery. Processing/
   `VALID` and owner physical-device acceptance remain unproven. FAST-3 and a
   disjoint M0–M2 leaf may now be selected after refreshing current claims.
+- 2026-07-10 11:47 CDT — FAST-3 ran from clean current `main`: Desktop
+  typecheck, 61-test/330-expectation suite, build, and fixture-only Electron
+  smoke all passed; mobile typecheck and 20-test/69-expectation suite passed.
+  This is R0 evidence only, not proof of Sync/Fleet authority, build-116
+  processing, or physical-device acceptance. A real current Desktop reconnect
+  reached the OpenAI device-auth consent screen after honestly displaying five
+  `credentials_revoked` accounts; it remains pending owner consent.
 
 ## Mission
 
