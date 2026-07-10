@@ -506,6 +506,7 @@ describe.skipIf(!hasLocalPostgres())(
           seq: pauseSeq,
           kind: "fleet_run_control",
           deliveryOutcome: "applied",
+          completionOutcome: "applied",
           effectiveOutcome: "paused",
           completionRef: pauseOutcome.outcomeRef,
           completedAt: "2026-07-09T23:00:05.000Z",
@@ -515,6 +516,7 @@ describe.skipIf(!hasLocalPostgres())(
           intentId: resume.intentId,
           seq: resumeSeq,
           deliveryOutcome: "applied",
+          completionOutcome: "applied",
           effectiveOutcome: "running",
         }),
       ])
@@ -654,6 +656,7 @@ describe.skipIf(!hasLocalPostgres())(
           kind: "approval_decision",
           targetRef: approval.approvalRef,
           deliveryOutcome: "applied",
+          completionOutcome: "applied",
           effectiveOutcome: "allowed",
           completionRef: approvalOutcome.outcomeRef,
           completedAt: "2026-07-09T23:00:05.000Z",
@@ -664,6 +667,7 @@ describe.skipIf(!hasLocalPostgres())(
           kind: "steer_message",
           targetRef: steer.targetRef,
           deliveryOutcome: "queued_follow_up",
+          completionOutcome: null,
           effectiveOutcome: null,
           completionRef: null,
           completedAt: null,
@@ -878,6 +882,60 @@ describe.skipIf(!hasLocalPostgres())(
           pylon_ref: fixture.pylonRef,
         },
       ])
+    })
+
+    test("serializes delivery against a concurrent claim release", async () => {
+      const fixture = await startAndAccept("release-race")
+      const pause = runControlIntent(
+        fixture,
+        "intent.steering.release-race.pause",
+        "pause",
+        "2026-07-09T23:30:00.000Z",
+      )
+      await insertIntent(fixture, pause)
+
+      let releaseTransaction: (() => void) | undefined
+      let markUpdated: (() => void) | undefined
+      const mayCommit = new Promise<void>((resolve) => {
+        releaseTransaction = resolve
+      })
+      const updated = new Promise<void>((resolve) => {
+        markUpdated = resolve
+      })
+      const releasing = sql.begin(async (tx) => {
+        await tx`
+          UPDATE sarah_fleet_run_intake_leases
+          SET state = 'released', updated_at = '2026-07-09T23:30:01.000Z'
+          WHERE run_ref = ${fixture.runRef}
+            AND claim_ref = ${fixture.claimRef}
+        `
+        markUpdated?.()
+        await mayCommit
+      })
+      await updated
+
+      let settled = false
+      const reading = Effect.runPromise(
+        exchange()
+          .readPage({ ...fixture, after: 0, limit: 10 })
+          .pipe(Effect.flip),
+      ).then((error) => {
+        settled = true
+        return error
+      })
+      await new Promise((resolve) => setTimeout(resolve, 25))
+      expect(settled).toBe(false)
+      releaseTransaction?.()
+      await releasing
+
+      const error = await reading
+      expect(error.kind).toBe("claim_conflict")
+      const reservations: Array<{ count: string | number }> = await sql`
+        SELECT count(*) AS count
+        FROM sarah_fleet_run_steering_deliveries
+        WHERE run_ref = ${fixture.runRef}
+      `
+      expect(Number(reservations[0]?.count ?? 0)).toBe(0)
     })
   },
 )

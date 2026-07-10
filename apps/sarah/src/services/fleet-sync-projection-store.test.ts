@@ -129,6 +129,7 @@ const commandOutcome = decodeFleetCommandOutcomeEntity({
   kind: "fleet_run_control",
   targetRef: runRef,
   deliveryOutcome: "applied",
+  completionOutcome: "applied",
   effectiveOutcome: "paused",
   completionRef: "outcome.pylon.fleet_steering.d93f26d5c3e00b404336608a",
   completedAt: "2026-07-09T19:59:55.000Z",

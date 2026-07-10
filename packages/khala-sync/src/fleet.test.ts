@@ -59,6 +59,7 @@ describe("fleet entity contracts", () => {
       kind: "fleet_run_control",
       targetRef: "fleet_run.sarah.0123456789abcdef0123",
       deliveryOutcome: "applied",
+      completionOutcome: "applied",
       effectiveOutcome: "paused",
       completionRef: "outcome.pylon.fleet_steering.d93f26d5c3e00b404336608a",
       completedAt: "2026-07-09T23:00:02.000Z",
@@ -80,6 +81,7 @@ describe("fleet entity contracts", () => {
       kind: "steer_message",
       targetRef: null,
       deliveryOutcome: "queued_follow_up",
+      completionOutcome: null,
       effectiveOutcome: null,
       completionRef: null,
       completedAt: null,
@@ -92,6 +94,7 @@ describe("fleet entity contracts", () => {
     expect(
       decodeFleetCommandOutcomeEntity({
         ...valid,
+        completionOutcome: "applied",
         effectiveOutcome: "steer_delivered",
         completionRef:
           "completion.pylon.fleet_steering.abcdef0123456789abcdef01",
@@ -101,6 +104,7 @@ describe("fleet entity contracts", () => {
       deliveryOutcome: "queued_follow_up",
       outcomeRef: valid.outcomeRef,
       effectiveOutcome: "steer_delivered",
+      completionOutcome: "applied",
       completionRef:
         "completion.pylon.fleet_steering.abcdef0123456789abcdef01",
     })
@@ -119,8 +123,28 @@ describe("fleet entity contracts", () => {
     expect(() =>
       decodeFleetCommandOutcomeEntity({
         ...valid,
+        completionOutcome: "applied",
         effectiveOutcome: "steer_delivered",
         completionRef: "worker.steering.not-a-completion-receipt",
+        completedAt: "2026-07-09T23:00:03.000Z",
+      }),
+    ).toThrow()
+    expect(() =>
+      decodeFleetCommandOutcomeEntity({
+        ...valid,
+        deliveryOutcome: "rejected",
+        completionOutcome: "applied",
+        effectiveOutcome: "steer_delivered",
+        completionRef:
+          "completion.pylon.fleet_steering.abcdef0123456789abcdef01",
+        completedAt: "2026-07-09T23:00:03.000Z",
+      }),
+    ).toThrow()
+    expect(() =>
+      decodeFleetCommandOutcomeEntity({
+        ...valid,
+        completionOutcome: "failed",
+        completionRef: null,
         completedAt: "2026-07-09T23:00:03.000Z",
       }),
     ).toThrow()

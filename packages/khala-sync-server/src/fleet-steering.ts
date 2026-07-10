@@ -58,12 +58,14 @@ export const FLEET_STEERING_RUN_REQUIRED_REJECTION = "fleet_run_required"
 export const FLEET_STEERING_INTENT_EXISTS_REJECTION = "fleet_intent_exists"
 export const FLEET_STEERING_REF_SHAPE_REJECTION = "fleet_intent_ref_shape"
 export const FLEET_STEERING_BODY_SHAPE_REJECTION = "fleet_intent_body_shape"
+export const FLEET_STEERING_RUN_LIMIT_REJECTION = "fleet_intent_run_limit"
 
 /** The public-safe ref shape the durable table's CHECK constraints enforce. */
 const PUBLIC_REF_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/
 const PUBLIC_BODY_REF_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:/#-]*$/u
 const FLEET_STEERING_INLINE_BODY_MAX_BYTES = 16 * 1_024
 const FLEET_STEERING_INTENT_MAX_BYTES = 32 * 1_024
+export const FLEET_STEERING_MAX_INTENTS_PER_RUN = 1_024
 
 export const decodeFleetIntentArgs = (argsJson: string): KhalaFleetIntent =>
   decodeKhalaFleetIntentJson(argsJson)
@@ -185,6 +187,27 @@ const readSteeringConflict = async (
   return rows[0] !== undefined
 }
 
+const steeringRunLimitReached = async (
+  ctx: MutatorContext,
+  runRef: string,
+): Promise<boolean> => {
+  const scope = fleetRunScope(runRef)
+  const ownerRows: Array<{ owner_user_id: string }> = await ctx.writer.sql`
+    SELECT owner_user_id
+    FROM khala_sync_scope_owners
+    WHERE scope = ${scope}
+      AND owner_user_id = ${ctx.userId}
+    FOR UPDATE
+  `
+  if (ownerRows[0]?.owner_user_id !== ctx.userId) return true
+  const rows: Array<{ count: string | number | bigint }> = await ctx.writer.sql`
+    SELECT count(*) AS count
+    FROM khala_sync_fleet_steering_intents
+    WHERE run_ref = ${runRef}
+  `
+  return Number(rows[0]?.count ?? 0) >= FLEET_STEERING_MAX_INTENTS_PER_RUN
+}
+
 const insertSteeringIntent = async (
   ctx: MutatorContext,
   runRef: string,
@@ -254,6 +277,14 @@ const dispatch = async (
       ctx,
       FLEET_STEERING_INTENT_EXISTS_REJECTION,
       "this fleet steering intent was already recorded",
+    )
+  }
+
+  if (await steeringRunLimitReached(ctx, runRef)) {
+    return reject(
+      ctx,
+      FLEET_STEERING_RUN_LIMIT_REJECTION,
+      "this fleet run reached its bounded command receipt limit",
     )
   }
 

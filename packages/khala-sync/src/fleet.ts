@@ -391,6 +391,15 @@ export const FleetCommandEffectiveOutcome = S.Literals([
 export type FleetCommandEffectiveOutcome =
   typeof FleetCommandEffectiveOutcome.Type
 
+export const FleetCommandCompletionOutcome = S.Literals([
+  "applied",
+  "skipped_stale",
+  "rejected",
+  "failed",
+])
+export type FleetCommandCompletionOutcome =
+  typeof FleetCommandCompletionOutcome.Type
+
 /**
  * Body-free, reconnect-safe command receipt. It contains no prompt, steer
  * body, reason text, session handle, local path, or raw account identity.
@@ -411,9 +420,12 @@ export const FleetCommandCompletionRef = S.String.check(
 )
 export type FleetCommandCompletionRef = typeof FleetCommandCompletionRef.Type
 
-export class FleetCommandOutcomeEntity extends S.Class<FleetCommandOutcomeEntity>(
-  "FleetCommandOutcomeEntity",
-)({
+export const FleetCommandOutcomeRef = S.String.check(
+  S.isPattern(/^outcome\.pylon\.fleet_steering\.[a-f0-9]{24}$/),
+)
+export type FleetCommandOutcomeRef = typeof FleetCommandOutcomeRef.Type
+
+const FleetCommandOutcomeEntityFields = {
   intentId: FleetPublicRef,
   seq: S.Number.check(
     S.isInt(),
@@ -424,16 +436,88 @@ export class FleetCommandOutcomeEntity extends S.Class<FleetCommandOutcomeEntity
   /** A public-safe target ref only; unsafe/absent optional targets become null. */
   targetRef: S.NullOr(FleetPublicRef),
   deliveryOutcome: FleetCommandDeliveryOutcome,
+  completionOutcome: S.NullOr(FleetCommandCompletionOutcome),
   effectiveOutcome: S.NullOr(FleetCommandEffectiveOutcome),
   completionRef: S.NullOr(FleetCommandCompletionRef),
   completedAt: S.NullOr(FleetIsoTimestamp),
-  outcomeRef: FleetPublicRef,
+  outcomeRef: FleetCommandOutcomeRef,
   /** Pylon's observation clock. */
   observedAt: FleetIsoTimestamp,
   /** Authoritative server receipt clock. */
   recordedAt: FleetIsoTimestamp,
   updatedAt: FleetIsoTimestamp,
-}) {}
+} as const
+
+const fleetCommandEffectiveMatchesKind = (
+  kind: FleetCommandKind,
+  effective: FleetCommandEffectiveOutcome,
+): boolean =>
+  kind === "fleet_run_control"
+    ? effective === "running" ||
+      effective === "paused" ||
+      effective === "draining" ||
+      effective === "stopped"
+    : kind === "approval_decision"
+      ? effective === "allowed" || effective === "denied"
+      : kind === "steer_message"
+        ? effective === "steer_delivered"
+        : false
+
+export const FleetCommandOutcomeEntity = S.Struct(
+  FleetCommandOutcomeEntityFields,
+).pipe(
+  S.check(
+    S.makeFilter(
+      (entity) => {
+        const hasCompletionOutcome = entity.completionOutcome !== null
+        const hasCompletionRef = entity.completionRef !== null
+        const hasCompletedAt = entity.completedAt !== null
+        const completionTupleCoherent =
+          hasCompletionOutcome === hasCompletionRef &&
+          hasCompletionRef === hasCompletedAt
+        if (!completionTupleCoherent) return false
+
+        if (entity.deliveryOutcome === "applied") {
+          return entity.completionOutcome === "applied" &&
+            entity.completionRef === entity.outcomeRef &&
+            entity.effectiveOutcome !== null &&
+            fleetCommandEffectiveMatchesKind(
+              entity.kind,
+              entity.effectiveOutcome,
+            )
+        }
+
+        if (entity.deliveryOutcome === "queued_follow_up") {
+          if (entity.completionOutcome === null) {
+            return entity.effectiveOutcome === null
+          }
+          if (entity.completionOutcome === "applied") {
+            return entity.completionRef?.startsWith(
+              "completion.pylon.fleet_steering.",
+            ) === true &&
+              entity.effectiveOutcome !== null &&
+              fleetCommandEffectiveMatchesKind(
+                entity.kind,
+                entity.effectiveOutcome,
+              )
+          }
+          return entity.completionRef?.startsWith(
+            "completion.pylon.fleet_steering.",
+          ) === true && entity.effectiveOutcome === null
+        }
+
+        return entity.completionOutcome === null &&
+          entity.effectiveOutcome === null
+      },
+      {
+        message:
+          "fleet command delivery, completion, and effective outcomes must be coherent",
+      },
+    ),
+  ),
+)
+export type FleetCommandOutcomeEntity =
+  typeof FleetCommandOutcomeEntity.Type
 
 // ---------------------------------------------------------------------------
 // Fleet operator intents (KS-3.2 #8292)

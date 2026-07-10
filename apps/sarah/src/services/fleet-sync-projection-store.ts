@@ -279,6 +279,7 @@ const POST_IMAGE_KEYS = {
     "kind",
     "targetRef",
     "deliveryOutcome",
+    "completionOutcome",
     "effectiveOutcome",
     "completionRef",
     "completedAt",

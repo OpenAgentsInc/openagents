@@ -246,6 +246,7 @@ const requireAcceptedLease = async (
       AND lease.state = 'accepted'
       AND request.status = 'claimed_by_pylon'
     LIMIT 1
+    FOR UPDATE OF lease
   `
   const row = rows[0]
   if (row === undefined) {
@@ -807,6 +808,7 @@ const appendCommandOutcomeProjection = async (
         kind: input.intent.kind,
         targetRef: safeCommandTarget(input.runRef, input.intent),
         deliveryOutcome: input.outcome.outcome,
+        completionOutcome: input.effective === null ? null : "applied",
         effectiveOutcome: input.effective?.effectiveOutcome ?? null,
         completionRef: input.effective?.completionRef ?? null,
         completedAt: input.effective?.completedAt ?? null,

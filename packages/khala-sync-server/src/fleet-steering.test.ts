@@ -38,6 +38,8 @@ import {
   FLEET_STEERING_INTENT_EXISTS_REJECTION,
   FLEET_STEERING_KIND_REJECTION,
   FLEET_STEERING_BODY_SHAPE_REJECTION,
+  FLEET_STEERING_MAX_INTENTS_PER_RUN,
+  FLEET_STEERING_RUN_LIMIT_REJECTION,
   FLEET_STEERING_SCOPE_REJECTION,
   fleetSteeringMutators,
 } from "./fleet-steering.js"
@@ -614,6 +616,84 @@ describe.skipIf(!hasLocalPostgres())(
         FLEET_STEERING_BODY_SHAPE_REJECTION,
         FLEET_STEERING_BODY_SHAPE_REJECTION,
       ])
+    })
+
+    test("bounds durable command receipts per run before Sarah persistence can overflow", async () => {
+      const client = freshClient()
+      const runRef = "fleet.mh6.command-limit"
+      const scope = fleetRunScope(runRef)
+      const seeded = await projectFleetEntitiesBestEffort({
+        changes: [
+          {
+            entity: fleetRunPostImage({
+              counters: {},
+              runRef,
+              startedAt: nowIso,
+              state: "running",
+              targetConcurrency: 1,
+              updatedAt: nowIso,
+              workerKind: "auto",
+            }),
+            kind: "fleet_run",
+            op: "upsert",
+          },
+        ],
+        ownerUserId: client.userId,
+        runId: runRef,
+        sql: sql as unknown as SyncSql,
+      })
+      expect(seeded.ok).toBe(true)
+      await sql`
+        INSERT INTO khala_sync_fleet_steering_intents
+          (intent_id, scope, run_ref, kind, action, approval_ref, decision,
+           surface, requested_by_user_id, idempotency_key, intent_json,
+           mutation_ref, created_at)
+        SELECT
+          'intent.mh6.command-limit.' || series.n,
+          ${scope}, ${runRef}, 'fleet_run_control', 'pause', NULL, NULL,
+          'mobile', ${client.userId},
+          'idem.mh6.command-limit.' || series.n,
+          jsonb_build_object(
+            'schema', 'khala.fleet_intent.v1',
+            'intentId', 'intent.mh6.command-limit.' || series.n,
+            'createdAt', ${nowIso}::text,
+            'origin', jsonb_build_object('surface', 'mobile'),
+            'idempotencyKey', 'idem.mh6.command-limit.' || series.n,
+            'runRef', ${runRef}::text,
+            'kind', 'fleet_run_control',
+            'action', 'pause'
+          ),
+          'mutation.test.command-limit', ${nowIso}
+        FROM generate_series(
+          1,
+          ${FLEET_STEERING_MAX_INTENTS_PER_RUN}
+        ) AS series(n)
+      `
+
+      const result = await executePush({
+        registry,
+        request: pushRequest(client, [
+          envelope(1, FLEET_DISPATCH_RUN_CONTROL_MUTATOR_NAME, runControlIntent({
+            action: "pause",
+            intentId: "intent.mh6.command-limit.overflow",
+            runRef,
+          })),
+        ]),
+        sql: sql as unknown as SyncSql,
+        userId: client.userId,
+      })
+      expect(result.results[0]?.status).toBe("rejected")
+      expect(result.results[0]?.errorCode).toBe(
+        FLEET_STEERING_RUN_LIMIT_REJECTION,
+      )
+      const rows: Array<{ count: string | number }> = await sql`
+        SELECT count(*) AS count
+        FROM khala_sync_fleet_steering_intents
+        WHERE run_ref = ${runRef}
+      `
+      expect(Number(rows[0]?.count ?? 0)).toBe(
+        FLEET_STEERING_MAX_INTENTS_PER_RUN,
+      )
     })
   },
 )
