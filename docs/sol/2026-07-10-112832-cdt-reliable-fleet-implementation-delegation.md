@@ -96,6 +96,16 @@
   a native app lifecycle adapter or physical-device background execution.
   Khala Sync typecheck plus 135 tests/12,578 expectations and mobile
   typecheck plus 21 tests/74 expectations pass.
+- 2026-07-10 12:24 CDT — M1 compatibility audit found a security-contract
+  mismatch that must be resolved by Sol before a real mobile sign-in can land:
+  `apps/openagents-mobile/app.json` registers `openagents://`, while the
+  frozen server-side mobile OpenAuth PKCE redirect policy accepts only
+  `khala://auth` for the mobile client. No client redirect, issuer allowlist,
+  native manifest, or credential-storage behavior was invented or relaxed.
+  The next M1 leaf is a senior-owned decision that names the canonical
+  OpenAgents redirect/client registration and its migration/rollback posture;
+  only then can secure-storage recovery and the authenticated Sync adapter be
+  implemented honestly.
 
 ## Mission
 
