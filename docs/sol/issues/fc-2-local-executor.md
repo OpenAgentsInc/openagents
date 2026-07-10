@@ -40,7 +40,7 @@ are started. This issue joins those real paths.
 
 ## Landed disposition
 
-The implementation stack ending at `134d7d8ca3` closes the code and fixture
+The implementation stack ending at `d779c360c3` closes the code and fixture
 boundary:
 
 - one Pylon-home SQLite authority owns accepted Sarah runs, claims, task state,

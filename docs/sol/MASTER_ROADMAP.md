@@ -187,16 +187,19 @@ The immediate gaps are now narrower composition and live-proof gaps:
   revision `00068-5t8`. The real mixed-account canary remains #8640, not an
   unreported FC-1 residue.
 - #8633 is closed at the implementation/fixture boundary on the stack ending
-  `134d7d8ca3`: one production standing composition now owns mixed
+  `d779c360c3`: one production standing composition now owns mixed
   Codex/Claude/Grok capacity, typed auto fallback, restart-safe claims and
   health, exact-or-unmeasured closeout evidence, a durable local outbox, and an
   authenticated owner/Pylon-bound server execution projection. It has not
   spent a live three-account run in this program; that receipt remains #8640.
 - Sarah's safe FleetRun projection, persisted exact-cursor live session, views,
   run controls, and approval decisions are code/fixture-proven in retained
-  `/sarah`; a deployed owner-cookie WebSocket reconnect canary and a projection-
-  authorized steer affordance remain. The private-body-safe typed steer client
-  exists, but the UI does not invent authority absent from the projection.
+  `/sarah`, including exact start-result-to-scope selection through
+  `6cd9d09205`. They are not yet executor-effective: the server writes the new
+  typed steering table while standing Pylon still consumes the older intent
+  vocabulary. Canonical attempt identity, projection-authorized steer,
+  per-unit closeout evidence/canvas edges, and a deployed owner-cookie
+  reconnect canary remain.
 - The trusted-context voice coordinator/SSE adapter is fixture-proven but stays
   unarmed until renderer-authenticated conversation/session metadata carries
   the server-minted conversation ref; model/system text is not scope authority.
@@ -212,8 +215,8 @@ P0 fixes those seams. It does not build another fleet system.
 | Lane | Narrowest proven state on `main` | Next blocking proof |
 | --- | --- | --- |
 | #8637 FC-1 | **closed** at `0892d57b3b`: integrated operator conversation -> durable authority -> registered standing Pylon -> bounded closeout is fixture-proven; timing is 1.8s acknowledgment / 6.1s first claim / 8.6s first capacity; staging `00046-jpn` and production `00068-5t8` are deployed and smoke-proven | none in FC-1; real mixed-account execution is #8640 and owner-cookie reconnect/steer is #8639 |
-| #8633 FC-2 | **closed** on the stack ending `134d7d8ca3`: production standing adapters, shared typed auto policy, restart-safe mixed claims, health rotation, durable execution outbox/server projection, and one integrated three-harness restart/usage fixture are proven | none in FC-2; useful live Codex+Claude+Grok work is #8640 |
-| #8639 FC-3 | through `3d87cb609b`: exact-scope projection/controls/reconnect and fail-closed media/text/Fleet continuity are code-landed and fixture-proven | start-result-to-live-scope composition, owner-cookie reconnect canary, authorized steer, and integrated closeout proof |
+| #8633 FC-2 | **closed** on the stack ending `d779c360c3`: production standing adapters, shared typed auto policy, restart-safe mixed claims, health rotation, durable execution outbox/server projection, and one integrated three-harness restart/usage fixture are proven | none in FC-2; useful live Codex+Claude+Grok work is #8640 |
+| #8639 FC-3 | through `6cd9d09205`: exact start-to-scope projection, controls/approval writes, reconnect runtime, closeout shell, and fail-closed media/text/Fleet continuity are code-landed and fixture-proven | deliver new steering rows to standing Pylon; canonical attempt identity/authority; per-unit evidence and full canvas chain; integrated reconnect/control receipt |
 | #8640 FC-5 | acceptance contract only | C1 integrated fixture, then Phase A on one pinned deployment |
 
 These rows are implementation receipts, not issue closure. The commit named in
@@ -299,7 +302,7 @@ Exit:
 wires the real Pylon supervisor across Codex, Claude, and Grok.
 
 Status: **closed at the code/fixture boundary** on the implementation stack
-ending `134d7d8ca3`. The integrated receipt proves one accepted Sarah run,
+ending `d779c360c3`. The integrated receipt proves one accepted Sarah run,
 three concrete harness ports, restart without duplicate claims or redispatch,
 durable server terminal projection, Codex/Claude exact evidence, and Grok
 `not_measured` evidence. The useful real-account burn is #8640, not an implied
@@ -324,6 +327,15 @@ through the narrow shared package.
 
 **[#8639 FC-3](https://github.com/OpenAgentsInc/openagents/issues/8639)**
 connects durable progress and existing fleet intents to Sarah.
+
+Current critical gap: Sarah's controls, approvals, and private steer client
+write `khala_sync_fleet_steering_intents`, while standing Pylon enforces the
+older `khala_sync_fleet_intents` table. A server receipt is therefore not yet
+proof that execution changed. FC-3 must add owner-bound delivery, a durable
+Pylon watermark/outcome, and exact-target enforcement before UI controls count
+as working. Then it must populate the currently empty closeout-evidence input
+and extend the canvas from run/work/worker to the backed
+plan→claim→assignment→verification→closeout chain.
 
 Exit:
 

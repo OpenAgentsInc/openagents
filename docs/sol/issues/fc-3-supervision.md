@@ -14,6 +14,25 @@ MH-6 already shipped Khala Sync fleet projections plus the shared typed
 Sarah surface already has a typed SSE bus, Blueprint deltas, Actions, and
 Code/Receipts panels. This issue composes them.
 
+## Current critical gap
+
+The retained `/sarah` surface now selects an exact successful run, persists and
+resumes its cursor, renders supervision, and writes typed run-control,
+approval, and private steer requests to `khala_sync_fleet_steering_intents`.
+Standing Pylon still consumes the older `khala_sync_fleet_intents` vocabulary.
+A durable server receipt can therefore exist without changing the active
+executor. Closure requires owner-bound delivery of the new rows, a durable
+Pylon watermark and applied/rejected outcome, exact attempt targeting, and
+reconnect-safe replay before any control is called effective.
+
+The visual/evidence residual is equally concrete: non-issue work can fall back
+to assignment identity; steer is correctly absent without a server-authorized
+affordance; the canvas stops at run→work→worker; and the retained browser mount
+currently calls the coding-closeout projector with `evidence: []`. FC-2's
+per-attempt terminal projection must feed canonical claim/assignment,
+verification, artifact, capacity/cost, approval/authority, and closeout
+evidence into the full plan→claim→assignment→verification→closeout chain.
+
 ## Scope
 
 1. Project run, work-unit, worker, account-health, blocker, approval, verify,
