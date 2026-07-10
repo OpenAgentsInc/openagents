@@ -2153,6 +2153,27 @@ async function resolvePrebuiltBaselineUpstreamCommit(input: {
   return gitCommitShaPattern.test(commitSha) ? commitSha : null
 }
 
+async function trackedWorkspaceFileMatchesHeadBlob(input: {
+  relativePath: string
+  workingDirectory: string
+}): Promise<boolean> {
+  const [headBlob, workingBlob] = await Promise.all([
+    runTextCommand(["git", "rev-parse", "--verify", `HEAD:${input.relativePath}`], input.workingDirectory),
+    runTextCommand(
+      ["git", "hash-object", "--no-filters", "--", input.relativePath],
+      input.workingDirectory,
+    ),
+  ])
+  const expected = headBlob.stdout.trim().toLowerCase()
+  const observed = workingBlob.stdout.trim().toLowerCase()
+  return (
+    headBlob.exitCode === 0 &&
+    workingBlob.exitCode === 0 &&
+    expected.length > 0 &&
+    observed === expected
+  )
+}
+
 async function buildPrebuiltBaselineCacheEntry(input: {
   baselineCommitSha: string
   cacheKey: string
@@ -2175,7 +2196,7 @@ async function buildPrebuiltBaselineCacheEntry(input: {
     virtualBranch: undefined,
   } satisfies GitCheckoutWorkspace
 
-  await withRepositoryCacheLock(prebuiltDirectory, async () => {
+  const buildLocked = async (): Promise<void> => {
     await mkdir(input.prebuiltBaselineCacheRoot, { recursive: true })
     await rm(tempDirectory, { recursive: true, force: true })
     await rm(prebuiltBaselineCacheRecordPath(tempDirectory), { force: true })
@@ -2233,14 +2254,21 @@ async function buildPrebuiltBaselineCacheEntry(input: {
       roots: [{ rootRef: prebuiltBaselineRegistryRef(input.cacheKey), path: tempDirectory }],
     })
     // The pinned source commit may intentionally contain credential-shaped
-    // redaction and detector fixtures. Those files were present before setup,
-    // and the clean tracked/index checks above prove setup did not alter them.
-    // Keep failing closed for every finding setup can introduce outside that
-    // immutable tracked set, including ignored artifacts and `.git` broker
-    // state.
-    const setupCredentialFindings = credentialScan.findings.filter(
-      (finding) => !trackedPaths.has(finding.relativePath),
-    )
+    // redaction and detector fixtures. Allow one only when its current bytes
+    // still hash to the exact HEAD blob. Git's ordinary diff can be hidden by
+    // skip-worktree / assume-unchanged bits, so tracked-path membership alone
+    // is never sufficient evidence. Every other finding is setup-created and
+    // fails closed, including ignored artifacts and `.git` broker state.
+    const setupCredentialFindings: WorkspaceScmCredentialFinding[] = []
+    for (const finding of credentialScan.findings) {
+      const unchangedTrackedFinding =
+        trackedPaths.has(finding.relativePath) &&
+        (await trackedWorkspaceFileMatchesHeadBlob({
+          relativePath: finding.relativePath,
+          workingDirectory: tempDirectory,
+        }))
+      if (!unchangedTrackedFinding) setupCredentialFindings.push(finding)
+    }
     if (setupCredentialFindings.length > 0) {
       throw new WorkspaceScmCredentialPolicyError({
         ...credentialScan,
@@ -2248,6 +2276,17 @@ async function buildPrebuiltBaselineCacheEntry(input: {
         findingRefs: setupCredentialFindings.map((finding) => finding.findingRef),
         findings: setupCredentialFindings,
       })
+    }
+
+    const indexFlags = await runTextCommand(["git", "ls-files", "-v", "-z"], tempDirectory)
+    if (
+      indexFlags.exitCode !== 0 ||
+      indexFlags.stdout
+        .split("\0")
+        .filter((entry) => entry.length > 0)
+        .some((entry) => !entry.startsWith("H "))
+    ) {
+      throw new WorkspaceCheckoutError("reason.workspace_prebuilt_baseline.setup_changed_index_flags")
     }
 
     const previous = await readPrebuiltBaselineCacheRecord(prebuiltDirectory)
@@ -2288,7 +2327,26 @@ async function buildPrebuiltBaselineCacheEntry(input: {
     await writePrebuiltBaselineCacheRecord(tempDirectory, { ...preliminary, sizeBytes })
     await removePrebuiltBaselineCacheEntry(prebuiltDirectory)
     await rename(tempDirectory, prebuiltDirectory)
-    await rename(prebuiltBaselineCacheRecordPath(tempDirectory), prebuiltBaselineCacheRecordPath(prebuiltDirectory))
+    try {
+      await rename(
+        prebuiltBaselineCacheRecordPath(tempDirectory),
+        prebuiltBaselineCacheRecordPath(prebuiltDirectory),
+      )
+    } catch (error) {
+      await removePrebuiltBaselineCacheEntry(prebuiltDirectory)
+      throw error
+    }
+  }
+
+  await withRepositoryCacheLock(prebuiltDirectory, async () => {
+    try {
+      await buildLocked()
+    } finally {
+      // Setup can fail after producing a multi-gigabyte dependency tree. The
+      // unique staging directory and its sibling record never survive either
+      // a failed scan/setup or a successful atomic promotion.
+      await removePrebuiltBaselineCacheEntry(tempDirectory)
+    }
   })
 
   const record = await readPrebuiltBaselineCacheRecord(prebuiltDirectory)

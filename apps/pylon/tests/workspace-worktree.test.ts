@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { existsSync } from "node:fs"
-import { mkdir, mkdtemp, readFile, rm, utimes, writeFile } from "node:fs/promises"
+import { mkdir, mkdtemp, readdir, readFile, rm, utimes, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
 import { Deferred, Effect, Exit } from "effect"
@@ -129,6 +129,12 @@ function leaseInput(root: string, overrides: Record<string, unknown> = {}) {
     workspaceStateRoot: join(root, "workspace-leases"),
     ...overrides,
   }
+}
+
+async function prebuiltTempEntries(root: string, cacheKey: string): Promise<string[]> {
+  return (await readdir(root)).filter((entry) =>
+    entry.startsWith(`prebuilt.${cacheKey}.tmp-`),
+  )
 }
 
 describe("repositoryCacheKeyFor", () => {
@@ -1080,6 +1086,113 @@ describe("materializeGitCheckoutWorkspaceWithLease", () => {
     }
   })
 
+  test("rejects a tracked credential fixture changed behind skip-worktree", async () => {
+    const root = await mkdtemp(join(tmpdir(), "pylon-worktree-prebuilt-skip-worktree-"))
+    try {
+      const originRoot = join(root, "origin")
+      await createOriginRepo(originRoot)
+      const fixturePath = "credential-redaction-fixture.ts"
+      const commitSha = await commitOriginChange(
+        originRoot,
+        fixturePath,
+        'export const fakeToken = "ghp_abcdefghijklmnopqrstuvwxyz123456"\n',
+      )
+      const checkout = checkoutFor(commitSha)
+      const prebuiltBaselineCacheRoot = join(root, "prebuilt-cache")
+
+      const materialized = await materializeGitCheckoutWorkspaceWithLease(
+        leaseInput(root, {
+          checkout,
+          checkoutRunner: undefined,
+          leaseRef: "lease.public.worktree.prebuilt.skip_worktree_credential",
+          now: new Date("2026-07-03T14:10:30.000Z"),
+          prebuiltBaselineCacheRoot,
+          prebuiltBaselineSetupRunner: async (input: {
+            checkout: GitCheckoutWorkspace
+            workingDirectory: string
+          }) => {
+            await run(["git", "update-index", "--skip-worktree", fixturePath], input.workingDirectory)
+            await writeFile(
+              join(input.workingDirectory, fixturePath),
+              'export const fakeToken = "ghp_ZYXWVUTSRQPONMLKJIHGFEDCBA654321"\n',
+            )
+            expect(await run(["git", "status", "--porcelain"], input.workingDirectory)).toBe("")
+            return {
+              state: "completed" as const,
+              setupRef: "setup.public.fixture.prebuilt_baseline",
+              commandRef: "command.public.fixture.prebuilt_baseline_setup",
+            }
+          },
+          remoteUrlFor: () => `file://${originRoot}`,
+        }) as never,
+      )
+
+      expect(materialized.prebuiltBaselineCache).toMatchObject({
+        reasonRef: "reason.workspace_prebuilt_baseline.setup_introduced_scm_credentials",
+        state: "miss",
+      })
+      const cacheKey = prebuiltBaselineCacheKeyFor({
+        branch: checkout.repository.branch,
+        repositoryFullName: checkout.repository.fullName,
+      })
+      expect(await prebuiltTempEntries(prebuiltBaselineCacheRoot, cacheKey)).toEqual([])
+      expect(existsSync(join(prebuiltBaselineCacheRoot, `prebuilt.${cacheKey}`))).toBe(false)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  test("rejects setup-created tracked-file invisibility flags", async () => {
+    const root = await mkdtemp(join(tmpdir(), "pylon-worktree-prebuilt-index-flags-"))
+    try {
+      const originRoot = join(root, "origin")
+      await createOriginRepo(originRoot)
+      const fixturePath = "credential-redaction-fixture.ts"
+      const commitSha = await commitOriginChange(
+        originRoot,
+        fixturePath,
+        'export const fakeToken = "ghp_abcdefghijklmnopqrstuvwxyz123456"\n',
+      )
+      const checkout = checkoutFor(commitSha)
+      const prebuiltBaselineCacheRoot = join(root, "prebuilt-cache")
+
+      const materialized = await materializeGitCheckoutWorkspaceWithLease(
+        leaseInput(root, {
+          checkout,
+          checkoutRunner: undefined,
+          leaseRef: "lease.public.worktree.prebuilt.index_flags",
+          now: new Date("2026-07-03T14:10:45.000Z"),
+          prebuiltBaselineCacheRoot,
+          prebuiltBaselineSetupRunner: async (input: {
+            checkout: GitCheckoutWorkspace
+            workingDirectory: string
+          }) => {
+            await run(["git", "update-index", "--assume-unchanged", fixturePath], input.workingDirectory)
+            return {
+              state: "completed" as const,
+              setupRef: "setup.public.fixture.prebuilt_baseline",
+              commandRef: "command.public.fixture.prebuilt_baseline_setup",
+            }
+          },
+          remoteUrlFor: () => `file://${originRoot}`,
+        }) as never,
+      )
+
+      expect(materialized.prebuiltBaselineCache).toMatchObject({
+        reasonRef: "reason.workspace_prebuilt_baseline.setup_changed_index_flags",
+        state: "miss",
+      })
+      const cacheKey = prebuiltBaselineCacheKeyFor({
+        branch: checkout.repository.branch,
+        repositoryFullName: checkout.repository.fullName,
+      })
+      expect(await prebuiltTempEntries(prebuiltBaselineCacheRoot, cacheKey)).toEqual([])
+      expect(existsSync(join(prebuiltBaselineCacheRoot, `prebuilt.${cacheKey}`))).toBe(false)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   test("rejects setup-created credentials in ignored prebuilt artifacts", async () => {
     const root = await mkdtemp(join(tmpdir(), "pylon-worktree-prebuilt-ignored-credential-"))
     try {
@@ -1121,6 +1234,7 @@ describe("materializeGitCheckoutWorkspaceWithLease", () => {
         branch: checkout.repository.branch,
         repositoryFullName: checkout.repository.fullName,
       })
+      expect(await prebuiltTempEntries(prebuiltBaselineCacheRoot, cacheKey)).toEqual([])
       expect(existsSync(join(prebuiltBaselineCacheRoot, `prebuilt.${cacheKey}`))).toBe(false)
       expect(existsSync(join(materialized.workingDirectory, "sum.ts"))).toBe(true)
     } finally {
