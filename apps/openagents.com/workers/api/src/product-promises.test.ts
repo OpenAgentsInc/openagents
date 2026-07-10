@@ -378,7 +378,7 @@ describe('public product promises document', () => {
         .map(promise => [promise.promiseId, promise.state]),
     )
 
-    expect(decoded.version).toBe('2026-07-09.1')
+    expect(decoded.version).toBe('2026-07-09.2')
     expect(khalaCodeStates).toEqual({
       'khala_code.architect_coder_judge.v1': 'planned',
       'khala_code.bundled_fleet_skill.v1': 'planned',
@@ -2523,6 +2523,15 @@ describe('public product promises document', () => {
     }
 
     const multiEarningPylon = byId.get('pylon.v0_3_multi_earning_node.v1')
+    expect(document.version).toBe('2026-07-09.2')
+    expect(
+      document.currentMonorepoStatus.caveats.find(caveat =>
+        caveat.includes('Registry 2026-07-09.2'),
+      ),
+    ).toContain('fix-forward provenance correction')
+    expect(
+      document.notes.find(note => note.includes('Registry 2026-07-09.2')),
+    ).toContain('route-level intake evidence only')
     expect(multiEarningPylon).toMatchObject({
       state: 'planned',
       blockerRefs: expect.arrayContaining([

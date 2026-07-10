@@ -1,5 +1,17 @@
 # Promise Registry
 
+> Registry `2026-07-09.2` is the #8644 Pylon FleetRun route-evidence
+> correction pass. It binds the live owner-scoped FleetRun claim/accept routes
+> to planned `pylon.v0_3_multi_earning_node.v1` as route-level intake evidence
+> only, adds
+> `blocker.product_promises.pylon_fleetrun_closeout_receipts_missing`, and
+> requires accepted FleetRun closeout receipts before that blocker can clear.
+> The promise stays planned and green stays exactly 34: claim/accept intake is
+> not assignment closeout, payment, settlement, or broad multi-earning proof.
+> This `.2` rung is a fix-forward provenance correction because #8644 first
+> changed the public registry content while leaving the served source version
+> at `2026-07-09.1`.
+
 > Registry `2026-07-09.1` is the owner-directed legacy app retirement and
 > greenfield successor pass. It adds planned `openagents.desktop_app.v1`
 > (Effect Native + Electron, required pinned `LuanRoger/electron-shadcn`
