@@ -358,16 +358,30 @@ describe('public product promises document', () => {
     expect(leadGen?.safeCopy).toContain('model-custody segment')
     expect(leadGen?.safeCopy).toContain('public-only model-custody analyzer')
     expect(leadGen?.safeCopy).toContain('route-level client-engagement/approval evidence only')
+    expect(leadGen?.safeCopy).toContain('portal_content_decision:*')
+    expect(leadGen?.safeCopy).toContain('operator LG-4 send-approval receipt')
     expect(leadGen?.unsafeCopy).toContain('without a separate LG-4 approval receipt')
     expect(leadGen?.unsafeCopy).toContain('Portal approval routes')
+    expect(leadGen?.unsafeCopy).toContain('client `portal_content_decision:*` receipt')
+    expect(leadGen?.verification).toContain('portal_content_decision:*')
+    expect(leadGen?.verification).toContain('operator LG-4 send-approval')
     expect(leadGen?.authorityBoundary).toContain('grant no Apollo credential')
     expect(leadGen?.authorityBoundary).toContain('Portal route refs')
+    expect(leadGen?.authorityBoundary).toContain(
+      'client content-decision receipt does not grant operator send approval',
+    )
     expect(
       decoded.notes.find(note => note.includes('Registry 2026-07-10.2')),
     ).toContain('green stays exactly 34')
     expect(
       decoded.notes.find(note => note.includes('Registry 2026-07-10.2')),
     ).toContain('auth-gated client-engagement')
+    expect(
+      decoded.notes.find(note => note.includes('Registry 2026-07-10.2')),
+    ).toContain('portal_content_decision:*')
+    expect(
+      decoded.notes.find(note => note.includes('Registry 2026-07-10.2')),
+    ).toContain('operator LG-4 send-approval')
     expect(
       decoded.notes.find(note => note.includes('Registry 2026-07-04.9')),
     ).toContain('green stays exactly 34')
