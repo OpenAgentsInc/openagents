@@ -24,7 +24,15 @@ import {
   unavailableFleetStageResult,
 } from "./fleet-contract.ts"
 import { DesktopChatTurnChannel, DesktopHydrateThreadChannel, DesktopNewThreadChannel, DesktopOpenThreadChannel, DesktopThreadsChannel, decode, DesktopThreadRequestSchema, DesktopTurnRequestSchema } from "./chat-contract.ts"
-import { DesktopWorkspaceChooseChannel, DesktopWorkspaceFilesChannel, DesktopWorkspaceReadChannel, DesktopWorkspaceSummaryChannel, decodeWorkspaceFileRequest } from "./workspace-contract.ts"
+import {
+  DesktopWorkspaceChooseChannel,
+  DesktopWorkspaceFilesChannel,
+  DesktopWorkspaceReadChannel,
+  DesktopWorkspaceSaveChannel,
+  DesktopWorkspaceSummaryChannel,
+  decodeWorkspaceFileRequest,
+  decodeWorkspaceSaveRequest,
+} from "./workspace-contract.ts"
 
 contextBridge.exposeInMainWorld("openagentsDesktop", {
   host: "electron",
@@ -56,6 +64,12 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
   readWorkspaceFile: (value: unknown) => {
     const request = decodeWorkspaceFileRequest(value)
     return request === null ? Promise.resolve(null) : ipcRenderer.invoke(DesktopWorkspaceReadChannel, request)
+  },
+  saveWorkspaceFile: (value: unknown) => {
+    const request = decodeWorkspaceSaveRequest(value)
+    return request === null
+      ? Promise.resolve({ state: "unavailable", message: "The file save request is invalid." })
+      : ipcRenderer.invoke(DesktopWorkspaceSaveChannel, request)
   },
   /**
    * Codex account reconnect (#8640 unblock): four renderer-argument-free

@@ -39,7 +39,11 @@ import {
 } from "@effect-native/core"
 import { Effect, Schema, SubscriptionRef } from "@effect-native/core/effect"
 import type { DesktopThread } from "../chat-contract.ts"
-import type { DesktopWorkspaceFile, DesktopWorkspaceSnapshot } from "../workspace-contract.ts"
+import type {
+  DesktopWorkspaceFile,
+  DesktopWorkspaceSaveResult,
+  DesktopWorkspaceSnapshot,
+} from "../workspace-contract.ts"
 
 import {
   initialSettingsState,
@@ -74,6 +78,10 @@ export type DesktopShellState = Readonly<{
   workspace: DesktopWorkspaceName
   workspaceSnapshot: DesktopWorkspaceSnapshot | null
   workspaceFile: DesktopWorkspaceFile | null
+  /** Unsaved bounded text only; never an authority-bearing workspace state. */
+  workspaceDraft: string
+  workspaceBaseRevision: string | null
+  workspaceSave: "idle" | "saving" | "saved" | "conflict" | "unavailable"
   /** The desktop-only planning deck; it has no deployment authority itself. */
   fleetDeskOpen: boolean
   /** The current, explicitly unsubmitted FleetRun objective draft. */
@@ -115,6 +123,9 @@ export const initialDesktopShellState = (
   workspace: "chat",
   workspaceSnapshot: null,
   workspaceFile: null,
+  workspaceDraft: "",
+  workspaceBaseRevision: null,
+  workspaceSave: "idle",
   fleetDeskOpen: false,
   fleetObjective: "",
   fleetDeployment: "not_requested",
@@ -154,6 +165,9 @@ export const DesktopWorkspaceSelected = defineIntent(
 )
 export const DesktopWorkspacePickerRequested = defineIntent("DesktopWorkspacePickerRequested", Schema.Null)
 export const DesktopWorkspaceFileSelected = defineIntent("DesktopWorkspaceFileSelected", Schema.String)
+export const DesktopWorkspaceDraftChanged = defineIntent("DesktopWorkspaceDraftChanged", Schema.String)
+export const DesktopWorkspaceSaveRequested = defineIntent("DesktopWorkspaceSaveRequested", Schema.Null)
+export const DesktopWorkspaceReloadRequested = defineIntent("DesktopWorkspaceReloadRequested", Schema.Null)
 
 export const desktopShellIntents = [
   DesktopInputChanged,
@@ -167,6 +181,9 @@ export const desktopShellIntents = [
   DesktopWorkspaceSelected,
   DesktopWorkspacePickerRequested,
   DesktopWorkspaceFileSelected,
+  DesktopWorkspaceDraftChanged,
+  DesktopWorkspaceSaveRequested,
+  DesktopWorkspaceReloadRequested,
   ...settingsIntents,
 ] as const
 
@@ -223,12 +240,34 @@ export const withWorkspace = (
 export const withWorkspaceSnapshot = (
   state: DesktopShellState,
   workspaceSnapshot: DesktopWorkspaceSnapshot | null,
-): DesktopShellState => ({ ...state, workspaceSnapshot, workspaceFile: null })
+): DesktopShellState => ({
+  ...state,
+  workspaceSnapshot,
+  workspaceFile: null,
+  workspaceDraft: "",
+  workspaceBaseRevision: null,
+  workspaceSave: "idle",
+})
 
 export const withWorkspaceFile = (
   state: DesktopShellState,
   workspaceFile: DesktopWorkspaceFile | null,
-): DesktopShellState => ({ ...state, workspaceFile })
+): DesktopShellState => ({
+  ...state,
+  workspaceFile,
+  workspaceDraft: workspaceFile?.content ?? "",
+  workspaceBaseRevision: workspaceFile?.revision ?? null,
+  workspaceSave: "idle",
+})
+
+export const withWorkspaceDraft = (
+  state: DesktopShellState,
+  workspaceDraft: string,
+): DesktopShellState => ({
+  ...state,
+  workspaceDraft,
+  workspaceSave: state.workspaceSave === "conflict" ? "conflict" : "idle",
+})
 
 /**
  * Submit resets the composer value binding in the same transition that
@@ -265,6 +304,7 @@ export type WorkspaceHost = Readonly<{
   summary: () => Promise<DesktopWorkspaceSnapshot | null>
   choose: () => Promise<DesktopWorkspaceSnapshot | null>
   readFile: (path: string) => Promise<DesktopWorkspaceFile | null>
+  saveFile: (input: Readonly<{ path: string; content: string; expectedRevision: string }>) => Promise<DesktopWorkspaceSaveResult>
 }>
 
 export const withThreads = (state: DesktopShellState, threads: ReadonlyArray<DesktopThread>): DesktopShellState => {
@@ -349,7 +389,10 @@ export const makeDesktopShellHandlers = (
     sendMessage: async () => ({ ok: false, error: "Desktop chat is unavailable." }),
   },
   workspaceHost: WorkspaceHost = {
-    summary: async () => null, choose: async () => null, readFile: async () => null,
+    summary: async () => null,
+    choose: async () => null,
+    readFile: async () => null,
+    saveFile: async () => ({ state: "unavailable", message: "Workspace saving is unavailable." }),
   },
   codexBridge: CodexSettingsBridge = unavailableCodexSettingsBridge,
   settingsSleep?: (ms: number) => Promise<void>,
@@ -410,6 +453,37 @@ export const makeDesktopShellHandlers = (
       const file = yield* Effect.promise(() => workspaceHost.readFile(path))
       yield* SubscriptionRef.update(state, (current) => withWorkspaceFile(current, file))
     }),
+  DesktopWorkspaceDraftChanged: (value) =>
+    SubscriptionRef.update(state, (current) => withWorkspaceDraft(current, value)),
+  DesktopWorkspaceSaveRequested: () =>
+    Effect.gen(function* () {
+      const current = yield* SubscriptionRef.get(state)
+      const file = current.workspaceFile
+      if (
+        file === null ||
+        file.truncated ||
+        current.workspaceBaseRevision === null ||
+        current.workspaceSave === "saving" ||
+        current.workspaceSave === "conflict"
+      ) return
+      yield* SubscriptionRef.update(state, (next): DesktopShellState => ({ ...next, workspaceSave: "saving" }))
+      const result = yield* Effect.promise(() => workspaceHost.saveFile({
+        path: file.path,
+        content: current.workspaceDraft,
+        expectedRevision: current.workspaceBaseRevision!,
+      }))
+      yield* SubscriptionRef.update(state, (next): DesktopShellState => {
+        if (result.state === "saved") return { ...withWorkspaceFile(next, result.file), workspaceSave: "saved" }
+        if (result.state === "conflict") {
+          // Preserve the editor's draft, disable save, and require an explicit
+          // reload rather than silently replacing or overwriting work.
+          return { ...next, workspaceFile: result.file, workspaceSave: "conflict" }
+        }
+        return { ...next, workspaceSave: "unavailable" }
+      })
+    }),
+  DesktopWorkspaceReloadRequested: () =>
+    SubscriptionRef.update(state, (current) => withWorkspaceFile(current, current.workspaceFile)),
 })
 
 // ---------------------------------------------------------------------------
@@ -668,7 +742,41 @@ const workspaceFiles = (state: DesktopShellState): View =>
           }))),
           Card({ key: "workspace-file-preview", padding: "3", radius: "lg", style: { flex: 2, minWidth: 0, surface: "glass" } }, [
             Text({ key: "workspace-file-preview-title", content: state.workspaceFile?.path ?? "Select a file", variant: "caption", color: "textMuted" }),
-            Text({ key: "workspace-file-preview-content", content: state.workspaceFile?.content ?? "", variant: "body", color: "textPrimary" }),
+            ...(state.workspaceFile === null ? [
+              Text({ key: "workspace-file-preview-empty", content: "Choose a bounded text file to inspect or edit.", variant: "body", color: "textMuted" }),
+            ] : state.workspaceFile.truncated ? [
+              Text({ key: "workspace-file-preview-truncated", content: "This file is too large to edit safely. It remains read-only.", variant: "body", color: "warning" }),
+              Text({ key: "workspace-file-preview-content", content: state.workspaceFile.content, variant: "body", color: "textPrimary" }),
+            ] : [
+              TextField({
+                key: "workspace-file-editor",
+                value: state.workspaceDraft,
+                placeholder: "File contents",
+                disabled: state.workspaceSave === "saving" || state.workspaceSave === "conflict",
+                a11y: { label: "Workspace file editor" },
+                onChange: IntentRef("DesktopWorkspaceDraftChanged", ComponentValueBinding()),
+              }),
+              Stack({ key: "workspace-file-actions", direction: "row", gap: "2", align: "center" }, [
+                Button({
+                  key: "workspace-file-save",
+                  label: state.workspaceSave === "saving" ? "Saving…" : "Save",
+                  variant: "primary",
+                  disabled: state.workspaceSave === "saving" || state.workspaceSave === "conflict",
+                  onPress: IntentRef("DesktopWorkspaceSaveRequested"),
+                  a11y: { label: "Save workspace file" },
+                }),
+                ...(state.workspaceSave === "conflict" ? [Button({
+                  key: "workspace-file-reload",
+                  label: "Reload changed file",
+                  variant: "secondary",
+                  onPress: IntentRef("DesktopWorkspaceReloadRequested"),
+                  a11y: { label: "Reload changed workspace file" },
+                })] : []),
+                ...(state.workspaceSave === "saved" ? [Text({ key: "workspace-file-saved", content: "Saved", variant: "caption", color: "success" })] : []),
+                ...(state.workspaceSave === "conflict" ? [Text({ key: "workspace-file-conflict", content: "Changed elsewhere. Reload before saving.", variant: "caption", color: "warning" })] : []),
+                ...(state.workspaceSave === "unavailable" ? [Text({ key: "workspace-file-unavailable", content: "Save unavailable. The file was not changed.", variant: "caption", color: "warning" })] : []),
+              ]),
+            ]),
           ]),
         ]),
       ]),

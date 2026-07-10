@@ -24,6 +24,7 @@ import {
   withChatSelected,
   withLoopProof,
   withWorkspace,
+  withWorkspaceFile,
   withWorkspaceSnapshot,
   withNote,
   withPending,
@@ -203,6 +204,29 @@ describe("pure transitions", () => {
     expect(nodeByKey(view, "shell-composer")).toBeUndefined()
   })
 
+  test("Files workspace exposes a bounded editor only for a complete host-provided text file", () => {
+    const file = {
+      path: "/workspace/README.md",
+      content: "before",
+      revision: "revision-before",
+      truncated: false,
+    } as const
+    const files = withWorkspaceFile(withWorkspaceSnapshot(withWorkspace(baseState, "files"), {
+      root: "/workspace",
+      label: "workspace",
+      git: "clean",
+      entries: [{ name: "README.md", path: "/workspace/README.md", kind: "file" }],
+    }), file)
+    const view = desktopShellView(files)
+    expect(nodeByKey(view, "workspace-file-editor")?._tag).toBe("TextField")
+    expect(nodeByKey(view, "workspace-file-save")?._tag).toBe("Button")
+    expect(nodeByKey(view, "workspace-file-preview-content")).toBeUndefined()
+
+    const truncated = desktopShellView(withWorkspaceFile(files, { ...file, truncated: true }))
+    expect(nodeByKey(truncated, "workspace-file-editor")).toBeUndefined()
+    expect(nodeByKey(truncated, "workspace-file-preview-truncated")?._tag).toBe("Text")
+  })
+
   test("New chat resets the conversation and current-chat navigation closes Fleet", () => {
     const activeFleet = withFleetDesk(withNote(baseState, "Ship the app", "18:05"))
     expect(activeFleet.fleetDeskOpen).toBe(true)
@@ -257,6 +281,70 @@ describe("pure transitions", () => {
 })
 
 describe("typed chat intent loop end-to-end (registry -> state -> re-render)", () => {
+
+  test("workspace save sends one revision-bound request and requires explicit reload after conflict", async () => {
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const file = {
+          path: "/workspace/README.md",
+          content: "before",
+          revision: "revision-before",
+          truncated: false,
+        } as const
+        const state = yield* SubscriptionRef.make(withWorkspaceFile(withWorkspaceSnapshot(withWorkspace(baseState, "files"), {
+          root: "/workspace",
+          label: "workspace",
+          git: "clean",
+          entries: [{ name: "README.md", path: "/workspace/README.md", kind: "file" }],
+        }), file))
+        const requests: Array<unknown> = []
+        const registry = yield* makeIntentRegistry(
+          desktopShellIntents,
+          makeDesktopShellHandlers(state, fixedNow, undefined, undefined, {
+            summary: async () => null,
+            choose: async () => null,
+            readFile: async () => null,
+            saveFile: async (input) => {
+              requests.push(input)
+              return {
+                state: "conflict" as const,
+                file: { ...file, content: "changed elsewhere", revision: "revision-current" },
+              }
+            },
+          }),
+        )
+        const initial = desktopShellView(yield* SubscriptionRef.get(state))
+        const editor = nodeByKey(initial, "workspace-file-editor") as {
+          onChange: Parameters<typeof resolveIntentRef>[0]
+        }
+        const save = nodeByKey(initial, "workspace-file-save") as {
+          onPress: Parameters<typeof resolveIntentRef>[0]
+        }
+        yield* registry.dispatch(resolveIntentRef(editor.onChange, "local draft"))
+        yield* registry.dispatch(resolveIntentRef(save.onPress, null))
+
+        const conflicted = yield* SubscriptionRef.get(state)
+        expect(requests).toEqual([{
+          path: "/workspace/README.md",
+          content: "local draft",
+          expectedRevision: "revision-before",
+        }])
+        expect(conflicted.workspaceSave).toBe("conflict")
+        expect(conflicted.workspaceDraft).toBe("local draft")
+        expect(conflicted.workspaceFile?.content).toBe("changed elsewhere")
+        const conflictView = desktopShellView(conflicted)
+        expect(nodeByKey(conflictView, "workspace-file-save")?.disabled).toBe(true)
+        const reload = nodeByKey(conflictView, "workspace-file-reload") as {
+          onPress: Parameters<typeof resolveIntentRef>[0]
+        }
+        yield* registry.dispatch(resolveIntentRef(reload.onPress, null))
+        const reloaded = yield* SubscriptionRef.get(state)
+        expect(reloaded.workspaceSave).toBe("idle")
+        expect(reloaded.workspaceDraft).toBe("changed elsewhere")
+        expect(reloaded.workspaceBaseRevision).toBe("revision-current")
+      }),
+    )
+  })
 
   test("composer intents: input change then submit falls back to composer state on button press", async () => {
     await Effect.runPromise(

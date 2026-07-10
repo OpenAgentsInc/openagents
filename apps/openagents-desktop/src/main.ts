@@ -27,8 +27,16 @@ import { submitFleetBrief } from "./fleet-control.ts"
 import { completeChatTurn } from "./chat-service.ts"
 import { DesktopChatTurnChannel, DesktopHydrateThreadChannel, DesktopNewThreadChannel, DesktopOpenThreadChannel, DesktopThreadsChannel, decode, DesktopThreadRequestSchema, DesktopTurnRequestSchema, type DesktopMessage } from "./chat-contract.ts"
 import { makeThreadStore } from "./thread-store.ts"
-import { DesktopWorkspaceChooseChannel, DesktopWorkspaceFilesChannel, DesktopWorkspaceReadChannel, DesktopWorkspaceSummaryChannel, decodeWorkspaceFileRequest } from "./workspace-contract.ts"
-import { inspectWorkspace, readWorkspaceFile } from "./workspace-service.ts"
+import {
+  DesktopWorkspaceChooseChannel,
+  DesktopWorkspaceFilesChannel,
+  DesktopWorkspaceReadChannel,
+  DesktopWorkspaceSaveChannel,
+  DesktopWorkspaceSummaryChannel,
+  decodeWorkspaceFileRequest,
+  decodeWorkspaceSaveRequest,
+} from "./workspace-contract.ts"
+import { inspectWorkspace, readWorkspaceFile, saveWorkspaceFile } from "./workspace-service.ts"
 
 const here = import.meta.dirname
 const smokeMode = process.env.OPENAGENTS_DESKTOP_SMOKE === "1"
@@ -93,8 +101,11 @@ const runCodexHistoryWorker = (request: CodexHistoryRequest): Promise<unknown> =
   historyPending.set(id, resolve)
   historyWorker.postMessage({ id, request })
 })
-let workspaceRoot = path.resolve(process.env.OPENAGENTS_DESKTOP_WORKSPACE ?? process.cwd())
+// Local file authority begins only after an explicit directory-picker choice.
+// A process working directory or environment default is not user selection.
+let workspaceRoot: string | null = null
 const workspaceSnapshot = () => {
+  if (workspaceRoot === null) return null
   try { return inspectWorkspace(workspaceRoot) } catch { return null }
 }
 ipcMain.handle(DesktopWorkspaceSummaryChannel, () => workspaceSnapshot())
@@ -107,7 +118,13 @@ ipcMain.handle(DesktopWorkspaceChooseChannel, async () => {
 })
 ipcMain.handle(DesktopWorkspaceReadChannel, (_event, value: unknown) => {
   const request = decodeWorkspaceFileRequest(value)
-  return request === null ? null : readWorkspaceFile(workspaceRoot, request.path)
+  return request === null || workspaceRoot === null ? null : readWorkspaceFile(workspaceRoot, request.path)
+})
+ipcMain.handle(DesktopWorkspaceSaveChannel, (_event, value: unknown) => {
+  const request = decodeWorkspaceSaveRequest(value)
+  if (request === null) return { state: "unavailable", message: "The file save request is invalid." }
+  if (workspaceRoot === null) return { state: "unavailable", message: "Choose a workspace folder before saving." }
+  return saveWorkspaceFile(workspaceRoot, request)
 })
 // List is intentionally metadata-only: a large local history must not
 // serialize every transcript into the renderer merely to draw the sidebar.

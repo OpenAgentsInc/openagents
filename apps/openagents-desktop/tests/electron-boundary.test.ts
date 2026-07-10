@@ -65,6 +65,7 @@ describe("Electron boundary (issue #8574 mandatory first-scaffold hardening)", (
     expect(preload).toContain("ipcRenderer.invoke(FleetStageChannel, request)")
     expect(preload).toContain("DesktopWorkspaceChooseChannel")
     expect(preload).toContain("decodeWorkspaceFileRequest")
+    expect(preload).toContain("decodeWorkspaceSaveRequest")
     expect(preload).not.toContain("ipcRenderer.send")
     expect(preload).not.toContain("ipcRenderer.on")
     expect(preload).not.toContain("ipcRenderer.remove")
@@ -76,7 +77,14 @@ describe("Electron boundary (issue #8574 mandatory first-scaffold hardening)", (
     expect(main).toContain("ipcMain.handle(FleetStageChannel")
     expect(main).toContain("decodeFleetStageRequest(value)")
     expect(main).toContain("decodeWorkspaceFileRequest(value)")
+    expect(main).toContain("decodeWorkspaceSaveRequest(value)")
     expect(main).not.toContain("ipcMain.on(")
+  })
+
+  test("workspace filesystem authority starts only after an explicit directory choice", () => {
+    expect(main).toContain("let workspaceRoot: string | null = null")
+    expect(main).toContain('properties: ["openDirectory", "createDirectory"]')
+    expect(main).not.toContain("OPENAGENTS_DESKTOP_WORKSPACE")
   })
 
   test("renderer CSP is restrictive (no remote script/connect surface)", () => {

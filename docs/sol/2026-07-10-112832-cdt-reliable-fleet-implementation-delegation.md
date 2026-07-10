@@ -106,6 +106,16 @@
   OpenAgents redirect/client registration and its migration/rollback posture;
   only then can secure-storage recovery and the authenticated Sync adapter be
   implemented honestly.
+- 2026-07-10 12:34 CDT — DESKTOP-1 now completes the bounded existing-file
+  save seam. Local filesystem authority starts only after a directory-picker
+  selection; canonical-root and symlink escapes, binary/truncated files, and
+  oversized edits fail closed. Saves are revision-bound, atomic within the
+  selected directory, and return an explicit conflict that preserves the
+  draft until the user chooses reload; the renderer receives only the fixed,
+  schema-validated bridge. Desktop `verify` passes: 77 tests/399 expectations,
+  bundle build, and Electron fixture smoke. This is local fixture proof, not
+  authenticated Sync/workroom/writeback authority or a physical-device
+  receipt.
 
 ## Mission
 

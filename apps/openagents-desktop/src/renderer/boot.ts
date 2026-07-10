@@ -29,7 +29,11 @@ import {
 } from "./shell.ts"
 import { openagentsDesktopTheme } from "./theme.ts"
 import { type DesktopThread } from "../chat-contract.ts"
-import { type DesktopWorkspaceFile, type DesktopWorkspaceSnapshot } from "../workspace-contract.ts"
+import {
+  type DesktopWorkspaceFile,
+  type DesktopWorkspaceSaveResult,
+  type DesktopWorkspaceSnapshot,
+} from "../workspace-contract.ts"
 
 /** Effect Schema at the preload boundary (issue #8574: Schema, not Zod). */
 const DesktopBridgeSchema = Schema.Struct({
@@ -49,6 +53,7 @@ type DesktopBridge = Readonly<{
   workspaceSummary?: () => Promise<unknown>
   chooseWorkspace?: () => Promise<unknown>
   readWorkspaceFile?: (value: unknown) => Promise<unknown>
+  saveWorkspaceFile?: (value: unknown) => Promise<unknown>
   codexAccounts?: () => Promise<unknown>
   codexConnectStart?: () => Promise<unknown>
   codexConnectStatus?: () => Promise<unknown>
@@ -166,6 +171,23 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
         readFile: async (path) => {
           const raw = await (globalThis as { openagentsDesktop?: DesktopBridge }).openagentsDesktop?.readWorkspaceFile?.({ path })
           return typeof raw === "object" && raw !== null && typeof (raw as { content?: unknown }).content === "string" ? raw as DesktopWorkspaceFile : null
+        },
+        saveFile: async (input) => {
+          const raw = await (globalThis as { openagentsDesktop?: DesktopBridge }).openagentsDesktop?.saveWorkspaceFile?.(input)
+          if (typeof raw !== "object" || raw === null) {
+            return { state: "unavailable", message: "Workspace save returned an invalid response." }
+          }
+          const value = raw as { state?: unknown; file?: unknown; message?: unknown }
+          if (
+            (value.state === "saved" || value.state === "conflict") &&
+            typeof value.file === "object" && value.file !== null &&
+            typeof (value.file as { content?: unknown }).content === "string" &&
+            typeof (value.file as { revision?: unknown }).revision === "string"
+          ) return value as DesktopWorkspaceSaveResult
+          return {
+            state: "unavailable",
+            message: typeof value.message === "string" ? value.message : "Workspace save is unavailable.",
+          }
         },
       }, codexSettingsBridge),
     )
