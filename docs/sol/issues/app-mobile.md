@@ -14,6 +14,16 @@ Public claim authority is planned `openagents.mobile_app.v1`; the legacy
 `khala_code.mobile_mvp.v1` record is withdrawn but remains dereferenceable
 history.
 
+## Current status
+
+The greenfield identity/icon/OTA floor is landed. TestFlight 0.4.3 build 106 and
+0.5.0 build 107 reached `VALID`; build 107 is the simulator-pixel-proven typed
+glass shell/drawer/composer loop. Build-108 source at 0.5.1, focused tests,
+typecheck, simulator pixel receipt, and lockfile are on `main` through
+`e30028a7e1`, but there is no recorded ASC/`VALID` receipt for build 108. Sarah/
+Sync cross-device continuity, Android, owner-device acceptance, the remaining
+GL integration, and legacy-client retirement remain open.
+
 ## Identity locks
 
 1. Display/product name: `OpenAgents`.

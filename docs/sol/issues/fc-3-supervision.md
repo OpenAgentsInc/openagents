@@ -19,26 +19,28 @@ Code/Receipts panels. This issue composes them.
 The retained `/sarah` surface now selects an exact successful run, persists and
 resumes its cursor, renders supervision, and writes typed run-control,
 approval, and private steer requests to `khala_sync_fleet_steering_intents`.
-The accepted-claim exchange and standing Pylon consumer landed at
-`e0b0fdc617`: delivery is owner/Pylon/claim-bound; the local watermark/outbox is
-durable; targeting requires exact work-claim/assignment identity; and ACK
-replay is ordered and body-free. That closes the transport split, not the
-issue.
+The accepted-claim exchange landed at `e0b0fdc617`; reconnect-honest command
+outcomes landed at `2a3fc0dfaf`/`08aac90250`; and the restart-safe private
+follow-up/completion stack landed through `59538f71a2`. Delivery is exact
+owner/Pylon/claim-bound, the client no longer manufactures effective state,
+oldest-first local follow-ups are generation/token fenced, terminal completion
+is content-bound and body-free, and reconnect sees the requested/delivered/
+completed distinction. Failed/stale completion cannot claim effective state.
 
-Closure now requires a reconnect-visible command outcome and removal of the
-client collection's optimistic effective post-images; a durable exact
-approval-to-attempt binding; a functional private follow-up dispatcher with a
-body-free terminal completion for steer/active stop; and an integrated fixture
-proving requested versus applied state survives restart. A queued receipt is
-not proof that execution changed.
+Approval remains honestly unavailable when the unattended executor has no
+typed `approval_requested` lifecycle event. No binding is synthesized from
+worker tone, raw logs, or “latest” identity.
 
-The visual/evidence residual is equally concrete: non-issue work can fall back
-to assignment identity; steer is correctly absent without a server-authorized
-affordance; the canvas stops at run→work→worker; and the retained browser mount
-currently calls the coding-closeout projector with `evidence: []`. FC-2's
-per-attempt terminal projection must feed canonical claim/assignment,
-verification, artifact, capacity/cost, approval/authority, and closeout
-evidence into the full plan→claim→assignment→verification→closeout chain.
+The remaining serial residual is evidence composition: non-issue work can
+still fall back to assignment identity; steer is correctly absent without a
+server-authorized exact-attempt affordance; the canvas stops at
+run→work→worker; and the retained browser mount calls the coding-closeout
+projector with `evidence: []`. First-class work-unit and exact work-claim
+attempt entities must carry actual verification, artifact, capacity/cost,
+approval/authority, closeout, and exact-or-explicitly-unmeasured usage evidence
+into the full plan→claim→assignment→verification→closeout chain. Then the C1
+fixture must prove pause/resume/approval/steer/reconnect/privacy on one pinned
+stack, followed by migrations 0054/0055 and application deployment.
 
 ## Scope
 

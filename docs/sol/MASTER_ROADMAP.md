@@ -1,7 +1,7 @@
 # MASTER ROADMAP — Sarah Fleet Command first; three OpenAgents apps
 
 - Date: 2026-07-09
-- Revision: 16
+- Revision: 17
 - Status: canonical OpenAgents implementation roadmap
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Issue source set: [`issues/README.md`](./issues/README.md)
@@ -177,11 +177,18 @@ The coding-fleet program starts from substantial working substrate:
   TTFA/TTFB, task-lifecycle, and behavioral-eval patterns for one bounded,
   process-isolated experiment under #8610.
 - the greenfield OpenAgents mobile shell on the Effect Native/React Native seam,
-  exact `OpenAgents` / `com.openagents.app` / pinned-icon identity oracles, an
-  owned `openagents-production` OTA channel, and TestFlight 0.4.3 build 106 in
-  `VALID` state after simulator pixel and typed-intent round-trip proof; owner
-  device acceptance, Sarah/Sync continuity, Android, and the full #8597 exit
-  remain open;
+  exact `OpenAgents` / `com.openagents.app` / pinned-icon identity oracles, and
+  an owned `openagents-production` OTA channel. TestFlight 0.4.3 build 106 and
+  0.5.0 build 107 reached `VALID`; build 107 is the pixel-proven typed glass
+  shell/drawer/composer loop. The 0.5.1 build-108 source, tests, typecheck,
+  simulator pixel receipt, and lockfile are on `main` through `e30028a7e1`, but
+  no App Store Connect/`VALID` receipt is recorded for build 108. Owner-device
+  acceptance, Sarah/Sync continuity, Android, and the full #8597 exit remain
+  open;
+- the Effect Native vendor at `66d2f7544b` now includes upstream `2918c277`
+  (v27): typed `IconButton`, `Toolbar`, semantic `surface: "glass"`, and Sheet
+  detents. The Scope-bound host-driver registry, conversion/deletion of the
+  app-local island, and real internal `@expo/ui` lowering are not landed;
 - the greenfield OpenAgents Desktop scaffold at `7313b0934e`, pinned to the
   required electron-shadcn source, with the Electron sandbox/isolation boundary,
   an Effect Native renderer loop, and a real Electron click smoke proven;
@@ -196,9 +203,21 @@ The coding-fleet program starts from substantial working substrate:
   content-bound body-free ordered outcomes, and lost-ACK replay now join a
   standing Pylon consumer with an atomic local watermark/outbox, exact
   work-claim/assignment targeting, restart-safe composition, and ACK
-  backpressure. Run controls can now become executor-effective only after an
-  `applied` ACK; approval and steer remain honestly rejected/queued until their
-  exact attempt authority and follow-up path land.
+  backpressure;
+- reconnect-honest command outcomes at `2a3fc0dfaf`/`08aac90250`: the client
+  no longer manufactures effective run/approval/steer state, durable
+  `fleet_command_outcome` rows distinguish delivery from completion, accepted-
+  lease authorization is row-locked, schema coherence is strict, and each run
+  is capped at 1,024 intents within Sarah's bounded cache;
+- the follow-up/completion stack through `59538f71a2`: approval, private steer,
+  and active stop are oldest-first and restart-safe; leases are generation+
+  token fenced; control calls carry stable content-bound idempotency; terminal
+  completions are body-free, authenticated, ordered, exact-replay idempotent,
+  and reconnect-visible; failed/stale completions cannot claim effective
+  state; and execution/steering request streams are byte-bounded even without
+  `Content-Length`. When the unattended executor has no typed
+  `approval_requested` event, approval remains honestly unavailable rather
+  than receiving a fabricated binding.
 
 The immediate gaps are now narrower composition and live-proof gaps:
 
@@ -222,12 +241,12 @@ The immediate gaps are now narrower composition and live-proof gaps:
 - Sarah's safe FleetRun projection, persisted exact-cursor live session, views,
   run controls, and approval decisions are code/fixture-proven in retained
   `/sarah`, including exact start-result-to-scope selection through
-  `6cd9d09205`. The former new-table/old-consumer split is closed at
-  `e0b0fdc617`, but reconnect cannot yet see a body-free command outcome and
-  the client collection still has optimistic effective post-images. Canonical
-  approval/attempt authority, a functional private steer follow-up with a
-  terminal completion, real per-unit closeout evidence/canvas edges, and a
-  deployed owner-cookie reconnect canary remain.
+  `6cd9d09205`. The transport split, reconnect-honest command outcome, and
+  restart-safe private follow-up/completion are closed through `59538f71a2`.
+  First-class stable work-unit/exact-attempt evidence, real lifecycle/approval
+  production, Sarah evidence consumption and full canvas, the integrated C1
+  reconnect/control/privacy fixture, migrations 0054/0055 deployment, and a
+  deployed owner-cookie canary remain.
 - The trusted-context voice coordinator/SSE adapter is fixture-proven but stays
   unarmed until renderer-authenticated conversation/session metadata carries
   the server-minted conversation ref; model/system text is not scope authority.
@@ -244,7 +263,7 @@ P0 fixes those seams. It does not build another fleet system.
 | --- | --- | --- |
 | #8637 FC-1 | **closed** at `0892d57b3b`: integrated operator conversation -> durable authority -> registered standing Pylon -> bounded closeout is fixture-proven; timing is 1.8s acknowledgment / 6.1s first claim / 8.6s first capacity; staging `00046-jpn` and production `00068-5t8` are deployed and smoke-proven | none in FC-1; real mixed-account execution is #8640 and owner-cookie reconnect/steer is #8639 |
 | #8633 FC-2 | **closed** on the stack ending `d779c360c3`: production standing adapters, shared typed auto policy, restart-safe mixed claims, health rotation, durable execution outbox/server projection, and one integrated three-harness restart/usage fixture are proven; migration 0053 is applied in staging/production, while the application stack is not deployed | the pinned integrated deployment is a #8639/#8640 gate, not reopened FC-2 residue; useful live Codex+Claude+Grok work is #8640 |
-| #8639 FC-3 | controls/reconnect through `6cd9d09205`, media continuity through `3d87cb609b`, and accepted-claim steering exchange/standing consumption through `e0b0fdc617` are code-landed and fixture-proven | reconnect-visible command outcomes without optimistic state; approval/follow-up completion; real attempt evidence/full canvas; integrated reconnect/control receipt |
+| #8639 FC-3 | controls/reconnect through `6cd9d09205`, media continuity through `3d87cb609b`, reconnect-honest command outcomes through `08aac90250`, and restart-safe private follow-up/completion through `59538f71a2` are code-landed and fixture-proven | first-class work-unit/exact-attempt lifecycle; real approval/evidence production; Sarah evidence/full canvas; integrated reconnect/control/privacy receipt; deploy migrations 0054/0055 and application stack |
 | #8640 FC-5 | acceptance contract only | C1 integrated fixture, then Phase A on one pinned deployment |
 
 These rows are implementation receipts, not issue closure. The commit named in
@@ -356,20 +375,21 @@ through the narrow shared package.
 **[#8639 FC-3](https://github.com/OpenAgentsInc/openagents/issues/8639)**
 connects durable progress and existing fleet intents to Sarah.
 
-Current critical gap: the accepted-claim exchange and standing Pylon consumer
-landed at `e0b0fdc617`, closing the old-table/new-table split. The next truth
-gap is requested versus effective state: browser reconnect needs a body-free
-command-outcome entity and the client collection must stop manufacturing
-optimistic run/approval/steer post-images. Approval requires a durable exact
-approval-to-attempt binding; queued steer/active-stop needs a restart-safe
-private dispatcher and body-free terminal completion. Then FC-2 execution must
-project real work-unit/attempt evidence, replace synthetic assignment-as-proof
-refs, populate the currently empty closeout-evidence input, and extend the
-canvas through the backed plan→claim→assignment→verification→closeout chain.
+Current critical gap: requested-versus-effective command truth and the private
+follow-up/completion path are now closed through `59538f71a2`. Browser reconnect
+sees body-free delivery/completion receipts, no client collection manufactures
+effective state, and queued steer/active stop execute through a durable fenced
+dispatcher with an authenticated terminal ACK.
 
-The active Sol claim now covers those closure blocks. Separate clean lanes own
-the command-outcome contract and Pylon follow-up control; shared Sync schemas
-and migration numbers remain serialized through root integration.
+The remaining serial block is evidence composition. Execution must materialize
+the stable plan work unit and exact work-claim attempt, require actual verifier,
+artifact, proof, authority, closeout, economics, and exact-or-explicitly-
+unmeasured usage evidence, and produce a typed approval binding only when a real
+executor lifecycle event exists. Sarah must consume those entities directly,
+remove assignment fallback/synthetic proof, populate closeout receipts, expose
+named steer only for an authorized exact attempt, and render the full
+plan→claim→assignment→verification→closeout chain. The upgraded C1 fixture then
+proves pause/resume/approval/steer/reconnect/privacy before deployment.
 
 Exit:
 
@@ -535,6 +555,14 @@ effect-native#70 / EN-S lanes mature (convert-and-delete).
 | GL-3 | #8649 | Sarah conversation surface in the mobile app (text-first) |
 | GL-4 | #8650 | Owned lowerings replace @expo/ui (migration half) |
 
+Current narrow truth: GL-1 has the v27 typed catalog primitives on `main` at
+`66d2f7544b`, but not its host-driver/island-conversion/real-lowering exit.
+GL-2 has the pixel-proven build-107 shell and build-108 source/simulator receipt
+through `e30028a7e1`; build 108 has no recorded ASC/`VALID` receipt, and the
+bundled Sarah demo video is presentation material, not GL-3 auth/SSE/reconnect
+proof. GL-3's text-first shared contract can begin now. GL-4 remains held by
+the owned-lowering dependency.
+
 GL-3 is the convergence point with the Sarah program: the mobile
 conversation surface consumes the same `/sarah` APIs, SSE transcript, and
 typed intent grammar as the web surface — no parallel state models. Its
@@ -592,10 +620,12 @@ is deleted, not lovingly ported.
 builds a new OpenAgents iOS/Android app at `apps/openagents-mobile`.
 
 Status: the initial greenfield shell, identity/icon oracles, Effect Native
-React Native renderer seam, owned OTA feed, and iOS release lane are
-code/fixture/deployment-proven through main `8f3cfbe77a` and TestFlight 0.4.3
-build 106 (`VALID`). Build 105 failed owner visual verification; build 106 is
-the simulator-pixel-proven correction and still needs owner device acceptance.
+React Native renderer seam, owned OTA feed, and iOS release lane are proven.
+TestFlight 0.4.3 build 106 and 0.5.0 build 107 reached `VALID`; build 107 is the
+simulator-pixel-proven glass shell correction and still needs owner-device
+acceptance. Build-108 source at 0.5.1, tests, typecheck, simulator pixel receipt,
+and lockfile are on `main` through `e30028a7e1`, but build 108 is not called
+deployed without an ASC/`VALID` receipt.
 #8597 retains an unreleased Fable claim whose published scope is only the
 initial greenfield setup; later OTA/SwiftUI/TestFlight work exceeded that
 recorded scope. Treat it as owned until the actor posts an explicit re-scope or
@@ -749,12 +779,12 @@ their milestone or tripwire fires.
 4. Keep #8610 active in parallel without taking the fleet integration hot
    paths; closed #8600 remains production inference substrate.
 5. Run #8646–#8650 on the mobile/Effect Native capacity already owning that
-   surface: inside GL-1, land effect-native#70's `render-rn` host-driver seam,
-   convert the D-MB-02 island to a typed Host, then add catalog-native glass
-   pieces; GL-2 composes the shell and GL-3 composes the text-first Sarah seam.
-   GL-3's shared API/state work may advance alongside GL-1/GL-2, but visual
-   integration follows their typed shell. GL-4 is the later convert-and-delete
-   lane. These remain parallel P1 work and do not take #8639 hot contracts.
+   surface. Finish GL-1's Scope-bound host driver, convert/delete the D-MB-02
+   app-local island, and prove actual internal `@expo/ui` lowering. Treat GL-2
+   as integration/owner-acceptance residue after the landed build-107/108 shell,
+   and start GL-3's shared text-first Sarah API/state contract now. GL-4 remains
+   the later convert-and-delete lane. These are parallel P1 work and do not take
+   #8639 hot contracts.
 6. Run #8634 route inventory/retirement and #8635 Forum work in parallel with
    app conversion; landing/mobile/desktop slices continue from their landed
    substrate and preserve the active #8597/#8574 claim ownership.

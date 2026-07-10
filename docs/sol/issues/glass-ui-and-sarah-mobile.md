@@ -26,7 +26,11 @@ Native code: it does not import `@expo/ui` or grow an iOS-only state model.
 
 ### GL-1 — #8647: typed glass catalog and `render-rn` lowering
 
-First land effect-native#70's Scope-bound `render-rn` host-driver registry and
+Status: `66d2f7544b` vendors upstream `2918c277`/v27 with typed `IconButton`,
+`Toolbar`, semantic `surface: "glass"`, and Sheet detents. That is a catalog
+substrate receipt, not the GL-1 exit.
+
+Next, land effect-native#70's Scope-bound `render-rn` host-driver registry and
 convert the D-MB-02 app-local Liquid Glass island into a Schema-decoded typed
 Host kind, deleting `loadLiquidGlassView` shell wiring. Then add the P0 glass
 catalog components and lower them through `@expo/ui` inside `render-rn`. Prove
@@ -35,7 +39,13 @@ fallback. No `@expo/ui` import is permitted in app code.
 
 ### GL-2 — #8648: mobile glass shell
 
-Compose the owner's target structure in `apps/openagents-mobile`: a left
+Status: 0.5.0 build 107 at `9c5adff015` is `VALID` and pixel-proves the typed
+shell/drawer/composer loop. The 0.5.1 build-108 source and simulator receipt
+landed through `e30028a7e1`; no ASC/`VALID` receipt is recorded for build 108,
+so it is not described as deployed. The remaining work is integration and
+owner acceptance, not an unstarted shell.
+
+Complete the owner's target structure in `apps/openagents-mobile`: a left
 flyout drawer, selected navigation row, Recents, floating settings, glass Chat
 pill and circular controls, layered content, and a floating composer with mic
 affordance. Preserve identity, typed-intent, icon, and OTA oracles. Simulator
@@ -52,6 +62,10 @@ tiers remain optional #8610 enhancements and cannot block text.
 GL-3 may establish and test this shared Sarah seam in parallel with GL-1/GL-2,
 then compose it into the glass shell. It must not create another transcript,
 FleetRun, Blueprint, intent, cursor, or receipt truth.
+
+The bundled Sarah demo video is presentation material only. It is not evidence
+for authenticated/prospect session behavior, bounded SSE, reconnect, typed
+turns, or cross-surface continuity, and cannot close any GL-3 exit.
 
 ### GL-4 — #8650: convert and delete the temporary lowering
 
