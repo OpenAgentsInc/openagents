@@ -1,14 +1,16 @@
 # MASTER ROADMAP — reliable synced coding and fleet software on Desktop/mobile
 
 - Date: 2026-07-10
-- Updated: 2026-07-10 (Khala Code mobile/remote-workroom fold-in)
-- Revision: 25
+- Updated: 2026-07-10 (Desktop runtime architecture freeze and early mobile Sync latch)
+- Revision: 26
 - Status: canonical OpenAgents implementation roadmap
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Issue source set: [`issues/README.md`](./issues/README.md)
 - Triage receipt: [`2026-07-09-issue-triage.md`](./2026-07-09-issue-triage.md)
 - Desktop parity audit:
   [`2026-07-10-opencode-khala-openagents-desktop-parity-audit.md`](./2026-07-10-opencode-khala-openagents-desktop-parity-audit.md)
+- Desktop target architecture and fastest path:
+  [`2026-07-10-openagents-desktop-product-architecture.md`](./2026-07-10-openagents-desktop-product-architecture.md)
 - Mobile MVP/remote-workroom port plan:
   [`2026-07-10-khala-code-mvp-to-openagents-mobile-port-plan.md`](./2026-07-10-khala-code-mvp-to-openagents-mobile-port-plan.md)
 
@@ -91,6 +93,17 @@
     APIs. The phone never gains raw local filesystem, shell, credential, or
     execution authority. #8547 and #8636 are therefore P0 integration lanes,
     not post-R7 optional cloud expansion.
+13. **Desktop is a tokenless client over one host-owned runtime gateway, and
+    mobile joins at D1.** The signed local Effect Native renderer receives only
+    bounded typed projections and emits registered typed intents. OpenAgents
+    identity, provider/Pylon credentials, loopback transport authority, raw
+    runtime events, filesystem/process handles, and Sync SQLite remain outside
+    the renderer. A private Desktop Runtime Gateway composes existing Khala
+    Sync, Pylon, workspace, and execution services behind one versioned query/
+    command/event contract; it is not a new public server or second Pylon. The
+    first complete real conversation slice includes a narrow mobile
+    continuation proof with matching thread/message refs, versions, phases,
+    and durable outcomes. Broad D3–D6 Desktop parity does not block that proof.
 
 ## The product in one sentence
 
@@ -422,9 +435,12 @@ records before claiming the first new slice.
 ### Starting gap, stated plainly
 
 - Desktop has a hardened Electron/Effect Native shell, local five-thread chat,
-  partial project/file access, and provider readiness/device auth. It does not
-  yet have authoritative Sync threads, a complete coding workbench, or a
-  visible server-authoritative Fleet cockpit.
+  recent read-only Codex history, selected-root bounded read/edit/save, typed
+  read-only Git status/diff, a closed command palette, and provider readiness/
+  device auth. It does not yet have OpenAgents sign-in, the host-owned Runtime
+  Gateway and authoritative Sync threads, a streamed provider-neutral event
+  runtime, a complete coding workbench, or a visible server-authoritative Fleet
+  cockpit.
 - The new mobile app has an Effect Native/React Native shell and one in-memory
   persona-neutral Khala chat path driven by the native composer. Removed Sarah/
   demo/local-catalog state is not an authority substitute. It does not yet have
@@ -444,6 +460,31 @@ The evidence baseline is maintained in
 [`docs/terra/CURRENT_STATE.md`](../terra/CURRENT_STATE.md),
 [`docs/terra/MOBILE_PARITY.md`](../terra/MOBILE_PARITY.md), and the
 [`desktop parity audit`](./2026-07-10-opencode-khala-openagents-desktop-parity-audit.md).
+
+### Fastest architecture path
+
+The binding process/data/authority design and F0–F7 dependency graph are in
+[`2026-07-10-openagents-desktop-product-architecture.md`](./2026-07-10-openagents-desktop-product-architecture.md).
+The critical path is deliberately shorter than “finish Desktop, then add
+mobile”:
+
+1. preserve the truthful Electron/Effect Native foundation and freeze the
+   tokenless renderer → host-owned runtime-gateway boundary;
+2. bind Desktop and mobile to the already-frozen R1 identity and R2 Khala Sync
+   contracts;
+3. replace local-only chat authority with one real durable streamed
+   conversation and prove it continues on mobile immediately;
+4. deepen Desktop projects/commands/workbench and mobile remote-workroom coding
+   in parallel over that same seam;
+5. compose existing Fleet authority, extensions/settings, recovery, packaging,
+   and release proof without creating a second local state universe.
+
+The gateway may initially compose lightweight adapters in Electron main to ship
+R1/R2/D1 quickly. CPU-heavy history/filesystem watch, PTY, engine supervision,
+and executable extension work moves behind one utility process before D3/D4
+broadens those capabilities. The renderer-facing contract stays unchanged and
+never receives a loopback URL, bearer token, Pylon token, raw `MessagePort`, or
+generic IPC authority.
 
 ### Cross-device reliability gates
 
@@ -787,9 +828,13 @@ scope is maintenance or paused unless it blocks those gates.
 Retained product routes:
 
 - `/` — landing;
-- `/sarah` and Sarah-owned API/event paths;
 - `/forum` and required Forum routes;
 - `/promises` — human-readable promise state and claim-integrity audit.
+
+`/sarah` and `/sarah/*` are explicit 404 tombstones after the 2026-07-10
+removal. Worker-side persona-named routes outside that prefix may remain only
+as typed compatibility/authority adapters until neutral clients replace them;
+they are not retained product routes or permission to restore a Sarah UI.
 
 Explicit infrastructure exceptions include `/privacy`, `/terms`, auth
 callbacks, public APIs, assets, health checks, machine-readable manifests, and
@@ -809,12 +854,12 @@ They do not become extra product destinations.
   **paused product work**; the earlier Sarah + three-app copy/cutover scope no
   longer reflects the active owner priority.
 
-Status: #8634's retained-route oracle and live `/`, `/sarah`, `/forum`,
-`/promises`, promise-registry, and proof-replay smokes passed against production
-revision `00068-5t8`; the exhaustive retirement inventory and cutover remain
-open. #8595's `/landing-en` surface is code/fixture-proven at `0625e8b291`;
-root promotion, owner copy/assets, rollback proof, and preview deletion remain
-open.
+Status: #8634's earlier retained-route receipt included `/sarah` before its
+owner-directed removal and is historical for that route. Current retained
+product routing is `/`, `/forum`, and `/promises`; `/sarah/*` stays tombstoned.
+The exhaustive retirement inventory and cutover remain open. #8595's
+`/landing-en` surface is code/fixture-proven at `0625e8b291`; root promotion,
+owner copy/assets, rollback proof, and preview deletion remain open.
 
 Do not continue generic EN-4 route conversion or new web product scope during
 R0–R7. Preserve security, auth, API, receipt, promise-integrity, and production
@@ -890,17 +935,24 @@ remains a hardened host, Khala Sync owns cross-device continuity, Pylon/Source
 Authority own Fleet execution and receipts, and direct typed software controls
 are the primary surface. The detailed evidence and 20-area baseline are in the
 [`desktop parity audit`](./2026-07-10-opencode-khala-openagents-desktop-parity-audit.md).
+The binding process/data/authority topology and fastest F0–F7 path are in the
+[`Desktop product architecture`](./2026-07-10-openagents-desktop-product-architecture.md).
+The cross-product rationale comes from the
+[`ChatGPT, Claude, and OpenCode adaptation analysis`](../teardowns/2026-07-10-openagents-product-adaptation-analysis.md).
 
-**Current rung:** Terra is the active #8574 execution lane. Through
-`f4cb8ed18e`, the app has a hardened scaffold, minimal Effect Native chat,
-host-owned gateway completion, a bounded persisted five-thread catalog, shared
-icons/glass lowering, folder selection, bounded root listing/read-only preview,
-and Codex readiness/device-auth Settings. The reconciled Terra receipt records
-58 passing tests, green typecheck, and a real-Electron smoke after the Settings
-slice. The smoke proves a system/error response plus scripted device auth, not
-live model or owner-account success. The audit scores OpenAgents Desktop at 1 landed, 6
-partial, 3 scaffold, and 10 absent areas; broad Khala Code parity work has not
-yet crossed the greenfield boundary.
+**Current rung:** the app now has a hardened scaffold, minimal Effect Native
+chat, host-owned gateway completion, a bounded persisted five-thread catalog,
+recent read-only local Codex chat projection, shared icons/glass lowering,
+folder selection, bounded root listing/read/edit/save with conflict and atomic-
+write checks, typed read-only Git status/diff, a closed command registry and
+palette, and Codex readiness/device-auth Settings. The focused landings are
+`597f291f86` (bounded save), `09a48acd0a` (typed Git read-only seam),
+`e278ffd6c8` (palette smoke/pixel receipt), and `eeebedce20` (device-auth success
+reconciliation). These remain fixture/development proof: the smoke does not
+prove live model completion, real owner authentication, authoritative Sync,
+or a signed product. The parity audit's 1 landed / 6 partial / 3 scaffold / 10
+absent score is a pinned earlier baseline, not a live rescore; the new slices
+narrow D2/D3 but do not complete the everyday workbench.
 
 #### Required product shape
 
@@ -948,7 +1000,7 @@ do not become permanent developer/proof chrome around every conversation.
 | Gate | Scope | Exit |
 | --- | --- | --- |
 | D0 — truthful green baseline | Keep shared contracts green; remove or finish dormant Review/Terminal/Inbox/Fleet names and stale docs; isolate smoke state and distinguish live, unconfigured, and fixture receipts | Typecheck, tests, bundle, isolated first-run Electron smoke, and route/capability manifest are green and agree |
-| D1 — OpenAgents + Sync conversation runtime | Replace five local-only threads and request/response chat with authoritative thread/session identity; streamed text/reasoning/tools/plan/todo/questions/permissions/approvals/errors/usage; interrupt/resume/reconnect; rich composer, history, modes, attachments, model/agent/variant selection, and selected context | One real authenticated stream survives restart/reconnect and continues on mobile with matching identity, event cursor, and durable state |
+| D1 — OpenAgents + Sync conversation runtime | Establish the tokenless renderer → host-owned Desktop Runtime Gateway boundary; replace five local-only threads and request/response chat with authoritative `chat_thread`/`chat_message` identity; stream text/reasoning/tools/plan/todo/questions/permissions/approvals/errors/usage with connected/heartbeat/stale/disposed/terminal semantics, bounded replay/coalescing, interrupt/resume/reconnect, minimum rich composer/context, and the narrow early-mobile continuation slice | One real authenticated stream survives restart/reconnect and continues on mobile with matching owner, thread/message refs, versions, event cursor, phase, and durable outcome; mobile submits one safe follow-up or interrupt and both clients reconcile revocation, cursor gap, duplicate delivery, and lost acknowledgement without invented completion |
 | D2 — projects, sessions, commands | Project/session routes and home, search/archive, sortable/recoverable tabs, command registry/palette, conflict-safe keybindings, native menu, deep links, single-instance and route restore | Every global/session/workbench action uses the command registry or has an explicit bounded exception |
 | D3 — coding workbench | Recursive lazy tree, capability grants, watcher/cache/search, edit/save/dirty/reload, file tabs and selected ranges, typed Git status/diff, review/comments/revert, interactive workspace-bounded PTY tabs with reconnect/teardown | Select a project, edit/save, review the diff, add context, run a bounded terminal, steer the work through a typed control, and resume after restart |
 | D4 — runtime and settings | OpenAgents sign-in; provider account custody; runtime/model catalog and selection; MCP auth/enable state; enforced permissions; themes/fonts/shell/layout; locale/accessibility; notifications/sounds; diagnostics/recovery/support | Settings mutate real host/runtime state, unavailable actions explain why, and no credential/private payload reaches renderer logs or public evidence |
@@ -965,6 +1017,18 @@ path before D6. “Parity” never means those deferred items silently disappear
 
 - The local five-thread store and staged Fleet brief are temporary scaffolds,
   not Khala Sync/Fleet authority.
+- The signed renderer is a local tokenless Effect Native client. It never
+  becomes an authenticated localhost/Pylon client and never receives an
+  OpenAgents/provider/Pylon credential, loopback URL, raw runtime event stream,
+  arbitrary `MessagePort`, or general IPC transport.
+- One host-owned Desktop Runtime Gateway composes existing Khala Sync, Pylon,
+  workspace, and execution services behind a versioned query/command/event
+  protocol. It is a logical boundary, not a new public server, second Pylon,
+  second claim registry, or second run database. Heavy services move to one
+  utility process before D3/D4 breadth without changing the renderer contract.
+- D1 includes the narrow mobile Sync continuation proof. Full Desktop D3–D6
+  parity and full mobile R6 remote-workbench breadth proceed afterward and may
+  run in parallel; neither client creates a temporary private thread schema.
 - Monaco/editor and terminal render through typed Effect Native foreign-host
   nodes. The renderer never receives general filesystem, arbitrary process,
   raw IPC, token, or credential authority.
@@ -1026,7 +1090,7 @@ surface or a parallel state universe.
 
 There are **15 open `roadmap:sol` issue records**. #8652 was reopened later on
 2026-07-10 but currently carries no `roadmap:sol` label and remains outside the
-active program; portal work is paused by Revision 25. Previous labels
+active program; portal work remains paused under Revision 26. Previous labels
 and prose do not all match the new priority. The disposition below is
 authoritative for sequencing; reconcile live labels, issue bodies, and claims
 before starting or continuing a slice. Closed #8639 and #8647–#8649 remain
@@ -1057,34 +1121,40 @@ an active unsafe partial migration, or ignoring a security/privacy incident.
 
 ## Execution order
 
-1. Reconcile #8566/#8574/#8597/#8638/#8640 issue bodies, labels, and active
-   claims to this reset. Close R0 on both clients first: green clean-state
-   builds/tests/smokes, honest capability manifests, and no fake authority.
-2. Define one versioned persona-neutral identity/session/Sync contract from the
-   existing Khala Sync and Fleet authority. Land R1/R2 vertical slices through
-   both clients together: schema + migration, server projection/mutator,
-   shared Effect Native domain/intent, Desktop view, mobile view, fault tests.
-   Serialize shared schemas, migrations, catalogs, and generated clients.
-3. In parallel, continue ready Desktop D1/D2 work and port the frozen Khala Code
-   MVP behaviors into the neutral Effect Native mobile shell in the ordered
-   waves from the mobile port plan. Preserve existing Sarah and generic Khala
-   routes only as clearly bounded compatibility adapters while identity,
-   repository, thread, rich-turn, account, and target contracts land.
-4. Run #8640 Phase A at the first honest owner-account opportunity without
-   blocking other R0–R2 work. Fix runtime defects in place. Then close R3 with
-   one real simultaneous Codex+Claude run whose state and typed controls are
-   exercised from both Desktop and mobile.
-5. Close R4 before adding breadth: duplicate/out-of-order events, lost command
-   acknowledgement, offline queue, stale lease, server/device restart, cursor
-   gap, migration, and rollback. Convert every counterexample into a regression
-   test and a user-visible bounded state.
-6. Complete #8547/#8636's minimum remote-workroom path and finish Desktop
-   D3–D6/R5 plus mobile R6: compact files/changes/terminal/preview/artifacts,
-   safe writeback, Fleet cockpit/control, accessibility, diagnostics,
-   packaging, physical iOS/Android proof, push, and deep-link handoff. Reuse
-   contracts and test vectors from deprecated Khala clients without converting
-   them in place.
-7. Close R7 with a sustained owner dogfood and release receipt that begins a
+1. Land the Desktop architecture freeze and reconcile #8566/#8574/#8597/
+   #8638/#8640 claims to Revision 26. Preserve R0 on both clients: green clean-
+   state builds/tests/smokes, honest capability manifests, no fake authority,
+   and the existing hardened Desktop boundary.
+2. Implement F1/R1/R2 through both clients together from the published
+   `khala.identity_sync_contract.v1`: Desktop keychain/main-process session,
+   mobile secure session, `device_session` through the serialized freeze lane,
+   Desktop SQLite and mobile Expo SQLite adapters, exact phases, and fault
+   fixtures. Do not invent a new Sync engine or app-local entity model.
+3. Implement F2/D1 as the first product milestone: one provider-neutral real
+   streamed durable conversation through the host-owned Desktop Runtime
+   Gateway, immediately continued on mobile with matching refs/versions/phases
+   and one safe follow-up or interrupt. This proof precedes broad Desktop
+   workbench parity and broad mobile remote-workroom UI.
+4. After the shared seam is frozen, run Desktop F3/F4 (projects/sessions,
+   commands, files/editor/Git/review/PTY) and mobile F4 (repository/thread,
+   managed workroom, compact files/changes/terminal/preview/artifacts/
+   writeback) in parallel. Serialize only shared schemas, migrations, command
+   identities, generated clients, and authority policy.
+5. Run #8640 Phase A at the first honest owner-account opportunity without
+   blocking F1/F2. Fix runtime defects in place. Compose the existing Fleet
+   projections and command outcomes only after the conversation/Sync seam is
+   real, then close R3 with one simultaneous Codex+Claude run controlled from
+   both clients.
+6. Close R4 before extension or product breadth: duplicate/out-of-order events,
+   lost command acknowledgement, offline queue, stale lease, server/device
+   restart, cursor gap, migration, and rollback. Convert every counterexample
+   into a regression test and a user-visible bounded state.
+7. Complete F5/F6 plus #8547/#8636's minimum remote-workroom path, Desktop
+   D4–D6/R5, and mobile R6: runtime/settings/isolated extensions, Fleet cockpit,
+   accessibility, diagnostics, packaging, physical iOS/Android proof, push,
+   deep-link handoff, and safe writeback. Reuse contracts and tests from
+   deprecated clients without converting them in place.
+8. Close R7 with a sustained owner dogfood and release receipt that begins a
    remote coding task on mobile and continues it on Desktop without forking
    thread, workroom, Fleet, or receipt truth. Only then expand cloud placement
    breadth or reactivate another product lane. #8642 may activate earlier only
@@ -1143,6 +1213,16 @@ an active unsafe partial migration, or ignoring a security/privacy incident.
 16. **A timeout is not an outcome.** Accepted, rejected, failed, and unknown-
     pending-reconcile are distinct durable command states. Retries are driven by
     idempotency and reconciliation evidence, never user-visible optimism.
+17. **The renderer is never the runtime client.** Desktop's local signed
+    Effect Native renderer receives bounded projections and emits closed typed
+    intents. A host-owned gateway holds identity/Sync/Pylon/workspace/runtime
+    authority; no loopback credential, bearer token, provider token, raw
+    runtime stream, process handle, generic IPC, or second state authority
+    enters renderer code.
+18. **Mobile continuity is an early latch, not a D6 integration.** The first
+    complete real Desktop conversation must continue on mobile under R1/R2
+    before broad D3–D6 parity can be reported as the product path. Later mobile
+    remote-workbench breadth consumes that seam rather than rebuilding it.
 
 ## Completion reporting
 
@@ -1179,7 +1259,7 @@ revision diary or restore the old 30-item phase queue.
 
 **Historical snapshot.** The facts below describe the mid-day state before the
 owner's Desktop/mobile reliability reset. Any “in flight,” “P0,” or sequencing
-language here is superseded by Revision 25 and the disposition table above.
+language here is superseded by Revision 26 and the disposition table above.
 
 Factual status updates since the last Sol reconciliation (Fable lane,
 evidence on the named issues):
@@ -1218,5 +1298,5 @@ evidence on the named issues):
   in flight.
 
 *Editing note: this factual reconciliation was written by the **Fable** lane at
-explicit owner request. Revision 25 preserves it as evidence but supersedes its
+explicit owner request. Revision 26 preserves it as evidence but supersedes its
 sequencing with the reliable Desktop/mobile program above.*

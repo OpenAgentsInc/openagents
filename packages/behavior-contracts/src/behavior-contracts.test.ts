@@ -140,7 +140,7 @@ describe("behavior contract registry", () => {
     const validation = validateBehaviorContractRegistry(decoded)
 
     expect(validation).toEqual({ issues: [], ok: true })
-    expect(decoded.contracts).toHaveLength(9)
+    expect(decoded.contracts).toHaveLength(10)
     const pending = decoded.contracts.filter(contract => contract.state === "pending")
     expect(pending).toHaveLength(4)
     expect(
@@ -149,6 +149,18 @@ describe("behavior contract registry", () => {
           contract.contractId === "openagents_apps.greenfield_mobile_identity.v1",
       )?.statement,
     ).toContain('existing app identifier "com.openagents.app"')
+    const retiredSarahFirst = decoded.contracts.find(
+      contract =>
+        contract.contractId === "openagents_apps.sarah_first_khala_capabilities.v1",
+    )
+    expect(retiredSarahFirst?.state).toBe("retired")
+    const desktopRuntime = decoded.contracts.find(
+      contract =>
+        contract.contractId ===
+        "openagents_apps.desktop_runtime_and_early_mobile_sync.v1",
+    )
+    expect(desktopRuntime?.state).toBe("pending")
+    expect(desktopRuntime?.statement).toContain("mobile sync working soon")
     // Owner P0 (build 111 TestFlight feedback, 2026-07-09): the minerals
     // sheet closes only on USER intents, enforced in the mobile test sweep.
     const mineralsSheet = decoded.contracts.find(

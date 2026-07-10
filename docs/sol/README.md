@@ -17,11 +17,11 @@ order, implementation contracts, and honest proof requirements.
 
 When documents disagree, use this order:
 
-1. [`AGENTS.md`](../../../AGENTS.md) and
-   [`INVARIANTS.md`](../../../INVARIANTS.md) for workspace/repository law.
+1. [`AGENTS.md`](../../AGENTS.md) and
+   [`INVARIANTS.md`](../../INVARIANTS.md) for workspace/repository law.
 2. Owning schemas, behavior contracts, Source Authority, product promises, and
    runtime policy for enforceable behavior.
-3. [`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md), Revision 25, for current product
+3. [`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md), Revision 26, for current product
    direction, priority, R0–R7 gates, and issue disposition.
 4. Live GitHub issue state and [`CLAIM_PROTOCOL.md`](./CLAIM_PROTOCOL.md) for
    current ownership and collision avoidance.
@@ -39,6 +39,11 @@ roadmap; never repeat a stale claim merely because it is written here.
   Desktop/mobile coding and fleet control is P0; OpenCode-parity Desktop and a
   compact remote-coding mobile client share identity, Khala Sync state, typed
   workroom/actions, outcomes, and receipts.
+- [`2026-07-10-openagents-desktop-product-architecture.md`](./2026-07-10-openagents-desktop-product-architecture.md)
+  — binding Desktop process/data/authority topology: tokenless local Effect
+  Native renderer, host-owned Runtime Gateway over existing Pylon/Khala Sync/
+  workspace services, early mobile conversation continuation, and the fastest
+  F0–F7 delivery path.
 - [`2026-07-10-khala-code-mvp-to-openagents-mobile-port-plan.md`](./2026-07-10-khala-code-mvp-to-openagents-mobile-port-plan.md)
   — exhaustive legacy capability disposition, Effect Native destination,
   remote-workroom boundary, ordered waves, and physical-device acceptance.

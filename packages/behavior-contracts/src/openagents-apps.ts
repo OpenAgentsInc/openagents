@@ -142,12 +142,50 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
         statedBy: "owner",
         statedOn: "2026-07-09",
       },
-      state: "pending",
+      state: "retired",
       statement:
         "All Khala Code ideas are to be folded into the Sarah-first OpenAgents app.",
       surface: "openagents-mobile-and-desktop",
       verification:
-        "Pending #8566/#8574/#8597: every Khala Code idea has an explicit fold-into-Sarah, retain-as-OpenAgents-capability, or extract-as-shared-engine disposition; only its superseded legacy implementation may retire, and one Sarah/FleetRun continues across all retained apps without a Khala Code product shell.",
+        "Retired by the 2026-07-10 owner decision that removed Sarah as a product surface. The preserved capability-disposition requirement continues under openagents_apps.desktop_runtime_and_early_mobile_sync.v1 and MASTER_ROADMAP R0–R7.",
+    },
+    {
+      authorityBoundary:
+        "This fixes Desktop process/data boundaries and makes early mobile continuation part of the first real conversation exit. It does not authorize renderer-held credentials, mobile local-filesystem or shell authority, a second Pylon/run universe, optimistic completion claims, or release before R7.",
+      blockerRefs: [
+        "github:OpenAgentsInc/openagents#8574",
+        "github:OpenAgentsInc/openagents#8597",
+      ],
+      contractId: "openagents_apps.desktop_runtime_and_early_mobile_sync.v1",
+      enforcementTier: "unenforced",
+      evidenceRefs: [
+        "docs/sol/2026-07-10-openagents-desktop-product-architecture.md",
+        "docs/sol/2026-07-10-r1-r2-identity-sync-contract.md",
+        "docs/sol/MASTER_ROADMAP.md",
+        "docs/teardowns/2026-07-10-openagents-product-adaptation-analysis.md",
+      ],
+      oracles: [
+        {
+          description:
+            "Planned cross-client oracle: a tokenless Desktop renderer drives one real streamed durable thread through the host-owned runtime gateway; mobile observes matching thread/message refs, versions, phases, and terminal outcome, submits one safe follow-up or interrupt, and both clients reconcile across restart, revocation, cursor gap, duplicate delivery, and a lost acknowledgement without invented completion.",
+          id: "openagents_apps.desktop_runtime_mobile_sync.planned",
+          kind: "planned",
+          mode: "e2e",
+          ref: "github:OpenAgentsInc/openagents#8574",
+        },
+      ],
+      productArea: "Desktop runtime architecture and cross-device continuity",
+      source: {
+        channel: "owner-codex-session",
+        statedBy: "owner",
+        statedOn: "2026-07-10",
+      },
+      state: "pending",
+      statement:
+        "Let's get the desktop architecture dialed in solidly in place, with mobile sync working soon in that process but otherwise plan to get your planned openagents product adaptation working fastest.",
+      surface: "openagents-mobile-and-desktop",
+      verification:
+        "Pending #8574/#8597: enforce the renderer-token ban and closed gateway boundary in the Desktop sweep, then pass the R1/R2 two-client identity/Sync fixture and one real Desktop-to-mobile conversation continuation before treating broad D3–D6 Desktop parity as the product exit.",
     },
     {
       authorityBoundary:

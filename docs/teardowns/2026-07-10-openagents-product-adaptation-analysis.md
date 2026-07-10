@@ -283,8 +283,10 @@ three-depth product shape already in the Sol roadmap.
 
 ### OpenAgents mobile
 
-Mobile should adapt the reference products' remote-control value without becoming a
-remote desktop.
+Mobile should adapt the reference products' remote-control value without
+becoming a remote desktop. Its narrow identity/Sync continuation slice lands
+with Desktop D1; it does not wait for the full Desktop workbench or Fleet
+cockpit.
 
 It should:
 
@@ -494,14 +496,15 @@ survive beyond the renderer process.
 
 | Order | Decision | Owning program | Proof |
 | ---: | --- | --- | --- |
-| 1 | Freeze the engine/event protocol and replay fixtures | Desktop D1 + Pylon | Real streamed session proves eager subscribe, heartbeat, reconnect, bounded replay, and fixture replay |
-| 2 | Land central command registry and policy metadata | Desktop D2 + Effect Native | UI, keyboard, menu, and test invoke the same command IDs |
-| 3 | Define execution profiles and receipts | Desktop D3 + Pylon + Cloud | Same task reports grants/profile/evidence across local and guest modes |
-| 4 | Add bounded file/editor/Git/PTY foreign hosts | Desktop D3 + Effect Native | Workspace task completes without renderer filesystem/process authority |
-| 5 | Add MCPB/plugin/skill catalog ingestion with provenance | Desktop D4 + marketplace | Signed install, policy denial, update, rollback, and run receipt |
-| 6 | Converge Desktop/mobile through Khala Sync | R0–R7 + Desktop D5 | One approval/steer action converges to one durable outcome on both clients |
-| 7 | Package the compatible component set | Desktop D6 | Fuses, signing, notarization, clean install, update, rollback, diagnostics |
-| 8 | Add computer use, scheduling, and remote environments selectively | Post-D6 | Explicit grants, visible state, sandbox/authority receipts, failure recovery |
+| 1 | Freeze the tokenless renderer → host-owned Runtime Gateway and engine/event protocol | Desktop D0/D1 + Pylon | Boundary oracle proves no runtime credential or generic transport enters renderer; fixtures replay the versioned event algebra |
+| 2 | Bind Desktop and mobile to the existing R1 identity and R2 Khala Sync contracts | R1/R2 + Desktop/mobile adapters | Same server-derived owner/scope, independent revoke, SQLite restart, exact phases, no token in projections |
+| 3 | Ship one real streamed Desktop conversation with immediate mobile continuation | Desktop D1 + mobile narrow Sync slice | Matching thread/message refs, versions, phases, cursor and terminal outcome; one safe mobile follow-up/interrupt; restart/gap/lost-ACK proof |
+| 4 | Extend the central command registry through host/runtime outcomes | Desktop D2 + Effect Native | UI, keyboard, menu, mobile and test invoke the same command IDs and reconcile one durable outcome |
+| 5 | Add bounded file/editor/Git/PTY foreign hosts while mobile remote-workroom work proceeds in parallel | Desktop D3 + mobile R6 + Effect Native | Useful coding loop on each form factor without renderer or phone local process/filesystem authority |
+| 6 | Define execution profiles, receipts, and isolated extension compatibility | Desktop D3/D4 + Pylon + Cloud | Same task reports grants/profile/evidence; signed extension denial/update/rollback/run receipts pass |
+| 7 | Compose the existing Fleet/approval/command-outcome authority into both clients | Desktop D5 + R3/R4 | One steer/approval converges to one effective durable outcome and receipt on both clients under faults |
+| 8 | Package the compatible component set and dogfood | Desktop D6 + R7 | Fuses, signing, notarization, clean install, update, rollback, physical mobile, diagnostics, sustained handoff |
+| 9 | Add computer use, scheduling, and advanced remote environments selectively | Post-R7 | Explicit grants, visible state, sandbox/authority receipts, failure recovery |
 
 ## Final recommendation
 
