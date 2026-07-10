@@ -37,6 +37,10 @@
   every issue now has `priority:P0`, while stale `priority:P1-parallel` and
   `area:sarah` labels were removed. `git diff --check` passes; preparing the
   scoped commit and release receipts.
+- 2026-07-10 16:55 CDT — FAST-2 landed on `main` as `8b23f6f45d`; release
+  receipts were posted to #8566, #8574, #8597, #8638, and #8640. The next
+  implementation leaf remains blocked by #8597's active mobile claim and the
+  missing senior R1–R2 contract freeze; #8640 remains owner/coordinator-gated.
 
 ## Mission
 
