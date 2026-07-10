@@ -39,12 +39,20 @@ can succeed. Server receipt time governs freshness. Legacy v1 replay stays
 compatible without manufacturing success, and migration 0056 opaque-repairs
 unsafe projected refs while terminalizing stranded unsafe progress for retry.
 
-The remaining serial residual is production and consumption: Pylon must emit
-the v2 lifecycle/evidence and real typed approval request; non-issue Sarah work
-can still fall back to assignment identity; steer is correctly absent without
-a server-authorized exact-attempt affordance; the canvas stops at
+Exact assignment worker-closeout evidence landed through `dd807e6d91`: policy
+is explicit or unknown, accepted refs are retained without lossy projection,
+malformed legacy evidence is unavailable, and owner proof/status carries only
+typed refs. Sarah's strict Sync consumer landed through `fe7b523e13`; direct
+work-unit/attempt rows now survive bootstrap, delta, tombstone, persistence,
+replay, and exact-cursor reconnect with strict nested evidence/privacy gates.
+That slice intentionally does not change the owner projection yet.
+
+The remaining serial residual is production and owner presentation: Pylon must
+emit the FleetRun v2 lifecycle and real typed approval request; non-issue Sarah
+work can still fall back to assignment identity; steer is correctly absent
+without a server-authorized exact-attempt affordance; the canvas stops at
 run→work→worker; and the retained browser mount calls the coding-closeout
-projector with `evidence: []`. Sarah must consume the new entities directly
+projector with `evidence: []`. Sarah must consume the retained entities directly
 into the full plan→claim→assignment→verification→closeout chain. Then the C1
 fixture must prove pause/resume/approval/steer/reconnect/privacy on one pinned
 stack, followed by migrations 0054/0055/0056 and application deployment.

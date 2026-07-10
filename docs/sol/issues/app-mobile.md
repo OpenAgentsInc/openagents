@@ -21,12 +21,15 @@ The greenfield identity/icon/OTA floor is landed. TestFlight 0.4.3 build 106,
 107 is the simulator-pixel-proven typed glass shell/drawer/composer loop. Build
 108 added the typed surface selector/Sarah presentation loop and received live
 OTA owner chrome corrections; build 109 at `65f8216cb9` baked those corrections
-in and container-stripped audio from the owner-selected loop. Build-110 source
-at `c17c3823ad` keeps marketing version 0.5.2 and adds the typed full-screen
-Sarah reply video with audio; source tests/typecheck and simulator proof are
-recorded, but no ASC/`VALID` receipt is. Sarah/Sync cross-device continuity,
-Android, owner-device acceptance, the remaining GL integration, and
-legacy-client retirement remain open.
+in and container-stripped audio from the owner-selected loop. Builds 110/111
+keep marketing version 0.5.2; build 111 at `eb34e8d9ee` layers the typed Sarah
+reply video under chrome, fixes the opaque content surface, and opens a typed
+Liquid Glass Minerals demo sheet at midpoint before returning to the original
+surface. Its price choices are demo-only with no StoreKit purchase. Source
+tests/typecheck and simulator proofs are recorded, but no 110/111 ASC/`VALID`
+receipt is. Sarah/Sync cross-device continuity, Android, owner-device
+acceptance, the remaining GL integration, and legacy-client retirement remain
+open.
 
 ## Identity locks
 

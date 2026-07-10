@@ -43,12 +43,15 @@ Status: 0.5.0 build 107 at `9c5adff015` is `VALID` and pixel-proves the typed
 shell/drawer/composer loop. Builds 108 (0.5.1) and 109 (0.5.2) subsequently
 reached `VALID`; the build-108 owner chrome corrections were live-OTA proven,
 then baked into build 109 at `65f8216cb9` with the owner-selected Sarah loop
-made container-level silent. Build-110 source at `c17c3823ad` keeps marketing
-version 0.5.2 and adds a typed composer-triggered full-screen Sarah reply video
-with audio. Its source tests/typecheck and simulator proof are recorded, but no
-ASC/`VALID` receipt is. These videos remain presentation material rather than
-GL-3 conversation/auth/SSE proof. The remaining work is integration and owner
-acceptance, not an unstarted shell.
+made container-level silent. Builds 110/111 keep marketing version 0.5.2 and
+add the typed composer-triggered Sarah reply video with audio. Build 111 at
+`eb34e8d9ee` layers it under the glass chrome, fixes the opaque content surface,
+and opens a typed Liquid Glass Minerals demo sheet at midpoint before returning
+to the original surface. Price choices are demo-only with no StoreKit purchase.
+Source tests/typecheck and simulator proofs are recorded, but no 110/111
+ASC/`VALID` receipt is. These videos and the demo sheet remain presentation
+material rather than GL-3 conversation/auth/SSE proof. The remaining work is
+integration and owner acceptance, not an unstarted shell.
 
 Complete the owner's target structure in `apps/openagents-mobile`: a left
 flyout drawer, selected navigation row, Recents, floating settings, glass Chat
