@@ -1213,6 +1213,41 @@ describe('OpenAgents OpenAPI route', () => {
         .acceptedThroughSequence,
     ).toEqual(expect.objectContaining({ minimum: 0 }))
     expect(body.components.schemas).toHaveProperty('PylonFleetRunUsageEvidence')
+    const steeringPage = operationAt(
+      body,
+      '/api/pylons/{pylonRef}/fleet-runs/{runRef}/steering',
+      'get',
+    )
+    expect(steeringPage.security).toEqual([{ agentBearer: [] }])
+    expect(steeringPage.description).toContain('transactionally reserves')
+    expect(steeringPage.description).toContain('no-store')
+    expect(steeringPage.responses).toEqual(
+      expect.objectContaining({
+        '200': expect.any(Object),
+        '400': expect.any(Object),
+        '401': expect.any(Object),
+        '403': expect.any(Object),
+        '409': expect.any(Object),
+        '503': expect.any(Object),
+      }),
+    )
+    const steeringOutcomes = operationAt(
+      body,
+      '/api/pylons/{pylonRef}/fleet-runs/{runRef}/steering/outcomes',
+      'post',
+    )
+    expect(steeringOutcomes.security).toEqual([{ agentBearer: [] }])
+    expect(steeringOutcomes.description).toContain('SHA-256 content-bound')
+    expect(steeringOutcomes.description).toContain(
+      'never projected as effective',
+    )
+    expect(
+      schemaProperties(body, 'PylonFleetSteeringOutcomeBatch').outcomes,
+    ).toEqual(expect.objectContaining({ minItems: 1, maxItems: 64 }))
+    expect(body.components.schemas).toHaveProperty('PylonFleetSteeringPage')
+    expect(body.components.schemas).toHaveProperty(
+      'PylonFleetSteeringOutcomeAck',
+    )
     expect(
       schemaProperties(body, 'PylonFleetRunUnprovenWorkTerminalEvent')
         .blockerRefs,

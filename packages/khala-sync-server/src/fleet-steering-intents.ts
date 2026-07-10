@@ -14,8 +14,9 @@ import type { SqlTag } from "./sql.js"
  * steering: poll with the last-seen `seq` as `afterSeq`, apply the requested
  * behavior locally (pause the run, resume the worker whose approval was
  * allowed, deliver the steer body to the in-flight turn), and persist the new
- * watermark. Authority stays desktop/daemon-side; the mutators only make the
- * intent durable and project the desired post-image.
+ * watermark. Authority stays Pylon-side; the mutators only make the request
+ * durable. The accepted-claim outcome exchange projects effective run or
+ * approval state only after an `applied` acknowledgment.
  *
  * Mirrors `readPendingRuntimeControlIntents` (./runtime-intents.ts) and
  * `readPendingFleetIntents` (./fleet-intents.ts): a single bounded SELECT,

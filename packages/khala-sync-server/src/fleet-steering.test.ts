@@ -4,7 +4,6 @@ import {
   ClientId,
   decodeFleetApprovalEntity,
   decodeFleetRunEntity,
-  decodeFleetSteerEntity,
   decodeFleetWorkerEntity,
   fleetRunScope,
   KHALA_SYNC_PROTOCOL_VERSION,
@@ -38,6 +37,7 @@ import {
   FLEET_DISPATCH_STEER_MESSAGE_MUTATOR_NAME,
   FLEET_STEERING_INTENT_EXISTS_REJECTION,
   FLEET_STEERING_KIND_REJECTION,
+  FLEET_STEERING_BODY_SHAPE_REJECTION,
   FLEET_STEERING_SCOPE_REJECTION,
   fleetSteeringMutators,
 } from "./fleet-steering.js"
@@ -57,12 +57,9 @@ setDefaultTimeout(120_000)
  *
  *   (a) desktop starts a mixed fixture FleetRun (codex + claude + grok workers)
  *   (b) phone reads workers + states via the projection within the scope
- *   (c) phone pauses the run → run projects `paused` AND the desktop authority
- *       OBSERVES the pause via the steering-intent watermark reader
- *   (d) phone approves a pending tool → approval projects `allowed`; the
- *       authority observes it and advances the blocked worker (worker continues)
- *   (e) every event has a durable receipt (khala_sync_fleet_steering_intents)
- *       AND a changelog post-image row
+ *   (c) phone requests pause → effective run state stays unchanged until ACK
+ *   (d) phone requests approval → effective approval stays pending until ACK
+ *   (e) every request has a durable receipt for the accepted Pylon exchange
  */
 
 const schemaVersion = SyncSchemaVersion.make(1)
@@ -212,7 +209,7 @@ describe.skipIf(!hasLocalPostgres())(
       ) as Record<string, unknown>
     }
 
-    test("five-step phone dogfood: mixed run → peek → pause (observed) → approve (worker continues) → all receipted", async () => {
+    test("request-only phone flow keeps effective run and approval state unchanged until Pylon ACK", async () => {
       const client = freshClient()
       const runRef = "fleet.mh6.dogfood"
       const scope = fleetRunScope(runRef)
@@ -328,7 +325,7 @@ describe.skipIf(!hasLocalPostgres())(
       const runImageAfterPause = decodeFleetRunEntity(
         await latestPostImage(scope, "fleet_run", runRef),
       )
-      expect(runImageAfterPause.status).toBe("paused")
+      expect(runImageAfterPause.status).toBe("running")
 
       // ...desktop authority OBSERVES the pause via the watermark reader.
       const observedAfterStart = await readPendingFleetSteeringIntents(
@@ -361,11 +358,10 @@ describe.skipIf(!hasLocalPostgres())(
       const approvalImage = decodeFleetApprovalEntity(
         await latestPostImage(scope, "fleet_approval", approvalRef),
       )
-      expect(approvalImage.status).toBe("allowed")
-      // the pending card's context was preserved through the decision
+      expect(approvalImage.status).toBe("pending")
       expect(approvalImage.workerId).toBe(blockedWorkerId)
       expect(approvalImage.toolClass).toBe("bash")
-      expect(approvalImage.decidedAt).toBeDefined()
+      expect(approvalImage.decidedAt).toBeUndefined()
 
       // ...authority observes the approval (seq past the pause) and RESUMES
       // the blocked worker — the worker continues.
@@ -430,7 +426,7 @@ describe.skipIf(!hasLocalPostgres())(
       expect((stored as { schema: string }).schema).toBe(SCHEMA)
     })
 
-    test("steer_message: projects a body-free receipt; body stays out of the post-image", async () => {
+    test("steer_message stays private and does not imply delivery before ACK", async () => {
       const client = freshClient()
       const runRef = "fleet.mh6.steer"
       const scope = fleetRunScope(runRef)
@@ -472,14 +468,11 @@ describe.skipIf(!hasLocalPostgres())(
       })
       expect(steer.results.map((r) => r.status)).toEqual(["applied"])
 
-      const steerImage = decodeFleetSteerEntity(
-        await latestPostImage(scope, "fleet_steer", "intent.mh6.steer.1"),
-      )
-      expect(steerImage.bodyCarrier).toBe("inline")
-      expect(steerImage.targetRef).toBe("worker.mh6.claude.7f3a1b2c")
-      // the body must NEVER be in the projected post-image
-      const rawImage = await latestPostImage(scope, "fleet_steer", "intent.mh6.steer.1")
-      expect(canonicalJson(rawImage)).not.toContain(secret)
+      const projected: Array<{ post_image_json: object | string }> = await sql`
+        SELECT post_image_json FROM khala_sync_changelog
+        WHERE scope = ${scope} AND entity_type = 'fleet_steer'
+      `
+      expect(projected).toEqual([])
 
       // but the authority CAN read the body from its private durable receipt
       const observed = await readPendingFleetSteeringIntents(
@@ -587,6 +580,30 @@ describe.skipIf(!hasLocalPostgres())(
       expect(second.results[0]!.errorCode).toBe(
         FLEET_STEERING_INTENT_EXISTS_REJECTION,
       )
+
+      const oversized = await executePush({
+        registry,
+        request: pushRequest(owner, [
+          envelope(4, FLEET_DISPATCH_STEER_MESSAGE_MUTATOR_NAME, steerIntent({
+            body: "x".repeat(16 * 1_024 + 1),
+            intentId: "intent.mh6.oversized.1",
+            runRef,
+          })),
+          envelope(5, FLEET_DISPATCH_STEER_MESSAGE_MUTATOR_NAME, {
+            ...steerIntent({
+              intentId: "intent.mh6.bad-ref.1",
+              runRef,
+            }),
+            bodyRef: "private body ref with spaces",
+          }),
+        ]),
+        sql: sql as unknown as SyncSql,
+        userId: owner.userId,
+      })
+      expect(oversized.results.map((result) => result.errorCode)).toEqual([
+        FLEET_STEERING_BODY_SHAPE_REJECTION,
+        FLEET_STEERING_BODY_SHAPE_REJECTION,
+      ])
     })
   },
 )

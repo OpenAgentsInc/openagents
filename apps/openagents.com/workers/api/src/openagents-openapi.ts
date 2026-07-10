@@ -6068,6 +6068,151 @@ const requestSchemas = (): JsonSchema => ({
       },
     },
   },
+  PylonFleetSteeringDelivery: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['seq', 'intentId', 'intent', 'createdAt'],
+    properties: {
+      seq: { type: 'integer', minimum: 1 },
+      intentId: { type: 'string', minLength: 1, maxLength: 160 },
+      intent: {
+        type: 'object',
+        description:
+          'The canonical khala.fleet_intent.v1 run-control, approval-decision, or steer-message value. Inline steer bodies are private accepted-Pylon delivery material bounded to 16 KiB and are never copied into Sync post-images, logs, receipts, or outcomes.',
+      },
+      createdAt: { type: 'string', format: 'date-time' },
+    },
+  },
+  PylonFleetSteeringPage: {
+    type: 'object',
+    additionalProperties: false,
+    required: [
+      'ok',
+      'runRef',
+      'claimRef',
+      'intents',
+      'nextAfter',
+      'upToDate',
+    ],
+    properties: {
+      ok: { type: 'boolean', enum: [true] },
+      runRef: {
+        type: 'string',
+        pattern: '^fleet_run\\.sarah\\.[0-9a-f]{20}$',
+      },
+      claimRef: {
+        type: 'string',
+        pattern: '^claim\\.sarah_fleet_run\\.[0-9a-f]{24}$',
+      },
+      intents: {
+        type: 'array',
+        maxItems: 100,
+        items: { $ref: '#/components/schemas/PylonFleetSteeringDelivery' },
+      },
+      nextAfter: { type: 'integer', minimum: 0 },
+      upToDate: { type: 'boolean' },
+    },
+  },
+  PylonFleetSteeringOutcome: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['seq', 'intentId', 'outcome', 'outcomeRef', 'observedAt'],
+    properties: {
+      seq: { type: 'integer', minimum: 1 },
+      intentId: { type: 'string', minLength: 1, maxLength: 160 },
+      outcome: {
+        type: 'string',
+        enum: [
+          'applied',
+          'queued_follow_up',
+          'skipped_stale',
+          'rejected',
+          'failed',
+        ],
+      },
+      outcomeRef: {
+        type: 'string',
+        pattern: '^outcome\\.pylon\\.fleet_steering\\.[a-f0-9]{24}$',
+      },
+      observedAt: { type: 'string', format: 'date-time' },
+    },
+  },
+  PylonFleetSteeringOutcomeBatch: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['claimRef', 'outcomes'],
+    properties: {
+      claimRef: {
+        type: 'string',
+        pattern: '^claim\\.sarah_fleet_run\\.[0-9a-f]{24}$',
+      },
+      outcomes: {
+        type: 'array',
+        minItems: 1,
+        maxItems: 64,
+        items: { $ref: '#/components/schemas/PylonFleetSteeringOutcome' },
+      },
+    },
+  },
+  PylonFleetSteeringOutcomeAck: {
+    type: 'object',
+    additionalProperties: false,
+    required: [
+      'ok',
+      'runRef',
+      'claimRef',
+      'outcomes',
+      'storedOutcomeCount',
+      'duplicateOutcomeCount',
+    ],
+    properties: {
+      ok: { type: 'boolean', enum: [true] },
+      runRef: {
+        type: 'string',
+        pattern: '^fleet_run\\.sarah\\.[0-9a-f]{20}$',
+      },
+      claimRef: {
+        type: 'string',
+        pattern: '^claim\\.sarah_fleet_run\\.[0-9a-f]{24}$',
+      },
+      outcomes: {
+        type: 'array',
+        minItems: 1,
+        maxItems: 64,
+        items: { $ref: '#/components/schemas/PylonFleetSteeringOutcome' },
+      },
+      storedOutcomeCount: { type: 'integer', minimum: 0 },
+      duplicateOutcomeCount: { type: 'integer', minimum: 0 },
+    },
+  },
+  PylonFleetSteeringError: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['schema', 'error'],
+    properties: {
+      schema: {
+        type: 'string',
+        enum: ['openagents.pylon.fleet_run_steering_error.v1'],
+      },
+      error: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['code', 'retryable'],
+        properties: {
+          code: {
+            type: 'string',
+            enum: [
+              'invalid_request',
+              'not_authorized',
+              'claim_conflict',
+              'unavailable',
+            ],
+          },
+          retryable: { type: 'boolean' },
+        },
+      },
+    },
+  },
   PylonWalletReadinessRequest: objectSummary(
     'Registered Pylon wallet readiness report with walletReady, walletRef, readinessRefs, balanceRefs, and liquidityRefs. Raw invoices, mnemonics, payment hashes, preimages, and wallet state are rejected.',
   ),
@@ -9391,6 +9536,114 @@ const paths = (): JsonSchema => ({
         '503': {
           description: 'Execution authority storage unavailable.',
           ...jsonContent('#/components/schemas/PylonFleetRunExecutionError'),
+        },
+      },
+    }),
+  },
+  '/api/pylons/{pylonRef}/fleet-runs/{runRef}/steering': {
+    get: operation({
+      operationId: 'readSarahFleetRunSteeringPage',
+      summary: 'Read accepted-claim steering intents for owned Pylon',
+      description:
+        'Registered-agent-only delivery for the exact Sarah FleetRun claim already accepted by this owned Pylon. First delivery transactionally reserves each ordered intent to that claim and Pylon; lost-response replay returns the same reservation, while another claim cannot consume it without an explicit requeue. Already-outcomed intents are omitted. Inline steer bodies remain private accepted-Pylon material and the response is bounded and no-store.',
+      tags: ['Pylon'],
+      security: agentBearer,
+      parameters: [
+        pathParam('pylonRef', 'Owned Pylon ref.'),
+        pathParam('runRef', 'Exact Sarah FleetRun ref.'),
+        {
+          name: 'claimRef',
+          in: 'query',
+          required: true,
+          description: 'Exact accepted intake claim ref.',
+          schema: {
+            type: 'string',
+            pattern: '^claim\\.sarah_fleet_run\\.[0-9a-f]{24}$',
+          },
+        },
+        {
+          name: 'after',
+          in: 'query',
+          required: true,
+          description: 'Last durable local steering sequence watermark.',
+          schema: { type: 'integer', minimum: 0 },
+        },
+        {
+          name: 'limit',
+          in: 'query',
+          required: true,
+          description: 'Maximum ordered intents to return.',
+          schema: { type: 'integer', minimum: 1, maximum: 100 },
+        },
+      ],
+      responses: {
+        '200': okJson(
+          'Ordered accepted-claim steering delivery page.',
+          '#/components/schemas/PylonFleetSteeringPage',
+        ),
+        '400': {
+          description: 'Malformed path or strict query.',
+          ...jsonContent('#/components/schemas/PylonFleetSteeringError'),
+        },
+        '401': {
+          description: 'Registered-agent bearer required.',
+          ...jsonContent('#/components/schemas/PylonFleetSteeringError'),
+        },
+        '403': {
+          description: 'Pylon is not owned by the derived owner.',
+          ...jsonContent('#/components/schemas/PylonFleetSteeringError'),
+        },
+        '409': {
+          description: 'Claim or delivery reservation conflict.',
+          ...jsonContent('#/components/schemas/PylonFleetSteeringError'),
+        },
+        '503': {
+          description: 'Steering exchange storage unavailable.',
+          ...jsonContent('#/components/schemas/PylonFleetSteeringError'),
+        },
+      },
+    }),
+  },
+  '/api/pylons/{pylonRef}/fleet-runs/{runRef}/steering/outcomes': {
+    post: operation({
+      operationId: 'appendSarahFleetRunSteeringOutcomes',
+      summary: 'Acknowledge accepted-claim steering outcomes',
+      description:
+        'Registered-agent-only, body-free outcome acknowledgment for intents previously reserved to this exact accepted claim and owned Pylon. Outcome refs are SHA-256 content-bound; same-run intents must be acknowledged in delivery order despite global sequence gaps. Exact replay is idempotent and changed replay conflicts. Only applied run/approval outcomes may update effective Sync state, atomically with the durable outcome; steer bodies and non-applied outcomes are never projected as effective.',
+      tags: ['Pylon'],
+      security: agentBearer,
+      parameters: [
+        pathParam('pylonRef', 'Owned Pylon ref.'),
+        pathParam('runRef', 'Exact Sarah FleetRun ref.'),
+      ],
+      requestBody: jsonContent(
+        '#/components/schemas/PylonFleetSteeringOutcomeBatch',
+      ),
+      responses: {
+        '200': okJson(
+          'Durable body-free outcome acknowledgment.',
+          '#/components/schemas/PylonFleetSteeringOutcomeAck',
+        ),
+        '400': {
+          description: 'Malformed, oversized, unordered, or unsafe outcome batch.',
+          ...jsonContent('#/components/schemas/PylonFleetSteeringError'),
+        },
+        '401': {
+          description: 'Registered-agent bearer required.',
+          ...jsonContent('#/components/schemas/PylonFleetSteeringError'),
+        },
+        '403': {
+          description: 'Pylon is not owned by the derived owner.',
+          ...jsonContent('#/components/schemas/PylonFleetSteeringError'),
+        },
+        '409': {
+          description:
+            'Claim, ordering, content-binding, effective-state, or replay conflict.',
+          ...jsonContent('#/components/schemas/PylonFleetSteeringError'),
+        },
+        '503': {
+          description: 'Steering exchange storage unavailable.',
+          ...jsonContent('#/components/schemas/PylonFleetSteeringError'),
         },
       },
     }),

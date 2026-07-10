@@ -1,26 +1,15 @@
 import {
-  decodeKhalaFleetIntent,
+  decodeKhalaFleetIntentJson,
   type KhalaFleetIntent,
   type KhalaFleetIntentKind,
 } from "@openagentsinc/khala-fleet-intents"
 import {
-  decodeFleetApprovalEntity,
-  decodeFleetRunEntity,
-  decodeFleetSteerEntity,
-  type FleetApprovalEntity,
-  FLEET_APPROVAL_ENTITY_TYPE,
-  FLEET_RUN_ENTITY_TYPE,
-  type FleetRunEntity,
-  type FleetRunStatus,
+  canonicalJson,
   fleetRunScope,
   MutationResult,
   MutatorName,
 } from "@openagentsinc/khala-sync"
-import {
-  appendFleetEntityChange,
-  ensureScopeOwner,
-  type FleetEntityChange,
-} from "./fleet-projection.js"
+import { ensureScopeOwner } from "./fleet-projection.js"
 import type { MutatorContext, MutatorDefinition } from "./push-engine.js"
 import { defineMutator } from "./push-engine.js"
 
@@ -44,13 +33,11 @@ import { defineMutator } from "./push-engine.js"
  * AUTHORITY STAYS SERVER/DESKTOP-SIDE. An applied mutation does two atomic
  * things inside the push-engine transaction: it (1) records the durable typed
  * intent in `khala_sync_fleet_steering_intents` (the receipt + the resumable
- * `seq` watermark the desktop/daemon authority polls via
- * `readPendingFleetSteeringIntents`), and (2) projects the observable
- * post-image (run status / approval card / steer receipt) into
- * `scope.fleet_run.<runRef>`. The mutator does NOT itself change any worker's
- * dispatch behavior — the desktop supervisor observes the intent and enforces
- * it. Mobile is never a second supervisor implementation; it only appends
- * typed intents and reads projected state.
+ * `seq` watermark the Pylon authority reads through the accepted-claim
+ * steering exchange). It deliberately does NOT project the requested action
+ * as executor-effective. Only an `applied` outcome ACK may append an effective
+ * run or approval post-image. Mobile/web is never a second supervisor
+ * implementation; it appends typed requests and reads acknowledged state.
  *
  * OWNERSHIP: the target scope is `scope.fleet_run.<runRef>`; the mutator
  * consults `khala_sync_scope_owners` (first-writer-wins). A scope owned by a
@@ -70,12 +57,16 @@ export const FLEET_STEERING_KIND_REJECTION = "fleet_intent_kind_mismatch"
 export const FLEET_STEERING_RUN_REQUIRED_REJECTION = "fleet_run_required"
 export const FLEET_STEERING_INTENT_EXISTS_REJECTION = "fleet_intent_exists"
 export const FLEET_STEERING_REF_SHAPE_REJECTION = "fleet_intent_ref_shape"
+export const FLEET_STEERING_BODY_SHAPE_REJECTION = "fleet_intent_body_shape"
 
 /** The public-safe ref shape the durable table's CHECK constraints enforce. */
 const PUBLIC_REF_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/
+const PUBLIC_BODY_REF_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:/#-]*$/u
+const FLEET_STEERING_INLINE_BODY_MAX_BYTES = 16 * 1_024
+const FLEET_STEERING_INTENT_MAX_BYTES = 32 * 1_024
 
 export const decodeFleetIntentArgs = (argsJson: string): KhalaFleetIntent =>
-  decodeKhalaFleetIntent(JSON.parse(argsJson) as unknown)
+  decodeKhalaFleetIntentJson(argsJson)
 
 const reject = (
   ctx: MutatorContext,
@@ -99,41 +90,6 @@ const transactionNowIso = async (ctx: MutatorContext): Promise<string> => {
   const raw = rows[0]?.now
   if (raw === undefined) throw new Error("SELECT now() returned no row")
   return raw instanceof Date ? raw.toISOString() : new Date(raw).toISOString()
-}
-
-/**
- * Read an entity's current post-image (latest committed upsert in the fleet
- * scope's changelog). Absent/undecodable images yield `null`; the mutator then
- * synthesizes a baseline (post-image-log semantics — the next system
- * projection self-heals any drift).
- */
-const readCurrentEntity = async <A>(
-  ctx: MutatorContext,
-  runRef: string,
-  entityType: string,
-  entityId: string,
-  decode: (value: unknown) => A,
-): Promise<A | null> => {
-  const scope = fleetRunScope(runRef)
-  const rows: Array<{ post_image_json: string | object }> = await ctx.writer
-    .sql`
-    SELECT post_image_json FROM khala_sync_changelog
-    WHERE scope = ${scope} AND entity_type = ${entityType}
-      AND entity_id = ${entityId} AND op = 'upsert'
-    ORDER BY version DESC
-    LIMIT 1
-  `
-  const row = rows[0]
-  if (row === undefined) return null
-  try {
-    const value =
-      typeof row.post_image_json === "string"
-        ? (JSON.parse(row.post_image_json) as unknown)
-        : row.post_image_json
-    return decode(value)
-  } catch {
-    return null
-  }
 }
 
 interface SteeringIntentColumns {
@@ -169,13 +125,39 @@ const refShapeRejection = (
   if (
     !PUBLIC_REF_PATTERN.test(runRef) ||
     !PUBLIC_REF_PATTERN.test(intent.intentId) ||
-    !PUBLIC_REF_PATTERN.test(intent.idempotencyKey)
+    !PUBLIC_REF_PATTERN.test(intent.idempotencyKey) ||
+    intent.intentId.length > 160 ||
+    intent.idempotencyKey.length > 120
   ) {
     return reject(
       ctx,
       FLEET_STEERING_REF_SHAPE_REJECTION,
       "fleet steering intent refs must be public-safe (no @, /, or whitespace)",
     )
+  }
+  if (intent.kind === "steer_message") {
+    const bodyCarriers =
+      Number(intent.body !== undefined) + Number(intent.bodyRef !== undefined)
+    if (
+      bodyCarriers !== 1 ||
+      (intent.body !== undefined &&
+        new TextEncoder().encode(intent.body).byteLength >
+          FLEET_STEERING_INLINE_BODY_MAX_BYTES) ||
+      (intent.bodyRef !== undefined &&
+        (intent.bodyRef.length > 240 ||
+          !PUBLIC_BODY_REF_PATTERN.test(intent.bodyRef))) ||
+      (intent.targetRef !== undefined &&
+        (intent.targetRef.length > 180 ||
+          !PUBLIC_BODY_REF_PATTERN.test(intent.targetRef))) ||
+      new TextEncoder().encode(canonicalJson(intent)).byteLength >
+        FLEET_STEERING_INTENT_MAX_BYTES
+    ) {
+      return reject(
+        ctx,
+        FLEET_STEERING_BODY_SHAPE_REJECTION,
+        "fleet steering body carriers must be bounded and public-safe",
+      )
+    }
   }
   return null
 }
@@ -218,114 +200,6 @@ const insertSteeringIntent = async (
 }
 
 // ---------------------------------------------------------------------------
-// Per-kind projected post-image builders
-// ---------------------------------------------------------------------------
-
-const baselineRun = (runRef: string, nowIso: string): FleetRunEntity =>
-  decodeFleetRunEntity({
-    counters: {
-      activeAssignments: 0,
-      blockedAssignments: 0,
-      completedAssignments: 0,
-      failedAssignments: 0,
-      workUnitsTotal: 0,
-    },
-    desiredSlots: 0,
-    runId: runRef,
-    startedAt: null,
-    status: "draft",
-    updatedAt: nowIso,
-    workerKind: "auto",
-  })
-
-const runStatusForAction = (
-  action: "pause" | "resume" | "drain" | "stop",
-): FleetRunStatus => {
-  switch (action) {
-    case "pause":
-      return "paused"
-    case "resume":
-      return "running"
-    case "drain":
-      return "draining"
-    case "stop":
-      return "stopped"
-  }
-}
-
-const buildRunControlChange = async (
-  ctx: MutatorContext,
-  runRef: string,
-  action: "pause" | "resume" | "drain" | "stop",
-  nowIso: string,
-): Promise<Extract<FleetEntityChange, { op: "upsert" }>> => {
-  const current =
-    (await readCurrentEntity(
-      ctx,
-      runRef,
-      FLEET_RUN_ENTITY_TYPE,
-      runRef,
-      decodeFleetRunEntity,
-    )) ?? baselineRun(runRef, nowIso)
-  const status = runStatusForAction(action)
-  const entity = decodeFleetRunEntity({
-    ...current,
-    counters: { ...current.counters },
-    // `stop` and `drain` both request zero new dispatch; `stop` is terminal.
-    desiredSlots: action === "stop" ? 0 : current.desiredSlots,
-    status,
-    updatedAt: nowIso,
-  })
-  return { entity, kind: "fleet_run", op: "upsert" }
-}
-
-const buildApprovalChange = async (
-  ctx: MutatorContext,
-  runRef: string,
-  approvalRef: string,
-  decision: "allow" | "deny",
-  nowIso: string,
-): Promise<Extract<FleetEntityChange, { op: "upsert" }>> => {
-  const current = await readCurrentEntity(
-    ctx,
-    runRef,
-    FLEET_APPROVAL_ENTITY_TYPE,
-    approvalRef,
-    decodeFleetApprovalEntity,
-  )
-  // Preserve the pending card's workerId/toolClass/openedAt when the desktop
-  // has projected it; record the decision durably either way.
-  const entity: FleetApprovalEntity = decodeFleetApprovalEntity({
-    ...(current ?? {}),
-    approvalRef,
-    decidedAt: nowIso,
-    status: decision === "allow" ? "allowed" : "denied",
-    updatedAt: nowIso,
-  })
-  return { entity, kind: "fleet_approval", op: "upsert" }
-}
-
-const buildSteerChange = (
-  intent: Extract<KhalaFleetIntent, { kind: "steer_message" }>,
-  nowIso: string,
-): Extract<FleetEntityChange, { op: "upsert" }> => {
-  const bodyCarrier =
-    intent.body !== undefined
-      ? "inline"
-      : intent.bodyRef !== undefined
-        ? "ref"
-        : "none"
-  const entity = decodeFleetSteerEntity({
-    bodyCarrier,
-    createdAt: nowIso,
-    steerRef: intent.intentId,
-    ...(intent.targetRef === undefined ? {} : { targetRef: intent.targetRef }),
-    updatedAt: nowIso,
-  })
-  return { entity, kind: "fleet_steer", op: "upsert" }
-}
-
-// ---------------------------------------------------------------------------
 // Shared dispatch flow
 // ---------------------------------------------------------------------------
 
@@ -333,10 +207,6 @@ const dispatch = async (
   ctx: MutatorContext,
   intent: KhalaFleetIntent,
   expectedKind: KhalaFleetIntentKind,
-  buildChange: (
-    runRef: string,
-    nowIso: string,
-  ) => Promise<Extract<FleetEntityChange, { op: "upsert" }>>,
 ): Promise<MutationResult> => {
   if (intent.kind !== expectedKind) {
     return reject(
@@ -380,56 +250,28 @@ const dispatch = async (
   }
 
   const nowIso = await transactionNowIso(ctx)
-  const change = await buildChange(runRef, nowIso)
-  // Durable receipt + projected post-image, one transaction, both attributable
-  // to this mutation.
   await insertSteeringIntent(ctx, runRef, intent, nowIso)
-  await appendFleetEntityChange(ctx.writer, runRef, change, ctx.mutationRef)
   return applied(ctx)
 }
 
 export const fleetDispatchRunControlMutator: MutatorDefinition =
   defineMutator<KhalaFleetIntent>({
     decodeArgs: decodeFleetIntentArgs,
-    execute: (intent, ctx) =>
-      dispatch(ctx, intent, "fleet_run_control", (runRef, nowIso) => {
-        if (intent.kind !== "fleet_run_control") {
-          throw new Error("unreachable: kind validated by dispatch")
-        }
-        return buildRunControlChange(ctx, runRef, intent.action, nowIso)
-      }),
+    execute: (intent, ctx) => dispatch(ctx, intent, "fleet_run_control"),
     name: MutatorName.make(FLEET_DISPATCH_RUN_CONTROL_MUTATOR_NAME),
   })
 
 export const fleetDispatchApprovalDecisionMutator: MutatorDefinition =
   defineMutator<KhalaFleetIntent>({
     decodeArgs: decodeFleetIntentArgs,
-    execute: (intent, ctx) =>
-      dispatch(ctx, intent, "approval_decision", (runRef, nowIso) => {
-        if (intent.kind !== "approval_decision") {
-          throw new Error("unreachable: kind validated by dispatch")
-        }
-        return buildApprovalChange(
-          ctx,
-          runRef,
-          intent.approvalRef,
-          intent.decision,
-          nowIso,
-        )
-      }),
+    execute: (intent, ctx) => dispatch(ctx, intent, "approval_decision"),
     name: MutatorName.make(FLEET_DISPATCH_APPROVAL_DECISION_MUTATOR_NAME),
   })
 
 export const fleetDispatchSteerMessageMutator: MutatorDefinition =
   defineMutator<KhalaFleetIntent>({
     decodeArgs: decodeFleetIntentArgs,
-    execute: (intent, ctx) =>
-      dispatch(ctx, intent, "steer_message", (_runRef, nowIso) => {
-        if (intent.kind !== "steer_message") {
-          throw new Error("unreachable: kind validated by dispatch")
-        }
-        return Promise.resolve(buildSteerChange(intent, nowIso))
-      }),
+    execute: (intent, ctx) => dispatch(ctx, intent, "steer_message"),
     name: MutatorName.make(FLEET_DISPATCH_STEER_MESSAGE_MUTATOR_NAME),
   })
 

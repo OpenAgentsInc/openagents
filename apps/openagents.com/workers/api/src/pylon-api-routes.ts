@@ -4,6 +4,9 @@ import {
   type FleetRunAuthorityClaimResult,
   FleetRunAuthorityError,
   FleetRunExecutionBatch,
+  FleetSteeringOutcomeBatch,
+  type FleetSteeringOutcomeAck,
+  type FleetSteeringPage,
 } from '@openagentsinc/khala-sync-server'
 import { notFound } from '@openagentsinc/sync-worker'
 import { Effect, Match as M, Schema as S } from 'effect'
@@ -128,6 +131,28 @@ type PylonApiRouteDependencies<Bindings> = Readonly<{
       FleetRunAuthorityError
     >
   }>
+  fleetSteeringExchange?: Readonly<{
+    readPage: (
+      env: Bindings,
+      input: Readonly<{
+        ownerUserId: string
+        pylonRef: string
+        runRef: string
+        claimRef: string
+        after: number
+        limit: number
+      }>,
+    ) => Effect.Effect<FleetSteeringPage, FleetRunAuthorityError>
+    appendOutcomes: (
+      env: Bindings,
+      input: Readonly<{
+        ownerUserId: string
+        pylonRef: string
+        runRef: string
+        batch: typeof FleetSteeringOutcomeBatch.Type
+      }>,
+    ) => Effect.Effect<FleetSteeringOutcomeAck, FleetRunAuthorityError>
+  }>
   // #5252: private operator-only store for raw Spark payout targets. Optional so
   // existing route wiring/tests stay valid; the spark-payout-target route fails
   // closed (501) when it is not wired.
@@ -180,13 +205,20 @@ export const PYLON_FLEET_RUN_ACCEPT_ROUTE_PATTERN =
   '/api/pylons/:pylonRef/fleet-runs/accept' as const
 export const PYLON_FLEET_RUN_EXECUTION_ROUTE_PATTERN =
   '/api/pylons/:pylonRef/fleet-runs/:runRef/events' as const
+export const PYLON_FLEET_RUN_STEERING_ROUTE_PATTERN =
+  '/api/pylons/:pylonRef/fleet-runs/:runRef/steering' as const
+export const PYLON_FLEET_RUN_STEERING_OUTCOMES_ROUTE_PATTERN =
+  '/api/pylons/:pylonRef/fleet-runs/:runRef/steering/outcomes' as const
 
 const PYLON_FLEET_RUN_TRANSPORT_SCHEMA =
   'openagents.pylon.fleet_run_transport.v1' as const
 const PYLON_FLEET_RUN_EXECUTION_ERROR_SCHEMA =
   'openagents.pylon.fleet_run_execution_error.v1' as const
+const PYLON_FLEET_RUN_STEERING_ERROR_SCHEMA =
+  'openagents.pylon.fleet_run_steering_error.v1' as const
 const FLEET_RUN_LEASE_DURATION_MS = 60_000
 const FLEET_RUN_EXECUTION_MAX_BODY_BYTES = 256 * 1_024
+const FLEET_RUN_STEERING_OUTCOMES_MAX_BODY_BYTES = 64 * 1_024
 
 const FleetRunRef = S.Trim.check(
   S.isPattern(/^fleet_run\.sarah\.[0-9a-f]{20}$/u),
@@ -202,6 +234,17 @@ const FleetRunAcceptBody = S.Struct({
   schema: S.Literal('openagents.pylon.fleet_run_accept.request.v1'),
   runRef: FleetRunRef,
   claimRef: FleetRunClaimRef,
+})
+const FleetRunSteeringQuery = S.Struct({
+  claimRef: FleetRunClaimRef,
+  after: S.Int.check(
+    S.isGreaterThanOrEqualTo(0),
+    S.isLessThanOrEqualTo(Number.MAX_SAFE_INTEGER),
+  ),
+  limit: S.Int.check(
+    S.isGreaterThanOrEqualTo(1),
+    S.isLessThanOrEqualTo(100),
+  ),
 })
 
 const decodeStrictFleetRunBody = <A>(
@@ -222,33 +265,75 @@ const decodeStrictFleetRunBody = <A>(
 
 const decodeFleetRunExecutionBody = (
   request: Request,
-): Effect.Effect<typeof FleetRunExecutionBatch.Type, PylonApiStoreError> =>
-  Effect.tryPromise({
-    try: async () => {
-      const declaredLength = Number(request.headers.get('content-length'))
-      if (
-        Number.isFinite(declaredLength) &&
-        declaredLength > FLEET_RUN_EXECUTION_MAX_BODY_BYTES
-      ) {
-        throw new Error('FleetRun execution batch is too large.')
-      }
-      const raw = await request.text()
-      if (
-        new TextEncoder().encode(raw).byteLength >
-        FLEET_RUN_EXECUTION_MAX_BODY_BYTES
-      ) {
-        throw new Error('FleetRun execution batch is too large.')
-      }
-      return S.decodeUnknownSync(FleetRunExecutionBatch)(JSON.parse(raw), {
-        onExcessProperty: 'error',
-      })
-    },
-    catch: () =>
-      new PylonApiStoreError({
-        kind: 'validation_error',
-        reason: 'FleetRun execution request failed validation.',
-      }),
+): Effect.Effect<typeof FleetRunExecutionBatch.Type, PylonApiStoreError> => {
+  const invalid = () =>
+    new PylonApiStoreError({
+      kind: 'validation_error',
+      reason: 'FleetRun execution request failed validation.',
+    })
+  return Effect.gen(function* () {
+    const declaredLength = Number(request.headers.get('content-length'))
+    if (
+      Number.isFinite(declaredLength) &&
+      declaredLength > FLEET_RUN_EXECUTION_MAX_BODY_BYTES
+    ) {
+      return yield* invalid()
+    }
+    const raw = yield* Effect.tryPromise({
+      try: () => request.text(),
+      catch: invalid,
+    })
+    if (
+      new TextEncoder().encode(raw).byteLength >
+      FLEET_RUN_EXECUTION_MAX_BODY_BYTES
+    ) {
+      return yield* invalid()
+    }
+    return yield* Effect.try({
+      try: () =>
+        S.decodeUnknownSync(S.fromJsonString(FleetRunExecutionBatch))(raw, {
+          onExcessProperty: 'error',
+        }),
+      catch: invalid,
+    })
   })
+}
+
+const decodeFleetSteeringOutcomesBody = (
+  request: Request,
+): Effect.Effect<typeof FleetSteeringOutcomeBatch.Type, PylonApiStoreError> => {
+  const invalid = () =>
+    new PylonApiStoreError({
+      kind: 'validation_error',
+      reason: 'Fleet steering outcome request failed validation.',
+    })
+  return Effect.gen(function* () {
+    const declaredLength = Number(request.headers.get('content-length'))
+    if (
+      Number.isFinite(declaredLength) &&
+      declaredLength > FLEET_RUN_STEERING_OUTCOMES_MAX_BODY_BYTES
+    ) {
+      return yield* invalid()
+    }
+    const raw = yield* Effect.tryPromise({
+      try: () => request.text(),
+      catch: invalid,
+    })
+    if (
+      new TextEncoder().encode(raw).byteLength >
+      FLEET_RUN_STEERING_OUTCOMES_MAX_BODY_BYTES
+    ) {
+      return yield* invalid()
+    }
+    return yield* Effect.try({
+      try: () =>
+        S.decodeUnknownSync(S.fromJsonString(FleetSteeringOutcomeBatch))(raw, {
+          onExcessProperty: 'error',
+        }),
+      catch: invalid,
+    })
+  })
+}
 
 const LinkOpenAuthAgentRequest = S.Struct({
   agentToken: S.Trim.check(
@@ -1296,6 +1381,60 @@ const fleetRunExecutionErrorResponse = (error: unknown): HttpResponse => {
   return response('unavailable', true, 503)
 }
 
+const fleetRunSteeringErrorResponse = (error: unknown): HttpResponse => {
+  const response = (
+    code:
+      | 'invalid_request'
+      | 'not_authorized'
+      | 'claim_conflict'
+      | 'unavailable',
+    retryable: boolean,
+    status: number,
+    headers?: HeadersInit,
+  ): HttpResponse =>
+    noStoreJsonResponse(
+      {
+        schema: PYLON_FLEET_RUN_STEERING_ERROR_SCHEMA,
+        error: { code, retryable },
+      },
+      { status, ...(headers === undefined ? {} : { headers }) },
+    )
+
+  if (error instanceof PylonApiUnauthorized) {
+    return response('not_authorized', false, 401, {
+      'www-authenticate': 'Bearer',
+    })
+  }
+  if (error instanceof PylonApiStoreError) {
+    if (error.kind === 'validation_error') {
+      return response('invalid_request', false, 400)
+    }
+    if (error.kind === 'storage_error') {
+      return response('unavailable', true, 503)
+    }
+    return response('not_authorized', false, 403)
+  }
+  if (error instanceof FleetRunAuthorityError) {
+    if (error.kind === 'invalid_request') {
+      return response('invalid_request', false, 400)
+    }
+    if (
+      error.kind === 'claim_conflict' ||
+      error.kind === 'claim_expired' ||
+      error.kind === 'claim_not_found' ||
+      error.kind === 'idempotency_conflict' ||
+      error.kind === 'run_not_found'
+    ) {
+      return response('claim_conflict', false, 409)
+    }
+    if (error.kind === 'pylon_not_authorized') {
+      return response('not_authorized', false, 403)
+    }
+    return response('unavailable', true, 503)
+  }
+  return response('unavailable', true, 503)
+}
+
 const fleetRunOwnerUserId = (session: ProgrammaticAgentSession): string => {
   const openauthUserId = session.credential.openauthUserId?.trim()
   return openauthUserId === undefined || openauthUserId === ''
@@ -1423,6 +1562,111 @@ const routeFleetRunExecution = <Bindings extends PylonApiRouteEnv>(
   }).pipe(
     Effect.catch(error =>
       Effect.succeed(fleetRunExecutionErrorResponse(error)),
+    ),
+  )
+
+const decodeFleetSteeringQuery = (
+  url: URL,
+): Effect.Effect<typeof FleetRunSteeringQuery.Type, PylonApiStoreError> =>
+  Effect.try({
+    try: () => {
+      const keys = [...url.searchParams.keys()]
+      if (
+        keys.length !== 3 ||
+        new Set(keys).size !== 3 ||
+        !keys.includes('claimRef') ||
+        !keys.includes('after') ||
+        !keys.includes('limit')
+      ) {
+        return S.decodeUnknownSync(FleetRunSteeringQuery)({})
+      }
+      const after = url.searchParams.get('after') ?? ''
+      const limit = url.searchParams.get('limit') ?? ''
+      if (!/^(?:0|[1-9]\d*)$/u.test(after) || !/^[1-9]\d*$/u.test(limit)) {
+        return S.decodeUnknownSync(FleetRunSteeringQuery)({})
+      }
+      return S.decodeUnknownSync(FleetRunSteeringQuery)(
+        {
+          claimRef: url.searchParams.get('claimRef'),
+          after: Number(after),
+          limit: Number(limit),
+        },
+        { onExcessProperty: 'error' },
+      )
+    },
+    catch: () =>
+      new PylonApiStoreError({
+        kind: 'validation_error',
+        reason: 'Fleet steering query failed validation.',
+      }),
+  })
+
+const routeFleetRunSteeringPage = <Bindings extends PylonApiRouteEnv>(
+  dependencies: PylonApiRouteDependencies<Bindings>,
+  request: Request,
+  env: Bindings,
+  url: URL,
+  pylonRef: string,
+  runRef: string,
+): Effect.Effect<HttpResponse> =>
+  Effect.gen(function* () {
+    const session = yield* requireAgent(dependencies, request, env)
+    yield* requireOwnedRegistration(dependencies, env, pylonRef, session)
+    const exchange = dependencies.fleetSteeringExchange
+    if (exchange === undefined) {
+      return fleetRunSteeringErrorResponse(
+        new FleetRunAuthorityError({
+          kind: 'storage_unavailable',
+          reason: 'fleet steering exchange is unavailable',
+        }),
+      )
+    }
+    const query = yield* decodeFleetSteeringQuery(url)
+    const page = yield* exchange.readPage(env, {
+      ownerUserId: fleetRunOwnerUserId(session),
+      pylonRef,
+      runRef,
+      claimRef: query.claimRef,
+      after: query.after,
+      limit: query.limit,
+    })
+    return noStoreJsonResponse(page)
+  }).pipe(
+    Effect.catch(error =>
+      Effect.succeed(fleetRunSteeringErrorResponse(error)),
+    ),
+  )
+
+const routeFleetRunSteeringOutcomes = <Bindings extends PylonApiRouteEnv>(
+  dependencies: PylonApiRouteDependencies<Bindings>,
+  request: Request,
+  env: Bindings,
+  pylonRef: string,
+  runRef: string,
+): Effect.Effect<HttpResponse> =>
+  Effect.gen(function* () {
+    const session = yield* requireAgent(dependencies, request, env)
+    yield* requireOwnedRegistration(dependencies, env, pylonRef, session)
+    const exchange = dependencies.fleetSteeringExchange
+    if (exchange === undefined) {
+      return fleetRunSteeringErrorResponse(
+        new FleetRunAuthorityError({
+          kind: 'storage_unavailable',
+          reason: 'fleet steering exchange is unavailable',
+        }),
+      )
+    }
+    const batch = yield* decodeFleetSteeringOutcomesBody(request)
+    const ack = yield* exchange.appendOutcomes(env, {
+      ownerUserId: fleetRunOwnerUserId(session),
+      pylonRef,
+      runRef,
+      batch,
+    })
+    return noStoreJsonResponse(ack)
+  }).pipe(
+    Effect.catch(error =>
+      Effect.succeed(fleetRunSteeringErrorResponse(error)),
     ),
   )
 
@@ -3051,6 +3295,56 @@ export const makePylonApiRoutes = <Bindings extends PylonApiRouteEnv>(
 
     const fleetRunExecutionMatch =
       /^\/api\/pylons\/([^/]+)\/fleet-runs\/([^/]+)\/events$/.exec(url.pathname)
+
+    const fleetRunSteeringMatch =
+      /^\/api\/pylons\/([^/]+)\/fleet-runs\/([^/]+)\/steering(?:\/(outcomes))?$/.exec(
+        url.pathname,
+      )
+
+    if (fleetRunSteeringMatch !== null) {
+      const outcomes = fleetRunSteeringMatch[3] === 'outcomes'
+      if (
+        (outcomes && request.method !== 'POST') ||
+        (!outcomes && request.method !== 'GET')
+      ) {
+        return Effect.succeed(methodNotAllowed([outcomes ? 'POST' : 'GET']))
+      }
+      return Effect.try({
+        try: () => ({
+          pylonRef: decodeURIComponent(fleetRunSteeringMatch[1]!),
+          runRef: S.decodeUnknownSync(FleetRunRef)(
+            decodeURIComponent(fleetRunSteeringMatch[2]!),
+          ),
+        }),
+        catch: () =>
+          new PylonApiStoreError({
+            kind: 'validation_error',
+            reason: 'Fleet steering path failed validation.',
+          }),
+      }).pipe(
+        Effect.flatMap(({ pylonRef, runRef }) =>
+          outcomes
+            ? routeFleetRunSteeringOutcomes(
+                dependencies,
+                request,
+                env,
+                pylonRef,
+                runRef,
+              )
+            : routeFleetRunSteeringPage(
+                dependencies,
+                request,
+                env,
+                url,
+                pylonRef,
+                runRef,
+              ),
+        ),
+        Effect.catch(error =>
+          Effect.succeed(fleetRunSteeringErrorResponse(error)),
+        ),
+      )
+    }
 
     if (fleetRunExecutionMatch !== null) {
       if (request.method !== 'POST') {

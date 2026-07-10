@@ -1,7 +1,9 @@
 import { Container, getContainer } from '@cloudflare/containers'
 import {
   FleetRunAuthorityError,
+  makeFleetSteeringExchangeRepository,
   makeFleetRunAuthorityRepository,
+  type FleetSteeringExchangeRepositoryShape,
   type FleetRunAuthorityRepositoryShape,
 } from '@openagentsinc/khala-sync-server'
 import {
@@ -10883,6 +10885,37 @@ const withFleetRunAuthority = <A>(
   )
 }
 
+const withFleetSteeringExchange = <A>(
+  env: WorkerBindings,
+  operation: (
+    repository: FleetSteeringExchangeRepositoryShape,
+  ) => Effect.Effect<A, FleetRunAuthorityError>,
+): Effect.Effect<A, FleetRunAuthorityError> => {
+  const connectionString = env.KHALA_SYNC_DB?.connectionString
+  if (connectionString === undefined || connectionString.trim() === '') {
+    return Effect.fail(
+      new FleetRunAuthorityError({
+        kind: 'storage_unavailable',
+        reason: 'fleet steering exchange storage is unavailable',
+      }),
+    )
+  }
+
+  return Effect.acquireUseRelease(
+    Effect.tryPromise({
+      catch: () =>
+        new FleetRunAuthorityError({
+          kind: 'storage_unavailable',
+          reason: 'fleet steering exchange storage is unavailable',
+        }),
+      try: () => defaultMakeKhalaSyncSqlClient(connectionString),
+    }),
+    client =>
+      operation(makeFleetSteeringExchangeRepository({ sql: client.sql })),
+    client => Effect.promise(() => client.end().catch(() => undefined)),
+  )
+}
+
 const pylonApiRoutes = makePylonApiRoutes<WorkerBindings>({
   agentStore: env => makeAgentRegistrationStoreForEnv(env),
   makeStore: env => makePylonApiStoreForEnv(env),
@@ -10903,6 +10936,16 @@ const pylonApiRoutes = makePylonApiRoutes<WorkerBindings>({
             )
           : appendExecutionEvents(input)
       }),
+  },
+  fleetSteeringExchange: {
+    readPage: (env, input) =>
+      withFleetSteeringExchange(env, repository =>
+        repository.readPage(input),
+      ),
+    appendOutcomes: (env, input) =>
+      withFleetSteeringExchange(env, repository =>
+        repository.appendOutcomes(input),
+      ),
   },
   // #5252: private operator-only store for raw Spark payout targets.
   makeSparkPayoutTargetStore: env =>

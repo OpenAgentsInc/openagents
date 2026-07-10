@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto"
+
 import { describe, expect, it } from "bun:test"
 import {
   decodeFleetSteeringOutcomeAck,
@@ -7,6 +9,7 @@ import {
   decodeKhalaFleetIntentJson,
   defaultFleetAutoPolicy,
   fleetSteeringOutcomeRefContent,
+  FleetSteeringOutcomeRefKnownAnswer,
   type FleetAutoTargetCandidate,
   fleetHarnessKinds,
   fleetWorkerKinds,
@@ -81,6 +84,12 @@ describe("Fleet steering delivery transport", () => {
       outcome: "applied",
       observedAt: "2026-07-09T23:00:01.000Z",
     })
+    expect(
+      `outcome.pylon.fleet_steering.${createHash("sha256")
+        .update(FleetSteeringOutcomeRefKnownAnswer.canonicalJson)
+        .digest("hex")
+        .slice(0, 24)}`,
+    ).toBe(FleetSteeringOutcomeRefKnownAnswer.outcomeRef)
   })
 
   it("rejects malformed authority refs and private outcome payloads", () => {

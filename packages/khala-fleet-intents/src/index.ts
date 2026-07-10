@@ -469,6 +469,12 @@ export const fleetSteeringOutcomeRefContent = (input: Readonly<{
   observedAt: input.observedAt,
 })
 
+export const FleetSteeringOutcomeRefKnownAnswer = {
+  canonicalJson:
+    '{"claimRef":"claim.sarah_fleet_run.0123456789abcdef01234567","intentId":"intent.sarah.pause.1","observedAt":"2026-07-09T23:00:01.000Z","outcome":"applied","pylonRef":"pylon.test.one","runRef":"fleet_run.sarah.0123456789abcdef0123","schema":"openagents.pylon.fleet_steering_outcome.v1","seq":41}',
+  outcomeRef: "outcome.pylon.fleet_steering.d93f26d5c3e00b404336608a",
+} as const
+
 export const FleetSteeringOutcome = S.Struct({
   seq: FleetSteeringSequence,
   intentId: FleetSteeringDeliveryIntent.fields.intentId,

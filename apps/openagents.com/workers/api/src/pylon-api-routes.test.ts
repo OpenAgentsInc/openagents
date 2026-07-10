@@ -7,6 +7,9 @@ import {
   type FleetRunAuthorityClaimResult,
   FleetRunAuthorityError,
   type FleetRunExecutionBatch,
+  type FleetSteeringOutcomeAck,
+  type FleetSteeringOutcomeBatch,
+  type FleetSteeringPage,
 } from '@openagentsinc/khala-sync-server'
 import { Effect } from 'effect'
 import { describe, expect, test } from 'vitest'
@@ -845,6 +848,28 @@ const route = async (
         FleetRunAuthorityError
       >
     }>
+    fleetSteeringExchange?: Readonly<{
+      readPage: (
+        env: Readonly<Record<string, unknown>>,
+        input: Readonly<{
+          ownerUserId: string
+          pylonRef: string
+          runRef: string
+          claimRef: string
+          after: number
+          limit: number
+        }>,
+      ) => Effect.Effect<FleetSteeringPage, FleetRunAuthorityError>
+      appendOutcomes: (
+        env: Readonly<Record<string, unknown>>,
+        input: Readonly<{
+          ownerUserId: string
+          pylonRef: string
+          runRef: string
+          batch: FleetSteeringOutcomeBatch
+        }>,
+      ) => Effect.Effect<FleetSteeringOutcomeAck, FleetRunAuthorityError>
+    }>
     // KS-6.1 (#8302): optional fail-soft fleet cockpit projection spy.
     projectFleetAssignment?: (
       env: Readonly<Record<string, unknown>>,
@@ -895,6 +920,9 @@ const route = async (
     ...(options.fleetRunAuthority === undefined
       ? {}
       : { fleetRunAuthority: options.fleetRunAuthority }),
+    ...(options.fleetSteeringExchange === undefined
+      ? {}
+      : { fleetSteeringExchange: options.fleetSteeringExchange }),
     nowIso: () => options.nowIso ?? '2026-06-07T00:10:00.000Z',
     ...(options.projectFleetAssignment === undefined
       ? {}
@@ -4665,6 +4693,234 @@ describe('Pylon Sarah FleetRun transport', () => {
       error: { code: 'claim_expired', retryable: false },
     })
     expect(JSON.stringify(expiredBody)).not.toContain('private-host')
+  })
+})
+
+describe('Pylon Sarah FleetRun steering exchange', () => {
+  const runRef = 'fleet_run.sarah.0123456789abcdef0123'
+  const otherRunRef = 'fleet_run.sarah.abcdef0123456789abcd'
+  const claimRef = 'claim.sarah_fleet_run.0123456789abcdef01234567'
+  const intent = {
+    schema: 'khala.fleet_intent.v1' as const,
+    intentId: 'intent.sarah.pause.1',
+    createdAt: '2026-07-09T23:00:00.000Z',
+    origin: { surface: 'web' as const },
+    idempotencyKey: 'intent.sarah.pause.1.idem',
+    runRef,
+    kind: 'fleet_run_control' as const,
+    action: 'pause' as const,
+  }
+  const page = {
+    ok: true,
+    runRef,
+    claimRef,
+    intents: [
+      {
+        seq: 41,
+        intentId: intent.intentId,
+        intent,
+        createdAt: intent.createdAt,
+      },
+    ],
+    nextAfter: 41,
+    upToDate: true,
+  } as const satisfies FleetSteeringPage
+  const outcome = {
+    seq: 41,
+    intentId: intent.intentId,
+    outcome: 'applied' as const,
+    outcomeRef: 'outcome.pylon.fleet_steering.d93f26d5c3e00b404336608a',
+    observedAt: '2026-07-09T23:00:01.000Z',
+  }
+  const ack = {
+    ok: true,
+    runRef,
+    claimRef,
+    outcomes: [outcome],
+    storedOutcomeCount: 1,
+    duplicateOutcomeCount: 0,
+  } as const satisfies FleetSteeringOutcomeAck
+
+  test('serves a strict no-store page with server-derived owner and Pylon authority', async () => {
+    const store = new MemoryPylonApiStore()
+    await registerPylon(store, { tokenUserId: 'agent-one' })
+    const reads: Array<Record<string, unknown>> = []
+    const response = await route(
+      store,
+      `/api/pylons/pylon.test.one/fleet-runs/${runRef}/steering?claimRef=${claimRef}&after=0&limit=25`,
+      {
+        fleetSteeringExchange: {
+          readPage: (_env, input) =>
+            Effect.sync(() => {
+              reads.push(input)
+              return page
+            }),
+          appendOutcomes: () => Effect.succeed(ack),
+        },
+        method: 'GET',
+        openauthUserId: 'openauth-user-one',
+        tokenUserId: 'agent-one',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('cache-control')).toContain('no-store')
+    expect(await responseJson(response)).toEqual(page)
+    expect(reads).toEqual([
+      {
+        ownerUserId: 'openauth-user-one',
+        pylonRef: 'pylon.test.one',
+        runRef,
+        claimRef,
+        after: 0,
+        limit: 25,
+      },
+    ])
+  })
+
+  test('accepts only the body-free canonical outcome batch', async () => {
+    const store = new MemoryPylonApiStore()
+    await registerPylon(store, { tokenUserId: 'agent-one' })
+    const appends: Array<Record<string, unknown>> = []
+    const exchange = {
+      readPage: () => Effect.succeed(page),
+      appendOutcomes: (
+        _env: Readonly<Record<string, unknown>>,
+        input: Record<string, unknown>,
+      ) =>
+        Effect.sync(() => {
+          appends.push(input)
+          return ack
+        }),
+    }
+    const response = await route(
+      store,
+      `/api/pylons/pylon.test.one/fleet-runs/${runRef}/steering/outcomes`,
+      {
+        body: { claimRef, outcomes: [outcome] },
+        fleetSteeringExchange: exchange,
+        method: 'POST',
+        openauthUserId: 'openauth-user-one',
+        tokenUserId: 'agent-one',
+      },
+    )
+    expect(response.status).toBe(200)
+    expect(response.headers.get('cache-control')).toContain('no-store')
+    expect(await responseJson(response)).toEqual(ack)
+    expect(appends).toEqual([
+      {
+        ownerUserId: 'openauth-user-one',
+        pylonRef: 'pylon.test.one',
+        runRef,
+        batch: { claimRef, outcomes: [outcome] },
+      },
+    ])
+
+    const privatePayload = await route(
+      store,
+      `/api/pylons/pylon.test.one/fleet-runs/${runRef}/steering/outcomes`,
+      {
+        body: {
+          claimRef,
+          outcomes: [{ ...outcome, body: 'private steer detail' }],
+        },
+        fleetSteeringExchange: exchange,
+        method: 'POST',
+        tokenUserId: 'agent-one',
+      },
+    )
+    expect(privatePayload.status).toBe(400)
+    expect(appends).toHaveLength(1)
+  })
+
+  test('fails closed for wrong token, owner, Pylon, run, claim, query, and admin bearer', async () => {
+    const store = new MemoryPylonApiStore()
+    await registerPylon(store, { tokenUserId: 'agent-one' })
+    let calls = 0
+    const exchange = {
+      readPage: (
+        _env: Readonly<Record<string, unknown>>,
+        input: Readonly<{ runRef: string; claimRef: string }>,
+      ) =>
+        Effect.gen(function* () {
+          calls += 1
+          if (input.runRef !== runRef || input.claimRef !== claimRef) {
+            return yield* new FleetRunAuthorityError({
+              kind: 'claim_conflict',
+              reason: 'private claim detail',
+            })
+          }
+          return page
+        }),
+      appendOutcomes: () => Effect.succeed(ack),
+    }
+    const path = `/api/pylons/pylon.test.one/fleet-runs/${runRef}/steering?claimRef=${claimRef}&after=0&limit=25`
+    const missing = await route(store, path, {
+      fleetSteeringExchange: exchange,
+      method: 'GET',
+    })
+    const foreignOwner = await route(store, path, {
+      fleetSteeringExchange: exchange,
+      method: 'GET',
+      openauthUserId: 'openauth-user-two',
+      tokenUserId: 'agent-two',
+    })
+    const wrongPylon = await route(
+      store,
+      `/api/pylons/pylon.other/fleet-runs/${runRef}/steering?claimRef=${claimRef}&after=0&limit=25`,
+      {
+        fleetSteeringExchange: exchange,
+        method: 'GET',
+        tokenUserId: 'agent-one',
+      },
+    )
+    const wrongRun = await route(
+      store,
+      `/api/pylons/pylon.test.one/fleet-runs/${otherRunRef}/steering?claimRef=${claimRef}&after=0&limit=25`,
+      {
+        fleetSteeringExchange: exchange,
+        method: 'GET',
+        tokenUserId: 'agent-one',
+      },
+    )
+    const wrongClaim = await route(
+      store,
+      `/api/pylons/pylon.test.one/fleet-runs/${runRef}/steering?claimRef=claim.sarah_fleet_run.${'f'.repeat(24)}&after=0&limit=25`,
+      {
+        fleetSteeringExchange: exchange,
+        method: 'GET',
+        tokenUserId: 'agent-one',
+      },
+    )
+    const invalidQuery = await route(
+      store,
+      `${path}&ownerUserId=user-foreign`,
+      {
+        fleetSteeringExchange: exchange,
+        method: 'GET',
+        tokenUserId: 'agent-one',
+      },
+    )
+    const admin = await route(store, path, {
+      adminToken: true,
+      fleetSteeringExchange: exchange,
+      method: 'GET',
+    })
+
+    expect(missing.status).toBe(401)
+    expect(foreignOwner.status).toBe(403)
+    expect(wrongPylon.status).toBe(403)
+    expect(wrongRun.status).toBe(409)
+    expect(wrongClaim.status).toBe(409)
+    expect(invalidQuery.status).toBe(400)
+    expect(admin.status).toBe(401)
+    expect(calls).toBe(2)
+    const conflictBody = await responseJson(wrongClaim)
+    expect(conflictBody).toEqual({
+      schema: 'openagents.pylon.fleet_run_steering_error.v1',
+      error: { code: 'claim_conflict', retryable: false },
+    })
+    expect(JSON.stringify(conflictBody)).not.toContain('private claim detail')
   })
 })
 
