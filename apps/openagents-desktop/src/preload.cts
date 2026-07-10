@@ -27,10 +27,13 @@ import { DesktopChatTurnChannel, DesktopHydrateThreadChannel, DesktopNewThreadCh
 import {
   DesktopWorkspaceChooseChannel,
   DesktopWorkspaceFilesChannel,
+  DesktopWorkspaceGitDiffChannel,
+  DesktopWorkspaceGitStatusChannel,
   DesktopWorkspaceReadChannel,
   DesktopWorkspaceSaveChannel,
   DesktopWorkspaceSummaryChannel,
   decodeWorkspaceFileRequest,
+  decodeWorkspaceGitDiffRequest,
   decodeWorkspaceSaveRequest,
 } from "./workspace-contract.ts"
 
@@ -70,6 +73,13 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
     return request === null
       ? Promise.resolve({ state: "unavailable", message: "The file save request is invalid." })
       : ipcRenderer.invoke(DesktopWorkspaceSaveChannel, request)
+  },
+  workspaceGitStatus: () => ipcRenderer.invoke(DesktopWorkspaceGitStatusChannel),
+  workspaceGitDiff: (value: unknown) => {
+    const request = decodeWorkspaceGitDiffRequest(value)
+    return request === null
+      ? Promise.resolve({ state: "unavailable", message: "The diff request is invalid." })
+      : ipcRenderer.invoke(DesktopWorkspaceGitDiffChannel, request)
   },
   /**
    * Codex account reconnect (#8640 unblock): four renderer-argument-free

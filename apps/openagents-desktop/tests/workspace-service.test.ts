@@ -1,9 +1,15 @@
 import { afterEach, describe, expect, test } from "bun:test"
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
+import { execFileSync } from "node:child_process"
 import { tmpdir } from "node:os"
 import path from "node:path"
 
-import { readWorkspaceFile, saveWorkspaceFile } from "../src/workspace-service.ts"
+import {
+  readWorkspaceFile,
+  saveWorkspaceFile,
+  workspaceGitDiff,
+  workspaceGitStatus,
+} from "../src/workspace-service.ts"
 
 const roots: string[] = []
 const makeRoot = (): string => {
@@ -106,5 +112,51 @@ describe("Desktop bounded workspace service", () => {
       content: "x".repeat(240_001),
       expectedRevision: smallFile.revision,
     }).state).toBe("unavailable")
+  })
+
+  test("projects only bounded typed Git status and a selected non-binary diff", () => {
+    const root = makeRoot()
+    execFileSync("git", ["init", "--quiet"], { cwd: root })
+    execFileSync("git", ["config", "user.email", "fixture@example.test"], { cwd: root })
+    execFileSync("git", ["config", "user.name", "Fixture"], { cwd: root })
+    const file = path.join(root, "README.md")
+    writeFileSync(file, "before\n")
+    execFileSync("git", ["add", "README.md"], { cwd: root })
+    execFileSync("git", ["commit", "--quiet", "-m", "initial"], { cwd: root })
+    writeFileSync(file, "after\n")
+    writeFileSync(path.join(root, "new.txt"), "new")
+
+    expect(workspaceGitStatus(root)).toEqual({
+      state: "available",
+      changes: [
+        { path: "README.md", kind: "modified" },
+        { path: "new.txt", kind: "untracked" },
+      ],
+      truncated: false,
+    })
+    const diff = workspaceGitDiff(root, file)
+    expect(diff.state).toBe("available")
+    if (diff.state !== "available") throw new Error("expected diff")
+    expect(diff.path).toBe("README.md")
+    expect(diff.content).toContain("-before")
+    expect(diff.content).toContain("+after")
+    expect(diff.content).not.toContain(root)
+  })
+
+  test("never projects binary, secret-shaped, escape, or non-Git diff output", () => {
+    const root = makeRoot()
+    execFileSync("git", ["init", "--quiet"], { cwd: root })
+    execFileSync("git", ["config", "user.email", "fixture@example.test"], { cwd: root })
+    execFileSync("git", ["config", "user.name", "Fixture"], { cwd: root })
+    const file = path.join(root, "config.txt")
+    writeFileSync(file, "safe\n")
+    execFileSync("git", ["add", "config.txt"], { cwd: root })
+    execFileSync("git", ["commit", "--quiet", "-m", "initial"], { cwd: root })
+
+    writeFileSync(file, "token=sk-abcdefghijklmnop\n")
+    expect(workspaceGitDiff(root, file).state).toBe("unavailable")
+    writeFileSync(file, Buffer.from([0, 1, 2]))
+    expect(workspaceGitDiff(root, file).state).toBe("unavailable")
+    expect(workspaceGitDiff(root, path.join(root, "..", "outside.txt")).state).toBe("unavailable")
   })
 })

@@ -31,6 +31,8 @@ import { openagentsDesktopTheme } from "./theme.ts"
 import { type DesktopThread } from "../chat-contract.ts"
 import {
   type DesktopWorkspaceFile,
+  type DesktopWorkspaceGitDiff,
+  type DesktopWorkspaceGitStatus,
   type DesktopWorkspaceSaveResult,
   type DesktopWorkspaceSnapshot,
 } from "../workspace-contract.ts"
@@ -54,6 +56,8 @@ type DesktopBridge = Readonly<{
   chooseWorkspace?: () => Promise<unknown>
   readWorkspaceFile?: (value: unknown) => Promise<unknown>
   saveWorkspaceFile?: (value: unknown) => Promise<unknown>
+  workspaceGitStatus?: () => Promise<unknown>
+  workspaceGitDiff?: (value: unknown) => Promise<unknown>
   codexAccounts?: () => Promise<unknown>
   codexConnectStart?: () => Promise<unknown>
   codexConnectStatus?: () => Promise<unknown>
@@ -188,6 +192,23 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
             state: "unavailable",
             message: typeof value.message === "string" ? value.message : "Workspace save is unavailable.",
           }
+        },
+        gitStatus: async () => {
+          const raw = await (globalThis as { openagentsDesktop?: DesktopBridge }).openagentsDesktop?.workspaceGitStatus?.()
+          if (typeof raw !== "object" || raw === null) return { state: "unavailable" }
+          const value = raw as { state?: unknown; changes?: unknown; truncated?: unknown }
+          return value.state === "available" && Array.isArray(value.changes) && typeof value.truncated === "boolean"
+            ? value as DesktopWorkspaceGitStatus
+            : { state: "unavailable" }
+        },
+        gitDiff: async (path) => {
+          const raw = await (globalThis as { openagentsDesktop?: DesktopBridge }).openagentsDesktop?.workspaceGitDiff?.({ path })
+          if (typeof raw !== "object" || raw === null) return { state: "unavailable", message: "Git review is unavailable." }
+          const value = raw as { state?: unknown; path?: unknown; content?: unknown; truncated?: unknown; message?: unknown }
+          if (value.state === "available" && typeof value.path === "string" && typeof value.content === "string" && typeof value.truncated === "boolean") {
+            return value as DesktopWorkspaceGitDiff
+          }
+          return { state: "unavailable", message: typeof value.message === "string" ? value.message : "Git review is unavailable." }
         },
       }, codexSettingsBridge),
     )

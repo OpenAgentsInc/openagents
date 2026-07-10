@@ -227,6 +227,33 @@ describe("pure transitions", () => {
     expect(nodeByKey(truncated, "workspace-file-preview-truncated")?._tag).toBe("Text")
   })
 
+  test("Review workspace renders only typed changed-file rows and a bounded diff", () => {
+    const review = {
+      ...withWorkspaceSnapshot(withWorkspace(baseState, "review"), {
+        root: "/workspace",
+        label: "workspace",
+        git: "changed" as const,
+        entries: [],
+      }),
+      workspaceGitStatus: {
+        state: "available" as const,
+        changes: [{ path: "README.md", kind: "modified" as const }],
+        truncated: false,
+      },
+      workspaceGitDiff: {
+        state: "available" as const,
+        path: "README.md",
+        content: "-before\n+after",
+        truncated: false,
+      },
+    }
+    const view = desktopShellView(review)
+    expect(nodeByKey(view, "workspace-review-panel")?._tag).toBe("Stack")
+    expect(nodeByKey(view, "workspace-review-change-README.md")?._tag).toBe("Button")
+    expect(nodeByKey(view, "workspace-review-diff-content")?.content).toBe("-before\n+after")
+    expect(nodeByKey(view, "shell-composer")).toBeUndefined()
+  })
+
   test("New chat resets the conversation and current-chat navigation closes Fleet", () => {
     const activeFleet = withFleetDesk(withNote(baseState, "Ship the app", "18:05"))
     expect(activeFleet.fleetDeskOpen).toBe(true)
@@ -311,6 +338,8 @@ describe("typed chat intent loop end-to-end (registry -> state -> re-render)", (
                 file: { ...file, content: "changed elsewhere", revision: "revision-current" },
               }
             },
+            gitStatus: async () => ({ state: "unavailable" }),
+            gitDiff: async () => ({ state: "unavailable", message: "Git review is unavailable." }),
           }),
         )
         const initial = desktopShellView(yield* SubscriptionRef.get(state))

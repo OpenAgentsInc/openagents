@@ -41,6 +41,8 @@ import { Effect, Schema, SubscriptionRef } from "@effect-native/core/effect"
 import type { DesktopThread } from "../chat-contract.ts"
 import type {
   DesktopWorkspaceFile,
+  DesktopWorkspaceGitDiff,
+  DesktopWorkspaceGitStatus,
   DesktopWorkspaceSaveResult,
   DesktopWorkspaceSnapshot,
 } from "../workspace-contract.ts"
@@ -82,6 +84,8 @@ export type DesktopShellState = Readonly<{
   workspaceDraft: string
   workspaceBaseRevision: string | null
   workspaceSave: "idle" | "saving" | "saved" | "conflict" | "unavailable"
+  workspaceGitStatus: DesktopWorkspaceGitStatus
+  workspaceGitDiff: DesktopWorkspaceGitDiff | null
   /** The desktop-only planning deck; it has no deployment authority itself. */
   fleetDeskOpen: boolean
   /** The current, explicitly unsubmitted FleetRun objective draft. */
@@ -126,6 +130,8 @@ export const initialDesktopShellState = (
   workspaceDraft: "",
   workspaceBaseRevision: null,
   workspaceSave: "idle",
+  workspaceGitStatus: { state: "unavailable" },
+  workspaceGitDiff: null,
   fleetDeskOpen: false,
   fleetObjective: "",
   fleetDeployment: "not_requested",
@@ -168,6 +174,7 @@ export const DesktopWorkspaceFileSelected = defineIntent("DesktopWorkspaceFileSe
 export const DesktopWorkspaceDraftChanged = defineIntent("DesktopWorkspaceDraftChanged", Schema.String)
 export const DesktopWorkspaceSaveRequested = defineIntent("DesktopWorkspaceSaveRequested", Schema.Null)
 export const DesktopWorkspaceReloadRequested = defineIntent("DesktopWorkspaceReloadRequested", Schema.Null)
+export const DesktopWorkspaceGitDiffSelected = defineIntent("DesktopWorkspaceGitDiffSelected", Schema.String)
 
 export const desktopShellIntents = [
   DesktopInputChanged,
@@ -184,6 +191,7 @@ export const desktopShellIntents = [
   DesktopWorkspaceDraftChanged,
   DesktopWorkspaceSaveRequested,
   DesktopWorkspaceReloadRequested,
+  DesktopWorkspaceGitDiffSelected,
   ...settingsIntents,
 ] as const
 
@@ -247,6 +255,8 @@ export const withWorkspaceSnapshot = (
   workspaceDraft: "",
   workspaceBaseRevision: null,
   workspaceSave: "idle",
+  workspaceGitStatus: { state: "unavailable" },
+  workspaceGitDiff: null,
 })
 
 export const withWorkspaceFile = (
@@ -305,6 +315,8 @@ export type WorkspaceHost = Readonly<{
   choose: () => Promise<DesktopWorkspaceSnapshot | null>
   readFile: (path: string) => Promise<DesktopWorkspaceFile | null>
   saveFile: (input: Readonly<{ path: string; content: string; expectedRevision: string }>) => Promise<DesktopWorkspaceSaveResult>
+  gitStatus: () => Promise<DesktopWorkspaceGitStatus>
+  gitDiff: (path: string) => Promise<DesktopWorkspaceGitDiff>
 }>
 
 export const withThreads = (state: DesktopShellState, threads: ReadonlyArray<DesktopThread>): DesktopShellState => {
@@ -393,6 +405,8 @@ export const makeDesktopShellHandlers = (
     choose: async () => null,
     readFile: async () => null,
     saveFile: async () => ({ state: "unavailable", message: "Workspace saving is unavailable." }),
+    gitStatus: async () => ({ state: "unavailable" }),
+    gitDiff: async () => ({ state: "unavailable", message: "Git review is unavailable." }),
   },
   codexBridge: CodexSettingsBridge = unavailableCodexSettingsBridge,
   settingsSleep?: (ms: number) => Promise<void>,
@@ -441,6 +455,10 @@ export const makeDesktopShellHandlers = (
       if (workspace === "home" || workspace === "files" || workspace === "review") {
         const snapshot = yield* Effect.promise(workspaceHost.summary)
         yield* SubscriptionRef.update(state, (current) => withWorkspaceSnapshot(current, snapshot))
+        if (workspace === "review") {
+          const gitStatus = yield* Effect.promise(workspaceHost.gitStatus)
+          yield* SubscriptionRef.update(state, (current) => ({ ...current, workspaceGitStatus: gitStatus }))
+        }
       }
     }),
   DesktopWorkspacePickerRequested: () =>
@@ -484,6 +502,14 @@ export const makeDesktopShellHandlers = (
     }),
   DesktopWorkspaceReloadRequested: () =>
     SubscriptionRef.update(state, (current) => withWorkspaceFile(current, current.workspaceFile)),
+  DesktopWorkspaceGitDiffSelected: (relativePath) =>
+    Effect.gen(function* () {
+      const current = yield* SubscriptionRef.get(state)
+      if (current.workspaceSnapshot === null) return
+      const root = current.workspaceSnapshot.root
+      const diff = yield* Effect.promise(() => workspaceHost.gitDiff(`${root}/${relativePath}`))
+      yield* SubscriptionRef.update(state, (next) => ({ ...next, workspaceGitDiff: diff }))
+    }),
 })
 
 // ---------------------------------------------------------------------------
@@ -783,6 +809,35 @@ const workspaceFiles = (state: DesktopShellState): View =>
     ],
   )
 
+const workspaceReview = (state: DesktopShellState): View => {
+  const statusRows: View[] = state.workspaceGitStatus.state === "unavailable"
+    ? [Text({ key: "workspace-review-unavailable", content: "Git status is unavailable for this workspace.", variant: "body", color: "textMuted" })]
+    : state.workspaceGitStatus.changes.length === 0
+      ? [Text({ key: "workspace-review-clean", content: "No local changes", variant: "body", color: "textMuted" })]
+      : state.workspaceGitStatus.changes.map((change) => Button({
+          key: `workspace-review-change-${change.path}`,
+          label: `${change.kind} · ${change.path}`,
+          variant: "ghost",
+          onPress: IntentRef("DesktopWorkspaceGitDiffSelected", StaticPayload(change.path)),
+          a11y: { label: `Review ${change.kind} file ${change.path}` },
+        }))
+  if (state.workspaceGitStatus.state === "available" && state.workspaceGitStatus.truncated) {
+    statusRows.push(Text({ key: "workspace-review-truncated", content: "Only the first bounded set of changes is shown.", variant: "caption", color: "warning" }))
+  }
+  const diffRows: View[] = state.workspaceGitDiff === null
+    ? []
+    : state.workspaceGitDiff.state === "available"
+      ? [Card({ key: "workspace-review-diff", padding: "3", radius: "lg", style: { width: "full", surface: "glass" } }, [
+          Text({ key: "workspace-review-diff-path", content: state.workspaceGitDiff.path, variant: "caption", color: "textMuted" }),
+          Text({ key: "workspace-review-diff-content", content: state.workspaceGitDiff.content, variant: "body", color: "textPrimary" }),
+        ])]
+      : [Text({ key: "workspace-review-diff-unavailable", content: state.workspaceGitDiff.message, variant: "body", color: "warning" })]
+  return Stack(
+    { key: "workspace-review-panel", direction: "column", gap: "3", style: { width: "full", minWidth: 0, flex: 1, minHeight: 0 } },
+    [Text({ key: "workspace-review-title", content: "Changes", variant: "heading", color: "textPrimary" }), ...statusRows, ...diffRows],
+  )
+}
+
 const fleetDesk = (state: DesktopShellState): View => {
   const dispatching = state.fleetDeployment === "dispatching"
   const accepted = state.fleetDeployment === "accepted"
@@ -938,7 +993,7 @@ export const desktopShellView = (state: DesktopShellState): View =>
               paddingRight: "4",
               gap: "5",
             },
-          })] : state.workspace === "files" ? [workspaceFiles(state)] : state.workspace === "settings" ? [settingsView(state.settings)] : [projectHome(state)]),
+          })] : state.workspace === "files" ? [workspaceFiles(state)] : state.workspace === "review" ? [workspaceReview(state)] : state.workspace === "settings" ? [settingsView(state.settings)] : [projectHome(state)]),
           ...(state.workspace === "chat" ? [shellComposer(state)] : []),
         ],
       ),

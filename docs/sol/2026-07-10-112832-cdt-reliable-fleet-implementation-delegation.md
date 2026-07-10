@@ -116,6 +116,14 @@
   bundle build, and Electron fixture smoke. This is local fixture proof, not
   authenticated Sync/workroom/writeback authority or a physical-device
   receipt.
+- 2026-07-10 12:42 CDT — DESKTOP-2 now has a read-only typed Git review seam:
+  fixed porcelain-status and selected-file diff arguments only, normalized
+  change records, bounded output, and explicit unavailable results for binary,
+  secret-shaped, escaped, or excessive output. The renderer receives no Git
+  argv, process error, or generic shell surface, and has no review mutation
+  controls. Desktop `verify` passes: 80 tests/414 expectations, bundle build,
+  and Electron fixture smoke. Review comments, revert, remote writeback, and
+  a physical visual receipt remain separate work.
 
 ## Mission
 

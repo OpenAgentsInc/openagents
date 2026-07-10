@@ -5,6 +5,8 @@ export const DesktopWorkspaceChooseChannel = "openagents-desktop/workspace-choos
 export const DesktopWorkspaceFilesChannel = "openagents-desktop/workspace-files" as const
 export const DesktopWorkspaceReadChannel = "openagents-desktop/workspace-read" as const
 export const DesktopWorkspaceSaveChannel = "openagents-desktop/workspace-save" as const
+export const DesktopWorkspaceGitStatusChannel = "openagents-desktop/workspace-git-status" as const
+export const DesktopWorkspaceGitDiffChannel = "openagents-desktop/workspace-git-diff" as const
 
 export const DesktopWorkspaceFileRequestSchema = Schema.Struct({ path: Schema.String })
 export const DesktopWorkspaceSaveRequestSchema = Schema.Struct({
@@ -12,6 +14,7 @@ export const DesktopWorkspaceSaveRequestSchema = Schema.Struct({
   content: Schema.String,
   expectedRevision: Schema.String,
 })
+export const DesktopWorkspaceGitDiffRequestSchema = Schema.Struct({ path: Schema.String })
 
 export type DesktopWorkspaceEntry = Readonly<{
   name: string
@@ -40,6 +43,19 @@ export type DesktopWorkspaceSaveResult =
   | Readonly<{ state: "conflict"; file: DesktopWorkspaceFile }>
   | Readonly<{ state: "unavailable"; message: string }>
 
+export type DesktopWorkspaceGitChange = Readonly<{
+  path: string
+  kind: "added" | "modified" | "deleted" | "renamed" | "untracked"
+}>
+
+export type DesktopWorkspaceGitStatus =
+  | Readonly<{ state: "available"; changes: ReadonlyArray<DesktopWorkspaceGitChange>; truncated: boolean }>
+  | Readonly<{ state: "unavailable" }>
+
+export type DesktopWorkspaceGitDiff =
+  | Readonly<{ state: "available"; path: string; content: string; truncated: boolean }>
+  | Readonly<{ state: "unavailable"; message: string }>
+
 export const decodeWorkspaceFileRequest = (value: unknown): { path: string } | null => {
   const result = Schema.decodeUnknownExit(DesktopWorkspaceFileRequestSchema)(value)
   return Exit.isSuccess(result) ? result.value : null
@@ -49,5 +65,12 @@ export const decodeWorkspaceSaveRequest = (
   value: unknown,
 ): { path: string; content: string; expectedRevision: string } | null => {
   const result = Schema.decodeUnknownExit(DesktopWorkspaceSaveRequestSchema)(value)
+  return Exit.isSuccess(result) ? result.value : null
+}
+
+export const decodeWorkspaceGitDiffRequest = (
+  value: unknown,
+): { path: string } | null => {
+  const result = Schema.decodeUnknownExit(DesktopWorkspaceGitDiffRequestSchema)(value)
   return Exit.isSuccess(result) ? result.value : null
 }

@@ -30,13 +30,16 @@ import { makeThreadStore } from "./thread-store.ts"
 import {
   DesktopWorkspaceChooseChannel,
   DesktopWorkspaceFilesChannel,
+  DesktopWorkspaceGitDiffChannel,
+  DesktopWorkspaceGitStatusChannel,
   DesktopWorkspaceReadChannel,
   DesktopWorkspaceSaveChannel,
   DesktopWorkspaceSummaryChannel,
   decodeWorkspaceFileRequest,
+  decodeWorkspaceGitDiffRequest,
   decodeWorkspaceSaveRequest,
 } from "./workspace-contract.ts"
-import { inspectWorkspace, readWorkspaceFile, saveWorkspaceFile } from "./workspace-service.ts"
+import { inspectWorkspace, readWorkspaceFile, saveWorkspaceFile, workspaceGitDiff, workspaceGitStatus } from "./workspace-service.ts"
 
 const here = import.meta.dirname
 const smokeMode = process.env.OPENAGENTS_DESKTOP_SMOKE === "1"
@@ -125,6 +128,15 @@ ipcMain.handle(DesktopWorkspaceSaveChannel, (_event, value: unknown) => {
   if (request === null) return { state: "unavailable", message: "The file save request is invalid." }
   if (workspaceRoot === null) return { state: "unavailable", message: "Choose a workspace folder before saving." }
   return saveWorkspaceFile(workspaceRoot, request)
+})
+ipcMain.handle(DesktopWorkspaceGitStatusChannel, () =>
+  workspaceRoot === null ? { state: "unavailable" } : workspaceGitStatus(workspaceRoot),
+)
+ipcMain.handle(DesktopWorkspaceGitDiffChannel, (_event, value: unknown) => {
+  const request = decodeWorkspaceGitDiffRequest(value)
+  if (request === null) return { state: "unavailable", message: "The diff request is invalid." }
+  if (workspaceRoot === null) return { state: "unavailable", message: "Choose a workspace folder before reviewing changes." }
+  return workspaceGitDiff(workspaceRoot, request.path)
 })
 // List is intentionally metadata-only: a large local history must not
 // serialize every transcript into the renderer merely to draw the sidebar.

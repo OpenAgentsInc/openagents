@@ -66,6 +66,7 @@ describe("Electron boundary (issue #8574 mandatory first-scaffold hardening)", (
     expect(preload).toContain("DesktopWorkspaceChooseChannel")
     expect(preload).toContain("decodeWorkspaceFileRequest")
     expect(preload).toContain("decodeWorkspaceSaveRequest")
+    expect(preload).toContain("decodeWorkspaceGitDiffRequest")
     expect(preload).not.toContain("ipcRenderer.send")
     expect(preload).not.toContain("ipcRenderer.on")
     expect(preload).not.toContain("ipcRenderer.remove")
@@ -78,6 +79,7 @@ describe("Electron boundary (issue #8574 mandatory first-scaffold hardening)", (
     expect(main).toContain("decodeFleetStageRequest(value)")
     expect(main).toContain("decodeWorkspaceFileRequest(value)")
     expect(main).toContain("decodeWorkspaceSaveRequest(value)")
+    expect(main).toContain("decodeWorkspaceGitDiffRequest(value)")
     expect(main).not.toContain("ipcMain.on(")
   })
 
