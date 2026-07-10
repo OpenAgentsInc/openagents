@@ -26,6 +26,7 @@ import {
   LogPage,
   MutationEnvelope,
   MutationResult as MutationResultClass,
+  MustRefetchFrame,
   MutatorName,
   PushResponse,
   SyncSchemaVersion,
@@ -154,6 +155,23 @@ class DualClientChatServer {
       new DeltaFrame({ scope, entries: [entry], cursor: SyncVersion.make(version) }) as LiveFrame,
     )
     return version
+  }
+
+  /** Replace the server log as after a scope-owning process restart. */
+  replaceScope(
+    scope: SyncScope,
+    change: {
+      readonly entityType: string
+      readonly entityId: string
+      readonly postImageJson: string
+    },
+  ): void {
+    this.logs.set(scope, [])
+    this.commit(scope, change, "mutation.server.restart.1")
+    this.emitFrame(
+      scope,
+      new MustRefetchFrame({ scope, reason: "scope_reset" }) as LiveFrame,
+    )
   }
 
   bootstrap(request: BootstrapRequest): BootstrapResponse {
@@ -510,5 +528,60 @@ describe("cross-app chat.composeTurn over real khala-sync-client sessions", () =
     const restartedOverlay = Effect.runSync(createOverlay(desktop.store, [composeTurn]))
     expect(Effect.runSync(restartedOverlay.read(fleetScope)).list("fleet_run")).toEqual([])
     expect(Effect.runSync(desktop.store.cursor(fleetScope))).toBe(SyncVersion.make(2))
+  })
+
+  test("both clients discard pre-restart fleet rows on scope_reset and converge on the replacement snapshot", async () => {
+    const server = new DualClientChatServer()
+    const desktop = makeClient(server, "c_desktop_restart")
+    const mobile = makeClient(server, "c_mobile_restart")
+    const oldRun = {
+      runId: "fleet-run.pylon.pre-restart",
+      status: "running",
+      desiredSlots: 1,
+      workerKind: "codex",
+      startedAt: FIXED_TIME,
+      counters: { workUnitsTotal: 1, activeAssignments: 1, completedAssignments: 0, failedAssignments: 0, blockedAssignments: 0 },
+      updatedAt: FIXED_TIME,
+    }
+    const replacementRun = {
+      ...oldRun,
+      runId: "fleet-run.pylon.after-restart",
+      status: "paused",
+      desiredSlots: 0,
+    }
+
+    await Effect.runPromise(desktop.session.subscribe(fleetScope))
+    await Effect.runPromise(mobile.session.subscribe(fleetScope))
+    await waitFor(
+      () => desktop.session.state(fleetScope).phase === "live" && mobile.session.state(fleetScope).phase === "live",
+      "both clients live before restart",
+    )
+    server.commit(fleetScope, {
+      entityType: "fleet_run",
+      entityId: oldRun.runId,
+      postImageJson: canonicalJson(oldRun),
+    }, "mutation.server.pre-restart")
+    await waitFor(
+      () => desktop.listFleetRuns()[0]?.runId === oldRun.runId && mobile.listFleetRuns()[0]?.runId === oldRun.runId,
+      "both clients see pre-restart run",
+    )
+
+    server.replaceScope(fleetScope, {
+      entityType: "fleet_run",
+      entityId: replacementRun.runId,
+      postImageJson: canonicalJson(replacementRun),
+    })
+    await waitFor(
+      () =>
+        desktop.session.state(fleetScope).phase === "live" &&
+        mobile.session.state(fleetScope).phase === "live" &&
+        desktop.listFleetRuns()[0]?.runId === replacementRun.runId &&
+        mobile.listFleetRuns()[0]?.runId === replacementRun.runId,
+      "both clients converge after restart",
+    )
+    expect(desktop.listFleetRuns().map((run) => run.runId)).toEqual([replacementRun.runId])
+    expect(mobile.listFleetRuns().map((run) => run.runId)).toEqual([replacementRun.runId])
+    expect(Effect.runSync(desktop.store.cursor(fleetScope))).toBe(SyncVersion.make(1))
+    expect(Effect.runSync(mobile.store.cursor(fleetScope))).toBe(SyncVersion.make(1))
   })
 })

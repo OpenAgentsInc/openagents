@@ -132,6 +132,13 @@
   `verify` passes: 82 tests/426 expectations, bundle build, and Electron
   fixture smoke. Visual/manual accessibility receipt and later command search
   remain separate work.
+- 2026-07-10 13:00 CDT — R4 now covers an active two-client server-restart
+  handoff fixture. A `scope_reset` after a server log replacement forces both
+  desktop and mobile sessions to discard the pre-restart `fleet_run` and
+  converge on the new snapshot/cursor. Khala Sync typecheck plus 136
+  tests/12,582 expectations, Desktop typecheck, and mobile typecheck plus 21
+  tests/74 expectations pass. This remains an in-process transport fixture,
+  not a live hub/server or physical-client receipt.
 
 ## Mission
 
