@@ -4,7 +4,8 @@
 - Source commit: `ee78dc1a2e921cc42de365e48c5b1ec5976e51c1`
 - App identity: `OpenAgents` / `com.openagents.app` / Team `HQWSG26L43`
 - App Store Connect build: `115`
-- Distribution state: upload in progress at the time of this receipt
+- App Store Connect build ID: `3892d5e6-00d7-4175-a0a2-b3e48dc4ced2`
+- Distribution state: `VALID`
 
 ## Why a new native build is required
 
@@ -35,9 +36,8 @@ required correction.
   expectations.
 - `expo prebuild --platform ios --clean` produced `CFBundleVersion=115`.
 - The Release archive and manual App Store export completed successfully.
-- The IPA is being uploaded through App Store Connect with the configured API
-  key. Record the App Store Connect build ID and processing state once it is
-  visible.
+- The IPA was uploaded through App Store Connect with the configured API key.
+- App Store Connect confirms build 115 as `VALID`.
 
 ## Remaining owner proof
 

@@ -50,7 +50,7 @@ real user question.
 | Surface | Commands last run | Result |
 | --- | --- | --- |
 | Desktop | `bun run --cwd apps/openagents-desktop typecheck`; `bun test apps/openagents-desktop`; `OPENAGENTS_DESKTOP_SMOKE=1 bun run --cwd apps/openagents-desktop smoke` | Passed through the Settings slice; Sol's receipt records 58 tests plus real Electron smoke |
-| Mobile | `bun run --cwd apps/openagents-mobile typecheck`; `bun run --cwd apps/openagents-mobile test`; iOS archive/export | Passed: 40 tests; build 115 archive/export completed and App Store upload is in progress. Build 114 remains ASC `VALID` but has the now-corrected opaque fallback. |
+| Mobile | `bun run --cwd apps/openagents-mobile typecheck`; `bun run --cwd apps/openagents-mobile test`; iOS archive/export | Passed: 40 tests; TestFlight build 115 is ASC `VALID` and embeds the restored SwiftUI module. Build 114 remains valid but has the now-corrected opaque fallback. |
 
 ## Deliberate exclusions
 
