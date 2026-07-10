@@ -21,6 +21,7 @@ type OpenApiOperation = Readonly<{
   description?: string
   operationId: string
   parameters?: ReadonlyArray<Record<string, unknown>>
+  requestBody?: Record<string, unknown>
   responses?: Record<string, unknown>
   security: ReadonlyArray<Record<string, ReadonlyArray<string>>>
   tags: ReadonlyArray<string>
@@ -159,11 +160,8 @@ describe('OpenAgents OpenAPI route', () => {
       'no raw traces',
     )
     expect(
-      operationAt(
-        body,
-        '/api/operator/qa-swarm/first-engagements',
-        'post',
-      ).operationId,
+      operationAt(body, '/api/operator/qa-swarm/first-engagements', 'post')
+        .operationId,
     ).toBe('createOperatorQaSwarmFirstEngagement')
     const qaSwarmFirstEngagement = operationAt(
       body,
@@ -207,9 +205,9 @@ describe('OpenAgents OpenAPI route', () => {
     expect(deprecatedFleetStatus.description).toContain(
       '/api/operator/pro/status',
     )
-    expect(
-      deprecatedFleetStatus['x-openagents-removal-condition'],
-    ).toContain('T11.1')
+    expect(deprecatedFleetStatus['x-openagents-removal-condition']).toContain(
+      'T11.1',
+    )
     expect(
       operationAt(body, '/api/operator/fleet/state', 'get').description,
     ).toContain('pylon_agent_runner_status_events')
@@ -321,9 +319,7 @@ describe('OpenAgents OpenAPI route', () => {
       'getTrainingAblationDeriskingLedger',
     )
     expect(ablationLedgerOperation.description).toEqual(
-      expect.stringContaining(
-        'one accepted paid ablation settlement receipt',
-      ),
+      expect.stringContaining('one accepted paid ablation settlement receipt'),
     )
     const ablationLedgerProperties = schemaProperties(
       body,
@@ -1028,18 +1024,16 @@ describe('OpenAgents OpenAPI route', () => {
     expect(operationAt(body, '/api/agents/register', 'post').security).toEqual(
       [],
     )
-    expect(
-      body.components.securitySchemes.forgeControlPlaneBearer,
-    ).toEqual(
+    expect(body.components.securitySchemes.forgeControlPlaneBearer).toEqual(
       expect.objectContaining({
         bearerFormat:
           'OpenAgents Forge control-plane token plus X-OpenAgents-Forge-Scopes and X-OpenAgents-Forge-Tenant-Ref',
         type: 'http',
       }),
     )
-    expect(operationAt(body, '/api/forge/work-records', 'post').security).toEqual(
-      [{ forgeControlPlaneBearer: [] }, { adminBearer: [] }],
-    )
+    expect(
+      operationAt(body, '/api/forge/work-records', 'post').security,
+    ).toEqual([{ forgeControlPlaneBearer: [] }, { adminBearer: [] }])
     expect(
       operationAt(body, '/api/forge/changes/{changeRef}/status', 'patch')
         .security,
@@ -1179,26 +1173,50 @@ describe('OpenAgents OpenAPI route', () => {
       operationAt(body, '/api/pylons/{pylonRef}/heartbeat', 'post').description,
     ).toContain('does not grant Forum speech')
     expect(
-      operationAt(
-        body,
-        '/api/pylons/{pylonRef}/fleet-runs/claim',
-        'post',
-      ).security,
+      operationAt(body, '/api/pylons/{pylonRef}/fleet-runs/claim', 'post')
+        .security,
     ).toEqual([{ agentBearer: [] }])
     expect(
-      operationAt(
-        body,
-        '/api/pylons/{pylonRef}/fleet-runs/claim',
-        'post',
-      ).description,
+      operationAt(body, '/api/pylons/{pylonRef}/fleet-runs/claim', 'post')
+        .description,
     ).toContain('derives owner scope')
     expect(
-      operationAt(
-        body,
-        '/api/pylons/{pylonRef}/fleet-runs/accept',
-        'post',
-      ).description,
+      operationAt(body, '/api/pylons/{pylonRef}/fleet-runs/accept', 'post')
+        .description,
     ).toContain('canonical Pylon orchestration store')
+    const fleetRunExecution = operationAt(
+      body,
+      '/api/pylons/{pylonRef}/fleet-runs/{runRef}/events',
+      'post',
+    )
+    expect(fleetRunExecution.security).toEqual([{ agentBearer: [] }])
+    expect(fleetRunExecution.description).toContain('gapless event sequence')
+    expect(fleetRunExecution.description).toContain('same Postgres transaction')
+    expect(fleetRunExecution.responses).toEqual(
+      expect.objectContaining({
+        '200': expect.any(Object),
+        '400': expect.any(Object),
+        '401': expect.any(Object),
+        '403': expect.any(Object),
+        '409': expect.any(Object),
+        '503': expect.any(Object),
+      }),
+    )
+    expect(fleetRunExecution.requestBody).toEqual(
+      expect.objectContaining({ content: expect.any(Object) }),
+    )
+    expect(
+      schemaProperties(body, 'PylonFleetRunExecutionBatch').events,
+    ).toEqual(expect.objectContaining({ minItems: 1, maxItems: 64 }))
+    expect(
+      schemaProperties(body, 'PylonFleetRunExecutionAck')
+        .acceptedThroughSequence,
+    ).toEqual(expect.objectContaining({ minimum: 0 }))
+    expect(body.components.schemas).toHaveProperty('PylonFleetRunUsageEvidence')
+    expect(
+      schemaProperties(body, 'PylonFleetRunUnprovenWorkTerminalEvent')
+        .blockerRefs,
+    ).toEqual(expect.objectContaining({ minItems: 1, maxItems: 32 }))
     expect(
       operationAt(body, '/api/forum/posts/{postId}/rewards', 'post').security,
     ).toEqual([{ agentBearer: [] }])
@@ -1707,12 +1725,12 @@ const intentionallyUndocumentedApiRoutes: ReadonlyArray<string> = [
   '/api/pylon/auth/openagents/device/start',
   '/api/pylon/auth/openagents/device/verify',
   '/api/pylon/auth/openagents/device/{param}',
-	  '/api/pylon/provider-accounts/chatgpt-codex/device-login/start',
-	  '/api/pylon/provider-accounts/chatgpt-codex/device-login/{param}',
-	  // Pylon-local auth material returns sensitive provider credential material
-	  // to a registered node; it is not a public agent-facing OpenAPI contract.
-	  '/api/pylon/provider-accounts/chatgpt-codex/auth-material',
-	  '/api/pylon/provider-accounts/chatgpt-codex/local-auth/import',
+  '/api/pylon/provider-accounts/chatgpt-codex/device-login/start',
+  '/api/pylon/provider-accounts/chatgpt-codex/device-login/{param}',
+  // Pylon-local auth material returns sensitive provider credential material
+  // to a registered node; it is not a public agent-facing OpenAPI contract.
+  '/api/pylon/provider-accounts/chatgpt-codex/auth-material',
+  '/api/pylon/provider-accounts/chatgpt-codex/local-auth/import',
   '/api/provider-accounts',
   '/api/provider-accounts/anthropic/connect',
   '/api/provider-accounts/chatgpt-codex/device-login/start',

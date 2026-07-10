@@ -12,6 +12,9 @@ import { Effect } from "effect"
 
 import {
   decodeFleetRunAuthorityStartRequest,
+  decodeFleetRunExecutionBatch,
+  FLEET_RUN_EXECUTION_BATCH_SCHEMA,
+  FLEET_RUN_EXECUTION_EVENT_SCHEMA,
   FleetRunAuthorityError,
   makeFleetRunAuthorityRepository,
   publicFleetRunAuthorityRecord,
@@ -132,7 +135,10 @@ describe("FleetRun authority request boundary", () => {
       },
       {
         ...request("request-boundary-ref-prefix"),
-        repository: { ...request("unused").repository, branch: "refs/heads/main" },
+        repository: {
+          ...request("unused").repository,
+          branch: "refs/heads/main",
+        },
       },
       {
         ...request("request-boundary-ref-lock"),
@@ -140,7 +146,10 @@ describe("FleetRun authority request boundary", () => {
       },
       {
         ...request("request-boundary-ref-component"),
-        repository: { ...request("unused").repository, branch: "feature/.hidden" },
+        repository: {
+          ...request("unused").repository,
+          branch: "feature/.hidden",
+        },
       },
       {
         ...request("request-boundary-placeholder-pin"),
@@ -174,6 +183,115 @@ describe("FleetRun authority request boundary", () => {
       )
     }
   })
+
+  test("accepts only bounded, provider-consistent execution evidence", () => {
+    const valid = decodeFleetRunExecutionBatch({
+      schema: FLEET_RUN_EXECUTION_BATCH_SCHEMA,
+      claimRef: `claim.sarah_fleet_run.${"a".repeat(24)}`,
+      events: [
+        {
+          schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA,
+          sequence: 7,
+          eventRef: `event.pylon.fleet_run.${"a".repeat(16)}`,
+          observedAt: "2026-07-09T22:00:00.000Z",
+          kind: "work_terminal",
+          unitRef: "unit-a",
+          workClaimRef: "work_claim.unit-a",
+          assignmentRef: "assignment.unit-a",
+          workerKind: "codex",
+          accountRefHash: "account.pylon.codex.abcdef",
+          terminalState: "accepted",
+          closeoutRef: "closeout.unit-a",
+          usageEvidence: {
+            truth: "exact",
+            tokenUsageRefs: ["token_usage.unit-a.1"],
+          },
+          blockerRefs: [],
+        },
+      ],
+    })
+    expect(valid.events[0]?.kind).toBe("work_terminal")
+    const unprovenFailure = decodeFleetRunExecutionBatch({
+      schema: FLEET_RUN_EXECUTION_BATCH_SCHEMA,
+      claimRef: `claim.sarah_fleet_run.${"b".repeat(24)}`,
+      events: [
+        {
+          schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA,
+          sequence: 1,
+          eventRef: `event.pylon.fleet_run.${"c".repeat(16)}`,
+          observedAt: "2026-07-09T22:00:00.000Z",
+          kind: "work_terminal",
+          unitRef: "unit-a",
+          workClaimRef: "work_claim.unit-a",
+          workerKind: "claude",
+          terminalState: "failed",
+          blockerRefs: ["blocker.dispatch_no_assignment"],
+        },
+      ],
+    })
+    expect(unprovenFailure.events[0]).not.toHaveProperty("assignmentRef")
+
+    const invalid = [
+      { ...valid, events: [] },
+      {
+        ...valid,
+        events: [
+          {
+            ...valid.events[0],
+            usageEvidence: { truth: "not_measured", tokenUsageRefs: [] },
+          },
+        ],
+      },
+      {
+        ...unprovenFailure,
+        events: [
+          {
+            ...unprovenFailure.events[0],
+            assignmentRef: "assignment.partial",
+          },
+        ],
+      },
+      {
+        ...valid,
+        events: [
+          {
+            ...valid.events[0],
+            workerKind: "grok",
+            accountRefHash: "account.pylon.grok.abcdef",
+            usageEvidence: {
+              truth: "exact",
+              tokenUsageRefs: ["token_usage.unit-a.1"],
+            },
+          },
+        ],
+      },
+      {
+        ...valid,
+        events: [
+          valid.events[0],
+          {
+            ...valid.events[0],
+            sequence: 9,
+            eventRef: `event.pylon.fleet_run.${"b".repeat(16)}`,
+          },
+        ],
+      },
+      {
+        ...valid,
+        events: [
+          {
+            ...valid.events[0],
+            closeoutRef: "/Users/operator/private/closeout",
+          },
+        ],
+      },
+    ]
+    for (const batch of invalid) {
+      expect(() => decodeFleetRunExecutionBatch(batch)).toThrow(
+        FleetRunAuthorityError,
+      )
+    }
+  })
 })
 
 describe.skipIf(!hasLocalPostgres())(
@@ -189,8 +307,9 @@ describe.skipIf(!hasLocalPostgres())(
       await admin.end()
       const url = pg.urlFor("sarah_fleet_run_authority")
       const migrated = await runMigrations({ databaseUrl: url })
+      expect(migrated.applied).toContain("0052_sarah_fleet_run_authority.sql")
       expect(migrated.applied).toContain(
-        "0052_sarah_fleet_run_authority.sql",
+        "0053_sarah_fleet_run_execution_projection.sql",
       )
       sql = new SQL({ url, max: 12 })
     })
@@ -264,6 +383,29 @@ describe.skipIf(!hasLocalPostgres())(
            ${`credential.${input.agentUserId}`}, 'credential_anchor', 'active',
            ${nowIso}, ${nowIso}, NULL)
       `
+    }
+
+    const claimAndAccept = async (input: {
+      ownerUserId: string
+      pylonRef: string
+      runRef: string
+      claimIdempotencyKey: string
+    }) => {
+      const claimed = await Effect.runPromise(
+        repository().claim({
+          ...input,
+          leaseDurationMs: 30_000,
+        }),
+      )
+      await Effect.runPromise(
+        repository().acceptClaim({
+          ownerUserId: input.ownerUserId,
+          pylonRef: input.pylonRef,
+          runRef: input.runRef,
+          claimRef: claimed.claim.claimRef,
+        }),
+      )
+      return claimed.claim.claimRef
     }
 
     test("creates run, work units, owner scope, and draft projection atomically", async () => {
@@ -408,9 +550,18 @@ describe.skipIf(!hasLocalPostgres())(
 
     test("only an active, fresh, same-owner Pylon can claim one exact run", async () => {
       const run = await start("user-claim-owner", "claim-exact-run-1")
-      await seedPylon({ pylonRef: "pylon-claim-a", ownerUserId: "user-claim-owner" })
-      await seedPylon({ pylonRef: "pylon-claim-b", ownerUserId: "user-claim-owner" })
-      await seedPylon({ pylonRef: "pylon-foreign", ownerUserId: "user-foreign" })
+      await seedPylon({
+        pylonRef: "pylon-claim-a",
+        ownerUserId: "user-claim-owner",
+      })
+      await seedPylon({
+        pylonRef: "pylon-claim-b",
+        ownerUserId: "user-claim-owner",
+      })
+      await seedPylon({
+        pylonRef: "pylon-foreign",
+        ownerUserId: "user-foreign",
+      })
       await seedPylon({
         pylonRef: "pylon-stale",
         ownerUserId: "user-claim-owner",
@@ -503,10 +654,7 @@ describe.skipIf(!hasLocalPostgres())(
           .pipe(Effect.flip),
       )
       expect(claimAfterAcceptance.kind).toBe("run_not_found")
-      const startReplay = await start(
-        "user-claim-owner",
-        "claim-exact-run-1",
-      )
+      const startReplay = await start("user-claim-owner", "claim-exact-run-1")
       expect(startReplay.duplicate).toBe(true)
       expect(startReplay.record.status).toBe("claimed_by_pylon")
     })
@@ -552,9 +700,361 @@ describe.skipIf(!hasLocalPostgres())(
       expect(replayAfterRevocation.kind).toBe("pylon_not_authorized")
     })
 
+    test("persists gapless execution, exact closeouts, and one owner-scoped Sync post-image transactionally", async () => {
+      const ownerUserId = "user-execution-owner"
+      const pylonRef = "pylon-execution"
+      const run = await start(ownerUserId, "execution-complete-1", {
+        workerKind: "auto",
+        workSource: {
+          kind: "plan_dag",
+          planRef: "plan.execution",
+          units: [
+            { unitRef: "unit-a", title: "Unit A", dependsOn: [] },
+            { unitRef: "unit-b", title: "Unit B", dependsOn: ["unit-a"] },
+          ],
+        },
+      })
+      await seedPylon({ pylonRef, ownerUserId })
+      const claimRef = await claimAndAccept({
+        ownerUserId,
+        pylonRef,
+        runRef: run.record.runRef,
+        claimIdempotencyKey: "execution-claim-1",
+      })
+      const firstBatch = {
+        schema: FLEET_RUN_EXECUTION_BATCH_SCHEMA,
+        claimRef,
+        events: [
+          {
+            schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA,
+            sequence: 1,
+            eventRef: `event.pylon.fleet_run.${"1".repeat(16)}`,
+            observedAt: "2026-07-09T22:00:01.000Z",
+            kind: "run_started",
+          },
+          {
+            schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA,
+            sequence: 2,
+            eventRef: `event.pylon.fleet_run.${"2".repeat(16)}`,
+            observedAt: "2026-07-09T22:00:02.000Z",
+            kind: "work_progress",
+            unitRef: "unit-a",
+            workClaimRef: "work_claim.unit-a",
+            assignmentRef: "assignment.unit-a",
+            workerKind: "codex",
+            accountRefHash: "account.pylon.codex.aaaaaa",
+            blockerRefs: [],
+          },
+          {
+            schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA,
+            sequence: 3,
+            eventRef: `event.pylon.fleet_run.${"3".repeat(16)}`,
+            observedAt: "2026-07-09T22:00:03.000Z",
+            kind: "work_terminal",
+            unitRef: "unit-a",
+            workClaimRef: "work_claim.unit-a",
+            assignmentRef: "assignment.unit-a",
+            workerKind: "codex",
+            accountRefHash: "account.pylon.codex.aaaaaa",
+            terminalState: "accepted",
+            closeoutRef: "closeout.unit-a",
+            usageEvidence: {
+              truth: "exact",
+              tokenUsageRefs: ["token_usage.unit-a.1"],
+            },
+            blockerRefs: [],
+          },
+        ],
+      } as const
+      const first = await Effect.runPromise(
+        repository().appendExecutionEvents({
+          ownerUserId,
+          pylonRef,
+          runRef: run.record.runRef,
+          batch: firstBatch,
+        }),
+      )
+      expect(first.ack.storedEventCount).toBe(3)
+      expect(first.ack.duplicateEventCount).toBe(0)
+      expect(first.ack.execution).toMatchObject({
+        state: "running",
+        lastSequence: 3,
+        counters: {
+          workUnitsTotal: 2,
+          activeAssignments: 0,
+          acceptedAssignments: 1,
+          failedAssignments: 0,
+          staleAssignments: 0,
+        },
+        startedAt: "2026-07-09T22:00:01.000Z",
+      })
+
+      const replay = await Effect.runPromise(
+        repository().appendExecutionEvents({
+          ownerUserId,
+          pylonRef,
+          runRef: run.record.runRef,
+          batch: firstBatch,
+        }),
+      )
+      expect(replay.ack.storedEventCount).toBe(0)
+      expect(replay.ack.duplicateEventCount).toBe(3)
+
+      const completed = await Effect.runPromise(
+        repository().appendExecutionEvents({
+          ownerUserId,
+          pylonRef,
+          runRef: run.record.runRef,
+          batch: {
+            schema: FLEET_RUN_EXECUTION_BATCH_SCHEMA,
+            claimRef,
+            events: [
+              {
+                schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA,
+                sequence: 4,
+                eventRef: `event.pylon.fleet_run.${"4".repeat(16)}`,
+                observedAt: "2026-07-09T22:00:04.000Z",
+                kind: "work_terminal",
+                unitRef: "unit-b",
+                workClaimRef: "work_claim.unit-b",
+                assignmentRef: "assignment.unit-b",
+                workerKind: "grok",
+                accountRefHash: "account.pylon.grok.bbbbbb",
+                terminalState: "accepted",
+                closeoutRef: "closeout.unit-b",
+                usageEvidence: {
+                  truth: "not_measured",
+                  tokenUsageRefs: [],
+                },
+                blockerRefs: [],
+              },
+              {
+                schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA,
+                sequence: 5,
+                eventRef: `event.pylon.fleet_run.${"5".repeat(16)}`,
+                observedAt: "2026-07-09T22:00:05.000Z",
+                kind: "run_terminal",
+                terminalState: "completed",
+                blockerRefs: [],
+              },
+            ],
+          },
+        }),
+      )
+      expect(completed.ack.execution).toMatchObject({
+        state: "completed",
+        lastSequence: 5,
+        counters: {
+          workUnitsTotal: 2,
+          activeAssignments: 0,
+          acceptedAssignments: 2,
+          failedAssignments: 0,
+          staleAssignments: 0,
+        },
+      })
+      expect(completed.ack.execution.closeouts).toEqual([
+        expect.objectContaining({
+          unitRef: "unit-a",
+          workerKind: "codex",
+          usageEvidence: {
+            truth: "exact",
+            tokenUsageRefs: ["token_usage.unit-a.1"],
+          },
+        }),
+        expect.objectContaining({
+          unitRef: "unit-b",
+          workerKind: "grok",
+          usageEvidence: { truth: "not_measured", tokenUsageRefs: [] },
+        }),
+      ])
+
+      const eventRows: Array<{ count: string | number }> = await sql`
+        SELECT count(*) AS count FROM sarah_fleet_run_execution_events
+        WHERE run_ref = ${run.record.runRef}
+      `
+      expect(Number(eventRows[0]!.count)).toBe(5)
+      const changelog: Array<{ post_image_json: unknown }> = await sql`
+        SELECT post_image_json FROM khala_sync_changelog
+        WHERE scope = ${run.record.scope}
+        ORDER BY version
+      `
+      expect(changelog).toHaveLength(3)
+      const projected =
+        typeof changelog.at(-1)!.post_image_json === "string"
+          ? (changelog.at(-1)!.post_image_json as string)
+          : JSON.stringify(changelog.at(-1)!.post_image_json)
+      expect(projected).toContain('"status":"completed"')
+      expect(projected).toContain('"completedAssignments":2')
+      expect(projected).not.toContain(ownerUserId)
+      expect(projected).not.toContain("work_claim.unit-a")
+
+      const observed = await Effect.runPromise(
+        repository().observe({ ownerUserId, runRef: run.record.runRef }),
+      )
+      expect(observed.record.execution).toEqual(completed.ack.execution)
+      const publicRecord = publicFleetRunAuthorityRecord(observed.record)
+      expect(publicRecord.execution.state).toBe("completed")
+      expect(publicRecord).not.toHaveProperty("ownerUserId")
+    })
+
+    test("rejects gaps, foreign units, conflicting replay, and incomplete completion without partial writes", async () => {
+      const ownerUserId = "user-execution-guard"
+      const pylonRef = "pylon-execution-guard"
+      const run = await start(ownerUserId, "execution-guards-1", {
+        workSource: {
+          kind: "plan_dag",
+          planRef: "plan.execution.guards",
+          units: [
+            { unitRef: "unit-a", title: "Unit A", dependsOn: [] },
+            { unitRef: "unit-b", title: "Unit B", dependsOn: [] },
+          ],
+        },
+      })
+      await seedPylon({ pylonRef, ownerUserId })
+      const claimRef = await claimAndAccept({
+        ownerUserId,
+        pylonRef,
+        runRef: run.record.runRef,
+        claimIdempotencyKey: "execution-guards-claim",
+      })
+      const append = (events: ReadonlyArray<Record<string, unknown>>) =>
+        repository().appendExecutionEvents({
+          ownerUserId,
+          pylonRef,
+          runRef: run.record.runRef,
+          batch: {
+            schema: FLEET_RUN_EXECUTION_BATCH_SCHEMA,
+            claimRef,
+            events,
+          },
+        })
+      const started = {
+        schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA,
+        sequence: 1,
+        eventRef: `event.pylon.fleet_run.${"6".repeat(16)}`,
+        observedAt: "2026-07-09T22:00:01.000Z",
+        kind: "run_started",
+      } as const
+      await Effect.runPromise(append([started]))
+
+      const gap = await Effect.runPromise(
+        append([
+          {
+            ...started,
+            sequence: 3,
+            eventRef: `event.pylon.fleet_run.${"7".repeat(16)}`,
+          },
+        ]).pipe(Effect.flip),
+      )
+      expect(gap.kind).toBe("claim_conflict")
+
+      const unknownUnit = await Effect.runPromise(
+        append([
+          {
+            ...started,
+            sequence: 2,
+            eventRef: `event.pylon.fleet_run.${"8".repeat(16)}`,
+            kind: "work_progress",
+            unitRef: "unit-foreign",
+            workClaimRef: "work_claim.foreign",
+            workerKind: "codex",
+            blockerRefs: [],
+          },
+        ]).pipe(Effect.flip),
+      )
+      expect(unknownUnit.kind).toBe("invalid_request")
+
+      const incompleteCompletion = await Effect.runPromise(
+        append([
+          {
+            ...started,
+            sequence: 2,
+            eventRef: `event.pylon.fleet_run.${"9".repeat(16)}`,
+            kind: "run_terminal",
+            terminalState: "completed",
+            blockerRefs: [],
+          },
+        ]).pipe(Effect.flip),
+      )
+      expect(incompleteCompletion.kind).toBe("claim_conflict")
+      const rowsAfterRollback: Array<{ count: string | number }> = await sql`
+        SELECT count(*) AS count FROM sarah_fleet_run_execution_events
+        WHERE run_ref = ${run.record.runRef}
+      `
+      expect(Number(rowsAfterRollback[0]!.count)).toBe(1)
+
+      const conflictingReplay = await Effect.runPromise(
+        append([
+          {
+            ...started,
+            observedAt: "2026-07-09T22:00:09.000Z",
+          },
+        ]).pipe(Effect.flip),
+      )
+      expect(conflictingReplay.kind).toBe("idempotency_conflict")
+
+      const failed = await Effect.runPromise(
+        append([
+          {
+            schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA,
+            sequence: 2,
+            eventRef: `event.pylon.fleet_run.${"a".repeat(17)}`,
+            observedAt: "2026-07-09T22:00:10.000Z",
+            kind: "work_terminal",
+            unitRef: "unit-a",
+            workClaimRef: "work_claim.unit-a",
+            workerKind: "claude",
+            terminalState: "failed",
+            blockerRefs: ["blocker.dispatch_no_assignment"],
+          },
+          {
+            schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA,
+            sequence: 3,
+            eventRef: `event.pylon.fleet_run.${"b".repeat(17)}`,
+            observedAt: "2026-07-09T22:00:11.000Z",
+            kind: "run_terminal",
+            terminalState: "failed",
+            blockerRefs: ["blocker.dispatch_no_assignment"],
+          },
+        ]),
+      )
+      expect(failed.ack.execution).toMatchObject({
+        state: "failed",
+        counters: { failedAssignments: 1 },
+      })
+      expect(failed.ack.execution.closeouts[0]).toEqual(
+        expect.objectContaining({
+          unitRef: "unit-a",
+          terminalState: "failed",
+          blockerRefs: ["blocker.dispatch_no_assignment"],
+        }),
+      )
+      expect(failed.ack.execution.closeouts[0]).not.toHaveProperty(
+        "assignmentRef",
+      )
+      const noSyntheticProof: Array<{
+        assignment_ref: string | null
+        closeout_ref: string | null
+        usage_truth: string | null
+      }> = await sql`
+        SELECT assignment_ref, closeout_ref, usage_truth
+        FROM sarah_fleet_run_work_unit_closeouts
+        WHERE run_ref = ${run.record.runRef} AND unit_ref = 'unit-a'
+      `
+      expect(noSyntheticProof).toEqual([
+        { assignment_ref: null, closeout_ref: null, usage_truth: null },
+      ])
+    })
+
     test("claim-next skips managed-cloud runs and concurrent exact claims have one winner", async () => {
-      await seedPylon({ pylonRef: "pylon-next-a", ownerUserId: "user-next-owner" })
-      await seedPylon({ pylonRef: "pylon-next-b", ownerUserId: "user-next-owner" })
+      await seedPylon({
+        pylonRef: "pylon-next-a",
+        ownerUserId: "user-next-owner",
+      })
+      await seedPylon({
+        pylonRef: "pylon-next-b",
+        ownerUserId: "user-next-owner",
+      })
       const cloud = await start("user-next-owner", "next-cloud-1", {
         targetPreference: "managed_cloud",
       })
@@ -593,8 +1093,12 @@ describe.skipIf(!hasLocalPostgres())(
           }),
         ),
       ])
-      expect(attempts.filter(result => result.status === "fulfilled")).toHaveLength(1)
-      expect(attempts.filter(result => result.status === "rejected")).toHaveLength(1)
+      expect(
+        attempts.filter((result) => result.status === "fulfilled"),
+      ).toHaveLength(1)
+      expect(
+        attempts.filter((result) => result.status === "rejected"),
+      ).toHaveLength(1)
       const leases: Array<{ count: string | number }> = await sql`
         SELECT count(*) AS count FROM sarah_fleet_run_intake_leases
         WHERE run_ref = ${race.record.runRef} AND state = 'claimed'
@@ -604,8 +1108,14 @@ describe.skipIf(!hasLocalPostgres())(
 
     test("an expired claim requires a new idempotency key and can be re-leased", async () => {
       const run = await start("user-expiry-owner", "expiry-run-1")
-      await seedPylon({ pylonRef: "pylon-expiry-a", ownerUserId: "user-expiry-owner" })
-      await seedPylon({ pylonRef: "pylon-expiry-b", ownerUserId: "user-expiry-owner" })
+      await seedPylon({
+        pylonRef: "pylon-expiry-a",
+        ownerUserId: "user-expiry-owner",
+      })
+      await seedPylon({
+        pylonRef: "pylon-expiry-b",
+        ownerUserId: "user-expiry-owner",
+      })
       const originalInput = {
         ownerUserId: "user-expiry-owner",
         pylonRef: "pylon-expiry-a",

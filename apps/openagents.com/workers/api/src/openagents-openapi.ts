@@ -3,8 +3,6 @@ import { Effect, Schema as S } from 'effect'
 
 import { AcceptedOutcomesPerKwhEndpoint } from './accepted-outcomes-per-kwh'
 import { PublicAgentProposalRecoveryRoute } from './agent-rate-limit-recovery'
-import { BusinessAlreadySoldEngagementReceiptsEndpoint } from './business-already-sold-engagement-receipt-routes'
-import { BusinessCaseStudyEndpoint } from './business-case-study-engine'
 import {
   AGENT_SEARCH_BASIC_RECOVERY_PRODUCT_ID,
   AGENT_SEARCH_BASIC_RECOVERY_SCOPE_REF,
@@ -12,6 +10,8 @@ import {
   AGENT_SEARCH_PAYMENT_PREVIEW_ENDPOINT,
   AGENT_SEARCH_PAYMENT_REDEEM_ENDPOINT,
 } from './agent-search'
+import { BusinessAlreadySoldEngagementReceiptsEndpoint } from './business-already-sold-engagement-receipt-routes'
+import { BusinessCaseStudyEndpoint } from './business-case-study-engine'
 import { CustomerOneCohortEndpoint } from './customer-one-cohort-projection'
 import { DemandProvenanceEndpoint } from './demand-provenance'
 import { EnergyFlexibleLoadProofEndpoint } from './energy-flexible-load-proof'
@@ -219,7 +219,10 @@ const publicRead: ReadonlyArray<
   Readonly<Record<string, ReadonlyArray<string>>>
 > = []
 const adminBearer = [{ adminBearer: [] }]
-const forgeControlPlaneBearer = [{ forgeControlPlaneBearer: [] }, { adminBearer: [] }]
+const forgeControlPlaneBearer = [
+  { forgeControlPlaneBearer: [] },
+  { adminBearer: [] },
+]
 const adminSession = [{ adminSession: [] }]
 const agentBearer = [{ agentBearer: [] }]
 const agentClaimToken = [{ agentClaimToken: [] }, { agentBearer: [] }]
@@ -1590,7 +1593,7 @@ const schemaComponents = (): JsonSchema => ({
     'Public-safe ATIF trace projection the `/trace/{uuid}` page renders: { trace: { uuid, schemaVersion, trajectoryId, sessionId?, visibility, agentRef, stepCount, trajectory, blobRefs, createdAt, dataMarket { trainingConsent, license?, uploadSource, reward { eligible, amountSats (null), status ("tbd") } }, authority } }. public/unlisted reads need no auth; owner_only reads require the owning browser session. The trajectory is the public-safe ATIF projection; the dataMarket reward marker is INERT; authority flags are always false (a trace is evidence only).',
   ),
   OwnerTraceListEnvelope: objectSummary(
-    'Owner-scoped list of the signed-in user\'s own traces: { traces: [{ uuid, trajectoryId, visibility, agentRef, stepCount, createdAt, trainingConsent, license?, uploadSource, rewardEligible }] }. Summaries only, newest first. The rewardEligible marker is INERT.',
+    "Owner-scoped list of the signed-in user's own traces: { traces: [{ uuid, trajectoryId, visibility, agentRef, stepCount, createdAt, trainingConsent, license?, uploadSource, rewardEligible }] }. Summaries only, newest first. The rewardEligible marker is INERT.",
   ),
   AtifTraceVisibilityUpdateRequest: {
     type: 'object',
@@ -2776,14 +2779,18 @@ const schemaComponents = (): JsonSchema => ({
       kind: { type: 'string', enum: ['grant', 'purchase', 'charge', 'other'] },
       amountUsdCents: {
         type: 'integer',
-        description: 'Non-negative magnitude in USD cents; sign is a display-only convention keyed on kind.',
+        description:
+          'Non-negative magnitude in USD cents; sign is a display-only convention keyed on kind.',
       },
       description: {
         type: 'string',
         description:
           'Best-effort human label; empty when the underlying context_ref is not recognized (the client falls back to a label for kind).',
       },
-      occurredAt: { type: 'string', description: 'ISO-8601 timestamp (pay_ins.created_at).' },
+      occurredAt: {
+        type: 'string',
+        description: 'ISO-8601 timestamp (pay_ins.created_at).',
+      },
     },
   },
   MobileCreditsTransactionsPage: {
@@ -2798,7 +2805,8 @@ const schemaComponents = (): JsonSchema => ({
       nextCursor: {
         type: 'string',
         nullable: true,
-        description: 'Opaque keyset-pagination cursor; null when there is no further page.',
+        description:
+          'Opaque keyset-pagination cursor; null when there is no further page.',
       },
     },
   },
@@ -2816,7 +2824,8 @@ const schemaComponents = (): JsonSchema => ({
       expoPushToken: {
         type: 'string',
         minLength: 1,
-        description: 'Expo push token from Notifications.getExpoPushTokenAsync().',
+        description:
+          'Expo push token from Notifications.getExpoPushTokenAsync().',
       },
       platform: { type: 'string', enum: ['ios', 'android'] },
     },
@@ -2865,7 +2874,8 @@ const schemaComponents = (): JsonSchema => ({
         properties: {
           pushEnabled: {
             type: 'boolean',
-            description: 'Global push-notification toggle. Defaults to true when never set.',
+            description:
+              'Global push-notification toggle. Defaults to true when never set.',
           },
         },
       },
@@ -2886,22 +2896,30 @@ const schemaComponents = (): JsonSchema => ({
     properties: {
       kind: {
         type: 'string',
-        enum: ['turn_completed', 'turn_needs_input', 'turn_failed', 'credit_low'],
+        enum: [
+          'turn_completed',
+          'turn_needs_input',
+          'turn_failed',
+          'credit_low',
+        ],
       },
       ownerUserId: { type: 'string' },
       threadId: { type: 'string' },
       turnId: { type: 'string' },
       branchUrl: {
         type: 'string',
-        description: 'turn_completed only: a public branch URL from #8477 writeback.',
+        description:
+          'turn_completed only: a public branch URL from #8477 writeback.',
       },
       prUrl: {
         type: 'string',
-        description: 'turn_completed only: a public pull-request URL from #8477 writeback.',
+        description:
+          'turn_completed only: a public pull-request URL from #8477 writeback.',
       },
       exhausted: {
         type: 'boolean',
-        description: 'credit_low only: true once the balance is fully exhausted, not just low.',
+        description:
+          'credit_low only: true once the balance is fully exhausted, not just low.',
       },
     },
   },
@@ -2916,7 +2934,8 @@ const schemaComponents = (): JsonSchema => ({
       invalidatedTokens: {
         type: 'array',
         items: { type: 'string' },
-        description: 'Expo push tokens pruned from the registry because Expo reported DeviceNotRegistered.',
+        description:
+          'Expo push tokens pruned from the registry because Expo reported DeviceNotRegistered.',
       },
     },
   },
@@ -2937,7 +2956,8 @@ const schemaComponents = (): JsonSchema => ({
     properties: {
       preferredModelId: {
         type: ['string', 'null'],
-        description: 'The caller’s raw stored preference, or null if never set.',
+        description:
+          'The caller’s raw stored preference, or null if never set.',
       },
       effectiveModelId: {
         type: ['string', 'null'],
@@ -2956,18 +2976,25 @@ const schemaComponents = (): JsonSchema => ({
       },
       usedPreference: {
         type: 'boolean',
-        description: 'True only when effectiveTargetId is actually the caller’s own stored preference.',
+        description:
+          'True only when effectiveTargetId is actually the caller’s own stored preference.',
       },
       fallback: {
         type: 'string',
-        enum: ['none', 'no_preference_set', 'preference_unavailable', 'default_unavailable'],
+        enum: [
+          'none',
+          'no_preference_set',
+          'preference_unavailable',
+          'default_unavailable',
+        ],
         description:
           'Always reports which case applied — never a silent substitution. `preference_unavailable` means the stored execution target is no longer servable by this deployment; `default_unavailable` means even the compiled default (gemini) is currently unservable.',
       },
       availableModelIds: {
         type: 'array',
         items: { type: 'string' },
-        description: 'Legacy list of model ids this deployment can actually serve right now (supply lane armed).',
+        description:
+          'Legacy list of model ids this deployment can actually serve right now (supply lane armed).',
       },
       availableTargetIds: {
         type: 'array',
@@ -2977,7 +3004,8 @@ const schemaComponents = (): JsonSchema => ({
       },
       updatedAt: {
         type: ['string', 'null'],
-        description: 'ISO timestamp the preference was last set, or null if never set.',
+        description:
+          'ISO timestamp the preference was last set, or null if never set.',
       },
     },
     description:
@@ -5291,6 +5319,478 @@ const requestSchemas = (): JsonSchema => ({
       },
     },
   },
+  PylonFleetRunExecutionBatch: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['schema', 'claimRef', 'events'],
+    properties: {
+      schema: {
+        type: 'string',
+        enum: ['openagents.pylon.fleet_run_execution_batch.v1'],
+      },
+      claimRef: {
+        type: 'string',
+        pattern: '^claim\\.sarah_fleet_run\\.[0-9a-f]{24}$',
+      },
+      events: {
+        type: 'array',
+        minItems: 1,
+        maxItems: 64,
+        items: { $ref: '#/components/schemas/PylonFleetRunExecutionEvent' },
+        description:
+          'Contiguous sequence slice. Exact sequence/event replays are idempotent; gaps and conflicting reuse are rejected.',
+      },
+    },
+  },
+  PylonFleetRunExecutionEvent: {
+    oneOf: [
+      { $ref: '#/components/schemas/PylonFleetRunStartedEvent' },
+      { $ref: '#/components/schemas/PylonFleetRunWorkProgressEvent' },
+      { $ref: '#/components/schemas/PylonFleetRunWorkTerminalEvent' },
+      { $ref: '#/components/schemas/PylonFleetRunTerminalEvent' },
+    ],
+    discriminator: { propertyName: 'kind' },
+  },
+  PylonFleetRunStartedEvent: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['schema', 'sequence', 'eventRef', 'observedAt', 'kind'],
+    properties: {
+      schema: {
+        type: 'string',
+        enum: ['openagents.pylon.fleet_run_execution_event.v1'],
+      },
+      sequence: { type: 'integer', minimum: 1 },
+      eventRef: { type: 'string', minLength: 32, maxLength: 180 },
+      observedAt: { type: 'string', format: 'date-time' },
+      kind: { type: 'string', enum: ['run_started'] },
+    },
+  },
+  PylonFleetRunWorkProgressEvent: {
+    type: 'object',
+    additionalProperties: false,
+    required: [
+      'schema',
+      'sequence',
+      'eventRef',
+      'observedAt',
+      'kind',
+      'unitRef',
+      'workClaimRef',
+      'workerKind',
+      'blockerRefs',
+    ],
+    properties: {
+      schema: {
+        type: 'string',
+        enum: ['openagents.pylon.fleet_run_execution_event.v1'],
+      },
+      sequence: { type: 'integer', minimum: 1 },
+      eventRef: { type: 'string', minLength: 32, maxLength: 180 },
+      observedAt: { type: 'string', format: 'date-time' },
+      kind: { type: 'string', enum: ['work_progress'] },
+      unitRef: { type: 'string', minLength: 1, maxLength: 160 },
+      workClaimRef: { type: 'string', minLength: 1, maxLength: 180 },
+      assignmentRef: { type: 'string', minLength: 1, maxLength: 180 },
+      workerKind: { type: 'string', enum: ['codex', 'claude', 'grok'] },
+      accountRefHash: {
+        type: 'string',
+        pattern:
+          '^account\\.pylon\\.(codex|claude_agent|grok)\\.[a-f0-9]{6,64}$',
+      },
+      blockerRefs: {
+        type: 'array',
+        maxItems: 32,
+        items: { type: 'string', pattern: '^blocker\\.' },
+      },
+    },
+  },
+  PylonFleetRunWorkTerminalEvent: {
+    oneOf: [
+      {
+        $ref: '#/components/schemas/PylonFleetRunAcceptedWorkTerminalEvent',
+      },
+      {
+        $ref: '#/components/schemas/PylonFleetRunUnprovenWorkTerminalEvent',
+      },
+      {
+        $ref: '#/components/schemas/PylonFleetRunProvenFailedWorkTerminalEvent',
+      },
+    ],
+    description:
+      'Accepted requires the complete proof carrier. Failed/stale requires either every proof field or none, so pre-dispatch failure never needs synthetic assignment or closeout refs.',
+  },
+  PylonFleetRunAcceptedWorkTerminalEvent: {
+    type: 'object',
+    additionalProperties: false,
+    required: [
+      'schema',
+      'sequence',
+      'eventRef',
+      'observedAt',
+      'kind',
+      'unitRef',
+      'workClaimRef',
+      'assignmentRef',
+      'workerKind',
+      'accountRefHash',
+      'terminalState',
+      'closeoutRef',
+      'usageEvidence',
+      'blockerRefs',
+    ],
+    properties: {
+      schema: {
+        type: 'string',
+        enum: ['openagents.pylon.fleet_run_execution_event.v1'],
+      },
+      sequence: { type: 'integer', minimum: 1 },
+      eventRef: { type: 'string', minLength: 32, maxLength: 180 },
+      observedAt: { type: 'string', format: 'date-time' },
+      kind: { type: 'string', enum: ['work_terminal'] },
+      unitRef: { type: 'string', minLength: 1, maxLength: 160 },
+      workClaimRef: { type: 'string', minLength: 1, maxLength: 180 },
+      assignmentRef: { type: 'string', minLength: 1, maxLength: 180 },
+      workerKind: { type: 'string', enum: ['codex', 'claude', 'grok'] },
+      accountRefHash: {
+        type: 'string',
+        pattern:
+          '^account\\.pylon\\.(codex|claude_agent|grok)\\.[a-f0-9]{6,64}$',
+      },
+      terminalState: {
+        type: 'string',
+        enum: ['accepted'],
+      },
+      closeoutRef: { type: 'string', minLength: 1, maxLength: 180 },
+      usageEvidence: {
+        $ref: '#/components/schemas/PylonFleetRunUsageEvidence',
+      },
+      blockerRefs: {
+        type: 'array',
+        maxItems: 0,
+        items: { type: 'string', pattern: '^blocker\\.' },
+      },
+    },
+  },
+  PylonFleetRunUnprovenWorkTerminalEvent: {
+    type: 'object',
+    additionalProperties: false,
+    required: [
+      'schema',
+      'sequence',
+      'eventRef',
+      'observedAt',
+      'kind',
+      'unitRef',
+      'workClaimRef',
+      'workerKind',
+      'terminalState',
+      'blockerRefs',
+    ],
+    properties: {
+      schema: {
+        type: 'string',
+        enum: ['openagents.pylon.fleet_run_execution_event.v1'],
+      },
+      sequence: { type: 'integer', minimum: 1 },
+      eventRef: { type: 'string', minLength: 32, maxLength: 180 },
+      observedAt: { type: 'string', format: 'date-time' },
+      kind: { type: 'string', enum: ['work_terminal'] },
+      unitRef: { type: 'string', minLength: 1, maxLength: 160 },
+      workClaimRef: { type: 'string', minLength: 1, maxLength: 180 },
+      workerKind: { type: 'string', enum: ['codex', 'claude', 'grok'] },
+      terminalState: { type: 'string', enum: ['failed', 'stale'] },
+      blockerRefs: {
+        type: 'array',
+        minItems: 1,
+        maxItems: 32,
+        items: { type: 'string', pattern: '^blocker\\.' },
+      },
+    },
+  },
+  PylonFleetRunProvenFailedWorkTerminalEvent: {
+    type: 'object',
+    additionalProperties: false,
+    required: [
+      'schema',
+      'sequence',
+      'eventRef',
+      'observedAt',
+      'kind',
+      'unitRef',
+      'workClaimRef',
+      'assignmentRef',
+      'workerKind',
+      'accountRefHash',
+      'terminalState',
+      'closeoutRef',
+      'usageEvidence',
+      'blockerRefs',
+    ],
+    properties: {
+      schema: {
+        type: 'string',
+        enum: ['openagents.pylon.fleet_run_execution_event.v1'],
+      },
+      sequence: { type: 'integer', minimum: 1 },
+      eventRef: { type: 'string', minLength: 32, maxLength: 180 },
+      observedAt: { type: 'string', format: 'date-time' },
+      kind: { type: 'string', enum: ['work_terminal'] },
+      unitRef: { type: 'string', minLength: 1, maxLength: 160 },
+      workClaimRef: { type: 'string', minLength: 1, maxLength: 180 },
+      assignmentRef: { type: 'string', minLength: 1, maxLength: 180 },
+      workerKind: { type: 'string', enum: ['codex', 'claude', 'grok'] },
+      accountRefHash: {
+        type: 'string',
+        pattern:
+          '^account\\.pylon\\.(codex|claude_agent|grok)\\.[a-f0-9]{6,64}$',
+      },
+      terminalState: { type: 'string', enum: ['failed', 'stale'] },
+      closeoutRef: { type: 'string', minLength: 1, maxLength: 180 },
+      usageEvidence: {
+        $ref: '#/components/schemas/PylonFleetRunUsageEvidence',
+      },
+      blockerRefs: {
+        type: 'array',
+        minItems: 1,
+        maxItems: 32,
+        items: { type: 'string', pattern: '^blocker\\.' },
+      },
+    },
+  },
+  PylonFleetRunTerminalEvent: {
+    type: 'object',
+    additionalProperties: false,
+    required: [
+      'schema',
+      'sequence',
+      'eventRef',
+      'observedAt',
+      'kind',
+      'terminalState',
+      'blockerRefs',
+    ],
+    properties: {
+      schema: {
+        type: 'string',
+        enum: ['openagents.pylon.fleet_run_execution_event.v1'],
+      },
+      sequence: { type: 'integer', minimum: 1 },
+      eventRef: { type: 'string', minLength: 32, maxLength: 180 },
+      observedAt: { type: 'string', format: 'date-time' },
+      kind: { type: 'string', enum: ['run_terminal'] },
+      terminalState: {
+        type: 'string',
+        enum: ['completed', 'failed', 'stopped'],
+      },
+      blockerRefs: {
+        type: 'array',
+        maxItems: 32,
+        items: { type: 'string', pattern: '^blocker\\.' },
+      },
+    },
+  },
+  PylonFleetRunUsageEvidence: {
+    oneOf: [
+      {
+        type: 'object',
+        additionalProperties: false,
+        required: ['truth', 'tokenUsageRefs'],
+        properties: {
+          truth: { type: 'string', enum: ['exact'] },
+          tokenUsageRefs: {
+            type: 'array',
+            minItems: 1,
+            maxItems: 100,
+            items: { type: 'string', minLength: 1, maxLength: 180 },
+          },
+        },
+      },
+      {
+        type: 'object',
+        additionalProperties: false,
+        required: ['truth', 'tokenUsageRefs'],
+        properties: {
+          truth: { type: 'string', enum: ['not_measured'] },
+          tokenUsageRefs: { type: 'array', maxItems: 0 },
+        },
+      },
+    ],
+    description:
+      'Codex and Claude terminal evidence requires exact token refs. Grok is explicitly not_measured until exact provider usage exists.',
+  },
+  PylonFleetRunExecutionAck: {
+    type: 'object',
+    additionalProperties: false,
+    required: [
+      'schema',
+      'runRef',
+      'claimRef',
+      'acceptedThroughSequence',
+      'storedEventCount',
+      'duplicateEventCount',
+      'execution',
+    ],
+    properties: {
+      schema: {
+        type: 'string',
+        enum: ['openagents.pylon.fleet_run_execution_ack.v1'],
+      },
+      runRef: {
+        type: 'string',
+        pattern: '^fleet_run\\.sarah\\.[0-9a-f]{20}$',
+      },
+      claimRef: {
+        type: 'string',
+        pattern: '^claim\\.sarah_fleet_run\\.[0-9a-f]{24}$',
+      },
+      acceptedThroughSequence: { type: 'integer', minimum: 0 },
+      storedEventCount: { type: 'integer', minimum: 0 },
+      duplicateEventCount: { type: 'integer', minimum: 0 },
+      execution: {
+        $ref: '#/components/schemas/PylonFleetRunExecutionProjection',
+      },
+    },
+  },
+  PylonFleetRunExecutionProjection: {
+    type: 'object',
+    additionalProperties: false,
+    required: [
+      'state',
+      'lastSequence',
+      'counters',
+      'startedAt',
+      'updatedAt',
+      'closeouts',
+    ],
+    properties: {
+      state: {
+        type: 'string',
+        enum: ['pending', 'running', 'completed', 'failed', 'stopped'],
+      },
+      lastSequence: { type: 'integer', minimum: 0 },
+      counters: {
+        type: 'object',
+        additionalProperties: false,
+        required: [
+          'workUnitsTotal',
+          'activeAssignments',
+          'acceptedAssignments',
+          'failedAssignments',
+          'staleAssignments',
+        ],
+        properties: {
+          workUnitsTotal: { type: 'integer', minimum: 0 },
+          activeAssignments: { type: 'integer', minimum: 0 },
+          acceptedAssignments: { type: 'integer', minimum: 0 },
+          failedAssignments: { type: 'integer', minimum: 0 },
+          staleAssignments: { type: 'integer', minimum: 0 },
+        },
+      },
+      startedAt: { type: ['string', 'null'], format: 'date-time' },
+      updatedAt: { type: ['string', 'null'], format: 'date-time' },
+      closeouts: {
+        type: 'array',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          required: [
+            'unitRef',
+            'workClaimRef',
+            'workerKind',
+            'terminalState',
+            'blockerRefs',
+            'observedAt',
+            'eventRef',
+          ],
+          properties: {
+            unitRef: { type: 'string' },
+            workClaimRef: { type: 'string' },
+            assignmentRef: { type: 'string' },
+            workerKind: { type: 'string', enum: ['codex', 'claude', 'grok'] },
+            accountRefHash: { type: 'string' },
+            terminalState: {
+              type: 'string',
+              enum: ['accepted', 'failed', 'stale'],
+            },
+            closeoutRef: { type: 'string' },
+            usageEvidence: {
+              $ref: '#/components/schemas/PylonFleetRunUsageEvidence',
+            },
+            blockerRefs: { type: 'array', items: { type: 'string' } },
+            observedAt: { type: 'string', format: 'date-time' },
+            eventRef: { type: 'string' },
+          },
+          allOf: [
+            {
+              if: {
+                properties: { terminalState: { const: 'accepted' } },
+                required: ['terminalState'],
+              },
+              then: {
+                required: [
+                  'assignmentRef',
+                  'accountRefHash',
+                  'closeoutRef',
+                  'usageEvidence',
+                ],
+              },
+            },
+            {
+              oneOf: [
+                {
+                  required: [
+                    'assignmentRef',
+                    'accountRefHash',
+                    'closeoutRef',
+                    'usageEvidence',
+                  ],
+                },
+                {
+                  not: {
+                    anyOf: [
+                      { required: ['assignmentRef'] },
+                      { required: ['accountRefHash'] },
+                      { required: ['closeoutRef'] },
+                      { required: ['usageEvidence'] },
+                    ],
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      },
+    },
+  },
+  PylonFleetRunExecutionError: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['schema', 'error'],
+    properties: {
+      schema: {
+        type: 'string',
+        enum: ['openagents.pylon.fleet_run_execution_error.v1'],
+      },
+      error: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['code', 'retryable'],
+        properties: {
+          code: {
+            type: 'string',
+            enum: [
+              'invalid_request',
+              'not_authorized',
+              'claim_conflict',
+              'unavailable',
+            ],
+          },
+          retryable: { type: 'boolean' },
+        },
+      },
+    },
+  },
   PylonWalletReadinessRequest: objectSummary(
     'Registered Pylon wallet readiness report with walletReady, walletRef, readinessRefs, balanceRefs, and liquidityRefs. Raw invoices, mnemonics, payment hashes, preimages, and wallet state are rejected.',
   ),
@@ -6468,7 +6968,9 @@ const paths = (): JsonSchema => ({
         'Admin-bearer-gated launch/record boundary for a Khala MirrorCode run (#6378). The owner POSTs either a launch intent, which creates a queued public-safe run row, or the public-safe result contract; the Worker rebuilds both through the no-task-contents / no-canary public-safety boundary and upserts by runId. Anything carrying task source, test data, prompts, or canary strings is rejected with a typed 400 and never stored. Owner-scoped: no public spend, settlement, or payout — recording a run row is in-progress / measurement evidence only. A smoke (Phase-0) run is always decisionGrade:false. A scored decision_grade run must include exactTokenUsageEventRefs so tokensTotal is backed by exact rows.',
       tags: ['Admin'],
       security: adminBearer,
-      requestBody: jsonContent('#/components/schemas/MirrorCodeRunRecordRequest'),
+      requestBody: jsonContent(
+        '#/components/schemas/MirrorCodeRunRecordRequest',
+      ),
       responses: {
         '202': okJson(
           'Queued smoke-only MirrorCode launch intent.',
@@ -6893,8 +7395,7 @@ const paths = (): JsonSchema => ({
   },
   '/api/operator/khala-code/trace-plugin-revenue-share-precedents': {
     post: operation({
-      operationId:
-        'createOperatorKhalaCodeTracePluginRevenueSharePrecedent',
+      operationId: 'createOperatorKhalaCodeTracePluginRevenueSharePrecedent',
       summary:
         'Record a Khala Code trace plugin revenue-share precedent receipt',
       description:
@@ -6919,10 +7420,8 @@ const paths = (): JsonSchema => ({
   },
   '/api/public/khala-code/trace-plugin-revenue-share-precedents/{receiptRef}': {
     get: operation({
-      operationId:
-        'getPublicKhalaCodeTracePluginRevenueSharePrecedentReceipt',
-      summary:
-        'Read a Khala Code trace plugin revenue-share precedent receipt',
+      operationId: 'getPublicKhalaCodeTracePluginRevenueSharePrecedentReceipt',
+      summary: 'Read a Khala Code trace plugin revenue-share precedent receipt',
       description:
         'Dereferences one public-safe RL-7 precedent receipt by receiptRef. The receipt can cite the trace-derived-plugin and plugin-backend-revenue-share planned records because it links public-safe provenance, plugin registry/routing, exact usage, attribution, and settlement refs with generatedAt plus live_at_read staleness. It contains no raw traces, prompts, usage payloads, invoices, payment hashes, payout destinations, wallet material, provider payloads, or private source refs.',
       tags: ['Public Proof', 'Agents'],
@@ -8106,7 +8605,9 @@ const paths = (): JsonSchema => ({
         'Attempts to acquire a single active dispatch lease for a Forge work ref. Requires forge:lease:write or admin authority.',
       tags: ['Forge'],
       security: forgeControlPlaneBearer,
-      requestBody: jsonContent('#/components/schemas/ForgeDispatchLeaseRequest'),
+      requestBody: jsonContent(
+        '#/components/schemas/ForgeDispatchLeaseRequest',
+      ),
       responses: {
         '201': okJson(
           'Lease acquired.',
@@ -8570,6 +9071,50 @@ const paths = (): JsonSchema => ({
           '#/components/schemas/PylonFleetRunTransportResponse',
         ),
         ...errorResponses(),
+      },
+    }),
+  },
+  '/api/pylons/{pylonRef}/fleet-runs/{runRef}/events': {
+    post: operation({
+      operationId: 'appendSarahFleetRunExecutionEvents',
+      summary: 'Append durable Sarah FleetRun execution evidence',
+      description:
+        'Bearer-only, owner-scoped lifecycle intake for the exact FleetRun lease already accepted by this owned Pylon. Appends a bounded gapless event sequence, treats exact sequence/event replays as idempotent, stores per-unit terminal closeout refs, derives execution state and counters, and advances the owner FleetRun Sync post-image in the same Postgres transaction. The body is refs-only and cannot carry owners, raw prompts, output, paths, credentials, provider payloads, payment material, or a second work-claim authority.',
+      tags: ['Pylon'],
+      security: agentBearer,
+      parameters: [
+        pathParam('pylonRef', 'Owned Pylon ref.'),
+        pathParam('runRef', 'Exact Sarah FleetRun ref.'),
+      ],
+      requestBody: jsonContent(
+        '#/components/schemas/PylonFleetRunExecutionBatch',
+      ),
+      responses: {
+        '200': okJson(
+          'Gapless execution acknowledgment and current refs-only projection.',
+          '#/components/schemas/PylonFleetRunExecutionAck',
+        ),
+        '400': {
+          description: 'Malformed, oversized, or unsafe execution batch.',
+          ...jsonContent('#/components/schemas/PylonFleetRunExecutionError'),
+        },
+        '401': {
+          description: 'Registered-agent bearer required.',
+          ...jsonContent('#/components/schemas/PylonFleetRunExecutionError'),
+        },
+        '403': {
+          description: 'Pylon is not linked to the derived owner.',
+          ...jsonContent('#/components/schemas/PylonFleetRunExecutionError'),
+        },
+        '409': {
+          description:
+            'Sequence, event, lease, terminal-state, or idempotency conflict.',
+          ...jsonContent('#/components/schemas/PylonFleetRunExecutionError'),
+        },
+        '503': {
+          description: 'Execution authority storage unavailable.',
+          ...jsonContent('#/components/schemas/PylonFleetRunExecutionError'),
+        },
       },
     }),
   },
@@ -9977,9 +10522,9 @@ const paths = (): JsonSchema => ({
     }),
     get: operation({
       operationId: 'listOwnAgentTraces',
-      summary: 'List the signed-in user\'s own traces',
+      summary: "List the signed-in user's own traces",
       description:
-        'Owner-scoped list of the signed-in browser user\'s own traces (#6208), newest first. Returns public-safe summaries only.',
+        "Owner-scoped list of the signed-in browser user's own traces (#6208), newest first. Returns public-safe summaries only.",
       tags: ['Traces'],
       security: [{ browserSession: [] }],
       responses: {
@@ -9994,9 +10539,10 @@ const paths = (): JsonSchema => ({
   '/api/traces/upload': {
     post: operation({
       operationId: 'uploadAgentTrace',
-      summary: 'Upload a trace (user web session or agent bearer) — data market',
+      summary:
+        'Upload a trace (user web session or agent bearer) — data market',
       description:
-        'Explicit user-upload alias for the trace upload data market (#6221). Same ingest path as POST /api/traces: accepts EITHER an authenticated user web session OR a registered-agent bearer token, requires an Idempotency-Key, validates + tripwires the public-safe ATIF payload, captures the uploader\'s training-use consent (default WITHHELD) and optional license, applies the per-user rate limit and per-owner content-digest dedup, and records an INERT (owner-gated, default-OFF, amount-TBD) revshare reward marker. The body cap is 8MB; a multi-MB real session trajectory is offloaded to R2 (pointer kept in D1) and rehydrated on read. Returns { uuid, url, visibility, replay, dataMarket }. Stores evidence only; moves no money.',
+        "Explicit user-upload alias for the trace upload data market (#6221). Same ingest path as POST /api/traces: accepts EITHER an authenticated user web session OR a registered-agent bearer token, requires an Idempotency-Key, validates + tripwires the public-safe ATIF payload, captures the uploader's training-use consent (default WITHHELD) and optional license, applies the per-user rate limit and per-owner content-digest dedup, and records an INERT (owner-gated, default-OFF, amount-TBD) revshare reward marker. The body cap is 8MB; a multi-MB real session trajectory is offloaded to R2 (pointer kept in D1) and rehydrated on read. Returns { uuid, url, visibility, replay, dataMarket }. Stores evidence only; moves no money.",
       tags: ['Traces'],
       security: browserSessionOrAgentBearer,
       parameters: [
@@ -10862,9 +11408,7 @@ const paths = (): JsonSchema => ({
       tags: ['Agents'],
       security: mobileUserBearer,
       parameters: [mobileRefreshTokenHeader()],
-      requestBody: jsonContent(
-        '#/components/schemas/MobileAuthSignOutRequest',
-      ),
+      requestBody: jsonContent('#/components/schemas/MobileAuthSignOutRequest'),
       responses: {
         '200': okJson(
           'Mobile sign-out result.',
@@ -10894,9 +11438,9 @@ const paths = (): JsonSchema => ({
   '/api/mobile/credits/balance': {
     get: operation({
       operationId: 'getMobileCreditsBalance',
-      summary: 'Read the mobile user\'s credit balance',
+      summary: "Read the mobile user's credit balance",
       description:
-        'Fixes #8480\'s shipped-but-dead REST route (issue #8505, Part 1): reads the authenticated Khala mobile user\'s current spendable credit balance directly from the authoritative Cloud SQL Postgres agent_balances ledger (payments-ledger.ts; Postgres-only since the CFG-4 #8519 hard cutover), converted to USD cents at the single shared BTC/USD rate. Same mobile OpenAuth user bearer session as /api/mobile/auth/session; never a browser session or agent token. Read-only; never mutates the ledger.',
+        "Fixes #8480's shipped-but-dead REST route (issue #8505, Part 1): reads the authenticated Khala mobile user's current spendable credit balance directly from the authoritative Cloud SQL Postgres agent_balances ledger (payments-ledger.ts; Postgres-only since the CFG-4 #8519 hard cutover), converted to USD cents at the single shared BTC/USD rate. Same mobile OpenAuth user bearer session as /api/mobile/auth/session; never a browser session or agent token. Read-only; never mutates the ledger.",
       tags: ['Agents'],
       security: mobileUserBearer,
       responses: {
@@ -10911,14 +11455,17 @@ const paths = (): JsonSchema => ({
   '/api/mobile/credits/transactions': {
     get: operation({
       operationId: 'listMobileCreditsTransactions',
-      summary: 'List the mobile user\'s credit transaction history',
+      summary: "List the mobile user's credit transaction history",
       description:
-        'Fixes #8480\'s shipped-but-dead REST route (issue #8505, Part 1): lists the authenticated Khala mobile user\'s credit ledger history (grants, charges, clawbacks) directly from the authoritative Cloud SQL Postgres pay_ins ledger (Postgres-only since the CFG-4 #8519 hard cutover), newest first, keyset-paginated. Same mobile OpenAuth user bearer session as /api/mobile/auth/session. Read-only; never mutates the ledger.',
+        "Fixes #8480's shipped-but-dead REST route (issue #8505, Part 1): lists the authenticated Khala mobile user's credit ledger history (grants, charges, clawbacks) directly from the authoritative Cloud SQL Postgres pay_ins ledger (Postgres-only since the CFG-4 #8519 hard cutover), newest first, keyset-paginated. Same mobile OpenAuth user bearer session as /api/mobile/auth/session. Read-only; never mutates the ledger.",
       tags: ['Agents'],
       security: mobileUserBearer,
       parameters: [
         queryParam('limit', 'Page size, 1-200. Defaults to 50.'),
-        queryParam('cursor', 'Opaque keyset-pagination cursor from a prior page\'s nextCursor.'),
+        queryParam(
+          'cursor',
+          "Opaque keyset-pagination cursor from a prior page's nextCursor.",
+        ),
       ],
       responses: {
         '200': okJson(
@@ -10934,7 +11481,7 @@ const paths = (): JsonSchema => ({
       operationId: 'registerPushDeviceToken',
       summary: 'Register a mobile push device token',
       description:
-        'Registers (or re-registers/upserts) this device\'s Expo push token for the authenticated Khala mobile user. Requires the same mobile OpenAuth user bearer session as /api/mobile/auth/session; never a browser session or agent token.',
+        "Registers (or re-registers/upserts) this device's Expo push token for the authenticated Khala mobile user. Requires the same mobile OpenAuth user bearer session as /api/mobile/auth/session; never a browser session or agent token.",
       tags: ['Agents'],
       security: mobileUserBearer,
       requestBody: jsonContent(
@@ -10972,7 +11519,7 @@ const paths = (): JsonSchema => ({
       operationId: 'getPushNotificationPreference',
       summary: 'Read the mobile push notification preference',
       description:
-        'Reads the authenticated user\'s global push-notification on/off toggle. Defaults to enabled when never set (opt-out, not opt-in).',
+        "Reads the authenticated user's global push-notification on/off toggle. Defaults to enabled when never set (opt-out, not opt-in).",
       tags: ['Agents'],
       security: mobileUserBearer,
       responses: {
@@ -10987,7 +11534,7 @@ const paths = (): JsonSchema => ({
       operationId: 'putPushNotificationPreference',
       summary: 'Set the mobile push notification preference',
       description:
-        'Sets the authenticated user\'s global push-notification on/off toggle.',
+        "Sets the authenticated user's global push-notification on/off toggle.",
       tags: ['Agents'],
       security: mobileUserBearer,
       requestBody: jsonContent(
@@ -11007,12 +11554,10 @@ const paths = (): JsonSchema => ({
       operationId: 'postPushNotifyEvent',
       summary: 'Ingest a runtime notify event and send push notifications',
       description:
-        'Admin-bearer-gated internal ingest point for a typed runtime notify event (turn completed/needs input/failed, credit low/exhausted). Looks up the owner\'s active push device tokens and notification preference, then sends via the Expo push service. Public-safe payloads only — titles/bodies are drawn from a small fixed template set, never interpolated from thread/turn ids or prompt content. PIN: the real caller (the org cloud executor, #8473-#8477, and metering, #8479) is not yet merged as of this writing; admin bearer is the interim default credential for this route, not a final design decision.',
+        "Admin-bearer-gated internal ingest point for a typed runtime notify event (turn completed/needs input/failed, credit low/exhausted). Looks up the owner's active push device tokens and notification preference, then sends via the Expo push service. Public-safe payloads only — titles/bodies are drawn from a small fixed template set, never interpolated from thread/turn ids or prompt content. PIN: the real caller (the org cloud executor, #8473-#8477, and metering, #8479) is not yet merged as of this writing; admin bearer is the interim default credential for this route, not a final design decision.",
       tags: ['Agents'],
       security: adminBearer,
-      requestBody: jsonContent(
-        '#/components/schemas/PushNotifyEventRequest',
-      ),
+      requestBody: jsonContent('#/components/schemas/PushNotifyEventRequest'),
       responses: {
         '200': okJson(
           'Push notify-event dispatch result.',
@@ -11031,7 +11576,10 @@ const paths = (): JsonSchema => ({
       tags: ['Agents'],
       security: mobileUserBearer,
       responses: {
-        '200': okJson('Model preference.', '#/components/schemas/ModelPreference'),
+        '200': okJson(
+          'Model preference.',
+          '#/components/schemas/ModelPreference',
+        ),
         ...errorResponses(),
       },
     }),
@@ -11042,15 +11590,21 @@ const paths = (): JsonSchema => ({
         'Sets the signed-in mobile user’s execution target preference (MM-F1, #8484; CX-4, #8548). Rejects a target id this deployment cannot currently serve with 409 target_unavailable (and the current availableTargetIds) rather than silently accepting an unservable choice.',
       tags: ['Agents'],
       security: mobileUserBearer,
-      requestBody: jsonContent('#/components/schemas/SetModelPreferenceRequest'),
+      requestBody: jsonContent(
+        '#/components/schemas/SetModelPreferenceRequest',
+      ),
       responses: {
-        '200': okJson('Updated model preference.', '#/components/schemas/ModelPreference'),
+        '200': okJson(
+          'Updated model preference.',
+          '#/components/schemas/ModelPreference',
+        ),
         '400': {
           description: 'targetId/modelId missing or invalid JSON body.',
           ...jsonContent('#/components/schemas/ErrorResponse'),
         },
         '409': {
-          description: 'The requested targetId is not currently servable by this deployment.',
+          description:
+            'The requested targetId is not currently servable by this deployment.',
           ...jsonContent('#/components/schemas/ErrorResponse'),
         },
         ...errorResponses(),
@@ -11589,7 +12143,10 @@ const paths = (): JsonSchema => ({
           'window',
           'Time window for the series: today, 7d, 30d, or all. Default 30d.',
         ),
-        queryParam('bucket', 'Series bucket. Only day is supported. Default day.'),
+        queryParam(
+          'bucket',
+          'Series bucket. Only day is supported. Default day.',
+        ),
         queryParam(
           'timezone',
           'IANA timezone for calendar-day bucketing. Default America/Chicago. Alias: tz.',
@@ -11815,14 +12372,8 @@ const paths = (): JsonSchema => ({
       tags: ['Agents'],
       security: mobileUserBearer,
       parameters: [
-        queryParam(
-          'page',
-          'GitHub result page, 1-indexed. Defaults to 1.',
-        ),
-        queryParam(
-          'perPage',
-          'Repositories per page, 1-100. Defaults to 100.',
-        ),
+        queryParam('page', 'GitHub result page, 1-indexed. Defaults to 1.'),
+        queryParam('perPage', 'Repositories per page, 1-100. Defaults to 100.'),
       ],
       responses: {
         '200': okJson(
@@ -11842,7 +12393,10 @@ const paths = (): JsonSchema => ({
       tags: ['Agents'],
       security: mobileUserBearer,
       parameters: [
-        pathParam('owner', 'GitHub repository owner (user or organization) login.'),
+        pathParam(
+          'owner',
+          'GitHub repository owner (user or organization) login.',
+        ),
         pathParam('name', 'GitHub repository name.'),
       ],
       responses: {

@@ -1,10 +1,12 @@
+import {
+  type FleetRunAuthorityAcceptClaimResult,
+  type FleetRunAuthorityAppendExecutionResult,
+  type FleetRunAuthorityClaimResult,
+  FleetRunAuthorityError,
+  FleetRunExecutionBatch,
+} from '@openagentsinc/khala-sync-server'
 import { notFound } from '@openagentsinc/sync-worker'
 import { Effect, Match as M, Schema as S } from 'effect'
-import {
-  FleetRunAuthorityError,
-  type FleetRunAuthorityAcceptClaimResult,
-  type FleetRunAuthorityClaimResult,
-} from '@openagentsinc/khala-sync-server'
 
 import {
   AGENT_TOKEN_PREFIX,
@@ -14,9 +16,7 @@ import {
   authenticateProgrammaticAgent,
   sha256Hex,
 } from './agent-registration'
-import {
-  readAgentBearerToken as bearerTokenFromRequest,
-} from './auth/bearer-token'
+import { readAgentBearerToken as bearerTokenFromRequest } from './auth/bearer-token'
 import type { AutopilotWorkerCloseoutIngestionInput } from './autopilot-work-routes'
 import {
   methodNotAllowed,
@@ -31,16 +31,16 @@ import {
   PylonApiAssignmentCloseoutRequest,
   PylonApiAssignmentProgressRequest,
   type PylonApiAssignmentRecord,
-  type PylonApiEventRecord,
   type PylonApiAssignmentState,
   PylonApiAssignmentWorkerCloseoutRequest,
   PylonApiCreateAssignmentRequest,
   type PylonApiEventKind,
+  type PylonApiEventRecord,
   PylonApiHeartbeatRequest,
   PylonApiPaymentReceiptRequest,
   PylonApiPayoutTargetAdmissionRequest,
-  PylonApiQuarantineRequest,
   type PylonApiQuarantineRecord,
+  PylonApiQuarantineRequest,
   type PylonApiRegistrationRecord,
   PylonApiRegistrationRequest,
   PylonApiSettlementStatusRequest,
@@ -56,18 +56,18 @@ import {
   buildPylonApiQuarantineRecord,
   buildPylonApiRegistrationRecord,
   closeoutPylonApiAssignmentRecord,
+  codexAccountCapacityKeyFromAccountRefHash,
   nextAssignmentForEvent,
   nextRegistrationForEvent,
-  pylonApiAssignmentSettlementProjection,
   publicPylonApiAssignmentProjection,
   publicPylonApiEventProjection,
   publicPylonApiQuarantineProjection,
   publicPylonApiRegistrationProjection,
-  codexAccountCapacityKeyFromAccountRefHash,
-  pylonCodingServiceAccountCapacity,
-  pylonCodingServiceCapacityProjection,
+  pylonApiAssignmentSettlementProjection,
   pylonApiStoreErrorFromUnknown,
   pylonClientVersionMeetsMinimum,
+  pylonCodingServiceAccountCapacity,
+  pylonCodingServiceCapacityProjection,
   resolveSparkPayoutTargetReadiness,
 } from './pylon-api'
 import {
@@ -113,6 +113,18 @@ type PylonApiRouteDependencies<Bindings> = Readonly<{
       }>,
     ) => Effect.Effect<
       FleetRunAuthorityAcceptClaimResult,
+      FleetRunAuthorityError
+    >
+    appendExecutionEvents?: (
+      env: Bindings,
+      input: Readonly<{
+        ownerUserId: string
+        pylonRef: string
+        runRef: string
+        batch: typeof FleetRunExecutionBatch.Type
+      }>,
+    ) => Effect.Effect<
+      FleetRunAuthorityAppendExecutionResult,
       FleetRunAuthorityError
     >
   }>
@@ -166,10 +178,15 @@ export const PYLON_FLEET_RUN_CLAIM_ROUTE_PATTERN =
   '/api/pylons/:pylonRef/fleet-runs/claim' as const
 export const PYLON_FLEET_RUN_ACCEPT_ROUTE_PATTERN =
   '/api/pylons/:pylonRef/fleet-runs/accept' as const
+export const PYLON_FLEET_RUN_EXECUTION_ROUTE_PATTERN =
+  '/api/pylons/:pylonRef/fleet-runs/:runRef/events' as const
 
 const PYLON_FLEET_RUN_TRANSPORT_SCHEMA =
   'openagents.pylon.fleet_run_transport.v1' as const
+const PYLON_FLEET_RUN_EXECUTION_ERROR_SCHEMA =
+  'openagents.pylon.fleet_run_execution_error.v1' as const
 const FLEET_RUN_LEASE_DURATION_MS = 60_000
+const FLEET_RUN_EXECUTION_MAX_BODY_BYTES = 256 * 1_024
 
 const FleetRunRef = S.Trim.check(
   S.isPattern(/^fleet_run\.sarah\.[0-9a-f]{20}$/u),
@@ -200,6 +217,36 @@ const decodeStrictFleetRunBody = <A>(
       new PylonApiStoreError({
         kind: 'validation_error',
         reason: 'FleetRun transport request failed validation.',
+      }),
+  })
+
+const decodeFleetRunExecutionBody = (
+  request: Request,
+): Effect.Effect<typeof FleetRunExecutionBatch.Type, PylonApiStoreError> =>
+  Effect.tryPromise({
+    try: async () => {
+      const declaredLength = Number(request.headers.get('content-length'))
+      if (
+        Number.isFinite(declaredLength) &&
+        declaredLength > FLEET_RUN_EXECUTION_MAX_BODY_BYTES
+      ) {
+        throw new Error('FleetRun execution batch is too large.')
+      }
+      const raw = await request.text()
+      if (
+        new TextEncoder().encode(raw).byteLength >
+        FLEET_RUN_EXECUTION_MAX_BODY_BYTES
+      ) {
+        throw new Error('FleetRun execution batch is too large.')
+      }
+      return S.decodeUnknownSync(FleetRunExecutionBatch)(JSON.parse(raw), {
+        onExcessProperty: 'error',
+      })
+    },
+    catch: () =>
+      new PylonApiStoreError({
+        kind: 'validation_error',
+        reason: 'FleetRun execution request failed validation.',
       }),
   })
 
@@ -411,8 +458,10 @@ const readActiveRouteQuarantine = <Bindings extends PylonApiRouteEnv>(
   pylonRef: string,
   nowIso: string,
 ): Effect.Effect<PylonApiQuarantineRecord | undefined, PylonApiStoreError> => {
-  const readActiveQuarantineForPylon =
-    routeStore(dependencies, env).readActiveQuarantineForPylon
+  const readActiveQuarantineForPylon = routeStore(
+    dependencies,
+    env,
+  ).readActiveQuarantineForPylon
 
   if (readActiveQuarantineForPylon === undefined) {
     return Effect.sync((): PylonApiQuarantineRecord | undefined => undefined)
@@ -538,7 +587,8 @@ export const codexAccountRefHashFromCodingAssignment = (
   }
   for (const key of ['codex', 'claudeAgent'] as const) {
     const sub =
-      typeof codingAssignment[key] === 'object' && codingAssignment[key] !== null
+      typeof codingAssignment[key] === 'object' &&
+      codingAssignment[key] !== null
         ? (codingAssignment[key] as Record<string, unknown>)
         : null
     const raw = sub?.accountRefHash
@@ -634,7 +684,9 @@ const activeDuplicateCapacitySlots = (
   const requestedServices = new Set(
     gateRefs(input.body.requiredCapabilityRefs)
       .map(ref => codingServiceByCapabilityRef.get(ref))
-      .filter((service): service is 'claude' | 'codex' => service !== undefined),
+      .filter(
+        (service): service is 'claude' | 'codex' => service !== undefined,
+      ),
   )
 
   if (requestedServices.size !== 1) {
@@ -663,9 +715,9 @@ const activeDuplicateCapacitySlots = (
     )
   }
 
-  const capacity = pylonCodingServiceCapacityProjection(input.registration).find(
-    item => item.service === requestedService,
-  )
+  const capacity = pylonCodingServiceCapacityProjection(
+    input.registration,
+  ).find(item => item.service === requestedService)
   const advertisedSlots =
     capacity === undefined
       ? 1
@@ -766,12 +818,12 @@ export const controlledPylonAssignmentDispatchGate = (
   const requestedCodingServices = new Set(
     gateRefs(body.requiredCapabilityRefs)
       .map(ref => codingServiceByCapabilityRef.get(ref))
-      .filter((service): service is 'claude' | 'codex' => service !== undefined),
+      .filter(
+        (service): service is 'claude' | 'codex' => service !== undefined,
+      ),
   )
   const requestedCodingService =
-    requestedCodingServices.size === 1
-      ? [...requestedCodingServices][0]!
-      : null
+    requestedCodingServices.size === 1 ? [...requestedCodingServices][0]! : null
   const duplicateRefs = activeDuplicateAssignmentRefs(
     input.activeAssignments,
     input.nowIso,
@@ -994,7 +1046,9 @@ const requireAssignmentDispatcher = <Bindings extends PylonApiRouteEnv>(
       catch: () => new PylonApiUnauthorized({}),
       try: () => requireAdminApiToken(request, env),
     }),
-    (allowed): Effect.Effect<PylonAssignmentDispatcher, PylonApiUnauthorized> =>
+    (
+      allowed,
+    ): Effect.Effect<PylonAssignmentDispatcher, PylonApiUnauthorized> =>
       allowed
         ? Effect.succeed({ kind: 'admin' })
         : Effect.map(
@@ -1019,8 +1073,10 @@ const sameOpenAuthOwnerAgentUserIds = <Bindings extends PylonApiRouteEnv>(
     return Effect.succeed(ownerAgentUserIds)
   }
 
-  const listLinkedAgents =
-    routeAgentStore(dependencies, env).listLinkedAgentsForOpenAuthUser
+  const listLinkedAgents = routeAgentStore(
+    dependencies,
+    env,
+  ).listLinkedAgentsForOpenAuthUser
 
   if (listLinkedAgents === undefined) {
     return Effect.succeed(ownerAgentUserIds)
@@ -1159,8 +1215,7 @@ const fleetRunTransportErrorResponse = (
               ? 'invalid_request'
               : 'unavailable'
     const retryable =
-      error.kind === 'pylon_unavailable' ||
-      error.kind === 'storage_unavailable'
+      error.kind === 'pylon_unavailable' || error.kind === 'storage_unavailable'
     const status =
       code === 'not_authorized'
         ? 403
@@ -1185,6 +1240,60 @@ const fleetRunTransportErrorResponse = (
     },
     { status: 503 },
   )
+}
+
+const fleetRunExecutionErrorResponse = (error: unknown): HttpResponse => {
+  const response = (
+    code:
+      | 'invalid_request'
+      | 'not_authorized'
+      | 'claim_conflict'
+      | 'unavailable',
+    retryable: boolean,
+    status: number,
+    headers?: HeadersInit,
+  ): HttpResponse =>
+    noStoreJsonResponse(
+      {
+        schema: PYLON_FLEET_RUN_EXECUTION_ERROR_SCHEMA,
+        error: { code, retryable },
+      },
+      { status, ...(headers === undefined ? {} : { headers }) },
+    )
+
+  if (error instanceof PylonApiUnauthorized) {
+    return response('not_authorized', false, 401, {
+      'www-authenticate': 'Bearer',
+    })
+  }
+  if (error instanceof PylonApiStoreError) {
+    if (error.kind === 'validation_error') {
+      return response('invalid_request', false, 400)
+    }
+    if (error.kind === 'storage_error') {
+      return response('unavailable', true, 503)
+    }
+    return response('not_authorized', false, 403)
+  }
+  if (error instanceof FleetRunAuthorityError) {
+    if (error.kind === 'invalid_request') {
+      return response('invalid_request', false, 400)
+    }
+    if (
+      error.kind === 'claim_conflict' ||
+      error.kind === 'claim_expired' ||
+      error.kind === 'claim_not_found' ||
+      error.kind === 'idempotency_conflict' ||
+      error.kind === 'run_not_found'
+    ) {
+      return response('claim_conflict', false, 409)
+    }
+    if (error.kind === 'pylon_not_authorized') {
+      return response('not_authorized', false, 403)
+    }
+    return response('unavailable', true, 503)
+  }
+  return response('unavailable', true, 503)
 }
 
 const fleetRunOwnerUserId = (session: ProgrammaticAgentSession): string => {
@@ -1279,9 +1388,41 @@ const routeFleetRunAccept = <Bindings extends PylonApiRouteEnv>(
     })
   }).pipe(
     Effect.catch(error =>
-      Effect.succeed(
-        fleetRunTransportErrorResponse(error, 'accept', true),
-      ),
+      Effect.succeed(fleetRunTransportErrorResponse(error, 'accept', true)),
+    ),
+  )
+
+const routeFleetRunExecution = <Bindings extends PylonApiRouteEnv>(
+  dependencies: PylonApiRouteDependencies<Bindings>,
+  request: Request,
+  env: Bindings,
+  pylonRef: string,
+  runRef: string,
+): Effect.Effect<HttpResponse> =>
+  Effect.gen(function* () {
+    const appendExecutionEvents =
+      dependencies.fleetRunAuthority?.appendExecutionEvents
+    if (appendExecutionEvents === undefined) {
+      return fleetRunExecutionErrorResponse(
+        new FleetRunAuthorityError({
+          kind: 'storage_unavailable',
+          reason: 'fleet run execution authority is unavailable',
+        }),
+      )
+    }
+    const session = yield* requireAgent(dependencies, request, env)
+    yield* requireOwnedRegistration(dependencies, env, pylonRef, session)
+    const batch = yield* decodeFleetRunExecutionBody(request)
+    const result = yield* appendExecutionEvents(env, {
+      ownerUserId: fleetRunOwnerUserId(session),
+      pylonRef,
+      runRef,
+      batch,
+    })
+    return noStoreJsonResponse(result.ack)
+  }).pipe(
+    Effect.catch(error =>
+      Effect.succeed(fleetRunExecutionErrorResponse(error)),
     ),
   )
 
@@ -1883,7 +2024,8 @@ const terminalAssignmentEventAllowed = (
 const assignmentAcceptanceCanClaim = (
   eventKind: PylonApiEventKind,
   assignmentState: PylonApiAssignmentState,
-): boolean => eventKind !== 'assignment_acceptance' || assignmentState === 'offered'
+): boolean =>
+  eventKind !== 'assignment_acceptance' || assignmentState === 'offered'
 
 // KS-6.1 (#8302): dual-write an assignment status transition into the
 // Khala Sync fleet cockpit scope. Never Effect.tryPromise — a projection
@@ -1949,7 +2091,8 @@ const maybeRevokeAssignmentForgeGitAccess = <Bindings extends PylonApiRouteEnv>(
   const revokeAssignmentForgeGitAccess =
     dependencies.revokeAssignmentForgeGitAccess
 
-  return (input.eventKind !== undefined && input.eventKind !== 'worker_closeout') ||
+  return (input.eventKind !== undefined &&
+    input.eventKind !== 'worker_closeout') ||
     revokeAssignmentForgeGitAccess === undefined
     ? Effect.void
     : Effect.tryPromise({
@@ -2127,9 +2270,7 @@ const routeEvent = <Bindings extends PylonApiRouteEnv>(
         )
       }
 
-      if (
-        !assignmentAcceptanceCanClaim(input.eventKind, assignment.state)
-      ) {
+      if (!assignmentAcceptanceCanClaim(input.eventKind, assignment.state)) {
         return routeErrorResponse(
           new PylonApiStoreError({
             kind: 'conflict',
@@ -2221,7 +2362,10 @@ const routeEvent = <Bindings extends PylonApiRouteEnv>(
         : yield* Effect.tryPromise({
             catch: pylonApiStoreErrorFromUnknown,
             try: () =>
-              store.listEventsForAssignment(storedAssignment.assignmentRef, 100),
+              store.listEventsForAssignment(
+                storedAssignment.assignmentRef,
+                100,
+              ),
           })
     const nextRegistrationBase = nextRegistrationForEvent(
       registration,
@@ -2905,10 +3049,37 @@ export const makePylonApiRoutes = <Bindings extends PylonApiRouteEnv>(
       ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
     }
 
-    const fleetRunTransportMatch =
-      /^\/api\/pylons\/([^/]+)\/fleet-runs\/(claim|accept)$/.exec(
-        url.pathname,
+    const fleetRunExecutionMatch =
+      /^\/api\/pylons\/([^/]+)\/fleet-runs\/([^/]+)\/events$/.exec(url.pathname)
+
+    if (fleetRunExecutionMatch !== null) {
+      if (request.method !== 'POST') {
+        return Effect.succeed(methodNotAllowed(['POST']))
+      }
+      return Effect.try({
+        try: () => ({
+          pylonRef: decodeURIComponent(fleetRunExecutionMatch[1]!),
+          runRef: S.decodeUnknownSync(FleetRunRef)(
+            decodeURIComponent(fleetRunExecutionMatch[2]!),
+          ),
+        }),
+        catch: () =>
+          new PylonApiStoreError({
+            kind: 'validation_error',
+            reason: 'FleetRun execution path failed validation.',
+          }),
+      }).pipe(
+        Effect.flatMap(({ pylonRef, runRef }) =>
+          routeFleetRunExecution(dependencies, request, env, pylonRef, runRef),
+        ),
+        Effect.catch(error =>
+          Effect.succeed(fleetRunExecutionErrorResponse(error)),
+        ),
       )
+    }
+
+    const fleetRunTransportMatch =
+      /^\/api\/pylons\/([^/]+)\/fleet-runs\/(claim|accept)$/.exec(url.pathname)
 
     if (fleetRunTransportMatch !== null) {
       if (request.method !== 'POST') {

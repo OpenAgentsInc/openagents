@@ -1,10 +1,12 @@
+import {
+  type FleetRunAuthorityAcceptClaimResult,
+  type FleetRunAuthorityAppendExecutionResult,
+  type FleetRunAuthorityClaimResult,
+  FleetRunAuthorityError,
+  type FleetRunExecutionBatch,
+} from '@openagentsinc/khala-sync-server'
 import { Effect } from 'effect'
 import { describe, expect, test } from 'vitest'
-import {
-  FleetRunAuthorityError,
-  type FleetRunAuthorityAcceptClaimResult,
-  type FleetRunAuthorityClaimResult,
-} from '@openagentsinc/khala-sync-server'
 
 import {
   type AgentRegistrationStore,
@@ -208,9 +210,13 @@ class MemoryPylonApiStore implements PylonApiStore {
     for (const assignment of this.assignments.values()) {
       if (
         assignment.pylonRef === pylonRef &&
-        ['accepted', 'blocked', 'offered', 'proof_submitted', 'running'].includes(
-          assignment.state,
-        ) &&
+        [
+          'accepted',
+          'blocked',
+          'offered',
+          'proof_submitted',
+          'running',
+        ].includes(assignment.state) &&
         assignment.leaseExpiresAt > nowIso &&
         assignment.updatedAt < staleBeforeIso
       ) {
@@ -272,7 +278,8 @@ class MemoryPylonApiStore implements PylonApiStore {
       .filter(record => record.releasedAt === null)
       .filter(
         record =>
-          record.expiresAt === null || Date.parse(record.expiresAt) > Date.parse(nowIso),
+          record.expiresAt === null ||
+          Date.parse(record.expiresAt) > Date.parse(nowIso),
       )
       .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0]
 
@@ -311,7 +318,9 @@ class MemoryPylonApiStore implements PylonApiStore {
   upsertQuarantine = async (record: PylonApiQuarantineRecord) => {
     const existing = this.quarantines.get(record.quarantineRef)
     const next =
-      existing === undefined ? record : { ...record, createdAt: existing.createdAt, id: existing.id }
+      existing === undefined
+        ? record
+        : { ...record, createdAt: existing.createdAt, id: existing.id }
     this.quarantines.set(record.quarantineRef, next)
 
     return next
@@ -818,11 +827,26 @@ const route = async (
         FleetRunAuthorityAcceptClaimResult,
         FleetRunAuthorityError
       >
+      appendExecutionEvents?: (
+        env: Readonly<Record<string, unknown>>,
+        input: Readonly<{
+          ownerUserId: string
+          pylonRef: string
+          runRef: string
+          batch: FleetRunExecutionBatch
+        }>,
+      ) => Effect.Effect<
+        FleetRunAuthorityAppendExecutionResult,
+        FleetRunAuthorityError
+      >
     }>
     // KS-6.1 (#8302): optional fail-soft fleet cockpit projection spy.
     projectFleetAssignment?: (
       env: Readonly<Record<string, unknown>>,
-      input: Readonly<{ assignment: { assignmentRef: string; state: string }; nowIso: string }>,
+      input: Readonly<{
+        assignment: { assignmentRef: string; state: string }
+        nowIso: string
+      }>,
     ) => Promise<unknown>
     tokenUserId?: string
   }> = {},
@@ -1056,17 +1080,23 @@ const quarantinePylon = async (
     state?: 'active' | 'released'
   }> = {},
 ) =>
-  route(store, `/api/operator/pylons/${input.pylonRef ?? 'pylon.test.one'}/quarantine`, {
-    adminToken: true,
-    body: {
-      actionRefs: ['action.public.pylon_quarantine.disconnect_executor'],
-      ...(input.expiresAt === undefined ? {} : { expiresAt: input.expiresAt }),
-      reasonRefs: ['reason.public.pylon_quarantine.anomaly_detected'],
-      sourceRefs: ['source.public.issue.6424'],
-      state: input.state ?? 'active',
+  route(
+    store,
+    `/api/operator/pylons/${input.pylonRef ?? 'pylon.test.one'}/quarantine`,
+    {
+      adminToken: true,
+      body: {
+        actionRefs: ['action.public.pylon_quarantine.disconnect_executor'],
+        ...(input.expiresAt === undefined
+          ? {}
+          : { expiresAt: input.expiresAt }),
+        reasonRefs: ['reason.public.pylon_quarantine.anomaly_detected'],
+        sourceRefs: ['source.public.issue.6424'],
+        state: input.state ?? 'active',
+      },
+      method: 'POST',
     },
-    method: 'POST',
-  })
+  )
 
 describe('Pylon API routes', () => {
   test('D1 store inserts new Pylon registrations with every migrated column represented', async () => {
@@ -1202,9 +1232,7 @@ describe('Pylon API routes', () => {
     expect(db.insertQueries[0]).toContain(
       'ON CONFLICT(idempotency_key_hash) DO UPDATE',
     )
-    expect(db.events.get(idempotencyKeyHash)?.event_ref).toBe(
-      existing.eventRef,
-    )
+    expect(db.events.get(idempotencyKeyHash)?.event_ref).toBe(existing.eventRef)
     expect(db.events.get(idempotencyKeyHash)?.created_at).toBe(
       existing.createdAt,
     )
@@ -1894,22 +1922,26 @@ describe('Pylon API routes', () => {
       openauthUserId: 'openauth-owner-one',
       tokenUserId: 'agent-new',
     })
-    const heartbeat = await route(store, '/api/pylons/pylon.test.one/heartbeat', {
-      body: {
-        capacityRefs: ['capacity.coding.codex.available=1'],
-        clientProtocolVersion: '0.3.0',
-        clientVersion: 'openagents.pylon@1.0.5',
-        healthRefs: ['health.public.ok'],
-        loadRefs: ['load.coding.codex.busy=0'],
-        resourceMode: 'background_20',
-        status: 'online',
+    const heartbeat = await route(
+      store,
+      '/api/pylons/pylon.test.one/heartbeat',
+      {
+        body: {
+          capacityRefs: ['capacity.coding.codex.available=1'],
+          clientProtocolVersion: '0.3.0',
+          clientVersion: 'openagents.pylon@1.0.5',
+          healthRefs: ['health.public.ok'],
+          loadRefs: ['load.coding.codex.busy=0'],
+          resourceMode: 'background_20',
+          status: 'online',
+        },
+        idempotencyKey: 'heartbeat-rotated-agent',
+        linkedAgentUserIds: ['agent-old', 'agent-new'],
+        method: 'POST',
+        openauthUserId: 'openauth-owner-one',
+        tokenUserId: 'agent-new',
       },
-      idempotencyKey: 'heartbeat-rotated-agent',
-      linkedAgentUserIds: ['agent-old', 'agent-new'],
-      method: 'POST',
-      openauthUserId: 'openauth-owner-one',
-      tokenUserId: 'agent-new',
-    })
+    )
     const stored = await store.readRegistration('pylon.test.one')
 
     expect(reRegister.status).toBe(201)
@@ -1936,14 +1968,18 @@ describe('Pylon API routes', () => {
       openauthUserId: 'openauth-owner-two',
       tokenUserId: 'agent-new',
     })
-    const heartbeat = await route(store, '/api/pylons/pylon.test.one/heartbeat', {
-      body: { healthRefs: ['health.public.ok'] },
-      idempotencyKey: 'heartbeat-foreign-agent',
-      linkedAgentUserIds: ['agent-new'],
-      method: 'POST',
-      openauthUserId: 'openauth-owner-two',
-      tokenUserId: 'agent-new',
-    })
+    const heartbeat = await route(
+      store,
+      '/api/pylons/pylon.test.one/heartbeat',
+      {
+        body: { healthRefs: ['health.public.ok'] },
+        idempotencyKey: 'heartbeat-foreign-agent',
+        linkedAgentUserIds: ['agent-new'],
+        method: 'POST',
+        openauthUserId: 'openauth-owner-two',
+        tokenUserId: 'agent-new',
+      },
+    )
     const registerBody = await responseJson<PylonRouteJson>(reRegister)
     const heartbeatBody = await responseJson<PylonRouteJson>(heartbeat)
 
@@ -2558,7 +2594,8 @@ describe('Pylon API routes', () => {
 
     expect(
       pylonApiPayloadHasPrivateMaterial({
-        objectiveSummary: 'Forward Authorization: Bearer abcdef0123456789abcdef',
+        objectiveSummary:
+          'Forward Authorization: Bearer abcdef0123456789abcdef',
       }),
     ).toBe(true)
   })
@@ -3100,22 +3137,21 @@ describe('Pylon API routes', () => {
       ],
       latestHeartbeatAt: nowIso,
       latestHeartbeatStatus: 'online',
-      latestLoadRefs: [
-        'load.coding.codex.busy=6',
-        'load.coding.claude.busy=0',
-      ],
+      latestLoadRefs: ['load.coding.codex.busy=6', 'load.coding.claude.busy=0'],
       status: 'active',
       walletReady: true,
     } as unknown as PylonApiRegistrationRecord
     // Six active Codex leases fully saturate the Codex lane.
-    const activeCodexAssignments = Array.from({ length: 6 }, (_, index) =>
-      ({
-        assignmentRef: `assignment.public.codex_busy_${index}`,
-        codingAssignment: { codex: { agentKind: 'codex_sdk' } },
-        jobKind: 'codex_agent_task',
-        leaseExpiresAt,
-        state: 'running',
-      }) as unknown as PylonApiAssignmentRecord,
+    const activeCodexAssignments = Array.from(
+      { length: 6 },
+      (_, index) =>
+        ({
+          assignmentRef: `assignment.public.codex_busy_${index}`,
+          codingAssignment: { codex: { agentKind: 'codex_sdk' } },
+          jobKind: 'codex_agent_task',
+          leaseExpiresAt,
+          state: 'running',
+        }) as unknown as PylonApiAssignmentRecord,
     )
     const claudeBody = {
       campaignPaused: false,
@@ -3126,7 +3162,9 @@ describe('Pylon API routes', () => {
       forumAutoPublishAllowed: false,
       idempotencyRefs: ['idempotency.public.khala_coding.request'],
       jobKind: 'claude_agent_task' as const,
-      noDuplicateAssignmentRefs: ['dedupe.public.pylon_assignment.active_lease'],
+      noDuplicateAssignmentRefs: [
+        'dedupe.public.pylon_assignment.active_lease',
+      ],
       noForumAutoPublishRefs: ['policy.public.no_forum_auto_publish'],
       operatorPauseRefs: ['pause.public.khala_coding.kill_switch_default_off'],
       paymentMode: 'unpaid_smoke',
@@ -3217,7 +3255,9 @@ describe('Pylon API routes', () => {
       forumAutoPublishAllowed: false,
       idempotencyRefs: ['idempotency.public.khala_coding.request'],
       jobKind: 'codex_agent_task' as const,
-      noDuplicateAssignmentRefs: ['dedupe.public.pylon_assignment.active_lease'],
+      noDuplicateAssignmentRefs: [
+        'dedupe.public.pylon_assignment.active_lease',
+      ],
       noForumAutoPublishRefs: ['policy.public.no_forum_auto_publish'],
       operatorPauseRefs: ['pause.public.khala_coding.kill_switch_default_off'],
       paymentMode: 'unpaid_smoke',
@@ -4040,9 +4080,8 @@ describe('Pylon API routes', () => {
         tokenUserId: 'agent-one',
       },
     )
-    const replayHeartbeatBody = await responseJson<PylonRouteJson>(
-      replayHeartbeat,
-    )
+    const replayHeartbeatBody =
+      await responseJson<PylonRouteJson>(replayHeartbeat)
     const registerReplayBody = await responseJson<PylonRouteJson>(
       registerReplayWithDifferentPylon,
     )
@@ -4150,6 +4189,44 @@ describe('Pylon Sarah FleetRun transport', () => {
     claim: { claimRef, state: 'accepted' },
     run: { runRef, status: 'claimed_by_pylon' },
   } as unknown as FleetRunAuthorityAcceptClaimResult
+  const executionBatch = {
+    schema: 'openagents.pylon.fleet_run_execution_batch.v1',
+    claimRef,
+    events: [
+      {
+        schema: 'openagents.pylon.fleet_run_execution_event.v1',
+        sequence: 1,
+        eventRef: `event.pylon.fleet_run.${'a'.repeat(16)}`,
+        observedAt: '2026-07-09T22:00:00.000Z',
+        kind: 'run_started',
+      },
+    ],
+  } as const satisfies FleetRunExecutionBatch
+  const executionAccepted = {
+    ack: {
+      schema: 'openagents.pylon.fleet_run_execution_ack.v1',
+      runRef,
+      claimRef,
+      acceptedThroughSequence: 1,
+      storedEventCount: 1,
+      duplicateEventCount: 0,
+      execution: {
+        state: 'running',
+        lastSequence: 1,
+        counters: {
+          workUnitsTotal: 1,
+          activeAssignments: 0,
+          acceptedAssignments: 0,
+          failedAssignments: 0,
+          staleAssignments: 0,
+        },
+        startedAt: '2026-07-09T22:00:00.000Z',
+        updatedAt: '2026-07-09T22:00:00.000Z',
+        closeouts: [],
+      },
+    },
+    record: {},
+  } as unknown as FleetRunAuthorityAppendExecutionResult
 
   test('derives owner and Pylon authority server-side with canonical idempotency', async () => {
     const store = new MemoryPylonApiStore()
@@ -4204,9 +4281,7 @@ describe('Pylon Sarah FleetRun transport', () => {
       leaseDurationMs: 60_000,
     })
     expect(claims[0]!.claimIdempotencyKey).toMatch(/^[0-9a-f]{64}$/u)
-    expect(claims[1]!.claimIdempotencyKey).toBe(
-      claims[0]!.claimIdempotencyKey,
-    )
+    expect(claims[1]!.claimIdempotencyKey).toBe(claims[0]!.claimIdempotencyKey)
     expect(JSON.stringify(body)).not.toContain('private-client-request-one')
   })
 
@@ -4241,7 +4316,12 @@ describe('Pylon Sarah FleetRun transport', () => {
     )
     expect(response.status).toBe(200)
     expect(accepts).toEqual([
-      { ownerUserId: 'agent-one', pylonRef: 'pylon.test.one', runRef, claimRef },
+      {
+        ownerUserId: 'agent-one',
+        pylonRef: 'pylon.test.one',
+        runRef,
+        claimRef,
+      },
     ])
 
     const injected = await route(
@@ -4307,6 +4387,137 @@ describe('Pylon Sarah FleetRun transport', () => {
       schema: 'openagents.pylon.fleet_run_transport.v1',
       error: { code: 'not_authorized', retryable: false },
     })
+  })
+
+  test('accepts refs-only execution batches and derives run ownership from the registered agent', async () => {
+    const store = new MemoryPylonApiStore()
+    await registerPylon(store, { tokenUserId: 'agent-one' })
+    const appends: Array<Record<string, unknown>> = []
+    const response = await route(
+      store,
+      `/api/pylons/pylon.test.one/fleet-runs/${runRef}/events`,
+      {
+        body: executionBatch,
+        fleetRunAuthority: {
+          claim: () => Effect.succeed(claimed),
+          acceptClaim: () => Effect.succeed(accepted),
+          appendExecutionEvents: (
+            _env: Readonly<Record<string, unknown>>,
+            input: Record<string, unknown>,
+          ) =>
+            Effect.sync(() => {
+              appends.push(input)
+              return executionAccepted
+            }),
+        },
+        method: 'POST',
+        openauthUserId: 'openauth-user-one',
+        tokenUserId: 'agent-one',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    expect(await responseJson(response)).toEqual(executionAccepted.ack)
+    expect(appends).toEqual([
+      {
+        ownerUserId: 'openauth-user-one',
+        pylonRef: 'pylon.test.one',
+        runRef,
+        batch: executionBatch,
+      },
+    ])
+  })
+
+  test('fails closed before execution intake on foreign auth, body injection, and malformed run refs', async () => {
+    const store = new MemoryPylonApiStore()
+    await registerPylon(store, { tokenUserId: 'agent-one' })
+    let called = 0
+    const authority = {
+      claim: () => Effect.succeed(claimed),
+      acceptClaim: () => Effect.succeed(accepted),
+      appendExecutionEvents: () =>
+        Effect.sync(() => {
+          called += 1
+          return executionAccepted
+        }),
+    }
+    const foreign = await route(
+      store,
+      `/api/pylons/pylon.test.one/fleet-runs/${runRef}/events`,
+      {
+        body: executionBatch,
+        fleetRunAuthority: authority,
+        method: 'POST',
+        tokenUserId: 'agent-two',
+      },
+    )
+    const injected = await route(
+      store,
+      `/api/pylons/pylon.test.one/fleet-runs/${runRef}/events`,
+      {
+        body: {
+          ...executionBatch,
+          ownerUserId: 'user-foreign',
+          pylonRef: 'pylon.foreign',
+        },
+        fleetRunAuthority: authority,
+        method: 'POST',
+        tokenUserId: 'agent-one',
+      },
+    )
+    const malformed = await route(
+      store,
+      '/api/pylons/pylon.test.one/fleet-runs/not-a-run/events',
+      {
+        body: executionBatch,
+        fleetRunAuthority: authority,
+        method: 'POST',
+        tokenUserId: 'agent-one',
+      },
+    )
+
+    expect(foreign.status).toBe(403)
+    expect(injected.status).toBe(400)
+    expect(malformed.status).toBe(400)
+    expect(called).toBe(0)
+    expect(await responseJson(injected)).toEqual({
+      schema: 'openagents.pylon.fleet_run_execution_error.v1',
+      error: { code: 'invalid_request', retryable: false },
+    })
+  })
+
+  test('maps execution conflicts to a fixed public-safe error', async () => {
+    const store = new MemoryPylonApiStore()
+    await registerPylon(store, { tokenUserId: 'agent-one' })
+    const response = await route(
+      store,
+      `/api/pylons/pylon.test.one/fleet-runs/${runRef}/events`,
+      {
+        body: executionBatch,
+        fleetRunAuthority: {
+          claim: () => Effect.succeed(claimed),
+          acceptClaim: () => Effect.succeed(accepted),
+          appendExecutionEvents: () =>
+            Effect.fail(
+              new FleetRunAuthorityError({
+                kind: 'idempotency_conflict',
+                reason: 'postgres://operator:secret@private-host/database',
+              }),
+            ),
+        },
+        method: 'POST',
+        tokenUserId: 'agent-one',
+      },
+    )
+    const body = await responseJson(response)
+
+    expect(response.status).toBe(409)
+    expect(body).toEqual({
+      schema: 'openagents.pylon.fleet_run_execution_error.v1',
+      error: { code: 'claim_conflict', retryable: false },
+    })
+    expect(JSON.stringify(body)).not.toContain('private-host')
+    expect(JSON.stringify(body)).not.toContain('secret')
   })
 
   test('rejects malformed percent-encoding inside the Effect error boundary', async () => {
@@ -4416,7 +4627,10 @@ describe('KS-6.1 fleet cockpit projection dual-write', () => {
 
     expect(create.status).toBe(201)
     expect(calls).toEqual([
-      { assignmentRef: 'assignment.public.fleet_proj.create', state: 'offered' },
+      {
+        assignmentRef: 'assignment.public.fleet_proj.create',
+        state: 'offered',
+      },
     ])
   })
 

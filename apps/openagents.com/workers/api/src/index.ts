@@ -10891,6 +10891,18 @@ const pylonApiRoutes = makePylonApiRoutes<WorkerBindings>({
       withFleetRunAuthority(env, repository => repository.claim(input)),
     acceptClaim: (env, input) =>
       withFleetRunAuthority(env, repository => repository.acceptClaim(input)),
+    appendExecutionEvents: (env, input) =>
+      withFleetRunAuthority(env, repository => {
+        const appendExecutionEvents = repository.appendExecutionEvents
+        return appendExecutionEvents === undefined
+          ? Effect.fail(
+              new FleetRunAuthorityError({
+                kind: 'storage_unavailable',
+                reason: 'fleet run execution authority is unavailable',
+              }),
+            )
+          : appendExecutionEvents(input)
+      }),
   },
   // #5252: private operator-only store for raw Spark payout targets.
   makeSparkPayoutTargetStore: env =>

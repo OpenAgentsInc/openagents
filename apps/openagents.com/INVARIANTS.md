@@ -510,7 +510,7 @@ This is the invariant ledger for `openagents`.
 - Provider credentials for Agent Computers are broker-only and owner-scoped.
   The isolation policy must carry and the control plane must echo
   `provider_credential_policy: broker_only`, `provider_grants_owner_scoped:
-  true`, and `subscription_capacity_resale: false`; any missing or mismatched
+true`, and `subscription_capacity_resale: false`; any missing or mismatched
   echo fails closed before projection. A custodied ChatGPT/Codex subscription
   credential may be materialized only from a short-lived provider-account grant
   ref, only for the same authenticated owner and work context that requested the
@@ -610,7 +610,7 @@ This is the invariant ledger for `openagents`.
   the public catalog (`/v1/models`), the quote surface, or the pricing table.
 - Persona decisions must key on `isKhalaModel`; routing/receipt/usage/free-
   tier decisions on `isKhalaRoutedModel` (`workers/api/src/inference/
-  pricing.ts`). Do not widen `isKhalaModel` to cover the neutral id — that
+pricing.ts`). Do not widen `isKhalaModel` to cover the neutral id — that
   recreates the persona bleed by construction.
 - Internal accounts may carry an AUTHORITATIVE per-account daily served-token
   ceiling via `INFERENCE_INTERNAL_ACCOUNT_DAILY_TOKEN_CAPS`
@@ -627,7 +627,7 @@ This is the invariant ledger for `openagents`.
 ## Default-On Free-Tier Trace Capture (redacted, private-by-default)
 
 - The Khala chat-completions emitter (`workers/api/src/inference/
-  khala-chat-trace-emitter.ts`) captures a completed session DEFAULT-ON for
+khala-chat-trace-emitter.ts`) captures a completed session DEFAULT-ON for
   free-tier traffic (#6293, epic #6206) behind TWO staged flags: the master
   kill-switch `KHALA_CHAT_TRACE_EMIT_ENABLED` AND the separate
   `KHALA_FREE_TIER_TRACE_CAPTURE_DEFAULT`. Both default OFF in code. The gate is
@@ -841,7 +841,7 @@ This is the invariant ledger for `openagents`.
   columns OUTSIDE the public-safe trajectory JSON. They are never part of the
   value-based tripwire's reject scan and must not carry trajectory content.
 - Internal callers SELF-TAG so they classify `internal`: `scripts/khala-
-  heartbeat.sh` (source `heartbeat`), `scripts/khala-canary.sh` (source
+heartbeat.sh` (source `heartbeat`), `scripts/khala-canary.sh` (source
   `canary`), and the Harbor/Terminal-Bench agent (source `harbor_terminal_bench`
   via the Terminus extra-headers). The convention is documented in
   `docs/inference/2026-06-25-khala-heartbeat-runbook.md`.
@@ -1458,21 +1458,21 @@ This is the invariant ledger for `openagents`.
     `cloud_*`/`khala_*`/`share_projection*` families) — served through a
     D1-shaped Postgres adapter (`workers/api/src/postgres-d1-adapter.ts`)
     so the existing D1-API store factories run unchanged on Postgres.
-  There is no D1 code path, no dual-write mirror, and no `KHALA_SYNC_*`
-  read flag for any of these 34 tables; all handles wire from the
-  `KHALA_SYNC_DB` Hyperdrive binding into the SAME khala_sync Postgres
-  database (a statement may JOIN `users` × `agent_balances`).
+    There is no D1 code path, no dual-write mirror, and no `KHALA_SYNC_*`
+    read flag for any of these 34 tables; all handles wire from the
+    `KHALA_SYNC_DB` Hyperdrive binding into the SAME khala_sync Postgres
+    database (a statement may JOIN `users` × `agent_balances`).
 - The KHALA CODE PRODUCT-STATE set is the thread/turn CONTENT path.
   `khalaCodeProductStateDatabaseForEnv` returns the Postgres-backed
   D1-shaped adapter (int8 twin columns parsed back as JS numbers; `?`→`$n`,
   `col IS ?`→`IS NOT DISTINCT FROM`, `INSERT OR IGNORE`→`ON CONFLICT DO
-  NOTHING`) wrapped by the existing scope-changelog projection (still
+NOTHING`) wrapped by the existing scope-changelog projection (still
   best-effort for live sync fanout, never failing the authoritative write).
   It is FAIL-HARD without the `KHALA_SYNC_DB` binding — there is no D1
   fallback. The adapter is proven on real Postgres against the actual
   consumer SQL by `workers/api/src/postgres-d1-adapter.contract.test.ts`.
   The twins (khala-sync migration `0017`) already carried every `ON
-  CONFLICT` target and index, so no new schema was needed; the production
+CONFLICT` target and index, so no new schema was needed; the production
   twins verified exact (zero count / newest-hash / message-chain
   mismatches) at cutover, so there was no backfill.
 - The MOBILE PUSH set is the last of mobile session support to leave D1
@@ -1497,7 +1497,7 @@ This is the invariant ledger for `openagents`.
   Postgres on every request. This is the owner-approved supersession of the
   earlier "identity reads stay D1 until the owner-gated last step" policy
   for EXACTLY these two tables; the other fifteen identity/auth-domain
-  tables (openauth_agent_links, github_write_*, provider_account_*, and the
+  tables (openauth*agent_links, github_write*_, provider*account*_, and the
   legacy openauth_storage D1 table) keep D1 authority and the
   `identityAuthMirrorFromEnv` dual-write machinery, and the Worker mirror
   surface is typed to exclude the hard-cut pair
@@ -2360,15 +2360,52 @@ normalizedPatchDigest | behaviorReceiptDigest)`. Exactly one accepted
   or receipts. The earlier local file store remains available only through the
   explicit in-process test setter; process environment cannot select it, and
   production has no second successful start path.
+- Accepted Pylons append the durable execution projection through
+  `POST /api/pylons/{pylonRef}/fleet-runs/{runRef}/events`, backed by migration
+  `0053_sarah_fleet_run_execution_projection.sql`. The registered-agent bearer,
+  owned Pylon path, owner scope, exact run ref, and exact accepted intake
+  `claimRef` must all agree. This is a lifecycle/outcome projection for the
+  Pylon orchestration authority already holding the run; it is never a second
+  work-unit claim registry. A temporarily stale heartbeat does not erase an
+  already accepted lease or prevent its executor from reporting closeout, but
+  the Pylon must remain actively owner-linked.
+- Execution intake is strict, refs-only, at most 64 events and 256 KiB per
+  batch, with contiguous sequence numbers. Event rows are append-only. An exact
+  `(runRef, sequence, eventRef, canonical event)` replay is idempotent; sequence
+  gaps, changed replays, cross-run event-ref reuse, unknown units, a second
+  terminal closeout for one unit, and all state regression fail closed. The
+  first event is `run_started`; a completed run requires accepted terminal
+  evidence for every normalized work unit and can never return to running.
+- Per-unit terminal evidence is unique by run/unit and, when dispatch produced
+  one, run/assignment. Accepted closeouts require the coherent assignment,
+  account-hash, closeout, and usage-evidence carrier. Failed/stale terminal
+  evidence may omit that carrier only as a whole when dispatch never produced
+  an assignment or closeout; the durable columns remain null and the server
+  never invents proof refs. Proof-bearing Codex and Claude closeouts require
+  exact token-usage refs; Grok is explicitly `not_measured` with no fabricated
+  token refs until exact provider usage is available. Accepted closeouts carry
+  no blocker refs, while failed/stale closeouts and failed runs require bounded
+  public blocker refs. Raw prompts,
+  command output, worktree paths, provider events, credentials, account refs,
+  payment material, and owner identity cannot enter this projection.
+- Every newly stored execution batch updates the derived run state, sequence,
+  assignment counters, ordered refs-only closeouts, and owner-scoped FleetRun
+  Sync post-image in the same Postgres transaction. A rejected batch leaves no
+  event, closeout, counter, or changelog residue. Exact replay does not append a
+  duplicate Sync change. Owner observation and Pylon acknowledgment expose the
+  same current projection without private authority fields.
 - Regression coverage lives in
   `packages/khala-sync-server/src/fleet-run-authority.test.ts` and
-  `workers/api/src/sarah-fleet-run-routes.test.ts`, including real Postgres
+  `workers/api/src/sarah-fleet-run-routes.test.ts` plus
+  `workers/api/src/pylon-api-routes.test.ts`, including real Postgres
   atomicity, owner isolation, idempotency conflicts, active-link revocation,
   stale-Pylon refusal, concurrent claim uniqueness, lease expiry,
   unauthenticated/prospect refusal, policy ownership, no-fallback behavior,
   bounded input, error redaction, public-safe cross-owner observation, actual
   Sarah-tool HTTP handoff, restricted header forwarding, and refreshed-session
-  cookie propagation.
+  cookie propagation, plus gapless execution intake, exact replay,
+  transactional rollback, provider-specific usage truth, completion gating,
+  derived counters, and fixed route errors.
 
 ## Khala Coding Delegation Through Pylons
 
@@ -2823,10 +2860,10 @@ normalizedPatchDigest | behaviorReceiptDigest)`. Exactly one accepted
     interact with. When a user chats, they are **chatting with OpenAgents**.
     OpenAgents **deploys Autopilot** agents.
   - **Autopilot** is an **agent type that OpenAgents deploys** — the thing that
-    *does* the work (develops, runs QA, drives Chrome/terminal, ships) wherever
+    _does_ the work (develops, runs QA, drives Chrome/terminal, ships) wherever
     OpenAgents deploys it (web, terminal, Forum, workroom, API). It is not the
     top-level product on its own; it is an agent type OpenAgents deploys.
-  - **Khala** is the **agentic model orchestrator** that *powers* Autopilot (the
+  - **Khala** is the **agentic model orchestrator** that _powers_ Autopilot (the
     inference / model-orchestration layer). Khala is an engine, not an actor.
   - The chain is: **OpenAgents (network) → deploys Autopilot (agent type) →
     powered by Khala (agentic model orchestrator).**
