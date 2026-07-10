@@ -60,10 +60,30 @@ Electron `safeStorage` beneath the private Desktop `userData` root.
 - Runtime Gateway receives only signed-out, credential-present-unverified, or
   unavailable capability copy; preload and renderer receive no credential.
 
-This custody guarantee does not claim Desktop PKCE sign-in or server
-validation. A recovered record remains unverified until the next bounded leaf.
+This custody guarantee does not claim Desktop PKCE sign-in. A recovered record
+remains unverified until the validation boundary below accepts it.
 
 Contract: `openagents_desktop.session.os_encrypted_custody.v1`.
+
+### Recovered native-session validation and rotation
+
+On startup, Electron main validates a recovered encrypted credential through
+the existing native-session GET using the bearer and bounded refresh headers.
+
+- A valid server-derived owner produces bounded `session_ready` capability
+  state only.
+- OpenAuth replacement credentials are rewritten to encrypted custody before
+  readiness is projected.
+- 401/403 and server-owner mismatch purge the record.
+- Network, server, and response-schema failures retain custody but project
+  unavailable so no private shared work can render.
+- Owner and token values never enter Runtime Gateway, preload, or renderer.
+
+This is session verification, not live Khala Sync or interactive Desktop
+sign-in.
+
+Contract:
+`openagents_desktop.session.recovered_validation_rotation.v1`.
 
 ### Recent local Codex chats
 
@@ -150,6 +170,12 @@ The native-session custody oracle is:
 
 ```sh
 bun test apps/openagents-desktop/tests/desktop-session-vault.test.ts
+```
+
+The recovered-session oracle is:
+
+```sh
+bun test apps/openagents-desktop/tests/desktop-session-recovery.test.ts
 ```
 
 ## Not guaranteed yet

@@ -5,7 +5,7 @@ import {
 
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument = {
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-10.6",
+  version: "2026-07-10.7",
   contracts: [
     {
       contractId: "openagents_desktop.seam.codex_recent_history_projection.v1",
@@ -78,6 +78,23 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
       evidenceRefs: ["apps/openagents-desktop/src/desktop-session-vault.ts", "docs/sol/issues/desktop-session-vault.md", "github:OpenAgentsInc/openagents#8661"],
       oracles: [{ id: "desktop_session_vault.os_encrypted_custody", kind: "bun-test", mode: "unit", ref: "apps/openagents-desktop/tests/desktop-session-vault.test.ts", description: "Proves safeStorage encryption, private atomic persistence, encryption/backend refusal, malformed-record purge, bounded recovery, idempotent clear, and public-safe failures." }],
       verification: "The desktop-session-vault and Electron-boundary suites prove custody and renderer isolation; Desktop typecheck/build and behavior-contract validation gate the integration.",
+    },
+    {
+      contractId: "openagents_desktop.session.recovered_validation_rotation.v1",
+      state: "enforced",
+      surface: "openagents-desktop",
+      productArea: "native OpenAgents session recovery",
+      enforcementTier: "test-sweep",
+      blockerRefs: [],
+      source: { channel: "owner-codex-session", statedBy: "owner", statedOn: "2026-07-10" },
+      statement: "Desktop validates recovered native credentials through the existing OpenAgents native-session boundary, persists bounded OpenAuth rotation before readiness, purges denial or owner mismatch, and never equates verified session readiness with live Sync.",
+      authorityBoundary: "Server verification establishes only a native OpenAgents session. It does not make Khala Sync live, authorize cached rows or commands, create a device_session, or expose owner or replacement token fields through the Runtime Gateway.",
+      evidenceRefs: ["apps/openagents-desktop/src/desktop-session-recovery.ts", "docs/sol/issues/desktop-session-recovery.md", "github:OpenAgentsInc/openagents#8662"],
+      oracles: [
+        { id: "desktop_session_recovery.validation_rotation", kind: "bun-test", mode: "unit", ref: "apps/openagents-desktop/tests/desktop-session-recovery.test.ts", description: "Proves exact native-session verification, rotation-before-ready, denial/owner-mismatch purge, transient retention, and tokenless results." },
+        { id: "desktop_session_recovery.gateway_projection", kind: "bun-test", mode: "e2e", ref: "apps/openagents-desktop/tests/runtime-gateway.e2e.test.ts", description: "Proves the renderer-facing Runtime Gateway projects only bounded verified readiness without owner or credential fields." },
+      ],
+      verification: "Desktop recovery, Runtime Gateway, and Electron-boundary suites plus typecheck/build enforce both sides of the host-only validation seam.",
     },
   ],
 }

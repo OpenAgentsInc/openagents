@@ -53,6 +53,7 @@ import {
   openDesktopSessionVault,
   type DesktopSessionVault,
 } from "./desktop-session-vault.ts"
+import { recoverVerifiedDesktopSession } from "./desktop-session-recovery.ts"
 
 const here = import.meta.dirname
 const smokeMode = process.env.OPENAGENTS_DESKTOP_SMOKE === "1"
@@ -72,7 +73,7 @@ const codexConnect = makeCodexConnectService(here, {
 })
 let desktopSyncHost: DesktopSyncHost | null = null
 let desktopSessionVault: DesktopSessionVault | null = null
-let desktopSessionState: "signed_out" | "credential_present_unverified" | "unavailable" = "unavailable"
+let desktopSessionState: "signed_out" | "credential_present_unverified" | "session_ready" | "denied" | "unavailable" = "unavailable"
 const runtimeGateway = createDesktopRuntimeGateway(() => desktopRuntimeCapabilities({
   sessionLocalState: desktopSessionState,
   syncLocalState: desktopSyncHost?.status().state === "local_ready" ? "ready" : "unavailable",
@@ -542,7 +543,7 @@ const runSmoke = (window: BrowserWindow): void => {
   })
 }
 
-void app.whenReady().then(() => {
+void app.whenReady().then(async () => {
   // macOS does not use BrowserWindow's icon for the active Dock tile in a
   // development Electron process. Set both native surfaces to the same mobile
   // PNG so the running desktop application has one product identity.
@@ -563,6 +564,14 @@ void app.whenReady().then(() => {
       safeStorage,
     })
     desktopSessionState = desktopSessionVault.recover().state
+    if (desktopSessionState === "credential_present_unverified") {
+      const recovery = await recoverVerifiedDesktopSession({
+        vault: desktopSessionVault,
+      })
+      desktopSessionState = recovery.state === "verified"
+        ? "session_ready"
+        : recovery.state
+    }
   } catch {
     desktopSessionVault = null
     desktopSessionState = "unavailable"

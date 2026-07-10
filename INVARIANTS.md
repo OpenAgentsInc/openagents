@@ -537,6 +537,11 @@ More specific invariant ledgers apply inside imported apps and packages.
   unavailable OS encryption and the Linux `basic_text` backend; the directory
   and file are owner-private, replacement is atomic, and preload/renderer/
   Runtime Gateway schemas never carry owner or credential fields.
+- Desktop recovered-session validation sends the refresh token only to the
+  exact native-session GET, persists a valid OpenAuth rotation before
+  projecting `session_ready`, and purges denial or server-derived owner
+  mismatch. Transient network/server/schema failure retains encrypted custody
+  while projecting unavailable; verified session state is not live Sync.
 - Mobile recovery may send the refresh token only to
   `GET /api/mobile/auth/session` via the bounded `X-OpenAgents-Refresh-Token`
   header. The existing OpenAuth verifier owns rotation; replacement tokens are

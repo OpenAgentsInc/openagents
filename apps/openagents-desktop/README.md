@@ -115,7 +115,13 @@ unavailable OS encryption and Linux `basic_text`, writes only an opaque atomic
 encrypted blob, purges invalid records, and projects at most signed-out,
 credential-present-unverified, or unavailable through the Runtime Gateway.
 No owner ref, access token, or refresh token crosses preload. Interactive
-Desktop sign-in and recovered-session server validation remain later leaves.
+Desktop sign-in remains a later leaf.
+
+At startup, a recovered encrypted record is now validated through the existing
+native-session GET. Main rewrites valid OpenAuth rotation before projecting
+`session_ready`, purges 401/403 or server-derived owner mismatch, and retains
+custody but reports unavailable on transient or malformed-response failure.
+Verified session readiness remains distinct from live network Sync.
 
 **One catalog, many hosts.** The transcript-message and composer
 compositions are deliberately structured around the shared Effect Native chat

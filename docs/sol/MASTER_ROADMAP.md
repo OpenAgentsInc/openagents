@@ -451,8 +451,9 @@ records before claiming the first new slice.
   a private main-process Khala Sync SQLite cache using the shared store core.
   It now has a main-process Electron `safeStorage` vault with private atomic
   encrypted persistence and a tokenless unverified/signed-out/unavailable
-  gateway projection. It does not yet have OpenAgents browser sign-in or
-  recovered-session server validation,
+  gateway projection. Recovered credentials now validate and rotate through
+  the native-session boundary before the gateway can project session readiness.
+  It does not yet have OpenAgents browser sign-in,
   authoritative Sync threads or conversation services composed behind that
   gateway, a streamed provider-neutral event runtime, a complete coding
   workbench, or a visible server-authoritative Fleet cockpit.
@@ -1142,8 +1143,8 @@ bounded issues under the owning program.
    state builds/tests/smokes, honest capability manifests, no fake authority,
    and the existing hardened Desktop boundary.
 2. Continue F1/R1/R2 through both clients together from the published
-   `khala.identity_sync_contract.v1`: Desktop browser entry and server
-   validation/rotation over the landed main-process encrypted vault,
+   `khala.identity_sync_contract.v1`: Desktop browser entry over the landed
+   main-process encrypted vault and recovered-session validation/rotation,
    physical-device acceptance of the landed mobile PKCE/vault/recovery/signout
    composition,
    `device_session` through the serialized freeze lane,

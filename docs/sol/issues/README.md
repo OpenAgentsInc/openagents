@@ -73,7 +73,8 @@ projection and
 [`mobile-session-vault.md`](./mobile-session-vault.md) (#8658), and
 [`mobile-session-recovery.md`](./mobile-session-recovery.md) (#8659), and
 [`mobile-session-pkce.md`](./mobile-session-pkce.md) (#8660), and
-[`desktop-session-vault.md`](./desktop-session-vault.md) (#8661), remain
+[`desktop-session-vault.md`](./desktop-session-vault.md) (#8661), and
+[`desktop-session-recovery.md`](./desktop-session-recovery.md) (#8662), remain
 closed receipts rather than open P0 queue items.
 
 ## Other source records

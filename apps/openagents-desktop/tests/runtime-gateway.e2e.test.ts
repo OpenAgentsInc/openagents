@@ -6,7 +6,7 @@ import {
   decodeDesktopRuntimeGatewayRequest,
   decodeDesktopRuntimeGatewayResponse,
 } from "../src/runtime-gateway-contract.ts"
-import { createDesktopRuntimeGateway } from "../src/runtime-gateway.ts"
+import { createDesktopRuntimeGateway, desktopRuntimeCapabilities } from "../src/runtime-gateway.ts"
 import { openAgentsDesktopUxContractRegistry } from "../src/contracts/ux-contracts.ts"
 
 const contractId = "openagents_desktop.seam.runtime_gateway_closed_protocol.v1"
@@ -75,6 +75,30 @@ describe("Desktop Runtime Gateway", () => {
       status: "unavailable",
       reason: "Conversation interrupt is unavailable until the durable runtime is connected.",
     })
+  })
+
+  // Oracle for openagents_desktop.session.recovered_validation_rotation.v1.
+  test("projects only bounded session readiness after host verification", () => {
+    const gateway = createDesktopRuntimeGateway(() => desktopRuntimeCapabilities({
+      sessionLocalState: "session_ready",
+      syncLocalState: "ready",
+    }))
+    gateway.start()
+    const response = gateway.request({
+      kind: "query",
+      requestId: "verified-session",
+      query: { id: "runtime.bootstrap" },
+    })
+    if (response.kind !== "query_result") throw new Error("expected query result")
+    expect(response.result.capabilities).toContainEqual({
+      id: "openagents-session",
+      state: "available",
+      reason: undefined,
+    })
+    const serialized = JSON.stringify(response)
+    expect(serialized).not.toContain("ownerUserId")
+    expect(serialized).not.toContain("accessToken")
+    expect(serialized).not.toContain("refreshToken")
   })
 
   test("owns ordered lifecycle delivery and terminal disposal", () => {
