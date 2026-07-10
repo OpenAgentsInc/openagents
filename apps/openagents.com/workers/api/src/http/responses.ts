@@ -99,16 +99,23 @@ export const decorateJsonHttpResultHeaders = <Body>(
   return { ...result, headers: headerEntries(headers) }
 }
 
-export const materializeHttpResult = (result: HttpResult): Response =>
+export const responseInitForHttpResult = (
+  result: HttpResult,
+  init: ResponseInit = {},
+): ResponseInit => ({
+  ...init,
+  status: result.status,
+  ...(result.statusText === undefined ? {} : { statusText: result.statusText }),
+  headers: headersFromEntries(result.headers),
+})
+
+export const materializeHttpResult = (
+  result: HttpResult,
+  init: ResponseInit = {},
+): Response =>
   new Response(
     result.kind === 'json' ? JSON.stringify(result.body) : result.body,
-    {
-      status: result.status,
-      ...(result.statusText === undefined
-        ? {}
-        : { statusText: result.statusText }),
-      headers: headersFromEntries(result.headers),
-    },
+    responseInitForHttpResult(result, init),
   )
 
 export const redirectResponse = (
@@ -149,4 +156,4 @@ export const forbidden = (): Response =>
 export const noStoreJsonResponse = (
   value: unknown,
   init: ResponseInit = {},
-): Response => materializeHttpResult(noStoreJsonResult(value, init))
+): Response => materializeHttpResult(noStoreJsonResult(value, init), init)

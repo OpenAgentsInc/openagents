@@ -5,6 +5,7 @@ import {
   materializeHttpResult,
   methodNotAllowedResult,
   noStoreJsonResult,
+  responseInitForHttpResult,
   streamHttpResult,
 } from './responses'
 
@@ -58,5 +59,32 @@ describe('typed HTTP results', () => {
     expect(response.statusText).toBe('Partial Content')
     expect(response.headers.get('content-type')).toBe('text/event-stream')
     expect(await response.text()).toBe('data: accepted\n\n')
+  })
+
+  test('preserves the complete Workers ResponseInit at the legacy constructor boundary', () => {
+    const workerInit: ResponseInit = {
+      cf: { cacheEverything: true, cacheTtl: 60 },
+      encodeBody: 'manual',
+      headers: { 'x-worker-init': 'preserved' },
+      status: 207,
+      statusText: 'Multi-Status',
+      webSocket: null,
+    }
+    const result = noStoreJsonResult({ ok: true }, workerInit)
+    const constructorInit = responseInitForHttpResult(result, workerInit)
+    const headers = new Headers(constructorInit.headers)
+
+    expect(constructorInit.cf).toEqual({
+      cacheEverything: true,
+      cacheTtl: 60,
+    })
+    expect(constructorInit.encodeBody).toBe('manual')
+    expect(Object.hasOwn(constructorInit, 'webSocket')).toBe(true)
+    expect(constructorInit.webSocket).toBeNull()
+    expect(constructorInit.status).toBe(207)
+    expect(constructorInit.statusText).toBe('Multi-Status')
+    expect(headers.get('cache-control')).toBe('no-store')
+    expect(headers.get('content-type')).toBe('application/json')
+    expect(headers.get('x-worker-init')).toBe('preserved')
   })
 })
