@@ -139,6 +139,12 @@
   tests/12,582 expectations, Desktop typecheck, and mobile typecheck plus 21
   tests/74 expectations pass. This remains an in-process transport fixture,
   not a live hub/server or physical-client receipt.
+- 2026-07-10 13:08 CDT — R4 now also proves a lost push acknowledgement after
+  server apply: the durable mutation remains pending, retries with the same
+  ID, receives a duplicate acknowledgement, drains once, and leaves exactly
+  one confirmed effect. Khala Sync typecheck plus 137 tests/12,587
+  expectations pass. This is deterministic client/transport fixture evidence,
+  not a production delivery receipt.
 
 ## Mission
 
