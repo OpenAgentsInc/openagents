@@ -301,6 +301,48 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
     },
     {
       authorityBoundary:
+        "A verified native OpenAgents session does not make Khala Sync live, authorize cached rows or commands, create a device_session, or prove physical-device acceptance.",
+      blockerRefs: [],
+      contractId: "openagents_mobile.session.pkce_sign_in_sign_out.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "apps/openagents-mobile/src/auth/native-session-pkce.ts",
+        "docs/sol/issues/mobile-session-pkce.md",
+        "github:OpenAgentsInc/openagents#8660",
+      ],
+      oracles: [
+        {
+          description:
+            "Proves the exact public client/provider/S256/canonical redirect, one imperative state-validating request, ephemeral prompt, code exchange, server-derived owner verification, immediate rotation, bounded results, and revocation-before-clear sign-out.",
+          id: "openagents_mobile.session.pkce_sign_in_sign_out",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/openagents-mobile/tests/native-session-pkce.test.ts",
+        },
+        {
+          description:
+            "Proves the Effect Native surface renders session entry/exit from honest phases and routes both through typed intents to host-owned session actions.",
+          id: "openagents_mobile.session.typed_intents",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/openagents-mobile/tests/home-shell-core.test.ts",
+        },
+      ],
+      productArea: "mobile native session entry and exit",
+      source: {
+        channel: "owner-codex-session",
+        statedBy: "owner",
+        statedOn: "2026-07-10",
+      },
+      state: "enforced",
+      statement:
+        "OpenAgents mobile signs in through one state-validating GitHub authorization-code and S256 PKCE request using openagents://auth, verifies the server owner before custody, and revokes both credentials before local sign-out.",
+      surface: "openagents-mobile",
+      verification:
+        "The native PKCE and Home view-program suites enforce the credential and typed-intent boundaries; mobile typecheck and behavior-contract coverage gate the integration.",
+    },
+    {
+      authorityBoundary:
         "This binds sheet-dismissal authority to user intents only; it does not authorize StoreKit purchase flows or change how/when the shell opens the sheet.",
       blockerRefs: [],
       contractId: "openagents_mobile.minerals_sheet_user_dismiss_only.v1",

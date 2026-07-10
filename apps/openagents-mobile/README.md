@@ -37,6 +37,10 @@ imports nothing from it.
   existing native session endpoint. It passes the refresh token only on that
   route, persists OpenAuth rotation, purges denial/owner mismatch, and returns
   only signed-out/verified/denied/unavailable state.
+- `src/auth/native-session-pkce.ts` — host-only GitHub authorization-code +
+  S256 entry and dual-revocation exit. It uses the exact public client and
+  canonical `openagents://auth`, verifies the server owner before saving, and
+  never exposes credential material to the Effect Native program.
 - Styling is **typed style objects on the shared token vocabulary** — no
   NativeWind, no Tailwind class strings (see
   `docs/effect-native/2026-07-08-styling-tailwind-stylex-effect-native.md`).
@@ -130,7 +134,8 @@ honest `Local Sync ready` state. Native session credentials now have a
 device-only SecureStore vault, but a recovered record remains visibly
 unverified until the server accepts it. Startup now validates that record and
 persists access/refresh rotation; denial or owner mismatch purges it. A verified
-session is still distinct from live Sync. The app does not manufacture fleet,
-account, receipt, or cross-device authority. Browser PKCE sign-in, explicit
-sign-out/revocation, real Sync subscriptions, and durable commands are the next
-#8597 priorities.
+session is still distinct from live Sync. The OpenAgents surface now enters
+through a typed GitHub sign-in intent and exits only after the server proves
+both access and refresh revocation. The app does not manufacture fleet,
+account, receipt, or cross-device authority. Real Sync subscriptions and
+durable commands are the next #8597 priorities.

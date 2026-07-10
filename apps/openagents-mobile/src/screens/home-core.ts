@@ -54,6 +54,7 @@ export interface HomeState {
 
 export type MobileSyncPhase =
   | ScopeSyncState["phase"]
+  | "authenticating"
   | "credential_present_unverified"
   | "local_ready"
   | "session_ready"
@@ -67,6 +68,10 @@ export interface SyncStatusCopy {
 }
 
 const syncStatusCopyByPhase: Record<MobileSyncPhase, SyncStatusCopy> = {
+  authenticating: {
+    title: "Updating session",
+    detail: "Complete the secure browser step. Shared work stays hidden until OpenAgents verifies the session.",
+  },
   credential_present_unverified: {
     title: "Session verification required",
     detail: "Stored credentials remain private. Shared work stays hidden until the server verifies them.",
@@ -135,6 +140,8 @@ const EmptyPayload = Schema.Struct({})
 export const DrawerToggled = defineIntent("DrawerToggled", EmptyPayload)
 export const NewChatPressed = defineIntent("NewChatPressed", EmptyPayload)
 export const SettingsPressed = defineIntent("SettingsPressed", EmptyPayload)
+export const OpenAgentsSignInPressed = defineIntent("OpenAgentsSignInPressed", EmptyPayload)
+export const OpenAgentsSignOutPressed = defineIntent("OpenAgentsSignOutPressed", EmptyPayload)
 export const SurfaceModeSelected = defineIntent(
   "SurfaceModeSelected",
   Schema.Struct({ mode: Schema.Literals(["openagents", "khala"]) }),
@@ -144,6 +151,8 @@ export const homeIntentDefinitions = [
   DrawerToggled,
   NewChatPressed,
   SettingsPressed,
+  OpenAgentsSignInPressed,
+  OpenAgentsSignOutPressed,
   SurfaceModeSelected,
   ...khalaIntentDefinitions.map((definition) => defineIntent(definition.name, definition.payload)),
 ] as const
@@ -194,6 +203,21 @@ export const renderContentView = (state: HomeState): View =>
             variant: "body",
             color: "textMuted",
           }),
+          ...(state.syncPhase === "session_ready"
+            ? [Button({
+                key: "openagents-sign-out",
+                label: "Sign out",
+                variant: "secondary",
+                onPress: IntentRef("OpenAgentsSignOutPressed", StaticPayload({})),
+              })]
+            : state.syncPhase === "authenticating"
+              ? []
+              : [Button({
+                  key: "openagents-sign-in",
+                  label: "Sign in with GitHub",
+                  variant: "primary",
+                  onPress: IntentRef("OpenAgentsSignInPressed", StaticPayload({})),
+                })]),
         ],
   )
 
@@ -221,6 +245,10 @@ export const renderDrawerView = (state: HomeState): View =>
 
 export interface HomeProgramOptions {
   readonly khalaTurn?: KhalaTurnClient
+  readonly sessionActions?: Readonly<{
+    signIn: () => Promise<void>
+    signOut: () => Promise<void>
+  }>
 }
 
 export const makeHomeHandlers = (
@@ -230,6 +258,12 @@ export const makeHomeHandlers = (
   DrawerToggled: () => SubscriptionRef.update(state, (current) => ({ ...current, drawerOpen: !current.drawerOpen })),
   NewChatPressed: () => SubscriptionRef.update(state, (current) => ({ ...current, drawerOpen: false, surfaceMode: "khala" as const, khala: initialKhalaState })),
   SettingsPressed: () => Effect.void,
+  OpenAgentsSignInPressed: () => options.sessionActions === undefined
+    ? Effect.void
+    : Effect.promise(options.sessionActions.signIn),
+  OpenAgentsSignOutPressed: () => options.sessionActions === undefined
+    ? Effect.void
+    : Effect.promise(options.sessionActions.signOut),
   SurfaceModeSelected: (payload) => SubscriptionRef.update(state, (current) => ({ ...current, drawerOpen: false, surfaceMode: payload.mode as SurfaceMode })),
   ...khalaHandlers(state, options.khalaTurn),
 })
@@ -250,6 +284,10 @@ export interface HomeProgramHandle {
   }
   readonly sync: {
     readonly setPhase: (phase: MobileSyncPhase) => void
+  }
+  readonly session: {
+    readonly signIn: () => void
+    readonly signOut: () => void
   }
 }
 
@@ -285,6 +323,10 @@ export const buildHomeProgram = (options: HomeProgramOptions = {}): HomeProgramH
           setPhase: phase => {
             Effect.runFork(SubscriptionRef.update(state, current => ({ ...current, syncPhase: phase })))
           },
+        },
+        session: {
+          signIn: fire("OpenAgentsSignInPressed"),
+          signOut: fire("OpenAgentsSignOutPressed"),
         },
       }
     }),

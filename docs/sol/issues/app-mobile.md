@@ -40,20 +40,24 @@ dispositioned. Importing the legacy package/component tree is forbidden.
   outcomes, remote workrooms, or receipts.
 - A host-owned Expo SQLite adapter now reuses the shared Khala Sync store core,
   persists one installation identity and offline queue across restart, closes
-  before OTA reload, and reports only local durability. Browser PKCE entry and
-  authenticated network Sync remain unimplemented.
+  before OTA reload, and reports only local durability. Authenticated network
+  Sync remains unimplemented.
 - A versioned Expo SecureStore vault now holds one native access/refresh-token
   record plus the server-derived owner ref with device-only accessibility.
   Malformed/old-epoch records purge fail-closed and view state sees only
-  credential-present-unverified. Browser PKCE remains; recovered validation is
-  the following landed boundary.
+  credential-present-unverified.
 - Recovered credentials now validate through `GET /api/mobile/auth/session`.
   OpenAuth rotation rewrites the vault; 401/403 or server-derived owner mismatch
   purges it; transient/network/schema failure retains it but projects only
   unavailable. A verified session still does not claim live Sync.
+- Mobile entry/exit now uses one imperative AuthRequest with the exact
+  `openagents-khala-mobile` GitHub authorization-code + S256 contract and
+  canonical `openagents://auth`. It verifies the server-derived owner before
+  saving and clears locally only after the server proves both access and
+  refresh revocation. Typed Effect Native intents own the visible actions.
 - The #8597 Sarah-removal/composer claim released at `e8bf6b8603`. Recheck live
-  claims before editing; the next honest action is browser PKCE/sign-out then
-  authenticated Sync composition, not rebuilding removed persona/demo/local
+  claims before editing; the next honest action is authenticated Sync
+  composition, not rebuilding removed persona/demo/local
   catalog state.
 
 ## Identity locks

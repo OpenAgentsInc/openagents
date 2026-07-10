@@ -465,9 +465,12 @@ records before claiming the first new slice.
   session are not Sync authority substitutes. It does not yet have live
   cross-device Sync,
   FleetRun authority, account/capacity state, durable controls, remote-workroom
-  coding, or receipt continuity. The frozen `clients/khala-mobile` app already
-  demonstrates much of the missing product behavior—GitHub PKCE, SecureStore
-  session recovery, repository selection, repo-bound threads, rich runtime
+  coding, or receipt continuity. Auth entry/exit is now native to the new app:
+  one imperative state-validating GitHub authorization-code + S256 request
+  uses canonical `openagents://auth`, server-verifies the owner, and proves
+  both credentials revoked before local clear. The frozen
+  `clients/khala-mobile` app still demonstrates much of the remaining product
+  behavior—repository selection, repo-bound threads, rich runtime
   events, composer controls, model/account readiness, fleet peeks, push/deep
   links, and a substantial mobile QA system—and is the extraction baseline.
 - The backend has considerably stronger FleetRun, claim, command, attempt,
@@ -1137,8 +1140,8 @@ bounded issues under the owning program.
    and the existing hardened Desktop boundary.
 2. Continue F1/R1/R2 through both clients together from the published
    `khala.identity_sync_contract.v1`: Desktop keychain/main-process session,
-   mobile browser PKCE exchange over the landed secure vault and recovered-
-   session validation/rotation,
+   physical-device acceptance of the landed mobile PKCE/vault/recovery/signout
+   composition,
    `device_session` through the serialized freeze lane,
    exact authenticated phases, and fault fixtures. Desktop `node:sqlite` and
    mobile Expo SQLite adapters are landed over the shared store core; do not

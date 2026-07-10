@@ -140,7 +140,7 @@ describe("behavior contract registry", () => {
     const validation = validateBehaviorContractRegistry(decoded)
 
     expect(validation).toEqual({ issues: [], ok: true })
-    expect(decoded.contracts).toHaveLength(13)
+    expect(decoded.contracts).toHaveLength(14)
     const pending = decoded.contracts.filter(contract => contract.state === "pending")
     expect(pending).toHaveLength(4)
     expect(
@@ -194,6 +194,17 @@ describe("behavior contract registry", () => {
     expect(mobileSessionRecovery?.oracles.map(oracle => oracle.ref)).toEqual([
       "apps/openagents-mobile/tests/native-session-recovery.test.ts",
       "apps/openagents.com/workers/api/src/auth/mobile-session.test.ts",
+    ])
+    const mobileSessionPkce = decoded.contracts.find(
+      contract =>
+        contract.contractId ===
+        "openagents_mobile.session.pkce_sign_in_sign_out.v1",
+    )
+    expect(mobileSessionPkce?.state).toBe("enforced")
+    expect(mobileSessionPkce?.statement).toContain("revokes both credentials")
+    expect(mobileSessionPkce?.oracles.map(oracle => oracle.ref)).toEqual([
+      "apps/openagents-mobile/tests/native-session-pkce.test.ts",
+      "apps/openagents-mobile/tests/home-shell-core.test.ts",
     ])
     // Owner P0 (build 111 TestFlight feedback, 2026-07-09): the minerals
     // sheet closes only on USER intents, enforced in the mobile test sweep.

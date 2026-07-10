@@ -538,6 +538,12 @@ More specific invariant ledgers apply inside imported apps and packages.
   rewritten to SecureStore before the host projects `session_ready`. Denial or
   server-derived owner mismatch purges the record, while transient failure
   hides shared work without deleting a potentially valid credential.
+- Mobile interactive sign-in uses exactly the public client
+  `openagents-khala-mobile`, provider GitHub, authorization code, PKCE S256,
+  and canonical redirect `openagents://auth`. One imperative AuthRequest owns
+  callback state validation and its verifier; an error result is never
+  exchanged. Explicit sign-out must obtain a server response proving both
+  access and refresh revocation before the local SecureStore record is cleared.
 - Operations (Cloud SQL monitoring, migration runner, compaction, capture
   daemon, hub reset, Hyperdrive saturation, secrets locations) are in
   `docs/khala-sync/RUNBOOK.md`.

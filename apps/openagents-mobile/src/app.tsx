@@ -1,10 +1,11 @@
 import { khalaTheme } from "@effect-native/tokens"
 import { StatusBar } from "expo-status-bar"
 import * as Updates from "expo-updates"
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { SafeAreaProvider } from "react-native-safe-area-context"
 
 import { recoverVerifiedNativeSession } from "./auth/native-session-recovery"
+import { signInNativeSession, signOutNativeSession } from "./auth/native-session-pkce"
 import type { MobileSyncPhase } from "./screens/home-core"
 import { HomeScreen } from "./screens/home-screen"
 import { openMobileSyncHost, type MobileSyncHost } from "./sync/mobile-sync-host"
@@ -21,6 +22,29 @@ import { startOtaPolling } from "./updates/ota-polling"
  */
 export const App = () => {
   const [syncPhase, setSyncPhase] = useState<MobileSyncPhase>("unconfigured")
+  const syncPhaseRef = useRef<MobileSyncPhase>(syncPhase)
+  useEffect(() => {
+    syncPhaseRef.current = syncPhase
+  }, [syncPhase])
+  const sessionActions = useMemo(() => ({
+    signIn: async () => {
+      const previousPhase = syncPhaseRef.current
+      setSyncPhase("authenticating")
+      const result = await signInNativeSession()
+      setSyncPhase(
+        result.state === "verified"
+          ? "session_ready"
+          : result.state === "cancelled"
+            ? previousPhase
+            : "unavailable",
+      )
+    },
+    signOut: async () => {
+      setSyncPhase("authenticating")
+      const result = await signOutNativeSession()
+      setSyncPhase(result.state === "signed_out" ? "local_ready" : "unavailable")
+    },
+  }), [])
 
   // OTA: poll the owned OpenAgents Updates server (updates.openagents.com,
   // channel openagents-production) on the TEMPORARY aggressive 3s cadence —
@@ -77,7 +101,7 @@ export const App = () => {
   return (
     <SafeAreaProvider style={{ backgroundColor: khalaTheme.color.background }}>
       <StatusBar style="light" />
-      <HomeScreen syncPhase={syncPhase} />
+      <HomeScreen syncPhase={syncPhase} sessionActions={sessionActions} />
     </SafeAreaProvider>
   )
 }

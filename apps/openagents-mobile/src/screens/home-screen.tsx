@@ -35,8 +35,17 @@ const fallbackChromeStyle = {
   borderWidth: 1,
 } as const
 
-export const HomeScreen = ({ syncPhase }: { readonly syncPhase: MobileSyncPhase }) => {
-  const program = useMemo(() => buildHomeProgram({ khalaTurn: { sendTurn: sendKhalaTurn } }), [])
+export const HomeScreen = ({ syncPhase, sessionActions }: {
+  readonly syncPhase: MobileSyncPhase
+  readonly sessionActions: Readonly<{
+    signIn: () => Promise<void>
+    signOut: () => Promise<void>
+  }>
+}) => {
+  const program = useMemo(
+    () => buildHomeProgram({ khalaTurn: { sendTurn: sendKhalaTurn }, sessionActions }),
+    [sessionActions],
+  )
   const [homeState, setHomeState] = useState(initialHomeState)
   const insets = useSafeAreaInsets()
 

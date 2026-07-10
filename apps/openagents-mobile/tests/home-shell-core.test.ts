@@ -88,6 +88,28 @@ describe("contract openagents_mobile.persona_neutral_home.v1", () => {
     expect(content).toContain("Session verified")
     expect(content).toContain("Shared work is ready to connect")
     expect(content).not.toContain("Sync live")
+    expect(content).toContain("Sign out")
+  })
+
+  // Oracle for openagents_mobile.session.pkce_sign_in_sign_out.v1.
+  test("routes typed sign-in and sign-out intents through host session actions", async () => {
+    const calls: Array<string> = []
+    const program = buildHomeProgram({
+      sessionActions: {
+        signIn: async () => { calls.push("sign-in") },
+        signOut: async () => { calls.push("sign-out") },
+      },
+    })
+    const signedOutView = JSON.stringify(renderContentView({
+      ...initialHomeState,
+      surfaceMode: "openagents",
+      syncPhase: "local_ready",
+    }))
+    expect(signedOutView).toContain("Sign in with GitHub")
+    program.session.signIn()
+    program.session.signOut()
+    await Effect.runPromise(settle)
+    expect(calls).toEqual(["sign-in", "sign-out"])
   })
 
   test("native-composer dispatchers own the Khala draft and New chat clears it", async () => {

@@ -109,12 +109,18 @@ Reserved (do not implement until Sol freezes the entity schema in
   access/refresh tokens plus the server-derived owner ref share one versioned
   Expo SecureStore record; a recovered record remains unverified until the
   server accepts it. Browser prompt, PKCE exchange, and explicit revocation are
-  still required for the R1 exit.
+  composed by #8660.
 - Recovered-session validation/rotation is landed in #8659: only the exact
   native session GET may carry the bounded refresh header; the existing
   OpenAuth verifier owns rotation, the vault is rewritten before projecting
   `session_ready`, and denial/owner mismatch purges. The initial browser PKCE
-  flow and explicit sign-out remain required for R1.
+  flow and explicit sign-out are composed by #8660.
+- Mobile interactive entry/exit is landed in #8660: exact client
+  `openagents-khala-mobile`, GitHub authorization-code + S256 PKCE, canonical
+  `openagents://auth`, one state-validating imperative request, server-derived
+  owner verification, and server proof of access/refresh revocation before
+  local clear. Live Sync, `device_session`, and physical-device acceptance
+  remain separate R1/R2 evidence.
 - The `device_session` projection/mutator pair (after §R1.4 freeze).
 
 ## R2 — Khala Sync as the cross-device authority
@@ -316,7 +322,7 @@ reported per item; no rung implies the next.
 | Already exists (bind, do not rebuild) | Must be built |
 | --- | --- |
 | Protocol/envelope/cursors/tombstones/`must_refetch` (`khala-sync`) | Desktop OpenAgents sign-in + keychain custody (R1.5) |
-| Chat + fleet entity schemas and mutators (`khala-sync`/`-server`) | Mobile browser PKCE prompt/exchange and explicit sign-out over the landed #8658/#8659 vault + recovered-session boundary |
+| Chat + fleet entity schemas and mutators (`khala-sync`/`-server`) | Physical-device mobile auth acceptance and authenticated Sync composition over landed #8658–#8660 |
 | Client session/store/overlay/offline/reconnect + fault tests (`khala-sync-client`) | `device_session` projection + `identity.revokeSession` (after §R1.4 freeze) |
 | Server session boundaries, refresh propagation, revocation (`workers/api/src/auth*`) | Authenticated Desktop/mobile session composition over the landed local adapters |
 | Fleet run/attempt/approval/command authority + steering exchange (#8637/#8633/#8639 substrate) | SYNC-4 cross-client continuity fixture |
