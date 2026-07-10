@@ -381,6 +381,55 @@ Landed the browser-side clip tier over the live lane:
   opener-03/04/05 are conversational moves, not FAQ answers; the seam is
   READY-FOR-CONTENT for the first QA-passed answer clips rendered to the
   bank's actual scripts.
+## Round 5 (2026-07-10): r2 — audio re-rolls + FLAIR verdict after owner approval
+
+Executed on the A100 (`sarah-hallo2-exp-1`, started 15:26 UTC, **STOPPED**
+16:35 UTC — no idle waste; receipt
+`docs/sarah/receipts/2026-07-10-openers-v2-r2-a100.json`). TTS ran on the
+A100 via a CosyVoice env transfer (16.4 GiB L4→GCS→A100); the prod L4 was
+never used for experiments.
+
+**Audio re-roll waves 2–3** (same Gemini judge rubric as the 07-09 bake-off,
+strict per-candidate verbatim STT gate; provenance in
+`openers-v2/bakeoff-r2/bakeoff_r2_results.json`):
+
+| Script | Result |
+| --- | --- |
+| opener-02 | **NEW WINNER `w2-slow92-s31415` — 9/10 with VERBATIM "did"** (long28 ref + speed 0.92); fixes the wave-1 slur at equal score. Re-rendered → `opener-02-welcome-back-hallo2-r2.mp4` |
+| opener-05 | **NEW WINNER `w2-pb-s777` — 8/10** (comma prosody variant, same words; runner-up `w2-lr-s3` also 8); up from 7. Brisker 3.2 s read vs the original 5.0 s. Re-rendered → `opener-05-show-you-hallo2-r2.mp4`; the owner-praised original kept for A/B |
+| opener-01 | **PLATEAU at 7/10** across 60+ candidates over 3 waves |
+| opener-03 | **PLATEAU at 7/10** across 60+ candidates over 3 waves |
+| opener-04 | untouched (already 9/10 verbatim) |
+
+Levers tried in the new waves: fresh long-ref seeds, `speed=0.92`,
+punctuation-prosody variants (same words), **instruct2 fixed with
+`<|endofprompt|>`** (the 07-09 bake-off's instruct candidates read the
+instruction aloud because the prompt was never terminated — fixed candidates
+now speak the script but still judge 3–6), and prosody-transfer references
+(our own 9/10 takes as zero-shot prompts — capped at 7). Conclusion: the
+CosyVoice2-0.5B clone has a ~7/10 prosody ceiling on the 01/03 phrasings;
+escalation path is a stronger TTS tier (CosyVoice3 / F5-TTS class or a
+better voice reference), not more seeds.
+
+**FLAIR verdict — REJECTED as the permissive upscaler.** `wustl-cig/FLAIR`
+(repo MIT) was stood up on the A100 (torch 1.11 + prebuilt mmcv-full 1.4.8;
+flash-attn replaced with a manual-attention fallback; 4 dependency pins).
+Findings: (1) its released sampling loop **requires the S-Lab-licensed
+CodeFormer as an aux guidance model** — `codeformer.pth` ships in its
+checkpoint bundle and `scripts/video_sample.py` loads it unconditionally, so
+FLAIR-as-released is NOT license-clean either; (2) output caps at **512²**
+(VFHQ restoration, not upscaling) so it cannot beat the 512² ship tier's
+resolution; (3) measured runtime ~4.9 s/DDPM-step ⇒ **~33 min per second of
+video** on the A100. Raw Hallo2 512² renders remain the ship tier; the
+license-clean sharpness options left are RealBasicVSR/BasicVSR++
+(Apache-2.0, conservative) or accepting native 512².
+
+New scoreboards: `openers-v2-opener-02-welcome-back-r2` and
+`openers-v2-opener-05-show-you-r2` (owner playback PENDING — the r2 renders
+are new takes; the approved originals stay in place). Desktop refreshed with
+both `-r2` finals beside the originals. The Round 4b serving catalog keeps
+playing the approved originals; swap in the r2 clips only after their owner
+playback passes.
 
 Production note: `/sarah` flipped to the OWNED pipeline on 2026-07-09
 (`f5f9cb3725`): hydralisk-avatar (MuseTalk realtime + WebRTC WHEP) and

@@ -1,0 +1,70 @@
+{
+  "schemaVersion": "openagents.sarah.gpu_media_run_closeout.v1",
+  "runId": "openers-v2-r2-audio-rerolls-hallo2-a100-20260710",
+  "issueRefs": ["#8610", "#8618", "#8625"],
+  "startedAt": "2026-07-10T15:26:00.000Z",
+  "endedAt": "2026-07-10T16:35:30.000Z",
+  "host": {
+    "name": "sarah-hallo2-exp-1",
+    "project": "openagentsgemini",
+    "zone": "us-central1-f",
+    "machineType": "a2-highgpu-1g",
+    "gpu": "nvidia-a100-sxm4-40gb (SPOT)"
+  },
+  "hostDisposition": {
+    "status": "stopped"
+  },
+  "artifacts": [
+    { "uri": "gs://openagentsgemini-oa-artifacts/sarah-avatar/openers-v2/opener-02-welcome-back-hallo2-r2.mp4", "kind": "render_video" },
+    { "uri": "gs://openagentsgemini-oa-artifacts/sarah-avatar/openers-v2/opener-05-show-you-hallo2-r2.mp4", "kind": "render_video" },
+    { "uri": "gs://openagentsgemini-oa-artifacts/sarah-avatar/openers-v2/opener-02-welcome-back-r2.wav", "kind": "judged_winner_audio" },
+    { "uri": "gs://openagentsgemini-oa-artifacts/sarah-avatar/openers-v2/opener-05-show-you-r2.wav", "kind": "judged_winner_audio" },
+    { "uri": "gs://openagentsgemini-oa-artifacts/sarah-avatar/openers-v2/bakeoff-r2/bakeoff_r2_results.json", "kind": "audio_bakeoff_provenance" },
+    { "uri": "gs://openagentsgemini-oa-artifacts/sarah-avatar/openers-v2/bakeoff-r2/wave2_results.json", "kind": "audio_bakeoff_provenance" },
+    { "uri": "gs://openagentsgemini-oa-artifacts/sarah-avatar/openers-v2/bakeoff-r2/wave3_results.json", "kind": "audio_bakeoff_provenance" },
+    { "uri": "gs://openagentsgemini-oa-artifacts/sarah-avatar/openers-v2/qa/opener-02-welcome-back-hallo2-r2-consec6.jpg", "kind": "qa_still" },
+    { "uri": "gs://openagentsgemini-oa-artifacts/sarah-avatar/openers-v2/qa/opener-05-show-you-hallo2-r2-consec6.jpg", "kind": "qa_still" },
+    { "uri": "gs://openagentsgemini-oa-artifacts/sarah-avatar/openers-v2/qa/opener-02-welcome-back-hallo2-r2-full.jpg", "kind": "qa_still" },
+    { "uri": "gs://openagentsgemini-oa-artifacts/sarah-avatar/openers-v2/qa/opener-05-show-you-hallo2-r2-full.jpg", "kind": "qa_still" },
+    { "uri": "gs://openagentsgemini-oa-artifacts/sarah-avatar/openers-v2/manifest.json", "kind": "manifest" }
+  ],
+  "artifactChecks": [
+    { "uri": "gs://openagentsgemini-oa-artifacts/sarah-avatar/openers-v2/opener-02-welcome-back-hallo2-r2.mp4", "method": "object_exists" },
+    { "uri": "gs://openagentsgemini-oa-artifacts/sarah-avatar/openers-v2/opener-05-show-you-hallo2-r2.mp4", "method": "object_exists" },
+    { "uri": "gs://openagentsgemini-oa-artifacts/sarah-avatar/openers-v2/opener-02-welcome-back-r2.wav", "method": "object_exists" },
+    { "uri": "gs://openagentsgemini-oa-artifacts/sarah-avatar/openers-v2/opener-05-show-you-r2.wav", "method": "object_exists" },
+    { "uri": "gs://openagentsgemini-oa-artifacts/sarah-avatar/openers-v2/bakeoff-r2/bakeoff_r2_results.json", "method": "object_exists" },
+    { "uri": "gs://openagentsgemini-oa-artifacts/sarah-avatar/openers-v2/bakeoff-r2/wave2_results.json", "method": "object_exists" },
+    { "uri": "gs://openagentsgemini-oa-artifacts/sarah-avatar/openers-v2/bakeoff-r2/wave3_results.json", "method": "object_exists" },
+    { "uri": "gs://openagentsgemini-oa-artifacts/sarah-avatar/openers-v2/qa/opener-02-welcome-back-hallo2-r2-consec6.jpg", "method": "object_exists" },
+    { "uri": "gs://openagentsgemini-oa-artifacts/sarah-avatar/openers-v2/qa/opener-05-show-you-hallo2-r2-consec6.jpg", "method": "object_exists" },
+    { "uri": "gs://openagentsgemini-oa-artifacts/sarah-avatar/openers-v2/qa/opener-02-welcome-back-hallo2-r2-full.jpg", "method": "object_exists" },
+    { "uri": "gs://openagentsgemini-oa-artifacts/sarah-avatar/openers-v2/qa/opener-05-show-you-hallo2-r2-full.jpg", "method": "object_exists" },
+    { "uri": "gs://openagentsgemini-oa-artifacts/sarah-avatar/openers-v2/manifest.json", "method": "object_exists" }
+  ],
+  "gcsIndex": {
+    "updated": true,
+    "indexUri": "gs://openagentsgemini-oa-artifacts/sarah-avatar/openers-v2/manifest.json",
+    "entries": [
+      "gs://openagentsgemini-oa-artifacts/sarah-avatar/openers-v2/opener-02-welcome-back-hallo2-r2.mp4",
+      "gs://openagentsgemini-oa-artifacts/sarah-avatar/openers-v2/opener-05-show-you-hallo2-r2.mp4",
+      "gs://openagentsgemini-oa-artifacts/sarah-avatar/openers-v2/opener-02-welcome-back-r2.wav",
+      "gs://openagentsgemini-oa-artifacts/sarah-avatar/openers-v2/opener-05-show-you-r2.wav",
+      "gs://openagentsgemini-oa-artifacts/sarah-avatar/openers-v2/bakeoff-r2/ (wave2/wave3 results + merged provenance)",
+      "gs://openagentsgemini-oa-artifacts/sarah-avatar/openers-v2/qa/ (r2 mouth crops, consecutive-frame strips, full-frame stills, motion/stt JSONs)",
+      "gs://openagentsgemini-oa-artifacts/sarah-avatar/transfer/cosy_env_20260710.tar (CosyVoice env L4->A100 transfer; reusable)",
+      "gs://openagentsgemini-oa-artifacts/sarah-avatar/openers-v2/manifest.json"
+    ]
+  },
+  "costEstimate": {
+    "currency": "USD",
+    "gpuHours": 1.16,
+    "estimatedUsd": 1.6,
+    "notes": "a2-highgpu-1g A100-40GB SPOT ~$1.30/h, started 15:26 UTC and STOPPED 16:35 UTC same session — no idle waste this run. Work: CosyVoice env transfer (16.4 GiB via GCS, no TTS on the prod L4), audio re-roll waves 2 (76 candidates) + 3 (24 candidates) with per-candidate verbatim STT gate, 2x Hallo2 512^2 renders x2 passes (first pass discarded: stale seg_video segments from the prior lane contaminated merge_video when save_path was reused — re-rendered into clean v2r2_* dirs), remux + QA, bounded FLAIR evaluation (env stood up after 4 dependency pins; gaussian run measured ~4.9 s/step => ~33 min per second of video, killed at the runtime verdict)."
+  },
+  "privacy": {
+    "attestation": "no_secrets_no_prospect_pii",
+    "notes": "Public-safe opener scripts and synthetic presenter footage only; no tokens, keys, or customer data in artifacts or this receipt"
+  },
+  "notes": "Openers-v2 r2 after the owner approved the Hallo2 v2 direction. Audio re-rolls: opener-02 NEW WINNER w2-slow92-s31415 (9/10 VERBATIM 'did', fixes the wave-1 slur), opener-05 NEW WINNER w2-pb-s777 (8/10, up from 7). opener-01 and opener-03 PLATEAUED at 7/10 across 60+ candidates each spanning fresh long-ref seeds, speed control, punctuation-prosody variants, instruct2 fixed with <|endofprompt|> (wave-1 instruct candidates had read the instruction aloud), and prosody-transfer references — wave-1 winners stand; escalation is a stronger TTS tier. FLAIR (wustl-cig/FLAIR, MIT repo) REJECTED as the permissive upscaler: its released sampling loop requires the S-Lab-licensed CodeFormer aux model (codeformer.pth ships in its checkpoint bundle), output caps at 512^2 (restoration, not upscaling), and runtime measured ~33 min per second of video on the A100 — raw Hallo2 512^2 stays the ship tier. Original v2 finals kept unchanged in GCS and on the owner Desktop for A/B; owner playback PENDING on both r2 takes."
+}

@@ -47,12 +47,22 @@ with reason, GCS index updated, cost estimate, and the no-secrets attestation.
 
 | Take | Owner playback | Note |
 | --- | --- | --- |
-| `openers-v2-opener-01-hello` | pending | Hallo2 quality tier, judge 7/10 audio; STT verbatim pass |
-| `openers-v2-opener-02-welcome-back` | pending | judge 9/10 audio; STT watch ('did'→'do' in winner audio) |
-| `openers-v2-opener-03-good-question` | pending | judge 7/10 audio; STT verbatim pass |
-| `openers-v2-opener-04-got-it` | pending | judge 9/10 audio; most expressive render; STT verbatim pass |
-| `openers-v2-opener-05-show-you` | pending | judge 7/10 audio (only zero-shot winner); STT verbatim pass |
+| `openers-v2-opener-01-hello` | **PASS** (batch, 2026-07-10) | judge 7/10 audio — PLATEAU across 60+ re-roll candidates; stronger TTS tier is the escalation |
+| `openers-v2-opener-02-welcome-back` | **PASS** (batch, 2026-07-10) | superseded lane: r2 fixes the 'did'→'do' slur |
+| `openers-v2-opener-02-welcome-back-r2` | pending | **9/10 VERBATIM audio** (`w2-slow92-s31415`); fresh Hallo2 render |
+| `openers-v2-opener-03-good-question` | **PASS** (batch, 2026-07-10) | judge 7/10 audio — PLATEAU across 60+ re-roll candidates; stronger TTS tier is the escalation |
+| `openers-v2-opener-04-got-it` | **PASS** (batch, 2026-07-10) | judge 9/10 audio; most expressive render; STT verbatim pass |
+| `openers-v2-opener-05-show-you` | **PASS** (named "close to shippable") | judge 7/10 audio; kept unchanged for A/B vs r2 |
+| `openers-v2-opener-05-show-you-r2` | pending | **8/10 audio** (`w2-pb-s777`, brisker read); fresh Hallo2 render |
 
-All five: Hallo2 (MIT) still-animation renders of the bake-off winner wavs;
-`*-sr.mp4` variants are research-only (S-Lab license chain on
-`video_sr.py`). Desktop copies: `~/Desktop/sarah-openers-v2/`.
+Owner batch verdict 2026-07-10 (verbatim): "those v2s are much better -
+opener-05-show-you-hallo2.mp4 is for example close to shippable so proceed
+in that direction." `advance` stays false everywhere pending per-take
+playback + the sharpness tier.
+
+All takes: Hallo2 (MIT) still-animation renders of judged winner wavs;
+`*-sr.mp4` variants are research-only (S-Lab license chain on `video_sr.py`),
+and FLAIR was evaluated and REJECTED as the permissive upscaler (S-Lab
+CodeFormer aux in its sampling loop, 512² output cap, ~33 min/s runtime) —
+raw 512² is the ship tier. Desktop copies: `~/Desktop/sarah-openers-v2/`.
+Audio re-roll provenance: `gs://…/openers-v2/bakeoff-r2/`.
