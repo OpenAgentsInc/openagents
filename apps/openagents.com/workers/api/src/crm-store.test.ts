@@ -3,6 +3,7 @@ import { describe, expect, test } from 'vitest'
 import {
   completeCrmSourceImportRun,
   createCrmOpportunity,
+  CrmStorageError,
   type CrmRuntime,
   isCrmSalesOpportunityStage,
   listCrmContacts,
@@ -326,17 +327,11 @@ describe('updateCrmOpportunityStage', () => {
     })
   })
 
-  test('falls back to an empty metadata bag when the stored JSON is malformed', async () => {
+  test('fails closed without overwriting malformed stored metadata', async () => {
     const db = new RecordingDb()
-    db.firstQueue = [
-      opportunityRow({ metadata_json: '{not-json' }),
-      opportunityRow({
-        stage: 'replied',
-        metadata_json: '{"sourceRef":"new_source"}',
-      }),
-    ]
+    db.firstQueue = [opportunityRow({ metadata_json: '{not-json' })]
 
-    await updateCrmOpportunityStage(
+    const error = await updateCrmOpportunityStage(
       asDb(db),
       {
         tenantRef: 'tenant.openagents',
@@ -345,10 +340,15 @@ describe('updateCrmOpportunityStage', () => {
         metadata: { sourceRef: 'new_source' },
       },
       runtime,
-    )
+    ).catch((caught: unknown) => caught)
 
-    const update = db.runs.find(r => r.query.includes('UPDATE crm_opportunities'))
-    expect(update?.bound).toContain('{"sourceRef":"new_source"}')
+    expect(error).toBeInstanceOf(CrmStorageError)
+    expect(error).toMatchObject({
+      operation: expect.stringContaining('stored opportunity metadata is invalid'),
+    })
+    expect(
+      db.runs.some(r => r.query.includes('UPDATE crm_opportunities')),
+    ).toBe(false)
   })
 
   test('mirrors closed_lost into status=lost and non-terminal stages into status=open', async () => {

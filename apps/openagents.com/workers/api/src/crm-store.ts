@@ -1032,13 +1032,22 @@ export const updateCrmOpportunityStage = async (
 
   const now = runtime.nowIso()
   const status = CRM_SALES_STAGE_TERMINAL_STATUS[stage] ?? 'open'
+  const existingMetadata =
+    input.metadata === undefined
+      ? undefined
+      : parseJsonRecord(existing.metadataJson)
+
+  if (input.metadata !== undefined && existingMetadata === undefined) {
+    throw new CrmStorageError({
+      operation:
+        'crm.updateOpportunityStage: stored opportunity metadata is invalid',
+    })
+  }
+
   const mergedMetadata =
     input.metadata === undefined
       ? existing.metadataJson
-      : JSON.stringify({
-          ...(parseJsonRecord(existing.metadataJson) ?? {}),
-          ...input.metadata,
-        })
+      : JSON.stringify({ ...existingMetadata, ...input.metadata })
 
   await runWrite('crm.updateOpportunityStage', () =>
     crmEmailAuthorityDb(db)

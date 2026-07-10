@@ -73,6 +73,99 @@ const countByFile = (files, regex) =>
     }))
     .filter(result => result.count > 0)
 
+const countByFileWith = (files, count) =>
+  files
+    .map(path => ({ count: count(read(path)), path }))
+    .filter(result => result.count > 0)
+
+const responseAliasNames = text =>
+  Array.from(
+    text.matchAll(
+      /\btype\s+([A-Za-z_$][\w$]*)\s*=\s*(?:globalThis\.)?Response\b/g,
+    ),
+    match => match[1],
+  )
+
+const responseAliasReturnSurfaceCount = text =>
+  responseAliasNames(text).reduce((count, alias) => {
+    const escapedAlias = alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    return (
+      count +
+      countMatches(
+        text,
+        new RegExp(
+          `Promise<${escapedAlias}>|:\\s*${escapedAlias}\\b|Effect\\.Effect<${escapedAlias}`,
+          'g',
+        ),
+      )
+    )
+  }, 0)
+
+const literalResponseReturnSurfaceCount = text =>
+  countMatches(
+    text,
+    /Promise<Response>|:\s*Response\b|Effect\.Effect<Response/g,
+  )
+
+const semanticResponseReturnSurfaceCount = text =>
+  literalResponseReturnSurfaceCount(text) +
+  responseAliasReturnSurfaceCount(text)
+
+const responseMaterializationCount = text =>
+  countMatches(
+    text,
+    /\bnew\s+Response\s*\(|\bResponse\.json\s*\(|\b(?:noStoreJsonResponse|redirectResponse|methodNotAllowed|forbidden|unauthorized|serverError|notFound)\s*\(/g,
+  )
+
+const genericRunPromiseWrapperNames = text => [
+  ...Array.from(
+    text.matchAll(
+      /\bconst\s+([A-Za-z_$][\w$]*)\s*=\s*<[^>]+>\s*\(\s*[A-Za-z_$][\w$]*\s*:\s*Effect\.Effect<[^)]+>\s*\)\s*(?::\s*Promise<[^>]+>)?\s*=>\s*Effect\.runPromise\s*\(/g,
+    ),
+    match => match[1],
+  ),
+  ...Array.from(
+    text.matchAll(
+      /\bconst\s+([A-Za-z_$][\w$]*)\s*=\s*Effect\.runPromise\b/g,
+    ),
+    match => match[1],
+  ),
+]
+
+const genericRunPromiseWrapperCount = text =>
+  genericRunPromiseWrapperNames(text).reduce((count, name) => {
+    const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    return count + 1 + countMatches(text, new RegExp(`\\b${escapedName}\\s*\\(`, 'g'))
+  }, 0)
+
+const architectureGuardSelfTests = [
+  {
+    actual: semanticResponseReturnSurfaceCount(`
+      type HttpResponse = globalThis.Response
+      const route = (): Promise<HttpResponse> => Promise.resolve(Response.json({ ok: true }))
+    `),
+    expected: 1,
+    name: 'aliased Response return is visible',
+  },
+  {
+    actual: responseMaterializationCount(
+      `const inferred = () => new Response('ok')`,
+    ),
+    expected: 1,
+    name: 'inferred Response construction is visible',
+  },
+  {
+    actual: genericRunPromiseWrapperCount(`
+      const runWorkerEffect = <A, E>(effect: Effect.Effect<A, E>): Promise<A> =>
+        Effect.runPromise(effect)
+      runWorkerEffect(first)
+      runWorkerEffect(second)
+    `),
+    expected: 3,
+    name: 'generic Effect runner declaration and calls are visible',
+  },
+]
+
 const totalCount = results =>
   results.reduce((total, result) => total + result.count, 0)
 
@@ -311,6 +404,64 @@ const budgetChecks = [
       /\b(noStoreJsonResponse|redirectResponse|methodNotAllowed|forbidden\(|unauthorized\(|serverError\()/g,
     ),
     name: 'service/domain HTTP response helper usage',
+  },
+  {
+    // Added 2026-07-09 after an FC-1 repair mechanically renamed twelve
+    // Response-returning signatures to HttpResponse and made the older literal
+    // counter look green without changing the architecture. This records the
+    // exact origin/main declaration baseline before that evasion. Keep the
+    // literal surface ratchet below as well; neither spelling may grow.
+    budget: 151,
+    description:
+      'Worker modules may not hide new Response-returning surfaces behind local type aliases.',
+    details: countByFileWith(
+      workerFiles.filter(
+        path => !path.includes('/http/') && !isCloudRunEntry(path),
+      ),
+      text => responseAliasNames(text).length,
+    ),
+    name: 'Worker Response type aliases',
+  },
+  {
+    // Exact semantic origin/main baseline at c711b51537. This counts both
+    // literal Response annotations and uses of every file-local direct
+    // `type * = Response` alias. It is deliberately separate from the older
+    // 135 literal budget so a rename cannot trade one spelling for another.
+    budget: 744,
+    description:
+      'Worker Response-returning surfaces are counted semantically across literal and aliased annotations.',
+    details: countByFileWith(
+      workerFiles.filter(
+        path => !path.includes('/http/') && !isCloudRunEntry(path),
+      ),
+      semanticResponseReturnSurfaceCount,
+    ),
+    name: 'Worker semantic Response return surfaces',
+  },
+  {
+    // Exact origin/main baseline at c711b51537. An inferred return type can
+    // evade an annotation counter, so materialization and named response helper
+    // calls outside the HTTP adapter directory are ratcheted independently.
+    budget: 3123,
+    description:
+      'Worker modules may not grow inferred Response materialization outside the HTTP adapter boundary.',
+    details: countByFileWith(
+      workerFiles.filter(
+        path => !path.includes('/http/') && !isCloudRunEntry(path),
+      ),
+      responseMaterializationCount,
+    ),
+    name: 'Worker Response materialization outside HTTP adapters',
+  },
+  {
+    budget: 0,
+    description:
+      'The Worker entrypoint may not hide Effect.runPromise bridges behind a generic local runner.',
+    details: countByFileWith(
+      ['workers/api/src/index.ts'],
+      genericRunPromiseWrapperCount,
+    ),
+    name: 'index.ts generic Effect.runPromise wrapper declarations and calls',
   },
   {
     // Raised 80 -> 83 on 2026-06-14 for the wave-3 Agency Pack route landing;
@@ -1599,6 +1750,15 @@ const deletedFileProblems = deletedFileChecks.flatMap(check =>
     : [],
 )
 
+const architectureGuardSelfTestProblems = architectureGuardSelfTests.flatMap(
+  check =>
+    check.actual === check.expected
+      ? []
+      : [
+          `architecture guard self-test ${check.name}: detected ${check.actual}, expected ${check.expected}.`,
+        ],
+)
+
 const publicLandingCompositionResults = publicLandingCompositionChecks.map(
   check => {
     const text = existsSync(check.module) ? read(check.module) : ''
@@ -1650,6 +1810,12 @@ runPromiseDetails.forEach(result => {
   const budget = runPromiseAllowlist.get(result.path)
   const budgetText = budget === undefined ? 'not allowed' : `budget ${budget}`
   console.log(`${result.path}: ${result.count} (${budgetText})`)
+})
+console.log('')
+
+console.log('architecture guard anti-evasion self-tests:')
+architectureGuardSelfTests.forEach(check => {
+  console.log(`${check.name}: ${check.actual}/${check.expected}`)
 })
 console.log('')
 
@@ -1708,6 +1874,7 @@ const problems = [
   ...runPromiseProblems,
   ...lineBudgetProblems,
   ...deletedFileProblems,
+  ...architectureGuardSelfTestProblems,
   ...publicLandingCompositionProblems,
   ...publicProjectionProblems,
 ]
