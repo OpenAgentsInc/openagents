@@ -35,7 +35,7 @@ describe('EN-4 /privacy Effect Native route', () => {
       tag: 'Stack',
       key: 'privacy-root',
     })
-    expect(serialized).toContain('"catalogVersion":"effect-native/v28"')
+    expect(serialized).toContain('"catalogVersion":"effect-native/v29"')
     expect(serialized).toContain('Privacy Policy')
     expect(serialized).toContain(PRIVACY_LAST_UPDATED)
     expect(serialized).toContain(
