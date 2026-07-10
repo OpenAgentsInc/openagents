@@ -503,6 +503,119 @@ describe("Pylon-owned exact Grok claimed-work adapter", () => {
     }
   })
 
+  test("releases a binding-time steer without starting Grok when durable receipt setup fails", async () => {
+    const root = await mkdtemp(join(tmpdir(), "pylon-grok-steer-bind-fail-"))
+    const pylonHome = join(root, "pylon")
+    const summary = createBootstrapSummary(
+      parseBootstrapArgs(["--json"]),
+      { PYLON_HOME: pylonHome },
+    )
+    const accountRef = "grok-steer-bind-fail"
+    const accountHome = join(pylonHome, "accounts", "grok", accountRef)
+    const workingDirectory = join(root, "workspace")
+    await mkdir(accountHome, { recursive: true })
+    await mkdir(workingDirectory, { recursive: true })
+    const request = dispatchFor(accountRef, 205, "fixture")
+    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    store.createFleetRun({
+      runRef: run.runRef,
+      objective: run.objective,
+      workSource: run.workSource,
+      targetConcurrency: run.targetConcurrency,
+      workerKind: run.workerKind,
+      state: "running",
+      now: fixedNow,
+    })
+    const storedClaim = store.tryClaimWorkUnit({
+      claimRef: request.claim.claimRef,
+      workUnitRef: request.claim.workUnitRef,
+      runRef: run.runRef,
+      workerAccountRef: accountRef,
+      ttl: 60_000,
+      now: fixedNow,
+    })
+    if (storedClaim === null) {
+      throw new Error("failed to seed Grok binding-failure claim")
+    }
+    store.updateWorkClaimState(storedClaim.claimRef, "in_progress", fixedNow)
+    let port!: ReturnType<typeof createPylonOwnedGrokClaimedWorkPort>
+    let queuedSteer: ReturnType<typeof port.applySteer> | null = null
+    let executorRuns = 0
+    const failingStore = new Proxy(store, {
+      get(target, property, receiver) {
+        if (property !== "updateWorkClaimAssignmentRef") {
+          return Reflect.get(target, property, receiver)
+        }
+        return (
+          claimRef: string,
+          assignmentRef: string,
+          observedAt: Date,
+        ) => {
+          target.updateWorkClaimAssignmentRef(
+            claimRef,
+            assignmentRef,
+            observedAt,
+          )
+          queuedSteer = port.applySteer({
+            pylonRef: "pylon.public.grok.steer_bind_fail",
+            runRef: request.run.runRef,
+            claimRef: "claim.sarah_fleet_run.grok.steer_bind_fail",
+            workUnitRef: request.workUnit.workUnitRef,
+            workClaimRef: request.claim.claimRef,
+            assignmentRef,
+            intent: {
+              seq: 19,
+              intentId: "intent.grok.steer.bind_fail",
+              completionContractRef:
+                "contract.pylon.fleet_steering_completion.grok_bind_fail",
+            },
+            body: "PRIVATE steer must never start an unreceipted worker",
+            bodyRef: null,
+          })
+          throw new Error("fixture rejects durable receipt setup")
+        }
+      },
+    })
+
+    try {
+      port = createPylonOwnedGrokClaimedWorkPort({
+        summary,
+        store: failingStore,
+        now: () => fixedNow,
+        loadRegistry: async () => [accountFor(accountHome, accountRef)],
+        createExecutor: () => ({
+          ...successfulExecutor(),
+          runClaimedWork: async input => {
+            executorRuns += 1
+            return await successfulExecutor().runClaimedWork(input)
+          },
+        }),
+        materializeWorkspace: async () => ({
+          checkout: null,
+          verificationArgs: ["bun", "--version"],
+          workingDirectory,
+          workspaceRef: "workspace.public.grok.steer_bind_fail",
+        }),
+      })
+      const result = await port.dispatch(request)
+      expect(queuedSteer).not.toBeNull()
+      expect(await queuedSteer!).toEqual({
+        state: "failed",
+        failureRef: "blocker.pylon.fleet_steering.grok_resume_failed",
+      })
+      expect(result).toMatchObject({
+        status: "failed",
+        lifecycle: [{
+          blockerRefs: [PYLON_OWNED_GROK_RUNNER_BLOCKERS.receiptInvalid],
+        }],
+      })
+      expect(executorRuns).toBe(0)
+      expect(JSON.stringify(result)).not.toContain("PRIVATE")
+    } finally {
+      await rm(root, { force: true, recursive: true })
+    }
+  })
+
   test("fails the assignment and skips verification when the resumed Grok turn fails", async () => {
     const root = await mkdtemp(join(tmpdir(), "pylon-grok-steer-failure-"))
     const pylonHome = join(root, "pylon")

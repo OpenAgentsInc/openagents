@@ -1044,20 +1044,21 @@ export function createPylonOwnedGrokClaimedWorkPort(
       wallClockMs: null,
       workUnitRef: request.workUnit.workUnitRef,
     }
-    let startInitialTurn!: () => void
-    const initialTurnStart = new Promise<void>(resolveStart => {
-      startInitialTurn = resolveStart
+    let settleInitialTurn!: (shouldStart: boolean) => void
+    const initialTurnStart = new Promise<boolean>(resolveStart => {
+      settleInitialTurn = resolveStart
     })
     const initialTurn = initialTurnStart
-      .then(async () => await executor.runClaimedWork({
-        pin,
-        prompt: request.workUnit.body ?? request.run.objective,
-        sessionId: active.sessionId,
-        timeoutMs: workerTimeoutMs,
-        plane: "cli_session",
-        marginalCostClass,
-      }))
-      .then(closeout => {
+      .then(async shouldStart => {
+        if (!shouldStart) return
+        const closeout = await executor.runClaimedWork({
+          pin,
+          prompt: request.workUnit.body ?? request.run.objective,
+          sessionId: active.sessionId,
+          timeoutMs: workerTimeoutMs,
+          plane: "cli_session",
+          marginalCostClass,
+        })
         recordGrokTurnCloseout(active, closeout)
       })
       .catch(() => {
@@ -1087,7 +1088,11 @@ export function createPylonOwnedGrokClaimedWorkPort(
       }
       await writeReceipt(input.summary, running)
     } catch {
+      active.failureRef ??= PYLON_OWNED_GROK_RUNNER_BLOCKERS.receiptInvalid
       active.phase = "closed"
+      // Release any steer already queued from the assignment-binding hook,
+      // but never start Grok without the durable running receipt.
+      settleInitialTurn(false)
       if (activeExecutions.get(assignmentRef) === active) {
         activeExecutions.delete(assignmentRef)
       }
@@ -1137,7 +1142,7 @@ export function createPylonOwnedGrokClaimedWorkPort(
     const lifecycleHeartbeat = setInterval(() => {
       void queueExecutorLifecycle("assignment_run.runtime_progress")
     }, lifecycleHeartbeatMs)
-    startInitialTurn()
+    settleInitialTurn(true)
     try {
       await initialTurn
 
