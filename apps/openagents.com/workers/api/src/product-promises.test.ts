@@ -378,7 +378,7 @@ describe('public product promises document', () => {
         .map(promise => [promise.promiseId, promise.state]),
     )
 
-    expect(decoded.version).toBe('2026-07-09.2')
+    expect(decoded.version).toBe(PublicProductPromisesVersion)
     expect(khalaCodeStates).toEqual({
       'khala_code.architect_coder_judge.v1': 'planned',
       'khala_code.bundled_fleet_skill.v1': 'planned',
@@ -2523,7 +2523,15 @@ describe('public product promises document', () => {
     }
 
     const multiEarningPylon = byId.get('pylon.v0_3_multi_earning_node.v1')
-    expect(document.version).toBe('2026-07-09.2')
+    expect(document.version).toBe('2026-07-10.1')
+    expect(
+      document.currentMonorepoStatus.caveats.find(caveat =>
+        caveat.includes('Registry 2026-07-10.1'),
+      ),
+    ).toContain('closeout route-evidence binding pass')
+    expect(
+      document.notes.find(note => note.includes('Registry 2026-07-10.1')),
+    ).toContain('closeout-route evidence only')
     expect(
       document.currentMonorepoStatus.caveats.find(caveat =>
         caveat.includes('Registry 2026-07-09.2'),
@@ -2540,10 +2548,17 @@ describe('public product promises document', () => {
       evidenceRefs: expect.arrayContaining([
         'route:/api/pylons/{pylonRef}/fleet-runs/claim',
         'route:/api/pylons/{pylonRef}/fleet-runs/accept',
+        'route:/api/pylons/{pylonRef}/fleet-runs/{runRef}/events',
+        'route:/api/pylons/{pylonRef}/fleet-runs/{runRef}/steering',
+        'route:/api/pylons/{pylonRef}/fleet-runs/{runRef}/steering/completions',
+        'route:/api/pylons/{pylonRef}/fleet-runs/{runRef}/steering/outcomes',
       ]),
     })
     expect(multiEarningPylon?.safeCopy).toContain(
       'route-level intake evidence only',
+    )
+    expect(multiEarningPylon?.safeCopy).toContain(
+      'closeout-route evidence only',
     )
     expect(multiEarningPylon?.verification).toContain(
       'blocker.product_promises.pylon_fleetrun_closeout_receipts_missing',
