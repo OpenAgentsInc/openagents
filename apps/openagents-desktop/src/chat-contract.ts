@@ -16,7 +16,10 @@ export type DesktopMessage = typeof DesktopMessageSchema.Type
 export const DesktopThreadSchema = Schema.Struct({
   id: Schema.String,
   title: Schema.String,
+  createdAt: Schema.optional(Schema.String),
   updatedAt: Schema.String,
+  cwd: Schema.optional(Schema.String),
+  model: Schema.optional(Schema.String),
   notes: Schema.Array(DesktopMessageSchema),
 })
 export type DesktopThread = typeof DesktopThreadSchema.Type

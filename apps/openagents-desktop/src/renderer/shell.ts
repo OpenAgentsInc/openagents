@@ -507,17 +507,8 @@ const shellSidebar = (state: DesktopShellState): View =>
           style: state.workspace === "home" ? { backgroundColor: "accent" } : {},
         }),
       ]),
-      Stack({ key: "sidebar-action-new-chat", direction: "row", gap: "2", align: "center" }, [
-        Icon({ key: "sidebar-new-chat-icon", name: "ChatCompose", size: "sm", color: "accent" }),
-        Button({
-          key: "sidebar-new-chat",
-          label: "New chat",
-          variant: "secondary",
-          onPress: IntentRef("DesktopNewChat"),
-          a11y: { label: "Start a new chat" },
-        }),
-      ]),
-      Text({ key: "sidebar-chats-label", content: "Chats", variant: "caption", color: "textMuted" }),
+      Text({ key: "sidebar-chats-label", content: "Codex chats · last 24 hours", variant: "caption", color: "textMuted" }),
+      ...(state.threads.length === 0 ? [Text({ key: "sidebar-chats-empty", content: "No top-level Codex chats in the last 24 hours.", variant: "body", color: "textMuted" })] : []),
       ...state.threads.map((thread) => Stack({ key: `sidebar-action-thread-${thread.id}`, direction: "row", gap: "2", align: "center" }, [
         Icon({ key: `sidebar-thread-icon-${thread.id}`, name: "Chats", size: "sm", color: "textMuted" }),
         Button({
@@ -542,18 +533,39 @@ const shellWelcome = (): View =>
     [
       Text({
         key: "shell-welcome-title",
-        content: "What would you like to move today?",
+        content: "No recent Codex chats found",
         variant: "heading",
         color: "textPrimary",
       }),
       Text({
         key: "shell-welcome-body",
-        content: "Start with a question or a task.",
+        content: "Open Codex and start a top-level chat; it will appear here when Desktop next opens.",
         variant: "body",
         color: "textMuted",
       }),
     ],
   )
+
+/** Read-only context for the currently selected local Codex history entry. */
+const selectedCodexThreadDetails = (state: DesktopShellState): View | null => {
+  const thread = state.threads.find(item => item.id === state.activeThreadId)
+  if (thread === undefined) return null
+  const fields = [
+    `Updated ${thread.updatedAt.slice(0, 16).replace("T", " ")}`,
+    ...(thread.createdAt === undefined ? [] : [`Started ${thread.createdAt.slice(0, 16).replace("T", " ")}`]),
+    ...(thread.cwd === undefined ? [] : [thread.cwd]),
+    ...(thread.model === undefined ? [] : [thread.model]),
+    `${thread.notes.length} recent messages`,
+  ]
+  return Card(
+    { key: "codex-thread-details", padding: "2", radius: "lg", style: { width: "full", maxWidth: columnWidth, alignSelf: "center", surface: "glass" } },
+    [Stack({ key: "codex-thread-details-content", direction: "column", gap: "1" }, [
+      Text({ key: "codex-thread-details-label", content: "LOCAL CODEX HISTORY", variant: "caption", color: "textMuted" }),
+      Text({ key: "codex-thread-details-title", content: thread.title, variant: "body", color: "textPrimary" }),
+      Text({ key: "codex-thread-details-meta", content: fields.join(" · "), variant: "caption", color: "textMuted" }),
+    ])],
+  )
+}
 
 const projectHome = (state: DesktopShellState): View =>
   Stack(
@@ -774,6 +786,7 @@ export const desktopShellView = (state: DesktopShellState): View =>
         [
           shellHeader(state),
           ...(state.workspace === "chat" && state.notes.length === 0 ? [shellWelcome()] : []),
+          ...(state.workspace === "chat" && selectedCodexThreadDetails(state) !== null ? [selectedCodexThreadDetails(state)!] : []),
           ...(state.workspace === "chat" ? [Transcript({
             key: "shell-transcript",
             pinToEnd: true,

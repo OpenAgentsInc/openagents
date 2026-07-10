@@ -26,6 +26,7 @@ import { submitFleetBrief } from "./fleet-control.ts"
 import { completeChatTurn } from "./chat-service.ts"
 import { DesktopChatTurnChannel, DesktopNewThreadChannel, DesktopOpenThreadChannel, DesktopThreadsChannel, decode, DesktopThreadRequestSchema, DesktopTurnRequestSchema, type DesktopMessage } from "./chat-contract.ts"
 import { makeThreadStore } from "./thread-store.ts"
+import { findRecentCodexThread, readRecentCodexHistory } from "./codex-history.ts"
 import { DesktopWorkspaceChooseChannel, DesktopWorkspaceFilesChannel, DesktopWorkspaceReadChannel, DesktopWorkspaceSummaryChannel, decodeWorkspaceFileRequest } from "./workspace-contract.ts"
 import { inspectWorkspace, readWorkspaceFile } from "./workspace-service.ts"
 
@@ -71,6 +72,7 @@ ipcMain.handle(FleetStageChannel, async (_event, value: unknown) => {
 })
 
 const threads = () => makeThreadStore(path.join(app.getPath("userData"), "threads.json"))
+const codexSessionsRoot = () => path.resolve(process.env.OPENAGENTS_DESKTOP_CODEX_SESSIONS ?? path.join(app.getPath("home"), ".codex", "sessions"))
 let workspaceRoot = path.resolve(process.env.OPENAGENTS_DESKTOP_WORKSPACE ?? process.cwd())
 const workspaceSnapshot = () => {
   try { return inspectWorkspace(workspaceRoot) } catch { return null }
@@ -87,11 +89,11 @@ ipcMain.handle(DesktopWorkspaceReadChannel, (_event, value: unknown) => {
   const request = decodeWorkspaceFileRequest(value)
   return request === null ? null : readWorkspaceFile(workspaceRoot, request.path)
 })
-ipcMain.handle(DesktopThreadsChannel, () => threads().list())
+ipcMain.handle(DesktopThreadsChannel, () => readRecentCodexHistory({ sessionsRoot: codexSessionsRoot() }))
 ipcMain.handle(DesktopNewThreadChannel, () => threads().newThread())
 ipcMain.handle(DesktopOpenThreadChannel, (_event, value: unknown) => {
   const request = decode(DesktopThreadRequestSchema, value) as { id: string } | null
-  return request === null ? null : threads().open(request.id)
+  return request === null ? null : findRecentCodexThread({ sessionsRoot: codexSessionsRoot(), id: request.id })
 })
 ipcMain.handle(DesktopChatTurnChannel, async (_event, value: unknown) => {
   const request = decode(DesktopTurnRequestSchema, value) as { id: string; message: string } | null

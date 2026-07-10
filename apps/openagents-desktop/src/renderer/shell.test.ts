@@ -73,7 +73,7 @@ describe("desktopShellView (state -> component tree)", () => {
     expect(title?.content).toBe("New chat")
 
     expect(nodeByKey(view, "shell-welcome-title")?.content).toBe(
-      "What would you like to move today?",
+      "No recent Codex chats found",
     )
 
     const transcript = nodeByKey(view, "shell-transcript")
@@ -85,13 +85,13 @@ describe("desktopShellView (state -> component tree)", () => {
     expect(nodeByKey(view, "shell-note")?._tag).toBe("Button")
     expect(nodeByKey(view, "shell-sidebar")?._tag).toBe("Stack")
     expect((nodeByKey(view, "shell-sidebar")?.style as { surface?: string }).surface).toBe("glass")
-    expect(nodeByKey(view, "sidebar-new-chat")?._tag).toBe("Button")
     expect(nodeByKey(view, "workspace-chat")?._tag).toBe("IconButton")
     expect(nodeByKey(view, "workspace-home")?._tag).toBe("IconButton")
-    expect(nodeByKey(view, "sidebar-new-chat-icon")?.name).toBe("ChatCompose")
+    expect(nodeByKey(view, "sidebar-chats-label")?.content).toBe("Codex chats · last 24 hours")
     expect(nodeByKey(view, "sidebar-thread-test-thread")?._tag).toBe("Button")
     expect(nodeByKey(view, "sidebar-thread-icon-test-thread")?.name).toBe("Chats")
     expect(nodeByKey(view, "shell-send-icon")?.name).toBe("Plane")
+    expect(nodeByKey(view, "codex-thread-details-title")?.content).toBe("New chat")
   })
 
   test("buttons carry the typed intent refs (no ad hoc handlers)", () => {

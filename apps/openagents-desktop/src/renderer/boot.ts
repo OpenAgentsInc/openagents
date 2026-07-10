@@ -168,10 +168,6 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
     const existing = typeof bridge?.listThreads === "function" ? yield* Effect.promise(bridge.listThreads) : []
     const threads = Array.isArray(existing) ? existing.filter((item): item is DesktopThread => typeof item === "object" && item !== null && typeof (item as { id?: unknown }).id === "string") : []
     if (threads.length > 0) yield* SubscriptionRef.update(state, (current) => ({ ...current, threads, activeThreadId: threads[0]!.id, notes: threads[0]!.notes }))
-    else if (typeof bridge?.newThread === "function") {
-      const created = yield* Effect.promise(bridge.newThread)
-      if (typeof created === "object" && created !== null && typeof (created as { id?: unknown }).id === "string") yield* SubscriptionRef.update(state, (current) => ({ ...current, threads: [created as DesktopThread], activeThreadId: (created as DesktopThread).id, notes: (created as DesktopThread).notes }))
-    }
     const focusComposer = (): void => {
       // Let the controlled TextField render its cleared/enabled state first.
       window.setTimeout(() => {
