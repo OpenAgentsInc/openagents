@@ -325,22 +325,101 @@ export const FleetAttemptVerification = S.Union([
 ])
 export type FleetAttemptVerification = typeof FleetAttemptVerification.Type
 
+// Kept exactly in lockstep with
+// `@openagentsinc/khala-fleet-intents` `MarginalCostClass`. Capacity custody
+// (`owner_local`) is deliberately separate: owner-local subscriptions are not
+// free, and absent economics must remain `not_measured`.
+export const FleetAttemptMarginalCostClass = S.Literals([
+  "free",
+  "subscription",
+  "api_metered",
+  "not_measured",
+])
+export type FleetAttemptMarginalCostClass =
+  typeof FleetAttemptMarginalCostClass.Type
+
+const attemptUsageCount = S.Number.check(
+  S.isInt(),
+  S.isGreaterThanOrEqualTo(0),
+  S.isLessThanOrEqualTo(Number.MAX_SAFE_INTEGER),
+)
+const positiveAttemptUsageCount = S.Number.check(
+  S.isInt(),
+  S.isGreaterThan(0),
+  S.isLessThanOrEqualTo(Number.MAX_SAFE_INTEGER),
+)
+const nonEmptyAttemptUsageRefs = S.Array(FleetPublicRef).check(
+  S.isMinLength(1),
+  S.isMaxLength(100),
+)
+
+export const FleetAttemptExactUsageEvidence = S.Struct({
+  schema: S.Literal("openagents.pylon.fleet_run_usage_evidence.v1"),
+  truth: S.Literal("exact"),
+  harnessKind: S.Literals(["codex", "claude"]),
+  evidenceRef: FleetPublicRef,
+  assignmentRef: FleetPublicRef,
+  pylonRef: S.String.check(
+    S.isMinLength(3),
+    S.isMaxLength(120),
+    S.isPattern(/^[a-z0-9][a-z0-9._:-]*$/),
+  ),
+  provider: S.Literals([
+    "pylon-codex-own-capacity",
+    "pylon-claude-own-capacity",
+  ]),
+  model: S.Literals(["openagents/pylon-codex", "openagents/pylon-claude"]),
+  demandKind: S.Literal("own_capacity"),
+  demandSource: S.Literal("khala_coding_delegation"),
+  inputTokens: attemptUsageCount,
+  outputTokens: attemptUsageCount,
+  reasoningTokens: attemptUsageCount,
+  cacheReadTokens: attemptUsageCount,
+  totalTokens: positiveAttemptUsageCount,
+  tokenRows: positiveAttemptUsageCount,
+  tokenUsageRefs: nonEmptyAttemptUsageRefs,
+  proofRefs: nonEmptyAttemptUsageRefs,
+  closeoutChecklistRefs: nonEmptyAttemptUsageRefs,
+  proofChecklistRefs: nonEmptyAttemptUsageRefs,
+}).pipe(
+  S.check(
+    S.makeFilter(
+      (usage) =>
+        usage.totalTokens === usage.inputTokens + usage.outputTokens &&
+        usage.reasoningTokens <= usage.outputTokens &&
+        usage.cacheReadTokens <= usage.inputTokens &&
+        usage.tokenUsageRefs.length >= Math.min(usage.tokenRows, 100) &&
+        (usage.harnessKind === "codex"
+          ? usage.provider === "pylon-codex-own-capacity" &&
+            usage.model === "openagents/pylon-codex"
+          : usage.provider === "pylon-claude-own-capacity" &&
+            usage.model === "openagents/pylon-claude"),
+      { message: "exact FleetRun usage evidence must be internally coherent" },
+    ),
+  ),
+)
+export type FleetAttemptExactUsageEvidence =
+  typeof FleetAttemptExactUsageEvidence.Type
+
+export const FleetAttemptNotMeasuredUsageEvidence = S.Struct({
+  schema: S.Literal("openagents.pylon.fleet_run_usage_evidence.v1"),
+  truth: S.Literal("not_measured"),
+  harnessKind: S.Literal("grok"),
+  evidenceRef: FleetPublicRef,
+  assignmentRef: FleetPublicRef,
+  receiptRef: FleetPublicRef,
+  tokenUsageRefs: S.Array(FleetPublicRef).check(S.isMaxLength(0)),
+  caveatRefs: nonEmptyAttemptUsageRefs,
+})
+export type FleetAttemptNotMeasuredUsageEvidence =
+  typeof FleetAttemptNotMeasuredUsageEvidence.Type
+
 export const FleetAttemptUsageEvidence = S.Union([
   S.Struct({
     truth: S.Literal("pending"),
-    usageRefs: S.Array(FleetPublicRef).check(S.isMaxLength(0)),
   }),
-  S.Struct({
-    truth: S.Literal("exact"),
-    usageRefs: S.Array(FleetPublicRef).check(
-      S.isMinLength(1),
-      S.isMaxLength(100),
-    ),
-  }),
-  S.Struct({
-    truth: S.Literal("not_measured"),
-    usageRefs: S.Array(FleetPublicRef).check(S.isMaxLength(0)),
-  }),
+  FleetAttemptExactUsageEvidence,
+  FleetAttemptNotMeasuredUsageEvidence,
 ])
 export type FleetAttemptUsageEvidence = typeof FleetAttemptUsageEvidence.Type
 
@@ -363,7 +442,7 @@ const FleetAttemptEntityFields = {
   assignmentRef: S.NullOr(FleetPublicRef),
   accountRefHash: S.NullOr(FleetAccountRefHash),
   capacityClass: S.Literal("owner_local"),
-  marginalCostClass: S.Literals(["owner_capacity", "not_reported"]),
+  marginalCostClass: FleetAttemptMarginalCostClass,
   verification: FleetAttemptVerification,
   artifactRefs: boundedPublicRefs,
   proofRefs: boundedPublicRefs,
@@ -375,7 +454,10 @@ const FleetAttemptEntityFields = {
     S.isPattern(/^event\.pylon\.fleet_run\.[0-9a-f]{24}$/),
   ),
   startedAt: FleetIsoTimestamp,
+  /** Server receipt clock used by freshness UI. */
   lastObservedAt: FleetIsoTimestamp,
+  /** Pylon-reported clock retained for audit only, never freshness. */
+  remoteObservedAt: FleetIsoTimestamp,
   terminalAt: S.NullOr(FleetIsoTimestamp),
   updatedAt: FleetIsoTimestamp,
 } as const
@@ -415,7 +497,8 @@ export const FleetAttemptEntity = S.Struct(FleetAttemptEntityFields).pipe(
             entity.artifactRefs.length === 0 &&
             entity.proofRefs.length === 0 &&
             entity.authorityReceiptRefs.length === 0 &&
-            entity.usageEvidence.truth !== "pending"
+            entity.usageEvidence.truth === "pending" &&
+            entity.blockerRefs.length === 0
         }
         if (entity.state === "succeeded") {
           return entity.verification.truth === "passed" &&
@@ -426,7 +509,8 @@ export const FleetAttemptEntity = S.Struct(FleetAttemptEntityFields).pipe(
             entity.usageEvidence.truth !== "pending" &&
             entity.blockerRefs.length === 0
         }
-        return entity.verification.truth !== "pending"
+        return entity.verification.truth !== "pending" &&
+          entity.blockerRefs.length > 0
       },
       { message: "fleet attempt state and evidence must be coherent" },
     ),

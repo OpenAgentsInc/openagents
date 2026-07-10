@@ -166,7 +166,7 @@ export const canReadScopeV1 = async (
  * patterns are the structural first line).
  */
 export const FLEET_POST_IMAGE_FORBIDDEN_PATTERN =
-  /token|apiKey|authorization|\/Users\//i
+  /"(?:token|apiKey|authorization|sessionToken|refreshToken)"\s*:|(?:Bearer|Basic)\s+[A-Za-z0-9._~+/-]+=*|\/Users\//i
 
 export class FleetPostImageRedactionError extends Error {
   readonly _tag = "FleetPostImageRedactionError"

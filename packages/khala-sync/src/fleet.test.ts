@@ -96,7 +96,7 @@ describe("fleet entity contracts", () => {
       assignmentRef: null,
       accountRefHash: `account.pylon.codex.${"b".repeat(24)}`,
       capacityClass: "owner_local",
-      marginalCostClass: "owner_capacity",
+      marginalCostClass: "subscription",
       verification: {
         truth: "passed",
         verifierRef: "verifier.bun-test.1",
@@ -107,13 +107,32 @@ describe("fleet entity contracts", () => {
       authorityReceiptRefs: ["receipt.authority.unit-a.1"],
       closeoutRef: "closeout.unit-a.1",
       usageEvidence: {
+        schema: "openagents.pylon.fleet_run_usage_evidence.v1",
         truth: "exact",
-        usageRefs: ["usage.unit-a.1"],
+        harnessKind: "codex",
+        evidenceRef: "evidence.public.pylon.fleet_run.exact.1",
+        assignmentRef: "assignment.unit-a.edge-1",
+        pylonRef: "pylon-owner-1",
+        provider: "pylon-codex-own-capacity",
+        model: "openagents/pylon-codex",
+        demandKind: "own_capacity",
+        demandSource: "khala_coding_delegation",
+        inputTokens: 8,
+        outputTokens: 5,
+        reasoningTokens: 2,
+        cacheReadTokens: 3,
+        totalTokens: 13,
+        tokenRows: 1,
+        tokenUsageRefs: ["usage_row.unit-a.1"],
+        proofRefs: ["proof.usage.unit-a.1"],
+        closeoutChecklistRefs: ["check.closeout.unit-a.1"],
+        proofChecklistRefs: ["check.proof.unit-a.1"],
       },
       blockerRefs: [],
       lastEventRef: `event.pylon.fleet_run.${"c".repeat(24)}`,
       startedAt: "2026-07-09T23:00:01.000Z",
       lastObservedAt: "2026-07-09T23:00:03.000Z",
+      remoteObservedAt: "2026-07-09T23:00:02.000Z",
       terminalAt: "2026-07-09T23:00:04.000Z",
       updatedAt: "2026-07-09T23:00:04.000Z",
     } as const
@@ -122,6 +141,24 @@ describe("fleet entity contracts", () => {
     )
     expect(() =>
       decodeFleetAttemptEntity({ ...succeeded, proofRefs: [] }),
+    ).toThrow()
+    expect(() =>
+      decodeFleetAttemptEntity({
+        ...succeeded,
+        usageEvidence: {
+          ...succeeded.usageEvidence,
+          reasoningTokens: succeeded.usageEvidence.outputTokens + 1,
+        },
+      }),
+    ).toThrow()
+    expect(() =>
+      decodeFleetAttemptEntity({
+        ...succeeded,
+        usageEvidence: {
+          ...succeeded.usageEvidence,
+          totalTokens: 1,
+        },
+      }),
     ).toThrow()
     expect(() =>
       decodeFleetAttemptEntity({

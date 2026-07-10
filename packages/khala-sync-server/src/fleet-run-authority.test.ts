@@ -34,11 +34,13 @@ const FIXED_NOW = Date.parse("2026-07-09T22:00:00.000Z")
 const COMMIT = "57f540bc13922351fee17fdd2c1b866c0fd21e86"
 const FIXTURE_RUN_REF = "fleet_run.sarah.0123456789abcdef0123"
 
-const pylonExecutionEvent = (
+const pylonExecutionEvent = <
+  const Event extends Readonly<Record<string, unknown>>,
+>(
   runRef: string,
   claimRef: string,
   sequence: number,
-  event: Readonly<Record<string, unknown>>,
+  event: Event,
 ) => ({
   ...event,
   sequence,
@@ -75,6 +77,44 @@ const request = (
   },
   targetConcurrency: 2,
   idempotencyKey,
+})
+
+const exactUsageEvidence = (
+  assignmentRef: string,
+  pylonRef: string,
+  suffix: string,
+) => ({
+  schema: "openagents.pylon.fleet_run_usage_evidence.v1" as const,
+  truth: "exact" as const,
+  harnessKind: "codex" as const,
+  evidenceRef: `evidence.public.pylon.fleet_run.exact.${suffix}`,
+  assignmentRef,
+  pylonRef,
+  provider: "pylon-codex-own-capacity" as const,
+  model: "openagents/pylon-codex" as const,
+  demandKind: "own_capacity" as const,
+  demandSource: "khala_coding_delegation" as const,
+  inputTokens: 8,
+  outputTokens: 5,
+  reasoningTokens: 2,
+  cacheReadTokens: 3,
+  totalTokens: 13,
+  tokenRows: 1,
+  tokenUsageRefs: [`usage_row.${suffix}`],
+  proofRefs: [`proof.usage.${suffix}`],
+  closeoutChecklistRefs: [`check.closeout.${suffix}`],
+  proofChecklistRefs: [`check.proof.${suffix}`],
+})
+
+const notMeasuredUsageEvidence = (assignmentRef: string, suffix: string) => ({
+  schema: "openagents.pylon.fleet_run_usage_evidence.v1" as const,
+  truth: "not_measured" as const,
+  harnessKind: "grok" as const,
+  evidenceRef: `evidence.public.pylon.fleet_run.not_measured.${suffix}`,
+  assignmentRef,
+  receiptRef: `receipt.public.pylon.grok.${suffix}`,
+  tokenUsageRefs: [] as const,
+  caveatRefs: ["caveat.pylon.fleet_run.grok_usage_not_measured"],
 })
 
 describe("FleetRun authority request boundary", () => {
@@ -331,10 +371,11 @@ describe("FleetRun authority request boundary", () => {
       artifactRefs: ["artifact.patch.unit-a.1"],
       proofRefs: ["proof.unit-a.1"],
       authorityReceiptRefs: ["receipt.authority.unit-a.1"],
-      usageEvidence: {
-        truth: "exact",
-        tokenUsageRefs: ["token_usage.unit-a.1"],
-      },
+      usageEvidence: exactUsageEvidence(
+        "assignment.unit-a.edge-1",
+        "pylon-fixture-v2",
+        "unit-a.1",
+      ),
       blockerRefs: [],
     })
     expect(
@@ -349,6 +390,18 @@ describe("FleetRun authority request boundary", () => {
       { ...accepted, proofRefs: undefined },
       { ...accepted, rawPrompt: "must not cross" },
       { ...accepted, artifactRefs: [] },
+      { ...accepted, workClaimRef: "work/claim#not-projectable" },
+      {
+        ...accepted,
+        usageEvidence: {
+          ...exactUsageEvidence(
+            "assignment.unit-a.edge-1",
+            "pylon-fixture-v2",
+            "unit-a.invalid-total",
+          ),
+          totalTokens: 1,
+        },
+      },
     ]
     for (const event of invalid) {
       expect(() =>
@@ -800,16 +853,16 @@ describe.skipIf(!hasLocalPostgres())(
         claimIdempotencyKey: "execution-claim-1",
       })
       const firstBatch = {
-        schema: FLEET_RUN_EXECUTION_BATCH_SCHEMA,
+        schema: FLEET_RUN_EXECUTION_BATCH_SCHEMA_V2,
         claimRef,
         events: [
           pylonExecutionEvent(run.record.runRef, claimRef, 1, {
-            schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA,
+            schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA_V2,
             observedAt: "2026-07-09T22:00:01.000Z",
             kind: "run_started",
           }),
           pylonExecutionEvent(run.record.runRef, claimRef, 2, {
-            schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA,
+            schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA_V2,
             observedAt: "2026-07-09T22:00:02.000Z",
             kind: "work_progress",
             unitRef: "unit-a",
@@ -817,10 +870,11 @@ describe.skipIf(!hasLocalPostgres())(
             assignmentRef: "assignment.unit-a",
             workerKind: "codex",
             accountRefHash: `account.pylon.codex.${"a".repeat(24)}`,
+            marginalCostClass: "subscription",
             blockerRefs: [],
           }),
           pylonExecutionEvent(run.record.runRef, claimRef, 3, {
-            schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA,
+            schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA_V2,
             observedAt: "2026-07-09T22:00:03.000Z",
             kind: "work_terminal",
             unitRef: "unit-a",
@@ -828,12 +882,22 @@ describe.skipIf(!hasLocalPostgres())(
             assignmentRef: "assignment.unit-a",
             workerKind: "codex",
             accountRefHash: `account.pylon.codex.${"a".repeat(24)}`,
+            marginalCostClass: "subscription",
             terminalState: "accepted",
             closeoutRef: "closeout.unit-a",
-            usageEvidence: {
-              truth: "exact",
-              tokenUsageRefs: ["token_usage.unit-a.1"],
+            verification: {
+              truth: "passed",
+              verifierRef: "verifier.bun-test.1",
+              evidenceRefs: ["test.unit-a.1"],
             },
+            artifactRefs: ["artifact.patch.unit-a.1"],
+            proofRefs: ["proof.unit-a.1"],
+            authorityReceiptRefs: ["receipt.authority.unit-a.1"],
+            usageEvidence: exactUsageEvidence(
+              "assignment.unit-a",
+              pylonRef,
+              "unit-a.1",
+            ),
             blockerRefs: [],
           }),
         ],
@@ -858,7 +922,7 @@ describe.skipIf(!hasLocalPostgres())(
           failedAssignments: 0,
           staleAssignments: 0,
         },
-        startedAt: "2026-07-09T22:00:01.000Z",
+        startedAt: "2026-07-09T22:00:00.000Z",
       })
 
       const replay = await Effect.runPromise(
@@ -878,11 +942,11 @@ describe.skipIf(!hasLocalPostgres())(
           pylonRef,
           runRef: run.record.runRef,
           batch: {
-            schema: FLEET_RUN_EXECUTION_BATCH_SCHEMA,
+            schema: FLEET_RUN_EXECUTION_BATCH_SCHEMA_V2,
             claimRef,
             events: [
               pylonExecutionEvent(run.record.runRef, claimRef, 4, {
-                schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA,
+                schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA_V2,
                 observedAt: "2026-07-09T22:00:04.000Z",
                 kind: "work_terminal",
                 unitRef: "unit-b",
@@ -890,16 +954,25 @@ describe.skipIf(!hasLocalPostgres())(
                 assignmentRef: "assignment.unit-b",
                 workerKind: "grok",
                 accountRefHash: `account.pylon.grok.${"b".repeat(24)}`,
+                marginalCostClass: "free",
                 terminalState: "accepted",
                 closeoutRef: "closeout.unit-b",
-                usageEvidence: {
-                  truth: "not_measured",
-                  tokenUsageRefs: [],
+                verification: {
+                  truth: "passed",
+                  verifierRef: "verifier.bun-test.1",
+                  evidenceRefs: ["test.unit-b.1"],
                 },
+                artifactRefs: ["artifact.patch.unit-b.1"],
+                proofRefs: ["proof.unit-b.1"],
+                authorityReceiptRefs: ["receipt.authority.unit-b.1"],
+                usageEvidence: notMeasuredUsageEvidence(
+                  "assignment.unit-b",
+                  "unit-b.1",
+                ),
                 blockerRefs: [],
               }),
               pylonExecutionEvent(run.record.runRef, claimRef, 5, {
-                schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA,
+                schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA_V2,
                 observedAt: "2026-07-09T22:00:05.000Z",
                 kind: "run_terminal",
                 terminalState: "completed",
@@ -926,7 +999,7 @@ describe.skipIf(!hasLocalPostgres())(
           workerKind: "codex",
           usageEvidence: {
             truth: "exact",
-            tokenUsageRefs: ["token_usage.unit-a.1"],
+            tokenUsageRefs: ["usage_row.unit-a.1"],
           },
         }),
         expect.objectContaining({
@@ -971,16 +1044,18 @@ describe.skipIf(!hasLocalPostgres())(
       expect(attemptRows).toEqual([
         {
           attempt_ref: "work_claim.unit-a",
-          state: "evidence_pending",
+          state: "succeeded",
           assignment_ref: "assignment.unit-a",
-          verification_json: '{"truth":"not_reported"}',
-          token_usage_refs_json: expect.stringMatching(/^\["usage\.pylon\.fleet_run\.[0-9a-f]{24}"\]$/),
+          verification_json:
+            '{"evidenceRefs":["test.unit-a.1"],"truth":"passed","verifierRef":"verifier.bun-test.1"}',
+          token_usage_refs_json: '["usage_row.unit-a.1"]',
         },
         {
           attempt_ref: "work_claim.unit-b",
-          state: "evidence_pending",
+          state: "succeeded",
           assignment_ref: "assignment.unit-b",
-          verification_json: '{"truth":"not_reported"}',
+          verification_json:
+            '{"evidenceRefs":["test.unit-b.1"],"truth":"passed","verifierRef":"verifier.bun-test.1"}',
           token_usage_refs_json: "[]",
         },
       ])
@@ -998,15 +1073,15 @@ describe.skipIf(!hasLocalPostgres())(
       expect(workUnitRows).toEqual([
         {
           unit_ref: "unit-a",
-          state: "verification_pending",
+          state: "succeeded",
           latest_attempt_ref: "work_claim.unit-a",
-          accepted_attempt_ref: null,
+          accepted_attempt_ref: "work_claim.unit-a",
         },
         {
           unit_ref: "unit-b",
-          state: "verification_pending",
+          state: "succeeded",
           latest_attempt_ref: "work_claim.unit-b",
-          accepted_attempt_ref: null,
+          accepted_attempt_ref: "work_claim.unit-b",
         },
       ])
 
@@ -1072,10 +1147,12 @@ describe.skipIf(!hasLocalPostgres())(
           artifactRefs: ["artifact.patch.unit-a.1"],
           proofRefs: ["proof.unit-a.1"],
           authorityReceiptRefs: ["receipt.authority.unit-a.1"],
-          usageEvidence: {
-            truth: "exact",
-            tokenUsageRefs: ["token_usage.unit-a.1"],
-          },
+          marginalCostClass: "subscription",
+          usageEvidence: exactUsageEvidence(
+            "assignment.unit-a.edge-99",
+            pylonRef,
+            "unit-a.1",
+          ),
           blockerRefs: [],
         }),
         pylonExecutionEvent(run.record.runRef, claimRef, 4, {
@@ -1113,16 +1190,27 @@ describe.skipIf(!hasLocalPostgres())(
         proof_refs_json: string
         authority_receipt_refs_json: string
         closeout_ref: string | null
+        marginal_cost_class: string
+        usage_json: string
         usage_truth: string
+        usage_provider: string | null
+        usage_model: string | null
+        usage_total_tokens: string | number | null
+        usage_token_rows: string | number | null
         token_usage_refs_json: string
         started_at: string
+        last_observed_at: string
+        remote_observed_at: string
         updated_at: string
       }> = await sql`
         SELECT attempt_ref, work_unit_ref, owner_user_id, intake_claim_ref,
                pylon_ref, state, assignment_ref, verification_json,
                artifact_refs_json, proof_refs_json,
-               authority_receipt_refs_json, closeout_ref, usage_truth,
-               token_usage_refs_json, started_at, updated_at
+               authority_receipt_refs_json, closeout_ref,
+               marginal_cost_class, usage_json, usage_truth, usage_provider,
+               usage_model, usage_total_tokens, usage_token_rows,
+               token_usage_refs_json, started_at, last_observed_at,
+               remote_observed_at, updated_at
         FROM sarah_fleet_run_attempts
         WHERE run_ref = ${run.record.runRef}
       `
@@ -1139,14 +1227,25 @@ describe.skipIf(!hasLocalPostgres())(
             '{"evidenceRefs":["test.unit-a.1"],"truth":"passed","verifierRef":"verifier.bun-test.1"}',
           artifact_refs_json: '["artifact.patch.unit-a.1"]',
           proof_refs_json: '["proof.unit-a.1"]',
-          authority_receipt_refs_json:
-            '["receipt.authority.unit-a.1"]',
+          authority_receipt_refs_json: '["receipt.authority.unit-a.1"]',
           closeout_ref: "closeout.unit-a.attempt-1",
-          usage_truth: "exact",
-          token_usage_refs_json: expect.stringMatching(
-            /^\["usage\.pylon\.fleet_run\.[0-9a-f]{24}"\]$/,
+          marginal_cost_class: "subscription",
+          usage_json: canonicalJson(
+            exactUsageEvidence(
+              "assignment.unit-a.edge-99",
+              pylonRef,
+              "unit-a.1",
+            ),
           ),
+          usage_truth: "exact",
+          usage_provider: "pylon-codex-own-capacity",
+          usage_model: "openagents/pylon-codex",
+          usage_total_tokens: "13",
+          usage_token_rows: "1",
+          token_usage_refs_json: '["usage_row.unit-a.1"]',
           started_at: new Date(FIXED_NOW).toISOString(),
+          last_observed_at: new Date(FIXED_NOW).toISOString(),
+          remote_observed_at: "2026-07-09T22:00:03.000Z",
           updated_at: new Date(FIXED_NOW).toISOString(),
         },
       ])
@@ -1166,6 +1265,18 @@ describe.skipIf(!hasLocalPostgres())(
           accepted_attempt_ref: "work_claim.unit-a.attempt-1",
         },
       ])
+      const invalidReasoningSubset = await sql`
+        UPDATE sarah_fleet_run_attempts
+        SET usage_reasoning_tokens = usage_output_tokens + 1
+        WHERE run_ref = ${run.record.runRef}
+          AND attempt_ref = 'work_claim.unit-a.attempt-1'
+      `.then(
+        () => null,
+        (error) => error,
+      )
+      expect(String(invalidReasoningSubset)).toContain(
+        "sarah_fleet_run_attempts_usage_columns_coherence",
+      )
       const postImages: Array<{ post_image_json: unknown }> = await sql`
         SELECT post_image_json FROM khala_sync_changelog
         WHERE scope = ${run.record.scope}
@@ -1179,10 +1290,89 @@ describe.skipIf(!hasLocalPostgres())(
         )
         .join("\n")
       expect(serialized).toContain('"attemptRef":"work_claim.unit-a.attempt-1"')
-      expect(serialized).toContain('"assignmentRef":"assignment.unit-a.edge-99"')
-      expect(serialized).toContain('"acceptedAttemptRef":"work_claim.unit-a.attempt-1"')
-      expect(serialized).not.toContain("token_usage.unit-a.1")
+      expect(serialized).toContain(
+        '"assignmentRef":"assignment.unit-a.edge-99"',
+      )
+      expect(serialized).toContain(
+        '"acceptedAttemptRef":"work_claim.unit-a.attempt-1"',
+      )
+      expect(serialized).toContain('"totalTokens":13')
+      expect(serialized).toContain('"tokenUsageRefs":["usage_row.unit-a.1"]')
       expect(serialized).not.toContain(ownerUserId)
+    })
+
+    test("accepts reordered remote clocks while server receipt time remains authoritative", async () => {
+      const ownerUserId = "user-execution-clock-owner"
+      const pylonRef = "pylon-execution-clock"
+      const run = await start(ownerUserId, "execution-clock-order-1", {
+        workSource: {
+          kind: "plan_dag",
+          planRef: "plan.execution.clock-order",
+          units: [{ unitRef: "unit-a", title: "Unit A", dependsOn: [] }],
+        },
+      })
+      await seedPylon({ pylonRef, ownerUserId })
+      const claimRef = await claimAndAccept({
+        ownerUserId,
+        pylonRef,
+        runRef: run.record.runRef,
+        claimIdempotencyKey: "execution-clock-order-claim",
+      })
+
+      const result = await Effect.runPromise(
+        repository().appendExecutionEvents({
+          ownerUserId,
+          pylonRef,
+          runRef: run.record.runRef,
+          batch: {
+            schema: FLEET_RUN_EXECUTION_BATCH_SCHEMA,
+            claimRef,
+            events: [
+              pylonExecutionEvent(run.record.runRef, claimRef, 1, {
+                schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA,
+                observedAt: "2026-07-09T22:00:02.000Z",
+                kind: "run_started",
+              }),
+              pylonExecutionEvent(run.record.runRef, claimRef, 2, {
+                schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA,
+                observedAt: "2026-07-09T21:59:59.000Z",
+                kind: "work_progress",
+                unitRef: "unit-a",
+                workClaimRef: "work_claim.clock-order.unit-a.attempt-1",
+                workerKind: "codex",
+                blockerRefs: [],
+              }),
+            ],
+          },
+        }),
+      )
+      expect(result.ack).toMatchObject({
+        acceptedThroughSequence: 2,
+        storedEventCount: 2,
+        execution: {
+          state: "running",
+          counters: { activeAssignments: 1 },
+          startedAt: "2026-07-09T22:00:00.000Z",
+          updatedAt: "2026-07-09T22:00:00.000Z",
+        },
+      })
+
+      const attempts: Array<{
+        remote_observed_at: string
+        last_observed_at: string
+        updated_at: string
+      }> = await sql`
+        SELECT remote_observed_at, last_observed_at, updated_at
+        FROM sarah_fleet_run_attempts
+        WHERE run_ref = ${run.record.runRef}
+      `
+      expect(attempts).toEqual([
+        {
+          remote_observed_at: "2026-07-09T21:59:59.000Z",
+          last_observed_at: "2026-07-09T22:00:00.000Z",
+          updated_at: "2026-07-09T22:00:00.000Z",
+        },
+      ])
     })
 
     test("rejects gaps, foreign units, conflicting replay, and incomplete completion without partial writes", async () => {
@@ -1228,6 +1418,23 @@ describe.skipIf(!hasLocalPostgres())(
         startedInput,
       )
       await Effect.runPromise(append([started]))
+
+      for (const observedAt of ["2026-07-09T22:06:00.000Z"]) {
+        const badClock = await Effect.runPromise(
+          append([
+            pylonExecutionEvent(run.record.runRef, claimRef, 2, {
+              schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA,
+              observedAt,
+              kind: "work_progress",
+              unitRef: "unit-a",
+              workClaimRef: `work_claim.guard.clock.${observedAt.slice(14, 16)}`,
+              workerKind: "codex",
+              blockerRefs: [],
+            }),
+          ]).pipe(Effect.flip),
+        )
+        expect(badClock.kind).toBe("invalid_request")
+      }
 
       const gap = await Effect.runPromise(
         append([
@@ -1307,7 +1514,7 @@ describe.skipIf(!hasLocalPostgres())(
             observedAt: "2026-07-09T22:00:10.000Z",
             kind: "work_terminal",
             unitRef: "unit-a",
-            workClaimRef: "work_claim.unit-a.attempt-1",
+            workClaimRef: "work_claim.guard.unit-a.attempt-1",
             workerKind: "claude",
             terminalState: "failed",
             blockerRefs: ["blocker.dispatch_no_assignment"],
@@ -1349,7 +1556,7 @@ describe.skipIf(!hasLocalPostgres())(
             observedAt: "2026-07-09T22:00:11.000Z",
             kind: "work_progress",
             unitRef: "unit-a",
-            workClaimRef: "work_claim.unit-a.attempt-1",
+            workClaimRef: "work_claim.guard.unit-a.attempt-1",
             workerKind: "claude",
             blockerRefs: [],
           }),
@@ -1364,7 +1571,7 @@ describe.skipIf(!hasLocalPostgres())(
             observedAt: "2026-07-09T22:00:12.000Z",
             kind: "work_progress",
             unitRef: "unit-a",
-            workClaimRef: "work_claim.unit-a.attempt-2",
+            workClaimRef: "work_claim.guard.unit-a.attempt-2",
             assignmentRef: "assignment.unit-a.attempt-2",
             workerKind: "codex",
             accountRefHash: `account.pylon.codex.${"c".repeat(24)}`,
@@ -1375,7 +1582,7 @@ describe.skipIf(!hasLocalPostgres())(
             observedAt: "2026-07-09T22:00:13.000Z",
             kind: "work_terminal",
             unitRef: "unit-a",
-            workClaimRef: "work_claim.unit-a.attempt-2",
+            workClaimRef: "work_claim.guard.unit-a.attempt-2",
             assignmentRef: "assignment.unit-a.attempt-2",
             workerKind: "codex",
             accountRefHash: `account.pylon.codex.${"c".repeat(24)}`,
@@ -1392,7 +1599,7 @@ describe.skipIf(!hasLocalPostgres())(
             observedAt: "2026-07-09T22:00:14.000Z",
             kind: "work_terminal",
             unitRef: "unit-b",
-            workClaimRef: "work_claim.unit-b.attempt-1",
+            workClaimRef: "work_claim.guard.unit-b.attempt-1",
             assignmentRef: "assignment.unit-b.attempt-1",
             workerKind: "grok",
             accountRefHash: `account.pylon.grok.${"d".repeat(24)}`,
@@ -1401,6 +1608,29 @@ describe.skipIf(!hasLocalPostgres())(
             usageEvidence: { truth: "not_measured", tokenUsageRefs: [] },
             blockerRefs: [],
           }),
+        ]),
+      )
+      expect(retry.ack).toMatchObject({
+        schema: "openagents.pylon.fleet_run_execution_ack.v1",
+        runRef: run.record.runRef,
+        claimRef,
+        acceptedThroughSequence: 5,
+        storedEventCount: 3,
+        execution: {
+          state: "running",
+          lastSequence: 5,
+          counters: {
+            workUnitsTotal: 2,
+            activeAssignments: 0,
+            acceptedAssignments: 0,
+            failedAssignments: 1,
+            staleAssignments: 0,
+          },
+          startedAt: "2026-07-09T22:00:00.000Z",
+        },
+      })
+      const unprovenCompletion = await Effect.runPromise(
+        append([
           pylonExecutionEvent(run.record.runRef, claimRef, 6, {
             schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA,
             observedAt: "2026-07-09T22:00:15.000Z",
@@ -1408,38 +1638,32 @@ describe.skipIf(!hasLocalPostgres())(
             terminalState: "completed",
             blockerRefs: [],
           }),
+        ]).pipe(Effect.flip),
+      )
+      expect(unprovenCompletion.kind).toBe("claim_conflict")
+      const stopped = await Effect.runPromise(
+        append([
+          pylonExecutionEvent(run.record.runRef, claimRef, 6, {
+            schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA,
+            observedAt: "2026-07-09T22:00:15.000Z",
+            kind: "run_terminal",
+            terminalState: "stopped",
+            blockerRefs: ["blocker.operator.stopped"],
+          }),
         ]),
       )
-      expect(retry.ack).toMatchObject({
-        schema: "openagents.pylon.fleet_run_execution_ack.v1",
-        runRef: run.record.runRef,
-        claimRef,
-        acceptedThroughSequence: 6,
-        storedEventCount: 4,
-        execution: {
-          state: "completed",
-          lastSequence: 6,
-          counters: {
-            workUnitsTotal: 2,
-            activeAssignments: 0,
-            acceptedAssignments: 2,
-            failedAssignments: 1,
-            staleAssignments: 0,
-          },
-          startedAt: "2026-07-09T22:00:01.000Z",
-        },
-      })
-      expect(retry.ack.execution.closeouts).toHaveLength(3)
+      expect(stopped.ack.execution.state).toBe("stopped")
+      expect(stopped.ack.execution.closeouts).toHaveLength(3)
       expect(
-        retry.ack.execution.closeouts.map((closeout) => [
+        stopped.ack.execution.closeouts.map((closeout) => [
           closeout.unitRef,
           closeout.workClaimRef,
           closeout.terminalState,
         ]),
       ).toEqual([
-        ["unit-a", "work_claim.unit-a.attempt-1", "failed"],
-        ["unit-a", "work_claim.unit-a.attempt-2", "accepted"],
-        ["unit-b", "work_claim.unit-b.attempt-1", "accepted"],
+        ["unit-a", "work_claim.guard.unit-a.attempt-1", "failed"],
+        ["unit-a", "work_claim.guard.unit-a.attempt-2", "accepted"],
+        ["unit-b", "work_claim.guard.unit-b.attempt-1", "accepted"],
       ])
       const persistedAttempts: Array<{
         attempt_ref: string
@@ -1453,17 +1677,17 @@ describe.skipIf(!hasLocalPostgres())(
       `
       expect(persistedAttempts).toEqual([
         {
-          attempt_ref: "work_claim.unit-a.attempt-1",
+          attempt_ref: "work_claim.guard.unit-a.attempt-1",
           work_unit_ref: "unit-a",
           state: "failed",
         },
         {
-          attempt_ref: "work_claim.unit-a.attempt-2",
+          attempt_ref: "work_claim.guard.unit-a.attempt-2",
           work_unit_ref: "unit-a",
           state: "evidence_pending",
         },
         {
-          attempt_ref: "work_claim.unit-b.attempt-1",
+          attempt_ref: "work_claim.guard.unit-b.attempt-1",
           work_unit_ref: "unit-b",
           state: "evidence_pending",
         },
@@ -1483,13 +1707,369 @@ describe.skipIf(!hasLocalPostgres())(
         {
           unit_ref: "unit-a",
           state: "verification_pending",
-          latest_attempt_ref: "work_claim.unit-a.attempt-2",
+          latest_attempt_ref: "work_claim.guard.unit-a.attempt-2",
           accepted_attempt_ref: null,
         },
         {
           unit_ref: "unit-b",
           state: "verification_pending",
-          latest_attempt_ref: "work_claim.unit-b.attempt-1",
+          latest_attempt_ref: "work_claim.guard.unit-b.attempt-1",
+          accepted_attempt_ref: null,
+        },
+      ])
+
+      const failedPointer = await sql`
+        UPDATE sarah_fleet_run_work_units
+        SET state = 'succeeded',
+            latest_attempt_ref = 'work_claim.guard.unit-a.attempt-1',
+            accepted_attempt_ref = 'work_claim.guard.unit-a.attempt-1'
+        WHERE run_ref = ${run.record.runRef} AND unit_ref = 'unit-a'
+      `.then(
+        () => null,
+        (error) => error,
+      )
+      expect(String(failedPointer)).toContain(
+        "accepted fleet attempt must be succeeded",
+      )
+      const crossUnitPointer = await sql`
+        UPDATE sarah_fleet_run_work_units
+        SET latest_attempt_ref = 'work_claim.guard.unit-a.attempt-2'
+        WHERE run_ref = ${run.record.runRef} AND unit_ref = 'unit-b'
+      `.then(
+        () => null,
+        (error) => error,
+      )
+      expect(String(crossUnitPointer)).toContain(
+        "sarah_fleet_run_work_units_latest_attempt_fk",
+      )
+      const emptyFailedBlockers = await sql`
+        UPDATE sarah_fleet_run_attempts
+        SET blocker_refs_json = '[]'
+        WHERE run_ref = ${run.record.runRef}
+          AND attempt_ref = 'work_claim.guard.unit-a.attempt-1'
+      `.then(
+        () => null,
+        (error) => error,
+      )
+      expect(String(emptyFailedBlockers)).toContain(
+        "sarah_fleet_run_attempts_evidence_coherence",
+      )
+      const duplicateGlobalAttempt = await sql`
+        UPDATE sarah_fleet_run_attempts
+        SET attempt_ref = 'work_claim.unit-a.attempt-1'
+        WHERE run_ref = ${run.record.runRef}
+          AND attempt_ref = 'work_claim.guard.unit-a.attempt-2'
+      `.then(
+        () => null,
+        (error) => error,
+      )
+      expect(String(duplicateGlobalAttempt)).toContain(
+        "sarah_fleet_run_attempts_attempt_ref_key",
+      )
+    })
+
+    test("repairs a completed legacy v1 closeout as evidence pending without rewriting terminal history", async () => {
+      const ownerUserId = "user-legacy-completed-owner"
+      const pylonRef = "pylon-legacy-completed"
+      const run = await start(ownerUserId, "legacy-completed-run-1", {
+        workSource: {
+          kind: "plan_dag",
+          planRef: "plan.legacy.completed",
+          units: [{ unitRef: "unit-a", title: "Unit A", dependsOn: [] }],
+        },
+      })
+      await seedPylon({ pylonRef, ownerUserId })
+      const claimRef = await claimAndAccept({
+        ownerUserId,
+        pylonRef,
+        runRef: run.record.runRef,
+        claimIdempotencyKey: "legacy-completed-claim",
+      })
+      const accountRefHash = `account.pylon.codex.${"e".repeat(24)}`
+      const workClaimRef = "work_claim.legacy.completed.unit-a.attempt-1"
+      const assignmentRef = "assignment.legacy.completed.unit-a.attempt-1"
+      const legacyEvents = [
+        pylonExecutionEvent(run.record.runRef, claimRef, 1, {
+          schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA,
+          observedAt: "2026-07-09T21:59:58.000Z",
+          kind: "run_started",
+        }),
+        pylonExecutionEvent(run.record.runRef, claimRef, 2, {
+          schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA,
+          observedAt: "2026-07-09T21:59:57.000Z",
+          kind: "work_terminal",
+          unitRef: "unit-a",
+          workClaimRef,
+          assignmentRef,
+          workerKind: "codex",
+          accountRefHash,
+          terminalState: "accepted",
+          closeoutRef: "closeout.legacy.completed.unit-a.attempt-1",
+          usageEvidence: {
+            truth: "exact",
+            tokenUsageRefs: ["token_usage.legacy.completed.unit-a.1"],
+          },
+          blockerRefs: [],
+        }),
+        pylonExecutionEvent(run.record.runRef, claimRef, 3, {
+          schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA,
+          observedAt: "2026-07-09T21:59:56.000Z",
+          kind: "run_terminal",
+          terminalState: "completed",
+          blockerRefs: [],
+        }),
+      ] as const
+      for (const [index, event] of legacyEvents.entries()) {
+        await sql`
+          INSERT INTO sarah_fleet_run_execution_events
+            (run_ref, sequence, event_ref, owner_user_id, pylon_ref,
+             intake_claim_ref, event_kind, unit_ref, work_claim_ref,
+             event_json, observed_at, recorded_at)
+          VALUES
+            (${run.record.runRef}, ${event.sequence}, ${event.eventRef},
+             ${ownerUserId}, ${pylonRef}, ${claimRef}, ${event.kind},
+             ${"unitRef" in event ? event.unitRef : null},
+             ${"workClaimRef" in event ? event.workClaimRef : null},
+             ${canonicalJson(event)}, ${event.observedAt},
+             ${`2026-07-09T22:00:1${index}.000Z`})
+        `
+      }
+      const terminalEvent = legacyEvents[1]
+      await sql`
+        INSERT INTO sarah_fleet_run_work_unit_closeouts
+          (run_ref, unit_ref, work_claim_ref, assignment_ref, worker_kind,
+           account_ref_hash, terminal_state, closeout_ref, usage_truth,
+           token_usage_refs_json, blocker_refs_json, observed_at, event_ref)
+        VALUES
+          (${run.record.runRef}, 'unit-a', ${workClaimRef}, ${assignmentRef},
+           'codex', ${accountRefHash}, 'accepted',
+           'closeout.legacy.completed.unit-a.attempt-1', 'exact',
+           '["token_usage.legacy.completed.unit-a.1"]', '[]',
+           ${terminalEvent.observedAt}, ${terminalEvent.eventRef})
+      `
+      await sql`
+        UPDATE sarah_fleet_run_requests
+        SET execution_state = 'completed', execution_last_sequence = 3,
+            execution_started_at = '2026-07-09T21:59:58.000Z',
+            execution_updated_at = '2026-07-09T21:59:56.000Z'
+        WHERE run_ref = ${run.record.runRef}
+      `
+
+      const repaired: Array<{ repaired: string | number }> = await sql`
+        SELECT sarah_backfill_fleet_run_attempts_v1() AS repaired
+      `
+      expect(Number(repaired[0]!.repaired)).toBe(1)
+      const attempts: Array<{
+        attempt_ref: string
+        state: string
+        marginal_cost_class: string
+        verification_json: string
+        usage_json: string
+        last_observed_at: string
+        remote_observed_at: string
+      }> = await sql`
+        SELECT attempt_ref, state, marginal_cost_class, verification_json,
+               usage_json, last_observed_at, remote_observed_at
+        FROM sarah_fleet_run_attempts
+        WHERE run_ref = ${run.record.runRef}
+      `
+      expect(attempts).toEqual([
+        {
+          attempt_ref: workClaimRef,
+          state: "evidence_pending",
+          marginal_cost_class: "not_measured",
+          verification_json: '{"truth":"not_reported"}',
+          usage_json: '{"truth":"pending"}',
+          last_observed_at: "2026-07-09T22:00:11.000Z",
+          remote_observed_at: "2026-07-09T21:59:57.000Z",
+        },
+      ])
+      const units: Array<{
+        state: string
+        latest_attempt_ref: string | null
+        accepted_attempt_ref: string | null
+      }> = await sql`
+        SELECT state, latest_attempt_ref, accepted_attempt_ref
+        FROM sarah_fleet_run_work_units
+        WHERE run_ref = ${run.record.runRef} AND unit_ref = 'unit-a'
+      `
+      expect(units).toEqual([
+        {
+          state: "verification_pending",
+          latest_attempt_ref: workClaimRef,
+          accepted_attempt_ref: null,
+        },
+      ])
+      const observed = await Effect.runPromise(
+        repository().observe({ ownerUserId, runRef: run.record.runRef }),
+      )
+      expect(observed.record.execution).toMatchObject({
+        state: "completed",
+        counters: {
+          activeAssignments: 0,
+          acceptedAssignments: 0,
+          staleAssignments: 0,
+        },
+        startedAt: "2026-07-09T22:00:10.000Z",
+        updatedAt: "2026-07-09T22:00:12.000Z",
+      })
+      const repairs: Array<{ entity_type: string; mutation_ref: string }> =
+        await sql`
+          SELECT entity_type, mutation_ref
+          FROM khala_sync_changelog
+          WHERE scope = ${run.record.scope}
+            AND mutation_ref = 'system:sarah_fleet_run_attempt_backfill.v1'
+          ORDER BY entity_type
+        `
+      expect(repairs).toEqual([
+        {
+          entity_type: "fleet_attempt",
+          mutation_ref: "system:sarah_fleet_run_attempt_backfill.v1",
+        },
+        {
+          entity_type: "fleet_run",
+          mutation_ref: "system:sarah_fleet_run_attempt_backfill.v1",
+        },
+        {
+          entity_type: "fleet_work_unit",
+          mutation_ref: "system:sarah_fleet_run_attempt_backfill.v1",
+        },
+      ])
+      const beforeReplay: Array<{ count: string | number }> = await sql`
+        SELECT count(*) AS count FROM khala_sync_changelog
+        WHERE scope = ${run.record.scope}
+      `
+      const replay: Array<{ repaired: string | number }> = await sql`
+        SELECT sarah_backfill_fleet_run_attempts_v1() AS repaired
+      `
+      expect(Number(replay[0]!.repaired)).toBe(0)
+      const afterReplay: Array<{ count: string | number }> = await sql`
+        SELECT count(*) AS count FROM khala_sync_changelog
+        WHERE scope = ${run.record.scope}
+      `
+      expect(afterReplay).toEqual(beforeReplay)
+    })
+
+    test("terminalizes a progress-only legacy attempt when its run already stopped", async () => {
+      const ownerUserId = "user-legacy-stopped-owner"
+      const pylonRef = "pylon-legacy-stopped"
+      const run = await start(ownerUserId, "legacy-stopped-run-1", {
+        workSource: {
+          kind: "plan_dag",
+          planRef: "plan.legacy.stopped",
+          units: [{ unitRef: "unit-a", title: "Unit A", dependsOn: [] }],
+        },
+      })
+      await seedPylon({ pylonRef, ownerUserId })
+      const claimRef = await claimAndAccept({
+        ownerUserId,
+        pylonRef,
+        runRef: run.record.runRef,
+        claimIdempotencyKey: "legacy-stopped-claim",
+      })
+      const workClaimRef = "work_claim.legacy.stopped.unit-a.attempt-1"
+      const legacyEvents = [
+        pylonExecutionEvent(run.record.runRef, claimRef, 1, {
+          schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA,
+          observedAt: "2026-07-09T22:00:04.000Z",
+          kind: "run_started",
+        }),
+        pylonExecutionEvent(run.record.runRef, claimRef, 2, {
+          schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA,
+          observedAt: "2026-07-09T21:59:58.000Z",
+          kind: "work_progress",
+          unitRef: "unit-a",
+          workClaimRef,
+          workerKind: "grok",
+          blockerRefs: [],
+        }),
+        pylonExecutionEvent(run.record.runRef, claimRef, 3, {
+          schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA,
+          observedAt: "2026-07-09T22:00:03.000Z",
+          kind: "run_terminal",
+          terminalState: "stopped",
+          blockerRefs: ["blocker.operator.stopped"],
+        }),
+      ] as const
+      for (const [index, event] of legacyEvents.entries()) {
+        await sql`
+          INSERT INTO sarah_fleet_run_execution_events
+            (run_ref, sequence, event_ref, owner_user_id, pylon_ref,
+             intake_claim_ref, event_kind, unit_ref, work_claim_ref,
+             event_json, observed_at, recorded_at)
+          VALUES
+            (${run.record.runRef}, ${event.sequence}, ${event.eventRef},
+             ${ownerUserId}, ${pylonRef}, ${claimRef}, ${event.kind},
+             ${"unitRef" in event ? event.unitRef : null},
+             ${"workClaimRef" in event ? event.workClaimRef : null},
+             ${canonicalJson(event)}, ${event.observedAt},
+             ${`2026-07-09T22:00:2${index}.000Z`})
+        `
+      }
+      await sql`
+        UPDATE sarah_fleet_run_requests
+        SET execution_state = 'stopped', execution_last_sequence = 3,
+            execution_started_at = '2026-07-09T22:00:04.000Z',
+            execution_updated_at = '2026-07-09T22:00:03.000Z'
+        WHERE run_ref = ${run.record.runRef}
+      `
+
+      const repaired: Array<{ repaired: string | number }> = await sql`
+        SELECT sarah_backfill_fleet_run_attempts_v1() AS repaired
+      `
+      expect(Number(repaired[0]!.repaired)).toBe(1)
+      const attempts: Array<{
+        state: string
+        progress_class: string
+        verification_json: string
+        blocker_refs_json: string
+        terminal_at: string | null
+        last_observed_at: string
+        remote_observed_at: string
+      }> = await sql`
+        SELECT state, progress_class, verification_json, blocker_refs_json,
+               terminal_at, last_observed_at, remote_observed_at
+        FROM sarah_fleet_run_attempts
+        WHERE run_ref = ${run.record.runRef}
+      `
+      expect(attempts).toEqual([
+        {
+          state: "stale",
+          progress_class: "terminal",
+          verification_json: '{"truth":"not_reported"}',
+          blocker_refs_json:
+            '["blocker.pylon.fleet_run.legacy_terminal_with_active_attempt"]',
+          terminal_at: "2026-07-09T22:00:21.000Z",
+          last_observed_at: "2026-07-09T22:00:21.000Z",
+          remote_observed_at: "2026-07-09T21:59:58.000Z",
+        },
+      ])
+      const observed = await Effect.runPromise(
+        repository().observe({ ownerUserId, runRef: run.record.runRef }),
+      )
+      expect(observed.record.execution).toMatchObject({
+        state: "stopped",
+        counters: {
+          activeAssignments: 0,
+          acceptedAssignments: 0,
+          staleAssignments: 1,
+        },
+        startedAt: "2026-07-09T22:00:20.000Z",
+        updatedAt: "2026-07-09T22:00:22.000Z",
+      })
+      const units: Array<{
+        state: string
+        latest_attempt_ref: string | null
+        accepted_attempt_ref: string | null
+      }> = await sql`
+        SELECT state, latest_attempt_ref, accepted_attempt_ref
+        FROM sarah_fleet_run_work_units
+        WHERE run_ref = ${run.record.runRef} AND unit_ref = 'unit-a'
+      `
+      expect(units).toEqual([
+        {
+          state: "stale",
+          latest_attempt_ref: workClaimRef,
           accepted_attempt_ref: null,
         },
       ])

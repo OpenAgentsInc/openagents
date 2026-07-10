@@ -2,6 +2,9 @@ import {
   canonicalJson,
   decodeFleetAttemptEntity,
   decodeFleetWorkUnitEntity,
+  FleetAttemptExactUsageEvidence,
+  FleetAttemptMarginalCostClass,
+  FleetAttemptNotMeasuredUsageEvidence,
   fleetRunScope,
   type FleetAttemptEntity,
   type FleetWorkUnitEntity,
@@ -43,6 +46,7 @@ export const FLEET_RUN_AUTHORITY_CREATE_MUTATION_REF =
 export const FLEET_RUN_AUTHORITY_EXECUTION_MUTATION_REF =
   "system:sarah_fleet_run_authority.execution.v1" as const
 export const FLEET_RUN_PYLON_FRESHNESS_MS = 5 * 60 * 1_000
+export const FLEET_RUN_EXECUTION_MAX_FUTURE_SKEW_MS = 5 * 60 * 1_000
 
 const PublicOwnerRef = S.Trim.check(
   S.isMinLength(3),
@@ -108,6 +112,9 @@ const ExecutionSequence = S.Int.check(
 )
 const ExecutionPublicRef = S.String.check(
   S.isPattern(/^[A-Za-z0-9][A-Za-z0-9._:/#-]{0,179}$/u),
+)
+const ProjectedExecutionPublicRef = S.String.check(
+  S.isPattern(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,179}$/u),
 )
 const AccountRefHash = S.String.check(
   S.isPattern(
@@ -258,6 +265,12 @@ export const FleetRunUsageEvidence = S.Union([
 ])
 export type FleetRunUsageEvidence = typeof FleetRunUsageEvidence.Type
 
+export const FleetRunUsageEvidenceV2 = S.Union([
+  FleetAttemptExactUsageEvidence,
+  FleetAttemptNotMeasuredUsageEvidence,
+])
+export type FleetRunUsageEvidenceV2 = typeof FleetRunUsageEvidenceV2.Type
+
 const FleetRunExecutionEventBase = S.Struct({
   schema: S.Literal(FLEET_RUN_EXECUTION_EVENT_SCHEMA),
   sequence: ExecutionSequence,
@@ -336,10 +349,11 @@ const FleetRunExecutionEventV2Base = S.Struct({
 })
 const FleetRunExecutionV2WorkFields = {
   unitRef: PlanUnitRef,
-  workClaimRef: ExecutionPublicRef,
-  assignmentRef: S.optionalKey(ExecutionPublicRef),
+  workClaimRef: ProjectedExecutionPublicRef,
+  assignmentRef: S.optionalKey(ProjectedExecutionPublicRef),
   workerKind: S.Literals(["codex", "claude", "grok"]),
   accountRefHash: S.optionalKey(AccountRefHash),
+  marginalCostClass: S.optionalKey(FleetAttemptMarginalCostClass),
   blockerRefs: S.Array(BlockerRef),
 } as const
 export const FleetRunStartedExecutionEventV2 = S.Struct({
@@ -353,8 +367,8 @@ export const FleetRunWorkProgressExecutionEventV2 = S.Struct({
 })
 export const FleetRunVerifiedEvidenceV2 = S.Struct({
   truth: S.Literal("passed"),
-  verifierRef: ExecutionPublicRef,
-  evidenceRefs: S.Array(ExecutionPublicRef).check(
+  verifierRef: ProjectedExecutionPublicRef,
+  evidenceRefs: S.Array(ProjectedExecutionPublicRef).check(
     S.isMinLength(1),
     S.isMaxLength(64),
   ),
@@ -364,47 +378,49 @@ export const FleetRunAcceptedWorkTerminalExecutionEventV2 = S.Struct({
   kind: S.Literal("work_terminal"),
   ...FleetRunExecutionV2WorkFields,
   terminalState: S.Literal("accepted"),
-  assignmentRef: ExecutionPublicRef,
+  assignmentRef: ProjectedExecutionPublicRef,
   accountRefHash: AccountRefHash,
-  closeoutRef: ExecutionPublicRef,
+  closeoutRef: ProjectedExecutionPublicRef,
   verification: FleetRunVerifiedEvidenceV2,
-  artifactRefs: S.Array(ExecutionPublicRef).check(
+  artifactRefs: S.Array(ProjectedExecutionPublicRef).check(
     S.isMinLength(1),
     S.isMaxLength(64),
   ),
-  proofRefs: S.Array(ExecutionPublicRef).check(
+  proofRefs: S.Array(ProjectedExecutionPublicRef).check(
     S.isMinLength(1),
     S.isMaxLength(64),
   ),
-  authorityReceiptRefs: S.Array(ExecutionPublicRef).check(
+  authorityReceiptRefs: S.Array(ProjectedExecutionPublicRef).check(
     S.isMinLength(1),
     S.isMaxLength(64),
   ),
-  usageEvidence: FleetRunUsageEvidence,
+  usageEvidence: FleetRunUsageEvidenceV2,
 })
 export const FleetRunFailedWorkTerminalExecutionEventV2 = S.Struct({
   ...FleetRunExecutionEventV2Base.fields,
   kind: S.Literal("work_terminal"),
   ...FleetRunExecutionV2WorkFields,
   terminalState: S.Literals(["failed", "stale"]),
-  closeoutRef: S.optionalKey(ExecutionPublicRef),
+  closeoutRef: S.optionalKey(ProjectedExecutionPublicRef),
   verification: S.optionalKey(
     S.Struct({
       truth: S.Literal("failed"),
-      verifierRef: S.optionalKey(ExecutionPublicRef),
-      evidenceRefs: S.Array(ExecutionPublicRef).check(S.isMaxLength(64)),
+      verifierRef: S.optionalKey(ProjectedExecutionPublicRef),
+      evidenceRefs: S.Array(ProjectedExecutionPublicRef).check(
+        S.isMaxLength(64),
+      ),
     }),
   ),
   artifactRefs: S.optionalKey(
-    S.Array(ExecutionPublicRef).check(S.isMaxLength(64)),
+    S.Array(ProjectedExecutionPublicRef).check(S.isMaxLength(64)),
   ),
   proofRefs: S.optionalKey(
-    S.Array(ExecutionPublicRef).check(S.isMaxLength(64)),
+    S.Array(ProjectedExecutionPublicRef).check(S.isMaxLength(64)),
   ),
   authorityReceiptRefs: S.optionalKey(
-    S.Array(ExecutionPublicRef).check(S.isMaxLength(64)),
+    S.Array(ProjectedExecutionPublicRef).check(S.isMaxLength(64)),
   ),
-  usageEvidence: S.optionalKey(FleetRunUsageEvidence),
+  usageEvidence: S.optionalKey(FleetRunUsageEvidenceV2),
 })
 export const FleetRunTerminalExecutionEventV2 = S.Struct({
   ...FleetRunExecutionEventV2Base.fields,
@@ -712,17 +728,30 @@ type FleetRunAttemptRow = Readonly<{
   assignment_ref: string | null
   account_ref_hash: string | null
   capacity_class: "owner_local"
-  marginal_cost_class: "owner_capacity" | "not_reported"
+  marginal_cost_class: "free" | "subscription" | "api_metered" | "not_measured"
   verification_json: string
   artifact_refs_json: string
   proof_refs_json: string
   authority_receipt_refs_json: string
   closeout_ref: string | null
+  usage_json: string
   usage_truth: "pending" | "exact" | "not_measured"
+  usage_evidence_ref: string | null
+  usage_provider: string | null
+  usage_model: string | null
+  usage_demand_kind: string | null
+  usage_demand_source: string | null
+  usage_input_tokens: string | number | bigint | null
+  usage_output_tokens: string | number | bigint | null
+  usage_reasoning_tokens: string | number | bigint | null
+  usage_cache_read_tokens: string | number | bigint | null
+  usage_total_tokens: string | number | bigint | null
+  usage_token_rows: string | number | bigint | null
   token_usage_refs_json: string
   blocker_refs_json: string
   last_event_ref: string
-  first_observed_at: string
+  first_remote_observed_at: string
+  remote_observed_at: string
   last_observed_at: string
   started_at: string
   terminal_at: string | null
@@ -849,16 +878,26 @@ export const decodeFleetRunExecutionBatch = (
         throw invalidRequest()
       }
       if (event.usageEvidence !== undefined) {
-        const tokenRefs = event.usageEvidence.tokenUsageRefs
+        const usage = event.usageEvidence
+        const tokenRefs = usage.tokenUsageRefs
+        const refGroups =
+          usage.truth === "exact"
+            ? [
+                usage.tokenUsageRefs,
+                usage.proofRefs,
+                usage.closeoutChecklistRefs,
+                usage.proofChecklistRefs,
+              ]
+            : [usage.caveatRefs]
         if (
+          event.workerKind !== usage.harnessKind ||
+          event.assignmentRef !== usage.assignmentRef ||
           tokenRefs.length > 100 ||
-          (event.usageEvidence.truth === "exact" && tokenRefs.length < 1) ||
-          (event.usageEvidence.truth === "not_measured" &&
-            tokenRefs.length > 0) ||
-          (event.workerKind === "grok" &&
-            event.usageEvidence.truth !== "not_measured") ||
-          (event.workerKind !== "grok" &&
-            event.usageEvidence.truth !== "exact")
+          (usage.truth === "exact" && tokenRefs.length < 1) ||
+          (usage.truth === "not_measured" && tokenRefs.length > 0) ||
+          (event.workerKind === "grok" && usage.truth !== "not_measured") ||
+          (event.workerKind !== "grok" && usage.truth !== "exact") ||
+          refGroups.some((refs) => new Set(refs).size !== refs.length)
         ) {
           throw invalidRequest()
         }
@@ -1292,6 +1331,7 @@ const attemptEntityFromRow = (row: FleetRunAttemptRow): FleetAttemptEntity => {
     const tokenUsageRefs = executionRefsFromJson(row.token_usage_refs_json)
     const blockerRefs = blockerRefsFromJson(row.blocker_refs_json)
     const verification = parseCanonicalJson(row.verification_json)
+    const usageEvidence = parseCanonicalJson(row.usage_json)
     const entity = decodeFleetAttemptEntity({
       attemptRef: row.attempt_ref,
       workUnitRef: row.work_unit_ref,
@@ -1309,11 +1349,12 @@ const attemptEntityFromRow = (row: FleetRunAttemptRow): FleetAttemptEntity => {
       proofRefs,
       authorityReceiptRefs,
       closeoutRef: row.closeout_ref,
-      usageEvidence: { truth: row.usage_truth, usageRefs: tokenUsageRefs },
+      usageEvidence,
       blockerRefs,
       lastEventRef: row.last_event_ref,
       startedAt: row.started_at,
       lastObservedAt: row.last_observed_at,
+      remoteObservedAt: row.remote_observed_at,
       terminalAt: row.terminal_at,
       updatedAt: row.updated_at,
     })
@@ -1323,7 +1364,53 @@ const attemptEntityFromRow = (row: FleetRunAttemptRow): FleetAttemptEntity => {
       canonicalJson(authorityReceiptRefs) !==
         row.authority_receipt_refs_json ||
       canonicalJson(tokenUsageRefs) !== row.token_usage_refs_json ||
-      canonicalJson(blockerRefs) !== row.blocker_refs_json
+      canonicalJson(blockerRefs) !== row.blocker_refs_json ||
+      entity.usageEvidence.truth !== row.usage_truth ||
+      canonicalJson(entity.usageEvidence) !== row.usage_json ||
+      (entity.usageEvidence.truth === "pending"
+        ? row.usage_evidence_ref !== null ||
+          row.usage_provider !== null ||
+          row.usage_model !== null ||
+          row.usage_demand_kind !== null ||
+          row.usage_demand_source !== null ||
+          row.usage_input_tokens !== null ||
+          row.usage_output_tokens !== null ||
+          row.usage_reasoning_tokens !== null ||
+          row.usage_cache_read_tokens !== null ||
+          row.usage_total_tokens !== null ||
+          row.usage_token_rows !== null ||
+          tokenUsageRefs.length !== 0
+        : entity.usageEvidence.evidenceRef !== row.usage_evidence_ref ||
+          (entity.usageEvidence.truth === "exact"
+            ? entity.usageEvidence.provider !== row.usage_provider ||
+              entity.usageEvidence.model !== row.usage_model ||
+              entity.usageEvidence.demandKind !== row.usage_demand_kind ||
+              entity.usageEvidence.demandSource !== row.usage_demand_source ||
+              entity.usageEvidence.inputTokens !==
+                safeStoredSequence(row.usage_input_tokens ?? -1) ||
+              entity.usageEvidence.outputTokens !==
+                safeStoredSequence(row.usage_output_tokens ?? -1) ||
+              entity.usageEvidence.reasoningTokens !==
+                safeStoredSequence(row.usage_reasoning_tokens ?? -1) ||
+              entity.usageEvidence.cacheReadTokens !==
+                safeStoredSequence(row.usage_cache_read_tokens ?? -1) ||
+              entity.usageEvidence.totalTokens !==
+                safeStoredSequence(row.usage_total_tokens ?? -1) ||
+              entity.usageEvidence.tokenRows !==
+                safeStoredSequence(row.usage_token_rows ?? -1) ||
+              canonicalJson(entity.usageEvidence.tokenUsageRefs) !==
+                row.token_usage_refs_json
+            : row.usage_provider !== null ||
+              row.usage_model !== null ||
+              row.usage_demand_kind !== null ||
+              row.usage_demand_source !== null ||
+              row.usage_input_tokens !== null ||
+              row.usage_output_tokens !== null ||
+              row.usage_reasoning_tokens !== null ||
+              row.usage_cache_read_tokens !== null ||
+              row.usage_total_tokens !== null ||
+              row.usage_token_rows !== null ||
+              tokenUsageRefs.length !== 0))
     ) {
       throw invalidRequest()
     }
@@ -1473,34 +1560,32 @@ const executionProjectionFromStorage = async (
     ORDER BY unit_ref, observed_at, work_claim_ref
   `
   const closeouts = rows.map(closeoutFromRow)
-  const activeRows: Array<{ count: string | number | bigint }> = await sql`
-    SELECT count(DISTINCT event.work_claim_ref) AS count
-    FROM sarah_fleet_run_execution_events AS event
-    LEFT JOIN sarah_fleet_run_work_unit_closeouts AS closeout
-      ON closeout.run_ref = event.run_ref
-     AND closeout.work_claim_ref = event.work_claim_ref
-    WHERE event.run_ref = ${record.runRef}
-      AND event.event_kind = 'work_progress'
-      AND closeout.work_claim_ref IS NULL
+  const attemptCounts: Array<{
+    active: string | number | bigint
+    failed: string | number | bigint
+    stale: string | number | bigint
+  }> = await sql`
+    SELECT
+      count(*) FILTER (WHERE state = 'running') AS active,
+      count(*) FILTER (WHERE state = 'failed') AS failed,
+      count(*) FILTER (WHERE state = 'stale') AS stale
+    FROM sarah_fleet_run_attempts
+    WHERE run_ref = ${record.runRef}
   `
-  const activeAssignments = safeStoredSequence(activeRows[0]?.count ?? 0)
+  const succeededRows: Array<{ count: string | number | bigint }> = await sql`
+    SELECT count(*) AS count FROM sarah_fleet_run_work_units
+    WHERE run_ref = ${record.runRef} AND state = 'succeeded'
+  `
+  const counts = attemptCounts[0]
   return decodeUnknown(FleetRunExecutionProjection, {
     state: record.execution.state,
     lastSequence: record.execution.lastSequence,
     counters: {
       workUnitsTotal: workUnitsFrom(record.request.workSource).length,
-      activeAssignments,
-      acceptedAssignments: new Set(
-        closeouts
-          .filter((closeout) => closeout.terminalState === "accepted")
-          .map((closeout) => closeout.unitRef),
-      ).size,
-      failedAssignments: closeouts.filter(
-        (closeout) => closeout.terminalState === "failed",
-      ).length,
-      staleAssignments: closeouts.filter(
-        (closeout) => closeout.terminalState === "stale",
-      ).length,
+      activeAssignments: safeStoredSequence(counts?.active ?? 0),
+      acceptedAssignments: safeStoredSequence(succeededRows[0]?.count ?? 0),
+      failedAssignments: safeStoredSequence(counts?.failed ?? 0),
+      staleAssignments: safeStoredSequence(counts?.stale ?? 0),
     },
     startedAt: record.execution.startedAt,
     updatedAt: record.execution.updatedAt,
@@ -2065,7 +2150,10 @@ const closeoutForEvent = (
             assignmentRef: event.assignmentRef,
             accountRefHash: event.accountRefHash,
             closeoutRef: event.closeoutRef,
-            usageEvidence: event.usageEvidence,
+            usageEvidence: {
+              truth: event.usageEvidence.truth,
+              tokenUsageRefs: event.usageEvidence.tokenUsageRefs,
+            },
           }
         : {}
       : event.assignmentRef !== undefined &&
@@ -2076,7 +2164,10 @@ const closeoutForEvent = (
             assignmentRef: event.assignmentRef,
             accountRefHash: event.accountRefHash,
             closeoutRef: event.closeoutRef,
-            usageEvidence: event.usageEvidence,
+            usageEvidence: {
+              truth: event.usageEvidence.truth,
+              tokenUsageRefs: event.usageEvidence.tokenUsageRefs,
+            },
           }
         : {}
   return decodeUnknown(FleetRunWorkUnitCloseout, {
@@ -2175,6 +2266,10 @@ const projectAttemptForEvent = async (
     "assignmentRef" in event ? (event.assignmentRef ?? null) : null
   const incomingAccountRefHash =
     "accountRefHash" in event ? (event.accountRefHash ?? null) : null
+  const incomingMarginalCostClass =
+    "marginalCostClass" in event
+      ? (event.marginalCostClass ?? "not_measured")
+      : "not_measured"
   if (
     (existing?.assignmentRef !== null &&
       existing?.assignmentRef !== undefined &&
@@ -2183,7 +2278,11 @@ const projectAttemptForEvent = async (
     (existing?.accountRefHash !== null &&
       existing?.accountRefHash !== undefined &&
       incomingAccountRefHash !== null &&
-      existing.accountRefHash !== incomingAccountRefHash)
+      existing.accountRefHash !== incomingAccountRefHash) ||
+    (existing !== undefined &&
+      existing.marginalCostClass !== "not_measured" &&
+      incomingMarginalCostClass !== "not_measured" &&
+      existing.marginalCostClass !== incomingMarginalCostClass)
   ) {
     throw fixedError(
       "idempotency_conflict",
@@ -2193,19 +2292,10 @@ const projectAttemptForEvent = async (
   }
   const assignmentRef = existing?.assignmentRef ?? incomingAssignmentRef
   const accountRefHash = existing?.accountRefHash ?? incomingAccountRefHash
-  const usageRefsFor = async (
-    refs: ReadonlyArray<string>,
-  ): Promise<ReadonlyArray<string>> =>
-    Promise.all(
-      refs.map(async (sourceRef) =>
-        `usage.pylon.fleet_run.${(
-          await sha256Hex({
-            schema: "openagents.pylon.fleet_run_usage_ref.v1",
-            sourceRef,
-          })
-        ).slice(0, 24)}`,
-      ),
-    )
+  const marginalCostClass =
+    existing?.marginalCostClass === "not_measured"
+      ? incomingMarginalCostClass
+      : (existing?.marginalCostClass ?? incomingMarginalCostClass)
 
   let state: FleetAttemptEntity["state"] = "running"
   let progressClass: FleetAttemptEntity["progressClass"] =
@@ -2217,7 +2307,6 @@ const projectAttemptForEvent = async (
   let closeoutRef: string | null = null
   let usageEvidence: FleetAttemptEntity["usageEvidence"] = {
     truth: "pending",
-    usageRefs: [],
   }
   let terminalAt: string | null = null
   if (event.kind === "work_terminal") {
@@ -2225,16 +2314,23 @@ const projectAttemptForEvent = async (
     terminalAt = nowIso
     if (event.schema === FLEET_RUN_EXECUTION_EVENT_SCHEMA_V2) {
       if (event.terminalState === "accepted") {
+        if (
+          event.usageEvidence.truth === "exact" &&
+          event.usageEvidence.pylonRef !== input.pylonRef
+        ) {
+          throw fixedError(
+            "invalid_request",
+            "fleet run usage evidence names another Pylon",
+            { runRef: input.runRef, pylonRef: input.pylonRef },
+          )
+        }
         state = "succeeded"
         verification = event.verification
         artifactRefs = event.artifactRefs
         proofRefs = event.proofRefs
         authorityReceiptRefs = event.authorityReceiptRefs
         closeoutRef = event.closeoutRef
-        usageEvidence = {
-          truth: event.usageEvidence.truth,
-          usageRefs: await usageRefsFor(event.usageEvidence.tokenUsageRefs),
-        }
+        usageEvidence = event.usageEvidence
       } else {
         state = event.terminalState
         verification =
@@ -2249,11 +2345,17 @@ const projectAttemptForEvent = async (
         proofRefs = event.proofRefs ?? []
         authorityReceiptRefs = event.authorityReceiptRefs ?? []
         closeoutRef = event.closeoutRef ?? null
-        const wireUsage = event.usageEvidence
-        usageEvidence = {
-          truth: wireUsage?.truth ?? "pending",
-          usageRefs: await usageRefsFor(wireUsage?.tokenUsageRefs ?? []),
+        if (
+          event.usageEvidence?.truth === "exact" &&
+          event.usageEvidence.pylonRef !== input.pylonRef
+        ) {
+          throw fixedError(
+            "invalid_request",
+            "fleet run usage evidence names another Pylon",
+            { runRef: input.runRef, pylonRef: input.pylonRef },
+          )
         }
+        usageEvidence = event.usageEvidence ?? { truth: "pending" }
       }
     } else if (event.terminalState === "accepted") {
       // v1 did not carry verifier/artifact/proof/authority receipts. Preserve
@@ -2261,19 +2363,11 @@ const projectAttemptForEvent = async (
       state = "evidence_pending"
       verification = { truth: "not_reported" }
       closeoutRef = event.closeoutRef
-      usageEvidence = {
-        truth: event.usageEvidence.truth,
-        usageRefs: await usageRefsFor(event.usageEvidence.tokenUsageRefs),
-      }
     } else {
       state = event.terminalState
       verification = { truth: "not_reported" }
       if ("closeoutRef" in event) {
         closeoutRef = event.closeoutRef
-        usageEvidence = {
-          truth: event.usageEvidence.truth,
-          usageRefs: await usageRefsFor(event.usageEvidence.tokenUsageRefs),
-        }
       }
     }
   }
@@ -2290,7 +2384,7 @@ const projectAttemptForEvent = async (
     assignmentRef,
     accountRefHash,
     capacityClass: "owner_local",
-    marginalCostClass: "owner_capacity",
+    marginalCostClass,
     verification,
     artifactRefs,
     proofRefs,
@@ -2300,20 +2394,30 @@ const projectAttemptForEvent = async (
     blockerRefs: event.blockerRefs,
     lastEventRef: event.eventRef,
     startedAt,
-    lastObservedAt: event.observedAt,
+    lastObservedAt: nowIso,
+    remoteObservedAt: event.observedAt,
     terminalAt,
     updatedAt: nowIso,
   })
+  const exactUsage =
+    attempt.usageEvidence.truth === "exact" ? attempt.usageEvidence : undefined
+  const measuredUsage =
+    attempt.usageEvidence.truth === "pending"
+      ? undefined
+      : attempt.usageEvidence
   const inserted: Array<FleetRunAttemptRow> = await sql`
     INSERT INTO sarah_fleet_run_attempts
       (run_ref, attempt_ref, work_unit_ref, owner_user_id, intake_claim_ref,
        pylon_ref, worker_kind, state, progress_class, assignment_ref,
        account_ref_hash, capacity_class, marginal_cost_class,
        verification_json, artifact_refs_json, proof_refs_json,
-       authority_receipt_refs_json, closeout_ref, usage_truth,
-       token_usage_refs_json, blocker_refs_json, last_event_ref,
-       first_observed_at, last_observed_at, started_at, terminal_at,
-       updated_at)
+       authority_receipt_refs_json, closeout_ref, usage_json, usage_truth,
+       usage_evidence_ref, usage_provider, usage_model, usage_demand_kind,
+       usage_demand_source, usage_input_tokens, usage_output_tokens,
+       usage_reasoning_tokens, usage_cache_read_tokens, usage_total_tokens,
+       usage_token_rows, token_usage_refs_json, blocker_refs_json,
+       last_event_ref, first_remote_observed_at, remote_observed_at,
+       last_observed_at, started_at, terminal_at, updated_at)
     VALUES
       (${input.runRef}, ${attempt.attemptRef}, ${attempt.workUnitRef},
        ${input.ownerUserId}, ${input.batch.claimRef}, ${input.pylonRef},
@@ -2324,26 +2428,48 @@ const projectAttemptForEvent = async (
        ${canonicalJson(attempt.artifactRefs)},
        ${canonicalJson(attempt.proofRefs)},
        ${canonicalJson(attempt.authorityReceiptRefs)},
-       ${attempt.closeoutRef}, ${attempt.usageEvidence.truth},
-       ${canonicalJson(attempt.usageEvidence.usageRefs)},
+       ${attempt.closeoutRef}, ${canonicalJson(attempt.usageEvidence)},
+       ${attempt.usageEvidence.truth}, ${measuredUsage?.evidenceRef ?? null},
+       ${exactUsage?.provider ?? null}, ${exactUsage?.model ?? null},
+       ${exactUsage?.demandKind ?? null}, ${exactUsage?.demandSource ?? null},
+       ${exactUsage?.inputTokens ?? null}, ${exactUsage?.outputTokens ?? null},
+       ${exactUsage?.reasoningTokens ?? null},
+       ${exactUsage?.cacheReadTokens ?? null},
+       ${exactUsage?.totalTokens ?? null}, ${exactUsage?.tokenRows ?? null},
+       ${canonicalJson(exactUsage?.tokenUsageRefs ?? [])},
        ${canonicalJson(attempt.blockerRefs)}, ${attempt.lastEventRef},
-       ${existingRow?.first_observed_at ?? event.observedAt},
-       ${attempt.lastObservedAt}, ${attempt.startedAt}, ${attempt.terminalAt},
+       ${existingRow?.first_remote_observed_at ?? event.observedAt},
+       ${attempt.remoteObservedAt}, ${attempt.lastObservedAt},
+       ${attempt.startedAt}, ${attempt.terminalAt},
        ${attempt.updatedAt})
     ON CONFLICT (run_ref, attempt_ref) DO UPDATE SET
       state = EXCLUDED.state,
       progress_class = EXCLUDED.progress_class,
       assignment_ref = EXCLUDED.assignment_ref,
       account_ref_hash = EXCLUDED.account_ref_hash,
+      marginal_cost_class = EXCLUDED.marginal_cost_class,
       verification_json = EXCLUDED.verification_json,
       artifact_refs_json = EXCLUDED.artifact_refs_json,
       proof_refs_json = EXCLUDED.proof_refs_json,
       authority_receipt_refs_json = EXCLUDED.authority_receipt_refs_json,
       closeout_ref = EXCLUDED.closeout_ref,
+      usage_json = EXCLUDED.usage_json,
       usage_truth = EXCLUDED.usage_truth,
+      usage_evidence_ref = EXCLUDED.usage_evidence_ref,
+      usage_provider = EXCLUDED.usage_provider,
+      usage_model = EXCLUDED.usage_model,
+      usage_demand_kind = EXCLUDED.usage_demand_kind,
+      usage_demand_source = EXCLUDED.usage_demand_source,
+      usage_input_tokens = EXCLUDED.usage_input_tokens,
+      usage_output_tokens = EXCLUDED.usage_output_tokens,
+      usage_reasoning_tokens = EXCLUDED.usage_reasoning_tokens,
+      usage_cache_read_tokens = EXCLUDED.usage_cache_read_tokens,
+      usage_total_tokens = EXCLUDED.usage_total_tokens,
+      usage_token_rows = EXCLUDED.usage_token_rows,
       token_usage_refs_json = EXCLUDED.token_usage_refs_json,
       blocker_refs_json = EXCLUDED.blocker_refs_json,
       last_event_ref = EXCLUDED.last_event_ref,
+      remote_observed_at = EXCLUDED.remote_observed_at,
       last_observed_at = EXCLUDED.last_observed_at,
       terminal_at = EXCLUDED.terminal_at,
       updated_at = EXCLUDED.updated_at
@@ -2481,10 +2607,12 @@ const appendFleetRunExecutionEvents = async (
     const closeoutsByClaim = new Map(
       closeouts.map((closeout) => [closeout.workClaimRef, closeout] as const),
     )
+    const succeededUnitRows: Array<{ unit_ref: string }> = await writer.sql`
+      SELECT unit_ref FROM sarah_fleet_run_work_units
+      WHERE run_ref = ${input.runRef} AND state = 'succeeded'
+    `
     const acceptedUnitRefs = new Set(
-      closeouts
-        .filter((closeout) => closeout.terminalState === "accepted")
-        .map((closeout) => closeout.unitRef),
+      succeededUnitRows.map((row) => row.unit_ref),
     )
     const storedWorkEventRows: Array<FleetRunExecutionEventRow> =
       await writer.sql`
@@ -2575,6 +2703,19 @@ const appendFleetRunExecutionEvents = async (
           { runRef: input.runRef },
         )
       }
+      const observedMs = Date.parse(event.observedAt)
+      if (
+        observedMs > nowMs + FLEET_RUN_EXECUTION_MAX_FUTURE_SKEW_MS ||
+        observedMs <
+          Date.parse(initialRecord.createdAt) -
+            FLEET_RUN_EXECUTION_MAX_FUTURE_SKEW_MS
+      ) {
+        throw fixedError(
+          "invalid_request",
+          "fleet run execution observation clock failed freshness validation",
+          { runRef: input.runRef },
+        )
+      }
       if (event.sequence !== acceptedThroughSequence + 1) {
         throw fixedError(
           "claim_conflict",
@@ -2612,7 +2753,7 @@ const appendFleetRunExecutionEvents = async (
           )
         }
         executionState = "running"
-        executionStartedAt = event.observedAt
+        executionStartedAt = nowIso
       } else if (
         event.kind === "work_progress" ||
         event.kind === "work_terminal"
@@ -2700,7 +2841,10 @@ const appendFleetRunExecutionEvents = async (
         )
         closeouts.push(closeout)
         closeoutsByClaim.set(closeout.workClaimRef, closeout)
-        if (closeout.terminalState === "accepted") {
+        if (
+          closeout.terminalState === "accepted" &&
+          event.schema === FLEET_RUN_EXECUTION_EVENT_SCHEMA_V2
+        ) {
           acceptedUnitRefs.add(closeout.unitRef)
         }
       } else if (event.kind === "run_terminal") {
