@@ -29,7 +29,7 @@ import {
   type FleetRunWorkSourceDescriptor,
 } from "./fleet-run-work-source.js"
 
-export const ORCHESTRATION_SCHEMA_VERSION = 11
+export const ORCHESTRATION_SCHEMA_VERSION = 12
 
 export type OrchestrationTaskStatus =
   | "pending"
@@ -1785,6 +1785,7 @@ export class PylonOrchestrationStore {
     this.ensureDispatchContextBreakerColumns()
     this.ensureDispatchContextPausedColumn()
     this.ensureDispatchContextRunnerKindAllowsGrokCli()
+    this.ensureFleetRunWorkerKindAllowsGrok()
     this.ensureFleetRunExecutionOutboxBatchColumn()
     this.ensureWorkClaimMarginalCostClassColumn()
     this.ensureFleetRunSteeringFollowUpColumns()
@@ -2006,6 +2007,83 @@ export class PylonOrchestrationStore {
       CREATE INDEX IF NOT EXISTS idx_pylon_orchestration_contexts_account_lane
         ON pylon_orchestration_dispatch_contexts(account_ref_hash, lane);
     `)
+  }
+
+  /**
+   * FC-5: expand the durable FleetRun worker_kind CHECK to include Grok.
+   *
+   * Fresh databases already have the current constraint. Existing Pylon homes
+   * can predate Grok support while carrying a newer meta version from unrelated
+   * additive migrations, so probe the actual constraint instead of trusting the
+   * coarse schema-version marker. SQLite cannot ALTER a CHECK constraint; an
+   * atomic table rebuild preserves every existing run before remote intake can
+   * import a Grok-only Sarah FleetRun.
+   */
+  private ensureFleetRunWorkerKindAllowsGrok(): void {
+    try {
+      this.db.exec("SAVEPOINT probe_fleet_run_grok_worker_kind")
+      this.db
+        .query(`
+          INSERT INTO pylon_orchestration_fleet_runs
+            (run_ref, record_json, state, dispatch_kind, worker_kind,
+             created_at, updated_at, started_at)
+          VALUES
+            ('__probe_fleet_run_grok__', '{}', 'draft', 'supervised_dispatch',
+             'grok', '1970-01-01T00:00:00.000Z',
+             '1970-01-01T00:00:00.000Z', NULL)
+        `)
+        .run()
+      this.db.exec("ROLLBACK TO probe_fleet_run_grok_worker_kind")
+      this.db.exec("RELEASE probe_fleet_run_grok_worker_kind")
+      return
+    } catch {
+      try {
+        this.db.exec("ROLLBACK TO probe_fleet_run_grok_worker_kind")
+        this.db.exec("RELEASE probe_fleet_run_grok_worker_kind")
+      } catch {
+        // Ignore probe rollback failures; the atomic rebuild below is decisive.
+      }
+    }
+
+    this.db.exec("SAVEPOINT migrate_fleet_run_grok_worker_kind")
+    try {
+      this.db.exec(`
+        CREATE TABLE pylon_orchestration_fleet_runs_v12 (
+          run_ref TEXT PRIMARY KEY,
+          record_json TEXT NOT NULL,
+          state TEXT NOT NULL CHECK (state IN ('draft', 'running', 'paused', 'draining', 'stopped', 'completed')),
+          dispatch_kind TEXT NOT NULL CHECK (dispatch_kind IN ('handoff', 'supervised_dispatch')),
+          worker_kind TEXT NOT NULL CHECK (worker_kind IN ('codex', 'claude', 'grok', 'auto')),
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          started_at TEXT
+        );
+        INSERT INTO pylon_orchestration_fleet_runs_v12 (
+          run_ref, record_json, state, dispatch_kind, worker_kind,
+          created_at, updated_at, started_at
+        )
+        SELECT
+          run_ref, record_json, state, dispatch_kind, worker_kind,
+          created_at, updated_at, started_at
+        FROM pylon_orchestration_fleet_runs;
+        DROP TABLE pylon_orchestration_fleet_runs;
+        ALTER TABLE pylon_orchestration_fleet_runs_v12
+          RENAME TO pylon_orchestration_fleet_runs;
+        CREATE INDEX idx_pylon_orchestration_fleet_runs_state
+          ON pylon_orchestration_fleet_runs(state, updated_at);
+        CREATE INDEX idx_pylon_orchestration_fleet_runs_dispatch
+          ON pylon_orchestration_fleet_runs(dispatch_kind, updated_at);
+      `)
+      this.db.exec("RELEASE migrate_fleet_run_grok_worker_kind")
+    } catch (error) {
+      try {
+        this.db.exec("ROLLBACK TO migrate_fleet_run_grok_worker_kind")
+        this.db.exec("RELEASE migrate_fleet_run_grok_worker_kind")
+      } catch {
+        // Preserve the original migration failure.
+      }
+      throw error
+    }
   }
 
   createFleetRun(input: CreateFleetRunInput): FleetRun {

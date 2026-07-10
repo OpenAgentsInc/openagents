@@ -100,6 +100,57 @@ describe("Pylon supervisor orchestration store", () => {
     expect(indexes.has("idx_pylon_orchestration_dispatch_breakers_lane_account")).toBe(true)
   })
 
+  test("migrates an existing FleetRun table so Sarah can durably import Grok work", () => {
+    const db = new Database(":memory:")
+    db.exec(`
+      CREATE TABLE pylon_orchestration_fleet_runs (
+        run_ref TEXT PRIMARY KEY,
+        record_json TEXT NOT NULL,
+        state TEXT NOT NULL CHECK (state IN ('draft', 'running', 'paused', 'draining', 'stopped', 'completed')),
+        dispatch_kind TEXT NOT NULL CHECK (dispatch_kind IN ('handoff', 'supervised_dispatch')),
+        worker_kind TEXT NOT NULL CHECK (worker_kind IN ('codex', 'claude', 'auto')),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        started_at TEXT
+      );
+      CREATE INDEX idx_pylon_orchestration_fleet_runs_state
+        ON pylon_orchestration_fleet_runs(state, updated_at);
+      CREATE INDEX idx_pylon_orchestration_fleet_runs_dispatch
+        ON pylon_orchestration_fleet_runs(dispatch_kind, updated_at);
+      INSERT INTO pylon_orchestration_fleet_runs
+        (run_ref, record_json, state, dispatch_kind, worker_kind,
+         created_at, updated_at, started_at)
+      VALUES
+        ('fleet_run.legacy', '{"legacy":true}', 'stopped',
+         'supervised_dispatch', 'auto', '2026-07-01T00:00:00.000Z',
+         '2026-07-01T00:00:01.000Z', '2026-07-01T00:00:00.000Z');
+    `)
+
+    const store = createPylonOrchestrationStore(db)
+    const grok = store.createFleetRun({
+      runRef: "fleet_run.sarah.grok_migration_fixture",
+      objective: "Complete the bounded Sarah Grok migration fixture.",
+      workSource: "fixture",
+      targetConcurrency: 1,
+      workerKind: "grok",
+      state: "running",
+      now: new Date("2026-07-10T07:47:00.000Z"),
+    })
+    const legacy = db
+      .query("SELECT record_json, worker_kind FROM pylon_orchestration_fleet_runs WHERE run_ref = 'fleet_run.legacy'")
+      .get() as { record_json: string; worker_kind: string } | null
+    const indexes = new Set(
+      (db.query("SELECT name FROM sqlite_master WHERE type = 'index'").all() as Array<{ name: string }>)
+        .map(row => row.name),
+    )
+
+    expect(grok.workerKind).toBe("grok")
+    expect(store.getFleetRun(grok.runRef)).toEqual(grok)
+    expect(legacy).toEqual({ record_json: '{"legacy":true}', worker_kind: "auto" })
+    expect(indexes.has("idx_pylon_orchestration_fleet_runs_state")).toBe(true)
+    expect(indexes.has("idx_pylon_orchestration_fleet_runs_dispatch")).toBe(true)
+  })
+
   test("persists a dependency DAG and promotes dependents when prerequisites complete", () => {
     const store = createPylonOrchestrationStore(new Database(":memory:"))
 
