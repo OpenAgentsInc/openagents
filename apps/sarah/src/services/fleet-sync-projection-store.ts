@@ -39,9 +39,11 @@ import {
   fleetRunScope,
   type FleetApprovalEntity,
   type FleetAssignmentEntity,
+  type FleetAttemptEntity,
   type FleetCommandOutcomeEntity,
   type FleetInboxFlagEntity,
   type FleetRunEntity,
+  type FleetWorkUnitEntity,
   type FleetWorkerEntity,
   type BootstrapResponse,
   type LogPage,
@@ -873,6 +875,8 @@ const projectionInput = (
   run: FleetRunEntity
   workers: ReadonlyArray<FleetWorkerEntity>
   assignments: ReadonlyArray<FleetAssignmentEntity>
+  workUnits: ReadonlyArray<FleetWorkUnitEntity>
+  attempts: ReadonlyArray<FleetAttemptEntity>
   approvals: ReadonlyArray<FleetApprovalEntity>
   inboxFlags: ReadonlyArray<FleetInboxFlagEntity>
   commandOutcomes: ReadonlyArray<FleetCommandOutcomeEntity>
@@ -880,6 +884,8 @@ const projectionInput = (
   const runs: FleetRunEntity[] = []
   const workers: FleetWorkerEntity[] = []
   const assignments: FleetAssignmentEntity[] = []
+  const workUnits: FleetWorkUnitEntity[] = []
+  const attempts: FleetAttemptEntity[] = []
   const approvals: FleetApprovalEntity[] = []
   const inboxFlags: FleetInboxFlagEntity[] = []
   const commandOutcomes: FleetCommandOutcomeEntity[] = []
@@ -895,6 +901,12 @@ const projectionInput = (
         break
       case FLEET_ASSIGNMENT_ENTITY_TYPE:
         assignments.push(decodeFleetAssignmentEntity(raw))
+        break
+      case FLEET_WORK_UNIT_ENTITY_TYPE:
+        workUnits.push(decodeFleetWorkUnitEntity(raw))
+        break
+      case FLEET_ATTEMPT_ENTITY_TYPE:
+        attempts.push(decodeFleetAttemptEntity(raw))
         break
       case FLEET_APPROVAL_ENTITY_TYPE:
         approvals.push(decodeFleetApprovalEntity(raw))
@@ -913,6 +925,8 @@ const projectionInput = (
     run: runs[0]!,
     workers,
     assignments,
+    workUnits,
+    attempts,
     approvals,
     inboxFlags,
     commandOutcomes,

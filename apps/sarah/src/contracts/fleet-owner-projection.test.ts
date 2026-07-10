@@ -385,6 +385,57 @@ describe("FC-3 direct owner-safe fleet projection", () => {
     expect(planned.closeout.closeoutRef).toBeNull()
   })
 
+  test("keeps unreported failed and stale closeouts open without changing attempt outcome", () => {
+    for (const state of ["failed", "stale"] as const) {
+      const attempt = decodeFleetAttemptEntity({
+        ...retryFailed,
+        attemptRef: `work_claim.no-closeout.${state}`,
+        workUnitRef: `unit.no-closeout.${state}`,
+        state,
+        verification: { truth: "not_reported" },
+        artifactRefs: [],
+        proofRefs: [],
+        authorityReceiptRefs: [],
+        closeoutRef: null,
+        usageEvidence: { truth: "pending" },
+        lastEventRef: `event.pylon.fleet_run.${(
+          state === "failed" ? "5" : "6"
+        ).repeat(24)}`,
+      })
+      const workUnit = decodeFleetWorkUnitEntity({
+        workUnitRef: attempt.workUnitRef,
+        issueRef: null,
+        dependsOnRefs: [],
+        state,
+        latestAttemptRef: attempt.attemptRef,
+        acceptedAttemptRef: null,
+        updatedAt: attempt.updatedAt,
+      })
+      const projection = projectSarahFleetOwnerRun(
+        {
+          run,
+          workUnits: [workUnit],
+          attempts: [attempt],
+          assignments: [assignments[0]!],
+          workers: [],
+          approvals: [],
+          inboxFlags: [],
+        },
+        NOW,
+      )
+      expect(projection.workUnits[0]?.attempts[0]).toMatchObject({
+        state,
+        closeout: {
+          status: "open",
+          closeoutRef: null,
+          closeoutClass: null,
+          summary: "Closeout not reported",
+        },
+      })
+      expect(projection.workUnits[0]?.closeout.status).toBe("open")
+    }
+  })
+
   test("uses server receipt time for freshness and labels remote time audit-only", () => {
     const running = project().workUnits.find(
       (unit) => unit.workUnitRef === "unit.running",

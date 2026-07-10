@@ -34,6 +34,7 @@ const {
   sarahAvatarContinuityProjection,
   sarahOwnerFleetInteractionMode,
   sarahOwnerFleetHostIntents,
+  ownerFleetViewStateFromBrowser,
 } = await import("./main.ts")
 const { sarahEffectNativeTheme } = await import("./theme.ts")
 const sarahCss = readFileSync(new URL("./sarah.css", import.meta.url), "utf8")
@@ -633,6 +634,41 @@ describe("sarah surface consumes the EN catalog (SQ-7 #8624)", () => {
 })
 
 describe("FC-3 owner fleet surface integration", () => {
+  test("hydrates the live browser projection into receipts without a legacy evidence channel", () => {
+    const ownerFleet = ownerFleetViewStateFromBrowser({
+      config: {
+        runRef: fleetProjection.run.runRef,
+        scope: `scope.fleet_run.${fleetProjection.run.runRef}` as never,
+      },
+      connection: {
+        phase: "live",
+        scope: `scope.fleet_run.${fleetProjection.run.runRef}` as never,
+        cursor: 12 as never,
+        connectedAtMs: 100,
+        lastActivityAtMs: 120,
+      },
+      projection: fleetProjection,
+    })
+
+    expect(ownerFleet.closeouts).toMatchObject({
+      status: "ready",
+      receipts: [
+        {
+          cardRef: surfaceAttempt.attemptRef,
+          attemptRef: surfaceAttempt.attemptRef,
+          workUnitRef: surfaceWorkUnit.workUnitRef,
+        },
+      ],
+    })
+    expect(() =>
+      sarahSurfaceView({
+        ...baseState,
+        activePanel: "fleet",
+        ownerFleet,
+      }),
+    ).not.toThrow()
+  })
+
   test("keeps Fleet absent and Blueprint selected without an exact owner run scope", () => {
     const staleFleetSelection = sarahSurfaceView({
       ...baseState,

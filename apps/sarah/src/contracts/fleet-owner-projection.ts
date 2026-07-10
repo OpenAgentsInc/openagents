@@ -466,6 +466,17 @@ const emptyVerification = (): typeof SarahFleetVerification.Type => ({
 const closeoutForAttempt = (
   attempt: typeof FleetAttemptEntity.Type,
 ): typeof SarahFleetCloseout.Type => {
+  // Attempt state is outcome truth, but it is not closeout evidence. Legacy
+  // failed/stale attempts may have no closeout ref, so keep that independent
+  // edge honestly open instead of synthesizing a rejection receipt.
+  if (attempt.closeoutRef === null) {
+    return {
+      status: "open",
+      closeoutRef: null,
+      closeoutClass: null,
+      summary: "Closeout not reported",
+    }
+  }
   if (attempt.state === "succeeded") {
     return {
       status: "accepted",

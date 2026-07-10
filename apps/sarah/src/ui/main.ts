@@ -2686,7 +2686,7 @@ export const mountSarahSurface = (
     }
   })
 
-const ownerFleetViewStateFromBrowser = (
+export const ownerFleetViewStateFromBrowser = (
   state: SarahFleetBrowserViewState,
 ): SarahOwnerFleetViewState => ({
   runRef: state.config.runRef,
@@ -2700,7 +2700,6 @@ const ownerFleetViewStateFromBrowser = (
           status: "ready",
           receipts: projectSarahCodingCloseoutReceipts({
             projection: state.projection,
-            evidence: [],
           }),
         },
   expandedAuditWorkUnitRefs: [],

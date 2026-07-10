@@ -388,7 +388,7 @@ const expectReason = (
 }
 
 describe("Sarah FC-3 fleet entity reducer", () => {
-  test("retains direct attempt rows without mixing them into the legacy projection before atomic wiring", () => {
+  test("projects direct work-unit and attempt rows atomically", () => {
     const state = reduceSarahFleetBootstrapPages(bootstrapPages())
 
     expect(state).toMatchObject({
@@ -408,17 +408,6 @@ describe("Sarah FC-3 fleet entity reducer", () => {
       .map((row) => `${row.entityType}/${row.entityId}`))
 
     const projection = projectSarahFleetProjectionState(state, NOW)
-    const legacyState = reduceSarahFleetBootstrapPages([
-      bootstrapPage(
-        baseEntities.filter(
-          row =>
-            row.entityType !== FLEET_WORK_UNIT_ENTITY_TYPE &&
-            row.entityType !== FLEET_ATTEMPT_ENTITY_TYPE,
-        ),
-        { cursor: 10 },
-      ),
-    ])
-    expect(projection).toEqual(projectSarahFleetProjectionState(legacyState, NOW))
     expect(
       state.entities.filter(
         row =>
@@ -427,7 +416,21 @@ describe("Sarah FC-3 fleet entity reducer", () => {
       ),
     ).toHaveLength(2)
     expect(projection.run.runRef).toBe(runRef)
-    expect(projection.workUnits).toEqual([])
+    expect(projection.workUnits).toHaveLength(1)
+    expect(projection.workUnits[0]).toMatchObject({
+      workUnitRef: workUnit.workUnitRef,
+      state: "running",
+      latestAttemptRef: attempt.attemptRef,
+      assignmentRef: assignment.assignmentRef,
+    })
+    expect(projection.workUnits[0]?.attempts).toHaveLength(1)
+    expect(projection.workUnits[0]?.attempts[0]).toMatchObject({
+      attemptRef: attempt.attemptRef,
+      workUnitRef: workUnit.workUnitRef,
+      state: "running",
+      assignmentRef: assignment.assignmentRef,
+      usageEvidence: { truth: "pending" },
+    })
     expect(projection.workers[0]?.workerRef).toBe(worker.workerId)
     expect(projection.approvals[0]?.approvalRef).toBe(approval.approvalRef)
     expect(projection.commandOutcomes).toEqual([commandOutcome])
@@ -519,7 +522,20 @@ describe("Sarah FC-3 fleet entity reducer", () => {
         (row) => row.entityId === assignment.assignmentRef,
       ),
     ).toMatchObject({ version: 11, postImageJson: null })
-    expect(projectSarahFleetProjectionState(replayed, NOW).workUnits).toEqual([])
+    expect(projectSarahFleetProjectionState(replayed, NOW).workUnits).toMatchObject([
+      {
+        workUnitRef: workUnit.workUnitRef,
+        assignmentRef: assignment.assignmentRef,
+        assignmentStatus: null,
+        attempts: [
+          {
+            attemptRef: attempt.attemptRef,
+            assignmentRef: assignment.assignmentRef,
+            assignmentStatus: null,
+          },
+        ],
+      },
+    ])
     expect(
       projectSarahFleetProjectionState(replayed, NOW).workers[0]?.phase,
     ).toBe("completed")
@@ -986,6 +1002,26 @@ describe("Sarah FC-3 persisted reconnect boundary", () => {
       ),
     ).toHaveLength(2)
     expect(third.projection.run.runRef).toBe(runRef)
+    expect(first.projection.workUnits).toMatchObject([
+      {
+        workUnitRef: workUnit.workUnitRef,
+        latestAttemptRef: attempt.attemptRef,
+        attempts: [{ attemptRef: attempt.attemptRef, state: "running" }],
+      },
+    ])
+    expect(second.projection.workUnits).toMatchObject([
+      {
+        workUnitRef: workUnit.workUnitRef,
+        assignmentStatus: null,
+        attempts: [
+          {
+            attemptRef: attempt.attemptRef,
+            assignmentStatus: null,
+          },
+        ],
+      },
+    ])
+    expect(third.projection).toEqual(second.projection)
     expect(JSON.stringify(resumeInputs)).not.toContain("latest")
   })
 

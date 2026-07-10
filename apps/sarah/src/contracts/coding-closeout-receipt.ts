@@ -248,7 +248,9 @@ const approvalStatus = (
   approvals: ReadonlyArray<FleetApproval>,
   approvalRefs: ReadonlyArray<string>,
 ): typeof ReceiptApprovalStatus.Type => {
-  if (approvalRefs.length === 0) return "not_required"
+  // An empty association means this attempt has no exact approval evidence.
+  // It does not prove that approval was unnecessary.
+  if (approvalRefs.length === 0) return "not_reported"
   if (approvals.length !== approvalRefs.length) return "not_reported"
   if (approvals.some((approval) => approval.status === "denied")) {
     return "denied"

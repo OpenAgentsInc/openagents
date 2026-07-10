@@ -86,7 +86,7 @@ const failedWithoutVerification = decodeFleetAttemptEntity({
   artifactRefs: [],
   proofRefs: ["proof.receipt.failed"],
   authorityReceiptRefs: [],
-  closeoutRef: "closeout.receipt.failed",
+  closeoutRef: null,
   usageEvidence: { truth: "pending" },
   blockerRefs: ["blocker.receipt.failed"],
   lastEventRef: `event.pylon.fleet_run.${"2".repeat(24)}`,
@@ -305,6 +305,8 @@ describe("FC-3 attempt-backed coding closeout receipt", () => {
       usageEvidence: { truth: "exact", totalTokens: 13 },
     })
     expect(codex.sections[4]).toMatchObject({
+      approvalStatus: "not_reported",
+      approvalRefs: [],
       authorityStatus: "reported",
       authorityReceiptRefs: ["authority.receipt.codex"],
     })
@@ -314,7 +316,10 @@ describe("FC-3 attempt-backed coding closeout receipt", () => {
     const failed = receipts().find(
       (receipt) => receipt.attemptRef === failedWithoutVerification.attemptRef,
     )!
-    expect(failed.sections[0].status).toBe("failed")
+    expect(failed.sections[0]).toMatchObject({
+      status: "failed",
+      closeoutRef: null,
+    })
     expect(failed.sections[1]).toMatchObject({
       status: "not_reported",
       verificationRef: null,
@@ -323,6 +328,10 @@ describe("FC-3 attempt-backed coding closeout receipt", () => {
       status: "not_reported",
       artifactRefs: [],
       proofRefs: ["proof.receipt.failed"],
+    })
+    expect(failed.sections[4]).toMatchObject({
+      approvalStatus: "not_reported",
+      approvalRefs: [],
     })
 
     const pending = receipts().find(
