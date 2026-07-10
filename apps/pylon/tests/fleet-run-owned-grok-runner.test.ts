@@ -341,10 +341,70 @@ describe("Pylon-owned exact Grok claimed-work adapter", () => {
     let verifierRuns = 0
     let port!: ReturnType<typeof createPylonOwnedGrokClaimedWorkPort>
     let earlySteer: ReturnType<typeof port.applySteer> | null = null
+    const exactSteerFor = (targetAssignmentRef: string) => ({
+      pylonRef: "pylon.public.grok.steer",
+      runRef: request.run.runRef,
+      claimRef: "claim.sarah_fleet_run.grok.steer",
+      workUnitRef: request.workUnit.workUnitRef,
+      workClaimRef: request.claim.claimRef,
+      assignmentRef: targetAssignmentRef,
+      intent: {
+        seq: 17,
+        intentId: "intent.grok.steer.exact",
+        completionContractRef:
+          "contract.pylon.fleet_steering_completion.grok_exact",
+      },
+      body: privateBody,
+      bodyRef: null,
+    } as const)
+    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    store.createFleetRun({
+      runRef: run.runRef,
+      objective: run.objective,
+      workSource: run.workSource,
+      targetConcurrency: run.targetConcurrency,
+      workerKind: run.workerKind,
+      state: "running",
+      now: fixedNow,
+    })
+    const storedClaim = store.tryClaimWorkUnit({
+      claimRef: request.claim.claimRef,
+      workUnitRef: request.claim.workUnitRef,
+      runRef: run.runRef,
+      workerAccountRef: accountRef,
+      ttl: 60_000,
+      now: fixedNow,
+    })
+    if (storedClaim === null) throw new Error("failed to seed Grok steer claim")
+    store.updateWorkClaimState(storedClaim.claimRef, "in_progress", fixedNow)
+    const steeringStore = new Proxy(store, {
+      get(target, property, receiver) {
+        if (property !== "updateWorkClaimAssignmentRef") {
+          return Reflect.get(target, property, receiver)
+        }
+        return (
+          claimRef: string,
+          targetAssignmentRef: string,
+          observedAt: Date,
+        ) => {
+          const result = target.updateWorkClaimAssignmentRef(
+            claimRef,
+            targetAssignmentRef,
+            observedAt,
+          )
+          assignmentRef = targetAssignmentRef
+          // Reproduce the exact store-binding race: a pending server steer
+          // stops deferring the instant assignmentRef becomes non-null.
+          earlySteer = port.applySteer(exactSteerFor(targetAssignmentRef))
+          return result
+        }
+      },
+    })
 
     try {
       port = createPylonOwnedGrokClaimedWorkPort({
         summary,
+        store: steeringStore,
         now: () => fixedNow,
         loadRegistry: async () => [accountFor(accountHome, accountRef)],
         createExecutor: () => ({
@@ -373,31 +433,11 @@ describe("Pylon-owned exact Grok claimed-work adapter", () => {
           return { exitCode: 0, timedOut: false }
         },
       })
-      const exactSteerFor = (targetAssignmentRef: string) => ({
-        pylonRef: "pylon.public.grok.steer",
-        runRef: request.run.runRef,
-        claimRef: "claim.sarah_fleet_run.grok.steer",
-        workUnitRef: request.workUnit.workUnitRef,
-        workClaimRef: request.claim.claimRef,
-        assignmentRef: targetAssignmentRef,
-        intent: {
-          seq: 17,
-          intentId: "intent.grok.steer.exact",
-          completionContractRef:
-            "contract.pylon.fleet_steering_completion.grok_exact",
-        },
-        body: privateBody,
-        bodyRef: null,
-      } as const)
       const dispatched = port.dispatch({
         ...request,
         onLifecycle: async event => {
           if (event.event === "assignment_run.runtime_started") {
-            assignmentRef = event.assignmentRef ?? ""
-            // Reproduce the tightest live race: the steer is accepted as soon
-            // as assignment identity is projected, before the initial CLI turn
-            // has started. It must queue behind that initial turn.
-            earlySteer = port.applySteer(exactSteerFor(assignmentRef))
+            expect(event.assignmentRef).toBe(assignmentRef)
           }
         },
       })

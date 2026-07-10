@@ -1010,66 +1010,6 @@ export function createPylonOwnedGrokClaimedWorkPort(
       proofRefs: [],
       authorityReceiptRefs: [request.claim.claimRef],
     }
-    try {
-      if (input.store !== undefined) {
-        const current = input.store.getWorkClaim(request.claim.claimRef)
-        if (
-          current === null ||
-          current.runRef !== request.run.runRef ||
-          current.workUnitRef !== request.workUnit.workUnitRef ||
-          current.workerAccountRef !== request.accountRef ||
-          current.state !== "in_progress" ||
-          (current.assignmentRef !== null && current.assignmentRef !== assignmentRef)
-        ) throw new Error("canonical Grok claim changed before execution")
-        // Persist the deterministic local assignment ref in the ONE canonical
-        // claim registry before the CLI starts. A daemon restart can therefore
-        // find the refs-only receipt instead of minting a second execution.
-        input.store.updateWorkClaimAssignmentRef(request.claim.claimRef, assignmentRef, now)
-      }
-      await writeReceipt(input.summary, running)
-    } catch {
-      return fixedResult({
-        assignmentRef,
-        accountRefHash,
-        blockerRef: PYLON_OWNED_GROK_RUNNER_BLOCKERS.receiptInvalid,
-        now,
-        status: "failed",
-        summary: "The durable Grok execution receipt could not be written.",
-      })
-    }
-
-    let failureRef: string | null = null
-    let wallClockMs: number | null = null
-    const emitExecutorLifecycle = async (
-      event: "assignment_run.runtime_started" | "assignment_run.runtime_progress",
-    ): Promise<void> => {
-      if (request.onLifecycle === undefined) return
-      try {
-        await request.onLifecycle({
-          schema: "openagents.pylon.assignment_run_lifecycle_event.v0.1",
-          event,
-          observedAt: safeNow().toISOString(),
-          assignmentRef,
-          accountRefHash,
-          status: "running",
-          phase: "runtime_active",
-        })
-      } catch {
-        // Projection is durable/fail-soft and cannot become execution authority.
-      }
-    }
-    let lifecycleClosed = false
-    let lifecycleTail = Promise.resolve<void>(undefined)
-    const queueExecutorLifecycle = (
-      event: "assignment_run.runtime_started" | "assignment_run.runtime_progress",
-    ): Promise<void> => {
-      const delivery = lifecycleTail.then(async () => {
-        if (lifecycleClosed) return
-        await emitExecutorLifecycle(event)
-      })
-      lifecycleTail = delivery.catch(() => undefined)
-      return delivery
-    }
     const pin: GrokTurnPin = {
       claimRef: request.claim.claimRef,
       workUnitRef: request.workUnit.workUnitRef,
@@ -1125,10 +1065,74 @@ export function createPylonOwnedGrokClaimedWorkPort(
           PYLON_OWNED_GROK_RUNNER_BLOCKERS.executionFailed
       })
     active.tail = initialTurn
+    // Bind live control before publishing assignment identity into the one
+    // canonical claim store. A pending server steer stops deferring as soon as
+    // that assignment ref appears, so there must be no unbound local window.
     activeExecutions.set(assignmentRef, active)
-    // Bind live control before projecting the assignment. Sarah can only steer
-    // once that projection is visible, so the exact local target must already
-    // exist when the first runtime_started event leaves this process.
+    try {
+      if (input.store !== undefined) {
+        const current = input.store.getWorkClaim(request.claim.claimRef)
+        if (
+          current === null ||
+          current.runRef !== request.run.runRef ||
+          current.workUnitRef !== request.workUnit.workUnitRef ||
+          current.workerAccountRef !== request.accountRef ||
+          current.state !== "in_progress" ||
+          (current.assignmentRef !== null && current.assignmentRef !== assignmentRef)
+        ) throw new Error("canonical Grok claim changed before execution")
+        // Persist the deterministic local assignment ref in the ONE canonical
+        // claim registry before the CLI starts. A daemon restart can therefore
+        // find the refs-only receipt instead of minting a second execution.
+        input.store.updateWorkClaimAssignmentRef(request.claim.claimRef, assignmentRef, now)
+      }
+      await writeReceipt(input.summary, running)
+    } catch {
+      active.phase = "closed"
+      if (activeExecutions.get(assignmentRef) === active) {
+        activeExecutions.delete(assignmentRef)
+      }
+      return fixedResult({
+        assignmentRef,
+        accountRefHash,
+        blockerRef: PYLON_OWNED_GROK_RUNNER_BLOCKERS.receiptInvalid,
+        now,
+        status: "failed",
+        summary: "The durable Grok execution receipt could not be written.",
+      })
+    }
+
+    let failureRef: string | null = null
+    let wallClockMs: number | null = null
+    const emitExecutorLifecycle = async (
+      event: "assignment_run.runtime_started" | "assignment_run.runtime_progress",
+    ): Promise<void> => {
+      if (request.onLifecycle === undefined) return
+      try {
+        await request.onLifecycle({
+          schema: "openagents.pylon.assignment_run_lifecycle_event.v0.1",
+          event,
+          observedAt: safeNow().toISOString(),
+          assignmentRef,
+          accountRefHash,
+          status: "running",
+          phase: "runtime_active",
+        })
+      } catch {
+        // Projection is durable/fail-soft and cannot become execution authority.
+      }
+    }
+    let lifecycleClosed = false
+    let lifecycleTail = Promise.resolve<void>(undefined)
+    const queueExecutorLifecycle = (
+      event: "assignment_run.runtime_started" | "assignment_run.runtime_progress",
+    ): Promise<void> => {
+      const delivery = lifecycleTail.then(async () => {
+        if (lifecycleClosed) return
+        await emitExecutorLifecycle(event)
+      })
+      lifecycleTail = delivery.catch(() => undefined)
+      return delivery
+    }
     await queueExecutorLifecycle("assignment_run.runtime_started")
     const lifecycleHeartbeat = setInterval(() => {
       void queueExecutorLifecycle("assignment_run.runtime_progress")
