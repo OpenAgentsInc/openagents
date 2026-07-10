@@ -61,12 +61,31 @@ export const surfaceModeOptions: ReadonlyArray<SurfaceModeOption> = [
   { id: "sarah", label: "Sarah" },
 ]
 
+/** Example in-app-purchase price points for the minerals fly-up sheet
+ * (owner direction 2026-07-09). DEMO options only — no StoreKit wiring yet. */
+export interface MineralPack {
+  readonly id: string
+  readonly label: string
+  readonly price: string
+}
+
+export const mineralPacks: ReadonlyArray<MineralPack> = [
+  { id: "pack-100", label: "100 Minerals", price: "$0.99" },
+  { id: "pack-550", label: "550 Minerals", price: "$4.99" },
+  { id: "pack-1200", label: "1,200 Minerals", price: "$9.99" },
+  { id: "pack-3000", label: "3,000 Minerals", price: "$19.99" },
+]
+
 export interface HomeState {
   readonly drawerOpen: boolean
   readonly surfaceMode: SurfaceMode
   /** Composer-tap takeover: fullscreen Sarah reply video WITH audio (owner
    * direction 2026-07-09); dismissed on play-to-end or tap. */
   readonly askVideoPlaying: boolean
+  /** Liquid Glass fly-up sheet (bottom third) offering example mineral
+   * packs; opened by the shell midway through the ask video. */
+  readonly mineralsSheetOpen: boolean
+  readonly lastMineralPackId: string | undefined
   /** The active conversation; undefined = fresh "new chat" surface. */
   readonly activeRecentId: string | undefined
   readonly recents: ReadonlyArray<RecentChat>
@@ -90,6 +109,8 @@ export const initialHomeState: HomeState = {
   drawerOpen: false,
   surfaceMode: "openagents",
   askVideoPlaying: false,
+  mineralsSheetOpen: false,
+  lastMineralPackId: undefined,
   activeRecentId: "welcome",
   recents: seedRecents,
   composerTaps: 0,
@@ -103,7 +124,7 @@ export const initialHomeState: HomeState = {
  * the owner can SEE the over-the-air bundle swap land (embedded build 107
  * ships the tag below; a published OTA with a bumped tag should appear within
  * ~3s via the temporary poll loop and reload). Rendered in the drawer footer. */
-export const BUNDLE_TAG = "2026-07-09.embedded-110"
+export const BUNDLE_TAG = "2026-07-09.embedded-111"
 
 // ---------------------------------------------------------------------------
 // Typed intents — the ONLY way anything (EN tree, SwiftUI chrome, scrim)
@@ -124,6 +145,12 @@ export const ChatPillPressed = defineIntent("ChatPillPressed", EmptyPayload)
 export const ComposerPressed = defineIntent("ComposerPressed", EmptyPayload)
 export const MicPressed = defineIntent("MicPressed", EmptyPayload)
 export const AskVideoDismissed = defineIntent("AskVideoDismissed", EmptyPayload)
+export const MineralsSheetOpened = defineIntent("MineralsSheetOpened", EmptyPayload)
+export const MineralsSheetDismissed = defineIntent("MineralsSheetDismissed", EmptyPayload)
+export const MineralPackSelected = defineIntent(
+  "MineralPackSelected",
+  Schema.Struct({ id: Schema.NonEmptyString }),
+)
 export const SurfaceModeSelected = defineIntent(
   "SurfaceModeSelected",
   Schema.Struct({ mode: Schema.Literals(["openagents", "sarah"]) }),
@@ -140,6 +167,9 @@ export const homeIntentDefinitions = [
   MicPressed,
   SurfaceModeSelected,
   AskVideoDismissed,
+  MineralsSheetOpened,
+  MineralsSheetDismissed,
+  MineralPackSelected,
 ] as const
 
 export const drawerToggledRef = IntentRef("DrawerToggled", StaticPayload({}))
@@ -177,9 +207,10 @@ export const activeRecentTitle = (state: HomeState): string => {
 /** Main surface, rendered under the floating glass chrome. DELIBERATELY
  * EMPTY (owner direction 2026-07-09: no status text on the main surface) —
  * just the surface itself: opaque Protoss background in "openagents" mode;
- * TRANSPARENT in "sarah" mode so the fullscreen demo video (a shell layer
- * below) shows through and the glass chrome floats over it. Conversation
- * content mounts here when the Sarah surface lands. */
+ * TRANSPARENT in "sarah" mode AND while the ask video plays, so the
+ * fullscreen video (a shell layer below) shows through and the glass chrome
+ * floats over it. Conversation content mounts here when the Sarah surface
+ * lands. */
 export const renderContentView = (state: HomeState): View =>
   Stack(
     {
@@ -188,7 +219,7 @@ export const renderContentView = (state: HomeState): View =>
       style: {
         width: "full",
         height: "full",
-        ...(state.surfaceMode === "openagents"
+        ...(state.surfaceMode === "openagents" && !state.askVideoPlaying
           ? { backgroundColor: "background" as const }
           : {}),
       },
@@ -329,6 +360,25 @@ export const makeHomeHandlers = (
     SubscriptionRef.update(state, (current) => ({
       ...current,
       askVideoPlaying: false,
+      // Ending the takeover also retires its sheet; the original surface
+      // (Sarah loop / black) resumes untouched underneath.
+      mineralsSheetOpen: false,
+    })),
+  MineralsSheetOpened: () =>
+    SubscriptionRef.update(state, (current) => ({
+      ...current,
+      mineralsSheetOpen: true,
+    })),
+  MineralsSheetDismissed: () =>
+    SubscriptionRef.update(state, (current) => ({
+      ...current,
+      mineralsSheetOpen: false,
+    })),
+  MineralPackSelected: (payload) =>
+    SubscriptionRef.update(state, (current) => ({
+      ...current,
+      mineralsSheetOpen: false,
+      lastMineralPackId: payload.id,
     })),
 })
 
@@ -344,6 +394,9 @@ export interface ChromeDispatchers {
   readonly pressMic: () => void
   readonly selectSurfaceMode: (mode: SurfaceMode) => void
   readonly dismissAskVideo: () => void
+  readonly openMineralsSheet: () => void
+  readonly dismissMineralsSheet: () => void
+  readonly selectMineralPack: (id: string) => void
 }
 
 export interface HomeProgramHandle {
@@ -388,6 +441,11 @@ export const buildHomeProgram = (): HomeProgramHandle =>
             fireRef(IntentRef("SurfaceModeSelected", StaticPayload({ mode })))
           },
           dismissAskVideo: fire("AskVideoDismissed"),
+          openMineralsSheet: fire("MineralsSheetOpened"),
+          dismissMineralsSheet: fire("MineralsSheetDismissed"),
+          selectMineralPack: (id) => {
+            fireRef(IntentRef("MineralPackSelected", StaticPayload({ id })))
+          },
         },
       }
     }),

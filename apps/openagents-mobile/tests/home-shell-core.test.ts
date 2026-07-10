@@ -108,7 +108,7 @@ describe("contract openagents_mobile.home_shell.view_program.v1", () => {
       expect(serialized).toContain(recent.title)
     }
     expect(serialized).toContain('"label":"Settings"')
-    expect(serialized).toContain("Bundle 2026-07-09.embedded-110")
+    expect(serialized).toContain("Bundle 2026-07-09.embedded-111")
     // The active recent renders as the highlighted (secondary) row; the
     // others are ghost rows.
     expect(serialized).toContain('"backgroundColor":"surfaceRaised"')
@@ -137,6 +137,12 @@ describe("contract openagents_mobile.home_shell.view_program.v1", () => {
       renderContentView({ ...initialHomeState, surfaceMode: "sarah" }),
     )
     expect(transparent).not.toContain('"backgroundColor":"background"')
+    // The ask-video takeover ALSO clears the surface so the video (a shell
+    // layer below, under the chrome) shows through.
+    const askTransparent = JSON.stringify(
+      renderContentView({ ...initialHomeState, askVideoPlaying: true }),
+    )
+    expect(askTransparent).not.toContain('"backgroundColor":"background"')
 
     // Typed round-trip through the REAL renderer: the SwiftUI menu selection
     // (exact shell wiring: chrome.selectSurfaceMode) re-renders the tree.
@@ -228,9 +234,25 @@ describe("contract openagents_mobile.home_shell.view_program.v1", () => {
           // Composer tap also starts the ask-video takeover (audio-on reply
           // video, owner direction); dismissal is a typed intent.
           expect(afterTaps.askVideoPlaying).toBe(true)
+
+          // Minerals fly-up (owner direction): shell opens it midway through
+          // the video; selecting a pack (or Not now) closes it; ending the
+          // video closes BOTH so the original surface resumes.
+          program.chrome.openMineralsSheet()
+          yield* settle
+          expect((yield* lastState(program)).mineralsSheetOpen).toBe(true)
+          program.chrome.selectMineralPack("pack-550")
+          yield* settle
+          const afterPack = yield* lastState(program)
+          expect(afterPack.mineralsSheetOpen).toBe(false)
+          expect(afterPack.lastMineralPackId).toBe("pack-550")
+          program.chrome.openMineralsSheet()
+          yield* settle
           program.chrome.dismissAskVideo()
           yield* settle
-          expect((yield* lastState(program)).askVideoPlaying).toBe(false)
+          const afterEnd = yield* lastState(program)
+          expect(afterEnd.askVideoPlaying).toBe(false)
+          expect(afterEnd.mineralsSheetOpen).toBe(false)
 
           yield* content.unmount
           yield* drawer.unmount

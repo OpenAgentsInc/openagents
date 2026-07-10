@@ -17,6 +17,7 @@ import { khalaTheme } from "@effect-native/tokens"
 import {
   loadGlassComposer,
   loadGlassIconButton,
+  loadGlassOptionSheet,
   loadGlassPill,
 } from "openagents-liquid-glass"
 import { EffectNativeHost } from "../effect-native/effect-native-host"
@@ -24,6 +25,7 @@ import {
   buildHomeProgram,
   chromeProps,
   initialHomeState,
+  mineralPacks,
   renderContentView,
   renderDrawerView,
   surfaceModeOptions,
@@ -60,6 +62,7 @@ const askAnythingVideo = require("../../assets/videos/ask-anything.mp4") as numb
 const GlassIconButton = Platform.OS === "ios" ? loadGlassIconButton() : undefined
 const GlassPill = Platform.OS === "ios" ? loadGlassPill() : undefined
 const GlassComposer = Platform.OS === "ios" ? loadGlassComposer() : undefined
+const GlassOptionSheet = Platform.OS === "ios" ? loadGlassOptionSheet() : undefined
 
 const enPlatform = Platform.OS === "android" ? ("android" as const) : ("ios" as const)
 
@@ -106,12 +109,43 @@ export const HomeScreen = () => {
   }, [askPlaying, askPlayer])
   useEffect(() => {
     const subscription = askPlayer.addListener("playToEnd", () => {
+      // Video over -> takeover ends; the ORIGINAL surface (Sarah loop /
+      // black) resumes underneath (owner direction).
       program.chrome.dismissAskVideo()
     })
     return () => {
       subscription.remove()
     }
   }, [askPlayer, program])
+
+  // Midway through the ask video (4s of the 8s clip) the minerals sheet
+  // flies up from the bottom (typed MineralsSheetOpened intent).
+  useEffect(() => {
+    if (!askPlaying) return
+    const timer = setTimeout(() => {
+      program.chrome.openMineralsSheet()
+    }, 4000)
+    return () => {
+      clearTimeout(timer)
+    }
+  }, [askPlaying, program])
+
+  // Fly-up animation for the minerals sheet (host machinery; content is the
+  // SwiftUI glass island).
+  const sheetOpen = homeState.mineralsSheetOpen
+  const sheetY = useRef(new Animated.Value(420)).current
+  useEffect(() => {
+    if (sheetOpen) {
+      sheetY.setValue(420)
+      Animated.spring(sheetY, {
+        toValue: 0,
+        useNativeDriver: true,
+        damping: 20,
+        stiffness: 180,
+        mass: 0.9,
+      }).start()
+    }
+  }, [sheetOpen, sheetY])
 
   useEffect(() => {
     if (sarahMode) {
@@ -190,9 +224,37 @@ export const HomeScreen = () => {
           />
         </Animated.View>
       ) : null}
-      <SafeAreaView edges={["top"]} style={{ flex: 1 }}>
-      {/* 1. EN content surface */}
-      <RNView style={{ flex: 1 }}>
+      {/* 0b. "Ask anything" reply video — WITH audio, UNDER the chrome
+          (same layering as the Sarah loop, owner direction); tap outside the
+          chrome dismisses; auto-dismiss on play-to-end resumes the original
+          surface underneath. */}
+      {askPlaying ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Dismiss video"
+          onPress={program.chrome.dismissAskVideo}
+          style={{
+            position: "absolute",
+            top: 0,
+            bottom: 0,
+            left: 0,
+            right: 0,
+            backgroundColor: khalaTheme.color.background,
+          }}
+        >
+          <VideoView
+            player={askPlayer}
+            style={{ flex: 1 }}
+            contentFit="cover"
+            nativeControls={false}
+          />
+        </Pressable>
+      ) : null}
+      <SafeAreaView edges={["top"]} style={{ flex: 1 }} pointerEvents="box-none">
+      {/* 1. EN content surface (touch-transparent while the ask video plays
+          so taps reach the video's dismiss Pressable; the EN surface is
+          content-empty by owner direction, so nothing loses interactivity) */}
+      <RNView style={{ flex: 1 }} pointerEvents={askPlaying ? "none" : "auto"}>
         <EffectNativeHost
           viewStream={program.contentViewStream}
           report={program.report}
@@ -370,30 +432,82 @@ export const HomeScreen = () => {
         </RNView>
       ) : null}
       </SafeAreaView>
-      {/* 4. "Ask anything" takeover — fullscreen reply video WITH audio,
-          above everything; tap anywhere to dismiss (typed intent), auto-
-          dismiss on play-to-end. */}
-      {askPlaying ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Dismiss video"
-          onPress={program.chrome.dismissAskVideo}
+      {/* 4. Minerals fly-up sheet — Liquid Glass panel over the bottom
+          third; opened midway through the ask video; options dispatch typed
+          MineralPackSelected / MineralsSheetDismissed intents. */}
+      {sheetOpen ? (
+        <Animated.View
           style={{
             position: "absolute",
-            top: 0,
-            bottom: 0,
-            left: 0,
-            right: 0,
-            backgroundColor: khalaTheme.color.background,
+            left: 8,
+            right: 8,
+            bottom: insets.bottom + 8,
+            height: 340,
+            transform: [{ translateY: sheetY }],
           }}
         >
-          <VideoView
-            player={askPlayer}
-            style={{ flex: 1 }}
-            contentFit="cover"
-            nativeControls={false}
-          />
-        </Pressable>
+          {GlassOptionSheet === undefined ? (
+            <RNView
+              style={{
+                flex: 1,
+                borderRadius: 28,
+                padding: 16,
+                gap: 8,
+                ...fallbackChromeStyle,
+              }}
+            >
+              <RNText
+                style={{
+                  color: khalaTheme.color.textPrimary,
+                  fontWeight: "700",
+                  textAlign: "center",
+                }}
+              >
+                Buy Minerals
+              </RNText>
+              {mineralPacks.map((pack) => (
+                <Pressable
+                  key={pack.id}
+                  accessibilityRole="button"
+                  accessibilityLabel={pack.label}
+                  onPress={() => program.chrome.selectMineralPack(pack.id)}
+                  style={{
+                    height: 44,
+                    borderRadius: 14,
+                    paddingHorizontal: 16,
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    backgroundColor: "rgba(255, 255, 255, 0.07)",
+                  }}
+                >
+                  <RNText style={{ color: khalaTheme.color.textPrimary, fontWeight: "600" }}>
+                    {pack.label}
+                  </RNText>
+                  <RNText style={{ color: khalaTheme.color.accent, fontWeight: "600" }}>
+                    {pack.price}
+                  </RNText>
+                </Pressable>
+              ))}
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Not now"
+                onPress={program.chrome.dismissMineralsSheet}
+                style={{ height: 36, alignItems: "center", justifyContent: "center" }}
+              >
+                <RNText style={{ color: khalaTheme.color.textMuted }}>Not now</RNText>
+              </Pressable>
+            </RNView>
+          ) : (
+            <GlassOptionSheet
+              title="Buy Minerals"
+              options={mineralPacks}
+              onSelect={(event) => program.chrome.selectMineralPack(event.nativeEvent.id)}
+              onDismiss={program.chrome.dismissMineralsSheet}
+              style={{ flex: 1 }}
+            />
+          )}
+        </Animated.View>
       ) : null}
     </RNView>
   )

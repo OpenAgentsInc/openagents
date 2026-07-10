@@ -246,3 +246,99 @@ struct GlassComposerRoot: View {
     .frame(maxWidth: .infinity, maxHeight: .infinity)
   }
 }
+
+// MARK: - GlassOptionSheet (bottom fly-up menu)
+
+struct GlassSheetOption: Identifiable {
+  let id: String
+  let label: String
+  let price: String
+}
+
+final class GlassOptionSheetState: ObservableObject {
+  @Published var title: String = ""
+  @Published var options: [GlassSheetOption] = []
+}
+
+final class GlassOptionSheetView: ExpoView {
+  let state = GlassOptionSheetState()
+  let onSelect = EventDispatcher()
+  let onDismiss = EventDispatcher()
+
+  required init(appContext: AppContext? = nil) {
+    super.init(appContext: appContext)
+    embed(
+      GlassOptionSheetRoot(
+        state: state,
+        select: { [weak self] id in self?.onSelect(["id": id]) },
+        dismiss: { [weak self] in self?.onDismiss([:]) }
+      ),
+      in: self
+    )
+  }
+}
+
+struct GlassOptionSheetRoot: View {
+  @ObservedObject var state: GlassOptionSheetState
+  let select: (String) -> Void
+  let dismiss: () -> Void
+
+  private func row(_ option: GlassSheetOption) -> some View {
+    Button(action: { select(option.id) }) {
+      HStack {
+        Text(option.label)
+          .font(.system(size: 16, weight: .semibold))
+          .foregroundStyle(.white)
+        Spacer()
+        Text(option.price)
+          .font(.system(size: 15, weight: .semibold))
+          .foregroundStyle(oaAccent)
+      }
+      .padding(.horizontal, 16)
+      .frame(height: 44)
+      .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 14))
+    }
+  }
+
+  private var panel: some View {
+    VStack(spacing: 10) {
+      Capsule()
+        .fill(.white.opacity(0.3))
+        .frame(width: 36, height: 5)
+        .padding(.top, 10)
+      Text(state.title)
+        .font(.system(size: 17, weight: .bold))
+        .foregroundStyle(.white)
+        .padding(.bottom, 2)
+      ForEach(state.options) { option in
+        row(option)
+      }
+      Button(action: dismiss) {
+        Text("Not now")
+          .font(.system(size: 15, weight: .medium))
+          .foregroundStyle(.white.opacity(0.6))
+          .frame(height: 36)
+      }
+      Spacer(minLength: 0)
+    }
+    .padding(.horizontal, 16)
+    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+  }
+
+  var body: some View {
+    Group {
+      if #available(iOS 26.0, *) {
+        panel
+          .glassEffect(.regular.tint(oaAccent.opacity(0.12)), in: .rect(cornerRadius: 28))
+      } else {
+        panel
+          .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 28))
+          .overlay(
+            RoundedRectangle(cornerRadius: 28)
+              .stroke(oaAccent.opacity(0.3), lineWidth: 1)
+          )
+      }
+    }
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+  }
+}

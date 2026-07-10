@@ -59,6 +59,23 @@ public class OpenAgentsLiquidGlassModule: Module {
       }
     }
 
+    View(GlassOptionSheetView.self) {
+      ViewName("GlassOptionSheet")
+
+      Events("onSelect", "onDismiss")
+
+      Prop("title") { (view: GlassOptionSheetView, title: String) in
+        view.state.title = title
+      }
+
+      Prop("options") { (view: GlassOptionSheetView, options: [[String: String]]) in
+        view.state.options = options.compactMap { entry in
+          guard let id = entry["id"], let label = entry["label"] else { return nil }
+          return GlassSheetOption(id: id, label: label, price: entry["price"] ?? "")
+        }
+      }
+    }
+
     View(GlassComposerView.self) {
       ViewName("GlassComposer")
 

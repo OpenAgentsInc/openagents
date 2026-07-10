@@ -60,3 +60,20 @@ export const loadGlassPill = (): React.ComponentType<GlassPillProps> | undefined
 
 export const loadGlassComposer = (): React.ComponentType<GlassComposerProps> | undefined =>
   load<GlassComposerProps>("GlassComposer")
+
+export interface GlassSheetOptionEntry {
+  readonly id: string
+  readonly label: string
+  readonly price: string
+}
+
+export interface GlassOptionSheetProps {
+  readonly title: string
+  readonly options: ReadonlyArray<GlassSheetOptionEntry>
+  readonly onSelect?: (event: { nativeEvent: { id: string } }) => void
+  readonly onDismiss?: () => void
+  readonly style?: Record<string, unknown>
+}
+
+export const loadGlassOptionSheet = (): React.ComponentType<GlassOptionSheetProps> | undefined =>
+  load<GlassOptionSheetProps>("GlassOptionSheet")
