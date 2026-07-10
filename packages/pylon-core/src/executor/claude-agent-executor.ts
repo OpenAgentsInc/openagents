@@ -82,6 +82,22 @@ export type ClaudeAgentRunOutcome =
   | "workspace_escape_blocked"
   | "refused"
 
+// Closed, public-safe error vocabulary emitted by SDK assistant messages.
+// Never widen this from arbitrary provider text: these values can be carried
+// into local closeout classification without exposing prompts, credentials,
+// paths, or provider response bodies.
+export type ClaudeAgentSdkErrorCode =
+  | "authentication_failed"
+  | "oauth_org_not_allowed"
+  | "billing_error"
+  | "rate_limit"
+  | "overloaded"
+  | "invalid_request"
+  | "model_not_found"
+  | "server_error"
+  | "unknown"
+  | "max_output_tokens"
+
 export type ClaudeAgentTurnUsage = {
   inputTokens: number
   cachedInputTokens: number
@@ -94,6 +110,9 @@ export type ClaudeAgentRunResult = {
   editedFileCount: number
   commandCount: number
   sessionRef: string | null
+  // Present only when the SDK emitted one of its closed safe error codes.
+  // Custom runners may omit it; the executor then retains the generic refusal.
+  failureCode?: ClaudeAgentSdkErrorCode | null
   // Cumulative exact token usage for the Claude Agent SDK session, read from
   // the SDK `result` message. `null` when the SDK did not surface usage.
   usage: ClaudeAgentTurnUsage | null
@@ -145,6 +164,26 @@ const DEFAULT_MAX_TURNS = 16
 const MAX_MAX_TURNS = 50
 const DEFAULT_TIMEOUT_SECONDS = 300
 const MAX_TIMEOUT_SECONDS = 1200
+
+const CLAUDE_AGENT_SDK_ERROR_CODES = new Set<ClaudeAgentSdkErrorCode>([
+  "authentication_failed",
+  "oauth_org_not_allowed",
+  "billing_error",
+  "rate_limit",
+  "overloaded",
+  "invalid_request",
+  "model_not_found",
+  "server_error",
+  "unknown",
+  "max_output_tokens",
+])
+
+function claudeAgentSdkErrorCodeFrom(value: unknown): ClaudeAgentSdkErrorCode | null {
+  return typeof value === "string" &&
+      CLAUDE_AGENT_SDK_ERROR_CODES.has(value as ClaudeAgentSdkErrorCode)
+    ? value as ClaudeAgentSdkErrorCode
+    : null
+}
 
 const CLAUDE_AGENT_FIXTURES: Record<string, ClaudeAgentFixture> = {
   [CLAUDE_AGENT_SUM_REPAIR_FIXTURE_REF]: {
@@ -558,6 +597,8 @@ export async function runWithClaudeAgentSdk(
   let turnCount = 0
   let sessionId: string | null = null
   let resultSubtype: string | null = null
+  let resultIsError = false
+  let failureCode: ClaudeAgentSdkErrorCode | null = null
   let usage: ClaudeAgentTurnUsage | null = null
 
   const guard = async (hookInput: unknown) => {
@@ -623,6 +664,8 @@ export async function runWithClaudeAgentSdk(
     })
     for await (const message of session) {
       const record = message as {
+        error?: unknown
+        is_error?: unknown
         type?: string
         subtype?: string
         session_id?: string
@@ -631,9 +674,16 @@ export async function runWithClaudeAgentSdk(
       if (record.type === "system" && record.subtype === "init" && typeof record.session_id === "string") {
         sessionId = record.session_id
       }
-      if (record.type === "assistant") turnCount += 1
+      if (record.type === "assistant") {
+        turnCount += 1
+        // The SDK's assistant `error` field is a closed enum. Capture only a
+        // recognized member and intentionally ignore any other provider text.
+        const capturedFailureCode = claudeAgentSdkErrorCodeFrom(record.error)
+        if (capturedFailureCode !== null) failureCode = capturedFailureCode
+      }
       if (record.type === "result") {
         resultSubtype = record.subtype ?? null
+        resultIsError = record.is_error === true
         const captured = claudeUsageFrom(record.usage)
         if (captured !== null) usage = captured
       }
@@ -644,6 +694,24 @@ export async function runWithClaudeAgentSdk(
     }
     if (abort.signal.aborted) {
       return { outcome: "budget_exceeded", turnCount, editedFileCount, commandCount, sessionRef: null , usage }
+    }
+    // Some SDK failure paths emit a typed assistant error (and sometimes a
+    // final result carrying exact usage) before the async iterator throws.
+    // Preserve that safe classification instead of replacing it with the raw
+    // exception or the executor's generic thrown-runner refusal.
+    if (failureCode !== null || resultIsError) {
+      const sessionRef = sessionId === null
+        ? null
+        : stableRef("session.pylon.claude_agent", sessionId)
+      return {
+        outcome: "refused",
+        turnCount,
+        editedFileCount,
+        commandCount,
+        sessionRef,
+        failureCode,
+        usage,
+      }
     }
     throw error
   } finally {
@@ -657,8 +725,16 @@ export async function runWithClaudeAgentSdk(
   if (resultSubtype !== null && resultSubtype.includes("max_turns")) {
     return { outcome: "budget_exceeded", turnCount, editedFileCount, commandCount, sessionRef , usage }
   }
-  if (resultSubtype !== null && resultSubtype.startsWith("error")) {
-    return { outcome: "refused", turnCount, editedFileCount, commandCount, sessionRef , usage }
+  if (failureCode !== null || resultIsError || (resultSubtype !== null && resultSubtype.startsWith("error"))) {
+    return {
+      outcome: "refused",
+      turnCount,
+      editedFileCount,
+      commandCount,
+      sessionRef,
+      failureCode,
+      usage,
+    }
   }
   return { outcome: "completed", turnCount, editedFileCount, commandCount, sessionRef , usage }
 }
@@ -696,6 +772,43 @@ function claudeTokenUsageReportDiagnostic(
     proofRefs: [stableRef(`proof.pylon.claude_agent_task.token_usage_${state}`, seed)],
     resultRefs: [resultRef],
     summaryRefs: [summaryRef],
+  }
+}
+
+function claudeAgentFailureBlockerRefs(
+  code: ClaudeAgentSdkErrorCode | null | undefined,
+): string[] {
+  switch (code) {
+    case "oauth_org_not_allowed":
+    case "authentication_failed":
+      return [
+        `blocker.assignment.claude_agent_execution_${code}`,
+        // The shared dispatch taxonomy recognizes credentials_revoked as a
+        // permanent account-health class. The precise sibling ref preserves
+        // the actual SDK reason while this generic ref opens the durable
+        // breaker and rotates away from the unusable named account.
+        "blocker.assignment.claude_agent_account_credentials_revoked",
+      ]
+    case "billing_error":
+      return [
+        "blocker.assignment.claude_agent_execution_billing_error",
+        "blocker.assignment.claude_agent_account_quota_exhausted",
+      ]
+    case "rate_limit":
+      return [
+        "blocker.assignment.claude_agent_execution_rate_limit",
+        "blocker.assignment.claude_agent_account_rate_limited",
+      ]
+    case "overloaded":
+      return [
+        "blocker.assignment.claude_agent_execution_overloaded",
+        "blocker.assignment.claude_agent_account_unavailable",
+      ]
+    default:
+      // Invalid request, model, server, max-output, and unknown failures may
+      // not describe account health. Keep the generic refusal rather than
+      // poisoning an account breaker with an unsupported inference.
+      return []
   }
 }
 
@@ -934,6 +1047,7 @@ export async function executeClaudeAgentAssignment(
       runRef,
       blockerRefs: [
         "blocker.assignment.claude_agent_execution_refused",
+        ...claudeAgentFailureBlockerRefs(run.failureCode),
         ...tokenUsageReport.blockerRefs,
       ],
       proofRefs: tokenUsageReport.proofRefs,

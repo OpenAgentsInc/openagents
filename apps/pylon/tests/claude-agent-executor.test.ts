@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, mock, test } from "bun:test"
 import { existsSync, realpathSync } from "node:fs"
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises"
 import { join } from "node:path"
@@ -12,6 +12,7 @@ import {
   claudeAgentTaskFrom,
   claudeUsageFrom,
   executeClaudeAgentAssignment,
+  runWithClaudeAgentSdk,
   toolInputEscapesWorkspace,
   type ClaudeAgentCheckoutRunner,
   type ClaudeAgentRunner,
@@ -19,6 +20,7 @@ import {
 import { CLAUDE_AGENT_SDK_PACKAGE } from "../src/claude-agent"
 import type { ClaudeTurnReport } from "../src/claude-turn-reporter"
 import { createBootstrapSummary, parseBootstrapArgs } from "../src/bootstrap"
+import { classifyPylonDispatchFailure } from "../src/dispatch-failure-taxonomy"
 import { ensurePylonLocalState, assertPublicProjectionSafe } from "../src/state"
 import { workspaceLeaseRecordFor } from "../src/workspace-materializer"
 
@@ -188,6 +190,54 @@ describe("claude agent task recognition", () => {
     ).toEqual({ cachedInputTokens: 15, inputTokens: 900, outputTokens: 250 })
     expect(claudeUsageFrom({ input_tokens: 0, output_tokens: 0 })).toBeNull()
     expect(claudeUsageFrom(undefined)).toBeNull()
+  })
+
+  test("preserves the SDK oauth_org_not_allowed code when the iterator throws after its error result", async () => {
+    mock.module(CLAUDE_AGENT_SDK_PACKAGE, () => ({
+      query: () => (async function* () {
+        yield {
+          type: "system",
+          subtype: "init",
+          session_id: "private-claude-session-id",
+        }
+        yield {
+          type: "assistant",
+          is_error: true,
+          error: "oauth_org_not_allowed",
+          apiErrorStatus: 403,
+        }
+        yield {
+          type: "result",
+          subtype: "success",
+          is_error: true,
+          usage: {
+            input_tokens: 41,
+            cache_read_input_tokens: 3,
+            output_tokens: 7,
+          },
+        }
+        throw new Error("raw provider response must stay local")
+      })(),
+    }))
+
+    const result = await runWithClaudeAgentSdk({
+      cwd: tmpdir(),
+      instructions: "Public-safe fixture instruction.",
+      allowedTools: [],
+      maxTurns: 1,
+      timeoutMs: 1_000,
+    })
+
+    expect(result).toMatchObject({
+      outcome: "refused",
+      failureCode: "oauth_org_not_allowed",
+      turnCount: 1,
+      usage: { cachedInputTokens: 3, inputTokens: 41, outputTokens: 7 },
+    })
+    expect(result.sessionRef).toStartWith("session.pylon.claude_agent.")
+    const projected = JSON.stringify(result)
+    expect(projected).not.toContain("private-claude-session-id")
+    expect(projected).not.toContain("raw provider response")
   })
 
   test("recognizes the typed work class and passes everything else through", async () => {
@@ -453,6 +503,122 @@ describe("claude agent task recognition", () => {
       })
       expect(record?.status).toBe("rejected")
       expect(record?.blockerRefs).toEqual(["blocker.assignment.claude_agent_execution_refused"])
+    })
+  })
+
+  test("projects oauth org refusal as precise and rotatable account health while preserving usage and cleanup", async () => {
+    await withState(async (state) => {
+      const reports: ClaudeTurnReport[] = []
+      let workspaceDir: string | null = null
+      const record = await executeClaudeAgentAssignment(
+        state,
+        {
+          ...lease,
+          codingAssignment: gitCheckoutCodingAssignment,
+          leaseRef: "lease.public.claude_agent.oauth_org_not_allowed",
+        },
+        now,
+        {
+          checkoutRunner,
+          claudeAgentProbe: readyProbe,
+          claudeAgentRunner: async input => {
+            workspaceDir = input.cwd
+            return {
+              outcome: "refused",
+              failureCode: "oauth_org_not_allowed",
+              turnCount: 1,
+              editedFileCount: 0,
+              commandCount: 0,
+              sessionRef: "session.pylon.claude_agent.safe",
+              usage: { cachedInputTokens: 3, inputTokens: 41, outputTokens: 7 },
+            }
+          },
+          claudeTurnReporter: async report => {
+            reports.push(report)
+          },
+        },
+      )
+
+      expect(record?.status).toBe("rejected")
+      expect(record?.blockerRefs).toEqual([
+        "blocker.assignment.claude_agent_execution_refused",
+        "blocker.assignment.claude_agent_execution_oauth_org_not_allowed",
+        "blocker.assignment.claude_agent_account_credentials_revoked",
+      ])
+      expect(reports).toHaveLength(1)
+      expect(reports[0]?.usage).toEqual({
+        cachedInputTokens: 3,
+        inputTokens: 41,
+        outputTokens: 7,
+      })
+      expect(workspaceDir).not.toBeNull()
+      expect(existsSync(workspaceDir as string)).toBe(false)
+      expect(classifyPylonDispatchFailure({
+        blockerRefs: record?.blockerRefs,
+        status: record?.status,
+      })).toMatchObject({
+        failureKind: "permanent",
+        reason: "account_credentials_revoked",
+      })
+      assertPublicProjectionSafe(record)
+    })
+  })
+
+  test("maps only supported safe SDK codes onto account-health blockers", async () => {
+    await withState(async state => {
+      const cases = [
+        {
+          code: "authentication_failed",
+          blockers: [
+            "blocker.assignment.claude_agent_execution_authentication_failed",
+            "blocker.assignment.claude_agent_account_credentials_revoked",
+          ],
+        },
+        {
+          code: "billing_error",
+          blockers: [
+            "blocker.assignment.claude_agent_execution_billing_error",
+            "blocker.assignment.claude_agent_account_quota_exhausted",
+          ],
+        },
+        {
+          code: "rate_limit",
+          blockers: [
+            "blocker.assignment.claude_agent_execution_rate_limit",
+            "blocker.assignment.claude_agent_account_rate_limited",
+          ],
+        },
+        {
+          code: "overloaded",
+          blockers: [
+            "blocker.assignment.claude_agent_execution_overloaded",
+            "blocker.assignment.claude_agent_account_unavailable",
+          ],
+        },
+        { code: "invalid_request", blockers: [] },
+        { code: "unknown", blockers: [] },
+      ] as const
+
+      for (const entry of cases) {
+        const record = await executeClaudeAgentAssignment(state, lease, now, {
+          claudeAgentProbe: readyProbe,
+          claudeAgentRunner: async () => ({
+            outcome: "refused",
+            failureCode: entry.code,
+            turnCount: 1,
+            editedFileCount: 0,
+            commandCount: 0,
+            sessionRef: null,
+            usage: { cachedInputTokens: 0, inputTokens: 1, outputTokens: 1 },
+          }),
+          claudeTurnReporter: successfulClaudeTurnReporter,
+        })
+        expect(record?.blockerRefs).toEqual([
+          "blocker.assignment.claude_agent_execution_refused",
+          ...entry.blockers,
+        ])
+        assertPublicProjectionSafe(record)
+      }
     })
   })
 
