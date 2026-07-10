@@ -1,7 +1,8 @@
 # MASTER ROADMAP — Sarah Fleet Command first; three OpenAgents apps
 
 - Date: 2026-07-09
-- Revision: 21
+- Updated: 2026-07-10
+- Revision: 22
 - Status: canonical OpenAgents implementation roadmap
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Issue source set: [`issues/README.md`](./issues/README.md)
@@ -9,10 +10,13 @@
 
 ## Owner decisions encoded here
 
-1. **Sarah managing coding fleets is P0 now.** The immediate goal is multiple
-   simultaneous work streams across the owner's Codex, Claude, and Grok
-   accounts. Some capacity runs on desktop Pylons; managed cloud joins without
-   blocking the local unblock.
+1. **Sarah managing coding fleets is P0 now.** The immediate cutover goal is
+   simultaneous useful work across the owner's named isolated Codex and Claude
+   accounts. Grok is postponed by the 2026-07-10 owner decision because its
+   connected account is quota/payment exhausted; the existing Grok adapter and
+   receipts remain regression substrate but do not block the cutover. Some
+   capacity runs on desktop Pylons; managed cloud joins without blocking the
+   local unblock.
 2. **Presentation quality is parallel, not blocking.** Avatar, opener, video,
    voice, visual quality, and UI polish have a dedicated lane, but they do not
    remain the serial queue head.
@@ -38,6 +42,13 @@
    pinned current Khala Code mobile icon. The new desktop app uses Effect Native
    with Electron at `apps/openagents-desktop`. The old mobile and Electrobun
    desktop clients are deprecated extraction sources, not conversion targets.
+8. **Terra is an authorized execution lane under Sol.** Sol owns priority,
+   dependency order, hot-contract integration, and roadmap reconciliation.
+   Terra may claim and ship ready low-collision vertical slices without waiting
+   for Sol to implement every leaf. Terra's first active home is #8574 Desktop
+   parity; it does not take the #8640 burn or other P0 hot contracts without an
+   explicit claim handoff. The operating contract is
+   [`2026-07-10-terra-execution-lane.md`](./2026-07-10-terra-execution-lane.md).
 
 ## The product in one sentence
 
@@ -178,31 +189,33 @@ The coding-fleet program starts from substantial working substrate:
   process-isolated experiment under #8610.
 - the greenfield OpenAgents mobile shell on the Effect Native/React Native seam,
   exact `OpenAgents` / `com.openagents.app` / pinned-icon identity oracles, and
-  an owned `openagents-production` OTA channel. TestFlight 0.4.3 build 106,
-  0.5.0 build 107, 0.5.1 build 108, and 0.5.2 build 109 reached `VALID`;
-  build 107 is the pixel-proven typed glass shell/drawer/composer loop. Build
-  108 added the typed surface selector and bundled Sarah presentation loop,
-  then received JS-only owner chrome corrections through the OTA channel at
-  `d5e524b142`. Build 109 baked those corrections in and replaced the Sarah
-  loop with the owner-selected, container-level silent video at `65f8216cb9`.
-  Builds 110 and 111 keep marketing version 0.5.2 per owner direction and both
-  reached App Store Connect `VALID` (`824072cd…` and `000e2c2a…`; build 111 at
-  20:59 PT). Build 111 at `eb34e8d9ee` layers the typed composer-triggered
-  Sarah reply under the glass chrome, fixes the opaque content surface, and
-  opens a typed Liquid Glass Minerals demo sheet at video midpoint before
-  returning to the original surface. The price choices are demo presentation
-  only—no StoreKit purchase is implemented. Source tests/typecheck and
-  simulator proofs are recorded. Explicit final owner acceptance, Sarah/Sync
-  continuity, Android, and the full #8597 exit remain open;
+  an owned `openagents-production` OTA channel. The owner accepted and closed
+  GL-2 after build 111; build 112 fixed the Minerals-sheet lifecycle. TestFlight
+  build 113 at `6647d998ad` is `VALID` and closes GL-3's text-first Sarah slice:
+  production prospect/turn contracts, persistent relationship state, typed
+  reply rendering, and bounded offline/reconnect behavior are proven. Pure
+  transcript-stream/Sync continuation, authenticated operator posture,
+  voice/avatar tiers, Android, and the full #8597 exit remain open. `7d77150514`
+  adds an app-owned persisted five-thread catalog with fresh relationship mint
+  and exact selected-thread restoration; it is local continuity, not Sync.
+  Demo prices are presentation-only—no StoreKit purchase is implemented;
 - the Effect Native vendor at `66d2f7544b` now includes upstream `2918c277`
   (v27): typed `IconButton`, `Toolbar`, semantic `surface: "glass"`, and Sheet
   detents. The Scope-bound host-driver registry, conversion/deletion of the
   app-local island, and real internal `@expo/ui` lowering are not landed;
-- the greenfield OpenAgents Desktop scaffold at `7313b0934e`, pinned to the
-  required electron-shadcn source, with the Electron sandbox/isolation boundary,
-  an Effect Native renderer loop, and a real Electron click smoke proven;
-  Sarah/Fleet/Pylon composition, packaging/signing/updates, identity acceptance,
-  and legacy-client retirement remain open under #8574;
+- the greenfield OpenAgents Desktop line through `f4cb8ed18e`: the pinned
+  electron-shadcn scaffold and Electron sandbox/isolation boundary now host a
+  minimal Effect Native conversation workspace, a bounded host-owned five-
+  thread store, a host-held model-gateway bridge with honest configuration
+  failure, shared typed icons and glass backdrop/material lowering, and the
+  first real workspace slice with user-selected root, bounded root listing, and
+  bounded read-only file preview. A dedicated Settings surface now reads
+  bounded Codex readiness and drives Pylon's isolated device-auth flow; its
+  58-test and real-Electron fixture receipt proves the awaiting-browser UI, not
+  real owner authentication. These are code/fixture/real-Electron-smoke
+  receipts; Sync-backed conversation, server-authoritative Fleet/approval/
+  receipt projection, edit/review/terminal parity, packaging/signing/updates,
+  identity acceptance, and legacy-client retirement remain open under #8574;
 - product-promise source registry `2026-07-09.2` at `55452fa614`, the
   fix-forward #8644 provenance correction that binds the two owner-scoped
   FleetRun intake routes as intake evidence only without changing promise state
@@ -255,58 +268,48 @@ The coding-fleet program starts from substantial working substrate:
   worker, request event, and tool class on the server receipt clock. Legacy
   worker-only approvals remain visible but non-actionable. Migration 0057 adds
   the event kind and indexed global ref lookup; sorted pre-locking prevents
-  reverse-order cross-run deadlocks. The migration is code-landed, not deployed.
+  reverse-order cross-run deadlocks. Migrations 0054–0057 were later applied in
+  staging and production as part of the #8639 closure;
+- FC-3 closure at `1d84386cb5`: one integrated real-Postgres fixture proves a
+  Sarah-started three-work-unit run, pause/resume, exact-attempt steer, exact
+  blocked approval, coherent closeouts, privacy-safe reconnect, and durable
+  command receipts. Staging `00047-ct5` and production `00069-h2k` carry the
+  minimum-safe supervision stack, and #8639 is closed.
 
-The immediate gaps are now narrower composition and live-proof gaps:
+The immediate gaps are now live-burn and additive-cloud gaps:
 
-- #8637 is closed. The authenticated Sarah tool, Postgres authority, registered-
-  Pylon claim/import/accept/activate handoff, operator-to-closeout fixture,
-  prospect/owner-isolation proofs, and latency receipt are fixture-proven;
-  migration 0052 is table-verified in both environments; and exact main commit
-  `0892d57b3b` is deployed as staging revision `00046-jpn` and production
-  revision `00068-5t8`. The real mixed-account canary remains #8640, not an
-  unreported FC-1 residue.
-- #8633 is closed at the implementation/fixture boundary on the stack ending
-  `d779c360c3`: one production standing composition now owns mixed
-  Codex/Claude/Grok capacity, typed auto fallback, restart-safe claims and
-  health, exact-or-unmeasured closeout evidence, a durable local outbox, and an
-  authenticated owner/Pylon-bound server execution projection. Migration 0053
-  for that projection is applied and table-verified in staging and production,
-  but the FC-2 application stack ending `d779c360c3` has not been deployed; the
-  attempted pre-deploy gate stopped before any application release. It has not
-  spent a live three-account run in this program; the pinned integrated deploy
-  and real-account receipt remain #8639/#8640 rather than an implied FC-2 rung.
-- Sarah's safe FleetRun projection, persisted exact-cursor live session, views,
-  run controls, and approval decisions are code/fixture-proven in retained
-  `/sarah`, including exact start-result-to-scope selection through
-  `6cd9d09205`. The transport split, reconnect-honest command outcome, and
-  restart-safe private follow-up/completion are closed through `59538f71a2`.
-  First-class stable work-unit/exact-attempt server authority is closed through
-  `849856d189`, exact worker-closeout evidence through `dd807e6d91`, and Sarah
-  strict ingestion/reconnect of those entities through `fe7b523e13`, and exact
-  server approval binding through `05638b0320`. Real Pylon FleetRun v2 lifecycle/
-  approval production, Sarah owner projection/
-  receipts/full canvas, the integrated C1 reconnect/control/privacy fixture,
-  migrations 0054/0055/0056/0057 deployment, and a deployed owner-cookie canary
-  remain.
-- The trusted-context voice coordinator/SSE adapter is fixture-proven but stays
+- C1 is crossed. #8637, #8633, and #8639 are closed; the minimum-safe Sarah →
+  standing Pylon → exact supervision/reconnect path is fixture-proven and
+  deployed.
+- #8640 Phase A is the serial owner-local event. It now requires simultaneous
+  useful Codex + Claude work through named isolated homes. The current blockers
+  are the clean API ambient-type gate, a credential-scanner correction that
+  preserves the no-long-lived-SCM-credentials invariant, and owner
+  reauthentication of one isolated Codex home without touching default
+  `~/.codex`. Terra's Desktop Settings path now exposes the proven isolated
+  Pylon device-auth flow, but the real browser completion remains owner-gated.
+- Grok is postponed by owner decision because the connected account is
+  quota/payment exhausted. Its real accepted historical canary, HTTP-402
+  state, adapters, and fixtures remain evidence/regression substrate; Grok is
+  not a Phase A acceptance item.
+- Agent Computer rootfs and in-VM exact-receipt source work has advanced under
+  #8547, but its real brokered owner-account Firecracker turn remains open.
+  Hybrid owner-local plus managed-cloud acceptance belongs to #8636 and never
+  blocks the local cutover.
+- The trusted-context voice coordinator/SSE adapter remains fixture-proven but
   unarmed until renderer-authenticated conversation/session metadata carries
   the server-minted conversation ref; model/system text is not scope authority.
-- The #8637 Sarah→standing-Pylon fixture and deployment rung are satisfied.
-  Minimum-safe #8639 live reconnect/steering still gates the first real canary,
-  and no real Codex+Claude+Grok burn has satisfied C2.
-- Agent Computer Codex still lacks the new live Firecracker proof.
 
-P0 fixes those seams. It does not build another fleet system.
+P0 now closes the live receipt rather than building another fleet system.
 
 ### Current P0 integration ledger
 
 | Lane | Narrowest proven state on `main` | Next blocking proof |
 | --- | --- | --- |
-| #8637 FC-1 | **closed** at `0892d57b3b`: integrated operator conversation -> durable authority -> registered standing Pylon -> bounded closeout is fixture-proven; timing is 1.8s acknowledgment / 6.1s first claim / 8.6s first capacity; staging `00046-jpn` and production `00068-5t8` are deployed and smoke-proven | none in FC-1; real mixed-account execution is #8640 and owner-cookie reconnect/steer is #8639 |
-| #8633 FC-2 | **closed** on the stack ending `d779c360c3`: production standing adapters, shared typed auto policy, restart-safe mixed claims, health rotation, durable execution outbox/server projection, and one integrated three-harness restart/usage fixture are proven; migration 0053 is applied in staging/production, while the application stack is not deployed | the pinned integrated deployment is a #8639/#8640 gate, not reopened FC-2 residue; useful live Codex+Claude+Grok work is #8640 |
-| #8639 FC-3 | controls/reconnect through `6cd9d09205`, media continuity through `3d87cb609b`, reconnect-honest command outcomes through `08aac90250`, restart-safe private follow-up/completion through `59538f71a2`, first-class server work-unit/exact-attempt authority through `849856d189`, exact worker-closeout evidence through `dd807e6d91`, strict Sarah entity ingestion/reconnect through `fe7b523e13`, and exact server approval binding through `05638b0320` are code-landed and fixture-proven | real Pylon FleetRun v2 lifecycle/approval production; Sarah owner projection/receipts/full canvas; integrated reconnect/control/privacy receipt; deploy migrations 0054/0055/0056/0057 and application stack |
-| #8640 FC-5 | acceptance contract only | C1 integrated fixture, then Phase A on one pinned deployment |
+| #8637 FC-1 | **closed** at `0892d57b3b`: integrated operator conversation → durable authority → registered standing Pylon → bounded closeout is fixture-proven; timing is 1.8s acknowledgment / 6.1s first claim / 8.6s first capacity; staging `00046-jpn` and production `00068-5t8` are deployed and smoke-proven | none; live owner-account execution is #8640 |
+| #8633 FC-2 | **closed** on the stack ending `d779c360c3`: production standing adapters, shared typed auto policy, restart-safe mixed claims, health rotation, durable execution outbox/server projection, and one integrated three-harness restart/usage fixture are proven | none; useful live account work is #8640, not reopened FC-2 residue |
+| #8639 FC-3 | **closed** at `1d84386cb5`: exact run/work/attempt authority, durable control outcomes, approval/steer binding, full evidence canvas, privacy-safe reconnect, migrations 0054–0057, and the integrated C1 fixture are proven; production `00069-h2k` deployed the stack | none; the live owner-account rung is #8640 |
+| #8640 FC-5 | C1 crossed; Grok historical canary accepted; a Claude canary failed closed before verification; current exit is owner-approved Codex+Claude Phase A | land the strict scanner/type-boundary repairs, reauthenticate one isolated Codex home, then run one clean simultaneous Codex+Claude receipt |
 
 These rows are implementation receipts, not issue closure. The commit named in
 one row does not imply deployment or live proof, and later commits inherit the
@@ -341,17 +344,25 @@ lane. Use separate Codex tabs beyond this session cap or for independently
 steered long-lived contexts; tabs on one account share its quota budget.
 Same-session subagents are Codex agents; they do not exercise the connected
 Claude or Grok accounts. Closed #8633 proves the production three-harness path
-in code and fixtures, but real mixed-account fanout begins only with the C1/C2
-pinned live receipts below.
+in code and fixtures. C1 is now crossed; the remaining live cutover proof is the
+owner-approved Codex+Claude Phase A receipt below.
+
+Terra supplies additional cross-session implementation throughput under
+[`2026-07-10-terra-execution-lane.md`](./2026-07-10-terra-execution-lane.md).
+It may pull ready claimed P1 leaves and push them directly to `main` while Sol
+owns the serial P0 burn and roadmap integration. Terra's active #8574 Desktop
+claim is the first such lane. This authorization does not erase claims or grant
+implicit ownership of schemas, migrations, catalogs, lockfiles, route tables,
+authority policy, or other hot contracts.
 
 The coding cutover is staged:
 
 | Gate | When | Operating decision |
 | --- | --- | --- |
-| C0 | Now | #8637 and #8633 are closed; finish minimum-safe #8639 through this Codex app, subagents, or explicitly partitioned tabs. Sarah is not yet the coding front door. |
-| C1 | On one pinned integrated commit, closed #8637 durable Sarah run + #8633 standing real mixed executor + minimum-safe #8639 named progress, typed control, and reconnect pass one Sarah→Pylon fixture E2E. | Only then send the first low-risk pinned real issue through Sarah as a canary; retain this app as observer/break-glass. |
-| C2 | #8640 Phase A clean local three-harness receipt from one pinned integrated deployment | Sarah/Khala/Pylon becomes the default entry point for new bounded owner coding work. This Codex app becomes control-plane development, independent review, and break-glass—not the routine dispatcher. |
-| C3 | #8547/#8636 exits integrated + clean #8640 Phase B receipt | Sarah may choose owner-local or managed-cloud capacity through the same run contract. |
+| C0 | complete | FC-1/FC-2 implementation and the minimum-safe FC-3 seam were built through this Codex app and coordinated lanes. |
+| C1 | **crossed** — #8637, #8633, and #8639 are closed; the exact command/reconnect fixture is deployed through production `00069-h2k`. | Low-risk Sarah canaries may run; this app remains coordinator, independent verifier, and break-glass while failed canaries are repaired in place. |
+| C2 | #8640 Phase A clean simultaneous Codex+Claude receipt from one pinned integrated deployment | Sarah/Khala/Pylon becomes the default entry point for new bounded owner coding work. This Codex app becomes control-plane development, independent review, and break-glass—not the routine dispatcher. |
+| C3 | #8547/#8636 exits integrated with one clean owner-local plus managed-cloud receipt | Sarah may choose owner-local or managed-cloud capacity through the same run contract. |
 
 C2 is the requested coding-unblock point. It does not wait for cloud,
 presentation perfection, public-route contraction, or the complete three-app
@@ -417,25 +428,12 @@ through the narrow shared package.
 **[#8639 FC-3](https://github.com/OpenAgentsInc/openagents/issues/8639)**
 connects durable progress and existing fleet intents to Sarah.
 
-Current critical gap: requested-versus-effective command truth and the private
-follow-up/completion path are now closed through `59538f71a2`. Browser reconnect
-sees body-free delivery/completion receipts, no client collection manufactures
-effective state, and queued steer/active stop execute through a durable fenced
-dispatcher with an authenticated terminal ACK.
-
-The server half of evidence composition is closed through `849856d189`; exact
-assignment worker-closeout evidence is retained through `dd807e6d91`; and
-Sarah can ingest, persist, and reconnect the direct entities through
-`fe7b523e13` without changing its current owner projection. The remaining
-server approval prerequisite is closed through `05638b0320`; no executor event
-still means no actionable approval. The remaining serial block is production
-and presentation. Pylon must emit FleetRun v2 lifecycle and the real typed
-approval event. Sarah must build owner state from the retained work-unit/attempt
-entities, remove assignment fallback/synthetic proof, populate closeout
-receipts, expose named steer only for an authorized exact attempt, and render
-the full plan→claim→assignment→verification→closeout chain. The upgraded C1
-fixture then proves pause/resume/approval/steer/reconnect/privacy before
-deployment.
+Status: **closed** at `1d84386cb5`, fixture-proven and deployed. The integrated
+C1 receipt proves three named work units, exact attempt/worker authority,
+pause/resume, one exact steer, one exact approval, coherent verification and
+closeout, privacy-safe reconnect, and durable command outcomes. Migrations
+0054–0057 are applied; production `00069-h2k` carries the stack. The real
+owner-account Codex+Claude work remains #8640 rather than an FC-3 residual.
 
 Exit:
 
@@ -460,8 +458,9 @@ Phase A is the immediate acceptance run.
 
 Required receipt:
 
-- at least three simultaneous pinned real work units;
-- Codex, Claude, and Grok each complete useful work;
+- at least two simultaneous pinned real work units;
+- Codex and Claude each complete useful work through explicitly named isolated
+  accounts;
 - Sarah starts and manages the run;
 - one steer or approval round trip;
 - exact usage or explicit `not_measured` per turn;
@@ -473,7 +472,8 @@ Required receipt:
 This is the coding-unblock and default-owner-local cutover milestone. After its
 clean receipt, new bounded pinned backlog work starts through Sarah/Khala by
 default; this Codex app remains break-glass and control-plane development. Do
-not wait for cloud or presentation perfection to run it.
+not wait for cloud, Grok quota, or presentation perfection to run it. Grok is
+postponed; its adapters and historical canary remain regression evidence.
 
 ### P0.5 — add managed cloud without changing the product contract
 
@@ -481,15 +481,15 @@ not wait for cloud or presentation perfection to run it.
 completes Codex in real Firecracker.
 
 **[#8636 FC-4](https://github.com/OpenAgentsInc/openagents/issues/8636)**
-adds per-work-unit `owner_local | managed_cloud | auto` routing, then Claude
-and Grok cloud parity through the same contract.
+adds per-work-unit `owner_local | managed_cloud | auto` routing and owns the
+hybrid acceptance receipt.
 
-**[#8640 FC-5](https://github.com/OpenAgentsInc/openagents/issues/8640)**
-Phase B closes when one Sarah run executes local and managed-cloud work
+#8636 closes when one Sarah run executes local and managed-cloud work
 concurrently under one claim registry: at least one owner-local unit and one
 managed Agent Computer unit both complete useful verified work, target
 selection/fallback is typed and visible, and compute/model usage truth remains
-separate.
+separate. Claude/Grok cloud expansion follows only through separately accepted
+capacity and the same contract; it is not part of #8640's local cutover exit.
 
 Cloud is additive. A cloud blocker never stalls the P0.4 local burn.
 
@@ -603,25 +603,20 @@ effect-native#70 / EN-S lanes mature (convert-and-delete).
 
 Current narrow truth: GL-1 has the v27 typed catalog primitives on `main` at
 `66d2f7544b`, but not its host-driver/island-conversion/real-lowering exit.
-GL-2 has the pixel-proven build-107 shell; builds 108 through 111 subsequently
-reached `VALID`, with the owner chrome corrections both OTA-proven on build 108
-and baked into build 109 at `65f8216cb9`. Builds 110/111 add the typed Sarah
-reply video; build 111 at `eb34e8d9ee` places it under chrome and opens a typed
-Liquid Glass Minerals demo sheet at midpoint, with no StoreKit purchase. Both
-bundled Sarah videos and the demo sheet are presentation material, not GL-3
-auth/SSE/reconnect proof. D-MB-02 catalog conversion and app-island deletion
-remain GL-1/GL-4 exits rather than reopening GL-2. GL-2 now waits only for
-explicit final owner acceptance. GL-3's text-first shared contract can begin
-now. GL-4 remains held by the owned-lowering dependency.
+GL-2 is owner-accepted and closed after build 111; build 112 then fixed the
+Minerals-sheet lifecycle without reopening the shell lane. D-MB-02 catalog
+conversion and app-island deletion remain GL-1/GL-4 exits.
 
-GL-3 is the convergence point with the Sarah program: the mobile
-conversation surface consumes the same `/sarah` APIs, SSE transcript, and
-typed intent grammar as the web surface — no parallel state models. Its
-voice/avatar tiers follow the #8610 capacity policy; text is the
-availability floor and is never blocked. GL-3 may build its text-first seam in
-parallel with GL-1/GL-2 and then compose the glass catalog; consuming Sarah
-does not wait for every owned SwiftUI lowering. The checked-in issue source and
-exit ordering live in
+GL-3 is delivered and closed at `6647d998ad` / TestFlight build 113. The
+mobile glass shell now mints/persists the production prospect session, sends
+typed turns through the same `/sarah` contracts as web, renders the production
+reply, survives restart, and shows bounded offline/reconnect states under an
+enforced behavior contract. Its current text path renders the POST result while
+SSE carries liveness/cards; pure transcript-stream unification, authenticated
+operator posture, voice/avatar tiers, and Android proof remain follow-on work
+under their owning lanes rather than GL-3 closure blockers. GL-4 remains held
+by the owned-lowering dependency. The checked-in issue source and exit ordering
+live in
 [`issues/glass-ui-and-sarah-mobile.md`](./issues/glass-ui-and-sarah-mobile.md).
 
 ## P1 — three OpenAgents applications
@@ -672,19 +667,12 @@ builds a new OpenAgents iOS/Android app at `apps/openagents-mobile`.
 
 Status: the initial greenfield shell, identity/icon oracles, Effect Native
 React Native renderer seam, owned OTA feed, and iOS release lane are proven.
-TestFlight 0.4.3 build 106, 0.5.0 build 107, 0.5.1 build 108, and 0.5.2 build
-109, 110, and 111 reached `VALID`; build 107 is the simulator-pixel-proven glass shell
-correction and still needs owner-device acceptance. Build 108 added the typed
-surface selector/Sarah presentation loop and received JS-only owner chrome
-corrections through the live OTA channel. Build 109 at `65f8216cb9` baked
-those corrections in and container-stripped audio from the owner-selected
-Sarah loop. Builds 110/111 stay on marketing version 0.5.2; build 111 at
-`eb34e8d9ee` layers the typed reply video under chrome, fixes the opaque content
-surface, and opens a typed Liquid Glass Minerals demo sheet at midpoint. The
-price choices are demo-only with no StoreKit purchase. Source tests/typecheck
-and simulator proofs are recorded. The recorded ASC build identifiers for 110
-and 111 are `824072cd…` and `000e2c2a…`; explicit final owner acceptance remains
-open.
+The owner accepted and closed the GL-2 shell at build 111; build 112 then fixed
+the Minerals-sheet lifecycle. TestFlight build 113 at `6647d998ad` is `VALID`
+and closes GL-3's text-first Sarah slice: the glass shell uses production
+`/sarah` prospect/turn contracts, persists the relationship across restart,
+renders typed replies, and exposes bounded offline/reconnect state. The bundled
+video and demo pricing remain presentation-only; there is no StoreKit purchase.
 #8597 retains an unreleased Fable claim whose published scope is only the
 initial greenfield setup; later OTA/SwiftUI/TestFlight work exceeded that
 recorded scope. Treat it as owned until the actor posts an explicit re-scope or
@@ -716,18 +704,24 @@ already exists.
 **[#8574 APP-DESKTOP](https://github.com/OpenAgentsInc/openagents/issues/8574)**
 builds a new Electron application at `apps/openagents-desktop`.
 
-Status: exit slice 1 is code/fixture/live-smoke proven at `7313b0934e`: the
-pinned electron-shadcn scaffold is in the Bun workspace, the retained surface
-runs through Effect Native, Electron starts with context isolation, sandboxing,
-and deny-by-default navigation/permission posture, and the typed ping loop was
-clicked in a real Electron smoke. The active app-directory claim remains with
-the Fable session recorded on #8574, but its published scope is only the
-already-landed initial greenfield setup. Its last evidence does not by itself
-make the claim stale; require an explicit release/re-scope or the full protocol
-audit before another session mutates the lane. Owner identity acceptance,
-Sarah/Fleet and Pylon composition, specialist hosts, packaging/fuses, signing/
-notarization, updates, cross-device continuation, and legacy-client retirement
-remain open.
+Status: Terra is the active #8574 execution lane. Through `f4cb8ed18e`, the
+pinned scaffold and hardened boundary now host a minimal Effect Native chat
+workspace, real host-owned gateway completion, a bounded persisted five-thread
+catalog, shared typed icons and glass-material lowering, and the start of a
+real project workspace: user-selected root, bounded root listing, and bounded
+read-only preview. The Settings surface lists bounded Codex readiness and starts
+Pylon's isolated device-auth flow through a fixed host service; 58 tests and the
+real Electron smoke prove its rendered fixture state, while real owner login is
+still pending. Bounded edit/save plus Git status/diff/review can proceed while
+that owner proof waits; terminal follows through a fixed host service. The live
+#8574 claim is the coordination authority for each leaf and any shared Effect
+Native hot contract.
+
+Server-authoritative Sarah/Fleet/Pylon composition, Sync continuation,
+specialist hosts, owner identity acceptance, packaging/fuses, signing/
+notarization, updates, and legacy-client retirement remain open. The local
+thread store and staged Fleet bridge are not those authorities and must not be
+described as cross-device or server Fleet parity.
 
 The scaffold already removed the template updater/publisher wiring, disabled
 `nodeIntegration`, enabled sandboxing/context isolation, and installed
@@ -796,15 +790,15 @@ apps. It does not begin as a fourth product surface.
 
 ## Canonical open issue set
 
-The issue reset plus this reconciliation leaves **19 open roadmap issues**: 17
+The issue reset plus this reconciliation leaves **16 open roadmap issues**: 14
 P0/P1 program issues, including dependency-following GL-4, and two explicitly
-dependency-held P2 lanes.
+dependency-held P2 lanes. #8639, #8648, and #8649 are closed and remain listed
+in their parent sections as landed substrate, not active burn items.
 
 | Priority | Issue | Purpose |
 | --- | --- | --- |
 | P0 | #8638 | Sarah Fleet Command epic |
-| P0 | #8639 | Sarah progress, canvas, approval, and steering |
-| P0 | #8640 | Live multi-stream dogfood burn |
+| P0 | #8640 | Live simultaneous Codex + Claude dogfood burn |
 | P0 | #8547 | Codex inside real Agent Computer |
 | P0 | #8636 | Hybrid local/cloud routing |
 | P1 parallel | #8610 | Sarah presentation quality |
@@ -816,8 +810,6 @@ dependency-held P2 lanes.
 | P1 parallel | #8574 | Greenfield Electron OpenAgents Desktop |
 | P1 parallel | #8646 | GL epic: glass UI stdlib + Sarah in-app |
 | P1 parallel | #8647 | GL-1 render-rn @expo/ui lowering seam |
-| P1 parallel | #8648 | GL-2 mobile Home glass shell conversion |
-| P1 parallel | #8649 | GL-3 Sarah conversation surface in mobile |
 | P1 parallel | #8650 | GL-4 owned-lowering migration |
 | P2 deferred | #8642 | Blueprint correction/deletion/provenance export + privacy tripwire |
 | P2 deferred | #8643 | Typed role programs + evidence-based colleague split |
@@ -829,24 +821,27 @@ their milestone or tripwire fires.
 
 ## Execution order
 
-1. Finish #8639 against the now-stable owner-safe run projection while retaining
-   text/fleet control under media failure; do not infer authority in the UI.
-2. Run #8640 Phase A at the first honest opportunity. Fix fleet substrate bugs
-   in place until the receipt is clean, then flip routine bounded owner coding
-   to Sarah/Khala/Pylon by default.
-3. Run #8547 and #8636 on dedicated cloud capacity; never block Phase A.
-4. Keep #8610 active in parallel without taking the fleet integration hot
+1. Run #8640 Phase A at the first honest opportunity. Land the strict API type-
+   boundary and credential-scanner corrections, reauthenticate one isolated
+   named Codex home without touching default `~/.codex`, then complete one
+   clean simultaneous Codex+Claude receipt. Fix discovered fleet bugs in place
+   until the receipt is clean, then flip routine bounded owner coding to
+   Sarah/Khala/Pylon by default.
+2. Run #8547 and #8636 on dedicated cloud capacity; never block Phase A.
+3. Keep #8610 active in parallel without taking the fleet integration hot
    paths; closed #8600 remains production inference substrate.
-5. Run #8646–#8650 on the mobile/Effect Native capacity already owning that
-   surface. Finish GL-1's Scope-bound host driver, convert/delete the D-MB-02
-   app-local island, and prove actual internal `@expo/ui` lowering. Treat GL-2
-   as integration/owner-acceptance residue after the landed build-107/108 shell,
-   and start GL-3's shared text-first Sarah API/state contract now. GL-4 remains
-   the later convert-and-delete lane. These are parallel P1 work and do not take
-   #8639 hot contracts.
-6. Run #8634 route inventory/retirement and #8635 Forum work in parallel with
-   app conversion; landing/mobile/desktop slices continue from their landed
-   substrate and preserve the active #8597/#8574 claim ownership.
+4. Continue GL-1's Scope-bound host driver, convert/delete the D-MB-02 app-local
+   island, and prove actual internal `@expo/ui` lowering; GL-2 and GL-3 are
+   closed, and GL-4 remains the later convert-and-delete lane.
+5. Terra continues #8574 from the current real workspace and Codex Settings
+   slices. Record a real isolated Codex reconnect when the owner is available;
+   while that proof waits, continue bounded edit/save plus Git status/diff/
+   review, then bounded terminal, then typed command palette. Terra may pull
+   another ready P1 leaf after claim release without waiting for Sol to restate
+   the work. Sol retains P0 and shared-hot-contract integration unless the claim
+   records a handoff.
+6. Run #8634 route inventory/retirement and finish #8635 Forum cutover residue
+   in parallel with app conversion; preserve active claim ownership.
 7. Keep #8642/#8643 dependency-held until Phase A, except that #8642's first
    real correction/deletion request or privacy-incident receipt activates it
    immediately.
@@ -879,6 +874,10 @@ their milestone or tripwire fires.
 11. **Challenges retain falsifiers.** Fable reviews from outside the queue; Sol
     records material dispositions, tripwires, and revisit conditions in
     [`CHALLENGE_LEDGER.md`](./CHALLENGE_LEDGER.md).
+12. **Terra pulls ready leaves.** Terra may claim and ship a low-collision
+    vertical slice without waiting for Sol to implement or restate it. Sol owns
+    roadmap reconciliation and shared hot contracts; an active claim or P0
+    boundary still requires explicit coordination.
 
 ## Completion reporting
 

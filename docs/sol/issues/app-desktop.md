@@ -18,6 +18,34 @@ The reusable Effect Native Electron host gap is tracked upstream by
 OpenAgentsInc/effect-native#69; the earlier Electrobun Phase 4 issues #20/#21
 are historical, not destination proof.
 
+## Current status and Terra ownership
+
+Through `f4cb8ed18e`, the greenfield app is beyond the initial ping scaffold:
+
+- Electron isolation/sandbox/navigation/permission boundaries remain proven;
+- the default UI is a minimal Effect Native conversation workspace;
+- the host owns a bounded five-thread local store and a host-held OpenAgents
+  gateway bridge, returning an honest error when configuration is unavailable;
+- shared typed icons plus a typed backdrop/glass-material DOM lowering replace
+  app-local visual vocabulary;
+- a user-selected project root, bounded root listing, and bounded read-only
+  file preview begin the local workspace slice; and
+- a dedicated Settings screen reads bounded Codex account readiness and starts
+  Pylon's isolated device-auth flow through fixed renderer-argument-free IPC,
+  never default `~/.codex`; and
+- typecheck, 58 tests, and the real Electron smoke pass for the current slice.
+
+Terra is the active execution lane for ready #8574 leaves under
+[`../2026-07-10-terra-execution-lane.md`](../2026-07-10-terra-execution-lane.md).
+The live issue claim remains the coordination authority. The Settings smoke
+uses an explicitly labeled scripted device-auth fixture because headless
+Electron cannot finish the browser flow; real account readiness remains an
+owner proof gate. Bounded edit/save plus Git status/diff/review can proceed
+while that proof waits; terminal follows through a bounded host seam.
+Sync-backed conversation authority, server-authoritative Fleet/approval/
+receipt projection, packaging identity, signed updates, and legacy-client
+retirement remain open and must not be implied by the local baseline.
+
 ## Legacy substrate to extract, not inherit
 
 - Codex, Claude, and Grok harness/control capabilities.

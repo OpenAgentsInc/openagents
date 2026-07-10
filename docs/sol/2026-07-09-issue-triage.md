@@ -5,9 +5,11 @@
 - After: 15 open issues under [`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md)
 
 > Reconciliation note: this audit records the initial reset exactly. The
-> subsequent live set is: initial 15 + dependency-held #8642/#8643 − closed
-> #8600/#8637/#8633 + GL #8646–#8650 = 19 open issues. This arithmetic updates
-> current truth without changing the original disposition receipt below.
+> subsequent live set first reached 19 open issues after the dependency-held
+> and GL additions. On 2026-07-10, #8639, #8648, and #8649 closed, leaving 16
+> open roadmap issues: 14 active P0/P1 program issues and two dependency-held
+> P2 issues. This note updates current arithmetic without changing the original
+> disposition receipt below.
 - GitHub label: `roadmap:sol`
 
 ## Triage rules

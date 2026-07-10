@@ -67,6 +67,27 @@ Elapsed time alone never authorizes taking another agent's work. A blocked
 claim stays owned until explicitly released or the process/worktree audit proves
 it abandoned.
 
+## Sol and Terra cross-lane claims
+
+Sol owns roadmap sequencing and hot-contract integration. Terra is authorized
+to pull ready low-collision leaves under
+[`2026-07-10-terra-execution-lane.md`](./2026-07-10-terra-execution-lane.md),
+but that authorization does not erase an existing issue claim.
+
+- Terra claims the exact leaf before mutation and releases it after the pushed
+  landing.
+- Sol does not need to pre-write a new task brief when the issue and Terra pull
+  rules already bound the outcome.
+- An active Sol P0 claim and an active Terra P1 claim may proceed concurrently
+  when files and contracts are disjoint.
+- If Terra discovers that its leaf requires a Sol-owned schema, migration,
+  authority boundary, route table, catalog version, lockfile, or other hot
+  contract, it updates the claim and obtains an explicit integration owner
+  before changing it.
+- A Terra landing that changes a proof rung, dependency, residual, or next-ready
+  slice hands a concise receipt to Sol for roadmap reconciliation; the landing
+  itself need not wait for the prose reconciliation.
+
 ## Collision rule
 
 File-disjoint is not necessarily contract-disjoint. If two lanes touch the same

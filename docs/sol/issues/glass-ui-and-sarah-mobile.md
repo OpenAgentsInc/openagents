@@ -39,21 +39,13 @@ fallback. No `@expo/ui` import is permitted in app code.
 
 ### GL-2 — #8648: mobile glass shell
 
-Status: 0.5.0 build 107 at `9c5adff015` is `VALID` and pixel-proves the typed
-shell/drawer/composer loop. Builds 108 (0.5.1) and 109 (0.5.2) subsequently
-reached `VALID`; the build-108 owner chrome corrections were live-OTA proven,
-then baked into build 109 at `65f8216cb9` with the owner-selected Sarah loop
-made container-level silent. Builds 110/111 keep marketing version 0.5.2 and
-add the typed composer-triggered Sarah reply video with audio. Build 111 at
-`eb34e8d9ee` layers it under the glass chrome, fixes the opaque content surface,
-and opens a typed Liquid Glass Minerals demo sheet at midpoint before returning
-to the original surface. Price choices are demo-only with no StoreKit purchase.
-Source tests/typecheck and simulator proofs are recorded, and live #8648 records
-both 110 and 111 `VALID` (`824072cd…` and `000e2c2a…`; build 111 at 20:59 PT).
-These videos and the demo sheet remain presentation material rather than GL-3
-conversation/auth/SSE proof. D-MB-02 catalog conversion and app-island deletion
-belong to GL-1/GL-4; they are not held open again here. GL-2's remaining exit is
-explicit final owner acceptance of the shell, not more implementation.
+Status: **owner-accepted and closed** on 2026-07-10 after build 111 proved the
+typed shell, drawer, composer, under-chrome reply video, and demo Minerals sheet
+through simulator, TestFlight, and live-use rungs. Build 112 at `adcf0cca5d`
+then fixed the sheet so only explicit user actions dismiss it; that P0 behavior
+repair did not reopen GL-2. Demo prices remain presentation-only with no
+StoreKit purchase. D-MB-02 catalog conversion and app-island deletion remain
+GL-1/GL-4 work.
 
 Complete the owner's target structure in `apps/openagents-mobile`: a left
 flyout drawer, selected navigation row, Recents, floating settings, glass Chat
@@ -63,19 +55,19 @@ pixel proof is required before the next TestFlight upload.
 
 ### GL-3 — #8649: Sarah conversation in mobile
 
-Deliver the text availability floor first: authenticated/prospect session,
-bounded SSE transcript, composer turns, and typed Sarah cards over the same
-server contracts as `/sarah`. Operator posture remains server-authorized;
-linking an account must not let UI tone manufacture authority. Voice/avatar
-tiers remain optional #8610 enhancements and cannot block text.
+Status: **closed** at `6647d998ad` / TestFlight build 113. The typed mobile
+surface mints and persists the production prospect session, sends composer
+turns through the same `/sarah` contracts as web, renders production replies,
+survives app restart, and models bounded offline/reconnect states under the
+enforced `openagents_mobile.sarah_text_surface.v1` contract. The demo video
+remains ambient presentation only.
 
-GL-3 may establish and test this shared Sarah seam in parallel with GL-1/GL-2,
-then compose it into the glass shell. It must not create another transcript,
-FleetRun, Blueprint, intent, cursor, or receipt truth.
-
-The bundled Sarah demo video is presentation material only. It is not evidence
-for authenticated/prospect session behavior, bounded SSE, reconnect, typed
-turns, or cross-surface continuity, and cannot close any GL-3 exit.
+The current text path renders the POST response while SSE carries typed
+liveness/cards, matching the present web behavior. Pure transcript-stream
+unification, voice/avatar tiers, authenticated operator posture, and Android
+proof remain follow-on work in their owning lanes rather than GL-3 closure
+residue. No parallel FleetRun, Blueprint, intent, cursor, or receipt truth was
+created.
 
 ### GL-4 — #8650: convert and delete the temporary lowering
 
@@ -87,11 +79,9 @@ contract change for app code, and reconciled vendored divergence.
 
 - GL is P1 parallel. It cannot take the #8639 steering, authority, projection,
   or receipt hot contracts or delay #8640 Phase A.
-- #8597 has an unreleased Fable claim scoped to initial greenfield setup, while
-  later mobile work exceeded that published scope. A GL implementer must get an
-  explicit re-scope/release or perform the complete claim-protocol audit, then
-  claim the relevant GL issue and coordinate the same mobile hot paths before
-  mutation. Elapsed time alone does not transfer ownership.
+- Every new mobile/renderer leaf must claim its exact scope and coordinate any
+  active #8597/#8647/#8650 hot paths before mutation. Elapsed time alone does
+  not transfer ownership.
 - Each lane reports code-landed, fixture-proven, deployed, live-proven,
   owner-accepted, and closed separately.
 - Visual changes require deterministic simulator screenshots and owner device

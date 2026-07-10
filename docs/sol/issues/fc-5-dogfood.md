@@ -1,24 +1,25 @@
-# FC-5: live Sarah multi-stream coding burn
+# FC-5: live Sarah Codex + Claude coding burn
 
 Parent: #8638
 
 ## Outcome
 
 The owner uses Sarah—not manual terminal orchestration—to burn real OpenAgents
-backlog across multiple coding streams.
+backlog concurrently across named, isolated Codex and Claude accounts.
 
-## Phase A — immediate local unblock
+## Phase A — immediate local daily-driver unblock
 
-This phase is the explicit home of the live-account rung transferred when
-#8633 closed at its production-code/integrated-fixture boundary. It must use
-real owner-linked Codex, Claude, and Grok credentials; no #8633 fixture or
-synthetic harness result satisfies the following acceptance list.
+This phase is the live-account rung transferred when #8633 closed at its
+production-code/integrated-fixture boundary. It must use real owner-linked
+Codex and Claude credentials; no fixture, synthetic harness result, default
+provider home, or provider substitution satisfies the following acceptance
+list.
 
-- At least three simultaneous pinned public work units under one FleetRun.
-- Codex, Claude, and Grok each complete at least one useful unit on owner-local
-  capacity.
-- Sarah starts the run, reports progress, handles one steer/approval, and
-  presents verification/closeout.
+- At least two simultaneous pinned public work units under one FleetRun.
+- Codex and Claude each complete at least one useful unit on owner-local
+  capacity through explicitly named isolated accounts.
+- Sarah starts the run, reports progress, handles one live steer or approval,
+  and presents verification and accepted closeout.
 - A browser reconnect reconstructs the same named work-unit state and controls.
 - Zero duplicate claims, default account homes, silent harness substitutions,
   or manually launched per-assignment shells.
@@ -30,21 +31,39 @@ synthetic harness result satisfies the following acceptance list.
   deployed, live-proven, owner-accepted, or closed. No earlier rung implies a
   later one.
 
-## Phase B — hybrid proof
+## Grok disposition
 
-- After #8547 and #8636 are integrated, at least one owner-local unit and one
-  managed Agent Computer unit complete useful verified work concurrently in
-  one Sarah run, with typed visible target selection and fallback history.
-- Preserve one claim registry and one Sarah supervision contract.
-- Reconcile compute and model usage truth separately.
+Grok is postponed by owner decision on 2026-07-10. The connected account is
+quota/payment exhausted and no additional quota is planned soon. Existing Grok
+adapters, typed HTTP-402 state, fixtures, and the accepted historical canary
+remain regression substrate, but Grok is not a Phase A acceptance item and
+cannot hold this issue or the daily-driver cutover open. Reactivation receives
+a separately scoped issue only when funded capacity exists.
+
+The hybrid local/managed-cloud acceptance formerly duplicated here belongs to
+#8636. It is not part of this issue's exit and does not block the owner-local
+cutover.
+
+## Current live truth
+
+- C1 is crossed: #8637, #8633, and #8639 are closed; the exact command-loop
+  fixture shipped through production revision `00069-h2k`.
+- A real Sarah→Grok run completed useful work with accepted closeout and
+  reconnect-visible evidence. This is historical proof, not the current
+  provider requirement.
+- A real Sarah→Claude run failed closed before verification on the long-lived
+  SCM credential scanner. It produced zero completed work, a rejected no-spend
+  closeout, a released claim, and no landed patch; the scanner/diagnostic gap
+  must be repaired without weakening the invariant.
+- Named Codex homes require isolated owner reauthentication. The default
+  `~/.codex` home must never be touched.
+- The clean physical dependency/API typecheck gate remains an implementation
+  blocker; its active hot-file claim must be respected.
 
 ## Operational cutover decision
 
-- Before C1, use this Codex app/subagents or explicitly partitioned Codex tabs
-  to implement and debug the fleet path.
-- Once #8637, #8633, and the minimum safe #8639 seam pass one fixture on a
-  pinned integrated deployment, run the first low-risk pinned real issue
-  through Sarah as a canary.
+- C1 permits low-risk Sarah canaries while this Codex app remains coordinator,
+  independent verifier, and break-glass.
 - Between C1 and a clean Phase A receipt, Sarah is canary-only and routine work
   remains in this app. A failed or incomplete canary does not advance the gate:
   record the fallback/friction, repair in place, and remain at C1.
@@ -53,8 +72,6 @@ synthetic harness result satisfies the following acceptance list.
   app session.
 - Keep the Codex app as break-glass, control-plane development, and independent
   evidence review. Record every fallback in the friction ledger.
-- Phase B enables default hybrid local/cloud selection; it is not a prerequisite
-  for the owner-local switch.
 
 **Clean** means all required evidence comes from one pinned integrated
 deployment: owner/auth scope, named isolated accounts, fresh advertised
@@ -77,14 +94,8 @@ substitution.
 - Latency distribution and stall/reconnect events against the named budgets.
 - Could-not-prove list.
 
-The #8610 paired text/audio/realtime-video/pre-rendered-opener crossover should
-run alongside the first canary cohort when capacity permits, using the same
-bounded task classes. Its presentation result does not block C2 unless it
-reveals an availability lie or loss of text/fleet control.
-
 ## Exit
 
-Phase A closes the immediate coding-unblock milestone and authorizes the
-default owner-local operational cutover to Sarah/Khala/Pylon. Phase B closes
-the P0 epic's hybrid milestone. Any manual recovery step becomes a typed
-backlog item before the receipt is called clean.
+One clean, Sarah-started, simultaneous Codex+Claude Phase A receipt closes this
+issue and authorizes the default owner-local operational cutover to
+Sarah/Khala/Pylon. Managed-cloud hybrid proof remains #8636; Grok is postponed.

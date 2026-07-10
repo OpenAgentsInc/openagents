@@ -16,21 +16,19 @@ history.
 
 ## Current status
 
-The greenfield identity/icon/OTA floor is landed. TestFlight 0.4.3 build 106,
-0.5.0 build 107, 0.5.1 build 108, and 0.5.2 build 109 reached `VALID`; build
-107 is the simulator-pixel-proven typed glass shell/drawer/composer loop. Build
-108 added the typed surface selector/Sarah presentation loop and received live
-OTA owner chrome corrections; build 109 at `65f8216cb9` baked those corrections
-in and container-stripped audio from the owner-selected loop. Builds 110/111
-keep marketing version 0.5.2; build 111 at `eb34e8d9ee` layers the typed Sarah
-reply video under chrome, fixes the opaque content surface, and opens a typed
-Liquid Glass Minerals demo sheet at midpoint before returning to the original
-surface. Its price choices are demo-only with no StoreKit purchase. Source
-tests/typecheck and simulator proofs are recorded. Live #8648 records both
-builds `VALID` (`824072cd…` and `000e2c2a…`; build 111 at 20:59 PT).
-Sarah/Sync cross-device
-continuity, Android, explicit final owner acceptance, the remaining GL
-integration, and legacy-client retirement remain open.
+The greenfield identity/icon/OTA floor is landed. The owner accepted and closed
+the GL-2 glass shell after build 111; build 112 fixed the Minerals-sheet
+lifecycle. TestFlight build 113 at `6647d998ad` is `VALID` and closes GL-3's
+text-first Sarah slice: the app uses the production `/sarah` prospect/turn
+contracts, persists the relationship across restart, renders typed replies,
+and exposes bounded offline/reconnect state under an enforced behavior
+contract. `7d77150514` adds an app-owned persisted five-thread catalog, mints a
+fresh relationship for New chat, and restores each selected thread's own
+bounded transcript; it does not claim Sync. Pure transcript-stream/Sync
+cross-surface continuation, authenticated
+operator posture, voice/avatar tiers, Android proof, the remaining GL lowering,
+and legacy-client retirement remain open under their owning lanes. Demo pricing
+remains presentation-only; no StoreKit purchase is implemented.
 
 ## Identity locks
 

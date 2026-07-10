@@ -6,6 +6,16 @@
   reconciled through the #8633 stack ending `d779c360c3`, master roadmap rev
   13, and the 14-issue set on 2026-07-09
 
+> **2026-07-10 operating update:** C1 is crossed. #8637, #8633, and #8639 are
+> closed; the minimum-safe command/reconnect stack is fixture-proven and
+> deployed. The remaining C2 event is #8640 Phase A, narrowed by owner decision
+> to simultaneous useful Codex + Claude work because Grok is quota/payment
+> exhausted and postponed. Terra is now an authorized parallel execution lane
+> for ready, claimed, low-collision leaves; see
+> [`2026-07-10-terra-execution-lane.md`](./2026-07-10-terra-execution-lane.md).
+> The original cutover analysis below is retained as historical reasoning;
+> current gate state comes from [`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md).
+
 ## What can be parallelized in this Codex session now
 
 In this current Sol Codex app runtime, the root plus up to three concurrently

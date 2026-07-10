@@ -13,11 +13,11 @@ scope reviewable beside [`../MASTER_ROADMAP.md`](../MASTER_ROADMAP.md).
 - [`fc-2-local-executor.md`](./fc-2-local-executor.md) — #8633 real mixed-
   harness Pylon supervisor across Codex, Claude, and Grok.
 - [`fc-3-supervision.md`](./fc-3-supervision.md) — #8639 Sarah canvas, progress,
-  approvals, and steering.
+  approvals, and steering; closed/deployed substrate.
 - [`fc-4-hybrid-cloud.md`](./fc-4-hybrid-cloud.md) — #8636 local plus Agent
   Computer hybrid routing.
-- [`fc-5-dogfood.md`](./fc-5-dogfood.md) — #8640 live multi-stream acceptance
-  burn.
+- [`fc-5-dogfood.md`](./fc-5-dogfood.md) — #8640 live simultaneous
+  Codex + Claude acceptance burn.
 
 ## P1 — three product surfaces
 

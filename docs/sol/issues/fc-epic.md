@@ -1,12 +1,14 @@
-# P0 EPIC: Sarah Fleet Command — parallel Codex, Claude, and Grok work now
+# P0 EPIC: Sarah Fleet Command — Codex + Claude now, managed cloud next
 
 ## Owner direction
 
 Sarah managing coding fleets is the immediate product priority. She must start,
 observe, steer, approve, and close multiple coding streams across the owner's
-Codex, Claude, and Grok accounts. Capacity may run on desktop Pylons or managed
-Agent Computers, but cloud completion must not block the first useful local
-fleet.
+named isolated accounts. The immediate live cutover requires Codex and Claude;
+Grok is postponed by the 2026-07-10 owner decision because the connected
+account is quota/payment exhausted. Capacity may run on desktop Pylons or
+managed Agent Computers, but cloud completion must not block the first useful
+local fleet.
 
 Authority: `docs/sol/MASTER_ROADMAP.md`.
 
@@ -32,10 +34,10 @@ Authority: `docs/sol/MASTER_ROADMAP.md`.
 4. #8636 FC-4 — hybrid local-Pylon + Agent Computer routing.
 5. #8640 FC-5 — live multi-stream dogfood acceptance.
 
-Current gate: #8637 and #8633 are closed at their honest implementation and
-fixture/deployment rungs. #8639 is the remaining minimum-safe C1 composition;
-#8640 owns the first useful real Codex+Claude+Grok burn and the default-driver
-cutover decision.
+Current gate: #8637, #8633, and #8639 are closed; the minimum-safe C1 stack is
+fixture-proven and deployed. #8640 owns the first clean simultaneous real
+Codex+Claude burn and the default-driver cutover decision. #8636 owns the later
+owner-local plus managed-cloud proof.
 
 ## Non-negotiable laws
 
@@ -62,21 +64,19 @@ cutover decision.
 
 ## Epic exit
 
-From `/sarah`, the owner starts a pinned plan with at least three concurrent
-real work streams. Codex, Claude, and Grok all complete useful units under one
-run with zero duplicate claims. Sarah shows live progress, handles at least one
-steer or approval, and renders verified closeouts. A local-only pass closes the
-immediate unblock milestone; after #8547/#8636 integration, a second receipt
-proves at least one owner-local unit and one managed Agent Computer unit both
-complete useful verified work concurrently without changing the Sarah
-interaction contract.
+From `/sarah`, the owner starts a pinned plan with simultaneous real Codex and
+Claude work streams under one run with zero duplicate claims. Sarah shows live
+progress, handles at least one steer or approval, and renders verified
+closeouts. That local-only pass closes the immediate unblock milestone. After
+#8547/#8636 integration, a separate hybrid receipt proves at least one
+owner-local unit and one managed Agent Computer unit both complete useful
+verified work concurrently without changing the Sarah interaction contract.
 
 ## Cutover posture
 
-The first real Sarah canary begins only after #8637, #8633, and the minimum
-safe #8639 progress/control/reconnect seam pass one fixture on a pinned
-integrated deployment. The owner-local workflow becomes the default for new
-bounded coding work when #8640 Phase A is clean. Managed cloud, avatar polish,
-and full application conversion do not delay that cutover. This Codex app
-remains available for break-glass, fleet-control-plane implementation, and
-independent evidence review.
+C1 is crossed: #8637, #8633, and #8639 passed the pinned integrated fixture and
+the supervision stack is deployed. Sarah canaries are allowed while this Codex
+app remains coordinator, independent verifier, and break-glass. The
+owner-local workflow becomes the default for new bounded coding work when
+#8640 Phase A is clean. Managed cloud, Grok quota, avatar polish, and full
+application conversion do not delay that cutover.

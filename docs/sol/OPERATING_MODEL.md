@@ -67,6 +67,27 @@ After C2, bounded owner-local work defaults to Sarah/Khala/Pylon and this app
 remains break-glass/control-plane/review. See
 [`2026-07-09-codex-parallelism-and-sarah-fleet-cutover.md`](./2026-07-09-codex-parallelism-and-sarah-fleet-cutover.md).
 
+## Sol and Terra execution split
+
+Terra is an authorized parallel implementation lane under this roadmap. Sol
+continues to own priority, dependencies, shared-contract integration, proof-rung
+reconciliation, and the master roadmap. Terra may independently pull and ship a
+ready P1 leaf when it has one observable outcome, a live issue claim, a clean
+worktree, no conflicting hot-contract ownership, and a proportional real-host
+proof. It does not need Sol to rewrite a clear issue into another task brief.
+
+Terra's first active lane is #8574 OpenAgents Desktop parity. This assignment is
+not permanent: Sol may route Terra to another ready leaf, and owner direction
+may do so immediately. P0 Sarah FleetRun authority/projection, Pylon
+claim/execution/retry state, migrations, credential/account-health policy, and
+the live #8640 burn remain Sol-owned hot paths unless the live claim records an
+explicit handoff.
+
+The complete pull, claim, landing, and handoff contract is
+[`2026-07-10-terra-execution-lane.md`](./2026-07-10-terra-execution-lane.md).
+Terra maintains its factual working record under [`../terra/`](../terra/);
+that record can recommend the next slice but never supersedes this roadmap.
+
 ## Implementation-design template
 
 Every substantive Sol design should answer:

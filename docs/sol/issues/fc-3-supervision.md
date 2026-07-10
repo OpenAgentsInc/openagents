@@ -2,6 +2,8 @@
 
 Parent: #8638
 
+Status: **closed** at `1d84386cb5`; fixture-proven and deployed on 2026-07-10.
+
 ## Outcome
 
 Sarah can explain and control an active FleetRun from conversation and the
@@ -14,56 +16,29 @@ MH-6 already shipped Khala Sync fleet projections plus the shared typed
 Sarah surface already has a typed SSE bus, Blueprint deltas, Actions, and
 Code/Receipts panels. This issue composes them.
 
-## Current critical gap
+## Closure receipt
 
-The retained `/sarah` surface now selects an exact successful run, persists and
-resumes its cursor, renders supervision, and writes typed run-control,
-approval, and private steer requests to `khala_sync_fleet_steering_intents`.
-The accepted-claim exchange landed at `e0b0fdc617`; reconnect-honest command
-outcomes landed at `2a3fc0dfaf`/`08aac90250`; and the restart-safe private
-follow-up/completion stack landed through `59538f71a2`. Delivery is exact
-owner/Pylon/claim-bound, the client no longer manufactures effective state,
-oldest-first local follow-ups are generation/token fenced, terminal completion
-is content-bound and body-free, and reconnect sees the requested/delivered/
-completed distinction. Failed/stale completion cannot claim effective state.
+The integrated stack ending `1d84386cb5` closes the minimum-safe supervision
+seam:
 
-Approval remains honestly unavailable when the unattended executor has no
-typed `approval_requested` lifecycle event. No binding is synthesized from
-worker tone, raw logs, or “latest” identity.
+- one Sarah-started pinned fixture run creates three simultaneous named
+  Codex/Claude/Grok work units;
+- pause and resume, one exact-attempt steer, and one exact blocked approval
+  resolve through durable body-free command receipts;
+- every attempt closes with coherent verification, evidence, authority, and
+  exact-or-explicitly-unmeasured usage;
+- a fresh browser resumes from the persisted cursor and reconstructs the same
+  run plus all effective command receipts;
+- the private steer body remains only at the exact local control port and is
+  absent from public-safe projections and reconnect state;
+- migrations 0054–0057 are applied with zero pending in staging and production;
+  staging `00047-ct5` and production `00069-h2k` carry the application stack;
+  and
+- the Sarah, Pylon, Khala Sync, typecheck, migration, and independent review
+  gates recorded on the live issue pass.
 
-First-class server work-unit/attempt authority landed through `849856d189`.
-Every plan unit now exists durably before execution; retries keep distinct
-exact-attempt history; only v2 attempts with coherent verification, artifact,
-proof, authority, closeout, economics, and exact-or-explicitly-unmeasured usage
-can succeed. Server receipt time governs freshness. Legacy v1 replay stays
-compatible without manufacturing success, and migration 0056 opaque-repairs
-unsafe projected refs while terminalizing stranded unsafe progress for retry.
-
-Exact assignment worker-closeout evidence landed through `dd807e6d91`: policy
-is explicit or unknown, accepted refs are retained without lossy projection,
-malformed legacy evidence is unavailable, and owner proof/status carries only
-typed refs. Sarah's strict Sync consumer landed through `fe7b523e13`; direct
-work-unit/attempt rows now survive bootstrap, delta, tombstone, persistence,
-replay, and exact-cursor reconnect with strict nested evidence/privacy gates.
-That slice intentionally does not change the owner projection yet.
-
-Exact server approval binding landed through `05638b0320`. A v2
-`approval_requested` event binds one pending approval to the exact run, stable
-work unit, active attempt, effective nullable assignment/account edge, worker,
-request event, and tool class on the server receipt clock. Legacy worker-only
-approvals remain decodable but non-actionable. Migration 0057 adds the closed
-event kind and indexed global ref lookup; sorted pre-locking prevents
-reverse-order cross-run deadlocks. It is code-landed, not deployed.
-
-The remaining serial residual is production and owner presentation: Pylon must
-emit the FleetRun v2 lifecycle and real typed approval request; non-issue Sarah
-work can still fall back to assignment identity; steer is correctly absent
-without a server-authorized exact-attempt affordance; the canvas stops at
-run→work→worker; and the retained browser mount calls the coding-closeout
-projector with `evidence: []`. Sarah must consume the retained entities directly
-into the full plan→claim→assignment→verification→closeout chain. Then the C1
-fixture must prove pause/resume/approval/steer/reconnect/privacy on one pinned
-stack, followed by migrations 0054/0055/0056/0057 and application deployment.
+This is fixture/deployment proof, not the real owner-account burn. #8640 owns
+that live Codex+Claude rung and the default daily-driver cutover.
 
 ## Scope
 

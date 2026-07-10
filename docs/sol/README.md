@@ -37,17 +37,21 @@ When documents disagree, use this order:
    status. When they move, Sol must reconcile rather than repeat stale prose.
 
 The current roadmap reset is dated 2026-07-09 and recorded in
-[`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md) rev 21. Issue state and
+[`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md) rev 22. Issue state and
 implementation status can move faster than essays; current code, issue state,
 and receipts win when they do.
 
 ## Start here
 
 - [`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md) — the unified roadmap: Sarah Fleet
-  Command is P0, presentation is parallel, 17 P0/P1 program issues plus two
-  gated P2 issues replace the old 30-item queue, most public pages retire, and
-  the product becomes three Effect Native OpenAgents applications over one
+  Command is P0, presentation is parallel, 14 open P0/P1 program issues plus
+  two gated P2 issues replace the old 30-item queue, most public pages retire,
+  and the product becomes three Effect Native OpenAgents applications over one
   seven-layer relationship loop.
+- [`2026-07-10-terra-execution-lane.md`](./2026-07-10-terra-execution-lane.md)
+  — the Sol↔Terra operating amendment: Sol owns priority and integration while
+  Terra may pull and ship ready, claimed, low-collision vertical slices without
+  waiting for Sol to implement every leaf.
 - [`2026-07-09-greenfield-mobile-desktop-decision.md`](./2026-07-09-greenfield-mobile-desktop-decision.md)
   — binding implementation decision for the new React Native mobile and
   Electron desktop apps, legacy freezes, mobile identity/icon, and extraction
