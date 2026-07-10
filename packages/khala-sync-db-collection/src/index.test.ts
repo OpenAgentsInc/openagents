@@ -25,18 +25,24 @@ import {
   SyncVersionWatermark,
   decodeChatMessageEntity,
   decodeChatThreadEntity,
+  decodeFleetAttemptEntity,
   decodeFleetRunEntity,
   decodeFleetCommandOutcomeEntity,
+  decodeFleetWorkUnitEntity,
   decodeRuntimeEventEntity,
   decodeRuntimeTurnEntity,
   encodeChatMessageEntity,
   encodeChatThreadEntity,
+  encodeFleetAttemptEntity,
   encodeFleetRunEntity,
   encodeFleetCommandOutcomeEntity,
+  encodeFleetWorkUnitEntity,
   encodeRuntimeEventEntity,
   encodeRuntimeTurnEntity,
   FLEET_RUN_ENTITY_TYPE,
+  FLEET_ATTEMPT_ENTITY_TYPE,
   FLEET_COMMAND_OUTCOME_ENTITY_TYPE,
+  FLEET_WORK_UNIT_ENTITY_TYPE,
   fleetRunScope,
   personalScope,
   RUNTIME_EVENT_ENTITY_TYPE,
@@ -77,10 +83,12 @@ import {
   createKhalaSyncMutationTracker,
   FLEET_SET_DESIRED_SLOTS_MUTATOR_NAME,
   fleetCommandOutcomeKhalaSyncCollectionOptions,
+  fleetAttemptKhalaSyncCollectionOptions,
   fleetDispatchApprovalDecisionClientMutator,
   fleetDispatchRunControlClientMutator,
   fleetDispatchSteerMessageClientMutator,
   fleetRunKhalaSyncCollectionOptions,
+  fleetWorkUnitKhalaSyncCollectionOptions,
   fleetSetDesiredSlotsClientMutator,
   type FleetSetDesiredSlotsArgs,
   KhalaSyncDbCollectionError,
@@ -104,6 +112,44 @@ const waitFor = async (
 
 const FIXED_TIME = "2026-07-04T20:00:00.000Z"
 const UPDATED_TIME = "2026-07-04T20:01:00.000Z"
+const FLEET_EXECUTION_SCOPE = fleetRunScope("fleet_run.sarah.fc3.collections")
+
+const fleetAttemptFixture = decodeFleetAttemptEntity({
+  attemptRef: "work_claim.fc3.collection.attempt-1",
+  workUnitRef: "unit.fc3.collection",
+  intakeClaimRef: `claim.sarah_fleet_run.${"a".repeat(24)}`,
+  pylonRef: "pylon-owner-1",
+  workerKind: "codex",
+  state: "running",
+  progressClass: "active",
+  assignmentRef: "assignment.fc3.collection",
+  accountRefHash: `account.pylon.codex.${"b".repeat(24)}`,
+  capacityClass: "owner_local",
+  marginalCostClass: "subscription",
+  verification: { truth: "pending" },
+  artifactRefs: [],
+  proofRefs: [],
+  authorityReceiptRefs: [],
+  closeoutRef: null,
+  usageEvidence: { truth: "pending" },
+  blockerRefs: [],
+  lastEventRef: `event.pylon.fleet_run.${"c".repeat(24)}`,
+  startedAt: FIXED_TIME,
+  lastObservedAt: FIXED_TIME,
+  remoteObservedAt: FIXED_TIME,
+  terminalAt: null,
+  updatedAt: FIXED_TIME,
+})
+
+const fleetWorkUnitFixture = decodeFleetWorkUnitEntity({
+  workUnitRef: fleetAttemptFixture.workUnitRef,
+  issueRef: "#8639",
+  dependsOnRefs: [],
+  state: "running",
+  latestAttemptRef: fleetAttemptFixture.attemptRef,
+  acceptedAttemptRef: null,
+  updatedAt: FIXED_TIME,
+})
 
 const cleanups: Array<() => void> = []
 afterEach(() => {
@@ -236,6 +282,34 @@ class FleetFakeServer {
       entityType: EntityType.make(FLEET_COMMAND_OUTCOME_ENTITY_TYPE),
       op: "upsert",
       postImageJson: canonicalJson(encodeFleetCommandOutcomeEntity(row)),
+      scope,
+      version: SyncVersion.make(version),
+    })
+    this.logOf(scope).push(entry)
+    this.emitFrame(
+      scope,
+      new DeltaFrame({
+        cursor: SyncVersion.make(version),
+        entries: [entry],
+        scope,
+      }),
+    )
+    return version
+  }
+
+  commitFleetExecutionEntity(
+    scope: SyncScope,
+    entityType: string,
+    entityId: string,
+    postImageJson: string | null,
+  ): number {
+    const version = this.lastVersion(scope) + 1
+    const entry = new ChangelogEntry({
+      committedAt: FIXED_TIME,
+      entityId: EntityId.make(entityId),
+      entityType: EntityType.make(entityType),
+      op: postImageJson === null ? "delete" : "upsert",
+      ...(postImageJson === null ? {} : { postImageJson }),
       scope,
       version: SyncVersion.make(version),
     })
@@ -775,6 +849,36 @@ const createFleetCommandOutcomeCollection = (
     }),
   )
 
+const createFleetWorkUnitCollection = (
+  harness: Awaited<ReturnType<typeof makeHarness>>,
+  scope: SyncScope,
+) =>
+  createCollection(
+    fleetWorkUnitKhalaSyncCollectionOptions({
+      mutationTracker: harness.tracker,
+      overlay: harness.overlay,
+      scope,
+      session: harness.session,
+      sleep: () => tick(),
+      startSync: true,
+    }),
+  )
+
+const createFleetAttemptCollection = (
+  harness: Awaited<ReturnType<typeof makeHarness>>,
+  scope: SyncScope,
+) =>
+  createCollection(
+    fleetAttemptKhalaSyncCollectionOptions({
+      mutationTracker: harness.tracker,
+      overlay: harness.overlay,
+      scope,
+      session: harness.session,
+      sleep: () => tick(),
+      startSync: true,
+    }),
+  )
+
 const createChatThreadCollection = (
   harness: Awaited<ReturnType<typeof makeHarness>>,
   ownerUserId: string,
@@ -1030,6 +1134,81 @@ describe("fleet command request/effective-state honesty", () => {
     expect(collection.get(receipt.intentId)).toMatchObject({ ...receipt })
     expect(canonicalJson(collection.get(receipt.intentId))).not.toContain(
       "must remain outside Sync post-images",
+    )
+  })
+})
+
+describe("fleet work-unit and attempt read-only collections", () => {
+  test("key server rows, apply deltas and tombstones, and reject local writes", async () => {
+    const server = new FleetFakeServer()
+    server.commitFleetExecutionEntity(
+      FLEET_EXECUTION_SCOPE,
+      FLEET_WORK_UNIT_ENTITY_TYPE,
+      fleetWorkUnitFixture.workUnitRef,
+      canonicalJson(encodeFleetWorkUnitEntity(fleetWorkUnitFixture)),
+    )
+    server.commitFleetExecutionEntity(
+      FLEET_EXECUTION_SCOPE,
+      FLEET_ATTEMPT_ENTITY_TYPE,
+      fleetAttemptFixture.attemptRef,
+      canonicalJson(encodeFleetAttemptEntity(fleetAttemptFixture)),
+    )
+    const harness = await makeHarness(server)
+    const workUnits = createFleetWorkUnitCollection(harness, FLEET_EXECUTION_SCOPE)
+    const attempts = createFleetAttemptCollection(harness, FLEET_EXECUTION_SCOPE)
+
+    await waitFor(
+      () => workUnits.isReady() && attempts.isReady(),
+      "execution collections ready",
+    )
+    expect(workUnits.get(fleetWorkUnitFixture.workUnitRef)).toMatchObject({
+      workUnitRef: fleetWorkUnitFixture.workUnitRef,
+    })
+    expect(attempts.get(fleetAttemptFixture.attemptRef)).toMatchObject({
+      attemptRef: fleetAttemptFixture.attemptRef,
+    })
+
+    const updatedAttempt = decodeFleetAttemptEntity({
+      ...fleetAttemptFixture,
+      lastObservedAt: UPDATED_TIME,
+      remoteObservedAt: UPDATED_TIME,
+      updatedAt: UPDATED_TIME,
+    })
+    server.commitFleetExecutionEntity(
+      FLEET_EXECUTION_SCOPE,
+      FLEET_ATTEMPT_ENTITY_TYPE,
+      updatedAttempt.attemptRef,
+      canonicalJson(encodeFleetAttemptEntity(updatedAttempt)),
+    )
+    await waitFor(
+      () => attempts.get(updatedAttempt.attemptRef)?.updatedAt === UPDATED_TIME,
+      "attempt delta visible",
+    )
+
+    const write = workUnits.update(fleetWorkUnitFixture.workUnitRef, draft => {
+      draft.updatedAt = UPDATED_TIME
+    })
+    await expect(write.isPersisted.promise).rejects.toMatchObject({
+      reasonRef: "khala_sync_db_collection.missing_mutator",
+    })
+
+    server.commitFleetExecutionEntity(
+      FLEET_EXECUTION_SCOPE,
+      FLEET_ATTEMPT_ENTITY_TYPE,
+      updatedAttempt.attemptRef,
+      null,
+    )
+    server.commitFleetExecutionEntity(
+      FLEET_EXECUTION_SCOPE,
+      FLEET_WORK_UNIT_ENTITY_TYPE,
+      fleetWorkUnitFixture.workUnitRef,
+      null,
+    )
+    await waitFor(
+      () =>
+        attempts.get(updatedAttempt.attemptRef) === undefined &&
+        workUnits.get(fleetWorkUnitFixture.workUnitRef) === undefined,
+      "execution tombstones visible",
     )
   })
 })

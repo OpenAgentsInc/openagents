@@ -3,10 +3,12 @@ import {
   FLEET_ACCOUNT_ENTITY_TYPE,
   FLEET_APPROVAL_ENTITY_TYPE,
   FLEET_ASSIGNMENT_ENTITY_TYPE,
+  FLEET_ATTEMPT_ENTITY_TYPE,
   FLEET_COMMAND_OUTCOME_ENTITY_TYPE,
   FLEET_INBOX_FLAG_ENTITY_TYPE,
   FLEET_RUN_ENTITY_TYPE,
   FLEET_STEER_ENTITY_TYPE,
+  FLEET_WORK_UNIT_ENTITY_TYPE,
   FLEET_WORKER_ENTITY_TYPE,
   KHALA_SYNC_PROTOCOL_VERSION,
   canonicalJson,
@@ -14,19 +16,23 @@ import {
   decodeFleetAccountEntity,
   decodeFleetApprovalEntity,
   decodeFleetAssignmentEntity,
+  decodeFleetAttemptEntity,
   decodeFleetCommandOutcomeEntity,
   decodeFleetInboxFlagEntity,
   decodeFleetRunEntity,
   decodeFleetSteerEntity,
+  decodeFleetWorkUnitEntity,
   decodeFleetWorkerEntity,
   decodeLogPage,
   encodeFleetAccountEntity,
   encodeFleetApprovalEntity,
   encodeFleetAssignmentEntity,
+  encodeFleetAttemptEntity,
   encodeFleetCommandOutcomeEntity,
   encodeFleetInboxFlagEntity,
   encodeFleetRunEntity,
   encodeFleetSteerEntity,
+  encodeFleetWorkUnitEntity,
   encodeFleetWorkerEntity,
   type BootstrapResponse,
   type LogPage,
@@ -115,6 +121,91 @@ const account = decodeFleetAccountEntity({
   updatedAt: "2026-07-09T19:59:45.000Z",
 })
 
+const attempt = decodeFleetAttemptEntity({
+  attemptRef: "work_claim.fc3.reducer.attempt-1",
+  workUnitRef: "unit.fc3.reducer",
+  intakeClaimRef: `claim.sarah_fleet_run.${"a".repeat(24)}`,
+  pylonRef: "pylon-owner-1",
+  workerKind: "codex",
+  state: "running",
+  progressClass: "active",
+  assignmentRef: assignment.assignmentRef,
+  accountRefHash: account.accountRefHash,
+  capacityClass: "owner_local",
+  marginalCostClass: "subscription",
+  verification: { truth: "pending" },
+  artifactRefs: [],
+  proofRefs: [],
+  authorityReceiptRefs: [],
+  closeoutRef: null,
+  usageEvidence: { truth: "pending" },
+  blockerRefs: [],
+  lastEventRef: `event.pylon.fleet_run.${"b".repeat(24)}`,
+  startedAt: "2026-07-09T19:59:40.000Z",
+  lastObservedAt: "2026-07-09T19:59:45.000Z",
+  remoteObservedAt: "2026-07-09T19:59:44.000Z",
+  terminalAt: null,
+  updatedAt: "2026-07-09T19:59:45.000Z",
+})
+
+const workUnit = decodeFleetWorkUnitEntity({
+  workUnitRef: attempt.workUnitRef,
+  issueRef: "#8639",
+  dependsOnRefs: [],
+  state: "running",
+  latestAttemptRef: attempt.attemptRef,
+  acceptedAttemptRef: null,
+  updatedAt: attempt.updatedAt,
+})
+
+const succeededAttempt = decodeFleetAttemptEntity({
+  ...attempt,
+  state: "succeeded",
+  progressClass: "terminal",
+  verification: {
+    truth: "passed",
+    verifierRef: "verifier.bun-test.fc3",
+    evidenceRefs: ["test.run.fc3.reducer.1"],
+  },
+  artifactRefs: ["artifact.patch.fc3.reducer.1"],
+  proofRefs: ["proof.fc3.reducer.1"],
+  authorityReceiptRefs: ["receipt.authority.fc3.reducer.1"],
+  closeoutRef: "closeout.fc3.reducer.1",
+  usageEvidence: {
+    schema: "openagents.pylon.fleet_run_usage_evidence.v1",
+    truth: "exact",
+    harnessKind: "codex",
+    evidenceRef: "evidence.public.pylon.fleet_run.exact.fc3",
+    assignmentRef: assignment.assignmentRef,
+    pylonRef: "pylon-owner-1",
+    provider: "pylon-codex-own-capacity",
+    model: "openagents/pylon-codex",
+    demandKind: "own_capacity",
+    demandSource: "khala_coding_delegation",
+    inputTokens: 8,
+    outputTokens: 5,
+    reasoningTokens: 2,
+    cacheReadTokens: 3,
+    totalTokens: 13,
+    tokenRows: 1,
+    tokenUsageRefs: ["usage_row.fc3.reducer.1"],
+    proofRefs: ["proof.usage.fc3.reducer.1"],
+    closeoutChecklistRefs: ["check.closeout.fc3.reducer.1"],
+    proofChecklistRefs: ["check.proof.fc3.reducer.1"],
+  },
+  terminalAt: "2026-07-09T20:00:01.000Z",
+  lastObservedAt: "2026-07-09T20:00:01.000Z",
+  remoteObservedAt: "2026-07-09T20:00:00.000Z",
+  updatedAt: "2026-07-09T20:00:01.000Z",
+})
+
+const succeededWorkUnit = decodeFleetWorkUnitEntity({
+  ...workUnit,
+  state: "succeeded",
+  acceptedAttemptRef: attempt.attemptRef,
+  updatedAt: succeededAttempt.updatedAt,
+})
+
 const steer = decodeFleetSteerEntity({
   steerRef: "steer.fc3.codex",
   targetRef: worker.workerId,
@@ -166,6 +257,16 @@ const baseEntities: ReadonlyArray<BootstrapEntityInput> = [
     FLEET_ASSIGNMENT_ENTITY_TYPE,
     assignment.assignmentRef,
     encodeFleetAssignmentEntity(assignment),
+  ),
+  entity(
+    FLEET_WORK_UNIT_ENTITY_TYPE,
+    workUnit.workUnitRef,
+    encodeFleetWorkUnitEntity(workUnit),
+  ),
+  entity(
+    FLEET_ATTEMPT_ENTITY_TYPE,
+    attempt.attemptRef,
+    encodeFleetAttemptEntity(attempt),
   ),
   entity(
     FLEET_APPROVAL_ENTITY_TYPE,
@@ -289,7 +390,7 @@ describe("Sarah FC-3 fleet entity reducer", () => {
       scope,
       cursor: 10,
     })
-    expect(state.entities).toHaveLength(8)
+    expect(state.entities).toHaveLength(10)
     expect(state.entities.every((row) => row.version === 10)).toBe(true)
     expect(
       state.entities.map((row) => `${row.entityType}/${row.entityId}`),
@@ -301,6 +402,24 @@ describe("Sarah FC-3 fleet entity reducer", () => {
       .map((row) => `${row.entityType}/${row.entityId}`))
 
     const projection = projectSarahFleetProjectionState(state, NOW)
+    const legacyState = reduceSarahFleetBootstrapPages([
+      bootstrapPage(
+        baseEntities.filter(
+          row =>
+            row.entityType !== FLEET_WORK_UNIT_ENTITY_TYPE &&
+            row.entityType !== FLEET_ATTEMPT_ENTITY_TYPE,
+        ),
+        { cursor: 10 },
+      ),
+    ])
+    expect(projection).toEqual(projectSarahFleetProjectionState(legacyState, NOW))
+    expect(
+      state.entities.filter(
+        row =>
+          row.entityType === FLEET_WORK_UNIT_ENTITY_TYPE ||
+          row.entityType === FLEET_ATTEMPT_ENTITY_TYPE,
+      ),
+    ).toHaveLength(2)
     expect(projection.run.runRef).toBe(runRef)
     expect(projection.workUnits[0]?.assignmentRef).toBe(assignment.assignmentRef)
     expect(projection.workers[0]?.workerRef).toBe(worker.workerId)
@@ -309,6 +428,76 @@ describe("Sarah FC-3 fleet entity reducer", () => {
     expect(JSON.stringify(projection)).not.toMatch(
       /bodyCarrier|capacityAvailable|postImageJson/,
     )
+  })
+
+  test("applies direct work-unit and attempt deltas, tombstones, and exact replay", () => {
+    const bootstrapped = reduceSarahFleetBootstrapPages(bootstrapPages())
+    const completed = reduceSarahFleetLogPages(bootstrapped, [
+      logPage(
+        [
+          {
+            version: 11,
+            entityType: FLEET_ATTEMPT_ENTITY_TYPE,
+            entityId: succeededAttempt.attemptRef,
+            op: "upsert",
+            postImageJson: canonicalJson(
+              encodeFleetAttemptEntity(succeededAttempt),
+            ),
+            committedAt: "2026-07-09T20:00:01.000Z",
+          },
+          {
+            version: 11,
+            entityType: FLEET_WORK_UNIT_ENTITY_TYPE,
+            entityId: succeededWorkUnit.workUnitRef,
+            op: "upsert",
+            postImageJson: canonicalJson(
+              encodeFleetWorkUnitEntity(succeededWorkUnit),
+            ),
+            committedAt: "2026-07-09T20:00:01.000Z",
+          },
+        ],
+        11,
+      ),
+    ])
+    expect(
+      completed.entities.find(
+        row => row.entityType === FLEET_ATTEMPT_ENTITY_TYPE,
+      )?.postImageJson,
+    ).toBe(canonicalJson(encodeFleetAttemptEntity(succeededAttempt)))
+    expect(() => projectSarahFleetProjectionState(completed, NOW)).not.toThrow()
+
+    const tombstonePage = logPage(
+      [
+        {
+          version: 12,
+          entityType: FLEET_ATTEMPT_ENTITY_TYPE,
+          entityId: attempt.attemptRef,
+          op: "delete",
+          committedAt: "2026-07-09T20:00:02.000Z",
+        },
+        {
+          version: 12,
+          entityType: FLEET_WORK_UNIT_ENTITY_TYPE,
+          entityId: workUnit.workUnitRef,
+          op: "delete",
+          committedAt: "2026-07-09T20:00:02.000Z",
+        },
+      ],
+      12,
+    )
+    const tombstoned = reduceSarahFleetLogPages(completed, [tombstonePage])
+    expect(reduceSarahFleetLogPages(tombstoned, [tombstonePage])).toEqual(
+      tombstoned,
+    )
+    expect(
+      tombstoned.entities
+        .filter(
+          row =>
+            row.entityType === FLEET_ATTEMPT_ENTITY_TYPE ||
+            row.entityType === FLEET_WORK_UNIT_ENTITY_TYPE,
+        )
+        .map(row => row.postImageJson),
+    ).toEqual([null, null])
   })
 
   test("honors deletes and replays the same version and images idempotently", () => {
@@ -596,6 +785,72 @@ describe("Sarah FC-3 fleet entity reducer", () => {
         ]),
       "invalid_post_image",
     )
+
+    const unsafeVerification = {
+      ...encodeFleetAttemptEntity(succeededAttempt),
+      verification: {
+        ...encodeFleetAttemptEntity(succeededAttempt).verification,
+        rawOutput: "PRIVATE VERIFICATION SENTINEL",
+      },
+    }
+    let unsafeAttemptFailure: unknown
+    try {
+      reduceSarahFleetBootstrapPages([
+        bootstrapPage(
+          [
+            ...baseEntities.filter(
+              row => row.entityType !== FLEET_ATTEMPT_ENTITY_TYPE,
+            ),
+            entity(
+              FLEET_ATTEMPT_ENTITY_TYPE,
+              succeededAttempt.attemptRef,
+              unsafeVerification,
+            ),
+          ],
+          { cursor: 10 },
+        ),
+      ])
+    } catch (error) {
+      unsafeAttemptFailure = error
+    }
+    expect(unsafeAttemptFailure).toMatchObject({ reason: "invalid_post_image" })
+    expect(JSON.stringify(unsafeAttemptFailure)).not.toContain(
+      "PRIVATE VERIFICATION SENTINEL",
+    )
+
+    for (const usageEvidence of [
+      {
+        ...encodeFleetAttemptEntity(succeededAttempt).usageEvidence,
+        workspacePath: "/Users/operator/private-worktree",
+      },
+      {
+        ...encodeFleetAttemptEntity(succeededAttempt).usageEvidence,
+        totalTokens: 1,
+      },
+    ]) {
+      expectReason(
+        () =>
+          reduceSarahFleetBootstrapPages([
+            bootstrapPage(
+              [
+                ...baseEntities.filter(
+                  row => row.entityType !== FLEET_ATTEMPT_ENTITY_TYPE,
+                ),
+                entity(
+                  FLEET_ATTEMPT_ENTITY_TYPE,
+                  succeededAttempt.attemptRef,
+                  {
+                    ...encodeFleetAttemptEntity(succeededAttempt),
+                    usageEvidence,
+                  },
+                ),
+              ],
+              { cursor: 10 },
+            ),
+          ]),
+        "invalid_post_image",
+      )
+    }
   })
 
   test("round-trips one strict serializable state and rejects excess persisted fields", () => {
@@ -688,10 +943,15 @@ describe("Sarah FC-3 persisted reconnect boundary", () => {
     expect(resumeInputs).toEqual([cursorState(10), cursorState(11)])
     expect(Number(second.state.cursor)).toBe(11)
     expect(third.state).toEqual(second.state)
-    expect(third.projection.run.runRef).toBe(runRef)
     expect(
-      JSON.stringify({ resumeInputs, persistedJson }),
-    ).not.toContain("latest")
+      third.state.entities.filter(
+        row =>
+          row.entityType === FLEET_WORK_UNIT_ENTITY_TYPE ||
+          row.entityType === FLEET_ATTEMPT_ENTITY_TYPE,
+      ),
+    ).toHaveLength(2)
+    expect(third.projection.run.runRef).toBe(runRef)
+    expect(JSON.stringify(resumeInputs)).not.toContain("latest")
   })
 
   test("refuses a persisted state from another owner scope before any client call", async () => {

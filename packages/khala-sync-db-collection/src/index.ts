@@ -15,9 +15,11 @@ import {
   decodeChatMessageEntity,
   decodeChatThreadEntity,
   decodeFleetApprovalEntity,
+  decodeFleetAttemptEntity,
   decodeFleetCommandOutcomeEntity,
   decodeFleetRunEntity,
   decodeFleetSteerEntity,
+  decodeFleetWorkUnitEntity,
   decodeFleetWorkerEntity,
   decodeRuntimeEventEntity,
   decodeRuntimeTurnEntity,
@@ -25,9 +27,11 @@ import {
   encodeChatThreadEntity,
   encodeFleetRunEntity,
   FLEET_APPROVAL_ENTITY_TYPE,
+  FLEET_ATTEMPT_ENTITY_TYPE,
   FLEET_COMMAND_OUTCOME_ENTITY_TYPE,
   FLEET_RUN_ENTITY_TYPE,
   FLEET_STEER_ENTITY_TYPE,
+  FLEET_WORK_UNIT_ENTITY_TYPE,
   FLEET_WORKER_ENTITY_TYPE,
   fleetRunScope,
   personalScope,
@@ -37,9 +41,11 @@ import {
   type ChatMessageEntity,
   type ChatThreadEntity,
   type FleetApprovalEntity,
+  type FleetAttemptEntity,
   type FleetCommandOutcomeEntity,
   type FleetRunEntity,
   type FleetSteerEntity,
+  type FleetWorkUnitEntity,
   type FleetWorkerEntity,
   MutationId,
   type MutationEnvelope,
@@ -1028,6 +1034,44 @@ export const fleetWorkerKhalaSyncCollectionOptions = (
       decodeFleetWorkerEntity(JSON.parse(entity.postImageJson) as unknown),
     entityIdFromKey: key => key,
     getKey: row => row.workerId,
+  })
+
+/** Read-only stable plan rows. Attempts may change without changing this key. */
+export type FleetWorkUnitCollectionOptions = Omit<
+  KhalaSyncCollectionOptions<FleetWorkUnitEntity, string>,
+  "collection" | "decode" | "entityIdFromKey" | "getKey" | "mutators"
+>
+
+export const fleetWorkUnitKhalaSyncCollectionOptions = (
+  options: FleetWorkUnitCollectionOptions,
+): CollectionConfig<FleetWorkUnitEntity, string, never, KhalaSyncCollectionUtils> =>
+  khalaSyncCollectionOptions<FleetWorkUnitEntity, string>({
+    ...options,
+    awaitServerSync: options.awaitServerSync ?? false,
+    collection: FLEET_WORK_UNIT_ENTITY_TYPE,
+    decode: entity =>
+      decodeFleetWorkUnitEntity(JSON.parse(entity.postImageJson) as unknown),
+    entityIdFromKey: key => key,
+    getKey: row => row.workUnitRef,
+  })
+
+/** Read-only execution rows keyed by the canonical Pylon work-claim ref. */
+export type FleetAttemptCollectionOptions = Omit<
+  KhalaSyncCollectionOptions<FleetAttemptEntity, string>,
+  "collection" | "decode" | "entityIdFromKey" | "getKey" | "mutators"
+>
+
+export const fleetAttemptKhalaSyncCollectionOptions = (
+  options: FleetAttemptCollectionOptions,
+): CollectionConfig<FleetAttemptEntity, string, never, KhalaSyncCollectionUtils> =>
+  khalaSyncCollectionOptions<FleetAttemptEntity, string>({
+    ...options,
+    awaitServerSync: options.awaitServerSync ?? false,
+    collection: FLEET_ATTEMPT_ENTITY_TYPE,
+    decode: entity =>
+      decodeFleetAttemptEntity(JSON.parse(entity.postImageJson) as unknown),
+    entityIdFromKey: key => key,
+    getKey: row => row.attemptRef,
   })
 
 /**

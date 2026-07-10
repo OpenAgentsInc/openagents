@@ -2,10 +2,12 @@ import {
   FLEET_ACCOUNT_ENTITY_TYPE,
   FLEET_APPROVAL_ENTITY_TYPE,
   FLEET_ASSIGNMENT_ENTITY_TYPE,
+  FLEET_ATTEMPT_ENTITY_TYPE,
   FLEET_COMMAND_OUTCOME_ENTITY_TYPE,
   FLEET_INBOX_FLAG_ENTITY_TYPE,
   FLEET_RUN_ENTITY_TYPE,
   FLEET_STEER_ENTITY_TYPE,
+  FLEET_WORK_UNIT_ENTITY_TYPE,
   FLEET_WORKER_ENTITY_TYPE,
   FleetPublicRef,
   SyncScope,
@@ -16,19 +18,23 @@ import {
   decodeFleetAccountEntity,
   decodeFleetApprovalEntity,
   decodeFleetAssignmentEntity,
+  decodeFleetAttemptEntity,
   decodeFleetCommandOutcomeEntity,
   decodeFleetInboxFlagEntity,
   decodeFleetRunEntity,
   decodeFleetSteerEntity,
+  decodeFleetWorkUnitEntity,
   decodeFleetWorkerEntity,
   decodeLogPage,
   encodeFleetAccountEntity,
   encodeFleetApprovalEntity,
   encodeFleetAssignmentEntity,
+  encodeFleetAttemptEntity,
   encodeFleetCommandOutcomeEntity,
   encodeFleetInboxFlagEntity,
   encodeFleetRunEntity,
   encodeFleetSteerEntity,
+  encodeFleetWorkUnitEntity,
   encodeFleetWorkerEntity,
   fleetRunScope,
   type FleetApprovalEntity,
@@ -68,6 +74,8 @@ export const SarahFleetProjectionEntityType = Schema.Literals([
   FLEET_RUN_ENTITY_TYPE,
   FLEET_WORKER_ENTITY_TYPE,
   FLEET_ASSIGNMENT_ENTITY_TYPE,
+  FLEET_WORK_UNIT_ENTITY_TYPE,
+  FLEET_ATTEMPT_ENTITY_TYPE,
   FLEET_ACCOUNT_ENTITY_TYPE,
   FLEET_INBOX_FLAG_ENTITY_TYPE,
   FLEET_APPROVAL_ENTITY_TYPE,
@@ -239,6 +247,41 @@ const POST_IMAGE_KEYS = {
     "closeoutClass",
     "updatedAt",
   ],
+  [FLEET_WORK_UNIT_ENTITY_TYPE]: [
+    "workUnitRef",
+    "issueRef",
+    "dependsOnRefs",
+    "state",
+    "latestAttemptRef",
+    "acceptedAttemptRef",
+    "updatedAt",
+  ],
+  [FLEET_ATTEMPT_ENTITY_TYPE]: [
+    "attemptRef",
+    "workUnitRef",
+    "intakeClaimRef",
+    "pylonRef",
+    "workerKind",
+    "state",
+    "progressClass",
+    "assignmentRef",
+    "accountRefHash",
+    "capacityClass",
+    "marginalCostClass",
+    "verification",
+    "artifactRefs",
+    "proofRefs",
+    "authorityReceiptRefs",
+    "closeoutRef",
+    "usageEvidence",
+    "blockerRefs",
+    "lastEventRef",
+    "startedAt",
+    "lastObservedAt",
+    "remoteObservedAt",
+    "terminalAt",
+    "updatedAt",
+  ],
   [FLEET_ACCOUNT_ENTITY_TYPE]: [
     "accountRefHash",
     "readiness",
@@ -332,6 +375,73 @@ const decodeAndCanonicalizePostImage = (
       "invalid_post_image",
     )
   }
+  if (entityType === FLEET_ATTEMPT_ENTITY_TYPE) {
+    const attempt = raw as Record<string, unknown>
+    const verification = assertExactKeys(
+      attempt.verification,
+      isRecord(attempt.verification) &&
+          (attempt.verification.truth === "passed" ||
+            attempt.verification.truth === "failed")
+        ? ["truth", "verifierRef", "evidenceRefs"]
+        : ["truth"],
+      "invalid_post_image",
+    )
+    if (
+      verification.truth !== "pending" &&
+      verification.truth !== "not_reported" &&
+      verification.truth !== "passed" &&
+      verification.truth !== "failed"
+    ) {
+      return fail("invalid_post_image")
+    }
+    const usageEvidence = assertExactKeys(
+      attempt.usageEvidence,
+      isRecord(attempt.usageEvidence) && attempt.usageEvidence.truth === "exact"
+        ? [
+            "schema",
+            "truth",
+            "harnessKind",
+            "evidenceRef",
+            "assignmentRef",
+            "pylonRef",
+            "provider",
+            "model",
+            "demandKind",
+            "demandSource",
+            "inputTokens",
+            "outputTokens",
+            "reasoningTokens",
+            "cacheReadTokens",
+            "totalTokens",
+            "tokenRows",
+            "tokenUsageRefs",
+            "proofRefs",
+            "closeoutChecklistRefs",
+            "proofChecklistRefs",
+          ]
+        : isRecord(attempt.usageEvidence) &&
+            attempt.usageEvidence.truth === "not_measured"
+          ? [
+              "schema",
+              "truth",
+              "harnessKind",
+              "evidenceRef",
+              "assignmentRef",
+              "receiptRef",
+              "tokenUsageRefs",
+              "caveatRefs",
+            ]
+          : ["truth"],
+      "invalid_post_image",
+    )
+    if (
+      usageEvidence.truth !== "pending" &&
+      usageEvidence.truth !== "exact" &&
+      usageEvidence.truth !== "not_measured"
+    ) {
+      return fail("invalid_post_image")
+    }
+  }
 
   try {
     switch (entityType) {
@@ -351,6 +461,20 @@ const decodeAndCanonicalizePostImage = (
           return fail("entity_key_mismatch")
         }
         return canonicalJson(encodeFleetAssignmentEntity(entity))
+      }
+      case FLEET_WORK_UNIT_ENTITY_TYPE: {
+        const entity = decodeFleetWorkUnitEntity(raw)
+        if (entity.workUnitRef !== entityId) {
+          return fail("entity_key_mismatch")
+        }
+        return canonicalJson(encodeFleetWorkUnitEntity(entity))
+      }
+      case FLEET_ATTEMPT_ENTITY_TYPE: {
+        const entity = decodeFleetAttemptEntity(raw)
+        if (entity.attemptRef !== entityId) {
+          return fail("entity_key_mismatch")
+        }
+        return canonicalJson(encodeFleetAttemptEntity(entity))
       }
       case FLEET_ACCOUNT_ENTITY_TYPE: {
         const entity = decodeFleetAccountEntity(raw)
