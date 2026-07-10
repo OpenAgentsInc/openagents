@@ -90,6 +90,7 @@ export type PylonOwnedFleetRunRequestPort = (
 export type PylonOwnedFleetRunAssignmentPort = (input: {
   readonly accountRef: string
   readonly assignmentRef: string
+  readonly onLifecycle?: ((event: PylonAssignmentRunLifecycleEvent) => void | Promise<void>) | undefined
 }) => Promise<PylonOwnedFleetRunAssignmentReceipt>
 
 export type PylonOwnedFleetRunInspectionPort = (
@@ -231,6 +232,159 @@ const terminalLifecycle = (input: {
   ...(input.blockerRef === undefined ? {} : { blockerRefs: [input.blockerRef] }),
 })
 
+const stablePublicRef = (prefix: string, seed: string): string =>
+  `${prefix}.${createHash("sha256").update(seed).digest("hex").slice(0, 24)}`
+
+const uniqueRefs = (refs: readonly string[]): string[] => [...new Set(refs)].slice(0, 64)
+const workerEvidenceRefPattern = /^[A-Za-z0-9][A-Za-z0-9_.:/=-]{2,259}$/u
+const attemptProjectionRefPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,179}$/u
+
+const projectedWorkerRefs = (refs: readonly string[], prefix: string): string[] =>
+  uniqueRefs(refs.map(ref => attemptProjectionRefPattern.test(ref)
+    ? ref
+    : stablePublicRef(prefix, ref)))
+
+type ExactWorkerCloseoutEvidence = {
+  readonly artifactRefs: readonly string[]
+  readonly authorityReceiptRefs: readonly string[]
+  readonly closeoutRefs: readonly string[]
+  readonly eventRef: string
+  readonly proofRefs: readonly string[]
+  readonly testRefs: readonly string[]
+  readonly verificationRefs: readonly string[]
+}
+
+const stringRefs = (value: unknown): readonly string[] | null =>
+  Array.isArray(value) &&
+    value.length <= 64 &&
+    value.every(ref => typeof ref === "string" && workerEvidenceRefPattern.test(ref))
+    ? value as readonly string[]
+    : null
+
+const exactWorkerCloseout = (
+  closeout: PylonKhalaCloseoutResult,
+): ExactWorkerCloseoutEvidence => {
+  const status = (closeout.status as unknown as { workerCloseout?: unknown }).workerCloseout
+  const proof = (closeout.proof as unknown as { workerCloseout?: unknown }).workerCloseout
+  const decode = (value: unknown): ExactWorkerCloseoutEvidence & {
+    readonly projectionBlockerRefs: readonly string[]
+    readonly source: string
+    readonly status: string | null
+  } => {
+    if (value === null || typeof value !== "object" || Array.isArray(value)) {
+      throw new Error("worker closeout evidence is unavailable")
+    }
+    const record = value as Record<string, unknown>
+    const artifactRefs = stringRefs(record.artifactRefs)
+    const authorityReceiptRefs = stringRefs(record.authorityReceiptRefs)
+    const closeoutRefs = stringRefs(record.closeoutRefs)
+    const proofRefs = stringRefs(record.proofRefs)
+    const testRefs = stringRefs(record.testRefs)
+    const verificationRefs = stringRefs(record.verificationRefs)
+    const projectionBlockerRefs = stringRefs(record.projectionBlockerRefs)
+    if (
+      record.source !== "worker_closeout_event" ||
+      typeof record.eventRef !== "string" ||
+      !workerEvidenceRefPattern.test(record.eventRef) ||
+      record.status !== "closeout_submitted" ||
+      artifactRefs === null ||
+      authorityReceiptRefs === null ||
+      closeoutRefs === null ||
+      proofRefs === null ||
+      testRefs === null ||
+      verificationRefs === null ||
+      projectionBlockerRefs === null ||
+      artifactRefs.length === 0 ||
+      authorityReceiptRefs.length === 0 ||
+      closeoutRefs.length === 0 ||
+      proofRefs.length === 0 ||
+      testRefs.length === 0 ||
+      verificationRefs.length === 0 ||
+      projectionBlockerRefs.length !== 0
+    ) throw new Error("worker closeout evidence is incomplete")
+    return {
+      artifactRefs,
+      authorityReceiptRefs,
+      closeoutRefs,
+      eventRef: record.eventRef,
+      proofRefs,
+      testRefs,
+      verificationRefs,
+      projectionBlockerRefs,
+      source: record.source,
+      status: record.status,
+    }
+  }
+  const statusEvidence = decode(status)
+  const proofEvidence = decode(proof)
+  if (JSON.stringify(statusEvidence) !== JSON.stringify(proofEvidence)) {
+    throw new Error("worker closeout status and proof evidence diverged")
+  }
+  return statusEvidence
+}
+
+const terminalEvidenceFromCloseout = (
+  dispatch: FleetRunSupervisorDispatchInput,
+  closeout: PylonKhalaCloseoutResult,
+): {
+  readonly verification: {
+    readonly truth: "passed"
+    readonly verifierRef: string
+    readonly evidenceRefs: readonly string[]
+  }
+  readonly artifactRefs: readonly string[]
+  readonly proofRefs: readonly string[]
+  readonly authorityReceiptRefs: readonly string[]
+} => {
+  const worker = exactWorkerCloseout(closeout)
+  const verificationRefs = projectedWorkerRefs(
+    [...worker.testRefs, ...worker.verificationRefs],
+    "verification.public.pylon.opaque",
+  )
+  const verifierSeed = dispatch.workUnit.verify ??
+    `worker_closeout:${worker.eventRef}:${verificationRefs.join(":")}`
+  return {
+    verification: {
+      truth: "passed",
+      verifierRef: stablePublicRef("verifier.public.pylon.fleet_run", verifierSeed),
+      evidenceRefs: verificationRefs,
+    },
+    artifactRefs: projectedWorkerRefs(worker.artifactRefs, "artifact.public.pylon.opaque"),
+    proofRefs: projectedWorkerRefs(worker.proofRefs, "proof.public.pylon.opaque"),
+    authorityReceiptRefs: projectedWorkerRefs(
+      worker.authorityReceiptRefs,
+      "receipt.public.pylon.authority.opaque",
+    ),
+  }
+}
+
+const reconciledTerminalEvidenceFromCloseout = (
+  active: FleetRunSupervisorActiveAssignment,
+  closeout: PylonKhalaCloseoutResult,
+): ReturnType<typeof terminalEvidenceFromCloseout> => {
+  const worker = exactWorkerCloseout(closeout)
+  const verificationRefs = projectedWorkerRefs(
+    [...worker.testRefs, ...worker.verificationRefs],
+    "verification.public.pylon.opaque",
+  )
+  return {
+    verification: {
+      truth: "passed",
+      verifierRef: stablePublicRef(
+        "verifier.public.pylon.fleet_run",
+        `worker_closeout:${active.claim.claimRef}:${worker.eventRef}:${verificationRefs.join(":")}`,
+      ),
+      evidenceRefs: verificationRefs,
+    },
+    artifactRefs: projectedWorkerRefs(worker.artifactRefs, "artifact.public.pylon.opaque"),
+    proofRefs: projectedWorkerRefs(worker.proofRefs, "proof.public.pylon.opaque"),
+    authorityReceiptRefs: projectedWorkerRefs(
+      worker.authorityReceiptRefs,
+      "receipt.public.pylon.authority.opaque",
+    ),
+  }
+}
+
 const delegationProjection = (
   receipt: PylonOwnedFleetRunRequestReceipt,
 ): { assignmentRef: string; pylonRef: string; workflowClass: string } | null => {
@@ -358,16 +512,26 @@ const lifecycleMatchesAssignment = (
   assignmentRef: string,
 ): boolean => lifecycle.every(event => event.assignmentRef === undefined || event.assignmentRef === assignmentRef)
 
-const traceIsAcceptedCloseout = (trace: PylonKhalaAssignmentTraceStatusResult): boolean =>
-  trace.progress.state === "closed_out" &&
+const traceIsAcceptedCloseout = (trace: PylonKhalaAssignmentTraceStatusResult): boolean => {
+  const workerCloseout = (trace as unknown as {
+    workerCloseout?: { source?: unknown; status?: unknown; projectionBlockerRefs?: unknown }
+  }).workerCloseout
+  return trace.progress.state === "closed_out" &&
   trace.closeoutPolicy?.source === "worker_closeout_event" &&
   trace.closeoutPolicy.paymentMode === "no-spend" &&
   trace.closeoutPolicy.settlementState === "not_applicable" &&
   trace.closeoutPolicy.payoutClaimAllowed === false &&
-  trace.lifecycle.rejectionRefs.length === 0
+  trace.lifecycle.rejectionRefs.length === 0 &&
+  workerCloseout?.source === "worker_closeout_event" &&
+  workerCloseout.status === "closeout_submitted" &&
+  Array.isArray(workerCloseout.projectionBlockerRefs) &&
+  workerCloseout.projectionBlockerRefs.length === 0
+}
 
 const traceIsRejected = (trace: PylonKhalaAssignmentTraceStatusResult): boolean =>
-  trace.progress.state === "rejected" || trace.lifecycle.rejectionRefs.length > 0
+  trace.progress.state === "rejected" ||
+  trace.progress.state === "closed_out" ||
+  trace.lifecycle.rejectionRefs.length > 0
 
 const validDate = (value: Date): boolean => value instanceof Date && Number.isFinite(value.getTime())
 
@@ -546,8 +710,9 @@ export function createPylonOwnedFleetRunSupervisorRunner(
       accountRef: requestInput.accountRef,
       assignmentRef: requestInput.assignmentRef,
       strictAssignmentRef: true,
-      onLifecycleEvent: event => {
+      onLifecycleEvent: async event => {
         lifecycle.push(event)
+        await requestInput.onLifecycle?.(event)
       },
     })
     const lease = "lease" in result ? result.lease : undefined
@@ -705,12 +870,27 @@ export function createPylonOwnedFleetRunSupervisorRunner(
     }
 
     let assignment: PylonOwnedFleetRunAssignmentReceipt
+    let lifecycleDeliveryTail = Promise.resolve<void>(undefined)
+    const deliverLifecycle = (event: PylonAssignmentRunLifecycleEvent): Promise<void> => {
+      const delivery = lifecycleDeliveryTail.then(async () => {
+        await dispatchInput.onLifecycle?.(event)
+      })
+      // Keep the serial lane usable after one fail-soft projection failure;
+      // the supervisor will replay the buffered event because it deduplicates
+      // only successful live deliveries.
+      lifecycleDeliveryTail = delivery.catch(() => undefined)
+      return delivery
+    }
     try {
       assignment = await runAssignment({
         accountRef: account.ref,
         assignmentRef,
+        ...(dispatchInput.onLifecycle === undefined
+          ? {}
+          : { onLifecycle: deliverLifecycle }),
       })
     } catch {
+      await lifecycleDeliveryTail
       return fail(
         "failed",
         "The exact no-spend assignment run failed.",
@@ -718,6 +898,10 @@ export function createPylonOwnedFleetRunSupervisorRunner(
         assignmentRef,
       )
     }
+    // `runNoSpendAssignment` clears its interval before returning, but a slow
+    // callback may still be in flight. Join the serial delivery lane before a
+    // terminal dispatch result can be projected into the ordered outbox.
+    await lifecycleDeliveryTail
     if (
       assignment.assignmentRef !== assignmentRef ||
       !lifecycleMatchesAssignment(assignment.lifecycle, assignmentRef)
@@ -757,14 +941,17 @@ export function createPylonOwnedFleetRunSupervisorRunner(
       )
     }
     let evidence: ReturnType<typeof exactPylonFleetRunUsageEvidence>
+    let terminalEvidence: ReturnType<typeof terminalEvidenceFromCloseout>
     try {
+      const closeout = await readCloseout(assignmentRef)
       evidence = exactPylonFleetRunUsageEvidence({
         accountRefHash,
         assignmentRef,
-        closeout: await readCloseout(assignmentRef),
+        closeout,
         harnessKind: dispatchInput.workerKind,
         pylonRef: input.pylonRef,
       })
+      terminalEvidence = terminalEvidenceFromCloseout(dispatchInput, closeout)
     } catch {
       return fail(
         "failed",
@@ -777,7 +964,9 @@ export function createPylonOwnedFleetRunSupervisorRunner(
     const result = {
       ...evidence,
       assignmentRef,
+      ...terminalEvidence,
       lifecycle: [...assignment.lifecycle],
+      marginalCostClass: account.marginalCostClass,
       status: "completed",
       summary: "The exact no-spend Pylon assignment completed with exact usage evidence.",
     } satisfies PylonOwnedFleetRunDispatchResult
@@ -919,6 +1108,8 @@ export function createPylonOwnedFleetRunSupervisorRunner(
     }
     if (traceIsAcceptedCloseout(trace)) {
       let evidence: ReturnType<typeof exactPylonFleetRunUsageEvidence>
+      let terminalEvidence: ReturnType<typeof terminalEvidenceFromCloseout>
+      let marginalCostClass: PylonAccountRegistryEntry["marginalCostClass"]
       try {
         const registry = await loadRegistry()
         const matches = registry.filter(account => account.ref === active.accountRef)
@@ -932,13 +1123,16 @@ export function createPylonOwnedFleetRunSupervisorRunner(
           provider: candidate.provider,
         })
         if (account === null) throw new Error("reconcile account custody is invalid")
+        const closeout = await readCloseout(assignmentRef)
         evidence = exactPylonFleetRunUsageEvidence({
           accountRefHash: hashPylonAccountRef(account.provider, account.ref),
           assignmentRef,
-          closeout: await readCloseout(assignmentRef),
+          closeout,
           harnessKind: account.provider === "codex" ? "codex" : "claude",
           pylonRef: input.pylonRef,
         })
+        terminalEvidence = reconciledTerminalEvidenceFromCloseout(active, closeout)
+        marginalCostClass = account.marginalCostClass
       } catch {
         return {
           ...fail(
@@ -953,7 +1147,9 @@ export function createPylonOwnedFleetRunSupervisorRunner(
       return {
         ...evidence,
         assignmentRef,
+        ...terminalEvidence,
         lifecycle: [terminalLifecycle({ assignmentRef, now, status: "closed" })],
+        marginalCostClass,
         status: "completed",
         summary: "The exact no-spend Pylon assignment is closed out with exact usage evidence.",
         taskId: active.taskId,

@@ -297,10 +297,26 @@ const exactCloseout = (
     reasoningTokens: 1,
     refs: [tokenRef],
     rowCount: 1,
-    totalTokens: 9,
+    totalTokens: 8,
     usageTruth: "exact" as const,
   }
-  const status = trace(assignmentRef, "closed_out", {
+  const workerCloseout = {
+    artifactRefs: ["artifact.public.fixture"],
+    authorityReceiptRefs: ["receipt.public.fixture"],
+    closeoutRefs: [closeoutRef],
+    eventRef: "event.public.worker_closeout.fixture",
+    observedAt: fixedNow.toISOString(),
+    projectionBlockerRefs: [],
+    proofRefs: [proofRef],
+    resultRefs: ["result.public.fixture"],
+    source: "worker_closeout_event",
+    status: "closeout_submitted",
+    testRefs: ["test.public.fixture"],
+    verificationRefs: ["verification.public.fixture"],
+    visibility: "owner_only",
+  } as const
+  const status = {
+    ...trace(assignmentRef, "closed_out", {
     lifecycle: {
       acceptedWorkRefs: ["work.public.fixture"],
       artifactRefs: ["artifact.public.fixture"],
@@ -312,8 +328,40 @@ const exactCloseout = (
       updatedAt: fixedNow.toISOString(),
     },
     tokenUsage: { ...tokenUsage, status: "recorded" },
-  })
+    }),
+    workerCloseout,
+  } as PylonKhalaAssignmentTraceStatusResult
   const checklistItem = { ok: true, ref: "check.public.fixture" }
+  const proof = {
+    assignmentRef,
+    closeoutPolicy: status.closeoutPolicy,
+    generatedAt: fixedNow.toISOString(),
+    ok: true as const,
+    owner: status.owner,
+    pylonRef,
+    rawEvents: {
+      byteLength: 1,
+      count: 1,
+      eventCount: 1,
+      refs: ["raw_event.public.fixture"],
+      visibility: "owner_only" as const,
+    },
+    proofChecklist: {
+      blockerRefs: [],
+      items: [checklistItem],
+      ok: true,
+      schema: "openagents.pylon.khala_proof_checklist.v0.1" as const,
+    },
+    schemaVersion: "openagents.pylon.codex_assignment_proof.v1" as const,
+    tokenUsage,
+    traces: {
+      count: 1,
+      refs: ["trace.public.fixture"],
+      schemaVersion: "ATIF-v1.7",
+      visibility: "owner_only" as const,
+    },
+    workerCloseout,
+  }
   return {
     assignmentRef,
     closeoutChecklist: {
@@ -324,35 +372,7 @@ const exactCloseout = (
       schema: "openagents.pylon.khala_closeout_checklist.v0.1",
     },
     ok: true,
-    proof: {
-      assignmentRef,
-      closeoutPolicy: status.closeoutPolicy,
-      generatedAt: fixedNow.toISOString(),
-      ok: true,
-      owner: status.owner,
-      pylonRef,
-      rawEvents: {
-        byteLength: 1,
-        count: 1,
-        eventCount: 1,
-        refs: ["raw_event.public.fixture"],
-        visibility: "owner_only",
-      },
-      proofChecklist: {
-        blockerRefs: [],
-        items: [checklistItem],
-        ok: true,
-        schema: "openagents.pylon.khala_proof_checklist.v0.1",
-      },
-      schemaVersion: "openagents.pylon.codex_assignment_proof.v1",
-      tokenUsage,
-      traces: {
-        count: 1,
-        refs: ["trace.public.fixture"],
-        schemaVersion: "ATIF-v1.7",
-        visibility: "owner_only",
-      },
-    },
+    proof,
     schema: "openagents.pylon.khala_closeout.v0.1",
     status,
   }
@@ -406,7 +426,7 @@ describe("Pylon-owned FleetRun runner", () => {
         harnessKind: "codex",
         provider: "pylon-codex-own-capacity",
         tokenRows: 1,
-        totalTokens: 9,
+        totalTokens: 8,
         tokenUsageRefs: [expect.stringMatching(/^token_usage_event\.public\./)],
       },
     })
@@ -432,6 +452,81 @@ describe("Pylon-owned FleetRun runner", () => {
     expect(requests.every(entry => entry.workspace?.repository.branch === "main")).toBe(true)
     expect(runs.map(entry => entry.accountRef).sort()).toEqual(["claude-a", "codex-a"])
     expect(JSON.stringify([codex, claude])).not.toMatch(/private|\/Users|bearer|token-secret/i)
+  })
+
+  test("serializes and joins slow lifecycle delivery before returning terminal evidence", async () => {
+    const accountRefHash = hashPylonAccountRef("codex", "codex-a")
+    let release!: () => void
+    let entered!: () => void
+    const gate = new Promise<void>(resolve => {
+      release = resolve
+    })
+    const firstDelivery = new Promise<void>(resolve => {
+      entered = resolve
+    })
+    const delivered: string[] = []
+    let activeDeliveries = 0
+    let maxActiveDeliveries = 0
+    const runner = createPylonOwnedFleetRunSupervisorRunner({
+      summary,
+      pylonRef,
+      baseUrl: "https://openagents.test",
+      readCloseout: readExactCloseout,
+      loadRegistry: async () => [account("codex-a", "codex")],
+      request: async request => requestReceipt(request),
+      runAssignment: async input => {
+        const started = {
+          schema: "openagents.pylon.assignment_run_lifecycle_event.v0.1" as const,
+          event: "assignment_run.runtime_started" as const,
+          observedAt: fixedNow.toISOString(),
+          assignmentRef: input.assignmentRef,
+          accountRefHash,
+        }
+        const progress = {
+          schema: "openagents.pylon.assignment_run_lifecycle_event.v0.1" as const,
+          event: "assignment_run.runtime_progress" as const,
+          observedAt: fixedNow.toISOString(),
+          assignmentRef: input.assignmentRef,
+          accountRefHash,
+          status: "running" as const,
+          phase: "runtime_active" as const,
+        }
+        void input.onLifecycle?.(started)
+        void input.onLifecycle?.(progress)
+        return acceptedAssignment(input.assignmentRef, accountRefHash)
+      },
+    })
+    let settled = false
+    const dispatched = runner.dispatch({
+      ...dispatchInput("codex", "codex-a", 207, "fixture"),
+      onLifecycle: async event => {
+        activeDeliveries += 1
+        maxActiveDeliveries = Math.max(maxActiveDeliveries, activeDeliveries)
+        delivered.push(event.event)
+        if (delivered.length === 1) {
+          entered()
+          await gate
+        }
+        activeDeliveries -= 1
+      },
+    }).finally(() => {
+      settled = true
+    })
+
+    await firstDelivery
+    await Bun.sleep(2)
+    expect(settled).toBe(false)
+    expect(delivered).toEqual(["assignment_run.runtime_started"])
+    release()
+    const result = await dispatched
+    expect(result.status).toBe("completed")
+    expect(maxActiveDeliveries).toBe(1)
+    expect(delivered).toEqual([
+      "assignment_run.runtime_started",
+      "assignment_run.runtime_progress",
+    ])
+    await Bun.sleep(2)
+    expect(delivered).toHaveLength(2)
   })
 
   test("fails closed when exact closeout evidence is missing or mismatched", async () => {
@@ -460,8 +555,46 @@ describe("Pylon-owned FleetRun runner", () => {
       ...exactCloseout(assignmentRef),
       assignmentRef: "assignment.public.different",
     })).dispatch(dispatchInput("codex", "codex-a", 202, "fixture"))
+    const missingWorkerEvidence = await makeRunner(async assignmentRef => {
+      const closeout = exactCloseout(assignmentRef)
+      const { workerCloseout: _statusWorkerCloseout, ...status } = closeout.status as
+        PylonKhalaAssignmentTraceStatusResult & { workerCloseout?: unknown }
+      const { workerCloseout: _proofWorkerCloseout, ...proof } = closeout.proof as
+        typeof closeout.proof & { workerCloseout?: unknown }
+      return { ...closeout, status, proof }
+    }).dispatch(dispatchInput("codex", "codex-a", 205, "fixture"))
+    const incoherentUsage = await makeRunner(async assignmentRef => {
+      const closeout = exactCloseout(assignmentRef)
+      const tokenUsage = { ...closeout.proof.tokenUsage, totalTokens: 9 }
+      return {
+        ...closeout,
+        proof: { ...closeout.proof, tokenUsage },
+        status: {
+          ...closeout.status,
+          tokenUsage: { ...tokenUsage, status: "recorded" as const },
+        },
+      }
+    }).dispatch(dispatchInput("codex", "codex-a", 203, "fixture"))
+    const reasoningOverflow = await makeRunner(async assignmentRef => {
+      const closeout = exactCloseout(assignmentRef)
+      const tokenUsage = { ...closeout.proof.tokenUsage, reasoningTokens: 4 }
+      return {
+        ...closeout,
+        proof: { ...closeout.proof, tokenUsage },
+        status: {
+          ...closeout.status,
+          tokenUsage: { ...tokenUsage, status: "recorded" as const },
+        },
+      }
+    }).dispatch(dispatchInput("codex", "codex-a", 204, "fixture"))
 
-    for (const result of [missingChecklist, mismatched]) {
+    for (const result of [
+      missingChecklist,
+      mismatched,
+      missingWorkerEvidence,
+      incoherentUsage,
+      reasoningOverflow,
+    ]) {
       expect(result).toMatchObject({
         accountRefHash: null,
         closeoutRef: null,
@@ -472,6 +605,48 @@ describe("Pylon-owned FleetRun runner", () => {
         blockerRefs: [PYLON_OWNED_FLEET_RUNNER_BLOCKERS.usageEvidenceInvalid],
       }))
     }
+  })
+
+  test("opaque-digests path-like worker evidence before attempt projection", async () => {
+    const runner = createPylonOwnedFleetRunSupervisorRunner({
+      summary,
+      pylonRef,
+      baseUrl: "https://openagents.test",
+      loadRegistry: async () => [account("codex-a", "codex")],
+      request: async request => requestReceipt(request),
+      runAssignment: async request => acceptedAssignment(
+        request.assignmentRef,
+        hashPylonAccountRef("codex", "codex-a"),
+      ),
+      readCloseout: async assignmentRef => {
+        const closeout = exactCloseout(assignmentRef)
+        const pathLike = "Users/owner/private/worktree/artifact"
+        const status = closeout.status as PylonKhalaAssignmentTraceStatusResult & {
+          workerCloseout: { artifactRefs: string[] }
+        }
+        const proof = closeout.proof as typeof closeout.proof & {
+          workerCloseout: { artifactRefs: string[] }
+        }
+        return {
+          ...closeout,
+          status: {
+            ...status,
+            workerCloseout: { ...status.workerCloseout, artifactRefs: [pathLike] },
+          },
+          proof: {
+            ...proof,
+            workerCloseout: { ...proof.workerCloseout, artifactRefs: [pathLike] },
+          },
+        }
+      },
+    })
+
+    const result = await runner.dispatch(dispatchInput("codex", "codex-a", 206, "fixture"))
+    expect(result.status).toBe("completed")
+    expect(result.artifactRefs).toEqual([
+      expect.stringMatching(/^artifact\.public\.pylon\.opaque\.[a-f0-9]{24}$/),
+    ])
+    expect(JSON.stringify(result)).not.toContain("Users/owner/private")
   })
 
   test("coalesces a duplicate durable claim into one request and one assignment run", async () => {
@@ -847,7 +1022,7 @@ describe("Pylon-owned FleetRun runner", () => {
       },
       inspectAssignment: async assignmentRef => {
         inspected.push(assignmentRef)
-        if (assignmentRef.endsWith("closed")) return trace(assignmentRef, "closed_out")
+        if (assignmentRef.endsWith("closed")) return exactCloseout(assignmentRef).status
         if (assignmentRef.endsWith("rejected")) return trace(assignmentRef, "rejected")
         return trace(assignmentRef, "streaming_chunks")
       },
@@ -869,7 +1044,7 @@ describe("Pylon-owned FleetRun runner", () => {
     expect(reconciled?.[0]).toMatchObject({
       accountRefHash: hashPylonAccountRef("codex", "codex-a"),
       closeoutRef: expect.stringMatching(/^closeout\.public\./),
-      usageEvidence: { truth: "exact", harnessKind: "codex", totalTokens: 9 },
+      usageEvidence: { truth: "exact", harnessKind: "codex", totalTokens: 8 },
     })
     expect(reconciled?.[1]).toMatchObject({
       accountRefHash: null,
@@ -883,6 +1058,53 @@ describe("Pylon-owned FleetRun runner", () => {
     ])
     expect(requestCount).toBe(0)
     expect(runCount).toBe(0)
+  })
+
+  test("never restart-promotes a closed verifier rejection to accepted", async () => {
+    const assignmentRef = "assignment.public.rejected_verifier_restart"
+    const closeout = exactCloseout(assignmentRef)
+    const rejectWorker = <T extends { workerCloseout?: unknown }>(value: T): T => ({
+      ...value,
+      workerCloseout: {
+        ...(value.workerCloseout as Record<string, unknown>),
+        status: "rejected",
+      },
+    })
+    const rejectedStatus = rejectWorker(closeout.status as
+      PylonKhalaAssignmentTraceStatusResult & { workerCloseout?: unknown })
+    const runner = createPylonOwnedFleetRunSupervisorRunner({
+      summary,
+      pylonRef,
+      baseUrl: "https://openagents.test",
+      loadRegistry: async () => [account("codex-a", "codex")],
+      inspectAssignment: async () => rejectedStatus,
+      readCloseout: async () => ({
+        ...closeout,
+        status: rejectedStatus,
+        proof: rejectWorker(closeout.proof as typeof closeout.proof & { workerCloseout?: unknown }),
+      }),
+    })
+    const active: FleetRunSupervisorActiveAssignment = {
+      accountRef: "codex-a",
+      claim: claim(
+        "claim.reconcile.rejected_verifier_restart",
+        "codex-a",
+        assignmentRef,
+      ),
+      contextId: "context.rejected_verifier_restart",
+      taskId: "task.rejected_verifier_restart",
+    }
+
+    const [result] = await runner.reconcile?.({
+      activeAssignments: [active],
+      now: fixedNow,
+      run,
+    }) ?? []
+    expect(result).toMatchObject({
+      status: "failed",
+      usageEvidence: null,
+      lifecycle: [{ status: "rejected" }],
+    })
   })
 
   test("keeps reconciliation inspection failures active and terminates mismatched custody safely", async () => {

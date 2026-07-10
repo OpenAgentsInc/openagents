@@ -11,6 +11,7 @@ import {
   openPylonFleetRunExecutionReporter,
   PYLON_FLEET_RUN_EXECUTION_ACK_SCHEMA,
   PYLON_FLEET_RUN_EXECUTION_BATCH_SCHEMA,
+  type PylonFleetRunAnyExecutionBatch,
   type PylonFleetRunExecutionAck,
   type PylonFleetRunExecutionBatch,
   type PylonFleetRunExecutionEventInput,
@@ -89,6 +90,66 @@ const seedAcceptedRun = async (env: NodeJS.ProcessEnv) => {
 }
 
 describe("Pylon FleetRun execution reporter", () => {
+  test("replays legacy v1 rows and splits a mixed outbox at the v2 schema boundary", async () => {
+    const root = await mkdtemp(join(tmpdir(), "pylon-fleet-run-mixed-schema-"))
+    const env = { PYLON_HOME: join(root, "pylon-home") } as NodeJS.ProcessEnv
+    try {
+      const runtime = await seedAcceptedRun(env)
+      let online = false
+      const delivered: PylonFleetRunAnyExecutionBatch[] = []
+      const reporter = openPylonFleetRunExecutionReporter({
+        store: runtime.store,
+        pylonRef,
+        runRef,
+        now: () => fixedNow,
+        remote: {
+          append: async ({ batch }) => {
+            if (!online) throw new Error("offline")
+            delivered.push(batch)
+            return ack(batch.events.at(-1)?.sequence ?? 0)
+          },
+        },
+      })
+      await reporter.record({
+        schema: "openagents.pylon.fleet_run_execution_event.v1",
+        kind: "run_started",
+        observedAt: fixedNow.toISOString(),
+      })
+      await reporter.record({
+        schema: "openagents.pylon.fleet_run_execution_event.v2",
+        kind: "run_started",
+        observedAt: new Date(fixedNow.getTime() + 1_000).toISOString(),
+      })
+      await reporter.record({
+        schema: "openagents.pylon.fleet_run_execution_event.v2",
+        kind: "work_progress",
+        // Parallel executor callbacks may legitimately reorder their remote
+        // audit clocks; local sequence/receipt custody must still advance.
+        observedAt: new Date(fixedNow.getTime() - 1_000).toISOString(),
+        unitRef: "unit.fixture.mixed_schema",
+        workClaimRef: "work_claim.fixture.mixed_schema",
+        workerKind: "codex",
+        marginalCostClass: "subscription",
+        blockerRefs: [],
+      })
+      online = true
+      await reporter.close()
+
+      expect(delivered.map(batch => batch.schema)).toEqual([
+        "openagents.pylon.fleet_run_execution_batch.v1",
+        "openagents.pylon.fleet_run_execution_batch.v2",
+      ])
+      expect(delivered.map(batch => batch.events.map(event => event.sequence))).toEqual([
+        [1],
+        [2, 3],
+      ])
+      expect(runtime.store.listFleetRunExecutionOutbox(runRef)).toEqual([])
+      await runtime.close()
+    } finally {
+      await rm(root, { force: true, recursive: true })
+    }
+  })
+
   test("retains a failed append and replays its exact sequence after reopen", async () => {
     const root = await mkdtemp(join(tmpdir(), "pylon-fleet-run-reporter-"))
     const env = { PYLON_HOME: join(root, "pylon-home") } as NodeJS.ProcessEnv

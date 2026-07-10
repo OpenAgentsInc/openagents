@@ -53,12 +53,14 @@ export const PYLON_OWNED_GROK_RUNNER_BLOCKERS = {
   executionInterrupted: "blocker.pylon.fleet_runner.grok_execution_interrupted",
   executionTimedOut: "blocker.pylon.fleet_runner.grok_execution_timed_out",
   receiptInvalid: "blocker.pylon.fleet_runner.grok_receipt_invalid",
+  receiptUpgradeRequired: "blocker.pylon.fleet_runner.grok_receipt_upgrade_required",
   readinessUnavailable: "blocker.pylon.fleet_runner.grok_readiness_unavailable",
   verificationFailed: "blocker.pylon.fleet_runner.grok_verification_failed",
   workspaceInvalid: "blocker.pylon.fleet_runner.grok_workspace_invalid",
 } as const
 
 const GROK_RECEIPT_SCHEMA = "openagents.pylon.grok_claimed_work_receipt.v1" as const
+const GROK_RECEIPT_SCHEMA_V2 = "openagents.pylon.grok_claimed_work_receipt.v2" as const
 const GROK_ASSIGNMENT_PREFIX = "assignment.pylon.grok."
 const GROK_RECEIPT_MAX_BYTES = 32 * 1_024
 const PUBLIC_REF_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:/#-]{0,255}$/u
@@ -68,8 +70,9 @@ const DEFAULT_GROK_CLAIM_TIMEOUT_MS = 30 * 60 * 1_000
 const MAX_GROK_CLAIM_TIMEOUT_MS = 4 * 60 * 60 * 1_000
 const DEFAULT_GROK_VERIFY_TIMEOUT_MS = 15 * 60 * 1_000
 const MAX_GROK_VERIFY_TIMEOUT_MS = 60 * 60 * 1_000
+const GROK_LIFECYCLE_HEARTBEAT_MS = 10_000
 
-type GrokExecutionReceipt = {
+type GrokExecutionReceiptV1 = {
   readonly schema: typeof GROK_RECEIPT_SCHEMA
   readonly accountRefHash: string
   readonly assignmentRef: string
@@ -86,6 +89,23 @@ type GrokExecutionReceipt = {
   readonly workUnitRef: string
   readonly workspaceRef: string | null
 }
+
+type GrokExecutionReceiptV2 = Omit<GrokExecutionReceiptV1, "schema"> & {
+  readonly schema: typeof GROK_RECEIPT_SCHEMA_V2
+  readonly executionPlane: "cli_session"
+  readonly marginalCostClass: PylonAccountRegistryEntry["marginalCostClass"]
+  readonly wallClockMs: number | null
+  readonly verification: {
+    readonly truth: "pending" | "passed" | "failed"
+    readonly verifierRef: string
+    readonly evidenceRefs: readonly string[]
+  }
+  readonly artifactRefs: readonly string[]
+  readonly proofRefs: readonly string[]
+  readonly authorityReceiptRefs: readonly string[]
+}
+
+type GrokExecutionReceipt = GrokExecutionReceiptV1 | GrokExecutionReceiptV2
 
 export type PylonOwnedGrokWorkspace = {
   readonly checkout: GitCheckoutWorkspace | null
@@ -121,6 +141,7 @@ export type CreatePylonOwnedGrokClaimedWorkPortInput = {
   readonly runVerifier?: PylonOwnedGrokVerifierPort | undefined
   readonly workerTimeoutMs?: number | undefined
   readonly verifierTimeoutMs?: number | undefined
+  readonly lifecycleHeartbeatMs?: number | undefined
   /** Canonical claim authority. The standing composition always supplies this store. */
   readonly store?: PylonOrchestrationStore | undefined
 }
@@ -135,6 +156,9 @@ const stableDigest = (value: string, length = 32): string =>
 
 const assignmentRefFor = (fingerprint: string): string =>
   `${GROK_ASSIGNMENT_PREFIX}${stableDigest(fingerprint, 24)}`
+
+const stablePublicRef = (prefix: string, seed: string): string =>
+  `${prefix}.${stableDigest(seed, 24)}`
 
 const validDate = (value: Date): boolean => value instanceof Date && Number.isFinite(value.getTime())
 
@@ -167,6 +191,11 @@ const fixedResult = (input: {
   readonly accountRefHash?: string | undefined
   readonly workspaceRef?: string | undefined
   readonly evidence?: PylonFleetRunUsageEvidenceCarrier | undefined
+  readonly marginalCostClass?: PylonAccountRegistryEntry["marginalCostClass"] | undefined
+  readonly verification?: PylonOwnedFleetRunDispatchResult["verification"] | undefined
+  readonly artifactRefs?: readonly string[] | undefined
+  readonly proofRefs?: readonly string[] | undefined
+  readonly authorityReceiptRefs?: readonly string[] | undefined
 }): PylonOwnedFleetRunDispatchResult => {
   const lifecycle: PylonAssignmentRunLifecycleEvent[] = input.assignmentRef === null
     ? [{
@@ -191,6 +220,15 @@ const fixedResult = (input: {
     assignmentRef: input.assignmentRef,
     closeoutRef: input.evidence?.closeoutRef ?? null,
     lifecycle,
+    ...(input.marginalCostClass === undefined
+      ? {}
+      : { marginalCostClass: input.marginalCostClass }),
+    ...(input.verification === undefined ? {} : { verification: input.verification }),
+    ...(input.artifactRefs === undefined ? {} : { artifactRefs: input.artifactRefs }),
+    ...(input.proofRefs === undefined ? {} : { proofRefs: input.proofRefs }),
+    ...(input.authorityReceiptRefs === undefined
+      ? {}
+      : { authorityReceiptRefs: input.authorityReceiptRefs }),
     status: input.status,
     summary: input.summary,
     usageEvidence: input.evidence?.usageEvidence ?? null,
@@ -326,7 +364,7 @@ const receiptFrom = (value: unknown): GrokExecutionReceipt | null => {
   if (value === null || typeof value !== "object" || Array.isArray(value)) return null
   const record = value as Record<string, unknown>
   if (
-    record.schema !== GROK_RECEIPT_SCHEMA ||
+    (record.schema !== GROK_RECEIPT_SCHEMA && record.schema !== GROK_RECEIPT_SCHEMA_V2) ||
     typeof record.accountRefHash !== "string" ||
     typeof record.assignmentRef !== "string" ||
     typeof record.closeoutRef !== "string" ||
@@ -369,6 +407,59 @@ const receiptFrom = (value: unknown): GrokExecutionReceipt | null => {
     )) ||
     (record.state === "failed" ? record.failureRef === null : record.failureRef !== null)
   ) return null
+  if (record.schema === GROK_RECEIPT_SCHEMA_V2) {
+    const verification = record.verification
+    if (
+      record.executionPlane !== "cli_session" ||
+      !(record.marginalCostClass === "free" ||
+        record.marginalCostClass === "subscription" ||
+        record.marginalCostClass === "api_metered" ||
+        record.marginalCostClass === "not_measured") ||
+      !(record.wallClockMs === null ||
+        (typeof record.wallClockMs === "number" &&
+          Number.isSafeInteger(record.wallClockMs) &&
+          record.wallClockMs >= 0)) ||
+      verification === null ||
+      typeof verification !== "object" ||
+      Array.isArray(verification) ||
+      !(
+        (verification as Record<string, unknown>).truth === "pending" ||
+        (verification as Record<string, unknown>).truth === "passed" ||
+        (verification as Record<string, unknown>).truth === "failed"
+      ) ||
+      typeof (verification as Record<string, unknown>).verifierRef !== "string" ||
+      !Array.isArray((verification as Record<string, unknown>).evidenceRefs) ||
+      !Array.isArray(record.artifactRefs) ||
+      !Array.isArray(record.proofRefs) ||
+      !Array.isArray(record.authorityReceiptRefs)
+    ) return null
+    const evidenceRefs = (verification as Record<string, unknown>).evidenceRefs as unknown[]
+    const allEvidenceRefs = [
+      (verification as Record<string, unknown>).verifierRef,
+      ...evidenceRefs,
+      ...record.artifactRefs,
+      ...record.proofRefs,
+      ...record.authorityReceiptRefs,
+    ]
+    if (
+      evidenceRefs.length > 64 ||
+      record.artifactRefs.length > 64 ||
+      record.proofRefs.length > 64 ||
+      record.authorityReceiptRefs.length > 64 ||
+      allEvidenceRefs.some(ref => typeof ref !== "string" || !PUBLIC_REF_PATTERN.test(ref)) ||
+      (record.state === "running"
+        ? (verification as Record<string, unknown>).truth !== "pending" ||
+          record.wallClockMs !== null
+        : record.state === "completed"
+          ? (verification as Record<string, unknown>).truth !== "passed" ||
+            record.wallClockMs === null ||
+            evidenceRefs.length === 0 ||
+            record.artifactRefs.length === 0 ||
+            record.proofRefs.length === 0 ||
+            record.authorityReceiptRefs.length === 0
+          : (verification as Record<string, unknown>).truth === "passed")
+    ) return null
+  }
   return record as GrokExecutionReceipt
 }
 
@@ -420,6 +511,17 @@ const resultFromReceipt = (
   now: Date,
 ): PylonOwnedFleetRunDispatchResult => {
   if (receipt.state === "completed") {
+    if (receipt.schema !== GROK_RECEIPT_SCHEMA_V2) {
+      return fixedResult({
+        assignmentRef: receipt.assignmentRef,
+        accountRefHash: receipt.accountRefHash,
+        ...(receipt.workspaceRef === null ? {} : { workspaceRef: receipt.workspaceRef }),
+        blockerRef: PYLON_OWNED_GROK_RUNNER_BLOCKERS.receiptUpgradeRequired,
+        now,
+        status: "failed",
+        summary: "The legacy Grok receipt lacks v2 verification evidence and was not promoted.",
+      })
+    }
     const evidence = notMeasuredPylonFleetRunUsageEvidence({
       accountRefHash: receipt.accountRefHash,
       assignmentRef: receipt.assignmentRef,
@@ -434,6 +536,15 @@ const resultFromReceipt = (
       status: "completed",
       summary: "The exact named Grok claimed work completed with not_measured usage.",
       evidence,
+      marginalCostClass: receipt.marginalCostClass,
+      verification: {
+        truth: "passed",
+        verifierRef: receipt.verification.verifierRef,
+        evidenceRefs: receipt.verification.evidenceRefs,
+      },
+      artifactRefs: receipt.artifactRefs,
+      proofRefs: receipt.proofRefs,
+      authorityReceiptRefs: receipt.authorityReceiptRefs,
     })
   }
   return fixedResult({
@@ -484,6 +595,11 @@ export function createPylonOwnedGrokClaimedWorkPort(
     input.verifierTimeoutMs,
     DEFAULT_GROK_VERIFY_TIMEOUT_MS,
     MAX_GROK_VERIFY_TIMEOUT_MS,
+  )
+  const lifecycleHeartbeatMs = boundedTimeout(
+    input.lifecycleHeartbeatMs,
+    GROK_LIFECYCLE_HEARTBEAT_MS,
+    15_000,
   )
   const readNow = (): Date => {
     const value = input.now?.() ?? new Date()
@@ -624,8 +740,18 @@ export function createPylonOwnedGrokClaimedWorkPort(
         summary: "The pinned Grok workspace could not be materialized.",
       })
     }
-    const running: GrokExecutionReceipt = {
-      schema: GROK_RECEIPT_SCHEMA,
+    const verifierRef = stablePublicRef(
+      "verifier.public.pylon.grok",
+      workspace.verificationArgs === null
+        ? `claimed_work:${assignmentRef}`
+        : workspace.verificationArgs.join("\u0000"),
+    )
+    const verificationEvidenceRef = stablePublicRef(
+      "verification.public.pylon.grok",
+      `${assignmentRef}:${verifierRef}`,
+    )
+    const running: GrokExecutionReceiptV2 = {
+      schema: GROK_RECEIPT_SCHEMA_V2,
       accountRefHash,
       assignmentRef,
       closeoutRef: evidenceRefs.closeoutRef,
@@ -640,6 +766,17 @@ export function createPylonOwnedGrokClaimedWorkPort(
       usageTruth: "not_measured",
       workUnitRef: request.workUnit.workUnitRef,
       workspaceRef: workspace.workspaceRef,
+      executionPlane: "cli_session",
+      marginalCostClass: account.marginalCostClass,
+      wallClockMs: null,
+      verification: {
+        truth: "pending",
+        verifierRef,
+        evidenceRefs: [],
+      },
+      artifactRefs: [workspace.workspaceRef],
+      proofRefs: [],
+      authorityReceiptRefs: [request.claim.claimRef],
     }
     try {
       if (input.store !== undefined) {
@@ -670,6 +807,41 @@ export function createPylonOwnedGrokClaimedWorkPort(
     }
 
     let failureRef: string | null = null
+    let wallClockMs: number | null = null
+    const emitExecutorLifecycle = async (
+      event: "assignment_run.runtime_started" | "assignment_run.runtime_progress",
+    ): Promise<void> => {
+      if (request.onLifecycle === undefined) return
+      try {
+        await request.onLifecycle({
+          schema: "openagents.pylon.assignment_run_lifecycle_event.v0.1",
+          event,
+          observedAt: safeNow().toISOString(),
+          assignmentRef,
+          accountRefHash,
+          status: "running",
+          phase: "runtime_active",
+        })
+      } catch {
+        // Projection is durable/fail-soft and cannot become execution authority.
+      }
+    }
+    let lifecycleClosed = false
+    let lifecycleTail = Promise.resolve<void>(undefined)
+    const queueExecutorLifecycle = (
+      event: "assignment_run.runtime_started" | "assignment_run.runtime_progress",
+    ): Promise<void> => {
+      const delivery = lifecycleTail.then(async () => {
+        if (lifecycleClosed) return
+        await emitExecutorLifecycle(event)
+      })
+      lifecycleTail = delivery.catch(() => undefined)
+      return delivery
+    }
+    await queueExecutorLifecycle("assignment_run.runtime_started")
+    const lifecycleHeartbeat = setInterval(() => {
+      void queueExecutorLifecycle("assignment_run.runtime_progress")
+    }, lifecycleHeartbeatMs)
     try {
       const closeout = await executor.runClaimedWork({
         pin: {
@@ -688,6 +860,14 @@ export function createPylonOwnedGrokClaimedWorkPort(
         plane: "cli_session",
         marginalCostClass: account.marginalCostClass,
       })
+      if (
+        !Number.isSafeInteger(closeout.usage.wallClockMs) ||
+        closeout.usage.wallClockMs < 0
+      ) {
+        failureRef = PYLON_OWNED_GROK_RUNNER_BLOCKERS.executionFailed
+      } else {
+        wallClockMs = closeout.usage.wallClockMs
+      }
       if (
         !closeout.ok ||
         closeout.claimRef !== request.claim.claimRef ||
@@ -712,12 +892,23 @@ export function createPylonOwnedGrokClaimedWorkPort(
       }
     } catch {
       failureRef = PYLON_OWNED_GROK_RUNNER_BLOCKERS.executionFailed
+    } finally {
+      lifecycleClosed = true
+      clearInterval(lifecycleHeartbeat)
+      await lifecycleTail
     }
-    const terminal: GrokExecutionReceipt = {
+    const terminal: GrokExecutionReceiptV2 = {
       ...running,
       failureRef,
       observedAt: safeNow().toISOString(),
       state: failureRef === null ? "completed" : "failed",
+      wallClockMs,
+      verification: {
+        truth: failureRef === null ? "passed" : "failed",
+        verifierRef,
+        evidenceRefs: [verificationEvidenceRef],
+      },
+      proofRefs: [evidenceRefs.receiptRef],
     }
     try {
       await writeReceipt(input.summary, terminal)

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Database } from "bun:sqlite"
@@ -207,12 +207,22 @@ describe("Pylon-owned exact Grok claimed-work adapter", () => {
         assignmentRef: expect.stringMatching(/^assignment\.pylon\.grok\.[a-f0-9]{24}$/),
         closeoutRef: expect.stringMatching(/^closeout\.public\.pylon\.grok\.[a-f0-9]{24}$/),
         status: "completed",
+        marginalCostClass: "subscription",
+        verification: {
+          truth: "passed",
+          verifierRef: expect.stringMatching(/^verifier\.public\.pylon\.grok\./),
+          evidenceRefs: [expect.stringMatching(/^verification\.public\.pylon\.grok\./)],
+        },
+        artifactRefs: [expect.stringMatching(/^workspace\.pylon\.grok\./)],
+        proofRefs: [expect.stringMatching(/^receipt\.public\.pylon\.grok\./)],
+        authorityReceiptRefs: [dispatch.claim.claimRef],
         summary: "The exact named Grok claimed work completed with not_measured usage.",
         usageEvidence: {
           truth: "not_measured",
           harnessKind: "grok",
           receiptRef: expect.stringMatching(/^receipt\.public\.pylon\.grok\.[a-f0-9]{24}$/),
           tokenUsageRefs: [],
+          caveatRefs: ["caveat.pylon.fleet_run.grok_usage_not_measured"],
         },
         lifecycle: [{
           accountRefHash: hashPylonAccountRef("grok", accountRef),
@@ -350,6 +360,80 @@ describe("Pylon-owned exact Grok claimed-work adapter", () => {
       expect(await fresh.probeLiveness(one.assignmentRef!)).toBe("live")
     } finally {
       release?.()
+      await rm(root, { force: true, recursive: true })
+    }
+  })
+
+  test("serializes heartbeat delivery, joins it before terminal, and rejects invalid wall clock", async () => {
+    const root = await mkdtemp(join(tmpdir(), "pylon-grok-heartbeat-"))
+    const pylonHome = join(root, "pylon")
+    const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), { PYLON_HOME: pylonHome })
+    const accountRef = "grok-a"
+    const accountHome = join(pylonHome, "accounts", "grok", accountRef)
+    await mkdir(accountHome, { recursive: true })
+    const account = accountFor(accountHome, accountRef)
+    let activeDeliveries = 0
+    let maxActiveDeliveries = 0
+    const delivered: string[] = []
+
+    try {
+      const port = createPylonOwnedGrokClaimedWorkPort({
+        summary,
+        lifecycleHeartbeatMs: 100,
+        loadRegistry: async () => [account],
+        createExecutor: () => ({
+          ...successfulExecutor(),
+          runClaimedWork: async input => {
+            await Bun.sleep(250)
+            return {
+              ok: true,
+              claimRef: input.pin.claimRef,
+              stopReason: "end_turn",
+              text: "",
+              usage: {
+                metering: "not_measured",
+                wallClockMs: Number.NaN,
+                plane: "cli_session",
+                marginalCostClass: "subscription",
+              },
+            }
+          },
+        }),
+        materializeWorkspace: async () => ({
+          checkout: null,
+          verificationArgs: null,
+          workingDirectory: join(root, "workspace"),
+          workspaceRef: "workspace.public.grok.heartbeat",
+        }),
+      })
+      const result = await port.dispatch({
+        ...dispatchFor(accountRef, 22, "fixture"),
+        onLifecycle: async event => {
+          activeDeliveries += 1
+          maxActiveDeliveries = Math.max(maxActiveDeliveries, activeDeliveries)
+          delivered.push(event.event)
+          await Bun.sleep(150)
+          activeDeliveries -= 1
+        },
+      })
+      const deliveredAtTerminal = delivered.length
+
+      expect(result).toMatchObject({
+        status: "failed",
+        lifecycle: [{ blockerRefs: [PYLON_OWNED_GROK_RUNNER_BLOCKERS.executionFailed] }],
+      })
+      expect(delivered).toContain("assignment_run.runtime_started")
+      expect(delivered).toContain("assignment_run.runtime_progress")
+      expect(maxActiveDeliveries).toBe(1)
+      await Bun.sleep(200)
+      expect(delivered).toHaveLength(deliveredAtTerminal)
+      const receiptFiles = await readdir(join(summary.paths.cache, "grok-fleet-receipts"))
+      const terminalReceipt = JSON.parse(await readFile(
+        join(summary.paths.cache, "grok-fleet-receipts", receiptFiles[0]!),
+        "utf8",
+      )) as { state?: unknown; wallClockMs?: unknown }
+      expect(terminalReceipt).toMatchObject({ state: "failed", wallClockMs: null })
+    } finally {
       await rm(root, { force: true, recursive: true })
     }
   })

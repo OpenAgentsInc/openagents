@@ -85,7 +85,21 @@ export type FleetRunSupervisorDispatchInput = {
   // that claimed this unit. In a mixed-kind FleetRun this is the per-account
   // kind, never the raw run kind, so the runner dispatches to the right harness.
   readonly workerKind: FleetRunSupervisorConcreteWorkerKind
+  /** Streams executor lifecycle as it happens; buffered terminal replay is deduplicated. */
+  readonly onLifecycle?: ((event: FleetRunSupervisorLifecycleEvent) => void | Promise<void>) | undefined
 }
+
+export type FleetRunSupervisorVerificationEvidence =
+  | {
+    readonly truth: "passed"
+    readonly verifierRef: string
+    readonly evidenceRefs: readonly string[]
+  }
+  | {
+    readonly truth: "failed"
+    readonly verifierRef?: string | undefined
+    readonly evidenceRefs: readonly string[]
+  }
 
 export type FleetRunSupervisorDispatchResult = {
   readonly assignmentRef: string | null
@@ -95,6 +109,11 @@ export type FleetRunSupervisorDispatchResult = {
   readonly accountRefHash?: string | null
   readonly closeoutRef?: string | null
   readonly usageEvidence?: PylonFleetRunUsageEvidence | null
+  readonly marginalCostClass?: MarginalCostClass | undefined
+  readonly verification?: FleetRunSupervisorVerificationEvidence | undefined
+  readonly artifactRefs?: readonly string[] | undefined
+  readonly proofRefs?: readonly string[] | undefined
+  readonly authorityReceiptRefs?: readonly string[] | undefined
 }
 
 export type FleetRunSupervisorActiveAssignment = {
@@ -172,6 +191,11 @@ export type FleetRunSupervisorObservedEvent =
     readonly summary?: string | null
     readonly usageEvidence: PylonFleetRunUsageEvidence | null
     readonly workerKind: FleetRunSupervisorConcreteWorkerKind
+    readonly marginalCostClass: MarginalCostClass
+    readonly verification: FleetRunSupervisorVerificationEvidence | null
+    readonly artifactRefs: readonly string[]
+    readonly proofRefs: readonly string[]
+    readonly authorityReceiptRefs: readonly string[]
   }
   | {
     readonly kind: "lifecycle"
@@ -339,19 +363,30 @@ const terminalDispositionFor = (
   }
   const exactAssignment = carrier.usageEvidence?.assignmentRef
   const acceptedSarahRun = run.authorityBinding?.phase === "accepted"
+  const terminalEvidenceComplete =
+    blockerRefs.length === 0 &&
+    result.marginalCostClass !== undefined &&
+    result.verification?.truth === "passed" &&
+    result.verification.evidenceRefs.length > 0 &&
+    (result.artifactRefs?.length ?? 0) > 0 &&
+    (result.proofRefs?.length ?? 0) > 0 &&
+    (result.authorityReceiptRefs?.length ?? 0) > 0
   if (
     status === "completed" &&
     acceptedSarahRun &&
     (
       carrier.usageEvidence === null ||
       result.assignmentRef === null ||
-      exactAssignment !== result.assignmentRef
+      exactAssignment !== result.assignmentRef ||
+      !terminalEvidenceComplete
     )
   ) {
     return {
       blockerRefs: [...new Set([
         ...blockerRefs,
-        "blocker.pylon.fleet_run.usage_evidence_required",
+        terminalEvidenceComplete
+          ? "blocker.pylon.fleet_run.usage_evidence_required"
+          : "blocker.pylon.fleet_run.terminal_evidence_required",
       ])],
       carrier: emptyUsageEvidenceCarrier,
       status: "failed",
@@ -575,6 +610,11 @@ const recordTerminalAssignment = async (
     summary: result.summary ?? null,
     usageEvidence: terminal.carrier.usageEvidence,
     workerKind: workerKindForTask(options.store, assignment.taskId),
+    marginalCostClass: result.marginalCostClass ?? "not_measured",
+    verification: result.verification ?? null,
+    artifactRefs: result.artifactRefs ?? [],
+    proofRefs: result.proofRefs ?? [],
+    authorityReceiptRefs: result.authorityReceiptRefs ?? [],
   })
   return true
 }
@@ -855,15 +895,14 @@ export async function tickFleetRunSupervisor(
 
     const taskId = fleetRunTaskIdForClaim(run.runRef, claim.claimRef)
     const contextId = contextIdFor(account.accountRef, taskId)
+    const accountProvider = workerKind === "claude" ? "claude_agent" : workerKind
+    const accountRefHash = hashPylonAccountRef(accountProvider, account.accountRef)
     if (store.getDispatchContext(contextId) === null) {
-      const accountProvider = workerKind === "claude"
-        ? "claude_agent"
-        : workerKind
       store.createDispatchContext({
         id: contextId,
         assigneeHandle: account.accountRef,
         runnerKind,
-        accountRefHash: hashPylonAccountRef(accountProvider, account.accountRef),
+        accountRefHash,
         lastHeartbeatAt: now,
         maxConcurrentSlots: 1,
         now,
@@ -889,10 +928,53 @@ export async function tickFleetRunSupervisor(
     store.markDispatched(taskId, contextId, now)
     store.updateWorkClaimState(claim.claimRef, "in_progress", now)
 
+    // The durable claim is already live. Project it before invoking an
+    // executor so Sarah does not wait for a long-running dispatch to return.
+    await emit(options.onLifecycle, {
+      kind: "dispatch",
+      runRef: run.runRef,
+      taskId,
+      claimRef: claim.claimRef,
+      workUnitRef: workUnit.workUnitRef,
+      accountRef: account.accountRef,
+      accountRefHash,
+      assignmentRef: null,
+      blockerRefs: [],
+      closeoutRef: null,
+      status: "accepted",
+      summary: null,
+      usageEvidence: null,
+      workerKind,
+      marginalCostClass: account.marginalCostClass ?? "not_measured",
+      verification: null,
+      artifactRefs: [],
+      proofRefs: [],
+      authorityReceiptRefs: [],
+    })
+
     dispatches.push((async () => {
       let result: FleetRunSupervisorDispatchResult
+      const streamedLifecycle = new Set<string>()
       try {
-        result = await options.runner.dispatch({ accountRef: account.accountRef, claim, run, taskId, workUnit, workerKind })
+        result = await options.runner.dispatch({
+          accountRef: account.accountRef,
+          claim,
+          run,
+          taskId,
+          workUnit,
+          workerKind,
+          onLifecycle: async event => {
+            await emit(options.onLifecycle, {
+              kind: "lifecycle",
+              runRef: run.runRef,
+              taskId,
+              claimRef: claim.claimRef,
+              accountRef: account.accountRef,
+              event,
+            })
+            streamedLifecycle.add(JSON.stringify(event))
+          },
+        })
       } catch {
         store.recordWorkerDone({
           contextId,
@@ -921,6 +1003,11 @@ export async function tickFleetRunSupervisor(
           summary: "The named FleetRun executor failed safely.",
           usageEvidence: null,
           workerKind,
+          marginalCostClass: account.marginalCostClass ?? "not_measured",
+          verification: null,
+          artifactRefs: [],
+          proofRefs: [],
+          authorityReceiptRefs: [],
         })
         return
       }
@@ -932,6 +1019,7 @@ export async function tickFleetRunSupervisor(
       // into every OTHER in-flight or already-succeeded dispatch in the same batch.
       try {
         for (const event of result.lifecycle) {
+          if (streamedLifecycle.has(JSON.stringify(event))) continue
           await emit(options.onLifecycle, {
             kind: "lifecycle",
             runRef: run.runRef,
@@ -963,6 +1051,12 @@ export async function tickFleetRunSupervisor(
             summary: result.summary ?? null,
             usageEvidence: carrier.usageEvidence,
             workerKind,
+            marginalCostClass: result.marginalCostClass ??
+              account.marginalCostClass ?? "not_measured",
+            verification: result.verification ?? null,
+            artifactRefs: result.artifactRefs ?? [],
+            proofRefs: result.proofRefs ?? [],
+            authorityReceiptRefs: result.authorityReceiptRefs ?? [],
           })
           return
         }
@@ -1006,6 +1100,12 @@ export async function tickFleetRunSupervisor(
           summary: result.summary ?? null,
           usageEvidence: terminal.carrier.usageEvidence,
           workerKind,
+          marginalCostClass: result.marginalCostClass ??
+            account.marginalCostClass ?? "not_measured",
+          verification: result.verification ?? null,
+          artifactRefs: result.artifactRefs ?? [],
+          proofRefs: result.proofRefs ?? [],
+          authorityReceiptRefs: result.authorityReceiptRefs ?? [],
         })
       } catch (error) {
         console.error("[fleet-run-supervisor] post-dispatch bookkeeping failed", {

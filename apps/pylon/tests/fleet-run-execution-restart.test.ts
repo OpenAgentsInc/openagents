@@ -9,8 +9,8 @@ import { hashPylonAccountRef } from "../src/account-registry.js"
 import { projectFleetRunSupervisorObservation } from "../src/orchestration/fleet-run-execution-projection.js"
 import {
   openPylonFleetRunExecutionReporter,
-  PylonFleetRunExecutionEventSchema,
-  type PylonFleetRunExecutionBatch,
+  PylonFleetRunExecutionEventSchemaV2,
+  type PylonFleetRunAnyExecutionBatch,
   type PylonFleetRunExecutionHttpPort,
   type PylonFleetRunExecutionReporter,
 } from "../src/orchestration/fleet-run-execution-reporter.js"
@@ -65,7 +65,7 @@ const exactEvidence = (input: {
   outputTokens: 7,
   reasoningTokens: 3,
   cacheReadTokens: 2,
-  totalTokens: 21,
+  totalTokens: 18,
   tokenRows: 1,
   tokenUsageRefs: [`token_usage.public.${input.harnessKind}.fixture`],
   proofRefs: [`proof.public.${input.harnessKind}.fixture`],
@@ -131,6 +131,11 @@ describe("FleetRun execution projection restart receipt", () => {
         status: "failed",
         usageEvidence: null,
         workerKind: "grok",
+        marginalCostClass: "subscription",
+        verification: null,
+        artifactRefs: [],
+        proofRefs: [],
+        authorityReceiptRefs: [],
       },
     })
     const failed = projected[1]
@@ -141,11 +146,40 @@ describe("FleetRun execution projection restart receipt", () => {
     })
     expect(failed).not.toHaveProperty("assignmentRef")
     expect(JSON.stringify(projected)).not.toContain("private-account-ref")
-    expect(() => S.decodeUnknownSync(PylonFleetRunExecutionEventSchema)({
+    expect(() => S.decodeUnknownSync(PylonFleetRunExecutionEventSchemaV2)({
       ...failed,
       sequence: 2,
       eventRef: "event.pylon.fleet_run.0123456789abcdef01234567",
     }, { onExcessProperty: "error" })).not.toThrow()
+
+    const unprovenCompletion = projectFleetRunSupervisorObservation({
+      store,
+      event: {
+        kind: "dispatch",
+        runRef,
+        taskId: "task.public.unproven_completion",
+        claimRef: "claim.public.unproven_completion",
+        workUnitRef: "unit.public.unproven_completion",
+        accountRef: "private-account-ref-must-not-project",
+        accountRefHash: hashPylonAccountRef("grok", "grok-owner"),
+        assignmentRef: "assignment.public.unproven_completion",
+        blockerRefs: [],
+        closeoutRef: "closeout.public.unproven_completion",
+        status: "completed",
+        usageEvidence: notMeasuredEvidence("assignment.public.unproven_completion"),
+        workerKind: "grok",
+        marginalCostClass: "not_measured",
+        verification: null,
+        artifactRefs: [],
+        proofRefs: [],
+        authorityReceiptRefs: [],
+      },
+    })[1]
+    expect(unprovenCompletion).toMatchObject({
+      kind: "work_terminal",
+      terminalState: "failed",
+      blockerRefs: ["blocker.pylon.fleet_run.evidence_incomplete"],
+    })
   })
 
   test("resumes one mixed Codex/Claude/Grok run without duplicate claims and closes with exact evidence truth", async () => {
@@ -217,7 +251,7 @@ describe("FleetRun execution projection restart receipt", () => {
       firstDatabase.close()
 
       const secondNow = new Date(firstNow.getTime() + 1_000)
-      const delivered: PylonFleetRunExecutionBatch[] = []
+      const delivered: PylonFleetRunAnyExecutionBatch[] = []
       const remote: PylonFleetRunExecutionHttpPort = {
         append: async ({ batch }) => {
           delivered.push(batch)
@@ -287,6 +321,15 @@ describe("FleetRun execution projection restart receipt", () => {
             accountRefHash: hashPylonAccountRef(accountProvider, active.accountRef),
             closeoutRef: `closeout.public.${workerKind}.restart_fixture`,
             usageEvidence,
+            marginalCostClass: "subscription" as const,
+            verification: {
+              truth: "passed" as const,
+              verifierRef: `verifier.public.${workerKind}.restart_fixture`,
+              evidenceRefs: [`verification.public.${workerKind}.restart_fixture`],
+            },
+            artifactRefs: [`artifact.public.${workerKind}.restart_fixture`],
+            proofRefs: [`proof.public.${workerKind}.restart_fixture`],
+            authorityReceiptRefs: [claimRef],
           }
         }),
       }

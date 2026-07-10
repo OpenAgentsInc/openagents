@@ -1,6 +1,11 @@
 import { createHash } from "node:crypto"
 
-import { canonicalJson } from "@openagentsinc/khala-sync"
+import {
+  canonicalJson,
+  FleetAttemptExactUsageEvidence,
+  FleetAttemptMarginalCostClass,
+  FleetAttemptNotMeasuredUsageEvidence,
+} from "@openagentsinc/khala-sync"
 import { Schema as S } from "effect"
 
 import type {
@@ -12,6 +17,10 @@ export const PYLON_FLEET_RUN_EXECUTION_BATCH_SCHEMA =
   "openagents.pylon.fleet_run_execution_batch.v1" as const
 export const PYLON_FLEET_RUN_EXECUTION_EVENT_SCHEMA =
   "openagents.pylon.fleet_run_execution_event.v1" as const
+export const PYLON_FLEET_RUN_EXECUTION_BATCH_SCHEMA_V2 =
+  "openagents.pylon.fleet_run_execution_batch.v2" as const
+export const PYLON_FLEET_RUN_EXECUTION_EVENT_SCHEMA_V2 =
+  "openagents.pylon.fleet_run_execution_event.v2" as const
 export const PYLON_FLEET_RUN_EXECUTION_ACK_SCHEMA =
   "openagents.pylon.fleet_run_execution_ack.v1" as const
 
@@ -31,14 +40,28 @@ const RunRef = S.String.check(S.isPattern(RUN_REF))
 const ClaimRef = S.String.check(S.isPattern(CLAIM_REF))
 const EventRef = S.String.check(S.isPattern(EVENT_REF))
 const PublicRef = S.String.check(S.isPattern(PUBLIC_REF))
+const ProjectedPublicRef = S.String.check(
+  S.isPattern(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,179}$/u),
+)
+const ProjectedUnitRef = S.String.check(
+  S.isPattern(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u),
+)
 const BlockerRef = S.String.check(
   S.isPattern(/^blocker\.[A-Za-z0-9][A-Za-z0-9._:/#-]{0,171}$/u),
+)
+const ProjectedBlockerRef = S.String.check(
+  S.isPattern(/^blocker\.[A-Za-z0-9][A-Za-z0-9._:-]{0,171}$/u),
 )
 const AccountRefHash = S.String.check(S.isPattern(ACCOUNT_REF_HASH))
 const IsoTimestamp = S.String.check(S.isPattern(ISO_TIMESTAMP))
 const WorkerKind = S.Literals(["codex", "claude", "grok"])
 const BlockerRefs = S.Array(BlockerRef).check(S.isMaxLength(32))
 const NonEmptyBlockerRefs = S.Array(BlockerRef).check(S.isMinLength(1), S.isMaxLength(32))
+const ProjectedBlockerRefs = S.Array(ProjectedBlockerRef).check(S.isMaxLength(32))
+const NonEmptyProjectedBlockerRefs = S.Array(ProjectedBlockerRef).check(
+  S.isMinLength(1),
+  S.isMaxLength(32),
+)
 const SafePositiveInt = S.Int.check(
   S.isGreaterThanOrEqualTo(1),
   S.isLessThanOrEqualTo(MAX_SAFE_INTEGER),
@@ -59,6 +82,13 @@ export const PylonFleetRunProjectedUsageEvidenceSchema = S.Union([
 ])
 export type PylonFleetRunProjectedUsageEvidence =
   typeof PylonFleetRunProjectedUsageEvidenceSchema.Type
+
+export const PylonFleetRunUsageEvidenceV2Schema = S.Union([
+  FleetAttemptExactUsageEvidence,
+  FleetAttemptNotMeasuredUsageEvidence,
+])
+export type PylonFleetRunUsageEvidenceV2 =
+  typeof PylonFleetRunUsageEvidenceV2Schema.Type
 
 export const PylonFleetRunStartedExecutionEvent = S.Struct({
   schema: S.Literal(PYLON_FLEET_RUN_EXECUTION_EVENT_SCHEMA),
@@ -144,9 +174,98 @@ export const PylonFleetRunExecutionEventSchema = S.Union([
 export type PylonFleetRunExecutionEvent =
   typeof PylonFleetRunExecutionEventSchema.Type
 
+const PylonFleetRunExecutionEventV2Base = S.Struct({
+  schema: S.Literal(PYLON_FLEET_RUN_EXECUTION_EVENT_SCHEMA_V2),
+  sequence: SafePositiveInt,
+  eventRef: EventRef,
+  observedAt: IsoTimestamp,
+})
+const PylonFleetRunExecutionV2WorkFields = {
+  unitRef: ProjectedUnitRef,
+  workClaimRef: ProjectedPublicRef,
+  assignmentRef: S.optionalKey(ProjectedPublicRef),
+  workerKind: WorkerKind,
+  accountRefHash: S.optionalKey(AccountRefHash),
+  marginalCostClass: S.optionalKey(FleetAttemptMarginalCostClass),
+  blockerRefs: ProjectedBlockerRefs,
+} as const
+
+export const PylonFleetRunStartedExecutionEventV2 = S.Struct({
+  ...PylonFleetRunExecutionEventV2Base.fields,
+  kind: S.Literal("run_started"),
+})
+export const PylonFleetRunWorkProgressExecutionEventV2 = S.Struct({
+  ...PylonFleetRunExecutionEventV2Base.fields,
+  kind: S.Literal("work_progress"),
+  ...PylonFleetRunExecutionV2WorkFields,
+})
+export const PylonFleetRunVerifiedEvidenceV2 = S.Struct({
+  truth: S.Literal("passed"),
+  verifierRef: ProjectedPublicRef,
+  evidenceRefs: S.Array(ProjectedPublicRef).check(S.isMinLength(1), S.isMaxLength(64)),
+})
+export const PylonFleetRunAcceptedWorkTerminalExecutionEventV2 = S.Struct({
+  ...PylonFleetRunExecutionEventV2Base.fields,
+  kind: S.Literal("work_terminal"),
+  ...PylonFleetRunExecutionV2WorkFields,
+  terminalState: S.Literal("accepted"),
+  assignmentRef: ProjectedPublicRef,
+  accountRefHash: AccountRefHash,
+  closeoutRef: ProjectedPublicRef,
+  verification: PylonFleetRunVerifiedEvidenceV2,
+  artifactRefs: S.Array(ProjectedPublicRef).check(S.isMinLength(1), S.isMaxLength(64)),
+  proofRefs: S.Array(ProjectedPublicRef).check(S.isMinLength(1), S.isMaxLength(64)),
+  authorityReceiptRefs: S.Array(ProjectedPublicRef).check(
+    S.isMinLength(1),
+    S.isMaxLength(64),
+  ),
+  usageEvidence: PylonFleetRunUsageEvidenceV2Schema,
+})
+export const PylonFleetRunFailedWorkTerminalExecutionEventV2 = S.Struct({
+  ...PylonFleetRunExecutionEventV2Base.fields,
+  kind: S.Literal("work_terminal"),
+  ...PylonFleetRunExecutionV2WorkFields,
+  terminalState: S.Literals(["failed", "stale"]),
+  blockerRefs: NonEmptyProjectedBlockerRefs,
+  closeoutRef: S.optionalKey(ProjectedPublicRef),
+  verification: S.optionalKey(S.Struct({
+    truth: S.Literal("failed"),
+    verifierRef: S.optionalKey(ProjectedPublicRef),
+    evidenceRefs: S.Array(ProjectedPublicRef).check(S.isMaxLength(64)),
+  })),
+  artifactRefs: S.optionalKey(S.Array(ProjectedPublicRef).check(S.isMaxLength(64))),
+  proofRefs: S.optionalKey(S.Array(ProjectedPublicRef).check(S.isMaxLength(64))),
+  authorityReceiptRefs: S.optionalKey(
+    S.Array(ProjectedPublicRef).check(S.isMaxLength(64)),
+  ),
+  usageEvidence: S.optionalKey(PylonFleetRunUsageEvidenceV2Schema),
+})
+export const PylonFleetRunTerminalExecutionEventV2 = S.Struct({
+  ...PylonFleetRunExecutionEventV2Base.fields,
+  kind: S.Literal("run_terminal"),
+  terminalState: S.Literals(["completed", "failed", "stopped"]),
+  blockerRefs: ProjectedBlockerRefs,
+})
+export const PylonFleetRunExecutionEventSchemaV2 = S.Union([
+  PylonFleetRunStartedExecutionEventV2,
+  PylonFleetRunWorkProgressExecutionEventV2,
+  PylonFleetRunAcceptedWorkTerminalExecutionEventV2,
+  PylonFleetRunFailedWorkTerminalExecutionEventV2,
+  PylonFleetRunTerminalExecutionEventV2,
+])
+export type PylonFleetRunExecutionEventV2 =
+  typeof PylonFleetRunExecutionEventSchemaV2.Type
+
+export const PylonFleetRunAnyExecutionEventSchema = S.Union([
+  PylonFleetRunExecutionEventSchema,
+  PylonFleetRunExecutionEventSchemaV2,
+])
+export type PylonFleetRunAnyExecutionEvent =
+  typeof PylonFleetRunAnyExecutionEventSchema.Type
+
 export type PylonFleetRunExecutionEventInput =
-  PylonFleetRunExecutionEvent extends infer Event
-    ? Event extends PylonFleetRunExecutionEvent
+  PylonFleetRunAnyExecutionEvent extends infer Event
+    ? Event extends PylonFleetRunAnyExecutionEvent
       ? Omit<Event, "eventRef" | "sequence">
       : never
     : never
@@ -161,6 +280,23 @@ export const PylonFleetRunExecutionBatchSchema = S.Struct({
 })
 export type PylonFleetRunExecutionBatch =
   typeof PylonFleetRunExecutionBatchSchema.Type
+
+export const PylonFleetRunExecutionBatchSchemaV2 = S.Struct({
+  schema: S.Literal(PYLON_FLEET_RUN_EXECUTION_BATCH_SCHEMA_V2),
+  claimRef: ClaimRef,
+  events: S.Array(PylonFleetRunExecutionEventSchemaV2).check(
+    S.isMinLength(1),
+    S.isMaxLength(MAX_BATCH_EVENTS),
+  ),
+})
+export type PylonFleetRunExecutionBatchV2 =
+  typeof PylonFleetRunExecutionBatchSchemaV2.Type
+export const PylonFleetRunAnyExecutionBatchSchema = S.Union([
+  PylonFleetRunExecutionBatchSchema,
+  PylonFleetRunExecutionBatchSchemaV2,
+])
+export type PylonFleetRunAnyExecutionBatch =
+  typeof PylonFleetRunAnyExecutionBatchSchema.Type
 
 export const PylonFleetRunExecutionAckSchema = S.Struct({
   schema: S.Literal(PYLON_FLEET_RUN_EXECUTION_ACK_SCHEMA),
@@ -227,7 +363,7 @@ export type PylonFleetRunExecutionHttpPort = {
   readonly append: (input: {
     readonly pylonRef: string
     readonly runRef: string
-    readonly batch: PylonFleetRunExecutionBatch
+    readonly batch: PylonFleetRunAnyExecutionBatch
   }) => Promise<PylonFleetRunExecutionAck>
 }
 
@@ -333,7 +469,7 @@ export function makePylonFleetRunExecutionHttpPort(
     append: async ({ pylonRef, runRef, batch }) => {
       try {
         if (!PYLON_REF.test(pylonRef) || !RUN_REF.test(runRef)) throw unavailable()
-        const decodedBatch = S.decodeUnknownSync(PylonFleetRunExecutionBatchSchema)(batch, {
+        const decodedBatch = S.decodeUnknownSync(PylonFleetRunAnyExecutionBatchSchema)(batch, {
           onExcessProperty: "error",
         })
         const first = decodedBatch.events[0]
@@ -397,13 +533,13 @@ export function makePylonFleetRunExecutionHttpPort(
   }
 }
 
-const decodeStoredEvent = (value: string): PylonFleetRunExecutionEvent =>
-  S.decodeUnknownSync(S.fromJsonString(PylonFleetRunExecutionEventSchema))(value, {
+const decodeStoredEvent = (value: string): PylonFleetRunAnyExecutionEvent =>
+  S.decodeUnknownSync(S.fromJsonString(PylonFleetRunAnyExecutionEventSchema))(value, {
     onExcessProperty: "error",
   })
 
 const eventInputFor = (
-  event: PylonFleetRunExecutionEvent,
+  event: PylonFleetRunAnyExecutionEvent,
 ): PylonFleetRunExecutionEventInput => {
   const { eventRef: _eventRef, sequence: _sequence, ...input } = event
   return input as PylonFleetRunExecutionEventInput
@@ -421,7 +557,7 @@ const eventRefFor = (
 const deliveryBatchRefFor = (
   pylonRef: string,
   runRef: string,
-  batch: PylonFleetRunExecutionBatch,
+  batch: PylonFleetRunAnyExecutionBatch,
 ): string => `batch.pylon.fleet_run.${createHash("sha256")
   .update(canonicalJson({ pylonRef, runRef, batch }))
   .digest("hex")
@@ -431,7 +567,7 @@ const decodeOutboxEntries = (
   runRef: string,
   claimRef: string,
   entries: readonly FleetRunExecutionOutboxEntry[],
-): PylonFleetRunExecutionEvent[] => {
+): PylonFleetRunAnyExecutionEvent[] => {
   const events = entries.map(entry => decodeStoredEvent(entry.eventJson))
   for (let index = 0; index < events.length; index += 1) {
     const entry = entries[index]!
@@ -452,15 +588,26 @@ const decodeOutboxEntries = (
 
 const executionBatch = (
   claimRef: string,
-  events: readonly PylonFleetRunExecutionEvent[],
-): PylonFleetRunExecutionBatch =>
-  S.decodeUnknownSync(PylonFleetRunExecutionBatchSchema)({
-    schema: PYLON_FLEET_RUN_EXECUTION_BATCH_SCHEMA,
-    claimRef,
-    events,
-  }, { onExcessProperty: "error" })
+  events: readonly PylonFleetRunAnyExecutionEvent[],
+): PylonFleetRunAnyExecutionBatch => {
+  const first = events[0]
+  if (first === undefined || events.some(event => event.schema !== first.schema)) {
+    throw unavailable()
+  }
+  return first.schema === PYLON_FLEET_RUN_EXECUTION_EVENT_SCHEMA_V2
+    ? S.decodeUnknownSync(PylonFleetRunExecutionBatchSchemaV2)({
+        schema: PYLON_FLEET_RUN_EXECUTION_BATCH_SCHEMA_V2,
+        claimRef,
+        events,
+      }, { onExcessProperty: "error" })
+    : S.decodeUnknownSync(PylonFleetRunExecutionBatchSchema)({
+        schema: PYLON_FLEET_RUN_EXECUTION_BATCH_SCHEMA,
+        claimRef,
+        events,
+      }, { onExcessProperty: "error" })
+}
 
-const batchByteLength = (batch: PylonFleetRunExecutionBatch): number =>
+const batchByteLength = (batch: PylonFleetRunAnyExecutionBatch): number =>
   new TextEncoder().encode(canonicalJson(batch)).byteLength
 
 /**
@@ -490,7 +637,7 @@ export function openPylonFleetRunExecutionReporter(
   let closePromise: Promise<void> | null = null
   let tail = Promise.resolve<PylonFleetRunExecutionAck | null>(null)
 
-  const nextPendingBatch = (): PylonFleetRunExecutionBatch | null => {
+  const nextPendingBatch = (): PylonFleetRunAnyExecutionBatch | null => {
     const pending = input.store.listFleetRunExecutionOutbox(input.runRef, {
       pendingOnly: true,
       limit: MAX_BATCH_EVENTS,
@@ -511,11 +658,13 @@ export function openPylonFleetRunExecutionReporter(
       return batch
     }
 
-    let selected: PylonFleetRunExecutionBatch | null = null
+    let selected: PylonFleetRunAnyExecutionBatch | null = null
+    const headSchema = decoded[0]!.schema
     for (let length = 1; length <= decoded.length; length += 1) {
       // A later reservation behind an unreserved head violates the one-prefix
       // delivery discipline and must not be silently coalesced.
       if (pending[length - 1]!.deliveryBatchRef !== null) throw unavailable()
+      if (decoded[length - 1]!.schema !== headSchema) break
       const candidate = executionBatch(claimRef, decoded.slice(0, length))
       if (batchByteLength(candidate) > MAX_BATCH_BYTES) break
       selected = candidate
@@ -597,13 +746,16 @@ export function openPylonFleetRunExecutionReporter(
           claimRef,
           eventRef,
           eventJsonForSequence: sequence => canonicalJson(
-            S.decodeUnknownSync(PylonFleetRunExecutionEventSchema)({
+            S.decodeUnknownSync(PylonFleetRunAnyExecutionEventSchema)({
               ...event,
               sequence,
               eventRef,
             }, { onExcessProperty: "error" }),
           ),
-          now: observedAt,
+          // The event keeps the remote audit clock. Local outbox custody uses
+          // the Pylon receipt clock and therefore remains monotonic even when
+          // parallel lifecycle callbacks arrive with reordered observedAt.
+          now: readNow(),
         })
       } catch {
         throw unavailable()

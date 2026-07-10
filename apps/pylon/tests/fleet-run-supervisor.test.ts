@@ -89,6 +89,112 @@ const mixedCapacity: readonly FleetRunSupervisorAccount[] = [
 const capacity = () => ({ accounts: async () => mixedCapacity })
 
 describe("Pylon-owned FleetRun supervisor", () => {
+  test("projects the durable claim immediately and streams lifecycle before dispatch returns", async () => {
+    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const run = createRun(store, {
+      runRef: "fleet_run.fc3.lifecycle_immediate",
+      workUnits: 1,
+      targetConcurrency: 1,
+      workerKind: "codex",
+    })
+    const observed: FleetRunSupervisorObservedEvent[] = []
+    let release!: () => void
+    let entered!: () => void
+    const gate = new Promise<void>(resolve => {
+      release = resolve
+    })
+    const started = new Promise<void>(resolve => {
+      entered = resolve
+    })
+    const runtimeStarted = {
+      ...lifecycleEvent("assignment_run.runtime_started", "running"),
+      assignmentRef: "assignment.public.lifecycle_immediate",
+      accountRefHash: hashPylonAccountRef("codex", "codex-owner"),
+    } satisfies PylonAssignmentRunLifecycleEvent
+    const ticking = tickFleetRunSupervisor({
+      store,
+      pylonRef: "pylon.owner.fc3.lifecycle",
+      runRef: run.runRef,
+      planner: planner(store, 1),
+      runner: {
+        dispatch: async input => {
+          await input.onLifecycle?.(runtimeStarted)
+          entered()
+          await gate
+          return {
+            assignmentRef: runtimeStarted.assignmentRef ?? null,
+            lifecycle: [runtimeStarted],
+            status: "accepted",
+          }
+        },
+      },
+      capacity: {
+        accounts: async () => [mixedCapacity[0]!],
+      },
+      clock: { now: () => fixedNow },
+      onLifecycle: event => {
+        observed.push(event)
+      },
+    })
+
+    await started
+    expect(observed.some(event =>
+      event.kind === "dispatch" && event.status === "accepted" && event.assignmentRef === null
+    )).toBe(true)
+    expect(observed.some(event =>
+      event.kind === "lifecycle" && event.event.event === "assignment_run.runtime_started"
+    )).toBe(true)
+    release()
+    await ticking
+    expect(observed.filter(event =>
+      event.kind === "lifecycle" && event.event.event === "assignment_run.runtime_started"
+    )).toHaveLength(1)
+  })
+
+  test("replays buffered lifecycle when the first live projection fails", async () => {
+    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    const run = createRun(store, {
+      runRef: "fleet_run.fc3.lifecycle_retry",
+      workUnits: 1,
+      targetConcurrency: 1,
+      workerKind: "codex",
+    })
+    const event = {
+      ...lifecycleEvent("assignment_run.runtime_started", "running"),
+      assignmentRef: "assignment.public.lifecycle_retry",
+    } satisfies PylonAssignmentRunLifecycleEvent
+    let lifecycleAttempts = 0
+    const observed: FleetRunSupervisorObservedEvent[] = []
+    await tickFleetRunSupervisor({
+      store,
+      pylonRef: "pylon.owner.fc3.lifecycle-retry",
+      runRef: run.runRef,
+      planner: planner(store, 1),
+      runner: {
+        dispatch: async input => {
+          await input.onLifecycle?.(event).catch(() => undefined)
+          return {
+            assignmentRef: event.assignmentRef ?? null,
+            lifecycle: [event],
+            status: "accepted",
+          }
+        },
+      },
+      capacity: { accounts: async () => [mixedCapacity[0]!] },
+      clock: { now: () => fixedNow },
+      onLifecycle: lifecycle => {
+        if (lifecycle.kind === "lifecycle") {
+          lifecycleAttempts += 1
+          if (lifecycleAttempts === 1) throw new Error("transient projection failure")
+        }
+        observed.push(lifecycle)
+      },
+    })
+
+    expect(lifecycleAttempts).toBe(2)
+    expect(observed.filter(lifecycle => lifecycle.kind === "lifecycle")).toHaveLength(1)
+  })
+
   test("starts one simultaneous stream per concrete harness and persists each worker kind", async () => {
     const store = createPylonOrchestrationStore(new Database(":memory:"))
     const run = createRun(store, {
