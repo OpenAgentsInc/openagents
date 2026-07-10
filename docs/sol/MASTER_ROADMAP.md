@@ -1,12 +1,14 @@
-# MASTER ROADMAP — Sarah Fleet Command first; three OpenAgents apps
+# MASTER ROADMAP — Sarah Fleet Command; OpenCode-parity Desktop; three apps
 
 - Date: 2026-07-10 (Fable reconciliation pass — see editing notes at bottom)
-- Updated: 2026-07-10
-- Revision: 22
+- Updated: 2026-07-10 (owner OpenCode-parity Desktop directive)
+- Revision: 23
 - Status: canonical OpenAgents implementation roadmap
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Issue source set: [`issues/README.md`](./issues/README.md)
 - Triage receipt: [`2026-07-09-issue-triage.md`](./2026-07-09-issue-triage.md)
+- Desktop parity audit:
+  [`2026-07-10-opencode-khala-openagents-desktop-parity-audit.md`](./2026-07-10-opencode-khala-openagents-desktop-parity-audit.md)
 
 ## Owner decisions encoded here
 
@@ -49,12 +51,29 @@
    parity; it does not take the #8640 burn or other P0 hot contracts without an
    explicit claim handoff. The operating contract is
    [`2026-07-10-terra-execution-lane.md`](./2026-07-10-terra-execution-lane.md).
+9. **OpenAgents Desktop reaches practical OpenCode Desktop parity.** This is a
+   core product exit, not optional polish and not a literal code/pixel clone.
+   The benchmark is the current OpenCode desktop workbench: project/session
+   navigation, streamed agent work, rich composer/context, file/editor/review/
+   terminal loop, commands/keybindings, providers/models/MCP/permissions,
+   settings, diagnostics, lifecycle, and distribution. OpenAgents keeps its
+   existing Effect Native application grammar, hardened Electron boundary,
+   Khala Sync continuity, Pylon/Fleet authority, and Sarah-first relationship.
+   Every material desktop action becomes a typed intent that Sarah can observe,
+   propose, or execute under the same approval/policy boundary as a direct user
+   action. Multi-window depth and WSL may follow the first complete workbench;
+   they do not dilute the required everyday parity scope.
 
 ## The product in one sentence
 
 **OpenAgents is Sarah: a persistent, inspectable relationship that can direct
 and supervise real work across the owner's coding fleet now, then carry more
 standing responsibilities over time.**
+
+On Desktop, Sarah is also the steering and continuity surface for a complete
+coding workbench. The editor, review, terminal, project/session system, account
+controls, and Fleet cockpit are not separate products: they expose typed state
+and actions to the same relationship, policy, Sync, and receipt loop.
 
 Khala is the inference, routing, and Sync engine. Pylon and Agent Computers are
 execution. Blueprint is legible memory and work state. Effect Native is the
@@ -83,10 +102,15 @@ continuity   <-    evidence    <-         execution
 | Evidence | Verification, exact or explicitly unmeasured usage, and closeout receipts |
 | Continuity | Khala Sync, Blueprint, provenance-bearing memory, and the next conversation |
 
-Web and mobile are relationship-first projections. Desktop adds the specialist
-Fleet/code/terminal cockpit. They may emphasize different layers but never own
-different run, authority, memory, or evidence realities. This one-page shape is
-the acceptance artifact owned by #8566.
+Web and mobile are relationship-first projections. Desktop adds the complete
+coding workbench and specialist Fleet cockpit: projects/sessions, rich agent
+timeline and composer, files/editor, diff/review, terminal, commands, accounts,
+settings, diagnostics, and release lifecycle. Sarah can steer those surfaces
+through typed intents and Khala Sync, subject to the same approvals and host
+capability boundaries as direct interaction. The three apps may emphasize
+different layers but never own different conversation, run, authority, memory,
+or evidence realities. This one-page shape is the acceptance artifact owned by
+#8566.
 
 ## Current implementation truth
 
@@ -209,13 +233,21 @@ The coding-fleet program starts from substantial working substrate:
   thread store, a host-held model-gateway bridge with honest configuration
   failure, shared typed icons and glass backdrop/material lowering, and the
   first real workspace slice with user-selected root, bounded root listing, and
-  bounded read-only file preview. A dedicated Settings surface now reads
-  bounded Codex readiness and drives Pylon's isolated device-auth flow; its
-  58-test and real-Electron fixture receipt proves the awaiting-browser UI, not
-  real owner authentication. These are code/fixture/real-Electron-smoke
-  receipts; Sync-backed conversation, server-authoritative Fleet/approval/
-  receipt projection, edit/review/terminal parity, packaging/signing/updates,
-  identity acceptance, and legacy-client retirement remain open under #8574;
+  bounded read-only file preview. A dedicated Settings surface reads bounded
+  Codex readiness and drives Pylon's isolated device-auth flow. The current
+  package has 60 passing tests, a passing bundle, and a passing real-Electron
+  smoke; the smoke proves a system/error chat response and scripted
+  awaiting-browser account state, not live model completion or real owner
+  authentication. The current typecheck remains red on the shared Effect Native
+  `Compose` icon mismatch. The pinned parity audit at `84648bd03c` scores the
+  destination at 1 landed, 6 partial, 3 scaffold, and 10 absent capability
+  areas, versus 8 landed, 10 partial, 1 scaffold, and 1 absent in the frozen
+  Khala Code extraction source. That difference is now an explicit #8574
+  product burn: Sync-backed Sarah conversation, command/project/session
+  infrastructure, rich composer, edit/review/terminal, provider/MCP/settings,
+  server-authoritative Fleet/approval/receipt projection, diagnostics,
+  packaging/signing/updates, identity acceptance, and legacy-client retirement
+  remain open;
 - product-promise source registry `2026-07-09.2` at `55452fa614`, the
   fix-forward #8644 provenance correction that binds the two owner-scoped
   FleetRun intake routes as intake evidence only without changing promise state
@@ -623,7 +655,7 @@ by the owned-lowering dependency. The checked-in issue source and exit ordering
 live in
 [`issues/glass-ui-and-sarah-mobile.md`](./issues/glass-ui-and-sarah-mobile.md).
 
-## P1 — three OpenAgents applications
+## P1 — three OpenAgents applications; OpenCode-parity Desktop
 
 Epic: **[#8566 APP-1](https://github.com/OpenAgentsInc/openagents/issues/8566)**.
 
@@ -708,53 +740,119 @@ already exists.
 **[#8574 APP-DESKTOP](https://github.com/OpenAgentsInc/openagents/issues/8574)**
 builds a new Electron application at `apps/openagents-desktop`.
 
-Status: Terra is the active #8574 execution lane. Through `f4cb8ed18e`, the
-pinned scaffold and hardened boundary now host a minimal Effect Native chat
-workspace, real host-owned gateway completion, a bounded persisted five-thread
-catalog, shared typed icons and glass-material lowering, and the start of a
-real project workspace: user-selected root, bounded root listing, and bounded
-read-only preview. The Settings surface lists bounded Codex readiness and starts
-Pylon's isolated device-auth flow through a fixed host service; 58 tests and the
-real Electron smoke prove its rendered fixture state, while real owner login is
-still pending. Bounded edit/save plus Git status/diff/review can proceed while
-that owner proof waits; terminal follows through a fixed host service. The live
-#8574 claim is the coordination authority for each leaf and any shared Effect
-Native hot contract.
+**Priority contract:** this is a product-critical P1 lane, not presentation
+polish. It runs in parallel with the current #8640 owner-local acceptance burn;
+after C2, D1–D5 below receive the first available serial product capacity until
+the practical parity gate is crossed. Cloud, avatar/voice perfection, real owner
+Codex reconnect, multi-window depth, and WSL do not block the ready parts of
+this program.
 
-Server-authoritative Sarah/Fleet/Pylon composition, Sync continuation,
-specialist hosts, owner identity acceptance, packaging/fuses, signing/
-notarization, updates, and legacy-client retirement remain open. The local
-thread store and staged Fleet bridge are not those authorities and must not be
-described as cross-device or server Fleet parity.
+**Benchmark and architecture:** reach practical parity with the current
+OpenCode Desktop workbench while retaining OpenAgents architecture. OpenCode's
+affordances and current `packages/desktop` + `packages/app` behavior are the
+benchmark; its code and renderer capability model are not the destination.
+Effect Native remains the only application/component/intent grammar, Electron
+remains a hardened host, Khala Sync owns cross-device continuity, Pylon/Source
+Authority own Fleet execution and receipts, and Sarah remains the relationship
+and steering surface. The detailed evidence and 20-area baseline are in the
+[`desktop parity audit`](./2026-07-10-opencode-khala-openagents-desktop-parity-audit.md).
 
-The scaffold already removed the template updater/publisher wiring, disabled
-`nodeIntegration`, enabled sandboxing/context isolation, and installed
-deny-by-default permission/navigation/window-open handling. Packaged Electron
-fuse verification, signing/notarization, and the real release/update path are
-still unstarted; the click receipt is a local smoke, not the whole issue exit.
+**Current rung:** Terra is the active #8574 execution lane. Through
+`f4cb8ed18e`, the app has a hardened scaffold, minimal Effect Native chat,
+host-owned gateway completion, a bounded persisted five-thread catalog, shared
+icons/glass lowering, folder selection, bounded root listing/read-only preview,
+and Codex readiness/device-auth Settings. Sixty tests, bundle, and real-Electron
+smoke pass; current typecheck is red on the shared `Compose` icon contract. The
+smoke proves a system/error response plus scripted device auth, not live model
+or owner-account success. The audit scores OpenAgents Desktop at 1 landed, 6
+partial, 3 scaffold, and 10 absent areas; broad Khala Code parity work has not
+yet crossed the greenfield boundary.
 
-- Sarah is the relationship surface.
-- Fleet is the specialist cockpit over the same run state.
-- Monaco, terminal, and raw diagnostics remain typed specialist hosts.
-- Pylon is an engine, not a separate public desktop product.
-- Effect Native is the application model and Electron is the host. The old
-  Electrobun shell is not the destination architecture.
-- Scaffold from the required MIT-licensed
-  [`LuanRoger/electron-shadcn`](https://github.com/LuanRoger/electron-shadcn)
-  template, pinning the imported upstream commit. Retain its useful Electron
-  Forge/Vite/fuse/test structure, but harden its current `nodeIntegration: true`
-  default before product work: remove its upstream updater/publisher wiring,
-  set `sandbox: true`, install a deny-by-default Electron boundary, verify
-  packaged fuses, and replace starter Zod/oRPC/shadcn/TanStack application
-  semantics with a mechanically asserted Effect Native/Effect Schema boundary.
-- The reusable Electron host gap is OpenAgentsInc/effect-native#69. The earlier
-  Electrobun Phase 4 issues are historical, not destination proof.
-- `clients/khala-code-desktop` is deprecated and frozen as a parity, contract,
-  service-extraction, and migration reference; it is never renamed or converted
-  in place.
+#### Required product shape
+
+OpenAgents Desktop is one coherent application with three depths:
+
+1. **Sarah relationship** — persistent conversations, active context,
+   follow-ups, requests, approvals, and next actions.
+2. **Coding workbench** — projects/sessions, streamed agent timeline, rich
+   composer, files/editor, Git diff/review/comments, terminal, commands,
+   providers/models/MCP/permissions, settings, diagnostics, and desktop
+   lifecycle.
+3. **Fleet cockpit** — active FleetRun, worker/account/capacity state,
+   assignments, approvals, steering, Inbox attention, Gym/proof, receipts, and
+   closeout over the same server-authoritative records Sarah sees.
+
+Conversation remains the quiet default. The workbench and Fleet cockpit are
+fast to open through projects, tabs, commands, and explicit active state; they
+do not become permanent developer/proof chrome around every conversation.
+
+#### Sarah-steerability contract
+
+- Every material user-visible action has a stable typed intent and command ID:
+  create/open/focus a project or session, select context, submit/follow up/
+  interrupt, open files/review/terminal, choose a model/runtime, respond to a
+  request, and steer/approve/pause/resume/stop Fleet work.
+- Every typed action is Sarah-addressable through a semantic action registry,
+  never ad hoc string or keyword routing. Policy determines whether Sarah may
+  observe, propose, execute immediately, or pause for approval; no action is
+  hidden from Sarah merely because it originated in direct UI. The same owner
+  scope, capability, approval, and budget checks still apply.
+- Khala Sync carries stable conversation, project/session, active-context,
+  request, FleetRun, attempt, outcome, and receipt projections so Sarah, mobile,
+  web, and Desktop do not fork reality. Ephemeral cursor/focus/selection state
+  stays local unless a typed continuity use requires it.
+- Direct manipulation and Sarah steering call the same host/runtime service and
+  produce the same typed outcome. Sarah never bypasses filesystem grants,
+  terminal boundaries, credentials, approvals, worker authority, or receipt
+  gates.
+- Desktop surfaces show pending, unavailable, rejected, reconnecting, and
+  failed states explicitly; Sarah receives the corresponding typed result
+  instead of inferring success from prose or pixels.
+
+#### Parity burn
+
+| Gate | Scope | Exit |
+| --- | --- | --- |
+| D0 — truthful green baseline | Fix the shared icon/typecheck drift; remove or finish dormant Review/Terminal/Inbox/Fleet names and stale docs; isolate smoke state and distinguish live, unconfigured, and fixture receipts | Typecheck, tests, bundle, isolated first-run Electron smoke, and route/capability manifest are green and agree |
+| D1 — Sarah + Sync conversation runtime | Replace five local-only threads and request/response chat with authoritative thread/session identity; streamed text/reasoning/tools/plan/todo/questions/permissions/approvals/errors/usage; interrupt/resume/reconnect; rich composer, history, modes, attachments, model/agent/variant selection, and selected context | One real authenticated stream survives restart/reconnect, is steerable by Sarah, and continues on another authorized OpenAgents surface |
+| D2 — projects, sessions, commands | Project/session routes and home, search/archive, sortable/recoverable tabs, command registry/palette, conflict-safe keybindings, native menu, deep links, single-instance and route restore | Every global/session/workbench action uses the command registry or has an explicit bounded exception |
+| D3 — coding workbench | Recursive lazy tree, capability grants, watcher/cache/search, edit/save/dirty/reload, file tabs and selected ranges, typed Git status/diff, review/comments/revert, interactive workspace-bounded PTY tabs with reconnect/teardown | Select a project, edit/save, review the diff, add context, run a bounded terminal, ask Sarah to steer the work, and resume after restart |
+| D4 — runtime and settings | OpenAgents sign-in; provider account custody; runtime/model catalog and selection; MCP auth/enable state; enforced permissions; themes/fonts/shell/layout; locale/accessibility; notifications/sounds; diagnostics/recovery/support | Settings mutate real host/runtime state, unavailable actions explain why, and no credential/private payload reaches renderer logs or public evidence |
+| D5 — authoritative Fleet cockpit | Compose active FleetRun/work-unit/attempt/account/worker/approval/command/receipt state from current Pylon/Sync authority; Inbox attention and proof views; Sarah and direct controls share typed intents | A Sarah-started run opens with matching Desktop state/controls, Desktop steering is reflected by Sarah, and both show the same durable outcomes and receipts |
+| D6 — desktop productization | Freeze independent identity; package with verified fuses; signing/notarization; update/release notes; public-safe debug export and crash/load/unresponsive recovery; clean install/update/rollback proof | Installable, updateable, recoverable app with an independent release lane; legacy Electrobun release/install paths are removed |
+
+The first practical parity gate includes the everyday OpenCode capabilities in
+D1–D5 plus the safe desktop lifecycle needed to use them. Persisted multi-window
+geometry/restore, remote-server depth, and the complete Windows WSL lifecycle
+remain explicit follow-ons unless they become necessary for a supported user
+path before D6. “Parity” never means those deferred items silently disappear.
+
+#### Non-negotiable implementation boundaries
+
+- The local five-thread store and staged Fleet brief are temporary scaffolds,
+  not Sarah/Sync/Fleet authority.
+- Monaco/editor and terminal render through typed Effect Native foreign-host
+  nodes. The renderer never receives general filesystem, arbitrary process,
+  raw IPC, token, or credential authority.
+- Pylon is an engine, not a separate public desktop product or a second local
+  run universe.
+- OpenCode and `clients/khala-code-desktop` are read-only reference/extraction
+  sources. Port behavior, typed contracts, and test vectors; never import or
+  convert their product UI in place.
+- The scaffold's sandbox/context isolation, `nodeIntegration: false`,
+  restrictive CSP, and deny-by-default permission/navigation/window-open
+  posture remain mandatory as capabilities expand. Every new preload method is
+  fixed, origin/sender-validated, schema-decoded, and least-authority.
+- Component gaps go upstream through Effect Native. Starter
+  Zod/oRPC/shadcn/TanStack application semantics do not return as a parallel
+  desktop architecture.
+- The reusable Electron host gap remains OpenAgentsInc/effect-native#69. The
+  earlier Electrobun Phase 4 issues are historical, not destination proof.
 - The full cross-platform app/protocol/data/update/OAuth identity freezes before
-  the first packaged build. The secure Electron boundary, signed/notarized
-  release lane, and independent updates feed must be proven before distribution.
+  the first packaged build. Packaged fuses, signing/notarization, clean-machine
+  smoke, update, and rollback are required before distribution.
+- The live #8574 claim is the coordination authority for each leaf and every
+  shared Effect Native hot contract.
 
 ### Effect Native integration topology
 
@@ -811,7 +909,7 @@ in their parent sections as landed substrate, not active burn items.
 | P1 parallel | #8635 | Retained Forum on Effect Native |
 | P1 parallel | #8595 | Retained landing/root cutover |
 | P1 parallel | #8597 | Greenfield OpenAgents mobile (`com.openagents.app`) |
-| P1 parallel | #8574 | Greenfield Electron OpenAgents Desktop |
+| P1 parallel | #8574 | Effect Native/Khala Sync OpenAgents Desktop with practical OpenCode workbench parity and Sarah steering |
 | P1 parallel | #8646 | GL epic: glass UI stdlib + Sarah in-app |
 | P1 parallel | #8647 | GL-1 render-rn @expo/ui lowering seam |
 | P1 parallel | #8650 | GL-4 owned-lowering migration |
@@ -819,9 +917,9 @@ in their parent sections as landed substrate, not active burn items.
 | P2 deferred | #8643 | Typed role programs + evidence-based colleague split |
 
 Every open issue carries `roadmap:sol`. P0 fleet issues carry `priority:P0`;
-parallel presentation/app lanes carry `priority:P1-parallel`; dependency-held
-future lanes carry `priority:P2-deferred` and do not enter the active burn until
-their milestone or tripwire fires.
+parallel presentation/app/Desktop-parity lanes carry `priority:P1-parallel`;
+dependency-held future lanes carry `priority:P2-deferred` and do not enter the
+active burn until their milestone or tripwire fires.
 
 ## Execution order
 
@@ -837,13 +935,17 @@ their milestone or tripwire fires.
 4. Continue GL-1's Scope-bound host driver, convert/delete the D-MB-02 app-local
    island, and prove actual internal `@expo/ui` lowering; GL-2 and GL-3 are
    closed, and GL-4 remains the later convert-and-delete lane.
-5. Terra continues #8574 from the current real workspace and Codex Settings
-   slices. Record a real isolated Codex reconnect when the owner is available;
-   while that proof waits, continue bounded edit/save plus Git status/diff/
-   review, then bounded terminal, then typed command palette. Terra may pull
-   another ready P1 leaf after claim release without waiting for Sol to restate
-   the work. Sol retains P0 and shared-hot-contract integration unless the claim
-   records a handoff.
+5. Treat #8574 as the product-critical OpenCode-parity Desktop program. Keep D0
+   and ready low-collision D1–D6 leaves moving in parallel now; a real isolated
+   Codex reconnect is evidence when the owner is available, not a queue-wide
+   blocker. After #8640 Phase A crosses C2, give D1–D5 the first available
+   serial product capacity until the practical parity gate is crossed:
+   authoritative Sarah/Sync stream, projects/sessions/commands, complete file/
+   editor/review/PTY loop, runtime/settings, then the server-authoritative Fleet
+   cockpit. Run D6 productization as soon as identity inputs and feature
+   stability permit. Terra may pull another ready P1 leaf after claim release
+   without waiting for Sol to restate the work. Sol retains P0 and shared-hot-
+   contract integration unless the claim records a handoff.
 6. Run #8634 route inventory/retirement and finish #8635 Forum cutover residue
    in parallel with app conversion; preserve active claim ownership.
 7. Keep #8642/#8643 dependency-held until Phase A, except that #8642's first
@@ -864,21 +966,28 @@ their milestone or tripwire fires.
    completion is independently verifiable.
 6. **Effect Native for retained UI.** Deletion beats conversion for retired
    pages; component gaps go upstream.
-7. **No product-surface regrowth.** New capability lands in web, mobile, or
+7. **Desktop parity is a product exit.** #8574 reaches the practical OpenCode
+   workbench scope in D1–D5; a secure shell, placeholder panes, or Fleet-only
+   cockpit does not satisfy Desktop completion.
+8. **Sarah steering shares direct-action contracts.** Material Desktop actions
+   use typed intents/command IDs and the same policy, capability, approval, and
+   outcome paths whether initiated by Sarah or direct UI. Khala Sync carries
+   durable continuity; model prose and local pixels are never authority.
+9. **No product-surface regrowth.** New capability lands in web, mobile, or
    desktop unless an owner decision changes the three-app rule.
-8. **Constant motion with integration bias.** Owner/cloud blockers cause work
+10. **Constant motion with integration bias.** Owner/cloud blockers cause work
    to shift to another P0 slice, not to presentation scope by default.
-9. **Developer claims are explicit.** The live Sol GitHub issue set is the
+11. **Developer claims are explicit.** The live Sol GitHub issue set is the
    cross-session claim ledger; same-session coordination belongs to the root.
    Follow [`CLAIM_PROTOCOL.md`](./CLAIM_PROTOCOL.md), name hot files and hot
    contracts, and never steal a claim on elapsed time alone.
-10. **Proof rungs never collapse.** Code-landed, fixture-proven, deployed,
+12. **Proof rungs never collapse.** Code-landed, fixture-proven, deployed,
     live-proven, owner-accepted, and closed remain distinct in issue bodies and
     reports.
-11. **Challenges retain falsifiers.** Fable reviews from outside the queue; Sol
+13. **Challenges retain falsifiers.** Fable reviews from outside the queue; Sol
     records material dispositions, tripwires, and revisit conditions in
     [`CHALLENGE_LEDGER.md`](./CHALLENGE_LEDGER.md).
-12. **Terra pulls ready leaves.** Terra may claim and ship a low-collision
+14. **Terra pulls ready leaves.** Terra may claim and ship a low-collision
     vertical slice without waiting for Sol to implement or restate it. Sol owns
     roadmap reconciliation and shared hot contracts; an active claim or P0
     boundary still requires explicit coordination.
