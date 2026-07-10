@@ -232,6 +232,7 @@ describe("FleetRun execution projection restart receipt", () => {
               state: batch.events.some(event => event.kind === "run_terminal")
                 ? "completed"
                 : "running",
+              lastSequence: batch.events.at(-1)?.sequence ?? 0,
               counters: {
                 workUnitsTotal: 3,
                 activeAssignments: 0,
@@ -239,7 +240,9 @@ describe("FleetRun execution projection restart receipt", () => {
                 failedAssignments: 0,
                 staleAssignments: 0,
               },
+              startedAt: firstNow.toISOString(),
               updatedAt: secondNow.toISOString(),
+              closeouts: [],
             },
           }
         },

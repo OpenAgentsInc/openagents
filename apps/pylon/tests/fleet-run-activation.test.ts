@@ -213,6 +213,7 @@ describe("headless Pylon FleetRun activation", () => {
               state: batch.events.some(event => event.kind === "run_terminal")
                 ? "completed"
                 : "running",
+              lastSequence: batch.events.at(-1)?.sequence ?? 0,
               counters: {
                 workUnitsTotal: 0,
                 activeAssignments: 0,
@@ -220,7 +221,9 @@ describe("headless Pylon FleetRun activation", () => {
                 failedAssignments: 0,
                 staleAssignments: 0,
               },
+              startedAt: "2026-07-09T20:00:00.000Z",
               updatedAt: "2026-07-09T20:00:00.000Z",
+              closeouts: [],
             },
           }
         },

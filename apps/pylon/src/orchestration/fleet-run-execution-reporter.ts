@@ -31,11 +31,14 @@ const RunRef = S.String.check(S.isPattern(RUN_REF))
 const ClaimRef = S.String.check(S.isPattern(CLAIM_REF))
 const EventRef = S.String.check(S.isPattern(EVENT_REF))
 const PublicRef = S.String.check(S.isPattern(PUBLIC_REF))
+const BlockerRef = S.String.check(
+  S.isPattern(/^blocker\.[A-Za-z0-9][A-Za-z0-9._:/#-]{0,171}$/u),
+)
 const AccountRefHash = S.String.check(S.isPattern(ACCOUNT_REF_HASH))
 const IsoTimestamp = S.String.check(S.isPattern(ISO_TIMESTAMP))
 const WorkerKind = S.Literals(["codex", "claude", "grok"])
-const BlockerRefs = S.Array(PublicRef).check(S.isMaxLength(32))
-const NonEmptyBlockerRefs = S.Array(PublicRef).check(S.isMinLength(1), S.isMaxLength(32))
+const BlockerRefs = S.Array(BlockerRef).check(S.isMaxLength(32))
+const NonEmptyBlockerRefs = S.Array(BlockerRef).check(S.isMinLength(1), S.isMaxLength(32))
 const SafePositiveInt = S.Int.check(
   S.isGreaterThanOrEqualTo(1),
   S.isLessThanOrEqualTo(MAX_SAFE_INTEGER),
@@ -168,6 +171,7 @@ export const PylonFleetRunExecutionAckSchema = S.Struct({
   duplicateEventCount: SafeNonNegativeInt,
   execution: S.Struct({
     state: S.Literals(["pending", "running", "completed", "failed", "stopped"]),
+    lastSequence: SafeNonNegativeInt,
     counters: S.Struct({
       workUnitsTotal: SafeNonNegativeInt,
       activeAssignments: SafeNonNegativeInt,
@@ -175,7 +179,45 @@ export const PylonFleetRunExecutionAckSchema = S.Struct({
       failedAssignments: SafeNonNegativeInt,
       staleAssignments: SafeNonNegativeInt,
     }),
-    updatedAt: IsoTimestamp,
+    startedAt: S.NullOr(IsoTimestamp),
+    updatedAt: S.NullOr(IsoTimestamp),
+    closeouts: S.Array(S.Union([
+      S.Struct({
+        unitRef: PublicRef,
+        workClaimRef: PublicRef,
+        workerKind: WorkerKind,
+        blockerRefs: S.Tuple([]),
+        observedAt: IsoTimestamp,
+        eventRef: EventRef,
+        terminalState: S.Literal("accepted"),
+        assignmentRef: PublicRef,
+        accountRefHash: AccountRefHash,
+        closeoutRef: PublicRef,
+        usageEvidence: PylonFleetRunProjectedUsageEvidenceSchema,
+      }),
+      S.Struct({
+        unitRef: PublicRef,
+        workClaimRef: PublicRef,
+        workerKind: WorkerKind,
+        blockerRefs: NonEmptyBlockerRefs,
+        observedAt: IsoTimestamp,
+        eventRef: EventRef,
+        terminalState: S.Literals(["failed", "stale"]),
+      }),
+      S.Struct({
+        unitRef: PublicRef,
+        workClaimRef: PublicRef,
+        workerKind: WorkerKind,
+        blockerRefs: NonEmptyBlockerRefs,
+        observedAt: IsoTimestamp,
+        eventRef: EventRef,
+        terminalState: S.Literals(["failed", "stale"]),
+        assignmentRef: PublicRef,
+        accountRefHash: AccountRefHash,
+        closeoutRef: PublicRef,
+        usageEvidence: PylonFleetRunProjectedUsageEvidenceSchema,
+      }),
+    ])),
   }),
 })
 export type PylonFleetRunExecutionAck =
@@ -344,7 +386,8 @@ export function makePylonFleetRunExecutionHttpPort(
         if (
           ack.runRef !== runRef ||
           ack.claimRef !== decodedBatch.claimRef ||
-          ack.acceptedThroughSequence !== last.sequence
+          ack.acceptedThroughSequence !== last.sequence ||
+          ack.execution.lastSequence !== ack.acceptedThroughSequence
         ) throw unavailable()
         return ack
       } catch {

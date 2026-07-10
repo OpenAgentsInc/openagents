@@ -51,6 +51,7 @@ const ack = (acceptedThroughSequence: number): PylonFleetRunExecutionAck => ({
   duplicateEventCount: 0,
   execution: {
     state: acceptedThroughSequence === 0 ? "pending" : "running",
+    lastSequence: acceptedThroughSequence,
     counters: {
       workUnitsTotal: 1,
       activeAssignments: 0,
@@ -58,7 +59,9 @@ const ack = (acceptedThroughSequence: number): PylonFleetRunExecutionAck => ({
       failedAssignments: 0,
       staleAssignments: 0,
     },
+    startedAt: acceptedThroughSequence === 0 ? null : fixedNow.toISOString(),
     updatedAt: fixedNow.toISOString(),
+    closeouts: [],
   },
 })
 
@@ -153,7 +156,29 @@ describe("Pylon FleetRun execution reporter", () => {
       baseUrl: "https://openagents.test",
       fetchImpl: async (url, init) => {
         calls.push({ url: String(url), init: init ?? {} })
-        return Response.json(ack(1))
+        const baseAck = ack(1)
+        return Response.json({
+          ...baseAck,
+          execution: {
+            ...baseAck.execution,
+            closeouts: [{
+              unitRef: "plan_unit.sarah.0123456789abcdef01234567",
+              workClaimRef: "claim.public.fixture",
+              workerKind: "codex",
+              blockerRefs: [],
+              observedAt: fixedNow.toISOString(),
+              eventRef: "event.pylon.fleet_run.0123456789abcdef01234567",
+              terminalState: "accepted",
+              assignmentRef: "assignment.public.fixture",
+              accountRefHash: "account.pylon.codex.0123456789abcdef01234567",
+              closeoutRef: "closeout.public.fixture",
+              usageEvidence: {
+                truth: "exact",
+                tokenUsageRefs: ["token_usage.public.fixture"],
+              },
+            }],
+          },
+        })
       },
     })
     const result = await port.append({
@@ -167,6 +192,7 @@ describe("Pylon FleetRun execution reporter", () => {
     })
 
     expect(result.acceptedThroughSequence).toBe(1)
+    expect(result.execution.closeouts).toHaveLength(1)
     expect(calls).toHaveLength(1)
     expect(new URL(calls[0]!.url).pathname).toBe(
       `/api/pylons/${pylonRef}/fleet-runs/${runRef}/events`,
