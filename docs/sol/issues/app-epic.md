@@ -57,11 +57,14 @@ Parallel presentation companion: #8610.
 - Product names in new copy are OpenAgents, OpenAgents Desktop, and Sarah.
   Khala and Pylon remain engine-room names where technically useful.
 
-## Known integration red
+## Effect topology disposition
 
-`check:effect-topology` still expects Effect `4.0.0-beta.70` while the four
-vendored Effect Native packages require `4.0.0-beta.94`. Repair the guard or
-align the runtime before claiming the epic's deploy gate is green.
+The deployment guard now verifies the physical runtime boundary rather than
+treating peer-report output as resolution authority. OpenAgents/Omega remains
+on Effect `4.0.0-beta.70`, exactly the four vendored Effect Native packages
+resolve their isolated Effect `4.0.0-beta.94` line, and the isolated Nostr line
+remains Effect 3. This intentional split is no longer a deploy blocker; any
+package escaping its declared runtime line fails the guard.
 
 ## Exit
 
