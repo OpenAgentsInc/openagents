@@ -13,7 +13,7 @@
 import path from "node:path"
 import { randomUUID } from "node:crypto"
 import { Worker } from "node:worker_threads"
-import { BrowserWindow, app, dialog, ipcMain, session, shell, type IpcMainInvokeEvent } from "electron"
+import { BrowserWindow, app, dialog, ipcMain, safeStorage, session, shell, type IpcMainInvokeEvent } from "electron"
 
 import {
   CodexAccountsChannel,
@@ -49,6 +49,10 @@ import {
 import { createDesktopRuntimeGateway } from "./runtime-gateway.ts"
 import { desktopRuntimeCapabilities } from "./runtime-gateway.ts"
 import { openDesktopSyncHost, type DesktopSyncHost } from "./desktop-sync-host.ts"
+import {
+  openDesktopSessionVault,
+  type DesktopSessionVault,
+} from "./desktop-session-vault.ts"
 
 const here = import.meta.dirname
 const smokeMode = process.env.OPENAGENTS_DESKTOP_SMOKE === "1"
@@ -67,7 +71,10 @@ const codexConnect = makeCodexConnectService(here, {
   openExternal: (url) => shell.openExternal(url),
 })
 let desktopSyncHost: DesktopSyncHost | null = null
+let desktopSessionVault: DesktopSessionVault | null = null
+let desktopSessionState: "signed_out" | "credential_present_unverified" | "unavailable" = "unavailable"
 const runtimeGateway = createDesktopRuntimeGateway(() => desktopRuntimeCapabilities({
+  sessionLocalState: desktopSessionState,
   syncLocalState: desktopSyncHost?.status().state === "local_ready" ? "ready" : "unavailable",
 }))
 
@@ -549,6 +556,17 @@ void app.whenReady().then(() => {
   } catch {
     desktopSyncHost = null
     console.error("[openagents-desktop] local Sync persistence unavailable")
+  }
+  try {
+    desktopSessionVault = openDesktopSessionVault({
+      filePath: path.join(app.getPath("userData"), "session", "native-session.enc"),
+      safeStorage,
+    })
+    desktopSessionState = desktopSessionVault.recover().state
+  } catch {
+    desktopSessionVault = null
+    desktopSessionState = "unavailable"
+    console.error("[openagents-desktop] OS-encrypted session custody unavailable")
   }
   runtimeGateway.start()
   const window = createWindow()

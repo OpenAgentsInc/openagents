@@ -532,6 +532,11 @@ More specific invariant ledgers apply inside imported apps and packages.
   credential boundary on Desktop. Effect Native state receives only typed
   session phases; stored credentials are unverified until the server accepts
   them, and malformed or retired-epoch records are purged fail-closed.
+- Desktop native-session custody uses Electron `safeStorage` in main plus one
+  opaque encrypted record beneath the private `userData` root. Custody refuses
+  unavailable OS encryption and the Linux `basic_text` backend; the directory
+  and file are owner-private, replacement is atomic, and preload/renderer/
+  Runtime Gateway schemas never carry owner or credential fields.
 - Mobile recovery may send the refresh token only to
   `GET /api/mobile/auth/session` via the bounded `X-OpenAgents-Refresh-Token`
   header. The existing OpenAuth verifier owns rotation; replacement tokens are

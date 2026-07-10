@@ -55,6 +55,11 @@ describe("Desktop Runtime Gateway", () => {
       state: "unavailable",
       reason: "Local Sync persistence is unavailable.",
     })
+    expect(response.result.capabilities).toContainEqual({
+      id: "openagents-session",
+      state: "unavailable",
+      reason: "OS-encrypted OpenAgents session custody is unavailable.",
+    })
   })
 
   test("returns a durable-shaped unavailable outcome instead of optimistic command success", () => {

@@ -20,12 +20,22 @@ export type DesktopRuntimeGateway = Readonly<{
 }>
 
 export const desktopRuntimeCapabilities = (input: Readonly<{
+  sessionLocalState: "signed_out" | "credential_present_unverified" | "unavailable"
   syncLocalState: "ready" | "unavailable"
 }>): ReadonlyArray<CapabilityState> => [
   { id: "codex-history", state: "available" },
   { id: "workspace", state: "available" },
   { id: "git-review", state: "available" },
   { id: "provider-accounts", state: "available" },
+  {
+    id: "openagents-session",
+    state: "unavailable",
+    reason: input.sessionLocalState === "signed_out"
+      ? "OpenAgents sign-in is required."
+      : input.sessionLocalState === "credential_present_unverified"
+        ? "Stored OpenAgents credentials require server verification."
+        : "OS-encrypted OpenAgents session custody is unavailable.",
+  },
   {
     id: "khala-sync",
     state: "unavailable",
@@ -38,7 +48,7 @@ export const desktopRuntimeCapabilities = (input: Readonly<{
 
 export const createDesktopRuntimeGateway = (
   capabilities: ReadonlyArray<CapabilityState> | (() => ReadonlyArray<CapabilityState>) =
-    () => desktopRuntimeCapabilities({ syncLocalState: "unavailable" }),
+    () => desktopRuntimeCapabilities({ sessionLocalState: "unavailable", syncLocalState: "unavailable" }),
 ): DesktopRuntimeGateway => {
   let phase: "idle" | "ready" | "disposed" = "idle"
   let sequence = 0

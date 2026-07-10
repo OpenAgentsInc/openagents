@@ -37,13 +37,17 @@ The greenfield app now has:
 - a closed command registry and palette;
 - a local diagnostic Fleet brief that explicitly is not a FleetRun;
 - Codex readiness and isolated Pylon device-auth Settings.
+- host-owned Khala Sync SQLite persistence and an Electron `safeStorage`
+  native-session vault with private atomic ciphertext, encryption-backend
+  refusal, invalid-record purge, and a tokenless Runtime Gateway phase.
 
 The normal Desktop `verify` gate is green: typecheck, contract/e2e tests,
 bundle, and real-Electron fixture smoke. The current architecture receipt is
 `f49a66b4aa`; this is still fixture/development proof, not a signed/live-product
 claim.
 
-Not yet claimed: authoritative Sync threads, complete streamed session state,
+Not yet claimed: Desktop browser sign-in, recovered-session server validation,
+authoritative Sync threads, complete streamed session state,
 full workbench, visible authoritative Fleet cockpit, signed distribution, live
 owner account success, or legacy retirement.
 

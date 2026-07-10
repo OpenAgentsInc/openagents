@@ -9,6 +9,7 @@ export const DesktopRuntimeCapabilityIdSchema = Schema.Literals([
   "conversation-stream",
   "git-review",
   "khala-sync",
+  "openagents-session",
   "provider-accounts",
   "workspace",
 ])

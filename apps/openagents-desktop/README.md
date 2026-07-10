@@ -109,6 +109,14 @@ store on quit. The gateway reports that local persistence is ready while
 keeping network Sync unavailable until native OpenAgents sign-in lands. No
 database path, handle, identity ref, row, queue, or credential crosses preload.
 
+Desktop main now also owns one versioned native-session record encrypted with
+Electron `safeStorage` beneath its private `userData` root. The host refuses
+unavailable OS encryption and Linux `basic_text`, writes only an opaque atomic
+encrypted blob, purges invalid records, and projects at most signed-out,
+credential-present-unverified, or unavailable through the Runtime Gateway.
+No owner ref, access token, or refresh token crosses preload. Interactive
+Desktop sign-in and recovered-session server validation remain later leaves.
+
 **One catalog, many hosts.** The transcript-message and composer
 compositions are deliberately structured around the shared Effect Native chat
 contract, and `src/renderer/shell.test.ts` asserts the typed shape. New

@@ -45,6 +45,26 @@ owner-private directory under Desktop `userData`.
 
 Contract: `openagents_desktop.sync.host_owned_sqlite.v1`.
 
+### OS-encrypted native-session custody
+
+Electron main owns one versioned native OpenAgents session record encrypted by
+Electron `safeStorage` beneath the private Desktop `userData` root.
+
+- Access, refresh, and server-derived owner fields exist only inside the
+  encrypted payload.
+- The enclosing directory/file are owner-private and replacement is atomic.
+- Custody is unavailable when OS encryption is unavailable; Linux
+  `basic_text` is explicitly refused.
+- Malformed, undecryptable, incomplete, and retired-epoch records purge
+  fail-closed.
+- Runtime Gateway receives only signed-out, credential-present-unverified, or
+  unavailable capability copy; preload and renderer receive no credential.
+
+This custody guarantee does not claim Desktop PKCE sign-in or server
+validation. A recovered record remains unverified until the next bounded leaf.
+
+Contract: `openagents_desktop.session.os_encrypted_custody.v1`.
+
 ### Recent local Codex chats
 
 When local Codex history is available, opening Desktop projects top-level Codex
@@ -124,6 +144,12 @@ The host persistence oracle is:
 
 ```sh
 bun test apps/openagents-desktop/tests/desktop-sync-host.test.ts
+```
+
+The native-session custody oracle is:
+
+```sh
+bun test apps/openagents-desktop/tests/desktop-session-vault.test.ts
 ```
 
 ## Not guaranteed yet

@@ -107,6 +107,19 @@ describe("Electron boundary (issue #8574 mandatory first-scaffold hardening)", (
     expect(main).toContain("desktopSyncHost?.close()")
   })
 
+  test("native session custody remains behind Electron main safeStorage", () => {
+    const preload = stripComments(read("src/preload.cts"))
+    const renderer = stripComments(read("src/renderer/boot.ts"))
+    for (const source of [preload, renderer]) {
+      expect(source).not.toContain("safeStorage")
+      expect(source).not.toContain("native-session.enc")
+      expect(source).not.toContain("DesktopSessionCredential")
+    }
+    expect(main).toContain("safeStorage")
+    expect(main).toContain('"session", "native-session.enc"')
+    expect(main).toContain("desktopSessionVault.recover().state")
+  })
+
   test("workspace filesystem authority starts only after an explicit directory choice", () => {
     expect(main).toContain("let workspaceRoot: string | null = null")
     expect(main).toContain('properties: ["openDirectory", "createDirectory"]')

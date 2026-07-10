@@ -57,7 +57,7 @@ document must be reconciled — a client never "fixes" the disagreement locally.
 | --- | --- | --- | --- |
 | Web/browser | HttpOnly OpenAuth cookies `oa_access` + `oa_refresh` (`ACCESS_COOKIE`/`REFRESH_COOKIE`) | Server refreshes and propagates rotated cookies back on responses (`appendSessionCookies`); clear on sign-out (`appendClearSessionCookies`) | `auth-cookies.ts`, `auth/session.ts` (`makeBrowserSessionBoundary`, `VerifiedSession`) |
 | Mobile (native) | User **bearer** session against the exact OpenAuth public mobile client `openagents-khala-mobile`: canonical redirect `openagents://auth`, plus only the temporary rollback redirect `khala://auth`; both are GitHub authorization-code with S256 PKCE only. Tokens are held in platform secure storage only. | `makeUserBearerSessionBoundary` / `requireUserBearerSession`; refresh via stored OpenAuth refresh token; revocation via `revokeMobileAccessToken` / `revokeOpenAuthRefreshToken`; deletion receipts via `hasMobileAccountDeletionReceipt` | `auth/mobile-session.ts` |
-| Desktop (native/Electron) | Same **user bearer session class as mobile** (a native OpenAgents client, not a browser). Tokens live in the **main process/OS keychain only**; the renderer never sees a token. | Same boundary as mobile | `auth/mobile-session.ts` boundary reused; desktop keychain wiring is new work (§R1.5) |
+| Desktop (native/Electron) | Same **user bearer session class as mobile** (a native OpenAgents client, not a browser). Tokens live in the **main process/OS keychain only**; the renderer never sees a token. | Same boundary as mobile | `auth/mobile-session.ts` boundary reused; #8661 lands main-process Electron `safeStorage` custody, while browser entry and server recovery validation remain |
 | Agent/machine | `OPENAGENTS_AGENT_TOKEN` bearer; registered-Pylon bearer for Pylon claim/steering routes | Out of R1 client scope; unchanged | `auth/bearer-token.ts`, Pylon routes |
 
 Provider credentials (Codex/Claude/Grok device auth, GitHub) are **not**
@@ -98,8 +98,11 @@ Reserved (do not implement until Sol freezes the entity schema in
 
 ### R1.5 What must be built for R1 (SETTLED as scope)
 
-- Desktop OpenAgents sign-in (bearer-session boundary + OS keychain custody in
-  the main process; renderer gets a typed session-phase projection only).
+- Desktop OS-encrypted bearer-session custody is landed in #8661: Electron
+  `safeStorage` plus an owner-private atomic encrypted record in main, with
+  unavailable encryption and Linux `basic_text` refused. Browser entry and
+  recovered-session validation/rotation remain; renderer gets only a bounded
+  capability phase.
 - Mobile sign-in against the exact `openagents-khala-mobile` OpenAuth client
   with secure-storage recovery (port the pattern from frozen
   `clients/khala-mobile` — pattern only, not the component tree). Use
@@ -321,7 +324,7 @@ reported per item; no rung implies the next.
 
 | Already exists (bind, do not rebuild) | Must be built |
 | --- | --- |
-| Protocol/envelope/cursors/tombstones/`must_refetch` (`khala-sync`) | Desktop OpenAgents sign-in + keychain custody (R1.5) |
+| Protocol/envelope/cursors/tombstones/`must_refetch` (`khala-sync`) | Desktop OpenAgents browser entry + server validation/rotation over landed #8661 custody (R1.5) |
 | Chat + fleet entity schemas and mutators (`khala-sync`/`-server`) | Physical-device mobile auth acceptance and authenticated Sync composition over landed #8658–#8660 |
 | Client session/store/overlay/offline/reconnect + fault tests (`khala-sync-client`) | `device_session` projection + `identity.revokeSession` (after §R1.4 freeze) |
 | Server session boundaries, refresh propagation, revocation (`workers/api/src/auth*`) | Authenticated Desktop/mobile session composition over the landed local adapters |

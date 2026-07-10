@@ -5,7 +5,7 @@ import {
 
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument = {
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-10.5",
+  version: "2026-07-10.6",
   contracts: [
     {
       contractId: "openagents_desktop.seam.codex_recent_history_projection.v1",
@@ -64,6 +64,20 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
       evidenceRefs: ["apps/openagents-desktop/src/desktop-sync-host.ts", "apps/openagents-desktop/src/desktop-sync-store.ts", "packages/khala-sync-client/src/store-core.ts"],
       oracles: [{ id: "desktop_sync_host.lifecycle", kind: "bun-test", mode: "unit", ref: "apps/openagents-desktop/tests/desktop-sync-host.test.ts", description: "Proves restart-stable identity, private permissions, idempotent close, bounded readiness projection, and reuse of the shared SQLite store." }],
       verification: "bun run --cwd apps/openagents-desktop verify runs the host lifecycle suite and real Electron gateway bootstrap.",
+    },
+    {
+      contractId: "openagents_desktop.session.os_encrypted_custody.v1",
+      state: "enforced",
+      surface: "openagents-desktop",
+      productArea: "native OpenAgents session custody",
+      enforcementTier: "test-sweep",
+      blockerRefs: [],
+      source: { channel: "owner-codex-session", statedBy: "owner", statedOn: "2026-07-10" },
+      statement: "Desktop keeps the native OpenAgents access token, refresh token, and server-derived owner ref in one versioned Electron safeStorage-encrypted record under its private userData root; recovered credentials remain unverified until the server accepts them.",
+      authorityBoundary: "OS encryption and private disk custody do not verify the credential, authorize Khala Sync rows or commands, create a device_session, or expose any credential field to preload, renderer, Runtime Gateway, logs, receipts, or public errors.",
+      evidenceRefs: ["apps/openagents-desktop/src/desktop-session-vault.ts", "docs/sol/issues/desktop-session-vault.md", "github:OpenAgentsInc/openagents#8661"],
+      oracles: [{ id: "desktop_session_vault.os_encrypted_custody", kind: "bun-test", mode: "unit", ref: "apps/openagents-desktop/tests/desktop-session-vault.test.ts", description: "Proves safeStorage encryption, private atomic persistence, encryption/backend refusal, malformed-record purge, bounded recovery, idempotent clear, and public-safe failures." }],
+      verification: "The desktop-session-vault and Electron-boundary suites prove custody and renderer isolation; Desktop typecheck/build and behavior-contract validation gate the integration.",
     },
   ],
 }
