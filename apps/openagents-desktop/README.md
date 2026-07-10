@@ -6,11 +6,12 @@ Electron is the desktop host.** This is not a rename of
 `clients/khala-code-desktop` — that Electrobun app is frozen legacy
 reference material and nothing here imports it.
 
-This package is the issue's *initial greenfield setup* exit: the smallest
-real, testable desktop app — a hardened Electron shell whose renderer is
-100% Effect Native (the shared vendored catalog at
-`apps/openagents.com/packages/effect-native-*`, catalog v26), with one
-typed intent loop proven end-to-end inside the real Electron renderer.
+This package now includes the first desktop Sarah chat slice: a hardened
+Electron app whose renderer is 100% Effect Native (the shared vendored catalog
+at `apps/openagents.com/packages/effect-native-*`, catalog v29). It renders
+Sarah and owner transcript roles, clears the composer after a submitted turn,
+and opens an explicit Fleet deployment brief without pretending that local UI
+has authority to create a FleetRun.
 
 ## Run it
 
@@ -23,19 +24,20 @@ bun run dev:openagents-desktop   # builds dist/ and launches Electron
 
 Or from this directory: `bun run dev`.
 
-What you should see: a Protoss-blue OpenAgents shell — titlebar row
-(OpenAgents · DESKTOP · READY · host badge · loop-proof badge), a
-Transcript of typed system notes, and a composer. Pressing **Ping loop**
-(or adding a note) drives the full typed loop: DOM event → `IntentRef` →
-intent registry (Effect Schema decode) → handler → `SubscriptionRef` state
-→ `viewStream` re-render.
+What you should see: Sarah's chat, an owner composer, and **Open Fleet** in
+the titlebar. A submitted message renders the owner turn plus a typed Sarah
+response and clears the composer. **Open Fleet** exposes a local deployment
+brief; staging it honestly remains `AUTHORITY REQUIRED` until authenticated
+Sarah/Pylon authority accepts an exact repository, pinned commit, verifier,
+and named account request.
 
 ## Verify it
 
 ```bash
 bun test apps/openagents-desktop   # from repo root; or `bun run test` here
-bun run smoke                      # launches Electron, clicks the EN-rendered
-                                   # Ping button, asserts the re-render, exits 0/1
+bun run smoke                      # launches Electron, submits a Sarah chat
+                                   # turn, verifies both roles + clear-on-submit,
+                                   # pings the intent loop, exits 0/1
 bun run typecheck
 ```
 
@@ -74,8 +76,9 @@ OpenAgentsInc/effect-native#69) — never app-local primitives.
 
 Honest residue, tracked on #8574:
 
-- No Sarah conversation, FleetRun state, Pylon services, or Khala Sync yet
-  (scopes 2, 3, 6, 8).
+- The local Sarah response and Fleet brief are presentation-only; a typed,
+  authenticated `coding_fleet_start` bridge, live FleetRun projection, Pylon
+  controls, and Khala Sync remain (scopes 2, 3, 6, 8).
 - No Forge packaging, fuses verification, signing/notarization, or updates
   feed (scope 7) — blocked on the owner identity freeze (scope 1); the
   interim dev identity uses an `OpenAgentsDesktopDev` userData dir and no

@@ -115,19 +115,25 @@ const smokeSubmitComposer = `(async () => {
   const userRow = document.querySelector(
     '[data-en-key="shell-transcript"] [data-en-message][data-en-role="user"]'
   )
+  const sarahRow = Array.from(
+    document.querySelectorAll('[data-en-key="shell-transcript"] [data-en-message][data-en-role="assistant"]')
+  ).at(-1)
   const sender = userRow === null ? null : userRow.querySelector('[data-en-role="sender"]')
   const body = userRow === null ? null : userRow.querySelector('[data-en-role="body"]')
+  const sarahSender = sarahRow === undefined ? null : sarahRow.querySelector('[data-en-role="sender"]')
   return {
     ok:
-      messageCount() === messagesBefore + 1 &&
+      messageCount() === messagesBefore + 2 &&
       input.value === "" &&
       sender !== null && sender.textContent === "YOU" &&
       body !== null && body.textContent.includes("Pixel-proof") &&
-      !body.textContent.includes("YOU"),
+      !body.textContent.includes("YOU") &&
+      sarahSender !== null && sarahSender.textContent === "SARAH",
     messagesBefore,
     messagesAfter: messageCount(),
     inputAfterSubmit: input.value,
     senderChip: sender === null ? null : sender.textContent,
+    sarahSenderChip: sarahSender === null ? null : sarahSender.textContent,
   }
 })()`
 

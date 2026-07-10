@@ -37,7 +37,7 @@ import { Effect, Schema, SubscriptionRef } from "@effect-native/core/effect"
 
 export type DesktopNoteEntry = Readonly<{
   key: string
-  role: "user" | "system"
+  role: "user" | "assistant" | "system"
   text: string
   /** Preformatted display timestamp (the catalog ships no date formatting). */
   timestamp: string
@@ -50,6 +50,12 @@ export type DesktopShellState = Readonly<{
   /** True while a submission is in flight; the composer disables itself. */
   pending: boolean
   notes: ReadonlyArray<DesktopNoteEntry>
+  /** The desktop-only planning deck; it has no deployment authority itself. */
+  fleetDeskOpen: boolean
+  /** The current, explicitly unsubmitted FleetRun objective draft. */
+  fleetObjective: string
+  /** Honest deployment posture: local UI cannot invent a FleetRun receipt. */
+  fleetDeployment: "not_requested" | "awaiting_authority"
   /** Count of completed button -> intent -> state -> re-render round trips. */
   loopProofs: number
 }>
@@ -59,8 +65,9 @@ export const formatShellTimestamp = (date: Date): string =>
   `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`
 
 /**
- * Honest placeholder state: the shell says exactly what it is and what it is
- * not. Sarah conversation and the Fleet cockpit are later #8574 exits.
+ * Sarah is the desktop's relationship surface. This boot transcript is local
+ * presentation state only: it neither creates a FleetRun nor impersonates a
+ * server-authorized Sarah turn.
  */
 export const initialDesktopShellState = (
   host: string,
@@ -72,17 +79,20 @@ export const initialDesktopShellState = (
   notes: [
     {
       key: "boot-0",
-      role: "system",
-      text: "OpenAgents Desktop shell online — Effect Native catalog rendered by @effect-native/render-dom inside a hardened Electron window.",
+      role: "assistant",
+      text: "I’m Sarah. Tell me what you want the fleet to accomplish, and I’ll help you shape a bounded deployment brief.",
       timestamp,
     },
     {
       key: "boot-1",
       role: "system",
-      text: "This is the #8574 greenfield setup exit: typed state, typed intents, one shared catalog. Sarah conversation and the Fleet cockpit land in later exits.",
+      text: "Desktop is local and private by default. Fleet runs start only after authenticated Sarah/Pylon authority accepts an exact request.",
       timestamp,
     },
   ],
+  fleetDeskOpen: false,
+  fleetObjective: "",
+  fleetDeployment: "not_requested",
   loopProofs: 0,
 })
 
@@ -102,11 +112,23 @@ export const DesktopNoteSubmitted = defineIntent(
   Schema.NullOr(Schema.String),
 )
 export const DesktopLoopPinged = defineIntent("DesktopLoopPinged", Schema.Null)
+export const DesktopFleetDeskToggled = defineIntent("DesktopFleetDeskToggled", Schema.Null)
+export const DesktopFleetObjectiveChanged = defineIntent(
+  "DesktopFleetObjectiveChanged",
+  Schema.String,
+)
+export const DesktopFleetDeploymentRequested = defineIntent(
+  "DesktopFleetDeploymentRequested",
+  Schema.Null,
+)
 
 export const desktopShellIntents = [
   DesktopInputChanged,
   DesktopNoteSubmitted,
   DesktopLoopPinged,
+  DesktopFleetDeskToggled,
+  DesktopFleetObjectiveChanged,
+  DesktopFleetDeploymentRequested,
 ] as const
 
 // ---------------------------------------------------------------------------
@@ -122,6 +144,16 @@ export const withPending = (state: DesktopShellState, pending: boolean): Desktop
   ...state,
   pending,
 })
+
+export const withFleetDesk = (state: DesktopShellState): DesktopShellState => ({
+  ...state,
+  fleetDeskOpen: !state.fleetDeskOpen,
+})
+
+export const withFleetObjective = (
+  state: DesktopShellState,
+  fleetObjective: string,
+): DesktopShellState => ({ ...state, fleetObjective })
 
 /**
  * Submit resets the composer value binding in the same transition that
@@ -142,6 +174,38 @@ export const withNote = (
     notes: [
       ...state.notes,
       { key: `note-${state.notes.length}`, role: "user", text: trimmed, timestamp },
+      {
+        key: `note-${state.notes.length + 1}`,
+        role: "assistant",
+        text: "I have that in view. Open Fleet to turn it into an explicit repository, verifier, and worker-policy request before anything is deployed.",
+        timestamp,
+      },
+    ],
+  }
+}
+
+/**
+ * This transition deliberately stops at an authority boundary. A desktop
+ * renderer can prepare a request but cannot report a runRef, claim, or launch
+ * until the authenticated server/Pylon bridge has returned exact evidence.
+ */
+export const withFleetDeploymentRequested = (
+  state: DesktopShellState,
+  timestamp: string,
+): DesktopShellState => {
+  const objective = state.fleetObjective.trim()
+  if (objective === "" || state.fleetDeployment === "awaiting_authority") return state
+  return {
+    ...state,
+    fleetDeployment: "awaiting_authority",
+    notes: [
+      ...state.notes,
+      {
+        key: `note-${state.notes.length}`,
+        role: "system",
+        text: "Fleet brief is staged locally. Authentication and an exact repository, pinned commit, verifier, and named account are required before Sarah can request a FleetRun.",
+        timestamp,
+      },
     ],
   }
 }
@@ -179,6 +243,12 @@ export const makeDesktopShellHandlers = (
     }),
   DesktopLoopPinged: () =>
     SubscriptionRef.update(state, (current) => withLoopProof(current, now())),
+  DesktopFleetDeskToggled: () =>
+    SubscriptionRef.update(state, withFleetDesk),
+  DesktopFleetObjectiveChanged: (value) =>
+    SubscriptionRef.update(state, (current) => withFleetObjective(current, value)),
+  DesktopFleetDeploymentRequested: () =>
+    SubscriptionRef.update(state, (current) => withFleetDeploymentRequested(current, now())),
 })
 
 // ---------------------------------------------------------------------------
@@ -203,14 +273,15 @@ const columnWidth = 760
 export const noteMessage = (entry: DesktopNoteEntry): TranscriptMessage => ({
   key: entry.key,
   role: entry.role,
-  senderLabel: entry.role === "user" ? "YOU" : "SHELL",
+  senderLabel:
+    entry.role === "user" ? "YOU" : entry.role === "assistant" ? "SARAH" : "SYSTEM",
   timestamp: entry.timestamp,
   body: [
     text(
       `${entry.key}-text`,
       entry.text,
       "body",
-      entry.role === "user" ? "textPrimary" : "textMuted",
+      entry.role === "system" ? "textMuted" : "textPrimary",
     ),
   ],
 })
@@ -241,6 +312,13 @@ const shellHeader = (state: DesktopShellState): View =>
         tone: "info",
         a11y: { label: "OpenAgents Desktop surface" },
       }),
+      Button({
+        key: "shell-fleet-toggle",
+        label: state.fleetDeskOpen ? "Close Fleet" : "Open Fleet",
+        variant: "ghost",
+        onPress: IntentRef("DesktopFleetDeskToggled"),
+        a11y: { label: state.fleetDeskOpen ? "Close Fleet desk" : "Open Fleet desk" },
+      }),
       Badge({
         key: "shell-status",
         label: "READY",
@@ -262,6 +340,61 @@ const shellHeader = (state: DesktopShellState): View =>
       }),
     ],
   )
+
+const fleetDesk = (state: DesktopShellState): View => {
+  const awaitingAuthority = state.fleetDeployment === "awaiting_authority"
+  return Card(
+    {
+      key: "fleet-desk",
+      padding: "3",
+      radius: "lg",
+      style: {
+        width: "full",
+        maxWidth: columnWidth,
+        alignSelf: "center",
+        backgroundColor: "surfaceRaised",
+        borderColor: "border",
+        borderWidth: 1,
+      },
+    },
+    [
+      Stack({ key: "fleet-desk-content", direction: "column", gap: "2" }, [
+        Text({ key: "fleet-desk-title", content: "Fleet deployment brief", variant: "title", color: "textPrimary" }),
+        Text({
+          key: "fleet-desk-copy",
+          content: "Shape the work here; authenticated Sarah/Pylon authority is required to create a real FleetRun.",
+          variant: "body",
+          color: "textMuted",
+        }),
+        TextField({
+          key: "fleet-objective",
+          value: state.fleetObjective,
+          placeholder: "What should the fleet ship?",
+          disabled: awaitingAuthority,
+          a11y: { label: "Fleet deployment objective" },
+          onChange: IntentRef("DesktopFleetObjectiveChanged", ComponentValueBinding()),
+          style: { width: "full" },
+        }),
+        Stack({ key: "fleet-desk-actions", direction: "row", gap: "2", align: "center" }, [
+          Button({
+            key: "fleet-stage-request",
+            label: awaitingAuthority ? "Awaiting authority" : "Stage deployment",
+            variant: "primary",
+            disabled: awaitingAuthority || state.fleetObjective.trim() === "",
+            onPress: IntentRef("DesktopFleetDeploymentRequested"),
+            a11y: { label: "Stage Fleet deployment request" },
+          }),
+          Badge({
+            key: "fleet-authority-status",
+            label: awaitingAuthority ? "AUTHORITY REQUIRED" : "DRAFT ONLY",
+            tone: awaitingAuthority ? "warn" : "neutral",
+            a11y: { label: awaitingAuthority ? "Fleet request awaits authority" : "Fleet request is a draft" },
+          }),
+        ]),
+      ]),
+    ],
+  )
+}
 
 /**
  * Floating composer on the real catalog contract: `clearOnSubmit` empties the
@@ -335,6 +468,7 @@ export const desktopShellView = (state: DesktopShellState): View =>
     },
     [
       shellHeader(state),
+      ...(state.fleetDeskOpen ? [fleetDesk(state)] : []),
       Transcript({
         key: "shell-transcript",
         pinToEnd: true,

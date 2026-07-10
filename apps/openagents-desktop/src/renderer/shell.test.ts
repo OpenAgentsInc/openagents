@@ -15,6 +15,9 @@ import {
   makeDesktopShellHandlers,
   noteMessage,
   withInput,
+  withFleetDeploymentRequested,
+  withFleetDesk,
+  withFleetObjective,
   withLoopProof,
   withNote,
   withPending,
@@ -53,7 +56,7 @@ const baseState: DesktopShellState = initialDesktopShellState("electron/darwin",
 const fixedNow = () => "18:05"
 
 describe("desktopShellView (state -> component tree)", () => {
-  test("renders the honest shell: title, status badges, transcript, composer", () => {
+  test("renders Sarah chat: title, status badges, transcript, composer", () => {
     const view = desktopShellView(baseState)
 
     const title = nodeByKey(view, "shell-title")
@@ -79,6 +82,8 @@ describe("desktopShellView (state -> component tree)", () => {
     expect(nodeByKey(view, "shell-input")?._tag).toBe("TextField")
     expect(nodeByKey(view, "shell-note")?._tag).toBe("Button")
     expect(nodeByKey(view, "shell-ping")?._tag).toBe("Button")
+    expect(nodeByKey(view, "shell-fleet-toggle")?._tag).toBe("Button")
+    expect(nodeByKey(view, "fleet-desk")).toBeUndefined()
   })
 
   test("loop-proof badge reflects state and flips tone once proven", () => {
@@ -112,7 +117,7 @@ describe("desktopShellView (state -> component tree)", () => {
     const system = noteMessage({ key: "boot-0", role: "system", text: "hello", timestamp: "18:04" })
     expect(system.key).toBe("boot-0")
     expect(system.role).toBe("system")
-    expect(system.senderLabel).toBe("SHELL")
+    expect(system.senderLabel).toBe("SYSTEM")
     expect(system.timestamp).toBe("18:04")
     expect(system.body.length).toBe(1)
     const systemText = system.body[0] as unknown as AnyNode
@@ -125,6 +130,10 @@ describe("desktopShellView (state -> component tree)", () => {
     expect(user.senderLabel).toBe("YOU")
     expect((user.body[0] as unknown as AnyNode).color).toBe("textPrimary")
     expect((user.body[0] as unknown as AnyNode).content).toBe("rofl")
+
+    const sarah = noteMessage({ key: "sarah-1", role: "assistant", text: "I’m here", timestamp: "18:05" })
+    expect(sarah.senderLabel).toBe("SARAH")
+    expect((sarah.body[0] as unknown as AnyNode).content).toBe("I’m here")
   })
 
   test("composer rides the v29 submit lifecycle contract: clearOnSubmit + pending disables", () => {
@@ -143,13 +152,14 @@ describe("pure transitions", () => {
     const next = withNote(withInput(baseState, "  hello desktop  "), "  hello desktop  ", "18:05")
     expect(next.input).toBe("")
     expect(next.pending).toBe(false)
-    expect(next.notes.length).toBe(3)
+    expect(next.notes.length).toBe(4)
     expect(next.notes[2]).toEqual({
       key: "note-2",
       role: "user",
       text: "hello desktop",
       timestamp: "18:05",
     })
+    expect(next.notes[3]?.role).toBe("assistant")
   })
 
   test("withNote ignores empty input", () => {
@@ -169,6 +179,18 @@ describe("pure transitions", () => {
     expect(next.notes.length).toBe(3)
     expect(next.notes[2]?.role).toBe("system")
     expect(next.notes[2]?.timestamp).toBe("18:05")
+  })
+
+  test("Fleet desk stages an objective without manufacturing a FleetRun", () => {
+    const open = withFleetDesk(baseState)
+    expect(open.fleetDeskOpen).toBe(true)
+    expect(nodeByKey(desktopShellView(open), "fleet-desk")?._tag).toBe("Card")
+
+    const drafted = withFleetObjective(open, "Ship the desktop fleet chat")
+    const staged = withFleetDeploymentRequested(drafted, "18:05")
+    expect(staged.fleetDeployment).toBe("awaiting_authority")
+    expect(staged.notes.at(-1)?.text).toContain("Authentication")
+    expect(staged.notes.at(-1)?.text).not.toContain("runRef")
   })
 
   test("formatShellTimestamp is a zero-padded display string", () => {
@@ -230,6 +252,7 @@ describe("typed intent loop end-to-end (registry -> state -> re-render)", () => 
           text: "ship the shell",
           timestamp: "18:05",
         })
+        expect(next.notes[3]?.role).toBe("assistant")
       }),
     )
   })
@@ -268,8 +291,9 @@ describe("typed intent loop end-to-end (registry -> state -> re-render)", () => 
         yield* registry.dispatch(resolveIntentRef(input.onSubmit, "second message"))
         const afterSecond = yield* SubscriptionRef.get(state)
         expect(afterSecond.input).toBe("")
-        expect(afterSecond.notes.at(-1)?.text).toBe("second message")
-        expect(afterSecond.notes.length).toBe(4)
+        expect(afterSecond.notes.at(-2)?.text).toBe("second message")
+        expect(afterSecond.notes.at(-1)?.role).toBe("assistant")
+        expect(afterSecond.notes.length).toBe(6)
       }),
     )
   })
