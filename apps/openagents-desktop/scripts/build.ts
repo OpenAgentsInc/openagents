@@ -33,6 +33,16 @@ export const buildDesktop = async (): Promise<string> => {
   )
 
   assertSuccess(
+    "codex-history-worker",
+    await Bun.build({
+      entrypoints: [path.join(appRoot, "src/codex-history-worker.ts")],
+      outdir: dist,
+      target: "node",
+      format: "esm",
+    }),
+  )
+
+  assertSuccess(
     "preload",
     await Bun.build({
       entrypoints: [path.join(appRoot, "src/preload.cts")],

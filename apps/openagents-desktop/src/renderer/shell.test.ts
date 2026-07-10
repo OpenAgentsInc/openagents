@@ -72,9 +72,7 @@ describe("desktopShellView (state -> component tree)", () => {
     expect(title?._tag).toBe("Text")
     expect(title?.content).toBe("New chat")
 
-    expect(nodeByKey(view, "shell-welcome-title")?.content).toBe(
-      "No recent Codex chats found",
-    )
+    expect(nodeByKey(view, "shell-welcome-title")).toBeUndefined()
 
     const transcript = nodeByKey(view, "shell-transcript")
     expect(transcript?._tag).toBe("Transcript")
@@ -210,7 +208,7 @@ describe("pure transitions", () => {
     const open = withFleetDesk(baseState)
     expect(open.fleetDeskOpen).toBe(true)
     expect(nodeByKey(desktopShellView(open), "fleet-desk")).toBeUndefined()
-    expect(nodeByKey(desktopShellView(open), "shell-welcome")?._tag).toBe("Stack")
+    expect(nodeByKey(desktopShellView(open), "shell-welcome")).toBeUndefined()
 
     const drafted = withFleetObjective(open, "Ship the desktop fleet chat")
     const dispatching = withFleetDeploymentRequested(drafted)

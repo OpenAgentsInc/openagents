@@ -793,7 +793,7 @@ export const desktopShellView = (state: DesktopShellState): View =>
         },
         [
           shellHeader(state),
-          ...(state.workspace === "chat" && state.notes.length === 0 ? [shellWelcome()] : []),
+          ...(state.workspace === "chat" && state.threads.length === 0 ? [shellWelcome()] : []),
           ...(state.workspace === "chat" && selectedCodexThreadDetails(state) !== null ? [selectedCodexThreadDetails(state)!] : []),
           ...(state.workspace === "chat" ? [Transcript({
             key: "shell-transcript",

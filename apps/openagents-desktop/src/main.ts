@@ -12,6 +12,7 @@
  */
 import path from "node:path"
 import { randomUUID } from "node:crypto"
+import { Worker } from "node:worker_threads"
 import { BrowserWindow, app, dialog, ipcMain, session, shell } from "electron"
 
 import {
@@ -26,7 +27,6 @@ import { submitFleetBrief } from "./fleet-control.ts"
 import { completeChatTurn } from "./chat-service.ts"
 import { DesktopChatTurnChannel, DesktopHydrateThreadChannel, DesktopNewThreadChannel, DesktopOpenThreadChannel, DesktopThreadsChannel, decode, DesktopThreadRequestSchema, DesktopTurnRequestSchema, type DesktopMessage } from "./chat-contract.ts"
 import { makeThreadStore } from "./thread-store.ts"
-import { findRecentCodexThread, readRecentCodexHistory } from "./codex-history.ts"
 import { DesktopWorkspaceChooseChannel, DesktopWorkspaceFilesChannel, DesktopWorkspaceReadChannel, DesktopWorkspaceSummaryChannel, decodeWorkspaceFileRequest } from "./workspace-contract.ts"
 import { inspectWorkspace, readWorkspaceFile } from "./workspace-service.ts"
 
@@ -73,6 +73,20 @@ ipcMain.handle(FleetStageChannel, async (_event, value: unknown) => {
 
 const threads = () => makeThreadStore(path.join(app.getPath("userData"), "threads.json"))
 const codexSessionsRoot = () => path.resolve(process.env.OPENAGENTS_DESKTOP_CODEX_SESSIONS ?? path.join(app.getPath("home"), ".codex", "sessions"))
+type CodexHistoryRequest =
+  | Readonly<{ kind: "list"; sessionsRoot: string; limit?: number }>
+  | Readonly<{ kind: "detail"; sessionsRoot: string; id: string; messageLimit?: number }>
+const runCodexHistoryWorker = (request: CodexHistoryRequest): Promise<unknown> => new Promise((resolve) => {
+  const worker = new Worker(new URL("./codex-history-worker.js", import.meta.url), { workerData: request })
+  const finish = (value: unknown) => { worker.terminate().catch(() => undefined); resolve(value) }
+  worker.once("message", (message: unknown) => finish(
+    typeof message === "object" && message !== null && (message as { ok?: unknown }).ok === true
+      ? (message as { result: unknown }).result
+      : null,
+  ))
+  worker.once("error", () => finish(null))
+  worker.once("exit", code => { if (code !== 0) finish(null) })
+})
 let workspaceRoot = path.resolve(process.env.OPENAGENTS_DESKTOP_WORKSPACE ?? process.cwd())
 const workspaceSnapshot = () => {
   try { return inspectWorkspace(workspaceRoot) } catch { return null }
@@ -91,19 +105,15 @@ ipcMain.handle(DesktopWorkspaceReadChannel, (_event, value: unknown) => {
 })
 // List is intentionally metadata-only: a large local history must not
 // serialize every transcript into the renderer merely to draw the sidebar.
-ipcMain.handle(DesktopThreadsChannel, () => {
-  const result = readRecentCodexHistory({ sessionsRoot: codexSessionsRoot(), includeMessages: false, ...(smokeMode ? { limit: 1 } : {}) })
-  return result
-})
+ipcMain.handle(DesktopThreadsChannel, () => runCodexHistoryWorker({ kind: "list", sessionsRoot: codexSessionsRoot(), ...(smokeMode ? { limit: 1 } : {}) }))
 ipcMain.handle(DesktopNewThreadChannel, () => threads().newThread())
 ipcMain.handle(DesktopOpenThreadChannel, (_event, value: unknown) => {
   const request = decode(DesktopThreadRequestSchema, value) as { id: string } | null
-  const result = request === null ? null : findRecentCodexThread({ sessionsRoot: codexSessionsRoot(), id: request.id })
-  return result
+  return request === null ? null : runCodexHistoryWorker({ kind: "detail", sessionsRoot: codexSessionsRoot(), id: request.id })
 })
 ipcMain.handle(DesktopHydrateThreadChannel, (_event, value: unknown) => {
   const request = decode(DesktopThreadRequestSchema, value) as { id: string } | null
-  return request === null ? null : findRecentCodexThread({ sessionsRoot: codexSessionsRoot(), id: request.id, messageLimit: 40 })
+  return request === null ? null : runCodexHistoryWorker({ kind: "detail", sessionsRoot: codexSessionsRoot(), id: request.id, messageLimit: 40 })
 })
 ipcMain.handle(DesktopChatTurnChannel, async (_event, value: unknown) => {
   const request = decode(DesktopTurnRequestSchema, value) as { id: string; message: string } | null
