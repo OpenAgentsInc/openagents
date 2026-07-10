@@ -1,4 +1,6 @@
-import { fleetRunScope } from "@openagentsinc/khala-sync"
+import { createHash } from "node:crypto"
+
+import { canonicalJson, fleetRunScope } from "@openagentsinc/khala-sync"
 import { SQL } from "bun"
 import {
   afterAll,
@@ -28,6 +30,21 @@ setDefaultTimeout(120_000)
 
 const FIXED_NOW = Date.parse("2026-07-09T22:00:00.000Z")
 const COMMIT = "57f540bc13922351fee17fdd2c1b866c0fd21e86"
+const FIXTURE_RUN_REF = "fleet_run.sarah.0123456789abcdef0123"
+
+const pylonExecutionEvent = (
+  runRef: string,
+  claimRef: string,
+  sequence: number,
+  event: Readonly<Record<string, unknown>>,
+) => ({
+  ...event,
+  sequence,
+  eventRef: `event.pylon.fleet_run.${createHash("sha256")
+    .update(canonicalJson({ runRef, claimRef, event }))
+    .digest("hex")
+    .slice(0, 24)}`,
+})
 
 const request = (
   idempotencyKey: string,
@@ -185,21 +202,20 @@ describe("FleetRun authority request boundary", () => {
   })
 
   test("accepts only bounded, provider-consistent execution evidence", () => {
+    const claimRef = `claim.sarah_fleet_run.${"a".repeat(24)}`
     const valid = decodeFleetRunExecutionBatch({
       schema: FLEET_RUN_EXECUTION_BATCH_SCHEMA,
-      claimRef: `claim.sarah_fleet_run.${"a".repeat(24)}`,
+      claimRef,
       events: [
-        {
+        pylonExecutionEvent(FIXTURE_RUN_REF, claimRef, 7, {
           schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA,
-          sequence: 7,
-          eventRef: `event.pylon.fleet_run.${"a".repeat(16)}`,
           observedAt: "2026-07-09T22:00:00.000Z",
           kind: "work_terminal",
           unitRef: "unit-a",
           workClaimRef: "work_claim.unit-a",
           assignmentRef: "assignment.unit-a",
           workerKind: "codex",
-          accountRefHash: "account.pylon.codex.abcdef",
+          accountRefHash: `account.pylon.codex.${"a".repeat(24)}`,
           terminalState: "accepted",
           closeoutRef: "closeout.unit-a",
           usageEvidence: {
@@ -207,18 +223,17 @@ describe("FleetRun authority request boundary", () => {
             tokenUsageRefs: ["token_usage.unit-a.1"],
           },
           blockerRefs: [],
-        },
+        }),
       ],
     })
     expect(valid.events[0]?.kind).toBe("work_terminal")
+    const failedClaimRef = `claim.sarah_fleet_run.${"b".repeat(24)}`
     const unprovenFailure = decodeFleetRunExecutionBatch({
       schema: FLEET_RUN_EXECUTION_BATCH_SCHEMA,
-      claimRef: `claim.sarah_fleet_run.${"b".repeat(24)}`,
+      claimRef: failedClaimRef,
       events: [
-        {
+        pylonExecutionEvent(FIXTURE_RUN_REF, failedClaimRef, 1, {
           schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA,
-          sequence: 1,
-          eventRef: `event.pylon.fleet_run.${"c".repeat(16)}`,
           observedAt: "2026-07-09T22:00:00.000Z",
           kind: "work_terminal",
           unitRef: "unit-a",
@@ -226,7 +241,7 @@ describe("FleetRun authority request boundary", () => {
           workerKind: "claude",
           terminalState: "failed",
           blockerRefs: ["blocker.dispatch_no_assignment"],
-        },
+        }),
       ],
     })
     expect(unprovenFailure.events[0]).not.toHaveProperty("assignmentRef")
@@ -257,7 +272,7 @@ describe("FleetRun authority request boundary", () => {
           {
             ...valid.events[0],
             workerKind: "grok",
-            accountRefHash: "account.pylon.grok.abcdef",
+            accountRefHash: `account.pylon.grok.${"b".repeat(24)}`,
             usageEvidence: {
               truth: "exact",
               tokenUsageRefs: ["token_usage.unit-a.1"],
@@ -272,7 +287,7 @@ describe("FleetRun authority request boundary", () => {
           {
             ...valid.events[0],
             sequence: 9,
-            eventRef: `event.pylon.fleet_run.${"b".repeat(16)}`,
+            eventRef: `event.pylon.fleet_run.${"c".repeat(24)}`,
           },
         ],
       },
@@ -725,37 +740,31 @@ describe.skipIf(!hasLocalPostgres())(
         schema: FLEET_RUN_EXECUTION_BATCH_SCHEMA,
         claimRef,
         events: [
-          {
+          pylonExecutionEvent(run.record.runRef, claimRef, 1, {
             schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA,
-            sequence: 1,
-            eventRef: `event.pylon.fleet_run.${"1".repeat(16)}`,
             observedAt: "2026-07-09T22:00:01.000Z",
             kind: "run_started",
-          },
-          {
+          }),
+          pylonExecutionEvent(run.record.runRef, claimRef, 2, {
             schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA,
-            sequence: 2,
-            eventRef: `event.pylon.fleet_run.${"2".repeat(16)}`,
             observedAt: "2026-07-09T22:00:02.000Z",
             kind: "work_progress",
             unitRef: "unit-a",
             workClaimRef: "work_claim.unit-a",
             assignmentRef: "assignment.unit-a",
             workerKind: "codex",
-            accountRefHash: "account.pylon.codex.aaaaaa",
+            accountRefHash: `account.pylon.codex.${"a".repeat(24)}`,
             blockerRefs: [],
-          },
-          {
+          }),
+          pylonExecutionEvent(run.record.runRef, claimRef, 3, {
             schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA,
-            sequence: 3,
-            eventRef: `event.pylon.fleet_run.${"3".repeat(16)}`,
             observedAt: "2026-07-09T22:00:03.000Z",
             kind: "work_terminal",
             unitRef: "unit-a",
             workClaimRef: "work_claim.unit-a",
             assignmentRef: "assignment.unit-a",
             workerKind: "codex",
-            accountRefHash: "account.pylon.codex.aaaaaa",
+            accountRefHash: `account.pylon.codex.${"a".repeat(24)}`,
             terminalState: "accepted",
             closeoutRef: "closeout.unit-a",
             usageEvidence: {
@@ -763,7 +772,7 @@ describe.skipIf(!hasLocalPostgres())(
               tokenUsageRefs: ["token_usage.unit-a.1"],
             },
             blockerRefs: [],
-          },
+          }),
         ],
       } as const
       const first = await Effect.runPromise(
@@ -809,17 +818,15 @@ describe.skipIf(!hasLocalPostgres())(
             schema: FLEET_RUN_EXECUTION_BATCH_SCHEMA,
             claimRef,
             events: [
-              {
+              pylonExecutionEvent(run.record.runRef, claimRef, 4, {
                 schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA,
-                sequence: 4,
-                eventRef: `event.pylon.fleet_run.${"4".repeat(16)}`,
                 observedAt: "2026-07-09T22:00:04.000Z",
                 kind: "work_terminal",
                 unitRef: "unit-b",
                 workClaimRef: "work_claim.unit-b",
                 assignmentRef: "assignment.unit-b",
                 workerKind: "grok",
-                accountRefHash: "account.pylon.grok.bbbbbb",
+                accountRefHash: `account.pylon.grok.${"b".repeat(24)}`,
                 terminalState: "accepted",
                 closeoutRef: "closeout.unit-b",
                 usageEvidence: {
@@ -827,16 +834,14 @@ describe.skipIf(!hasLocalPostgres())(
                   tokenUsageRefs: [],
                 },
                 blockerRefs: [],
-              },
-              {
+              }),
+              pylonExecutionEvent(run.record.runRef, claimRef, 5, {
                 schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA,
-                sequence: 5,
-                eventRef: `event.pylon.fleet_run.${"5".repeat(16)}`,
                 observedAt: "2026-07-09T22:00:05.000Z",
                 kind: "run_terminal",
                 terminalState: "completed",
                 blockerRefs: [],
-              },
+              }),
             ],
           },
         }),
@@ -928,52 +933,71 @@ describe.skipIf(!hasLocalPostgres())(
             events,
           },
         })
-      const started = {
+      const startedInput = {
         schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA,
-        sequence: 1,
-        eventRef: `event.pylon.fleet_run.${"6".repeat(16)}`,
         observedAt: "2026-07-09T22:00:01.000Z",
         kind: "run_started",
       } as const
+      const started = pylonExecutionEvent(
+        run.record.runRef,
+        claimRef,
+        1,
+        startedInput,
+      )
       await Effect.runPromise(append([started]))
 
       const gap = await Effect.runPromise(
         append([
-          {
-            ...started,
-            sequence: 3,
-            eventRef: `event.pylon.fleet_run.${"7".repeat(16)}`,
-          },
+          pylonExecutionEvent(run.record.runRef, claimRef, 3, {
+            ...startedInput,
+            observedAt: "2026-07-09T22:00:03.000Z",
+          }),
         ]).pipe(Effect.flip),
       )
       expect(gap.kind).toBe("claim_conflict")
 
-      const unknownUnit = await Effect.runPromise(
+      const forgedEventRef = await Effect.runPromise(
         append([
           {
-            ...started,
-            sequence: 2,
-            eventRef: `event.pylon.fleet_run.${"8".repeat(16)}`,
+            ...pylonExecutionEvent(run.record.runRef, claimRef, 2, {
+              schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA,
+              observedAt: "2026-07-09T22:00:02.000Z",
+              kind: "work_progress",
+              unitRef: "unit-a",
+              workClaimRef: "work_claim.forged",
+              workerKind: "codex",
+              blockerRefs: [],
+            }),
+            eventRef: `event.pylon.fleet_run.${"f".repeat(24)}`,
+          },
+        ]).pipe(Effect.flip),
+      )
+      expect(forgedEventRef.kind).toBe("invalid_request")
+
+      const unknownUnit = await Effect.runPromise(
+        append([
+          pylonExecutionEvent(run.record.runRef, claimRef, 2, {
+            schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA,
+            observedAt: "2026-07-09T22:00:02.000Z",
             kind: "work_progress",
             unitRef: "unit-foreign",
             workClaimRef: "work_claim.foreign",
             workerKind: "codex",
             blockerRefs: [],
-          },
+          }),
         ]).pipe(Effect.flip),
       )
       expect(unknownUnit.kind).toBe("invalid_request")
 
       const incompleteCompletion = await Effect.runPromise(
         append([
-          {
-            ...started,
-            sequence: 2,
-            eventRef: `event.pylon.fleet_run.${"9".repeat(16)}`,
+          pylonExecutionEvent(run.record.runRef, claimRef, 2, {
+            schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA,
+            observedAt: "2026-07-09T22:00:02.000Z",
             kind: "run_terminal",
             terminalState: "completed",
             blockerRefs: [],
-          },
+          }),
         ]).pipe(Effect.flip),
       )
       expect(incompleteCompletion.kind).toBe("claim_conflict")
@@ -985,42 +1009,32 @@ describe.skipIf(!hasLocalPostgres())(
 
       const conflictingReplay = await Effect.runPromise(
         append([
-          {
-            ...started,
+          pylonExecutionEvent(run.record.runRef, claimRef, 1, {
+            ...startedInput,
             observedAt: "2026-07-09T22:00:09.000Z",
-          },
+          }),
         ]).pipe(Effect.flip),
       )
       expect(conflictingReplay.kind).toBe("idempotency_conflict")
 
       const failed = await Effect.runPromise(
         append([
-          {
+          pylonExecutionEvent(run.record.runRef, claimRef, 2, {
             schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA,
-            sequence: 2,
-            eventRef: `event.pylon.fleet_run.${"a".repeat(17)}`,
             observedAt: "2026-07-09T22:00:10.000Z",
             kind: "work_terminal",
             unitRef: "unit-a",
-            workClaimRef: "work_claim.unit-a",
+            workClaimRef: "work_claim.unit-a.attempt-1",
             workerKind: "claude",
             terminalState: "failed",
             blockerRefs: ["blocker.dispatch_no_assignment"],
-          },
-          {
-            schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA,
-            sequence: 3,
-            eventRef: `event.pylon.fleet_run.${"b".repeat(17)}`,
-            observedAt: "2026-07-09T22:00:11.000Z",
-            kind: "run_terminal",
-            terminalState: "failed",
-            blockerRefs: ["blocker.dispatch_no_assignment"],
-          },
+          }),
         ]),
       )
       expect(failed.ack.execution).toMatchObject({
-        state: "failed",
-        counters: { failedAssignments: 1 },
+        state: "running",
+        lastSequence: 2,
+        counters: { acceptedAssignments: 0, failedAssignments: 1 },
       })
       expect(failed.ack.execution.closeouts[0]).toEqual(
         expect.objectContaining({
@@ -1043,6 +1057,106 @@ describe.skipIf(!hasLocalPostgres())(
       `
       expect(noSyntheticProof).toEqual([
         { assignment_ref: null, closeout_ref: null, usage_truth: null },
+      ])
+
+      const eventAfterTerminalAttempt = await Effect.runPromise(
+        append([
+          pylonExecutionEvent(run.record.runRef, claimRef, 3, {
+            schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA,
+            observedAt: "2026-07-09T22:00:11.000Z",
+            kind: "work_progress",
+            unitRef: "unit-a",
+            workClaimRef: "work_claim.unit-a.attempt-1",
+            workerKind: "claude",
+            blockerRefs: [],
+          }),
+        ]).pipe(Effect.flip),
+      )
+      expect(eventAfterTerminalAttempt.kind).toBe("idempotency_conflict")
+
+      const retry = await Effect.runPromise(
+        append([
+          pylonExecutionEvent(run.record.runRef, claimRef, 3, {
+            schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA,
+            observedAt: "2026-07-09T22:00:12.000Z",
+            kind: "work_progress",
+            unitRef: "unit-a",
+            workClaimRef: "work_claim.unit-a.attempt-2",
+            assignmentRef: "assignment.unit-a.attempt-2",
+            workerKind: "codex",
+            accountRefHash: `account.pylon.codex.${"c".repeat(24)}`,
+            blockerRefs: [],
+          }),
+          pylonExecutionEvent(run.record.runRef, claimRef, 4, {
+            schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA,
+            observedAt: "2026-07-09T22:00:13.000Z",
+            kind: "work_terminal",
+            unitRef: "unit-a",
+            workClaimRef: "work_claim.unit-a.attempt-2",
+            assignmentRef: "assignment.unit-a.attempt-2",
+            workerKind: "codex",
+            accountRefHash: `account.pylon.codex.${"c".repeat(24)}`,
+            terminalState: "accepted",
+            closeoutRef: "closeout.unit-a.attempt-2",
+            usageEvidence: {
+              truth: "exact",
+              tokenUsageRefs: ["token_usage.unit-a.attempt-2"],
+            },
+            blockerRefs: [],
+          }),
+          pylonExecutionEvent(run.record.runRef, claimRef, 5, {
+            schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA,
+            observedAt: "2026-07-09T22:00:14.000Z",
+            kind: "work_terminal",
+            unitRef: "unit-b",
+            workClaimRef: "work_claim.unit-b.attempt-1",
+            assignmentRef: "assignment.unit-b.attempt-1",
+            workerKind: "grok",
+            accountRefHash: `account.pylon.grok.${"d".repeat(24)}`,
+            terminalState: "accepted",
+            closeoutRef: "closeout.unit-b.attempt-1",
+            usageEvidence: { truth: "not_measured", tokenUsageRefs: [] },
+            blockerRefs: [],
+          }),
+          pylonExecutionEvent(run.record.runRef, claimRef, 6, {
+            schema: FLEET_RUN_EXECUTION_EVENT_SCHEMA,
+            observedAt: "2026-07-09T22:00:15.000Z",
+            kind: "run_terminal",
+            terminalState: "completed",
+            blockerRefs: [],
+          }),
+        ]),
+      )
+      expect(retry.ack).toMatchObject({
+        schema: "openagents.pylon.fleet_run_execution_ack.v1",
+        runRef: run.record.runRef,
+        claimRef,
+        acceptedThroughSequence: 6,
+        storedEventCount: 4,
+        execution: {
+          state: "completed",
+          lastSequence: 6,
+          counters: {
+            workUnitsTotal: 2,
+            activeAssignments: 0,
+            acceptedAssignments: 2,
+            failedAssignments: 1,
+            staleAssignments: 0,
+          },
+          startedAt: "2026-07-09T22:00:01.000Z",
+        },
+      })
+      expect(retry.ack.execution.closeouts).toHaveLength(3)
+      expect(
+        retry.ack.execution.closeouts.map((closeout) => [
+          closeout.unitRef,
+          closeout.workClaimRef,
+          closeout.terminalState,
+        ]),
+      ).toEqual([
+        ["unit-a", "work_claim.unit-a.attempt-1", "failed"],
+        ["unit-a", "work_claim.unit-a.attempt-2", "accepted"],
+        ["unit-b", "work_claim.unit-b.attempt-1", "accepted"],
       ])
     })
 

@@ -91,27 +91,23 @@ const FleetRunScope = S.String.check(
 const IsoTimestamp = S.String.check(
   S.isPattern(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u),
 )
-const ExecutionEventRef = S.Trim.check(
-  S.isMinLength(32),
-  S.isMaxLength(180),
-  S.isPattern(/^event\.pylon\.fleet_run\.[A-Za-z0-9_.:-]+$/u),
+const ExecutionEventRef = S.String.check(
+  S.isPattern(/^event\.pylon\.fleet_run\.[0-9a-f]{24}$/u),
 )
 const ExecutionSequence = S.Int.check(
   S.isGreaterThanOrEqualTo(1),
   S.isLessThanOrEqualTo(Number.MAX_SAFE_INTEGER),
 )
-const ExecutionPublicRef = S.Trim.check(
-  S.isMinLength(1),
-  S.isMaxLength(180),
-  S.isPattern(/^[A-Za-z0-9][A-Za-z0-9._:/#-]*$/u),
+const ExecutionPublicRef = S.String.check(
+  S.isPattern(/^[A-Za-z0-9][A-Za-z0-9._:/#-]{0,179}$/u),
 )
-const AccountRefHash = S.Trim.check(
-  S.isPattern(/^account\.pylon\.(?:codex|claude_agent|grok)\.[a-f0-9]{6,64}$/u),
+const AccountRefHash = S.String.check(
+  S.isPattern(
+    /^account\.pylon\.(?:codex|claude_agent|grok)\.[a-f0-9]{24}$/u,
+  ),
 )
-const BlockerRef = S.Trim.check(
-  S.isMinLength(3),
-  S.isMaxLength(180),
-  S.isPattern(/^blocker\.[A-Za-z0-9][A-Za-z0-9._:/#-]*$/u),
+const BlockerRef = S.String.check(
+  S.isPattern(/^blocker\.[A-Za-z0-9][A-Za-z0-9._:/#-]{0,171}$/u),
 )
 
 export const FleetRunTargetPreference = S.Literals([
@@ -561,6 +557,7 @@ type FleetRunExecutionEventRow = Readonly<{
   intake_claim_ref: string
   event_kind: FleetRunExecutionEvent["kind"]
   unit_ref: string | null
+  work_claim_ref: string | null
   event_json: string
   observed_at: string
   recorded_at: string
@@ -874,6 +871,39 @@ const sha256Hex = async (input: unknown): Promise<string> => {
     .join("")
 }
 
+const expectedExecutionEventRef = async (
+  runRef: string,
+  claimRef: string,
+  event: FleetRunExecutionEvent,
+): Promise<string> => {
+  const {
+    eventRef: _eventRef,
+    sequence: _sequence,
+    ...eventWithoutSequenceAndEventRef
+  } = event
+  return `event.pylon.fleet_run.${(
+    await sha256Hex({
+      runRef,
+      claimRef,
+      event: eventWithoutSequenceAndEventRef,
+    })
+  ).slice(0, 24)}`
+}
+
+const assertExecutionEventContentBinding = async (
+  runRef: string,
+  claimRef: string,
+  event: FleetRunExecutionEvent,
+): Promise<void> => {
+  if (event.eventRef !== (await expectedExecutionEventRef(runRef, claimRef, event))) {
+    throw fixedError(
+      "invalid_request",
+      "fleet run execution event ref does not match its canonical content",
+      { runRef },
+    )
+  }
+}
+
 const runRefFor = async (
   ownerUserId: string,
   idempotencyKey: string,
@@ -1153,17 +1183,18 @@ const executionProjectionFromStorage = async (
   const rows: Array<FleetRunWorkUnitCloseoutRow> = await sql`
     SELECT * FROM sarah_fleet_run_work_unit_closeouts
     WHERE run_ref = ${record.runRef}
-    ORDER BY unit_ref
+    ORDER BY unit_ref, observed_at, work_claim_ref
   `
   const closeouts = rows.map(closeoutFromRow)
   const activeRows: Array<{ count: string | number | bigint }> = await sql`
-    SELECT count(DISTINCT event.unit_ref) AS count
+    SELECT count(DISTINCT event.work_claim_ref) AS count
     FROM sarah_fleet_run_execution_events AS event
     LEFT JOIN sarah_fleet_run_work_unit_closeouts AS closeout
-      ON closeout.run_ref = event.run_ref AND closeout.unit_ref = event.unit_ref
+      ON closeout.run_ref = event.run_ref
+     AND closeout.work_claim_ref = event.work_claim_ref
     WHERE event.run_ref = ${record.runRef}
       AND event.event_kind = 'work_progress'
-      AND closeout.unit_ref IS NULL
+      AND closeout.work_claim_ref IS NULL
   `
   const activeAssignments = safeStoredSequence(activeRows[0]?.count ?? 0)
   return decodeUnknown(FleetRunExecutionProjection, {
@@ -1172,9 +1203,11 @@ const executionProjectionFromStorage = async (
     counters: {
       workUnitsTotal: workUnitsFrom(record.request.workSource).length,
       activeAssignments,
-      acceptedAssignments: closeouts.filter(
-        (closeout) => closeout.terminalState === "accepted",
-      ).length,
+      acceptedAssignments: new Set(
+        closeouts
+          .filter((closeout) => closeout.terminalState === "accepted")
+          .map((closeout) => closeout.unitRef),
+      ).size,
       failedAssignments: closeouts.filter(
         (closeout) => closeout.terminalState === "failed",
       ).length,
@@ -1696,6 +1729,10 @@ const executionEventFromRow = (
         (event.kind === "work_progress" || event.kind === "work_terminal"
           ? event.unitRef
           : null) ||
+      row.work_claim_ref !==
+        (event.kind === "work_progress" || event.kind === "work_terminal"
+          ? event.workClaimRef
+          : null) ||
       row.observed_at !== event.observedAt ||
       canonicalJson(event) !== row.event_json
     ) {
@@ -1753,15 +1790,19 @@ const insertExecutionEvent = async (
     event.kind === "work_progress" || event.kind === "work_terminal"
       ? event.unitRef
       : null
+  const workClaimRef =
+    event.kind === "work_progress" || event.kind === "work_terminal"
+      ? event.workClaimRef
+      : null
   await sql`
     INSERT INTO sarah_fleet_run_execution_events
       (run_ref, sequence, event_ref, owner_user_id, pylon_ref,
-       intake_claim_ref, event_kind, unit_ref, event_json, observed_at,
-       recorded_at)
+       intake_claim_ref, event_kind, unit_ref, work_claim_ref, event_json,
+       observed_at, recorded_at)
     VALUES
       (${input.runRef}, ${event.sequence}, ${event.eventRef},
        ${input.ownerUserId}, ${input.pylonRef}, ${input.batch.claimRef},
-       ${event.kind}, ${unitRef}, ${canonicalJson(event)},
+       ${event.kind}, ${unitRef}, ${workClaimRef}, ${canonicalJson(event)},
        ${event.observedAt}, ${nowIso})
   `
 }
@@ -1851,14 +1892,61 @@ const appendFleetRunExecutionEvents = async (
       await writer.sql`
         SELECT * FROM sarah_fleet_run_work_unit_closeouts
         WHERE run_ref = ${input.runRef}
-        ORDER BY unit_ref
+        ORDER BY unit_ref, observed_at, work_claim_ref
       `
-    const closeouts = new Map(
-      storedCloseoutRows.map((row) => {
-        const closeout = closeoutFromRow(row)
-        return [closeout.unitRef, closeout] as const
-      }),
+    const closeouts = storedCloseoutRows.map(closeoutFromRow)
+    const closeoutsByClaim = new Map(
+      closeouts.map((closeout) => [closeout.workClaimRef, closeout] as const),
     )
+    const acceptedUnitRefs = new Set(
+      closeouts
+        .filter((closeout) => closeout.terminalState === "accepted")
+        .map((closeout) => closeout.unitRef),
+    )
+    const storedWorkEventRows: Array<FleetRunExecutionEventRow> =
+      await writer.sql`
+        SELECT * FROM sarah_fleet_run_execution_events
+        WHERE run_ref = ${input.runRef} AND work_claim_ref IS NOT NULL
+        ORDER BY sequence
+      `
+    const claimBindings = new Map<
+      string,
+      Readonly<{
+        unitRef: string
+        workerKind: "codex" | "claude" | "grok"
+      }>
+    >()
+    for (const row of storedWorkEventRows) {
+      const event = executionEventFromRow(row)
+      if (
+        (event.kind !== "work_progress" && event.kind !== "work_terminal") ||
+        row.owner_user_id !== input.ownerUserId ||
+        row.pylon_ref !== input.pylonRef ||
+        row.intake_claim_ref !== input.batch.claimRef
+      ) {
+        throw fixedError(
+          "storage_unavailable",
+          "fleet run execution attempt binding failed integrity validation",
+          { runRef: input.runRef },
+        )
+      }
+      const binding = claimBindings.get(event.workClaimRef)
+      if (
+        binding !== undefined &&
+        (binding.unitRef !== event.unitRef ||
+          binding.workerKind !== event.workerKind)
+      ) {
+        throw fixedError(
+          "storage_unavailable",
+          "fleet run execution attempt binding failed integrity validation",
+          { runRef: input.runRef },
+        )
+      }
+      claimBindings.set(event.workClaimRef, {
+        unitRef: event.unitRef,
+        workerKind: event.workerKind,
+      })
+    }
     let executionState = initialRecord.execution.state
     let acceptedThroughSequence = initialRecord.execution.lastSequence
     let executionStartedAt = initialRecord.execution.startedAt
@@ -1866,6 +1954,11 @@ const appendFleetRunExecutionEvents = async (
     let duplicateEventCount = 0
 
     for (const event of input.batch.events) {
+      await assertExecutionEventContentBinding(
+        input.runRef,
+        input.batch.claimRef,
+        event,
+      )
       const existingRows: Array<FleetRunExecutionEventRow> = await writer.sql`
         SELECT * FROM sarah_fleet_run_execution_events
         WHERE run_ref = ${input.runRef} AND sequence = ${event.sequence}
@@ -1955,28 +2048,54 @@ const appendFleetRunExecutionEvents = async (
             { runRef: input.runRef },
           )
         }
-        if (closeouts.has(event.unitRef)) {
+        if (closeoutsByClaim.has(event.workClaimRef)) {
           throw fixedError(
             "idempotency_conflict",
-            "fleet run work unit already has terminal evidence",
+            "fleet run work attempt already has terminal evidence",
             { runRef: input.runRef },
           )
         }
+        if (acceptedUnitRefs.has(event.unitRef)) {
+          throw fixedError(
+            "idempotency_conflict",
+            "fleet run work unit already has accepted terminal evidence",
+            { runRef: input.runRef },
+          )
+        }
+        const binding = claimBindings.get(event.workClaimRef)
+        if (
+          binding !== undefined &&
+          (binding.unitRef !== event.unitRef ||
+            binding.workerKind !== event.workerKind)
+        ) {
+          throw fixedError(
+            "idempotency_conflict",
+            "fleet run work claim is already bound to another attempt",
+            { runRef: input.runRef },
+          )
+        }
+        claimBindings.set(event.workClaimRef, {
+          unitRef: event.unitRef,
+          workerKind: event.workerKind,
+        })
       }
 
       await insertExecutionEvent(writer.sql, input, event, nowIso)
       if (event.kind === "work_terminal") {
-        closeouts.set(
-          event.unitRef,
-          await insertTerminalCloseout(writer.sql, input.runRef, event),
+        const closeout = await insertTerminalCloseout(
+          writer.sql,
+          input.runRef,
+          event,
         )
+        closeouts.push(closeout)
+        closeoutsByClaim.set(closeout.workClaimRef, closeout)
+        if (closeout.terminalState === "accepted") {
+          acceptedUnitRefs.add(closeout.unitRef)
+        }
       } else if (event.kind === "run_terminal") {
         if (
           event.terminalState === "completed" &&
-          (closeouts.size !== knownUnits.size ||
-            [...closeouts.values()].some(
-              (closeout) => closeout.terminalState !== "accepted",
-            ))
+          acceptedUnitRefs.size !== knownUnits.size
         ) {
           throw fixedError(
             "claim_conflict",

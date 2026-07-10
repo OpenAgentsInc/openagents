@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS sarah_fleet_run_execution_events (
   event_kind       text NOT NULL
     CHECK (event_kind IN ('run_started', 'work_progress', 'work_terminal', 'run_terminal')),
   unit_ref         text,
+  work_claim_ref   text,
   event_json       text NOT NULL,
   observed_at      text NOT NULL,
   recorded_at      text NOT NULL,
@@ -36,7 +37,7 @@ CREATE TABLE IF NOT EXISTS sarah_fleet_run_execution_events (
   CONSTRAINT sarah_fleet_run_execution_events_run_ref_shape
     CHECK (run_ref ~ '^fleet_run\.sarah\.[0-9a-f]{20}$'),
   CONSTRAINT sarah_fleet_run_execution_events_event_ref_shape
-    CHECK (event_ref ~ '^event\.pylon\.fleet_run\.[A-Za-z0-9_.:-]{3,156}$'),
+    CHECK (event_ref ~ '^event\.pylon\.fleet_run\.[0-9a-f]{24}$'),
   CONSTRAINT sarah_fleet_run_execution_events_owner_shape
     CHECK (owner_user_id ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{2,159}$'),
   CONSTRAINT sarah_fleet_run_execution_events_pylon_shape
@@ -44,11 +45,19 @@ CREATE TABLE IF NOT EXISTS sarah_fleet_run_execution_events (
   CONSTRAINT sarah_fleet_run_execution_events_claim_shape
     CHECK (intake_claim_ref ~ '^claim\.sarah_fleet_run\.[0-9a-f]{24}$'),
   CONSTRAINT sarah_fleet_run_execution_events_unit_shape
-    CHECK (unit_ref IS NULL OR unit_ref ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$')
+    CHECK (unit_ref IS NULL OR unit_ref ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$'),
+  CONSTRAINT sarah_fleet_run_execution_events_work_claim_shape
+    CHECK (work_claim_ref IS NULL OR work_claim_ref ~ '^[A-Za-z0-9][A-Za-z0-9._:/#-]{0,179}$'),
+  CONSTRAINT sarah_fleet_run_execution_events_work_identity_coherence
+    CHECK ((unit_ref IS NULL) = (work_claim_ref IS NULL))
 );
 
 CREATE INDEX IF NOT EXISTS sarah_fleet_run_execution_events_owner_run_idx
   ON sarah_fleet_run_execution_events (owner_user_id, run_ref, sequence);
+
+CREATE INDEX IF NOT EXISTS sarah_fleet_run_execution_events_attempt_idx
+  ON sarah_fleet_run_execution_events (run_ref, work_claim_ref, sequence)
+  WHERE work_claim_ref IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS sarah_fleet_run_work_unit_closeouts (
   run_ref              text NOT NULL,
@@ -64,7 +73,7 @@ CREATE TABLE IF NOT EXISTS sarah_fleet_run_work_unit_closeouts (
   blocker_refs_json    text NOT NULL,
   observed_at          text NOT NULL,
   event_ref            text NOT NULL,
-  PRIMARY KEY (run_ref, unit_ref),
+  PRIMARY KEY (run_ref, work_claim_ref),
   UNIQUE (run_ref, assignment_ref),
   UNIQUE (event_ref),
   CONSTRAINT sarah_fleet_run_work_unit_closeouts_unit_fk
@@ -79,7 +88,7 @@ CREATE TABLE IF NOT EXISTS sarah_fleet_run_work_unit_closeouts (
   CONSTRAINT sarah_fleet_run_work_unit_closeouts_assignment_shape
     CHECK (assignment_ref IS NULL OR assignment_ref ~ '^[A-Za-z0-9][A-Za-z0-9._:/#-]{0,179}$'),
   CONSTRAINT sarah_fleet_run_work_unit_closeouts_account_hash_shape
-    CHECK (account_ref_hash IS NULL OR account_ref_hash ~ '^account\.pylon\.(codex|claude_agent|grok)\.[a-f0-9]{6,64}$'),
+    CHECK (account_ref_hash IS NULL OR account_ref_hash ~ '^account\.pylon\.(codex|claude_agent|grok)\.[a-f0-9]{24}$'),
   CONSTRAINT sarah_fleet_run_work_unit_closeouts_closeout_shape
     CHECK (closeout_ref IS NULL OR closeout_ref ~ '^[A-Za-z0-9][A-Za-z0-9._:/#-]{0,179}$'),
   CONSTRAINT sarah_fleet_run_work_unit_closeouts_proof_coherence
@@ -99,3 +108,7 @@ CREATE TABLE IF NOT EXISTS sarah_fleet_run_work_unit_closeouts (
 CREATE INDEX IF NOT EXISTS sarah_fleet_run_work_unit_closeouts_state_idx
   ON sarah_fleet_run_work_unit_closeouts
     (run_ref, terminal_state, observed_at);
+
+CREATE INDEX IF NOT EXISTS sarah_fleet_run_work_unit_closeouts_unit_idx
+  ON sarah_fleet_run_work_unit_closeouts
+    (run_ref, unit_ref, terminal_state, observed_at);

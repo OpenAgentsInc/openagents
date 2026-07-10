@@ -1,3 +1,6 @@
+import { createHash } from 'node:crypto'
+
+import { canonicalJson } from '@openagentsinc/khala-sync'
 import {
   type FleetRunAuthorityAcceptClaimResult,
   type FleetRunAuthorityAppendExecutionResult,
@@ -7,6 +10,8 @@ import {
 } from '@openagentsinc/khala-sync-server'
 import { Effect } from 'effect'
 import { describe, expect, test } from 'vitest'
+
+import { makePylonFleetRunExecutionHttpPort } from '../../../../pylon/src/orchestration/fleet-run-execution-reporter.js'
 
 import {
   type AgentRegistrationStore,
@@ -4189,16 +4194,24 @@ describe('Pylon Sarah FleetRun transport', () => {
     claim: { claimRef, state: 'accepted' },
     run: { runRef, status: 'claimed_by_pylon' },
   } as unknown as FleetRunAuthorityAcceptClaimResult
+  const startedEventInput = {
+    schema: 'openagents.pylon.fleet_run_execution_event.v1',
+    observedAt: '2026-07-09T22:00:00.000Z',
+    kind: 'run_started',
+  } as const
   const executionBatch = {
     schema: 'openagents.pylon.fleet_run_execution_batch.v1',
     claimRef,
     events: [
       {
-        schema: 'openagents.pylon.fleet_run_execution_event.v1',
+        ...startedEventInput,
         sequence: 1,
-        eventRef: `event.pylon.fleet_run.${'a'.repeat(16)}`,
-        observedAt: '2026-07-09T22:00:00.000Z',
-        kind: 'run_started',
+        eventRef: `event.pylon.fleet_run.${createHash('sha256')
+          .update(
+            canonicalJson({ runRef, claimRef, event: startedEventInput }),
+          )
+          .digest('hex')
+          .slice(0, 24)}`,
       },
     ],
   } as const satisfies FleetRunExecutionBatch
@@ -4418,6 +4431,63 @@ describe('Pylon Sarah FleetRun transport', () => {
 
     expect(response.status).toBe(200)
     expect(await responseJson(response)).toEqual(executionAccepted.ack)
+    expect(appends).toEqual([
+      {
+        ownerUserId: 'openauth-user-one',
+        pylonRef: 'pylon.test.one',
+        runRef,
+        batch: executionBatch,
+      },
+    ])
+  })
+
+  test('accepts the exact Pylon HTTP wire and returns a strict rich ACK', async () => {
+    const store = new MemoryPylonApiStore()
+    await registerPylon(store, { tokenUserId: 'agent-one' })
+    const appends: Array<Record<string, unknown>> = []
+    const fleetRunAuthority = {
+      claim: () => Effect.succeed(claimed),
+      acceptClaim: () => Effect.succeed(accepted),
+      appendExecutionEvents: (
+        _env: Readonly<Record<string, unknown>>,
+        input: Record<string, unknown>,
+      ) =>
+        Effect.sync(() => {
+          appends.push(input)
+          return executionAccepted
+        }),
+    }
+    const fetchImpl: typeof globalThis.fetch = async (input, init) => {
+      expect(new Headers(init?.headers).get('authorization')).toBe(
+        'Bearer oa_agent_cross_wire',
+      )
+      const rawBody = init?.body
+      if (typeof rawBody !== 'string') {
+        throw new Error('expected JSON string body')
+      }
+      const target =
+        input instanceof Request ? input.url : input.toString()
+      return route(store, new URL(target).pathname, {
+        body: JSON.parse(rawBody),
+        fleetRunAuthority,
+        method: init?.method ?? 'POST',
+        openauthUserId: 'openauth-user-one',
+        tokenUserId: 'agent-one',
+      })
+    }
+    const pylonPort = makePylonFleetRunExecutionHttpPort({
+      agentToken: 'oa_agent_cross_wire',
+      baseUrl: 'https://openagents.com',
+      fetchImpl,
+    })
+
+    const ack = await pylonPort.append({
+      pylonRef: 'pylon.test.one',
+      runRef,
+      batch: executionBatch,
+    })
+
+    expect(ack).toEqual(executionAccepted.ack)
     expect(appends).toEqual([
       {
         ownerUserId: 'openauth-user-one',
