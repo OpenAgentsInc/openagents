@@ -2,8 +2,9 @@
 
 - Date: 2026-07-11
 - Issue: [#8693](https://github.com/OpenAgentsInc/openagents/issues/8693)
-- Status: shared contract and bounded restart resolver active; server projection,
-  Desktop navigation/persistence, and built-host restart receipt remain pending
+- Status: shared contract, bounded restart resolver, and owner-scoped server
+  projection active; confirmed client reads, Desktop navigation/persistence,
+  and built-host restart receipt remain pending
 - Contract schema: `openagents.coding_catalog.v1`
 
 ## Durable product identities
@@ -48,6 +49,20 @@ fields and applies a stable recent-first sort. It deliberately implements no
 keyword matching. User-facing text retrieval must later use the workspace's
 central semantic or structured query path.
 
+## Owner-scoped server projection
+
+`@openagentsinc/khala-sync-server` now validates and appends one bounded catalog
+change set through the normal transaction writer. All project, repository,
+worktree, session, and navigation post-images must name the exact same user or
+team scope. Cross-owner and broken-relationship bundles fail before storage;
+raw placement, credential, provider-session, and transport-shaped material is
+refused with a public-safe diagnostic.
+
+The writer appends entities sequentially inside one transaction so its first
+dense-version allocation cannot race. A real local-Postgres receipt proves all
+five entity classes commit at one owner-scope version and the next whole bundle
+advances that scope exactly once.
+
 ## Verification
 
 - Focused schema/resolver suite: 9 pass, 0 fail, 94 expectations.
@@ -56,11 +71,16 @@ central semantic or structured query path.
   fail-closed eligibility law.
 - Full `@openagentsinc/khala-sync`: 187 pass, 0 fail, 2,695 expectations.
 - Package typecheck: pass.
+- Server projection focus including real Postgres: 5 pass, 0 fail,
+  19 expectations; server typecheck passes.
+- Broad server suite reaches 515 pass / 1 unrelated failure. The failing
+  `runtime-intents.test.ts` expiry fixture rejects three runtime events and
+  reproduces in isolation; no CUT-13 projector test or typecheck fails.
 
 ## Residual
 
-CUT-13 remains open. The next tranche must register owner-scoped server
-projection/migration and confirmed client reads for these post-images. Desktop
-then needs typed create/open/archive/recover navigation, host-owned persistence,
-process-restart restoration, and a built Electron recovery receipt. This
-shared-contract tranche does not claim runtime placement or remote movement.
+CUT-13 remains open. The next tranche must add confirmed client reads for these
+owner-scoped post-images. Desktop then needs typed create/open/archive/recover
+navigation, host-owned persistence, process-restart restoration, and a built
+Electron recovery receipt. This shared-contract tranche does not claim runtime
+placement or remote movement.

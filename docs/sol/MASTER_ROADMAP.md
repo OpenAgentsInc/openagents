@@ -3,8 +3,8 @@
 - Date: 2026-07-10
 - Updated: 2026-07-11 (CUT-10 no-poll path landed; CUT-11 graph delivery and
   provider traces active; CUT-12 shared/mobile/Desktop supervision UI active;
-  CUT-13 canonical catalog contract active)
-- Revision: 48
+  CUT-13 canonical catalog contract + owner-scoped projector active)
+- Revision: 49
 - Status: canonical OpenAgents implementation roadmap
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Issue source set: [`issues/README.md`](./issues/README.md)
@@ -602,9 +602,11 @@ product gaps are the R0–R7 Desktop/mobile continuity and reliability gates:
   owner/relationship/grant/availability truth, canonicalizes former-name and
   opaque checkout aliases, collapses duplicate tabs, preserves typed focus,
   and returns named recovery instead of guessing. A 64-state model proves ready
-  restore only when every authority fact is eligible. Server projection,
-  Desktop persistence/navigation, and the built-host restart receipt remain
-  open.
+  restore only when every authority fact is eligible. Server projection now
+  validates/redacts a bounded whole-catalog change set and appends every
+  entity sequentially at one dense owner-scope version; real Postgres proves
+  atomic version advancement. Confirmed client reads, Desktop persistence/
+  navigation, and the built-host restart receipt remain open.
 - Grok is postponed by owner decision because the connected account is
   quota/payment exhausted. Its real accepted historical canary, HTTP-402
   state, adapters, and fixtures remain evidence/regression substrate; Grok is

@@ -730,7 +730,12 @@ More specific invariant ledgers apply inside imported apps and packages.
   only bounded structured filters are allowed at this layer. The shared schema,
   structural redaction, 64-state fail-closed model, and restart resolver are
   enforced by `packages/khala-sync/src/coding-session.test.ts`. Server
-  projection and Desktop persistence remain pending model boundaries.
+  projection accepts only one bounded same-owner relationship-valid bundle,
+  rejects private-shaped material before storage, and appends sequentially
+  through one transaction so every changed entity shares one dense scope
+  version; its unit and real-Postgres oracles live in
+  `packages/khala-sync-server/src/coding-session-projection.test.ts`.
+  Confirmed client reads and Desktop persistence remain pending model boundaries.
 
 - Master Roadmap Revision 31 and
   `docs/sol/2026-07-11-remote-first-portable-coding-sessions-pathway.md`
