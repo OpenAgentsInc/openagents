@@ -280,6 +280,14 @@ textarea:focus-visible {
   overflow: hidden;
 }
 
+[data-en-key="history-agents-drawer"][data-en-variant="icon"] {
+  flex: 0 0 32px;
+  width: 32px !important;
+  height: 32px !important;
+  align-self: flex-start;
+  border-radius: 6px !important;
+}
+
 [data-en-key="history-workspace-split"] > [data-en-pane] {
   overflow: hidden;
 }
