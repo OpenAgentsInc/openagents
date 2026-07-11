@@ -1,4 +1,4 @@
-# What OpenAgents Should Adapt from the ChatGPT, Claude, and OpenCode Desktop Teardowns
+# What OpenAgents Should Adapt from the Desktop and Agent-Runtime Teardowns
 
 Date: 2026-07-10
 
@@ -8,6 +8,7 @@ Evidence base:
 
 - [ChatGPT / Codex desktop teardown](./2026-07-10-chatgpt-desktop-app-teardown.md)
 - [Claude desktop teardown](./2026-07-10-claude-desktop-app-teardown.md)
+- [Claude Code architecture teardown](./2026-07-10-claude-code-teardown.md)
 - [OpenCode desktop source teardown](./2026-07-10-opencode-desktop-app-teardown.md)
 - [Sol master roadmap](../sol/MASTER_ROADMAP.md), especially Desktop D0–D6
 - [OpenAgents Desktop enforced guarantees](../../apps/openagents-desktop/GUARANTEES.md)
@@ -36,7 +37,10 @@ host, Effect Native as the application and intent grammar, Khala Sync for
 cross-device continuity, and Pylon/Source Authority for execution and receipts.
 The teardowns strengthen that decision. OpenCode further shows that the durable
 architecture is not “Electron”; it is a local/remote runtime protocol with a
-desktop client. The evidence does **not** justify an Owl-style runtime fork, a
+desktop client. Claude Code makes the engine consequence sharper: the protocol
+must be bidirectional, the local executor must remain authoritative, and every
+surface must consume one conversation/task state machine rather than own a
+parallel query loop. The evidence does **not** justify an Owl-style runtime fork, a
 live remote site as the privileged renderer, opaque sidecar sprawl, renderer-
 held general runtime authority, or ambient screen recording by default.
 
@@ -88,6 +92,62 @@ specific engineering requirements:
 - **Open extensions still require isolation.** Open source does not make an npm
   plugin safe to run inside the trusted server, nor a host shell a sandbox.
 
+## What the Claude Code source audit changes
+
+The Claude desktop inspection established the host/CLI/VM split. The separate
+Claude Code audit exposes the agent engine behind that split and turns several
+product recommendations into hard runtime requirements:
+
+- **The stream is a control protocol, not a transcript feed.** Initialization,
+  partial model output, tools, permissions, hooks, tasks, compaction, usage,
+  rewind, MCP state, cancellation, and terminal results are typed in both
+  directions. Khala Sync must preserve those semantics rather than synchronize
+  rendered chat rows.
+- **One engine needs one conversation owner.** Claude Code's interactive and
+  headless/SDK paths still have parallel lifecycle ownership. OpenAgents should
+  not reproduce that fault line: Desktop, terminal, SDK, mobile, and web must
+  call one scoped conversation service and project its events.
+- **Execution completion and delivery are different state machines.** A child
+  agent can complete while its changes remain unreviewed, uncommitted,
+  unmerged, unpushed, or unaccepted. Those outcomes need distinct canonical
+  states and receipts.
+- **Append-only local history is valuable, but raw JSONL is not enough.** Claude
+  Code's parent-linked messages, sidechains, sidecars, content replacements,
+  file checkpoints, and dead-branch filtering provide excellent recovery while
+  increasingly behaving like an implicit graph database. OpenAgents should
+  keep an exportable append log and make an indexed typed event graph the
+  authority.
+- **Approval and containment are independent.** Workspace trust, tool
+  visibility, deterministic safety checks, permission rules, hooks, user
+  approval, and OS sandboxing answer different questions. One shield or
+  “allowed” bit cannot summarize effective authority.
+- **Hermetic execution is a first-class product mode.** Claude Code's minimal
+  mode can suppress ambient instructions, memory, hooks, plugins, keychain
+  lookup, language servers, and discovery. OpenAgents needs an equivalent
+  reproducible profile that emits the complete admitted-input manifest.
+- **Local recovery belongs in the engine contract.** File checkpoints,
+  session fork/rewind, durable background output, conservative worktree
+  retention, and resumable tasks are not terminal-only conveniences. Desktop
+  and mobile should surface the same durable facts.
+- **Mobile supervision requires distributed-systems semantics.** Worker epochs,
+  event sequence, acknowledgements, replay, idempotent control requests,
+  reconnect backoff, sleep/wake handling, and expiring permission responses
+  belong in the protocol before live cross-device continuation is declared
+  complete.
+- **Hooks are authority-bearing middleware.** Internal OpenAgents policy should
+  remain typed Effect services. External command/HTTP hooks may integrate at
+  bounded lifecycle points, but they must not become an invisible root of
+  product authority.
+- **Build flags cannot redefine invariants.** Claude Code's broad compile-time
+  feature matrix shows how capability growth can fragment semantics. Feature
+  flags may select adapters and UX; they must not change task terminality,
+  event durability, permission meaning, containment, or signature checks.
+
+The highest-value Claude Code pattern is the local executor controlled by many
+clients. The highest-value warning is architectural accretion: multiple query
+owners, memory systems, task classes, stores, and build variants can make an
+otherwise capable runtime impossible to explain as one coherent state machine.
+
 ## Adapt now: changes that belong in the current P0 program
 
 ### 1. Freeze the engine protocol before widening the workbench
@@ -109,7 +169,11 @@ The contract should include:
 - typed capability discovery rather than UI feature guessing;
 - explicit cancellation, reconnect, and terminal states;
 - connected, heartbeat, disposal, and stale-stream semantics;
+- worker incarnation/epoch, causal parent, idempotency key, acknowledgement,
+  replay window, and monotonic terminal-state rules;
 - backpressure/coalescing rules and bounded replay cursors;
+- explicit child-task and change-integration states rather than a single
+  overloaded “completed” outcome;
 - redacted diagnostics and per-event provenance; and
 - compatibility fixtures replayable without a live provider.
 
@@ -162,6 +226,17 @@ Every execution result should name the profile, grants, engine version,
 workspace roots, egress policy, and receipt/evidence references. This connects
 Desktop D3/D5 to Pylon and OpenAgents Cloud rather than creating a second local
 authority universe.
+
+Compile that profile into two related but separate records: an **authority
+manifest** describing what policy and approval admitted, and an **execution
+receipt** describing what containment was actually established. If promised
+containment is unavailable, the profile fails closed rather than silently
+degrading to host execution.
+
+Add a hermetic profile for reproducible work. It admits only explicitly named
+instructions, credentials, tools, MCP servers, plugins, directories, and
+network destinations, and records their identities and hashes before the first
+external side effect.
 
 ### 4. Turn the command registry into the shared product API
 
@@ -295,6 +370,8 @@ It should:
 - start or steer work through the shared command registry;
 - receive input-needed, completion, failure, and budget notifications;
 - make device/offline/capability state explicit;
+- use idempotent commands, worker epochs, ordered replay, acknowledgements, and
+  monotonic terminal outcomes across disconnect and sleep/wake;
 - support resumable handoff to Desktop; and
 - carry no desktop tokens, raw local paths, arbitrary IPC, or hidden danger
   mode.
@@ -317,7 +394,11 @@ Adapt:
 - typed quota/auth/rate-limit failures;
 - engine download/provenance verification;
 - deterministic shutdown/reconnect/reap;
+- one conversation service shared by interactive, headless, SDK, and remote
+  adapters;
 - health, heartbeat, disposal, and stale-stream recovery;
+- durable task output, file checkpoints, session fork/rewind, and
+  outcome-sensitive worktree retention;
 - local/remote transport adapters behind stable runtime identities;
 - plugin/MCP/skill composition; and
 - redacted replayable event receipts.
@@ -337,6 +418,11 @@ It should synchronize durable product facts, not desktop implementation state:
 - worker/account/capacity health;
 - artifact/evidence/receipt references; and
 - explicit conflict/refetch state.
+
+The synchronized command/event envelope must also carry an idempotency key,
+worker epoch, ordered sequence, acknowledgement state, causal parent, and
+expiry for authority-bearing responses. The server and clients must reject a
+late progress event that attempts to reopen a terminal task.
 
 Cursor positions, window geometry, raw filesystem handles, secrets, and
 unredacted local logs remain local.
@@ -486,6 +572,9 @@ OpenAgents should differentiate on five properties:
    instead of mirroring UI state.
 5. **User-controlled memory and automation:** no ambient surveillance, hidden
    promotion, or implicit permission expansion.
+6. **Explainable execution:** every run can show context provenance, admitted
+   authority, effective containment, child topology, and delivery outcome as
+   separate typed facts.
 
 That is a stronger product thesis than “another desktop chat app” or “OpenCode
 with Fleet buttons.” It is an inspectable operating surface for work performed
@@ -496,12 +585,12 @@ survive beyond the renderer process.
 
 | Order | Decision | Owning program | Proof |
 | ---: | --- | --- | --- |
-| 1 | Freeze the tokenless renderer → host-owned Runtime Gateway and engine/event protocol | Desktop D0/D1 + Pylon | Boundary oracle proves no runtime credential or generic transport enters renderer; fixtures replay the versioned event algebra |
+| 1 | Freeze the tokenless renderer → host-owned Runtime Gateway and one conversation/event protocol | Desktop D0/D1 + Pylon | Boundary oracle proves no runtime credential or generic transport enters renderer; interactive/headless/mobile fixtures replay the same versioned event algebra |
 | 2 | Bind Desktop and mobile to the existing R1 identity and R2 Khala Sync contracts | R1/R2 + Desktop/mobile adapters | Same server-derived owner/scope, independent revoke, SQLite restart, exact phases, no token in projections |
-| 3 | Ship one real streamed Desktop conversation with immediate mobile continuation | Desktop D1 + mobile narrow Sync slice | Matching thread/message refs, versions, phases, cursor and terminal outcome; one safe mobile follow-up/interrupt; restart/gap/lost-ACK proof |
+| 3 | Ship one real streamed Desktop conversation with immediate mobile continuation | Desktop D1 + mobile narrow Sync slice | Matching thread/message refs, versions, phases, worker epoch, idempotency, ACK/replay cursor and monotonic terminal outcome; one safe mobile follow-up/interrupt; restart/gap/lost-ACK proof |
 | 4 | Extend the central command registry through host/runtime outcomes | Desktop D2 + Effect Native | UI, keyboard, menu, mobile and test invoke the same command IDs and reconcile one durable outcome |
 | 5 | Add bounded file/editor/Git/PTY foreign hosts while mobile remote-workroom work proceeds in parallel | Desktop D3 + mobile R6 + Effect Native | Useful coding loop on each form factor without renderer or phone local process/filesystem authority |
-| 6 | Define execution profiles, receipts, and isolated extension compatibility | Desktop D3/D4 + Pylon + Cloud | Same task reports grants/profile/evidence; signed extension denial/update/rollback/run receipts pass |
+| 6 | Define authority manifests, execution profiles, recovery, and isolated extension compatibility | Desktop D3/D4 + Pylon + Cloud | Same task reports admitted authority separately from effective containment; hermetic run, checkpoint/rewind, signed extension denial/update/rollback/run receipts pass |
 | 7 | Compose the existing Fleet/approval/command-outcome authority into both clients | Desktop D5 + R3/R4 | One steer/approval converges to one effective durable outcome and receipt on both clients under faults |
 | 8 | Package the compatible component set and dogfood | Desktop D6 + R7 | Fuses, signing, notarization, clean install, update, rollback, physical mobile, diagnostics, sustained handoff |
 | 9 | Add computer use, scheduling, and advanced remote environments selectively | Post-R7 | Explicit grants, visible state, sandbox/authority receipts, failure recovery |
@@ -516,7 +605,10 @@ reference, then make its boundaries simpler and more legible:
 - local Effect Native renderer;
 - versioned open local/remote engine protocol with generated clients;
 - query/command/event transports with explicit lifecycle semantics;
+- one conversation service and one indexed canonical event graph;
 - host/guest execution split;
+- separate authority manifests and containment receipts;
+- hermetic execution, checkpoints, rewind, and outcome-sensitive worktrees;
 - central typed command registry;
 - MCPB-compatible signed catalog;
 - one component/update compatibility ledger;
