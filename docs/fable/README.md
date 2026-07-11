@@ -27,6 +27,12 @@ each source doc.
   — the execution prescription for this docs-direction cleanup: Tassadar/
   Psionic retired for now, non-Khala/non-business lanes postponed, and stale
   point-in-time records bannered.
+- [`2026-07-11-daily-coding-capability-audit.md`](./2026-07-11-daily-coding-capability-audit.md)
+  — EP250 (#8712) capability audit: 30 days of local `~/.claude` and
+  `~/.codex` session archives mined into a 33-capability taxonomy of
+  day-to-day coding, each mapped to OpenAgents Desktop status with a code
+  receipt, a 66-oracle UI+programmatic test/eval matrix for the follow-on
+  lane, and the frequency-ranked missing-capability list.
 - [`2026-07-11-unverified-operational-directive-after-action.md`](./2026-07-11-unverified-operational-directive-after-action.md)
   — three-part after-action from the EP250 session: the fabricated script
   name (unverified operational directive), the presented-without-driving
