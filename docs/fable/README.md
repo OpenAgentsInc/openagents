@@ -27,6 +27,13 @@ each source doc.
   — the execution prescription for this docs-direction cleanup: Tassadar/
   Psionic retired for now, non-Khala/non-business lanes postponed, and stale
   point-in-time records bannered.
+- [`2026-07-11-sol-and-teardowns-longform-analysis.md`](./2026-07-11-sol-and-teardowns-longform-analysis.md)
+  — full-corpus adversarial review of `docs/sol/` plus `docs/teardowns/`:
+  the teardown→adaptation→roadmap→issue→receipt pipeline, the three-thesis
+  strategic arc (Sarah-first → reliability reset → remote-first), the
+  convergent one-engine architecture and its rejections, the governance
+  machinery, named tensions (revision drift, uninstrumented Rev 30 packets,
+  voice dual-state, Sarah-named routes), and prioritized recommendations.
 - [`ROADMAP.md`](./ROADMAP.md) — the earlier consolidated roadmap: 17
   workstreams (WS-1…WS-17), ~80 issue-sized tasks with hard dependencies and
   delegability grades, a five-wave parallelization plan for multi-agent
