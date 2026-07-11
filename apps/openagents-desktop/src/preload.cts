@@ -70,6 +70,18 @@ import {
   decodeUsageLedgerSnapshot,
   type UsageLedgerSnapshot,
 } from "./usage-ledger-contract.ts"
+import {
+  DesktopCodingCatalogArchiveChannel,
+  DesktopCodingCatalogChooseChannel,
+  DesktopCodingCatalogFocusChannel,
+  DesktopCodingCatalogOpenChannel,
+  DesktopCodingCatalogRecoverChannel,
+  DesktopCodingCatalogSnapshotChannel,
+  decodeDesktopCodingCatalogProjection,
+  decodeDesktopCodingFocusRequest,
+  decodeDesktopCodingSessionRequest,
+  emptyDesktopCodingCatalogProjection,
+} from "./coding-catalog-contract.ts"
 
 contextBridge.exposeInMainWorld("openagentsDesktop", {
   host: "electron",
@@ -206,6 +218,42 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
       }
       ipcRenderer.on(UsageLedgerEventChannel, handler)
       return () => ipcRenderer.removeListener(UsageLedgerEventChannel, handler)
+    },
+  },
+  codingCatalog: {
+    snapshot: async () => decodeDesktopCodingCatalogProjection(
+      await ipcRenderer.invoke(DesktopCodingCatalogSnapshotChannel),
+    ) ?? emptyDesktopCodingCatalogProjection(),
+    choose: async () => decodeDesktopCodingCatalogProjection(
+      await ipcRenderer.invoke(DesktopCodingCatalogChooseChannel),
+    ) ?? emptyDesktopCodingCatalogProjection(),
+    open: async (value: unknown) => {
+      const request = decodeDesktopCodingSessionRequest(value)
+      if (request === null) return emptyDesktopCodingCatalogProjection()
+      return decodeDesktopCodingCatalogProjection(
+        await ipcRenderer.invoke(DesktopCodingCatalogOpenChannel, request),
+      ) ?? emptyDesktopCodingCatalogProjection()
+    },
+    archive: async (value: unknown) => {
+      const request = decodeDesktopCodingSessionRequest(value)
+      if (request === null) return emptyDesktopCodingCatalogProjection()
+      return decodeDesktopCodingCatalogProjection(
+        await ipcRenderer.invoke(DesktopCodingCatalogArchiveChannel, request),
+      ) ?? emptyDesktopCodingCatalogProjection()
+    },
+    recover: async (value: unknown) => {
+      const request = decodeDesktopCodingSessionRequest(value)
+      if (request === null) return emptyDesktopCodingCatalogProjection()
+      return decodeDesktopCodingCatalogProjection(
+        await ipcRenderer.invoke(DesktopCodingCatalogRecoverChannel, request),
+      ) ?? emptyDesktopCodingCatalogProjection()
+    },
+    focus: async (value: unknown) => {
+      const request = decodeDesktopCodingFocusRequest(value)
+      if (request === null) return emptyDesktopCodingCatalogProjection()
+      return decodeDesktopCodingCatalogProjection(
+        await ipcRenderer.invoke(DesktopCodingCatalogFocusChannel, request),
+      ) ?? emptyDesktopCodingCatalogProjection()
     },
   },
 })

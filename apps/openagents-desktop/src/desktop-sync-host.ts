@@ -31,6 +31,10 @@ import {
 } from "@openagentsinc/khala-sync-client"
 import { Effect } from "effect"
 import { openDesktopSyncStore, type DesktopSyncStore } from "./desktop-sync-store.ts"
+import {
+  openDesktopCodingCatalog,
+  type DesktopCodingCatalog,
+} from "./desktop-coding-catalog.ts"
 
 export const DesktopSyncSchemaVersion = SyncSchemaVersion.make(1)
 
@@ -50,6 +54,7 @@ export type DesktopSyncHost = Readonly<{
   timeline: () => KhalaSyncAgentTimeline | null
   agentGraph: () => KhalaSyncLiveAgentGraph | null
   runtime: () => KhalaSyncRuntimeCommands | null
+  codingCatalog: () => DesktopCodingCatalog | null
   connectAuthenticated: (input: DesktopAuthenticatedSyncInput) => void
   disconnectAuthenticated: () => void
   unlinkAccount:()=>void
@@ -93,6 +98,7 @@ export const openDesktopSyncHost = (input: Readonly<{
   let timeline: KhalaSyncAgentTimeline | null = null
   let agentGraph: KhalaSyncLiveAgentGraph | null = null
   let runtime: KhalaSyncRuntimeCommands | null = null
+  let codingCatalog: DesktopCodingCatalog | null = null
   let scope: SyncScope | null = null
   try {
     const persisted = Effect.runSync(store.identity())
@@ -104,6 +110,14 @@ export const openDesktopSyncHost = (input: Readonly<{
       }))
     }
     if(Effect.runSync(store.localIdentity())===null)Effect.runSync(store.setLocalIdentity({schemaVersion:1,identityRef:LocalIdentityRef.make(`local_${input.randomId()}`),createdAt:new Date().toISOString()}))
+    const localIdentity = Effect.runSync(store.localIdentity())
+    if (localIdentity === null) throw new Error("desktop local identity is unavailable")
+    codingCatalog = openDesktopCodingCatalog({
+      store,
+      identityRef: localIdentity.identityRef,
+      bindingFile: path.join(directory, "coding-bindings.json"),
+      randomId: input.randomId,
+    })
     secureLocalFiles(input.databasePath)
   } catch (error) {
     Effect.runSync(store.close())
@@ -154,6 +168,7 @@ export const openDesktopSyncHost = (input: Readonly<{
       session !== null && scope !== null && session.state(scope).phase === "live"
         ? runtime
         : null,
+    codingCatalog: () => closed ? null : codingCatalog,
     connectAuthenticated: connection => {
       if (closed) throw new Error("desktop Sync host is closed")
       const ownerUserId = connection.ownerUserId.trim()
@@ -205,6 +220,7 @@ export const openDesktopSyncHost = (input: Readonly<{
     close: () => {
       if (closed) return
       closed = true
+      codingCatalog = null
       disconnectAuthenticated()
       Effect.runSync(store.close())
     },

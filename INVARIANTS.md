@@ -719,8 +719,13 @@ More specific invariant ledgers apply inside imported apps and packages.
 - CUT-13 canonical coding identities are durable product refs, never host,
   filesystem-path, process, provider-session, credential, or transport
   identities. `coding_project`, `coding_repository`, `coding_worktree`,
-  `coding_session`, and `coding_navigation` post-images carry an exact owner
-  scope and explicit availability/grant facts. Restore validates all
+  `coding_session`, and `coding_navigation` post-images carry an exact
+  authority scope and explicit availability/grant facts. Hosted authority is
+  only `scope.user.*` or `scope.team.*`; signed-out Desktop rows are explicitly
+  `scope.device_local.*`, remain in `local_entities`, and are never submitted
+  to hosted projection. Their raw filesystem binding stays in a separate
+  owner-private main-process file and never enters the post-image or renderer.
+  Restore validates all
   project/repository/worktree/session relationships before returning ready;
   ambiguous aliases, owner mismatch, missing work, archive, revoked grants,
   and unprojected grant truth produce typed recovery. Opaque aliases may resolve
@@ -740,7 +745,12 @@ More specific invariant ledgers apply inside imported apps and packages.
   live; malformed and cross-owner rows are ignored and the shared resolver
   revalidates the resulting relationship graph. This is enforced by
   `packages/khala-sync-client/src/coding-session.test.ts`. Desktop persistence
-  remains a pending model boundary.
+  now uses the same schemas through the local-authority store; process restart,
+  duplicate open, typed focus/route restore, structured query, archive, missing-
+  worktree recovery, IPC redaction, and built renderer reload are enforced by
+  `apps/openagents-desktop/tests/desktop-coding-catalog.test.ts`,
+  `apps/openagents-desktop/src/renderer/shell.test.ts`, and the normal Electron
+  smoke journey.
 
 - Master Roadmap Revision 31 and
   `docs/sol/2026-07-11-remote-first-portable-coding-sessions-pathway.md`

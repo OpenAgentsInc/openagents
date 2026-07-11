@@ -6,7 +6,7 @@ import {
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-11.26",
+    version: "2026-07-11.27",
     contracts: [
       {
         contractId: "openagents_desktop.chat.no_assistant_role_label.v1",
@@ -1166,6 +1166,59 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         ],
         verification:
           "bun run --cwd apps/openagents-desktop verify runs the fable-local runtime suite covering the full question flow (answered, timeout, denied, typed rejections, multiSelect).",
+      },
+      {
+        contractId: "openagents_desktop.coding_catalog.restart_safe_navigation.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "projects and coding sessions",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: {
+          channel: "khala-code-session",
+          statedBy: "owner",
+          statedOn: "2026-07-11",
+        },
+        statement:
+          "OpenAgents Desktop persists stable project, repository, worktree, coding-session, tab, route, and typed focus refs across restart. Adding a workspace creates or resumes one canonical session; recent-first active, recovery, and archived filters use typed actions; duplicate opens collapse; missing worktrees and archived sessions recover explicitly; pointer and keyboard activation share the intent registry; and the project home never treats a local path or renderer tab as authority.",
+        authorityBoundary:
+          "Signed-out catalog rows live only under scope.device_local in the host-owned Sync SQLite local_entities table. Raw filesystem bindings live in a separate mode-0600 main-process file and never cross preload or enter canonical post-images. Hosted server projection and confirmed reads accept only user/team scopes. The renderer receives a bounded public-safe projection and can invoke only fixed schema-decoded choose/open/archive/recover actions.",
+        evidenceRefs: [
+          "packages/khala-sync/src/coding-session.ts",
+          "apps/openagents-desktop/src/desktop-coding-catalog.ts",
+          "apps/openagents-desktop/src/coding-catalog-contract.ts",
+          "apps/openagents-desktop/src/renderer/shell.ts",
+          "docs/sol/2026-07-11-cut-13-canonical-coding-session-catalog-receipt.md",
+          "github:OpenAgentsInc/openagents#8693",
+        ],
+        oracles: [
+          {
+            id: "coding_catalog.host_restart_and_recovery",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/tests/desktop-coding-catalog.test.ts",
+            description:
+              "Proves private path separation, stable refs across host-service reopen, duplicate-open collapse, recent sort, typed focus, archive selection, missing-worktree recovery, and owner-private file modes.",
+          },
+          {
+            id: "coding_catalog.effect_native_action_equivalence",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/shell.test.ts",
+            description:
+              "Proves Project Home renders the bounded catalog without nested cards and choose/filter/open/archive dispatch through the same schema-checked Effect Native registry used by keyboard activation.",
+          },
+          {
+            id: "coding_catalog.built_reload_restoration",
+            kind: "bun-test",
+            mode: "e2e",
+            ref: "apps/openagents-desktop/src/main.ts",
+            description:
+              "The built Electron fixture writes through real local SQLite/private binding services, opens the Project Home with the stable current session, reloads the renderer, and observes the same restored catalog authority and selection.",
+          },
+        ],
+        verification:
+          "Focused catalog/shell/boundary tests, shared/server/client CUT-13 suites, Desktop typecheck and full test, production build, and OPENAGENTS_DESKTOP_SMOKE=1 Electron smoke.",
       },
     ],
   };

@@ -162,6 +162,13 @@ describe("CUT-13 canonical coding catalog schemas", () => {
     expect(() => worktree({ aliasRefs: ["/Users/owner/work/openagents"] })).toThrow()
   })
 
+  test("admits explicit device-local source authority without calling it a hosted owner", () => {
+    const localScope = "scope.device_local.local_fixture123"
+    const local = project({ ownerScopeRef: localScope })
+    expect(local.ownerScopeRef).toBe(localScope)
+    expect(() => project({ ownerScopeRef: "scope.public.catalog" })).toThrow()
+  })
+
   test("validates owner scope and exact project/repository/worktree relationships", () => {
     expect(validateCodingSessionCatalog(catalog())).toEqual([])
     expect(validateCodingSessionCatalog(catalog({

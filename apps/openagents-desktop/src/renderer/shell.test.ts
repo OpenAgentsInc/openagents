@@ -126,6 +126,24 @@ const agentGraphFixture: NonNullable<DesktopShellState["agentGraph"]> = {
   terminalCount: 0,
   updatedAt: "2026-07-11T18:05:00.000Z",
 }
+const codingCatalogFixture: DesktopShellState["codingCatalog"] = {
+  authority: "device_local",
+  authorityLabel: "This Mac",
+  selectedSessionRef: "session.desktop.fixture",
+  focus: { kind: "conversation", conversationRef: "conversation.desktop.fixture" },
+  sessions: [{
+    sessionRef: "session.desktop.fixture",
+    projectRef: "project.desktop.fixture",
+    repositoryRef: "repository.desktop.fixture",
+    worktreeRef: "worktree.desktop.fixture",
+    projectLabel: "OpenAgents",
+    repositoryLabel: "openagents",
+    worktreeLabel: "main",
+    state: "active",
+    lastActiveAt: "2026-07-11T18:05:00.000Z",
+    recoveryReason: null,
+  }],
+}
 const fixedNow = () => "18:05"
 
 /** A minimal loaded Codex history detail page (the VIDEOEDITS-regression shape). */
@@ -385,10 +403,16 @@ describe("pure transitions", () => {
     ])
   })
 
-  test("Project home is a real typed workspace projection over persisted threads", () => {
-    const home = withWorkspace(baseState, "home")
+  test("Project home is a typed durable coding-session projection", () => {
+    const home = { ...withWorkspace(baseState, "home"), codingCatalog: codingCatalogFixture }
     expect(nodeByKey(desktopShellView(home), "workspace-home-panel")?._tag).toBe("Stack")
-    expect(nodeByKey(desktopShellView(home), "workspace-home-thread-test-thread")?._tag).toBe("Card")
+    expect(nodeByKey(desktopShellView(home), "workspace-home-session-session.desktop.fixture")?._tag).toBe("Stack")
+    expect(nodeByKey(desktopShellView(home), "workspace-home-session-open-session.desktop.fixture")?.onPress).toMatchObject({
+      name: "DesktopCodingSessionOpened",
+    })
+    expect(nodeByKey(desktopShellView(home), "workspace-home-query")?.onChange).toMatchObject({
+      name: "DesktopCodingCatalogQueryChanged",
+    })
     expect(nodeByKey(desktopShellView(home), "shell-composer")).toBeUndefined()
   })
 
@@ -553,6 +577,71 @@ describe("pure transitions", () => {
 })
 
 describe("typed chat intent loop end-to-end (registry -> state -> re-render)", () => {
+
+  test("coding catalog choose, filter, open, and archive use the typed registry", async () => {
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const state = yield* SubscriptionRef.make(withWorkspace(baseState, "home"))
+        const archived = {
+          ...codingCatalogFixture,
+          selectedSessionRef: null,
+          focus: { kind: "none" as const },
+          sessions: codingCatalogFixture.sessions.map(value => ({ ...value, state: "archived" as const })),
+        }
+        const opened: string[] = []
+        const registry = yield* makeIntentRegistry(
+          desktopShellIntents,
+          makeDesktopShellHandlers(
+            state,
+            fixedNow,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            {
+              snapshot: async () => codingCatalogFixture,
+              choose: async () => codingCatalogFixture,
+              open: async sessionRef => { opened.push(sessionRef); return codingCatalogFixture },
+              archive: async () => archived,
+              recover: async () => codingCatalogFixture,
+            },
+          ),
+        )
+
+        const empty = desktopShellView(yield* SubscriptionRef.get(state))
+        const choose = nodeByKey(empty, "workspace-home-open-folder") as {
+          onPress: Parameters<typeof resolveIntentRef>[0]
+        }
+        yield* registry.dispatch(resolveIntentRef(choose.onPress, null))
+        expect((yield* SubscriptionRef.get(state)).codingCatalog).toEqual(codingCatalogFixture)
+
+        const populated = desktopShellView(yield* SubscriptionRef.get(state))
+        const open = nodeByKey(populated, "workspace-home-session-open-session.desktop.fixture") as {
+          onPress: Parameters<typeof resolveIntentRef>[0]
+        }
+        yield* registry.dispatch(resolveIntentRef(open.onPress, null))
+        expect(opened).toEqual(["session.desktop.fixture"])
+
+        const archive = nodeByKey(populated, "workspace-home-session-archive-session.desktop.fixture") as {
+          onPress: Parameters<typeof resolveIntentRef>[0]
+        }
+        yield* registry.dispatch(resolveIntentRef(archive.onPress, null))
+        expect((yield* SubscriptionRef.get(state)).codingCatalog.sessions[0]?.state).toBe("archived")
+
+        const archivedView = desktopShellView(yield* SubscriptionRef.get(state))
+        const archivedFilter = nodeByKey(archivedView, "workspace-home-filter-archived") as {
+          onPress: Parameters<typeof resolveIntentRef>[0]
+        }
+        yield* registry.dispatch(resolveIntentRef(archivedFilter.onPress, null))
+        expect((yield* SubscriptionRef.get(state)).codingSessionFilter).toBe("archived")
+      }),
+    )
+  })
 
   test("agent graph toggle, inspect, and focus share the typed shell registry", async () => {
     await Effect.runPromise(

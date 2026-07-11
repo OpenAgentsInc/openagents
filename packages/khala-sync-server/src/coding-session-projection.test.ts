@@ -142,6 +142,17 @@ describe("CUT-13 owner-scoped coding catalog projection", () => {
       worktrees: [{ ...changeSet().worktrees[0], repositoryRef: "repository.missing" }],
     })
     expect(() => decodeCodingCatalogChangeSet(broken)).toThrow("relation invalid")
+    expect(() => decodeCodingCatalogChangeSet(changeSet({
+      ownerScopeRef: "scope.device_local.local_fixture123",
+      projects: changeSet().projects.map(value => ({
+        ...value,
+        ownerScopeRef: "scope.device_local.local_fixture123",
+      })),
+      repositories: [],
+      worktrees: [],
+      sessions: [],
+      navigation: null,
+    }))).toThrow()
   })
 
   test("refuses raw placement or credential-shaped material before storage", async () => {

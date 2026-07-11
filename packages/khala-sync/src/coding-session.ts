@@ -31,6 +31,13 @@ export const CodingOwnerScopeRef = S.String.check(
 )
 export type CodingOwnerScopeRef = typeof CodingOwnerScopeRef.Type
 
+/** Hosted owner scope or isolated device-local source authority. */
+export const CodingAuthorityScopeRef = S.String.check(
+  S.isMaxLength(320),
+  S.isPattern(/^scope\.(user|team|device_local)\.[A-Za-z0-9._:-]+$/),
+)
+export type CodingAuthorityScopeRef = typeof CodingAuthorityScopeRef.Type
+
 export const CodingIsoTimestamp = S.String.check(
   S.isPattern(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/),
 )
@@ -77,7 +84,7 @@ export class CodingProjectEntity extends S.Class<CodingProjectEntity>(
 )({
   schema: CodingCatalogSchema,
   projectRef: CodingRef,
-  ownerScopeRef: CodingOwnerScopeRef,
+  ownerScopeRef: CodingAuthorityScopeRef,
   displayName: CodingDisplayName,
   aliasRefs: boundedAliases,
   state: S.Literals(["active", "archived"]),
@@ -92,7 +99,7 @@ export class CodingRepositoryEntity extends S.Class<CodingRepositoryEntity>(
   schema: CodingCatalogSchema,
   repositoryRef: CodingRef,
   projectRef: CodingRef,
-  ownerScopeRef: CodingOwnerScopeRef,
+  ownerScopeRef: CodingAuthorityScopeRef,
   displayName: CodingDisplayName,
   /** Former names and source aliases resolve to this stable ref. Never paths. */
   aliasRefs: boundedAliases,
@@ -110,7 +117,7 @@ export class CodingWorktreeEntity extends S.Class<CodingWorktreeEntity>(
   worktreeRef: CodingRef,
   repositoryRef: CodingRef,
   projectRef: CodingRef,
-  ownerScopeRef: CodingOwnerScopeRef,
+  ownerScopeRef: CodingAuthorityScopeRef,
   displayName: CodingDisplayName,
   /** Opaque device/host alias refs; raw filesystem paths are structurally absent. */
   aliasRefs: boundedAliases,
@@ -144,7 +151,7 @@ export class CodingSessionEntity extends S.Class<CodingSessionEntity>(
 )({
   schema: CodingCatalogSchema,
   sessionRef: CodingRef,
-  ownerScopeRef: CodingOwnerScopeRef,
+  ownerScopeRef: CodingAuthorityScopeRef,
   projectRef: CodingRef,
   repositoryRef: CodingRef,
   worktreeRef: CodingRef,
@@ -182,7 +189,7 @@ export class CodingNavigationEntity extends S.Class<CodingNavigationEntity>(
 )({
   schema: CodingCatalogSchema,
   navigationRef: CodingRef,
-  ownerScopeRef: CodingOwnerScopeRef,
+  ownerScopeRef: CodingAuthorityScopeRef,
   selectedProjectRef: S.NullOr(CodingRef),
   selectedRepositoryRef: S.NullOr(CodingRef),
   selectedWorktreeRef: S.NullOr(CodingRef),

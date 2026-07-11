@@ -79,6 +79,18 @@ import {
 } from "./usage-ledger-contract.ts"
 import { makeUsageLedger } from "./usage-ledger.ts"
 import { makeThreadStore } from "./thread-store.ts"
+import {
+  DesktopCodingCatalogArchiveChannel,
+  DesktopCodingCatalogChooseChannel,
+  DesktopCodingCatalogFocusChannel,
+  DesktopCodingCatalogOpenChannel,
+  DesktopCodingCatalogRecoverChannel,
+  DesktopCodingCatalogSnapshotChannel,
+  decodeDesktopCodingFocusRequest,
+  decodeDesktopCodingSessionRequest,
+  emptyDesktopCodingCatalogProjection,
+  projectDesktopCodingCatalog,
+} from "./coding-catalog-contract.ts"
 import { makeCodexHistoryHost } from "./codex-history-host.ts"
 import { makeDesktopHostLifecycle } from "./desktop-host-lifecycle.ts"
 import {
@@ -399,13 +411,66 @@ const workspaceSnapshot = () => {
   if (workspace === null) return null
   try { return workspace.summary() } catch { return null }
 }
+const codingCatalogSnapshot = () => {
+  const catalog = hostLifecycle.sync()?.codingCatalog()
+  return catalog === null || catalog === undefined
+    ? emptyDesktopCodingCatalogProjection()
+    : projectDesktopCodingCatalog(catalog.snapshot())
+}
+const activateCodingCatalogRoot = () => {
+  const root = hostLifecycle.sync()?.codingCatalog()?.selectedRoot() ?? null
+  if (root !== null) hostLifecycle.replaceWorkspace(openWorkspaceService(root))
+}
+const chooseCodingWorkspace = async (registerCatalog = true) => {
+  const result = await dialog.showOpenDialog({ properties: ["openDirectory", "createDirectory"] })
+  if (result.canceled || result.filePaths[0] === undefined) return null
+  const root = result.filePaths[0]
+  hostLifecycle.replaceWorkspace(openWorkspaceService(root))
+  if (registerCatalog) hostLifecycle.sync()?.codingCatalog()?.selectWorkspace(root)
+  return root
+}
 ipcMain.handle(DesktopWorkspaceSummaryChannel, () => workspaceSnapshot())
 ipcMain.handle(DesktopWorkspaceFilesChannel, () => workspaceSnapshot())
 ipcMain.handle(DesktopWorkspaceChooseChannel, async () => {
-  const result = await dialog.showOpenDialog({ properties: ["openDirectory", "createDirectory"] })
-  if (result.canceled || result.filePaths[0] === undefined) return workspaceSnapshot()
-  hostLifecycle.replaceWorkspace(openWorkspaceService(result.filePaths[0]))
+  await chooseCodingWorkspace()
   return workspaceSnapshot()
+})
+ipcMain.handle(DesktopCodingCatalogSnapshotChannel, () => codingCatalogSnapshot())
+ipcMain.handle(DesktopCodingCatalogChooseChannel, async () => {
+  await chooseCodingWorkspace()
+  return codingCatalogSnapshot()
+})
+ipcMain.handle(DesktopCodingCatalogOpenChannel, (_event, raw: unknown) => {
+  const request = decodeDesktopCodingSessionRequest(raw)
+  const catalog = hostLifecycle.sync()?.codingCatalog()
+  if (request === null || catalog === null || catalog === undefined) return codingCatalogSnapshot()
+  const snapshot = catalog.openSession(request.sessionRef)
+  activateCodingCatalogRoot()
+  return projectDesktopCodingCatalog(snapshot)
+})
+ipcMain.handle(DesktopCodingCatalogArchiveChannel, (_event, raw: unknown) => {
+  const request = decodeDesktopCodingSessionRequest(raw)
+  const catalog = hostLifecycle.sync()?.codingCatalog()
+  if (request === null || catalog === null || catalog === undefined) return codingCatalogSnapshot()
+  const snapshot = catalog.archiveSession(request.sessionRef)
+  activateCodingCatalogRoot()
+  return projectDesktopCodingCatalog(snapshot)
+})
+ipcMain.handle(DesktopCodingCatalogRecoverChannel, async (_event, raw: unknown) => {
+  const request = decodeDesktopCodingSessionRequest(raw)
+  const catalog = hostLifecycle.sync()?.codingCatalog()
+  if (request === null || catalog === null || catalog === undefined) return codingCatalogSnapshot()
+  const root = await chooseCodingWorkspace(false)
+  return root === null
+    ? codingCatalogSnapshot()
+    : projectDesktopCodingCatalog(catalog.recoverSession(request.sessionRef, root))
+})
+ipcMain.handle(DesktopCodingCatalogFocusChannel, (_event, raw: unknown) => {
+  const request = decodeDesktopCodingFocusRequest(raw)
+  const catalog = hostLifecycle.sync()?.codingCatalog()
+  return request === null || catalog === null || catalog === undefined
+    ? codingCatalogSnapshot()
+    : projectDesktopCodingCatalog(catalog.saveFocus(request.sessionRef, request.focus))
 })
 ipcMain.handle(DesktopWorkspaceReadChannel, (_event, value: unknown) => {
   const workspace = hostLifecycle.workspace()
@@ -1216,6 +1281,26 @@ const smokeOpenFleetWorkspace = `(async () => {
   }
 })()`
 
+const smokeCodingCatalog = `(async () => {
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+  const home = document.querySelector('[data-en-key="workspace-home"]')
+  if (home === null) return { ok: false, reason: "Project home dock button missing" }
+  home.click()
+  const deadline = Date.now() + 10000
+  while (Date.now() < deadline && document.querySelector('[data-en-key^="workspace-home-session-session.desktop."]') === null) {
+    await wait(50)
+  }
+  const row = document.querySelector('[data-en-key^="workspace-home-session-session.desktop."]')
+  const authority = document.querySelector('[data-en-key="workspace-home-authority"]')
+  const current = row?.querySelector('[data-en-key^="workspace-home-session-open-"]')
+  return {
+    ok: row !== null && authority?.textContent === "This Mac" && current?.textContent === "Current",
+    sessionKey: row?.getAttribute("data-en-key") ?? null,
+    authority: authority?.textContent ?? null,
+    current: current?.textContent ?? null,
+  }
+})()`
+
 const captureShot = async (window: BrowserWindow, name: string): Promise<void> => {
   if (smokeShotsDir === undefined || smokeShotsDir === "") return
   const image = await window.webContents.capturePage()
@@ -1256,6 +1341,7 @@ const runSmoke = (window: BrowserWindow): void => {
       try {
         if (tracePass === 1) {
           await step("codex-trace-reload-restoration", traceAcceptanceReload)
+          await step("coding-catalog-reload-restoration", smokeCodingCatalog)
           clearTimeout(timeout)
           console.log("[openagents-desktop smoke] OK")
           finish(0)
@@ -1301,6 +1387,8 @@ const runSmoke = (window: BrowserWindow): void => {
         await step("message-metadata-inspector-close", smokeCloseMessageInspector)
         await step("fleet-workspace-fixture-accounts", smokeOpenFleetWorkspace)
         await captureShot(window, "09-fleet-workspace")
+        await step("coding-catalog-host-persistence", smokeCodingCatalog)
+        await captureShot(window, "10-coding-catalog")
         tracePass = 1
         window.webContents.reload()
       } catch (error) {
@@ -1324,6 +1412,13 @@ void app.whenReady().then(async () => {
       randomId: randomUUID,
     })
     hostLifecycle.replaceSync(syncHost)
+    if (smokeMode) {
+      // Deterministic CUT-13 built-host fixture: real local SQLite/catalog and
+      // private binding path, without provider or remote authority claims.
+      syncHost.codingCatalog()?.selectWorkspace(path.join(here, "..", "tests", "fixtures", "codex-smoke"))
+    }
+    const restoredRoot = syncHost.codingCatalog()?.selectedRoot() ?? null
+    if (restoredRoot !== null) hostLifecycle.replaceWorkspace(openWorkspaceService(restoredRoot))
   } catch {
     console.error("[openagents-desktop] local Sync persistence unavailable")
   }

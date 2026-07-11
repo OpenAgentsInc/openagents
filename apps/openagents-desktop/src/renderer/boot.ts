@@ -43,7 +43,7 @@ import {
   makeLocalHarnessChatHost,
   type FableLocalRendererBridge,
 } from "./local-harness.ts"
-import { withHarnessLanes, type HarnessLanes } from "./shell.ts"
+import { withHarnessLanes, type DesktopWorkspaceName, type HarnessLanes } from "./shell.ts"
 import {
   decodeFableLocalAvailability,
   type FableLocalAvailability,
@@ -63,6 +63,12 @@ import type {
 } from "../runtime-gateway-contract.ts"
 import type { CodexHistoryCatalog, CodexHistoryPage } from "../codex-history-contract.ts"
 import { historyCatalogPageSize } from "./history-workspace.ts"
+import {
+  decodeDesktopCodingCatalogProjection,
+  desktopWorkspaceForCodingFocus,
+  emptyDesktopCodingCatalogProjection,
+  type DesktopCodingCatalogProjection,
+} from "../coding-catalog-contract.ts"
 
 /** Effect Schema at the preload boundary (issue #8574: Schema, not Zod). */
 const DesktopBridgeSchema = Schema.Struct({
@@ -105,6 +111,13 @@ type DesktopBridge = Readonly<{
   usageLedger?: Readonly<{
     snapshot?: () => Promise<unknown>
     onEvent?: (listener: (snapshot: unknown) => void) => () => void
+  }>
+  codingCatalog?: Readonly<{
+    snapshot?: () => Promise<unknown>
+    choose?: () => Promise<unknown>
+    open?: (value: unknown) => Promise<unknown>
+    archive?: (value: unknown) => Promise<unknown>
+    recover?: (value: unknown) => Promise<unknown>
   }>
 }>
 
@@ -286,6 +299,35 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
       local: localHarnessChat,
     }))
     const chat = selection.host
+    const codingCatalogCall = async (
+      call: (() => Promise<unknown>) | undefined,
+    ): Promise<DesktopCodingCatalogProjection> => {
+      if (call === undefined) return emptyDesktopCodingCatalogProjection()
+      try {
+        return decodeDesktopCodingCatalogProjection(await call()) ?? emptyDesktopCodingCatalogProjection()
+      } catch {
+        return emptyDesktopCodingCatalogProjection()
+      }
+    }
+    const codingCatalogHost = {
+      snapshot: () => codingCatalogCall(bridge?.codingCatalog?.snapshot),
+      choose: () => codingCatalogCall(bridge?.codingCatalog?.choose),
+      open: (sessionRef: string) => codingCatalogCall(
+        bridge?.codingCatalog?.open === undefined
+          ? undefined
+          : () => bridge.codingCatalog!.open!({ sessionRef }),
+      ),
+      archive: (sessionRef: string) => codingCatalogCall(
+        bridge?.codingCatalog?.archive === undefined
+          ? undefined
+          : () => bridge.codingCatalog!.archive!({ sessionRef }),
+      ),
+      recover: (sessionRef: string) => codingCatalogCall(
+        bridge?.codingCatalog?.recover === undefined
+          ? undefined
+          : () => bridge.codingCatalog!.recover!({ sessionRef }),
+      ),
+    }
     // Evidence-gated composer lanes (#8712), resolved BEFORE first mount so
     // the chips never flash an unproven state.
     if (fableLocalBridge !== null && selection.mode === "local") {
@@ -398,7 +440,7 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
           }
           return { state: "unavailable", message: typeof value.message === "string" ? value.message : "Git review is unavailable." }
         },
-      }, codexSettingsBridge, undefined, openAgentsSessionSettingsBridge, historyHost, fleetAccountsBridge, providerAccountsSettingsBridge),
+      }, codexSettingsBridge, undefined, openAgentsSessionSettingsBridge, historyHost, fleetAccountsBridge, providerAccountsSettingsBridge, codingCatalogHost),
     )
     // Session usage ledger push (#8712 Lane C): every ledger change re-pulls
     // the typed snapshot through the fleet handlers (schema-decoded there).
@@ -415,6 +457,15 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
       const restored=restoreHistory(); const selected=restorableHistoryThreadRef(historyCatalog,restored?.selectedThreadRef,historyCatalogPageSize)
       const firstPage = selected === null ? null : yield* Effect.promise(() => historyHost.page(selected, restored?.offset??0, 50))
       yield* SubscriptionRef.update(state, current => ({ ...current, history: { ...current.history, catalog: historyCatalog, page: firstPage, selectedItemRef: firstPage?.items.some(item=>item.itemRef===restored?.selectedItemRef)?restored!.selectedItemRef:null, railCollapsed:restored?.railCollapsed??false, expandedThreadRefs:restored?.expandedThreadRefs??firstPage?.agents.filter(agent=>agent.descendantCount>0).map(agent=>agent.threadRef)??[] } }))
+    }
+    const codingCatalog = yield* Effect.promise(codingCatalogHost.snapshot)
+    if (codingCatalog.sessions.length > 0) {
+      const restoredWorkspace: DesktopWorkspaceName = desktopWorkspaceForCodingFocus(codingCatalog.focus)
+      yield* SubscriptionRef.update(state, current => ({
+        ...current,
+        codingCatalog,
+        workspace: restoredWorkspace,
+      }))
     }
     const existing = yield* Effect.promise(chat.listThreads)
     const threads = Array.isArray(existing) ? existing.filter((item): item is DesktopThread => typeof item === "object" && item !== null && typeof (item as { id?: unknown }).id === "string") : []
