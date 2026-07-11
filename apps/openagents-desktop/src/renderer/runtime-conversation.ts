@@ -200,13 +200,16 @@ export const makeRuntimeConversationChatHost = (
           messageRef,
           runRef,
           threadRef: input.id,
+          ...(input.harness === undefined ? {} : {
+            lane: input.harness === "fable" ? "claude_pylon" as const : "codex_app_server" as const,
+          }),
         },
       })
       if (
         started.kind !== "runtime_command_outcome" ||
         (started.status !== "accepted" && started.status !== "unknown_pending_reconcile")
       ) {
-        return { ok: false, error: "Message was admitted, but Codex dispatch was rejected." }
+        return { ok: false, error: "Message was admitted, but agent dispatch was rejected." }
       }
 
       let lastSignature = ""

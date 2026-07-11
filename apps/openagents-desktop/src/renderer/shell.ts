@@ -68,8 +68,10 @@ import {
   settingsView,
   unavailableCodexSettingsBridge,
   unavailableOpenAgentsSessionSettingsBridge,
+  unavailableProviderAccountsSettingsBridge,
   type CodexSettingsBridge,
   type OpenAgentsSessionSettingsBridge,
+  type ProviderAccountsSettingsBridge,
   type SettingsState,
 } from "./settings.ts"
 
@@ -84,6 +86,9 @@ export type DesktopNoteEntry = Readonly<{
 export const desktopWorkspaceNames = ["fleet", "chat", "home", "files", "review", "terminal", "inbox", "settings"] as const
 export type DesktopWorkspaceName = (typeof desktopWorkspaceNames)[number]
 
+export const desktopHarnessNames = ["fable", "codex"] as const
+export type DesktopHarnessName = (typeof desktopHarnessNames)[number]
+
 export type DesktopShellState = Readonly<{
   /** Host identity decoded from the preload bridge ("electron/darwin" etc.). */
   host: string
@@ -91,6 +96,8 @@ export type DesktopShellState = Readonly<{
   /** True while a submission is in flight; the composer disables itself. */
   pending: boolean
   notes: ReadonlyArray<DesktopNoteEntry>
+  /** Which coding harness new turns target; "codex" preserves prior behavior. */
+  selectedHarness: DesktopHarnessName
   threads: ReadonlyArray<DesktopThread>
   activeThreadId: string | null
   workspace: DesktopWorkspaceName
@@ -144,6 +151,7 @@ export const initialDesktopShellState = (
   input: "",
   pending: false,
   notes: [],
+  selectedHarness: "codex",
   threads: [],
   activeThreadId: null,
   workspace: "chat",
@@ -190,6 +198,10 @@ export const DesktopFleetDeploymentRequested = defineIntent(
   Schema.Null,
 )
 export const DesktopNewChat = defineIntent("DesktopNewChat", Schema.Null)
+export const DesktopHarnessSelected = defineIntent(
+  "DesktopHarnessSelected",
+  Schema.Literals(desktopHarnessNames),
+)
 export const DesktopChatSelected = defineIntent("DesktopChatSelected", Schema.String)
 export const DesktopWorkspaceSelected = defineIntent(
   "DesktopWorkspaceSelected",
@@ -214,6 +226,7 @@ export const desktopShellIntents = [
   DesktopFleetObjectiveChanged,
   DesktopFleetDeploymentRequested,
   DesktopNewChat,
+  DesktopHarnessSelected,
   DesktopChatSelected,
   DesktopWorkspaceSelected,
   DesktopWorkspacePickerRequested,
@@ -359,6 +372,7 @@ export type ChatHost = Readonly<{
   sendMessage: (input: Readonly<{
     id: string
     message: string
+    harness?: DesktopHarnessName
     onUpdate?: (thread: DesktopThread) => void
   }>) => Promise<Readonly<{ ok: boolean; thread?: DesktopThread | null; error?: string }>>
 }>
@@ -467,8 +481,9 @@ export const makeDesktopShellHandlers = (
   openAgentsBridge: OpenAgentsSessionSettingsBridge = unavailableOpenAgentsSessionSettingsBridge,
   historyHost: CodexHistoryHost = { catalog: async () => null, page: async () => null },
   fleetBridge: FleetAccountsBridge = unavailableFleetAccountsBridge,
+  providerAccountsBridge: ProviderAccountsSettingsBridge = unavailableProviderAccountsSettingsBridge,
 ): IntentHandlers<typeof desktopShellIntents> => {
-  const settingsHandlers = makeSettingsHandlers(state, codexBridge, openAgentsBridge, settingsSleep)
+  const settingsHandlers = makeSettingsHandlers(state, codexBridge, openAgentsBridge, settingsSleep, undefined, providerAccountsBridge)
   return ({
   ...settingsHandlers,
   ...makeFleetWorkspaceHandlers(state, fleetBridge, () => settingsHandlers.DesktopSettingsToggled()),
@@ -484,6 +499,7 @@ export const makeDesktopShellHandlers = (
       const result = yield* Effect.promise(() => chat.sendMessage({
         id: current.activeThreadId!,
         message,
+        harness: current.selectedHarness,
         onUpdate: thread => {
           Effect.runFork(SubscriptionRef.update(state, next =>
             next.activeThreadId === thread.id
@@ -509,6 +525,8 @@ export const makeDesktopShellHandlers = (
       yield* SubscriptionRef.update(state, (next) => withFleetDeploymentResult(next, result, now()))
     }),
   DesktopNewChat: () => Effect.gen(function* () { const thread = yield* Effect.promise(chat.newThread); if (thread) yield* SubscriptionRef.update(state, (current) => withNewChat(current, thread)) }),
+  DesktopHarnessSelected: (harness) =>
+    SubscriptionRef.update(state, (current) => current.selectedHarness === harness ? current : { ...current, selectedHarness: harness }),
   DesktopChatSelected: (id) => Effect.gen(function* () {
     yield* SubscriptionRef.update(state, current => ({ ...current, activeThreadId: id, notes: [] }))
     const thread = yield* Effect.promise(() => chat.openThread(id)); if (!thread) return
@@ -972,6 +990,33 @@ const shellComposer = (state: DesktopShellState): View =>
       },
     },
     [
+      Stack(
+        {
+          key: "shell-harness-row",
+          direction: "row",
+          gap: "1",
+          align: "center",
+          style: { width: "full" },
+        },
+        [
+          Button({
+            key: "shell-harness-fable",
+            label: "Fable",
+            variant: state.selectedHarness === "fable" ? "secondary" : "ghost",
+            disabled: state.pending,
+            onPress: IntentRef("DesktopHarnessSelected", StaticPayload("fable")),
+            a11y: { label: state.selectedHarness === "fable" ? "Fable harness selected" : "Target new turns at Fable" },
+          }),
+          Button({
+            key: "shell-harness-codex",
+            label: "Codex",
+            variant: state.selectedHarness === "codex" ? "secondary" : "ghost",
+            disabled: state.pending,
+            onPress: IntentRef("DesktopHarnessSelected", StaticPayload("codex")),
+            a11y: { label: state.selectedHarness === "codex" ? "Codex harness selected" : "Target new turns at Codex" },
+          }),
+        ],
+      ),
       Stack(
         {
           key: "shell-composer-row",

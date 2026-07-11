@@ -193,6 +193,167 @@ describe("authoritative Runtime Gateway chat adapter", () => {
       "conversation.append",
       "conversation.start",
     ])
+    expect(commands.find(command => command.id === "conversation.start")).not.toHaveProperty("lane")
+  })
+
+  const makeHarnessFixture = () => {
+    const startCommands: Array<Record<string, unknown>> = []
+    let startedRunRef: string | null = null
+    const request = async (raw: unknown): Promise<DesktopRuntimeGatewayResponse> => {
+      const value = raw as { requestId?: string; commandId?: string; query?: { id: string; intentId?: string; threadRef?: string }; command?: Record<string, string> }
+      if (value.query?.id === "conversation.catalog") {
+        return {
+          kind: "conversation_catalog",
+          requestId: value.requestId!,
+          status,
+          threads: [{ threadRef: "thread.harness.1", title: "Harness", messageCount: 1, lastMessageAt: now, updatedAt: now, version: 1 }],
+        }
+      }
+      if (value.query?.id === "conversation.thread") {
+        return {
+          kind: "conversation_thread",
+          requestId: value.requestId!,
+          threadRef: value.query.threadRef!,
+          status,
+          messages: [{ messageRef: "message.desktop.harness-message", threadRef: value.query.threadRef!, body: "Pick a lane", createdAt: now, updatedAt: now, version: 2 }],
+        }
+      }
+      if (value.query?.id === "conversation.timeline") {
+        return {
+          kind: "conversation_timeline",
+          requestId: value.requestId!,
+          threadRef: value.query.threadRef!,
+          status,
+          run: startedRunRef === null ? null : {
+            runRef: startedRunRef,
+            routeRef: value.query.threadRef!,
+            status: "completed",
+            createdAt: now,
+            updatedAt: now,
+            startedAt: now,
+            completedAt: now,
+            failedAt: null,
+            canceledAt: null,
+            version: 1,
+          },
+          events: [],
+        }
+      }
+      if (value.query?.id === "conversation.commandOutcome") {
+        return {
+          kind: "runtime_command_status",
+          requestId: value.requestId!,
+          commandRef: value.query.intentId!,
+          threadRef: value.query.threadRef!,
+          runRef: startedRunRef,
+          status: "settled",
+          mutationId: null,
+          version: 3,
+          updatedAt: now,
+        }
+      }
+      if (value.command?.id === "conversation.start") {
+        startCommands.push(value.command)
+        startedRunRef = value.command.runRef!
+        return {
+          kind: "runtime_command_outcome",
+          commandId: value.commandId!,
+          threadRef: value.command.threadRef!,
+          runRef: value.command.runRef!,
+          messageRef: value.command.messageRef!,
+          status: "unknown_pending_reconcile",
+          mutationId: 5,
+        }
+      }
+      return {
+        kind: "conversation_mutation_outcome",
+        commandId: value.commandId!,
+        status: "pending_reconcile",
+        mutationId: 4,
+      }
+    }
+    const ids = ["harness-message", "harness-run"]
+    const chat = makeRuntimeConversationChatHost({
+      request,
+      randomId: () => ids.shift() ?? "harness-extra",
+      sleep: async () => undefined,
+      pollAttempts: 2,
+    })
+    return { chat, startCommands }
+  }
+
+  test("harness fable targets the claude_pylon lane on conversation.start", async () => {
+    const { chat, startCommands } = makeHarnessFixture()
+    const result = await chat.sendMessage({ id: "thread.harness.1", message: "Pick a lane", harness: "fable" })
+    expect(result.ok).toBe(true)
+    expect(startCommands).toEqual([{
+      id: "conversation.start",
+      messageRef: "message.desktop.harness-message",
+      runRef: "turn.desktop.harness-run",
+      threadRef: "thread.harness.1",
+      lane: "claude_pylon",
+    }])
+  })
+
+  test("harness codex targets the codex_app_server lane on conversation.start", async () => {
+    const { chat, startCommands } = makeHarnessFixture()
+    const result = await chat.sendMessage({ id: "thread.harness.1", message: "Pick a lane", harness: "codex" })
+    expect(result.ok).toBe(true)
+    expect(startCommands).toEqual([{
+      id: "conversation.start",
+      messageRef: "message.desktop.harness-message",
+      runRef: "turn.desktop.harness-run",
+      threadRef: "thread.harness.1",
+      lane: "codex_app_server",
+    }])
+  })
+
+  test("rejected dispatch reports provider-neutral copy", async () => {
+    const request = async (raw: unknown): Promise<DesktopRuntimeGatewayResponse> => {
+      const value = raw as { requestId?: string; commandId?: string; query?: { id: string; threadRef?: string }; command?: Record<string, string> }
+      if (value.query?.id === "conversation.catalog") {
+        return {
+          kind: "conversation_catalog",
+          requestId: value.requestId!,
+          status,
+          threads: [{ threadRef: "thread.harness.1", title: "Harness", messageCount: 1, lastMessageAt: now, updatedAt: now, version: 1 }],
+        }
+      }
+      if (value.query?.id === "conversation.thread") {
+        return {
+          kind: "conversation_thread",
+          requestId: value.requestId!,
+          threadRef: value.query.threadRef!,
+          status,
+          messages: [{ messageRef: "message.desktop.rejected-message", threadRef: value.query.threadRef!, body: "Rejected", createdAt: now, updatedAt: now, version: 2 }],
+        }
+      }
+      if (value.query?.id === "conversation.timeline") {
+        return { kind: "conversation_timeline", requestId: value.requestId!, threadRef: value.query.threadRef!, status, run: null, events: [] }
+      }
+      if (value.command?.id === "conversation.start") {
+        return {
+          kind: "runtime_command_outcome",
+          commandId: value.commandId!,
+          threadRef: value.command.threadRef!,
+          runRef: value.command.runRef!,
+          messageRef: value.command.messageRef!,
+          status: "rejected",
+          reason: "Runtime command was rejected before admission.",
+        }
+      }
+      return { kind: "conversation_mutation_outcome", commandId: value.commandId!, status: "pending_reconcile", mutationId: 1 }
+    }
+    const ids = ["rejected-message", "rejected-run"]
+    const chat = makeRuntimeConversationChatHost({
+      request,
+      randomId: () => ids.shift() ?? "rejected-extra",
+      sleep: async () => undefined,
+      pollAttempts: 1,
+    })
+    const result = await chat.sendMessage({ id: "thread.harness.1", message: "Rejected", harness: "fable" })
+    expect(result).toEqual({ ok: false, error: "Message was admitted, but agent dispatch was rejected." })
+    expect(result.error).not.toContain("Codex")
   })
 
   test("never reports an unconfirmed append completed", async () => {

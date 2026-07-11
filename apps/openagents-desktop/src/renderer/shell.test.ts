@@ -195,6 +195,25 @@ describe("desktopShellView (state -> component tree)", () => {
     expect(pending.senderLabel).toBe("YOU · PENDING")
   })
 
+  test("composer carries the harness selector with Codex selected by default", () => {
+    const view = desktopShellView(baseState)
+    const fable = nodeByKey(view, "shell-harness-fable") as { onPress?: { name?: string }; variant?: string; disabled?: boolean }
+    const codex = nodeByKey(view, "shell-harness-codex") as { onPress?: { name?: string }; variant?: string }
+    expect(fable?.onPress?.name).toBe("DesktopHarnessSelected")
+    expect(codex?.onPress?.name).toBe("DesktopHarnessSelected")
+    expect(codex?.variant).toBe("secondary")
+    expect(fable?.variant).toBe("ghost")
+    expect(baseState.selectedHarness).toBe("codex")
+
+    const fableSelected = desktopShellView({ ...baseState, selectedHarness: "fable" })
+    expect((nodeByKey(fableSelected, "shell-harness-fable") as { variant?: string }).variant).toBe("secondary")
+    expect((nodeByKey(fableSelected, "shell-harness-codex") as { variant?: string }).variant).toBe("ghost")
+
+    const pending = desktopShellView(withPending(baseState, true))
+    expect(nodeByKey(pending, "shell-harness-fable")?.disabled).toBe(true)
+    expect(nodeByKey(pending, "shell-harness-codex")?.disabled).toBe(true)
+  })
+
   test("composer rides the v29 submit lifecycle contract: clearOnSubmit + pending disables", () => {
     const idle = nodeByKey(desktopShellView(baseState), "shell-input")
     expect(idle?.clearOnSubmit).toBe(true)
@@ -537,6 +556,45 @@ describe("typed chat intent loop end-to-end (registry -> state -> re-render)", (
         expect(afterSecond.notes.at(-1)?.text).toBe("Desktop chat is unavailable.")
         expect(afterSecond.notes.length).toBe(2)
         expect(afterSecond.notes.some((entry) => entry.key.startsWith("pending-"))).toBe(false)
+      }),
+    )
+  })
+
+  test("harness selection dispatches through the registry and rides the next send", async () => {
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const sent: Array<{ id: string; message: string; harness?: string }> = []
+        const state = yield* SubscriptionRef.make(baseState)
+        const registry = yield* makeIntentRegistry(
+          desktopShellIntents,
+          makeDesktopShellHandlers(state, fixedNow, undefined, {
+            listThreads: async () => [],
+            newThread: async () => null,
+            openThread: async () => null,
+            sendMessage: async (input) => {
+              sent.push({ id: input.id, message: input.message, harness: input.harness })
+              return { ok: false, error: "Recorded only." }
+            },
+          }),
+        )
+        const view = desktopShellView(baseState)
+        const fable = nodeByKey(view, "shell-harness-fable") as {
+          onPress: Parameters<typeof resolveIntentRef>[0]
+        }
+        yield* registry.dispatch(resolveIntentRef(fable.onPress, null))
+        expect((yield* SubscriptionRef.get(state)).selectedHarness).toBe("fable")
+
+        const input = nodeByKey(view, "shell-input") as {
+          onSubmit: Parameters<typeof resolveIntentRef>[0]
+        }
+        yield* registry.dispatch(resolveIntentRef(input.onSubmit, "route me"))
+        expect(sent).toEqual([{ id: testThread.id, message: "route me", harness: "fable" }])
+
+        const codex = nodeByKey(view, "shell-harness-codex") as {
+          onPress: Parameters<typeof resolveIntentRef>[0]
+        }
+        yield* registry.dispatch(resolveIntentRef(codex.onPress, null))
+        expect((yield* SubscriptionRef.get(state)).selectedHarness).toBe("codex")
       }),
     )
   })
