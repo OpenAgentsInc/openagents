@@ -6,7 +6,7 @@ import {
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-11.22",
+    version: "2026-07-11.23",
     contracts: [
       {
         contractId: "openagents_desktop.chat.no_assistant_role_label.v1",
@@ -870,6 +870,66 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         ],
         verification:
           "The Desktop verify gate runs the runtime and renderer suites covering model-level substitution refusal and the effective-model caption; the fixture smoke journey streams with the fixture init reporting claude-fable-5.",
+      },
+      // =====================================================================
+      // Lane C (#8712) — Codex delegation. Kept as a clearly separate block:
+      // a parallel chat-UI lane also edits this registry; the coordinator
+      // owns resolving the registry-version bump on merge.
+      // =====================================================================
+      {
+        contractId: "openagents_desktop.seam.codex_delegation_no_substitution.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "Fable-to-Codex sub-agent delegation",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: {
+          channel: "owner-codex-session",
+          statedBy: "owner",
+          statedOn: "2026-07-11",
+        },
+        statement:
+          "The local Fable lane may delegate bounded tasks to Codex sub-agents only through the typed mcp__codex__delegate tool: every child is requested pinned to model gpt-5.6-sol at medium reasoning effort as spawn-config truth (the codex exec --json stream does not echo model or effort, and every result and ledger row is labeled requested accordingly); children run read-only in isolated scratch workspaces on registry-isolated Codex account homes, never the default ~/.codex; a revoked-credential account is never silently skipped — rotation emits a typed account_reconnect_required event per skipped account, and when every registered account is revoked the delegation returns a typed unavailable result naming the reconnect need; at most 3 children run concurrently and 6 per turn, with over-cap calls refused typed before any spawn; exact per-child token usage from turn.completed (total = input + output + reasoning) rolls into the session usage ledger and the Fleet view's evidence-labeled Session usage section; and a session-observed revoked credential or failed usage probe supersedes the registry's presence-based ready with a typed reconnect-required readiness state.",
+        authorityBoundary:
+          "The renderer receives only bounded typed child lifecycle events (childRef, account ref, public-safe summaries with the child workspace redacted, exact token counts, typed failure reasons) and the typed session-ledger snapshot — never prompts, raw JSONL, credentials, auth paths, or local paths beyond the <child-workspace> label. Delegation grants no write, network-spend, or default-home authority, and the spawn-config model pin is not presented as a provider echo.",
+        seam: {
+          client: "apps/openagents-desktop/src/renderer/fleet-workspace.ts",
+          server: "apps/openagents-desktop/src/codex-child-runtime.ts",
+        },
+        evidenceRefs: [
+          "apps/openagents-desktop/src/codex-child-contract.ts",
+          "apps/openagents-desktop/src/fable-local-runtime.ts",
+          "apps/openagents-desktop/src/usage-ledger-contract.ts",
+          "github:OpenAgentsInc/openagents#8712",
+        ],
+        oracles: [
+          {
+            id: "codex_delegation.child_runtime_rotation_and_usage",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/codex-child-runtime.test.ts",
+            description:
+              "Drives the real JSONL parser with the receipted spawn recipe and revoked-token shapes: pinned model/effort args, isolated CODEX_HOME, exact usage totals, typed visible rotation, typed all-accounts-unavailable, host-side timeout, and concurrent isolated children.",
+          },
+          {
+            id: "codex_delegation.fable_tool_caps_and_events",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/fable-local-runtime.test.ts",
+            description:
+              "Proves the delegate tool is offered only with the fully-qualified allowed name, per-turn concurrency and total caps refuse typed without spawning, child lifecycle events flow schema-valid through the FableLocalEvent envelope, and the tool result labels usage as requested spawn-config truth.",
+          },
+          {
+            id: "codex_delegation.session_ledger_and_readiness_override",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/fleet-workspace.test.ts",
+            description:
+              "Proves the evidence-labeled Session usage section renders exact per-account rows with the requested codex model, and that ledger reconnect rows or failed probes supersede presence-based ready with the typed reconnect-required state.",
+          },
+        ],
+        verification:
+          "bun run --cwd apps/openagents-desktop verify runs the child-runtime, delegate, ledger, and fleet suites plus the fixture smoke journey where a fable fixture turn calls the delegate once (scripted child) and the transcript shows the tool_use/tool_result pair with the ledger row rendered in the Fleet view.",
       },
     ],
   };

@@ -101,6 +101,10 @@ type DesktopBridge = Readonly<{
     interrupt?: (value: unknown) => Promise<unknown>
     onEvent?: (listener: (envelope: FableLocalEventEnvelope) => void) => () => void
   }>
+  usageLedger?: Readonly<{
+    snapshot?: () => Promise<unknown>
+    onEvent?: (listener: (snapshot: unknown) => void) => () => void
+  }>
 }>
 
 const readBridge = (): DesktopBridge | undefined =>
@@ -155,6 +159,14 @@ const fleetAccountsBridge: FleetAccountsBridge = {
     return typeof bridge?.providerAccounts?.usage === "function"
       ? bridge.providerAccounts.usage(ref)
       : unavailableFleetAccountsBridge.usage(ref)
+  },
+  // Session usage ledger snapshot (#8712 Lane C): absent-bridge hosts simply
+  // render no Session usage section (the fleet decode drops a null).
+  ledger: () => {
+    const bridge = readBridge()
+    return typeof bridge?.usageLedger?.snapshot === "function"
+      ? bridge.usageLedger.snapshot()
+      : Promise.resolve(null)
   },
 }
 
@@ -381,6 +393,16 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
         },
       }, codexSettingsBridge, undefined, openAgentsSessionSettingsBridge, historyHost, fleetAccountsBridge, providerAccountsSettingsBridge),
     )
+    // Session usage ledger push (#8712 Lane C): every ledger change re-pulls
+    // the typed snapshot through the fleet handlers (schema-decoded there).
+    if (typeof bridge?.usageLedger?.onEvent === "function") {
+      const unsubscribeLedger = bridge.usageLedger.onEvent(() => {
+        void Effect.runPromise(
+          registry.dispatch(resolveIntentRef(IntentRef("FleetLedgerUpdated", StaticPayload(null)))),
+        )
+      })
+      window.addEventListener("pagehide", () => unsubscribeLedger(), { once: true })
+    }
     const historyCatalog = yield* Effect.promise(historyHost.catalog)
     if (historyCatalog !== null) {
       const restored=restoreHistory(); const selected=restorableHistoryThreadRef(historyCatalog,restored?.selectedThreadRef,historyCatalogPageSize)

@@ -57,9 +57,24 @@ import {
 } from "./fable-local-contract.ts"
 import {
   FABLE_LOCAL_FIXTURE_ACCOUNT,
+  FABLE_LOCAL_MODEL,
   makeFableLocalRuntime,
   makeFixtureFableLocalQuery,
+  makeFixtureFableMcpFactory,
 } from "./fable-local-runtime.ts"
+import {
+  fixtureCodexRevokedStderr,
+  fixtureCodexRevokedStdout,
+  fixtureCodexSuccessStdout,
+  makeCodexChildRuntime,
+  makeFixtureCodexChildSpawn,
+} from "./codex-child-runtime.ts"
+import { CODEX_CHILD_MODEL } from "./codex-child-contract.ts"
+import {
+  UsageLedgerEventChannel,
+  UsageLedgerSnapshotChannel,
+} from "./usage-ledger-contract.ts"
+import { makeUsageLedger } from "./usage-ledger.ts"
 import { makeThreadStore } from "./thread-store.ts"
 import { makeCodexHistoryHost } from "./codex-history-host.ts"
 import { makeDesktopHostLifecycle } from "./desktop-host-lifecycle.ts"
@@ -445,13 +460,39 @@ ipcMain.handle(DesktopChatTurnChannel, async (_event, value: unknown) => {
 // gateway. Smoke runs a scripted fixture (clearly logged; never normal runs).
 if (smokeMode) {
   console.log("[openagents-desktop] fable-local running in SMOKE FIXTURE mode (no real Claude SDK session)")
+  console.log("[openagents-desktop] codex-child running in SMOKE FIXTURE mode (scripted codex exec, no real spawn)")
 }
+// Session usage ledger (#8712 Lane C): exact per-account token attribution
+// for local Fable turns and Codex delegate children. Main-owned; the
+// renderer sees only the typed snapshot ("session ledger" evidence label).
+const usageLedger = makeUsageLedger()
+// Codex delegate children (#8712 Lane C). Smoke uses the scout's receipted
+// scripted streams through the REAL parser: the first registered account
+// fails with the exact revoked-refresh-token shape (typed rotation), the
+// second completes with exact usage totals.
+const codexChildren = makeCodexChildRuntime({
+  scratchRoot: () => path.join(app.getPath("userData"), "fable-local"),
+  ...(smokeMode
+    ? {
+        spawnImpl: makeFixtureCodexChildSpawn([
+          { stdout: fixtureCodexRevokedStdout, stderr: fixtureCodexRevokedStderr, exitCode: 1 },
+          { stdout: fixtureCodexSuccessStdout(), exitCode: 0 },
+        ]),
+        discoverImpl: async () => [
+          { ref: "codex", home: "/nonexistent/fixture-codex" },
+          { ref: "codex-2", home: "/nonexistent/fixture-codex-2" },
+        ],
+      }
+    : {}),
+})
 const fableLocal = makeFableLocalRuntime({
   scratchRoot: () => path.join(app.getPath("userData"), "fable-local"),
+  delegate: codexChildren,
   ...(smokeMode
     ? {
         queryImpl: async () => makeFixtureFableLocalQuery(),
         discoverImpl: async () => [FABLE_LOCAL_FIXTURE_ACCOUNT],
+        mcpImpl: async () => makeFixtureFableMcpFactory(),
       }
     : {}),
 })
@@ -491,6 +532,49 @@ ipcMain.handle(FableLocalStartChannel, async (event, value: unknown) => {
     message: request.message.trim(),
     emit: turnEvent => {
       if (turnEvent.kind === "model_effective") effectiveModel = turnEvent.model
+      // Session usage ledger feed (#8712 Lane C): exact usage from the typed
+      // completion events. Fable turns attribute to the Claude account the
+      // turn ran on; delegate children attribute to the Codex account with
+      // gpt-5.6-sol recorded as spawn-config truth. A child-observed revoked
+      // credential flips the account's typed reconnect flag (probe/child
+      // evidence supersedes presence-based "ready").
+      if (turnEvent.kind === "turn_completed" && turnEvent.accountRef !== undefined) {
+        usageLedger.record({
+          provider: "claude_agent",
+          accountRef: turnEvent.accountRef,
+          requestedModel: FABLE_LOCAL_MODEL,
+          kind: "turn",
+          usage: turnEvent.usage ?? (turnEvent.totalTokens === null
+            ? null
+            // Split unavailable from this emitter: recorded as total only.
+            : {
+                inputTokens: 0,
+                cachedInputTokens: 0,
+                outputTokens: 0,
+                reasoningTokens: 0,
+                totalTokens: turnEvent.totalTokens,
+              }),
+        })
+      }
+      if (turnEvent.kind === "child_completed") {
+        usageLedger.record({
+          provider: "codex",
+          accountRef: turnEvent.accountRef,
+          requestedModel: CODEX_CHILD_MODEL,
+          kind: "child",
+          usage: turnEvent.usage,
+        })
+      }
+      if (turnEvent.kind === "child_activity" &&
+        turnEvent.activity === "account_reconnect_required" &&
+        turnEvent.accountRef !== undefined) {
+        usageLedger.markReconnectRequired({ provider: "codex", accountRef: turnEvent.accountRef })
+      }
+      if (turnEvent.kind === "child_failed" &&
+        turnEvent.reason === "account_reconnect_required" &&
+        turnEvent.accountRef !== null) {
+        usageLedger.markReconnectRequired({ provider: "codex", accountRef: turnEvent.accountRef })
+      }
       // Persist tool trace and effective-model lines so the finalized
       // transcript keeps the same evidence the live stream showed (bounded by
       // the store's note cap).
@@ -539,6 +623,11 @@ ipcMain.handle(CodexAccountsChannel, () => hostLifecycle.account()?.listAccounts
 ipcMain.handle(CodexConnectStartChannel, () => hostLifecycle.account()?.start() ?? { state: "failed", reason: "pylon_runtime_unavailable" })
 ipcMain.handle(CodexConnectStatusChannel, () => hostLifecycle.account()?.status() ?? { state: "failed", reason: "pylon_runtime_unavailable" })
 ipcMain.handle(CodexConnectOpenChannel, () => hostLifecycle.account()?.openVerification() ?? Promise.resolve(false))
+
+// Session usage ledger (#8712 Lane C): snapshot on invoke, push on change.
+// Renderer-argument-free; the snapshot carries only refs, provider names,
+// requested models (spawn-config truth), counts, and token totals.
+ipcMain.handle(UsageLedgerSnapshotChannel, () => usageLedger.snapshot())
 
 // Provider-neutral fleet accounts (#8712): read-only projections. List takes
 // no renderer arguments; usage validates the account ref on both sides of the
@@ -589,7 +678,13 @@ const createWindow = (): BrowserWindow => {
   const closeWindowScope = hostLifecycle.registerWindow(`window.${window.id}`, runtimeGateway.subscribe(event => {
     if (!window.isDestroyed()) window.webContents.send(DesktopRuntimeGatewayEventChannel, event)
   }))
-  window.once("closed", closeWindowScope)
+  const unsubscribeLedger = usageLedger.subscribe(snapshot => {
+    if (!window.isDestroyed()) window.webContents.send(UsageLedgerEventChannel, snapshot)
+  })
+  window.once("closed", () => {
+    unsubscribeLedger()
+    closeWindowScope()
+  })
   window.once("ready-to-show", () => {
     window.show()
   })
@@ -949,9 +1044,18 @@ const smokeFableLocalStreaming = `(async () => {
     if (text === finalText && input.disabled === false) break
     await wait(25)
   }
-  const trace = Array.from(
+  const systemRows = () => Array.from(
     document.querySelectorAll('[data-en-key="shell-transcript"] [data-en-message][data-en-role="system"]'),
-  ).some((row) => (row.textContent ?? "").includes("Read"))
+  ).map((row) => row.textContent ?? "")
+  const trace = systemRows().some((text) => text.includes("Read"))
+  // Codex delegation (#8712 Lane C): the fixture turn calls the REAL
+  // mcp__codex__delegate handler once (scripted codex exec child behind it);
+  // the transcript must show the tool_use/tool_result pair — the started
+  // trace line and the result line carrying the child's answer text.
+  const delegateUse = systemRows().some((text) =>
+    text.includes("mcp__codex__delegate") && text.includes("started"))
+  const delegateResult = systemRows().some((text) =>
+    text.includes("mcp__codex__delegate") && text.includes("Codex child fixture answer."))
   const body = assistantBody()
   const strong = body === null ? null : body.querySelector("strong")
   const markdownRendered = strong !== null && strong.textContent === "streaming" &&
@@ -962,12 +1066,14 @@ const smokeFableLocalStreaming = `(async () => {
     lastAssistant.querySelector('[data-en-role="sender"]') === null
   return {
     ok: sawPartial && assistantText() === finalText && input.disabled === false && trace &&
-      markdownRendered && noAssistantLabel,
+      markdownRendered && noAssistantLabel && delegateUse && delegateResult,
     sawPartial,
     finalized: assistantText() === finalText,
     trace,
     markdownRendered,
     noAssistantLabel,
+    delegateUse,
+    delegateResult,
     text: assistantText(),
   }
 })()`
@@ -1058,12 +1164,27 @@ const smokeOpenFleetWorkspace = `(async () => {
     document.querySelector('[data-en-key="fleet-ref-' + ref + '"]')?.textContent ?? null)
   const revoked = document.querySelector('[data-en-key="fleet-readiness-codex-2"]')
   const dots = document.querySelector('[data-en-key="fleet-status-dots"]')
+  // Session usage ledger (#8712 Lane C): the earlier fixture delegation left
+  // exact rows — codex needs reconnect (child observed the revoked token;
+  // this SUPERSEDES its presence-based "ready"), codex-2 served the child
+  // with exact usage and the requested model recorded as spawn-config truth.
+  const ledgerSection = document.querySelector('[data-en-key="fleet-session-usage"]')
+  const ledgerTotal = document.querySelector('[data-en-key="fleet-ledger-total-codex-2"]')
+  const ledgerModel = document.querySelector('[data-en-key="fleet-ledger-model-codex-2"]')
+  const reconnectReadiness = document.querySelector('[data-en-key="fleet-readiness-codex"]')
   return {
     ok: panel !== null && dots !== null &&
       refs.every((value, index) => value === expected[index]) &&
-      revoked !== null && revoked.textContent === "credentials-missing",
+      revoked !== null && revoked.textContent === "credentials-missing" &&
+      ledgerSection !== null &&
+      ledgerTotal !== null && (ledgerTotal.textContent ?? "").includes("1,440") &&
+      ledgerModel !== null && (ledgerModel.textContent ?? "").includes("gpt-5.6-sol") &&
+      reconnectReadiness !== null && reconnectReadiness.textContent === "reconnect required",
     refs,
     revokedReadiness: revoked === null ? null : revoked.textContent,
+    ledgerTotal: ledgerTotal === null ? null : ledgerTotal.textContent,
+    ledgerModel: ledgerModel === null ? null : ledgerModel.textContent,
+    reconnectReadiness: reconnectReadiness === null ? null : reconnectReadiness.textContent,
   }
 })()`
 
@@ -1232,6 +1353,7 @@ app.on("before-quit", () => {
   hostLifecycle.dispose()
   providerAccounts.dispose()
   fableLocal.dispose()
+  usageLedger.dispose()
   desktopCorrelationJournal.dispose()
 })
 

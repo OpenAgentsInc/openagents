@@ -44,10 +44,17 @@ import {
   FABLE_LOCAL_DELTA_LIMIT,
   FABLE_LOCAL_FINAL_TEXT_LIMIT,
   FABLE_LOCAL_SUMMARY_LIMIT,
+  type FableChildUsage,
   type FableLocalAvailability,
   type FableLocalEvent,
   type FableLocalFailureReason,
 } from "./fable-local-contract.ts"
+import {
+  CODEX_CHILD_MODEL,
+  CODEX_CHILD_REASONING_EFFORT,
+  type CodexChildResult,
+  type CodexChildRunInput,
+} from "./codex-child-contract.ts"
 
 const CLAUDE_AGENT_SDK_PACKAGE = "@anthropic-ai/claude-agent-sdk"
 /** Read-only chat-turn tool set: no Bash, no Write/Edit, no WebSearch. */
@@ -70,6 +77,36 @@ export const FABLE_LOCAL_MODEL_FAMILY_PREFIX = "claude-fable"
 export const FABLE_LOCAL_DISALLOWED_TOOLS = ["Skill"] as const
 export const FABLE_LOCAL_MAX_TURNS = 16
 export const FABLE_LOCAL_TIMEOUT_MS = 180_000
+/**
+ * Codex delegation (#8712 Lane C): the fully-qualified SDK MCP tool name.
+ * It must be listed in `allowedTools` (next to Read/Glob/Grep) or the CLI
+ * auto-denies it under permissionMode "default".
+ */
+export const FABLE_DELEGATE_TOOL_NAME = "mcp__codex__delegate"
+/** Up to 3 simultaneous delegate calls per turn (the SDK parallelizes
+ * concurrency-safe tool calls); at most 6 children per turn total. Over-cap
+ * calls return a typed refusal — no child is ever spawned past a cap. */
+export const FABLE_DELEGATE_MAX_CONCURRENT = 3
+export const FABLE_DELEGATE_MAX_CHILDREN_PER_TURN = 6
+/**
+ * SDK MCP tool calls can exceed the CLI's 60s stream-close default and the
+ * Codex children run up to 240s, so the child env pins
+ * CLAUDE_CODE_STREAM_CLOSE_TIMEOUT above the child budget.
+ */
+export const FABLE_STREAM_CLOSE_TIMEOUT_MS = 270_000
+/** Turn wall clock when delegation is enabled: children may take 240s each. */
+export const FABLE_LOCAL_DELEGATION_TIMEOUT_MS = 600_000
+/**
+ * The delegate tool contract shown to the model. LIMITATION (receipted): the
+ * codex exec --json stream does not echo model/effort, so the pin is
+ * spawn-config truth — the child is REQUESTED as gpt-5.6-sol at medium
+ * reasoning and results are labeled "(requested)".
+ */
+export const FABLE_DELEGATE_TOOL_DESCRIPTION =
+  "Delegate a bounded task to a Codex sub-agent (gpt-5.6-sol, medium reasoning). " +
+  "Returns the sub-agent's final answer. Up to 3 delegations may run at once; " +
+  "at most 6 per turn. The sub-agent is read-only in a scratch workspace. " +
+  "Model/effort are pinned at spawn config (the Codex exec stream does not echo them back)."
 /** Bounded history window prepended when no resumable session exists. */
 export const FABLE_LOCAL_HISTORY_MESSAGES = 12
 export const FABLE_LOCAL_HISTORY_MESSAGE_LIMIT = 2_000
@@ -93,12 +130,48 @@ export type FableLocalTurnInput = Readonly<{
 }>
 
 export type FableLocalTurnResult =
-  /** `accountRef` names the isolated account home that ran the turn
-   * (additive, #8712 message-metadata inspector) — a ref, never a path. */
-  | Readonly<{ ok: true; text: string; totalTokens: number | null; accountRef: string }>
+  | Readonly<{
+      ok: true
+      text: string
+      totalTokens: number | null
+      /** Names the isolated account home that ran the turn (a ref, never a
+       * path) — message-metadata inspector + Lane C ledger attribution. */
+      accountRef: string
+      /** Additive (#8712 Lane C): exact usage split for the session ledger. */
+      usage?: FableChildUsage
+    }>
   | Readonly<{ ok: false; reason: FableLocalFailureReason; detail: string }>
 
 export type FableLocalAccountHome = Readonly<{ ref: string; home: string }>
+
+/**
+ * The Codex child executor behind the delegate tool (see
+ * ./codex-child-runtime.ts). Injectable so tests and the smoke fixture drive
+ * the REAL delegate handler with a scripted child.
+ */
+export type FableDelegateRuntime = Readonly<{
+  runChild: (input: CodexChildRunInput) => Promise<CodexChildResult>
+}>
+
+/**
+ * The SDK-MCP construction surface (createSdkMcpServer + tool + the zod raw
+ * shape for the delegate input). Lazy-loaded from the real SDK by default;
+ * injectable so unit tests and the smoke fixture never import the SDK.
+ */
+export type FableSdkMcpFactory = Readonly<{
+  createSdkMcpServer: (options: {
+    name: string
+    version?: string
+    tools: Array<unknown>
+  }) => unknown
+  tool: (
+    name: string,
+    description: string,
+    inputSchema: Record<string, unknown>,
+    handler: (args: Record<string, unknown>, extra: unknown) => Promise<unknown>,
+  ) => unknown
+  delegateInputShape: Record<string, unknown>
+}>
 
 export type FableLocalRuntimeOptions = Readonly<{
   /** Resolved lazily: Electron's userData path is not final at module load. */
@@ -108,6 +181,10 @@ export type FableLocalRuntimeOptions = Readonly<{
   queryImpl?: () => Promise<FableLocalQuery>
   /** Injectable account discovery (tests, smoke fixture). */
   discoverImpl?: () => Promise<ReadonlyArray<FableLocalAccountHome>>
+  /** When present, the lane exposes the mcp__codex__delegate tool. */
+  delegate?: FableDelegateRuntime
+  /** Injectable MCP construction (tests, smoke fixture). */
+  mcpImpl?: () => Promise<FableSdkMcpFactory>
   timeoutMs?: number
 }>
 
@@ -196,6 +273,76 @@ const usageTotalTokens = (value: unknown): number | null => {
   return total > 0 ? total : null
 }
 
+/** Exact SDK result usage split for the ledger (same fields as the total). */
+const usageSplitFromResult = (value: unknown): FableChildUsage | null => {
+  if (value === null || typeof value !== "object") return null
+  const usage = value as Record<string, unknown>
+  const finite = (candidate: unknown): number =>
+    typeof candidate === "number" && Number.isFinite(candidate) && candidate > 0
+      ? Math.trunc(candidate)
+      : 0
+  const inputTokens = finite(usage.input_tokens)
+  const cachedInputTokens = finite(usage.cache_read_input_tokens) +
+    finite(usage.cache_creation_input_tokens)
+  const outputTokens = finite(usage.output_tokens)
+  const totalTokens = inputTokens + cachedInputTokens + outputTokens
+  return totalTokens > 0
+    ? { inputTokens, cachedInputTokens, outputTokens, reasoningTokens: 0, totalTokens }
+    : null
+}
+
+/**
+ * Default MCP construction: the real SDK's createSdkMcpServer/tool plus a
+ * zod raw shape for the delegate input. zod is deliberately NOT an app
+ * dependency (renderer boundary law bans it); the shape is built from the
+ * SDK's OWN installed zod (createRequire from the SDK entry), so the SDK's
+ * schema handling always sees its own zod instances.
+ */
+const defaultMcpFactory = async (): Promise<FableSdkMcpFactory> => {
+  const sdk = (await import(CLAUDE_AGENT_SDK_PACKAGE)) as {
+    createSdkMcpServer?: unknown
+    tool?: unknown
+  }
+  if (typeof sdk.createSdkMcpServer !== "function" || typeof sdk.tool !== "function") {
+    throw new Error("Claude Agent SDK did not expose createSdkMcpServer()/tool().")
+  }
+  const { createRequire } = await import("node:module")
+  const requireFromHere = createRequire(import.meta.url)
+  const sdkRequire = createRequire(requireFromHere.resolve(CLAUDE_AGENT_SDK_PACKAGE))
+  const zodModule = sdkRequire("zod") as { z?: Record<string, unknown> } & Record<string, unknown>
+  const z = (zodModule.z ?? zodModule) as {
+    string: () => { describe: (text: string) => unknown; optional: () => { describe: (text: string) => unknown } }
+  }
+  return {
+    createSdkMcpServer: sdk.createSdkMcpServer as FableSdkMcpFactory["createSdkMcpServer"],
+    tool: sdk.tool as FableSdkMcpFactory["tool"],
+    delegateInputShape: {
+      task: z.string().describe("The bounded task for the Codex sub-agent."),
+      context: z.string().optional().describe("Optional extra context for the task."),
+    },
+  }
+}
+
+const childUsageToLedger = (
+  usage: Extract<CodexChildResult, { ok: true }>["usage"],
+): FableChildUsage | null =>
+  usage === null
+    ? null
+    : {
+        inputTokens: usage.inputTokens,
+        cachedInputTokens: usage.cachedInputTokens,
+        outputTokens: usage.outputTokens,
+        reasoningTokens: usage.reasoningOutputTokens,
+        totalTokens: usage.totalTokens,
+      }
+
+const childUsageFooter = (result: Extract<CodexChildResult, { ok: true }>): string => {
+  const usage = result.usage === null
+    ? "usage unavailable"
+    : `${result.usage.totalTokens.toLocaleString("en-US")} tokens (in ${result.usage.inputTokens} / cached ${result.usage.cachedInputTokens} / out ${result.usage.outputTokens} / reasoning ${result.usage.reasoningOutputTokens})`
+  return `[codex child · account ${result.accountRef} · ${result.requestedModel} (requested, ${result.requestedEffort} reasoning) · ${usage} · ${(result.durationMs / 1000).toFixed(1)}s]`
+}
+
 export type FableLocalRuntime = Readonly<{
   availability: () => Promise<FableLocalAvailability>
   runTurn: (input: FableLocalTurnInput) => Promise<FableLocalTurnResult>
@@ -206,7 +353,10 @@ export type FableLocalRuntime = Readonly<{
 export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableLocalRuntime => {
   const env = options.env ?? (process.env as Record<string, string | undefined>)
   const discover = options.discoverImpl ?? (() => discoverReadyFableClaudeHomes(env))
-  const timeoutMs = options.timeoutMs ?? FABLE_LOCAL_TIMEOUT_MS
+  // With delegation enabled the turn budget covers up to 240s Codex children.
+  const timeoutMs = options.timeoutMs ??
+    (options.delegate === undefined ? FABLE_LOCAL_TIMEOUT_MS : FABLE_LOCAL_DELEGATION_TIMEOUT_MS)
+  const loadMcp = options.mcpImpl ?? defaultMcpFactory
   const loadQuery = options.queryImpl ?? (async () => {
     const sdk = (await import(CLAUDE_AGENT_SDK_PACKAGE)) as { query?: unknown }
     if (typeof sdk.query !== "function") throw new Error("Claude Agent SDK did not expose query().")
@@ -256,6 +406,145 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
       return emitFailure(failure("session_failed", error instanceof Error ? error.name : "workspace unavailable"))
     }
     const redact = (value: string): string => redactFableLocalText(value, { workspace })
+
+    // -----------------------------------------------------------------------
+    // Codex delegation (#8712 Lane C): one SDK MCP server exposing
+    // mcp__codex__delegate. The handler runs the injected child runtime with
+    // per-turn caps (3 concurrent / 6 total). All caps refuse TYPED — no
+    // child is spawned past a cap and the model sees the refusal text.
+    // Per-child lifecycle flows into the SAME FableLocalEvent envelope so
+    // the UI has live child visibility without new transcript components.
+    // -----------------------------------------------------------------------
+    const delegation = { active: 0, total: 0, sequence: 0 }
+    const toolText = (text: string, isError = false): Record<string, unknown> => ({
+      content: [{ type: "text", text }],
+      ...(isError ? { isError: true } : {}),
+    })
+    const delegateHandler = async (args: Record<string, unknown>): Promise<unknown> => {
+      const delegate = options.delegate
+      if (delegate === undefined) {
+        return toolText("Delegation is not available in this session.", true)
+      }
+      const task = typeof args.task === "string" ? args.task.trim() : ""
+      const context = typeof args.context === "string" ? args.context : undefined
+      if (task === "") return toolText("Delegation refused: task must be a non-empty string.", true)
+      if (delegation.total >= FABLE_DELEGATE_MAX_CHILDREN_PER_TURN) {
+        return toolText(
+          `Delegation refused: this turn already dispatched ${FABLE_DELEGATE_MAX_CHILDREN_PER_TURN} Codex children (per-turn cap). No child was spawned.`,
+          true,
+        )
+      }
+      if (delegation.active >= FABLE_DELEGATE_MAX_CONCURRENT) {
+        return toolText(
+          `Delegation refused: ${FABLE_DELEGATE_MAX_CONCURRENT} Codex children are already running (concurrency cap). Wait for one to finish, then delegate again. No child was spawned.`,
+          true,
+        )
+      }
+      delegation.total += 1
+      delegation.active += 1
+      delegation.sequence += 1
+      const childRef = bounded(`child.codex.${input.turnRef}.${delegation.sequence}`, 120)
+      input.emit({
+        kind: "child_started",
+        childRef,
+        summary: bounded(redact(task), FABLE_LOCAL_SUMMARY_LIMIT),
+      })
+      try {
+        const result = await delegate.runChild({
+          childRef,
+          task,
+          ...(context === undefined ? {} : { context }),
+          onEvent: event => {
+            if (event.kind === "attempt_started") {
+              input.emit({
+                kind: "child_activity",
+                childRef,
+                activity: "item",
+                accountRef: event.accountRef,
+                summary: bounded(
+                  `spawning codex exec on account ${event.accountRef} (${CODEX_CHILD_MODEL}, ${CODEX_CHILD_REASONING_EFFORT} reasoning requested)`,
+                  FABLE_LOCAL_SUMMARY_LIMIT,
+                ),
+              })
+              return
+            }
+            if (event.kind === "item") {
+              input.emit({
+                kind: "child_activity",
+                childRef,
+                activity: "item",
+                summary: bounded(`${event.itemType}: ${event.summary}`, FABLE_LOCAL_SUMMARY_LIMIT),
+              })
+              return
+            }
+            // account_reconnect_required: a revoked-credential account is
+            // skipped VISIBLY — typed event, never a silent rotation.
+            input.emit({
+              kind: "child_activity",
+              childRef,
+              activity: "account_reconnect_required",
+              accountRef: event.accountRef,
+              summary: bounded(
+                `account ${event.accountRef} needs reconnect (${event.detail}) — rotating to the next registered Codex account`,
+                FABLE_LOCAL_SUMMARY_LIMIT,
+              ),
+            })
+          },
+        })
+        if (result.ok) {
+          input.emit({
+            kind: "child_completed",
+            childRef,
+            accountRef: result.accountRef,
+            summary: bounded(redact(result.text), FABLE_LOCAL_SUMMARY_LIMIT),
+            usage: childUsageToLedger(result.usage),
+            durationMs: result.durationMs,
+          })
+          return toolText(`${result.text}\n\n${childUsageFooter(result)}`)
+        }
+        input.emit({
+          kind: "child_failed",
+          childRef,
+          accountRef: result.accountRef,
+          reason: result.reason,
+          detail: bounded(redact(result.detail), FABLE_LOCAL_SUMMARY_LIMIT),
+        })
+        const failureText = result.reason === "account_reconnect_required"
+          ? `Delegation unavailable: ${result.detail} No Codex child produced output.`
+          : result.reason === "no_codex_account"
+            ? "Delegation unavailable: no Codex account is registered on this machine."
+            : result.reason === "child_timeout"
+              ? `The Codex child timed out (${result.detail}).`
+              : `The Codex child failed: ${result.detail}`
+        return toolText(failureText, true)
+      } finally {
+        delegation.active -= 1
+      }
+    }
+    let mcpServers: Record<string, unknown> | null = null
+    if (options.delegate !== undefined) {
+      try {
+        const mcp = await loadMcp()
+        mcpServers = {
+          codex: mcp.createSdkMcpServer({
+            name: "codex",
+            version: "1.0.0",
+            tools: [
+              mcp.tool(
+                "delegate",
+                FABLE_DELEGATE_TOOL_DESCRIPTION,
+                mcp.delegateInputShape,
+                (args, _extra) => delegateHandler(args),
+              ),
+            ],
+          }),
+        }
+      } catch {
+        // MCP construction failed: the lane still chats, with no delegate
+        // tool offered (never offered-then-denied, never a silent stub).
+        mcpServers = null
+      }
+    }
 
     const control = {
       interrupted: false,
@@ -319,6 +608,7 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
       let resultIsError = false
       let resultSubtype: string | null = null
       let totalTokens: number | null = null
+      let usageSplit: FableChildUsage | null = null
       const pendingToolCalls = new Map<string, string>()
 
       const finish = (
@@ -333,16 +623,26 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
           prompt,
           options: {
             cwd: workspace,
-            env: pylonAccountEnvironment(env, selection),
+            env: {
+              ...pylonAccountEnvironment(env, selection),
+              // Children run up to 240s; SDK MCP calls must not hit the CLI's
+              // 60s stream-close default while a child is still working.
+              ...(mcpServers === null
+                ? {}
+                : { CLAUDE_CODE_STREAM_CLOSE_TIMEOUT: String(FABLE_STREAM_CLOSE_TIMEOUT_MS) }),
+            },
             abortController: abort,
             includePartialMessages: true,
             maxTurns: FABLE_LOCAL_MAX_TURNS,
             model: FABLE_LOCAL_MODEL,
             permissionMode: "default",
-            allowedTools: [...FABLE_LOCAL_ALLOWED_TOOLS],
+            allowedTools: mcpServers === null
+              ? [...FABLE_LOCAL_ALLOWED_TOOLS]
+              : [...FABLE_LOCAL_ALLOWED_TOOLS, FABLE_DELEGATE_TOOL_NAME],
             disallowedTools: [...FABLE_LOCAL_DISALLOWED_TOOLS],
             skills: [],
             settingSources: [],
+            ...(mcpServers === null ? {} : { mcpServers }),
             ...(resumeSessionId === undefined ? {} : { resume: resumeSessionId }),
           },
         })
@@ -438,6 +738,7 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
               resultText = bounded(redact(record.result), FABLE_LOCAL_FINAL_TEXT_LIMIT)
             }
             totalTokens = usageTotalTokens(record.usage)
+            usageSplit = usageSplitFromResult(record.usage)
           }
         }
       } catch (error) {
@@ -464,8 +765,19 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
       if (sessionId !== null) {
         sessionByThread.set(input.threadRef, { sessionId, accountRef: account.ref })
       }
-      input.emit({ kind: "turn_completed", totalTokens })
-      return finish({ ok: true, text, totalTokens, accountRef: account.ref })
+      input.emit({
+        kind: "turn_completed",
+        totalTokens,
+        accountRef: account.ref,
+        ...(usageSplit === null ? {} : { usage: usageSplit }),
+      })
+      return finish({
+        ok: true,
+        text,
+        totalTokens,
+        accountRef: account.ref,
+        ...(usageSplit === null ? {} : { usage: usageSplit }),
+      })
     }
 
     try {
@@ -524,13 +836,55 @@ export const FABLE_LOCAL_FIXTURE_ACCOUNT: FableLocalAccountHome = {
 }
 
 /**
+ * Fixture MCP factory (tests + smoke): produces PLAIN, introspectable server
+ * objects instead of real SDK McpServer instances, so the fixture query below
+ * can find the delegate tool handler and CALL it — driving the REAL delegate
+ * path (caps, child runtime, child events, ledger feed) with zero SDK import.
+ */
+export type FixtureFableMcpTool = Readonly<{
+  name: string
+  description: string
+  inputSchema: Record<string, unknown>
+  handler: (args: Record<string, unknown>, extra: unknown) => Promise<unknown>
+}>
+
+export const makeFixtureFableMcpFactory = (): FableSdkMcpFactory => ({
+  createSdkMcpServer: options => ({
+    type: "sdk-fixture",
+    name: options.name,
+    version: options.version ?? "0.0.0",
+    tools: options.tools,
+  }),
+  tool: (name, description, inputSchema, handler) =>
+    ({ name, description, inputSchema, handler }) satisfies FixtureFableMcpTool,
+  delegateInputShape: { task: "string", context: "string?" },
+})
+
+/** Finds the fixture-shaped delegate tool inside session options, if any. */
+const fixtureDelegateTool = (options: Record<string, unknown>): FixtureFableMcpTool | null => {
+  const servers = options.mcpServers as Record<string, unknown> | undefined
+  const codex = servers?.codex as { type?: unknown; tools?: unknown } | undefined
+  if (codex?.type !== "sdk-fixture" || !Array.isArray(codex.tools)) return null
+  const tool = codex.tools.find(candidate =>
+    typeof candidate === "object" && candidate !== null &&
+    (candidate as { name?: unknown }).name === "delegate" &&
+    typeof (candidate as { handler?: unknown }).handler === "function")
+  return (tool as FixtureFableMcpTool | undefined) ?? null
+}
+
+export const FABLE_FIXTURE_DELEGATE_TASK = "Summarize the fixture delegation task"
+
+/**
  * Scripted smoke fixture (OPENAGENTS_DESKTOP_SMOKE=1): a canned SDK message
  * sequence — init, spaced text deltas, one read-only tool round trip, and a
- * success result — driven through the REAL event mapping above. Never used
- * in normal runs; main.ts logs when it is active.
+ * success result — driven through the REAL event mapping above. When the
+ * session options carry the FIXTURE MCP delegate tool, the fixture also
+ * invokes the REAL delegate handler once and replays its result as a
+ * tool_use/tool_result pair (the smoke's deterministic delegation proof).
+ * Never used in normal runs; main.ts logs when it is active.
  */
 export const makeFixtureFableLocalQuery = (): FableLocalQuery =>
-  async function* fixture(): AsyncGenerator<unknown> {
+  async function* fixture(input): AsyncGenerator<unknown> {
     yield {
       type: "system",
       subtype: "init",
@@ -558,6 +912,39 @@ export const makeFixtureFableLocalQuery = (): FableLocalQuery =>
       message: {
         content: [{ type: "tool_result", tool_use_id: "fixture-tool-1", content: "bounded fixture read" }],
       },
+    }
+    // Deterministic delegation rung: call the REAL mcp__codex__delegate
+    // handler (scripted Codex child behind it) and replay its CallToolResult
+    // through the same assistant/user mapping a live SDK session uses.
+    const delegate = fixtureDelegateTool(input.options)
+    if (delegate !== null) {
+      yield {
+        type: "assistant",
+        message: {
+          content: [{
+            type: "tool_use",
+            id: "fixture-delegate-1",
+            name: FABLE_DELEGATE_TOOL_NAME,
+            input: { task: FABLE_FIXTURE_DELEGATE_TASK },
+          }],
+        },
+      }
+      const raw = await delegate.handler({ task: FABLE_FIXTURE_DELEGATE_TASK }, {})
+      const record = raw as { content?: Array<{ type?: unknown; text?: unknown }>; isError?: unknown }
+      const text = Array.isArray(record.content)
+        ? record.content.map(part => typeof part.text === "string" ? part.text : "").join(" ")
+        : ""
+      yield {
+        type: "user",
+        message: {
+          content: [{
+            type: "tool_result",
+            tool_use_id: "fixture-delegate-1",
+            is_error: record.isError === true,
+            content: text,
+          }],
+        },
+      }
     }
     await sleep(150)
     yield {

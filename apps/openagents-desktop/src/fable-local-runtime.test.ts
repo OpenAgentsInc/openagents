@@ -11,15 +11,31 @@ import { join } from "node:path"
 
 import { FABLE_LOCAL_DELTA_LIMIT, type FableLocalEvent } from "./fable-local-contract.ts"
 import {
+  FABLE_DELEGATE_MAX_CHILDREN_PER_TURN,
+  FABLE_DELEGATE_MAX_CONCURRENT,
+  FABLE_DELEGATE_TOOL_NAME,
+  FABLE_FIXTURE_DELEGATE_TASK,
   FABLE_LOCAL_ALLOWED_TOOLS,
   FABLE_LOCAL_DISALLOWED_TOOLS,
   FABLE_LOCAL_MODEL,
+  FABLE_STREAM_CLOSE_TIMEOUT_MS,
   discoverReadyFableClaudeHomes,
   makeFableLocalRuntime,
   makeFixtureFableLocalQuery,
+  makeFixtureFableMcpFactory,
   redactFableLocalText,
+  type FableDelegateRuntime,
   type FableLocalQuery,
+  type FixtureFableMcpTool,
 } from "./fable-local-runtime.ts"
+import {
+  FIXTURE_CODEX_CHILD_TEXT,
+  fixtureCodexRevokedStderr,
+  fixtureCodexRevokedStdout,
+  fixtureCodexSuccessStdout,
+  makeCodexChildRuntime,
+  makeFixtureCodexChildSpawn,
+} from "./codex-child-runtime.ts"
 
 const makeAccountRoot = (): string => {
   const root = mkdtempSync(join(tmpdir(), "fable-local-homes-"))
@@ -112,7 +128,13 @@ describe("makeFableLocalRuntime.runTurn", () => {
       emit: sink.emit,
     })
 
-    expect(result).toEqual({ ok: true, text: "Final answer.", totalTokens: 17, accountRef: "claude-pylon-b" })
+    expect(result).toEqual({
+      ok: true,
+      text: "Final answer.",
+      totalTokens: 17,
+      accountRef: "claude-pylon-b",
+      usage: { inputTokens: 10, cachedInputTokens: 2, outputTokens: 5, reasoningTokens: 0, totalTokens: 17 },
+    })
     expect(sink.events.map(event => event.kind)).toEqual([
       "turn_started",
       "text_delta",
@@ -355,7 +377,13 @@ describe("makeFableLocalRuntime.runTurn", () => {
     const result = await harness.runtime.runTurn({
       turnRef: "turn-fable", threadRef: "thread-fable", history: [], message: "WHAT MODEL ARE YOU", emit: sink.emit,
     })
-    expect(result).toEqual({ ok: true, text: "I am Fable.", totalTokens: 7, accountRef: "claude-pylon-b" })
+    expect(result).toEqual({
+      ok: true,
+      text: "I am Fable.",
+      totalTokens: 7,
+      accountRef: "claude-pylon-b",
+      usage: { inputTokens: 3, cachedInputTokens: 0, outputTokens: 4, reasoningTokens: 0, totalTokens: 7 },
+    })
     expect(sink.events.map(event => event.kind)).toEqual([
       "turn_started",
       "model_effective",
@@ -411,6 +439,291 @@ describe("makeFableLocalRuntime.runTurn", () => {
   })
 })
 
+// ---------------------------------------------------------------------------
+// Codex delegation (#8712 Lane C)
+// ---------------------------------------------------------------------------
+
+const makeDelegateHarness = (input: {
+  script: (captured: CapturedQuery) => AsyncIterable<unknown>
+  delegate: FableDelegateRuntime
+}) => {
+  const root = makeAccountRoot()
+  const captured: CapturedQuery[] = []
+  const query: FableLocalQuery = call => {
+    captured.push(call)
+    return input.script(call)
+  }
+  const scratch = mkdtempSync(join(tmpdir(), "fable-delegate-scratch-"))
+  const runtime = makeFableLocalRuntime({
+    scratchRoot: () => scratch,
+    env: { PYLON_ACCOUNT_HOME_ROOT: root },
+    queryImpl: async () => query,
+    delegate: input.delegate,
+    mcpImpl: async () => makeFixtureFableMcpFactory(),
+  })
+  return { runtime, captured, scratch }
+}
+
+const delegateToolFrom = (captured: CapturedQuery): FixtureFableMcpTool => {
+  const servers = captured.options.mcpServers as Record<string, { tools: Array<FixtureFableMcpTool> }>
+  return servers.codex!.tools[0]!
+}
+
+const okChild = (accountRef: string): ReturnType<FableDelegateRuntime["runChild"]> =>
+  Promise.resolve({
+    ok: true,
+    text: "child answer",
+    usage: null,
+    threadId: null,
+    accountRef,
+    requestedModel: "gpt-5.6-sol",
+    requestedEffort: "medium",
+    durationMs: 5,
+  })
+
+describe("Codex delegation through the Fable lane", () => {
+  test("delegation-enabled sessions expose mcp__codex__delegate in allowedTools, the codex SDK MCP server, and the raised stream-close timeout", async () => {
+    const harness = makeDelegateHarness({
+      script: async function* () {
+        yield { type: "system", subtype: "init", session_id: "session-del", model: FABLE_LOCAL_MODEL }
+        yield { type: "result", subtype: "success", is_error: false, result: "ok" }
+      },
+      delegate: { runChild: () => okChild("codex") },
+    })
+    const sink = collect()
+    const result = await harness.runtime.runTurn({
+      turnRef: "turn-del-opts", threadRef: "thread-del-opts", history: [], message: "hi", emit: sink.emit,
+    })
+    expect(result.ok).toBe(true)
+    const call = harness.captured[0]!
+    expect(call.options.allowedTools).toEqual([...FABLE_LOCAL_ALLOWED_TOOLS, FABLE_DELEGATE_TOOL_NAME])
+    expect(call.options.allowedTools).toContain("mcp__codex__delegate")
+    const servers = call.options.mcpServers as Record<string, { name?: string; tools?: Array<{ name?: string; description?: string }> }>
+    expect(servers.codex).toBeDefined()
+    expect(servers.codex!.tools![0]!.name).toBe("delegate")
+    // The contract docstring states the spawn-config limitation explicitly.
+    expect(servers.codex!.tools![0]!.description).toContain("gpt-5.6-sol, medium reasoning")
+    expect(servers.codex!.tools![0]!.description).toContain("spawn config")
+    const env = call.options.env as Record<string, string | undefined>
+    expect(env.CLAUDE_CODE_STREAM_CLOSE_TIMEOUT).toBe(String(FABLE_STREAM_CLOSE_TIMEOUT_MS))
+  })
+
+  test("without a delegate the tool set is unchanged (no mcpServers, no delegate name, no stream-close env)", async () => {
+    const harness = makeRuntimeHarness({
+      script: async function* () {
+        yield { type: "system", subtype: "init", session_id: "session-plain" }
+        yield { type: "result", subtype: "success", is_error: false, result: "ok" }
+      },
+    })
+    const sink = collect()
+    await harness.runtime.runTurn({
+      turnRef: "turn-plain", threadRef: "thread-plain", history: [], message: "hi", emit: sink.emit,
+    })
+    const call = harness.captured[0]!
+    expect(call.options.allowedTools).toEqual([...FABLE_LOCAL_ALLOWED_TOOLS])
+    expect(call.options.mcpServers).toBeUndefined()
+    expect((call.options.env as Record<string, string | undefined>).CLAUDE_CODE_STREAM_CLOSE_TIMEOUT).toBeUndefined()
+  })
+
+  test("one delegate call end-to-end: revoked account rotates TYPED, exact child usage flows into child_completed and the tool result footer", async () => {
+    const delegate = makeCodexChildRuntime({
+      scratchRoot: () => mkdtempSync(join(tmpdir(), "codex-child-scratch-")),
+      spawnImpl: makeFixtureCodexChildSpawn([
+        { stdout: fixtureCodexRevokedStdout, stderr: fixtureCodexRevokedStderr, exitCode: 1 },
+        { stdout: fixtureCodexSuccessStdout(), exitCode: 0 },
+      ]),
+      discoverImpl: async () => [
+        { ref: "codex", home: "/isolated/codex" },
+        { ref: "codex-2", home: "/isolated/codex-2" },
+      ],
+    })
+    const toolResults: Array<Record<string, unknown>> = []
+    const harness = makeDelegateHarness({
+      script: async function* (captured) {
+        yield { type: "system", subtype: "init", session_id: "session-e2e", model: FABLE_LOCAL_MODEL }
+        const raw = await delegateToolFrom(captured).handler({ task: "summarize the notes" }, {})
+        toolResults.push(raw as Record<string, unknown>)
+        yield { type: "result", subtype: "success", is_error: false, result: "done" }
+      },
+      delegate,
+    })
+    const sink = collect()
+    const result = await harness.runtime.runTurn({
+      turnRef: "turn-e2e", threadRef: "thread-e2e", history: [], message: "go", emit: sink.emit,
+    })
+    expect(result.ok).toBe(true)
+
+    const kinds = sink.events.map(event => event.kind)
+    expect(kinds).toContain("child_started")
+    expect(kinds).toContain("child_activity")
+    expect(kinds).toContain("child_completed")
+    const started = sink.events.find(event => event.kind === "child_started") as Extract<FableLocalEvent, { kind: "child_started" }>
+    expect(started.childRef).toBe("child.codex.turn-e2e.1")
+    expect(started.summary).toContain("summarize the notes")
+    // The revoked account was skipped VISIBLY — typed activity, never silent.
+    const reconnect = sink.events.find(event =>
+      event.kind === "child_activity" && event.activity === "account_reconnect_required") as Extract<FableLocalEvent, { kind: "child_activity" }>
+    expect(reconnect.accountRef).toBe("codex")
+    expect(reconnect.summary).toContain("reconnect")
+    const completed = sink.events.find(event => event.kind === "child_completed") as Extract<FableLocalEvent, { kind: "child_completed" }>
+    expect(completed.accountRef).toBe("codex-2")
+    expect(completed.usage).toEqual({
+      inputTokens: 1200,
+      cachedInputTokens: 900,
+      outputTokens: 180,
+      reasoningTokens: 60,
+      totalTokens: 1440,
+    })
+
+    // Tool result: the child's final answer plus the labeled usage footer.
+    const content = (toolResults[0]!.content as Array<{ text: string }>)[0]!.text
+    expect(toolResults[0]!.isError).toBeUndefined()
+    expect(content).toContain(FIXTURE_CODEX_CHILD_TEXT)
+    expect(content).toContain("account codex-2")
+    expect(content).toContain("gpt-5.6-sol (requested, medium reasoning)")
+    expect(content).toContain("1,440 tokens")
+  })
+
+  test("all-revoked accounts yield a typed child_failed event and an isError tool result naming the reconnect need", async () => {
+    const delegate = makeCodexChildRuntime({
+      scratchRoot: () => mkdtempSync(join(tmpdir(), "codex-child-scratch-")),
+      spawnImpl: makeFixtureCodexChildSpawn([
+        { stdout: fixtureCodexRevokedStdout, stderr: fixtureCodexRevokedStderr, exitCode: 1 },
+      ]),
+      discoverImpl: async () => [
+        { ref: "codex", home: "/isolated/codex" },
+        { ref: "codex-2", home: "/isolated/codex-2" },
+      ],
+    })
+    const toolResults: Array<Record<string, unknown>> = []
+    const harness = makeDelegateHarness({
+      script: async function* (captured) {
+        yield { type: "system", subtype: "init", session_id: "session-revoked", model: FABLE_LOCAL_MODEL }
+        toolResults.push(await delegateToolFrom(captured).handler({ task: "anything" }, {}) as Record<string, unknown>)
+        yield { type: "result", subtype: "success", is_error: false, result: "done" }
+      },
+      delegate,
+    })
+    const sink = collect()
+    const result = await harness.runtime.runTurn({
+      turnRef: "turn-revoked", threadRef: "thread-revoked", history: [], message: "go", emit: sink.emit,
+    })
+    expect(result.ok).toBe(true)
+    const failed = sink.events.find(event => event.kind === "child_failed") as Extract<FableLocalEvent, { kind: "child_failed" }>
+    expect(failed.reason).toBe("account_reconnect_required")
+    expect(failed.detail).toContain("reconnect")
+    expect(toolResults[0]!.isError).toBe(true)
+    const text = (toolResults[0]!.content as Array<{ text: string }>)[0]!.text
+    expect(text).toContain("all 2 registered Codex account(s) need reconnect")
+    expect(text).toContain("No Codex child produced output.")
+    // Both revoked accounts surfaced typed activity events (never silent).
+    expect(sink.events.filter(event =>
+      event.kind === "child_activity" && event.activity === "account_reconnect_required")).toHaveLength(2)
+  })
+
+  test("3 concurrent delegate calls run; the 4th simultaneous call is a typed refusal without spawning", async () => {
+    let started = 0
+    let release: (() => void) | null = null
+    const gate = new Promise<void>(resolve => {
+      release = resolve
+    })
+    const delegate: FableDelegateRuntime = {
+      runChild: async input => {
+        started += 1
+        await gate
+        return okChild(`codex-${input.childRef.slice(-1)}`) as never
+      },
+    }
+    const toolResults: Array<Record<string, unknown>> = []
+    const harness = makeDelegateHarness({
+      script: async function* (captured) {
+        yield { type: "system", subtype: "init", session_id: "session-conc", model: FABLE_LOCAL_MODEL }
+        const tool = delegateToolFrom(captured)
+        const first3 = [
+          tool.handler({ task: "a" }, {}),
+          tool.handler({ task: "b" }, {}),
+          tool.handler({ task: "c" }, {}),
+        ]
+        // Let the three children reach the runtime before the 4th call.
+        await new Promise(resolve => setTimeout(resolve, 10))
+        toolResults.push(await tool.handler({ task: "d" }, {}) as Record<string, unknown>)
+        release!()
+        toolResults.push(...await Promise.all(first3) as Array<Record<string, unknown>>)
+        yield { type: "result", subtype: "success", is_error: false, result: "done" }
+      },
+      delegate,
+    })
+    const sink = collect()
+    const result = await harness.runtime.runTurn({
+      turnRef: "turn-conc", threadRef: "thread-conc", history: [], message: "go", emit: sink.emit,
+    })
+    expect(result.ok).toBe(true)
+    expect(started).toBe(FABLE_DELEGATE_MAX_CONCURRENT)
+    const refusal = (toolResults[0]!.content as Array<{ text: string }>)[0]!.text
+    expect(toolResults[0]!.isError).toBe(true)
+    expect(refusal).toContain("concurrency cap")
+    expect(refusal).toContain("No child was spawned.")
+    // The three admitted children all completed.
+    expect(sink.events.filter(event => event.kind === "child_completed")).toHaveLength(3)
+  })
+
+  test("the 7th child in one turn is refused by the per-turn cap (6 spawned, typed refusal text)", async () => {
+    let spawned = 0
+    const delegate: FableDelegateRuntime = {
+      runChild: async () => {
+        spawned += 1
+        return okChild("codex") as never
+      },
+    }
+    const toolResults: Array<Record<string, unknown>> = []
+    const harness = makeDelegateHarness({
+      script: async function* (captured) {
+        yield { type: "system", subtype: "init", session_id: "session-cap", model: FABLE_LOCAL_MODEL }
+        const tool = delegateToolFrom(captured)
+        for (let index = 0; index < FABLE_DELEGATE_MAX_CHILDREN_PER_TURN + 1; index += 1) {
+          toolResults.push(await tool.handler({ task: `task ${index}` }, {}) as Record<string, unknown>)
+        }
+        yield { type: "result", subtype: "success", is_error: false, result: "done" }
+      },
+      delegate,
+    })
+    const sink = collect()
+    const result = await harness.runtime.runTurn({
+      turnRef: "turn-cap", threadRef: "thread-cap", history: [], message: "go", emit: sink.emit,
+    })
+    expect(result.ok).toBe(true)
+    expect(spawned).toBe(FABLE_DELEGATE_MAX_CHILDREN_PER_TURN)
+    const last = toolResults.at(-1)!
+    expect(last.isError).toBe(true)
+    expect((last.content as Array<{ text: string }>)[0]!.text).toContain("per-turn cap")
+  })
+
+  test("an empty task is refused typed without spawning", async () => {
+    let spawned = 0
+    const delegate: FableDelegateRuntime = {
+      runChild: async () => {
+        spawned += 1
+        return okChild("codex") as never
+      },
+    }
+    const toolResults: Array<Record<string, unknown>> = []
+    const harness = makeDelegateHarness({
+      script: async function* (captured) {
+        yield { type: "system", subtype: "init", session_id: "session-empty", model: FABLE_LOCAL_MODEL }
+        toolResults.push(await delegateToolFrom(captured).handler({ task: "   " }, {}) as Record<string, unknown>)
+        yield { type: "result", subtype: "success", is_error: false, result: "done" }
+      },
+      delegate,
+    })
+    const sink = collect()
+    await harness.runtime.runTurn({
+      turnRef: "turn-empty", threadRef: "thread-empty", history: [], message: "go", emit: sink.emit,
+    })
+    expect(spawned).toBe(0)
+    expect(toolResults[0]!.isError).toBe(true)
+  })
+})
+
 describe("makeFixtureFableLocalQuery (smoke fixture)", () => {
   test("drives the real mapping to a streamed, tool-traced, completed turn", async () => {
     const scratch = mkdtempSync(join(tmpdir(), "fable-local-fixture-"))
@@ -423,7 +736,13 @@ describe("makeFixtureFableLocalQuery (smoke fixture)", () => {
     const result = await runtime.runTurn({
       turnRef: "turn-fixture", threadRef: "thread-fixture", history: [], message: "go", emit: sink.emit,
     })
-    expect(result).toEqual({ ok: true, text: "Fable local **streaming** proof.", totalTokens: 49, accountRef: "claude-pylon-fixture" })
+    expect(result).toEqual({
+      ok: true,
+      text: "Fable local **streaming** proof.",
+      totalTokens: 49,
+      accountRef: "claude-pylon-fixture",
+      usage: { inputTokens: 42, cachedInputTokens: 0, outputTokens: 7, reasoningTokens: 0, totalTokens: 49 },
+    })
     expect(sink.events.map(event => event.kind)).toEqual([
       "turn_started",
       "model_effective",
@@ -435,5 +754,45 @@ describe("makeFixtureFableLocalQuery (smoke fixture)", () => {
       "turn_completed",
     ])
     expect(sink.events[1]).toEqual({ kind: "model_effective", model: "claude-fable-5" })
+  })
+
+  test("with the fixture MCP factory + scripted child, the fixture turn shows the delegate tool_use/tool_result pair and child lifecycle (the smoke's deterministic delegation proof)", async () => {
+    const delegate = makeCodexChildRuntime({
+      scratchRoot: () => mkdtempSync(join(tmpdir(), "codex-child-scratch-")),
+      spawnImpl: makeFixtureCodexChildSpawn([
+        { stdout: fixtureCodexRevokedStdout, stderr: fixtureCodexRevokedStderr, exitCode: 1 },
+        { stdout: fixtureCodexSuccessStdout(), exitCode: 0 },
+      ]),
+      discoverImpl: async () => [
+        { ref: "codex", home: "/isolated/codex" },
+        { ref: "codex-2", home: "/isolated/codex-2" },
+      ],
+    })
+    const runtime = makeFableLocalRuntime({
+      scratchRoot: () => mkdtempSync(join(tmpdir(), "fable-local-fixture-")),
+      queryImpl: async () => makeFixtureFableLocalQuery(),
+      discoverImpl: async () => [{ ref: "claude-pylon-fixture", home: "/nonexistent" }],
+      delegate,
+      mcpImpl: async () => makeFixtureFableMcpFactory(),
+    })
+    const sink = collect()
+    const result = await runtime.runTurn({
+      turnRef: "turn-fixture-delegate", threadRef: "thread-fixture-delegate", history: [], message: "go", emit: sink.emit,
+    })
+    expect(result.ok).toBe(true)
+    const kinds = sink.events.map(event => event.kind)
+    // The mapped pair the transcript renders (existing tool_use/tool_result
+    // rendering — no new transcript components needed)…
+    const delegateUse = sink.events.find(event =>
+      event.kind === "tool_use" && event.toolName === FABLE_DELEGATE_TOOL_NAME) as Extract<FableLocalEvent, { kind: "tool_use" }>
+    expect(delegateUse.summary).toContain(FABLE_FIXTURE_DELEGATE_TASK)
+    const delegateResult = sink.events.find(event =>
+      event.kind === "tool_result" && event.toolName === FABLE_DELEGATE_TOOL_NAME) as Extract<FableLocalEvent, { kind: "tool_result" }>
+    expect(delegateResult.ok).toBe(true)
+    expect(delegateResult.summary).toContain(FIXTURE_CODEX_CHILD_TEXT)
+    // …plus the child lifecycle events for the fleet/ledger side.
+    expect(kinds).toContain("child_started")
+    expect(kinds).toContain("child_completed")
+    expect(kinds.filter(kind => kind === "child_activity").length).toBeGreaterThanOrEqual(2)
   })
 })

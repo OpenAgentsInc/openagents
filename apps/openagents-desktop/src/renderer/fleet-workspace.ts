@@ -26,6 +26,12 @@ import {
 } from "@effect-native/core"
 import { Effect, Exit, Schema, SubscriptionRef } from "@effect-native/core/effect"
 
+import {
+  decodeUsageLedgerSnapshot,
+  type UsageLedgerRow,
+  type UsageLedgerSnapshot,
+} from "../usage-ledger-contract.ts"
+
 export type FleetAccountReadiness = "ready" | "credentials-missing" | "unknown"
 
 export type FleetAccount = Readonly<{
@@ -53,6 +59,14 @@ export type FleetWorkspaceState = Readonly<{
   accounts: ReadonlyArray<FleetAccount>
   usage: Readonly<Record<string, FleetUsageEntry>>
   reason: string | null
+  /**
+   * Session usage ledger (#8712 Lane C): main's exact per-account token
+   * ledger for this desktop session, evidence-labeled "session ledger" —
+   * never merged with the per-account "probe" numbers above. Its
+   * `reconnectRequired` rows also drive the readiness-honesty override
+   * below (probe/child evidence supersedes presence-based "ready").
+   */
+  ledger: UsageLedgerSnapshot | null
 }>
 
 export const emptyFleetWorkspaceState = (): FleetWorkspaceState => ({
@@ -61,6 +75,7 @@ export const emptyFleetWorkspaceState = (): FleetWorkspaceState => ({
   accounts: [],
   usage: {},
   reason: null,
+  ledger: null,
 })
 
 // ---------------------------------------------------------------------------
@@ -158,8 +173,20 @@ export const withFleetProjection = (
         // Usage evidence belongs to the projection it was checked against.
         usage: {},
         reason: null,
+        // The session ledger is main-owned session truth, not projection
+        // evidence — it survives an accounts refresh.
+        ledger: fleet.ledger,
       }
     : { ...fleet, phase: "unavailable", reason: projection.reason }
+
+export const withFleetLedger = (
+  fleet: FleetWorkspaceState,
+  value: unknown,
+): FleetWorkspaceState => {
+  const ledger = decodeUsageLedgerSnapshot(value)
+  // A failed decode never erases previously decoded ledger evidence.
+  return ledger === null ? fleet : { ...fleet, ledger }
+}
 
 export const withFleetUsageChecking = (
   fleet: FleetWorkspaceState,
@@ -188,11 +215,14 @@ export const FleetManageAccountsRequested = defineIntent(
   "FleetManageAccountsRequested",
   Schema.Null,
 )
+/** Ledger push arrived (#8712 Lane C): re-pull the snapshot from the bridge. */
+export const FleetLedgerUpdated = defineIntent("FleetLedgerUpdated", Schema.Null)
 
 export const fleetWorkspaceIntents = [
   FleetRefreshRequested,
   FleetUsageCheckRequested,
   FleetManageAccountsRequested,
+  FleetLedgerUpdated,
 ] as const
 
 // ---------------------------------------------------------------------------
@@ -203,6 +233,8 @@ export const fleetWorkspaceIntents = [
 export type FleetAccountsBridge = Readonly<{
   list: () => Promise<unknown>
   usage: (ref: string) => Promise<unknown>
+  /** Session usage ledger snapshot (#8712 Lane C); optional for older hosts. */
+  ledger?: () => Promise<unknown>
 }>
 
 export const unavailableFleetAccountsBridge: FleetAccountsBridge = {
@@ -211,6 +243,19 @@ export const unavailableFleetAccountsBridge: FleetAccountsBridge = {
 }
 
 export type FleetCapableState = Readonly<{ fleet: FleetWorkspaceState }>
+
+const pullFleetLedger = <S extends FleetCapableState>(
+  state: SubscriptionRef.SubscriptionRef<S>,
+  bridge: FleetAccountsBridge,
+) =>
+  Effect.gen(function* () {
+    if (bridge.ledger === undefined) return
+    const snapshot = yield* Effect.promise(() => bridge.ledger!().catch(() => null))
+    yield* SubscriptionRef.update(state, (next) => ({
+      ...next,
+      fleet: withFleetLedger(next.fleet, snapshot),
+    }))
+  })
 
 export const refreshFleetAccounts = <S extends FleetCapableState>(
   state: SubscriptionRef.SubscriptionRef<S>,
@@ -230,6 +275,7 @@ export const refreshFleetAccounts = <S extends FleetCapableState>(
       ...next,
       fleet: withFleetProjection(next.fleet, projection),
     }))
+    yield* pullFleetLedger(state, bridge)
   })
 
 export const makeFleetWorkspaceHandlers = <S extends FleetCapableState>(
@@ -257,6 +303,7 @@ export const makeFleetWorkspaceHandlers = <S extends FleetCapableState>(
       }))
     }),
   FleetManageAccountsRequested: () => manageAccounts?.() ?? Effect.void,
+  FleetLedgerUpdated: () => pullFleetLedger(state, bridge),
 })
 
 // ---------------------------------------------------------------------------
@@ -288,16 +335,38 @@ export const sortFleetAccounts = (
     left.provider.localeCompare(right.provider) ||
     left.ref.localeCompare(right.ref))
 
+/**
+ * Readiness honesty (#8712 Lane C): the upstream projection's "ready" is
+ * auth.json-PRESENCE-only — it does not prove the credential still works
+ * (receipted: every registered codex home was "ready" while its refresh
+ * token was revoked). Probe/child evidence therefore SUPERSEDES presence
+ * evidence: a failed usage probe this session, or a Codex child that hit a
+ * revoked credential (ledger `reconnectRequired`), overrides the account's
+ * presence-based ready with a typed "reconnect required" state.
+ */
+export const fleetReconnectRequired = (
+  fleet: FleetWorkspaceState,
+  account: FleetAccount,
+): boolean => {
+  const ledgerReconnect = fleet.ledger?.rows.some((row) =>
+    row.accountRef === account.ref && row.provider === account.provider &&
+    row.reconnectRequired) ?? false
+  const probeFailed = fleet.usage[account.ref]?.state === "failed"
+  return ledgerReconnect || probeFailed
+}
+
 /** Lit ONLY on decoded ready evidence; everything else is explicitly not lit. */
 export const fleetDotEvidence = (
   fleet: FleetWorkspaceState,
   account: FleetAccount,
-): "lit" | "unlit" | "evidence-unavailable" =>
-  fleet.phase !== "ready" || account.readiness === "unknown"
-    ? "evidence-unavailable"
-    : account.readiness === "ready"
-      ? "lit"
-      : "unlit"
+): "lit" | "unlit" | "evidence-unavailable" | "reconnect-required" =>
+  fleetReconnectRequired(fleet, account)
+    ? "reconnect-required"
+    : fleet.phase !== "ready" || account.readiness === "unknown"
+      ? "evidence-unavailable"
+      : account.readiness === "ready"
+        ? "lit"
+        : "unlit"
 
 /**
  * One status chip: dot + account ref on one line with the provider small and
@@ -321,8 +390,8 @@ const fleetStatusDot = (fleet: FleetWorkspaceState, account: FleetAccount): View
         key: `fleet-dot-icon-${account.ref}`,
         name: "Circle",
         size: "sm",
-        color: evidence === "lit" ? "success" : "textMuted",
-        label: `${account.ref} ${evidence === "lit" ? "ready" : evidence === "unlit" ? "credentials missing" : "evidence unavailable"}`,
+        color: evidence === "lit" ? "success" : evidence === "reconnect-required" ? "warning" : "textMuted",
+        label: `${account.ref} ${evidence === "lit" ? "ready" : evidence === "unlit" ? "credentials missing" : evidence === "reconnect-required" ? "reconnect required" : "evidence unavailable"}`,
       }),
       Text({
         key: `fleet-dot-label-${account.ref}`,
@@ -340,6 +409,14 @@ const fleetStatusDot = (fleet: FleetWorkspaceState, account: FleetAccount): View
         ? [Text({
             key: `fleet-dot-evidence-${account.ref}`,
             content: "evidence unavailable",
+            variant: "caption",
+            color: "warning",
+          })]
+        : []),
+      ...(evidence === "reconnect-required"
+        ? [Text({
+            key: `fleet-dot-reconnect-${account.ref}`,
+            content: "reconnect required",
             variant: "caption",
             color: "warning",
           })]
@@ -437,17 +514,120 @@ const fleetAccountsTable = (fleet: FleetWorkspaceState): View =>
         Text({ key: `fleet-provider-${account.ref}`, content: account.provider, variant: "caption", color: "textMuted" }),
         Text({ key: `fleet-ref-${account.ref}`, content: account.ref, variant: "body", color: "textPrimary" }),
         Text({ key: `fleet-email-${account.ref}`, content: account.email ?? "—", variant: "caption", color: "textMuted" }),
-        Badge({
-          key: `fleet-readiness-${account.ref}`,
-          label: account.readiness,
-          tone: readinessTone(account.readiness),
-          a11y: { label: `Account ${account.ref} readiness: ${account.readiness}` },
-        }),
+        // Readiness honesty: a session-observed revoked credential or failed
+        // probe supersedes the projection's presence-based value in the cell.
+        fleetReconnectRequired(fleet, account)
+          ? Badge({
+              key: `fleet-readiness-${account.ref}`,
+              label: "reconnect required",
+              tone: "warn",
+              a11y: {
+                label: `Account ${account.ref} readiness: reconnect required (probe evidence supersedes presence-based ${account.readiness})`,
+              },
+            })
+          : Badge({
+              key: `fleet-readiness-${account.ref}`,
+              label: account.readiness,
+              tone: readinessTone(account.readiness),
+              a11y: { label: `Account ${account.ref} readiness: ${account.readiness}` },
+            }),
         usageCell(fleet, account),
       ],
     })),
     style: { width: "full" },
   })
+
+/**
+ * Session usage (#8712 Lane C): a compact evidence-labeled section fed from
+ * main's session ledger — exact tokens this desktop session dispatched
+ * (Fable turns + Codex delegate children), per account. Codex rows show the
+ * requested model (spawn-config truth: gpt-5.6-sol). Labeled "session
+ * ledger" so it is never confused with the per-account "probe" numbers in
+ * the table above.
+ */
+const sessionUsageRow = (row: UsageLedgerRow): View =>
+  Stack(
+    {
+      key: `fleet-ledger-row-${row.accountRef}`,
+      direction: "row",
+      gap: "2",
+      align: "center",
+      style: { width: "full", minWidth: 0 },
+    },
+    [
+      Text({
+        key: `fleet-ledger-ref-${row.accountRef}`,
+        content: row.accountRef,
+        variant: "caption",
+        color: "textPrimary",
+      }),
+      Text({
+        key: `fleet-ledger-provider-${row.accountRef}`,
+        content: row.provider,
+        variant: "caption",
+        color: "textMuted",
+      }),
+      ...(row.requestedModel === null
+        ? []
+        : [Text({
+            key: `fleet-ledger-model-${row.accountRef}`,
+            content: `${row.requestedModel} (requested)`,
+            variant: "caption",
+            color: "textMuted",
+          })]),
+      Text({
+        key: `fleet-ledger-counts-${row.accountRef}`,
+        content: `${row.turns} turn(s) · ${row.children} child(ren)`,
+        variant: "caption",
+        color: "textMuted",
+      }),
+      Text({
+        key: `fleet-ledger-total-${row.accountRef}`,
+        content: `${row.totalTokens.toLocaleString("en-US")} tokens`,
+        variant: "caption",
+        color: "textPrimary",
+      }),
+      ...(row.reconnectRequired
+        ? [Text({
+            key: `fleet-ledger-reconnect-${row.accountRef}`,
+            content: "reconnect required",
+            variant: "caption",
+            color: "warning",
+          })]
+        : []),
+    ],
+  )
+
+const sessionUsageSection = (fleet: FleetWorkspaceState): ReadonlyArray<View> => {
+  if (fleet.ledger === null || fleet.ledger.rows.length === 0) return []
+  return [
+    Stack(
+      {
+        key: "fleet-session-usage",
+        direction: "column",
+        gap: "1",
+        style: { width: "full", minWidth: 0 },
+      },
+      [
+        Stack({ key: "fleet-session-usage-heading", direction: "row", gap: "2", align: "center" }, [
+          Text({
+            key: "fleet-session-usage-title",
+            content: "Session usage",
+            variant: "body",
+            color: "textPrimary",
+          }),
+          Text({
+            key: "fleet-session-usage-evidence",
+            content: `${fleet.ledger.evidence} · as of ${formatFleetLocalTime(fleet.ledger.generatedAt)}`,
+            variant: "caption",
+            color: "textMuted",
+          }),
+        ]),
+        ...fleet.ledger.rows.map(sessionUsageRow),
+      ],
+    ),
+  ]
+}
 
 const fleetBody = (fleet: FleetWorkspaceState): ReadonlyArray<View> => {
   if (fleet.phase === "loading" || fleet.phase === "idle") {
@@ -489,6 +669,7 @@ const fleetBody = (fleet: FleetWorkspaceState): ReadonlyArray<View> => {
       sortFleetAccounts(fleet.accounts).map((account) => fleetStatusDot(fleet, account)),
     ),
     fleetAccountsTable(fleet),
+    ...sessionUsageSection(fleet),
   ]
 }
 

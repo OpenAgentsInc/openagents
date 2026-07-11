@@ -61,6 +61,12 @@ import {
   decodeFableLocalStartRequest,
   type FableLocalEventEnvelope,
 } from "./fable-local-contract.ts"
+import {
+  UsageLedgerEventChannel,
+  UsageLedgerSnapshotChannel,
+  decodeUsageLedgerSnapshot,
+  type UsageLedgerSnapshot,
+} from "./usage-ledger-contract.ts"
 
 contextBridge.exposeInMainWorld("openagentsDesktop", {
   host: "electron",
@@ -166,6 +172,22 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
       }
       ipcRenderer.on(FableLocalEventChannel, handler)
       return () => ipcRenderer.removeListener(FableLocalEventChannel, handler)
+    },
+  },
+  /**
+   * Session usage ledger (#8712 Lane C): renderer-argument-free snapshot plus
+   * a schema-decoded push stream. Only refs, provider names, requested
+   * models (spawn-config truth), counts, and token totals cross this line.
+   */
+  usageLedger: {
+    snapshot: () => ipcRenderer.invoke(UsageLedgerSnapshotChannel),
+    onEvent: (listener: (snapshot: UsageLedgerSnapshot) => void) => {
+      const handler = (_event: unknown, value: unknown): void => {
+        const decoded = decodeUsageLedgerSnapshot(value)
+        if (decoded !== null) listener(decoded)
+      }
+      ipcRenderer.on(UsageLedgerEventChannel, handler)
+      return () => ipcRenderer.removeListener(UsageLedgerEventChannel, handler)
     },
   },
 })

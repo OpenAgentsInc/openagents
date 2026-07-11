@@ -66,6 +66,20 @@ export const FableLocalFailureReasonSchema = Schema.Literals([
 ])
 export type FableLocalFailureReason = typeof FableLocalFailureReasonSchema.Type
 
+/**
+ * Exact token split (#8712 Lane C) shared by turn_completed (SDK result
+ * usage) and child_completed (codex `turn.completed` usage; total = input +
+ * output + reasoning, cached reported separately).
+ */
+export const FableChildUsageSchema = Schema.Struct({
+  inputTokens: Schema.Number,
+  cachedInputTokens: Schema.Number,
+  outputTokens: Schema.Number,
+  reasoningTokens: Schema.Number,
+  totalTokens: Schema.Number,
+})
+export type FableChildUsage = typeof FableChildUsageSchema.Type
+
 export const FableLocalEventSchema = Schema.Union([
   Schema.Struct({
     kind: Schema.Literal("turn_started"),
@@ -103,10 +117,63 @@ export const FableLocalEventSchema = Schema.Union([
   Schema.Struct({
     kind: Schema.Literal("turn_completed"),
     totalTokens: Schema.NullOr(Schema.Number),
+    /**
+     * Additive (#8712 Lane C): the account the completed turn ran on and the
+     * exact SDK usage split, so the session usage ledger can attribute exact
+     * tokens per account. Both optional — older emitters stay schema-valid.
+     */
+    accountRef: Schema.optional(Schema.String),
+    usage: Schema.optional(FableChildUsageSchema),
   }),
   Schema.Struct({
     kind: Schema.Literal("turn_failed"),
     reason: FableLocalFailureReasonSchema,
+    detail: Schema.String.check(Schema.isMaxLength(FABLE_LOCAL_SUMMARY_LIMIT)),
+  }),
+  // -------------------------------------------------------------------------
+  // Codex sub-agent (child) lifecycle (#8712 Lane C) — additive. The renderer
+  // needs no new components today (the delegate tool's tool_use/tool_result
+  // lines already render); these events exist so the UI can project child
+  // cards later and so main can feed the session usage ledger. Every field is
+  // bounded and public-safe (account refs are already renderer-visible via
+  // the fleet projection; no paths, prompts, or credentials).
+  // -------------------------------------------------------------------------
+  Schema.Struct({
+    kind: Schema.Literal("child_started"),
+    childRef: Schema.String.check(Schema.isMaxLength(120)),
+    accountRef: Schema.optional(Schema.String),
+    summary: Schema.String.check(Schema.isMaxLength(FABLE_LOCAL_SUMMARY_LIMIT)),
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("child_activity"),
+    childRef: Schema.String.check(Schema.isMaxLength(120)),
+    /**
+     * "item": a completed child stream item. "account_reconnect_required":
+     * an account with revoked credentials was skipped VISIBLY (typed event,
+     * never a silent rotation) before the next registered Codex home ran.
+     */
+    activity: Schema.Literals(["item", "account_reconnect_required"]),
+    accountRef: Schema.optional(Schema.String),
+    summary: Schema.String.check(Schema.isMaxLength(FABLE_LOCAL_SUMMARY_LIMIT)),
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("child_completed"),
+    childRef: Schema.String.check(Schema.isMaxLength(120)),
+    accountRef: Schema.String,
+    summary: Schema.String.check(Schema.isMaxLength(FABLE_LOCAL_SUMMARY_LIMIT)),
+    usage: Schema.NullOr(FableChildUsageSchema),
+    durationMs: Schema.Number,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("child_failed"),
+    childRef: Schema.String.check(Schema.isMaxLength(120)),
+    accountRef: Schema.NullOr(Schema.String),
+    reason: Schema.Literals([
+      "account_reconnect_required",
+      "no_codex_account",
+      "child_timeout",
+      "child_failed",
+    ]),
     detail: Schema.String.check(Schema.isMaxLength(FABLE_LOCAL_SUMMARY_LIMIT)),
   }),
 ])

@@ -13,11 +13,13 @@ import {
   decodeFleetUsageEntry,
   emptyFleetWorkspaceState,
   fleetDotEvidence,
+  fleetReconnectRequired,
   fleetWorkspaceIntents,
   fleetWorkspaceView,
   formatFleetLocalTime,
   makeFleetWorkspaceHandlers,
   sortFleetAccounts,
+  withFleetLedger,
   withFleetLoading,
   withFleetProjection,
   withFleetUsageChecking,
@@ -25,6 +27,7 @@ import {
   type FleetAccount,
   type FleetWorkspaceState,
 } from "./fleet-workspace.ts"
+import type { UsageLedgerSnapshot } from "../usage-ledger-contract.ts"
 
 const { makeIntentRegistry } = await import("@effect-native/core")
 
@@ -251,6 +254,113 @@ describe("fleetWorkspaceView (state -> component tree)", () => {
   })
 })
 
+// ---------------------------------------------------------------------------
+// Session usage ledger + readiness honesty (#8712 Lane C)
+// ---------------------------------------------------------------------------
+
+const ledgerSnapshot: UsageLedgerSnapshot = {
+  ok: true,
+  generatedAt: "2026-07-11T12:10:00.000Z",
+  evidence: "session ledger",
+  rows: [
+    {
+      accountRef: "codex",
+      provider: "codex",
+      requestedModel: "gpt-5.6-sol",
+      turns: 0,
+      children: 0,
+      inputTokens: 0,
+      cachedInputTokens: 0,
+      outputTokens: 0,
+      reasoningTokens: 0,
+      totalTokens: 0,
+      reconnectRequired: true,
+      updatedAt: "2026-07-11T12:10:00.000Z",
+    },
+    {
+      accountRef: "codex-2",
+      provider: "codex",
+      requestedModel: "gpt-5.6-sol",
+      turns: 0,
+      children: 1,
+      inputTokens: 1200,
+      cachedInputTokens: 900,
+      outputTokens: 180,
+      reasoningTokens: 60,
+      totalTokens: 1440,
+      reconnectRequired: false,
+      updatedAt: "2026-07-11T12:10:00.000Z",
+    },
+  ],
+}
+
+describe("session usage ledger section + readiness honesty override", () => {
+  const withLedger = withFleetLedger(readyState, ledgerSnapshot)
+
+  test("renders the evidence-labeled Session usage section with per-account rows and the requested codex model", () => {
+    const view = fleetWorkspaceView(withLedger)
+    expect(nodeByKey(view, "fleet-session-usage")).toBeDefined()
+    expect(nodeByKey(view, "fleet-session-usage-evidence")?.content).toBe(
+      `session ledger · as of ${formatFleetLocalTime("2026-07-11T12:10:00.000Z")}`,
+    )
+    expect(nodeByKey(view, "fleet-ledger-total-codex-2")?.content).toBe("1,440 tokens")
+    expect(nodeByKey(view, "fleet-ledger-counts-codex-2")?.content).toBe("0 turn(s) · 1 child(ren)")
+    // Codex rows carry the requested model as spawn-config truth.
+    expect(nodeByKey(view, "fleet-ledger-model-codex-2")?.content).toBe("gpt-5.6-sol (requested)")
+    expect(nodeByKey(view, "fleet-ledger-reconnect-codex")?.content).toBe("reconnect required")
+    expect(nodeByKey(view, "fleet-ledger-reconnect-codex-2")).toBeUndefined()
+  })
+
+  test("no ledger evidence renders no Session usage section (never an empty optimistic block)", () => {
+    expect(nodeByKey(fleetWorkspaceView(readyState), "fleet-session-usage")).toBeUndefined()
+    const emptyRows = withFleetLedger(readyState, { ...ledgerSnapshot, rows: [] })
+    expect(nodeByKey(fleetWorkspaceView(emptyRows), "fleet-session-usage")).toBeUndefined()
+  })
+
+  test("withFleetLedger refuses an invalid snapshot and keeps prior evidence", () => {
+    expect(withFleetLedger(withLedger, { ok: false }).ledger).toEqual(ledgerSnapshot)
+    expect(withFleetLedger(withLedger, null).ledger).toEqual(ledgerSnapshot)
+  })
+
+  test("READINESS HONESTY: a ledger reconnectRequired row supersedes presence-based ready in dot and cell", () => {
+    // Upstream projection says codex is "ready" (auth.json presence only)…
+    expect(readyAccount.readiness).toBe("ready")
+    // …but the session observed a revoked credential: typed override.
+    expect(fleetReconnectRequired(withLedger, readyAccount)).toBe(true)
+    expect(fleetDotEvidence(withLedger, readyAccount)).toBe("reconnect-required")
+    const view = fleetWorkspaceView(withLedger)
+    expect(nodeByKey(view, "fleet-readiness-codex")?.label).toBe("reconnect required")
+    expect(nodeByKey(view, "fleet-readiness-codex")?.tone).toBe("warn")
+    expect(nodeByKey(view, "fleet-dot-icon-codex")?.color).toBe("warning")
+    expect(nodeByKey(view, "fleet-dot-reconnect-codex")?.content).toBe("reconnect required")
+    // Accounts without reconnect evidence keep their projection readiness.
+    expect(fleetDotEvidence(withLedger, revokedAccount)).toBe("unlit")
+    expect(nodeByKey(view, "fleet-readiness-codex-2")?.label).toBe("credentials-missing")
+  })
+
+  test("READINESS HONESTY: a FAILED usage probe also supersedes presence-based ready", () => {
+    const probeFailed = withFleetUsageEntry(readyState, "codex", {
+      state: "failed",
+      reason: "accounts_command_failed",
+    })
+    expect(fleetReconnectRequired(probeFailed, readyAccount)).toBe(true)
+    expect(fleetDotEvidence(probeFailed, readyAccount)).toBe("reconnect-required")
+    expect(nodeByKey(fleetWorkspaceView(probeFailed), "fleet-readiness-codex")?.label)
+      .toBe("reconnect required")
+    // A merely pending or successful probe never triggers the override.
+    expect(fleetReconnectRequired(withFleetUsageChecking(readyState, "codex"), readyAccount)).toBe(false)
+  })
+
+  test("the ledger survives an accounts refresh (session truth, not projection evidence)", () => {
+    const refreshed = withFleetProjection(withLedger, {
+      ok: true,
+      generatedAt: "2026-07-11T13:00:00.000Z",
+      accounts: [readyAccount],
+    })
+    expect(refreshed.ledger).toEqual(ledgerSnapshot)
+  })
+})
+
 describe("renderer bridge decode", () => {
   test("list decode drops out-of-grammar refs and bounds strings", () => {
     const decoded = decodeFleetAccountsProjection({
@@ -365,6 +475,58 @@ describe("typed fleet intent loop (registry -> state -> re-render)", () => {
           outputTokens: 5,
           totalTokens: 15,
         })
+      }),
+    )
+  })
+
+  test("refresh also pulls the session ledger snapshot when the bridge exposes it", async () => {
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const { state, registry } = yield* makeHarness({
+          list: async () => ({
+            ok: true,
+            generatedAt: "2026-07-11T13:00:00.000Z",
+            accounts: [{ ref: "codex", provider: "codex", email: null, readiness: "ready" }],
+          }),
+          usage: async (ref) => ({ ok: false, ref, reason: "unused" }),
+          ledger: async () => ledgerSnapshot,
+        })
+        yield* registry.dispatch(resolveIntentRef(IntentRef("FleetRefreshRequested", StaticPayload(null)), null))
+        const next = (yield* SubscriptionRef.get(state)).fleet
+        expect(next.ledger).toEqual(ledgerSnapshot)
+      }),
+    )
+  })
+
+  test("FleetLedgerUpdated re-pulls the snapshot through the bridge (push channel loop)", async () => {
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        let pulls = 0
+        const { state, registry } = yield* makeHarness({
+          list: async () => ({ ok: false, reason: "unused" }),
+          usage: async (ref) => ({ ok: false, ref, reason: "unused" }),
+          ledger: async () => {
+            pulls += 1
+            return ledgerSnapshot
+          },
+        })
+        yield* registry.dispatch(resolveIntentRef(IntentRef("FleetLedgerUpdated", StaticPayload(null)), null))
+        expect(pulls).toBe(1)
+        const next = (yield* SubscriptionRef.get(state)).fleet
+        expect(next.ledger).toEqual(ledgerSnapshot)
+      }),
+    )
+  })
+
+  test("FleetLedgerUpdated on a ledger-less bridge is a no-op (older hosts)", async () => {
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const { state, registry } = yield* makeHarness({
+          list: async () => ({ ok: false, reason: "unused" }),
+          usage: async (ref) => ({ ok: false, ref, reason: "unused" }),
+        })
+        yield* registry.dispatch(resolveIntentRef(IntentRef("FleetLedgerUpdated", StaticPayload(null)), null))
+        expect((yield* SubscriptionRef.get(state)).fleet.ledger).toBeNull()
       }),
     )
   })
