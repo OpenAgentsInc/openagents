@@ -337,7 +337,7 @@ IDs. OpenCode's command definitions remain renderer callbacks, however; they do
 not yet constitute an end-to-end authority contract with typed input/output,
 policy metadata, idempotency, and durable outcomes. OpenAgents should use the
 same ergonomic catalog while extending the command identity through Effect
-Native, Pylon, Source Authority, Khala Sync, and receipts.
+Native, Pylon, Blueprint, Khala Sync, and receipts.
 
 ## 9. Runtime: Effect services, SQLite facts, and scoped instances
 

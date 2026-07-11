@@ -1487,7 +1487,7 @@ The ideal OpenAgents local runtime combines:
   remote envelope;
 - Claude Code's per-tool file checkpoints, explicit rewind, and outcome-aware
   worktree cleanup; and
-- OpenAgents' typed Source Authority, public-safe projection, and formal
+- OpenAgents' typed Blueprint governance, public-safe projections, and formal
   invariants.
 
 ### 25.10 Make remote control transport-neutral and replay-safe

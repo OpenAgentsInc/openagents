@@ -927,7 +927,7 @@ durable admission
   ≠ delivery/integration acceptance
 ~~~
 
-OpenAgents has a stronger ambition around Source Authority, containment,
+OpenAgents has a stronger ambition around Blueprint governance, containment,
 receipts, cross-device identity, and economic outcomes. It should take V2's
 admission, scoping, replay, generation, and staged-recovery patterns and extend
 them through those stronger boundaries.
@@ -938,7 +938,7 @@ The target combines:
 - Codex generated protocol, sandbox, graph, and remote replication;
 - Claude Code checkpoint/worktree recovery;
 - OpenAgents authority manifests, execution/delivery receipts, Khala Sync, and
-  public-safe Source Authority.
+  public-safe Blueprint projections.
 
 V2 is most valuable as evidence that local-first agents become easier to
 reason about when they store fewer ambiguous states and give each lifecycle

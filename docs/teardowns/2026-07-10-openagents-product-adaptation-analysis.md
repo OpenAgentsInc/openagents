@@ -38,7 +38,8 @@ The convergent shape is clear:
 
 OpenAgents already chose the correct foundation: stock Electron as a hardened
 host, Effect Native as the application and intent grammar, Khala Sync for
-cross-device continuity, and Pylon/Source Authority for execution and receipts.
+cross-device continuity, Pylon for execution, and Blueprint for legible work
+state, governance, and receipts.
 The teardowns strengthen that decision. OpenCode further shows that the durable
 architecture is not “Electron”; it is a local/remote runtime protocol with a
 desktop client. OpenCode V2 makes the next consequence explicit: accepting
@@ -129,7 +130,8 @@ the earlier desktop analysis could not establish:
 - **Work context is a service graph.** A stored Location resolves filesystem,
   tools, permissions, agents, providers, plugins, MCP, instructions, PTY, and
   runner services. OpenAgents should strengthen this into a typed WorkContext
-  bound to account, repository, placement, containment, and Source Authority.
+  bound to account, repository, placement, containment, and Blueprint
+  program/action state.
 - **Embedded is a transport, not a bypass.** V2's SDK uses an in-memory
   HttpClient against the same router, middleware, codecs, handlers, and errors
   as the network client. Every OpenAgents local/remote/test adapter must enter
@@ -371,7 +373,7 @@ Define one typed execution profile contract:
 - **isolated guest** — VM/container/microVM with declared mounts and egress;
 - **owner-local danger mode** — explicit, local, visually persistent, never
   inferred from public requests; and
-- **managed cloud** — Source Authority, spend, topology, and receipt gates.
+- **managed cloud** — Blueprint governance, spend, topology, and receipt gates.
 
 Every execution result should name the profile, grants, engine version,
 workspace roots, egress policy, and receipt/evidence references. This connects
@@ -417,9 +419,9 @@ mobile, and future model-proposed actions. Each entry needs:
 - diagnostics redaction class; and
 - supported host surfaces.
 
-The assistant may propose an action, but policy and Source Authority decide
-whether it executes. This is the bridge between Effect Native intents and the
-actual operating system/runtime.
+The assistant may propose an action, but policy and Blueprint's action and
+approval gates decide whether it executes. This is the bridge between Effect
+Native intents and the actual operating system/runtime.
 
 ### 5. Ship a local renderer; share source packages, not remote authority
 
@@ -737,7 +739,7 @@ reason for a process, document the boundary and prove it.
 
 Neither model prose nor a green UI row proves a command executed, a file
 changed, a FleetRun exists, a payment settled, or an update installed. Product
-state comes from typed runtime outcomes and Source Authority receipts.
+state comes from typed runtime outcomes and Blueprint records and receipts.
 
 ### 6. No live-stream-as-authority or child-authority widening
 
@@ -823,7 +825,7 @@ reference, then make its boundaries simpler and more legible:
 - central typed command registry;
 - MCPB-compatible signed catalog;
 - one component/update compatibility ledger;
-- cross-device Source Authority projections; and
+- cross-device Blueprint projections; and
 - explicit, user-controlled permissions and memory.
 
 Use OpenCode V1 as the inspectable desktop-host reference, OpenCode V2 as the
@@ -894,9 +896,10 @@ fixture-proven / deployed / live-proven / owner-accepted / closed).
 
 The teardowns argued: adopt the common architecture (stock Electron, local
 Effect Native renderer, versioned host/engine protocol, tokenless renderer,
-typed command registry, cross-device Source Authority, explicit permissions),
-use OpenCode and Codex as inspectable host/engine references, combine them with
-Claude Code's recovery ergonomics, and make the boundaries simpler.
+typed command registry, cross-device Blueprint projections, explicit
+permissions), use OpenCode and Codex as inspectable host/engine references,
+combine them with Claude Code's recovery ergonomics, and make the boundaries
+simpler.
 
 Two days later, steps 1, 2, and the substrate under 6 are **real and gated**;
 step 3 is half-real; steps 4–5 and 8 are seams or early; step 7's engine is
@@ -938,10 +941,10 @@ conflates "has identity" with "has an `auth.openagents.com` account." The
 target is a **two-tier identity model**:
 
 1. **Local identity (default, no server auth):** a device-generated keypair /
-   local account is the Source Authority for a purely-local pairing. Khala Sync
-   runs in **local/device scope only** (the SQLite store already exists as the
-   cache; here it is simply the authority for local-only data). Everything that
-   does not cross devices or touch the network works with zero
+   local account is authoritative for a purely-local pairing. Khala Sync runs
+   in **local/device scope only** (the SQLite store already exists as the cache;
+   here it is simply the authority for local-only data). Everything that does
+   not cross devices or touch the network works with zero
    `auth.openagents.com` round-trip. This matches the "device stores are
    authoritative for local-only, caches for synced" spirit of the R2 contract.
 2. **OpenAgents account (opt-in upgrade):** signing in with
@@ -954,7 +957,7 @@ target is a **two-tier identity model**:
 **Consequence for the ledger above:** step 2 ("bind both clients to R1/R2") is
 **done for the account path, and needs the local-first tier added** so auth is
 an upgrade, not an entry gate. This should be filed as an R1 amendment
-(local-identity Source Authority + account-link promotion) before the packaging
-/ dogfood step, since "open the app, pair locally, no login" is a core part of
+(local-identity authority + account-link promotion) before the packaging /
+dogfood step, since "open the app, pair locally, no login" is a core part of
 the predictable-software thesis — the opposite of the ChatGPT app's
 account-and-attestation-gated posture the teardown criticized.
