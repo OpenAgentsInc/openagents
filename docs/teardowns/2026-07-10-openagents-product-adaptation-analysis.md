@@ -527,3 +527,74 @@ If OpenAgents delivers those foundations through D6, computer use, agent
 computers, Fleet, and future AI-employee surfaces can grow without turning the
 desktop app into an uninspectable collection of privileged webviews and
 sidecars.
+
+## Where we are now — build status against this plan (2026-07-10, late)
+
+This section is the moving progress ledger against the nine ordered
+consequences above. Rungs use the six-state vocabulary (code-landed /
+fixture-proven / deployed / live-proven / owner-accepted / closed).
+
+### Snapshot
+
+| Step | Direction | Status | Evidence |
+| ---: | --- | --- | --- |
+| 1 | Tokenless renderer → host-owned Runtime Gateway + versioned protocol | **landed + gated** | D1-A/B closed the Desktop Runtime Gateway protocol/lifecycle and bound it to host-owned Khala Sync SQLite (#8655, #8656); hardened Electron boundary (contextIsolation/sandbox/deny-by-default, bridge-only preload) shipped with the greenfield app (#8574) |
+| 2 | Bind Desktop + mobile to R1 identity / R2 Khala Sync contracts | **landed both clients** | R1/R2 identity+Sync contract published; Desktop D1-B..F (#8661–#8665) and mobile M1-A..D (#8657–#8660) shipped OS-encrypted/SecureStore native-session custody, validate-and-rotate-fail-closed, loopback+mobile OpenAuth PKCE sign-in/sign-out — server-derived scope, no token in projections |
+| 3 | One streamed Desktop conversation + immediate mobile continuation | **partial** | Desktop shows real local Codex chats via a contract-gated thread projection (#8653, replacing the placeholder JSON); real chat components (transcript/composer, clear-on-submit fixed upstream at catalog v29). Cross-device continuation of a *live* streamed thread with matching refs/versions/cursor is the next honest proof, not yet demonstrated |
+| 4 | Central command registry through host/runtime outcomes | **early** | Typed intents + a typed command surface exist per-app (Desktop session controls #8665); a single shared command-ID registry reconciling UI/keyboard/menu/mobile/test to one durable outcome is not yet unified |
+| 5 | Bounded file/editor/Git/PTY foreign hosts + mobile remote workroom | **seam only** | The Electron foreign-host pattern is proven (media-video/host-driver lineage, effect-native #67/#70); no editor/PTY/Git host mounted yet — this is OpenCode-parity D3 work |
+| 6 | Execution profiles, receipts, isolated extension compat | **substrate present** | Exact usage receipts + typed fail-closed provider execution landed in the Agent Computer lane (#8547: in-VM codex execution, broker-redeemed scratch home, Seatbelt-class isolation on the cloud side); the double-billing metering fix proves the receipt path is honest. Desktop-side execution profiles/extension signing not started |
+| 7 | Compose Fleet/approval/command-outcome authority into both clients | **fleet substrate done, client compose pending** | FC-1/FC-2/FC-3 closed (durable FleetRun, mixed-harness Pylon supervisor, supervision surface); the desktop **Settings → Connect Codex account** flow proves host↔fleet-auth composition. One steer/approval converging to one durable outcome on BOTH clients under faults = the #8640 live burn, still owner+gate-blocked |
+| 8 | Package compatible component set + dogfood | **runnable, not packaged** | Both greenfield apps run from source (`oa` desktop, Expo mobile TestFlight builds 103→116); Sparkle/fuses/notarization/clean-install/rollback checklist (adapted from the ChatGPT + OpenCode teardowns) not yet executed for OpenAgents Desktop; mobile ships local-first via TestFlight already |
+| 9 | Computer use, scheduling, advanced remote envs | **deferred by design** | Not started; correctly post-R7 |
+
+### What actually moved the needle since the teardowns
+
+- **Identity + Sync is real on both clients** (steps 1–2): the largest single
+  advance. The rev-24 reset made "one authenticated identity, Khala Sync as
+  cross-device authority, device stores as caches" a P0, and ~12 issues
+  (#8653–#8665) shipped it with fail-closed custody and PKCE on desktop and
+  mobile — the foundation every later step assumes.
+- **The renderer is tokenless and the boundary is hardened** (step 1): the
+  differentiation thesis from the teardowns — "not an uninspectable pile of
+  privileged webviews" — is enforced by an oracle, not a hope.
+- **The receipt/execution honesty exists** (step 6 substrate): the Agent
+  Computer lane proved in-VM provider execution with exact receipts and caught
+  a real double-billing bug — the "receipts as trust material" adaptation is
+  already load-bearing, not aspirational.
+- **The chat surface stopped being a placeholder** (step 3): #8653 put real
+  local Codex history behind a typed projection; real transcript/composer
+  components landed (with the never-clearing-input bug fixed at the catalog
+  root, catalog v29).
+
+### The honest gaps (what the plan still needs)
+
+1. **Live cross-device continuation** (step 3's real proof): a streamed thread
+   started on desktop, continued on the phone with matching refs/versions and
+   a safe interrupt through a network gap. The pieces exist; the demonstration
+   does not.
+2. **One unified command registry** (step 4): today each app has typed
+   commands; the shared-ID reconciliation across form factors is unbuilt.
+3. **The coding loop's foreign hosts** (step 5): editor/PTY/Git — the actual
+   OpenCode-parity workbench, the largest remaining Desktop lane.
+4. **The #8640 live burn** (step 7): the single event that converts "fleet
+   substrate exists" into "an owner steers real parallel work from both
+   clients." Blocked only on the Codex reconnect (now a desktop Settings
+   click) and Sol's typecheck gate.
+5. **Packaging + dogfood** (step 8): Sparkle-adapted update/rollback/notarize
+   pipeline for Desktop.
+
+### Reading
+
+The teardowns argued: adopt the common architecture (stock Electron, local
+Effect Native renderer, versioned host/engine protocol, tokenless renderer,
+typed command registry, cross-device Source Authority, explicit permissions),
+use OpenCode as the inspectable reference, and make the boundaries simpler.
+
+Two days later, steps 1, 2, and the substrate under 6 are **real and gated**;
+step 3 is half-real; steps 4–5 and 8 are seams or early; step 7's engine is
+built and waits on one live burn. The plan is not aspirational prose anymore —
+it is a burndown, and the front of it is landing. The differentiators the
+teardowns identified (open, typed, tokenless, receipted, one runtime) are the
+parts already shipped, which is the correct order: build the trustworthy core
+first, add surface after.
