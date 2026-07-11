@@ -402,3 +402,142 @@ broke it twice in one hour: a green gate proves what it exercised, a claim
 proves nothing, and the only honest completion is the one whose receipt you
 can dereference. The owner should not have been the first user of his own
 feature. He will not be again.
+
+---
+
+# Part III — The Inert Affordance
+
+Written after the third incident of the same session. The owner selected
+"Fable" in the composer of the polished, journey-smoked, pixel-receipted
+build, typed his first message, pressed Send — and received
+`SYSTEM: The model gateway returned 400.` The flagship flow of Episode 250,
+dead on first contact, after two after-action parts and a green 16-step
+smoke.
+
+## 11. The exact anatomy of the 400
+
+Three layered causes, each independently survivable, jointly fatal:
+
+1. **A legacy path outlived its accuracy.** `src/chat-service.ts` is a
+   pre-EP250 fallback: a non-streaming POST to
+   `openagents.com/api/v1/chat/completions` with the model slug
+   `openagents-gateway-default` and a bearer token from the shell
+   environment. That slug does not name a current model (the surface is
+   `openagents/khala`); the call 400s. This is the compatibility-debt
+   disease §4.4 documented from the teardowns — a bridge with no owner, no
+   expiry, and no test against the live contract, waiting in the default
+   code path.
+2. **Mode decided the route, and the new control didn't exist in that
+   mode.** The harness selector was wired into the *runtime* chat host —
+   the path used when the app has an authenticated live Khala Sync
+   conversation catalog. The owner's app was not signed in, so
+   `selectDesktopChatHost` chose the *local* host, which routes sends
+   through the legacy gateway call and **never consults the selector**.
+   The Fable/Codex toggle rendered, toggled, and did nothing. In the mode
+   the owner was actually in, the new feature was pixels.
+3. **The affordance accepted an action it could not honor.** Nothing
+   disabled Send. Nothing said "Fable requires X." The UI asserted, by
+   accepting the input, that a Fable-capable lane existed behind the
+   button. None did.
+
+Name the category: an **inert affordance** — a rendered control that
+accepts an intent with no resolvable edge to a capability that can honor
+it. It is Part I's fabricated directive, implemented as UI: the composer
+told the owner "run this" (send to Fable) exactly as confidently as I had
+told him `bun run start`, and with exactly as much backing.
+
+## 12. Why three green verifications missed it
+
+The uncomfortable part: this shipped through the strengthened process that
+Parts I and II built. The unit suite was green (239 tests). The journey
+smoke was green (16 steps, including the two new journeys). Pixel receipts
+were personally reviewed. And the flagship flow was still dead, because:
+
+1. **The coverage matrix had an unexamined axis.** Verification enumerated
+   *journeys* (fleet renders, new chat is empty) but not
+   *mode × lane × action* cells. The runtime-host wiring was unit-tested
+   (`fable → claude_pylon` on `conversation.start`); the fixture smoke ran
+   in fixture mode; nobody enumerated "local mode × Fable selected ×
+   Send." The one cell the owner would hit first — an unauthenticated
+   fresh install, the toggle's whole reason to exist — was structurally
+   invisible to every gate we ran, because no gate knew the axis existed.
+2. **The smoke journeys stopped one step short of the promise.** The new
+   journeys asserted the *chrome* of the episode (fleet view, empty
+   transcript, visible selector) and not its *verb* (a message actually
+   streaming back). Journey coverage that stops before the flow's
+   terminal observable is chrome coverage wearing a journey's name.
+3. **Part II's rule 9.3 was applied at the wrong depth.** I "drove the
+   user journey" — opened Fleet, opened New chat, saw the selector — and
+   stopped before sending a message, because a real send needed a real
+   provider turn and the fixture gate didn't do real turns. The rung
+   language was honest ("live-proven = owner relaunch") but the *risk*
+   framing was not: live-proven wasn't a formality left for the owner's
+   camera; it was the only rung at which the flagship flow had ever been
+   attempted by anyone. When the untested remainder is the headline
+   feature, "fixture-proven" is not a rung below done — it is a rung
+   below started.
+
+## 13. Fixes, structural as demanded
+
+Beyond repairing the flow itself (a local Fable lane that runs a real
+streaming Claude turn against the isolated `claude-pylon-3` home with no
+login and no cloud gateway; an honest local Codex lane or an honest
+refusal; the legacy slug corrected and the legacy path given an expiry),
+the category-level mechanisms:
+
+1. **Capability-truthful affordances, as law.** The app already refuses to
+   *display* unearned state (evidence-gated dots) and refuses to *report*
+   unearned capability (truthful bootstrap). The same rule now extends to
+   *accepting input*: a harness chip renders enabled only when its lane is
+   resolvable right now (a ready account home discovered, or a live
+   runtime connection), disabled with the stated reason otherwise, and
+   Send refuses a selected-but-unavailable lane. The Arbiter sentence
+   covers its third surface: no receipt, no light — and **no lane, no
+   Send.**
+2. **No silent substitution, test-asserted.** Selecting Fable can never
+   route to a different provider, gateway, or lane. The failure mode where
+   a selector silently falls through to "whatever the old code did" is now
+   a named, tested prohibition — the UI equivalent of the fleet law that
+   fallback never silently changes provider or account.
+3. **The mode × lane matrix becomes an oracle.** Chat host modes (runtime,
+   local, and any future) crossed with harness lanes: every cell carries
+   either a behavior test (the send works and streams) or an explicit
+   unavailability assertion (the chip is disabled with this reason). A new
+   mode or lane that adds unexamined cells fails the oracle — the same
+   closed-enumeration move as the surface-coverage parity oracle of §9.1,
+   one level deeper.
+4. **A live-proof rung with a harness, not a hope.** A driver mode
+   (`OPENAGENTS_DESKTOP_LIVE_PROOF=1`) walks the real journey against real
+   local accounts — fleet with real readiness, a real usage check, a real
+   Fable send with a mid-stream screenshot and a final screenshot — and
+   writes a journal plus numbered receipts. Episode-critical flows do not
+   hand off below this rung again; the receipts land in the issue, not in
+   prose. This converts Part II's "coordinator drives first" from a
+   discipline into a runnable artifact whose absence is visible.
+5. **Legacy paths get owners and expiries, here too.** `chat-service.ts`
+   sat in the default path for weeks with a dead slug because it had no
+   contract test and no deletion gate. Every fallback path reachable from
+   a product surface gets the same treatment the teardowns prescribed for
+   every bridge: an owner, a contract test against the live surface, and
+   an expiry issue.
+
+## 14. The register, completed
+
+Additions to §10, binding now:
+
+7. A rendered control is a capability claim; it renders enabled only with
+   a resolvable lane and refuses input otherwise, with the reason shown.
+   (Part III)
+8. Lane selection never silently substitutes. (Part III)
+9. Every mode × lane × action cell is tested or explicitly asserted
+   unavailable; unexamined cells are a red gate. (Part III)
+10. Episode-critical flows hand off at the live-proof rung with journaled
+    screenshot receipts, or state plainly that they do not. (Part III)
+
+Three incidents, one session, one escalating lesson. Part I: a sentence
+claimed a capability that didn't exist. Part II: a handoff claimed a rung
+that wasn't exercised. Part III: the product itself claimed a capability
+that didn't exist — because the agent that built it had only ever proven
+the claim's *chrome*. The common law was on the wall the whole time, and
+the fleet's own UI shipped it before its builder obeyed it: **no receipt,
+no light.** The remaining work of this session is receipts.

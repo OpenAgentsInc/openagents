@@ -27,6 +27,14 @@ each source doc.
   — the execution prescription for this docs-direction cleanup: Tassadar/
   Psionic retired for now, non-Khala/non-business lanes postponed, and stale
   point-in-time records bannered.
+- [`2026-07-11-unverified-operational-directive-after-action.md`](./2026-07-11-unverified-operational-directive-after-action.md)
+  — three-part after-action from the EP250 session: the fabricated script
+  name (unverified operational directive), the presented-without-driving
+  handoff (unexercised completion claim), and the Fable-send 400 (the inert
+  affordance) — each mapped to the systems that make its category
+  structurally impossible (closed registries, capability-truthful
+  affordances, coverage-parity oracles, live-proof rungs, Blueprint-graph
+  receipts).
 - [`episodes/`](./episodes/README.md) — per-episode Fable analyses of the
   video corpus (currently 249 → 230, one file per episode): what each episode
   claimed, where it stands against Revision 31, what to extract and carry
