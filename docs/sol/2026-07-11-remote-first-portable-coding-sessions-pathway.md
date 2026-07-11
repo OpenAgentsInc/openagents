@@ -112,12 +112,16 @@ Desktop renders the confirmed interaction projection and routes exact-ref
 decisions through gateway-event-driven confirmation; an enqueue receipt never
 collapses a card as resolved. This does not yet make provider execution fully
 proven portable: the canonical rich draft is not yet fully adopted by both host
-UIs for attachments, repository/editor/diff context, target selection, and
-restart restoration. Owner-local Pylon now requests the same durable authority
-through the trusted Worker seam and runs Claude's `canUseTool` only under
-explicit confirmed supervision, but named Codex, deployed-authority, and
-physical receipts remain open. Provider defaults remain unchanged when that
-authority is absent.
+UIs. Mobile now restores it by exact session/thread identity, refreshes ref-only
+repository/worktree context and confirmed runtime target readiness, renders
+restored attachment metadata, persists edits/accepted clears, and withholds
+Send without disabling offline editing when the target is unavailable. Native
+file/image acquisition, real provider/model/account selectors, editor/diff
+capture, and equivalent Desktop adoption remain. Owner-local Pylon now requests
+the same durable authority through the trusted Worker seam and runs Claude's
+`canUseTool` only under explicit confirmed supervision, but named Codex,
+deployed-authority, and physical receipts remain open. Provider defaults remain
+unchanged when that authority is absent.
 
 ### Episodes 248–249 calibration
 

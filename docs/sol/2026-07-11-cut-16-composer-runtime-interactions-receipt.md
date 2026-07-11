@@ -3,14 +3,16 @@
 - Date: 2026-07-11
 - Issue: [#8696](https://github.com/OpenAgentsInc/openagents/issues/8696)
 - Status: shared authority, native persistence, both native interaction UIs,
-  mobile runtime-control UI, Desktop gateway, and Claude provider injection
-  active; rich-composer and live acceptance remain open
+  mobile runtime-control and canonical draft UI, Desktop gateway, and Claude
+  provider injection active; attachment acquisition/selectors and live
+  acceptance remain open
 - Implementations: `a58af4dbfb`, `7b1b9bb066`, `cd5c0dd737`, `1768e8bb35`,
   `11a8d2481a`, `06122c04ed`, `1875b06cac`, `9cd14cef1b`, `2f302d8e1a`,
   `43c5bf6df7`, `c7cf2bf758`, `05ce0e1044`, `b72bf6acbb`, `835c689c4a`,
   `97f90832bb`, `21d56199bd`, `88f692fe00`, `400c649904`, `600228f230`, and
   `2fae80b1ec`, `9ca4b21828`, `3b42dbddf9`, `4a9db8347b`, `23a190905f`,
-  `d2d9ee8907`, `e4d903c602`, `4b20fe2b67`, and `9fa76c3b09`
+  `d2d9ee8907`, `e4d903c602`, `4b20fe2b67`, `9fa76c3b09`, and
+  `94deab6705`
 
 CUT-16 now builds on the existing rich `@openagentsinc/composer-state` kernel
 instead of creating a second composer. The additive private coding-draft
@@ -64,6 +66,20 @@ adapter. Mobile consumes that same authority with typed grouped selection,
 tool approve/deny, plan accept/request-changes/replan, disabled reconciliation,
 and read-only resolved/expired/revoked states.
 
+Mobile selected coding sessions now open the canonical device-local draft by
+exact session/thread identity. New drafts bind the local owner ref, stable
+session/thread refs, ref-only repository/worktree context revisions, known
+provider/execution-target refs, and the exact confirmed Codex/Claude/hosted
+lane; absence of that lane is explicit `unavailable`, never a default guess.
+Restored text and file/image metadata lower through the shared Effect Native
+Composer, while a compact context line names the repository/worktree and
+truthfully marks unselected model/account facts. Text edits and accepted clears
+advance the canonical local revision; a failed send restores the prior draft.
+A real SQLite close/reopen returns the same draft ref, body, and context.
+Unavailable-target drafts remain editable but omit submit authority; both RN
+and SwiftUI lowerings disable and announce Send unavailable when `onSubmit` is
+absent.
+
 Desktop now consumes the confirmed projection as Effect Native question,
 tool-approval, and plan-review cards. It preserves canonical thread, turn,
 interaction, question, and option identities; refuses missing or ambiguous
@@ -94,15 +110,25 @@ Verification:
 - khala-sync-server after migration/admission: 519 pass, 0 fail, 4,590
   assertions; local Postgres exercises request/decision/retry/conflict/expiry/
   owner/lane/sequence boundaries;
-- khala-sync-client: 187 pass, 0 fail, 12,779 assertions (three env-gated live
+- khala-sync-client: 187 pass, 0 fail, 12,780 assertions (three env-gated live
   smokes skipped);
 - Desktop Runtime Gateway focused: 21 pass, 0 fail, 81 assertions; production
   composition/host focused: 51 pass, 0 fail, 445 assertions; Desktop typecheck
   and build pass; after authoritative Desktop interaction controls, the full
   Desktop suite is 468 pass, 0 fail, 2,487 assertions;
-- mobile full suite after the runtime-control UI: 83 pass, 0 fail, 400
-  assertions; focused conversation/Home contracts: 20 pass, 0 fail, 89
-  assertions; mobile typecheck passes.
+- mobile full suite after canonical draft adoption: 88 pass, 0 fail, 432
+  assertions; canonical composer/Home focused contracts: 13 pass, 0 fail, 79
+  assertions; mobile typecheck passes;
+- Effect Native RN renderer: 9 pass, 0 fail, 26 assertions and project
+  typecheck (existing Effect advisories only). The optional-submit regression
+  proves the input remains editable while Send is disabled and announced
+  unavailable;
+- built iOS simulator: Expo/Xcode built and signed the Debug iPhone-simulator
+  app with 0 errors (one duplicate-library warning), installed and launched it
+  on the booted iPhone 17 Pro simulator, Metro bundled the current tree, and
+  the Khala/Effect Native composer rendered without a red screen or runtime
+  error. The physical iPhone still reported offline, so this is not the issue's
+  physical-device receipt.
 - Pylon typecheck and full suite pass; focused HTTP-authority/runtime-dispatch
   coverage is 59 pass, 0 fail, 208 assertions. The API Worker typecheck and
   focused authority/route-manifest suite pass (6 tests). The runtime mutator
@@ -144,13 +170,14 @@ Named-provider live evidence:
   remains required after the quota is raised or storage is remediated.
 
 CUT-16 remains open. The completion audit still finds a literal composer gap:
-Desktop and mobile do not yet both wire file/image picking, repository/editor/
-diff context, provider/model/account selection, and restart-restored rich draft
-state through the canonical composer envelope. The remaining external receipts
-are a named Codex turn after provider quota reset, deployment of the trusted
-authority route after the Cloudflare staging storage limit is remediated, and
-physical-device/assistive-technology acceptance. Restart, revocation, provider
-injection, expiry, and mobile runtime controls are covered deterministically;
-those deterministic proofs do not substitute for the remaining receipts.
+mobile still needs native file/image acquisition and real provider/model/
+account selection, while Desktop still needs full canonical rich-draft UI
+adoption; editor/diff capture is not yet wired end to end in both hosts. The
+remaining external receipts are a named Codex turn after provider quota reset,
+deployment of the trusted authority route after the Cloudflare staging storage
+limit is remediated, and physical-device/assistive-technology acceptance.
+Restart, revocation, provider injection, expiry, mobile runtime controls, and
+mobile canonical draft restoration are covered deterministically; those proofs
+and the simulator launch do not substitute for the remaining receipts.
 The default non-interactive provider safety policy must not be weakened merely
 to manufacture an approval receipt.

@@ -5,8 +5,8 @@
   provider traces active; CUT-12 shared/mobile/Desktop supervision UI active;
   CUT-13 complete; CUT-14 physical receipts open; CUT-15 complete; CUT-16
   native draft persistence/Desktop gateway/mobile interaction and runtime-
-  control UI active; rich composer host adoption remains open)
-- Revision: 59
+  control UI active; mobile canonical rich-draft adoption active)
+- Revision: 60
 - Status: canonical OpenAgents implementation roadmap
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Issue source set: [`issues/README.md`](./issues/README.md)
@@ -669,11 +669,16 @@ product gaps are the R0–R7 Desktop/mobile continuity and reliability gates:
   The standing owner-local Pylon now uses its existing internal Worker
   credential to request/read those exact interactions and injects the confirmed
   authority into Claude `canUseTool`; server-clock expiry is durable and never
-  fabricates an owner decision. The remaining product gap is literal shared
-  rich-composer adoption: file/image picking, repository/editor/diff context,
-  provider/model/account selection, and restart-restored rich drafts are not
-  yet all wired end to end in both hosts. Physical accessibility, deployed-
-  authority, and named Codex receipts also remain open. See
+  fabricates an owner decision. Mobile selected coding sessions now open or
+  restore the canonical device-local draft, refresh exact ref-only repository/
+  worktree context and typed runtime target readiness, render restored
+  attachments through the shared Composer, persist edits/accepted clears, and
+  withhold Send while an unavailable target remains editable. A real SQLite
+  close/reopen and a built iPhone simulator launch prove that rung. Remaining
+  product gaps are native file/image acquisition, real provider/model/account
+  selectors, editor/diff context capture, and equivalent full Desktop rich-
+  composer adoption. Physical accessibility, deployed-authority, and named
+  Codex receipts also remain open. See
   [`CUT-16 receipt`](./2026-07-11-cut-16-composer-runtime-interactions-receipt.md).
 - Grok is postponed by owner decision because the connected account is
   quota/payment exhausted. Its real accepted historical canary, HTTP-402
