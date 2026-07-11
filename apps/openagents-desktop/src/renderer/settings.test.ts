@@ -445,6 +445,7 @@ describe("typed intent loop end-to-end (settings)", () => {
             async () => {},
             undefined,
             undefined,
+            undefined,
             providerBridge,
           ),
         )
