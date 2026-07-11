@@ -2,7 +2,7 @@
 
 - Issue: [#8681](https://github.com/OpenAgentsInc/openagents/issues/8681)
 - Date: 2026-07-11
-- Status: CUT-01 code/native-build proof complete
+- Status: closed on `bab737f565`
 - Surface: `apps/openagents-mobile`
 
 ## Outcome

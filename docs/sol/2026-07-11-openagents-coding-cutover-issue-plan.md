@@ -39,7 +39,7 @@ proof for those later remote outcomes or automatically close #8566/#8597.
 
 | Order | Key | GitHub issue | Lane | Depends on |
 |---:|---|---|---|---|
-| 1 | CUT-01 | [#8681](https://github.com/OpenAgentsInc/openagents/issues/8681) | R0 / mobile architecture | — |
+| 1 | CUT-01 | [#8681](https://github.com/OpenAgentsInc/openagents/issues/8681) — closed `bab737f565` | R0 / mobile architecture | — |
 | 2 | CUT-02 | [#8682](https://github.com/OpenAgentsInc/openagents/issues/8682) | R0 / verification | — |
 | 3 | CUT-03 | [#8683](https://github.com/OpenAgentsInc/openagents/issues/8683) | D2 / topology | CUT-02 |
 | 4 | CUT-04 | [#8684](https://github.com/OpenAgentsInc/openagents/issues/8684) | D2 / topology | CUT-03 |
