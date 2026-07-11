@@ -13,6 +13,7 @@ describe("openagents_desktop.seam.codex_trace_electron_acceptance.v1", () => {
       "keyboard_tree_stuck", "tool_row_inaccessible", "inspector_inaccessible",
       "timeline_not_scrollable", "timeline_scroll_stuck", "ref_restore_missing",
       "inline_agent_preview_missing", "inline_agent_preview_stale", "inline_agent_navigation_failed", "inline_agent_return_failed",
+      "agent_metadata_missing", "agent_metadata_not_collapsed", "agent_metadata_expand_failed", "agent_metadata_replaced_tree", "agent_metadata_collapse_failed",
       "agent_status_word_visible", "agent_status_icon_missing",
       "history_shortcut_down_failed", "history_shortcut_up_failed",
       "history_shortcut_hold_failed", "history_shortcut_offscreen", "history_shortcut_hold_return_failed",

@@ -418,6 +418,47 @@ textarea:focus-visible {
   color: var(--oa-muted);
 }
 
+[data-en-key^="history-item-"][data-en-variant="metadata"] {
+  min-height: 30px;
+  margin: 2px 8px;
+  padding: 6px 9px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--oa-muted);
+}
+
+[data-en-key^="history-item-"][data-en-variant="metadata"]:hover,
+[data-en-key^="history-item-"][data-en-variant="metadata"][aria-selected="true"] {
+  border-color: rgba(168, 195, 237, 0.12);
+  background: rgba(255, 255, 255, 0.025) !important;
+  box-shadow: none;
+}
+
+[data-en-key^="history-item-"][data-en-variant="metadata"] > [data-en-role="event-icon"] {
+  color: var(--oa-muted);
+  opacity: 0.72;
+}
+
+[data-en-key^="history-item-"][data-en-variant="metadata"] > [data-en-role="label"] {
+  color: var(--oa-muted);
+  font-size: 12px;
+  font-weight: 520;
+}
+
+[data-en-key^="history-item-"][data-en-variant="metadata"] > [data-en-role="time"] {
+  color: rgba(145, 160, 181, 0.72) !important;
+  font-size: 11px;
+}
+
+[data-en-key^="history-item-"][data-en-variant="metadata"] > [data-en-role="detail"] {
+  padding: 7px 0 2px;
+  color: var(--oa-muted) !important;
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
 [data-en-key^="history-item-"][data-en-variant="error"] {
   border-left: 2px solid var(--oa-danger);
 }

@@ -353,6 +353,12 @@ transcript into the parent, infers an edge from prose, treats a preview as a
 completion receipt, or duplicates later interaction notifications as new
 launch cards. Missing child history remains explicit in the source item.
 
+Codex's structured AGENTS instruction injection is classified as `metadata`,
+not as a user chat turn. It renders as one faint `Agent metadata · Click to
+expand` disclosure; the bounded content appears only while selected, a second
+press collapses it, and the right-hand agent tree remains in place throughout.
+Ordinary user messages never enter this presentation path.
+
 ### Large-thread first-content performance
 
 After a thread is selected, the local bounded first-content projection must

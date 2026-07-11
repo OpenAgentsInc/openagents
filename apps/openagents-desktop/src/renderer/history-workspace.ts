@@ -64,20 +64,36 @@ const toolTitle = (label: string): string => {
 }
 
 const historyVariant = (item: CodexHistoryItem): TimelineEvent["variant"] =>
-  item.kind === "tool_call" || item.kind === "tool_result" || item.kind === "approval" || item.kind === "collaboration" ? "tool"
+  item.kind === "metadata" ? "metadata"
+    : item.kind === "tool_call" || item.kind === "tool_result" || item.kind === "approval" || item.kind === "collaboration" ? "tool"
     : item.kind === "reasoning" || item.kind === "plan" ? "reasoning"
       : item.kind === "error" || item.kind === "gap" ? "error"
         : "message"
 
 const historyIcon = (item: CodexHistoryItem): IconName =>
-  item.kind === "tool_call" || item.kind === "tool_result" ? toolIcon(item.label)
+  item.kind === "metadata" ? "ChevronRight"
+    : item.kind === "tool_call" || item.kind === "tool_result" ? toolIcon(item.label)
     : item.kind === "collaboration" ? "Agent"
       : item.kind === "approval" ? "Check"
         : item.kind === "reasoning" || item.kind === "plan" ? "Sparkles"
           : item.kind === "error" || item.kind === "gap" ? "X"
             : "Chats"
 
-const projectedTimelineEvent = (item: CodexHistoryItem, result?: CodexHistoryItem): TimelineEvent => {
+const projectedTimelineEvent = (item: CodexHistoryItem, result?: CodexHistoryItem, expandedItemRef: string | null = null): TimelineEvent => {
+  if (item.kind === "metadata") {
+    const expanded = expandedItemRef === item.itemRef
+    return {
+      id: item.itemRef,
+      key: `history-item-${item.itemRef}`,
+      label: "Agent metadata",
+      ...(expanded ? { detail: timelinePreview(item.summary), time: "Click to collapse" } : { time: "Click to expand" }),
+      status: "idle",
+      variant: "metadata",
+      icon: expanded ? "ChevronDown" : "ChevronRight",
+      accessibilityLabel: `Agent metadata, ${expanded ? "expanded. Click to collapse" : "collapsed. Click to expand"}`,
+      refs: [item.threadRef],
+    }
+  }
   if (item.kind === "collaboration" && item.relatedAgent !== undefined) {
     const agent = item.relatedAgent
     const detail = agent.latest === null
@@ -122,7 +138,7 @@ const projectedTimelineEvent = (item: CodexHistoryItem, result?: CodexHistoryIte
  * in the page contract and inspector data; they are intentionally not chat
  * rows. Matching tool results are folded into their invocation.
  */
-export const projectHistoryTimelineEvents = (items: ReadonlyArray<CodexHistoryItem>): ReadonlyArray<TimelineEvent> => {
+export const projectHistoryTimelineEvents = (items: ReadonlyArray<CodexHistoryItem>, expandedItemRef: string | null = null): ReadonlyArray<TimelineEvent> => {
   const resultByCall = new Map<string, CodexHistoryItem>()
   for (const item of items) {
     if (item.kind !== "tool_result") continue
@@ -139,11 +155,11 @@ export const projectHistoryTimelineEvents = (items: ReadonlyArray<CodexHistoryIt
       const call = historyField(item, "call")
       const result = call === null ? undefined : resultByCall.get(call)
       if (result !== undefined) consumedResults.add(result.itemRef)
-      events.push(projectedTimelineEvent(item, result))
+      events.push(projectedTimelineEvent(item, result, expandedItemRef))
       continue
     }
     if (item.kind === "tool_result" && consumedResults.has(item.itemRef)) continue
-    events.push(projectedTimelineEvent(item))
+    events.push(projectedTimelineEvent(item, undefined, expandedItemRef))
   }
   return events
 }
@@ -177,7 +193,7 @@ const agentTree = (state: HistoryWorkspaceState): View => {
 
 const inspector = (state: HistoryWorkspaceState): View => {
   const item = state.page?.items.find(value => value.itemRef === state.selectedItemRef)
-  if (!item) return agentTree(state)
+  if (!item || item.kind === "metadata") return agentTree(state)
   return Stack({ key: "history-item-inspector", direction: "column", gap: "2", style: { minWidth: 0, minHeight: 0, flex: 1 }, a11y: { role: "region", label: "Selected history item" } }, [
     Button({ key: "history-item-back", label: "Back to agents", variant: "ghost", onPress: IntentRef("HistoryItemSelected", StaticPayload("")), a11y: { label: "Back to agent tree" } }),
     Text({ key: "history-item-title", content: item.label, variant: "heading", color: "textPrimary" }),
@@ -193,7 +209,7 @@ export const historyWorkspaceView = (state: HistoryWorkspaceState): View => {
   if (!page) return Stack({ key: "history-workspace-empty", direction: "column", gap: "2", style: { flex: 1, minWidth: 0 } }, [Text({ key: "history-empty-title", content: "Select a Codex conversation", variant: "heading", color: "textPrimary" }), Text({ key: "history-empty-copy", content: "Historical conversations and every discovered subagent are available without a 24-hour cutoff.", variant: "body", color: "textMuted" })])
   const center = Stack({ key: "history-center", direction: "column", gap: "2", style: { flex: 1, minWidth: 0, minHeight: 0 } }, [
     IconButton({key:"history-agents-drawer",icon:"Agent",accessibilityLabel:`${state.railCollapsed?"Open":"Close"} agents inspector, ${page.agents.length} agents`,onPress:IntentRef("HistoryInspectorToggled"),surface:"glass",a11y:{expanded:!state.railCollapsed}}),
-    Timeline({ key: "history-timeline-page", ...(state.selectedItemRef === null ? {} : { selectedId: state.selectedItemRef }), onEventSelect: IntentRef("HistoryItemSelected", ComponentValueBinding()), style: { flex: 1, minHeight: 0, minWidth: 0 }, a11y: { role: "list", label: `History items ${page.offset + 1} through ${Math.min(page.totalItems, page.offset + page.items.length)} of ${page.totalItems}` }, events: projectHistoryTimelineEvents(page.items) }),
+    Timeline({ key: "history-timeline-page", ...(state.selectedItemRef === null ? {} : { selectedId: state.selectedItemRef }), onEventSelect: IntentRef("HistoryItemSelected", ComponentValueBinding()), style: { flex: 1, minHeight: 0, minWidth: 0 }, a11y: { role: "list", label: `History items ${page.offset + 1} through ${Math.min(page.totalItems, page.offset + page.items.length)} of ${page.totalItems}` }, events: projectHistoryTimelineEvents(page.items,state.selectedItemRef) }),
     Stack({ key: "history-page-controls", direction: "row", gap: "2", align: "center" }, [Button({ key: "history-page-previous", label: "Previous", variant: "secondary", disabled: !page.hasPrevious, onPress: IntentRef("HistoryPageRequested", StaticPayload(Math.max(0,page.offset-page.limit))), a11y: { label: "Previous history page" } }), Text({ key: "history-page-range", content: `${page.offset + 1}–${Math.min(page.totalItems,page.offset+page.items.length)} of ${page.totalItems}`, variant: "caption", color: "textMuted" }), Button({ key: "history-page-next", label: "Next", variant: "secondary", disabled: !page.hasNext, onPress: IntentRef("HistoryPageRequested", StaticPayload(page.offset+page.limit)), a11y: { label: "Next history page" } })]),
   ])
   return SplitPane({ key: "history-workspace-split", orientation: "row", style: { flex: 1, minWidth: 0, minHeight: 0 }, onCollapseToggle: IntentRef("HistoryInspectorToggled"), panes: [{ id: "history-center", min: 360, content: center }, { id: "history-inspector", min: 280, max: 480, size: 336, collapsed: state.railCollapsed, content: inspector(state) }] })

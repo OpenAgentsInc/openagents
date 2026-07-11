@@ -79,6 +79,16 @@ export const traceAcceptanceJourney = `(async () => {
   const page = rootPageResponse.page
   const completeness = page.completeness
   if (completeness.source !== completeness.rendered + completeness.redactions + completeness.gaps) return {ok:false,reason:"silent_loss"}
+  const metadataItem = page.items.find(item => item.kind === 'metadata')
+  if (!metadataItem) return {ok:false,reason:"agent_metadata_missing"}
+  const collapsedMetadata = await until(() => document.querySelector('[data-en-key="history-item-' + metadataItem.itemRef + '"][data-en-variant="metadata"]'))
+  if (!collapsedMetadata || collapsedMetadata.querySelector('[data-en-role="detail"]') || !collapsedMetadata.textContent?.includes('Click to expand')) return {ok:false,reason:"agent_metadata_not_collapsed"}
+  collapsedMetadata.click()
+  const expandedMetadata = await until(() => { const row=document.querySelector('[data-en-key="history-item-' + metadataItem.itemRef + '"][aria-selected="true"]');return row?.querySelector('[data-en-role="detail"]')?row:null })
+  if (!expandedMetadata) return {ok:false,reason:"agent_metadata_expand_failed"}
+  if (!document.querySelector('[data-en-key="history-agent-list"]')) return {ok:false,reason:"agent_metadata_replaced_tree"}
+  expandedMetadata.click()
+  if (!await until(() => { const row=document.querySelector('[data-en-key="history-item-' + metadataItem.itemRef + '"]');return row&&row.getAttribute('aria-selected')==='false'&&!row.querySelector('[data-en-role="detail"]')?row:null })) return {ok:false,reason:"agent_metadata_collapse_failed"}
   const candidateIndex=roots.findIndex(root=>root.threadRef===candidate.root.threadRef)
   const modifier=bridge.platform==='darwin'?{metaKey:true}:{ctrlKey:true}
   const modifierKey=bridge.platform==='darwin'?'Meta':'Control'
