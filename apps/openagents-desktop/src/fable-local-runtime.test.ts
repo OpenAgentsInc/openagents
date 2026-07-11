@@ -1,8 +1,18 @@
 /**
- * Fable local runtime (#8712): account-home discovery, SDK option posture,
- * event mapping, bounds, redaction, continuity, and the no-silent-substitution
- * law at the runtime level (no ready account -> typed unavailable, the SDK is
- * never loaded, nothing falls through to any gateway).
+ * Fable local runtime (#8712 + EP250 owner full-access override): account-
+ * home discovery, SDK option posture, event mapping, bounds, redaction,
+ * continuity, and the no-silent-substitution law at the runtime level (no
+ * ready account -> typed unavailable, the SDK is never loaded, nothing falls
+ * through to any gateway).
+ *
+ * Enforces openagents_desktop.chat.fable_local_owner_full_access.v1 (owner
+ * statement verbatim 2026-07-11: "disallowing bash is retarded, give them
+ * full tools full permissions etc"): the full SDK toolset is offered (no
+ * allowedTools restriction, no PreToolUse workspace guard, no out-of-scope
+ * denial copy), canUseTool allows every tool EXCEPT AskUserQuestion which
+ * still parks on the real question flow — and the mode stays "default"
+ * (never bypassPermissions, which would skip canUseTool and kill the
+ * question flow; receipted from sdk.d.ts).
  */
 import { describe, expect, test } from "bun:test"
 import { existsSync, mkdtempSync, mkdirSync, writeFileSync } from "node:fs"
@@ -15,15 +25,12 @@ import {
   FABLE_DELEGATE_MAX_CONCURRENT,
   FABLE_DELEGATE_TOOL_NAME,
   FABLE_FIXTURE_DELEGATE_TASK,
-  FABLE_LOCAL_ALLOWED_TOOLS,
   FABLE_LOCAL_DISALLOWED_TOOLS,
   FABLE_LOCAL_MODEL,
-  FABLE_LOCAL_WRITE_OUT_OF_SCOPE_REASON,
   FABLE_STREAM_CLOSE_TIMEOUT_MS,
   discoverReadyFableClaudeHomes,
   fableThreadWorkspaceSlug,
   makeFableLocalRuntime,
-  makeFableWorkspaceGuard,
   makeFixtureFableLocalQuery,
   makeFixtureFableMcpFactory,
   redactFableLocalText,
@@ -36,6 +43,7 @@ import {
   fixtureCodexRevokedStderr,
   fixtureCodexRevokedStdout,
   fixtureCodexSuccessStdout,
+  makeCodexAccountHealth,
   makeCodexChildRuntime,
   makeFixtureCodexChildSpawn,
 } from "./codex-child-runtime.ts"
@@ -160,21 +168,20 @@ describe("makeFableLocalRuntime.runTurn", () => {
     const completed = sink.events[5] as Extract<FableLocalEvent, { kind: "turn_completed" }>
     expect(completed.totalTokens).toBe(17)
 
-    // Conservative headless posture (EP250 revision): read tools plus
-    // Write/Edit scoped to the thread workspace by the PreToolUse guard —
-    // still no Bash, no WebSearch. Partial streaming on, cwd inside the
-    // scratch root, isolated account env.
+    // Owner full-access posture (EP250 override, verbatim: "disallowing
+    // bash is retarded, give them full tools full permissions etc"): NO
+    // allowedTools restriction (full SDK toolset — Bash, Write, Edit,
+    // WebSearch, NotebookEdit, Agent, …), NO PreToolUse workspace guard.
+    // The thread workspace is the DEFAULT cwd only, not a boundary.
     const call = harness.captured[0]!
     expect(call.options.includePartialMessages).toBe(true)
+    // MECHANISM (receipted from sdk.d.ts): NOT bypassPermissions — that
+    // "Bypass[es] all permission checks" including canUseTool, which the
+    // AskUserQuestion flow parks on. Default mode + allow-all canUseTool.
     expect(call.options.permissionMode).toBe("default")
-    expect(call.options.allowedTools).toEqual([...FABLE_LOCAL_ALLOWED_TOOLS])
-    expect(call.options.allowedTools).not.toContain("Bash")
-    expect(call.options.allowedTools).not.toContain("WebSearch")
-    expect(call.options.allowedTools).toContain("Write")
-    expect(call.options.allowedTools).toContain("Edit")
-    // Workspace containment + real question flow travel on every session.
-    const hooks = call.options.hooks as { PreToolUse?: Array<{ hooks: Array<unknown> }> }
-    expect(typeof hooks.PreToolUse?.[0]?.hooks[0]).toBe("function")
+    expect(call.options.allowedTools).toBeUndefined()
+    expect(call.options.tools).toBeUndefined()
+    expect(call.options.hooks).toBeUndefined()
     expect(typeof call.options.canUseTool).toBe("function")
     // IT HAS TO BE FABLE: the requested model is pinned, never the account
     // home's default. Skills are removed from the lane entirely (the Skill
@@ -182,15 +189,16 @@ describe("makeFableLocalRuntime.runTurn", () => {
     // never auto-trigger and fail against the whitelist.
     expect(call.options.model).toBe(FABLE_LOCAL_MODEL)
     expect(call.options.model).toBe("claude-fable-5")
-    // Interactive-only tools that could only fail in this headless lane are
-    // never offered; AskUserQuestion IS offered (it has a real answer path).
+    // Interactive-only UX-noise tools stay disallowed (separately decided,
+    // not reversed by the full-access override); NotebookEdit is now
+    // OFFERED; AskUserQuestion IS offered (it has a real answer path).
     expect(call.options.disallowedTools).toEqual([...FABLE_LOCAL_DISALLOWED_TOOLS])
     expect(call.options.disallowedTools).toContain("Skill")
     expect(call.options.disallowedTools).toContain("EnterPlanMode")
     expect(call.options.disallowedTools).toContain("ExitPlanMode")
-    expect(call.options.disallowedTools).toContain("NotebookEdit")
+    expect(call.options.disallowedTools).not.toContain("NotebookEdit")
+    expect(call.options.disallowedTools).not.toContain("Bash")
     expect(call.options.disallowedTools).not.toContain("AskUserQuestion")
-    expect(call.options.allowedTools).not.toContain("AskUserQuestion")
     expect(call.options.skills).toEqual([])
     expect(call.options.settingSources).toEqual([])
     expect(String(call.options.cwd)).toStartWith(harness.scratch)
@@ -461,7 +469,9 @@ describe("makeFableLocalRuntime.runTurn", () => {
 })
 
 // ---------------------------------------------------------------------------
-// EP250: scoped write (workspace boundary) + per-thread workspace persistence
+// EP250 owner full access (contract:
+// openagents_desktop.chat.fable_local_owner_full_access.v1) + per-thread
+// workspace persistence (the workspace remains the default cwd, not a bound)
 // ---------------------------------------------------------------------------
 
 type CanUseToolFn = (
@@ -469,13 +479,6 @@ type CanUseToolFn = (
   input: Record<string, unknown>,
   extra: { signal?: AbortSignal },
 ) => Promise<Record<string, unknown>>
-
-type GuardFn = (hookInput: unknown) => Promise<Record<string, unknown>>
-
-const guardFrom = (captured: CapturedQuery): GuardFn => {
-  const hooks = captured.options.hooks as { PreToolUse: Array<{ hooks: Array<GuardFn> }> }
-  return hooks.PreToolUse[0]!.hooks[0]!
-}
 
 const waitFor = async (predicate: () => boolean, timeoutMs = 2_000): Promise<void> => {
   const deadline = Date.now() + timeoutMs
@@ -485,43 +488,52 @@ const waitFor = async (predicate: () => boolean, timeoutMs = 2_000): Promise<voi
   expect(predicate()).toBe(true)
 }
 
-describe("EP250 scoped write: workspace boundary guard", () => {
-  test("in-workspace paths pass; out-of-bounds paths deny with the honest out-of-scope copy (never grant-flow copy)", async () => {
-    const workspace = mkdtempSync(join(tmpdir(), "fable-guard-"))
-    const guard = makeFableWorkspaceGuard(workspace)
-    // Absolute in-workspace and cwd-relative writes are contained: no denial.
-    expect(await guard({ tool_name: "Write", tool_input: { file_path: join(workspace, "greetings.md") } })).toEqual({})
-    expect(await guard({ tool_name: "Write", tool_input: { file_path: "greetings.md" } })).toEqual({})
-    expect(await guard({ tool_name: "Edit", tool_input: { file_path: join(workspace, "notes", "a.md") } })).toEqual({})
-    // Outside the workspace: denied, visible, honest.
-    for (const escape of ["/etc/passwd", join(workspace, "..", "escape.md"), join(homedir(), "greetings.md")]) {
-      const denied = await guard({ tool_name: "Write", tool_input: { file_path: escape } }) as {
-        hookSpecificOutput?: { permissionDecision?: string; permissionDecisionReason?: string }
-      }
-      expect(denied.hookSpecificOutput?.permissionDecision).toBe("deny")
-      const reason = denied.hookSpecificOutput?.permissionDecisionReason ?? ""
-      expect(reason).toBe(FABLE_LOCAL_WRITE_OUT_OF_SCOPE_REASON)
-      expect(reason).toContain("writes are limited to the turn workspace")
-      expect(reason.toLowerCase()).toContain("out of scope")
-      // The live bug (EP250 on camera): copy implied a grant flow that does
-      // not exist. The honest copy must never suggest one.
-      expect(reason.toLowerCase()).not.toContain("granted")
-      expect(reason.toLowerCase()).not.toContain("grant")
+describe("EP250 owner full access: full toolset, no workspace guard", () => {
+  test("canUseTool ALLOWS every non-question tool — Bash, out-of-workspace Write, WebSearch, Agent — with no denial copy anywhere", async () => {
+    const decisions: Array<Record<string, unknown>> = []
+    const harness = makeRuntimeHarness({
+      script: async function* (captured) {
+        yield { type: "system", subtype: "init", session_id: "s-allow", model: FABLE_LOCAL_MODEL }
+        const canUse = captured.options.canUseTool as CanUseToolFn
+        decisions.push(await canUse("Bash", { command: "echo full access" }, { signal: new AbortController().signal }))
+        decisions.push(await canUse("Write", { file_path: join(homedir(), "anywhere.md") }, { signal: new AbortController().signal }))
+        decisions.push(await canUse("WebSearch", { query: "openagents" }, { signal: new AbortController().signal }))
+        decisions.push(await canUse("Agent", { prompt: "subtask" }, { signal: new AbortController().signal }))
+        yield { type: "result", subtype: "success", is_error: false, result: "ok" }
+      },
+    })
+    const sink = collect()
+    const result = await harness.runtime.runTurn({
+      turnRef: "turn-allow", threadRef: "thread-allow", history: [], message: "hi", emit: sink.emit,
+    })
+    expect(result.ok).toBe(true)
+    expect(decisions).toEqual([
+      { behavior: "allow", updatedInput: { command: "echo full access" } },
+      { behavior: "allow", updatedInput: { file_path: join(homedir(), "anywhere.md") } },
+      { behavior: "allow", updatedInput: { query: "openagents" } },
+      { behavior: "allow", updatedInput: { prompt: "subtask" } },
+    ])
+    // The retired scoped-write lane's denial copy is GONE: nothing denies,
+    // nothing mentions scope or grants.
+    for (const decision of decisions) {
+      expect(decision.behavior).toBe("allow")
+      expect(JSON.stringify(decision).toLowerCase()).not.toContain("out of scope")
+      expect(JSON.stringify(decision).toLowerCase()).not.toContain("not available in this lane")
     }
   })
 
-  test("in-workspace Write succeeds end-to-end through the fake SDK session (guard consulted, file persisted, ok tool_result)", async () => {
+  test("Write succeeds end-to-end through the fake SDK session (allowed via canUseTool, file persisted, ok tool_result)", async () => {
     const sink = collect()
     const written: string[] = []
     const harness = makeRuntimeHarness({
       script: async function* (captured) {
         yield { type: "system", subtype: "init", session_id: "s-write", model: FABLE_LOCAL_MODEL }
-        // Drive the REAL guard the runtime installed for this session, the
-        // same way the CLI would before an allowlisted Write executes.
-        const guard = guardFrom(captured)
+        // Drive the REAL permission path the runtime installed for this
+        // session: canUseTool must allow the Write (full-access lane).
+        const canUse = captured.options.canUseTool as CanUseToolFn
         const target = join(String(captured.options.cwd), "greetings.md")
-        const decision = await guard({ tool_name: "Write", tool_input: { file_path: target } })
-        if (Object.keys(decision).length !== 0) throw new Error("in-workspace write was denied")
+        const decision = await canUse("Write", { file_path: target }, { signal: new AbortController().signal })
+        if ((decision as { behavior?: unknown }).behavior !== "allow") throw new Error("write was denied")
         writeFileSync(target, "# Greetings\n")
         written.push(target)
         yield {
@@ -585,23 +597,47 @@ describe("EP250 scoped write: workspace boundary guard", () => {
     expect(fableThreadWorkspaceSlug("x".repeat(500)).length).toBeLessThanOrEqual(60)
   })
 
-  test("canUseTool denies non-question tools with honest copy (no grant flow implied)", async () => {
-    const decisions: Array<Record<string, unknown>> = []
+  test("REGRESSION: with the allow-all canUseTool, AskUserQuestion STILL parks on the question flow (never blanket-allowed)", async () => {
+    // The whole reason the lane stays on permissionMode "default" instead of
+    // bypassPermissions: the question flow depends on canUseTool firing.
+    const sink = collect()
     const harness = makeRuntimeHarness({
       script: async function* (captured) {
-        yield { type: "system", subtype: "init", session_id: "s-deny" }
+        yield { type: "system", subtype: "init", session_id: "s-q-park", model: FABLE_LOCAL_MODEL }
         const canUse = captured.options.canUseTool as CanUseToolFn
-        decisions.push(await canUse("Bash", { command: "rm -rf /" }, { signal: new AbortController().signal }))
+        // Bash allowed instantly…
+        const bash = await canUse("Bash", { command: "ls" }, { signal: new AbortController().signal })
+        expect((bash as { behavior?: unknown }).behavior).toBe("allow")
+        // …while AskUserQuestion parks pending (not an instant allow).
+        const pendingDecision = canUse("AskUserQuestion", {
+          questions: [{
+            question: "Proceed?",
+            header: "Go",
+            options: [{ label: "Yes" }, { label: "No" }],
+            multiSelect: false,
+          }],
+        }, { signal: new AbortController().signal })
+        const pendingEvent = sink.events.find(event => event.kind === "question_pending") as
+          Extract<FableLocalEvent, { kind: "question_pending" }>
+        expect(pendingEvent).toBeDefined()
+        expect(harness.runtime.answerQuestion({
+          turnRef: "turn-q-park", questionRef: pendingEvent.questionRef,
+          answers: [{ question: "Proceed?", labels: ["Yes"] }],
+        })).toBe(true)
+        const answered = await pendingDecision
+        expect((answered as { behavior?: unknown }).behavior).toBe("allow")
+        expect((answered as { updatedInput?: { answers?: unknown } }).updatedInput?.answers)
+          .toEqual({ "Proceed?": "Yes" })
         yield { type: "result", subtype: "success", is_error: false, result: "ok" }
       },
     })
-    const sink = collect()
     const result = await harness.runtime.runTurn({
-      turnRef: "turn-deny", threadRef: "thread-deny", history: [], message: "hi", emit: sink.emit,
+      turnRef: "turn-q-park", threadRef: "thread-q-park", history: [], message: "hi", emit: sink.emit,
     })
     expect(result.ok).toBe(true)
-    expect(decisions[0]).toEqual({ behavior: "deny", message: "Bash is not available in this lane." })
-    expect(String((decisions[0] as { message?: unknown }).message).toLowerCase()).not.toContain("grant")
+    expect(sink.events.filter(event => event.kind === "question_resolved")).toEqual([
+      { kind: "question_resolved", questionRef: "q.turn-q-park.1", outcome: "answered" },
+    ])
   })
 })
 
@@ -848,7 +884,7 @@ const okChild = (accountRef: string): ReturnType<FableDelegateRuntime["runChild"
   })
 
 describe("Codex delegation through the Fable lane", () => {
-  test("delegation-enabled sessions expose mcp__codex__delegate in allowedTools, the codex SDK MCP server, and the raised stream-close timeout", async () => {
+  test("delegation-enabled sessions auto-allow mcp__codex__delegate, expose the codex SDK MCP server, the scratch-dir guidance, and the raised stream-close timeout", async () => {
     const harness = makeDelegateHarness({
       script: async function* () {
         yield { type: "system", subtype: "init", session_id: "session-del", model: FABLE_LOCAL_MODEL }
@@ -862,19 +898,26 @@ describe("Codex delegation through the Fable lane", () => {
     })
     expect(result.ok).toBe(true)
     const call = harness.captured[0]!
-    expect(call.options.allowedTools).toEqual([...FABLE_LOCAL_ALLOWED_TOOLS, FABLE_DELEGATE_TOOL_NAME])
-    expect(call.options.allowedTools).toContain("mcp__codex__delegate")
+    // Full-access lane: the ONLY allowedTools entry is the delegate
+    // auto-allow — no restriction on the rest of the toolset.
+    expect(call.options.allowedTools).toEqual([FABLE_DELEGATE_TOOL_NAME])
     const servers = call.options.mcpServers as Record<string, { name?: string; tools?: Array<{ name?: string; description?: string }> }>
     expect(servers.codex).toBeDefined()
     expect(servers.codex!.tools![0]!.name).toBe("delegate")
+    const description = servers.codex!.tools![0]!.description ?? ""
     // The contract docstring states the spawn-config limitation explicitly.
-    expect(servers.codex!.tools![0]!.description).toContain("gpt-5.6-sol, medium reasoning")
-    expect(servers.codex!.tools![0]!.description).toContain("spawn config")
+    expect(description).toContain("gpt-5.6-sol, medium reasoning")
+    expect(description).toContain("spawn config")
+    // EP250 empty-scratch guidance: children START in an empty scratch dir,
+    // so Fable must pass absolute paths for anything they should read —
+    // this is what fixes "explore this codebase" yielding empty-dir walks.
+    expect(description).toContain("EMPTY scratch directory")
+    expect(description).toContain("absolute paths")
     const env = call.options.env as Record<string, string | undefined>
     expect(env.CLAUDE_CODE_STREAM_CLOSE_TIMEOUT).toBe(String(FABLE_STREAM_CLOSE_TIMEOUT_MS))
   })
 
-  test("without a delegate the tool set is unchanged (no mcpServers, no delegate name, no stream-close env)", async () => {
+  test("without a delegate there is no allowlist at all (no mcpServers, no delegate name, no stream-close env)", async () => {
     const harness = makeRuntimeHarness({
       script: async function* () {
         yield { type: "system", subtype: "init", session_id: "session-plain" }
@@ -886,7 +929,7 @@ describe("Codex delegation through the Fable lane", () => {
       turnRef: "turn-plain", threadRef: "thread-plain", history: [], message: "hi", emit: sink.emit,
     })
     const call = harness.captured[0]!
-    expect(call.options.allowedTools).toEqual([...FABLE_LOCAL_ALLOWED_TOOLS])
+    expect(call.options.allowedTools).toBeUndefined()
     expect(call.options.mcpServers).toBeUndefined()
     expect((call.options.env as Record<string, string | undefined>).CLAUDE_CODE_STREAM_CLOSE_TIMEOUT).toBeUndefined()
   })
@@ -902,6 +945,7 @@ describe("Codex delegation through the Fable lane", () => {
         { ref: "codex", home: "/isolated/codex" },
         { ref: "codex-2", home: "/isolated/codex-2" },
       ],
+      health: makeCodexAccountHealth(),
     })
     const toolResults: Array<Record<string, unknown>> = []
     const harness = makeDelegateHarness({
@@ -960,6 +1004,7 @@ describe("Codex delegation through the Fable lane", () => {
         { ref: "codex", home: "/isolated/codex" },
         { ref: "codex-2", home: "/isolated/codex-2" },
       ],
+      health: makeCodexAccountHealth(),
     })
     const toolResults: Array<Record<string, unknown>> = []
     const harness = makeDelegateHarness({
@@ -1133,6 +1178,7 @@ describe("makeFixtureFableLocalQuery (smoke fixture)", () => {
         { ref: "codex", home: "/isolated/codex" },
         { ref: "codex-2", home: "/isolated/codex-2" },
       ],
+      health: makeCodexAccountHealth(),
     })
     const runtime = makeFableLocalRuntime({
       scratchRoot: () => mkdtempSync(join(tmpdir(), "fable-local-fixture-")),

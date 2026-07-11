@@ -1,9 +1,15 @@
 /**
- * Codex child runtime tests (#8712 Lane C): the receipted spawn recipe,
- * exact usage accounting from turn.completed, typed rotation on the exact
- * revoked-refresh-token failure shape, the typed all-accounts-unavailable
- * result, the host-side timeout bound, and concurrent children with
- * isolated per-child scratch dirs — all through the REAL JSONL parser.
+ * Codex child runtime tests (#8712 Lane C + EP250 rotation fix). Enforces
+ * openagents_desktop.seam.codex_delegation_no_substitution.v2 and the child
+ * half of openagents_desktop.chat.fable_local_owner_full_access.v1: the
+ * receipted spawn recipe (danger-full-access owner-local profile), exact usage
+ * accounting from turn.completed, BROADENED auth-class classification
+ * (including the live SHORT variant that the original marker set missed),
+ * typed pre-content rotation for non-auth failures, post-content failures
+ * staying terminal, in-process account health ordering (last-good first,
+ * auth-failed last, success clears), the typed all-accounts-unavailable
+ * result, the host-side timeout bound, and concurrent children with isolated
+ * per-child scratch dirs — all through the REAL JSONL parser.
  */
 import { describe, expect, test } from "bun:test"
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs"
@@ -13,17 +19,22 @@ import { join } from "node:path"
 import {
   CODEX_CHILD_MODEL,
   CODEX_CHILD_REASONING_EFFORT,
+  CODEX_CHILD_SANDBOX,
   isCodexReconnectRequiredText,
   type CodexChildStreamEvent,
 } from "./codex-child-contract.ts"
 import {
   FIXTURE_CODEX_CHILD_TEXT,
+  FIXTURE_CODEX_SHORT_AUTH_MESSAGE,
   discoverRegisteredCodexAccounts,
   fixtureCodexRevokedStderr,
   fixtureCodexRevokedStdout,
+  fixtureCodexShortAuthStdout,
   fixtureCodexSuccessStdout,
+  makeCodexAccountHealth,
   makeCodexChildRuntime,
   makeFixtureCodexChildSpawn,
+  sharedCodexAccountHealth,
   type CodexChildAccount,
 } from "./codex-child-runtime.ts"
 
@@ -39,20 +50,43 @@ const collect = () => {
   return { events, onEvent: (event: CodexChildStreamEvent) => events.push(event) }
 }
 
-describe("isCodexReconnectRequiredText", () => {
-  test("matches the exact receipted revoked-token strings and nothing generic", () => {
+describe("isCodexReconnectRequiredText (BROADENED, EP250)", () => {
+  test("matches the LONG receipted revoked-token strings", () => {
     expect(isCodexReconnectRequiredText(
       "Your access token could not be refreshed because your refresh token was revoked",
     )).toBe(true)
     expect(isCodexReconnectRequiredText("ERROR refresh_token_invalidated")).toBe(true)
     expect(isCodexReconnectRequiredText("token_invalidated")).toBe(true)
+  })
+
+  test("matches the LIVE SHORT variant VERBATIM (the exact message the original set missed)", () => {
+    // Owner evidence 2026-07-11: one delegated child failed final with
+    // exactly this text — no "revoked", no "*_invalidated" substrings — and
+    // no rotation happened while a known-good codex-5 home sat idle.
+    expect(isCodexReconnectRequiredText(
+      "Your access token could not be refreshed. Please log out and sign in again.",
+    )).toBe(true)
+    expect(isCodexReconnectRequiredText(FIXTURE_CODEX_SHORT_AUTH_MESSAGE)).toBe(true)
+  })
+
+  test("matches the broadened auth-class markers case-insensitively", () => {
+    expect(isCodexReconnectRequiredText("please Sign In Again to continue")).toBe(true)
+    expect(isCodexReconnectRequiredText("server returned 401")).toBe(true)
+    expect(isCodexReconnectRequiredText("Unauthorized")).toBe(true)
+    expect(isCodexReconnectRequiredText("credential REVOKED by provider")).toBe(true)
+    expect(isCodexReconnectRequiredText("could not refresh the Refresh Token")).toBe(true)
+  })
+
+  test("does not match generic non-auth failures", () => {
     expect(isCodexReconnectRequiredText("network unreachable")).toBe(false)
     expect(isCodexReconnectRequiredText("rate limit exceeded")).toBe(false)
+    expect(isCodexReconnectRequiredText("stream disconnected")).toBe(false)
+    expect(isCodexReconnectRequiredText("codex exec exited 1")).toBe(false)
   })
 })
 
 describe("makeCodexChildRuntime.runChild", () => {
-  test("spawns the receipted recipe: exec --json, pinned model/effort, read-only sandbox, ephemeral, isolated CODEX_HOME", async () => {
+  test("spawns the receipted recipe: exec --json, pinned model/effort, danger-full-access sandbox (owner-local profile), ephemeral, isolated CODEX_HOME", async () => {
     const captured: SpawnCapture[] = []
     const scratch = mkdtempSync(join(tmpdir(), "codex-child-scratch-"))
     const runtime = makeCodexChildRuntime({
@@ -63,6 +97,7 @@ describe("makeCodexChildRuntime.runChild", () => {
         (input) => captured.push(input),
       ),
       discoverImpl: async () => [accounts[0]!],
+      health: makeCodexAccountHealth(),
     })
     const sink = collect()
     const result = await runtime.runChild({
@@ -81,13 +116,16 @@ describe("makeCodexChildRuntime.runChild", () => {
       "-c",
       "model_reasoning_effort=medium",
       "-s",
-      "read-only",
+      // Owner-local danger profile (owner statement 2026-07-11): full
+      // access, mirroring the Khala->Pylon owner-local executor invariant.
+      "danger-full-access",
       "--skip-git-repo-check",
       "-C",
       join(scratch, "codex-children", "child-1"),
       "--ephemeral",
       "Summarize this\n\nContext:\nextra context",
     ])
+    expect(CODEX_CHILD_SANDBOX).toBe("danger-full-access")
     // pylonAccountEnvironment (provider codex): CODEX_HOME only — never the
     // default ~/.codex, never any other provider-home mutation.
     expect(spawn.env.CODEX_HOME).toBe("/isolated/accounts/codex/codex")
@@ -100,6 +138,7 @@ describe("makeCodexChildRuntime.runChild", () => {
       scratchRoot: () => mkdtempSync(join(tmpdir(), "codex-child-scratch-")),
       spawnImpl: makeFixtureCodexChildSpawn([{ stdout: fixtureCodexSuccessStdout("thread-42"), exitCode: 0 }]),
       discoverImpl: async () => [accounts[0]!],
+      health: makeCodexAccountHealth(),
     })
     const sink = collect()
     const result = await runtime.runChild({ childRef: "child-usage", task: "go", onEvent: sink.onEvent })
@@ -125,7 +164,7 @@ describe("makeCodexChildRuntime.runChild", () => {
       .toEqual(["reasoning", "agent_message"])
   })
 
-  test("rotates on the exact revoked-token failure with a TYPED visible event, then succeeds on the next account", async () => {
+  test("rotates on the LONG revoked-token failure with a TYPED visible event, then succeeds on the next account", async () => {
     const runtime = makeCodexChildRuntime({
       scratchRoot: () => mkdtempSync(join(tmpdir(), "codex-child-scratch-")),
       spawnImpl: makeFixtureCodexChildSpawn([
@@ -133,6 +172,7 @@ describe("makeCodexChildRuntime.runChild", () => {
         { stdout: fixtureCodexSuccessStdout(), exitCode: 0 },
       ]),
       discoverImpl: async () => accounts,
+      health: makeCodexAccountHealth(),
     })
     const sink = collect()
     const result = await runtime.runChild({ childRef: "child-rotate", task: "go", onEvent: sink.onEvent })
@@ -151,13 +191,37 @@ describe("makeCodexChildRuntime.runChild", () => {
     expect(reconnect.detail).toContain("reconnect")
   })
 
-  test("all accounts revoked yields the typed account_reconnect_required failure naming the reconnect need", async () => {
+  test("EP250 LIVE MISS REGRESSION: the exact SHORT auth variant classifies auth-class and rotates typed (never a terminal child_failed)", async () => {
+    const runtime = makeCodexChildRuntime({
+      scratchRoot: () => mkdtempSync(join(tmpdir(), "codex-child-scratch-")),
+      spawnImpl: makeFixtureCodexChildSpawn([
+        // The live shape: turn.failed with ONLY the short message, exit 1,
+        // no stderr markers at all.
+        { stdout: fixtureCodexShortAuthStdout, exitCode: 1 },
+        { stdout: fixtureCodexSuccessStdout(), exitCode: 0 },
+      ]),
+      discoverImpl: async () => accounts,
+      health: makeCodexAccountHealth(),
+    })
+    const sink = collect()
+    const result = await runtime.runChild({ childRef: "child-short-auth", task: "go", onEvent: sink.onEvent })
+    if (!result.ok) throw new Error(`expected rotation to succeed, got ${result.reason}: ${result.detail}`)
+    expect(result.accountRef).toBe("codex-2")
+    const reconnect = sink.events.find(event => event.kind === "account_reconnect_required") as
+      Extract<CodexChildStreamEvent, { kind: "account_reconnect_required" }>
+    expect(reconnect).toBeDefined()
+    expect(reconnect.accountRef).toBe("codex")
+    expect(sink.events.some(event => event.kind === "pre_content_failure_rotated")).toBe(false)
+  })
+
+  test("all accounts auth-failed yields the typed account_reconnect_required failure naming the reconnect need", async () => {
     const runtime = makeCodexChildRuntime({
       scratchRoot: () => mkdtempSync(join(tmpdir(), "codex-child-scratch-")),
       spawnImpl: makeFixtureCodexChildSpawn([
         { stdout: fixtureCodexRevokedStdout, stderr: fixtureCodexRevokedStderr, exitCode: 1 },
       ]),
       discoverImpl: async () => accounts,
+      health: makeCodexAccountHealth(),
     })
     const sink = collect()
     const result = await runtime.runChild({ childRef: "child-all-revoked", task: "go", onEvent: sink.onEvent })
@@ -177,6 +241,7 @@ describe("makeCodexChildRuntime.runChild", () => {
         spawned += 1
       }),
       discoverImpl: async () => [],
+      health: makeCodexAccountHealth(),
     })
     const result = await runtime.runChild({ childRef: "child-none", task: "go" })
     expect(result.ok).toBe(false)
@@ -197,6 +262,7 @@ describe("makeCodexChildRuntime.runChild", () => {
       ),
       discoverImpl: async () => accounts,
       timeoutMs: 40,
+      health: makeCodexAccountHealth(),
     })
     const result = await runtime.runChild({ childRef: "child-hang", task: "go" })
     expect(result.ok).toBe(false)
@@ -207,39 +273,108 @@ describe("makeCodexChildRuntime.runChild", () => {
     expect(spawned).toBe(1)
   })
 
-  test("a non-revoked failure is typed child_failed and does not rotate", async () => {
+  test("EP250 BROADENING: a generic PRE-content failure rotates with the typed pre_content_failure_rotated reason, then succeeds", async () => {
+    const runtime = makeCodexChildRuntime({
+      scratchRoot: () => mkdtempSync(join(tmpdir(), "codex-child-scratch-")),
+      spawnImpl: makeFixtureCodexChildSpawn([
+        // Non-auth failure with no agent_message and zero usage: rotation-
+        // eligible (children are ephemeral; pre-content loses nothing).
+        { stdout: JSON.stringify({ type: "error", message: "stream disconnected" }), exitCode: 1 },
+        { stdout: fixtureCodexSuccessStdout(), exitCode: 0 },
+      ]),
+      discoverImpl: async () => accounts,
+      health: makeCodexAccountHealth(),
+    })
+    const sink = collect()
+    const result = await runtime.runChild({ childRef: "child-pre-content", task: "go", onEvent: sink.onEvent })
+    if (!result.ok) throw new Error(`expected success, got ${result.reason}: ${result.detail}`)
+    expect(result.accountRef).toBe("codex-2")
+    const rotated = sink.events.find(event => event.kind === "pre_content_failure_rotated") as
+      Extract<CodexChildStreamEvent, { kind: "pre_content_failure_rotated" }>
+    expect(rotated).toBeDefined()
+    expect(rotated.accountRef).toBe("codex")
+    expect(rotated.detail).toContain("stream disconnected")
+    // NOT auth-class: no reconnect event, and the account is not demoted.
+    expect(sink.events.some(event => event.kind === "account_reconnect_required")).toBe(false)
+  })
+
+  test("all accounts failing PRE-content (mixed auth + generic) yields a typed child_failed naming the mix", async () => {
+    const runtime = makeCodexChildRuntime({
+      scratchRoot: () => mkdtempSync(join(tmpdir(), "codex-child-scratch-")),
+      spawnImpl: makeFixtureCodexChildSpawn([
+        { stdout: fixtureCodexRevokedStdout, stderr: fixtureCodexRevokedStderr, exitCode: 1 },
+        { stdout: JSON.stringify({ type: "error", message: "stream disconnected" }), exitCode: 1 },
+      ]),
+      discoverImpl: async () => accounts,
+      health: makeCodexAccountHealth(),
+    })
+    const sink = collect()
+    const result = await runtime.runChild({ childRef: "child-mixed", task: "go", onEvent: sink.onEvent })
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.reason).toBe("child_failed")
+    expect(result.detail).toContain("all 2 registered Codex account(s) failed before producing content")
+    expect(result.detail).toContain("1 need reconnect")
+    expect(result.detail).toContain("1 other pre-content failure(s)")
+    expect(result.detail).toContain("stream disconnected")
+    expect(sink.events.filter(event => event.kind === "account_reconnect_required")).toHaveLength(1)
+    expect(sink.events.filter(event => event.kind === "pre_content_failure_rotated")).toHaveLength(1)
+  })
+
+  test("a POST-content failure is terminal child_failed and does NOT rotate (a partial child never double-runs)", async () => {
     let spawned = 0
     const runtime = makeCodexChildRuntime({
       scratchRoot: () => mkdtempSync(join(tmpdir(), "codex-child-scratch-")),
       spawnImpl: makeFixtureCodexChildSpawn(
-        [{ stdout: JSON.stringify({ type: "error", message: "stream disconnected" }), exitCode: 1 }],
+        [{
+          stdout: [
+            JSON.stringify({ type: "thread.started", thread_id: "t-post" }),
+            JSON.stringify({
+              type: "item.completed",
+              item: { id: "item_0", type: "agent_message", text: "partial answer before the failure" },
+            }),
+            JSON.stringify({ type: "error", message: "stream disconnected" }),
+          ].join("\n"),
+          exitCode: 1,
+        }],
         () => {
           spawned += 1
         },
       ),
       discoverImpl: async () => accounts,
+      health: makeCodexAccountHealth(),
     })
-    const result = await runtime.runChild({ childRef: "child-fail", task: "go" })
+    const sink = collect()
+    const result = await runtime.runChild({ childRef: "child-post", task: "go", onEvent: sink.onEvent })
     expect(result.ok).toBe(false)
     if (result.ok) return
     expect(result.reason).toBe("child_failed")
     expect(result.detail).toContain("stream disconnected")
+    expect(result.accountRef).toBe("codex")
     expect(spawned).toBe(1)
+    expect(sink.events.some(event => event.kind === "pre_content_failure_rotated")).toBe(false)
   })
 
-  test("a clean exit without agent_message text is typed child_failed, never an empty success", async () => {
+  test("a clean exit with usage but no agent_message text is typed child_failed, never an empty success (post-content: usage was consumed)", async () => {
+    let spawned = 0
     const runtime = makeCodexChildRuntime({
       scratchRoot: () => mkdtempSync(join(tmpdir(), "codex-child-scratch-")),
-      spawnImpl: makeFixtureCodexChildSpawn([
-        { stdout: JSON.stringify({ type: "turn.completed", usage: { input_tokens: 5 } }), exitCode: 0 },
-      ]),
+      spawnImpl: makeFixtureCodexChildSpawn(
+        [{ stdout: JSON.stringify({ type: "turn.completed", usage: { input_tokens: 5 } }), exitCode: 0 }],
+        () => {
+          spawned += 1
+        },
+      ),
       discoverImpl: async () => accounts,
+      health: makeCodexAccountHealth(),
     })
     const result = await runtime.runChild({ childRef: "child-empty", task: "go" })
     expect(result.ok).toBe(false)
     if (result.ok) return
     expect(result.reason).toBe("child_failed")
     expect(result.detail).toContain("no agent_message")
+    // Usage was consumed (5 input tokens), so this is NOT pre-content.
+    expect(spawned).toBe(1)
   })
 
   test("3 concurrent children run in isolated per-child scratch dirs and all complete", async () => {
@@ -252,6 +387,7 @@ describe("makeCodexChildRuntime.runChild", () => {
         (input) => cwds.push(input.cwd),
       ),
       discoverImpl: async () => [accounts[0]!],
+      health: makeCodexAccountHealth(),
     })
     const results = await Promise.all([
       runtime.runChild({ childRef: "child-a", task: "a" }),
@@ -267,29 +403,33 @@ describe("makeCodexChildRuntime.runChild", () => {
     ])
   })
 
-  test("FRESHNESS (EP250): the account candidate list is re-read at EVERY delegate call — a mid-session reconnect is picked up without restart", async () => {
+  test("FRESHNESS + HEALTH (EP250): a mid-session reconnect ref is picked up AND ordered ahead of the auth-failed ref on the next call", async () => {
     // Owner receipt: codex-5 was registered at 15:30:40 but the 15:32
     // children never tried it. The registry read must happen per runChild —
-    // never captured at construction or turn start. This oracle mutates the
-    // discover source BETWEEN calls and asserts the second call rotates into
-    // the newly registered ref.
+    // never captured at construction — and the health memory must put the
+    // freshly registered (untried) ref AHEAD of the auth-failed `codex` ref.
     const registered: CodexChildAccount[] = [
       { ref: "codex", home: "/isolated/accounts/codex/codex" },
     ]
     let discoverCalls = 0
+    const spawnedHomes: string[] = []
     const runtime = makeCodexChildRuntime({
       scratchRoot: () => mkdtempSync(join(tmpdir(), "codex-child-scratch-")),
-      spawnImpl: makeFixtureCodexChildSpawn([
-        // call 1: the only account is revoked -> typed all-revoked failure
-        { stdout: fixtureCodexRevokedStdout, stderr: fixtureCodexRevokedStderr, exitCode: 1 },
-        // call 2: codex still revoked -> rotate -> codex-5 succeeds
-        { stdout: fixtureCodexRevokedStdout, stderr: fixtureCodexRevokedStderr, exitCode: 1 },
-        { stdout: fixtureCodexSuccessStdout(), exitCode: 0 },
-      ]),
+      spawnImpl: makeFixtureCodexChildSpawn(
+        [
+          // call 1: the only account is revoked -> typed all-revoked failure
+          { stdout: fixtureCodexRevokedStdout, stderr: fixtureCodexRevokedStderr, exitCode: 1 },
+          // call 2: codex-5 (untried, ordered FIRST) succeeds immediately —
+          // the auth-failed `codex` ref is never re-burned.
+          { stdout: fixtureCodexSuccessStdout(), exitCode: 0 },
+        ],
+        input => spawnedHomes.push(String(input.env.CODEX_HOME)),
+      ),
       discoverImpl: async () => {
         discoverCalls += 1
         return [...registered]
       },
+      health: makeCodexAccountHealth(),
     })
 
     const first = await runtime.runChild({ childRef: "child-before", task: "go" })
@@ -305,8 +445,91 @@ describe("makeCodexChildRuntime.runChild", () => {
     expect(discoverCalls).toBe(2)
     if (!second.ok) throw new Error(`expected the fresh ref to be used, got ${second.reason}`)
     expect(second.accountRef).toBe("codex-5")
-    expect(sink.events.some(event =>
-      event.kind === "attempt_started" && event.accountRef === "codex-5")).toBe(true)
+    // Health ordering: the second call's FIRST attempt is codex-5 (untried
+    // beats auth-failed); the broken codex home is not touched again.
+    const attempts = sink.events.filter(event => event.kind === "attempt_started") as
+      Array<Extract<CodexChildStreamEvent, { kind: "attempt_started" }>>
+    expect(attempts[0]!.accountRef).toBe("codex-5")
+    expect(spawnedHomes).toEqual([
+      "/isolated/accounts/codex/codex",
+      "/isolated/accounts/codex/codex-5",
+    ])
+  })
+})
+
+describe("makeCodexAccountHealth (in-process account health memory)", () => {
+  const pool: ReadonlyArray<CodexChildAccount> = [
+    { ref: "codex", home: "/h/codex" },
+    { ref: "codex-2", home: "/h/codex-2" },
+    { ref: "codex-5", home: "/h/codex-5" },
+  ]
+
+  test("orders last-known-good first (most recent success first), untried next, auth-failed LAST", () => {
+    const health = makeCodexAccountHealth()
+    health.recordAuthFailure("codex")
+    health.recordSuccess("codex-5")
+    expect(health.order(pool).map(account => account.ref)).toEqual(["codex-5", "codex-2", "codex"])
+    // A newer success outranks an older one.
+    health.recordSuccess("codex-2")
+    expect(health.order(pool).map(account => account.ref)).toEqual(["codex-2", "codex-5", "codex"])
+  })
+
+  test("auth-failed accounts are still tried when they are all that is left (a reconnect may have fixed them), and a success clears the mark", () => {
+    const health = makeCodexAccountHealth()
+    health.recordAuthFailure("codex")
+    // Still a candidate — LAST, never dropped.
+    expect(health.order([pool[0]!]).map(account => account.ref)).toEqual(["codex"])
+    expect(health.stateOf("codex")).toBe("auth_failed")
+    // Success clears: the ref is promoted to last-known-good.
+    health.recordSuccess("codex")
+    expect(health.stateOf("codex")).toBe("last_good")
+    expect(health.order(pool).map(account => account.ref)).toEqual(["codex", "codex-2", "codex-5"])
+  })
+
+  test("the runtime demotes an auth-failed account for the NEXT call (integration through runChild)", async () => {
+    const health = makeCodexAccountHealth()
+    const attemptsPerCall: string[][] = []
+    let currentAttempts: string[] = []
+    const runtime = makeCodexChildRuntime({
+      scratchRoot: () => mkdtempSync(join(tmpdir(), "codex-child-scratch-")),
+      spawnImpl: makeFixtureCodexChildSpawn([
+        // call 1: codex auth-fails (SHORT live variant), codex-2 succeeds.
+        { stdout: fixtureCodexShortAuthStdout, exitCode: 1 },
+        { stdout: fixtureCodexSuccessStdout(), exitCode: 0 },
+        // call 2: first attempt succeeds — and must be codex-2 (last-good),
+        // with the auth-failed codex demoted, not tried at all.
+        { stdout: fixtureCodexSuccessStdout(), exitCode: 0 },
+      ]),
+      discoverImpl: async () => accounts,
+      health,
+    })
+    const onEvent = (event: CodexChildStreamEvent): void => {
+      if (event.kind === "attempt_started") currentAttempts.push(event.accountRef)
+    }
+
+    const first = await runtime.runChild({ childRef: "call-1", task: "go", onEvent })
+    attemptsPerCall.push(currentAttempts)
+    currentAttempts = []
+    if (!first.ok) throw new Error(`expected call 1 success, got ${first.reason}`)
+    expect(first.accountRef).toBe("codex-2")
+    expect(attemptsPerCall[0]).toEqual(["codex", "codex-2"])
+
+    const second = await runtime.runChild({ childRef: "call-2", task: "go", onEvent })
+    attemptsPerCall.push(currentAttempts)
+    if (!second.ok) throw new Error(`expected call 2 success, got ${second.reason}`)
+    // Last-known-good first; the broken codex ref stops burning attempts.
+    expect(second.accountRef).toBe("codex-2")
+    expect(attemptsPerCall[1]).toEqual(["codex-2"])
+    expect(health.stateOf("codex")).toBe("auth_failed")
+    expect(health.stateOf("codex-2")).toBe("last_good")
+  })
+
+  test("the shared module-level memory exists (main-process lifetime default)", () => {
+    // makeCodexChildRuntime defaults to this instance so concurrent siblings
+    // and subsequent calls share ordering. Tests inject their own.
+    expect(typeof sharedCodexAccountHealth.order).toBe("function")
+    expect(typeof sharedCodexAccountHealth.recordSuccess).toBe("function")
+    expect(typeof sharedCodexAccountHealth.recordAuthFailure).toBe("function")
   })
 })
 

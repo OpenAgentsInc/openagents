@@ -6,7 +6,7 @@ import {
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-11.28",
+    version: "2026-07-11.29",
     contracts: [
       {
         contractId: "openagents_desktop.chat.compact_message_details_affordance.v1",
@@ -1105,7 +1105,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
       // =====================================================================
       {
         contractId: "openagents_desktop.seam.codex_delegation_no_substitution.v1",
-        state: "enforced",
+        state: "retired",
         surface: "openagents-desktop",
         productArea: "Fable-to-Codex sub-agent delegation",
         enforcementTier: "test-sweep",
@@ -1118,15 +1118,13 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         statement:
           "The local Fable lane may delegate bounded tasks to Codex sub-agents only through the typed mcp__codex__delegate tool: every child is requested pinned to model gpt-5.6-sol at medium reasoning effort as spawn-config truth (the codex exec --json stream does not echo model or effort, and every result and ledger row is labeled requested accordingly); children run read-only in isolated scratch workspaces on registry-isolated Codex account homes, never the default ~/.codex; a revoked-credential account is never silently skipped — rotation emits a typed account_reconnect_required event per skipped account, and when every registered account is revoked the delegation returns a typed unavailable result naming the reconnect need; at most 3 children run concurrently and 6 per turn, with over-cap calls refused typed before any spawn; exact per-child token usage from turn.completed (total = input + output + reasoning) rolls into the session usage ledger and the Fleet view's evidence-labeled Session usage section; and a session-observed revoked credential or failed usage probe supersedes the registry's presence-based ready with a typed reconnect-required readiness state.",
         authorityBoundary:
-          "The renderer receives only bounded typed child lifecycle events (childRef, account ref, public-safe summaries with the child workspace redacted, exact token counts, typed failure reasons) and the typed session-ledger snapshot — never prompts, raw JSONL, credentials, auth paths, or local paths beyond the <child-workspace> label. Delegation grants no write, network-spend, or default-home authority, and the spawn-config model pin is not presented as a provider echo.",
+          "RETIRED 2026-07-11, superseded by v2 same day: (a) the owner full-access override replaced the read-only child sandbox with danger-full-access (owner sign-off, verbatim: 'disallowing bash is retarded, give them full tools full permissions etc'); (b) the live EP250 rotation miss (the SHORT auth variant 'Your access token could not be refreshed. Please log out and sign in again.' carried none of v1's markers, so no rotation happened) broadened the auth classifier, added typed pre-content rotation, and added the in-process account health ordering. Kept for history.",
         seam: {
           client: "apps/openagents-desktop/src/renderer/fleet-workspace.ts",
           server: "apps/openagents-desktop/src/codex-child-runtime.ts",
         },
         evidenceRefs: [
-          "apps/openagents-desktop/src/codex-child-contract.ts",
-          "apps/openagents-desktop/src/fable-local-runtime.ts",
-          "apps/openagents-desktop/src/usage-ledger-contract.ts",
+          "contract:openagents_desktop.seam.codex_delegation_no_substitution.v2",
           "github:OpenAgentsInc/openagents#8712",
         ],
         oracles: [
@@ -1136,7 +1134,47 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
             mode: "unit",
             ref: "apps/openagents-desktop/src/codex-child-runtime.test.ts",
             description:
-              "Drives the real JSONL parser with the receipted spawn recipe and revoked-token shapes: pinned model/effort args, isolated CODEX_HOME, exact usage totals, typed visible rotation, typed all-accounts-unavailable, host-side timeout, and concurrent isolated children.",
+              "HISTORICAL (retired state skips coverage): proved the v1 read-only spawn recipe and marker-set rotation. Replaced by the v2 oracles below.",
+          },
+        ],
+        verification:
+          "Retired — superseded by openagents_desktop.seam.codex_delegation_no_substitution.v2; see that contract's verification.",
+      },
+      {
+        contractId: "openagents_desktop.seam.codex_delegation_no_substitution.v2",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "Fable-to-Codex sub-agent delegation",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: {
+          channel: "owner-codex-session",
+          statedBy: "owner",
+          statedOn: "2026-07-11",
+        },
+        statement:
+          "The local Fable lane may delegate bounded tasks to Codex sub-agents only through the typed mcp__codex__delegate tool: every child is requested pinned to model gpt-5.6-sol at medium reasoning effort as spawn-config truth (labeled requested; the codex exec --json stream does not echo model or effort); children run with the owner-local danger-full-access profile in isolated per-child scratch workspaces on registry-isolated Codex account homes, never the default ~/.codex, and the tool description tells Fable the child STARTS in an empty scratch directory so absolute paths must be included for anything it should read; a failing account is never silently skipped — auth-class failures (broadened marker set including the live SHORT variant 'Your access token could not be refreshed. Please log out and sign in again.') rotate with a typed account_reconnect_required event and demote the account in the in-process health memory, any other pre-content failure rotates with a typed pre_content_failure_rotated event, post-content failures and timeouts fail the child without rotation; candidate ordering per call is last-known-good first, then untried, then auth-failed last (a success clears the mark); when every account is exhausted the delegation returns a typed failure naming the reconnect need (all-auth) or the failure mix; at most 3 children run concurrently and 6 per turn, with over-cap calls refused typed before any spawn; exact per-child token usage from turn.completed (total = input + output + reasoning) rolls into the session usage ledger and the Fleet view's evidence-labeled Session usage section; and a session-observed auth failure or failed usage probe supersedes the registry's presence-based ready with a typed reconnect-required readiness state.",
+        authorityBoundary:
+          "The renderer receives only bounded typed child lifecycle events (childRef, account ref, public-safe summaries with the child workspace redacted, exact token counts, typed failure reasons/rotation activities) and the typed session-ledger snapshot — never prompts, raw JSONL, credentials, auth paths, or local paths beyond the <child-workspace> label. danger-full-access is the owner-local executor invariant (never a public wire field, never for untrusted labor/provider work). The health memory is in-process only (main-process lifetime, never persisted), and the spawn-config model pin is not presented as a provider echo.",
+        seam: {
+          client: "apps/openagents-desktop/src/renderer/fleet-workspace.ts",
+          server: "apps/openagents-desktop/src/codex-child-runtime.ts",
+        },
+        evidenceRefs: [
+          "apps/openagents-desktop/src/codex-child-contract.ts",
+          "apps/openagents-desktop/src/fable-local-runtime.ts",
+          "apps/openagents-desktop/src/usage-ledger-contract.ts",
+          "contract:openagents_desktop.chat.fable_local_owner_full_access.v1",
+          "github:OpenAgentsInc/openagents#8712",
+        ],
+        oracles: [
+          {
+            id: "codex_delegation.child_runtime_rotation_and_usage",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/codex-child-runtime.test.ts",
+            description:
+              "Drives the real JSONL parser: danger-full-access spawn recipe with pinned model/effort and isolated CODEX_HOME; exact usage totals; the verbatim SHORT auth variant classifying auth-class and rotating typed; generic pre-content failure rotating with pre_content_failure_rotated; post-content failure staying terminal; health ordering (last-good first, auth-failed demoted for the NEXT call, success clears); typed all-exhausted failures for the all-auth and mixed cases; host-side timeout; and concurrent isolated children.",
           },
           {
             id: "codex_delegation.fable_tool_caps_and_events",
@@ -1144,7 +1182,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
             mode: "unit",
             ref: "apps/openagents-desktop/src/fable-local-runtime.test.ts",
             description:
-              "Proves the delegate tool is offered only with the fully-qualified allowed name, per-turn concurrency and total caps refuse typed without spawning, child lifecycle events flow schema-valid through the FableLocalEvent envelope, and the tool result labels usage as requested spawn-config truth.",
+              "Proves the delegate tool is auto-allowed under its fully-qualified name with the empty-scratch/absolute-paths guidance in its description, per-turn concurrency and total caps refuse typed without spawning, child lifecycle events (including both typed rotation activities) flow schema-valid through the FableLocalEvent envelope, and the tool result labels usage as requested spawn-config truth.",
           },
           {
             id: "codex_delegation.session_ledger_and_readiness_override",
@@ -1268,17 +1306,18 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           "bun run --cwd apps/openagents-desktop verify runs the settings, codex-connect, and fleet suites plus the Electron smoke journey asserting the revoked fixture account renders its Reconnect button in Settings.",
       },
       // -----------------------------------------------------------------------
-      // EP250 local Fable lane permissions (#8712): scoped writes + the
-      // AskUserQuestion flow. Source incident (owner on-camera run,
-      // 2026-07-11): AskUserQuestion surfaced as "AskUserQuestion · failed ·
-      // Answer questions?" with no way to answer, and a requested Write
-      // failed with "Claude requested permissions to write to
-      // <workspace>/greetings.md, but you haven't granted it yet." — copy
-      // implying a grant flow no UI provides.
+      // EP250 local Fable lane permissions (#8712). HISTORY: the scoped-write
+      // contract below bound the lane to workspace-contained Write/Edit with
+      // no Bash/WebSearch. SUPERSEDED same-day by the owner full-access
+      // override (next contract) — owner sign-off, verbatim: "disallowing
+      // bash is retarded, give them full tools full permissions etc". Repo
+      // law requires owner sign-off to weaken an oracle; that statement is
+      // the sign-off, and the scoped-write oracles were REPLACED by the
+      // full-access oracles rather than silently deleted.
       // -----------------------------------------------------------------------
       {
         contractId: "openagents_desktop.chat.fable_local_lane_scoped_write.v1",
-        state: "enforced",
+        state: "retired",
         surface: "openagents-desktop",
         productArea: "chat local Fable lane permissions",
         enforcementTier: "test-sweep",
@@ -1287,10 +1326,10 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         statement:
           "Writes are permitted only inside the turn/thread workspace; interactive-only tools are never offered to the model in this headless lane; out-of-scope denials say so honestly. The lane must never surface permission copy implying a grant flow exists (live incident: Write greetings.md failed with 'Claude requested permissions to write to <workspace>/greetings.md, but you haven't granted it yet.' — a grant no UI could give).",
         authorityBoundary:
-          "Write/Edit are allowlisted but contained to the per-thread scratch workspace under userData by a PreToolUse boundary guard reusing pylon-core's canonicalized path-containment mechanics (toolInputEscapesWorkspace) — never the repo, never paths outside the workspace. An out-of-bounds write is a visible typed tool failure whose copy says it is out of scope for this lane ('writes are limited to the turn workspace'), never grant-flow copy. Plan-mode, notebook, and Skill tools are disallowed (never offered, not offered-then-denied); Bash and WebSearch stay off. The workspace persists per THREAD so follow-up turns see files earlier turns wrote. No new filesystem, shell, or network authority is granted.",
+          "RETIRED 2026-07-11, superseded by contract:openagents_desktop.chat.fable_local_owner_full_access.v1 on the owner's explicit sign-off ('disallowing bash is retarded, give them full tools full permissions etc'). The workspace boundary guard, out-of-scope denial copy, and Bash/WebSearch removal no longer apply; the honest-copy law (never imply a grant flow that does not exist) survives trivially because nothing is denied anymore. Kept for history.",
         evidenceRefs: [
           "apps/openagents-desktop/src/fable-local-runtime.ts",
-          "packages/pylon-core/src/executor/claude-agent-executor.ts",
+          "contract:openagents_desktop.chat.fable_local_owner_full_access.v1",
           "github:OpenAgentsInc/openagents#8712",
         ],
         oracles: [
@@ -1300,11 +1339,50 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
             mode: "unit",
             ref: "apps/openagents-desktop/src/fable-local-runtime.test.ts",
             description:
-              "Proves session options carry Write/Edit plus the PreToolUse guard; in-workspace writes pass and persist end-to-end through the fake SDK; out-of-bounds writes deny with the exact out-of-scope copy and never grant-flow copy; interactive-dead tools (EnterPlanMode/ExitPlanMode/NotebookEdit/Skill) are disallowed; per-thread workspaces persist across turns and isolate threads.",
+              "HISTORICAL (retired state skips coverage): proved the PreToolUse guard, out-of-scope denial copy, and restricted tool set. Replaced by fable_local_owner_full_access oracles asserting the inverse posture.",
           },
         ],
         verification:
-          "bun run --cwd apps/openagents-desktop verify runs the fable-local runtime suite covering the workspace boundary guard, honest denial copy, disallowed interactive tools, and per-thread workspace persistence.",
+          "Retired — superseded by openagents_desktop.chat.fable_local_owner_full_access.v1; see that contract's verification.",
+      },
+      {
+        contractId: "openagents_desktop.chat.fable_local_owner_full_access.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "chat local Fable lane permissions",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "owner-codex-session", statedBy: "owner", statedOn: "2026-07-11" },
+        statement:
+          "disallowing bash is retarded, give them full tools full permissions etc (owner override after live Claude subagents failed with 'Bash is not available in this lane.'; supersedes openagents_desktop.chat.fable_local_lane_scoped_write.v1)",
+        authorityBoundary:
+          "OWNER-LOCAL danger profile only — the same owner-local executor invariant as the Khala->Pylon runbook's danger-full-access/approval-never posture, never a public wire field and never applied to untrusted labor/provider work. The local Fable lane and its Agent children get the full SDK toolset (no allowedTools restriction beyond the delegate auto-allow, no PreToolUse workspace guard, no out-of-scope denial copy) with permissionMode 'default' plus an allow-all canUseTool — deliberately NOT bypassPermissions, which per sdk.d.ts bypasses all permission checks including the canUseTool handler the AskUserQuestion flow parks on. Skill and EnterPlanMode/ExitPlanMode stay disallowed as separately-decided UX noise (not permission bounds). Codex delegate children spawn with -s danger-full-access. The per-thread scratch workspace remains the default cwd only.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/fable-local-runtime.ts",
+          "apps/openagents-desktop/src/codex-child-runtime.ts",
+          "contract:openagents_desktop.chat.fable_local_lane_scoped_write.v1",
+          "github:OpenAgentsInc/openagents#8712",
+        ],
+        oracles: [
+          {
+            id: "fable_local_owner_full_access.full_toolset_and_question_flow",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/fable-local-runtime.test.ts",
+            description:
+              "Proves session options carry NO allowedTools restriction (only the delegate auto-allow when offered), NO PreToolUse hook, permissionMode 'default'; canUseTool allows Bash/out-of-workspace Write/WebSearch/Agent with no denial or scope copy; NotebookEdit is offered while Skill/plan-mode stay disallowed; and the AskUserQuestion regression: with the allow-all handler the question still parks pending and resolves through answerQuestion.",
+          },
+          {
+            id: "fable_local_owner_full_access.codex_child_danger_sandbox",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/codex-child-runtime.test.ts",
+            description:
+              "Proves the codex exec spawn recipe carries -s danger-full-access (owner-local profile) while keeping the isolated CODEX_HOME and per-child scratch cwd.",
+          },
+        ],
+        verification:
+          "bun run --cwd apps/openagents-desktop verify runs the fable-local runtime suite (full-toolset posture, allow-all canUseTool, question-flow regression) and the codex-child suite (danger-full-access spawn args).",
       },
       {
         contractId: "openagents_desktop.chat.fable_local_question_flow.v1",

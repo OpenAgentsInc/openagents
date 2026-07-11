@@ -181,10 +181,16 @@ export const FableLocalEventSchema = Schema.Union([
     childRef: Schema.String.check(Schema.isMaxLength(120)),
     /**
      * "item": a completed child stream item. "account_reconnect_required":
-     * an account with revoked credentials was skipped VISIBLY (typed event,
-     * never a silent rotation) before the next registered Codex home ran.
+     * an account with rejected credentials was skipped VISIBLY (typed event,
+     * never a silent rotation) before the next candidate Codex home ran.
+     * "pre_content_failure_rotated": a NON-auth pre-content failure was
+     * rotated past (EP250 broadened rotation) — equally typed and visible.
      */
-    activity: Schema.Literals(["item", "account_reconnect_required"]),
+    activity: Schema.Literals([
+      "item",
+      "account_reconnect_required",
+      "pre_content_failure_rotated",
+    ]),
     accountRef: Schema.optional(Schema.String),
     summary: Schema.String.check(Schema.isMaxLength(FABLE_LOCAL_SUMMARY_LIMIT)),
   }),

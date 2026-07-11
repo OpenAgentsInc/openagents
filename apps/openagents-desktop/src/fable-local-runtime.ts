@@ -13,20 +13,25 @@
  * ever run: no ready sibling home means a typed unavailable result — never a
  * fall-through to the cloud gateway (the no-silent-substitution law).
  *
- * Safety bounds (EP250 revision): the session cwd is a per-THREAD scratch
- * workspace under the app's userData (never a repo), `permissionMode:
- * "default"` with `allowedTools` Read/Glob/Grep plus Write/Edit — where
- * Write/Edit are contained to that workspace by a PreToolUse boundary guard
- * reusing pylon-core's proven `toolInputEscapesWorkspace` mechanics
- * (canonicalized path containment; deny outside). An out-of-bounds write is
- * a VISIBLE typed tool failure whose copy says it is out of scope for this
- * lane — never copy implying a grant flow exists (none does). Bash and
- * WebSearch stay off; interactive-only tools that could only fail headless
- * (plan mode, notebook edit, Skill) are disallowed so the model never sees
- * them. AskUserQuestion is REAL here: it parks on the SDK `canUseTool`
- * callback, surfaces as a typed question_pending event, and resolves with
- * the user's answers via `answerQuestion` (allow + updatedInput — the
- * SDK-documented answer mechanism), with honest timeout/denied outcomes.
+ * Permission posture (EP250 owner override, statement verbatim 2026-07-11:
+ * "disallowing bash is retarded, give them full tools full permissions
+ * etc"): this is the OWNER-LOCAL danger profile — the full SDK toolset
+ * (Bash, Write, Edit, WebSearch, WebFetch, NotebookEdit, Agent children, …)
+ * with full permissions, consistent with the repo's owner-local executor
+ * invariant (the Khala->Pylon runbook's danger-full-access / approval-never
+ * posture; never a public wire field). The per-THREAD scratch workspace
+ * under the app's userData remains the DEFAULT cwd only — it is no longer a
+ * boundary, and the old PreToolUse containment guard is gone. MECHANISM
+ * (receipted from sdk.d.ts): `permissionMode: "bypassPermissions"` would
+ * "Bypass all permission checks" — including the `canUseTool` handler the
+ * AskUserQuestion flow parks on — so the lane instead keeps `permissionMode:
+ * "default"` with a `canUseTool` that ALLOWS every tool except
+ * AskUserQuestion, which routes through the real question flow: it surfaces
+ * as a typed question_pending event and resolves with the user's answers via
+ * `answerQuestion` (allow + updatedInput — the SDK-documented answer
+ * mechanism), with honest timeout/denied outcomes. Interactive-only tools
+ * that could only fail headless (plan mode, Skill, onboarding picker) stay
+ * disallowed — separately decided UX noise, not a permission bound.
  * `settingSources: []`; every emitted payload is bounded and path-redacted.
  *
  * Multi-turn: the runtime keeps an in-memory threadRef -> SDK session map and
@@ -42,8 +47,6 @@ import { createHash } from "node:crypto"
 import { mkdirSync } from "node:fs"
 import { homedir } from "node:os"
 import { join } from "node:path"
-
-import { toolInputEscapesWorkspace } from "@openagentsinc/pylon-core/executor/claude-agent-executor"
 
 import {
   discoverPylonSiblingAccountHomes,
@@ -73,12 +76,6 @@ import {
 
 const CLAUDE_AGENT_SDK_PACKAGE = "@anthropic-ai/claude-agent-sdk"
 /**
- * Chat-turn tool set (EP250): read tools plus Write/Edit, with Write/Edit
- * contained to the per-thread scratch workspace by the PreToolUse boundary
- * guard below. Still no Bash, no WebSearch.
- */
-export const FABLE_LOCAL_ALLOWED_TOOLS = ["Read", "Glob", "Grep", "Write", "Edit"] as const
-/**
  * The lane's requested model ("IT HAS TO BE FABLE"): the SDK `Options.model`
  * key accepts a full model ID and its own docs name `'claude-fable-5'` as an
  * example. Without this the turn silently runs on the account home's default
@@ -90,21 +87,22 @@ export const FABLE_LOCAL_MODEL_FAMILY_PREFIX = "claude-fable"
 /**
  * Tools this headless lane strips from the model's context entirely (never
  * offered, not offered-then-denied — the model must not see tools that can
- * only fail):
+ * only fail). These are UX-noise removals decided separately from the
+ * owner's full-tools/full-permissions override (which the owner has NOT
+ * reversed for these):
  * - `Skill`: skills are removed from the chat lane (`skills: []` pairs with
  *   this so bundled skill listings never auto-trigger).
  * - `EnterPlanMode`/`ExitPlanMode`: plan mode is an interactive CLI flow with
  *   no counterpart in this lane (seen dead on camera, EP250).
- * - `NotebookEdit`: notebook editing has no surface here.
  * - `ShowOnboardingRolePicker`: interactive-only host dialog (sdk-tools.d.ts).
- * AskUserQuestion is deliberately NOT here — it is wired to a real question
- * UI through the canUseTool answer path below.
+ * NotebookEdit is no longer here (full-tools override); AskUserQuestion is
+ * deliberately NOT here — it is wired to a real question UI through the
+ * canUseTool answer path below.
  */
 export const FABLE_LOCAL_DISALLOWED_TOOLS = [
   "Skill",
   "EnterPlanMode",
   "ExitPlanMode",
-  "NotebookEdit",
   "ShowOnboardingRolePicker",
 ] as const
 export const FABLE_LOCAL_MAX_TURNS = 16
@@ -117,14 +115,6 @@ export const FABLE_LOCAL_TIMEOUT_MS = 180_000
 export const FABLE_LOCAL_QUESTION_TIMEOUT_MS = 600_000
 /** The one interactive tool this lane answers through a real UI path. */
 export const FABLE_LOCAL_QUESTION_TOOL = "AskUserQuestion"
-/**
- * Out-of-scope write denial copy (EP250). HONESTY LAW: this lane has no
- * permission-grant flow, so the copy must say the write is out of scope for
- * the lane — never "you haven't granted it yet" (seen live on camera: a
- * grant prompt no UI could satisfy).
- */
-export const FABLE_LOCAL_WRITE_OUT_OF_SCOPE_REASON =
-  "fable_local.workspace_boundary: out of scope for this lane — writes are limited to the turn workspace. Use a relative path inside the current working directory."
 
 /**
  * Deterministic per-thread workspace directory name under
@@ -140,31 +130,9 @@ export const fableThreadWorkspaceSlug = (threadRef: string): string => {
 }
 
 /**
- * PreToolUse workspace-boundary guard: the same mechanics as pylon-core's
- * proven claude-agent-executor hook (packages/pylon-core/src/executor/
- * claude-agent-executor.ts, `guard` + `toolInputEscapesWorkspace`) — path
- * fields canonicalized and required to resolve under the workspace root,
- * deny outside. The denial surfaces as a visible typed tool failure with
- * the honest out-of-scope copy above.
- */
-export const makeFableWorkspaceGuard = (workspace: string) =>
-  async (hookInput: unknown): Promise<Record<string, unknown>> => {
-    const record = hookInput as { tool_name?: string; tool_input?: unknown }
-    if (toolInputEscapesWorkspace(record.tool_name, record.tool_input, workspace)) {
-      return {
-        hookSpecificOutput: {
-          hookEventName: "PreToolUse" as const,
-          permissionDecision: "deny" as const,
-          permissionDecisionReason: FABLE_LOCAL_WRITE_OUT_OF_SCOPE_REASON,
-        },
-      }
-    }
-    return {}
-  }
-/**
  * Codex delegation (#8712 Lane C): the fully-qualified SDK MCP tool name.
- * It must be listed in `allowedTools` (next to Read/Glob/Grep) or the CLI
- * auto-denies it under permissionMode "default".
+ * Kept in `allowedTools` (auto-allow) whenever the delegate MCP server is
+ * offered; every other tool is allowed through the allow-all canUseTool.
  */
 export const FABLE_DELEGATE_TOOL_NAME = "mcp__codex__delegate"
 /** Up to 3 simultaneous delegate calls per turn (the SDK parallelizes
@@ -189,7 +157,10 @@ export const FABLE_LOCAL_DELEGATION_TIMEOUT_MS = 600_000
 export const FABLE_DELEGATE_TOOL_DESCRIPTION =
   "Delegate a bounded task to a Codex sub-agent (gpt-5.6-sol, medium reasoning). " +
   "Returns the sub-agent's final answer. Up to 3 delegations may run at once; " +
-  "at most 6 per turn. The sub-agent is read-only in a scratch workspace. " +
+  "at most 6 per turn. The sub-agent starts in an EMPTY scratch directory (not " +
+  "your project) with full filesystem access — always include absolute paths " +
+  "to any repo, code, or files it should read or examine in the task/context, " +
+  "or it will explore an empty directory. " +
   "Model/effort are pinned at spawn config (the Codex exec stream does not echo them back)."
 /** Bounded history window prepended when no resumable session exists. */
 export const FABLE_LOCAL_HISTORY_MESSAGES = 12
@@ -567,7 +538,6 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
       return emitFailure(failure("session_failed", error instanceof Error ? error.name : "workspace unavailable"))
     }
     const redact = (value: string): string => redactFableLocalText(value, { workspace })
-    const workspaceGuard = makeFableWorkspaceGuard(workspace)
     /** Per-turn AskUserQuestion sequence for stable questionRefs. */
     const questionState = { sequence: 0 }
 
@@ -641,7 +611,22 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
               })
               return
             }
-            // account_reconnect_required: a revoked-credential account is
+            if (event.kind === "pre_content_failure_rotated") {
+              // A NON-auth pre-content failure is rotated past VISIBLY —
+              // typed event, never a silent rotation (EP250 broadening).
+              input.emit({
+                kind: "child_activity",
+                childRef,
+                activity: "pre_content_failure_rotated",
+                accountRef: event.accountRef,
+                summary: bounded(
+                  `account ${event.accountRef} failed before producing content (${event.detail}) — rotating to the next candidate Codex account`,
+                  FABLE_LOCAL_SUMMARY_LIMIT,
+                ),
+              })
+              return
+            }
+            // account_reconnect_required: a bad-credential account is
             // skipped VISIBLY — typed event, never a silent rotation.
             input.emit({
               kind: "child_activity",
@@ -649,7 +634,7 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
               activity: "account_reconnect_required",
               accountRef: event.accountRef,
               summary: bounded(
-                `account ${event.accountRef} needs reconnect (${event.detail}) — rotating to the next registered Codex account`,
+                `account ${event.accountRef} needs reconnect (${event.detail}) — rotating to the next candidate Codex account`,
                 FABLE_LOCAL_SUMMARY_LIMIT,
               ),
             })
@@ -858,8 +843,17 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
 
       /**
        * Every non-auto-allowed tool call lands here. AskUserQuestion parks on
-       * the real question flow; anything else is denied with honest copy —
-       * this lane has no grant flow, so nothing ever claims one exists.
+       * the real question flow; EVERYTHING ELSE IS ALLOWED — the owner-local
+       * full-tools/full-permissions override (statement verbatim 2026-07-11:
+       * "disallowing bash is retarded, give them full tools full permissions
+       * etc"). Mechanism receipt (sdk.d.ts): `bypassPermissions` would
+       * "Bypass all permission checks" and so skip this handler entirely,
+       * killing the question flow; `default` mode routes the permission
+       * "ask" path through canUseTool ("The 'ask' path surfaces via a
+       * can_use_tool control_request"), so allow-all here IS full
+       * permissions while AskUserQuestion still parks. Applies to Agent
+       * (subagent) tool calls too — can_use_tool mirrors agent_id for
+       * subagent-originated calls.
        */
       const canUseTool = async (
         toolName: string,
@@ -869,7 +863,7 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
         if (toolName === FABLE_LOCAL_QUESTION_TOOL) {
           return awaitUserAnswer(toolInput, extra?.signal)
         }
-        return { behavior: "deny", message: `${toolName} is not available in this lane.` }
+        return { behavior: "allow", updatedInput: toolInput }
       }
 
       const continuity = sessionByThread.get(input.threadRef)
@@ -916,16 +910,19 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
             includePartialMessages: true,
             maxTurns: FABLE_LOCAL_MAX_TURNS,
             model: FABLE_LOCAL_MODEL,
+            // Owner full-access lane, but NOT bypassPermissions: bypass
+            // would "Bypass all permission checks" (sdk.d.ts) — including
+            // the canUseTool handler AskUserQuestion parks on. Default mode
+            // + allow-all canUseTool = full permissions with a live
+            // question flow.
             permissionMode: "default",
-            allowedTools: mcpServers === null
-              ? [...FABLE_LOCAL_ALLOWED_TOOLS]
-              : [...FABLE_LOCAL_ALLOWED_TOOLS, FABLE_DELEGATE_TOOL_NAME],
+            // No tool restriction (full SDK toolset). The delegate MCP tool
+            // stays auto-allowed when offered; everything else flows through
+            // the allow-all canUseTool below.
+            ...(mcpServers === null ? {} : { allowedTools: [FABLE_DELEGATE_TOOL_NAME] }),
             disallowedTools: [...FABLE_LOCAL_DISALLOWED_TOOLS],
-            // Workspace containment (EP250): Write/Edit are auto-allowed
-            // ONLY inside the thread workspace — the PreToolUse guard denies
-            // any path outside it with the honest out-of-scope copy.
-            hooks: { PreToolUse: [{ hooks: [workspaceGuard] }] },
-            // AskUserQuestion answers + honest denials for everything else.
+            // AskUserQuestion answers + allow-everything-else (owner
+            // full-access override; no PreToolUse containment guard).
             canUseTool,
             skills: [],
             settingSources: [],

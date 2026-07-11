@@ -19,6 +19,15 @@
 export const CODEX_CHILD_MODEL = "gpt-5.6-sol" as const
 export const CODEX_CHILD_REASONING_EFFORT = "medium" as const
 /**
+ * Owner-local danger profile (owner statement 2026-07-11, verbatim:
+ * "disallowing bash is retarded, give them full tools full permissions
+ * etc"): children run with full access, mirroring the repo's owner-local
+ * executor invariant (Khala->Pylon runbook: sandbox danger-full-access,
+ * approval never). This is an OWNER-LOCAL invariant, never a public wire
+ * field, and never applies to untrusted labor/provider work.
+ */
+export const CODEX_CHILD_SANDBOX = "danger-full-access" as const
+/**
  * `codex exec` has NO timeout flag (codex-cli 0.144.1, receipted): the bound
  * is host-side — a wall-clock timer that SIGTERMs the child.
  */
@@ -28,9 +37,9 @@ export const CODEX_CHILD_TEXT_LIMIT = 32_000
 
 export type CodexChildFailureReason =
   /**
-   * The selected account's refresh token is revoked (auth.json presence is
+   * The selected account's credentials were rejected (auth.json presence is
    * NOT credential validity — registry "ready" is presence-only). The runtime
-   * rotates to the next registered Codex home on this reason; when every
+   * rotates to the next candidate Codex home on this reason; when every
    * registered account fails this way the child call fails typed with this
    * reason naming the reconnect need. Never silently skipped.
    */
@@ -39,8 +48,14 @@ export type CodexChildFailureReason =
   | "no_codex_account"
   /** Host-side wall-clock bound reached; the child was SIGTERMed. */
   | "child_timeout"
-  /** The child exited non-zero / errored without a revoked-credential marker,
-   * or completed without any agent_message text. */
+  /**
+   * A POST-content failure (the child already produced an agent_message or
+   * consumed usage), or every candidate account was exhausted by pre-content
+   * failures that were not all auth-class. Pre-content failures on a single
+   * account rotate (typed `pre_content_failure_rotated` stream event) rather
+   * than landing here directly — children are ephemeral, so pre-content
+   * rotation loses nothing and is bounded by the registry size.
+   */
   | "child_failed"
 
 export type CodexChildUsage = Readonly<{
@@ -79,20 +94,31 @@ export const codexChildUsageFromTurnCompleted = (value: unknown): CodexChildUsag
 }
 
 /**
- * Revoked-credential detection, receipted live 2026-07-11 against every
- * currently registered codex home: `codex exec` fails in ~4s with exit 1,
- * the error message "Your access token could not be refreshed because your
- * refresh token was revoked", and stderr markers `token_invalidated` /
- * `refresh_token_invalidated`. Any of those markers classifies the attempt
- * as `account_reconnect_required` (typed, rotatable) — never a generic
- * child failure.
+ * Auth-class (reconnect-required) failure detection. BROADENED 2026-07-11
+ * after a live miss: the first receipted variant was the LONG message "Your
+ * access token could not be refreshed because your refresh token was
+ * revoked" (+ stderr `token_invalidated` / `refresh_token_invalidated`), but
+ * a live child then failed with the SHORT variant "Your access token could
+ * not be refreshed. Please log out and sign in again." which carries NONE of
+ * the original markers — so no rotation happened and the child burned on a
+ * broken account while a known-good home sat idle. The classifier is now a
+ * case-insensitive any-of over the marker list below; a match classifies the
+ * attempt as `account_reconnect_required` (typed, rotatable, health-marked)
+ * — never a generic child failure.
  */
+export const CODEX_RECONNECT_MARKERS = [
+  "refresh token",
+  "access token could not be refreshed",
+  "sign in again",
+  "token_invalidated",
+  "revoked",
+  "401",
+  "unauthorized",
+] as const
+
 export const isCodexReconnectRequiredText = (text: string): boolean => {
   const lowered = text.toLowerCase()
-  return lowered.includes("refresh_token_invalidated") ||
-    lowered.includes("token_invalidated") ||
-    lowered.includes("refresh token was revoked") ||
-    (lowered.includes("access token could not be refreshed") && lowered.includes("revoked"))
+  return CODEX_RECONNECT_MARKERS.some(marker => lowered.includes(marker))
 }
 
 /** Streamed to the caller while ONE child runs (already public-safe). */
@@ -101,6 +127,17 @@ export type CodexChildStreamEvent =
   | Readonly<{ kind: "item"; itemType: string; summary: string }>
   | Readonly<{
       kind: "account_reconnect_required"
+      accountRef: string
+      detail: string
+    }>
+  /**
+   * A NON-auth pre-content failure (no agent_message completed, zero usage)
+   * was rotated past — typed and visible, never silent. Auth-class failures
+   * use `account_reconnect_required` above; this covers the rest (children
+   * are ephemeral, so pre-content rotation is safe and loses nothing).
+   */
+  | Readonly<{
+      kind: "pre_content_failure_rotated"
       accountRef: string
       detail: string
     }>

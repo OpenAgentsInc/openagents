@@ -7,21 +7,41 @@
  * Receipted spawn recipe (codex-cli 0.144.1, 2026-07-11):
  *
  *   codex exec --json -m gpt-5.6-sol -c model_reasoning_effort=medium \
- *     -s read-only --skip-git-repo-check -C <bounded scratch workspace> \
- *     --ephemeral "<prompt>"
+ *     -s danger-full-access --skip-git-repo-check \
+ *     -C <bounded scratch workspace> --ephemeral "<prompt>"
  *
  * with CODEX_HOME injected via `pylonAccountEnvironment` (provider codex).
- * There is NO `codex exec` timeout flag: the bound is host-side (timer +
- * SIGTERM, the same pattern as provider-accounts.ts runProjection).
+ * The sandbox is `danger-full-access` per the owner-local danger profile
+ * (owner statement 2026-07-11: "disallowing bash is retarded, give them full
+ * tools full permissions etc" — the same owner-local executor invariant the
+ * Khala->Pylon runbook uses; never a public wire field). There is NO
+ * `codex exec` timeout flag: the bound is host-side (timer + SIGTERM, the
+ * same pattern as provider-accounts.ts runProjection).
  *
- * Account rotation: registry readiness "ready" is auth.json-PRESENCE-only,
- * so a spawned child can still fail with a revoked refresh token. That exact
- * receipted failure shape (error message "…refresh token was revoked",
- * stderr `token_invalidated` / `refresh_token_invalidated`, exit 1) is typed
- * `account_reconnect_required` and rotates to the next registered Codex
- * home — visibly (a stream event per skipped account), never silently. When
- * every registered account fails that way, the call returns a typed
- * `account_reconnect_required` failure naming the reconnect need.
+ * Account rotation (BROADENED 2026-07-11 after a live miss): registry
+ * readiness "ready" is auth.json-PRESENCE-only, so a spawned child can still
+ * fail with bad credentials. Classification:
+ * - AUTH-CLASS: any failure text matching `CODEX_RECONNECT_MARKERS`
+ *   (including the SHORT live variant "Your access token could not be
+ *   refreshed. Please log out and sign in again.") is typed
+ *   `account_reconnect_required`, marks the account auth-failed in the
+ *   in-process health memory, and rotates — visibly (a stream event per
+ *   skipped account), never silently.
+ * - ANY OTHER PRE-CONTENT failure (no completed agent_message, zero usage)
+ *   also rotates, typed `pre_content_failure_rotated`: children are
+ *   ephemeral and rotation is bounded by the registry size, so pre-content
+ *   rotation on any failure is safe and loses nothing.
+ * - POST-content failures and timeouts fail the child (no rotation).
+ * When every candidate is exhausted, the call returns a typed failure:
+ * `account_reconnect_required` when every rotation was auth-class, else
+ * `child_failed` summarizing the mix.
+ *
+ * Account health memory: a module-level (main-process lifetime) map orders
+ * candidates per call — last-known-good first (most recent success first),
+ * then untried accounts, then auth-failed accounts LAST (still tried when
+ * everything else is exhausted, since a reconnect may have fixed them; a
+ * success clears the mark). Concurrent siblings and subsequent calls stop
+ * burning attempts on a known-broken ref while a known-good one exists.
  *
  * Concurrency: every call gets its own scratch dir under
  * `<scratchRoot>/codex-children/<childRef>` and its own parser state, so
@@ -45,6 +65,7 @@ import { resolvePylonHome } from "@openagentsinc/pylon-core/shared/bootstrap"
 import {
   CODEX_CHILD_MODEL,
   CODEX_CHILD_REASONING_EFFORT,
+  CODEX_CHILD_SANDBOX,
   CODEX_CHILD_SUMMARY_LIMIT,
   CODEX_CHILD_TEXT_LIMIT,
   CODEX_CHILD_TIMEOUT_MS,
@@ -58,6 +79,60 @@ import {
 } from "./codex-child-contract.ts"
 
 export type CodexChildAccount = Readonly<{ ref: string; home: string }>
+
+// ---------------------------------------------------------------------------
+// In-process account health memory (EP250 rotation fix). Module-level =
+// main-process lifetime: the delegate runtime is constructed once in main.ts,
+// and every runChild (including concurrent siblings' subsequent calls) shares
+// this ordering so a known-broken ref stops being tried FIRST while a
+// known-good one exists. Never persisted; a restart forgets everything.
+// ---------------------------------------------------------------------------
+
+export type CodexAccountHealthState = "last_good" | "auth_failed"
+
+export type CodexAccountHealth = Readonly<{
+  /** A successful child completion: promotes the ref and clears auth marks. */
+  recordSuccess: (ref: string) => void
+  /** An auth-class (reconnect-required) failure: demotes the ref to last. */
+  recordAuthFailure: (ref: string) => void
+  stateOf: (ref: string) => CodexAccountHealthState | null
+  /**
+   * Candidate ordering per call: last-known-good first (most recent success
+   * first), then untried accounts (discovery order), then auth-failed
+   * accounts LAST (still tried when everything else is exhausted — a
+   * reconnect may have fixed them).
+   */
+  order: (accounts: ReadonlyArray<CodexChildAccount>) => ReadonlyArray<CodexChildAccount>
+}>
+
+export const makeCodexAccountHealth = (): CodexAccountHealth => {
+  const marks = new Map<string, { state: CodexAccountHealthState; at: number }>()
+  let tick = 0
+  return {
+    recordSuccess: ref => {
+      tick += 1
+      marks.set(ref, { state: "last_good", at: tick })
+    },
+    recordAuthFailure: ref => {
+      tick += 1
+      marks.set(ref, { state: "auth_failed", at: tick })
+    },
+    stateOf: ref => marks.get(ref)?.state ?? null,
+    order: accounts => {
+      const good = accounts
+        .filter(account => marks.get(account.ref)?.state === "last_good")
+        .sort((left, right) => marks.get(right.ref)!.at - marks.get(left.ref)!.at)
+      const untried = accounts.filter(account => !marks.has(account.ref))
+      const authFailed = accounts.filter(
+        account => marks.get(account.ref)?.state === "auth_failed",
+      )
+      return [...good, ...untried, ...authFailed]
+    },
+  }
+}
+
+/** The shared main-process-lifetime health memory (default for runtimes). */
+export const sharedCodexAccountHealth: CodexAccountHealth = makeCodexAccountHealth()
 
 const bounded = (value: string, limit: number): string =>
   value.length > limit ? `${value.slice(0, limit - 1)}…` : value
@@ -133,6 +208,12 @@ export type CodexChildRuntimeOptions = Readonly<{
   spawnImpl?: CodexChildSpawn
   discoverImpl?: () => Promise<ReadonlyArray<CodexChildAccount>>
   timeoutMs?: number
+  /**
+   * Injectable account health memory (tests). Defaults to the shared
+   * module-level (main-process lifetime) map so concurrent siblings and
+   * subsequent calls share ordering.
+   */
+  health?: CodexAccountHealth
 }>
 
 export type CodexChildRuntime = Readonly<{
@@ -145,6 +226,12 @@ type ParsedAttempt = Readonly<{
   usage: CodexChildUsage | null
   threadId: string | null
   detail: string
+  /**
+   * True when the attempt failed BEFORE producing content: no completed
+   * agent_message and zero usage. Pre-content failures are rotation-eligible
+   * (ephemeral children lose nothing); post-content failures are terminal.
+   */
+  preContent: boolean
 }>
 
 const itemSummary = (item: Record<string, unknown>, redact: (value: string) => string): string => {
@@ -172,6 +259,7 @@ export const makeCodexChildRuntime = (options: CodexChildRuntimeOptions): CodexC
   const spawnCodex = options.spawnImpl ?? defaultSpawnCodex
   const discover = options.discoverImpl ?? (() => discoverRegisteredCodexAccounts(env))
   const timeoutMs = options.timeoutMs ?? CODEX_CHILD_TIMEOUT_MS
+  const health = options.health ?? sharedCodexAccountHealth
 
   const runAttempt = (input: Readonly<{
     account: CodexChildAccount
@@ -197,7 +285,7 @@ export const makeCodexChildRuntime = (options: CodexChildRuntimeOptions): CodexC
           "-c",
           `model_reasoning_effort=${CODEX_CHILD_REASONING_EFFORT}`,
           "-s",
-          "read-only",
+          CODEX_CHILD_SANDBOX,
           "--skip-git-repo-check",
           "-C",
           input.workspace,
@@ -214,6 +302,7 @@ export const makeCodexChildRuntime = (options: CodexChildRuntimeOptions): CodexC
           usage: null,
           threadId: null,
           detail: "codex executable unavailable",
+          preContent: true,
         })
         return
       }
@@ -307,11 +396,18 @@ export const makeCodexChildRuntime = (options: CodexChildRuntimeOptions): CodexC
           usage: null,
           threadId: null,
           detail: "codex child process failed to start",
+          preContent: true,
         })
       })
       child.on("close", (...args: unknown[]) => {
         if (stdoutBuffer.trim().length > 0) consumeStdout("\n")
         const exitCode = typeof args[0] === "number" ? args[0] : null
+        // Pre-content = the child never completed an agent_message AND
+        // consumed zero usage. Only pre-content failures are rotation-
+        // eligible; anything after content is terminal for the child.
+        const currentUsage: CodexChildUsage | null = usage
+        const preContent = agentText.trim() === "" &&
+          (currentUsage === null || currentUsage.totalTokens === 0)
         if (timedOut) {
           finish({
             outcome: "timeout",
@@ -319,17 +415,20 @@ export const makeCodexChildRuntime = (options: CodexChildRuntimeOptions): CodexC
             usage,
             threadId,
             detail: `wall clock budget reached (${Math.round(timeoutMs / 1000)}s)`,
+            preContent,
           })
           return
         }
         const failureText = `${errorMessage ?? ""}\n${stderrText}`
-        if (isCodexReconnectRequiredText(failureText)) {
+        if ((exitCode !== 0 || errorMessage !== null) &&
+          isCodexReconnectRequiredText(failureText)) {
           finish({
             outcome: "reconnect_required",
             text: "",
             usage,
             threadId,
-            detail: "refresh token revoked — reconnect this Codex account",
+            detail: "credentials rejected (auth-class failure) — reconnect this Codex account",
+            preContent,
           })
           return
         }
@@ -343,6 +442,7 @@ export const makeCodexChildRuntime = (options: CodexChildRuntimeOptions): CodexC
               redact(errorMessage ?? `codex exec exited ${exitCode ?? "abnormally"}`),
               CODEX_CHILD_SUMMARY_LIMIT,
             ),
+            preContent,
           })
           return
         }
@@ -353,10 +453,18 @@ export const makeCodexChildRuntime = (options: CodexChildRuntimeOptions): CodexC
             usage,
             threadId,
             detail: "the child produced no agent_message text",
+            preContent,
           })
           return
         }
-        finish({ outcome: "success", text: agentText, usage, threadId, detail: "" })
+        finish({
+          outcome: "success",
+          text: agentText,
+          usage,
+          threadId,
+          detail: "",
+          preContent: false,
+        })
       })
     })
 
@@ -395,11 +503,20 @@ export const makeCodexChildRuntime = (options: CodexChildRuntimeOptions): CodexC
       ? input.task
       : `${input.task}\n\nContext:\n${input.context}`
 
+    // Candidate ordering from the in-process health memory: last-known-good
+    // first, untried next, auth-failed LAST (still tried when everything
+    // else is exhausted — a reconnect may have fixed them).
+    const ordered = health.order(accounts)
     let reconnectCount = 0
-    for (const account of accounts) {
+    let preContentCount = 0
+    let lastPreContentDetail = ""
+    for (const account of ordered) {
       emit({ kind: "attempt_started", accountRef: account.ref })
       const attempt = await runAttempt({ account, prompt, workspace, emit })
       if (attempt.outcome === "success") {
+        // A success clears any auth-failed mark and promotes the ref for
+        // the NEXT call's ordering.
+        health.recordSuccess(account.ref)
         return {
           ok: true,
           text: attempt.text,
@@ -415,9 +532,11 @@ export const makeCodexChildRuntime = (options: CodexChildRuntimeOptions): CodexC
         return failure("child_timeout", attempt.detail, account.ref)
       }
       if (attempt.outcome === "reconnect_required") {
-        // TYPED, VISIBLE rotation — a revoked-credential account is never
-        // silently skipped: every skip emits this event before the next
-        // registered Codex home gets the child.
+        // AUTH-CLASS: TYPED, VISIBLE rotation — a bad-credential account is
+        // never silently skipped: every skip emits this event (and demotes
+        // the account in the health memory) before the next candidate Codex
+        // home gets the child.
+        health.recordAuthFailure(account.ref)
         reconnectCount += 1
         emit({
           kind: "account_reconnect_required",
@@ -426,11 +545,36 @@ export const makeCodexChildRuntime = (options: CodexChildRuntimeOptions): CodexC
         })
         continue
       }
+      if (attempt.preContent) {
+        // NON-auth pre-content failure: rotation-eligible with its own typed
+        // reason. Children are ephemeral and rotation is bounded by the
+        // registry size, so this loses nothing. The account is NOT health-
+        // demoted (the failure may be transient and is not credential-class).
+        preContentCount += 1
+        lastPreContentDetail = attempt.detail
+        emit({
+          kind: "pre_content_failure_rotated",
+          accountRef: account.ref,
+          detail: attempt.detail,
+        })
+        continue
+      }
+      // POST-content failure: terminal — a partially-produced child must
+      // fail honestly rather than double-run.
       return failure("child_failed", attempt.detail, account.ref)
     }
+    if (preContentCount === 0) {
+      return failure(
+        "account_reconnect_required",
+        `all ${reconnectCount} registered Codex account(s) need reconnect (credentials rejected); reconnect with khala fleet connect`,
+        null,
+      )
+    }
     return failure(
-      "account_reconnect_required",
-      `all ${reconnectCount} registered Codex account(s) need reconnect (revoked refresh tokens); reconnect with khala fleet connect`,
+      "child_failed",
+      `all ${ordered.length} registered Codex account(s) failed before producing content` +
+        ` (${reconnectCount} need reconnect, ${preContentCount} other pre-content failure(s));` +
+        ` last: ${lastPreContentDetail}`,
       null,
     )
   }
@@ -463,6 +607,21 @@ export const fixtureCodexRevokedStdout = [
 
 export const fixtureCodexRevokedStderr =
   "ERROR codex_core::auth: refresh_token_invalidated token_invalidated\n"
+
+/**
+ * The LIVE SHORT auth-failure variant (owner run, 2026-07-11): a turn.failed
+ * whose message carries NONE of the original markers ("revoked",
+ * "refresh_token_invalidated", "token_invalidated") — the variant the
+ * pre-broadening classifier missed, so no rotation happened for that child.
+ * Kept VERBATIM from the live evidence.
+ */
+export const FIXTURE_CODEX_SHORT_AUTH_MESSAGE =
+  "Your access token could not be refreshed. Please log out and sign in again."
+
+export const fixtureCodexShortAuthStdout = JSON.stringify({
+  type: "turn.failed",
+  error: { message: FIXTURE_CODEX_SHORT_AUTH_MESSAGE },
+})
 
 /** A successful child stream with exact usage totals. */
 export const fixtureCodexSuccessStdout = (threadId = "thread-fixture-1"): string =>
