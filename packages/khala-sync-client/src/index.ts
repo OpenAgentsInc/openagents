@@ -175,6 +175,17 @@ export {
   type RuntimeCommandTarget,
 } from "./runtime.js"
 
+export {
+  buildRuntimeInteractionDecisionCommand,
+  confirmedRuntimeInteractions,
+  createKhalaSyncRuntimeInteractions,
+  createRuntimeInteractionClientMutator,
+  RUNTIME_DECIDE_INTERACTION_MUTATOR_NAME,
+  type ConfirmedRuntimeInteraction,
+  type KhalaSyncRuntimeInteractions,
+  type RuntimeInteractionDecisionCommand,
+} from "./runtime-interactions.js"
+
 // ---------------------------------------------------------------------------
 // Transport (KS-5.3): injectable seam in transport.ts; HTTP+WebSocket
 // implementation against the SPEC §3 routes, khala-sync codecs at every

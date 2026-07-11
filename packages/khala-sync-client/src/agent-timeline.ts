@@ -5,6 +5,7 @@ import {
   decodeKhalaRuntimeEvent,
   decodeAgentRunEntity,
   decodeAgentRunEventEntity,
+  RUNTIME_INTERACTION_ENTITY_TYPE,
   threadScope,
 } from "@openagentsinc/khala-sync"
 import { Effect, Schema } from "effect"
@@ -15,6 +16,10 @@ import type {
   KhalaSyncClientStoreError,
   KhalaSyncLocalStore,
 } from "./store.js"
+import {
+  confirmedRuntimeInteractions,
+  type ConfirmedRuntimeInteraction,
+} from "./runtime-interactions.js"
 
 export const MAX_CONFIRMED_AGENT_TIMELINE_EVENTS = 500
 
@@ -31,15 +36,54 @@ const TimelineIntSchema = Schema.Number.check(
   Schema.isGreaterThanOrEqualTo(0),
 )
 
+const TimelineInteractionOptionSchema = Schema.Struct({
+  optionRef: TimelineRefSchema,
+  label: TimelineLabelSchema,
+  description: Schema.optional(TimelineDetailSchema),
+})
+
+const TimelineInteractionQuestionSchema = Schema.Struct({
+  questionRef: TimelineRefSchema,
+  displayText: TimelineDetailSchema,
+  options: Schema.Array(TimelineInteractionOptionSchema).check(Schema.isMaxLength(12)),
+  multiSelect: Schema.Boolean,
+})
+
 export const ConfirmedAgentTimelineItemSchema = Schema.Union([
   Schema.Struct({ kind: Schema.Literal("connected"), turnRef: TimelineRefSchema, lane: TimelineLabelSchema }),
   Schema.Struct({ kind: Schema.Literal("heartbeat"), detail: TimelineDetailSchema }),
   Schema.Struct({ kind: Schema.Literal("text"), messageRef: TimelineRefSchema, text: TimelineTextSchema }),
   Schema.Struct({ kind: Schema.Literal("reasoning"), messageRef: TimelineRefSchema, text: TimelineTextSchema }),
-  Schema.Struct({ kind: Schema.Literal("plan"), stepRef: TimelineRefSchema, status: TimelineLabelSchema }),
+  Schema.Struct({
+    kind: Schema.Literal("plan"),
+    stepRef: TimelineRefSchema,
+    status: TimelineLabelSchema,
+    interactionRef: Schema.optional(TimelineRefSchema),
+    prompt: Schema.optional(TimelineTextSchema),
+    expiresAt: Schema.optional(TimelineTimestampSchema),
+    decisionRef: Schema.optional(TimelineRefSchema),
+  }),
   Schema.Struct({ kind: Schema.Literal("tool"), toolCallRef: TimelineRefSchema, toolName: TimelineLabelSchema, status: Schema.Literals(["called", "completed", "failed"]) }),
-  Schema.Struct({ kind: Schema.Literal("question"), questionRef: TimelineRefSchema, prompt: TimelineTextSchema }),
-  Schema.Struct({ kind: Schema.Literal("approval"), authorityRef: TimelineRefSchema, toolRef: TimelineRefSchema, status: TimelineLabelSchema }),
+  Schema.Struct({
+    kind: Schema.Literal("question"),
+    questionRef: TimelineRefSchema,
+    prompt: TimelineTextSchema,
+    status: Schema.optional(TimelineLabelSchema),
+    title: Schema.optional(TimelineLabelSchema),
+    questions: Schema.optional(Schema.Array(TimelineInteractionQuestionSchema).check(Schema.isMaxLength(8))),
+    expiresAt: Schema.optional(TimelineTimestampSchema),
+    decisionRef: Schema.optional(TimelineRefSchema),
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("approval"),
+    authorityRef: Schema.optional(TimelineRefSchema),
+    toolRef: Schema.optional(TimelineRefSchema),
+    status: TimelineLabelSchema,
+    interactionRef: Schema.optional(TimelineRefSchema),
+    prompt: Schema.optional(TimelineTextSchema),
+    expiresAt: Schema.optional(TimelineTimestampSchema),
+    decisionRef: Schema.optional(TimelineRefSchema),
+  }),
   Schema.Struct({ kind: Schema.Literal("error"), messageSafe: TimelineTextSchema }),
   Schema.Struct({ kind: Schema.Literal("usage"), inputTokens: Schema.optional(TimelineIntSchema), outputTokens: Schema.optional(TimelineIntSchema), totalTokens: Schema.optional(TimelineIntSchema) }),
   Schema.Struct({ kind: Schema.Literal("stale"), detail: TimelineDetailSchema }),
@@ -281,6 +325,72 @@ const confirmedEvents = (
     .slice(-MAX_CONFIRMED_AGENT_TIMELINE_EVENTS)
 }
 
+const interactionTimelineItem = (
+  interaction: ConfirmedRuntimeInteraction,
+): ConfirmedAgentTimelineItem => {
+  const terminalRef = interaction.decisionRef === undefined
+    ? {}
+    : { decisionRef: interaction.decisionRef }
+  switch (interaction.kind) {
+    case "provider_question":
+      return {
+        kind: "question",
+        questionRef: interaction.interactionRef,
+        prompt: interaction.displayText,
+        status: interaction.status,
+        title: interaction.displayTitle,
+        questions: interaction.questions,
+        expiresAt: interaction.expiresAt,
+        ...terminalRef,
+      }
+    case "tool_approval":
+      return {
+        kind: "approval",
+        interactionRef: interaction.interactionRef,
+        prompt: interaction.displayText,
+        status: interaction.status,
+        expiresAt: interaction.expiresAt,
+        ...terminalRef,
+      }
+    case "plan_review":
+      return {
+        kind: "plan",
+        stepRef: interaction.interactionRef,
+        interactionRef: interaction.interactionRef,
+        prompt: interaction.displayText,
+        status: interaction.status,
+        expiresAt: interaction.expiresAt,
+        ...terminalRef,
+      }
+  }
+}
+
+const interactionTimelineEvents = (
+  runRef: string,
+  interactions: ReadonlyArray<ConfirmedRuntimeInteraction>,
+): ReadonlyArray<ConfirmedAgentTimelineEvent> => interactions
+  .filter(interaction => interaction.turnId === runRef)
+  .map(interaction => ({
+    eventRef: interaction.interactionRef,
+    runRef,
+    sequence: interaction.requestedSequence,
+    eventType: `runtime.interaction.${interaction.kind}`,
+    summary: interaction.displayTitle,
+    status: interaction.status,
+    artifactRefs: [],
+    item: interactionTimelineItem(interaction),
+    createdAt: interaction.requestedAt,
+    version: interaction.version,
+  }))
+
+const mergeTimelineEvents = (
+  events: ReadonlyArray<ConfirmedAgentTimelineEvent>,
+  interactions: ReadonlyArray<ConfirmedAgentTimelineEvent>,
+): ReadonlyArray<ConfirmedAgentTimelineEvent> => [...events, ...interactions]
+  .sort((left, right) =>
+    left.sequence - right.sequence || left.eventRef.localeCompare(right.eventRef))
+  .slice(-MAX_CONFIRMED_AGENT_TIMELINE_EVENTS)
+
 export const createKhalaSyncAgentTimeline = (input: Readonly<{
   store: KhalaSyncLocalStore
   session: KhalaSyncSession
@@ -330,13 +440,22 @@ export const createKhalaSyncAgentTimeline = (input: Readonly<{
         Effect.all([
           input.store.readEntities(scope, AGENT_RUN_ENTITY_TYPE),
           input.store.readEntities(scope, AGENT_RUN_EVENT_ENTITY_TYPE),
+          input.store.readEntities(scope, RUNTIME_INTERACTION_ENTITY_TYPE),
         ]),
-        ([runRows, eventRows]) => {
+        ([runRows, eventRows, interactionRows]) => {
           const run = confirmedRunForThread(threadRef, runRows)
           return {
             status: timelineStatus,
             run,
-            events: run === null ? [] : confirmedEvents(run.runRef, eventRows),
+            events: run === null
+              ? []
+              : mergeTimelineEvents(
+                  confirmedEvents(run.runRef, eventRows),
+                  interactionTimelineEvents(
+                    run.runRef,
+                    confirmedRuntimeInteractions(threadRef, interactionRows),
+                  ),
+                ),
           }
         },
       )

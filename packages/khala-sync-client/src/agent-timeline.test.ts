@@ -1,6 +1,7 @@
 import {
   AGENT_RUN_ENTITY_TYPE,
   AGENT_RUN_EVENT_ENTITY_TYPE,
+  RUNTIME_INTERACTION_ENTITY_TYPE,
   ChangelogEntry,
   EntityId,
   EntityType,
@@ -13,6 +14,8 @@ import {
   decodeAgentRunEventEntity,
   encodeAgentRunEntity,
   encodeAgentRunEventEntity,
+  decodeRuntimeInteractionEntity,
+  encodeRuntimeInteractionEntity,
   type SyncScope,
 } from "@openagentsinc/khala-sync"
 import { afterEach, describe, expect, test } from "bun:test"
@@ -188,6 +191,51 @@ describe("contract khala_sync.client.confirmed_agent_timeline.v1", () => {
       scope: threadScope(thread),
     })
     try {
+      const interaction = new ChangelogEntry({
+        scope: threadScope(thread),
+        version: SyncVersion.make(3),
+        entityType: EntityType.make(RUNTIME_INTERACTION_ENTITY_TYPE),
+        entityId: EntityId.make("interaction.thread.question.1"),
+        op: "upsert",
+        postImageJson: canonicalJson(encodeRuntimeInteractionEntity(
+          decodeRuntimeInteractionEntity({
+            interactionRef: "interaction.thread.question.1",
+            threadId: thread,
+            turnId: RUN,
+            ownerUserId: "owner.private",
+            kind: "provider_question",
+            status: "pending",
+            interaction: {
+              schema: "openagents.runtime_interaction.v1",
+              interactionRef: "interaction.thread.question.1",
+              threadId: thread,
+              turnId: RUN,
+              requestedSequence: 2,
+              requestedAt: NOW,
+              expiresAt: "2026-07-10T20:05:00.000Z",
+              source: { lane: "codex_app_server", surface: "server" },
+              visibility: "private",
+              redactionClass: "private_ref",
+              causalityRefs: [],
+              payload: {
+                kind: "provider_question",
+                displayTitle: "Choose verification",
+                questions: [{
+                  questionRef: "question.thread.1",
+                  displayText: "Which verification should run?",
+                  multiSelect: false,
+                  options: [{ optionRef: "option.tests", label: "Tests" }],
+                }],
+              },
+              lifecycle: { status: "pending" },
+            },
+            createdAt: NOW,
+            updatedAt: NOW,
+          }),
+        )),
+        mutationRef: "mutation.timeline.interaction.3",
+        committedAt: NOW,
+      })
       Effect.runSync(store.applyConfirmed(
         threadScope(thread),
         [threadEntry(runEntry), threadEntry(eventEntry({
@@ -195,13 +243,30 @@ describe("contract khala_sync.client.confirmed_agent_timeline.v1", () => {
           id: "event.thread.1",
           sequence: 1,
           summary: "Connected",
-        }))],
-        SyncVersion.make(2),
+        })), interaction],
+        SyncVersion.make(3),
       ))
       const timeline = createKhalaSyncAgentTimeline({ store, session: session() })
       const snapshot = Effect.runSync(timeline.snapshotForThread(thread))
       expect(snapshot.run).toMatchObject({ runRef: RUN, routeRef: thread })
-      expect(snapshot.events.map(event => event.eventRef)).toEqual(["event.thread.1"])
+      expect(snapshot.events.map(event => event.eventRef)).toEqual([
+        "event.thread.1",
+        "interaction.thread.question.1",
+      ])
+      expect(snapshot.events[1]).toMatchObject({
+        eventType: "runtime.interaction.provider_question",
+        sequence: 2,
+        status: "pending",
+        item: {
+          kind: "question",
+          questionRef: "interaction.thread.question.1",
+          status: "pending",
+          questions: [{
+            questionRef: "question.thread.1",
+            options: [{ optionRef: "option.tests", label: "Tests" }],
+          }],
+        },
+      })
     } finally {
       Effect.runSync(store.close())
     }

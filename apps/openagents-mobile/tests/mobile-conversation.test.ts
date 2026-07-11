@@ -309,6 +309,9 @@ describe("contract openagents_mobile.chat.authoritative_sync_mode.v1", () => {
         intents.push(intent)
         return MutationId.make(4)
       }),
+      continueTurn: () => Effect.succeed(MutationId.make(6)),
+      retryTurn: () => Effect.succeed(MutationId.make(7)),
+      closeTurn: () => Effect.succeed(MutationId.make(8)),
       interruptTurn: intent => Effect.sync(() => {
         intents.push(intent)
         activeStatus = "canceled"
@@ -392,6 +395,9 @@ describe("contract openagents_mobile.chat.authoritative_sync_mode.v1", () => {
     const intents: Array<KhalaRuntimeControlIntent> = []
     const runtime: KhalaSyncRuntimeCommands = {
       appendUserMessage: () => Effect.succeed(MutationId.make(4)),
+      continueTurn: () => Effect.succeed(MutationId.make(6)),
+      retryTurn: () => Effect.succeed(MutationId.make(7)),
+      closeTurn: () => Effect.succeed(MutationId.make(8)),
       interruptTurn: () => Effect.succeed(MutationId.make(5)),
       startTurn: intent => Effect.sync(() => {
         intents.push(intent)
