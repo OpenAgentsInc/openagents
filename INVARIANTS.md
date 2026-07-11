@@ -813,10 +813,15 @@ More specific invariant ledgers apply inside imported apps and packages.
   shape, default bindings, and palette visibility; the renderer palette derives
   from it rather than maintaining a second list. User chord aliases normalize
   to one bounded grammar, conflicting chords dispatch nothing until recovered,
-  and malformed/unknown overrides are ignored. Deferred menu/deep-link/
-  second-instance/restore inputs decode through the closed v1 envelope and
-  still require current readiness and owner authority. Host routing and the
-  packaged single-instance receipt remain CUT-15 work.
+  and malformed/unknown overrides are ignored. Overrides persist only in an
+  owner-private atomic store beneath Electron `userData`; conflict recovery
+  removes or resets overrides rather than guessing precedence. Deferred native
+  menu/deep-link/second-instance/restore inputs decode through the closed v1
+  envelope and still require current readiness and owner authority. Main owns
+  admission, the single-instance lock, bounded pre-ready queuing, and duplicate
+  suppression; the renderer can dispatch only the decoded typed intent. The
+  isolated built-host second-process receipt enforces this boundary. Release
+  signing and distribution remain CUT-26 work.
 - Native OpenAgents user access/refresh tokens live only in platform credential
   custody: Expo SecureStore on mobile and the Electron main-process OS
   credential boundary on Desktop. Effect Native state receives only typed

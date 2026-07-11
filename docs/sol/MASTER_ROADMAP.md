@@ -3,8 +3,8 @@
 - Date: 2026-07-10
 - Updated: 2026-07-11 (CUT-10 no-poll path landed; CUT-11 graph delivery and
   provider traces active; CUT-12 shared/mobile/Desktop supervision UI active;
-  CUT-13 complete; CUT-14 physical receipts open; CUT-15 command contract active)
-- Revision: 55
+  CUT-13 complete; CUT-14 physical receipts open; CUT-15 complete)
+- Revision: 56
 - Status: canonical OpenAgents implementation roadmap
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Issue source set: [`issues/README.md`](./issues/README.md)
@@ -636,10 +636,15 @@ product gaps are the R0–R7 Desktop/mobile continuity and reliability gates:
   typed intent, scope, readiness, authorization, arguments/results, default
   binding, and palette visibility. The Effect Native palette derives from it.
   User binding aliases normalize deterministically; conflicted chords dispatch
-  nothing until recovered. One closed deferred-command envelope covers native
+  nothing until recovered. Owner-private atomic persistence and the settings
+  editor support edit, remove-to-default, and reset recovery; conflicted native
+  accelerators are withheld. One closed deferred-command envelope covers native
   menu, deep-link, second-instance, and restore sources while preserving
-  readiness/owner gates. Host routing, persistence/settings recovery, and the
-  packaged single-instance receipt remain open. See
+  readiness/owner gates. The real built-host receipt launches a second Electron
+  process, proves exact deep-link delivery and visible duplicate rejection, and
+  uses an isolated lock root so concurrent developer instances cannot satisfy
+  the proof accidentally. CUT-15 is closed at `5d36b73ad2`; signed release
+  packaging remains CUT-26. See
   [`CUT-15 receipt`](./2026-07-11-cut-15-canonical-command-registry-receipt.md).
 - Grok is postponed by owner decision because the connected account is
   quota/payment exhausted. Its real accepted historical canary, HTTP-402

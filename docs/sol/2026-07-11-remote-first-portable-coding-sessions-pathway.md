@@ -89,6 +89,16 @@ Cross-host move/failback still requires its own attachment/checkpoint model and
 live receipt. CUT-09's physical-mobile close rung remains pending and is not a
 portability claim.
 
+CUT-15 [#8695] now supplies the local interaction convergence layer that
+portable controls must reuse. One canonical Desktop registry drives visible
+actions, palette entries, editable conflict-safe keybindings, native menus,
+deep links, second-instance opens, and restored routes through the same typed
+intent and readiness/authorization gates. Its owner-private override store and
+visible duplicate rejection are local UX mechanics; neither is durable session
+command authority. CUT-16 composer/runtime controls must name their semantic
+intents here, then use CUT-07 outcomes for consequential cross-device work
+rather than adding provider-specific shortcuts or URL authority.
+
 ### Episodes 248–249 calibration
 
 Remote-first must preserve the predictability and supervision target. Closed
