@@ -60,4 +60,13 @@ describe("contract openagents_mobile.persona_neutral_catalog.v1", () => {
     expect(metro).toContain('`${withoutJs}.tsx`')
     expect(metro).toContain("context.resolveRequest")
   })
+
+  test("the host keeps the composer above the keyboard and dismisses it on submit", () => {
+    const shell = readFileSync(join(appRoot, "src/screens/home-screen.tsx"), "utf8")
+    expect(shell).toContain("<KeyboardAvoidingView")
+    expect(shell).toContain('Platform.OS === "ios" ? "padding" : "height"')
+    expect(shell).toContain("onPress={Keyboard.dismiss}")
+    expect(shell).toContain('submitBehavior="blurAndSubmit"')
+    expect(shell).toContain("Keyboard.dismiss()")
+  })
 })
