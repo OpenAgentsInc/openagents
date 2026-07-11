@@ -48,6 +48,16 @@ import type {
   DesktopWorkspaceSnapshot,
 } from "../workspace-contract.ts"
 import { desktopCommandRegistry } from "./command-registry.ts"
+import {
+  emptyFleetWorkspaceState,
+  fleetWorkspaceIntents,
+  fleetWorkspaceView,
+  makeFleetWorkspaceHandlers,
+  refreshFleetAccounts,
+  unavailableFleetAccountsBridge,
+  type FleetAccountsBridge,
+  type FleetWorkspaceState,
+} from "./fleet-workspace.ts"
 import { emptyHistoryWorkspaceState, historyCatalogPageSize, historyWorkspaceIntents, historyWorkspaceView, type HistoryWorkspaceState } from "./history-workspace.ts"
 import type { CodexHistoryCatalog, CodexHistoryPage } from "../codex-history-contract.ts"
 
@@ -71,7 +81,7 @@ export type DesktopNoteEntry = Readonly<{
   timestamp: string
 }>
 
-export const desktopWorkspaceNames = ["chat", "home", "files", "review", "terminal", "inbox", "settings"] as const
+export const desktopWorkspaceNames = ["fleet", "chat", "home", "files", "review", "terminal", "inbox", "settings"] as const
 export type DesktopWorkspaceName = (typeof desktopWorkspaceNames)[number]
 
 export type DesktopShellState = Readonly<{
@@ -106,6 +116,8 @@ export type DesktopShellState = Readonly<{
   /** Codex account reconnect state, shown by the "settings" workspace (see ./settings.ts). */
   settings: SettingsState
   history: HistoryWorkspaceState
+  /** Read-only fleet accounts projection (see ./fleet-workspace.ts). */
+  fleet: FleetWorkspaceState
 }>
 
 /** "18:04" — display-string timestamps for the typed message contract. */
@@ -150,6 +162,7 @@ export const initialDesktopShellState = (
   loopProofs: 0,
   settings: initialSettingsState(),
   history: emptyHistoryWorkspaceState(),
+  fleet: emptyFleetWorkspaceState(),
 })
 
 // ---------------------------------------------------------------------------
@@ -215,6 +228,7 @@ export const desktopShellIntents = [
   DesktopHistoryConversationPreviewed,
   ...settingsIntents,
   ...historyWorkspaceIntents,
+  ...fleetWorkspaceIntents,
 ] as const
 
 export type CodexHistoryHost = Readonly<{
@@ -452,8 +466,12 @@ export const makeDesktopShellHandlers = (
   settingsSleep?: (ms: number) => Promise<void>,
   openAgentsBridge: OpenAgentsSessionSettingsBridge = unavailableOpenAgentsSessionSettingsBridge,
   historyHost: CodexHistoryHost = { catalog: async () => null, page: async () => null },
-): IntentHandlers<typeof desktopShellIntents> => ({
-  ...makeSettingsHandlers(state, codexBridge, openAgentsBridge, settingsSleep),
+  fleetBridge: FleetAccountsBridge = unavailableFleetAccountsBridge,
+): IntentHandlers<typeof desktopShellIntents> => {
+  const settingsHandlers = makeSettingsHandlers(state, codexBridge, openAgentsBridge, settingsSleep)
+  return ({
+  ...settingsHandlers,
+  ...makeFleetWorkspaceHandlers(state, fleetBridge, () => settingsHandlers.DesktopSettingsToggled()),
   DesktopInputChanged: (value) =>
     SubscriptionRef.update(state, (current) => withInput(current, value)),
   DesktopNoteSubmitted: (value) =>
@@ -523,6 +541,9 @@ export const makeDesktopShellHandlers = (
   DesktopWorkspaceSelected: (workspace) =>
     Effect.gen(function* () {
       yield* SubscriptionRef.update(state, (current) => withWorkspace(current, workspace))
+      if (workspace === "fleet") {
+        yield* refreshFleetAccounts(state, fleetBridge)
+      }
       if (workspace === "home" || workspace === "files" || workspace === "review") {
         const snapshot = yield* Effect.promise(workspaceHost.summary)
         yield* SubscriptionRef.update(state, (current) => withWorkspaceSnapshot(current, snapshot))
@@ -589,7 +610,8 @@ export const makeDesktopShellHandlers = (
     SubscriptionRef.update(state, (current) => current.historyShortcutHintsVisible === visible ? current : { ...current, historyShortcutHintsVisible: visible }),
   DesktopHistoryConversationPreviewed: (id) =>
     SubscriptionRef.update(state, (current) => current.history.pendingThreadRef === id ? current : { ...current, history: { ...current.history, pendingThreadRef: id } }),
-})
+  })
+}
 
 // ---------------------------------------------------------------------------
 // View — pure `state -> View` over the shared catalog.
@@ -671,6 +693,7 @@ const shellSidebar = (state: DesktopShellState): View =>
         activeId:state.history.pendingThreadRef!==null?`sidebar-thread-${state.history.pendingThreadRef}`:state.history.page!==null?`sidebar-thread-${state.history.page.rootThreadRef}`:state.activeThreadId!==null?`sidebar-thread-${state.activeThreadId}`:`workspace-${state.workspace}`,
         sections:[
           {id:"sidebar-workspace-dock",layout:"row",items:[
+            {id:"workspace-fleet",label:"Fleet",icon:"Agent",selected:state.workspace==="fleet",accessibilityLabel:"Fleet",onSelect:IntentRef("DesktopWorkspaceSelected",StaticPayload("fleet"))},
             {id:"workspace-chat",label:"Chat",icon:"Chats",selected:state.workspace==="chat",accessibilityLabel:"Chat",onSelect:IntentRef("DesktopWorkspaceSelected",StaticPayload("chat"))},
             {id:"workspace-files",label:"Files",icon:"Folder",selected:state.workspace==="files",accessibilityLabel:"Files",onSelect:IntentRef("DesktopWorkspaceSelected",StaticPayload("files"))},
             {id:"workspace-home",label:"Project home",icon:"Home",selected:state.workspace==="home",accessibilityLabel:"Project home",onSelect:IntentRef("DesktopWorkspaceSelected",StaticPayload("home"))},
@@ -1063,7 +1086,7 @@ export const desktopShellView = (state: DesktopShellState): View =>
               paddingRight: "4",
               gap: "5",
             },
-          })] : state.workspace === "files" ? [workspaceFiles(state)] : state.workspace === "review" ? [workspaceReview(state)] : state.workspace === "settings" ? [settingsView(state.settings)] : [projectHome(state)]),
+          })] : state.workspace === "files" ? [workspaceFiles(state)] : state.workspace === "review" ? [workspaceReview(state)] : state.workspace === "settings" ? [settingsView(state.settings)] : state.workspace === "fleet" ? [fleetWorkspaceView(state.fleet)] : [projectHome(state)]),
           ...(state.workspace === "chat" && state.history.page === null ? [shellComposer(state)] : []),
         ],
       ),

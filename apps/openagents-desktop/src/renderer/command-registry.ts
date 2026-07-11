@@ -5,6 +5,7 @@
  */
 export const desktopCommandRegistry = [
   { id: "chat.new", label: "New chat", intentName: "DesktopNewChat", payload: null },
+  { id: "workspace.fleet", label: "Open fleet", intentName: "DesktopWorkspaceSelected", payload: "fleet" },
   { id: "chat.open", label: "Open chat", intentName: "DesktopWorkspaceSelected", payload: "chat" },
   { id: "workspace.files", label: "Open Files", intentName: "DesktopWorkspaceSelected", payload: "files" },
   { id: "workspace.review", label: "Review changes", intentName: "DesktopWorkspaceSelected", payload: "review" },

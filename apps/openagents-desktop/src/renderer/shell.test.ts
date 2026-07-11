@@ -106,6 +106,21 @@ describe("desktopShellView (state -> component tree)", () => {
     expect(nodeByKey(view, "codex-thread-details-label")).toBeUndefined()
   })
 
+  test("Fleet is the first dock item and opens the read-only fleet workspace", () => {
+    const view = desktopShellView(baseState)
+    const nav = nodeByKey(view, "sidebar-navigation")
+    const dock = (nav?.sections as Array<{ id: string; items: Array<AnyNode> }>)[0]
+    expect(dock?.id).toBe("sidebar-workspace-dock")
+    expect(dock?.items[0]?.id).toBe("workspace-fleet")
+    expect(navItemById(view, "workspace-fleet")).toMatchObject({ icon: "Agent", accessibilityLabel: "Fleet" })
+    expect((navItemById(view, "workspace-fleet")?.onSelect as { name?: string })?.name).toBe("DesktopWorkspaceSelected")
+
+    const fleetView = desktopShellView(withWorkspace(baseState, "fleet"))
+    expect(nodeByKey(fleetView, "workspace-fleet-panel")?._tag).toBe("Stack")
+    expect(nodeByKey(fleetView, "shell-composer")).toBeUndefined()
+    expect(nodeByKey(fleetView, "shell-transcript")).toBeUndefined()
+  })
+
   test("sidebar chat rows are compact navigation items with trailing metadata", () => {
     const view = desktopShellView(baseState)
     const item = navItemById(view, `sidebar-thread-${testThread.id}`)

@@ -25,6 +25,10 @@ import {
   type OpenAgentsSessionSettingsBridge,
 } from "./settings.ts"
 import {
+  unavailableFleetAccountsBridge,
+  type FleetAccountsBridge,
+} from "./fleet-workspace.ts"
+import {
   desktopShellIntents,
   desktopShellView,
   initialDesktopShellState,
@@ -75,6 +79,10 @@ type DesktopBridge = Readonly<{
   codexConnectStart?: () => Promise<unknown>
   codexConnectStatus?: () => Promise<unknown>
   codexConnectOpenVerification?: () => Promise<unknown>
+  providerAccounts?: Readonly<{
+    list?: () => Promise<unknown>
+    usage?: (ref: string) => Promise<unknown>
+  }>
 }>
 
 const readBridge = (): DesktopBridge | undefined =>
@@ -109,6 +117,26 @@ const codexSettingsBridge: CodexSettingsBridge = {
     return typeof bridge?.codexConnectOpenVerification === "function"
       ? bridge.codexConnectOpenVerification()
       : unavailableCodexSettingsBridge.openVerification()
+  },
+}
+
+/**
+ * Fleet accounts bridge over the preload surface. Each call degrades to the
+ * honest unavailable projection when the bridge is absent; the fleet handlers
+ * schema-decode every response before it touches state.
+ */
+const fleetAccountsBridge: FleetAccountsBridge = {
+  list: () => {
+    const bridge = readBridge()
+    return typeof bridge?.providerAccounts?.list === "function"
+      ? bridge.providerAccounts.list()
+      : unavailableFleetAccountsBridge.list()
+  },
+  usage: (ref) => {
+    const bridge = readBridge()
+    return typeof bridge?.providerAccounts?.usage === "function"
+      ? bridge.providerAccounts.usage(ref)
+      : unavailableFleetAccountsBridge.usage(ref)
   },
 }
 
@@ -275,7 +303,7 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
           }
           return { state: "unavailable", message: typeof value.message === "string" ? value.message : "Git review is unavailable." }
         },
-      }, codexSettingsBridge, undefined, openAgentsSessionSettingsBridge, historyHost),
+      }, codexSettingsBridge, undefined, openAgentsSessionSettingsBridge, historyHost, fleetAccountsBridge),
     )
     const historyCatalog = yield* Effect.promise(historyHost.catalog)
     if (historyCatalog !== null) {
