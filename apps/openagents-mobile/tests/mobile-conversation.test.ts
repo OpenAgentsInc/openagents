@@ -175,6 +175,7 @@ describe("contract openagents_mobile.chat.authoritative_sync_mode.v1", () => {
     let activeStatus: "completed" | "canceled" = "completed"
     let activeSequence = 0
     const runtime: KhalaSyncRuntimeCommands = {
+      outcome: () => Effect.succeed(null),
       startTurn: intent => Effect.sync(() => {
         intents.push(intent)
         activeRunRef = intent.turnId ?? null
@@ -261,6 +262,51 @@ describe("contract openagents_mobile.chat.authoritative_sync_mode.v1", () => {
       kind: "turn.interrupt",
       threadId: "thread.synced.1",
       turnId: "turn.mobile.runtime-turn",
+    })
+  })
+
+  test("surfaces a durable expired result instead of executing after offline delay", async () => {
+    const fixture = makeConversation()
+    const intents: Array<KhalaRuntimeControlIntent> = []
+    const runtime: KhalaSyncRuntimeCommands = {
+      appendUserMessage: () => Effect.succeed(MutationId.make(4)),
+      interruptTurn: () => Effect.succeed(MutationId.make(5)),
+      startTurn: intent => Effect.sync(() => {
+        intents.push(intent)
+        return MutationId.make(3)
+      }),
+      outcome: input => Effect.succeed({
+        commandRef: input.intentId,
+        mutationId: null,
+        runRef: "turn.mobile.expired-turn",
+        status: "expired",
+        threadRef: input.threadRef,
+        updatedAt: "2026-07-10T20:21:00.000Z",
+        version: 9,
+      }),
+    }
+    const ids = ["expired-message", "expired-turn"]
+    const host = makeMobileConversationHost({
+      conversation: fixture.conversation,
+      runtime,
+      randomId: () => ids.shift()!,
+      now: () => new Date("2026-07-10T20:15:00.000Z"),
+      commandTtlMs: 60_000,
+      pollAttempts: 1,
+      sleep: async () => undefined,
+    })
+
+    expect(await host.sendMessage({
+      body: "Do not execute after reconnect",
+      threadRef: "thread.synced.1",
+    })).toEqual({
+      ok: false,
+      error: "Runtime command expired while this device was offline.",
+    })
+    expect(intents).toHaveLength(1)
+    expect(intents[0]).toMatchObject({
+      expiresAt: "2026-07-10T20:16:00.000Z",
+      intentId: "intent.start.turn.mobile.expired-turn",
     })
   })
 })

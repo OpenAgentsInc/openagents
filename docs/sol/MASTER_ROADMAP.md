@@ -1,9 +1,9 @@
 # MASTER ROADMAP — reliable synced coding and fleet software on Desktop/mobile
 
 - Date: 2026-07-10
-- Updated: 2026-07-11 (accepted simultaneous Codex+Claude Phase A receipt,
-  portable agent graphs, episode 248/249 UX contracts, and CUT-07 next)
-- Revision: 32
+- Updated: 2026-07-11 (accepted CUT-07 command convergence, portable agent
+  graphs, episode 248/249 UX contracts, and CUT-08 next)
+- Revision: 33
 - Status: canonical OpenAgents implementation roadmap
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Issue source set: [`issues/README.md`](./issues/README.md)
@@ -505,6 +505,15 @@ product gaps are the R0–R7 Desktop/mobile continuity and reliability gates:
   staging/production, and production revision `openagents-monolith-00084-tnv`
   serves 100%. R3/R7 remain in the client/program issues; Phase A does not
   claim those exits.
+- CUT-07 is closed by the deterministic
+  [`command-convergence receipt`](./2026-07-11-cut-07-command-convergence-receipt.md):
+  lost ACK before/after apply, concurrent and post-commit duplicates, semantic
+  retry, conflicting same-ID bytes, offline reconnect/expiry, adapter-visible
+  terminal state, and local-store restart converge through the existing Sync
+  mutation/control-intent ledger. Migration `0061` adds the projected
+  `expired` terminal state; expired rows never enter the runtime dispatch
+  reader. Desktop Runtime Gateway v7 and mobile consume the same exact-intent
+  outcome. #8677 remains open for CUT-08/CUT-09 and the live fault rung.
 - Grok is postponed by owner decision because the connected account is
   quota/payment exhausted. Its real accepted historical canary, HTTP-402
   state, adapters, and fixtures remain evidence/regression substrate; Grok is
@@ -587,7 +596,7 @@ records before claiming the first new slice.
   complete coding workbench and visible server-authoritative Fleet cockpit. The shared Sync
   client now has a confirmed-only reader for the already-landed `agent_run` /
   `agent_run_event` scope: ordered bounded facts survive replay/restart while
-  private/raw provider fields stay omitted. Runtime Gateway v6 now consumes
+  private/raw provider fields stay omitted. Runtime Gateway v7 now consumes
   that reader by exact `runRef` and returns only the server-confirmed
   `routeRef` binding. It separately exposes the owner-local history catalog/page
   capability with no age ceiling or raw-file projection. Closed #8675 supplied
@@ -1246,7 +1255,7 @@ folder selection, bounded root listing/read/edit/save with conflict and atomic-
 write checks, typed read-only Git status/diff, a closed command registry and
 palette, Codex readiness/device-auth Settings, and a schema-decoded Runtime
   Gateway bootstrap/command/lifecycle seam. #8676 has replaced the former
-  streaming-unavailable projection with a deterministic Runtime Gateway v6
+  streaming-unavailable projection with a deterministic Runtime Gateway v7
   conversation path; its real named-account/physical-phone receipt remains
   open. The gateway now composes a host-owned
 `node:sqlite` adapter over the existing Khala Sync store core, with a private
@@ -1482,9 +1491,9 @@ universe.
 
 ## Canonical open issue set
 
-There are **28 open `roadmap:sol` records** after closing #8640, CUT-01–CUT-06,
+There are **27 open `roadmap:sol` records** after closing #8640, CUT-01–CUT-07,
 and topology parent #8678: the original #8547, #8566, #8574, #8597, #8636,
-#8676, and #8677; and bounded CUT-07–CUT-27 leaves #8687–#8707. #8566 remains
+#8676, and #8677; and bounded CUT-08–CUT-27 leaves #8688–#8707. #8566 remains
 the sole program epic. GitHub sub-issue
 relationships place each leaf under its narrowest owning track or reliability
 parent; prose cross-links retain the other affected tracks.
@@ -1495,15 +1504,16 @@ correlation, and built-host receipt jointly satisfy the architecture parent.
 #8677 similarly delegates its fault matrix to #8687–#8689,
 and closed #8640 delegated its supervisor/publication repair to closed #8686
 before the accepted parent receipt. Closed #8685 supplies the scoped Claude
-authority. CUT-07 #8687 is the next ordered local-coding leaf.
+authority. Closed CUT-07 #8687 supplies command convergence; CUT-08 #8688 is
+the next ordered local-coding leaf.
 
 The [Pylon streamlining audit](../fable/2026-07-11-pylon-streamlining-audit.md)
 also fixes the short-term boundary for this proof: `apps/pylon/src/orchestration`
-and `apps/pylon/src/node` are the protected, load-bearing P0 core. Until #8640
-closes, changes there remain CUT-owned correctness repairs only. Compatibility
-repairs at the legacy D1/Postgres evidence seam are allowed when they directly
-unblock the receipt; CLI/package cleanup, authority collapse, and product-shell
-streamlining wait for the post-#8640 program described by that audit.
+and `apps/pylon/src/node` are the protected, load-bearing P0 core. #8640 is now
+closed, and CUT-07 honored that boundary without changing either directory.
+CLI/package cleanup, authority collapse, and product-shell streamlining remain
+a separately bounded post-proof program; CUT-08/CUT-09 may touch the protected
+core only for correctness work their fault matrices actually own.
 
 | Roadmap disposition | Issue | Purpose now |
 | --- | --- | --- |
@@ -1516,7 +1526,7 @@ streamlining wait for the post-#8640 program described by that audit.
 | **P0 vertical slice** | #8676 | One real streamed Desktop conversation immediately continued on physical mobile |
 | **P0 fault proof** | #8677 | Bounded command/event lost-ack, duplicate, gap, offline, restart, revocation, and migration convergence |
 | **Closed P0 topology parent** | #8678 | #8683/#8684 complete the source-coupled topology, ambient-authority denial, substitution, disposal, correlation, and built-host receipt |
-| **P0 local-coding leaves** | #8687–#8707 open | Remaining ordered CUT-07–CUT-27 graph; CUT-01–CUT-06 and the bounded #8640 Phase A proof are closed |
+| **P0 local-coding leaves** | #8688–#8707 open | Remaining ordered CUT-08–CUT-27 graph; CUT-01–CUT-07 and the bounded #8640 Phase A proof are closed |
 | **Closed P0 D1 proof** | #8675 | Predictable real-Electron Codex trace workspace UX contract and public-safe acceptance receipt |
 | **Closed P0 D1 product slice** | #8674 | Loss-accounted historical Codex parent/subagent/tool rendering and the Desktop Agents/Item inspector, with valid scale and real nested-history receipts |
 
@@ -1569,8 +1579,9 @@ around and after that narrower installed-Desktop milestone.
    managed workroom, compact files/changes/terminal/preview/artifacts/
    writeback) in parallel. Serialize only shared schemas, migrations, command
    identities, generated clients, and authority policy.
-5. Continue with CUT-07 #8687 after the accepted #8640/CUT-06 receipt. Preserve
-   the proven Pylon fleet core and migration `0060`; treat broader streamlining
+5. Continue with CUT-08 #8688 after the accepted CUT-07 command-convergence
+   receipt. Preserve the proven Pylon fleet core and migrations `0060`–`0061`;
+   treat broader streamlining
    or authority collapse as a separately bounded post-proof program, not scope
    silently inherited by the remaining CUT leaves. Keep R3/R7 in their owning
    client/program issues.

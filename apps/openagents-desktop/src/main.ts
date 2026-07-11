@@ -220,15 +220,21 @@ const runtimeGateway = createDesktopRuntimeGateway(() => desktopRuntimeCapabilit
         if (operationContext !== undefined) desktopCorrelationJournal.record("sync.intent", operationContext)
         return 1
       },
+      outcome: () => null,
     }
   }
   if (service === null) return null
-  const context = () => ({
-    nowIso: new Date().toISOString(),
-    surface: "desktop" as const,
-    target: { lane: "codex_app_server" as const },
-  })
+  const context = () => {
+    const createdAt = new Date()
+    return {
+      expiresAtIso: new Date(createdAt.getTime() + 5 * 60_000).toISOString(),
+      nowIso: createdAt.toISOString(),
+      surface: "desktop" as const,
+      target: { lane: "codex_app_server" as const },
+    }
+  }
   return {
+    outcome: input => Effect.runSync(service.outcome(input)),
     start: (input, operationContext) => Number(Effect.runSync(service.startTurn(buildStartTurnIntent({
       context: context(),
       correlationRefs: operationContext === undefined ? [] : [

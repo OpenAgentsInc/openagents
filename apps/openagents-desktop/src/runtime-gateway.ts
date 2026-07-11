@@ -9,6 +9,7 @@ import type { CodexHistoryCatalog, CodexHistoryPage } from "./codex-history-cont
 import type {
   ConfirmedAgentRun,
   ConfirmedAgentTimelineEvent,
+  RuntimeCommandOutcome,
 } from "@openagentsinc/khala-sync-client"
 import type {
   DesktopCorrelationStage,
@@ -70,6 +71,7 @@ export type DesktopRuntimeAgentTimeline = Readonly<{
 export type DesktopRuntimeCommands = Readonly<{
   start: (input: Readonly<{ threadRef: string; messageRef: string; runRef: string }>, context?: DesktopOperationContext) => number
   interrupt: (input: Readonly<{ commandRef: string; threadRef: string; runRef: string }>, context?: DesktopOperationContext) => number
+  outcome: (input: Readonly<{ intentId: string; threadRef: string }>) => RuntimeCommandOutcome | null
 }>
 
 export type DesktopRuntimeCodexHistory = Readonly<{
@@ -185,6 +187,20 @@ export const createDesktopRuntimeGateway = (
       const outcome = (() : DesktopRuntimeGatewayResponse | Promise<DesktopRuntimeGatewayResponse> => {
       if (phase === "disposed") return { kind: "request_rejected", reason: "gateway_disposed" }
       if (request.kind === "query") {
+        if (request.query.id === "conversation.commandOutcome") {
+          const service = runtimeCommands()
+          if (service === null) {
+            return { kind: "conversation_unavailable", requestId: request.requestId, reason: "not_live" }
+          }
+          try {
+            const result = service.outcome(request.query)
+            return result === null
+              ? { kind: "conversation_unavailable", requestId: request.requestId, reason: "not_found" }
+              : { kind: "runtime_command_status", requestId: request.requestId, ...result }
+          } catch {
+            return { kind: "conversation_unavailable", requestId: request.requestId, reason: "read_failed" }
+          }
+        }
         if (request.query.id === "codex.history.catalog") {
           const service = codexHistory()
           if (service === null) return { kind: "codex_history_unavailable", requestId: request.requestId, reason: "read_failed" }

@@ -108,7 +108,7 @@ process before D3/D4 breadth. The renderer never receives bearer/provider/
 Pylon credentials, a loopback URL, raw runtime events, general IPC, or a raw
 `MessagePort`.
 
-Runtime Gateway protocol v6 now carries the authoritative conversation path:
+Runtime Gateway protocol v7 now carries the authoritative conversation path:
 confirmed catalog/thread/current-timeline queries, canonical create/append
 enqueues, and exact thread/message/run start or interrupt commands. Enqueue is
 reported only as `pending_reconcile` or `unknown_pending_reconcile`. The
@@ -125,7 +125,7 @@ authority and is transactionally mirrored to `agent_run`/`agent_run_event`
 under the same thread/run refs. Exact semantic retries reconcile without a
 second dispatch; conflicting identity reuse fails closed.
 
-Protocol v6 also carries a separate owner-local Codex history catalog/page
+Protocol v7 also carries a separate owner-local Codex history catalog/page
 capability. Active and archived (including zstd) rollouts are indexed in the
 history worker without an age ceiling. The Effect Native history workspace
 keeps top-level conversations left, a bounded selected-agent timeline center,
@@ -136,7 +136,7 @@ and provider authority never cross preload or enter Khala Sync.
 Desktop main now also opens the shared `khala-sync-client` SQLite store beneath
 its private `userData` root and persists one installation identity. After
 opening it also creates a separate immutable device-local identity and local-
-authority tables. Desktop remains usable without OpenAuth; Runtime Gateway v6
+authority tables. Desktop remains usable without OpenAuth; Runtime Gateway v7
 projects only `local_only | account_linked | local_unavailable`. Verified
 account linking adds personal Sync, while disconnect/denial retains local rows.
 After

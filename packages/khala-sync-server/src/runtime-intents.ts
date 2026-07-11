@@ -80,7 +80,9 @@ const rowToIntent = (
   })
 
 /**
- * Read runtime control intents recorded after `afterSeq`, oldest first,
+ * Read dispatchable runtime control intents recorded after `afterSeq`, oldest first.
+ * Terminal `expired` rows stay in the authoritative ledger and projections
+ * but are excluded here so no delayed consumer can execute them.
  * optionally restricted to one owner. "Pending" is from the CALLER'S point
  * of view: the table has no consumed flag by design (an immutable request
  * log attributable to its mutations); each consumer tracks its own
@@ -101,7 +103,7 @@ export const readPendingRuntimeControlIntents = async (
           SELECT seq, intent_id, thread_id, turn_id, owner_user_id, kind,
                  status, intent_json, created_at, updated_at
           FROM khala_sync_runtime_control_intents
-          WHERE seq > ${afterSeq}
+          WHERE seq > ${afterSeq} AND status <> 'expired'
           ORDER BY seq ASC
           LIMIT ${limit}
         `
@@ -110,6 +112,7 @@ export const readPendingRuntimeControlIntents = async (
                  status, intent_json, created_at, updated_at
           FROM khala_sync_runtime_control_intents
           WHERE seq > ${afterSeq} AND owner_user_id = ${input.ownerUserId}
+            AND status <> 'expired'
           ORDER BY seq ASC
           LIMIT ${limit}
         `

@@ -115,6 +115,8 @@ export {
   type RuntimeClientMutators,
   type KhalaSyncRuntimeCommands,
   type RuntimeCommandContext,
+  type RuntimeCommandOutcome,
+  type RuntimeCommandOutcomeStatus,
   type RuntimeCommandSurface,
   type RuntimeCommandTarget,
 } from "./runtime.js"

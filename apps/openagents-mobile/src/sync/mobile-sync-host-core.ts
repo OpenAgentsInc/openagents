@@ -176,7 +176,7 @@ export const openMobileSyncHostCore = (input: Readonly<{
         mutators,
       })
       timeline = createKhalaSyncAgentTimeline({ store, session })
-      runtime = createKhalaSyncRuntimeCommands({ mutators: runtimeMutators, session })
+      runtime = createKhalaSyncRuntimeCommands({ mutators: runtimeMutators, session, store })
       Effect.runSync(session.subscribe(scope))
     },
     disconnectAuthenticated,

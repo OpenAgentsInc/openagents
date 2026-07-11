@@ -57,6 +57,7 @@ export type RuntimeTurnStatus = typeof RuntimeTurnStatus.Type
 export const RuntimeControlIntentStatus = S.Literals([
   "accepted",
   "settled",
+  "expired",
 ])
 export type RuntimeControlIntentStatus =
   typeof RuntimeControlIntentStatus.Type

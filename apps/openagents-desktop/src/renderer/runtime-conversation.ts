@@ -211,6 +211,18 @@ export const makeRuntimeConversationChatHost = (
 
       let lastSignature = ""
       for (let attempt = 0; attempt < Math.max(pollAttempts, 300); attempt += 1) {
+        const command = await options.request({
+          kind: "query",
+          requestId: `renderer-conversation-command-${++requestSequence}`,
+          query: {
+            id: "conversation.commandOutcome",
+            intentId: `intent.start.${runRef}`,
+            threadRef: input.id,
+          },
+        })
+        if (command.kind === "runtime_command_status" && command.status === "expired") {
+          return { ok: false, error: "Runtime command expired while this device was offline." }
+        }
         const next = await confirmedThread(input.id)
         if (next !== null) {
           thread = next

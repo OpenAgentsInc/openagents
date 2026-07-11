@@ -55,6 +55,8 @@ export type MobileConversationAdapterOptions = Readonly<{
   timeline?: KhalaSyncAgentTimeline
   runtime?: KhalaSyncRuntimeCommands
   randomId?: () => string
+  now?: () => Date
+  commandTtlMs?: number
   sleep?: (ms: number) => Promise<void>
   pollAttempts?: number
 }>
@@ -69,6 +71,8 @@ export const makeMobileConversationHost = (
   options: MobileConversationAdapterOptions,
 ): MobileConversationHost => {
   const randomId = options.randomId ?? (() => globalThis.crypto.randomUUID())
+  const now = options.now ?? (() => new Date())
+  const commandTtlMs = options.commandTtlMs ?? 5 * 60_000
   const sleep = options.sleep ?? (ms => new Promise(resolve => setTimeout(resolve, ms)))
   const pollAttempts = options.pollAttempts ?? 30
 
@@ -116,20 +120,30 @@ export const makeMobileConversationHost = (
   }
 
   const confirmedRuntimeOutcome = async (input: Readonly<{
+    intentId: string
     threadRef: string
     runRef: string
     afterSequence: number
     onUpdate?: (thread: MobileConversationThread) => void
-  }>): Promise<MobileConversationThread | null> => {
+  }>): Promise<
+    | Readonly<{ kind: "settled"; thread: MobileConversationThread }>
+    | Readonly<{ kind: "expired" }>
+    | null
+  > => {
     let lastSignature = ""
     for (let attempt = 0; attempt < Math.max(pollAttempts, 300); attempt += 1) {
+      const command = await run(options.runtime!.outcome({
+        intentId: input.intentId,
+        threadRef: input.threadRef,
+      }))
+      if (command?.status === "expired") return { kind: "expired" }
       const thread = await confirmedThread(input.threadRef)
       const timeline = thread?.timeline
-      const run = timeline?.run
+      const activeRun = timeline?.run
       if (thread !== null) {
         const signature = [
-          run?.runRef ?? "none",
-          run?.status ?? "none",
+          activeRun?.runRef ?? "none",
+          activeRun?.status ?? "none",
           ...(timeline?.events ?? []).map(event => `${event.eventRef}:${event.version}`),
         ].join("|")
         if (signature !== lastSignature) {
@@ -143,10 +157,10 @@ export const makeMobileConversationHost = (
       )
       if (
         thread !== null &&
-        run?.runRef === input.runRef &&
+        activeRun?.runRef === input.runRef &&
         latestSequence > input.afterSequence &&
-        (run.status === "completed" || run.status === "failed" || run.status === "canceled")
-      ) return thread
+        (activeRun.status === "completed" || activeRun.status === "failed" || activeRun.status === "canceled")
+      ) return { kind: "settled", thread }
       await sleep(100)
     }
     return null
@@ -194,8 +208,10 @@ export const makeMobileConversationHost = (
         0,
         ...(thread.timeline?.events.map(event => event.sequence) ?? []),
       )
+      const createdAt = now()
       const context = {
-        nowIso: new Date().toISOString(),
+        expiresAtIso: new Date(createdAt.getTime() + commandTtlMs).toISOString(),
+        nowIso: createdAt.toISOString(),
         surface: "mobile" as const,
         target: {
           lane: active?.runtime === "claude_code"
@@ -205,21 +221,24 @@ export const makeMobileConversationHost = (
               : "codex_app_server" as const,
         },
       }
-      try {
-        if (continuingActiveRun) {
-          await run(options.runtime.appendUserMessage(buildAppendUserMessageIntent({
+      const runtimeIntent = continuingActiveRun
+        ? buildAppendUserMessageIntent({
             context,
             messageRef,
             threadRef: input.threadRef,
             turnRef: active.runRef,
-          })))
-        } else {
-          await run(options.runtime.startTurn(buildStartTurnIntent({
+          })
+        : buildStartTurnIntent({
             context,
             messageRef,
             threadRef: input.threadRef,
             turnRef,
-          })))
+          })
+      try {
+        if (continuingActiveRun) {
+          await run(options.runtime.appendUserMessage(runtimeIntent))
+        } else {
+          await run(options.runtime.startTurn(runtimeIntent))
         }
       } catch {
         return { ok: false, error: "Message was admitted, but runtime dispatch is unavailable." }
@@ -227,13 +246,16 @@ export const makeMobileConversationHost = (
       const expectedRunRef = continuingActiveRun ? active.runRef : turnRef
       const settled = await confirmedRuntimeOutcome({
         afterSequence: continuingActiveRun ? previousSequence : 0,
+        intentId: runtimeIntent.intentId,
         onUpdate: input.onUpdate,
         runRef: expectedRunRef,
         threadRef: input.threadRef,
       })
       return settled === null
         ? { ok: false, error: "Runtime outcome is still pending reconciliation." }
-        : { ok: true, thread: settled }
+        : settled.kind === "expired"
+          ? { ok: false, error: "Runtime command expired while this device was offline." }
+          : { ok: true, thread: settled.thread }
     },
     interrupt: async input => {
       const thread = await confirmedThread(input.threadRef)
@@ -248,25 +270,31 @@ export const makeMobileConversationHost = (
           0,
           ...(thread.timeline.events.map(event => event.sequence) ?? []),
         )
-        await run(options.runtime.interruptTurn(buildInterruptTurnIntent({
+        const createdAt = now()
+        const intent = buildInterruptTurnIntent({
           commandRef: `mobile.${randomId().replace(/[^A-Za-z0-9._:-]/g, "")}`,
           context: {
-            nowIso: new Date().toISOString(),
+            expiresAtIso: new Date(createdAt.getTime() + commandTtlMs).toISOString(),
+            nowIso: createdAt.toISOString(),
             surface: "mobile",
             target: { lane: "codex_app_server" },
           },
           threadRef: input.threadRef,
           turnRef: input.runRef,
-        })))
+        })
+        await run(options.runtime.interruptTurn(intent))
         const settled = await confirmedRuntimeOutcome({
           afterSequence: previousSequence,
+          intentId: intent.intentId,
           onUpdate: input.onUpdate,
           runRef: input.runRef,
           threadRef: input.threadRef,
         })
         return settled === null
           ? { ok: false, error: "Interrupt is still pending reconciliation." }
-          : { ok: true, thread: settled }
+          : settled.kind === "expired"
+            ? { ok: false, error: "Interrupt expired while this device was offline." }
+            : { ok: true, thread: settled.thread }
       } catch {
         return { ok: false, error: "Interrupt is still pending reconciliation." }
       }

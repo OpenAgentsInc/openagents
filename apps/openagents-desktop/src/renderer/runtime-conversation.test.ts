@@ -55,7 +55,7 @@ describe("authoritative Runtime Gateway chat adapter", () => {
     const commands: Array<Record<string, unknown>> = []
     let startedRunRef: string | null = null
     const request = async (raw: unknown): Promise<DesktopRuntimeGatewayResponse> => {
-      const value = raw as { requestId?: string; commandId?: string; query?: { id: string; threadRef?: string }; command?: Record<string, string> }
+      const value = raw as { requestId?: string; commandId?: string; query?: { id: string; intentId?: string; threadRef?: string }; command?: Record<string, string> }
       if (value.query?.id === "conversation.catalog") {
         return {
           kind: "conversation_catalog",
@@ -112,6 +112,19 @@ describe("authoritative Runtime Gateway chat adapter", () => {
             { eventRef: "event.tool.1", runRef: startedRunRef, sequence: 2, eventType: "tool.call", summary: "Called shell", status: "completed", artifactRefs: [], item: { kind: "tool", toolCallRef: "tool.1", toolName: "shell", status: "completed" }, createdAt: now, version: 3 },
             { eventRef: "event.terminal.1", runRef: startedRunRef, sequence: 3, eventType: "turn.finished", summary: "Turn finished", status: "completed", artifactRefs: [], item: { kind: "terminal", status: "completed" }, createdAt: now, version: 4 },
           ],
+        }
+      }
+      if (value.query?.id === "conversation.commandOutcome") {
+        return {
+          kind: "runtime_command_status",
+          requestId: value.requestId!,
+          commandRef: value.query.intentId!,
+          threadRef: value.query.threadRef!,
+          runRef: startedRunRef,
+          status: "settled",
+          mutationId: null,
+          version: 4,
+          updatedAt: now,
         }
       }
       const command = value.command!
@@ -227,5 +240,105 @@ describe("authoritative Runtime Gateway chat adapter", () => {
     expect(result.error).toContain("pending reconciliation")
     expect(result.error).not.toContain("completed")
     expect(sleeps).toBe(2)
+  })
+
+  test("surfaces the exact durable expired command after reconnect", async () => {
+    const request = async (raw: unknown): Promise<DesktopRuntimeGatewayResponse> => {
+      const value = raw as {
+        command?: Record<string, string>
+        commandId?: string
+        query?: { id: string; intentId?: string; threadRef?: string }
+        requestId?: string
+      }
+      if (value.command?.id === "conversation.append") {
+        return {
+          kind: "conversation_mutation_outcome",
+          commandId: value.commandId!,
+          mutationId: 1,
+          status: "pending_reconcile",
+        }
+      }
+      if (value.command?.id === "conversation.start") {
+        return {
+          kind: "runtime_command_outcome",
+          commandId: value.commandId!,
+          messageRef: value.command.messageRef!,
+          mutationId: 2,
+          runRef: value.command.runRef!,
+          status: "unknown_pending_reconcile",
+          threadRef: value.command.threadRef!,
+        }
+      }
+      if (value.query?.id === "conversation.thread") {
+        return {
+          kind: "conversation_thread",
+          messages: [{
+            body: "Queued offline",
+            createdAt: now,
+            messageRef: "message.desktop.expired-message",
+            threadRef: "thread.desktop.expired",
+            updatedAt: now,
+            version: 2,
+          }],
+          requestId: value.requestId!,
+          status,
+          threadRef: "thread.desktop.expired",
+        }
+      }
+      if (value.query?.id === "conversation.catalog") {
+        return {
+          kind: "conversation_catalog",
+          requestId: value.requestId!,
+          status,
+          threads: [{
+            lastMessageAt: now,
+            messageCount: 1,
+            threadRef: "thread.desktop.expired",
+            title: "Expired",
+            updatedAt: now,
+            version: 2,
+          }],
+        }
+      }
+      if (value.query?.id === "conversation.timeline") {
+        return {
+          events: [],
+          kind: "conversation_timeline",
+          requestId: value.requestId!,
+          run: null,
+          status,
+          threadRef: "thread.desktop.expired",
+        }
+      }
+      if (value.query?.id === "conversation.commandOutcome") {
+        return {
+          commandRef: value.query.intentId!,
+          kind: "runtime_command_status",
+          mutationId: null,
+          requestId: value.requestId!,
+          runRef: "turn.desktop.expired-run",
+          status: "expired",
+          threadRef: value.query.threadRef!,
+          updatedAt: "2026-07-11T12:06:00.000Z",
+          version: 7,
+        }
+      }
+      throw new Error("unexpected request")
+    }
+    const ids = ["expired-message", "expired-run"]
+    const chat = makeRuntimeConversationChatHost({
+      request,
+      randomId: () => ids.shift()!,
+      sleep: async () => undefined,
+      pollAttempts: 1,
+    })
+
+    expect(await chat.sendMessage({
+      id: "thread.desktop.expired",
+      message: "Queued offline",
+    })).toEqual({
+      ok: false,
+      error: "Runtime command expired while this device was offline.",
+    })
   })
 })

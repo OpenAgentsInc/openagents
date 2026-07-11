@@ -1,6 +1,11 @@
 import {
+  AGENT_RUN_ENTITY_TYPE,
+  decodeAgentRunEntity,
   decodeKhalaRuntimeControlIntent,
+  decodeRuntimeControlIntentEntity,
   MutatorName,
+  RUNTIME_CONTROL_INTENT_ENTITY_TYPE,
+  threadScope,
   type MutationId,
   type KhalaRuntimeControlIntent,
   type KhalaRuntimeLane,
@@ -9,6 +14,10 @@ import { Effect } from "effect"
 import type { ClientMutator } from "./overlay.js"
 import type { OverlayError } from "./overlay.js"
 import type { KhalaSyncSession } from "./session.js"
+import type {
+  KhalaSyncClientStoreError,
+  KhalaSyncLocalStore,
+} from "./store.js"
 
 export const RUNTIME_START_TURN_MUTATOR_NAME = "runtime.startTurn"
 export const RUNTIME_APPEND_USER_MESSAGE_MUTATOR_NAME =
@@ -25,7 +34,11 @@ export type RuntimeCommandContext = Readonly<{
   surface: RuntimeCommandSurface
   target: RuntimeCommandTarget
   nowIso: string
+  expiresAtIso?: string
 }>
+
+const expiry = (context: RuntimeCommandContext): Readonly<{ expiresAt?: string }> =>
+  context.expiresAtIso === undefined ? {} : { expiresAt: context.expiresAtIso }
 
 export const chatMessageBodyRef = (messageRef: string): string =>
   `chat_message.${messageRef}`
@@ -46,6 +59,7 @@ export const buildStartTurnIntent = (input: Readonly<{
     bodyRef: chatMessageBodyRef(input.messageRef),
     causalityRefs: [...(input.correlationRefs ?? []), input.messageRef],
     createdAt: input.context.nowIso,
+    ...expiry(input.context),
     idempotencyKey: `idem.start.${input.turnRef}`,
     intentId: `intent.start.${input.turnRef}`,
     kind: "turn.start",
@@ -68,6 +82,7 @@ export const buildAppendUserMessageIntent = (input: Readonly<{
     bodyRef: chatMessageBodyRef(input.messageRef),
     causalityRefs: [input.turnRef, input.messageRef],
     createdAt: input.context.nowIso,
+    ...expiry(input.context),
     idempotencyKey: `idem.append.${input.messageRef}`,
     intentId: `intent.append.${input.messageRef}`,
     kind: "message.append",
@@ -91,6 +106,7 @@ export const buildInterruptTurnIntent = (input: Readonly<{
   decodeKhalaRuntimeControlIntent({
     causalityRefs: [...(input.correlationRefs ?? []), input.turnRef],
     createdAt: input.context.nowIso,
+    ...expiry(input.context),
     idempotencyKey: `idem.interrupt.${input.commandRef}`,
     intentId: `intent.interrupt.${input.commandRef}`,
     kind: "turn.interrupt",
@@ -131,15 +147,123 @@ export type KhalaSyncRuntimeCommands = Readonly<{
   startTurn: (intent: KhalaRuntimeControlIntent) => Effect.Effect<MutationId, OverlayError>
   appendUserMessage: (intent: KhalaRuntimeControlIntent) => Effect.Effect<MutationId, OverlayError>
   interruptTurn: (intent: KhalaRuntimeControlIntent) => Effect.Effect<MutationId, OverlayError>
+  outcome: (input: Readonly<{
+    intentId: string
+    threadRef: string
+  }>) => Effect.Effect<RuntimeCommandOutcome | null, KhalaSyncClientStoreError>
 }>
+
+export type RuntimeCommandOutcomeStatus =
+  | "pending"
+  | "accepted"
+  | "settled"
+  | "expired"
+  | "failed"
+  | "canceled"
+
+export type RuntimeCommandOutcome = Readonly<{
+  commandRef: string
+  threadRef: string
+  runRef: string | null
+  status: RuntimeCommandOutcomeStatus
+  mutationId: number | null
+  version: number | null
+  updatedAt: string | null
+}>
+
+const pendingRuntimeCommand = (
+  session: KhalaSyncSession,
+  intentId: string,
+  threadRef: string,
+): RuntimeCommandOutcome | null => {
+  for (const mutation of session.pending()) {
+    try {
+      const intent = decodeKhalaRuntimeControlIntent(
+        JSON.parse(mutation.argsJson) as unknown,
+      )
+      if (intent.intentId !== intentId || intent.threadId !== threadRef) continue
+      return {
+        commandRef: intent.intentId,
+        mutationId: Number(mutation.mutationId),
+        runRef: intent.turnId ?? null,
+        status: "pending",
+        threadRef,
+        updatedAt: null,
+        version: null,
+      }
+    } catch {
+      // A pending mutation for another domain is not a runtime command.
+    }
+  }
+  return null
+}
+
+const confirmedRuntimeCommand = (
+  store: KhalaSyncLocalStore,
+  intentId: string,
+  threadRef: string,
+): Effect.Effect<RuntimeCommandOutcome | null, KhalaSyncClientStoreError> => {
+  const scope = threadScope(threadRef)
+  return Effect.map(Effect.all([
+    store.readEntities(scope, RUNTIME_CONTROL_INTENT_ENTITY_TYPE),
+    store.readEntities(scope, AGENT_RUN_ENTITY_TYPE),
+  ]), ([intentRows, runRows]) => {
+    const row = intentRows.find(candidate => candidate.entityId === intentId)
+    if (row === undefined) return null
+    try {
+      const entity = decodeRuntimeControlIntentEntity(
+        JSON.parse(row.postImageJson) as unknown,
+      )
+      if (entity.intentId !== intentId || entity.threadId !== threadRef) return null
+      let status: RuntimeCommandOutcomeStatus = entity.status
+      if (entity.status === "accepted" && entity.turnId !== null) {
+        for (const runRow of runRows) {
+          try {
+            const run = decodeAgentRunEntity(JSON.parse(runRow.postImageJson) as unknown)
+            if (run.runId !== entity.turnId) continue
+            status = run.status === "failed"
+              ? "failed"
+              : run.status === "canceled"
+                ? "canceled"
+                : run.status === "completed"
+                  ? "settled"
+                  : "accepted"
+            break
+          } catch {
+            // Ignore malformed/pre-contract rows; confirmed replacement heals.
+          }
+        }
+      }
+      return {
+        commandRef: entity.intentId,
+        mutationId: null,
+        runRef: entity.turnId,
+        status,
+        threadRef,
+        updatedAt: entity.updatedAt,
+        version: Number(row.version),
+      }
+    } catch {
+      return null
+    }
+  })
+}
 
 export const createKhalaSyncRuntimeCommands = (input: Readonly<{
   mutators: RuntimeClientMutators
   session: KhalaSyncSession
+  store?: KhalaSyncLocalStore
 }>): KhalaSyncRuntimeCommands => ({
   appendUserMessage: intent =>
     input.session.mutate(input.mutators.appendUserMessage, intent),
   interruptTurn: intent =>
     input.session.mutate(input.mutators.interruptTurn, intent),
+  outcome: query => input.store === undefined
+    ? Effect.succeed(pendingRuntimeCommand(input.session, query.intentId, query.threadRef))
+    : Effect.map(
+        confirmedRuntimeCommand(input.store, query.intentId, query.threadRef),
+        confirmed => confirmed ??
+          pendingRuntimeCommand(input.session, query.intentId, query.threadRef),
+      ),
   startTurn: intent => input.session.mutate(input.mutators.startTurn, intent),
 })

@@ -77,3 +77,13 @@ and closes only after all three children and the complete matrix pass.
 Close when the complete matrix, app-visible state assertions, and one live
 fault receipt pass. New counterexamples after closure become bounded defects,
 not a reopened permanent reliability epic.
+
+## Progress — CUT-07 accepted
+
+Rows 1–3 and 6 are complete under
+[`2026-07-11-cut-07-command-convergence-receipt.md`](../2026-07-11-cut-07-command-convergence-receipt.md).
+The existing Sync mutation ledger now converges exact retries before and after
+commit; conflicting same-ID bytes reject without mutation; a server-clock-due
+control intent projects once as `expired` and is excluded from dispatch; and
+Desktop/mobile read the same stable intent result after reconnect/restart.
+CUT-08 owns rows 4–5 and 10 next. This parent remains open.

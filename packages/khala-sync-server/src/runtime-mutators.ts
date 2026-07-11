@@ -70,6 +70,7 @@ export const RUNTIME_TURN_REQUIRED_REJECTION = "runtime_turn_required"
 export const RUNTIME_TURN_EXISTS_REJECTION = "runtime_turn_exists"
 export const RUNTIME_TURN_NOT_FOUND_REJECTION = "runtime_turn_not_found"
 export const RUNTIME_INTENT_CONFLICT_REJECTION = "runtime_intent_conflict"
+export const RUNTIME_INTENT_EXPIRY_REJECTION = "runtime_intent_expiry_invalid"
 /** @deprecated exact retries now reconcile; use the conflict code. */
 export const RUNTIME_INTENT_EXISTS_REJECTION = RUNTIME_INTENT_CONFLICT_REJECTION
 export const RUNTIME_MESSAGE_REQUIRED_REJECTION = "runtime_message_required"
@@ -701,6 +702,28 @@ const insertControlIntent = async (
   return entity
 }
 
+const expireControlIntentIfDue = async (
+  ctx: MutatorContext,
+  intent: KhalaRuntimeControlIntent,
+  nowIso: string,
+): Promise<MutationResult | null> => {
+  if (intent.expiresAt === undefined) return null
+  const expiresAt = Date.parse(intent.expiresAt)
+  if (
+    !Number.isFinite(expiresAt) ||
+    new Date(expiresAt).toISOString() !== intent.expiresAt
+  ) {
+    return reject(
+      ctx,
+      RUNTIME_INTENT_EXPIRY_REJECTION,
+      "runtime control intent expiry must be an ISO timestamp",
+    )
+  }
+  if (expiresAt > Date.parse(nowIso)) return null
+  await insertControlIntent(ctx, intent, "expired", nowIso)
+  return applied(ctx)
+}
+
 const insertTurn = async (
   ctx: MutatorContext,
   intent: KhalaRuntimeControlIntent,
@@ -777,19 +800,33 @@ const validateExistingTurnIntent = async (
   intent: KhalaRuntimeControlIntent,
   expectedKind: KhalaRuntimeControlIntentKind,
 ): Promise<
-  | { readonly kind: "ok"; readonly turn: RuntimeTurnRow; readonly turnId: string }
-  | { readonly kind: "rejected"; readonly result: MutationResult }
+  | {
+      readonly kind: "ok"
+      readonly turn: RuntimeTurnRow
+      readonly turnId: string
+      readonly nowIso: string
+    }
+  | { readonly kind: "complete"; readonly result: MutationResult }
 > => {
   const basics = await validateControlIntentBasics(ctx, intent, expectedKind)
-  if (basics !== null) return { kind: "rejected", result: basics }
+  if (basics !== null) return { kind: "complete", result: basics }
 
   const turnId = requireTurnId(ctx, intent)
-  if (isMutationResult(turnId)) return { kind: "rejected", result: turnId }
+  if (isMutationResult(turnId)) return { kind: "complete", result: turnId }
+
+  const ownerRejection = await ensureRuntimeThreadOwner(ctx, intent.threadId)
+  if (ownerRejection !== null) {
+    return { kind: "complete", result: ownerRejection }
+  }
+
+  const nowIso = await transactionNowIso(ctx)
+  const expired = await expireControlIntentIfDue(ctx, intent, nowIso)
+  if (expired !== null) return { kind: "complete", result: expired }
 
   const turn = await readTurnForUpdate(ctx, turnId)
   if (turn === null) {
     return {
-      kind: "rejected",
+      kind: "complete",
       result: reject(
         ctx,
         RUNTIME_TURN_NOT_FOUND_REJECTION,
@@ -798,15 +835,10 @@ const validateExistingTurnIntent = async (
     }
   }
   if (turn.owner_user_id !== ctx.userId || turn.thread_id !== intent.threadId) {
-    return { kind: "rejected", result: rejectForeignScope(ctx) }
+    return { kind: "complete", result: rejectForeignScope(ctx) }
   }
 
-  const ownerRejection = await ensureRuntimeThreadOwner(ctx, intent.threadId)
-  if (ownerRejection !== null) {
-    return { kind: "rejected", result: ownerRejection }
-  }
-
-  return { kind: "ok", turn, turnId }
+  return { kind: "ok", nowIso, turn, turnId }
 }
 
 const executeExistingTurnIntent = async (
@@ -824,9 +856,9 @@ const executeExistingTurnIntent = async (
     intent,
     input.expectedKind,
   )
-  if (validated.kind === "rejected") return validated.result
+  if (validated.kind === "complete") return validated.result
 
-  const nowIso = await transactionNowIso(ctx)
+  const nowIso = validated.nowIso
   await insertControlIntent(
     ctx,
     intent,
@@ -854,6 +886,13 @@ export const runtimeStartTurnMutator: MutatorDefinition =
       const turnId = requireTurnId(ctx, intent)
       if (isMutationResult(turnId)) return turnId
 
+      const ownerRejection = await ensureRuntimeThreadOwner(ctx, intent.threadId)
+      if (ownerRejection !== null) return ownerRejection
+
+      const nowIso = await transactionNowIso(ctx)
+      const expired = await expireControlIntentIfDue(ctx, intent, nowIso)
+      if (expired !== null) return expired
+
       const existing = await readTurnForUpdate(ctx, turnId)
       if (existing !== null) {
         return existing.owner_user_id === ctx.userId
@@ -865,10 +904,6 @@ export const runtimeStartTurnMutator: MutatorDefinition =
           : rejectForeignScope(ctx)
       }
 
-      const ownerRejection = await ensureRuntimeThreadOwner(ctx, intent.threadId)
-      if (ownerRejection !== null) return ownerRejection
-
-      const nowIso = await transactionNowIso(ctx)
       await insertControlIntent(ctx, intent, "accepted", nowIso)
       const turn = await insertTurn(ctx, intent, nowIso)
       await appendRuntimeAgentRunChanges(ctx, turn)
@@ -891,6 +926,13 @@ export const runtimeAppendUserMessageMutator: MutatorDefinition =
       const messageId = requireMessageId(ctx, intent)
       if (isMutationResult(messageId)) return messageId
 
+      const ownerRejection = await ensureRuntimeThreadOwner(ctx, intent.threadId)
+      if (ownerRejection !== null) return ownerRejection
+
+      const nowIso = await transactionNowIso(ctx)
+      const expired = await expireControlIntentIfDue(ctx, intent, nowIso)
+      if (expired !== null) return expired
+
       const turnId = intent.turnId
       let turn: RuntimeTurnRow | null = null
       if (turnId !== undefined) {
@@ -907,10 +949,6 @@ export const runtimeAppendUserMessageMutator: MutatorDefinition =
         }
       }
 
-      const ownerRejection = await ensureRuntimeThreadOwner(ctx, intent.threadId)
-      if (ownerRejection !== null) return ownerRejection
-
-      const nowIso = await transactionNowIso(ctx)
       await insertControlIntent(ctx, intent, "accepted", nowIso)
       if (turn !== null && turnId !== undefined) {
         await updateTurnForIntent(ctx, {

@@ -30,6 +30,7 @@ import {
 } from "bun:test"
 import { readScopeOwner } from "./fleet-projection.js"
 import { logPage } from "./read-service.js"
+import { readPendingRuntimeControlIntents } from "./runtime-intents.js"
 import { runMigrations } from "./migrate.js"
 import { executePush, makeMutatorRegistry } from "./push-engine.js"
 import {
@@ -42,6 +43,7 @@ import {
   RUNTIME_APPEND_USER_MESSAGE_MUTATOR_NAME,
   RUNTIME_CLOSE_TURN_MUTATOR_NAME,
   RUNTIME_EVENT_EXISTS_REJECTION,
+  RUNTIME_INTENT_EXPIRY_REJECTION,
   RUNTIME_RECORD_EVENT_MUTATOR_NAME,
   RUNTIME_RAW_BODY_REJECTION,
   RUNTIME_SCOPE_REJECTION,
@@ -104,6 +106,7 @@ const controlIntent = (
     bodyRef?: string | undefined
     promptRef?: string | undefined
     reasonRef?: string | undefined
+    expiresAt?: string | undefined
   }>,
 ) => ({
   schema: KhalaRuntimeControlIntentSchemaLiteral,
@@ -130,6 +133,7 @@ const controlIntent = (
   ...(input.bodyRef === undefined ? {} : { bodyRef: input.bodyRef }),
   ...(input.promptRef === undefined ? {} : { promptRef: input.promptRef }),
   ...(input.reasonRef === undefined ? {} : { reasonRef: input.reasonRef }),
+  ...(input.expiresAt === undefined ? {} : { expiresAt: input.expiresAt }),
 })
 
 const runtimeEvent = (
@@ -201,6 +205,7 @@ describe.skipIf(!hasLocalPostgres())(
         databaseUrl: pg.urlFor("khala_sync_runtime"),
       })
       expect(result.applied).toContain("0029_khala_sync_runtime.sql")
+      expect(result.applied).toContain("0061_runtime_control_intent_expiry.sql")
       sql = new SQL({ url: pg.urlFor("khala_sync_runtime"), max: 10 })
     })
 
@@ -332,6 +337,110 @@ describe.skipIf(!hasLocalPostgres())(
         WHERE intent_id = ${startIntent.intentId}
       `
       expect(Number(counts[0]!.count)).toBe(1)
+    })
+
+    test("offline expiry is a durable terminal outcome and can never create or dispatch a turn", async () => {
+      const client = freshClient()
+      const threadId = "runtime-thread.expired.8687"
+      const turnId = "runtime-turn.expired.8687"
+      const expiredIntent = controlIntent({
+        expiresAt: "2000-01-01T00:00:00.000Z",
+        intentId: "runtime-intent.expired.8687",
+        kind: "turn.start",
+        promptRef: "prompt.expired.8687",
+        threadId,
+        turnId,
+      })
+      const response = await executePush({
+        registry,
+        request: pushRequest(client, [
+          envelope(1, CHAT_CREATE_THREAD_MUTATOR_NAME, {
+            threadId,
+            title: "Expired offline command",
+          }),
+          envelope(2, RUNTIME_START_TURN_MUTATOR_NAME, expiredIntent),
+        ]),
+        sql: sql as unknown as SyncSql,
+        userId: client.userId,
+      })
+      expect(response.results.map(result => result.status)).toEqual([
+        "applied",
+        "applied",
+      ])
+
+      const retry = await executePush({
+        registry,
+        request: pushRequest(client, [
+          envelope(3, RUNTIME_START_TURN_MUTATOR_NAME, expiredIntent),
+          envelope(4, RUNTIME_START_TURN_MUTATOR_NAME, {
+            ...expiredIntent,
+            promptRef: "prompt.conflicting.8687",
+          }),
+        ]),
+        sql: sql as unknown as SyncSql,
+        userId: client.userId,
+      })
+      expect(retry.results[0]!.status).toBe("applied")
+      expect(retry.results[1]!.status).toBe("rejected")
+      expect(retry.results[1]!.errorCode).toBe("runtime_intent_conflict")
+
+      const rows: Array<{ status: string; intent_count: number; turn_count: number }> =
+        await sql`
+          SELECT max(status) AS status,
+                 count(*)::int AS intent_count,
+                 (SELECT count(*)::int FROM khala_sync_runtime_turns
+                  WHERE turn_id = ${turnId}) AS turn_count
+          FROM khala_sync_runtime_control_intents
+          WHERE intent_id = ${expiredIntent.intentId}
+          GROUP BY intent_id
+        `
+      expect(rows).toEqual([{ status: "expired", intent_count: 1, turn_count: 0 }])
+      expect(await readPendingRuntimeControlIntents(sql as unknown as SyncSql, {
+        afterSeq: 0,
+        ownerUserId: client.userId,
+      })).toEqual([])
+
+      for (const scope of [personalScope(client.userId), threadScope(threadId)]) {
+        const log = await logPage(sql as unknown as SyncSql, {
+          afterVersion: null,
+          limit: 50,
+          scope,
+        })
+        const projected = log.entries.find(entry =>
+          String(entry.entityType) === RUNTIME_CONTROL_INTENT_ENTITY_TYPE &&
+          String(entry.entityId) === expiredIntent.intentId)
+        expect(projected?.postImageJson).toContain('"status":"expired"')
+        expect(projected?.postImageJson).toContain(`"intentId":"${expiredIntent.intentId}"`)
+      }
+    })
+
+    test("invalid expiry rejects without recording a command", async () => {
+      const client = freshClient()
+      const threadId = "runtime-thread.expiry-invalid.8687"
+      const invalid = controlIntent({
+        expiresAt: "not-a-time",
+        intentId: "runtime-intent.expiry-invalid.8687",
+        kind: "turn.start",
+        threadId,
+        turnId: "runtime-turn.expiry-invalid.8687",
+      })
+      const response = await executePush({
+        registry,
+        request: pushRequest(client, [
+          envelope(1, CHAT_CREATE_THREAD_MUTATOR_NAME, { threadId, title: "Invalid" }),
+          envelope(2, RUNTIME_START_TURN_MUTATOR_NAME, invalid),
+        ]),
+        sql: sql as unknown as SyncSql,
+        userId: client.userId,
+      })
+      expect(response.results[1]!.status).toBe("rejected")
+      expect(response.results[1]!.errorCode).toBe(RUNTIME_INTENT_EXPIRY_REJECTION)
+      const rows: Array<{ count: number }> = await sql`
+        SELECT count(*)::int AS count
+        FROM khala_sync_runtime_control_intents
+        WHERE intent_id = ${invalid.intentId}
+      `
+      expect(rows[0]!.count).toBe(0)
     })
 
     test("accepted control intents and events project only safe data outside the private thread scope", async () => {
@@ -713,6 +822,44 @@ describe.skipIf(!hasLocalPostgres())(
         WHERE turn_id = ${turnId}
       `
       expect(Number(turns[0]!.count)).toBe(1)
+    })
+
+    test("concurrent duplicate delivery serializes before commit and creates one dispatchable intent", async () => {
+      const client = freshClient()
+      const threadId = "runtime-thread.concurrent-duplicate.8687"
+      const turnId = "runtime-turn.concurrent-duplicate.8687"
+      const request = pushRequest(client, [
+        envelope(1, CHAT_CREATE_THREAD_MUTATOR_NAME, {
+          threadId,
+          title: "Concurrent duplicate",
+        }),
+        envelope(2, RUNTIME_START_TURN_MUTATOR_NAME, controlIntent({
+          intentId: "runtime-intent.concurrent-duplicate.8687",
+          kind: "turn.start",
+          promptRef: "prompt.concurrent-duplicate.8687",
+          threadId,
+          turnId,
+        })),
+      ])
+
+      const responses = await Promise.all([
+        executePush({ registry, request, sql: sql as unknown as SyncSql, userId: client.userId }),
+        executePush({ registry, request, sql: sql as unknown as SyncSql, userId: client.userId }),
+      ])
+      expect(responses
+        .map(response => response.results.map(result => result.status).join(","))
+        .sort()).toEqual([
+          "applied,applied",
+          "duplicate,duplicate",
+        ])
+      const rows: Array<{ intents: number; turns: number }> = await sql`
+        SELECT
+          (SELECT count(*)::int FROM khala_sync_runtime_control_intents
+           WHERE intent_id = 'runtime-intent.concurrent-duplicate.8687') AS intents,
+          (SELECT count(*)::int FROM khala_sync_runtime_turns
+           WHERE turn_id = ${turnId}) AS turns
+      `
+      expect(rows).toEqual([{ intents: 1, turns: 1 }])
     })
 
     test("duplicate runtime event rejects without blocking the following close", async () => {

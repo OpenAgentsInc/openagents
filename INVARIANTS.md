@@ -567,10 +567,15 @@ More specific invariant ledgers apply inside imported apps and packages.
   may project; owner/objective/repository/runtime/backend, event source, raw
   payload JSON, external callback refs, and non-live cached rows stay hidden.
 - Desktop Runtime Gateway is the only renderer path to conversation and agent-
-  timeline and provider-native history capabilities. Protocol v6 retains v4's
+  timeline and provider-native history capabilities. Protocol v7 retains v4's
   bounded confirmed catalog/thread/history queries and exact-run timeline, and
-  adds the deterministic canonical runtime-turn path used by #8676. Enqueue
-  returns `pending_reconcile`, never completion. The real named-account/
+  adds the deterministic canonical runtime-turn path used by #8676 plus an
+  exact `intentId`/thread command-outcome query. Enqueue returns
+  `pending_reconcile`, never completion. Runtime commands use the existing
+  durable Sync mutation ledger and semantic control-intent identity: exact
+  retries cannot repeat an effect, conflicting same-ID bytes cannot mutate
+  state, and a server-clock-expired intent is durably projected as `expired`
+  while remaining ineligible for runtime dispatch. The real named-account/
   physical-phone #8676 receipt remains open. Timeline attachment uses only the
   confirmed `agent_run.routeId` returned as `routeRef`—clients do not derive it
   from `runRef`. Owner/private/raw-provider/auth/store/session/transport fields

@@ -57,6 +57,20 @@ supervises the same local-host sessions. Its CUT-27 acceptance explicitly
 excludes workrooms, host movement, managed providers, and voice so those claims
 remain pending here instead of being inferred from a successful local cutover.
 
+### Landed command-convergence foundation
+
+CUT-07 [#8687] now supplies the command primitive this pathway must reuse:
+stable semantic intent IDs over the durable Khala Sync mutation ledger,
+byte-equivalent retry reconciliation, conflicting-ID rejection, confirmed
+cross-device outcomes, and server-clock terminal expiry that cannot later
+dispatch. See the
+[`CUT-07 receipt`](./2026-07-11-cut-07-command-convergence-receipt.md).
+
+Portable-session commands must extend that identity/outcome model instead of
+creating a move-specific retry ledger. Their target grants, attachment
+generations, and checkpoints add authority fields, but lost ACK, duplicate,
+reconnect, restart, and expiry semantics remain the same shared contract.
+
 ### Episodes 248–249 calibration
 
 Remote-first must preserve the predictability and supervision target. Closed

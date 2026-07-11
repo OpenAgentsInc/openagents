@@ -47,7 +47,9 @@ import {
   type LiveSocketHandlers,
 } from "./transport.js"
 
-const tick = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0))
+// Deterministic scheduler yield: the proof injects this into every retry loop
+// and never waits on wall-clock timers.
+const tick = (): Promise<void> => Promise.resolve()
 
 const waitFor = async (
   condition: () => boolean,
@@ -88,7 +90,7 @@ class DualClientChatServer {
   dropNextPushAck = 0
   offline = false
 
-  private logOf(scope: SyncScope): Array<ChangelogEntry> {
+  logOf(scope: SyncScope): Array<ChangelogEntry> {
     const existing = this.logs.get(scope)
     if (existing !== undefined) return existing
     const created: Array<ChangelogEntry> = []

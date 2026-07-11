@@ -37,7 +37,7 @@ universe.
 
 ```text
 Effect Native Desktop renderer
-  -> Runtime Gateway v6 (tokenless exact refs)
+  -> Runtime Gateway v7 (tokenless exact refs)
   -> host-owned Khala Sync durable mutation queue
   -> runtime.startTurn (canonical authority + immutable WorkContext snapshot)
   -> standing Pylon runtime-intent consumer (named isolated account selection)
@@ -83,7 +83,7 @@ The implemented laws are:
 | Durable admission, exact retry/conflict, immutable WorkContext | `packages/khala-sync-server/src/runtime-mutators.ts`, migration `0059`, and the real-Postgres `runtime-mutators.test.ts` | Enforced |
 | One provider execution generation | Pylon sequence-one durable claim in `runtime-intent-enforcement.ts`; focused 54-case runtime-intent suite including a two-consumer race | Enforced deterministically |
 | Canonical run/event binding | Transactional thread/personal/run-scope mirror plus `khala-sync-client` thread-route discovery | Enforced |
-| Tokenless Desktop launch and rich stream | Runtime Gateway v6, `runtime-conversation.ts`, Gateway e2e and renderer tests | Enforced |
+| Tokenless Desktop launch and rich stream | Runtime Gateway v7, `runtime-conversation.ts`, Gateway e2e and renderer tests | Enforced |
 | Same-thread mobile continuation/interrupt | Shared `runtime.ts` builders, mobile adapter/Home, mobile conversation test | Enforced |
 | Restart/replay and revoke-without-replay | Shared SQLite timeline/session tests and native-host lifecycle | Enforced |
 | Real named isolated Codex + built Electron + physical mobile | Public-safe live receipt procedure below | Not yet receipted; required to close |

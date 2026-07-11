@@ -914,6 +914,12 @@ export const KhalaRuntimeControlIntent = S.Struct({
   messageId: S.optional(KhalaRuntimeMessageId),
   toolCallId: S.optional(KhalaRuntimeToolCallId),
   createdAt: S.String,
+  /**
+   * Immutable client-minted admission deadline. A Sync retry carries the
+   * exact same value; once the server clock reaches it, the command is
+   * durably projected as expired and must never reach a runtime adapter.
+   */
+  expiresAt: S.optional(S.String),
   origin: S.Struct({
     surface: KhalaRuntimeClientSurface,
     lane: KhalaRuntimeLane,

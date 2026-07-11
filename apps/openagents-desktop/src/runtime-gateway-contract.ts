@@ -38,7 +38,7 @@ const KhalaSyncConversationStatusSchema = canonicalBoundary<KhalaSyncConversatio
 
 export const DesktopRuntimeGatewayInvokeChannel = "openagents-desktop/runtime-gateway/invoke" as const
 export const DesktopRuntimeGatewayEventChannel = "openagents-desktop/runtime-gateway/event" as const
-export const DesktopRuntimeGatewayProtocolVersion = 6 as const
+export const DesktopRuntimeGatewayProtocolVersion = 7 as const
 
 const PublicRefSchema = Schema.String.check(
   Schema.isMinLength(1),
@@ -101,6 +101,16 @@ export const DesktopRuntimeGatewayRequestSchema = Schema.Union([
     requestId: Schema.String,
     query: Schema.Struct({
       id: Schema.Literal("conversation.thread"),
+      threadRef: PublicRefSchema,
+    }),
+  }),
+  Schema.Struct({
+    ...OperationContextField,
+    kind: Schema.Literal("query"),
+    requestId: Schema.String,
+    query: Schema.Struct({
+      id: Schema.Literal("conversation.commandOutcome"),
+      intentId: PublicRefSchema,
       threadRef: PublicRefSchema,
     }),
   }),
@@ -195,7 +205,7 @@ export const DesktopRuntimeGatewayResponseSchema = Schema.Union([
     ...OperationContextField,
     kind: Schema.Literal("conversation_unavailable"),
     requestId: Schema.String,
-    reason: Schema.Literals(["not_live", "read_failed"]),
+    reason: Schema.Literals(["not_live", "not_found", "read_failed"]),
   }),
   Schema.Struct({
     ...OperationContextField,
@@ -220,6 +230,25 @@ export const DesktopRuntimeGatewayResponseSchema = Schema.Union([
     kind: Schema.Literal("agent_timeline_unavailable"),
     requestId: Schema.String,
     reason: Schema.Literals(["not_live", "not_found", "read_failed"]),
+  }),
+  Schema.Struct({
+    ...OperationContextField,
+    kind: Schema.Literal("runtime_command_status"),
+    requestId: Schema.String,
+    commandRef: PublicRefSchema,
+    threadRef: PublicRefSchema,
+    runRef: Schema.NullOr(PublicRefSchema),
+    status: Schema.Literals([
+      "pending",
+      "accepted",
+      "settled",
+      "expired",
+      "failed",
+      "canceled",
+    ]),
+    mutationId: Schema.NullOr(NonNegativeIntSchema),
+    version: Schema.NullOr(NonNegativeIntSchema),
+    updatedAt: Schema.NullOr(Schema.String),
   }),
   Schema.Struct({
     ...OperationContextField,
