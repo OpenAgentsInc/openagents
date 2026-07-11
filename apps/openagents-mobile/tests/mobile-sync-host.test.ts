@@ -141,7 +141,9 @@ describe("contract openagents_mobile.sync.host_owned_expo_sqlite.v1", () => {
         pendingMutationCount: 0,
         identityTier:"local_only",
       })
+      expect(first.drafts()).not.toBeNull()
       first.close()
+      expect(first.drafts()).toBeNull()
 
       const inspect = openStore(databaseName)
       const identity = Effect.runSync(inspect.identity())
@@ -251,6 +253,7 @@ describe("contract openagents_mobile.sync.host_owned_expo_sqlite.v1", () => {
       expect(host.status().identityTier).toBe("local_only")
       expect(host.conversation()).toBeNull()
       expect(host.interactions()).toBeNull()
+      expect(host.drafts()).not.toBeNull()
       expect(await host.coding().directory()).toMatchObject({
         authority: "withheld",
         phase: "signed_out",

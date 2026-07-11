@@ -14,6 +14,7 @@ import {
   createKhalaSyncConversation,
   createKhalaSyncAgentTimeline,
   createKhalaSyncCodingCatalog,
+  createKhalaSyncCodingComposerDrafts,
   createKhalaSyncRuntimeInteractions,
   createKhalaSyncRuntimeCommands,
   createRuntimeInteractionClientMutator,
@@ -24,6 +25,7 @@ import {
   type KhalaSyncConversation,
   type KhalaSyncAgentTimeline,
   type KhalaSyncCodingCatalog,
+  type KhalaSyncCodingComposerDrafts,
   type KhalaSyncRuntimeInteractions,
   type KhalaSyncRuntimeCommands,
   type KhalaSyncSessionOptions,
@@ -56,6 +58,7 @@ export type MobileSyncHost = Readonly<{
   timeline: () => KhalaSyncAgentTimeline | null
   runtime: () => KhalaSyncRuntimeCommands | null
   interactions: () => KhalaSyncRuntimeInteractions | null
+  drafts: () => KhalaSyncCodingComposerDrafts | null
   coding: () => MobileCodingNavigation
   connectAuthenticated: (input: MobileAuthenticatedSyncInput) => void
   disconnectAuthenticated: () => void
@@ -89,6 +92,7 @@ export const openMobileSyncHostCore = (input: Readonly<{
   let timeline: KhalaSyncAgentTimeline | null = null
   let runtime: KhalaSyncRuntimeCommands | null = null
   let interactions: KhalaSyncRuntimeInteractions | null = null
+  let drafts: KhalaSyncCodingComposerDrafts | null = null
   let codingCatalog: KhalaSyncCodingCatalog | null = null
   let scope: SyncScope | null = null
   try {
@@ -120,6 +124,11 @@ export const openMobileSyncHostCore = (input: Readonly<{
     deviceScope: deviceLocalScope(localIdentity.identityRef),
     catalog: () => codingCatalog,
     ownerScope: () => scope,
+  })
+  drafts = createKhalaSyncCodingComposerDrafts({
+    store,
+    deviceScope: deviceLocalScope(localIdentity.identityRef),
+    ownerRef: String(localIdentity.identityRef),
   })
 
   const disconnectAuthenticated = (revoke = false): void => {
@@ -167,6 +176,7 @@ export const openMobileSyncHostCore = (input: Readonly<{
       session !== null && scope !== null && session.state(scope).phase === "live"
         ? interactions
         : null,
+    drafts: () => closed ? null : drafts,
     coding: () => coding,
     connectAuthenticated: connection => {
       if (closed) throw new Error("mobile Sync host is closed")
@@ -226,6 +236,7 @@ export const openMobileSyncHostCore = (input: Readonly<{
     close: () => {
       if (closed) return
       closed = true
+      drafts = null
       void coding.clearActive()
       disconnectAuthenticated()
       Effect.runSync(store.close())

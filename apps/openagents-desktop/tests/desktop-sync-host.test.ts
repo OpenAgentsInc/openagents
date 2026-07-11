@@ -141,7 +141,9 @@ describe("openagents_desktop.sync.host_owned_sqlite.v1", () => {
         pendingMutationCount: 0,
         identityTier:"local_only",
       })
+      expect(first.drafts()).not.toBeNull()
       first.close()
+      expect(first.drafts()).toBeNull()
 
       const inspectFirst = openTestStore(databasePath)
       const identity = Effect.runSync(inspectFirst.identity())
@@ -247,6 +249,7 @@ describe("openagents_desktop.sync.host_owned_sqlite.v1", () => {
       expect(host.status().identityTier).toBe("local_only")
       expect(host.conversation()).toBeNull()
       expect(host.interactions()).toBeNull()
+      expect(host.drafts()).not.toBeNull()
       host.close()
       host.close()
       expect(lifecycle.slice(-2)).toEqual(["session", "store"])

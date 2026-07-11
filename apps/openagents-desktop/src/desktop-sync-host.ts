@@ -4,6 +4,7 @@ import path from "node:path"
 import {
   ClientGroupId,
   ClientId,
+  deviceLocalScope,
   LocalIdentityRef,
   personalScope,
   SyncSchemaVersion,
@@ -16,6 +17,7 @@ import {
   createKhalaSyncConversation,
   createKhalaSyncAgentTimeline,
   createKhalaSyncLiveAgentGraph,
+  createKhalaSyncCodingComposerDrafts,
   createKhalaSyncRuntimeInteractions,
   createKhalaSyncRuntimeCommands,
   createRuntimeInteractionClientMutator,
@@ -26,6 +28,7 @@ import {
   type KhalaSyncConversation,
   type KhalaSyncAgentTimeline,
   type KhalaSyncLiveAgentGraph,
+  type KhalaSyncCodingComposerDrafts,
   type KhalaSyncRuntimeInteractions,
   type KhalaSyncRuntimeCommands,
   type KhalaSyncSessionOptions,
@@ -58,6 +61,7 @@ export type DesktopSyncHost = Readonly<{
   agentGraph: () => KhalaSyncLiveAgentGraph | null
   runtime: () => KhalaSyncRuntimeCommands | null
   interactions: () => KhalaSyncRuntimeInteractions | null
+  drafts: () => KhalaSyncCodingComposerDrafts | null
   codingCatalog: () => DesktopCodingCatalog | null
   connectAuthenticated: (input: DesktopAuthenticatedSyncInput) => void
   disconnectAuthenticated: () => void
@@ -103,6 +107,7 @@ export const openDesktopSyncHost = (input: Readonly<{
   let agentGraph: KhalaSyncLiveAgentGraph | null = null
   let runtime: KhalaSyncRuntimeCommands | null = null
   let interactions: KhalaSyncRuntimeInteractions | null = null
+  let drafts: KhalaSyncCodingComposerDrafts | null = null
   let codingCatalog: DesktopCodingCatalog | null = null
   let scope: SyncScope | null = null
   try {
@@ -122,6 +127,11 @@ export const openDesktopSyncHost = (input: Readonly<{
       identityRef: localIdentity.identityRef,
       bindingFile: path.join(directory, "coding-bindings.json"),
       randomId: input.randomId,
+    })
+    drafts = createKhalaSyncCodingComposerDrafts({
+      store,
+      deviceScope: deviceLocalScope(localIdentity.identityRef),
+      ownerRef: String(localIdentity.identityRef),
     })
     secureLocalFiles(input.databasePath)
   } catch (error) {
@@ -178,6 +188,7 @@ export const openDesktopSyncHost = (input: Readonly<{
       session !== null && scope !== null && session.state(scope).phase === "live"
         ? interactions
         : null,
+    drafts: () => closed ? null : drafts,
     codingCatalog: () => closed ? null : codingCatalog,
     connectAuthenticated: connection => {
       if (closed) throw new Error("desktop Sync host is closed")
@@ -238,6 +249,7 @@ export const openDesktopSyncHost = (input: Readonly<{
       if (closed) return
       closed = true
       codingCatalog = null
+      drafts = null
       disconnectAuthenticated()
       Effect.runSync(store.close())
     },
