@@ -162,10 +162,11 @@
     processor. Promise/Electron/provider bridges remain perimeter code;
     interruption remains cancellation; canonical Effect Schema identities are
     reused across contracts. #8678 landed the initial topology manifest and
-    cache/freshness/disposal declarations; its documented source-coupling,
-    replaceability, disposal, correlation, and full-host residual must be owned
-    before D3/D4 acceptance expands editor, PTY, MCP, provider, and permission
-    services.
+    cache/freshness/disposal declarations. Closed CUT-03 #8683 now binds those
+    declarations to checked construction/composition source and denies ambient
+    authority; CUT-04 #8684 still owns replaceability, complete disposal,
+    correlation, and full-host acceptance before D3/D4 expands editor, PTY,
+    MCP, provider, and permission services.
 18. **Coding sessions are remote-first and host-independent.** The durable
     session, thread, WorkContext, command, event, and receipt identity never
     derives from the current machine, process, workspace path, Pylon home, or
@@ -1274,7 +1275,7 @@ a structure-only local receipt found 131 threads/560,418 records under a real
 nested root with zero unsupported gaps. Local history stays owner-private and
 is not Khala Sync data. Closed #8675 accepts this workspace in real Electron.
 Closed CUT-02 #8682 makes the package verification baseline deterministic:
-the canonical gate now runs typecheck, 170 tests, bundle, and real-Electron
+the canonical gate now runs typecheck, 176 tests, bundle, and real-Electron
 smoke/reload against a checked-in privacy-safe Codex history fixture, while
 the root Desktop test entry invokes the same gate. Ambient `~/.codex` history
 is reserved for separately labelled real-history acceptance and cannot decide
@@ -1395,7 +1396,7 @@ an implicit Khala Sync upload.
 | --- | --- | --- |
 | D0 — truthful green baseline | Keep shared contracts green; remove or finish dormant Review/Terminal/Inbox/Fleet names and stale docs; isolate smoke state and distinguish live, unconfigured, and fixture receipts | Typecheck, tests, bundle, isolated first-run Electron smoke, and route/capability manifest are green and agree |
 | D1 — OpenAgents + Sync conversation runtime and loss-accounted history | Preserve closed #8673/#8674's confirmed timeline plus provider-native three-pane history workspace and closed #8675's predictable real-Electron acceptance; use #8676 to launch one provider-neutral real stream through the host-owned Runtime Gateway, attach canonical `chat_thread`/`chat_message` and run/timeline refs, render text/reasoning/tools/plan/questions/approvals/errors/usage with explicit lifecycle, and continue immediately on mobile; then prove live child-start/handoff/lifecycle/activity projections use the same causal card, complete graph, and independent transcript contract | #8675 proves fast stable named history, complete nested trace inspection, restoration, and the UX contract in real Electron; #8676 must prove one real authenticated stream survives renderer/host restart and continues on physical mobile with matching refs/versions/cursor/phase/outcome plus one safe follow-up or interrupt; the live multi-agent leaf must prove no flattened/orphaned descendants, duplicate launch cards, stale previews presented as outcomes, or inaccessible child transcripts across reconnect |
-| D2 — projects, sessions, commands and architecture freeze | Project/session routes and home, search/archive, sortable/recoverable tabs, command registry/palette, conflict-safe keybindings, native menu, deep links, single-instance and route restore; every click/tap supervision target and hotkey invokes the same typed action; #8678's landed topology manifest/cache declarations remain the baseline while its documented source-coupling, replaceability, disposal, correlation, and full-host residual gets a bounded owner before D3/D4 acceptance | Every global/session/workbench action uses the command registry or has an explicit bounded exception; rapid conversation/agent focus and inspection are equivalent by pointer and keyboard at scale; the completed topology oracle rejects every forbidden scope/authority/resource edge named by the residual acceptance contract |
+| D2 — projects, sessions, commands and architecture freeze | Project/session routes and home, search/archive, sortable/recoverable tabs, command registry/palette, conflict-safe keybindings, native menu, deep links, single-instance and route restore; every click/tap supervision target and hotkey invokes the same typed action; closed #8683 source-couples #8678's topology/cache declarations and denies ambient authority, while #8684 still owns replaceability, complete disposal, correlation, and full-host acceptance | Every global/session/workbench action uses the command registry or has an explicit bounded exception; rapid conversation/agent focus and inspection are equivalent by pointer and keyboard at scale; the completed topology oracle rejects every forbidden scope/authority/resource edge named by the residual acceptance contract |
 | D3 — coding workbench | Recursive lazy tree, capability grants, watcher/cache/search, edit/save/dirty/reload, file tabs and selected ranges, typed Git status/diff, review/comments/revert, interactive workspace-bounded PTY tabs with reconnect/teardown | Select a project, edit/save, review the diff, add context, run a bounded terminal, steer the work through a typed control, and resume after restart |
 | D4 — runtime and settings | OpenAgents sign-in; provider account custody; runtime/model catalog and selection; MCP auth/enable state; enforced permissions; themes/fonts/shell/layout; locale/accessibility; notifications/sounds; diagnostics/recovery/support | Settings mutate real host/runtime state, unavailable actions explain why, and no credential/private payload reaches renderer logs or public evidence |
 | D5 — authoritative Fleet cockpit | Compose active FleetRun/work-unit/attempt/account/worker/approval/command/receipt state from current Pylon/Sync authority; Inbox attention and proof views; Desktop and mobile controls share typed intents | A run opens with matching Desktop/mobile state and controls; steering on either client converges to the same durable command outcomes and receipts |
@@ -1481,17 +1482,17 @@ universe.
 
 ## Canonical open issue set
 
-There are **36 open `roadmap:sol` records** after the 2026-07-11 cutover
-decomposition: the original #8547, #8566, #8574, #8597, #8636, #8640, #8676,
-and #8677; reopened topology parent #8678; and bounded CUT-01–CUT-27 leaves
-#8681–#8707. #8566 remains the sole program epic. GitHub sub-issue
+There are **33 open `roadmap:sol` records** after closing CUT-01–CUT-03: the
+original #8547, #8566, #8574, #8597, #8636, #8640, #8676, and #8677; reopened
+topology parent #8678; and bounded CUT-04–CUT-27 leaves #8684–#8707. #8566
+remains the sole program epic. GitHub sub-issue
 relationships place each leaf under its narrowest owning track or reliability
 parent; prose cross-links retain the other affected tracks.
 
-#8678 is reopened. Its initial topology manifest/cache work remains landed;
-#8683 and #8684 own its previously unproven source-coupled perimeter,
-ambient-authority, replaceability, lifecycle-disposal, correlation, and built-
-host acceptance. #8677 similarly delegates its fault matrix to #8687–#8689,
+#8678 is reopened. Its initial topology manifest/cache work remains landed and
+closed #8683 now source-couples it with ambient-authority denial. #8684 owns the
+remaining replaceability, lifecycle-disposal, correlation, and built-host
+acceptance. #8677 similarly delegates its fault matrix to #8687–#8689,
 and #8640 delegates its known Claude/supervisor repairs to #8685–#8686 before
 their parent-only live receipts.
 
@@ -1505,8 +1506,8 @@ their parent-only live receipts.
 | **P0 bounded task** | #8636 | Owner-local/remote target routing through the same proven run and workroom contract |
 | **P0 vertical slice** | #8676 | One real streamed Desktop conversation immediately continued on physical mobile |
 | **P0 fault proof** | #8677 | Bounded command/event lost-ack, duplicate, gap, offline, restart, revocation, and migration convergence |
-| **P0 topology parent** | #8678 | Initial topology work plus source-coupled perimeter, replaceability, disposal, correlation, and built-host acceptance through #8683–#8684 |
-| **P0 local-coding leaves** | #8681–#8707 | Ordered CUT-01–CUT-27 graph for Effect Native architecture, reliability, Codex/Claude runtime parity, workbench, mobile supervision, release, and local cutover proof |
+| **P0 topology parent** | #8678 | Initial topology plus closed source-coupled perimeter #8683; open #8684 owns replaceability, disposal, correlation, and built-host acceptance |
+| **P0 local-coding leaves** | #8684–#8707 open | Remaining ordered CUT-04–CUT-27 graph; CUT-01–CUT-03 are closed with receipts |
 | **Closed P0 D1 proof** | #8675 | Predictable real-Electron Codex trace workspace UX contract and public-safe acceptance receipt |
 | **Closed P0 D1 product slice** | #8674 | Loss-accounted historical Codex parent/subagent/tool rendering and the Desktop Agents/Item inspector, with valid scale and real nested-history receipts |
 

@@ -6,8 +6,9 @@
   and contracts are disjoint
 - Live issue state: reopened 2026-07-11 after the initial manifest and cache/
   freshness/disposal declaration slices
-- Child leaves: #8683 source-coupled perimeter/ambient-authority oracle; #8684
-  replaceability/lifecycle-disposal/correlation/full-host proof
+- Child leaves: closed #8683 source-coupled perimeter/ambient-authority oracle
+  (`4d875dcb4b`); open #8684 replaceability/lifecycle-disposal/correlation/
+  full-host proof
 - Roadmap disposition: active acceptance parent; close only after both children
 - Evidence:
   [`../../teardowns/2026-07-10-opencode-effect-architecture-teardown.md`](../../teardowns/2026-07-10-opencode-effect-architecture-teardown.md)
@@ -32,10 +33,11 @@ claim-release receipts explicitly exclude source-coupled `runPromise`/
 `ManagedRuntime` and ambient-authority enforcement, service replaceability,
 renderer/WorkContext/runtime/shutdown disposal oracles, structured trace
 correlation, and the full Desktop verify/build/real-Electron acceptance below.
-Closed state proves neither those items nor this dossier's complete exit. The
-landed manifest/declaration slices remain valid baseline; the residual needs a
-new live claim before mutation. It is now reopened with #8683/#8684 as true
-GitHub sub-issues for that residual.
+Closed state proved neither those items nor this dossier's complete exit. The
+landed manifest/declaration slices remain valid baseline. #8683 has since
+closed the source-coupling and ambient-authority portion; #8684 remains the
+live child for replaceability, complete owned disposal, correlation, and the
+full host receipt. #8678 stays open until that child closes.
 
 ## Required topology
 

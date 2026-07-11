@@ -17,8 +17,9 @@
   [`desktop-codex-subagent-history.md`](./desktop-codex-subagent-history.md)
   (#8674)
 - Immediate bounded queue: closed CUT-02 #8682 supplies the deterministic
-  green verification baseline; CUT-03 #8683 is next and makes the topology
-  oracle source-coupled with negative ambient-authority coverage; #8676
+  green verification baseline; closed CUT-03 #8683 supplies the source-coupled
+  topology/ambient-authority oracle; CUT-04 #8684 is next and proves service
+  replaceability, owned disposal, correlation, and full host acceptance; #8676
   supplies the physical streamed Desktop→mobile acceptance;
   #8677 delegates fault convergence to #8687–#8689. Closed #8675 supplies
   trace-workspace acceptance. Reopened #8678 delegates its topology residual
@@ -80,13 +81,22 @@ The greenfield app now has:
   direct independent-transcript navigation, structured inter-agent handoffs,
   and fast typed keyboard traversal.
 
-The normal Desktop `verify` gate is green and deterministic: typecheck, 170
+The normal Desktop `verify` gate is green and deterministic: typecheck, 176
 contract/e2e tests, bundle, and real-Electron smoke/reload use a checked-in
 privacy-safe Codex history fixture instead of ambient `~/.codex` state. The
 root `test:openagents-desktop` entry invokes that same gate. An explicit
 `OPENAGENTS_DESKTOP_CODEX_SESSIONS` override remains available only for a
 separately labelled real-history acceptance. #8674/#8675 are complete owner-
 local history and acceptance proof, not live Sync supervision proof.
+
+CUT-03 #8683 closed at `4d875dcb4b`. Its normal test sweep now reads every
+declared implementation/composition module, binds services to real construction
+symbols, derives filesystem/network/process/secret authority from those source
+boundaries, and rejects source drift, ambient cwd/`AsyncLocalStorage`, unnamed
+runtime exits, renderer authority, and wider installation scope. It also
+extracts an explicit selected-root WorkContext service and a process-owned,
+shutdown-disposed Codex-history worker host. This is not CUT-04 replaceability,
+full disposal, correlation, or full architecture-freeze acceptance.
 
 Not yet claimed: physical Desktop auth acceptance, a provider-launched live
 stream attached to the confirmed thread/timeline, physical mobile continuation,
