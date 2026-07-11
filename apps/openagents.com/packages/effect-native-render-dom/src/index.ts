@@ -1039,6 +1039,11 @@ const renderChildren = (
 
 const renderStack = (view: StackView, state: DomRendererState, report: IntentReporter): HTMLElement => {
   const element = state.keyedElement(view, "div")
+  // Same Chromium quirk renderTimeline guards against: replacing a scroll
+  // container's children can transiently clamp its offset to zero even when
+  // the keyed element itself is retained. A sibling state change must not
+  // move the reader's place in a scrollable stack.
+  const scrollPosition = { top: element.scrollTop, left: element.scrollLeft }
   const direction = resolveResponsiveValue(view.direction)
   const gap = view.gap === undefined ? undefined : resolveResponsiveValue(view.gap)
   const padding = view.padding === undefined ? undefined : resolveResponsiveValue(view.padding)
@@ -1053,6 +1058,8 @@ const renderStack = (view: StackView, state: DomRendererState, report: IntentRep
   applyA11y(element, view)
   applyInteractions(element, view, state, report)
   renderChildren(element, view.children, state, report)
+  if (element.scrollTop !== scrollPosition.top) element.scrollTop = scrollPosition.top
+  if (element.scrollLeft !== scrollPosition.left) element.scrollLeft = scrollPosition.left
   applyScrollRegion(element, view, state, report)
   return element
 }

@@ -69,7 +69,7 @@ import type {
   DesktopRuntimeGatewayResponse,
 } from "../runtime-gateway-contract.ts"
 import type { CodexHistoryCatalog, CodexHistoryPage } from "../codex-history-contract.ts"
-import { historyCatalogPageSize } from "./history-workspace.ts"
+import { historyAgentTraversalTarget, historyCatalogPageSize, isHistoryAgentTraversalShortcut } from "./history-workspace.ts"
 import {
   decodeDesktopCodingCatalogProjection,
   desktopWorkspaceForCodingFocus,
@@ -842,6 +842,26 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
       else {historyShortcutAbsoluteIndex=null;historyShortcutSteps+=event.key==="ArrowDown"?1:-1}
       void pumpHistoryConversationShortcut()
     }
+    // Cmd+Shift+Up/Down (Ctrl+Shift off-macOS): agent traversal inside the
+    // open conversation (owner contract: "just like command up and down
+    // scrolsl thru chats, have command shift up and down go up and down the
+    // agents of a convo."). Same platform-modifier + editable-guard pattern
+    // as the unshifted conversation shortcut above (which explicitly ignores
+    // shifted chords); dispatches the SAME HistoryAgentSelected intent the
+    // right-rail agent rows dispatch — one selection path, no parallel route.
+    const onHistoryAgentShortcut = (event: KeyboardEvent): void => {
+      const target=event.target
+      const editable=target instanceof HTMLElement&&target.closest("input, textarea, [contenteditable='true']")!==null
+      if(event.defaultPrevented||editable||!isHistoryAgentTraversalShortcut(event,bridge?.platform))return
+      event.preventDefault()
+      const delta=event.key==="ArrowDown"?1:-1
+      void Effect.runPromise(SubscriptionRef.get(state)).then(current=>{
+        if(current.workspace!=="chat"||current.history.page===null)return
+        const targetRef=historyAgentTraversalTarget(current.history,delta)
+        if(targetRef===null)return
+        return Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef("HistoryAgentSelected",StaticPayload(targetRef)))))
+      })
+    }
     const onHistoryModifierDown=(event:KeyboardEvent):void=>{
       const platformModifier=bridge?.platform==="darwin"?event.metaKey:event.ctrlKey
       if(platformModifier)setHistoryShortcutHints(true)
@@ -856,6 +876,7 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
     window.addEventListener("keydown", onCommandPaletteShortcut)
     window.addEventListener("keydown", onHistoryModifierDown)
     window.addEventListener("keydown", onHistoryConversationShortcut)
+    window.addEventListener("keydown", onHistoryAgentShortcut)
     window.addEventListener("keyup", onHistoryModifierUp)
     window.addEventListener("blur", onHistoryWindowBlur)
     window.addEventListener("pagehide", () => {
@@ -865,6 +886,7 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
       window.removeEventListener("keydown", onCommandPaletteShortcut)
       window.removeEventListener("keydown", onHistoryModifierDown)
       window.removeEventListener("keydown", onHistoryConversationShortcut)
+      window.removeEventListener("keydown", onHistoryAgentShortcut)
       window.removeEventListener("keyup", onHistoryModifierUp)
       window.removeEventListener("blur", onHistoryWindowBlur)
       if(historySelectionTimer!==null)window.clearTimeout(historySelectionTimer)

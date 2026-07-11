@@ -161,9 +161,13 @@ export const traceAcceptanceJourney = `(async () => {
   const handoffItem = communicationPage.items.find(item => item.kind === 'agent_message' && item.fields.some(field => field.label === 'message type' && field.value === 'NEW_TASK'))
   const protocolItems = communicationPage.items.filter(item => item.label === 'Agent communication metadata' || item.label === 'Plugin metadata')
   if (protocolItems.some(item => document.querySelector('[data-en-key="history-item-' + item.itemRef + '"]'))) return {ok:false,reason:"protocol_metadata_visible"}
-  const handoffButton = await until(() => document.querySelector('[data-en-key="history-item-' + handoffItem.itemRef + '"][data-en-variant="agent"]'))
+  // EP250 history-markdown contract: handoffs WITH a payload render as prose
+  // rows (markdown body + details affordance); payload-less handoffs stay
+  // timeline event rows. Accept the shape the projection actually chose.
+  const handoffButton = await until(() => document.querySelector('[data-en-key="history-item-' + handoffItem.itemRef + '"]'))
   if (!handoffButton || !handoffButton.textContent?.includes('Task assigned') || handoffButton.textContent?.includes('Message Type:')) return {ok:false,reason:"agent_handoff_card_incomplete"}
-  handoffButton.click()
+  const handoffDetails = document.querySelector('[data-en-key="history-item-details-' + handoffItem.itemRef + '"]')
+  ;(handoffDetails ?? handoffButton).click()
   const handoffInspector = await until(() => {const inspector=document.querySelector('[data-en-key="history-item-inspector"]');const fields=inspector?.querySelector('[data-en-key="history-item-fields"]')?.textContent??'';const kind=inspector?.querySelector('[data-en-key="history-item-kind"]')?.textContent;return kind===handoffItem.kind&&['message type','task','sender','recipient'].every(label=>fields.includes(label))?inspector:null})
   const handoffFields = handoffInspector?.querySelector('[data-en-key="history-item-fields"]')?.textContent ?? ''
   const handoffFieldChecks={messageType:handoffFields.includes('message type'),task:handoffFields.includes('task'),sender:handoffFields.includes('sender'),recipient:handoffFields.includes('recipient')}

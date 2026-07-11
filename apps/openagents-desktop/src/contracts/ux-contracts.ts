@@ -6,7 +6,7 @@ import {
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-11.33",
+    version: "2026-07-11.34",
     contracts: [
       {
         contractId: "openagents_desktop.chat.compact_message_details_affordance.v1",
@@ -1937,6 +1937,96 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         ],
         verification:
           "bun run --cwd apps/openagents-desktop verify runs the sidebar-accounts view suite, the shell pinning assertions, and the design-conformance token oracle over the new module.",
+      },
+      {
+        contractId: "openagents_desktop.history.markdown_prose_rendering.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "codex history workspace message prose",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "owner-video-review", statedBy: "owner", statedOn: "2026-07-11" },
+        statement:
+          "i see assistant messages showing raw markdown what the fuck. need to use the same markdown renderer we use elsewhere",
+        authorityBoundary:
+          "Presentation only. Assistant, user, and agent-message prose in the history workspace (center transcript AND the right-rail item inspector) renders through the SAME bounded markdown projector chat assistant bodies use (renderer markdown.ts -> catalog Markdown/CodeBlock/Divider) — no second parser, links stay safe text with the path visible, no navigation from historical content. Loss-accounted completeness (#8674/#8675) is untouched: every retained source item still projects exactly once (prose OR event row), gap/redaction notices stay plain styled text outside the markdown projection, and the completeness equation counts exactly what it counted before.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/renderer/history-workspace.ts",
+          "apps/openagents-desktop/src/renderer/markdown.ts",
+          "github:OpenAgentsInc/openagents#8712",
+        ],
+        oracles: [
+          {
+            id: "history_markdown.prose_projection",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/history-workspace.test.ts",
+            description:
+              "An assistant item carrying headings/bold/links/inline+fenced code renders typed Markdown/CodeBlock views (h3 + strong + code present, no literal ### or ** in text nodes, link label plus visible path as safe text); user and agent-message prose route through the same projector; gap/redaction notices stay plain event rows; the inspector body uses the projector for prose and plain text for notices; rendered-once accounting holds.",
+          },
+        ],
+        verification:
+          "bun run --cwd apps/openagents-desktop verify runs the history workspace suite plus the codex-history completeness suites.",
+      },
+      {
+        contractId: "openagents_desktop.history.agent_roster_shortcut_traversal.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "codex history workspace keyboard navigation",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "owner-video-review", statedBy: "owner", statedOn: "2026-07-11" },
+        statement:
+          "just like command up and down scrolsl thru chats, have command shift up and down go up and down the agents of a convo.",
+        authorityBoundary:
+          "Cmd+Shift+Up/Down (Ctrl+Shift off-macOS) moves the selection through the SAME visible agent roster the right-rail Agents tree renders, dispatching the SAME typed HistoryAgentSelected intent the tree rows dispatch — no parallel selection path. Ends clamp exactly like the unshifted conversation shortcut; the unshifted chord keeps traversing conversations; no-op when no history conversation is open or the roster is empty; editable targets are never intercepted.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/renderer/history-workspace.ts",
+          "apps/openagents-desktop/src/renderer/boot.ts",
+          "github:OpenAgentsInc/openagents#8712",
+        ],
+        oracles: [
+          {
+            id: "history_agent_traversal.roster_walk",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/history-workspace.test.ts",
+            description:
+              "Traversal walks the exact visible roster (collapsed subtrees skipped) both directions, clamps at both ends, no-ops without an open page or roster, targets resolve to the same HistoryAgentSelected intent the tree rows carry, and the shifted chord discriminates from the unshifted conversation chord per platform.",
+          },
+        ],
+        verification:
+          "bun run --cwd apps/openagents-desktop verify runs the history workspace traversal suite.",
+      },
+      {
+        contractId: "openagents_desktop.history.humanized_tool_cards.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "codex history workspace tool cards",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "owner-video-review", statedBy: "owner", statedOn: "2026-07-11" },
+        statement:
+          "spawn agent card is still showing a fucking json object in the card tool thing, not good",
+        authorityBoundary:
+          "Display only. Historical tool_call rows humanize through the SAME table chat tool cards use (renderer tool-cards.ts humanizeToolInvocation — never a second table): spawn_agent shows 'Spawn agent' with the task name and a dim fork-turns meta; terminal/file/search/web items show their command, path, or query; unknown items show a prettified name plus a bounded key:value summary. Raw JSON never renders as the default card body, and opaque base64-class continuation/message blobs NEVER appear in any card body — the raw input (blob included) stays reachable only through the item inspector, bounded as before. Loss-accounting completeness is untouched.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/renderer/tool-cards.ts",
+          "apps/openagents-desktop/src/renderer/history-workspace.ts",
+          "github:OpenAgentsInc/openagents#8712",
+        ],
+        oracles: [
+          {
+            id: "history_tool_cards.humanized_no_blob",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/history-workspace.test.ts",
+            description:
+              "A spawn_agent fixture with a base64-class continuation blob renders 'Spawn agent — issue_audit · fork turns: 3' with no blob and no braces in the card detail while the inspector still exposes the raw input; table-driven cases cover exec/shell/web_search/read_file/grep/apply_patch/mcp and the prettified unknown fallback.",
+          },
+        ],
+        verification:
+          "bun run --cwd apps/openagents-desktop verify runs the history workspace and tool-card humanization suites.",
       },
     ],
   };

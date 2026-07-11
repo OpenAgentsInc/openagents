@@ -206,8 +206,22 @@ export const projectToolCardEntries = (
 const DETAIL_LIMIT = 160
 const UNKNOWN_ARGS_LIMIT = 140
 
-const truncate = (value: string, limit: number): string =>
+export const truncate = (value: string, limit: number): string =>
   value.length <= limit ? value : `${value.slice(0, Math.max(0, limit - 1))}…`
+
+/**
+ * Opaque continuation/message blobs (EP250 owner directive: "spawn agent card
+ * is still showing a fucking json object in the card tool thing, not good").
+ * Base64-class payloads — long unbroken [A-Za-z0-9+/=_-] runs, e.g. the
+ * Fernet-style `gAAAAB…` spawn-agent continuation — NEVER render in a card
+ * body. They stay reachable behind the details/inspector affordance only.
+ */
+export const isOpaqueBlobValue = (value: string): boolean => {
+  const text = value.trim()
+  // Base64-class: long, unbroken, and letter+digit mixed — a long plain word
+  // or path stays presentable (and paths/URLs carry ./: separators anyway).
+  return text.length >= 64 && /^[A-Za-z0-9+/=_-]+$/.test(text) && /\d/.test(text) && /[A-Za-z]/.test(text)
+}
 
 /**
  * Bounded-tolerant arg reader: trace summaries are redacted JSON truncated at
@@ -245,11 +259,15 @@ export const readToolArgs = (argsSummary: string): Readonly<Record<string, strin
   return {}
 }
 
-/** Compact `key: value` summary for unknown tools — string fields only. */
+/**
+ * Compact `key: value` summary for unknown tools — string fields only, and
+ * never an opaque base64-class blob (those stay behind details/inspector).
+ */
 export const compactArgSummary = (args: Readonly<Record<string, string>>): string => {
   const parts: Array<string> = []
   let used = 0
   for (const [key, value] of Object.entries(args)) {
+    if (isOpaqueBlobValue(value)) continue
     const part = `${key}: ${truncate(value.replace(/\s+/g, " ").trim(), 60)}`
     if (used + part.length > UNKNOWN_ARGS_LIMIT) break
     parts.push(part)
@@ -266,14 +284,28 @@ export type HumanizedToolInvocation = Readonly<{
 const prettyToolName = (toolName: string): string =>
   toolName.replaceAll("_", " ").replace(/^./, (value) => value.toUpperCase())
 
-/** The humanization table — one primary line per known tool. */
+/** Bounded "*** Update File: path" extraction for apply_patch inputs. */
+const patchFileSummary = (argsSummary: string): string => {
+  const files = [...argsSummary.matchAll(/^\*{3} (?:Update|Add|Delete) File: (.+)$/gm)]
+    .map((match) => (match[1] ?? "").trim())
+    .filter((value) => value !== "")
+  return files.slice(0, 3).join(" · ") + (files.length > 3 ? ` · +${files.length - 3} more` : "")
+}
+
+/**
+ * The ONE humanization table — chat trace tool names AND Codex-history item
+ * labels (EP250: historical tool/collab cards reuse this table; never fork a
+ * second one). Opaque blob values never surface through any branch.
+ */
 export const humanizeToolInvocation = (
   toolName: string,
   argsSummary: string,
 ): HumanizedToolInvocation => {
   const args = readToolArgs(argsSummary)
   const detail = (value: string | undefined): string =>
-    value === undefined ? "" : truncate(value.replace(/\s+/g, " ").trim(), DETAIL_LIMIT)
+    value === undefined || isOpaqueBlobValue(value)
+      ? ""
+      : truncate(value.replace(/\s+/g, " ").trim(), DETAIL_LIMIT)
   switch (toolName) {
     case "mcp__codex__delegate":
       return { title: "Delegate to Codex", detail: detail(args["task"]) }
@@ -310,8 +342,62 @@ export const humanizeToolInvocation = (
       return { title: "Web search", detail: detail(args["query"]) }
     case "WebFetch":
       return { title: "Web fetch", detail: detail(args["url"]) }
-    default:
+    // --- Codex-history item labels (EP250 historical card humanization) ---
+    case "exec":
+    case "exec_command":
+    case "write_stdin":
+    case "shell":
+    case "bash":
+    case "command_execution": {
+      const command = detail(args["description"]) !== ""
+        ? detail(args["description"])
+        : detail(args["cmd"]) !== "" ? detail(args["cmd"]) : detail(args["command"])
+      return { title: "Terminal", detail: command !== "" ? command : compactArgSummary(args) }
+    }
+    case "spawn_agent": {
+      const task = detail(args["task_name"]) !== ""
+        ? detail(args["task_name"])
+        : detail(args["agent"]) !== "" ? detail(args["agent"]) : detail(args["name"])
+      const meta = [
+        ...(detail(args["fork_turns"]) === "" ? [] : [`fork turns: ${detail(args["fork_turns"])}`]),
+        ...(detail(args["model"]) === "" ? [] : [detail(args["model"])]),
+      ].join(" · ")
+      const primary = task === "" ? compactArgSummary(args) : task
+      return {
+        title: "Spawn agent",
+        detail: primary === "" ? meta : meta === "" ? primary : `${primary} · ${meta}`,
+      }
+    }
+    case "apply_patch": {
+      const files = patchFileSummary(argsSummary)
+      return { title: "Edited files", detail: files !== "" ? truncate(files, DETAIL_LIMIT) : compactArgSummary(args) }
+    }
+    case "read":
+    case "read_file": {
+      const target = detail(args["path"]) !== ""
+        ? detail(args["path"])
+        : detail(args["file_path"]) !== "" ? detail(args["file_path"]) : detail(args["target"])
+      return { title: "Read file", detail: target !== "" ? target : compactArgSummary(args) }
+    }
+    case "list":
+    case "glob":
+    case "grep":
+    case "find": {
+      const query = detail(args["pattern"]) !== ""
+        ? detail(args["pattern"])
+        : detail(args["query"]) !== "" ? detail(args["query"]) : detail(args["path"])
+      return { title: "Searched files", detail: query !== "" ? query : compactArgSummary(args) }
+    }
+    case "web_search":
+      return { title: "Web search", detail: detail(args["query"]) !== "" ? detail(args["query"]) : compactArgSummary(args) }
+    default: {
+      // mcp__server__tool → the tool segment names the card.
+      if (toolName.startsWith("mcp__")) {
+        const segment = toolName.split("__").filter((part) => part !== "").at(-1) ?? toolName
+        return { title: prettyToolName(segment), detail: compactArgSummary(args) }
+      }
       return { title: prettyToolName(toolName), detail: compactArgSummary(args) }
+    }
   }
 }
 

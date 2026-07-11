@@ -1,6 +1,8 @@
 import { Badge, Button, ComponentValueBinding, IconButton, IntentRef, NavRail, SplitPane, Stack, StaticPayload, Table, Text, Timeline, defineIntent, type IconName, type TimelineEvent, type View } from "@effect-native/core"
 import { Schema } from "@effect-native/core/effect"
 import type { CodexHistoryCatalog, CodexHistoryItem, CodexHistoryPage } from "../codex-history-contract.ts"
+import { chatMarkdownBody } from "./markdown.ts"
+import { humanizeToolInvocation } from "./tool-cards.ts"
 
 export type HistoryWorkspaceState = Readonly<{
   catalog: CodexHistoryCatalog
@@ -54,15 +56,6 @@ const toolIcon = (label: string): IconName => {
   return "Tools"
 }
 
-const toolTitle = (label: string): string => {
-  const name = label.toLowerCase()
-  if (["exec", "exec_command", "write_stdin", "shell", "bash", "command_execution"].includes(name)) return "Terminal"
-  if (name === "apply_patch") return "Edited files"
-  if (["read", "read_file"].includes(name)) return "Read file"
-  if (["list", "glob", "grep", "find"].includes(name)) return "Searched files"
-  return label.replaceAll("_", " ").replace(/^./, (value) => value.toUpperCase())
-}
-
 const agentName = (value: string | null): string | null => {
   const name = value?.split("/").filter(Boolean).at(-1)
   return name === undefined ? null : name.replaceAll("_"," ")
@@ -75,9 +68,14 @@ const agentMessageTitle = (item: CodexHistoryItem): string => {
   return task===null?action:`${action} · ${task}`
 }
 
+const agentMessageRoute = (item: CodexHistoryItem): string => {
+  const sender=agentName(historyField(item,"sender"));const recipient=agentName(historyField(item,"recipient"))
+  return sender!==null&&recipient!==null?`${sender} → ${recipient}`:sender!==null?`From ${sender}`:recipient!==null?`To ${recipient}`:"Inter-agent handoff"
+}
+
 const agentMessageDetail = (item: CodexHistoryItem): string => {
-  const sender=agentName(historyField(item,"sender"));const recipient=agentName(historyField(item,"recipient"));const payload=historyField(item,"payload")
-  const route=sender!==null&&recipient!==null?`${sender} → ${recipient}`:sender!==null?`From ${sender}`:recipient!==null?`To ${recipient}`:"Inter-agent handoff"
+  const payload=historyField(item,"payload")
+  const route=agentMessageRoute(item)
   return payload===null?route:`${route} — ${payload}`
 }
 
@@ -138,10 +136,18 @@ const projectedTimelineEvent = (item: CodexHistoryItem, result?: CodexHistoryIte
     }
   }
   const status = result?.status ?? item.status
-  const detail = item.kind === "tool_call"
-    ? item.summary || historyField(item, "input") || result?.summary || "Tool invocation"
+  // Historical tool cards humanize through the SAME table chat tool cards use
+  // (EP250 owner directive: no raw JSON — and never an opaque continuation
+  // blob — in the default card body; raw input stays in the item inspector).
+  const argsText = item.kind === "tool_call" ? item.summary || historyField(item, "input") || "" : ""
+  const humanized = item.kind === "tool_call" ? humanizeToolInvocation(item.label, argsText) : null
+  // Plain-text tool inputs (already human, e.g. "bun test") pass through
+  // bounded; JSON-shaped inputs never render raw.
+  const plainArgs = argsText.trimStart().startsWith("{") || argsText.trimStart().startsWith("[") ? "" : argsText
+  const detail = humanized !== null
+    ? humanized.detail || plainArgs || result?.summary || "Tool invocation"
     : item.summary || "No display text"
-  const label = item.kind === "tool_call" ? toolTitle(item.label) : item.label
+  const label = humanized !== null ? humanized.title : item.label
   return {
     id: item.itemRef,
     key: `history-item-${item.itemRef}`,
@@ -157,12 +163,34 @@ const projectedTimelineEvent = (item: CodexHistoryItem, result?: CodexHistoryIte
 }
 
 /**
- * Turns the loss-accounted Codex event stream into the product timeline.
- * Raw usage, session, context, lifecycle, and developer/system records remain
- * in the page contract and inspector data; they are intentionally not chat
- * rows. Matching tool results are folded into their invocation.
+ * Message PROSE renders through the shared markdown projector (EP250 owner
+ * directive: "i see assistant messages showing raw markdown what the fuck.
+ * need to use the same markdown renderer we use elsewhere"). Prose entries
+ * carry the full item so the view can render the same unboxed Markdown/
+ * CodeBlock body chat assistant messages use; everything else stays a typed
+ * timeline event row. Loss-accounting is untouched: every source item still
+ * projects exactly once (as prose OR as an event, never both, never dropped
+ * beyond the same intentional filters as before).
  */
-export const projectHistoryTimelineEvents = (items: ReadonlyArray<CodexHistoryItem>, expandedItemRef: string | null = null): ReadonlyArray<TimelineEvent> => {
+export type HistoryEntryProjection =
+  | Readonly<{ kind: "prose"; item: CodexHistoryItem }>
+  | Readonly<{ kind: "events"; key: string; events: ReadonlyArray<TimelineEvent> }>
+
+/**
+ * Loss-accounting notices stay OUT of the markdown projection: a fully
+ * redacted body (the `[REDACTED: …]` placeholder) renders as a plain styled
+ * event row, never markdown-parsed prose.
+ */
+const isProseItem = (item: CodexHistoryItem): boolean =>
+  (item.kind === "assistant_message" || item.kind === "user_message" || item.kind === "agent_message") &&
+  !item.summary.trimStart().startsWith("[REDACTED:") &&
+  (item.kind !== "agent_message" || historyField(item, "payload") !== null)
+
+/** The prose text an item displays — agent messages display their payload. */
+export const historyProseText = (item: CodexHistoryItem): string =>
+  item.kind === "agent_message" ? historyField(item, "payload") ?? item.summary : item.summary
+
+export const projectHistoryEntries = (items: ReadonlyArray<CodexHistoryItem>, expandedItemRef: string | null = null): ReadonlyArray<HistoryEntryProjection> => {
   const resultByCall = new Map<string, CodexHistoryItem>()
   for (const item of items) {
     if (item.kind !== "tool_result") continue
@@ -170,26 +198,85 @@ export const projectHistoryTimelineEvents = (items: ReadonlyArray<CodexHistoryIt
     if (call !== null) resultByCall.set(call, item)
   }
   const consumedResults = new Set<string>()
-  const events: Array<TimelineEvent> = []
+  const entries: Array<HistoryEntryProjection> = []
+  let run: Array<TimelineEvent> = []
+  const flushRun = (): void => {
+    if (run.length === 0) return
+    entries.push({ kind: "events", key: run[0]!.id, events: run })
+    run = []
+  }
   for (const item of items) {
     if (["usage", "session", "context", "lifecycle", "system_message"].includes(item.kind)) continue
     if (item.kind === "reasoning" && (item.summary.trim() === "" || item.summary.startsWith("[REDACTED:"))) continue
     if ((item.kind === "assistant_message" || item.kind === "user_message") && (item.summary.trim() === "" || item.summary.trim().toLowerCase() === item.label.trim().toLowerCase())) continue
+    if (isProseItem(item)) {
+      flushRun()
+      entries.push({ kind: "prose", item })
+      continue
+    }
     if (item.kind === "tool_call") {
       const call = historyField(item, "call")
       const result = call === null ? undefined : resultByCall.get(call)
       if (result !== undefined) consumedResults.add(result.itemRef)
-      events.push(projectedTimelineEvent(item, result, expandedItemRef))
+      run.push(projectedTimelineEvent(item, result, expandedItemRef))
       continue
     }
     if (item.kind === "tool_result" && consumedResults.has(item.itemRef)) continue
-    events.push(projectedTimelineEvent(item, undefined, expandedItemRef))
+    run.push(projectedTimelineEvent(item, undefined, expandedItemRef))
   }
-  return events
+  flushRun()
+  return entries
 }
 
+/** Flat event view of the non-prose entries (compat + tests). */
+export const projectHistoryTimelineEvents = (items: ReadonlyArray<CodexHistoryItem>, expandedItemRef: string | null = null): ReadonlyArray<TimelineEvent> =>
+  projectHistoryEntries(items, expandedItemRef).flatMap(entry => entry.kind === "events" ? entry.events : [])
+
+/**
+ * The visible agent roster of the open conversation — the exact rows the
+ * right-rail Agents tree shows (collapsed subtrees excluded). Shared by the
+ * tree view and the Cmd+Shift+Up/Down traversal shortcut so both walk the
+ * same list.
+ */
+export const visibleHistoryAgents = (state: HistoryWorkspaceState): ReadonlyArray<CodexHistoryPage["agents"][number]> => {
+  const allAgents = state.page?.agents ?? []
+  const byId = new Map(allAgents.map(agent => [agent.threadRef, agent]))
+  return allAgents.filter(agent => { let parent = agent.parentThreadRef; while (parent) { if (!state.expandedThreadRefs.includes(parent)) return false; parent = byId.get(parent)?.parentThreadRef ?? null } return true })
+}
+
+/**
+ * Cmd+Shift+Up/Down agent traversal (EP250 owner directive: "just like
+ * command up and down scrolsl thru chats, have command shift up and down go
+ * up and down the agents of a convo."). Returns the threadRef the shortcut
+ * should select, or null when there is nothing to do. Ends CLAMP — the same
+ * boundary behavior as the Cmd+Up/Down conversation shortcut.
+ */
+export const historyAgentTraversalTarget = (state: HistoryWorkspaceState, delta: -1 | 1): string | null => {
+  const page = state.page
+  if (page === null) return null
+  const agents = visibleHistoryAgents(state)
+  if (agents.length === 0) return null
+  const activeIndex = agents.findIndex(agent => agent.threadRef === page.selectedThreadRef)
+  const targetIndex = Math.max(0, Math.min(agents.length - 1, activeIndex < 0 ? (delta > 0 ? 0 : agents.length - 1) : activeIndex + delta))
+  const target = agents[targetIndex]!.threadRef
+  return target === page.selectedThreadRef ? null : target
+}
+
+/**
+ * Shifted-variant discrimination for the traversal shortcut: platform
+ * modifier + Shift + ArrowUp/ArrowDown, no Alt. The UNSHIFTED chord stays
+ * conversation traversal and never matches here.
+ */
+export const isHistoryAgentTraversalShortcut = (
+  event: Readonly<{ key: string; metaKey: boolean; ctrlKey: boolean; altKey: boolean; shiftKey: boolean }>,
+  platform: string | undefined,
+): boolean =>
+  (event.key === "ArrowUp" || event.key === "ArrowDown") &&
+  event.shiftKey && !event.altKey &&
+  (platform === "darwin" ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey)
+
 const agentTree = (state: HistoryWorkspaceState): View => {
-  const page = state.page; const allAgents = page?.agents ?? []; const byId=new Map(allAgents.map(agent=>[agent.threadRef,agent])); const agents=allAgents.filter(agent=>{let parent=agent.parentThreadRef;while(parent){if(!state.expandedThreadRefs.includes(parent))return false;parent=byId.get(parent)?.parentThreadRef??null}return true})
+  const page = state.page; const allAgents = page?.agents ?? []; const agents = visibleHistoryAgents(state)
   return Stack({ key: "history-agent-tree-region", direction: "column", gap: "2", style: { minWidth: 0, minHeight: 0, flex: 1 }, a11y: { role: "region", label: "Agents" } }, [
     Text({ key: "history-agent-title", content: `Agents · ${agents.length}`, variant: "heading", color: "textPrimary" }),
     NavRail({ key: "history-agent-list", role: "tree", activeId: page === null ? undefined : `history-agent-${page.selectedThreadRef}`, style: { minHeight: 0, flex: 1 }, a11y: { role: "tree", label: `${allAgents.length} agents` }, sections: [{ id: "history-agent-tree", items: agents.map((agent, index) => ({
@@ -215,6 +302,55 @@ const agentTree = (state: HistoryWorkspaceState): View => {
   ])
 }
 
+/**
+ * Memoized markdown projection: historical prose is immutable, so the parsed
+ * body is cached per item ref. Bounded — the cache resets when it grows past
+ * the window a reader can plausibly accumulate.
+ */
+const proseBodyCache = new Map<string, ReadonlyArray<View>>()
+const historyProseBody = (item: CodexHistoryItem, keyPrefix: string): ReadonlyArray<View> => {
+  const text = historyProseText(item)
+  const cacheKey = `${keyPrefix}:${item.itemRef}:${text.length}`
+  const cached = proseBodyCache.get(cacheKey)
+  if (cached !== undefined) return cached
+  if (proseBodyCache.size > 4_000) proseBodyCache.clear()
+  const body = chatMarkdownBody(`${keyPrefix}-${item.itemRef}-md`, text)
+  proseBodyCache.set(cacheKey, body)
+  return body
+}
+
+const proseHeader = (item: CodexHistoryItem): string | null =>
+  item.kind === "user_message"
+    ? "YOU"
+    : item.kind === "agent_message"
+      ? `${agentMessageTitle(item)} — ${agentMessageRoute(item)}`
+      : null
+
+/**
+ * Unboxed prose row — the chat assistant treatment (markdown body, no box,
+ * textFaint meta ladder) applied to historical message prose. The compact
+ * details affordance dispatches the SAME HistoryItemSelected intent timeline
+ * rows dispatch, so the inspector flow is one path.
+ */
+const proseRow = (item: CodexHistoryItem): View =>
+  Stack(
+    { key: `history-item-${item.itemRef}`, direction: "column", gap: "1", style: { width: "full" }, a11y: { role: "listitem", label: `${item.label} message. Source item ${item.sequence + 1}` } },
+    [
+      ...(proseHeader(item) === null ? [] : [Text({ key: `history-item-${item.itemRef}-header`, content: proseHeader(item)!, variant: "caption", color: "textFaint" })]),
+      ...historyProseBody(item, "history-item"),
+      Stack({ key: `history-item-${item.itemRef}-meta-row`, direction: "row", gap: "1", align: "center" }, [
+        Button({
+          key: `history-item-details-${item.itemRef}`,
+          label: "details",
+          variant: "ghost",
+          style: { padding: "0", borderWidth: 0, typeScale: "caption", color: "textFaint" },
+          onPress: IntentRef("HistoryItemSelected", StaticPayload(item.itemRef)),
+          a11y: { label: `Show item details, ${item.label} message, source item ${item.sequence + 1}` },
+        }),
+      ]),
+    ],
+  )
+
 const inspector = (state: HistoryWorkspaceState): View => {
   const item = state.page?.items.find(value => value.itemRef === state.selectedItemRef)
   if (!item || item.kind === "metadata") return agentTree(state)
@@ -222,7 +358,11 @@ const inspector = (state: HistoryWorkspaceState): View => {
     Button({ key: "history-item-back", label: "Back to agents", variant: "ghost", onPress: IntentRef("HistoryItemSelected", StaticPayload("")), a11y: { label: "Back to agent tree" } }),
     Text({ key: "history-item-title", content: item.label, variant: "heading", color: "textPrimary" }),
     Badge({ key: "history-item-kind", label: item.kind, tone: item.kind === "gap" ? "warn" : "neutral" }),
-    Text({ key: "history-item-summary", content: item.summary || "No display text", variant: "body", color: "textPrimary" }),
+    // Message prose in the inspector renders through the same markdown
+    // projector as the transcript; loss-accounting notices stay plain text.
+    ...(isProseItem(item)
+      ? historyProseBody(item, "history-inspector")
+      : [Text({ key: "history-item-summary", content: item.summary || "No display text", variant: "body", color: "textPrimary" })]),
     ...(item.fields.length === 0 ? [] : [Table({ key: "history-item-fields", columns: [{ id: "field", header: "Field" }, { id: "value", header: "Value" }], rows: item.fields.map((entry,index) => ({ id: String(index), cells: [Text({ key: `history-item-field-label-${index}`, content: entry.label, variant: "caption", color: "textMuted" }), Text({ key: `history-item-field-value-${index}`, content: entry.value, variant: "body", color: "textPrimary" })] })) })]),
     Text({ key: "history-item-source", content: `Source ${item.sourceType} · item ${item.sequence + 1}${item.redacted ? " · redacted" : ""}`, variant: "caption", color: item.redacted ? "warning" : "textMuted" }),
   ])
@@ -233,7 +373,11 @@ export const historyWorkspaceView = (state: HistoryWorkspaceState): View => {
   if (!page) return Stack({ key: "history-workspace-empty", direction: "column", gap: "2", style: { flex: 1, minWidth: 0 } }, [Text({ key: "history-empty-title", content: "Select a Codex conversation", variant: "heading", color: "textPrimary" }), Text({ key: "history-empty-copy", content: "Historical conversations and every discovered subagent are available without a 24-hour cutoff.", variant: "body", color: "textMuted" })])
   const center = Stack({ key: "history-center", direction: "column", gap: "2", style: { flex: 1, minWidth: 0, minHeight: 0 } }, [
     IconButton({key:"history-agents-drawer",icon:"Agent",accessibilityLabel:`${state.railCollapsed?"Open":"Close"} agents inspector, ${page.agents.length} agents`,onPress:IntentRef("HistoryInspectorToggled"),surface:"glass",a11y:{expanded:!state.railCollapsed}}),
-    Timeline({ key: "history-timeline-page", ...(state.selectedItemRef === null ? {} : { selectedId: state.selectedItemRef }), onEventSelect: IntentRef("HistoryItemSelected", ComponentValueBinding()), style: { flex: 1, minHeight: 0, minWidth: 0 }, a11y: { role: "list", label: `History items ${page.offset + 1} through ${Math.min(page.totalItems, page.offset + page.items.length)} of ${page.totalItems}` }, events: projectHistoryTimelineEvents(page.items,state.selectedItemRef) }),
+    Stack({ key: "history-timeline-page", direction: "column", gap: "2", style: { flex: 1, minHeight: 0, minWidth: 0 }, a11y: { role: "list", label: `History items ${page.offset + 1} through ${Math.min(page.totalItems, page.offset + page.items.length)} of ${page.totalItems}` } },
+      projectHistoryEntries(page.items, state.selectedItemRef).map(entry =>
+        entry.kind === "prose"
+          ? proseRow(entry.item)
+          : Timeline({ key: `history-seg-${entry.key}`, ...(state.selectedItemRef === null ? {} : { selectedId: state.selectedItemRef }), onEventSelect: IntentRef("HistoryItemSelected", ComponentValueBinding()), events: entry.events }))),
     Stack({ key: "history-page-controls", direction: "row", gap: "2", align: "center" }, [Button({ key: "history-page-previous", label: "Previous", variant: "secondary", disabled: !page.hasPrevious, onPress: IntentRef("HistoryPageRequested", StaticPayload(Math.max(0,page.offset-page.limit))), a11y: { label: "Previous history page" } }), Text({ key: "history-page-range", content: `${page.offset + 1}–${Math.min(page.totalItems,page.offset+page.items.length)} of ${page.totalItems}`, variant: "caption", color: "textMuted" }), Button({ key: "history-page-next", label: "Next", variant: "secondary", disabled: !page.hasNext, onPress: IntentRef("HistoryPageRequested", StaticPayload(page.offset+page.limit)), a11y: { label: "Next history page" } })]),
   ])
   return SplitPane({ key: "history-workspace-split", orientation: "row", style: { flex: 1, minWidth: 0, minHeight: 0 }, onCollapseToggle: IntentRef("HistoryInspectorToggled"), panes: [{ id: "history-center", min: 360, content: center }, { id: "history-inspector", min: 280, max: 480, size: 336, collapsed: state.railCollapsed, content: inspector(state) }] })
