@@ -326,7 +326,9 @@ The center pane is an Effect Native `Timeline` with stable event keys,
 controlled selection, typed message/reasoning/tool/error variants, generated
 catalog icons, compact detail/status metadata, and typed selection. The
 right pane uses tree-mode `NavRail` for agent depth, expansion, roving keyboard
-bindings, and trailing lifecycle state; selected-item fields use the typed
+bindings, and trailing lifecycle state. Lifecycle is rendered as a generated,
+color-coded catalog icon rather than a repeated status word; the full state
+remains in each row's accessibility label. Selected-item fields use the typed
 `Table` contract. Neither pane owns app-local list-row primitives.
 
 A parent timeline projects each confirmed child-start edge as an inline

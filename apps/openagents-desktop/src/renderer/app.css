@@ -17,6 +17,8 @@
   --oa-muted: #91a0b5;
   --oa-blue: #4a86ff;
   --oa-cyan: #8ad7ff;
+  --oa-success: #50d7a0;
+  --oa-warning: #f0b45e;
   --oa-danger: #ff7188;
 }
 
@@ -480,17 +482,44 @@ textarea:focus-visible {
 }
 
 [data-en-key^="history-agent-"] > [data-en-role="label"] {
+  order: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-[data-en-key^="history-agent-"] > [data-en-role="meta"] {
+[data-en-key^="history-agent-"] > [data-en-icon] {
+  order: 2;
+  display: inline-flex;
+  width: 14px;
+  height: 14px;
   margin-left: auto;
+  flex: 0 0 14px;
+  align-items: center;
+  justify-content: center;
   color: var(--oa-muted);
-  font-size: 11px;
-  white-space: nowrap;
+}
+
+[data-en-key^="history-agent-"] > [data-en-icon] svg {
+  width: 13px;
+  height: 13px;
+}
+
+[data-en-key^="history-agent-"] > [data-en-icon="Check"] {
+  color: var(--oa-success);
+}
+
+[data-en-key^="history-agent-"] > [data-en-icon="X"] {
+  color: var(--oa-danger);
+}
+
+[data-en-key^="history-agent-"] > [data-en-icon="Play"] {
+  color: var(--oa-blue);
+}
+
+[data-en-key^="history-agent-"] > [data-en-icon="Pause"] {
+  color: var(--oa-warning);
 }
 
 [data-en-key="history-item-inspector"],

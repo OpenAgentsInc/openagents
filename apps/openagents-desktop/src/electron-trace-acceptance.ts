@@ -125,6 +125,8 @@ export const traceAcceptanceJourney = `(async () => {
   const treeItems = [...document.querySelectorAll('[role="treeitem"]')]
   const agentList = [...document.querySelectorAll('[aria-label]')].find(node => node.getAttribute('aria-label') === page.agents.length + ' agents')
   if (treeItems.length === 0 || !agentList) return {ok:false,reason:"descendants_hidden",visibleAgentCount:treeItems.length,projectedAgentCount:page.agents.length}
+  if (treeItems.some(item => item.querySelector('[data-en-role="meta"]'))) return {ok:false,reason:"agent_status_word_visible"}
+  if (treeItems.some(item => item.querySelector('[data-en-icon]') === null)) return {ok:false,reason:"agent_status_icon_missing"}
   const selectedBefore = [...document.querySelectorAll('[data-en-key^="history-agent-"]')].find(item => item.getAttribute('data-en-key') === 'history-agent-' + candidate.root.threadRef) ?? treeItems[0]
   selectedBefore?.focus()
   const keyboardEvent = new KeyboardEvent('keydown',{key:'ArrowDown',code:'ArrowDown',bubbles:true,cancelable:true})

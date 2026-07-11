@@ -24,6 +24,12 @@ export const HistoryCatalogMoreRequested = defineIntent("HistoryCatalogMoreReque
 export const historyWorkspaceIntents = [HistoryConversationSelected, HistoryAgentSelected, HistoryItemSelected, HistoryPageRequested, HistoryInspectorToggled, HistoryAgentExpandedToggled, HistoryCatalogMoreRequested] as const
 
 const statusLabel = (status: string): string => status.slice(0,1).toUpperCase() + status.slice(1)
+const agentStatusIcon = (status: NonNullable<CodexHistoryPage["agents"][number]>["status"]): IconName =>
+  status === "completed" ? "Check"
+    : status === "interrupted" || status === "errored" || status === "not_found" ? "X"
+      : status === "running" ? "Play"
+        : status === "pending" || status === "waiting" ? "Pause"
+          : status === "shutdown" ? "Stop" : "Circle"
 const timelinePreview = (value: string): string => value.length <= 360 ? value : `${value.slice(0,357)}…`
 const timelineStatus = (item: CodexHistoryItem): "idle" | "active" | "success" | "failed" | "pending" =>
   item.kind === "error" || item.kind === "gap" || item.status === "failed" || item.status === "errored" ? "failed"
@@ -149,7 +155,7 @@ const agentTree = (state: HistoryWorkspaceState): View => {
     NavRail({ key: "history-agent-list", role: "tree", activeId: page === null ? undefined : `history-agent-${page.selectedThreadRef}`, style: { minHeight: 0, flex: 1 }, a11y: { role: "tree", label: `${allAgents.length} agents` }, sections: [{ id: "history-agent-tree", items: agents.map((agent, index) => ({
       id: `history-agent-${agent.threadRef}`,
       label: agent.title,
-      meta: statusLabel(agent.status),
+      icon: agentStatusIcon(agent.status),
       depth: agent.depth,
       selected: page?.selectedThreadRef === agent.threadRef,
       ...(agent.descendantCount>0 ? { expanded: state.expandedThreadRefs.includes(agent.threadRef) } : {}),
