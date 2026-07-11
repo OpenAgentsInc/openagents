@@ -250,7 +250,13 @@ ipcMain.handle(FleetStageChannel, async (_event, value: unknown) => {
 })
 
 const threads = () => makeThreadStore(path.join(app.getPath("userData"), "threads.json"))
-const codexSessionsRoot = () => path.resolve(process.env.OPENAGENTS_DESKTOP_CODEX_SESSIONS ?? path.join(app.getPath("home"), ".codex", "sessions"))
+const codexSessionsRoot = () => path.resolve(
+  process.env.OPENAGENTS_DESKTOP_CODEX_SESSIONS ?? (
+    smokeMode
+      ? path.join(here, "..", "tests", "fixtures", "codex-smoke", "sessions")
+      : path.join(app.getPath("home"), ".codex", "sessions")
+  ),
+)
 type CodexHistoryRequest =
   | Readonly<{ kind: "list"; sessionsRoot: string; limit?: number }>
   | Readonly<{ kind: "detail"; sessionsRoot: string; id: string; messageLimit?: number }>

@@ -109,7 +109,7 @@
     "test:nostr-relay": "bun run --cwd apps/nostr-relay test",
     "test:durable-stream": "bun run --cwd packages/durable-stream test",
     "test:cloud-crates": "cargo test --workspace",
-    "test:openagents-desktop": "bun run --cwd apps/openagents-desktop test",
+    "test:openagents-desktop": "bun run --cwd apps/openagents-desktop verify",
     "test:sarah-take-scoreboard": "bun run --cwd packages/sarah-take-scoreboard test",
     "test:cloud-contract": "bun run --cwd packages/cloud-contract test",
     "test:oa-infra": "bun run --cwd packages/oa-infra test",

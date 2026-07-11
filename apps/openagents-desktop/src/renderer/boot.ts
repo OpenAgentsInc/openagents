@@ -30,6 +30,7 @@ import {
   initialDesktopShellState,
   makeDesktopShellHandlers,
 } from "./shell.ts"
+import { restorableHistoryThreadRef } from "./history-restore.ts"
 import { openagentsDesktopTheme } from "./theme.ts"
 import { selectDesktopChatHost } from "./runtime-conversation.ts"
 import { type DesktopThread } from "../chat-contract.ts"
@@ -278,8 +279,8 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
     )
     const historyCatalog = yield* Effect.promise(historyHost.catalog)
     if (historyCatalog !== null) {
-      const restored=restoreHistory(); const restoredIndex=historyCatalog.roots.findIndex(root=>root.threadRef===restored?.selectedThreadRef); const selected=restoredIndex>=0&&restoredIndex<historyCatalogPageSize?restored?.selectedThreadRef:undefined
-      const firstPage = selected === undefined ? null : yield* Effect.promise(() => historyHost.page(selected, restored?.offset??0, 50))
+      const restored=restoreHistory(); const selected=restorableHistoryThreadRef(historyCatalog,restored?.selectedThreadRef,historyCatalogPageSize)
+      const firstPage = selected === null ? null : yield* Effect.promise(() => historyHost.page(selected, restored?.offset??0, 50))
       yield* SubscriptionRef.update(state, current => ({ ...current, history: { ...current.history, catalog: historyCatalog, page: firstPage, selectedItemRef: firstPage?.items.some(item=>item.itemRef===restored?.selectedItemRef)?restored!.selectedItemRef:null, railCollapsed:restored?.railCollapsed??false, expandedThreadRefs:restored?.expandedThreadRefs??firstPage?.agents.filter(agent=>agent.descendantCount>0).map(agent=>agent.threadRef)??[] } }))
     }
     const existing = yield* Effect.promise(chat.listThreads)

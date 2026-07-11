@@ -40,4 +40,13 @@ describe("openagents_desktop.seam.codex_trace_electron_acceptance.v1", () => {
     expect(main).toContain('step("codex-trace-reload-restoration", traceAcceptanceReload)')
     expect(main).toContain("window.webContents.reload()")
   })
+
+  test("handoff acceptance keys on typed kind and fields rather than display copy", () => {
+    expect(traceAcceptanceJourney).toContain("kind===handoffItem.kind")
+    expect(traceAcceptanceJourney).not.toContain("textContent==='Agent message'")
+  })
+
+  test("does not refetch the already-selected agent before clicking its tool row", () => {
+    expect(traceAcceptanceJourney).toContain("agentButton?.getAttribute('aria-selected') !== 'true'")
+  })
 })

@@ -1,0 +1,22 @@
+{"timestamp":"2026-07-11T00:00:00.000Z","type":"session_meta","payload":{"id":"smoke-child","source":{"subagent":{"thread_spawn":{"parent_thread_id":"smoke-root","depth":1,"agent_path":"root/verification_worker","agent_nickname":"verification worker","agent_role":"worker"}}},"model":"fixture-model"}}
+{"timestamp":"2026-07-11T00:00:01.000Z","type":"inter_agent_communication_metadata","payload":{"trigger_turn":true}}
+{"timestamp":"2026-07-11T00:00:02.000Z","type":"response_item","payload":{"type":"agent_message","author":"/root","recipient":"/root/verification_worker","content":[{"type":"output_text","text":"Message Type: NEW_TASK\nTask name: /root/verification_worker\nSender: /root\nPayload:\n\nVerify the Desktop baseline."}]}}
+{"timestamp":"2026-07-11T00:00:03.000Z","type":"response_item","payload":{"type":"function_call","name":"exec_command","call_id":"smoke-call","arguments":"bun test"}}
+{"timestamp":"2026-07-11T00:00:04.000Z","type":"response_item","payload":{"type":"function_call_output","call_id":"smoke-call","output":"tests passed"}}
+{"timestamp":"2026-07-11T00:00:05.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Checked the Runtime Gateway boundary."}]}}
+{"timestamp":"2026-07-11T00:00:06.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Checked the workspace grant boundary."}]}}
+{"timestamp":"2026-07-11T00:00:07.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Checked secret-shaped diff refusal."}]}}
+{"timestamp":"2026-07-11T00:00:08.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Checked renderer isolation."}]}}
+{"timestamp":"2026-07-11T00:00:09.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Checked lifecycle cleanup."}]}}
+{"timestamp":"2026-07-11T00:00:10.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Checked command palette routing."}]}}
+{"timestamp":"2026-07-11T00:00:11.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Checked history navigation."}]}}
+{"timestamp":"2026-07-11T00:00:12.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Checked inspector restoration."}]}}
+{"timestamp":"2026-07-11T00:00:13.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Checked typed account readiness."}]}}
+{"timestamp":"2026-07-11T00:00:14.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Checked confirmed conversation projection."}]}}
+{"timestamp":"2026-07-11T00:00:15.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Checked agent timeline projection."}]}}
+{"timestamp":"2026-07-11T00:00:16.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Checked bundle output."}]}}
+{"timestamp":"2026-07-11T00:00:17.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Checked Electron bootstrap."}]}}
+{"timestamp":"2026-07-11T00:00:18.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Checked renderer reload."}]}}
+{"timestamp":"2026-07-11T00:00:19.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Checked durable selected refs."}]}}
+{"timestamp":"2026-07-11T00:00:20.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Verification fixture complete."}]}}
+{"timestamp":"2026-07-11T00:00:21.000Z","type":"task_complete","payload":{"type":"task_complete","status":"completed"}}

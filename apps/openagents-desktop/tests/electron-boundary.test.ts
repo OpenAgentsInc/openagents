@@ -106,6 +106,11 @@ describe("Electron boundary (issue #8574 mandatory first-scaffold hardening)", (
     }
   })
 
+  test("normal verification uses checked-in smoke history instead of ambient provider homes", () => {
+    expect(main).toContain('"tests", "fixtures", "codex-smoke", "sessions"')
+    expect(main).toContain("smokeMode")
+  })
+
   test("Khala Sync database identity and path remain in Electron main", () => {
     const preload = stripComments(read("src/preload.cts"))
     const renderer = stripComments(read("src/renderer/boot.ts"))

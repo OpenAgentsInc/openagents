@@ -164,14 +164,14 @@ export const traceAcceptanceJourney = `(async () => {
   const handoffButton = await until(() => document.querySelector('[data-en-key="history-item-' + handoffItem.itemRef + '"][data-en-variant="agent"]'))
   if (!handoffButton || !handoffButton.textContent?.includes('Task assigned') || handoffButton.textContent?.includes('Message Type:')) return {ok:false,reason:"agent_handoff_card_incomplete"}
   handoffButton.click()
-  const handoffInspector = await until(() => {const inspector=document.querySelector('[data-en-key="history-item-inspector"]');const fields=inspector?.querySelector('[data-en-key="history-item-fields"]')?.textContent??'';return inspector?.querySelector('[data-en-key="history-item-title"]')?.textContent==='Agent message'&&['message type','task','sender','recipient'].every(label=>fields.includes(label))?inspector:null})
+  const handoffInspector = await until(() => {const inspector=document.querySelector('[data-en-key="history-item-inspector"]');const fields=inspector?.querySelector('[data-en-key="history-item-fields"]')?.textContent??'';const kind=inspector?.querySelector('[data-en-key="history-item-kind"]')?.textContent;return kind===handoffItem.kind&&['message type','task','sender','recipient'].every(label=>fields.includes(label))?inspector:null})
   const handoffFields = handoffInspector?.querySelector('[data-en-key="history-item-fields"]')?.textContent ?? ''
   const handoffFieldChecks={messageType:handoffFields.includes('message type'),task:handoffFields.includes('task'),sender:handoffFields.includes('sender'),recipient:handoffFields.includes('recipient')}
   if (!Object.values(handoffFieldChecks).every(Boolean)) return {ok:false,reason:"agent_handoff_inspector_incomplete",fieldChecks:handoffFieldChecks,fieldLabels:[...(handoffInspector?.querySelectorAll('[data-en-key^="history-item-field-label-"]')??[])].map(node=>node.textContent)}
   document.querySelector('[data-en-key="history-item-back"]')?.click()
   await until(() => document.querySelector('[data-en-key="history-agent-list"]'))
   const agentButton = [...document.querySelectorAll('[data-en-key^="history-agent-"]')].find(row => row.getAttribute('data-en-key') === 'history-agent-' + toolPage.selectedThreadRef)
-  agentButton?.click()
+  if (agentButton?.getAttribute('aria-selected') !== 'true') agentButton?.click()
   await until(() => document.querySelector('[data-en-key="history-agent-' + toolPage.selectedThreadRef + '"][aria-selected="true"]'))
   const toolRef = (toolPage.items.find(item => item.kind === 'tool_call') ?? toolPage.items.find(item => item.kind === 'tool_result')).itemRef
   const toolButton = await until(() => [...document.querySelectorAll('[data-en-key^="history-item-"]')].find(row => row.getAttribute('data-en-key') === 'history-item-' + toolRef))

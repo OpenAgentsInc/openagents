@@ -266,8 +266,11 @@ Contract:
 
 ### Real-Electron Codex trace acceptance
 
-The normal Desktop verification sweep now opens the built Electron app against
-the machine's real local Codex catalog and exercises the recorded-demo path.
+The normal Desktop verification sweep opens the built Electron app against a
+checked-in, privacy-safe Codex catalog and exercises the recorded-demo path.
+The deterministic gate never reads ambient `~/.codex` history. A separately
+identified real-history acceptance may opt in with
+`OPENAGENTS_DESKTOP_CODEX_SESSIONS`; that evidence is not the CI baseline.
 
 - Top-level rows are named, newest-first, and contain no child sessions.
 - A nested trace exposes its bounded agent topology, keyboard bindings,
@@ -275,7 +278,9 @@ the machine's real local Codex catalog and exercises the recorded-demo path.
   completeness equation directly from the typed page response.
 - Explicit conversation selection expands every branch; subsequent agent,
   item, paging, and inspector actions preserve the ref-only restoration record.
-- A real renderer reload restores the selected trace/item and expanded set.
+- A real renderer reload restores the selected trace/item and expanded set,
+  including a selected child whose canonical root remains in the visible
+  catalog window; missing, orphaned, cyclic, and off-window refs fail closed.
 - Smoke output contains only aggregate counts and readiness timings; it never
   prints titles, transcript text, paths, raw records, credentials, or refs.
 

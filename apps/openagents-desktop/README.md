@@ -51,12 +51,15 @@ the Pylon contract.
 ## Verify it
 
 ```bash
-bun test apps/openagents-desktop   # from repo root; or `bun run test` here
-bun run smoke                      # launches Electron, opens the Fleet deck,
-                                   # submits a chat turn, verifies both
-                                   # roles + clear-on-submit, exits 0/1
-bun run typecheck
+bun run --cwd apps/openagents-desktop verify
 ```
+
+`verify` is the canonical clean-tree gate: typecheck, the complete package test
+sweep, bundle build, and real headless Electron smoke/reload. The smoke uses a
+checked-in privacy-safe Codex history fixture and scripted account-connect
+child, never ambient `~/.codex` history or a default provider home. Set
+`OPENAGENTS_DESKTOP_CODEX_SESSIONS` only for a separately identified real-
+history acceptance run; that evidence is not the deterministic CI gate.
 
 Tests cover: pure `state -> View` component trees, pure transitions, the
 intent loop through the real registry, theme parity with the shared surface,
