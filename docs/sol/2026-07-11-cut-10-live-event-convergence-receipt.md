@@ -42,6 +42,12 @@ the full bounded live update on its existing event channel. Main resets all
 subscriptions before authenticated Sync replacement/sign-out; Gateway disposal
 closes the registry.
 
+The renderer-side typed adapter is also staged in a new file without changing
+the active chat consumer. It registers the decoded event listener before the
+subscribe request so an immediate authoritative snapshot cannot race past,
+buffers only the latest pre-ack update, fences foreign refs/generations, stale
+sequences, and cursor regression, and sends one exact unsubscribe on disposal.
+
 ## Verification
 
 - `@openagentsinc/khala-sync-client`: 169 pass, 3 explicitly gated live-smoke
@@ -55,8 +61,10 @@ closes the registry.
 - Desktop registry: 6 focused tests / 26 expectations and Desktop typecheck
   pass for generation replacement, stale fencing, capacity, metrics, failed
   open, and dispose-all behavior.
-- Full Desktop verification passes on the integrated #8712 tree: 284 tests /
-  1,467 expectations, production
+- Renderer adapter: 4 focused tests / 17 expectations cover initial-event
+  races, stale fencing, exact idempotent close, and unavailable cleanup.
+- Full Desktop verification passes on the integrated #8712 tree: 288 tests /
+  1,490 expectations, production
   bundle, every built Electron smoke stage, renderer reload restoration, and
   lifecycle teardown with zero active host slots.
 
@@ -69,7 +77,6 @@ tranche did not change their local execution, child activity, usage, composer,
 provider-account, Pylon, package, or lockfile paths.
 
 CUT-10 must still replace Desktop renderer `runtime-conversation.ts` polling
-with the landed subscription wire after the active chat-UI owner hands off that
-consumer, run the no-poll/built Electron checks, and attach the physical-mobile
-continuation receipt when the phone is available. Until then #8690 remains
-open.
+with the landed adapter after the active chat-UI owner hands off that consumer,
+run the no-poll built-Electron journey, and attach the physical-mobile
+continuation receipt when the phone is available. Until then #8690 remains open.

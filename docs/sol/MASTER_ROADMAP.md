@@ -540,7 +540,8 @@ product gaps are the R0–R7 Desktop/mobile continuity and reliability gates:
   shared Sync emits cursor-aware, generation-fenced, backpressure-coalesced
   conversation updates, mobile no longer polls conversation timelines, and the
   Desktop host registry/Gateway wire now bounds and fences subscription
-  lifetimes. #8712 released the Gateway files after landing its optional
+  lifetimes; a standalone renderer adapter handles initial-event races and
+  stale updates. #8712 released the Gateway files after landing its optional
   harness-selection field; its active chat-UI/local-child work remains separate
   from CUT-10's pending renderer consumer.
 - Grok is postponed by owner decision because the connected account is

@@ -48,7 +48,7 @@ proof for those later remote outcomes or automatically close #8566/#8597.
 | 7 | CUT-07 | [#8687](https://github.com/OpenAgentsInc/openagents/issues/8687) — closed; deterministic matrix receipt | R4 / command convergence | CUT-02 |
 | 8 | CUT-08 | [#8688](https://github.com/OpenAgentsInc/openagents/issues/8688) — closed; deterministic matrix receipt | R4 / event convergence | CUT-07 |
 | 9 | CUT-09 | [#8689](https://github.com/OpenAgentsInc/openagents/issues/8689) — deterministic matrix landed; physical receipt owner-deferred, still required | R4 / lifecycle convergence | CUT-08 |
-| 10 | CUT-10 | [#8690](https://github.com/OpenAgentsInc/openagents/issues/8690) — shared/mobile plus Desktop host/wire landed; renderer no-poll consumer and physical receipt pending | D1 / Runtime Gateway | CUT-09 deterministic matrix; physical receipt remains open by owner exception |
+| 10 | CUT-10 | [#8690](https://github.com/OpenAgentsInc/openagents/issues/8690) — shared/mobile, Desktop host/wire, and renderer adapter landed; no-poll consumer and physical receipt pending | D1 / Runtime Gateway | CUT-09 deterministic matrix; physical receipt remains open by owner exception |
 | 11 | CUT-11 | [#8691](https://github.com/OpenAgentsInc/openagents/issues/8691) | D1 / agent graph | CUT-06, CUT-10 |
 | 12 | CUT-12 | [#8692](https://github.com/OpenAgentsInc/openagents/issues/8692) | D1 / agent UX | CUT-01, CUT-11 |
 | 13 | CUT-13 | [#8693](https://github.com/OpenAgentsInc/openagents/issues/8693) | D2 / project-session contract | CUT-04, CUT-10 |
