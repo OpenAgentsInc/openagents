@@ -44,7 +44,7 @@ proof for those later remote outcomes or automatically close #8566/#8597.
 | 3 | CUT-03 | [#8683](https://github.com/OpenAgentsInc/openagents/issues/8683) — closed `4d875dcb4b` | D2 / topology | CUT-02 |
 | 4 | CUT-04 | [#8684](https://github.com/OpenAgentsInc/openagents/issues/8684) — closed `6ee87714d0` | D2 / topology | CUT-03 |
 | 5 | CUT-05 | [#8685](https://github.com/OpenAgentsInc/openagents/issues/8685) — closed `509fb27ea1` | FC5 / Claude runtime | CUT-02 |
-| 6 | CUT-06 | [#8686](https://github.com/OpenAgentsInc/openagents/issues/8686) | FC5 / runtime authority | CUT-05 |
+| 6 | CUT-06 | [#8686](https://github.com/OpenAgentsInc/openagents/issues/8686) — implementation `d98abda795`, live receipt pending | FC5 / runtime authority | CUT-05 |
 | 7 | CUT-07 | [#8687](https://github.com/OpenAgentsInc/openagents/issues/8687) | R4 / command convergence | CUT-02 |
 | 8 | CUT-08 | [#8688](https://github.com/OpenAgentsInc/openagents/issues/8688) | R4 / event convergence | CUT-07 |
 | 9 | CUT-09 | [#8689](https://github.com/OpenAgentsInc/openagents/issues/8689) | R4 / lifecycle convergence | CUT-08 |
@@ -260,6 +260,15 @@ published only after the verifier has committed the matching terminal result.
 Verification: race/leak suite plus one public-safe simultaneous runtime receipt.  
 Non-goals: Fleet UI.  
 Close rule: close #8640 only after this leaf and its live parent receipt pass.
+
+Implementation landed on 2026-07-11 at `d98abda795`. Scope-owned cancellation,
+loop join before supervisor-guard release, concurrent-restart fencing, delayed
+verification, rejected-verifier restart, stale/late lifecycle, and Codex/Claude
+cancellation oracles are green. The full Pylon and deploy sweeps are green. The
+deterministic evidence is recorded in the
+[`CUT-06 Fleet supervisor ordering receipt`](../pylon/2026-07-11-cut-06-fleet-supervisor-ordering-receipt.md).
+The issue remains open for its required simultaneous named-account production
+receipt; this status is not a fixture substitute or a parent closeout.
 
 ---
 

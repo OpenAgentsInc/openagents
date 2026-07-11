@@ -6,7 +6,8 @@
 - Status: active bounded owner-authorized live proof
 - Authority: [`../MASTER_ROADMAP.md`](../MASTER_ROADMAP.md), Revision 31
 - Child repairs: closed #8685 Claude owner-local permission authority; #8686
-  supervisor lifecycle and verifier/publication ordering
+  supervisor lifecycle and verifier/publication ordering, implementation
+  landed at `d98abda795` with the live parent receipt pending
 
 ## Outcome
 
@@ -32,8 +33,12 @@ still requires the owner's explicit authorization and a fresh bounded claim.
   named `codex` plus named `claude-pylon-3` execution with no default-home use,
   but both closeouts were rejected: Claude reported
   `claude_agent_execution_refused`; Codex used the wrong verifier entry point.
-- The broader Khala test also exposed a leaked supervisor-scope failure. These
-  are concrete remaining defects, not an accepted proof.
+- The broader Khala test exposed a leaked supervisor-scope failure. CUT-06
+  repairs it at `d98abda795`: cancellation reaches Codex/Claude execution, the
+  supervisor loop joins before its guard releases, concurrent restart is
+  fenced, and verifier/correlation evidence precedes terminal publication.
+  Focused, full Pylon, and integrated deploy gates pass. This deterministic
+  repair is not the still-required simultaneous accepted proof.
 - CUT-05 is closed at `509fb27ea1`: a real named `claude-pylon-3` assignment
   completed with an accepted closeout under a revocable, exact-scope,
   process-opaque owner-local grant. Public, bridge, org-cloud, replayed,
@@ -45,7 +50,8 @@ still requires the owner's explicit authorization and a fresh bounded claim.
 
 1. Preserve the closed CUT-05 exact-scope Claude authority and its restrictive
    public/remote defaults.
-2. Fix the remaining supervisor-scope leak and preserve deterministic cleanup.
+2. Preserve the landed supervisor-scope cleanup and verifier/publication
+   ordering under the production-path receipt.
 3. Bind each useful work unit to one correct package-script/single-argv verifier
    before dispatch.
 4. Run at least two simultaneous pinned public work units under one FleetRun:

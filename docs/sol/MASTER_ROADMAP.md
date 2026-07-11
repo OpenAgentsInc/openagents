@@ -2,7 +2,8 @@
 
 - Date: 2026-07-10
 - Updated: 2026-07-11 (live multi-agent supervision, portable agent graphs,
-  episode 248/249 UX contracts, and CUT-05 scoped Claude authority)
+  episode 248/249 UX contracts, CUT-05 scoped Claude authority, and CUT-06
+  deterministic supervisor/publication ordering)
 - Revision: 31
 - Status: canonical OpenAgents implementation roadmap
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
@@ -503,9 +504,12 @@ product gaps are the R0–R7 Desktop/mobile continuity and reliability gates:
   without touching default `~/.codex`. The first simultaneous named Codex+
   Claude attempt executed but both closeouts were rejected. CUT-05 then closed
   the Claude refusal at `509fb27ea1` with exact-scope owner-local authority and
-  a real accepted `claude-pylon-3` assignment. The parent still needs CUT-06's
-  supervisor/publication-ordering repair, the correct Codex verifier, and two
-  simultaneous accepted closeouts; R3/R7 remain in the client/program issues.
+  a real accepted `claude-pylon-3` assignment. CUT-06's deterministic
+  supervisor-scope, cancellation, restart, and verifier-before-publication
+  repair is landed at `d98abda795`; the leaf and parent still need the same
+  simultaneous named-account production receipt, the correct Codex verifier,
+  and two accepted closeouts before either closes; R3/R7 remain in the client/
+  program issues.
 - Grok is postponed by owner decision because the connected account is
   quota/payment exhausted. Its real accepted historical canary, HTTP-402
   state, adapters, and fixtures remain evidence/regression substrate; Grok is
@@ -535,7 +539,7 @@ into reliable Desktop/mobile software; it does not build another fleet system.
 | #8637 FC-1 | **closed** at `0892d57b3b`: integrated operator conversation → durable authority → registered standing Pylon → bounded closeout is fixture-proven; timing is 1.8s acknowledgment / 6.1s first claim / 8.6s first capacity; staging `00046-jpn` and production `00068-5t8` are deployed and smoke-proven | none; live owner-account execution is #8640 |
 | #8633 FC-2 | **closed** on the stack ending `d779c360c3`: production standing adapters, shared typed auto policy, restart-safe mixed claims, health rotation, durable execution outbox/server projection, and one integrated three-harness restart/usage fixture are proven | none; useful live account work is #8640, not reopened FC-2 residue |
 | #8639 FC-3 | **closed** at `1d84386cb5`: exact run/work/attempt authority, durable control outcomes, approval/steer binding, full evidence canvas, privacy-safe reconnect, migrations 0054–0057, and the integrated C1 fixture are proven; production `00069-h2k` deployed the stack | none; the live owner-account rung is #8640 |
-| #8640 FC-5 | CUT-05 closed the Claude refusal at `509fb27ea1` and real named `claude-pylon-3` execution is accepted; the earlier simultaneous parent run still had rejected Codex/Claude closeouts | complete CUT-06 supervisor/publication ordering, select the exact Codex verifier, then obtain two accepted closeouts in one owner-authorized run |
+| #8640 FC-5 | CUT-05 closed the Claude refusal at `509fb27ea1`; CUT-06's deterministic supervisor/publication repair is landed at `d98abda795`; the earlier simultaneous parent run still had rejected Codex/Claude closeouts | run the authenticated production path with the exact Codex verifier and obtain two accepted closeouts plus one durable typed steer/approval outcome |
 
 These rows are implementation receipts, not issue closure. The commit named in
 one row does not imply deployment or live proof, and later commits inherit the
@@ -1493,8 +1497,10 @@ parent; prose cross-links retain the other affected tracks.
 ambient-authority denial, and #8684 replaceability, lifecycle-disposal,
 correlation, and built-host receipt jointly satisfy the architecture parent.
 #8677 similarly delegates its fault matrix to #8687–#8689,
-and #8640 delegates its remaining supervisor/publication repair to #8686 before
-its parent-only live receipt. Closed #8685 supplies the scoped Claude authority.
+and #8640 delegates its supervisor/publication repair to #8686 before its
+parent-only live receipt. That repair is code-landed at `d98abda795`, but #8686
+remains open because its close rule includes the same live parent receipt.
+Closed #8685 supplies the scoped Claude authority.
 
 | Roadmap disposition | Issue | Purpose now |
 | --- | --- | --- |
@@ -1507,7 +1513,7 @@ its parent-only live receipt. Closed #8685 supplies the scoped Claude authority.
 | **P0 vertical slice** | #8676 | One real streamed Desktop conversation immediately continued on physical mobile |
 | **P0 fault proof** | #8677 | Bounded command/event lost-ack, duplicate, gap, offline, restart, revocation, and migration convergence |
 | **Closed P0 topology parent** | #8678 | #8683/#8684 complete the source-coupled topology, ambient-authority denial, substitution, disposal, correlation, and built-host receipt |
-| **P0 local-coding leaves** | #8686–#8707 open | Remaining ordered CUT-06–CUT-27 graph; CUT-01–CUT-05 are closed with receipts |
+| **P0 local-coding leaves** | #8686–#8707 open | Remaining ordered CUT-06–CUT-27 graph; CUT-01–CUT-05 are closed, and CUT-06 implementation is landed with its named-account live rung pending |
 | **Closed P0 D1 proof** | #8675 | Predictable real-Electron Codex trace workspace UX contract and public-safe acceptance receipt |
 | **Closed P0 D1 product slice** | #8674 | Loss-accounted historical Codex parent/subagent/tool rendering and the Desktop Agents/Item inspector, with valid scale and real nested-history receipts |
 
@@ -1562,8 +1568,8 @@ around and after that narrower installed-Desktop milestone.
    identities, generated clients, and authority policy.
 5. Run #8640 Phase A at the first explicit owner-authorized opportunity without
    blocking #8676/#8677 or the issue-ledger repair. Preserve CUT-05's closed
-   Claude authority, complete CUT-06's supervisor/publication ordering and the
-   correct Codex verifier selection, obtain two accepted closeouts, post the
+   Claude authority and CUT-06's landed supervisor/publication ordering, use
+   the correct Codex verifier selection, obtain two accepted closeouts, post the
    honest receipt, and close #8640. Do not keep it open for R3/R7 client work.
 6. Complete #8547's real brokered Firecracker workroom before #8636's live
    hybrid-routing acceptance. In parallel with non-colliding client work, prove
