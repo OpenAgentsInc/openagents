@@ -119,6 +119,9 @@ describe("Electron boundary (issue #8574 mandatory first-scaffold hardening)", (
     expect(main).toContain('"session", "native-session.enc"')
     expect(main).toContain("desktopSessionVault.recover().state")
     expect(main).toContain("recoverVerifiedDesktopSession")
+    expect(main).toContain("signInDesktopSession")
+    expect(main).toContain("signOutDesktopSession")
+    expect(main).toContain("openExternal: url => shell.openExternal(url)")
   })
 
   test("workspace filesystem authority starts only after an explicit directory choice", () => {

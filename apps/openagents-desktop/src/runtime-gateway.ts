@@ -14,7 +14,7 @@ type CapabilityState = Readonly<{
 
 export type DesktopRuntimeGateway = Readonly<{
   start: () => void
-  request: (request: DesktopRuntimeGatewayRequest) => DesktopRuntimeGatewayResponse
+  request: (request: DesktopRuntimeGatewayRequest) => DesktopRuntimeGatewayResponse | Promise<DesktopRuntimeGatewayResponse>
   subscribe: (listener: (event: DesktopRuntimeGatewayEvent) => void) => () => void
   dispose: () => void
 }>
@@ -53,9 +53,14 @@ export const desktopRuntimeCapabilities = (input: Readonly<{
 export const createDesktopRuntimeGateway = (
   capabilities: ReadonlyArray<CapabilityState> | (() => ReadonlyArray<CapabilityState>) =
     () => desktopRuntimeCapabilities({ sessionLocalState: "unavailable", syncLocalState: "unavailable" }),
+  sessionActions?: Readonly<{
+    signIn: () => Promise<Readonly<{ state: "verified" | "cancelled" | "unavailable" }>>
+    signOut: () => Promise<Readonly<{ state: "signed_out" | "unavailable" }>>
+  }>,
 ): DesktopRuntimeGateway => {
   let phase: "idle" | "ready" | "disposed" = "idle"
   let sequence = 0
+  let sessionActionInFlight = false
   const listeners = new Set<(event: DesktopRuntimeGatewayEvent) => void>()
 
   const emit = (next: "ready" | "disposed"): void => {
@@ -87,6 +92,56 @@ export const createDesktopRuntimeGateway = (
             protocolVersion: DesktopRuntimeGatewayProtocolVersion,
           },
         }
+      }
+      if (request.command.id === "session.sign_in") {
+        if (sessionActions === undefined || sessionActionInFlight) {
+          return Promise.resolve({
+            kind: "session_outcome",
+            commandId: request.commandId,
+            status: "unavailable",
+            phase: "unavailable",
+          })
+        }
+        sessionActionInFlight = true
+        return sessionActions.signIn()
+          .then(result => ({
+            kind: "session_outcome" as const,
+            commandId: request.commandId,
+            status: result.state === "verified" ? "completed" as const : result.state,
+            phase: result.state === "verified" ? "session_ready" as const : result.state === "cancelled" ? "signed_out" as const : "unavailable" as const,
+          }))
+          .catch(() => ({
+            kind: "session_outcome" as const,
+            commandId: request.commandId,
+            status: "unavailable" as const,
+            phase: "unavailable" as const,
+          }))
+          .finally(() => { sessionActionInFlight = false })
+      }
+      if (request.command.id === "session.sign_out") {
+        if (sessionActions === undefined || sessionActionInFlight) {
+          return Promise.resolve({
+            kind: "session_outcome",
+            commandId: request.commandId,
+            status: "unavailable",
+            phase: "unavailable",
+          })
+        }
+        sessionActionInFlight = true
+        return sessionActions.signOut()
+          .then(result => ({
+            kind: "session_outcome" as const,
+            commandId: request.commandId,
+            status: result.state === "signed_out" ? "completed" as const : "unavailable" as const,
+            phase: result.state,
+          }))
+          .catch(() => ({
+            kind: "session_outcome" as const,
+            commandId: request.commandId,
+            status: "unavailable" as const,
+            phase: "unavailable" as const,
+          }))
+          .finally(() => { sessionActionInFlight = false })
       }
       return {
         kind: "command_outcome",

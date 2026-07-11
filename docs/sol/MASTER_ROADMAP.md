@@ -455,8 +455,10 @@ records before claiming the first new slice.
   the native-session boundary before the gateway can project session readiness.
   The issuer now registers a distinct `openagents-desktop` public-client policy
   for exact literal-loopback GitHub code + S256 entry without colliding with
-  mobile `openagents://auth`. It does not yet have the local listener/browser/
-  exchange composition,
+  mobile `openagents://auth`. Electron main now composes the temporary listener,
+  browser launch, exchange, server-owner verification, encrypted save, and
+  dual-revocation sign-out behind argument-free Runtime Gateway commands. It
+  does not yet have the visible Effect Native entry/exit action,
   authoritative Sync threads or conversation services composed behind that
   gateway, a streamed provider-neutral event runtime, a complete coding
   workbench, or a visible server-authoritative Fleet cockpit.
@@ -1146,9 +1148,9 @@ bounded issues under the owning program.
    state builds/tests/smokes, honest capability manifests, no fake authority,
    and the existing hardened Desktop boundary.
 2. Continue F1/R1/R2 through both clients together from the published
-   `khala.identity_sync_contract.v1`: Desktop loopback listener/browser/
-   exchange over the landed issuer policy, encrypted vault, and recovered-
-   session validation/rotation,
+   `khala.identity_sync_contract.v1`: visible Desktop Effect Native session
+   entry/exit over the landed loopback host, issuer policy, encrypted vault,
+   and recovered-session validation/rotation,
    physical-device acceptance of the landed mobile PKCE/vault/recovery/signout
    composition,
    `device_session` through the serialized freeze lane,

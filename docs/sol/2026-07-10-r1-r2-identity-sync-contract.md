@@ -57,7 +57,7 @@ document must be reconciled — a client never "fixes" the disagreement locally.
 | --- | --- | --- | --- |
 | Web/browser | HttpOnly OpenAuth cookies `oa_access` + `oa_refresh` (`ACCESS_COOKIE`/`REFRESH_COOKIE`) | Server refreshes and propagates rotated cookies back on responses (`appendSessionCookies`); clear on sign-out (`appendClearSessionCookies`) | `auth-cookies.ts`, `auth/session.ts` (`makeBrowserSessionBoundary`, `VerifiedSession`) |
 | Mobile (native) | User **bearer** session against the exact OpenAuth public mobile client `openagents-khala-mobile`: canonical redirect `openagents://auth`, plus only the temporary rollback redirect `khala://auth`; both are GitHub authorization-code with S256 PKCE only. Tokens are held in platform secure storage only. | `makeUserBearerSessionBoundary` / `requireUserBearerSession`; refresh via stored OpenAuth refresh token; revocation via `revokeMobileAccessToken` / `revokeOpenAuthRefreshToken`; deletion receipts via `hasMobileAccountDeletionReceipt` | `auth/mobile-session.ts` |
-| Desktop (native/Electron) | Same **user bearer session class as mobile** (a native OpenAgents client, not a browser). Interactive entry uses distinct public client `openagents-desktop`, GitHub code + S256, and exact RFC 8252 loopback `http://127.0.0.1:{port}/auth/callback`; it never claims mobile `openagents://`. Tokens live in the **main process/OS keychain only**; the renderer never sees a token. | Same boundary as mobile | `auth/mobile-session.ts` boundary reused; #8661 lands custody, #8662 recovery validation/rotation, and #8663 the issuer redirect policy; listener/browser/exchange composition remains |
+| Desktop (native/Electron) | Same **user bearer session class as mobile** (a native OpenAgents client, not a browser). Interactive entry uses distinct public client `openagents-desktop`, GitHub code + S256, and exact RFC 8252 loopback `http://127.0.0.1:{port}/auth/callback`; it never claims mobile `openagents://`. Tokens live in the **main process/OS keychain only**; the renderer never sees a token. | Same boundary as mobile | `auth/mobile-session.ts` boundary reused; #8661 lands custody, #8662 recovery, #8663 issuer policy, and #8664 the host listener/browser/exchange/sign-out composition; visible UI remains |
 | Agent/machine | `OPENAGENTS_AGENT_TOKEN` bearer; registered-Pylon bearer for Pylon claim/steering routes | Out of R1 client scope; unchanged | `auth/bearer-token.ts`, Pylon routes |
 
 Provider credentials (Codex/Claude/Grok device auth, GitHub) are **not**
@@ -110,6 +110,11 @@ Reserved (do not implement until Sol freezes the entity schema in
   client `openagents-desktop`, literal IPv4 loopback, required dynamic
   non-privileged port, exact `/auth/callback`, GitHub code + S256, and no
   query/fragment/userinfo. The listener/browser/exchange composition remains.
+- Desktop host entry/exit composition is landed in #8664: temporary literal-
+  loopback listener, cryptographic state/verifier/challenge, exact exchange,
+  server-owner verification and rotation-before-save, plus dual-revocation
+  proof before local clear. Runtime Gateway commands are argument-free and
+  tokenless; the visible Effect Native action remains.
 - Mobile sign-in against the exact `openagents-khala-mobile` OpenAuth client
   with secure-storage recovery (port the pattern from frozen
   `clients/khala-mobile` — pattern only, not the component tree). Use
@@ -331,7 +336,7 @@ reported per item; no rung implies the next.
 
 | Already exists (bind, do not rebuild) | Must be built |
 | --- | --- |
-| Protocol/envelope/cursors/tombstones/`must_refetch` (`khala-sync`) | Desktop loopback listener/browser/exchange over landed #8661–#8663 custody, recovery, and issuer policy (R1.5) |
+| Protocol/envelope/cursors/tombstones/`must_refetch` (`khala-sync`) | Visible Desktop Effect Native session entry/exit over landed #8661–#8664 host boundaries (R1.5) |
 | Chat + fleet entity schemas and mutators (`khala-sync`/`-server`) | Physical-device mobile auth acceptance and authenticated Sync composition over landed #8658–#8660 |
 | Client session/store/overlay/offline/reconnect + fault tests (`khala-sync-client`) | `device_session` projection + `identity.revokeSession` (after §R1.4 freeze) |
 | Server session boundaries, refresh propagation, revocation (`workers/api/src/auth*`) | Authenticated Desktop/mobile session composition over the landed local adapters |

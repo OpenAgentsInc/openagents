@@ -54,6 +54,10 @@ import {
   type DesktopSessionVault,
 } from "./desktop-session-vault.ts"
 import { recoverVerifiedDesktopSession } from "./desktop-session-recovery.ts"
+import {
+  signInDesktopSession,
+  signOutDesktopSession,
+} from "./desktop-session-pkce.ts"
 
 const here = import.meta.dirname
 const smokeMode = process.env.OPENAGENTS_DESKTOP_SMOKE === "1"
@@ -77,7 +81,28 @@ let desktopSessionState: "signed_out" | "credential_present_unverified" | "sessi
 const runtimeGateway = createDesktopRuntimeGateway(() => desktopRuntimeCapabilities({
   sessionLocalState: desktopSessionState,
   syncLocalState: desktopSyncHost?.status().state === "local_ready" ? "ready" : "unavailable",
-}))
+}), {
+  signIn: async () => {
+    if (desktopSessionVault === null) return { state: "unavailable" }
+    const previous = desktopSessionState
+    const result = await signInDesktopSession({
+      vault: desktopSessionVault,
+      openExternal: url => shell.openExternal(url),
+    })
+    desktopSessionState = result.state === "verified"
+      ? "session_ready"
+      : result.state === "cancelled"
+        ? previous
+        : "unavailable"
+    return result
+  },
+  signOut: async () => {
+    if (desktopSessionVault === null) return { state: "unavailable" }
+    const result = await signOutDesktopSession({ vault: desktopSessionVault })
+    desktopSessionState = result.state
+    return result
+  },
+})
 
 const isTrustedRuntimeGatewaySender = (event: IpcMainInvokeEvent): boolean => {
   const frame = event.senderFrame

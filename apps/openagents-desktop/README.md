@@ -123,6 +123,15 @@ native-session GET. Main rewrites valid OpenAuth rotation before projecting
 custody but reports unavailable on transient or malformed-response failure.
 Verified session readiness remains distinct from live network Sync.
 
+Electron main now also composes the frozen Desktop loopback public-client
+policy end to end. It binds one temporary `127.0.0.1` listener, generates and
+validates cryptographic state + S256 PKCE, opens the exact authorize request,
+exchanges the callback code, verifies the server owner, and writes encrypted
+custody. Sign-out requires proof that both credential classes were revoked
+before clear. The Runtime Gateway exposes only argument-free entry/exit
+commands and bounded outcomes; a visible renderer action remains the next UI
+leaf.
+
 **One catalog, many hosts.** The transcript-message and composer
 compositions are deliberately structured around the shared Effect Native chat
 contract, and `src/renderer/shell.test.ts` asserts the typed shape. New

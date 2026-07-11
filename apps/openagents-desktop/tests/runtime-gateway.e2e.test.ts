@@ -17,7 +17,7 @@ describe("Desktop Runtime Gateway", () => {
     expect(openAgentsDesktopUxContractRegistry.contracts.find(contract => contract.contractId === contractId)?.state).toBe("enforced")
   })
 
-  test("round-trips the renderer request through both schema boundaries", () => {
+  test("round-trips the renderer request through both schema boundaries", async () => {
     const gateway = createDesktopRuntimeGateway()
     gateway.start()
     const rendererValue: unknown = {
@@ -27,7 +27,7 @@ describe("Desktop Runtime Gateway", () => {
     }
     const mainRequest = decodeDesktopRuntimeGatewayRequest(rendererValue)
     if (mainRequest === null) throw new Error("preload rejected a valid request")
-    const rendererResponse = decodeDesktopRuntimeGatewayResponse(gateway.request(mainRequest))
+    const rendererResponse = decodeDesktopRuntimeGatewayResponse(await gateway.request(mainRequest))
     expect(rendererResponse).toMatchObject({
       kind: "query_result",
       requestId: "renderer-bootstrap",
@@ -35,10 +35,10 @@ describe("Desktop Runtime Gateway", () => {
     })
   })
 
-  test("bootstraps a versioned truthful capability projection", () => {
+  test("bootstraps a versioned truthful capability projection", async () => {
     const gateway = createDesktopRuntimeGateway()
     gateway.start()
-    const response = gateway.request({
+    const response = await gateway.request({
       kind: "query",
       requestId: "query-1",
       query: { id: "runtime.bootstrap" },
@@ -62,10 +62,10 @@ describe("Desktop Runtime Gateway", () => {
     })
   })
 
-  test("returns a durable-shaped unavailable outcome instead of optimistic command success", () => {
+  test("returns a durable-shaped unavailable outcome instead of optimistic command success", async () => {
     const gateway = createDesktopRuntimeGateway()
     gateway.start()
-    expect(gateway.request({
+    expect(await gateway.request({
       kind: "command",
       commandId: "command-1",
       command: { id: "conversation.interrupt", threadRef: "thread-1" },
@@ -77,14 +77,72 @@ describe("Desktop Runtime Gateway", () => {
     })
   })
 
+  // Oracle for openagents_desktop.session.loopback_pkce_entry_exit.v1.
+  test("routes bounded session commands without credential-bearing arguments", async () => {
+    const calls: Array<string> = []
+    const gateway = createDesktopRuntimeGateway(undefined, {
+      signIn: async () => { calls.push("sign-in"); return { state: "verified" } },
+      signOut: async () => { calls.push("sign-out"); return { state: "signed_out" } },
+    })
+    gateway.start()
+    await expect(gateway.request({
+      kind: "command",
+      commandId: "sign-in-1",
+      command: { id: "session.sign_in" },
+    })).resolves.toEqual({
+      kind: "session_outcome",
+      commandId: "sign-in-1",
+      status: "completed",
+      phase: "session_ready",
+    })
+    await expect(gateway.request({
+      kind: "command",
+      commandId: "sign-out-1",
+      command: { id: "session.sign_out" },
+    })).resolves.toEqual({
+      kind: "session_outcome",
+      commandId: "sign-out-1",
+      status: "completed",
+      phase: "signed_out",
+    })
+    expect(calls).toEqual(["sign-in", "sign-out"])
+  })
+
+  test("keeps native-session entry and exit single-flight", async () => {
+    let finish: ((value: { state: "verified" }) => void) | undefined
+    const firstAction = new Promise<{ state: "verified" }>(resolve => { finish = resolve })
+    const gateway = createDesktopRuntimeGateway(undefined, {
+      signIn: () => firstAction,
+      signOut: async () => ({ state: "signed_out" }),
+    })
+    gateway.start()
+    const first = gateway.request({
+      kind: "command",
+      commandId: "first",
+      command: { id: "session.sign_in" },
+    })
+    expect(await gateway.request({
+      kind: "command",
+      commandId: "overlap",
+      command: { id: "session.sign_out" },
+    })).toEqual({
+      kind: "session_outcome",
+      commandId: "overlap",
+      status: "unavailable",
+      phase: "unavailable",
+    })
+    finish?.({ state: "verified" })
+    expect(await first).toMatchObject({ status: "completed", phase: "session_ready" })
+  })
+
   // Oracle for openagents_desktop.session.recovered_validation_rotation.v1.
-  test("projects only bounded session readiness after host verification", () => {
+  test("projects only bounded session readiness after host verification", async () => {
     const gateway = createDesktopRuntimeGateway(() => desktopRuntimeCapabilities({
       sessionLocalState: "session_ready",
       syncLocalState: "ready",
     }))
     gateway.start()
-    const response = gateway.request({
+    const response = await gateway.request({
       kind: "query",
       requestId: "verified-session",
       query: { id: "runtime.bootstrap" },
@@ -101,7 +159,7 @@ describe("Desktop Runtime Gateway", () => {
     expect(serialized).not.toContain("refreshToken")
   })
 
-  test("owns ordered lifecycle delivery and terminal disposal", () => {
+  test("owns ordered lifecycle delivery and terminal disposal", async () => {
     const gateway = createDesktopRuntimeGateway()
     const events: unknown[] = []
     const unsubscribe = gateway.subscribe(event => events.push(event))
@@ -113,7 +171,7 @@ describe("Desktop Runtime Gateway", () => {
       { kind: "runtime.lifecycle", phase: "disposed", protocolVersion: 1, sequence: 2 },
     ])
     expect(events.every(event => decodeDesktopRuntimeGatewayEvent(event) !== null)).toBe(true)
-    expect(gateway.request({ kind: "query", requestId: "late", query: { id: "runtime.bootstrap" } })).toEqual({
+    expect(await gateway.request({ kind: "query", requestId: "late", query: { id: "runtime.bootstrap" } })).toEqual({
       kind: "request_rejected",
       reason: "gateway_disposed",
     })
@@ -122,6 +180,11 @@ describe("Desktop Runtime Gateway", () => {
   test("rejects unknown operations at the schema boundary", () => {
     expect(decodeDesktopRuntimeGatewayRequest({ kind: "query", requestId: "q", query: { id: "shell.exec" } })).toBeNull()
     expect(decodeDesktopRuntimeGatewayRequest({ kind: "command", commandId: "c", command: { id: "arbitrary", argv: [] } })).toBeNull()
+    expect(decodeDesktopRuntimeGatewayRequest({ kind: "command", commandId: "c", command: { id: "session.sign_in", token: "forbidden" } })).toEqual({
+      kind: "command",
+      commandId: "c",
+      command: { id: "session.sign_in" },
+    })
     expect(decodeDesktopRuntimeGatewayResponse({ kind: "command_outcome", commandId: "c", status: "completed" })).toBeNull()
   })
 })

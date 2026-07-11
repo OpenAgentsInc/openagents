@@ -30,10 +30,14 @@ export const DesktopRuntimeGatewayRequestSchema = Schema.Union([
   Schema.Struct({
     kind: Schema.Literal("command"),
     commandId: Schema.String,
-    command: Schema.Struct({
-      id: Schema.Literal("conversation.interrupt"),
-      threadRef: Schema.String,
-    }),
+    command: Schema.Union([
+      Schema.Struct({
+        id: Schema.Literal("conversation.interrupt"),
+        threadRef: Schema.String,
+      }),
+      Schema.Struct({ id: Schema.Literal("session.sign_in") }),
+      Schema.Struct({ id: Schema.Literal("session.sign_out") }),
+    ]),
   }),
 ])
 export type DesktopRuntimeGatewayRequest = typeof DesktopRuntimeGatewayRequestSchema.Type
@@ -56,6 +60,12 @@ export const DesktopRuntimeGatewayResponseSchema = Schema.Union([
     commandId: Schema.String,
     status: Schema.Literal("unavailable"),
     reason: Schema.String,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("session_outcome"),
+    commandId: Schema.String,
+    status: Schema.Literals(["completed", "cancelled", "unavailable"]),
+    phase: Schema.Literals(["session_ready", "signed_out", "unavailable"]),
   }),
   Schema.Struct({
     kind: Schema.Literal("request_rejected"),

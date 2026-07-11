@@ -548,6 +548,12 @@ More specific invariant ledgers apply inside imported apps and packages.
   authorization code + PKCE S256, a bounded challenge, a non-privileged port,
   and no userinfo/query/fragment; it rejects localhost, non-loopback, HTTPS,
   custom schemes, missing ports, and mobile-client reuse.
+- The Desktop callback listener binds only literal IPv4 loopback on an
+  OS-assigned port, accepts only the exact path, method, state, and non-empty
+  code, never reflects callback secrets, and closes after one terminal result
+  or a bounded timeout. Electron main exchanges the verifier, verifies the
+  server owner, saves any immediate rotation, and requires proof of both
+  access and refresh revocation before clearing on sign-out.
 - Mobile recovery may send the refresh token only to
   `GET /api/mobile/auth/session` via the bounded `X-OpenAgents-Refresh-Token`
   header. The existing OpenAuth verifier owns rotation; replacement tokens are

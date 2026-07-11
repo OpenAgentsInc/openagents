@@ -17,15 +17,16 @@ schema-decoded query/command/event seam.
 
 - Bootstrap reports the gateway lifecycle and only truthful capability state.
 - Unsupported conversation commands return `unavailable`, never accepted or
-  completed.
+  completed; argument-free native-session commands return only bounded phase
+  outcomes after the host action finishes.
 - Lifecycle events have a monotonic sequence and an owned disposer.
 - Electron main validates the top-level bundled renderer before serving a
   request.
 - Tokens, credentials, URLs, raw runtime events, arbitrary IPC, `MessagePort`,
   filesystem/process handles, and command arguments cannot enter the contract.
 
-This first slice does not claim OpenAgents sign-in, Khala Sync, or provider
-streaming; those capabilities remain explicitly unavailable.
+The Gateway now carries bounded OpenAgents entry/exit commands. Khala Sync and
+provider streaming remain explicitly unavailable.
 
 Contract:
 `openagents_desktop.seam.runtime_gateway_closed_protocol.v1`.
@@ -84,6 +85,29 @@ sign-in.
 
 Contract:
 `openagents_desktop.session.recovered_validation_rotation.v1`.
+
+### Loopback PKCE entry and fail-closed sign-out
+
+Electron main owns the complete Desktop-native OpenAuth host flow.
+
+- It binds literal `127.0.0.1` on an OS-assigned port and accepts only the
+  exact callback method/path/state/code.
+- It generates cryptographic state and S256 verifier/challenge, launches the
+  exact `openagents-desktop` GitHub authorization request, and closes the
+  listener after one terminal callback or timeout.
+- The callback page is no-store and never reflects code, state, tokens, or
+  errors.
+- Code exchange is followed by server-owner verification and immediate
+  rotation persistence before encrypted custody becomes verified.
+- Sign-out clears locally only after the server proves access and refresh
+  revocation; failure retains custody.
+- Runtime Gateway session commands have no arguments and return only bounded
+  completed/cancelled/unavailable phase.
+
+This host guarantee does not claim a visible renderer button, live Sync,
+package identity, or physical acceptance.
+
+Contract: `openagents_desktop.session.loopback_pkce_entry_exit.v1`.
 
 ### Recent local Codex chats
 
@@ -176,6 +200,12 @@ The recovered-session oracle is:
 
 ```sh
 bun test apps/openagents-desktop/tests/desktop-session-recovery.test.ts
+```
+
+The loopback PKCE entry/exit oracle is:
+
+```sh
+bun test apps/openagents-desktop/tests/desktop-session-pkce.test.ts
 ```
 
 ## Not guaranteed yet

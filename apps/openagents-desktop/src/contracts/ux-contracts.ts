@@ -5,7 +5,7 @@ import {
 
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument = {
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-10.7",
+  version: "2026-07-10.8",
   contracts: [
     {
       contractId: "openagents_desktop.seam.codex_recent_history_projection.v1",
@@ -45,7 +45,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
       blockerRefs: [],
       source: { channel: "owner-codex-session", statedBy: "owner", statedOn: "2026-07-10" },
       statement: "The signed Desktop renderer reaches host runtime state through one versioned closed query/command/event protocol. Unknown requests fail schema decoding, unavailable commands never appear completed, lifecycle events are ordered and disposable, and the renderer never receives runtime credentials or a generic transport.",
-      authorityBoundary: "Electron main owns the Runtime Gateway and validates the invoking top-level bundled renderer. The renderer receives bounded capability/lifecycle projections only; this contract grants no OpenAgents authentication, Khala Sync authority, provider credential, loopback URL, raw IPC channel, MessagePort, filesystem handle, process handle, or raw runtime event.",
+      authorityBoundary: "Electron main owns the Runtime Gateway and validates the invoking top-level bundled renderer. The renderer may request bounded OpenAgents session entry/exit commands but receives only their typed outcome; it gets no credential, callback/authorize URL, Khala Sync authority, provider credential, raw IPC channel, MessagePort, filesystem handle, process handle, or raw runtime event.",
       seam: { client: "apps/openagents-desktop/src/preload.cts", server: "apps/openagents-desktop/src/runtime-gateway.ts" },
       evidenceRefs: ["apps/openagents-desktop/src/runtime-gateway-contract.ts", "apps/openagents-desktop/tests/electron-boundary.test.ts"],
       oracles: [{ id: "runtime_gateway_closed_protocol.e2e", kind: "bun-test", mode: "e2e", ref: "apps/openagents-desktop/tests/runtime-gateway.e2e.test.ts", description: "Round-trips schema-decoded renderer requests and proves truthful capability, unavailable command, lifecycle ordering, disposal, and rejection behavior." }],
@@ -95,6 +95,23 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         { id: "desktop_session_recovery.gateway_projection", kind: "bun-test", mode: "e2e", ref: "apps/openagents-desktop/tests/runtime-gateway.e2e.test.ts", description: "Proves the renderer-facing Runtime Gateway projects only bounded verified readiness without owner or credential fields." },
       ],
       verification: "Desktop recovery, Runtime Gateway, and Electron-boundary suites plus typecheck/build enforce both sides of the host-only validation seam.",
+    },
+    {
+      contractId: "openagents_desktop.session.loopback_pkce_entry_exit.v1",
+      state: "enforced",
+      surface: "openagents-desktop",
+      productArea: "native OpenAgents session entry and exit",
+      enforcementTier: "test-sweep",
+      blockerRefs: [],
+      source: { channel: "owner-codex-session", statedBy: "owner", statedOn: "2026-07-10" },
+      statement: "Desktop main binds a temporary literal-loopback listener, launches the exact public-client GitHub code + S256 request, validates callback state, verifies the server owner before encrypted custody, and revokes both credential classes before local sign-out.",
+      authorityBoundary: "The Runtime Gateway accepts only argument-free session entry/exit commands and returns bounded completed/cancelled/unavailable phase. No callback, authorize URL, state, code, verifier, owner, access token, or refresh token enters preload, renderer, logs, receipts, or public errors; verified session is not live Sync.",
+      evidenceRefs: ["apps/openagents-desktop/src/desktop-session-pkce.ts", "docs/sol/issues/desktop-session-pkce.md", "github:OpenAgentsInc/openagents#8664"],
+      oracles: [
+        { id: "desktop_session_pkce.loopback_entry_exit", kind: "bun-test", mode: "unit", ref: "apps/openagents-desktop/tests/desktop-session-pkce.test.ts", description: "Proves literal-loopback lifecycle, callback state, public-safe response, exact authorize/exchange tuples, server owner verification, immediate rotation, timeout/cancel, and dual revocation before clear." },
+        { id: "desktop_session_pkce.gateway_commands", kind: "bun-test", mode: "e2e", ref: "apps/openagents-desktop/tests/runtime-gateway.e2e.test.ts", description: "Proves argument-free session commands round-trip through the closed Runtime Gateway and return only bounded phase outcomes." },
+      ],
+      verification: "Desktop PKCE, Runtime Gateway, and Electron-boundary suites plus typecheck/build enforce host composition without a live browser or GUI in tests.",
     },
   ],
 }
