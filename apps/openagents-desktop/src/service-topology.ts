@@ -36,6 +36,22 @@ export type DesktopOwnedResource = Readonly<{
   disposesWith: DesktopServiceScope | "external"
 }>
 
+export type DesktopServiceCacheKey = Readonly<{
+  scope: DesktopServiceScope | "none"
+  parts: ReadonlyArray<string>
+}>
+
+export type DesktopServiceFreshness = Readonly<{
+  source: "static_manifest" | "event_stream" | "request_response" | "filesystem_snapshot" | "database_subscription" | "renderer_state" | "session_state"
+  maxAge: "process_lifetime" | "work_context_lifetime" | "conversation_lifetime" | "request_lifetime" | "event_driven" | "animation_frame"
+  invalidatesOn: ReadonlyArray<string>
+}>
+
+export type DesktopServiceDisposal = Readonly<{
+  disposesWith: DesktopServiceScope | "external"
+  invalidatesOn: ReadonlyArray<string>
+}>
+
 export type DesktopServiceTopologyEntry = Readonly<{
   id: string
   label: string
@@ -44,6 +60,9 @@ export type DesktopServiceTopologyEntry = Readonly<{
   modules: ReadonlyArray<string>
   dependsOn: ReadonlyArray<string>
   authority: ReadonlyArray<DesktopAuthority>
+  cacheKey?: DesktopServiceCacheKey
+  freshness?: DesktopServiceFreshness
+  disposal?: DesktopServiceDisposal
   publicSchemas?: ReadonlyArray<DesktopPublicSchemaIdentity>
   ownedResources?: ReadonlyArray<DesktopOwnedResource>
   perimeter?: true
@@ -62,6 +81,11 @@ export type DesktopServiceTopologyViolation = Readonly<{
     | "duplicate_public_schema_identity"
     | "ambient_authority"
     | "unowned_resource"
+    | "missing_cache_key"
+    | "invalid_cache_key_scope"
+    | "missing_freshness"
+    | "missing_disposal"
+    | "invalid_disposal_scope"
     | "internal_run_promise_escape"
   serviceId: string
   detail: string
@@ -112,6 +136,19 @@ export const desktopServiceTopology = [
       "preload-bridge",
     ],
     authority: ["runtime", "policy", "clock"],
+    cacheKey: {
+      scope: "none",
+      parts: [],
+    },
+    freshness: {
+      source: "static_manifest",
+      maxAge: "process_lifetime",
+      invalidatesOn: ["app-restart", "protocol-version-change"],
+    },
+    disposal: {
+      disposesWith: "process",
+      invalidatesOn: ["app-shutdown"],
+    },
     perimeter: true,
     ownedResources: [{ kind: "native_handle", disposesWith: "process" }],
     failureTaxonomy: "invariant_defect",
@@ -131,6 +168,19 @@ export const desktopServiceTopology = [
       "codex-history-reader",
     ],
     authority: ["runtime", "policy"],
+    cacheKey: {
+      scope: "process",
+      parts: ["runtime_gateway.protocol_version", "host_session_generation"],
+    },
+    freshness: {
+      source: "event_stream",
+      maxAge: "event_driven",
+      invalidatesOn: ["gateway-dispose", "session-change", "sync-host-event"],
+    },
+    disposal: {
+      disposesWith: "process",
+      invalidatesOn: ["gateway-dispose", "app-shutdown"],
+    },
     publicSchemas: runtimeGatewaySchemas.map(name => ({
       name,
       module: "apps/openagents-desktop/src/runtime-gateway-contract.ts",
@@ -149,6 +199,19 @@ export const desktopServiceTopology = [
     ],
     dependsOn: [],
     authority: ["identity", "transport", "clock"],
+    cacheKey: {
+      scope: "process",
+      parts: ["safe_storage_profile", "session_store_generation"],
+    },
+    freshness: {
+      source: "session_state",
+      maxAge: "event_driven",
+      invalidatesOn: ["sign-in", "sign-out", "token-refresh", "recovery-listener-close"],
+    },
+    disposal: {
+      disposesWith: "process",
+      invalidatesOn: ["app-shutdown"],
+    },
     ownedResources: [
       { kind: "file", disposesWith: "process" },
       { kind: "http_listener", disposesWith: "request_or_command" },
@@ -167,6 +230,19 @@ export const desktopServiceTopology = [
     ],
     dependsOn: ["desktop-session-custody"],
     authority: ["database", "identity", "transport"],
+    cacheKey: {
+      scope: "process",
+      parts: ["owner_user_id", "sync_database_path"],
+    },
+    freshness: {
+      source: "database_subscription",
+      maxAge: "event_driven",
+      invalidatesOn: ["session-owner-change", "local-mutation", "remote-sync-event"],
+    },
+    disposal: {
+      disposesWith: "process",
+      invalidatesOn: ["unlink", "app-shutdown"],
+    },
     publicSchemas: [
       {
         name: "KhalaSyncSchema",
@@ -190,6 +266,19 @@ export const desktopServiceTopology = [
     ],
     dependsOn: [],
     authority: ["filesystem", "policy"],
+    cacheKey: {
+      scope: "work_context",
+      parts: ["workspace_root_uri", "workspace_selection_generation"],
+    },
+    freshness: {
+      source: "request_response",
+      maxAge: "request_lifetime",
+      invalidatesOn: ["workspace-select", "file-save", "git-refresh"],
+    },
+    disposal: {
+      disposesWith: "work_context",
+      invalidatesOn: ["workspace-switch", "app-shutdown"],
+    },
     publicSchemas: workspaceSchemas.map(name => ({
       name,
       module: "apps/openagents-desktop/src/workspace-contract.ts",
@@ -207,6 +296,19 @@ export const desktopServiceTopology = [
     ],
     dependsOn: [],
     authority: ["filesystem"],
+    cacheKey: {
+      scope: "process",
+      parts: ["codex_history_root"],
+    },
+    freshness: {
+      source: "filesystem_snapshot",
+      maxAge: "process_lifetime",
+      invalidatesOn: ["history-root-change", "history-worker-restart"],
+    },
+    disposal: {
+      disposesWith: "external",
+      invalidatesOn: ["history-worker-error", "process-exit"],
+    },
     publicSchemas: [
       {
         name: "CodexHistoryCatalog",
@@ -231,6 +333,19 @@ export const desktopServiceTopology = [
     ],
     dependsOn: ["workspace-root"],
     authority: ["filesystem", "transport"],
+    cacheKey: {
+      scope: "none",
+      parts: [],
+    },
+    freshness: {
+      source: "request_response",
+      maxAge: "request_lifetime",
+      invalidatesOn: ["thread-read", "message-write", "fallback-turn"],
+    },
+    disposal: {
+      disposesWith: "conversation_or_run",
+      invalidatesOn: ["conversation-replaced", "app-shutdown"],
+    },
     publicSchemas: chatSchemas.map(name => ({
       name,
       module: "apps/openagents-desktop/src/chat-contract.ts",
@@ -250,6 +365,19 @@ export const desktopServiceTopology = [
     ],
     dependsOn: ["workspace-root"],
     authority: ["provider", "policy", "transport"],
+    cacheKey: {
+      scope: "none",
+      parts: [],
+    },
+    freshness: {
+      source: "request_response",
+      maxAge: "request_lifetime",
+      invalidatesOn: ["stage-request-finished", "stage-request-cancelled"],
+    },
+    disposal: {
+      disposesWith: "request_or_command",
+      invalidatesOn: ["stage-request-finished", "stage-request-cancelled"],
+    },
     publicSchemas: [
       {
         name: "FleetStageRequest",
@@ -270,6 +398,19 @@ export const desktopServiceTopology = [
     ],
     dependsOn: [],
     authority: ["provider", "transport", "identity"],
+    cacheKey: {
+      scope: "request_or_command",
+      parts: ["codex_account_ref", "connect_request_id"],
+    },
+    freshness: {
+      source: "request_response",
+      maxAge: "request_lifetime",
+      invalidatesOn: ["connect-request-finished", "connect-request-cancelled"],
+    },
+    disposal: {
+      disposesWith: "request_or_command",
+      invalidatesOn: ["connect-request-finished", "connect-request-cancelled"],
+    },
     publicSchemas: [
       {
         name: "CodexAccountsResult",
@@ -298,6 +439,19 @@ export const desktopServiceTopology = [
       "codex-connect-host",
     ],
     authority: ["foreign_host"],
+    cacheKey: {
+      scope: "foreign_host_or_view",
+      parts: ["browser_window_id", "preload_protocol_version"],
+    },
+    freshness: {
+      source: "event_stream",
+      maxAge: "event_driven",
+      invalidatesOn: ["ipc-reconnect", "window-close"],
+    },
+    disposal: {
+      disposesWith: "foreign_host_or_view",
+      invalidatesOn: ["ipc-reconnect", "window-close"],
+    },
     perimeter: true,
     failureTaxonomy: "recoverable_domain_refusal",
   },
@@ -316,6 +470,19 @@ export const desktopServiceTopology = [
     ],
     dependsOn: ["preload-bridge"],
     authority: ["view_projection"],
+    cacheKey: {
+      scope: "renderer_view",
+      parts: ["browser_window_id", "renderer_route", "state_generation"],
+    },
+    freshness: {
+      source: "renderer_state",
+      maxAge: "animation_frame",
+      invalidatesOn: ["renderer-command", "host-event", "view-remount"],
+    },
+    disposal: {
+      disposesWith: "renderer_view",
+      invalidatesOn: ["view-remount", "renderer-close"],
+    },
     failureTaxonomy: "telemetry_degradation",
   },
 ] as const satisfies ReadonlyArray<DesktopServiceTopologyEntry>
@@ -394,6 +561,31 @@ export const validateDesktopServiceTopology = (
     }
     if ((entry.ambientAuthority?.length ?? 0) > 0) {
       violations.push(violation("ambient_authority", entry.id, `Ambient authority: ${entry.ambientAuthority?.join(", ")}.`))
+    }
+    if (entry.cacheKey === undefined) {
+      violations.push(violation("missing_cache_key", entry.id, "Services must declare a cache key or explicit no-cache state."))
+    } else if (entry.cacheKey.scope === "none" && entry.cacheKey.parts.length !== 0) {
+      violations.push(violation("invalid_cache_key_scope", entry.id, "No-cache services may not declare cache-key parts."))
+    } else if (entry.cacheKey.scope !== "none" && entry.cacheKey.parts.length === 0) {
+      violations.push(violation("missing_cache_key", entry.id, "Cached services must declare non-empty cache-key parts."))
+    } else if (entry.cacheKey.scope !== "none" && entry.cacheKey.scope !== entry.scope) {
+      violations.push(violation(
+        "invalid_cache_key_scope",
+        entry.id,
+        `Cache key scope ${entry.cacheKey.scope} must match service scope ${entry.scope}.`,
+      ))
+    }
+    if (entry.freshness === undefined || entry.freshness.invalidatesOn.length === 0) {
+      violations.push(violation("missing_freshness", entry.id, "Services must declare freshness invalidation."))
+    }
+    if (entry.disposal === undefined || entry.disposal.invalidatesOn.length === 0) {
+      violations.push(violation("missing_disposal", entry.id, "Services must declare their disposal owner."))
+    } else if (entry.disposal.disposesWith !== "external" && scopeRank[entry.disposal.disposesWith] < scopeRank[entry.scope]) {
+      violations.push(violation(
+        "invalid_disposal_scope",
+        entry.id,
+        `Service disposal escapes to wider ${entry.disposal.disposesWith} scope instead of owning ${entry.scope} scope.`,
+      ))
     }
     for (const resource of entry.ownedResources ?? []) {
       if (resource.disposesWith !== "external" && scopeRank[resource.disposesWith] < scopeRank[entry.scope]) {

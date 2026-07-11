@@ -15,11 +15,27 @@ const service = (
   modules: [`${override.id}.ts`],
   dependsOn: [],
   authority: [],
+  cacheKey: { scope: override.scope, parts: [`${override.id}:cache-key`] },
+  freshness: {
+    source: "static_manifest",
+    maxAge: "process_lifetime",
+    invalidatesOn: [`${override.id}:invalidate`],
+  },
+  disposal: { disposesWith: override.scope, invalidatesOn: [`${override.id}:dispose`] },
   ...override,
 })
 
 const codes = (entries: ReadonlyArray<DesktopServiceTopologyEntry>) =>
   validateDesktopServiceTopology(entries).map(violation => violation.code)
+
+const without = (
+  entry: DesktopServiceTopologyEntry,
+  key: keyof DesktopServiceTopologyEntry,
+): DesktopServiceTopologyEntry => {
+  const next = { ...entry } as Record<string, unknown>
+  delete next[key]
+  return next as DesktopServiceTopologyEntry
+}
 
 describe("Desktop service topology oracle (#8678)", () => {
   test("current Desktop services satisfy the checked topology manifest", () => {
@@ -40,6 +56,16 @@ describe("Desktop service topology oracle (#8678)", () => {
       "effect-native-renderer",
     ]) {
       expect(ids.has(id)).toBe(true)
+    }
+    for (const entry of desktopServiceTopology) {
+      expect(entry.cacheKey?.scope === "none" || entry.cacheKey?.scope === entry.scope).toBe(true)
+      if (entry.cacheKey?.scope === "none") {
+        expect(entry.cacheKey.parts).toEqual([])
+      } else {
+        expect(entry.cacheKey?.parts.length).toBeGreaterThan(0)
+      }
+      expect(entry.freshness?.invalidatesOn.length).toBeGreaterThan(0)
+      expect(entry.disposal).toBeDefined()
     }
   })
 
@@ -114,6 +140,51 @@ describe("Desktop service topology oracle (#8678)", () => {
         ownedResources: [{ kind: "subscription", disposesWith: "process" }],
       }),
     ])).toContain("unowned_resource")
+  })
+
+  test("fails missing cache, freshness, or disposal declarations", () => {
+    expect(codes([
+      without(service({ id: "no-cache", scope: "process" }), "cacheKey"),
+    ])).toContain("missing_cache_key")
+    expect(codes([
+      service({ id: "empty-cache", scope: "process", cacheKey: { scope: "process", parts: [] } }),
+    ])).toContain("missing_cache_key")
+    expect(codes([
+      service({ id: "false-no-cache", scope: "process", cacheKey: { scope: "none", parts: ["impossible"] } }),
+    ])).toContain("invalid_cache_key_scope")
+    expect(codes([
+      without(service({ id: "no-freshness", scope: "process" }), "freshness"),
+    ])).toContain("missing_freshness")
+    expect(codes([
+      service({
+        id: "empty-freshness",
+        scope: "process",
+        freshness: { source: "static_manifest", maxAge: "process_lifetime", invalidatesOn: [] },
+      }),
+    ])).toContain("missing_freshness")
+    expect(codes([
+      without(service({ id: "no-disposal", scope: "process" }), "disposal"),
+    ])).toContain("missing_disposal")
+    expect(codes([
+      service({ id: "empty-disposal", scope: "process", disposal: { disposesWith: "process", invalidatesOn: [] } }),
+    ])).toContain("missing_disposal")
+  })
+
+  test("fails cache keys and service disposal that escape their owning scope", () => {
+    expect(codes([
+      service({
+        id: "workspace-cache-mismatch",
+        scope: "work_context",
+        cacheKey: { scope: "process", parts: ["shared-process-cache"] },
+      }),
+    ])).toContain("invalid_cache_key_scope")
+    expect(codes([
+      service({
+        id: "request-disposal-escape",
+        scope: "request_or_command",
+        disposal: { disposesWith: "process", invalidatesOn: ["wrong-owner"] },
+      }),
+    ])).toContain("invalid_disposal_scope")
   })
 
   test("fails internal runPromise escapes outside named perimeter modules", () => {
