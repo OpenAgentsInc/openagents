@@ -4,6 +4,8 @@
 - Status: owner-directed product-path amendment; implementation pending
 - Program parent: [#8566](https://github.com/OpenAgentsInc/openagents/issues/8566)
 - Canonical sequencing: [`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md)
+- Local coding cutover graph:
+  [`2026-07-11-openagents-coding-cutover-issue-plan.md`](./2026-07-11-openagents-coding-cutover-issue-plan.md)
 - Cloud authority: [`../cloud/README.md`](../cloud/README.md)
 - Mobile capability ledger:
   [`2026-07-10-khala-code-mvp-to-openagents-mobile-port-plan.md`](./2026-07-10-khala-code-mvp-to-openagents-mobile-port-plan.md)
@@ -47,6 +49,13 @@ The existing roadmap is therefore the right foundation, but not the complete
 pathway. The new work is a portability layer over the current Thread/Turn/Item,
 WorkContext, Khala Sync, Pylon, Fleet, workroom, and receipt contracts—not a
 replacement fleet or a second session database.
+
+The local cutover graph #8681–#8707 is a prerequisite product milestone, not a
+substitute for this pathway. It proves installed OpenAgents Desktop can replace
+the ordinary Codex and Claude Code UI while physical mobile continues and
+supervises the same local-host sessions. Its CUT-27 acceptance explicitly
+excludes workrooms, host movement, managed providers, and voice so those claims
+remain pending here instead of being inferred from a successful local cutover.
 
 ### Episodes 248–249 calibration
 
@@ -380,9 +389,10 @@ still require the normal visible confirmation and durable outcome.
 
 ## Ordered pathway
 
-These are bounded work packets to add beneath #8566. They need live issue
-leaves and claims before implementation; the existing #8676, #8547, and #8636
-issues must not be silently broadened to pretend they already own all of this.
+These are bounded work packets to add beneath #8566 after the local cutover
+graph. They still need live issue leaves and claims before implementation; the
+existing #8676, #8547, #8636, and CUT-27 issues must not be silently broadened
+to pretend they already own all of this.
 
 | Order | Packet | Outcome | Exit proof |
 | ---: | --- | --- | --- |
@@ -513,16 +523,16 @@ Master Roadmap Revision 30 incorporated the original remote-first additions:
 
 Revision 31 adds the episode-249 consequence: the canonical agent graph,
 independent child transcripts/activity cursors, and the fast click/tap/hotkey
-supervision contract survive live streaming and host movement. The remaining
-coordination gap is the issue ledger, not roadmap prose:
+supervision contract survive live streaming and host movement. #8691/#8692 now
+own the local live-graph contract/UI and #8683/#8684 own reopened #8678's
+topology residual. The remaining coordination gap is the remote-portability
+issue ledger, not roadmap prose:
 
 - create bounded leaves for portable session authority, owner-managed/provider
-  targets, the general broker, any-host mobile/voice, and live multi-agent
-  supervision rather than overloading #8676/#8547/#8636;
+  targets, the general broker, and any-host mobile/voice rather than overloading
+  #8676/#8547/#8636 or CUT-27;
 - reconcile live #8566/#8574/#8597 bodies that still cite Revision 29, name
-  closed work as future, or classify all voice as a non-goal; and
-- reopen #8678 or create a bounded residual for its explicitly unfinished
-  source-coupling, replaceability, disposal, correlation, and full-host proof.
+  closed work as future, or classify all voice as a non-goal.
 
 The mobile port ledger must likewise move native PTT/STT from “paused” to a
 bounded P0 modality over the shared session command contract, while keeping

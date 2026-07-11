@@ -5,6 +5,8 @@
 - Authority: [`../MASTER_ROADMAP.md`](../MASTER_ROADMAP.md)
 - Execution:
   [`../2026-07-10-112832-cdt-reliable-fleet-implementation-delegation.md`](../2026-07-10-112832-cdt-reliable-fleet-implementation-delegation.md)
+- Local coding cutover:
+  [`../2026-07-11-openagents-coding-cutover-issue-plan.md`](../2026-07-11-openagents-coding-cutover-issue-plan.md)
 
 ## Owner direction
 
@@ -39,13 +41,15 @@ remote coding + fleet                    full workbench + fleet
 - #8676 — one real streamed Desktop conversation immediately continued on
   mobile through the same confirmed refs and request processor.
 - #8677 — the bounded command/event fault-convergence matrix for that seam.
-- closed-with-residual #8678 — initial Effect service-topology manifest and
-  cache/freshness/disposal declarations landed; its documented source-
-  coupling, replaceability, lifecycle-disposal, correlation, and full-host
-  acceptance still need one bounded owner.
+- reopened #8678 — initial Effect service-topology work landed; #8683/#8684
+  own its source-coupling, ambient-authority, replaceability, lifecycle,
+  correlation, and full-host residual.
+- #8681–#8707 — ordered CUT-01–CUT-27 leaves for the installed local
+  Codex/Claude coding cutover with physical mobile continuation/supervision.
 - unfiled Revision 31 leaves — portable session authority, owner-managed and
-  managed-provider targets, the general broker, any-host mobile/voice, and
-  live multi-agent supervision. Do not overload #8676/#8547/#8636.
+  managed-provider targets, the general broker, and any-host mobile/voice.
+  Local live multi-agent supervision is now #8691/#8692. Do not overload
+  #8676/#8547/#8636 or CUT-27 with host-movement proof.
 
 The retired web/presentation/privacy-backlog records #8595, #8610, #8634,
 #8635, #8642, #8643, #8646, and #8650 are closed `wontfix` / not-planned.

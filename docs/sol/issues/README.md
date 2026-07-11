@@ -9,10 +9,10 @@ The live GitHub issue is the operational copy and claim ledger. When a checked-
 in source and live body differ, reconcile both before using the body for
 dispatch.
 
-As of the 2026-07-11 reconciliation there are eight open `roadmap:sol` records
-under one program parent: #8547, #8566, #8574, #8597, #8636, #8640, #8676,
-and #8677. Older Sarah-first/P1 labels and Revision 29 issue prose do not
-override Master Revision 31.
+As of the 2026-07-11 cutover decomposition there are 36 open `roadmap:sol`
+records: the original eight program/track/proof records, reopened topology
+parent #8678, and ordered local-coding leaves #8681–#8707. Older Sarah-first/P1
+labels and Revision 29 issue prose do not override Master Revision 31.
 
 ## P0 — reliable Desktop/mobile fleet software
 
@@ -34,6 +34,12 @@ override Master Revision 31.
 
 Immediate bounded queue:
 
+- [`../2026-07-11-openagents-coding-cutover-issue-plan.md`](../2026-07-11-openagents-coding-cutover-issue-plan.md) —
+  CUT-01–CUT-27, live as #8681–#8707 with GitHub sub-issue relationships,
+  dependency order, parallel-safe lanes, completion criteria, and receipts for
+  replacing ordinary Codex/Claude Code UI use with installed OpenAgents
+  Desktop plus physical mobile continuation/supervision.
+
 - [`native-streamed-conversation-handoff.md`](./native-streamed-conversation-handoff.md) —
   #8676 one real provider-neutral Desktop stream through the host-owned Runtime
   Gateway, immediately continued on physical mobile with the same refs.
@@ -54,20 +60,20 @@ Closed bounded Desktop leaves and proofs:
   device-local identity/authority plus optional reversible OpenAgents account
   linking on Desktop and mobile.
 
-Closed issue with unproven residual:
+Reopened topology parent with bounded residual leaves:
 
 - [`desktop-effect-scope-topology.md`](./desktop-effect-scope-topology.md) —
-  GitHub reports #8678 closed after the initial topology manifest and cache/
-  freshness/disposal declarations, but its own receipts exclude source-coupled
-  perimeter/ambient-authority enforcement, replaceability, lifecycle disposal,
-  structured correlation, and full Desktop host acceptance. Reopen it or file
-  one bounded residual before claiming the architecture freeze complete.
+  #8678 retains the landed initial topology manifest and cache/freshness/
+  disposal declarations; #8683 and #8684 now own source-coupled perimeter/
+  ambient-authority enforcement, replaceability, lifecycle disposal,
+  structured correlation, and full Desktop host acceptance before the parent
+  can close again.
 
-Revision 31 work without live issue leaves yet: portable session authority,
-owner-managed/provider targets, the general capability broker, any-host mobile
-plus persona-neutral voice, and live multi-agent supervision carrying the
-closed history interaction into Runtime Gateway/Sync streaming and host moves.
-Do not silently broaden #8676/#8547/#8636 to absorb these contracts.
+Revision 31 work without a decomposed issue graph still includes portable
+session authority, owner-managed/provider targets, the general capability
+broker, and any-host mobile plus persona-neutral voice. Live local multi-agent
+supervision is now #8691/#8692, while host movement remains later work. Do not
+silently broaden #8676/#8547/#8636 or CUT-27 to absorb those contracts.
 
 Closed #8673 at `bf4037e923` is the schema-bounded Runtime Gateway v3 confirmed
 timeline seam consumed by #8674; it explicitly did not add visible UI.

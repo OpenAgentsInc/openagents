@@ -5,6 +5,9 @@
 - Consumers: #8574 and #8597
 - Depends on: #8676 D1-H live streamed conversation and mobile continuation
 - Priority: before broad D3–D6 surface expansion is accepted
+- Child leaves: #8687 lost-ACK/idempotency/offline expiry; #8688 event order/
+  cursor/refetch/store compatibility; #8689 restart/stale generation/revocation/
+  interrupted finalization
 
 ## Outcome
 
@@ -30,6 +33,10 @@ client invents completion from transcript text, socket health, or local cache.
 - Verify interruption/finalization separately from typed domain failure.
 
 ## Fault matrix
+
+Rows 1–3 and 6 are owned by #8687; rows 4–5 and 10 by #8688; rows 7–9 and the
+live network-gap/restart receipt by #8689. #8677 remains the acceptance parent
+and closes only after all three children and the complete matrix pass.
 
 1. acknowledgement lost after durable apply;
 2. acknowledgement lost before apply;

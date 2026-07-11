@@ -9,6 +9,15 @@
   [`../2026-07-10-112832-cdt-reliable-fleet-implementation-delegation.md`](../2026-07-10-112832-cdt-reliable-fleet-implementation-delegation.md)
 - Capability/port ledger:
   [`../2026-07-10-khala-code-mvp-to-openagents-mobile-port-plan.md`](../2026-07-10-khala-code-mvp-to-openagents-mobile-port-plan.md)
+- Local coding cutover graph:
+  [`../2026-07-11-openagents-coding-cutover-issue-plan.md`](../2026-07-11-openagents-coding-cutover-issue-plan.md)
+
+The immediate local-coding subset is #8681 Effect Native surface authority,
+#8692 live-agent UX, #8694 authenticated repository/session binding, #8696
+interaction controls, #8704 operability, #8705 Fleet/mobile attention, and the
+physical-device portions of #8707. Remote workrooms, host movement, managed
+providers, and voice remain later Revision 31 exits and are not inferred from
+the local cutover.
 
 ## Outcome
 

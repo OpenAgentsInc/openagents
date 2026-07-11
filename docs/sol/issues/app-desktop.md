@@ -11,13 +11,16 @@
   [`../2026-07-10-opencode-khala-openagents-desktop-parity-audit.md`](../2026-07-10-opencode-khala-openagents-desktop-parity-audit.md)
 - Bounded leaves:
   [`../2026-07-10-112832-cdt-reliable-fleet-implementation-delegation.md`](../2026-07-10-112832-cdt-reliable-fleet-implementation-delegation.md)
+- Local coding cutover graph:
+  [`../2026-07-11-openagents-coding-cutover-issue-plan.md`](../2026-07-11-openagents-coding-cutover-issue-plan.md)
 - Closed P0 historical conversation/subagent slice:
   [`desktop-codex-subagent-history.md`](./desktop-codex-subagent-history.md)
   (#8674)
-- Immediate bounded queue: #8676 real streamed Desktop→mobile acceptance and
-  #8677 fault convergence. Closed #8675 supplies trace-workspace acceptance.
-  GitHub closed #8678 after partial topology landings, but its documented
-  residual needs a bounded owner before broad D3/D4 acceptance.
+- Immediate bounded queue: CUT-02 #8682 restores the green verification
+  baseline; #8676 supplies the physical streamed Desktop→mobile acceptance;
+  #8677 delegates fault convergence to #8687–#8689. Closed #8675 supplies
+  trace-workspace acceptance. Reopened #8678 delegates its topology residual
+  to #8683/#8684 before broad D3/D4 acceptance.
 
 ## Outcome
 

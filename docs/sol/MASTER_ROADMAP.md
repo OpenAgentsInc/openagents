@@ -810,6 +810,17 @@ cutover. Neither waits for Sarah presentation work, public-route contraction,
 or other closed backlog. Historical C2 criteria and fallback rules are in
 [`2026-07-09-codex-parallelism-and-sarah-fleet-cutover.md`](./2026-07-09-codex-parallelism-and-sarah-fleet-cutover.md).
 
+The ordinary local Codex/Claude coding cutover now has a complete bounded
+sub-issue graph in
+[`2026-07-11-openagents-coding-cutover-issue-plan.md`](./2026-07-11-openagents-coding-cutover-issue-plan.md):
+CUT-01 through CUT-27 are live as #8681–#8707. That graph preserves the order
+below while separating agent-completable R0, reliability, runtime, interaction,
+workbench, provider, operability, Fleet, distribution, and acceptance leaves.
+It is intentionally narrower than the later remote-first R7 proof: finishing
+it establishes installed Desktop as the default local coding surface with
+physical mobile continuation/supervision, but it does not imply remote
+workrooms, host movement, Daytona, elastic placement, or voice.
+
 ## P0 shared substrate — Fleet Command
 
 Substrate task: **[#8638](https://github.com/OpenAgentsInc/openagents/issues/8638)**.
@@ -1451,21 +1462,19 @@ universe.
 
 ## Canonical open issue set
 
-There are **eight open `roadmap:sol` records under one program parent** as of
-the 2026-07-11 reconciliation: #8547, #8566, #8574, #8597, #8636, #8640,
-#8676, and #8677. #8566 is the sole program epic. #8652 remains closed and
-outside the active program; its portal repairs are production evidence, not an
-active burn item. Closed #8638, #8639, #8647–#8649, #8653, and #8670–#8675
-remain landed substrate or completed bounded proofs.
+There are **36 open `roadmap:sol` records** after the 2026-07-11 cutover
+decomposition: the original #8547, #8566, #8574, #8597, #8636, #8640, #8676,
+and #8677; reopened topology parent #8678; and bounded CUT-01–CUT-27 leaves
+#8681–#8707. #8566 remains the sole program epic. GitHub sub-issue
+relationships place each leaf under its narrowest owning track or reliability
+parent; prose cross-links retain the other affected tracks.
 
-GitHub also reports #8678 closed, but its own maintainer and PR receipts
-explicitly leave source-coupled perimeter/ambient-authority enforcement,
-service replaceability, lifecycle disposal, structured correlation, and the
-full Desktop verify/build/real-Electron acceptance unfinished. Closed issue
-state is not proof of those acceptance items. Reopen #8678 or create one
-bounded residual leaf before treating the architecture freeze as complete.
-Several live issue bodies still cite Revision 29 or name #8675/#8678 as future
-work; reconcile bodies and claims before starting the affected slice.
+#8678 is reopened. Its initial topology manifest/cache work remains landed;
+#8683 and #8684 own its previously unproven source-coupled perimeter,
+ambient-authority, replaceability, lifecycle-disposal, correlation, and built-
+host acceptance. #8677 similarly delegates its fault matrix to #8687–#8689,
+and #8640 delegates its known Claude/supervisor repairs to #8685–#8686 before
+their parent-only live receipts.
 
 | Roadmap disposition | Issue | Purpose now |
 | --- | --- | --- |
@@ -1477,20 +1486,17 @@ work; reconcile bodies and claims before starting the affected slice.
 | **P0 bounded task** | #8636 | Owner-local/remote target routing through the same proven run and workroom contract |
 | **P0 vertical slice** | #8676 | One real streamed Desktop conversation immediately continued on physical mobile |
 | **P0 fault proof** | #8677 | Bounded command/event lost-ack, duplicate, gap, offline, restart, revocation, and migration convergence |
+| **P0 topology parent** | #8678 | Initial topology work plus source-coupled perimeter, replaceability, disposal, correlation, and built-host acceptance through #8683–#8684 |
+| **P0 local-coding leaves** | #8681–#8707 | Ordered CUT-01–CUT-27 graph for Effect Native architecture, reliability, Codex/Claude runtime parity, workbench, mobile supervision, release, and local cutover proof |
 | **Closed P0 D1 proof** | #8675 | Predictable real-Electron Codex trace workspace UX contract and public-safe acceptance receipt |
 | **Closed P0 D1 product slice** | #8674 | Loss-accounted historical Codex parent/subagent/tool rendering and the Desktop Agents/Item inspector, with valid scale and real nested-history receipts |
-| **Closed issue; residual unproven** | #8678 | Initial Desktop service-topology manifest plus cache/freshness/disposal declarations landed; remaining acceptance needs a bounded live owner |
 
-Revisions 30–31 add unmet product outcomes that are not yet represented by a live
-bounded issue: portable session authority/checkpoints, owner-managed and
-managed-provider target adapters, the general capability broker, and mobile
-any-host/voice control, plus the live multi-agent supervision contract that
-carries #8674/#8675's causal child cards, full topology, and independent child
-transcripts into Runtime Gateway/Sync streaming and host movement. Create
-leaves under #8566 and the owning #8574/#8597/#8547/#8636 tracks before
-implementation. Until those leaves and receipts exist, do not count the
-current eight-issue set as full coverage of the owner request and do not
-broaden #8676, #8547, or #8636 after the fact.
+The local-coding graph now covers live multi-agent supervision, Runtime Gateway
+streaming, topology residuals, and day-to-day Codex/Claude work. Revisions
+30–31 still require separate bounded issue graphs for portable session
+authority/checkpoints, owner-managed and managed-provider target adapters, the
+general capability broker, and mobile any-host/voice control. Do not broaden
+#8676, #8547, #8636, or CUT-27 after the fact to manufacture those proofs.
 
 Closed `wontfix` / not-planned and removed from `roadmap:sol`: #8595, #8610,
 #8634, #8635, #8642, #8643, #8646, and #8650. They are historical tombstones,
@@ -1498,6 +1504,13 @@ not dormant queues. Production/security/privacy/accessibility defects get new
 bounded issues under the owning program.
 
 ## Execution order
+
+For the local coding cutover, the binding leaf order and parallel-safe waves are
+the CUT-01–CUT-27 table in the
+[`coding cutover issue plan`](./2026-07-11-openagents-coding-cutover-issue-plan.md).
+Start at #8681/#8682; no downstream leaf may bypass its listed dependencies.
+The following sequence retains the full Revision 31 remote-first program order
+around and after that narrower installed-Desktop milestone.
 
 1. **Immediate video-supporting proof (complete):** #8675 is enforced on `main`.
    The real Electron app and owner-local nested Codex history now enforce

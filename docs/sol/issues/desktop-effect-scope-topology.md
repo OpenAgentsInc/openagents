@@ -4,10 +4,11 @@
 - Parents: #8574, #8566
 - Depends on: #8676 D1-H request-processor shape; may proceed beside #8677 when paths
   and contracts are disjoint
-- Live issue state: closed 2026-07-11 after the initial manifest and cache/
+- Live issue state: reopened 2026-07-11 after the initial manifest and cache/
   freshness/disposal declaration slices
-- Roadmap disposition: residual acceptance unproven; reopen #8678 or create one
-  bounded successor before claiming the full architecture freeze
+- Child leaves: #8683 source-coupled perimeter/ambient-authority oracle; #8684
+  replaceability/lifecycle-disposal/correlation/full-host proof
+- Roadmap disposition: active acceptance parent; close only after both children
 - Evidence:
   [`../../teardowns/2026-07-10-opencode-effect-architecture-teardown.md`](../../teardowns/2026-07-10-opencode-effect-architecture-teardown.md)
 
@@ -26,14 +27,15 @@ to copy OpenCode's custom `LayerNode` compiler or rewrite the app speculatively.
 
 ## Reconciliation note — 2026-07-11
 
-The live issue closed after PRs #8679/#8680, but the issue's maintainer and
+The live issue initially closed after PRs #8679/#8680, but the issue's maintainer and
 claim-release receipts explicitly exclude source-coupled `runPromise`/
 `ManagedRuntime` and ambient-authority enforcement, service replaceability,
 renderer/WorkContext/runtime/shutdown disposal oracles, structured trace
 correlation, and the full Desktop verify/build/real-Electron acceptance below.
 Closed state proves neither those items nor this dossier's complete exit. The
 landed manifest/declaration slices remain valid baseline; the residual needs a
-new live claim before mutation.
+new live claim before mutation. It is now reopened with #8683/#8684 as true
+GitHub sub-issues for that residual.
 
 ## Required topology
 

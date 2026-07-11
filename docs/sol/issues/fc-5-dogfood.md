@@ -5,6 +5,8 @@
 - Depends on: closed #8637/#8633/#8639 Fleet substrate
 - Status: active bounded owner-authorized live proof
 - Authority: [`../MASTER_ROADMAP.md`](../MASTER_ROADMAP.md), Revision 31
+- Child repairs: #8685 Claude owner-local permission mode; #8686 supervisor
+  lifecycle and verifier/publication ordering
 
 ## Outcome
 
@@ -47,6 +49,9 @@ still requires the owner's explicit authorization and a fresh bounded claim.
    trip.
 6. Preserve Pylon-owned post-verification credential scanning and publication;
    workers do not commit, push, open/modify PRs, or mutate issue comments.
+
+The child issues close the known code defects. #8640 still requires its own
+accepted simultaneous named-account live receipt before the parent closes.
 
 ## Acceptance
 
