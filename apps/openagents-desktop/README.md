@@ -125,6 +125,15 @@ authority and is transactionally mirrored to `agent_run`/`agent_run_event`
 under the same thread/run refs. Exact semantic retries reconcile without a
 second dispatch; conflicting identity reuse fails closed.
 
+Lifecycle convergence is also authority-backed: delayed Sync responses are
+discarded when their subscription generation is superseded; runtime provider
+events must match the durable next sequence and current turn state; and a
+stale hosted worker is terminalized as interrupted without re-running the
+provider. The real Desktop and Expo SQLite adapters reconstruct the same
+partial timeline and terminal after close/reopen. The built Runtime Gateway v7
+smoke covers correlation and teardown; the physical-mobile network-gap receipt
+remains a separate #8689/#8677 close gate.
+
 Protocol v7 also carries a separate owner-local Codex history catalog/page
 capability. Active and archived (including zstd) rollouts are indexed in the
 history worker without an age ceiling. The Effect Native history workspace

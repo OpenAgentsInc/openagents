@@ -74,6 +74,10 @@ over the canonical `chat_thread` / `chat_message` entities and
 - The normal Desktop sweep proves Desktop start, mobile continuation, matching
   refs/versions/cursor, and restart reconstruction over the real native store
   adapters without duplicate objects.
+- Delayed bootstrap/log responses are fenced by the scope generation that
+  requested them. Proven unlink/revocation burns the queue and retracts hosted
+  personal/thread projections in both native stores; a late transport response
+  cannot repopulate or acknowledge that revoked generation.
 
 This is the durable owner-message floor. It does not claim renderer wiring,
 provider/runtime event streaming, assistant-role inference, physical-device
@@ -126,6 +130,12 @@ personal Sync is live.
   not.
 
 The same projection drives visible Desktop and mobile timeline rendering.
+Runtime events are admitted only at the turn's exact durable next sequence and
+valid lifecycle state. After interruption/close/terminal settlement, stale
+provider output cannot enter the projection. If a hosted worker dies after its
+durable start claim, the server projects one interrupted terminal without
+replaying inference; Desktop and mobile reconstruct the same partial history
+plus terminal after store restart.
 Live-account/physical-device proof remains the final #8676 gate.
 
 Contract: `openagents_desktop.seam.runtime_gateway_agent_timeline.v1`.

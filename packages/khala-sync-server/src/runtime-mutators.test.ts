@@ -43,6 +43,9 @@ import {
   RUNTIME_APPEND_USER_MESSAGE_MUTATOR_NAME,
   RUNTIME_CLOSE_TURN_MUTATOR_NAME,
   RUNTIME_EVENT_EXISTS_REJECTION,
+  RUNTIME_EVENT_SEQUENCE_REJECTION,
+  RUNTIME_EVENT_STATE_REJECTION,
+  RUNTIME_INTERRUPT_TURN_MUTATOR_NAME,
   RUNTIME_INTENT_EXPIRY_REJECTION,
   RUNTIME_RECORD_EVENT_MUTATOR_NAME,
   RUNTIME_RAW_BODY_REJECTION,
@@ -299,7 +302,7 @@ describe.skipIf(!hasLocalPostgres())(
           envelope(7, RUNTIME_RECORD_EVENT_MUTATOR_NAME, runtimeEvent({
             eventId: "runtime-event.conversation.started",
             kind: "turn.started",
-            sequence: 1,
+            sequence: 0,
             threadId,
             turnId,
           })),
@@ -481,7 +484,7 @@ describe.skipIf(!hasLocalPostgres())(
             runtimeEvent({
               eventId: "runtime-event.flow.started",
               kind: "turn.started",
-              sequence: 1,
+              sequence: 0,
               threadId,
               turnId,
             }),
@@ -492,7 +495,7 @@ describe.skipIf(!hasLocalPostgres())(
             runtimeEvent({
               eventId: "runtime-event.flow.text",
               kind: "text.delta",
-              sequence: 2,
+              sequence: 1,
               text: privateText,
               threadId,
               turnId,
@@ -881,6 +884,17 @@ describe.skipIf(!hasLocalPostgres())(
               kind: "turn.start",
             }),
           ),
+          envelope(
+            2,
+            RUNTIME_RECORD_EVENT_MUTATOR_NAME,
+            runtimeEvent({
+              eventId: "runtime-event.event-duplicate.started",
+              kind: "turn.started",
+              sequence: 0,
+              threadId,
+              turnId,
+            }),
+          ),
         ]),
         sql: sql as unknown as SyncSql,
         userId: client.userId,
@@ -897,10 +911,10 @@ describe.skipIf(!hasLocalPostgres())(
       const response = await executePush({
         registry,
         request: pushRequest(client, [
-          envelope(2, RUNTIME_RECORD_EVENT_MUTATOR_NAME, duplicateEvent),
           envelope(3, RUNTIME_RECORD_EVENT_MUTATOR_NAME, duplicateEvent),
+          envelope(4, RUNTIME_RECORD_EVENT_MUTATOR_NAME, duplicateEvent),
           envelope(
-            4,
+            5,
             RUNTIME_CLOSE_TURN_MUTATOR_NAME,
             controlIntent({
               intentId: "runtime-intent.event-duplicate.close",
@@ -921,13 +935,81 @@ describe.skipIf(!hasLocalPostgres())(
         "applied",
       ])
       expect(response.results[1]!.errorCode).toBe(RUNTIME_EVENT_EXISTS_REJECTION)
-      expect(Number(response.lastMutationId)).toBe(4)
+      expect(Number(response.lastMutationId)).toBe(5)
 
       const events: Array<{ count: string | number }> = await sql`
         SELECT count(*) AS count FROM khala_sync_runtime_events
         WHERE turn_id = ${turnId}
       `
-      expect(Number(events[0]!.count)).toBe(1)
+      expect(Number(events[0]!.count)).toBe(2)
+    })
+
+    test("interrupt fences stale worker events and the durable sequence refuses gaps", async () => {
+      const client = freshClient()
+      const threadId = "runtime-thread.generation-fence.8689"
+      const turnId = "runtime-turn.generation-fence.8689"
+      const response = await executePush({
+        registry,
+        request: pushRequest(client, [
+          envelope(1, RUNTIME_START_TURN_MUTATOR_NAME, controlIntent({
+            intentId: "runtime-intent.generation-fence.start.8689",
+            kind: "turn.start",
+            threadId,
+            turnId,
+          })),
+          envelope(2, RUNTIME_RECORD_EVENT_MUTATOR_NAME, runtimeEvent({
+            eventId: "runtime-event.generation-fence.started.8689",
+            kind: "turn.started",
+            sequence: 0,
+            threadId,
+            turnId,
+          })),
+          envelope(3, RUNTIME_INTERRUPT_TURN_MUTATOR_NAME, controlIntent({
+            intentId: "runtime-intent.generation-fence.interrupt.8689",
+            kind: "turn.interrupt",
+            reasonRef: "reason.authority_revoked",
+            threadId,
+            turnId,
+          })),
+          envelope(4, RUNTIME_RECORD_EVENT_MUTATOR_NAME, runtimeEvent({
+            eventId: "runtime-event.generation-fence.late-text.8689",
+            kind: "text.delta",
+            sequence: 1,
+            text: "stale provider output",
+            threadId,
+            turnId,
+          })),
+          envelope(5, RUNTIME_RECORD_EVENT_MUTATOR_NAME, runtimeEvent({
+            eventId: "runtime-event.generation-fence.gap.8689",
+            kind: "text.delta",
+            sequence: 3,
+            text: "out-of-order provider output",
+            threadId,
+            turnId,
+          })),
+        ]),
+        sql: sql as unknown as SyncSql,
+        userId: client.userId,
+      })
+
+      expect(response.results.map(result => result.status)).toEqual([
+        "applied",
+        "applied",
+        "applied",
+        "rejected",
+        "rejected",
+      ])
+      expect(response.results[3]!.errorCode).toBe(RUNTIME_EVENT_STATE_REJECTION)
+      expect(response.results[4]!.errorCode).toBe(RUNTIME_EVENT_SEQUENCE_REJECTION)
+      const rows: Array<{ event_count: number; status: string; events: number }> = await sql`
+        SELECT t.event_count::int AS event_count,
+               t.status,
+               (SELECT count(*)::int FROM khala_sync_runtime_events e
+                WHERE e.turn_id = t.turn_id) AS events
+        FROM khala_sync_runtime_turns t
+        WHERE t.turn_id = ${turnId}
+      `
+      expect(rows).toEqual([{ event_count: 1, events: 1, status: "interrupted" }])
     })
   },
 )

@@ -8,7 +8,7 @@
   in `apps/openagents.com/workers/api`, and every legacy satellite that still
   carries the Pylon name
 - Alignment targets:
-  - [`docs/sol/MASTER_ROADMAP.md`](../sol/MASTER_ROADMAP.md) (rev 34)
+  - [`docs/sol/MASTER_ROADMAP.md`](../sol/MASTER_ROADMAP.md) (rev 35)
   - [`docs/teardowns/2026-07-10-openagents-product-adaptation-analysis.md`](../teardowns/2026-07-10-openagents-product-adaptation-analysis.md)
     (the product recs doc), especially its "Pylon and local runtimes" section
   - [`2026-07-08-pylon-into-khala-code-proposal.md`](./2026-07-08-pylon-into-khala-code-proposal.md)
@@ -32,6 +32,17 @@ CUT-08 execution update: event/cursor/store convergence also stayed wholly in
 Khala Sync and the Desktop/mobile adapters. No protected Pylon core file was
 needed for dense-version replay, snapshot replacement, or local-store
 compatibility. CUT-09 inherits the same boundary.
+
+CUT-09 execution update: deterministic restart, stale-generation, revocation,
+and interrupted-finalization enforcement likewise landed outside the protected
+Pylon core. The shared Sync client fences delayed transport responses by scope
+generation; the canonical server mutator fences runtime events by durable
+sequence/lifecycle; the hosted server consumer terminalizes an abandoned
+worker generation without replaying inference; and real Desktop/Expo SQLite
+adapters reconstruct the same interrupted terminal. The built Desktop smoke is
+green on Runtime Gateway v7. The required physical-iPhone network-gap receipt
+remains pending because the paired phone is offline; this does not authorize
+the broader Pylon cleanup phases below or weaken their sequencing.
 
 Pylon's fleet-execution core is real, current, and load-bearing: the
 `orchestration/` + `node/` substrate (orchestration.sqlite runtime, mixed-kind

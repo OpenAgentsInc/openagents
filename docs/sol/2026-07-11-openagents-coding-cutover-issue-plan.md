@@ -47,7 +47,7 @@ proof for those later remote outcomes or automatically close #8566/#8597.
 | 6 | CUT-06 | [#8686](https://github.com/OpenAgentsInc/openagents/issues/8686) — closed; accepted live receipt | FC5 / runtime authority | CUT-05 |
 | 7 | CUT-07 | [#8687](https://github.com/OpenAgentsInc/openagents/issues/8687) — closed; deterministic matrix receipt | R4 / command convergence | CUT-02 |
 | 8 | CUT-08 | [#8688](https://github.com/OpenAgentsInc/openagents/issues/8688) — closed; deterministic matrix receipt | R4 / event convergence | CUT-07 |
-| 9 | CUT-09 | [#8689](https://github.com/OpenAgentsInc/openagents/issues/8689) | R4 / lifecycle convergence | CUT-08 |
+| 9 | CUT-09 | [#8689](https://github.com/OpenAgentsInc/openagents/issues/8689) — deterministic matrix landed; physical receipt pending | R4 / lifecycle convergence | CUT-08 |
 | 10 | CUT-10 | [#8690](https://github.com/OpenAgentsInc/openagents/issues/8690) | D1 / Runtime Gateway | CUT-09 |
 | 11 | CUT-11 | [#8691](https://github.com/OpenAgentsInc/openagents/issues/8691) | D1 / agent graph | CUT-06, CUT-10 |
 | 12 | CUT-12 | [#8692](https://github.com/OpenAgentsInc/openagents/issues/8692) | D1 / agent UX | CUT-01, CUT-11 |
@@ -362,6 +362,16 @@ finalization.
 Verification: matrix plus redacted live receipt.  
 Non-goals: remote host move.  
 Close rule: close this leaf and #8677 only after every fault row is evidenced.
+
+Status: deterministic implementation accepted locally on 2026-07-11; live
+close gate still open. Delayed Sync responses are generation-fenced, runtime
+provider events require the exact durable next sequence and valid turn state,
+revocation retracts both native stores, and stale hosted worker generations
+settle once as interrupted without replaying inference/output. The built
+Desktop Runtime Gateway v7 smoke passes. The paired physical iPhone is offline
+in Tailnet and Xcode discovery, so the mandatory built-Desktop/physical-mobile
+network-gap receipt has not been claimed. See
+[`2026-07-11-cut-09-lifecycle-convergence-receipt.md`](./2026-07-11-cut-09-lifecycle-convergence-receipt.md).
 
 ---
 

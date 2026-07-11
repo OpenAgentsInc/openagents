@@ -99,3 +99,20 @@ existing MustRefetch/snapshot path, Desktop/mobile converge on one injected
 timeline trace, and supported-legacy versus future-incompatible stores have
 explicit migration/refusal receipts across Bun, Desktop, Expo, and Web. CUT-09
 owns rows 7–9 and the live fault rung next. This parent remains open.
+
+## Progress — CUT-09 deterministic matrix landed; live rung pending
+
+Rows 7–9 now have deterministic enforcement under
+[`2026-07-11-cut-09-lifecycle-convergence-receipt.md`](../2026-07-11-cut-09-lifecycle-convergence-receipt.md):
+late bootstrap/log responses are fenced by scope generation, exact durable
+runtime sequence and lifecycle state reject stale provider writes, proven
+revocation retracts Desktop/mobile hosted caches and queues, and abandoned
+hosted inference generations terminalize once as interrupted without provider
+replay or duplicate assistant output. Both real native SQLite adapters rebuild
+the same terminal after close/reopen, and the built Runtime Gateway v7 Desktop
+smoke passes.
+
+The parent and #8689 remain open. The paired physical iPhone is currently
+offline in both Tailnet and Xcode discovery, so the required public-safe real
+network-gap/restart receipt has not run and is not replaced by simulator or
+fixture evidence.

@@ -76,6 +76,7 @@ export const RUNTIME_INTENT_EXISTS_REJECTION = RUNTIME_INTENT_CONFLICT_REJECTION
 export const RUNTIME_MESSAGE_REQUIRED_REJECTION = "runtime_message_required"
 export const RUNTIME_EVENT_EXISTS_REJECTION = "runtime_event_exists"
 export const RUNTIME_EVENT_SEQUENCE_REJECTION = "runtime_event_sequence_invalid"
+export const RUNTIME_EVENT_STATE_REJECTION = "runtime_event_state_invalid"
 export const RUNTIME_RAW_BODY_REJECTION = "runtime_raw_body_not_allowed"
 
 const RuntimeTurnEntityType = EntityType.make(RUNTIME_TURN_ENTITY_TYPE)
@@ -1107,6 +1108,35 @@ export const runtimeRecordEventMutator: MutatorDefinition =
       }
       if (turn.owner_user_id !== ctx.userId || turn.thread_id !== event.threadId) {
         return rejectForeignScope(ctx)
+      }
+
+      // `event_count` is the durable provider-generation cursor. Requiring
+      // the exact next value rejects delayed, skipped, and replayed messages
+      // before any timeline projection mutates.
+      if (event.sequence !== Number(turn.event_count)) {
+        return reject(
+          ctx,
+          RUNTIME_EVENT_SEQUENCE_REJECTION,
+          "runtime event sequence does not match the durable next sequence",
+        )
+      }
+
+      const turnStatus = turn.status as RuntimeTurnStatus
+      const terminal =
+        turnStatus === "completed" ||
+        turnStatus === "failed" ||
+        turnStatus === "interrupted" ||
+        turnStatus === "closed"
+      if (
+        terminal ||
+        (turnStatus === "queued" && event.kind !== "turn.started") ||
+        (turnStatus === "running" && event.kind === "turn.started")
+      ) {
+        return reject(
+          ctx,
+          RUNTIME_EVENT_STATE_REJECTION,
+          "runtime event is not valid for the durable turn state",
+        )
       }
 
       const ownerRejection = await ensureRuntimeThreadOwner(ctx, event.threadId)

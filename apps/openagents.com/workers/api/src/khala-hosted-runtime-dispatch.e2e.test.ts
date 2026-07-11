@@ -63,6 +63,7 @@ type QueueRow = {
 
 type FakeTables = {
   queuedTurns: ReadonlyArray<QueueRow>
+  runningTurns?: ReadonlyArray<QueueRow>
   /** turnId -> intent_json, stored as a real object OR a double-encoded JSON string. */
   startIntents: Record<string, unknown>
   /** messageId -> body. */
@@ -73,7 +74,11 @@ const makeFakeSql = (tables: FakeTables): SyncSql => {
   const sql = (strings: TemplateStringsArray, ...values: Array<unknown>) => {
     const text = strings.join(' ')
     if (text.includes('FROM khala_sync_runtime_turns') && text.includes('status')) {
-      return Promise.resolve([...tables.queuedTurns])
+      return Promise.resolve([
+        ...(text.includes("status = 'running'")
+          ? tables.runningTurns ?? []
+          : tables.queuedTurns),
+      ])
     }
     if (text.includes('FROM khala_sync_runtime_control_intents')) {
       const turnId = values[0] as string
@@ -251,7 +256,7 @@ describe('hosted chat send -> assistant reply E2E guard (khala_sync.hosted_chat.
     const summary = await runHostedRuntimeTurnDispatch(
       baseDeps(singleTurnTables({ bodyRef: 'chat_message.msg.1' }), push, okComplete('Paris')),
     )
-    expect(summary).toEqual({ answered: 1, claimed: 1, failed: 0, scanned: 1, skipped: 0 })
+    expect(summary).toEqual({ answered: 1, claimed: 1, failed: 0, refused: 0, scanned: 1, skipped: 0 })
     assertAssistantReplied(push.recorded, 'turn.t1', 'Paris')
   })
 
@@ -303,7 +308,7 @@ describe('hosted chat send -> assistant reply E2E guard (khala_sync.hosted_chat.
     const summary = await runHostedRuntimeTurnDispatch(baseDeps(tables, push, complete))
 
     // BOTH owners answered — the crux of the #1 regression.
-    expect(summary).toEqual({ answered: 2, claimed: 2, failed: 0, scanned: 2, skipped: 0 })
+    expect(summary).toEqual({ answered: 2, claimed: 2, failed: 0, refused: 0, scanned: 2, skipped: 0 })
     assertAssistantReplied(
       push.recorded.filter(r => r.ownerUserId === ownerA),
       'turn.a',

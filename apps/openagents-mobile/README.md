@@ -179,3 +179,12 @@ owner ref, credential, store/session object, transport, or raw row.
 Provider-neutral assistant/runtime events enter Home only as bounded canonical
 timeline items; raw provider payloads never enter native state. A deployed-
 account/physical-device receipt remains the explicit #8676 close gate.
+
+The shared lifecycle fence discards delayed responses from a superseded mobile
+subscription, refuses provider events whose sequence/state no longer matches
+the durable turn, and clears hosted scopes plus queued mutations on proven
+unlink/revocation. Real Expo SQLite and Desktop SQLite tests close/reopen the
+same in-flight timeline and converge on one server-projected interrupted
+terminal without duplicate assistant output. This deterministic result does
+not replace the still-pending physical-iPhone network-gap receipt for
+#8689/#8677.

@@ -46,12 +46,12 @@
 // it never drops the assistant answer or wedges the turn. See
 // `khala-hosted-runtime-metering.ts`.
 //
-// KNOWN GAPS (honest, not papered over):
-// - A process that dies AFTER claiming (`turn.started` recorded) but BEFORE
-//   `turn.finished` leaves the turn stuck `running`. There is no requeue
-//   watchdog here; a future timeout sweep should re-open stale `running`
-//   hosted turns. (Ordinary failures ARE handled: inference errors record a
-//   terminal `turn.finished` with `finishReason: "error"`.)
+// RESTART RECONCILIATION (#8689): every tick first settles stale `running`
+// hosted turns as `turn.interrupted`. A process that dies after its durable
+// `turn.started` claim is therefore never re-run (which could duplicate the
+// provider call or assistant text), and the shared timeline eventually shows
+// one honest terminal outcome. The `(turn_id, sequence)` event constraint
+// serializes the sweep against a late original finalizer.
 // - The `hosted_khala` lane is also listed in the Pylon consumer's supported
 //   lanes (fail-closed there in production). If an owner runs a Pylon AND
 //   sends a `hosted_khala` turn, both could act. This consumer's claim
@@ -82,7 +82,11 @@ import {
   type HostedTurnMeteringOutcome,
   type HostedTurnUsage,
 } from './khala-hosted-runtime-metering'
-import { currentIsoTimestamp, randomUuid } from './runtime-primitives'
+import {
+  currentIsoTimestamp,
+  isoTimestampAfterIso,
+  randomUuid,
+} from './runtime-primitives'
 
 export type { HostedTurnUsage } from './khala-hosted-runtime-metering'
 
@@ -120,6 +124,10 @@ export const hostedRuntimeDispatchClientGroupIdForOwner = (
 
 /** Default per-tick turn budget (bounds Postgres + inference fan-out). */
 export const DEFAULT_HOSTED_RUNTIME_DISPATCH_LIMIT = 8
+
+/** A hosted provider invocation older than this without any durable runtime
+ * event is treated as abandoned by its worker generation. */
+export const DEFAULT_HOSTED_RUNTIME_STALE_AFTER_MS = 5 * 60_000
 
 /** Default system prompt for a hosted Khala chat turn. */
 export const DEFAULT_HOSTED_RUNTIME_SYSTEM_PROMPT =
@@ -177,6 +185,8 @@ export type HostedRuntimeDispatchDependencies = Readonly<{
   complete: HostedRuntimeCompleteFn
   /** Per-tick turn budget. Default {@link DEFAULT_HOSTED_RUNTIME_DISPATCH_LIMIT}. */
   limit?: number | undefined
+  /** Restart-reconciliation age bound. Default: five minutes. */
+  staleAfterMs?: number | undefined
   /** Model ref stamped on events. Default {@link DEFAULT_HOSTED_RUNTIME_MODEL}. */
   model?: string | undefined
   /** System prompt. Default {@link DEFAULT_HOSTED_RUNTIME_SYSTEM_PROMPT}. */
@@ -215,6 +225,7 @@ type ResolvedDeps = Readonly<{
   sql: SyncSql
   complete: HostedRuntimeCompleteFn
   limit: number
+  staleAfterMs: number
   model: string
   systemPrompt: string
   registry: MutatorRegistry
@@ -233,6 +244,12 @@ const resolveDeps = (deps: HostedRuntimeDispatchDependencies): ResolvedDeps => (
     deps.limit !== undefined && Number.isSafeInteger(deps.limit) && deps.limit > 0
       ? deps.limit
       : DEFAULT_HOSTED_RUNTIME_DISPATCH_LIMIT,
+  staleAfterMs:
+    deps.staleAfterMs !== undefined &&
+    Number.isSafeInteger(deps.staleAfterMs) &&
+    deps.staleAfterMs > 0
+      ? deps.staleAfterMs
+      : DEFAULT_HOSTED_RUNTIME_STALE_AFTER_MS,
   log: deps.log ?? (() => undefined),
   model: deps.model ?? DEFAULT_HOSTED_RUNTIME_MODEL,
   now: deps.now ?? currentIsoTimestamp,
@@ -265,6 +282,30 @@ export const readQueuedHostedTurns = async (
     FROM khala_sync_runtime_turns
     WHERE status = 'queued' AND lane = ${HOSTED_RUNTIME_LANE}
     ORDER BY created_at ASC
+    LIMIT ${limit}
+  `
+  return rows.map(row => ({
+    eventCount: Number(row.event_count),
+    ownerUserId: row.owner_user_id,
+    threadId: row.thread_id,
+    turnId: row.turn_id,
+  }))
+}
+
+/** Stale `running` rows use the same bounded identity needed to append the
+ * next dense runtime event. They are intentionally never re-queued. */
+export const readStaleRunningHostedTurns = async (
+  sql: SyncSql,
+  cutoffIso: string,
+  limit: number,
+): Promise<ReadonlyArray<QueuedHostedTurn>> => {
+  const rows: Array<RuntimeTurnQueueRow> = await sql`
+    SELECT turn_id, thread_id, owner_user_id, event_count
+    FROM khala_sync_runtime_turns
+    WHERE status = 'running'
+      AND lane = ${HOSTED_RUNTIME_LANE}
+      AND updated_at <= ${cutoffIso}
+    ORDER BY updated_at ASC
     LIMIT ${limit}
   `
   return rows.map(row => ({
@@ -366,6 +407,88 @@ const buildRuntimeEvent = (
     ...extra,
   })
 
+const recordHostedRuntimeEvent = (
+  resolved: ResolvedDeps,
+  turn: QueuedHostedTurn,
+  clientId: string,
+  mutationId: number,
+  event: KhalaRuntimeEvent,
+): Promise<MutationResult> => {
+  const clientGroupId = hostedRuntimeDispatchClientGroupIdForOwner(turn.ownerUserId)
+  return resolved.executePush({
+    registry: resolved.registry,
+    request: decodePushRequest({
+      clientGroupId,
+      clientId,
+      mutations: [
+        {
+          argsJson: JSON.stringify(event),
+          mutationId,
+          name: 'runtime.recordEvent',
+        },
+      ],
+      protocolVersion: 1,
+      schemaVersion: 1,
+    }),
+    sql: resolved.sql,
+    userId: turn.ownerUserId,
+  }).then(response => {
+    const result = response.results[0]
+    if (result === undefined) {
+      throw new HostedRuntimeDispatchError(
+        'executePush returned no result for runtime.recordEvent',
+      )
+    }
+    return result
+  })
+}
+
+/**
+ * Reconcile process death without replaying provider work. A late original
+ * worker and this sweep contend on the same next `(turn_id, sequence)`; only
+ * one durable event wins. Partial assistant text remains exactly as recorded,
+ * followed by one visible interrupted terminal when the sweep wins.
+ */
+export const recoverStaleRunningHostedTurns = async (
+  deps: HostedRuntimeDispatchDependencies,
+): Promise<number> => {
+  const resolved = resolveDeps(deps)
+  let cutoffIso: string
+  try {
+    cutoffIso = isoTimestampAfterIso(resolved.now(), -resolved.staleAfterMs)
+  } catch (cause) {
+    throw new HostedRuntimeDispatchError(
+      `hosted runtime clock returned an invalid timestamp: ${cause instanceof Error ? cause.name : 'unknown'}`,
+    )
+  }
+  const stale = await readStaleRunningHostedTurns(
+    resolved.sql,
+    cutoffIso,
+    resolved.limit,
+  )
+  let recovered = 0
+  for (const turn of stale) {
+    const clientId = `${hostedRuntimeDispatchClientGroupIdForOwner(turn.ownerUserId)}.${turn.turnId}.recovery.${resolved.uuid()}`
+    const result = await recordHostedRuntimeEvent(
+      resolved,
+      turn,
+      clientId,
+      1,
+      buildRuntimeEvent(resolved, turn, turn.eventCount, {
+        kind: 'turn.interrupted',
+        reasonRef: 'worker_generation_lost',
+      }),
+    )
+    if (result.status === 'applied') {
+      recovered += 1
+      resolved.log('hosted_runtime_dispatch_recovered_interrupted', {
+        turnId: turn.turnId,
+      })
+    }
+  }
+  return recovered
+}
+
 /**
  * Dispatch a single queued hosted turn end-to-end. Returns the outcome so the
  * batch runner can tally it. NEVER throws for an ordinary per-turn failure —
@@ -393,32 +516,7 @@ export const dispatchHostedRuntimeTurn = async (
     mutationId: number,
     event: KhalaRuntimeEvent,
   ): Promise<MutationResult> =>
-    resolved.executePush({
-      registry: resolved.registry,
-      request: decodePushRequest({
-        clientGroupId,
-        clientId,
-        mutations: [
-          {
-            argsJson: JSON.stringify(event),
-            mutationId,
-            name: 'runtime.recordEvent',
-          },
-        ],
-        protocolVersion: 1,
-        schemaVersion: 1,
-      }),
-      sql: resolved.sql,
-      userId: ownerId,
-    }).then(response => {
-      const result = response.results[0]
-      if (result === undefined) {
-        throw new HostedRuntimeDispatchError(
-          'executePush returned no result for runtime.recordEvent',
-        )
-      }
-      return result
-    })
+    recordHostedRuntimeEvent(resolved, turn, clientId, mutationId, event)
 
   // 1. CLAIM: record turn.started. This is the atomic claim — the loser of a
   // race gets an in-band rejection (runtime_event_exists / turn moved).
@@ -446,13 +544,14 @@ export const dispatchHostedRuntimeTurn = async (
         reason: 'insufficient_credit',
         turnId: turn.turnId,
       })
-      await record(
+      const refusedResult = await record(
         2,
         buildRuntimeEvent(resolved, turn, seq, {
           finishReason: 'error' satisfies KhalaRuntimeFinishReason,
           kind: 'turn.finished',
         }),
       )
+      if (refusedResult.status !== 'applied') return 'skipped'
       return 'refused'
     }
   }
@@ -482,13 +581,14 @@ export const dispatchHostedRuntimeTurn = async (
       detail: completion.detail,
       turnId: turn.turnId,
     })
-    await record(
+    const failedResult = await record(
       2,
       buildRuntimeEvent(resolved, turn, seq, {
         finishReason: 'error' satisfies KhalaRuntimeFinishReason,
         kind: 'turn.finished',
       }),
     )
+    if (failedResult.status !== 'applied') return 'skipped'
     return 'failed'
   }
 
@@ -497,7 +597,7 @@ export const dispatchHostedRuntimeTurn = async (
   const messageId = resolved.uuid()
   let mutationId = 2
   if (completion.text.length > 0) {
-    await record(
+    const deltaResult = await record(
       mutationId,
       buildRuntimeEvent(resolved, turn, seq, {
         chunkId: resolved.uuid(),
@@ -506,15 +606,17 @@ export const dispatchHostedRuntimeTurn = async (
         text: completion.text,
       }),
     )
+    if (deltaResult.status !== 'applied') return 'skipped'
     seq += 1
     mutationId += 1
-    await record(
+    const completedResult = await record(
       mutationId,
       buildRuntimeEvent(resolved, turn, seq, {
         kind: 'text.completed',
         messageId,
       }),
     )
+    if (completedResult.status !== 'applied') return 'skipped'
     seq += 1
     mutationId += 1
   }
@@ -547,7 +649,7 @@ export const dispatchHostedRuntimeTurn = async (
       }
     }
     const chargeReceiptRef = meterOutcome?.chargeReceiptRef ?? null
-    await record(
+    const usageResult = await record(
       mutationId,
       buildRuntimeEvent(resolved, turn, seq, {
         kind: 'usage.recorded',
@@ -564,6 +666,7 @@ export const dispatchHostedRuntimeTurn = async (
         },
       }),
     )
+    if (usageResult.status !== 'applied') return 'skipped'
     seq += 1
     mutationId += 1
     resolved.log('hosted_runtime_dispatch_metered', {
@@ -576,7 +679,7 @@ export const dispatchHostedRuntimeTurn = async (
     })
   }
 
-  await record(
+  const finishedResult = await record(
     mutationId,
     buildRuntimeEvent(resolved, turn, seq, {
       finishReason: 'stop' satisfies KhalaRuntimeFinishReason,
@@ -597,6 +700,7 @@ export const dispatchHostedRuntimeTurn = async (
           }),
     }),
   )
+  if (finishedResult.status !== 'applied') return 'skipped'
   resolved.log('hosted_runtime_dispatch_answered', {
     responseChars: completion.text.length,
     turnId: turn.turnId,
@@ -612,6 +716,9 @@ export const runHostedRuntimeTurnDispatch = async (
   deps: HostedRuntimeDispatchDependencies,
 ): Promise<HostedRuntimeDispatchSummary> => {
   const resolved = resolveDeps(deps)
+  // Restart reconciliation precedes new claims: abandoned work becomes one
+  // durable interrupted terminal and is never sent to the provider again.
+  await recoverStaleRunningHostedTurns(deps)
   const turns = await readQueuedHostedTurns(resolved.sql, resolved.limit)
   let answered = 0
   let failed = 0

@@ -516,9 +516,14 @@ export const createKhalaSyncSession = (
       if (stale()) return undefined
       try {
         const snapshot = await fetchSnapshot(scope)
+        // The transport may resolve after unsubscribe/re-subscribe, close, or
+        // revoke advanced this scope's generation. Never let that superseded
+        // response replace the current generation's durable projection.
+        if (stale()) return undefined
         await runEffect(
           store.resetScope(scope, snapshot.entities, snapshot.cursor),
         )
+        if (stale()) return undefined
         await runEffect(overlay.refetched(scope))
         runtime.lastDeltaAt = now() // full snapshot = server-confirmed apply
         return snapshot.cursor
@@ -712,6 +717,10 @@ export const createKhalaSyncSession = (
       const page = await runEffect(
         transport.logPage(scope, cursor, logPageLimit),
       )
+      // A delayed page belongs to the generation that requested it. A newer
+      // subscription must catch up from its own durable cursor instead of
+      // accepting this stale response.
+      if (closed || runtime.generation !== generation) return undefined
       if (page.scope !== scope) {
         throw PROTOCOL_VIOLATION("log page is for a different scope")
       }
@@ -1018,6 +1027,10 @@ export const createKhalaSyncSession = (
             }),
           ),
         )
+        // `revoke()` deliberately burns the durable queue. A late HTTP
+        // response from the revoked session must not publish rejections or
+        // acknowledgements into the now-closed authority generation.
+        if (closed) return "drained"
         for (const result of response.results) {
           if (result.status === "rejected") {
             options.onRejection?.(

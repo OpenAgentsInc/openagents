@@ -548,6 +548,15 @@ More specific invariant ledgers apply inside imported apps and packages.
   keeps its durable cursor and reconnects for authoritative replay; retained-
   window loss enters the existing MustRefetch/snapshot-replacement path.
   Duplicate or stale frames remain idempotent no-ops.
+- Every awaited bootstrap/log response is fenced by the requesting scope
+  generation before it can replace or advance durable state. Unsubscribe,
+  close, and proven revocation invalidate that generation; a late push response
+  cannot acknowledge or publish rejection state after revocation. On the
+  server, a runtime event must equal the turn's durable next `event_count` and
+  match its lifecycle state: only `turn.started` can leave `queued`, a second
+  start cannot mutate `running`, and no provider event can mutate a completed,
+  failed, interrupted, or closed turn. A stale hosted worker is settled as one
+  durable `turn.interrupted` event and is never re-run through inference.
 - The shared local store records `store_schema_version` independently of the
   Sync protocol/client identity version. The current app migrates the supported
   unversioned legacy store in place, preserving rows/cursors/queue, but inspects

@@ -1,9 +1,9 @@
 # MASTER ROADMAP — reliable synced coding and fleet software on Desktop/mobile
 
 - Date: 2026-07-10
-- Updated: 2026-07-11 (accepted CUT-08 event/store convergence, portable agent
-  graphs, episode 248/249 UX contracts, and CUT-09 next)
-- Revision: 34
+- Updated: 2026-07-11 (landed CUT-09 deterministic lifecycle convergence;
+  physical-mobile fault receipt remains the close gate)
+- Revision: 35
 - Status: canonical OpenAgents implementation roadmap
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Issue source set: [`issues/README.md`](./issues/README.md)
@@ -522,6 +522,16 @@ product gaps are the R0–R7 Desktop/mobile continuity and reliability gates:
   versions, and the same trace converges through Desktop and Expo/mobile
   stores. The supported unversioned cache migrates to local-store schema v1;
   newer stores refuse before additive SQL across Bun, Desktop, Expo, and Web.
+- CUT-09's deterministic matrix is landed under the
+  [`lifecycle-convergence receipt`](./2026-07-11-cut-09-lifecycle-convergence-receipt.md):
+  delayed Sync responses are fenced by scope generation; provider events must
+  equal the durable next event sequence and match the turn lifecycle; proven
+  revocation retracts Desktop/mobile hosted state; and abandoned hosted worker
+  generations settle once as interrupted without replaying inference or
+  assistant output. Real Desktop/Expo SQLite adapters reconstruct the same
+  terminal after restart and the built Desktop Runtime Gateway v7 smoke is
+  green. #8689 and #8677 remain open because the paired physical iPhone is
+  offline, so the required network-gap/restart receipt has not run.
 - Grok is postponed by owner decision because the connected account is
   quota/payment exhausted. Its real accepted historical canary, HTTP-402
   state, adapters, and fixtures remain evidence/regression substrate; Grok is
@@ -1513,8 +1523,9 @@ correlation, and built-host receipt jointly satisfy the architecture parent.
 and closed #8640 delegated its supervisor/publication repair to closed #8686
 before the accepted parent receipt. Closed #8685 supplies the scoped Claude
 authority. Closed CUT-07 #8687 supplies command convergence and closed CUT-08
-#8688 supplies event/cursor/store convergence; CUT-09 #8689 is the next
-ordered local-coding leaf.
+#8688 supplies event/cursor/store convergence; CUT-09 #8689 has landed its
+deterministic lifecycle matrix but remains the active ordered leaf until its
+physical-device fault receipt passes.
 
 The [Pylon streamlining audit](../fable/2026-07-11-pylon-streamlining-audit.md)
 also fixes the short-term boundary for this proof: `apps/pylon/src/orchestration`
@@ -1536,7 +1547,7 @@ not require a protected-core change.
 | **P0 vertical slice** | #8676 | One real streamed Desktop conversation immediately continued on physical mobile |
 | **P0 fault proof** | #8677 | Bounded command/event lost-ack, duplicate, gap, offline, restart, revocation, and migration convergence |
 | **Closed P0 topology parent** | #8678 | #8683/#8684 complete the source-coupled topology, ambient-authority denial, substitution, disposal, correlation, and built-host receipt |
-| **P0 local-coding leaves** | #8689–#8707 open | Remaining ordered CUT-09–CUT-27 graph; CUT-01–CUT-08 and the bounded #8640 Phase A proof are closed |
+| **P0 local-coding leaves** | #8689–#8707 open | Remaining ordered CUT-09–CUT-27 graph; CUT-09 deterministic code is landed but its physical close gate remains; CUT-01–CUT-08 and the bounded #8640 Phase A proof are closed |
 | **Closed P0 D1 proof** | #8675 | Predictable real-Electron Codex trace workspace UX contract and public-safe acceptance receipt |
 | **Closed P0 D1 product slice** | #8674 | Loss-accounted historical Codex parent/subagent/tool rendering and the Desktop Agents/Item inspector, with valid scale and real nested-history receipts |
 
@@ -1589,8 +1600,9 @@ around and after that narrower installed-Desktop milestone.
    managed workroom, compact files/changes/terminal/preview/artifacts/
    writeback) in parallel. Serialize only shared schemas, migrations, command
    identities, generated clients, and authority policy.
-5. Continue with CUT-09 #8689 after the accepted CUT-08 event/store-convergence
-   receipt. Preserve the proven Pylon fleet core and migrations `0060`–`0061`;
+5. Finish CUT-09 #8689's built-Desktop/physical-mobile network-gap receipt over
+   the landed deterministic lifecycle matrix. Preserve the proven Pylon fleet
+   core and migrations `0060`–`0061`;
    treat broader streamlining
    or authority collapse as a separately bounded post-proof program, not scope
    silently inherited by the remaining CUT leaves. Keep R3/R7 in their owning

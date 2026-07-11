@@ -98,6 +98,11 @@ app, and a physical phone.
 Current prerequisite check (2026-07-11): the named isolated `codex` account is
 ready, but the paired physical iPhone is offline in Xcode device discovery.
 That blocks only the live receipt; it is not replaced by a simulator claim.
+The built Electron Runtime Gateway v7 smoke now passes bootstrap, four-stage
+operation correlation, reload restoration, and lifecycle teardown; CUT-09's
+deterministic restart/revocation/interrupted-finalization evidence is recorded
+in
+[`2026-07-11-cut-09-lifecycle-convergence-receipt.md`](../2026-07-11-cut-09-lifecycle-convergence-receipt.md).
 
 1. Record the ready account's public-safe name and readiness only. Do not
    record its home, credential, token, or provider session id.

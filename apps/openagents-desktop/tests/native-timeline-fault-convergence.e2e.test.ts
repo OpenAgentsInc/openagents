@@ -85,10 +85,10 @@ const entry = (
   version: SyncVersion.make(version),
 })
 
-const runImage = (status: "running" | "completed") => canonicalJson(
+const runImage = (status: "running" | "completed" | "canceled") => canonicalJson(
   encodeAgentRunEntity(decodeAgentRunEntity({
     backend: "pylon",
-    canceledAt: null,
+    canceledAt: status === "canceled" ? NOW : null,
     completedAt: status === "completed" ? NOW : null,
     createdAt: NOW,
     failedAt: null,
@@ -109,6 +109,26 @@ const runImage = (status: "running" | "completed") => canonicalJson(
     teamId: null,
     updatedAt: NOW,
     userId: "owner.private",
+  })),
+)
+
+const lifecycleEventImage = (
+  id: string,
+  sequence: number,
+  type: "turn.started" | "runtime.activity" | "turn.interrupted",
+) => canonicalJson(
+  encodeAgentRunEventEntity(decodeAgentRunEventEntity({
+    artifactRefs: [],
+    createdAt: NOW,
+    externalEventId: null,
+    id,
+    payloadJson: null,
+    runId: RUN,
+    sequence,
+    source: "canonical-runtime",
+    status: type === "turn.interrupted" ? "interrupted" : "running",
+    summary: type === "turn.interrupted" ? "Turn interrupted" : `Event ${sequence}`,
+    type,
   })),
 )
 
@@ -210,6 +230,75 @@ describe("CUT-08 native timeline fault corpus", () => {
     } finally {
       Effect.runSync(desktop.close())
       Effect.runSync(mobile.close())
+      rmSync(root, { force: true, recursive: true })
+    }
+  })
+
+  test("Desktop and mobile reconstruct one interrupted terminal after host restart without duplicate output", () => {
+    const root = mkdtempSync(join(tmpdir(), "native-lifecycle-fault-"))
+    const desktopPath = join(root, "desktop.sqlite")
+    const mobilePath = join(root, "mobile.sqlite")
+    let desktop = openDesktopSyncStore(desktopPath, desktopDatabase)
+    let mobile = openExpoKhalaSyncStore(mobilePath, mobileDatabase)
+    let cursor = 3
+    const read = (store: KhalaSyncLocalStore) => Effect.runSync(
+      createKhalaSyncAgentTimeline({ store, session: session(() => cursor) })
+        .snapshotForThread(THREAD),
+    )
+    try {
+      const inFlight = [
+        entry(1, AGENT_RUN_ENTITY_TYPE, RUN, runImage("running")),
+        entry(2, AGENT_RUN_EVENT_ENTITY_TYPE, "event.lifecycle.started", lifecycleEventImage(
+          "event.lifecycle.started", 0, "turn.started",
+        )),
+        entry(3, AGENT_RUN_EVENT_ENTITY_TYPE, "event.lifecycle.partial", lifecycleEventImage(
+          "event.lifecycle.partial", 1, "runtime.activity",
+        )),
+      ]
+      for (const store of [desktop, mobile]) {
+        Effect.runSync(store.applyConfirmed(scope, inFlight, SyncVersion.make(3)))
+      }
+      expect(read(desktop)).toEqual(read(mobile))
+      expect(read(desktop)?.run?.status).toBe("running")
+
+      // Renderer/host death: close both native handles and reconstruct only
+      // from their durable confirmed stores.
+      Effect.runSync(desktop.close())
+      Effect.runSync(mobile.close())
+      desktop = openDesktopSyncStore(desktopPath, desktopDatabase)
+      mobile = openExpoKhalaSyncStore(mobilePath, mobileDatabase)
+      expect(read(desktop)).toEqual(read(mobile))
+      expect(read(desktop)?.events.map(event => event.eventRef)).toEqual([
+        "event.lifecycle.started",
+        "event.lifecycle.partial",
+      ])
+
+      // The server's lost-generation sweep projects a single terminal. An
+      // exact replay is idempotent in both adapters; stale provider output is
+      // absent because runtime.recordEvent rejects it at authority.
+      cursor = 4
+      const terminal = [
+        entry(4, AGENT_RUN_ENTITY_TYPE, RUN, runImage("canceled")),
+        entry(4, AGENT_RUN_EVENT_ENTITY_TYPE, "event.lifecycle.interrupted", lifecycleEventImage(
+          "event.lifecycle.interrupted", 2, "turn.interrupted",
+        )),
+      ]
+      for (const store of [desktop, mobile]) {
+        Effect.runSync(store.applyConfirmed(scope, terminal, SyncVersion.make(4)))
+        Effect.runSync(store.applyConfirmed(scope, terminal, SyncVersion.make(4)))
+      }
+      const snapshots = [read(desktop), read(mobile)]
+      expect(snapshots[0]).toEqual(snapshots[1])
+      expect(snapshots[0]?.run?.status).toBe("canceled")
+      expect(snapshots[0]?.events.map(event => [event.eventRef, event.sequence])).toEqual([
+        ["event.lifecycle.started", 0],
+        ["event.lifecycle.partial", 1],
+        ["event.lifecycle.interrupted", 2],
+      ])
+      expect(JSON.stringify(snapshots[0])).not.toContain("stale provider output")
+    } finally {
+      Effect.runSync(Effect.ignore(desktop.close()))
+      Effect.runSync(Effect.ignore(mobile.close()))
       rmSync(root, { force: true, recursive: true })
     }
   })

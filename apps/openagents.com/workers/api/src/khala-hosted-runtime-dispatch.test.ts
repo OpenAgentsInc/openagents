@@ -9,6 +9,8 @@ import {
   dispatchHostedRuntimeTurn,
   hostedRuntimeDispatchClientGroupIdForOwner,
   readQueuedHostedTurns,
+  readStaleRunningHostedTurns,
+  recoverStaleRunningHostedTurns,
   resolveHostedTurnPrompt,
   runHostedRuntimeTurnDispatch,
   type HostedRuntimeCompleteFn,
@@ -45,6 +47,7 @@ type QueueRow = {
 
 type FakeTables = {
   queuedTurns: ReadonlyArray<QueueRow>
+  runningTurns?: ReadonlyArray<QueueRow>
   /** turnId -> intent_json (or absent). */
   startIntents: Record<string, unknown>
   /** messageId -> body (or absent). */
@@ -55,7 +58,11 @@ const makeFakeSql = (tables: FakeTables): SyncSql => {
   const sql = (strings: TemplateStringsArray, ...values: Array<unknown>) => {
     const text = strings.join(' ')
     if (text.includes('FROM khala_sync_runtime_turns') && text.includes('status')) {
-      return Promise.resolve([...tables.queuedTurns])
+      return Promise.resolve([
+        ...(text.includes("status = 'running'")
+          ? tables.runningTurns ?? []
+          : tables.queuedTurns),
+      ])
     }
     if (text.includes('FROM khala_sync_runtime_control_intents')) {
       const turnId = values[0] as string
@@ -177,6 +184,76 @@ describe('readQueuedHostedTurns', () => {
         threadId: 'thread.t1',
         turnId: 'turn.t1',
       },
+    ])
+  })
+})
+
+describe('restart reconciliation', () => {
+  test('reads the bounded stale-running page separately from queued work', async () => {
+    const running = {
+      event_count: 2,
+      owner_user_id: 'github:14167547',
+      thread_id: 'thread.t1',
+      turn_id: 'turn.running',
+    }
+    const turns = await readStaleRunningHostedTurns(
+      makeFakeSql({ ...oneQueuedTurn, runningTurns: [running] }),
+      '2026-07-06T00:00:00.000Z',
+      8,
+    )
+    expect(turns).toEqual([{
+      eventCount: 2,
+      ownerUserId: 'github:14167547',
+      threadId: 'thread.t1',
+      turnId: 'turn.running',
+    }])
+  })
+
+  test('settles an abandoned worker generation as one interrupted event without inference', async () => {
+    const push = makeRecordingExecutePush()
+    let completions = 0
+    const tables: FakeTables = {
+      chatMessages: {},
+      queuedTurns: [],
+      runningTurns: [{
+        event_count: 3,
+        owner_user_id: 'github:14167547',
+        thread_id: 'thread.t1',
+        turn_id: 'turn.running',
+      }],
+      startIntents: {},
+    }
+    const deps = {
+      ...baseDeps(tables, push, () => {
+        completions += 1
+        return Promise.resolve({ ok: true as const, text: 'must not run' })
+      }),
+      now: () => '2026-07-11T12:10:00.000Z',
+      staleAfterMs: 60_000,
+    }
+
+    expect(await recoverStaleRunningHostedTurns(deps)).toBe(1)
+    expect(completions).toBe(0)
+    expect(push.recorded.map(event => event.kind)).toEqual(['turn.interrupted'])
+  })
+
+  test('a stale worker finalizer losing the next-sequence race stops without later writes', async () => {
+    const push = makeRecordingExecutePush(event =>
+      event.kind === 'text.delta' ? 'rejected' : 'applied',
+    )
+    const outcome = await dispatchHostedRuntimeTurn(
+      baseDeps(oneQueuedTurn, push, okComplete('provider answered once')),
+      {
+        eventCount: 0,
+        ownerUserId: 'github:14167547',
+        threadId: 'thread.t1',
+        turnId: 'turn.t1',
+      },
+    )
+    expect(outcome).toBe('skipped')
+    expect(push.recorded.map(event => event.kind)).toEqual([
+      'turn.started',
+      'text.delta',
     ])
   })
 })

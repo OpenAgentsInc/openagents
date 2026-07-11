@@ -78,6 +78,17 @@ Portable graph/checkpoint projections must reuse those cursor and compatibility
 semantics; a host move cannot treat a missing child/event version as a valid
 partial continuation.
 
+CUT-09 [#8689] now supplies the deterministic lifecycle fence this pathway
+must extend: a superseded client generation cannot apply a delayed transport
+response; runtime events must match the durable next sequence and current turn
+state; terminal/revoked turns reject late provider output; and an abandoned
+hosted worker generation becomes one durable interrupted terminal without
+replaying inference. A future attachment generation is therefore not merely a
+display field—it must participate in the same pre-mutation authority check.
+Cross-host move/failback still requires its own attachment/checkpoint model and
+live receipt. CUT-09's physical-mobile close rung remains pending and is not a
+portability claim.
+
 ### Episodes 248–249 calibration
 
 Remote-first must preserve the predictability and supervision target. Closed

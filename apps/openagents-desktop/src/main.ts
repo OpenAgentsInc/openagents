@@ -235,28 +235,34 @@ const runtimeGateway = createDesktopRuntimeGateway(() => desktopRuntimeCapabilit
   }
   return {
     outcome: input => Effect.runSync(service.outcome(input)),
-    start: (input, operationContext) => Number(Effect.runSync(service.startTurn(buildStartTurnIntent({
-      context: context(),
-      correlationRefs: operationContext === undefined ? [] : [
-        operationContext.operationRef,
-        operationContext.sessionRef,
-        operationContext.correlationRef,
-      ],
-      messageRef: input.messageRef,
-      threadRef: input.threadRef,
-      turnRef: input.runRef,
-    })))),
-    interrupt: (input, operationContext) => Number(Effect.runSync(service.interruptTurn(buildInterruptTurnIntent({
-      commandRef: input.commandRef,
-      context: context(),
-      correlationRefs: operationContext === undefined ? [] : [
-        operationContext.operationRef,
-        operationContext.sessionRef,
-        operationContext.correlationRef,
-      ],
-      threadRef: input.threadRef,
-      turnRef: input.runRef,
-    })))),
+    start: (input, operationContext) => {
+      if (operationContext !== undefined) desktopCorrelationJournal.record("sync.intent", operationContext)
+      return Number(Effect.runSync(service.startTurn(buildStartTurnIntent({
+        context: context(),
+        correlationRefs: operationContext === undefined ? [] : [
+          operationContext.operationRef,
+          operationContext.sessionRef,
+          operationContext.correlationRef,
+        ],
+        messageRef: input.messageRef,
+        threadRef: input.threadRef,
+        turnRef: input.runRef,
+      }))))
+    },
+    interrupt: (input, operationContext) => {
+      if (operationContext !== undefined) desktopCorrelationJournal.record("sync.intent", operationContext)
+      return Number(Effect.runSync(service.interruptTurn(buildInterruptTurnIntent({
+        commandRef: input.commandRef,
+        context: context(),
+        correlationRefs: operationContext === undefined ? [] : [
+          operationContext.operationRef,
+          operationContext.sessionRef,
+          operationContext.correlationRef,
+        ],
+        threadRef: input.threadRef,
+        turnRef: input.runRef,
+      }))))
+    },
   }
 }, (stage, context) => desktopCorrelationJournal.record(stage, context))
 
@@ -478,7 +484,7 @@ const smokeRuntimeGatewayBootstrap = `(async () => {
   return {
     ok: result?.kind === "query_result" &&
       result.requestId === "smoke-runtime-bootstrap" &&
-      result.result?.protocolVersion === 6 &&
+      result.result?.protocolVersion === 7 &&
       result.result?.lifecycle === "ready" &&
       result.result?.capabilities?.some((capability) => capability.id === "codex-history" && capability.state === "available"),
     protocolVersion: result?.result?.protocolVersion,
@@ -758,7 +764,7 @@ const runSmoke = (window: BrowserWindow): void => {
         await step("runtime-gateway-bootstrap", smokeRuntimeGatewayBootstrap)
         await step("lifecycle-correlation", smokeLifecycleCorrelation)
         if (!desktopCorrelationJournal.complete("correlation.desktop.smoke")) {
-          throw new Error("lifecycle-correlation journal incomplete")
+          throw new Error(`lifecycle-correlation journal incomplete: ${desktopCorrelationJournal.stages("correlation.desktop.smoke").join(",")}`)
         }
         console.log("[openagents-desktop smoke] lifecycle-correlation-journal OK", JSON.stringify({ ok: true, stageCount: 4 }))
         await captureShot(window, "01-shell")

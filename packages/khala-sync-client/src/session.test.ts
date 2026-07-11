@@ -521,6 +521,7 @@ const makeHarness = (
     readonly now?: () => number
     readonly connectFailureThreshold?: number
     readonly maxConnectAuthRejections?: number
+    readonly transport?: KhalaSyncTransport
   } = {},
 ) => {
   const store = openKhalaSyncStore(":memory:")
@@ -530,7 +531,7 @@ const makeHarness = (
   const rejections: Array<MutationResult> = []
   const transportErrors: Array<{ context: string; error: unknown }> = []
   const connectFailureSignals: Array<ConnectFailureSignal> = []
-  const session = createKhalaSyncSession(config, store, overlay, transportOf(server), {
+  const session = createKhalaSyncSession(config, store, overlay, opts.transport ?? transportOf(server), {
     // Injected time: every sleep is one immediate scheduler turn, jitter is constant.
     sleep: () => tick(),
     random: () => 0,
@@ -1178,6 +1179,53 @@ describe("khala-sync session (fake transport, injected time)", () => {
     for (let i = 0; i < 10; i++) await tick()
     expect(h.storeCursor(scopeA)).toBe(1) // nothing applied after unsubscribe
     expect(server.connectCalls.length).toBe(connectsAfterUnsubscribe) // no reconnect
+  })
+
+  test("a delayed bootstrap from a stale generation cannot replace the current subscription", async () => {
+    const server = new FakeSyncServer()
+    server.commit(scopeA, [{ entityType: "task", entityId: "a", op: "upsert", postImageJson: image(1) }])
+    const base = transportOf(server)
+    let releaseFirst!: () => void
+    const firstReleased = new Promise<void>(resolve => {
+      releaseFirst = resolve
+    })
+    let firstCaptured = false
+    let firstRequested!: () => void
+    const firstRequest = new Promise<void>(resolve => {
+      firstRequested = resolve
+    })
+    const transport: KhalaSyncTransport = {
+      ...base,
+      bootstrap: request => {
+        if (firstCaptured) return base.bootstrap(request)
+        firstCaptured = true
+        // Capture generation 1's v1 snapshot before it is invalidated, but
+        // resolve it only after generation 2 has converged at v2.
+        const captured = Effect.runSync(base.bootstrap(request))
+        firstRequested()
+        return Effect.promise(async () => {
+          await firstReleased
+          return captured
+        })
+      },
+    }
+    const h = makeHarness(server, { transport })
+
+    await Effect.runPromise(h.session.subscribe(scopeA))
+    await firstRequest
+    await Effect.runPromise(h.session.unsubscribe(scopeA))
+    server.commit(scopeA, [{ entityType: "task", entityId: "b", op: "upsert", postImageJson: image(2) }])
+    await Effect.runPromise(h.session.subscribe(scopeA))
+    await waitFor(
+      () => h.session.state(scopeA).phase === "live" && h.storeCursor(scopeA) === 2,
+      "replacement generation live at v2",
+    )
+
+    releaseFirst()
+    for (let i = 0; i < 10; i++) await tick()
+    expect(h.storeCursor(scopeA)).toBe(2)
+    expect(h.view(scopeA).get("task", "b")).toBe(image(2))
+    expect(h.session.state(scopeA)).toMatchObject({ phase: "live", cursor: 2 })
   })
 
   test("a closed session refuses mutation before anything reaches the durable queue", async () => {

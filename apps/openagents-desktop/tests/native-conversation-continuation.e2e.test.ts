@@ -381,6 +381,29 @@ describe("contract khala_sync.client.native_conversation_continuity.v1", () => {
       )
       expect(Effect.runSync(desktop.conversation()!.listConfirmedMessages(THREAD))).toEqual(desktopMessages)
       expect(Effect.runSync(mobile.conversation()!.listConfirmedMessages(THREAD))).toEqual(mobileMessages)
+
+      // Proven account/device revocation invalidates the active authority
+      // generation and retracts every hosted scope on both native adapters.
+      desktop.unlinkAccount()
+      mobile.unlinkAccount()
+      expect(desktop.status().identityTier).toBe("local_only")
+      expect(mobile.status().identityTier).toBe("local_only")
+      expect(desktop.conversation()).toBeNull()
+      expect(mobile.conversation()).toBeNull()
+      desktop.close()
+      mobile.close()
+      const desktopRevoked = openDesktopSyncStore(desktopPath, openDesktopDatabase)
+      const mobileRevoked = openExpoKhalaSyncStore(mobilePath, openExpoDatabase)
+      try {
+        for (const store of [desktopRevoked, mobileRevoked]) {
+          expect(Effect.runSync(store.readEntities(personalScope(OWNER)))).toEqual([])
+          expect(Effect.runSync(store.readEntities(threadScope(THREAD)))).toEqual([])
+          expect(Effect.runSync(store.pendingMutations())).toEqual([])
+        }
+      } finally {
+        Effect.runSync(desktopRevoked.close())
+        Effect.runSync(mobileRevoked.close())
+      }
     } finally {
       desktop.close()
       mobile.close()
