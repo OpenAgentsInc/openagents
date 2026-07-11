@@ -553,8 +553,9 @@ product gaps are the R0–R7 Desktop/mobile continuity and reliability gates:
   adapters now map provider-specific status/tool vocabulary to equivalent
   canonical semantics and preserve unsupported facts as explicit unknowns.
   Khala Sync now registers one validated full `live_agent_graph` post-image per
-  thread/session scope, keyed by stable graph identity and advanced through the
-  exact-cursor reducer; the maximum 2,000-node entity round-trips byte-for-byte.
+  canonical thread scope, keyed by stable graph identity and advanced through
+  the exact-cursor reducer; session and canonical-thread identity remain
+  distinct, and the maximum 2,000-node entity round-trips byte-for-byte.
   Live producer/changelog binding, Gateway emission, and named-account traces
   remain open.
 - Grok is postponed by owner decision because the connected account is

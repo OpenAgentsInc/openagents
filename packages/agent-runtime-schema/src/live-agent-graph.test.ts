@@ -74,6 +74,7 @@ const snapshot = (
   schema: LiveAgentGraphSchemaLiteral,
   graphRef: "graph.session.1",
   sessionRef: "session.graph.1",
+  threadRef: "thread.canonical.1",
   attachmentGeneration: 1,
   cursor: 0,
   lastDeltaRef: null,
@@ -87,6 +88,7 @@ const delta = (input: Partial<LiveAgentGraphDelta> = {}): LiveAgentGraphDelta =>
   deltaRef: "delta.graph.1",
   graphRef: "graph.session.1",
   sessionRef: "session.graph.1",
+  threadRef: "thread.canonical.1",
   attachmentGeneration: 1,
   previousCursor: 0,
   cursor: 1,
@@ -169,6 +171,12 @@ describe("canonical live agent graph v1", () => {
       previousCursor: 1,
       cursor: 2,
     })))).toBe("generation_mismatch")
+    expect(errorReason(() => applyLiveAgentGraphDelta(current, delta({
+      deltaRef: "delta.thread",
+      threadRef: "thread.canonical.other",
+      previousCursor: 1,
+      cursor: 2,
+    })))).toBe("graph_mismatch")
   })
 
   test("terminal agents cannot reopen or regress their activity cursor", () => {

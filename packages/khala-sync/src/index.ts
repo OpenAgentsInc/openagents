@@ -161,8 +161,8 @@ export const agentRunScope = (runId: string): SyncScope =>
   scope("agent_run", runId)
 export const threadScope = (threadId: string): SyncScope =>
   scope("thread", threadId)
-export const liveAgentGraphScope = (sessionRef: string): SyncScope =>
-  threadScope(sessionRef)
+export const liveAgentGraphScope = (threadRef: string): SyncScope =>
+  threadScope(threadRef)
 export const fleetRunScope = (fleetRunId: string): SyncScope =>
   scope("fleet_run", fleetRunId)
 export const publicScope = (channel: string): SyncScope =>

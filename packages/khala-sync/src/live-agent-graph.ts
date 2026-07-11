@@ -11,7 +11,7 @@ import { Schema as S } from "effect"
 /**
  * Canonical live-agent graph post-image for Khala Sync.
  *
- * One graph is stored under `scope.thread.<sessionRef>` with `graphRef` as the
+ * One graph is stored under `scope.thread.<threadRef>` with `graphRef` as the
  * entity id. Every committed cursor is a full, validated post-image. That
  * deliberately follows Khala Sync v1's post-image model: clients do not need
  * provider history or an out-of-band graph patch protocol to reconstruct the
@@ -68,12 +68,14 @@ export const decodeLiveAgentGraphPostImageJson = (json: string): LiveAgentGraphE
 export const emptyLiveAgentGraphEntity = (input: Readonly<{
   graphRef: string
   sessionRef: string
+  threadRef: string
   attachmentGeneration: number
   updatedAt: string
 }>): LiveAgentGraphEntity => decodeLiveAgentGraphEntity({
   schema: LiveAgentGraphSchemaLiteral,
   graphRef: input.graphRef,
   sessionRef: input.sessionRef,
+  threadRef: input.threadRef,
   attachmentGeneration: input.attachmentGeneration,
   cursor: 0,
   lastDeltaRef: null,

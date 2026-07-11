@@ -452,9 +452,10 @@ and refuses stale/gapped generations, identity/cursor/timestamp regression,
 terminal reopening, missing/mismatched parents, orphan tools, and cycles. It
 includes typed Codex app-server and Claude Agent SDK observation adapters with
 equivalent status/tool semantics and explicit provider omission. It does not
-includes a validated Khala Sync full-post-image entity under the session thread
-scope. It does not claim the server producer/changelog writer, live provider
-binding, Gateway emission, or named-account traces. See
+includes a validated Khala Sync full-post-image entity under the canonical
+thread scope, with session and thread identities kept distinct. It does not
+claim the server producer/changelog writer, live provider binding, Gateway
+emission, or named-account traces. See
 [`2026-07-11-cut-11-live-agent-graph-receipt.md`](./2026-07-11-cut-11-live-agent-graph-receipt.md).
 
 ---

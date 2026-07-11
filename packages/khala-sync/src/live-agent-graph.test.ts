@@ -50,6 +50,7 @@ const delta = (
   deltaRef: `delta.graph.sync.${cursor}`,
   graphRef: "graph.sync.1",
   sessionRef: "session.graph.sync.1",
+  threadRef: "thread.canonical.sync.1",
   attachmentGeneration: 1,
   previousCursor,
   cursor,
@@ -65,13 +66,14 @@ describe("Khala Sync live-agent graph entity", () => {
     const empty = emptyLiveAgentGraphEntity({
       graphRef: "graph.sync.1",
       sessionRef: "session.graph.sync.1",
+      threadRef: "thread.canonical.sync.1",
       attachmentGeneration: 1,
       updatedAt: at(0),
     })
     const projected = projectLiveAgentGraphPostImage(empty)
     expect(projected.entityType).toBe(LIVE_AGENT_GRAPH_ENTITY_TYPE)
     expect(projected.entityId).toBe("graph.sync.1")
-    expect(String(liveAgentGraphScope(projected.value.sessionRef))).toBe("scope.thread.session.graph.sync.1")
+    expect(String(liveAgentGraphScope(projected.value.threadRef))).toBe("scope.thread.thread.canonical.sync.1")
     expect(decodeLiveAgentGraphPostImageJson(projected.postImageJson)).toEqual(empty)
   })
 
@@ -79,6 +81,7 @@ describe("Khala Sync live-agent graph entity", () => {
     const initial = projectLiveAgentGraphPostImage(emptyLiveAgentGraphEntity({
       graphRef: "graph.sync.1",
       sessionRef: "session.graph.sync.1",
+      threadRef: "thread.canonical.sync.1",
       attachmentGeneration: 1,
       updatedAt: at(0),
     }))
@@ -94,6 +97,7 @@ describe("Khala Sync live-agent graph entity", () => {
     const initial = projectLiveAgentGraphPostImage(emptyLiveAgentGraphEntity({
       graphRef: "graph.sync.1",
       sessionRef: "session.graph.sync.1",
+      threadRef: "thread.canonical.sync.1",
       attachmentGeneration: 1,
       updatedAt: at(0),
     }))

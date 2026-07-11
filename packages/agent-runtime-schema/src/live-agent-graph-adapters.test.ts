@@ -20,6 +20,7 @@ const codex = (
   schema: "openagents.codex_live_agent_observation.v1",
   graphRef: "graph.cross-provider.1",
   sessionRef: "session.cross-provider.1",
+  threadRef: "thread.canonical.1",
   providerRef: "provider.codex.owner",
   runtimeRef: "runtime.codex.owner",
   attachmentGeneration: 1,
@@ -54,6 +55,7 @@ const claude = (
   schema: "openagents.claude_live_agent_observation.v1",
   graphRef: "graph.cross-provider.1",
   sessionRef: "session.cross-provider.1",
+  threadRef: "thread.canonical.1",
   providerRef: "provider.claude.owner",
   runtimeRef: "runtime.claude.owner",
   attachmentGeneration: 1,
@@ -84,6 +86,7 @@ const claude = (
 
 const semantics = (value: ReturnType<typeof adaptCodexLiveAgentObservation>) => ({
   graphRef: value.graphRef,
+  threadRef: value.threadRef,
   sessionRef: value.node.sessionRef,
   parentKind: value.node.parent.kind,
   worktree: value.node.worktree,
@@ -143,6 +146,7 @@ describe("canonical live-agent provider adapters", () => {
         schema: LiveAgentGraphSchemaLiteral,
         graphRef: child.graphRef,
         sessionRef: child.node.sessionRef,
+        threadRef: child.threadRef,
         attachmentGeneration: 1,
         cursor: 1,
         lastDeltaRef: "delta.provider.1",

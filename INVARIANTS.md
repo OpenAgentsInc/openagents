@@ -668,8 +668,11 @@ More specific invariant ledgers apply inside imported apps and packages.
   now exhaustively map their distinct status/tool vocabulary into equivalent
   graph facts and loss-account omitted facts explicitly. Their canonical
   output now has a registered Khala Sync full-post-image entity boundary:
-  one validated `live_agent_graph` per `scope.thread.<sessionRef>`, keyed by
-  stable `graphRef` and advanced only through the shared exact-cursor reducer.
+  one validated `live_agent_graph` per canonical
+  `scope.thread.<threadRef>`, keyed by stable `graphRef` and advanced only
+  through the shared exact-cursor reducer. The top-level session and canonical
+  thread refs stay distinct; provider-native node thread refs cannot choose
+  Sync authorization scope.
   The server producer/changelog writer, Runtime Gateway emission, client read
   models, and live receipts remain CUT-11 work; registering these contracts
   does not itself claim a live graph authority.

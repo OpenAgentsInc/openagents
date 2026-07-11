@@ -160,6 +160,7 @@ export const LiveAgentGraphSnapshot = S.Struct({
   schema: S.Literal(LiveAgentGraphSchemaLiteral),
   graphRef: Ref,
   sessionRef: Ref,
+  threadRef: Ref,
   attachmentGeneration: PositiveInt,
   cursor: NonNegativeInt,
   lastDeltaRef: S.NullOr(Ref),
@@ -174,6 +175,7 @@ export const LiveAgentGraphDelta = S.Struct({
   deltaRef: Ref,
   graphRef: Ref,
   sessionRef: Ref,
+  threadRef: Ref,
   attachmentGeneration: PositiveInt,
   previousCursor: NonNegativeInt,
   cursor: PositiveInt,
@@ -374,8 +376,12 @@ export const applyLiveAgentGraphDelta = (
 ): LiveAgentGraphSnapshot => {
   const snapshot = validateLiveAgentGraphSnapshot(current)
   const delta = decodeLiveAgentGraphDelta(input)
-  if (delta.graphRef !== snapshot.graphRef || delta.sessionRef !== snapshot.sessionRef) {
-    fail("graph_mismatch", "delta targets another graph/session")
+  if (
+    delta.graphRef !== snapshot.graphRef ||
+    delta.sessionRef !== snapshot.sessionRef ||
+    delta.threadRef !== snapshot.threadRef
+  ) {
+    fail("graph_mismatch", "delta targets another graph/session/thread")
   }
   if (delta.attachmentGeneration !== snapshot.attachmentGeneration) {
     fail("generation_mismatch", "delta targets a stale/future attachment generation")
@@ -429,6 +435,7 @@ export const applyLiveAgentGraphDelta = (
     schema: LiveAgentGraphSchemaLiteral,
     graphRef: snapshot.graphRef,
     sessionRef: snapshot.sessionRef,
+    threadRef: snapshot.threadRef,
     attachmentGeneration: snapshot.attachmentGeneration,
     cursor: delta.cursor,
     lastDeltaRef: delta.deltaRef,

@@ -55,6 +55,7 @@ const AttentionObservation = S.Union([
 const CommonObservation = {
   graphRef: Ref,
   sessionRef: Ref,
+  threadRef: Ref,
   providerRef: Ref,
   attachmentGeneration: PositiveInt,
   agent: S.Struct({
@@ -140,6 +141,7 @@ export type ClaudeLiveAgentObservation = typeof ClaudeLiveAgentObservation.Type
 
 export type AdaptedLiveAgentObservation = Readonly<{
   graphRef: string
+  threadRef: string
   node: LiveAgentGraphNodeType
   edges: ReadonlyArray<typeof LiveAgentGraphEdge.Type>
 }>
@@ -298,6 +300,7 @@ export const adaptCodexLiveAgentObservation = (value: unknown): AdaptedLiveAgent
   const parentEdge = parentEdgeFor("codex", input.agent.threadId, input.agent.parent)
   return {
     graphRef: input.graphRef,
+    threadRef: input.threadRef,
     node: canonicalNode({
       provider: "codex",
       providerRef: input.providerRef,
@@ -319,6 +322,7 @@ export const adaptClaudeLiveAgentObservation = (value: unknown): AdaptedLiveAgen
   const parentEdge = parentEdgeFor("claude", input.agent.threadId, input.agent.parent)
   return {
     graphRef: input.graphRef,
+    threadRef: input.threadRef,
     node: canonicalNode({
       provider: "claude",
       providerRef: input.providerRef,

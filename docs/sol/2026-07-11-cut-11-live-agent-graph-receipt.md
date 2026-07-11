@@ -59,7 +59,9 @@ observations with one fail closed.
 ## Khala Sync post-image
 
 `@openagentsinc/khala-sync` now registers `live_agent_graph` as one full
-post-image per `scope.thread.<sessionRef>`, keyed by stable `graphRef`. Creation,
+post-image per canonical `scope.thread.<threadRef>`, keyed by stable `graphRef`.
+The top-level `sessionRef` and canonical `threadRef` are distinct, and provider-
+native node thread refs never choose the authorization scope. Creation,
 advance, JSON encoding, and JSON decoding all re-run the shared graph laws.
 Advancement accepts only the shared exact next-cursor reducer, so bootstrap or
 reconnect needs no provider history and cannot silently accept a stale/gapped
@@ -71,9 +73,9 @@ entity/projection boundary; no server changelog producer is claimed yet.
 
 ## Verification
 
-- `@openagentsinc/agent-runtime-schema`: 35 pass, 0 fail, 256 expectations;
+- `@openagentsinc/agent-runtime-schema`: 35 pass, 0 fail, 257 expectations;
   typecheck passes.
-- CUT-11 focused graph corpus: 11 pass, 108 expectations.
+- CUT-11 focused graph corpus: 11 pass, 109 expectations.
 - `@openagentsinc/khala-sync`: 178 pass, 0 fail, 2,601 expectations;
   typecheck passes.
 - CUT-11 focused Sync post-image corpus: 3 pass, 11 expectations.
