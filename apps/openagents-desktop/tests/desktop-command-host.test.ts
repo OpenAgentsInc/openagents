@@ -1,0 +1,103 @@
+import { describe, expect, test } from "bun:test"
+
+import {
+  deferredDesktopCommand,
+  desktopCommandsFromArgv,
+  makeDesktopCommandHost,
+  parseDesktopCommandUrl,
+} from "../src/desktop-command-host"
+import { desktopCanonicalCommandRegistry } from "../src/desktop-command-contract"
+import { resolveDesktopDeferredCommandIntent } from "../src/renderer/command-registry"
+
+describe("contract openagents_desktop.commands.host_routing.v1", () => {
+  test("production composition owns single-instance, native menu, ready handshake, and schema-decoded renderer dispatch", async () => {
+    const [main, preload, boot] = await Promise.all([
+      Bun.file(new URL("../src/main.ts", import.meta.url)).text(),
+      Bun.file(new URL("../src/preload.cts", import.meta.url)).text(),
+      Bun.file(new URL("../src/renderer/boot.ts", import.meta.url)).text(),
+    ])
+    expect(main).toContain("app.requestSingleInstanceLock()")
+    expect(main).toContain('app.on("second-instance"')
+    expect(main).toContain('app.on("open-url"')
+    expect(main).toContain("Menu.buildFromTemplate")
+    expect(main).toContain("DesktopCommandReadyChannel")
+    expect(preload).toContain("decodeDesktopDeferredCommandOrNull")
+    expect(preload).toContain("ipcRenderer.on(DesktopCommandEventChannel")
+    expect(boot).toContain("bridge?.commands?.onCommand")
+    expect(boot).toContain("resolveDesktopDeferredCommandIntent")
+    expect(boot).toContain("commandNotice")
+  })
+
+  test("parses only exact closed command URLs and ignores unrelated argv", () => {
+    expect(parseDesktopCommandUrl("openagents://command/workspace.files")).toMatchObject({
+      commandId: "workspace.files",
+      arguments: { kind: "workspace", workspace: "files" },
+      source: "deep_link",
+    })
+    for (const invalid of [
+      "https://command/workspace.files",
+      "openagents://command/shell.exec",
+      "openagents://command/workspace.files?path=/private",
+      "openagents://user:pass@command/workspace.files",
+      "openagents://command/workspace.files/extra",
+    ]) expect(parseDesktopCommandUrl(invalid)).toBeNull()
+    expect(desktopCommandsFromArgv([
+      "/Applications/OpenAgents.app",
+      "openagents://command/chat.new",
+    ], "second_instance")).toMatchObject([{ commandId: "chat.new", source: "second_instance" }])
+  })
+
+  test("queues until renderer readiness, suppresses duplicates, bounds backlog, and detaches", () => {
+    const host = makeDesktopCommandHost(2)
+    const command = desktopCanonicalCommandRegistry.find(value => value.id === "chat.new")!
+    const one = deferredDesktopCommand(command, "native_menu", "command.one")
+    expect(host.enqueue(one)).toBe("accepted")
+    const sent: Array<Readonly<{ requestRef: string; delivery: string }>> = []
+    host.attach(value => sent.push({ requestRef: value.requestRef, delivery: value.delivery }))
+    expect(sent).toEqual([{ requestRef: "command.one", delivery: "dispatch" }])
+    expect(host.enqueue(one)).toBe("duplicate")
+    expect(sent.at(-1)).toEqual({ requestRef: "command.one", delivery: "duplicate_rejected" })
+    expect(host.enqueue({ commandId: "shell.exec" })).toBe("invalid")
+    host.detach()
+    expect(host.enqueue({ ...one, requestRef: "command.two" })).toBe("accepted")
+    expect(host.enqueue({ ...one, requestRef: "command.three" })).toBe("accepted")
+    expect(host.enqueue({ ...one, requestRef: "command.four" })).toBe("accepted")
+    expect(host.pendingCount()).toBe(2)
+    host.attach(value => sent.push({ requestRef: value.requestRef, delivery: value.delivery }))
+    expect(sent.slice(-2)).toEqual([
+      { requestRef: "command.three", delivery: "dispatch" },
+      { requestRef: "command.four", delivery: "dispatch" },
+    ])
+    host.detach()
+    expect(host.enqueue({ ...one, requestRef: "command.five" })).toBe("accepted")
+    expect(host.pendingCount()).toBe(1)
+  })
+
+  test("renderer resolves the same command to one typed intent after readiness and owner gates", () => {
+    const fleet = deferredDesktopCommand(
+      desktopCanonicalCommandRegistry.find(value => value.id === "workspace.fleet")!,
+      "native_menu",
+      "command.fleet",
+    )
+    expect(resolveDesktopDeferredCommandIntent(fleet, {
+      sessionReady: false,
+      verifiedOwner: false,
+      workspaceReady: true,
+    })).toEqual({ state: "rejected", reason: "unavailable" })
+    expect(resolveDesktopDeferredCommandIntent(fleet, {
+      sessionReady: true,
+      verifiedOwner: true,
+      workspaceReady: true,
+    })).toEqual({ state: "ready", intentName: "DesktopWorkspaceSelected", payload: "fleet" })
+    expect(resolveDesktopDeferredCommandIntent({ ...fleet, arguments: { kind: "none" } }, {
+      sessionReady: true,
+      verifiedOwner: true,
+      workspaceReady: true,
+    })).toEqual({ state: "rejected", reason: "argument_mismatch" })
+    expect(resolveDesktopDeferredCommandIntent({ ...fleet, delivery: "duplicate_rejected" }, {
+      sessionReady: true,
+      verifiedOwner: true,
+      workspaceReady: true,
+    })).toEqual({ state: "rejected", reason: "duplicate" })
+  })
+})

@@ -115,9 +115,17 @@ export const DesktopDeferredCommand = Schema.Struct({
   commandId: DesktopCommandId,
   arguments: DesktopCommandArguments,
   source: Schema.Literals(["deep_link", "native_menu", "second_instance", "restore"]),
+  delivery: Schema.Literals(["dispatch", "duplicate_rejected"]),
 })
 export type DesktopDeferredCommand = typeof DesktopDeferredCommand.Type
 export const decodeDesktopDeferredCommand = Schema.decodeUnknownSync(DesktopDeferredCommand)
+export const DesktopCommandEventChannel = "openagents:desktop-command:event"
+export const DesktopCommandReadyChannel = "openagents:desktop-command:ready"
+
+export const decodeDesktopDeferredCommandOrNull = (value: unknown): DesktopDeferredCommand | null => {
+  const decoded = Schema.decodeUnknownExit(DesktopDeferredCommand)(value)
+  return decoded._tag === "Success" ? decoded.value : null
+}
 
 export const desktopCommandIsAvailable = (
   command: DesktopCommandDefinition,

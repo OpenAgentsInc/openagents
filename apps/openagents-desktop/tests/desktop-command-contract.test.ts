@@ -45,6 +45,7 @@ describe("contract openagents_desktop.commands.canonical_registry.v1", () => {
       commandId: "workspace.fleet",
       arguments: { kind: "workspace", workspace: "fleet" },
       source: "second_instance",
+      delivery: "dispatch",
     })
     expect(deferred.commandId).toBe("workspace.fleet")
     expect(() => decodeDesktopDeferredCommand({ ...deferred, commandId: "shell.exec" })).toThrow()

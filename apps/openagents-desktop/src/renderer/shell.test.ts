@@ -512,6 +512,19 @@ describe("pure transitions", () => {
     expect(nodeByKey(view, "desktop-command-palette-close")?._tag).toBe("Button")
   })
 
+  test("deferred command rejection is visible without changing the active workspace", () => {
+    const rejected = {
+      ...baseState,
+      commandNotice: "That command is unavailable for the current session or workspace.",
+    }
+    const view = desktopShellView(rejected)
+    expect(nodeByKey(view, "desktop-command-notice")).toMatchObject({
+      content: "That command is unavailable for the current session or workspace.",
+      color: "warning",
+    })
+    expect(rejected.workspace).toBe(baseState.workspace)
+  })
+
   test("New chat resets the conversation and current-chat navigation closes Fleet", () => {
     const activeFleet = withFleetDesk(withNote(baseState, "Ship the app", "18:05"))
     expect(activeFleet.fleetDeskOpen).toBe(true)

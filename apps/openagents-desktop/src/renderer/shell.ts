@@ -203,6 +203,8 @@ export type DesktopShellState = Readonly<{
   workspaceGitStatus: DesktopWorkspaceGitStatus
   workspaceGitDiff: DesktopWorkspaceGitDiff | null
   commandPaletteOpen: boolean
+  /** Public-safe result of the latest deferred/native command admission. */
+  commandNotice: string | null
   /** True only while the platform command modifier is held. */
   historyShortcutHintsVisible: boolean
   /** The desktop-only planning deck; it has no deployment authority itself. */
@@ -272,6 +274,7 @@ export const initialDesktopShellState = (
   workspaceGitStatus: { state: "unavailable" },
   workspaceGitDiff: null,
   commandPaletteOpen: false,
+  commandNotice: null,
   historyShortcutHintsVisible: false,
   fleetDeskOpen: false,
   fleetObjective: "",
@@ -2149,6 +2152,12 @@ export const desktopShellView = (state: DesktopShellState): View =>
           style: { flex: 1, minWidth: 0, minHeight: 0 },
         },
         [
+          ...(state.commandNotice === null ? [] : [Text({
+            key: "desktop-command-notice",
+            content: state.commandNotice,
+            variant: "caption",
+            color: "warning",
+          })]),
           ...(state.commandPaletteOpen ? [commandPalette()] : []),
           ...(state.workspace === "chat" && state.history.catalog.roots.length === 0 && state.threads.length === 0 ? [shellWelcome()] : []),
           ...(state.workspace === "chat" && state.history.page !== null ? [historyWorkspaceView(state.history)] : state.workspace === "chat" ? chatTranscriptArea(state) : state.workspace === "files" ? [workspaceFiles(state)] : state.workspace === "review" ? [workspaceReview(state)] : state.workspace === "settings" ? [settingsView(state.settings)] : state.workspace === "fleet" ? [fleetWorkspaceView(state.fleet)] : [projectHome(state)]),

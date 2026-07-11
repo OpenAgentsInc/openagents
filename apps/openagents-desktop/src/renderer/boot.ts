@@ -22,6 +22,7 @@ import { makeDomRenderer } from "@effect-native/render-dom"
 import {
   unavailableCodexSettingsBridge,
   unavailableProviderAccountsSettingsBridge,
+  decodeOpenAgentsSessionView,
   type CodexSettingsBridge,
   type OpenAgentsSessionSettingsBridge,
   type ProviderAccountsSettingsBridge,
@@ -69,6 +70,8 @@ import {
   emptyDesktopCodingCatalogProjection,
   type DesktopCodingCatalogProjection,
 } from "../coding-catalog-contract.ts"
+import type { DesktopDeferredCommand } from "../desktop-command-contract.ts"
+import { resolveDesktopDeferredCommandIntent } from "./command-registry.ts"
 
 /** Effect Schema at the preload boundary (issue #8574: Schema, not Zod). */
 const DesktopBridgeSchema = Schema.Struct({
@@ -120,6 +123,10 @@ type DesktopBridge = Readonly<{
     open?: (value: unknown) => Promise<unknown>
     archive?: (value: unknown) => Promise<unknown>
     recover?: (value: unknown) => Promise<unknown>
+  }>
+  commands?: Readonly<{
+    onCommand?: (listener: (command: DesktopDeferredCommand) => void) => () => void
+    ready?: () => Promise<unknown>
   }>
 }>
 
@@ -491,6 +498,41 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
         activeThreadId: first.id,
         notes: [],
       }))
+    }
+    const sessionView = decodeOpenAgentsSessionView(
+      yield* Effect.promise(openAgentsSessionSettingsBridge.status),
+    )
+    yield* SubscriptionRef.update(state, current => ({
+      ...current,
+      settings: { ...current.settings, openAgentsSession: sessionView },
+    }))
+    if (typeof bridge?.commands?.onCommand === "function") {
+      const unsubscribeCommands = bridge.commands.onCommand(command => {
+        void Effect.runPromise(Effect.gen(function* () {
+          const current = yield* SubscriptionRef.get(state)
+          const resolution = resolveDesktopDeferredCommandIntent(command, {
+            sessionReady: current.settings.openAgentsSession === "session_ready",
+            verifiedOwner: current.settings.openAgentsSession === "session_ready",
+            workspaceReady: current.workspaceSnapshot !== null || current.codingCatalog.sessions.length > 0,
+          })
+          if (resolution.state === "rejected") {
+            yield* SubscriptionRef.update(state, value => ({
+              ...value,
+              commandNotice: resolution.reason === "duplicate"
+                ? "That command request was already handled. The duplicate was ignored."
+                : "That command is unavailable for the current session or workspace.",
+            }))
+            return
+          }
+          yield* SubscriptionRef.update(state, value => ({ ...value, commandNotice: null }))
+          const ref = IntentRef(resolution.intentName, StaticPayload(resolution.payload))
+          yield* registry.dispatch(resolveIntentRef(ref))
+        }))
+      })
+      window.addEventListener("pagehide", () => unsubscribeCommands(), { once: true })
+      if (typeof bridge.commands.ready === "function") {
+        yield* Effect.promise(bridge.commands.ready)
+      }
     }
     const focusComposer = (): void => {
       // Let the controlled TextField render its cleared/enabled state first.

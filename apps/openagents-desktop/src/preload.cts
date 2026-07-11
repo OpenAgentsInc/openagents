@@ -82,6 +82,12 @@ import {
   decodeDesktopCodingSessionRequest,
   emptyDesktopCodingCatalogProjection,
 } from "./coding-catalog-contract.ts"
+import {
+  DesktopCommandEventChannel,
+  DesktopCommandReadyChannel,
+  decodeDesktopDeferredCommandOrNull,
+  type DesktopDeferredCommand,
+} from "./desktop-command-contract.ts"
 
 contextBridge.exposeInMainWorld("openagentsDesktop", {
   host: "electron",
@@ -255,5 +261,16 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
         await ipcRenderer.invoke(DesktopCodingCatalogFocusChannel, request),
       ) ?? emptyDesktopCodingCatalogProjection()
     },
+  },
+  commands: {
+    onCommand: (listener: (command: DesktopDeferredCommand) => void) => {
+      const handler = (_event: unknown, value: unknown): void => {
+        const command = decodeDesktopDeferredCommandOrNull(value)
+        if (command !== null) listener(command)
+      }
+      ipcRenderer.on(DesktopCommandEventChannel, handler)
+      return () => ipcRenderer.removeListener(DesktopCommandEventChannel, handler)
+    },
+    ready: () => ipcRenderer.invoke(DesktopCommandReadyChannel),
   },
 })
