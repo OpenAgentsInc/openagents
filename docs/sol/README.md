@@ -40,6 +40,11 @@ roadmap; never repeat a stale claim merely because it is written here.
   Desktop/mobile coding and fleet control is P0; OpenCode-parity Desktop and a
   compact remote-coding mobile client share identity, Khala Sync state, typed
   workroom/actions, outcomes, and receipts.
+- [`2026-07-10-episode-195-followup-analysis.md`](./2026-07-10-episode-195-followup-analysis.md)
+  — compares the episode's Desktop/mobile, conversation-native delegation,
+  scheduled work, history/memory, integrations, local inference, open-source,
+  and compute-economics thesis against Revision 28 and proposes bounded
+  Revision 29 amendments.
 - [`2026-07-10-openagents-desktop-product-architecture.md`](./2026-07-10-openagents-desktop-product-architecture.md)
   — binding Desktop process/data/authority topology: tokenless local Effect
   Native renderer, host-owned Runtime Gateway over existing Pylon/Khala Sync/
