@@ -1073,6 +1073,36 @@ describe("pylon khala requester API", () => {
     })
   })
 
+  test("closeout checklist treats receipt refs as exact order-independent sets", () => {
+    const proofRefs = [
+      "proof.pylon_codex.assignment_1",
+      "proof.pylon_codex.permission_1",
+      "proof.pylon_codex.token_usage_1",
+    ]
+    const workerCloseout = {
+      ...completeWorkerCloseoutEvidence(),
+      proofRefs,
+    }
+    const proofPayload = completeProof({ workerCloseout })
+    const proofChecklist = evaluatePylonKhalaProofChecklist(
+      proofPayload as ProofPayload,
+    )
+    const status = completeTraceStatus({
+      lifecycle: {
+        ...completeTraceStatus().lifecycle,
+        proofRefs: [proofRefs[0], proofRefs[2], proofRefs[1]],
+      },
+      workerCloseout,
+    })
+
+    const checklist = evaluatePylonKhalaCloseoutChecklist(
+      status as CloseoutTraceStatus,
+      { ...proofPayload, ok: true, proofChecklist } as CloseoutProofResult,
+    )
+
+    expect(checklist.ok).toBe(true)
+  })
+
   test("Claude closeout uses exact Claude tokens without fabricating Codex trace archives", () => {
     const claudeTokenUsage = {
       ...completeProof().tokenUsage,

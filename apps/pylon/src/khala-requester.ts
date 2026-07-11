@@ -763,9 +763,12 @@ const normalizePylonKhalaWorkerCloseout = (
 const refsMatchExactly = (
   left: ReadonlyArray<string>,
   right: ReadonlyArray<string>,
-): boolean =>
-  left.length === right.length &&
-  left.every((ref, index) => ref === right[index])
+): boolean => {
+  if (left.length !== right.length) return false
+  const sortedLeft = [...left].sort()
+  const sortedRight = [...right].sort()
+  return sortedLeft.every((ref, index) => ref === sortedRight[index])
+}
 
 export function evaluatePylonKhalaCloseoutChecklist(
   status: PylonKhalaAssignmentTraceStatusResult,
