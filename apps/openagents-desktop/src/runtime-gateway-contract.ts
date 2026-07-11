@@ -41,7 +41,7 @@ const KhalaConversationLiveUpdateSchema = canonicalBoundary<KhalaConversationLiv
 
 export const DesktopRuntimeGatewayInvokeChannel = "openagents-desktop/runtime-gateway/invoke" as const
 export const DesktopRuntimeGatewayEventChannel = "openagents-desktop/runtime-gateway/event" as const
-export const DesktopRuntimeGatewayProtocolVersion = 7 as const
+export const DesktopRuntimeGatewayProtocolVersion = 8 as const
 
 const PublicRefSchema = Schema.String.check(
   Schema.isMinLength(1),
@@ -61,6 +61,7 @@ const OperationContextField = { context: Schema.optional(DesktopOperationContext
 
 export const DesktopRuntimeCapabilityIdSchema = Schema.Literals([
   "agent-timeline",
+  "agent-graph",
   "codex-history",
   "conversation-sync",
   "conversation-stream",

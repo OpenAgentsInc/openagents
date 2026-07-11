@@ -29,12 +29,14 @@ const update = (input: Readonly<{
     recovery: "resumed",
     messageRefs: [],
     eventRefs: [],
+    graphRefs: [],
   },
   snapshot: {
     status: { phase: "live", cursor: input.cursor ?? 4, pendingMutationCount: 0 },
     thread: null,
     messages: [],
     timeline: null,
+    graphs: [],
   },
 })
 

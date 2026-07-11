@@ -15,6 +15,7 @@ import {
   createKhalaSyncSession,
   createKhalaSyncConversation,
   createKhalaSyncAgentTimeline,
+  createKhalaSyncLiveAgentGraph,
   createKhalaSyncRuntimeCommands,
   createRuntimeClientMutators,
   createOverlay,
@@ -22,6 +23,7 @@ import {
   type KhalaSyncSession,
   type KhalaSyncConversation,
   type KhalaSyncAgentTimeline,
+  type KhalaSyncLiveAgentGraph,
   type KhalaSyncRuntimeCommands,
   type KhalaSyncSessionOptions,
   type KhalaSyncTransport,
@@ -46,6 +48,7 @@ export type DesktopSyncHost = Readonly<{
   status: () => DesktopSyncHostStatus
   conversation: () => KhalaSyncConversation | null
   timeline: () => KhalaSyncAgentTimeline | null
+  agentGraph: () => KhalaSyncLiveAgentGraph | null
   runtime: () => KhalaSyncRuntimeCommands | null
   connectAuthenticated: (input: DesktopAuthenticatedSyncInput) => void
   disconnectAuthenticated: () => void
@@ -88,6 +91,7 @@ export const openDesktopSyncHost = (input: Readonly<{
   let session: KhalaSyncSession | null = null
   let conversation: KhalaSyncConversation | null = null
   let timeline: KhalaSyncAgentTimeline | null = null
+  let agentGraph: KhalaSyncLiveAgentGraph | null = null
   let runtime: KhalaSyncRuntimeCommands | null = null
   let scope: SyncScope | null = null
   try {
@@ -112,6 +116,7 @@ export const openDesktopSyncHost = (input: Readonly<{
     session = null
     conversation = null
     timeline = null
+    agentGraph = null
     runtime = null
     scope = null
     Effect.runSync(revoke ? closing.revoke() : closing.close())
@@ -140,6 +145,10 @@ export const openDesktopSyncHost = (input: Readonly<{
     timeline: () =>
       session !== null && scope !== null && session.state(scope).phase === "live"
         ? timeline
+        : null,
+    agentGraph: () =>
+      session !== null && scope !== null && session.state(scope).phase === "live"
+        ? agentGraph
         : null,
     runtime: () =>
       session !== null && scope !== null && session.state(scope).phase === "live"
@@ -187,6 +196,7 @@ export const openDesktopSyncHost = (input: Readonly<{
         mutators,
       })
       timeline = createKhalaSyncAgentTimeline({ store, session })
+      agentGraph = createKhalaSyncLiveAgentGraph({ store, session })
       runtime = createKhalaSyncRuntimeCommands({ mutators: runtimeMutators, session, store })
       Effect.runSync(session.subscribe(scope))
     },

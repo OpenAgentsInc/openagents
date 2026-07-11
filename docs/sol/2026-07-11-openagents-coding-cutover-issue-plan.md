@@ -49,7 +49,7 @@ proof for those later remote outcomes or automatically close #8566/#8597.
 | 8 | CUT-08 | [#8688](https://github.com/OpenAgentsInc/openagents/issues/8688) — closed; deterministic matrix receipt | R4 / event convergence | CUT-07 |
 | 9 | CUT-09 | [#8689](https://github.com/OpenAgentsInc/openagents/issues/8689) — deterministic matrix landed; physical receipt owner-deferred, still required | R4 / lifecycle convergence | CUT-08 |
 | 10 | CUT-10 | [#8690](https://github.com/OpenAgentsInc/openagents/issues/8690) — Desktop/mobile no-poll subscription path landed; physical receipt pending | D1 / Runtime Gateway | CUT-09 deterministic matrix; physical receipt remains open by owner exception |
-| 11 | CUT-11 | [#8691](https://github.com/OpenAgentsInc/openagents/issues/8691) — schema/replay, provider normalization, Sync writer, and live Codex/Claude root binding implemented; child topology/Gateway/traces pending | D1 / agent graph | CUT-06, CUT-10 deterministic no-poll path |
+| 11 | CUT-11 | [#8691](https://github.com/OpenAgentsInc/openagents/issues/8691) — schema/replay, Sync/root binding, and confirmed Gateway v8 delivery/reconnect implemented; child topology/named traces pending | D1 / agent graph | CUT-06, CUT-10 deterministic no-poll path |
 | 12 | CUT-12 | [#8692](https://github.com/OpenAgentsInc/openagents/issues/8692) | D1 / agent UX | CUT-01, CUT-11 |
 | 13 | CUT-13 | [#8693](https://github.com/OpenAgentsInc/openagents/issues/8693) | D2 / project-session contract | CUT-04, CUT-10 |
 | 14 | CUT-14 | [#8694](https://github.com/OpenAgentsInc/openagents/issues/8694) | M1 / mobile binding | CUT-01, CUT-13 |
@@ -460,7 +460,12 @@ transactional server changelog writer. Session and thread identities remain
 distinct. The existing runtime start/control/event transaction now appends
 Codex and Claude root graphs atomically, with provider identity unknown until
 observed and terminal retry fenced by a new attachment generation. It does not
-claim provider child topology, Gateway graph emission, or named-account traces.
+claim provider child topology or named-account traces. A confirmed-only client
+read model now bounds graph post-images from the exact live thread scope and
+Runtime Gateway protocol v8 emits them, with matching graph refs, through the
+existing cursor-aware subscription. Deterministic resume and authoritative-
+refetch reconnect are green; non-live cached graphs remain hidden. It does not
+claim a named-account reconnect trace.
 See
 [`2026-07-11-cut-11-live-agent-graph-receipt.md`](./2026-07-11-cut-11-live-agent-graph-receipt.md).
 

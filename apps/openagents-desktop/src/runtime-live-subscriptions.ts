@@ -4,6 +4,7 @@ import {
   type KhalaConversationLiveSubscription,
   type KhalaConversationLiveUpdate,
   type KhalaSyncAgentTimeline,
+  type KhalaSyncLiveAgentGraph,
   type KhalaSyncConversation,
 } from "@openagentsinc/khala-sync-client"
 
@@ -50,6 +51,7 @@ type ActiveSubscription = Readonly<{
 export const createDesktopRuntimeLiveSubscriptions = (input: Readonly<{
   conversation: () => KhalaSyncConversation | null
   timeline: () => KhalaSyncAgentTimeline | null
+  agentGraph?: () => KhalaSyncLiveAgentGraph | null
   maxSubscriptions?: number
 }>): DesktopRuntimeLiveSubscriptions => {
   const configuredMaximum = input.maxSubscriptions ?? 32
@@ -100,6 +102,7 @@ export const createDesktopRuntimeLiveSubscriptions = (input: Readonly<{
         const subscription = await openKhalaConversationLive({
           conversation,
           timeline: input.timeline() ?? undefined,
+          agentGraph: input.agentGraph?.() ?? undefined,
           subscriptionRef: request.subscriptionRef,
           generation: request.generation,
           threadRef: request.threadRef,

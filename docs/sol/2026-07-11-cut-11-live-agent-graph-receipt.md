@@ -3,8 +3,9 @@
 - Date: 2026-07-11
 - Issue: [#8691](https://github.com/OpenAgentsInc/openagents/issues/8691)
 - Status: shared schema/replay, provider normalization, Khala Sync entity,
-  named server writer, and live Codex/Claude root transaction binding complete;
-  provider child topology, Runtime Gateway emission, and live traces pending
+  named server writer, live Codex/Claude root transaction binding, and confirmed
+  Runtime Gateway v8 delivery/reconnect complete; provider child topology and
+  named-account live traces pending
 - Contract: `openagents.live_agent_graph.v1`
 
 ## Registered graph facts
@@ -109,6 +110,29 @@ provider ref and a Claude root reaches completed/terminal through the same
 writer. These are deterministic provider-shaped fixtures, not named-account
 live traces and not child/subagent topology.
 
+## Confirmed client and Runtime Gateway delivery
+
+The Khala Sync client now reads `live_agent_graph` post-images only from the
+exact canonical thread scope and only while that scope is live. It revalidates
+every graph, ignores malformed or cross-thread rows, and emits the newest
+bounded set: at most eight graphs and at most 2,000 nodes / 4,000 edges in
+aggregate.
+
+Runtime Gateway protocol v8 carries those post-images and matching `graphRefs`
+inside the existing `conversation.subscribe` update. This deliberately reuses
+the thread subscription's durable Sync cursor, generation fence, serialized
+backpressure, and exact unsubscribe. It adds no graph poller, provider-history
+store, socket, or raw provider event surface.
+
+Deterministic reconnect coverage proves both cases:
+
+- an exact cursor resume emits the current confirmed graph set; and
+- a proven cursor gap emits one newest `authoritative_refetch` snapshot.
+
+An interrupted/non-live scope emits no cached graph authority. This is a
+deterministic protocol receipt, not the still-required redacted named-account
+Codex/Claude trace.
+
 ## Verification
 
 - `@openagentsinc/agent-runtime-schema`: 35 pass, 0 fail, 259 expectations;
@@ -120,6 +144,17 @@ live traces and not child/subagent topology.
 - CUT-11 focused Sync server writer: 4 pass, 18 expectations; typecheck passes.
 - Runtime transaction binding: 12 pass, 84 expectations against real
   throwaway Postgres; server typecheck passes.
+- Confirmed client graph/read/reconnect focus: 13 pass, 49 expectations;
+  client typecheck passes.
+- Full `@openagentsinc/khala-sync-client`: 173 pass, 3 opt-in live-smoke
+  skips, 0 fail, 12,729 expectations; import-coverage check passes.
+- Runtime Gateway graph boundary and existing no-poll consumer focus: 40 pass,
+  151 expectations; Desktop typecheck passes.
+- Full Desktop verification: 343 pass, 0 fail, 1,725 expectations; typecheck,
+  build, protocol-v8 Electron smoke, and teardown with zero active host
+  subscriptions pass.
+- Shared-contract mobile compatibility: 66 pass, 0 fail, 287 expectations;
+  mobile typecheck passes. This tranche does not yet present graph UI on mobile.
 - Full `@openagentsinc/khala-sync-server`: 510 pass, 1 fail, 4,540
   expectations. The existing `runtime-intents.test.ts` event-count case returns
   three in-band rejections instead of its expected applies and fails identically
@@ -133,7 +168,6 @@ live traces and not child/subagent topology.
 ## Residual
 
 This receipt does not claim provider child/subagent topology or named-account
-live traces. Next CUT-11 tranches must project child observations into the same
-graph, emit confirmed post-images through Runtime Gateway, prove live reconnect,
-and attach redacted named-account traces for both providers. Graph presentation
-remains CUT-12.
+live traces. The remaining CUT-11 tranches must project child observations into
+the same graph and attach redacted named-account Codex and Claude reconnect
+traces. Graph presentation remains CUT-12.

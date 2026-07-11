@@ -93,6 +93,13 @@ export const desktopRuntimeCapabilities = (input: Readonly<{
   syncNetworkPhase: "idle" | "bootstrapping" | "catching_up" | "live" | "must_refetch" | "denied" | "closed"
 }>): ReadonlyArray<CapabilityState> => [
   {
+    id: "agent-graph",
+    state: input.syncNetworkPhase === "live" ? "available" : "unavailable",
+    reason: input.syncNetworkPhase === "live"
+      ? undefined
+      : "Confirmed live-agent graph Sync is not live.",
+  },
+  {
     id: "agent-timeline",
     state: input.syncNetworkPhase === "live" ? "available" : "unavailable",
     reason: input.syncNetworkPhase === "live"

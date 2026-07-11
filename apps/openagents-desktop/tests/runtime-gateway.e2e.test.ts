@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { validateBehaviorContractRegistry } from "@openagentsinc/behavior-contracts"
+import { emptyLiveAgentGraphEntity } from "@openagentsinc/khala-sync"
 import type { KhalaConversationLiveUpdate } from "@openagentsinc/khala-sync-client"
 
 import {
@@ -33,7 +34,7 @@ describe("Desktop Runtime Gateway", () => {
     expect(rendererResponse).toMatchObject({
       kind: "query_result",
       requestId: "renderer-bootstrap",
-      result: { protocolVersion: 7, lifecycle: "ready" },
+      result: { protocolVersion: 8, lifecycle: "ready" },
     })
   })
 
@@ -49,7 +50,7 @@ describe("Desktop Runtime Gateway", () => {
     expect(response).toMatchObject({
       kind: "query_result",
       requestId: "query-1",
-      result: { kind: "runtime.bootstrap", lifecycle: "ready", protocolVersion: 7,identityTier:"local_unavailable" },
+      result: { kind: "runtime.bootstrap", lifecycle: "ready", protocolVersion: 8,identityTier:"local_unavailable" },
     })
     if (response.kind !== "query_result") throw new Error("expected query result")
     expect(response.result.capabilities).toContainEqual({
@@ -241,6 +242,11 @@ describe("Desktop Runtime Gateway", () => {
     })
     expect(response.result.capabilities).toContainEqual({
       id: "khala-sync",
+      state: "available",
+      reason: undefined,
+    })
+    expect(response.result.capabilities).toContainEqual({
+      id: "agent-graph",
       state: "available",
       reason: undefined,
     })
@@ -656,8 +662,8 @@ describe("Desktop Runtime Gateway", () => {
     gateway.dispose()
     unsubscribe()
     expect(events).toEqual([
-      { kind: "runtime.lifecycle", phase: "ready", protocolVersion: 7, sequence: 1 },
-      { kind: "runtime.lifecycle", phase: "disposed", protocolVersion: 7, sequence: 2 },
+      { kind: "runtime.lifecycle", phase: "ready", protocolVersion: 8, sequence: 1 },
+      { kind: "runtime.lifecycle", phase: "disposed", protocolVersion: 8, sequence: 2 },
     ])
     expect(events.every(event => decodeDesktopRuntimeGatewayEvent(event) !== null)).toBe(true)
     expect(await gateway.request({ kind: "query", requestId: "late", query: { id: "runtime.bootstrap" } })).toEqual({
@@ -733,6 +739,7 @@ describe("Desktop Runtime Gateway", () => {
         recovery: "resumed",
         messageRefs: ["message.gateway.1"],
         eventRefs: [],
+        graphRefs: ["graph.runtime.run.gateway.1"],
       },
       snapshot: {
         status: { phase: "live", cursor: 8, pendingMutationCount: 0 },
@@ -753,6 +760,13 @@ describe("Desktop Runtime Gateway", () => {
           version: 8,
         }],
         timeline: null,
+        graphs: [emptyLiveAgentGraphEntity({
+          graphRef: "graph.runtime.run.gateway.1",
+          sessionRef: "session.runtime.thread.gateway.1",
+          threadRef: "thread.gateway.1",
+          attachmentGeneration: 1,
+          updatedAt: "2026-07-11T16:00:00.000Z",
+        })],
       },
     }
     await publish?.(update)
@@ -889,7 +903,7 @@ describe("Desktop Runtime Gateway", () => {
     })).toBeNull()
   })
 
-  test("projects provider-native Codex history through protocol v7 only", async () => {
+  test("projects provider-native Codex history through protocol v8 only", async () => {
     const agent = { threadRef: "root", parentThreadRef: null, title: "Root", status: "completed" as const, createdAt: "2026-07-10T00:00:00Z", updatedAt: "2026-07-10T00:00:00Z", depth: 0, descendantCount: 0, model: null, role: null, nickname:null,agentPath:null,sourceVersion:null,reasoning:null }
     const page = { rootThreadRef: "root", selectedThreadRef: "root", agents: [agent], items: [{ itemRef: "root:0", threadRef: "root", sequence: 0, timestamp: "2026-07-10T00:00:00Z", kind: "session" as const, label: "Session", summary: "Started", status: null, fields: [], redacted: false, sourceType: "session_meta/session_meta" }], offset: 0, limit: 200, totalItems: 1, hasPrevious: false, hasNext: false, completeness: { source: 1, rendered: 1, redactions: 0, gaps: 0, complete: true } }
     const gateway = createDesktopRuntimeGateway(undefined, undefined, undefined, undefined, undefined, () => ({ catalog: () => ({ roots: [agent], agents: [agent] }), page: () => page }))

@@ -683,16 +683,22 @@ More specific invariant ledgers apply inside imported apps and packages.
   control/event transitions append the root graph atomically,
   provider identity stays explicit unknown until a real event source supplies
   it, and a retry after terminal advances attachment generation instead of
-  reopening the terminal node. Child topology, Runtime Gateway graph emission,
-  client read models, and named live receipts remain CUT-11 work.
+  reopening the terminal node. The confirmed client read model accepts graph-
+  valid post-images only from the exact live thread scope, caps one snapshot at
+  eight graphs / 2,000 nodes / 4,000 edges, and emits matching graph refs
+  through Runtime Gateway protocol v8 on the existing cursor-aware
+  subscription. Exact resume and one bounded authoritative refetch use the
+  durable Sync cursor; non-live scopes expose no cached graph authority. Child
+  topology and named-account live receipts remain CUT-11 work.
 
 - Master Roadmap Revision 31 and
   `docs/sol/2026-07-11-remote-first-portable-coding-sessions-pathway.md`
   define target contracts for a canonical live agent graph, graph-wide
   attachment fencing, portable per-child transcript/activity cursors, replay
   repair, and one typed click/tap/hotkey action path. Except for the registered
-  graph/adapters/Sync entity boundary above, these remain **pending model
-  boundaries**, not current production authority or shipped-invariant claims.
+  graph/adapters/Sync entity, live-root transaction, and confirmed Gateway
+  delivery boundaries above, these remain **pending model boundaries**, not
+  current production authority or shipped-invariant claims.
 - Current provider-native Codex topology remains owner-local, read-only, and
   loss-accounted. The landed inline child card is a bounded history projection;
   it does not prove live Khala Sync topology, host movement, child rehydration,

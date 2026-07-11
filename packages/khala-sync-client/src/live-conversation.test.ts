@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import { emptyLiveAgentGraphEntity, type LiveAgentGraphEntity } from "@openagentsinc/khala-sync"
 import { Effect, Schema } from "effect"
 
 import type {
@@ -11,6 +12,7 @@ import type {
   KhalaSyncConversationChange,
   KhalaSyncConversationStatus,
 } from "./conversation.js"
+import type { KhalaSyncLiveAgentGraph } from "./live-agent-graph.js"
 import {
   KhalaConversationLiveEnvelopeSchema,
   KhalaConversationLiveUpdateSchema,
@@ -70,10 +72,19 @@ const timeline = (
   }],
 })
 
+const graph = (cursor: number): LiveAgentGraphEntity => emptyLiveAgentGraphEntity({
+  graphRef: "graph.runtime.run.live.fixture",
+  sessionRef: "session.runtime.thread.live.fixture",
+  threadRef,
+  attachmentGeneration: 1,
+  updatedAt: new Date(Date.parse("2026-07-11T00:00:00.000Z") + cursor * 1_000).toISOString(),
+})
+
 const harness = (initialStatus = status("live", 4)) => {
   let currentStatus = initialStatus
   let messages: ReadonlyArray<ConfirmedChatMessage> = [message("message.1", 1)]
   let currentTimeline: ConfirmedAgentTimelineSnapshot | null = timeline(4)
+  let currentGraphs: ReadonlyArray<LiveAgentGraphEntity> = [graph(4)]
   const listeners = new Set<(change: KhalaSyncConversationChange) => void>()
   let openCount = 0
   let closeCount = 0
@@ -106,20 +117,30 @@ const harness = (initialStatus = status("live", 4)) => {
       events: [],
     }),
   }
+  const agentGraph: KhalaSyncLiveAgentGraph = {
+    status: () => currentStatus,
+    snapshotForThread: () => Effect.succeed({
+      status: currentStatus,
+      graphs: currentGraphs,
+    }),
+  }
 
   return {
     conversation,
     timeline: agentTimeline,
+    agentGraph,
     counts: () => ({ closeCount, listeners: listeners.size, openCount }),
     change: (next: Readonly<{
       status: KhalaSyncConversationStatus
       messages?: ReadonlyArray<ConfirmedChatMessage>
       timeline?: ConfirmedAgentTimelineSnapshot | null
+      graphs?: ReadonlyArray<LiveAgentGraphEntity>
       kind?: KhalaSyncConversationChange["kind"]
     }>) => {
       currentStatus = next.status
       if (next.messages !== undefined) messages = next.messages
       if (next.timeline !== undefined) currentTimeline = next.timeline
+      if (next.graphs !== undefined) currentGraphs = next.graphs
       for (const listener of [...listeners]) listener({
         kind: next.kind ?? "content",
         status: currentStatus,
@@ -136,6 +157,7 @@ describe("cursor-aware live conversation subscription", () => {
     const subscription = await openKhalaConversationLive({
       conversation: h.conversation,
       timeline: h.timeline,
+      agentGraph: h.agentGraph,
       subscriptionRef: "subscription.fixture",
       generation: 2,
       threadRef,
@@ -146,27 +168,36 @@ describe("cursor-aware live conversation subscription", () => {
     expect(updates).toHaveLength(1)
     expect(Schema.decodeUnknownSync(KhalaConversationLiveEnvelopeSchema)(updates[0]!.envelope)).toEqual(updates[0]!.envelope)
     expect(Schema.decodeUnknownSync(KhalaConversationLiveUpdateSchema)(updates[0])).toEqual(updates[0])
+    expect(() => Schema.decodeUnknownSync(KhalaConversationLiveUpdateSchema)({
+      ...updates[0],
+      envelope: { ...updates[0]!.envelope, graphRefs: ["graph.foreign"] },
+    })).toThrow()
     expect(updates[0]!.envelope).toMatchObject({
       cursor: 4,
       delivery: "confirmed",
       eventRefs: ["event.4"],
+      graphRefs: ["graph.runtime.run.live.fixture"],
       generation: 2,
       messageRefs: ["message.1"],
       recovery: "resumed",
       runRef: "run.live.fixture",
       sequence: 1,
     })
+    expect(updates[0]!.snapshot?.graphs.map(value => value.graphRef)).toEqual([
+      "graph.runtime.run.live.fixture",
+    ])
     await subscription.close()
     expect(h.counts()).toEqual({ closeCount: 1, listeners: 0, openCount: 1 })
   })
 
   test("classifies a proven cursor gap as one bounded authoritative refetch", async () => {
     const h = harness(status("live", 9))
-    h.change({ status: status("live", 9), timeline: timeline(9) })
+    h.change({ status: status("live", 9), timeline: timeline(9), graphs: [graph(9)] })
     const updates: Array<KhalaConversationLiveUpdate> = []
     const subscription = await openKhalaConversationLive({
       conversation: h.conversation,
       timeline: h.timeline,
+      agentGraph: h.agentGraph,
       subscriptionRef: "subscription.gap",
       generation: 1,
       threadRef,
@@ -180,6 +211,9 @@ describe("cursor-aware live conversation subscription", () => {
       recovery: "authoritative_refetch",
     })
     expect(updates[0]!.snapshot?.timeline?.events).toHaveLength(1)
+    expect(updates[0]!.snapshot?.graphs[0]?.updatedAt).toBe(
+      "2026-07-11T00:00:09.000Z",
+    )
     await subscription.close()
   })
 
@@ -189,6 +223,7 @@ describe("cursor-aware live conversation subscription", () => {
     const subscription = await openKhalaConversationLive({
       conversation: h.conversation,
       timeline: h.timeline,
+      agentGraph: h.agentGraph,
       subscriptionRef: "subscription.order",
       generation: 1,
       threadRef,
@@ -227,6 +262,7 @@ describe("cursor-aware live conversation subscription", () => {
     const subscription = await openKhalaConversationLive({
       conversation: h.conversation,
       timeline: h.timeline,
+      agentGraph: h.agentGraph,
       subscriptionRef: "subscription.slow",
       generation: 1,
       threadRef,
@@ -268,6 +304,7 @@ describe("cursor-aware live conversation subscription", () => {
     const subscription = await openKhalaConversationLive({
       conversation: h.conversation,
       timeline: h.timeline,
+      agentGraph: h.agentGraph,
       subscriptionRef: "subscription.future",
       generation: 3,
       threadRef,
@@ -278,6 +315,7 @@ describe("cursor-aware live conversation subscription", () => {
     expect(updates[0]!.envelope).toMatchObject({
       cursor: 4,
       delivery: "interrupted",
+      graphRefs: [],
       reason: "cursor_ahead",
     })
     expect(updates[0]!.snapshot).toBeNull()
@@ -297,6 +335,7 @@ describe("cursor-aware live conversation subscription", () => {
     const subscription = await openKhalaConversationLive({
       conversation: h.conversation,
       timeline: h.timeline,
+      agentGraph: h.agentGraph,
       subscriptionRef: "subscription.aborted",
       generation: 1,
       threadRef,

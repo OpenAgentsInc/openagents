@@ -27,11 +27,12 @@ schema-decoded query/command/event seam.
 - Tokens, credentials, URLs, raw runtime events, arbitrary IPC, `MessagePort`,
   filesystem/process handles, and command arguments cannot enter the contract.
 
-Protocol v7 carries bounded OpenAgents entry/exit, canonical confirmed-
+Protocol v8 carries bounded OpenAgents entry/exit, canonical confirmed-
 conversation operations, exact-ref runtime start/interrupt, durable command
-outcomes, confirmed bounded agent-timeline snapshots, and typed cursor-aware
-conversation subscribe/resume/unsubscribe. Provider execution stays behind the
-host; only canonical projected lifecycle items reach the renderer.
+outcomes, confirmed bounded agent-timeline and live-agent-graph snapshots, and
+typed cursor-aware conversation subscribe/resume/unsubscribe. Provider
+execution stays behind the host; only canonical projected facts reach the
+renderer.
 
 Contract:
 `openagents_desktop.seam.runtime_gateway_closed_protocol.v1`.
@@ -89,7 +90,7 @@ Contract: `openagents_desktop.sync.native_conversation_continuity.v1`.
 
 ### Closed Runtime Gateway conversation protocol
 
-Protocol v7 carries schema-bounded `conversation.catalog`,
+Protocol v8 carries schema-bounded `conversation.catalog`,
 `conversation.thread`, `conversation.timeline`, and exact-intent
 `conversation.commandOutcome` queries plus
 `conversation.create`, `conversation.append`, `conversation.start`, and
@@ -119,7 +120,7 @@ Contract: `openagents_desktop.seam.runtime_gateway_conversation.v1`.
 
 ### Confirmed agent timeline protocol
 
-Protocol v7 carries `agent.timeline` by bounded exact `runRef` and
+Protocol v8 carries `agent.timeline` by bounded exact `runRef` and
 `conversation.timeline` by exact confirmed `threadRef`.
 Electron main composes the shared confirmed reader only while authenticated
 personal Sync is live.
@@ -146,13 +147,32 @@ Live-account/physical-device proof remains the final #8676 gate.
 
 Contract: `openagents_desktop.seam.runtime_gateway_agent_timeline.v1`.
 
+### Confirmed live-agent graph protocol
+
+Protocol v8 adds `graphRefs` and validated `openagents.live_agent_graph.v1`
+post-images to the existing thread subscription snapshot.
+
+- Graphs come only from the authenticated canonical thread scope and only
+  while that scope is live; cached rows cannot claim current authority.
+- Exact reconnect resumes at the durable cursor. A proven cursor gap returns
+  one newest authoritative-refetch snapshot rather than replaying provider
+  history or opening another stream.
+- One update carries at most eight graphs and at most 2,000 nodes / 4,000
+  edges in aggregate. Matching graph refs make correlation explicit.
+- Provider callbacks, histories, credentials, store/session/transport handles,
+  and process authority remain host-only. Unsupported facts stay explicit
+  unknowns in the canonical graph.
+
+Contract:
+`openagents_desktop.seam.runtime_gateway_live_agent_graph.v1`.
+
 ### Visible authoritative Sync conversation mode
 
 ### Local-first identity and optional account link
 
 Desktop creates an immutable device-local identity before OpenAuth. Local
 authority uses separate SQLite tables, `LocalRevision`, and a device-local
-scope that hosted Sync rejects. Runtime Gateway v7 exposes only the tier, never
+scope that hosted Sync rejects. Runtime Gateway v8 exposes only the tier, never
 the identity/owner ref. A server-verified account link adds personal Sync;
 disconnect, denial, failed link, and restart preserve the local identity and
 local rows. The workbench, history, local Pylon, and local conversation path do
@@ -160,7 +180,7 @@ not require an OpenAgents account.
 
 Contract: `openagents_desktop.seam.identity.local_first_account_link.v1`.
 
-The existing Effect Native shell consumes Runtime Gateway v7 through a typed
+The existing Effect Native shell consumes Runtime Gateway v8 through a typed
 renderer adapter whenever confirmed conversation Sync is live at boot.
 
 - Sidebar and transcript map only confirmed thread/message projections.

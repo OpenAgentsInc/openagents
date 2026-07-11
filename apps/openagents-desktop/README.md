@@ -108,11 +108,14 @@ process before D3/D4 breadth. The renderer never receives bearer/provider/
 Pylon credentials, a loopback URL, raw runtime events, general IPC, or a raw
 `MessagePort`.
 
-Runtime Gateway protocol v7 now carries the authoritative conversation path:
+Runtime Gateway protocol v8 now carries the authoritative conversation path:
 confirmed catalog/thread/current-timeline queries, canonical create/append
 enqueues, exact thread/message/run start or interrupt commands, and typed
 cursor-aware subscribe/resume/unsubscribe over the existing decoded event
-channel. Enqueue is
+channel. The same confirmed thread snapshot carries matching graph refs and a
+bounded set of canonical live-agent graph post-images. Exact reconnect resumes
+from the durable cursor; a proven gap sends one authoritative-refetch snapshot,
+while a non-live scope exposes no cached graph authority. Enqueue is
 reported only as `pending_reconcile` or `unknown_pending_reconcile`. The
 Effect Native shell streams bounded canonical text, reasoning, tool/plan,
 usage, interruption, connection, and terminal items from confirmed Sync; raw
@@ -132,7 +135,7 @@ discarded when their subscription generation is superseded; runtime provider
 events must match the durable next sequence and current turn state; and a
 stale hosted worker is terminalized as interrupted without re-running the
 provider. The real Desktop and Expo SQLite adapters reconstruct the same
-partial timeline and terminal after close/reopen. The built Runtime Gateway v7
+partial timeline and terminal after close/reopen. The built Runtime Gateway v8
 smoke covers correlation and teardown; the physical-mobile network-gap receipt
 remains a separate #8689/#8677 close gate.
 
@@ -141,7 +144,7 @@ coalesced. Authenticated Sync replacement/sign-out resets all current
 subscriptions; Runtime Gateway disposal closes the registry. Renderer
 conversation polling removal remains the final CUT-10 consumer step.
 
-Protocol v7 also carries a separate owner-local Codex history catalog/page
+Protocol v8 also carries a separate owner-local Codex history catalog/page
 capability. Active and archived (including zstd) rollouts are indexed in the
 history worker without an age ceiling. The Effect Native history workspace
 keeps top-level conversations left, a bounded selected-agent timeline center,
@@ -152,7 +155,7 @@ and provider authority never cross preload or enter Khala Sync.
 Desktop main now also opens the shared `khala-sync-client` SQLite store beneath
 its private `userData` root and persists one installation identity. After
 opening it also creates a separate immutable device-local identity and local-
-authority tables. Desktop remains usable without OpenAuth; Runtime Gateway v7
+authority tables. Desktop remains usable without OpenAuth; Runtime Gateway v8
 projects only `local_only | account_linked | local_unavailable`. Verified
 account linking adds personal Sync, while disconnect/denial retains local rows.
 After

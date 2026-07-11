@@ -94,6 +94,7 @@ import { openWorkspaceService } from "./workspace-service.ts"
 import {
   DesktopRuntimeGatewayEventChannel,
   DesktopRuntimeGatewayInvokeChannel,
+  DesktopRuntimeGatewayProtocolVersion,
   decodeDesktopRuntimeGatewayRequest,
   invalidDesktopRuntimeGatewayResponse,
   type DesktopRuntimeGatewayRequest,
@@ -191,6 +192,7 @@ const connectVerifiedDesktopSync = (): boolean => {
 const runtimeLiveSubscriptions = createDesktopRuntimeLiveSubscriptions({
   conversation: () => hostLifecycle.sync()?.conversation() ?? null,
   timeline: () => hostLifecycle.sync()?.timeline() ?? null,
+  agentGraph: () => hostLifecycle.sync()?.agentGraph() ?? null,
 })
 const runtimeGateway = createDesktopRuntimeGateway(() => desktopRuntimeCapabilities({
   sessionLocalState: desktopSessionState,
@@ -722,7 +724,7 @@ const smokeRuntimeGatewayBootstrap = `(async () => {
   return {
     ok: result?.kind === "query_result" &&
       result.requestId === "smoke-runtime-bootstrap" &&
-      result.result?.protocolVersion === 7 &&
+      result.result?.protocolVersion === ${DesktopRuntimeGatewayProtocolVersion} &&
       result.result?.lifecycle === "ready" &&
       result.result?.capabilities?.some((capability) => capability.id === "codex-history" && capability.state === "available"),
     protocolVersion: result?.result?.protocolVersion,

@@ -12,6 +12,10 @@ import {
   ConfirmedAgentTimelineEventSchema,
   type KhalaSyncAgentTimeline,
 } from "./agent-timeline.js"
+import {
+  ConfirmedLiveAgentGraphsSchema,
+  type KhalaSyncLiveAgentGraph,
+} from "./live-agent-graph.js"
 
 const LiveRefSchema = Schema.String.check(
   Schema.isMinLength(1),
@@ -37,6 +41,7 @@ const KhalaConversationLiveEnvelopeBase = {
   runRef: Schema.optional(LiveRefSchema),
   messageRefs: LiveCorrelationRefsSchema,
   eventRefs: LiveCorrelationRefsSchema,
+  graphRefs: LiveCorrelationRefsSchema,
 } as const
 
 export const KhalaConversationLiveEnvelopeSchema = Schema.Union([
@@ -76,6 +81,7 @@ export const KhalaConversationLiveSnapshotSchema = Schema.Struct({
     Schema.isMaxLength(500),
   ),
   timeline: Schema.NullOr(KhalaConversationLiveTimelineSnapshotSchema),
+  graphs: ConfirmedLiveAgentGraphsSchema,
 })
 export type KhalaConversationLiveSnapshot =
   typeof KhalaConversationLiveSnapshotSchema.Type
@@ -84,7 +90,22 @@ export const KhalaConversationLiveUpdateSchema = Schema.Struct({
   kind: Schema.Literal("conversation.live.update"),
   envelope: KhalaConversationLiveEnvelopeSchema,
   snapshot: Schema.NullOr(KhalaConversationLiveSnapshotSchema),
-})
+}).pipe(
+  Schema.check(
+    Schema.makeFilter(
+      update => {
+        if (update.envelope.delivery === "interrupted") {
+          return update.snapshot === null && update.envelope.graphRefs.length === 0
+        }
+        if (update.snapshot === null) return false
+        const graphRefs = update.snapshot.graphs.map(graph => graph.graphRef)
+        return graphRefs.length === update.envelope.graphRefs.length &&
+          graphRefs.every((graphRef, index) => graphRef === update.envelope.graphRefs[index])
+      },
+      { message: "live graph refs must exactly match the authoritative snapshot" },
+    ),
+  ),
+)
 export type KhalaConversationLiveUpdate =
   typeof KhalaConversationLiveUpdateSchema.Type
 
@@ -105,6 +126,7 @@ export type KhalaConversationLiveMetrics = Readonly<{
 export type KhalaConversationLiveOptions = Readonly<{
   conversation: KhalaSyncConversation
   timeline?: KhalaSyncAgentTimeline
+  agentGraph?: KhalaSyncLiveAgentGraph
   subscriptionRef: string
   generation: number
   threadRef: string
@@ -157,19 +179,25 @@ export const openKhalaConversationLive = async (
 
   const snapshot = async (): Promise<KhalaConversationLiveSnapshot> => {
     const status = options.conversation.threadStatus(options.threadRef)
-    if (status.phase !== "live") return { status, thread: null, messages: [], timeline: null }
-    const [threads, messages, timeline] = await Promise.all([
+    if (status.phase !== "live") {
+      return { status, thread: null, messages: [], timeline: null, graphs: [] }
+    }
+    const [threads, messages, timeline, agentGraph] = await Promise.all([
       Effect.runPromise(options.conversation.listConfirmedThreads()),
       Effect.runPromise(options.conversation.listConfirmedMessages(options.threadRef)),
       options.timeline === undefined
         ? Promise.resolve(null)
         : Effect.runPromise(options.timeline.snapshotForThread(options.threadRef)),
+      options.agentGraph === undefined
+        ? Promise.resolve(null)
+        : Effect.runPromise(options.agentGraph.snapshotForThread(options.threadRef)),
     ])
     return {
       status,
       thread: threads.find(thread => thread.threadRef === options.threadRef) ?? null,
       messages: messages.slice(-500),
       timeline,
+      graphs: agentGraph?.graphs ?? [],
     }
   }
 
@@ -193,6 +221,7 @@ export const openKhalaConversationLive = async (
           reason: "read_failed",
           messageRefs: [],
           eventRefs: [],
+          graphRefs: [],
         },
         snapshot: null,
       }
@@ -203,6 +232,7 @@ export const openKhalaConversationLive = async (
     const runRef = current.timeline?.run?.runRef
     const messageRefs = current.messages.map(message => message.messageRef)
     const eventRefs = current.timeline?.events.map(event => event.eventRef) ?? []
+    const graphRefs = current.graphs.map(graph => graph.graphRef)
     const delivery = status.phase === "live"
       ? status.pendingMutationCount > 0 ? "provisional" as const : "confirmed" as const
       : "interrupted" as const
@@ -220,6 +250,12 @@ export const openKhalaConversationLive = async (
       ...current.messages.map(message => [message.messageRef, message.version]),
       current.thread?.version ?? null,
       ...((current.timeline?.events ?? []).map(event => [event.eventRef, event.version])),
+      ...current.graphs.map(graph => [
+        graph.graphRef,
+        graph.attachmentGeneration,
+        graph.cursor,
+        graph.updatedAt,
+      ]),
     ])
     if (signature === lastSignature) return null
     lastSignature = signature
@@ -234,6 +270,7 @@ export const openKhalaConversationLive = async (
       ...(runRef === undefined ? {} : { runRef }),
       messageRefs,
       eventRefs,
+      graphRefs,
     }
     if (reason !== undefined || delivery === "interrupted") {
       return {
@@ -242,6 +279,7 @@ export const openKhalaConversationLive = async (
           ...baseEnvelope,
           delivery: "interrupted",
           reason: reason ?? "idle",
+          graphRefs: [],
         },
         snapshot: null,
       }

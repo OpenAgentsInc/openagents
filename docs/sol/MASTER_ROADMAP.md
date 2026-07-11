@@ -2,8 +2,8 @@
 
 - Date: 2026-07-10
 - Updated: 2026-07-11 (CUT-10 no-poll Desktop/mobile path landed; CUT-11
-  Codex/Claude root graphs enter the Sync transaction)
-- Revision: 42
+  root graphs enter Sync and the confirmed Runtime Gateway subscription)
+- Revision: 43
 - Status: canonical OpenAgents implementation roadmap
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Issue source set: [`issues/README.md`](./issues/README.md)
@@ -565,7 +565,12 @@ product gaps are the R0–R7 Desktop/mobile continuity and reliability gates:
   transaction now binds both Codex and Claude root observations into that
   writer atomically, retaining unknown provider identity until a real source
   ref arrives and fencing terminal retries with a new attachment generation.
-  Child topology, Gateway emission, and named-account traces remain open.
+  A confirmed-only client read model now validates and bounds the exact live
+  thread-scope graph set, and Runtime Gateway protocol v8 carries matching
+  graph refs/post-images through the existing durable-cursor subscription.
+  Exact resume and deterministic authoritative-refetch reconnect are green;
+  non-live scopes expose no cached graph authority. Child topology and redacted
+  named-account traces remain open.
 - Grok is postponed by owner decision because the connected account is
   quota/payment exhausted. Its real accepted historical canary, HTTP-402
   state, adapters, and fixtures remain evidence/regression substrate; Grok is

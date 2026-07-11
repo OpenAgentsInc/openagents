@@ -260,6 +260,7 @@ describe("authoritative Runtime Gateway chat adapter", () => {
         ...(terminal ? { runRef: "turn.desktop.live-run" } : {}),
         messageRefs: messages.map(message => message.messageRef),
         eventRefs: terminal ? ["event.live.text", "event.live.terminal"] : [],
+        graphRefs: [],
       },
       snapshot: {
         status: { phase: "live", cursor: 5 + sequence, pendingMutationCount: 0 },
@@ -298,6 +299,7 @@ describe("authoritative Runtime Gateway chat adapter", () => {
             { eventRef: "event.live.terminal", runRef: "turn.desktop.live-run", sequence: 2, eventType: "turn.finished", summary: "Done", status: "completed", artifactRefs: [], item: { kind: "terminal", status: "completed" }, createdAt: now, version: 3 },
           ],
         } : null,
+        graphs: [],
       },
     })
     const request = async (raw: unknown): Promise<DesktopRuntimeGatewayResponse> => {

@@ -371,7 +371,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           statedOn: "2026-07-10",
         },
         statement:
-          "The signed Desktop renderer reaches host runtime state through one versioned closed query/command/event protocol. Protocol v7 includes bounded provider-native Codex history, canonical confirmed conversation/timeline/command-outcome queries, and exact-ref start/interrupt commands; unknown requests fail schema decoding, unavailable or pending commands never appear completed, expired commands never dispatch, lifecycle events are ordered and disposable, and the renderer never receives runtime credentials or a generic transport.",
+          "The signed Desktop renderer reaches host runtime state through one versioned closed query/command/event protocol. Protocol v8 includes bounded provider-native Codex history, canonical confirmed conversation/timeline/graph/command-outcome projections, and exact-ref start/interrupt commands; unknown requests fail schema decoding, unavailable or pending commands never appear completed, expired commands never dispatch, lifecycle events are ordered and disposable, and the renderer never receives runtime credentials or a generic transport.",
         authorityBoundary:
           "Electron main owns the Runtime Gateway and validates the invoking top-level bundled renderer. The renderer may request bounded OpenAgents session entry/exit and canonical conversation operations but receives only typed projections/outcomes; it gets no credential, callback/authorize URL, raw Khala Sync/store/session/transport authority, provider credential, raw IPC channel, MessagePort, filesystem handle, process handle, or raw runtime event.",
         seam: {
@@ -487,7 +487,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           statedOn: "2026-07-10",
         },
         statement:
-          "The signed Desktop renderer can query confirmed canonical conversation catalogs, threads, their current agent timeline, and durable command outcomes, and enqueue canonical create/append plus exact thread/message/run start or interrupt commands only through Runtime Gateway protocol v7. Enqueues return pending_reconcile or unknown_pending_reconcile with the durable mutation id, never optimistic completed; expired commands are terminal and never execute after reconnect.",
+          "The signed Desktop renderer can query confirmed canonical conversation catalogs, threads, their current agent timeline, and durable command outcomes, and enqueue canonical create/append plus exact thread/message/run start or interrupt commands only through Runtime Gateway protocol v8. Enqueues return pending_reconcile or unknown_pending_reconcile with the durable mutation id, never optimistic completed; expired commands are terminal and never execute after reconnect.",
         authorityBoundary:
           "The seam carries public-safe thread/message/run/WorkContext refs, bounded canonical timeline items, timestamps, confirmed entity versions, exact scope phase/cursor, and pending count only. It carries no owner identity, credential, store/session/overlay/transport, generic IPC, raw provider stream, or process authority; not-live/read failure is typed and body-free.",
         seam: {
@@ -511,7 +511,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
             mode: "e2e",
             ref: "apps/openagents-desktop/tests/runtime-gateway.e2e.test.ts",
             description:
-              "Round-trips confirmed catalog/thread/timeline/command-outcome projections and exact create/append/start/interrupt refs through protocol v7, proves pending-reconcile and terminal-expiry outcomes, unavailable fail-closed behavior, bounds, and schema rejection.",
+              "Round-trips confirmed catalog/thread/timeline/command-outcome projections and exact create/append/start/interrupt refs through protocol v8, proves pending-reconcile and terminal-expiry outcomes, unavailable fail-closed behavior, bounds, and schema rejection.",
           },
           {
             id: "runtime_agent_run_transactional_binding",
@@ -554,7 +554,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           statedOn: "2026-07-10",
         },
         statement:
-          "Runtime Gateway protocol v7 accepts bounded agent.timeline by exact runRef, conversation.timeline by exact threadRef, and conversation.commandOutcome by exact stable intentId/threadRef, returning only confirmed server projections with bounded canonical timeline items; unavailable, not-found, and read failure remain typed and body-free.",
+          "Runtime Gateway protocol v8 accepts bounded agent.timeline by exact runRef, conversation.timeline by exact threadRef, and conversation.commandOutcome by exact stable intentId/threadRef, returning only confirmed server projections with bounded canonical timeline items; unavailable, not-found, and read failure remain typed and body-free.",
         authorityBoundary:
           "Electron main composes the shared confirmed timeline reader only behind authenticated live Sync. The server-projected agent_run.routeId is the sole route/thread binding; renderer code cannot derive it from runRef. The seam may expose bounded runtime/backend/WorkContext classification but never owner/objective/repository contents, provider source, raw payload, external callback, auth/store/session/transport, generic IPC, or process authority.",
         seam: {
@@ -582,6 +582,62 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           "Runtime Gateway e2e, Electron boundary, Desktop host/typecheck/build, shared timeline, and behavior-contract validation run in the normal sweeps.",
       },
       {
+        contractId: "openagents_desktop.seam.runtime_gateway_live_agent_graph.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "confirmed live-agent graph gateway",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: {
+          channel: "owner-codex-session",
+          statedBy: "owner",
+          statedOn: "2026-07-11",
+        },
+        statement:
+          "Runtime Gateway protocol v8 emits server-confirmed openagents.live_agent_graph.v1 post-images inside the existing cursor-aware thread subscription. Exact resume emits the current bounded graph set, a proven cursor gap emits one authoritative-refetch snapshot, and interrupted or non-live scopes emit no cached graph authority.",
+        authorityBoundary:
+          "Electron main reads graph entities only from the authenticated canonical thread scope. Each event carries matching graphRefs plus at most eight validated post-images, with at most 2,000 nodes and 4,000 edges in aggregate. Provider-native history, raw callbacks, credentials, store/session/transport handles, and process authority never cross the renderer seam; unsupported graph facts remain explicit unknowns.",
+        seam: {
+          client: "apps/openagents-desktop/src/preload.cts",
+          server: "apps/openagents-desktop/src/runtime-gateway.ts",
+        },
+        evidenceRefs: [
+          "packages/khala-sync-client/src/live-agent-graph.ts",
+          "packages/khala-sync-client/src/live-conversation.ts",
+          "apps/openagents-desktop/src/runtime-gateway-contract.ts",
+          "apps/openagents-desktop/src/runtime-live-subscriptions.ts",
+          "github:OpenAgentsInc/openagents#8691",
+        ],
+        oracles: [
+          {
+            id: "confirmed_live_agent_graph_read_model",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "packages/khala-sync-client/src/live-agent-graph.test.ts",
+            description:
+              "Reads only graph-valid post-images from the exact live thread scope, hides cached rows while non-live, and bounds a busy thread to the newest aggregate-safe graph set.",
+          },
+          {
+            id: "runtime_gateway_live_agent_graph_reconnect",
+            kind: "bun-test",
+            mode: "e2e",
+            ref: "packages/khala-sync-client/src/live-conversation.test.ts",
+            description:
+              "Proves graph refs and post-images ride confirmed resume and authoritative-refetch snapshots through the same durable cursor and bounded subscription path without polling.",
+          },
+          {
+            id: "runtime_gateway_live_agent_graph_boundary",
+            kind: "bun-test",
+            mode: "e2e",
+            ref: "apps/openagents-desktop/tests/runtime-gateway.e2e.test.ts",
+            description:
+              "Round-trips a bounded canonical graph post-image through both protocol-v8 schema boundaries and advertises agent-graph capability only with live Sync.",
+          },
+        ],
+        verification:
+          "Khala Sync client graph/live-conversation tests and typecheck plus Runtime Gateway e2e, Desktop typecheck/build, and behavior-contract validation run in the normal sweeps.",
+      },
+      {
         contractId: "openagents_desktop.chat.authoritative_sync_mode.v1",
         state: "enforced",
         surface: "openagents-desktop",
@@ -594,7 +650,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           statedOn: "2026-07-10",
         },
         statement:
-          "At boot, the Effect Native Desktop shell selects exactly one chat authority: Runtime Gateway v7 confirmed Sync when its catalog is live, otherwise the existing explicit local-only host. In Sync mode, visible threads/messages, durable command outcomes, and bounded assistant lifecycle items come from confirmed projections; create/append/start remain pending until exact refs and terminal state reconcile.",
+          "At boot, the Effect Native Desktop shell selects exactly one chat authority: Runtime Gateway v8 confirmed Sync when its catalog is live, otherwise the existing explicit local-only host. In Sync mode, visible threads/messages, durable command outcomes, and bounded assistant lifecycle items come from confirmed projections; create/append/start remain pending until exact refs and terminal state reconcile.",
         authorityBoundary:
           "Mode is selected once per renderer lifetime so local and account-linked conversations never mix. The adapter uses only the generic decoded Runtime Gateway call; it gets no owner/credential/native authority, does not add preload IPC, does not infer assistant roles, and reports an unconfirmed append as still pending rather than completed.",
         evidenceRefs: [
