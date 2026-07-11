@@ -125,3 +125,11 @@ re-copy would destroy:
 These divergences are now the "known divergence" base for the next re-vendor:
 either upstream them first (preferred, per the sync rule) or re-apply the next
 upstream delta hunk-wise as done here.
+
+## Post-v30 upstream lowering fix
+
+- `effect-native` `796f4b9e935a5425934230dad3914b7c6fd90587`
+  (effect-native#73) was applied hunk-wise to `render-rn`: transcript messages
+  now sit inside a full-width role-aligned row and carry `minWidth: 0` plus
+  `flexShrink: 1` under their 82% bound. The catalog and the shared v30 vendor
+  manifest remain unchanged because this is a lowering-only fix.

@@ -40,4 +40,24 @@ describe("contract openagents_mobile.persona_neutral_catalog.v1", () => {
     expect(existsSync(join(appRoot, "assets/videos/sarah-demo.mp4"))).toBe(false)
     expect(existsSync(join(appRoot, "assets/videos/ask-anything.mp4"))).toBe(false)
   })
+
+  test("the vendored RN transcript keeps long messages inside the viewport", () => {
+    const renderer = readFileSync(
+      join(appRoot, "../openagents.com/packages/effect-native-render-rn/src/index.ts"),
+      "utf8",
+    )
+    expect(renderer).toContain('testID: `en-message-row:${message.key}`')
+    expect(renderer).toContain('width: "100%"')
+    expect(renderer).toContain('maxWidth: "82%"')
+    expect(renderer).toContain("minWidth: 0")
+    expect(renderer).toContain("flexShrink: 1")
+  })
+
+  test("Metro resolves NodeNext .js specifiers to workspace TypeScript sources", () => {
+    const metro = readFileSync(join(appRoot, "metro.config.cjs"), "utf8")
+    expect(metro).toContain('moduleName.endsWith(".js")')
+    expect(metro).toContain('`${withoutJs}.ts`')
+    expect(metro).toContain('`${withoutJs}.tsx`')
+    expect(metro).toContain("context.resolveRequest")
+  })
 })

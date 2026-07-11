@@ -3012,17 +3012,17 @@ const renderTranscript = (
             )
           )
         )
-        return createElement(
+        const messageElement = createElement(
           dependencies,
           dependencies.ReactNative.View,
           {
-            key: `message-${message.key}`,
             testID: `en-message:${message.key}`,
             nativeID: `effect-native-message:${message.role}`,
             style: {
               gap: spacingValue(theme, "1"),
-              alignSelf: message.role === "user" ? "flex-end" : "flex-start",
-              maxWidth: "82%"
+              maxWidth: "82%",
+              minWidth: 0,
+              flexShrink: 1
             },
             ...(message.status === undefined
               ? {}
@@ -3033,6 +3033,21 @@ const renderTranscript = (
                 })
           },
           ...children
+        )
+        return createElement(
+          dependencies,
+          dependencies.ReactNative.View,
+          {
+            key: `message-${message.key}`,
+            testID: `en-message-row:${message.key}`,
+            style: {
+              width: "100%",
+              minWidth: 0,
+              flexDirection: "row",
+              justifyContent: message.role === "user" ? "flex-end" : "flex-start"
+            }
+          },
+          messageElement
         )
       }
     }
