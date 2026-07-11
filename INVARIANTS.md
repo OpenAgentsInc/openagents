@@ -664,9 +664,12 @@ More specific invariant ledgers apply inside imported apps and packages.
   identity/version/cursor/timestamp regression, terminal reopening, missing or
   conflicting parents, orphan edges, and cycles. The schema/reducer is
   enforced by `packages/agent-runtime-schema/src/live-agent-graph.test.ts`.
-  Codex/Claude adapters, durable Khala Sync entities, Runtime Gateway emission,
-  client read models, and live receipts remain CUT-11 work; registering this
-  contract does not itself claim a live graph authority.
+  Provider-specific Codex app-server and Claude Agent SDK observation adapters
+  now exhaustively map their distinct status/tool vocabulary into equivalent
+  graph facts and loss-account omitted facts explicitly. Live producer
+  bindings, durable Khala Sync entities, Runtime Gateway emission, client read
+  models, and live receipts remain CUT-11 work; registering these contracts
+  does not itself claim a live graph authority.
 
 - Master Roadmap Revision 31 and
   `docs/sol/2026-07-11-remote-first-portable-coding-sessions-pathway.md`

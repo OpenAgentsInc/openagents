@@ -2,8 +2,8 @@
 
 - Date: 2026-07-10
 - Updated: 2026-07-11 (CUT-10 host/wire and renderer adapter landed; CUT-11
-  canonical graph schema/replay laws active while held consumers remain open)
-- Revision: 37
+  canonical graph and cross-provider normalization active)
+- Revision: 38
 - Status: canonical OpenAgents implementation roadmap
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Issue source set: [`issues/README.md`](./issues/README.md)
@@ -549,8 +549,11 @@ product gaps are the R0–R7 Desktop/mobile continuity and reliability gates:
   explicit unknown provider facts, parent/worktree/tool/attention/terminal
   state, attachment generation, per-agent activity cursor, exact replay, gap/
   stale-generation refusal, terminal monotonicity, and graph integrity are
-  deterministic. This is a shared-contract tranche only: Codex/Claude adapters,
-  durable projection, Gateway emission, and named-account traces remain open.
+  deterministic. Typed Codex app-server and Claude Agent SDK observation
+  adapters now map provider-specific status/tool vocabulary to equivalent
+  canonical semantics and preserve unsupported facts as explicit unknowns.
+  Live producer bindings, durable projection, Gateway emission, and named-
+  account traces remain open.
 - Grok is postponed by owner decision because the connected account is
   quota/payment exhausted. Its real accepted historical canary, HTTP-402
   state, adapters, and fixtures remain evidence/regression substrate; Grok is
