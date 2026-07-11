@@ -643,8 +643,11 @@ More specific invariant ledgers apply inside imported apps and packages.
   removes both observers and the owned thread scope exactly once. The
   shared contract and mobile no-poll boundary are enforced by
   `packages/khala-sync-client/src/live-conversation.test.ts` and
-  `apps/openagents-mobile/tests/mobile-conversation.test.ts`. Desktop Runtime
-  Gateway adoption remains CUT-10 work and is not implied by the mobile rung.
+  `apps/openagents-mobile/tests/mobile-conversation.test.ts`. The Desktop host
+  registry additionally bounds active slots, closes a prior generation before
+  replacement, fences stale unsubscribe, and disposes all slots once. Runtime
+  Gateway wire adoption remains CUT-10 work and is not implied by these native
+  host rungs.
 
 **Planned live-agent portability model boundary:**
 

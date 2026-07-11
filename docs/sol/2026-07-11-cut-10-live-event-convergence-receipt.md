@@ -32,6 +32,12 @@ now use that subscription. The production mobile conversation adapter contains
 no `for`-attempt polling loop, `await sleep(100)`, or conversation-state
 `setInterval`; a one-shot bounded deadline preserves honest pending outcomes.
 
+A file-disjoint Desktop host registry now stages this contract without touching
+the active #8712 gateway claim. It serializes registry mutations, caps the host
+at 64 live subscriptions, closes the prior generation before replacement,
+fences stale subscribe/unsubscribe attempts, exposes metrics only for the exact
+active generation, and disposes every slot once.
+
 ## Verification
 
 - `@openagentsinc/khala-sync-client`: 169 pass, 3 explicitly gated live-smoke
@@ -42,6 +48,12 @@ no `for`-attempt polling loop, `await sleep(100)`, or conversation-state
   slow-consumer coalescing, future-cursor refusal, and idempotent disposal.
 - Focused mobile tests prove asynchronous exact-message confirmation arrives
   through the change subscription and enforce the no-poll source boundary.
+- Desktop registry: 5 focused tests / 22 expectations and Desktop typecheck
+  pass for generation replacement, stale fencing, capacity, metrics, failed
+  open, and dispose-all behavior.
+- Full Desktop verification passes: 195 tests / 1,087 expectations, production
+  bundle, every built Electron smoke stage, renderer reload restoration, and
+  lifecycle teardown with zero active host slots.
 
 ## Collision boundary and residual
 

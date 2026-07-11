@@ -538,7 +538,8 @@ product gaps are the R0–R7 Desktop/mobile continuity and reliability gates:
   by the
   [`live-event convergence receipt`](./2026-07-11-cut-10-live-event-convergence-receipt.md):
   shared Sync emits cursor-aware, generation-fenced, backpressure-coalesced
-  conversation updates, and mobile no longer polls conversation timelines.
+  conversation updates, mobile no longer polls conversation timelines, and a
+  disjoint Desktop host registry now bounds/fences subscription lifetimes.
   Desktop Runtime Gateway integration waits for active #8712 to release or
   land its claimed gateway/composer files; neither session duplicates the
   other's optional harness-selection work.

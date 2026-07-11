@@ -406,7 +406,8 @@ Close rule: merge with no-polling boundary check and receipts.
 The owner explicitly deferred CUT-09's physical receipt while the paired phone
 records video and authorized the next non-device work. The first CUT-10 tranche
 therefore lands the shared cursor/generation envelope, bounded authoritative
-refetch, slow-consumer coalescing, exact disposal, and mobile no-poll adapter.
+refetch, slow-consumer coalescing/metrics, exact disposal, mobile no-poll
+adapter, and a file-disjoint bounded Desktop host subscription registry.
 The active Episode 250 #8712 claim owns Desktop gateway/composer hot files, so
 CUT-10 does not touch those files until that claim releases or lands. See
 [`2026-07-11-cut-10-live-event-convergence-receipt.md`](./2026-07-11-cut-10-live-event-convergence-receipt.md).
