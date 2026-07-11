@@ -706,6 +706,22 @@ export const fixtureCodexRateLimitStdout = [
   JSON.stringify({ type: "turn.failed", error: { message: FIXTURE_CODEX_RATE_LIMIT_MESSAGE } }),
 ].join("\n")
 
+/**
+ * LIVE VERBATIM usage-limit variant (captured on codex-5, 2026-07-11 during
+ * the EP250 live proof): the account's credential is VALID but quota is
+ * exhausted. No "429" substring at all — the "usage limit" marker is what
+ * classifies it rate-limit, never auth-class (a reconnect cannot fix quota).
+ */
+export const FIXTURE_CODEX_USAGE_LIMIT_MESSAGE =
+  "You've hit your usage limit. Visit https://chatgpt.com/codex/settings/usage to purchase more credits or try again at 8:31 PM."
+
+export const fixtureCodexUsageLimitStdout = [
+  JSON.stringify({ type: "thread.started", thread_id: "019f536f-4069-76a2-afd8-4b0e3c2cd9ee" }),
+  JSON.stringify({ type: "turn.started" }),
+  JSON.stringify({ type: "error", message: FIXTURE_CODEX_USAGE_LIMIT_MESSAGE }),
+  JSON.stringify({ type: "turn.failed", error: { message: FIXTURE_CODEX_USAGE_LIMIT_MESSAGE } }),
+].join("\n")
+
 /** Synthetic (reqwest connect-error shape): network refused pre-content. */
 export const FIXTURE_CODEX_NETWORK_REFUSED_MESSAGE =
   "error sending request for url (https://chatgpt.com/backend-api/codex/responses): connection refused"

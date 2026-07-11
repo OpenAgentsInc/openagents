@@ -214,7 +214,17 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
       return { state: "unavailable", reason: "no_verified_account" }
     }
     const first = verified[0]
-    if (first === undefined) return { state: "unavailable", reason: "no_verified_account" }
+    if (first === undefined) {
+      // Quota honesty (live receipt 2026-07-11): when the only obstacle is a
+      // rate limit, "Reconnect in Settings" would be a lie — reconnecting
+      // never restores quota. The reason names the rate limit instead.
+      const rateLimited = options.preflight.results()
+        .some(result => result.state === "rate_limited")
+      return {
+        state: "unavailable",
+        reason: rateLimited ? "rate_limited" : "no_verified_account",
+      }
+    }
     return { state: "available", accountRef: first.ref, verifiedCount: verified.length }
   }
 

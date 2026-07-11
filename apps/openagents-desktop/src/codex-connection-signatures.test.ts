@@ -35,6 +35,7 @@ import {
   FIXTURE_CODEX_NETWORK_REFUSED_MESSAGE,
   FIXTURE_CODEX_RATE_LIMIT_MESSAGE,
   FIXTURE_CODEX_SHORT_AUTH_MESSAGE,
+  FIXTURE_CODEX_USAGE_LIMIT_MESSAGE,
   fixtureCodex401TokenInvalidatedStderr,
   fixtureCodexMalformedAuthStderr,
   fixtureCodexMissingAuthStdout,
@@ -45,6 +46,7 @@ import {
   fixtureCodexRevokedStdout,
   fixtureCodexShortAuthStdout,
   fixtureCodexSuccessStdout,
+  fixtureCodexUsageLimitStdout,
   makeCodexAccountHealth,
   makeCodexChildRuntime,
   makeFixtureCodexChildSpawn,
@@ -53,6 +55,7 @@ import {
 } from "./codex-child-runtime.ts"
 import {
   CODEX_CHIP_REASON_NO_VERIFIED_ACCOUNT,
+  CODEX_CHIP_REASON_RATE_LIMITED,
   CODEX_CHIP_REASON_VERIFYING,
   codexHarnessLaneFromAvailability,
   codexLocalFailureMessage,
@@ -160,6 +163,15 @@ const rows: ReadonlyArray<SignatureRow> = [
     rotates: true,
     healthAfter: null,
     failureText: FIXTURE_CODEX_RATE_LIMIT_MESSAGE,
+    uiReasonIncludes: "failed before producing content",
+  },
+  {
+    name: "usage-limit quota variant (LIVE VERBATIM codex-5, EP250 live proof) — rate-limit, NEVER auth",
+    script: { stdout: fixtureCodexUsageLimitStdout, exitCode: 1 },
+    classification: "rate_limit",
+    rotates: true,
+    healthAfter: null,
+    failureText: FIXTURE_CODEX_USAGE_LIMIT_MESSAGE,
     uiReasonIncludes: "failed before producing content",
   },
   {
@@ -299,6 +311,39 @@ describe("EP250 chip lifecycle state machine", () => {
       .toEqual({ available: false, reason: CODEX_CHIP_REASON_NO_VERIFIED_ACCOUNT })
     expect(codexHarnessLaneFromAvailability({ state: "available", accountRef: "codex-5", verifiedCount: 1 }))
       .toEqual({ available: true, reason: null })
+    // Quota honesty (live receipt): reconnecting cannot fix a rate limit,
+    // so the reason must never send the owner to Settings for one.
+    expect(codexHarnessLaneFromAvailability({ state: "unavailable", reason: "rate_limited" }))
+      .toEqual({ available: false, reason: CODEX_CHIP_REASON_RATE_LIMITED })
+  })
+
+  test("LIVE QUOTA CASE (codex-5, EP250): zero verified + a rate-limited probe → the chip reason names the rate limit, not a reconnect", async () => {
+    const health = makeCodexAccountHealth()
+    const preflight = makeCodexPreflight({
+      scratchRoot: scratch,
+      hasAuthImpl: () => true,
+      spawnImpl: makeFixtureCodexChildSpawn([
+        { stdout: fixtureCodexRevokedStdout, stderr: fixtureCodexRevokedStderr, exitCode: 1 },
+        // The LIVE VERBATIM usage-limit stream on the only healthy account.
+        { stdout: fixtureCodexUsageLimitStdout, exitCode: 1 },
+      ]),
+      discoverImpl: async () => [accounts[0]!, { ref: "codex-5", home: "/isolated/accounts/codex/codex-5" }],
+      health,
+    })
+    await preflight.probeAll("boot")
+    const runtime = makeCodexLocalRuntime({
+      scratchRoot: scratch,
+      spawnImpl: makeFixtureCodexChildSpawn([{ stdout: "", exitCode: 1 }]),
+      discoverImpl: async () => [accounts[0]!, { ref: "codex-5", home: "/isolated/accounts/codex/codex-5" }],
+      health,
+      preflight,
+    })
+    const availability = await runtime.availability()
+    expect(availability).toEqual({ state: "unavailable", reason: "rate_limited" })
+    expect(codexHarnessLaneFromAvailability(availability))
+      .toEqual({ available: false, reason: CODEX_CHIP_REASON_RATE_LIMITED })
+    // The rate-limited account is NOT health-demoted (quota is not auth).
+    expect(health.stateOf("codex-5")).toBe(null)
   })
 
   test("boot probe verifies an account → availability available → chip enabled", async () => {

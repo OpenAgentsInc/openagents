@@ -62,7 +62,13 @@ export const CodexLocalAvailabilitySchema = Schema.Union([
   }),
   Schema.Struct({
     state: Schema.Literal("unavailable"),
-    reason: Schema.Literals(["no_codex_account", "no_verified_account"]),
+    /**
+     * "rate_limited": zero verified accounts but at least one probe hit a
+     * quota/429 (live verbatim 2026-07-11: "You've hit your usage limit.
+     * … try again at 8:31 PM."). A reconnect will NOT fix quota, so the
+     * chip reason must not send the owner to Settings for it.
+     */
+    reason: Schema.Literals(["no_codex_account", "no_verified_account", "rate_limited"]),
   }),
 ])
 export type CodexLocalAvailability = typeof CodexLocalAvailabilitySchema.Type
@@ -84,6 +90,9 @@ export const CodexLocalInterruptRequestSchema = FableLocalInterruptRequestSchema
 export const CODEX_CHIP_REASON_NO_VERIFIED_ACCOUNT =
   "Codex — no verified account · Reconnect in Settings"
 export const CODEX_CHIP_REASON_VERIFYING = "Codex — verifying accounts…"
+/** Quota is not a credential problem: reconnecting will not fix it. */
+export const CODEX_CHIP_REASON_RATE_LIMITED =
+  "Codex — accounts rate-limited · retry later or connect another account"
 
 /**
  * Pure chip projection from typed availability (unit-tested lifecycle
@@ -94,9 +103,13 @@ export const codexHarnessLaneFromAvailability = (
   availability: CodexLocalAvailability | null,
 ): Readonly<{ available: boolean; reason: string | null }> => {
   if (availability === null) return { available: false, reason: CODEX_CHIP_REASON_VERIFYING }
-  return availability.state === "available"
-    ? { available: true, reason: null }
-    : { available: false, reason: CODEX_CHIP_REASON_NO_VERIFIED_ACCOUNT }
+  if (availability.state === "available") return { available: true, reason: null }
+  return {
+    available: false,
+    reason: availability.reason === "rate_limited"
+      ? CODEX_CHIP_REASON_RATE_LIMITED
+      : CODEX_CHIP_REASON_NO_VERIFIED_ACCOUNT,
+  }
 }
 
 /**
