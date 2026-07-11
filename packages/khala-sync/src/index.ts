@@ -1,4 +1,5 @@
 import { Schema as S } from "effect"
+import type { LocalIdentityRef } from "./local-authority.js"
 
 /**
  * @openagentsinc/khala-sync — wire and domain contracts for Khala Sync,
@@ -176,6 +177,14 @@ export const fleetRunScope = (fleetRunId: string): SyncScope =>
   scope("fleet_run", fleetRunId)
 export const publicScope = (channel: string): SyncScope =>
   scope("public", channel)
+
+// Device-local scope helpers live here (not in local-authority.ts) so that
+// module never imports back into index — index `export *`s it below, and a
+// reverse import would be a circular dependency.
+export const deviceLocalScope = (identityRef: LocalIdentityRef): SyncScope =>
+  `scope.device_local.${identityRef}` as SyncScope
+export const isDeviceLocalScope = (scope: SyncScope): boolean =>
+  String(scope).startsWith("scope.device_local.")
 
 // Device-local authority is intentionally exported from a separate module;
 // hosted transport must reject it rather than treating syntactic validity as

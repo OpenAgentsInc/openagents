@@ -1,6 +1,11 @@
 import {
   ClientGroupId,
   ClientId,
+  isDeviceLocalScope,
+  type LocalAccountLink,
+  type LocalIdentityRecord,
+  LocalIdentityRef,
+  LocalRevision,
   MutationEnvelope,
   MutationId,
   MutatorName,
@@ -223,6 +228,53 @@ const readIdentity = async (
   }
 }
 
+// Device-local identity/authority reads (R1-LOCAL #8666). These mirror the
+// shared `store-core.ts` semantics used by the greenfield expo-sqlite store,
+// against the same `local_identity` / `local_account_link` / `local_entities`
+// tables that `KHALA_SYNC_STORE_SCHEMA` already creates in this database.
+const readLocalIdentity = async (
+  db: ExpoSqliteDatabase,
+): Promise<LocalIdentityRecord | null> => {
+  const row = await one<{
+    readonly identity_ref: string
+    readonly created_at: string
+  }>(
+    db,
+    "SELECT identity_ref, created_at FROM local_identity WHERE singleton = 1"
+  )
+  return row === null
+    ? null
+    : {
+        createdAt: row.created_at,
+        identityRef: LocalIdentityRef.make(row.identity_ref),
+        schemaVersion: 1
+      }
+}
+
+const readLocalLink = async (
+  db: ExpoSqliteDatabase,
+): Promise<LocalAccountLink | null> => {
+  const row = await one<{
+    readonly identity_ref: string
+    readonly owner_user_id: string
+    readonly linked_at: string
+    readonly link_receipt_ref: string
+  }>(
+    db,
+    `SELECT identity_ref, owner_user_id, linked_at, link_receipt_ref
+     FROM local_account_link WHERE singleton = 1`
+  )
+  return row === null
+    ? null
+    : {
+        identityRef: LocalIdentityRef.make(row.identity_ref),
+        linkReceiptRef: row.link_receipt_ref,
+        linkedAt: row.linked_at,
+        ownerUserId: row.owner_user_id,
+        schemaVersion: 1
+      }
+}
+
 const lastMutationIdRaw = async (db: ExpoSqliteDatabase): Promise<number> => {
   const raw = await getMeta(db, "last_mutation_id")
   return raw === null ? 0 : Number(raw)
@@ -415,6 +467,12 @@ export const openKhalaMobileSyncStore = async (
           await upsertCursor(db, scope, Number(cursor))
         })
       ),
+    clearLocalAccountLink: () =>
+      tryStore(() =>
+        runInTransaction(db, async () => {
+          await db.runAsync("DELETE FROM local_account_link WHERE singleton = 1")
+        })
+      ),
     close: () =>
       tryStore(async () => {
         await db.closeAsync?.()
@@ -451,6 +509,8 @@ export const openKhalaMobileSyncStore = async (
         const last = await lastMutationIdRaw(db)
         return last === 0 ? null : MutationId.make(last)
       }),
+    localAccountLink: () => tryStore(() => readLocalLink(db)),
+    localIdentity: () => tryStore(() => readLocalIdentity(db)),
     pendingMutations: () =>
       tryStore(async () => {
         const rows = await db.getAllAsync<{
@@ -501,6 +561,45 @@ export const openKhalaMobileSyncStore = async (
           version: SyncVersion.make(row.version)
         }))
       }),
+    readLocalEntities: (scope, entityType) =>
+      tryStore(async () => {
+        if (!isDeviceLocalScope(scope)) {
+          throw new KhalaSyncClientStoreError(
+            "constraint_violation",
+            "local authority reads require device-local scope"
+          )
+        }
+        const rows = entityType === undefined
+          ? await db.getAllAsync<{
+              readonly entity_type: string
+              readonly entity_id: string
+              readonly post_image_json: string
+              readonly revision: number
+            }>(
+              `SELECT entity_type, entity_id, post_image_json, revision
+               FROM local_entities WHERE scope = ?
+               ORDER BY entity_type, entity_id`,
+              String(scope)
+            )
+          : await db.getAllAsync<{
+              readonly entity_type: string
+              readonly entity_id: string
+              readonly post_image_json: string
+              readonly revision: number
+            }>(
+              `SELECT entity_type, entity_id, post_image_json, revision
+               FROM local_entities WHERE scope = ? AND entity_type = ?
+               ORDER BY entity_type, entity_id`,
+              String(scope),
+              entityType
+            )
+        return rows.map(row => ({
+          entityId: row.entity_id,
+          entityType: row.entity_type,
+          postImageJson: row.post_image_json,
+          revision: LocalRevision.make(row.revision)
+        }))
+      }),
     resetScope: (scope, entities, cursor) =>
       tryStore(() =>
         runInTransaction(db, async () => {
@@ -542,6 +641,87 @@ export const openKhalaMobileSyncStore = async (
           await setMeta(db, "client_id", identity.clientId)
           await setMeta(db, "client_group_id", identity.clientGroupId)
           await setMeta(db, "schema_version", String(identity.schemaVersion))
+        })
+      ),
+    setLocalAccountLink: link =>
+      tryStore(() =>
+        runInTransaction(db, async () => {
+          const identity = await readLocalIdentity(db)
+          if (identity === null || identity.identityRef !== link.identityRef) {
+            throw new KhalaSyncClientStoreError(
+              "constraint_violation",
+              "account link does not match local identity"
+            )
+          }
+          const existing = await readLocalLink(db)
+          if (existing !== null && existing.ownerUserId !== link.ownerUserId) {
+            throw new KhalaSyncClientStoreError(
+              "constraint_violation",
+              "account link owner cannot change without unlink"
+            )
+          }
+          await db.runAsync(
+            `INSERT INTO local_account_link
+               (singleton, identity_ref, owner_user_id, linked_at, link_receipt_ref, schema_version)
+             VALUES (1, ?, ?, ?, ?, 1)
+             ON CONFLICT (singleton) DO UPDATE SET
+               linked_at = excluded.linked_at,
+               link_receipt_ref = excluded.link_receipt_ref`,
+            link.identityRef,
+            link.ownerUserId,
+            link.linkedAt,
+            link.linkReceiptRef
+          )
+        })
+      ),
+    setLocalIdentity: identity =>
+      tryStore(() =>
+        runInTransaction(db, async () => {
+          const existing = await readLocalIdentity(db)
+          if (existing !== null) {
+            if (
+              existing.identityRef !== identity.identityRef ||
+              existing.createdAt !== identity.createdAt
+            ) {
+              throw new KhalaSyncClientStoreError(
+                "constraint_violation",
+                "local identity is immutable"
+              )
+            }
+            return
+          }
+          await db.runAsync(
+            `INSERT INTO local_identity (singleton, identity_ref, created_at, schema_version)
+             VALUES (1, ?, ?, 1)`,
+            identity.identityRef,
+            identity.createdAt
+          )
+        })
+      ),
+    writeLocalEntities: (scope, entities) =>
+      tryStore(() =>
+        runInTransaction(db, async () => {
+          if (!isDeviceLocalScope(scope)) {
+            throw new KhalaSyncClientStoreError(
+              "constraint_violation",
+              "local authority writes require device-local scope"
+            )
+          }
+          for (const entity of entities) {
+            await db.runAsync(
+              `INSERT INTO local_entities (scope, entity_type, entity_id, post_image_json, revision)
+               VALUES (?, ?, ?, ?, ?)
+               ON CONFLICT (scope, entity_type, entity_id) DO UPDATE SET
+                 post_image_json = excluded.post_image_json,
+                 revision = excluded.revision
+               WHERE excluded.revision > local_entities.revision`,
+              String(scope),
+              entity.entityType,
+              entity.entityId,
+              entity.postImageJson,
+              Number(entity.revision)
+            )
+          }
         })
       )
   }
