@@ -89,7 +89,7 @@ describe("desktopShellView (state -> component tree)", () => {
     expect((nodeByKey(view, "shell-sidebar")?.style as { surface?: string }).surface).toBe("glass")
     expect(nodeByKey(view, "workspace-chat")?._tag).toBe("IconButton")
     expect(nodeByKey(view, "workspace-home")?._tag).toBe("IconButton")
-    expect(nodeByKey(view, "sidebar-chats-label")?.content).toBe("Codex chats · last 24 hours")
+    expect(nodeByKey(view, "sidebar-chats-label")?.content).toBe("Codex history · all time")
     expect(nodeByKey(view, "sidebar-thread-test-thread")?._tag).toBe("Button")
     expect(nodeByKey(view, "sidebar-thread-icon-test-thread")).toBeUndefined()
     expect(nodeByKey(view, "sidebar-thread-time-test-thread")?._tag).toBe("Text")

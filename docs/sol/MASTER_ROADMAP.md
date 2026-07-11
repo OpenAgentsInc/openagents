@@ -117,7 +117,7 @@
     or newly authorized product outcome starts as a new bounded issue under the
     actual owning program.
 15. **Lossless historical Codex/subagent rendering is a P0 Desktop D1 exit.**
-    #8674 extends the existing local Codex-conversation list and the confirmed
+    Closed #8674 extends the existing local Codex-conversation list and the confirmed
     agent-timeline seam into an opinionated three-pane history workspace: top-
     level conversations on the left, the selected parent/child transcript in
     the center, and a persistent Agents/Item inspector on the right. Every
@@ -127,8 +127,8 @@
     Completed subagents remain inspectable forever; in-progress work is never
     hidden. This is required before broad D2–D6 breadth, not optional Fleet
     polish. #8673 landed the bounded Runtime Gateway v3 timeline seam at
-    `bf4037e923`; #8674 now owns the provider-native history/graph projection
-    and visible UI.
+    `bf4037e923`; #8674 delivered the provider-native history/graph projection
+    and visible UI through Runtime Gateway v4.
 
 ## The product in one sentence
 
@@ -1069,13 +1069,18 @@ narrow D2/D3 but do not complete the everyday workbench. The visible Desktop
 chat now selects authoritative confirmed Sync conversations (#8670), mobile
 continues the same visible conversation (#8671), and the shared client projects
 a bounded confirmed provider-neutral agent timeline (#8672). #8673 now exposes
-that confirmed timeline through Runtime Gateway v3 at `bf4037e923`. None closes
-historical Codex fidelity: the local `codex-history.ts` path still filters
-child sessions,
-projects only user/assistant messages, caps discovery to files changed in the
-last 24 hours, reads a 96 KiB tail, and shows five/forty messages. It drops
-reasoning, tools, collaboration, lifecycle, usage, and errors by design. #8674
-is the P0 replacement/extension of that lossy projection.
+that confirmed timeline through Runtime Gateway v3 at `bf4037e923`. #8674 now
+lands the provider-native historical half through Runtime Gateway v4: active
+and archived Codex rollouts have no age ceiling, descendants remain a real
+parent/depth graph, selected-agent history is source-ordered and paged, and
+unknown/corrupt/redacted records enter a visible completeness equation. The
+Effect Native Desktop workspace now has the conversation/selected transcript/
+Agents-or-Item inspector hierarchy, semantic tree accessibility, keyboard
+traversal, bounded ref-only restoration, and responsive drawer treatment. The
+valid generated scale oracle covers 100+ MiB, 100 children, and 100,000 items;
+a structure-only local receipt found 131 threads/560,418 records under a real
+nested root with zero unsupported gaps. Local history stays owner-private and
+is not Khala Sync data.
 
 #### Required product shape
 
@@ -1271,7 +1276,7 @@ issue bodies, and claims before starting a slice.
 | **P0 active proof** | #8640 | Real simultaneous Codex + Claude runtime burn, then R3/R7 client receipt |
 | **P0 bounded task** | #8547 | Brokered Codex inside a real Agent Computer/workroom for mobile-originated coding |
 | **P0 bounded task** | #8636 | Owner-local/remote target routing through the same proven run and workroom contract |
-| **P0 D1 product slice** | #8674 | Lossless historical Codex parent/subagent/tool rendering and the Desktop Agents/Item inspector |
+| **Closed P0 D1 product slice** | #8674 | Loss-accounted historical Codex parent/subagent/tool rendering and the Desktop Agents/Item inspector, with valid scale and real nested-history receipts |
 
 Closed `wontfix` / not-planned and removed from `roadmap:sol`: #8595, #8610,
 #8634, #8635, #8642, #8643, #8646, and #8650. They are historical tombstones,
@@ -1293,10 +1298,9 @@ bounded issues under the owning program.
    exact authenticated phases, and fault fixtures. Desktop `node:sqlite` and
    mobile Expo SQLite adapters are landed over the shared store core; do not
    invent a new Sync engine or app-local entity model.
-3. Implement F2/D1 as the first product milestone: consume #8673's landed
-   confirmed Runtime Gateway v3 timeline query, then complete #8674's lossless
-   provider-native Codex history/graph projection and visible three-pane
-   subagent/tool inspector.
+3. Continue F2/D1 from the completed #8673 confirmed timeline query and closed
+   #8674 provider-native history/graph projection plus visible three-pane
+   subagent/tool inspector (Runtime Gateway v4).
    In parallel, finish one provider-neutral real streamed durable conversation
    through the host-owned Desktop Runtime Gateway, immediately continued on
    mobile with matching refs/versions/phases and one safe follow-up or

@@ -47,6 +47,8 @@ import type {
   DesktopWorkspaceSnapshot,
 } from "../workspace-contract.ts"
 import { desktopCommandRegistry } from "./command-registry.ts"
+import { emptyHistoryWorkspaceState, historyWorkspaceIntents, historyWorkspaceView, type HistoryWorkspaceState } from "./history-workspace.ts"
+import type { CodexHistoryCatalog, CodexHistoryPage } from "../codex-history-contract.ts"
 
 import {
   initialSettingsState,
@@ -100,6 +102,7 @@ export type DesktopShellState = Readonly<{
   loopProofs: number
   /** Codex account reconnect state, shown by the "settings" workspace (see ./settings.ts). */
   settings: SettingsState
+  history: HistoryWorkspaceState
 }>
 
 /** "18:04" — display-string timestamps for the typed message contract. */
@@ -142,6 +145,7 @@ export const initialDesktopShellState = (
   fleetDeployment: "not_requested",
   loopProofs: 0,
   settings: initialSettingsState(),
+  history: emptyHistoryWorkspaceState(),
 })
 
 // ---------------------------------------------------------------------------
@@ -202,7 +206,14 @@ export const desktopShellIntents = [
   DesktopCommandPaletteToggled,
   DesktopCommandPaletteDismissed,
   ...settingsIntents,
+  ...historyWorkspaceIntents,
 ] as const
+
+export type CodexHistoryHost = Readonly<{
+  catalog: () => Promise<CodexHistoryCatalog | null>
+  page: (threadRef: string, offset: number, limit: number) => Promise<CodexHistoryPage | null>
+  save?: (value: Readonly<{ rootThreadRef: string; selectedThreadRef: string; offset: number; selectedItemRef: string | null; railCollapsed: boolean; anchorItemRef: string | null; expandedThreadRefs?:ReadonlyArray<string> }>) => void
+}>
 
 // ---------------------------------------------------------------------------
 // Pure state transitions (unit-tested directly).
@@ -428,6 +439,7 @@ export const makeDesktopShellHandlers = (
   codexBridge: CodexSettingsBridge = unavailableCodexSettingsBridge,
   settingsSleep?: (ms: number) => Promise<void>,
   openAgentsBridge: OpenAgentsSessionSettingsBridge = unavailableOpenAgentsSessionSettingsBridge,
+  historyHost: CodexHistoryHost = { catalog: async () => null, page: async () => null },
 ): IntentHandlers<typeof desktopShellIntents> => ({
   ...makeSettingsHandlers(state, codexBridge, openAgentsBridge, settingsSleep),
   DesktopInputChanged: (value) =>
@@ -467,6 +479,23 @@ export const makeDesktopShellHandlers = (
       if (hydrated) yield* SubscriptionRef.update(state, current => current.activeThreadId === id ? withChatSelected(current, hydrated) : current)
     }
   }),
+  HistoryConversationSelected: (id) => Effect.gen(function* () {
+    const page = yield* Effect.promise(() => historyHost.page(id, 0, 200))
+    if (page) { yield* SubscriptionRef.update(state, (current): DesktopShellState => ({ ...current, workspace: "chat", history: { ...current.history, page, selectedItemRef: null } })); historyHost.save?.({rootThreadRef:page.rootThreadRef,selectedThreadRef:page.selectedThreadRef,offset:page.offset,selectedItemRef:null,railCollapsed:false,anchorItemRef:page.items[0]?.itemRef??null}) }
+  }),
+  HistoryAgentSelected: (id) => Effect.gen(function* () {
+    const page = yield* Effect.promise(() => historyHost.page(id, 0, 200))
+    if (page) { yield* SubscriptionRef.update(state, current => ({ ...current, history: { ...current.history, page, selectedItemRef: null } })); historyHost.save?.({rootThreadRef:page.rootThreadRef,selectedThreadRef:page.selectedThreadRef,offset:page.offset,selectedItemRef:null,railCollapsed:false,anchorItemRef:page.items[0]?.itemRef??null}) }
+  }),
+  HistoryItemSelected: (id) => SubscriptionRef.update(state, current => { const selectedItemRef=id===""?null:id; const page=current.history.page;if(page)historyHost.save?.({rootThreadRef:page.rootThreadRef,selectedThreadRef:page.selectedThreadRef,offset:page.offset,selectedItemRef,railCollapsed:current.history.railCollapsed,anchorItemRef:page.items[0]?.itemRef??null});return { ...current, history: { ...current.history, selectedItemRef } } }),
+  HistoryPageRequested: (offset) => Effect.gen(function* () {
+    const selected = (yield* SubscriptionRef.get(state)).history.page?.selectedThreadRef
+    if (!selected) return
+    const page = yield* Effect.promise(() => historyHost.page(selected, offset, 200))
+    if (page) { yield* SubscriptionRef.update(state, current => ({ ...current, history: { ...current.history, page, selectedItemRef: null } })); historyHost.save?.({rootThreadRef:page.rootThreadRef,selectedThreadRef:page.selectedThreadRef,offset:page.offset,selectedItemRef:null,railCollapsed:false,anchorItemRef:page.items[0]?.itemRef??null}) }
+  }),
+  HistoryInspectorToggled: () => SubscriptionRef.update(state, current => { const railCollapsed=!current.history.railCollapsed;const page=current.history.page;if(page)historyHost.save?.({rootThreadRef:page.rootThreadRef,selectedThreadRef:page.selectedThreadRef,offset:page.offset,selectedItemRef:current.history.selectedItemRef,railCollapsed,anchorItemRef:page.items[0]?.itemRef??null});return { ...current, history: { ...current.history, railCollapsed } } }),
+  HistoryAgentExpandedToggled: (id) => SubscriptionRef.update(state,current=>{const expandedThreadRefs=current.history.expandedThreadRefs.includes(id)?current.history.expandedThreadRefs.filter(ref=>ref!==id):[...current.history.expandedThreadRefs,id];const page=current.history.page;if(page)historyHost.save?.({rootThreadRef:page.rootThreadRef,selectedThreadRef:page.selectedThreadRef,offset:page.offset,selectedItemRef:current.history.selectedItemRef,railCollapsed:current.history.railCollapsed,anchorItemRef:page.items[0]?.itemRef??null,expandedThreadRefs});return {...current,history:{...current.history,expandedThreadRefs}}}),
   DesktopWorkspaceSelected: (workspace) =>
     Effect.gen(function* () {
       yield* SubscriptionRef.update(state, (current) => withWorkspace(current, workspace))
@@ -655,15 +684,15 @@ const shellSidebar = (state: DesktopShellState): View =>
           style: state.workspace === "home" ? { backgroundColor: "accent" } : {},
         }),
       ]),
-      Text({ key: "sidebar-chats-label", content: "Codex chats · last 24 hours", variant: "caption", color: "textMuted" }),
-      ...(state.threads.length === 0 ? [Text({ key: "sidebar-chats-empty", content: "No top-level Codex chats in the last 24 hours.", variant: "body", color: "textMuted" })] : []),
-      ...state.threads.map((thread) => Stack({ key: `sidebar-action-thread-${thread.id}`, direction: "row", gap: "2", align: "center", style: { width: "full" } }, [
+      Text({ key: "sidebar-chats-label", content: "Codex history · all time", variant: "caption", color: "textMuted" }),
+      ...(state.history.catalog.roots.length === 0 && state.threads.length === 0 ? [Text({ key: "sidebar-chats-empty", content: "No local Codex history found.", variant: "body", color: "textMuted" })] : []),
+      ...state.history.catalog.roots.map((thread) => Stack({ key: `sidebar-action-thread-${thread.threadRef}`, direction: "row", gap: "2", align: "center", style: { width: "full" } }, [
         Button({
-          key: `sidebar-thread-${thread.id}`,
+          key: `sidebar-thread-${thread.threadRef}`,
           label: thread.title,
           variant: "ghost",
-          onPress: IntentRef("DesktopChatSelected", StaticPayload(thread.id)),
-          a11y: { label: `Open chat ${thread.title}` },
+          onPress: IntentRef("HistoryConversationSelected", StaticPayload(thread.threadRef)),
+          a11y: { label: `Open historical chat ${thread.title}, ${thread.descendantCount} descendant agents`, selected: state.history.page?.rootThreadRef === thread.threadRef },
           style: {
             flex: 1,
             padding: "0",
@@ -674,13 +703,17 @@ const shellSidebar = (state: DesktopShellState): View =>
           },
         }),
         Text({
-          key: `sidebar-thread-time-${thread.id}`,
+          key: `sidebar-thread-time-${thread.threadRef}`,
           content: formatRelativeTimestamp(thread.updatedAt),
           variant: "caption",
           color: "textMuted",
           style: { textAlign: "right" },
         }),
       ])),
+      ...(state.history.catalog.roots.length === 0 ? state.threads.map((thread) => Stack({ key: `sidebar-action-thread-${thread.id}`, direction: "row", gap: "2", align: "center", style: { width: "full" } }, [
+        Button({ key: `sidebar-thread-${thread.id}`, label: thread.title, variant: "ghost", onPress: IntentRef("DesktopChatSelected", StaticPayload(thread.id)), a11y: { label: `Open chat ${thread.title}` }, style: { flex: 1, padding: "0", borderWidth: 0, borderRadius: "none", color: "textPrimary", textAlign: "left" } }),
+        Text({ key: `sidebar-thread-time-${thread.id}`, content: formatRelativeTimestamp(thread.updatedAt), variant: "caption", color: "textMuted", style: { textAlign: "right" } }),
+      ])) : []),
     ],
   )
 
@@ -1047,9 +1080,8 @@ export const desktopShellView = (state: DesktopShellState): View =>
         [
           shellHeader(state),
           ...(state.commandPaletteOpen ? [commandPalette()] : []),
-          ...(state.workspace === "chat" && state.threads.length === 0 ? [shellWelcome()] : []),
-          ...(state.workspace === "chat" && selectedCodexThreadDetails(state) !== null ? [selectedCodexThreadDetails(state)!] : []),
-          ...(state.workspace === "chat" ? [Transcript({
+          ...(state.workspace === "chat" && state.history.catalog.roots.length === 0 && state.threads.length === 0 ? [shellWelcome()] : []),
+          ...(state.workspace === "chat" && state.history.page !== null ? [historyWorkspaceView(state.history)] : state.workspace === "chat" ? [Transcript({
             key: "shell-transcript",
             pinToEnd: true,
             messages: state.notes.map(noteMessage),
@@ -1064,7 +1096,7 @@ export const desktopShellView = (state: DesktopShellState): View =>
               gap: "5",
             },
           })] : state.workspace === "files" ? [workspaceFiles(state)] : state.workspace === "review" ? [workspaceReview(state)] : state.workspace === "settings" ? [settingsView(state.settings)] : [projectHome(state)]),
-          ...(state.workspace === "chat" ? [shellComposer(state)] : []),
+          ...(state.workspace === "chat" && state.history.page === null ? [shellComposer(state)] : []),
         ],
       ),
     ],

@@ -158,7 +158,10 @@ const runtimeGateway = createDesktopRuntimeGateway(() => desktopRuntimeCapabilit
       return Effect.runSync(service.snapshot(runRef))
     },
   }
-})
+}, () => ({
+  catalog: () => runCodexHistoryWorker({ kind: "history_catalog", sessionsRoot: codexSessionsRoot() }) as Promise<import("./codex-history-contract.ts").CodexHistoryCatalog>,
+  page: (threadRef, offset, limit) => runCodexHistoryWorker({ kind: "history_page", sessionsRoot: codexSessionsRoot(), threadRef, offset, limit }) as Promise<import("./codex-history-contract.ts").CodexHistoryPage | null>,
+}))
 
 const isTrustedRuntimeGatewaySender = (event: IpcMainInvokeEvent): boolean => {
   const frame = event.senderFrame
@@ -214,6 +217,8 @@ const codexSessionsRoot = () => path.resolve(process.env.OPENAGENTS_DESKTOP_CODE
 type CodexHistoryRequest =
   | Readonly<{ kind: "list"; sessionsRoot: string; limit?: number }>
   | Readonly<{ kind: "detail"; sessionsRoot: string; id: string; messageLimit?: number }>
+  | Readonly<{ kind: "history_catalog"; sessionsRoot: string }>
+  | Readonly<{ kind: "history_page"; sessionsRoot: string; threadRef: string; offset?: number; limit?: number }>
 let historyWorker: Worker | null = null
 let historyRequestId = 0
 const historyPending = new Map<number, (value: unknown) => void>()
@@ -375,9 +380,9 @@ const smokeRuntimeGatewayBootstrap = `(async () => {
   return {
     ok: result?.kind === "query_result" &&
       result.requestId === "smoke-runtime-bootstrap" &&
-      result.result?.protocolVersion === 1 &&
+      result.result?.protocolVersion === 4 &&
       result.result?.lifecycle === "ready" &&
-      result.result?.capabilities?.some((capability) => capability.id === "khala-sync" && capability.state === "unavailable" && capability.reason?.includes("Local Sync persistence is ready")),
+      result.result?.capabilities?.some((capability) => capability.id === "codex-history" && capability.state === "available"),
     result,
   }
 })()`
@@ -393,13 +398,16 @@ const smokeTypeIntoComposer = `(() => {
 
 const smokeCodexHistoryDetails = `(async () => {
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+  const first = document.querySelector('[data-en-key^="sidebar-thread-"]')
+  if (first === null) return { ok: false, reason: "history row never mounted" }
+  first.click()
   const deadline = Date.now() + 15000
-  while (Date.now() < deadline && document.querySelector('[data-en-key="codex-thread-details"]') === null) {
+  while (Date.now() < deadline && document.querySelector('[data-en-key="history-workspace-split"]') === null) {
     await wait(100)
   }
   const sidebar = document.querySelector('[data-en-key="sidebar-chats-label"]')
-  const detail = document.querySelector('[data-en-key="codex-thread-details"]')
-  return { ok: sidebar?.textContent === "Codex chats · last 24 hours" && detail !== null }
+  const detail = document.querySelector('[data-en-key="history-workspace-split"]')
+  return { ok: sidebar?.textContent === "Codex history · all time" && detail !== null }
 })()`
 
 const smokeOpenCommandPalette = `(async () => {
@@ -560,10 +568,10 @@ const smokeCloseSettings = `(async () => {
   if (button === null) return { ok: false, reason: "Settings back button never mounted" }
   button.click()
   const deadline = Date.now() + 5000
-  while (Date.now() < deadline && document.querySelector('[data-en-key="shell-input"]') === null) {
+  while (Date.now() < deadline && document.querySelector('[data-en-key="shell-main"]') === null) {
     await wait(50)
   }
-  return { ok: document.querySelector('[data-en-key="shell-input"]') !== null }
+  return { ok: document.querySelector('[data-en-key="shell-main"]') !== null }
 })()`
 
 const captureShot = async (window: BrowserWindow, name: string): Promise<void> => {

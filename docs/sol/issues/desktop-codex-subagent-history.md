@@ -9,6 +9,34 @@
   [`../../teardowns/2026-07-10-codex-subagents-rendering-analysis.md`](../../teardowns/2026-07-10-codex-subagents-rendering-analysis.md),
   [`../../teardowns/2026-07-10-openagents-subagents-design.md`](../../teardowns/2026-07-10-openagents-subagents-design.md)
 
+## Implementation status — delivered 2026-07-10
+
+The P0 history path is implemented in OpenAgents Desktop:
+
+- Runtime Gateway v4 exposes only schema-bounded `codex.history.catalog` and
+  `codex.history.page` queries backed by the persistent history worker;
+- discovery covers active and archived plain/zstd rollouts without an age
+  ceiling and reconstructs the provider thread parent/depth/path/role graph;
+- source-order pages classify messages, reasoning summaries, plans,
+  collaboration, tools/results, approvals, usage, lifecycle, context, errors,
+  and explicit gaps while redacting credential-shaped fields;
+- the Effect Native workspace uses a top-level conversation list, bounded
+  virtualized center timeline, semantic keyboard-operable agent tree, and
+  resizable/collapsible item inspector with a narrow-width drawer treatment;
+- bounded ref-only restoration preserves selected thread, page/semantic
+  anchor, selected item, expanded nodes, and rail state across restart;
+- the generated stress oracle covers valid 100+ MiB JSONL, 100 child threads,
+  and 100,000 items. A structure-only real local receipt found a historical
+  root with two sibling children and a nested grandchild: 131 threads and
+  560,418 source records projected with zero unsupported gaps. No private
+  content, paths, identifiers, or timestamps entered the receipt.
+
+Primary evidence is in
+`apps/openagents-desktop/tests/codex-subagent-history.test.ts`,
+`codex-history-performance.e2e.test.ts`, `runtime-gateway.e2e.test.ts`,
+`src/renderer/history-workspace.test.ts`, and the Effect Native DOM renderer
+tree-accessibility oracle.
+
 ## Outcome
 
 OpenAgents Desktop renders the complete authorized history of a Codex
@@ -23,8 +51,7 @@ as an unsupported/gap item. It does not claim inaccessible chain-of-thought or
 content Codex itself never persisted. Unknown, corrupt, missing, or newer event
 types are visible completeness failures, never silently dropped.
 
-This extends the current local Codex-history lane. Today
-`apps/openagents-desktop/src/codex-history.ts` intentionally:
+This replaced the former local Codex-history lane, which previously:
 
 - lists only top-level sessions changed in the last 24 hours;
 - filters every child session;

@@ -3,11 +3,13 @@ import { parentPort } from "node:worker_threads"
 import { readFileSync } from "node:fs"
 import path from "node:path"
 
-import { findRecentCodexThread, readRecentCodexHistory, recentCodexSessionFiles } from "./codex-history.ts"
+import { findRecentCodexThread, readCodexHistoryCatalog, readCodexHistoryPage, readRecentCodexHistory, recentCodexSessionFiles } from "./codex-history.ts"
 
 type Request =
   | Readonly<{ kind: "list"; sessionsRoot: string; limit?: number }>
   | Readonly<{ kind: "detail"; sessionsRoot: string; id: string; messageLimit?: number }>
+  | Readonly<{ kind: "history_catalog"; sessionsRoot: string }>
+  | Readonly<{ kind: "history_page"; sessionsRoot: string; threadRef: string; offset?: number; limit?: number }>
 
 const names = (sessionsRoot: string): ReadonlyMap<string, string> => {
   try {
@@ -29,7 +31,11 @@ parentPort?.on("message", (input: Readonly<{ id: number; request: Request }>) =>
   try {
     const request = input.request
     if (sessionsRoot !== request.sessionsRoot) { sessionsRoot = request.sessionsRoot; titleIndex = names(sessionsRoot); fileIndex = new Map() }
-    const result = request.kind === "list"
+    const result = request.kind === "history_catalog"
+      ? readCodexHistoryCatalog(request.sessionsRoot)
+      : request.kind === "history_page"
+      ? readCodexHistoryPage(request)
+      : request.kind === "list"
       ? (() => { fileIndex = recentCodexSessionFiles(request.sessionsRoot); return readRecentCodexHistory({ sessionsRoot: request.sessionsRoot, includeMessages: false, limit: request.limit }).map(withIndexedTitle) })()
       : (() => { const thread = findRecentCodexThread({ sessionsRoot: request.sessionsRoot, id: request.id, messageLimit: request.messageLimit, file: fileIndex.get(request.id) }); return thread === null ? null : withIndexedTitle(thread) })()
     parentPort?.postMessage({ id: input.id, ok: true, result })

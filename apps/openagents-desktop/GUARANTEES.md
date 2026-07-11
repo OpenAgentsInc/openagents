@@ -117,7 +117,7 @@ Contract: `openagents_desktop.seam.runtime_gateway_agent_timeline.v1`.
 
 ### Visible authoritative Sync conversation mode
 
-The existing Effect Native shell consumes Runtime Gateway v3 through a typed
+The existing Effect Native shell consumes Runtime Gateway v4 through a typed
 renderer adapter whenever confirmed conversation Sync is live at boot.
 
 - Sidebar and transcript map only confirmed thread/message projections.
@@ -217,21 +217,26 @@ appropriate visible action.
 
 Contract: `openagents_desktop.session.effect_native_controls.v1`.
 
-### Recent local Codex chats
+### Loss-accounted local Codex history and subagents
 
-When local Codex history is available, opening Desktop projects top-level Codex
-chats updated during the last 24 hours into the sidebar, newest first.
+Desktop indexes active and archived Codex rollouts without an age ceiling.
 
-- Known child, sub-agent, and side sessions are excluded.
-- Sidebar loading is metadata-only; selecting a chat projects basic metadata
-  and a bounded set of recent user and assistant messages.
+- The left sidebar remains a top-level conversation list; every child and
+  grandchild stays attached in the semantic agent tree.
+- Selecting an agent loads a source-order page of typed messages, reasoning
+  summaries, plans, collaboration, tools, approvals, usage, lifecycle, errors,
+  context and explicit gap rows. Unknown/corrupt records are never dropped.
+- The resizable inspector exposes agent topology or structured selected-item
+  fields; pages are bounded to 500 and large lists use Effect Native windowing.
+- Credential-shaped fields are visibly redacted, encrypted/raw reasoning is
+  not projected, and the completeness equation is always visible.
 - Missing or malformed local history produces an honest, usable empty state.
 - History access is read-only. This projection does not grant authority to
   resume a Codex session, send a message, browse arbitrary files, sync history,
   or dispatch work.
 
 Contract:
-`openagents_desktop.seam.codex_recent_history_projection.v1`.
+`openagents_desktop.seam.codex_loss_accounted_history.v2`.
 
 ### Large-thread first-content performance
 

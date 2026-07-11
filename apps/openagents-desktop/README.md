@@ -103,18 +103,26 @@ the top-level bundled renderer; the Electron smoke exercises a truthful
 bootstrap. Durable provider process streaming remains explicitly `unavailable`
 until its later leaf lands.
 
-Runtime Gateway protocol v3 now carries the narrower authoritative
+Runtime Gateway protocol v4 now carries the narrower authoritative
 conversation floor: confirmed catalog/thread queries and canonical create/
 append enqueues. Results contain only public-safe refs, bodies, timestamps,
 confirmed versions, scope phase/cursor, and pending count. Mutation enqueue is
 reported as `pending_reconcile`, never completed. At boot the visible Effect
 Native shell now selects this confirmed Sync mode when the catalog is live;
 otherwise it retains an explicit local-only mode for that renderer lifetime.
-The two catalogs never merge. Protocol v3 also exposes the shared confirmed
+The two catalogs never merge. Protocol v4 also exposes the shared confirmed
 agent timeline by exact `runRef`: its only route/thread attachment is the
 server-projected `routeRef`, and at most 500 ordered redacted facts cross
 preload. Runtime launch, visible timeline UI, and provider streaming remain
 later leaves.
+
+Protocol v4 also carries a separate owner-local Codex history catalog/page
+capability. Active and archived (including zstd) rollouts are indexed in the
+history worker without an age ceiling. The Effect Native history workspace
+keeps top-level conversations left, a bounded selected-agent timeline center,
+and a semantic agent/item inspector right. Source-order rows are typed,
+credential-redacted, paged, and loss-accounted; raw JSONL, paths, credentials,
+and provider authority never cross preload or enter Khala Sync.
 
 Desktop main now also opens the shared `khala-sync-client` SQLite store beneath
 its private `userData` root and persists one installation identity. After

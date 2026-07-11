@@ -521,6 +521,24 @@ textarea:focus-visible {
   }
 }
 
+/* History keeps a real center pane at narrow desktop widths. The typed
+   inspector pane becomes a side drawer controlled by the Agents button; it
+   never silently squeezes or truncates the agent tree. */
+@media (max-width: 980px) {
+  [data-en-key="history-workspace-split"] { position: relative; overflow: hidden; }
+  [data-en-key="history-workspace-split"] [data-en-pane="history-inspector"]:not([data-en-collapsed="true"]) {
+    position: absolute;
+    z-index: 20;
+    inset: 0 0 0 auto;
+    width: min(88%, 360px) !important;
+    padding: 14px;
+    overflow: auto;
+    border-left: 1px solid var(--oa-line);
+    background: var(--oa-surface-strong);
+  }
+  [data-en-key="history-workspace-split"] [data-en-role="divider"] { display: none; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

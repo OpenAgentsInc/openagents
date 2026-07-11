@@ -4,10 +4,11 @@
  * payloads. Unknown relationship metadata is excluded rather than risking a
  * noisy sub-agent sidebar.
  */
-import { closeSync, openSync, readSync, readdirSync, statSync } from "node:fs"
+import { closeSync, openSync, readFileSync, readSync, readdirSync, statSync } from "node:fs"
 import path from "node:path"
 
 import type { DesktopMessage, DesktopThread } from "./chat-contract.ts"
+import type { CodexHistoryAgent, CodexHistoryCatalog, CodexHistoryItem, CodexHistoryItemKind, CodexHistoryPage } from "./codex-history-contract.ts"
 
 const windowMs = 24 * 60 * 60 * 1000
 const recentMessageLimit = 5
@@ -26,13 +27,13 @@ const iso = (value: unknown): string | null => {
 const displayTime = (value: string): string => new Date(value).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
 const titleFor = (value: string): string => value.replace(/\s+/g, " ").trim().slice(0, 80) || "Untitled Codex chat"
 
-const filesUnder = (root: string): string[] => {
+const filesUnder = (root: string, includeCompressed = false): string[] => {
   const visit = (directory: string): string[] => {
     try {
       return readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
         const child = path.join(directory, entry.name)
         if (entry.isDirectory()) return visit(child)
-        return entry.isFile() && entry.name.endsWith(".jsonl") ? [child] : []
+        return entry.isFile() && (entry.name.endsWith(".jsonl") || (includeCompressed && entry.name.endsWith(".jsonl.zst"))) ? [child] : []
       })
     } catch { return [] }
   }
@@ -186,4 +187,127 @@ export const findRecentCodexThread = (input: Readonly<{ sessionsRoot: string; id
   return thread === null || thread.child
     ? null
     : { id: thread.id, title: thread.title ?? "Untitled Codex chat", createdAt: thread.createdAt, updatedAt: thread.updatedAt, cwd: thread.cwd, model: thread.model, notes: thread.notes.slice(-(input.messageLimit ?? recentMessageLimit)) }
+}
+
+// Provider-native historical projection (#8674). This deliberately coexists
+// with the legacy local chat adapter above until all chat mutation call sites
+// are moved off that adapter. It has no 24-hour or tail window.
+type SessionIndexEntry = Readonly<{ file: string; id: string; parentId: string | null; createdAt: string; updatedAt: string; model: string | null; role: string | null; nickname:string|null; agentPath:string|null; sourceVersion:string|null; reasoning:string|null }>
+
+const safeText = (value: unknown, limit = 20_000): string => typeof value === "string" ? value.slice(0, limit) : typeof value === "number" || typeof value === "boolean" ? String(value) : value === null || value === undefined ? "" : (()=>{try{return JSON.stringify(value).slice(0,limit)}catch{return ""}})()
+const redactionPatterns = [
+  /\b(?:sk|rk|pk|sess)-[A-Za-z0-9_-]{12,}\b/gu,
+  /\bBearer\s+[A-Za-z0-9._~+\/-]{8,}=*/giu,
+  /\b(?:api[_-]?key|access[_-]?token|refresh[_-]?token|authorization)\b\s*[:=]\s*[^\s,;]+/giu,
+  /\b(?:[a-z]+\s+){11,23}[a-z]+\b/giu,
+]
+export const redactCodexHistoryText = (value: string): Readonly<{ text: string; redacted: boolean }> => {
+  let text = value.slice(0, 20_000); let redacted = value.length > 20_000
+  for (const pattern of redactionPatterns) text = text.replace(pattern, () => { redacted = true; return "[REDACTED]" })
+  return { text, redacted }
+}
+
+const historyText = (file: string): string => file.endsWith(".zst") ? Buffer.from(Bun.zstdDecompressSync(readFileSync(file))).toString("utf8") : readFileSync(file,"utf8")
+const historyFiles = (sessionsRoot: string): string[] => {
+  const active = filesUnder(sessionsRoot,true); const archived = filesUnder(path.join(path.dirname(sessionsRoot),"archived_sessions"),true)
+  const seen = new Set<string>(); return [...active,...archived].filter(file => { const name=path.basename(file).replace(/\.zst$/u,""); if(seen.has(name))return false;seen.add(name);return true })
+}
+const firstLine = (file: string): RecordValue | null => {
+  try {
+    if (file.endsWith(".zst")) { const line=historyText(file).split("\n").find(Boolean); return line === undefined ? null : object(JSON.parse(line)) }
+    const descriptor = openSync(file, "r")
+    try {
+      const buffer = Buffer.alloc(Math.min(1024 * 1024, statSync(file).size))
+      readSync(descriptor, buffer, 0, buffer.length, 0)
+      const line = buffer.toString("utf8").split("\n").find(Boolean)
+      return line === undefined ? null : object(JSON.parse(line))
+    } finally { closeSync(descriptor) }
+  } catch { return null }
+}
+
+const indexAllSessions = (sessionsRoot: string): SessionIndexEntry[] => historyFiles(sessionsRoot).flatMap(file => {
+  const envelope = firstLine(file); const payload = envelope === null ? null : object(envelope.payload)
+  if (envelope === null || payload === null || envelope.type !== "session_meta") return []
+  const id = string(payload.id) ?? string(payload.session_id) ?? string(payload.thread_id)
+  if (id === null) return []
+  const source = object(payload.source); const subagent = source === null ? null : object(source.subagent); const spawn = subagent === null ? null : object(subagent.thread_spawn)
+  const parentId = string(payload.parent_thread_id) ?? string(payload.parentThreadId) ?? string(payload.parent_session_id) ?? (spawn === null ? null : string(spawn.parent_thread_id))
+  const createdAt = iso(envelope.timestamp) ?? statSync(file).birthtime.toISOString()
+  return [{ file, id, parentId, createdAt, updatedAt: statSync(file).mtime.toISOString(), model: string(payload.model), role: string(payload.agent_role) ?? string(payload.agent_type) ?? (spawn === null ? null : string(spawn.agent_role)), nickname:string(payload.agent_nickname)??(spawn===null?null:string(spawn.agent_nickname)),agentPath:string(payload.agent_path)??(spawn===null?null:string(spawn.agent_path)),sourceVersion:string(payload.multi_agent_version)??string(payload.history_mode),reasoning:string(payload.reasoning_effort) }]
+})
+
+const titleIndex = (sessionsRoot: string): ReadonlyMap<string, string> => {
+  try {
+    const result = new Map<string, string>()
+    for (const line of readFileSync(path.join(path.dirname(sessionsRoot), "session_index.jsonl"), "utf8").split("\n")) {
+      if (line === "") continue
+      try { const row = object(JSON.parse(line)); const id = row && string(row.id); const title = row && string(row.thread_name); if (id && title) result.set(id, title.slice(0, 160)) } catch { /* explicit malformed index omission */ }
+    }
+    return result
+  } catch { return new Map() }
+}
+
+const inferredStatus = (file: string): CodexHistoryAgent["status"] => {
+  try {
+    const text = file.endsWith(".zst") ? historyText(file).slice(-historyTailBytes) : (() => { const size=statSync(file).size; const descriptor=openSync(file,"r"); try { const buffer=Buffer.alloc(Math.min(historyTailBytes,size)); readSync(descriptor,buffer,0,buffer.length,size-buffer.length); return buffer.toString("utf8") } finally { closeSync(descriptor) } })()
+    const rows=text.split("\n").flatMap(line=>{try{return [object(JSON.parse(line))]}catch{return []}}).filter((row):row is RecordValue=>row!==null)
+    for(const row of rows.reverse()){const payload=object(row.payload);if(!payload)continue;const type=(string(payload.type)??string(row.type)??"").toLowerCase();const status=JSON.stringify(payload.status??"").toLowerCase();if(status.includes("not_found"))return "not_found";if(status.includes("errored"))return "errored";if(status.includes("interrupted"))return "interrupted";if(status.includes("shutdown"))return "shutdown";if(status.includes("waiting"))return "waiting";if(status.includes("running"))return "running";if(status.includes("completed"))return "completed";if(type==="turn_aborted")return "interrupted";if(type==="error")return "errored";if(type==="task_complete"||type==="turn_complete")return "completed";if(type==="task_started"||type==="turn_started")return "running"}
+    return "completed"
+  } catch { return "unknown" }
+}
+
+const agentGraph = (sessionsRoot: string): Readonly<{ entries: SessionIndexEntry[]; agents: CodexHistoryAgent[] }> => {
+  const entries = indexAllSessions(sessionsRoot); const byId = new Map(entries.map(entry => [entry.id, entry])); const titles = titleIndex(sessionsRoot)
+  const children = new Map<string, string[]>()
+  for (const entry of entries) if (entry.parentId !== null) children.set(entry.parentId, [...(children.get(entry.parentId) ?? []), entry.id])
+  const rootOf = (entry: SessionIndexEntry): string => { let current = entry; const seen = new Set<string>(); while (current.parentId !== null && !seen.has(current.id)) { seen.add(current.id); const parent = byId.get(current.parentId); if (!parent) break; current = parent } return current.id }
+  const depthOf = (entry: SessionIndexEntry): number => { let depth = 0; let current = entry; const seen = new Set<string>(); while (current.parentId !== null && !seen.has(current.id)) { seen.add(current.id); const parent = byId.get(current.parentId); if (!parent) break; depth++; current = parent } return depth }
+  const descendants = (id: string, seen = new Set<string>()): number => { if (seen.has(id)) return 0; seen.add(id); return (children.get(id) ?? []).reduce((sum, child) => sum + 1 + descendants(child, seen), 0) }
+  const agents = entries.map(entry => ({
+    threadRef: entry.id, parentThreadRef: entry.parentId, title: titles.get(entry.id) ?? (entry.parentId === null ? "Untitled Codex chat" : entry.role ?? "Subagent"),
+    status: inferredStatus(entry.file), createdAt: entry.createdAt, updatedAt: entry.updatedAt, depth: depthOf(entry), descendantCount: descendants(entry.id), model: entry.model, role: entry.role, nickname:entry.nickname,agentPath:entry.agentPath,sourceVersion:entry.sourceVersion,reasoning:entry.reasoning,
+  })).sort((a,b) => a.createdAt.localeCompare(b.createdAt))
+  return { entries, agents: agents.map(agent => ({ ...agent, title: agent.title || rootOf(byId.get(agent.threadRef)!) })) }
+}
+
+export const readCodexHistoryCatalog = (sessionsRoot: string): CodexHistoryCatalog => {
+  const { agents } = agentGraph(sessionsRoot)
+  return { roots: agents.filter(agent => agent.parentThreadRef === null).sort((a,b) => b.updatedAt.localeCompare(a.updatedAt)), agents }
+}
+
+const contentText = (value: unknown): string => Array.isArray(value) ? value.map(part => { const row = object(part); return row === null ? "" : safeText(row.text ?? row.value ?? row.content) }).filter(Boolean).join("\n") : safeText(value)
+const field = (label: string, value: unknown) => { const text = redactCodexHistoryText(safeText(value)); return text.text === "" ? null : { label, value: text.text, redacted: text.redacted } }
+
+const projectRow = (row: unknown, threadRef: string, sequence: number): CodexHistoryItem => {
+  const envelope = object(row); const payload = envelope && object(envelope.payload); const envelopeType = envelope && string(envelope.type) || "invalid"; const timestamp = envelope && iso(envelope.timestamp) || new Date(0).toISOString()
+  if (envelope === null || payload === null) return { itemRef: `${threadRef}:${sequence}`, threadRef, sequence, timestamp, kind: "gap", label: "Unreadable source record", summary: "This record could not be decoded.", status: "unsupported", fields: [], redacted: false, sourceType: envelopeType }
+  const nestedPayload = object(payload.payload); let item = nestedPayload ?? payload; let itemType = string(item.type) ?? envelopeType
+  if (envelopeType === "event_msg" && itemType === "item_completed") { const completed=object(item.item); if(completed){item=completed;itemType=string(item.type)??itemType} }
+  let kind: CodexHistoryItemKind = "gap"; let label = itemType; let summary = ""; let status: string | null = string(item.status); const fields: Array<{label:string;value:string;redacted:boolean}> = []
+  const push = (name: string, value: unknown) => { const next = field(name, value); if (next) fields.push(next) }
+  if (envelopeType === "session_meta") { kind = "session"; label = "Session started"; summary = "Codex session metadata"; push("model", item.model); push("role", item.agent_role); push("source", typeof item.source === "string" ? item.source : object(item.source)?.type) }
+  else if (envelopeType === "turn_context") { kind = "context"; label = "Turn context"; summary = "Execution context updated"; push("model", item.model); push("approval", item.approval_policy); push("sandbox", item.sandbox_policy) }
+  else if (envelopeType === "world_state") { kind = "context"; label = "World state"; summary = "Recorded agent world-state snapshot"; push("agents", Array.isArray(item.agents) ? item.agents.length : item.agent_count); push("version", item.version) }
+  else if (envelopeType === "compacted") { kind = "context"; label = "History compacted"; summary = "Codex persisted a compacted history boundary"; push("replacement items", Array.isArray(item.replacement_history) ? item.replacement_history.length : item.item_count) }
+  else if (itemType === "message" || itemType === "agent_message") { const role = string(item.role) ?? (itemType === "agent_message" ? "assistant" : null); kind = role === "user" ? "user_message" : role === "system" || role === "developer" ? "system_message" : "assistant_message"; label = role === "user" ? "You" : role === "assistant" ? "Assistant" : `Message · ${role ?? "unknown"}`; summary = contentText(item.content ?? item.text) }
+  else if (itemType.includes("reasoning")) { kind = "reasoning"; label = "Reasoning summary"; summary = contentText(item.summary); if(summary==="")summary="[REDACTED: reasoning not persisted as summary]" }
+  else if (itemType.includes("plan") || itemType === "todo_list") { kind = "plan"; label = "Plan"; summary = contentText(item.plan ?? item.content ?? item.text) }
+  else if (itemType.includes("collab") || itemType.includes("agent") || ["spawn_agent","send_input","wait","resume_agent","interrupt_agent","close_agent"].includes(itemType)) { kind = "collaboration"; label = string(item.name) ?? itemType; summary = safeText(item.message ?? item.prompt ?? item.result ?? item.status ?? item.kind); push("agent", item.agent_id ?? item.receiver_thread_id ?? item.agent_thread_id); push("operation", itemType) }
+  else if (itemType.includes("approval")) { kind = "approval"; label = "Approval"; summary = safeText(item.reason ?? item.message ?? item.status); push("decision", item.decision) }
+  else if (itemType.includes("usage") || itemType.includes("token_count")) { kind = "usage"; label = "Usage"; summary = "Token usage update"; push("input", item.input_tokens); push("output", item.output_tokens); push("total", item.total_tokens) }
+  else if (itemType.includes("output") || itemType.includes("result")) { kind = "tool_result"; label = string(item.name) ?? "Tool result"; summary = safeText(item.output ?? item.result ?? item.content); push("call", item.call_id); push("status", item.status); push("started", item.started_at ?? item.start_time); push("ended", item.completed_at ?? item.end_time); push("duration", item.duration_ms); push("output", item.output ?? item.result); push("files", item.files ?? item.affected_files); push("artifacts", item.artifacts ?? item.artifact_refs); push("error", item.error) }
+  else if (itemType.includes("call") || itemType.includes("tool") || itemType.includes("shell") || itemType === "function_call" || itemType.includes("command_execution")) { kind = "tool_call"; label = string(item.name) ?? itemType; summary = safeText(item.command ?? item.input ?? item.arguments); push("call", item.call_id); push("status", item.status); push("started", item.started_at ?? item.start_time); push("ended", item.completed_at ?? item.end_time); push("duration", item.duration_ms); push("input", item.arguments ?? item.input ?? item.command); push("files", item.files ?? item.affected_files); push("artifacts", item.artifacts ?? item.artifact_refs); push("error", item.error) }
+  else if (itemType.includes("error")) { kind = "error"; label = "Error"; summary = safeText(item.message ?? item.error); status = "error" }
+  else if (envelopeType === "event_msg") { kind = itemType.includes("error") ? "error" : "lifecycle"; label = itemType; summary = safeText(item.message ?? item.text ?? item.status); push("event", itemType) }
+  const redactedSummary = redactCodexHistoryText(summary || label); const redacted = redactedSummary.redacted || fields.some(item => item.redacted) || summary.startsWith("[REDACTED:")
+  return { itemRef: `${threadRef}:${sequence}`, threadRef, sequence, timestamp, kind, label: label.slice(0,160), summary: redactedSummary.text, status, fields: fields.map(({label,value}) => ({label,value})), redacted, sourceType: `${envelopeType}/${itemType}`.slice(0,160) }
+}
+
+export const readCodexHistoryPage = (input: Readonly<{ sessionsRoot: string; threadRef: string; offset?: number; limit?: number }>): CodexHistoryPage | null => {
+  const graph = agentGraph(input.sessionsRoot); const entry = graph.entries.find(item => item.id === input.threadRef); if (!entry) return null
+  const rows = historyText(entry.file).split("\n").filter(line => line !== "").map(line => { try { return JSON.parse(line) } catch { return null } })
+  const knownThreads=new Set(graph.entries.map(item=>item.id)); const projected = rows.map((row,index) => {const item=projectRow(row, entry.id, index);if(item.kind!=="collaboration")return item;const agent=item.fields.find(field=>field.label==="agent")?.value;return agent&& !knownThreads.has(agent)?{...item,fields:[...item.fields,{label:"history",value:"Child history not recorded"}]}:item}); const offset = Math.max(0, Math.min(input.offset ?? 0, projected.length)); const limit = Math.max(1, Math.min(input.limit ?? 200, 500)); const items = projected.slice(offset, offset + limit)
+  const root = (() => { let current = entry; const byId = new Map(graph.entries.map(item => [item.id,item])); const seen = new Set<string>(); while (current.parentId && !seen.has(current.id)) { seen.add(current.id); const parent = byId.get(current.parentId); if (!parent) break; current = parent } return current.id })()
+  const gaps = projected.filter(item => item.kind === "gap").length; const redactions = projected.filter(item=>item.kind==="reasoning"&&item.summary.startsWith("[REDACTED:")).length
+  return { rootThreadRef: root, selectedThreadRef: entry.id, agents: graph.agents.filter(agent => { let id: string | null = agent.threadRef; const byId = new Map(graph.entries.map(item => [item.id,item])); while (id) { if (id === root) return true; id = byId.get(id)?.parentId ?? null } return false }), items, offset, limit, totalItems: projected.length, hasPrevious: offset > 0, hasNext: offset + limit < projected.length, completeness: { source: rows.length, rendered: projected.length - gaps - redactions, redactions, gaps, complete: rows.length === projected.length } }
 }

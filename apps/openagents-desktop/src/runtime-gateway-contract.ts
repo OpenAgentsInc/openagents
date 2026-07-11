@@ -1,8 +1,9 @@
 import { Exit, Schema } from "@effect-native/core/effect"
+import { CodexHistoryCatalogSchema, CodexHistoryPageSchema } from "./codex-history-contract.ts"
 
 export const DesktopRuntimeGatewayInvokeChannel = "openagents-desktop/runtime-gateway/invoke" as const
 export const DesktopRuntimeGatewayEventChannel = "openagents-desktop/runtime-gateway/event" as const
-export const DesktopRuntimeGatewayProtocolVersion = 3 as const
+export const DesktopRuntimeGatewayProtocolVersion = 4 as const
 
 const PublicRefSchema = Schema.String.check(
   Schema.isMinLength(1),
@@ -69,6 +70,11 @@ export const DesktopRuntimeGatewayRequestSchema = Schema.Union([
     kind: Schema.Literal("query"),
     requestId: Schema.String,
     query: Schema.Struct({ id: Schema.Literal("conversation.catalog") }),
+  }),
+  Schema.Struct({ kind: Schema.Literal("query"), requestId: Schema.String, query: Schema.Struct({ id: Schema.Literal("codex.history.catalog") }) }),
+  Schema.Struct({
+    kind: Schema.Literal("query"), requestId: Schema.String,
+    query: Schema.Struct({ id: Schema.Literal("codex.history.page"), threadRef: PublicRefSchema, offset: NonNegativeIntSchema, limit: Schema.Number.check(Schema.isInt(), Schema.isBetween({ minimum: 1, maximum: 500 })) }),
   }),
   Schema.Struct({
     kind: Schema.Literal("query"),
@@ -181,6 +187,9 @@ export const DesktopRuntimeGatewayResponseSchema = Schema.Union([
     status: ConversationStatusSchema,
     threads: Schema.Array(ConfirmedThreadSchema),
   }),
+  Schema.Struct({ kind: Schema.Literal("codex_history_catalog"), requestId: Schema.String, catalog: CodexHistoryCatalogSchema }),
+  Schema.Struct({ kind: Schema.Literal("codex_history_page"), requestId: Schema.String, page: CodexHistoryPageSchema }),
+  Schema.Struct({ kind: Schema.Literal("codex_history_unavailable"), requestId: Schema.String, reason: Schema.Literals(["not_found", "read_failed"]) }),
   Schema.Struct({
     kind: Schema.Literal("conversation_thread"),
     requestId: Schema.String,

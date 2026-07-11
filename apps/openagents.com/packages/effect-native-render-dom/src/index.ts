@@ -850,6 +850,9 @@ const applyA11y = (element: HTMLElement, view: View): void => {
   if (a11y.disabled !== undefined) element.setAttribute("aria-disabled", String(a11y.disabled))
   if (a11y.hidden === true) element.setAttribute("aria-hidden", "true")
   if (a11y.tabIndex !== undefined) element.tabIndex = a11y.tabIndex
+  if (a11y.level !== undefined) element.setAttribute("aria-level", String(a11y.level))
+  if (a11y.positionInSet !== undefined) element.setAttribute("aria-posinset", String(a11y.positionInSet))
+  if (a11y.setSize !== undefined) element.setAttribute("aria-setsize", String(a11y.setSize))
 }
 
 // Wire the named, typed, closure-free interaction bindings (issue #24). Every

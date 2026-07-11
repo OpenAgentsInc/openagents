@@ -16,9 +16,9 @@ const write = (dir: string, name: string, rows: unknown[]) => {
 const meta = (id: string, timestamp: string, extra: Record<string, unknown> = {}) => ({ timestamp, type: "session_meta", payload: { id, cwd: "/safe/repo", ...extra } })
 const message = (timestamp: string, role: "user" | "assistant", text: string) => ({ timestamp, type: "response_item", payload: { type: "message", role, content: [{ type: "input_text", text }] } })
 
-describe("openagents_desktop.seam.codex_recent_history_projection.v1", () => {
+describe("openagents_desktop.seam.codex_loss_accounted_history.v2 legacy compatibility", () => {
   test("records the app-owned enforced UX contract", () => {
-    expect(openAgentsDesktopUxContractRegistry.contracts[0]?.contractId).toBe("openagents_desktop.seam.codex_recent_history_projection.v1")
+    expect(openAgentsDesktopUxContractRegistry.contracts[0]?.contractId).toBe("openagents_desktop.seam.codex_loss_accounted_history.v2")
     expect(openAgentsDesktopUxContractRegistry.contracts[0]?.state).toBe("enforced")
   })
   test("projects only recent top-level chats and their bounded conversational messages", () => {

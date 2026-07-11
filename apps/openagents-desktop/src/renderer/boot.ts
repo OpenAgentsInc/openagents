@@ -44,6 +44,7 @@ import type {
   DesktopRuntimeGatewayEvent,
   DesktopRuntimeGatewayResponse,
 } from "../runtime-gateway-contract.ts"
+import type { CodexHistoryCatalog, CodexHistoryPage } from "../codex-history-contract.ts"
 
 /** Effect Schema at the preload boundary (issue #8574: Schema, not Zod). */
 const DesktopBridgeSchema = Schema.Struct({
@@ -179,6 +180,21 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
       request: bridge?.runtimeRequest,
       local: localChat,
     }))
+    let historyRequestSequence = 0
+    const restoreHistory = (): { selectedThreadRef:string;offset:number;selectedItemRef:string|null;railCollapsed:boolean;expandedThreadRefs:ReadonlyArray<string> } | null => { try { const value=JSON.parse(localStorage.getItem("openagents.desktop.history.v1")??"null");return value&&typeof value.selectedThreadRef==="string"&&Number.isInteger(value.offset)&&value.offset>=0&&value.offset<=1_000_000&&typeof value.railCollapsed==="boolean"&&(value.selectedItemRef===null||typeof value.selectedItemRef==="string")&&Array.isArray(value.expandedThreadRefs)&&value.expandedThreadRefs.every((ref:unknown)=>typeof ref==="string")?value:null } catch{return null} }
+    const historyHost = {
+      catalog: async (): Promise<CodexHistoryCatalog | null> => {
+        if (typeof bridge?.runtimeRequest !== "function") return null
+        const response = await bridge.runtimeRequest({ kind: "query", requestId: `renderer-history-catalog-${++historyRequestSequence}`, query: { id: "codex.history.catalog" } })
+        return response.kind === "codex_history_catalog" ? response.catalog : null
+      },
+      page: async (threadRef: string, offset: number, limit: number): Promise<CodexHistoryPage | null> => {
+        if (typeof bridge?.runtimeRequest !== "function") return null
+        const response = await bridge.runtimeRequest({ kind: "query", requestId: `renderer-history-page-${++historyRequestSequence}`, query: { id: "codex.history.page", threadRef, offset, limit } })
+        return response.kind === "codex_history_page" ? response.page : null
+      },
+      save: (value: any): void => { try { localStorage.setItem("openagents.desktop.history.v1",JSON.stringify({...value,expandedThreadRefs:Array.isArray(value?.expandedThreadRefs)?value.expandedThreadRefs:[]})) } catch { /* restoration is best effort and contains refs only */ } },
+    }
     const registry = yield* makeIntentRegistry(
       desktopShellIntents,
       makeDesktopShellHandlers(state, undefined, async (input) => {
@@ -257,8 +273,14 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
           }
           return { state: "unavailable", message: typeof value.message === "string" ? value.message : "Git review is unavailable." }
         },
-      }, codexSettingsBridge, undefined, openAgentsSessionSettingsBridge),
+      }, codexSettingsBridge, undefined, openAgentsSessionSettingsBridge, historyHost),
     )
+    const historyCatalog = yield* Effect.promise(historyHost.catalog)
+    if (historyCatalog !== null) {
+      const restored=restoreHistory(); const selected=restored?.selectedThreadRef
+      const firstPage = selected === undefined ? null : yield* Effect.promise(() => historyHost.page(selected, restored?.offset??0, 200))
+      yield* SubscriptionRef.update(state, current => ({ ...current, history: { ...current.history, catalog: historyCatalog, page: firstPage, selectedItemRef: firstPage?.items.some(item=>item.itemRef===restored?.selectedItemRef)?restored!.selectedItemRef:null, railCollapsed:restored?.railCollapsed??false, expandedThreadRefs:restored?.expandedThreadRefs??firstPage?.agents.filter(agent=>agent.descendantCount>0).map(agent=>agent.threadRef)??[] } }))
+    }
     const existing = yield* Effect.promise(chat.listThreads)
     const threads = Array.isArray(existing) ? existing.filter((item): item is DesktopThread => typeof item === "object" && item !== null && typeof (item as { id?: unknown }).id === "string") : []
     if (threads.length > 0) {

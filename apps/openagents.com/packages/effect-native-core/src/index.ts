@@ -1542,6 +1542,8 @@ export const ariaRoles = [
   "tablist",
   "tab",
   "tabpanel",
+  "tree",
+  "treeitem",
   "none",
   "presentation"
 ] as const
@@ -1558,6 +1560,10 @@ export interface A11y {
   readonly disabled?: boolean
   readonly hidden?: boolean
   readonly tabIndex?: -1 | 0
+  /** One-based semantic tree depth/position metadata. */
+  readonly level?: number
+  readonly positionInSet?: number
+  readonly setSize?: number
 }
 export const A11ySchema: Schema.Codec<A11y, A11y> = exactStruct({
   role: AriaRoleSchema.pipe(Schema.optionalKey),
@@ -1567,7 +1573,10 @@ export const A11ySchema: Schema.Codec<A11y, A11y> = exactStruct({
   expanded: Schema.Boolean.pipe(Schema.optionalKey),
   disabled: Schema.Boolean.pipe(Schema.optionalKey),
   hidden: Schema.Boolean.pipe(Schema.optionalKey),
-  tabIndex: Schema.Literals([-1, 0]).pipe(Schema.optionalKey)
+  tabIndex: Schema.Literals([-1, 0]).pipe(Schema.optionalKey),
+  level: Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(1)).pipe(Schema.optionalKey),
+  positionInSet: Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(1)).pipe(Schema.optionalKey),
+  setSize: Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(1)).pipe(Schema.optionalKey)
 }) as unknown as Schema.Codec<A11y, A11y>
 
 // Typed dropped-item descriptor produced by drag-and-drop drops. Only bounded

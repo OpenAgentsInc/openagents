@@ -31,7 +31,7 @@ describe("Desktop Runtime Gateway", () => {
     expect(rendererResponse).toMatchObject({
       kind: "query_result",
       requestId: "renderer-bootstrap",
-      result: { protocolVersion: 3, lifecycle: "ready" },
+      result: { protocolVersion: 4, lifecycle: "ready" },
     })
   })
 
@@ -47,7 +47,7 @@ describe("Desktop Runtime Gateway", () => {
     expect(response).toMatchObject({
       kind: "query_result",
       requestId: "query-1",
-      result: { kind: "runtime.bootstrap", lifecycle: "ready", protocolVersion: 3 },
+      result: { kind: "runtime.bootstrap", lifecycle: "ready", protocolVersion: 4 },
     })
     if (response.kind !== "query_result") throw new Error("expected query result")
     expect(response.result.capabilities).toContainEqual({
@@ -437,8 +437,8 @@ describe("Desktop Runtime Gateway", () => {
     gateway.dispose()
     unsubscribe()
     expect(events).toEqual([
-      { kind: "runtime.lifecycle", phase: "ready", protocolVersion: 3, sequence: 1 },
-      { kind: "runtime.lifecycle", phase: "disposed", protocolVersion: 3, sequence: 2 },
+      { kind: "runtime.lifecycle", phase: "ready", protocolVersion: 4, sequence: 1 },
+      { kind: "runtime.lifecycle", phase: "disposed", protocolVersion: 4, sequence: 2 },
     ])
     expect(events.every(event => decodeDesktopRuntimeGatewayEvent(event) !== null)).toBe(true)
     expect(await gateway.request({ kind: "query", requestId: "late", query: { id: "runtime.bootstrap" } })).toEqual({
@@ -496,5 +496,16 @@ describe("Desktop Runtime Gateway", () => {
         version: 1,
       }],
     })).toBeNull()
+  })
+
+  test("projects provider-native Codex history through protocol v4 only", async () => {
+    const agent = { threadRef: "root", parentThreadRef: null, title: "Root", status: "completed" as const, createdAt: "2026-07-10T00:00:00Z", updatedAt: "2026-07-10T00:00:00Z", depth: 0, descendantCount: 0, model: null, role: null, nickname:null,agentPath:null,sourceVersion:null,reasoning:null }
+    const page = { rootThreadRef: "root", selectedThreadRef: "root", agents: [agent], items: [{ itemRef: "root:0", threadRef: "root", sequence: 0, timestamp: "2026-07-10T00:00:00Z", kind: "session" as const, label: "Session", summary: "Started", status: null, fields: [], redacted: false, sourceType: "session_meta/session_meta" }], offset: 0, limit: 200, totalItems: 1, hasPrevious: false, hasNext: false, completeness: { source: 1, rendered: 1, redactions: 0, gaps: 0, complete: true } }
+    const gateway = createDesktopRuntimeGateway(undefined, undefined, undefined, undefined, undefined, () => ({ catalog: () => ({ roots: [agent], agents: [agent] }), page: () => page }))
+    gateway.start()
+    const catalog = await gateway.request({ kind: "query", requestId: "history-catalog", query: { id: "codex.history.catalog" } })
+    const detail = await gateway.request({ kind: "query", requestId: "history-page", query: { id: "codex.history.page", threadRef: "root", offset: 0, limit: 200 } })
+    expect(decodeDesktopRuntimeGatewayResponse(catalog)?.kind).toBe("codex_history_catalog")
+    expect(decodeDesktopRuntimeGatewayResponse(detail)).toMatchObject({ kind: "codex_history_page", page: { completeness: { gaps: 0 }, items: [{ sourceType: "session_meta/session_meta" }] } })
   })
 })

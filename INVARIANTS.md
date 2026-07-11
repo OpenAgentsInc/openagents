@@ -546,14 +546,22 @@ More specific invariant ledgers apply inside imported apps and packages.
   may project; owner/objective/repository/runtime/backend, event source, raw
   payload JSON, external callback refs, and non-live cached rows stay hidden.
 - Desktop Runtime Gateway is the only renderer path to conversation and agent-
-  timeline capabilities. Protocol v3 permits bounded confirmed catalog/thread
+  timeline and provider-native history capabilities. Protocol v4 permits bounded confirmed catalog/thread
   queries, canonical create/append intents, and one exact-run timeline query;
   enqueue returns `pending_reconcile`, never completion. Timeline attachment
   uses only the confirmed `agent_run.routeId` returned as `routeRef`—clients do
   not derive it from `runRef`. Owner/private/raw-provider/auth/store/session/
   transport fields and generic IPC remain unrepresentable in the contract.
+- Provider-native Codex history remains owner-local and read-only. Desktop main
+  indexes active and archived rollouts off the main thread and Runtime Gateway
+  v4 projects only bounded catalog/page data: stable thread relationships,
+  source-order typed items, explicit redactions, and explicit gaps. Raw JSONL,
+  rollout paths, encrypted/raw reasoning, credentials, and filesystem/provider
+  authority never cross preload; local history is never uploaded to Khala Sync
+  by default. For every decoded thread, source records equal rendered source
+  records plus wholly redacted records plus explicit gap records.
 - Desktop selects its chat authority once at renderer boot: confirmed account-
-  linked Sync when the v3 catalog is live, otherwise explicit local-only mode.
+  linked Sync when the v4 catalog is live, otherwise explicit local-only mode.
   It never merges the two catalogs in one renderer lifetime. Sync-mode create/
   append waits for the exact generated ref to appear confirmed; timeout remains
   pending and is never converted into success.
