@@ -3802,6 +3802,7 @@ const renderGraphFigure = (view: GraphFigureView, state: DomRendererState, repor
 
 const renderTimeline = (view: TimelineView, state: DomRendererState, report: IntentReporter): HTMLElement => {
   const element = state.keyedElement(view, "ol")
+  const scrollPosition = { top: element.scrollTop, left: element.scrollLeft }
   state.resetListeners(element)
   element.setAttribute("data-en-role", "timeline")
   element.style.listStyle = "none"
@@ -3864,6 +3865,11 @@ const renderTimeline = (view: TimelineView, state: DomRendererState, report: Int
     return li
   })
   element.replaceChildren(...items)
+  // Replacing a scroll container's children can make Chromium briefly clamp
+  // its offset to zero even when the keyed element itself is retained. A
+  // sibling state change must not move the reader's place in the timeline.
+  element.scrollTop = scrollPosition.top
+  element.scrollLeft = scrollPosition.left
   applyBaseStyle(element, view, state)
   applyA11y(element, view)
   return element
@@ -4013,6 +4019,12 @@ const renderView = (view: View, state: DomRendererState, report: IntentReporter)
 
 const commitView = (view: View, state: DomRendererState, report: IntentReporter): void => {
   const activeBefore = state.root.ownerDocument.activeElement as HTMLElement | null
+  const timelineScrollPositions = new Map(
+    Array.from(state.root.querySelectorAll<HTMLElement>('[data-en-role="timeline"][data-en-key]')).map((timeline) => [
+      timeline.getAttribute("data-en-key") ?? "",
+      { top: timeline.scrollTop, left: timeline.scrollLeft }
+    ])
+  )
   const sectionScrollPositions = new Map(
     Array.from(state.root.querySelectorAll<HTMLElement>("[data-en-section]")).map((section) => [
       section.getAttribute("data-en-section") ?? "",
@@ -4023,6 +4035,13 @@ const commitView = (view: View, state: DomRendererState, report: IntentReporter)
   state.styles.beginRender()
   const element = renderView(view, state, report)
   state.root.replaceChildren(element)
+  for (const timeline of Array.from(state.root.querySelectorAll<HTMLElement>('[data-en-role="timeline"][data-en-key]'))) {
+    const position = timelineScrollPositions.get(timeline.getAttribute("data-en-key") ?? "")
+    if (position !== undefined) {
+      timeline.scrollTop = position.top
+      timeline.scrollLeft = position.left
+    }
+  }
   for (const section of Array.from(state.root.querySelectorAll<HTMLElement>("[data-en-section]"))) {
     const position = sectionScrollPositions.get(section.getAttribute("data-en-section") ?? "")
     if (position !== undefined) {

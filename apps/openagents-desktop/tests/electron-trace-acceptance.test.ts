@@ -16,6 +16,7 @@ describe("openagents_desktop.seam.codex_trace_electron_acceptance.v1", () => {
       "agent_status_word_visible", "agent_status_icon_missing",
       "history_shortcut_down_failed", "history_shortcut_up_failed",
       "history_shortcut_hold_failed", "history_shortcut_offscreen", "history_shortcut_hold_return_failed",
+      "history_modifier_hint_missing", "history_modifier_scroll_reset",
     ]) expect(traceAcceptanceJourney).toContain(marker)
     expect(traceAcceptanceReload).toContain("restart_expectation_missing")
     expect(traceAcceptanceReload).toContain("itemInspectorRestored")

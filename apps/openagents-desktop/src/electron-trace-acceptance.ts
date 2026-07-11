@@ -158,6 +158,15 @@ export const traceAcceptanceJourney = `(async () => {
   timeline.dispatchEvent(new Event('scroll',{bubbles:true}))
   await wait(50)
   if (timeline.scrollTop <= beforeScroll) return {ok:false,reason:"timeline_scroll_stuck",clientHeight:timeline.clientHeight,scrollHeight:timeline.scrollHeight}
+  const scrollBeforeModifier = timeline.scrollTop
+  window.dispatchEvent(new KeyboardEvent('keydown',{key:modifierKey,code:bridge.platform==='darwin'?'MetaLeft':'ControlLeft',bubbles:true,cancelable:true,...modifier}))
+  if (!await until(() => document.querySelector('[data-en-key="sidebar-thread-' + roots[0].threadRef + '"] [data-en-role="meta"]')?.textContent === '1')) return {ok:false,reason:"history_modifier_hint_missing"}
+  await wait(50)
+  if (Math.abs(timeline.scrollTop-scrollBeforeModifier)>1) return {ok:false,reason:"history_modifier_scroll_reset",phase:"down"}
+  window.dispatchEvent(new KeyboardEvent('keyup',{key:modifierKey,code:bridge.platform==='darwin'?'MetaLeft':'ControlLeft',bubbles:true,cancelable:true}))
+  await until(() => document.querySelector('[data-en-key="sidebar-thread-' + roots[0].threadRef + '"] [data-en-role="meta"]')?.textContent !== '1')
+  await wait(50)
+  if (Math.abs(timeline.scrollTop-scrollBeforeModifier)>1) return {ok:false,reason:"history_modifier_scroll_reset",phase:"up"}
   const saved = JSON.parse(localStorage.getItem('openagents.desktop.history.v1') ?? 'null')
   if (!saved || typeof saved.selectedThreadRef !== 'string' || typeof saved.selectedItemRef !== 'string' || !Array.isArray(saved.expandedThreadRefs)) return {ok:false,reason:"ref_restore_missing"}
   sessionStorage.setItem('openagents.desktop.trace-acceptance.expected', JSON.stringify({selectedThreadRef:saved.selectedThreadRef,selectedItemRef:saved.selectedItemRef,expandedThreadRefs:saved.expandedThreadRefs}))
