@@ -3308,11 +3308,12 @@ const renderTimeline = (
         createElement(dependencies, dependencies.ReactNative.Text, { key: "label" }, graphEvent.label)
       ]
       if (graphEvent.time !== undefined) parts.push(createElement(dependencies, dependencies.ReactNative.Text, { key: "time", style: { color: colorValue(theme, "textMuted") } }, graphEvent.time))
+      if (graphEvent.detail !== undefined) parts.push(createElement(dependencies, dependencies.ReactNative.Text, { key: "detail", style: { color: colorValue(theme, "textMuted"), flexShrink: 1 } }, graphEvent.detail))
       const selected = view.selectedId === graphEvent.id
       const props: Record<string, unknown> = { key: graphEvent.key ?? `event-${graphEvent.id}`, testID: `en-timeline-event:${graphEvent.id}`, accessibilityLabel: graphEvent.accessibilityLabel ?? graphEvent.label, ...(graphEvent.variant === undefined ? {} : { accessibilityHint: graphEvent.variant }), accessibilityState: { selected }, style: { flexDirection: "row", gap: spacingValue(theme, "2") } }
-      if (view.onEventSelect !== undefined) {
-        const onEventSelect = view.onEventSelect
-        return createElement(dependencies, dependencies.ReactNative.Pressable, { ...props, onPress: () => runReportedIntent(report, onEventSelect, graphEvent.id) }, ...parts)
+      const onSelect = graphEvent.onSelect ?? view.onEventSelect
+      if (onSelect !== undefined) {
+        return createElement(dependencies, dependencies.ReactNative.Pressable, { ...props, onPress: () => runReportedIntent(report, onSelect, graphEvent.id) }, ...parts)
       }
       return createElement(dependencies, dependencies.ReactNative.View, props, ...parts)
     })

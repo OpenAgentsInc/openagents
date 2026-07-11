@@ -1,10 +1,10 @@
-# OpenAgents Sub-Agent Rendering — Early Design Frame
+# OpenAgents Sub-Agent Rendering — Design Frame and First Desktop Slice
 
 Date: 2026-07-10
 Author: Fable (agent).
-Status: **EARLY FRAME, NOT A SPEC.** This is a starting point for framing "what
-OpenAgents' version of sub-agent rendering should be," written as an immediate
-follow-on to the Codex analysis. It raises the questions; it does not answer them.
+Status: **ACTIVE DESIGN; FIRST DESKTOP SLICE IMPLEMENTED.** The original frame
+below remains the cross-surface design agenda. Section 6 records the first
+implemented interaction and the boundary it establishes.
 
 Input / prerequisite reading:
 `docs/teardowns/2026-07-10-codex-subagents-rendering-analysis.md` (the Codex
@@ -84,8 +84,48 @@ projection or renderer bug, not an acceptable tier.
 - Not a commitment to mirror Codex's tool set (`spawn / send / wait / resume /
   close`) — that's one reference point, not our contract.
 
-## 5. Next step
+## 5. Original next step
 
-Turn §3's questions into a real design doc once we've decided the sub-agent
-projection's typed shape and picked the first surface to render it. Use the Codex
-analysis as the "what good/rich looks like, and how it goes wrong" reference.
+The first decision from §3 is now recorded below. The remaining questions still
+need a full live/Sync projection design; the historical Desktop slice is an
+interaction contract, not a substitute for that authority model.
+
+## 6. First implemented interaction: inline child activity
+
+The Desktop historical Codex trace now separates two complementary views of the
+same child graph:
+
+- The right inspector remains the complete topology and the place
+  to scan or navigate every discovered descendant.
+- The parent timeline renders a confirmed child-start edge as an elevated
+  subagent card at the causal point where the child began. The card shows the
+  child's lifecycle state and one bounded latest-activity preview, and opens the
+  child's full thread directly.
+
+This is deliberately a **link projection**, not transcript flattening. The
+parent item carries an exact child thread ref from the persisted Codex event;
+the preview is read from that child's own bounded history tail, redacted through
+the same history projector, and capped to 360 characters. Later interaction
+events do not create duplicate launch cards. If the referenced history is
+absent, the source item states that absence rather than fabricating a child.
+
+The typed `TimelineEvent` contract now supports an event-local intent and an
+`agent` semantic variant in both DOM and React Native renderers. That makes the
+interaction portable: desktop gets the spacious inline card now, while mobile
+can lower the same exact edge, state, preview, and navigation intent into a
+compact disclosure without inventing a second subagent model.
+
+Implementation and enforcement live in:
+
+- `apps/openagents-desktop/src/codex-history.ts` for exact edge enrichment and
+  the bounded child preview;
+- `apps/openagents-desktop/src/renderer/history-workspace.ts` for the inline
+  projection and typed child navigation;
+- `apps/openagents-desktop/tests/codex-subagent-history.test.ts` and
+  `src/renderer/history-workspace.test.ts` for data and rendering oracles;
+- Effect Native demand `D-DESK-07` for the cross-renderer primitive.
+
+The next slice should replace historical tail sampling with the same shape fed
+by a live Runtime Gateway/Sync child projection. The UI contract should remain
+unchanged: exact identity, explicit lifecycle, bounded latest activity, and
+direct access to the independent child transcript.

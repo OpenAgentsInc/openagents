@@ -30,14 +30,19 @@ describe("openagents_desktop.codex_subagent_history.v2", () => {
       JSON.stringify({timestamp:"2026-07-10T00:00:02.000Z",type:"response_item",payload:{type:"function_call",name:"exec",call_id:"c1",arguments:"Bearer abcdefghijklmnop"}}),
       JSON.stringify({timestamp:"2026-07-10T00:00:03.000Z",type:"response_item",payload:{type:"function_call_output",call_id:"c1",output:"ok"}}),
       JSON.stringify({timestamp:"2026-07-10T00:00:04.000Z",type:"event_msg",payload:{type:"sub_agent_activity",agent_thread_id:"child",kind:"started"}}),
+      JSON.stringify({timestamp:"2026-07-10T00:00:04.500Z",type:"event_msg",payload:{type:"sub_agent_activity",agent_thread_id:"child",kind:"interacted"}}),
       JSON.stringify({timestamp:"2026-07-10T00:00:05.000Z",type:"event_msg",payload:{type:"token_count",info:{total_token_usage:42}}}),
       JSON.stringify({timestamp:"2026-07-10T00:00:06.000Z",type:"future_record",payload:{type:"future_kind"}}),
       "{broken",
     ].join("\n")+"\n")
+    write(sessions,"child","root",[msg("assistant","Checking the focused tests")])
     const page=readCodexHistoryPage({sessionsRoot:sessions,threadRef:"root",limit:200})!
-    expect(page.items.map(item=>item.kind)).toEqual(["session","reasoning","tool_call","tool_result","collaboration","usage","gap","gap"])
+    expect(page.items.map(item=>item.kind)).toEqual(["session","reasoning","tool_call","tool_result","collaboration","collaboration","usage","gap","gap"])
     expect(JSON.stringify(page)).not.toContain("abcdefghijklmnop"); expect(page.items[2]?.redacted).toBe(true)
-    expect(page.completeness).toEqual({source:8,rendered:6,redactions:0,gaps:2,complete:true})
+    expect(page.items[4]?.relatedAgent).toMatchObject({threadRef:"child",title:"child",status:"completed",latest:{label:"Assistant",summary:"Checking the focused tests",kind:"assistant_message"}})
+    expect(page.items[5]?.relatedAgent).toBeUndefined()
+    expect(decodeCodexHistoryPage(page)).not.toBeNull()
+    expect(page.completeness).toEqual({source:9,rendered:7,redactions:0,gaps:2,complete:true})
   })
 
   test("pages without overlap or omission", () => {

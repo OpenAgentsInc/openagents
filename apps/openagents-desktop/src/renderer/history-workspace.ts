@@ -31,6 +31,12 @@ const timelineStatus = (item: CodexHistoryItem): "idle" | "active" | "success" |
       : item.status === "pending" || item.status === "waiting" ? "pending"
         : item.status === "completed" || item.status === "success" ? "success" : "idle"
 
+const agentTimelineStatus = (status: NonNullable<CodexHistoryItem["relatedAgent"]>["status"]): "idle" | "active" | "success" | "failed" | "pending" =>
+  status === "running" ? "active"
+    : status === "pending" || status === "waiting" ? "pending"
+      : status === "completed" ? "success"
+        : status === "interrupted" || status === "errored" || status === "not_found" ? "failed" : "idle"
+
 const historyField = (item: CodexHistoryItem, label: string): string | null =>
   item.fields.find((field) => field.label.toLowerCase() === label)?.value ?? null
 
@@ -66,6 +72,25 @@ const historyIcon = (item: CodexHistoryItem): IconName =>
             : "Chats"
 
 const projectedTimelineEvent = (item: CodexHistoryItem, result?: CodexHistoryItem): TimelineEvent => {
+  if (item.kind === "collaboration" && item.relatedAgent !== undefined) {
+    const agent = item.relatedAgent
+    const detail = agent.latest === null
+      ? "No child activity recorded yet."
+      : `${agent.latest.label} — ${agent.latest.summary}`
+    return {
+      id: item.itemRef,
+      key: `history-item-${item.itemRef}`,
+      label: `Subagent · ${agent.title}`,
+      detail: timelinePreview(detail),
+      time: statusLabel(agent.status),
+      status: agentTimelineStatus(agent.status),
+      variant: "agent",
+      icon: "Agent",
+      onSelect: IntentRef("HistoryAgentSelected", StaticPayload(agent.threadRef)),
+      accessibilityLabel: `Open subagent ${agent.title}. ${statusLabel(agent.status)}. Latest activity: ${detail}`,
+      refs: [item.threadRef, agent.threadRef],
+    }
+  }
   const status = result?.status ?? item.status
   const detail = item.kind === "tool_call"
     ? item.summary || historyField(item, "input") || result?.summary || "Tool invocation"

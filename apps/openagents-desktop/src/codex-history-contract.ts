@@ -4,12 +4,13 @@ const Ref = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256))
 const Text = Schema.String.check(Schema.isMaxLength(20_000))
 const Timestamp = Schema.String.check(Schema.isMaxLength(64))
 const Count = Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0))
+const CodexHistoryAgentStatusSchema = Schema.Literals(["pending", "running", "waiting", "interrupted", "completed", "errored", "shutdown", "not_found", "unknown"])
 
 export const CodexHistoryAgentSchema = Schema.Struct({
   threadRef: Ref,
   parentThreadRef: Schema.NullOr(Ref),
   title: Schema.String.check(Schema.isMaxLength(160)),
-  status: Schema.Literals(["pending", "running", "waiting", "interrupted", "completed", "errored", "shutdown", "not_found", "unknown"]),
+  status: CodexHistoryAgentStatusSchema,
   createdAt: Timestamp,
   updatedAt: Timestamp,
   depth: Count,
@@ -29,6 +30,20 @@ export const CodexHistoryItemKindSchema = Schema.Literals([
 ])
 export type CodexHistoryItemKind = typeof CodexHistoryItemKindSchema.Type
 
+export const CodexHistoryAgentPreviewSchema = Schema.Struct({
+  threadRef: Ref,
+  title: Schema.String.check(Schema.isMaxLength(160)),
+  status: CodexHistoryAgentStatusSchema,
+  updatedAt: Timestamp,
+  latest: Schema.NullOr(Schema.Struct({
+    label: Schema.String.check(Schema.isMaxLength(160)),
+    summary: Schema.String.check(Schema.isMaxLength(360)),
+    kind: CodexHistoryItemKindSchema,
+    timestamp: Timestamp,
+  })),
+})
+export type CodexHistoryAgentPreview = typeof CodexHistoryAgentPreviewSchema.Type
+
 export const CodexHistoryFieldSchema = Schema.Struct({ label: Schema.String.check(Schema.isMaxLength(80)), value: Text })
 export const CodexHistoryItemSchema = Schema.Struct({
   itemRef: Ref,
@@ -42,6 +57,7 @@ export const CodexHistoryItemSchema = Schema.Struct({
   fields: Schema.Array(CodexHistoryFieldSchema).check(Schema.isMaxLength(40)),
   redacted: Schema.Boolean,
   sourceType: Schema.String.check(Schema.isMaxLength(160)),
+  relatedAgent: CodexHistoryAgentPreviewSchema.pipe(Schema.optionalKey),
 })
 export type CodexHistoryItem = typeof CodexHistoryItemSchema.Type
 

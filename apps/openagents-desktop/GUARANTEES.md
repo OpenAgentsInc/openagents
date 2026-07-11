@@ -329,6 +329,15 @@ right pane uses tree-mode `NavRail` for agent depth, expansion, roving keyboard
 bindings, and trailing lifecycle state; selected-item fields use the typed
 `Table` contract. Neither pane owns app-local list-row primitives.
 
+A parent timeline projects each confirmed child-start edge as an inline
+subagent card. The card carries the exact child thread ref, current lifecycle
+state, and one bounded, redacted latest-activity preview read from the child's
+own history tail. Pressing it dispatches `HistoryAgentSelected`, the same typed
+navigation used by the full right-hand tree. It never merges the child
+transcript into the parent, infers an edge from prose, treats a preview as a
+completion receipt, or duplicates later interaction notifications as new
+launch cards. Missing child history remains explicit in the source item.
+
 ### Large-thread first-content performance
 
 After a thread is selected, the local bounded first-content projection must

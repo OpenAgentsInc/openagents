@@ -39,25 +39,43 @@ export const traceAcceptanceJourney = `(async () => {
   if ([...document.querySelectorAll('[data-en-key*="loading"]')].some(node => node.getClientRects().length > 0)) return {ok:false,reason:"stale_loading_copy"}
 
   const rootsWithTopology = roots.map(root => {
-    const family = agents.filter(agent => agent.threadRef === root.threadRef || agent.parentThreadRef !== null)
     const children = agents.filter(agent => agent.parentThreadRef === root.threadRef)
     const grandchild = agents.find(agent => children.some(child => agent.parentThreadRef === child.threadRef))
-    return {root, children, grandchild, family}
+    return {root, children, grandchild}
   })
   const visibleRefs = new Set(sidebarRows.map(row => row.getAttribute('data-en-key').slice('sidebar-thread-'.length)))
   const visibleCandidates = rootsWithTopology.filter(value => visibleRefs.has(value.root.threadRef))
-  const candidate = visibleCandidates.find(value => value.children.length >= 2 && value.grandchild) ?? visibleCandidates.sort((a,b)=>b.root.descendantCount-a.root.descendantCount)[0]
+  const candidateOrder = [...visibleCandidates].sort((a,b) => (b.children.length >= 2 && b.grandchild ? 1 : 0) - (a.children.length >= 2 && a.grandchild ? 1 : 0) || b.root.descendantCount - a.root.descendantCount)
+  const candidate = candidateOrder[0]
   if (!candidate) return {ok:false,reason:"candidate_not_visible"}
-  const rootButton = sidebarRows.find(row => row.getAttribute('data-en-key') === 'sidebar-thread-' + candidate.root.threadRef)
+  const rootPageResponse = await bridge.runtimeRequest({kind:"query",requestId:"trace-acceptance-root-page",query:{id:"codex.history.page",threadRef:candidate.root.threadRef,offset:0,limit:50}})
+  if (rootPageResponse?.kind !== "codex_history_page") return {ok:false,reason:"root_page_unavailable"}
+  let inlineCandidate = null
+  let inlinePageResponse = null
+  for (const value of candidateOrder) {
+    const response = value.root.threadRef === candidate.root.threadRef ? rootPageResponse : await bridge.runtimeRequest({kind:"query",requestId:"trace-acceptance-inline-page",query:{id:"codex.history.page",threadRef:value.root.threadRef,offset:0,limit:50}})
+    if (response?.kind === "codex_history_page" && response.page.items.some(item => item.relatedAgent)) { inlineCandidate=value; inlinePageResponse=response; break }
+  }
+  if (!inlineCandidate || inlinePageResponse?.kind !== "codex_history_page") return {ok:false,reason:"inline_agent_preview_missing"}
+  const selectedRef=()=>{try{return JSON.parse(localStorage.getItem('openagents.desktop.history.v1')??'null')?.selectedThreadRef??null}catch{return null}}
+  const inlineRootButton = sidebarRows.find(row => row.getAttribute('data-en-key') === 'sidebar-thread-' + inlineCandidate.root.threadRef)
+  inlineRootButton?.click()
+  if (!await until(() => selectedRef() === inlineCandidate.root.threadRef && document.querySelector('[data-en-key="history-workspace-split"]'))) return {ok:false,reason:"workspace_not_ready"}
+  const inlineItems = inlinePageResponse.page.items.filter(item => item.relatedAgent)
+  if (inlineItems.length === 0) return {ok:false,reason:"inline_agent_preview_missing"}
+  const inlineItem = inlineItems[0]
+  const inlineCard = await until(() => document.querySelector('[data-en-key="history-item-' + inlineItem.itemRef + '"][data-en-variant="agent"]'))
+  if (!inlineCard) return {ok:false,reason:"inline_agent_preview_missing"}
+  const latestSummary = inlineItem.relatedAgent.latest?.summary?.slice(0,40)
+  if (latestSummary && !inlineCard.textContent?.includes(latestSummary)) return {ok:false,reason:"inline_agent_preview_stale"}
+  inlineCard.click()
+  if (!await until(() => selectedRef() === inlineItem.relatedAgent.threadRef && document.querySelector('[data-en-key="history-agent-' + inlineItem.relatedAgent.threadRef + '"][aria-selected="true"]'))) return {ok:false,reason:"inline_agent_navigation_failed"}
+  const rootButton = [...document.querySelectorAll('[data-en-key^="sidebar-thread-"][data-en-tag="Button"]')].find(row => row.getAttribute('data-en-key') === 'sidebar-thread-' + candidate.root.threadRef)
   if (!rootButton) return {ok:false,reason:"candidate_not_visible"}
   const selectionStart = performance.now()
   rootButton.click()
-  const selectedRef=()=>{try{return JSON.parse(localStorage.getItem('openagents.desktop.history.v1')??'null')?.selectedThreadRef??null}catch{return null}}
-  const workspace = await until(() => selectedRef()===candidate.root.threadRef && document.querySelector('[data-en-key="history-workspace-split"]'))
-  if (!workspace) return {ok:false,reason:"workspace_not_ready"}
+  if (!await until(() => selectedRef() === candidate.root.threadRef)) return {ok:false,reason:"inline_agent_return_failed"}
   const pageReadyMs = Math.round(performance.now() - selectionStart)
-  const rootPageResponse = await bridge.runtimeRequest({kind:"query",requestId:"trace-acceptance-root-page",query:{id:"codex.history.page",threadRef:candidate.root.threadRef,offset:0,limit:50}})
-  if (rootPageResponse?.kind !== "codex_history_page") return {ok:false,reason:"root_page_unavailable"}
   const page = rootPageResponse.page
   const completeness = page.completeness
   if (completeness.source !== completeness.rendered + completeness.redactions + completeness.gaps) return {ok:false,reason:"silent_loss"}
@@ -101,6 +119,9 @@ export const traceAcceptanceJourney = `(async () => {
     if(!heldReturned)return {ok:false,reason:'history_shortcut_hold_return_failed'}
     window.dispatchEvent(new KeyboardEvent('keyup',{key:modifierKey,code:bridge.platform==='darwin'?'MetaLeft':'ControlLeft',bubbles:true,cancelable:true}))
   }
+  const rootButtonBeforeTree = [...document.querySelectorAll('[data-en-key^="sidebar-thread-"][data-en-tag="Button"]')].find(row => row.getAttribute('data-en-key') === 'sidebar-thread-' + candidate.root.threadRef)
+  rootButtonBeforeTree?.click()
+  if (!await until(() => selectedRef() === candidate.root.threadRef && document.querySelectorAll('[role="treeitem"]').length > 1)) return {ok:false,reason:"descendants_hidden",visibleAgentCount:document.querySelectorAll('[role="treeitem"]').length,projectedAgentCount:page.agents.length}
   const treeItems = [...document.querySelectorAll('[role="treeitem"]')]
   const agentList = [...document.querySelectorAll('[aria-label]')].find(node => node.getAttribute('aria-label') === page.agents.length + ' agents')
   if (treeItems.length === 0 || !agentList) return {ok:false,reason:"descendants_hidden",visibleAgentCount:treeItems.length,projectedAgentCount:page.agents.length}
@@ -138,7 +159,7 @@ export const traceAcceptanceJourney = `(async () => {
   const saved = JSON.parse(localStorage.getItem('openagents.desktop.history.v1') ?? 'null')
   if (!saved || typeof saved.selectedThreadRef !== 'string' || typeof saved.selectedItemRef !== 'string' || !Array.isArray(saved.expandedThreadRefs)) return {ok:false,reason:"ref_restore_missing"}
   sessionStorage.setItem('openagents.desktop.trace-acceptance.expected', JSON.stringify({selectedThreadRef:saved.selectedThreadRef,selectedItemRef:saved.selectedItemRef,expandedThreadRefs:saved.expandedThreadRefs}))
-  return {ok:true,shellReadyMs,catalogReadyMs,pageReadyMs,inspectorReadyMs,rootCount:roots.length,agentCount:page.agents.length,childCount:candidate.children.length,grandchildCount:candidate.grandchild?1:0,toolItemCount:toolPage.items.filter(item=>item.kind==='tool_call'||item.kind==='tool_result').length,gapCount:completeness.gaps,timelineClientHeight:timeline.clientHeight,timelineScrollHeight:timeline.scrollHeight}
+  return {ok:true,shellReadyMs,catalogReadyMs,pageReadyMs,inspectorReadyMs,rootCount:roots.length,agentCount:page.agents.length,childCount:candidate.children.length,grandchildCount:candidate.grandchild?1:0,inlinePreviewCount:inlineItems.length,toolItemCount:toolPage.items.filter(item=>item.kind==='tool_call'||item.kind==='tool_result').length,gapCount:completeness.gaps,timelineClientHeight:timeline.clientHeight,timelineScrollHeight:timeline.scrollHeight}
 })()`
 
 export const traceAcceptanceReload = `(async () => {

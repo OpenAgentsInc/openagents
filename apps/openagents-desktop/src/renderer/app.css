@@ -390,6 +390,28 @@ textarea:focus-visible {
   color: var(--oa-blue);
 }
 
+[data-en-key^="history-item-"][data-en-variant="agent"] {
+  margin: 5px 8px;
+  padding: 11px 12px;
+  border: 1px solid rgba(92, 148, 255, 0.26);
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(35, 77, 151, 0.2), rgba(18, 37, 75, 0.08));
+  box-shadow: inset 2px 0 rgba(55, 219, 152, 0.78), 0 5px 18px rgba(0, 8, 24, 0.14);
+}
+
+[data-en-key^="history-item-"][data-en-variant="agent"]:hover {
+  border-color: rgba(92, 148, 255, 0.42);
+  background: linear-gradient(135deg, rgba(35, 77, 151, 0.28), rgba(18, 37, 75, 0.12));
+}
+
+[data-en-key^="history-item-"][data-en-variant="agent"] > [data-en-role="event-icon"] {
+  color: var(--oa-success);
+}
+
+[data-en-key^="history-item-"][data-en-variant="agent"] > [data-en-role="detail"] {
+  color: var(--oa-ink);
+}
+
 [data-en-key^="history-item-"][data-en-variant="reasoning"] > [data-en-role="detail"] {
   color: var(--oa-muted);
 }

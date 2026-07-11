@@ -8,7 +8,7 @@ import { closeSync, openSync, readFileSync, readSync, readdirSync, statSync } fr
 import path from "node:path"
 
 import type { DesktopMessage, DesktopThread } from "./chat-contract.ts"
-import type { CodexHistoryAgent, CodexHistoryCatalog, CodexHistoryItem, CodexHistoryItemKind, CodexHistoryPage } from "./codex-history-contract.ts"
+import type { CodexHistoryAgent, CodexHistoryAgentPreview, CodexHistoryCatalog, CodexHistoryItem, CodexHistoryItemKind, CodexHistoryPage } from "./codex-history-contract.ts"
 
 const windowMs = 24 * 60 * 60 * 1000
 const recentMessageLimit = 5
@@ -266,7 +266,7 @@ export const buildCodexHistoryGraph = (sessionsRoot: string): CodexHistoryGraph 
   const depthOf = (entry: SessionIndexEntry): number => { let depth = 0; let current = entry; const seen = new Set<string>(); while (current.parentId !== null && !seen.has(current.id)) { seen.add(current.id); const parent = byId.get(current.parentId); if (!parent) break; depth++; current = parent } return depth }
   const descendants = (id: string, seen = new Set<string>()): number => { if (seen.has(id)) return 0; seen.add(id); return (children.get(id) ?? []).reduce((sum, child) => sum + 1 + descendants(child, seen), 0) }
   const agents = entries.map(entry => ({
-    threadRef: entry.id, parentThreadRef: entry.parentId, title: titles.get(entry.id) ?? (entry.parentId === null ? "Untitled Codex chat" : entry.role ?? "Subagent"),
+    threadRef: entry.id, parentThreadRef: entry.parentId, title: titles.get(entry.id) ?? (entry.parentId === null ? "Untitled Codex chat" : entry.nickname ?? entry.role ?? "Subagent"),
     status: inferredStatus(entry.file), createdAt: entry.createdAt, updatedAt: entry.updatedAt, depth: depthOf(entry), descendantCount: descendants(entry.id), model: entry.model, role: entry.role, nickname:entry.nickname,agentPath:entry.agentPath,sourceVersion:entry.sourceVersion,reasoning:entry.reasoning,
   })).sort((a,b) => a.createdAt.localeCompare(b.createdAt))
   return { entries, agents: agents.map(agent => ({ ...agent, title: agent.title || rootOf(byId.get(agent.threadRef)!) })) }
@@ -279,6 +279,7 @@ export const readCodexHistoryCatalog = (sessionsRoot: string, graph = buildCodex
 
 const contentText = (value: unknown): string => Array.isArray(value) ? value.map(part => { const row = object(part); return row === null ? "" : safeText(row.text ?? row.value ?? row.content) }).filter(Boolean).join("\n") : safeText(value)
 const field = (label: string, value: unknown) => { const text = redactCodexHistoryText(safeText(value)); return text.text === "" ? null : { label, value: text.text, redacted: text.redacted } }
+const firstString = (value: unknown): string | null => Array.isArray(value) ? value.map(string).find((entry): entry is string => entry !== null) ?? null : string(value)
 
 const projectRow = (row: unknown, threadRef: string, sequence: number): CodexHistoryItem => {
   const envelope = object(row); const payload = envelope && object(envelope.payload); const envelopeType = envelope && string(envelope.type) || "invalid"; const timestamp = envelope && iso(envelope.timestamp) || new Date(0).toISOString()
@@ -294,7 +295,7 @@ const projectRow = (row: unknown, threadRef: string, sequence: number): CodexHis
   else if (itemType === "message" || itemType === "agent_message") { const role = string(item.role) ?? (itemType === "agent_message" ? "assistant" : null); kind = role === "user" ? "user_message" : role === "system" || role === "developer" ? "system_message" : "assistant_message"; label = role === "user" ? "You" : role === "assistant" ? "Assistant" : `Message · ${role ?? "unknown"}`; summary = contentText(item.content ?? item.text) }
   else if (itemType.includes("reasoning")) { kind = "reasoning"; label = "Reasoning summary"; summary = contentText(item.summary); if(summary==="")summary="[REDACTED: reasoning not persisted as summary]" }
   else if (itemType.includes("plan") || itemType === "todo_list") { kind = "plan"; label = "Plan"; summary = contentText(item.plan ?? item.content ?? item.text) }
-  else if (itemType.includes("collab") || itemType.includes("agent") || ["spawn_agent","send_input","wait","resume_agent","interrupt_agent","close_agent"].includes(itemType)) { kind = "collaboration"; label = string(item.name) ?? itemType; summary = safeText(item.message ?? item.prompt ?? item.result ?? item.status ?? item.kind); push("agent", item.agent_id ?? item.receiver_thread_id ?? item.agent_thread_id); push("operation", itemType) }
+  else if (itemType.includes("collab") || itemType.includes("agent") || ["spawn_agent","send_input","wait","resume_agent","interrupt_agent","close_agent"].includes(itemType)) { const agentsState=object(item.agents_states); const operation=string(item.tool)??string(item.name)??itemType; const agentRef=string(item.new_thread_id)??string(item.agent_thread_id)??firstString(item.receiver_thread_ids)??string(item.agent_id)??string(item.receiver_thread_id)??(agentsState===null?null:Object.keys(agentsState)[0]??null); kind = "collaboration"; label = operation === "spawn_agent" ? "Subagent started" : operation.replaceAll("_"," "); summary = safeText(item.message ?? item.prompt ?? item.result ?? item.status ?? item.kind); push("agent", agentRef); push("operation", operation); push("activity", item.kind) }
   else if (itemType.includes("approval")) { kind = "approval"; label = "Approval"; summary = safeText(item.reason ?? item.message ?? item.status); push("decision", item.decision) }
   else if (itemType.includes("usage") || itemType.includes("token_count")) { kind = "usage"; label = "Usage"; summary = "Token usage update"; push("input", item.input_tokens); push("output", item.output_tokens); push("total", item.total_tokens) }
   else if (itemType.includes("output") || itemType.includes("result")) { kind = "tool_result"; label = string(item.name) ?? "Tool result"; summary = safeText(item.output ?? item.result ?? item.content); push("call", item.call_id); push("status", item.status); push("started", item.started_at ?? item.start_time); push("ended", item.completed_at ?? item.end_time); push("duration", item.duration_ms); push("output", item.output ?? item.result); push("files", item.files ?? item.affected_files); push("artifacts", item.artifacts ?? item.artifact_refs); push("error", item.error) }
@@ -314,10 +315,44 @@ const projectionAccounting = (row: unknown): Readonly<{ gap: boolean; redaction:
   return {gap:!supported,redaction}
 }
 
+const tailHistoryRows = (file: string): ReadonlyArray<unknown> => {
+  try {
+    const text = file.endsWith(".zst") ? historyText(file).slice(-historyTailBytes) : (() => { const size=statSync(file).size; const descriptor=openSync(file,"r"); try { const buffer=Buffer.alloc(Math.min(historyTailBytes,size)); readSync(descriptor,buffer,0,buffer.length,size-buffer.length); return buffer.toString("utf8") } finally { closeSync(descriptor) } })()
+    return text.split("\n").flatMap(line=>{try{return [JSON.parse(line)]}catch{return []}})
+  } catch { return [] }
+}
+
+const previewableChildItem = (item: CodexHistoryItem): boolean =>
+  ["user_message", "assistant_message", "reasoning", "plan", "collaboration", "tool_call", "tool_result", "approval", "error"].includes(item.kind) &&
+  item.summary.trim() !== "" && !item.summary.startsWith("[REDACTED:")
+
+const childPreview = (entry: SessionIndexEntry, agent: CodexHistoryAgent): CodexHistoryAgentPreview => {
+  const rows = tailHistoryRows(entry.file)
+  const latest = rows.map((row,index)=>projectRow(row,entry.id,index)).reverse().find(previewableChildItem)
+  return {
+    threadRef: entry.id,
+    title: agent.title,
+    status: agent.status,
+    updatedAt: agent.updatedAt,
+    latest: latest === undefined ? null : {
+      label: latest.label,
+      summary: latest.summary.slice(0,360),
+      kind: latest.kind,
+      timestamp: latest.timestamp,
+    },
+  }
+}
+
+const isSubagentLaunchItem = (item: CodexHistoryItem): boolean => {
+  const operation = item.fields.find(field => field.label === "operation")?.value
+  const activity = item.fields.find(field => field.label === "activity")?.value
+  return operation === "spawn_agent" || operation === "collab_agent_spawn_begin" || operation === "collab_agent_spawn_end" || (operation === "sub_agent_activity" && activity === "started")
+}
+
 export const readCodexHistoryPage = (input: Readonly<{ sessionsRoot: string; threadRef: string; offset?: number; limit?: number }>, graph = buildCodexHistoryGraph(input.sessionsRoot)): CodexHistoryPage | null => {
   const entry = graph.entries.find(item => item.id === input.threadRef); if (!entry) return null
   const rows = historyText(entry.file).split("\n").filter(line => line !== "").map(line => { try { return JSON.parse(line) } catch { return null } })
-  const offset = Math.max(0, Math.min(input.offset ?? 0, rows.length)); const limit = Math.max(1, Math.min(input.limit ?? 200, 500)); const knownThreads=new Set(graph.entries.map(item=>item.id)); const items=rows.slice(offset,offset+limit).map((row,index)=>{const item=projectRow(row,entry.id,offset+index);if(item.kind!=="collaboration")return item;const agent=item.fields.find(field=>field.label==="agent")?.value;return agent&&!knownThreads.has(agent)?{...item,fields:[...item.fields,{label:"history",value:"Child history not recorded"}]}:item})
+  const offset = Math.max(0, Math.min(input.offset ?? 0, rows.length)); const limit = Math.max(1, Math.min(input.limit ?? 200, 500)); const entriesById=new Map(graph.entries.map(item=>[item.id,item])); const agentsById=new Map(graph.agents.map(item=>[item.threadRef,item])); const previewById=new Map<string,CodexHistoryAgentPreview>(); const items=rows.slice(offset,offset+limit).map((row,index)=>{const item=projectRow(row,entry.id,offset+index);if(item.kind!=="collaboration"||!isSubagentLaunchItem(item))return item;const agentRef=item.fields.find(field=>field.label==="agent")?.value;if(!agentRef)return item;const childEntry=entriesById.get(agentRef);const childAgent=agentsById.get(agentRef);if(childEntry===undefined||childAgent===undefined)return {...item,fields:[...item.fields,{label:"history",value:"Child history not recorded"}]};let relatedAgent=previewById.get(agentRef);if(relatedAgent===undefined){relatedAgent=childPreview(childEntry,childAgent);previewById.set(agentRef,relatedAgent)}return {...item,relatedAgent}})
   const root = (() => { let current = entry; const byId = new Map(graph.entries.map(item => [item.id,item])); const seen = new Set<string>(); while (current.parentId && !seen.has(current.id)) { seen.add(current.id); const parent = byId.get(current.parentId); if (!parent) break; current = parent } return current.id })()
   const accounting=rows.reduce((total,row)=>{const next=projectionAccounting(row);return {gaps:total.gaps+(next.gap?1:0),redactions:total.redactions+(next.redaction?1:0)}},{gaps:0,redactions:0})
   return { rootThreadRef: root, selectedThreadRef: entry.id, agents: graph.agents.filter(agent => { let id: string | null = agent.threadRef; const byId = new Map(graph.entries.map(item => [item.id,item])); while (id) { if (id === root) return true; id = byId.get(id)?.parentId ?? null } return false }), items, offset, limit, totalItems: rows.length, hasPrevious: offset > 0, hasNext: offset + limit < rows.length, completeness: { source: rows.length, rendered: rows.length - accounting.gaps - accounting.redactions, redactions:accounting.redactions, gaps:accounting.gaps, complete: true } }

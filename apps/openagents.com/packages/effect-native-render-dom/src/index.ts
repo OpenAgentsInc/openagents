@@ -3854,12 +3854,12 @@ const renderTimeline = (view: TimelineView, state: DomRendererState, report: Int
       detail.textContent = graphEvent.detail
       li.appendChild(detail)
     }
-    if (view.onEventSelect !== undefined) {
-      const onEventSelect = view.onEventSelect
+    const onSelect = graphEvent.onSelect ?? view.onEventSelect
+    if (onSelect !== undefined) {
       li.style.cursor = "pointer"
       li.setAttribute("role", "button")
       li.tabIndex = selected ? 0 : -1
-      state.addListener(li, "click", () => runReportedIntent(report, onEventSelect, graphEvent.id))
+      state.addListener(li, "click", () => runReportedIntent(report, onSelect, graphEvent.id))
     }
     return li
   })

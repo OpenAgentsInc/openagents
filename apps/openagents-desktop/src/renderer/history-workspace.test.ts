@@ -20,10 +20,13 @@ describe("history workspace",()=>{
       item(3,"user_message","You","Run the tests"),
       item(4,"tool_call","exec_command","bun test",[{label:"call",value:"call-1"},{label:"input",value:"bun test"}]),
       item(5,"tool_result","Tool result","12 passed",[{label:"call",value:"call-1"}]),
+      {...item(9,"collaboration","sub agent activity","started",[{label:"agent",value:"worker"},{label:"operation",value:"sub_agent_activity"},{label:"activity",value:"started"}]),relatedAgent:{threadRef:"worker",title:"Roadmap audit",status:"running",updatedAt:"2026-07-10T00:00:04Z",latest:{label:"Assistant",summary:"Reviewing the roadmap milestones",kind:"assistant_message",timestamp:"2026-07-10T00:00:03Z"}}},
       item(6,"assistant_message","Assistant","All tests pass"),
     ])
-    expect(events.map(event=>event.id)).toEqual(["child:3","child:4","child:6"])
+    expect(events.map(event=>event.id)).toEqual(["child:3","child:4","child:9","child:6"])
     expect(events[1]).toMatchObject({label:"Terminal",detail:"bun test",variant:"tool",icon:"Terminal",status:"success",refs:["child","child:5"]})
+    expect(events[2]).toMatchObject({label:"Subagent · Roadmap audit",detail:"Assistant — Reviewing the roadmap milestones",variant:"agent",icon:"Agent",status:"active",time:"Running",refs:["child","worker"]})
+    expect(events[2]?.onSelect?.name).toBe("HistoryAgentSelected")
     expect(events[0]).toMatchObject({variant:"message",icon:"Chats"})
   })
 })
