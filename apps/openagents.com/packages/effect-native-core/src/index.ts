@@ -2119,6 +2119,11 @@ export interface NavRailItem {
   readonly badge?: string
   readonly accessibilityLabel?: string
   readonly selected?: boolean
+  readonly depth?: number
+  readonly expanded?: boolean
+  readonly positionInSet?: number
+  readonly setSize?: number
+  readonly interactions?: Interactions
   readonly disabled?: boolean
   /** Item-local intent for mixed action/navigation sidebars. */
   readonly onSelect?: IntentRef
@@ -2135,6 +2140,7 @@ export interface NavRailView extends NodeBase {
   readonly _tag: "NavRail"
   readonly sections: ReadonlyArray<NavRailSection>
   readonly activeId?: string
+  readonly role?: "navigation" | "tree"
   readonly onSelect?: IntentRef
   readonly style?: CardStyle
 }
@@ -2658,16 +2664,19 @@ export interface GraphFigureView extends NodeBase {
 
 export interface TimelineEvent {
   readonly id: string
+  readonly key?: NodeKey
   readonly label: string
   readonly detail?: string
   readonly time?: string
   readonly status?: GraphStatus
+  readonly accessibilityLabel?: string
   // Node ids this event refers to.
   readonly refs?: ReadonlyArray<string>
 }
 export interface TimelineView extends NodeBase {
   readonly _tag: "Timeline"
   readonly events: ReadonlyArray<TimelineEvent>
+  readonly selectedId?: string
   readonly onEventSelect?: IntentRef
   readonly style?: CardStyle
 }
@@ -3516,6 +3525,11 @@ export const NavRailItemSchema: Schema.Codec<NavRailItem, NavRailItem> = Schema.
   badge: Schema.String.pipe(Schema.optionalKey),
   accessibilityLabel: Schema.NonEmptyString.pipe(Schema.optionalKey),
   selected: Schema.Boolean.pipe(Schema.optionalKey),
+  depth: Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0)).pipe(Schema.optionalKey),
+  expanded: Schema.Boolean.pipe(Schema.optionalKey),
+  positionInSet: Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0)).pipe(Schema.optionalKey),
+  setSize: Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0)).pipe(Schema.optionalKey),
+  interactions: InteractionsSchema.pipe(Schema.optionalKey),
   disabled: Schema.Boolean.pipe(Schema.optionalKey),
   onSelect: IntentRefSchema.pipe(Schema.optionalKey)
 })
@@ -3531,6 +3545,7 @@ export const NavRailSchema: Schema.Codec<NavRailView, NavRailView> = Schema.Tagg
   ...CommonFields,
   sections: Schema.Array(NavRailSectionSchema),
   activeId: Schema.String.pipe(Schema.optionalKey),
+  role: Schema.Literals(["navigation", "tree"] as const).pipe(Schema.optionalKey),
   onSelect: IntentRefSchema.pipe(Schema.optionalKey),
   style: CardStyleSchema.pipe(Schema.optionalKey)
 })
@@ -3933,15 +3948,18 @@ export const GraphFigureSchema: Schema.Codec<GraphFigureView, GraphFigureView> =
 
 export const TimelineEventSchema: Schema.Codec<TimelineEvent, TimelineEvent> = Schema.Struct({
   id: Schema.NonEmptyString,
+  key: Schema.NonEmptyString.pipe(Schema.optionalKey),
   label: Schema.String,
   detail: Schema.String.pipe(Schema.optionalKey),
   time: Schema.String.pipe(Schema.optionalKey),
   status: Schema.Literals(graphStatuses).pipe(Schema.optionalKey),
+  accessibilityLabel: Schema.NonEmptyString.pipe(Schema.optionalKey),
   refs: Schema.Array(Schema.NonEmptyString).pipe(Schema.optionalKey)
 })
 export const TimelineSchema: Schema.Codec<TimelineView, TimelineView> = Schema.TaggedStruct("Timeline", {
   ...CommonFields,
   events: Schema.Array(TimelineEventSchema),
+  selectedId: Schema.String.pipe(Schema.optionalKey),
   onEventSelect: IntentRefSchema.pipe(Schema.optionalKey),
   style: CardStyleSchema.pipe(Schema.optionalKey)
 })

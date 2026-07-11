@@ -312,6 +312,12 @@ group carry controlled selection, accessible labels, trailing timestamps, and
 item-local typed intents. Commands and Settings retain the same intent and
 keyboard command paths without app-local row components.
 
+The center pane is an Effect Native `Timeline` with stable event keys,
+controlled selection, compact detail/status metadata, and typed selection. The
+right pane uses tree-mode `NavRail` for agent depth, expansion, roving keyboard
+bindings, and trailing lifecycle state; selected-item fields use the typed
+`Table` contract. Neither pane owns app-local list-row primitives.
+
 ### Large-thread first-content performance
 
 After a thread is selected, the local bounded first-content projection must

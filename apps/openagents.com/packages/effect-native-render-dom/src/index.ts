@@ -2079,6 +2079,7 @@ const renderNavRail = (view: NavRailView, state: DomRendererState, report: Inten
   state.resetListeners(element)
   element.style.display = "flex"
   element.style.flexDirection = "column"
+  element.setAttribute("role", view.role ?? "navigation")
   const document = element.ownerDocument
   const sections = view.sections.map((section) => {
     const sectionEl = document.createElement("div")
@@ -2099,6 +2100,14 @@ const renderNavRail = (view: NavRailView, state: DomRendererState, report: Inten
       button.setAttribute("data-en-key", item.id)
       button.setAttribute("data-en-tag", "Button")
       button.setAttribute("aria-label", item.accessibilityLabel ?? item.label)
+      if (view.role === "tree") {
+        button.setAttribute("role", "treeitem")
+        button.setAttribute("aria-level", String((item.depth ?? 0) + 1))
+        if (item.expanded !== undefined) button.setAttribute("aria-expanded", String(item.expanded))
+        if (item.positionInSet !== undefined) button.setAttribute("aria-posinset", String(item.positionInSet))
+        if (item.setSize !== undefined) button.setAttribute("aria-setsize", String(item.setSize))
+        button.style.paddingInlineStart = `calc(var(--en-spacing-2) + ${(item.depth ?? 0) * 12}px)`
+      }
       button.disabled = item.disabled === true
       const active = item.selected ?? view.activeId === item.id
       button.setAttribute("data-en-active", active ? "true" : "false")
@@ -2135,6 +2144,9 @@ const renderNavRail = (view: NavRailView, state: DomRendererState, report: Inten
       const onSelect = item.onSelect ?? view.onSelect
       if (item.disabled !== true && onSelect !== undefined) {
         state.addListener(button, "click", () => runReportedIntent(report, onSelect, item.id))
+      }
+      if (item.interactions !== undefined) {
+        applyInteractions(button, { ...view, interactions: item.interactions } as NavRailView, state, report)
       }
       sectionEl.appendChild(button)
     }
@@ -3802,6 +3814,10 @@ const renderTimeline = (view: TimelineView, state: DomRendererState, report: Int
   const items = view.events.map((graphEvent) => {
     const li = document.createElement("li")
     li.setAttribute("data-en-event", graphEvent.id)
+    if (graphEvent.key !== undefined) li.setAttribute("data-en-key", graphEvent.key)
+    li.setAttribute("aria-label", graphEvent.accessibilityLabel ?? graphEvent.label)
+    const selected = view.selectedId === graphEvent.id
+    li.setAttribute("aria-selected", String(selected))
     if (graphEvent.status !== undefined) li.setAttribute("data-en-status", graphEvent.status)
     li.style.display = "flex"
     li.style.alignItems = "baseline"
@@ -3834,6 +3850,8 @@ const renderTimeline = (view: TimelineView, state: DomRendererState, report: Int
     if (view.onEventSelect !== undefined) {
       const onEventSelect = view.onEventSelect
       li.style.cursor = "pointer"
+      li.setAttribute("role", "button")
+      li.tabIndex = selected ? 0 : -1
       state.addListener(li, "click", () => runReportedIntent(report, onEventSelect, graphEvent.id))
     }
     return li

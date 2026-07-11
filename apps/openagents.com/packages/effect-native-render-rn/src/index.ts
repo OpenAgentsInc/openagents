@@ -1737,11 +1737,11 @@ const renderNavRail = (
           {
             key: `item-${item.id}`,
             testID: `en-nav-item:${item.id}`,
-            accessibilityRole: "menuitem",
+            accessibilityRole: view.role === "tree" ? "button" : "menuitem",
             accessibilityLabel: item.accessibilityLabel ?? item.label,
-            accessibilityState: { selected: active, disabled: item.disabled === true },
+            accessibilityState: { selected: active, disabled: item.disabled === true, ...(item.expanded === undefined ? {} : { expanded: item.expanded }) },
             disabled: item.disabled === true,
-            style: { flexDirection: "row", gap: spacingValue(theme, "2") },
+            style: { flexDirection: "row", gap: spacingValue(theme, "2"), paddingLeft: spacingValue(theme, "2") + (item.depth ?? 0) * 12 },
             ...(item.disabled === true || onSelect === undefined
               ? {}
               : { onPress: () => runReportedIntent(report, onSelect, item.id) })
@@ -3306,7 +3306,8 @@ const renderTimeline = (
         createElement(dependencies, dependencies.ReactNative.Text, { key: "label" }, graphEvent.label)
       ]
       if (graphEvent.time !== undefined) parts.push(createElement(dependencies, dependencies.ReactNative.Text, { key: "time", style: { color: colorValue(theme, "textMuted") } }, graphEvent.time))
-      const props: Record<string, unknown> = { key: `event-${graphEvent.id}`, testID: `en-timeline-event:${graphEvent.id}`, style: { flexDirection: "row", gap: spacingValue(theme, "2") } }
+      const selected = view.selectedId === graphEvent.id
+      const props: Record<string, unknown> = { key: graphEvent.key ?? `event-${graphEvent.id}`, testID: `en-timeline-event:${graphEvent.id}`, accessibilityLabel: graphEvent.accessibilityLabel ?? graphEvent.label, accessibilityState: { selected }, style: { flexDirection: "row", gap: spacingValue(theme, "2") } }
       if (view.onEventSelect !== undefined) {
         const onEventSelect = view.onEventSelect
         return createElement(dependencies, dependencies.ReactNative.Pressable, { ...props, onPress: () => runReportedIntent(report, onEventSelect, graphEvent.id) }, ...parts)
