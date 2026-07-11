@@ -654,6 +654,20 @@ More specific invariant ledgers apply inside imported apps and packages.
 
 **Planned live-agent portability model boundary:**
 
+- `openagents.live_agent_graph.v1` is now the registered provider-neutral
+  graph schema boundary. It gives every node stable session/thread/transcript/
+  run/agent refs, explicit root/agent/unknown parentage, known-or-unknown
+  provider/runtime/worktree/tool facts, status/attention/terminal state,
+  attachment generation, per-agent activity cursor, and monotonic version.
+  Parent/tool edges are stable typed records. Its reducer accepts exact replay
+  idempotently and rejects cursor gaps, stale/future attachment generations,
+  identity/version/cursor/timestamp regression, terminal reopening, missing or
+  conflicting parents, orphan edges, and cycles. The schema/reducer is
+  enforced by `packages/agent-runtime-schema/src/live-agent-graph.test.ts`.
+  Codex/Claude adapters, durable Khala Sync entities, Runtime Gateway emission,
+  client read models, and live receipts remain CUT-11 work; registering this
+  contract does not itself claim a live graph authority.
+
 - Master Roadmap Revision 31 and
   `docs/sol/2026-07-11-remote-first-portable-coding-sessions-pathway.md`
   define target contracts for a canonical live agent graph, graph-wide

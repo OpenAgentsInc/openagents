@@ -1,9 +1,9 @@
 # MASTER ROADMAP — reliable synced coding and fleet software on Desktop/mobile
 
 - Date: 2026-07-10
-- Updated: 2026-07-11 (CUT-09 physical acceptance owner-deferred while the
-  recording phone is occupied; CUT-10 host/wire live subscriptions active)
-- Revision: 36
+- Updated: 2026-07-11 (CUT-10 host/wire and renderer adapter landed; CUT-11
+  canonical graph schema/replay laws active while held consumers remain open)
+- Revision: 37
 - Status: canonical OpenAgents implementation roadmap
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Issue source set: [`issues/README.md`](./issues/README.md)
@@ -544,6 +544,13 @@ product gaps are the R0–R7 Desktop/mobile continuity and reliability gates:
   stale updates. #8712 released the Gateway files after landing its optional
   harness-selection field; its active chat-UI/local-child work remains separate
   from CUT-10's pending renderer consumer.
+- CUT-11 now has a registered provider-neutral
+  `openagents.live_agent_graph.v1` schema and reducer. Stable node/edge identity,
+  explicit unknown provider facts, parent/worktree/tool/attention/terminal
+  state, attachment generation, per-agent activity cursor, exact replay, gap/
+  stale-generation refusal, terminal monotonicity, and graph integrity are
+  deterministic. This is a shared-contract tranche only: Codex/Claude adapters,
+  durable projection, Gateway emission, and named-account traces remain open.
 - Grok is postponed by owner decision because the connected account is
   quota/payment exhausted. Its real accepted historical canary, HTTP-402
   state, adapters, and fixtures remain evidence/regression substrate; Grok is
@@ -1563,7 +1570,7 @@ not require a protected-core change.
 | **P0 vertical slice** | #8676 | One real streamed Desktop conversation immediately continued on physical mobile |
 | **P0 fault proof** | #8677 | Bounded command/event lost-ack, duplicate, gap, offline, restart, revocation, and migration convergence |
 | **Closed P0 topology parent** | #8678 | #8683/#8684 complete the source-coupled topology, ambient-authority denial, substitution, disposal, correlation, and built-host receipt |
-| **P0 local-coding leaves** | #8689–#8707 open | Remaining ordered CUT-09–CUT-27 graph; CUT-09 deterministic code is landed with physical acceptance owner-deferred; CUT-10 shared/mobile live subscriptions are active; CUT-01–CUT-08 and the bounded #8640 Phase A proof are closed |
+| **P0 local-coding leaves** | #8689–#8707 open | Remaining CUT-09–CUT-27 graph; CUT-09 physical acceptance is owner-deferred, CUT-10 awaits its held renderer consumer/physical receipt, and CUT-11 shared graph schema/replay laws are active; CUT-01–CUT-08 and #8640 Phase A are closed |
 | **P0 recording pull-forward** | #8712 | Bounded Episode 250 Fleet overview and harness-selector slice; active claim owns named Desktop gateway/composer/settings paths but does not claim CUT-16/CUT-21/CUT-25 exits |
 | **Closed P0 D1 proof** | #8675 | Predictable real-Electron Codex trace workspace UX contract and public-safe acceptance receipt |
 | **Closed P0 D1 product slice** | #8674 | Loss-accounted historical Codex parent/subagent/tool rendering and the Desktop Agents/Item inspector, with valid scale and real nested-history receipts |
