@@ -3,7 +3,7 @@
 - Issue: #8597
 - Program parent: #8566
 - Destination: `apps/openagents-mobile`
-- Status: active P0 under Master Revision 29 / R0–R7 / M0–M7
+- Status: active P0 under Master Revision 31 / R0–R7 / M0–M7
 - Authority: [`../MASTER_ROADMAP.md`](../MASTER_ROADMAP.md)
 - Bounded leaves:
   [`../2026-07-10-112832-cdt-reliable-fleet-implementation-delegation.md`](../2026-07-10-112832-cdt-reliable-fleet-implementation-delegation.md)
@@ -88,6 +88,9 @@ dispositioned. Importing the legacy package/component tree is forbidden.
 6. Port GitHub/repository selection and thread binding, rich streamed runtime
    events, composer context, queue/steer/interrupt/retry, named account/model/
    execution-target readiness, push/deep links, and cross-agent handoff.
+   Preserve the canonical parent/child graph through a compact explicit drawer,
+   causal inline child activity, bounded latest durable activity, and direct
+   independent child transcript access; never silently cap or flatten children.
 7. Add typed remote-workroom lifecycle and compact Thread, Files, Changes,
    Terminal, Preview, and Artifacts/Receipts modes. Remote file/process/port/
    writeback capabilities are brokered, bounded, revocable, and receipt-backed.
@@ -103,6 +106,12 @@ dispositioned. Importing the legacy package/component tree is forbidden.
 12. Extract and rewrite useful architecture guards, unit/mount tests, stories,
     Maestro journeys, visual baselines, crash/connectivity checks, and release
     gates against the new app.
+13. Add an authorized any-host session directory and typed stop/checkpoint/
+    move/resume/failback controls. Tap and any supported conflict-safe shortcut
+    invoke the same registered action and durable outcome as Desktop.
+14. Add persona-neutral explicit ASR/TTS/barge-in over the normal session
+    command registry, with visible microphone state, text fallback, no raw-
+    audio retention by default, and no voice-only authority.
 
 ## Host and product boundaries
 
@@ -124,7 +133,9 @@ dispositioned. Importing the legacy package/component tree is forbidden.
 ## Explicit non-goals
 
 - Sarah/persona/relationship home;
-- avatar, opener, voice, ASR/VAD, video, media cache/admission;
+- avatar, opener, persona voice, video, media cache/admission, ambient capture,
+  or any voice-only authority path; persona-neutral ASR/TTS/barge-in under the
+  normal typed session command contract remains required by Revision 31;
 - demo Minerals/pricing or StoreKit work;
 - aesthetic Liquid Glass iteration not required for accessibility, correctness,
   platform support, or R0–R7;
@@ -134,11 +145,14 @@ dispositioned. Importing the legacy package/component tree is forbidden.
 
 On physical iOS and Android devices, the authenticated owner selects a
 repository, starts or resumes one real isolated remote workroom, streams and
-steers the agent, inspects/edits files, reviews the exact diff, runs a bounded
+steers the agent, inspects its complete nested topology and one independent
+child transcript, inspects/edits files, reviews the exact diff, runs a bounded
 command, opens a managed preview, verifies and safely writes back a branch/PR,
-and receives one durable receipt. The same thread/workroom/FleetRun/work/
-attempt/command/outcome refs continue on Desktop. The flow survives offline,
-lost acknowledgement, restart, reconnect, token revocation, workroom expiry/
-reclaim, migration, update, push, and handoff without presenting local or
-optimistic state as authority. Owned release lanes are proven and the
-deprecated mobile product/install/release path cannot ship.
+and receives one durable receipt. The same session/thread/agent/workroom/
+FleetRun/work/attempt/command/outcome refs continue on Desktop and across an
+authorized host move. One explicit voice follow-up or interrupt uses the same
+typed command path as text. The flow survives offline, lost acknowledgement,
+restart, reconnect, token revocation, workroom expiry/reclaim, migration,
+update, push, and handoff without presenting local or optimistic state as
+authority. Owned release lanes are proven and the deprecated mobile product/
+install/release path cannot ship.

@@ -10,6 +10,11 @@ Input / prerequisite reading:
 `docs/teardowns/2026-07-10-codex-subagents-rendering-analysis.md` (the Codex
 sub-agent data model, protocol, and TUI-vs-desktop rendering gap).
 
+Product calibration:
+[`transcript 249`](../transcripts/249.md) demonstrates the first interaction
+and identifies live streaming plus fast click/hotkey supervision as the next
+product step.
+
 ---
 
 ## 1. The lesson we are designing against
@@ -33,7 +38,7 @@ desktop app for some things." That split is the anti-pattern.
 
 ## 2. Our premise: no capability gap by construction
 
-OpenAgents' architecture is supposed to make that split impossible:
+OpenAgents' architecture is supposed to prevent a semantic capability split:
 
 - **Typed catalog + one honest projection.** A sub-agent run should be one typed,
   serializable projection (lifecycle, parent/child edges, per-child state,
@@ -43,14 +48,17 @@ OpenAgents' architecture is supposed to make that split impossible:
   so the *same* sub-agent projection should render honestly everywhere. No
   surface should be forced to flatten the tree just because it's a terminal; our
   surfaces are GUIs by default.
-- **Khala Sync as the transport of truth.** Sub-agent topology and state are
-  sync-projected scopes, not per-client reconstructions. A late-joining or
-  reconnecting client rehydrates the full tree from the projection, rather than
-  replaying a lossy event peek.
+- **Explicit custody.** OpenAgents-owned live runs must persist one canonical graph
+  in Khala Sync. Imported Codex/Claude provider history remains owner-local and
+  is reconstructed through a loss-accounted typed adapter unless the owner
+  explicitly adopts bounded canonical facts into Sync. Neither client prose nor
+  raw provider files become topology authority.
 
-The design bet: **the same projection must render with equal fidelity on every
-surface.** If any surface has to truncate or drop structure to fit, that's a
-projection or renderer bug, not an acceptable tier.
+The design bet: **every surface preserves the same identities, topology,
+lifecycle, gaps, independent child transcripts, and typed navigation intents
+at surface-appropriate density.** Desktop may keep a persistent rail while
+mobile uses an explicit drawer/disclosure. Silent truncation or lost
+reachability is a bug; identical simultaneous layout is not required.
 
 ## 3. Key questions to answer (the actual work)
 
@@ -128,4 +136,8 @@ Implementation and enforcement live in:
 The next slice should replace historical tail sampling with the same shape fed
 by a live Runtime Gateway/Sync child projection. The UI contract should remain
 unchanged: exact identity, explicit lifecycle, bounded latest activity, and
-direct access to the independent child transcript.
+direct access to the independent child transcript. Click/tap and conflict-safe
+hotkeys must dispatch the same typed navigation intent; the durable per-thread
+log repairs the derived current projection before live replay, and neither the
+preview nor socket health is completion authority. A future portable session move also fences the
+whole attachment-owned child graph so no source descendant remains active.

@@ -1,9 +1,9 @@
 # MASTER ROADMAP — reliable synced coding and fleet software on Desktop/mobile
 
 - Date: 2026-07-10
-- Updated: 2026-07-11 (remote-first portable sessions, owner/managed targets,
-  brokered capabilities, and session-neutral mobile voice)
-- Revision: 30
+- Updated: 2026-07-11 (live multi-agent supervision, portable agent graphs,
+  issue-ledger reconciliation, and episode 248/249 UX contracts)
+- Revision: 31
 - Status: canonical OpenAgents implementation roadmap
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Issue source set: [`issues/README.md`](./issues/README.md)
@@ -20,8 +20,10 @@
 - Cross-product adaptation and focused Effect architecture:
   [`product adaptation`](../teardowns/2026-07-10-openagents-product-adaptation-analysis.md),
   [`OpenCode Effect audit`](../teardowns/2026-07-10-opencode-effect-architecture-teardown.md)
-- Predictable local Codex history and UX-contract product context:
-  [`transcript 248`](../transcripts/248.md)
+- Predictable local Codex history, navigable subagent supervision, and
+  UX-contract product context:
+  [`transcript 248`](../transcripts/248.md),
+  [`transcript 249`](../transcripts/249.md)
 - Remote-first portable session pathway and gap analysis:
   [`2026-07-11-remote-first-portable-coding-sessions-pathway.md`](./2026-07-11-remote-first-portable-coding-sessions-pathway.md)
 
@@ -147,14 +149,23 @@
     visible rung before the next recorded trace demo. Every later human-visible
     P0 milestone carries the same programmatic contract plus host/device smoke;
     fixture green or a polished screenshot alone is not product acceptance.
+    The original rolling-24-hour v1 promise is explicitly strengthened—not
+    silently redefined—by the loss-accounted v2 contract: newest top-level
+    roots appear first through bounded disclosure for fast paint, every older
+    root remains reachable through explicit paging with no age ceiling,
+    and descendants never leak into the root catalog. The initial forty-row
+    disclosure is a presentation budget, not a retention or inspection cap.
 17. **Effect service topology is explicit before workbench breadth.** Process,
     WorkContext, conversation/run, request/command, and foreign-host/view scopes
     have declared dependency direction, freshness, disposal, and replacement
     rules. Embedded, local, remote, mobile, and test adapters enter one request
     processor. Promise/Electron/provider bridges remain perimeter code;
     interruption remains cancellation; canonical Effect Schema identities are
-    reused across contracts. #8678 freezes and tests this boundary before D3/D4
-    expands editor, PTY, MCP, provider, and permission services.
+    reused across contracts. #8678 landed the initial topology manifest and
+    cache/freshness/disposal declarations; its documented source-coupling,
+    replaceability, disposal, correlation, and full-host residual must be owned
+    before D3/D4 acceptance expands editor, PTY, MCP, provider, and permission
+    services.
 18. **Coding sessions are remote-first and host-independent.** The durable
     session, thread, WorkContext, command, event, and receipt identity never
     derives from the current machine, process, workspace path, Pylon home, or
@@ -184,6 +195,16 @@
     visible ASR/TTS/barge-in modality over the same typed command and approval
     path as text. Sarah, avatar, video, ambient recording, and voice-only
     authority remain closed.
+22. **Agent topology is a live operating surface, not historical decoration.**
+    Historical and live child activity share one interaction contract. A
+    confirmed child-start edge appears at its causal parent item with exact
+    child identity, explicit lifecycle, and one bounded redacted latest-
+    activity preview; the complete parent/child/grandchild graph remains
+    navigable and each child opens its independent transcript. Click, tap, and
+    conflict-safe hotkeys dispatch the same typed focus/control intents. Live
+    previews and socket health are navigation/liveness hints, never completion
+    authority. Reconnect, replay, and host movement must not flatten or re-root
+    descendants, duplicate launch cards, or leave an old child accepting work.
 
 ## The product in one sentence
 
@@ -559,16 +580,17 @@ records before claiming the first new slice.
   now has the canonical confirmed thread/message service, and the real Desktop
   node:sqlite plus mobile Expo-SQLite fixture proves Desktop start → mobile
   follow-up → restart convergence with matching refs/versions/cursor/phase.
-  It does not yet have a streamed provider-neutral event runtime, a complete coding
-  workbench, or a visible server-authoritative Fleet cockpit. The shared Sync
+  #8676 has landed the deterministic provider-neutral event path, but its real
+  named-account/physical-phone receipt remains open. Desktop still lacks a
+  complete coding workbench and visible server-authoritative Fleet cockpit. The shared Sync
   client now has a confirmed-only reader for the already-landed `agent_run` /
   `agent_run_event` scope: ordered bounded facts survive replay/restart while
-  private/raw provider fields stay omitted. Runtime Gateway v4 now consumes
+  private/raw provider fields stay omitted. Runtime Gateway v6 now consumes
   that reader by exact `runRef` and returns only the server-confirmed
   `routeRef` binding. It separately exposes the owner-local history catalog/page
-  capability with no age ceiling or raw-file projection. #8675 owns the
-  immediate real-Electron trace acceptance; runtime launch and canonical live
-  chat attachment remain #8676.
+  capability with no age ceiling or raw-file projection. Closed #8675 supplied
+  the real-Electron trace acceptance; live runtime/mobile acceptance remains
+  #8676.
 - The new mobile app has an Effect Native/React Native shell, one in-memory
   persona-neutral public-local Khala fallback driven by the native composer,
   and a
@@ -641,10 +663,10 @@ generic IPC authority.
 | R1 — shared identity and session | One authenticated owner/org identity; device registration; scoped provider/account readiness; stable conversation/project/session refs; safe token refresh/revocation; persona-neutral app/session bootstrap | Sign in on Desktop and mobile, see the same authorized account/session catalog, revoke either device, and prove no credential or private payload crosses renderer/public evidence boundaries |
 | R2 — Khala Sync continuity | Canonical projections for conversations, projects/sessions, FleetRuns, work units, attempts, workers/accounts, approvals, commands, outcomes, and receipts; monotonic cursor/version; tombstones; bounded cache; mutation idempotency keys; explicit conflict/refetch semantics | Create or change durable state on one device, observe it on the other with matching refs/versions, restart both, and reconstruct the same current state without duplicate objects or invented completion |
 | R3 — fleet, targets, and remote-workroom operations | Start from pinned work; choose named worker/account/capacity/execution target; create/resume/stop/reclaim a typed remote workroom; enroll/select owner-managed remote, OpenAgents-managed, or audited provider-adapter targets; inspect plan/claim/assignment/attempt; steer, approve/reject, pause/resume/drain/stop; surface unavailable/quota/policy/isolation states; show exact or `not_measured` usage and verification/closeout | One real Codex+Claude run is managed from both clients, including at least one remote-workroom unit; owner-local, owner-managed remote, and managed target choices use one claim registry and every command has one durable outcome with zero duplicate claims or silent provider/target/isolation substitution |
-| R4 — interruption, migration, and recovery | Offline mutation queue with bounded eligibility; foreground/background transitions; dropped acknowledgements; replay deduplication; out-of-order/duplicate events; stale leases; server/device restart; explicit merge/refetch rules; host-independent session identity; exclusive attachment generations; secret-free checkpoint; quiesce/detach/attach/move/failback | Fault injection plus a real local-to-managed-to-owner-remote move prove no lost accepted intent, two live attachment generations, double execution, secret-bearing checkpoint, false LIVE/success state, or indefinite spinner; stale clients/hosts converge or fail closed |
-| R5 — Desktop everyday workbench | Complete D0–D6 below: streamed sessions, composer/context, projects/files/editor, Git review, bounded terminal, commands/keybindings, runtimes/models/MCP/permissions, settings/diagnostics, Fleet cockpit, lifecycle/distribution | The practical OpenCode-parity workflow completes through the hardened Effect Native/Electron app and survives restart/reconnect while retaining authoritative Sync/Fleet state |
-| R6 — mobile any-host coding and fleet control | Activity/fleet home; authorized host/session directory; repository and repo-bound thread flow; rich streamed turns; account/model/target readiness; stop/checkpoint/move/resume/failback; run/work/attempt detail; compact plan/files/changes/terminal/preview/artifact surfaces; safe writeback; push/deep link/handoff; explicit persona-neutral ASR/TTS/barge-in over typed commands; accessible loading/error/offline states | On physical iOS and Android, access every authorized session across enrolled host classes, use text or voice to follow up/interrupt and request one move, inspect/change/review/run/preview/write back, and supervise the R3 run without raw filesystem, shell, vendor API, credential, or voice-only authority |
-| R7 — release and dogfood | Signed/recoverable Desktop release lane; iOS and Android build/install proof; schema compatibility; migration/rollback; public-safe diagnostics; telemetry for Sync, attachment/checkpoint/move, broker lease/revocation, command latency, reconnect, conflicts, and duplicate suppression | Sustained owner dogfood starts on one host class, moves the same session through at least one other host class, continues on Desktop/mobile, includes a mobile voice follow-up or interrupt, exercises secret revocation plus upgrade/restart/offline/lost-ACK faults, and ends with no forked identity, duplicate execution, leaked secret, orphaned source, data loss, or false authority |
+| R4 — interruption, migration, and recovery | Offline mutation queue with bounded eligibility; foreground/background transitions; dropped acknowledgements; replay deduplication; out-of-order/duplicate events; stale leases; server/device restart; explicit merge/refetch rules; host-independent session identity; stable agent graph and per-child cursors; exclusive attachment generations; secret-free checkpoint; quiesce/detach/attach/move/failback | Fault injection plus a real local-to-managed-to-owner-remote move prove no lost accepted intent, two live attachment generations, double execution, orphaned source child, flattened/re-rooted topology, secret-bearing checkpoint, false LIVE/success state, or indefinite spinner; stale clients/hosts converge or fail closed |
+| R5 — Desktop everyday workbench | Complete D0–D6 below: streamed sessions and live agent topology, composer/context, projects/files/editor, Git review, bounded terminal, commands/keybindings, runtimes/models/MCP/permissions, settings/diagnostics, Fleet cockpit, lifecycle/distribution | The practical OpenCode-parity workflow completes through the hardened Effect Native/Electron app; click and conflict-safe hotkeys provide the same fast typed supervision actions, and restart/reconnect retains authoritative Sync/Fleet/agent-graph state |
+| R6 — mobile any-host coding and fleet control | Activity/fleet home; authorized host/session directory with compact nested agent supervision; repository and repo-bound thread flow; rich streamed turns; account/model/target readiness; stop/checkpoint/move/resume/failback; run/work/attempt detail; compact plan/files/changes/terminal/preview/artifact surfaces; safe writeback; push/deep link/handoff; explicit persona-neutral ASR/TTS/barge-in over typed commands; accessible loading/error/offline states | On physical iOS and Android, access every authorized session across enrolled host classes, inspect an inline child activity edge and its independent transcript, use text or voice to follow up/interrupt and request one move, inspect/change/review/run/preview/write back, and supervise the R3 run without raw filesystem, shell, vendor API, credential, or voice-only authority |
+| R7 — release and dogfood | Signed/recoverable Desktop release lane; iOS and Android build/install proof; schema compatibility; migration/rollback; public-safe diagnostics; telemetry for Sync, agent-graph replay, attachment/checkpoint/move, broker lease/revocation, command latency, reconnect, conflicts, and duplicate suppression | Sustained owner dogfood cold-opens to shell/recent metadata before detail hydration, starts on one host class, moves the same session and agent graph through at least one other host class, continues on Desktop/mobile, includes a mobile voice follow-up or interrupt, exercises secret revocation plus upgrade/restart/offline/lost-ACK faults, and ends with no forked identity, duplicate execution, leaked secret, orphaned source/child, data loss, or false authority |
 
 ### R1-LOCAL — local-first identity (implemented, #8666)
 
@@ -953,10 +975,10 @@ Create bounded issue leaves beneath #8566 for these packets before mutation:
 
 | Packet | Required contract | Proof before R7 |
 | --- | --- | --- |
-| Portable session authority | Host-independent `coding_session`; exclusive generation-fenced attachment; content-addressed secret-free checkpoint; quiesce/detach/attach/move/abort/failback outcomes | One local → accepted Agent Computer → owner-managed remote round trip preserves session/thread/run/work-context refs and exact repository post-image with one live generation |
+| Portable session authority | Host-independent `coding_session`; stable canonical agent graph and per-child activity cursors; exclusive generation-fenced attachment; content-addressed secret-free checkpoint; graph-wide quiesce/detach/attach/move/abort/failback outcomes | One local → accepted Agent Computer → owner-managed remote round trip preserves session/thread/run/work-context/agent refs, topology, per-child cursors, and exact repository post-image with one live generation and no source child still accepting work |
 | Execution target adapters | Typed custody/location/runtime descriptor; owner-managed node enrollment/update/revoke; OpenAgents-managed adapter; audited managed-provider adapter such as Daytona | Mobile/Desktop select each target through OpenAgents refs; no client vendor API and no silent provider/account/isolation/data-posture fallback |
 | General capability broker | Provider, SCM, MCP/tool, and API leases scoped to owner/session/attachment/target/tool/TTL; gateway/proxy preference; JIT materialization; revoke/release/wipe receipts | Moving a session revokes source grants, redeems fresh target grants, survives replay/revocation faults, and puts no secret in checkpoint/Sync/log/receipt |
-| Any-host mobile + voice | Authorized host/session directory; stop/checkpoint/move/resume controls; explicit ASR/TTS/barge-in through normal command registry | Physical mobile accesses every authorized host class and performs a voice follow-up or interrupt plus one move with text fallback and no raw-audio retention by default |
+| Any-host mobile + voice | Authorized host/session directory with nested topology, inline child activity, and direct child transcript access; click/tap/hotkey-equivalent stop/checkpoint/move/resume controls; explicit ASR/TTS/barge-in through normal command registry | Physical mobile accesses every authorized host class, supervises the same canonical agent graph at phone-appropriate density, and performs a voice follow-up or interrupt plus one move with text fallback and no raw-audio retention by default |
 
 The first implementation rung is honest checkpoint/rehydrate, not live process
 memory migration. PTYs, sockets, PIDs, provider hidden state, host paths, and
@@ -1198,8 +1220,10 @@ glass lowering,
 folder selection, bounded root listing/read/edit/save with conflict and atomic-
 write checks, typed read-only Git status/diff, a closed command registry and
 palette, Codex readiness/device-auth Settings, and a schema-decoded Runtime
-Gateway bootstrap/command/lifecycle seam that truthfully reports conversation
-streaming unavailable. The gateway now composes a host-owned
+  Gateway bootstrap/command/lifecycle seam. #8676 has replaced the former
+  streaming-unavailable projection with a deterministic Runtime Gateway v6
+  conversation path; its real named-account/physical-phone receipt remains
+  open. The gateway now composes a host-owned
 `node:sqlite` adapter over the existing Khala Sync store core, with a private
 restart-stable installation identity and deterministic close; verified sign-in
 can compose the shared production Sync engine. The focused landings include
@@ -1224,9 +1248,16 @@ traversal, bounded ref-only restoration, and responsive drawer treatment. The
 valid generated scale oracle covers 100+ MiB, 100 children, and 100,000 items;
 a structure-only local receipt found 131 threads/560,418 records under a real
 nested root with zero unsupported gaps. Local history stays owner-private and
-is not Khala Sync data. #8675 is the immediate owner-visible real-Electron
-acceptance gate for this workspace; #8676 then owns real provider streaming and
-physical mobile continuation.
+is not Khala Sync data. Closed #8675 accepts this workspace in real Electron.
+Subsequent landed refinements project each confirmed child-start edge as an
+inline agent card with exact child ref, lifecycle, and a bounded redacted
+latest-activity preview; the same typed selection intent opens the child's
+independent transcript from either that causal card or the complete right-hand
+tree. Typed inter-agent messages render as structured handoff cards rather than
+adjacent metadata/prose. #8676 owns real provider streaming and physical mobile
+continuation; an additional bounded leaf must prove this same child topology/
+card/transcript contract live rather than assuming the owner-local historical
+implementation transfers automatically.
 
 #### Required product shape
 
@@ -1248,7 +1279,7 @@ Conversation remains the quiet default. The workbench and Fleet cockpit are
 fast to open through projects, tabs, commands, and explicit active state; they
 do not become permanent developer/proof chrome around every conversation.
 
-#### Opinionated historical subagent rendering
+#### Opinionated historical and live subagent rendering
 
 The Desktop conversation workspace uses a stable three-pane hierarchy when a
 Codex history has subagents or inspectable tool detail:
@@ -1294,6 +1325,17 @@ The full contract, acceptance corpus, and F1–F5 landing order live in
 [`issues/desktop-codex-subagent-history.md`](./issues/desktop-codex-subagent-history.md)
 (#8674).
 
+That completed owner-local history grammar is also the required live/portable
+shape, but not proof that the live path exists. For an OpenAgents-owned run, a
+confirmed child must appear at its causal parent item as soon as it is accepted,
+carry explicit lifecycle and bounded latest durable activity, and open an
+independent child transcript while the complete graph remains navigable.
+The durable per-thread log is event authority and repairs the derived current
+projection before volatile live delivery resumes; replay must not duplicate a
+launch card. Provider-native imported history remains a
+private loss-accounted adapter projection until explicit owner adoption, never
+an implicit Khala Sync upload.
+
 #### Typed action and cross-device control contract
 
 - Every material user-visible action has a stable typed intent and command ID:
@@ -1322,8 +1364,8 @@ The full contract, acceptance corpus, and F1–F5 landing order live in
 | Gate | Scope | Exit |
 | --- | --- | --- |
 | D0 — truthful green baseline | Keep shared contracts green; remove or finish dormant Review/Terminal/Inbox/Fleet names and stale docs; isolate smoke state and distinguish live, unconfigured, and fixture receipts | Typecheck, tests, bundle, isolated first-run Electron smoke, and route/capability manifest are green and agree |
-| D1 — OpenAgents + Sync conversation runtime and loss-accounted history | Preserve closed #8673/#8674's confirmed timeline plus provider-native three-pane history workspace; accept its predictable real-Electron UX under #8675; then use #8676 to launch one provider-neutral real stream through the host-owned Runtime Gateway, attach canonical `chat_thread`/`chat_message` and run/timeline refs, render text/reasoning/tools/plan/questions/approvals/errors/usage with explicit lifecycle, and continue immediately on mobile | #8675 proves fast stable named history, complete nested trace inspection, restoration, and the UX contract in real Electron; #8676 proves one real authenticated stream survives renderer/host restart and continues on physical mobile with matching refs/versions/cursor/phase/outcome plus one safe follow-up or interrupt |
-| D2 — projects, sessions, commands and architecture freeze | Project/session routes and home, search/archive, sortable/recoverable tabs, command registry/palette, conflict-safe keybindings, native menu, deep links, single-instance and route restore; #8678 freezes process/WorkContext/run/request/foreign-host scope direction and boundary oracles before D3/D4 breadth | Every global/session/workbench action uses the command registry or has an explicit bounded exception; the service topology oracle rejects forbidden scope direction, ambient authority, duplicate Schema identity, unowned resources, and internal runtime exits |
+| D1 — OpenAgents + Sync conversation runtime and loss-accounted history | Preserve closed #8673/#8674's confirmed timeline plus provider-native three-pane history workspace and closed #8675's predictable real-Electron acceptance; use #8676 to launch one provider-neutral real stream through the host-owned Runtime Gateway, attach canonical `chat_thread`/`chat_message` and run/timeline refs, render text/reasoning/tools/plan/questions/approvals/errors/usage with explicit lifecycle, and continue immediately on mobile; then prove live child-start/handoff/lifecycle/activity projections use the same causal card, complete graph, and independent transcript contract | #8675 proves fast stable named history, complete nested trace inspection, restoration, and the UX contract in real Electron; #8676 must prove one real authenticated stream survives renderer/host restart and continues on physical mobile with matching refs/versions/cursor/phase/outcome plus one safe follow-up or interrupt; the live multi-agent leaf must prove no flattened/orphaned descendants, duplicate launch cards, stale previews presented as outcomes, or inaccessible child transcripts across reconnect |
+| D2 — projects, sessions, commands and architecture freeze | Project/session routes and home, search/archive, sortable/recoverable tabs, command registry/palette, conflict-safe keybindings, native menu, deep links, single-instance and route restore; every click/tap supervision target and hotkey invokes the same typed action; #8678's landed topology manifest/cache declarations remain the baseline while its documented source-coupling, replaceability, disposal, correlation, and full-host residual gets a bounded owner before D3/D4 acceptance | Every global/session/workbench action uses the command registry or has an explicit bounded exception; rapid conversation/agent focus and inspection are equivalent by pointer and keyboard at scale; the completed topology oracle rejects every forbidden scope/authority/resource edge named by the residual acceptance contract |
 | D3 — coding workbench | Recursive lazy tree, capability grants, watcher/cache/search, edit/save/dirty/reload, file tabs and selected ranges, typed Git status/diff, review/comments/revert, interactive workspace-bounded PTY tabs with reconnect/teardown | Select a project, edit/save, review the diff, add context, run a bounded terminal, steer the work through a typed control, and resume after restart |
 | D4 — runtime and settings | OpenAgents sign-in; provider account custody; runtime/model catalog and selection; MCP auth/enable state; enforced permissions; themes/fonts/shell/layout; locale/accessibility; notifications/sounds; diagnostics/recovery/support | Settings mutate real host/runtime state, unavailable actions explain why, and no credential/private payload reaches renderer logs or public evidence |
 | D5 — authoritative Fleet cockpit | Compose active FleetRun/work-unit/attempt/account/worker/approval/command/receipt state from current Pylon/Sync authority; Inbox attention and proof views; Desktop and mobile controls share typed intents | A run opens with matching Desktop/mobile state and controls; steering on either client converges to the same durable command outcomes and receipts |
@@ -1409,14 +1451,21 @@ universe.
 
 ## Canonical open issue set
 
-There are **ten open `roadmap:sol` records under one program parent**. #8566
-is the sole program epic. #8652 remains closed and outside the active program;
-its portal repairs are production evidence, not an active burn item. Closed
-#8638, #8639, and #8647–#8649 remain landed substrate. #8653 and #8670–#8673
-are completed bounded conversation/timeline leaves; #8674 is the completed
-history/inspector implementation. The four new records are executable leaves,
-not four new epics. Reconcile live labels, issue bodies, and claims before
-starting a slice.
+There are **eight open `roadmap:sol` records under one program parent** as of
+the 2026-07-11 reconciliation: #8547, #8566, #8574, #8597, #8636, #8640,
+#8676, and #8677. #8566 is the sole program epic. #8652 remains closed and
+outside the active program; its portal repairs are production evidence, not an
+active burn item. Closed #8638, #8639, #8647–#8649, #8653, and #8670–#8675
+remain landed substrate or completed bounded proofs.
+
+GitHub also reports #8678 closed, but its own maintainer and PR receipts
+explicitly leave source-coupled perimeter/ambient-authority enforcement,
+service replaceability, lifecycle disposal, structured correlation, and the
+full Desktop verify/build/real-Electron acceptance unfinished. Closed issue
+state is not proof of those acceptance items. Reopen #8678 or create one
+bounded residual leaf before treating the architecture freeze as complete.
+Several live issue bodies still cite Revision 29 or name #8675/#8678 as future
+work; reconcile bodies and claims before starting the affected slice.
 
 | Roadmap disposition | Issue | Purpose now |
 | --- | --- | --- |
@@ -1426,19 +1475,22 @@ starting a slice.
 | **P0 active proof** | #8640 | One accepted simultaneous named Codex + Claude Phase A receipt; closes at that boundary |
 | **P0 bounded task** | #8547 | Brokered Codex inside a real Agent Computer/workroom for mobile-originated coding |
 | **P0 bounded task** | #8636 | Owner-local/remote target routing through the same proven run and workroom contract |
-| **P0 immediate proof** | #8675 | Predictable real-Electron Codex trace workspace UX contract and video-readiness receipt |
 | **P0 vertical slice** | #8676 | One real streamed Desktop conversation immediately continued on physical mobile |
 | **P0 fault proof** | #8677 | Bounded command/event lost-ack, duplicate, gap, offline, restart, revocation, and migration convergence |
-| **P0 architecture task** | #8678 | Executable Desktop Effect service-scope, canonical Schema, resource, and boundary freeze |
+| **Closed P0 D1 proof** | #8675 | Predictable real-Electron Codex trace workspace UX contract and public-safe acceptance receipt |
 | **Closed P0 D1 product slice** | #8674 | Loss-accounted historical Codex parent/subagent/tool rendering and the Desktop Agents/Item inspector, with valid scale and real nested-history receipts |
+| **Closed issue; residual unproven** | #8678 | Initial Desktop service-topology manifest plus cache/freshness/disposal declarations landed; remaining acceptance needs a bounded live owner |
 
-Revision 30 adds unmet product outcomes that are not yet represented by a live
+Revisions 30–31 add unmet product outcomes that are not yet represented by a live
 bounded issue: portable session authority/checkpoints, owner-managed and
 managed-provider target adapters, the general capability broker, and mobile
-any-host/voice control. Create leaves under #8566 and the owning #8574/#8597/
-#8547/#8636 tracks before implementation. Until those leaves and receipts
-exist, do not count the current ten-issue set as full coverage of the owner
-request and do not broaden #8676, #8547, or #8636 after the fact.
+any-host/voice control, plus the live multi-agent supervision contract that
+carries #8674/#8675's causal child cards, full topology, and independent child
+transcripts into Runtime Gateway/Sync streaming and host movement. Create
+leaves under #8566 and the owning #8574/#8597/#8547/#8636 tracks before
+implementation. Until those leaves and receipts exist, do not count the
+current eight-issue set as full coverage of the owner request and do not
+broaden #8676, #8547, or #8636 after the fact.
 
 Closed `wontfix` / not-planned and removed from `roadmap:sol`: #8595, #8610,
 #8634, #8635, #8642, #8643, #8646, and #8650. They are historical tombstones,
@@ -1449,29 +1501,37 @@ bounded issues under the owning program.
 
 1. **Immediate video-supporting proof (complete):** #8675 is enforced on `main`.
    The real Electron app and owner-local nested Codex history now enforce
-   the UX promise from transcript 248, fix only exposed blockers, and publish a
-   public-safe trace-workspace acceptance receipt. Do not wait for provider
-   streaming or create a demo-only path.
+   transcript 248's predictable-history promise and episode 249's complete-
+   topology/independent-transcript foundation, and publish a public-safe trace-
+   workspace acceptance receipt. Later code/oracles add the causal inline
+   child card and structured handoffs; those refinements do not inherit
+   #8675's host receipt. Do not wait for provider streaming or create a demo-
+   only path.
 2. **First complete application slice:** complete #8676. Launch one real Codex
    stream through the provider-neutral host-owned Runtime Gateway, attach it to
    confirmed thread/run/timeline refs, then continue it on physical mobile with
-   one follow-up or interrupt and honest restart/reconnect behavior.
+   one follow-up or interrupt and honest restart/reconnect behavior. Then assign
+   the bounded live multi-agent leaf: one accepted child appears at the causal
+   parent item, streams lifecycle/latest durable activity, opens its independent
+   transcript, and survives reconnect/replay without a duplicate launch card.
 3. **Freeze reliability, Effect topology, and portable-session intent:**
-   complete #8677's bounded fault matrix and #8678's scope/boundary oracle,
-   then freeze the Revision 30 `coding_session`, exclusive attachment,
-   secret-free checkpoint, target descriptor, broker lease, and any-host
-   directory contracts before accepting broad D3/D4 or provider breadth. These
-   lanes may run in parallel only when schemas and authority contracts are
-   disjoint.
+   complete #8677's bounded fault matrix; assign and finish #8678's documented
+   residual rather than treating its closed state as proof; then freeze the
+   Revision 30/31 `coding_session`, canonical agent graph, exclusive
+   attachment, secret-free checkpoint, target descriptor, broker lease, and
+   any-host directory contracts before accepting broad D3/D4 or provider
+   breadth. These lanes may run in parallel only when schemas and authority
+   contracts are disjoint.
 4. After that shared seam is frozen, run Desktop F3/F4 (projects/sessions,
    commands, files/editor/Git/review/PTY) and mobile F4 (repository/thread,
    managed workroom, compact files/changes/terminal/preview/artifacts/
    writeback) in parallel. Serialize only shared schemas, migrations, command
    identities, generated clients, and authority policy.
 5. Run #8640 Phase A at the first explicit owner-authorized opportunity without
-   blocking #8675–#8678. Fix the Claude permission refusal, supervisor-scope
-   leak, and verifier selection, obtain two accepted closeouts, post the honest
-   receipt, and close #8640. Do not keep it open for R3/R7 client work.
+   blocking #8676/#8677 or the issue-ledger repair. Fix the Claude permission
+   refusal, supervisor-scope leak, and verifier selection, obtain two accepted
+   closeouts, post the honest receipt, and close #8640. Do not keep it open for
+   R3/R7 client work.
 6. Complete #8547's real brokered Firecracker workroom before #8636's live
    hybrid-routing acceptance. In parallel with non-colliding client work, prove
    server-authorized owner-capacity metering, retry-deduped usage, bounded
@@ -1479,9 +1539,10 @@ bounded issues under the owning program.
    managed unit under one claim registry and typed fallback history.
 7. Land the general capability broker and first portable-session move. Prove a
    local Pylon → accepted Agent Computer → local/owner-managed target round
-   trip with one attachment generation, exact checkpoint and repository
-   post-image, fresh target grants, source revocation/cleanup, and rollback on
-   an incompatible or failed attach.
+   trip with one attachment generation, the same canonical parent/child graph
+   and per-thread cursors, exact checkpoint and repository post-image, fresh
+   target grants, source revocation/cleanup, no child accepting work on the old
+   attachment, and rollback on an incompatible or failed attach.
 8. Ship owner-managed remote enrollment and the authorized host/session
    directory, then audit and add one managed-provider adapter such as Daytona
    behind the same contract. Compose the accepted Fleet, workroom, target, and
@@ -1494,10 +1555,12 @@ bounded issues under the owning program.
    reviving their product shells or Sarah/media paths.
 10. Close R7 with the round-trip dogfood in the remote-first pathway: start or
     adopt a session on an owner-managed host, move it to managed capacity,
-    continue it on Desktop/mobile, use mobile voice for one follow-up or
-    interrupt, exercise secret revocation plus lost-ACK/restart/update faults,
-    move or fail back, and reclaim without forked identity, duplicate work,
-    leaked secrets, or an orphaned source. Real privacy/data-integrity requests
+    continue it and its agent topology on Desktop/mobile, use a causal child
+    card plus fast pointer/keyboard navigation to inspect delegated work, use
+    mobile voice for one follow-up or interrupt, exercise secret revocation
+    plus lost-ACK/restart/update faults, move or fail back, and reclaim without
+    forked identity, duplicate work, leaked secrets, or an orphaned source or
+    child. Real privacy/data-integrity requests
     or incidents open immediate scoped P0 issues; they do not reopen #8642.
     Sarah/persona/avatar/video, presentation, landing, portal, and optional
     visual-lowering backlog remains closed not-planned.
@@ -1609,6 +1672,24 @@ bounded issues under the owning program.
     as text. TTS, ASR hypotheses, model prose, and audio playback never prove a
     command or outcome; consequential actions retain visible confirmation and
     text fallback.
+28. **Agent topology is durable session state.** OpenAgents-owned live runs
+    persist canonical agent identities, parent edges, generation-fenced
+    lifecycle facts, independent transcript refs, and canonical per-thread
+    cursors. A renderer never reconstructs the graph from prose, and a host
+    move never copies source `running` state or flattens descendants into
+    unrelated top-level sessions. Provider-native histories stay owner-local
+    until explicitly adopted through a typed projection.
+29. **Streaming accelerates supervision; it does not own recovery.** The
+    durable per-thread log is event authority and repairs the bounded derived
+    current projection before volatile live delivery resumes. A latest-
+    activity preview, spinner, or healthy socket never proves child completion
+    or delivery acceptance.
+30. **Fast interaction has one authority path.** Clicking, tapping, command-
+    palette selection, native menu use, and conflict-safe hotkeys dispatch the
+    same registered typed intent/result for a given action. Inspect/focus stays
+    local view state by default; authority-bearing controls alone enter policy,
+    idempotency, and durable outcome. Pointer and keyboard paths may differ in
+    presentation, never in effective authority.
 
 ## Completion reporting
 

@@ -9,10 +9,10 @@ The live GitHub issue is the operational copy and claim ledger. When a checked-
 in source and live body differ, reconcile both before using the body for
 dispatch.
 
-As of 2026-07-10 there are ten open `roadmap:sol` records under one program
-parent: two client tracks, three existing bounded runtime/workroom records, and
-four executable product/architecture leaves. Older Sarah-first/P1 labels do
-not override Master Revision 29.
+As of the 2026-07-11 reconciliation there are eight open `roadmap:sol` records
+under one program parent: #8547, #8566, #8574, #8597, #8636, #8640, #8676,
+and #8677. Older Sarah-first/P1 labels and Revision 29 issue prose do not
+override Master Revision 31.
 
 ## P0 — reliable Desktop/mobile fleet software
 
@@ -34,28 +34,40 @@ not override Master Revision 29.
 
 Immediate bounded queue:
 
-- [`desktop-codex-trace-acceptance.md`](./desktop-codex-trace-acceptance.md) —
-  #8675 real-Electron predictable trace-workspace UX promise and public-safe
-  video-readiness receipt.
 - [`native-streamed-conversation-handoff.md`](./native-streamed-conversation-handoff.md) —
   #8676 one real provider-neutral Desktop stream through the host-owned Runtime
   Gateway, immediately continued on physical mobile with the same refs.
 - [`conversation-fault-convergence.md`](./conversation-fault-convergence.md) —
   #8677 bounded lost-ack/duplicate/gap/offline/restart/revocation/migration
   convergence proof for the shared conversation seam.
-- [`desktop-effect-scope-topology.md`](./desktop-effect-scope-topology.md) —
-  #8678 executable process/WorkContext/run/request/foreign-host Effect scope
-  and boundary freeze before broad Desktop D3/D4 expansion.
 
-Closed bounded Desktop D1 leaf:
+Closed bounded Desktop leaves and proofs:
 
 - [`desktop-codex-subagent-history.md`](./desktop-codex-subagent-history.md) —
   #8674 loss-accounted historical Codex parent/subagent/tool rendering and the
   opinionated Desktop Agents/Item inspector, delivered through Runtime Gateway
   v4 with synthetic scale and structure-only real-history receipts.
+- [`desktop-codex-trace-acceptance.md`](./desktop-codex-trace-acceptance.md) —
+  #8675 closed real-Electron predictable trace-workspace UX promise and
+  public-safe acceptance receipt.
 - [`local-first-identity.md`](./local-first-identity.md) — #8666 immutable
   device-local identity/authority plus optional reversible OpenAgents account
   linking on Desktop and mobile.
+
+Closed issue with unproven residual:
+
+- [`desktop-effect-scope-topology.md`](./desktop-effect-scope-topology.md) —
+  GitHub reports #8678 closed after the initial topology manifest and cache/
+  freshness/disposal declarations, but its own receipts exclude source-coupled
+  perimeter/ambient-authority enforcement, replaceability, lifecycle disposal,
+  structured correlation, and full Desktop host acceptance. Reopen it or file
+  one bounded residual before claiming the architecture freeze complete.
+
+Revision 31 work without live issue leaves yet: portable session authority,
+owner-managed/provider targets, the general capability broker, any-host mobile
+plus persona-neutral voice, and live multi-agent supervision carrying the
+closed history interaction into Runtime Gateway/Sync streaming and host moves.
+Do not silently broaden #8676/#8547/#8636 to absorb these contracts.
 
 Closed #8673 at `bf4037e923` is the schema-bounded Runtime Gateway v3 confirmed
 timeline seam consumed by #8674; it explicitly did not add visible UI.

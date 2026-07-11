@@ -553,12 +553,14 @@ More specific invariant ledgers apply inside imported apps and packages.
   may project; owner/objective/repository/runtime/backend, event source, raw
   payload JSON, external callback refs, and non-live cached rows stay hidden.
 - Desktop Runtime Gateway is the only renderer path to conversation and agent-
-  timeline and provider-native history capabilities. Protocol v4 permits bounded confirmed catalog/thread
-  queries, canonical create/append intents, and one exact-run timeline query;
-  enqueue returns `pending_reconcile`, never completion. Timeline attachment
-  uses only the confirmed `agent_run.routeId` returned as `routeRef`—clients do
-  not derive it from `runRef`. Owner/private/raw-provider/auth/store/session/
-  transport fields and generic IPC remain unrepresentable in the contract.
+  timeline and provider-native history capabilities. Protocol v6 retains v4's
+  bounded confirmed catalog/thread/history queries and exact-run timeline, and
+  adds the deterministic canonical runtime-turn path used by #8676. Enqueue
+  returns `pending_reconcile`, never completion. The real named-account/
+  physical-phone #8676 receipt remains open. Timeline attachment uses only the
+  confirmed `agent_run.routeId` returned as `routeRef`—clients do not derive it
+  from `runRef`. Owner/private/raw-provider/auth/store/session/transport fields
+  and generic IPC remain unrepresentable in the contract.
 - Provider-native Codex history remains owner-local and read-only. Desktop main
   indexes active and archived rollouts off the main thread and Runtime Gateway
   v4 projects only bounded catalog/page data: stable thread relationships,
@@ -568,10 +570,33 @@ More specific invariant ledgers apply inside imported apps and packages.
   by default. For every decoded thread, source records equal rendered source
   records plus wholly redacted records plus explicit gap records.
 - Desktop selects its chat authority once at renderer boot: confirmed account-
-  linked Sync when the v4 catalog is live, otherwise explicit local-only mode.
+  linked Sync when the current gateway catalog is live, otherwise explicit
+  local-only mode.
   It never merges the two catalogs in one renderer lifetime. Sync-mode create/
   append waits for the exact generated ref to appear confirmed; timeout remains
   pending and is never converted into success.
+
+**Planned live-agent portability model boundary:**
+
+- Master Roadmap Revision 31 and
+  `docs/sol/2026-07-11-remote-first-portable-coding-sessions-pathway.md`
+  define target contracts for a canonical live agent graph, graph-wide
+  attachment fencing, portable per-child transcript/activity cursors, replay
+  repair, and one typed click/tap/hotkey action path. These are **pending model
+  boundaries**, not current production authority or shipped-invariant claims.
+- Current provider-native Codex topology remains owner-local, read-only, and
+  loss-accounted. The landed inline child card is a bounded history projection;
+  it does not prove live Khala Sync topology, host movement, child rehydration,
+  or graph-wide fencing.
+- Before any portable/live-agent implementation claims enforcement, the owning
+  bounded issue must register the canonical schemas and production authority,
+  update this ledger and the relevant app/Worker ledger, add architecture and
+  deterministic fault tests for root-catalog separation, parent-edge/cursor
+  preservation, stale-generation fencing, orphan-child prevention, replay
+  deduplication, and action-path equivalence, then add the required real-host/
+  physical-device receipt. Until then, no client or runtime may infer topology
+  from prose, upload raw local history, or describe #8674/#8675 as portability
+  proof.
 - Mobile selects a visible conversation authority after native-session recovery
   and before mounting one Effect Native Home program: confirmed personal Sync
   when live, otherwise the existing public-local conversation. Explicit auth

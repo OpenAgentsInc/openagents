@@ -1,7 +1,7 @@
 # P0 PROGRAM: reliable Effect Native Desktop/mobile coding and fleet software
 
 - Issue: #8566
-- Status: sole active program parent under Master Revision 29
+- Status: sole active program parent under Master Revision 31
 - Authority: [`../MASTER_ROADMAP.md`](../MASTER_ROADMAP.md)
 - Execution:
   [`../2026-07-10-112832-cdt-reliable-fleet-implementation-delegation.md`](../2026-07-10-112832-cdt-reliable-fleet-implementation-delegation.md)
@@ -34,13 +34,18 @@ remote coding + fleet                    full workbench + fleet
 - closed #8638 — existing Fleet substrate consumed by the clients; it is not
   another epic.
 - #8640 — bounded accepted simultaneous Codex+Claude runtime proof only.
-- #8675 — immediate real-Electron acceptance of the landed loss-accounted
-  Codex trace workspace and its UX promise.
+- closed #8675 — real-Electron acceptance of the landed loss-accounted Codex
+  trace workspace and its UX promise.
 - #8676 — one real streamed Desktop conversation immediately continued on
   mobile through the same confirmed refs and request processor.
 - #8677 — the bounded command/event fault-convergence matrix for that seam.
-- #8678 — the executable Effect service-scope and boundary freeze before broad
-  Desktop D3/D4 expansion.
+- closed-with-residual #8678 — initial Effect service-topology manifest and
+  cache/freshness/disposal declarations landed; its documented source-
+  coupling, replaceability, lifecycle-disposal, correlation, and full-host
+  acceptance still need one bounded owner.
+- unfiled Revision 31 leaves — portable session authority, owner-managed and
+  managed-provider targets, the general broker, any-host mobile/voice, and
+  live multi-agent supervision. Do not overload #8676/#8547/#8636.
 
 The retired web/presentation/privacy-backlog records #8595, #8610, #8634,
 #8635, #8642, #8643, #8646, and #8650 are closed `wontfix` / not-planned.
@@ -77,6 +82,12 @@ these backlog tombstones are not dormant epics.
 - Every human-visible P0 milestone has a checked UX/behavior contract plus the
   real host/device smoke appropriate to its proof rung. Fixture green is not
   owner-visible acceptance.
+- Pointer, tap, palette, menu, and conflict-safe hotkeys dispatch the same typed
+  supervision intent. Public-safe acceptance evidence reuses the existing QA
+  receipt machinery rather than creating a second broad QA program.
+- Agent topology is durable session state: children stay attached to the root,
+  open independent transcripts, repair the derived current projection from the
+  authoritative durable log, and move under graph-wide attachment fencing.
 
 ## R0–R7 exit
 
@@ -84,8 +95,9 @@ these backlog tombstones are not dormant epics.
 2. Both use one authenticated owner/org/device/session contract.
 3. Loss-accounted local Codex history remains predictable under its executable
    UX promise, without becoming Sync authority or exposing raw local data.
-4. Conversation/project/Fleet/work/attempt/approval/command/outcome/receipt
-   state converges through Khala Sync across restart and handoff.
+4. Conversation/project/agent-graph/Fleet/work/attempt/approval/command/outcome/
+   receipt state converges through Khala Sync across restart, handoff, and
+   graph-wide host movement without an orphaned source child.
 5. One real Codex+Claude FleetRun completes through named isolated accounts;
    its later client observation/control remains owned by the client tracks.
 6. Offline, lost-ack, out-of-order, stale generation, refetch, restart,

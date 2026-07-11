@@ -854,7 +854,7 @@ The three reference products leave a coherent opening:
 - All three accumulate multiple state systems, runtimes, update planes, or
   compatibility boundaries that are hard for users to inspect as one system.
 
-OpenAgents should differentiate on five properties:
+OpenAgents should differentiate on seven properties:
 
 1. **Typed end to end:** Effect Schema from user intent through command,
    runtime event, Sync projection, and receipt.
@@ -925,7 +925,13 @@ D6, computer use, agent computers, Fleet, and future AI-employee surfaces can
 grow without turning the desktop app into an uninspectable collection of
 privileged webviews and sidecars.
 
-## Where we are now — build status against this plan (2026-07-10, late)
+## Where we were then — frozen build status against this plan (2026-07-10, late)
+
+This status ledger is a point-in-time snapshot, not current implementation or
+issue authority. In particular, #8674/#8675 and later Desktop child-activity
+work landed after it, while #8676 has advanced to deterministic implementation
+and still awaits its real physical-device receipt. Use the Sol roadmap, live
+issues, guarantees, code, and receipts for current state.
 
 This section is the moving progress ledger against the nine ordered
 consequences above. Rungs use the six-state vocabulary (code-landed /
@@ -1050,3 +1056,56 @@ an upgrade, not an entry gate. This should be filed as an R1 amendment
 dogfood step, since "open the app, pair locally, no login" is a core part of
 the predictable-software thesis — the opposite of the ChatGPT app's
 account-and-attestation-gated posture the teardown criticized.
+
+## Episode 248–249 product calibration addendum — 2026-07-11
+
+[Episode 248](../transcripts/248.md) and
+[episode 249](../transcripts/249.md) turn the architecture above into two
+user-visible release promises: recent work must be discoverable before detail
+hydration can block first paint, and delegated work must remain a navigable
+graph rather than collapse into spawn prose. Openness matters at this seam
+because users must be able to inspect, extend, and mechanically verify the
+interface they depend on.
+
+The resulting product consequences are:
+
+1. **Metadata-first startup is a contract.** Paint the shell and newest named
+   top-level roots before selected transcript, checkpoint, or child detail.
+   Loading, empty, missing, corrupt, and slow states are explicit; no blank
+   startup or permanent loading copy is accepted.
+2. **Recent-first is not an age ceiling.** Episode 248's rolling-24-hour v1
+   entry point evolved into the loss-accounted v2 catalog: an initial bounded
+   disclosure for fast paint, followed by explicit paging with no age
+   ceiling. Children never pollute the root catalog, but they are never lost.
+3. **Causal inline activity and complete topology are complementary.** A
+   confirmed child-start edge appears once at the parent item with exact child
+   identity, lifecycle, and one bounded redacted latest-activity preview. The
+   complete roster stays available and each child opens an independent
+   transcript. Preview prose and liveness never become completion authority.
+4. **Fast supervision has one action path.** Click, tap, command palette,
+   native menu, and conflict-safe hotkeys dispatch the same typed focus,
+   inspect, steer, interrupt, and return intents. The “StarCraft” goal is
+   persistent topology and low-latency direct control, not decorative density
+   or a keyboard-only second authority.
+5. **Historical and live graphs share semantics, not custody.** Imported Codex
+   or Claude history remains owner-local and loss-accounted unless explicitly
+   adopted. OpenAgents-owned live runs must project one canonical graph through
+   Khala Sync. Desktop, mobile, and web preserve identity, topology, lifecycle,
+   gaps, and navigation at surface-appropriate density; identical simultaneous
+   layout is not required.
+6. **Streaming must finish the interaction, not replace recovery.** The durable
+   per-thread log is event authority and repairs the derived current projection
+   before volatile live updates resume. Live child acceptance, lifecycle/latest activity, direct
+   transcript access, replay deduplication, and explicit stale/gap state need a
+   bounded post-#8676 acceptance leaf; historical #8674/#8675 do not prove it.
+7. **The promise is checked twice.** Every human-visible milestone carries a
+   versioned behavior contract and programmatic oracle plus the appropriate
+   real Electron or physical-device journey. Public-safe QA receipts reuse the
+   existing evidence machinery; this does not require reviving a second broad
+   QA Swarm epic.
+
+Portability adds one more consequence: a host move preserves canonical agent
+refs, parent edges, independent transcript/activity cursors, and graph-wide
+fencing. A source child may not remain able to accept work after target
+activation, and target-native worker/thread IDs remain attachment-local
+mappings rather than portable identity.

@@ -14,9 +14,10 @@
 - Closed P0 historical conversation/subagent slice:
   [`desktop-codex-subagent-history.md`](./desktop-codex-subagent-history.md)
   (#8674)
-- Immediate bounded queue: #8675 trace-workspace acceptance, #8676 real
-  streamed Desktop→mobile conversation, #8677 fault convergence, and #8678
-  Effect scope topology.
+- Immediate bounded queue: #8676 real streamed Desktop→mobile acceptance and
+  #8677 fault convergence. Closed #8675 supplies trace-workspace acceptance.
+  GitHub closed #8678 after partial topology landings, but its documented
+  residual needs a bounded owner before broad D3/D4 acceptance.
 
 ## Outcome
 
@@ -68,11 +69,15 @@ The greenfield app now has:
   smoke, Effect Native accessibility tests, a 100+ MiB/100-child/100,000-item
   scale corpus, and a structure-only real nested-history receipt with zero
   unsupported gaps.
+- #8675 closed after a real-Electron acceptance against 1,231 top-level roots
+  and a selected 131-agent trace. Later landed refinements add one causal inline
+  child card with exact child ref, lifecycle, bounded redacted latest activity,
+  direct independent-transcript navigation, structured inter-agent handoffs,
+  and fast typed keyboard traversal.
 
 The normal Desktop `verify` gate is green: typecheck, contract/e2e tests,
-bundle, and real-Electron fixture smoke. #8674 is code-landed and host-smoke
-proven, but #8675 still owns the owner-visible predictable trace-workspace
-receipt needed for the next recorded demo.
+bundle, and real-Electron fixture smoke. #8674/#8675 are complete owner-local
+history and acceptance proof, not live Sync supervision proof.
 
 Not yet claimed: physical Desktop auth acceptance, a provider-launched live
 stream attached to the confirmed thread/timeline, physical mobile continuation,
@@ -103,12 +108,17 @@ it does not become fabricated permanent status chrome.
   reasoning/tools/plan/questions/permissions/errors/usage, interrupt/resume,
   rich composer, history, context, and mobile continuation. Closed #8673/#8674
   supply the confirmed timeline plus provider-native historical graph,
-  completeness accounting, and three-pane inspector; #8675 accepts that UX in
-  real Electron, then #8676 launches and attaches the real live runtime.
+  completeness accounting, and three-pane inspector; closed #8675 accepts that
+  UX in real Electron, then #8676 launches and attaches the real live runtime.
+  A bounded follow-on must prove the same causal child card, complete topology,
+  lifecycle/latest durable activity, independent transcript, and replay-
+  deduplication contract live; historical projection is not sufficient.
 - **D2:** projects/sessions/routes/tabs/search/archive, command registry/palette,
   conflict-safe keybindings, menu, deep links, single instance, and restore.
-  #8678 freezes the process/WorkContext/run/request/foreign-host Effect scope
-  law before broader D3/D4 services land.
+  Pointer and keyboard supervision invoke the same typed action at scale.
+  #8678's initial manifest is baseline only; finish its documented enforcement/
+  replaceability/disposal/correlation/full-host residual before broader D3/D4
+  acceptance.
 - **D3:** recursive files, grants, watcher/search/cache, edit/save/conflict,
   typed Git diff/review, selected context, and workspace-bounded PTY.
 - **D4:** sign-in, provider/model/runtime catalog, MCP state/auth, permissions,

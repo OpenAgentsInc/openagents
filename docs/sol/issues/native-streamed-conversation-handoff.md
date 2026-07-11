@@ -17,6 +17,16 @@ second thread or optimistic completion.
 This is the first complete live application slice. It is not a FleetRun and
 does not wait for broad files/editor/terminal/settings parity.
 
+Episode 249 adds a follow-on boundary rather than silently broadening this live
+receipt: #8676 implements the deterministic canonical stream and mobile-
+continuation substrate, while its named-account/physical-phone proof remains
+open. It does not by itself prove that a live child spawn appears once at its
+causal parent item, carries lifecycle/latest durable activity, opens an
+independent child transcript, and repairs its complete graph across replay.
+That multi-agent supervision contract needs a bounded leaf after the stream is
+accepted; closed #8674/#8675 prove only the owner-local historical graph and
+trace journey, while later code/oracles add the unreceipted inline refinement.
+
 ## Implementation state — 2026-07-11
 
 The deterministic product path is implemented. One canonical runtime turn is

@@ -7,6 +7,11 @@
 - Cloud authority: [`../cloud/README.md`](../cloud/README.md)
 - Mobile capability ledger:
   [`2026-07-10-khala-code-mvp-to-openagents-mobile-port-plan.md`](./2026-07-10-khala-code-mvp-to-openagents-mobile-port-plan.md)
+- Product calibration:
+  [`transcript 248`](../transcripts/248.md),
+  [`transcript 249`](../transcripts/249.md),
+  [closed #8674 history contract](./issues/desktop-codex-subagent-history.md),
+  and [closed #8675 real-Electron acceptance](./issues/desktop-codex-trace-acceptance.md)
 
 ## Owner request
 
@@ -27,19 +32,41 @@ replace the planned entries.
 
 ## Direct answer
 
-No, the current roadmap does not yet reflect all four outcomes.
+Revisions 30–31 now reflect all four outcomes as pending roadmap contracts.
+The live issue ledger, implementation, and acceptance evidence do not yet cover
+them completely.
 
-| Requested outcome | Current coverage | Missing product contract |
+| Requested outcome | Current coverage | Missing live ownership and proof |
 | --- | --- | --- |
 | Stop on one machine and continue on another | **Partial.** Khala Sync, #8676, R2/R4, and the workroom session runner cover cross-device client continuity, durable replay, restart, and multi-turn work on one host. | A host-independent coding-session identity, exclusive execution attachment, portable checkpoint, detach/attach/move/failback state machine, and cross-host acceptance proof. |
 | Own cloud or managed cloud | **Partial.** Owner-local Pylons and OpenAgents-managed Agent Computers are P0; `oa-node` already models owned/org-owned machines. | A supported homelab/customer-cloud enrollment path, a provider-neutral target adapter, and a separately audited managed-provider adapter such as Daytona. |
 | Brokered secrets | **Partial.** Codex account grants, SCM grant refs, link-local gateways, broker-only Agent Computer policy, and the BYO credential design are strong narrow substrate. | One production general secret-capability lease across provider, SCM, MCP/tool, and API credentials, with target re-redemption, revocation, and wipe proof on every target class. |
-| Mobile access to any host with voice | **Split.** Mobile remote coding and supervision are central to R6/R7. | An authorized global session/host catalog and attach/move controls. Conversational voice is currently closed by Revision 29 and must be narrowly re-authorized without reviving Sarah/avatar/video. |
+| Mobile access to any host with voice | **Split.** Mobile remote coding and supervision are central to R6/R7. Revision 29 closed voice broadly; Revisions 30–31 narrowly reauthorize session-neutral voice. | An authorized global session/host catalog and attach/move controls plus executable ASR/TTS/barge-in acceptance without reviving Sarah/avatar/video. |
 
 The existing roadmap is therefore the right foundation, but not the complete
 pathway. The new work is a portability layer over the current Thread/Turn/Item,
 WorkContext, Khala Sync, Pylon, Fleet, workroom, and receipt contracts—not a
 replacement fleet or a second session database.
+
+### Episodes 248–249 calibration
+
+Remote-first must preserve the predictability and supervision target. Closed
+#8674/#8675 prove metadata-first predictable owner-local history, complete
+topology, Desktop navigation, and a real-Electron trace journey. Subsequent
+landed Desktop code/oracles add the causal inline child card and structured
+handoffs. Live Sync, mobile tap parity, and portable-graph acceptance remain
+pending. Newest roots are the default disclosure, not a 24-hour retention
+ceiling, and children stay attached to their root.
+
+No pending behavior-registry entry yet covers live child cards, portable graph
+fencing, or pointer/keyboard/tap equivalence. Packet 0 below must add and test
+that versioned contract before implementation claims the promise.
+
+Raw provider JSONL and local history remain private until explicit owner
+adoption; adoption projects only bounded canonical facts. A move must preserve
+canonical agent identity, topology, independent transcript/activity cursors,
+and honest gaps without promoting a sampled preview or live socket into outcome
+authority.
 
 ## What “remote-first” means here
 
@@ -52,7 +79,8 @@ Remote-first is an authority and portability rule:
 - every authorized client can discover the same durable session facts and
   request typed control operations;
 - execution can quiesce, checkpoint, detach, and rehydrate on a compatible
-  target under an exclusive generation-fenced lease; and
+  target under an exclusive generation-fenced lease, including every active
+  descendant owned by that attachment; and
 - secrets, raw host handles, process state, sockets, and credentials are never
   the portable state.
 
@@ -63,6 +91,12 @@ viewed remotely” to “a durable remotely addressable session that may current
 execute locally.” Cross-device or cross-host use requires an account or an
 equivalent explicitly paired owner authority; local-only work remains local
 until the owner adopts it into that authority.
+
+Remote-first also does not make local discovery slower or less private. A cold
+client still paints its shell and authorized top-level session metadata before
+checkpoint, transcript, or child-detail hydration. Provider-native local
+history remains read-only local evidence unless the owner explicitly adopts a
+bounded typed projection into network authority.
 
 Version 1 should promise **stop/checkpoint/rehydrate**, not transparent live
 process-memory migration. Provider hidden state, live PTYs, OS processes,
@@ -103,7 +137,8 @@ OpenAgents refs and honest isolation/capability state.
 | Existing substrate | What it already contributes | Boundary that remains |
 | --- | --- | --- |
 | Khala Sync and Runtime Gateway | Stable cross-device refs, confirmed projections, durable commands/outcomes, cursor recovery, and tokenless clients. | Provider-native local history is not portable session authority; a host catalog and session attachment projection are still missing. |
-| #8676 native conversation handoff | One real Desktop stream continuing on physical mobile with the same thread/run/message refs. | This is client handoff around one execution attachment, not execution migration. |
+| #8674/#8675 trace workspace plus subsequent inline-child refinement | Metadata-first shell; recent-first top-level catalog without an age ceiling; complete parent/child/grandchild graph; source-ordered child transcript; later causal inline child card with bounded latest activity; keyboard/accessibility and real-Electron history oracle. | This is owner-local read-only provider history. The #8675 receipt predates the inline-card refinement, and neither is Sync data, live child authority, or portable execution state until explicit adoption and a canonical live projection exist. |
+| #8676 native conversation handoff | Deterministic code path for one Desktop stream continuing on mobile with the same thread/run/message refs; the real named-account/physical-phone receipt remains open. | This is client handoff around one execution attachment, not execution migration or a completed live proof. |
 | `oa-workroomd codex session` | Multi-turn workspace preservation, event cursors, pause/continue/closeout/archive/destroy, and per-turn auth scrub on one host. | State is bound to one local `state-dir`; no export/import, attachment fencing, target rebind, or cross-host checkpoint contract exists. |
 | #8547 Agent Computer | Broker-only provider execution, isolated scratch homes, workroom lifecycle, exact usage, writeback, and reclaim target. | The real mobile-originated Firecracker acceptance receipt is still open. |
 | #8636 hybrid routing | One claim registry and explicit owner-local versus managed target selection/fallback. | It places work units; it does not move an existing session or enroll an owner-managed remote host. |
@@ -134,13 +169,19 @@ repository_ref + pinned_base_ref
 run_ref / fleet_ref where applicable
 current_attachment_ref
 current_checkpoint_ref
-event_cursor
+agent_topology_ref
+canonical_event_cursor + canonical_per_thread_activity_cursors
 state
 created_at / updated_at
 ```
 
 The session is the product object. An executor process, provider-native thread,
-Pylon assignment, workroom, or VM is an attachment beneath it.
+Pylon assignment, workroom, or VM is an attachment beneath it. The session
+directory remains rooted at the top-level session; children never become
+unrelated root rows. Stable canonical agent refs own parent edges, lifecycle,
+and independent transcript/activity cursors. Provider-native child thread or
+worker IDs and provider cursors are attachment-generation-local mappings
+beneath those refs.
 
 ### 2. Exclusive session attachment
 
@@ -172,6 +213,14 @@ Every command uses a stable client-chosen idempotency key and receives one
 durable `accepted | rejected | failed | unknown_pending_reconcile` outcome.
 A stale source generation is fenced before the target accepts work.
 
+Fencing covers the attachment-owned execution graph, not only the root
+process. Before detach, every active descendant must quiesce and checkpoint or
+reach an explicit terminal/nonportable state. A move fails closed rather than
+leave a source child able to accept work. Independently placed Fleet work is a
+separately attached session/work unit linked by a typed external edge; it is
+outside the movable attachment-owned descendant graph and cannot disappear
+inside the parent move.
+
 ### 3. Secret-free portable checkpoint
 
 Add a content-addressed, versioned `session_checkpoint` with compatibility and
@@ -180,6 +229,10 @@ integrity checks.
 Portable state may include:
 
 - canonical Thread/Turn/Item and work-unit/event cursors;
+- stable canonical agent refs, parent edges/depth, child transcript refs,
+  source disposition (`quiesced | terminal | nonportable`), effective
+  configuration, inter-agent event refs, latest durable event/item ref, and
+  canonical per-thread cursors;
 - admitted WorkContext and authority-policy refs;
 - pinned repository base, exact diff/post-image, untracked-file manifest, and
   worktree metadata;
@@ -194,11 +247,18 @@ Portable state must never include:
 - raw auth caches, bearer tokens, credential-helper output, or encrypted secret
   blobs intended for another target;
 - raw host paths, PIDs, sockets, PTY handles, VM topology, or SSH keys;
-- live process memory or a claim that a nonportable process continued; or
+- live process memory or a claim that a nonportable process continued;
+- sampled latest-activity previews or volatile stream buffers presented as
+  durable agent state; and
 - private material outside the owner's checkpoint policy.
 
-The target validates the checkpoint and redeems new capability leases before
-it becomes ready. Source cleanup and target activation each emit a receipt.
+The target validates the checkpoint, maps canonical agent refs to any new
+target-native runtime refs, and redeems new capability leases before it becomes
+ready. A source `running` lifecycle is never copied as target truth: target
+agents transition through explicit `rehydrating`/`ready` states, and every
+runtime lifecycle/event is attachment-generation-fenced. The renderer derives
+its bounded redacted latest-activity preview from the referenced canonical
+event/item. Source cleanup and target activation each emit a receipt.
 
 ### 4. Provider-neutral execution target
 
@@ -272,11 +332,30 @@ Mobile and Desktop can then answer:
 - what command or approval needs attention; and
 - what move, stop, resume, or fallback outcome actually occurred.
 
+The directory is a top-level session catalog. Opening a session reveals the
+nested canonical agent graph, causal child-start activity, one bounded latest-
+durable-activity preview, and direct access to each independent child
+transcript. Desktop may use a persistent rail; mobile may use an explicit
+drawer/disclosure. Neither may silently cap descendants or reconstruct edges
+from prose. Shell and catalog readiness never wait for checkpoint, transcript,
+or child-detail hydration; pending, gap, stale, and failed states are explicit
+instead of a permanent loading placeholder.
+
 Local provider-native sessions do not become network-visible implicitly. The
 owner explicitly adopts/shares them into the session authority, with a clear
 statement of what history, repository state, and evidence will synchronize.
 
-### 7. Session-neutral conversational voice
+### 7. Session-neutral supervision controls
+
+Click, tap, command-palette actions, native menus, and conflict-safe hotkeys
+dispatch the same registered intent/result for a given action. Inspect, focus,
+and return-to-parent remain local view state unless an explicit continuity
+contract says otherwise. Steer, interrupt, move, resume, and stop pass normal
+policy, approval, idempotency, and durable outcome gates. Topology remains
+visible or one explicit action away while inspecting a child; fast interaction
+is a presentation and latency contract, not a second command authority.
+
+### 8. Session-neutral conversational voice
 
 Conversational voice is re-authorized only as a mobile input/output and control
 modality over the same typed session protocol. It does not revive Sarah,
@@ -307,13 +386,13 @@ issues must not be silently broadened to pretend they already own all of this.
 
 | Order | Packet | Outcome | Exit proof |
 | ---: | --- | --- | --- |
-| 0 | Intent and invariants | ProductSpec, behavior contracts, target vocabulary, session/checkpoint schemas, and threat/model boundary are frozen. | Schema/architecture tests reject host-derived session identity, two live attachments, secrets in checkpoints, and silent target/isolation changes. |
-| 1 | Durable session authority | `coding_session`, attachment generation, checkpoint metadata, host/session directory, and command outcomes land in the canonical request processor and Khala Sync. | Local fixture survives restart, lost ACK, duplicate move, and stale source generation without duplicate execution. |
+| 0 | Intent and invariants | ProductSpec, executable behavior/UX contracts and real-host QA journeys, target vocabulary, session/checkpoint/agent-graph schemas, and threat/model boundary are frozen. | Schema/architecture tests reject host-derived session identity, root-catalog child leakage, two live attachments, orphaned active descendants, secrets in checkpoints, and silent target/isolation changes; the journey rejects detail-blocked first paint and click/hotkey divergence. |
+| 1 | Durable session authority | `coding_session`, canonical agent graph/per-thread cursors, attachment generation, checkpoint metadata, host/session directory, authoritative durable log, derived current projection, volatile stream, and command outcomes land in the canonical request processor and Khala Sync. | Local fixture survives restart, live-stream gap, lost ACK, duplicate move, stale source generation, and replay without duplicate execution, duplicate child launch cards, or a flattened graph. |
 | 2 | General broker | Provider/SCM/tool secret leases work across local and managed targets; source grants revoke and target grants reissue on move. | Revoke during move, replay, log/snapshot scan, timeout, and wipe tests pass with no raw secret projection. |
-| 3 | First real move | Move a bounded session from local Pylon A to the accepted #8547 Agent Computer and back by checkpoint/rehydrate. | Same session/thread/run refs, exact checkpoint/diff digest, one live attachment, new target grants, source cleanup, and no duplicate accepted turn. |
+| 3 | First real move | Move a bounded session with at least one child from local Pylon A to the accepted #8547 Agent Computer and back by checkpoint/rehydrate. | Same session/thread/run/agent refs, parent edges and per-thread cursors, exact checkpoint/diff digest, one live attachment, new target grants, source cleanup, no source child accepting work, and no duplicate accepted parent or child turn. |
 | 4 | Owner-managed remote target | Ship enroll/update/revoke/connect for a homelab/customer-cloud Pylon or `oa-node`. | Local → owner-managed remote → local move passes with explicit health, isolation, compatibility, and cleanup receipts. |
 | 5 | Managed-provider adapter | Audit and implement one provider adapter such as Daytona behind the same contract. | Provider-specific provision/snapshot/ports/exec/teardown behavior maps to OpenAgents receipts; downgrade and cleanup failures are visible and fail closed. |
-| 6 | Mobile any-host control | Mobile session directory, target detail, stop/checkpoint/move/resume/failback, push/deep links, and attention views consume the shared contract. | Physical iOS/Android clients control sessions on each enrolled host class without host paths, tokens, or vendor APIs. |
+| 6 | Mobile any-host control | Mobile session directory, compact nested agent supervision, causal child activity/direct transcript access, target detail, stop/checkpoint/move/resume/failback, push/deep links, and attention views consume the shared contract. | Physical iOS/Android clients inspect and control the same canonical session/agent graph on each enrolled host class through the same typed tap/shortcut actions without host paths, tokens, or vendor APIs. |
 | 7 | Conversational voice | Persona-neutral ASR/TTS/barge-in drives the same typed commands and outcomes. | Physical-phone voice follow-up plus interrupt/move/resume works under reconnect; text remains available and no audio is retained by default. |
 | 8 | R7 dogfood | Sustained owner use across at least two host classes, including faults, updates, revocation, and rollback. | Signed owner-accepted receipt with zero forked session identity, duplicate accepted work, secret leak, silent substitution, or orphaned source runtime. |
 
@@ -326,27 +405,32 @@ R7 should include this exact class of journey:
 
 1. On mobile, select an authorized repository and a session currently attached
    to an owner homelab node.
-2. Use voice to ask for status and submit a safe follow-up; observe the typed
+2. Cold-open the session: the shell and recent top-level metadata appear before
+   transcript/checkpoint detail. Open one causal child activity card, inspect
+   its bounded latest activity and independent transcript, and verify the
+   complete graph remains directly reachable.
+3. Use voice to ask for status and submit a safe follow-up; observe the typed
    transcript and durable accepted outcome.
-3. Request **Move to managed cloud**. The source quiesces, creates a
+4. Request **Move to managed cloud**. The source graph quiesces, creates a
    secret-free checkpoint, loses execution authority, and produces cleanup and
    revocation evidence.
-4. The managed target validates compatibility, redeems fresh scoped provider
+5. The managed target validates compatibility, redeems fresh scoped provider
    and SCM grants, rehydrates the same session/work context, and becomes the
    only live attachment generation.
-5. Mobile receives progress through the same refs. Desktop opens the same
-   session and inspects the exact diff, event cursor, target history, and
-   receipts.
-6. Revoke one secret mid-turn, lose one acknowledgement, restart the mobile
+6. Mobile receives progress through the same session, agent, and transcript
+   refs. Desktop opens the same graph and inspects the child cursors, exact
+   diff, event cursor, target history, and receipts. No source child remains
+   live and replay creates no duplicate launch card.
+7. Revoke one secret mid-turn, lose one acknowledgement, restart the mobile
    app, and prove a typed failure/reconciliation rather than duplicate work or
    false success.
-7. Move the session to another authorized owner-managed host or fail back to
+8. Move the session to another authorized owner-managed host or fail back to
    the source. Verify the same session/thread/run identity and exact repository
    post-image.
-8. Stop and reclaim. Prove processes, scratch, ports, leases, and secret slots
+9. Stop and reclaim. Prove processes, scratch, ports, leases, and secret slots
    are gone and that stale generations cannot resume.
 
-## New invariants
+## Pending target invariants
 
 Implementation must register and test these before claiming portability:
 
@@ -375,6 +459,29 @@ Implementation must register and test these before claiming portability:
     authority.
 12. Existing local-only sessions remain private until an owner explicitly
     adopts them into cross-device/session-directory authority.
+13. Children never leak into the top-level session catalog or become unrelated
+    roots merely because a client, target, or provider uses a different layout
+    or native thread identifier.
+14. Canonical parent edges, agent refs, independent transcript refs, and
+    canonical per-thread activity cursors are durable session state. Lifecycle
+    facts are attachment-generation-fenced; source `running` state is never
+    copied into target truth or reconstructed from prose.
+15. Attachment fencing and quiescence cover every descendant owned by the
+    attachment; no source child may accept work after target activation.
+16. The durable per-thread log is event authority and repairs the bounded
+    derived current projection before volatile supervision resumes. Previews
+    and socket health are never receipt authority.
+17. Shell and authorized top-level metadata paint before checkpoint,
+    transcript, selected-child, or inspector hydration. Slow detail produces
+    an explicit pending/gap/failure state, never a blank app or stuck loading
+    label.
+18. Click, tap, menu, palette, and conflict-safe key paths invoke the same
+    registered typed action/result. Local inspect/focus/return state remains
+    ephemeral by default; only authority-bearing controls reconcile a durable
+    command outcome.
+19. Importing or adopting local provider history is explicit and projects
+    bounded canonical facts; it never uploads raw rollout files or silently
+    widens retention/custody.
 
 ## Non-goals for the first accepted version
 
@@ -390,9 +497,9 @@ Implementation must register and test these before claiming portability:
 - claiming managed-provider support before a real adapter passes isolation,
   secret, snapshot, teardown, and receipt acceptance.
 
-## Roadmap reconciliation required
+## Roadmap and issue reconciliation status
 
-Revision 30 of the master roadmap must:
+Master Roadmap Revision 30 incorporated the original remote-first additions:
 
 - distinguish client continuation from execution-session portability;
 - make host-independent session identity and checkpoint/attachment fencing an
@@ -403,6 +510,19 @@ Revision 30 of the master roadmap must:
 - require an authorized any-host session directory on mobile; and
 - carve persona-neutral conversational voice out of the Sarah/avatar/video
   wontdo boundary.
+
+Revision 31 adds the episode-249 consequence: the canonical agent graph,
+independent child transcripts/activity cursors, and the fast click/tap/hotkey
+supervision contract survive live streaming and host movement. The remaining
+coordination gap is the issue ledger, not roadmap prose:
+
+- create bounded leaves for portable session authority, owner-managed/provider
+  targets, the general broker, any-host mobile/voice, and live multi-agent
+  supervision rather than overloading #8676/#8547/#8636;
+- reconcile live #8566/#8574/#8597 bodies that still cite Revision 29, name
+  closed work as future, or classify all voice as a non-goal; and
+- reopen #8678 or create a bounded residual for its explicitly unfinished
+  source-coupling, replaceability, disposal, correlation, and full-host proof.
 
 The mobile port ledger must likewise move native PTT/STT from “paused” to a
 bounded P0 modality over the shared session command contract, while keeping
