@@ -8,7 +8,9 @@ import { SafeAreaView } from "react-native-safe-area-context"
 
 import { khalaTheme } from "@effect-native/tokens"
 
+import type { MobileCodingDirectory, MobileCodingTarget } from "../coding/mobile-coding-navigation"
 import type { MobileConversationSelection } from "../conversation/mobile-conversation"
+import type { MobileConversationThread } from "../conversation/mobile-conversation"
 import { EffectNativeHost } from "../effect-native/effect-native-host"
 import { sendKhalaTurn } from "../khala/khala-client"
 import {
@@ -24,17 +26,25 @@ import {
  */
 const enPlatform = Platform.OS === "android" ? ("android" as const) : ("ios" as const)
 
-export const HomeScreen = ({ syncPhase, sessionActions, conversation }: {
+export const HomeScreen = ({ syncPhase, sessionActions, conversation, coding }: {
   readonly syncPhase: MobileSyncPhase
   readonly sessionActions: Readonly<{
     signIn: () => Promise<void>
     signOut: () => Promise<void>
   }>
   readonly conversation?: Extract<MobileConversationSelection, { readonly mode: "sync" }>
+  readonly coding?: Readonly<{
+    directory: MobileCodingDirectory
+    clearSelection: () => Promise<void>
+    selectSession: (
+      target: MobileCodingTarget,
+      onUpdate: (thread: MobileConversationThread) => void,
+    ) => Promise<MobileConversationThread | null>
+  }>
 }) => {
   const program = useMemo(
-    () => buildHomeProgram({ khalaTurn: { sendTurn: sendKhalaTurn }, sessionActions, conversation }),
-    [sessionActions, conversation],
+    () => buildHomeProgram({ khalaTurn: { sendTurn: sendKhalaTurn }, sessionActions, conversation, coding }),
+    [sessionActions, conversation, coding],
   )
   useEffect(() => {
     program.sync.setPhase(syncPhase)

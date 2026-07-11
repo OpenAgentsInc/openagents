@@ -166,6 +166,60 @@ describe("contract openagents_mobile.chat.authoritative_sync_mode.v1", () => {
     })
   })
 
+  test("restores an exact preferred thread instead of inferring the first row", async () => {
+    const fixture = makeConversation()
+    fixture.threads.set("thread.synced.2", {
+      threadRef: "thread.synced.2",
+      title: "Restored coding session",
+      messageCount: 1,
+      lastMessageAt: now,
+      updatedAt: now,
+      version: 6,
+    })
+    fixture.messages.set("thread.synced.2", [{
+      messageRef: "message.synced.2",
+      threadRef: "thread.synced.2",
+      body: "Exact restored thread",
+      createdAt: now,
+      updatedAt: now,
+      version: 6,
+    }])
+
+    const selection = await selectMobileConversation({
+      conversation: () => fixture.conversation,
+      preferredThreadRef: "thread.synced.2",
+    })
+
+    expect(selection).toMatchObject({
+      mode: "sync",
+      activeThread: {
+        threadRef: "thread.synced.2",
+        messages: [{ body: "Exact restored thread" }],
+      },
+    })
+  })
+
+  test("binds one closeable live thread lease and stops updates after close", async () => {
+    const fixture = makeConversation({ appendConfirmed: false })
+    const host = makeMobileConversationHost({ conversation: fixture.conversation })
+    const updates: string[] = []
+    const lease = await host.watchThread?.("thread.synced.1", thread => {
+      updates.push(thread.messages.at(-1)?.body ?? "empty")
+    })
+    expect(lease).not.toBeNull()
+    fixture.confirmMessage("thread.synced.1", "message.watch.1", "Before close")
+    for (let attempt = 0; attempt < 20 && updates.length === 0; attempt += 1) {
+      await new Promise(resolve => setTimeout(resolve, 0))
+    }
+    expect(updates.length).toBeGreaterThan(0)
+    expect(updates.every(value => value === "Before close")).toBe(true)
+    const updatesBeforeClose = updates.length
+    await lease?.close()
+    fixture.confirmMessage("thread.synced.1", "message.watch.2", "After close")
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(updates).toHaveLength(updatesBeforeClose)
+  })
+
   test("create and append wait for their exact stable client refs", async () => {
     const fixture = makeConversation()
     const ids = ["new-thread", "new-message"]

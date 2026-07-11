@@ -15,6 +15,8 @@ import {
 } from "@openagentsinc/khala-sync-client"
 import { Effect } from "effect"
 
+import type { MobileCodingThreadLease } from "../coding/mobile-coding-navigation"
+
 export type MobileConversationMessage = ConfirmedChatMessage
 export type MobileConversationThreadSummary = ConfirmedChatThread
 
@@ -31,6 +33,10 @@ export type MobileConversationHost = Readonly<{
   listThreads: () => Promise<ReadonlyArray<MobileConversationThreadSummary>>
   newThread: () => Promise<MobileConversationMutationResult>
   openThread: (threadRef: string) => Promise<MobileConversationThread | null>
+  watchThread?: (
+    threadRef: string,
+    onUpdate: (thread: MobileConversationThread) => void,
+  ) => Promise<MobileCodingThreadLease | null>
   sendMessage: (input: Readonly<{
     threadRef: string
     body: string
@@ -253,6 +259,34 @@ export const makeMobileConversationHost = (
   return {
     listThreads,
     openThread: confirmedThread,
+    watchThread: async (threadRef, onUpdate) => {
+      const initial = await readConfirmedThread(threadRef)
+      if (initial === null) return null
+      let closed = false
+      try {
+        const subscription = await openKhalaConversationLive({
+          conversation: options.conversation,
+          timeline: options.timeline,
+          subscriptionRef: `subscription.mobile.${++subscriptionSequence}`,
+          generation: subscriptionSequence,
+          threadRef,
+          afterCursor: options.conversation.threadStatus(threadRef).cursor,
+        }, update => {
+          if (closed || update.snapshot === null) return
+          const thread = threadFromSnapshot(update.snapshot)
+          if (thread !== null && thread.threadRef === threadRef) onUpdate(thread)
+        })
+        return {
+          close: async () => {
+            if (closed) return
+            closed = true
+            await subscription.close()
+          },
+        }
+      } catch {
+        return null
+      }
+    },
     newThread: async () => {
       const threadRef = nextRef("thread", randomId)
       try {
@@ -390,6 +424,7 @@ export const selectMobileConversation = async (input: Readonly<{
   conversation: () => KhalaSyncConversation | null
   timeline?: () => KhalaSyncAgentTimeline | null
   runtime?: () => KhalaSyncRuntimeCommands | null
+  preferredThreadRef?: string
   adapter?: Omit<MobileConversationAdapterOptions, "conversation" | "runtime" | "timeline">
 }>): Promise<MobileConversationSelection> => {
   const conversation = input.conversation()
@@ -406,9 +441,13 @@ export const selectMobileConversation = async (input: Readonly<{
   })
   try {
     const threads = await host.listThreads()
-    const activeThread = threads[0] === undefined
+    const preferred = input.preferredThreadRef === undefined
+      ? undefined
+      : threads.find(thread => thread.threadRef === input.preferredThreadRef)
+    const activeSummary = preferred ?? threads[0]
+    const activeThread = activeSummary === undefined
       ? null
-      : await host.openThread(threads[0].threadRef)
+      : await host.openThread(activeSummary.threadRef)
     return threads.length === 0 || activeThread !== null
       ? { mode: "sync", host, threads, activeThread }
       : { mode: "local" }

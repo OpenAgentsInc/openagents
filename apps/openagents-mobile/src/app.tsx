@@ -7,14 +7,89 @@ import { SafeAreaProvider } from "react-native-safe-area-context"
 
 import { recoverVerifiedNativeSession } from "./auth/native-session-recovery"
 import { signInNativeSession, signOutNativeSession } from "./auth/native-session-pkce"
+import type {
+  MobileCodingDirectory,
+  MobileCodingTarget,
+} from "./coding/mobile-coding-navigation"
 import {
   selectMobileConversation,
+  type MobileConversationThread,
   type MobileConversationSelection,
 } from "./conversation/mobile-conversation"
 import type { MobileSyncPhase } from "./screens/home-core"
 import { HomeScreen } from "./screens/home-screen"
 import { openMobileSyncHost, type MobileNativeSyncHost } from "./sync/mobile-sync-host"
 import { startOtaPolling } from "./updates/ota-polling"
+
+type MobileCodingHomeBinding = Readonly<{
+  directory: MobileCodingDirectory
+  clearSelection: () => Promise<void>
+  selectSession: (
+    target: MobileCodingTarget,
+    onUpdate: (thread: MobileConversationThread) => void,
+  ) => Promise<MobileConversationThread | null>
+}>
+
+const selectAuthenticatedMobileExperience = async (
+  syncHost: MobileNativeSyncHost,
+  onActiveThread?: (thread: MobileConversationThread) => void,
+): Promise<Readonly<{
+  conversation: MobileConversationSelection
+  coding?: MobileCodingHomeBinding
+}>> => {
+  const coding = syncHost.coding()
+  const restored = await coding.restore()
+  const preferredThreadRef = restored?.state === "ready"
+    ? restored.session.threadRef
+    : undefined
+  const conversation = await selectMobileConversation({
+    conversation: () => syncHost.conversation(),
+    timeline: () => syncHost.timeline(),
+    runtime: () => syncHost.runtime(),
+    ...(preferredThreadRef === undefined ? {} : { preferredThreadRef }),
+    adapter: { randomId: randomUUID },
+  })
+  const directory = await coding.directory()
+  if (conversation.mode !== "sync") return { conversation }
+  const host = conversation.host
+  const bind = async (
+    target: MobileCodingTarget,
+    source: "directory" | "restore",
+    onUpdate: (thread: MobileConversationThread) => void,
+  ): Promise<MobileConversationThread | null> => {
+    const initial = await host.openThread(target.threadRef)
+    if (initial === null) return null
+    let latest = initial
+    const activation = await coding.activate({
+      target,
+      source,
+      bindThread: async (threadRef, notify) => host.watchThread === undefined
+        ? { close: async () => undefined }
+        : host.watchThread(threadRef, thread => {
+            latest = thread
+            notify()
+          }),
+      onUpdate: () => {
+        onUpdate(latest)
+        onActiveThread?.(latest)
+      },
+    })
+    if (activation.state !== "active") return null
+    onActiveThread?.(latest)
+    return latest
+  }
+  if (restored?.state === "ready") {
+    await bind(restored.target, "restore", () => undefined)
+  }
+  return {
+    conversation,
+    coding: {
+      directory,
+      clearSelection: coding.clearActive,
+      selectSession: (target, onUpdate) => bind(target, "directory", onUpdate),
+    },
+  }
+}
 
 /**
  * OpenAgents mobile (#8597) — greenfield app shell. The application/component/
@@ -28,12 +103,32 @@ import { startOtaPolling } from "./updates/ota-polling"
 export const App = () => {
   const [syncPhase, setSyncPhase] = useState<MobileSyncPhase>("unconfigured")
   const [conversationSelection, setConversationSelection] = useState<MobileConversationSelection | null>(null)
+  const [codingBinding, setCodingBinding] = useState<MobileCodingHomeBinding | undefined>()
   const [conversationRevision, setConversationRevision] = useState(0)
   const syncHostRef = useRef<MobileNativeSyncHost | null>(null)
   const syncPhaseRef = useRef<MobileSyncPhase>(syncPhase)
   useEffect(() => {
     syncPhaseRef.current = syncPhase
   }, [syncPhase])
+  const applyActiveThread = (thread: MobileConversationThread): void => {
+    setConversationSelection(current => current?.mode !== "sync"
+      ? current
+      : {
+          ...current,
+          activeThread: thread,
+          threads: [
+            {
+              threadRef: thread.threadRef,
+              title: thread.title,
+              messageCount: thread.messageCount,
+              lastMessageAt: thread.lastMessageAt,
+              updatedAt: thread.updatedAt,
+              version: thread.version,
+            },
+            ...current.threads.filter(value => value.threadRef !== thread.threadRef),
+          ],
+        })
+  }
   const sessionActions = useMemo(() => ({
     signIn: async () => {
       const previousPhase = syncPhaseRef.current
@@ -47,15 +142,11 @@ export const App = () => {
           setSyncPhase("unavailable")
           return
         }
-        const selection = await selectMobileConversation({
-          conversation: () => syncHostRef.current?.conversation() ?? null,
-          timeline: () => syncHostRef.current?.timeline() ?? null,
-          runtime: () => syncHostRef.current?.runtime() ?? null,
-          adapter: { randomId: randomUUID },
-        })
-        setConversationSelection(selection)
+        const experience = await selectAuthenticatedMobileExperience(syncHostRef.current!, applyActiveThread)
+        setConversationSelection(experience.conversation)
+        setCodingBinding(experience.coding)
         setConversationRevision(current => current + 1)
-        setSyncPhase(selection.mode === "sync" ? "live" : "session_ready")
+        setSyncPhase(experience.conversation.mode === "sync" ? "live" : "session_ready")
         return
       }
       setSyncPhase(
@@ -68,6 +159,7 @@ export const App = () => {
       // revocation may still be in flight, but no captured composer can queue
       // a command that survives unlink and replays under a later session.
       try { syncHostRef.current?.unlinkAccount() } catch { /* remote revocation still runs */ }
+      setCodingBinding(undefined)
       const result = await signOutNativeSession()
       if (result.state === "signed_out") {
         setConversationSelection({ mode: "local" })
@@ -100,6 +192,7 @@ export const App = () => {
         if (stopped || !localStoreReady) return
         switch (recovery.state) {
           case "signed_out":
+            setCodingBinding(undefined)
             setSyncPhase("local_ready")
             setConversationSelection({ mode: "local" })
             break
@@ -110,23 +203,21 @@ export const App = () => {
               break
             }
             {
-              const selection = await selectMobileConversation({
-                conversation: () => syncHost?.conversation() ?? null,
-                timeline: () => syncHost?.timeline() ?? null,
-                runtime: () => syncHost?.runtime() ?? null,
-                adapter: { randomId: randomUUID },
-              })
+              const experience = await selectAuthenticatedMobileExperience(syncHost!, applyActiveThread)
               if (stopped) return
-              setConversationSelection(selection)
-              setSyncPhase(selection.mode === "sync" ? "live" : "session_ready")
+              setConversationSelection(experience.conversation)
+              setCodingBinding(experience.coding)
+              setSyncPhase(experience.conversation.mode === "sync" ? "live" : "session_ready")
             }
             break
           case "denied":
             syncHost?.unlinkAccount()
+            setCodingBinding(undefined)
             setSyncPhase("denied")
             setConversationSelection({ mode: "local" })
             break
           case "unavailable":
+            setCodingBinding(undefined)
             setSyncPhase("unavailable")
             setConversationSelection({ mode: "local" })
             break
@@ -143,6 +234,7 @@ export const App = () => {
       const phase = syncHost?.status().syncPhase
       if (phase === "denied" && syncPhaseRef.current !== "denied") {
         try { syncHost?.unlinkAccount() } catch { /* capability is already closed */ }
+        setCodingBinding(undefined)
         syncPhaseRef.current = "denied"
         setConversationSelection({ mode: "local" })
         setConversationRevision(current => current + 1)
@@ -178,6 +270,7 @@ export const App = () => {
           syncPhase={syncPhase}
           sessionActions={sessionActions}
           conversation={conversationSelection.mode === "sync" ? conversationSelection : undefined}
+          coding={codingBinding}
         />
       )}
     </SafeAreaProvider>

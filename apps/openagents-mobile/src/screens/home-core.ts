@@ -20,6 +20,10 @@ import {
 import type { ScopeSyncState } from "@openagentsinc/khala-sync-client"
 
 import type {
+  MobileCodingDirectory,
+  MobileCodingTarget,
+} from "../coding/mobile-coding-navigation"
+import type {
   MobileConversationHost,
   MobileConversationSelection,
   MobileConversationThread,
@@ -62,6 +66,7 @@ export interface HomeState {
   readonly conversationAuthority: "local" | "sync"
   readonly conversationThreads: ReadonlyArray<MobileConversationThreadSummary>
   readonly activeThreadRef: string | null
+  readonly codingDirectory: MobileCodingDirectory | null
   readonly khala: KhalaState
 }
 
@@ -145,6 +150,7 @@ export const initialHomeState: HomeState = {
   conversationAuthority: "local",
   conversationThreads: [],
   activeThreadRef: null,
+  codingDirectory: null,
   khala: initialKhalaState,
 }
 
@@ -166,6 +172,14 @@ export const ConversationThreadSelected = defineIntent(
   "ConversationThreadSelected",
   Schema.Struct({ threadRef: Schema.String }),
 )
+export const CodingSessionSelected = defineIntent(
+  "CodingSessionSelected",
+  Schema.Struct({
+    repositoryRef: Schema.String,
+    sessionRef: Schema.String,
+    threadRef: Schema.String,
+  }),
+)
 
 export const homeIntentDefinitions = [
   DrawerToggled,
@@ -175,6 +189,7 @@ export const homeIntentDefinitions = [
   OpenAgentsSignOutPressed,
   SurfaceModeSelected,
   ConversationThreadSelected,
+  CodingSessionSelected,
   ...khalaIntentDefinitions.map((definition) => defineIntent(definition.name, definition.payload)),
 ] as const
 
@@ -302,6 +317,15 @@ const drawerRow = (input: { readonly key: string; readonly label: string; readon
     style: { width: "full", ...(input.selected === true ? { backgroundColor: "surfaceRaised" } : {}) },
   })
 
+const codingSessionStateLabel = (state: MobileCodingDirectory["sessions"][number]["state"]): string => {
+  switch (state) {
+    case "active": return "Active"
+    case "idle": return "Ready"
+    case "recovery_required": return "Needs recovery"
+    case "archived": return "Archived"
+  }
+}
+
 export const renderDrawerView = (state: HomeState): View =>
   Stack(
     { key: "drawer-root", direction: "column", gap: "2", padding: "4", style: { width: "full", height: "full", backgroundColor: "surface" } },
@@ -315,6 +339,36 @@ export const renderDrawerView = (state: HomeState): View =>
         onPress: IntentRef("ConversationThreadSelected", StaticPayload({ threadRef: thread.threadRef })),
         selected: state.activeThreadRef === thread.threadRef,
       })),
+      ...(state.codingDirectory?.authority === "confirmed" && state.codingDirectory.sessions.length > 0
+        ? [
+            Text({
+              key: "drawer-coding-title",
+              content: "Coding sessions",
+              variant: "caption",
+              color: "textMuted",
+            }),
+            ...state.codingDirectory.repositories.flatMap(repository => [
+              Text({
+                key: `drawer-coding-repository-${repository.repositoryRef}`,
+                content: `${repository.displayName} · ${repository.sessionCount} ${repository.sessionCount === 1 ? "session" : "sessions"}`,
+                variant: "body",
+                color: "textPrimary",
+              }),
+              ...state.codingDirectory!.sessions
+                .filter(session => session.repositoryRef === repository.repositoryRef)
+                .map(session => drawerRow({
+                  key: `drawer-coding-session-${session.sessionRef}`,
+                  label: codingSessionStateLabel(session.state),
+                  onPress: IntentRef("CodingSessionSelected", StaticPayload({
+                    repositoryRef: session.repositoryRef,
+                    sessionRef: session.sessionRef,
+                    threadRef: session.threadRef,
+                  })),
+                  selected: state.activeThreadRef === session.threadRef,
+                })),
+            ]),
+          ]
+        : []),
       Spacer({ key: "drawer-flex-space", size: "8" }),
       drawerRow({ key: "drawer-settings", label: "Settings", onPress: IntentRef("SettingsPressed", StaticPayload({})) }),
       Text({ key: "drawer-bundle", content: `Bundle ${BUNDLE_TAG}`, variant: "caption", color: "textMuted" }),
@@ -328,6 +382,14 @@ export interface HomeProgramOptions {
     signOut: () => Promise<void>
   }>
   readonly conversation?: Extract<MobileConversationSelection, { readonly mode: "sync" }>
+  readonly coding?: Readonly<{
+    directory: MobileCodingDirectory
+    clearSelection: () => Promise<void>
+    selectSession: (
+      target: MobileCodingTarget,
+      onUpdate: (thread: MobileConversationThread) => void,
+    ) => Promise<MobileConversationThread | null>
+  }>
 }
 
 const confirmedKhalaState = (
@@ -438,16 +500,19 @@ export const initialHomeStateForConversation = (
       conversationAuthority: "sync",
       conversationThreads: selection.threads,
       activeThreadRef: selection.activeThread?.threadRef ?? null,
+      codingDirectory: null,
       khala: confirmedKhalaState(selection.activeThread),
     }
 
 const makeSyncedConversationHandlers = (
   state: SubscriptionRef.SubscriptionRef<HomeState>,
   host: MobileConversationHost,
+  coding: HomeProgramOptions["coding"],
 ) => ({
   NewChatPressed: () => Effect.gen(function* () {
     const before = yield* SubscriptionRef.get(state)
     if (before.khala.pending) return
+    if (coding !== undefined) yield* Effect.promise(coding.clearSelection)
     yield* SubscriptionRef.update(state, current => ({
       ...current,
       drawerOpen: false,
@@ -471,6 +536,7 @@ const makeSyncedConversationHandlers = (
   ConversationThreadSelected: (payload: { readonly threadRef: string }) => Effect.gen(function* () {
     const before = yield* SubscriptionRef.get(state)
     if (before.khala.pending) return
+    if (coding !== undefined) yield* Effect.promise(coding.clearSelection)
     yield* SubscriptionRef.update(state, current => ({
       ...current,
       drawerOpen: false,
@@ -554,7 +620,7 @@ export const makeHomeHandlers = (
 ): IntentHandlers<typeof homeIntentDefinitions> => {
   const synced = options.conversation === undefined
     ? undefined
-    : makeSyncedConversationHandlers(state, options.conversation.host)
+    : makeSyncedConversationHandlers(state, options.conversation.host, options.coding)
   return {
     DrawerToggled: () => SubscriptionRef.update(state, (current) => ({ ...current, drawerOpen: !current.drawerOpen })),
     NewChatPressed: synced?.NewChatPressed ??
@@ -568,6 +634,31 @@ export const makeHomeHandlers = (
       : Effect.promise(options.sessionActions.signOut),
     SurfaceModeSelected: (payload) => SubscriptionRef.update(state, (current) => ({ ...current, drawerOpen: false, surfaceMode: payload.mode as SurfaceMode })),
     ConversationThreadSelected: synced?.ConversationThreadSelected ?? (() => Effect.void),
+    CodingSessionSelected: options.coding === undefined
+      ? () => Effect.void
+      : payload => Effect.gen(function* () {
+          const before = yield* SubscriptionRef.get(state)
+          if (before.khala.pending) return
+          yield* SubscriptionRef.update(state, current => ({
+            ...current,
+            drawerOpen: false,
+            khala: { ...current.khala, pending: true },
+          }))
+          const thread = yield* Effect.promise(() => options.coding!.selectSession({
+            schema: "openagents.mobile.coding_target.v1",
+            repositoryRef: payload.repositoryRef,
+            sessionRef: payload.sessionRef,
+            threadRef: payload.threadRef,
+          }, update => {
+            Effect.runFork(SubscriptionRef.update(state, current =>
+              current.activeThreadRef === update.threadRef
+                ? withConfirmedThread(current, update)
+                : current))
+          }))
+          yield* SubscriptionRef.update(state, current => thread === null
+            ? failedConversationState(current, "Coding session is unavailable or no longer authorized.")
+            : withConfirmedThread(current, thread))
+        }),
     ...(synced === undefined
       ? khalaHandlers(state, options.khalaTurn)
       : {
@@ -596,6 +687,9 @@ export interface HomeProgramHandle {
   readonly sync: {
     readonly setPhase: (phase: MobileSyncPhase) => void
   }
+  readonly coding: {
+    readonly selectSession: (target: MobileCodingTarget) => void
+  }
   readonly session: {
     readonly signIn: () => void
     readonly signOut: () => void
@@ -605,7 +699,11 @@ export interface HomeProgramHandle {
 export const buildHomeProgram = (options: HomeProgramOptions = {}): HomeProgramHandle =>
   Effect.runSync(
     Effect.gen(function* () {
-      const programInitialState = initialHomeStateForConversation(options.conversation)
+      const baseInitialState = initialHomeStateForConversation(options.conversation)
+      const programInitialState: HomeState = {
+        ...baseInitialState,
+        codingDirectory: options.coding?.directory ?? null,
+      }
       const state = yield* SubscriptionRef.make<HomeState>(programInitialState)
       const registry = yield* makeIntentRegistry(homeIntentDefinitions, makeHomeHandlers(state, options))
       const report: IntentReporter = (ref, runtimeValue) => registry.dispatch(resolveIntentRef(ref, runtimeValue))
@@ -646,6 +744,13 @@ export const buildHomeProgram = (options: HomeProgramOptions = {}): HomeProgramH
                   }
                 : { ...current, syncPhase: phase }))
           },
+        },
+        coding: {
+          selectSession: target => fireRef(IntentRef("CodingSessionSelected", StaticPayload({
+            repositoryRef: target.repositoryRef,
+            sessionRef: target.sessionRef,
+            threadRef: target.threadRef,
+          }))),
         },
         session: {
           signIn: fire("OpenAgentsSignInPressed"),

@@ -6,6 +6,7 @@ import type {
   MobileConversationSelection,
   MobileConversationThread,
 } from "../src/conversation/mobile-conversation"
+import type { MobileCodingTarget } from "../src/coding/mobile-coding-navigation"
 import {
   buildHomeProgram,
   chromeProps,
@@ -50,6 +51,71 @@ const selection = (host: MobileConversationHost): Extract<MobileConversationSele
 })
 
 describe("contract openagents_mobile.chat.authoritative_sync_mode.v1 Home", () => {
+  test("renders the confirmed coding directory and selects a session through one typed intent", async () => {
+    const host: MobileConversationHost = {
+      listThreads: async () => [initialThread],
+      newThread: async () => ({ ok: true, thread: initialThread }),
+      openThread: async () => initialThread,
+      sendMessage: async () => ({ ok: true, thread: initialThread }),
+    }
+    const selected: MobileCodingTarget[] = []
+    const program = buildHomeProgram({
+      conversation: selection(host),
+      coding: {
+        directory: {
+          authority: "confirmed",
+          phase: "live",
+          cacheState: "current",
+          repositories: [{
+            repositoryRef: "repository.mobile",
+            projectRef: "project.mobile",
+            displayName: "openagents",
+            sessionCount: 1,
+          }],
+          sessions: [{
+            repositoryRef: "repository.mobile",
+            sessionRef: "session.mobile",
+            threadRef: initialThread.threadRef,
+            state: "active",
+            lastActiveAt: now,
+          }],
+        },
+        clearSelection: async () => undefined,
+        selectSession: async target => {
+          selected.push(target)
+          return initialThread
+        },
+      },
+    })
+
+    const drawer = JSON.stringify(renderDrawerView({
+      ...program.initialState,
+      drawerOpen: true,
+    }))
+    expect(drawer).toContain("Coding sessions")
+    expect(drawer).toContain("drawer-coding-session-session.mobile")
+    expect(drawer).toContain("openagents · 1 session")
+    expect(drawer).toContain('"label":"Active"')
+
+    program.coding.selectSession({
+      schema: "openagents.mobile.coding_target.v1",
+      repositoryRef: "repository.mobile",
+      sessionRef: "session.mobile",
+      threadRef: initialThread.threadRef,
+    })
+    await Effect.runPromise(settle)
+    await Effect.runPromise(settle)
+    expect(selected).toEqual([{
+      schema: "openagents.mobile.coding_target.v1",
+      repositoryRef: "repository.mobile",
+      sessionRef: "session.mobile",
+      threadRef: initialThread.threadRef,
+    }])
+    const current = await Effect.runPromise(lastState(program))
+    expect(current.activeThreadRef).toBe(initialThread.threadRef)
+    expect(current.khala.pending).toBe(false)
+  })
+
   test("boots from confirmed refs/versions and exposes confirmed thread navigation", () => {
     const host: MobileConversationHost = {
       listThreads: async () => [initialThread],
