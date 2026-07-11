@@ -598,3 +598,56 @@ it is a burndown, and the front of it is landing. The differentiators the
 teardowns identified (open, typed, tokenless, receipted, one runtime) are the
 parts already shipped, which is the correct order: build the trustworthy core
 first, add surface after.
+
+### Auth model clarification — how identity actually works today, and the local-first gap (2026-07-10)
+
+**What the R1 lanes shipped (code-verified):** both clients authenticate
+against **our own OpenAuth server, `auth.openagents.com`** — the same issuer
+the `openagents.com` Worker already trusts (`OPENAUTH_ISSUER_URL`).
+
+- Desktop (`apps/openagents-desktop/src/desktop-session-pkce.ts`): a temporary
+  **literal-loopback listener on `127.0.0.1`** runs the public-client PKCE
+  (S256) code flow against `auth.openagents.com/authorize` + `/token`, verifies
+  the server owner, then stores the session in OS-encrypted custody. This is
+  the exact pattern the ChatGPT/Codex teardown documented (loopback PKCE, no
+  client secret) — we implemented the good version of it.
+- Mobile (`apps/openagents-mobile/src/auth/native-session-pkce.ts`): the same
+  OpenAuth PKCE against the same endpoints, with SecureStore custody and
+  validate-and-rotate-fail-closed.
+
+So identity is **first-party** (our auth server, not a third party), which is
+correct — but as built it is **auth-required**: the current flows assume an
+`auth.openagents.com` account before the app is fully useful.
+
+**The owner's intended model (2026-07-10 direction), not yet reflected in the
+build:** the apps should be usable with **local-only pairing and no auth beyond
+the device itself** — pair a desktop and a local Codex/Pylon, run fleets, use
+the workbench, entirely offline-of-account. An **OpenAgents auth account is an
+opt-in upgrade**, not a gate — unlocking cross-device Khala Sync, Khala
+network participation, hosted capacity, and the other account-scoped benefits.
+
+**The gap and the fix (a design decision for the R-gate lanes):** R1 as shipped
+conflates "has identity" with "has an `auth.openagents.com` account." The
+target is a **two-tier identity model**:
+
+1. **Local identity (default, no server auth):** a device-generated keypair /
+   local account is the Source Authority for a purely-local pairing. Khala Sync
+   runs in **local/device scope only** (the SQLite store already exists as the
+   cache; here it is simply the authority for local-only data). Everything that
+   does not cross devices or touch the network works with zero
+   `auth.openagents.com` round-trip. This matches the "device stores are
+   authoritative for local-only, caches for synced" spirit of the R2 contract.
+2. **OpenAgents account (opt-in upgrade):** signing in with
+   `auth.openagents.com` **links** the existing local identity to the
+   server-scoped owner — promoting local-only projections to cross-device Khala
+   Sync, enabling network/Khala participation and hosted capacity. The link is
+   additive and reversible; sign-out returns to local-only, it does not wipe
+   local work.
+
+**Consequence for the ledger above:** step 2 ("bind both clients to R1/R2") is
+**done for the account path, and needs the local-first tier added** so auth is
+an upgrade, not an entry gate. This should be filed as an R1 amendment
+(local-identity Source Authority + account-link promotion) before the packaging
+/ dogfood step, since "open the app, pair locally, no login" is a core part of
+the predictable-software thesis — the opposite of the ChatGPT app's
+account-and-attestation-gated posture the teardown criticized.
