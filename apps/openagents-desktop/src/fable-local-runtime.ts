@@ -93,7 +93,9 @@ export type FableLocalTurnInput = Readonly<{
 }>
 
 export type FableLocalTurnResult =
-  | Readonly<{ ok: true; text: string; totalTokens: number | null }>
+  /** `accountRef` names the isolated account home that ran the turn
+   * (additive, #8712 message-metadata inspector) — a ref, never a path. */
+  | Readonly<{ ok: true; text: string; totalTokens: number | null; accountRef: string }>
   | Readonly<{ ok: false; reason: FableLocalFailureReason; detail: string }>
 
 export type FableLocalAccountHome = Readonly<{ ref: string; home: string }>
@@ -463,7 +465,7 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
         sessionByThread.set(input.threadRef, { sessionId, accountRef: account.ref })
       }
       input.emit({ kind: "turn_completed", totalTokens })
-      return finish({ ok: true, text, totalTokens })
+      return finish({ ok: true, text, totalTokens, accountRef: account.ref })
     }
 
     try {
@@ -510,7 +512,12 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
 
 const sleep = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms))
 
-export const FABLE_LOCAL_FIXTURE_TEXT = "Fable local streaming proof."
+/**
+ * Fixture reply carries markdown (`**streaming**`) split MID-MARKER across
+ * deltas so the smoke journey proves both markdown rendering and graceful
+ * unterminated-marker streaming (#8712 owner directive 4).
+ */
+export const FABLE_LOCAL_FIXTURE_TEXT = "Fable local **streaming** proof."
 export const FABLE_LOCAL_FIXTURE_ACCOUNT: FableLocalAccountHome = {
   ref: "claude-pylon-fixture",
   home: "/nonexistent/fable-local-fixture-home",
@@ -537,7 +544,7 @@ export const makeFixtureFableLocalQuery = (): FableLocalQuery =>
     await sleep(150)
     yield {
       type: "stream_event",
-      event: { type: "content_block_delta", delta: { type: "text_delta", text: "streaming " } },
+      event: { type: "content_block_delta", delta: { type: "text_delta", text: "**streaming" } },
     }
     await sleep(150)
     yield {
@@ -555,7 +562,7 @@ export const makeFixtureFableLocalQuery = (): FableLocalQuery =>
     await sleep(150)
     yield {
       type: "stream_event",
-      event: { type: "content_block_delta", delta: { type: "text_delta", text: "proof." } },
+      event: { type: "content_block_delta", delta: { type: "text_delta", text: "** proof." } },
     }
     yield {
       type: "result",

@@ -148,6 +148,14 @@ describe("makeLocalHarnessChatHost", () => {
     // Progressive: an earlier snapshot carried the partial assistant text.
     expect(updates.some(update =>
       update.notes.some(note => note.role === "assistant" && note.text === "Hello "))).toBe(true)
+    // Streaming metadata (#8712 message inspector): the growing assistant
+    // note already carries lane/turn/effective-model facts.
+    const streamedAssistant = last.notes.find(note => note.role === "assistant")
+    expect(streamedAssistant?.meta).toEqual({
+      lane: "fable-local",
+      turnRef: "turn.fable.fixed",
+      model: "claude-fable-5",
+    })
     expect(updates.every(update => update.notes.every(note => !note.text.includes("IGNORED")))).toBe(true)
 
     harness.resolveStart({ ok: true, thread: finalThread })

@@ -185,16 +185,18 @@ const probeNewChatScript = `(() => {
   }
 })()`
 
+// EP250 (#8712 owner fix 3): the composer renders NO standing caption text —
+// a disabled chip's reason lives only in its accessible label, so the probe
+// reads the chip's disabled state + aria-label (never a visible caption row).
 const probeChipScript = (harness: string): string => `(() => {
   const chip = document.querySelector('[data-en-key="shell-harness-${harness}"]')
   if (chip === null) return { present: false }
-  const row = document.querySelector('[data-en-key="shell-harness-row"]')
   return {
     present: true,
     disabled: chip.disabled === true,
     ariaLabel: chip.getAttribute("aria-label"),
     variant: chip.getAttribute("data-en-variant"),
-    rowText: row === null ? null : (row.textContent || "").slice(0, 300),
+    captionAbsent: document.querySelector('[data-en-key="shell-harness-caption"]') === null,
   }
 })()`
 
@@ -461,13 +463,14 @@ export const runLiveProof = (window: BrowserWindow, options: LiveProofRunOptions
       return false
     }
     if (probe["disabled"] === true) {
-      // EP250 steps 5/7: journal the displayed reason honestly and keep the
-      // disabled-state pixels — never fake an enabled lane.
+      // EP250 steps 5/7: journal the accessible reason honestly and keep the
+      // disabled-state pixels — never fake an enabled lane. The reason is the
+      // chip's aria-label; the UI renders no caption text (owner fix 3).
       await capture(`harness-${harness}-disabled`)
       record(stepName, false, {
         reason: `${harness} harness chip is disabled`,
-        displayed: probe["rowText"] ?? null,
         ariaLabel: probe["ariaLabel"] ?? null,
+        captionAbsent: probe["captionAbsent"] ?? null,
       })
       return false
     }

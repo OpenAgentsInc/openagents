@@ -478,12 +478,19 @@ ipcMain.handle(FableLocalStartChannel, async (event, value: unknown) => {
   // the new message. The just-appended user note is the prompt, not history.
   const history = saved.notes.slice(0, -1).map(note => ({ role: note.role, text: note.text }))
   const sender = event.sender
+  // Message metadata (#8712): record every fact this host observes for the
+  // final assistant note so the renderer's inspector can project it later —
+  // SDK-reported effective model, lane, account ref, turn ref, exact token
+  // total, and wall-clock duration. Bounded public-safe strings only.
+  const startedAt = Date.now()
+  let effectiveModel: string | null = null
   const result = await fableLocal.runTurn({
     turnRef: request.turnRef,
     threadRef: request.threadRef,
     history,
     message: request.message.trim(),
     emit: turnEvent => {
+      if (turnEvent.kind === "model_effective") effectiveModel = turnEvent.model
       // Persist tool trace and effective-model lines so the finalized
       // transcript keeps the same evidence the live stream showed (bounded by
       // the store's note cap).
@@ -511,6 +518,14 @@ ipcMain.handle(FableLocalStartChannel, async (event, value: unknown) => {
     role: "assistant",
     text: result.text.slice(0, FABLE_LOCAL_FINAL_TEXT_LIMIT),
     timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+    meta: {
+      lane: "fable-local",
+      turnRef: request.turnRef,
+      ...(effectiveModel === null ? {} : { model: effectiveModel }),
+      ...(result.accountRef === undefined ? {} : { accountRef: result.accountRef }),
+      totalTokens: result.totalTokens,
+      durationMs: Date.now() - startedAt,
+    },
   })
   return thread === null
     ? { ok: false, error: "That conversation no longer exists." }
@@ -746,6 +761,12 @@ const smokeSubmitComposer = `(async () => {
   const sender = userRow === null ? null : userRow.querySelector('[data-en-role="sender"]')
   const body = userRow === null ? null : userRow.querySelector('[data-en-role="body"]')
   const responseSender = responseRow === undefined ? null : responseRow.querySelector('[data-en-role="sender"]')
+  // EP250 (#8712): assistant rows carry NO sender label; system rows keep SYSTEM.
+  const responseSenderOk = responseRow !== undefined && (
+    responseRow.getAttribute("data-en-role") === "assistant"
+      ? responseSender === null
+      : responseSender !== null && responseSender.textContent === "SYSTEM"
+  )
   return {
     ok:
       messageCount() === messagesBefore + 2 &&
@@ -753,7 +774,7 @@ const smokeSubmitComposer = `(async () => {
       sender !== null && sender.textContent === "YOU" &&
       body !== null && body.textContent.includes("Pixel-proof") &&
       !body.textContent.includes("YOU") &&
-      responseSender !== null && (responseSender.textContent === "ASSISTANT" || responseSender.textContent === "SYSTEM"),
+      responseSenderOk,
     messagesBefore,
     messagesAfter: messageCount(),
     inputAfterSubmit: input.value,
@@ -873,22 +894,31 @@ const smokeNewChatFromHistory = `(async () => {
   }
 })()`
 
-// Fable local streaming journey (#8712): from the fresh chat, the Fable chip
-// must be enabled (fixture account), Codex must be visibly disabled with its
-// caption, and a send must stream PROGRESSIVE text (a partial snapshot is
-// observed before the final), render the read-only tool trace line, then
-// finalize with the composer re-enabled. Fixture-driven; the event mapping,
-// IPC bridge, thread persistence, and renderer streaming path are all real.
+// Fable local streaming journey (#8712, EP250 owner fixes): from the fresh
+// chat, the Fable chip must be enabled (fixture account) and Codex visibly
+// disabled with its reason ONLY in the accessible label — NO caption text
+// anywhere in the composer ("Don't put that shit in the UI ever."). A send
+// must stream PROGRESSIVE text (a partial snapshot with a still-unterminated
+// ** marker renders gracefully as plain text), then finalize with the
+// assistant body rendered as MARKDOWN (a real <strong>, no literal **), no
+// ASSISTANT sender label, and the composer re-enabled. Fixture-driven; the
+// event mapping, IPC bridge, thread persistence, and renderer streaming path
+// are all real.
 const smokeFableLocalStreaming = `(async () => {
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
   const fable = document.querySelector('[data-en-key="shell-harness-fable"]')
   const codex = document.querySelector('[data-en-key="shell-harness-codex"]')
-  const caption = document.querySelector('[data-en-key="shell-harness-caption"]')
   if (fable === null || codex === null) return { ok: false, reason: "harness chips never mounted" }
   if (fable.disabled !== false) return { ok: false, reason: "fable chip disabled despite fixture account" }
   if (codex.disabled !== true) return { ok: false, reason: "codex chip enabled without a session" }
-  if (caption === null || !caption.textContent.includes("Codex — requires OpenAgents session")) {
-    return { ok: false, reason: "codex unavailable caption missing" }
+  const codexAria = codex.getAttribute("aria-label") || ""
+  if (!codexAria.includes("Codex")) {
+    return { ok: false, reason: "codex disabled chip lost its accessible reason label" }
+  }
+  const composer = document.querySelector('[data-en-key="shell-composer"]')
+  if (document.querySelector('[data-en-key="shell-harness-caption"]') !== null ||
+      (composer !== null && composer.textContent.includes("requires OpenAgents session"))) {
+    return { ok: false, reason: "composer still renders a standing disabled-reason caption" }
   }
   fable.click()
   const input = document.querySelector('[data-en-key="shell-input"] input')
@@ -896,10 +926,18 @@ const smokeFableLocalStreaming = `(async () => {
   input.focus()
   input.value = "Stream a fable-local proof"
   input.dispatchEvent(new Event("input", { bubbles: true }))
-  const assistantText = () => {
+  const assistantBody = () => {
     const rows = document.querySelectorAll('[data-en-key="shell-transcript"] [data-en-message][data-en-role="assistant"]')
     const last = rows[rows.length - 1]
-    return last === undefined ? "" : (last.querySelector('[data-en-role="body"]')?.textContent ?? "")
+    return last === undefined ? null : last.querySelector('[data-en-role="body"]')
+  }
+  const assistantText = () => {
+    const body = assistantBody()
+    if (body === null) return ""
+    return Array.from(body.childNodes)
+      .filter((node) => !(node instanceof HTMLElement && node.tagName === "BUTTON"))
+      .map((node) => node.textContent ?? "")
+      .join("")
   }
   input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }))
   const finalText = "Fable local streaming proof."
@@ -914,13 +952,93 @@ const smokeFableLocalStreaming = `(async () => {
   const trace = Array.from(
     document.querySelectorAll('[data-en-key="shell-transcript"] [data-en-message][data-en-role="system"]'),
   ).some((row) => (row.textContent ?? "").includes("Read"))
+  const body = assistantBody()
+  const strong = body === null ? null : body.querySelector("strong")
+  const markdownRendered = strong !== null && strong.textContent === "streaming" &&
+    !assistantText().includes("**")
+  const assistantRows = document.querySelectorAll('[data-en-key="shell-transcript"] [data-en-message][data-en-role="assistant"]')
+  const lastAssistant = assistantRows[assistantRows.length - 1]
+  const noAssistantLabel = lastAssistant !== undefined &&
+    lastAssistant.querySelector('[data-en-role="sender"]') === null
   return {
-    ok: sawPartial && assistantText() === finalText && input.disabled === false && trace,
+    ok: sawPartial && assistantText() === finalText && input.disabled === false && trace &&
+      markdownRendered && noAssistantLabel,
     sawPartial,
     finalized: assistantText() === finalText,
     trace,
+    markdownRendered,
+    noAssistantLabel,
     text: assistantText(),
   }
+})()`
+
+// Message metadata inspector (#8712, EP250 owner fix 2): clicking a chat
+// message's details affordance opens the right-side inspector with the
+// persisted host metadata (lane, SDK-reported effective model, account ref,
+// turn ref, exact token total, duration); Close dismisses it through the
+// same typed intent.
+const smokeMessageInspector = `(async () => {
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+  const rows = document.querySelectorAll('[data-en-key="shell-transcript"] [data-en-message][data-en-role="assistant"]')
+  const last = rows[rows.length - 1]
+  if (last === undefined) return { ok: false, reason: "no assistant message row to inspect" }
+  const details = last.querySelector('[data-en-key^="note-details-"]')
+  if (details === null) return { ok: false, reason: "message details affordance never mounted" }
+  details.click()
+  const deadline = Date.now() + 10000
+  while (Date.now() < deadline && document.querySelector('[data-en-key="chat-message-inspector"]') === null) {
+    await wait(50)
+  }
+  const inspector = document.querySelector('[data-en-key="chat-message-inspector"]')
+  if (inspector === null) return { ok: false, reason: "message inspector never opened" }
+  const text = inspector.textContent || ""
+  const hasModel = text.includes("claude-fable-5")
+  const hasLane = text.includes("fable-local")
+  const hasAccount = text.includes("claude-pylon-fixture")
+  const hasTokens = text.includes("Tokens (total)") && text.includes("49")
+  const close = document.querySelector('[data-en-key="chat-message-inspector-close"]')
+  if (close === null) return { ok: false, reason: "inspector close affordance missing" }
+  close.click()
+  const closeDeadline = Date.now() + 5000
+  while (Date.now() < closeDeadline && document.querySelector('[data-en-key="chat-message-inspector"]') !== null) {
+    await wait(50)
+  }
+  return {
+    ok: hasModel && hasLane && hasAccount && hasTokens &&
+      document.querySelector('[data-en-key="chat-message-inspector"]') === null,
+    hasModel,
+    hasLane,
+    hasAccount,
+    hasTokens,
+  }
+})()`
+
+// Re-open the inspector purely for the pixel receipt (the previous step
+// proved open + close through the typed intent loop).
+const smokeReopenMessageInspector = `(async () => {
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+  const rows = document.querySelectorAll('[data-en-key="shell-transcript"] [data-en-message][data-en-role="assistant"]')
+  const last = rows[rows.length - 1]
+  const details = last === undefined ? null : last.querySelector('[data-en-key^="note-details-"]')
+  if (details === null) return { ok: false, reason: "message details affordance never mounted" }
+  details.click()
+  const deadline = Date.now() + 10000
+  while (Date.now() < deadline && document.querySelector('[data-en-key="chat-message-inspector"]') === null) {
+    await wait(50)
+  }
+  return { ok: document.querySelector('[data-en-key="chat-message-inspector"]') !== null }
+})()`
+
+const smokeCloseMessageInspector = `(async () => {
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+  const close = document.querySelector('[data-en-key="chat-message-inspector-close"]')
+  if (close === null) return { ok: false, reason: "inspector close affordance missing" }
+  close.click()
+  const deadline = Date.now() + 5000
+  while (Date.now() < deadline && document.querySelector('[data-en-key="chat-message-inspector"]') !== null) {
+    await wait(50)
+  }
+  return { ok: document.querySelector('[data-en-key="chat-message-inspector"]') === null }
 })()`
 
 // Fleet workspace journey (#8712): the dock's Fleet button must open the
@@ -1025,8 +1143,15 @@ const runSmoke = (window: BrowserWindow): void => {
         // session; a scripted delta sequence flows through the real mapping).
         await step("fable-local-streamed-turn-FIXTURE", smokeFableLocalStreaming)
         await captureShot(window, "07-fable-local-streamed")
+        // EP250 (#8712): click a message -> right-side metadata inspector
+        // (model/lane/account/tokens), close through the same typed intent,
+        // then re-open once for the pixel receipt.
+        await step("message-metadata-inspector", smokeMessageInspector)
+        await step("message-metadata-inspector-reopen", smokeReopenMessageInspector)
+        await captureShot(window, "08-message-inspector")
+        await step("message-metadata-inspector-close", smokeCloseMessageInspector)
         await step("fleet-workspace-fixture-accounts", smokeOpenFleetWorkspace)
-        await captureShot(window, "08-fleet-workspace")
+        await captureShot(window, "09-fleet-workspace")
         tracePass = 1
         window.webContents.reload()
       } catch (error) {

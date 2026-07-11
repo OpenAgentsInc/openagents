@@ -8,6 +8,7 @@ import { resolveIntentRef, type View } from "@effect-native/core"
 import { Effect, SubscriptionRef } from "@effect-native/core/effect"
 
 import {
+  chatMessageMetadataFields,
   desktopShellIntents,
   desktopShellView,
   formatRelativeTimestamp,
@@ -15,6 +16,7 @@ import {
   initialDesktopShellState,
   makeDesktopShellHandlers,
   noteMessage,
+  withMessageSelected,
   withInput,
   withFleetDeploymentRequested,
   withFleetDeploymentResult,
@@ -35,8 +37,26 @@ import {
   type HarnessLanes,
 } from "./shell.ts"
 import { openagentsDesktopTheme } from "./theme.ts"
+import { validateBehaviorContractRegistry } from "@openagentsinc/behavior-contracts"
+import { openAgentsDesktopUxContractRegistry } from "../contracts/ux-contracts.ts"
 
 const { makeIntentRegistry } = await import("@effect-native/core")
+
+describe("EP250 chat contracts are registered and enforced (#8712)", () => {
+  test("registry validates and the owner-statement contracts are enforced", () => {
+    expect(validateBehaviorContractRegistry(openAgentsDesktopUxContractRegistry).ok).toBe(true)
+    for (const contractId of [
+      "openagents_desktop.chat.no_assistant_role_label.v1",
+      "openagents_desktop.chat.message_metadata_inspector.v1",
+      "openagents_desktop.chat.no_composer_disabled_caption.v1",
+      "openagents_desktop.chat.markdown_rendering.v1",
+    ]) {
+      expect(openAgentsDesktopUxContractRegistry.contracts.find(
+        (contract) => contract.contractId === contractId,
+      )?.state).toBe("enforced")
+    }
+  })
+})
 
 type AnyNode = Readonly<Record<string, unknown>>
 
@@ -205,13 +225,12 @@ describe("desktopShellView (state -> component tree)", () => {
     expect(input.onSubmit?.name).toBe("DesktopNoteSubmitted")
   })
 
-  test("messages ride the v29 chat chrome contract: typed senderLabel/timestamp, body is only the text", () => {
+  test("messages ride the v29 chat chrome contract: typed senderLabel/timestamp, body carries the text plus the details affordance", () => {
     const system = noteMessage({ key: "boot-0", role: "system", text: "hello", timestamp: "18:04" })
     expect(system.key).toBe("boot-0")
     expect(system.role).toBe("system")
     expect(system.senderLabel).toBe("SYSTEM")
     expect(system.timestamp).toBe("18:04")
-    expect(system.body.length).toBe(1)
     const systemText = system.body[0] as unknown as AnyNode
     expect(systemText._tag).toBe("Text")
     expect(systemText.color).toBe("textMuted")
@@ -223,12 +242,47 @@ describe("desktopShellView (state -> component tree)", () => {
     expect((user.body[0] as unknown as AnyNode).color).toBe("textPrimary")
     expect((user.body[0] as unknown as AnyNode).content).toBe("rofl")
 
-    const assistant = noteMessage({ key: "assistant-1", role: "assistant", text: "I’m here", timestamp: "18:05" })
-    expect(assistant.senderLabel).toBe("ASSISTANT")
-    expect((assistant.body[0] as unknown as AnyNode).content).toBe("I’m here")
-
     const pending = noteMessage({ key: "pending-0", role: "user", text: "wait for it", timestamp: "18:05" })
     expect(pending.senderLabel).toBe("YOU · PENDING")
+  })
+
+  test("EP250 owner fix 1: assistant rows carry NO sender label — timestamp only", () => {
+    // Owner statement (verbatim): "Remove where it says assistant. I don't
+    // care about that."
+    const assistant = noteMessage({ key: "assistant-1", role: "assistant", text: "I’m here", timestamp: "18:05" })
+    expect(assistant.senderLabel).toBeUndefined()
+    expect(assistant.timestamp).toBe("18:05")
+    // User and system labels survive; only the assistant label is removed.
+    expect(noteMessage({ key: "n", role: "user", text: "x", timestamp: "18:05" }).senderLabel).toBe("YOU")
+    expect(noteMessage({ key: "n", role: "system", text: "x", timestamp: "18:05" }).senderLabel).toBe("SYSTEM")
+  })
+
+  test("EP250 owner fix 4: assistant bodies render markdown through the catalog Markdown/CodeBlock views", () => {
+    const assistant = noteMessage({
+      key: "assistant-md",
+      role: "assistant",
+      text: "# Title\n\nSome **bold** and `code`.\n\n```ts\nconst x = 1\n```",
+      timestamp: "18:05",
+    })
+    const tags = assistant.body.map((node) => (node as unknown as AnyNode)._tag)
+    expect(tags).toContain("Markdown")
+    expect(tags).toContain("CodeBlock")
+    const markdown = assistant.body.find((node) => (node as unknown as AnyNode)._tag === "Markdown") as unknown as {
+      blocks: Array<{ kind: string }>
+    }
+    expect(markdown.blocks[0]?.kind).toBe("heading")
+    // User text stays literal — no markdown reinterpretation of user input.
+    const user = noteMessage({ key: "u", role: "user", text: "**not bold**", timestamp: "18:05" })
+    expect((user.body[0] as unknown as AnyNode)._tag).toBe("Text")
+    expect((user.body[0] as unknown as AnyNode).content).toBe("**not bold**")
+  })
+
+  test("every message row carries the typed details affordance (message metadata inspector)", () => {
+    const assistant = noteMessage({ key: "assistant-1", role: "assistant", text: "hey", timestamp: "18:05" })
+    const details = collectNodes(assistant.body).find((node) => node.key === "note-details-assistant-1")
+    expect(details?._tag).toBe("IconButton")
+    expect((details?.onPress as { name?: string }).name).toBe("DesktopMessageSelected")
+    expect(JSON.stringify(details?.onPress)).toContain("assistant-1")
   })
 
   test("composer carries the harness selector with Codex selected by default", () => {
@@ -761,21 +815,35 @@ describe("capability-gated composer lanes (#8712, evidence-gated affordances)", 
     expect(withHarnessLanes(baseState, noLanes).selectedHarness).toBe("codex")
   })
 
-  test("an unavailable lane renders a disabled chip, the caption, and a disabled Send", () => {
+  test("EP250 owner fix 3: an unavailable lane is a disabled chip with its reason ONLY in the accessible label — NO caption text anywhere in the composer", () => {
+    // Owner statement (verbatim): "I have no idea why the bottom says Codex
+    // requires Open Agent session. Don't put that shit in the UI ever.
+    // Remove that."
     const state = withHarnessLanes(baseState, localModeLanes)
     const view = desktopShellView(state)
     expect(nodeByKey(view, "shell-harness-fable")?.disabled).toBe(false)
     expect(nodeByKey(view, "shell-harness-codex")?.disabled).toBe(true)
-    const caption = nodeByKey(view, "shell-harness-caption") as { content?: string }
-    expect(caption?.content).toBe("Codex — requires OpenAgents session")
+    // The caption node no longer exists in ANY lane state…
+    expect(nodeByKey(view, "shell-harness-caption")).toBeUndefined()
+    // …and no visible Text inside the composer carries the reason string.
+    const composer = nodeByKey(view, "shell-composer")
+    const composerTexts = collectNodes(composer)
+      .filter((node) => node._tag === "Text")
+      .map((node) => String(node.content ?? ""))
+    expect(composerTexts.some((content) => content.includes("requires OpenAgents session"))).toBe(false)
+    expect(composerTexts.some((content) => content.includes("unavailable"))).toBe(false)
+    // The reason survives as the disabled chip's accessible label only.
+    expect((nodeByKey(view, "shell-harness-codex")?.a11y as { label?: string })?.label)
+      .toBe("Codex — requires OpenAgents session")
     // Selected lane (fable) is available, so Send stays enabled.
     expect(nodeByKey(view, "shell-note")?.disabled).toBe(false)
 
     const dead = desktopShellView(withHarnessLanes(baseState, noLanes))
     expect(nodeByKey(dead, "shell-harness-fable")?.disabled).toBe(true)
     expect(nodeByKey(dead, "shell-note")?.disabled).toBe(true)
-    expect((nodeByKey(dead, "shell-harness-caption") as { content?: string })?.content)
-      .toBe("Fable — unavailable: no linked Claude account · Codex — requires OpenAgents session")
+    expect(nodeByKey(dead, "shell-harness-caption")).toBeUndefined()
+    expect((nodeByKey(dead, "shell-harness-fable")?.a11y as { label?: string })?.label)
+      .toBe("Fable — unavailable: no linked Claude account")
   })
 
   test("submit on an unavailable selected lane is refused: draft kept, no sendMessage call", async () => {
@@ -809,6 +877,120 @@ describe("capability-gated composer lanes (#8712, evidence-gated affordances)", 
         expect(next.pending).toBe(false)
       }),
     )
+  })
+})
+
+describe("message metadata inspector (#8712, EP250 owner fix 2)", () => {
+  // Owner statement (verbatim): "if I click on the message, I see the
+  // metadata of the message in the right sidebar"
+  const assistantNote = {
+    key: "assistant-1",
+    role: "assistant" as const,
+    text: "Here is **the** answer.",
+    timestamp: "18:06",
+    meta: {
+      lane: "fable-local",
+      model: "claude-fable-5",
+      accountRef: "claude-pylon-b",
+      turnRef: "turn.fable.abc",
+      totalTokens: 49,
+      durationMs: 2500,
+    },
+  }
+  const notesState: DesktopShellState = { ...baseState, notes: [
+    { key: "user-1", role: "user" as const, text: "question", timestamp: "18:05" },
+    assistantNote,
+  ] }
+
+  test("withMessageSelected toggles: select, re-select deselects, empty payload deselects", () => {
+    const selected = withMessageSelected(notesState, "assistant-1")
+    expect(selected.selectedMessageKey).toBe("assistant-1")
+    expect(withMessageSelected(selected, "assistant-1").selectedMessageKey).toBeNull()
+    expect(withMessageSelected(selected, "").selectedMessageKey).toBeNull()
+    expect(withMessageSelected(selected, "user-1").selectedMessageKey).toBe("user-1")
+  })
+
+  test("chatMessageMetadataFields projects role, time, and every host-recorded fact", () => {
+    const fields = chatMessageMetadataFields(assistantNote)
+    expect(fields).toEqual([
+      { label: "Role", value: "assistant" },
+      { label: "Time", value: "18:06" },
+      { label: "Lane", value: "fable-local" },
+      { label: "Effective model", value: "claude-fable-5" },
+      { label: "Account", value: "claude-pylon-b" },
+      { label: "Turn", value: "turn.fable.abc" },
+      { label: "Tokens (total)", value: "49" },
+      { label: "Duration", value: "2.5s" },
+    ])
+    // A metadata-less message still shows its honest role + time only.
+    expect(chatMessageMetadataFields({ key: "u", role: "user", text: "q", timestamp: "18:05" }))
+      .toEqual([{ label: "Role", value: "user" }, { label: "Time", value: "18:05" }])
+  })
+
+  test("no selection renders no inspector; a selected message opens the right-side rail with its metadata", () => {
+    const closed = desktopShellView(notesState)
+    expect(nodeByKey(closed, "chat-message-inspector")).toBeUndefined()
+    expect(nodeByKey(closed, "chat-message-inspector-split")).toBeUndefined()
+    expect(nodeByKey(closed, "shell-transcript")).toBeDefined()
+    expect(nodeByKey(closed, "shell-composer")).toBeDefined()
+
+    const open = desktopShellView(withMessageSelected(notesState, "assistant-1"))
+    const split = nodeByKey(open, "chat-message-inspector-split")
+    expect(split?._tag).toBe("SplitPane")
+    // Escape deselects through the same typed intent.
+    const escape = (split?.interactions as { onKey?: Array<{ key: string; intent: { name?: string } }> })?.onKey?.[0]
+    expect(escape?.key).toBe("Escape")
+    expect(escape?.intent?.name).toBe("DesktopMessageSelected")
+    expect(nodeByKey(open, "chat-message-inspector")?._tag).toBe("Stack")
+    expect(nodeByKey(open, "chat-message-inspector-close")?._tag).toBe("Button")
+    // Transcript and composer stay usable next to the inspector.
+    expect(nodeByKey(open, "shell-transcript")).toBeDefined()
+    expect(nodeByKey(open, "shell-composer")).toBeDefined()
+    const texts = collectNodes(nodeByKey(open, "chat-message-inspector"))
+      .filter((node) => node._tag === "Text")
+      .map((node) => String(node.content ?? ""))
+    for (const expected of ["fable-local", "claude-fable-5", "claude-pylon-b", "turn.fable.abc", "49", "2.5s"]) {
+      expect(texts.some((content) => content === expected)).toBe(true)
+    }
+    // A dangling key (message no longer projected) renders no inspector.
+    const dangling = desktopShellView({ ...notesState, selectedMessageKey: "gone" })
+    expect(nodeByKey(dangling, "chat-message-inspector")).toBeUndefined()
+  })
+
+  test("click -> typed intent -> inspector opens; Close deselects (full registry loop)", async () => {
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const state = yield* SubscriptionRef.make(notesState)
+        const registry = yield* makeIntentRegistry(
+          desktopShellIntents,
+          makeDesktopShellHandlers(state, fixedNow),
+        )
+        const view = desktopShellView(yield* SubscriptionRef.get(state))
+        const details = nodeByKey(view, "note-details-assistant-1") as {
+          onPress: Parameters<typeof resolveIntentRef>[0]
+        }
+        yield* registry.dispatch(resolveIntentRef(details.onPress, null))
+        const selected = yield* SubscriptionRef.get(state)
+        expect(selected.selectedMessageKey).toBe("assistant-1")
+
+        const open = desktopShellView(selected)
+        const close = nodeByKey(open, "chat-message-inspector-close") as {
+          onPress: Parameters<typeof resolveIntentRef>[0]
+        }
+        yield* registry.dispatch(resolveIntentRef(close.onPress, null))
+        expect((yield* SubscriptionRef.get(state)).selectedMessageKey).toBeNull()
+      }),
+    )
+  })
+
+  test("new chat and thread switches drop a stale selection", () => {
+    const selected = withMessageSelected(notesState, "assistant-1")
+    const fresh = { id: "fresh", title: "New chat", updatedAt: "2026-07-11T18:00:00.000Z", notes: [] }
+    expect(withNewChat(selected, fresh).selectedMessageKey).toBeNull()
+    expect(withChatSelected(selected, { ...fresh, id: "other" }).selectedMessageKey).toBeNull()
+    // Same thread re-projection keeps the selection while the key survives.
+    const sameThread = { ...fresh, id: selected.activeThreadId!, notes: notesState.notes }
+    expect(withChatSelected(selected, sameThread).selectedMessageKey).toBe("assistant-1")
   })
 })
 

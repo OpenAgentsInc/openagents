@@ -112,7 +112,7 @@ describe("makeFableLocalRuntime.runTurn", () => {
       emit: sink.emit,
     })
 
-    expect(result).toEqual({ ok: true, text: "Final answer.", totalTokens: 17 })
+    expect(result).toEqual({ ok: true, text: "Final answer.", totalTokens: 17, accountRef: "claude-pylon-b" })
     expect(sink.events.map(event => event.kind)).toEqual([
       "turn_started",
       "text_delta",
@@ -261,7 +261,7 @@ describe("makeFableLocalRuntime.runTurn", () => {
     const result = await runtime.runTurn({
       turnRef: "turn-rotate", threadRef: "thread-rotate", history: [], message: "hi", emit: sink.emit,
     })
-    expect(result).toEqual({ ok: true, text: "rotated", totalTokens: null })
+    expect(result).toEqual({ ok: true, text: "rotated", totalTokens: null, accountRef: "claude-pylon-b" })
     // One visible turn, no turn_failed leak from the rotated-away attempt.
     expect(sink.events.map(event => event.kind)).toEqual(["turn_started", "text_delta", "turn_completed"])
     expect(captured.length).toBe(2)
@@ -355,7 +355,7 @@ describe("makeFableLocalRuntime.runTurn", () => {
     const result = await harness.runtime.runTurn({
       turnRef: "turn-fable", threadRef: "thread-fable", history: [], message: "WHAT MODEL ARE YOU", emit: sink.emit,
     })
-    expect(result).toEqual({ ok: true, text: "I am Fable.", totalTokens: 7 })
+    expect(result).toEqual({ ok: true, text: "I am Fable.", totalTokens: 7, accountRef: "claude-pylon-b" })
     expect(sink.events.map(event => event.kind)).toEqual([
       "turn_started",
       "model_effective",
@@ -379,7 +379,7 @@ describe("makeFableLocalRuntime.runTurn", () => {
     const result = await harness.runtime.runTurn({
       turnRef: "turn-vers", threadRef: "thread-vers", history: [], message: "hi", emit: sink.emit,
     })
-    expect(result).toEqual({ ok: true, text: "ok", totalTokens: null })
+    expect(result).toEqual({ ok: true, text: "ok", totalTokens: null, accountRef: "claude-pylon-b" })
     expect(sink.events[1]).toEqual({ kind: "model_effective", model: "claude-fable-5-20260701" })
     expect(sink.events.filter(event => event.kind === "model_effective").length).toBe(1)
   })
@@ -423,7 +423,7 @@ describe("makeFixtureFableLocalQuery (smoke fixture)", () => {
     const result = await runtime.runTurn({
       turnRef: "turn-fixture", threadRef: "thread-fixture", history: [], message: "go", emit: sink.emit,
     })
-    expect(result).toEqual({ ok: true, text: "Fable local streaming proof.", totalTokens: 49 })
+    expect(result).toEqual({ ok: true, text: "Fable local **streaming** proof.", totalTokens: 49, accountRef: "claude-pylon-fixture" })
     expect(sink.events.map(event => event.kind)).toEqual([
       "turn_started",
       "model_effective",

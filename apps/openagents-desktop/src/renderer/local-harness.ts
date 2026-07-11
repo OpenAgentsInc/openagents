@@ -73,6 +73,7 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
       let baseThread: DesktopThread | null = null
       const traceNotes: DesktopMessage[] = []
       let assistantNote: DesktopMessage | null = null
+      let effectiveModel: string | null = null
 
       // Trace lines first, growing assistant bubble last — the same order the
       // finalized persisted thread carries (main appends traces before the
@@ -108,6 +109,10 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
                 role: "assistant",
                 text: event.text,
                 timestamp: noteTimestamp(now()),
+                // Streaming metadata (#8712): lane + turn are known here; the
+                // effective model joins when its typed event lands. The
+                // persisted note from main carries the authoritative meta.
+                meta: { lane: "fable-local", turnRef, ...(effectiveModel === null ? {} : { model: effectiveModel }) },
               }
             : { ...assistantNote, text: assistantNote.text + event.text }
           project()
@@ -118,6 +123,13 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
           // claude-fable-5") — model identity comes from the SDK init report,
           // never from the lane brand alone. Main persists the same line, so
           // finalize does not reshuffle the transcript.
+          effectiveModel = event.model
+          if (assistantNote !== null) {
+            assistantNote = {
+              ...assistantNote,
+              meta: { ...assistantNote.meta, lane: "fable-local", turnRef, model: event.model },
+            }
+          }
           traceNotes.push({
             key: `${turnRef}-trace-${traceNotes.length}`,
             role: "system",

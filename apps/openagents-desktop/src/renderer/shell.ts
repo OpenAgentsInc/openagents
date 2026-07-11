@@ -27,7 +27,9 @@ import {
   IconButton,
   NavRail,
   Spacer,
+  SplitPane,
   Stack,
+  Table,
   Text,
   TextField,
   Transcript,
@@ -39,7 +41,8 @@ import {
   type View,
 } from "@effect-native/core"
 import { Effect, Schema, SubscriptionRef } from "@effect-native/core/effect"
-import type { DesktopThread } from "../chat-contract.ts"
+import type { DesktopMessageMeta, DesktopThread } from "../chat-contract.ts"
+import { chatMarkdownBody } from "./markdown.ts"
 import type {
   DesktopWorkspaceFile,
   DesktopWorkspaceGitDiff,
@@ -81,6 +84,8 @@ export type DesktopNoteEntry = Readonly<{
   text: string
   /** Preformatted display timestamp (the catalog ships no date formatting). */
   timestamp: string
+  /** Host-observed message metadata (#8712) — see DesktopMessageMetaSchema. */
+  meta?: DesktopMessageMeta
 }>
 
 export const desktopWorkspaceNames = ["fleet", "chat", "home", "files", "review", "terminal", "inbox", "settings"] as const
@@ -116,6 +121,12 @@ export type DesktopShellState = Readonly<{
   harnessLanes: HarnessLanes
   threads: ReadonlyArray<DesktopThread>
   activeThreadId: string | null
+  /**
+   * The transcript message whose metadata inspector is open (#8712: "if I
+   * click on the message, I see the metadata of the message in the right
+   * sidebar"). Null means no inspector.
+   */
+  selectedMessageKey: string | null
   workspace: DesktopWorkspaceName
   workspaceSnapshot: DesktopWorkspaceSnapshot | null
   workspaceFile: DesktopWorkspaceFile | null
@@ -176,6 +187,7 @@ export const initialDesktopShellState = (
   },
   threads: [],
   activeThreadId: null,
+  selectedMessageKey: null,
   workspace: "chat",
   workspaceSnapshot: null,
   workspaceFile: null,
@@ -225,6 +237,12 @@ export const DesktopHarnessSelected = defineIntent(
   Schema.Literals(desktopHarnessNames),
 )
 export const DesktopChatSelected = defineIntent("DesktopChatSelected", Schema.String)
+/**
+ * Message metadata inspector selection (#8712). Payload is the transcript
+ * message key; the empty string or re-selecting the open key deselects
+ * (Escape and the Close affordance dispatch the empty payload).
+ */
+export const DesktopMessageSelected = defineIntent("DesktopMessageSelected", Schema.String)
 export const DesktopWorkspaceSelected = defineIntent(
   "DesktopWorkspaceSelected",
   Schema.Literals(desktopWorkspaceNames),
@@ -250,6 +268,7 @@ export const desktopShellIntents = [
   DesktopNewChat,
   DesktopHarnessSelected,
   DesktopChatSelected,
+  DesktopMessageSelected,
   DesktopWorkspaceSelected,
   DesktopWorkspacePickerRequested,
   DesktopWorkspaceFileSelected,
@@ -303,6 +322,7 @@ export const withNewChat = (state: DesktopShellState, thread: DesktopThread): De
   notes: thread.notes,
   threads: [thread, ...state.threads.filter((item) => item.id !== thread.id)].slice(0, 5),
   activeThreadId: thread.id,
+  selectedMessageKey: null,
   workspace: "chat",
   // New chat must land in a fresh empty transcript even when a historical
   // Codex page is loaded: the chat workspace renders the history page
@@ -325,10 +345,28 @@ export const withChatSelected = (state: DesktopShellState, thread: DesktopThread
   ...state,
   notes: thread.notes,
   activeThreadId: thread.id,
+  // Keep an open inspector only while its message still exists in the
+  // projected transcript (streaming keys are replaced at finalize).
+  selectedMessageKey: state.activeThreadId === thread.id &&
+    state.selectedMessageKey !== null &&
+    thread.notes.some((note) => note.key === state.selectedMessageKey)
+    ? state.selectedMessageKey
+    : null,
   fleetDeskOpen: false,
   workspace: "chat",
   commandPaletteOpen: false,
 })
+
+/** Toggle-style message inspector selection ("" or same key deselects). */
+export const withMessageSelected = (
+  state: DesktopShellState,
+  key: string,
+): DesktopShellState => {
+  const selectedMessageKey = key === "" || state.selectedMessageKey === key ? null : key
+  return selectedMessageKey === state.selectedMessageKey
+    ? state
+    : { ...state, selectedMessageKey }
+}
 
 export const withWorkspace = (
   state: DesktopShellState,
@@ -580,6 +618,8 @@ export const makeDesktopShellHandlers = (
   DesktopNewChat: () => Effect.gen(function* () { const thread = yield* Effect.promise(chat.newThread); if (thread) yield* SubscriptionRef.update(state, (current) => withNewChat(current, thread)) }),
   DesktopHarnessSelected: (harness) =>
     SubscriptionRef.update(state, (current) => current.selectedHarness === harness ? current : { ...current, selectedHarness: harness }),
+  DesktopMessageSelected: (key) =>
+    SubscriptionRef.update(state, (current) => withMessageSelected(current, key)),
   DesktopChatSelected: (id) => Effect.gen(function* () {
     yield* SubscriptionRef.update(state, current => ({ ...current, activeThreadId: id, notes: [] }))
     const thread = yield* Effect.promise(() => chat.openThread(id)); if (!thread) return
@@ -701,22 +741,52 @@ const columnWidth = 840
 /**
  * Real v29 chat rows: sender label and timestamp are typed message data — the
  * renderer draws the meta row and the role treatment (user end-aligned
- * bubble, system muted prose). The body is only the message text.
+ * bubble, system muted prose).
+ *
+ * EP250 owner directives (#8712):
+ * - "Remove where it says assistant." — assistant rows carry NO sender label
+ *   (timestamp only); user rows keep YOU, system rows keep SYSTEM.
+ * - Assistant bodies render markdown through the catalog Markdown/CodeBlock
+ *   views (see ./markdown.ts) — user and system text stays literal.
+ * - Every row carries a Details affordance dispatching the typed
+ *   DesktopMessageSelected intent (the metadata inspector; keyboard
+ *   accessible because it is a real catalog Button).
  */
 export const noteMessage = (entry: DesktopNoteEntry): TranscriptMessage => ({
   key: entry.key,
   role: entry.role,
-  senderLabel:
-    entry.role === "user"
-      ? entry.key.startsWith("pending-") ? "YOU · PENDING" : "YOU"
-      : entry.role === "assistant" ? "ASSISTANT" : "SYSTEM",
+  ...(entry.role === "assistant"
+    ? {}
+    : {
+        senderLabel: entry.role === "user"
+          ? entry.key.startsWith("pending-") ? "YOU · PENDING" : "YOU"
+          : "SYSTEM",
+      }),
   timestamp: entry.timestamp,
   body: [
-    text(
-      `${entry.key}-text`,
-      entry.text,
-      "body",
-      entry.role === "system" ? "textMuted" : "textPrimary",
+    ...(entry.role === "assistant"
+      ? chatMarkdownBody(`${entry.key}-text`, entry.text)
+      : [text(
+          `${entry.key}-text`,
+          entry.text,
+          "body",
+          entry.role === "system" ? "textMuted" : "textPrimary",
+        )]),
+    // Own row so the affordance never overlaps the message text.
+    Stack(
+      {
+        key: `note-meta-row-${entry.key}`,
+        direction: "row",
+        gap: "1",
+        align: "center",
+        justify: entry.role === "user" ? "end" : "start",
+      },
+      [IconButton({
+        key: `note-details-${entry.key}`,
+        icon: "ChevronRight",
+        accessibilityLabel: `Show message details, ${entry.role} message at ${entry.timestamp}`,
+        onPress: IntentRef("DesktopMessageSelected", StaticPayload(entry.key)),
+      })],
     ),
   ],
 })
@@ -1028,16 +1098,12 @@ const fleetDesk = (state: DesktopShellState): View => {
  * Floating composer on the real catalog contract: `clearOnSubmit` empties the
  * field at submit time (effect-native#72) and `pending` disables it while a
  * submission is in flight.
+ *
+ * EP250 owner directive (#8712): NO standing caption text under or near the
+ * composer ("Don't put that shit in the UI ever."). An unavailable lane is a
+ * dimmed disabled chip whose reason lives only in its accessible label (and
+ * the host logs/journal) — never a visible caption line.
  */
-/** Visible caption naming every lane that cannot act right now. */
-export const harnessLaneCaption = (lanes: HarnessLanes): string | null => {
-  const captions = [
-    ...(lanes.fable.available ? [] : [lanes.fable.reason ?? "Fable — unavailable"]),
-    ...(lanes.codex.available ? [] : [lanes.codex.reason ?? "Codex — unavailable"]),
-  ]
-  return captions.length === 0 ? null : captions.join(" · ")
-}
-
 const shellComposer = (state: DesktopShellState): View =>
   Card(
     {
@@ -1090,12 +1156,6 @@ const shellComposer = (state: DesktopShellState): View =>
           }),
         ],
       ),
-      ...(harnessLaneCaption(state.harnessLanes) === null ? [] : [Text({
-        key: "shell-harness-caption",
-        content: harnessLaneCaption(state.harnessLanes)!,
-        variant: "caption",
-        color: "textMuted",
-      })]),
       Stack(
         {
           key: "shell-composer-row",
@@ -1172,6 +1232,116 @@ const commandPalette = (): View =>
     ],
   )
 
+/**
+ * Right-side message metadata inspector (#8712: "if I click on the message,
+ * I see the metadata of the message in the right sidebar"). Same visual
+ * pattern as the Codex history item inspector rail, chat-scoped: role,
+ * timestamp, and — for assistant messages — every fact the host recorded on
+ * the persisted note (lane, SDK-reported effective model, account ref, turn
+ * ref, request id, exact token total, duration).
+ */
+export const chatMessageMetadataFields = (
+  entry: DesktopNoteEntry,
+): ReadonlyArray<Readonly<{ label: string; value: string }>> => [
+  { label: "Role", value: entry.role },
+  { label: "Time", value: entry.timestamp },
+  ...(entry.meta?.lane === undefined ? [] : [{ label: "Lane", value: entry.meta.lane }]),
+  ...(entry.meta?.model === undefined ? [] : [{ label: "Effective model", value: entry.meta.model }]),
+  ...(entry.meta?.accountRef === undefined ? [] : [{ label: "Account", value: entry.meta.accountRef }]),
+  ...(entry.meta?.turnRef === undefined ? [] : [{ label: "Turn", value: entry.meta.turnRef }]),
+  ...(entry.meta?.requestId === undefined ? [] : [{ label: "Request", value: entry.meta.requestId }]),
+  ...(entry.meta?.totalTokens === undefined ? [] : [{
+    label: "Tokens (total)",
+    value: entry.meta.totalTokens === null ? "not reported" : String(entry.meta.totalTokens),
+  }]),
+  ...(entry.meta?.durationMs === undefined ? [] : [{
+    label: "Duration",
+    value: `${(entry.meta.durationMs / 1000).toFixed(1)}s`,
+  }]),
+]
+
+const chatMessageInspector = (entry: DesktopNoteEntry): View => {
+  const fields = chatMessageMetadataFields(entry)
+  return Stack(
+    {
+      key: "chat-message-inspector",
+      direction: "column",
+      gap: "2",
+      style: { minWidth: 0, minHeight: 0, flex: 1 },
+      a11y: { role: "region", label: "Message details" },
+    },
+    [
+      Button({
+        key: "chat-message-inspector-close",
+        label: "Close",
+        variant: "ghost",
+        onPress: IntentRef("DesktopMessageSelected", StaticPayload("")),
+        a11y: { label: "Close message details" },
+      }),
+      Text({ key: "chat-message-inspector-title", content: "Message details", variant: "heading", color: "textPrimary" }),
+      Badge({ key: "chat-message-inspector-role", label: entry.role, tone: "neutral" }),
+      Table({
+        key: "chat-message-inspector-fields",
+        columns: [{ id: "field", header: "Field" }, { id: "value", header: "Value" }],
+        rows: fields.map((field, index) => ({
+          id: String(index),
+          cells: [
+            Text({ key: `chat-message-inspector-field-${index}`, content: field.label, variant: "caption", color: "textMuted" }),
+            Text({ key: `chat-message-inspector-value-${index}`, content: field.value, variant: "body", color: "textPrimary" }),
+          ],
+        })),
+      }),
+    ],
+  )
+}
+
+/**
+ * The chat transcript area. When a message inspector is open the transcript
+ * and composer share the left pane of a SplitPane whose right rail is the
+ * metadata inspector (the codex-history inspector pattern, chat-scoped);
+ * Escape anywhere inside deselects through the same typed intent.
+ */
+const chatTranscriptArea = (state: DesktopShellState): ReadonlyArray<View> => {
+  const transcript = Transcript({
+    key: "shell-transcript",
+    pinToEnd: true,
+    messages: state.notes.map(noteMessage),
+    style: {
+      width: "full",
+      maxWidth: columnWidth,
+      alignSelf: "center",
+      flex: 1,
+      minHeight: 0,
+      paddingLeft: "4",
+      paddingRight: "4",
+      gap: "5",
+    },
+  })
+  const selected = state.selectedMessageKey === null
+    ? undefined
+    : state.notes.find((note) => note.key === state.selectedMessageKey)
+  if (selected === undefined) return [transcript, shellComposer(state)]
+  return [SplitPane({
+    key: "chat-message-inspector-split",
+    orientation: "row",
+    style: { flex: 1, minWidth: 0, minHeight: 0 },
+    interactions: {
+      onKey: [{ key: "Escape", preventDefault: true, intent: IntentRef("DesktopMessageSelected", StaticPayload("")) }],
+    },
+    panes: [
+      {
+        id: "chat-center",
+        min: 360,
+        content: Stack(
+          { key: "chat-center-column", direction: "column", gap: "3", style: { flex: 1, minWidth: 0, minHeight: 0 } },
+          [transcript, shellComposer(state)],
+        ),
+      },
+      { id: "chat-message-inspector-pane", min: 280, max: 480, size: 336, content: chatMessageInspector(selected) },
+    ],
+  })]
+}
+
 export const desktopShellView = (state: DesktopShellState): View =>
   BackgroundGradient(
     {
@@ -1200,22 +1370,7 @@ export const desktopShellView = (state: DesktopShellState): View =>
         [
           ...(state.commandPaletteOpen ? [commandPalette()] : []),
           ...(state.workspace === "chat" && state.history.catalog.roots.length === 0 && state.threads.length === 0 ? [shellWelcome()] : []),
-          ...(state.workspace === "chat" && state.history.page !== null ? [historyWorkspaceView(state.history)] : state.workspace === "chat" ? [Transcript({
-            key: "shell-transcript",
-            pinToEnd: true,
-            messages: state.notes.map(noteMessage),
-            style: {
-              width: "full",
-              maxWidth: columnWidth,
-              alignSelf: "center",
-              flex: 1,
-              minHeight: 0,
-              paddingLeft: "4",
-              paddingRight: "4",
-              gap: "5",
-            },
-          })] : state.workspace === "files" ? [workspaceFiles(state)] : state.workspace === "review" ? [workspaceReview(state)] : state.workspace === "settings" ? [settingsView(state.settings)] : state.workspace === "fleet" ? [fleetWorkspaceView(state.fleet)] : [projectHome(state)]),
-          ...(state.workspace === "chat" && state.history.page === null ? [shellComposer(state)] : []),
+          ...(state.workspace === "chat" && state.history.page !== null ? [historyWorkspaceView(state.history)] : state.workspace === "chat" ? chatTranscriptArea(state) : state.workspace === "files" ? [workspaceFiles(state)] : state.workspace === "review" ? [workspaceReview(state)] : state.workspace === "settings" ? [settingsView(state.settings)] : state.workspace === "fleet" ? [fleetWorkspaceView(state.fleet)] : [projectHome(state)]),
         ],
       ),
     ],

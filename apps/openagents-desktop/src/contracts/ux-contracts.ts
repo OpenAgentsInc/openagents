@@ -6,8 +6,166 @@ import {
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-11.21",
+    version: "2026-07-11.22",
     contracts: [
+      {
+        contractId: "openagents_desktop.chat.no_assistant_role_label.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "chat transcript chrome",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "owner-video-review", statedBy: "owner", statedOn: "2026-07-11" },
+        statement: "Remove where it says assistant. I don't care about that.",
+        authorityBoundary:
+          "Only the visible ASSISTANT role header is removed from assistant transcript rows. Timestamps stay; the user YOU label and system SYSTEM label stay; the effective-model caption stays as its existing compact system trace line; typed role data on the message contract is unchanged and grants no new rendering authority.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/renderer/shell.ts",
+          "github:OpenAgentsInc/openagents#8712",
+        ],
+        oracles: [
+          {
+            id: "chat_no_assistant_label.note_projection",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/shell.test.ts",
+            description:
+              "Proves noteMessage emits no senderLabel for assistant rows while keeping the timestamp, YOU on user rows, and SYSTEM on system rows.",
+          },
+          {
+            id: "chat_no_assistant_label.smoke",
+            kind: "bun-test",
+            mode: "e2e",
+            ref: "apps/openagents-desktop/src/main.ts",
+            description:
+              "The built-Electron fable streaming smoke asserts the finalized assistant row renders no sender chip.",
+          },
+        ],
+        verification:
+          "bun run --cwd apps/openagents-desktop verify runs the shell view suite and the Electron smoke journey asserting the label-free assistant row.",
+      },
+      {
+        contractId: "openagents_desktop.chat.message_metadata_inspector.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "chat message metadata inspector",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "owner-video-review", statedBy: "owner", statedOn: "2026-07-11" },
+        statement: "if I click on the message, I see the metadata of the message in the right sidebar",
+        authorityBoundary:
+          "The inspector projects only the bounded per-message metadata the host persisted on the local thread store (role, timestamp, lane, SDK-reported effective model, account ref, turn ref, exact token total, duration) — never prompts, paths, tokens, credentials, or provider payloads. Selection is a typed intent (click dispatches; Escape and Close deselect) and grants no runtime, resume, or filesystem authority.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/renderer/shell.ts",
+          "apps/openagents-desktop/src/chat-contract.ts",
+          "apps/openagents-desktop/src/main.ts",
+          "github:OpenAgentsInc/openagents#8712",
+        ],
+        oracles: [
+          {
+            id: "chat_message_inspector.intent_loop_and_fields",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/shell.test.ts",
+            description:
+              "Drives the real intent registry: details click selects the message, the right-side rail renders role/time/lane/model/account/turn/tokens/duration, Close and Escape deselect, and stale selections drop on thread switches.",
+          },
+          {
+            id: "chat_message_inspector.smoke",
+            kind: "bun-test",
+            mode: "e2e",
+            ref: "apps/openagents-desktop/src/main.ts",
+            description:
+              "The built-Electron smoke clicks the streamed assistant message's details affordance and asserts the inspector shows the fixture's effective model, lane, account ref, and exact token total, then closes it.",
+          },
+        ],
+        verification:
+          "bun run --cwd apps/openagents-desktop verify runs the shell inspector suite and the Electron smoke message-metadata-inspector step.",
+      },
+      {
+        contractId: "openagents_desktop.chat.no_composer_disabled_caption.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "composer harness lane affordances",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "owner-video-review", statedBy: "owner", statedOn: "2026-07-11" },
+        statement:
+          "I have no idea why the bottom says Codex requires Open Agent session. Don't put that shit in the UI ever. Remove that.",
+        authorityBoundary:
+          "Removing the caption never enables a dead lane: an unavailable chip stays visually disabled and refuses the action, and the reason string survives only in the chip's accessible label and host logs/journal. This does not weaken the evidence-gated composer or no-silent-substitution contracts.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/renderer/shell.ts",
+          "apps/openagents-desktop/src/live-proof.ts",
+          "github:OpenAgentsInc/openagents#8712",
+        ],
+        oracles: [
+          {
+            id: "chat_no_disabled_caption.composer_render",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/shell.test.ts",
+            description:
+              "Proves no caption node and no reason-bearing Text renders anywhere in the composer for any lane state, while the disabled chip keeps the reason as its accessible label and Send stays evidence-gated.",
+          },
+          {
+            id: "chat_no_disabled_caption.smoke",
+            kind: "bun-test",
+            mode: "e2e",
+            ref: "apps/openagents-desktop/src/main.ts",
+            description:
+              "The built-Electron smoke asserts the disabled Codex chip carries its reason via aria-label only and that no standing caption text exists in the composer.",
+          },
+        ],
+        verification:
+          "bun run --cwd apps/openagents-desktop verify runs the composer suite and the Electron smoke; the live-proof driver journals the chip's disabled state + aria-label instead of any visible caption.",
+      },
+      {
+        contractId: "openagents_desktop.chat.markdown_rendering.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "assistant message markdown rendering",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "owner-video-review", statedBy: "owner", statedOn: "2026-07-11" },
+        statement:
+          "The markdown isn't rendered as markdown, so fix our fucking markdown rendering. I thought we had built a component for that.",
+        authorityBoundary:
+          "Assistant bodies parse a bounded markdown subset (headings, bold, italics, inline code, fenced code, lists, blockquotes, rules) into the typed catalog Markdown/CodeBlock/Divider views — text nodes only, no raw HTML is constructible, and links render as safe text, never navigation. User input stays literal. Mid-stream unterminated markers render as plain text until closed; re-parsing per append never throws.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/renderer/markdown.ts",
+          "apps/openagents-desktop/src/renderer/shell.ts",
+          "github:OpenAgentsInc/openagents#8712",
+        ],
+        oracles: [
+          {
+            id: "chat_markdown.projector_unit",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/markdown.test.ts",
+            description:
+              "Proves the bounded subset parses to typed blocks, hostile link schemes stay inert text, unterminated **/`/``` render gracefully mid-stream, and segments lower to Markdown/CodeBlock/Divider catalog views with stable keys.",
+          },
+          {
+            id: "chat_markdown.assistant_body",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/shell.test.ts",
+            description:
+              "Proves assistant note bodies project through the markdown views while user text stays literal.",
+          },
+          {
+            id: "chat_markdown.smoke",
+            kind: "bun-test",
+            mode: "e2e",
+            ref: "apps/openagents-desktop/src/main.ts",
+            description:
+              "The built-Electron fable fixture journey streams a mid-marker-split **streaming** reply and asserts the final assistant body renders a real <strong> with no literal ** text.",
+          },
+        ],
+        verification:
+          "bun run --cwd apps/openagents-desktop verify runs the markdown projector suite, the shell view suite, and the Electron smoke markdown assertion.",
+      },
       {
         contractId: "openagents_desktop.seam.replaceable_owned_correlated_services.v1",
         state: "enforced",
