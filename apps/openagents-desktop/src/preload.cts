@@ -66,6 +66,12 @@ import {
   type FableLocalEventEnvelope,
 } from "./fable-local-contract.ts"
 import {
+  CodexLocalAvailabilityChannel,
+  CodexLocalEventChannel,
+  CodexLocalInterruptChannel,
+  CodexLocalStartChannel,
+} from "./codex-local-contract.ts"
+import {
   UsageLedgerEventChannel,
   UsageLedgerSnapshotChannel,
   decodeUsageLedgerSnapshot,
@@ -218,6 +224,32 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
       }
       ipcRenderer.on(FableLocalEventChannel, handler)
       return () => ipcRenderer.removeListener(FableLocalEventChannel, handler)
+    },
+  },
+  /**
+   * Codex local lane (EP250 codex-first-class): mirrors the fableLocal
+   * bridge exactly — same frozen request/event schemas, its own channels.
+   * The renderer never sees tokens, account homes, or raw exec payloads.
+   */
+  codexLocal: {
+    availability: () => ipcRenderer.invoke(CodexLocalAvailabilityChannel),
+    start: (value: unknown) => {
+      const request = decodeFableLocalStartRequest(value)
+      return request === null
+        ? Promise.resolve({ ok: false, error: "That message could not be sent." })
+        : ipcRenderer.invoke(CodexLocalStartChannel, request)
+    },
+    interrupt: (value: unknown) => {
+      const request = decodeFableLocalInterruptRequest(value)
+      return request === null ? Promise.resolve(false) : ipcRenderer.invoke(CodexLocalInterruptChannel, request)
+    },
+    onEvent: (listener: (envelope: FableLocalEventEnvelope) => void) => {
+      const handler = (_event: unknown, value: unknown): void => {
+        const decoded = decodeFableLocalEventEnvelope(value)
+        if (decoded !== null) listener(decoded)
+      }
+      ipcRenderer.on(CodexLocalEventChannel, handler)
+      return () => ipcRenderer.removeListener(CodexLocalEventChannel, handler)
     },
   },
   /**

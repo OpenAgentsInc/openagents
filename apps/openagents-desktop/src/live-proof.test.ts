@@ -20,8 +20,9 @@ import {
 } from "./live-proof.ts"
 
 describe("live-proof step list (EP250 journey)", () => {
-  test("walks the journey in the episode order", () => {
+  test("walks the journey in the episode order (EP250 preflight is step 0)", () => {
     expect(liveProofSteps.map((step) => step.name)).toEqual([
+      "account-preflight",
       "shell-mounted",
       "fleet-workspace",
       "fleet-usage-check",

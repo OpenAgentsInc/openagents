@@ -137,8 +137,9 @@ export const sharedCodexAccountHealth: CodexAccountHealth = makeCodexAccountHeal
 const bounded = (value: string, limit: number): string =>
   value.length > limit ? `${value.slice(0, limit - 1)}…` : value
 
-/** Public-safe redaction: the child workspace and the home prefix never leak. */
-const redactChildText = (value: string, workspace: string, home = homedir()): string => {
+/** Public-safe redaction: the child workspace and the home prefix never leak.
+ * Shared with the codex-local chat lane (./codex-local-runtime.ts). */
+export const redactChildText = (value: string, workspace: string, home = homedir()): string => {
   let out = value
   if (workspace.length > 0) out = out.split(workspace).join("<child-workspace>")
   if (home.length > 0) out = out.split(home).join("~")
@@ -175,7 +176,7 @@ export const discoverRegisteredCodexAccounts = async (
   return accounts
 }
 
-type ChildLike = {
+export type ChildLike = {
   stdout: NodeJS.ReadableStream | null
   stderr: NodeJS.ReadableStream | null
   on: (event: "close" | "error", listener: (...args: unknown[]) => void) => unknown
@@ -189,7 +190,8 @@ export type CodexChildSpawn = (input: Readonly<{
   cwd: string
 }>) => ChildLike | null
 
-const defaultSpawnCodex: CodexChildSpawn = input => {
+/** Shared real `codex` spawn (children, the codex-local chat lane, probes). */
+export const defaultSpawnCodex: CodexChildSpawn = input => {
   try {
     return spawn("codex", [...input.args], {
       cwd: input.cwd,
@@ -198,6 +200,45 @@ const defaultSpawnCodex: CodexChildSpawn = input => {
     }) as unknown as ChildLike
   } catch {
     return null
+  }
+}
+
+/**
+ * Shared newline-delimited JSON consumer (the exact parser the child runtime
+ * streams `codex exec --json` stdout through). Extracted so the codex-local
+ * chat lane and the preflight prober parse IDENTICALLY — one parser, three
+ * consumers. Non-JSON lines are ignored (the exit code decides).
+ */
+export const makeCodexJsonLineConsumer = (
+  onEvent: (event: Record<string, unknown>) => void,
+): { push: (chunk: string) => void; flush: () => void } => {
+  let buffer = ""
+  const drain = (): void => {
+    let newline = buffer.indexOf("\n")
+    while (newline >= 0) {
+      const line = buffer.slice(0, newline).trim()
+      buffer = buffer.slice(newline + 1)
+      if (line.length > 0) {
+        try {
+          onEvent(JSON.parse(line) as Record<string, unknown>)
+        } catch {
+          // non-JSON output lines are ignored; the exit code decides
+        }
+      }
+      newline = buffer.indexOf("\n")
+    }
+  }
+  return {
+    push: chunk => {
+      buffer += chunk
+      drain()
+    },
+    flush: () => {
+      if (buffer.trim().length > 0) {
+        buffer += "\n"
+        drain()
+      }
+    },
   }
 }
 
@@ -309,7 +350,6 @@ export const makeCodexChildRuntime = (options: CodexChildRuntimeOptions): CodexC
 
       let done = false
       let timedOut = false
-      let stdoutBuffer = ""
       let stderrText = ""
       let agentText = ""
       let usage: CodexChildUsage | null = null
@@ -365,26 +405,12 @@ export const makeCodexChildRuntime = (options: CodexChildRuntimeOptions): CodexC
         }
       }
 
-      const consumeStdout = (chunk: string): void => {
-        stdoutBuffer += chunk
-        let newline = stdoutBuffer.indexOf("\n")
-        while (newline >= 0) {
-          const line = stdoutBuffer.slice(0, newline).trim()
-          stdoutBuffer = stdoutBuffer.slice(newline + 1)
-          if (line.length > 0) {
-            try {
-              const parsed = JSON.parse(line) as Record<string, unknown>
-              handleEvent(parsed)
-            } catch {
-              // non-JSON output lines are ignored; the exit code decides
-            }
-          }
-          newline = stdoutBuffer.indexOf("\n")
-        }
-      }
+      // The SHARED parser (makeCodexJsonLineConsumer): identical parsing for
+      // children, the codex-local chat lane, and the preflight prober.
+      const jsonLines = makeCodexJsonLineConsumer(handleEvent)
 
       child.stdout?.on("data", (chunk: Buffer | string) => {
-        consumeStdout(typeof chunk === "string" ? chunk : chunk.toString("utf8"))
+        jsonLines.push(typeof chunk === "string" ? chunk : chunk.toString("utf8"))
       })
       child.stderr?.on("data", (chunk: Buffer | string) => {
         stderrText += typeof chunk === "string" ? chunk : chunk.toString("utf8")
@@ -400,7 +426,7 @@ export const makeCodexChildRuntime = (options: CodexChildRuntimeOptions): CodexC
         })
       })
       child.on("close", (...args: unknown[]) => {
-        if (stdoutBuffer.trim().length > 0) consumeStdout("\n")
+        jsonLines.flush()
         const exitCode = typeof args[0] === "number" ? args[0] : null
         // Pre-content = the child never completed an agent_message AND
         // consumed zero usage. Only pre-content failures are rotation-
@@ -622,6 +648,73 @@ export const fixtureCodexShortAuthStdout = JSON.stringify({
   type: "turn.failed",
   error: { message: FIXTURE_CODEX_SHORT_AUTH_MESSAGE },
 })
+
+// ---------------------------------------------------------------------------
+// EP250 failure-signature corpus fixtures — VERBATIM from live captures on
+// this machine (2026-07-11, codex-cli 0.144.1) unless marked otherwise. These
+// are the checked-in regression corpus rows codex-connection-signatures.test.ts
+// drives through the REAL parser/classifier/rotation path.
+// ---------------------------------------------------------------------------
+
+/** Live dead-token home: the 401 token_invalidated stderr shape (bounded). */
+export const fixtureCodex401TokenInvalidatedStderr =
+  "2026-07-11T22:24:59.492116Z ERROR codex_models_manager::manager: failed to refresh available models: " +
+  "unexpected status 401 Unauthorized: Your authentication token has been invalidated. Please try signing in again., " +
+  "url: https://chatgpt.com/backend-api/codex/models?client_version=0.144.1, auth error: 401, auth error code: token_invalidated\n"
+
+/** Live dead-token home: the refresh_token_invalidated stderr shape. */
+export const fixtureCodexRefreshTokenInvalidatedStderr =
+  '2026-07-11T22:25:01.451920Z ERROR codex_login::auth::manager: Failed to refresh token: 401 Unauthorized: {\n' +
+  '  "error": {\n' +
+  '    "message": "Your session has ended. Please log in again.",\n' +
+  '    "type": "invalid_request_error",\n' +
+  '    "param": null,\n' +
+  '    "code": "refresh_token_invalidated"\n' +
+  "  }\n" +
+  "}\n"
+
+/**
+ * Live MISSING-auth.json home (empty CODEX_HOME): codex still starts a
+ * thread, then fails the turn with the bearer-missing 401 (exit 1).
+ */
+export const FIXTURE_CODEX_MISSING_AUTH_MESSAGE =
+  "unexpected status 401 Unauthorized: Missing bearer or basic authentication in header, " +
+  "url: https://api.openai.com/v1/responses, cf-ray: a19b39369db416c1-IAH, request id: req_339cb3060e904432b50586883d8fb6c6"
+
+export const fixtureCodexMissingAuthStdout = [
+  JSON.stringify({ type: "thread.started", thread_id: "019f5348-b91a-7543-a191-1a73f143dd24" }),
+  JSON.stringify({ type: "turn.started" }),
+  JSON.stringify({ type: "error", message: `Reconnecting... 5/5 (${FIXTURE_CODEX_MISSING_AUTH_MESSAGE})` }),
+  JSON.stringify({ type: "error", message: FIXTURE_CODEX_MISSING_AUTH_MESSAGE }),
+  JSON.stringify({ type: "turn.failed", error: { message: FIXTURE_CODEX_MISSING_AUTH_MESSAGE } }),
+].join("\n")
+
+/**
+ * Live MALFORMED auth.json: exit 1 with EMPTY stdout (no JSONL events at
+ * all) and only this stderr line — a NON-auth pre-content failure shape (no
+ * marker matches), so it must rotate as pre_content_failure_rotated.
+ */
+export const fixtureCodexMalformedAuthStderr = "key must be a string at line 1 column 2\n"
+
+/** Synthetic (shape mirrors codex-rs retry copy): quota/429 rate-limit. */
+export const FIXTURE_CODEX_RATE_LIMIT_MESSAGE =
+  "unexpected status 429 Too Many Requests: You've hit your usage limit. Try again later."
+
+export const fixtureCodexRateLimitStdout = [
+  JSON.stringify({ type: "thread.started", thread_id: "thread-rate-limit" }),
+  JSON.stringify({ type: "turn.started" }),
+  JSON.stringify({ type: "turn.failed", error: { message: FIXTURE_CODEX_RATE_LIMIT_MESSAGE } }),
+].join("\n")
+
+/** Synthetic (reqwest connect-error shape): network refused pre-content. */
+export const FIXTURE_CODEX_NETWORK_REFUSED_MESSAGE =
+  "error sending request for url (https://chatgpt.com/backend-api/codex/responses): connection refused"
+
+export const fixtureCodexNetworkRefusedStdout = [
+  JSON.stringify({ type: "thread.started", thread_id: "thread-net-refused" }),
+  JSON.stringify({ type: "error", message: FIXTURE_CODEX_NETWORK_REFUSED_MESSAGE }),
+  JSON.stringify({ type: "turn.failed", error: { message: FIXTURE_CODEX_NETWORK_REFUSED_MESSAGE } }),
+].join("\n")
 
 /** A successful child stream with exact usage totals. */
 export const fixtureCodexSuccessStdout = (threadId = "thread-fixture-1"): string =>

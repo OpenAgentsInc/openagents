@@ -75,6 +75,12 @@ export const FableLocalFailureReasonSchema = Schema.Literals([
    * failures before content only).
    */
   "model_substituted",
+  // Codex-local lane reasons (EP250 codex-first-class, additive): the direct
+  // local Codex chat lane shares this envelope so the existing renderer
+  // stream path renders codex turns identically. Fable turns never emit
+  // these two.
+  "no_codex_account",
+  "account_reconnect_required",
 ])
 export type FableLocalFailureReason = typeof FableLocalFailureReasonSchema.Type
 
@@ -161,6 +167,26 @@ export const FableLocalEventSchema = Schema.Union([
     kind: Schema.Literal("turn_failed"),
     reason: FableLocalFailureReasonSchema,
     detail: Schema.String.check(Schema.isMaxLength(FABLE_LOCAL_SUMMARY_LIMIT)),
+  }),
+  /**
+   * Reasoning treatment (EP250 codex-first-class, additive): the codex-local
+   * lane surfaces completed `reasoning` items as bounded summaries. The
+   * renderer projects them as compact system trace lines ("Reasoning · …"),
+   * the same treatment the runtime timeline gives reasoning items.
+   */
+  Schema.Struct({
+    kind: Schema.Literal("reasoning"),
+    text: Schema.String.check(Schema.isMaxLength(FABLE_LOCAL_SUMMARY_LIMIT)),
+  }),
+  /**
+   * Typed, VISIBLE lane notice (EP250 codex-first-class, additive): the
+   * codex-local lane's account rotation announcements ("account X needs
+   * reconnect — rotating…"). Rotation is never silent — the transcript
+   * carries the notice as a compact system line.
+   */
+  Schema.Struct({
+    kind: Schema.Literal("lane_notice"),
+    text: Schema.String.check(Schema.isMaxLength(FABLE_LOCAL_SUMMARY_LIMIT)),
   }),
   // -------------------------------------------------------------------------
   // Codex sub-agent (child) lifecycle (#8712 Lane C) — additive. The renderer
@@ -367,5 +393,12 @@ export const fableLocalFailureMessage = (
       return `The local Fable turn failed${suffix}.`
     case "model_substituted":
       return `Fable refused a substituted model${suffix}. No substituted output was shown as Fable.`
+    // Codex-local reasons never reach this fable-branded formatter in the
+    // renderer (the codex lane formats through codexLocalFailureMessage), but
+    // the switch stays exhaustive over the shared reason set.
+    case "no_codex_account":
+      return "No Codex account is registered on this machine. No message was routed to any other lane."
+    case "account_reconnect_required":
+      return `Every registered Codex account needs reconnect${suffix}. Reconnect in Settings — no message was routed to any other lane.`
   }
 }

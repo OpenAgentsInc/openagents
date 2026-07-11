@@ -29,6 +29,16 @@ export type UsageLedger = Readonly<{
     provider: UsageLedgerProvider
     accountRef: string
   }>) => void
+  /**
+   * Fresh PROBE-VERIFIED evidence (EP250 preflight): a real minimal turn
+   * completed on this account this session, superseding (and clearing) any
+   * earlier sticky reconnectRequired mark — after a UI reconnect the fleet
+   * projection must not keep showing "reconnect required".
+   */
+  markVerified: (input: Readonly<{
+    provider: UsageLedgerProvider
+    accountRef: string
+  }>) => void
   snapshot: () => UsageLedgerSnapshot
   subscribe: (listener: (snapshot: UsageLedgerSnapshot) => void) => () => void
   dispose: () => void
@@ -100,6 +110,8 @@ export const makeUsageLedger = (now: () => Date = () => new Date()): UsageLedger
       })),
     markReconnectRequired: input =>
       upsert(input.provider, input.accountRef, row => ({ ...row, reconnectRequired: true })),
+    markVerified: input =>
+      upsert(input.provider, input.accountRef, row => ({ ...row, reconnectRequired: false })),
     snapshot,
     subscribe: listener => {
       listeners.add(listener)

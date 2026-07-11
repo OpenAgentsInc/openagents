@@ -28,6 +28,7 @@ import type { BrowserWindow } from "electron"
 // ---------------------------------------------------------------------------
 
 export type LiveProofStepName =
+  | "account-preflight"
   | "shell-mounted"
   | "fleet-workspace"
   | "fleet-usage-check"
@@ -48,6 +49,10 @@ export type LiveProofStep = Readonly<{
 
 /** The EP250 journey, in execution order. */
 export const liveProofSteps: ReadonlyArray<LiveProofStep> = [
+  // Step 0 (EP250 preflight): the real per-account validity probe round over
+  // the real registry. Probes run concurrently (each ~30s-bounded); the step
+  // bound covers a slow cold round without ever hanging the journey.
+  { name: "account-preflight", required: false, timeoutMs: 240_000 },
   { name: "shell-mounted", required: true, timeoutMs: 30_000 },
   // The real pylon CLI list spawn (bun + registry read) can be slow on a
   // cold machine; the provider-accounts list timeout itself is 120s.
@@ -239,6 +244,19 @@ const probeTurnScript = `(() => {
 export type LiveProofRunOptions = Readonly<{
   outDir: string
   exit: (code: number) => void
+  /**
+   * Step 0 (EP250): the host-side account preflight over the REAL registry.
+   * Returns per-account probe results ({ ref, state, detail, observedAt,
+   * durationMs }); the driver journals each honestly (verified/broken with
+   * reasons). Absent on builds without the preflight service.
+   */
+  preflight?: () => Promise<ReadonlyArray<Readonly<{
+    ref: string
+    state: string
+    detail: string
+    observedAt: string
+    durationMs: number
+  }>>>
   log?: (message: string) => void
   logError?: (message: string) => void
 }>
@@ -569,8 +587,42 @@ export const runLiveProof = (window: BrowserWindow, options: LiveProofRunOptions
     })
   }
 
+  const stepPreflight = async (): Promise<void> => {
+    if (options.preflight === undefined) {
+      record("account-preflight", false, { reason: "preflight service not wired on this build" })
+      return
+    }
+    try {
+      const results = await Promise.race([
+        options.preflight(),
+        new Promise<null>(resolve =>
+          setTimeout(() => resolve(null), liveProofStepTimeoutMs("account-preflight"))),
+      ])
+      if (results === null) {
+        record("account-preflight", false, { reason: "preflight round timed out" })
+        return
+      }
+      const verified = results.filter(result => result.state === "verified")
+      record("account-preflight", verified.length > 0, {
+        accountCount: results.length,
+        verifiedCount: verified.length,
+        accounts: results.map(result => ({
+          ref: result.ref,
+          state: result.state,
+          detail: result.detail.slice(0, 120),
+          durationMs: result.durationMs,
+        })),
+      })
+    } catch (error) {
+      record("account-preflight", false, {
+        reason: error instanceof Error ? error.message.slice(0, 200) : "preflight failed",
+      })
+    }
+  }
+
   const journey = async (): Promise<void> => {
     try {
+      await stepPreflight()
       await stepShell()
       const rows = await stepFleet()
       await stepUsage(rows)

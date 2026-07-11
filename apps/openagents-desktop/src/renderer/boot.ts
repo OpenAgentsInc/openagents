@@ -51,6 +51,11 @@ import {
   type FableLocalAvailability,
   type FableLocalEventEnvelope,
 } from "../fable-local-contract.ts"
+import {
+  codexHarnessLaneFromAvailability,
+  decodeCodexLocalAvailability,
+  type CodexLocalAvailability,
+} from "../codex-local-contract.ts"
 import { type DesktopThread } from "../chat-contract.ts"
 import {
   type DesktopWorkspaceFile,
@@ -119,6 +124,13 @@ type DesktopBridge = Readonly<{
     onEvent?: (listener: (envelope: FableLocalEventEnvelope) => void) => () => void
     /** FROZEN question-answer bridge (EP250) — ships with the runtime lane. */
     answerQuestion?: (value: unknown) => Promise<unknown>
+  }>
+  /** Codex local lane (EP250 codex-first-class): same bridge shape. */
+  codexLocal?: Readonly<{
+    availability?: () => Promise<unknown>
+    start?: (value: unknown) => Promise<unknown>
+    interrupt?: (value: unknown) => Promise<unknown>
+    onEvent?: (listener: (envelope: FableLocalEventEnvelope) => void) => () => void
   }>
   usageLedger?: Readonly<{
     snapshot?: () => Promise<unknown>
@@ -315,10 +327,30 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
       ? { answer: (input: Readonly<{ turnRef: string; questionRef: string; answers: ReadonlyArray<{ readonly question: string; readonly labels: ReadonlyArray<string> }> }>) => answerQuestion({ turnRef: input.turnRef, questionRef: input.questionRef, answers: input.answers }) }
       : { answer: null }
     let fableAvailability: FableLocalAvailability | null = null
+    // Codex local lane (EP250): same narrow bridge shape over its own
+    // channels; the local-mode chat host routes "codex" through it over
+    // PROBE-VERIFIED evidence only — never the legacy cloud gateway.
+    const codexLocalBridge: FableLocalRendererBridge | null =
+      typeof bridge?.codexLocal?.start === "function" &&
+      typeof bridge.codexLocal.availability === "function" &&
+      typeof bridge.codexLocal.interrupt === "function" &&
+      typeof bridge.codexLocal.onEvent === "function"
+        ? {
+            availability: bridge.codexLocal.availability,
+            start: bridge.codexLocal.start,
+            interrupt: bridge.codexLocal.interrupt,
+            onEvent: bridge.codexLocal.onEvent as (
+              listener: (envelope: FableLocalEventEnvelope) => void,
+            ) => () => void,
+          }
+        : null
+    let codexAvailability: CodexLocalAvailability | null = null
     const localHarnessChat = makeLocalHarnessChatHost({
       base: localChat,
       fable: fableLocalBridge,
       fableAvailability: () => fableAvailability,
+      codex: codexLocalBridge,
+      codexAvailability: () => codexAvailability,
     })
     const selection = yield* Effect.promise(() => selectDesktopChatHostSelection({
       request: bridge?.runtimeRequest,
@@ -388,18 +420,43 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
         fableLocalBridge.availability().catch(() => null))
       fableAvailability = decodeFableLocalAvailability(rawAvailability)
     }
+    // Composer lanes (EP250 chip-verified-evidence rule): the Codex chip
+    // lights only on a PROBE-VERIFIED account. The preflight probe is a real
+    // (bounded) codex turn per account, so first mount is never blocked on
+    // it: the chip starts as "verifying…" and the availability promise
+    // updates the lane state as soon as the session probe lands.
+    const localLanes = (): HarnessLanes => ({
+      fable: fableAvailability?.state === "available"
+        ? { available: true, reason: null }
+        : { available: false, reason: "Fable — unavailable: no linked Claude account" },
+      codex: codexLocalBridge === null
+        ? { available: false, reason: "Codex — no verified account · Reconnect in Settings" }
+        : codexHarnessLaneFromAvailability(codexAvailability),
+    })
     const harnessLanes: HarnessLanes = selection.mode === "runtime"
       ? {
           fable: { available: true, reason: null },
           codex: { available: true, reason: null },
         }
-      : {
-          fable: fableAvailability?.state === "available"
-            ? { available: true, reason: null }
-            : { available: false, reason: "Fable — unavailable: no linked Claude account" },
-          codex: { available: false, reason: "Codex — requires OpenAgents session" },
-        }
+      : localLanes()
     yield* SubscriptionRef.update(state, current => withHarnessLanes(current, harnessLanes))
+    if (selection.mode === "local" && codexLocalBridge !== null) {
+      // Non-blocking: the probe round can take tens of seconds on broken
+      // accounts; the shell mounts immediately and the chip updates when
+      // session-scoped probe evidence lands.
+      void codexLocalBridge.availability()
+        .catch(() => null)
+        .then(raw => {
+          // A failed decode is honest non-evidence: the chip settles on the
+          // reconnect reason rather than parking on "verifying…" forever.
+          codexAvailability = decodeCodexLocalAvailability(raw) ??
+            { state: "unavailable", reason: "no_verified_account" }
+          return Effect.runPromise(
+            SubscriptionRef.update(state, current => withHarnessLanes(current, localLanes())),
+          )
+        })
+        .catch(() => {})
+    }
     yield* SubscriptionRef.update(state, current => ({
       ...current,
       questionAnswerHostAvailable: questionHost.answer !== null,

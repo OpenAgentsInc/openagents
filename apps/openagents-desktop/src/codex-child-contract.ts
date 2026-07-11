@@ -121,6 +121,38 @@ export const isCodexReconnectRequiredText = (text: string): boolean => {
   return CODEX_RECONNECT_MARKERS.some(marker => lowered.includes(marker))
 }
 
+/**
+ * Rate-limit / quota classification (EP250 signature corpus). A rate-limited
+ * account is NOT credential-broken: it rotates (another distinct account has
+ * its own budget) but is never health-demoted to auth_failed, and the UI
+ * reason names the quota, never a reconnect. Checked AFTER the auth-class
+ * markers — auth-class wins when both would match.
+ */
+export const CODEX_RATE_LIMIT_MARKERS = [
+  "429",
+  "rate limit",
+  "rate-limit",
+  "too many requests",
+  "usage limit",
+  "quota",
+] as const
+
+export const isCodexRateLimitText = (text: string): boolean => {
+  if (isCodexReconnectRequiredText(text)) return false
+  const lowered = text.toLowerCase()
+  return CODEX_RATE_LIMIT_MARKERS.some(marker => lowered.includes(marker))
+}
+
+/** The three-way signature classification the corpus table asserts per row. */
+export type CodexFailureClass = "auth" | "rate_limit" | "generic"
+
+export const classifyCodexFailureText = (text: string): CodexFailureClass =>
+  isCodexReconnectRequiredText(text)
+    ? "auth"
+    : isCodexRateLimitText(text)
+      ? "rate_limit"
+      : "generic"
+
 /** Streamed to the caller while ONE child runs (already public-safe). */
 export type CodexChildStreamEvent =
   | Readonly<{ kind: "attempt_started"; accountRef: string }>

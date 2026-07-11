@@ -71,10 +71,27 @@ import {
   fixtureCodexRevokedStderr,
   fixtureCodexRevokedStdout,
   fixtureCodexSuccessStdout,
+  makeCodexAccountHealth,
   makeCodexChildRuntime,
   makeFixtureCodexChildSpawn,
 } from "./codex-child-runtime.ts"
 import { CODEX_CHILD_MODEL } from "./codex-child-contract.ts"
+import {
+  CodexLocalAvailabilityChannel,
+  CodexLocalEventChannel,
+  CodexLocalInterruptChannel,
+  CodexLocalStartChannel,
+  codexLocalFailureMessage,
+  codexLocalModelNoteText,
+  codexLocalRequestedModelLabel,
+} from "./codex-local-contract.ts"
+import {
+  FIXTURE_CODEX_LOCAL_ACCOUNT,
+  FIXTURE_CODEX_LOCAL_TEXT,
+  fixtureCodexLocalTurnStdout,
+  makeCodexLocalRuntime,
+} from "./codex-local-runtime.ts"
+import { makeCodexPreflight, type CodexProbeResult } from "./codex-preflight.ts"
 import {
   UsageLedgerEventChannel,
   UsageLedgerSnapshotChannel,
@@ -658,6 +675,75 @@ const codexChildren = makeCodexChildRuntime({
       }
     : {}),
 })
+// Codex account PREFLIGHT (EP250 anti-speedbump core): a cheap REAL validity
+// probe per registered account — a minimal bounded `codex exec` turn in a
+// read-only sandbox (receipted ~3.5s on a live account; `codex login status`
+// is presence-only and reports "Logged in" on revoked homes, so it can never
+// be the probe). Runs on boot (async, non-blocking), on fleet Refresh, after
+// reconnect completion, and lazily before the first dispatch this session.
+// Results are session-scoped truth feeding the shared account health
+// ordering, the fleet readiness projection (via the ledger's typed
+// reconnectRequired flag), the composer chip, and the live-proof journal.
+if (smokeMode) {
+  console.log("[openagents-desktop] codex-preflight running in SMOKE FIXTURE mode (scripted probes, no real spawn)")
+  console.log("[openagents-desktop] codex-local running in SMOKE FIXTURE mode (scripted codex exec, no real spawn)")
+}
+const recordProbeEvidence = (result: CodexProbeResult): void => {
+  if (result.state === "verified") {
+    usageLedger.markVerified({ provider: "codex", accountRef: result.ref })
+    return
+  }
+  if (result.state === "reconnect_required" || result.state === "credentials_missing" ||
+    result.state === "probe_failed") {
+    usageLedger.markReconnectRequired({ provider: "codex", accountRef: result.ref })
+  }
+  // rate_limited: the credential is live — no reconnect mark either way.
+}
+const codexPreflight = makeCodexPreflight({
+  scratchRoot: () => path.join(app.getPath("userData"), "fable-local"),
+  onResult: recordProbeEvidence,
+  ...(smokeMode
+    ? {
+        // Isolated health in smoke so the scripted probe round does not
+        // reorder the delegate-child fixture's attempt sequence.
+        health: makeCodexAccountHealth(),
+        hasAuthImpl: () => true,
+        spawnImpl: makeFixtureCodexChildSpawn([
+          { stdout: fixtureCodexRevokedStdout, stderr: fixtureCodexRevokedStderr, exitCode: 1 },
+          { stdout: fixtureCodexSuccessStdout("thread-probe-codex-2"), exitCode: 0 },
+          { stdout: fixtureCodexSuccessStdout("thread-probe-fixture"), exitCode: 0 },
+        ]),
+        discoverImpl: async () => [
+          { ref: "codex", home: "/nonexistent/fixture-codex" },
+          { ref: "codex-2", home: "/nonexistent/fixture-codex-2" },
+          FIXTURE_CODEX_LOCAL_ACCOUNT,
+        ],
+      }
+    : {}),
+})
+// Codex local chat lane (EP250 codex-first-class): the composer's Codex chip
+// in local mode — a real `codex exec --json` turn per send, on the isolated
+// registry homes, with session-resume continuity (no --ephemeral; children
+// keep --ephemeral). Smoke drives a scripted stream through the REAL parser.
+const codexLocal = makeCodexLocalRuntime({
+  scratchRoot: () => path.join(app.getPath("userData"), "fable-local"),
+  preflight: codexPreflight,
+  onAccountEvidence: input => {
+    if (input.evidence === "verified") {
+      usageLedger.markVerified({ provider: "codex", accountRef: input.accountRef })
+    } else {
+      usageLedger.markReconnectRequired({ provider: "codex", accountRef: input.accountRef })
+    }
+  },
+  ...(smokeMode
+    ? {
+        spawnImpl: makeFixtureCodexChildSpawn([
+          { stdout: fixtureCodexLocalTurnStdout(), exitCode: 0 },
+        ]),
+        discoverImpl: async () => [FIXTURE_CODEX_LOCAL_ACCOUNT],
+      }
+    : {}),
+})
 const fableLocal = makeFableLocalRuntime({
   scratchRoot: () => path.join(app.getPath("userData"), "fable-local"),
   delegate: codexChildren,
@@ -831,6 +917,113 @@ ipcMain.handle(FableLocalStartChannel, async (event, value: unknown) => {
     : { ok: true, thread }
 })
 
+// Codex local lane (EP250 codex-first-class): a REAL `codex exec --json`
+// turn on this machine in local mode, on the isolated registry homes —
+// never the default ~/.codex, never the cloud gateway. Availability is
+// PROBE-VERIFIED evidence (see codexPreflight above). Events reuse the
+// frozen fable-local envelope over the codex-local channels.
+ipcMain.handle(CodexLocalAvailabilityChannel, () => codexLocal.availability())
+ipcMain.handle(CodexLocalInterruptChannel, (_event, value: unknown) => {
+  const request = decodeFableLocalInterruptRequest(value)
+  return request === null ? false : codexLocal.interrupt(request.turnRef)
+})
+ipcMain.handle(CodexLocalStartChannel, async (event, value: unknown) => {
+  const request = decodeFableLocalStartRequest(value)
+  if (request === null || request.message.trim() === "") {
+    return { ok: false, error: "That message could not be sent." }
+  }
+  const store = threads()
+  const user: DesktopMessage = {
+    key: randomUUID(),
+    role: "user",
+    text: request.message.trim(),
+    timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+  }
+  const saved = store.append(request.threadRef, user)
+  if (saved === null) return { ok: false, error: "That conversation no longer exists." }
+  const history = saved.notes.slice(0, -1).map(note => ({ role: note.role, text: note.text }))
+  const sender = event.sender
+  // Message metadata (#8712 pattern): lane, spawn-config-truth model,
+  // account ref, turn ref, exact usage total, duration — plus the codex
+  // thread id (session-receipt continuity) in requestId.
+  const startedAt = Date.now()
+  let effectiveModel: string | null = null
+  const result = await codexLocal.runTurn({
+    turnRef: request.turnRef,
+    threadRef: request.threadRef,
+    history,
+    message: request.message.trim(),
+    emit: turnEvent => {
+      if (turnEvent.kind === "model_effective") effectiveModel = turnEvent.model
+      // Session usage ledger: exact usage from turn.completed, attributed to
+      // the Codex account with gpt-5.6-sol recorded as spawn-config truth.
+      if (turnEvent.kind === "turn_completed" && turnEvent.accountRef !== undefined) {
+        usageLedger.record({
+          provider: "codex",
+          accountRef: turnEvent.accountRef,
+          requestedModel: CODEX_CHILD_MODEL,
+          kind: "turn",
+          usage: turnEvent.usage ?? (turnEvent.totalTokens === null
+            ? null
+            : {
+                inputTokens: 0,
+                cachedInputTokens: 0,
+                outputTokens: 0,
+                reasoningTokens: 0,
+                totalTokens: turnEvent.totalTokens,
+              }),
+        })
+      }
+      // Persist trace/model/reasoning/notice lines so the finalized
+      // transcript keeps the same evidence the live stream showed.
+      if (turnEvent.kind === "tool_use" || turnEvent.kind === "tool_result") {
+        store.append(request.threadRef, {
+          key: randomUUID(),
+          role: "system",
+          text: fableLocalTraceNoteText(turnEvent),
+          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          meta: { trace: fableLocalTraceNoteMeta(turnEvent) },
+        })
+      }
+      if (turnEvent.kind === "model_effective" || turnEvent.kind === "reasoning" ||
+        turnEvent.kind === "lane_notice") {
+        store.append(request.threadRef, {
+          key: randomUUID(),
+          role: "system",
+          text: turnEvent.kind === "model_effective"
+            ? codexLocalModelNoteText(turnEvent.model)
+            : turnEvent.kind === "reasoning"
+              ? `Reasoning · ${turnEvent.text}`
+              : turnEvent.text,
+          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        })
+      }
+      if (sender.isDestroyed()) return
+      const forwarded = turnEvent.kind === "turn_started" ? { ...turnEvent, thread: saved } : turnEvent
+      sender.send(CodexLocalEventChannel, { turnRef: request.turnRef, event: forwarded })
+    },
+  })
+  if (!result.ok) return { ok: false, error: codexLocalFailureMessage(result.reason, result.detail) }
+  const thread = store.append(request.threadRef, {
+    key: randomUUID(),
+    role: "assistant",
+    text: result.text.slice(0, FABLE_LOCAL_FINAL_TEXT_LIMIT),
+    timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+    meta: {
+      lane: "codex-local",
+      turnRef: request.turnRef,
+      model: effectiveModel ?? codexLocalRequestedModelLabel(),
+      accountRef: result.accountRef,
+      ...(result.threadId === null ? {} : { requestId: result.threadId }),
+      totalTokens: result.totalTokens,
+      durationMs: Date.now() - startedAt,
+    },
+  })
+  return thread === null
+    ? { ok: false, error: "That conversation no longer exists." }
+    : { ok: true, thread }
+})
+
 // Codex account connect + reconnect (#8640 unblock; EP250 owner mandate:
 // the UI owns reconnect). Channels stay renderer-argument-free except the
 // reconnect start, which carries ONE grammar-bounded account ref that the
@@ -843,7 +1036,21 @@ ipcMain.handle(CodexReconnectStartChannel, (_event, ref: unknown) =>
   typeof ref === "string"
     ? hostLifecycle.account()?.startReconnect(ref) ?? { state: "failed", reason: "pylon_runtime_unavailable" }
     : { state: "failed", reason: "invalid_account_ref" })
-ipcMain.handle(CodexConnectStatusChannel, () => hostLifecycle.account()?.status() ?? { state: "failed", reason: "pylon_runtime_unavailable" })
+// Reconnect-completion probe trigger (EP250 preflight): the renderer polls
+// this status channel; a terminal "connected" state means a credential just
+// changed, so the session probe round re-runs (async, non-blocking) and the
+// chip/fleet/health projections pick up the fresh validity evidence.
+let lastProbedConnectedRef: string | null = null
+ipcMain.handle(CodexConnectStatusChannel, async () => {
+  const status = await (hostLifecycle.account()?.status() ?? { state: "failed", reason: "pylon_runtime_unavailable" })
+  const record = status as { state?: unknown; ref?: unknown }
+  if (record.state === "connected" && typeof record.ref === "string" &&
+    record.ref !== lastProbedConnectedRef) {
+    lastProbedConnectedRef = record.ref
+    void codexPreflight.probeAll("reconnect_completed").catch(() => {})
+  }
+  return status
+})
 ipcMain.handle(CodexConnectOpenChannel, () => hostLifecycle.account()?.openVerification() ?? Promise.resolve(false))
 
 // Session usage ledger (#8712 Lane C): snapshot on invoke, push on change.
@@ -854,7 +1061,13 @@ ipcMain.handle(UsageLedgerSnapshotChannel, () => usageLedger.snapshot())
 // Provider-neutral fleet accounts (#8712): read-only projections. List takes
 // no renderer arguments; usage validates the account ref on both sides of the
 // boundary. Failures stay typed `{ ok: false, reason }` — never a throw.
-ipcMain.handle(ProviderAccountsListChannel, () => providerAccounts.listProviderAccounts())
+ipcMain.handle(ProviderAccountsListChannel, () => {
+  // Fleet Refresh doubles as a probe trigger (EP250 preflight): the list
+  // spawn returns immediately with presence evidence while the validity
+  // probes stream fresh session evidence into health/ledger asynchronously.
+  void codexPreflight.probeAll("fleet_refresh").catch(() => {})
+  return providerAccounts.listProviderAccounts()
+})
 ipcMain.handle(ProviderAccountsUsageChannel, (_event, value: unknown) => {
   const request = decodeProviderAccountUsageRequest(value)
   return request === null
@@ -1272,10 +1485,19 @@ const smokeFableLocalStreaming = `(async () => {
   const codex = document.querySelector('[data-en-key="shell-harness-codex"]')
   if (fable === null || codex === null) return { ok: false, reason: "harness chips never mounted" }
   if (fable.disabled !== false) return { ok: false, reason: "fable chip disabled despite fixture account" }
-  if (codex.disabled !== true) return { ok: false, reason: "codex chip enabled without a session" }
+  // EP250 codex-first-class: the fixture preflight VERIFIES an account, so
+  // the codex chip must light on that evidence (poll: the availability
+  // promise resolves asynchronously after mount).
+  {
+    const deadline = Date.now() + 10000
+    while (Date.now() < deadline && codex.disabled !== false) {
+      await wait(50)
+    }
+  }
+  if (codex.disabled !== false) return { ok: false, reason: "codex chip stayed disabled despite a fixture PROBE-VERIFIED account" }
   const codexAria = codex.getAttribute("aria-label") || ""
   if (!codexAria.includes("Codex")) {
-    return { ok: false, reason: "codex disabled chip lost its accessible reason label" }
+    return { ok: false, reason: "codex chip lost its accessible label" }
   }
   const composer = document.querySelector('[data-en-key="shell-composer"]')
   // No STANDING caption: visible composer text must not carry the reason.
@@ -1444,6 +1666,77 @@ const smokeQuestionCard = `(async () => {
     ok: revertedPending && noFakeAnswered,
     revertedPending,
     noFakeAnswered,
+  }
+})()`
+
+// Codex local streamed turn (EP250 codex-first-class): from the same fresh
+// chat, selecting the Codex chip and sending must stream a REAL fixture
+// `codex exec --json` event sequence through the actual parser, IPC bridge,
+// thread persistence, and renderer path — rendering IDENTICALLY to fable
+// turns: reasoning line, Bash tool card, markdown assistant body (a real
+// <strong>), the "Codex · gpt-5.6-sol (requested)" spawn-config-truth
+// caption, no ASSISTANT label, and the composer re-enabled.
+const smokeCodexLocalStreaming = `(async () => {
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+  const codex = document.querySelector('[data-en-key="shell-harness-codex"]')
+  if (codex === null) return { ok: false, reason: "codex chip never mounted" }
+  if (codex.disabled !== false) return { ok: false, reason: "codex chip disabled despite fixture verified account" }
+  codex.click()
+  const input = document.querySelector('[data-en-key="shell-input"] input')
+  if (input === null) return { ok: false, reason: "composer input never mounted" }
+  input.focus()
+  input.value = "Stream a codex-local proof"
+  input.dispatchEvent(new Event("input", { bubbles: true }))
+  const assistantBodies = () => Array.from(
+    document.querySelectorAll('[data-en-key="shell-transcript"] [data-en-message][data-en-role="assistant"] [data-en-role="body"]'),
+  )
+  const bodiesBefore = assistantBodies().length
+  input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }))
+  const finalText = "Codex local fixture proof."
+  const lastAssistantText = () => {
+    const bodies = assistantBodies()
+    const last = bodies[bodies.length - 1]
+    if (last === undefined || bodies.length <= bodiesBefore) return ""
+    return Array.from(last.childNodes)
+      .filter((node) => !(node instanceof HTMLElement &&
+        (node.tagName === "BUTTON" || node.querySelector("button") !== null)))
+      .map((node) => node.textContent ?? "")
+      .join("")
+  }
+  const deadline = Date.now() + 20000
+  while (Date.now() < deadline) {
+    if (lastAssistantText() === finalText && input.disabled === false) break
+    await wait(25)
+  }
+  if (lastAssistantText() !== finalText) {
+    return { ok: false, reason: "codex assistant text never finalized", text: lastAssistantText() }
+  }
+  const transcriptText = document.querySelector('[data-en-key="shell-transcript"]')?.textContent ?? ""
+  // Spawn-config-truth caption: the trace line names the lane AND the
+  // "(requested)" labeling — never an unlabeled model echo.
+  const modelCaption = transcriptText.includes("Codex · gpt-5.6-sol (requested)")
+  const reasoningLine = transcriptText.includes("Reasoning · planned the fixture reply")
+  const toolRows = Array.from(
+    document.querySelectorAll('[data-en-key="shell-transcript"] [data-en-message][data-en-role="tool"]'),
+  )
+  const bashCard = toolRows.some((row) => (row.textContent ?? "").includes("echo fixture"))
+  const bodies = assistantBodies()
+  const last = bodies[bodies.length - 1]
+  const strong = last === undefined ? null : last.querySelector("strong")
+  const markdownRendered = strong !== null && strong.textContent === "fixture" &&
+    !lastAssistantText().includes("**")
+  const rows = document.querySelectorAll('[data-en-key="shell-transcript"] [data-en-message][data-en-role="assistant"]')
+  const lastRow = rows[rows.length - 1]
+  const noAssistantLabel = lastRow !== undefined &&
+    lastRow.querySelector('[data-en-role="sender"]') === null
+  return {
+    ok: modelCaption && reasoningLine && bashCard && markdownRendered && noAssistantLabel &&
+      input.disabled === false,
+    modelCaption,
+    reasoningLine,
+    bashCard,
+    markdownRendered,
+    noAssistantLabel,
   }
 })()`
 
@@ -1758,6 +2051,10 @@ const runSmoke = (window: BrowserWindow): void => {
         await step("message-metadata-inspector-reopen", smokeReopenMessageInspector)
         await captureShot(window, "08-message-inspector")
         await step("message-metadata-inspector-close", smokeCloseMessageInspector)
+        // Codex local turn is FIXTURE-driven in smoke (scripted codex exec
+        // JSONL through the REAL parser; EP250 codex-first-class proof).
+        await step("codex-local-streamed-turn-FIXTURE", smokeCodexLocalStreaming)
+        await captureShot(window, "11-codex-local-streamed")
         await step("fleet-workspace-fixture-accounts", smokeOpenFleetWorkspace)
         await captureShot(window, "09-fleet-workspace")
         // Cmd+N from the fleet workspace: fresh transcript + focused composer.
@@ -1861,6 +2158,10 @@ void app.whenReady().then(async () => {
     console.error("[openagents-desktop] OS-encrypted session custody unavailable")
   }
   runtimeGateway.start()
+  // Boot probe round (EP250 preflight): async and non-blocking — results
+  // stream into the shared health ordering, the ledger's typed reconnect
+  // flags (fleet readiness), and the composer chip's availability call.
+  void codexPreflight.probeAll("boot").catch(() => {})
   const window = createWindow()
   // Episode 250 live-proof driver (#8712): REAL adapters (no smoke fixtures),
   // mutually exclusive with smoke. See ./live-proof.ts — additive only.
@@ -1874,6 +2175,9 @@ void app.whenReady().then(async () => {
   else if (liveProof.enabled) {
     runLiveProof(window, {
       outDir: liveProof.outDir,
+      // Step 0 (EP250): the REAL account preflight over the real registry —
+      // per-account verified/broken journal entries with reasons.
+      preflight: () => codexPreflight.probeAll("live_proof"),
       exit: (code) => {
         hostLifecycle.dispose()
         providerAccounts.dispose()
@@ -1894,6 +2198,7 @@ app.on("before-quit", () => {
   hostLifecycle.dispose()
   providerAccounts.dispose()
   fableLocal.dispose()
+  codexLocal.dispose()
   usageLedger.dispose()
   desktopCorrelationJournal.dispose()
 })
