@@ -33,5 +33,7 @@ describe("history workspace",()=>{
     expect(projectHistoryTimelineEvents([metadata])[0]).toMatchObject({label:"Agent metadata",time:"Click to expand",variant:"metadata",icon:"ChevronRight"})
     expect(projectHistoryTimelineEvents([metadata])[0]?.detail).toBeUndefined()
     expect(projectHistoryTimelineEvents([metadata],metadata.itemRef)[0]).toMatchObject({time:"Click to collapse",icon:"ChevronDown"})
+    const handoff=item(11,"agent_message","Agent message","Message Type: NEW_TASK",[{label:"message type",value:"NEW_TASK"},{label:"task",value:"/root/roadmap_audit"},{label:"sender",value:"/root"},{label:"recipient",value:"/root/roadmap_audit"},{label:"payload",value:"Review the roadmap."}])
+    expect(projectHistoryTimelineEvents([handoff])[0]).toMatchObject({label:"Task assigned · roadmap audit",detail:"root → roadmap audit — Review the roadmap.",variant:"agent",icon:"Agent"})
   })
 })

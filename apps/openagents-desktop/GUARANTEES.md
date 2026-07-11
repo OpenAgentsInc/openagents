@@ -359,6 +359,14 @@ expand` disclosure; the bounded content appears only while selected, a second
 press collapses it, and the right-hand agent tree remains in place throughout.
 Ordinary user messages never enter this presentation path.
 
+Inter-agent communication is projected from the typed `agent_message`, not the
+adjacent trigger marker. The raw `inter_agent_communication_metadata` record is
+retained in the page ledger but hidden from chat; the following message becomes
+one agent card with a humanized action/task, sender-to-recipient route, bounded
+payload, and parsed inspector fields. The structured recommended-plugins
+injection is likewise retained as hidden system metadata and never presented as
+a user turn.
+
 ### Large-thread first-content performance
 
 After a thread is selected, the local bounded first-content projection must

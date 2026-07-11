@@ -281,6 +281,14 @@ const contentText = (value: unknown): string => Array.isArray(value) ? value.map
 const field = (label: string, value: unknown) => { const text = redactCodexHistoryText(safeText(value)); return text.text === "" ? null : { label, value: text.text, redacted: text.redacted } }
 const firstString = (value: unknown): string | null => Array.isArray(value) ? value.map(string).find((entry): entry is string => entry !== null) ?? null : string(value)
 const isInjectedAgentMetadata = (role: string | null, value: string): boolean => role === "user" && value.startsWith("# AGENTS.md instructions for ") && value.includes("\n<INSTRUCTIONS>\n")
+const isInjectedPluginMetadata = (role: string | null, value: string): boolean => role === "user" && value.startsWith("<recommended_plugins>\n")
+const agentMessageEnvelope = (value: string): Readonly<{ type: string | null; task: string | null; sender: string | null; payload: string | null }> => {
+  const payloadMarker = "\nPayload:\n"
+  const payloadIndex = value.indexOf(payloadMarker)
+  const header = (payloadIndex < 0 ? value : value.slice(0,payloadIndex)).split("\n")
+  const read = (name: string): string | null => header.find(line=>line.startsWith(`${name}: `))?.slice(name.length+2).trim() || null
+  return { type:read("Message Type"),task:read("Task name"),sender:read("Sender"),payload:payloadIndex<0?null:value.slice(payloadIndex+payloadMarker.length).trim()||null }
+}
 
 const projectRow = (row: unknown, threadRef: string, sequence: number): CodexHistoryItem => {
   const envelope = object(row); const payload = envelope && object(envelope.payload); const envelopeType = envelope && string(envelope.type) || "invalid"; const timestamp = envelope && iso(envelope.timestamp) || new Date(0).toISOString()
@@ -293,7 +301,8 @@ const projectRow = (row: unknown, threadRef: string, sequence: number): CodexHis
   else if (envelopeType === "turn_context") { kind = "context"; label = "Turn context"; summary = "Execution context updated"; push("model", item.model); push("approval", item.approval_policy); push("sandbox", item.sandbox_policy) }
   else if (envelopeType === "world_state") { kind = "context"; label = "World state"; summary = "Recorded agent world-state snapshot"; push("agents", Array.isArray(item.agents) ? item.agents.length : item.agent_count); push("version", item.version) }
   else if (envelopeType === "compacted") { kind = "context"; label = "History compacted"; summary = "Codex persisted a compacted history boundary"; push("replacement items", Array.isArray(item.replacement_history) ? item.replacement_history.length : item.item_count) }
-  else if (itemType === "message" || itemType === "agent_message") { const role = string(item.role) ?? (itemType === "agent_message" ? "assistant" : null); summary = contentText(item.content ?? item.text); kind = isInjectedAgentMetadata(role,summary) ? "metadata" : role === "user" ? "user_message" : role === "system" || role === "developer" ? "system_message" : "assistant_message"; label = kind === "metadata" ? "Agent metadata" : role === "user" ? "You" : role === "assistant" ? "Assistant" : `Message · ${role ?? "unknown"}` }
+  else if (envelopeType === "inter_agent_communication_metadata") { kind="system_message";label="Agent communication metadata";summary="Inter-agent protocol handoff marker";push("trigger turn",item.trigger_turn) }
+  else if (itemType === "message" || itemType === "agent_message") { const role = string(item.role) ?? (itemType === "agent_message" ? "assistant" : null); summary = contentText(item.content ?? item.text); const injectedAgentMetadata=isInjectedAgentMetadata(role,summary);const injectedPluginMetadata=isInjectedPluginMetadata(role,summary);kind = injectedAgentMetadata ? "metadata" : injectedPluginMetadata ? "system_message" : itemType === "agent_message" ? "agent_message" : role === "user" ? "user_message" : role === "system" || role === "developer" ? "system_message" : "assistant_message"; label = injectedAgentMetadata ? "Agent metadata" : injectedPluginMetadata ? "Plugin metadata" : itemType === "agent_message" ? "Agent message" : role === "user" ? "You" : role === "assistant" ? "Assistant" : `Message · ${role ?? "unknown"}`;if(itemType==="agent_message"){const envelope=agentMessageEnvelope(summary);push("message type",envelope.type);push("task",envelope.task);push("sender",envelope.sender??item.author);push("recipient",item.recipient);push("payload",envelope.payload)} }
   else if (itemType.includes("reasoning")) { kind = "reasoning"; label = "Reasoning summary"; summary = contentText(item.summary); if(summary==="")summary="[REDACTED: reasoning not persisted as summary]" }
   else if (itemType.includes("plan") || itemType === "todo_list") { kind = "plan"; label = "Plan"; summary = contentText(item.plan ?? item.content ?? item.text) }
   else if (itemType.includes("collab") || itemType.includes("agent") || ["spawn_agent","send_input","wait","resume_agent","interrupt_agent","close_agent"].includes(itemType)) { const agentsState=object(item.agents_states); const operation=string(item.tool)??string(item.name)??itemType; const agentRef=string(item.new_thread_id)??string(item.agent_thread_id)??firstString(item.receiver_thread_ids)??string(item.agent_id)??string(item.receiver_thread_id)??(agentsState===null?null:Object.keys(agentsState)[0]??null); kind = "collaboration"; label = operation === "spawn_agent" ? "Subagent started" : operation.replaceAll("_"," "); summary = safeText(item.message ?? item.prompt ?? item.result ?? item.status ?? item.kind); push("agent", agentRef); push("operation", operation); push("activity", item.kind) }
@@ -324,7 +333,7 @@ const tailHistoryRows = (file: string): ReadonlyArray<unknown> => {
 }
 
 const previewableChildItem = (item: CodexHistoryItem): boolean =>
-  ["user_message", "assistant_message", "reasoning", "plan", "collaboration", "tool_call", "tool_result", "approval", "error"].includes(item.kind) &&
+  ["user_message", "assistant_message", "agent_message", "reasoning", "plan", "collaboration", "tool_call", "tool_result", "approval", "error"].includes(item.kind) &&
   item.summary.trim() !== "" && !item.summary.startsWith("[REDACTED:")
 
 const childPreview = (entry: SessionIndexEntry, agent: CodexHistoryAgent): CodexHistoryAgentPreview => {

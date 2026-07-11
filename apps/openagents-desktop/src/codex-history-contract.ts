@@ -25,7 +25,7 @@ export const CodexHistoryAgentSchema = Schema.Struct({
 export type CodexHistoryAgent = typeof CodexHistoryAgentSchema.Type
 
 export const CodexHistoryItemKindSchema = Schema.Literals([
-  "session", "context", "metadata", "user_message", "assistant_message", "system_message", "reasoning", "plan",
+  "session", "context", "metadata", "user_message", "assistant_message", "agent_message", "system_message", "reasoning", "plan",
   "collaboration", "tool_call", "tool_result", "approval", "usage", "lifecycle", "error", "gap",
 ])
 export type CodexHistoryItemKind = typeof CodexHistoryItemKindSchema.Type

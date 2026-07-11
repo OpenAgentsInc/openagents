@@ -145,11 +145,31 @@ export const traceAcceptanceJourney = `(async () => {
   if (!keyboardEvent.defaultPrevented) return {ok:false,reason:"keyboard_tree_stuck"}
 
   let toolPage = null
+  let communicationPage = null
   for (const agent of page.agents) {
     const response = await bridge.runtimeRequest({kind:"query",requestId:"trace-acceptance-tool-page",query:{id:"codex.history.page",threadRef:agent.threadRef,offset:0,limit:50}})
-    if (response?.kind === "codex_history_page" && response.page.items.some(item => item.kind === "tool_call" || item.kind === "tool_result")) { toolPage=response.page; break }
+    if (response?.kind !== "codex_history_page") continue
+    if (!toolPage && response.page.items.some(item => item.kind === "tool_call" || item.kind === "tool_result")) toolPage=response.page
+    if (!communicationPage && response.page.items.some(item => item.kind === "agent_message" && item.fields.some(field => field.label === "message type" && field.value === "NEW_TASK"))) communicationPage=response.page
+    if (toolPage && communicationPage) break
   }
   if (!toolPage) return {ok:false,reason:"tool_trace_missing"}
+  if (!communicationPage) return {ok:false,reason:"agent_handoff_missing"}
+  const communicationAgentButton = [...document.querySelectorAll('[data-en-key^="history-agent-"]')].find(row => row.getAttribute('data-en-key') === 'history-agent-' + communicationPage.selectedThreadRef)
+  communicationAgentButton?.click()
+  await until(() => document.querySelector('[data-en-key="history-agent-' + communicationPage.selectedThreadRef + '"][aria-selected="true"]'))
+  const handoffItem = communicationPage.items.find(item => item.kind === 'agent_message' && item.fields.some(field => field.label === 'message type' && field.value === 'NEW_TASK'))
+  const protocolItems = communicationPage.items.filter(item => item.label === 'Agent communication metadata' || item.label === 'Plugin metadata')
+  if (protocolItems.some(item => document.querySelector('[data-en-key="history-item-' + item.itemRef + '"]'))) return {ok:false,reason:"protocol_metadata_visible"}
+  const handoffButton = await until(() => document.querySelector('[data-en-key="history-item-' + handoffItem.itemRef + '"][data-en-variant="agent"]'))
+  if (!handoffButton || !handoffButton.textContent?.includes('Task assigned') || handoffButton.textContent?.includes('Message Type:')) return {ok:false,reason:"agent_handoff_card_incomplete"}
+  handoffButton.click()
+  const handoffInspector = await until(() => {const inspector=document.querySelector('[data-en-key="history-item-inspector"]');const fields=inspector?.querySelector('[data-en-key="history-item-fields"]')?.textContent??'';return inspector?.querySelector('[data-en-key="history-item-title"]')?.textContent==='Agent message'&&['message type','task','sender','recipient'].every(label=>fields.includes(label))?inspector:null})
+  const handoffFields = handoffInspector?.querySelector('[data-en-key="history-item-fields"]')?.textContent ?? ''
+  const handoffFieldChecks={messageType:handoffFields.includes('message type'),task:handoffFields.includes('task'),sender:handoffFields.includes('sender'),recipient:handoffFields.includes('recipient')}
+  if (!Object.values(handoffFieldChecks).every(Boolean)) return {ok:false,reason:"agent_handoff_inspector_incomplete",fieldChecks:handoffFieldChecks,fieldLabels:[...(handoffInspector?.querySelectorAll('[data-en-key^="history-item-field-label-"]')??[])].map(node=>node.textContent)}
+  document.querySelector('[data-en-key="history-item-back"]')?.click()
+  await until(() => document.querySelector('[data-en-key="history-agent-list"]'))
   const agentButton = [...document.querySelectorAll('[data-en-key^="history-agent-"]')].find(row => row.getAttribute('data-en-key') === 'history-agent-' + toolPage.selectedThreadRef)
   agentButton?.click()
   await until(() => document.querySelector('[data-en-key="history-agent-' + toolPage.selectedThreadRef + '"][aria-selected="true"]'))

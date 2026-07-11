@@ -11,6 +11,7 @@ describe("openagents_desktop.seam.codex_trace_electron_acceptance.v1", () => {
       "blank_shell", "stale_loading_copy", "known_title_fallback",
       "child_leaked_to_sidebar", "descendants_hidden", "silent_loss",
       "keyboard_tree_stuck", "tool_row_inaccessible", "inspector_inaccessible",
+      "agent_handoff_missing", "protocol_metadata_visible", "agent_handoff_card_incomplete", "agent_handoff_inspector_incomplete",
       "timeline_not_scrollable", "timeline_scroll_stuck", "ref_restore_missing",
       "inline_agent_preview_missing", "inline_agent_preview_stale", "inline_agent_navigation_failed", "inline_agent_return_failed",
       "agent_metadata_missing", "agent_metadata_not_collapsed", "agent_metadata_expand_failed", "agent_metadata_replaced_tree", "agent_metadata_collapse_failed",

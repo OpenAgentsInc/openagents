@@ -63,8 +63,27 @@ const toolTitle = (label: string): string => {
   return label.replaceAll("_", " ").replace(/^./, (value) => value.toUpperCase())
 }
 
+const agentName = (value: string | null): string | null => {
+  const name = value?.split("/").filter(Boolean).at(-1)
+  return name === undefined ? null : name.replaceAll("_"," ")
+}
+
+const agentMessageTitle = (item: CodexHistoryItem): string => {
+  const type=historyField(item,"message type")
+  const task=agentName(historyField(item,"task"))
+  const action=type==="NEW_TASK"?"Task assigned":type==="MESSAGE"?"Agent message":type==="CLOSE"?"Agent closed":"Agent message"
+  return task===null?action:`${action} · ${task}`
+}
+
+const agentMessageDetail = (item: CodexHistoryItem): string => {
+  const sender=agentName(historyField(item,"sender"));const recipient=agentName(historyField(item,"recipient"));const payload=historyField(item,"payload")
+  const route=sender!==null&&recipient!==null?`${sender} → ${recipient}`:sender!==null?`From ${sender}`:recipient!==null?`To ${recipient}`:"Inter-agent handoff"
+  return payload===null?route:`${route} — ${payload}`
+}
+
 const historyVariant = (item: CodexHistoryItem): TimelineEvent["variant"] =>
   item.kind === "metadata" ? "metadata"
+    : item.kind === "agent_message" ? "agent"
     : item.kind === "tool_call" || item.kind === "tool_result" || item.kind === "approval" || item.kind === "collaboration" ? "tool"
     : item.kind === "reasoning" || item.kind === "plan" ? "reasoning"
       : item.kind === "error" || item.kind === "gap" ? "error"
@@ -72,6 +91,7 @@ const historyVariant = (item: CodexHistoryItem): TimelineEvent["variant"] =>
 
 const historyIcon = (item: CodexHistoryItem): IconName =>
   item.kind === "metadata" ? "ChevronRight"
+    : item.kind === "agent_message" ? "Agent"
     : item.kind === "tool_call" || item.kind === "tool_result" ? toolIcon(item.label)
     : item.kind === "collaboration" ? "Agent"
       : item.kind === "approval" ? "Check"
@@ -93,6 +113,10 @@ const projectedTimelineEvent = (item: CodexHistoryItem, result?: CodexHistoryIte
       accessibilityLabel: `Agent metadata, ${expanded ? "expanded. Click to collapse" : "collapsed. Click to expand"}`,
       refs: [item.threadRef],
     }
+  }
+  if (item.kind === "agent_message") {
+    const label=agentMessageTitle(item);const detail=agentMessageDetail(item)
+    return {id:item.itemRef,key:`history-item-${item.itemRef}`,label,detail:timelinePreview(detail),status:"idle",variant:"agent",icon:"Agent",accessibilityLabel:`${label}. ${detail}`,refs:[item.threadRef]}
   }
   if (item.kind === "collaboration" && item.relatedAgent !== undefined) {
     const agent = item.relatedAgent
