@@ -16,6 +16,8 @@ import {
   toolCardIcon,
   toolResultSnippet,
   toolTraceFromNote,
+  projectToolCardEntries,
+  contextGroupSummary,
 } from "./tool-cards.ts"
 
 const note = (input: Partial<DesktopNoteEntry> & Pick<DesktopNoteEntry, "key" | "text">): DesktopNoteEntry => ({
@@ -110,17 +112,52 @@ describe("projectTranscriptEntries (started + completion = ONE updating card)", 
   })
 
   test("same-tool invocations pair FIFO by note order (no invocation id exists)", () => {
-    const entries = projectTranscriptEntries([
+    const notes = [
       note({ key: "s1", text: 'Read · started · {"file_path":"a.md"}' }),
       note({ key: "s2", text: 'Read · started · {"file_path":"b.md"}' }),
       note({ key: "s3", text: "Read · ok · first result" }),
       note({ key: "s4", text: "Read · failed · second result" }),
-    ])
-    expect(entries).toHaveLength(2)
-    const [first, second] = entries
+    ]
+    // The per-invocation pairing layer keeps ONE updating card per
+    // invocation (the landed contract oracle).
+    const cards = projectToolCardEntries(notes)
+    expect(cards).toHaveLength(2)
+    const [first, second] = cards
     if (first?.kind !== "tool" || second?.kind !== "tool") throw new Error("expected tool entries")
     expect(first.card).toMatchObject({ key: "s1", status: "ok", resultSummary: "first result" })
     expect(second.card).toMatchObject({ key: "s2", status: "failed", resultSummary: "second result" })
+    // EP250 card reconciliation TIGHTENS the presentation: consecutive
+    // read/glob/grep cards fold into one context-group row that carries the
+    // same per-invocation members (data preserved, presentation grouped).
+    const grouped = projectTranscriptEntries(notes)
+    expect(grouped).toHaveLength(1)
+    const group = grouped[0]
+    if (group?.kind !== "context-group") throw new Error("expected context group")
+    expect(group.group.cards.map((card) => card.key)).toEqual(["s1", "s2"])
+    expect(group.group.failed).toBe(true)
+    expect(group.group.running).toBe(false)
+    expect(contextGroupSummary(group.group)).toBe("2 reads")
+  })
+
+  test("context grouping: only runs of 2+ consecutive read/glob/grep group; other tools break the run", () => {
+    const entries = projectTranscriptEntries([
+      note({ key: "r1", text: 'Read · started · {"file_path":"a.md"}' }),
+      note({ key: "g1", text: 'Grep · started · {"pattern":"foo"}' }),
+      note({ key: "b1", text: 'Bash · started · {"command":"ls"}' }),
+      note({ key: "r2", text: 'Read · started · {"file_path":"b.md"}' }),
+    ])
+    // r1+g1 form a group ("Gathering context…" while running); Bash breaks
+    // the run; the trailing single Read stays a plain tool card.
+    expect(entries.map((entry) => entry.kind)).toEqual(["context-group", "tool", "tool"])
+    const group = entries[0]
+    if (group?.kind !== "context-group") throw new Error("expected context group")
+    expect(group.group.running).toBe(true)
+    expect(group.group.reads).toBe(1)
+    expect(group.group.searches).toBe(1)
+    expect(contextGroupSummary(group.group)).toBe("1 read, 1 search")
+    const single = entries[2]
+    if (single?.kind !== "tool") throw new Error("expected plain tool card")
+    expect(single.card.key).toBe("r2")
   })
 
   test("an orphan completion renders as its own completed card", () => {

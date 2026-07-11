@@ -38,6 +38,7 @@ import {
   type HarnessLanes,
 } from "./shell.ts"
 import { openagentsDesktopTheme } from "./theme.ts"
+import { khalaTheme } from "@effect-native/tokens"
 import { validateBehaviorContractRegistry } from "@openagentsinc/behavior-contracts"
 import { openAgentsDesktopUxContractRegistry } from "../contracts/ux-contracts.ts"
 
@@ -340,9 +341,11 @@ describe("desktopShellView (state -> component tree)", () => {
     expect(details?._tag).toBe("Button")
     expect(details?._tag).not.toBe("IconButton")
     expect(details?.variant).toBe("ghost")
-    // Compact by typed style: zero padding + caption scale + muted color —
-    // roughly line-height, visually small and dim.
-    expect(details?.style).toMatchObject({ padding: "0", typeScale: "caption", color: "textMuted" })
+    // Compact by typed style: zero padding + caption scale + FAINT color —
+    // roughly line-height, visually small and dim. EP250 card
+    // reconciliation tightened the dim level from textMuted to textFaint
+    // (the three-level dim ladder: primary > muted > faint).
+    expect(details?.style).toMatchObject({ padding: "0", typeScale: "caption", color: "textFaint" })
     // Keyboard accessible: a real catalog Button with an accessible label.
     expect(String((details?.a11y as { label?: string })?.label ?? "")).toContain("message details")
     expect((details?.onPress as { name?: string }).name).toBe("DesktopMessageSelected")
@@ -1337,9 +1340,13 @@ describe("EP250 typed tool-call cards (owner: 'not these JSON blobs')", () => {
     // small radius, raised translucent surface).
     const box = nodeByKey(view, "tool-box-s1") as { style?: Record<string, unknown>; radius?: string; padding?: string } | undefined
     expect(box).toBeDefined()
-    expect(box?.radius).toBe("md")
+    // EP250 chrome reconciliation: OpenCode's 6px task-card radius maps to
+    // khala radius "lg" (6) on the quantized 2/4/6/8 scale, and in-flow
+    // cards carry the hairline borderSubtle edge (shadows are reserved for
+    // floating overlays).
+    expect(box?.radius).toBe("lg")
     expect(box?.padding).toBe("2")
-    expect(box?.style).toMatchObject({ borderColor: "border", borderWidth: 1 })
+    expect(box?.style).toMatchObject({ borderColor: "borderSubtle", borderWidth: 1 })
     // Non-agent tools stay the flat dense row (no box).
     const flat = desktopShellView({ ...traceState, notes: [
       { key: "f1", role: "system" as const, text: 'Read · started · {"file_path":"a.md"}', timestamp: "18:05" },
@@ -1631,11 +1638,20 @@ describe("EP250 interactive question cards (owner: 'make the question UI too')",
 })
 
 describe("theme parity (one OpenAgents blue theme, many hosts)", () => {
-  test("desktop theme keeps the shared token values", () => {
-    expect(openagentsDesktopTheme.color.background).toBe("#03060b")
-    expect(openagentsDesktopTheme.color.accent).toBe("#3a7bff")
-    expect(openagentsDesktopTheme.color.border).toBe("#17315f")
-    expect(openagentsDesktopTheme.color.focus).toBe("#4fd0ff")
-    expect(openagentsDesktopTheme.color.textPrimary).toBe("#f1efe8")
+  test("desktop theme IS the canonical khalaTheme — no app-local drift", () => {
+    // EP250 chrome pass (#8712): the app-local palette/radius/type drift was
+    // deleted; the tokens-package khalaTheme is the single source of truth.
+    expect(openagentsDesktopTheme).toBe(khalaTheme)
+    expect(openagentsDesktopTheme.color.background).toBe("#05070d")
+    expect(openagentsDesktopTheme.color.accent).toBe("#3b82f6")
+    // The quantized radius scale the harmonization rule pins (2/4/6/8).
+    expect(openagentsDesktopTheme.radius).toEqual({ none: 0, sm: 2, md: 4, lg: 6, xl: 8, full: 9999 })
+    // Chrome-language roles are present for the state-overlay engine.
+    expect(openagentsDesktopTheme.color.stateHover).toBe("#8fb3ff14")
+    expect(openagentsDesktopTheme.color.stateSelected).toBe("#3b82f629")
+    expect(openagentsDesktopTheme.color.textFaint).toBe("#6b7ca1")
+    expect(openagentsDesktopTheme.color.surfaceOverlay).toBe("#182640")
+    expect(openagentsDesktopTheme.motion.durationFastMs).toBe(150)
+    expect(openagentsDesktopTheme.control.md).toEqual({ height: 28, gutter: 10, icon: 16 })
   })
 })

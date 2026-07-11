@@ -1,90 +1,16 @@
 /**
- * OpenAgents Desktop theme (#8574) — the one Protoss-blue OpenAgents theme,
- * expressed through `@effect-native/tokens`.
+ * OpenAgents Desktop theme (#8574, EP250 #8712) — the one Protoss-blue
+ * OpenAgents theme, consumed directly from `@effect-native/tokens`.
  *
- * The token values remain aligned with the shared OpenAgents surface theme:
- * one catalog, one theme, many hosts. Desktop must not drift into a second
- * visual identity. `@effect-native/tokens` already ships a canonical
- * `khalaTheme`; when the shared shell theme lands, this app-local copy is
- * deleted in favor of that export.
+ * The app-local palette copy this file used to carry was drift (radius
+ * lg 8 / xl 12 against the canonical 6/8, body 16 against the canonical
+ * 14/21, off-palette colors). Per the file's own original contract —
+ * "when the shared shell theme lands, this app-local copy is deleted in
+ * favor of that export" — the canonical `khalaTheme` is now the single
+ * source: one catalog, one theme, many hosts. Desktop must not drift into
+ * a second visual identity, so this module deliberately re-exports the
+ * shared theme instead of constructing one.
  */
-import { defineTheme } from "@effect-native/tokens"
+import { khalaTheme } from "@effect-native/tokens"
 
-export const openagentsDesktopTheme = defineTheme({
-  spacing: {
-    "0": 0,
-    "0.5": 2,
-    "1": 4,
-    "1.5": 6,
-    "2": 8,
-    "2.5": 10,
-    "3": 12,
-    "3.5": 14,
-    "4": 16,
-    "5": 20,
-    "6": 24,
-    "8": 32,
-    "10": 40,
-    "12": 48,
-    "16": 64,
-    "20": 80,
-    "24": 96,
-    "32": 128,
-    "40": 160,
-    "48": 192,
-    "56": 224,
-    "64": 256,
-  },
-  color: {
-    background: "#03060b",
-    surface: "#010102",
-    surfaceRaised: "#0b1220",
-    textPrimary: "#f1efe8",
-    textMuted: "#aeb9c6",
-    accent: "#3a7bff",
-    danger: "#d32f2f",
-    border: "#17315f",
-    focus: "#4fd0ff",
-    info: "#38bdf8",
-    success: "#22c55e",
-    warning: "#f59e0b",
-    codeBackground: "#0a0f1c",
-    diffAdd: "#4ade80",
-    diffRemove: "#f87171",
-    syntaxKeyword: "#60a5fa",
-    syntaxString: "#4ade80",
-    syntaxComment: "#5b6b8c",
-    syntaxFunction: "#c084fc",
-    syntaxNumber: "#fbbf24",
-    syntaxOperator: "#93a4c3",
-  },
-  radius: {
-    none: 0,
-    sm: 2,
-    md: 4,
-    lg: 8,
-    xl: 12,
-    full: 9999,
-  },
-  typeScale: {
-    caption: { fontSize: 12, lineHeight: 16, fontWeight: 400 },
-    body: { fontSize: 16, lineHeight: 24, fontWeight: 400 },
-    label: { fontSize: 14, lineHeight: 20, fontWeight: 500 },
-    title: { fontSize: 22, lineHeight: 30, fontWeight: 600 },
-    heading: { fontSize: 48, lineHeight: 52, fontWeight: 600 },
-  },
-  breakpoint: {
-    sm: 640,
-    md: 768,
-    lg: 1024,
-    xl: 1280,
-  },
-  dimension: {
-    xs: 160,
-    sm: 240,
-    md: 320,
-    lg: 480,
-    xl: 640,
-    full: "100%",
-  },
-})
+export const openagentsDesktopTheme = khalaTheme

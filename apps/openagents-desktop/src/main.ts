@@ -868,7 +868,9 @@ const createWindow = (): BrowserWindow => {
     height: 800,
     minWidth: 720,
     minHeight: 480,
-    backgroundColor: "#03060b",
+    // khalaTheme color.background — must match @effect-native/tokens so the
+    // pre-boot window never flashes an off-palette frame (EP250 #8712).
+    backgroundColor: "#05070d",
     show: false,
     title: "OpenAgents",
     icon: desktopIconPath,
@@ -1011,7 +1013,12 @@ const smokeWaitForHostCommandPalette = `(async () => {
   while (Date.now() < deadline && document.querySelector('[data-en-key="desktop-command-palette"]') === null) {
     await wait(50)
   }
-  return { ok: document.querySelector('[data-en-key="desktop-command-palette"]') !== null }
+  const palette = document.querySelector('[data-en-key="desktop-command-palette"]')
+  const files = document.querySelector('[data-en-key="desktop-command-workspace.files"]')
+  // Let the 350ms overlay enter animation finish so the pixel receipt
+  // shows the settled panel, not a mid-fade frame.
+  await wait(450)
+  return { ok: palette !== null && files !== null }
 })()`
 
 const smokeCloseCommandPalette = `(async () => {
@@ -1219,12 +1226,21 @@ const smokeNewChatFromHistory = `(async () => {
   const split = document.querySelector('[data-en-key="history-workspace-split"]')
   const messages = document.querySelectorAll('[data-en-key="shell-transcript"] [data-en-message]').length
   const composer = document.querySelector('[data-en-key="shell-input"] input')
+  // Owner contract (EP250): "when i do new chat, clicking button or command
+  // N, auto focus the input." The focus retry loop lands AFTER the chat
+  // view mounts, so poll for it.
+  const focusDeadline = Date.now() + 3000
+  while (Date.now() < focusDeadline && document.activeElement !== composer) {
+    await wait(50)
+  }
   return {
     ok: transcript !== null && split === null && messages === 0 &&
-      composer !== null && composer.disabled === false,
+      composer !== null && composer.disabled === false &&
+      document.activeElement === composer,
     historyStillLoaded: split !== null,
     messages,
     composerMounted: composer !== null,
+    composerFocused: document.activeElement === composer,
   }
 })()`
 
@@ -1250,10 +1266,37 @@ const smokeFableLocalStreaming = `(async () => {
     return { ok: false, reason: "codex disabled chip lost its accessible reason label" }
   }
   const composer = document.querySelector('[data-en-key="shell-composer"]')
+  // No STANDING caption: visible composer text must not carry the reason.
+  // The hover-only disabled-reason popover (owner contract EP250) keeps its
+  // content in a [hidden] tooltip bubble — excluded from the visible check.
+  const visibleComposerText = composer === null ? "" : (() => {
+    const clone = composer.cloneNode(true)
+    for (const bubble of clone.querySelectorAll('[data-en-role="tooltip"]')) bubble.remove()
+    return clone.textContent ?? ""
+  })()
   if (document.querySelector('[data-en-key="shell-harness-caption"]') !== null ||
-      (composer !== null && composer.textContent.includes("requires OpenAgents session"))) {
+      visibleComposerText.includes("requires OpenAgents session")) {
     return { ok: false, reason: "composer still renders a standing disabled-reason caption" }
   }
+  // Disabled-control reason popover (owner verbatim: "i can't tell why the
+  // Codex option is disabled in the composer… put a popover on hover over
+  // the disabled button explaining why"): the disabled codex chip is
+  // wrapped in a tooltip whose content is the SAME reason the accessible
+  // label carries; pointerenter reveals it, pointerleave hides it.
+  const codexWrap = document.querySelector('[data-en-key="shell-harness-codex-reason"]')
+  if (codexWrap === null) return { ok: false, reason: "disabled codex chip has no reason popover wrapper" }
+  const bubble = codexWrap.querySelector('[data-en-role="tooltip"]')
+  if (bubble === null) return { ok: false, reason: "reason popover bubble missing" }
+  if (bubble.hidden !== true) return { ok: false, reason: "reason popover visible at rest (standing caption ban)" }
+  if ((bubble.textContent ?? "") !== codexAria) {
+    return { ok: false, reason: "popover reason does not match the accessible reason: " + bubble.textContent }
+  }
+  codexWrap.dispatchEvent(new PointerEvent("pointerenter", { bubbles: false }))
+  await wait(50)
+  if (bubble.hidden !== false) return { ok: false, reason: "hover did not reveal the reason popover" }
+  codexWrap.dispatchEvent(new PointerEvent("pointerleave", { bubbles: false }))
+  await wait(50)
+  if (bubble.hidden !== true) return { ok: false, reason: "leave did not dismiss the reason popover" }
   fable.click()
   const input = document.querySelector('[data-en-key="shell-input"] input')
   if (input === null) return { ok: false, reason: "composer input never mounted" }
@@ -1535,6 +1578,43 @@ const smokeCodingCatalog = `(async () => {
   }
 })()`
 
+// Owner contract (EP250, verbatim): "when i do new chat, clicking button or
+// command N, auto focus the input." Cmd+N (Meta+N on darwin, the canonical
+// chat.new binding) must dispatch DesktopNewChat from anywhere outside an
+// editable and land with a fresh transcript AND the composer focused.
+const smokeCmdNNewChat = `(async () => {
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+  if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
+  const darwin = ${JSON.stringify(process.platform === "darwin")}
+  window.dispatchEvent(new KeyboardEvent("keydown", {
+    key: "n",
+    metaKey: darwin,
+    ctrlKey: !darwin,
+    bubbles: true,
+    cancelable: true,
+  }))
+  const deadline = Date.now() + 10000
+  const messageCount = () =>
+    document.querySelectorAll('[data-en-key="shell-transcript"] [data-en-message]').length
+  while (Date.now() < deadline && (
+    document.querySelector('[data-en-key="shell-transcript"]') === null || messageCount() !== 0
+  )) {
+    await wait(50)
+  }
+  const composer = document.querySelector('[data-en-key="shell-input"] input')
+  const focusDeadline = Date.now() + 3000
+  while (Date.now() < focusDeadline && document.activeElement !== composer) {
+    await wait(50)
+  }
+  return {
+    ok: document.querySelector('[data-en-key="shell-transcript"]') !== null &&
+      messageCount() === 0 && composer !== null &&
+      document.activeElement === composer,
+    messages: messageCount(),
+    composerFocused: document.activeElement === composer,
+  }
+})()`
+
 const captureShot = async (window: BrowserWindow, name: string): Promise<void> => {
   if (smokeShotsDir === undefined || smokeShotsDir === "") return
   const image = await window.webContents.capturePage()
@@ -1668,6 +1748,8 @@ const runSmoke = (window: BrowserWindow): void => {
         await step("message-metadata-inspector-close", smokeCloseMessageInspector)
         await step("fleet-workspace-fixture-accounts", smokeOpenFleetWorkspace)
         await captureShot(window, "09-fleet-workspace")
+        // Cmd+N from the fleet workspace: fresh transcript + focused composer.
+        await step("cmd-n-new-chat-focuses-composer", smokeCmdNNewChat)
         await step("coding-catalog-host-persistence", smokeCodingCatalog)
         await captureShot(window, "10-coding-catalog")
         tracePass = 1

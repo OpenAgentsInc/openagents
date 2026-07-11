@@ -31,6 +31,7 @@ import {
   Table,
   Text,
   TextField,
+  Tooltip,
   Transcript,
   StaticPayload,
   defineIntent,
@@ -42,10 +43,12 @@ import {
 import { Effect, Schema, SubscriptionRef } from "@effect-native/core/effect"
 import type { DesktopMessageMeta, DesktopQuestionCard, DesktopThread } from "../chat-contract.ts"
 import {
+  contextGroupSummary,
   humanizeToolInvocation,
   projectTranscriptEntries,
   toolCardIcon,
   toolResultSnippet,
+  type ContextGroupModel,
   type ToolCardModel,
 } from "./tool-cards.ts"
 import {
@@ -61,7 +64,7 @@ import type {
   DesktopWorkspaceSaveResult,
   DesktopWorkspaceSnapshot,
 } from "../workspace-contract.ts"
-import { desktopCommandRegistry } from "./command-registry.ts"
+import { desktopCommandRegistry, formatCommandChord } from "./command-registry.ts"
 import {
   normalizeDesktopCommandChord,
   type DesktopCommandBindingProjection,
@@ -1306,10 +1309,12 @@ const compactDetailsButton = (input: Readonly<{
     key: input.key,
     label: input.label,
     variant: "ghost",
-    // Zero padding + zero border + caption scale + muted color: a dim,
-    // line-height text affordance (the renderer's default button chrome is a
-    // 1px bordered chip — too loud for a per-row affordance).
-    style: { padding: "0", borderWidth: 0, typeScale: "caption", color: "textMuted" },
+    // Zero padding + zero border + caption scale + faint color: the third
+    // level of the dim ladder (apps-sdk/OpenCode reconciliation, EP250) —
+    // a hover-revealed hint affordance, dimmer than muted body copy. The
+    // renderer's default button chrome is a 1px bordered chip — too loud
+    // for a per-row affordance.
+    style: { padding: "0", borderWidth: 0, typeScale: "caption", color: "textFaint" },
     onPress: input.onPress,
     a11y: { label: input.a11yLabel },
   })
@@ -1390,7 +1395,18 @@ export const toolCardMessage = (card: ToolCardModel, expanded: boolean): Transcr
           { key: `tool-header-${card.key}`, direction: "row", gap: "2", align: "center" },
           [
             Icon({ key: `tool-icon-${card.key}`, name: toolCardIcon(card.toolName), size: "sm", color: "accent" }),
-            Text({ key: `tool-title-${card.key}`, content: human.title, variant: "label", color: "textPrimary", weight: "medium" }),
+            // Running-state title shimmer (card reconciliation, EP250): a
+            // key-marked title the host stylesheet animates as a 1200ms
+            // opacity wave (the RN-safe mechanism the OpenCode spec allows —
+            // never per-character background-clip). The key flips back at
+            // completion, ending the animation.
+            Text({
+              key: card.status === "running" ? `tool-title-running-${card.key}` : `tool-title-${card.key}`,
+              content: human.title,
+              variant: "label",
+              color: "textPrimary",
+              weight: "medium",
+            }),
             // Inline muted subtitle on the same trigger row (opencode's
             // basic-tool-tool-subtitle), already bounded by the humanizer.
             ...(human.detail === "" ? [] : [
@@ -1418,20 +1434,31 @@ export const toolCardMessage = (card: ToolCardModel, expanded: boolean): Transcr
           a11yLabel: `${expanded ? "Hide" : "Show"} raw details for ${human.title}`,
         }),
         // The bounded raw payloads: reachable, never the default rendering.
-        ...(expanded ? [
-          Text({
-            key: `tool-raw-args-${card.key}`,
-            content: card.argsSummary === "" ? "(no recorded arguments)" : card.argsSummary,
-            variant: "caption",
-            color: "textMuted",
-          }),
-          ...(card.resultSummary === null ? [] : [Text({
-            key: `tool-raw-result-${card.key}`,
-            content: card.resultSummary,
-            variant: "caption",
-            color: "textMuted",
-          })]),
-        ] : []),
+        // The well caps at the 240px output bound (dimension "sm") with its
+        // own scroll region; payload text sits at the faint dim level.
+        ...(expanded ? [Stack(
+          {
+            key: `tool-raw-well-${card.key}`,
+            direction: "column",
+            gap: "1",
+            align: "start",
+            style: { width: "full", maxHeight: "sm" },
+          },
+          [
+            Text({
+              key: `tool-raw-args-${card.key}`,
+              content: card.argsSummary === "" ? "(no recorded arguments)" : card.argsSummary,
+              variant: "caption",
+              color: "textFaint",
+            }),
+            ...(card.resultSummary === null ? [] : [Text({
+              key: `tool-raw-result-${card.key}`,
+              content: card.resultSummary,
+              variant: "caption",
+              color: "textFaint",
+            })]),
+          ],
+        )] : []),
       ],
     )
   return {
@@ -1442,10 +1469,82 @@ export const toolCardMessage = (card: ToolCardModel, expanded: boolean): Transcr
       ? Card({
           key: `tool-box-${card.key}`,
           padding: "2",
-          radius: "md",
-          style: { width: "full", borderColor: "border", borderWidth: 1, surface: "glass" },
+          // Quantized onto the shared khala radius scale: the OpenCode task
+          // card's 6px maps to radius "lg" (spec §3 radius translation).
+          radius: "lg",
+          style: { width: "full", borderColor: "borderSubtle", borderWidth: 1, surface: "glass" },
         }, [column])
       : column],
+  }
+}
+
+/**
+ * Context group row (EP250 card reconciliation): consecutive read/glob/grep
+ * invocations render as ONE quiet "Gathered context — N reads, M searches"
+ * row; expanding indents the member rows at the tighter 4px sub-rhythm.
+ * Members are plain rows — no chevrons, no per-member interaction.
+ */
+export const contextGroupMessage = (group: ContextGroupModel, expanded: boolean): TranscriptMessage => {
+  const title = group.running ? "Gathering context…" : "Gathered context"
+  return {
+    key: `tool-${group.key}`,
+    role: "tool",
+    timestamp: group.cards[0]!.timestamp,
+    body: [Stack(
+      { key: `tool-card-${group.key}`, direction: "column", gap: "1", align: "start" },
+      [
+        Stack(
+          { key: `tool-header-${group.key}`, direction: "row", gap: "2", align: "center" },
+          [
+            Icon({ key: `tool-icon-${group.key}`, name: "Folder", size: "sm", color: "accent" }),
+            Text({
+              key: group.running ? `tool-title-running-${group.key}` : `tool-title-${group.key}`,
+              content: title,
+              variant: "label",
+              color: "textPrimary",
+              weight: "medium",
+            }),
+            Text({ key: `tool-detail-${group.key}`, content: contextGroupSummary(group), variant: "body", color: "textMuted" }),
+            ...(group.failed ? [Badge({
+              key: `tool-status-${group.key}`,
+              label: "Failed",
+              tone: "danger",
+              a11y: { label: `${title} — a member invocation failed` },
+            })] : []),
+          ],
+        ),
+        compactDetailsButton({
+          key: `tool-details-${group.key}`,
+          label: expanded ? "hide details" : "details",
+          onPress: IntentRef("DesktopToolCardToggled", StaticPayload(group.key)),
+          a11yLabel: `${expanded ? "Hide" : "Show"} the ${group.cards.length} grouped context invocations`,
+        }),
+        ...(expanded ? [Stack(
+          {
+            key: `tool-group-members-${group.key}`,
+            direction: "column",
+            gap: "1",
+            align: "start",
+            style: { width: "full", paddingLeft: "3" },
+          },
+          group.cards.map((member) => {
+            const memberHuman = humanizeToolInvocation(member.toolName, member.argsSummary)
+            return Stack(
+              { key: `tool-group-member-${member.key}`, direction: "row", gap: "2", align: "center" },
+              [
+                Text({ key: `tool-group-member-title-${member.key}`, content: memberHuman.title, variant: "label", color: "textPrimary", weight: "medium" }),
+                ...(memberHuman.detail === "" ? [] : [
+                  Text({ key: `tool-group-member-detail-${member.key}`, content: memberHuman.detail, variant: "body", color: "textMuted" }),
+                ]),
+                ...(member.status === "failed" && member.resultSummary !== null ? [
+                  Text({ key: `tool-group-member-failure-${member.key}`, content: member.resultSummary, variant: "caption", color: "danger" }),
+                ] : []),
+              ],
+            )
+          }),
+        )] : []),
+      ],
+    )],
   }
 }
 
@@ -1753,7 +1852,7 @@ const projectHome = (state: DesktopShellState): View => {
           direction: "row",
           gap: "3",
           align: "center",
-          style: { width: "full", padding: "3", borderColor: "border", borderWidth: 1, borderRadius: "lg" },
+          style: { width: "full", padding: "3", borderColor: "borderSubtle", borderWidth: 1, borderRadius: "lg" },
         },
         [
           Stack({ key: `workspace-home-session-copy-${session.sessionRef}`, direction: "column", gap: "0.5", style: { flex: 1, minWidth: 0 } }, [
@@ -1905,7 +2004,7 @@ const fleetDesk = (state: DesktopShellState): View => {
         width: "full",
         maxWidth: columnWidth,
         alignSelf: "center",
-        borderColor: "border",
+        borderColor: "borderSubtle",
         borderWidth: 1,
         surface: "glass",
       },
@@ -1959,12 +2058,76 @@ const fleetDesk = (state: DesktopShellState): View => {
  * dimmed disabled chip whose reason lives only in its accessible label (and
  * the host logs/journal) — never a visible caption line.
  */
+/**
+ * One harness chip inside the recessed segmented control (apps-sdk 2.6
+ * port): the selected chip is the "thumb" — an elevated `surfaceRaised`
+ * fill — while idle chips stay ghost; the track sits BELOW the surface
+ * (`background`) with a 2px gutter, and the nested-radius rule gives chips
+ * the track radius minus the gutter ("lg" 6 - 2 -> "md" 4).
+ */
+/**
+ * Disabled-control reason popover (owner contract, EP250 #8712 verbatim:
+ * "i can't tell why the Codex option is disabled in the composer. for
+ * things like that you need to put a popover on hover over the disabled
+ * button explaining why."). A disabled control that carries a reason is
+ * wrapped in the catalog Tooltip: hover or keyboard focus reveals the
+ * reason as a small overlay (styled by the host stylesheet on the shared
+ * overlay recipe); the accessible label keeps carrying the reason for
+ * screen readers; NO standing caption is ever rendered (the
+ * no-composer-disabled-caption contract stays intact — hover-only).
+ * The reason text is whatever the control state carries — never hardcoded.
+ */
+export const withDisabledReason = (
+  key: string,
+  disabled: boolean,
+  reason: string | null,
+  control: View,
+): View =>
+  disabled && reason !== null && reason !== ""
+    ? Tooltip(
+        { key: `${key}-reason`, content: reason, placement: { side: "top", align: "start" } },
+        [control],
+      )
+    : control
+
+const harnessChip = (
+  state: DesktopShellState,
+  harness: DesktopHarnessName,
+  label: string,
+): View => {
+  const selected = state.selectedHarness === harness
+  const lane = state.harnessLanes[harness]
+  const chip = Button({
+    key: `shell-harness-${harness}`,
+    label,
+    variant: selected ? "secondary" : "ghost",
+    style: selected
+      ? { backgroundColor: "surfaceRaised", borderWidth: 0, borderRadius: "md", typeScale: "label", color: "textPrimary" }
+      : { borderWidth: 0, borderRadius: "md", typeScale: "label", color: "textMuted" },
+    disabled: state.pending || !lane.available,
+    onPress: IntentRef("DesktopHarnessSelected", StaticPayload(harness)),
+    a11y: {
+      label: !lane.available
+        ? lane.reason ?? `${label} — unavailable`
+        : selected ? `${label} harness selected` : `Target new turns at ${label}`,
+    },
+  })
+  return withDisabledReason(
+    `shell-harness-${harness}`,
+    state.pending || !lane.available,
+    lane.available ? null : lane.reason,
+    chip,
+  )
+}
+
 const shellComposer = (state: DesktopShellState): View =>
   Card(
     {
       key: "shell-composer",
       padding: "2",
-      radius: "lg",
+      // Radius capped at the shared scale's xl (8) — the apps-sdk 24px
+      // composer radius is deliberately NOT ported (spec "not ported" list).
+      radius: "xl",
       style: {
         width: "full",
         maxWidth: columnWidth,
@@ -1980,35 +2143,18 @@ const shellComposer = (state: DesktopShellState): View =>
         {
           key: "shell-harness-row",
           direction: "row",
-          gap: "1",
+          gap: "0.5",
           align: "center",
-          style: { width: "full" },
+          style: {
+            backgroundColor: "background",
+            borderRadius: "lg",
+            padding: "0.5",
+            alignSelf: "start",
+          },
         },
         [
-          Button({
-            key: "shell-harness-fable",
-            label: "Fable",
-            variant: state.selectedHarness === "fable" ? "secondary" : "ghost",
-            disabled: state.pending || !state.harnessLanes.fable.available,
-            onPress: IntentRef("DesktopHarnessSelected", StaticPayload("fable")),
-            a11y: {
-              label: !state.harnessLanes.fable.available
-                ? state.harnessLanes.fable.reason ?? "Fable — unavailable"
-                : state.selectedHarness === "fable" ? "Fable harness selected" : "Target new turns at Fable",
-            },
-          }),
-          Button({
-            key: "shell-harness-codex",
-            label: "Codex",
-            variant: state.selectedHarness === "codex" ? "secondary" : "ghost",
-            disabled: state.pending || !state.harnessLanes.codex.available,
-            onPress: IntentRef("DesktopHarnessSelected", StaticPayload("codex")),
-            a11y: {
-              label: !state.harnessLanes.codex.available
-                ? state.harnessLanes.codex.reason ?? "Codex — unavailable"
-                : state.selectedHarness === "codex" ? "Codex harness selected" : "Target new turns at Codex",
-            },
-          }),
+          harnessChip(state, "fable", "Fable"),
+          harnessChip(state, "codex", "Codex"),
         ],
       ),
       Stack(
@@ -2032,60 +2178,94 @@ const shellComposer = (state: DesktopShellState): View =>
             style: { flex: 1 },
           }),
           Icon({ key: "shell-send-icon", name: "Plane", size: "sm", color: "accent" }),
-          Button({
-            key: "shell-note",
-            label: "Send",
-            variant: "primary",
-            disabled: state.pending || !state.harnessLanes[state.selectedHarness].available,
-            onPress: IntentRef("DesktopNoteSubmitted"),
-            a11y: {
-              label: state.harnessLanes[state.selectedHarness].available
-                ? "Send the typed message"
-                : state.harnessLanes[state.selectedHarness].reason ?? "Send unavailable: selected lane cannot act",
-            },
-          }),
+          withDisabledReason(
+            "shell-note",
+            !state.harnessLanes[state.selectedHarness].available,
+            state.harnessLanes[state.selectedHarness].available
+              ? null
+              : state.harnessLanes[state.selectedHarness].reason ?? "Send unavailable: selected lane cannot act",
+            Button({
+              key: "shell-note",
+              label: "Send",
+              variant: "primary",
+              disabled: state.pending || !state.harnessLanes[state.selectedHarness].available,
+              onPress: IntentRef("DesktopNoteSubmitted"),
+              a11y: {
+                label: state.harnessLanes[state.selectedHarness].available
+                  ? "Send the typed message"
+                  : state.harnessLanes[state.selectedHarness].reason ?? "Send unavailable: selected lane cannot act",
+              },
+            }),
+          ),
         ],
       ),
     ],
   )
 
-const commandPalette = (): View =>
-  Card(
+/**
+ * Command palette panel (apps-sdk chrome port, EP250 #8712): the floating-
+ * overlay recipe — one step above surfaceRaised (`surfaceOverlay`), radius
+ * `xl`, hairline `borderSubtle` edge, 6px panel gutter (spacing "1.5"),
+ * ghost item rows whose inner radius is the outer minus the gutter
+ * (nested-radius rule -> "sm"), and the platform keybinding caption on rows
+ * that carry a canonical chord. The overlay shadow + enter/exit motion ride
+ * the host stylesheet's elevation/motion custom properties.
+ */
+const commandPalette = (state: DesktopShellState): View => {
+  const darwin = state.host.includes("darwin")
+  return Card(
     {
       key: "desktop-command-palette",
-      padding: "3",
-      radius: "lg",
+      padding: "1.5",
+      radius: "xl",
       style: {
         width: "full",
         maxWidth: 420,
-        surface: "glass",
-        borderColor: "border",
+        backgroundColor: "surfaceOverlay",
+        borderColor: "borderSubtle",
         borderWidth: 1,
       },
     },
     [
       Stack({ key: "desktop-command-palette-heading", direction: "row", gap: "2", align: "center" }, [
-        Text({ key: "desktop-command-palette-title", content: "Commands", variant: "heading", color: "textPrimary" }),
+        Text({ key: "desktop-command-palette-title", content: "Commands", variant: "title", color: "textPrimary" }),
         Spacer({ key: "desktop-command-palette-heading-fill", flex: true }),
         Button({
           key: "desktop-command-palette-close",
           label: "Close",
           variant: "ghost",
+          style: { borderWidth: 0, borderRadius: "sm", typeScale: "label", color: "textFaint" },
           onPress: IntentRef("DesktopCommandPaletteDismissed"),
           a11y: { label: "Close command palette" },
         }),
       ]),
-      ...desktopCommandRegistry.map((command) => Button({
-        key: `desktop-command-${command.id}`,
-        label: command.label,
-        variant: "ghost",
-        onPress: command.payload === null
-          ? IntentRef(command.intentName)
-          : IntentRef(command.intentName, StaticPayload(command.payload)),
-        a11y: { label: command.label },
-      })),
+      ...desktopCommandRegistry.flatMap((command) => {
+        const chord = formatCommandChord(command.chords, darwin)
+        return [Stack(
+          { key: `desktop-command-row-${command.id}`, direction: "row", gap: "2", align: "center", style: { width: "full" } },
+          [
+            Button({
+              key: `desktop-command-${command.id}`,
+              label: command.label,
+              variant: "ghost",
+              style: { borderWidth: 0, borderRadius: "sm", typeScale: "label", color: "textPrimary", flex: 1 },
+              onPress: command.payload === null
+                ? IntentRef(command.intentName)
+                : IntentRef(command.intentName, StaticPayload(command.payload)),
+              a11y: { label: chord === null ? command.label : `${command.label} (${chord})` },
+            }),
+            ...(chord === null ? [] : [Text({
+              key: `desktop-command-chord-${command.id}`,
+              content: chord,
+              variant: "caption",
+              color: "textFaint",
+            })]),
+          ],
+        )]
+      }),
     ],
   )
+}
 
 /**
  * Right-side message metadata inspector (#8712: "if I click on the message,
@@ -2130,10 +2310,11 @@ const chatMessageInspector = (entry: DesktopNoteEntry): View => {
         key: "chat-message-inspector-close",
         label: "Close",
         variant: "ghost",
+        style: { borderWidth: 0, borderRadius: "md", typeScale: "label", color: "textFaint", alignSelf: "start" },
         onPress: IntentRef("DesktopMessageSelected", StaticPayload("")),
         a11y: { label: "Close message details" },
       }),
-      Text({ key: "chat-message-inspector-title", content: "Message details", variant: "heading", color: "textPrimary" }),
+      Text({ key: "chat-message-inspector-title", content: "Message details", variant: "title", color: "textPrimary" }),
       Badge({ key: "chat-message-inspector-role", label: entry.role, tone: "neutral" }),
       Table({
         key: "chat-message-inspector-fields",
@@ -2172,15 +2353,17 @@ const chatTranscriptArea = (state: DesktopShellState): ReadonlyArray<View> => {
     messages: projectTranscriptEntries(state.notes).map((entry) =>
       entry.kind === "tool"
         ? toolCardMessage(entry.card, state.expandedToolCards.includes(entry.card.key))
-        : entry.kind === "question"
-          ? questionCardMessage(
-              entry.note,
-              entry.note.question === undefined
-                ? undefined
-                : state.questionCards[entry.note.question.questionRef],
-              state.questionAnswerHostAvailable,
-            )
-          : noteMessage(entry.note)),
+        : entry.kind === "context-group"
+          ? contextGroupMessage(entry.group, state.expandedToolCards.includes(entry.group.key))
+          : entry.kind === "question"
+            ? questionCardMessage(
+                entry.note,
+                entry.note.question === undefined
+                  ? undefined
+                  : state.questionCards[entry.note.question.questionRef],
+                state.questionAnswerHostAvailable,
+              )
+            : noteMessage(entry.note)),
     style: {
       width: "full",
       maxWidth: columnWidth,
@@ -2189,7 +2372,10 @@ const chatTranscriptArea = (state: DesktopShellState): ReadonlyArray<View> => {
       minHeight: 0,
       paddingLeft: "4",
       paddingRight: "4",
-      gap: "5",
+      // The 24/12/4 rhythm (card reconciliation): 12px part gap between
+      // rows; user turns get their extra 24px headroom via the host
+      // stylesheet's turn rule; grouped members stack at 4px.
+      gap: "3",
     },
   })
   const selected = state.selectedMessageKey === null
@@ -2297,7 +2483,7 @@ export const desktopShellView = (state: DesktopShellState): View =>
             variant: "caption",
             color: "warning",
           })]),
-          ...(state.commandPaletteOpen ? [commandPalette()] : []),
+          ...(state.commandPaletteOpen ? [commandPalette(state)] : []),
           ...(state.workspace === "chat" && state.history.catalog.roots.length === 0 && state.threads.length === 0 ? [shellWelcome()] : []),
           ...(state.workspace === "chat" && state.history.page !== null ? [historyWorkspaceView(state.history)] : state.workspace === "chat" ? chatTranscriptArea(state) : state.workspace === "files" ? [workspaceFiles(state)] : state.workspace === "review" ? [workspaceReview(state)] : state.workspace === "settings" ? [Stack({ key: "desktop-settings-stack", direction: "column", gap: "3", style: { width: "full", minHeight: 0 } }, [settingsView(state.settings), commandBindingSettings(state)])] : state.workspace === "fleet" ? [fleetWorkspaceView(state.fleet)] : [projectHome(state)]),
         ],

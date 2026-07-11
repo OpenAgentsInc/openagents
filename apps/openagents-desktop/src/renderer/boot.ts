@@ -567,10 +567,24 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
       }
     }
     const focusComposer = (): void => {
-      // Let the controlled TextField render its cleared/enabled state first.
-      window.setTimeout(() => {
-        root.querySelector<HTMLInputElement>('[data-en-key="shell-input"] input')?.focus()
-      }, 0)
+      // Focus must land AFTER the chat view mounts. A New-chat dispatch can
+      // clear a loaded history page, which swaps the whole center view and
+      // (re)mounts the composer on a LATER render commit than the intent
+      // completion — and a re-parented input loses focus even when it was
+      // focused earlier. So retry across commits until the input exists AND
+      // holds focus (owner contract: "when i do new chat, clicking button
+      // or command N, auto focus the input").
+      let attempts = 0
+      const tryFocus = (): void => {
+        const input = root.querySelector<HTMLInputElement>('[data-en-key="shell-input"] input')
+        if (input !== null && !input.disabled) {
+          input.focus()
+          if (root.ownerDocument.activeElement === input) return
+        }
+        attempts += 1
+        if (attempts < 20) window.setTimeout(tryFocus, 16)
+      }
+      window.setTimeout(tryFocus, 0)
     }
     const report: IntentReporter = (ref, runtimeValue) => {
       const shouldFocus = ref.name === "DesktopNewChat" || ref.name === "DesktopNoteSubmitted"
@@ -578,6 +592,34 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
         Effect.ensuring(Effect.sync(() => {
           if (shouldFocus) focusComposer()
         })),
+      )
+    }
+    // Cmd+N / Ctrl+N -> DesktopNewChat (owner contract: "when i do new chat,
+    // clicking button or command N, auto focus the input"). The chord is the
+    // canonical `chat.new` default binding from the desktop command contract;
+    // dispatch rides the same IntentReporter as button presses so the
+    // post-mount composer-focus hook fires on this path too. Same platform-
+    // modifier + editable-guard pattern as the other global shortcuts.
+    const onNewChatShortcut = (event: KeyboardEvent): void => {
+      const target = event.target
+      const editable = target instanceof HTMLElement &&
+        target.closest("input, textarea, [contenteditable='true']") !== null
+      const platformModifier = bridge?.platform === "darwin"
+        ? event.metaKey && !event.ctrlKey
+        : event.ctrlKey && !event.metaKey
+      if (
+        event.defaultPrevented ||
+        editable ||
+        event.key.toLowerCase() !== "n" ||
+        !platformModifier ||
+        event.altKey ||
+        event.shiftKey
+      ) return
+      event.preventDefault()
+      void Effect.runPromise(
+        registry.dispatch(resolveIntentRef(IntentRef("DesktopNewChat", StaticPayload(null)))).pipe(
+          Effect.ensuring(Effect.sync(() => focusComposer())),
+        ),
       )
     }
     const onCommandPaletteShortcut = (event: KeyboardEvent): void => {
@@ -687,12 +729,14 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
       if((bridge?.platform==="darwin"&&event.key==="Meta")||(bridge?.platform!=="darwin"&&event.key==="Control"))setHistoryShortcutHints(false)
     }
     const onHistoryWindowBlur=():void=>setHistoryShortcutHints(false)
+    window.addEventListener("keydown", onNewChatShortcut)
     window.addEventListener("keydown", onCommandPaletteShortcut)
     window.addEventListener("keydown", onHistoryModifierDown)
     window.addEventListener("keydown", onHistoryConversationShortcut)
     window.addEventListener("keyup", onHistoryModifierUp)
     window.addEventListener("blur", onHistoryWindowBlur)
     window.addEventListener("pagehide", () => {
+      window.removeEventListener("keydown", onNewChatShortcut)
       window.removeEventListener("keydown", onCommandPaletteShortcut)
       window.removeEventListener("keydown", onHistoryModifierDown)
       window.removeEventListener("keydown", onHistoryConversationShortcut)

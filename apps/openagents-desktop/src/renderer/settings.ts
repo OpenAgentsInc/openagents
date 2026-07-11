@@ -18,6 +18,7 @@ import {
   Stack,
   StaticPayload,
   Text,
+  Tooltip,
   defineIntent,
   type View,
 } from "@effect-native/core"
@@ -532,6 +533,20 @@ const accountRow = (keyPrefix: string) => (account: CodexAccountItem): View =>
  * drives the receipted per-ref re-auth `--account <ref> --force-device-login`
  * into the SAME isolated home; no CLI instruction ever renders).
  */
+const reconnectButton = (ref: string, connectLive: boolean): View =>
+  Button({
+    key: `settings-account-${ref}-reconnect`,
+    label: connectLive ? "Waiting…" : "Reconnect",
+    variant: "secondary",
+    disabled: connectLive,
+    onPress: IntentRef("DesktopCodexReconnectRequested", StaticPayload(ref)),
+    a11y: {
+      label: connectLive
+        ? `Reconnect Codex account ${ref} unavailable: another device-auth flow is already running`
+        : `Reconnect Codex account ${ref} with the isolated device-auth flow`,
+    },
+  })
+
 const codexAccountRow = (connectLive: boolean) => (account: CodexAccountItem): View =>
   Stack(
     {
@@ -558,16 +573,19 @@ const codexAccountRow = (connectLive: boolean) => (account: CodexAccountItem): V
       ...(account.readiness === "ready"
         ? []
         : [
-            Button({
-              key: `settings-account-${account.ref}-reconnect`,
-              label: connectLive ? "Waiting…" : "Reconnect",
-              variant: "secondary",
-              disabled: connectLive,
-              onPress: IntentRef("DesktopCodexReconnectRequested", StaticPayload(account.ref)),
-              a11y: {
-                label: `Reconnect Codex account ${account.ref} with the isolated device-auth flow`,
-              },
-            }),
+            // Disabled-control reason popover (owner contract EP250): while
+            // another device-auth flow is live the disabled Reconnect
+            // explains itself on hover/focus — never a standing caption.
+            (connectLive
+              ? Tooltip(
+                  {
+                    key: `settings-account-${account.ref}-reconnect-reason`,
+                    content: "Another Codex device-auth flow is already running — finish or wait for it first.",
+                    placement: { side: "top", align: "start" },
+                  },
+                  [reconnectButton(account.ref, connectLive)],
+                )
+              : reconnectButton(account.ref, connectLive)),
           ]),
     ],
   )
@@ -750,14 +768,17 @@ export const settingsView = (settings: SettingsState): View => {
   return Card(
     {
       key: "settings-screen",
-      padding: "3",
+      // apps-sdk chrome port (EP250 #8712): in-flow panel — 16px section
+      // padding, flat on a raised surface with a hairline `borderSubtle`
+      // edge (overlay shadows are reserved for floating overlays).
+      padding: "4",
       radius: "lg",
       style: {
         width: "full",
         maxWidth: 840,
         alignSelf: "center",
         backgroundColor: "surfaceRaised",
-        borderColor: "border",
+        borderColor: "borderSubtle",
         borderWidth: 1,
       },
     },
@@ -777,6 +798,7 @@ export const settingsView = (settings: SettingsState): View => {
               key: "settings-back",
               label: "Back",
               variant: "ghost",
+              style: { borderWidth: 0, borderRadius: "md", typeScale: "label" },
               onPress: IntentRef("DesktopSettingsToggled"),
               a11y: { label: "Back to chat" },
             }),

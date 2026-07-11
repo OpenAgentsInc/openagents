@@ -549,6 +549,35 @@ const styleDeclarations = (key: string, value: unknown): ReadonlyArray<readonly 
   }
 }
 
+// Application-chrome physics shared by every DOM surface (the apps-sdk-ui
+// chrome-language port, vendored from upstream effect-native): the
+// alpha-overlay state engine — hover/active/selected are translucent
+// overlays of one base color, never new hues — a 150ms basic transition,
+// press-scale feedback, one focus ring, nav-item chrome, and token-derived
+// thin scrollbars. Every value resolves through the :root theme variables.
+// `:where()` keeps rest-state rules at zero specificity so typed style
+// overrides (atomic classes) still win; the interactive state fills use
+// `!important` deliberately, because the state engine is uniform chrome
+// physics that must beat the inline variant colors the renderer sets at rest.
+const chromeBaseRules = [
+  ':where([data-effect-native-surface="dom"]) :where(button){transition:background-color var(--en-motion-fast) var(--en-ease-basic),border-color var(--en-motion-fast) var(--en-ease-basic),color var(--en-motion-fast) var(--en-ease-basic),opacity var(--en-motion-fast) var(--en-ease-basic),transform var(--en-motion-fast) var(--en-ease-basic);}',
+  '[data-effect-native-surface="dom"] button:not(:disabled):active{transform:scale(0.98);}',
+  '[data-effect-native-surface="dom"] :is(button,a,input,textarea,[tabindex]):focus-visible{outline:2px solid var(--en-color-focus);outline-offset:2px;}',
+  '[data-effect-native-surface="dom"] button:disabled{cursor:not-allowed;}',
+  '[data-effect-native-surface="dom"] button[data-en-variant="ghost"]:hover:not(:disabled):not(:active){background-color:var(--en-color-stateHover) !important;}',
+  '[data-effect-native-surface="dom"] button[data-en-variant="ghost"]:active:not(:disabled){background-color:var(--en-color-stateActive) !important;}',
+  '[data-effect-native-surface="dom"] button[data-en-variant="primary"]:hover:not(:disabled):not(:active){background-color:var(--en-color-accentHover) !important;}',
+  '[data-effect-native-surface="dom"] button[data-en-variant="primary"]:active:not(:disabled){background-color:var(--en-color-accentActive) !important;}',
+  '[data-effect-native-surface="dom"] button[data-en-variant="secondary"]:hover:not(:disabled){background-color:var(--en-color-surfaceRaised) !important;}',
+  ':where([data-effect-native-surface="dom"]) :where([data-en-nav-item]){display:flex;align-items:center;background:transparent;border:0;border-radius:var(--en-radius-md);padding:var(--en-spacing-1) var(--en-spacing-2);color:var(--en-color-textMuted);font:inherit;font-size:var(--en-type-label-fontSize);line-height:var(--en-type-label-lineHeight);cursor:pointer;text-align:left;}',
+  '[data-effect-native-surface="dom"] [data-en-nav-item]:hover:not(:disabled){background-color:var(--en-color-stateHover);color:var(--en-color-textPrimary);}',
+  '[data-effect-native-surface="dom"] [data-en-nav-item]:active:not(:disabled){background-color:var(--en-color-stateActive);}',
+  '[data-effect-native-surface="dom"] [data-en-nav-item][data-en-active="true"]{background-color:var(--en-color-stateSelected);color:var(--en-color-textPrimary);}',
+  ':where([data-effect-native-surface="dom"]) :where([data-en-role="section-label"]){display:block;color:var(--en-color-textFaint);font-size:var(--en-type-caption-fontSize);line-height:var(--en-type-caption-lineHeight);font-weight:600;letter-spacing:0.06em;text-transform:uppercase;padding:var(--en-spacing-3) var(--en-spacing-2) var(--en-spacing-1);}',
+  '[data-effect-native-surface="dom"] *{scrollbar-width:thin;scrollbar-color:var(--en-color-borderStrong) transparent;}',
+  '@media (prefers-reduced-motion: reduce){[data-effect-native-surface="dom"] *{transition-duration:0.01ms !important;animation-duration:0.01ms !important;}}'
+].join("")
+
 class AtomicStyleSheet {
   readonly element: HTMLStyleElement
   #theme: Theme
@@ -624,13 +653,26 @@ class AtomicStyleSheet {
         `--en-type-${cssEscape(key)}-lineHeight:${px(value.lineHeight)};`,
         `--en-type-${cssEscape(key)}-fontWeight:${value.fontWeight};`
       ]),
+      `--en-motion-fast:${this.#theme.motion.durationFastMs}ms;`,
+      `--en-motion-enter:${this.#theme.motion.durationEnterMs}ms;`,
+      `--en-motion-exit:${this.#theme.motion.durationExitMs}ms;`,
+      `--en-ease-basic:${this.#theme.motion.easeBasic};`,
+      `--en-ease-enter:${this.#theme.motion.easeEnter};`,
+      `--en-ease-exit:${this.#theme.motion.easeExit};`,
+      `--en-elevation-overlay-shadow:${this.#theme.elevation.overlayShadow};`,
+      `--en-elevation-hairline:0 0 0 ${px(this.#theme.elevation.hairlineWidth)} var(--en-color-borderSubtle);`,
+      ...Object.entries(this.#theme.control).flatMap(([key, value]) => [
+        `--en-control-${cssEscape(key)}-height:${px(value.height)};`,
+        `--en-control-${cssEscape(key)}-gutter:${px(value.gutter)};`,
+        `--en-control-${cssEscape(key)}-icon:${px(value.icon)};`
+      ]),
       "}"
     ].join("")
     const atomicRules = Array.from(this.#rules.entries())
       .filter(([key]) => this.#used.has(key))
       .map(([, rule]) => `.${rule.className}{${rule.property}:${rule.value};}`)
       .join("")
-    this.element.textContent = `${themeRules}${atomicRules}`
+    this.element.textContent = `${themeRules}${chromeBaseRules}${atomicRules}`
   }
 
   dispose(): void {
@@ -1053,7 +1095,7 @@ const renderButton = (view: ButtonView, state: DomRendererState, report: IntentR
   element.style.borderColor = ""
   element.style.background = ""
   element.style.color = ""
-  element.style.cursor = view.disabled === true ? "default" : "pointer"
+  element.style.cursor = view.disabled === true ? "not-allowed" : "pointer"
   element.style.opacity = view.disabled === true ? "0.5" : "1"
   switch (view.variant) {
     case "primary":

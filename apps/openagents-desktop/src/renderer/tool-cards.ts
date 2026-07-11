@@ -43,10 +43,29 @@ export type ToolCardModel = Readonly<{
   resultSummary: string | null
 }>
 
+/**
+ * Consecutive context-gathering tools (read/glob/grep — the OpenCode
+ * CONTEXT_GROUP_TOOLS port, card-reconciliation pass EP250 #8712) collapse
+ * into ONE "Gathered context — N reads, M searches" row with indented
+ * member rows. Runs of a single call stay plain tool cards.
+ */
+export const contextGroupTools = ["Read", "Glob", "Grep"] as const
+
+export type ContextGroupModel = Readonly<{
+  /** Stable group key derived from the first member's started-note key. */
+  key: string
+  cards: ReadonlyArray<ToolCardModel>
+  running: boolean
+  failed: boolean
+  reads: number
+  searches: number
+}>
+
 export type TranscriptEntry =
   | Readonly<{ kind: "note"; note: DesktopNoteEntry }>
   | Readonly<{ kind: "question"; note: DesktopNoteEntry }>
   | Readonly<{ kind: "tool"; card: ToolCardModel }>
+  | Readonly<{ kind: "context-group"; group: ContextGroupModel }>
 
 /** Typed trace facts for a note: typed meta first, text-parse fallback. */
 export const toolTraceFromNote = (note: DesktopNoteEntry): DesktopToolTrace | null => {
@@ -55,11 +74,63 @@ export const toolTraceFromNote = (note: DesktopNoteEntry): DesktopToolTrace | nu
   return parseFableLocalTraceNoteText(note.text)
 }
 
+const makeContextGroup = (cards: ReadonlyArray<ToolCardModel>): ContextGroupModel => ({
+  key: `ctx-${cards[0]!.key}`,
+  cards,
+  running: cards.some((card) => card.status === "running"),
+  failed: cards.some((card) => card.status === "failed"),
+  reads: cards.filter((card) => card.toolName === "Read").length,
+  searches: cards.filter((card) => card.toolName !== "Read").length,
+})
+
+/** "3 reads, 2 searches" — omits zero-count parts, singular/plural honest. */
+export const contextGroupSummary = (group: ContextGroupModel): string =>
+  [
+    ...(group.reads > 0 ? [`${group.reads} read${group.reads === 1 ? "" : "s"}`] : []),
+    ...(group.searches > 0 ? [`${group.searches} search${group.searches === 1 ? "" : "es"}`] : []),
+  ].join(", ")
+
+/**
+ * Folds runs (length >= 2) of consecutive context-gathering tool cards into
+ * single context-group entries. Any non-groupable entry (notes, questions,
+ * other tools) breaks the run.
+ */
+export const groupContextEntries = (
+  entries: ReadonlyArray<TranscriptEntry>,
+): ReadonlyArray<TranscriptEntry> => {
+  const out: Array<TranscriptEntry> = []
+  let run: Array<ToolCardModel> = []
+  const flush = (): void => {
+    if (run.length >= 2) out.push({ kind: "context-group", group: makeContextGroup(run) })
+    else for (const card of run) out.push({ kind: "tool", card })
+    run = []
+  }
+  for (const entry of entries) {
+    if (
+      entry.kind === "tool" &&
+      (contextGroupTools as ReadonlyArray<string>).includes(entry.card.toolName)
+    ) {
+      run.push(entry.card)
+      continue
+    }
+    flush()
+    out.push(entry)
+  }
+  flush()
+  return out
+}
+
 /**
  * Projects notes into transcript entries, folding started + ok/failed trace
- * pairs into single updating tool cards.
+ * pairs into single updating tool cards and consecutive read/glob/grep runs
+ * into context groups (EP250 card reconciliation).
  */
 export const projectTranscriptEntries = (
+  notes: ReadonlyArray<DesktopNoteEntry>,
+): ReadonlyArray<TranscriptEntry> => groupContextEntries(projectToolCardEntries(notes))
+
+/** The ungrouped per-invocation projection (one card per tool invocation). */
+export const projectToolCardEntries = (
   notes: ReadonlyArray<DesktopNoteEntry>,
 ): ReadonlyArray<TranscriptEntry> => {
   const entries: Array<TranscriptEntry> = []

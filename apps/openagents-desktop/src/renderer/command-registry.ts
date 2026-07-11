@@ -18,7 +18,32 @@ export const desktopCommandRegistry = desktopCanonicalCommandRegistry
     payload: command.defaultArguments.kind === "none"
       ? null
       : command.defaultArguments.workspace,
+    /** Canonical chords, for the palette's keybinding caption (⌘N). */
+    chords: command.defaultBindings,
   }))
+
+/**
+ * The platform-appropriate canonical chord ("Meta+N" on darwin,
+ * "Control+N" elsewhere), formatted for the palette caption (⌘N / Ctrl+N).
+ */
+export const formatCommandChord = (
+  chords: ReadonlyArray<string>,
+  darwin: boolean,
+): string | null => {
+  const chord = darwin
+    ? chords.find(value => value.startsWith("Meta")) ?? chords[0]
+    : chords.find(value => value.startsWith("Control")) ?? chords[0]
+  if (chord === undefined) return null
+  return chord
+    .split("+")
+    .map(part =>
+      part === "Meta" ? (darwin ? "⌘" : "Win+")
+        : part === "Control" ? (darwin ? "⌃" : "Ctrl+")
+          : part === "Alt" ? (darwin ? "⌥" : "Alt+")
+            : part === "Shift" ? (darwin ? "⇧" : "Shift+")
+              : part)
+    .join("")
+}
 
 export type DesktopCommand = (typeof desktopCommandRegistry)[number]
 

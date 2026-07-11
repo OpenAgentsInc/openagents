@@ -650,8 +650,8 @@ const sessionUsageSection = (fleet: FleetWorkspaceState): ReadonlyArray<View> =>
           Text({
             key: "fleet-session-usage-title",
             content: "Session usage",
-            variant: "body",
-            color: "textPrimary",
+            variant: "label",
+            color: "textMuted",
           }),
           Text({
             key: "fleet-session-usage-evidence",

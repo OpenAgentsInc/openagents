@@ -6,7 +6,7 @@ import {
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-11.29",
+    version: "2026-07-11.30",
     contracts: [
       {
         contractId: "openagents_desktop.chat.compact_message_details_affordance.v1",
@@ -1468,6 +1468,133 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         ],
         verification:
           "Focused catalog/shell/boundary tests, shared/server/client CUT-13 suites, Desktop typecheck and full test, production build, and OPENAGENTS_DESKTOP_SMOKE=1 Electron smoke.",
+      },
+      {
+        contractId: "openagents_desktop.chrome.apps_sdk_chrome_design_language.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "application chrome design language",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "owner-video-review", statedBy: "owner", statedOn: "2026-07-11" },
+        statement:
+          "do a separate design pass of projects/repos/apps-sdk-ui and thats what i want to use for the rest of the app chrome, menus, etc, everything other than messages, but still harmonized to messages. we want that design language, ported to starcraft kinda, represented in EVERY other surface of the app",
+        authorityBoundary:
+          "Presentation only. The apps-sdk-ui chrome language (alpha-overlay state engine — hover/active/selected as translucent overlays of one base color, never new hues; elevation = lighter surface + hairline ring for floating overlays; 150/350/200ms motion; the trimmed 4-step control lattice; the three-level dim ladder) is expressed as new @effect-native/tokens roles/groups (upstream, public-safe), the vendored DOM renderer chrome base ruleset, typed token style objects in the renderer views, and a host stylesheet that resolves every color through --en-* custom properties. Our icon set stays; uniform Protoss-blue dark theme only; no light theme, no caution/discovery intents, no pink family, no 24px composer radius, no backdrop-blur popover variant, no 9-step lattice, none of their icons (deviations recorded in docs/design-ports.md). Message/tool cards keep the OpenCode geometry, harmonized onto the same shared scales.",
+        evidenceRefs: [
+          "apps/openagents.com/packages/effect-native-tokens/src/index.ts",
+          "apps/openagents.com/packages/effect-native-render-dom/src/index.ts",
+          "apps/openagents-desktop/src/renderer/theme.ts",
+          "apps/openagents-desktop/src/renderer/app.css",
+          "apps/openagents-desktop/src/renderer/shell.ts",
+          "apps/openagents-desktop/docs/design-ports.md",
+          "github:OpenAgentsInc/openagents#8712",
+        ],
+        oracles: [
+          {
+            id: "chrome_design.token_closure_and_scale_membership",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/design-conformance.test.ts",
+            description:
+              "Mechanical conformance: (a) zero raw hex/rgb/hsl color literals in renderer modules and the host stylesheet outside the theme module; (b) spacing/radius/type style values are members of the shared token scales with a small documented numeric-dimension allowlist; (c) per-surface structural recipes — sidebar rail sections, palette on surfaceOverlay+borderSubtle+xl with chord captions, composer radius cap + recessed segmented harness track, settings panel padding/hairline, fleet chrome, inspector rail scale, tool-card shimmer keys, 240px raw wells, context-group anatomy.",
+          },
+          {
+            id: "chrome_design.theme_is_khala_canonical",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/shell.test.ts",
+            description:
+              "The desktop theme IS the tokens-package khalaTheme (radius 2/4/6/8 quantized scale, state-overlay + dim-ladder + overlay-surface roles, motion/control groups) — app-local palette drift deleted.",
+          },
+          {
+            id: "chrome_design.smoke_pixels",
+            kind: "bun-test",
+            mode: "e2e",
+            ref: "apps/openagents-desktop/src/main.ts",
+            description:
+              "The built-Electron smoke drives every restyled surface (shell+sidebar, palette, settings, fleet, inspector, composer) and captures pixel receipts when OPENAGENTS_DESKTOP_SMOKE_SHOTS is set.",
+          },
+        ],
+        verification:
+          "bun run --cwd apps/openagents-desktop verify runs the design-conformance sweep, the shell/theme suites, and the Electron smoke over the restyled surfaces.",
+      },
+      {
+        contractId: "openagents_desktop.chat.new_chat_autofocuses_composer.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "chat composer focus",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "owner-video-review", statedBy: "owner", statedOn: "2026-07-11" },
+        statement: "when i do new chat, clicking button or command N, auto focus the input.",
+        authorityBoundary:
+          "Focus behavior only. Every DesktopNewChat entry point — the workspace-new-chat dock button, the command palette chat.new row, and the Cmd+N/Ctrl+N chord (the canonical chat.new default binding, newly wired as a window keydown following the existing platform-modifier shortcut pattern; no Electron menu or OS accelerator collision exists) — dispatches the SAME typed intent, and the composer input receives focus AFTER the chat view mounts (retry across render commits, because a New chat from a loaded history page swaps the center view and a re-parented input loses focus). No new dispatch authority; the chord is suppressed inside editables like the other global shortcuts.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/renderer/boot.ts",
+          "apps/openagents-desktop/src/desktop-command-contract.ts",
+          "apps/openagents-desktop/src/renderer/command-registry.ts",
+          "github:OpenAgentsInc/openagents#8712",
+        ],
+        oracles: [
+          {
+            id: "new_chat_focus.palette_chord_caption",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/design-conformance.test.ts",
+            description:
+              "The palette chat.new row surfaces its canonical chord caption (⌘N on darwin) from the single command registry entry — one registered command, all input paths dispatch the same intent.",
+          },
+          {
+            id: "new_chat_focus.smoke_button_and_chord",
+            kind: "bun-test",
+            mode: "e2e",
+            ref: "apps/openagents-desktop/src/main.ts",
+            description:
+              "The built-Electron smoke proves BOTH paths end focused: the dock New-chat click from a loaded history page yields a fresh empty transcript with document.activeElement === the composer input, and a synthesized platform-modifier+N keydown from the fleet workspace does the same.",
+          },
+        ],
+        verification:
+          "bun run --cwd apps/openagents-desktop verify runs the palette-registry assertions and the Electron smoke new-chat + cmd-n focus steps.",
+      },
+      {
+        contractId: "openagents_desktop.chrome.disabled_control_reason_popover.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "disabled-control affordances",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "owner-video-review", statedBy: "owner", statedOn: "2026-07-11" },
+        statement:
+          "i can't tell why the Codex option is disabled in the composer. for things like that you need to put a popover on hover over the disabled button explaining why.",
+        authorityBoundary:
+          "Presentation only, hover/focus only. A disabled control that carries a reason string is wrapped in the catalog Tooltip: pointer hover or keyboard focus reveals the reason as a small overlay on the shared overlay recipe (surfaceOverlay fill, overlay shadow + hairline ring, caption text, fast fade); leave/blur dismisses it. The popover reads whatever reason string the control state carries — never hardcoded copy — so a future lane that lights the Codex chip changes nothing here. The accessible label keeps carrying the reason for screen readers, and NO standing caption returns (openagents_desktop.chat.no_composer_disabled_caption.v1 stays intact: the bubble is [hidden] at rest and excluded from visible-text checks). Applied to the composer harness chips, the unavailable-lane Send button, and the settings Reconnect control while another device-auth flow is live.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/renderer/shell.ts",
+          "apps/openagents-desktop/src/renderer/settings.ts",
+          "apps/openagents-desktop/src/renderer/app.css",
+          "github:OpenAgentsInc/openagents#8712",
+        ],
+        oracles: [
+          {
+            id: "disabled_reason_popover.typed_wrapping",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/design-conformance.test.ts",
+            description:
+              "A disabled harness chip with a reason is wrapped in a Tooltip whose content equals the exact lane reason; the unavailable-lane Send button gets the same wrap; available controls render bare (no popover, no caption).",
+          },
+          {
+            id: "disabled_reason_popover.smoke_hover_reveal",
+            kind: "bun-test",
+            mode: "e2e",
+            ref: "apps/openagents-desktop/src/main.ts",
+            description:
+              "The built-Electron smoke proves the disabled Codex chip's popover is hidden at rest, matches the accessible reason exactly, reveals on pointerenter, and dismisses on pointerleave — while the standing-caption ban assertion keeps passing on visible text.",
+          },
+        ],
+        verification:
+          "bun run --cwd apps/openagents-desktop verify runs the popover unit assertions and the Electron smoke hover-reveal step.",
       },
     ],
   };
