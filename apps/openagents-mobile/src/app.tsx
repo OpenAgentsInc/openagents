@@ -3,6 +3,7 @@ import { randomUUID } from "expo-crypto"
 import { StatusBar } from "expo-status-bar"
 import * as Updates from "expo-updates"
 import { useEffect, useMemo, useRef, useState } from "react"
+import { Linking } from "react-native"
 import { SafeAreaProvider } from "react-native-safe-area-context"
 
 import { recoverVerifiedNativeSession } from "./auth/native-session-recovery"
@@ -20,6 +21,10 @@ import type { MobileSyncPhase } from "./screens/home-core"
 import { HomeScreen } from "./screens/home-screen"
 import { openMobileSyncHost, type MobileNativeSyncHost } from "./sync/mobile-sync-host"
 import { startOtaPolling } from "./updates/ota-polling"
+import {
+  openNativeCodingTargetDelivery,
+  type NativeCodingTargetDelivery,
+} from "./coding/native-coding-target-delivery"
 
 type MobileCodingHomeBinding = Readonly<{
   directory: MobileCodingDirectory
@@ -106,6 +111,8 @@ export const App = () => {
   const [codingBinding, setCodingBinding] = useState<MobileCodingHomeBinding | undefined>()
   const [conversationRevision, setConversationRevision] = useState(0)
   const syncHostRef = useRef<MobileNativeSyncHost | null>(null)
+  const codingBindingRef = useRef<MobileCodingHomeBinding | undefined>(undefined)
+  const targetDeliveryRef = useRef<NativeCodingTargetDelivery | null>(null)
   const syncPhaseRef = useRef<MobileSyncPhase>(syncPhase)
   useEffect(() => {
     syncPhaseRef.current = syncPhase
@@ -129,6 +136,11 @@ export const App = () => {
           ],
         })
   }
+  const publishCodingBinding = (binding: MobileCodingHomeBinding | undefined): void => {
+    codingBindingRef.current = binding
+    setCodingBinding(binding)
+    if (binding !== undefined) void targetDeliveryRef.current?.flush()
+  }
   const sessionActions = useMemo(() => ({
     signIn: async () => {
       const previousPhase = syncPhaseRef.current
@@ -144,7 +156,7 @@ export const App = () => {
         }
         const experience = await selectAuthenticatedMobileExperience(syncHostRef.current!, applyActiveThread)
         setConversationSelection(experience.conversation)
-        setCodingBinding(experience.coding)
+        publishCodingBinding(experience.coding)
         setConversationRevision(current => current + 1)
         setSyncPhase(experience.conversation.mode === "sync" ? "live" : "session_ready")
         return
@@ -159,7 +171,7 @@ export const App = () => {
       // revocation may still be in flight, but no captured composer can queue
       // a command that survives unlink and replays under a later session.
       try { syncHostRef.current?.unlinkAccount() } catch { /* remote revocation still runs */ }
-      setCodingBinding(undefined)
+      publishCodingBinding(undefined)
       const result = await signOutNativeSession()
       if (result.state === "signed_out") {
         setConversationSelection({ mode: "local" })
@@ -177,10 +189,43 @@ export const App = () => {
     let stopped = false
     let syncHost: MobileNativeSyncHost | undefined
     let syncStatusTimer: ReturnType<typeof setInterval> | undefined
+    let linkSubscription: ReturnType<typeof Linking.addEventListener> | undefined
+    let notificationSubscription: Readonly<{ remove: () => void }> | undefined
+    let targetDelivery: NativeCodingTargetDelivery | undefined
     let localStoreReady = false
     try {
       syncHost = openMobileSyncHost()
       syncHostRef.current = syncHost
+      targetDelivery = openNativeCodingTargetDelivery({
+        resolve: candidate => syncHost!.coding().accept(candidate),
+        activate: async target => {
+          const binding = codingBindingRef.current
+          if (binding === undefined) return false
+          const thread = await binding.selectSession(target, applyActiveThread)
+          return thread !== null
+        },
+      })
+      targetDeliveryRef.current = targetDelivery
+      const enqueue = (candidate: Parameters<NativeCodingTargetDelivery["enqueue"]>[0]): void => {
+        targetDelivery?.enqueue(candidate)
+        void targetDelivery?.flush()
+      }
+      linkSubscription = Linking.addEventListener("url", event => {
+        enqueue({ source: "deep_link", url: event.url })
+      })
+      void Linking.getInitialURL().then(url => {
+        if (url !== null) enqueue({ source: "deep_link", url })
+      })
+      void import("expo-notifications").then(async Notifications => {
+        if (stopped) return
+        notificationSubscription = Notifications.addNotificationResponseReceivedListener(response => {
+          enqueue({ source: "notification", payload: response.notification.request.content.data })
+        })
+        const initial = await Notifications.getLastNotificationResponseAsync()
+        if (initial !== null) {
+          enqueue({ source: "notification", payload: initial.notification.request.content.data })
+        }
+      })
       localStoreReady = true
       setSyncPhase("local_ready")
     } catch {
@@ -192,7 +237,7 @@ export const App = () => {
         if (stopped || !localStoreReady) return
         switch (recovery.state) {
           case "signed_out":
-            setCodingBinding(undefined)
+            publishCodingBinding(undefined)
             setSyncPhase("local_ready")
             setConversationSelection({ mode: "local" })
             break
@@ -206,18 +251,18 @@ export const App = () => {
               const experience = await selectAuthenticatedMobileExperience(syncHost!, applyActiveThread)
               if (stopped) return
               setConversationSelection(experience.conversation)
-              setCodingBinding(experience.coding)
+              publishCodingBinding(experience.coding)
               setSyncPhase(experience.conversation.mode === "sync" ? "live" : "session_ready")
             }
             break
           case "denied":
             syncHost?.unlinkAccount()
-            setCodingBinding(undefined)
+            publishCodingBinding(undefined)
             setSyncPhase("denied")
             setConversationSelection({ mode: "local" })
             break
           case "unavailable":
-            setCodingBinding(undefined)
+            publishCodingBinding(undefined)
             setSyncPhase("unavailable")
             setConversationSelection({ mode: "local" })
             break
@@ -234,7 +279,7 @@ export const App = () => {
       const phase = syncHost?.status().syncPhase
       if (phase === "denied" && syncPhaseRef.current !== "denied") {
         try { syncHost?.unlinkAccount() } catch { /* capability is already closed */ }
-        setCodingBinding(undefined)
+        publishCodingBinding(undefined)
         syncPhaseRef.current = "denied"
         setConversationSelection({ mode: "local" })
         setConversationRevision(current => current + 1)
@@ -243,6 +288,7 @@ export const App = () => {
         phase === "bootstrapping" || phase === "catching_up" || phase === "live" ||
         phase === "must_refetch" || phase === "denied"
       ) setSyncPhase(phase)
+      if (phase === "live") void targetDelivery?.flush()
     }, 250)
     const handle = startOtaPolling({
       isEnabled: Updates.isEnabled,
@@ -256,6 +302,10 @@ export const App = () => {
       stopped = true
       if (syncStatusTimer !== undefined) clearInterval(syncStatusTimer)
       handle.stop()
+      linkSubscription?.remove()
+      notificationSubscription?.remove()
+      targetDelivery?.close()
+      targetDeliveryRef.current = null
       syncHost?.close()
       syncHostRef.current = null
     }

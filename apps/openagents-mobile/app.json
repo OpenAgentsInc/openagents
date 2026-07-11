@@ -38,6 +38,7 @@
       }
     },
     "plugins": [
+      "expo-notifications",
       "expo-updates",
       "expo-secure-store"
     ]

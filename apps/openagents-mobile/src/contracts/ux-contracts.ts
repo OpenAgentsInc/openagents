@@ -68,6 +68,7 @@ export const openAgentsMobileUxContractRegistry: BehaviorContractRegistryDocumen
         },
         evidenceRefs: [
           "apps/openagents-mobile/src/coding/mobile-coding-navigation.ts",
+          "apps/openagents-mobile/src/coding/native-coding-target-delivery.ts",
           "apps/openagents-mobile/src/conversation/mobile-conversation.ts",
           "docs/sol/2026-07-11-cut-14-mobile-authenticated-catalog-receipt.md",
           "github:OpenAgentsInc/openagents#8694",
@@ -88,6 +89,14 @@ export const openAgentsMobileUxContractRegistry: BehaviorContractRegistryDocumen
             ref: "apps/openagents-mobile/tests/authoritative-home.test.ts",
             description:
               "Proves the confirmed directory and session selection use the typed Effect Native intent registry.",
+          },
+          {
+            id: "mobile_native_coding_target_delivery",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-mobile/tests/native-coding-target-delivery.test.ts",
+            description:
+              "Proves bounded reconnect queuing, terminal stale rejection, exact activation, and production native-listener teardown.",
           },
         ],
         verification:
