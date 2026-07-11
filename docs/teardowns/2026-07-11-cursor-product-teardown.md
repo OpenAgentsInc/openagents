@@ -8,11 +8,18 @@ against what Cursor actually became through mid-2026.
 - Subject: Cursor 2.x–3.x, the agent-platform pivot, and the ground it left
   behind
 - Method: **transcript-grounded retrospective plus archival and public web
-  evidence.** Unlike the sibling desktop teardowns, this document performed no
-  fresh bundle, runtime, or source inspection of the current Cursor build.
-  Its evidence classes are:
+  evidence, plus a read-only local bundle survey of the installed Cursor
+  3.11.13 on this Mac (added 2026-07-11; §2).** The bundle pass used
+  `plutil`, `codesign`, `spctl`, `file`, `strings`, and bounded `grep` of the
+  shipped JS bundles, a names-only look at local state directories, and one
+  snapshot of the already-running process table — no launch, no sign-in, no
+  user-data file contents. Its evidence classes are:
   - `[source]` — the recovered episode-197-era reverse-engineering corpus,
     pinned in this repository's own Git history (see §1);
+  - `[bundle]` — observed in the installed signed application bundle at
+    `/Applications/Cursor.app` (3.11.13), surveyed 2026-07-11;
+  - `[runtime]` — observed in the live process table, socket snapshot, or
+    names-only local filesystem state during that survey;
   - `[public]` — a named public source (Cursor's own blog/changelog, press,
     or community forum), fetched 2026-07-11;
   - `[inferred]` — reasoned conclusions from multiple observations;
@@ -69,11 +76,239 @@ discoverable history and memory, hassle-free integrations, open source,
 mixed local/cloud inference, idle-compute markets, and revenue sharing.
 
 `[limitation]` The era corpus proves what Cursor 2.0.43 shipped on one
-machine in November 2025 and what OpenAgents intended; it proves nothing
-about current Cursor builds, which this document covers only through public
-evidence.
+machine in November 2025 and what OpenAgents intended; current Cursor builds
+are covered by the §2 bundle survey of 3.11.13 plus public evidence.
 
-## 2. What Cursor became — the 2.x–3.x agent-platform pivot
+## 2. Local bundle survey — Cursor 3.11.13 [bundle]
+
+Cursor 3.11.13 is installed on this machine (built `2026-07-10T01:45:28Z`
+per `product.json` `date` — the day before this survey), which makes the
+then-vs-now comparison against the era-197 survey of 2.0.43 direct: same
+Mac, same evidence conventions, eight months apart.
+
+### 2.1 Identity and security posture
+
+| Field | Value |
+| --- | --- |
+| `CFBundleIdentifier` | `com.todesktop.230313mzl4w4u92` (unchanged ToDesktop-era id) |
+| `CFBundleShortVersionString` / `CFBundleVersion` | `3.11.13` |
+| `LSMinimumSystemVersion` | `12.0` |
+| URL scheme | `cursor:` (`urlProtocol` in `product.json`) |
+| Document types | the standard VS Code editor set (C/C++/web/source files, role Editor) — no agent/skill doc types |
+| Signing | `Developer ID Application: Hilary Stout (VDXQ22DGB9)`, hardened runtime (`flags=0x10000(runtime)`), thin arm64 |
+| Notarization | `spctl -a`: accepted, `source=Notarized Developer ID` |
+| Entitlements | exactly four: `automation.apple-events`, `cs.allow-jit`, `device.audio-input`, `device.camera` |
+
+Notable in the posture: **no `com.apple.security.app-sandbox`** (the host
+app is not App-Sandboxed, like ChatGPT/Claude desktop), but also **no
+`allow-unsigned-executable-memory`** — a tighter JIT posture than the
+ChatGPT app. `Info.plist` sets `NSAppTransportSecurity` →
+`NSAllowsArbitraryLoads = true` (ATS disabled), and the declared signing
+identity is a personal name rather than "Anysphere, Inc." (the
+`package.json` author is `Anysphere, Inc.`).
+
+### 2.2 Runtime identity: still a stock-Electron VS Code fork — but no longer a thin one
+
+- `Contents/Frameworks/` holds a **stock `Electron Framework.framework`**
+  (no rename, no Chrome-layout fork) plus `Squirrel.framework` (with
+  `ShipIt`), `Mantle`, `ReactiveObjC`, and VS Code-named helpers
+  `Cursor Helper (GPU|Plugin|Renderer).app`. Framework strings:
+  `Chrome/144.0.7559.236 Electron/40.10.3`, Node `v24.15.0`. This is the
+  opposite verdict from the ChatGPT app's first-party "Owl" Chromium fork:
+  Cursor ships mainline Electron.
+- `Resources/app/product.json`: `version 3.11.13`, **`vscodeVersion`
+  `1.125.0`** — versus `1.99.3` in the era-197 survey of 2.0.43. Anysphere
+  kept merging upstream VS Code through the agent pivot; the fork is
+  tracked, not frozen. `quality: stable`, commit
+  `3f21b08f0b436a07be29fbfe00b304fa15553350`.
+- `Resources/app/package.json`: `author: "Anysphere, Inc."`, `repository`
+  still `https://github.com/microsoft/vscode.git`.
+- Update feed: `updateUrl https://api2.cursor.sh/updates`,
+  **`backupUpdateUrl http://cursorapi.com/updates` — plain HTTP** — with
+  Squirrel/ShipIt plus a first-party `cursor-update-supervisor` Mach-O
+  helper in `resources/helpers/`.
+- Telemetry/flags: `enableTelemetry: true` (error+usage), a Statsig client
+  key with log proxy `https://api3.cursor.sh/tev1/v1`, `@sentry/*` and
+  `@opentelemetry/*` in `node_modules`. `[runtime]` The live crashpad
+  handler runs with `--url=https://f.a.k/e` — crash upload pointed at a
+  deliberately unresolvable URL in this configuration.
+- Extension gallery: `marketplace.cursorapi.com` with a Cursor-controlled
+  `extensions-control` URL on `api2.cursor.sh`;
+  `cursorTrustedExtensionAuthAccess` grants `anysphere.cursor-retrieval`
+  and `anysphere.cursor-commits` trusted auth access.
+
+### 2.3 Bundle map
+
+```
+Cursor.app/Contents/
+├── MacOS/Cursor                          # Electron launcher (arm64)
+├── Frameworks/
+│   ├── Electron Framework.framework      # STOCK Electron 40.10.3 / Chrome 144.0.7559.236 / Node 24.15.0
+│   ├── Squirrel.framework (ShipIt)       # updater
+│   ├── Mantle.framework, ReactiveObjC.framework
+│   └── Cursor Helper (GPU|Plugin|Renderer).app
+└── Resources/app/                        # plain directory, NOT asar-packed
+    ├── product.json, package.json        # VS Code product config; vscodeVersion 1.125.0
+    ├── out/ (120 MB)                     # compiled workbench
+    │   └── vs/workbench/
+    │       ├── workbench.desktop.main.js (41 MB)          # classic IDE workbench
+    │       ├── workbench.glass.main.js (46 MB)            # "Glass" — the Agents-Window-era UI
+    │       └── workbench.anysphere-ui-automations.js (8 MB)
+    │   └── vs/glass/, vs/workbench/react-runtime/         # React runtime beside the VS Code workbench
+    ├── extensions/ (141 MB)              # VS Code built-ins + 17 first-party cursor-* extensions (§2.4)
+    ├── node_modules/ (155 MB)            # @anysphere/policy-watcher, cursor-proclist, node-pty,
+    │                                     # @vscode/{ripgrep,sqlite3,tree-sitter-wasm,spdlog},
+    │                                     # @sentry/*, @opentelemetry/*, @tokenizer
+    ├── bin/                              # cursor, code, cursor-tunnel (12 MB), code-tunnel -> cursor-tunnel
+    └── resources/helpers/
+        ├── cursorsandbox (3.3 MB)        # Rust macOS Seatbelt sandbox wrapper (§2.4)
+        ├── crepectl (5.1 MB)             # Rust "Crepe" local code-index builder (§2.4)
+        ├── cursor-update-supervisor (241 KB)
+        └── node (113 MB)                 # private bundled Node runtime
+```
+
+### 2.4 The compiled-in agent layer
+
+Seventeen first-party `cursor-*` extensions ship beside the VS Code
+built-ins. Their own `package.json` descriptions (verbatim):
+
+- `cursor-agent-exec` — "Provides agent execution capabilities for Cursor,
+  enabling agents to run commands, interact with files, and use tools with
+  user permissions and approvals"
+- `cursor-agent-worker` — "Install and run Cursor agent worker from
+  extension startup"
+- `cursor-browser-automation` — "MCP server for browser automation in
+  Cursor"
+- `cursor-checkout` — "Checkout provider for branch migration operations"
+- `cursor-mcp` — "Handles MCP for Cursor"
+- `cursor-retrieval` — "Handles indexing and retrieval for Cursor"
+- `cursor-ndjson-ingest` — "HTTP server for ingesting NDJSON logs to
+  workspace/.cursor/debug.log"
+- `cursor-worktree-textmate` — "Provides TextMate-only syntax highlighting
+  for .cursor/worktrees files without activating language servers."
+- plus `cursor-always-local`, `cursor-shadow-workspace`, `cursor-commits`,
+  `cursor-deeplink`, `cursor-explorer`, `cursor-file-service`,
+  `cursor-polyfills-remote`, `cursor-resolver`(+`-helper`), and
+  `cursor-socket`.
+
+Two native Rust sidecars stand out:
+
+- **`cursorsandbox`** embeds strings `"/usr/bin/sandbox-exec"`,
+  `"sandbox: starting macOS seatbelt sandbox application"`,
+  `"(deny default)"`, and
+  `(deny file-write* (subpath (param "READONLY_ROOT_0")))` — a
+  deny-by-default macOS Seatbelt wrapper for agent-run commands, the same
+  architectural move as Codex's Seatbelt policy layer. Agent command
+  isolation is a shipped local binary, not just changelog language.
+- **`crepectl`** self-describes as "Crepe index management tool": it builds
+  a local disk index (`index.bin`, `metadata.json`, `postings.bin`) from a
+  git commit via gitoxide with memory-bounded disk spilling. Its CI path
+  strings (`/Users/runner/work/everysphere/everysphere/.../crates/crepe/`)
+  reveal Anysphere's internal monorepo name, **everysphere**; a backend
+  deploy path string in the JS
+  (`/home/ubuntu/deploys/everysphere-anybot/backend/scripts`) leaks a
+  server-side project name, **anybot**. Cursor now ships local Rust
+  code-indexing machinery where era-197 saw only cloud-side indexing with
+  local metadata caches.
+
+No model weights or local-inference runtime were found anywhere in the
+bundle: local compute grew in indexing, sandboxing, and orchestration —
+inference remains cloud-only.
+
+### 2.5 Agent-era fingerprints in the shipped JS
+
+Bounded string counts in `workbench.glass.main.js` (the 46 MB agent-UI
+bundle; `workbench.desktop.main.js` shows the same fingerprints at slightly
+lower counts):
+
+| Fingerprint | Count | Fingerprint | Count |
+| --- | --- | --- | --- |
+| `composer` | 21,179 | `subagent` | 2,714 |
+| `worktree` | 2,133 | `bugbot` | 941 |
+| `cloud agent` | 260 | `bestOfN`/`best-of-n` | 217 |
+| `sideChat`/`side chat` | 248 | `Remote Control`/`remoteControl` | 150 |
+| `computerUse`/`computer use` | 59 | `Agents Window`/`agentsWindow` | 70 |
+| `planMode`/`plan mode` | 48 | `background agent` | 41 |
+| hook names (`beforeShellExecution` etc.) | 20 | `Design Mode`/`designMode` | 17 |
+| `AwaitTool`/`await_tool` | 8 | `kimi` | 5 |
+
+- **Model slugs**: `"composer-1"`, `"composer-2"`, `"composer-2.5"`,
+  `"composer-2.5-fast"`, alongside third-party `"claude-3.5-sonnet"`,
+  `"gpt-5.5"`, `"grok-3"`, `"o3"`, `"gemini"`. A Claude Code **import**
+  surface is compiled in (`"claude-code-import-indicator"`,
+  `"claude-plugin"`, `"claude-project"`, `"claude-user"`) — a migration
+  lane for Claude Code users' projects and plugins.
+- **Verbatim strings**: "Turn on Remote Control to keep this computer
+  awake"; "Remote Control runs on a cloud agent, which requires data
+  storag[e]…" — mobile Remote Control is implemented as a cloud-agent
+  relay, exactly the their-cloud-only shape §6 Adapt 2 contrasts with
+  portable sessions.
+- **Endpoints**: regional agent backends `agent.api5.cursor.sh`,
+  `agent-gcpp-uswest.api5.cursor.sh`,
+  `agentn-gcpp-{uswest,eucentral,apsoutheast}.api5.cursor.sh`;
+  `api2`/`api3`/`api4.cursor.sh`; doc links
+  `cursor.com/docs/{agent/subagents, agent/hooks, cloud-agent/*,
+  configuration/worktrees, bugbot}`; `cursor.com/dashboard/cloud-agents`;
+  `cursor.com/automations/new`.
+
+### 2.6 Local state shape (names only) and runtime snapshot
+
+- `~/.cursor` now holds `agents/`, `chats/`, `projects/`, `plugins/`,
+  `skills/`, `skills-cursor/`, `extensions/`, `ai-tracking/`, `hooks.json`,
+  `mcp.json`, `agent-cli-state.json`, `cli-config.json`, `ide_state.json`,
+  `statsig-cache.json`, `argv.json`, and a `.gitignore` — an agent-CLI-era
+  layout versus the extensions-only `~/.cursor` of the 2.0.43 survey
+  [runtime, names only].
+- `~/Library/Application Support/Cursor/` remains VS Code-shaped: `User/`
+  (796 MB; `globalStorage`, `workspaceStorage`, `History`, `settings.json`,
+  `snippets`), `CachedData/` (219 MB), `logs/` (129 MB), plus `sentry/`,
+  `process-monitor/`, `Crashpad/`, and Chromium cache directories
+  [runtime, names only].
+- `[runtime]` Cursor 3.11.13 was running during the survey. The process
+  table showed, beside the main process and standard Electron helpers:
+  `Cursor Helper: conversation-search` (the 3.11 transcript-search index as
+  a dedicated utility process), `Cursor Helper (Plugin): extension-host
+  Agents Window [1-1]` (the Agents Window has its own extension host),
+  `mcp-process`, `shared-process`, per-workspace `fileWatcher` processes,
+  and Node workers running
+  `extensions/cursor-always-local/dist/gitWorker.js`. Renderer processes
+  register custom schemes `cursor-rpc-devtools` and `sentry-ipc`. `lsof`
+  showed only outbound TLS connections (AWS EC2 and Cloudflare edges) — no
+  local listening sockets in the snapshot.
+
+### 2.7 Then vs now: 2.0.43 (era 197) → 3.11.13
+
+| Axis | 2.0.43, 2025-11 [source] | 3.11.13, built 2026-07-10 [bundle] |
+| --- | --- | --- |
+| Bundle id | `com.todesktop.230313mzl4w4u92` | unchanged |
+| VS Code base | 1.99.3 | **1.125.0** — upstream merges continued through the pivot |
+| Electron runtime | stock `Electron Framework.framework` | still stock: Electron 40.10.3 / Chrome 144.0.7559.236 / Node 24.15.0 |
+| Fork delta | observability + agent plumbing (Sentry/OTel, `cursor-proclist`, panels) | **a compiled-in agent platform**: 17 `cursor-*` extensions, 46 MB Glass UI bundle, React runtime, Seatbelt sandbox binary, Crepe local indexer, private Node runtime, update supervisor |
+| Local models | none | **still none** — cloud-only inference confirmed on a 2026-07-10 build |
+| Indexing | cloud-side, local metadata caches | + local Rust index builder (`crepectl`) |
+| Updater | Squirrel ("updates disabled by user preference" in logs) | Squirrel + ShipIt + first-party `cursor-update-supervisor`; feed `api2.cursor.sh/updates`, plain-HTTP backup URL |
+| `~/.cursor` | extensions only | agents/chats/projects/plugins/skills/hooks/mcp state tree |
+
+### 2.8 Consequences for the recommendations
+
+The bundle pass sharpens rather than overturns §6. Three notes:
+
+1. **Reject 1's premise is updated, its conclusion strengthened.** The
+   era-197 "mostly telemetry and glue" description of the fork delta is
+   stale for 3.x: the delta is now a full agent platform. But that platform
+   ships as *extensions plus native sidecar binaries beside a tracked
+   upstream base* — Cursor itself demonstrates that agent capability does
+   not require owning an editor fork's internals, which is exactly why
+   OpenAgents should not build one.
+2. **Adapt 5 (isolation-by-default) is now bundle-verified**, not just
+   changelog language: `cursorsandbox` is a shipped deny-by-default
+   Seatbelt wrapper for agent commands.
+3. **The trust argument gains concrete surfaces**: an unsandboxed host with
+   ATS disabled, a plain-HTTP backup update URL, and always-on telemetry
+   with Statsig flag control are the client-side texture of the
+   §4 predictability/trust drops.
+
+## 3. What Cursor became — the 2.x–3.x agent-platform pivot
 
 The striking fact is that episode 197 was recorded roughly two weeks **after**
 Cursor's own pivot began, studying a build (2.0.43) that was already the new
@@ -85,7 +320,10 @@ era. The trajectory since:
   rather than files," running up to eight parallel agents isolated via git
   worktrees or remote machines, plus a native browser tool for the agent to
   test its own work [public: Cursor 2.0 blog and changelog;
-  artificialintelligence-news.com; Thurrott].
+  artificialintelligence-news.com; Thurrott]. `[bundle]` corroborated in
+  3.11.13: `composer-1`/`composer-2` model slugs, ~21k `composer`
+  references, ~2.1k `worktree` references, and a first-party
+  `cursor-browser-automation` MCP extension (§2.4–2.5).
 - **Cursor CLI cloud handoff (2026-01-16)**: plan and ask modes came to the
   CLI, and prepending `&` to any message pushes a local conversation to a
   Cloud Agent that keeps running, resumable on web or mobile
@@ -97,28 +335,44 @@ era. The trajectory since:
   multiple models, compare results), Design Mode, an `Await` tool for
   background shells and subagents, and plans shared alongside transcripts.
   The classic IDE remains available ("switch back to the IDE anytime")
-  [public: cursor.com/changelog/3-0].
+  [public: cursor.com/changelog/3-0]. `[bundle]` corroborated: `bestOfN`,
+  `planMode`, `AwaitTool`/`await_tool`, `subagent`, and `Agents Window`
+  strings all compiled into the shipped Glass bundle, and the classic
+  workbench ships beside it as a separate 41 MB bundle (§2.3, §2.5);
+  `[runtime]` the Agents Window ran with its own extension-host process
+  during the survey (§2.6).
 - **Automations (3.8, 2026-06-18)**: an `/automate` skill, GitHub triggers
   (issue comments, PR reviews, workflow completion), and the computer-use
   tool enabled by default for automations [public: cursor.com/changelog].
+  `[bundle]` corroborated: `computerUse` strings and
+  `cursor.com/automations/new` links compiled in (§2.5).
 - **Marketplace and customization (3.9, 2026-06-22)**: one customization
   surface for plugins, skills, MCPs, and subagents, with a marketplace
   leaderboard; team MCP distribution and org-group access control followed
-  in 3.10 [public: cursor.com/changelog].
+  in 3.10 [public: cursor.com/changelog]. `[runtime]` names-only local
+  state shows `plugins/`, `skills/`, `hooks.json`, and `mcp.json` under
+  `~/.cursor` (§2.6).
 - **Cursor Mobile for iOS (3.9, 2026-06-29)**: cloud agents on the phone with
   voice input, push notifications and Live Activities for agent status, and
   a "Remote Control" feature to direct desktop agents from the phone
-  [public: cursor.com/changelog].
+  [public: cursor.com/changelog]. `[bundle]` corroborated: "Turn on Remote
+  Control to keep this computer awake" and "Remote Control runs on a cloud
+  agent…" ship in the Glass bundle (§2.5).
 - **Side chats and transcript search (3.11, 2026-07-10)**: parallel side
   conversations that do not interrupt the main agent thread, and agent
   transcript search via command palette backed by local indexing
-  [public: cursor.com/changelog].
+  [public: cursor.com/changelog]. `[runtime]` corroborated: a dedicated
+  `Cursor Helper: conversation-search` utility process was live during the
+  survey (§2.6).
 - **Composer provenance controversy (2026-03)**: users discovered via
   internal identifiers that Composer 2 was post-trained on Moonshot AI's
   open-weights Kimi K2.5; Cursor confirmed within hours, a co-founder called
   the non-disclosure a mistake, and Cursor stated roughly a quarter of
   Composer 2's total compute came from the base model [public: TechCrunch
-  2026-03-22; VentureBeat; datastudios.org].
+  2026-03-22; VentureBeat; datastudios.org]. `[bundle]` the 3.11.13 client
+  still carries only five bounded `kimi` strings against thousands of
+  `composer` references — the lineage remains invisible at the product
+  surface (§2.5).
 - **Pricing turbulence**: the June 2025 move from 500 "fast requests" to
   usage-based credits produced surprise charges, a public apology, and
   refunds for the 2025-06-16–07-04 window; June 2026 reworked Teams again,
@@ -148,7 +402,7 @@ center of gravity from an editor with an AI sidebar to an agent-orchestration
 platform where the editor is one reachable pane — while the fork itself was
 never abandoned, only demoted.
 
-## 3. The dropped ground
+## 4. The dropped ground
 
 What the IDE-era Cursor did well, and what the agent-era Cursor abandoned or
 destabilized. This is the owner's core question, and the evidence supports
@@ -189,8 +443,11 @@ five specific drops:
    in the marketplace, of an open agent-engine boundary, or of any local
    inference option — three of episode 195's demands remain entirely
    unclaimed by the incumbent [public: absence across cursor.com changelog
-   and docs as of 2026-07-11; `[limitation]` absence of evidence in public
-   channels is weaker than a verified negative].
+   and docs as of 2026-07-11]. `[bundle]` the local-inference negative is
+   now verified for the client: no model weights or inference runtime exist
+   anywhere in the 3.11.13 bundle (§2.4). `[limitation]` for revenue sharing
+   and the engine boundary, absence of evidence in public channels remains
+   weaker than a verified negative.
 
 What Cursor did **not** drop, and should be credited for: the parallel-agent
 isolation model (worktrees/remote machines) is genuinely good mechanics; the
@@ -198,7 +455,7 @@ CLI `&` handoff is a clean gesture for local-to-cloud continuation; plan mode
 before execution and best-of-N comparison are honest concessions that agent
 output needs review structure [public: changelogs cited above].
 
-## 4. Where the 10x thesis stands now
+## 5. Where the 10x thesis stands now
 
 Episode 195's ten demands, scored against what Cursor itself did:
 
@@ -211,7 +468,7 @@ Episode 195's ten demands, scored against what Cursor itself did:
 | Discoverable history | Validated late: transcript search with local indexing, side chats [public: 3.11] | Contested; loss-accounting and provenance (#8674 discipline) remain undone there `[inferred]` |
 | Hassle-free integrations | Partially: marketplace + one customization surface, but MCP/plugin/skill/subagent vocabulary is still exposed [public: 3.9/3.10] | Contested; lifecycle-not-plumbing (D4) still open |
 | Open source | Not attempted | **Open lane** — the load-bearing differentiation seam |
-| Local + cloud inference mix | Not attempted (cloud-only; first-party models are cloud models) | **Open lane** — post-R7 placement-class work |
+| Local + cloud inference mix | Not attempted (cloud-only; first-party models are cloud models; `[bundle]` no weights in 3.11.13, §2.4) | **Open lane** — post-R7 placement-class work |
 | Idle-compute market | Not attempted | Open, deferred behind its revisit gates |
 | Revenue sharing | Not attempted (no public evidence) | Open, deferred behind safe extension lifecycle |
 
@@ -234,7 +491,7 @@ timelines are wrong, but its ordering (intelligence core before marketplace
 before mobile) was inverted by events — mobile and continuity turned out to
 be the differentiating floor, which is what the current P0 encodes.
 
-## 5. Lessons for OpenAgents
+## 6. Lessons for OpenAgents
 
 Each lesson is bound to an owning program coordinate. Per the teardown-README
 rule, none of these may live only here: anything load-bearing moves into the
@@ -301,7 +558,11 @@ named roadmap gate, issue, or contract.
 
 1. **Do not fight for VS-Code-fork parity.** The incumbent itself demoted
    the editor; the era-197 corpus shows the fork's runtime delta was mostly
-   telemetry and glue [source]. OpenAgents Desktop's OpenCode-parity
+   telemetry and glue [source]. *Correction 2026-07-11:* the 3.11.13 bundle
+   shows that description is stale — the delta is now a compiled-in agent
+   platform (§2.4) — but it ships as extensions plus native sidecars beside
+   a tracked upstream base, which strengthens the conclusion: the valuable
+   layer is separable from the editor. OpenAgents Desktop's OpenCode-parity
    workbench target (R5 exit) is the right editor scope; a full IDE is not.
 2. **Do not ship computer-use-on-by-default in unattended paths.** Cursor
    enables the computer-use tool by default for Automations [public: 3.8
@@ -325,29 +586,38 @@ named roadmap gate, issue, or contract.
    consolidates Cursor further into one closed corporate stack — widening,
    not narrowing, the open-seam lane.
 
-## 6. What not to conclude
+## 7. What not to conclude
 
 - Do not conclude Cursor abandoned the IDE: the editor remains one switch
   away [public: 3.0 changelog]. The claim supported by evidence is a
   center-of-gravity move plus a defaults fight, not a product deletion.
 - Do not conclude Cursor is failing commercially: every business indicator
-  points the other way [public: §2]. The dropped ground is trust mechanics,
+  points the other way [public: §3]. The dropped ground is trust mechanics,
   not revenue.
 - Do not conclude the 195 feature list is still differentiating by itself:
   most of it is now the incumbent's roadmap too. The differentiation that
   remains is the part Cursor structurally cannot copy without ceasing to be
   Cursor: the open engine, typed public protocol, host-portable sessions
   with receipts, capability-truthful UI, and economic participation.
-- `[limitation]` This teardown had no access to current Cursor binaries,
-  private forums, or usage data; community-complaint prevalence is not
-  quantified, and third-party ARR figures are estimates. Claims here are
-  bounded by the named public sources as of 2026-07-11.
+- `[limitation]` Remaining boundaries after the §2 bundle pass: no network
+  capture or interactive UI/feature pass was performed (one read-only
+  process/socket snapshot only, no launch or sign-in); server-side behavior
+  — Composer training lineage, cloud-agent internals, pricing enforcement —
+  is unprovable from the client; compiled strings prove a feature surface
+  exists in the build, not that it is enabled for every account; this is one
+  machine's stable-channel build; no access to private forums or usage data;
+  community-complaint prevalence is not quantified, and third-party ARR
+  figures are estimates. Public claims remain bounded by the named sources
+  as of 2026-07-11.
 
 ## Sources
 
-Primary: recovered era-197 corpus at openagents commit `ecc0a9054e`
-(`docs/re/cursor/`), Commander-era corpus in `OpenAgentsInc/dashboard`
-(`docs/internal/bi/cursor/`). Public: cursor.com blog/changelog (2.0, 2.3,
+Primary: read-only local survey of `/Applications/Cursor.app` 3.11.13 on
+2026-07-11 (`plutil`, `codesign`, `spctl`, `file`, `strings`, bounded
+`grep`; one live process/socket snapshot; names-only local state), the
+recovered era-197 corpus at openagents commit `ecc0a9054e`
+(`docs/re/cursor/`), and the Commander-era corpus in
+`OpenAgentsInc/dashboard` (`docs/internal/bi/cursor/`). Public: cursor.com blog/changelog (2.0, 2.3,
 3.0, 3.8–3.11, CLI 2026-01-16), TechCrunch (2026-03-22, 2026-04-17), CNBC
 (2026-06-16), Forbes, Yahoo Finance, qz.com, VentureBeat, datastudios.org,
 Vantage, finout.io, wearefounders.uk, eesel.ai, forum.cursor.com threads,
