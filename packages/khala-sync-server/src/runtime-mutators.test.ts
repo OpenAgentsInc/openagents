@@ -17,6 +17,7 @@ import {
   PushRequest,
   RUNTIME_CONTROL_INTENT_ENTITY_TYPE,
   RUNTIME_EVENT_ENTITY_TYPE,
+  RUNTIME_INTERACTION_ENTITY_TYPE,
   RUNTIME_TURN_ENTITY_TYPE,
   SyncSchemaVersion,
   threadScope,
@@ -44,12 +45,17 @@ import {
 import {
   RUNTIME_APPEND_USER_MESSAGE_MUTATOR_NAME,
   RUNTIME_CLOSE_TURN_MUTATOR_NAME,
+  RUNTIME_DECIDE_INTERACTION_MUTATOR_NAME,
   RUNTIME_EVENT_EXISTS_REJECTION,
   RUNTIME_EVENT_SEQUENCE_REJECTION,
   RUNTIME_EVENT_STATE_REJECTION,
   RUNTIME_INTERRUPT_TURN_MUTATOR_NAME,
   RUNTIME_INTENT_EXPIRY_REJECTION,
+  RUNTIME_INTERACTION_CONFLICT_REJECTION,
+  RUNTIME_INTERACTION_DECISION_REJECTION,
+  RUNTIME_INTERACTION_SEQUENCE_REJECTION,
   RUNTIME_RECORD_EVENT_MUTATOR_NAME,
+  RUNTIME_REQUEST_INTERACTION_MUTATOR_NAME,
   RUNTIME_RETRY_TURN_MUTATOR_NAME,
   RUNTIME_RAW_BODY_REJECTION,
   RUNTIME_SCOPE_REJECTION,
@@ -226,6 +232,71 @@ const runtimeEvent = (
       }
   }
 }
+
+const runtimeQuestionInteraction = (input: Readonly<{
+  interactionRef: string
+  threadId: string
+  turnId: string
+  requestedSequence: number
+  lane?: "codex_app_server" | "claude_pylon" | undefined
+  expiresAt?: string | undefined
+}>) => ({
+  schema: "openagents.runtime_interaction.v1" as const,
+  interactionRef: input.interactionRef,
+  threadId: input.threadId,
+  turnId: input.turnId,
+  requestedSequence: input.requestedSequence,
+  requestedAt: iso,
+  expiresAt: input.expiresAt ?? "2099-07-11T22:05:00.000Z",
+  source: {
+    lane: input.lane ?? "codex_app_server",
+    adapterKind: input.lane === "claude_pylon" ? "claude_code" as const : "codex" as const,
+    surface: "server" as const,
+  },
+  visibility: "private" as const,
+  redactionClass: "private_ref" as const,
+  causalityRefs: ["event.runtime.question.request"],
+  payload: {
+    kind: "provider_question" as const,
+    displayTitle: "Choose verification",
+    questions: [{
+      questionRef: "question.runtime.1",
+      displayText: "Which verification should run?",
+      multiSelect: false,
+      options: [
+        { optionRef: "option.tests", label: "Tests" },
+        { optionRef: "option.smoke", label: "Smoke" },
+      ],
+    }],
+  },
+  lifecycle: { status: "pending" as const },
+})
+
+const runtimeQuestionDecision = (input: Readonly<{
+  interactionRef: string
+  threadId: string
+  turnId: string
+  optionRef?: string | undefined
+  decisionRef?: string | undefined
+  idempotencyKey?: string | undefined
+}>) => ({
+  interactionRef: input.interactionRef,
+  threadId: input.threadId,
+  turnId: input.turnId,
+  envelope: {
+    decisionRef: input.decisionRef ?? "decision.runtime.question.1",
+    idempotencyKey: input.idempotencyKey ?? "idem.runtime.question.1",
+    decidedAt: iso,
+    surface: "mobile" as const,
+    decision: {
+      kind: "provider_question" as const,
+      answers: [{
+        questionRef: "question.runtime.1",
+        optionRefs: [input.optionRef ?? "option.tests"],
+      }],
+    },
+  },
+})
 
 const registry = makeMutatorRegistry([...chatMutators, ...runtimeMutators])
 
@@ -928,6 +999,231 @@ describe.skipIf(!hasLocalPostgres())(
         `
       expect(Number(final[0]!.intent_count)).toBe(2)
       expect(final[0]!.status).toBe("interrupted")
+    })
+
+    test("runtime interactions request, resolve, and reconcile exact semantic retries in the private thread", async () => {
+      const client = freshClient()
+      const threadId = "runtime-thread.interaction.8696"
+      const turnId = "runtime-turn.interaction.8696"
+      const interactionRef = "interaction.runtime.question.8696"
+      const interaction = runtimeQuestionInteraction({
+        interactionRef,
+        lane: "claude_pylon",
+        requestedSequence: 1,
+        threadId,
+        turnId,
+      })
+      const admitted = await executePush({
+        registry,
+        request: pushRequest(client, [
+          envelope(1, RUNTIME_START_TURN_MUTATOR_NAME, controlIntent({
+            intentId: "runtime-intent.interaction.start.8696",
+            kind: "turn.start",
+            lane: "claude_pylon",
+            threadId,
+            turnId,
+          })),
+          envelope(2, RUNTIME_RECORD_EVENT_MUTATOR_NAME, runtimeEvent({
+            eventId: "runtime-event.interaction.started.8696",
+            kind: "turn.started",
+            lane: "claude_pylon",
+            sequence: 0,
+            threadId,
+            turnId,
+          })),
+          envelope(3, RUNTIME_REQUEST_INTERACTION_MUTATOR_NAME, interaction),
+        ]),
+        sql: sql as unknown as SyncSql,
+        userId: client.userId,
+      })
+      expect(admitted.results.map(result => result.status)).toEqual([
+        "applied",
+        "applied",
+        "applied",
+      ])
+
+      const decision = runtimeQuestionDecision({
+        interactionRef,
+        threadId,
+        turnId,
+      })
+      const reconciled = await executePush({
+        registry,
+        request: pushRequest(client, [
+          envelope(4, RUNTIME_REQUEST_INTERACTION_MUTATOR_NAME, interaction),
+          envelope(5, RUNTIME_DECIDE_INTERACTION_MUTATOR_NAME, decision),
+          envelope(6, RUNTIME_DECIDE_INTERACTION_MUTATOR_NAME, decision),
+          envelope(7, RUNTIME_DECIDE_INTERACTION_MUTATOR_NAME, {
+            ...decision,
+            envelope: {
+              ...decision.envelope,
+              decision: {
+                kind: "provider_question",
+                answers: [{
+                  questionRef: "question.runtime.1",
+                  optionRefs: ["option.smoke"],
+                }],
+              },
+            },
+          }),
+          envelope(8, RUNTIME_REQUEST_INTERACTION_MUTATOR_NAME, interaction),
+        ]),
+        sql: sql as unknown as SyncSql,
+        userId: client.userId,
+      })
+      expect(reconciled.results.map(result => result.status)).toEqual([
+        "applied",
+        "applied",
+        "applied",
+        "rejected",
+        "applied",
+      ])
+      expect(reconciled.results[3]!.errorCode).toBe(
+        RUNTIME_INTERACTION_CONFLICT_REJECTION,
+      )
+
+      const rows: Array<{ count: string | number; status: string }> = await sql`
+        SELECT count(*) OVER () AS count, status
+        FROM khala_sync_runtime_interactions
+        WHERE interaction_ref = ${interactionRef}
+      `
+      expect(Number(rows[0]!.count)).toBe(1)
+      expect(rows[0]!.status).toBe("resolved")
+      const threadLog = await logPage(sql as unknown as SyncSql, {
+        afterVersion: null,
+        limit: 100,
+        scope: threadScope(threadId),
+      })
+      expect(threadLog.entries.filter(entry =>
+        String(entry.entityType) === RUNTIME_INTERACTION_ENTITY_TYPE
+      )).toHaveLength(2)
+      const personalRows: Array<{ count: string | number }> = await sql`
+        SELECT count(*) AS count
+        FROM khala_sync_changelog
+        WHERE entity_type = ${RUNTIME_INTERACTION_ENTITY_TYPE}
+          AND scope <> ${threadScope(threadId)}
+      `
+      expect(Number(personalRows[0]!.count)).toBe(0)
+    })
+
+    test("runtime interaction admission fences lane, sequence, choices, expiry, and foreign owners", async () => {
+      const owner = freshClient()
+      const intruder = freshClient()
+      const threadId = "runtime-thread.interaction-fence.8696"
+      const turnId = "runtime-turn.interaction-fence.8696"
+      await executePush({
+        registry,
+        request: pushRequest(owner, [
+          envelope(1, RUNTIME_START_TURN_MUTATOR_NAME, controlIntent({
+            intentId: "runtime-intent.interaction-fence.start.8696",
+            kind: "turn.start",
+            lane: "claude_pylon",
+            threadId,
+            turnId,
+          })),
+          envelope(2, RUNTIME_RECORD_EVENT_MUTATOR_NAME, runtimeEvent({
+            eventId: "runtime-event.interaction-fence.started.8696",
+            kind: "turn.started",
+            lane: "claude_pylon",
+            sequence: 0,
+            threadId,
+            turnId,
+          })),
+        ]),
+        sql: sql as unknown as SyncSql,
+        userId: owner.userId,
+      })
+
+      const wrongLane = runtimeQuestionInteraction({
+        interactionRef: "interaction.runtime.wrong-lane.8696",
+        lane: "codex_app_server",
+        requestedSequence: 1,
+        threadId,
+        turnId,
+      })
+      const wrongSequence = runtimeQuestionInteraction({
+        interactionRef: "interaction.runtime.wrong-sequence.8696",
+        lane: "claude_pylon",
+        requestedSequence: 2,
+        threadId,
+        turnId,
+      })
+      const interactionRef = "interaction.runtime.expiry.8696"
+      const valid = runtimeQuestionInteraction({
+        interactionRef,
+        lane: "claude_pylon",
+        requestedSequence: 1,
+        threadId,
+        turnId,
+      })
+      const fenced = await executePush({
+        registry,
+        request: pushRequest(owner, [
+          envelope(3, RUNTIME_REQUEST_INTERACTION_MUTATOR_NAME, wrongLane),
+          envelope(4, RUNTIME_REQUEST_INTERACTION_MUTATOR_NAME, wrongSequence),
+          envelope(5, RUNTIME_REQUEST_INTERACTION_MUTATOR_NAME, valid),
+          envelope(6, RUNTIME_DECIDE_INTERACTION_MUTATOR_NAME,
+            runtimeQuestionDecision({
+              interactionRef,
+              optionRef: "option.unknown",
+              threadId,
+              turnId,
+            })),
+        ]),
+        sql: sql as unknown as SyncSql,
+        userId: owner.userId,
+      })
+      expect(fenced.results.map(result => result.status)).toEqual([
+        "rejected",
+        "rejected",
+        "applied",
+        "rejected",
+      ])
+      expect(fenced.results[0]!.errorCode).toBe(RUNTIME_TARGET_LANE_REJECTION)
+      expect(fenced.results[1]!.errorCode).toBe(
+        RUNTIME_INTERACTION_SEQUENCE_REJECTION,
+      )
+      expect(fenced.results[3]!.errorCode).toBe(
+        RUNTIME_INTERACTION_DECISION_REJECTION,
+      )
+
+      const expired = {
+        ...valid,
+        expiresAt: "2000-01-01T00:00:00.000Z",
+      }
+      await sql`
+        UPDATE khala_sync_runtime_interactions
+        SET expires_at = ${expired.expiresAt},
+            interaction_json = ${expired}::jsonb
+        WHERE interaction_ref = ${interactionRef}
+      `
+      const late = await executePush({
+        registry,
+        request: pushRequest(owner, [
+          envelope(7, RUNTIME_DECIDE_INTERACTION_MUTATOR_NAME,
+            runtimeQuestionDecision({ interactionRef, threadId, turnId })),
+        ]),
+        sql: sql as unknown as SyncSql,
+        userId: owner.userId,
+      })
+      expect(late.results[0]!.status).toBe("applied")
+      const terminal: Array<{ status: string }> = await sql`
+        SELECT status FROM khala_sync_runtime_interactions
+        WHERE interaction_ref = ${interactionRef}
+      `
+      expect(terminal[0]!.status).toBe("expired")
+
+      const foreign = await executePush({
+        registry,
+        request: pushRequest(intruder, [
+          envelope(1, RUNTIME_DECIDE_INTERACTION_MUTATOR_NAME,
+            runtimeQuestionDecision({ interactionRef, threadId, turnId })),
+        ]),
+        sql: sql as unknown as SyncSql,
+        userId: intruder.userId,
+      })
+      expect(foreign.results[0]!.status).toBe("rejected")
+      expect(foreign.results[0]!.errorCode).toBe(RUNTIME_SCOPE_REJECTION)
     })
 
     test("raw body append rejects without retaining the prompt and the following ref-only append applies", async () => {

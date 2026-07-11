@@ -5,6 +5,7 @@ import {
   AGENT_RUN_ENTITY_TYPE,
   AGENT_RUN_EVENT_ENTITY_TYPE,
   canonicalJson,
+  applyRuntimeInteractionDecision,
   decodeAgentRunEntity,
   decodeAgentRunEventEntity,
   decodeKhalaRuntimeControlIntent,
@@ -12,6 +13,9 @@ import {
   decodeLiveAgentGraphEntity,
   decodeRuntimeControlIntentEntity,
   decodeRuntimeEventEntity,
+  decodeRuntimeInteraction,
+  decodeRuntimeInteractionDecisionEnvelope,
+  decodeRuntimeInteractionEntity,
   decodeRuntimeTurnEntity,
   EntityId,
   EntityType,
@@ -21,6 +25,7 @@ import {
   personalScope,
   RUNTIME_CONTROL_INTENT_ENTITY_TYPE,
   RUNTIME_EVENT_ENTITY_TYPE,
+  RUNTIME_INTERACTION_ENTITY_TYPE,
   RUNTIME_TURN_ENTITY_TYPE,
   threadScope,
   type KhalaRuntimeControlIntent,
@@ -30,9 +35,13 @@ import {
   type RuntimeControlIntentEntity,
   type RuntimeControlIntentStatus,
   type RuntimeEventEntity,
+  type RuntimeInteraction,
+  type RuntimeInteractionDecisionEnvelope,
+  type RuntimeInteractionEntity,
   type RuntimeTurnEntity,
   type RuntimeTurnStatus,
 } from "@openagentsinc/khala-sync"
+import { Schema as S } from "effect"
 import { ensureScopeOwner } from "./fleet-projection.js"
 import { appendLiveAgentGraphChange } from "./live-agent-graph-projection.js"
 import type { MutatorContext, MutatorDefinition } from "./push-engine.js"
@@ -68,6 +77,10 @@ export const RUNTIME_CONTINUE_TURN_MUTATOR_NAME = "runtime.continueTurn"
 export const RUNTIME_RETRY_TURN_MUTATOR_NAME = "runtime.retryTurn"
 export const RUNTIME_CLOSE_TURN_MUTATOR_NAME = "runtime.closeTurn"
 export const RUNTIME_RECORD_EVENT_MUTATOR_NAME = "runtime.recordEvent"
+export const RUNTIME_REQUEST_INTERACTION_MUTATOR_NAME =
+  "runtime.requestInteraction"
+export const RUNTIME_DECIDE_INTERACTION_MUTATOR_NAME =
+  "runtime.decideInteraction"
 
 export const RUNTIME_SCOPE_REJECTION = "unauthorized_scope"
 export const RUNTIME_INTENT_KIND_REJECTION = "runtime_intent_kind_mismatch"
@@ -84,12 +97,25 @@ export const RUNTIME_EVENT_EXISTS_REJECTION = "runtime_event_exists"
 export const RUNTIME_EVENT_SEQUENCE_REJECTION = "runtime_event_sequence_invalid"
 export const RUNTIME_EVENT_STATE_REJECTION = "runtime_event_state_invalid"
 export const RUNTIME_RAW_BODY_REJECTION = "runtime_raw_body_not_allowed"
+export const RUNTIME_INTERACTION_CONFLICT_REJECTION =
+  "runtime_interaction_conflict"
+export const RUNTIME_INTERACTION_STATE_REJECTION =
+  "runtime_interaction_state_invalid"
+export const RUNTIME_INTERACTION_DECISION_REJECTION =
+  "runtime_interaction_decision_invalid"
+export const RUNTIME_INTERACTION_SEQUENCE_REJECTION =
+  "runtime_interaction_sequence_invalid"
+export const RUNTIME_INTERACTION_EXPIRY_REJECTION =
+  "runtime_interaction_expiry_invalid"
 
 const RuntimeTurnEntityType = EntityType.make(RUNTIME_TURN_ENTITY_TYPE)
 const RuntimeControlIntentEntityType = EntityType.make(
   RUNTIME_CONTROL_INTENT_ENTITY_TYPE,
 )
 const RuntimeEventEntityType = EntityType.make(RUNTIME_EVENT_ENTITY_TYPE)
+const RuntimeInteractionEntityType = EntityType.make(
+  RUNTIME_INTERACTION_ENTITY_TYPE,
+)
 const AgentRunEntityType = EntityType.make(AGENT_RUN_ENTITY_TYPE)
 const AgentRunEventEntityType = EntityType.make(AGENT_RUN_EVENT_ENTITY_TYPE)
 
@@ -668,6 +694,38 @@ export const decodeRuntimeControlIntentArgs = (
 export const decodeRuntimeEventArgs = (argsJson: string): KhalaRuntimeEvent =>
   decodeKhalaRuntimeEvent(JSON.parse(argsJson) as unknown)
 
+export const decodeRuntimeInteractionArgs = (
+  argsJson: string,
+): RuntimeInteraction => decodeRuntimeInteraction(JSON.parse(argsJson) as unknown)
+
+const RuntimeInteractionDecisionArgs = S.Struct({
+  interactionRef: S.String,
+  threadId: S.String,
+  turnId: S.String,
+  envelope: S.Unknown,
+})
+
+type RuntimeInteractionDecisionArgs = Readonly<{
+  interactionRef: string
+  threadId: string
+  turnId: string
+  envelope: RuntimeInteractionDecisionEnvelope
+}>
+
+export const decodeRuntimeInteractionDecisionArgs = (
+  argsJson: string,
+): RuntimeInteractionDecisionArgs => {
+  const decoded = S.decodeUnknownSync(RuntimeInteractionDecisionArgs)(
+    JSON.parse(argsJson) as unknown,
+  )
+  return {
+    interactionRef: decoded.interactionRef,
+    threadId: decoded.threadId,
+    turnId: decoded.turnId,
+    envelope: decodeRuntimeInteractionDecisionEnvelope(decoded.envelope),
+  }
+}
+
 type RuntimeTurnRow = Readonly<{
   turn_id: string
   thread_id: string
@@ -691,6 +749,20 @@ type RuntimeControlIntentConflictRow = Readonly<{
 
 type RuntimeEventConflictRow = Readonly<{
   event_id: string
+}>
+
+type RuntimeInteractionRow = Readonly<{
+  interaction_ref: string
+  thread_id: string
+  turn_id: string
+  owner_user_id: string
+  kind: RuntimeInteractionEntity["kind"]
+  status: RuntimeInteractionEntity["status"]
+  requested_sequence: string | number
+  expires_at: string
+  interaction_json: unknown
+  created_at: string
+  updated_at: string
 }>
 
 const transactionNowIso = async (ctx: MutatorContext): Promise<string> => {
@@ -744,6 +816,131 @@ const readTurnForUpdate = async (
     FOR UPDATE
   `
   return rows[0] ?? null
+}
+
+const readInteractionForUpdate = async (
+  ctx: MutatorContext,
+  interactionRef: string,
+): Promise<RuntimeInteractionRow | null> => {
+  const rows: Array<RuntimeInteractionRow> = await ctx.writer.sql`
+    SELECT interaction_ref, thread_id, turn_id, owner_user_id, kind, status,
+           requested_sequence, expires_at, interaction_json, created_at,
+           updated_at
+    FROM khala_sync_runtime_interactions
+    WHERE interaction_ref = ${interactionRef}
+    FOR UPDATE
+  `
+  return rows[0] ?? null
+}
+
+const interactionEntityFromRecord = (
+  interaction: RuntimeInteraction,
+  input: Readonly<{
+    ownerUserId: string
+    createdAt: string
+    updatedAt: string
+  }>,
+): RuntimeInteractionEntity => decodeRuntimeInteractionEntity({
+  interactionRef: interaction.interactionRef,
+  threadId: interaction.threadId,
+  turnId: interaction.turnId,
+  ownerUserId: input.ownerUserId,
+  kind: interaction.payload.kind,
+  status: interaction.lifecycle.status,
+  interaction,
+  createdAt: input.createdAt,
+  updatedAt: input.updatedAt,
+})
+
+const interactionEntityFromRow = (
+  row: RuntimeInteractionRow,
+): RuntimeInteractionEntity => interactionEntityFromRecord(
+  decodeRuntimeInteraction(storedJsonObject(row.interaction_json)),
+  {
+    ownerUserId: row.owner_user_id,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  },
+)
+
+const appendRuntimeInteractionEntityChange = async (
+  ctx: MutatorContext,
+  entity: RuntimeInteractionEntity,
+): Promise<void> => {
+  await ctx.writer.appendChange({
+    entityId: EntityId.make(entity.interactionRef),
+    entityType: RuntimeInteractionEntityType,
+    mutationRef: ctx.mutationRef,
+    op: "upsert",
+    postImage: { ...entity },
+    scope: threadScope(entity.threadId),
+  })
+}
+
+const insertRuntimeInteraction = async (
+  ctx: MutatorContext,
+  interaction: RuntimeInteraction,
+  nowIso: string,
+): Promise<RuntimeInteractionEntity> => {
+  const entity = interactionEntityFromRecord(interaction, {
+    ownerUserId: ctx.userId,
+    createdAt: nowIso,
+    updatedAt: nowIso,
+  })
+  await ctx.writer.sql`
+    INSERT INTO khala_sync_runtime_interactions
+      (interaction_ref, thread_id, turn_id, owner_user_id, kind, status,
+       requested_sequence, expires_at, interaction_json, created_at, updated_at)
+    VALUES
+      (${entity.interactionRef}, ${entity.threadId}, ${entity.turnId},
+       ${entity.ownerUserId}, ${entity.kind}, ${entity.status},
+       ${interaction.requestedSequence}, ${interaction.expiresAt},
+       ${interaction}::jsonb, ${entity.createdAt}, ${entity.updatedAt})
+  `
+  await appendRuntimeInteractionEntityChange(ctx, entity)
+  return entity
+}
+
+const updateRuntimeInteraction = async (
+  ctx: MutatorContext,
+  row: RuntimeInteractionRow,
+  interaction: RuntimeInteraction,
+  nowIso: string,
+): Promise<RuntimeInteractionEntity> => {
+  const entity = interactionEntityFromRecord(interaction, {
+    ownerUserId: row.owner_user_id,
+    createdAt: row.created_at,
+    updatedAt: nowIso,
+  })
+  await ctx.writer.sql`
+    UPDATE khala_sync_runtime_interactions
+    SET status = ${entity.status},
+        interaction_json = ${interaction}::jsonb,
+        updated_at = ${nowIso}
+    WHERE interaction_ref = ${entity.interactionRef}
+  `
+  await appendRuntimeInteractionEntityChange(ctx, entity)
+  return entity
+}
+
+const updateTurnWaitingForInteraction = async (
+  ctx: MutatorContext,
+  turnId: string,
+  nowIso: string,
+): Promise<void> => {
+  const rows: Array<RuntimeTurnRow> = await ctx.writer.sql`
+    UPDATE khala_sync_runtime_turns
+    SET status = 'waiting_for_input', updated_at = ${nowIso}
+    WHERE turn_id = ${turnId}
+    RETURNING turn_id, thread_id, owner_user_id, lane, status, event_count,
+              latest_intent_id, started_at, settled_at, created_at, updated_at
+  `
+  const row = rows[0]
+  if (row === undefined) throw new Error("runtime interaction turn disappeared")
+  const entity = turnEntityFromRow(row)
+  await appendTurnEntityChanges(ctx, entity)
+  await appendRuntimeAgentRunChanges(ctx, entity)
+  await appendRuntimeLiveAgentGraph(ctx, entity)
 }
 
 const readControlIntentConflict = async (
@@ -1178,6 +1375,168 @@ const executeExistingTurnIntent = async (
   return applied(ctx)
 }
 
+export const runtimeRequestInteractionMutator: MutatorDefinition =
+  defineMutator<RuntimeInteraction>({
+    decodeArgs: decodeRuntimeInteractionArgs,
+    execute: async (interaction, ctx) => {
+      if (interaction.lifecycle.status !== "pending") {
+        return reject(
+          ctx,
+          RUNTIME_INTERACTION_STATE_REJECTION,
+          "new runtime interactions must begin pending",
+        )
+      }
+      const ownerRejection = await ensureRuntimeThreadOwner(
+        ctx,
+        interaction.threadId,
+      )
+      if (ownerRejection !== null) return ownerRejection
+      const existing = await readInteractionForUpdate(
+        ctx,
+        interaction.interactionRef,
+      )
+      if (existing !== null) {
+        const recorded = interactionEntityFromRow(existing).interaction
+        const originalRequest = {
+          ...recorded,
+          lifecycle: { status: "pending" as const },
+        }
+        return existing.owner_user_id === ctx.userId &&
+          canonicalJson(originalRequest) === canonicalJson(interaction)
+          ? applied(ctx)
+          : reject(
+              ctx,
+              RUNTIME_INTERACTION_CONFLICT_REJECTION,
+              "runtime interaction identity was reused with different semantics",
+            )
+      }
+      const turn = await readTurnForUpdate(ctx, interaction.turnId)
+      if (turn === null) {
+        return reject(
+          ctx,
+          RUNTIME_TURN_NOT_FOUND_REJECTION,
+          "this runtime interaction turn does not exist",
+        )
+      }
+      if (
+        turn.owner_user_id !== ctx.userId ||
+        turn.thread_id !== interaction.threadId
+      ) return rejectForeignScope(ctx)
+      if (turn.lane !== interaction.source.lane) {
+        return reject(
+          ctx,
+          RUNTIME_TARGET_LANE_REJECTION,
+          "runtime interaction source lane does not match the durable turn lane",
+        )
+      }
+      if (turn.status !== "running" && turn.status !== "waiting_for_input") {
+        return reject(
+          ctx,
+          RUNTIME_INTERACTION_STATE_REJECTION,
+          "runtime interaction requires a running or waiting turn",
+        )
+      }
+      if (Number(turn.event_count) !== interaction.requestedSequence) {
+        return reject(
+          ctx,
+          RUNTIME_INTERACTION_SEQUENCE_REJECTION,
+          "runtime interaction sequence must equal the durable next event sequence",
+        )
+      }
+      const nowIso = await transactionNowIso(ctx)
+      const expiresAt = Date.parse(interaction.expiresAt)
+      if (
+        !Number.isFinite(expiresAt) ||
+        new Date(expiresAt).toISOString() !== interaction.expiresAt ||
+        expiresAt <= Date.parse(nowIso)
+      ) {
+        return reject(
+          ctx,
+          RUNTIME_INTERACTION_EXPIRY_REJECTION,
+          "runtime interaction deadline must be a future ISO timestamp",
+        )
+      }
+      await insertRuntimeInteraction(ctx, interaction, nowIso)
+      await updateTurnWaitingForInteraction(ctx, interaction.turnId, nowIso)
+      return applied(ctx)
+    },
+    name: MutatorName.make(RUNTIME_REQUEST_INTERACTION_MUTATOR_NAME),
+  })
+
+export const runtimeDecideInteractionMutator: MutatorDefinition =
+  defineMutator<RuntimeInteractionDecisionArgs>({
+    decodeArgs: decodeRuntimeInteractionDecisionArgs,
+    execute: async (input, ctx) => {
+      const ownerRejection = await ensureRuntimeThreadOwner(ctx, input.threadId)
+      if (ownerRejection !== null) return ownerRejection
+      const row = await readInteractionForUpdate(ctx, input.interactionRef)
+      if (row === null) {
+        return reject(
+          ctx,
+          RUNTIME_INTERACTION_STATE_REJECTION,
+          "this runtime interaction does not exist",
+        )
+      }
+      if (
+        row.owner_user_id !== ctx.userId ||
+        row.thread_id !== input.threadId ||
+        row.turn_id !== input.turnId
+      ) return rejectForeignScope(ctx)
+      const entity = interactionEntityFromRow(row)
+      const nowIso = await transactionNowIso(ctx)
+      const decision = applyRuntimeInteractionDecision(
+        entity.interaction,
+        input.envelope,
+        nowIso,
+      )
+      if (decision.state === "duplicate") return applied(ctx)
+      if (decision.state === "conflict") {
+        return reject(
+          ctx,
+          RUNTIME_INTERACTION_CONFLICT_REJECTION,
+          "runtime interaction decision identity conflicts with the settled decision",
+        )
+      }
+      if (decision.state === "invalid_decision") {
+        return reject(
+          ctx,
+          RUNTIME_INTERACTION_DECISION_REJECTION,
+          "runtime interaction decision does not match its kind or choices",
+        )
+      }
+      if (decision.state === "revoked") {
+        return reject(
+          ctx,
+          RUNTIME_INTERACTION_STATE_REJECTION,
+          "runtime interaction authority was revoked",
+        )
+      }
+      if (decision.state === "applied") {
+        const conflicts: Array<{ interaction_ref: string }> =
+          await ctx.writer.sql`
+            SELECT interaction_ref
+            FROM khala_sync_runtime_interactions
+            WHERE owner_user_id = ${ctx.userId}
+              AND status = 'resolved'
+              AND interaction_ref <> ${input.interactionRef}
+              AND interaction_json -> 'lifecycle' -> 'envelope'
+                    ->> 'idempotencyKey' = ${input.envelope.idempotencyKey}
+            LIMIT 1
+          `
+        if (conflicts.length > 0) {
+          return reject(
+            ctx,
+            RUNTIME_INTERACTION_CONFLICT_REJECTION,
+            "runtime interaction decision idempotency key is already bound",
+          )
+        }
+      }
+      await updateRuntimeInteraction(ctx, row, decision.interaction, nowIso)
+      return applied(ctx)
+    },
+    name: MutatorName.make(RUNTIME_DECIDE_INTERACTION_MUTATOR_NAME),
+  })
+
 export const runtimeStartTurnMutator: MutatorDefinition =
   defineMutator<KhalaRuntimeControlIntent>({
     decodeArgs: decodeRuntimeControlIntentArgs,
@@ -1480,4 +1839,6 @@ export const runtimeMutators: ReadonlyArray<MutatorDefinition> = [
   runtimeRetryTurnMutator,
   runtimeCloseTurnMutator,
   runtimeRecordEventMutator,
+  runtimeRequestInteractionMutator,
+  runtimeDecideInteractionMutator,
 ]

@@ -109,10 +109,11 @@ const runtimeEvent = (input: {
   threadId: string
   turnId: string
   sequence: number
+  kind?: "turn.started" | "text.delta"
 }) => ({
   causalityRefs: [],
   eventId: input.eventId,
-  kind: "turn.started" as const,
+  kind: input.kind ?? "turn.started",
   observedAt: iso,
   redactionClass: "private_ref" as const,
   schema: KhalaRuntimeEventSchemaLiteral,
@@ -125,6 +126,13 @@ const runtimeEvent = (input: {
   threadId: input.threadId,
   turnId: input.turnId,
   visibility: "private" as const,
+  ...(input.kind === "text.delta"
+    ? {
+        messageId: `message.${input.eventId}`,
+        chunkId: `chunk.${input.eventId}`,
+        text: "runtime reader event",
+      }
+    : {}),
 })
 
 const registry = makeMutatorRegistry([...runtimeMutators, ...chatMutators])
@@ -351,19 +359,21 @@ describe.skipIf(!hasLocalPostgres())(
         request: pushRequest(client, [
           envelope(2, RUNTIME_RECORD_EVENT_MUTATOR_NAME, runtimeEvent({
             eventId: "runtime-event.turn-reader.1",
-            sequence: 1,
+            sequence: 0,
             threadId,
             turnId,
           })),
           envelope(3, RUNTIME_RECORD_EVENT_MUTATOR_NAME, runtimeEvent({
             eventId: "runtime-event.turn-reader.2",
-            sequence: 2,
+            kind: "text.delta",
+            sequence: 1,
             threadId,
             turnId,
           })),
           envelope(4, RUNTIME_RECORD_EVENT_MUTATOR_NAME, runtimeEvent({
             eventId: "runtime-event.turn-reader.3",
-            sequence: 3,
+            kind: "text.delta",
+            sequence: 2,
             threadId,
             turnId,
           })),
