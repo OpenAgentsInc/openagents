@@ -54,6 +54,7 @@ import {
   RUNTIME_RAW_BODY_REJECTION,
   RUNTIME_SCOPE_REJECTION,
   RUNTIME_START_TURN_MUTATOR_NAME,
+  RUNTIME_TARGET_LANE_REJECTION,
   runtimeMutators,
 } from "./runtime-mutators.js"
 import type { SyncSql } from "./sql.js"
@@ -847,6 +848,86 @@ describe.skipIf(!hasLocalPostgres())(
         WHERE thread_id = ${ownerThread} AND owner_user_id = ${intruder.userId}
       `
       expect(Number(leaked[0]!.count)).toBe(0)
+    })
+
+    test("existing-turn controls require the durable provider lane before any mutation", async () => {
+      const client = freshClient()
+      const threadId = "runtime-thread.lane-fence.8696"
+      const turnId = "runtime-turn.lane-fence.8696"
+      const started = await executePush({
+        registry,
+        request: pushRequest(client, [
+          envelope(1, RUNTIME_START_TURN_MUTATOR_NAME, controlIntent({
+            intentId: "runtime-intent.lane-fence.start.8696",
+            kind: "turn.start",
+            lane: "claude_pylon",
+            threadId,
+            turnId,
+          })),
+        ]),
+        sql: sql as unknown as SyncSql,
+        userId: client.userId,
+      })
+      expect(started.results[0]!.status).toBe("applied")
+
+      const mismatched = await executePush({
+        registry,
+        request: pushRequest(client, [
+          envelope(2, RUNTIME_INTERRUPT_TURN_MUTATOR_NAME, controlIntent({
+            intentId: "runtime-intent.lane-fence.wrong.8696",
+            kind: "turn.interrupt",
+            lane: "codex_app_server",
+            threadId,
+            turnId,
+          })),
+        ]),
+        sql: sql as unknown as SyncSql,
+        userId: client.userId,
+      })
+      expect(mismatched.results[0]!.status).toBe("rejected")
+      expect(mismatched.results[0]!.errorCode).toBe(
+        RUNTIME_TARGET_LANE_REJECTION,
+      )
+      const unchanged: Array<{
+        intent_count: string | number
+        status: string
+      }> = await sql`
+        SELECT
+          (SELECT count(*) FROM khala_sync_runtime_control_intents
+           WHERE thread_id = ${threadId}) AS intent_count,
+          status
+        FROM khala_sync_runtime_turns
+        WHERE turn_id = ${turnId}
+      `
+      expect(Number(unchanged[0]!.intent_count)).toBe(1)
+      expect(unchanged[0]!.status).toBe("queued")
+
+      const matched = await executePush({
+        registry,
+        request: pushRequest(client, [
+          envelope(3, RUNTIME_INTERRUPT_TURN_MUTATOR_NAME, controlIntent({
+            intentId: "runtime-intent.lane-fence.correct.8696",
+            kind: "turn.interrupt",
+            lane: "claude_pylon",
+            threadId,
+            turnId,
+          })),
+        ]),
+        sql: sql as unknown as SyncSql,
+        userId: client.userId,
+      })
+      expect(matched.results[0]!.status).toBe("applied")
+      const final: Array<{ intent_count: string | number; status: string }> =
+        await sql`
+          SELECT
+            (SELECT count(*) FROM khala_sync_runtime_control_intents
+             WHERE thread_id = ${threadId}) AS intent_count,
+            status
+          FROM khala_sync_runtime_turns
+          WHERE turn_id = ${turnId}
+        `
+      expect(Number(final[0]!.intent_count)).toBe(2)
+      expect(final[0]!.status).toBe("interrupted")
     })
 
     test("raw body append rejects without retaining the prompt and the following ref-only append applies", async () => {

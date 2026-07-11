@@ -76,6 +76,7 @@ export const RUNTIME_TURN_EXISTS_REJECTION = "runtime_turn_exists"
 export const RUNTIME_TURN_NOT_FOUND_REJECTION = "runtime_turn_not_found"
 export const RUNTIME_INTENT_CONFLICT_REJECTION = "runtime_intent_conflict"
 export const RUNTIME_INTENT_EXPIRY_REJECTION = "runtime_intent_expiry_invalid"
+export const RUNTIME_TARGET_LANE_REJECTION = "runtime_target_lane_mismatch"
 /** @deprecated exact retries now reconcile; use the conflict code. */
 export const RUNTIME_INTENT_EXISTS_REJECTION = RUNTIME_INTENT_CONFLICT_REJECTION
 export const RUNTIME_MESSAGE_REQUIRED_REJECTION = "runtime_message_required"
@@ -1126,6 +1127,16 @@ const validateExistingTurnIntent = async (
   }
   if (turn.owner_user_id !== ctx.userId || turn.thread_id !== intent.threadId) {
     return { kind: "complete", result: rejectForeignScope(ctx) }
+  }
+  if (turn.lane !== intent.target.lane) {
+    return {
+      kind: "complete",
+      result: reject(
+        ctx,
+        RUNTIME_TARGET_LANE_REJECTION,
+        "runtime control target lane does not match the durable turn lane",
+      ),
+    }
   }
 
   return { kind: "ok", nowIso, turn, turnId }
