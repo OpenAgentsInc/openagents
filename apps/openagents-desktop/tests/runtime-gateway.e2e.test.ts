@@ -34,7 +34,7 @@ describe("Desktop Runtime Gateway", () => {
     expect(rendererResponse).toMatchObject({
       kind: "query_result",
       requestId: "renderer-bootstrap",
-      result: { protocolVersion: 8, lifecycle: "ready" },
+      result: { protocolVersion: 9, lifecycle: "ready" },
     })
   })
 
@@ -50,7 +50,7 @@ describe("Desktop Runtime Gateway", () => {
     expect(response).toMatchObject({
       kind: "query_result",
       requestId: "query-1",
-      result: { kind: "runtime.bootstrap", lifecycle: "ready", protocolVersion: 8,identityTier:"local_unavailable" },
+      result: { kind: "runtime.bootstrap", lifecycle: "ready", protocolVersion: 9,identityTier:"local_unavailable" },
     })
     if (response.kind !== "query_result") throw new Error("expected query result")
     expect(response.result.capabilities).toContainEqual({
@@ -519,6 +519,156 @@ describe("Desktop Runtime Gateway", () => {
     ])
   })
 
+  test("queries confirmed interactions and queues exact decisions without optimistic resolution", async () => {
+    const decisions: unknown[] = []
+    const interaction = {
+      schema: "openagents.runtime_interaction_projection.v1" as const,
+      interactionRef: "interaction.gateway.1",
+      threadId: "thread.gateway.1",
+      turnId: "turn.gateway.1",
+      kind: "provider_question" as const,
+      status: "pending" as const,
+      displayTitle: "Choose a test lane",
+      displayText: "Which lane should run?",
+      questions: [{
+        questionRef: "question.gateway.1",
+        displayText: "Which lane should run?",
+        options: [{ optionRef: "option.gateway.unit", label: "Unit tests" }],
+        multiSelect: false,
+      }],
+      expiresAt: "2026-07-11T23:30:00.000Z",
+      requestedSequence: 7,
+      requestedAt: "2026-07-11T23:00:00.000Z",
+      version: 4,
+    }
+    const gateway = createDesktopRuntimeGateway(
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      () => ({
+        list: async threadRef => threadRef === interaction.threadId ? [interaction] : [],
+        decide: command => {
+          decisions.push(command)
+          return 41
+        },
+      }),
+    )
+    gateway.start()
+
+    const listed = await gateway.request({
+      kind: "query",
+      requestId: "interactions-1",
+      query: { id: "runtime.interactions", threadRef: interaction.threadId },
+    })
+    expect(decodeDesktopRuntimeGatewayResponse(listed)).toEqual(listed)
+    expect(listed).toEqual({
+      kind: "runtime_interactions",
+      requestId: "interactions-1",
+      threadRef: interaction.threadId,
+      interactions: [interaction],
+    })
+
+    const envelope = {
+      decisionRef: "decision.gateway.1",
+      idempotencyKey: "idem.gateway.1",
+      decidedAt: "2026-07-11T23:01:00.000Z",
+      surface: "desktop" as const,
+      decision: {
+        kind: "provider_question" as const,
+        answers: [{
+          questionRef: "question.gateway.1",
+          optionRefs: ["option.gateway.unit"],
+        }],
+      },
+    }
+    const decided = await gateway.request({
+      kind: "command",
+      commandId: "decide-1",
+      command: {
+        id: "runtime.decideInteraction",
+        interactionRef: interaction.interactionRef,
+        threadRef: interaction.threadId,
+        turnRef: interaction.turnId,
+        envelope,
+      },
+    })
+    expect(decodeDesktopRuntimeGatewayResponse(decided)).toEqual(decided)
+    expect(decided).toEqual({
+      kind: "runtime_interaction_decision_outcome",
+      commandId: "decide-1",
+      interactionRef: interaction.interactionRef,
+      threadRef: interaction.threadId,
+      turnRef: interaction.turnId,
+      status: "pending_reconcile",
+      mutationId: 41,
+    })
+    expect(decisions).toEqual([{
+      interactionRef: interaction.interactionRef,
+      threadId: interaction.threadId,
+      turnId: interaction.turnId,
+      envelope,
+    }])
+  })
+
+  test("fails closed for unavailable or malformed runtime interaction traffic", async () => {
+    const gateway = createDesktopRuntimeGateway()
+    gateway.start()
+    expect(await gateway.request({
+      kind: "query",
+      requestId: "interactions-offline",
+      query: { id: "runtime.interactions", threadRef: "thread.gateway.1" },
+    })).toEqual({
+      kind: "runtime_interactions_unavailable",
+      requestId: "interactions-offline",
+      reason: "not_live",
+    })
+    expect(await gateway.request({
+      kind: "command",
+      commandId: "decide-offline",
+      command: {
+        id: "runtime.decideInteraction",
+        interactionRef: "interaction.gateway.1",
+        threadRef: "thread.gateway.1",
+        turnRef: "turn.gateway.1",
+        envelope: {
+          decisionRef: "decision.gateway.1",
+          idempotencyKey: "idem.gateway.1",
+          decidedAt: "2026-07-11T23:01:00.000Z",
+          surface: "desktop",
+          decision: { kind: "tool_approval", outcome: "deny" },
+        },
+      },
+    })).toMatchObject({
+      kind: "runtime_interaction_decision_outcome",
+      commandId: "decide-offline",
+      status: "unavailable",
+    })
+    expect(decodeDesktopRuntimeGatewayRequest({
+      kind: "command",
+      commandId: "malformed-decision",
+      command: {
+        id: "runtime.decideInteraction",
+        interactionRef: "interaction.gateway.1",
+        threadRef: "thread.gateway.1",
+        turnRef: "turn.gateway.1",
+        envelope: {
+          decisionRef: "decision.gateway.1",
+          idempotencyKey: "idem.gateway.1",
+          decidedAt: "not-an-iso-timestamp",
+          surface: "desktop",
+          decision: { kind: "tool_approval", outcome: "approve" },
+        },
+      },
+    })).toBeNull()
+  })
+
   // Oracle for openagents_desktop.seam.runtime_gateway_agent_timeline.v1.
   test("queries a confirmed bounded agent timeline and preserves only the server route binding", async () => {
     const status = { phase: "live" as const, cursor: 12, pendingMutationCount: 0 }
@@ -662,8 +812,8 @@ describe("Desktop Runtime Gateway", () => {
     gateway.dispose()
     unsubscribe()
     expect(events).toEqual([
-      { kind: "runtime.lifecycle", phase: "ready", protocolVersion: 8, sequence: 1 },
-      { kind: "runtime.lifecycle", phase: "disposed", protocolVersion: 8, sequence: 2 },
+      { kind: "runtime.lifecycle", phase: "ready", protocolVersion: 9, sequence: 1 },
+      { kind: "runtime.lifecycle", phase: "disposed", protocolVersion: 9, sequence: 2 },
     ])
     expect(events.every(event => decodeDesktopRuntimeGatewayEvent(event) !== null)).toBe(true)
     expect(await gateway.request({ kind: "query", requestId: "late", query: { id: "runtime.bootstrap" } })).toEqual({
@@ -903,7 +1053,7 @@ describe("Desktop Runtime Gateway", () => {
     })).toBeNull()
   })
 
-  test("projects provider-native Codex history through protocol v8 only", async () => {
+  test("projects provider-native Codex history through protocol v9 only", async () => {
     const agent = { threadRef: "root", parentThreadRef: null, title: "Root", status: "completed" as const, createdAt: "2026-07-10T00:00:00Z", updatedAt: "2026-07-10T00:00:00Z", depth: 0, descendantCount: 0, model: null, role: null, nickname:null,agentPath:null,sourceVersion:null,reasoning:null }
     const page = { rootThreadRef: "root", selectedThreadRef: "root", agents: [agent], items: [{ itemRef: "root:0", threadRef: "root", sequence: 0, timestamp: "2026-07-10T00:00:00Z", kind: "session" as const, label: "Session", summary: "Started", status: null, fields: [], redacted: false, sourceType: "session_meta/session_meta" }], offset: 0, limit: 200, totalItems: 1, hasPrevious: false, hasNext: false, completeness: { source: 1, rendered: 1, redactions: 0, gaps: 0, complete: true } }
     const gateway = createDesktopRuntimeGateway(undefined, undefined, undefined, undefined, undefined, () => ({ catalog: () => ({ roots: [agent], agents: [agent] }), page: () => page }))

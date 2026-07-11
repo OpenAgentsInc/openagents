@@ -13,7 +13,13 @@ import {
   type ConfirmedChatThread,
   type KhalaSyncConversationStatus,
   type KhalaConversationLiveUpdate,
+  type ConfirmedRuntimeInteraction,
 } from "@openagentsinc/khala-sync-client"
+import {
+  RuntimeInteractionDecisionEnvelope as CanonicalRuntimeInteractionDecisionEnvelopeSchema,
+  RuntimeInteractionProjection as CanonicalRuntimeInteractionProjectionSchema,
+  type RuntimeInteractionDecisionEnvelope,
+} from "@openagentsinc/khala-sync"
 import { CodexHistoryCatalogSchema, CodexHistoryPageSchema } from "./codex-history-contract.ts"
 import { DesktopOperationContextSchema } from "./desktop-operation-context.ts"
 
@@ -38,10 +44,28 @@ const ConfirmedChatMessageSchema = canonicalBoundary<ConfirmedChatMessage>(Canon
 const ConfirmedChatThreadSchema = canonicalBoundary<ConfirmedChatThread>(CanonicalConfirmedChatThreadSchema)
 const KhalaSyncConversationStatusSchema = canonicalBoundary<KhalaSyncConversationStatus>(CanonicalKhalaSyncConversationStatusSchema)
 const KhalaConversationLiveUpdateSchema = canonicalBoundary<KhalaConversationLiveUpdate>(CanonicalKhalaConversationLiveUpdateSchema)
+const RuntimeInteractionDecisionEnvelopeSchema = canonicalBoundary<RuntimeInteractionDecisionEnvelope>(CanonicalRuntimeInteractionDecisionEnvelopeSchema)
+const ConfirmedRuntimeInteractionSchema = Schema.declare<ConfirmedRuntimeInteraction>(
+  (value): value is ConfirmedRuntimeInteraction => {
+    try {
+      CanonicalSchema.decodeUnknownSync(CanonicalRuntimeInteractionProjectionSchema)(value)
+      if (typeof value !== "object" || value === null) return false
+      const confirmed = value as Record<string, unknown>
+      return Number.isInteger(confirmed.requestedSequence) &&
+        Number(confirmed.requestedSequence) >= 0 &&
+        typeof confirmed.requestedAt === "string" &&
+        /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/.test(confirmed.requestedAt) &&
+        Number.isInteger(confirmed.version) &&
+        Number(confirmed.version) >= 0
+    } catch {
+      return false
+    }
+  },
+)
 
 export const DesktopRuntimeGatewayInvokeChannel = "openagents-desktop/runtime-gateway/invoke" as const
 export const DesktopRuntimeGatewayEventChannel = "openagents-desktop/runtime-gateway/event" as const
-export const DesktopRuntimeGatewayProtocolVersion = 8 as const
+export const DesktopRuntimeGatewayProtocolVersion = 9 as const
 
 const PublicRefSchema = Schema.String.check(
   Schema.isMinLength(1),
@@ -113,6 +137,15 @@ export const DesktopRuntimeGatewayRequestSchema = Schema.Union([
     kind: Schema.Literal("query"),
     requestId: Schema.String,
     query: Schema.Struct({
+      id: Schema.Literal("runtime.interactions"),
+      threadRef: PublicRefSchema,
+    }),
+  }),
+  Schema.Struct({
+    ...OperationContextField,
+    kind: Schema.Literal("query"),
+    requestId: Schema.String,
+    query: Schema.Struct({
       id: Schema.Literal("conversation.commandOutcome"),
       intentId: PublicRefSchema,
       threadRef: PublicRefSchema,
@@ -164,6 +197,13 @@ export const DesktopRuntimeGatewayRequestSchema = Schema.Union([
         threadRef: PublicRefSchema,
         messageRef: PublicRefSchema,
         body: ConversationBodySchema,
+      }),
+      Schema.Struct({
+        id: Schema.Literal("runtime.decideInteraction"),
+        interactionRef: PublicRefSchema,
+        threadRef: PublicRefSchema,
+        turnRef: PublicRefSchema,
+        envelope: RuntimeInteractionDecisionEnvelopeSchema,
       }),
       Schema.Struct({ id: Schema.Literal("session.sign_in") }),
       Schema.Struct({ id: Schema.Literal("session.sign_out") }),
@@ -232,6 +272,31 @@ export const DesktopRuntimeGatewayResponseSchema = Schema.Union([
     status: KhalaSyncConversationStatusSchema,
     run: ConfirmedAgentRunSchema,
     events: Schema.Array(ConfirmedAgentTimelineEventSchema).check(Schema.isMaxLength(500)),
+  }),
+  Schema.Struct({
+    ...OperationContextField,
+    kind: Schema.Literal("runtime_interactions"),
+    requestId: Schema.String,
+    threadRef: PublicRefSchema,
+    interactions: Schema.Array(ConfirmedRuntimeInteractionSchema).check(
+      Schema.isMaxLength(100),
+    ),
+  }),
+  Schema.Struct({
+    ...OperationContextField,
+    kind: Schema.Literal("runtime_interactions_unavailable"),
+    requestId: Schema.String,
+    reason: Schema.Literals(["not_live", "read_failed"]),
+  }),
+  Schema.Struct({
+    ...OperationContextField,
+    kind: Schema.Literal("runtime_interaction_decision_outcome"),
+    commandId: Schema.String,
+    interactionRef: PublicRefSchema,
+    threadRef: PublicRefSchema,
+    turnRef: PublicRefSchema,
+    status: Schema.Literals(["pending_reconcile", "unavailable"]),
+    mutationId: Schema.optional(NonNegativeIntSchema),
   }),
   Schema.Struct({
     ...OperationContextField,

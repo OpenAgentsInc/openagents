@@ -9,6 +9,8 @@ import type { CodexHistoryCatalog, CodexHistoryPage } from "./codex-history-cont
 import type {
   ConfirmedAgentRun,
   ConfirmedAgentTimelineEvent,
+  ConfirmedRuntimeInteraction,
+  RuntimeInteractionDecisionCommand,
   RuntimeCommandOutcome,
 } from "@openagentsinc/khala-sync-client"
 import type {
@@ -78,6 +80,15 @@ export type DesktopRuntimeCommands = Readonly<{
 export type DesktopRuntimeCodexHistory = Readonly<{
   catalog: () => CodexHistoryCatalog | Promise<CodexHistoryCatalog>
   page: (threadRef: string, offset: number, limit: number) => CodexHistoryPage | null | Promise<CodexHistoryPage | null>
+}>
+
+export type DesktopRuntimeInteractions = Readonly<{
+  list: (
+    threadRef: string,
+  ) => ReadonlyArray<ConfirmedRuntimeInteraction> | Promise<ReadonlyArray<ConfirmedRuntimeInteraction>>
+  decide: (
+    command: RuntimeInteractionDecisionCommand,
+  ) => number | Promise<number>
 }>
 
 export type DesktopRuntimeGateway = Readonly<{
@@ -168,6 +179,7 @@ export const createDesktopRuntimeGateway = (
   runtimeCommands: () => DesktopRuntimeCommands | null = () => null,
   observeOperation: (stage: DesktopCorrelationStage, context: DesktopOperationContext) => void = () => undefined,
   liveSubscriptions: () => DesktopRuntimeLiveSubscriptions | null = () => null,
+  runtimeInteractions: () => DesktopRuntimeInteractions | null = () => null,
 ): DesktopRuntimeGateway => {
   let phase: "idle" | "ready" | "disposed" = "idle"
   let sequence = 0
@@ -309,6 +321,36 @@ export const createDesktopRuntimeGateway = (
             return { kind: "conversation_unavailable", requestId: request.requestId, reason: "read_failed" }
           }
         }
+        if (request.query.id === "runtime.interactions") {
+          const query = request.query
+          const service = runtimeInteractions()
+          if (service === null) {
+            return {
+              kind: "runtime_interactions_unavailable",
+              requestId: request.requestId,
+              reason: "not_live",
+            }
+          }
+          return Promise.resolve(service.list(query.threadRef))
+            .then(interactions => interactions.length > 100 ||
+                interactions.some(interaction => interaction.threadId !== query.threadRef)
+              ? {
+                  kind: "runtime_interactions_unavailable" as const,
+                  requestId: request.requestId,
+                  reason: "read_failed" as const,
+                }
+              : {
+                  kind: "runtime_interactions" as const,
+                  requestId: request.requestId,
+                  threadRef: query.threadRef,
+                  interactions,
+                })
+            .catch(() => ({
+              kind: "runtime_interactions_unavailable" as const,
+              requestId: request.requestId,
+              reason: "read_failed" as const,
+            }))
+        }
         return {
           kind: "query_result",
           requestId: request.requestId,
@@ -393,6 +435,43 @@ export const createDesktopRuntimeGateway = (
             status: "unavailable",
           }
         }
+      }
+      if (request.command.id === "runtime.decideInteraction") {
+        const command = request.command
+        const service = runtimeInteractions()
+        if (service === null) {
+          return {
+            kind: "runtime_interaction_decision_outcome",
+            commandId: request.commandId,
+            interactionRef: command.interactionRef,
+            threadRef: command.threadRef,
+            turnRef: command.turnRef,
+            status: "unavailable",
+          }
+        }
+        return Promise.resolve(service.decide({
+          interactionRef: command.interactionRef,
+          threadId: command.threadRef,
+          turnId: command.turnRef,
+          envelope: command.envelope,
+        }))
+          .then(mutationId => ({
+            kind: "runtime_interaction_decision_outcome" as const,
+            commandId: request.commandId,
+            interactionRef: command.interactionRef,
+            threadRef: command.threadRef,
+            turnRef: command.turnRef,
+            status: "pending_reconcile" as const,
+            mutationId,
+          }))
+          .catch(() => ({
+            kind: "runtime_interaction_decision_outcome" as const,
+            commandId: request.commandId,
+            interactionRef: command.interactionRef,
+            threadRef: command.threadRef,
+            turnRef: command.turnRef,
+            status: "unavailable" as const,
+          }))
       }
       if (
         request.command.id === "conversation.start" ||
