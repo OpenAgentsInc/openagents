@@ -51,7 +51,7 @@ proof for those later remote outcomes or automatically close #8566/#8597.
 | 10 | CUT-10 | [#8690](https://github.com/OpenAgentsInc/openagents/issues/8690) — Desktop/mobile no-poll subscription path landed; physical receipt pending | D1 / Runtime Gateway | CUT-09 deterministic matrix; physical receipt remains open by owner exception |
 | 11 | CUT-11 | [#8691](https://github.com/OpenAgentsInc/openagents/issues/8691) — schema/Sync/root + real Claude child binding + Gateway v8 reconnect implemented; named Claude/Codex source traces captured; Codex transport convergence + named confirmed reconnect pending | D1 / agent graph | CUT-06, CUT-10 deterministic no-poll path |
 | 12 | CUT-12 | [#8692](https://github.com/OpenAgentsInc/openagents/issues/8692) — shared presentation model + mobile and Desktop thread agent stacks landed; physical iOS/Android receipts pending | D1 / agent UX | CUT-01, CUT-11 graph contract/delivery |
-| 13 | CUT-13 | [#8693](https://github.com/OpenAgentsInc/openagents/issues/8693) | D2 / project-session contract | CUT-04, CUT-10 |
+| 13 | CUT-13 | [#8693](https://github.com/OpenAgentsInc/openagents/issues/8693) — canonical shared catalog + bounded restart resolver landed; server/Desktop persistence and built-host receipt pending | D2 / project-session contract | CUT-04, CUT-10 |
 | 14 | CUT-14 | [#8694](https://github.com/OpenAgentsInc/openagents/issues/8694) | M1 / mobile binding | CUT-01, CUT-13 |
 | 15 | CUT-15 | [#8695](https://github.com/OpenAgentsInc/openagents/issues/8695) | D2 / commands | CUT-13 |
 | 16 | CUT-16 | [#8696](https://github.com/OpenAgentsInc/openagents/issues/8696) | D1-D2 / interaction | CUT-12, CUT-15 |
@@ -559,6 +559,24 @@ Verification: schema/migration tests and built-host restart receipt.
 Non-goals: remote host movement.  
 Close rule: merge shared contract/Desktop navigation and close with recovery
 evidence.
+
+### 2026-07-11 canonical catalog tranche
+
+Khala Sync now registers provider-neutral `coding_project`,
+`coding_repository`, `coding_worktree`, `coding_session`, and
+`coding_navigation` shapes under `openagents.coding_catalog.v1`. Stable product
+identity is structurally separate from path, host, process, vendor session,
+credential, and transport identity. Owner scope, grant/availability facts,
+WorkContext/thread/conversation/runtime/provider/topology/cursor refs, bounded
+tabs, and typed conversation/editor/terminal/agent focus are explicit. The
+shared restart resolver canonicalizes former-name and opaque checkout aliases,
+deduplicates tabs, and returns named recovery for ambiguous aliases, cross-
+owner selection, missing repository/worktree, archive, revocation, and
+unprojected grant truth. A 64-state bounded model enforces fail-closed restore.
+Only structured catalog query fields are implemented; semantic text retrieval
+remains upstream. Server projection, Desktop host persistence/navigation, and
+the built-host restart receipt remain open. See
+[`2026-07-11-cut-13-canonical-coding-session-catalog-receipt.md`](./2026-07-11-cut-13-canonical-coding-session-catalog-receipt.md).
 
 ---
 

@@ -79,6 +79,11 @@ export * from "./activity-timeline-snapshot.js"
 // graph entity per thread/session scope, validated by the shared graph laws.
 export * from "./live-agent-graph.js"
 
+// Provider-neutral project/repository/worktree/coding-session catalog and
+// restart-safe navigation contract (CUT-13). Session identity is never host,
+// path, process, provider-thread, credential, or transport identity.
+export * from "./coding-session.js"
+
 // ---------------------------------------------------------------------------
 // Branded primitives
 // ---------------------------------------------------------------------------

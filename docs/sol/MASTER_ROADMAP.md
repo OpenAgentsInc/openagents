@@ -2,8 +2,9 @@
 
 - Date: 2026-07-10
 - Updated: 2026-07-11 (CUT-10 no-poll path landed; CUT-11 graph delivery and
-  provider traces active; CUT-12 shared/mobile/Desktop supervision UI active)
-- Revision: 47
+  provider traces active; CUT-12 shared/mobile/Desktop supervision UI active;
+  CUT-13 canonical catalog contract active)
+- Revision: 48
 - Status: canonical OpenAgents implementation roadmap
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Issue source set: [`issues/README.md`](./issues/README.md)
@@ -584,15 +585,26 @@ product gaps are the R0–R7 Desktop/mobile continuity and reliability gates:
   OpenAgents Desktop thread surfaces. Canonical nodes become deterministic
   hierarchy rows with typed status/action/attention/elapsed/terminal and
   provider/runtime/session/worktree facts; historical authority is labeled and
-  control-disabled;
-  selection survives rapid graph replacement; and large graphs name their
-  exact hidden remainder. Mobile reads the exact thread-scope post-image,
+  control-disabled; selection survives rapid graph replacement; and large
+  graphs name their exact hidden remainder. Mobile reads the exact thread-scope
+  post-image,
   exposes an accessible inline inspector, auto-opens attention, and bounds the
   rendered hierarchy to 40 rows. Desktop reads the same Gateway v8 subscription
   post-image, uses one bounded subscription to hydrate an existing thread,
   exposes the same hierarchy/inspector through typed pointer, keyboard, and
   screen-reader actions, and bounds it to 200 rows without adding a poller.
   Only physical iOS/Android receipts remain open.
+- CUT-13 now has one provider-neutral `openagents.coding_catalog.v1` contract
+  for stable project, repository, worktree, coding-session, and persisted
+  navigation identities. Session identity is structurally separate from host,
+  path, process, vendor session, credential, and transport identity; placement
+  remains an optional attachment ref. The bounded restart resolver validates
+  owner/relationship/grant/availability truth, canonicalizes former-name and
+  opaque checkout aliases, collapses duplicate tabs, preserves typed focus,
+  and returns named recovery instead of guessing. A 64-state model proves ready
+  restore only when every authority fact is eligible. Server projection,
+  Desktop persistence/navigation, and the built-host restart receipt remain
+  open.
 - Grok is postponed by owner decision because the connected account is
   quota/payment exhausted. Its real accepted historical canary, HTTP-402
   state, adapters, and fixtures remain evidence/regression substrate; Grok is

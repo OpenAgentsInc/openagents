@@ -716,6 +716,22 @@ More specific invariant ledgers apply inside imported apps and packages.
   `apps/openagents-desktop/src/renderer/runtime-agent-graph.test.ts`; physical-
   device equivalence remains pending.
 
+- CUT-13 canonical coding identities are durable product refs, never host,
+  filesystem-path, process, provider-session, credential, or transport
+  identities. `coding_project`, `coding_repository`, `coding_worktree`,
+  `coding_session`, and `coding_navigation` post-images carry an exact owner
+  scope and explicit availability/grant facts. Restore validates all
+  project/repository/worktree/session relationships before returning ready;
+  ambiguous aliases, owner mismatch, missing work, archive, revoked grants,
+  and unprojected grant truth produce typed recovery. Opaque aliases may resolve
+  to a canonical ref but never become authority. Duplicate tabs collapse to
+  one canonical session; typed conversation/editor/terminal/agent focus is
+  preserved. Catalog text retrieval is not implemented with string matching;
+  only bounded structured filters are allowed at this layer. The shared schema,
+  structural redaction, 64-state fail-closed model, and restart resolver are
+  enforced by `packages/khala-sync/src/coding-session.test.ts`. Server
+  projection and Desktop persistence remain pending model boundaries.
+
 - Master Roadmap Revision 31 and
   `docs/sol/2026-07-11-remote-first-portable-coding-sessions-pathway.md`
   define target contracts for a canonical live agent graph, graph-wide
