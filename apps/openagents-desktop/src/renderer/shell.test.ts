@@ -115,6 +115,19 @@ describe("desktopShellView (state -> component tree)", () => {
     expect(time?.style).toEqual({ textAlign: "right" })
   })
 
+  test("large Codex catalogs use one virtual scroll owner and pending selection is active immediately", () => {
+    const roots = Array.from({ length: 50 }, (_, index) => ({
+      threadRef:`history-${index}`,parentThreadRef:null,title:`History ${index}`,status:"completed" as const,
+      createdAt:"2026-07-10T18:04:00.000Z",updatedAt:"2026-07-10T18:04:00.000Z",depth:0,descendantCount:0,
+      model:null,role:null,nickname:null,agentPath:null,sourceVersion:null,reasoning:null,
+    }))
+    const state:DesktopShellState={...baseState,history:{...baseState.history,catalog:{roots,agents:roots},pendingThreadRef:"history-7"}}
+    const view=desktopShellView(state)
+    expect(nodeByKey(view,"sidebar-history-list")).toMatchObject({_tag:"List",virtualize:true,estimatedItemSize:28})
+    expect(nodeByKey(view,"sidebar-thread-history-7")?.a11y).toMatchObject({selected:true})
+    expect(nodeByKey(view,"sidebar-thread-history-8")?.a11y).toMatchObject({selected:false})
+  })
+
   test("buttons carry the typed intent refs (no ad hoc handlers)", () => {
     const view = desktopShellView(baseState)
     const note = nodeByKey(view, "shell-note") as { onPress?: { name?: string } }

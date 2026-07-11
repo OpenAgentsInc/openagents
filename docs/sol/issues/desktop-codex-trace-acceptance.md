@@ -115,3 +115,16 @@ record while dropping expanded branches or forcing the inspector open. The
 handlers now preserve those fields, while explicit top-level selection expands
 the complete selected topology. The receipt contains no titles, message text,
 paths, credentials, raw records, or stable private refs.
+
+### Post-acceptance viewport and selection hardening
+
+Owner review of the real app exposed four presentation defects after close:
+an unnecessary top/left inset, horizontal pane overflow, missing scroll
+ownership, and nearly one-second selection latency on the 29,262-item trace.
+The follow-up removes the outer inset, constrains every split descendant,
+assigns independent virtualized scroll owners to the 1,231-row sidebar and
+timeline, and visibly marks the pending/active sidebar row. Reusing the
+worker's metadata graph and projecting only the requested page reduced the
+same trace's direct cold page time from about 1,406 ms to 182 ms; built
+Electron measured 96–97 ms warm without changing the complete
+`source = rendered + redactions + gaps` accounting.

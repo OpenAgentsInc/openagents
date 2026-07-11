@@ -60,7 +60,8 @@ textarea:focus-visible {
   isolation: isolate;
   height: 100vh;
   min-height: 100dvh;
-  padding: 14px 18px 18px;
+  padding: 0;
+  overflow: hidden;
 }
 
 #openagents-desktop-root > * {
@@ -75,9 +76,10 @@ textarea:focus-visible {
 /* Core app frame */
 [data-en-key="shell-root"] {
   width: 100% !important;
-  max-width: 1440px;
-  margin: 0 auto;
-  gap: 14px !important;
+  max-width: none;
+  margin: 0;
+  gap: 0 !important;
+  overflow: hidden;
 }
 
 [data-en-key="shell-sidebar"] {
@@ -86,6 +88,7 @@ textarea:focus-visible {
   padding: 16px 10px 12px;
   border: 1px solid var(--oa-line);
   border-radius: 0;
+  overflow: hidden;
   box-shadow: inset 0 1px rgba(255, 255, 255, 0.14);
 }
 
@@ -182,6 +185,25 @@ textarea:focus-visible {
   text-align: left !important;
 }
 
+[data-en-key^="sidebar-action-thread-"]:has([aria-selected="true"]) {
+  border-radius: 6px;
+  background: rgba(74, 134, 255, 0.18) !important;
+  box-shadow: inset 2px 0 var(--oa-blue), inset 0 0 0 1px rgba(114, 168, 255, 0.24);
+}
+
+[data-en-key^="sidebar-action-thread-"]:has([aria-selected="true"]) [data-en-tag="Button"] {
+  padding-left: 8px !important;
+}
+
+[data-en-key="sidebar-history-list"],
+[data-en-key="sidebar-chat-list"] {
+  width: 100%;
+  min-height: 0;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  scrollbar-gutter: stable;
+}
+
 [data-en-key^="sidebar-thread-time-"][data-en-tag="Text"] {
   flex: 0 0 auto;
   padding: 2px 0;
@@ -211,6 +233,37 @@ textarea:focus-visible {
 [data-en-key="shell-main"] {
   min-width: 0;
   min-height: 0;
+  width: 0;
+  overflow: hidden;
+}
+
+[data-en-key="history-workspace-split"],
+[data-en-key="history-workspace-split"] > [data-en-pane],
+[data-en-key="history-center"],
+[data-en-key="history-timeline-page"] {
+  min-width: 0 !important;
+  max-width: 100%;
+}
+
+[data-en-key="history-workspace-split"] {
+  overflow: hidden;
+}
+
+[data-en-key="history-workspace-split"] > [data-en-pane] {
+  overflow: hidden;
+}
+
+[data-en-key="history-timeline-page"] {
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain;
+}
+
+[data-en-key^="history-item-"][data-en-tag="Button"] {
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 /* Floating glass toolbar — direct Electron analogue to the SwiftUI pills. */
@@ -487,7 +540,7 @@ textarea:focus-visible {
 
 @media (max-width: 760px) {
   #openagents-desktop-root {
-    padding: 10px;
+    padding: 0;
   }
 
   [data-en-key="shell-header"] {

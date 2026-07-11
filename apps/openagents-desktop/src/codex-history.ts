@@ -256,7 +256,9 @@ const inferredStatus = (file: string): CodexHistoryAgent["status"] => {
   } catch { return "unknown" }
 }
 
-const agentGraph = (sessionsRoot: string): Readonly<{ entries: SessionIndexEntry[]; agents: CodexHistoryAgent[] }> => {
+export type CodexHistoryGraph = Readonly<{ entries: SessionIndexEntry[]; agents: CodexHistoryAgent[] }>
+
+export const buildCodexHistoryGraph = (sessionsRoot: string): CodexHistoryGraph => {
   const entries = indexAllSessions(sessionsRoot); const byId = new Map(entries.map(entry => [entry.id, entry])); const titles = titleIndex(sessionsRoot)
   const children = new Map<string, string[]>()
   for (const entry of entries) if (entry.parentId !== null) children.set(entry.parentId, [...(children.get(entry.parentId) ?? []), entry.id])
@@ -270,8 +272,8 @@ const agentGraph = (sessionsRoot: string): Readonly<{ entries: SessionIndexEntry
   return { entries, agents: agents.map(agent => ({ ...agent, title: agent.title || rootOf(byId.get(agent.threadRef)!) })) }
 }
 
-export const readCodexHistoryCatalog = (sessionsRoot: string): CodexHistoryCatalog => {
-  const { agents } = agentGraph(sessionsRoot)
+export const readCodexHistoryCatalog = (sessionsRoot: string, graph = buildCodexHistoryGraph(sessionsRoot)): CodexHistoryCatalog => {
+  const { agents } = graph
   return { roots: agents.filter(agent => agent.parentThreadRef === null).sort((a,b) => b.updatedAt.localeCompare(a.updatedAt)), agents }
 }
 
@@ -303,11 +305,20 @@ const projectRow = (row: unknown, threadRef: string, sequence: number): CodexHis
   return { itemRef: `${threadRef}:${sequence}`, threadRef, sequence, timestamp, kind, label: label.slice(0,160), summary: redactedSummary.text, status, fields: fields.map(({label,value}) => ({label,value})), redacted, sourceType: `${envelopeType}/${itemType}`.slice(0,160) }
 }
 
-export const readCodexHistoryPage = (input: Readonly<{ sessionsRoot: string; threadRef: string; offset?: number; limit?: number }>): CodexHistoryPage | null => {
-  const graph = agentGraph(input.sessionsRoot); const entry = graph.entries.find(item => item.id === input.threadRef); if (!entry) return null
+const projectionAccounting = (row: unknown): Readonly<{ gap: boolean; redaction: boolean }> => {
+  const envelope=object(row);const payload=envelope&&object(envelope.payload);if(envelope===null||payload===null)return {gap:true,redaction:false}
+  const envelopeType=string(envelope.type)??"invalid";const nestedPayload=object(payload.payload);let item=nestedPayload??payload;let itemType=string(item.type)??envelopeType
+  if(envelopeType==="event_msg"&&itemType==="item_completed"){const completed=object(item.item);if(completed){item=completed;itemType=string(item.type)??itemType}}
+  const supported=envelopeType==="session_meta"||envelopeType==="turn_context"||envelopeType==="world_state"||envelopeType==="compacted"||envelopeType==="event_msg"||itemType==="message"||itemType==="agent_message"||itemType.includes("reasoning")||itemType.includes("plan")||itemType==="todo_list"||itemType.includes("collab")||itemType.includes("agent")||["spawn_agent","send_input","wait","resume_agent","interrupt_agent","close_agent"].includes(itemType)||itemType.includes("approval")||itemType.includes("usage")||itemType.includes("token_count")||itemType.includes("output")||itemType.includes("result")||itemType.includes("call")||itemType.includes("tool")||itemType.includes("shell")||itemType==="function_call"||itemType.includes("command_execution")||itemType.includes("error")
+  const redaction=itemType.includes("reasoning")&&contentText(item.summary)===""
+  return {gap:!supported,redaction}
+}
+
+export const readCodexHistoryPage = (input: Readonly<{ sessionsRoot: string; threadRef: string; offset?: number; limit?: number }>, graph = buildCodexHistoryGraph(input.sessionsRoot)): CodexHistoryPage | null => {
+  const entry = graph.entries.find(item => item.id === input.threadRef); if (!entry) return null
   const rows = historyText(entry.file).split("\n").filter(line => line !== "").map(line => { try { return JSON.parse(line) } catch { return null } })
-  const knownThreads=new Set(graph.entries.map(item=>item.id)); const projected = rows.map((row,index) => {const item=projectRow(row, entry.id, index);if(item.kind!=="collaboration")return item;const agent=item.fields.find(field=>field.label==="agent")?.value;return agent&& !knownThreads.has(agent)?{...item,fields:[...item.fields,{label:"history",value:"Child history not recorded"}]}:item}); const offset = Math.max(0, Math.min(input.offset ?? 0, projected.length)); const limit = Math.max(1, Math.min(input.limit ?? 200, 500)); const items = projected.slice(offset, offset + limit)
+  const offset = Math.max(0, Math.min(input.offset ?? 0, rows.length)); const limit = Math.max(1, Math.min(input.limit ?? 200, 500)); const knownThreads=new Set(graph.entries.map(item=>item.id)); const items=rows.slice(offset,offset+limit).map((row,index)=>{const item=projectRow(row,entry.id,offset+index);if(item.kind!=="collaboration")return item;const agent=item.fields.find(field=>field.label==="agent")?.value;return agent&&!knownThreads.has(agent)?{...item,fields:[...item.fields,{label:"history",value:"Child history not recorded"}]}:item})
   const root = (() => { let current = entry; const byId = new Map(graph.entries.map(item => [item.id,item])); const seen = new Set<string>(); while (current.parentId && !seen.has(current.id)) { seen.add(current.id); const parent = byId.get(current.parentId); if (!parent) break; current = parent } return current.id })()
-  const gaps = projected.filter(item => item.kind === "gap").length; const redactions = projected.filter(item=>item.kind==="reasoning"&&item.summary.startsWith("[REDACTED:")).length
-  return { rootThreadRef: root, selectedThreadRef: entry.id, agents: graph.agents.filter(agent => { let id: string | null = agent.threadRef; const byId = new Map(graph.entries.map(item => [item.id,item])); while (id) { if (id === root) return true; id = byId.get(id)?.parentId ?? null } return false }), items, offset, limit, totalItems: projected.length, hasPrevious: offset > 0, hasNext: offset + limit < projected.length, completeness: { source: rows.length, rendered: projected.length - gaps - redactions, redactions, gaps, complete: rows.length === projected.length } }
+  const accounting=rows.reduce((total,row)=>{const next=projectionAccounting(row);return {gaps:total.gaps+(next.gap?1:0),redactions:total.redactions+(next.redaction?1:0)}},{gaps:0,redactions:0})
+  return { rootThreadRef: root, selectedThreadRef: entry.id, agents: graph.agents.filter(agent => { let id: string | null = agent.threadRef; const byId = new Map(graph.entries.map(item => [item.id,item])); while (id) { if (id === root) return true; id = byId.get(id)?.parentId ?? null } return false }), items, offset, limit, totalItems: rows.length, hasPrevious: offset > 0, hasNext: offset + limit < rows.length, completeness: { source: rows.length, rendered: rows.length - accounting.gaps - accounting.redactions, redactions:accounting.redactions, gaps:accounting.gaps, complete: true } }
 }

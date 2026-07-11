@@ -25,6 +25,7 @@ import {
   IntentRef,
   Icon,
   IconButton,
+  List,
   Spacer,
   Stack,
   Text,
@@ -33,6 +34,7 @@ import {
   StaticPayload,
   defineIntent,
   type IntentHandlers,
+  type KeyedView,
   type TextView,
   type TranscriptMessage,
   type View,
@@ -480,8 +482,10 @@ export const makeDesktopShellHandlers = (
     }
   }),
   HistoryConversationSelected: (id) => Effect.gen(function* () {
+    yield* SubscriptionRef.update(state,current=>({...current,history:{...current.history,pendingThreadRef:id}}))
     const page = yield* Effect.promise(() => historyHost.page(id, 0, 200))
-    if (page) { yield* SubscriptionRef.update(state, (current): DesktopShellState => { const expandedThreadRefs=page.agents.filter(agent=>agent.descendantCount>0).map(agent=>agent.threadRef); const history={ ...current.history, page, selectedItemRef: null, expandedThreadRefs }; historyHost.save?.({rootThreadRef:page.rootThreadRef,selectedThreadRef:page.selectedThreadRef,offset:page.offset,selectedItemRef:null,railCollapsed:history.railCollapsed,anchorItemRef:page.items[0]?.itemRef??null,expandedThreadRefs}); return { ...current, workspace: "chat", history } }) }
+    if (page) { yield* SubscriptionRef.update(state, (current): DesktopShellState => { const expandedThreadRefs=page.agents.filter(agent=>agent.descendantCount>0).map(agent=>agent.threadRef); const history={ ...current.history, page, selectedItemRef: null, expandedThreadRefs, pendingThreadRef:null }; historyHost.save?.({rootThreadRef:page.rootThreadRef,selectedThreadRef:page.selectedThreadRef,offset:page.offset,selectedItemRef:null,railCollapsed:history.railCollapsed,anchorItemRef:page.items[0]?.itemRef??null,expandedThreadRefs}); return { ...current, workspace: "chat", history } }) }
+    else yield* SubscriptionRef.update(state,current=>({...current,history:{...current.history,pendingThreadRef:null}}))
   }),
   HistoryAgentSelected: (id) => Effect.gen(function* () {
     const page = yield* Effect.promise(() => historyHost.page(id, 0, 200))
@@ -686,13 +690,13 @@ const shellSidebar = (state: DesktopShellState): View =>
       ]),
       Text({ key: "sidebar-chats-label", content: "Codex history · all time", variant: "caption", color: "textMuted" }),
       ...(state.history.catalog.roots.length === 0 && state.threads.length === 0 ? [Text({ key: "sidebar-chats-empty", content: "No local Codex history found.", variant: "body", color: "textMuted" })] : []),
-      ...state.history.catalog.roots.map((thread) => Stack({ key: `sidebar-action-thread-${thread.threadRef}`, direction: "row", gap: "2", align: "center", style: { width: "full" } }, [
+      ...(state.history.catalog.roots.length > 0 ? [List({ key:"sidebar-history-list", virtualize:state.history.catalog.roots.length>40, estimatedItemSize:28, style:{flex:1,minHeight:0,width:"full"}, a11y:{role:"list",label:`${state.history.catalog.roots.length} Codex conversations`} }, state.history.catalog.roots.map((thread) => Stack({ key: `sidebar-action-thread-${thread.threadRef}`, direction: "row", gap: "2", align: "center", style: { width: "full" } }, [
         Button({
           key: `sidebar-thread-${thread.threadRef}`,
           label: thread.title,
           variant: "ghost",
           onPress: IntentRef("HistoryConversationSelected", StaticPayload(thread.threadRef)),
-          a11y: { label: `Open historical chat ${thread.title}, ${thread.descendantCount} descendant agents`, selected: state.history.page?.rootThreadRef === thread.threadRef },
+          a11y: { label: `Open historical chat ${thread.title}, ${thread.descendantCount} descendant agents`, selected: (state.history.pendingThreadRef ?? state.history.page?.rootThreadRef) === thread.threadRef },
           style: {
             flex: 1,
             padding: "0",
@@ -709,11 +713,11 @@ const shellSidebar = (state: DesktopShellState): View =>
           color: "textMuted",
           style: { textAlign: "right" },
         }),
-      ])),
-      ...(state.history.catalog.roots.length === 0 ? state.threads.map((thread) => Stack({ key: `sidebar-action-thread-${thread.id}`, direction: "row", gap: "2", align: "center", style: { width: "full" } }, [
+      ]) as KeyedView))] : []),
+      ...(state.history.catalog.roots.length === 0 && state.threads.length > 0 ? [List({key:"sidebar-chat-list",virtualize:state.threads.length>40,estimatedItemSize:28,style:{flex:1,minHeight:0,width:"full"},a11y:{role:"list",label:`${state.threads.length} conversations`}},state.threads.map((thread) => Stack({ key: `sidebar-action-thread-${thread.id}`, direction: "row", gap: "2", align: "center", style: { width: "full" } }, [
         Button({ key: `sidebar-thread-${thread.id}`, label: thread.title, variant: "ghost", onPress: IntentRef("DesktopChatSelected", StaticPayload(thread.id)), a11y: { label: `Open chat ${thread.title}` }, style: { flex: 1, padding: "0", borderWidth: 0, borderRadius: "none", color: "textPrimary", textAlign: "left" } }),
         Text({ key: `sidebar-thread-time-${thread.id}`, content: formatRelativeTimestamp(thread.updatedAt), variant: "caption", color: "textMuted", style: { textAlign: "right" } }),
-      ])) : []),
+      ]) as KeyedView))] : []),
     ],
   )
 

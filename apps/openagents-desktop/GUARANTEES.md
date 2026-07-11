@@ -267,6 +267,19 @@ the machine's real local Codex catalog and exercises the recorded-demo path.
 Contract:
 `openagents_desktop.seam.codex_trace_electron_acceptance.v1`.
 
+The accepted trace shell also owns the full Electron content rectangle: there
+is no decorative outer inset, split panes cannot widen the document, and the
+sidebar/timeline/inspector are bounded independent scroll owners. Large
+catalogs use Effect Native virtualization and the selected conversation has a
+non-color-only `aria-selected` state plus visible active treatment immediately
+on press.
+
+The history worker reuses its immutable metadata graph for catalog and page
+queries and projects only the requested bounded page while computing the full
+loss equation with a lightweight pass. On the owner-local 131-agent,
+29,262-item trace this reduced cold selected-page projection from about
+1,406 ms to 182 ms; the built-Electron warm journey measured 96–97 ms.
+
 ### Large-thread first-content performance
 
 After a thread is selected, the local bounded first-content projection must

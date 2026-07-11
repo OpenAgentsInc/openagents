@@ -8,8 +8,9 @@ export type HistoryWorkspaceState = Readonly<{
   selectedItemRef: string | null
   railCollapsed: boolean
   expandedThreadRefs: ReadonlyArray<string>
+  pendingThreadRef?: string | null
 }>
-export const emptyHistoryWorkspaceState = (): HistoryWorkspaceState => ({ catalog: { roots: [], agents: [] }, page: null, selectedItemRef: null, railCollapsed: false, expandedThreadRefs: [] })
+export const emptyHistoryWorkspaceState = (): HistoryWorkspaceState => ({ catalog: { roots: [], agents: [] }, page: null, selectedItemRef: null, railCollapsed: false, expandedThreadRefs: [], pendingThreadRef: null })
 
 export const HistoryConversationSelected = defineIntent("HistoryConversationSelected", Schema.String)
 export const HistoryAgentSelected = defineIntent("HistoryAgentSelected", Schema.String)
