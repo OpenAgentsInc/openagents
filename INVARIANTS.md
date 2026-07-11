@@ -561,6 +561,20 @@ More specific invariant ledgers apply inside imported apps and packages.
   confirmed `agent_run.routeId` returned as `routeRef`—clients do not derive it
   from `runRef`. Owner/private/raw-provider/auth/store/session/transport fields
   and generic IPC remain unrepresentable in the contract.
+- Desktop Runtime Gateway operation correlation is public-safe and ref-only:
+  `operationRef`, Desktop lifecycle `sessionRef`, `correlationRef`, and optional
+  `runRef` use the bounded public-ref grammar, survive schema decoding through
+  preload/main/gateway responses, and enter runtime Sync only as private
+  causality refs. Paths, URLs, prompts, bodies, owner fields, credentials,
+  provider payloads, native handles, and raw errors are forbidden. The
+  process host owns replaceable runtime/workspace/Sync/account/history slots;
+  WorkContext/session/window replacement and app teardown close each owned
+  finalizer once, abort in-flight native sign-in, and leave zero active slots.
+  Regression and built-host coverage lives in
+  `apps/openagents-desktop/src/desktop-host-lifecycle.test.ts`,
+  `apps/openagents-desktop/src/desktop-operation-context.test.ts`,
+  `apps/openagents-desktop/tests/runtime-gateway.e2e.test.ts`, and the normal
+  Desktop Electron smoke.
 - Provider-native Codex history remains owner-local and read-only. Desktop main
   indexes active and archived rollouts off the main thread and Runtime Gateway
   v4 projects only bounded catalog/page data: stable thread relationships,

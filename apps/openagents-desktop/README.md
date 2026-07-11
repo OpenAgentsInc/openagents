@@ -64,7 +64,9 @@ history acceptance run; that evidence is not the deterministic CI gate.
 Tests cover: pure `state -> View` component trees, pure transitions, the
 intent loop through the real registry, theme parity with the shared surface,
 the mechanical Electron/EN boundary oracle, source-coupled service topology
-and ambient-authority denial, and a real bundle build.
+and ambient-authority denial, replaceable exactly-once host lifecycle,
+public-safe operation correlation through Sync causality, and a real bundle
+build plus Electron teardown receipt.
 
 ## Architecture
 
@@ -72,6 +74,11 @@ and ambient-authority denial, and a real bundle build.
   `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`,
   `webviewTag: false`, deny-by-default permissions/navigation/window-open,
   restrictive CSP, no updater/publisher/devtools-installer.
+- `src/desktop-host-lifecycle.ts` — the production-used replaceable owner for
+  process, WorkContext/session, and window resources; app teardown drains it
+  once in dependency-safe order.
+- `src/desktop-operation-context.ts` — strict ref-only operation/session/run
+  correlation and the bounded host journal used by the built acceptance path.
 - `src/preload.cts` — the only bridge: a closed set of schema-checked chat,
   workspace, bounded save/Git, Fleet-brief, and public-safe Codex-account
   capabilities over fixed IPC channels. No raw token, Node capability,

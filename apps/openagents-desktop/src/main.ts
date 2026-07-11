@@ -38,6 +38,7 @@ import { completeChatTurn } from "./chat-service.ts"
 import { DesktopChatTurnChannel, DesktopHydrateThreadChannel, DesktopNewThreadChannel, DesktopOpenThreadChannel, DesktopThreadsChannel, decode, DesktopThreadRequestSchema, DesktopTurnRequestSchema, type DesktopMessage } from "./chat-contract.ts"
 import { makeThreadStore } from "./thread-store.ts"
 import { makeCodexHistoryHost } from "./codex-history-host.ts"
+import { makeDesktopHostLifecycle } from "./desktop-host-lifecycle.ts"
 import {
   DesktopWorkspaceChooseChannel,
   DesktopWorkspaceFilesChannel,
@@ -50,16 +51,23 @@ import {
   decodeWorkspaceGitDiffRequest,
   decodeWorkspaceSaveRequest,
 } from "./workspace-contract.ts"
-import { openWorkspaceService, type DesktopWorkspaceService } from "./workspace-service.ts"
+import { openWorkspaceService } from "./workspace-service.ts"
 import {
   DesktopRuntimeGatewayEventChannel,
   DesktopRuntimeGatewayInvokeChannel,
   decodeDesktopRuntimeGatewayRequest,
   invalidDesktopRuntimeGatewayResponse,
+  type DesktopRuntimeGatewayRequest,
 } from "./runtime-gateway-contract.ts"
 import { createDesktopRuntimeGateway } from "./runtime-gateway.ts"
 import { desktopRuntimeCapabilities } from "./runtime-gateway.ts"
-import { openDesktopSyncHost, type DesktopSyncHost } from "./desktop-sync-host.ts"
+import {
+  desktopOperationRef,
+  decodeDesktopOperationContext,
+  makeDesktopCorrelationJournal,
+  type DesktopOperationContext,
+} from "./desktop-operation-context.ts"
+import { openDesktopSyncHost } from "./desktop-sync-host.ts"
 import {
   openDesktopSessionVault,
   type DesktopSessionVault,
@@ -87,18 +95,40 @@ const codexConnect = makeCodexConnectService(here, {
   ...(smokeMode ? { spawnPylon: makeFixtureSpawnPylon() } : {}),
   openExternal: (url) => shell.openExternal(url),
 })
-let desktopSyncHost: DesktopSyncHost | null = null
 let desktopSessionVault: DesktopSessionVault | null = null
 let desktopSessionState: "signed_out" | "credential_present_unverified" | "session_ready" | "denied" | "unavailable" = "unavailable"
+const desktopOperationSessionRef = `session.desktop.${randomUUID()}`
+let desktopCorrelationSequence = 0
+const desktopCorrelationJournal = makeDesktopCorrelationJournal()
+const operationContextFor = (request: DesktopRuntimeGatewayRequest): DesktopOperationContext | null => {
+  const operationRef = desktopOperationRef(request)
+  const runRef = request.kind === "command" && "runRef" in request.command
+    ? request.command.runRef
+    : undefined
+  if (request.context !== undefined) {
+    return request.context.operationRef === operationRef &&
+      request.context.sessionRef === desktopOperationSessionRef &&
+      request.context.runRef === runRef
+      ? request.context
+      : null
+  }
+  return decodeDesktopOperationContext({
+    operationRef,
+    sessionRef: desktopOperationSessionRef,
+    correlationRef: `correlation.desktop.${++desktopCorrelationSequence}`,
+    ...(runRef === undefined ? {} : { runRef }),
+  })
+}
 const connectVerifiedDesktopSync = (): boolean => {
-  if (desktopSyncHost === null || desktopSessionVault === null) return false
+  const syncHost = hostLifecycle.sync()
+  if (syncHost === null || desktopSessionVault === null) return false
   try {
     const credential = desktopSessionVault.load()
     if (credential === null) {
-      desktopSyncHost.disconnectAuthenticated()
+      syncHost.disconnectAuthenticated()
       return false
     }
-    desktopSyncHost.connectAuthenticated({
+    syncHost.connectAuthenticated({
       verification:"server_verified",
       baseUrl: process.env.OPENAGENTS_COM_BASE_URL ?? "https://openagents.com",
       ownerUserId: credential.ownerUserId,
@@ -106,21 +136,22 @@ const connectVerifiedDesktopSync = (): boolean => {
     })
     return true
   } catch {
-    desktopSyncHost.disconnectAuthenticated()
+    syncHost.disconnectAuthenticated()
     return false
   }
 }
 const runtimeGateway = createDesktopRuntimeGateway(() => desktopRuntimeCapabilities({
   sessionLocalState: desktopSessionState,
-  syncLocalState: desktopSyncHost?.status().state === "local_ready" ? "ready" : "unavailable",
-  syncNetworkPhase: desktopSyncHost?.status().syncPhase ?? "closed",
+  syncLocalState: hostLifecycle.sync()?.status().state === "local_ready" ? "ready" : "unavailable",
+  syncNetworkPhase: hostLifecycle.sync()?.status().syncPhase ?? "closed",
 }), {
-  signIn: async () => {
+  signIn: async signal => {
     if (desktopSessionVault === null) return { state: "unavailable" }
     const previous = desktopSessionState
     const result = await signInDesktopSession({
       vault: desktopSessionVault,
       openExternal: url => shell.openExternal(url),
+      signal,
     })
     desktopSessionState = result.state === "verified"
       ? connectVerifiedDesktopSync() ? "session_ready" : "unavailable"
@@ -129,17 +160,17 @@ const runtimeGateway = createDesktopRuntimeGateway(() => desktopRuntimeCapabilit
         : "unavailable"
     return result
   },
-  signOut: async () => {
+  signOut: async signal => {
     if (desktopSessionVault === null) return { state: "unavailable" }
     // Close and purge the account-linked Sync session before the renderer can
     // race another command against remote token revocation.
-    try { desktopSyncHost?.unlinkAccount() } catch { /* remote revocation still runs */ }
-    const result = await signOutDesktopSession({ vault: desktopSessionVault })
+    try { hostLifecycle.sync()?.unlinkAccount() } catch { /* remote revocation still runs */ }
+    const result = await signOutDesktopSession({ vault: desktopSessionVault, signal })
     desktopSessionState = result.state
     return result
   },
 }, () => desktopSessionState === "credential_present_unverified" ? "unverified" : desktopSessionState, () => {
-  const service = desktopSyncHost?.conversation() ?? null
+  const service = hostLifecycle.sync()?.conversation() ?? null
   if (service === null) return null
   return {
     catalog: () => ({
@@ -164,7 +195,7 @@ const runtimeGateway = createDesktopRuntimeGateway(() => desktopRuntimeCapabilit
     }))),
   }
 }, () => {
-  const service = desktopSyncHost?.timeline() ?? null
+  const service = hostLifecycle.sync()?.timeline() ?? null
   if (service === null) return null
   return {
     snapshot: runRef => {
@@ -175,10 +206,22 @@ const runtimeGateway = createDesktopRuntimeGateway(() => desktopRuntimeCapabilit
       Effect.runSync(service.snapshotForThread(threadRef)),
   }
 }, () => ({
-  catalog: () => codexHistoryHost.run({ kind: "history_catalog", sessionsRoot: codexSessionsRoot() }) as Promise<import("./codex-history-contract.ts").CodexHistoryCatalog>,
-  page: (threadRef, offset, limit) => codexHistoryHost.run({ kind: "history_page", sessionsRoot: codexSessionsRoot(), threadRef, offset, limit }) as Promise<import("./codex-history-contract.ts").CodexHistoryPage | null>,
-}),()=>desktopSyncHost===null?"local_unavailable":desktopSyncHost.status().identityTier, () => {
-  const service = desktopSyncHost?.runtime() ?? null
+  catalog: () => hostLifecycle.history()!.run({ kind: "history_catalog", sessionsRoot: codexSessionsRoot() }) as Promise<import("./codex-history-contract.ts").CodexHistoryCatalog>,
+  page: (threadRef, offset, limit) => hostLifecycle.history()!.run({ kind: "history_page", sessionsRoot: codexSessionsRoot(), threadRef, offset, limit }) as Promise<import("./codex-history-contract.ts").CodexHistoryPage | null>,
+}),()=>hostLifecycle.sync()===null?"local_unavailable":hostLifecycle.sync()!.status().identityTier, () => {
+  const service = hostLifecycle.sync()?.runtime() ?? null
+  if (service === null && smokeMode) {
+    return {
+      start: (_input, operationContext) => {
+        if (operationContext !== undefined) desktopCorrelationJournal.record("sync.intent", operationContext)
+        return 1
+      },
+      interrupt: (_input, operationContext) => {
+        if (operationContext !== undefined) desktopCorrelationJournal.record("sync.intent", operationContext)
+        return 1
+      },
+    }
+  }
   if (service === null) return null
   const context = () => ({
     nowIso: new Date().toISOString(),
@@ -186,20 +229,30 @@ const runtimeGateway = createDesktopRuntimeGateway(() => desktopRuntimeCapabilit
     target: { lane: "codex_app_server" as const },
   })
   return {
-    start: input => Number(Effect.runSync(service.startTurn(buildStartTurnIntent({
+    start: (input, operationContext) => Number(Effect.runSync(service.startTurn(buildStartTurnIntent({
       context: context(),
+      correlationRefs: operationContext === undefined ? [] : [
+        operationContext.operationRef,
+        operationContext.sessionRef,
+        operationContext.correlationRef,
+      ],
       messageRef: input.messageRef,
       threadRef: input.threadRef,
       turnRef: input.runRef,
     })))),
-    interrupt: input => Number(Effect.runSync(service.interruptTurn(buildInterruptTurnIntent({
+    interrupt: (input, operationContext) => Number(Effect.runSync(service.interruptTurn(buildInterruptTurnIntent({
       commandRef: input.commandRef,
       context: context(),
+      correlationRefs: operationContext === undefined ? [] : [
+        operationContext.operationRef,
+        operationContext.sessionRef,
+        operationContext.correlationRef,
+      ],
       threadRef: input.threadRef,
       turnRef: input.runRef,
     })))),
   }
-})
+}, (stage, context) => desktopCorrelationJournal.record(stage, context))
 
 const isTrustedRuntimeGatewaySender = (event: IpcMainInvokeEvent): boolean => {
   const frame = event.senderFrame
@@ -217,13 +270,18 @@ ipcMain.handle(DesktopRuntimeGatewayInvokeChannel, (event, value: unknown) => {
     return { kind: "request_rejected", reason: "untrusted_renderer" } as const
   }
   const request = decodeDesktopRuntimeGatewayRequest(value)
-  return request === null ? invalidDesktopRuntimeGatewayResponse() : runtimeGateway.request(request)
-})
-
-runtimeGateway.subscribe(event => {
-  for (const window of BrowserWindow.getAllWindows()) {
-    if (!window.isDestroyed()) window.webContents.send(DesktopRuntimeGatewayEventChannel, event)
+  if (request === null) return invalidDesktopRuntimeGatewayResponse()
+  const context = operationContextFor(request)
+  if (context === null) return invalidDesktopRuntimeGatewayResponse()
+  desktopCorrelationJournal.record("ipc.received", context)
+  const gateway = hostLifecycle.runtime()
+  if (gateway === null) return { kind: "request_rejected", reason: "gateway_disposed", context } as const
+  const outcome = gateway.request(request, context)
+  const recordReturned = <Value>(response: Value): Value => {
+    desktopCorrelationJournal.record("ipc.returned", context)
+    return response
   }
+  return outcome instanceof Promise ? outcome.then(recordReturned) : recordReturned(outcome)
 })
 
 // Interim development identity ONLY. The frozen macOS bundle ID / Windows
@@ -258,10 +316,15 @@ const codexSessionsRoot = () => path.resolve(
   ),
 )
 const codexHistoryHost = makeCodexHistoryHost(new URL("./codex-history-worker.js", import.meta.url))
+const hostLifecycle = makeDesktopHostLifecycle({
+  runtime: runtimeGateway,
+  account: codexConnect,
+  history: codexHistoryHost,
+})
 // Local file authority begins only after an explicit directory-picker choice.
 // A process working directory or environment default is not user selection.
-let workspace: DesktopWorkspaceService | null = null
 const workspaceSnapshot = () => {
+  const workspace = hostLifecycle.workspace()
   if (workspace === null) return null
   try { return workspace.summary() } catch { return null }
 }
@@ -270,23 +333,26 @@ ipcMain.handle(DesktopWorkspaceFilesChannel, () => workspaceSnapshot())
 ipcMain.handle(DesktopWorkspaceChooseChannel, async () => {
   const result = await dialog.showOpenDialog({ properties: ["openDirectory", "createDirectory"] })
   if (result.canceled || result.filePaths[0] === undefined) return workspaceSnapshot()
-  workspace = openWorkspaceService(result.filePaths[0])
+  hostLifecycle.replaceWorkspace(openWorkspaceService(result.filePaths[0]))
   return workspaceSnapshot()
 })
 ipcMain.handle(DesktopWorkspaceReadChannel, (_event, value: unknown) => {
+  const workspace = hostLifecycle.workspace()
   const request = decodeWorkspaceFileRequest(value)
   return request === null || workspace === null ? null : workspace.read(request.path)
 })
 ipcMain.handle(DesktopWorkspaceSaveChannel, (_event, value: unknown) => {
+  const workspace = hostLifecycle.workspace()
   const request = decodeWorkspaceSaveRequest(value)
   if (request === null) return { state: "unavailable", message: "The file save request is invalid." }
   if (workspace === null) return { state: "unavailable", message: "Choose a workspace folder before saving." }
   return workspace.save(request)
 })
 ipcMain.handle(DesktopWorkspaceGitStatusChannel, () =>
-  workspace === null ? { state: "unavailable" } : workspace.gitStatus(),
+  hostLifecycle.workspace()?.gitStatus() ?? { state: "unavailable" },
 )
 ipcMain.handle(DesktopWorkspaceGitDiffChannel, (_event, value: unknown) => {
+  const workspace = hostLifecycle.workspace()
   const request = decodeWorkspaceGitDiffRequest(value)
   if (request === null) return { state: "unavailable", message: "The diff request is invalid." }
   if (workspace === null) return { state: "unavailable", message: "Choose a workspace folder before reviewing changes." }
@@ -294,15 +360,15 @@ ipcMain.handle(DesktopWorkspaceGitDiffChannel, (_event, value: unknown) => {
 })
 // List is intentionally metadata-only: a large local history must not
 // serialize every transcript into the renderer merely to draw the sidebar.
-ipcMain.handle(DesktopThreadsChannel, () => codexHistoryHost.run({ kind: "list", sessionsRoot: codexSessionsRoot(), ...(smokeMode ? { limit: 1 } : {}) }))
+ipcMain.handle(DesktopThreadsChannel, () => hostLifecycle.history()?.run({ kind: "list", sessionsRoot: codexSessionsRoot(), ...(smokeMode ? { limit: 1 } : {}) }) ?? Promise.resolve(null))
 ipcMain.handle(DesktopNewThreadChannel, () => threads().newThread())
 ipcMain.handle(DesktopOpenThreadChannel, (_event, value: unknown) => {
   const request = decode(DesktopThreadRequestSchema, value) as { id: string } | null
-  return request === null ? null : codexHistoryHost.run({ kind: "detail", sessionsRoot: codexSessionsRoot(), id: request.id })
+  return request === null ? null : hostLifecycle.history()?.run({ kind: "detail", sessionsRoot: codexSessionsRoot(), id: request.id }) ?? null
 })
 ipcMain.handle(DesktopHydrateThreadChannel, (_event, value: unknown) => {
   const request = decode(DesktopThreadRequestSchema, value) as { id: string } | null
-  return request === null ? null : codexHistoryHost.run({ kind: "detail", sessionsRoot: codexSessionsRoot(), id: request.id, messageLimit: 40 })
+  return request === null ? null : hostLifecycle.history()?.run({ kind: "detail", sessionsRoot: codexSessionsRoot(), id: request.id, messageLimit: 40 }) ?? null
 })
 ipcMain.handle(DesktopChatTurnChannel, async (_event, value: unknown) => {
   const request = decode(DesktopTurnRequestSchema, value) as { id: string; message: string } | null
@@ -325,10 +391,10 @@ ipcMain.handle(DesktopChatTurnChannel, async (_event, value: unknown) => {
 // Codex account reconnect (#8640 unblock): renderer-argument-free channels
 // only. Main owns the pylon child processes and the verification URL; the
 // renderer polls typed status and never sees tokens, emails, or raw output.
-ipcMain.handle(CodexAccountsChannel, () => codexConnect.listAccounts())
-ipcMain.handle(CodexConnectStartChannel, () => codexConnect.start())
-ipcMain.handle(CodexConnectStatusChannel, () => codexConnect.status())
-ipcMain.handle(CodexConnectOpenChannel, () => codexConnect.openVerification())
+ipcMain.handle(CodexAccountsChannel, () => hostLifecycle.account()?.listAccounts() ?? Promise.resolve({ state: "unavailable" }))
+ipcMain.handle(CodexConnectStartChannel, () => hostLifecycle.account()?.start() ?? { state: "failed", reason: "pylon_runtime_unavailable" })
+ipcMain.handle(CodexConnectStatusChannel, () => hostLifecycle.account()?.status() ?? { state: "failed", reason: "pylon_runtime_unavailable" })
+ipcMain.handle(CodexConnectOpenChannel, () => hostLifecycle.account()?.openVerification() ?? Promise.resolve(false))
 
 // Deny-by-default for every WebContents: no navigation away from the bundled
 // renderer, no window.open, no <webview> attachment.
@@ -365,6 +431,10 @@ const createWindow = (): BrowserWindow => {
       preload: path.join(here, "preload.cjs"),
     },
   })
+  const closeWindowScope = hostLifecycle.registerWindow(`window.${window.id}`, runtimeGateway.subscribe(event => {
+    if (!window.isDestroyed()) window.webContents.send(DesktopRuntimeGatewayEventChannel, event)
+  }))
+  window.once("closed", closeWindowScope)
   window.once("ready-to-show", () => {
     window.show()
   })
@@ -405,7 +475,46 @@ const smokeRuntimeGatewayBootstrap = `(async () => {
       result.result?.protocolVersion === 6 &&
       result.result?.lifecycle === "ready" &&
       result.result?.capabilities?.some((capability) => capability.id === "codex-history" && capability.state === "available"),
-    result,
+    protocolVersion: result?.result?.protocolVersion,
+    lifecycle: result?.result?.lifecycle,
+    capabilityCount: result?.result?.capabilities?.length ?? 0,
+  }
+})()`
+
+const smokeLifecycleCorrelation = `(async () => {
+  const bridge = globalThis.openagentsDesktop
+  if (typeof bridge?.runtimeRequest !== "function") return { ok: false, reason: "Runtime Gateway bridge missing" }
+  const bootstrap = await bridge.runtimeRequest({
+    kind: "query",
+    requestId: "smoke-correlation-bootstrap",
+    query: { id: "runtime.bootstrap" },
+  })
+  const sessionRef = bootstrap?.context?.sessionRef
+  if (typeof sessionRef !== "string") return { ok: false, reason: "Session correlation missing" }
+  const context = {
+    operationRef: "operation.desktop.smoke.start",
+    sessionRef,
+    correlationRef: "correlation.desktop.smoke",
+    runRef: "run.desktop.smoke",
+  }
+  const response = await bridge.runtimeRequest({
+    kind: "command",
+    commandId: context.operationRef,
+    context,
+    command: {
+      id: "conversation.start",
+      threadRef: "thread.desktop.smoke",
+      messageRef: "message.desktop.smoke",
+      runRef: context.runRef,
+    },
+  })
+  return {
+    ok: response?.kind === "runtime_command_outcome" &&
+      response.status === "unknown_pending_reconcile" &&
+      response.context?.operationRef === context.operationRef &&
+      response.context?.sessionRef === context.sessionRef &&
+      response.context?.correlationRef === context.correlationRef &&
+      response.context?.runRef === context.runRef,
   }
 })()`
 
@@ -579,8 +688,6 @@ const smokeConnectCodex = `(async () => {
   return {
     ok: code !== null && code.textContent === "1234-ABCDE" &&
       link !== null && link.textContent === "https://auth.openai.com/codex/device",
-    code: code === null ? null : code.textContent,
-    link: link === null ? null : link.textContent,
   }
 })()`
 
@@ -606,9 +713,19 @@ const captureShot = async (window: BrowserWindow, name: string): Promise<void> =
 }
 
 const runSmoke = (window: BrowserWindow): void => {
+  const finish = (code: 0 | 1): void => {
+    hostLifecycle.dispose()
+    const snapshot = hostLifecycle.snapshot()
+    const active = Number(snapshot.runtime) + Number(snapshot.workspace) + Number(snapshot.sync) +
+      Number(snapshot.account) + Number(snapshot.history) + snapshot.windowCount
+    const ok = snapshot.disposed && active === 0
+    console.log("[openagents-desktop smoke] lifecycle-teardown", JSON.stringify({ ok, active }))
+    desktopCorrelationJournal.dispose()
+    app.exit(ok ? code : 1)
+  }
   const timeout = setTimeout(() => {
     console.error("[openagents-desktop smoke] TIMEOUT waiting for renderer")
-    app.exit(1)
+    finish(1)
   }, 45_000)
   let tracePass = 0
   window.webContents.on("did-finish-load", () => {
@@ -619,7 +736,7 @@ const runSmoke = (window: BrowserWindow): void => {
           result === true ||
           (typeof result === "object" && result !== null && (result as { ok?: unknown }).ok === true)
         if (!ok) {
-          throw new Error(`${name} failed: ${JSON.stringify(result)}`)
+          throw new Error(`${name} failed`)
         }
         console.log(`[openagents-desktop smoke] ${name} OK`, JSON.stringify(result))
       }
@@ -628,11 +745,16 @@ const runSmoke = (window: BrowserWindow): void => {
           await step("codex-trace-reload-restoration", traceAcceptanceReload)
           clearTimeout(timeout)
           console.log("[openagents-desktop smoke] OK")
-          app.exit(0)
+          finish(0)
           return
         }
         await step("shell-mounted", smokeWaitForShell)
         await step("runtime-gateway-bootstrap", smokeRuntimeGatewayBootstrap)
+        await step("lifecycle-correlation", smokeLifecycleCorrelation)
+        if (!desktopCorrelationJournal.complete("correlation.desktop.smoke")) {
+          throw new Error("lifecycle-correlation journal incomplete")
+        }
+        console.log("[openagents-desktop smoke] lifecycle-correlation-journal OK", JSON.stringify({ ok: true, stageCount: 4 }))
         await captureShot(window, "01-shell")
         await step("command-palette-open", smokeOpenCommandPalette)
         await captureShot(window, "02-command-palette")
@@ -652,8 +774,8 @@ const runSmoke = (window: BrowserWindow): void => {
         window.webContents.reload()
       } catch (error) {
         clearTimeout(timeout)
-        console.error("[openagents-desktop smoke] ERROR", error)
-        app.exit(1)
+        console.error("[openagents-desktop smoke] ERROR", error instanceof Error ? error.message : "unknown smoke failure")
+        finish(1)
       }
     })()
   })
@@ -666,12 +788,12 @@ void app.whenReady().then(async () => {
   if (process.platform === "darwin") app.dock?.setIcon(desktopIconPath)
   hardenSession()
   try {
-    desktopSyncHost = openDesktopSyncHost({
+    const syncHost = openDesktopSyncHost({
       databasePath: path.join(app.getPath("userData"), "sync", "khala-sync.sqlite"),
       randomId: randomUUID,
     })
+    hostLifecycle.replaceSync(syncHost)
   } catch {
-    desktopSyncHost = null
     console.error("[openagents-desktop] local Sync persistence unavailable")
   }
   try {
@@ -687,7 +809,7 @@ void app.whenReady().then(async () => {
       desktopSessionState = recovery.state === "verified"
         ? connectVerifiedDesktopSync() ? "session_ready" : "unavailable"
         : recovery.state
-      if(recovery.state==="denied")desktopSyncHost?.unlinkAccount()
+      if(recovery.state==="denied")hostLifecycle.sync()?.unlinkAccount()
     }
   } catch {
     desktopSessionVault = null
@@ -700,19 +822,14 @@ void app.whenReady().then(async () => {
 })
 
 app.on("window-all-closed", () => {
-  // Kill any in-flight pylon device-auth child with the window.
-  codexConnect.dispose()
   if (process.platform !== "darwin" || smokeMode) {
     app.quit()
   }
 })
 
 app.on("before-quit", () => {
-  codexConnect.dispose()
-  codexHistoryHost.dispose()
-  runtimeGateway.dispose()
-  desktopSyncHost?.close()
-  desktopSyncHost = null
+  hostLifecycle.dispose()
+  desktopCorrelationJournal.dispose()
 })
 
 app.on("activate", () => {

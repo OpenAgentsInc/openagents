@@ -94,12 +94,16 @@ const agentRunPatchFromRunEntityRecord = (
       createdAt: entity.createdAt,
       goal: entity.goal,
       projectId: entity.projectId,
-      repository: {
-        owner: entity.repository.owner,
-        provider: entity.repository.provider,
-        ref: entity.repository.ref,
-        repo: entity.repository.repo,
-      },
+      ...(entity.repository === undefined
+        ? {}
+        : {
+            repository: {
+              owner: entity.repository.owner,
+              provider: entity.repository.provider,
+              ref: entity.repository.ref,
+              repo: entity.repository.repo,
+            },
+          }),
       runtime: entity.runtime,
       status: entity.status,
       teamId: entity.teamId,

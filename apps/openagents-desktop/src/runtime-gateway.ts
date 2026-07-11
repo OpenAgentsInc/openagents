@@ -10,6 +10,10 @@ import type {
   ConfirmedAgentRun,
   ConfirmedAgentTimelineEvent,
 } from "@openagentsinc/khala-sync-client"
+import type {
+  DesktopCorrelationStage,
+  DesktopOperationContext,
+} from "./desktop-operation-context.ts"
 
 type CapabilityState = Readonly<{
   id: DesktopRuntimeCapabilityId
@@ -64,8 +68,8 @@ export type DesktopRuntimeAgentTimeline = Readonly<{
 }>
 
 export type DesktopRuntimeCommands = Readonly<{
-  start: (input: Readonly<{ threadRef: string; messageRef: string; runRef: string }>) => number
-  interrupt: (input: Readonly<{ commandRef: string; threadRef: string; runRef: string }>) => number
+  start: (input: Readonly<{ threadRef: string; messageRef: string; runRef: string }>, context?: DesktopOperationContext) => number
+  interrupt: (input: Readonly<{ commandRef: string; threadRef: string; runRef: string }>, context?: DesktopOperationContext) => number
 }>
 
 export type DesktopRuntimeCodexHistory = Readonly<{
@@ -75,7 +79,7 @@ export type DesktopRuntimeCodexHistory = Readonly<{
 
 export type DesktopRuntimeGateway = Readonly<{
   start: () => void
-  request: (request: DesktopRuntimeGatewayRequest) => DesktopRuntimeGatewayResponse | Promise<DesktopRuntimeGatewayResponse>
+  request: (request: DesktopRuntimeGatewayRequest, context?: DesktopOperationContext) => DesktopRuntimeGatewayResponse | Promise<DesktopRuntimeGatewayResponse>
   subscribe: (listener: (event: DesktopRuntimeGatewayEvent) => void) => () => void
   dispose: () => void
 }>
@@ -143,8 +147,8 @@ export const createDesktopRuntimeGateway = (
   capabilities: ReadonlyArray<CapabilityState> | (() => ReadonlyArray<CapabilityState>) =
     () => desktopRuntimeCapabilities({ sessionLocalState: "unavailable", syncLocalState: "unavailable", syncNetworkPhase: "closed" }),
   sessionActions?: Readonly<{
-    signIn: () => Promise<Readonly<{ state: "verified" | "cancelled" | "unavailable" }>>
-    signOut: () => Promise<Readonly<{ state: "signed_out" | "unavailable" }>>
+    signIn: (signal?: AbortSignal) => Promise<Readonly<{ state: "verified" | "cancelled" | "unavailable" }>>
+    signOut: (signal?: AbortSignal) => Promise<Readonly<{ state: "signed_out" | "unavailable" }>>
   }>,
   sessionPhase: () => "signed_out" | "unverified" | "session_ready" | "denied" | "unavailable" = () => "unavailable",
   conversation: () => DesktopRuntimeConversation | null = () => null,
@@ -152,10 +156,12 @@ export const createDesktopRuntimeGateway = (
   codexHistory: () => DesktopRuntimeCodexHistory | null = () => null,
   identityTier:()=>"local_only"|"account_linked"|"local_unavailable"=()=>"local_unavailable",
   runtimeCommands: () => DesktopRuntimeCommands | null = () => null,
+  observeOperation: (stage: DesktopCorrelationStage, context: DesktopOperationContext) => void = () => undefined,
 ): DesktopRuntimeGateway => {
   let phase: "idle" | "ready" | "disposed" = "idle"
   let sequence = 0
   let sessionActionInFlight = false
+  let sessionActionAbort: AbortController | null = null
   const listeners = new Set<(event: DesktopRuntimeGatewayEvent) => void>()
 
   const emit = (next: "ready" | "disposed"): void => {
@@ -174,7 +180,9 @@ export const createDesktopRuntimeGateway = (
       phase = "ready"
       emit("ready")
     },
-    request: request => {
+    request: (request, context) => {
+      if (context !== undefined) observeOperation("gateway.received", context)
+      const outcome = (() : DesktopRuntimeGatewayResponse | Promise<DesktopRuntimeGatewayResponse> => {
       if (phase === "disposed") return { kind: "request_rejected", reason: "gateway_disposed" }
       if (request.kind === "query") {
         if (request.query.id === "codex.history.catalog") {
@@ -339,8 +347,8 @@ export const createDesktopRuntimeGateway = (
         }
         try {
           const mutationId = request.command.id === "conversation.start"
-            ? service.start(request.command)
-            : service.interrupt(request.command)
+            ? service.start(request.command, context)
+            : service.interrupt(request.command, context)
           return {
             kind: "runtime_command_outcome",
             commandId: request.commandId,
@@ -376,7 +384,9 @@ export const createDesktopRuntimeGateway = (
           })
         }
         sessionActionInFlight = true
-        return sessionActions.signIn()
+        const abort = new AbortController()
+        sessionActionAbort = abort
+        return sessionActions.signIn(abort.signal)
           .then(result => ({
             kind: "session_outcome" as const,
             commandId: request.commandId,
@@ -389,7 +399,10 @@ export const createDesktopRuntimeGateway = (
             status: "unavailable" as const,
             phase: "unavailable" as const,
           }))
-          .finally(() => { sessionActionInFlight = false })
+          .finally(() => {
+            if (sessionActionAbort === abort) sessionActionAbort = null
+            sessionActionInFlight = false
+          })
       }
       if (request.command.id === "session.sign_out") {
         if (sessionActions === undefined || sessionActionInFlight) {
@@ -401,7 +414,9 @@ export const createDesktopRuntimeGateway = (
           })
         }
         sessionActionInFlight = true
-        return sessionActions.signOut()
+        const abort = new AbortController()
+        sessionActionAbort = abort
+        return sessionActions.signOut(abort.signal)
           .then(result => ({
             kind: "session_outcome" as const,
             commandId: request.commandId,
@@ -414,7 +429,10 @@ export const createDesktopRuntimeGateway = (
             status: "unavailable" as const,
             phase: "unavailable" as const,
           }))
-          .finally(() => { sessionActionInFlight = false })
+          .finally(() => {
+            if (sessionActionAbort === abort) sessionActionAbort = null
+            sessionActionInFlight = false
+          })
       }
       return {
         kind: "command_outcome",
@@ -422,6 +440,10 @@ export const createDesktopRuntimeGateway = (
         status: "unavailable",
         reason: "Conversation interrupt is unavailable until the durable runtime is connected.",
       }
+      })()
+      const attach = (response: DesktopRuntimeGatewayResponse): DesktopRuntimeGatewayResponse =>
+        context === undefined ? response : { ...response, context }
+      return outcome instanceof Promise ? outcome.then(attach) : attach(outcome)
     },
     subscribe: listener => {
       if (phase === "disposed") {
@@ -439,6 +461,8 @@ export const createDesktopRuntimeGateway = (
     dispose: () => {
       if (phase === "disposed") return
       phase = "disposed"
+      sessionActionAbort?.abort()
+      sessionActionAbort = null
       emit("disposed")
       listeners.clear()
     },

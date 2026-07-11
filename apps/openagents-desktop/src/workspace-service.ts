@@ -206,6 +206,7 @@ export type DesktopWorkspaceService = Readonly<{
   save: (input: Readonly<{ path: string; content: string; expectedRevision: string }>) => DesktopWorkspaceSaveResult
   gitStatus: () => DesktopWorkspaceGitStatus
   gitDiff: (requestedPath: string) => DesktopWorkspaceGitDiff
+  dispose: () => void
 }>
 
 /**
@@ -215,11 +216,20 @@ export type DesktopWorkspaceService = Readonly<{
  */
 export const openWorkspaceService = (selectedRoot: string): DesktopWorkspaceService => {
   const root = path.resolve(selectedRoot)
+  let disposed = false
   return {
-    summary: () => inspectWorkspace(root),
-    read: requestedPath => readWorkspaceFile(root, requestedPath),
-    save: input => saveWorkspaceFile(root, input),
-    gitStatus: () => workspaceGitStatus(root),
-    gitDiff: requestedPath => workspaceGitDiff(root, requestedPath),
+    summary: () => {
+      if (disposed) throw new Error("workspace_disposed")
+      return inspectWorkspace(root)
+    },
+    read: requestedPath => disposed ? null : readWorkspaceFile(root, requestedPath),
+    save: input => disposed
+      ? { state: "unavailable", message: "The selected workspace has been disposed." }
+      : saveWorkspaceFile(root, input),
+    gitStatus: () => disposed ? { state: "unavailable" } : workspaceGitStatus(root),
+    gitDiff: requestedPath => disposed
+      ? { state: "unavailable", message: "The selected workspace has been disposed." }
+      : workspaceGitDiff(root, requestedPath),
+    dispose: () => { disposed = true },
   }
 }

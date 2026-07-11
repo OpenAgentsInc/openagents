@@ -92,6 +92,10 @@ export const openDesktopAuthLoopbackListener = async (input: Readonly<{
     timeout = undefined
     server?.close()
     server = null
+    if (!settled) {
+      settled = true
+      resolveCallback({ state: "cancelled" })
+    }
   }
   const finish = (result: LoopbackCallback): void => {
     if (settled) return
@@ -177,15 +181,21 @@ export const signInDesktopSession = async (input: Readonly<{
   openExternal: (url: string) => Promise<unknown>
   fetchImpl?: FetchLike
   timeoutMs?: number
+  signal?: AbortSignal
 }>): Promise<DesktopSessionSignInResult> => {
   const state = randomBase64Url()
   const verifier = randomBase64Url()
   let listener: DesktopAuthLoopbackListener | undefined
+  const abort = (): void => listener?.close()
+  const aborted = (): boolean => input.signal?.aborted === true
+  input.signal?.addEventListener("abort", abort, { once: true })
   try {
+    if (aborted()) return { state: "cancelled" }
     listener = await openDesktopAuthLoopbackListener({
       state,
       ...(input.timeoutMs === undefined ? {} : { timeoutMs: input.timeoutMs }),
     })
+    if (aborted()) return { state: "cancelled" }
     const authorize = new URL(OPENAGENTS_DESKTOP_OPENAUTH_AUTHORIZE_URL)
     authorize.search = new URLSearchParams({
       client_id: OPENAGENTS_DESKTOP_OPENAUTH_CLIENT_ID,
@@ -214,6 +224,7 @@ export const signInDesktopSession = async (input: Readonly<{
           grant_type: "authorization_code",
           redirect_uri: listener.redirectUri,
         }).toString(),
+        ...(input.signal === undefined ? {} : { signal: input.signal }),
       },
     )
     if (!tokenResponse.ok) return { state: "unavailable" }
@@ -237,6 +248,7 @@ export const signInDesktopSession = async (input: Readonly<{
           authorization: `Bearer ${accessToken}`,
           [OPENAGENTS_DESKTOP_REFRESH_HEADER]: refreshToken,
         },
+        ...(input.signal === undefined ? {} : { signal: input.signal }),
       },
     )
     if (!sessionResponse.ok) return { state: "unavailable" }
@@ -269,8 +281,9 @@ export const signInDesktopSession = async (input: Readonly<{
     input.vault.save(credential)
     return { state: "verified" }
   } catch {
-    return { state: "unavailable" }
+    return { state: aborted() ? "cancelled" : "unavailable" }
   } finally {
+    input.signal?.removeEventListener("abort", abort)
     listener?.close()
   }
 }
@@ -278,6 +291,7 @@ export const signInDesktopSession = async (input: Readonly<{
 export const signOutDesktopSession = async (input: Readonly<{
   vault: DesktopSessionVault
   fetchImpl?: FetchLike
+  signal?: AbortSignal
 }>): Promise<DesktopSessionSignOutResult> => {
   try {
     const credential = input.vault.load()
@@ -290,6 +304,7 @@ export const signOutDesktopSession = async (input: Readonly<{
           authorization: `Bearer ${credential.accessToken}`,
           [OPENAGENTS_DESKTOP_REFRESH_HEADER]: credential.refreshToken,
         },
+        ...(input.signal === undefined ? {} : { signal: input.signal }),
       },
     )
     if (!response.ok) return { state: "unavailable" }

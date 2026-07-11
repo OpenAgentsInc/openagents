@@ -37,6 +37,11 @@ describe("Desktop bounded workspace service", () => {
     expect(workspace.summary().root).toBe(root)
     expect(workspace.read(file)?.content).toBe("inside")
     expect(workspace.read(outsideFile)).toBeNull()
+    workspace.dispose()
+    workspace.dispose()
+    expect(() => workspace.summary()).toThrow("workspace_disposed")
+    expect(workspace.read(file)).toBeNull()
+    expect(workspace.gitStatus()).toEqual({ state: "unavailable" })
   })
 
   test("reads and atomically saves an existing bounded text file with a new revision", () => {

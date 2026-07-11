@@ -40,10 +40,11 @@ export const buildStartTurnIntent = (input: Readonly<{
   threadRef: string
   turnRef: string
   messageRef: string
+  correlationRefs?: ReadonlyArray<string>
 }>): KhalaRuntimeControlIntent =>
   decodeKhalaRuntimeControlIntent({
     bodyRef: chatMessageBodyRef(input.messageRef),
-    causalityRefs: [input.messageRef],
+    causalityRefs: [...(input.correlationRefs ?? []), input.messageRef],
     createdAt: input.context.nowIso,
     idempotencyKey: `idem.start.${input.turnRef}`,
     intentId: `intent.start.${input.turnRef}`,
@@ -85,9 +86,10 @@ export const buildInterruptTurnIntent = (input: Readonly<{
   context: RuntimeCommandContext
   threadRef: string
   turnRef: string
+  correlationRefs?: ReadonlyArray<string>
 }>): KhalaRuntimeControlIntent =>
   decodeKhalaRuntimeControlIntent({
-    causalityRefs: [input.turnRef],
+    causalityRefs: [...(input.correlationRefs ?? []), input.turnRef],
     createdAt: input.context.nowIso,
     idempotencyKey: `idem.interrupt.${input.commandRef}`,
     intentId: `intent.interrupt.${input.commandRef}`,

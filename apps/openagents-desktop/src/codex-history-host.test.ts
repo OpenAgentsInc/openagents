@@ -40,8 +40,11 @@ describe("Codex history process host", () => {
 
     const pending = host.run({ kind: "history_page", sessionsRoot: "/fixture", threadRef: "thread", offset: 0, limit: 50 })
     host.dispose()
+    host.dispose()
     expect(await pending).toBeNull()
     expect(opens).toBe(1)
     expect(worker.terminated).toBe(true)
+    expect(await host.run({ kind: "history_catalog", sessionsRoot: "/fixture" })).toBeNull()
+    expect(opens).toBe(1)
   })
 })

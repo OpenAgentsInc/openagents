@@ -66,6 +66,30 @@ describe("contract openagents_desktop.session.loopback_pkce_entry_exit.v1", () =
     }
   })
 
+  test("external close settles a pending callback once as cancelled", async () => {
+    const listener = await openDesktopAuthLoopbackListener({
+      state: "state-close",
+      timeoutMs: 60_000,
+    })
+    const pending = listener.waitForCallback()
+    listener.close()
+    listener.close()
+    expect(await pending).toEqual({ state: "cancelled" })
+  })
+
+  test("aborting interactive sign-in closes the listener and saves no credential", async () => {
+    const abort = new AbortController()
+    const result = await signInDesktopSession({
+      vault,
+      signal: abort.signal,
+      timeoutMs: 60_000,
+      openExternal: async () => { abort.abort() },
+      fetchImpl: async () => { throw new Error("aborted sign-in must not exchange") },
+    })
+    expect(result).toEqual({ state: "cancelled" })
+    expect(stored).toBeNull()
+  })
+
   test("builds exact authorize/exchange tuples, verifies server owner, and saves rotation", async () => {
     let authorizeUrl = ""
     const fetchCalls: Array<Readonly<{ input: string; init: RequestInit }>> = []

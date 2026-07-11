@@ -82,6 +82,8 @@ describe("Desktop service topology oracle (#8678)", () => {
       "legacy-thread-store",
       "fleet-stage-control",
       "codex-connect-host",
+      "desktop-host-lifecycle",
+      "desktop-operation-correlation",
       "preload-bridge",
       "effect-native-renderer",
     ]) {

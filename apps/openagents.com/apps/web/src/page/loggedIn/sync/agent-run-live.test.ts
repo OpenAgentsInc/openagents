@@ -150,6 +150,24 @@ describe('agentRunLivePatchFromChangelogEntry', () => {
     expect(patch?.patch).not.toHaveProperty('eventCursor')
   })
 
+  test('an unbound run omits repository so a patch preserves any seeded binding', () => {
+    const postImage = JSON.parse(agentRunPostImage()) as Record<string, unknown>
+    delete postImage.repository
+
+    const patch = agentRunLivePatchFromChangelogEntry(
+      entry({
+        entityId: 'agent_run_1',
+        entityType: 'agent_run',
+        op: 'upsert',
+        postImageJson: JSON.stringify(postImage),
+        version: 5,
+      }),
+      LEGACY_SCOPE,
+    )
+
+    expect(patch?.patch).not.toHaveProperty('repository')
+  })
+
   test('a patch round-trips through syncWithPatch preserving runnerId/eventCursor from the previously seeded legacy record', () => {
     const seeded = SyncClientModel({
       collectionByScope: {

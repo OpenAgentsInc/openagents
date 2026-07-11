@@ -416,11 +416,30 @@ The normal desktop test sweep also mechanically enforces these host boundaries:
   same typed entry as the checked construction evidence. The selected
   workspace is an explicit WorkContext service, and the process-owned Codex
   history worker has one host with an app-shutdown disposal path.
+- The production main process uses one replaceable lifecycle owner for runtime,
+  WorkContext, authenticated Sync, account-connect, history, and per-window
+  gateway subscriptions. Replacement closes the previous narrower slot before
+  publishing the next; app shutdown closes windows/gateway before dependencies
+  and is idempotent. Account children/timers, history workers, gateway
+  listeners, and an in-flight native sign-in have terminal teardown paths.
+- Runtime operations may carry only bounded `operationRef`, Desktop lifecycle
+  `sessionRef`, `correlationRef`, and optional `runRef`. Main rejects a context
+  that does not match the decoded command/run, the gateway echoes the same
+  context, and real runtime commands append those refs to private Sync
+  causality. Paths, URLs, bodies, owner data, credentials, provider payloads,
+  native handles, and raw errors are not fields in this context or its journal.
+- The built smoke drives that correlation through the real renderer, preload,
+  IPC, Runtime Gateway, and a clearly identified substitute Sync command, then
+  explicitly disposes the host and requires an aggregate `active: 0` receipt
+  before exit.
 
 The mechanical oracle is
 [`tests/electron-boundary.test.ts`](./tests/electron-boundary.test.ts).
 The source-coupled service oracle is
 [`tests/service-topology.test.ts`](./tests/service-topology.test.ts).
+The replacement/disposal and correlation oracles are
+[`src/desktop-host-lifecycle.test.ts`](./src/desktop-host-lifecycle.test.ts) and
+[`src/desktop-operation-context.test.ts`](./src/desktop-operation-context.test.ts).
 
 ## Verify the guarantees
 

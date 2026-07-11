@@ -84,4 +84,26 @@ describe("shared runtime command contract", () => {
       intentId: "intent.start.run.shared.1",
     }])
   })
+
+  test("carries bounded Desktop operation correlation into Sync causality refs", () => {
+    const correlationRefs = [
+      "operation.desktop.1",
+      "session.desktop.1",
+      "correlation.desktop.1",
+    ]
+    expect(buildStartTurnIntent({
+      context,
+      correlationRefs,
+      messageRef: "message.shared.1",
+      threadRef: "thread.shared.1",
+      turnRef: "run.shared.1",
+    }).causalityRefs).toEqual([...correlationRefs, "message.shared.1"])
+    expect(buildInterruptTurnIntent({
+      commandRef: "control.shared.1",
+      context,
+      correlationRefs,
+      threadRef: "thread.shared.1",
+      turnRef: "run.shared.1",
+    }).causalityRefs).toEqual([...correlationRefs, "run.shared.1"])
+  })
 })

@@ -146,6 +146,77 @@ describe("Desktop Runtime Gateway", () => {
     expect(await first).toMatchObject({ status: "completed", phase: "session_ready" })
   })
 
+  test("aborts one in-flight session action exactly once on gateway disposal", async () => {
+    let aborts = 0
+    const gateway = createDesktopRuntimeGateway(undefined, {
+      signIn: signal => new Promise(resolve => {
+        signal?.addEventListener("abort", () => {
+          aborts++
+          resolve({ state: "unavailable" })
+        }, { once: true })
+      }),
+      signOut: async () => ({ state: "signed_out" }),
+    })
+    gateway.start()
+    const pending = gateway.request({
+      kind: "command",
+      commandId: "session-abort",
+      command: { id: "session.sign_in" },
+    })
+    gateway.dispose()
+    gateway.dispose()
+    expect(await pending).toMatchObject({ kind: "session_outcome", status: "unavailable" })
+    expect(aborts).toBe(1)
+  })
+
+  test("preserves structured operation context through gateway, Sync command, response, and observer", async () => {
+    const observed: string[] = []
+    const contexts: unknown[] = []
+    const gateway = createDesktopRuntimeGateway(
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      () => ({
+        start: (_input, context) => { contexts.push(context); return 7 },
+        interrupt: () => 8,
+      }),
+      (stage, context) => {
+        observed.push(stage)
+        contexts.push(context)
+      },
+    )
+    const context = {
+      operationRef: "operation.desktop.test",
+      sessionRef: "session.desktop.test",
+      correlationRef: "correlation.desktop.test",
+      runRef: "run.desktop.test",
+    } as const
+    gateway.start()
+    const response = await gateway.request({
+      kind: "command",
+      commandId: context.operationRef,
+      context,
+      command: {
+        id: "conversation.start",
+        threadRef: "thread.desktop.test",
+        messageRef: "message.desktop.test",
+        runRef: context.runRef,
+      },
+    }, context)
+    expect(response).toMatchObject({
+      kind: "runtime_command_outcome",
+      status: "unknown_pending_reconcile",
+      context,
+    })
+    expect(observed).toEqual(["gateway.received"])
+    expect(contexts).toEqual([context, context])
+    expect(decodeDesktopRuntimeGatewayResponse(response)).toEqual(response)
+  })
+
   // Oracle for openagents_desktop.session.recovered_validation_rotation.v1.
   test("projects only bounded session readiness after host verification", async () => {
     const gateway = createDesktopRuntimeGateway(() => desktopRuntimeCapabilities({

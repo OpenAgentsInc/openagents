@@ -199,8 +199,13 @@ export const makeCodexConnectService = (
   const listTimeoutMs = dependencies.listTimeoutMs ?? 120_000
   const connectTimeoutMs = dependencies.connectTimeoutMs ?? 15 * 60_000
   let current: CodexConnectStatus = { state: "idle" }
+  let disposed = false
   let child: ChildLike | null = null
   let connectTimer: ReturnType<typeof setTimeout> | null = null
+  const listOperations = new Set<Readonly<{
+    child: ChildLike
+    finish: (result: CodexAccountsResult) => void
+  }>>()
 
   const settle = (next: CodexConnectStatus): void => {
     // Terminal states win; late child output must not resurrect a flow.
@@ -218,6 +223,10 @@ export const makeCodexConnectService = (
 
   const listAccounts = (): Promise<CodexAccountsResult> =>
     new Promise((resolve) => {
+      if (disposed) {
+        resolve(unavailableCodexAccountsResult())
+        return
+      }
       const listChild = spawnPylon(["codex", "accounts", "list", "--json"])
       if (listChild === null) {
         resolve(unavailableCodexAccountsResult())
@@ -225,12 +234,18 @@ export const makeCodexConnectService = (
       }
       let stdout = ""
       let done = false
+      let timer: ReturnType<typeof setTimeout> | null = null
+      let operation: Readonly<{ child: ChildLike; finish: (result: CodexAccountsResult) => void }> | null = null
       const finish = (result: CodexAccountsResult): void => {
         if (done) return
         done = true
+        if (timer !== null) clearTimeout(timer)
+        if (operation !== null) listOperations.delete(operation)
         resolve(result)
       }
-      const timer = setTimeout(() => {
+      operation = { child: listChild, finish }
+      listOperations.add(operation)
+      timer = setTimeout(() => {
         listChild.kill("SIGTERM")
         finish(unavailableCodexAccountsResult())
       }, listTimeoutMs)
@@ -239,16 +254,15 @@ export const makeCodexConnectService = (
       })
       collectStream(listChild.stderr, () => {})
       listChild.on("error", () => {
-        clearTimeout(timer)
         finish(unavailableCodexAccountsResult())
       })
       listChild.on("close", () => {
-        clearTimeout(timer)
         finish(parseAccountsListJson(stdout))
       })
     })
 
   const start = (): CodexConnectStatus => {
+    if (disposed) return { state: "failed", reason: "pylon_runtime_unavailable" }
     if (current.state === "starting" || current.state === "awaiting_browser") {
       return current // single-flight: one device-auth attempt at a time
     }
@@ -301,19 +315,26 @@ export const makeCodexConnectService = (
   return {
     listAccounts,
     start,
-    status: () => current,
+    status: () => disposed ? { state: "failed", reason: "pylon_runtime_unavailable" } : current,
     openVerification: async () => {
       // The renderer sends no URL: main opens only the URL it parsed itself.
-      if (current.state !== "awaiting_browser") return false
+      if (disposed || current.state !== "awaiting_browser") return false
       if (dependencies.openExternal === undefined) return false
       await dependencies.openExternal(current.url)
       return true
     },
     dispose: () => {
+      if (disposed) return
+      disposed = true
+      current = { state: "failed", reason: "pylon_runtime_unavailable" }
       if (child !== null && !child.killed) {
         child.kill("SIGTERM")
       }
       clearChild()
+      for (const operation of [...listOperations]) {
+        if (!operation.child.killed) operation.child.kill("SIGTERM")
+        operation.finish(unavailableCodexAccountsResult())
+      }
     },
   }
 }

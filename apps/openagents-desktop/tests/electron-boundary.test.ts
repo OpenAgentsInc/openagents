@@ -120,7 +120,8 @@ describe("Electron boundary (issue #8574 mandatory first-scaffold hardening)", (
       expect(source).not.toContain("openKhalaSyncStore")
     }
     expect(main).toContain('"sync", "khala-sync.sqlite"')
-    expect(main).toContain("desktopSyncHost?.close()")
+    expect(main).toContain("hostLifecycle.replaceSync(syncHost)")
+    expect(main).toContain("hostLifecycle.dispose()")
   })
 
   test("native session custody remains behind Electron main safeStorage", () => {
@@ -141,9 +142,10 @@ describe("Electron boundary (issue #8574 mandatory first-scaffold hardening)", (
   })
 
   test("workspace filesystem authority starts only after an explicit directory choice", () => {
-    expect(main).toContain("let workspace: DesktopWorkspaceService | null = null")
+    expect(main).toContain("makeDesktopHostLifecycle")
     expect(main).toContain('properties: ["openDirectory", "createDirectory"]')
-    expect(main).toContain("workspace = openWorkspaceService(result.filePaths[0])")
+    expect(main).toContain("hostLifecycle.replaceWorkspace(openWorkspaceService(result.filePaths[0]))")
+    expect(main).not.toContain("let workspaceRoot")
     expect(main).not.toContain("OPENAGENTS_DESKTOP_WORKSPACE")
   })
 

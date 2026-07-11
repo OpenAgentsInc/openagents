@@ -16,6 +16,7 @@ export const makeCodexHistoryHost = (
   workerUrl: URL,
   makeWorker: (url: URL) => Worker = url => new Worker(url),
 ): CodexHistoryHost => {
+  let disposed = false
   let worker: Worker | null = null
   let requestId = 0
   const pending = new Map<number, (value: unknown) => void>()
@@ -44,12 +45,14 @@ export const makeCodexHistoryHost = (
   }
 
   return {
-    run: request => new Promise(resolve => {
+    run: request => disposed ? Promise.resolve(null) : new Promise(resolve => {
       const id = ++requestId
       pending.set(id, resolve)
       openWorker().postMessage({ id, request })
     }),
     dispose: () => {
+      if (disposed) return
+      disposed = true
       const active = worker
       worker = null
       settlePending()

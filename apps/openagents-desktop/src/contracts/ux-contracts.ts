@@ -6,8 +6,51 @@ import {
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-11.18",
+    version: "2026-07-11.19",
     contracts: [
+      {
+        contractId: "openagents_desktop.seam.replaceable_owned_correlated_services.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "replaceable service lifecycle and operation correlation",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "github-issue", statedBy: "owner", statedOn: "2026-07-11" },
+        statement:
+          "Desktop runtime, workspace, Sync, account, and history services are replaceable through the production host lifecycle; project, session, window, and app teardown closes exactly the resources it owns once, while one public-safe operation/session/run/correlation context survives the renderer-to-Sync path.",
+        authorityBoundary:
+          "Correlation carries bounded refs only and maps to private Sync causality refs; it never carries a path, URL, prompt, body, owner, token, credential, raw error, native handle, or provider payload. Replacement and disposal do not widen renderer or test-fixture authority.",
+        seam: {
+          client: "apps/openagents-desktop/src/runtime-gateway-contract.ts",
+          server: "apps/openagents-desktop/src/desktop-host-lifecycle.ts",
+        },
+        evidenceRefs: [
+          "apps/openagents-desktop/src/desktop-host-lifecycle.test.ts",
+          "apps/openagents-desktop/src/desktop-operation-context.test.ts",
+          "apps/openagents-desktop/tests/runtime-gateway.e2e.test.ts",
+          "github:OpenAgentsInc/openagents#8684",
+        ],
+        oracles: [
+          {
+            id: "desktop_architecture.replaceable_owned_lifecycle",
+            kind: "bun-test",
+            mode: "e2e",
+            ref: "apps/openagents-desktop/src/desktop-host-lifecycle.test.ts",
+            description:
+              "Uses the production lifecycle constructor with substitute runtime/workspace/Sync/account/history services and proves replacement, window close, app close, late-resource refusal, exact finalizer counts, and zero active slots.",
+          },
+          {
+            id: "desktop_architecture.operation_correlation",
+            kind: "bun-test",
+            mode: "e2e",
+            ref: "apps/openagents-desktop/tests/runtime-gateway.e2e.test.ts",
+            description:
+              "Preserves the same bounded operation/session/run/correlation refs through gateway observation, runtime command admission, Sync causality, response decoding, and the public-safe journal.",
+          },
+        ],
+        verification:
+          "The canonical Desktop verify gate runs lifecycle/correlation mutation and leak tests, builds Electron, executes the structured correlation path with substitute backing services, reloads the renderer, explicitly disposes the host, and requires active=0.",
+      },
       {
         contractId: "openagents_desktop.seam.codex_trace_electron_acceptance.v1",
         state: "enforced",

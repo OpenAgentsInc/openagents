@@ -13,6 +13,7 @@ import {
   type KhalaSyncConversationStatus,
 } from "@openagentsinc/khala-sync-client"
 import { CodexHistoryCatalogSchema, CodexHistoryPageSchema } from "./codex-history-contract.ts"
+import { DesktopOperationContextSchema } from "./desktop-operation-context.ts"
 
 /**
  * Effect Native currently pins a newer Effect build than Khala Sync. Keep the
@@ -53,6 +54,7 @@ const NonNegativeIntSchema = Schema.Number.check(
   Schema.isInt(),
   Schema.isGreaterThanOrEqualTo(0),
 )
+const OperationContextField = { context: Schema.optional(DesktopOperationContextSchema) }
 
 export const DesktopRuntimeCapabilityIdSchema = Schema.Literals([
   "agent-timeline",
@@ -76,21 +78,25 @@ export const DesktopRuntimeCapabilitySchema = Schema.Struct({
 
 export const DesktopRuntimeGatewayRequestSchema = Schema.Union([
   Schema.Struct({
+    ...OperationContextField,
     kind: Schema.Literal("query"),
     requestId: Schema.String,
     query: Schema.Struct({ id: Schema.Literal("runtime.bootstrap") }),
   }),
   Schema.Struct({
+    ...OperationContextField,
     kind: Schema.Literal("query"),
     requestId: Schema.String,
     query: Schema.Struct({ id: Schema.Literal("conversation.catalog") }),
   }),
-  Schema.Struct({ kind: Schema.Literal("query"), requestId: Schema.String, query: Schema.Struct({ id: Schema.Literal("codex.history.catalog") }) }),
+  Schema.Struct({ ...OperationContextField, kind: Schema.Literal("query"), requestId: Schema.String, query: Schema.Struct({ id: Schema.Literal("codex.history.catalog") }) }),
   Schema.Struct({
+    ...OperationContextField,
     kind: Schema.Literal("query"), requestId: Schema.String,
     query: Schema.Struct({ id: Schema.Literal("codex.history.page"), threadRef: PublicRefSchema, offset: NonNegativeIntSchema, limit: Schema.Number.check(Schema.isInt(), Schema.isBetween({ minimum: 1, maximum: 500 })) }),
   }),
   Schema.Struct({
+    ...OperationContextField,
     kind: Schema.Literal("query"),
     requestId: Schema.String,
     query: Schema.Struct({
@@ -99,6 +105,7 @@ export const DesktopRuntimeGatewayRequestSchema = Schema.Union([
     }),
   }),
   Schema.Struct({
+    ...OperationContextField,
     kind: Schema.Literal("query"),
     requestId: Schema.String,
     query: Schema.Struct({
@@ -107,6 +114,7 @@ export const DesktopRuntimeGatewayRequestSchema = Schema.Union([
     }),
   }),
   Schema.Struct({
+    ...OperationContextField,
     kind: Schema.Literal("query"),
     requestId: Schema.String,
     query: Schema.Struct({
@@ -115,6 +123,7 @@ export const DesktopRuntimeGatewayRequestSchema = Schema.Union([
     }),
   }),
   Schema.Struct({
+    ...OperationContextField,
     kind: Schema.Literal("command"),
     commandId: Schema.String,
     command: Schema.Union([
@@ -159,20 +168,23 @@ const DesktopRuntimeBootstrapSchema = Schema.Struct({
 
 export const DesktopRuntimeGatewayResponseSchema = Schema.Union([
   Schema.Struct({
+    ...OperationContextField,
     kind: Schema.Literal("query_result"),
     requestId: Schema.String,
     result: DesktopRuntimeBootstrapSchema,
   }),
   Schema.Struct({
+    ...OperationContextField,
     kind: Schema.Literal("conversation_catalog"),
     requestId: Schema.String,
     status: KhalaSyncConversationStatusSchema,
     threads: Schema.Array(ConfirmedChatThreadSchema),
   }),
-  Schema.Struct({ kind: Schema.Literal("codex_history_catalog"), requestId: Schema.String, catalog: CodexHistoryCatalogSchema }),
-  Schema.Struct({ kind: Schema.Literal("codex_history_page"), requestId: Schema.String, page: CodexHistoryPageSchema }),
-  Schema.Struct({ kind: Schema.Literal("codex_history_unavailable"), requestId: Schema.String, reason: Schema.Literals(["not_found", "read_failed"]) }),
+  Schema.Struct({ ...OperationContextField, kind: Schema.Literal("codex_history_catalog"), requestId: Schema.String, catalog: CodexHistoryCatalogSchema }),
+  Schema.Struct({ ...OperationContextField, kind: Schema.Literal("codex_history_page"), requestId: Schema.String, page: CodexHistoryPageSchema }),
+  Schema.Struct({ ...OperationContextField, kind: Schema.Literal("codex_history_unavailable"), requestId: Schema.String, reason: Schema.Literals(["not_found", "read_failed"]) }),
   Schema.Struct({
+    ...OperationContextField,
     kind: Schema.Literal("conversation_thread"),
     requestId: Schema.String,
     threadRef: PublicRefSchema,
@@ -180,11 +192,13 @@ export const DesktopRuntimeGatewayResponseSchema = Schema.Union([
     messages: Schema.Array(ConfirmedChatMessageSchema),
   }),
   Schema.Struct({
+    ...OperationContextField,
     kind: Schema.Literal("conversation_unavailable"),
     requestId: Schema.String,
     reason: Schema.Literals(["not_live", "read_failed"]),
   }),
   Schema.Struct({
+    ...OperationContextField,
     kind: Schema.Literal("agent_timeline"),
     requestId: Schema.String,
     runRef: PublicRefSchema,
@@ -193,6 +207,7 @@ export const DesktopRuntimeGatewayResponseSchema = Schema.Union([
     events: Schema.Array(ConfirmedAgentTimelineEventSchema).check(Schema.isMaxLength(500)),
   }),
   Schema.Struct({
+    ...OperationContextField,
     kind: Schema.Literal("conversation_timeline"),
     requestId: Schema.String,
     threadRef: PublicRefSchema,
@@ -201,11 +216,13 @@ export const DesktopRuntimeGatewayResponseSchema = Schema.Union([
     events: Schema.Array(ConfirmedAgentTimelineEventSchema).check(Schema.isMaxLength(500)),
   }),
   Schema.Struct({
+    ...OperationContextField,
     kind: Schema.Literal("agent_timeline_unavailable"),
     requestId: Schema.String,
     reason: Schema.Literals(["not_live", "not_found", "read_failed"]),
   }),
   Schema.Struct({
+    ...OperationContextField,
     kind: Schema.Literal("runtime_command_outcome"),
     commandId: Schema.String,
     threadRef: PublicRefSchema,
@@ -216,24 +233,28 @@ export const DesktopRuntimeGatewayResponseSchema = Schema.Union([
     reason: Schema.optional(Schema.String),
   }),
   Schema.Struct({
+    ...OperationContextField,
     kind: Schema.Literal("conversation_mutation_outcome"),
     commandId: Schema.String,
     status: Schema.Literals(["pending_reconcile", "unavailable"]),
     mutationId: Schema.optional(Schema.Number),
   }),
   Schema.Struct({
+    ...OperationContextField,
     kind: Schema.Literal("command_outcome"),
     commandId: Schema.String,
     status: Schema.Literal("unavailable"),
     reason: Schema.String,
   }),
   Schema.Struct({
+    ...OperationContextField,
     kind: Schema.Literal("session_outcome"),
     commandId: Schema.String,
     status: Schema.Literals(["completed", "cancelled", "unavailable"]),
     phase: Schema.Literals(["session_ready", "signed_out", "unavailable"]),
   }),
   Schema.Struct({
+    ...OperationContextField,
     kind: Schema.Literal("request_rejected"),
     reason: Schema.Literals(["invalid_request", "untrusted_renderer", "gateway_disposed"]),
   }),

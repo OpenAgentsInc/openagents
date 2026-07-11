@@ -222,7 +222,10 @@ describe("openagents_desktop.sync.host_owned_sqlite.v1", () => {
       expect(host.status().identityTier).toBe("local_only")
       expect(host.conversation()).toBeNull()
       host.close()
+      host.close()
       expect(lifecycle.slice(-2)).toEqual(["session", "store"])
+      expect(lifecycle.filter(event => event === "session")).toHaveLength(1)
+      expect(lifecycle.filter(event => event === "store")).toHaveLength(1)
     } finally {
       rmSync(root, { recursive: true, force: true })
     }

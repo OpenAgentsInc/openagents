@@ -38,6 +38,7 @@ const deviceAuthSuccessFixture =
 type FakeChild = NonNullable<ReturnType<NonNullable<CodexConnectServiceDependencies["spawnPylon"]>>>
 
 const makeFakeChild = (): FakeChild & {
+  killCount: number
   emitStdout: (chunk: string) => void
   emitStderr: (chunk: string) => void
   emitClose: (code: number | null) => void
@@ -46,6 +47,7 @@ const makeFakeChild = (): FakeChild & {
   const stdoutHandlers: Array<(chunk: string) => void> = []
   const stderrHandlers: Array<(chunk: string) => void> = []
   const child: FakeChild & {
+    killCount: number
     emitStdout: (chunk: string) => void
     emitStderr: (chunk: string) => void
     emitClose: (code: number | null) => void
@@ -65,7 +67,12 @@ const makeFakeChild = (): FakeChild & {
       listeners.set(event, [...existing, listener])
       return child
     },
-    kill: () => true,
+    kill: () => {
+      child.killCount++
+      child.killed = true
+      return true
+    },
+    killCount: 0,
     killed: false,
     exitCode: null,
     emitStdout: (chunk: string) => {
@@ -256,6 +263,32 @@ describe("makeCodexConnectService (fake children)", () => {
     const service = makeCodexConnectService("/nonexistent", { spawnPylon: () => null })
     expect((await service.listAccounts()).state).toBe("unavailable")
     expect(service.start()).toEqual({ state: "failed", reason: "pylon_runtime_unavailable" })
+  })
+
+  test("dispose settles and kills list/device children once and is terminal", async () => {
+    const listChild = makeFakeChild()
+    const deviceChild = makeFakeChild()
+    let spawnCount = 0
+    const service = makeCodexConnectService("/nonexistent", {
+      spawnPylon: args => {
+        spawnCount++
+        return args.includes("list") ? listChild : deviceChild
+      },
+      listTimeoutMs: 60_000,
+      connectTimeoutMs: 60_000,
+    })
+    const listed = service.listAccounts()
+    expect(service.start()).toEqual({ state: "starting" })
+
+    service.dispose()
+    service.dispose()
+    expect((await listed).state).toBe("unavailable")
+    expect(listChild.killCount).toBe(1)
+    expect(deviceChild.killCount).toBe(1)
+    expect(service.status()).toEqual({ state: "failed", reason: "pylon_runtime_unavailable" })
+    expect(service.start()).toEqual({ state: "failed", reason: "pylon_runtime_unavailable" })
+    expect((await service.listAccounts()).state).toBe("unavailable")
+    expect(spawnCount).toBe(2)
   })
 
   test("fixture device-auth stdout matches the real CLI prompt format", () => {
