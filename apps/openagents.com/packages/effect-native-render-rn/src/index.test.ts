@@ -160,6 +160,28 @@ describe("React Native renderer host boundaries", () => {
     expect(structure).not.toContain("SwiftHost")
   })
 
+  test("keeps an unavailable-target draft editable while disabling Send", () => {
+    const element = renderReactNativeView(
+      Composer({
+        key: "composer-unavailable-target",
+        doc: [{ kind: "text", text: "offline draft" }],
+        mode: "normal",
+        placeholder: "Continue conversation",
+        onChange: IntentRef("Changed")
+      }),
+      {
+        React: { createElement },
+        ReactNative: { ...reactNative, Platform: { OS: "android", Version: 35 } }
+      },
+      () => Effect.succeed(undefined),
+      { platform: "android" }
+    )
+    const structure = JSON.stringify(element)
+    expect(structure).toContain('"editable":true')
+    expect(structure).toContain('"accessibilityLabel":"Send unavailable"')
+    expect(structure).toContain('"disabled":true')
+  })
+
   test("keeps a failing intent callback total while executing its effect", async () => {
     const attempted: Array<string> = []
     const report: IntentReporter = (ref) =>

@@ -1,5 +1,13 @@
 import { describe, expect, test } from "bun:test"
 import { Effect, Stream } from "@effect-native/core/effect"
+import {
+  composerAttachmentId,
+  composerBlockId,
+  decodeCodingComposerDraftSnapshot,
+  emptyComposerSelection,
+  emptyComposerState,
+  parseComposerMarkdown,
+} from "@openagentsinc/khala-sync-client"
 
 import type {
   MobileConversationHost,
@@ -7,6 +15,7 @@ import type {
   MobileConversationThread,
 } from "../src/conversation/mobile-conversation"
 import type { MobileCodingTarget } from "../src/coding/mobile-coding-navigation"
+import type { MobileCodingComposerSession } from "../src/coding/mobile-coding-composer"
 import {
   buildHomeProgram,
   chromeProps,
@@ -50,7 +59,173 @@ const selection = (host: MobileConversationHost): Extract<MobileConversationSele
   activeThread: initialThread,
 })
 
+const codingComposerSession = (text: string): MobileCodingComposerSession => {
+  const state = emptyComposerState()
+  const attachmentId = composerAttachmentId("attachment-mobile-screen")
+  return {
+    repositoryLabel: "openagents",
+    worktreeLabel: "main",
+    targetLabel: "Claude",
+    draft: decodeCodingComposerDraftSnapshot({
+      schema: "openagents.coding_composer_draft.v1",
+      draftRef: "draft.mobile.home",
+      ownerRef: "local_mobile_home",
+      sessionRef: "session.mobile.home",
+      threadRef: initialThread.threadRef,
+      revision: 1,
+      doc: {
+        ...state.doc,
+        blocks: [
+          { id: composerBlockId("block-mobile-home"), kind: "paragraph", text, marks: [] },
+          { id: composerBlockId("block-mobile-attachment"), kind: "attachmentRef", attachmentId },
+        ],
+        attachments: [{
+          id: attachmentId,
+          kind: "image",
+          name: "screen.png",
+          mime: "image/png",
+          sizeBytes: 128,
+          source: "manual",
+          status: "ready",
+          contentRef: "attachment.native-local.sha256.fixture.screen.png",
+        }],
+      },
+      selection: state.selection,
+      view: state.view,
+      context: [{
+        kind: "repository",
+        repositoryRef: "repository.mobile.home",
+        revisionRef: "revision.mobile.home",
+      }],
+      target: {
+        laneRef: "lane.claude_pylon",
+        providerRef: "provider.claude",
+        readiness: "ready",
+      },
+      submission: { status: "editing" },
+      updatedAt: now,
+    }),
+  }
+}
+
 describe("contract openagents_mobile.chat.authoritative_sync_mode.v1 Home", () => {
+  test("restores, renders, edits, and accepted-clears the canonical coding draft", async () => {
+    const host: MobileConversationHost = {
+      listThreads: async () => [initialThread],
+      newThread: async () => ({ ok: true, thread: initialThread }),
+      openThread: async () => initialThread,
+      sendMessage: async () => ({ ok: true, thread: initialThread }),
+    }
+    const activeComposer = codingComposerSession("Restored private draft")
+    const writes: string[] = []
+    const updateComposerText = async (
+      session: MobileCodingComposerSession,
+      text: string,
+    ): Promise<MobileCodingComposerSession> => {
+      writes.push(text)
+      const parsed = parseComposerMarkdown(text)
+      const first = parsed.blocks[0]!
+      return {
+        ...session,
+        draft: decodeCodingComposerDraftSnapshot({
+          ...session.draft,
+          revision: session.draft.revision + 1,
+          doc: {
+            ...parsed,
+            attachments: session.draft.doc.attachments,
+            blocks: [
+              ...parsed.blocks,
+              ...session.draft.doc.blocks.filter(block => block.kind === "attachmentRef"),
+            ],
+          },
+          selection: emptyComposerSelection(first.id),
+          updatedAt: now,
+        }),
+      }
+    }
+    const program = buildHomeProgram({
+      conversation: selection(host),
+      coding: {
+        activeComposer: () => activeComposer,
+        directory: {
+          authority: "confirmed",
+          phase: "live",
+          cacheState: "current",
+          repositories: [],
+          sessions: [],
+        },
+        clearSelection: async () => undefined,
+        selectSession: async () => ({ thread: initialThread, composer: activeComposer }),
+        updateComposerText,
+      },
+    })
+
+    const initial = JSON.stringify(renderContentView(program.initialState))
+    expect(initial).toContain("Restored private draft")
+    expect(initial).toContain("openagents · main")
+    expect(initial).toContain("Claude · provider.claude · Model not selected · Account not selected")
+    expect(initial).toContain("screen.png")
+
+    program.khala.draftChanged("Edited on mobile")
+    await Effect.runPromise(settle)
+    const edited = await Effect.runPromise(lastState(program))
+    expect(edited.khala.draft).toBe("Edited on mobile")
+    expect(edited.codingComposer?.draft.revision).toBe(2)
+
+    program.khala.submitTurn("Edited on mobile")
+    await Effect.runPromise(settle)
+    await Effect.runPromise(settle)
+    const accepted = await Effect.runPromise(lastState(program))
+    expect(writes).toEqual(["Edited on mobile", ""])
+    expect(accepted.khala.draft).toBe("")
+    expect(accepted.codingComposer?.draft.doc.attachments[0]?.name).toBe("screen.png")
+  })
+
+  test("keeps an unavailable-target draft editable but withholds Send authority", async () => {
+    const base = codingComposerSession("Offline work")
+    const activeComposer: MobileCodingComposerSession = {
+      ...base,
+      targetLabel: "Runtime unavailable",
+      draft: decodeCodingComposerDraftSnapshot({
+        ...base.draft,
+        target: {
+          laneRef: "lane.unselected",
+          readiness: "unavailable",
+          reasonRef: "reason.runtime_lane_unavailable",
+        },
+      }),
+    }
+    let sends = 0
+    const host: MobileConversationHost = {
+      listThreads: async () => [initialThread],
+      newThread: async () => ({ ok: true, thread: initialThread }),
+      openThread: async () => initialThread,
+      sendMessage: async () => {
+        sends += 1
+        return { ok: true, thread: initialThread }
+      },
+    }
+    const program = buildHomeProgram({
+      conversation: selection(host),
+      coding: {
+        activeComposer: () => activeComposer,
+        directory: { authority: "confirmed", phase: "live", cacheState: "current", repositories: [], sessions: [] },
+        clearSelection: async () => undefined,
+        selectSession: async () => ({ thread: initialThread, composer: activeComposer }),
+        updateComposerText: async (session) => session,
+      },
+    })
+    const view = JSON.stringify(renderContentView(program.initialState))
+    expect(view).toContain("Runtime unavailable")
+    expect(view).toContain('"name":"KhalaDraftChanged"')
+    expect(view).not.toContain('"name":"KhalaTurnSubmitted"')
+
+    program.khala.submitTurn("must not dispatch")
+    await Effect.runPromise(settle)
+    expect(sends).toBe(0)
+    expect((await Effect.runPromise(lastState(program))).khala.draft).toBe("Offline work")
+  })
+
   test("renders the confirmed coding directory and selects a session through one typed intent", async () => {
     const host: MobileConversationHost = {
       listThreads: async () => [initialThread],
@@ -62,6 +237,7 @@ describe("contract openagents_mobile.chat.authoritative_sync_mode.v1 Home", () =
     const program = buildHomeProgram({
       conversation: selection(host),
       coding: {
+        activeComposer: () => null,
         directory: {
           authority: "confirmed",
           phase: "live",
@@ -81,9 +257,10 @@ describe("contract openagents_mobile.chat.authoritative_sync_mode.v1 Home", () =
           }],
         },
         clearSelection: async () => undefined,
+        updateComposerText: async () => null,
         selectSession: async target => {
           selected.push(target)
-          return initialThread
+          return { thread: initialThread, composer: null }
         },
       },
     })

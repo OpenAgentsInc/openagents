@@ -29,6 +29,8 @@ export type CodingComposerDraftSaveOutcome =
   | "too_large"
 
 export type KhalaSyncCodingComposerDrafts = Readonly<{
+  /** Opaque device-local owner ref required when creating a new private draft. */
+  ownerRef: string
   list: () => Effect.Effect<
     ReadonlyArray<CodingComposerDraftSnapshot>,
     KhalaSyncClientStoreError
@@ -103,6 +105,7 @@ export const createKhalaSyncCodingComposerDrafts = (input: Readonly<{
   })
 
   return {
+    ownerRef: input.ownerRef,
     list,
     load: draftRef => Effect.map(list(), drafts =>
       drafts.find(draft => draft.draftRef === draftRef) ?? null),

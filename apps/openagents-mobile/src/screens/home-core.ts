@@ -23,6 +23,10 @@ import type {
   MobileCodingDirectory,
   MobileCodingTarget,
 } from "../coding/mobile-coding-navigation"
+import {
+  mobileCodingComposerText,
+  type MobileCodingComposerSession,
+} from "../coding/mobile-coding-composer"
 import type {
   MobileConversationHost,
   MobileConversationSelection,
@@ -68,6 +72,7 @@ export interface HomeState {
   readonly conversationThreads: ReadonlyArray<MobileConversationThreadSummary>
   readonly activeThreadRef: string | null
   readonly codingDirectory: MobileCodingDirectory | null
+  readonly codingComposer: MobileCodingComposerSession | null
   readonly khala: KhalaState
 }
 
@@ -152,6 +157,7 @@ export const initialHomeState: HomeState = {
   conversationThreads: [],
   activeThreadRef: null,
   codingDirectory: null,
+  codingComposer: null,
   khala: initialKhalaState,
 }
 
@@ -251,7 +257,11 @@ export const renderContentView = (state: HomeState): View =>
       style: { width: "full", height: "full", backgroundColor: "background" },
     },
     state.surfaceMode === "khala"
-      ? [renderKhalaSurface(state.khala, state.conversationAuthority)]
+      ? [renderKhalaSurface(
+          state.khala,
+          state.conversationAuthority,
+          state.codingComposer,
+        )]
       : [
           Spacer({ key: "openagents-top-space", size: "16" }),
           Text({ key: "openagents-title", content: "OpenAgents", variant: "title", color: "textPrimary" }),
@@ -412,11 +422,19 @@ export interface HomeProgramOptions {
   readonly conversation?: Extract<MobileConversationSelection, { readonly mode: "sync" }>
   readonly coding?: Readonly<{
     directory: MobileCodingDirectory
+    activeComposer: () => MobileCodingComposerSession | null
     clearSelection: () => Promise<void>
     selectSession: (
       target: MobileCodingTarget,
       onUpdate: (thread: MobileConversationThread) => void,
-    ) => Promise<MobileConversationThread | null>
+    ) => Promise<Readonly<{
+      thread: MobileConversationThread
+      composer: MobileCodingComposerSession | null
+    }> | null>
+    updateComposerText: (
+      session: MobileCodingComposerSession,
+      text: string,
+    ) => Promise<MobileCodingComposerSession | null>
   }>
 }
 
@@ -528,12 +546,15 @@ const withConfirmedThread = (
     },
     ...state.conversationThreads.filter(item => item.threadRef !== thread.threadRef),
   ],
-  khala: confirmedKhalaState(
-    thread,
-    state.khala.turnCounter,
-    state.khala.interactionActionsAvailable,
-    state.khala.runtimeControlActionsAvailable,
-  ),
+  khala: {
+    ...confirmedKhalaState(
+      thread,
+      state.khala.turnCounter,
+      state.khala.interactionActionsAvailable,
+      state.khala.runtimeControlActionsAvailable,
+    ),
+    draft: state.khala.draft,
+  },
 })
 
 const failedConversationState = (
@@ -588,6 +609,7 @@ const makeSyncedConversationHandlers = (
       ...current,
       drawerOpen: false,
       surfaceMode: "khala" as const,
+      codingComposer: null,
       khala: {
         ...current.khala,
         pending: true,
@@ -611,6 +633,7 @@ const makeSyncedConversationHandlers = (
     yield* SubscriptionRef.update(state, current => ({
       ...current,
       drawerOpen: false,
+      codingComposer: null,
       khala: { ...current.khala, pending: true },
     }))
     const thread = yield* Effect.promise(() => host.openThread(payload.threadRef))
@@ -618,10 +641,29 @@ const makeSyncedConversationHandlers = (
       ? failedConversationState(current, "Conversation is still pending reconciliation.")
       : withConfirmedThread(current, thread))
   }),
-  KhalaDraftChanged: (text: string) => SubscriptionRef.update(state, current => ({
-    ...current,
-    khala: { ...current.khala, draft: text.length > 4_000 ? `${text.slice(0, 4_000)}…` : text },
-  })),
+  KhalaDraftChanged: (text: string) => Effect.gen(function* () {
+    const bounded = text.length > 4_000 ? `${text.slice(0, 4_000)}…` : text
+    const before = yield* SubscriptionRef.get(state)
+    const composer = before.codingComposer
+    if (composer === null || coding === undefined) {
+      yield* SubscriptionRef.update(state, current => ({
+        ...current,
+        khala: { ...current.khala, draft: bounded },
+      }))
+      return
+    }
+    const updated = yield* Effect.promise(() =>
+      coding.updateComposerText(composer, bounded))
+    if (updated === null) return
+    yield* SubscriptionRef.update(state, current =>
+      current.codingComposer?.draft.draftRef !== composer.draft.draftRef
+        ? current
+        : {
+            ...current,
+            codingComposer: updated,
+            khala: { ...current.khala, draft: bounded },
+          })
+  }),
   RuntimeInteractionOptionToggled: (payload: Readonly<{
     interactionRef: string
     questionRef: string
@@ -766,9 +808,17 @@ const makeSyncedConversationHandlers = (
     if (message === "") return
     const before = yield* SubscriptionRef.get(state)
     if (before.khala.pending) return
+    if (before.codingComposer !== null &&
+      before.codingComposer.draft.target.readiness !== "ready") return
     const turn = before.khala.turnCounter + 1
+    const clearedComposer = before.codingComposer === null || coding === undefined
+      ? before.codingComposer
+      : yield* Effect.promise(() =>
+          coding.updateComposerText(before.codingComposer!, ""))
+    if (before.codingComposer !== null && clearedComposer === null) return
     yield* SubscriptionRef.update(state, current => ({
       ...current,
+      codingComposer: clearedComposer,
       khala: {
         ...current.khala,
         draft: "",
@@ -823,9 +873,21 @@ const makeSyncedConversationHandlers = (
         }))
       },
     }))
+    const restoredComposer = result.ok || clearedComposer === null || coding === undefined
+      ? clearedComposer
+      : yield* Effect.promise(() => coding.updateComposerText(clearedComposer, message))
     yield* SubscriptionRef.update(state, current => result.ok
       ? withConfirmedThread(current, result.thread)
-      : failedConversationState(current, result.error))
+      : {
+          ...failedConversationState(current, result.error),
+          codingComposer: restoredComposer,
+          khala: {
+            ...failedConversationState(current, result.error).khala,
+            draft: restoredComposer === null
+              ? message
+              : mobileCodingComposerText(restoredComposer.draft),
+          },
+        })
   }),
 })
 
@@ -839,7 +901,13 @@ export const makeHomeHandlers = (
   return {
     DrawerToggled: () => SubscriptionRef.update(state, (current) => ({ ...current, drawerOpen: !current.drawerOpen })),
     NewChatPressed: synced?.NewChatPressed ??
-      (() => SubscriptionRef.update(state, (current) => ({ ...current, drawerOpen: false, surfaceMode: "khala" as const, khala: initialKhalaState }))),
+      (() => SubscriptionRef.update(state, (current) => ({
+        ...current,
+        drawerOpen: false,
+        surfaceMode: "khala" as const,
+        codingComposer: null,
+        khala: initialKhalaState,
+      }))),
     SettingsPressed: () => Effect.void,
     OpenAgentsSignInPressed: () => options.sessionActions === undefined
       ? Effect.void
@@ -862,7 +930,7 @@ export const makeHomeHandlers = (
             drawerOpen: false,
             khala: { ...current.khala, pending: true },
           }))
-          const thread = yield* Effect.promise(() => options.coding!.selectSession({
+          const selected = yield* Effect.promise(() => options.coding!.selectSession({
             schema: "openagents.mobile.coding_target.v1",
             repositoryRef: payload.repositoryRef,
             sessionRef: payload.sessionRef,
@@ -873,9 +941,18 @@ export const makeHomeHandlers = (
                 ? withConfirmedThread(current, update)
                 : current))
           }))
-          yield* SubscriptionRef.update(state, current => thread === null
+          yield* SubscriptionRef.update(state, current => selected === null
             ? failedConversationState(current, "Coding session is unavailable or no longer authorized.")
-            : withConfirmedThread(current, thread))
+            : {
+                ...withConfirmedThread(current, selected.thread),
+                codingComposer: selected.composer,
+                khala: {
+                  ...withConfirmedThread(current, selected.thread).khala,
+                  draft: selected.composer === null
+                    ? ""
+                    : mobileCodingComposerText(selected.composer.draft),
+                },
+              })
         }),
     ...(synced === undefined
       ? khalaHandlers(state, options.khalaTurn)
@@ -933,9 +1010,17 @@ export const buildHomeProgram = (options: HomeProgramOptions = {}): HomeProgramH
   Effect.runSync(
     Effect.gen(function* () {
       const baseInitialState = initialHomeStateForConversation(options.conversation)
+      const activeComposer = options.coding?.activeComposer() ?? null
       const programInitialState: HomeState = {
         ...baseInitialState,
         codingDirectory: options.coding?.directory ?? null,
+        codingComposer: activeComposer,
+        khala: activeComposer === null
+          ? baseInitialState.khala
+          : {
+              ...baseInitialState.khala,
+              draft: mobileCodingComposerText(activeComposer.draft),
+            },
       }
       const state = yield* SubscriptionRef.make<HomeState>(programInitialState)
       const registry = yield* makeIntentRegistry(homeIntentDefinitions, makeHomeHandlers(state, options))

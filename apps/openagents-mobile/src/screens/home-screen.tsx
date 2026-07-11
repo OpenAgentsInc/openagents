@@ -9,6 +9,7 @@ import { SafeAreaView } from "react-native-safe-area-context"
 import { khalaTheme } from "@effect-native/tokens"
 
 import type { MobileCodingDirectory, MobileCodingTarget } from "../coding/mobile-coding-navigation"
+import type { MobileCodingComposerSession } from "../coding/mobile-coding-composer"
 import type { MobileConversationSelection } from "../conversation/mobile-conversation"
 import type { MobileConversationThread } from "../conversation/mobile-conversation"
 import { EffectNativeHost } from "../effect-native/effect-native-host"
@@ -35,11 +36,19 @@ export const HomeScreen = ({ syncPhase, sessionActions, conversation, coding }: 
   readonly conversation?: Extract<MobileConversationSelection, { readonly mode: "sync" }>
   readonly coding?: Readonly<{
     directory: MobileCodingDirectory
+    activeComposer: () => MobileCodingComposerSession | null
     clearSelection: () => Promise<void>
     selectSession: (
       target: MobileCodingTarget,
       onUpdate: (thread: MobileConversationThread) => void,
-    ) => Promise<MobileConversationThread | null>
+    ) => Promise<Readonly<{
+      thread: MobileConversationThread
+      composer: MobileCodingComposerSession | null
+    }> | null>
+    updateComposerText: (
+      session: MobileCodingComposerSession,
+      text: string,
+    ) => Promise<MobileCodingComposerSession | null>
   }>
 }) => {
   const program = useMemo(

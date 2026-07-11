@@ -13,6 +13,23 @@
  *   durable cursor, not the connection, is the source of truth.
  */
 
+// Native clients already depend on this package for device-local coding
+// drafts. Re-export the exact canonical composer boundary they need so app
+// packages do not create a parallel draft model or a second dependency edge.
+export {
+  composerAttachmentId,
+  composerBlockId,
+  decodeCodingComposerDraftSnapshot,
+  emptyComposerSelection,
+  emptyComposerState,
+  parseComposerMarkdown,
+  serializeComposerMarkdown,
+  type CodingComposerDraftSnapshot,
+  type CodingComposerTargetSelection,
+  type ComposerAttachmentRefBlock,
+  type ComposerDoc,
+} from "@openagentsinc/composer-state"
+
 // ---------------------------------------------------------------------------
 // Local store (KS-5.1 + KS-5.4): contracts in store.ts; ALL SQL semantics
 // in the driver-agnostic store-core.ts. Runtime-specific stores live behind

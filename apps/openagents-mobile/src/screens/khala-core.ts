@@ -14,6 +14,7 @@ import {
   type View,
 } from "@effect-native/core"
 import type { MobileRuntimeControlAction } from "../conversation/mobile-conversation"
+import type { MobileCodingComposerSession } from "../coding/mobile-coding-composer"
 
 /**
  * The public Khala mode: one conversation over the public orchestration
@@ -256,6 +257,40 @@ const runtimeControlViews = (state: KhalaState): ReadonlyArray<View> => {
   )]
 }
 
+const codingComposerContextViews = (
+  session: MobileCodingComposerSession | null,
+): ReadonlyArray<View> => {
+  if (session === null) return []
+  const target = session.draft.target
+  return [Stack(
+    {
+      key: "khala-coding-composer-context",
+      direction: "column",
+      gap: "1",
+      style: { width: "full" },
+    },
+    [
+      Text({
+        key: "khala-coding-composer-location",
+        content: `${session.repositoryLabel} · ${session.worktreeLabel}`,
+        variant: "caption",
+        color: "textPrimary",
+      }),
+      Text({
+        key: "khala-coding-composer-target",
+        content: [
+          session.targetLabel,
+          target.providerRef ?? "Provider not selected",
+          target.modelRef ?? "Model not selected",
+          target.accountRef ?? "Account not selected",
+        ].join(" · "),
+        variant: "caption",
+        color: target.readiness === "ready" ? "textMuted" : "warning",
+      }),
+    ],
+  )]
+}
+
 const boundedText = (value: string): string =>
   value.length > 4_000 ? `${value.slice(0, 4_000)}…` : value
 
@@ -322,6 +357,7 @@ export const khalaHandlers = <State extends { readonly khala: KhalaState }>(
 export const renderKhalaSurface = (
   state: KhalaState,
   authority: "local" | "sync" = "local",
+  codingComposer: MobileCodingComposerSession | null = null,
 ): View =>
   Stack(
     {
@@ -363,6 +399,7 @@ export const renderKhalaSurface = (
         style: { width: "full", flex: 1 },
       }),
       ...runtimeControlViews(state),
+      ...codingComposerContextViews(codingComposer),
       Stack(
         {
           key: "khala-composer-bar",
@@ -390,10 +427,27 @@ export const renderKhalaSurface = (
             doc: state.draft === "" ? [] : [{ kind: "text", text: state.draft }],
             mode: "normal",
             placeholder: authority === "sync" ? "Continue conversation" : "Message Khala",
+            ...(codingComposer === null ? {} : {
+              attachments: codingComposer.draft.doc.attachments.map(attachment => ({
+                id: attachment.id,
+                name: attachment.name,
+                mimeType: attachment.mime,
+                size: attachment.sizeBytes,
+              })),
+            }),
             submitting: state.pending,
             clearOnSubmit: true,
+            a11y: { label: "Coding message" },
             onChange: IntentRef(KhalaDraftChanged, ComponentValueBinding()),
-            onSubmit: IntentRef(KhalaTurnSubmitted, ComponentValueBinding()),
+            ...(codingComposer !== null &&
+                codingComposer.draft.target.readiness !== "ready"
+              ? {}
+              : {
+                  onSubmit: IntentRef(
+                    KhalaTurnSubmitted,
+                    ComponentValueBinding(),
+                  ),
+                }),
             style: {
               flex: 1,
               minHeight: 44,

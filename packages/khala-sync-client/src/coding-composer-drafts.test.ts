@@ -77,6 +77,7 @@ describe("device-local coding composer drafts", () => {
         deviceScope,
         ownerRef,
       })
+      expect(drafts.ownerRef).toBe(ownerRef)
       expect(Effect.runSync(drafts.save(draft()))).toBe("saved")
       expect(Effect.runSync(drafts.save(draft()))).toBe("duplicate")
       expect(Effect.runSync(drafts.save(draft({ text: "conflicting body" })))).toBe(

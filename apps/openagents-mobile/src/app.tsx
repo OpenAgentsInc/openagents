@@ -13,6 +13,10 @@ import type {
   MobileCodingTarget,
 } from "./coding/mobile-coding-navigation"
 import {
+  openMobileCodingComposer,
+  type MobileCodingComposerSession,
+} from "./coding/mobile-coding-composer"
+import {
   selectMobileConversation,
   type MobileConversationThread,
   type MobileConversationSelection,
@@ -28,11 +32,19 @@ import {
 
 type MobileCodingHomeBinding = Readonly<{
   directory: MobileCodingDirectory
+  activeComposer: () => MobileCodingComposerSession | null
   clearSelection: () => Promise<void>
   selectSession: (
     target: MobileCodingTarget,
     onUpdate: (thread: MobileConversationThread) => void,
-  ) => Promise<MobileConversationThread | null>
+  ) => Promise<Readonly<{
+    thread: MobileConversationThread
+    composer: MobileCodingComposerSession | null
+  }> | null>
+  updateComposerText: (
+    session: MobileCodingComposerSession,
+    text: string,
+  ) => Promise<MobileCodingComposerSession | null>
 }>
 
 const selectAuthenticatedMobileExperience = async (
@@ -43,6 +55,10 @@ const selectAuthenticatedMobileExperience = async (
   coding?: MobileCodingHomeBinding
 }>> => {
   const coding = syncHost.coding()
+  const draftStore = syncHost.drafts()
+  const composer = draftStore === null
+    ? null
+    : openMobileCodingComposer({ drafts: draftStore, randomId: randomUUID })
   const restored = await coding.restore()
   const preferredThreadRef = restored?.state === "ready"
     ? restored.session.threadRef
@@ -58,11 +74,17 @@ const selectAuthenticatedMobileExperience = async (
   const directory = await coding.directory()
   if (conversation.mode !== "sync") return { conversation }
   const host = conversation.host
+  let activeComposer: MobileCodingComposerSession | null = null
   const bind = async (
     target: MobileCodingTarget,
     source: "directory" | "restore",
     onUpdate: (thread: MobileConversationThread) => void,
-  ): Promise<MobileConversationThread | null> => {
+  ): Promise<Readonly<{
+    thread: MobileConversationThread
+    composer: MobileCodingComposerSession | null
+  }> | null> => {
+    const resolution = await coding.resolve(target)
+    if (resolution.state !== "ready") return null
     const initial = await host.openThread(target.threadRef)
     if (initial === null) return null
     let latest = initial
@@ -81,8 +103,16 @@ const selectAuthenticatedMobileExperience = async (
       },
     })
     if (activation.state !== "active") return null
+    const composerSession = composer === null
+      ? null
+      : await composer.open({
+          target,
+          resolution,
+          runtime: latest.timeline?.run?.runtime,
+        })
+    activeComposer = composerSession
     onActiveThread?.(latest)
-    return latest
+    return { thread: latest, composer: composerSession }
   }
   if (restored?.state === "ready") {
     await bind(restored.target, "restore", () => undefined)
@@ -91,8 +121,18 @@ const selectAuthenticatedMobileExperience = async (
     conversation,
     coding: {
       directory,
-      clearSelection: coding.clearActive,
+      activeComposer: () => activeComposer,
+      clearSelection: async () => {
+        activeComposer = null
+        await coding.clearActive()
+      },
       selectSession: (target, onUpdate) => bind(target, "directory", onUpdate),
+      updateComposerText: async (session, text) => {
+        if (composer === null) return null
+        const updated = await composer.updateText(session, text)
+        if (updated !== null) activeComposer = updated
+        return updated
+      },
     },
   }
 }
@@ -202,8 +242,8 @@ export const App = () => {
         activate: async target => {
           const binding = codingBindingRef.current
           if (binding === undefined) return false
-          const thread = await binding.selectSession(target, applyActiveThread)
-          return thread !== null
+          const selected = await binding.selectSession(target, applyActiveThread)
+          return selected !== null
         },
       })
       targetDeliveryRef.current = targetDelivery

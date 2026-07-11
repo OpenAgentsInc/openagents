@@ -2393,7 +2393,8 @@ const renderComposer = (
       if (view.onSubmit !== undefined) runReportedIntent(report, view.onSubmit, event.nativeEvent?.text ?? composerPlainText(view.doc))
     }
   })
-  const submitDisabled = view.disabled === true || view.submitting === true
+  const submitDisabled = view.disabled === true || view.submitting === true ||
+    view.onSubmit === undefined
   const submit = createElement(
     dependencies,
     dependencies.ReactNative.Pressable,
@@ -2401,7 +2402,9 @@ const renderComposer = (
       key: "submit",
       testID: "en-composer-submit",
       accessibilityRole: "button",
-      accessibilityLabel: view.submitting === true ? "Message is sending" : "Send message",
+      accessibilityLabel: view.onSubmit === undefined
+        ? "Send unavailable"
+        : view.submitting === true ? "Message is sending" : "Send message",
       accessibilityState: { disabled: submitDisabled, busy: view.submitting === true },
       disabled: submitDisabled,
       style: {
@@ -4196,7 +4199,8 @@ const renderExpoUiComposer = (
         textState.set(controlledValue)
       }
     }, [controlledValue, textState])
-    const submitDisabled = view.disabled === true || view.submitting === true
+    const submitDisabled = view.disabled === true || view.submitting === true ||
+      view.onSubmit === undefined
     const submit = (): void => {
       if (submitDisabled || view.onSubmit === undefined) return
       const value = textState.get()
@@ -4234,7 +4238,9 @@ const renderExpoUiComposer = (
         expoUi.Button,
         {
           key: "submit",
-          accessibilityLabel: view.submitting === true ? "Message is sending" : "Send message",
+          accessibilityLabel: view.onSubmit === undefined
+            ? "Send unavailable"
+            : view.submitting === true ? "Message is sending" : "Send message",
           onPress: submit,
           modifiers: [
             expoUi.modifiers.frame({ width: 44, height: 44 }),
