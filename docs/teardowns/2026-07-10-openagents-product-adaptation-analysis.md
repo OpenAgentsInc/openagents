@@ -1167,3 +1167,72 @@ pivot. Its evidence changes this document's decisions in the following ways.
 
 Per the standing rule, none of these items is authority here: each lives or
 dies by its owning roadmap gate, issue, or contract when promoted.
+
+---
+
+## Cursor 3.11.13 bundle addendum (2026-07-11, evening)
+
+The same-day local bundle survey of the installed Cursor 3.11.13 (see the
+Cursor teardown's `[bundle]`/`[runtime]` section, landed `6ff4cf299a`) turns
+several of the morning addendum's web-sourced items into artifact-backed
+ones and adds four adaptation-relevant findings the web pass could not see.
+
+1. **Containment ships as a binary; ours ships as profiles — keep the
+   receipt half.** Cursor bundles `cursorsandbox`, a Rust deny-by-default
+   Seatbelt wrapper for agent commands. `[bundle]` corroboration that the
+   market has converged on OS-enforced containment below approval — but the
+   binary is opaque: no per-run containment receipt, no profile identity in
+   the product surface. The authority-manifest/execution-receipt split
+   (Adapt-now 3) is the differentiating half; do not weaken it toward
+   "sandbox present" boolean claims.
+2. **The dual-workbench cost is measurable — the single-grammar bet gains
+   evidence.** Cursor ships a 46 MB "Glass" agent workbench *beside* the
+   41 MB classic VS Code workbench plus an 8 MB automations bundle and a
+   separate React runtime. That is the compatibility-debt disease (§4.4 of
+   the source teardowns) shipping at megabundle scale: two parallel UI
+   universes over one product. Effect Native's one-typed-component-set bet
+   (single catalog, thin renderers) is the structural refusal of exactly
+   this outcome; conversion PRs that delete the replaced surface remain the
+   enforcement mechanism.
+3. **Model lineage is invisible at the artifact level — provenance surface
+   confirmed as differentiation.** ~21,000 `composer` strings against five
+   `kimi` strings in the shipped bundles: after a public non-disclosure
+   incident, the client artifact still carries no lineage surface. The
+   morning addendum's recommendation 3 (model provenance joins the
+   no-substitution surface) is now backed by `[bundle]` evidence that the
+   incumbent has not built it. The EP250 pinning UI (`model_substituted`
+   typed failure, effective-model caption) is the seed; publishing
+   base/post-training/serving-path provenance stays the bounded follow-on
+   under the owning contracts.
+4. **Update-chain posture is a live cautionary receipt for D6/CUT-26.**
+   `[bundle]`: notarized under an individual's Developer ID rather than the
+   company's, no App Sandbox, ATS disabled, and a plain-HTTP backup update
+   URL. Adapt-now 7 (one signed component-compatibility ledger with
+   rollback proof) and the CUT-26 hardened-distribution exit should cite
+   this as the failure posture being refused; signing identity, TLS-only
+   feeds, and fuse verification are release oracles, not checklists.
+5. **Local retrieval index as a first-class agent asset (adapt-later,
+   sharpened).** `crepectl` — a bundled Rust local code-index builder
+   (gitoxide-based, disk-spilling) — shows the incumbent treating local
+   retrieval as agent infrastructure, not an editor feature. Maps to the
+   D3 workspace search/cache lane (CUT-17 #8697): when that work lands, an
+   owned index service behind the grant-scoped workspace seam is the
+   parity-plus-authority shape; no new commitment now.
+6. **Dedicated transcript-search process (3.11) touches the Episode 248
+   lineage.** `[runtime]`: a separate `conversation-search` process serving
+   chat-history search. The predictable-history contract (#8674/#8675, no
+   age ceiling, metadata-first) already owns discovery truth; full-text
+   search over the loss-accounted catalog is a natural bounded leaf under
+   D2 discovery when prioritized — indexes stay rebuildable caches, never
+   authority (episode-195 follow-up's History/Discovery/Memory split).
+7. **`~/.cursor` is now an agent-home, joining `~/.codex` and `~/.claude`.**
+   Names-only survey shows agents/chats/projects/plugins/skills/hooks/mcp
+   state trees. A third provider agent-home strengthens the loss-accounted
+   provider-import direction (CUT-22 #8702 class): Cursor agent history is
+   a future import adapter candidate under the same graph-adapter rules
+   (explicit gaps, no `parentUuid`-style edge misuse, owner-local custody).
+
+No morning-addendum recommendation is weakened; items 3, 4 above upgrade
+two of them from `[public]`-argued to `[bundle]`-backed. Per the standing
+rule, promotion into requirements happens only through the owning gates,
+issues, and contracts.
