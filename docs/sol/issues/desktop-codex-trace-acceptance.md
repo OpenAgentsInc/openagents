@@ -152,7 +152,10 @@ Conversation traversal is also keyboard-complete: `Command+Up/Down` on macOS
 and `Control+Up/Down` elsewhere move through top-level conversations, expand
 the next disclosure batch at its boundary, and load through the existing typed
 selection path. The Electron acceptance journey moves down and back up and
-waits for each selected title to commit; text inputs retain native arrows.
+waits for each selected ref to commit; text inputs retain native arrows. Held
+repeat events are coalesced behind one load, stale page responses are ignored,
+and a 45-row acceptance jump proves the selected sidebar row stays within the
+scroll viewport after crossing a disclosure boundary.
 
 Owner review also removed the redundant top bar entirely: it duplicated stale
 chat-title copy above the authoritative trace heading and permanently consumed

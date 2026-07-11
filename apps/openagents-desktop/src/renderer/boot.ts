@@ -322,26 +322,68 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
         registry.dispatch(resolveIntentRef(IntentRef("DesktopCommandPaletteToggled", StaticPayload(null)))),
       )
     }
+    let historyShortcutSteps=0
+    let historyShortcutRunning=false
+    const settleFrame=():Promise<void>=>new Promise(resolve=>requestAnimationFrame(()=>resolve()))
+    const scrollHistorySelectionIntoView=async(index:number,threadRef:string):Promise<void>=>{
+      for(let attempt=0;attempt<4;attempt++){
+        await settleFrame()
+        const list=root.querySelector<HTMLElement>('[data-en-key="sidebar-history-list"]')
+        if(list===null)return
+        if(list.getAttribute("data-en-virtualized")==="true"){
+          list.scrollTop=Math.max(0,index*28-Math.max(0,list.clientHeight-28)/2)
+          list.dispatchEvent(new Event("scroll",{bubbles:true}))
+          continue
+        }
+        const row=[...root.querySelectorAll<HTMLElement>('[data-en-key^="sidebar-thread-"]')].find(item=>item.getAttribute("data-en-key")===`sidebar-thread-${threadRef}`)
+        const item=row?.closest<HTMLElement>('[data-en-role="item"]')
+        if(row===undefined||item==null)continue
+        list.scrollTop=Math.max(0,item.offsetTop-Math.max(0,list.clientHeight-item.offsetHeight)/2)
+        list.dispatchEvent(new Event("scroll",{bubbles:true}))
+        row.scrollIntoView({block:"nearest",inline:"nearest"})
+        await settleFrame()
+        const rowRect=row.getBoundingClientRect();const listRect=list.getBoundingClientRect()
+        if(rowRect.top>=listRect.top-1&&rowRect.bottom<=listRect.bottom+1)return
+      }
+    }
+    const pumpHistoryConversationShortcut=async():Promise<void>=>{
+      if(historyShortcutRunning)return
+      historyShortcutRunning=true
+      try{
+        while(historyShortcutSteps!==0){
+          await new Promise(resolve=>window.setTimeout(resolve,35))
+          const current=await Effect.runPromise(SubscriptionRef.get(state))
+          if(current.workspace!=="chat"||current.history.catalog.roots.length===0){historyShortcutSteps=0;break}
+          const roots=current.history.catalog.roots
+          const activeRef=current.history.pendingThreadRef??current.history.page?.rootThreadRef
+          const activeIndex=roots.findIndex(item=>item.threadRef===activeRef)
+          const steps=historyShortcutSteps
+          historyShortcutSteps=0
+          const baseIndex=activeIndex<0?(steps>0?-1:1):activeIndex
+          const targetIndex=Math.max(0,Math.min(roots.length-1,baseIndex+steps))
+          if(targetIndex===activeIndex)continue
+          let visible=current.history.visibleRootCount
+          while(targetIndex>=visible){
+            await Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef("HistoryCatalogMoreRequested",StaticPayload(null)))))
+            visible+=historyCatalogPageSize
+          }
+          await scrollHistorySelectionIntoView(targetIndex,roots[targetIndex]!.threadRef)
+          await Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef("HistoryConversationSelected",StaticPayload(roots[targetIndex]!.threadRef)))))
+          await scrollHistorySelectionIntoView(targetIndex,roots[targetIndex]!.threadRef)
+        }
+      }finally{
+        historyShortcutRunning=false
+        if(historyShortcutSteps!==0)void pumpHistoryConversationShortcut()
+      }
+    }
     const onHistoryConversationShortcut = (event: KeyboardEvent): void => {
       const target=event.target
       const editable=target instanceof HTMLElement&&target.closest("input, textarea, [contenteditable='true']")!==null
       const platformModifier=bridge?.platform==="darwin"?event.metaKey&&!event.ctrlKey:event.ctrlKey&&!event.metaKey
       if(event.defaultPrevented||editable||!platformModifier||event.altKey||event.shiftKey||(event.key!=="ArrowUp"&&event.key!=="ArrowDown"))return
       event.preventDefault()
-      const direction=event.key==="ArrowDown"?1:-1
-      void Effect.runPromise(Effect.gen(function*(){
-        const current=yield* SubscriptionRef.get(state)
-        if(current.workspace!=="chat"||current.history.catalog.roots.length===0)return
-        const roots=current.history.catalog.roots
-        const activeRef=current.history.pendingThreadRef??current.history.page?.rootThreadRef
-        const activeIndex=roots.findIndex(item=>item.threadRef===activeRef)
-        const targetIndex=Math.max(0,Math.min(roots.length-1,(activeIndex<0?(direction>0?-1:1):activeIndex)+direction))
-        if(targetIndex===activeIndex)return
-        if(targetIndex>=current.history.visibleRootCount){
-          yield* registry.dispatch(resolveIntentRef(IntentRef("HistoryCatalogMoreRequested",StaticPayload(null))))
-        }
-        yield* registry.dispatch(resolveIntentRef(IntentRef("HistoryConversationSelected",StaticPayload(roots[targetIndex]!.threadRef))))
-      }))
+      historyShortcutSteps+=event.key==="ArrowDown"?1:-1
+      void pumpHistoryConversationShortcut()
     }
     window.addEventListener("keydown", onCommandPaletteShortcut)
     window.addEventListener("keydown", onHistoryConversationShortcut)

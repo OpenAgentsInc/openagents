@@ -52,7 +52,8 @@ export const traceAcceptanceJourney = `(async () => {
   if (!rootButton) return {ok:false,reason:"candidate_not_visible"}
   const selectionStart = performance.now()
   rootButton.click()
-  const workspace = await until(() => document.querySelector('[data-en-key="history-center-title"]')?.textContent === candidate.root.title && document.querySelector('[data-en-key="history-workspace-split"]'))
+  const selectedRef=()=>{try{return JSON.parse(localStorage.getItem('openagents.desktop.history.v1')??'null')?.selectedThreadRef??null}catch{return null}}
+  const workspace = await until(() => selectedRef()===candidate.root.threadRef && document.querySelector('[data-en-key="history-workspace-split"]'))
   if (!workspace) return {ok:false,reason:"workspace_not_ready"}
   const pageReadyMs = Math.round(performance.now() - selectionStart)
   const rootPageResponse = await bridge.runtimeRequest({kind:"query",requestId:"trace-acceptance-root-page",query:{id:"codex.history.page",threadRef:candidate.root.threadRef,offset:0,limit:50}})
@@ -65,11 +66,26 @@ export const traceAcceptanceJourney = `(async () => {
   if(shortcutTarget){
     const modifier=bridge.platform==='darwin'?{metaKey:true}:{ctrlKey:true}
     window.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown',code:'ArrowDown',bubbles:true,cancelable:true,...modifier}))
-    const downLoaded=await until(()=>document.querySelector('[data-en-key="history-center-title"]')?.textContent===shortcutTarget.title)
+    const downLoaded=await until(()=>selectedRef()===shortcutTarget.threadRef)
     if(!downLoaded)return {ok:false,reason:'history_shortcut_down_failed'}
     window.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowUp',code:'ArrowUp',bubbles:true,cancelable:true,...modifier}))
-    const upLoaded=await until(()=>document.querySelector('[data-en-key="history-center-title"]')?.textContent===candidate.root.title)
+    const upLoaded=await until(()=>selectedRef()===candidate.root.threadRef)
     if(!upLoaded)return {ok:false,reason:'history_shortcut_up_failed'}
+  }
+  const heldTargetIndex=Math.min(roots.length-1,candidateIndex+45)
+  const heldTarget=roots[heldTargetIndex]
+  if(heldTargetIndex>candidateIndex){
+    const modifier=bridge.platform==='darwin'?{metaKey:true}:{ctrlKey:true}
+    for(let index=candidateIndex;index<heldTargetIndex;index++)window.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown',code:'ArrowDown',repeat:true,bubbles:true,cancelable:true,...modifier}))
+    const heldLoaded=await until(()=>selectedRef()===heldTarget.threadRef)
+    if(!heldLoaded)return {ok:false,reason:'history_shortcut_hold_failed'}
+    const heldRow=[...document.querySelectorAll('[data-en-key^="sidebar-thread-"]')].find(row=>row.getAttribute('data-en-key')==='sidebar-thread-'+heldTarget.threadRef)
+    const sidebarList=document.querySelector('[data-en-key="sidebar-history-list"]')
+    const rowRect=heldRow?.getBoundingClientRect();const listRect=sidebarList?.getBoundingClientRect()
+    if(!rowRect||!listRect||rowRect.top<listRect.top-1||rowRect.bottom>listRect.bottom+1)return {ok:false,reason:'history_shortcut_offscreen',rowTop:rowRect?.top??0,rowBottom:rowRect?.bottom??0,listTop:listRect?.top??0,listBottom:listRect?.bottom??0,listScrollTop:sidebarList?.scrollTop??0,listScrollHeight:sidebarList?.scrollHeight??0}
+    for(let index=candidateIndex;index<heldTargetIndex;index++)window.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowUp',code:'ArrowUp',repeat:true,bubbles:true,cancelable:true,...modifier}))
+    const heldReturned=await until(()=>selectedRef()===candidate.root.threadRef)
+    if(!heldReturned)return {ok:false,reason:'history_shortcut_hold_return_failed'}
   }
   const treeItems = [...document.querySelectorAll('[role="treeitem"]')]
   const agentList = [...document.querySelectorAll('[aria-label]')].find(node => node.getAttribute('aria-label') === page.agents.length + ' agents')

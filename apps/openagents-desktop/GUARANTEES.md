@@ -301,7 +301,9 @@ Keyboard conversation traversal uses `Command+ArrowUp/ArrowDown` on macOS and
 intent as a row press, loads the target page, and reveals the next 40-row batch
 when traversal crosses the current disclosure boundary. Editable controls keep
 their native arrow behavior. The built-Electron journey proves one down/up
-round trip by waiting for both target titles to commit.
+round trip plus a 45-key held traversal. Repeat events coalesce into the latest
+target behind one in-flight page load, stale responses cannot commit, and the
+sidebar centers/retries the selected row until it is inside the viewport.
 
 The trace workspace has no duplicate application/header bar. The selected
 trace title and state live only in the workspace heading; Commands and Settings
