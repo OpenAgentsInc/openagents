@@ -735,7 +735,12 @@ More specific invariant ledgers apply inside imported apps and packages.
   through one transaction so every changed entity shares one dense scope
   version; its unit and real-Postgres oracles live in
   `packages/khala-sync-server/src/coding-session-projection.test.ts`.
-  Confirmed client reads and Desktop persistence remain pending model boundaries.
+  Confirmed client reads validate entity-id/owner agreement, apply explicit
+  aggregate bounds, and expose no cached catalog until the exact owner scope is
+  live; malformed and cross-owner rows are ignored and the shared resolver
+  revalidates the resulting relationship graph. This is enforced by
+  `packages/khala-sync-client/src/coding-session.test.ts`. Desktop persistence
+  remains a pending model boundary.
 
 - Master Roadmap Revision 31 and
   `docs/sol/2026-07-11-remote-first-portable-coding-sessions-pathway.md`

@@ -139,6 +139,18 @@ export {
 } from "./live-agent-graph-presentation.js"
 
 export {
+  createKhalaSyncCodingCatalog,
+  type ConfirmedCodingCatalogSnapshot,
+  type KhalaSyncCodingCatalog,
+  type KhalaSyncCodingCatalogStatus,
+  MAX_CONFIRMED_CODING_NAVIGATIONS,
+  MAX_CONFIRMED_CODING_PROJECTS,
+  MAX_CONFIRMED_CODING_REPOSITORIES,
+  MAX_CONFIRMED_CODING_SESSIONS,
+  MAX_CONFIRMED_CODING_WORKTREES,
+} from "./coding-session.js"
+
+export {
   buildAppendUserMessageIntent,
   buildInterruptTurnIntent,
   buildStartTurnIntent,
