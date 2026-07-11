@@ -25,6 +25,7 @@ import {
   type LiveFrame,
   LogPage,
   MutationEnvelope,
+  MutationId,
   MutationResult as MutationResultClass,
   MustRefetchFrame,
   MutatorName,
@@ -74,6 +75,9 @@ interface SocketRecord {
   open: boolean
 }
 
+const networkError = (): KhalaSyncTransportError =>
+  new KhalaSyncTransportError("network", true, "fake cross-app network failure")
+
 /** Minimal SPEC §3 server that understands chat.composeTurn for dual clients. */
 class DualClientChatServer {
   readonly logs = new Map<SyncScope, Array<ChangelogEntry>>()
@@ -81,6 +85,8 @@ class DualClientChatServer {
   readonly sockets = new Map<SyncScope, Array<SocketRecord>>()
   readonly clientLast = new Map<string, number>()
   readonly pushCalls: Array<ReadonlyArray<MutationEnvelope>> = []
+  dropNextPushAck = 0
+  offline = false
 
   private logOf(scope: SyncScope): Array<ChangelogEntry> {
     const existing = this.logs.get(scope)
@@ -212,6 +218,7 @@ class DualClientChatServer {
   }
 
   push(mutations: ReadonlyArray<MutationEnvelope>, clientKey: string): PushResponse {
+    if (this.offline) throw networkError()
     this.pushCalls.push([...mutations])
     let last = this.clientLast.get(clientKey) ?? 0
     const results = []
@@ -272,6 +279,10 @@ class DualClientChatServer {
       last = mutation.mutationId
     }
     this.clientLast.set(clientKey, last)
+    if (this.dropNextPushAck > 0) {
+      this.dropNextPushAck -= 1
+      throw networkError()
+    }
     return new PushResponse({
       protocolVersion: 1,
       results,
@@ -464,6 +475,119 @@ describe("cross-app chat.composeTurn over real khala-sync-client sessions", () =
     // Both clients applied both post-images (optimistic + confirmed).
     expect(desktopTurns).toHaveLength(2)
     expect(mobileTurns).toHaveLength(2)
+  })
+
+  test("lost desktop acknowledgement retries the same MutationId and confirms one turn on both clients", async () => {
+    const server = new DualClientChatServer()
+    const desktop = makeClient(server, "c_desktop_lost_ack")
+    const mobile = makeClient(server, "c_mobile_lost_ack")
+
+    await Effect.runPromise(desktop.session.subscribe(threadScope))
+    await Effect.runPromise(mobile.session.subscribe(threadScope))
+    await waitFor(
+      () =>
+        desktop.session.state(threadScope).phase === "live" &&
+        mobile.session.state(threadScope).phase === "live",
+      "both clients live before lost ack",
+    )
+
+    server.dropNextPushAck = 1
+    const mutationId = await Effect.runPromise(
+      desktop.session.mutate(composeTurn, {
+        threadId: "scope.thread.cross-app-proof",
+        text: "lost acknowledgement stays one command",
+        client: "desktop",
+        author: "Desktop",
+        id: "turn-desktop-lost-ack",
+      }),
+    )
+
+    expect(mutationId).toBe(MutationId.make(1))
+    await waitFor(
+      () => server.pushCalls.length >= 2,
+      "same command retried after lost acknowledgement",
+    )
+    await waitFor(
+      () =>
+        desktop.session.pending().length === 0 &&
+        mobile.listTurns().some((turn) => turn.id === "turn-desktop-lost-ack"),
+      "lost acknowledgement reconciled",
+    )
+
+    expect(
+      server.pushCalls
+        .slice(0, 2)
+        .map((call) => call.map((mutation) => mutation.mutationId)),
+    ).toEqual([[MutationId.make(1)], [MutationId.make(1)]])
+    expect(
+      server
+        .logOf(threadScope)
+        .filter((entry) => entry.entityId === "turn-desktop-lost-ack"),
+    ).toHaveLength(1)
+    expect(
+      desktop.listTurns().filter((turn) => turn.id === "turn-desktop-lost-ack"),
+    ).toHaveLength(1)
+    expect(
+      mobile.listTurns().filter((turn) => turn.id === "turn-desktop-lost-ack"),
+    ).toHaveLength(1)
+  })
+
+  test("offline mobile enqueue stays pending until recovery, then confirms on desktop and mobile", async () => {
+    const server = new DualClientChatServer()
+    const desktop = makeClient(server, "c_desktop_offline")
+    const mobile = makeClient(server, "c_mobile_offline")
+
+    await Effect.runPromise(desktop.session.subscribe(threadScope))
+    await Effect.runPromise(mobile.session.subscribe(threadScope))
+    await waitFor(
+      () =>
+        desktop.session.state(threadScope).phase === "live" &&
+        mobile.session.state(threadScope).phase === "live",
+      "both clients live before offline enqueue",
+    )
+
+    server.offline = true
+    await Effect.runPromise(
+      mobile.session.mutate(composeTurn, {
+        threadId: "scope.thread.cross-app-proof",
+        text: "queued while mobile is offline",
+        client: "mobile",
+        author: "Mobile",
+        id: "turn-mobile-offline",
+      }),
+    )
+    await tick()
+    await tick()
+
+    expect(mobile.session.pending().map((mutation) => mutation.mutationId)).toEqual([
+      MutationId.make(1),
+    ])
+    expect(mobile.listTurns().some((turn) => turn.id === "turn-mobile-offline")).toBe(true)
+    expect(desktop.listTurns().some((turn) => turn.id === "turn-mobile-offline")).toBe(false)
+    expect(server.pushCalls).toEqual([])
+
+    server.offline = false
+    await waitFor(
+      () =>
+        mobile.session.pending().length === 0 &&
+        desktop.listTurns().some((turn) => turn.id === "turn-mobile-offline"),
+      "offline mobile turn confirmed on desktop after recovery",
+    )
+
+    expect(server.pushCalls.map((call) => call.map((mutation) => mutation.mutationId))).toEqual([
+      [MutationId.make(1)],
+    ])
+    expect(
+      server
+        .logOf(threadScope)
+        .filter((entry) => entry.entityId === "turn-mobile-offline"),
+    ).toHaveLength(1)
+    expect(
+      mobile.listTurns().filter((turn) => turn.id === "turn-mobile-offline"),
+    ).toHaveLength(1)
+    expect(
+      desktop.listTurns().filter((turn) => turn.id === "turn-mobile-offline"),
+    ).toHaveLength(1)
   })
 
   test("both clients converge on a fleet projection tombstone and preserve its cursor after restart", async () => {
