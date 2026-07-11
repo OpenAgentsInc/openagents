@@ -5,6 +5,7 @@ import {
   Icon,
   IntentRef,
   List,
+  SplitPane,
   Stack,
   UnknownIntentError,
   iconNames,
@@ -20,6 +21,10 @@ const nextTask = Effect.promise<void>(
 )
 
 describe("DOM renderer host boundaries", () => {
+  test("split panes establish a bounded flex viewport for scrolling children", async () => {
+    const window=new Window({url:"http://localhost/"});const document=window.document as unknown as Document;const root=document.createElement("div");document.body.appendChild(root)
+    await Effect.runPromise(Effect.scoped(Effect.gen(function*(){yield* makeDomRenderer({document}).mount(root,Stream.succeed(SplitPane({key:"split",orientation:"row",panes:[{id:"center",content:Stack({key:"center",direction:"column",style:{flex:1,minHeight:0}},[])}]})),()=>Effect.succeed(undefined));const pane=root.querySelector<HTMLElement>('[data-en-pane="center"]')!;const content=root.querySelector<HTMLElement>('[data-en-key="center"]')!;expect(pane.style.display).toBe("flex");expect(pane.style.minHeight).toBe("0");expect(content.style.flex).not.toBe("") })))
+  })
   test("lowers the closed semantic tree accessibility contract", async () => {
     const window = new Window({ url: "http://localhost/" }); const document = window.document as unknown as Document; const root = document.createElement("div"); document.body.appendChild(root)
     await Effect.runPromise(Effect.scoped(Effect.gen(function*(){ yield* makeDomRenderer({document}).mount(root,Stream.succeed(List({key:"agents",virtualize:false,a11y:{role:"tree",label:"Agents"}},[Button({key:"agent-child",label:"Worker · Running",variant:"ghost",onPress:IntentRef("SelectAgent"),a11y:{role:"treeitem",selected:true,expanded:false,level:2,positionInSet:1,setSize:2,tabIndex:0}}) as any])),()=>Effect.succeed(undefined)); const tree=root.querySelector('[data-en-key="agents"]'); const item=root.querySelector('[data-en-key="agent-child"]'); expect(tree?.getAttribute("role")).toBe("tree"); expect(item?.getAttribute("role")).toBe("treeitem"); expect(item?.getAttribute("aria-level")).toBe("2"); expect(item?.getAttribute("aria-posinset")).toBe("1"); expect(item?.getAttribute("aria-setsize")).toBe("2"); expect(item?.getAttribute("aria-selected")).toBe("true") })))

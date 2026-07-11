@@ -52,10 +52,10 @@ export const traceAcceptanceJourney = `(async () => {
   if (!rootButton) return {ok:false,reason:"candidate_not_visible"}
   const selectionStart = performance.now()
   rootButton.click()
-  const workspace = await until(() => document.querySelector('[data-en-key="history-workspace-split"]'))
+  const workspace = await until(() => document.querySelector('[data-en-key="history-center-title"]')?.textContent === candidate.root.title && document.querySelector('[data-en-key="history-workspace-split"]'))
   if (!workspace) return {ok:false,reason:"workspace_not_ready"}
   const pageReadyMs = Math.round(performance.now() - selectionStart)
-  const rootPageResponse = await bridge.runtimeRequest({kind:"query",requestId:"trace-acceptance-root-page",query:{id:"codex.history.page",threadRef:candidate.root.threadRef,offset:0,limit:200}})
+  const rootPageResponse = await bridge.runtimeRequest({kind:"query",requestId:"trace-acceptance-root-page",query:{id:"codex.history.page",threadRef:candidate.root.threadRef,offset:0,limit:50}})
   if (rootPageResponse?.kind !== "codex_history_page") return {ok:false,reason:"root_page_unavailable"}
   const page = rootPageResponse.page
   const completeness = page.completeness
@@ -72,12 +72,13 @@ export const traceAcceptanceJourney = `(async () => {
 
   let toolPage = null
   for (const agent of page.agents) {
-    const response = await bridge.runtimeRequest({kind:"query",requestId:"trace-acceptance-tool-page",query:{id:"codex.history.page",threadRef:agent.threadRef,offset:0,limit:200}})
+    const response = await bridge.runtimeRequest({kind:"query",requestId:"trace-acceptance-tool-page",query:{id:"codex.history.page",threadRef:agent.threadRef,offset:0,limit:50}})
     if (response?.kind === "codex_history_page" && response.page.items.some(item => item.kind === "tool_call" || item.kind === "tool_result")) { toolPage=response.page; break }
   }
   if (!toolPage) return {ok:false,reason:"tool_trace_missing"}
   const agentButton = [...document.querySelectorAll('[data-en-key^="history-agent-"]')].find(row => row.getAttribute('data-en-key') === 'history-agent-' + toolPage.selectedThreadRef)
   agentButton?.click()
+  await until(() => document.querySelector('[data-en-key="history-center-title"]')?.textContent === toolPage.agents.find(agent => agent.threadRef === toolPage.selectedThreadRef)?.title)
   const toolRef = toolPage.items.find(item => item.kind === 'tool_call' || item.kind === 'tool_result').itemRef
   const toolButton = await until(() => [...document.querySelectorAll('[data-en-key^="history-item-"]')].find(row => row.getAttribute('data-en-key') === 'history-item-' + toolRef))
   if (!toolButton) return {ok:false,reason:"tool_row_inaccessible"}
@@ -86,10 +87,17 @@ export const traceAcceptanceJourney = `(async () => {
   const inspector = await until(() => document.querySelector('[data-en-key="history-item-inspector"]'))
   const inspectorReadyMs = Math.round(performance.now() - inspectorStart)
   if (!inspector || !document.querySelector('[data-en-key="history-item-back"]')) return {ok:false,reason:"inspector_inaccessible"}
+  const timeline = document.querySelector('[data-en-key="history-timeline-page"]')
+  if (!timeline || timeline.clientHeight < 100 || timeline.scrollHeight <= timeline.clientHeight) return {ok:false,reason:"timeline_not_scrollable",clientHeight:timeline?.clientHeight??0,scrollHeight:timeline?.scrollHeight??0}
+  const beforeScroll = timeline.scrollTop
+  timeline.scrollTop = Math.min(240, timeline.scrollHeight - timeline.clientHeight)
+  timeline.dispatchEvent(new Event('scroll',{bubbles:true}))
+  await wait(50)
+  if (timeline.scrollTop <= beforeScroll) return {ok:false,reason:"timeline_scroll_stuck",clientHeight:timeline.clientHeight,scrollHeight:timeline.scrollHeight}
   const saved = JSON.parse(localStorage.getItem('openagents.desktop.history.v1') ?? 'null')
   if (!saved || typeof saved.selectedThreadRef !== 'string' || typeof saved.selectedItemRef !== 'string' || !Array.isArray(saved.expandedThreadRefs)) return {ok:false,reason:"ref_restore_missing"}
   sessionStorage.setItem('openagents.desktop.trace-acceptance.expected', JSON.stringify({selectedThreadRef:saved.selectedThreadRef,selectedItemRef:saved.selectedItemRef,expandedThreadRefs:saved.expandedThreadRefs}))
-  return {ok:true,shellReadyMs,catalogReadyMs,pageReadyMs,inspectorReadyMs,rootCount:roots.length,agentCount:page.agents.length,childCount:candidate.children.length,grandchildCount:candidate.grandchild?1:0,toolItemCount:toolPage.items.filter(item=>item.kind==='tool_call'||item.kind==='tool_result').length,gapCount:completeness.gaps}
+  return {ok:true,shellReadyMs,catalogReadyMs,pageReadyMs,inspectorReadyMs,rootCount:roots.length,agentCount:page.agents.length,childCount:candidate.children.length,grandchildCount:candidate.grandchild?1:0,toolItemCount:toolPage.items.filter(item=>item.kind==='tool_call'||item.kind==='tool_result').length,gapCount:completeness.gaps,timelineClientHeight:timeline.clientHeight,timelineScrollHeight:timeline.scrollHeight}
 })()`
 
 export const traceAcceptanceReload = `(async () => {

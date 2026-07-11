@@ -483,19 +483,19 @@ export const makeDesktopShellHandlers = (
   }),
   HistoryConversationSelected: (id) => Effect.gen(function* () {
     yield* SubscriptionRef.update(state,current=>({...current,history:{...current.history,pendingThreadRef:id}}))
-    const page = yield* Effect.promise(() => historyHost.page(id, 0, 200))
+    const page = yield* Effect.promise(() => historyHost.page(id, 0, 50))
     if (page) { yield* SubscriptionRef.update(state, (current): DesktopShellState => { const expandedThreadRefs=page.agents.filter(agent=>agent.descendantCount>0).map(agent=>agent.threadRef); const history={ ...current.history, page, selectedItemRef: null, expandedThreadRefs, pendingThreadRef:null }; historyHost.save?.({rootThreadRef:page.rootThreadRef,selectedThreadRef:page.selectedThreadRef,offset:page.offset,selectedItemRef:null,railCollapsed:history.railCollapsed,anchorItemRef:page.items[0]?.itemRef??null,expandedThreadRefs}); return { ...current, workspace: "chat", history } }) }
     else yield* SubscriptionRef.update(state,current=>({...current,history:{...current.history,pendingThreadRef:null}}))
   }),
   HistoryAgentSelected: (id) => Effect.gen(function* () {
-    const page = yield* Effect.promise(() => historyHost.page(id, 0, 200))
+    const page = yield* Effect.promise(() => historyHost.page(id, 0, 50))
     if (page) { yield* SubscriptionRef.update(state, current => { const history={ ...current.history, page, selectedItemRef: null }; historyHost.save?.({rootThreadRef:page.rootThreadRef,selectedThreadRef:page.selectedThreadRef,offset:page.offset,selectedItemRef:null,railCollapsed:history.railCollapsed,anchorItemRef:page.items[0]?.itemRef??null,expandedThreadRefs:history.expandedThreadRefs}); return { ...current, history } }) }
   }),
   HistoryItemSelected: (id) => SubscriptionRef.update(state, current => { const selectedItemRef=id===""?null:id; const page=current.history.page;if(page)historyHost.save?.({rootThreadRef:page.rootThreadRef,selectedThreadRef:page.selectedThreadRef,offset:page.offset,selectedItemRef,railCollapsed:current.history.railCollapsed,anchorItemRef:page.items[0]?.itemRef??null,expandedThreadRefs:current.history.expandedThreadRefs});return { ...current, history: { ...current.history, selectedItemRef } } }),
   HistoryPageRequested: (offset) => Effect.gen(function* () {
     const selected = (yield* SubscriptionRef.get(state)).history.page?.selectedThreadRef
     if (!selected) return
-    const page = yield* Effect.promise(() => historyHost.page(selected, offset, 200))
+    const page = yield* Effect.promise(() => historyHost.page(selected, offset, 50))
     if (page) { yield* SubscriptionRef.update(state, current => { const history={ ...current.history, page, selectedItemRef: null }; historyHost.save?.({rootThreadRef:page.rootThreadRef,selectedThreadRef:page.selectedThreadRef,offset:page.offset,selectedItemRef:null,railCollapsed:history.railCollapsed,anchorItemRef:page.items[0]?.itemRef??null,expandedThreadRefs:history.expandedThreadRefs}); return { ...current, history } }) }
   }),
   HistoryInspectorToggled: () => SubscriptionRef.update(state, current => { const railCollapsed=!current.history.railCollapsed;const page=current.history.page;if(page)historyHost.save?.({rootThreadRef:page.rootThreadRef,selectedThreadRef:page.selectedThreadRef,offset:page.offset,selectedItemRef:current.history.selectedItemRef,railCollapsed,anchorItemRef:page.items[0]?.itemRef??null,expandedThreadRefs:current.history.expandedThreadRefs});return { ...current, history: { ...current.history, railCollapsed } } }),

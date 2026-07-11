@@ -128,3 +128,13 @@ worker's metadata graph and projecting only the requested page reduced the
 same trace's direct cold page time from about 1,406 ms to 182 ms; built
 Electron measured 96–97 ms warm without changing the complete
 `source = rendered + redactions + gaps` accounting.
+
+A second owner review proved that the apparent center scroll region still had
+`clientHeight = 0` while 3,061px of rows overflowed it. The defect was the
+shared DOM SplitPane wrapper: it was not a flex formatting context, so its
+child's `flex: 1` had no definite viewport. The shared renderer now gives pane
+content a bounded flex viewport; the real-Electron oracle rejects a center
+viewport below 100px and proves `scrollTop` changes. The accepted run measured
+546px client height over 3,061px scroll height. Trace pages now render 50
+compact, variable-height previews (full bounded detail remains in the
+inspector), and the same nested selection committed in 89–91ms.

@@ -21,9 +21,10 @@ export const HistoryAgentExpandedToggled = defineIntent("HistoryAgentExpandedTog
 export const historyWorkspaceIntents = [HistoryConversationSelected, HistoryAgentSelected, HistoryItemSelected, HistoryPageRequested, HistoryInspectorToggled, HistoryAgentExpandedToggled] as const
 
 const statusLabel = (status: string): string => status.slice(0,1).toUpperCase() + status.slice(1)
+const timelinePreview = (value: string): string => value.length <= 360 ? value : `${value.slice(0,357)}…`
 const itemRow = (item: CodexHistoryItem, selected: boolean): KeyedView => Button({
   key: `history-item-${item.itemRef}`,
-  label: `${item.label} — ${item.summary || "No display text"}`,
+  label: `${item.label} — ${timelinePreview(item.summary || "No display text")}`,
   variant: "ghost",
   onPress: IntentRef("HistoryItemSelected", StaticPayload(item.itemRef)),
   a11y: { label: `${item.label}. ${item.summary}. Source item ${item.sequence + 1}`, selected },
@@ -75,7 +76,7 @@ export const historyWorkspaceView = (state: HistoryWorkspaceState): View => {
   const center = Stack({ key: "history-center", direction: "column", gap: "2", style: { flex: 1, minWidth: 0, minHeight: 0 } }, [
     Stack({ key: "history-center-heading", direction: "row", gap: "2", align: "center" }, [Text({ key: "history-center-title", content: selected?.title ?? "Codex history", variant: "heading", color: "textPrimary" }), Badge({ key: "history-center-status", label: statusLabel(selected?.status ?? "unknown"), tone: selected?.status === "errored" ? "danger" : "neutral" }), Button({key:"history-agents-drawer",label:`Agents · ${page.agents.length}`,variant:"secondary",onPress:IntentRef("HistoryInspectorToggled"),a11y:{label:`${state.railCollapsed?"Open":"Close"} agents inspector, ${page.agents.length} agents`,expanded:!state.railCollapsed}})]),
     StatusBanner({ key: "history-completeness", tone: page.completeness.gaps === 0 ? "success" : "warn", message: `${page.completeness.source} source = ${page.completeness.rendered} rendered + ${page.completeness.redactions} redactions + ${page.completeness.gaps} gaps` }),
-    List({ key: "history-timeline-page", virtualize: page.items.length > 30, estimatedItemSize: 56, style: { flex: 1, minHeight: 0, minWidth: 0 }, a11y: { role: "list", label: `History items ${page.offset + 1} through ${Math.min(page.totalItems, page.offset + page.items.length)} of ${page.totalItems}` } }, page.items.map(item => itemRow(item, item.itemRef === state.selectedItemRef))),
+    List({ key: "history-timeline-page", virtualize: false, style: { flex: 1, minHeight: 0, minWidth: 0 }, a11y: { role: "list", label: `History items ${page.offset + 1} through ${Math.min(page.totalItems, page.offset + page.items.length)} of ${page.totalItems}` } }, page.items.map(item => itemRow(item, item.itemRef === state.selectedItemRef))),
     Stack({ key: "history-page-controls", direction: "row", gap: "2", align: "center" }, [Button({ key: "history-page-previous", label: "Previous", variant: "secondary", disabled: !page.hasPrevious, onPress: IntentRef("HistoryPageRequested", StaticPayload(Math.max(0,page.offset-page.limit))), a11y: { label: "Previous history page" } }), Text({ key: "history-page-range", content: `${page.offset + 1}–${Math.min(page.totalItems,page.offset+page.items.length)} of ${page.totalItems}`, variant: "caption", color: "textMuted" }), Button({ key: "history-page-next", label: "Next", variant: "secondary", disabled: !page.hasNext, onPress: IntentRef("HistoryPageRequested", StaticPayload(page.offset+page.limit)), a11y: { label: "Next history page" } })]),
   ])
   return SplitPane({ key: "history-workspace-split", orientation: "row", style: { flex: 1, minWidth: 0, minHeight: 0 }, onCollapseToggle: IntentRef("HistoryInspectorToggled"), panes: [{ id: "history-center", min: 360, content: center }, { id: "history-inspector", min: 280, max: 480, size: 336, collapsed: state.railCollapsed, content: inspector(state) }] })

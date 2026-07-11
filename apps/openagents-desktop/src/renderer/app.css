@@ -85,7 +85,7 @@ textarea:focus-visible {
 [data-en-key="shell-sidebar"] {
   flex: 0 0 232px;
   min-width: 0;
-  padding: 16px 10px 12px;
+  padding: 16px 6px 12px;
   border: 1px solid var(--oa-line);
   border-radius: 0;
   overflow: hidden;
@@ -183,6 +183,11 @@ textarea:focus-visible {
   font-size: 13px;
   font-weight: 520;
   text-align: left !important;
+  min-width: 0;
+  width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 [data-en-key^="sidebar-action-thread-"]:has([aria-selected="true"]) {
@@ -192,7 +197,7 @@ textarea:focus-visible {
 }
 
 [data-en-key^="sidebar-action-thread-"]:has([aria-selected="true"]) [data-en-tag="Button"] {
-  padding-left: 8px !important;
+  padding-left: 4px !important;
 }
 
 [data-en-key="sidebar-history-list"],
@@ -202,6 +207,15 @@ textarea:focus-visible {
   overflow-x: hidden !important;
   overflow-y: auto !important;
   scrollbar-gutter: stable;
+  margin: 0;
+  padding: 0;
+}
+
+[data-en-key="sidebar-history-list"] > [data-en-role="item"],
+[data-en-key="sidebar-chat-list"] > [data-en-role="item"] {
+  min-width: 0;
+  width: 100%;
+  overflow: hidden;
 }
 
 [data-en-key^="sidebar-thread-time-"][data-en-tag="Text"] {
@@ -254,9 +268,14 @@ textarea:focus-visible {
 }
 
 [data-en-key="history-timeline-page"] {
+  flex: 1 1 0 !important;
+  height: 0 !important;
+  min-height: 0 !important;
   overflow-x: hidden !important;
   overflow-y: auto !important;
   overscroll-behavior: contain;
+  margin: 0;
+  padding: 0;
 }
 
 [data-en-key^="history-item-"][data-en-tag="Button"] {

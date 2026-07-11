@@ -280,6 +280,15 @@ loss equation with a lightweight pass. On the owner-local 131-agent,
 29,262-item trace this reduced cold selected-page projection from about
 1,406 ms to 182 ms; the built-Electron warm journey measured 96–97 ms.
 
+Variable-height trace rows are not forced through fixed-height virtualization.
+Each page is capped at 50 rows, timeline labels are compact 360-character
+previews, and the inspector retains the complete bounded item. The shared DOM
+SplitPane lowering establishes a real flex viewport for every pane; the
+Electron gate requires the center timeline to have at least a 100px client
+viewport, overflow content, and a successful `scrollTop` change. On the
+owner-local 131-agent trace the measured viewport is 546px over 3,061px of
+content, and committed selected-page readiness is 89–91ms.
+
 ### Large-thread first-content performance
 
 After a thread is selected, the local bounded first-content projection must

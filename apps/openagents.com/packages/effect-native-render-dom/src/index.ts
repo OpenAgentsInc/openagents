@@ -1995,6 +1995,13 @@ const renderSplitPane = (view: SplitPaneView, state: DomRendererState, report: I
     const paneEl = element.ownerDocument.createElement("div")
     paneEl.setAttribute("data-en-pane", pane.id)
     paneEl.setAttribute("data-en-collapsed", pane.collapsed === true ? "true" : "false")
+    // A pane owns the cross-axis viewport for its content. Without a flex
+    // formatting context, a child Stack({ flex: 1, minHeight: 0 }) receives no
+    // definite height and scroll regions collapse to 0px while their rows
+    // overflow visibly outside them.
+    paneEl.style.display = "flex"
+    paneEl.style.minWidth = "0"
+    paneEl.style.minHeight = "0"
     if (pane.collapsed === true) {
       paneEl.style.flex = "0 0 0"
       paneEl.style.overflow = "hidden"
@@ -2005,7 +2012,11 @@ const renderSplitPane = (view: SplitPaneView, state: DomRendererState, report: I
       paneEl.style.flex = "0 0 auto"
       paneEl.style[axis.sizeField] = dimensionValue(pane.size)
     }
-    paneEl.appendChild(renderView(pane.content, state, report))
+    const content = renderView(pane.content, state, report)
+    content.style.flex = content.style.flex || "1 1 auto"
+    content.style.minWidth = content.style.minWidth || "0"
+    content.style.minHeight = content.style.minHeight || "0"
+    paneEl.appendChild(content)
     children.push(paneEl)
 
     if (index < view.panes.length - 1) {
