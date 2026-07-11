@@ -89,6 +89,20 @@ export type DesktopWorkspaceName = (typeof desktopWorkspaceNames)[number]
 export const desktopHarnessNames = ["fable", "codex"] as const
 export type DesktopHarnessName = (typeof desktopHarnessNames)[number]
 
+/**
+ * Evidence-gated composer affordances (#8712): a harness chip is enabled only
+ * when its lane can actually run a turn. `reason` is the visible caption when
+ * it cannot. A control that cannot act must not accept the action.
+ */
+export type HarnessLaneAvailability = Readonly<{
+  available: boolean
+  reason: string | null
+}>
+export type HarnessLanes = Readonly<{
+  fable: HarnessLaneAvailability
+  codex: HarnessLaneAvailability
+}>
+
 export type DesktopShellState = Readonly<{
   /** Host identity decoded from the preload bridge ("electron/darwin" etc.). */
   host: string
@@ -98,6 +112,8 @@ export type DesktopShellState = Readonly<{
   notes: ReadonlyArray<DesktopNoteEntry>
   /** Which coding harness new turns target; "codex" preserves prior behavior. */
   selectedHarness: DesktopHarnessName
+  /** Probed lane availability; boot replaces this with real evidence pre-mount. */
+  harnessLanes: HarnessLanes
   threads: ReadonlyArray<DesktopThread>
   activeThreadId: string | null
   workspace: DesktopWorkspaceName
@@ -152,6 +168,12 @@ export const initialDesktopShellState = (
   pending: false,
   notes: [],
   selectedHarness: "codex",
+  // Unproven until boot's availability probe lands (before first mount):
+  // an unproven lane is disabled, not optimistically enabled.
+  harnessLanes: {
+    fable: { available: false, reason: "Fable — checking local availability" },
+    codex: { available: false, reason: "Codex — checking availability" },
+  },
   threads: [],
   activeThreadId: null,
   workspace: "chat",
@@ -375,6 +397,22 @@ export const withNote = (
   }
 }
 
+/**
+ * Applies probed lane evidence. If the currently selected lane just became
+ * unavailable while the other lane can act, selection moves to the available
+ * lane — the composer must never park the user on a dead default.
+ */
+export const withHarnessLanes = (
+  state: DesktopShellState,
+  harnessLanes: HarnessLanes,
+): DesktopShellState => {
+  const selected = state.selectedHarness
+  const other: DesktopHarnessName = selected === "fable" ? "codex" : "fable"
+  const selectedHarness =
+    !harnessLanes[selected].available && harnessLanes[other].available ? other : selected
+  return { ...state, harnessLanes, selectedHarness }
+}
+
 export type ChatHost = Readonly<{
   listThreads: () => Promise<ReadonlyArray<DesktopThread>>
   newThread: () => Promise<DesktopThread | null>
@@ -504,6 +542,10 @@ export const makeDesktopShellHandlers = (
     Effect.gen(function* () {
       const current = yield* SubscriptionRef.get(state)
       if (current.pending || current.activeThreadId === null) return
+      // Evidence-gated send (#8712): an unavailable selected lane must not
+      // accept the action — the composer keeps the draft and the caption
+      // already names the reason. Never substitute another lane silently.
+      if (!current.harnessLanes[current.selectedHarness].available) return
       const message =
         typeof value === "string" && value.trim() !== "" ? value : current.input
       yield* SubscriptionRef.set(state, withNote(current, message, now()))
@@ -987,6 +1029,15 @@ const fleetDesk = (state: DesktopShellState): View => {
  * field at submit time (effect-native#72) and `pending` disables it while a
  * submission is in flight.
  */
+/** Visible caption naming every lane that cannot act right now. */
+export const harnessLaneCaption = (lanes: HarnessLanes): string | null => {
+  const captions = [
+    ...(lanes.fable.available ? [] : [lanes.fable.reason ?? "Fable — unavailable"]),
+    ...(lanes.codex.available ? [] : [lanes.codex.reason ?? "Codex — unavailable"]),
+  ]
+  return captions.length === 0 ? null : captions.join(" · ")
+}
+
 const shellComposer = (state: DesktopShellState): View =>
   Card(
     {
@@ -1017,20 +1068,34 @@ const shellComposer = (state: DesktopShellState): View =>
             key: "shell-harness-fable",
             label: "Fable",
             variant: state.selectedHarness === "fable" ? "secondary" : "ghost",
-            disabled: state.pending,
+            disabled: state.pending || !state.harnessLanes.fable.available,
             onPress: IntentRef("DesktopHarnessSelected", StaticPayload("fable")),
-            a11y: { label: state.selectedHarness === "fable" ? "Fable harness selected" : "Target new turns at Fable" },
+            a11y: {
+              label: !state.harnessLanes.fable.available
+                ? state.harnessLanes.fable.reason ?? "Fable — unavailable"
+                : state.selectedHarness === "fable" ? "Fable harness selected" : "Target new turns at Fable",
+            },
           }),
           Button({
             key: "shell-harness-codex",
             label: "Codex",
             variant: state.selectedHarness === "codex" ? "secondary" : "ghost",
-            disabled: state.pending,
+            disabled: state.pending || !state.harnessLanes.codex.available,
             onPress: IntentRef("DesktopHarnessSelected", StaticPayload("codex")),
-            a11y: { label: state.selectedHarness === "codex" ? "Codex harness selected" : "Target new turns at Codex" },
+            a11y: {
+              label: !state.harnessLanes.codex.available
+                ? state.harnessLanes.codex.reason ?? "Codex — unavailable"
+                : state.selectedHarness === "codex" ? "Codex harness selected" : "Target new turns at Codex",
+            },
           }),
         ],
       ),
+      ...(harnessLaneCaption(state.harnessLanes) === null ? [] : [Text({
+        key: "shell-harness-caption",
+        content: harnessLaneCaption(state.harnessLanes)!,
+        variant: "caption",
+        color: "textMuted",
+      })]),
       Stack(
         {
           key: "shell-composer-row",
@@ -1056,9 +1121,13 @@ const shellComposer = (state: DesktopShellState): View =>
             key: "shell-note",
             label: "Send",
             variant: "primary",
-            disabled: state.pending,
+            disabled: state.pending || !state.harnessLanes[state.selectedHarness].available,
             onPress: IntentRef("DesktopNoteSubmitted"),
-            a11y: { label: "Send the typed message" },
+            a11y: {
+              label: state.harnessLanes[state.selectedHarness].available
+                ? "Send the typed message"
+                : state.harnessLanes[state.selectedHarness].reason ?? "Send unavailable: selected lane cannot act",
+            },
           }),
         ],
       ),

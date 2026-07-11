@@ -28,7 +28,11 @@ export const buildDesktop = async (): Promise<string> => {
       outdir: dist,
       target: "node",
       format: "esm",
-      external: ["electron"],
+      // The Claude Agent SDK must stay external: it resolves its bundled
+      // native `claude` executable relative to its own installed package
+      // (require.resolve from sdk.mjs) and is lazy-imported only when the
+      // Fable local lane actually runs a turn (#8712).
+      external: ["electron", "@anthropic-ai/claude-agent-sdk"],
     }),
   )
 

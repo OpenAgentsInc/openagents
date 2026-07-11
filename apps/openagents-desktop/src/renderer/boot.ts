@@ -38,7 +38,17 @@ import {
 } from "./shell.ts"
 import { restorableHistoryThreadRef } from "./history-restore.ts"
 import { openagentsDesktopTheme } from "./theme.ts"
-import { selectDesktopChatHost } from "./runtime-conversation.ts"
+import { selectDesktopChatHostSelection } from "./runtime-conversation.ts"
+import {
+  makeLocalHarnessChatHost,
+  type FableLocalRendererBridge,
+} from "./local-harness.ts"
+import { withHarnessLanes, type HarnessLanes } from "./shell.ts"
+import {
+  decodeFableLocalAvailability,
+  type FableLocalAvailability,
+  type FableLocalEventEnvelope,
+} from "../fable-local-contract.ts"
 import { type DesktopThread } from "../chat-contract.ts"
 import {
   type DesktopWorkspaceFile,
@@ -84,6 +94,12 @@ type DesktopBridge = Readonly<{
   providerAccounts?: Readonly<{
     list?: () => Promise<unknown>
     usage?: (ref: string) => Promise<unknown>
+  }>
+  fableLocal?: Readonly<{
+    availability?: () => Promise<unknown>
+    start?: (value: unknown) => Promise<unknown>
+    interrupt?: (value: unknown) => Promise<unknown>
+    onEvent?: (listener: (envelope: FableLocalEventEnvelope) => void) => () => void
   }>
 }>
 
@@ -222,10 +238,53 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
         return { ok: false, error: "Desktop chat returned an invalid response." }
       },
     }
-    const chat = yield* Effect.promise(() => selectDesktopChatHost({
+    // Fable local lane (#8712): narrow bridge over the preload surface. The
+    // local-mode chat host routes "fable" through it and refuses "codex"
+    // explicitly — never the legacy cloud gateway (no silent substitution).
+    const fableLocalBridge: FableLocalRendererBridge | null =
+      typeof bridge?.fableLocal?.start === "function" &&
+      typeof bridge.fableLocal.availability === "function" &&
+      typeof bridge.fableLocal.interrupt === "function" &&
+      typeof bridge.fableLocal.onEvent === "function"
+        ? {
+            availability: bridge.fableLocal.availability,
+            start: bridge.fableLocal.start,
+            interrupt: bridge.fableLocal.interrupt,
+            onEvent: bridge.fableLocal.onEvent as (
+              listener: (envelope: FableLocalEventEnvelope) => void,
+            ) => () => void,
+          }
+        : null
+    let fableAvailability: FableLocalAvailability | null = null
+    const localHarnessChat = makeLocalHarnessChatHost({
+      base: localChat,
+      fable: fableLocalBridge,
+      fableAvailability: () => fableAvailability,
+    })
+    const selection = yield* Effect.promise(() => selectDesktopChatHostSelection({
       request: bridge?.runtimeRequest,
-      local: localChat,
+      local: localHarnessChat,
     }))
+    const chat = selection.host
+    // Evidence-gated composer lanes (#8712), resolved BEFORE first mount so
+    // the chips never flash an unproven state.
+    if (fableLocalBridge !== null && selection.mode === "local") {
+      const rawAvailability = yield* Effect.promise(() =>
+        fableLocalBridge.availability().catch(() => null))
+      fableAvailability = decodeFableLocalAvailability(rawAvailability)
+    }
+    const harnessLanes: HarnessLanes = selection.mode === "runtime"
+      ? {
+          fable: { available: true, reason: null },
+          codex: { available: true, reason: null },
+        }
+      : {
+          fable: fableAvailability?.state === "available"
+            ? { available: true, reason: null }
+            : { available: false, reason: "Fable — unavailable: no linked Claude account" },
+          codex: { available: false, reason: "Codex — requires OpenAgents session" },
+        }
+    yield* SubscriptionRef.update(state, current => withHarnessLanes(current, harnessLanes))
     let historyRequestSequence = 0
     const restoreHistory = (): { selectedThreadRef:string;offset:number;selectedItemRef:string|null;railCollapsed:boolean;expandedThreadRefs:ReadonlyArray<string> } | null => { try { const value=JSON.parse(localStorage.getItem("openagents.desktop.history.v1")??"null");return value&&typeof value.selectedThreadRef==="string"&&Number.isInteger(value.offset)&&value.offset>=0&&value.offset<=1_000_000&&typeof value.railCollapsed==="boolean"&&(value.selectedItemRef===null||typeof value.selectedItemRef==="string")&&Array.isArray(value.expandedThreadRefs)&&value.expandedThreadRefs.every((ref:unknown)=>typeof ref==="string")?value:null } catch{return null} }
     const historyHost = {

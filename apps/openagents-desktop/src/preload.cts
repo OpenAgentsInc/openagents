@@ -51,6 +51,16 @@ import {
   invalidDesktopRuntimeGatewayResponse,
   type DesktopRuntimeGatewayEvent,
 } from "./runtime-gateway-contract.ts"
+import {
+  FableLocalAvailabilityChannel,
+  FableLocalEventChannel,
+  FableLocalInterruptChannel,
+  FableLocalStartChannel,
+  decodeFableLocalEventEnvelope,
+  decodeFableLocalInterruptRequest,
+  decodeFableLocalStartRequest,
+  type FableLocalEventEnvelope,
+} from "./fable-local-contract.ts"
 
 contextBridge.exposeInMainWorld("openagentsDesktop", {
   host: "electron",
@@ -130,6 +140,32 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
       return request === null
         ? Promise.resolve(unavailableProviderAccountUsageResult("unknown", "invalid_request"))
         : ipcRenderer.invoke(ProviderAccountsUsageChannel, request)
+    },
+  },
+  /**
+   * Fable local lane (#8712): schema-checked on both sides of the boundary.
+   * The renderer never sees tokens, account homes, or raw SDK payloads —
+   * only bounded, redacted typed events and the typed availability/result.
+   */
+  fableLocal: {
+    availability: () => ipcRenderer.invoke(FableLocalAvailabilityChannel),
+    start: (value: unknown) => {
+      const request = decodeFableLocalStartRequest(value)
+      return request === null
+        ? Promise.resolve({ ok: false, error: "That message could not be sent." })
+        : ipcRenderer.invoke(FableLocalStartChannel, request)
+    },
+    interrupt: (value: unknown) => {
+      const request = decodeFableLocalInterruptRequest(value)
+      return request === null ? Promise.resolve(false) : ipcRenderer.invoke(FableLocalInterruptChannel, request)
+    },
+    onEvent: (listener: (envelope: FableLocalEventEnvelope) => void) => {
+      const handler = (_event: unknown, value: unknown): void => {
+        const decoded = decodeFableLocalEventEnvelope(value)
+        if (decoded !== null) listener(decoded)
+      }
+      ipcRenderer.on(FableLocalEventChannel, handler)
+      return () => ipcRenderer.removeListener(FableLocalEventChannel, handler)
     },
   },
 })

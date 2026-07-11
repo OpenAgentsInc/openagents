@@ -266,18 +266,35 @@ export const makeRuntimeConversationChatHost = (
   }
 }
 
-export const selectDesktopChatHost = async (input: Readonly<{
+export type DesktopChatHostSelection = Readonly<{
+  host: ChatHost
+  /**
+   * "runtime" when the authoritative Khala Sync conversation catalog is live
+   * (signed in); "local" otherwise. Callers gate harness-lane availability on
+   * this evidence (#8712) — the runtime host serves both lanes, the local
+   * host serves only the fable-local lane.
+   */
+  mode: "runtime" | "local"
+}>
+
+export const selectDesktopChatHostSelection = async (input: Readonly<{
   request: RuntimeConversationRequest | undefined
   local: ChatHost
   options?: Omit<RuntimeConversationOptions, "request">
-}>): Promise<ChatHost> => {
-  if (input.request === undefined) return input.local
+}>): Promise<DesktopChatHostSelection> => {
+  if (input.request === undefined) return { host: input.local, mode: "local" }
   const result = await input.request({
     kind: "query",
     requestId: `renderer-conversation-mode-${++requestSequence}`,
     query: { id: "conversation.catalog" },
   })
   return result.kind === "conversation_catalog" && result.status.phase === "live"
-    ? makeRuntimeConversationChatHost({ request: input.request, ...input.options })
-    : input.local
+    ? { host: makeRuntimeConversationChatHost({ request: input.request, ...input.options }), mode: "runtime" }
+    : { host: input.local, mode: "local" }
 }
+
+export const selectDesktopChatHost = async (input: Readonly<{
+  request: RuntimeConversationRequest | undefined
+  local: ChatHost
+  options?: Omit<RuntimeConversationOptions, "request">
+}>): Promise<ChatHost> => (await selectDesktopChatHostSelection(input)).host

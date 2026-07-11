@@ -43,6 +43,22 @@ import { FleetStageChannel, decodeFleetStageRequest, unavailableFleetStageResult
 import { submitFleetBrief } from "./fleet-control.ts"
 import { completeChatTurn } from "./chat-service.ts"
 import { DesktopChatTurnChannel, DesktopHydrateThreadChannel, DesktopNewThreadChannel, DesktopOpenThreadChannel, DesktopThreadsChannel, decode, DesktopThreadRequestSchema, DesktopTurnRequestSchema, type DesktopMessage } from "./chat-contract.ts"
+import {
+  FABLE_LOCAL_FINAL_TEXT_LIMIT,
+  FableLocalAvailabilityChannel,
+  FableLocalEventChannel,
+  FableLocalInterruptChannel,
+  FableLocalStartChannel,
+  decodeFableLocalInterruptRequest,
+  decodeFableLocalStartRequest,
+  fableLocalFailureMessage,
+  fableLocalTraceNoteText,
+} from "./fable-local-contract.ts"
+import {
+  FABLE_LOCAL_FIXTURE_ACCOUNT,
+  makeFableLocalRuntime,
+  makeFixtureFableLocalQuery,
+} from "./fable-local-runtime.ts"
 import { makeThreadStore } from "./thread-store.ts"
 import { makeCodexHistoryHost } from "./codex-history-host.ts"
 import { makeDesktopHostLifecycle } from "./desktop-host-lifecycle.ts"
@@ -414,6 +430,80 @@ ipcMain.handle(DesktopChatTurnChannel, async (_event, value: unknown) => {
   }
 })
 
+// Fable local lane (#8712): a REAL streaming Claude turn on this machine in
+// local (not-signed-in) mode, on an isolated `~/.claude-pylon-*` account home
+// — never the default `~/.claude`, never a login flow, never the cloud
+// gateway. Smoke runs a scripted fixture (clearly logged; never normal runs).
+if (smokeMode) {
+  console.log("[openagents-desktop] fable-local running in SMOKE FIXTURE mode (no real Claude SDK session)")
+}
+const fableLocal = makeFableLocalRuntime({
+  scratchRoot: () => path.join(app.getPath("userData"), "fable-local"),
+  ...(smokeMode
+    ? {
+        queryImpl: async () => makeFixtureFableLocalQuery(),
+        discoverImpl: async () => [FABLE_LOCAL_FIXTURE_ACCOUNT],
+      }
+    : {}),
+})
+ipcMain.handle(FableLocalAvailabilityChannel, () => fableLocal.availability())
+ipcMain.handle(FableLocalInterruptChannel, (_event, value: unknown) => {
+  const request = decodeFableLocalInterruptRequest(value)
+  return request === null ? false : fableLocal.interrupt(request.turnRef)
+})
+ipcMain.handle(FableLocalStartChannel, async (event, value: unknown) => {
+  const request = decodeFableLocalStartRequest(value)
+  if (request === null || request.message.trim() === "") {
+    return { ok: false, error: "That message could not be sent." }
+  }
+  const store = threads()
+  const user: DesktopMessage = {
+    key: randomUUID(),
+    role: "user",
+    text: request.message.trim(),
+    timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+  }
+  const saved = store.append(request.threadRef, user)
+  if (saved === null) return { ok: false, error: "That conversation no longer exists." }
+  // History authority is main's own thread store — the renderer supplies only
+  // the new message. The just-appended user note is the prompt, not history.
+  const history = saved.notes.slice(0, -1).map(note => ({ role: note.role, text: note.text }))
+  const sender = event.sender
+  const result = await fableLocal.runTurn({
+    turnRef: request.turnRef,
+    threadRef: request.threadRef,
+    history,
+    message: request.message.trim(),
+    emit: turnEvent => {
+      // Persist tool trace lines so the finalized transcript keeps the same
+      // evidence the live stream showed (bounded by the store's note cap).
+      if (turnEvent.kind === "tool_use" || turnEvent.kind === "tool_result") {
+        store.append(request.threadRef, {
+          key: randomUUID(),
+          role: "system",
+          text: fableLocalTraceNoteText(turnEvent),
+          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        })
+      }
+      if (sender.isDestroyed()) return
+      // Attach the persisted thread snapshot (user message included) to the
+      // start event so the renderer can stream onto real thread state.
+      const event = turnEvent.kind === "turn_started" ? { ...turnEvent, thread: saved } : turnEvent
+      sender.send(FableLocalEventChannel, { turnRef: request.turnRef, event })
+    },
+  })
+  if (!result.ok) return { ok: false, error: fableLocalFailureMessage(result.reason, result.detail) }
+  const thread = store.append(request.threadRef, {
+    key: randomUUID(),
+    role: "assistant",
+    text: result.text.slice(0, FABLE_LOCAL_FINAL_TEXT_LIMIT),
+    timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+  })
+  return thread === null
+    ? { ok: false, error: "That conversation no longer exists." }
+    : { ok: true, thread }
+})
+
 // Codex account reconnect (#8640 unblock): renderer-argument-free channels
 // only. Main owns the pylon child processes and the verification URL; the
 // renderer polls typed status and never sees tokens, emails, or raw output.
@@ -770,6 +860,56 @@ const smokeNewChatFromHistory = `(async () => {
   }
 })()`
 
+// Fable local streaming journey (#8712): from the fresh chat, the Fable chip
+// must be enabled (fixture account), Codex must be visibly disabled with its
+// caption, and a send must stream PROGRESSIVE text (a partial snapshot is
+// observed before the final), render the read-only tool trace line, then
+// finalize with the composer re-enabled. Fixture-driven; the event mapping,
+// IPC bridge, thread persistence, and renderer streaming path are all real.
+const smokeFableLocalStreaming = `(async () => {
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+  const fable = document.querySelector('[data-en-key="shell-harness-fable"]')
+  const codex = document.querySelector('[data-en-key="shell-harness-codex"]')
+  const caption = document.querySelector('[data-en-key="shell-harness-caption"]')
+  if (fable === null || codex === null) return { ok: false, reason: "harness chips never mounted" }
+  if (fable.disabled !== false) return { ok: false, reason: "fable chip disabled despite fixture account" }
+  if (codex.disabled !== true) return { ok: false, reason: "codex chip enabled without a session" }
+  if (caption === null || !caption.textContent.includes("Codex — requires OpenAgents session")) {
+    return { ok: false, reason: "codex unavailable caption missing" }
+  }
+  fable.click()
+  const input = document.querySelector('[data-en-key="shell-input"] input')
+  if (input === null) return { ok: false, reason: "composer input never mounted" }
+  input.focus()
+  input.value = "Stream a fable-local proof"
+  input.dispatchEvent(new Event("input", { bubbles: true }))
+  const assistantText = () => {
+    const rows = document.querySelectorAll('[data-en-key="shell-transcript"] [data-en-message][data-en-role="assistant"]')
+    const last = rows[rows.length - 1]
+    return last === undefined ? "" : (last.querySelector('[data-en-role="body"]')?.textContent ?? "")
+  }
+  input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }))
+  const finalText = "Fable local streaming proof."
+  let sawPartial = false
+  const deadline = Date.now() + 20000
+  while (Date.now() < deadline) {
+    const text = assistantText()
+    if (text.length > 0 && text !== finalText) sawPartial = true
+    if (text === finalText && input.disabled === false) break
+    await wait(25)
+  }
+  const trace = Array.from(
+    document.querySelectorAll('[data-en-key="shell-transcript"] [data-en-message][data-en-role="system"]'),
+  ).some((row) => (row.textContent ?? "").includes("Read"))
+  return {
+    ok: sawPartial && assistantText() === finalText && input.disabled === false && trace,
+    sawPartial,
+    finalized: assistantText() === finalText,
+    trace,
+    text: assistantText(),
+  }
+})()`
+
 // Fleet workspace journey (#8712): the dock's Fleet button must open the
 // read-only fleet panel with the fixture provider accounts rendered.
 const smokeOpenFleetWorkspace = `(async () => {
@@ -829,7 +969,7 @@ const runSmoke = (window: BrowserWindow): void => {
           result === true ||
           (typeof result === "object" && result !== null && (result as { ok?: unknown }).ok === true)
         if (!ok) {
-          throw new Error(`${name} failed`)
+          throw new Error(`${name} failed: ${JSON.stringify(result)}`)
         }
         console.log(`[openagents-desktop smoke] ${name} OK`, JSON.stringify(result))
       }
@@ -868,8 +1008,12 @@ const runSmoke = (window: BrowserWindow): void => {
         // button must render the fixture accounts panel.
         await step("new-chat-from-history-empty-transcript", smokeNewChatFromHistory)
         await captureShot(window, "06-new-chat-empty")
+        // Fable local turn is FIXTURE-driven in smoke (no real Claude SDK
+        // session; a scripted delta sequence flows through the real mapping).
+        await step("fable-local-streamed-turn-FIXTURE", smokeFableLocalStreaming)
+        await captureShot(window, "07-fable-local-streamed")
         await step("fleet-workspace-fixture-accounts", smokeOpenFleetWorkspace)
-        await captureShot(window, "07-fleet-workspace")
+        await captureShot(window, "08-fleet-workspace")
         tracePass = 1
         window.webContents.reload()
       } catch (error) {
@@ -930,6 +1074,7 @@ app.on("window-all-closed", () => {
 app.on("before-quit", () => {
   hostLifecycle.dispose()
   providerAccounts.dispose()
+  fableLocal.dispose()
   desktopCorrelationJournal.dispose()
 })
 

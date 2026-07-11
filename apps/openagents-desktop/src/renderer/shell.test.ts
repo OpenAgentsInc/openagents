@@ -27,10 +27,12 @@ import {
   withCommandPalette,
   withWorkspaceFile,
   withWorkspaceSnapshot,
+  withHarnessLanes,
   withNote,
   withPending,
   withTurnResult,
   type DesktopShellState,
+  type HarnessLanes,
 } from "./shell.ts"
 import { openagentsDesktopTheme } from "./theme.ts"
 
@@ -68,7 +70,12 @@ const navItemById = (view: View, id: string): AnyNode | undefined => {
 }
 
 const testThread = { id: "test-thread", title: "New chat", updatedAt: "2026-07-10T18:04:00.000Z", notes: [] } as const
-const baseState: DesktopShellState = { ...initialDesktopShellState("electron/darwin", "18:04"), threads: [testThread], activeThreadId: testThread.id }
+/** Both lanes evidence-available: the pre-#8712 composer behavior baseline. */
+const availableHarnessLanes = {
+  fable: { available: true, reason: null },
+  codex: { available: true, reason: null },
+} as const
+const baseState: DesktopShellState = { ...initialDesktopShellState("electron/darwin", "18:04"), harnessLanes: availableHarnessLanes, threads: [testThread], activeThreadId: testThread.id }
 const fixedNow = () => "18:05"
 
 /** A minimal loaded Codex history detail page (the VIDEOEDITS-regression shape). */
@@ -722,6 +729,84 @@ describe("typed chat intent loop end-to-end (registry -> state -> re-render)", (
         const next = yield* SubscriptionRef.get(state)
         expect(next.notes.length).toBe(0)
         expect(next.input).toBe("held")
+      }),
+    )
+  })
+})
+
+describe("capability-gated composer lanes (#8712, evidence-gated affordances)", () => {
+  const localModeLanes: HarnessLanes = {
+    fable: { available: true, reason: null },
+    codex: { available: false, reason: "Codex — requires OpenAgents session" },
+  }
+  const noLanes: HarnessLanes = {
+    fable: { available: false, reason: "Fable — unavailable: no linked Claude account" },
+    codex: { available: false, reason: "Codex — requires OpenAgents session" },
+  }
+
+  test("the initial state proves nothing: both lanes start unavailable until boot lands evidence", () => {
+    const initial = initialDesktopShellState("electron/darwin", "18:04")
+    expect(initial.harnessLanes.fable.available).toBe(false)
+    expect(initial.harnessLanes.codex.available).toBe(false)
+  })
+
+  test("withHarnessLanes moves the selection off a dead default onto the available lane", () => {
+    const next = withHarnessLanes(baseState, localModeLanes)
+    expect(baseState.selectedHarness).toBe("codex")
+    expect(next.selectedHarness).toBe("fable")
+    // But it never abandons an available selection…
+    const kept = withHarnessLanes({ ...baseState, selectedHarness: "fable" }, localModeLanes)
+    expect(kept.selectedHarness).toBe("fable")
+    // …and with nothing available the selection just stays put.
+    expect(withHarnessLanes(baseState, noLanes).selectedHarness).toBe("codex")
+  })
+
+  test("an unavailable lane renders a disabled chip, the caption, and a disabled Send", () => {
+    const state = withHarnessLanes(baseState, localModeLanes)
+    const view = desktopShellView(state)
+    expect(nodeByKey(view, "shell-harness-fable")?.disabled).toBe(false)
+    expect(nodeByKey(view, "shell-harness-codex")?.disabled).toBe(true)
+    const caption = nodeByKey(view, "shell-harness-caption") as { content?: string }
+    expect(caption?.content).toBe("Codex — requires OpenAgents session")
+    // Selected lane (fable) is available, so Send stays enabled.
+    expect(nodeByKey(view, "shell-note")?.disabled).toBe(false)
+
+    const dead = desktopShellView(withHarnessLanes(baseState, noLanes))
+    expect(nodeByKey(dead, "shell-harness-fable")?.disabled).toBe(true)
+    expect(nodeByKey(dead, "shell-note")?.disabled).toBe(true)
+    expect((nodeByKey(dead, "shell-harness-caption") as { content?: string })?.content)
+      .toBe("Fable — unavailable: no linked Claude account · Codex — requires OpenAgents session")
+  })
+
+  test("submit on an unavailable selected lane is refused: draft kept, no sendMessage call", async () => {
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const sent: Array<unknown> = []
+        const state = yield* SubscriptionRef.make(
+          withInput({ ...baseState, harnessLanes: noLanes }, "held draft"),
+        )
+        const registry = yield* makeIntentRegistry(
+          desktopShellIntents,
+          makeDesktopShellHandlers(state, fixedNow, undefined, {
+            listThreads: async () => [],
+            newThread: async () => null,
+            openThread: async () => null,
+            sendMessage: async (input) => {
+              sent.push(input)
+              return { ok: false, error: "unreachable" }
+            },
+          }),
+        )
+        const view = desktopShellView(yield* SubscriptionRef.get(state))
+        const input = nodeByKey(view, "shell-input") as {
+          onSubmit: Parameters<typeof resolveIntentRef>[0]
+        }
+        yield* registry.dispatch(resolveIntentRef(input.onSubmit, "held draft"))
+        const next = yield* SubscriptionRef.get(state)
+        expect(sent).toEqual([])
+        expect(next.notes.length).toBe(0)
+        expect(next.input).toBe("held draft")
+        expect(next.pending).toBe(false)
       }),
     )
   })

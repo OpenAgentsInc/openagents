@@ -6,6 +6,7 @@ import type { ChatHost } from "./shell.ts"
 import {
   makeRuntimeConversationChatHost,
   selectDesktopChatHost,
+  selectDesktopChatHostSelection,
 } from "./runtime-conversation.ts"
 
 const status = { phase: "live" as const, cursor: 5, pendingMutationCount: 0 }
@@ -46,6 +47,37 @@ describe("authoritative Runtime Gateway chat adapter", () => {
       }),
     })
     expect(catchingUp).toBe(local)
+  })
+
+  test("selection reports the mode so lane availability can be evidence-gated (#8712)", async () => {
+    const local: ChatHost = {
+      listThreads: async () => [],
+      newThread: async () => null,
+      openThread: async () => null,
+      sendMessage: async () => ({ ok: false }),
+    }
+    const localSelection = await selectDesktopChatHostSelection({
+      local,
+      request: async () => ({
+        kind: "conversation_unavailable",
+        requestId: "mode",
+        reason: "not_live",
+      }),
+    })
+    expect(localSelection.mode).toBe("local")
+    expect(localSelection.host).toBe(local)
+
+    const runtimeSelection = await selectDesktopChatHostSelection({
+      local,
+      request: async () => ({
+        kind: "conversation_catalog",
+        requestId: "mode-live",
+        status,
+        threads: [],
+      }),
+    })
+    expect(runtimeSelection.mode).toBe("runtime")
+    expect(runtimeSelection.host).not.toBe(local)
   })
 
   test("maps confirmed threads/messages and waits for exact mutation refs", async () => {
