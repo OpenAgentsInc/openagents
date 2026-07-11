@@ -53,6 +53,10 @@ export * from "./khala-code.js"
 // body-free control intents, and private thread-scoped event streams.
 export * from "./runtime.js"
 
+// Owner-private durable provider questions, tool approvals, and plan reviews
+// (CUT-16). Full post-images live only in their exact thread scope.
+export * from "./runtime-interaction.js"
+
 // Gym / Harbor live run-progress entity contract (KS-6.5, #8415): post-image
 // shape for scope.public.gym-run-progress changelog entries (one entity per
 // runRef). Self-contained module (no cycle).
